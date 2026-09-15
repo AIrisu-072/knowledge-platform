@@ -1,0 +1,97 @@
+vars: {
+  d2-config: {
+    layout-engine: tala
+    theme-id: 300
+  }
+}
+
+direction: down
+
+title: "Knowledge / Document Architecture v0 — Flow View"
+
+identity: {
+  label: "共通 Identity"
+  windows: "Windows 統合認証\nIdentity Adapter"
+}
+
+document_flow: {
+  label: "A. 文書管理フロー（正本管理）"
+  direction: right
+  human_ui: "人間用 Document UI\nReact / TypeScript"
+  api: "Document API\n人間 / LLM 共通"
+  core: "Document Platform\n文書登録 / 版管理 / metadata\n既読・未読 / access policy"
+  storage: "Document Storage\nfilesystem"
+  db: "Metadata Store / DB\nPostgreSQL (primary candidate selected)"
+
+  human_ui -> api -> core
+  core -> storage
+  core -> db
+}
+
+sources: {
+  label: "Knowledge Sources"
+  direction: right
+  egov: "e-Gov 等\n外部 Knowledge"
+  internal: "内部 DB / API"
+  future: "将来の Knowledge Source"
+}
+
+indexing_flow: {
+  label: "B. Indexing / ETL フロー（検索可能な表現へ変換）"
+  direction: right
+  adapter: "Source Adapter / ETL\nExtract → Transform → Load"
+  extraction: "Extraction / Normalization\nOffice / PDF / ZIP"
+  canonical: "Canonical Knowledge Model\n共通項目 + 拡張 metadata"
+  representations: "Search Representations / Indexes\nLexical / Vector / Metadata\nTemporal / Graph(将来)"
+
+  adapter -> extraction -> canonical -> representations
+}
+
+query_flow: {
+  label: "C. Query / Retrieval フロー（1回の検索で横断検索）"
+  direction: right
+  clients: {
+    label: "利用者"
+    human: "人間用 Search UI"
+    agent: "LLM / Agent"
+    chat: "LLM Chat"
+  }
+  search_api: "Search API\n人間 / LLM 共通"
+  planner: "Retrieval Planner / Policy\n意図 → Retriever / filter / weight\nLLM利用可 + Policyで検証"
+  retrieval: "Retrieval Engine\nLexical / Semantic / Structured\nTemporal / Graph(将来)"
+  fusion: "Fusion / Reranking\n候補統合・最終順位付け"
+  results: "共通 SearchResult[]\nsource / locator / snippet\nhighlight / score / provenance"
+
+  clients.human -> search_api
+  clients.agent -> search_api
+  clients.chat -> search_api
+  search_api -> planner -> retrieval -> fusion -> results
+}
+
+ops: {
+  label: "D. Observability / Audit"
+  direction: right
+  otel: "OpenTelemetry Collector"
+  observability: "Observability Platform\nlogs / traces / metrics"
+  audit: "Audit Store\n監査イベント"
+  otel -> observability
+}
+
+identity.windows -> document_flow.api
+identity.windows -> query_flow.search_api
+
+document_flow.core -> indexing_flow.adapter: "Knowledge Source"
+sources.egov -> indexing_flow.adapter
+sources.internal -> indexing_flow.adapter
+sources.future -> indexing_flow.adapter
+
+indexing_flow.representations -> query_flow.retrieval: "検索 Index"
+
+# 観測・監査は共通規格で横断
+# PNG暫定レンダリングでは線量を抑えるため主要ポイントのみ表現
+query_flow.search_api -> ops.otel: "telemetry"
+query_flow.retrieval -> ops.otel: "telemetry"
+query_flow.fusion -> ops.otel: "telemetry"
+document_flow.core -> ops.otel: "telemetry"
+document_flow.api -> ops.audit: "audit events"
+query_flow.search_api -> ops.audit: "audit events"
