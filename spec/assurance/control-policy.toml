@@ -1,0 +1,10 @@
+version = 1
+
+[criticality.low]
+minimum_capabilities = 1
+
+[criticality.medium]
+minimum_capabilities = 1
+
+[criticality.high]
+minimum_capabilities = 2

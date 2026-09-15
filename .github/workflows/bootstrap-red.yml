@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  assurance-provider-red:
+  assurance-green:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -19,5 +19,9 @@ jobs:
           rustup default 1.98.1
       - name: Architecture regression
         run: cargo test -p architecture-lint --test policy
-      - name: RED command provider
-        run: cargo test -p assurance-cli --test provider
+      - name: Assurance tests
+        run: |
+          cargo test -p assurance-cli --test requirements
+          cargo test -p assurance-cli --test graph
+          cargo test -p assurance-cli --test plan
+          cargo test -p assurance-cli --test provider
