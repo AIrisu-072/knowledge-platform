@@ -287,12 +287,6 @@ url = "https://nodejs.org/dist/v24.21.0/node-v24.21.0-darwin-x64.tar.gz"
 checksum = "sha256:158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541"
 url = "https://nodejs.org/dist/v24.21.0/node-v24.21.0-win-x64.zip"
 
-[[tools."npm:@redocly/cli"]]
-version = "2.52.1"
-aube = { path = ".mise/locks/npm-redocly-cli/2.52.1", digest = "sha256:a15b496633f488c4dea5168d04624e3710c52a0e1a4a89b813efe65cb37902d6" }
-backend = "npm:@redocly/cli"
-specifiers = ["2.52.1"]
-
 [[tools.pnpm]]
 version = "12.4.1"
 backend = "aqua:pnpm/pnpm"
