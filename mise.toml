@@ -18,6 +18,7 @@ REDOCLY_SUPPRESS_UPDATE_NOTICE = "true"
 description = "Install locked tools, dependencies, and local git hooks"
 run = [
   "mise install rust",
+  "rustup component add --toolchain 1.98.1 rustfmt clippy",
   "mise install node",
   "mise install pnpm",
   "mise install cargo:cargo-deny",

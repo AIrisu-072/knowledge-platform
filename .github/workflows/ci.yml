@@ -50,8 +50,10 @@ jobs:
       - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
         with:
           install: false
-      - name: Install Rust
-        run: mise install rust
+      - name: Install Rust static-analysis toolchain
+        run: |
+          mise install rust
+          rustup component add --toolchain 1.98.1 rustfmt clippy
       - run: mise run fmt
       - run: mise run check:rust
 
