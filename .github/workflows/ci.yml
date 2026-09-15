@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - chore/repository-bootstrap-v0
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+      - run: mise run arch:check
+      - run: mise run api:check
+      - run: mise run assure:plan
+
+  rust-static:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+      - run: mise run fmt
+      - run: mise run check:rust
+
+  rust-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+      - run: mise run test:rust
+
+  security:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+      - run: mise run security
+
+  portability-macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+      - run: mise run portability:macos
+
+  container-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+      - run: mise run container:verify
+
+  required-check:
+    if: ${{ always() }}
+    needs:
+      - policy
+      - rust-static
+      - rust-test
+      - security
+      - portability-macos
+      - container-build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every predecessor
+        env:
+          POLICY: ${{ needs.policy.result }}
+          RUST_STATIC: ${{ needs.rust-static.result }}
+          RUST_TEST: ${{ needs.rust-test.result }}
+          SECURITY: ${{ needs.security.result }}
+          PORTABILITY_MACOS: ${{ needs.portability-macos.result }}
+          CONTAINER_BUILD: ${{ needs.container-build.result }}
+        run: |
+          set -eu
+          for result in "$POLICY" "$RUST_STATIC" "$RUST_TEST" "$SECURITY" "$PORTABILITY_MACOS" "$CONTAINER_BUILD"; do
+            test "$result" = success
+          done
