@@ -1,4 +1,4 @@
-name: Bootstrap RED
+name: Bootstrap TDD
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  architecture-red:
+  assurance-red:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -17,5 +17,7 @@ jobs:
         run: |
           rustup toolchain install 1.98.1 --profile minimal --component clippy,rustfmt
           rustup default 1.98.1
-      - name: RED architecture policy tests
+      - name: Architecture regression
         run: cargo test -p architecture-lint --test policy
+      - name: RED requirement extraction
+        run: cargo test -p assurance-cli --test requirements
