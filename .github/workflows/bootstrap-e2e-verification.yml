@@ -1,0 +1,71 @@
+name: Bootstrap full verification
+
+on:
+  push:
+    branches:
+      - chore/repository-bootstrap-v0
+
+permissions:
+  contents: read
+
+env:
+  MISE_AUTO_INSTALL: "0"
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+
+jobs:
+  full-bootstrap-verification:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Clean developer bootstrap
+        run: |
+          set -eu
+          mise install
+          mise run bootstrap
+      - name: Measure verification gates
+        run: |
+          set -eu
+          measure() {
+            label="$1"
+            shift
+            start="$(date +%s%N)"
+            "$@"
+            end="$(date +%s%N)"
+            elapsed_ms=$(( (end - start) / 1000000 ))
+            printf '%s_ms=%s\n' "$label" "$elapsed_ms" | tee -a "$GITHUB_STEP_SUMMARY"
+          }
+          measure verify_fast mise run verify:fast
+          measure verify mise run verify
+          measure verify_full mise run verify:full
+      - name: Verify Development Assurance vertical slice
+        run: |
+          set -eu
+          mise run assure:plan
+          mise run assure:run
+          mise run assure:report
+      - name: Verify negative architecture and repository policies
+        run: |
+          set -eu
+          mise run arch:negative-smoke
+          mise run security:secrets:self-test
+          mise run repo:policy
+          mise run ci:lint
+      - name: Final consolidated full gate
+        run: |
+          set -eu
+          start="$(date +%s%N)"
+          mise run verify:full
+          end="$(date +%s%N)"
+          elapsed_ms=$(( (end - start) / 1000000 ))
+          printf 'final_verify_full_ms=%s\n' "$elapsed_ms" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Verify clean worktree
+        run: |
+          set -eu
+          git status --short
+          test -z "$(git status --porcelain)"
