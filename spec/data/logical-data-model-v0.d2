@@ -1,0 +1,86 @@
+vars: {
+  d2-config: {
+    layout-engine: tala
+  }
+}
+
+direction: right
+
+document_platform: {
+  label: "Document Platform (authoritative)"
+
+  principal: "ExternalPrincipalRef\nWindows SID / external identity"
+  folder: "Folder"
+  document: "Document"
+  version: "DocumentVersion\nWORKING / PUBLISHED / WITHDRAWN\nUI labels are derived"
+  file: "FileObject"
+  version_file: "VersionFile"
+  read_state: "ReadState\nPrincipal × DocumentVersion"
+  metadata: "Metadata\ncommon + extensible"
+
+  folder -> document: "1:N"
+  document -> version: "1:N"
+  version -> version_file: "1:N"
+  version_file -> file: "N:1"
+  principal -> read_state
+  version -> read_state
+  document -> metadata
+  version -> metadata
+}
+
+search_platform: {
+  label: "Search Platform (derived / rebuildable)"
+
+  source: "KnowledgeSource"
+  canonical: "CanonicalKnowledgeResourceSnapshot"
+  unit: "KnowledgeUnit\nsection / paragraph / table / sheet"
+  repr: {
+    label: "Search Representations"
+    lexical: "Lexical"
+    vector: "Vector"
+    metadata: "Metadata / Structured"
+    temporal: "Temporal"
+    graph: "Graph (future)"
+  }
+  retrieval: "Retrieval Engine"
+  fusion: "Fusion"
+  rerank: "Reranking"
+  result: "SearchResult"
+
+  source -> canonical: "ETL"
+  canonical -> unit: "Extraction / Normalization"
+  unit -> repr.lexical
+  unit -> repr.vector
+  unit -> repr.metadata
+  unit -> repr.temporal
+  unit -> repr.graph
+  repr.lexical -> retrieval
+  repr.vector -> retrieval
+  repr.metadata -> retrieval
+  repr.temporal -> retrieval
+  repr.graph -> retrieval
+  retrieval -> fusion
+  fusion -> rerank
+  rerank -> result
+}
+
+document_platform.version -> search_platform.source: "Document source event / sync"
+
+query_runtime: {
+  label: "Query Runtime"
+  request: "SearchRequest"
+  plan: "RetrievalPlan"
+  policy: "Plan Validator / Policy"
+  request -> plan
+  plan -> policy
+  policy -> search_platform.retrieval
+}
+
+clients: {
+  label: "Clients"
+  human: "Human Search UI"
+  llm: "LLM / Agent"
+}
+
+search_platform.result -> clients.human
+search_platform.result -> clients.llm
