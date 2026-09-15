@@ -1,0 +1,71 @@
+[tools]
+rust = "1.98.1"
+node = "24.21.0"
+pnpm = "12.4.1"
+"cargo:cargo-deny" = "0.20.2"
+"cargo:cargo-nextest" = "0.9.144"
+"npm:@redocly/cli" = "2.52.1"
+"github:gitleaks/gitleaks" = "8.30.1"
+"github:google/osv-scanner" = "2.5.1"
+"github:anchore/syft" = "1.51.1"
+"github:rhysd/actionlint" = "1.7.12"
+"github:zizmorcore/zizmor" = "1.29.0"
+
+[env]
+REDOCLY_TELEMETRY = "off"
+REDOCLY_SUPPRESS_UPDATE_NOTICE = "true"
+
+[tasks.bootstrap]
+description = "Install locked tools, dependencies, and local git hooks"
+run = [
+  "mise install",
+  "pnpm install --frozen-lockfile",
+  "git config core.hooksPath .githooks",
+]
+
+[tasks.fmt]
+description = "Check source formatting"
+run = ["cargo fmt --all -- --check"]
+
+[tasks."check:rust"]
+description = "Run Rust static checks"
+run = [
+  "cargo check --workspace --locked",
+  "cargo clippy --workspace --all-targets --locked -- -D warnings",
+]
+
+[tasks."test:rust"]
+description = "Run Rust tests"
+run = ["cargo nextest run --workspace"]
+
+[tasks."api:check"]
+description = "Validate the OpenAPI contract"
+run = ["pnpm api:lint"]
+
+[tasks."arch:check"]
+description = "Run machine-enforced architecture policy"
+run = ["cargo run --quiet --locked -p architecture-lint -- check"]
+
+[tasks."assure:plan"]
+description = "Compile assurance impact plan"
+run = ["cargo run --quiet --locked -p assurance-cli -- plan --all"]
+
+[tasks."assure:run"]
+description = "Run planned assurance capabilities"
+run = ["cargo run --quiet --locked -p assurance-cli -- run --all"]
+
+[tasks."assure:report"]
+description = "Render assurance evidence and gaps"
+run = ["cargo run --quiet --locked -p assurance-cli -- report"]
+
+[tasks."verify:fast"]
+description = "Fast local feedback gate"
+depends = ["fmt", "check:rust", "arch:check", "api:check", "test:rust"]
+
+[tasks.verify]
+description = "Standard pre-PR verification gate"
+depends = ["verify:fast"]
+
+[tasks."verify:full"]
+description = "Full reproducibility/integration gate"
+depends = ["verify"]

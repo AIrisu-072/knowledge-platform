@@ -1,0 +1,17 @@
+/target/
+/node_modules/
+/dist/
+/coverage/
+/tmp/
+/.env
+.env.*
+!.env.example
+.DS_Store
+*.db
+*.sqlite
+*.sqlite3
+*.pem
+*.key
+*.p12
+*.pfx
+target/assurance/
