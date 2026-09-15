@@ -1,0 +1,42 @@
+Lxで要件を満たす。ORM abstractionを先に増やさない |
+| SQLite as production DB | REJECTED | ReadState / Outbox / Audit等を含むmulti-writer server workloadに不適 |
+| YugabyteDB | DEFERRED | multi-node active HA / horizontal write要件が出た場合 |
+| Turso Database | DEFERRED | mission-critical採用判断には成熟度確認が必要 |
+| CockroachDB | REJECTED | 現行license policyに不適 |
+
+---
+
+# 4. Windows Integrated Authentication PoC
+
+`sspi-rs` はcross-platform SSP実装とWindows native SSPI利用を提供するためArchitectureとの整合性は高いが、実環境検証を必須とする。
+
+## PoC acceptance
+
+実際のAD / browser / Linux server経路で:
+
+- Edge / ChromiumからNegotiateが成立
+- 正しいWindows principalを一意に取得
+- 同一browser session内のidentity混線がない
+- Kerberos優先 / NTLM fallbackの挙動を記録
+- proxy / reverse proxy有無による差を確認
+- failed authを別利用者へ誤帰属しない
+- Linux deploymentで必要なKDC / SPN / keytab条件を文書化
+- load / keep-alive時にconnection単位認証の副作用がないことを確認
+
+PoC通過前にCore DomainへSSPI固有型を導入しない。
+
+---
+
+# 5. OpenAPI / JSON Schema / Codegen
+
+## 5.1 Decision table
+
+| 領域 | Candidate | Status | License | Decision |
+|---|---|---|---|---|
+| API Contract | OpenAPI 3.2.1 | **SELECTED** | specification | API SSOT |
+| Structural Schema | JSON Schema 2020-12 | **SELECTED** | specification | validation/data schema SSOT |
+| OAS lint/bundle | Redocly CLI 2.x | **SELECTED** | MIT | OpenAPI 3.2対応 |
+| Rust runtime validation | `jsonschema` 0.55.x | **SELECTED** | permissive | Draft 2020-12 validator |
+| TypeScript runtime validation | Ajv 8.x | **SELECTED** | MIT | Draft 2020-12 validator |
+| JSON Schema → Rust | `typify` 0.7.x | **POC REQUIRED** | permissive | generated transport types candidate |
+| JSON Schema → TypeScript | `json-schema-to-typescript` | **POC REQUIRED

@@ -1,0 +1,110 @@
+
+  version: 0.0.0
+paths: {}
+```
+
+Create `spec/api/README.md` stating that endpoint/schema additions must be contract-first and that 3.2-only features require tooling compatibility tests.
+
+Run:
+
+```bash
+pnpm api:lint
+```
+
+Expected: PASS.
+
+- [ ] **Step 2: Configure strict Rust dependency policy**
+
+Create `deny.toml` with only the approved license set from the normative selection policy:
+
+```toml
+[graph]
+all-features = false
+
+[advisories]
+yanked = "deny"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[licenses]
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "PostgreSQL",
+]
+confidence-threshold = 0.8
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+```
+
+Run:
+
+```bash
+cargo deny check
+```
+
+If a selected tooling dependency uses another permissive license, **do not silently broaden the allowlist**. Stop and update `library-tool-selection-v0.md`/ADR first.
+
+- [ ] **Step 3: Configure Gitleaks without custom secret copies**
+
+Create `.gitleaks.toml`:
+
+```toml
+[extend]
+useDefault = true
+```
+
+No secrets or sample real credentials in fixtures.
+
+- [ ] **Step 4: Add security and workflow tasks**
+
+Extend `mise.toml`:
+
+```toml
+[tasks.security:secrets]
+run = [
+  "gitleaks git --redact --exit-code 1",
+]
+
+[tasks.security:deps]
+run = [
+  "cargo deny check",
+  "osv-scanner scan source -r .",
+]
+
+[tasks.ci:lint]
+run = [
+  "actionlint",
+  "zizmor .github/workflows",
+]
+
+[tasks.security]
+depends = ["security:secrets", "security:deps", "ci:lint"]
+
+[tasks.verify]
+depends = ["verify:fast", "security"]
+```
+
+Do not add Syft to the fast path; use it in Task 7/full verification.
+
+- [ ] **Step 5: Run gates locally**
+
+```bash
+mise run api:check
+mise run security:secrets
+mise run security:deps
+```
+
+Expected: PASS, or a dependency-license failure that must be explicitly resolved in policy before proceeding.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add spec/api deny.toml .gitleaks.toml mise.toml pack

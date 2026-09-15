@@ -1,0 +1,53 @@
+M, or build output is tracked.
+
+- [ ] **Step 6: Verify GitHub workflow static checks**
+
+```bash
+actionlint
+zizmor .github/workflows
+```
+
+Expected: PASS.
+
+- [ ] **Step 7: Final consolidated gate**
+
+```bash
+mise run verify:full
+```
+
+Expected: PASS.
+
+- [ ] **Step 8: Commit final bootstrap reconciliation**
+
+```bash
+git add README.md AGENTS.md docs/design/repository-bootstrap-design-v0.md
+git commit -m "docs: finalize repository bootstrap workflow"
+```
+
+Skip this commit if there are no documentation changes.
+
+---
+
+# Follow-up Plans — intentionally out of scope
+
+The following each require their own spec-linked implementation plan after this bootstrap is merged/reviewed:
+
+```text
+P0 TypeScript 7 compatibility
+P1 OpenAPI 3.2 codegen
+P2 Windows Integrated Authentication
+P3 UI foundation
+P4 Japanese lexical search
+P5 Office extraction
+P6 PDF extraction
+P7 Observability/Audit adapters
+
+Development Assurance:
+- Bounded Context Compiler
+- Context Lease
+- Agent Gateway
+- MCP/Hook adapters
+- Symbol-level Code Graph
+```
+
+This separation prevents Repository Bootstrap from turning into the application or the full Assurance platform.

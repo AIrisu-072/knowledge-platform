@@ -1,0 +1,261 @@
+1.98.1"
+profile = "minimal"
+components = ["clippy", "rustfmt"]
+```
+
+- [ ] **Step 3: Create Node/pnpm tooling-only root**
+
+Create `package.json`:
+
+```json
+{
+  "name": "knowledge-platform-tooling",
+  "private": true,
+  "packageManager": "pnpm@12.4.1",
+  "devDependencies": {
+    "@redocly/cli": "2.52.1"
+  },
+  "scripts": {
+    "api:lint": "redocly lint spec/api/openapi.yaml"
+  }
+}
+```
+
+Create `pnpm-workspace.yaml`:
+
+```yaml
+packages:
+  - "apps/*"
+  - "experiments/*"
+```
+
+No React/Vite app is created in this plan. TypeScript 7 compatibility remains P0 PoC.
+
+- [ ] **Step 4: Create the initial mise tool lock contract**
+
+Create `mise.toml` with exact project runtime pins and selected CLI tools:
+
+```toml
+[tools]
+rust = "1.98.1"
+node = "24.21.0"
+pnpm = "12.4.1"
+"cargo:cargo-deny" = "0.20.2"
+"cargo:cargo-nextest" = "0.9.144"
+"npm:@redocly/cli" = "2.52.1"
+"github:gitleaks/gitleaks" = "8.31.0"
+"github:google/osv-scanner" = "2.5.1"
+"github:anchore/syft" = "1.51.1"
+"github:rhysd/actionlint" = "1.7.12"
+"github:zizmorcore/zizmor" = "1.29.0"
+
+[env]
+REDOCLY_TELEMETRY = "off"
+REDOCLY_SUPPRESS_UPDATE_NOTICE = "true"
+
+[tasks.bootstrap]
+description = "Install locked tools, dependencies, and local git hooks"
+run = [
+  "mise install",
+  "pnpm install --frozen-lockfile",
+  "git config core.hooksPath .githooks",
+]
+
+[tasks.fmt]
+description = "Check source formatting"
+run = [
+  "cargo fmt --all -- --check",
+]
+
+[tasks.check:rust]
+description = "Run Rust static checks"
+run = [
+  "cargo check --workspace --locked",
+  "cargo clippy --workspace --all-targets --locked -- -D warnings",
+]
+
+[tasks.test:rust]
+description = "Run Rust tests"
+run = [
+  "cargo nextest run --workspace",
+]
+
+[tasks.api:check]
+description = "Validate the OpenAPI contract"
+run = [
+  "pnpm api:lint",
+]
+
+[tasks.arch:check]
+description = "Run machine-enforced architecture policy"
+run = [
+  "cargo run --quiet --locked -p architecture-lint -- check",
+]
+
+[tasks.assure:plan]
+description = "Compile assurance impact plan"
+run = [
+  "cargo run --quiet --locked -p assurance-cli -- plan",
+]
+
+[tasks.assure:run]
+description = "Run planned assurance capabilities"
+run = [
+  "cargo run --quiet --locked -p assurance-cli -- run",
+]
+
+[tasks.assure:report]
+description = "Render assurance evidence and gaps"
+run = [
+  "cargo run --quiet --locked -p assurance-cli -- report",
+]
+
+[tasks.verify:fast]
+description = "Fast local feedback gate"
+depends = ["fmt", "check:rust", "arch:check", "api:check", "test:rust"]
+
+[tasks.verify]
+description = "Standard pre-PR verification gate"
+depends = ["verify:fast"]
+
+[tasks.verify:full]
+description = "Full reproducibility/integration gate"
+depends = ["verify"]
+```
+
+Do not yet add security and container tasks; Tasks 4–6 extend these definitions.
+
+Run:
+
+```bash
+mise lock
+```
+
+Commit the generated `mise.lock`.
+
+- [ ] **Step 5: Add repository hygiene**
+
+Create `.gitignore`:
+
+```gitignore
+/target/
+/node_modules/
+/dist/
+/coverage/
+/tmp/
+/.env
+.env.*
+!.env.example
+.DS_Store
+*.db
+*.sqlite
+*.sqlite3
+*.pem
+*.key
+*.p12
+*.pfx
+target/assurance/
+```
+
+Create `.editorconfig`:
+
+```ini
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = true
+
+[*.rs]
+indent_size = 4
+
+[*.md]
+trim_trailing_whitespace = false
+```
+
+Create `experiments/README.md` stating that PoCs are non-production and `POC REQUIRED` dependencies stay here until accepted.
+
+Create `third_party/README.md` stating dependency → composition → thin extension → separate fork → vendoring order.
+
+- [ ] **Step 6: Add human/agent entrypoint without duplicating normative rules**
+
+Create `AGENTS.md`:
+
+```markdown
+# Agent entrypoint
+
+このrepositoryでは `spec/` がnormative SSOTです。
+
+作業開始時に全文を読み込まず、対象変更に関係する仕様だけを参照してください。
+最終的な制約判定はDevelopment Assurance / CIに従います。
+
+基本コマンド:
+
+- `mise run verify:fast`
+- `mise run verify`
+- `mise run verify:full`
+
+重要:
+- 顧客固有名詞・実データ・秘密情報をrepositoryへ入れない。
+- `POC REQUIRED` dependencyをproductionへ追加しない。
+- production実装を始める前に該当specとimplementation planを確認する。
+```
+
+Create `README.md` containing only generic project purpose, `spec/` location, supported development OS, and the three `mise` verification commands.
+
+- [ ] **Step 7: Generate lockfiles and verify bootstrap**
+
+Run:
+
+```bash
+mise install
+pnpm install
+cargo metadata --format-version 1 --no-deps
+mise lock
+```
+
+Expected:
+- tool installation succeeds on supported host;
+- `pnpm-lock.yaml`, `Cargo.lock`, `mise.lock` exist;
+- no application crate exists.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add Cargo.toml Cargo.lock rust-toolchain.toml package.json pnpm-lock.yaml pnpm-workspace.yaml mise.toml mise.lock .editorconfig .gitignore README.md AGENTS.md experiments/README.md third_party/README.md
+git commit -m "chore: bootstrap reproducible development toolchain"
+```
+
+---
+
+### Task 2: Machine-readable Architecture Contract and custom linter
+
+**Files:**
+- Create: `spec/architecture/dependency-rules.toml`
+- Create: `tools/architecture-lint/Cargo.toml`
+- Create: `tools/architecture-lint/src/lib.rs`
+- Create: `tools/architecture-lint/src/config.rs`
+- Create: `tools/architecture-lint/src/checks.rs`
+- Create: `tools/architecture-lint/src/report.rs`
+- Create: `tools/architecture-lint/src/main.rs`
+- Create: `tools/architecture-lint/tests/policy.rs`
+
+**Interfaces:**
+- Consumes: `spec/architecture/dependency-rules.toml`.
+- Produces: CLI `architecture-lint check [--format human|json]`.
+- Produces JSON for the later generic Assurance command Provider.
+- Must finish in a few seconds on bootstrap repository.
+
+- [ ] **Step 1: Write failing architecture-policy tests**
+
+Create `tools/architecture-lint/tests/policy.rs` with tests equivalent to:
+
+```rust
+use architecture_lint::{check_repository, Config};
+
+#[test]
+fn valid_bootstrap_repository_pa

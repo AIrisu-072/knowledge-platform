@@ -1,0 +1,176 @@
+# Repository Bootstrap Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** `AIrisu-072/knowledge-platform` を、仕様駆動・高速なnative inner loop・GitHub-hosted CI・machine-enforced Architecture・最小のDevelopment Assurance vertical sliceを備えた開発可能なrepositoryへbootstrapする。
+
+**Architecture:** `spec/` をnormative SSOTとして維持し、production feature codeはまだ作らない。Root toolingは`mise`へ集約し、Rust workspaceにはbootstrapに必要な `tools/architecture-lint` と `tools/assurance` だけを置く。Development Assuranceはこのplanでは Requirement extraction → Level 0/1 Code Graph → impact plan → command Provider → Evidence の最小vertical sliceまでとし、Context Compiler / Agent Gateway / Symbol Graphは別planへ分離する。
+
+**Tech Stack:** Rust 1.98.1, Node.js 24.21.0 LTS, pnpm 12.4.1, mise, cargo-nextest, cargo-deny, Gitleaks CLI, OSV-Scanner, Syft, actionlint, zizmor, Redocly CLI 2.52.1, GitHub-hosted Actions, Docker BuildKit.
+
+**Spec:**  
+- `docs/design/repository-bootstrap-design-v0.md`
+- `spec/architecture/architecture-contract-v0.md`
+- `spec/architecture/development-container-ci-architecture-v0.md`
+- `spec/architecture/development-assurance-architecture-v0.md`
+- `spec/selection/library-tool-selection-v0.md`
+
+## Global Constraints
+
+- 顧客・金融機関の固有名詞、実顧客データ、実金融データ、個人情報、credential、token、private keyをrepositoryへ入れない。
+- 日本語を設計・運用文書の第一言語とする。
+- Development supportは Linux / macOS / Windows via WSL2 only。Native Windowsは正式サポートしない。
+- Production targetは `linux/amd64` OCI image。multi-archはv0非要件。
+- CIはGitHub-hosted runnerのみ。Linuxをauthoritative、macOSをportability smoke testとする。
+- Local / CIのtask entrypointは`mise`へ集約する。
+- `POC REQUIRED` libraryをproduction dependencyへ追加しない。
+- production用の空crateを大量に作らない。
+- third-party GitHub Actionは最終commit前にfull commit SHAへpinする。
+- generated Assurance IR / EvidenceはGit管理しない。
+- Development AssuranceはLLMをnormal verification pathのOracleにしない。
+- Repository license自体はこのplanでは決めない。Dependency license policyだけを`cargo-deny`等で強制する。
+- このplanではApplication API / Document / Search / UI production implementationを開始しない。
+
+---
+
+# File Structure After This Plan
+
+```text
+knowledge-platform/
+├─ .github/
+│  └─ workflows/
+│     └─ ci.yml
+├─ .githooks/
+│  ├─ pre-commit
+│  └─ pre-push
+├─ docs/
+│  └─ superpowers/
+│     └─ plans/
+│        └─ 2026-09-14-repository-bootstrap-implementation.md
+├─ experiments/
+│  └─ README.md
+├─ spec/
+│  ├─ api/
+│  │  ├─ README.md
+│  │  └─ openapi.yaml
+│  ├─ architecture/
+│  │  ├─ dependency-rules.toml
+│  │  └─ ...
+│  ├─ assurance/
+│  │  ├─ README.md
+│  │  ├─ control-policy.toml
+│  │  └─ capabilities/
+│  │     └─ bootstrap.toml
+│  └─ ...
+├─ third_party/
+│  └─ README.md
+├─ tools/
+│  ├─ architecture-lint/
+│  │  ├─ Cargo.toml
+│  │  ├─ src/
+│  │  │  ├─ lib.rs
+│  │  │  ├─ config.rs
+│  │  │  ├─ checks.rs
+│  │  │  ├─ report.rs
+│  │  │  └─ main.rs
+│  │  └─ tests/
+│  │     └─ policy.rs
+│  └─ assurance/
+│     ├─ Cargo.toml
+│     ├─ src/
+│     │  ├─ lib.rs
+│     │  ├─ requirement.rs
+│     │  ├─ graph.rs
+│     │  ├─ capability.rs
+│     │  ├─ planner.rs
+│     │  ├─ provider.rs
+│     │  ├─ evidence.rs
+│     │  └─ main.rs
+│     └─ tests/
+│        ├─ requirements.rs
+│        ├─ graph.rs
+│        └─ plan.rs
+├─ .editorconfig
+├─ .gitignore
+├─ .gitleaks.toml
+├─ AGENTS.md
+├─ Cargo.lock
+├─ Cargo.toml
+├─ Dockerfile
+├─ README.md
+├─ deny.toml
+├─ mise.lock
+├─ mise.toml
+├─ package.json
+├─ pnpm-lock.yaml
+├─ pnpm-workspace.yaml
+└─ rust-toolchain.toml
+```
+
+---
+
+### Task 1: Root toolchain and task contract
+
+**Files:**
+- Create: `Cargo.toml`
+- Create: `rust-toolchain.toml`
+- Create: `package.json`
+- Create: `pnpm-workspace.yaml`
+- Create: `mise.toml`
+- Create: `mise.lock`
+- Create: `.editorconfig`
+- Create: `.gitignore`
+- Create: `README.md`
+- Create: `AGENTS.md`
+- Create: `experiments/README.md`
+- Create: `third_party/README.md`
+
+**Interfaces:**
+- Produces: `mise run bootstrap`, `mise run fmt`, `mise run check:rust`, `mise run test:rust`, `mise run verify:fast`, `mise run verify`, `mise run verify:full`.
+- Produces: Rust workspace containing only `tools/architecture-lint` and `tools/assurance`.
+- Consumes: approved `spec/` and `docs/` content already imported.
+
+- [ ] **Step 1: Add a failing repository bootstrap smoke check**
+
+Create a temporary shell command in the implementation session, without committing it:
+
+```bash
+test -f Cargo.toml \
+  && test -f rust-toolchain.toml \
+  && test -f mise.toml \
+  && test -f package.json
+```
+
+Run from repository root.
+
+Expected: FAIL because bootstrap files do not yet exist.
+
+- [ ] **Step 2: Create the Rust workspace contract**
+
+Create `Cargo.toml`:
+
+```toml
+[workspace]
+members = [
+  "tools/architecture-lint",
+  "tools/assurance",
+]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.98"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+```
+
+Do **not** add production crates.
+
+Create `rust-toolchain.toml`:
+
+```toml
+[toolchain]
+channel = "

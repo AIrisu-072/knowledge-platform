@@ -1,0 +1,81 @@
+logs secret environment values;
+- records commit SHA and provider/capability identity.
+
+Evidence:
+
+```rust
+pub struct Evidence {
+    pub capability_id: String,
+    pub outcome: Outcome,
+    pub commit: String,
+    pub duration_ms: u64,
+    pub artifact_path: Option<PathBuf>,
+}
+```
+
+Write generated evidence below `target/assurance/evidence/`.
+
+- [ ] **Step 12: Implement CLI vertical slice**
+
+Commands:
+
+```bash
+assure scan
+assure plan --all
+assure plan --changed-from <sha>
+assure run --all
+assure report
+```
+
+`report` prints only compact status/gaps by default. Provider raw output is available through artifact paths for drill-down.
+
+- [ ] **Step 13: Run focused verification**
+
+```bash
+cargo nextest run -p assurance-cli
+cargo clippy -p assurance-cli --all-targets -- -D warnings
+cargo run --quiet -p assurance-cli -- scan
+cargo run --quiet -p assurance-cli -- plan --all
+cargo run --quiet -p assurance-cli -- run --all
+cargo run --quiet -p assurance-cli -- report
+```
+
+Expected:
+- requirements extracted;
+- architecture capability planned;
+- architecture Provider passes;
+- evidence file generated under ignored `target/assurance/`;
+- no LLM call.
+
+- [ ] **Step 14: Commit**
+
+```bash
+git add spec/assurance spec/architecture/development-container-ci-architecture-v0.md tools/assurance Cargo.toml Cargo.lock mise.toml
+git commit -m "feat: add development assurance vertical slice"
+```
+
+---
+
+### Task 4: API, dependency, secret, and workflow policy gates
+
+**Files:**
+- Create: `spec/api/README.md`
+- Create: `spec/api/openapi.yaml`
+- Create: `deny.toml`
+- Create: `.gitleaks.toml`
+- Modify: `mise.toml`
+- Modify: `package.json`
+- Modify: `pnpm-lock.yaml`
+
+**Interfaces:**
+- Produces: `mise run api:check`, `mise run security:secrets`, `mise run security:deps`, `mise run ci:lint`.
+- Consumes: OpenAPI 3.2.1, permissive dependency policy.
+
+- [ ] **Step 1: Create a minimal OpenAPI 3.2.1 root contract**
+
+Create `spec/api/openapi.yaml`:
+
+```yaml
+openapi: 3.2.1
+info:
+  title: Knowledge Platform API

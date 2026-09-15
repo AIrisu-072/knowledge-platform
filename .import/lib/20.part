@@ -1,0 +1,25 @@
+2/
+- uuid  
+  https://docs.rs/uuid/
+
+## DMS license evidence
+
+- Mayan EDMS LICENSE  
+  https://gitlab.com/mayan-edms/mayan-edms/blob/master/LICENSE
+- Paperless-ngx  
+  https://github.com/paperless-ngx/paperless-ngx
+- Docspell LICENSE  
+  https://github.com/eikek/docspell/blob/master/LICENSE.txt
+- Papra  
+  https://github.com/papra-hq/papra
+
+# 27. Development Assurance / Verification Tooling
+
+本projectではDevelopment AssuranceをLLM-first Control Planeとして採用する。
+
+| 領域 | Candidate | Status | License | Decision |
+|---|---|---|---|---|
+| Custom Assurance Core | Rust CLI / crates | **SELECTED** | project code | Compiler / IR / Planner / Evidence / Gap / Context Compiler |
+| Custom Architecture Linter | Rust CLI | **SELECTED** | project code | Assurance Providerとして実装 |
+| Rust test runner | cargo-nextest | **SELECTED** | Apache-2.0 / MIT | fast deterministic Rust test execution |
+| Property testing | proptest | **SELECTED** | MIT OR Apache-2.0 | generated test c

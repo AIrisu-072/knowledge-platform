@@ -1,0 +1,48 @@
+| Role |
+|---|---|---|---|
+| `pdf-extract` 0.12.x | **POC REQUIRED** | MIT | text extraction candidate |
+| `lopdf` 0.45.x | **POC REQUIRED fallback** | MIT | low-level PDF parse/fallback |
+| OCR | **DEFERRED** | - | text layerがない文書のみ後続 |
+
+PDFは「ファイルが開ける」ではなく検索用text/provenanceが取れることを評価する。
+
+PoC:
+
+- Japanese embedded fonts
+- multi-column
+- tables
+- rotated text
+- scanned-only PDFs
+- malformed PDFs
+- very large PDFs
+- encrypted PDFs
+
+OCRを初期default pathにしない。
+
+---
+
+# 17. File / Object Storage
+
+初期source-of-truth binary adapterは:
+
+```text
+Domain FileStore Port
+        ↑
+Local filesystem adapter
+(std::fs / tokio::fs)
+```
+
+を**SELECTED**とする。
+
+`object_store` 0.14.xはMIT/Apache-2.0でlocal/S3/Azure/GCSを統一できるが、v0でcloud object storage要件がないため:
+
+```text
+object_store = DEFERRED
+```
+
+とする。
+
+理由:
+
+- Domain Portにより後から交換可能
+- initial dep

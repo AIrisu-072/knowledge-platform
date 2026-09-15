@@ -1,0 +1,68 @@
+# Library / Tool Selection v0
+
+- 状態: v0
+- 確認日: 2026-09-14
+- 対象: Knowledge Platform
+- 目的: 既に確定したArchitecture / Error / Observability / Frontend UX / Development・Container・CI要件から、実装ライブラリと開発ツールを選定する
+- 原則:
+  - ライブラリありきでArchitectureを変更しない
+  - permissive licenseを必須とする
+  - OSS / library / standard toolingを優先し、自作は最後の手段とする
+  - Cargo / npmのfeatureは必要最小限のみ有効化する
+  - 「選定済み」と「PoCが必要」を混同しない
+  - versionはbootstrap時にlockfile / mise / toolchainへpinする
+  - 本文中のversionは2026-09-14時点の評価基準であり、実装時は同一major/minor内のsecurity/patch状況を再確認する
+
+---
+
+## 1. Decision status
+
+| Status | 意味 |
+|---|---|
+| **SELECTED** | v0の標準として採用。bootstrap / implementation planへ進めてよい |
+| **POC REQUIRED** | Architecture適合性は高いが、実データ・互換性・性能・成熟度をPoCで確認してから採用 |
+| **DEFERRED** | 現段階では必要性が確定していない。Feature / workloadが具体化してから選定 |
+| **REJECTED** | license、Architecture不適合、成熟度等の理由でv0では採用しない |
+
+---
+
+# 2. Cross-cutting selection constraints
+
+## 2.1 License
+
+許可:
+
+```text
+MIT
+Apache-2.0
+BSD-2-Clause
+BSD-3-Clause
+PostgreSQL License
+Public Domain相当のpermissive license
+```
+
+原則不許可:
+
+```text
+MPL-2.0
+GPL
+AGPL
+LGPL
+SSPL
+BSL / source-available
+restrictive custom license
+```
+
+例外はArchitecture Decision Recordによる明示的承認を必要とする。
+
+## 2.2 Dependency policy
+
+Rust / TypeScript双方で:
+
+- lockfile必須
+- transitive licenseをCIで検査
+- known vulnerabilityをCIで検査
+- dependency sourceを検査
+- default featureを無条件に受け入れない
+- optional featureは利用要件がある場合のみ有効化
+- prod

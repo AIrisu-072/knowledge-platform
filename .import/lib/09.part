@@ -1,0 +1,88 @@
+� |
+| Embedding model/runtime | - | **DEFERRED** | - | evaluation後 |
+| Reranker | - | **DEFERRED** | - | candidate recall評価後 |
+| Graph retrieval | - | **DEFERRED** | - | concrete use case後 |
+| Fusion | library/custom thin algorithm | **DEFERRED** | - | retrieval evaluationで決定 |
+
+Searchの初期PoCはまずlexical retrievalを基準線とし、vector等を先に必須化しない。
+
+---
+
+# 14. Japanese tokenization PoC
+
+比較:
+
+- IPADIC
+- IPADIC NEologd
+- UniDic
+- 必要ならuser dictionary
+
+Corpus:
+
+- 金融一般語彙を含むsynthetic / public documents
+- 固有名詞
+- 数値/日付
+- カタカナ
+- 英数字混在
+- Office抽出後テキスト
+
+測定:
+
+- Recall@K
+- MRR
+- nDCG
+- index size
+- indexing throughput
+- query latency
+- dictionary binary size
+
+辞書は「一般に良い」ではなくproject corpusで選ぶ。
+
+---
+
+# 15. Extraction
+
+## 15.1 Office
+
+| Candidate | Status | License | Role |
+|---|---|---|---|
+| Office Oxide `office_oxide` 0.1.x | **POC REQUIRED** | MIT OR Apache-2.0 | DOCX/XLSX/PPTX + DOC/XLS/PPT unified extractor |
+| Calamine 0.36.x | **POC REQUIRED fallback** | MIT | XLS/XLSX/ODS spreadsheet fallback |
+| `zip` 8.x | **SELECTED** | MIT | archive traversal / ZIP source |
+| `quick-xml` 0.42.x | **DEFERRED fallback** | MIT | low-level OOXML fallback |
+
+Office Oxideは対応範囲が非常に魅力的だが0.1系で若いため、production採用前に実文書corpus PoCを必須とする。
+
+## Office corpus acceptance
+
+最低限:
+
+- Japanese DOCX/XLSX/PPTX
+- legacy DOC/XLS/PPT
+- tables
+- headers/footers
+- sheets/slides
+- merged cells
+- hyperlinks
+- comments
+- nested Office in ZIP
+- malformed files
+- password/encrypted detection
+- large files
+
+測定:
+
+- text coverage
+- structural coverage
+- position/provenance preservation
+- panic/crash absence
+- memory peak
+- throughput
+
+Office Oxideが一部formatで不足する場合のみformat-specific fallbackをCompositionする。
+
+---
+
+# 16. PDF
+
+| Candidate | Status | License 

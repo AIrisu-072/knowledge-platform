@@ -1,0 +1,66 @@
+�の独自patchが少ない方を採用する。
+
+---
+
+# 11. Frontend testing / accessibility
+
+| 領域 | Candidate | Status | License | Decision |
+|---|---|---|---|---|
+| Unit/component test | Vitest 4.1.x | **SELECTED** | MIT | Vite 8対応済みの成熟minorを優先 |
+| DOM/component interaction | React Testing Library | **SELECTED** | MIT | user-centric interaction testing |
+| Browser E2E | Playwright | **SELECTED** | Apache-2.0 | keyboard/E2E/performance/visual |
+| JSX static a11y | eslint-plugin-jsx-a11y | **SELECTED** | MIT | static checks |
+| Automated WCAG checker | IBM Equal Access `accessibility-checker` | **POC REQUIRED** | Apache-2.0 | WCAG 2.2 A/AA、Playwright integration |
+| axe-core / @axe-core/playwright | - | **REJECTED** | MPL-2.0 | project license policy不適合 |
+
+## IBM Equal Access PoC
+
+採用する場合、packageのIBM TelemetryはCI / developmentとも**明示的にopt-out**する。
+
+Acceptance:
+
+- WCAG 2.2 A/AA ruleset
+- Playwright page integration
+- deterministic CI failure
+- no source/customer data送信
+- telemetry opt-out確認
+- manual accessibility testingと併用可能
+
+Automated a11y testだけでWCAG適合を主張しない。
+
+---
+
+# 12. Styling / Design Tokens
+
+v0では大規模CSS frameworkを必須にしない。
+
+初期Preferred:
+
+```text
+CSS Custom Properties
++
+CSS Modules / scoped component CSS
++
+Design Tokens
+```
+
+理由:
+
+- Operational Design Systemのsemantic tokenを直接表現
+- framework lock-inを抑制
+- Runtime JS依存を増やさない
+- component primitiveを自由にstyling可能
+
+具体的Token値はFeature/UI PoC後に確定する。
+
+---
+
+# 13. Search / Retrieval
+
+## 13.1 Decision table
+
+| 領域 | Candidate | Status | License | Decision |
+|---|---|---|---|---|
+| Lexical index/search | Tantivy 0.26.x | **SELECTED** | MIT | in-process BM25/search |
+| Japanese tokenizer | Lindera + lindera-tantivy | **POC REQUIRED** | MIT | Japanese corpus評価 |
+| Vector retrieval | - | **DEFERRED** | - | evaluation�

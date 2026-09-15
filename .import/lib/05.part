@@ -1,0 +1,77 @@
+dency policy |
+| Cross-ecosystem vuln/license | OSV-Scanner | **SELECTED** | Apache-2.0 | repo/image dependency scanning |
+| Secret scanner | Gitleaks CLI | **SELECTED** | MIT | pre-commit / pre-push / CI |
+| Gitleaks GitHub Action | gitleaks-action | **REJECTED** | restrictive EULA | CLIを直接実行 |
+| SBOM | Syft | **SELECTED** | Apache-2.0 | CycloneDX / SPDX |
+| GitHub Actions syntax | actionlint | **SELECTED** | MIT | workflow lint |
+| GitHub Actions security | zizmor | **SELECTED** | MIT | permission/injection/ref等 |
+| Dependency update | Dependabot | **SELECTED** | GitHub service | Cargo/npm/Docker/Actions update PR |
+| Artifact signing | Cosign | **DEFERRED** | Apache-2.0 | release signing要件時 |
+| OCI build | Docker BuildKit / Buildx | **SELECTED** | permissive OSS components | canonical multi-stage build |
+
+## 7.2 Gitleaks policy
+
+利用するのは**Gitleaks CLI本体**。
+
+```text
+pre-commit
+→ staged changes
+
+pre-push
+→ relevant history/diff
+
+GitHub-hosted CI
+→ authoritative scan
+```
+
+`gitleaks-action`はCLI本体とは別のrestrictive EULAを持つため使用しない。
+
+## 7.3 GitHub Actions policy
+
+- GitHub-hosted runner only
+- default `permissions: contents: read`
+- third-party Actionはfull-length commit SHA pin
+- Actionを使う必要がないCLIはmise経由で直接実行
+- `actionlint` + `zizmor` を両方実行
+  - actionlint: syntax / expression / workflow correctness
+  - zizmor: security-specific static analysis
+
+## 7.4 License scanning
+
+Rust:
+
+```text
+cargo-deny
+```
+
+Cross-ecosystem:
+
+```text
+OSV-Scanner --licenses=<SPDX allowlist>
+```
+
+を併用する。
+
+許可listはproject license policyから生成/共有可能な構成にする。
+
+## 7.5 SBOM
+
+Syftで最低限:
+
+```text
+CycloneDX JSON
+SPDX JSON
+```
+
+を生成可能にする。
+
+PR毎の永続保存を必須にはせず、release artifactでは生成可能にする。
+
+---
+
+# 8. Frontend / UX
+
+## 8.1 Core stack
+
+| 領域 | Candidate | Status | License | Decision |
+|--

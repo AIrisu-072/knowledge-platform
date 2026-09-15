@@ -1,0 +1,113 @@
+`yaml
+name: CI
+
+on:
+  pull_request:
+  push:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: jdx/mise-action@v4
+      - run: mise run verify:fast
+
+  portability-macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v4
+      - run: mise run portability:macos
+```
+
+Run:
+
+```bash
+zizmor .github/workflows
+```
+
+Expected: FAIL because third-party actions are not immutable-SHA pinned.
+
+Do not commit this state.
+
+- [ ] **Step 2: Resolve immutable action SHAs**
+
+Resolve the exact release commits:
+
+```bash
+gh api repos/actions/checkout/git/ref/tags/v7.0.1 --jq '.object.sha'
+gh api repos/jdx/mise-action/git/ref/tags/v4.0.0 --jq '.object.sha'
+```
+
+If the tag object is annotated, dereference it to the commit object before use.
+
+Replace every `uses:` reference with the resulting full commit SHA and retain a trailing version comment, e.g. `# v7.0.1`.
+
+Run:
+
+```bash
+zizmor .github/workflows
+```
+
+Expected: no `unpinned-uses` finding.
+
+- [ ] **Step 3: Complete the CI DAG**
+
+Final jobs:
+
+```text
+policy
+rust-static
+rust-test
+security
+portability-macos
+container-build
+required-check
+```
+
+Responsibilities:
+
+```text
+policy
+→ arch:check + api:check + assurance scan/plan
+
+rust-static
+→ fmt + cargo check + clippy
+
+rust-test
+→ cargo nextest
+
+security
+→ gitleaks + cargo-deny + OSV + actionlint + zizmor
+
+portability-macos
+→ tool setup + cargo check + pnpm install/api lint
+
+container-build
+→ canonical Dockerfile verification
+
+required-check
+→ needs all jobs; fail if any required predecessor failed/cancelled
+```
+
+All jobs use GitHub-hosted runners only.
+
+- [ ] **Step 4: Add macOS portability task**
+
+Add:
+
+```toml
+[tasks.portability:macos]
+run = [
+  "cargo check --workspace --locked",
+  "pnpm install --frozen-lockf

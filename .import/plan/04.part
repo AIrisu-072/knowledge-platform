@@ -1,0 +1,71 @@
+ools/assurance/tests/requirements.rs`
+- Create: `tools/assurance/tests/graph.rs`
+- Create: `tools/assurance/tests/plan.rs`
+
+**Interfaces:**
+- Produces binary name: `assure`.
+- Produces subcommands: `scan`, `plan`, `run`, `report`.
+- `plan` accepts `--changed-from <git-sha>` and `--all`.
+- v0 graph: repository/files/workspace packages plus Cargo workspace dependency edges.
+- v0 Provider: generic command Provider.
+- Evidence path: `target/assurance/evidence/`.
+- This task does **not** implement Context Compiler, Agent Gateway, MCP, Symbol Graph, or LLM invocation.
+
+- [ ] **Step 1: Define a minimal requirement metadata convention**
+
+Create `spec/assurance/README.md` specifying that normative Markdown can include a fenced TOML block:
+
+````markdown
+```requirement
+id = "REQ-DEV-GITHUB-HOSTED-CI"
+kind = "architecture"
+criticality = "medium"
+domain = "development"
+```
+````
+
+The prose around the block remains the normative meaning. The block only supplies machine-readable identity/classification; it is not a new DSL.
+
+- [ ] **Step 2: Add metadata to three already-approved requirements**
+
+In `spec/architecture/development-container-ci-architecture-v0.md`, add metadata blocks immediately under the relevant existing sections without changing their prose:
+
+```toml
+id = "REQ-DEV-GITHUB-HOSTED-CI"
+kind = "architecture"
+criticality = "medium"
+domain = "development"
+```
+
+```toml
+id = "REQ-DEV-MISE-TASK-SSOT"
+kind = "architecture"
+criticality = "medium"
+domain = "development"
+```
+
+```toml
+id = "REQ-DEV-PRODUCTION-LINUX-AMD64"
+kind = "architecture"
+criticality = "medium"
+domain = "development"
+```
+
+- [ ] **Step 3: Write failing requirement-extraction tests**
+
+Create a test that parses Markdown containing the fenced block:
+
+```rust
+#[test]
+fn extracts_requirement_metadata_from_normative_markdown() {
+    let markdown = r#"
+## CI runner policy
+
+```requirement
+id = "REQ-DEV-GITHUB-HOSTED-CI"
+kind = "architecture"
+criticality = "medium"
+domain = "development"
+```
+
+CIはGitHub-hosted runner

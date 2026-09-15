@@ -1,0 +1,98 @@
+age.json pnpm-lock.yaml
+git commit -m "chore: add contract and supply-chain policy gates"
+```
+
+---
+
+### Task 5: Local pre-commit / pre-push feedback
+
+**Files:**
+- Create: `.githooks/pre-commit`
+- Create: `.githooks/pre-push`
+- Modify: `mise.toml`
+
+**Interfaces:**
+- `pre-commit`: staged secret scan + formatting/policy only.
+- `pre-push`: secret scan + `verify:fast`.
+- CI remains authoritative.
+
+- [ ] **Step 1: Create lightweight pre-commit hook**
+
+```sh
+#!/bin/sh
+set -eu
+
+exec mise run hook:pre-commit
+```
+
+- [ ] **Step 2: Create pre-push hook**
+
+```sh
+#!/bin/sh
+set -eu
+
+exec mise run hook:pre-push
+```
+
+Make both executable.
+
+- [ ] **Step 3: Add hook tasks**
+
+Add to `mise.toml`:
+
+```toml
+[tasks.hook:pre-commit]
+run = [
+  "gitleaks git --staged --redact --exit-code 1",
+  "cargo fmt --all -- --check",
+  "mise run arch:check",
+]
+
+[tasks.hook:pre-push]
+run = [
+  "gitleaks git --redact --exit-code 1",
+  "mise run verify:fast",
+]
+```
+
+If the pinned Gitleaks version changes the staged-scan syntax, update the task based on that pinned CLI's help output and add a hook smoke test; do not use a floating command.
+
+- [ ] **Step 4: Install and smoke-test hooks**
+
+```bash
+git config core.hooksPath .githooks
+mise run hook:pre-commit
+mise run hook:pre-push
+```
+
+Expected: PASS in clean repository.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add .githooks mise.toml
+git commit -m "chore: add fast local verification hooks"
+```
+
+---
+
+### Task 6: GitHub-hosted CI DAG and merge gate
+
+**Files:**
+- Create: `.github/workflows/ci.yml`
+- Modify: `spec/architecture/dependency-rules.toml`
+- Modify: `mise.toml`
+
+**Interfaces:**
+- GitHub-hosted Linux authoritative gate.
+- macOS portability smoke gate.
+- Stable required job: `required-check`.
+- Superseded PR runs cancelled.
+- `permissions: contents: read`.
+- No production secrets.
+
+- [ ] **Step 1: Write an intentionally unpinned first workflow and prove security lint catches it**
+
+Create the initial workflow using version tags only in the working tree:
+
+``

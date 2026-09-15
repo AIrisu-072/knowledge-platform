@@ -1,0 +1,110 @@
+_some());
+assert!(graph.component("tools/assurance").is_some());
+assert!(graph.files().any(|p| p.ends_with("mise.toml")));
+```
+
+For Level 1, inject or execute `cargo metadata --format-version 1 --no-deps` and verify workspace package dependency edges are represented.
+
+- [ ] **Step 8: Implement Level 0/1 Code Graph**
+
+v0 graph model:
+
+```rust
+pub enum NodeKind {
+    Repository,
+    Component,
+    File,
+    Spec,
+}
+
+pub struct Node {
+    pub id: String,
+    pub kind: NodeKind,
+    pub path: Option<PathBuf>,
+}
+
+pub enum EdgeKind {
+    Contains,
+    DependsOn,
+    GovernedBy,
+}
+```
+
+Populate:
+- repository tree;
+- workspace packages from Cargo metadata;
+- workspace package dependency edges;
+- normative spec file nodes.
+
+Do not parse Rust symbols.
+
+- [ ] **Step 9: Write failing impact-plan tests**
+
+Given:
+
+```text
+changed path = ".github/workflows/ci.yml"
+```
+
+expected plan:
+
+```text
+affected requirement:
+  REQ-DEV-GITHUB-HOSTED-CI
+
+planned capability:
+  CAP-ARCH-BOOTSTRAP-POLICY
+```
+
+Given:
+
+```text
+changed path = "docs/research/note.md"
+```
+
+expected plan: no bootstrap architecture capability unless a declared scope matches.
+
+- [ ] **Step 10: Implement Planner**
+
+Public API:
+
+```rust
+pub struct Plan {
+    pub requirements: Vec<String>,
+    pub controls: Vec<String>,
+    pub capabilities: Vec<String>,
+    pub gaps: Vec<Gap>,
+}
+
+pub fn plan(
+    graph: &Graph,
+    requirements: &[Requirement],
+    capabilities: &[Capability],
+    changed_paths: &[PathBuf],
+) -> Plan;
+```
+
+If an affected medium/high requirement has no capability, emit:
+
+```text
+NO_CAPABILITY
+```
+
+Do not invoke an LLM.
+
+- [ ] **Step 11: Implement generic command Provider and Evidence**
+
+Provider contract:
+
+```rust
+pub trait Provider {
+    fn id(&self) -> &'static str;
+    fn run(&self, capability: &Capability) -> Result<Evidence, ProviderError>;
+}
+```
+
+`CommandProvider`:
+- executes the declared argv without shell expansion;
+- captures exit status/stdout/stderr;
+- treats output as provider artifact;
+- never 

@@ -1,0 +1,55 @@
+��用する」という意味ではない。
+
+Bootstrap時に:
+
+```text
+mise.toml
+rust-toolchain.toml
+Cargo.lock
+pnpm-lock.yaml
+packageManager field
+Docker base digest
+GitHub Action commit SHA
+```
+
+へ具体versionをpinする。
+
+Update policy:
+
+```text
+Security patch
+→ 優先
+
+Patch/minor
+→ automated PR可
+
+Major
+→ compatibility / architecture review
+```
+
+---
+
+# 21. Cargo feature policy
+
+Cargo dependencyは原則:
+
+```toml
+default-features = false
+```
+
+を起点に検討し、必要なfeatureだけ明示する。
+
+ただし、default feature setが小さく安全で、無効化がmaintenance負担を増やす場合は理由を記録してdefaultを許容する。
+
+Feature選択自体をPoC / build size / dependency treeで検証する。
+
+---
+
+# 22. Frontend package feature policy
+
+npm packageでも同様に:
+
+- package全体を入れる前にsubpath importを確認
+- tree-shaking可能性を確認
+- optional pluginを一括導入しない
+- Runtime dependencyとDev dependency�
