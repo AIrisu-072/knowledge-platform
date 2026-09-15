@@ -4,7 +4,6 @@ node = "24.21.0"
 pnpm = "12.4.1"
 "cargo:cargo-deny" = "0.20.2"
 "cargo:cargo-nextest" = "0.9.144"
-"npm:@redocly/cli" = "2.52.1"
 "github:gitleaks/gitleaks" = "8.30.1"
 "github:google/osv-scanner" = "2.5.1"
 "github:anchore/syft" = "1.51.1"
@@ -18,7 +17,16 @@ REDOCLY_SUPPRESS_UPDATE_NOTICE = "true"
 [tasks.bootstrap]
 description = "Install locked tools, dependencies, and local git hooks"
 run = [
-  "mise install",
+  "mise install rust",
+  "mise install node",
+  "mise install pnpm",
+  "mise install cargo:cargo-deny",
+  "mise install cargo:cargo-nextest",
+  "mise install github:gitleaks/gitleaks",
+  "mise install github:google/osv-scanner",
+  "mise install github:anchore/syft",
+  "mise install github:rhysd/actionlint",
+  "mise install github:zizmorcore/zizmor",
   "pnpm install --frozen-lockfile",
   "git config core.hooksPath .githooks",
 ]
@@ -46,6 +54,10 @@ run = ["pnpm api:lint"]
 description = "Run machine-enforced architecture policy"
 run = ["cargo run --quiet --locked -p architecture-lint -- check"]
 
+[tasks."assure:scan"]
+description = "Extract normative assurance requirements"
+run = ["cargo run --quiet --locked -p assurance-cli -- scan"]
+
 [tasks."assure:plan"]
 description = "Compile assurance impact plan"
 run = ["cargo run --quiet --locked -p assurance-cli -- plan --all"]
@@ -57,6 +69,23 @@ run = ["cargo run --quiet --locked -p assurance-cli -- run --all"]
 [tasks."assure:report"]
 description = "Render assurance evidence and gaps"
 run = ["cargo run --quiet --locked -p assurance-cli -- report"]
+
+[tasks."security:secrets:self-test"]
+description = "Verify the pinned Gitleaks binary detects a synthetic non-live PAT-shaped fixture"
+run = '''
+set -eu
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+prefix='ghp_'
+part1='wA9mK2pLxN4vRtQzY6'
+part2='bC8dEfGhJlM0oPq1rS'
+printf 'token = "%s%s%s"\n' "$prefix" "$part1" "$part2" > "$tmpdir/repro.txt"
+set +e
+gitleaks dir --redact --exit-code 42 "$tmpdir"
+status=$?
+set -e
+test "$status" -eq 42
+'''
 
 [tasks."security:secrets"]
 description = "Scan Git history for secrets"
@@ -78,7 +107,7 @@ run = [
 
 [tasks.security]
 description = "Run supply-chain and workflow policy gates"
-depends = ["security:secrets", "security:deps", "ci:lint"]
+depends = ["security:secrets:self-test", "security:secrets", "security:deps", "ci:lint"]
 
 [tasks."hook:pre-commit"]
 description = "Fast staged pre-commit checks"

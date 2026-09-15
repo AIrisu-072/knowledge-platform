@@ -22,15 +22,30 @@ jobs:
         with:
           fetch-depth: 0
       - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Install policy runtimes
+        run: |
+          mise install rust
+          mise install node
+          mise install pnpm
+          pnpm install --frozen-lockfile
       - run: mise run arch:check
       - run: mise run api:check
+      - run: mise run assure:scan
       - run: mise run assure:plan
+      - run: mise run assure:run
+      - run: mise run assure:report
 
   rust-static:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Install Rust
+        run: mise install rust
       - run: mise run fmt
       - run: mise run check:rust
 
@@ -39,6 +54,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Install Rust test tools sequentially
+        run: |
+          mise install rust
+          mise install cargo:cargo-nextest
       - run: mise run test:rust
 
   security:
@@ -48,6 +69,16 @@ jobs:
         with:
           fetch-depth: 0
       - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Install security tools sequentially
+        run: |
+          mise install rust
+          mise install cargo:cargo-deny
+          mise install github:gitleaks/gitleaks
+          mise install github:google/osv-scanner
+          mise install github:rhysd/actionlint
+          mise install github:zizmorcore/zizmor
       - run: mise run security
 
   portability-macos:
@@ -55,6 +86,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Install portability runtimes
+        run: |
+          mise install rust
+          mise install node
+          mise install pnpm
       - run: mise run portability:macos
 
   container-build:
@@ -62,7 +100,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
-      - run: mise run container:verify
+        with:
+          install: false
+      - name: Install SBOM tool
+        run: mise install github:anchore/syft
+      - run: mise run sbom
 
   required-check:
     if: ${{ always() }}
