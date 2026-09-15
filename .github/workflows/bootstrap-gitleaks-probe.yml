@@ -13,44 +13,36 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Compare pinned candidates against synthetic staged secret
+      - name: Find newest Gitleaks version that detects canonical synthetic PAT
         run: |
           set -eu
-          mkdir -p /tmp/gitleaks-probe/repo
-          cd /tmp/gitleaks-probe/repo
+          root=/tmp/gitleaks-probe
+          repo="$root/repo"
+          mkdir -p "$repo"
+          cd "$repo"
           git init -q
           git config user.name probe
           git config user.email probe@example.invalid
           printf '%s\n' 'token = "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"' > synthetic.txt
           git add synthetic.txt
 
-          probe() {
-            version="$1"
-            dir="/tmp/gitleaks-probe/$version"
+          printf '%-8s %-8s %-8s\n' VERSION STAGED DIR
+          for version in 8.30.1 8.30.0 8.29.1 8.29.0 8.28.0; do
+            dir="$root/$version"
             mkdir -p "$dir"
             curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" \
               | tar -xz -C "$dir" gitleaks
             set +e
-            "$dir/gitleaks" git --staged --redact --exit-code 1 . >"/tmp/${version}.out" 2>&1
-            status=$?
+            "$dir/gitleaks" git --staged --redact --exit-code 1 . >"$root/${version}.staged" 2>&1
+            staged=$?
+            "$dir/gitleaks" dir --redact --exit-code 1 . >"$root/${version}.dir" 2>&1
+            direct=$?
             set -e
-            echo "gitleaks ${version} staged synthetic status=${status}"
-            sed -E 's/ghp_[A-Za-z0-9_]+/[REDACTED-SYNTHETIC]/g' "/tmp/${version}.out"
-            printf '%s' "$status" > "/tmp/${version}.status"
-          }
-
-          probe 8.30.1
-          probe 8.30.0
-
-          status_8301="$(cat /tmp/8.30.1.status)"
-          status_8300="$(cat /tmp/8.30.0.status)"
-          test "$status_8300" -eq 1
-          echo "8.30.0 detects the synthetic fixture as expected."
-          if [ "$status_8301" -eq 0 ]; then
-            echo "8.30.1 regression reproduced."
-          elif [ "$status_8301" -eq 1 ]; then
-            echo "8.30.1 detects the fixture on this runner."
-          else
-            echo "8.30.1 returned unexpected status $status_8301" >&2
-            exit 2
-          fi
+            printf '%-8s %-8s %-8s\n' "$version" "$staged" "$direct"
+            if [ "$staged" -eq 1 ] && [ "$direct" -eq 1 ]; then
+              echo "$version" > "$root/newest-good"
+              break
+            fi
+          done
+          test -s "$root/newest-good"
+          echo "newest-good=$(cat "$root/newest-good")"
