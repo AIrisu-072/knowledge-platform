@@ -31,6 +31,8 @@ jobs:
           mise install pnpm
           pnpm install --frozen-lockfile
       - run: mise run arch:check
+      - run: mise run arch:negative-smoke
+      - run: mise run repo:policy
       - run: mise run api:check
       - run: mise run assure:scan
       - run: mise run assure:plan

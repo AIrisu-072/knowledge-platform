@@ -54,6 +54,78 @@ run = ["pnpm api:lint"]
 description = "Run machine-enforced architecture policy"
 run = ["cargo run --quiet --locked -p architecture-lint -- check"]
 
+[tasks."arch:negative-smoke"]
+description = "Prove architecture policy rejects representative contract violations"
+run = '''
+set -eu
+ci='.github/workflows/ci.yml'
+backup="$(mktemp)"
+cp "$ci" "$backup"
+cleanup() {
+  cp "$backup" "$ci"
+  rm -f "$backup" Dockerfile.prod .github/workflows/bypass-smoke.yml
+}
+trap cleanup EXIT
+expect_arch_failure() {
+  if cargo run --quiet --locked -p architecture-lint -- check >/tmp/arch-negative.out 2>&1; then
+    cat /tmp/arch-negative.out >&2
+    echo 'architecture negative smoke unexpectedly passed' >&2
+    exit 1
+  fi
+}
+python3 - <<'PY'
+from pathlib import Path
+p = Path('.github/workflows/ci.yml')
+s = p.read_text()
+p.write_text(s.replace('runs-on: ubuntu-24.04', 'runs-on: self-hosted', 1))
+PY
+expect_arch_failure
+cp "$backup" "$ci"
+python3 - <<'PY'
+from pathlib import Path
+p = Path('.github/workflows/ci.yml')
+s = p.read_text()
+p.write_text(s.replace('runs-on: ubuntu-24.04', 'runs-on: windows-latest', 1))
+PY
+expect_arch_failure
+cp "$backup" "$ci"
+printf 'FROM scratch\n' > Dockerfile.prod
+expect_arch_failure
+rm Dockerfile.prod
+cat > .github/workflows/bypass-smoke.yml <<'YAML'
+name: bypass smoke
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  bypass:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo bypass
+YAML
+expect_arch_failure
+'''
+
+[tasks."repo:policy"]
+description = "Verify prohibited names and generated/sensitive artifacts are not tracked"
+run = '''
+set -eu
+jp="$(printf '\343\201\227\343\201\256\343\201\256\343\202\201')"
+en='Shino''nome'
+if git grep -n -I -F "$jp" -- .; then
+  echo 'prohibited institution-name match found' >&2
+  exit 1
+fi
+if git grep -n -I -F "$en" -- .; then
+  echo 'prohibited institution-name match found' >&2
+  exit 1
+fi
+if git ls-files | grep -E '(^|/)(target/|node_modules/|dist/|coverage/|tmp/)|(^|/)\.env($|\.)|\.(pem|key|p12|pfx|db|sqlite|sqlite3)$'; then
+  echo 'generated or sensitive artifact is tracked' >&2
+  exit 1
+fi
+'''
+
 [tasks."assure:scan"]
 description = "Extract normative assurance requirements"
 run = ["cargo run --quiet --locked -p assurance-cli -- scan"]
