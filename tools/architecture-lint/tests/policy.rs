@@ -1,6 +1,6 @@
 use architecture_lint::{check_repository, Config};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tempfile::TempDir;
 
 struct Fixture {

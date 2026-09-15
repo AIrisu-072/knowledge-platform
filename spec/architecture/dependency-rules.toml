@@ -1,0 +1,34 @@
+version = 1
+
+[repository]
+required_files = [
+  "spec/architecture/architecture-contract-v0.md",
+  "spec/architecture/development-container-ci-architecture-v0.md",
+  "spec/architecture/development-assurance-architecture-v0.md",
+  "spec/operations/error-handling-resilience-requirements-v0.md",
+  "spec/operations/observability-audit-requirements-v0.md",
+  "spec/requirements/frontend-ux-requirements-v0.md",
+  "spec/selection/library-tool-selection-v0.md",
+  "mise.toml",
+  "rust-toolchain.toml",
+]
+forbidden_top_level = [
+  "Dockerfile.dev",
+  "Dockerfile.test",
+  "Dockerfile.ci",
+  "Dockerfile.prod",
+]
+
+[platform]
+production_target = "linux/amd64"
+native_windows_supported = false
+
+[ci]
+allow_self_hosted = false
+allow_native_windows = false
+require_mise_entrypoint = true
+require_workflow_permissions = false
+
+[workspace]
+allowed_production_roots = ["crates", "apps"]
+tooling_root = "tools"
