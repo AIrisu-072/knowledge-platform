@@ -1,6 +1,6 @@
 use architecture_lint::{check_repository, Config};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
 struct Fixture {
@@ -77,4 +77,44 @@ fn dockerfile_variants_are_rejected() {
     let fixture = Fixture::valid().with_file("Dockerfile.prod", "FROM scratch\n");
     let report = check_repository(fixture.root(), &config()).unwrap();
     assert!(report.findings.iter().any(|f| f.code == "ARCH_DOCKERFILE_VARIANT"));
+}
+
+#[test]
+fn missing_top_level_permissions_are_rejected_when_required() {
+    let fixture = Fixture::valid().with_file(
+        ".github/workflows/ci.yml",
+        "jobs:\n  test:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: mise run verify:fast\n",
+    );
+    let mut config = config();
+    config.ci.require_workflow_permissions = true;
+    let report = check_repository(fixture.root(), &config).unwrap();
+    assert!(report.findings.iter().any(|f| f.code == "ARCH_CI_PERMISSIONS_MISSING"));
+}
+
+#[test]
+fn workflow_bypassing_mise_is_rejected() {
+    let fixture = Fixture::valid().with_file(
+        ".github/workflows/ci.yml",
+        "permissions:\n  contents: read\njobs:\n  test:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: cargo test --workspace\n",
+    );
+    let report = check_repository(fixture.root(), &config()).unwrap();
+    assert!(report.findings.iter().any(|f| f.code == "ARCH_CI_BYPASSES_MISE"));
+}
+
+#[test]
+fn real_policy_requires_final_ci_contract() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let config = Config::load(&root).unwrap();
+    assert!(
+        config
+            .repository
+            .required_files
+            .iter()
+            .any(|path| path == ".github/workflows/ci.yml"),
+        "real policy must require .github/workflows/ci.yml"
+    );
+    assert!(
+        config.ci.require_workflow_permissions,
+        "real policy must require workflow-level permissions"
+    );
 }
