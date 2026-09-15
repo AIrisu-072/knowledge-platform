@@ -1,0 +1,56 @@
+name: Gitleaks pin probe
+
+on:
+  push:
+    branches:
+      - chore/repository-bootstrap-v0
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Compare pinned candidates against synthetic staged secret
+        run: |
+          set -eu
+          mkdir -p /tmp/gitleaks-probe/repo
+          cd /tmp/gitleaks-probe/repo
+          git init -q
+          git config user.name probe
+          git config user.email probe@example.invalid
+          printf '%s\n' 'token = "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"' > synthetic.txt
+          git add synthetic.txt
+
+          probe() {
+            version="$1"
+            dir="/tmp/gitleaks-probe/$version"
+            mkdir -p "$dir"
+            curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" \
+              | tar -xz -C "$dir" gitleaks
+            set +e
+            "$dir/gitleaks" git --staged --redact --exit-code 1 . >"/tmp/${version}.out" 2>&1
+            status=$?
+            set -e
+            echo "gitleaks ${version} staged synthetic status=${status}"
+            sed -E 's/ghp_[A-Za-z0-9_]+/[REDACTED-SYNTHETIC]/g' "/tmp/${version}.out"
+            printf '%s' "$status" > "/tmp/${version}.status"
+          }
+
+          probe 8.30.1
+          probe 8.30.0
+
+          status_8301="$(cat /tmp/8.30.1.status)"
+          status_8300="$(cat /tmp/8.30.0.status)"
+          test "$status_8300" -eq 1
+          echo "8.30.0 detects the synthetic fixture as expected."
+          if [ "$status_8301" -eq 0 ]; then
+            echo "8.30.1 regression reproduced."
+          elif [ "$status_8301" -eq 1 ]; then
+            echo "8.30.1 detects the fixture on this runner."
+          else
+            echo "8.30.1 returned unexpected status $status_8301" >&2
+            exit 2
+          fi
