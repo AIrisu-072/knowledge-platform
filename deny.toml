@@ -15,8 +15,12 @@ allow = [
   "BSD-2-Clause",
   "BSD-3-Clause",
   "PostgreSQL",
+  "Unicode-3.0",
 ]
 confidence-threshold = 0.8
+
+[licenses.private]
+ignore = true
 
 [sources]
 unknown-registry = "deny"
