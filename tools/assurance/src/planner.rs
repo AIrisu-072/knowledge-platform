@@ -27,11 +27,7 @@ pub fn plan(
 ) -> Plan {
     let affected = requirements
         .iter()
-        .filter(|requirement| {
-            changed_paths
-                .iter()
-                .any(|path| affects(requirement, path))
-        })
+        .filter(|requirement| changed_paths.iter().any(|path| affects(requirement, path)))
         .map(|requirement| requirement.id.clone())
         .collect::<BTreeSet<_>>();
     plan_ids(requirements, capabilities, affected)

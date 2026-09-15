@@ -1,4 +1,4 @@
-use architecture_lint::{check_repository, Config};
+use architecture_lint::{Config, check_repository};
 use serde_json::json;
 use std::env;
 use std::process::ExitCode;
@@ -37,10 +37,13 @@ fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
     let report = check_repository(&root, &config)?;
 
     match format.as_str() {
-        "json" => println!("{}", serde_json::to_string_pretty(&json!({
-            "status": report.status(),
-            "findings": report.findings,
-        }))?),
+        "json" => println!(
+            "{}",
+            serde_json::to_string_pretty(&json!({
+                "status": report.status(),
+                "findings": report.findings,
+            }))?
+        ),
         "human" => {
             if report.findings.is_empty() {
                 println!("architecture: pass");
@@ -53,5 +56,9 @@ fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
         other => return Err(format!("unsupported format: {other}").into()),
     }
 
-    Ok(if report.findings.is_empty() { ExitCode::SUCCESS } else { ExitCode::from(1) })
+    Ok(if report.findings.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    })
 }

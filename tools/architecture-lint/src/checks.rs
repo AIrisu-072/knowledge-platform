@@ -43,7 +43,11 @@ fn check_workflows(root: &Path, config: &Config, findings: &mut Vec<Finding>) ->
 
     for path in workflow_paths(&workflow_dir)? {
         let content = fs::read_to_string(&path)?;
-        let relative = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+        let relative = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
         let lower = content.to_ascii_lowercase();
 
         if !config.ci.allow_self_hosted && runner_line_contains(&lower, "self-hosted") {
@@ -57,14 +61,17 @@ fn check_workflows(root: &Path, config: &Config, findings: &mut Vec<Finding>) ->
             findings.push(Finding {
                 code: "ARCH_CI_NATIVE_WINDOWS".into(),
                 path: relative.clone(),
-                message: "native Windows runner is forbidden; Windows development uses WSL2 semantics".into(),
+                message:
+                    "native Windows runner is forbidden; Windows development uses WSL2 semantics"
+                        .into(),
             });
         }
         if config.ci.require_mise_entrypoint && !content.contains("mise run") {
             findings.push(Finding {
                 code: "ARCH_CI_BYPASSES_MISE".into(),
                 path: relative.clone(),
-                message: "workflow must delegate project verification/build logic through mise run".into(),
+                message: "workflow must delegate project verification/build logic through mise run"
+                    .into(),
             });
         }
         if config.ci.require_workflow_permissions && !has_top_level_permissions(&content) {
@@ -82,7 +89,12 @@ fn workflow_paths(dir: &Path) -> Result<Vec<PathBuf>, Error> {
     let mut paths = Vec::new();
     for entry in fs::read_dir(dir)? {
         let path = entry?.path();
-        if path.is_file() && matches!(path.extension().and_then(|v| v.to_str()), Some("yml" | "yaml")) {
+        if path.is_file()
+            && matches!(
+                path.extension().and_then(|v| v.to_str()),
+                Some("yml" | "yaml")
+            )
+        {
             paths.push(path);
         }
     }

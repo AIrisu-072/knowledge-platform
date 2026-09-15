@@ -14,6 +14,10 @@ pub struct Report {
 
 impl Report {
     pub fn status(&self) -> &'static str {
-        if self.findings.is_empty() { "pass" } else { "fail" }
+        if self.findings.is_empty() {
+            "pass"
+        } else {
+            "fail"
+        }
     }
 }

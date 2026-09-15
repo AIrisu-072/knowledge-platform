@@ -24,5 +24,9 @@ fn command_provider_records_pass_evidence_and_artifact() {
     assert_eq!(evidence.commit, "deadbeef");
     let artifact = evidence.artifact_path.unwrap();
     assert!(dir.path().join(artifact).is_file());
-    assert!(dir.path().join("target/assurance/evidence/CAP-TEST.json").is_file());
+    assert!(
+        dir.path()
+            .join("target/assurance/evidence/CAP-TEST.json")
+            .is_file()
+    );
 }

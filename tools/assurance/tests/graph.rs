@@ -7,11 +7,20 @@ fn builds_level_zero_and_one_graph_from_repository_and_cargo_metadata() {
     fs::write(dir.path().join("mise.toml"), "[tools]\n").unwrap();
     fs::create_dir_all(dir.path().join("tools/architecture-lint")).unwrap();
     fs::create_dir_all(dir.path().join("tools/assurance")).unwrap();
-    fs::write(dir.path().join("tools/architecture-lint/Cargo.toml"), "[package]\nname='architecture-lint'\n").unwrap();
-    fs::write(dir.path().join("tools/assurance/Cargo.toml"), "[package]\nname='assurance-cli'\n").unwrap();
+    fs::write(
+        dir.path().join("tools/architecture-lint/Cargo.toml"),
+        "[package]\nname='architecture-lint'\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("tools/assurance/Cargo.toml"),
+        "[package]\nname='assurance-cli'\n",
+    )
+    .unwrap();
 
     let root = dir.path().canonicalize().unwrap();
-    let metadata = format!(r#"{{
+    let metadata = format!(
+        r#"{{
       "packages": [
         {{"name":"architecture-lint","id":"pkg-arch","manifest_path":"{}","dependencies":[]}},
         {{"name":"assurance-cli","id":"pkg-assure","manifest_path":"{}","dependencies":[{{"name":"architecture-lint"}}]}}

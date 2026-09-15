@@ -28,7 +28,12 @@ fn capability() -> Capability {
         oracle: "architecture-contract".into(),
         cost: "fast".into(),
         command: vec!["architecture-lint".into(), "check".into()],
-        scope_paths: vec![".github/".into(), "mise.toml".into(), "Dockerfile".into(), "spec/architecture/".into()],
+        scope_paths: vec![
+            ".github/".into(),
+            "mise.toml".into(),
+            "Dockerfile".into(),
+            "spec/architecture/".into(),
+        ],
     }
 }
 

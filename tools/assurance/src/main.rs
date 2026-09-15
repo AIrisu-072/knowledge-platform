@@ -39,12 +39,19 @@ fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
             let requirements = requirement::scan(&root)?;
             let capabilities = capability::load(&root)?;
             let graph = Graph::scan(&root)?;
-            let mode = args.next().ok_or("plan requires --all or --changed-from <sha>")?;
+            let mode = args
+                .next()
+                .ok_or("plan requires --all or --changed-from <sha>")?;
             let plan = if mode == "--all" {
                 planner::plan_all(&requirements, &capabilities)
             } else if mode == "--changed-from" {
                 let sha = args.next().ok_or("--changed-from requires a git SHA")?;
-                planner::plan(&graph, &requirements, &capabilities, &changed_paths(&root, &sha)?)
+                planner::plan(
+                    &graph,
+                    &requirements,
+                    &capabilities,
+                    &changed_paths(&root, &sha)?,
+                )
             } else {
                 return Err(format!("unknown plan mode: {mode}").into());
             };
@@ -62,7 +69,10 @@ fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
             let provider = CommandProvider::new(&root, git_head(&root)?);
             let capabilities = capability::load(&root)?;
             let mut failed = false;
-            for item in capabilities.iter().filter(|item| item.provider == provider.id()) {
+            for item in capabilities
+                .iter()
+                .filter(|item| item.provider == provider.id())
+            {
                 let result = provider.run(item)?;
                 println!(
                     "{} outcome={:?} duration_ms={}",

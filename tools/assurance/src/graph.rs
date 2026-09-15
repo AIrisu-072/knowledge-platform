@@ -104,7 +104,10 @@ impl Graph {
         let mut dependencies = Vec::<(String, Vec<String>)>::new();
 
         for package in packages {
-            let package_id = package.get("id").and_then(Value::as_str).unwrap_or_default();
+            let package_id = package
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             if !workspace.is_empty() && !workspace.contains(package_id) {
                 continue;
             }
@@ -179,9 +182,9 @@ impl Graph {
     }
 
     pub fn depends_on(&self, from: &str, to: &str) -> bool {
-        self.edges.iter().any(|edge| {
-            edge.kind == EdgeKind::DependsOn && edge.from == from && edge.to == to
-        })
+        self.edges
+            .iter()
+            .any(|edge| edge.kind == EdgeKind::DependsOn && edge.from == from && edge.to == to)
     }
 
     pub fn node_count(&self) -> usize {
@@ -196,7 +199,10 @@ impl Graph {
 fn collect_files(root: &Path, dir: &Path, graph: &mut Graph) -> Result<(), std::io::Error> {
     for entry in fs::read_dir(dir)? {
         let path = entry?.path();
-        let name = path.file_name().and_then(|value| value.to_str()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default();
         if path.is_dir() {
             if matches!(name, ".git" | "target" | "node_modules" | ".worktrees") {
                 continue;
