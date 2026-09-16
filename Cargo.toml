@@ -1,5 +1,9 @@
 [workspace]
 members = [
+  "crates/document-domain",
+  "crates/document-application",
+  "crates/document-storage-fs",
+  "crates/document-repository-postgres",
   "tools/architecture-lint",
   "tools/assurance",
 ]
@@ -13,3 +17,10 @@ rust-version = "1.98"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+tokio = { version = "1", features = ["fs", "io-util", "macros", "rt-multi-thread", "sync", "time"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "migrate", "macros", "uuid", "json", "time"] }
+uuid = { version = "1", features = ["v7", "serde"] }
+sha2 = "0.11"
+time = { version = "0.3", features = ["serde"] }
+tempfile = "3"
+testcontainers = "0.28"

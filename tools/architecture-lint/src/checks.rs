@@ -8,6 +8,7 @@ pub fn check_repository(root: &Path, config: &Config) -> Result<Report, Error> {
     check_required_files(root, config, &mut findings);
     check_forbidden_top_level(root, config, &mut findings);
     check_workflows(root, config, &mut findings)?;
+    check_workspace_boundaries(root, config, &mut findings)?;
     Ok(Report { findings })
 }
 
@@ -43,11 +44,7 @@ fn check_workflows(root: &Path, config: &Config, findings: &mut Vec<Finding>) ->
 
     for path in workflow_paths(&workflow_dir)? {
         let content = fs::read_to_string(&path)?;
-        let relative = path
-            .strip_prefix(root)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
+        let relative = relative_path(root, &path);
         let lower = content.to_ascii_lowercase();
 
         if !config.ci.allow_self_hosted && runner_line_contains(&lower, "self-hosted") {
@@ -85,6 +82,117 @@ fn check_workflows(root: &Path, config: &Config, findings: &mut Vec<Finding>) ->
     Ok(())
 }
 
+fn check_workspace_boundaries(
+    root: &Path,
+    config: &Config,
+    findings: &mut Vec<Finding>,
+) -> Result<(), Error> {
+    for rule in config.workspace.boundaries.values() {
+        let crate_root = root.join(&rule.crate_path);
+        if !crate_root.exists() {
+            continue;
+        }
+
+        let manifest = crate_root.join("Cargo.toml");
+        if manifest.is_file() {
+            let content = fs::read_to_string(&manifest)?;
+            let parsed: toml::Value = toml::from_str(&content)?;
+            let dependency_tables = production_dependency_tables(&parsed);
+
+            for forbidden in &rule.forbidden_dependencies {
+                if dependency_tables
+                    .iter()
+                    .any(|table| dependency_table_contains(table, forbidden))
+                {
+                    findings.push(Finding {
+                        code: "ARCH_FORBIDDEN_CRATE_DEPENDENCY".into(),
+                        path: relative_path(root, &manifest),
+                        message: format!(
+                            "crate boundary forbids production dependency '{forbidden}'"
+                        ),
+                    });
+                }
+            }
+        }
+
+        let src = crate_root.join("src");
+        if src.is_dir() {
+            for path in rust_source_paths(&src)? {
+                let content = fs::read_to_string(&path)?;
+                for forbidden in &rule.forbidden_source_patterns {
+                    if content.contains(forbidden) {
+                        findings.push(Finding {
+                            code: "ARCH_FORBIDDEN_SOURCE_PATTERN".into(),
+                            path: relative_path(root, &path),
+                            message: format!("crate boundary forbids source pattern '{forbidden}'"),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn production_dependency_tables(
+    manifest: &toml::Value,
+) -> Vec<&toml::map::Map<String, toml::Value>> {
+    let mut tables = Vec::new();
+    let Some(root) = manifest.as_table() else {
+        return tables;
+    };
+
+    for name in ["dependencies", "build-dependencies"] {
+        if let Some(table) = root.get(name).and_then(toml::Value::as_table) {
+            tables.push(table);
+        }
+    }
+
+    if let Some(targets) = root.get("target").and_then(toml::Value::as_table) {
+        for target in targets.values().filter_map(toml::Value::as_table) {
+            for name in ["dependencies", "build-dependencies"] {
+                if let Some(table) = target.get(name).and_then(toml::Value::as_table) {
+                    tables.push(table);
+                }
+            }
+        }
+    }
+
+    tables
+}
+
+fn dependency_table_contains(table: &toml::map::Map<String, toml::Value>, forbidden: &str) -> bool {
+    table.iter().any(|(key, value)| {
+        if key == forbidden {
+            return true;
+        }
+        value
+            .as_table()
+            .and_then(|spec| spec.get("package"))
+            .and_then(toml::Value::as_str)
+            .is_some_and(|package| package == forbidden)
+    })
+}
+
+fn rust_source_paths(dir: &Path) -> Result<Vec<PathBuf>, Error> {
+    fn visit(dir: &Path, paths: &mut Vec<PathBuf>) -> Result<(), Error> {
+        for entry in fs::read_dir(dir)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                visit(&path, paths)?;
+            } else if path.extension().and_then(|value| value.to_str()) == Some("rs") {
+                paths.push(path);
+            }
+        }
+        Ok(())
+    }
+
+    let mut paths = Vec::new();
+    visit(dir, &mut paths)?;
+    paths.sort();
+    Ok(paths)
+}
+
 fn workflow_paths(dir: &Path) -> Result<Vec<PathBuf>, Error> {
     let mut paths = Vec::new();
     for entry in fs::read_dir(dir)? {
@@ -100,6 +208,13 @@ fn workflow_paths(dir: &Path) -> Result<Vec<PathBuf>, Error> {
     }
     paths.sort();
     Ok(paths)
+}
+
+fn relative_path(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 fn runner_line_contains(content: &str, needle: &str) -> bool {

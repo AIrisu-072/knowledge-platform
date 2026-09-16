@@ -131,6 +131,62 @@ fn workflow_bypassing_mise_is_rejected() {
 }
 
 #[test]
+fn document_domain_sqlx_dependency_is_rejected() {
+    let fixture = Fixture::valid().with_file(
+        "crates/document-domain/Cargo.toml",
+        "[package]\nname = \"document-domain\"\nversion = \"0.0.0\"\n\n[dependencies]\nsqlx = \"0.9\"\n",
+    );
+    let report = check_repository(fixture.root(), &config()).unwrap();
+    assert!(report.findings.iter().any(|f| {
+        f.code == "ARCH_FORBIDDEN_CRATE_DEPENDENCY"
+            && f.path == "crates/document-domain/Cargo.toml"
+            && f.message.contains("sqlx")
+    }));
+}
+
+#[test]
+fn document_domain_filesystem_source_is_rejected() {
+    let fixture = Fixture::valid().with_file(
+        "crates/document-domain/src/lib.rs",
+        "use std::path::PathBuf;\npub fn leaked_path() -> PathBuf { PathBuf::new() }\n",
+    );
+    let report = check_repository(fixture.root(), &config()).unwrap();
+    assert!(report.findings.iter().any(|f| {
+        f.code == "ARCH_FORBIDDEN_SOURCE_PATTERN"
+            && f.path == "crates/document-domain/src/lib.rs"
+            && f.message.contains("std::path")
+    }));
+}
+
+#[test]
+fn document_application_sqlx_dependency_is_rejected() {
+    let fixture = Fixture::valid().with_file(
+        "crates/document-application/Cargo.toml",
+        "[package]\nname = \"document-application\"\nversion = \"0.0.0\"\n\n[dependencies]\nsqlx = \"0.9\"\n",
+    );
+    let report = check_repository(fixture.root(), &config()).unwrap();
+    assert!(report.findings.iter().any(|f| {
+        f.code == "ARCH_FORBIDDEN_CRATE_DEPENDENCY"
+            && f.path == "crates/document-application/Cargo.toml"
+            && f.message.contains("sqlx")
+    }));
+}
+
+#[test]
+fn document_application_filesystem_source_is_rejected() {
+    let fixture = Fixture::valid().with_file(
+        "crates/document-application/src/lib.rs",
+        "pub async fn leaked_fs() { let _ = tokio::fs::read(\"x\").await; }\n",
+    );
+    let report = check_repository(fixture.root(), &config()).unwrap();
+    assert!(report.findings.iter().any(|f| {
+        f.code == "ARCH_FORBIDDEN_SOURCE_PATTERN"
+            && f.path == "crates/document-application/src/lib.rs"
+            && f.message.contains("tokio::fs")
+    }));
+}
+
+#[test]
 fn real_policy_requires_final_ci_contract() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let config = Config::load(&root).unwrap();
