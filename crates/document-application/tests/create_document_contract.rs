@@ -69,6 +69,8 @@ struct FakeStorage {
     steps: Arc<Mutex<StepState>>,
     finalized: Arc<Mutex<bool>>,
     open_result: Arc<Mutex<Result<Vec<u8>, StorageError>>>,
+    objects: Arc<Mutex<Vec<StorageObjectInfo>>>,
+    object_modified_at: OffsetDateTime,
 }
 
 impl FakeStorage {
@@ -77,6 +79,8 @@ impl FakeStorage {
             steps,
             finalized: Arc::new(Mutex::new(false)),
             open_result: Arc::new(Mutex::new(Ok(b"authoritative-content".to_vec()))),
+            objects: Arc::new(Mutex::new(Vec::new())),
+            object_modified_at: OffsetDateTime::UNIX_EPOCH,
         }
     }
 
@@ -91,9 +95,15 @@ impl FakeStorage {
 
 impl FileStorage for FakeStorage {
     async fn put_immutable(&self, request: StoreFileRequest) -> Result<StoredFile, StorageError> {
-        let _ = request;
+        let file_id = request.file_id();
         self.steps.lock().unwrap().mark_storage();
         *self.finalized.lock().unwrap() = true;
+        self.objects.lock().unwrap().push(StorageObjectInfo::new(
+            "objects/00/file",
+            StorageObjectKind::Final,
+            Some(file_id),
+            self.object_modified_at,
+        ));
         Ok(StoredFile::new(
             StorageKey::new("objects/00/file").unwrap(),
             ContentHash::from_slice(&[7_u8; 32]).unwrap(),
@@ -110,13 +120,15 @@ impl FileStorage for FakeStorage {
     }
 
     async fn list_objects(&self) -> Result<Vec<StorageObjectInfo>, StorageError> {
-        Ok(Vec::new())
+        Ok(self.objects.lock().unwrap().clone())
     }
 }
 
 #[derive(Default)]
 struct RepoState {
     create_error: Option<RepositoryError>,
+    persist_before_error: bool,
+    create_calls: usize,
     document: Option<AuthoritativeDocument>,
     domain_event_types: Vec<String>,
     audit_event_types: Vec<String>,
@@ -141,8 +153,18 @@ impl FakeRepository {
         self.state.lock().unwrap().create_error = Some(error);
     }
 
+    fn persist_then_fail_with(&self, error: RepositoryError) {
+        let mut state = self.state.lock().unwrap();
+        state.persist_before_error = true;
+        state.create_error = Some(error);
+    }
+
     fn set_document(&self, document: AuthoritativeDocument) {
         self.state.lock().unwrap().document = Some(document);
+    }
+
+    fn create_calls(&self) -> usize {
+        self.state.lock().unwrap().create_calls
     }
 }
 
@@ -153,6 +175,7 @@ impl DocumentRepository for FakeRepository {
     ) -> Result<(), RepositoryError> {
         self.steps.lock().unwrap().mark_repository();
         let mut state = self.state.lock().unwrap();
+        state.create_calls += 1;
         state.domain_event_types = record
             .domain_events()
             .iter()
@@ -174,6 +197,11 @@ impl DocumentRepository for FakeRepository {
                     .map(|event| event.occurred_at()),
             )
             .collect();
+
+        if state.persist_before_error || state.create_error.is_none() {
+            state.document = Some(record.authoritative().clone());
+        }
+
         match state.create_error.clone() {
             Some(error) => Err(error),
             None => Ok(()),
@@ -182,13 +210,25 @@ impl DocumentRepository for FakeRepository {
 
     async fn get_authoritative_document(
         &self,
-        _id: DocumentId,
+        id: DocumentId,
     ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
-        Ok(self.state.lock().unwrap().document.clone())
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .document
+            .clone()
+            .filter(|document| document.document().document_id() == id))
     }
 
-    async fn file_reference_exists(&self, _file_id: FileId) -> Result<bool, RepositoryError> {
-        Ok(self.state.lock().unwrap().document.is_some())
+    async fn file_reference_exists(&self, file_id: FileId) -> Result<bool, RepositoryError> {
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .document
+            .as_ref()
+            .is_some_and(|document| document.file().file_id() == file_id))
     }
 }
 
@@ -236,9 +276,17 @@ fn service(
     storage: Arc<FakeStorage>,
     repository: Arc<FakeRepository>,
 ) -> DocumentService<FixedIds, FixedClock, FakeStorage, FakeRepository> {
+    service_at(storage, repository, OffsetDateTime::UNIX_EPOCH)
+}
+
+fn service_at(
+    storage: Arc<FakeStorage>,
+    repository: Arc<FakeRepository>,
+    now: OffsetDateTime,
+) -> DocumentService<FixedIds, FixedClock, FakeStorage, FakeRepository> {
     DocumentService::new(
         Arc::new(FixedIds::sequence()),
-        Arc::new(FixedClock(OffsetDateTime::UNIX_EPOCH)),
+        Arc::new(FixedClock(now)),
         storage,
         repository,
     )
@@ -334,6 +382,74 @@ async fn ambiguous_commit_keeps_finalized_file_and_surfaces_unknown_outcome() {
 
     assert_eq!(error, ApplicationError::CommitOutcomeUnknown);
     assert!(storage.is_finalized());
+}
+
+#[tokio::test]
+async fn ambiguous_commit_can_be_resolved_by_known_document_id_without_retrying_create() {
+    let steps = Arc::new(Mutex::new(StepState::default()));
+    let storage = Arc::new(FakeStorage::new(steps.clone()));
+    let repository = Arc::new(FakeRepository::new(steps));
+    repository.persist_then_fail_with(RepositoryError::CommitOutcomeUnknown);
+    let service = service(storage.clone(), repository.clone());
+    let known_document_id = DocumentId::from_uuid(Uuid::from_u128(1));
+
+    let error = service.create_document(command()).await.unwrap_err();
+    assert_eq!(error, ApplicationError::CommitOutcomeUnknown);
+    assert!(storage.is_finalized());
+
+    let recovered = service
+        .lookup_create_outcome(known_document_id)
+        .await
+        .unwrap()
+        .expect("ambiguous commit was persisted and must be discoverable by the known ID");
+
+    assert_eq!(recovered.document().document_id(), known_document_id);
+    assert_eq!(repository.create_calls(), 1);
+}
+
+#[tokio::test]
+async fn ambiguous_commit_without_persistence_becomes_orphan_only_after_grace() {
+    let steps = Arc::new(Mutex::new(StepState::default()));
+    let storage = Arc::new(FakeStorage::new(steps.clone()));
+    let repository = Arc::new(FakeRepository::new(steps));
+    repository.fail_create_with(RepositoryError::CommitOutcomeUnknown);
+    let create_service = service(storage.clone(), repository.clone());
+    let known_document_id = DocumentId::from_uuid(Uuid::from_u128(1));
+    let expected_file_id = FileId::from_uuid(Uuid::from_u128(3));
+    let grace = Duration::hours(1);
+
+    let error = create_service.create_document(command()).await.unwrap_err();
+    assert_eq!(error, ApplicationError::CommitOutcomeUnknown);
+    assert!(storage.is_finalized());
+    assert!(
+        create_service
+            .lookup_create_outcome(known_document_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let recent_service = service_at(
+        storage.clone(),
+        repository.clone(),
+        OffsetDateTime::UNIX_EPOCH + Duration::minutes(30),
+    );
+    assert!(recent_service.reconcile_storage(grace).await.unwrap().is_empty());
+
+    let late_service = service_at(
+        storage,
+        repository.clone(),
+        OffsetDateTime::UNIX_EPOCH + Duration::hours(2),
+    );
+    let findings = late_service.reconcile_storage(grace).await.unwrap();
+
+    assert_eq!(findings.len(), 1);
+    assert_eq!(
+        findings[0].classification(),
+        ReconciliationClassification::Orphan
+    );
+    assert_eq!(findings[0].object().file_id(), Some(expected_file_id));
+    assert_eq!(repository.create_calls(), 1);
 }
 
 #[tokio::test]
