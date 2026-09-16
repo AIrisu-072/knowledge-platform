@@ -45,8 +45,8 @@ Always fetch current branch/PR/CI state from GitHub before acting; do not assume
 | 3. Application ports + Create/Get orchestration | `COMPLETE` | RED tests `51b66bf...`, formatted RED `9abddf8...`; run #53 reached intended `E0432`; implementation `56575af...` + follow-ups; run #56 all required jobs green; 32/32 tests PASS |
 | 4. Durable local filesystem adapter | `COMPLETE` | RED tests `a4f5ea31...`; test format `be285371...`; Cargo-generated lock refresh `6e900510...`, helper removed `ec724b9b...`; clean RED run #62 failed on missing `FileSystemStorage` / `ops::FsFailurePoint`; implementation `6ccf4f5b...`, format `4bf05484...`, Clippy-only fix `5a2af7c3...`; run #65 all required jobs green; 36/36 tests PASS including all four storage tests |
 | 5. PostgreSQL schema + atomic repository | `COMPLETE` | migration/constraint RED established and then GREEN on PostgreSQL 18.6 by run #76; atomic repository clean RED run #83 failed only on missing `PostgresDocumentRepository` / `map_commit_error`; implementation `48eedda5...` + rustfmt `29c5c328...`; clean head `cd8523b2...`; run #87 all required jobs green; 39/39 tests PASS including real-Postgres schema constraints and atomic rollback/round-trip contract |
-| 6. Unknown-commit recovery + reconciliation | `IN_PROGRESS` | Task 6 RED classification + ambiguous-commit recovery tests next |
-| 7. Real filesystem + PostgreSQL vertical slice | `NOT_STARTED` | — |
+| 6. Unknown-commit recovery + reconciliation | `COMPLETE` | classification RED run #89; classification GREEN run #91 with 40/40 PASS; clean recovery RED run #93 failed only on missing `lookup_create_outcome` / `reconcile_storage`; final run #96 all required jobs green with 42/42 PASS |
+| 7. Real filesystem + PostgreSQL vertical slice | `IN_PROGRESS` | add dev-dependencies and RED/characterization real-adapter vertical test next |
 | 8. SQLx metadata + CI + final evidence | `NOT_STARTED` | — |
 
 ## Verification evidence
@@ -102,16 +102,25 @@ Always fetch current branch/PR/CI state from GitHub before acting; do not assume
 - CI run #87 (`35063300538`) passed policy, rust-static, rust-test, security, portability-macos, container-build, and required-check.
 - rust-test evidence: 39 tests run, 39 passed, including `schema_constraints::migration_seeds_root_and_enforces_authoritative_constraints` and `repository_contract::repository_persists_reads_and_rolls_back_authoritative_state_atomically` against PostgreSQL 18.6.
 
+### Task 6 evidence
+
+- Classification RED test commit `c9751c4d4491c55f1b66d248d93ce7d66fe63209`; run #89 (`35064961883`) passed fmt/policy and failed on missing `ReconciliationClassification` / `classify` only.
+- Pure classification implementation reached GREEN at `fe92e21708419f4b61803650eaf48ff0986f4d8c`; run #91 (`35065237123`) passed all required jobs with 40/40 tests.
+- Unknown-commit recovery RED test commit `5c01a521c5bd3d30271faad4dc7c299a078cb334`; after test-only rustfmt `c09305e8025d6b074591eee9258f8de00326f960`, run #93 (`35066169763`) passed fmt/policy and failed only on missing `lookup_create_outcome` / `reconcile_storage`.
+- Final Task 6 implementation head `7068efb39b4d29ae05bb151a9a4baf6d42c32763` adds safe known-ID lookup and conservative reconciliation findings without Create retry, deletion, or scheduler behavior.
+- Run #96 (`35066430997`) passed policy, rust-static, rust-test, security, portability-macos, container-build, and required-check.
+- rust-test evidence: 42 tests run, 42 passed, 0 skipped. New tests PASS for known-ID ambiguous-commit recovery, orphan classification only after grace, and conservative reconciliation classification. Existing real PostgreSQL and filesystem contracts remained GREEN.
+
 ## Current blocker / gate
 
 None.
 
 ## Next exact action
 
-1. Task 6 / Step 1: add RED reconciliation classification tests for healthy/stale/orphan/integrity/grace-not-elapsed behavior.
-2. Verify the RED fails for missing reconciliation API, not formatting or unrelated test defects.
-3. Implement only the pure classification required to make that subcycle GREEN.
-4. Then add the separate `CommitOutcomeUnknown` recovery/query RED tests before service changes.
+1. Task 7 / Step 1: add only `document-storage-fs`, `document-repository-postgres`, `testcontainers`, and `tempfile` as `document-application` dev-dependencies.
+2. Add the real PostgreSQL 18.6 + real filesystem happy-path vertical test for `CreateDocument → GetDocument → open_primary_file`.
+3. Observe whether the test is RED because adapter wiring is incomplete; if the already-implemented public adapters satisfy it immediately, record it as characterization evidence and do not invent production changes merely to force RED.
+4. Add the physical-file removal integrity-failure vertical test only after the happy path is established.
 
 ## Session handoff maintenance rule
 
