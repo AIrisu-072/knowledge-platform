@@ -5,6 +5,18 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
+
+    #[test]
+    fn typed_ids_round_trip_without_exposing_infrastructure() {
+        let raw = Uuid::from_u128(0x1234);
+        assert_eq!(DocumentId::from_uuid(raw).as_uuid(), raw);
+        assert_eq!(DocumentVersionId::from_uuid(raw).as_uuid(), raw);
+        assert_eq!(FileId::from_uuid(raw).as_uuid(), raw);
+        assert_eq!(FolderId::from_uuid(raw).as_uuid(), raw);
+        assert_eq!(EventId::from_uuid(raw).as_uuid(), raw);
+        assert_eq!(AuditEventId::from_uuid(raw).as_uuid(), raw);
+    }
 
     #[test]
     fn version_number_must_be_positive() {
@@ -29,5 +41,18 @@ mod tests {
     fn title_cannot_be_blank() {
         assert!(Title::new("   ").is_err());
         assert_eq!(Title::new(" Policy v1 ").unwrap().as_str(), "Policy v1");
+    }
+
+    #[test]
+    fn storage_key_is_relative_and_cannot_escape_storage_root() {
+        assert!(StorageKey::new("").is_err());
+        assert!(StorageKey::new("/objects/file").is_err());
+        assert!(StorageKey::new("../outside").is_err());
+        assert!(StorageKey::new("objects/../outside").is_err());
+        assert!(StorageKey::new(r"objects\..\outside").is_err());
+        assert_eq!(
+            StorageKey::new("objects/ab/file-id").unwrap().as_str(),
+            "objects/ab/file-id"
+        );
     }
 }
