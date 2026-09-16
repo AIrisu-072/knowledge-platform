@@ -166,7 +166,12 @@ impl DocumentRepository for FakeRepository {
             .domain_events()
             .iter()
             .map(|event| event.occurred_at())
-            .chain(record.audit_events().iter().map(|event| event.occurred_at()))
+            .chain(
+                record
+                    .audit_events()
+                    .iter()
+                    .map(|event| event.occurred_at()),
+            )
             .collect();
         match state.create_error.clone() {
             Some(error) => Err(error),
@@ -262,10 +267,12 @@ async fn create_finalizes_storage_before_calling_atomic_repository() {
         state.audit_event_types,
         ["document.created", "document.version.created"]
     );
-    assert!(state
-        .event_times
-        .iter()
-        .all(|occurred_at| *occurred_at == OffsetDateTime::UNIX_EPOCH));
+    assert!(
+        state
+            .event_times
+            .iter()
+            .all(|occurred_at| *occurred_at == OffsetDateTime::UNIX_EPOCH)
+    );
 }
 
 #[tokio::test]
