@@ -24,7 +24,10 @@ mod tests {
         ];
 
         for error in errors {
-            assert_eq!(super::map_statement_error(error), RepositoryError::Unavailable);
+            assert_eq!(
+                super::map_statement_error(error),
+                RepositoryError::Unavailable
+            );
         }
     }
 
