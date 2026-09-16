@@ -16,12 +16,10 @@ jobs:
       - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
         with:
           install: false
-      - name: Install Rust formatting toolchain
-        run: |
-          mise install rust
-          rustup component add --toolchain 1.98.1 rustfmt
-      - name: Verify formatting through project entrypoint
-        run: mise run fmt
+      - name: Install Rust
+        run: mise install rust
+      - name: Verify repository policy through project entrypoint
+        run: mise run repo:policy
       - name: Generate dependency lockfile
         run: cargo generate-lockfile
       - name: Upload lockfile preview
