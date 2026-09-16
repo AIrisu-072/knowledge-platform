@@ -1,0 +1,31 @@
+version = 1
+
+[[capability]]
+id = "CAP-ARCH-BOOTSTRAP-POLICY"
+controls = [
+  "CTRL-DEV-GITHUB-HOSTED-CI",
+  "CTRL-DEV-MISE-TASK-SSOT",
+  "CTRL-DEV-PRODUCTION-LINUX-AMD64",
+]
+provider = "command"
+mechanism = "static"
+oracle = "architecture-contract"
+cost = "fast"
+command = [
+  "cargo",
+  "run",
+  "--quiet",
+  "--locked",
+  "-p",
+  "architecture-lint",
+  "--",
+  "check",
+  "--format",
+  "json",
+]
+scope_paths = [
+  ".github/",
+  "mise.toml",
+  "Dockerfile",
+  "spec/architecture/",
+]

@@ -1,0 +1,11 @@
+{
+  "name": "knowledge-platform-tooling",
+  "private": true,
+  "packageManager": "pnpm@12.4.1",
+  "devDependencies": {
+    "@redocly/cli": "2.52.1"
+  },
+  "scripts": {
+    "api:lint": "redocly lint spec/api/openapi.yaml"
+  }
+}

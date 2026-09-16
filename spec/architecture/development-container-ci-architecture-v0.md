@@ -165,6 +165,13 @@ Architecture lintでOS固有依存の越境を検査可能にする。
 
 ## 6. mise as development task SSOT
 
+```requirement
+id = "REQ-DEV-MISE-TASK-SSOT"
+kind = "architecture"
+criticality = "medium"
+domain = "development"
+```
+
 `mise` をtool version / task entrypointのSSOTとする。
 
 ```text
@@ -285,6 +292,13 @@ Container
 ---
 
 ## 11. Canonical production artifact
+
+```requirement
+id = "REQ-DEV-PRODUCTION-LINUX-AMD64"
+kind = "architecture"
+criticality = "medium"
+domain = "development"
+```
 
 Production artifactは:
 
@@ -432,6 +446,13 @@ Running Application
 ---
 
 ## 17. CI runner policy
+
+```requirement
+id = "REQ-DEV-GITHUB-HOSTED-CI"
+kind = "architecture"
+criticality = "medium"
+domain = "development"
+```
 
 CIはGitHub-hosted runnerのみを正式利用する。
 

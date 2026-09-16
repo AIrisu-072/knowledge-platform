@@ -1,0 +1,10 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic Gitleaks bootstrap probes only"
+commits = [
+  "640ee54e4c5abffe22fd925127b7d1598d501d1a",
+  "879ff4524087aa21947795dd30023fc53a9512ca",
+  "d840acb9deb963356839496fe8b8ef3523cb9983",
+]
