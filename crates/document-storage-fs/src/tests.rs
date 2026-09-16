@@ -99,6 +99,23 @@ async fn injected_failure_points_surface_precise_errors_without_false_success() 
     }
 }
 
+#[test]
+fn final_directory_durability_covers_prefix_objects_and_storage_root() {
+    let temp = TempDir::new().unwrap();
+    let storage = FileSystemStorage::new(temp.path());
+
+    let directories = storage.final_durability_directories_for_test(file_id());
+
+    assert_eq!(
+        directories,
+        vec![
+            temp.path().join("objects/00"),
+            temp.path().join("objects"),
+            temp.path().to_path_buf(),
+        ]
+    );
+}
+
 #[tokio::test]
 async fn enumerates_staging_final_and_unknown_objects_without_deleting_them() {
     let temp = TempDir::new().unwrap();
