@@ -2,6 +2,8 @@
 
 //! PostgreSQL authoritative persistence adapter for documents.
 
+mod error;
+
 use sqlx::{PgPool, migrate::MigrateError};
 use uuid::Uuid;
 
