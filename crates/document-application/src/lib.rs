@@ -6,6 +6,7 @@ mod command;
 mod error;
 mod events;
 mod ports;
+mod reconciliation;
 mod service;
 
 pub use command::{CreateDocumentCommand, CreateDocumentResult};
@@ -18,4 +19,5 @@ pub use ports::{
     AuthoritativeDocument, Clock, ContentReader, CreateInitialDocumentRecord, DocumentRepository,
     FileStorage, IdGenerator, StorageObjectInfo, StorageObjectKind, StoreFileRequest, StoredFile,
 };
+pub use reconciliation::{ReconciliationClassification, classify};
 pub use service::DocumentService;
