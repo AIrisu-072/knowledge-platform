@@ -164,7 +164,7 @@ impl FileSystemStorage {
                 let kind = if file_id
                     .map(|id| {
                         let simple = id.as_uuid().simple().to_string();
-                        prefix == &simple[..2]
+                        prefix == simple[..2]
                     })
                     .unwrap_or(false)
                 {
