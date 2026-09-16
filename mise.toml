@@ -7,6 +7,7 @@ node = "24.21.0"
 pnpm = "12.4.1"
 "cargo:cargo-deny" = "0.20.2"
 "cargo:cargo-nextest" = "0.9.144"
+"cargo:sqlx-cli" = "0.9.0"
 "github:gitleaks/gitleaks" = "8.30.1"
 "github:google/osv-scanner" = "2.5.1"
 "github:anchore/syft" = "1.51.1"
@@ -26,6 +27,7 @@ run = [
   "mise install pnpm",
   "mise install cargo:cargo-deny",
   "mise install cargo:cargo-nextest",
+  "mise install cargo:sqlx-cli",
   "mise install github:gitleaks/gitleaks",
   "mise install github:google/osv-scanner",
   "mise install github:anchore/syft",
@@ -49,6 +51,78 @@ run = [
 [tasks."test:rust"]
 description = "Run Rust tests"
 run = ["cargo nextest run --workspace"]
+
+[tasks."sqlx:prepare"]
+description = "Generate SQLx offline metadata against disposable PostgreSQL 18.6"
+run = '''
+set -eu
+container="knowledge-platform-sqlx-prepare-${GITHUB_RUN_ID:-local}-$$-$(date +%s)"
+cleanup() {
+  docker rm -f "$container" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM
+docker run -d --name "$container" \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=knowledge_platform_sqlx \
+  -p 127.0.0.1::5432 \
+  postgres:18.6-bookworm >/dev/null
+ready=0
+i=0
+while [ "$i" -lt 60 ]; do
+  if docker exec "$container" pg_isready -U postgres -d knowledge_platform_sqlx >/dev/null 2>&1; then
+    ready=1
+    break
+  fi
+  i=$((i + 1))
+  sleep 1
+done
+if [ "$ready" -ne 1 ]; then
+  docker logs "$container" >&2
+  exit 1
+fi
+host_port="$(docker port "$container" 5432/tcp | sed -n '1s/.*://p')"
+test -n "$host_port"
+export DATABASE_URL="postgres://postgres:postgres@127.0.0.1:${host_port}/knowledge_platform_sqlx"
+cargo sqlx migrate run --source crates/document-repository-postgres/migrations
+cargo sqlx prepare --workspace -- --all-targets
+'''
+
+[tasks."sqlx:check"]
+description = "Verify committed SQLx offline metadata against disposable PostgreSQL 18.6"
+run = '''
+set -eu
+container="knowledge-platform-sqlx-check-${GITHUB_RUN_ID:-local}-$$-$(date +%s)"
+cleanup() {
+  docker rm -f "$container" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM
+docker run -d --name "$container" \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=knowledge_platform_sqlx \
+  -p 127.0.0.1::5432 \
+  postgres:18.6-bookworm >/dev/null
+ready=0
+i=0
+while [ "$i" -lt 60 ]; do
+  if docker exec "$container" pg_isready -U postgres -d knowledge_platform_sqlx >/dev/null 2>&1; then
+    ready=1
+    break
+  fi
+  i=$((i + 1))
+  sleep 1
+done
+if [ "$ready" -ne 1 ]; then
+  docker logs "$container" >&2
+  exit 1
+fi
+host_port="$(docker port "$container" 5432/tcp | sed -n '1s/.*://p')"
+test -n "$host_port"
+export DATABASE_URL="postgres://postgres:postgres@127.0.0.1:${host_port}/knowledge_platform_sqlx"
+cargo sqlx migrate run --source crates/document-repository-postgres/migrations
+cargo sqlx prepare --check --workspace -- --all-targets
+'''
 
 [tasks."api:check"]
 description = "Validate the OpenAPI contract"
