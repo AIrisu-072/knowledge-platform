@@ -2,19 +2,19 @@
 
 - Capability: `Document Authoritative Core — Create/Get v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **IMPLEMENTATION**
+- Overall phase: **IMPLEMENTATION COMPLETE / FINAL PR GATE**
 - Design: **APPROVED + MERGED**
-- Implementation Plan: **ACCEPTED FOR INLINE EXECUTION**
-- Product/runtime implementation started: **YES**
+- Implementation Plan: **EXECUTED**
+- Product/runtime implementation: **COMPLETE ON PR BRANCH**
 
 ## Current repository flow
 
 - Design PR: `#3` — **MERGED**
-- Design merge commit / implementation baseline: `fda70596931007abcc8ac4139db78848bae9836a`
-- Implementation PR: `#4` — **OPEN / DRAFT**
+- Design merge / implementation baseline: `fda70596931007abcc8ac4139db78848bae9836a`
+- Implementation PR: `#4` — **OPEN**
 - Implementation branch: `feat/document-authoritative-core-v0`
 
-Always fetch current branch/PR/CI state from GitHub before acting; do not assume an earlier chat state.
+Always fetch current branch/PR/CI state from GitHub before acting. Do not reconstruct execution state from conversation history.
 
 ## Approved artifacts
 
@@ -22,116 +22,135 @@ Always fetch current branch/PR/CI state from GitHub before acting; do not assume
 - Approval record: `docs/superpowers/specs/2026-09-16-document-authoritative-core-design-approval.md`
 - Implementation Plan: `docs/superpowers/plans/2026-09-16-document-authoritative-core-implementation.md`
 
-## Frozen decisions
+## Frozen decisions preserved
 
 - Domain / Application / Infrastructure dependency direction.
-- Initial `DocumentVersion #1` is `WORKING`.
-- Initial `Document.current_version_id = None`.
-- Initial `Document.revision = 0`.
-- File-first / DB-second ordering.
-- Staging write/hash/count → file sync → same-filesystem atomic rename → directory durability step → PostgreSQL transaction.
-- Finalized files are not eagerly deleted after an ambiguous DB commit result.
-- Authoritative business state + Domain Outbox + mandatory Audit Outbox are inserted in the same PostgreSQL transaction.
-- PostgreSQL 18.x + SQLx 0.9.x; no ORM.
-- No Firefly runtime dependency in Capability 1.
-- HTTP/OpenAPI transport, Search, Extraction, ReadState, AccessPolicy, Version #2+, Publish/Withdraw, and Outbox delivery are outside this capability.
+- Initial `DocumentVersion #1 = WORKING`, `current_version_id = None`, `revision = 0`.
+- File-first / DB-second ordering: stage → write/hash/count → file sync → same-filesystem atomic rename → destination-directory durability → PostgreSQL transaction.
+- Finalized files are never eagerly deleted after ambiguous DB commit outcome.
+- Authoritative business state + Domain Outbox + mandatory Audit Outbox commit in one PostgreSQL transaction.
+- PostgreSQL 18.x + SQLx 0.9.x; no ORM and no Firefly runtime dependency.
+- HTTP/OpenAPI, Search, Extraction, ReadState, AccessPolicy, Version #2+, Publish/Withdraw, and Outbox delivery remain out of scope.
 
-## Implementation task tracker
+## Task tracker
 
-| Task | Status | Evidence / Notes |
+| Task | Status | Primary evidence |
 |---|---|---|
-| 1. Workspace dependencies + architecture boundaries | `COMPLETE` | baseline run #30 green; RED run #31 failed as intended; generic boundary enforcement GREEN by run #33; dependency/Docker/policy follow-ups complete; final run #42 all required jobs green |
-| 2. Infrastructure-free Domain invariants | `COMPLETE` | aggregate RED `d808b3d...` observed in run #48; implementation `1388cdab...` + format `bca681ae...`; run #50 all required jobs green |
-| 3. Application ports + Create/Get orchestration | `COMPLETE` | RED tests `51b66bf...`, formatted RED `9abddf8...`; run #53 reached intended `E0432`; implementation `56575af...` + follow-ups; run #56 all required jobs green; 32/32 tests PASS |
-| 4. Durable local filesystem adapter | `COMPLETE` | RED tests `a4f5ea31...`; test format `be285371...`; Cargo-generated lock refresh `6e900510...`, helper removed `ec724b9b...`; clean RED run #62 failed on missing `FileSystemStorage` / `ops::FsFailurePoint`; implementation `6ccf4f5b...`, format `4bf05484...`, Clippy-only fix `5a2af7c3...`; run #65 all required jobs green; 36/36 tests PASS including all four storage tests |
-| 5. PostgreSQL schema + atomic repository | `COMPLETE` | migration/constraint RED established and then GREEN on PostgreSQL 18.6 by run #76; atomic repository clean RED run #83 failed only on missing `PostgresDocumentRepository` / `map_commit_error`; implementation `48eedda5...` + rustfmt `29c5c328...`; clean head `cd8523b2...`; run #87 all required jobs green; 39/39 tests PASS including real-Postgres schema constraints and atomic rollback/round-trip contract |
-| 6. Unknown-commit recovery + reconciliation | `COMPLETE` | classification RED run #89; classification GREEN run #91 with 40/40 PASS; clean recovery RED run #93 failed only on missing `lookup_create_outcome` / `reconcile_storage`; final run #96 all required jobs green with 42/42 PASS |
-| 7. Real filesystem + PostgreSQL vertical slice | `COMPLETE` | happy-path run #103 all required jobs green with 43/43 PASS; physical-file-loss run #105 all required jobs green with 44/44 PASS; existing production adapters required no changes |
-| 8. SQLx metadata + CI + final evidence | `IN_PROGRESS` | add pinned sqlx-cli, deterministic prepare/check tasks, committed metadata, CI gate, final evidence |
+| 1. Workspace dependencies + architecture boundaries | `COMPLETE` | final Task 1 CI run #42 green |
+| 2. Infrastructure-free Domain invariants | `COMPLETE` | run #50 green |
+| 3. Application ports + Create/Get orchestration | `COMPLETE` | run #56 green; 32/32 tests |
+| 4. Durable local filesystem adapter | `COMPLETE` | run #65 green; 36/36 tests |
+| 5. PostgreSQL schema + atomic repository | `COMPLETE` | run #87 green; 39/39 tests on PostgreSQL 18.6 |
+| 6. Unknown-commit recovery + reconciliation | `COMPLETE` | run #96 green; later review regressions fixed and reverified |
+| 7. Real filesystem + PostgreSQL vertical slice | `COMPLETE` | runs #103/#105 green; 44/44 tests by #105 |
+| 8. SQLx reproducibility gate + final evidence | `COMPLETE` | sqlx-cli 0.9.0 pinned; `sqlx:check` in `rust-static`; run #121 green |
 
-## Verification evidence
+## Final review corrections
 
-### Design/plan gate
+Implementation review found two Important gaps after the original Task 1–8 execution. Both were fixed with explicit RED→GREEN evidence.
 
-- PR #3 head `eb794feb2e8186102e2400163d2393be7901ee21` passed CI run #28.
-- All required jobs passed: policy, rust-static, rust-test, security, portability-macos, container-build, required-check.
-- PR #3 squash-merged as `fda70596931007abcc8ac4139db78848bae9836a`.
-- `feat/document-authoritative-core-v0` was reset to that exact `main` SHA before implementation.
+### 1. Reconciliation was initially Storage→DB only
 
-### Task 1 evidence
+Problem: `classify(true, None) = IntegrityViolation` existed, but `reconcile_storage()` iterated only storage objects, so an authoritative DB reference whose physical final object disappeared could not be discovered by a reconciliation scan.
 
-- Baseline `9a5ec380...` run #30 green.
-- RED `1c860d82...` run #31 failed on the four new boundary assertions as intended.
-- Generic enforcement `03e99028...` / format `756ab244...`; run #33 GREEN.
-- Workspace scaffold `2fd311c9...`; Cargo.lock generated on hosted runner; temporary helper removed.
-- Docker workspace and dependency-policy follow-ups completed.
-- Final run #42 (`35054390348`) all required jobs green.
+Correction:
 
-### Task 2 evidence
+- `DocumentRepository::list_referenced_file_ids()` added.
+- PostgreSQL implementation lists authoritative `version_files.file_id` values.
+- reconciliation now performs both authoritative-DB→Storage and remaining-Storage→DB comparison without reconstructing filesystem paths in Application code.
+- no deletion/scheduler behavior was added.
 
-- Domain value objects / typed IDs implemented without infrastructure dependencies.
-- Aggregate RED `d808b3d40f8046cf5cfd219dc29bbb81bc133e9d`; run #48 observed expected rust-test/rust-static failures.
-- Minimal implementation `1388cdab3c39f9d6b742ad1a1c4a93e4ee847b86`; format `bca681aebd5b32067a4c56c95d7535521a3ba9af`.
-- Run #50 (`35055948809`) all required jobs green.
+Evidence:
 
-### Task 3 evidence
+- RED: run #113 failed exactly because the scan returned `0` findings instead of required `1`.
+- GREEN: run #116 passed all required jobs with **45/45 tests**.
+- regression: `reconciliation_detects_authoritative_reference_whose_final_object_is_missing` PASS.
 
-- Contract RED `51b66bf43104fe32503a3a094719f6708a2b3f8c`; first run #52 exposed formatting only.
-- Test-only format `9abddf8d9daac31f98f82d757aea89964a14d629`; run #53 (`35057210781`) passed fmt and then failed with `E0432 unresolved imports` for the missing approved Application API — intended RED.
-- Minimal Application implementation `56575af2120c5ee86dfe2440fed15034d56c4947`; format-only `e573db25b66e742ea74995491411a6acc0717da1`.
-- Test-only `ContentReader: Debug` bound correction `955678c0c262327ab0e57e5dba39ca34a94d0f40`.
-- CI run #56 (`35057830945`) passed all required jobs.
-- rust-test evidence: 32 tests run, 32 passed; all four Application contract tests PASS.
+### 2. Ambiguous create did not expose pre-generated IDs
 
-### Task 4 evidence
+Problem: `CommitOutcomeUnknown` retained the final file, but the Application error did not expose the pre-generated Document/Version/File IDs required for safe lookup by the caller.
 
-- Storage RED tests committed as `a4f5ea314547f3cf5188be47ac6fb98ffbc04011`.
-- Initial run #58 exposed test formatting and stale lockfile before the intended RED; production code was not added.
-- Test-only format fix `be28537149a46aa799e54c9cae9781af1698506e`.
-- Cargo generated the updated lockfile on a GitHub-hosted runner in `6e900510958cfd86752f0a245df22ecbb5fee329`; temporary write-enabled helper workflow was removed immediately in `ec724b9bd5488576f21d14fb39f9b1610214eb20`.
-- Clean RED CI run #62 (`35058760437`) passed fmt and architecture policy, then failed with `E0432` because `FileSystemStorage` and `ops::FsFailurePoint` were not implemented — intended RED.
-- Minimal filesystem implementation `6ccf4f5b94b5613b0d779a7258a3f01de76489a6`; format-only follow-up `4bf05484a8eb0ebd8385914bf236fbdcd0906532`; one-line Clippy `op-ref` correction `5a2af7c3cd9b00b08676d106cf74466c73c87a5a`.
-- CI run #65 (`35060162912`) passed policy, rust-static, rust-test, security, portability-macos, container-build, and required-check.
-- rust-test evidence: 36 tests run, 36 passed, including all four `document-storage-fs` tests: immutable store/hash/readback, FileId-only identity, precise failure injection, and staging/final/unknown enumeration without deletion.
+Correction:
 
-### Task 5 evidence
+- `RepositoryError::CommitOutcomeUnknown` remains infrastructure-level and ID-free.
+- `DocumentService::create_document()` maps that error to:
 
-- Real-PostgreSQL schema/constraint RED was established before migration implementation; migration then passed PostgreSQL 18.6 constraint coverage in run #76.
-- Atomic repository RED was refined until run #83 failed only because `PostgresDocumentRepository` and `map_commit_error` were absent.
-- Minimal atomic repository implementation: `48eedda58aa7ec13285b90876393666833e67cde`; rustfmt-only follow-up `29c5c328...`; temporary helper removed with clean branch head `cd8523b2331fb78d77a58d02dcb11f2567dc1702`.
-- CI run #87 (`35063300538`) passed policy, rust-static, rust-test, security, portability-macos, container-build, and required-check.
-- rust-test evidence: 39 tests run, 39 passed, including `schema_constraints::migration_seeds_root_and_enforces_authoritative_constraints` and `repository_contract::repository_persists_reads_and_rolls_back_authoritative_state_atomically` against PostgreSQL 18.6.
+```text
+ApplicationError::CommitOutcomeUnknown {
+  document_id,
+  document_version_id,
+  file_id
+}
+```
 
-### Task 6 evidence
+- caller can feed the returned `document_id` to `lookup_create_outcome()`.
+- Create is never silently retried and IDs are never regenerated.
 
-- Classification RED test commit `c9751c4d4491c55f1b66d248d93ce7d66fe63209`; run #89 (`35064961883`) passed fmt/policy and failed on missing `ReconciliationClassification` / `classify` only.
-- Pure classification implementation reached GREEN at `fe92e21708419f4b61803650eaf48ff0986f4d8c`; run #91 (`35065237123`) passed all required jobs with 40/40 tests.
-- Unknown-commit recovery RED test commit `5c01a521c5bd3d30271faad4dc7c299a078cb334`; after test-only rustfmt `c09305e8025d6b074591eee9258f8de00326f960`, run #93 (`35066169763`) passed fmt/policy and failed only on missing `lookup_create_outcome` / `reconcile_storage`.
-- Final Task 6 implementation head `7068efb39b4d29ae05bb151a9a4baf6d42c32763` adds safe known-ID lookup and conservative reconciliation findings without Create retry, deletion, or scheduler behavior.
-- Run #96 (`35066430997`) passed policy, rust-static, rust-test, security, portability-macos, container-build, and required-check.
-- rust-test evidence: 42 tests run, 42 passed, 0 skipped. New tests PASS for known-ID ambiguous-commit recovery, orphan classification only after grace, and conservative reconciliation classification. Existing real PostgreSQL and filesystem contracts remained GREEN.
+Evidence:
 
-### Task 7 evidence
+- RED: run #117 failed with `E0559` for the three missing fields.
+- GREEN exact implementation head before this status-only commit: `ae84e008b1af7fba5ab798053b640ee40c3c3807`.
+- run #121 (`35074902777`) passed all required jobs with **46/46 tests, 0 skipped**.
+- `ambiguous_commit_exposes_pre_generated_ids_for_safe_lookup` PASS.
+- persisted and non-persisted ambiguous-commit recovery tests remained PASS.
 
-- `document-application` gained test-only dependencies for the real adapters, PostgreSQL test container, temporary filesystem, and SQLx DB assertions. `sqlx` was required as a dev-dependency because the accepted test plan inspects PostgreSQL state directly; no production dependency direction changed.
-- Happy-path vertical test first landed as `4d811cf689e120b7085dd1b413a5a3e99a195552`; Cargo/rustfmt normalization was generated on a hosted runner and the helper was removed, producing clean head `1be87b13209714149e77ec7b96d61502d65ef5ad`.
-- Run #103 (`35067624028`) passed all required jobs with 43/43 tests. `real_filesystem_and_postgres_round_trip_authoritative_create_get_open` passed against `postgres:18.6-bookworm` and a real temporary filesystem, proving Create → Get → binary open plus FileObject/VersionFile/domain-outbox/audit-outbox persistence.
-- Physical-file-loss test landed and was formatted at `66445c5c5842f70f333987523ae68e587b3b0553`.
-- Run #105 (`35068355032`) passed policy, rust-static, rust-test, security, portability-macos, container-build, and required-check. rust-test reported 44 tests run, 44 passed, 0 skipped.
-- `missing_physical_file_preserves_authoritative_state_and_surfaces_integrity_violation` passed against real PostgreSQL 18.6 + real filesystem: authoritative Document/Version/FileObject/VersionFile and both outboxes remained present after deleting the finalized binary, while binary open returned `IntegrityViolation`.
-- No production adapter code was changed in Task 7; the existing implementation already satisfied both vertical contracts.
+## Final verified capability evidence before this status-only commit
+
+Exact implementation head: `ae84e008b1af7fba5ab798053b640ee40c3c3807`
+
+CI run #121 (`35074902777`):
+
+- `policy` — PASS
+- `rust-static` — PASS
+  - `fmt` — PASS
+  - `check:rust` — PASS
+  - `sqlx:check` — PASS
+- `rust-test` — PASS
+- `security` — PASS
+- `portability-macos` — PASS
+- `container-build` — PASS
+- `required-check` — PASS
+
+Rust tests: **46 run / 46 passed / 0 skipped**.
+
+The suite includes:
+
+- Domain invariant tests.
+- Application create/get/unknown-commit contracts.
+- bidirectional reconciliation including missing authoritative physical file detection.
+- durable filesystem/hash/failure-injection/enumeration tests.
+- PostgreSQL 18.6 migration constraints and atomic rollback/round-trip tests.
+- real filesystem + real PostgreSQL Create → Get → open vertical slice.
+- physical-file-loss → `IntegrityViolation` while authoritative DB state remains intact.
+
+## SQLx reproducibility note
+
+`cargo:sqlx-cli = 0.9.0` is pinned and `mise run sqlx:check` is a required `rust-static` CI gate using disposable `postgres:18.6-bookworm` plus repository migrations.
+
+The repository intentionally uses runtime `sqlx::query/query_scalar/query_as` rather than `query!`/`query_as!` macros. Therefore SQLx does not generate `.sqlx` offline macro-cache files for the current query set. No metadata is fabricated. SQL correctness is exercised against real PostgreSQL 18.6 integration/vertical tests, while `sqlx:check` verifies the pinned tool, migration, workspace, and prepare/check workflow remain reproducible.
+
+## Scope / dependency audit
+
+- No HTTP transport was added to this capability.
+- No Search/Extraction implementation was added.
+- No Firefly runtime dependency was added.
+- Infrastructure crates appear in `document-application` only as test-only dev-dependencies for the real vertical slice.
+- License/source policy was not relaxed.
+- Temporary write-enabled helper workflows were removed; `.github/workflows/` contains only the normal `ci.yml` workflow at the verified implementation head.
 
 ## Current blocker / gate
 
-None.
+No implementation blocker is known.
+
+This status update is a docs-only commit and therefore creates a new PR head. Before marking PR #4 Ready for review, fetch and verify the full required CI suite for that exact new head.
 
 ## Next exact action
 
-1. Task 8 / Step 1: pin `cargo:sqlx-cli = 0.9.0` in `mise.toml` and include it in bootstrap/tool installation.
-2. Add deterministic `sqlx:prepare` and `sqlx:check` tasks using disposable `postgres:18.6-bookworm`, `pg_isready`, repository migrations, and fail-closed cleanup.
-3. Generate/inspect `.sqlx` metadata using the real SQLx CLI. Do not fabricate metadata if current runtime-query usage produces none; treat that as an implementation-plan/P7 gap requiring an evidence-based correction.
-4. Add the SQLx reproducibility gate to `rust-static`, then run the full hosted CI and update this status with exact evidence.
+1. Verify all required CI jobs for the exact status-update head.
+2. Update PR #4 body to the actual implemented scope and evidence.
+3. Mark PR #4 Ready for review if the exact-head CI is green.
+4. **Do not merge PR #4 without an explicit user instruction.**
 
 ## Session handoff maintenance rule
 
-Update this file whenever a Task starts/completes, a verification gate changes, a blocker appears/clears, a Design Freeze deviation is considered, or before session handoff.
+Update this file whenever the verification gate changes, a blocker appears/clears, or before session handoff. Repository state and fresh GitHub CI evidence remain authoritative.
