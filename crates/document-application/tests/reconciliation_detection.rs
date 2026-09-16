@@ -154,7 +154,9 @@ async fn reconciliation_does_not_mark_referenced_staging_for_cleanup_when_final_
         findings[0].classification(),
         ReconciliationClassification::IntegrityViolation
     );
-    assert!(findings.iter().all(|finding| {
-        finding.classification() != ReconciliationClassification::StaleStaging
-    }));
+    assert!(
+        findings.iter().all(|finding| {
+            finding.classification() != ReconciliationClassification::StaleStaging
+        })
+    );
 }
