@@ -287,9 +287,11 @@ dependencies = [
  "document-application",
  "document-domain",
  "sha2 0.11.0",
+ "tempfile",
  "thiserror",
  "time",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
