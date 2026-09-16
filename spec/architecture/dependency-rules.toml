@@ -33,3 +33,13 @@ require_workflow_permissions = true
 [workspace]
 allowed_production_roots = ["crates", "apps"]
 tooling_root = "tools"
+
+[workspace.boundaries.document_domain]
+crate_path = "crates/document-domain"
+forbidden_dependencies = ["sqlx", "axum", "tokio"]
+forbidden_source_patterns = ["std::fs", "std::path", "tokio::fs"]
+
+[workspace.boundaries.document_application]
+crate_path = "crates/document-application"
+forbidden_dependencies = ["sqlx", "axum"]
+forbidden_source_patterns = ["std::fs", "std::path", "tokio::fs"]

@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
@@ -38,6 +39,17 @@ pub struct CiRules {
 pub struct WorkspaceRules {
     pub allowed_production_roots: Vec<String>,
     pub tooling_root: String,
+    #[serde(default)]
+    pub boundaries: BTreeMap<String, BoundaryRule>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BoundaryRule {
+    pub crate_path: String,
+    #[serde(default)]
+    pub forbidden_dependencies: Vec<String>,
+    #[serde(default)]
+    pub forbidden_source_patterns: Vec<String>,
 }
 
 impl Config {
@@ -82,6 +94,36 @@ impl Config {
             workspace: WorkspaceRules {
                 allowed_production_roots: vec!["crates".into(), "apps".into()],
                 tooling_root: "tools".into(),
+                boundaries: BTreeMap::from([
+                    (
+                        "document_domain".into(),
+                        BoundaryRule {
+                            crate_path: "crates/document-domain".into(),
+                            forbidden_dependencies: vec![
+                                "sqlx".into(),
+                                "axum".into(),
+                                "tokio".into(),
+                            ],
+                            forbidden_source_patterns: vec![
+                                "std::fs".into(),
+                                "std::path".into(),
+                                "tokio::fs".into(),
+                            ],
+                        },
+                    ),
+                    (
+                        "document_application".into(),
+                        BoundaryRule {
+                            crate_path: "crates/document-application".into(),
+                            forbidden_dependencies: vec!["sqlx".into(), "axum".into()],
+                            forbidden_source_patterns: vec![
+                                "std::fs".into(),
+                                "std::path".into(),
+                                "tokio::fs".into(),
+                            ],
+                        },
+                    ),
+                ]),
             },
         }
     }
