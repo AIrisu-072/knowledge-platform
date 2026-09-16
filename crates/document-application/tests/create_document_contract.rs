@@ -391,7 +391,10 @@ async fn ambiguous_commit_keeps_finalized_file_and_surfaces_unknown_outcome() {
 
     let error = service.create_document(command()).await.unwrap_err();
 
-    assert_eq!(error, ApplicationError::CommitOutcomeUnknown);
+    assert!(matches!(
+        error,
+        ApplicationError::CommitOutcomeUnknown { .. }
+    ));
     assert!(storage.is_finalized());
 }
 
@@ -402,10 +405,12 @@ async fn ambiguous_commit_can_be_resolved_by_known_document_id_without_retrying_
     let repository = Arc::new(FakeRepository::new(steps));
     repository.persist_then_fail_with(RepositoryError::CommitOutcomeUnknown);
     let service = service(storage.clone(), repository.clone());
-    let known_document_id = DocumentId::from_uuid(Uuid::from_u128(1));
 
     let error = service.create_document(command()).await.unwrap_err();
-    assert_eq!(error, ApplicationError::CommitOutcomeUnknown);
+    let known_document_id = match error {
+        ApplicationError::CommitOutcomeUnknown { document_id, .. } => document_id,
+        other => panic!("expected ambiguous create identity, got {other:?}"),
+    };
     assert!(storage.is_finalized());
 
     let recovered = service
@@ -425,12 +430,17 @@ async fn ambiguous_commit_without_persistence_becomes_orphan_only_after_grace() 
     let repository = Arc::new(FakeRepository::new(steps));
     repository.fail_create_with(RepositoryError::CommitOutcomeUnknown);
     let create_service = service(storage.clone(), repository.clone());
-    let known_document_id = DocumentId::from_uuid(Uuid::from_u128(1));
-    let expected_file_id = FileId::from_uuid(Uuid::from_u128(3));
     let grace = Duration::hours(1);
 
     let error = create_service.create_document(command()).await.unwrap_err();
-    assert_eq!(error, ApplicationError::CommitOutcomeUnknown);
+    let (known_document_id, expected_file_id) = match error {
+        ApplicationError::CommitOutcomeUnknown {
+            document_id,
+            file_id,
+            ..
+        } => (document_id, file_id),
+        other => panic!("expected ambiguous create identity, got {other:?}"),
+    };
     assert!(storage.is_finalized());
     assert!(
         create_service

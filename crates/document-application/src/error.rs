@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use document_domain::DomainError;
+use document_domain::{DocumentId, DocumentVersionId, DomainError, FileId};
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum StorageError {
@@ -25,7 +25,11 @@ pub enum RepositoryError {
     #[error("repository unavailable")]
     Unavailable,
     #[error("commit outcome is unknown")]
-    CommitOutcomeUnknown,
+    CommitOutcomeUnknown {
+        document_id: DocumentId,
+        document_version_id: DocumentVersionId,
+        file_id: FileId,
+    },
     #[error("authoritative integrity violation")]
     IntegrityViolation,
     #[error("repository internal failure: {0}")]
@@ -82,7 +86,9 @@ impl From<RepositoryError> for ApplicationError {
         match error {
             RepositoryError::FolderNotFound => Self::FolderNotFound,
             RepositoryError::Unavailable => Self::RepositoryUnavailable,
-            RepositoryError::CommitOutcomeUnknown => Self::CommitOutcomeUnknown,
+            RepositoryError::CommitOutcomeUnknown => Self::Internal(
+                "commit outcome unknown outside create operation identity context".to_owned(),
+            ),
             RepositoryError::IntegrityViolation => Self::IntegrityViolation,
             RepositoryError::Internal(message) => Self::Internal(message),
         }

@@ -11,8 +11,8 @@ use crate::{
     AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_VERSION_CREATED, ApplicationError, AuditEventRecord,
     AuthoritativeDocument, Clock, ContentReader, CreateDocumentCommand, CreateDocumentResult,
     CreateInitialDocumentRecord, DOCUMENT_CREATED, DOCUMENT_VERSION_CREATED, DocumentRepository,
-    DomainEventRecord, FileStorage, IdGenerator, ReconciliationFinding, StorageObjectKind,
-    StoreFileRequest, classify,
+    DomainEventRecord, FileStorage, IdGenerator, ReconciliationFinding, RepositoryError,
+    StorageObjectKind, StoreFileRequest, classify,
 };
 
 pub struct DocumentService<I, C, F, R> {
@@ -133,19 +133,22 @@ where
             ),
         ];
 
-        self.repository
-            .create_initial_document(CreateInitialDocumentRecord::new(
-                authoritative,
-                domain_events,
-                audit_events,
-            ))
-            .await?;
-
-        Ok(CreateDocumentResult::new(
-            document_id,
-            document_version_id,
-            file_id,
-        ))
+        let record = CreateInitialDocumentRecord::new(authoritative, domain_events, audit_events);
+        match self.repository.create_initial_document(record).await {
+            Ok(()) => Ok(CreateDocumentResult::new(
+                document_id,
+                document_version_id,
+                file_id,
+            )),
+            Err(RepositoryError::CommitOutcomeUnknown) => {
+                Err(ApplicationError::CommitOutcomeUnknown {
+                    document_id,
+                    document_version_id,
+                    file_id,
+                })
+            }
+            Err(error) => Err(error.into()),
+        }
     }
 
     pub async fn lookup_create_outcome(
