@@ -242,14 +242,7 @@ async fn repository_persists_reads_and_rolls_back_authoritative_state_atomically
         (4_000, "outbox_events"),
         (5_000, "audit_outbox_events"),
     ] {
-        let trigger_sql = format!(
-            "CREATE TRIGGER kp_fail BEFORE INSERT ON {table} \
-             FOR EACH STATEMENT EXECUTE FUNCTION kp_fail_insert()"
-        );
-        sqlx::query(&trigger_sql)
-            .execute(&pool)
-            .await
-            .unwrap_or_else(|error| panic!("trigger on {table} should install: {error}"));
+        install_failure_trigger(&pool, table).await;
 
         let ids = Arc::new(SequenceIds::new(10_000 + offset));
         let service = DocumentService::new(
@@ -270,11 +263,7 @@ async fn repository_persists_reads_and_rolls_back_authoritative_state_atomically
             "injected failure on {table} must fail create"
         );
 
-        let drop_trigger_sql = format!("DROP TRIGGER kp_fail ON {table}");
-        sqlx::query(&drop_trigger_sql)
-            .execute(&pool)
-            .await
-            .unwrap_or_else(|error| panic!("trigger on {table} should drop: {error}"));
+        drop_failure_trigger(&pool, table).await;
 
         assert_attempt_rows_zero(
             &pool,
@@ -364,12 +353,105 @@ fn metadata(key: &str, value: &str) -> Metadata {
 }
 
 async fn count_where_uuid(pool: &PgPool, table: &str, column: &str, id: Uuid) -> i64 {
-    let sql = format!("SELECT count(*) FROM {table} WHERE {column} = $1");
-    sqlx::query_scalar(&sql)
+    match (table, column) {
+        ("documents", "document_id") => {
+            count_literal(
+                pool,
+                "SELECT count(*) FROM documents WHERE document_id = $1",
+                id,
+            )
+            .await
+        }
+        ("document_versions", "document_version_id") => {
+            count_literal(
+                pool,
+                "SELECT count(*) FROM document_versions WHERE document_version_id = $1",
+                id,
+            )
+            .await
+        }
+        ("file_objects", "file_id") => {
+            count_literal(
+                pool,
+                "SELECT count(*) FROM file_objects WHERE file_id = $1",
+                id,
+            )
+            .await
+        }
+        ("version_files", "document_version_id") => {
+            count_literal(
+                pool,
+                "SELECT count(*) FROM version_files WHERE document_version_id = $1",
+                id,
+            )
+            .await
+        }
+        ("outbox_events", "aggregate_id") => {
+            count_literal(
+                pool,
+                "SELECT count(*) FROM outbox_events WHERE aggregate_id = $1",
+                id,
+            )
+            .await
+        }
+        ("audit_outbox_events", "resource_id") => {
+            count_literal(
+                pool,
+                "SELECT count(*) FROM audit_outbox_events WHERE resource_id = $1",
+                id,
+            )
+            .await
+        }
+        _ => panic!("unsupported fixed count target: {table}.{column}"),
+    }
+}
+
+async fn count_literal(pool: &PgPool, sql: &'static str, id: Uuid) -> i64 {
+    sqlx::query_scalar(sql)
         .bind(id)
         .fetch_one(pool)
         .await
-        .unwrap_or_else(|error| panic!("count query for {table}.{column} should succeed: {error}"))
+        .expect("fixed count query should succeed")
+}
+
+async fn install_failure_trigger(pool: &PgPool, table: &str) {
+    let sql = match table {
+        "documents" => {
+            "CREATE TRIGGER kp_fail BEFORE INSERT ON documents FOR EACH STATEMENT EXECUTE FUNCTION kp_fail_insert()"
+        }
+        "document_versions" => {
+            "CREATE TRIGGER kp_fail BEFORE INSERT ON document_versions FOR EACH STATEMENT EXECUTE FUNCTION kp_fail_insert()"
+        }
+        "version_files" => {
+            "CREATE TRIGGER kp_fail BEFORE INSERT ON version_files FOR EACH STATEMENT EXECUTE FUNCTION kp_fail_insert()"
+        }
+        "outbox_events" => {
+            "CREATE TRIGGER kp_fail BEFORE INSERT ON outbox_events FOR EACH STATEMENT EXECUTE FUNCTION kp_fail_insert()"
+        }
+        "audit_outbox_events" => {
+            "CREATE TRIGGER kp_fail BEFORE INSERT ON audit_outbox_events FOR EACH STATEMENT EXECUTE FUNCTION kp_fail_insert()"
+        }
+        _ => panic!("unsupported fixed trigger target: {table}"),
+    };
+    sqlx::query(sql)
+        .execute(pool)
+        .await
+        .unwrap_or_else(|error| panic!("trigger on {table} should install: {error}"));
+}
+
+async fn drop_failure_trigger(pool: &PgPool, table: &str) {
+    let sql = match table {
+        "documents" => "DROP TRIGGER kp_fail ON documents",
+        "document_versions" => "DROP TRIGGER kp_fail ON document_versions",
+        "version_files" => "DROP TRIGGER kp_fail ON version_files",
+        "outbox_events" => "DROP TRIGGER kp_fail ON outbox_events",
+        "audit_outbox_events" => "DROP TRIGGER kp_fail ON audit_outbox_events",
+        _ => panic!("unsupported fixed trigger target: {table}"),
+    };
+    sqlx::query(sql)
+        .execute(pool)
+        .await
+        .unwrap_or_else(|error| panic!("trigger on {table} should drop: {error}"));
 }
 
 async fn assert_attempt_rows_zero(
