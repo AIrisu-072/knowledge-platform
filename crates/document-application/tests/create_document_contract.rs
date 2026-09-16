@@ -5,13 +5,14 @@ use std::sync::{Arc, Mutex};
 use document_application::{
     ApplicationError, AuthoritativeDocument, Clock, ContentReader, CreateDocumentCommand,
     CreateInitialDocumentRecord, DocumentRepository, DocumentService, FileStorage, IdGenerator,
-    RepositoryError, StorageError, StorageObjectInfo, StoreFileRequest, StoredFile,
+    ReconciliationClassification, RepositoryError, StorageError, StorageObjectInfo,
+    StorageObjectKind, StoreFileRequest, StoredFile, classify,
 };
 use document_domain::{
     ContentHash, CreateInitialDocument, DocumentId, DocumentVersionId, FileId, FileSize, FolderId,
     InitialDocument, MediaType, Metadata, PrincipalRef, StorageKey, StoredFileDescriptor, Title,
 };
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -241,6 +242,52 @@ fn service(
         storage,
         repository,
     )
+}
+
+#[test]
+fn reconciliation_classification_is_conservative_across_db_storage_and_grace_states() {
+    let now = OffsetDateTime::UNIX_EPOCH + Duration::hours(2);
+    let grace = Duration::hours(1);
+    let old = now - grace - Duration::seconds(1);
+    let recent = now - Duration::minutes(10);
+    let file_id = FileId::from_uuid(Uuid::from_u128(300));
+
+    let final_object = StorageObjectInfo::new(
+        "objects/00/file",
+        StorageObjectKind::Final,
+        Some(file_id),
+        old,
+    );
+    let staging_object = StorageObjectInfo::new(
+        "staging/file.part",
+        StorageObjectKind::Staging,
+        Some(file_id),
+        old,
+    );
+    let recent_final = StorageObjectInfo::new(
+        "objects/00/file",
+        StorageObjectKind::Final,
+        Some(file_id),
+        recent,
+    );
+
+    assert_eq!(
+        classify(true, Some(&final_object), now, grace),
+        Some(ReconciliationClassification::Healthy)
+    );
+    assert_eq!(
+        classify(false, Some(&staging_object), now, grace),
+        Some(ReconciliationClassification::StaleStaging)
+    );
+    assert_eq!(
+        classify(false, Some(&final_object), now, grace),
+        Some(ReconciliationClassification::Orphan)
+    );
+    assert_eq!(
+        classify(true, None, now, grace),
+        Some(ReconciliationClassification::IntegrityViolation)
+    );
+    assert_eq!(classify(false, Some(&recent_final), now, grace), None);
 }
 
 #[tokio::test]
