@@ -4,6 +4,7 @@ FROM rust:1.98.1-bookworm AS rust-build
 WORKDIR /src
 
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates ./crates
 COPY tools ./tools
 COPY spec ./spec
 
