@@ -191,7 +191,7 @@ where
             let Some(file_id) = object.file_id() else {
                 continue;
             };
-            if object.kind() == StorageObjectKind::Final && referenced.contains(&file_id) {
+            if referenced.contains(&file_id) {
                 continue;
             }
             if let Some(classification) = classify(false, Some(&object), now, grace) {
