@@ -39,8 +39,8 @@ pub(crate) fn to_authoritative(
     .map_err(|_| RepositoryError::IntegrityViolation)?;
     let storage_key =
         StorageKey::new(row.storage_locator).map_err(|_| RepositoryError::IntegrityViolation)?;
-    let content_hash =
-        ContentHash::from_slice(&row.content_hash).map_err(|_| RepositoryError::IntegrityViolation)?;
+    let content_hash = ContentHash::from_slice(&row.content_hash)
+        .map_err(|_| RepositoryError::IntegrityViolation)?;
     let size_bytes =
         FileSize::new(row.size_bytes).map_err(|_| RepositoryError::IntegrityViolation)?;
     let media_type =

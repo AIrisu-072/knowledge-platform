@@ -231,13 +231,11 @@ impl DocumentRepository for PostgresDocumentRepository {
     }
 
     async fn file_reference_exists(&self, file_id: FileId) -> Result<bool, RepositoryError> {
-        sqlx::query_scalar(
-            "SELECT EXISTS (SELECT 1 FROM version_files WHERE file_id = $1)",
-        )
-        .bind(file_id.as_uuid())
-        .fetch_one(&self.pool)
-        .await
-        .map_err(map_statement_error)
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM version_files WHERE file_id = $1)")
+            .bind(file_id.as_uuid())
+            .fetch_one(&self.pool)
+            .await
+            .map_err(map_statement_error)
     }
 }
 
