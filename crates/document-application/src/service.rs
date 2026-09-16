@@ -5,12 +5,13 @@ use document_domain::{
     InitialDocument, Title,
 };
 use serde_json::json;
+use time::Duration;
 
 use crate::{
     AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_VERSION_CREATED, ApplicationError, AuditEventRecord,
     AuthoritativeDocument, Clock, ContentReader, CreateDocumentCommand, CreateDocumentResult,
     CreateInitialDocumentRecord, DOCUMENT_CREATED, DOCUMENT_VERSION_CREATED, DocumentRepository,
-    DomainEventRecord, FileStorage, IdGenerator, StoreFileRequest,
+    DomainEventRecord, FileStorage, IdGenerator, ReconciliationFinding, StoreFileRequest, classify,
 };
 
 pub struct DocumentService<I, C, F, R> {
@@ -144,6 +145,37 @@ where
             document_version_id,
             file_id,
         ))
+    }
+
+    pub async fn lookup_create_outcome(
+        &self,
+        document_id: DocumentId,
+    ) -> Result<Option<AuthoritativeDocument>, ApplicationError> {
+        self.repository
+            .get_authoritative_document(document_id)
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn reconcile_storage(
+        &self,
+        grace: Duration,
+    ) -> Result<Vec<ReconciliationFinding>, ApplicationError> {
+        let now = self.clock.now();
+        let objects = self.storage.list_objects().await?;
+        let mut findings = Vec::new();
+
+        for object in objects {
+            let Some(file_id) = object.file_id() else {
+                continue;
+            };
+            let db_referenced = self.repository.file_reference_exists(file_id).await?;
+            if let Some(classification) = classify(db_referenced, Some(&object), now, grace) {
+                findings.push(ReconciliationFinding::new(object, classification));
+            }
+        }
+
+        Ok(findings)
     }
 
     pub async fn get_document(
