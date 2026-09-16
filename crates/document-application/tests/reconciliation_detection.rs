@@ -3,7 +3,7 @@ use std::sync::Arc;
 use document_application::{
     AuthoritativeDocument, Clock, ContentReader, CreateInitialDocumentRecord, DocumentRepository,
     DocumentService, FileStorage, IdGenerator, ReconciliationClassification, RepositoryError,
-    StorageError, StorageObjectInfo, StoreFileRequest, StoredFile,
+    StorageError, StorageObjectInfo, StorageObjectKind, StoreFileRequest, StoredFile,
 };
 use document_domain::{DocumentId, FileId, StorageKey};
 use time::{Duration, OffsetDateTime};
@@ -42,6 +42,28 @@ impl FileStorage for EmptyStorage {
 
     async fn list_objects(&self) -> Result<Vec<StorageObjectInfo>, StorageError> {
         Ok(Vec::new())
+    }
+}
+
+struct StagingOnlyStorage {
+    object: StorageObjectInfo,
+}
+
+impl FileStorage for StagingOnlyStorage {
+    async fn put_immutable(&self, _request: StoreFileRequest) -> Result<StoredFile, StorageError> {
+        Err(StorageError::Internal(
+            "not used by reconciliation test".into(),
+        ))
+    }
+
+    async fn open(&self, _key: &StorageKey) -> Result<ContentReader, StorageError> {
+        Err(StorageError::Internal(
+            "not used by reconciliation test".into(),
+        ))
+    }
+
+    async fn list_objects(&self) -> Result<Vec<StorageObjectInfo>, StorageError> {
+        Ok(vec![self.object.clone()])
     }
 }
 
@@ -98,5 +120,42 @@ async fn reconciliation_detects_authoritative_reference_whose_final_object_is_mi
     assert_eq!(
         findings[0].classification(),
         ReconciliationClassification::IntegrityViolation
+    );
+}
+
+#[tokio::test]
+async fn reconciliation_does_not_mark_referenced_staging_for_cleanup_when_final_is_missing() {
+    let file_id = FileId::from_uuid(Uuid::from_u128(43));
+    let staging = StorageObjectInfo::new(
+        format!("staging/{}.part", file_id.as_uuid()),
+        StorageObjectKind::Staging,
+        Some(file_id),
+        OffsetDateTime::UNIX_EPOCH,
+    );
+    let service = DocumentService::new(
+        Arc::new(NoopIds),
+        Arc::new(FixedClock(OffsetDateTime::UNIX_EPOCH + Duration::hours(2))),
+        Arc::new(StagingOnlyStorage { object: staging }),
+        Arc::new(ReferencedRepository { file_id }),
+    );
+
+    let findings = service
+        .reconcile_storage(Duration::hours(1))
+        .await
+        .expect("reconciliation scan should complete");
+
+    assert_eq!(
+        findings.len(),
+        1,
+        "the only surviving bytes for a DB-referenced file must not become a cleanup candidate"
+    );
+    assert_eq!(findings[0].file_id(), file_id);
+    assert_eq!(
+        findings[0].classification(),
+        ReconciliationClassification::IntegrityViolation
+    );
+    assert!(
+        findings.iter().all(|finding| finding.classification()
+            != ReconciliationClassification::StaleStaging)
     );
 }
