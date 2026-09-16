@@ -230,6 +230,17 @@ impl DocumentRepository for FakeRepository {
             .as_ref()
             .is_some_and(|document| document.file().file_id() == file_id))
     }
+
+    async fn list_referenced_file_ids(&self) -> Result<Vec<FileId>, RepositoryError> {
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .document
+            .as_ref()
+            .map(|document| vec![document.file().file_id()])
+            .unwrap_or_default())
+    }
 }
 
 fn content() -> ContentReader {
@@ -454,7 +465,11 @@ async fn ambiguous_commit_without_persistence_becomes_orphan_only_after_grace() 
         findings[0].classification(),
         ReconciliationClassification::Orphan
     );
-    assert_eq!(findings[0].object().file_id(), Some(expected_file_id));
+    assert_eq!(findings[0].file_id(), expected_file_id);
+    assert_eq!(
+        findings[0].object().and_then(StorageObjectInfo::file_id),
+        Some(expected_file_id)
+    );
     assert_eq!(repository.create_calls(), 1);
 }
 

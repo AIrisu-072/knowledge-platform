@@ -69,6 +69,10 @@ impl DocumentRepository for ReferencedRepository {
     async fn file_reference_exists(&self, file_id: FileId) -> Result<bool, RepositoryError> {
         Ok(file_id == self.file_id)
     }
+
+    async fn list_referenced_file_ids(&self) -> Result<Vec<FileId>, RepositoryError> {
+        Ok(vec![self.file_id])
+    }
 }
 
 #[tokio::test]

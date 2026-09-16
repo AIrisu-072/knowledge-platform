@@ -237,6 +237,15 @@ impl DocumentRepository for PostgresDocumentRepository {
             .await
             .map_err(map_statement_error)
     }
+
+    async fn list_referenced_file_ids(&self) -> Result<Vec<FileId>, RepositoryError> {
+        let ids: Vec<uuid::Uuid> =
+            sqlx::query_scalar("SELECT DISTINCT file_id FROM version_files ORDER BY file_id")
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_statement_error)?;
+        Ok(ids.into_iter().map(FileId::from_uuid).collect())
+    }
 }
 
 fn lifecycle_state(state: document_domain::LifecycleState) -> &'static str {

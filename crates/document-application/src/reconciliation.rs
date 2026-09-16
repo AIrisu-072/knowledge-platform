@@ -1,3 +1,4 @@
+use document_domain::FileId;
 use time::{Duration, OffsetDateTime};
 
 use crate::{StorageObjectInfo, StorageObjectKind};
@@ -12,23 +13,30 @@ pub enum ReconciliationClassification {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReconciliationFinding {
-    object: StorageObjectInfo,
+    file_id: FileId,
+    object: Option<StorageObjectInfo>,
     classification: ReconciliationClassification,
 }
 
 impl ReconciliationFinding {
     pub(crate) fn new(
-        object: StorageObjectInfo,
+        file_id: FileId,
+        object: Option<StorageObjectInfo>,
         classification: ReconciliationClassification,
     ) -> Self {
         Self {
+            file_id,
             object,
             classification,
         }
     }
 
-    pub const fn object(&self) -> &StorageObjectInfo {
-        &self.object
+    pub const fn file_id(&self) -> FileId {
+        self.file_id
+    }
+
+    pub const fn object(&self) -> Option<&StorageObjectInfo> {
+        self.object.as_ref()
     }
 
     pub const fn classification(&self) -> ReconciliationClassification {

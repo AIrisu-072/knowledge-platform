@@ -257,4 +257,6 @@ pub trait DocumentRepository: Send + Sync {
     ) -> Result<Option<AuthoritativeDocument>, RepositoryError>;
 
     async fn file_reference_exists(&self, file_id: FileId) -> Result<bool, RepositoryError>;
+
+    async fn list_referenced_file_ids(&self) -> Result<Vec<FileId>, RepositoryError>;
 }

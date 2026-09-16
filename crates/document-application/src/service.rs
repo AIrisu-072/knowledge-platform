@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use document_domain::{
     AuditEventId, CreateInitialDocument, DocumentId, DocumentVersionId, EventId, FileId,
@@ -11,7 +11,8 @@ use crate::{
     AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_VERSION_CREATED, ApplicationError, AuditEventRecord,
     AuthoritativeDocument, Clock, ContentReader, CreateDocumentCommand, CreateDocumentResult,
     CreateInitialDocumentRecord, DOCUMENT_CREATED, DOCUMENT_VERSION_CREATED, DocumentRepository,
-    DomainEventRecord, FileStorage, IdGenerator, ReconciliationFinding, StoreFileRequest, classify,
+    DomainEventRecord, FileStorage, IdGenerator, ReconciliationFinding, StorageObjectKind,
+    StoreFileRequest, classify,
 };
 
 pub struct DocumentService<I, C, F, R> {
@@ -163,15 +164,39 @@ where
     ) -> Result<Vec<ReconciliationFinding>, ApplicationError> {
         let now = self.clock.now();
         let objects = self.storage.list_objects().await?;
+        let referenced_ids = self.repository.list_referenced_file_ids().await?;
+        let referenced: HashSet<FileId> = referenced_ids.iter().copied().collect();
         let mut findings = Vec::new();
+
+        for file_id in referenced_ids {
+            let final_object = objects
+                .iter()
+                .find(|object| {
+                    object.kind() == StorageObjectKind::Final && object.file_id() == Some(file_id)
+                })
+                .cloned();
+            let classification = classify(true, final_object.as_ref(), now, grace)
+                .expect("referenced files always have a reconciliation classification");
+            findings.push(ReconciliationFinding::new(
+                file_id,
+                final_object,
+                classification,
+            ));
+        }
 
         for object in objects {
             let Some(file_id) = object.file_id() else {
                 continue;
             };
-            let db_referenced = self.repository.file_reference_exists(file_id).await?;
-            if let Some(classification) = classify(db_referenced, Some(&object), now, grace) {
-                findings.push(ReconciliationFinding::new(object, classification));
+            if object.kind() == StorageObjectKind::Final && referenced.contains(&file_id) {
+                continue;
+            }
+            if let Some(classification) = classify(false, Some(&object), now, grace) {
+                findings.push(ReconciliationFinding::new(
+                    file_id,
+                    Some(object),
+                    classification,
+                ));
             }
         }
 
