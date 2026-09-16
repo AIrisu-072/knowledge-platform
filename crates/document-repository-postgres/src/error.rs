@@ -1,3 +1,13 @@
+use document_application::RepositoryError;
+
+pub(crate) fn map_statement_error(_error: sqlx::Error) -> RepositoryError {
+    RepositoryError::Internal("postgres operation failed".to_owned())
+}
+
+pub(crate) fn map_commit_error(_error: sqlx::Error) -> RepositoryError {
+    RepositoryError::CommitOutcomeUnknown
+}
+
 #[cfg(test)]
 mod tests {
     use document_application::RepositoryError;
