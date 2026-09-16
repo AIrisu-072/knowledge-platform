@@ -19,5 +19,5 @@ pub use ports::{
     AuthoritativeDocument, Clock, ContentReader, CreateInitialDocumentRecord, DocumentRepository,
     FileStorage, IdGenerator, StorageObjectInfo, StorageObjectKind, StoreFileRequest, StoredFile,
 };
-pub use reconciliation::{ReconciliationClassification, classify};
+pub use reconciliation::{ReconciliationClassification, ReconciliationFinding, classify};
 pub use service::DocumentService;
