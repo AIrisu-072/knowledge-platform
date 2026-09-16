@@ -124,9 +124,7 @@ fn check_workspace_boundaries(
                         findings.push(Finding {
                             code: "ARCH_FORBIDDEN_SOURCE_PATTERN".into(),
                             path: relative_path(root, &path),
-                            message: format!(
-                                "crate boundary forbids source pattern '{forbidden}'"
-                            ),
+                            message: format!("crate boundary forbids source pattern '{forbidden}'"),
                         });
                     }
                 }
@@ -163,10 +161,7 @@ fn production_dependency_tables(
     tables
 }
 
-fn dependency_table_contains(
-    table: &toml::map::Map<String, toml::Value>,
-    forbidden: &str,
-) -> bool {
+fn dependency_table_contains(table: &toml::map::Map<String, toml::Value>, forbidden: &str) -> bool {
     table.iter().any(|(key, value)| {
         if key == forbidden {
             return true;
