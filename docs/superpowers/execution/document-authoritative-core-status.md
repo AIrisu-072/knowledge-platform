@@ -41,8 +41,8 @@ Always fetch current branch/PR/CI state from GitHub before acting; do not assume
 | Task | Status | Evidence / Notes |
 |---|---|---|
 | 1. Workspace dependencies + architecture boundaries | `COMPLETE` | baseline run #30 green; RED run #31 failed on the four new boundary assertions as intended; generic boundary enforcement GREEN by run #33; generated Cargo.lock fixed; Docker workspace copy fixed; Zlib/internal path dependency policy fixed; final run #42 all required jobs green |
-| 2. Infrastructure-free Domain invariants | `IN_PROGRESS` | Step 1 value-object RED tests next |
-| 3. Application ports + Create/Get orchestration | `NOT_STARTED` | — |
+| 2. Infrastructure-free Domain invariants | `COMPLETE` | value objects and typed IDs implemented; aggregate RED commit `d808b3d40f8046cf5cfd219dc29bbb81bc133e9d` produced rust-test/rust-static failure in run #48; aggregate implementation `1388cdab3c39f9d6b742ad1a1c4a93e4ee847b86` + rustfmt `bca681aebd5b32067a4c56c95d7535521a3ba9af`; final run #50 all required jobs green |
+| 3. Application ports + Create/Get orchestration | `IN_PROGRESS` | Step 1/2 next: add Application contract RED tests only |
 | 4. Durable local filesystem adapter | `NOT_STARTED` | — |
 | 5. PostgreSQL schema + atomic repository | `NOT_STARTED` | — |
 | 6. Unknown-commit recovery + reconciliation | `NOT_STARTED` | — |
@@ -69,16 +69,24 @@ Always fetch current branch/PR/CI state from GitHub before acting; do not assume
 - Security gate root cause was limited to permissive `Zlib` not yet allow-listed and internal path dependencies lacking explicit versions. `Zlib` was independently confirmed OSI-approved/permissive; minimal policy fix commit: `13b6d01dc90b275358c624c649d76ba22472aee3`.
 - Final Task 1 CI run #42 (`35054390348`) passed `policy`, `rust-static`, `rust-test`, `security`, `portability-macos`, `container-build`, and `required-check`.
 
+### Task 2 evidence
+
+- Domain value objects / typed IDs are implemented in `document-domain` without infrastructure dependencies.
+- Initial aggregate invariant RED commit: `d808b3d40f8046cf5cfd219dc29bbb81bc133e9d`.
+- CI run #48 (`35055568168`) observed the intended RED state: `rust-test` and `rust-static` failed while policy/security/container/portability remained green.
+- Minimal aggregate implementation commit: `1388cdab3c39f9d6b742ad1a1c4a93e4ee847b86`; rustfmt-only follow-up: `bca681aebd5b32067a4c56c95d7535521a3ba9af`.
+- CI run #50 (`35055948809`) passed `policy`, `rust-static`, `rust-test`, `security`, `portability-macos`, `container-build`, and `required-check`.
+
 ## Current blocker / gate
 
 None.
 
 ## Next exact action
 
-1. Task 2 / Step 1: add Domain value-object tests only (`VersionNo`, `ContentHash`, `FileSize`, `Title`) and verify RED in PR CI.
-2. Implement minimal validated value objects + typed IDs and verify GREEN.
-3. Add initial aggregate RED tests.
-4. Implement `InitialDocument::create` and close Task 2 with domain tests + architecture + clippy evidence.
+1. Task 3 / Step 1-2: add `document-application` contract tests only for the approved ports and orchestration semantics.
+2. Verify RED in PR CI because `DocumentService` / Application port types are not implemented yet.
+3. Implement minimal Application ports, event records, CreateDocument, GetDocument, and primary-file integrity mapping.
+4. Verify GREEN with application tests + architecture + clippy evidence.
 
 ## Session handoff maintenance rule
 
