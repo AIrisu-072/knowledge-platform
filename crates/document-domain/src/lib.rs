@@ -2,6 +2,16 @@
 
 //! Infrastructure-free authoritative document domain.
 
+mod document;
+mod error;
+mod file;
+mod ids;
+
+pub use document::{Title, VersionNo};
+pub use error::DomainError;
+pub use file::{ContentHash, FileSize, StorageKey};
+pub use ids::{AuditEventId, DocumentId, DocumentVersionId, EventId, FileId, FolderId};
+
 #[cfg(test)]
 mod tests {
     use super::*;
