@@ -44,7 +44,7 @@ impl StorageKey {
         }
 
         if value
-            .split(|c| c == '/' || c == '\\')
+            .split(['/', '\\'])
             .any(|component| component.is_empty() || component == "." || component == "..")
         {
             return Err(DomainError::InvalidStorageKey);
