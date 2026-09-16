@@ -1,0 +1,37 @@
+name: Task 5 GREEN format
+
+on:
+  push:
+    branches:
+      - feat/document-authoritative-core-v0
+
+permissions:
+  contents: write
+
+jobs:
+  format-green:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Install Rust
+        run: |
+          mise install rust
+          rustup component add --toolchain 1.98.1 rustfmt
+      - name: Format repository implementation
+        run: |
+          set -eu
+          cargo fmt --all
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add crates/document-repository-postgres/src/mapping.rs crates/document-repository-postgres/src/repository.rs
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'style: format atomic postgres repository'
+          git push origin HEAD:${GITHUB_REF_NAME}
