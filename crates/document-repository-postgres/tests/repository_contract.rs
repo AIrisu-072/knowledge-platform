@@ -1,25 +1,23 @@
 use std::{io::Cursor, sync::Arc};
 
 use document_application::{
-    AuthoritativeDocument, Clock, ContentReader, CreateDocumentCommand, CreateInitialDocumentRecord,
-    DocumentRepository, DocumentService, FileStorage, IdGenerator, RepositoryError, StorageError,
-    StorageObjectInfo, StoreFileRequest, StoredFile, AUDIT_DOCUMENT_CREATED,
-    AUDIT_DOCUMENT_VERSION_CREATED, DOCUMENT_CREATED, DOCUMENT_VERSION_CREATED,
+    AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_VERSION_CREATED, AuthoritativeDocument, Clock,
+    ContentReader, CreateDocumentCommand, CreateInitialDocumentRecord, DOCUMENT_CREATED,
+    DOCUMENT_VERSION_CREATED, DocumentRepository, DocumentService, FileStorage, IdGenerator,
+    RepositoryError, StorageError, StorageObjectInfo, StoreFileRequest, StoredFile,
 };
 use document_domain::{
     ContentHash, CreateInitialDocument, DocumentId, DocumentVersionId, FileId, FileSize, FolderId,
     InitialDocument, LifecycleState, MediaType, Metadata, PrincipalRef, StorageKey,
     StoredFileDescriptor, Title,
 };
-use document_repository_postgres::{
-    migrate, PostgresDocumentRepository, SYSTEM_ROOT_FOLDER_ID,
-};
-use serde_json::{json, Map, Value};
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use document_repository_postgres::{PostgresDocumentRepository, SYSTEM_ROOT_FOLDER_ID, migrate};
+use serde_json::{Map, Value, json};
+use sqlx::{PgPool, postgres::PgPoolOptions};
 use testcontainers::{
+    GenericImage, ImageExt,
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
-    GenericImage, ImageExt,
 };
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -46,7 +44,13 @@ async fn repository_persists_reads_and_rolls_back_authoritative_state_atomically
         .expect("valid initial document should persist");
 
     assert_eq!(
-        count_where_uuid(&pool, "documents", "document_id", result.document_id().as_uuid()).await,
+        count_where_uuid(
+            &pool,
+            "documents",
+            "document_id",
+            result.document_id().as_uuid()
+        )
+        .await,
         1
     );
     assert_eq!(
@@ -104,7 +108,10 @@ async fn repository_persists_reads_and_rolls_back_authoritative_state_atomically
     domain_types.sort();
     assert_eq!(
         domain_types,
-        vec![DOCUMENT_CREATED.to_owned(), DOCUMENT_VERSION_CREATED.to_owned()]
+        vec![
+            DOCUMENT_CREATED.to_owned(),
+            DOCUMENT_VERSION_CREATED.to_owned()
+        ]
     );
 
     let mut audit_types: Vec<String> = sqlx::query_scalar(
@@ -141,7 +148,10 @@ async fn repository_persists_reads_and_rolls_back_authoritative_state_atomically
         .await
         .expect("authoritative document should round-trip");
     assert_eq!(loaded.document().document_id(), result.document_id());
-    assert_eq!(loaded.document().folder_id().as_uuid(), SYSTEM_ROOT_FOLDER_ID);
+    assert_eq!(
+        loaded.document().folder_id().as_uuid(),
+        SYSTEM_ROOT_FOLDER_ID
+    );
     assert_eq!(loaded.document().current_version_id(), None);
     assert_eq!(loaded.document().revision(), 0);
     assert_eq!(
@@ -158,7 +168,10 @@ async fn repository_persists_reads_and_rolls_back_authoritative_state_atomically
     assert_eq!(loaded.version().revision_reason(), None);
     assert_eq!(loaded.version().published_at(), None);
     assert_eq!(loaded.version().withdrawn_at(), None);
-    assert_eq!(loaded.version().created_by().identity_provider(), "test-idp");
+    assert_eq!(
+        loaded.version().created_by().identity_provider(),
+        "test-idp"
+    );
     assert_eq!(loaded.version().created_by().principal_id(), "actor-42");
     assert_eq!(
         loaded.version().metadata().as_map().get("versionClass"),
@@ -246,8 +259,7 @@ async fn repository_persists_reads_and_rolls_back_authoritative_state_atomically
             repository.clone(),
         );
         let attempted_document_id = DocumentId::from_uuid(Uuid::from_u128(10_000 + offset));
-        let attempted_version_id =
-            DocumentVersionId::from_uuid(Uuid::from_u128(10_001 + offset));
+        let attempted_version_id = DocumentVersionId::from_uuid(Uuid::from_u128(10_001 + offset));
         let attempted_file_id = FileId::from_uuid(Uuid::from_u128(10_002 + offset));
 
         assert!(
@@ -400,13 +412,7 @@ async fn assert_attempt_rows_zero(
         "version_files must roll back after {failed_table} failure"
     );
     assert_eq!(
-        count_where_uuid(
-            pool,
-            "outbox_events",
-            "aggregate_id",
-            document_id.as_uuid(),
-        )
-        .await,
+        count_where_uuid(pool, "outbox_events", "aggregate_id", document_id.as_uuid(),).await,
         0,
         "outbox_events must roll back after {failed_table} failure"
     );
@@ -437,10 +443,7 @@ impl SequenceIds {
 
 impl IdGenerator for SequenceIds {
     fn next_uuid_v7(&self) -> Uuid {
-        Uuid::from_u128(
-            self.next
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed) as u128,
-        )
+        Uuid::from_u128(self.next.fetch_add(1, std::sync::atomic::Ordering::Relaxed) as u128)
     }
 }
 
