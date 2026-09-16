@@ -315,7 +315,10 @@ async fn missing_referenced_binary_is_integrity_violation_not_document_not_found
     repository.set_document(document);
     let service = service(storage, repository);
 
-    let error = service.open_primary_file(document_id).await.unwrap_err();
+    let error = match service.open_primary_file(document_id).await {
+        Ok(_) => panic!("expected missing referenced binary to fail"),
+        Err(error) => error,
+    };
 
     assert_eq!(error, ApplicationError::IntegrityViolation);
 }
