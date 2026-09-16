@@ -2,7 +2,7 @@
 
 //! PostgreSQL authoritative persistence adapter for documents.
 
-use sqlx::{migrate::MigrateError, PgPool};
+use sqlx::{PgPool, migrate::MigrateError};
 use uuid::Uuid;
 
 pub const SYSTEM_ROOT_FOLDER_ID: Uuid = Uuid::from_u128(0x00000000000070008000000000000001);
