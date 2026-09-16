@@ -5,16 +5,16 @@
 - Overall phase: **IMPLEMENTATION**
 - Design: **APPROVED + MERGED**
 - Implementation Plan: **ACCEPTED FOR INLINE EXECUTION**
-- Product/runtime implementation started: **NO — baseline verification first**
+- Product/runtime implementation started: **YES**
 
 ## Current repository flow
 
 - Design PR: `#3` — **MERGED**
-- Design merge commit / current implementation baseline: `fda70596931007abcc8ac4139db78848bae9836a`
+- Design merge commit / implementation baseline: `fda70596931007abcc8ac4139db78848bae9836a`
+- Implementation PR: `#4` — **OPEN / DRAFT**
 - Implementation branch: `feat/document-authoritative-core-v0`
-- Implementation branch was force-aligned to the exact merged `main` head before production implementation.
 
-Always fetch the current branch/PR/CI state from GitHub before acting; do not assume an earlier chat state.
+Always fetch current branch/PR/CI state from GitHub before acting; do not assume an earlier chat state.
 
 ## Approved artifacts
 
@@ -40,8 +40,8 @@ Always fetch the current branch/PR/CI state from GitHub before acting; do not as
 
 | Task | Status | Evidence / Notes |
 |---|---|---|
-| 1. Workspace dependencies + architecture boundaries | `IN_PROGRESS` | Step 0 baseline verification pending on implementation PR CI |
-| 2. Infrastructure-free Domain invariants | `NOT_STARTED` | — |
+| 1. Workspace dependencies + architecture boundaries | `COMPLETE` | baseline run #30 green; RED run #31 failed on the four new boundary assertions as intended; generic boundary enforcement GREEN by run #33; generated Cargo.lock fixed; Docker workspace copy fixed; Zlib/internal path dependency policy fixed; final run #42 all required jobs green |
+| 2. Infrastructure-free Domain invariants | `IN_PROGRESS` | Step 1 value-object RED tests next |
 | 3. Application ports + Create/Get orchestration | `NOT_STARTED` | — |
 | 4. Durable local filesystem adapter | `NOT_STARTED` | — |
 | 5. PostgreSQL schema + atomic repository | `NOT_STARTED` | — |
@@ -56,23 +56,29 @@ Always fetch the current branch/PR/CI state from GitHub before acting; do not as
 - PR #3 head `eb794feb2e8186102e2400163d2393be7901ee21` passed CI run #28.
 - All required jobs passed: policy, rust-static, rust-test, security, portability-macos, container-build, required-check.
 - PR #3 squash-merged as `fda70596931007abcc8ac4139db78848bae9836a`.
-- `feat/document-authoritative-core-v0` was then reset to that exact `main` SHA.
+- `feat/document-authoritative-core-v0` was reset to that exact `main` SHA before implementation.
 
-### Implementation baseline
+### Task 1 evidence
 
-Pending CI on implementation PR before Task 1 / Step 1 production-related changes.
+- PR #4 baseline commit `9a5ec3806e8430d910555b6919af2c13d60d096f` passed CI run #30.
+- RED test commit `1c860d8277323fee5b24fcb7a12680de1e1a5bd0`: CI run #31 failed in `rust-test` because all four expected `ARCH_FORBIDDEN_*` findings were not yet implemented; other existing gates stayed green.
+- Generic architecture boundary implementation commit `03e99028473dff4915b5f2568d74777625fb203b`; rustfmt-only follow-up `756ab244d9894c2e28c55dfeec61537d585a17ae`; run #33 closed the RED→GREEN cycle.
+- Workspace/crate scaffold commit `2fd311c9e2b13ee75e8ba10cf14f8360591f8d81` added four capability crates and selected dependency baseline.
+- Cargo.lock was generated on a GitHub-hosted runner and committed as `dc392c9bd16d67504103119326addcebfb860167`; the temporary write-enabled helper workflow was removed immediately in `1006fe5525e124f1197a47bdb5da992ffdd4bb33`.
+- Docker workspace regression was root-caused to missing `COPY crates ./crates` and fixed in `16936b35fe3523a5fc251f2780d5f8dff35f1ced`.
+- Security gate root cause was limited to permissive `Zlib` not yet allow-listed and internal path dependencies lacking explicit versions. `Zlib` was independently confirmed OSI-approved/permissive; minimal policy fix commit: `13b6d01dc90b275358c624c649d76ba22472aee3`.
+- Final Task 1 CI run #42 (`35054390348`) passed `policy`, `rust-static`, `rust-test`, `security`, `portability-macos`, `container-build`, and `required-check`.
 
 ## Current blocker / gate
 
-No design blocker. Baseline verification must be green before writing Task 1 failing architecture tests.
+None.
 
 ## Next exact action
 
-1. Open draft implementation PR from `feat/document-authoritative-core-v0` to `main`.
-2. Confirm baseline CI green.
-3. Implement **Task 1 / Step 1 RED**: add architecture-policy tests for forbidden Domain/Application dependencies/source patterns only.
-4. Run CI and confirm the new policy test fails for the intended missing feature.
-5. Only then implement Task 1 architecture boundary enforcement and workspace dependency baseline.
+1. Task 2 / Step 1: add Domain value-object tests only (`VersionNo`, `ContentHash`, `FileSize`, `Title`) and verify RED in PR CI.
+2. Implement minimal validated value objects + typed IDs and verify GREEN.
+3. Add initial aggregate RED tests.
+4. Implement `InitialDocument::create` and close Task 2 with domain tests + architecture + clippy evidence.
 
 ## Session handoff maintenance rule
 
