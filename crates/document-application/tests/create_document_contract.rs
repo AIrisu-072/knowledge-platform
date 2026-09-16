@@ -434,7 +434,13 @@ async fn ambiguous_commit_without_persistence_becomes_orphan_only_after_grace() 
         repository.clone(),
         OffsetDateTime::UNIX_EPOCH + Duration::minutes(30),
     );
-    assert!(recent_service.reconcile_storage(grace).await.unwrap().is_empty());
+    assert!(
+        recent_service
+            .reconcile_storage(grace)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     let late_service = service_at(
         storage,
