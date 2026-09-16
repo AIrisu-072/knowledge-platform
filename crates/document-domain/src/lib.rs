@@ -6,11 +6,21 @@ mod document;
 mod error;
 mod file;
 mod ids;
+mod metadata;
+mod principal;
 
-pub use document::{Title, VersionNo};
+pub use document::{
+    CreateInitialDocument, Document, DocumentVersion, InitialDocument, LifecycleState, Title,
+    VersionNo,
+};
 pub use error::DomainError;
-pub use file::{ContentHash, FileSize, StorageKey};
+pub use file::{
+    ContentHash, FileObject, FileRole, FileSize, MediaType, StorageKey, StoredFileDescriptor,
+    VersionFile,
+};
 pub use ids::{AuditEventId, DocumentId, DocumentVersionId, EventId, FileId, FolderId};
+pub use metadata::Metadata;
+pub use principal::PrincipalRef;
 
 #[cfg(test)]
 mod tests {

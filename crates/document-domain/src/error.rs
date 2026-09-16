@@ -12,4 +12,12 @@ pub enum DomainError {
     BlankTitle,
     #[error("storage key must be a non-empty relative key without traversal")]
     InvalidStorageKey,
+    #[error("identity provider cannot be blank")]
+    BlankIdentityProvider,
+    #[error("principal id cannot be blank")]
+    BlankPrincipalId,
+    #[error("media type cannot be blank")]
+    BlankMediaType,
+    #[error("original filename cannot be blank")]
+    BlankOriginalFilename,
 }
