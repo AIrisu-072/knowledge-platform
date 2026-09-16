@@ -40,10 +40,10 @@ Always fetch current branch/PR/CI state from GitHub before acting; do not assume
 
 | Task | Status | Evidence / Notes |
 |---|---|---|
-| 1. Workspace dependencies + architecture boundaries | `COMPLETE` | baseline run #30 green; RED run #31 failed on the four new boundary assertions as intended; generic boundary enforcement GREEN by run #33; generated Cargo.lock fixed; Docker workspace copy fixed; Zlib/internal path dependency policy fixed; final run #42 all required jobs green |
-| 2. Infrastructure-free Domain invariants | `COMPLETE` | value objects and typed IDs implemented; aggregate RED commit `d808b3d40f8046cf5cfd219dc29bbb81bc133e9d` produced rust-test/rust-static failure in run #48; aggregate implementation `1388cdab3c39f9d6b742ad1a1c4a93e4ee847b86` + rustfmt `bca681aebd5b32067a4c56c95d7535521a3ba9af`; final run #50 all required jobs green |
-| 3. Application ports + Create/Get orchestration | `IN_PROGRESS` | Step 1/2 next: add Application contract RED tests only |
-| 4. Durable local filesystem adapter | `NOT_STARTED` | — |
+| 1. Workspace dependencies + architecture boundaries | `COMPLETE` | baseline run #30 green; RED run #31 failed as intended; generic boundary enforcement GREEN by run #33; dependency/Docker/policy follow-ups complete; final run #42 all required jobs green |
+| 2. Infrastructure-free Domain invariants | `COMPLETE` | aggregate RED `d808b3d...` observed in run #48; implementation `1388cdab...` + format `bca681ae...`; run #50 all required jobs green |
+| 3. Application ports + Create/Get orchestration | `COMPLETE` | RED tests `51b66bf...`, formatted RED `9abddf8...`; run #53 reached intended `E0432` unresolved Application API; implementation `56575af...`, format `e573db25...`, test-only Debug-bound fix `955678c...`; run #56 all required jobs green; rust-test log: 32/32 PASS including all four Application contract tests |
+| 4. Durable local filesystem adapter | `IN_PROGRESS` | Step 1-3 next: add happy-path + failure-point RED tests only, then observe failure before implementation |
 | 5. PostgreSQL schema + atomic repository | `NOT_STARTED` | — |
 | 6. Unknown-commit recovery + reconciliation | `NOT_STARTED` | — |
 | 7. Real filesystem + PostgreSQL vertical slice | `NOT_STARTED` | — |
@@ -60,22 +60,28 @@ Always fetch current branch/PR/CI state from GitHub before acting; do not assume
 
 ### Task 1 evidence
 
-- PR #4 baseline commit `9a5ec3806e8430d910555b6919af2c13d60d096f` passed CI run #30.
-- RED test commit `1c860d8277323fee5b24fcb7a12680de1e1a5bd0`: CI run #31 failed in `rust-test` because all four expected `ARCH_FORBIDDEN_*` findings were not yet implemented; other existing gates stayed green.
-- Generic architecture boundary implementation commit `03e99028473dff4915b5f2568d74777625fb203b`; rustfmt-only follow-up `756ab244d9894c2e28c55dfeec61537d585a17ae`; run #33 closed the RED→GREEN cycle.
-- Workspace/crate scaffold commit `2fd311c9e2b13ee75e8ba10cf14f8360591f8d81` added four capability crates and selected dependency baseline.
-- Cargo.lock was generated on a GitHub-hosted runner and committed as `dc392c9bd16d67504103119326addcebfb860167`; the temporary write-enabled helper workflow was removed immediately in `1006fe5525e124f1197a47bdb5da992ffdd4bb33`.
-- Docker workspace regression was root-caused to missing `COPY crates ./crates` and fixed in `16936b35fe3523a5fc251f2780d5f8dff35f1ced`.
-- Security gate root cause was limited to permissive `Zlib` not yet allow-listed and internal path dependencies lacking explicit versions. `Zlib` was independently confirmed OSI-approved/permissive; minimal policy fix commit: `13b6d01dc90b275358c624c649d76ba22472aee3`.
-- Final Task 1 CI run #42 (`35054390348`) passed `policy`, `rust-static`, `rust-test`, `security`, `portability-macos`, `container-build`, and `required-check`.
+- Baseline `9a5ec380...` run #30 green.
+- RED `1c860d82...` run #31 failed on the four new boundary assertions as intended.
+- Generic enforcement `03e99028...` / format `756ab244...`; run #33 GREEN.
+- Workspace scaffold `2fd311c9...`; Cargo.lock `dc392c9b...`; helper workflow removed `1006fe55...`.
+- Docker workspace fix `16936b35...`; Zlib/internal path dependency policy fix `13b6d01d...`.
+- Final run #42 (`35054390348`) all required jobs green.
 
 ### Task 2 evidence
 
-- Domain value objects / typed IDs are implemented in `document-domain` without infrastructure dependencies.
-- Initial aggregate invariant RED commit: `d808b3d40f8046cf5cfd219dc29bbb81bc133e9d`.
-- CI run #48 (`35055568168`) observed the intended RED state: `rust-test` and `rust-static` failed while policy/security/container/portability remained green.
-- Minimal aggregate implementation commit: `1388cdab3c39f9d6b742ad1a1c4a93e4ee847b86`; rustfmt-only follow-up: `bca681aebd5b32067a4c56c95d7535521a3ba9af`.
-- CI run #50 (`35055948809`) passed `policy`, `rust-static`, `rust-test`, `security`, `portability-macos`, `container-build`, and `required-check`.
+- Domain value objects / typed IDs implemented without infrastructure dependencies.
+- Aggregate RED `d808b3d40f8046cf5cfd219dc29bbb81bc133e9d`; run #48 observed expected rust-test/rust-static failures.
+- Minimal implementation `1388cdab3c39f9d6b742ad1a1c4a93e4ee847b86`; format `bca681aebd5b32067a4c56c95d7535521a3ba9af`.
+- Run #50 (`35055948809`) all required jobs green.
+
+### Task 3 evidence
+
+- Contract RED `51b66bf43104fe32503a3a094719f6708a2b3f8c`; first run #52 exposed formatting only.
+- Test-only format `9abddf8d9daac31f98f82d757aea89964a14d629`; run #53 (`35057210781`) passed fmt and then failed with `E0432 unresolved imports` for the missing approved Application API — intended RED.
+- Minimal Application implementation `56575af2120c5ee86dfe2440fed15034d56c4947`; format-only `e573db25b66e742ea74995491411a6acc0717da1`.
+- Test-only `ContentReader: Debug` bound correction `955678c0c262327ab0e57e5dba39ca34a94d0f40`.
+- CI run #56 (`35057830945`) passed policy, rust-static, rust-test, security, portability-macos, container-build, and required-check.
+- rust-test evidence: 32 tests run, 32 passed; Application contract tests all PASS: storage-before-repository ordering, ambiguous-commit file retention/error mapping, authoritative not-found mapping, missing referenced binary → integrity violation.
 
 ## Current blocker / gate
 
@@ -83,10 +89,10 @@ None.
 
 ## Next exact action
 
-1. Task 3 / Step 1-2: add `document-application` contract tests only for the approved ports and orchestration semantics.
-2. Verify RED in PR CI because `DocumentService` / Application port types are not implemented yet.
-3. Implement minimal Application ports, event records, CreateDocument, GetDocument, and primary-file integrity mapping.
-4. Verify GREEN with application tests + architecture + clippy evidence.
+1. Task 4 / Steps 1-2: add filesystem happy-path and injected failure-point tests only.
+2. Observe RED before creating `FileSystemStorage` implementation.
+3. Implement staging write/hash/count, file sync, same-filesystem rename, destination-directory durability, readback, and enumeration minimally to satisfy tests.
+4. Verify adapter tests + clippy + architecture + full PR CI.
 
 ## Session handoff maintenance rule
 
