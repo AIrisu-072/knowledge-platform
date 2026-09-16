@@ -1,18 +1,13 @@
 use std::io::Cursor;
 
-use document_application::{
-    FileStorage, StorageError, StorageObjectKind, StoreFileRequest,
-};
+use document_application::{FileStorage, StorageError, StorageObjectKind, StoreFileRequest};
 use document_domain::{FileId, MediaType};
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
-use crate::{
-    ops::FsFailurePoint,
-    FileSystemStorage,
-};
+use crate::{FileSystemStorage, ops::FsFailurePoint};
 
 const CONTENT: &[u8] = b"authoritative-content";
 
@@ -81,7 +76,11 @@ async fn injected_failure_points_surface_precise_errors_without_false_success() 
         (FsFailurePoint::Write, StorageError::WriteFailed, false),
         (FsFailurePoint::SyncFile, StorageError::SyncFailed, false),
         (FsFailurePoint::Rename, StorageError::FinalizeFailed, false),
-        (FsFailurePoint::SyncDirectory, StorageError::SyncFailed, true),
+        (
+            FsFailurePoint::SyncDirectory,
+            StorageError::SyncFailed,
+            true,
+        ),
     ];
 
     for (point, expected, final_may_exist) in cases {
