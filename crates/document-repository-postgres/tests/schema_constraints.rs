@@ -1,9 +1,9 @@
-use document_repository_postgres::{migrate, SYSTEM_ROOT_FOLDER_ID};
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use document_repository_postgres::{SYSTEM_ROOT_FOLDER_ID, migrate};
+use sqlx::{PgPool, postgres::PgPoolOptions};
 use testcontainers::{
+    GenericImage, ImageExt,
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
-    GenericImage, ImageExt,
 };
 use uuid::Uuid;
 
@@ -35,14 +35,16 @@ async fn migration_seeds_root_and_enforces_authoritative_constraints() {
 
     migrate(&pool).await.expect("migration should succeed");
 
-    let root_exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM folders WHERE folder_id = $1)",
-    )
-    .bind(SYSTEM_ROOT_FOLDER_ID)
-    .fetch_one(&pool)
-    .await
-    .expect("system root folder query should succeed");
-    assert!(root_exists, "migration must seed the fixed system root folder");
+    let root_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM folders WHERE folder_id = $1)")
+            .bind(SYSTEM_ROOT_FOLDER_ID)
+            .fetch_one(&pool)
+            .await
+            .expect("system root folder query should succeed");
+    assert!(
+        root_exists,
+        "migration must seed the fixed system root folder"
+    );
 
     assert_rejected(
         &pool,
@@ -118,12 +120,7 @@ async fn migration_seeds_root_and_enforces_authoritative_constraints() {
     assert_rejected(
         &pool,
         "duplicate storage locator",
-        file_insert(
-            id(41),
-            vec![1_u8; 32],
-            1,
-            "objects/unique-locator",
-        ),
+        file_insert(id(41), vec![1_u8; 32], 1, "objects/unique-locator"),
     )
     .await;
 
