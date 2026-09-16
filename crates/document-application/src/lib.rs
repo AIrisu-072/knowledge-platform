@@ -11,8 +11,8 @@ mod service;
 pub use command::{CreateDocumentCommand, CreateDocumentResult};
 pub use error::{ApplicationError, RepositoryError, StorageError};
 pub use events::{
-    AuditEventRecord, DomainEventRecord, AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_VERSION_CREATED,
-    DOCUMENT_CREATED, DOCUMENT_VERSION_CREATED,
+    AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_VERSION_CREATED, AuditEventRecord, DOCUMENT_CREATED,
+    DOCUMENT_VERSION_CREATED, DomainEventRecord,
 };
 pub use ports::{
     AuthoritativeDocument, Clock, ContentReader, CreateInitialDocumentRecord, DocumentRepository,

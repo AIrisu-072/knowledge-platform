@@ -7,10 +7,10 @@ use document_domain::{
 use serde_json::json;
 
 use crate::{
-    ApplicationError, AuditEventRecord, AuthoritativeDocument, Clock, ContentReader,
-    CreateDocumentCommand, CreateDocumentResult, CreateInitialDocumentRecord, DocumentRepository,
-    DomainEventRecord, FileStorage, IdGenerator, StoreFileRequest, AUDIT_DOCUMENT_CREATED,
-    AUDIT_DOCUMENT_VERSION_CREATED, DOCUMENT_CREATED, DOCUMENT_VERSION_CREATED,
+    AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_VERSION_CREATED, ApplicationError, AuditEventRecord,
+    AuthoritativeDocument, Clock, ContentReader, CreateDocumentCommand, CreateDocumentResult,
+    CreateInitialDocumentRecord, DOCUMENT_CREATED, DOCUMENT_VERSION_CREATED, DocumentRepository,
+    DomainEventRecord, FileStorage, IdGenerator, StoreFileRequest,
 };
 
 pub struct DocumentService<I, C, F, R> {

@@ -1,6 +1,4 @@
-use document_domain::{
-    AuditEventId, DocumentId, DocumentVersionId, EventId, PrincipalRef,
-};
+use document_domain::{AuditEventId, DocumentId, DocumentVersionId, EventId, PrincipalRef};
 use serde_json::Value;
 use time::OffsetDateTime;
 
