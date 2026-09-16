@@ -51,6 +51,19 @@ impl FileSystemStorage {
         format!("objects/{}/{}", &simple[..2], uuid)
     }
 
+    fn final_durability_directories(&self, file_id: FileId) -> [PathBuf; 3] {
+        let uuid = file_id.as_uuid();
+        let simple = uuid.simple().to_string();
+        let objects = self.root.join("objects");
+        let prefix = objects.join(&simple[..2]);
+        [prefix, objects, self.root.clone()]
+    }
+
+    #[cfg(test)]
+    pub(crate) fn final_durability_directories_for_test(&self, file_id: FileId) -> Vec<PathBuf> {
+        self.final_durability_directories(file_id).to_vec()
+    }
+
     fn absolute_path(&self, relative_key: &str) -> PathBuf {
         self.root.join(relative_key)
     }
@@ -238,10 +251,9 @@ impl FileStorage for FileSystemStorage {
             .map_err(map_finalize_error)?;
 
         self.ops.check(FsFailurePoint::SyncDirectory)?;
-        let final_parent = final_path
-            .parent()
-            .ok_or_else(|| StorageError::Internal("final path has no parent".to_owned()))?;
-        sync_directory(final_parent)?;
+        for directory in self.final_durability_directories(file_id) {
+            sync_directory(&directory)?;
+        }
 
         let digest: [u8; 32] = hasher.finalize().into();
         let content_hash = ContentHash::from_slice(&digest)
