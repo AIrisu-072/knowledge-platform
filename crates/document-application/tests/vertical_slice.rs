@@ -230,20 +230,20 @@ async fn missing_physical_file_preserves_authoritative_state_and_surfaces_integr
     };
     assert_eq!(error, ApplicationError::IntegrityViolation);
 
-    let documents: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM documents WHERE document_id = $1")
-        .bind(created.document_id().as_uuid())
-        .fetch_one(&pool)
-        .await
-        .expect("document count query should succeed");
+    let documents: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM documents WHERE document_id = $1")
+            .bind(created.document_id().as_uuid())
+            .fetch_one(&pool)
+            .await
+            .expect("document count query should succeed");
     assert_eq!(documents, 1);
 
-    let versions: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM document_versions WHERE document_version_id = $1",
-    )
-    .bind(created.document_version_id().as_uuid())
-    .fetch_one(&pool)
-    .await
-    .expect("document version count query should succeed");
+    let versions: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM document_versions WHERE document_version_id = $1")
+            .bind(created.document_version_id().as_uuid())
+            .fetch_one(&pool)
+            .await
+            .expect("document version count query should succeed");
     assert_eq!(versions, 1);
 
     let file_objects: i64 =
