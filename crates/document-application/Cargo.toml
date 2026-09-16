@@ -6,7 +6,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-document-domain = { path = "../document-domain" }
+document-domain = { version = "0.0.0", path = "../document-domain" }
 tokio.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

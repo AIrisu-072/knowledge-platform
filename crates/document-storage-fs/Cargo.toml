@@ -6,8 +6,8 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-document-domain = { path = "../document-domain" }
-document-application = { path = "../document-application" }
+document-domain = { version = "0.0.0", path = "../document-domain" }
+document-application = { version = "0.0.0", path = "../document-application" }
 tokio.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
