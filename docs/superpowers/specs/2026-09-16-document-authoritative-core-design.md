@@ -166,7 +166,7 @@ Document
 ├─ document_id
 ├─ folder_id
 ├─ current_version_id = None
-├─ revision = initial revision
+├─ revision = 0
 └─ metadata
 
 DocumentVersion #1
@@ -311,12 +311,12 @@ The first migration contains the minimum authoritative structures needed by this
 
 ```text
 folders
-Documents
-DocumentVersions
-FileObjects
-VersionFiles
-Domain Outbox
-Audit Outbox
+documents
+document_versions
+file_objects
+version_files
+outbox_events
+audit_outbox_events
 ```
 
 Physical naming should follow repository naming conventions; the logical schema below is normative.
@@ -325,16 +325,17 @@ Physical naming should follow repository naming conventions; the logical schema 
 
 Folder management is not implemented yet, but Document ownership already requires a folder reference. A minimal folder table and a system root folder are therefore permitted.
 
-Minimum logical fields:
+Minimum logical fields remain aligned with the existing logical model:
 
 ```text
-folder_id
-parent_folder_id
-name
-status/administrative fields only if required by existing SSOT
+folder_id UUID PK
+parent_folder_id UUID NULL
+name TEXT NOT NULL
+status               # active / archived family per existing SSOT
+revision BIGINT NOT NULL
 ```
 
-`CreateDocument` accepts an existing `FolderId`.
+No new Folder lifecycle semantics are introduced here. `CreateDocument` accepts an existing `FolderId`.
 
 ### 8.2 `documents`
 
@@ -347,7 +348,14 @@ metadata JSONB NOT NULL
 created_at TIMESTAMPTZ NOT NULL
 ```
 
-`current_version_id` is `NULL` in this capability.
+For Capability 1:
+
+```text
+revision = 0
+current_version_id = NULL
+```
+
+The physical schema must remain forward-compatible with later enforcement that a non-null current version belongs to the same Document and is `PUBLISHED`. Capability 1 does not set `current_version_id` and must not introduce a shortcut that treats a `WORKING` version as current.
 
 ### 8.3 `document_versions`
 
@@ -371,15 +379,31 @@ created_at TIMESTAMPTZ NOT NULL
 UNIQUE(document_id, version_no)
 ```
 
+DB constraints must preserve existing lifecycle consistency at minimum:
+
+```text
+PUBLISHED  => published_at IS NOT NULL
+WITHDRAWN  => withdrawn_at IS NOT NULL
+```
+
+Capability 1 only inserts `WORKING`, but it must not create a schema that permits later persisted states to violate the existing invariant contract.
+
 ### 8.4 `file_objects`
 
 ```text
 file_id UUID PK
-content_hash BYTEA NOT NULL      # SHA-256, 32 bytes
+content_hash BYTEA NOT NULL      # SHA-256, exactly 32 bytes
 media_type TEXT NOT NULL
-size_bytes BIGINT NOT NULL
+size_bytes BIGINT NOT NULL       # >= 0
 storage_locator TEXT UNIQUE NOT NULL
 created_at TIMESTAMPTZ NOT NULL
+```
+
+DB constraints include at minimum:
+
+```text
+octet_length(content_hash) = 32
+size_bytes >= 0
 ```
 
 `content_hash` is integrity/provenance data in v0 and is **not** a deduplication key. No `UNIQUE(content_hash)` constraint is added.
@@ -395,7 +419,9 @@ original_filename TEXT NOT NULL
 PRIMARY KEY(document_version_id, file_id)
 ```
 
-This capability creates only `PRIMARY`.
+The schema must enforce at most one `PRIMARY` file per `DocumentVersion`, e.g. through an equivalent partial unique constraint/index on `document_version_id WHERE role = 'PRIMARY'`.
+
+This capability creates exactly one `PRIMARY` and no attachments.
 
 ## 9. Identifier policy
 
@@ -515,6 +541,8 @@ A successful authoritative business commit implies required Domain Outbox and ma
 
 A rolled-back business operation implies none of those rows exist.
 
+Outbox/Audit **insertion** is part of Capability 1. Delivery, retry, consumer offsets, dead-letter handling, and worker scheduling remain later capabilities.
+
 ## 12. CreateDocument application flow
 
 ```text
@@ -633,7 +661,7 @@ Automatic periodic scheduling and destructive cleanup policy are deferred to an 
 The capability uses the existing repository selection policy and freezes the following technology family:
 
 ```text
-PostgreSQL 18.x
+PostgreSQL major 18
 SQLx 0.9.x
 Tokio 1.x
 serde / serde_json
@@ -644,13 +672,15 @@ time 0.3.x
 std / tokio filesystem APIs
 ```
 
-Exact patch versions are lockfile-controlled and may receive compatible security/bugfix updates without reopening architecture, provided the capability contract and CI evidence remain valid.
+The initial PostgreSQL test/runtime baseline is an exact 18.x patch image (initial research baseline: `18.6`). Compatible PostgreSQL 18.x security/bugfix patch bumps do not reopen the architecture decision when the full capability evidence remains green.
+
+Rust patch versions are lockfile-controlled and may receive compatible security/bugfix updates without reopening architecture, provided the capability contract and CI evidence remain valid.
 
 ### 17.2 Test dependencies
 
 ```text
-testcontainers
-tempfile
+testcontainers 0.28.x
+tempfile 3.x
 ```
 
 Integration tests use real PostgreSQL 18.x, not SQLite as a behavioral substitute.
@@ -728,10 +758,11 @@ Completion is evidence-based against invariants, not based on test count.
 
 Verify at minimum:
 
+- initial Document revision is `0`;
 - initial version number is `1`;
 - initial lifecycle is `WORKING`;
 - `current_version_id` remains `None`;
-- one primary VersionFile is produced;
+- exactly one primary VersionFile is produced;
 - invalid version numbers cannot be constructed;
 - required title/invariant validation;
 - invalid content-hash length rejected;
@@ -773,7 +804,12 @@ Verify DB-enforced invariants including:
 - `(document_id, version_no)` uniqueness;
 - Version→Document FK;
 - VersionFile→Version/File FK;
+- at-most-one PRIMARY file per version;
 - lifecycle CHECK/enum constraints;
+- `PUBLISHED => published_at IS NOT NULL`;
+- `WITHDRAWN => withdrawn_at IS NOT NULL`;
+- SHA-256 byte-length constraint;
+- non-negative file-size constraint;
 - required NOT NULL constraints;
 - unique storage locator;
 - initial current-version behavior.
@@ -995,6 +1031,7 @@ These decisions are intentionally left to later capabilities and must not be acc
 - T4 current-version behavior when the current version is withdrawn (restore prior published vs `NULL`);
 - concurrent creation of Version #2+;
 - publication OCC/locking details;
+- final physical enforcement for non-null `current_version_id` belonging to the same Document and referencing a `PUBLISHED` version;
 - ReadState implementation;
 - AccessPolicy/AD integration;
 - API idempotency key policy;
