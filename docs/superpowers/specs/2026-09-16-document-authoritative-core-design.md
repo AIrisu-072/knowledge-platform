@@ -1,6 +1,6 @@
 # Document Platform Authoritative Core — Design v0
 
-- Status: **DRAFT — approved sections consolidated; awaiting written-spec review**
+- Status: **APPROVED — design freeze active**
 - Date: 2026-09-16
 - Capability: `Document Authoritative Core — Create/Get v0`
 - Repository baseline: `main@8ad4aa074a42308c2767bb0e0b9451dbb879c4ca`
