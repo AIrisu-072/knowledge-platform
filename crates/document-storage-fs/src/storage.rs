@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use document_application::{
-    ContentReader, FileStorage, StorageError, StorageObjectInfo, StorageObjectKind, StoreFileRequest,
-    StoredFile,
+    ContentReader, FileStorage, StorageError, StorageObjectInfo, StorageObjectKind,
+    StoreFileRequest, StoredFile,
 };
 use document_domain::{ContentHash, FileId, FileSize, StorageKey};
 use sha2::{Digest, Sha256};
@@ -96,9 +96,7 @@ impl FileSystemStorage {
 
             let name = entry.file_name().to_string_lossy().into_owned();
             let relative_key = format!("staging/{name}");
-            let file_id = name
-                .strip_suffix(".part")
-                .and_then(parse_file_id);
+            let file_id = name.strip_suffix(".part").and_then(parse_file_id);
             let kind = if file_id.is_some() {
                 StorageObjectKind::Staging
             } else {
@@ -250,8 +248,8 @@ impl FileStorage for FileSystemStorage {
             .map_err(|error| StorageError::Internal(error.to_string()))?;
         let size_bytes = i64::try_from(size_bytes)
             .map_err(|_| StorageError::Internal("file size exceeds i64".to_owned()))?;
-        let size_bytes = FileSize::new(size_bytes)
-            .map_err(|error| StorageError::Internal(error.to_string()))?;
+        let size_bytes =
+            FileSize::new(size_bytes).map_err(|error| StorageError::Internal(error.to_string()))?;
         let storage_key = StorageKey::new(final_relative_key)
             .map_err(|error| StorageError::Internal(error.to_string()))?;
 
