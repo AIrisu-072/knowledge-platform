@@ -25,11 +25,7 @@ pub enum RepositoryError {
     #[error("repository unavailable")]
     Unavailable,
     #[error("commit outcome is unknown")]
-    CommitOutcomeUnknown {
-        document_id: DocumentId,
-        document_version_id: DocumentVersionId,
-        file_id: FileId,
-    },
+    CommitOutcomeUnknown,
     #[error("authoritative integrity violation")]
     IntegrityViolation,
     #[error("repository internal failure: {0}")]
@@ -57,7 +53,11 @@ pub enum ApplicationError {
     #[error("authoritative integrity violation")]
     IntegrityViolation,
     #[error("commit outcome is unknown")]
-    CommitOutcomeUnknown,
+    CommitOutcomeUnknown {
+        document_id: DocumentId,
+        document_version_id: DocumentVersionId,
+        file_id: FileId,
+    },
     #[error("internal failure: {0}")]
     Internal(String),
 }
