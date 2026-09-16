@@ -29,11 +29,15 @@ struct EmptyStorage;
 
 impl FileStorage for EmptyStorage {
     async fn put_immutable(&self, _request: StoreFileRequest) -> Result<StoredFile, StorageError> {
-        Err(StorageError::Internal("not used by reconciliation test".into()))
+        Err(StorageError::Internal(
+            "not used by reconciliation test".into(),
+        ))
     }
 
     async fn open(&self, _key: &StorageKey) -> Result<ContentReader, StorageError> {
-        Err(StorageError::Internal("not used by reconciliation test".into()))
+        Err(StorageError::Internal(
+            "not used by reconciliation test".into(),
+        ))
     }
 
     async fn list_objects(&self) -> Result<Vec<StorageObjectInfo>, StorageError> {
