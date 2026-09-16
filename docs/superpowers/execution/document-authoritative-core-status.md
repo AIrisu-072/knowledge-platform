@@ -44,8 +44,8 @@ Always fetch current branch/PR/CI state from GitHub before acting; do not assume
 | 2. Infrastructure-free Domain invariants | `COMPLETE` | aggregate RED `d808b3d...` observed in run #48; implementation `1388cdab...` + format `bca681ae...`; run #50 all required jobs green |
 | 3. Application ports + Create/Get orchestration | `COMPLETE` | RED tests `51b66bf...`, formatted RED `9abddf8...`; run #53 reached intended `E0432`; implementation `56575af...` + follow-ups; run #56 all required jobs green; 32/32 tests PASS |
 | 4. Durable local filesystem adapter | `COMPLETE` | RED tests `a4f5ea31...`; test format `be285371...`; Cargo-generated lock refresh `6e900510...`, helper removed `ec724b9b...`; clean RED run #62 failed on missing `FileSystemStorage` / `ops::FsFailurePoint`; implementation `6ccf4f5b...`, format `4bf05484...`, Clippy-only fix `5a2af7c3...`; run #65 all required jobs green; 36/36 tests PASS including all four storage tests |
-| 5. PostgreSQL schema + atomic repository | `IN_PROGRESS` | Step 1-3 next: add migration + real-PostgreSQL constraint RED tests before repository implementation |
-| 6. Unknown-commit recovery + reconciliation | `NOT_STARTED` | — |
+| 5. PostgreSQL schema + atomic repository | `COMPLETE` | migration/constraint RED established and then GREEN on PostgreSQL 18.6 by run #76; atomic repository clean RED run #83 failed only on missing `PostgresDocumentRepository` / `map_commit_error`; implementation `48eedda5...` + rustfmt `29c5c328...`; clean head `cd8523b2...`; run #87 all required jobs green; 39/39 tests PASS including real-Postgres schema constraints and atomic rollback/round-trip contract |
+| 6. Unknown-commit recovery + reconciliation | `IN_PROGRESS` | Task 6 RED classification + ambiguous-commit recovery tests next |
 | 7. Real filesystem + PostgreSQL vertical slice | `NOT_STARTED` | — |
 | 8. SQLx metadata + CI + final evidence | `NOT_STARTED` | — |
 
@@ -94,16 +94,24 @@ Always fetch current branch/PR/CI state from GitHub before acting; do not assume
 - CI run #65 (`35060162912`) passed policy, rust-static, rust-test, security, portability-macos, container-build, and required-check.
 - rust-test evidence: 36 tests run, 36 passed, including all four `document-storage-fs` tests: immutable store/hash/readback, FileId-only identity, precise failure injection, and staging/final/unknown enumeration without deletion.
 
+### Task 5 evidence
+
+- Real-PostgreSQL schema/constraint RED was established before migration implementation; migration then passed PostgreSQL 18.6 constraint coverage in run #76.
+- Atomic repository RED was refined until run #83 failed only because `PostgresDocumentRepository` and `map_commit_error` were absent.
+- Minimal atomic repository implementation: `48eedda58aa7ec13285b90876393666833e67cde`; rustfmt-only follow-up `29c5c328...`; temporary helper removed with clean branch head `cd8523b2331fb78d77a58d02dcb11f2567dc1702`.
+- CI run #87 (`35063300538`) passed policy, rust-static, rust-test, security, portability-macos, container-build, and required-check.
+- rust-test evidence: 39 tests run, 39 passed, including `schema_constraints::migration_seeds_root_and_enforces_authoritative_constraints` and `repository_contract::repository_persists_reads_and_rolls_back_authoritative_state_atomically` against PostgreSQL 18.6.
+
 ## Current blocker / gate
 
 None.
 
 ## Next exact action
 
-1. Task 5 / Step 1: add the PostgreSQL migration with the approved tables, constraints, partial primary-file index, and fixed system root folder.
-2. Task 5 / Step 2: add real PostgreSQL constraint tests using `testcontainers` and `postgres:18.6-bookworm`.
-3. Observe RED before implementing `PostgresDocumentRepository` write/read operations.
-4. Implement the minimal atomic repository only after RED is verified.
+1. Task 6 / Step 1: add RED reconciliation classification tests for healthy/stale/orphan/integrity/grace-not-elapsed behavior.
+2. Verify the RED fails for missing reconciliation API, not formatting or unrelated test defects.
+3. Implement only the pure classification required to make that subcycle GREEN.
+4. Then add the separate `CommitOutcomeUnknown` recovery/query RED tests before service changes.
 
 ## Session handoff maintenance rule
 
