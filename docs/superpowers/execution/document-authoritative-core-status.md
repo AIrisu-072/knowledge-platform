@@ -46,8 +46,8 @@ Always fetch current branch/PR/CI state from GitHub before acting; do not assume
 | 4. Durable local filesystem adapter | `COMPLETE` | RED tests `a4f5ea31...`; test format `be285371...`; Cargo-generated lock refresh `6e900510...`, helper removed `ec724b9b...`; clean RED run #62 failed on missing `FileSystemStorage` / `ops::FsFailurePoint`; implementation `6ccf4f5b...`, format `4bf05484...`, Clippy-only fix `5a2af7c3...`; run #65 all required jobs green; 36/36 tests PASS including all four storage tests |
 | 5. PostgreSQL schema + atomic repository | `COMPLETE` | migration/constraint RED established and then GREEN on PostgreSQL 18.6 by run #76; atomic repository clean RED run #83 failed only on missing `PostgresDocumentRepository` / `map_commit_error`; implementation `48eedda5...` + rustfmt `29c5c328...`; clean head `cd8523b2...`; run #87 all required jobs green; 39/39 tests PASS including real-Postgres schema constraints and atomic rollback/round-trip contract |
 | 6. Unknown-commit recovery + reconciliation | `COMPLETE` | classification RED run #89; classification GREEN run #91 with 40/40 PASS; clean recovery RED run #93 failed only on missing `lookup_create_outcome` / `reconcile_storage`; final run #96 all required jobs green with 42/42 PASS |
-| 7. Real filesystem + PostgreSQL vertical slice | `IN_PROGRESS` | add dev-dependencies and RED/characterization real-adapter vertical test next |
-| 8. SQLx metadata + CI + final evidence | `NOT_STARTED` | — |
+| 7. Real filesystem + PostgreSQL vertical slice | `COMPLETE` | happy-path run #103 all required jobs green with 43/43 PASS; physical-file-loss run #105 all required jobs green with 44/44 PASS; existing production adapters required no changes |
+| 8. SQLx metadata + CI + final evidence | `IN_PROGRESS` | add pinned sqlx-cli, deterministic prepare/check tasks, committed metadata, CI gate, final evidence |
 
 ## Verification evidence
 
@@ -111,16 +111,26 @@ Always fetch current branch/PR/CI state from GitHub before acting; do not assume
 - Run #96 (`35066430997`) passed policy, rust-static, rust-test, security, portability-macos, container-build, and required-check.
 - rust-test evidence: 42 tests run, 42 passed, 0 skipped. New tests PASS for known-ID ambiguous-commit recovery, orphan classification only after grace, and conservative reconciliation classification. Existing real PostgreSQL and filesystem contracts remained GREEN.
 
+### Task 7 evidence
+
+- `document-application` gained test-only dependencies for the real adapters, PostgreSQL test container, temporary filesystem, and SQLx DB assertions. `sqlx` was required as a dev-dependency because the accepted test plan inspects PostgreSQL state directly; no production dependency direction changed.
+- Happy-path vertical test first landed as `4d811cf689e120b7085dd1b413a5a3e99a195552`; Cargo/rustfmt normalization was generated on a hosted runner and the helper was removed, producing clean head `1be87b13209714149e77ec7b96d61502d65ef5ad`.
+- Run #103 (`35067624028`) passed all required jobs with 43/43 tests. `real_filesystem_and_postgres_round_trip_authoritative_create_get_open` passed against `postgres:18.6-bookworm` and a real temporary filesystem, proving Create → Get → binary open plus FileObject/VersionFile/domain-outbox/audit-outbox persistence.
+- Physical-file-loss test landed and was formatted at `66445c5c5842f70f333987523ae68e587b3b0553`.
+- Run #105 (`35068355032`) passed policy, rust-static, rust-test, security, portability-macos, container-build, and required-check. rust-test reported 44 tests run, 44 passed, 0 skipped.
+- `missing_physical_file_preserves_authoritative_state_and_surfaces_integrity_violation` passed against real PostgreSQL 18.6 + real filesystem: authoritative Document/Version/FileObject/VersionFile and both outboxes remained present after deleting the finalized binary, while binary open returned `IntegrityViolation`.
+- No production adapter code was changed in Task 7; the existing implementation already satisfied both vertical contracts.
+
 ## Current blocker / gate
 
 None.
 
 ## Next exact action
 
-1. Task 7 / Step 1: add only `document-storage-fs`, `document-repository-postgres`, `testcontainers`, and `tempfile` as `document-application` dev-dependencies.
-2. Add the real PostgreSQL 18.6 + real filesystem happy-path vertical test for `CreateDocument → GetDocument → open_primary_file`.
-3. Observe whether the test is RED because adapter wiring is incomplete; if the already-implemented public adapters satisfy it immediately, record it as characterization evidence and do not invent production changes merely to force RED.
-4. Add the physical-file removal integrity-failure vertical test only after the happy path is established.
+1. Task 8 / Step 1: pin `cargo:sqlx-cli = 0.9.0` in `mise.toml` and include it in bootstrap/tool installation.
+2. Add deterministic `sqlx:prepare` and `sqlx:check` tasks using disposable `postgres:18.6-bookworm`, `pg_isready`, repository migrations, and fail-closed cleanup.
+3. Generate/inspect `.sqlx` metadata using the real SQLx CLI. Do not fabricate metadata if current runtime-query usage produces none; treat that as an implementation-plan/P7 gap requiring an evidence-based correction.
+4. Add the SQLx reproducibility gate to `rust-static`, then run the full hosted CI and update this status with exact evidence.
 
 ## Session handoff maintenance rule
 
