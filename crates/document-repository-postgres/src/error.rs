@@ -1,7 +1,13 @@
 use document_application::RepositoryError;
 
-pub(crate) fn map_statement_error(_error: sqlx::Error) -> RepositoryError {
-    RepositoryError::Internal("postgres operation failed".to_owned())
+pub(crate) fn map_statement_error(error: sqlx::Error) -> RepositoryError {
+    match error {
+        sqlx::Error::PoolClosed
+        | sqlx::Error::PoolTimedOut
+        | sqlx::Error::Io(_)
+        | sqlx::Error::WorkerCrashed => RepositoryError::Unavailable,
+        _ => RepositoryError::Internal("postgres operation failed".to_owned()),
+    }
 }
 
 pub(crate) fn map_commit_error(_error: sqlx::Error) -> RepositoryError {
