@@ -10,6 +10,32 @@ pub enum ReconciliationClassification {
     IntegrityViolation,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReconciliationFinding {
+    object: StorageObjectInfo,
+    classification: ReconciliationClassification,
+}
+
+impl ReconciliationFinding {
+    pub(crate) fn new(
+        object: StorageObjectInfo,
+        classification: ReconciliationClassification,
+    ) -> Self {
+        Self {
+            object,
+            classification,
+        }
+    }
+
+    pub const fn object(&self) -> &StorageObjectInfo {
+        &self.object
+    }
+
+    pub const fn classification(&self) -> ReconciliationClassification {
+        self.classification
+    }
+}
+
 pub fn classify(
     db_referenced: bool,
     object: Option<&StorageObjectInfo>,
