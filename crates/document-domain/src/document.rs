@@ -195,11 +195,8 @@ impl InitialDocument {
 
         let version_no = VersionNo::new(1)?;
         let file = FileObject::new(input.file_id, input.stored_file, input.created_at);
-        let version_file = VersionFile::primary(
-            input.version_id,
-            input.file_id,
-            input.original_filename,
-        );
+        let version_file =
+            VersionFile::primary(input.version_id, input.file_id, input.original_filename);
 
         let document = Document {
             document_id: input.document_id,
