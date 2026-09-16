@@ -579,7 +579,12 @@ name = "document-application"
 version = "0.0.0"
 dependencies = [
  "document-domain",
+ "document-repository-postgres",
+ "document-storage-fs",
  "serde_json",
+ "sqlx",
+ "tempfile",
+ "testcontainers",
  "thiserror",
  "time",
  "tokio",

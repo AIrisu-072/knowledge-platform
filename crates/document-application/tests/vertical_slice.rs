@@ -5,9 +5,7 @@ use document_application::{
     Clock, ContentReader, CreateDocumentCommand, DocumentService, IdGenerator,
 };
 use document_domain::{FolderId, LifecycleState, MediaType, Metadata, PrincipalRef};
-use document_repository_postgres::{
-    PostgresDocumentRepository, SYSTEM_ROOT_FOLDER_ID, migrate,
-};
+use document_repository_postgres::{PostgresDocumentRepository, SYSTEM_ROOT_FOLDER_ID, migrate};
 use document_storage_fs::FileSystemStorage;
 use sqlx::postgres::PgPoolOptions;
 use tempfile::TempDir;
@@ -22,8 +20,8 @@ use uuid::Uuid;
 
 const INPUT: &[u8] = b"vertical-slice-content";
 const INPUT_SHA256: [u8; 32] = [
-    184, 170, 32, 88, 29, 1, 5, 103, 152, 246, 85, 123, 33, 235, 91, 157, 18, 242, 5, 93,
-    204, 33, 121, 74, 47, 185, 175, 16, 171, 197, 248, 208,
+    184, 170, 32, 88, 29, 1, 5, 103, 152, 246, 85, 123, 33, 235, 91, 157, 18, 242, 5, 93, 204, 33,
+    121, 74, 47, 185, 175, 16, 171, 197, 248, 208,
 ];
 
 #[derive(Debug)]
@@ -109,7 +107,10 @@ async fn real_filesystem_and_postgres_round_trip_authoritative_create_get_open()
     );
     assert_eq!(authoritative.document().current_version_id(), None);
     assert_eq!(authoritative.document().revision(), 0);
-    assert_eq!(authoritative.file().content_hash().as_bytes(), &INPUT_SHA256);
+    assert_eq!(
+        authoritative.file().content_hash().as_bytes(),
+        &INPUT_SHA256
+    );
 
     let mut reader = service
         .open_primary_file(created.document_id())
@@ -122,11 +123,12 @@ async fn real_filesystem_and_postgres_round_trip_authoritative_create_get_open()
         .expect("finalized file should be readable");
     assert_eq!(read_back, INPUT);
 
-    let file_objects: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM file_objects WHERE file_id = $1")
-        .bind(created.file_id().as_uuid())
-        .fetch_one(&pool)
-        .await
-        .expect("file object count query should succeed");
+    let file_objects: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM file_objects WHERE file_id = $1")
+            .bind(created.file_id().as_uuid())
+            .fetch_one(&pool)
+            .await
+            .expect("file object count query should succeed");
     assert_eq!(file_objects, 1);
 
     let primary_version_files: i64 = sqlx::query_scalar(
