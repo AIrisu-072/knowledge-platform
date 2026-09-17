@@ -10,9 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     AuditEventRecord, DomainEventRecord, RepositoryError, StorageError,
-    command::{
-        PublishDocumentCommand, PublishDocumentResult, PublishOperationId,
-    },
+    command::{PublishDocumentCommand, PublishDocumentResult, PublishOperationId},
 };
 
 pub type ContentReader = Pin<Box<dyn AsyncRead + Send + Unpin>>;
@@ -394,9 +392,7 @@ impl PublishInitialVersionRecord {
         &self.audit_event
     }
 
-    pub fn into_parts(
-        self,
-    ) -> (PublishOperationRecord, DomainEventRecord, AuditEventRecord) {
+    pub fn into_parts(self) -> (PublishOperationRecord, DomainEventRecord, AuditEventRecord) {
         (self.operation, self.domain_event, self.audit_event)
     }
 }
