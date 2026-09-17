@@ -254,7 +254,6 @@ impl InitialDocument {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -269,8 +268,7 @@ mod tests {
         lifecycle_state: LifecycleState,
     ) -> (Document, DocumentVersion) {
         let document_id = DocumentId::from_uuid(Uuid::from_u128(document_raw));
-        let version_document_id =
-            DocumentId::from_uuid(Uuid::from_u128(version_document_raw));
+        let version_document_id = DocumentId::from_uuid(Uuid::from_u128(version_document_raw));
         let version_id = DocumentVersionId::from_uuid(Uuid::from_u128(version_raw));
         let created_at = OffsetDateTime::UNIX_EPOCH;
 
@@ -314,8 +312,7 @@ mod tests {
     #[test]
     fn initial_working_version_publishes_without_approval() {
         let published_at = OffsetDateTime::from_unix_timestamp(1_700_000_001).unwrap();
-        let (mut document, mut version) =
-            fixture(1, 1, 2, 0, None, LifecycleState::Working);
+        let (mut document, mut version) = fixture(1, 1, 2, 0, None, LifecycleState::Working);
 
         let transition = document
             .publish_initial_version(&mut version, published_at)
@@ -334,8 +331,7 @@ mod tests {
 
     #[test]
     fn publish_rejects_cross_document_target_without_mutation() {
-        let (mut document, mut version) =
-            fixture(1, 2, 3, 0, None, LifecycleState::Working);
+        let (mut document, mut version) = fixture(1, 2, 3, 0, None, LifecycleState::Working);
         let before_document = document.clone();
         let before_version = version.clone();
 
@@ -350,8 +346,7 @@ mod tests {
 
     #[test]
     fn publish_rejects_existing_current_version_without_mutation() {
-        let (mut document, mut version) =
-            fixture(1, 1, 2, 0, Some(99), LifecycleState::Working);
+        let (mut document, mut version) = fixture(1, 1, 2, 0, Some(99), LifecycleState::Working);
         let before_document = document.clone();
         let before_version = version.clone();
 
@@ -366,8 +361,7 @@ mod tests {
 
     #[test]
     fn publish_rejects_non_working_target_without_mutation() {
-        let (mut document, mut version) =
-            fixture(1, 1, 2, 0, None, LifecycleState::Published);
+        let (mut document, mut version) = fixture(1, 1, 2, 0, None, LifecycleState::Published);
         let before_document = document.clone();
         let before_version = version.clone();
 
@@ -382,8 +376,7 @@ mod tests {
 
     #[test]
     fn publish_rejects_revision_overflow_without_mutation() {
-        let (mut document, mut version) =
-            fixture(1, 1, 2, i64::MAX, None, LifecycleState::Working);
+        let (mut document, mut version) = fixture(1, 1, 2, i64::MAX, None, LifecycleState::Working);
         let before_document = document.clone();
         let before_version = version.clone();
 
