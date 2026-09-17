@@ -302,7 +302,7 @@ impl PublishOperationRecord {
     }
 
     pub fn matches_identity(&self, identity: &PublishCommandIdentity) -> bool {
-        self.identity == *identity
+        self.identity.eq(identity)
     }
 
     pub const fn identity(&self) -> &PublishCommandIdentity {
