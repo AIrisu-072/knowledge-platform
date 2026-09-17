@@ -48,13 +48,6 @@ Do not implement production code on `design/document-publish-v0`.
 
 ## End-of-session rule
 
-Before intentional session switch or context exhaustion, update the capability Execution Status with:
-
-- completed Design / Task / Step state;
-- exact verification and CI evidence;
-- branch, PR, and head SHA;
-- blockers or unresolved decisions;
-- the **next exact action**;
-- any implementation-visible Design deviation and its approval state.
+Before intentional session switch or context exhaustion, update the capability Execution Status with completed state, exact verification/CI evidence, branch/PR/head SHA, blockers, next exact action, and any approved Design amendment.
 
 Do not mark work complete without fresh verification evidence.
