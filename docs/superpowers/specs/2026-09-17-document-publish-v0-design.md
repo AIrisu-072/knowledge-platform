@@ -1,6 +1,6 @@
 # Document Publish v0 — Design
 
-- Status: **REVIEW — conversational design approved; written-spec review pending**
+- Status: **APPROVED — design freeze active**
 - Date: 2026-09-17
 - Capability: `Document Publish v0`
 - Repository baseline: `main@2ead1e21222c3b122704b6e0ce31f3f902b93659`
@@ -660,7 +660,7 @@ No capability-complete claim may be made from stale or non-exact-head CI evidenc
 
 ## 17. Design freeze / change control
 
-After written-spec approval, this Design becomes frozen for Publish v0.
+This Design is frozen for Publish v0 following the user's written-spec approval on 2026-09-17.
 
 Implementation-visible changes to any of the following require an explicit design amendment before they are implemented:
 
@@ -676,8 +676,8 @@ Implementation-visible changes to any of the following require an explicit desig
 
 Implementation details that preserve these contracts may be refined in the Implementation Plan without reopening the design.
 
-## 18. Written-spec review gate
+## 18. Written-spec approval
 
-The conversational design decisions represented here were approved by the user before this file was written.
+The user explicitly approved this written Design Spec on 2026-09-17.
 
-However, the written artifact itself must be reviewed before its status changes to `APPROVED — design freeze active` and before an Implementation Plan is created.
+Status is therefore `APPROVED — design freeze active`. The next allowed design-flow action is to create the Implementation Plan from this frozen Spec; product/runtime implementation remains blocked until the design/plan documentation gate is completed.
