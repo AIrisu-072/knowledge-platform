@@ -4,7 +4,7 @@
 
 **Goal:** Add the first safe, idempotent publication operation for `DocumentVersion #1`, transitioning an initial Document from `WORKING/current=None/revision=0` to `PUBLISHED/current=Version #1/revision=1` with atomic Domain/Audit outbox records and durable publish-operation recovery.
 
-**Architecture:** Preserve the existing `document-domain` → `document-application` ← infrastructure boundaries. Domain owns the initial publication invariant/transition; Application owns command validation, replay-before-preflight orchestration, event construction, and error translation; a new capability-specific `DocumentPublishRepository` port isolates Publish from the existing Create/Get repository interface; PostgreSQL owns the final OCC + short row-lock decision and atomically commits authoritative state, Domain Outbox, Audit Outbox, and the successful publish-operation result.
+**Architecture:** Preserve the existing `document-domain` → `document-application` ← infrastructure boundaries. Domain owns the initial publication invariant/transition; Application owns command validation, replay-before-preflight orchestration, event construction, and error translation; a capability-specific `DocumentPublishRepository` port isolates Publish from the existing Create/Get repository interface; PostgreSQL owns the final OCC + short row-lock decision and atomically commits authoritative state, Domain Outbox, Audit Outbox, and the successful publish-operation result.
 
 **Tech Stack:** Rust 1.98.1 / edition 2024, Tokio 1.x, PostgreSQL 18.6 (`postgres:18.6-bookworm`), SQLx 0.9.x, uuid 1.x UUIDv7, serde/serde_json, thiserror 2.x, time 0.3.x, tempfile 3.x, testcontainers 0.28.x.
 
@@ -29,45 +29,43 @@
 
 ## Execution prerequisite
 
-Do not start production implementation from the Design branch. After Design PR #5 is green and merged, create/reset implementation branch `feat/document-publish-v0` from the exact merged `main` head, then execute this plan in order.
+Do not start production implementation from the Design branch. After Design PR #5 is green and merged, create implementation branch `feat/document-publish-v0` from the exact merged `main` head, then execute this plan in order.
 
 ---
 
 ## File Structure
 
-The implementation is expected to touch or create these focused units:
-
 ```text
 crates/document-domain/src/
-├─ document.rs                 # initial Publish invariant/transition + initial-published restoration
-├─ error.rs                    # Publish-specific Domain invariant errors
-└─ lib.rs                      # exports + Domain tests
+├─ document.rs
+├─ error.rs
+└─ lib.rs
 
 crates/document-application/src/
-├─ command.rs                  # PublishOperationId / PublishDocumentCommand / PublishDocumentResult
-├─ error.rs                    # Publish Application/Repository errors + storage unreadable category
-├─ events.rs                   # Publish Domain/Audit event constants and records
-├─ ports.rs                    # Publish records/candidate + DocumentPublishRepository
-├─ service.rs                  # replay → candidate → Domain validation → storage preflight → repository
-└─ lib.rs                      # public exports
+├─ command.rs
+├─ error.rs
+├─ events.rs
+├─ ports.rs
+├─ service.rs
+└─ lib.rs
 
 crates/document-application/tests/
 ├─ publish_document_contract.rs
 └─ publish_vertical_slice.rs
 
 crates/document-storage-fs/src/
-└─ error.rs                    # object-level unreadable vs dependency-unavailable mapping
+└─ error.rs
 
 crates/document-repository-postgres/migrations/
 └─ 0002_document_publish_v0.sql
 
 crates/document-repository-postgres/src/
 ├─ lib.rs
-├─ repository.rs               # existing Create/Get + delegates/implements Publish port
-├─ publish.rs                  # Publish-specific SQL reads + atomic transaction
-├─ publish_rows.rs             # SQLx rows for operation/candidate/locked state
-├─ mapping.rs                  # Working + initial-Published authoritative reconstruction
-└─ error.rs                    # existing statement/commit mapping retained
+├─ repository.rs
+├─ publish.rs
+├─ publish_rows.rs
+├─ mapping.rs
+└─ error.rs
 
 crates/document-repository-postgres/tests/
 ├─ publish_schema.rs
@@ -92,11 +90,11 @@ Do not refactor unrelated Create/Get/reconciliation behavior while adding Publis
   - `PublishTransition`
   - `Document::publish_initial_version(&mut self, target: &mut DocumentVersion, published_at: OffsetDateTime) -> Result<PublishTransition, DomainError>`
   - `InitialDocument::restore_published(input: CreateInitialDocument, published_at: OffsetDateTime) -> Result<InitialDocument, DomainError>`
-  - Publish-specific `DomainError` variants used by Application/PostgreSQL mapping.
+  - Publish-specific Domain errors.
 
-- [ ] **Step 1: Write failing Domain tests for the successful transition**
+- [ ] **Step 1: Write failing successful-transition Domain tests**
 
-Add tests in `crates/document-domain/src/lib.rs` that start from `InitialDocument::create(...)`, split it with `into_parts()`, call `publish_initial_version`, and assert:
+Start from `InitialDocument::create`, split with `into_parts()`, publish, and assert:
 
 ```rust
 let transition = document
@@ -108,13 +106,12 @@ assert_eq!(version.published_at(), Some(published_at));
 assert_eq!(document.current_version_id(), Some(version.document_version_id()));
 assert_eq!(document.revision(), 1);
 assert_eq!(transition.resulting_document_revision(), 1);
+assert_eq!(version.approved_at(), None);
 ```
 
-Also assert `approved_at` is not required and remains unchanged.
+- [ ] **Step 2: Write failing invalid-transition Domain tests**
 
-- [ ] **Step 2: Write failing Domain tests for invalid transitions**
-
-Cover all frozen invariants with exact expected errors:
+Cover exact errors:
 
 ```rust
 DomainError::VersionDocumentMismatch
@@ -123,21 +120,19 @@ DomainError::VersionNotWorking
 DomainError::RevisionOverflow
 ```
 
-Construct cross-Document and non-WORKING cases inside the Domain test module where private-field fixtures can be built when necessary. Verify `revision` and lifecycle fields are unchanged after each rejected call.
+Build the required private-field fixtures inside the existing `document-domain` unit-test module. For every rejected transition, assert the Document revision/current pointer and target lifecycle/published timestamp are unchanged.
 
 - [ ] **Step 3: Run Domain tests and verify RED**
-
-Run:
 
 ```bash
 cargo test -p document-domain
 ```
 
-Expected: FAIL because Publish transition/errors are not implemented.
+Expected: FAIL because Publish transition/errors are absent.
 
 - [ ] **Step 4: Implement `PublishTransition` and Domain errors**
 
-Add errors equivalent to:
+Add:
 
 ```rust
 #[error("document version belongs to another document")]
@@ -165,9 +160,7 @@ impl PublishTransition {
 }
 ```
 
-- [ ] **Step 5: Implement the minimal initial-Publish transition**
-
-Implement in this order so failures do not partially mutate Domain state:
+- [ ] **Step 5: Implement the minimal transition with no partial mutation on failure**
 
 ```rust
 pub fn publish_initial_version(
@@ -201,9 +194,7 @@ pub fn publish_initial_version(
 }
 ```
 
-- [ ] **Step 6: Add restoration for an initial published aggregate**
-
-Implement:
+- [ ] **Step 6: Add narrow restoration for initial PUBLISHED state**
 
 ```rust
 pub fn restore_published(
@@ -218,11 +209,9 @@ pub fn restore_published(
 }
 ```
 
-This is intentionally narrow: it restores only the two states supported after this capability—initial `WORKING` and initial `PUBLISHED`. Do not add a generic arbitrary lifecycle rehydration API.
+Do not add a generic arbitrary lifecycle rehydration API.
 
-- [ ] **Step 7: Run Domain tests and architecture checks**
-
-Run:
+- [ ] **Step 7: Run Domain and architecture checks**
 
 ```bash
 cargo test -p document-domain
@@ -240,7 +229,7 @@ git commit -m "feat: add initial document publish transition"
 
 ---
 
-### Task 2: Define Publish Application contracts and an interface-segregated repository port
+### Task 2: Define Publish Application contracts and the segregated Publish repository port
 
 **Files:**
 - Modify: `crates/document-application/src/command.rs`
@@ -251,7 +240,7 @@ git commit -m "feat: add initial document publish transition"
 - Create: `crates/document-application/tests/publish_document_contract.rs`
 
 **Interfaces:**
-- Consumes: Domain Publish transition/errors from Task 1 and existing `Clock`, `IdGenerator`, `FileStorage`.
+- Consumes: Task 1 Domain types and existing `Clock`, `IdGenerator`, `FileStorage`.
 - Produces:
   - `PublishOperationId`
   - `PublishDocumentCommand`
@@ -263,26 +252,32 @@ git commit -m "feat: add initial document publish transition"
   - `DocumentPublishRepository`
   - Publish event constants.
 
-- [ ] **Step 1: Write failing tests for `PublishOperationId` and command validation**
+- [ ] **Step 1: Write failing UUIDv7 and command-validation tests**
 
-Use a deterministic valid UUIDv7 such as:
-
-```rust
-let valid = Uuid::parse_str("01890f7a-6f6e-7b0a-8000-000000000001").unwrap();
-let invalid = Uuid::from_u128(1);
-```
-
-Assert:
+Use complete inputs:
 
 ```rust
-assert!(PublishOperationId::try_from_uuid(valid).is_ok());
-assert!(PublishOperationId::try_from_uuid(invalid).is_err());
-assert!(PublishDocumentCommand::new(..., -1, ...).is_err());
+let valid_uuid = Uuid::parse_str("01890f7a-6f6e-7b0a-8000-000000000001").unwrap();
+let invalid_uuid = Uuid::from_u128(1);
+let operation_id = PublishOperationId::try_from_uuid(valid_uuid).unwrap();
+let document_id = DocumentId::from_uuid(Uuid::from_u128(10));
+let version_id = DocumentVersionId::from_uuid(Uuid::from_u128(11));
+let principal = PrincipalRef::new("test-idp", "actor-1").unwrap();
+
+assert!(PublishOperationId::try_from_uuid(invalid_uuid).is_err());
+assert!(
+    PublishDocumentCommand::new(
+        operation_id,
+        document_id,
+        version_id,
+        -1,
+        principal,
+    )
+    .is_err()
+);
 ```
 
-- [ ] **Step 2: Run the new Application test and verify RED**
-
-Run:
+- [ ] **Step 2: Run the focused test and verify RED**
 
 ```bash
 cargo test -p document-application --test publish_document_contract
@@ -290,9 +285,9 @@ cargo test -p document-application --test publish_document_contract
 
 Expected: FAIL because Publish contracts do not exist.
 
-- [ ] **Step 3: Add command/result types**
+- [ ] **Step 3: Add `PublishOperationId`, command, and result types**
 
-Implement a UUIDv7-only newtype:
+Implement:
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -315,44 +310,70 @@ impl PublishOperationId {
 }
 ```
 
-Add `PublishDocumentCommand::new(...)` with non-negative `expected_document_revision` validation and getters. Add `PublishDocumentResult` with getters and a public `from_persisted(...)` constructor so the PostgreSQL adapter can reconstruct a stored result without exposing SQL row types.
+Use this exact command constructor shape:
 
-- [ ] **Step 4: Add Publish identity/record/candidate port values**
+```rust
+pub fn new(
+    publish_operation_id: PublishOperationId,
+    document_id: DocumentId,
+    target_document_version_id: DocumentVersionId,
+    expected_document_revision: i64,
+    principal: PrincipalRef,
+) -> Result<Self, ApplicationError>
+```
 
-Define exact values equivalent to:
+Reject negative expected revision. Add getters for every field.
+
+`PublishDocumentResult` contains operation/document/version IDs, resulting revision, and `published_at`, with getters plus:
+
+```rust
+pub fn from_persisted(
+    publish_operation_id: PublishOperationId,
+    document_id: DocumentId,
+    document_version_id: DocumentVersionId,
+    resulting_document_revision: i64,
+    published_at: OffsetDateTime,
+) -> Self
+```
+
+- [ ] **Step 4: Add identity, stored-operation, candidate, and transaction-record values**
+
+Define:
 
 ```rust
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishCommandIdentity {
-    pub publish_operation_id: PublishOperationId,
-    pub document_id: DocumentId,
-    pub target_document_version_id: DocumentVersionId,
-    pub expected_document_revision: i64,
-    pub principal: PrincipalRef,
+    publish_operation_id: PublishOperationId,
+    document_id: DocumentId,
+    target_document_version_id: DocumentVersionId,
+    expected_document_revision: i64,
+    principal: PrincipalRef,
 }
+```
 
+Provide `PublishCommandIdentity::from_command(&PublishDocumentCommand)` and getters.
+
+Define:
+
+```rust
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishOperationRecord {
     identity: PublishCommandIdentity,
     result: PublishDocumentResult,
 }
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PublishCandidate {
-    document: Document,
-    version: DocumentVersion,
-    file: FileObject,
-    version_file: VersionFile,
-}
 ```
 
-`PublishOperationRecord` must expose `matches_identity(&PublishCommandIdentity) -> bool` and `result() -> &PublishDocumentResult`.
+Provide `matches_identity(&PublishCommandIdentity) -> bool`, `identity()`, `result()`, and `into_parts()`.
 
-- [ ] **Step 5: Add the capability-specific Publish repository trait**
+Define `PublishCandidate` containing `Document`, `DocumentVersion`, `FileObject`, and `VersionFile`, with getters and:
 
-Do **not** widen existing `DocumentRepository`; existing Create/Get/reconciliation fakes should continue compiling unchanged.
+```rust
+pub fn into_parts(self) -> (Document, DocumentVersion, FileObject, VersionFile)
+```
 
-Add:
+Define `PublishInitialVersionRecord` containing one `PublishOperationRecord`, one `DomainEventRecord`, and one `AuditEventRecord`, with getters and `into_parts()`.
+
+- [ ] **Step 5: Add `DocumentPublishRepository` without changing `DocumentRepository`**
 
 ```rust
 #[allow(async_fn_in_trait)]
@@ -375,22 +396,18 @@ pub trait DocumentPublishRepository: Send + Sync {
 }
 ```
 
-Define `PublishInitialVersionRecord` to contain one immutable `PublishOperationRecord`, one `DomainEventRecord`, and one `AuditEventRecord` with getters/`into_parts()`.
+Existing Create/Get/reconciliation fakes must not need Publish methods.
 
 - [ ] **Step 6: Add Publish event constants**
-
-Add exact event names:
 
 ```rust
 pub const DOCUMENT_VERSION_PUBLISHED: &str = "DocumentVersionPublished";
 pub const AUDIT_DOCUMENT_VERSION_PUBLISHED: &str = "document.version.published";
 ```
 
-Continue using `DomainEventRecord` aggregate type `Document` and the existing mandatory Audit record shape.
+- [ ] **Step 7: Extend error types without breaking Create**
 
-- [ ] **Step 7: Extend error taxonomy without breaking Create**
-
-Add Repository errors:
+Add to `RepositoryError`:
 
 ```rust
 DocumentNotFound,
@@ -399,7 +416,7 @@ Conflict,
 BusinessRule,
 ```
 
-Add Application errors with the same categories plus a Publish-specific structured unknown-commit variant:
+Add equivalent Application categories and:
 
 ```rust
 PublishCommitOutcomeUnknown {
@@ -409,13 +426,19 @@ PublishCommitOutcomeUnknown {
 },
 ```
 
-Keep the existing Create `CommitOutcomeUnknown { document_id, document_version_id, file_id }` variant unchanged so existing tests/consumers do not break merely because Publish was added. Both represent the same conceptual error category until a future transport Error Registry maps them.
+Keep the existing Create variant:
 
-Add `StorageError::ObjectUnreadable` and map both `NotFound` and `ObjectUnreadable` to `ApplicationError::IntegrityViolation`; keep `Unavailable` mapped to `StorageUnavailable`.
+```rust
+CommitOutcomeUnknown {
+    document_id: DocumentId,
+    document_version_id: DocumentVersionId,
+    file_id: FileId,
+}
+```
 
-- [ ] **Step 8: Run Application/static tests**
+Add `StorageError::ObjectUnreadable`. Map `NotFound` and `ObjectUnreadable` to `ApplicationError::IntegrityViolation`; keep `Unavailable` as `StorageUnavailable`.
 
-Run:
+- [ ] **Step 8: Run Application/static checks**
 
 ```bash
 cargo test -p document-application --test publish_document_contract
@@ -423,7 +446,7 @@ cargo test -p document-application --no-run
 mise run arch:check
 ```
 
-Expected: PASS for type/validation tests; no production dependency boundary regression.
+Expected: PASS.
 
 - [ ] **Step 9: Commit**
 
@@ -442,58 +465,58 @@ git commit -m "feat: define document publish application contracts"
 - Modify: `crates/document-application/tests/publish_document_contract.rs`
 
 **Interfaces:**
-- Consumes: Task 2 Publish contracts/port and Task 1 Domain transition.
+- Consumes: Task 2 contracts and Task 1 Domain transition.
 - Produces: `DocumentService::publish_document(...)` with replay-before-preflight semantics.
 
-- [ ] **Step 1: Add failing storage-error mapping test**
+- [ ] **Step 1: Add exact filesystem open-error unit tests**
 
-In the existing filesystem error unit-test module (or add one beside `error.rs` if none exists), assert:
+Add a `#[cfg(test)] mod tests` inside `crates/document-storage-fs/src/error.rs` and assert:
 
 ```rust
 assert_eq!(
-    map_open_error(io::Error::from(io::ErrorKind::PermissionDenied)),
+    super::map_open_error(io::Error::from(io::ErrorKind::PermissionDenied)),
     StorageError::ObjectUnreadable,
 );
 assert_eq!(
-    map_open_error(io::Error::from(io::ErrorKind::NotFound)),
+    super::map_open_error(io::Error::from(io::ErrorKind::NotFound)),
     StorageError::NotFound,
+);
+assert_eq!(
+    super::map_open_error(io::Error::from(io::ErrorKind::ConnectionReset)),
+    StorageError::Unavailable,
 );
 ```
 
-A connection/device-style I/O error that is not object-specific must remain `StorageError::Unavailable`.
-
 - [ ] **Step 2: Add failing Application orchestration tests**
 
-Build `FakePublishRepository` implementing only `DocumentPublishRepository` plus the existing fake storage/clock/ID tools. Add tests proving this exact order/behavior:
+Build `FakePublishRepository` implementing only `DocumentPublishRepository`. Extend fake storage with an open-call counter. Prove:
 
 ```text
 stored operation + same identity
-  -> returns stored result
-  -> candidate lookup count = 0
-  -> storage open count = 0
-  -> publish transaction count = 0
+  -> stored result
+  -> candidate lookup 0
+  -> storage open 0
+  -> publish transaction 0
 
 stored operation + different identity
   -> Conflict
-  -> storage open count = 0
+  -> storage open 0
 
-new operation + candidate + missing object
+new operation + missing object
   -> IntegrityViolation
-  -> publish transaction count = 0
+  -> publish transaction 0
 
-new operation + storage dependency outage
+new operation + storage outage
   -> StorageUnavailable
-  -> publish transaction count = 0
+  -> publish transaction 0
 
 new operation + readable object
-  -> calls publish transaction exactly once
+  -> publish transaction exactly 1
 ```
 
-Also assert a repository `CommitOutcomeUnknown` maps to `PublishCommitOutcomeUnknown` with the exact operation/document/version IDs.
+Also make the fake Publish repository return `RepositoryError::CommitOutcomeUnknown` from its write method and assert structured `PublishCommitOutcomeUnknown` contains the exact operation/document/version IDs.
 
 - [ ] **Step 3: Run focused tests and verify RED**
-
-Run:
 
 ```bash
 cargo test -p document-application --test publish_document_contract
@@ -502,9 +525,7 @@ cargo test -p document-storage-fs
 
 Expected: FAIL until orchestration/error mapping exists.
 
-- [ ] **Step 4: Implement filesystem object-unreadable classification**
-
-Update `map_open_error`:
+- [ ] **Step 4: Implement filesystem object-unreadable mapping**
 
 ```rust
 pub(crate) fn map_open_error(error: io::Error) -> StorageError {
@@ -516,18 +537,22 @@ pub(crate) fn map_open_error(error: io::Error) -> StorageError {
 }
 ```
 
-Do not reclassify write/sync/finalize behavior for this capability.
+Do not change write/sync/finalize mappings.
 
-- [ ] **Step 5: Implement `DocumentService::publish_document` in a separate trait-bound impl**
+- [ ] **Step 5: Implement Publish in a separate `R: DocumentPublishRepository` service impl**
 
-Keep existing Create/Get methods under `R: DocumentRepository`. Add a second impl block requiring `R: DocumentRepository + DocumentPublishRepository` only for Publish, so current behavior remains available unchanged.
+Do not require `DocumentRepository` for the Publish method itself. Existing Create/Get methods remain under their existing `R: DocumentRepository` impl.
 
-Implement this order:
+Use this order:
 
 ```rust
 let identity = PublishCommandIdentity::from_command(&command);
 
-if let Some(stored) = self.repository.get_publish_operation(command.publish_operation_id()).await? {
+if let Some(stored) = self
+    .repository
+    .get_publish_operation(command.publish_operation_id())
+    .await?
+{
     if stored.matches_identity(&identity) {
         return Ok(stored.result().clone());
     }
@@ -536,11 +561,14 @@ if let Some(stored) = self.repository.get_publish_operation(command.publish_oper
 
 let candidate = self
     .repository
-    .get_publish_candidate(command.document_id(), command.target_document_version_id())
+    .get_publish_candidate(
+        command.document_id(),
+        command.target_document_version_id(),
+    )
     .await?;
 
 let published_at = self.clock.now();
-let (mut document, mut version, file, version_file) = candidate.into_parts();
+let (mut document, mut version, file, _version_file) = candidate.into_parts();
 let transition = document
     .publish_initial_version(&mut version, published_at)
     .map_err(map_publish_domain_error)?;
@@ -550,9 +578,9 @@ let reader = self.storage.open(&storage_key).await?;
 drop(reader);
 ```
 
-Then generate one EventId and one AuditEventId, build the exact Design payload, construct `PublishOperationRecord` + `PublishInitialVersionRecord`, and call `repository.publish_initial_version(record)`.
+Then create the result, EventId, AuditEventId, payloads, `PublishOperationRecord`, and `PublishInitialVersionRecord`, and call the repository write once.
 
-- [ ] **Step 6: Build exact Publish Domain/Audit payloads**
+- [ ] **Step 6: Build exact Publish payloads**
 
 Domain payload:
 
@@ -578,24 +606,20 @@ json!({
 })
 ```
 
-Use event names from Task 2 and `resource_version_id = Some(target_version_id)`.
+Use `resource_version_id = Some(command.target_document_version_id())`.
 
-- [ ] **Step 7: Map Domain and Repository errors explicitly**
-
-For the Application pre-validation transition:
+- [ ] **Step 7: Map Publish errors explicitly**
 
 ```text
-VersionDocumentMismatch      -> IntegrityViolation
-CurrentVersionAlreadySet     -> Conflict
-VersionNotWorking            -> BusinessRule
-RevisionOverflow             -> IntegrityViolation
+VersionDocumentMismatch  -> IntegrityViolation
+CurrentVersionAlreadySet -> Conflict
+VersionNotWorking        -> BusinessRule
+RevisionOverflow         -> IntegrityViolation
 ```
 
-For the Repository result, preserve `DocumentNotFound`, `DocumentVersionNotFound`, `Conflict`, `BusinessRule`, `IntegrityViolation`, `Unavailable`, and structured Publish commit ambiguity.
+Map repository categories directly. Map repository `CommitOutcomeUnknown` to `PublishCommitOutcomeUnknown` using the command identity.
 
-- [ ] **Step 8: Run contract/storage tests and full Application tests**
-
-Run:
+- [ ] **Step 8: Run contract/storage/Application tests**
 
 ```bash
 cargo test -p document-storage-fs
@@ -614,30 +638,28 @@ git commit -m "feat: orchestrate initial document publish"
 
 ---
 
-### Task 4: Add the Publish migration and database ownership/idempotency constraints
+### Task 4: Add Publish migration and database constraints
 
 **Files:**
 - Create: `crates/document-repository-postgres/migrations/0002_document_publish_v0.sql`
 - Create: `crates/document-repository-postgres/tests/publish_schema.rs`
 
 **Interfaces:**
-- Consumes: current `0001_document_authoritative_core.sql` schema.
-- Produces: composite current-Version FK and permanent `document_publish_operations` schema.
+- Consumes: `0001_document_authoritative_core.sql`.
+- Produces: composite current-Version FK and permanent Publish operation table.
 
-- [ ] **Step 1: Write the failing Publish schema integration test**
+- [ ] **Step 1: Write the failing schema integration test**
 
-Start disposable PostgreSQL `18.6-bookworm`, run `migrate(&pool)`, then assert:
+Use PostgreSQL `18.6-bookworm`, run `migrate(&pool)`, then prove:
 
-1. a valid initial working Document/Version remains insertable;
+1. valid initial Working Document/Version remains insertable;
 2. assigning another Document's Version to `current_version_id` is rejected;
-3. `document_publish_operations.expected_document_revision < 0` is rejected;
+3. negative `expected_document_revision` is rejected;
 4. `resulting_document_revision != expected_document_revision + 1` is rejected;
-5. operation target `(document_id, target_document_version_id)` must identify a Version owned by that Document;
+5. operation target `(document_id, target_document_version_id)` must belong to the same Document;
 6. duplicate `publish_operation_id` is rejected.
 
 - [ ] **Step 2: Run schema test and verify RED**
-
-Run:
 
 ```bash
 cargo test -p document-repository-postgres --test publish_schema -- --nocapture
@@ -645,9 +667,7 @@ cargo test -p document-repository-postgres --test publish_schema -- --nocapture
 
 Expected: FAIL because migration/table/composite FK do not exist.
 
-- [ ] **Step 3: Add migration `0002_document_publish_v0.sql`**
-
-Use exact constraint intent:
+- [ ] **Step 3: Add `0002_document_publish_v0.sql`**
 
 ```sql
 ALTER TABLE document_versions
@@ -681,11 +701,9 @@ CREATE TABLE document_publish_operations (
 );
 ```
 
-Do not add TTL columns, cleanup state, triggers, or generic command tables.
+Do not add triggers, TTL columns, cleanup state, or generic command tables.
 
-- [ ] **Step 4: Run migration/schema tests**
-
-Run:
+- [ ] **Step 4: Run migration/schema checks**
 
 ```bash
 cargo test -p document-repository-postgres --test schema_constraints -- --nocapture
@@ -704,59 +722,75 @@ git commit -m "feat: add document publish persistence schema"
 
 ---
 
-### Task 5: Add PostgreSQL Publish reads and make `GetDocument` understand initial-Published state
+### Task 5: Add PostgreSQL Publish read helpers and make Get understand initial PUBLISHED state
 
 **Files:**
 - Create: `crates/document-repository-postgres/src/publish_rows.rs`
 - Create: `crates/document-repository-postgres/src/publish.rs`
 - Modify: `crates/document-repository-postgres/src/lib.rs`
-- Modify: `crates/document-repository-postgres/src/repository.rs`
 - Modify: `crates/document-repository-postgres/src/mapping.rs`
-- Modify: `crates/document-repository-postgres/src/rows.rs` only if shared row shape requires it
-- Create or extend: `crates/document-repository-postgres/tests/publish_transaction.rs`
+- Create: `crates/document-repository-postgres/tests/publish_transaction.rs`
 
 **Interfaces:**
-- Consumes: Task 1 `InitialDocument::restore_published`, Task 2 Publish port values, Task 4 schema.
-- Produces: operation lookup, candidate lookup, published-state authoritative mapping; no mutation yet beyond test seeding.
+- Consumes: Task 1 restoration, Task 2 Publish value types, Task 4 schema.
+- Produces crate-internal helpers:
+  - `get_publish_operation`
+  - `get_publish_candidate`
+  - published-state authoritative mapping.
+- Does **not** implement `DocumentPublishRepository` on `PostgresDocumentRepository` yet; the full trait impl is added atomically in Task 6 when all three methods exist.
 
-- [ ] **Step 1: Write failing read-path tests**
+- [ ] **Step 1: Write failing read-path and published-Get tests**
 
-Seed a normal Create through the existing service/repository, then assert:
+Inside `publish.rs`, add `#[cfg(test)]` tests for the crate-internal read helpers using real PostgreSQL. Prove:
 
 ```text
 get_publish_operation(unknown) -> None
-get_publish_candidate(document, version) -> WORKING candidate with PRIMARY file metadata
+get_publish_candidate(document, version) -> Working candidate + PRIMARY file metadata
 ```
 
-Seed a `document_publish_operations` row directly and assert it reconstructs the exact `PublishCommandIdentity` and `PublishDocumentResult`.
+Seed one `document_publish_operations` row directly and prove exact identity/result reconstruction.
 
-Then manually set Version #1 to `PUBLISHED`, set `published_at`, set Document current version, and revision to 1 in one SQL transaction; assert existing `get_document()` returns a published authoritative aggregate rather than `IntegrityViolation`.
+In `publish_transaction.rs`, seed a normal Create, manually perform one valid initial publication SQL transaction, and assert existing `get_document()` now returns:
 
-- [ ] **Step 2: Run focused repository tests and verify RED**
+```text
+PUBLISHED
+published_at = fixed timestamp
+current_version_id = Version #1
+revision = 1
+```
 
-Run:
+instead of `IntegrityViolation`.
+
+- [ ] **Step 2: Run focused tests and verify RED**
 
 ```bash
+cargo test -p document-repository-postgres publish -- --nocapture
 cargo test -p document-repository-postgres --test publish_transaction -- --nocapture
 ```
 
-Expected: FAIL because Publish reads and published mapping do not exist; current `to_authoritative` accepts only initial WORKING state.
+Expected: FAIL because helpers/published mapping do not exist.
 
-- [ ] **Step 3: Add focused SQLx row types**
+- [ ] **Step 3: Add `PublishOperationRow`, `PublishCandidateRow`, and `LockedPublishStateRow`**
 
-In `publish_rows.rs`, define rows for:
+`PublishOperationRow` contains all identity/result columns from `document_publish_operations`.
+
+`PublishCandidateRow` contains:
 
 ```text
-PublishOperationRow
-PublishCandidateRow
-LockedPublishStateRow
+document_id
+folder_id
+current_version_id
+document_revision
+document_metadata
+document_created_at
+version fields
+PRIMARY file fields
+VersionFile fields
 ```
 
-`PublishOperationRow` must contain all persisted command identity fields plus stored result fields. `PublishCandidateRow` must contain Document + target Version + PRIMARY File/VersionFile values needed to build the Domain/Application candidate without exposing SQLx types through the port.
+`LockedPublishStateRow` contains the locked Document/target Version values needed by Task 6.
 
-- [ ] **Step 4: Implement operation lookup**
-
-Add helper in `publish.rs`:
+- [ ] **Step 4: Implement crate-internal operation lookup**
 
 ```rust
 pub(crate) async fn get_publish_operation(
@@ -765,60 +799,57 @@ pub(crate) async fn get_publish_operation(
 ) -> Result<Option<PublishOperationRecord>, RepositoryError>
 ```
 
-Select by PK and map actor fields through `PrincipalRef::new`; malformed persisted data becomes `RepositoryError::IntegrityViolation`.
+Map actor fields using `PrincipalRef::new`; malformed persisted values are `IntegrityViolation`.
 
-- [ ] **Step 5: Implement candidate lookup with distinct missing/ownership errors**
+- [ ] **Step 5: Implement crate-internal candidate lookup with exact error distinctions**
 
-The adapter must distinguish:
+Preserve these outcomes:
 
 ```text
-missing Document                     -> DocumentNotFound
-missing target Version               -> DocumentVersionNotFound
-target exists but belongs elsewhere  -> IntegrityViolation
-missing PRIMARY DB reference/file row -> IntegrityViolation
+Document absent                    -> DocumentNotFound
+target Version absent              -> DocumentVersionNotFound
+target belongs to another Document -> IntegrityViolation
+PRIMARY DB reference/file missing  -> IntegrityViolation
 ```
 
-Do not infer `DocumentVersionNotFound` from a failed inner join. Query or left-join in a way that preserves these distinctions.
+Use separate existence checks or a left-join strategy that does not collapse all failures into one missing inner-join row.
 
 - [ ] **Step 6: Extend authoritative mapping for initial PUBLISHED state**
 
-Keep existing Working validation. Add a published path that accepts only:
+Accept only these initial-published facts:
 
 ```text
 version_no == 1
 lifecycle_state == "PUBLISHED"
-published_at == Some(_)
+published_at == Some(fixed time)
 current_version_id == Some(document_version_id)
 document_revision == 1
 ```
 
-with the existing initial-version/file invariants. Reconstruct via:
+Keep existing initial file/metadata/time invariants. Reconstruct through:
 
 ```rust
 InitialDocument::restore_published(create_input, published_at)
 ```
 
-and convert to `AuthoritativeDocument`.
+Reject inconsistent combinations such as `PUBLISHED + current None`, wrong current Version, `PUBLISHED + revision != 1`, or `WORKING + current Some` as `IntegrityViolation`.
 
-Reject inconsistent combinations such as `PUBLISHED + current=None`, wrong current Version, revision other than 1, or `WORKING + current Some` as `IntegrityViolation`.
+- [ ] **Step 7: Register focused modules, but do not add an incomplete trait impl**
 
-- [ ] **Step 7: Implement `DocumentPublishRepository` read methods on PostgreSQL adapter**
+Add `mod publish;` and `mod publish_rows;` in `lib.rs` or the existing internal module declaration location. Keep helpers `pub(crate)`.
 
-Delegate `get_publish_operation` / `get_publish_candidate` to focused helpers in `publish.rs`. Leave `publish_initial_version` for Task 6.
-
-If Rust requires the trait method to exist before Task 6, implement it temporarily only in the Task 6 commit—not with an `unimplemented!()` or success stub. Keep Task 5 tests calling read helpers directly or structure `publish.rs` public-to-crate helpers so every committed tree remains production-safe.
+Do not add `impl DocumentPublishRepository for PostgresDocumentRepository` until Task 6, because Rust trait implementations must provide every required method and committed trees must never contain `unimplemented!()`/panic/success stubs.
 
 - [ ] **Step 8: Run read/Get regressions**
 
-Run:
-
 ```bash
+cargo test -p document-repository-postgres publish -- --nocapture
 cargo test -p document-repository-postgres --test publish_transaction -- --nocapture
 cargo test -p document-repository-postgres --test repository_contract -- --nocapture
 cargo test -p document-application --test vertical_slice -- --nocapture
 ```
 
-Expected: existing Working reads still PASS and manually-published initial state now round-trips.
+Expected: PASS; existing Working reads remain valid and the initial Published state round-trips.
 
 - [ ] **Step 9: Commit**
 
@@ -829,101 +860,103 @@ git commit -m "feat: add document publish repository reads"
 
 ---
 
-### Task 6: Implement the atomic PostgreSQL Publish transaction and idempotent replay
+### Task 6: Implement the atomic PostgreSQL Publish transaction and the full Publish repository trait
 
 **Files:**
 - Modify: `crates/document-repository-postgres/src/publish.rs`
 - Modify: `crates/document-repository-postgres/src/repository.rs`
-- Modify: `crates/document-repository-postgres/src/lib.rs` if module exports require it
 - Modify: `crates/document-repository-postgres/tests/publish_transaction.rs`
 
 **Interfaces:**
-- Consumes: Task 2 `PublishInitialVersionRecord`, Task 1 Domain transition, Task 4 schema, Task 5 mappings.
-- Produces: production `DocumentPublishRepository::publish_initial_version` with atomic state/event/audit/operation commit.
+- Consumes: Tasks 1–5.
+- Produces: complete `DocumentPublishRepository` implementation on `PostgresDocumentRepository`.
 
 - [ ] **Step 1: Add failing successful-Publish transaction test**
 
-Create a Document through existing Create flow, build one `PublishInitialVersionRecord`, call PostgreSQL `publish_initial_version`, then assert from SQL:
+Create one Document through the existing Create flow, build a Publish record, call PostgreSQL Publish, and assert:
 
 ```text
-Version #1.lifecycle_state = PUBLISHED
+Version lifecycle = PUBLISHED
 published_at = requested timestamp
-Document.current_version_id = Version #1
-Document.revision = 1
+current_version_id = Version #1
+revision = 1
 Publish Domain Outbox delta = 1
 Publish Audit Outbox delta = 1
-document_publish_operations delta = 1
+Publish operation delta = 1
 ```
 
-Assert event payload values and the stored operation result exactly match the returned `PublishDocumentResult`.
+Assert stored event payload and operation result match the returned `PublishDocumentResult`.
 
-- [ ] **Step 2: Add failing replay/misuse/OCC/state tests**
+- [ ] **Step 2: Add failing replay, misuse, OCC, and lifecycle tests**
 
-Add cases:
+Cover:
 
 ```text
-same operation + same command -> identical result, no count/revision change
-same operation ID + changed principal/document/version/revision -> Conflict
+same operation + same command -> same result, no state/count change
+same operation ID + changed principal -> Conflict
+same operation ID + changed Document -> Conflict
+same operation ID + changed Version -> Conflict
+same operation ID + changed expected revision -> Conflict
 stale expected revision -> Conflict
-current_version_id already Some(other) -> Conflict
-target already PUBLISHED under a distinct operation -> Conflict
+current already Some(other) -> Conflict
+target already PUBLISHED under another operation -> Conflict
 target WITHDRAWN -> BusinessRule
 cross-Document target -> IntegrityViolation
 ```
 
-- [ ] **Step 3: Add failing rollback atomicity test**
+- [ ] **Step 3: Add a deterministic rollback test using an Outbox PK collision**
 
-Force an error after the operation claim but before commit using a test-only invalid Audit/Outbox insert condition or a transaction helper seam. Assert rollback leaves:
+Preinsert an `outbox_events` row whose `event_id` equals the Domain EventId carried by the `PublishInitialVersionRecord` under test. Then execute Publish.
+
+The Publish transaction must encounter the duplicate-key statement error **after** it has claimed the operation and attempted state mutation, roll back, and leave:
 
 ```text
-Version WORKING
-current_version_id NULL
+Version = WORKING
+current_version_id = NULL
 revision unchanged
-no Publish operation row
-no Publish Domain event
-no Publish Audit event
+no document_publish_operations row
+no Publish Audit Outbox row
+only the preexisting colliding Domain Outbox row
 ```
 
-Do not add a production flag that can disable atomic components.
+Do not add a production fault flag or optional-atomicity path.
 
 - [ ] **Step 4: Run transaction tests and verify RED**
-
-Run:
 
 ```bash
 cargo test -p document-repository-postgres --test publish_transaction -- --nocapture
 ```
 
-Expected: FAIL until atomic mutation is implemented.
+Expected: FAIL until mutation/replay handling exists.
 
-- [ ] **Step 5: Implement the exact transaction algorithm**
+- [ ] **Step 5: Implement `publish_initial_version` transaction helper**
 
-Inside one SQLx transaction:
+Inside one SQLx transaction perform exactly:
 
 ```text
 1. lookup operation ID
-2. if found: compare full identity; replay or Conflict
-3. SELECT Document FOR UPDATE; missing -> DocumentNotFound
-4. lookup operation ID again; replay or Conflict
-5. load/lock target Version and validate ownership
-6. validate DB PRIMARY reference still exists
-7. reconstruct Domain Document/Version and call publish_initial_version
-8. require returned revision == record.result.resulting_document_revision
-9. require transition timestamp/result matches proposed operation result
-10. INSERT document_publish_operations ... ON CONFLICT DO NOTHING
-11. if insert count == 0: refetch operation; replay or Conflict
-12. UPDATE document_versions to PUBLISHED + published_at
-13. UPDATE documents current_version_id + revision with expected revision guard
-14. insert exactly one Domain Outbox event
-15. insert exactly one Audit Outbox event
+2. stored + matching identity -> return stored result
+3. stored + different identity -> Conflict
+4. SELECT Document FOR UPDATE; missing -> DocumentNotFound
+5. lookup operation ID again; replay or Conflict
+6. load target Version and verify target ownership
+7. verify PRIMARY DB reference/FileObject still exists
+8. reconstruct Domain Document/Version and run initial Publish transition
+9. verify transition result/timestamp equals proposed stored result
+10. INSERT all document_publish_operations identity/result columns ON CONFLICT DO NOTHING
+11. zero-row claim -> refetch; matching replay or Conflict
+12. conditionally UPDATE target Version from WORKING to PUBLISHED + published_at
+13. conditionally UPDATE Document current_version_id + revision using expected revision/current NULL
+14. insert supplied Domain Outbox event
+15. insert supplied mandatory Audit Outbox event
 16. COMMIT
 ```
 
-Use `map_statement_error` before commit and retain `map_commit_error` for `tx.commit()`.
+Use `map_statement_error` for pre-commit errors and `map_commit_error` only for `tx.commit()`.
 
-- [ ] **Step 6: Preserve final OCC checks in SQL**
+- [ ] **Step 6: Keep final OCC/state guards in SQL**
 
-Even after locking/Domain validation, use conditional updates and assert one affected row. Equivalent Document update:
+Document update:
 
 ```sql
 UPDATE documents
@@ -934,17 +967,44 @@ WHERE document_id = $3
   AND current_version_id IS NULL
 ```
 
-Zero affected rows is `RepositoryError::Conflict` unless a previously committed same operation is discovered and replayed.
+Require exactly one affected row.
 
-Version update must require `lifecycle_state = 'WORKING'` and one affected row.
+Version update:
 
-- [ ] **Step 7: Insert events from the Application record without regenerating identity**
+```sql
+UPDATE document_versions
+SET lifecycle_state = 'PUBLISHED',
+    published_at = $1
+WHERE document_version_id = $2
+  AND document_id = $3
+  AND lifecycle_state = 'WORKING'
+```
 
-Persist the EventId, AuditEventId, timestamps, payloads, actor/resource fields supplied in `PublishInitialVersionRecord`. Do not generate replacement event IDs in the adapter. Successful replay must not insert events again.
+Require exactly one affected row. Map rejected lifecycle to `BusinessRule` unless a distinct committed operation/current-version conflict is the actual cause.
 
-- [ ] **Step 8: Run transaction + existing repository tests**
+- [ ] **Step 7: Implement the complete `DocumentPublishRepository` trait**
 
-Run:
+In `repository.rs`:
+
+```rust
+impl DocumentPublishRepository for PostgresDocumentRepository {
+    async fn get_publish_operation(...) -> Result<..., RepositoryError> {
+        publish::get_publish_operation(&self.pool, operation_id).await
+    }
+
+    async fn get_publish_candidate(...) -> Result<..., RepositoryError> {
+        publish::get_publish_candidate(&self.pool, document_id, target_version_id).await
+    }
+
+    async fn publish_initial_version(...) -> Result<..., RepositoryError> {
+        publish::publish_initial_version(&self.pool, record).await
+    }
+}
+```
+
+Use the exact signatures defined in Task 2; do not duplicate SQL in `repository.rs`.
+
+- [ ] **Step 8: Run Publish and existing repository regressions**
 
 ```bash
 cargo test -p document-repository-postgres --test publish_transaction -- --nocapture
@@ -964,20 +1024,21 @@ git commit -m "feat: implement atomic initial document publish"
 
 ---
 
-### Task 7: Prove concurrency, exact-command retry, and full Create → Publish → Get behavior
+### Task 7: Prove concurrency, exact-command recovery, and Create → Publish → Get end-to-end behavior
 
 **Files:**
 - Create: `crates/document-repository-postgres/tests/publish_concurrency.rs`
 - Create: `crates/document-application/tests/publish_vertical_slice.rs`
-- Modify: test-only helpers in those files only as required
 
 **Interfaces:**
-- Consumes: complete production Publish flow from Tasks 1–6.
-- Produces: real PostgreSQL concurrency/ambiguity evidence and real filesystem + PostgreSQL vertical evidence.
+- Consumes: complete production Publish flow.
+- Produces: real PostgreSQL concurrency evidence and real filesystem + PostgreSQL vertical evidence.
 
-- [ ] **Step 1: Write failing distinct-operation concurrency test**
+- [ ] **Step 1: Write failing distinct-operation concurrency test with an explicit barrier**
 
-Use PostgreSQL 18.6 with pool size >= 4. Seed one initial Document, then launch two `publish_initial_version` calls concurrently with:
+Use PostgreSQL 18.6 with pool size >= 4. Create a `tokio::sync::Barrier` for the two worker tasks so both reach the Publish call together, then await both with `tokio::join!`.
+
+Inputs:
 
 ```text
 same Document
@@ -987,9 +1048,7 @@ different PublishOperationId
 different Event/Audit IDs
 ```
 
-Use `tokio::join!` or a barrier to overlap requests. Assert exactly one `Ok` and one `RepositoryError::Conflict`.
-
-Query final state and assert:
+Assert exactly one `Ok` and one `RepositoryError::Conflict`, then assert final DB state:
 
 ```text
 revision = 1
@@ -999,34 +1058,35 @@ Publish Domain events = 1
 Publish Audit events = 1
 ```
 
-- [ ] **Step 2: Write failing same-operation concurrency test**
+- [ ] **Step 2: Write failing same-operation concurrency test with the same barrier pattern**
 
-Launch the exact same operation identity/command concurrently. Assert both callers receive equal `PublishDocumentResult`, while DB mutation/events/operation row exist exactly once.
+Both workers submit the exact same `PublishInitialVersionRecord` identity and logical command. Both must receive equal `PublishDocumentResult`; state mutation, revision increment, Domain event, Audit event, and operation row occur exactly once.
 
 - [ ] **Step 3: Run concurrency test and verify RED**
-
-Run:
 
 ```bash
 cargo test -p document-repository-postgres --test publish_concurrency -- --nocapture
 ```
 
-Expected: FAIL until race handling/second lookup/claim behavior is correct.
+Expected: FAIL until race handling is correct.
 
-- [ ] **Step 4: Fix only race defects exposed by the RED test**
+- [ ] **Step 4: Fix only defects exposed by the concurrency tests**
 
-Do not weaken assertions. Maintain Document-first lock ordering and operation recheck. If a same-operation contender waits on the unique operation claim, it must return the committed stored result after the winner commits rather than surfacing a duplicate-key Internal error.
+Preserve Document-first lock ordering and the second operation lookup. If a same-operation contender observes/awaits the winner's operation claim, it must return the committed stored result after the winner commits, not a duplicate-key Internal error.
 
 - [ ] **Step 5: Write full Create → Publish → Get/open vertical slice**
 
-In `publish_vertical_slice.rs` use:
+Use:
 
-- real `LocalFileStorage` under `tempfile::TempDir`;
-- real PostgreSQL 18.6;
-- real `PostgresDocumentRepository`;
-- `DocumentService`;
-- deterministic Clock/ID generator for server-generated event IDs;
-- a caller-supplied valid UUIDv7 PublishOperationId.
+```text
+LocalFileStorage + tempfile::TempDir
+PostgreSQL 18.6
+PostgresDocumentRepository
+DocumentService
+fixed Clock
+server Event/Audit IdGenerator
+caller-provided valid UUIDv7 PublishOperationId
+```
 
 Flow:
 
@@ -1038,40 +1098,38 @@ create_document
 -> open_primary_file returns original bytes
 ```
 
-Assert one additional Domain event, one additional Audit event, and one operation row after Publish.
+Assert Publish adds exactly one Domain event, one Audit event, and one publish-operation row.
 
-- [ ] **Step 6: Add deterministic commit-ambiguity recovery wrappers**
+- [ ] **Step 6: Add deterministic commit-ambiguity wrappers without production fault flags**
 
-Because `DocumentService` is generic over repository ports, keep ambiguity injection test-only instead of adding a production fault flag.
+Create a test-only repository wrapper implementing both `DocumentRepository` and `DocumentPublishRepository` around the real PostgreSQL repository.
 
-Create a wrapper implementing `DocumentRepository + DocumentPublishRepository` around real PostgreSQL repository with two one-shot modes:
+Mode `BeforeCommitUnknown`:
 
 ```text
-BeforeCommitUnknown:
-  first publish call returns RepositoryError::CommitOutcomeUnknown without delegating;
-  retry delegates normally.
-
-AfterCommitUnknown:
-  first publish call delegates and commits successfully, then masks Ok as CommitOutcomeUnknown;
-  retry delegates/looks up the already-committed operation.
+first publish write -> return RepositoryError::CommitOutcomeUnknown without delegating
+retry -> delegate normally
 ```
 
-Assert Application first returns `PublishCommitOutcomeUnknown`, retry uses the **same command and operation ID**, and both modes converge to exactly one Publish mutation/event/audit/operation row.
+Mode `AfterCommitUnknown`:
 
-- [ ] **Step 7: Run vertical/concurrency tests**
+```text
+first publish write -> delegate and commit successfully, then mask Ok as CommitOutcomeUnknown
+retry -> delegate; operation lookup/replay returns stored result
+```
 
-Run:
+In both modes, the first Application call must return `PublishCommitOutcomeUnknown`; retry uses the exact same `PublishDocumentCommand`; final DB state contains exactly one Publish mutation/event/audit/operation row.
+
+- [ ] **Step 7: Run concurrency and vertical tests**
 
 ```bash
 cargo test -p document-repository-postgres --test publish_concurrency -- --nocapture
 cargo test -p document-application --test publish_vertical_slice -- --nocapture
 ```
 
-Expected: PASS with no skipped cases.
+Expected: PASS with no skipped Publish cases.
 
 - [ ] **Step 8: Run all Rust tests**
-
-Run:
 
 ```bash
 cargo test --workspace
@@ -1088,16 +1146,16 @@ git commit -m "test: prove document publish concurrency and recovery"
 
 ---
 
-### Task 8: Run repository gates, self-review the implementation, and record exact-head evidence
+### Task 8: Run repository gates, self-review implementation, and record exact-head evidence
 
 **Files:**
 - Modify: `docs/superpowers/execution/document-publish-v0-status.md`
-- Modify: `docs/superpowers/execution/active.md` only when the execution phase/PR changes
-- Modify: implementation PR body/metadata through GitHub; no runtime code unless review finds a defect
+- Modify: `docs/superpowers/execution/active.md` when execution phase/PR changes
+- Update: implementation PR body/metadata through GitHub
 
 **Interfaces:**
-- Consumes: complete implementation from Tasks 1–7.
-- Produces: exact-head verification evidence and a reviewable implementation PR; does not merge without an explicit merge decision.
+- Consumes: Tasks 1–7.
+- Produces: exact-head evidence and a reviewable implementation PR.
 
 - [ ] **Step 1: Run fast verification**
 
@@ -1121,9 +1179,9 @@ Expected: PASS.
 mise run verify:full
 ```
 
-Expected: PASS, including architecture, Rust tests/static checks, security/license gates, portability, container, SBOM, and SQLx/PostgreSQL checks configured by the repository.
+Expected: PASS, including configured architecture, Rust, security/license, portability, container, SBOM, SQLx/PostgreSQL, and Development Assurance gates.
 
-- [ ] **Step 4: Run explicit Publish evidence tests once more on the final local tree**
+- [ ] **Step 4: Run explicit Publish evidence tests on the final local tree**
 
 ```bash
 cargo test -p document-domain
@@ -1138,60 +1196,51 @@ Expected: PASS, 0 skipped Publish cases.
 
 - [ ] **Step 5: Self-review against the frozen Design Spec**
 
-Check each Design section explicitly:
+Verify explicitly:
 
 ```text
-initial Publish only                      implemented
-UUIDv7 caller operation ID                implemented + validated
-same-op replay / misuse conflict          implemented
-OCC + short row lock                      implemented
-file preflight semantics                  implemented
-composite current ownership FK            implemented
-PUBLISHED/current atomic semantics         implemented
-Domain + Audit Outbox atomicity            implemented
-operation result atomicity                 implemented
-commit ambiguity recovery                  implemented
+initial Publish only                       implemented
+UUIDv7 caller operation ID                 implemented + validated
+same-op replay / misuse conflict           implemented
+OCC + short row lock                       implemented
+file preflight semantics                   implemented
+composite current ownership FK             implemented
+PUBLISHED/current atomic semantics          implemented
+Domain + Audit Outbox atomicity             implemented
+operation result atomicity                  implemented
+commit ambiguity recovery                   implemented
 current replacement / Withdraw / scheduler absent
-HTTP/UI/Search/outbox worker               absent
+HTTP/UI/Search/outbox worker                absent
 ```
 
-If review reveals a contract-level change, stop and request a Design amendment rather than silently changing the frozen design.
+If a contract-level change is required, stop and request a Design amendment.
 
 - [ ] **Step 6: Update Execution Status with exact evidence**
 
-Record:
-
-- completed Task/Step numbers;
-- exact implementation branch/head SHA;
-- all verification commands/results;
-- exact test counts where available;
-- current PR number/state;
-- unresolved findings/blockers;
-- next exact action;
-- any approved Design amendment (normally none).
+Record completed Tasks/Steps, implementation branch/head SHA, exact commands/results/test counts, implementation PR state, blockers/findings, next exact action, and any approved Design amendment.
 
 - [ ] **Step 7: Push/create implementation PR and require exact-head hosted CI**
 
-Implementation branch:
+Use branch:
 
 ```text
 feat/document-publish-v0
 ```
 
-PR target:
+with base:
 
 ```text
 main
 ```
 
-Do not claim implementation complete from local verification. Require the PR-triggered CI on the exact final head to complete successfully for every required job.
+Do not claim completion from local results. Require PR-triggered CI on the exact final head.
 
 - [ ] **Step 8: Review hosted CI and PR feedback**
 
-Fetch the exact-head workflow run, all required jobs, inline review threads, and submitted reviews. Fix Critical/Important findings with TDD evidence and rerun exact-head CI after every branch-tree change.
+Fetch exact-head workflow run and every required job, inline review threads, and submitted reviews. Fix Critical/Important findings with TDD evidence and rerun exact-head CI after every tree change.
 
-- [ ] **Step 9: Stop at the merge gate**
+- [ ] **Step 9: Stop at the explicit merge gate**
 
-When the exact final PR head is green and no blocking review finding remains, mark the PR Ready for review and update the PR body with evidence.
+When the exact final implementation PR head is green and no blocking finding remains, mark it Ready and update its body with evidence.
 
 Do **not** merge the implementation PR without an explicit user merge instruction.
