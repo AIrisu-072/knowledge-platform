@@ -2,41 +2,49 @@
 
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
-- Active capability: `Document Authoritative Core — Create/Get v0`
-- Design PR: `#3`
-- Approved Design Spec: `docs/superpowers/specs/2026-09-16-document-authoritative-core-design.md`
-- Design approval record: `docs/superpowers/specs/2026-09-16-document-authoritative-core-design-approval.md`
-- Implementation Plan: `docs/superpowers/plans/2026-09-16-document-authoritative-core-implementation.md`
-- Execution Status: `docs/superpowers/execution/document-authoritative-core-status.md`
+- Active capability: `Document Publish v0`
+- Current phase: **DESIGN REVIEW**
+- Design branch: `design/document-publish-v0`
+- Design PR: **pending creation**
+- Design Spec under review: `docs/superpowers/specs/2026-09-17-document-publish-v0-design.md`
+- Design approval record: **not created — written-spec review pending**
+- Implementation Plan: **not created**
+- Execution Status: `docs/superpowers/execution/document-publish-v0-status.md`
+- Baseline: `main@2ead1e21222c3b122704b6e0ce31f3f902b93659`
 
 ## Mandatory resume order
 
-When resuming this repository in a new chat/session/agent context, do **not** reconstruct implementation state from conversation history.
+When resuming this repository in a new chat/session/agent context, do **not** reconstruct state from conversation history.
 
 Read in this order:
 
 1. `AGENTS.md`
 2. this file
-3. `docs/superpowers/execution/document-authoritative-core-status.md`
-4. `docs/superpowers/specs/2026-09-16-document-authoritative-core-design.md`
-5. `docs/superpowers/plans/2026-09-16-document-authoritative-core-implementation.md`
-6. the current GitHub branch/PR/CI state named by the execution-status file
+3. `docs/superpowers/execution/document-publish-v0-status.md`
+4. `docs/superpowers/specs/2026-09-17-document-publish-v0-design.md`
+5. the current GitHub branch / Design PR / CI state named by the Execution Status
+6. only after written-spec approval: the approval record and Implementation Plan created for this capability
 
-Repository state and CI evidence override remembered/chat state.
+Repository state and fresh GitHub evidence override remembered/chat state.
 
 ## Resume command for a new ChatGPT session
 
 A sufficient handoff prompt is:
 
-> `AIrisu-072/knowledge-platform` の `AGENTS.md` を読み、Active Execution Pointerに従ってDocument Authoritative CoreのInline Executionを再開してください。会話履歴から状態を再構成せず、repositoryのExecution StatusとGitHubの現在状態を正本にしてください。
+> `AIrisu-072/knowledge-platform` の `AGENTS.md` を読み、Active Execution Pointerに従ってDocument Publish v0のDesign Reviewを再開してください。会話履歴から状態を再構成せず、repositoryのExecution Status・Design Spec・GitHubの現在状態を正本にしてください。
+
+## Current hard gate
+
+The conversational design has been approved, but the written Design Spec itself is awaiting user review.
+
+Do not create the Implementation Plan or begin production implementation until the written Design is explicitly approved.
 
 ## End-of-session rule
 
 Before intentionally switching sessions, or whenever the conversation limit is approaching, update the capability Execution Status with:
 
-- completed Task/Step numbers;
-- current Task/Step;
-- exact verification commands and results/evidence;
+- completed Design / Task / Step state;
+- exact verification and evidence;
 - branch and PR in use;
 - blockers or unresolved decisions;
 - the **next exact action**;
