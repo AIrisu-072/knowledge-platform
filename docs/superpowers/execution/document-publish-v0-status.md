@@ -13,7 +13,7 @@
 - Previous capability merge commit / Publish design baseline: `2ead1e21222c3b122704b6e0ce31f3f902b93659`
 - Design branch: `design/document-publish-v0`
 - Design Spec: `docs/superpowers/specs/2026-09-17-document-publish-v0-design.md`
-- Design PR: **to be created from this branch**
+- Design PR: `#5` — **OPEN / DRAFT / written-spec review pending**
 
 Always fetch the current branch / PR / CI state from GitHub before acting. Repository state overrides remembered/chat state.
 
@@ -38,7 +38,7 @@ Always fetch the current branch / PR / CI state from GitHub before acting. Repos
 
 ## Written Design self-review
 
-Completed on branch head after the initial Design write.
+Completed on the Design branch.
 
 Checks performed:
 
@@ -63,10 +63,9 @@ until the user reviews the written Design Spec.
 
 ## Next exact action
 
-1. Open a Draft Design PR for `design/document-publish-v0` against `main`.
-2. Verify the exact PR head and any triggered CI for the documentation-only branch.
-3. Ask the user to review `docs/superpowers/specs/2026-09-17-document-publish-v0-design.md`.
-4. If the user approves the written artifact, update the Design status to `APPROVED — design freeze active`, add an approval record, then invoke the writing-plans workflow to create the implementation plan.
+1. Verify the exact PR #5 head and any triggered CI for the documentation-only branch.
+2. Ask the user to review `docs/superpowers/specs/2026-09-17-document-publish-v0-design.md`.
+3. If the user approves the written artifact, update the Design status to `APPROVED — design freeze active`, add an approval record, then invoke the writing-plans workflow to create the implementation plan.
 
 ## Change-control rule
 
