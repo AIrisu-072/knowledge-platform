@@ -10,8 +10,8 @@ mod metadata;
 mod principal;
 
 pub use document::{
-    CreateInitialDocument, Document, DocumentVersion, InitialDocument, LifecycleState, Title,
-    VersionNo,
+    CreateInitialDocument, Document, DocumentVersion, InitialDocument, LifecycleState,
+    PublishTransition, Title, VersionNo,
 };
 pub use error::DomainError;
 pub use file::{
