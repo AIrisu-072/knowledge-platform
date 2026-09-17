@@ -12,6 +12,17 @@ pub enum LifecycleState {
     Withdrawn,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PublishTransition {
+    resulting_document_revision: i64,
+}
+
+impl PublishTransition {
+    pub const fn resulting_document_revision(self) -> i64 {
+        self.resulting_document_revision
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VersionNo(i64);
 
@@ -80,6 +91,36 @@ impl Document {
 
     pub fn created_at(&self) -> OffsetDateTime {
         self.created_at
+    }
+
+    pub fn publish_initial_version(
+        &mut self,
+        target: &mut DocumentVersion,
+        published_at: OffsetDateTime,
+    ) -> Result<PublishTransition, DomainError> {
+        if target.document_id != self.document_id {
+            return Err(DomainError::VersionDocumentMismatch);
+        }
+        if self.current_version_id.is_some() {
+            return Err(DomainError::CurrentVersionAlreadySet);
+        }
+        if target.lifecycle_state != LifecycleState::Working {
+            return Err(DomainError::VersionNotWorking);
+        }
+
+        let next_revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(DomainError::RevisionOverflow)?;
+
+        target.lifecycle_state = LifecycleState::Published;
+        target.published_at = Some(published_at);
+        self.current_version_id = Some(target.document_version_id);
+        self.revision = next_revision;
+
+        Ok(PublishTransition {
+            resulting_document_revision: next_revision,
+        })
     }
 }
 
@@ -231,6 +272,17 @@ impl InitialDocument {
             file,
             version_file,
         })
+    }
+
+    pub fn restore_published(
+        input: CreateInitialDocument,
+        published_at: OffsetDateTime,
+    ) -> Result<Self, DomainError> {
+        let mut aggregate = Self::create(input)?;
+        aggregate
+            .document
+            .publish_initial_version(&mut aggregate.version, published_at)?;
+        Ok(aggregate)
     }
 
     pub fn document(&self) -> &Document {
