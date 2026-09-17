@@ -37,9 +37,7 @@ Always fetch current PR #5 head, state, and exact-head CI from GitHub before act
 
 ## Written Design approval
 
-The user explicitly approved the written Design Spec on 2026-09-17.
-
-The Design Spec is marked `APPROVED — design freeze active`, and the approval record is committed on the Design branch.
+The user explicitly approved the written Design Spec on 2026-09-17. The Design Spec is marked `APPROVED — design freeze active`, and the approval record is committed on the Design branch.
 
 Any change to lifecycle scope, current-version replacement semantics, idempotency, OCC/locking, file preflight semantics, transaction boundary, event/audit semantics, database ownership constraints, or capability scope requires an explicit Design amendment before implementation.
 
@@ -47,16 +45,14 @@ Any change to lifecycle scope, current-version replacement semantics, idempotenc
 
 The Implementation Plan was derived from the frozen Design and self-reviewed before execution.
 
-Corrections made during self-review:
-
-- `DocumentPublishRepository` remains separate from existing `DocumentRepository` so Create/Get/reconciliation fakes are not widened.
-- `DocumentService::new` is planned to move out of the `R: DocumentRepository`-bound impl so Publish-only repository fakes can instantiate the service.
-- Publish-after-Create requires `GetDocument` to understand the narrow initial-PUBLISHED state; the Plan explicitly adds `InitialDocument::restore_published` and adapter mapping.
-- PostgreSQL Publish read helpers are implemented before, but the full `DocumentPublishRepository` trait impl is deferred until all three methods exist; no incomplete production trait impl/stub is allowed.
-- rollback atomicity uses a deterministic duplicate Domain-Outbox EventId collision; no production fault flag is introduced.
-- distinct-operation and same-operation concurrency tests use an explicit `tokio::sync::Barrier`.
-- unknown-commit tests use test-only repository wrappers for before-commit and after-commit realities.
-- placeholder scan found no `TODO` or `TBD`; implementation choices required for execution are made explicitly in the Plan.
+- `DocumentPublishRepository` remains separate from existing `DocumentRepository`.
+- `DocumentService::new` is planned to become independent of repository capability bounds.
+- `GetDocument` gains only the narrow initial-PUBLISHED restoration required after Publish v0.
+- PostgreSQL Publish read helpers are added before the complete Publish trait impl; no incomplete production stub is allowed.
+- rollback atomicity uses a deterministic duplicate Domain-Outbox EventId collision.
+- concurrency tests use an explicit `tokio::sync::Barrier`.
+- unknown-commit tests use test-only before-commit and after-commit repository wrappers.
+- placeholder scan found no `TODO` or `TBD`; execution choices are explicit.
 
 ## Planned implementation tasks
 
@@ -78,12 +74,12 @@ Before implementation:
 1. PR #5 must be green on its exact documentation/plan head.
 2. PR #5 must be merged into `main` by an explicit user merge decision.
 3. `feat/document-publish-v0` must be created from the exact merged `main` head.
-4. Inline Execution then follows the approved Implementation Plan task-by-task with TDD.
+4. Inline Execution follows the approved Implementation Plan task-by-task with TDD.
 
 ## Next exact action
 
-1. Fetch PR #5 current head/state and exact-head CI after the final approval/plan/status commits.
-2. Update PR #5 body to reflect written approval and the finalized Implementation Plan.
+1. Fetch PR #5 current head/state and exact-head CI.
+2. Update PR #5 body to reflect written approval and finalized Plan.
 3. If exact-head CI is green and no blocking review exists, mark PR #5 Ready for review.
 4. **Do not merge PR #5 without an explicit user merge instruction.**
 
