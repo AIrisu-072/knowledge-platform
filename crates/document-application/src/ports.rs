@@ -1,8 +1,8 @@
 use std::pin::Pin;
 
 use document_domain::{
-    ContentHash, Document, DocumentId, DocumentVersion, FileId, FileObject, FileSize, MediaType,
-    PrincipalRef, StorageKey, StoredFileDescriptor, VersionFile,
+    ContentHash, Document, DocumentId, DocumentVersion, DocumentVersionId, FileId, FileObject,
+    FileSize, MediaType, PrincipalRef, StorageKey, StoredFileDescriptor, VersionFile,
 };
 use time::OffsetDateTime;
 use tokio::io::AsyncRead;
