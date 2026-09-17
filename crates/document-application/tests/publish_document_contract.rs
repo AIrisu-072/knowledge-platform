@@ -18,9 +18,7 @@ fn publish_operation_id_requires_uuid_v7() {
     let invalid = Uuid::from_u128(1);
 
     assert_eq!(
-        PublishOperationId::try_from_uuid(valid)
-            .unwrap()
-            .as_uuid(),
+        PublishOperationId::try_from_uuid(valid).unwrap().as_uuid(),
         valid
     );
     assert_eq!(
@@ -79,9 +77,7 @@ fn publish_operation_record_matches_only_the_exact_command_identity() {
         PrincipalRef::new("test-idp", "actor-2").unwrap(),
     )
     .unwrap();
-    assert!(!stored.matches_identity(&PublishCommandIdentity::from_command(
-        &different_actor
-    )));
+    assert!(!stored.matches_identity(&PublishCommandIdentity::from_command(&different_actor)));
 }
 
 #[test]
@@ -90,8 +86,13 @@ fn publish_result_round_trips_persisted_fields_and_event_names_are_stable() {
     let document_id = DocumentId::from_uuid(Uuid::from_u128(30));
     let version_id = DocumentVersionId::from_uuid(Uuid::from_u128(31));
     let published_at = OffsetDateTime::from_unix_timestamp(1_700_000_020).unwrap();
-    let result =
-        PublishDocumentResult::from_persisted(operation_id, document_id, version_id, 1, published_at);
+    let result = PublishDocumentResult::from_persisted(
+        operation_id,
+        document_id,
+        version_id,
+        1,
+        published_at,
+    );
 
     assert_eq!(result.publish_operation_id(), operation_id);
     assert_eq!(result.document_id(), document_id);
