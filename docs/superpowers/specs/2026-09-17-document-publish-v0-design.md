@@ -80,7 +80,7 @@ If this design conflicts with higher-priority normative SSOT, the normative SSOT
 
 It is caller-generated before the operation begins. This is required so that a caller can safely retry the exact same command if the database commit result becomes unknown.
 
-It is not a Domain entity identity and is therefore not added to `document-domain`.
+The Application constructor/validation boundary rejects IDs that are not UUIDv7. The type is not a Domain entity identity and is therefore not added to `document-domain`.
 
 ### 4.2 Command
 
@@ -215,11 +215,11 @@ The authoritative-core invariant requires a Version-referenced FileObject to rem
 
 Before attempting a new Publish transaction, Application loads the publication candidate and verifies the target PRIMARY final object is available through the `FileStorage` port.
 
-The check is intentionally limited to existence / storage-level readability or openability.
+The check is intentionally limited to existence / storage-level readability or openability. Publish v0 does not recompute the complete SHA-256 hash because immutable storage and hash verification were established during creation.
 
-Publish v0 does not recompute the complete SHA-256 hash because immutable storage and hash verification were established during creation.
+Object-level absence or inability to open the authoritative final object is an `IntegrityViolation` and prevents publication. A dependency-level storage outage remains `StorageUnavailable`; it is not reclassified as corrupted authoritative state.
 
-If the target PRIMARY file is unavailable:
+For an object-level integrity failure:
 
 ```text
 IntegrityViolation
@@ -432,7 +432,7 @@ type    = com.knowledge-platform.document.version.published.v1
 subject = document/{document_id}/version/{document_version_id}
 ```
 
-The current Audit Outbox representation may retain its existing internal event naming convention as long as the delivery boundary can deterministically produce the required CloudEvents envelope.
+The current Audit Outbox representation may retain its existing internal event naming/source convention as long as the delivery boundary can deterministically produce the required CloudEvents envelope.
 
 Audit data records at least:
 
@@ -440,12 +440,11 @@ Audit data records at least:
 publishOperationId
 expectedDocumentRevision
 resultingDocumentRevision
-actor stable identity
 result = success
 publishedAt
 ```
 
-Actor/resource identifiers already present as structured Audit fields need not be duplicated unless required by the final envelope mapping.
+Actor/resource stable identifiers are carried by the existing structured Audit fields and do not need to be duplicated in `data`.
 
 No document body, filename, or sensitive arbitrary metadata is copied into Audit data.
 
@@ -463,6 +462,7 @@ DocumentVersionNotFound
 Conflict
 BusinessRule
 IntegrityViolation
+StorageUnavailable
 RepositoryUnavailable
 CommitOutcomeUnknown
 Internal
@@ -480,7 +480,8 @@ Expected mapping:
 | distinct operation attempts already-published target | `Conflict` |
 | target state is not publishable by v0 | `BusinessRule` |
 | target belongs to another Document | `IntegrityViolation` |
-| PRIMARY File missing/unavailable as authoritative object | `IntegrityViolation` |
+| PRIMARY authoritative object is absent / object-level unreadable | `IntegrityViolation` |
+| storage dependency unavailable | `StorageUnavailable` |
 | PostgreSQL dependency unavailable before commit | `RepositoryUnavailable` |
 | commit result unknown | structured `CommitOutcomeUnknown` |
 | unexpected adapter/programming defect | `Internal` |
@@ -553,9 +554,11 @@ At minimum:
 
 At minimum:
 
+- non-v7 publish operation ID is rejected;
 - prior successful operation replay returns stored result before file preflight;
 - same operation ID with different command returns Conflict;
-- PRIMARY file missing prevents Repository publication;
+- PRIMARY object missing prevents Repository publication with `IntegrityViolation`;
+- storage dependency outage remains `StorageUnavailable`;
 - readable PRIMARY file permits Repository call;
 - Repository `CommitOutcomeUnknown` retains operation/document/version identities in the Application error.
 
