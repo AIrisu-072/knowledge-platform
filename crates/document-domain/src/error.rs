@@ -20,4 +20,12 @@ pub enum DomainError {
     BlankMediaType,
     #[error("original filename cannot be blank")]
     BlankOriginalFilename,
+    #[error("document version belongs to another document")]
+    VersionDocumentMismatch,
+    #[error("document already has a current version")]
+    CurrentVersionAlreadySet,
+    #[error("document version is not working")]
+    VersionNotWorking,
+    #[error("document revision overflow")]
+    RevisionOverflow,
 }
