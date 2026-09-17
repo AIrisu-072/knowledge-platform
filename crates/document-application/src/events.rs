@@ -4,8 +4,10 @@ use time::OffsetDateTime;
 
 pub const DOCUMENT_CREATED: &str = "DocumentCreated";
 pub const DOCUMENT_VERSION_CREATED: &str = "DocumentVersionCreated";
+pub const DOCUMENT_VERSION_PUBLISHED: &str = "DocumentVersionPublished";
 pub const AUDIT_DOCUMENT_CREATED: &str = "document.created";
 pub const AUDIT_DOCUMENT_VERSION_CREATED: &str = "document.version.created";
+pub const AUDIT_DOCUMENT_VERSION_PUBLISHED: &str = "document.version.published";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DomainEventRecord {
