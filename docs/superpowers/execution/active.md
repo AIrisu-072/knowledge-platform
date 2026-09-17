@@ -5,7 +5,7 @@
 - Active capability: `Document Publish v0`
 - Current phase: **DESIGN REVIEW**
 - Design branch: `design/document-publish-v0`
-- Design PR: **pending creation**
+- Design PR: `#5` — **OPEN / DRAFT**
 - Design Spec under review: `docs/superpowers/specs/2026-09-17-document-publish-v0-design.md`
 - Design approval record: **not created — written-spec review pending**
 - Implementation Plan: **not created**
@@ -22,7 +22,7 @@ Read in this order:
 2. this file
 3. `docs/superpowers/execution/document-publish-v0-status.md`
 4. `docs/superpowers/specs/2026-09-17-document-publish-v0-design.md`
-5. the current GitHub branch / Design PR / CI state named by the Execution Status
+5. the current GitHub state of `design/document-publish-v0`, PR `#5`, and exact-head CI
 6. only after written-spec approval: the approval record and Implementation Plan created for this capability
 
 Repository state and fresh GitHub evidence override remembered/chat state.
@@ -31,7 +31,7 @@ Repository state and fresh GitHub evidence override remembered/chat state.
 
 A sufficient handoff prompt is:
 
-> `AIrisu-072/knowledge-platform` の `AGENTS.md` を読み、Active Execution Pointerに従ってDocument Publish v0のDesign Reviewを再開してください。会話履歴から状態を再構成せず、repositoryのExecution Status・Design Spec・GitHubの現在状態を正本にしてください。
+> `AIrisu-072/knowledge-platform` の `AGENTS.md` を読み、Active Execution Pointerに従ってDocument Publish v0のDesign Reviewを再開してください。会話履歴から状態を再構成せず、repositoryのExecution Status・Design Spec・PR #5・GitHubの現在状態を正本にしてください。
 
 ## Current hard gate
 
