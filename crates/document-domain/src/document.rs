@@ -253,3 +253,146 @@ impl InitialDocument {
         (self.document, self.version, self.file, self.version_file)
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    fn fixture(
+        document_raw: u128,
+        version_document_raw: u128,
+        version_raw: u128,
+        revision: i64,
+        current_version_raw: Option<u128>,
+        lifecycle_state: LifecycleState,
+    ) -> (Document, DocumentVersion) {
+        let document_id = DocumentId::from_uuid(Uuid::from_u128(document_raw));
+        let version_document_id =
+            DocumentId::from_uuid(Uuid::from_u128(version_document_raw));
+        let version_id = DocumentVersionId::from_uuid(Uuid::from_u128(version_raw));
+        let created_at = OffsetDateTime::UNIX_EPOCH;
+
+        let document = Document {
+            document_id,
+            folder_id: FolderId::from_uuid(Uuid::from_u128(90)),
+            current_version_id: current_version_raw
+                .map(|value| DocumentVersionId::from_uuid(Uuid::from_u128(value))),
+            revision,
+            metadata: Metadata::default(),
+            created_at,
+        };
+
+        let version = DocumentVersion {
+            document_version_id: version_id,
+            document_id: version_document_id,
+            version_no: VersionNo::new(1).unwrap(),
+            lifecycle_state,
+            title: Title::new("Policy v1").unwrap(),
+            revision_reason: None,
+            approved_at: None,
+            scheduled_publish_at: None,
+            published_at: match lifecycle_state {
+                LifecycleState::Published => Some(created_at),
+                LifecycleState::Working | LifecycleState::Withdrawn => None,
+            },
+            withdrawn_at: match lifecycle_state {
+                LifecycleState::Withdrawn => Some(created_at),
+                LifecycleState::Working | LifecycleState::Published => None,
+            },
+            effective_from: None,
+            effective_to: None,
+            created_by: PrincipalRef::new("test-idp", "actor-1").unwrap(),
+            metadata: Metadata::default(),
+            created_at,
+        };
+
+        (document, version)
+    }
+
+    #[test]
+    fn initial_working_version_publishes_without_approval() {
+        let published_at = OffsetDateTime::from_unix_timestamp(1_700_000_001).unwrap();
+        let (mut document, mut version) =
+            fixture(1, 1, 2, 0, None, LifecycleState::Working);
+
+        let transition = document
+            .publish_initial_version(&mut version, published_at)
+            .expect("initial working version should publish");
+
+        assert_eq!(version.lifecycle_state(), LifecycleState::Published);
+        assert_eq!(version.published_at(), Some(published_at));
+        assert_eq!(
+            document.current_version_id(),
+            Some(version.document_version_id())
+        );
+        assert_eq!(document.revision(), 1);
+        assert_eq!(transition.resulting_document_revision(), 1);
+        assert_eq!(version.approved_at(), None);
+    }
+
+    #[test]
+    fn publish_rejects_cross_document_target_without_mutation() {
+        let (mut document, mut version) =
+            fixture(1, 2, 3, 0, None, LifecycleState::Working);
+        let before_document = document.clone();
+        let before_version = version.clone();
+
+        let error = document
+            .publish_initial_version(&mut version, OffsetDateTime::UNIX_EPOCH)
+            .unwrap_err();
+
+        assert_eq!(error, DomainError::VersionDocumentMismatch);
+        assert_eq!(document, before_document);
+        assert_eq!(version, before_version);
+    }
+
+    #[test]
+    fn publish_rejects_existing_current_version_without_mutation() {
+        let (mut document, mut version) =
+            fixture(1, 1, 2, 0, Some(99), LifecycleState::Working);
+        let before_document = document.clone();
+        let before_version = version.clone();
+
+        let error = document
+            .publish_initial_version(&mut version, OffsetDateTime::UNIX_EPOCH)
+            .unwrap_err();
+
+        assert_eq!(error, DomainError::CurrentVersionAlreadySet);
+        assert_eq!(document, before_document);
+        assert_eq!(version, before_version);
+    }
+
+    #[test]
+    fn publish_rejects_non_working_target_without_mutation() {
+        let (mut document, mut version) =
+            fixture(1, 1, 2, 0, None, LifecycleState::Published);
+        let before_document = document.clone();
+        let before_version = version.clone();
+
+        let error = document
+            .publish_initial_version(&mut version, OffsetDateTime::UNIX_EPOCH)
+            .unwrap_err();
+
+        assert_eq!(error, DomainError::VersionNotWorking);
+        assert_eq!(document, before_document);
+        assert_eq!(version, before_version);
+    }
+
+    #[test]
+    fn publish_rejects_revision_overflow_without_mutation() {
+        let (mut document, mut version) =
+            fixture(1, 1, 2, i64::MAX, None, LifecycleState::Working);
+        let before_document = document.clone();
+        let before_version = version.clone();
+
+        let error = document
+            .publish_initial_version(&mut version, OffsetDateTime::UNIX_EPOCH)
+            .unwrap_err();
+
+        assert_eq!(error, DomainError::RevisionOverflow);
+        assert_eq!(document, before_document);
+        assert_eq!(version, before_version);
+    }
+}
