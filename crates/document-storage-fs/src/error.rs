@@ -3,10 +3,10 @@ use std::io;
 use document_application::StorageError;
 
 pub(crate) fn map_open_error(error: io::Error) -> StorageError {
-    if error.kind() == io::ErrorKind::NotFound {
-        StorageError::NotFound
-    } else {
-        StorageError::Unavailable
+    match error.kind() {
+        io::ErrorKind::NotFound => StorageError::NotFound,
+        io::ErrorKind::PermissionDenied => StorageError::ObjectUnreadable,
+        _ => StorageError::Unavailable,
     }
 }
 
