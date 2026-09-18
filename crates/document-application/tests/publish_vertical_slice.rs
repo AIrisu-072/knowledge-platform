@@ -12,11 +12,10 @@ use document_application::{
     CreateDocumentResult, CreateInitialDocumentRecord, DocumentPublishRepository,
     DocumentRepository, DocumentService, FileStorage, IdGenerator, PublishCandidate,
     PublishDocumentCommand, PublishDocumentResult, PublishInitialVersionRecord,
-    PublishOperationId, PublishOperationRecord, RepositoryError, StorageObjectInfo,
-    StoreFileRequest, StoredFile,
+    PublishOperationId, PublishOperationRecord, RepositoryError,
 };
 use document_domain::{
-    DocumentId, FileId, FolderId, LifecycleState, MediaType, Metadata, PrincipalRef, StorageKey,
+    DocumentId, FileId, FolderId, LifecycleState, MediaType, Metadata, PrincipalRef,
 };
 use document_repository_postgres::{PostgresDocumentRepository, SYSTEM_ROOT_FOLDER_ID, migrate};
 use document_storage_fs::FileSystemStorage;
