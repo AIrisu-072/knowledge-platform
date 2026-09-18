@@ -1,18 +1,21 @@
 use std::{collections::HashSet, sync::Arc};
 
 use document_domain::{
-    AuditEventId, CreateInitialDocument, DocumentId, DocumentVersionId, EventId, FileId,
-    InitialDocument, Title,
+    AuditEventId, CreateInitialDocument, DocumentId, DocumentVersionId, DomainError, EventId,
+    FileId, InitialDocument, Title,
 };
 use serde_json::json;
 use time::Duration;
 
 use crate::{
-    AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_VERSION_CREATED, ApplicationError, AuditEventRecord,
-    AuthoritativeDocument, Clock, ContentReader, CreateDocumentCommand, CreateDocumentResult,
-    CreateInitialDocumentRecord, DOCUMENT_CREATED, DOCUMENT_VERSION_CREATED, DocumentRepository,
-    DomainEventRecord, FileStorage, IdGenerator, ReconciliationFinding, RepositoryError,
-    StorageObjectKind, StoreFileRequest, classify,
+    AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_VERSION_CREATED, AUDIT_DOCUMENT_VERSION_PUBLISHED,
+    ApplicationError, AuditEventRecord, AuthoritativeDocument, Clock, ContentReader,
+    CreateDocumentCommand, CreateDocumentResult, CreateInitialDocumentRecord, DOCUMENT_CREATED,
+    DOCUMENT_VERSION_CREATED, DOCUMENT_VERSION_PUBLISHED, DocumentPublishRepository,
+    DocumentRepository, DomainEventRecord, FileStorage, IdGenerator, PublishCommandIdentity,
+    PublishDocumentCommand, PublishDocumentResult, PublishInitialVersionRecord,
+    PublishOperationRecord, ReconciliationFinding, RepositoryError, StorageObjectKind,
+    StoreFileRequest, classify,
 };
 
 pub struct DocumentService<I, C, F, R> {
@@ -27,7 +30,6 @@ where
     I: IdGenerator,
     C: Clock,
     F: FileStorage,
-    R: DocumentRepository,
 {
     pub fn new(ids: Arc<I>, clock: Arc<C>, storage: Arc<F>, repository: Arc<R>) -> Self {
         Self {
@@ -37,7 +39,15 @@ where
             repository,
         }
     }
+}
 
+impl<I, C, F, R> DocumentService<I, C, F, R>
+where
+    I: IdGenerator,
+    C: Clock,
+    F: FileStorage,
+    R: DocumentRepository,
+{
     pub async fn create_document(
         &self,
         command: CreateDocumentCommand,
@@ -223,5 +233,113 @@ where
         let authoritative = self.get_document(document_id).await?;
         let storage_key = authoritative.file().storage_key().clone();
         self.storage.open(&storage_key).await.map_err(Into::into)
+    }
+}
+
+
+impl<I, C, F, R> DocumentService<I, C, F, R>
+where
+    I: IdGenerator,
+    C: Clock,
+    F: FileStorage,
+    R: DocumentPublishRepository,
+{
+    pub async fn publish_document(
+        &self,
+        command: PublishDocumentCommand,
+    ) -> Result<PublishDocumentResult, ApplicationError> {
+        let identity = PublishCommandIdentity::from_command(&command);
+
+        if let Some(stored) = self
+            .repository
+            .get_publish_operation(command.publish_operation_id())
+            .await?
+        {
+            if stored.matches_identity(&identity) {
+                return Ok(stored.result().clone());
+            }
+            return Err(ApplicationError::Conflict);
+        }
+
+        let candidate = self
+            .repository
+            .get_publish_candidate(
+                command.document_id(),
+                command.target_document_version_id(),
+            )
+            .await?;
+        let published_at = self.clock.now();
+        let (mut document, mut version, file, _version_file) = candidate.into_parts();
+        let transition = document
+            .publish_initial_version(&mut version, published_at)
+            .map_err(map_publish_domain_error)?;
+
+        let storage_key = file.storage_key().clone();
+        let reader = self.storage.open(&storage_key).await?;
+        drop(reader);
+
+        let domain_event_id = EventId::from_uuid(self.ids.next_uuid_v7());
+        let audit_event_id = AuditEventId::from_uuid(self.ids.next_uuid_v7());
+        let result = PublishDocumentResult::from_persisted(
+            command.publish_operation_id(),
+            command.document_id(),
+            command.target_document_version_id(),
+            transition.resulting_document_revision(),
+            published_at,
+        );
+
+        let domain_event = DomainEventRecord::new(
+            domain_event_id,
+            DOCUMENT_VERSION_PUBLISHED,
+            command.document_id(),
+            json!({
+                "documentId": command.document_id().as_uuid().to_string(),
+                "documentVersionId": command.target_document_version_id().as_uuid().to_string(),
+                "resultingDocumentRevision": transition.resulting_document_revision(),
+                "publishedAt": published_at,
+                "publishOperationId": command.publish_operation_id().as_uuid().to_string(),
+            }),
+            published_at,
+        );
+        let audit_event = AuditEventRecord::new(
+            audit_event_id,
+            AUDIT_DOCUMENT_VERSION_PUBLISHED,
+            command.principal().clone(),
+            command.document_id(),
+            Some(command.target_document_version_id()),
+            json!({
+                "publishOperationId": command.publish_operation_id().as_uuid().to_string(),
+                "expectedDocumentRevision": command.expected_document_revision(),
+                "resultingDocumentRevision": transition.resulting_document_revision(),
+                "result": "success",
+                "publishedAt": published_at,
+            }),
+            published_at,
+        );
+        let operation = PublishOperationRecord::new(identity, result.clone());
+        let record = PublishInitialVersionRecord::new(operation, domain_event, audit_event);
+
+        match self.repository.publish_initial_version(record).await {
+            Ok(persisted) => Ok(persisted),
+            Err(RepositoryError::CommitOutcomeUnknown) => {
+                Err(ApplicationError::PublishCommitOutcomeUnknown {
+                    publish_operation_id: command.publish_operation_id(),
+                    document_id: command.document_id(),
+                    document_version_id: command.target_document_version_id(),
+                })
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+}
+
+fn map_publish_domain_error(error: DomainError) -> ApplicationError {
+    match error {
+        DomainError::VersionDocumentMismatch | DomainError::RevisionOverflow => {
+            ApplicationError::IntegrityViolation
+        }
+        DomainError::CurrentVersionAlreadySet => ApplicationError::Conflict,
+        DomainError::VersionNotWorking => ApplicationError::BusinessRule,
+        other => ApplicationError::Validation(other.to_string()),
     }
 }
