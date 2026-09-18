@@ -271,10 +271,9 @@ where
                     .repository
                     .get_publish_operation(command.publish_operation_id())
                     .await?
+                    && stored.matches_identity(&identity)
                 {
-                    if stored.matches_identity(&identity) {
-                        return Ok(stored.result().clone());
-                    }
+                    return Ok(stored.result().clone());
                 }
                 return Err(ApplicationError::Conflict);
             }
