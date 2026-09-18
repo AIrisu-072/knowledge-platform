@@ -2,89 +2,166 @@
 
 - Capability: `Document Publish v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **DESIGN APPROVED / IMPLEMENTATION PLAN READY / DESIGN PR MERGE GATE**
+- Overall phase: **IMPLEMENTATION COMPLETE / IMPLEMENTATION PR FINAL GATE**
 - Design: **APPROVED — design freeze active**
-- Implementation Plan: **CREATED + SELF-REVIEWED**
-- Product/runtime implementation: **NOT STARTED**
-
-## Current repository flow
-
-- Previous capability implementation PR: `#4` — **MERGED**
-- Publish design baseline: `main@2ead1e21222c3b122704b6e0ce31f3f902b93659`
-- Design branch: `design/document-publish-v0`
-- Design PR: `#5`
+- Implementation Plan: **TASKS 1–8 EXECUTED**
+- Product/runtime implementation: **COMPLETE**
 - Approved Design Spec: `docs/superpowers/specs/2026-09-17-document-publish-v0-design.md`
 - Design approval record: `docs/superpowers/specs/2026-09-17-document-publish-v0-design-approval.md`
 - Implementation Plan: `docs/superpowers/plans/2026-09-17-document-publish-v0-implementation.md`
 
-Always fetch current PR #5 head, state, and exact-head CI from GitHub before acting. Repository/GitHub state overrides chat memory.
+## Current repository flow
 
-## Frozen design decisions
+- Design PR `#5`: **MERGED**
+- Design merge / implementation baseline: `main@51fb06ae2c62886ab032fb2767104b65cc33c8ee`
+- Implementation branch: `feat/document-publish-v0`
+- Implementation PR: `#6`
+- Latest verified runtime implementation head: `a89a7d6e1f1f85722521b8ef89b43c183f9ee9d9`
+- Runtime CI: run `#211` / id `35302575027` — **SUCCESS**
+- Runtime Rust tests: **81/81 PASS, 0 skipped**
 
-- Initial Publish only; no Version #2+, Withdraw, approval workflow, scheduled publication, HTTP/UI/Search implementation, outbox delivery, or current-version replacement.
-- Command identifies both `DocumentId` and target `DocumentVersionId`.
-- OCC uses caller-supplied `expected_document_revision` plus a short PostgreSQL row lock.
-- `PublishOperationId` is caller-generated UUIDv7 in the Application layer.
-- Idempotency uses permanent `document_publish_operations` records with no TTL/cleanup in v0.
-- Same operation ID + same command replays the stored result; same ID + different command is Conflict.
-- Distinct operation IDs are not replay-equivalent merely because the same Version is already published.
-- Publish does not require `approved_at`.
-- New Publish preflights the PRIMARY final object; object absence/object-level unreadability is IntegrityViolation, dependency-level storage outage remains StorageUnavailable.
-- `current_version_id` same-Document ownership is enforced by a composite FK.
-- `PUBLISHED` current semantics are enforced by Domain + atomic Repository transaction; no lifecycle trigger/helper column.
-- Authoritative state, one Domain Outbox event, one mandatory Audit Outbox event, and the successful operation result commit atomically.
-- Commit ambiguity recovers only by exact-command retry with the same operation ID.
+The branch may advance with documentation-only evidence commits after the verified runtime head. Always fetch PR #6 current head and exact-head CI before acting.
 
-## Written Design approval
+## Implemented capability
 
-The user explicitly approved the written Design Spec on 2026-09-17. The Design Spec is marked `APPROVED — design freeze active`, and the approval record is committed on the Design branch.
+Document Publish v0 now provides:
 
-Any change to lifecycle scope, current-version replacement semantics, idempotency, OCC/locking, file preflight semantics, transaction boundary, event/audit semantics, database ownership constraints, or capability scope requires an explicit Design amendment before implementation.
+- caller-generated Application-layer UUIDv7 `PublishOperationId`;
+- command identity containing Document, target Version, expected Document revision, and actor;
+- permanent `document_publish_operations` idempotency records;
+- exact-command replay with stored result;
+- operation-ID misuse detection as Conflict;
+- initial-only Publish: `WORKING -> PUBLISHED`;
+- `published_at` assignment;
+- `Document.current_version_id = target`;
+- `Document.revision: 0 -> 1`;
+- no approval prerequisite;
+- PRIMARY final-object preflight before a new Publish;
+- storage object absence/unreadability -> IntegrityViolation;
+- storage dependency outage -> StorageUnavailable;
+- PostgreSQL short Document row lock plus expected-revision OCC;
+- composite FK enforcing same-Document current-version ownership;
+- atomic authoritative state + one Domain Outbox + one mandatory Audit Outbox + one operation-result record;
+- rollback of all Publish state on transaction failure;
+- conservative `CommitOutcomeUnknown` handling;
+- exact-command retry recovery after both pre-commit and post-commit ambiguous outcomes;
+- initial PUBLISHED-state reconstruction through existing GetDocument;
+- real PostgreSQL concurrency protection;
+- real filesystem + PostgreSQL Create -> Publish -> Get/open vertical slice.
 
-## Implementation Plan self-review
+## Explicitly still out of scope
 
-The Implementation Plan was derived from the frozen Design and self-reviewed before execution.
+No Version #2+ creation, current-version replacement, Withdraw, approval workflow, scheduled publication, automatic publisher, AccessPolicy, HTTP/OpenAPI, UI, Search indexing, outbox delivery worker, Audit Store delivery, generic idempotency framework, operation cleanup, or lifecycle trigger was added.
 
-- `DocumentPublishRepository` remains separate from existing `DocumentRepository`.
-- `DocumentService::new` is planned to become independent of repository capability bounds.
-- `GetDocument` gains only the narrow initial-PUBLISHED restoration required after Publish v0.
-- PostgreSQL Publish read helpers are added before the complete Publish trait impl; no incomplete production stub is allowed.
-- rollback atomicity uses a deterministic duplicate Domain-Outbox EventId collision.
-- concurrency tests use an explicit `tokio::sync::Barrier`.
-- unknown-commit tests use test-only before-commit and after-commit repository wrappers.
-- placeholder scan found no `TODO` or `TBD`; execution choices are explicit.
+## TDD / execution evidence
 
-## Planned implementation tasks
+Representative RED evidence:
 
-1. Domain initial-Publish transition + initial-PUBLISHED restoration.
-2. Application contracts + segregated `DocumentPublishRepository`.
-3. Storage error distinction + Application replay/preflight orchestration.
-4. `0002_document_publish_v0.sql` + schema constraints.
-5. PostgreSQL Publish read helpers + published Get mapping.
-6. Atomic PostgreSQL Publish transaction + complete adapter trait.
-7. Real concurrency + exact-command unknown-commit recovery + Create→Publish→Get vertical slice.
-8. Full repository gates + self-review + exact-head implementation PR evidence.
+1. Domain Publish API missing:
+   - head `052453d25e76e4613a8226ca0aafc7b9d63582a3`
+   - CI `#154`
+   - `fmt` passed; Rust compile/test failed because `publish_initial_version` and required Domain errors did not yet exist.
+2. Application orchestration missing:
+   - head `b0a5657382134169d251e6066edf1737facd3921`
+   - CI `#168`
+   - contract tests failed because `publish_document` / segregated Publish repository behavior was not yet implemented.
+3. PostgreSQL Publish read helpers missing:
+   - head `da1df6a7fc926c1762e25eb46951e1ca4c59c6a4`
+   - CI `#180`
+   - tests failed on missing `get_publish_operation` / `get_publish_candidate`.
+4. Atomic PostgreSQL Publish adapter missing:
+   - head `6e7361ccb0e3d83c68aba6597a397cc193c0c499`
+   - CI `#196`
+   - transaction tests failed because `PostgresDocumentRepository` did not yet implement `DocumentPublishRepository`.
+5. Transaction classification regression found by tests:
+   - head `c3b03fc26b3b4f0f617d09da12e68ebc01486f0e`
+   - CI `#201`
+   - all static gates passed; real PostgreSQL tests exposed `current_version_id = other` being classified as IntegrityViolation instead of Conflict.
+
+Task 7 added real concurrency and recovery evidence. The final recovery/vertical tests did not require additional product behavior beyond the already-correct implementation; they verify the frozen contract.
+
+## Final runtime verification evidence
+
+Exact runtime head:
+
+`a89a7d6e1f1f85722521b8ef89b43c183f9ee9d9`
+
+Hosted PR CI run `#211` (`35302575027`) is **SUCCESS**:
+
+- `policy`: PASS
+  - architecture checks
+  - repository policy
+  - API check
+  - assurance scan/plan/run/report
+- `rust-static`: PASS
+  - `fmt`
+  - `check:rust`
+  - `sqlx:check`
+- `rust-test`: PASS
+- `security`: PASS
+- `portability-macos`: PASS
+- `container-build`: PASS / SBOM
+- `required-check`: PASS
+
+The hosted CI decomposes and passes the dependency closure used by `verify:fast`, `verify`, and `verify:full`. This connector session did **not** separately execute those three local aggregate commands, so they are not falsely recorded as local runs.
+
+Rust evidence:
+
+- **81 tests across 24 binaries**
+- **81 passed, 0 skipped**
+- Publish application contract tests: PASS
+- Domain Publish invariant tests: PASS
+- Publish schema test: PASS
+- Publish transaction tests: PASS
+- distinct-operation concurrency: PASS
+- same-operation concurrent replay: PASS
+- real Create -> Publish -> Get/open vertical slice: PASS
+- before-commit unknown retry: PASS
+- after-commit unknown retry: PASS
+
+## Frozen Design coverage self-review
+
+- initial Publish only — **implemented**
+- caller UUIDv7 operation ID — **implemented + validated**
+- same-operation replay — **implemented**
+- operation-ID misuse Conflict — **implemented**
+- OCC + short row lock — **implemented**
+- file-preflight semantics — **implemented**
+- same-Document current composite FK — **implemented**
+- PUBLISHED/current atomic semantics — **implemented**
+- Domain Outbox atomicity — **implemented**
+- mandatory Audit Outbox atomicity — **implemented**
+- operation-result atomicity — **implemented**
+- unknown-commit exact-command recovery — **implemented**
+- current replacement — **absent**
+- Withdraw / scheduler / approval flow — **absent**
+- HTTP / UI / Search / outbox worker — **absent**
+
+No Design amendment was required.
+
+## Self-review findings
+
+- Critical: **0**
+- Important: **0**
+- Minor cleanup completed: removed unused Publish row scaffolding after GREEN verification.
+- No unresolved known contract mismatch remains.
 
 ## Current gate
 
-No product/runtime implementation starts from the Design branch.
+The runtime implementation is complete and verified. Documentation/evidence commits may move the PR head beyond the runtime head and therefore require their own exact-head hosted CI before PR #6 is marked Ready.
 
-Before implementation:
-
-1. PR #5 must be green on its exact documentation/plan head.
-2. PR #5 must be merged into `main` by an explicit user merge decision.
-3. `feat/document-publish-v0` must be created from the exact merged `main` head.
-4. Inline Execution follows the approved Implementation Plan task-by-task with TDD.
+Do not merge PR #6 without an explicit user merge instruction.
 
 ## Next exact action
 
-1. Fetch PR #5 current head/state and exact-head CI.
-2. Update PR #5 body to reflect written approval and finalized Plan.
-3. If exact-head CI is green and no blocking review exists, mark PR #5 Ready for review.
-4. **Do not merge PR #5 without an explicit user merge instruction.**
+1. Update the Active Execution Pointer to PR #6 implementation-complete state.
+2. Run/fetch hosted CI for the exact final documentation/evidence head.
+3. Fetch inline review threads and submitted reviews.
+4. If exact-head CI is green and no blocking review exists, update PR #6 evidence and mark it Ready for review.
+5. **Stop at the merge gate.**
 
 ## Session handoff rule
 
-Before session switch/context exhaustion, record current Task/Step, exact verification evidence, branch/PR/head, blockers, next exact action, and any approved Design amendment here.
+Before resuming, read the repository SSOT and fetch current PR #6 state/head/CI. GitHub state overrides chat memory.
 
-Do not claim implementation completion without fresh exact-head evidence.
+Do not claim merge completion unless PR #6 is actually merged.

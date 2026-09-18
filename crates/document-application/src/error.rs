@@ -2,10 +2,14 @@ use thiserror::Error;
 
 use document_domain::{DocumentId, DocumentVersionId, DomainError, FileId};
 
+use crate::command::PublishOperationId;
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum StorageError {
     #[error("stored object not found")]
     NotFound,
+    #[error("stored object cannot be opened")]
+    ObjectUnreadable,
     #[error("storage write failed")]
     WriteFailed,
     #[error("storage sync failed")]
@@ -22,6 +26,14 @@ pub enum StorageError {
 pub enum RepositoryError {
     #[error("folder not found")]
     FolderNotFound,
+    #[error("document not found")]
+    DocumentNotFound,
+    #[error("document version not found")]
+    DocumentVersionNotFound,
+    #[error("repository conflict")]
+    Conflict,
+    #[error("business rule rejected operation")]
+    BusinessRule,
     #[error("repository unavailable")]
     Unavailable,
     #[error("commit outcome is unknown")]
@@ -40,6 +52,12 @@ pub enum ApplicationError {
     FolderNotFound,
     #[error("document not found")]
     DocumentNotFound,
+    #[error("document version not found")]
+    DocumentVersionNotFound,
+    #[error("operation conflicts with current authoritative state")]
+    Conflict,
+    #[error("business rule rejected operation")]
+    BusinessRule,
     #[error("storage write failed")]
     StorageWriteFailed,
     #[error("storage sync failed")]
@@ -58,6 +76,12 @@ pub enum ApplicationError {
         document_version_id: DocumentVersionId,
         file_id: FileId,
     },
+    #[error("publish commit outcome is unknown")]
+    PublishCommitOutcomeUnknown {
+        publish_operation_id: PublishOperationId,
+        document_id: DocumentId,
+        document_version_id: DocumentVersionId,
+    },
     #[error("internal failure: {0}")]
     Internal(String),
 }
@@ -71,7 +95,7 @@ impl From<DomainError> for ApplicationError {
 impl From<StorageError> for ApplicationError {
     fn from(error: StorageError) -> Self {
         match error {
-            StorageError::NotFound => Self::IntegrityViolation,
+            StorageError::NotFound | StorageError::ObjectUnreadable => Self::IntegrityViolation,
             StorageError::WriteFailed => Self::StorageWriteFailed,
             StorageError::SyncFailed => Self::StorageSyncFailed,
             StorageError::FinalizeFailed => Self::StorageFinalizeFailed,
@@ -85,6 +109,10 @@ impl From<RepositoryError> for ApplicationError {
     fn from(error: RepositoryError) -> Self {
         match error {
             RepositoryError::FolderNotFound => Self::FolderNotFound,
+            RepositoryError::DocumentNotFound => Self::DocumentNotFound,
+            RepositoryError::DocumentVersionNotFound => Self::DocumentVersionNotFound,
+            RepositoryError::Conflict => Self::Conflict,
+            RepositoryError::BusinessRule => Self::BusinessRule,
             RepositoryError::Unavailable => Self::RepositoryUnavailable,
             RepositoryError::CommitOutcomeUnknown => Self::Internal(
                 "commit outcome unknown outside create operation identity context".to_owned(),

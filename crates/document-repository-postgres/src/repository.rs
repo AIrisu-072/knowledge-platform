@@ -1,5 +1,7 @@
 use document_application::{
-    AuthoritativeDocument, CreateInitialDocumentRecord, DocumentRepository, RepositoryError,
+    AuthoritativeDocument, CreateInitialDocumentRecord, DocumentPublishRepository,
+    DocumentRepository, PublishCandidate, PublishDocumentResult, PublishInitialVersionRecord,
+    PublishOperationId, PublishOperationRecord, RepositoryError,
 };
 use document_domain::{DocumentId, FileId, FileRole};
 use serde_json::Value;
@@ -8,6 +10,7 @@ use sqlx::PgPool;
 use crate::{
     error::{map_commit_error, map_statement_error},
     mapping::to_authoritative,
+    publish,
     rows::AuthoritativeRow,
 };
 
@@ -260,5 +263,29 @@ fn file_role(role: FileRole) -> &'static str {
     match role {
         FileRole::Primary => "PRIMARY",
         FileRole::Attachment => "ATTACHMENT",
+    }
+}
+
+impl DocumentPublishRepository for PostgresDocumentRepository {
+    async fn get_publish_operation(
+        &self,
+        operation_id: PublishOperationId,
+    ) -> Result<Option<PublishOperationRecord>, RepositoryError> {
+        publish::get_publish_operation(&self.pool, operation_id).await
+    }
+
+    async fn get_publish_candidate(
+        &self,
+        document_id: DocumentId,
+        target_version_id: document_domain::DocumentVersionId,
+    ) -> Result<PublishCandidate, RepositoryError> {
+        publish::get_publish_candidate(&self.pool, document_id, target_version_id).await
+    }
+
+    async fn publish_initial_version(
+        &self,
+        record: PublishInitialVersionRecord,
+    ) -> Result<PublishDocumentResult, RepositoryError> {
+        publish::publish_initial_version(&self.pool, record).await
     }
 }

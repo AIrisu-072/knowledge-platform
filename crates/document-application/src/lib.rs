@@ -9,15 +9,21 @@ mod ports;
 mod reconciliation;
 mod service;
 
-pub use command::{CreateDocumentCommand, CreateDocumentResult};
+pub use command::{
+    CreateDocumentCommand, CreateDocumentResult, PublishDocumentCommand, PublishDocumentResult,
+    PublishOperationId,
+};
 pub use error::{ApplicationError, RepositoryError, StorageError};
 pub use events::{
-    AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_VERSION_CREATED, AuditEventRecord, DOCUMENT_CREATED,
-    DOCUMENT_VERSION_CREATED, DomainEventRecord,
+    AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_VERSION_CREATED, AUDIT_DOCUMENT_VERSION_PUBLISHED,
+    AuditEventRecord, DOCUMENT_CREATED, DOCUMENT_VERSION_CREATED, DOCUMENT_VERSION_PUBLISHED,
+    DomainEventRecord,
 };
 pub use ports::{
-    AuthoritativeDocument, Clock, ContentReader, CreateInitialDocumentRecord, DocumentRepository,
-    FileStorage, IdGenerator, StorageObjectInfo, StorageObjectKind, StoreFileRequest, StoredFile,
+    AuthoritativeDocument, Clock, ContentReader, CreateInitialDocumentRecord,
+    DocumentPublishRepository, DocumentRepository, FileStorage, IdGenerator, PublishCandidate,
+    PublishCommandIdentity, PublishInitialVersionRecord, PublishOperationRecord, StorageObjectInfo,
+    StorageObjectKind, StoreFileRequest, StoredFile,
 };
 pub use reconciliation::{ReconciliationClassification, ReconciliationFinding, classify};
 pub use service::DocumentService;
