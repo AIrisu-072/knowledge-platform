@@ -1,14 +1,18 @@
 use document_application::{
-    PublishCandidate, PublishCommandIdentity, PublishDocumentResult, PublishOperationId,
-    PublishOperationRecord, RepositoryError,
+    PublishCandidate, PublishCommandIdentity, PublishDocumentResult, PublishInitialVersionRecord,
+    PublishOperationId, PublishOperationRecord, RepositoryError,
 };
-use document_domain::{DocumentId, DocumentVersionId, PrincipalRef};
-use sqlx::PgPool;
+use document_domain::{DocumentId, DocumentVersionId, DomainError, PrincipalRef};
+use sqlx::{PgPool, Postgres, Transaction};
 
 use crate::{
-    error::map_statement_error, mapping::to_authoritative, publish_rows::PublishOperationRow,
+    error::{map_commit_error, map_statement_error},
+    mapping::to_authoritative,
+    publish_rows::PublishOperationRow,
     rows::AuthoritativeRow,
 };
+
+const AUDIT_SOURCE: &str = "urn:knowledge-platform:document-platform";
 
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) async fn get_publish_operation(
@@ -27,30 +31,7 @@ pub(crate) async fn get_publish_operation(
     .await
     .map_err(map_statement_error)?;
 
-    row.map(|row| {
-        let stored_operation_id = PublishOperationId::try_from_uuid(row.publish_operation_id)
-            .map_err(|_| RepositoryError::IntegrityViolation)?;
-        let principal = PrincipalRef::new(row.actor_identity_provider, row.actor_principal_id)
-            .map_err(|_| RepositoryError::IntegrityViolation)?;
-        let document_id = DocumentId::from_uuid(row.document_id);
-        let version_id = DocumentVersionId::from_uuid(row.target_document_version_id);
-        let identity = PublishCommandIdentity::from_persisted(
-            stored_operation_id,
-            document_id,
-            version_id,
-            row.expected_document_revision,
-            principal,
-        );
-        let result = PublishDocumentResult::from_persisted(
-            stored_operation_id,
-            document_id,
-            version_id,
-            row.resulting_document_revision,
-            row.published_at,
-        );
-        Ok(PublishOperationRecord::new(identity, result))
-    })
-    .transpose()
+    row.map(map_operation_row).transpose()
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -139,6 +120,378 @@ pub(crate) async fn get_publish_candidate(
         authoritative.file().clone(),
         authoritative.version_file().clone(),
     ))
+}
+
+
+pub(crate) async fn publish_initial_version(
+    pool: &PgPool,
+    record: PublishInitialVersionRecord,
+) -> Result<PublishDocumentResult, RepositoryError> {
+    let (operation, domain_event, audit_event) = record.into_parts();
+    let (identity, proposed_result) = operation.into_parts();
+
+    validate_proposed_result(&identity, &proposed_result)?;
+
+    if let Some(stored) = get_publish_operation(pool, identity.publish_operation_id()).await? {
+        return replay_or_conflict(stored, &identity);
+    }
+
+    let mut tx = pool.begin().await.map_err(map_statement_error)?;
+
+    let outcome: Result<PublishDocumentResult, RepositoryError> = async {
+        let document_state: Option<(Option<uuid::Uuid>, i64)> = sqlx::query_as(
+            "SELECT current_version_id, revision \
+             FROM documents \
+             WHERE document_id = $1 \
+             FOR UPDATE",
+        )
+        .bind(identity.document_id().as_uuid())
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(map_statement_error)?;
+
+        let Some((current_version_id, document_revision)) = document_state else {
+            return Err(RepositoryError::DocumentNotFound);
+        };
+
+        if let Some(stored) =
+            get_publish_operation_in_tx(&mut tx, identity.publish_operation_id()).await?
+        {
+            return replay_or_conflict(stored, &identity);
+        }
+
+        if current_version_id.is_some() {
+            return Err(RepositoryError::Conflict);
+        }
+        if document_revision != identity.expected_document_revision() {
+            return Err(RepositoryError::Conflict);
+        }
+
+        let version_state: Option<(uuid::Uuid, String, Option<time::OffsetDateTime>)> =
+            sqlx::query_as(
+                "SELECT document_id, lifecycle_state, published_at \
+                 FROM document_versions \
+                 WHERE document_version_id = $1 \
+                 FOR UPDATE",
+            )
+            .bind(identity.target_document_version_id().as_uuid())
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(map_statement_error)?;
+
+        let Some((version_document_id, lifecycle_state, _existing_published_at)) = version_state
+        else {
+            return Err(RepositoryError::DocumentVersionNotFound);
+        };
+
+        if version_document_id != identity.document_id().as_uuid() {
+            return Err(RepositoryError::IntegrityViolation);
+        }
+
+        match lifecycle_state.as_str() {
+            "WORKING" => {}
+            "PUBLISHED" => return Err(RepositoryError::Conflict),
+            "WITHDRAWN" => return Err(RepositoryError::BusinessRule),
+            _ => return Err(RepositoryError::IntegrityViolation),
+        }
+
+        let primary_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS ( \
+                SELECT 1 \
+                FROM version_files vf \
+                JOIN file_objects f ON f.file_id = vf.file_id \
+                WHERE vf.document_version_id = $1 AND vf.role = 'PRIMARY' \
+             )",
+        )
+        .bind(identity.target_document_version_id().as_uuid())
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(map_statement_error)?;
+        if !primary_exists {
+            return Err(RepositoryError::IntegrityViolation);
+        }
+
+        let row = load_authoritative_row_in_tx(
+            &mut tx,
+            identity.document_id(),
+            identity.target_document_version_id(),
+        )
+        .await?
+        .ok_or(RepositoryError::IntegrityViolation)?;
+        let authoritative = to_authoritative(row)?;
+        let mut document = authoritative.document().clone();
+        let mut version = authoritative.version().clone();
+        let transition = document
+            .publish_initial_version(&mut version, proposed_result.published_at())
+            .map_err(map_publish_domain_error)?;
+        if transition.resulting_document_revision()
+            != proposed_result.resulting_document_revision()
+        {
+            return Err(RepositoryError::IntegrityViolation);
+        }
+
+        let claimed = sqlx::query(
+            "INSERT INTO document_publish_operations \
+             (publish_operation_id, document_id, target_document_version_id, \
+              expected_document_revision, actor_identity_provider, actor_principal_id, \
+              published_at, resulting_document_revision, created_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $7) \
+             ON CONFLICT (publish_operation_id) DO NOTHING",
+        )
+        .bind(identity.publish_operation_id().as_uuid())
+        .bind(identity.document_id().as_uuid())
+        .bind(identity.target_document_version_id().as_uuid())
+        .bind(identity.expected_document_revision())
+        .bind(identity.principal().identity_provider())
+        .bind(identity.principal().principal_id())
+        .bind(proposed_result.published_at())
+        .bind(proposed_result.resulting_document_revision())
+        .execute(&mut *tx)
+        .await
+        .map_err(map_statement_error)?;
+
+        if claimed.rows_affected() == 0 {
+            let stored = get_publish_operation_in_tx(
+                &mut tx,
+                identity.publish_operation_id(),
+            )
+            .await?
+            .ok_or(RepositoryError::Conflict)?;
+            return replay_or_conflict(stored, &identity);
+        }
+
+        let version_update = sqlx::query(
+            "UPDATE document_versions \
+             SET lifecycle_state = 'PUBLISHED', published_at = $1 \
+             WHERE document_version_id = $2 \
+               AND document_id = $3 \
+               AND lifecycle_state = 'WORKING'",
+        )
+        .bind(proposed_result.published_at())
+        .bind(identity.target_document_version_id().as_uuid())
+        .bind(identity.document_id().as_uuid())
+        .execute(&mut *tx)
+        .await
+        .map_err(map_statement_error)?;
+        if version_update.rows_affected() != 1 {
+            return Err(RepositoryError::BusinessRule);
+        }
+
+        let document_update = sqlx::query(
+            "UPDATE documents \
+             SET current_version_id = $1, revision = $2 \
+             WHERE document_id = $3 \
+               AND revision = $4 \
+               AND current_version_id IS NULL",
+        )
+        .bind(identity.target_document_version_id().as_uuid())
+        .bind(proposed_result.resulting_document_revision())
+        .bind(identity.document_id().as_uuid())
+        .bind(identity.expected_document_revision())
+        .execute(&mut *tx)
+        .await
+        .map_err(map_statement_error)?;
+        if document_update.rows_affected() != 1 {
+            return Err(RepositoryError::Conflict);
+        }
+
+        sqlx::query(
+            "INSERT INTO outbox_events \
+             (event_id, event_type, aggregate_type, aggregate_id, payload, occurred_at, \
+              available_at, attempt_count, delivered_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $6, 0, NULL)",
+        )
+        .bind(domain_event.event_id().as_uuid())
+        .bind(domain_event.event_type())
+        .bind(domain_event.aggregate_type())
+        .bind(domain_event.aggregate_id().as_uuid())
+        .bind(domain_event.payload().clone())
+        .bind(domain_event.occurred_at())
+        .execute(&mut *tx)
+        .await
+        .map_err(map_statement_error)?;
+
+        let subject = format!(
+            "document/{}/version/{}",
+            audit_event.resource_id().as_uuid(),
+            identity.target_document_version_id().as_uuid()
+        );
+        sqlx::query(
+            "INSERT INTO audit_outbox_events \
+             (event_id, event_type, source, subject, actor_identity_provider, \
+              actor_principal_id, resource_id, resource_version_id, result, trace_id, data, \
+              occurred_at, attempt_count, delivered_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, $10, $11, 0, NULL)",
+        )
+        .bind(audit_event.event_id().as_uuid())
+        .bind(audit_event.event_type())
+        .bind(AUDIT_SOURCE)
+        .bind(subject)
+        .bind(audit_event.actor().identity_provider())
+        .bind(audit_event.actor().principal_id())
+        .bind(audit_event.resource_id().as_uuid())
+        .bind(audit_event.resource_version_id().map(|id| id.as_uuid()))
+        .bind(audit_event.result())
+        .bind(audit_event.data().clone())
+        .bind(audit_event.occurred_at())
+        .execute(&mut *tx)
+        .await
+        .map_err(map_statement_error)?;
+
+        Ok(proposed_result.clone())
+    }
+    .await;
+
+    match outcome {
+        Ok(result) => {
+            tx.commit().await.map_err(map_commit_error)?;
+            Ok(result)
+        }
+        Err(error) => {
+            let _ = tx.rollback().await;
+            Err(error)
+        }
+    }
+}
+
+fn validate_proposed_result(
+    identity: &PublishCommandIdentity,
+    result: &PublishDocumentResult,
+) -> Result<(), RepositoryError> {
+    let next_revision = identity
+        .expected_document_revision()
+        .checked_add(1)
+        .ok_or(RepositoryError::IntegrityViolation)?;
+
+    if identity.expected_document_revision() < 0
+        || result.publish_operation_id() != identity.publish_operation_id()
+        || result.document_id() != identity.document_id()
+        || result.document_version_id() != identity.target_document_version_id()
+        || result.resulting_document_revision() != next_revision
+    {
+        return Err(RepositoryError::IntegrityViolation);
+    }
+    Ok(())
+}
+
+fn replay_or_conflict(
+    stored: PublishOperationRecord,
+    identity: &PublishCommandIdentity,
+) -> Result<PublishDocumentResult, RepositoryError> {
+    if stored.matches_identity(identity) {
+        Ok(stored.result().clone())
+    } else {
+        Err(RepositoryError::Conflict)
+    }
+}
+
+fn map_operation_row(
+    row: PublishOperationRow,
+) -> Result<PublishOperationRecord, RepositoryError> {
+    let stored_operation_id = PublishOperationId::try_from_uuid(row.publish_operation_id)
+        .map_err(|_| RepositoryError::IntegrityViolation)?;
+    let principal = PrincipalRef::new(row.actor_identity_provider, row.actor_principal_id)
+        .map_err(|_| RepositoryError::IntegrityViolation)?;
+    let document_id = DocumentId::from_uuid(row.document_id);
+    let version_id = DocumentVersionId::from_uuid(row.target_document_version_id);
+    let identity = PublishCommandIdentity::from_persisted(
+        stored_operation_id,
+        document_id,
+        version_id,
+        row.expected_document_revision,
+        principal,
+    );
+    let result = PublishDocumentResult::from_persisted(
+        stored_operation_id,
+        document_id,
+        version_id,
+        row.resulting_document_revision,
+        row.published_at,
+    );
+    Ok(PublishOperationRecord::new(identity, result))
+}
+
+async fn get_publish_operation_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    operation_id: PublishOperationId,
+) -> Result<Option<PublishOperationRecord>, RepositoryError> {
+    let row = sqlx::query_as::<_, PublishOperationRow>(
+        "SELECT publish_operation_id, document_id, target_document_version_id, \
+                expected_document_revision, actor_identity_provider, actor_principal_id, \
+                published_at, resulting_document_revision \
+         FROM document_publish_operations \
+         WHERE publish_operation_id = $1",
+    )
+    .bind(operation_id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(map_statement_error)?;
+    row.map(map_operation_row).transpose()
+}
+
+async fn load_authoritative_row_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    document_id: DocumentId,
+    target_version_id: DocumentVersionId,
+) -> Result<Option<AuthoritativeRow>, RepositoryError> {
+    sqlx::query_as::<_, AuthoritativeRow>(
+        "SELECT \
+            d.document_id, \
+            d.folder_id, \
+            d.current_version_id, \
+            d.revision AS document_revision, \
+            d.metadata AS document_metadata, \
+            d.created_at AS document_created_at, \
+            v.document_version_id, \
+            v.version_no, \
+            v.lifecycle_state, \
+            v.title, \
+            v.revision_reason, \
+            v.approved_at, \
+            v.scheduled_publish_at, \
+            v.published_at, \
+            v.withdrawn_at, \
+            v.effective_from, \
+            v.effective_to, \
+            v.created_by_identity_provider, \
+            v.created_by_principal_id, \
+            v.metadata AS version_metadata, \
+            v.created_at AS version_created_at, \
+            f.file_id, \
+            f.content_hash, \
+            f.media_type, \
+            f.size_bytes, \
+            f.storage_locator, \
+            f.created_at AS file_created_at, \
+            vf.role, \
+            vf.ordinal, \
+            vf.original_filename \
+         FROM documents d \
+         JOIN document_versions v \
+           ON v.document_id = d.document_id AND v.document_version_id = $2 \
+         JOIN version_files vf \
+           ON vf.document_version_id = v.document_version_id AND vf.role = 'PRIMARY' \
+         JOIN file_objects f \
+           ON f.file_id = vf.file_id \
+         WHERE d.document_id = $1 \
+         LIMIT 1",
+    )
+    .bind(document_id.as_uuid())
+    .bind(target_version_id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(map_statement_error)
+}
+
+fn map_publish_domain_error(error: DomainError) -> RepositoryError {
+    match error {
+        DomainError::VersionDocumentMismatch | DomainError::RevisionOverflow => {
+            RepositoryError::IntegrityViolation
+        }
+        DomainError::CurrentVersionAlreadySet => RepositoryError::Conflict,
+        DomainError::VersionNotWorking => RepositoryError::BusinessRule,
+        _ => RepositoryError::IntegrityViolation,
+    }
 }
 
 #[cfg(test)]
