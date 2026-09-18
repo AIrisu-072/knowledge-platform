@@ -3,6 +3,7 @@ use sqlx::FromRow;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, FromRow)]
 pub(crate) struct PublishOperationRow {
     pub(crate) publish_operation_id: Uuid,
