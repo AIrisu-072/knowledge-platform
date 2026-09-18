@@ -266,7 +266,6 @@ fn file_role(role: FileRole) -> &'static str {
     }
 }
 
-
 impl DocumentPublishRepository for PostgresDocumentRepository {
     async fn get_publish_operation(
         &self,
