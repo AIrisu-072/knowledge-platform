@@ -439,20 +439,20 @@ async fn count_publish_operations(pool: &PgPool, document_id: DocumentId) -> i64
 
 async fn count_event_type(pool: &PgPool, table: &str, event_type: &str) -> i64 {
     match table {
-        "outbox_events" => sqlx::query_scalar(
-            "SELECT COUNT(*) FROM outbox_events WHERE event_type = $1",
-        )
-        .bind(event_type)
-        .fetch_one(pool)
-        .await
-        .expect("domain event count should query"),
-        "audit_outbox_events" => sqlx::query_scalar(
-            "SELECT COUNT(*) FROM audit_outbox_events WHERE event_type = $1",
-        )
-        .bind(event_type)
-        .fetch_one(pool)
-        .await
-        .expect("audit event count should query"),
+        "outbox_events" => {
+            sqlx::query_scalar("SELECT COUNT(*) FROM outbox_events WHERE event_type = $1")
+                .bind(event_type)
+                .fetch_one(pool)
+                .await
+                .expect("domain event count should query")
+        }
+        "audit_outbox_events" => {
+            sqlx::query_scalar("SELECT COUNT(*) FROM audit_outbox_events WHERE event_type = $1")
+                .bind(event_type)
+                .fetch_one(pool)
+                .await
+                .expect("audit event count should query")
+        }
         _ => panic!("unsupported event table fixture"),
     }
 }
