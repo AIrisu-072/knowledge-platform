@@ -4,6 +4,7 @@
 
 mod error;
 mod mapping;
+mod publish;
 mod repository;
 mod rows;
 
