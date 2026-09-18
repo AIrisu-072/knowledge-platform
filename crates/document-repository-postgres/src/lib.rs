@@ -5,6 +5,7 @@
 mod error;
 mod mapping;
 mod publish;
+mod publish_rows;
 mod repository;
 mod rows;
 
