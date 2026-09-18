@@ -29,9 +29,8 @@ pub(crate) async fn get_publish_operation(
     row.map(|row| {
         let stored_operation_id = PublishOperationId::try_from_uuid(row.publish_operation_id)
             .map_err(|_| RepositoryError::IntegrityViolation)?;
-        let principal =
-            PrincipalRef::new(row.actor_identity_provider, row.actor_principal_id)
-                .map_err(|_| RepositoryError::IntegrityViolation)?;
+        let principal = PrincipalRef::new(row.actor_identity_provider, row.actor_principal_id)
+            .map_err(|_| RepositoryError::IntegrityViolation)?;
         let document_id = DocumentId::from_uuid(row.document_id);
         let version_id = DocumentVersionId::from_uuid(row.target_document_version_id);
         let identity = PublishCommandIdentity::from_persisted(
@@ -68,12 +67,13 @@ pub(crate) async fn get_publish_candidate(
         return Err(RepositoryError::DocumentNotFound);
     }
 
-    let version_document_id: Option<uuid::Uuid> =
-        sqlx::query_scalar("SELECT document_id FROM document_versions WHERE document_version_id = $1")
-            .bind(target_version_id.as_uuid())
-            .fetch_optional(pool)
-            .await
-            .map_err(map_statement_error)?;
+    let version_document_id: Option<uuid::Uuid> = sqlx::query_scalar(
+        "SELECT document_id FROM document_versions WHERE document_version_id = $1",
+    )
+    .bind(target_version_id.as_uuid())
+    .fetch_optional(pool)
+    .await
+    .map_err(map_statement_error)?;
     let Some(version_document_id) = version_document_id else {
         return Err(RepositoryError::DocumentVersionNotFound);
     };
@@ -180,7 +180,10 @@ mod tests {
         assert_eq!(candidate.document().current_version_id(), None);
         assert_eq!(candidate.document().revision(), 0);
         assert_eq!(candidate.version().document_version_id(), version_id);
-        assert_eq!(candidate.version().lifecycle_state(), LifecycleState::Working);
+        assert_eq!(
+            candidate.version().lifecycle_state(),
+            LifecycleState::Working
+        );
         assert_eq!(candidate.file().file_id(), file_id);
 
         let operation_id = PublishOperationId::try_from_uuid(v7(2)).unwrap();
@@ -206,12 +209,12 @@ mod tests {
             .expect("operation should exist");
         assert_eq!(stored.identity().publish_operation_id(), operation_id);
         assert_eq!(stored.identity().document_id(), document_id);
-        assert_eq!(
-            stored.identity().target_document_version_id(),
-            version_id
-        );
+        assert_eq!(stored.identity().target_document_version_id(), version_id);
         assert_eq!(stored.identity().expected_document_revision(), 0);
-        assert_eq!(stored.identity().principal().identity_provider(), "test-idp");
+        assert_eq!(
+            stored.identity().principal().identity_provider(),
+            "test-idp"
+        );
         assert_eq!(stored.identity().principal().principal_id(), "actor-1");
         assert_eq!(stored.result().published_at(), published_at);
         assert_eq!(stored.result().resulting_document_revision(), 1);
