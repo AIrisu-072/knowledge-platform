@@ -367,10 +367,7 @@ async fn publish_operation_id_misuse_conflicts_before_storage_preflight() {
     let original = publish_command(11, "actor-1");
     let incoming = publish_command(11, "actor-2");
     let stored_result = publish_result(&original, now);
-    let repository = Arc::new(FakePublishRepository::new(
-        None,
-        Ok(stored_result.clone()),
-    ));
+    let repository = Arc::new(FakePublishRepository::new(None, Ok(stored_result.clone())));
     repository.set_stored(PublishOperationRecord::new(
         PublishCommandIdentity::from_command(&original),
         stored_result,
