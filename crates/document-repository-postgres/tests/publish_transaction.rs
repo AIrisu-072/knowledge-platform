@@ -83,7 +83,6 @@ async fn get_document_round_trips_initial_published_state() {
 }
 
 
-
 #[tokio::test]
 async fn publish_transaction_commits_state_events_audit_and_operation_atomically() {
     let (_container, pool) = postgres().await;
@@ -178,12 +177,7 @@ async fn publish_replay_is_idempotent_and_operation_id_misuse_conflicts() {
         1
     );
     assert_eq!(
-        count_event_type(
-            &pool,
-            "audit_outbox_events",
-            "document.version.published",
-        )
-        .await,
+        count_event_type(&pool, "audit_outbox_events", "document.version.published",).await,
         1
     );
 
@@ -341,12 +335,7 @@ async fn publish_outbox_collision_rolls_back_state_operation_and_audit() {
     assert_initial_state(&pool, document_id, version_id).await;
     assert_eq!(count_publish_operations(&pool, document_id).await, 0);
     assert_eq!(
-        count_event_type(
-            &pool,
-            "audit_outbox_events",
-            "document.version.published",
-        )
-        .await,
+        count_event_type(&pool, "audit_outbox_events", "document.version.published",).await,
         0
     );
     assert_eq!(
@@ -354,7 +343,6 @@ async fn publish_outbox_collision_rolls_back_state_operation_and_audit() {
         1
     );
 }
-
 
 
 #[derive(Clone)]
