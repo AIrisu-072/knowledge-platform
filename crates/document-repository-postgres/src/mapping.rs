@@ -64,9 +64,7 @@ pub(crate) fn to_authoritative(
 
     let initial = match lifecycle_state.as_str() {
         "WORKING"
-            if current_version_id.is_none()
-                && document_revision == 0
-                && published_at.is_none() =>
+            if current_version_id.is_none() && document_revision == 0 && published_at.is_none() =>
         {
             InitialDocument::create(input)
         }
