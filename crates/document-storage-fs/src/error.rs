@@ -26,7 +26,6 @@ pub(crate) fn map_finalize_error(_error: io::Error) -> StorageError {
     StorageError::FinalizeFailed
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::io;
