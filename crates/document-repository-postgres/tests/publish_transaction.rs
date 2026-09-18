@@ -82,7 +82,6 @@ async fn get_document_round_trips_initial_published_state() {
     assert_eq!(loaded.file().file_id(), file_id);
 }
 
-
 #[tokio::test]
 async fn publish_transaction_commits_state_events_audit_and_operation_atomically() {
     let (_container, pool) = postgres().await;
@@ -344,7 +343,6 @@ async fn publish_outbox_collision_rolls_back_state_operation_and_audit() {
     );
 }
 
-
 #[derive(Clone)]
 struct FixedClock(OffsetDateTime);
 
@@ -440,12 +438,23 @@ async fn count_publish_operations(pool: &PgPool, document_id: DocumentId) -> i64
 }
 
 async fn count_event_type(pool: &PgPool, table: &str, event_type: &str) -> i64 {
-    let query = format!("SELECT COUNT(*) FROM {table} WHERE event_type = $1");
-    sqlx::query_scalar(&query)
+    match table {
+        "outbox_events" => sqlx::query_scalar(
+            "SELECT COUNT(*) FROM outbox_events WHERE event_type = $1",
+        )
         .bind(event_type)
         .fetch_one(pool)
         .await
-        .expect("event count should query")
+        .expect("domain event count should query"),
+        "audit_outbox_events" => sqlx::query_scalar(
+            "SELECT COUNT(*) FROM audit_outbox_events WHERE event_type = $1",
+        )
+        .bind(event_type)
+        .fetch_one(pool)
+        .await
+        .expect("audit event count should query"),
+        _ => panic!("unsupported event table fixture"),
+    }
 }
 
 async fn assert_initial_state(
