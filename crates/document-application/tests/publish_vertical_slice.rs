@@ -11,8 +11,8 @@ use document_application::{
     ApplicationError, AuthoritativeDocument, Clock, ContentReader, CreateDocumentCommand,
     CreateDocumentResult, CreateInitialDocumentRecord, DocumentPublishRepository,
     DocumentRepository, DocumentService, FileStorage, IdGenerator, PublishCandidate,
-    PublishDocumentCommand, PublishDocumentResult, PublishInitialVersionRecord,
-    PublishOperationId, PublishOperationRecord, RepositoryError,
+    PublishDocumentCommand, PublishDocumentResult, PublishInitialVersionRecord, PublishOperationId,
+    PublishOperationRecord, RepositoryError,
 };
 use document_domain::{
     DocumentId, FileId, FolderId, LifecycleState, MediaType, Metadata, PrincipalRef,
@@ -275,10 +275,8 @@ async fn exercise_unknown_commit(mode: UnknownCommitMode, id_start: u64, operati
     migrate(&pool).await.expect("migrations should succeed");
     let storage_root = TempDir::new().expect("temporary storage root should be created");
     let now = OffsetDateTime::from_unix_timestamp(1_700_021_000 + id_start as i64).unwrap();
-    let repository = UnknownCommitRepository::new(
-        PostgresDocumentRepository::new(pool.clone()),
-        mode,
-    );
+    let repository =
+        UnknownCommitRepository::new(PostgresDocumentRepository::new(pool.clone()), mode);
     let service = DocumentService::new(
         Arc::new(SequenceIds::new(server_ids(id_start))),
         Arc::new(FixedClock(now)),
@@ -332,12 +330,13 @@ async fn exercise_unknown_commit(mode: UnknownCommitMode, id_start: u64, operati
 }
 
 async fn assert_publish_counts(pool: &PgPool, document_id: DocumentId) {
-    let operations: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM document_publish_operations WHERE document_id = $1")
-            .bind(document_id.as_uuid())
-            .fetch_one(pool)
-            .await
-            .expect("operation count should query");
+    let operations: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM document_publish_operations WHERE document_id = $1",
+    )
+    .bind(document_id.as_uuid())
+    .fetch_one(pool)
+    .await
+    .expect("operation count should query");
     assert_eq!(operations, 1);
 
     let domain_events: i64 =
