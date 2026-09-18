@@ -1,8 +1,147 @@
+use document_application::{
+    PublishCandidate, PublishCommandIdentity, PublishDocumentResult, PublishOperationId,
+    PublishOperationRecord, RepositoryError,
+};
+use document_domain::{DocumentId, DocumentVersionId, PrincipalRef};
+use sqlx::PgPool;
+
+use crate::{
+    error::map_statement_error, mapping::to_authoritative, publish_rows::PublishOperationRow,
+    rows::AuthoritativeRow,
+};
+
+pub(crate) async fn get_publish_operation(
+    pool: &PgPool,
+    operation_id: PublishOperationId,
+) -> Result<Option<PublishOperationRecord>, RepositoryError> {
+    let row = sqlx::query_as::<_, PublishOperationRow>(
+        "SELECT publish_operation_id, document_id, target_document_version_id, \
+                expected_document_revision, actor_identity_provider, actor_principal_id, \
+                published_at, resulting_document_revision, created_at \
+         FROM document_publish_operations \
+         WHERE publish_operation_id = $1",
+    )
+    .bind(operation_id.as_uuid())
+    .fetch_optional(pool)
+    .await
+    .map_err(map_statement_error)?;
+
+    row.map(|row| {
+        let stored_operation_id = PublishOperationId::try_from_uuid(row.publish_operation_id)
+            .map_err(|_| RepositoryError::IntegrityViolation)?;
+        let principal =
+            PrincipalRef::new(row.actor_identity_provider, row.actor_principal_id)
+                .map_err(|_| RepositoryError::IntegrityViolation)?;
+        let document_id = DocumentId::from_uuid(row.document_id);
+        let version_id = DocumentVersionId::from_uuid(row.target_document_version_id);
+        let identity = PublishCommandIdentity::from_persisted(
+            stored_operation_id,
+            document_id,
+            version_id,
+            row.expected_document_revision,
+            principal,
+        );
+        let result = PublishDocumentResult::from_persisted(
+            stored_operation_id,
+            document_id,
+            version_id,
+            row.resulting_document_revision,
+            row.published_at,
+        );
+        Ok(PublishOperationRecord::new(identity, result))
+    })
+    .transpose()
+}
+
+pub(crate) async fn get_publish_candidate(
+    pool: &PgPool,
+    document_id: DocumentId,
+    target_version_id: DocumentVersionId,
+) -> Result<PublishCandidate, RepositoryError> {
+    let document_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM documents WHERE document_id = $1)")
+            .bind(document_id.as_uuid())
+            .fetch_one(pool)
+            .await
+            .map_err(map_statement_error)?;
+    if !document_exists {
+        return Err(RepositoryError::DocumentNotFound);
+    }
+
+    let version_document_id: Option<uuid::Uuid> =
+        sqlx::query_scalar("SELECT document_id FROM document_versions WHERE document_version_id = $1")
+            .bind(target_version_id.as_uuid())
+            .fetch_optional(pool)
+            .await
+            .map_err(map_statement_error)?;
+    let Some(version_document_id) = version_document_id else {
+        return Err(RepositoryError::DocumentVersionNotFound);
+    };
+    if version_document_id != document_id.as_uuid() {
+        return Err(RepositoryError::IntegrityViolation);
+    }
+
+    let row = sqlx::query_as::<_, AuthoritativeRow>(
+        "SELECT \
+            d.document_id, \
+            d.folder_id, \
+            d.current_version_id, \
+            d.revision AS document_revision, \
+            d.metadata AS document_metadata, \
+            d.created_at AS document_created_at, \
+            v.document_version_id, \
+            v.version_no, \
+            v.lifecycle_state, \
+            v.title, \
+            v.revision_reason, \
+            v.approved_at, \
+            v.scheduled_publish_at, \
+            v.published_at, \
+            v.withdrawn_at, \
+            v.effective_from, \
+            v.effective_to, \
+            v.created_by_identity_provider, \
+            v.created_by_principal_id, \
+            v.metadata AS version_metadata, \
+            v.created_at AS version_created_at, \
+            f.file_id, \
+            f.content_hash, \
+            f.media_type, \
+            f.size_bytes, \
+            f.storage_locator, \
+            f.created_at AS file_created_at, \
+            vf.role, \
+            vf.ordinal, \
+            vf.original_filename \
+         FROM documents d \
+         JOIN document_versions v \
+           ON v.document_id = d.document_id AND v.document_version_id = $2 \
+         JOIN version_files vf \
+           ON vf.document_version_id = v.document_version_id AND vf.role = 'PRIMARY' \
+         JOIN file_objects f \
+           ON f.file_id = vf.file_id \
+         WHERE d.document_id = $1 \
+         LIMIT 1",
+    )
+    .bind(document_id.as_uuid())
+    .bind(target_version_id.as_uuid())
+    .fetch_optional(pool)
+    .await
+    .map_err(map_statement_error)?
+    .ok_or(RepositoryError::IntegrityViolation)?;
+
+    let authoritative = to_authoritative(row)?;
+    Ok(PublishCandidate::new(
+        authoritative.document().clone(),
+        authoritative.version().clone(),
+        authoritative.file().clone(),
+        authoritative.version_file().clone(),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
-    use document_application::{
-        PublishOperationId, RepositoryError,
-    };
+    use document_application::{PublishOperationId, RepositoryError};
     use document_domain::{DocumentId, DocumentVersionId, FileId, LifecycleState};
     use sqlx::{PgPool, postgres::PgPoolOptions};
     use testcontainers::{
@@ -98,13 +237,10 @@ mod tests {
         .unwrap_err();
         assert_eq!(missing_document, RepositoryError::DocumentNotFound);
 
-        let missing_version = super::get_publish_candidate(
-            &pool,
-            document_a,
-            DocumentVersionId::from_uuid(id(32)),
-        )
-        .await
-        .unwrap_err();
+        let missing_version =
+            super::get_publish_candidate(&pool, document_a, DocumentVersionId::from_uuid(id(32)))
+                .await
+                .unwrap_err();
         assert_eq!(missing_version, RepositoryError::DocumentVersionNotFound);
 
         let document_b = DocumentId::from_uuid(id(40));
