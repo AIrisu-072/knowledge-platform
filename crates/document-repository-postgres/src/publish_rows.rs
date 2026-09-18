@@ -14,7 +14,6 @@ pub(crate) struct PublishOperationRow {
     pub(crate) actor_principal_id: String,
     pub(crate) published_at: OffsetDateTime,
     pub(crate) resulting_document_revision: i64,
-    pub(crate) created_at: OffsetDateTime,
 }
 
 #[allow(dead_code)]
