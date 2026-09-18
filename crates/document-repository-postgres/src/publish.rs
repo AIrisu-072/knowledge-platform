@@ -18,7 +18,7 @@ pub(crate) async fn get_publish_operation(
     let row = sqlx::query_as::<_, PublishOperationRow>(
         "SELECT publish_operation_id, document_id, target_document_version_id, \
                 expected_document_revision, actor_identity_provider, actor_principal_id, \
-                published_at, resulting_document_revision, created_at \
+                published_at, resulting_document_revision \
          FROM document_publish_operations \
          WHERE publish_operation_id = $1",
     )
