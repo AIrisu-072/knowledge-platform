@@ -236,7 +236,6 @@ where
     }
 }
 
-
 impl<I, C, F, R> DocumentService<I, C, F, R>
 where
     I: IdGenerator,
