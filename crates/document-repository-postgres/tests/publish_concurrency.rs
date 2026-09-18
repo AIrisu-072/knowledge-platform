@@ -9,15 +9,13 @@ use document_application::{
     PublishDocumentCommand, PublishOperationId, StorageError, StorageObjectInfo, StoreFileRequest,
     StoredFile,
 };
-use document_domain::{
-    DocumentId, DocumentVersionId, FileId, PrincipalRef, StorageKey,
-};
-use document_repository_postgres::{migrate, PostgresDocumentRepository, SYSTEM_ROOT_FOLDER_ID};
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use document_domain::{DocumentId, DocumentVersionId, FileId, PrincipalRef, StorageKey};
+use document_repository_postgres::{PostgresDocumentRepository, SYSTEM_ROOT_FOLDER_ID, migrate};
+use sqlx::{PgPool, postgres::PgPoolOptions};
 use testcontainers::{
+    GenericImage, ImageExt,
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
-    GenericImage, ImageExt,
 };
 use time::OffsetDateTime;
 use tokio::sync::Barrier;
@@ -223,12 +221,13 @@ async fn assert_final_publish_state(
     assert_eq!(state.1, 1);
     assert_eq!(state.2, "PUBLISHED");
 
-    let operations: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM document_publish_operations WHERE document_id = $1")
-            .bind(document_id.as_uuid())
-            .fetch_one(pool)
-            .await
-            .expect("publish operation count should query");
+    let operations: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM document_publish_operations WHERE document_id = $1",
+    )
+    .bind(document_id.as_uuid())
+    .fetch_one(pool)
+    .await
+    .expect("publish operation count should query");
     assert_eq!(operations, 1);
 
     let domain_events: i64 = sqlx::query_scalar(
