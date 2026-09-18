@@ -96,7 +96,11 @@ async fn publish_transaction_commits_state_events_audit_and_operation_atomically
     seed_initial(&pool, document_id, version_id, file_id, created_at).await;
 
     let operation_id = publish_operation_id(1);
-    let service = publish_service(pool.clone(), published_at, [Uuid::from_u128(500), Uuid::from_u128(501)]);
+    let service = publish_service(
+        pool.clone(),
+        published_at,
+        [Uuid::from_u128(500), Uuid::from_u128(501)],
+    );
     let result = service
         .publish_document(publish_command(operation_id, 0, "actor-1"))
         .await
@@ -130,12 +134,7 @@ async fn publish_transaction_commits_state_events_audit_and_operation_atomically
         1
     );
     assert_eq!(
-        count_event_type(
-            &pool,
-            "audit_outbox_events",
-            "document.version.published",
-        )
-        .await,
+        count_event_type(&pool, "audit_outbox_events", "document.version.published",).await,
         1
     );
 }
@@ -445,13 +444,11 @@ fn publish_command(
 }
 
 async fn count_publish_operations(pool: &PgPool, document_id: DocumentId) -> i64 {
-    sqlx::query_scalar(
-        "SELECT COUNT(*) FROM document_publish_operations WHERE document_id = $1",
-    )
-    .bind(document_id.as_uuid())
-    .fetch_one(pool)
-    .await
-    .expect("publish operation count should query")
+    sqlx::query_scalar("SELECT COUNT(*) FROM document_publish_operations WHERE document_id = $1")
+        .bind(document_id.as_uuid())
+        .fetch_one(pool)
+        .await
+        .expect("publish operation count should query")
 }
 
 async fn count_event_type(pool: &PgPool, table: &str, event_type: &str) -> i64 {
