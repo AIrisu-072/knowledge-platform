@@ -113,6 +113,13 @@ pub(crate) async fn get_publish_candidate(
     .map_err(map_statement_error)?
     .ok_or(RepositoryError::IntegrityViolation)?;
 
+    if row.current_version_id.is_some() {
+        return Err(RepositoryError::Conflict);
+    }
+    if row.lifecycle_state == "WITHDRAWN" {
+        return Err(RepositoryError::BusinessRule);
+    }
+
     let authoritative = to_authoritative(row)?;
     Ok(PublishCandidate::new(
         authoritative.document().clone(),
