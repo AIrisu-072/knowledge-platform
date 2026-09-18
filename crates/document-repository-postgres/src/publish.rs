@@ -360,16 +360,10 @@ fn validate_proposed_result(
     identity: &PublishCommandIdentity,
     result: &PublishDocumentResult,
 ) -> Result<(), RepositoryError> {
-    let next_revision = identity
-        .expected_document_revision()
-        .checked_add(1)
-        .ok_or(RepositoryError::IntegrityViolation)?;
-
     if identity.expected_document_revision() < 0
         || result.publish_operation_id() != identity.publish_operation_id()
         || result.document_id() != identity.document_id()
         || result.document_version_id() != identity.target_document_version_id()
-        || result.resulting_document_revision() != next_revision
     {
         return Err(RepositoryError::IntegrityViolation);
     }
