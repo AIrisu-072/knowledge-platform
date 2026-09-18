@@ -10,6 +10,7 @@ use crate::{
     rows::AuthoritativeRow,
 };
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) async fn get_publish_operation(
     pool: &PgPool,
     operation_id: PublishOperationId,
@@ -52,6 +53,7 @@ pub(crate) async fn get_publish_operation(
     .transpose()
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) async fn get_publish_candidate(
     pool: &PgPool,
     document_id: DocumentId,
