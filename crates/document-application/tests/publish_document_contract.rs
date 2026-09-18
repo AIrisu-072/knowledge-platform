@@ -6,10 +6,10 @@ use std::{
 
 use document_application::{
     AUDIT_DOCUMENT_VERSION_PUBLISHED, ApplicationError, Clock, ContentReader,
-    DOCUMENT_VERSION_PUBLISHED, DocumentPublishRepository, DocumentService, FileStorage, IdGenerator,
-    PublishCandidate, PublishCommandIdentity, PublishDocumentCommand, PublishDocumentResult,
-    PublishInitialVersionRecord, PublishOperationId, PublishOperationRecord, RepositoryError,
-    StorageError, StorageObjectInfo, StoreFileRequest, StoredFile,
+    DOCUMENT_VERSION_PUBLISHED, DocumentPublishRepository, DocumentService, FileStorage,
+    IdGenerator, PublishCandidate, PublishCommandIdentity, PublishDocumentCommand,
+    PublishDocumentResult, PublishInitialVersionRecord, PublishOperationId, PublishOperationRecord,
+    RepositoryError, StorageError, StorageObjectInfo, StoreFileRequest, StoredFile,
 };
 use document_domain::{
     ContentHash, CreateInitialDocument, DocumentId, DocumentVersionId, FileId, FileSize, FolderId,
@@ -117,7 +117,6 @@ fn publish_result_round_trips_persisted_fields_and_event_names_are_stable() {
     );
 }
 
-
 #[derive(Clone)]
 struct FixedClock(OffsetDateTime);
 
@@ -187,7 +186,9 @@ impl FakeStorage {
 
 impl FileStorage for FakeStorage {
     async fn put_immutable(&self, _request: StoreFileRequest) -> Result<StoredFile, StorageError> {
-        Err(StorageError::Internal("not used by publish contract tests".to_owned()))
+        Err(StorageError::Internal(
+            "not used by publish contract tests".to_owned(),
+        ))
     }
 
     async fn open(&self, _key: &StorageKey) -> Result<ContentReader, StorageError> {
@@ -331,7 +332,12 @@ fn publish_service(
     storage: Arc<FakeStorage>,
     repository: Arc<FakePublishRepository>,
 ) -> DocumentService<FixedIds, FixedClock, FakeStorage, FakePublishRepository> {
-    DocumentService::new(Arc::new(FixedIds::new()), Arc::new(FixedClock(now)), storage, repository)
+    DocumentService::new(
+        Arc::new(FixedIds::new()),
+        Arc::new(FixedClock(now)),
+        storage,
+        repository,
+    )
 }
 
 #[tokio::test]
@@ -339,10 +345,7 @@ async fn publish_replay_returns_before_candidate_or_storage_preflight() {
     let now = OffsetDateTime::from_unix_timestamp(1_700_000_100).unwrap();
     let command = publish_command(10, "actor-1");
     let stored_result = publish_result(&command, now);
-    let repository = Arc::new(FakePublishRepository::new(
-        None,
-        Ok(stored_result.clone()),
-    ));
+    let repository = Arc::new(FakePublishRepository::new(None, Ok(stored_result.clone())));
     repository.set_stored(PublishOperationRecord::new(
         PublishCommandIdentity::from_command(&command),
         stored_result.clone(),
