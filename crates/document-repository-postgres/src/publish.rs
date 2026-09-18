@@ -122,7 +122,6 @@ pub(crate) async fn get_publish_candidate(
     ))
 }
 
-
 pub(crate) async fn publish_initial_version(
     pool: &PgPool,
     record: PublishInitialVersionRecord,
@@ -224,8 +223,7 @@ pub(crate) async fn publish_initial_version(
         let transition = document
             .publish_initial_version(&mut version, proposed_result.published_at())
             .map_err(map_publish_domain_error)?;
-        if transition.resulting_document_revision()
-            != proposed_result.resulting_document_revision()
+        if transition.resulting_document_revision() != proposed_result.resulting_document_revision()
         {
             return Err(RepositoryError::IntegrityViolation);
         }
@@ -251,12 +249,9 @@ pub(crate) async fn publish_initial_version(
         .map_err(map_statement_error)?;
 
         if claimed.rows_affected() == 0 {
-            let stored = get_publish_operation_in_tx(
-                &mut tx,
-                identity.publish_operation_id(),
-            )
-            .await?
-            .ok_or(RepositoryError::Conflict)?;
+            let stored = get_publish_operation_in_tx(&mut tx, identity.publish_operation_id())
+                .await?
+                .ok_or(RepositoryError::Conflict)?;
             return replay_or_conflict(stored, &identity);
         }
 
@@ -385,9 +380,7 @@ fn replay_or_conflict(
     }
 }
 
-fn map_operation_row(
-    row: PublishOperationRow,
-) -> Result<PublishOperationRecord, RepositoryError> {
+fn map_operation_row(row: PublishOperationRow) -> Result<PublishOperationRecord, RepositoryError> {
     let stored_operation_id = PublishOperationId::try_from_uuid(row.publish_operation_id)
         .map_err(|_| RepositoryError::IntegrityViolation)?;
     let principal = PrincipalRef::new(row.actor_identity_provider, row.actor_principal_id)
