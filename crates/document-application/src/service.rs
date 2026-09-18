@@ -262,10 +262,7 @@ where
 
         let candidate = self
             .repository
-            .get_publish_candidate(
-                command.document_id(),
-                command.target_document_version_id(),
-            )
+            .get_publish_candidate(command.document_id(), command.target_document_version_id())
             .await?;
         let published_at = self.clock.now();
         let (mut document, mut version, file, _version_file) = candidate.into_parts();
