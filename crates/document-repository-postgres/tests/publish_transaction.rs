@@ -1,8 +1,6 @@
 use document_application::DocumentRepository;
 use document_domain::{DocumentId, DocumentVersionId, FileId, LifecycleState};
-use document_repository_postgres::{
-    PostgresDocumentRepository, SYSTEM_ROOT_FOLDER_ID, migrate,
-};
+use document_repository_postgres::{PostgresDocumentRepository, SYSTEM_ROOT_FOLDER_ID, migrate};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use testcontainers::{
     GenericImage, ImageExt,
