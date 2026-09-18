@@ -44,13 +44,12 @@ async fn publish_migration_enforces_current_version_and_operation_constraints() 
     insert_working_version(&pool, version_a, document_a).await;
     insert_working_version(&pool, version_b, document_b).await;
 
-    let cross_document_current = sqlx::query(
-        "UPDATE documents SET current_version_id = $1 WHERE document_id = $2",
-    )
-    .bind(version_b)
-    .bind(document_a)
-    .execute(&pool)
-    .await;
+    let cross_document_current =
+        sqlx::query("UPDATE documents SET current_version_id = $1 WHERE document_id = $2")
+            .bind(version_b)
+            .bind(document_a)
+            .execute(&pool)
+            .await;
     assert!(
         cross_document_current.is_err(),
         "database must reject a current version owned by another document"
@@ -93,7 +92,10 @@ async fn publish_migration_enforces_current_version_and_operation_constraints() 
         .await
         .expect("valid publish operation should insert");
     let duplicate = insert_publish_operation(&pool, id(103), document_a, version_a, 0, 1).await;
-    assert!(duplicate.is_err(), "duplicate publish operation id must fail");
+    assert!(
+        duplicate.is_err(),
+        "duplicate publish operation id must fail"
+    );
 }
 
 fn id(value: u128) -> Uuid {
