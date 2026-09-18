@@ -260,10 +260,26 @@ where
             return Err(ApplicationError::Conflict);
         }
 
-        let candidate = self
+        let candidate = match self
             .repository
             .get_publish_candidate(command.document_id(), command.target_document_version_id())
-            .await?;
+            .await
+        {
+            Ok(candidate) => candidate,
+            Err(RepositoryError::Conflict) => {
+                if let Some(stored) = self
+                    .repository
+                    .get_publish_operation(command.publish_operation_id())
+                    .await?
+                {
+                    if stored.matches_identity(&identity) {
+                        return Ok(stored.result().clone());
+                    }
+                }
+                return Err(ApplicationError::Conflict);
+            }
+            Err(error) => return Err(error.into()),
+        };
         let published_at = self.clock.now();
         let (mut document, mut version, file, _version_file) = candidate.into_parts();
         let transition = document
