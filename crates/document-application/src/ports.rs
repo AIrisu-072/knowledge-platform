@@ -267,6 +267,22 @@ impl PublishCommandIdentity {
         }
     }
 
+    pub fn from_persisted(
+        publish_operation_id: PublishOperationId,
+        document_id: DocumentId,
+        target_document_version_id: DocumentVersionId,
+        expected_document_revision: i64,
+        principal: PrincipalRef,
+    ) -> Self {
+        Self {
+            publish_operation_id,
+            document_id,
+            target_document_version_id,
+            expected_document_revision,
+            principal,
+        }
+    }
+
     pub const fn publish_operation_id(&self) -> PublishOperationId {
         self.publish_operation_id
     }
