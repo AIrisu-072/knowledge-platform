@@ -25,7 +25,10 @@ async fn get_document_round_trips_initial_published_state() {
 
     seed_initial(&pool, document_id, version_id, file_id, created_at).await;
 
-    let mut tx = pool.begin().await.expect("publish seed transaction should begin");
+    let mut tx = pool
+        .begin()
+        .await
+        .expect("publish seed transaction should begin");
     sqlx::query(
         "UPDATE document_versions \
          SET lifecycle_state = 'PUBLISHED', published_at = $1 \
@@ -46,7 +49,9 @@ async fn get_document_round_trips_initial_published_state() {
     .execute(&mut *tx)
     .await
     .expect("document should point at published version");
-    tx.commit().await.expect("publish seed transaction should commit");
+    tx.commit()
+        .await
+        .expect("publish seed transaction should commit");
 
     let repository = PostgresDocumentRepository::new(pool);
     let loaded = repository
@@ -59,7 +64,10 @@ async fn get_document_round_trips_initial_published_state() {
     assert_eq!(loaded.document().current_version_id(), Some(version_id));
     assert_eq!(loaded.document().revision(), 1);
     assert_eq!(loaded.version().document_version_id(), version_id);
-    assert_eq!(loaded.version().lifecycle_state(), LifecycleState::Published);
+    assert_eq!(
+        loaded.version().lifecycle_state(),
+        LifecycleState::Published
+    );
     assert_eq!(loaded.version().published_at(), Some(published_at));
     assert_eq!(loaded.file().file_id(), file_id);
 }
