@@ -6,7 +6,7 @@
 
 **Architecture:** Build an isolated Rust PoC workspace under `experiments/document-semantic-inspection/`. Every adapter returns an opaque format-native semantic projection plus common evidence metadata; the harness hashes the projection and evaluates BASE / SEMANTIC / NOISE / EDITORIAL / HOSTILE fixture relations. Candidate libraries remain confined to the experiment workspace. The plan ends with a qualification report and selection update; production Document Semantic Inspection gets a separate implementation plan after actual PoC results are known.
 
-**Tech Stack:** Rust 1.98.1; isolated Cargo workspace; serde/serde_json; sha2; stemma 0.5.0; docx-review-core 0.1.1; rxls 0.1.3; calamine 0.36.1; ovba 0.7.1; tree-sitter 0.25 + MIT `tmepple/tree-sitter-vba` pinned at `c691f237b2a703732d4b6a1f01d5b4f73f94d41e`; pptx 0.1.0; powerpoint-ooxml 1.0.0; pdfium-render 0.9.4; lopdf 0.45.0; xml-sec 0.1.16; cms 0.2.3; x509-cert 0.2.5; pkix-path 0.3.2; pkix-chain 0.1.1; pkix-revocation 0.3.3; html5ever 0.40.1; csv 1.4.0; encoding_rs 0.8.41.
+**Tech Stack:** Rust 1.98.1; isolated Cargo workspace; serde/serde_json; sha2; stemma 0.5.0; docx-review-core 0.1.1; rxls 0.1.3; calamine 0.36.1; ovba 0.7.1; tree-sitter 0.25 + MIT `tmepple/tree-sitter-vba` pinned at `c691f237b2a703732d4b6a1f01d5b4f73f94d41e`; pptx 0.1.0; powerpoint-ooxml 1.0.0; pdfium-render 0.9.4; lopdf 0.45.0; xml-sec 0.1.16; cms 0.2.3; x509-cert 0.2.5; pkix-path 0.3.2; pkix-chain 0.1.1; pkix-revocation 0.3.3; scraper 0.27.0 (html5ever 0.39 parser); csv 1.4.0; encoding_rs 0.8.41.
 
 **Spec:** `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
 
@@ -24,10 +24,10 @@
 - External workbook/URL/ODBC references are parsed as definitions and never dereferenced.
 - scan-only PDF remains `RequiresOcr`; encrypted/password-protected Office/PDF remains unsupported in v0.
 - ZIP is transport, not a semantic document format.
-- PDF PoC uses PDFium release `chromium/8057` / PDFium `155.0.8057.0`; downloaded native artifacts are SHA-256 verified before use.
-  - Linux x64: `7788fa57a2996ebd21afc4090eb0a42b9f95ef3a72e7ef4c0756f1ea703c0415`
-  - macOS arm64: `013ecc9e0a155dabb8dd006a73a028ea542965f80a4990e5f013de283b0e58a6`
-  - macOS x64: `d726dc3d81445555f92bbee44577c53a9fb6425e1194cfd630403d6840d9ecbf`
+- PDF PoC uses PDFium release `chromium/7881` / PDFium `151.0.7881.0`, matching the explicit `pdfium_7881` API supported by `pdfium-render 0.9.4`; downloaded native artifacts are SHA-256 verified before use.
+  - Linux x64: `1470e21b8b4a3b4ad7f85684e2da11d94f3b69a86d81dee11b9b6709d927ac1d`
+  - macOS arm64: `52e94ca5aa8847934330daf3f8150c190682c5ca93831468794f8b90d4392e40`
+  - macOS x64: `6dedf83990e0e3d6b7c93c9e7589c5a126b0ae14b7464d76120cff7a26afb18b`
 - Every format promotion gate is 100% for required semantic/noise/editorial/fail-closed/determinism fixtures; “most files work” is not sufficient.
 - Production implementation does not begin in this plan.
 
@@ -323,8 +323,7 @@ git commit -m "test: add semantic inspection poc harness"
 ```toml
 encoding_rs = "=0.8.41"
 csv = "=1.4.0"
-html5ever = "=0.40.1"
-markup5ever_rcdom = "0.36"
+scraper = "=0.27.0"
 unicode-normalization = "0.1"
 url = "2"
 ```
@@ -683,7 +682,7 @@ Disable unnecessary lopdf defaults. Configure pdfium-render only with features r
 - detects Linux x64 or macOS x64/arm64;
 - downloads only release `chromium/8057`;
 - verifies the exact SHA-256 listed in Global Constraints;
-- extracts under `target/dsi-poc/pdfium/8057/<platform>/`;
+- extracts under `target/dsi-poc/pdfium/7881/<platform>/`;
 - prints the library directory for `PDFIUM_DYNAMIC_LIB_PATH`;
 - refuses unknown platforms or checksum mismatch.
 
@@ -984,7 +983,7 @@ git commit -m "docs: record semantic inspection poc qualification"
 ## Self-Review Checklist
 
 - Spec coverage: architecture boundary, no common durable IR, deterministic semantic fingerprint, editorial separation, signatures, external dependencies, required formats, XLSM/VBA, PDF dual-engine, fail-closed behavior, sandbox/resource evidence, cross-format capability, and promotion gate are all exercised by Tasks 1–9.
-- Placeholder scan: no TBD/TODO/"implement later" action remains in the plan.
+- Placeholder scan: no unresolved placeholder action remains in the plan.
 - Type consistency: all adapters implement one `InspectionAdapter`; all successful outputs converge to `AdapterOutput`/`InspectionResult`; all fixture relations use `ExpectedOutcome`.
 - Review Focus:
   - unknown OOXML parts -> Tasks 3/4/5;
