@@ -1,0 +1,33 @@
+name: DSI PoC
+
+on:
+  pull_request:
+    paths:
+      - "experiments/document-semantic-inspection/**"
+      - ".github/workflows/dsi-poc.yml"
+      - "mise.toml"
+      - "docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md"
+      - "docs/superpowers/plans/2026-09-20-document-semantic-inspection-v0-poc-qualification.md"
+
+permissions:
+  contents: read
+
+env:
+  MISE_AUTO_INSTALL: "0"
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+
+jobs:
+  qualification:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Install PoC toolchain
+        run: |
+          mise install rust
+          mise install cargo:cargo-deny
+      - run: mise run poc:dsi:verify

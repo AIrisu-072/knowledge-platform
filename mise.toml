@@ -309,3 +309,16 @@ depends = ["verify:fast", "security"]
 [tasks."verify:full"]
 description = "Full reproducibility/integration gate"
 depends = ["verify", "sbom"]
+
+
+[tasks."poc:dsi:test"]
+run = ["cargo test --locked --manifest-path experiments/document-semantic-inspection/Cargo.toml"]
+
+[tasks."poc:dsi:run"]
+run = ["cargo run --locked --manifest-path experiments/document-semantic-inspection/Cargo.toml --bin dsi-poc -- verify"]
+
+[tasks."poc:dsi:deny"]
+run = ["cargo deny --manifest-path experiments/document-semantic-inspection/Cargo.toml --config experiments/document-semantic-inspection/deny.toml check"]
+
+[tasks."poc:dsi:verify"]
+depends = ["poc:dsi:test", "poc:dsi:run", "poc:dsi:deny"]
