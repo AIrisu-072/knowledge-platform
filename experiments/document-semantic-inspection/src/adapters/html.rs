@@ -2,7 +2,8 @@ use crate::{
     canonical_json_bytes, AdapterOutput, FormatId, InspectionAdapter, InspectionProfile, PocError,
 };
 use encoding_rs::UTF_8;
-use scraper::{Html, Selector};
+use html5ever::{parse_document, tendril::TendrilSink};
+use markup5ever_rcdom::{Handle, NodeData, RcDom};
 use serde::Serialize;
 use unicode_normalization::UnicodeNormalization;
 use url::Url;
@@ -38,40 +39,10 @@ impl InspectionAdapter for HtmlAdapter {
         let decoded = UTF_8
             .decode_without_bom_handling_and_without_replacement(input)
             .ok_or_else(|| PocError::SemanticExtractionFailed("invalid UTF-8 HTML".into()))?;
-        let document = Html::parse_document(decoded.as_ref());
-        let selector = Selector::parse(
-            "title,h1,h2,h3,h4,h5,h6,p,ul,ol,li,table,tr,th,td,a,img",
-        )
-        .map_err(|error| {
-            PocError::InvalidWorkerResult(format!("static semantic selector invalid: {error}"))
-        })?;
 
+        let dom = parse_document(RcDom::default(), Default::default()).one(decoded.as_ref());
         let mut nodes = Vec::new();
-        for element in document.select(&selector) {
-            let tag = element.value().name().to_ascii_lowercase();
-            let text = normalize_text(element.text());
-            let href = if tag == "a" {
-                element.value().attr("href").map(normalize_uri)
-            } else {
-                None
-            };
-            let (src, alt) = if tag == "img" {
-                (
-                    element.value().attr("src").map(normalize_uri),
-                    element.value().attr("alt").map(normalize_text_value),
-                )
-            } else {
-                (None, None)
-            };
-
-            nodes.push(HtmlSemanticNode {
-                tag,
-                text,
-                href,
-                src,
-                alt,
-            });
-        }
+        walk_semantic_nodes(&dom.document, &mut nodes);
 
         let projection = canonical_json_bytes(&nodes)
             .map_err(|error| PocError::InvalidWorkerResult(error.to_string()))?;
@@ -79,8 +50,98 @@ impl InspectionAdapter for HtmlAdapter {
     }
 }
 
-fn normalize_text<'a>(parts: impl Iterator<Item = &'a str>) -> String {
-    normalize_text_value(&parts.collect::<Vec<_>>().join(" "))
+fn walk_semantic_nodes(handle: &Handle, output: &mut Vec<HtmlSemanticNode>) {
+    if let NodeData::Element { name, attrs, .. } = &handle.data {
+        let tag = name.local.as_ref();
+
+        if matches!(tag, "script" | "style" | "noscript") {
+            return;
+        }
+
+        if is_semantic_tag(tag) {
+            let attrs = attrs.borrow();
+            let href = if tag == "a" {
+                attrs
+                    .iter()
+                    .find(|attr| attr.name.local.as_ref() == "href")
+                    .map(|attr| normalize_uri(attr.value.as_ref()))
+            } else {
+                None
+            };
+            let (src, alt) = if tag == "img" {
+                (
+                    attrs
+                        .iter()
+                        .find(|attr| attr.name.local.as_ref() == "src")
+                        .map(|attr| normalize_uri(attr.value.as_ref())),
+                    attrs
+                        .iter()
+                        .find(|attr| attr.name.local.as_ref() == "alt")
+                        .map(|attr| normalize_text_value(attr.value.as_ref())),
+                )
+            } else {
+                (None, None)
+            };
+            drop(attrs);
+
+            output.push(HtmlSemanticNode {
+                tag: tag.to_owned(),
+                text: normalized_descendant_text(handle),
+                href,
+                src,
+                alt,
+            });
+        }
+    }
+
+    for child in handle.children.borrow().iter() {
+        walk_semantic_nodes(child, output);
+    }
+}
+
+fn is_semantic_tag(tag: &str) -> bool {
+    matches!(
+        tag,
+        "title"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "p"
+            | "ul"
+            | "ol"
+            | "li"
+            | "table"
+            | "tr"
+            | "th"
+            | "td"
+            | "a"
+            | "img"
+    )
+}
+
+fn normalized_descendant_text(handle: &Handle) -> String {
+    let mut raw = String::new();
+    collect_text(handle, &mut raw);
+    normalize_text_value(&raw)
+}
+
+fn collect_text(handle: &Handle, output: &mut String) {
+    match &handle.data {
+        NodeData::Text { contents } => output.push_str(contents.borrow().as_ref()),
+        NodeData::Element { name, .. }
+            if matches!(name.local.as_ref(), "script" | "style" | "noscript") =>
+        {
+            return;
+        }
+        _ => {}
+    }
+
+    for child in handle.children.borrow().iter() {
+        collect_text(child, output);
+    }
 }
 
 fn normalize_text_value(value: &str) -> String {

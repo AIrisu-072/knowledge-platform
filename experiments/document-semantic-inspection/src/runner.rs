@@ -1,7 +1,7 @@
 use crate::manifest::{ExpectedOutcome, FixtureClass};
 use crate::{
     fingerprint, AdapterOutput, CaseReport, CaseVerdict, ErrorCode, FixtureCase, FixtureManifest,
-    FormatId, InspectionAdapter, InspectionProfile, InspectionResult, PocError, VerificationReport,
+    FormatId, InspectionAdapter, InspectionResult, PocError, VerificationReport,
 };
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
