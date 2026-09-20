@@ -6,11 +6,224 @@
       "class": "BASE",
       "path": "txt/base.txt",
       "format": "txt",
-      "sha256": "4b654bd1437066b13498661f3ca14774daf1066d072036beffaf06f0c014250e",
-      "size": 9,
+      "sha256": "7b49b9e063bd91a4f9252b413261f5557b9c570aa61516989499f64a62dbcdd6",
+      "size": 6,
       "profile": "dsi-v0",
       "expected": {
         "kind": "success"
+      }
+    },
+    {
+      "id": "txt/crlf",
+      "class": "NOISE",
+      "path": "txt/crlf.txt",
+      "format": "txt",
+      "sha256": "7f2adbdb77890209f13a322e75d8aa13b9169722e702a2e367250125d33e8832",
+      "size": 7,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "txt/base"
+      }
+    },
+    {
+      "id": "txt/unicode-nfd",
+      "class": "NOISE",
+      "path": "txt/unicode-nfd.txt",
+      "format": "txt",
+      "sha256": "dcc492420fc77018ce8b7eb59458568e7901e9751194f4dbe7a1044ca16ccd2e",
+      "size": 7,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "txt/base"
+      }
+    },
+    {
+      "id": "txt/text-change",
+      "class": "SEMANTIC",
+      "path": "txt/text-change.txt",
+      "format": "txt",
+      "sha256": "87ddd0101c33c782c2d57a4943530ee26dc2da270323e01738b19cbdd19bb2ac",
+      "size": 7,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "txt/base"
+      }
+    },
+    {
+      "id": "txt/ambiguous-decode",
+      "class": "HOSTILE",
+      "path": "txt/ambiguous.txt",
+      "format": "txt",
+      "sha256": "1484735b49de70564db3e12a32d4b93ecd1097831fb917f86d3a07f0dbf1f647",
+      "size": 16,
+      "profile": "dsi-v0",
+      "text_encoding": "ambiguous",
+      "expected": {
+        "kind": "error",
+        "code": "semantic_extraction_failed"
+      }
+    },
+    {
+      "id": "csv/base",
+      "class": "BASE",
+      "path": "csv/base.csv",
+      "format": "csv",
+      "sha256": "71973a3a10f625073bc33e5c888f600c58f471d4ccc08e8ce0a064090549d761",
+      "size": 29,
+      "profile": "dsi-v0",
+      "delimiter": ",",
+      "expected": {
+        "kind": "success"
+      }
+    },
+    {
+      "id": "csv/quote-noise",
+      "class": "NOISE",
+      "path": "csv/quote-noise.csv",
+      "format": "csv",
+      "sha256": "59c100f13485a2c4eb3916e274ad00103ce7cbfb2697ae2743615a0889695eab",
+      "size": 41,
+      "profile": "dsi-v0",
+      "delimiter": ",",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "csv/base"
+      }
+    },
+    {
+      "id": "csv/cell-change",
+      "class": "SEMANTIC",
+      "path": "csv/cell-change.csv",
+      "format": "csv",
+      "sha256": "c93ea672905f44799279027a97d507ac8a646570dcd09ad74881de03025fbbb0",
+      "size": 29,
+      "profile": "dsi-v0",
+      "delimiter": ",",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "csv/base"
+      }
+    },
+    {
+      "id": "csv/row-change",
+      "class": "SEMANTIC",
+      "path": "csv/row-change.csv",
+      "format": "csv",
+      "sha256": "6c5472dea9c67dc0f75dc24c606586c2d40edc0e20755877266b9474d78108e0",
+      "size": 38,
+      "profile": "dsi-v0",
+      "delimiter": ",",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "csv/base"
+      }
+    },
+    {
+      "id": "csv/inconsistent",
+      "class": "HOSTILE",
+      "path": "csv/inconsistent.csv",
+      "format": "csv",
+      "sha256": "06649f0f7eeec5496bc94d395c71bbec8f15f63be3c670b711c68a71d3514125",
+      "size": 26,
+      "profile": "dsi-v0",
+      "delimiter": ",",
+      "expected": {
+        "kind": "error",
+        "code": "semantic_extraction_failed"
+      }
+    },
+    {
+      "id": "csv/delimiter-ambiguous",
+      "class": "HOSTILE",
+      "path": "csv/delimiter-ambiguous.csv",
+      "format": "csv",
+      "sha256": "6563b360dcc75de93cd221ef663f2f5299f296fbc632472ff91f686b0cc0dfb1",
+      "size": 12,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "unsupported_semantic_construct"
+      }
+    },
+    {
+      "id": "html/base",
+      "class": "BASE",
+      "path": "html/base.html",
+      "format": "html",
+      "sha256": "1b0a29acffad0095d41252d15373935264443c143b48cedb0c848b47ea522789",
+      "size": 263,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "success"
+      }
+    },
+    {
+      "id": "html/noise",
+      "class": "NOISE",
+      "path": "html/noise.html",
+      "format": "html",
+      "sha256": "f3c592abf8ac2ca7ad65ae35315f30a7d34118c98369d9e4b931848d44423bda",
+      "size": 339,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "html/base"
+      }
+    },
+    {
+      "id": "html/text-change",
+      "class": "SEMANTIC",
+      "path": "html/text-change.html",
+      "format": "html",
+      "sha256": "405ab6609cd4b2222c21bf2ed792fc80088e851f3b5adccfe813b63cdc996cd1",
+      "size": 264,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "html/base"
+      }
+    },
+    {
+      "id": "html/link-change",
+      "class": "SEMANTIC",
+      "path": "html/link-change.html",
+      "format": "html",
+      "sha256": "88ce232255333c8f3da7594e2d3b0d40c932e35b41eb183e6dd268c58b68d0df",
+      "size": 263,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "html/base"
+      }
+    },
+    {
+      "id": "html/image-change",
+      "class": "SEMANTIC",
+      "path": "html/image-change.html",
+      "format": "html",
+      "sha256": "5aa31c9220747eac97a0b1b0074c4c61d8db749045336f85b1029ed24d1f3472",
+      "size": 263,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "html/base"
+      }
+    },
+    {
+      "id": "html/js-only",
+      "class": "HOSTILE",
+      "path": "html/js-only.html",
+      "format": "html",
+      "sha256": "8d6a6f94a4bb9b43a3e5e7514baa6836edda14cee4cdd031027e4635d1d11027",
+      "size": 62,
+      "profile": "dsi-v0",
+      "script_required": true,
+      "expected": {
+        "kind": "error",
+        "code": "unsupported_semantic_construct"
       }
     }
   ]
