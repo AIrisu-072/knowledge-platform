@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "txt/base",
+      "class": "BASE",
+      "path": "txt/base.txt",
+      "format": "txt",
+      "sha256": "4b654bd1437066b13498661f3ca14774daf1066d072036beffaf06f0c014250e",
+      "size": 9,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "success"
+      }
+    }
+  ]
+}
