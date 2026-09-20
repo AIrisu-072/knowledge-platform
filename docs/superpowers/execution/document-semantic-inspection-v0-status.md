@@ -2,13 +2,15 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **POC QUALIFICATION EXECUTION / TASK 2 COMPLETE / TASK 3 NEXT**
+- Overall phase: **POC QUALIFICATION EXECUTION / TASK 3 DEPENDENCY PREFLIGHT COMPLETE / DOCX RED NEXT**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - Execution branch: `test/document-semantic-inspection-poc-v0`
 - Execution PR: **#8 (Draft)**
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
 - Last qualified code head: `b9da1bfa5fdf07f1b99a13248fe3233fae1082c9`
+- Task 3 dependency-preflight candidate head: `ec532ec12d89352d83dc9a85ae68a3da583c0ebb`
+- Task 3 dependency-preflight DSI run: `35545142423` — **SUCCESS**
 - Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
 - Design approval: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design-approval.md`
 - PoC Qualification Plan: `docs/superpowers/plans/2026-09-20-document-semantic-inspection-v0-poc-qualification.md`
@@ -68,17 +70,28 @@ The accepted Task 2 HTML PoC substrate is:
 
 The same frozen HTML semantic fixtures were retained across the candidate swap.
 
+## Task 3 — DEPENDENCY PREFLIGHT COMPLETE
+
+Candidate selection evidence:
+
+- `stemma 0.5.0` — **REJECTED**: vulnerable transitive Quick-XML line; legacy ZIP graph also violates the repository license gate.
+- `docx-review-core 0.1.1` — **REJECTED**: vulnerable transitive Quick-XML line.
+- `docxml 0.3.1` — **REJECTED**: default ZIP codec graph includes license expressions outside the current allowlist.
+- `office_oxide 0.1.11` + direct `zip 8.6.0` deflate-only + `quick-xml 0.42.0` — **PREFLIGHT PASS**.
+- DSI PoC run `35545142423`: existing 17 semantic cases, CLI verification, advisories, license and source gates all passed with this candidate graph.
+
+Ruling: do not weaken security/advisory/license policy to preserve a planned parser name. Keep the frozen semantic contract and qualify the replacement candidate against the same DOCX fixtures.
+
 ## Current gate / next exact action
 
-Proceed to **Task 3 — DOCX qualification**:
+Proceed to **Task 3 — DOCX RED fixture/test phase**:
 
-1. add the Task 3 candidate dependencies only inside the isolated PoC workspace;
-2. independently generate minimal OOXML/DOCX fixtures;
-3. write DOCX RED tests before the adapter;
-4. run RED and record hosted evidence;
-5. implement `DocxAdapter` plus raw OOXML coverage sentinel;
-6. require unknown potentially semantic package parts to fail closed;
-7. run the determinism repetition and `mise run poc:dsi:verify`.
+1. independently generate minimal OOXML/DOCX fixtures;
+2. write DOCX RED tests before the adapter;
+3. run RED and record hosted evidence;
+4. implement `DocxAdapter` with `office_oxide` plus the independent raw OOXML coverage/editorial sentinel;
+5. require unknown potentially semantic package parts to fail closed;
+6. run the determinism repetition and `mise run poc:dsi:verify`.
 
 Do not promote any qualified candidate into production crates during this Plan.
 

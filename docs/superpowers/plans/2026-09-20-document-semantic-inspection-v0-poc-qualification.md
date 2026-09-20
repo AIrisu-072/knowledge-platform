@@ -6,7 +6,7 @@
 
 **Architecture:** Build an isolated Rust PoC workspace under `experiments/document-semantic-inspection/`. Every adapter returns an opaque format-native semantic projection plus common evidence metadata; the harness hashes the projection and evaluates BASE / SEMANTIC / NOISE / EDITORIAL / HOSTILE fixture relations. Candidate libraries remain confined to the experiment workspace. The plan ends with a qualification report and selection update; production Document Semantic Inspection gets a separate implementation plan after actual PoC results are known.
 
-**Tech Stack:** Rust 1.98.1; isolated Cargo workspace; serde/serde_json; sha2; stemma 0.5.0; docx-review-core 0.1.1; rxls 0.1.3; calamine 0.36.1; ovba 0.7.1; tree-sitter 0.25 + MIT `tmepple/tree-sitter-vba` pinned at `c691f237b2a703732d4b6a1f01d5b4f73f94d41e`; pptx 0.1.0; powerpoint-ooxml 1.0.0; pdfium-render 0.9.4; lopdf 0.45.0; xml-sec 0.1.16; cms 0.2.3; x509-cert 0.2.5; pkix-path 0.3.2; pkix-chain 0.1.1; pkix-revocation 0.3.3; scraper 0.27.0 (html5ever 0.39 parser); csv 1.4.0; encoding_rs 0.8.41.
+**Tech Stack:** Rust 1.98.1; isolated Cargo workspace; serde/serde_json; sha2; office_oxide 0.1.11 + strict raw OOXML sentinel for DOCX; rxls 0.1.3; calamine 0.36.1; ovba 0.7.1; tree-sitter 0.25 + MIT `tmepple/tree-sitter-vba` pinned at `c691f237b2a703732d4b6a1f01d5b4f73f94d41e`; pptx 0.1.0; powerpoint-ooxml 1.0.0; pdfium-render 0.9.4; lopdf 0.45.0; xml-sec 0.1.16; cms 0.2.3; x509-cert 0.2.5; pkix-path 0.3.2; pkix-chain 0.1.1; pkix-revocation 0.3.3; scraper 0.27.0 (html5ever 0.39 parser); csv 1.4.0; encoding_rs 0.8.41.
 
 **Spec:** `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
 
@@ -400,18 +400,29 @@ git commit -m "test: qualify text csv and html semantic inspection"
 
 **Interfaces:**
 - Produces: `DocxAdapter`.
-- Primary parser candidate: `stemma = "=0.5.0"`.
-- Differential/editorial oracle: `docx-review-core = "=0.1.1"`.
-- Raw package coverage sentinel: `zip = "8"` + `quick-xml = "0.42"`.
+- Typed semantic candidate: `office_oxide = "=0.1.11"`.
+- Independent editorial/package oracle: project-owned strict raw OOXML inspection.
+- Raw package coverage sentinel:
+  ```toml
+  zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
+  quick-xml = "=0.42.0"
+  ```
 
-- [ ] **Step 1: Add dependencies**
+> **Task 3 candidate-selection Ruling (2026-09-21):**
+> - `stemma 0.5.0` and `docx-review-core 0.1.1` are **REJECTED**. Their transitive Quick-XML lines are affected by current RustSec DoS advisories; `stemma` also carries an incompatible license path through its legacy ZIP graph. Advisory/license exceptions are not permitted by the frozen security/dependency gates.
+> - `docxml 0.3.1` is **REJECTED** under the existing license allowlist because its default `zip 7.2` codec graph introduces unapproved `bzip2-1.0.6` and `CC0-1.0 OR MIT-0` license expressions.
+> - `office_oxide 0.1.11` plus a project-owned strict OOXML sentinel is the Task 3 PoC candidate. Dependency preflight passed unchanged security/license gates in DSI PoC run `35545142423`.
+> - The frozen DOCX semantic contract is unchanged. This ruling changes only the candidate implementation/oracle composition. Cost if wrong: Task 3 fails its semantic fixtures and remains unqualified; production promotion remains prohibited.
+
+- [x] **Step 1: Add dependencies and pass dependency preflight**
 
 ```toml
-stemma = "=0.5.0"
-docx-review-core = "=0.1.1"
-zip = "8"
-quick-xml = "0.42"
+office_oxide = "=0.1.11"
+zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
+quick-xml = "=0.42.0"
 ```
+
+Pin the isolated `Cargo.lock`; do not regenerate it in hosted CI.
 
 - [ ] **Step 2: Build independent minimal OOXML fixture generation**
 
@@ -453,7 +464,7 @@ assert_eq!(projected_text("docx/tracked-replacement"), "new text");
 assert_error("docx/unknown-semantic-part", ErrorCode::UnsupportedSemanticConstruct);
 ```
 
-Also compare tracked-change/comment counts against `docx-review-core`; disagreement on a required editorial construct fails the PoC case.
+Also compare the typed parser's proposed-final view and shared structural facts against independent raw-OOXML golden expectations. Track-change/comment counts and resolved state come from the project-owned raw OOXML oracle; any disagreement on a shared required fact fails the PoC case.
 
 - [ ] **Step 4: Run RED**
 
@@ -463,7 +474,7 @@ cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml -
 
 - [ ] **Step 5: Implement DOCX adapter and coverage sentinel**
 
-The adapter may use stemma's typed model internally, but serializes an adapter-owned semantic projection containing only frozen version-significant semantics. The raw OOXML sentinel enumerates package content types and relationships before semantic success.
+The adapter uses `office_oxide` as the typed DOCX semantic candidate and serializes an adapter-owned semantic projection containing only frozen version-significant semantics. A separate project-owned raw OOXML sentinel/oracle enumerates package content types, relationships, revision/comment evidence, and hostile-container conditions before semantic success.
 
 Rules:
 - known non-semantic metadata parts may be ignored explicitly;
