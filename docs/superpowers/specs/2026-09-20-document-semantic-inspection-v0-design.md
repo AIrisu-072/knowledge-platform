@@ -1,8 +1,9 @@
 # Document Semantic Inspection v0 — Design
 
-- Status: **DRAFT FOR USER REVIEW**
+- Status: **APPROVED — design freeze active**
 - Date: 2026-09-20
 - Capability: `Document Semantic Inspection v0`
+- Approval record: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design-approval.md`
 - Design branch: `design/document-semantic-inspection-v0`
 - Baseline: `main@73492983dd324fcd53d4b485719e5c31048f9335`
 
