@@ -27,5 +27,13 @@ unicode-normalization = "0.1"
 
 url = "2"
 
+stemma = "=0.5.0"
+
+docx-review-core = "=0.1.1"
+
+zip = "8"
+
+quick-xml = "0.42"
+
 [dev-dependencies]
 tempfile = "3"
