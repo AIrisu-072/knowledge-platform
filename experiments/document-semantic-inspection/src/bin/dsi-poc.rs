@@ -1,5 +1,6 @@
 use document_semantic_inspection_poc::{
-    AdapterRegistry, AlwaysSuccessAdapter, FixtureManifest, verify_manifest, write_reports,
+    AdapterRegistry, CsvAdapter, FixtureManifest, HtmlAdapter, TextAdapter, verify_manifest,
+    write_reports,
 };
 use std::path::PathBuf;
 
@@ -14,7 +15,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manifest = FixtureManifest::from_path(&fixture_root.join("manifest.json"))?;
 
     let mut registry = AdapterRegistry::new();
-    registry.insert(Box::new(AlwaysSuccessAdapter));
+    registry.insert(Box::new(TextAdapter));
+    registry.insert(Box::new(CsvAdapter));
+    registry.insert(Box::new(HtmlAdapter));
 
     let report = verify_manifest(&manifest, &fixture_root, &registry);
     let output_dir = root.join("target").join("dsi-poc");

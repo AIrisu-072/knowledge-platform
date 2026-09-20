@@ -1,3 +1,11 @@
+mod csv;
+mod html;
+mod text;
+
+pub use csv::CsvAdapter;
+pub use html::HtmlAdapter;
+pub use text::TextAdapter;
+
 use crate::{AdapterOutput, FormatId, InspectionAdapter, InspectionProfile, PocError};
 
 #[derive(Debug, Clone, Copy, Default)]

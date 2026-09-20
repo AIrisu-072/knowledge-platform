@@ -19,12 +19,18 @@ pub enum FormatId {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InspectionProfile {
     pub id: String,
+    pub csv_delimiter: Option<u8>,
+    pub text_encoding: Option<String>,
+    pub html_script_required: bool,
 }
 
 impl Default for InspectionProfile {
     fn default() -> Self {
         Self {
             id: "dsi-v0".to_owned(),
+            csv_delimiter: None,
+            text_encoding: None,
+            html_script_required: false,
         }
     }
 }

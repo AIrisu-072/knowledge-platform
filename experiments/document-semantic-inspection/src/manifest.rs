@@ -1,4 +1,4 @@
-use crate::{ErrorCode, FormatId, PocError};
+use crate::{ErrorCode, FormatId, InspectionProfile, PocError};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -33,7 +33,38 @@ pub struct FixtureCase {
     pub size: u64,
     #[serde(default = "default_profile")]
     pub profile: String,
+    #[serde(default)]
+    pub delimiter: Option<String>,
+    #[serde(default)]
+    pub text_encoding: Option<String>,
+    #[serde(default)]
+    pub script_required: bool,
     pub expected: ExpectedOutcome,
+}
+
+impl FixtureCase {
+    pub fn inspection_profile(&self) -> Result<InspectionProfile, PocError> {
+        let csv_delimiter = match self.delimiter.as_deref() {
+            Some(value) => {
+                let bytes = value.as_bytes();
+                if bytes.len() != 1 || !bytes[0].is_ascii() {
+                    return Err(PocError::InvalidManifest(format!(
+                        "{} delimiter must be exactly one ASCII byte",
+                        self.id
+                    )));
+                }
+                Some(bytes[0])
+            }
+            None => None,
+        };
+
+        Ok(InspectionProfile {
+            id: self.profile.clone(),
+            csv_delimiter,
+            text_encoding: self.text_encoding.clone(),
+            html_script_required: self.script_required,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,6 +124,7 @@ impl FixtureManifest {
             }
             validate_relative_path(&case.path)?;
             validate_sha256(&case.sha256)?;
+            case.inspection_profile()?;
             classes.insert(case.id.clone(), case.class);
         }
 
@@ -133,6 +165,9 @@ pub fn fixture_case(path: &str, sha256: String, size: u64) -> FixtureCase {
         sha256,
         size,
         profile: default_profile(),
+        delimiter: None,
+        text_encoding: None,
+        script_required: false,
         expected: ExpectedOutcome::Success,
     }
 }

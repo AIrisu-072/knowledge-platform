@@ -80,9 +80,7 @@ pub fn run_case_at(
         )));
     }
 
-    let profile = InspectionProfile {
-        id: case.profile.clone(),
-    };
+    let profile = case.inspection_profile()?;
     let output: AdapterOutput = adapter.inspect(&input, &profile)?;
     let semantic_fingerprint = fingerprint(&output.semantic_projection);
 
