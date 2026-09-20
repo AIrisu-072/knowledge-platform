@@ -27,9 +27,7 @@ unicode-normalization = "0.1"
 
 url = "2"
 
-stemma = "=0.5.0"
-
-docx-review-core = "=0.1.1"
+docxml = "=0.3.1"
 
 zip = "8"
 
