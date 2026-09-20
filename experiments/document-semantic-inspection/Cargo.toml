@@ -7,6 +7,7 @@ name = "document-semantic-inspection-poc"
 version = "0.0.0"
 edition = "2024"
 rust-version = "1.98"
+publish = false
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
