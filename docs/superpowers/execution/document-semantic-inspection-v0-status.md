@@ -2,66 +2,85 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **DESIGN FROZEN / POC QUALIFICATION PLAN REVIEW**
+- Overall phase: **POC QUALIFICATION EXECUTION / TASK 2 COMPLETE / TASK 3 NEXT**
 - Design path: **Architectural**
-- Design branch: `design/document-semantic-inspection-v0`
-- Baseline: `main@73492983dd324fcd53d4b485719e5c31048f9335`
+- Frozen Design merged: PR #7
+- Execution branch: `test/document-semantic-inspection-poc-v0`
+- Execution PR: **#8 (Draft)**
+- Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
+- Last qualified code head: `b9da1bfa5fdf07f1b99a13248fe3233fae1082c9`
 - Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
 - Design approval: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design-approval.md`
 - PoC Qualification Plan: `docs/superpowers/plans/2026-09-20-document-semantic-inspection-v0-poc-qualification.md`
 
-## Design state
+## Approval state
 
-The written Design is **APPROVED — design freeze active**.
+- Frozen Design: **APPROVED / FROZEN**
+- PoC Qualification Plan: **APPROVED 2026-09-21**
+- Production dependency promotion: **NOT AUTHORIZED** by this approval; PoC qualification only.
 
-The frozen Design covers:
+PR #7 was advanced from review to approved state and merged after explicit user approval. The execution baseline is the resulting main merge commit `5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`.
 
-- Document Semantic Inspection vs Search Extraction boundary;
-- no durable common cross-format content IR for Versioning;
-- data contracts and immutable derived inspection records;
-- deterministic semantic fingerprinting;
-- Semantic Capability Contract for cross-format equivalence;
-- editorial provenance / external dependency / signature evidence;
-- Track Changes proposed-final projection;
-- sandbox/trust boundary and all-or-nothing success;
-- supported/unsupported format policy including required XLSM/VBA;
-- format-specific acceptance criteria;
-- library-selection policy based on determinism/fail-closed/evidence/auditability;
-- PoC Coverage Matrix and 100% production-promotion gates.
+## Task 1 — COMPLETE
 
-Any change to those frozen semantic or trust-boundary rules requires an explicit Design amendment.
+Isolated workspace, deterministic harness, manifest validation, report output, root mise entrypoints, and path-scoped hosted DSI PoC CI are implemented.
 
-## Plan scope
+TDD / CI evidence:
 
-The current Plan intentionally implements **PoC qualification only**.
+- RED commit: `0650625db9ad0fd89f6292b6eddce3e4f6b48ac0`
+- RED DSI run: `35520524705` — FAIL as expected; the first observed failure exposed an invalid independently-copied PoC lockfile before compile.
+- Harness implementation commit: `1980d03b18ca90f4896ef17b2206f1013cd452e6`
+- Exact locked Task 1 head: `c9ad1c9f5ec6e47c53f0409027bf98e3886b8252`
+- DSI PoC run: `35520894240` — **SUCCESS**
+- Standard CI run: `35520894277` — **SUCCESS**
 
-It does not create production Semantic Inspection crates. This is necessary because the frozen Design requires library/parser qualification evidence before production dependency promotion.
+The lockfile issue was repaired by generating the isolated workspace's own lock and committing it. The PoC crate is marked `publish = false`; the private experiment itself is therefore excluded from third-party license evaluation while dependencies remain enforced.
 
-Planned Tasks:
+## Task 2 — COMPLETE
 
-1. isolated PoC workspace + deterministic harness;
-2. TXT/CSV/HTML baseline;
-3. DOCX qualification;
-4. XLSX/XLSM/VBA qualification;
-5. PPTX qualification;
-6. PDF dual-engine qualification;
-7. digital-signature evidence qualification;
-8. cross-format/determinism/security gates;
-9. qualification report + Selection updates + production-plan gate.
+TXT / CSV / HTML semantic adapters and 17 synthetic qualification cases are implemented.
 
-## Current gate
+Behavior pinned by tests:
 
-The PoC Qualification Plan is awaiting explicit user approval.
+- TXT: CRLF and canonical Unicode noise are invariant; content changes differ; ambiguous encoding fails closed.
+- CSV: quote syntax noise is invariant; row/cell changes differ; inconsistent columns and missing explicit delimiter fail closed.
+- HTML: whitespace/decorative attributes are invariant; visible text/link/image changes differ; script-required semantics fail closed without script execution.
 
-Required next order:
+TDD / qualification evidence:
 
-1. user reviews/approves the PoC Qualification Plan;
-2. create execution branch/worktree from the exact approved design baseline according to the execution workflow;
-3. execute Tasks 1–9 with TDD;
-4. stop after qualification evidence;
-5. only if required format gates pass, write a separate Production Implementation Plan.
+- RED commit: `f3b62f9ac413658ece3d80e5843f25009c1db0f4`
+- RED DSI run: `35521340386` — FAIL as expected with unresolved `TextAdapter`, `CsvAdapter`, and `HtmlAdapter`.
+- Initial GREEN candidate: `d412dc1c0a53f4d7647c394b1bf24814bbe1c6e3`
+- Initial GREEN DSI run: `35521588349` — semantic tests and `dsi-poc verify` passed all 17 cases, but `cargo-deny` rejected `scraper 0.27.0` because its transitive `cssparser/selectors` graph contains MPL-2.0.
+- Replacement commit: `b14b7954cf64295ac808b96e3ef65c698ad9def2`
+- Replacement DSI run: `35521818109` — **SUCCESS** using direct `html5ever 0.39.0 + markup5ever_rcdom 0.39.0`.
+- Exact locked Task 2 head: `b9da1bfa5fdf07f1b99a13248fe3233fae1082c9`
+- Exact locked DSI run: `35521964417` — **SUCCESS**
 
-No PoC implementation or production dependency promotion begins before Plan approval.
+### HTML candidate decision
+
+`scraper 0.27.0` is **REJECTED for this repository** under the existing dependency-license policy. This is a qualification result, not a Design semantic change.
+
+The accepted Task 2 HTML PoC substrate is:
+
+- `html5ever = "=0.39.0"`
+- `markup5ever_rcdom = "=0.39.0"`
+
+The same frozen HTML semantic fixtures were retained across the candidate swap.
+
+## Current gate / next exact action
+
+Proceed to **Task 3 — DOCX qualification**:
+
+1. add the Task 3 candidate dependencies only inside the isolated PoC workspace;
+2. independently generate minimal OOXML/DOCX fixtures;
+3. write DOCX RED tests before the adapter;
+4. run RED and record hosted evidence;
+5. implement `DocxAdapter` plus raw OOXML coverage sentinel;
+6. require unknown potentially semantic package parts to fail closed;
+7. run the determinism repetition and `mise run poc:dsi:verify`.
+
+Do not promote any qualified candidate into production crates during this Plan.
 
 ## Resume order
 
@@ -71,6 +90,6 @@ No PoC implementation or production dependency promotion begins before Plan appr
 4. frozen Design Spec
 5. Design approval record
 6. PoC Qualification Plan
-7. current GitHub state of PR #7 / design branch / exact-head CI
+7. current GitHub state of branch `test/document-semantic-inspection-poc-v0`, PR #8, and exact-head CI
 
 Repository/GitHub state overrides chat memory.

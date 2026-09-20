@@ -160,7 +160,7 @@ Generated report scratch files stay under `target/` and are not committed. Do no
   }
   ```
 
-- [ ] **Step 1: Write failing harness contract tests**
+- [x] **Step 1: Write failing harness contract tests**
 
 Add tests that reject duplicate case IDs, missing BASE references, undeclared fixture classes, raw SHA mismatch, raw size mismatch, and format mismatch before an adapter result is accepted.
 
@@ -182,7 +182,7 @@ fn unknown_fixture_class_is_rejected() {
 }
 ```
 
-- [ ] **Step 2: Run the new test to prove RED**
+- [x] **Step 2: Run the new test to prove RED**
 
 Run:
 
@@ -192,7 +192,7 @@ cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml -
 
 Expected: FAIL because the isolated workspace/harness does not exist.
 
-- [ ] **Step 3: Create the isolated Cargo workspace**
+- [x] **Step 3: Create the isolated Cargo workspace**
 
 Use an independent workspace so root production Cargo metadata does not absorb PoC dependencies:
 
@@ -220,7 +220,7 @@ tempfile = "3"
 
 Generate and commit this experiment's own `Cargo.lock`.
 
-- [ ] **Step 4: Implement the common model without a common content IR**
+- [x] **Step 4: Implement the common model without a common content IR**
 
 Use common metadata only; keep `semantic_projection` opaque bytes owned by each adapter.
 
@@ -244,13 +244,13 @@ pub fn fingerprint(projection: &[u8]) -> [u8; 32] {
 
 All map-like canonical data used inside an adapter must use sorted structures (`BTreeMap`/`BTreeSet`) or explicit sorting before serialization.
 
-- [ ] **Step 5: Add manifest validation and report output**
+- [x] **Step 5: Add manifest validation and report output**
 
 `dsi-poc verify` reads the manifest, executes cases, checks relation expectations, and writes a JSON + Markdown report under `target/dsi-poc/`.
 
 Exit non-zero on any failed required case.
 
-- [ ] **Step 6: Add root mise tasks**
+- [x] **Step 6: Add root mise tasks**
 
 Add exactly these entrypoints:
 
@@ -270,7 +270,7 @@ depends = ["poc:dsi:test", "poc:dsi:run", "poc:dsi:deny"]
 
 The experiment `deny.toml` mirrors the repository permissive-license allowlist.
 
-- [ ] **Step 7: Add path-scoped hosted CI**
+- [x] **Step 7: Add path-scoped hosted CI**
 
 Create `.github/workflows/dsi-poc.yml` with:
 
@@ -282,7 +282,7 @@ Create `.github/workflows/dsi-poc.yml` with:
 
 Do not add this PoC workflow to the production `required-check` fan-in; merge gating for this capability will explicitly inspect both standard CI and DSI PoC CI.
 
-- [ ] **Step 8: Verify GREEN**
+- [x] **Step 8: Verify GREEN**
 
 Run:
 
@@ -294,7 +294,7 @@ mise run ci:lint
 
 Expected: PASS with only harness fixtures.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add experiments/document-semantic-inspection mise.toml .github/workflows/dsi-poc.yml
@@ -318,7 +318,7 @@ git commit -m "test: add semantic inspection poc harness"
 - Consumes: `InspectionAdapter`.
 - Produces: `TextAdapter`, `CsvAdapter`, `HtmlAdapter`.
 
-- [ ] **Step 1: Add exact PoC dependencies**
+- [x] **Step 1: Add exact PoC dependencies**
 
 ```toml
 encoding_rs = "=0.8.41"
@@ -330,7 +330,9 @@ url = "2"
 
 Update the isolated lockfile.
 
-- [ ] **Step 2: Write RED fixtures/tests**
+> **Qualification result (2026-09-21):** the planned `scraper = 0.27.0` wrapper was exercised but rejected by the permissive-license gate because its transitive `cssparser` / `selectors` path includes MPL-2.0. The HTML implementation therefore uses the frozen Design's underlying `html5ever` candidate directly as `html5ever = "=0.39.0"` plus `markup5ever_rcdom = "=0.39.0"`. The same HTML fixtures and semantic contract remained unchanged.
+
+- [x] **Step 2: Write RED fixtures/tests**
 
 TXT:
 - UTF-8 LF baseline;
@@ -358,7 +360,7 @@ assert_different("html/base", "html/link-target-change");
 assert_error("html/js-only-content", ErrorCode::UnsupportedSemanticConstruct);
 ```
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```bash
 cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml --test text_formats
@@ -366,7 +368,7 @@ cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml -
 
 Expected: FAIL because adapters are absent.
 
-- [ ] **Step 4: Implement strict text/CSV/HTML projections**
+- [x] **Step 4: Implement strict text/CSV/HTML projections**
 
 TXT projection: deterministic UTF-8 after allowed encoding decode, Unicode normalization, and line-ending normalization.
 
@@ -374,7 +376,7 @@ CSV projection: deterministic row/column JSON array; configure `csv::ReaderBuild
 
 HTML projection: parse without script execution; emit only version-significant DOM semantics in document order. Normalize URI strings; ignore pure CSS/style attributes. Reject when the fixture marks content as script-dependent.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml --test text_formats
