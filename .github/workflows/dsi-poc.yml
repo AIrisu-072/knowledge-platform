@@ -30,13 +30,4 @@ jobs:
         run: |
           mise install rust
           mise install cargo:cargo-deny
-      - name: Emit DOCX fixture bindings
-        run: |
-          set -eu
-          for file in experiments/document-semantic-inspection/fixtures/docx/*.docx; do
-            name="$(basename "$file" .docx)"
-            size="$(wc -c < "$file" | tr -d ' ')"
-            hash="$(sha256sum "$file" | awk '{print $1}')"
-            printf 'DSI_DOCX_BINDING %s %s %s\n' "$name" "$size" "$hash"
-          done
       - run: mise run poc:dsi:verify

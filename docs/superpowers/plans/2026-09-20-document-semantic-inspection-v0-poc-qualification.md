@@ -424,7 +424,7 @@ quick-xml = "=0.42.0"
 
 Pin the isolated `Cargo.lock`; do not regenerate it in hosted CI.
 
-- [ ] **Step 2: Build independent minimal OOXML fixture generation**
+- [x] **Step 2: Build independent minimal OOXML fixture generation**
 
 `tests/support/ooxml.rs` must construct package parts directly with `zip` and literal OOXML, not by serializing through `stemma`.
 
@@ -450,7 +450,7 @@ Fixtures include:
 - unknown relationship/content type;
 - malformed/deep OOXML.
 
-- [ ] **Step 3: Write RED tests**
+- [x] **Step 3: Write RED tests**
 
 ```rust
 assert_same("docx/base", "docx/metadata-noise");

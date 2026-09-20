@@ -225,6 +225,278 @@
         "kind": "error",
         "code": "unsupported_semantic_construct"
       }
+    },
+    {
+      "id": "docx/base",
+      "class": "BASE",
+      "path": "docx/base.docx",
+      "format": "docx",
+      "sha256": "eef073663e3fea4f751bb4ed45386628a35e8494df70686d5a1b9a764290d801",
+      "size": 7389,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "success"
+      }
+    },
+    {
+      "id": "docx/body-text-change",
+      "class": "SEMANTIC",
+      "path": "docx/body-text-change.docx",
+      "format": "docx",
+      "sha256": "42645c373d4d64be2e9c6649fcc687062214f7658d89390ec852f3a8052004eb",
+      "size": 7393,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/comment-resolved",
+      "class": "EDITORIAL",
+      "path": "docx/comment-resolved.docx",
+      "format": "docx",
+      "sha256": "d1d26b6fad4af7212ea106ad5c82d0e0403a5aca4858adeddd4fd2614eab1b2d",
+      "size": 8543,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/comment-unresolved",
+      "class": "EDITORIAL",
+      "path": "docx/comment-unresolved.docx",
+      "format": "docx",
+      "sha256": "ecc871ea113c95f2475368c00820e2d1e200fef3727ea3d12bddc0758b07f1c7",
+      "size": 8017,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/deep-ooxml",
+      "class": "HOSTILE",
+      "path": "docx/deep-ooxml.docx",
+      "format": "docx",
+      "sha256": "e5a33288e20be9158d4859136aaf7069e1251cd32f208c40e475855684293150",
+      "size": 9549,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "inspection_resource_limit_exceeded"
+      }
+    },
+    {
+      "id": "docx/endnote-change",
+      "class": "SEMANTIC",
+      "path": "docx/endnote-change.docx",
+      "format": "docx",
+      "sha256": "211e15cd8238b0ae7e4566443254dc6cfb997bbf32b6e38e524fc7f42a817ab5",
+      "size": 7393,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/font-only",
+      "class": "NOISE",
+      "path": "docx/font-only.docx",
+      "format": "docx",
+      "sha256": "fff52dc13cb13bc51aea9617e69b76bb09a2e242433ac040e0454972598bc411",
+      "size": 7457,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/footer-change",
+      "class": "SEMANTIC",
+      "path": "docx/footer-change.docx",
+      "format": "docx",
+      "sha256": "eed6c1445a4236aff810b79df3a44266e55e52dfc76e203d5037511b389f0835",
+      "size": 7397,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/footnote-change",
+      "class": "SEMANTIC",
+      "path": "docx/footnote-change.docx",
+      "format": "docx",
+      "sha256": "b1591ef3bc9da3397c11794ddd0ee3b19b82cc7d27045b653824fa853053a7e3",
+      "size": 7393,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/header-change",
+      "class": "SEMANTIC",
+      "path": "docx/header-change.docx",
+      "format": "docx",
+      "sha256": "1622e99d79ba98b72248bb781b0396fbb49252904caf47d3852b433ff550409e",
+      "size": 7397,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/heading-list-change",
+      "class": "SEMANTIC",
+      "path": "docx/heading-list-change.docx",
+      "format": "docx",
+      "sha256": "3830a4a666c8dbc37fa315eb9ff3b2cc19630f6c4c33c1adf5d8f5ee2bac4ef1",
+      "size": 7389,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/hyperlink-target-change",
+      "class": "SEMANTIC",
+      "path": "docx/hyperlink-target-change.docx",
+      "format": "docx",
+      "sha256": "955c242c5e527018635299a35abd42e51cd3d408ebe3b9cf50410b90bcbfb6f7",
+      "size": 7389,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/image-content-change",
+      "class": "SEMANTIC",
+      "path": "docx/image-content-change.docx",
+      "format": "docx",
+      "sha256": "dcf6b2343862840c33de762537e4ef85a059b0e83a45a8dbf67d117de9be0ff9",
+      "size": 7389,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/malformed",
+      "class": "HOSTILE",
+      "path": "docx/malformed.docx",
+      "format": "docx",
+      "sha256": "dfd0f46bc387b3f599d50a5025f61fad8430fa6ae17adbe57bafe61c4b423be9",
+      "size": 7366,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "semantic_extraction_failed"
+      }
+    },
+    {
+      "id": "docx/metadata-noise",
+      "class": "NOISE",
+      "path": "docx/metadata-noise.docx",
+      "format": "docx",
+      "sha256": "24a773a8858fe90ec3ffc40fca17743bfe53ece3e1f0d6367ecdd5a34a8d0779",
+      "size": 7388,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/package-order-noise",
+      "class": "NOISE",
+      "path": "docx/package-order-noise.docx",
+      "format": "docx",
+      "sha256": "e774f27c51d02843f85c0f29f6882777aadd1189f1f62388b9e2dff9bbbc4a39",
+      "size": 7389,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/relationship-id-noise",
+      "class": "NOISE",
+      "path": "docx/relationship-id-noise.docx",
+      "format": "docx",
+      "sha256": "9d018e2b757ad3037170aa9c0feee17c67a3bc7bf61beacaaa03c81bf91d9a79",
+      "size": 7321,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/section-change",
+      "class": "SEMANTIC",
+      "path": "docx/section-change.docx",
+      "format": "docx",
+      "sha256": "d8a0f82abd2487112a152520c99ca26abc1655381e11c65f87ba3fa8dc7eebec",
+      "size": 7390,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/table-merge-change",
+      "class": "SEMANTIC",
+      "path": "docx/table-merge-change.docx",
+      "format": "docx",
+      "sha256": "6614a2575a708ed501294d59b9dc4ede7958e5376b75c1da32b529425029187d",
+      "size": 7384,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/tracked-replacement",
+      "class": "EDITORIAL",
+      "path": "docx/tracked-replacement.docx",
+      "format": "docx",
+      "sha256": "d1fb459f90507060f27e253cc6da8a5637b739aa576f0b7e3154bdc86f9a3a0d",
+      "size": 7479,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/unknown-semantic-part",
+      "class": "HOSTILE",
+      "path": "docx/unknown-semantic-part.docx",
+      "format": "docx",
+      "sha256": "5f017ed15ad78c164748e07985886c5be83d6dea46b992ab33626ec98e629ca2",
+      "size": 7691,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "unsupported_semantic_construct"
+      }
     }
   ]
 }
