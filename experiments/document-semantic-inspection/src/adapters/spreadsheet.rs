@@ -379,14 +379,14 @@ fn validate_content_types(data: &[u8]) -> Result<(), PocError> {
             .map_err(|error| PocError::SemanticExtractionFailed(format!("content-types XML: {error}")))?
         {
             Event::Start(event) | Event::Empty(event)
-                if matches!(event.local_name().as_ref(), b"Default" | b"Override") =>
+                if matches!(event.local_name().as_ref(), "Default" | "Override") =>
             {
                 for attribute in event.attributes() {
                     let attribute = attribute.map_err(|error| {
                         PocError::SemanticExtractionFailed(format!("content-type attribute: {error}"))
                     })?;
-                    if attribute.key.local_name().as_ref() == b"ContentType" {
-                        let value = String::from_utf8_lossy(attribute.value.as_ref());
+                    if attribute.key.local_name().as_ref() == "ContentType" {
+                        let value = attribute.value.as_ref();
                         if !known_content_type(&value) {
                             return Err(PocError::UnsupportedSemanticConstruct(format!(
                                 "unknown spreadsheet content type {value}"
@@ -438,13 +438,13 @@ fn validate_relationships(data: &[u8]) -> Result<(), PocError> {
             .map_err(|error| PocError::SemanticExtractionFailed(format!("relationships XML: {error}")))?
         {
             Event::Start(event) | Event::Empty(event)
-                if event.local_name().as_ref() == b"Relationship" =>
+                if event.local_name().as_ref() == "Relationship" =>
             {
                 for attribute in event.attributes() {
                     let attribute = attribute.map_err(|error| {
                         PocError::SemanticExtractionFailed(format!("relationship attribute: {error}"))
                     })?;
-                    if attribute.key.local_name().as_ref() == b"Type" {
+                    if attribute.key.local_name().as_ref() == "Type" {
                         let value = String::from_utf8_lossy(attribute.value.as_ref());
                         if !known_relationship_type(&value) {
                             return Err(PocError::UnsupportedSemanticConstruct(format!(
