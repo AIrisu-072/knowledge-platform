@@ -172,9 +172,32 @@ pub fn add_archive_bomb(input: &[u8]) -> Vec<u8> {
 }
 
 pub fn add_duplicate_entry(input: &[u8]) -> Vec<u8> {
+    const ALIAS: &[u8] = b"word/documenx.xml";
+    const ORIGINAL: &[u8] = b"word/document.xml";
+    debug_assert_eq!(ALIAS.len(), ORIGINAL.len());
+
     let mut parts = read_parts(input);
-    parts.push(("word/document.xml".into(), b"<duplicate/>".to_vec()));
-    write_parts(parts)
+    let document = parts
+        .iter()
+        .find(|(name, _)| name == "word/document.xml")
+        .map(|(_, data)| data.clone())
+        .expect("fixture document part");
+    parts.push(("word/documenx.xml".into(), document));
+
+    let mut bytes = write_parts(parts);
+    let mut replacements = 0usize;
+    let mut offset = 0usize;
+    while offset + ALIAS.len() <= bytes.len() {
+        if &bytes[offset..offset + ALIAS.len()] == ALIAS {
+            bytes[offset..offset + ORIGINAL.len()].copy_from_slice(ORIGINAL);
+            replacements += 1;
+            offset += ALIAS.len();
+        } else {
+            offset += 1;
+        }
+    }
+    assert!(replacements >= 2, "alias must appear in local and central ZIP headers");
+    bytes
 }
 
 fn map_part<F>(input: &[u8], name: &str, f: F) -> Vec<u8>
