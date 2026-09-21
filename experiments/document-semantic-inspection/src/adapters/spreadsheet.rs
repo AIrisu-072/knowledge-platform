@@ -445,7 +445,7 @@ fn validate_relationships(data: &[u8]) -> Result<(), PocError> {
                         PocError::SemanticExtractionFailed(format!("relationship attribute: {error}"))
                     })?;
                     if attribute.key.local_name().as_ref() == "Type" {
-                        let value = String::from_utf8_lossy(attribute.value.as_ref());
+                        let value = attribute.value.as_ref();
                         if !known_relationship_type(&value) {
                             return Err(PocError::UnsupportedSemanticConstruct(format!(
                                 "unknown spreadsheet relationship type {value}"
