@@ -760,9 +760,11 @@ fn parse_editorial_evidence(
     document: &[u8],
 ) -> Result<EditorialEvidence, PocError> {
     let tracked_changes = parse_tracked_changes(document)?;
+    let comment_anchors = parse_comment_anchor_paragraphs(document)?;
     let comments = parse_comments(
         parts.get("word/comments.xml").map(Vec::as_slice),
         parts.get("word/commentsExtended.xml").map(Vec::as_slice),
+        &comment_anchors,
     )?;
     let (mut document_author_labels, last_modified_by, modification_metadata) =
         parse_core_properties(parts.get("docProps/core.xml").map(Vec::as_slice))?;
@@ -847,9 +849,48 @@ fn parse_tracked_changes(data: &[u8]) -> Result<Vec<TrackedChangeEvidence>, PocE
     Ok(changes)
 }
 
+fn parse_comment_anchor_paragraphs(
+    document: &[u8],
+) -> Result<BTreeMap<String, String>, PocError> {
+    let text = std::str::from_utf8(document)
+        .map_err(|_| PocError::SemanticExtractionFailed("document XML is not UTF-8".into()))?;
+    let mut reader = Reader::from_str(text);
+    let mut current_para_id: Option<String> = None;
+    let mut anchors = BTreeMap::new();
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(event)) if event.local_name().as_ref() == "p" => {
+                current_para_id = attr(&event, "paraId")?;
+            }
+            Ok(Event::Start(event)) | Ok(Event::Empty(event))
+                if event.local_name().as_ref() == "commentRangeStart" =>
+            {
+                if let (Some(comment_id), Some(para_id)) =
+                    (attr(&event, "id")?, current_para_id.as_ref())
+                {
+                    anchors.insert(comment_id, para_id.clone());
+                }
+            }
+            Ok(Event::End(event)) if event.local_name().as_ref() == "p" => {
+                current_para_id = None;
+            }
+            Ok(Event::Eof) => break,
+            Ok(_) => {}
+            Err(error) => {
+                return Err(PocError::SemanticExtractionFailed(format!(
+                    "comment anchor XML parse failed: {error}"
+                )));
+            }
+        }
+    }
+    Ok(anchors)
+}
+
 fn parse_comments(
     comments_data: Option<&[u8]>,
     extended_data: Option<&[u8]>,
+    anchor_paragraphs: &BTreeMap<String, String>,
 ) -> Result<Vec<CommentEvidence>, PocError> {
     let Some(data) = comments_data else {
         return Ok(Vec::new());
@@ -914,8 +955,15 @@ fn parse_comments(
                 "t" => in_text = false,
                 "comment" => {
                     if let Some(comment) = current.take() {
-                        let resolved = comment
+                        let comment_id = comment
+                            .id
+                            .clone()
+                            .unwrap_or_else(|| comments.len().to_string());
+                        let para_id = comment
                             .para_id
+                            .clone()
+                            .or_else(|| anchor_paragraphs.get(&comment_id).cloned());
+                        let resolved = para_id
                             .as_ref()
                             .and_then(|id| resolved_by_para.get(id))
                             .copied()
@@ -929,8 +977,7 @@ fn parse_comments(
                                 "unresolved".to_owned()
                             },
                             source_locator: format!(
-                                "word/comments.xml#comment:{}",
-                                comment.id.unwrap_or_else(|| comments.len().to_string())
+                                "word/comments.xml#comment:{comment_id}"
                             ),
                             content: normalize_text(&comment.text.join(" ")),
                         });
