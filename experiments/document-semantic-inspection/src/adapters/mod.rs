@@ -1,8 +1,11 @@
 mod csv;
+mod docx;
 mod html;
 mod text;
 
 pub use csv::CsvAdapter;
+pub use docx::DocxAdapter;
+pub(crate) use docx::is_docx_package;
 pub use html::HtmlAdapter;
 pub use text::TextAdapter;
 

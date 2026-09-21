@@ -82,9 +82,15 @@ Candidate selection evidence:
 
 Ruling: do not weaken security/advisory/license policy to preserve a planned parser name. Keep the frozen semantic contract and qualify the replacement candidate against the same DOCX fixtures.
 
+## Task 3 RED evidence
+
+- RED contract head: `21fea55cffebcb53dac5886ffedcbb923bc19cd5`
+- DSI PoC run: `35546037242` — **FAIL as expected**
+- Exact failure: unresolved import `document_semantic_inspection_poc::DocxAdapter`; fixture/manifest/raw-binding validation introduced no earlier failure.
+
 ## Current gate / next exact action
 
-Proceed to **Task 3 — DOCX RED fixture/test phase**:
+Proceed to **Task 3 — DOCX GREEN implementation phase**:
 
 1. independently generate minimal OOXML/DOCX fixtures;
 2. write DOCX RED tests before the adapter;

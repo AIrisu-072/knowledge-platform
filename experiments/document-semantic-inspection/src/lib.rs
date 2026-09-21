@@ -11,7 +11,7 @@ mod model;
 mod report;
 mod runner;
 
-pub use adapters::{AlwaysSuccessAdapter, CsvAdapter, HtmlAdapter, TextAdapter};
+pub use adapters::{AlwaysSuccessAdapter, CsvAdapter, DocxAdapter, HtmlAdapter, TextAdapter};
 pub use canonical::{canonical_json_bytes, fingerprint};
 pub use error::{ErrorCode, PocError};
 pub use manifest::{FixtureCase, FixtureManifest, fixture_case};

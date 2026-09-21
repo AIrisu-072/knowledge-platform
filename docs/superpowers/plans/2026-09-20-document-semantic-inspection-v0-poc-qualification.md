@@ -466,11 +466,13 @@ assert_error("docx/unknown-semantic-part", ErrorCode::UnsupportedSemanticConstru
 
 Also compare the typed parser's proposed-final view and shared structural facts against independent raw-OOXML golden expectations. Track-change/comment counts and resolved state come from the project-owned raw OOXML oracle; any disagreement on a shared required fact fails the PoC case.
 
-- [ ] **Step 4: Run RED**
+- [x] **Step 4: Run RED**
 
 ```bash
 cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml --test docx
 ```
+
+Hosted RED evidence: commit `21fea55cffebcb53dac5886ffedcbb923bc19cd5`, DSI PoC run `35546037242` failed exactly because `DocxAdapter` was not yet implemented.
 
 - [ ] **Step 5: Implement DOCX adapter and coverage sentinel**
 

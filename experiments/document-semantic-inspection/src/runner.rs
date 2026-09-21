@@ -220,6 +220,9 @@ fn detect_format(input: &[u8]) -> Option<FormatId> {
         return Some(FormatId::Pdf);
     }
     if input.starts_with(b"PK\x03\x04") {
+        if crate::adapters::is_docx_package(input) {
+            return Some(FormatId::Docx);
+        }
         return None;
     }
 

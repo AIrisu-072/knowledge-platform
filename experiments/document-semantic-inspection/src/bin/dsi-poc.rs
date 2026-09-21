@@ -1,5 +1,5 @@
 use document_semantic_inspection_poc::{
-    AdapterRegistry, CsvAdapter, FixtureManifest, HtmlAdapter, TextAdapter, verify_manifest,
+    AdapterRegistry, CsvAdapter, DocxAdapter, FixtureManifest, HtmlAdapter, TextAdapter, verify_manifest,
     write_reports,
 };
 use std::path::PathBuf;
@@ -18,6 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     registry.insert(Box::new(TextAdapter));
     registry.insert(Box::new(CsvAdapter));
     registry.insert(Box::new(HtmlAdapter));
+    registry.insert(Box::new(DocxAdapter));
 
     let report = verify_manifest(&manifest, &fixture_root, &registry);
     let output_dir = root.join("target").join("dsi-poc");
