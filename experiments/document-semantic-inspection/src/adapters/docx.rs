@@ -9,8 +9,8 @@ use sha2::{Digest, Sha256};
 use zip::ZipArchive;
 
 use crate::{
-    canonical_json_bytes, AdapterOutput, EditorialEvidence, FormatId, InspectionAdapter,
-    InspectionProfile, PocError,
+    canonical_json_bytes, AdapterOutput, CommentEvidence, EditorialEvidence, FormatId,
+    InspectionAdapter, InspectionProfile, PocError, TrackedChangeEvidence,
 };
 
 const MAX_ENTRIES: usize = 256;
@@ -193,6 +193,8 @@ fn inspect_package(input: &[u8]) -> Result<PackageInspection, PocError> {
         .ok_or_else(|| PocError::SemanticExtractionFailed("missing [Content_Types].xml".into()))?;
     validate_content_types(content_types)?;
 
+    validate_relationship_graph(&parts)?;
+
     let mut relationships = BTreeMap::new();
     if let Some(data) = parts.get("word/_rels/document.xml.rels") {
         relationships = parse_relationships(data)?;
@@ -201,10 +203,7 @@ fn inspect_package(input: &[u8]) -> Result<PackageInspection, PocError> {
     let document = parts
         .get("word/document.xml")
         .ok_or_else(|| PocError::SemanticExtractionFailed("missing word/document.xml".into()))?;
-    let editorial = EditorialEvidence {
-        tracked_changes_present: has_revision_markup(document)?,
-        comments_present: parts.contains_key("word/comments.xml") || has_comment_markup(document)?,
-    };
+    let editorial = parse_editorial_evidence(&parts, document)?;
 
     Ok(PackageInspection {
         parts,
@@ -582,7 +581,7 @@ fn push_image_token(
     let bytes = package.parts.get(&path).ok_or_else(|| {
         PocError::SemanticExtractionFailed(format!("image target {path} is missing"))
     })?;
-    tokens.push(format!("image-sha256:{}", hex::encode(Sha256::digest(bytes))));
+    tokens.push(format!("image-sha256:{}", image_semantic_digest(bytes)?));
     Ok(())
 }
 
@@ -753,6 +752,488 @@ fn resolve_word_target(target: &str) -> Result<String, PocError> {
 
 fn normalize_text(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+
+fn parse_editorial_evidence(
+    parts: &BTreeMap<String, Vec<u8>>,
+    document: &[u8],
+) -> Result<EditorialEvidence, PocError> {
+    let tracked_changes = parse_tracked_changes(document)?;
+    let comments = parse_comments(
+        parts.get("word/comments.xml").map(Vec::as_slice),
+        parts.get("word/commentsExtended.xml").map(Vec::as_slice),
+    )?;
+    let (mut document_author_labels, last_modified_by, modification_metadata) =
+        parse_core_properties(parts.get("docProps/core.xml").map(Vec::as_slice))?;
+
+    let mut labels: BTreeSet<String> = document_author_labels.into_iter().collect();
+    for change in &tracked_changes {
+        if let Some(author) = &change.author_label {
+            if !author.is_empty() {
+                labels.insert(author.clone());
+            }
+        }
+    }
+    for comment in &comments {
+        if let Some(author) = &comment.author_label {
+            if !author.is_empty() {
+                labels.insert(author.clone());
+            }
+        }
+    }
+    if let Some(author) = &last_modified_by {
+        if !author.is_empty() {
+            labels.insert(author.clone());
+        }
+    }
+    document_author_labels = labels.into_iter().collect();
+
+    Ok(EditorialEvidence {
+        tracked_changes_present: !tracked_changes.is_empty(),
+        comments_present: !comments.is_empty() || has_comment_markup(document)?,
+        tracked_changes,
+        comments,
+        document_author_labels,
+        last_modified_by,
+        modification_metadata,
+    })
+}
+
+fn revision_kind(local: &str) -> Option<&'static str> {
+    match local {
+        "ins" => Some("insertion"),
+        "del" => Some("deletion"),
+        "moveFrom" => Some("move_from"),
+        "moveTo" => Some("move_to"),
+        _ if local.ends_with("PrChange") => Some("format"),
+        _ => None,
+    }
+}
+
+fn parse_tracked_changes(data: &[u8]) -> Result<Vec<TrackedChangeEvidence>, PocError> {
+    let text = std::str::from_utf8(data)
+        .map_err(|_| PocError::SemanticExtractionFailed("document XML is not UTF-8".into()))?;
+    let mut reader = Reader::from_str(text);
+    let mut changes = Vec::new();
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(event)) | Ok(Event::Empty(event)) => {
+                let local = event.local_name();
+                if let Some(kind) = revision_kind(local.as_ref()) {
+                    let id = attr(&event, "id")?;
+                    changes.push(TrackedChangeEvidence {
+                        kind: kind.to_owned(),
+                        author_label: attr(&event, "author")?,
+                        timestamp: attr(&event, "date")?,
+                        source_locator: match id {
+                            Some(id) => format!("word/document.xml#{kind}:{id}"),
+                            None => format!("word/document.xml#{kind}:{}", changes.len()),
+                        },
+                        unresolved: true,
+                    });
+                }
+            }
+            Ok(Event::Eof) => break,
+            Ok(_) => {}
+            Err(error) => {
+                return Err(PocError::SemanticExtractionFailed(format!(
+                    "tracked-change XML parse failed: {error}"
+                )));
+            }
+        }
+    }
+    Ok(changes)
+}
+
+fn parse_comments(
+    comments_data: Option<&[u8]>,
+    extended_data: Option<&[u8]>,
+) -> Result<Vec<CommentEvidence>, PocError> {
+    let Some(data) = comments_data else {
+        return Ok(Vec::new());
+    };
+    let resolved_by_para = parse_comment_resolution(extended_data)?;
+    let text = std::str::from_utf8(data)
+        .map_err(|_| PocError::SemanticExtractionFailed("comments XML is not UTF-8".into()))?;
+    let mut reader = Reader::from_str(text);
+
+    #[derive(Default)]
+    struct PendingComment {
+        id: Option<String>,
+        author: Option<String>,
+        timestamp: Option<String>,
+        para_id: Option<String>,
+        text: Vec<String>,
+    }
+
+    let mut current: Option<PendingComment> = None;
+    let mut in_text = false;
+    let mut comments = Vec::new();
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(event)) => match event.local_name().as_ref() {
+                "comment" => {
+                    current = Some(PendingComment {
+                        id: attr(&event, "id")?,
+                        author: attr(&event, "author")?,
+                        timestamp: attr(&event, "date")?,
+                        ..PendingComment::default()
+                    });
+                }
+                "p" => {
+                    if let Some(comment) = current.as_mut() {
+                        if comment.para_id.is_none() {
+                            comment.para_id = attr(&event, "paraId")?;
+                        }
+                    }
+                }
+                "t" if current.is_some() => in_text = true,
+                _ => {}
+            },
+            Ok(Event::Empty(event)) if event.local_name().as_ref() == "p" => {
+                if let Some(comment) = current.as_mut() {
+                    if comment.para_id.is_none() {
+                        comment.para_id = attr(&event, "paraId")?;
+                    }
+                }
+            }
+            Ok(Event::Text(value)) if in_text => {
+                if let Some(comment) = current.as_mut() {
+                    let value = quick_xml::escape::unescape(value.as_ref()).map_err(|error| {
+                        PocError::SemanticExtractionFailed(format!(
+                            "comment text entity decode failed: {error}"
+                        ))
+                    })?;
+                    comment.text.push(value.into_owned());
+                }
+            }
+            Ok(Event::End(event)) => match event.local_name().as_ref() {
+                "t" => in_text = false,
+                "comment" => {
+                    if let Some(comment) = current.take() {
+                        let resolved = comment
+                            .para_id
+                            .as_ref()
+                            .and_then(|id| resolved_by_para.get(id))
+                            .copied()
+                            .unwrap_or(false);
+                        comments.push(CommentEvidence {
+                            author_label: comment.author,
+                            timestamp: comment.timestamp,
+                            resolved_state: if resolved {
+                                "resolved".to_owned()
+                            } else {
+                                "unresolved".to_owned()
+                            },
+                            source_locator: format!(
+                                "word/comments.xml#comment:{}",
+                                comment.id.unwrap_or_else(|| comments.len().to_string())
+                            ),
+                            content: normalize_text(&comment.text.join(" ")),
+                        });
+                    }
+                }
+                _ => {}
+            },
+            Ok(Event::Eof) => break,
+            Ok(_) => {}
+            Err(error) => {
+                return Err(PocError::SemanticExtractionFailed(format!(
+                    "comments XML parse failed: {error}"
+                )));
+            }
+        }
+    }
+
+    if current.is_some() {
+        return Err(PocError::SemanticExtractionFailed(
+            "comments XML ended inside a comment".into(),
+        ));
+    }
+    Ok(comments)
+}
+
+fn parse_comment_resolution(
+    data: Option<&[u8]>,
+) -> Result<BTreeMap<String, bool>, PocError> {
+    let Some(data) = data else {
+        return Ok(BTreeMap::new());
+    };
+    let text = std::str::from_utf8(data).map_err(|_| {
+        PocError::SemanticExtractionFailed("commentsExtended XML is not UTF-8".into())
+    })?;
+    let mut reader = Reader::from_str(text);
+    let mut result = BTreeMap::new();
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(event)) | Ok(Event::Empty(event))
+                if event.local_name().as_ref() == "commentEx" =>
+            {
+                if let Some(para_id) = attr(&event, "paraId")? {
+                    let done = attr(&event, "done")?
+                        .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "on"));
+                    result.insert(para_id, done);
+                }
+            }
+            Ok(Event::Eof) => break,
+            Ok(_) => {}
+            Err(error) => {
+                return Err(PocError::SemanticExtractionFailed(format!(
+                    "commentsExtended XML parse failed: {error}"
+                )));
+            }
+        }
+    }
+    Ok(result)
+}
+
+fn parse_core_properties(
+    data: Option<&[u8]>,
+) -> Result<(Vec<String>, Option<String>, BTreeMap<String, String>), PocError> {
+    let Some(data) = data else {
+        return Ok((Vec::new(), None, BTreeMap::new()));
+    };
+    let text = std::str::from_utf8(data)
+        .map_err(|_| PocError::SemanticExtractionFailed("core properties are not UTF-8".into()))?;
+    let mut reader = Reader::from_str(text);
+    let mut current: Option<&'static str> = None;
+    let mut values: BTreeMap<String, String> = BTreeMap::new();
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(event)) => {
+                current = match event.local_name().as_ref() {
+                    "creator" => Some("creator"),
+                    "lastModifiedBy" => Some("lastModifiedBy"),
+                    "created" => Some("created"),
+                    "modified" => Some("modified"),
+                    _ => None,
+                };
+            }
+            Ok(Event::Text(value)) => {
+                if let Some(key) = current {
+                    let value = quick_xml::escape::unescape(value.as_ref()).map_err(|error| {
+                        PocError::SemanticExtractionFailed(format!(
+                            "core-property entity decode failed: {error}"
+                        ))
+                    })?;
+                    values.insert(key.to_owned(), value.into_owned());
+                }
+            }
+            Ok(Event::End(_)) => current = None,
+            Ok(Event::Eof) => break,
+            Ok(_) => {}
+            Err(error) => {
+                return Err(PocError::SemanticExtractionFailed(format!(
+                    "core properties XML parse failed: {error}"
+                )));
+            }
+        }
+    }
+
+    let mut authors = Vec::new();
+    if let Some(creator) = values.get("creator") {
+        if !creator.is_empty() {
+            authors.push(creator.clone());
+        }
+    }
+    let last_modified_by = values.get("lastModifiedBy").cloned();
+    let modification_metadata = values
+        .into_iter()
+        .filter(|(key, _)| matches!(key.as_str(), "created" | "modified"))
+        .collect();
+    Ok((authors, last_modified_by, modification_metadata))
+}
+
+#[derive(Debug)]
+struct PackageRelationship {
+    target: String,
+    external: bool,
+}
+
+fn validate_relationship_graph(parts: &BTreeMap<String, Vec<u8>>) -> Result<(), PocError> {
+    let mut graph: BTreeMap<String, Vec<String>> = BTreeMap::new();
+
+    for (rels_name, data) in parts {
+        if !rels_name.ends_with(".rels") {
+            continue;
+        }
+        let source = source_part_for_relationships(rels_name).ok_or_else(|| {
+            PocError::SemanticExtractionFailed(format!(
+                "invalid relationships part path {rels_name}"
+            ))
+        })?;
+        for rel in parse_package_relationships(data)? {
+            if rel.external {
+                continue;
+            }
+            let target = resolve_package_target(&source, &rel.target)?;
+            if !parts.contains_key(&target) {
+                return Err(PocError::SemanticExtractionFailed(format!(
+                    "relationship target {target} from {rels_name} is missing"
+                )));
+            }
+            graph.entry(source.clone()).or_default().push(target);
+        }
+    }
+
+    let mut visiting = BTreeSet::new();
+    let mut visited = BTreeSet::new();
+    for node in graph.keys() {
+        visit_relationship_node(node, &graph, &mut visiting, &mut visited)?;
+    }
+    Ok(())
+}
+
+fn source_part_for_relationships(rels_name: &str) -> Option<String> {
+    if rels_name == "_rels/.rels" {
+        return Some(String::new());
+    }
+    let (dir, file) = rels_name.rsplit_once("/_rels/")?;
+    let source_name = file.strip_suffix(".rels")?;
+    Some(if dir.is_empty() {
+        source_name.to_owned()
+    } else {
+        format!("{dir}/{source_name}")
+    })
+}
+
+fn parse_package_relationships(data: &[u8]) -> Result<Vec<PackageRelationship>, PocError> {
+    let text = std::str::from_utf8(data)
+        .map_err(|_| PocError::SemanticExtractionFailed("relationships are not UTF-8".into()))?;
+    let mut reader = Reader::from_str(text);
+    let mut result = Vec::new();
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(event)) | Ok(Event::Empty(event))
+                if event.local_name().as_ref() == "Relationship" =>
+            {
+                result.push(PackageRelationship {
+                    target: attr_required(&event, "Target")?,
+                    external: attr(&event, "TargetMode")?
+                        .is_some_and(|value| value.eq_ignore_ascii_case("External")),
+                });
+            }
+            Ok(Event::Eof) => break,
+            Ok(_) => {}
+            Err(error) => {
+                return Err(PocError::SemanticExtractionFailed(format!(
+                    "relationship graph XML parse failed: {error}"
+                )));
+            }
+        }
+    }
+    Ok(result)
+}
+
+fn resolve_package_target(source: &str, target: &str) -> Result<String, PocError> {
+    if target.is_empty()
+        || target.starts_with('/')
+        || target.contains('\\')
+        || target.split('/').any(|segment| segment == "..")
+    {
+        return Err(PocError::SemanticExtractionFailed(format!(
+            "unsafe relationship target {target:?}"
+        )));
+    }
+
+    let base = source.rsplit_once('/').map(|(dir, _)| dir).unwrap_or("");
+    let mut result = String::new();
+    if !base.is_empty() {
+        result.push_str(base);
+        result.push('/');
+    }
+    result.push_str(target.trim_start_matches("./"));
+    Ok(result)
+}
+
+fn visit_relationship_node(
+    node: &str,
+    graph: &BTreeMap<String, Vec<String>>,
+    visiting: &mut BTreeSet<String>,
+    visited: &mut BTreeSet<String>,
+) -> Result<(), PocError> {
+    if visited.contains(node) {
+        return Ok(());
+    }
+    if !visiting.insert(node.to_owned()) {
+        return Err(PocError::SemanticExtractionFailed(format!(
+            "relationship cycle detected at {node}"
+        )));
+    }
+
+    if let Some(targets) = graph.get(node) {
+        for target in targets {
+            visit_relationship_node(target, graph, visiting, visited)?;
+        }
+    }
+    visiting.remove(node);
+    visited.insert(node.to_owned());
+    Ok(())
+}
+
+fn image_semantic_digest(bytes: &[u8]) -> Result<String, PocError> {
+    const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+    if !bytes.starts_with(PNG_SIGNATURE) {
+        return Ok(hex::encode(Sha256::digest(bytes)));
+    }
+
+    let mut normalized = Vec::new();
+    normalized.extend_from_slice(PNG_SIGNATURE);
+    let mut offset = PNG_SIGNATURE.len();
+    let mut saw_iend = false;
+
+    while offset < bytes.len() {
+        if bytes.len().saturating_sub(offset) < 12 {
+            return Err(PocError::SemanticExtractionFailed(
+                "truncated PNG chunk".into(),
+            ));
+        }
+        let length = u32::from_be_bytes(
+            bytes[offset..offset + 4]
+                .try_into()
+                .map_err(|_| PocError::SemanticExtractionFailed("invalid PNG length".into()))?,
+        ) as usize;
+        let data_start = offset + 8;
+        let data_end = data_start
+            .checked_add(length)
+            .ok_or(PocError::InspectionResourceLimitExceeded)?;
+        let chunk_end = data_end
+            .checked_add(4)
+            .ok_or(PocError::InspectionResourceLimitExceeded)?;
+        if chunk_end > bytes.len() {
+            return Err(PocError::SemanticExtractionFailed(
+                "PNG chunk exceeds image bytes".into(),
+            ));
+        }
+
+        let chunk_type = &bytes[offset + 4..offset + 8];
+        let ignorable_metadata = matches!(
+            chunk_type,
+            b"tEXt" | b"zTXt" | b"iTXt" | b"tIME" | b"eXIf"
+        );
+        if !ignorable_metadata {
+            normalized.extend_from_slice(chunk_type);
+            normalized.extend_from_slice(&bytes[data_start..data_end]);
+        }
+        if chunk_type == b"IEND" {
+            saw_iend = true;
+            break;
+        }
+        offset = chunk_end;
+    }
+
+    if !saw_iend {
+        return Err(PocError::SemanticExtractionFailed(
+            "PNG has no IEND chunk".into(),
+        ));
+    }
+    Ok(hex::encode(Sha256::digest(&normalized)))
 }
 
 fn attr_required(event: &BytesStart<'_>, name: &str) -> Result<String, PocError> {
