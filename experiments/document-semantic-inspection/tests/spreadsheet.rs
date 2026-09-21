@@ -6,7 +6,7 @@ fn manifest() -> FixtureManifest {
     FixtureManifest::from_path(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/manifest.json")).expect("manifest")
 }
 fn case(id: &str) -> FixtureCase { manifest().cases.into_iter().find(|c| c.id == id).unwrap_or_else(|| panic!("missing {id}")) }
-fn fp(id: &str) -> [u8;32] { run_case(&case(id), &SpreadsheetAdapter).unwrap_or_else(|e| panic!("{id}: {e}")).semantic_fingerprint }
+fn fp(id: &str) -> [u8;32] { run_case(&case(id), &SpreadsheetAdapter::XLSX).unwrap_or_else(|e| panic!("{id}: {e}")).semantic_fingerprint }
 fn same(id:&str){assert_eq!(fp("xlsx/base"),fp(id),"{id}")} fn diff(id:&str){assert_ne!(fp("xlsx/base"),fp(id),"{id}")}
 
 #[test]
@@ -16,12 +16,12 @@ fn spreadsheet_semantic_and_noise_relations_are_strict() {
 }
 #[test]
 fn unknown_spreadsheet_package_semantics_fail_closed() {
-    let e=run_case(&case("xlsx/unknown-semantic-part"),&SpreadsheetAdapter).unwrap_err();
+    let e=run_case(&case("xlsx/unknown-semantic-part"), &SpreadsheetAdapter::XLSX).unwrap_err();
     assert_eq!(e.code(),ErrorCode::UnsupportedSemanticConstruct);
 }
 #[test]
 fn xlsm_seed_extracts_vba_without_execution() {
-    let r=run_case(&case("xlsm/base"),&SpreadsheetAdapter).expect("xlsm");
+    let r=run_case(&case("xlsm/base"), &SpreadsheetAdapter::XLSM).expect("xlsm");
     assert!(r.output.capabilities.iter().any(|c| c.capability=="vba_logic" && c.present));
 }
 #[test]
