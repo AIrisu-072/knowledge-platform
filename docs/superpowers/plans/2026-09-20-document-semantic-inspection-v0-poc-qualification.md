@@ -474,7 +474,7 @@ cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml -
 
 Hosted RED evidence: commit `21fea55cffebcb53dac5886ffedcbb923bc19cd5`, DSI PoC run `35546037242` failed exactly because `DocxAdapter` was not yet implemented.
 
-- [ ] **Step 5: Implement DOCX adapter and coverage sentinel**
+- [x] **Step 5: Implement DOCX adapter and coverage sentinel**
 
 The adapter uses `office_oxide` as the typed DOCX semantic candidate and serializes an adapter-owned semantic projection containing only frozen version-significant semantics. A separate project-owned raw OOXML sentinel/oracle enumerates package content types, relationships, revision/comment evidence, and hostile-container conditions before semantic success.
 
@@ -484,11 +484,11 @@ Rules:
 - unknown constructs that may affect reader-visible/version-significant semantics return `UnsupportedSemanticConstruct`;
 - parser-generated IDs never enter projection bytes.
 
-- [ ] **Step 6: Determinism repetition**
+- [x] **Step 6: Determinism repetition**
 
 Run each DOCX case 20 times in one process and in 5 fresh process invocations; all successful semantic/evidence JSON must match byte-for-byte after report normalization.
 
-- [ ] **Step 7: Verify and commit**
+- [x] **Step 7: Verify and commit**
 
 ```bash
 cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml --test docx
@@ -496,6 +496,8 @@ mise run poc:dsi:verify
 git add experiments/document-semantic-inspection
 git commit -m "test: qualify docx semantic inspection"
 ```
+
+Hosted qualification evidence: exact head `b4dae3c89fa84ce50deada7f268aa5b04830da5d`, DSI PoC run `35551781760` — **SUCCESS**. DOCX contract tests 13/13 PASS; complete PoC manifest 38 cases PASS; cargo-deny advisories/bans/licenses/sources all PASS. Standard CI at the same head also succeeded.
 
 ---
 
