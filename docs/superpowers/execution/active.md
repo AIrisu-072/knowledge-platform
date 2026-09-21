@@ -3,7 +3,7 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **POC QUALIFICATION EXECUTION / TASK 3 DEPENDENCY PREFLIGHT COMPLETE / DOCX RED NEXT**
+- Current phase: **POC QUALIFICATION EXECUTION / TASK 3 COMPLETE / TASK 4 DEPENDENCY PREFLIGHT NEXT**
 - Frozen Design PR: `#7` — merged
 - Execution branch: `test/document-semantic-inspection-poc-v0`
 - Execution PR: `#8` — Draft
@@ -12,7 +12,7 @@
 - Approved PoC Qualification Plan: `docs/superpowers/plans/2026-09-20-document-semantic-inspection-v0-poc-qualification.md`
 - Execution Status: `docs/superpowers/execution/document-semantic-inspection-v0-status.md`
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
-- Last qualified code head: `b9da1bfa5fdf07f1b99a13248fe3233fae1082c9`
+- Last qualified code head: `b4dae3c89fa84ce50deada7f268aa5b04830da5d`
 - Task 3 dependency-preflight DSI: `35545142423` — SUCCESS
 
 ## Mandatory resume order
@@ -41,17 +41,17 @@ Task 2 produced one material qualification result: `scraper 0.27.0` was rejected
 
 ## Current hard gate
 
-The active task is **Task 3 — DOCX qualification**. Dependency preflight is complete; the next gate is independent fixtures plus RED tests.
+The active task is **Task 4 — XLSX/XLSM/VBA qualification**. Task 3 DOCX is complete and exact-head qualified.
 
 Do not start production Semantic Inspection implementation. Do not accept unknown potentially semantic OOXML package parts as normal success.
 
 ## Next exact action
 
-Create the independent OOXML/DOCX fixture corpus and DOCX RED tests before implementing `DocxAdapter`. Use `office_oxide 0.1.11` only after RED evidence; raw OOXML remains the independent coverage/editorial oracle.
+Start Task 4 with dependency/license/source preflight for `rxls`, `calamine`, `ovba`, `tree-sitter`, and the exact pinned `tree-sitter-vba` revision. Do not begin spreadsheet implementation until that graph passes.
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualification Task 3（DOCX）から再開してください。PR #8・Execution Status・exact-head CIを正本にしてください。
+> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualification Task 4（XLSX/XLSM/VBA）から再開してください。PR #8・Execution Status・exact-head CIを正本にしてください。
 
 ## End-of-session rule
 
