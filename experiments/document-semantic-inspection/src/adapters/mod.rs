@@ -1,12 +1,17 @@
 mod csv;
 mod docx;
 mod html;
+mod spreadsheet;
+mod vba;
 mod text;
 
 pub use csv::CsvAdapter;
 pub use docx::DocxAdapter;
 pub(crate) use docx::is_docx_package;
 pub use html::HtmlAdapter;
+pub use spreadsheet::SpreadsheetAdapter;
+pub(crate) use spreadsheet::spreadsheet_format;
+pub use vba::VbaAdapter;
 pub use text::TextAdapter;
 
 use crate::{AdapterOutput, FormatId, InspectionAdapter, InspectionProfile, PocError};

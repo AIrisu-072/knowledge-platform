@@ -38,6 +38,8 @@ fn verify(
     registry.insert(Box::new(CsvAdapter));
     registry.insert(Box::new(HtmlAdapter));
     registry.insert(Box::new(DocxAdapter));
+    registry.insert(Box::new(SpreadsheetAdapter::XLSX));
+    registry.insert(Box::new(SpreadsheetAdapter::XLSM));
 
     let report = verify_manifest(manifest, fixture_root, &registry);
     let output_dir = root.join("target").join("dsi-poc");

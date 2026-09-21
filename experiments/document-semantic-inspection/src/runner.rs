@@ -223,6 +223,9 @@ fn detect_format(input: &[u8]) -> Option<FormatId> {
         if crate::adapters::is_docx_package(input) {
             return Some(FormatId::Docx);
         }
+        if let Some(format) = crate::adapters::spreadsheet_format(input) {
+            return Some(format);
+        }
         return None;
     }
 
