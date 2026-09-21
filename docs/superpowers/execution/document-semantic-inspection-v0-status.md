@@ -2,7 +2,7 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **POC QUALIFICATION EXECUTION / TASK 4 DEPENDENCY PREFLIGHT COMPLETE / XLSX-XLSM RED NEXT**
+- Overall phase: **POC QUALIFICATION EXECUTION / TASK 4 RED COMPLETE / XLSX-XLSM GREEN NEXT**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - Execution branch: `test/document-semantic-inspection-poc-v0`
@@ -119,14 +119,27 @@ Dependency evidence:
 
 The initial direct git-crate attempt failed at compile time only because the upstream commit references a missing `bindings/rust/build.rs`; this is recorded as packaging failure, not a grammar semantic failure.
 
+## Task 4 — RED COMPLETE
+
+Fixture / RED evidence:
+
+- Independent raw SpreadsheetML XLSX corpus added without using rxls or Calamine serialization.
+- Calamine synthetic `tests/vba.xlsm` imported from commit `0af05f4f6030351e3b8a999ea0810c8618368776` with MIT provenance.
+- Local XLSM seed SHA-256: `2fe9f89f4a969658c1e3f9b0e8c70ccb155840aa6ee1bad6b15df603f41da1c0`.
+- RED head: `fe1abea83d2669c1a847203cdcfe84926acbdb4f`
+- DSI PoC run: `35607642860` — **FAIL as expected**
+- Exact failure: unresolved imports `SpreadsheetAdapter` and `VbaAdapter`; dependency graph and existing suites compiled before the RED failure.
+
+Ruling: represent format-specific instances as `SpreadsheetAdapter::XLSX` and `SpreadsheetAdapter::XLSM`, because the shared `InspectionAdapter` trait exposes exactly one `FormatId` per instance.
+
 ## Current gate / next exact action
 
-Proceed to **Task 4 — independent XLSX/XLSM fixture + RED test phase**:
+Proceed to **Task 4 — XLSX/XLSM/VBA GREEN implementation**:
 
-1. independently generate SpreadsheetML fixtures;
-2. add the licensed synthetic Calamine XLSM seed and provenance;
-3. write XLSX/XLSM/VBA RED tests;
-4. implement spreadsheet projection and strict VBA syntax gate;
+1. adjust RED tests to the explicit XLSX/XLSM adapter-instance API and re-confirm RED;
+2. implement spreadsheet projection plus raw OOXML coverage sentinel;
+3. implement strict Tree-sitter VBA canonicalizer and ovba full-module extraction;
+4. resolve the required XLSM VBA source-mutation/noise fixture gate without skipping it;
 5. run Task 4 verification and qualification evidence.
 
 Do not promote any qualified candidate into production crates during this Plan.
