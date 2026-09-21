@@ -33,5 +33,11 @@ zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
 
 quick-xml = "=0.42.0"
 
+rxls = "=0.1.3"
+calamine = { version = "=0.36.1", features = ["picture"] }
+ovba = "=0.7.1"
+tree-sitter = "=0.25.10"
+tree-sitter-vba = { git = "https://github.com/tmepple/tree-sitter-vba", rev = "c691f237b2a703732d4b6a1f01d5b4f73f94d41e" }
+
 [dev-dependencies]
 tempfile = "3"
