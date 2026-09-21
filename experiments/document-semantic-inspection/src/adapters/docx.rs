@@ -290,9 +290,9 @@ fn validate_content_types(data: &[u8]) -> Result<(), PocError> {
     loop {
         match reader.read_event() {
             Ok(Event::Start(event)) | Ok(Event::Empty(event))
-                if matches!(event.local_name().as_ref(), b"Default" | b"Override") =>
+                if matches!(event.local_name().as_ref(), "Default" | "Override") =>
             {
-                if let Some(content_type) = attr(&event, b"ContentType")? {
+                if let Some(content_type) = attr(&event, "ContentType")? {
                     if !known.contains(content_type.as_str()) {
                         return Err(PocError::UnsupportedSemanticConstruct(format!(
                             "unknown OOXML content type {content_type}"
@@ -335,12 +335,12 @@ fn parse_relationships(data: &[u8]) -> Result<BTreeMap<String, Relationship>, Po
     loop {
         match reader.read_event() {
             Ok(Event::Start(event)) | Ok(Event::Empty(event))
-                if event.local_name().as_ref() == b"Relationship" =>
+                if event.local_name().as_ref() == "Relationship" =>
             {
-                let id = attr_required(&event, b"Id")?;
-                let kind = attr_required(&event, b"Type")?;
-                let target = attr_required(&event, b"Target")?;
-                let external = attr(&event, b"TargetMode")?
+                let id = attr_required(&event, "Id")?;
+                let kind = attr_required(&event, "Type")?;
+                let target = attr_required(&event, "Target")?;
+                let external = attr(&event, "TargetMode")?
                     .is_some_and(|mode| mode.eq_ignore_ascii_case("External"));
                 if !allowed.contains(kind.as_str()) {
                     return Err(PocError::UnsupportedSemanticConstruct(format!(
@@ -384,13 +384,13 @@ fn parse_relationships(data: &[u8]) -> Result<BTreeMap<String, Relationship>, Po
 }
 
 fn has_revision_markup(data: &[u8]) -> Result<bool, PocError> {
-    has_any_element(data, &[b"ins", b"del", b"moveFrom", b"moveTo"])
+    has_any_element(data, &["ins", "del", "moveFrom", "moveTo"])
 }
 
 fn has_comment_markup(data: &[u8]) -> Result<bool, PocError> {
     has_any_element(
         data,
-        &[b"commentRangeStart", b"commentRangeEnd", b"commentReference"],
+        &["commentRangeStart", "commentRangeEnd", "commentReference"],
     )
 }
 
@@ -435,17 +435,17 @@ fn parse_document_projection(
             Ok(Event::Start(event)) => {
                 let name = event.local_name();
                 match name.as_ref() {
-                    b"del" | b"moveFrom" => deleted_depth += 1,
+                    "del" | "moveFrom" => deleted_depth += 1,
                     _ if deleted_depth > 0 => {}
-                    b"p" => {
+                    "p" => {
                         tokens.push("p+".into());
                         paragraph_level = 0;
                     }
-                    b"tbl" => tokens.push("table+".into()),
-                    b"tr" => tokens.push("row+".into()),
-                    b"tc" => tokens.push("cell+".into()),
-                    b"hyperlink" => {
-                        if let Some(id) = attr(&event, b"id")? {
+                    "tbl" => tokens.push("table+".into()),
+                    "tr" => tokens.push("row+".into()),
+                    "tc" => tokens.push("cell+".into()),
+                    "hyperlink" => {
+                        if let Some(id) = attr(&event, "id")? {
                             if let Some(rel) = package.relationships.get(&id) {
                                 if rel.kind.ends_with("/hyperlink") {
                                     tokens.push(format!("link:{}", rel.target));
@@ -453,25 +453,25 @@ fn parse_document_projection(
                             }
                         }
                     }
-                    b"t" => in_text = true,
-                    b"pStyle" => push_style_token(&event, &mut tokens)?,
-                    b"ilvl" => paragraph_level = attr_u8(&event, b"val")?.unwrap_or(0),
-                    b"numId" => {
+                    "t" => in_text = true,
+                    "pStyle" => push_style_token(&event, &mut tokens)?,
+                    "ilvl" => paragraph_level = attr_u8(&event, "val")?.unwrap_or(0),
+                    "numId" => {
                         push_numbering_token(&event, paragraph_level, numbering, &mut tokens)?
                     }
-                    b"gridSpan" => {
-                        if let Some(value) = attr(&event, b"val")? {
+                    "gridSpan" => {
+                        if let Some(value) = attr(&event, "val")? {
                             tokens.push(format!("grid-span:{value}"));
                         }
                     }
-                    b"vMerge" => tokens.push(format!(
+                    "vMerge" => tokens.push(format!(
                         "vmerge:{}",
-                        attr(&event, b"val")?.unwrap_or_else(|| "continue".into())
+                        attr(&event, "val")?.unwrap_or_else(|| "continue".into())
                     )),
-                    b"blip" => push_image_token(&event, package, &mut tokens)?,
-                    b"pgSz" => push_page_token(&event, &mut tokens)?,
-                    b"footnoteReference" => tokens.push("footnote-ref".into()),
-                    b"endnoteReference" => tokens.push("endnote-ref".into()),
+                    "blip" => push_image_token(&event, package, &mut tokens)?,
+                    "pgSz" => push_page_token(&event, &mut tokens)?,
+                    "footnoteReference" => tokens.push("footnote-ref".into()),
+                    "endnoteReference" => tokens.push("endnote-ref".into()),
                     _ => {}
                 }
             }
@@ -480,24 +480,24 @@ fn parse_document_projection(
                     continue;
                 }
                 match event.local_name().as_ref() {
-                    b"pStyle" => push_style_token(&event, &mut tokens)?,
-                    b"ilvl" => paragraph_level = attr_u8(&event, b"val")?.unwrap_or(0),
-                    b"numId" => {
+                    "pStyle" => push_style_token(&event, &mut tokens)?,
+                    "ilvl" => paragraph_level = attr_u8(&event, "val")?.unwrap_or(0),
+                    "numId" => {
                         push_numbering_token(&event, paragraph_level, numbering, &mut tokens)?
                     }
-                    b"gridSpan" => {
-                        if let Some(value) = attr(&event, b"val")? {
+                    "gridSpan" => {
+                        if let Some(value) = attr(&event, "val")? {
                             tokens.push(format!("grid-span:{value}"));
                         }
                     }
-                    b"vMerge" => tokens.push(format!(
+                    "vMerge" => tokens.push(format!(
                         "vmerge:{}",
-                        attr(&event, b"val")?.unwrap_or_else(|| "continue".into())
+                        attr(&event, "val")?.unwrap_or_else(|| "continue".into())
                     )),
-                    b"blip" => push_image_token(&event, package, &mut tokens)?,
-                    b"pgSz" => push_page_token(&event, &mut tokens)?,
-                    b"footnoteReference" => tokens.push("footnote-ref".into()),
-                    b"endnoteReference" => tokens.push("endnote-ref".into()),
+                    "blip" => push_image_token(&event, package, &mut tokens)?,
+                    "pgSz" => push_page_token(&event, &mut tokens)?,
+                    "footnoteReference" => tokens.push("footnote-ref".into()),
+                    "endnoteReference" => tokens.push("endnote-ref".into()),
                     _ => {}
                 }
             }
@@ -513,12 +513,12 @@ fn parse_document_projection(
                 }
             }
             Ok(Event::End(event)) => match event.local_name().as_ref() {
-                b"t" => in_text = false,
-                b"del" | b"moveFrom" => deleted_depth = deleted_depth.saturating_sub(1),
-                b"p" if deleted_depth == 0 => tokens.push("p-".into()),
-                b"tbl" if deleted_depth == 0 => tokens.push("table-".into()),
-                b"tr" if deleted_depth == 0 => tokens.push("row-".into()),
-                b"tc" if deleted_depth == 0 => tokens.push("cell-".into()),
+                "t" => in_text = false,
+                "del" | "moveFrom" => deleted_depth = deleted_depth.saturating_sub(1),
+                "p" if deleted_depth == 0 => tokens.push("p-".into()),
+                "tbl" if deleted_depth == 0 => tokens.push("table-".into()),
+                "tr" if deleted_depth == 0 => tokens.push("row-".into()),
+                "tc" if deleted_depth == 0 => tokens.push("cell-".into()),
                 _ => {}
             },
             Ok(Event::Eof) => break,
@@ -535,7 +535,7 @@ fn parse_document_projection(
 }
 
 fn push_style_token(event: &BytesStart<'_>, tokens: &mut Vec<String>) -> Result<(), PocError> {
-    if let Some(style) = attr(event, b"val")? {
+    if let Some(style) = attr(event, "val")? {
         if style != "Normal" {
             tokens.push(format!("style:{style}"));
         }
@@ -549,7 +549,7 @@ fn push_numbering_token(
     numbering: &BTreeMap<(u32, u8), String>,
     tokens: &mut Vec<String>,
 ) -> Result<(), PocError> {
-    let Some(num_id) = attr(event, b"val")?.and_then(|value| value.parse::<u32>().ok()) else {
+    let Some(num_id) = attr(event, "val")?.and_then(|value| value.parse::<u32>().ok()) else {
         return Ok(());
     };
     let format = numbering
@@ -565,7 +565,7 @@ fn push_image_token(
     package: &PackageInspection,
     tokens: &mut Vec<String>,
 ) -> Result<(), PocError> {
-    let Some(id) = attr(event, b"embed")? else {
+    let Some(id) = attr(event, "embed")? else {
         return Ok(());
     };
     let Some(rel) = package.relationships.get(&id) else {
@@ -587,9 +587,9 @@ fn push_image_token(
 }
 
 fn push_page_token(event: &BytesStart<'_>, tokens: &mut Vec<String>) -> Result<(), PocError> {
-    let width = attr(event, b"w")?.unwrap_or_default();
-    let height = attr(event, b"h")?.unwrap_or_default();
-    let orient = attr(event, b"orient")?.unwrap_or_else(|| "portrait".into());
+    let width = attr(event, "w")?.unwrap_or_default();
+    let height = attr(event, "h")?.unwrap_or_default();
+    let orient = attr(event, "orient")?.unwrap_or_else(|| "portrait".into());
     tokens.push(format!("page:{width}x{height}:{orient}"));
     Ok(())
 }
@@ -610,28 +610,28 @@ fn parse_numbering(data: &[u8]) -> Result<BTreeMap<(u32, u8), String>, PocError>
     loop {
         match reader.read_event() {
             Ok(Event::Start(event)) => match event.local_name().as_ref() {
-                b"abstractNum" => {
-                    abstract_id = attr(&event, b"abstractNumId")?
+                "abstractNum" => {
+                    abstract_id = attr(&event, "abstractNumId")?
                         .and_then(|value| value.parse::<u32>().ok());
                 }
-                b"lvl" => {
-                    level = attr(&event, b"ilvl")?
+                "lvl" => {
+                    level = attr(&event, "ilvl")?
                         .and_then(|value| value.parse::<u8>().ok())
                         .unwrap_or(0);
                 }
-                b"num" => {
-                    num_id = attr(&event, b"numId")?
+                "num" => {
+                    num_id = attr(&event, "numId")?
                         .and_then(|value| value.parse::<u32>().ok());
                 }
-                b"numFmt" => {
-                    if let (Some(id), Some(format)) = (abstract_id, attr(&event, b"val")?) {
+                "numFmt" => {
+                    if let (Some(id), Some(format)) = (abstract_id, attr(&event, "val")?) {
                         abstract_formats.insert((id, level), format);
                     }
                 }
-                b"abstractNumId" => {
+                "abstractNumId" => {
                     if let (Some(num), Some(abs)) = (
                         num_id,
-                        attr(&event, b"val")?.and_then(|value| value.parse::<u32>().ok()),
+                        attr(&event, "val")?.and_then(|value| value.parse::<u32>().ok()),
                     ) {
                         instances.insert(num, abs);
                     }
@@ -639,15 +639,15 @@ fn parse_numbering(data: &[u8]) -> Result<BTreeMap<(u32, u8), String>, PocError>
                 _ => {}
             },
             Ok(Event::Empty(event)) => match event.local_name().as_ref() {
-                b"numFmt" => {
-                    if let (Some(id), Some(format)) = (abstract_id, attr(&event, b"val")?) {
+                "numFmt" => {
+                    if let (Some(id), Some(format)) = (abstract_id, attr(&event, "val")?) {
                         abstract_formats.insert((id, level), format);
                     }
                 }
-                b"abstractNumId" => {
+                "abstractNumId" => {
                     if let (Some(num), Some(abs)) = (
                         num_id,
-                        attr(&event, b"val")?.and_then(|value| value.parse::<u32>().ok()),
+                        attr(&event, "val")?.and_then(|value| value.parse::<u32>().ok()),
                     ) {
                         instances.insert(num, abs);
                     }
@@ -655,8 +655,8 @@ fn parse_numbering(data: &[u8]) -> Result<BTreeMap<(u32, u8), String>, PocError>
                 _ => {}
             },
             Ok(Event::End(event)) => match event.local_name().as_ref() {
-                b"abstractNum" => abstract_id = None,
-                b"num" => num_id = None,
+                "abstractNum" => abstract_id = None,
+                "num" => num_id = None,
                 _ => {}
             },
             Ok(Event::Eof) => break,
@@ -714,8 +714,8 @@ fn extract_final_text(data: &[u8]) -> Result<String, PocError> {
     loop {
         match reader.read_event() {
             Ok(Event::Start(event)) => match event.local_name().as_ref() {
-                b"del" | b"moveFrom" => deleted_depth += 1,
-                b"t" if deleted_depth == 0 => in_text = true,
+                "del" | "moveFrom" => deleted_depth += 1,
+                "t" if deleted_depth == 0 => in_text = true,
                 _ => {}
             },
             Ok(Event::Text(value)) if in_text && deleted_depth == 0 => {
@@ -726,8 +726,8 @@ fn extract_final_text(data: &[u8]) -> Result<String, PocError> {
                 values.push(value.into_owned());
             }
             Ok(Event::End(event)) => match event.local_name().as_ref() {
-                b"t" => in_text = false,
-                b"del" | b"moveFrom" => deleted_depth = deleted_depth.saturating_sub(1),
+                "t" => in_text = false,
+                "del" | "moveFrom" => deleted_depth = deleted_depth.saturating_sub(1),
                 _ => {}
             },
             Ok(Event::Eof) => break,
@@ -755,29 +755,24 @@ fn normalize_text(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn attr_required(event: &BytesStart<'_>, name: &[u8]) -> Result<String, PocError> {
+fn attr_required(event: &BytesStart<'_>, name: &str) -> Result<String, PocError> {
     attr(event, name)?.ok_or_else(|| {
-        PocError::SemanticExtractionFailed(format!(
-            "missing required attribute {}",
-            String::from_utf8_lossy(name)
-        ))
+        PocError::SemanticExtractionFailed(format!("missing required attribute {name}"))
     })
 }
 
-fn attr_u8(event: &BytesStart<'_>, name: &[u8]) -> Result<Option<u8>, PocError> {
+fn attr_u8(event: &BytesStart<'_>, name: &str) -> Result<Option<u8>, PocError> {
     Ok(attr(event, name)?.and_then(|value| value.parse().ok()))
 }
 
-fn attr(event: &BytesStart<'_>, name: &[u8]) -> Result<Option<String>, PocError> {
+fn attr(event: &BytesStart<'_>, name: &str) -> Result<Option<String>, PocError> {
     for item in event.attributes() {
         let item = item.map_err(|error| {
             PocError::SemanticExtractionFailed(format!("invalid XML attribute: {error}"))
         })?;
         let key = item.key.as_ref();
         let matches = key == name
-            || (key.len() > name.len()
-                && key[key.len() - name.len() - 1] == b':'
-                && &key[key.len() - name.len()..] == name);
+            || key.rsplit_once(':').is_some_and(|(_, local)| local == name);
         if matches {
             let value = quick_xml::escape::unescape(item.value.as_ref())
                 .map_err(|error| PocError::SemanticExtractionFailed(format!(
