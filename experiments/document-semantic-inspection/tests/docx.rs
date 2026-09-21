@@ -4,8 +4,8 @@ use std::io::Cursor;
 use std::process::Command;
 
 use document_semantic_inspection_poc::{
-    DocxAdapter, ErrorCode, FixtureCase, FixtureManifest, InspectionAdapter, InspectionResult,
-    run_case,
+    AdapterOutput, DocxAdapter, ErrorCode, FixtureCase, FixtureManifest, InspectionAdapter,
+    InspectionProfile, InspectionResult, fingerprint as semantic_fingerprint, run_case,
 };
 use support::ooxml::{
     add_archive_bomb, add_duplicate_entry, add_relationship_cycle, add_traversal_entry,
@@ -139,6 +139,16 @@ fn adapter_reports_docx_format() {
 }
 
 
+fn inspect_bytes(bytes: &[u8]) -> AdapterOutput {
+    DocxAdapter
+        .inspect(bytes, &InspectionProfile::default())
+        .expect("direct DOCX inspection")
+}
+
+fn direct_fingerprint(output: &AdapterOutput) -> [u8; 32] {
+    semantic_fingerprint(&output.semantic_projection)
+}
+
 fn normalized_result(result: &InspectionResult) -> Vec<u8> {
     serde_json::to_vec(&serde_json::json!({
         "semantic_fingerprint": hex::encode(result.semantic_fingerprint),
@@ -155,14 +165,13 @@ fn normalized_result(result: &InspectionResult) -> Vec<u8> {
 #[test]
 fn xml_serialization_and_margin_noise_are_invariant() {
     let base = docx_fixture("fixture text");
-    let profile = document_semantic_inspection_poc::InspectionProfile::default();
-    let expected = DocxAdapter.inspect(&base, &profile).expect("base");
+    let expected = inspect_bytes(&base);
     for mutated in [
         xml_serialization_noise(&base),
         margin_only_noise(&base),
     ] {
-        let actual = DocxAdapter.inspect(&mutated, &profile).expect("noise");
-        assert_eq!(expected.semantic_fingerprint, actual.semantic_fingerprint);
+        let actual = inspect_bytes(&mutated);
+        assert_eq!(direct_fingerprint(&expected), direct_fingerprint(&actual));
     }
 }
 
@@ -173,12 +182,9 @@ fn meaning_equivalent_png_ancillary_reencoding_is_invariant() {
             .join("fixtures/docx/base.docx"),
     )
     .expect("base DOCX");
-    let profile = document_semantic_inspection_poc::InspectionProfile::default();
-    let base = DocxAdapter.inspect(&bytes, &profile).expect("base");
-    let noisy = DocxAdapter
-        .inspect(&image_ancillary_noise(&bytes), &profile)
-        .expect("image ancillary noise");
-    assert_eq!(base.semantic_fingerprint, noisy.semantic_fingerprint);
+    let base = inspect_bytes(&bytes);
+    let noisy = inspect_bytes(&image_ancillary_noise(&bytes));
+    assert_eq!(direct_fingerprint(&base), direct_fingerprint(&noisy));
 }
 
 #[test]
@@ -210,25 +216,23 @@ fn editorial_provenance_preserves_change_and_comment_details() {
 #[test]
 fn format_only_and_move_tracking_are_editorial_but_not_semantic() {
     let base = docx_fixture("fixture text");
-    let profile = document_semantic_inspection_poc::InspectionProfile::default();
-    let expected = DocxAdapter.inspect(&base, &profile).expect("base");
+    let expected = inspect_bytes(&base);
 
-    let format_only = DocxAdapter
-        .inspect(&format_only_tracked_change(&base), &profile)
-        .expect("format-only change");
-    assert_eq!(expected.semantic_fingerprint, format_only.semantic_fingerprint);
-    let format_json = serde_json::to_value(&format_only.output.editorial).expect("editorial JSON");
+    let format_only = inspect_bytes(&format_only_tracked_change(&base));
+    assert_eq!(
+        direct_fingerprint(&expected),
+        direct_fingerprint(&format_only)
+    );
+    let format_json = serde_json::to_value(&format_only.editorial).expect("editorial JSON");
     assert!(format_json["tracked_changes"]
         .as_array()
         .expect("tracked changes")
         .iter()
         .any(|change| change["kind"] == "format"));
 
-    let moved = DocxAdapter
-        .inspect(&move_markup_same_final_text(&base), &profile)
-        .expect("move markup");
-    assert_eq!(expected.semantic_fingerprint, moved.semantic_fingerprint);
-    let move_json = serde_json::to_value(&moved.output.editorial).expect("editorial JSON");
+    let moved = inspect_bytes(&move_markup_same_final_text(&base));
+    assert_eq!(direct_fingerprint(&expected), direct_fingerprint(&moved));
+    let move_json = serde_json::to_value(&moved.editorial).expect("editorial JSON");
     let changes = move_json["tracked_changes"].as_array().expect("tracked changes");
     assert!(changes.iter().any(|change| change["kind"] == "move_from"));
     assert!(changes.iter().any(|change| change["kind"] == "move_to"));
@@ -260,13 +264,16 @@ fn relationship_cycles_traversal_archive_bombs_and_duplicates_fail_closed() {
 
 #[test]
 fn docx_results_are_deterministic_in_process_and_across_fresh_processes() {
-    use document_semantic_inspection_poc::ExpectedOutcome;
-
     let success_cases: Vec<_> = manifest()
         .cases
         .into_iter()
         .filter(|case| case.format == document_semantic_inspection_poc::FormatId::Docx)
-        .filter(|case| !matches!(case.expected, ExpectedOutcome::Error { .. }))
+        .filter(|case| {
+            !matches!(
+                case.id.as_str(),
+                "docx/unknown-semantic-part" | "docx/malformed" | "docx/deep-ooxml"
+            )
+        })
         .collect();
 
     for case in &success_cases {
