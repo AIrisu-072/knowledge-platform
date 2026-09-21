@@ -394,7 +394,7 @@ fn has_comment_markup(data: &[u8]) -> Result<bool, PocError> {
     )
 }
 
-fn has_any_element(data: &[u8], names: &[&[u8]]) -> Result<bool, PocError> {
+fn has_any_element(data: &[u8], names: &[&str]) -> Result<bool, PocError> {
     let text = std::str::from_utf8(data)
         .map_err(|_| PocError::SemanticExtractionFailed("Word XML is not UTF-8".into()))?;
     let mut reader = Reader::from_str(text);
