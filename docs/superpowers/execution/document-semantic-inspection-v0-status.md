@@ -2,13 +2,13 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **POC QUALIFICATION EXECUTION / TASK 3 DEPENDENCY PREFLIGHT COMPLETE / DOCX RED NEXT**
+- Overall phase: **POC QUALIFICATION EXECUTION / TASK 3 COMPLETE / TASK 4 DEPENDENCY PREFLIGHT NEXT**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - Execution branch: `test/document-semantic-inspection-poc-v0`
 - Execution PR: **#8 (Draft)**
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
-- Last qualified code head: `b9da1bfa5fdf07f1b99a13248fe3233fae1082c9`
+- Last qualified code head: `b4dae3c89fa84ce50deada7f268aa5b04830da5d`
 - Task 3 dependency-preflight candidate head: `ec532ec12d89352d83dc9a85ae68a3da583c0ebb`
 - Task 3 dependency-preflight DSI run: `35545142423` — **SUCCESS**
 - Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
@@ -88,16 +88,32 @@ Ruling: do not weaken security/advisory/license policy to preserve a planned par
 - DSI PoC run: `35546037242` — **FAIL as expected**
 - Exact failure: unresolved import `document_semantic_inspection_poc::DocxAdapter`; fixture/manifest/raw-binding validation introduced no earlier failure.
 
+## Task 3 — COMPLETE
+
+Fresh exact-head qualification evidence:
+
+- Qualified head: `b4dae3c89fa84ce50deada7f268aa5b04830da5d`
+- DSI PoC run: `35551781760` — **SUCCESS**
+- Standard CI: **SUCCESS** at the same head
+- DOCX tests: **13/13 PASS**
+- Manifest verification: **38 cases PASS**
+- Dependency gate: advisories/bans/licenses/sources **PASS**
+- Determinism: 20 in-process repetitions per successful DOCX case plus 5 fresh-process snapshots **PASS**
+- Hostile OOXML: relationship cycles, traversal, duplicate entries, archive-bomb/resource cases fail closed as required
+- Editorial evidence: tracked-change details and resolved/unresolved comment state preserved separately from semantic identity
+
+No Design amendment was required. `office_oxide 0.1.11` remains a PoC-qualified candidate only; no production dependency promotion has occurred.
+
 ## Current gate / next exact action
 
-Proceed to **Task 3 — DOCX GREEN implementation phase**:
+Proceed to **Task 4 — XLSX/XLSM/VBA dependency preflight and RED fixture phase**:
 
-1. independently generate minimal OOXML/DOCX fixtures;
-2. write DOCX RED tests before the adapter;
-3. run RED and record hosted evidence;
-4. implement `DocxAdapter` with `office_oxide` plus the independent raw OOXML coverage/editorial sentinel;
-5. require unknown potentially semantic package parts to fail closed;
-6. run the determinism repetition and `mise run poc:dsi:verify`.
+1. add and pin Task 4 spreadsheet/VBA candidates inside the isolated PoC workspace;
+2. require cargo-deny license/advisory/source preflight before RED fixture work;
+3. independently generate SpreadsheetML fixtures and add the licensed synthetic XLSM seed;
+4. write XLSX/XLSM/VBA RED tests;
+5. implement spreadsheet projection and strict VBA syntax gate;
+6. run Task 4 verification and qualification evidence.
 
 Do not promote any qualified candidate into production crates during this Plan.
 
