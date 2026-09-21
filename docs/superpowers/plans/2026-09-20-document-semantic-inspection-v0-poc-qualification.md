@@ -527,7 +527,7 @@ Update `Cargo.lock` and confirm `cargo deny` accepts every direct/transitive lic
 
 > **Task 4 VBA grammar packaging Ruling (2026-09-21):** the exact planned `tmepple/tree-sitter-vba@c691f237...` grammar revision is retained, but its upstream Cargo package is not buildable because `Cargo.toml` references a missing `bindings/rust/build.rs`. The generated `src/parser.c` and `src/tree_sitter/parser.h` from that exact commit are therefore vendored under the PoC workspace and compiled by the experiment's `build.rs`; no grammar source or revision is changed. The temporary git-source exception was removed. Dependency preflight DSI run `35606038480` passed tests, manifest verification, advisories, bans, licenses, and sources. Cost if wrong: strict VBA parse tests fail and XLSM remains unqualified; production promotion remains prohibited.
 
-- [ ] **Step 2: Build XLSX fixtures independently of rxls**
+- [x] **Step 2: Build XLSX fixtures independently of rxls**
 
 Use raw SpreadsheetML ZIP/XML helpers for:
 - value/type changes;
@@ -543,7 +543,7 @@ Use raw SpreadsheetML ZIP/XML helpers for:
 - cached result/XML ordering/style-only noise;
 - unknown OOXML relationship/content type.
 
-- [ ] **Step 3: Add a licensed synthetic XLSM seed with provenance**
+- [x] **Step 3: Add a licensed synthetic XLSM seed with provenance**
 
 Import Calamine's synthetic `tests/vba.xlsm` from upstream commit `0af05f4f6030351e3b8a999ea0810c8618368776` solely as a PoC seed. Record source path, upstream commit, MIT license, local SHA-256, and the fact that it is third-party test data in `provenance/third-party-fixtures.md`.
 
@@ -551,7 +551,7 @@ Do not use production/customer XLSM.
 
 Derive local semantic/noise variants from the seed by changing workbook XML independently of the VBA binary. For VBA source-change/noise fixtures, use `ovba` to extract modules and a dedicated fixture builder that replaces the VBA module source stream while preserving the rest of the synthetic project; if replacement cannot be implemented without corrupting MS-OVBA, mark the candidate **not qualified** rather than skipping VBA cases.
 
-- [ ] **Step 4: Write RED XLSX/XLSM tests**
+- [x] **Step 4: Write RED XLSX/XLSM tests**
 
 ```rust
 assert_different("xlsx/base", "xlsx/formula-source-change-same-cache");
@@ -565,6 +565,10 @@ assert_error("xlsm/vba-invalid-syntax", ErrorCode::SemanticExtractionFailed);
 ```
 
 For all required cell/formula/sheet/name/link fields, compare rxls against Calamine/golden expectations. Parser disagreement does not use majority vote; the case fails pending analysis.
+
+Hosted RED evidence: commit `fe1abea83d2669c1a847203cdcfe84926acbdb4f`, DSI PoC run `35607642860` — **FAIL as expected** on unresolved imports `SpreadsheetAdapter` / `VbaAdapter`. Fixture/manifest parsing and dependency compilation introduced no earlier blocking failure.
+
+> **Adapter format Ruling:** one adapter implementation needs distinct XLSX and XLSM trait instances because `InspectionAdapter::format()` returns a single `FormatId`. Use associated constants `SpreadsheetAdapter::XLSX` and `SpreadsheetAdapter::XLSM` over one implementation type. Cost if wrong: only adapter registration/API shape changes; semantic contract is unaffected.
 
 - [ ] **Step 5: Implement spreadsheet projection**
 
