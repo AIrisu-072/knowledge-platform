@@ -497,6 +497,160 @@
         "kind": "error",
         "code": "unsupported_semantic_construct"
       }
+    },
+    {
+      "id": "xlsx/base",
+      "class": "BASE",
+      "path": "xlsx/base.xlsx",
+      "format": "xlsx",
+      "sha256": "0aeda144a43a220161d34cb75eedb1d56979971ddd92cbcce0dff6bcdde8bcf6",
+      "size": 3373,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "success"
+      }
+    },
+    {
+      "id": "xlsx/formula-source-change-same-cache",
+      "class": "SEMANTIC",
+      "path": "xlsx/formula-source-change-same-cache.xlsx",
+      "format": "xlsx",
+      "sha256": "5565cf371e26d4b96061418db3efe96a36826438cc26b961ea19dafc53abeb1f",
+      "size": 3368,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/cached-result-only",
+      "class": "NOISE",
+      "path": "xlsx/cached-result-only.xlsx",
+      "format": "xlsx",
+      "sha256": "1999a0a10576116a88e8e4fe40611222f35e2c6e5eafbc3f4f0b3ea56baeb3b0",
+      "size": 3375,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/very-hidden-change",
+      "class": "SEMANTIC",
+      "path": "xlsx/very-hidden-change.xlsx",
+      "format": "xlsx",
+      "sha256": "1d7526ca40a0d383ba8ead01e69686d714cf31003e92dbebb41e0320790183e4",
+      "size": 3376,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/style-only",
+      "class": "NOISE",
+      "path": "xlsx/style-only.xlsx",
+      "format": "xlsx",
+      "sha256": "884aa27ea591089b88f21cc36dee3928447da18b85bc2c5ef38cf67e4d84551d",
+      "size": 3377,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/cell-value-change",
+      "class": "SEMANTIC",
+      "path": "xlsx/cell-value-change.xlsx",
+      "format": "xlsx",
+      "sha256": "0a7fd00bc579676edec302aac26cb346fb6e0b8e865b4389ba33396170d82c84",
+      "size": 3375,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/defined-name-change",
+      "class": "SEMANTIC",
+      "path": "xlsx/defined-name-change.xlsx",
+      "format": "xlsx",
+      "sha256": "2e91d66a56172f5bdc664e74a3e63283cca15945a6835abfff0b4e3d3528a9e2",
+      "size": 3373,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/merged-change",
+      "class": "SEMANTIC",
+      "path": "xlsx/merged-change.xlsx",
+      "format": "xlsx",
+      "sha256": "91ed6eab9aef123cf92bf0d2a86c158d6db5ef83d87312cd93c5cd1c1968a961",
+      "size": 3432,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/hyperlink-change",
+      "class": "SEMANTIC",
+      "path": "xlsx/hyperlink-change.xlsx",
+      "format": "xlsx",
+      "sha256": "1888cd0d19778b57c1da17872991aaaceb3c3ceff761f898b369e6d88006b000",
+      "size": 3373,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/xml-order-noise",
+      "class": "NOISE",
+      "path": "xlsx/xml-order-noise.xlsx",
+      "format": "xlsx",
+      "sha256": "1c7670417d0698b37264a8fe47dbfe7e6dcfd0d35f1384d157632b7e0f4365d9",
+      "size": 3373,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/unknown-semantic-part",
+      "class": "HOSTILE",
+      "path": "xlsx/unknown-semantic-part.xlsx",
+      "format": "xlsx",
+      "sha256": "6a711426f2e0884cf6e95cdd61faeb295a3894a4eb95babdecba9e9173b6f9fa",
+      "size": 3716,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "unsupported_semantic_construct"
+      }
+    },
+    {
+      "id": "xlsm/base",
+      "class": "BASE",
+      "path": "xlsm/calamine-vba.xlsm",
+      "format": "xlsm",
+      "sha256": "2fe9f89f4a969658c1e3f9b0e8c70ccb155840aa6ee1bad6b15df603f41da1c0",
+      "size": 12752,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "success"
+      }
     }
   ]
 }
