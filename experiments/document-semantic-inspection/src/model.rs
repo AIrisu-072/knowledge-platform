@@ -1,5 +1,6 @@
 use crate::PocError;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
@@ -41,10 +42,39 @@ pub struct CapabilityEvidence {
     pub present: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrackedChangeEvidence {
+    pub kind: String,
+    pub author_label: Option<String>,
+    pub timestamp: Option<String>,
+    pub source_locator: String,
+    pub unresolved: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommentEvidence {
+    pub author_label: Option<String>,
+    pub timestamp: Option<String>,
+    pub resolved_state: String,
+    pub source_locator: String,
+    pub content: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct EditorialEvidence {
     pub tracked_changes_present: bool,
     pub comments_present: bool,
+    pub tracked_changes: Vec<TrackedChangeEvidence>,
+    pub comments: Vec<CommentEvidence>,
+    pub document_author_labels: Vec<String>,
+    pub last_modified_by: Option<String>,
+    pub modification_metadata: BTreeMap<String, String>,
+}
+
+impl EditorialEvidence {
+    pub fn has_unresolved_changes(&self) -> bool {
+        self.tracked_changes.iter().any(|change| change.unresolved)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
