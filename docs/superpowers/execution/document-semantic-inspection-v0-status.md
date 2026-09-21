@@ -2,7 +2,7 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **POC QUALIFICATION EXECUTION / TASK 3 COMPLETE / TASK 4 DEPENDENCY PREFLIGHT NEXT**
+- Overall phase: **POC QUALIFICATION EXECUTION / TASK 4 DEPENDENCY PREFLIGHT COMPLETE / XLSX-XLSM RED NEXT**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - Execution branch: `test/document-semantic-inspection-poc-v0`
@@ -104,16 +104,30 @@ Fresh exact-head qualification evidence:
 
 No Design amendment was required. `office_oxide 0.1.11` remains a PoC-qualified candidate only; no production dependency promotion has occurred.
 
+## Task 4 — DEPENDENCY PREFLIGHT COMPLETE
+
+Dependency evidence:
+
+- `rxls = 0.1.3`
+- `calamine = 0.36.1` with picture support
+- `ovba = 0.7.1`
+- `tree-sitter = 0.25.10`
+- VBA grammar: exact upstream revision `c691f237b2a703732d4b6a1f01d5b4f73f94d41e`, vendored generated parser because the upstream Rust-package bindings are incomplete
+- DSI PoC run `35606038480` — **SUCCESS**
+- Existing DOCX/TXT/CSV/HTML suite remained green: manifest verification **38 cases PASS**
+- cargo-deny: advisories/bans/licenses/sources **PASS**
+
+The initial direct git-crate attempt failed at compile time only because the upstream commit references a missing `bindings/rust/build.rs`; this is recorded as packaging failure, not a grammar semantic failure.
+
 ## Current gate / next exact action
 
-Proceed to **Task 4 — XLSX/XLSM/VBA dependency preflight and RED fixture phase**:
+Proceed to **Task 4 — independent XLSX/XLSM fixture + RED test phase**:
 
-1. add and pin Task 4 spreadsheet/VBA candidates inside the isolated PoC workspace;
-2. require cargo-deny license/advisory/source preflight before RED fixture work;
-3. independently generate SpreadsheetML fixtures and add the licensed synthetic XLSM seed;
-4. write XLSX/XLSM/VBA RED tests;
-5. implement spreadsheet projection and strict VBA syntax gate;
-6. run Task 4 verification and qualification evidence.
+1. independently generate SpreadsheetML fixtures;
+2. add the licensed synthetic Calamine XLSM seed and provenance;
+3. write XLSX/XLSM/VBA RED tests;
+4. implement spreadsheet projection and strict VBA syntax gate;
+5. run Task 4 verification and qualification evidence.
 
 Do not promote any qualified candidate into production crates during this Plan.
 

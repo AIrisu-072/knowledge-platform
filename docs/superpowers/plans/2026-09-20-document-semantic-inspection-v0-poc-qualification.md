@@ -521,9 +521,11 @@ Hosted qualification evidence: exact head `b4dae3c89fa84ce50deada7f268aa5b04830d
   tree-sitter-vba = { git = "https://github.com/tmepple/tree-sitter-vba", rev = "c691f237b2a703732d4b6a1f01d5b4f73f94d41e" }
   ```
 
-- [ ] **Step 1: Add spreadsheet/VBA dependencies and lock them**
+- [x] **Step 1: Add spreadsheet/VBA dependencies and lock them**
 
 Update `Cargo.lock` and confirm `cargo deny` accepts every direct/transitive license/source.
+
+> **Task 4 VBA grammar packaging Ruling (2026-09-21):** the exact planned `tmepple/tree-sitter-vba@c691f237...` grammar revision is retained, but its upstream Cargo package is not buildable because `Cargo.toml` references a missing `bindings/rust/build.rs`. The generated `src/parser.c` and `src/tree_sitter/parser.h` from that exact commit are therefore vendored under the PoC workspace and compiled by the experiment's `build.rs`; no grammar source or revision is changed. The temporary git-source exception was removed. Dependency preflight DSI run `35606038480` passed tests, manifest verification, advisories, bans, licenses, and sources. Cost if wrong: strict VBA parse tests fail and XLSM remains unqualified; production promotion remains prohibited.
 
 - [ ] **Step 2: Build XLSX fixtures independently of rxls**
 

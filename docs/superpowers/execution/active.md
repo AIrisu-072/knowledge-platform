@@ -3,7 +3,7 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **POC QUALIFICATION EXECUTION / TASK 3 COMPLETE / TASK 4 DEPENDENCY PREFLIGHT NEXT**
+- Current phase: **POC QUALIFICATION EXECUTION / TASK 4 DEPENDENCY PREFLIGHT COMPLETE / XLSX-XLSM RED NEXT**
 - Frozen Design PR: `#7` — merged
 - Execution branch: `test/document-semantic-inspection-poc-v0`
 - Execution PR: `#8` — Draft
@@ -41,13 +41,13 @@ Task 2 produced one material qualification result: `scraper 0.27.0` was rejected
 
 ## Current hard gate
 
-The active task is **Task 4 — XLSX/XLSM/VBA qualification**. Task 3 DOCX is complete and exact-head qualified.
+The active task is **Task 4 — XLSX/XLSM/VBA qualification**. Dependency preflight is complete; the next gate is independent fixtures and RED tests.
 
 Do not start production Semantic Inspection implementation. Do not accept unknown potentially semantic OOXML package parts as normal success.
 
 ## Next exact action
 
-Start Task 4 with dependency/license/source preflight for `rxls`, `calamine`, `ovba`, `tree-sitter`, and the exact pinned `tree-sitter-vba` revision. Do not begin spreadsheet implementation until that graph passes.
+Create independent SpreadsheetML fixtures, import the licensed synthetic Calamine XLSM seed with provenance, then write Task 4 RED tests before implementing spreadsheet/VBA adapters.
 
 ## Resume command
 
