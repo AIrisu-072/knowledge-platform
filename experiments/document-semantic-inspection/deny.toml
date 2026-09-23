@@ -17,6 +17,7 @@ allow = [
   "PostgreSQL",
   "Unicode-3.0",
   "Zlib",
+  "ISC",
 ]
 confidence-threshold = 0.8
 
