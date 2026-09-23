@@ -72,6 +72,7 @@ fn raw_presentationml_fixtures_pin_independent_golden_semantics() {
 #[test]
 fn slide_and_shape_structure_changes_are_version_significant() {
     for id in [
+        "pptx/text-change",
         "pptx/slide-add",
         "pptx/slide-remove",
         "pptx/slide-order-change",
@@ -118,4 +119,13 @@ fn unknown_presentation_semantics_fail_closed() {
 fn adapter_reports_pptx_format() {
     use document_semantic_inspection_poc::InspectionAdapter;
     assert_eq!(PptxAdapter.format(), FormatId::Pptx);
+}
+
+#[test]
+fn comments_are_editorial_and_not_version_identity() {
+    same("pptx/comment-only");
+    let result = inspect("pptx/comment-only");
+    assert!(result.output.editorial.comments_present);
+    assert_eq!(result.output.editorial.comments.len(), 1);
+    assert_eq!(result.output.editorial.comments[0].content, "Review note");
 }
