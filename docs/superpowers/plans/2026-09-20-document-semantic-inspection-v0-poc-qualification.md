@@ -6,7 +6,7 @@
 
 **Architecture:** Build an isolated Rust PoC workspace under `experiments/document-semantic-inspection/`. Every adapter returns an opaque format-native semantic projection plus common evidence metadata; the harness hashes the projection and evaluates BASE / SEMANTIC / NOISE / EDITORIAL / HOSTILE fixture relations. Candidate libraries remain confined to the experiment workspace. The plan ends with a qualification report and selection update; production Document Semantic Inspection gets a separate implementation plan after actual PoC results are known.
 
-**Tech Stack:** Rust 1.98.1; isolated Cargo workspace; serde/serde_json; sha2; office_oxide 0.1.11 + strict raw OOXML sentinel for DOCX; rxls 0.1.3; calamine 0.36.1; ovba 0.7.1; tree-sitter 0.25 + MIT `tmepple/tree-sitter-vba` pinned at `c691f237b2a703732d4b6a1f01d5b4f73f94d41e`; pptx 0.1.0; powerpoint-ooxml 1.0.0; pdfium-render 0.9.4; lopdf 0.45.0; xml-sec 0.1.16; cms 0.2.3; x509-cert 0.2.5; pkix-path 0.3.2; pkix-chain 0.1.1; pkix-revocation 0.3.3; scraper 0.27.0 (html5ever 0.39 parser); csv 1.4.0; encoding_rs 0.8.41.
+**Tech Stack:** Rust 1.98.1; isolated Cargo workspace; serde/serde_json; sha2; office_oxide 0.1.11 + strict raw OOXML sentinels for DOCX/PPTX; rxls 0.1.3; calamine 0.36.1; ovba 0.7.1; tree-sitter 0.25 + MIT `tmepple/tree-sitter-vba` pinned at `c691f237b2a703732d4b6a1f01d5b4f73f94d41e`; pdfium-render 0.9.4; lopdf 0.45.0; xml-sec 0.1.16; cms 0.2.3; x509-cert 0.2.5; pkix-path 0.3.2; pkix-chain 0.1.1; pkix-revocation 0.3.3; scraper 0.27.0 (html5ever 0.39 parser); csv 1.4.0; encoding_rs 0.8.41.
 
 **Spec:** `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
 
@@ -632,13 +632,20 @@ Qualification coverage includes sheet add/remove/order and visibility, typed cel
 - Modify: `fixtures/manifest.json`
 
 **Interfaces:**
-- Primary candidate: `pptx = "=0.1.0"`.
-- Differential structural candidate: `powerpoint-ooxml = "=1.0.0"`.
-- Uses the raw OOXML package coverage helper from Task 3.
+- Typed semantic candidate: existing `office_oxide = "=0.1.11"` PPTX reader.
+- Independent structural/semantic oracle: project-owned raw PresentationML inspection.
+- Uses the raw OOXML package coverage principles from Task 3.
 
-- [ ] **Step 1: Add pinned candidates**
+> **Task 5 candidate-selection Ruling (2026-09-23):**
+> - Planned `pptx 0.1.0` is **REJECTED**: it resolves `quick-xml 0.39.4`, which is affected by RUSTSEC-2026-0194 and RUSTSEC-2026-0195. Security exceptions are prohibited.
+> - Planned `powerpoint-ooxml 1.0.0` is **REJECTED** under the existing dependency-license policy: its mandatory `opc-ooxml 1.0.0` dependency enables `zip ^8` default features, which pull unapproved `bzip2-1.0.6` and `CC0-1.0 OR MIT-0` codec-license expressions. The downstream PoC cannot disable those transitive defaults.
+> - Failed planned-candidate preflight: DSI run `35819356362`; semantic tests themselves remained green and the failure was the deny gate.
+> - Replacement: reuse already-qualified `office_oxide 0.1.11` PPTX parsing plus an independent project-owned raw PresentationML oracle/sentinel. The frozen PPTX semantic contract is unchanged.
+> - Replacement locked baseline: DSI run `35819760081` — **SUCCESS** with the existing 59-case suite and deny gate.
 
-Update lockfile and deny gate.
+- [x] **Step 1: Preflight candidates and freeze replacement ruling**
+
+No new Task 5 runtime dependency is added. Keep the existing isolated lockfile unchanged and hosted CI strictly `--locked`.
 
 - [ ] **Step 2: Generate raw PresentationML fixtures**
 
@@ -665,7 +672,7 @@ assert_same("pptx/base", "pptx/theme-only");
 assert_error("pptx/unknown-semantic-part", ErrorCode::UnsupportedSemanticConstruct);
 ```
 
-For semantics both candidates expose, require agreement with golden expectations.
+For semantics `office_oxide` exposes, require agreement with independent raw-OOXML golden expectations. Constructs not represented by the typed candidate (for example required chart/SmartArt structure) remain owned by the raw PresentationML oracle and must still pass the frozen semantic fixtures.
 
 - [ ] **Step 4: Implement projection + coverage sentinel**
 

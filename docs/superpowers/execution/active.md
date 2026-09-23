@@ -3,7 +3,7 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **POC QUALIFICATION EXECUTION / TASK 4 COMPLETE / TASK 5 DEPENDENCY PREFLIGHT NEXT**
+- Current phase: **POC QUALIFICATION EXECUTION / TASK 5 DEPENDENCY PREFLIGHT COMPLETE / PPTX RED NEXT**
 - Frozen Design PR: `#7` — merged
 - Execution branch: `test/document-semantic-inspection-poc-v0`
 - Execution PR: `#8` — Draft
@@ -43,13 +43,13 @@ Task 2 produced one material qualification result: `scraper 0.27.0` was rejected
 
 ## Current hard gate
 
-The active task is **Task 5 — PPTX qualification**. Task 4 XLSX/XLSM/VBA is complete and exact-head qualified.
+The active task is **Task 5 — PPTX qualification**. Planned parser candidates were rejected by security/license preflight; the replacement is `office_oxide 0.1.11` plus a raw PresentationML oracle.
 
 Do not start production Semantic Inspection implementation. Do not accept unknown potentially semantic OOXML package parts as normal success.
 
 ## Next exact action
 
-Start Task 5 with isolated dependency/license/advisory preflight for `pptx 0.1.0` and `powerpoint-ooxml 1.0.0`. Do not implement PPTX semantics until the candidate graph passes.
+Create independent raw PresentationML fixtures and RED tests before implementing `PptxAdapter`. Do not add either rejected PPTX candidate back or weaken deny policy.
 
 ## Resume command
 

@@ -2,7 +2,7 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **POC QUALIFICATION EXECUTION / TASK 4 COMPLETE / TASK 5 DEPENDENCY PREFLIGHT NEXT**
+- Overall phase: **POC QUALIFICATION EXECUTION / TASK 5 DEPENDENCY PREFLIGHT COMPLETE / PPTX RED NEXT**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - Execution branch: `test/document-semantic-inspection-poc-v0`
@@ -150,15 +150,27 @@ Fresh exact-head qualification evidence:
 
 No Design amendment was required. Task 4 dependencies remain PoC-only; production promotion remains prohibited.
 
+## Task 5 — DEPENDENCY PREFLIGHT COMPLETE
+
+Candidate evidence:
+
+- `pptx 0.1.0` — **REJECTED**: `quick-xml 0.39.4` is affected by RUSTSEC-2026-0194 and RUSTSEC-2026-0195.
+- `powerpoint-ooxml 1.0.0` — **REJECTED**: mandatory `opc-ooxml 1.0.0 -> zip ^8` default codec graph violates the current license allowlist.
+- Planned-candidate preflight DSI run: `35819356362` — FAIL at cargo-deny; existing semantic verification still passed 59 cases.
+- Replacement: existing qualified `office_oxide 0.1.11` PPTX reader + independent raw PresentationML oracle/sentinel.
+- Replacement exact locked DSI run: `35819760081` — **SUCCESS**.
+- No Task 5 dependency was promoted or added after the ruling.
+
+Ruling: preserve the frozen PPTX semantic contract and reject unsafe/non-compliant parser candidates rather than weakening security/license gates.
+
 ## Current gate / next exact action
 
-Proceed to **Task 5 — PPTX dependency preflight and RED fixture phase**:
+Proceed to **Task 5 — PPTX raw fixture / RED phase**:
 
-1. add `pptx = "=0.1.0"` and `powerpoint-ooxml = "=1.0.0"` only to the isolated PoC workspace;
-2. regenerate the isolated lock once for preflight, then restore strict `--locked` hosted CI;
-3. require cargo-deny advisories/licenses/sources to pass before fixture implementation;
-4. build raw PresentationML fixtures independently of either candidate;
-5. write Task 5 RED tests before implementing `PptxAdapter`.
+1. build independent literal PresentationML fixtures without serializing through `office_oxide`;
+2. cover slide add/remove/order, shape/text association, tables, chart series/data, SmartArt, images, hyperlinks, notes, grouping, noise invariance, and unknown-package fail-closed behavior;
+3. write RED tests referring to the not-yet-implemented `PptxAdapter`;
+4. record hosted RED evidence before GREEN implementation.
 
 Do not promote any qualified candidate into production crates during this Plan.
 
