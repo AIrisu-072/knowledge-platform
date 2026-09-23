@@ -35,3 +35,28 @@ jobs:
           PDFIUM_LIB_DIR="$(experiments/document-semantic-inspection/scripts/install-pdfium.sh)"
           echo "PDFIUM_DYNAMIC_LIB_PATH=$PDFIUM_LIB_DIR" >> "$GITHUB_ENV"
       - run: mise run poc:dsi:verify
+
+  qualification-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-15
+          - macos-15-intel
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Install PoC toolchain
+        run: |
+          mise install rust
+          mise install cargo:cargo-deny
+      - name: Install pinned PDFium 7881
+        run: |
+          PDFIUM_LIB_DIR="$(experiments/document-semantic-inspection/scripts/install-pdfium.sh)"
+          echo "PDFIUM_DYNAMIC_LIB_PATH=$PDFIUM_LIB_DIR" >> "$GITHUB_ENV"
+      - run: mise run poc:dsi:verify
