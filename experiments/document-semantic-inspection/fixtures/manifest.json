@@ -767,6 +767,226 @@
         "kind": "different_from",
         "case_id": "xlsx/two-sheet-base"
       }
+    },
+    {
+      "id": "pptx/base",
+      "class": "BASE",
+      "path": "pptx/base.pptx",
+      "format": "pptx",
+      "sha256": "9b9cb71df6514b7345ded871e9a5eaf038b27838015390a0416f8b215b805093",
+      "size": 11256,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "success"
+      }
+    },
+    {
+      "id": "pptx/slide-add",
+      "class": "SEMANTIC",
+      "path": "pptx/slide-add.pptx",
+      "format": "pptx",
+      "sha256": "efb202a4bcbafabe9c8d5cc8fb63da14e279327d30a83a34599142a9bce469bf",
+      "size": 12457,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/slide-remove",
+      "class": "SEMANTIC",
+      "path": "pptx/slide-remove.pptx",
+      "format": "pptx",
+      "sha256": "f9c1b07e3b7d96fc12af54df0e48333603a542efeb59001f68d5ee8e9ff7b149",
+      "size": 10011,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/slide-order-change",
+      "class": "SEMANTIC",
+      "path": "pptx/slide-order-change.pptx",
+      "format": "pptx",
+      "sha256": "f9e5ab74a55763a6994abf0fd7752ecdf59ab7957e0bca766348781c503917e0",
+      "size": 11256,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/shape-association-change",
+      "class": "SEMANTIC",
+      "path": "pptx/shape-association-change.pptx",
+      "format": "pptx",
+      "sha256": "f5ab6beda8014cf111a1d473415156a7707b60751ebf0393344ce92965be4072",
+      "size": 11256,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/table-change",
+      "class": "SEMANTIC",
+      "path": "pptx/table-change.pptx",
+      "format": "pptx",
+      "sha256": "aeee479f49ac21626c7e562c7a62bb3c4d840305e501586fb658bde0cd605fa7",
+      "size": 11261,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/chart-change",
+      "class": "SEMANTIC",
+      "path": "pptx/chart-change.pptx",
+      "format": "pptx",
+      "sha256": "ae8a9dc401235f02df24d2dfcab6dbe2854c6d376e68614d4b928f951bd373e7",
+      "size": 11256,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/smartart-change",
+      "class": "SEMANTIC",
+      "path": "pptx/smartart-change.pptx",
+      "format": "pptx",
+      "sha256": "ab4c5c5f61eee9cad3f79f1ebe24057b0338e62805a40700f5f739faa8e48a8d",
+      "size": 11256,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/image-change",
+      "class": "SEMANTIC",
+      "path": "pptx/image-change.pptx",
+      "format": "pptx",
+      "sha256": "b4d925b1e226c4dd507bceb2ad66297a785f8099d7043f1cc3bdd441586c3bff",
+      "size": 11208,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/hyperlink-change",
+      "class": "SEMANTIC",
+      "path": "pptx/hyperlink-change.pptx",
+      "format": "pptx",
+      "sha256": "2ae133013d8e5c609fc62da6532ebe6337c02efead0ab5d19b304a3edb0a6e79",
+      "size": 11208,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/speaker-note-change",
+      "class": "SEMANTIC",
+      "path": "pptx/speaker-note-change.pptx",
+      "format": "pptx",
+      "sha256": "aac5d48c129c84e226227477bd23799d3dabbdfaccbc8e0aba5c0355670769af",
+      "size": 11216,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/group-change",
+      "class": "SEMANTIC",
+      "path": "pptx/group-change.pptx",
+      "format": "pptx",
+      "sha256": "8b5e2b07bfb7f5b096a518780eda157c6a4e2341c8c4bc60077c935808fae5b9",
+      "size": 10936,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/theme-only",
+      "class": "NOISE",
+      "path": "pptx/theme-only.pptx",
+      "format": "pptx",
+      "sha256": "fe46f882964a806025ea0ecdb2741248fedeb1e5850dcd430cb871a79420c48a",
+      "size": 11228,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/font-only",
+      "class": "NOISE",
+      "path": "pptx/font-only.pptx",
+      "format": "pptx",
+      "sha256": "017813e2b4325ccdc0d1b99ddfc5dca292583d7b3bead86537fa187ba777a2be",
+      "size": 11228,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/background-only",
+      "class": "NOISE",
+      "path": "pptx/background-only.pptx",
+      "format": "pptx",
+      "sha256": "c86e32720528025382ac8462ce56fb4b9eb2b4b7054be203a674711acd3098c4",
+      "size": 11304,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/id-order-noise",
+      "class": "NOISE",
+      "path": "pptx/id-order-noise.pptx",
+      "format": "pptx",
+      "sha256": "559a4efbcfff5ca8d871236150b7da921ad68912d878264780baf41b7d10d38b",
+      "size": 11186,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/unknown-semantic-part",
+      "class": "HOSTILE",
+      "path": "pptx/unknown-semantic-part.pptx",
+      "format": "pptx",
+      "sha256": "3c69d6223c4e008f02d02c85c0f8188062ba5592fc53c4632455e104e6f659b4",
+      "size": 11567,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "unsupported_semantic_construct"
+      }
     }
   ]
 }
