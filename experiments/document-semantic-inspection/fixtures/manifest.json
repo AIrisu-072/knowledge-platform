@@ -741,6 +741,19 @@
         "kind": "different_from",
         "case_id": "xlsx/base"
       }
+    },
+    {
+      "id": "xlsx/odbc-connection-add",
+      "class": "SEMANTIC",
+      "path": "xlsx/odbc-connection-add.xlsx",
+      "format": "xlsx",
+      "sha256": "203a62f9e13259cd136402c4ba6d1e9c4f63f52deacdb1ba9927784661d0c372",
+      "size": 4132,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
     }
   ]
 }

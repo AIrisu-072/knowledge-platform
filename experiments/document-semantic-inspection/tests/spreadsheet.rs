@@ -114,3 +114,17 @@ fn xlsm_vba_source_variants_are_qualified_on_real_macro_container() {
     let error = inspect_xlsm_bytes(&invalid_syntax).unwrap_err();
     assert_eq!(error.code(), ErrorCode::SemanticExtractionFailed);
 }
+
+#[test]
+fn odbc_connection_definition_is_semantic_but_never_opened() {
+    diff("xlsx/odbc-connection-add");
+    let result = inspect_xlsx("xlsx/odbc-connection-add");
+    assert!(
+        result.output.external_dependencies.iter().any(|dependency| {
+            dependency.kind == "odbc"
+                && dependency.definition.contains("SERVER=db.internal")
+                && dependency.definition.contains("SELECT account_id,balance FROM ledger")
+        }),
+        "ODBC connection string and command must remain evidence, not an executed connection"
+    );
+}
