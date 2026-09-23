@@ -570,7 +570,7 @@ Hosted RED evidence: commit `fe1abea83d2669c1a847203cdcfe84926acbdb4f`, DSI PoC 
 
 > **Adapter format Ruling:** one adapter implementation needs distinct XLSX and XLSM trait instances because `InspectionAdapter::format()` returns a single `FormatId`. Use associated constants `SpreadsheetAdapter::XLSX` and `SpreadsheetAdapter::XLSM` over one implementation type. Cost if wrong: only adapter registration/API shape changes; semantic contract is unaffected.
 
-- [ ] **Step 5: Implement spreadsheet projection**
+- [x] **Step 5: Implement spreadsheet projection**
 
 The projection must include sorted:
 - sheet identity/order/visibility;
@@ -583,7 +583,7 @@ The projection must include sorted:
 
 Style-only/cached-result-only fields remain outside semantic bytes.
 
-- [ ] **Step 6: Implement strict VBA gate**
+- [x] **Step 6: Implement strict VBA gate**
 
 `ovba` extracts every module and reference. Tree-sitter parses each source module.
 
@@ -607,7 +607,7 @@ Canonicalization:
 
 If the Tree-sitter candidate cannot parse required synthetic/realistic VBA without recovery nodes, record FAIL and do not silently replace it with a hand-written permissive tokenizer.
 
-- [ ] **Step 7: Verify and commit**
+- [x] **Step 7: Verify and commit**
 
 ```bash
 cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml --test spreadsheet
@@ -615,6 +615,10 @@ mise run poc:dsi:verify
 git add experiments/document-semantic-inspection
 git commit -m "test: qualify xlsx xlsm and vba inspection"
 ```
+
+Hosted qualification evidence: exact qualified code head `cefd042776b64cd80b0a009989eafd48ef5e256d`; DSI PoC run `35818792833` — **SUCCESS**; standard CI run `35818792843` — **SUCCESS**. Spreadsheet/VBA tests 8/8 PASS; complete PoC manifest 59 cases PASS; cargo-deny advisories/bans/licenses/sources PASS.
+
+Qualification coverage includes sheet add/remove/order and visibility, typed cells, formula source independent of cached result, defined names, merged cells, tables, hyperlinks, chart/image evidence, external-workbook and ODBC definitions without dereference, unknown OOXML fail-closed behavior, real XLSM VBA source mutation, and strict Tree-sitter recovery rejection. The rxls/Calamine differential oracle compares common facts by position: sheet identity/type/visibility, non-formula values, formula source, defined names, and hyperlinks.
 
 ---
 

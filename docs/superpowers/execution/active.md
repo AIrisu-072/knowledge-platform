@@ -3,7 +3,7 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **POC QUALIFICATION EXECUTION / TASK 4 DEPENDENCY PREFLIGHT COMPLETE / XLSX-XLSM RED NEXT**
+- Current phase: **POC QUALIFICATION EXECUTION / TASK 4 COMPLETE / TASK 5 DEPENDENCY PREFLIGHT NEXT**
 - Frozen Design PR: `#7` — merged
 - Execution branch: `test/document-semantic-inspection-poc-v0`
 - Execution PR: `#8` — Draft
@@ -12,7 +12,9 @@
 - Approved PoC Qualification Plan: `docs/superpowers/plans/2026-09-20-document-semantic-inspection-v0-poc-qualification.md`
 - Execution Status: `docs/superpowers/execution/document-semantic-inspection-v0-status.md`
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
-- Last qualified code head: `b4dae3c89fa84ce50deada7f268aa5b04830da5d`
+- Last qualified code head: `cefd042776b64cd80b0a009989eafd48ef5e256d`
+- Task 4 DSI qualification: `35818792833` — SUCCESS
+- Task 4 standard CI: `35818792843` — SUCCESS
 - Task 3 dependency-preflight DSI: `35545142423` — SUCCESS
 
 ## Mandatory resume order
@@ -41,17 +43,17 @@ Task 2 produced one material qualification result: `scraper 0.27.0` was rejected
 
 ## Current hard gate
 
-The active task is **Task 4 — XLSX/XLSM/VBA qualification**. Dependency preflight is complete; the next gate is independent fixtures and RED tests.
+The active task is **Task 5 — PPTX qualification**. Task 4 XLSX/XLSM/VBA is complete and exact-head qualified.
 
 Do not start production Semantic Inspection implementation. Do not accept unknown potentially semantic OOXML package parts as normal success.
 
 ## Next exact action
 
-Create independent SpreadsheetML fixtures, import the licensed synthetic Calamine XLSM seed with provenance, then write Task 4 RED tests before implementing spreadsheet/VBA adapters.
+Start Task 5 with isolated dependency/license/advisory preflight for `pptx 0.1.0` and `powerpoint-ooxml 1.0.0`. Do not implement PPTX semantics until the candidate graph passes.
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualification Task 4（XLSX/XLSM/VBA）から再開してください。PR #8・Execution Status・exact-head CIを正本にしてください。
+> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualification Task 5（PPTX）から再開してください。PR #8・Execution Status・exact-head CIを正本にしてください。
 
 ## End-of-session rule
 

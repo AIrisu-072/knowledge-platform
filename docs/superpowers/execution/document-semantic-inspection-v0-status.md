@@ -2,13 +2,13 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **POC QUALIFICATION EXECUTION / TASK 4 RED COMPLETE / XLSX-XLSM GREEN NEXT**
+- Overall phase: **POC QUALIFICATION EXECUTION / TASK 4 COMPLETE / TASK 5 DEPENDENCY PREFLIGHT NEXT**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - Execution branch: `test/document-semantic-inspection-poc-v0`
 - Execution PR: **#8 (Draft)**
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
-- Last qualified code head: `b4dae3c89fa84ce50deada7f268aa5b04830da5d`
+- Last qualified code head: `cefd042776b64cd80b0a009989eafd48ef5e256d`
 - Task 3 dependency-preflight candidate head: `ec532ec12d89352d83dc9a85ae68a3da583c0ebb`
 - Task 3 dependency-preflight DSI run: `35545142423` — **SUCCESS**
 - Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
@@ -132,15 +132,33 @@ Fixture / RED evidence:
 
 Ruling: represent format-specific instances as `SpreadsheetAdapter::XLSX` and `SpreadsheetAdapter::XLSM`, because the shared `InspectionAdapter` trait exposes exactly one `FormatId` per instance.
 
+## Task 4 — COMPLETE
+
+Fresh exact-head qualification evidence:
+
+- Qualified code head: `cefd042776b64cd80b0a009989eafd48ef5e256d`
+- DSI PoC run: `35818792833` — **SUCCESS**
+- Standard CI run: `35818792843` — **SUCCESS**
+- Spreadsheet/VBA tests: **8/8 PASS**
+- Manifest verification: **59 cases PASS**
+- Dependency gate: advisories/bans/licenses/sources **PASS**
+- XLSX semantics: sheet add/remove/order and visibility, cells, formula source vs cached-value noise, defined names, merges, tables, hyperlinks, charts, images, and external definitions are fingerprinted
+- Differential oracle: rxls vs Calamine agreement required for positioned sheet metadata, non-formula cell values, formula source, defined names, and hyperlinks
+- XLSM/VBA: real macro container mutated locally; comment/whitespace-only changes remain invariant, logic changes differ, invalid syntax fails closed
+- External references: external-workbook and ODBC definitions remain evidence only; no dereference/connection is performed
+- Unknown potentially semantic package content/relationships fail closed
+
+No Design amendment was required. Task 4 dependencies remain PoC-only; production promotion remains prohibited.
+
 ## Current gate / next exact action
 
-Proceed to **Task 4 — XLSX/XLSM/VBA GREEN implementation**:
+Proceed to **Task 5 — PPTX dependency preflight and RED fixture phase**:
 
-1. adjust RED tests to the explicit XLSX/XLSM adapter-instance API and re-confirm RED;
-2. implement spreadsheet projection plus raw OOXML coverage sentinel;
-3. implement strict Tree-sitter VBA canonicalizer and ovba full-module extraction;
-4. resolve the required XLSM VBA source-mutation/noise fixture gate without skipping it;
-5. run Task 4 verification and qualification evidence.
+1. add `pptx = "=0.1.0"` and `powerpoint-ooxml = "=1.0.0"` only to the isolated PoC workspace;
+2. regenerate the isolated lock once for preflight, then restore strict `--locked` hosted CI;
+3. require cargo-deny advisories/licenses/sources to pass before fixture implementation;
+4. build raw PresentationML fixtures independently of either candidate;
+5. write Task 5 RED tests before implementing `PptxAdapter`.
 
 Do not promote any qualified candidate into production crates during this Plan.
 
