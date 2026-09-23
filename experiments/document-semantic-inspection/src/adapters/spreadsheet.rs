@@ -395,6 +395,7 @@ fn inspect_connection_definitions(data: &[u8]) -> Result<Vec<ExternalDependency>
     let mut reader = quick_xml::Reader::from_reader(data);
     let mut dependencies = Vec::new();
     let mut connection_name: Option<String> = None;
+    let mut connection_type: Option<String> = None;
 
     loop {
         match reader
@@ -407,14 +408,17 @@ fn inspect_connection_definitions(data: &[u8]) -> Result<Vec<ExternalDependency>
                 if event.local_name().as_ref() == "connection" =>
             {
                 connection_name = None;
+                connection_type = None;
                 for attribute in event.attributes() {
                     let attribute = attribute.map_err(|error| {
                         PocError::SemanticExtractionFailed(format!(
                             "connection attribute: {error}"
                         ))
                     })?;
-                    if attribute.key.local_name().as_ref() == "name" {
-                        connection_name = Some(attribute.value.as_ref().to_owned());
+                    match attribute.key.local_name().as_ref() {
+                        "name" => connection_name = Some(attribute.value.as_ref().to_owned()),
+                        "type" => connection_type = Some(attribute.value.as_ref().to_owned()),
+                        _ => {}
                     }
                 }
             }
@@ -443,14 +447,17 @@ fn inspect_connection_definitions(data: &[u8]) -> Result<Vec<ExternalDependency>
                         "database connection definition missing connection string".into(),
                     )
                 })?;
-                let kind = if connection.to_ascii_uppercase().contains("ODBC") {
+                let kind = if connection_type.as_deref() == Some("1")
+                    || connection.to_ascii_uppercase().contains("ODBC")
+                {
                     "odbc"
                 } else {
                     "database"
                 };
                 let definition = format!(
-                    "name={};connection={};command={};command_type={}",
+                    "name={};type={};connection={};command={};command_type={}",
                     connection_name.as_deref().unwrap_or(""),
+                    connection_type.as_deref().unwrap_or(""),
                     connection,
                     command.as_deref().unwrap_or(""),
                     command_type.as_deref().unwrap_or("")
@@ -462,6 +469,7 @@ fn inspect_connection_definitions(data: &[u8]) -> Result<Vec<ExternalDependency>
             }
             Event::End(event) if event.local_name().as_ref() == "connection" => {
                 connection_name = None;
+                connection_type = None;
             }
             Event::Eof => break,
             _ => {}
