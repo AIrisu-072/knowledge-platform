@@ -1,6 +1,6 @@
 use crate::{
-    canonical_json_bytes, AdapterOutput, CapabilityEvidence, Diagnostic, EditorialEvidence,
-    ExternalDependency, FormatId, InspectionAdapter, InspectionProfile, PocError,
+    canonical_json_bytes, AdapterOutput, CapabilityEvidence, CommentEvidence, Diagnostic,
+    EditorialEvidence, ExternalDependency, FormatId, InspectionAdapter, InspectionProfile, PocError,
 };
 use lopdf::{Document, LoadOptions, Object};
 use pdfium_render::prelude::*;
@@ -70,6 +70,7 @@ impl InspectionAdapter for PdfAdapter {
 
         let mut semantic_pages = Vec::with_capacity(page_count);
         let mut external_dependencies = Vec::new();
+        let mut editorial = EditorialEvidence::default();
         let mut any_text = false;
         let mut total_images = 0usize;
 
@@ -88,14 +89,31 @@ impl InspectionAdapter for PdfAdapter {
                 any_text = true;
             }
 
-            let mut annotations = Vec::new();
-            for annotation in page.annotations().iter() {
-                annotations.push(json!({
-                    "type": format!("{:?}", annotation.annotation_type()).to_lowercase(),
-                    "contents": annotation.contents(),
-                }));
+            let annotation_count = page.annotations().len() as usize;
+            for (annotation_index, annotation) in page.annotations().iter().enumerate() {
+                let annotation_type = annotation.annotation_type();
+                if !matches!(
+                    annotation_type,
+                    PdfPageAnnotationType::Link
+                        | PdfPageAnnotationType::Widget
+                        | PdfPageAnnotationType::XfaWidget
+                ) {
+                    editorial.comments_present = true;
+                    editorial.comments.push(CommentEvidence {
+                        author_label: None,
+                        timestamp: None,
+                        resolved_state: "unknown".into(),
+                        source_locator: format!(
+                            "page[{page_index}]/annotation[{annotation_index}]"
+                        ),
+                        content: format!(
+                            "{:?}:{}",
+                            annotation_type,
+                            annotation.contents().unwrap_or_default()
+                        ),
+                    });
+                }
             }
-            let annotation_count = annotations.len();
             if annotation_count != structural.annotation_counts[page_index] {
                 return Err(PocError::ParserDisagreement(format!(
                     "annotation count mismatch on page {}: pdfium={}, lopdf={}",
@@ -156,7 +174,6 @@ impl InspectionAdapter for PdfAdapter {
             semantic_pages.push(json!({
                 "index": page_index,
                 "text": text,
-                "annotations": annotations,
                 "links": links,
                 "images": image_hashes,
             }));
@@ -201,7 +218,7 @@ impl InspectionAdapter for PdfAdapter {
                     present: total_images > 0,
                 },
             ],
-            editorial: EditorialEvidence::default(),
+            editorial,
             external_dependencies,
             signatures: Vec::new(),
             diagnostics: vec![Diagnostic {
