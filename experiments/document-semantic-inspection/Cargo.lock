@@ -238,6 +238,7 @@ version = "0.0.0"
 dependencies = [
  "calamine",
  "cc",
+ "cfb 0.10.0",
  "csv",
  "encoding_rs",
  "hex",

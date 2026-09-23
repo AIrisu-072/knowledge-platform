@@ -30,11 +30,4 @@ jobs:
         run: |
           mise install rust
           mise install cargo:cargo-deny
-      - name: Generate XLSM mutation lock evidence
-        run: |
-          rm -f experiments/document-semantic-inspection/Cargo.lock
-          cargo generate-lockfile --manifest-path experiments/document-semantic-inspection/Cargo.toml
-          echo "===== DSI_POC_CARGO_LOCK_BEGIN ====="
-          cat experiments/document-semantic-inspection/Cargo.lock
-          echo "===== DSI_POC_CARGO_LOCK_END ====="
       - run: mise run poc:dsi:verify
