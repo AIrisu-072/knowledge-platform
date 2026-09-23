@@ -1080,14 +1080,14 @@
     },
     {
       "id": "pdf/annotation-change",
-      "class": "SEMANTIC",
+      "class": "EDITORIAL",
       "path": "pdf/annotation-change.pdf",
       "format": "pdf",
       "sha256": "285bda959ac83201f9ebb76cacdd7525bfefb0236417b54e4a0013a5ec84539f",
       "size": 1741,
       "profile": "dsi-v0",
       "expected": {
-        "kind": "different_from",
+        "kind": "same_as",
         "case_id": "pdf/base"
       }
     },
