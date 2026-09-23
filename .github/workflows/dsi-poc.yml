@@ -30,6 +30,13 @@ jobs:
         run: |
           mise install rust
           mise install cargo:cargo-deny
+      - name: Generate Task 7 isolated lock evidence
+        run: |
+          rm -f experiments/document-semantic-inspection/Cargo.lock
+          cargo generate-lockfile --manifest-path experiments/document-semantic-inspection/Cargo.toml
+          echo "===== DSI_POC_CARGO_LOCK_BEGIN ====="
+          cat experiments/document-semantic-inspection/Cargo.lock
+          echo "===== DSI_POC_CARGO_LOCK_END ====="
       - name: Install pinned PDFium 7881
         run: |
           PDFIUM_LIB_DIR="$(experiments/document-semantic-inspection/scripts/install-pdfium.sh)"
@@ -55,6 +62,10 @@ jobs:
         run: |
           mise install rust
           mise install cargo:cargo-deny
+      - name: Generate Task 7 isolated lock
+        run: |
+          rm -f experiments/document-semantic-inspection/Cargo.lock
+          cargo generate-lockfile --manifest-path experiments/document-semantic-inspection/Cargo.toml
       - name: Install pinned PDFium 7881
         run: |
           PDFIUM_LIB_DIR="$(experiments/document-semantic-inspection/scripts/install-pdfium.sh)"
