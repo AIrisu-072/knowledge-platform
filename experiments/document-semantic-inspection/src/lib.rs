@@ -12,7 +12,7 @@ mod report;
 mod runner;
 mod vba_language;
 
-pub use adapters::{AlwaysSuccessAdapter, CsvAdapter, DocxAdapter, HtmlAdapter, SpreadsheetAdapter, TextAdapter, VbaAdapter};
+pub use adapters::{AlwaysSuccessAdapter, CsvAdapter, DocxAdapter, HtmlAdapter, PptxAdapter, SpreadsheetAdapter, TextAdapter, VbaAdapter};
 pub use canonical::{canonical_json_bytes, fingerprint};
 pub use error::{ErrorCode, PocError};
 pub use manifest::{FixtureCase, FixtureManifest, fixture_case};
