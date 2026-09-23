@@ -44,6 +44,7 @@ fn strict_vba_parser_canonicalizes_trivia_and_rejects_recovery() {
 #[test]
 fn spreadsheet_required_structure_surface_is_version_significant() {
     diff("xlsx/sheet-add");
+    diff_from("xlsx/two-sheet-base", "xlsx/sheet-remove");
     diff_from("xlsx/two-sheet-base", "xlsx/sheet-order-change");
     for id in ["xlsx/table-add", "xlsx/chart-add", "xlsx/image-add"] {
         diff(id);
