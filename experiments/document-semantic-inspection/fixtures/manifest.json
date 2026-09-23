@@ -754,6 +754,19 @@
         "kind": "different_from",
         "case_id": "xlsx/base"
       }
+    },
+    {
+      "id": "xlsx/sheet-remove",
+      "class": "SEMANTIC",
+      "path": "xlsx/base.xlsx",
+      "format": "xlsx",
+      "sha256": "0aeda144a43a220161d34cb75eedb1d56979971ddd92cbcce0dff6bcdde8bcf6",
+      "size": 3373,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/two-sheet-base"
+      }
     }
   ]
 }
