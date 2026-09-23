@@ -382,6 +382,92 @@ fn inspect_external_package_definitions(
             }
         }
     }
+
+    if archive.by_name("xl/connections.xml").is_ok() {
+        let data = read_zip_part(&mut archive, "xl/connections.xml")?;
+        dependencies.extend(inspect_connection_definitions(&data)?);
+    }
+
+    Ok(dependencies)
+}
+
+fn inspect_connection_definitions(data: &[u8]) -> Result<Vec<ExternalDependency>, PocError> {
+    let mut reader = quick_xml::Reader::from_reader(data);
+    let mut dependencies = Vec::new();
+    let mut connection_name: Option<String> = None;
+
+    loop {
+        match reader
+            .read_event()
+            .map_err(|error| PocError::SemanticExtractionFailed(format!(
+                "connections XML: {error}"
+            )))?
+        {
+            Event::Start(event) | Event::Empty(event)
+                if event.local_name().as_ref() == "connection" =>
+            {
+                connection_name = None;
+                for attribute in event.attributes() {
+                    let attribute = attribute.map_err(|error| {
+                        PocError::SemanticExtractionFailed(format!(
+                            "connection attribute: {error}"
+                        ))
+                    })?;
+                    if attribute.key.local_name().as_ref() == "name" {
+                        connection_name = Some(attribute.value.as_ref().to_owned());
+                    }
+                }
+            }
+            Event::Start(event) | Event::Empty(event)
+                if event.local_name().as_ref() == "dbPr" =>
+            {
+                let mut connection = None;
+                let mut command = None;
+                let mut command_type = None;
+                for attribute in event.attributes() {
+                    let attribute = attribute.map_err(|error| {
+                        PocError::SemanticExtractionFailed(format!(
+                            "database connection attribute: {error}"
+                        ))
+                    })?;
+                    match attribute.key.local_name().as_ref() {
+                        "connection" => connection = Some(attribute.value.as_ref().to_owned()),
+                        "command" => command = Some(attribute.value.as_ref().to_owned()),
+                        "commandType" => command_type = Some(attribute.value.as_ref().to_owned()),
+                        _ => {}
+                    }
+                }
+
+                let connection = connection.ok_or_else(|| {
+                    PocError::SemanticExtractionFailed(
+                        "database connection definition missing connection string".into(),
+                    )
+                })?;
+                let kind = if connection.to_ascii_uppercase().contains("ODBC") {
+                    "odbc"
+                } else {
+                    "database"
+                };
+                let definition = format!(
+                    "name={};connection={};command={};command_type={}",
+                    connection_name.as_deref().unwrap_or(""),
+                    connection,
+                    command.as_deref().unwrap_or(""),
+                    command_type.as_deref().unwrap_or("")
+                );
+                dependencies.push(ExternalDependency {
+                    kind: kind.into(),
+                    definition,
+                });
+            }
+            Event::End(event) if event.local_name().as_ref() == "connection" => {
+                connection_name = None;
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+
     Ok(dependencies)
 }
 
