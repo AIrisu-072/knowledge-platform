@@ -226,6 +226,9 @@ fn detect_format(input: &[u8]) -> Option<FormatId> {
         if let Some(format) = crate::adapters::spreadsheet_format(input) {
             return Some(format);
         }
+        if crate::adapters::is_pptx_package(input) {
+            return Some(FormatId::Pptx);
+        }
         return None;
     }
 
