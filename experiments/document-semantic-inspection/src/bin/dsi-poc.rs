@@ -1,6 +1,6 @@
 use document_semantic_inspection_poc::{
     AdapterRegistry, CsvAdapter, DocxAdapter, FixtureManifest, FormatId, HtmlAdapter,
-    SpreadsheetAdapter, TextAdapter,
+    PptxAdapter, SpreadsheetAdapter, TextAdapter,
     fingerprint, run_case, verify_manifest, write_reports,
 };
 use std::collections::BTreeMap;
@@ -41,6 +41,7 @@ fn verify(
     registry.insert(Box::new(DocxAdapter));
     registry.insert(Box::new(SpreadsheetAdapter::XLSX));
     registry.insert(Box::new(SpreadsheetAdapter::XLSM));
+    registry.insert(Box::new(PptxAdapter));
 
     let report = verify_manifest(manifest, fixture_root, &registry);
     let output_dir = root.join("target").join("dsi-poc");
