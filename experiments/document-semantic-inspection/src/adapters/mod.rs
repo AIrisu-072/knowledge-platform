@@ -1,6 +1,7 @@
 mod csv;
 mod docx;
 mod html;
+mod pptx;
 mod spreadsheet;
 mod vba;
 mod text;
@@ -9,6 +10,8 @@ pub use csv::CsvAdapter;
 pub use docx::DocxAdapter;
 pub(crate) use docx::is_docx_package;
 pub use html::HtmlAdapter;
+pub use pptx::PptxAdapter;
+pub(crate) use pptx::is_pptx_package;
 pub use spreadsheet::SpreadsheetAdapter;
 pub(crate) use spreadsheet::spreadsheet_format;
 pub use vba::VbaAdapter;
