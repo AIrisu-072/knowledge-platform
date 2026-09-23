@@ -3,12 +3,12 @@ use crate::{
     canonical_json_bytes, AdapterOutput, CapabilityEvidence, CommentEvidence, EditorialEvidence,
     ExternalDependency, FormatId, InspectionAdapter, InspectionProfile, PocError,
 };
-use calamine::{open_workbook_auto_from_rs, Reader};
+use calamine::{open_workbook_auto_from_rs, Data as CalamineData, Reader, Xlsx};
 use quick_xml::events::Event;
 use rxls::{Cell, Workbook};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Cursor, Read};
 use zip::ZipArchive;
 
@@ -251,6 +251,8 @@ fn cell_projection(cell: &Cell) -> Value {
 fn compare_calamine_oracle(input: &[u8], workbook: &Workbook) -> Result<(), PocError> {
     let mut oracle = open_workbook_auto_from_rs(Cursor::new(input.to_vec()))
         .map_err(|error| PocError::ParserDisagreement(format!("Calamine open: {error}")))?;
+    let mut xlsx_oracle: Xlsx<_> = Xlsx::new(Cursor::new(input.to_vec()))
+        .map_err(|error| PocError::ParserDisagreement(format!("Calamine XLSX open: {error}")))?;
 
     let rxls_names: Vec<String> = workbook.sheets.iter().map(|sheet| sheet.name.clone()).collect();
     let calamine_names = oracle.sheet_names();
@@ -258,6 +260,30 @@ fn compare_calamine_oracle(input: &[u8], workbook: &Workbook) -> Result<(), PocE
         return Err(PocError::ParserDisagreement(format!(
             "sheet order/name mismatch: rxls={rxls_names:?}, calamine={calamine_names:?}"
         )));
+    }
+
+    let calamine_sheet_meta = oracle.sheets_metadata();
+    if calamine_sheet_meta.len() != workbook.sheets.len() {
+        return Err(PocError::ParserDisagreement(format!(
+            "sheet metadata count mismatch: rxls={}, calamine={}",
+            workbook.sheets.len(),
+            calamine_sheet_meta.len()
+        )));
+    }
+    for (sheet, oracle_sheet) in workbook.sheets.iter().zip(calamine_sheet_meta.iter()) {
+        let rxls_visibility = format!("{:?}", sheet.visible()).to_lowercase();
+        let calamine_visibility = format!("{:?}", oracle_sheet.visible).to_lowercase();
+        let rxls_type = format!("{:?}", sheet.sheet_type()).to_lowercase();
+        let calamine_type = format!("{:?}", oracle_sheet.typ).to_lowercase();
+        if sheet.name != oracle_sheet.name
+            || rxls_visibility != calamine_visibility
+            || rxls_type != calamine_type
+        {
+            return Err(PocError::ParserDisagreement(format!(
+                "sheet metadata mismatch: rxls=({}, {rxls_type}, {rxls_visibility}), calamine=({}, {calamine_type}, {calamine_visibility})",
+                sheet.name, oracle_sheet.name
+            )));
+        }
     }
 
     let mut rxls_names_def = workbook.defined_names.clone();
@@ -271,14 +297,14 @@ fn compare_calamine_oracle(input: &[u8], workbook: &Workbook) -> Result<(), PocE
     }
 
     for sheet in &workbook.sheets {
-        let mut rxls_formulas: Vec<String> = sheet
+        let rxls_formulas: BTreeMap<(u32, u16), String> = sheet
             .cells()
-            .filter_map(|(_, _, cell)| match cell {
-                Cell::Formula { formula, .. } => Some(formula.clone()),
+            .filter_map(|(row, col, cell)| match cell {
+                Cell::Formula { formula, .. } => Some(((row, col), formula.clone())),
                 _ => None,
             })
             .collect();
-        rxls_formulas.sort();
+        let formula_coords: BTreeSet<(u32, u16)> = rxls_formulas.keys().copied().collect();
 
         let formula_range = oracle
             .worksheet_formula(&sheet.name)
@@ -286,13 +312,15 @@ fn compare_calamine_oracle(input: &[u8], workbook: &Workbook) -> Result<(), PocE
                 "Calamine formula range {}: {error}",
                 sheet.name
             )))?;
-        let mut calamine_formulas: Vec<String> = formula_range
-            .rows()
-            .flat_map(|row| row.iter())
-            .filter(|formula| !formula.is_empty())
-            .cloned()
-            .collect();
-        calamine_formulas.sort();
+        let formula_start = formula_range.start().unwrap_or((0, 0));
+        let mut calamine_formulas = BTreeMap::new();
+        for (row, col, formula) in formula_range.used_cells() {
+            if formula.is_empty() {
+                continue;
+            }
+            let position = calamine_position(formula_start, row, col)?;
+            calamine_formulas.insert(position, formula.clone());
+        }
         if rxls_formulas != calamine_formulas {
             return Err(PocError::ParserDisagreement(format!(
                 "formula-source mismatch on {}: rxls={rxls_formulas:?}, calamine={calamine_formulas:?}",
@@ -306,17 +334,142 @@ fn compare_calamine_oracle(input: &[u8], workbook: &Workbook) -> Result<(), PocE
                 "Calamine value range {}: {error}",
                 sheet.name
             )))?;
-        let rxls_cell_count = sheet.rows().map(|(_, columns)| columns.len()).sum::<usize>();
-        let calamine_cell_count = value_range.used_cells().count();
-        if rxls_cell_count != calamine_cell_count {
+        let value_start = value_range.start().unwrap_or((0, 0));
+
+        let rxls_values: BTreeMap<(u32, u16), String> = sheet
+            .cells()
+            .filter_map(|(row, col, cell)| {
+                if matches!(cell, Cell::Formula { .. }) {
+                    None
+                } else {
+                    Some(((row, col), rxls_oracle_value(cell)))
+                }
+            })
+            .collect();
+        let mut calamine_values = BTreeMap::new();
+        for (row, col, value) in value_range.used_cells() {
+            let position = calamine_position(value_start, row, col)?;
+            if formula_coords.contains(&position) {
+                continue;
+            }
+            if let Some(value) = calamine_oracle_value(value) {
+                calamine_values.insert(position, value);
+            }
+        }
+        if rxls_values != calamine_values {
             return Err(PocError::ParserDisagreement(format!(
-                "used-cell count mismatch on {}: rxls={rxls_cell_count}, calamine={calamine_cell_count}",
+                "cell-value mismatch on {}: rxls={rxls_values:?}, calamine={calamine_values:?}",
+                sheet.name
+            )));
+        }
+
+        let mut rxls_links: Vec<_> = sheet
+            .hyperlinks()
+            .iter()
+            .map(|(row, col, target)| {
+                ((*row, u32::from(*col), *row, u32::from(*col)), format!("target={target};location="))
+            })
+            .collect();
+        rxls_links.sort();
+
+        let mut calamine_links: Vec<_> = xlsx_oracle
+            .hyperlinks_by_sheet_name(&sheet.name)
+            .map_err(|error| PocError::ParserDisagreement(format!(
+                "Calamine hyperlinks {}: {error}",
+                sheet.name
+            )))?
+            .into_iter()
+            .map(|link| {
+                (
+                    (
+                        link.range.start.0,
+                        link.range.start.1,
+                        link.range.end.0,
+                        link.range.end.1,
+                    ),
+                    format!(
+                        "target={};location={}",
+                        link.target.as_deref().unwrap_or(""),
+                        link.location.as_deref().unwrap_or("")
+                    ),
+                )
+            })
+            .collect();
+        calamine_links.sort();
+
+        if rxls_links != calamine_links {
+            return Err(PocError::ParserDisagreement(format!(
+                "hyperlink mismatch on {}: rxls={rxls_links:?}, calamine={calamine_links:?}",
                 sheet.name
             )));
         }
     }
 
     Ok(())
+}
+
+fn calamine_position(
+    start: (u32, u32),
+    row: usize,
+    col: usize,
+) -> Result<(u32, u16), PocError> {
+    let row = u32::try_from(row)
+        .map_err(|_| PocError::InvalidWorkerResult("Calamine row index overflow".into()))?;
+    let col = u32::try_from(col)
+        .map_err(|_| PocError::InvalidWorkerResult("Calamine column index overflow".into()))?;
+    let absolute_row = start
+        .0
+        .checked_add(row)
+        .ok_or_else(|| PocError::InvalidWorkerResult("Calamine row coordinate overflow".into()))?;
+    let absolute_col = start
+        .1
+        .checked_add(col)
+        .ok_or_else(|| PocError::InvalidWorkerResult("Calamine column coordinate overflow".into()))?;
+    let absolute_col = u16::try_from(absolute_col)
+        .map_err(|_| PocError::InvalidWorkerResult("Calamine column exceeds XLSX range".into()))?;
+    Ok((absolute_row, absolute_col))
+}
+
+fn normalized_number_bits(value: f64) -> u64 {
+    if value == 0.0 {
+        0.0f64.to_bits()
+    } else {
+        value.to_bits()
+    }
+}
+
+fn rxls_oracle_value(cell: &Cell) -> String {
+    match cell {
+        Cell::Text(value) => format!("text:{value}"),
+        Cell::Number(value) => format!("number:{:016x}", normalized_number_bits(*value)),
+        Cell::Date(value) => format!("date:{:016x}", normalized_number_bits(*value)),
+        Cell::Bool(value) => format!("bool:{value}"),
+        Cell::Error(value) => format!("error:{value}"),
+        Cell::Formula { cached, .. } => rxls_oracle_value(cached),
+    }
+}
+
+fn calamine_oracle_value(value: &CalamineData) -> Option<String> {
+    match value {
+        CalamineData::Int(value) => Some(format!(
+            "number:{:016x}",
+            normalized_number_bits(*value as f64)
+        )),
+        CalamineData::Float(value) => Some(format!(
+            "number:{:016x}",
+            normalized_number_bits(*value)
+        )),
+        CalamineData::String(value) => Some(format!("text:{value}")),
+        CalamineData::Bool(value) => Some(format!("bool:{value}")),
+        CalamineData::DateTime(value) => Some(format!(
+            "date:{:016x}",
+            normalized_number_bits(value.as_f64())
+        )),
+        CalamineData::DateTimeIso(value) => Some(format!("datetime_iso:{value}")),
+        CalamineData::DurationIso(value) => Some(format!("duration_iso:{value}")),
+        CalamineData::Error(value) => Some(format!("error:{value}")),
+        CalamineData::Empty => None,
+    }
 }
 
 fn inspect_external_package_definitions(
