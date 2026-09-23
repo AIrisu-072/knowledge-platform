@@ -2,13 +2,13 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **POC QUALIFICATION EXECUTION / TASK 5 COMPLETE / TASK 6 DEPENDENCY PREFLIGHT NEXT**
+- Overall phase: **POC QUALIFICATION EXECUTION / TASK 6 COMPLETE / TASK 7 DEPENDENCY PREFLIGHT NEXT**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - Execution branch: `test/document-semantic-inspection-poc-v0`
 - Execution PR: **#8 (Draft)**
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
-- Last qualified code head: `eb09b72ac64a35c2ef503df38570a1d34d38a7b0`
+- Last qualified code head: `7f2dcbfa186d11d66e633fefb2c0bfc629fb7f6a`
 - Task 3 dependency-preflight candidate head: `ec532ec12d89352d83dc9a85ae68a3da583c0ebb`
 - Task 3 dependency-preflight DSI run: `35545142423` — **SUCCESS**
 - Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
@@ -192,15 +192,32 @@ No Design amendment was required and no Task 5 runtime dependency was added afte
 
 The stale `chromium/8057` references in Task 6 were corrected to `chromium/7881`. The frozen Global Constraints already specify PDFium `151.0.7881.0`, its exact Linux/macOS hashes, and the `pdfium_7881` API supported by `pdfium-render 0.9.4`. This is a plan consistency repair, not a Design change.
 
+## Task 6 — COMPLETE
+
+Fresh exact-head qualification evidence:
+
+- Qualified code head: `7f2dcbfa186d11d66e633fefb2c0bfc629fb7f6a`
+- DSI PoC run: `35880533515` — **SUCCESS**
+- Standard CI run: `35880533521` — **SUCCESS**
+- Hosted targets: Ubuntu 24.04, macOS 15 Intel, macOS 15 arm64 — **all SUCCESS**
+- PDF tests: **7/7 PASS** on each hosted target
+- Manifest verification: **91 cases PASS**
+- Dependency gate: advisories/bans/licenses/sources **PASS**
+- Native engine: PDFium `151.0.7881.0` / `chromium/7881`; each platform artifact SHA-256 verified before extraction
+- Dual-engine policy: required PDFium/lopdf fact disagreement returns `ParserDisagreement`; no winner heuristic
+- Fail-closed: scan-only -> `RequiresOcr`; encrypted -> `EncryptedContentUnsupported`; broken structure -> `SemanticExtractionFailed`; ambiguous text order is rejected
+- Editorial separation: PDF annotation-content changes are preserved as editorial evidence without changing semantic identity where the frozen contract classifies them as editorial
+
+No Design amendment was required. PDF dependencies and native runtime remain PoC-only.
+
 ## Current gate / next exact action
 
-Proceed to **Task 6 — PDF dependency preflight**:
+Proceed to **Task 7 — digital-signature evidence dependency preflight**:
 
-1. add `pdfium-render = 0.9.4` with defaults disabled and explicit `pdfium_7881`/thread-safety features in the isolated PoC workspace;
-2. add `lopdf = 0.45.0` with default features disabled;
-3. generate the isolated lock once and run advisories/license/source gates before PDF implementation;
-4. if the graph passes, restore strict `--locked` hosted CI and implement the deterministic PDFium 7881 installer;
-5. only then create PDF fixtures and RED tests.
+1. preflight `xml-sec 0.1.16`, `cms 0.2.3`, `x509-cert 0.2.5`, `pkix-path 0.3.2`, `pkix-chain 0.1.1`, and `pkix-revocation 0.3.3` inside the isolated PoC workspace;
+2. reject any candidate that violates the existing advisory/license/source policy rather than adding exceptions;
+3. keep revocation offline-only; no CRL/OCSP network fetch is authorized;
+4. only after preflight passes, build synthetic signature vectors and RED tests.
 
 Do not promote any qualified candidate into production crates during this Plan.
 
