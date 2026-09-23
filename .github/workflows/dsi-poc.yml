@@ -30,4 +30,8 @@ jobs:
         run: |
           mise install rust
           mise install cargo:cargo-deny
+      - name: Install pinned PDFium 7881
+        run: |
+          PDFIUM_LIB_DIR="$(experiments/document-semantic-inspection/scripts/install-pdfium.sh)"
+          echo "PDFIUM_DYNAMIC_LIB_PATH=$PDFIUM_LIB_DIR" >> "$GITHUB_ENV"
       - run: mise run poc:dsi:verify
