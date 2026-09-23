@@ -1122,8 +1122,8 @@
       "class": "HOSTILE",
       "path": "pdf/scan-only.pdf",
       "format": "pdf",
-      "sha256": "d6dbf3230c89cba4f21edd5463d5074c3e41f9f2b5245dac07aed9fba350d662",
-      "size": 1211,
+      "sha256": "09a12b60cc190564a0acfa2f97eb5e2780bbfd5343c7fa3b5608fa7d38a761a7",
+      "size": 1181,
       "profile": "dsi-v0",
       "expected": {
         "kind": "error",
@@ -1161,8 +1161,8 @@
       "class": "HOSTILE",
       "path": "pdf/parser-disagreement.pdf",
       "format": "pdf",
-      "sha256": "d5623a0f1f9be4762ddd9cb2942ba3a488e8d0fbb5ec70a45fa4ae74476ce1e4",
-      "size": 1330,
+      "sha256": "87c62a7151d195b9f9b748efd21da00dad2fcb8053f32d192a1b459b446c72d9",
+      "size": 1275,
       "profile": "dsi-v0",
       "expected": {
         "kind": "error",
