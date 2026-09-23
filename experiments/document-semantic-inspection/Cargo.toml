@@ -43,4 +43,5 @@ tree-sitter-language = "=0.1.8"
 cc = "=1.2.41"
 
 [dev-dependencies]
+cfb = "=0.10.0"
 tempfile = "3"

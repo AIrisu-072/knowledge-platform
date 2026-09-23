@@ -1,6 +1,7 @@
 mod support;
 
-use document_semantic_inspection_poc::{ErrorCode, FixtureCase, FixtureManifest, SpreadsheetAdapter, VbaAdapter, run_case};
+use document_semantic_inspection_poc::{fingerprint as semantic_fingerprint, ErrorCode, FixtureCase, FixtureManifest, InspectionAdapter, InspectionProfile, SpreadsheetAdapter, VbaAdapter, run_case};
+use support::spreadsheetml::mutate_vba_module;
 
 fn manifest() -> FixtureManifest {
     FixtureManifest::from_path(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/manifest.json")).expect("manifest")
@@ -60,4 +61,56 @@ fn external_workbook_definition_is_semantic_but_never_dereferenced() {
         }),
         "external workbook target must be preserved as a definition"
     );
+}
+
+const VBA_BASE_SOURCE: &str = "Attribute VB_Name = \"testVBA\"\r\nPublic Sub test()\r\n    MsgBox \"Hello from vba!\"\r\nEnd Sub\r\n";
+
+fn inspect_xlsm_bytes(bytes: &[u8]) -> Result<document_semantic_inspection_poc::AdapterOutput, document_semantic_inspection_poc::PocError> {
+    SpreadsheetAdapter::XLSM.inspect(bytes, &InspectionProfile::default())
+}
+
+#[test]
+fn xlsm_vba_source_variants_are_qualified_on_real_macro_container() {
+    let seed = std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures/xlsm/calamine-vba.xlsm"),
+    )
+    .expect("licensed XLSM seed");
+    let base = inspect_xlsm_bytes(&seed).expect("base XLSM");
+    let base_fp = semantic_fingerprint(&base.semantic_projection);
+
+    let comment_only = mutate_vba_module(
+        &seed,
+        "testVBA",
+        &VBA_BASE_SOURCE.replace(
+            "Public Sub test()\r\n",
+            "Public Sub test()\r\n    ' qualification comment\r\n",
+        ),
+    );
+    let whitespace_only = mutate_vba_module(
+        &seed,
+        "testVBA",
+        "attribute vb_name = \"testVBA\"\r\npublic sub test()\r\n\tmsgbox   \"Hello from vba!\"\r\nend sub\r\n",
+    );
+    let logic_change = mutate_vba_module(
+        &seed,
+        "testVBA",
+        &VBA_BASE_SOURCE.replace("Hello from vba!", "Changed logic"),
+    );
+    let invalid_syntax = mutate_vba_module(
+        &seed,
+        "testVBA",
+        &VBA_BASE_SOURCE.replace("Public Sub test()", "Public Sub test("),
+    );
+
+    for same in [&comment_only, &whitespace_only] {
+        let inspected = inspect_xlsm_bytes(same).expect("trivia-only VBA variant");
+        assert_eq!(base_fp, semantic_fingerprint(&inspected.semantic_projection));
+    }
+
+    let changed = inspect_xlsm_bytes(&logic_change).expect("logic-changing VBA variant");
+    assert_ne!(base_fp, semantic_fingerprint(&changed.semantic_projection));
+
+    let error = inspect_xlsm_bytes(&invalid_syntax).unwrap_err();
+    assert_eq!(error.code(), ErrorCode::SemanticExtractionFailed);
 }
