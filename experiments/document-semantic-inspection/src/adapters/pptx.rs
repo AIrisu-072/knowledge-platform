@@ -685,7 +685,7 @@ fn parse_chart_semantic(data: &[u8]) -> Result<Value, PocError> {
                         .map_err(|error| PocError::SemanticExtractionFailed(format!(
                             "chart value XML: {error}"
                         )))?
-                        .into_owned();
+                        .to_string();
                     match section {
                         Some("name") => current_name.push(value),
                         Some("categories") => current_categories.push(value),
@@ -744,7 +744,7 @@ fn parse_smartart_semantic(data: &[u8]) -> Result<Value, PocError> {
                     .map_err(|error| PocError::SemanticExtractionFailed(format!(
                         "SmartArt text XML: {error}"
                     )))?
-                    .into_owned();
+                    .to_string();
                 if let Some(point) = current_point {
                     if !value.trim().is_empty() {
                         points[point].push(value);
@@ -958,7 +958,7 @@ fn xml_text_values(data: &[u8], local_name: &str) -> Result<Vec<String>, PocErro
                     .map_err(|error| PocError::SemanticExtractionFailed(format!(
                         "text XML: {error}"
                     )))?
-                    .into_owned();
+                    .to_string();
                 if !value.trim().is_empty() {
                     values.push(value);
                 }
