@@ -712,11 +712,11 @@ Hosted qualification evidence: exact code head `eb09b72ac64a35c2ef503df38570a1d3
 - Structural engine: `lopdf = { version = "=0.45.0", default-features = false }`.
 - PDFium native build: chromium/7881 with hashes from Global Constraints.
 
-- [ ] **Step 1: Add pinned Rust dependencies**
+- [x] **Step 1: Add pinned Rust dependencies**
 
 Disable unnecessary lopdf defaults. Configure pdfium-render only with features required for dynamic binding and current Pdfium API compatibility.
 
-- [ ] **Step 2: Implement deterministic PDFium installer**
+- [x] **Step 2: Implement deterministic PDFium installer**
 
 `scripts/install-pdfium.sh`:
 - detects Linux x64 or macOS x64/arm64;
@@ -728,7 +728,7 @@ Disable unnecessary lopdf defaults. Configure pdfium-render only with features r
 
 No native binary is committed.
 
-- [ ] **Step 3: Generate independent minimal PDF fixtures**
+- [x] **Step 3: Generate independent minimal PDF fixtures**
 
 `pdf_fixture.rs` builds small deterministic PDFs directly from PDF syntax for:
 - visible text;
@@ -743,7 +743,7 @@ No native binary is committed.
 
 Also include equivalent semantic PDFs with different object numbers/producer metadata to test noise invariance.
 
-- [ ] **Step 4: RED tests**
+- [x] **Step 4: RED tests**
 
 ```rust
 assert_same("pdf/base", "pdf/object-id-producer-noise");
@@ -754,7 +754,7 @@ assert_error("pdf/broken-xref", ErrorCode::SemanticExtractionFailed);
 
 Add a constructed fixture where lopdf sees a required object/annotation/link not represented by the PDFium semantic result; expected result is `ParserDisagreement`.
 
-- [ ] **Step 5: Implement dual-engine PDF adapter**
+- [x] **Step 5: Implement dual-engine PDF adapter**
 
 Rules:
 - both engines must open the document;
@@ -764,11 +764,11 @@ Rules:
 - PDFium build/version/hash is emitted in extractor provenance;
 - disagreement is never resolved by “trust PDFium” or “trust lopdf”.
 
-- [ ] **Step 6: Extend Linux/macOS PoC workflow**
+- [x] **Step 6: Extend Linux/macOS PoC workflow**
 
 Install pinned PDFium before `mise run poc:dsi:verify`. Add a macOS PoC job using the same installer. Do not allow “PDF tests skipped because library missing”.
 
-- [ ] **Step 7: Verify and commit**
+- [x] **Step 7: Verify and commit**
 
 ```bash
 PDFIUM_DYNAMIC_LIB_PATH="$(experiments/document-semantic-inspection/scripts/install-pdfium.sh)"   cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml --test pdf
@@ -776,6 +776,8 @@ mise run poc:dsi:verify
 git add experiments/document-semantic-inspection .github/workflows/dsi-poc.yml
 git commit -m "test: qualify pdf semantic inspection"
 ```
+
+Hosted qualification evidence: exact Task 6 head `7f2dcbfa186d11d66e633fefb2c0bfc629fb7f6a`; DSI PoC run `35880533515` — **SUCCESS** across Ubuntu 24.04, macOS 15 Intel, and macOS 15 arm64; standard CI run `35880533521` — **SUCCESS**. PDF tests 7/7 PASS on all three hosted targets; complete manifest 91 cases PASS; advisories/bans/licenses/sources PASS. PDFium `chromium/7881` artifacts were SHA-256 verified against the frozen hashes before use. Coverage includes semantic text/page/link/form/image changes, scan-only `RequiresOcr`, encrypted/broken fail-closed handling, explicit dual-engine disagreement, ambiguous text-order rejection, and annotation/editorial separation.
 
 ---
 
