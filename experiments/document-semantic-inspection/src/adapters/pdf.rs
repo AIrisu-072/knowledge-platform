@@ -37,6 +37,9 @@ impl InspectionAdapter for PdfAdapter {
         _profile: &InspectionProfile,
     ) -> Result<AdapterOutput, PocError> {
         let lopdf = load_lopdf(input)?;
+        if lopdf.is_encrypted() || lopdf.was_encrypted() {
+            return Err(PocError::EncryptedContentUnsupported);
+        }
         let structural = extract_lopdf_facts(&lopdf)?;
         let pdfium = pdfium()?;
         let document = pdfium
