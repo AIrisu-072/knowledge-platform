@@ -42,6 +42,13 @@ tree-sitter-language = "=0.1.8"
 pdfium-render = { version = "=0.9.4", default-features = false, features = ["pdfium_7881", "thread_safe"] }
 lopdf = { version = "=0.45.0", default-features = false }
 
+xml-sec = "=0.1.16"
+cms = { version = "=0.2.3", features = ["std", "sha2", "signature"] }
+x509-cert = "=0.2.5"
+pkix-path = "=0.3.2"
+pkix-chain = "=0.1.1"
+pkix-revocation = { version = "=0.3.3", features = ["crl", "ocsp"] }
+
 
 [build-dependencies]
 cc = "=1.2.41"
