@@ -470,6 +470,7 @@ fn known_relationship_type(value: &str) -> bool {
     ];
     if value == "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"
         || value == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties"
+        || value == "http://schemas.microsoft.com/office/2006/relationships/vbaProject"
     {
         return true;
     }
