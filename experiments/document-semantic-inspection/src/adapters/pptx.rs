@@ -738,7 +738,7 @@ fn parse_smartart_semantic(data: &[u8]) -> Result<Value, PocError> {
                 points.push(Vec::new());
                 current_point = Some(ordinal);
             }
-            Ok(Event::Start(event)) if event.local_name().as_ref() == "t" => {
+            Ok(Event::Start(event)) if event.name().as_ref() == "a:t" => {
                 let value = reader
                     .read_text(event.name())
                     .map_err(|error| PocError::SemanticExtractionFailed(format!(
