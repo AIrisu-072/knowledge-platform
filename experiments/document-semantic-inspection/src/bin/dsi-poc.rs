@@ -1,5 +1,6 @@
 use document_semantic_inspection_poc::{
-    AdapterRegistry, CsvAdapter, DocxAdapter, FixtureManifest, FormatId, HtmlAdapter, TextAdapter,
+    AdapterRegistry, CsvAdapter, DocxAdapter, FixtureManifest, FormatId, HtmlAdapter,
+    SpreadsheetAdapter, TextAdapter,
     fingerprint, run_case, verify_manifest, write_reports,
 };
 use std::collections::BTreeMap;
