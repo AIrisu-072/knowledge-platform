@@ -39,6 +39,9 @@ ovba = "=0.7.1"
 tree-sitter = "=0.25.10"
 tree-sitter-language = "=0.1.8"
 
+pptx = "=0.1.0"
+powerpoint-ooxml = "=1.0.0"
+
 [build-dependencies]
 cc = "=1.2.41"
 
