@@ -1168,6 +1168,19 @@
         "kind": "error",
         "code": "parser_disagreement"
       }
+    },
+    {
+      "id": "pdf/ambiguous-read-order",
+      "class": "HOSTILE",
+      "path": "pdf/ambiguous-read-order.pdf",
+      "format": "pdf",
+      "sha256": "685fee9945a754bcde232ba1554b6bc979790f1dbe4b91a7de31f4ca2eb100c5",
+      "size": 698,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "unsupported_semantic_construct"
+      }
     }
   ]
 }
