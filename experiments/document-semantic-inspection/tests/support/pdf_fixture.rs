@@ -13,6 +13,22 @@ pub fn minimal_text_pdf(text: &str, producer: &str) -> Vec<u8> {
     objects.insert(6, format!("<< /Producer ({producer}) >>").into_bytes());
     write_pdf(objects, 1, Some(6))
 }
+
+pub fn ambiguous_text_pdf() -> Vec<u8> {
+    let content = concat!(
+        "BT /F1 12 Tf 20 160 Td (Alpha) Tj ET\n",
+        "BT /F1 12 Tf 20 160 Td (Beta) Tj ET"
+    );
+    let mut objects = BTreeMap::<u32, Vec<u8>>::new();
+    objects.insert(1, b"<< /Type /Catalog /Pages 2 0 R >>".to_vec());
+    objects.insert(2, b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec());
+    objects.insert(3, b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".to_vec());
+    objects.insert(4, format!("<< /Length {} >>\nstream\n{}\nendstream", content.len(), content).into_bytes());
+    objects.insert(5, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec());
+    objects.insert(6, b"<< /Producer (DSI PoC) >>".to_vec());
+    write_pdf(objects, 1, Some(6))
+}
+
 pub fn with_broken_startxref(mut input: Vec<u8>) -> Vec<u8> {
     let marker=b"startxref\n";let p=input.windows(marker.len()).rposition(|w|w==marker).expect("startxref");
     let s=p+marker.len();let e=input[s..].iter().position(|b|*b==b'\n').map(|n|s+n).expect("newline");
