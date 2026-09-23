@@ -172,10 +172,15 @@ impl InspectionAdapter for SpreadsheetAdapter {
             .collect();
         local_defined_names.sort();
 
+        external_dependencies.extend(inspect_external_package_definitions(input)?);
         external_dependencies.sort_by(|left, right| {
             (left.kind.as_str(), left.definition.as_str())
                 .cmp(&(right.kind.as_str(), right.definition.as_str()))
         });
+        external_dependencies.dedup_by(|left, right| {
+            left.kind == right.kind && left.definition == right.definition
+        });
+        let external_projection = external_dependencies.clone();
 
         let mut vba_projection = Value::Null;
         let mut vba_present = false;
@@ -190,6 +195,7 @@ impl InspectionAdapter for SpreadsheetAdapter {
             "date1904": workbook.date1904,
             "defined_names": defined_names,
             "local_defined_names": local_defined_names,
+            "external_dependencies": external_projection,
             "sheets": sheets,
             "vba": vba_projection,
         });
@@ -311,6 +317,72 @@ fn compare_calamine_oracle(input: &[u8], workbook: &Workbook) -> Result<(), PocE
     }
 
     Ok(())
+}
+
+fn inspect_external_package_definitions(
+    input: &[u8],
+) -> Result<Vec<ExternalDependency>, PocError> {
+    let mut archive = ZipArchive::new(Cursor::new(input))
+        .map_err(|error| PocError::SemanticExtractionFailed(format!("spreadsheet ZIP: {error}")))?;
+    let rel_names: Vec<String> = (0..archive.len())
+        .filter_map(|index| archive.by_index(index).ok().map(|file| file.name().to_owned()))
+        .filter(|name| name.ends_with(".rels"))
+        .collect();
+
+    let mut dependencies = Vec::new();
+    for name in rel_names {
+        let data = read_zip_part(&mut archive, &name)?;
+        let mut reader = quick_xml::Reader::from_reader(data.as_slice());
+        loop {
+            match reader.read_event().map_err(|error| {
+                PocError::SemanticExtractionFailed(format!("external relationship XML: {error}"))
+            })? {
+                Event::Start(event) | Event::Empty(event)
+                    if event.local_name().as_ref() == "Relationship" =>
+                {
+                    let mut rel_type = None;
+                    let mut target = None;
+                    let mut target_mode = None;
+                    for attribute in event.attributes() {
+                        let attribute = attribute.map_err(|error| {
+                            PocError::SemanticExtractionFailed(format!(
+                                "external relationship attribute: {error}"
+                            ))
+                        })?;
+                        match attribute.key.local_name().as_ref() {
+                            "Type" => rel_type = Some(attribute.value.as_ref().to_owned()),
+                            "Target" => target = Some(attribute.value.as_ref().to_owned()),
+                            "TargetMode" => target_mode = Some(attribute.value.as_ref().to_owned()),
+                            _ => {}
+                        }
+                    }
+                    if rel_type.as_deref()
+                        == Some(
+                            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLinkPath",
+                        )
+                    {
+                        if target_mode.as_deref() != Some("External") {
+                            return Err(PocError::UnsupportedSemanticConstruct(
+                                "external workbook relationship must be TargetMode=External".into(),
+                            ));
+                        }
+                        let target = target.ok_or_else(|| {
+                            PocError::SemanticExtractionFailed(
+                                "external workbook relationship missing Target".into(),
+                            )
+                        })?;
+                        dependencies.push(ExternalDependency {
+                            kind: "external_workbook".into(),
+                            definition: target,
+                        });
+                    }
+                }
+                Event::Eof => break,
+                _ => {}
+            }
+        }
+    }
+    Ok(dependencies)
 }
 
 fn inspect_package_coverage(input: &[u8]) -> Result<(), PocError> {
