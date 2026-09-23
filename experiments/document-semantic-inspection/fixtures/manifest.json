@@ -987,6 +987,32 @@
         "kind": "error",
         "code": "unsupported_semantic_construct"
       }
+    },
+    {
+      "id": "pptx/text-change",
+      "class": "SEMANTIC",
+      "path": "pptx/text-change.pptx",
+      "format": "pptx",
+      "sha256": "bf0137c2f6b59bccfd35eb4bce8f14bdbb693d3e5b177965a9771bf398bed762",
+      "size": 11256,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/comment-only",
+      "class": "EDITORIAL",
+      "path": "pptx/comment-only.pptx",
+      "format": "pptx",
+      "sha256": "7f5948da5dd14fec694a1269318c5dd8dab867225fa4b51039d8060887ce5752",
+      "size": 11902,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "pptx/base"
+      }
     }
   ]
 }
