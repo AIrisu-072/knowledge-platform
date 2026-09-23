@@ -525,7 +525,7 @@ fn ordered_slide_parts(package: &PackageInspection) -> Result<Vec<String>, PocEr
             Ok(Event::Start(event)) | Ok(Event::Empty(event))
                 if event.local_name().as_ref() == "sldId" =>
             {
-                let rid = attr_required(&event, "id")?;
+                let rid = prefixed_attr_required(&event, "r:id")?;
                 let rel = rels.get(&rid).ok_or_else(|| {
                     PocError::SemanticExtractionFailed(format!("slide relationship {rid} missing"))
                 })?;
@@ -1022,6 +1022,20 @@ fn image_semantic_digest(bytes: &[u8]) -> Result<String, PocError> {
         return Err(PocError::SemanticExtractionFailed("PNG has no IEND chunk".into()));
     }
     Ok(hex::encode(Sha256::digest(&normalized)))
+}
+
+fn prefixed_attr_required(event: &BytesStart<'_>, name: &str) -> Result<String, PocError> {
+    for item in event.attributes() {
+        let item = item.map_err(|error| {
+            PocError::SemanticExtractionFailed(format!("invalid XML attribute: {error}"))
+        })?;
+        if item.key.as_ref() == name {
+            return Ok(item.value.as_ref().to_owned());
+        }
+    }
+    Err(PocError::SemanticExtractionFailed(format!(
+        "missing required attribute {name}"
+    )))
 }
 
 fn attr_required(event: &BytesStart<'_>, name: &str) -> Result<String, PocError> {
