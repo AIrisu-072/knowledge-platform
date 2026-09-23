@@ -1013,6 +1013,161 @@
         "kind": "same_as",
         "case_id": "pptx/base"
       }
+    },
+    {
+      "id": "pdf/base",
+      "class": "BASE",
+      "path": "pdf/base.pdf",
+      "format": "pdf",
+      "sha256": "5b756c455f9f6528f82fc026cbcf994cf12d9268155036e8f4d144c9df4e9cd1",
+      "size": 1741,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "success"
+      }
+    },
+    {
+      "id": "pdf/object-id-producer-noise",
+      "class": "NOISE",
+      "path": "pdf/object-id-producer-noise.pdf",
+      "format": "pdf",
+      "sha256": "aa03ba3b5e62220bd1863c41e425662fa67699fc8027aa42d1d5b6a29ff0d779",
+      "size": 2175,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "pdf/base"
+      }
+    },
+    {
+      "id": "pdf/text-change",
+      "class": "SEMANTIC",
+      "path": "pdf/text-change.pdf",
+      "format": "pdf",
+      "sha256": "e4e743a514d14a2c12e93fa2f494e24d874df5f5bd5b56ac43ad3ac117b4a94a",
+      "size": 1741,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pdf/base"
+      }
+    },
+    {
+      "id": "pdf/page-order-change",
+      "class": "SEMANTIC",
+      "path": "pdf/page-order-change.pdf",
+      "format": "pdf",
+      "sha256": "5acba15c7a623d5e182c1221e0dee79314c4e4a92788dcd908840dee6f21cb74",
+      "size": 1741,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pdf/base"
+      }
+    },
+    {
+      "id": "pdf/link-change",
+      "class": "SEMANTIC",
+      "path": "pdf/link-change.pdf",
+      "format": "pdf",
+      "sha256": "44fa9e46e0e5c3e18a9e37787e56191d7fa3872210823f2ed4aba6560ea1aa1f",
+      "size": 1741,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pdf/base"
+      }
+    },
+    {
+      "id": "pdf/annotation-change",
+      "class": "SEMANTIC",
+      "path": "pdf/annotation-change.pdf",
+      "format": "pdf",
+      "sha256": "285bda959ac83201f9ebb76cacdd7525bfefb0236417b54e4a0013a5ec84539f",
+      "size": 1741,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pdf/base"
+      }
+    },
+    {
+      "id": "pdf/form-value-change",
+      "class": "SEMANTIC",
+      "path": "pdf/form-value-change.pdf",
+      "format": "pdf",
+      "sha256": "a1203417b92b262d31013a1630c54c5092cbdf17db646aa99b0cedb984590df3",
+      "size": 1740,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pdf/base"
+      }
+    },
+    {
+      "id": "pdf/image-change",
+      "class": "SEMANTIC",
+      "path": "pdf/image-change.pdf",
+      "format": "pdf",
+      "sha256": "9e0ef838c346d1b1306344d2838fc979006766442b2ff3d9e9672dd4bddb0e4a",
+      "size": 1741,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pdf/base"
+      }
+    },
+    {
+      "id": "pdf/scan-only",
+      "class": "HOSTILE",
+      "path": "pdf/scan-only.pdf",
+      "format": "pdf",
+      "sha256": "d6dbf3230c89cba4f21edd5463d5074c3e41f9f2b5245dac07aed9fba350d662",
+      "size": 1211,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "requires_ocr"
+      }
+    },
+    {
+      "id": "pdf/broken-xref",
+      "class": "HOSTILE",
+      "path": "pdf/broken-xref.pdf",
+      "format": "pdf",
+      "sha256": "9a7404688dc8d4194d030924baf87ba67e8dc57804ab7d5cd5d9d650943bb596",
+      "size": 1738,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "semantic_extraction_failed"
+      }
+    },
+    {
+      "id": "pdf/encrypted",
+      "class": "HOSTILE",
+      "path": "pdf/encrypted.pdf",
+      "format": "pdf",
+      "sha256": "7bd855d2c76e12e184cebb14695212203dbf9dee270a2e68805a6a6f07d56c4a",
+      "size": 1920,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "encrypted_content_unsupported"
+      }
+    },
+    {
+      "id": "pdf/parser-disagreement",
+      "class": "HOSTILE",
+      "path": "pdf/parser-disagreement.pdf",
+      "format": "pdf",
+      "sha256": "d5623a0f1f9be4762ddd9cb2942ba3a488e8d0fbb5ec70a45fa4ae74476ce1e4",
+      "size": 1330,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "parser_disagreement"
+      }
     }
   ]
 }
