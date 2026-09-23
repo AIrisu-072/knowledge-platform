@@ -2,13 +2,13 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **POC QUALIFICATION EXECUTION / TASK 5 DEPENDENCY PREFLIGHT COMPLETE / PPTX RED NEXT**
+- Overall phase: **POC QUALIFICATION EXECUTION / TASK 5 COMPLETE / TASK 6 DEPENDENCY PREFLIGHT NEXT**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - Execution branch: `test/document-semantic-inspection-poc-v0`
 - Execution PR: **#8 (Draft)**
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
-- Last qualified code head: `cefd042776b64cd80b0a009989eafd48ef5e256d`
+- Last qualified code head: `eb09b72ac64a35c2ef503df38570a1d34d38a7b0`
 - Task 3 dependency-preflight candidate head: `ec532ec12d89352d83dc9a85ae68a3da583c0ebb`
 - Task 3 dependency-preflight DSI run: `35545142423` — **SUCCESS**
 - Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
@@ -163,14 +163,44 @@ Candidate evidence:
 
 Ruling: preserve the frozen PPTX semantic contract and reject unsafe/non-compliant parser candidates rather than weakening security/license gates.
 
+## Task 5 — RED COMPLETE
+
+- RED contract head: `e0c0011b92e95ce81cb95da0a4cb9edcf294c7b0`
+- DSI PoC run: `35823478842` — **FAIL as expected**
+- Exact failure: unresolved import `document_semantic_inspection_poc::PptxAdapter`; fixture/manifest binding introduced no earlier failure.
+
+## Task 5 — COMPLETE
+
+Fresh exact-head qualification evidence:
+
+- Qualified code head: `eb09b72ac64a35c2ef503df38570a1d34d38a7b0`
+- DSI PoC run: `35824677799` — **SUCCESS**
+- Standard CI run: `35824677794` — **SUCCESS**
+- PPTX tests: **7/7 PASS**
+- Manifest verification: **78 cases PASS**
+- Dependency gate: advisories/bans/licenses/sources **PASS**
+- PPTX corpus: **19 cases**
+- Semantic identity covers visible text, slide existence/order, text/shape association, tables, chart series/data, SmartArt meaning, images, hyperlinks, speaker notes, and grouping/object relationships.
+- Noise invariance covers theme/font/background-only edits plus internal shape/relationship IDs and package ordering.
+- Comment-only edits preserve semantic identity while emitting editorial evidence.
+- Unknown potentially semantic content types/relationships fail closed.
+- `office_oxide 0.1.11` supplies typed slide/text/table/image/link/note/group facts; required chart/SmartArt semantics remain owned by the independent raw PresentationML oracle.
+
+No Design amendment was required and no Task 5 runtime dependency was added after the preflight ruling.
+
+## Task 6 plan consistency
+
+The stale `chromium/8057` references in Task 6 were corrected to `chromium/7881`. The frozen Global Constraints already specify PDFium `151.0.7881.0`, its exact Linux/macOS hashes, and the `pdfium_7881` API supported by `pdfium-render 0.9.4`. This is a plan consistency repair, not a Design change.
+
 ## Current gate / next exact action
 
-Proceed to **Task 5 — PPTX raw fixture / RED phase**:
+Proceed to **Task 6 — PDF dependency preflight**:
 
-1. build independent literal PresentationML fixtures without serializing through `office_oxide`;
-2. cover slide add/remove/order, shape/text association, tables, chart series/data, SmartArt, images, hyperlinks, notes, grouping, noise invariance, and unknown-package fail-closed behavior;
-3. write RED tests referring to the not-yet-implemented `PptxAdapter`;
-4. record hosted RED evidence before GREEN implementation.
+1. add `pdfium-render = 0.9.4` with defaults disabled and explicit `pdfium_7881`/thread-safety features in the isolated PoC workspace;
+2. add `lopdf = 0.45.0` with default features disabled;
+3. generate the isolated lock once and run advisories/license/source gates before PDF implementation;
+4. if the graph passes, restore strict `--locked` hosted CI and implement the deterministic PDFium 7881 installer;
+5. only then create PDF fixtures and RED tests.
 
 Do not promote any qualified candidate into production crates during this Plan.
 

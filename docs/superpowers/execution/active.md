@@ -3,7 +3,7 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **POC QUALIFICATION EXECUTION / TASK 5 DEPENDENCY PREFLIGHT COMPLETE / PPTX RED NEXT**
+- Current phase: **POC QUALIFICATION EXECUTION / TASK 5 COMPLETE / TASK 6 DEPENDENCY PREFLIGHT NEXT**
 - Frozen Design PR: `#7` — merged
 - Execution branch: `test/document-semantic-inspection-poc-v0`
 - Execution PR: `#8` — Draft
@@ -12,9 +12,11 @@
 - Approved PoC Qualification Plan: `docs/superpowers/plans/2026-09-20-document-semantic-inspection-v0-poc-qualification.md`
 - Execution Status: `docs/superpowers/execution/document-semantic-inspection-v0-status.md`
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
-- Last qualified code head: `cefd042776b64cd80b0a009989eafd48ef5e256d`
+- Last qualified code head: `eb09b72ac64a35c2ef503df38570a1d34d38a7b0`
 - Task 4 DSI qualification: `35818792833` — SUCCESS
 - Task 4 standard CI: `35818792843` — SUCCESS
+- Task 5 DSI qualification: `35824677799` — SUCCESS
+- Task 5 standard CI: `35824677794` — SUCCESS
 - Task 3 dependency-preflight DSI: `35545142423` — SUCCESS
 
 ## Mandatory resume order
@@ -43,17 +45,17 @@ Task 2 produced one material qualification result: `scraper 0.27.0` was rejected
 
 ## Current hard gate
 
-The active task is **Task 5 — PPTX qualification**. Planned parser candidates were rejected by security/license preflight; the replacement is `office_oxide 0.1.11` plus a raw PresentationML oracle.
+The active task is **Task 6 — PDF dual-engine qualification**. Task 5 PPTX is complete and exact-head qualified.
 
 Do not start production Semantic Inspection implementation. Do not accept unknown potentially semantic OOXML package parts as normal success.
 
 ## Next exact action
 
-Create independent raw PresentationML fixtures and RED tests before implementing `PptxAdapter`. Do not add either rejected PPTX candidate back or weaken deny policy.
+Start Task 6 with dependency/license/advisory preflight for `pdfium-render 0.9.4` pinned to the `pdfium_7881` API and `lopdf 0.45.0` with defaults disabled. The PDFium native release is `chromium/7881`; do not use the stale `8057` plan text.
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualification Task 5（PPTX）から再開してください。PR #8・Execution Status・exact-head CIを正本にしてください。
+> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualification Task 6（PDF）から再開してください。PR #8・Execution Status・exact-head CIを正本にしてください。
 
 ## End-of-session rule
 

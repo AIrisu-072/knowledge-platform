@@ -647,7 +647,7 @@ Qualification coverage includes sheet add/remove/order and visibility, typed cel
 
 No new Task 5 runtime dependency is added. Keep the existing isolated lockfile unchanged and hosted CI strictly `--locked`.
 
-- [ ] **Step 2: Generate raw PresentationML fixtures**
+- [x] **Step 2: Generate raw PresentationML fixtures**
 
 Direct OOXML fixtures cover:
 - slide add/remove/order;
@@ -663,7 +663,7 @@ Direct OOXML fixtures cover:
 - internal IDs/XML ordering noise;
 - unknown package part/relationship.
 
-- [ ] **Step 3: RED tests**
+- [x] **Step 3: RED tests**
 
 ```rust
 assert_different("pptx/base", "pptx/slide-order-change");
@@ -674,11 +674,13 @@ assert_error("pptx/unknown-semantic-part", ErrorCode::UnsupportedSemanticConstru
 
 For semantics `office_oxide` exposes, require agreement with independent raw-OOXML golden expectations. Constructs not represented by the typed candidate (for example required chart/SmartArt structure) remain owned by the raw PresentationML oracle and must still pass the frozen semantic fixtures.
 
-- [ ] **Step 4: Implement projection + coverage sentinel**
+Hosted RED evidence: commit `e0c0011b92e95ce81cb95da0a4cb9edcf294c7b0`, DSI PoC run `35823478842` — **FAIL as expected** on unresolved import `PptxAdapter`; the fixture corpus and manifest reached compilation without an earlier binding failure.
+
+- [x] **Step 4: Implement projection + coverage sentinel**
 
 No unknown relationship/content type that can carry presentation meaning may be ignored. Internal shape IDs and theme-only formatting are excluded.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml --test pptx
@@ -687,9 +689,13 @@ git add experiments/document-semantic-inspection
 git commit -m "test: qualify pptx semantic inspection"
 ```
 
+Hosted qualification evidence: exact code head `eb09b72ac64a35c2ef503df38570a1d34d38a7b0`, DSI PoC run `35824677799` — **SUCCESS**, standard CI run `35824677794` — **SUCCESS**. PPTX tests 7/7 PASS; the full manifest is 78 cases PASS; advisories/bans/licenses/sources all PASS. The corpus contains 19 PPTX cases, including text-only semantic change and comment-only editorial separation in addition to slide/table/chart/SmartArt/image/link/note/group and noise/fail-closed cases.
+
 ---
 
 ### Task 6: PDF dual-engine qualification with pinned PDFium
+
+> **Task 6 plan-consistency Ruling (2026-09-23):** the two Step/Interface references to `chromium/8057` were stale internal-plan text. The frozen Global Constraints already pin `chromium/7881` / PDFium `151.0.7881.0` with exact platform hashes, and `pdfium-render 0.9.4` exposes `pdfium_7881` as its latest supported release API. Task 6 therefore uses `chromium/7881` everywhere. This is an internal plan consistency repair, not a Design amendment.
 
 **Files:**
 - Modify: experiment `Cargo.toml`
@@ -704,7 +710,7 @@ git commit -m "test: qualify pptx semantic inspection"
 **Interfaces:**
 - Semantic engine: `pdfium-render = "=0.9.4"`.
 - Structural engine: `lopdf = { version = "=0.45.0", default-features = false }`.
-- PDFium native build: chromium/8057 with hashes from Global Constraints.
+- PDFium native build: chromium/7881 with hashes from Global Constraints.
 
 - [ ] **Step 1: Add pinned Rust dependencies**
 
@@ -714,7 +720,7 @@ Disable unnecessary lopdf defaults. Configure pdfium-render only with features r
 
 `scripts/install-pdfium.sh`:
 - detects Linux x64 or macOS x64/arm64;
-- downloads only release `chromium/8057`;
+- downloads only release `chromium/7881`;
 - verifies the exact SHA-256 listed in Global Constraints;
 - extracts under `target/dsi-poc/pdfium/7881/<platform>/`;
 - prints the library directory for `PDFIUM_DYNAMIC_LIB_PATH`;
