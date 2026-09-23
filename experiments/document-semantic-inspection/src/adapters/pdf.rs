@@ -74,6 +74,8 @@ impl InspectionAdapter for PdfAdapter {
         let mut total_images = 0usize;
 
         for (page_index, page) in pages.iter().enumerate() {
+            validate_pdfium_read_order(&page, page_index)?;
+
             let text = page
                 .text()
                 .map_err(|error| {
@@ -248,6 +250,44 @@ fn map_lopdf_open_error(error: lopdf::Error) -> PocError {
 
 fn map_pdfium_open_error(error: PdfiumError) -> PocError {
     PocError::SemanticExtractionFailed(format!("PDFium open: {error}"))
+}
+
+fn validate_pdfium_read_order(page: &PdfPage<'_>, page_index: usize) -> Result<(), PocError> {
+    let mut text_regions = Vec::new();
+
+    for object in page.objects().iter() {
+        let Some(text_object) = object.as_text_object() else {
+            continue;
+        };
+        let text = text_object.text();
+        if text.trim().is_empty() {
+            continue;
+        }
+        let bounds = object
+            .bounds()
+            .map_err(|error| {
+                PocError::SemanticExtractionFailed(format!(
+                    "PDFium text bounds on page {page_index}: {error}"
+                ))
+            })?
+            .to_rect();
+        text_regions.push((text, bounds));
+    }
+
+    for left in 0..text_regions.len() {
+        for right in (left + 1)..text_regions.len() {
+            let (left_text, left_bounds) = &text_regions[left];
+            let (right_text, right_bounds) = &text_regions[right];
+            if left_text != right_text && left_bounds.does_overlap(right_bounds) {
+                return Err(PocError::UnsupportedSemanticConstruct(format!(
+                    "ambiguous PDF text/read order on page {}",
+                    page_index + 1
+                )));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, PocError> {
