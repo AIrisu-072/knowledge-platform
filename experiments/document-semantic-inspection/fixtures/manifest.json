@@ -651,6 +651,96 @@
       "expected": {
         "kind": "success"
       }
+    },
+    {
+      "id": "xlsx/two-sheet-base",
+      "class": "BASE",
+      "path": "xlsx/sheet-add.xlsx",
+      "format": "xlsx",
+      "sha256": "cac859d25686d2d4c218027d241a035da4de083e4e4e7036f6e83c442218a447",
+      "size": 4015,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "success"
+      }
+    },
+    {
+      "id": "xlsx/sheet-add",
+      "class": "SEMANTIC",
+      "path": "xlsx/sheet-add.xlsx",
+      "format": "xlsx",
+      "sha256": "cac859d25686d2d4c218027d241a035da4de083e4e4e7036f6e83c442218a447",
+      "size": 4015,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/sheet-order-change",
+      "class": "SEMANTIC",
+      "path": "xlsx/sheet-order-change.xlsx",
+      "format": "xlsx",
+      "sha256": "3c2e8be956597896479755acb8e81d1fb7f7315562dc8c9942e61bc843f95c9b",
+      "size": 4015,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/two-sheet-base"
+      }
+    },
+    {
+      "id": "xlsx/table-add",
+      "class": "SEMANTIC",
+      "path": "xlsx/table-add.xlsx",
+      "format": "xlsx",
+      "sha256": "32d2e5f5d9a4f931c981d016ebb46e7f45bb83be98b8823fcf80dd620152a13d",
+      "size": 4227,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/external-reference-add",
+      "class": "SEMANTIC",
+      "path": "xlsx/external-reference-add.xlsx",
+      "format": "xlsx",
+      "sha256": "a37d98cdf4dda09af85e8c80dc76b478689319e018408b8fd3290aa6526e3942",
+      "size": 4615,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/chart-add",
+      "class": "SEMANTIC",
+      "path": "xlsx/chart-add.xlsx",
+      "format": "xlsx",
+      "sha256": "1859211c0645ac36b79274ed6d3cf3371d825d35fc04e301fd2ff28263b6be88",
+      "size": 5945,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/image-add",
+      "class": "SEMANTIC",
+      "path": "xlsx/image-add.xlsx",
+      "format": "xlsx",
+      "sha256": "adf4f36b59dc899714c853677f7f4f2486eb4627be62ce8f42d2af31fb6428a1",
+      "size": 5123,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
     }
   ]
 }
