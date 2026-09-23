@@ -39,6 +39,9 @@ ovba = "=0.7.1"
 tree-sitter = "=0.25.10"
 tree-sitter-language = "=0.1.8"
 
+pdfium-render = { version = "=0.9.4", default-features = false, features = ["pdfium_7881", "thread_safe"] }
+lopdf = { version = "=0.45.0", default-features = false }
+
 
 [build-dependencies]
 cc = "=1.2.41"
