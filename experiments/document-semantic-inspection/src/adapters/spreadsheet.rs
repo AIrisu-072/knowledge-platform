@@ -464,8 +464,9 @@ fn validate_relationships(data: &[u8]) -> Result<(), PocError> {
 fn known_relationship_type(value: &str) -> bool {
     const SUFFIXES: &[&str] = &[
         "officeDocument", "worksheet", "styles", "sharedStrings", "theme", "hyperlink",
-        "drawing", "image", "table", "comments", "vbaProject", "calcChain", "externalLink",
-        "connections", "printerSettings", "pivotCacheDefinition", "pivotCacheRecords",
+        "drawing", "image", "chart", "table", "comments", "vbaProject", "calcChain",
+        "externalLink", "externalLinkPath", "connections", "printerSettings",
+        "pivotCacheDefinition", "pivotCacheRecords",
         "pivotTable", "control", "ctrlProp", "legacyDrawing",
     ];
     if value == "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"
