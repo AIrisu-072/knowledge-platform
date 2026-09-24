@@ -882,7 +882,7 @@ Hosted Task 7 qualification evidence: exact head `83dacc87cbfa02e85fee765d46ddcd
 - Consumes all adapters from Tasks 2–7.
 - Produces promotion-gate evidence per format.
 
-- [ ] **Step 1: RED cross-format capability tests**
+- [x] **Step 1: RED cross-format capability tests**
 
 Model capability preservation explicitly:
 
@@ -899,7 +899,7 @@ assert_eq!(decision, AuthorityMigrationDecision::Denied {
 
 DOCX->PDF may only be eligible if every source version-significant capability in that specific fixture is representable and verified; no format-pair blanket allowlist.
 
-- [ ] **Step 2: RED host-nondeterminism tests**
+- [x] **Step 2: RED host-nondeterminism tests**
 
 For each successful case:
 - 20 in-process runs;
@@ -908,7 +908,7 @@ For each successful case:
 
 Normalize only `inspected_at`/runtime diagnostics out of comparison. Fingerprint/capability/editorial/dependency/signature evidence must remain identical.
 
-- [ ] **Step 3: RED hostile/resource tests**
+- [x] **Step 3: RED hostile/resource tests**
 
 Run malformed/truncated/deep/oversized fixtures through a child-process harness with hard timeout. Assert:
 - non-zero controlled error rather than panic escape;
@@ -918,7 +918,7 @@ Run malformed/truncated/deep/oversized fixtures through a child-process harness 
 
 The PoC may use OS process limits available on Linux/macOS; record exact command/limit evidence in the report.
 
-- [ ] **Step 4: Implement promotion-gate aggregation**
+- [x] **Step 4: Implement promotion-gate aggregation**
 
 For every required format compute:
 
@@ -934,7 +934,7 @@ license/dependency  pass/fail
 
 `promotion_eligible=true` only when every required count is complete and 100%.
 
-- [ ] **Step 5: Run full Linux/macOS evidence**
+- [x] **Step 5: Run full Linux/macOS evidence**
 
 ```bash
 mise run poc:dsi:verify
@@ -943,12 +943,14 @@ mise run verify
 
 Hosted `dsi-poc.yml` must succeed on Ubuntu and macOS for the exact qualification head.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add experiments/document-semantic-inspection .github/workflows/dsi-poc.yml
 git commit -m "test: enforce semantic inspection qualification gates"
 ```
+
+> **Task 8 Ubuntu qualification evidence:** exact code head `4232facae820e5914d4c9e4ed2433f58396bc2c5`; DSI PoC run `35952274108` Ubuntu job — **SUCCESS**; standard CI run `35952274070` — **SUCCESS**. Cross-format tests 4/4 PASS; determinism/security tests 5/5 PASS; manifest 91 cases PASS; advisories/bans/licenses/sources PASS. Final machine report: `overall=PASS`, all eight required formats `PASS`, every per-format `promotion_eligible=true`. Determinism is 20x in-process over every successful fixture plus 5 fresh child-process snapshots across TZ/LANG variants. Hostile/resource evidence runs malformed/deep/oversized/VBA-invalid inputs through the sandbox wrapper with CPU/file/VM limits, timeout termination, no partial output, and body-leakage checks. PR #8 was then moved out of Draft so this Task's final macOS Intel/arm64 gate can run on the completion head.
 
 ---
 
