@@ -7,6 +7,7 @@
 - Frozen Design merged: PR #7
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
+- Production planning PR: **#9 (Draft / Plan review)**
 - PoC execution PR: **#8 (Ready for review / unmerged)**
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
 - Last qualified code head: `a4fcef1cb5cac5672199165f433bd303c25135a6`
@@ -33,6 +34,7 @@ The PoC is complete and all eight required format gates passed. A separate Produ
 Current gates:
 
 - Production Implementation Plan: **DRAFT / AWAITING EXPLICIT USER APPROVAL**
+- Production planning PR #9: **Draft / Plan review**
 - PR #8: **Ready for review / unmerged**
 - Production dependency promotion: **NOT STARTED**
 - Production implementation branch: **NOT CREATED**
@@ -315,6 +317,6 @@ Final cross-host evidence at the same head:
 
 **PoC Qualification is complete.**
 
-Next exact action: review and explicitly approve `docs/superpowers/plans/2026-09-24-document-semantic-inspection-v0-production-implementation.md`; production implementation remains blocked until that approval and PR #8 merge are both complete.
+Next exact action: review Planning PR #9 and explicitly approve `docs/superpowers/plans/2026-09-24-document-semantic-inspection-v0-production-implementation.md`; production implementation remains blocked until that approval and PR #8 merge are both complete.
 
 Do not implement production Semantic Inspection crates inside PR #8.
