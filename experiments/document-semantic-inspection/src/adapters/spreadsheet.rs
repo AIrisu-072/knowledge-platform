@@ -199,17 +199,19 @@ impl InspectionAdapter for SpreadsheetAdapter {
             "sheets": sheets,
             "vba": vba_projection,
         });
+        let semantic_projection = canonical_json_bytes(&projection)
+            .map_err(|error| PocError::InvalidWorkerResult(format!("spreadsheet projection: {error}")))?;
+        let semantic_equivalence = hex::encode(crate::fingerprint(&semantic_projection));
 
         Ok(AdapterOutput {
-            semantic_projection: canonical_json_bytes(&projection)
-                .map_err(|error| PocError::InvalidWorkerResult(format!("spreadsheet projection: {error}")))?,
+            semantic_projection,
             capabilities: vec![
-                CapabilityEvidence::binary("reader_content", true, true, None),
-                CapabilityEvidence::binary("workbook_structure", true, true, None),
-                CapabilityEvidence::binary("formula_logic", formula_present, true, None),
-                CapabilityEvidence::binary("hidden_content", hidden_present, true, None),
-                CapabilityEvidence::binary("vba_logic", vba_present, true, None),
-                CapabilityEvidence::binary("external_references", !external_dependencies.is_empty(), true, None),
+                CapabilityEvidence::binary("reader_content", true, true, Some(semantic_equivalence.clone())),
+                CapabilityEvidence::binary("workbook_structure", true, true, Some(semantic_equivalence.clone())),
+                CapabilityEvidence::binary("formula_logic", formula_present, true, Some(semantic_equivalence.clone())),
+                CapabilityEvidence::binary("hidden_content", hidden_present, true, Some(semantic_equivalence.clone())),
+                CapabilityEvidence::binary("vba_logic", vba_present, true, Some(semantic_equivalence.clone())),
+                CapabilityEvidence::binary("external_references", !external_dependencies.is_empty(), true, Some(semantic_equivalence.clone())),
             ],
             editorial,
             external_dependencies,
