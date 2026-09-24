@@ -156,22 +156,12 @@ impl InspectionAdapter for PptxAdapter {
                 PocError::InvalidWorkerResult(format!("PPTX projection serialization: {error}"))
             })?,
             capabilities: vec![
-                CapabilityEvidence {
-                    capability: "reader_content".into(),
-                    present: true,
-                },
-                CapabilityEvidence {
-                    capability: "presentation_structure".into(),
-                    present: true,
-                },
-                CapabilityEvidence {
-                    capability: "visual_content".into(),
-                    present: visual_present,
-                },
-                CapabilityEvidence {
-                    capability: "speaker_notes".into(),
-                    present: notes_present,
-                },
+                CapabilityEvidence::binary("reader_content", true, true, None),
+                CapabilityEvidence::binary("presentation_structure", true, true, None),
+                CapabilityEvidence::binary("visual_content", visual_present, true, None),
+                CapabilityEvidence::binary("speaker_notes", notes_present, true, None),
+                CapabilityEvidence::new("formula_logic", crate::CapabilityState::NotRepresentable, true, None),
+                CapabilityEvidence::new("vba_logic", crate::CapabilityState::NotRepresentable, true, None),
             ],
             editorial,
             external_dependencies,
