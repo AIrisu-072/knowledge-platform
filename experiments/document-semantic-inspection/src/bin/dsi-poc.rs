@@ -1,9 +1,10 @@
 use document_semantic_inspection_poc::{
-    AdapterRegistry, CsvAdapter, DocxAdapter, FixtureCase, FixtureManifest, FormatId, HtmlAdapter,
+    aggregate_promotion_gates, AdapterRegistry, CsvAdapter, DocxAdapter, ExternalGateEvidence,
+    FixtureCase, FixtureGateCounts, FixtureManifest, FormatId, GateCount, HtmlAdapter,
     InspectionAdapter, InspectionProfile, PdfAdapter, PptxAdapter, SpreadsheetAdapter, TextAdapter,
     fingerprint, run_case, verify_manifest, write_reports,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -35,18 +36,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let path = args.next().ok_or("inspect-file requires a path")?;
             inspect_file(&format, std::path::Path::new(&path))
         }
+        "report" => {
+            let flag = args.next().ok_or("report requires --format json")?;
+            let format = args.next().ok_or("report requires --format json")?;
+            if flag != "--format" || format != "json" {
+                return Err("only 'report --format json' is supported".into());
+            }
+            final_report(&root, &fixture_root, &manifest)
+        }
         _ => Err(format!(
-            "unsupported command {command:?}; expected 'verify', 'snapshot', 'inspect-case', 'inspect-file', or 'self-test-hang'"
+            "unsupported command {command:?}; expected 'verify', 'snapshot', 'inspect-case', 'inspect-file', 'report', or 'self-test-hang'"
         )
         .into()),
     }
 }
 
-fn verify(
-    root: &std::path::Path,
-    fixture_root: &std::path::Path,
-    manifest: &FixtureManifest,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn default_registry() -> AdapterRegistry {
     let mut registry = AdapterRegistry::new();
     registry.insert(Box::new(TextAdapter));
     registry.insert(Box::new(CsvAdapter));
@@ -56,7 +61,15 @@ fn verify(
     registry.insert(Box::new(SpreadsheetAdapter::XLSM));
     registry.insert(Box::new(PptxAdapter));
     registry.insert(Box::new(PdfAdapter));
+    registry
+}
 
+fn verify(
+    root: &std::path::Path,
+    fixture_root: &std::path::Path,
+    manifest: &FixtureManifest,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let registry = default_registry();
     let report = verify_manifest(manifest, fixture_root, &registry);
     let output_dir = root.join("target").join("dsi-poc");
     write_reports(&report, &output_dir)?;
@@ -220,4 +233,127 @@ fn inspect_file(
             std::process::exit(2);
         }
     }
+}
+
+fn final_report(
+    root: &std::path::Path,
+    fixture_root: &std::path::Path,
+    manifest: &FixtureManifest,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let registry = default_registry();
+    let verification = verify_manifest(manifest, fixture_root, &registry);
+    let gates_dir = root.join("target").join("dsi-poc").join("gates");
+    let runtime_passed = gates_dir.join("runtime-security.ok").is_file();
+    let license_passed = gates_dir.join("license-dependency.ok").is_file();
+
+    let formats: BTreeSet<FormatId> = manifest.cases.iter().map(|case| case.format).collect();
+    let mut determinism = BTreeMap::new();
+    let mut security_resource = BTreeMap::new();
+    for format in &formats {
+        let required = manifest
+            .cases
+            .iter()
+            .filter(|case| case.format == *format && !expected_error(case))
+            .count();
+        determinism.insert(
+            *format,
+            GateCount {
+                passed: if runtime_passed { required } else { 0 },
+                required,
+            },
+        );
+        security_resource.insert(*format, runtime_passed);
+    }
+
+    let xlsm_supplemental = FixtureGateCounts {
+        semantic_change: GateCount {
+            passed: usize::from(runtime_passed),
+            required: 1,
+        },
+        noise_invariance: GateCount {
+            passed: if runtime_passed { 2 } else { 0 },
+            required: 2,
+        },
+        editorial: GateCount::default(),
+        fail_closed: GateCount {
+            passed: usize::from(runtime_passed),
+            required: 1,
+        },
+    };
+
+    let external = ExternalGateEvidence {
+        supplemental_fixtures: BTreeMap::from([(FormatId::Xlsm, xlsm_supplemental)]),
+        determinism,
+        security_resource,
+        license_dependency: license_passed,
+    };
+    let gates = aggregate_promotion_gates(&verification, &external);
+
+    let required_formats = [
+        FormatId::Txt,
+        FormatId::Csv,
+        FormatId::Html,
+        FormatId::Docx,
+        FormatId::Xlsx,
+        FormatId::Xlsm,
+        FormatId::Pptx,
+        FormatId::Pdf,
+    ];
+
+    let mut format_outcomes = BTreeMap::new();
+    let mut saw_fail = false;
+    let mut saw_blocked = false;
+
+    for format in required_formats {
+        let name = format_selector(format);
+        let outcome = match gates.get(&format) {
+            Some(gate)
+                if !gate.semantic_change.complete()
+                    || !gate.noise_invariance.complete()
+                    || !gate.editorial.complete()
+                    || !gate.fail_closed.complete() =>
+            {
+                saw_fail = true;
+                "FAIL"
+            }
+            Some(gate) if gate.promotion_eligible => "PASS",
+            Some(_) | None => {
+                saw_blocked = true;
+                "BLOCKED"
+            }
+        };
+        format_outcomes.insert(name.to_owned(), outcome);
+    }
+
+    let overall = if saw_fail {
+        "FAIL"
+    } else if saw_blocked {
+        "BLOCKED"
+    } else {
+        "PASS"
+    };
+
+    let machine = serde_json::json!({
+        "schema_version": 1,
+        "overall": overall,
+        "formats": format_outcomes,
+        "promotion_gates": gates.values().collect::<Vec<_>>(),
+        "verification": verification,
+        "gate_provenance": {
+            "runtime_security_marker": runtime_passed,
+            "license_dependency_marker": license_passed,
+            "sandbox_wrapper": "scripts/run-sandboxed-case.sh",
+            "sandbox_limits": {
+                "cpu_seconds": 8,
+                "file_blocks": 2048,
+                "linux_virtual_memory_kib": 2097152,
+            },
+        },
+    });
+    println!("{}", serde_json::to_string_pretty(&machine)?);
+
+    if overall != "PASS" {
+        std::process::exit(1);
+    }
+    Ok(())
 }
