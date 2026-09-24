@@ -603,7 +603,7 @@ fn name_common_name(cert: &X509, issuer: bool) -> Option<String> {
     };
     name.entries_by_nid(Nid::COMMONNAME)
         .next()
-        .map(|entry| entry.data().to_string())
+        .and_then(|entry| entry.data().to_string().ok())
 }
 
 fn evaluate_certificate_policy(
