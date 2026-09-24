@@ -6,7 +6,7 @@
 
 **Architecture:** Build an isolated Rust PoC workspace under `experiments/document-semantic-inspection/`. Every adapter returns an opaque format-native semantic projection plus common evidence metadata; the harness hashes the projection and evaluates BASE / SEMANTIC / NOISE / EDITORIAL / HOSTILE fixture relations. Candidate libraries remain confined to the experiment workspace. The plan ends with a qualification report and selection update; production Document Semantic Inspection gets a separate implementation plan after actual PoC results are known.
 
-**Tech Stack:** Rust 1.98.1; isolated Cargo workspace; serde/serde_json; sha2; office_oxide 0.1.11 + strict raw OOXML sentinels for DOCX/PPTX; rxls 0.1.3; calamine 0.36.1; ovba 0.7.1; tree-sitter 0.25 + MIT `tmepple/tree-sitter-vba` pinned at `c691f237b2a703732d4b6a1f01d5b4f73f94d41e`; pdfium-render 0.9.4; lopdf 0.45.0; xml-sec 0.1.16; cms 0.2.3; x509-cert 0.2.5; pkix-path 0.3.2; pkix-chain 0.4.1; pkix-revocation 0.3.3; scraper 0.27.0 (html5ever 0.39 parser); csv 1.4.0; encoding_rs 0.8.41.
+**Tech Stack:** Rust 1.98.1; isolated Cargo workspace; serde/serde_json; sha2; office_oxide 0.1.11 + strict raw OOXML sentinels for DOCX/PPTX; rxls 0.1.3; calamine 0.36.1; ovba 0.7.1; tree-sitter 0.25 + MIT `tmepple/tree-sitter-vba` pinned at `c691f237b2a703732d4b6a1f01d5b4f73f94d41e`; pdfium-render 0.9.4; lopdf 0.45.0; xml-sec 0.1.16; cms 0.2.3; x509-cert 0.2.5; openssl 0.10.81 (vendored); scraper 0.27.0 (html5ever 0.39 parser); csv 1.4.0; encoding_rs 0.8.41.
 
 **Spec:** `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
 
@@ -794,7 +794,7 @@ Hosted qualification evidence: exact Task 6 head `7f2dcbfa186d11d66e633fefb2c0bf
 - XMLDSig: `xml-sec = "=0.1.16"`.
 - CMS: `cms = { version = "=0.2.3", features = ["std", "sha2", "signature"] }`.
 - X.509 model: `x509-cert = "=0.2.5"` for compatibility with cms/pkix line.
-- Path/revocation: `pkix-path = "=0.3.2"`, `pkix-chain = { version = "=0.4.1", features = ["crl", "ocsp"] }`, `pkix-revocation = { version = "=0.3.3", features = ["crl", "ocsp"] }`.
+- CMS certificate-chain and offline CRL verification: `openssl = { version = "=0.10.81", features = ["vendored"] }`. `cms 0.2.3` remains the Rust structural parser and `x509-cert 0.2.5` remains the Rust certificate model.
 
 > **Task 7 pkix-chain candidate Ruling (2026-09-24):**
 > - Planned `pkix-chain = "=0.1.1"` is **REJECTED** because crates.io has yanked that release; a fresh isolated lock cannot resolve it.
@@ -802,6 +802,15 @@ Hosted qualification evidence: exact Task 6 head `7f2dcbfa186d11d66e633fefb2c0bf
 > - Replacement candidate: `pkix-chain = { version = "=0.4.1", features = ["crl", "ocsp"] }`.
 > - The frozen signature/revocation semantics are unchanged: CRL/OCSP remain caller-supplied offline evidence and no network revocation fetching is enabled.
 > - Failed initial preflight: DSI run `35936215206`, lock generation rejected the yanked 0.1.1 before compilation.
+
+> **Task 7 PKIX security Ruling (2026-09-24):**
+> - `pkix-chain 0.1.1` was first **REJECTED** because the crates.io release is yanked.
+> - Replacement `pkix-chain 0.4.1` resolves and compiles, but the required `pkix-path 0.3.2` default verification backend pulls `rsa 0.9.10`, which cargo-deny rejects under **RUSTSEC-2023-0071 (Marvin Attack)**. The advisory currently has no patched RustCrypto RSA release.
+> - DSI preflight `35936602764`: existing semantic suite reached verification, but the advisory gate failed on `rsa 0.9.10 <- pkix-path 0.3.2`.
+> - Security exceptions are prohibited, so `pkix-path / pkix-chain / pkix-revocation` are **REJECTED for this PoC** rather than allowlisted.
+> - Replacement verification substrate: `openssl 0.10.81` with vendored OpenSSL, used only for CMS cryptographic verification, X.509 path validation, and caller-supplied offline CRL validation. `cms 0.2.3` remains the structured CMS parser; `xml-sec 0.1.16` remains XMLDSig.
+> - No default/system trust paths and no network retrieval are permitted. Trust anchors, intermediates, CRLs, and signed bytes come only from fixture/input evidence.
+> - Frozen signature semantics are unchanged. Cost if wrong: Task 7 remains unqualified; no production promotion.
 
 - [ ] **Step 1: Add exact crypto dependencies and verify license/source gate**
 
