@@ -3,13 +3,15 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **POC QUALIFICATION COMPLETE / PRODUCTION PLAN REQUIRED**
+- Current phase: **PRODUCTION IMPLEMENTATION PLAN REVIEW**
 - Frozen Design PR: `#7` — merged
-- Execution branch: `test/document-semantic-inspection-poc-v0`
-- Execution PR: `#8` — Ready for review
+- PoC execution branch: `test/document-semantic-inspection-poc-v0`
+- Production planning branch: `plan/document-semantic-inspection-v0-production`
+- PoC execution PR: `#8` — Ready for review / unmerged
 - Approved Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
 - Design approval record: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design-approval.md`
 - Approved PoC Qualification Plan: `docs/superpowers/plans/2026-09-20-document-semantic-inspection-v0-poc-qualification.md`
+- Production Implementation Plan: `docs/superpowers/plans/2026-09-24-document-semantic-inspection-v0-production-implementation.md` — **DRAFT / AWAITING EXPLICIT USER APPROVAL**
 - Execution Status: `docs/superpowers/execution/document-semantic-inspection-v0-status.md`
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
 - Last qualified code head: `a4fcef1cb5cac5672199165f433bd303c25135a6`
@@ -50,13 +52,18 @@ Task 2 produced one material qualification result: `scraper 0.27.0` was rejected
 
 ## Current hard gate
 
-The PoC qualification gate is **complete**. All eight required formats passed the frozen promotion gate on Ubuntu, macOS Intel, and macOS arm64. Production implementation remains a separate planning phase.
+The PoC qualification gate is **complete**. The Production Implementation Plan has been written on the planning branch but is **not approved yet**.
 
-Do not start production Semantic Inspection implementation. Do not accept unknown potentially semantic OOXML package parts as normal success.
+Do not create production Semantic Inspection crates, do not promote parser/sandbox dependencies into the root production workspace, and do not create the implementation branch until:
+
+1. the user explicitly approves the Production Implementation Plan; and
+2. PR #8 is merged into `main`.
+
+PR #8 merge itself is not authorized by the plan-writing action.
 
 ## Next exact action
 
-Write the separate Document Semantic Inspection v0 Production Implementation Plan from the frozen Design and the completed PoC qualification report. Do not continue production implementation inside PR #8.
+Review the new Document Semantic Inspection v0 Production Implementation Plan. After explicit user approval, verify whether PR #8 has been explicitly authorized and merged. Only after both gates are satisfied, create `feat/document-semantic-inspection-v0` from the exact merged `main` head and execute Task 1.
 
 ## Resume command
 
