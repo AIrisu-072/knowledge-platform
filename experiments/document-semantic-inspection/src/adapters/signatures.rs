@@ -8,8 +8,10 @@ use openssl::pkcs7::{Pkcs7, Pkcs7Flags};
 use openssl::stack::Stack;
 use openssl::x509::store::X509StoreBuilder;
 use openssl::x509::{X509, X509Crl, X509StoreContext};
-use quick_xml::events::Event;
+use quick_xml::events::{BytesStart, Event};
 use std::cmp::Ordering;
+use std::io::{Cursor, Read};
+use zip::ZipArchive;
 use xml_sec::xmldsig::{DefaultKeyResolver, DsigStatus, VerifyContext};
 
 #[derive(Debug, Clone, Default)]
@@ -178,6 +180,91 @@ impl SignatureInspector {
         Ok(evidence)
     }
 
+    pub fn verify_ooxml_package(
+        package: &[u8],
+        trust: &SignatureTrustContext,
+    ) -> Result<Vec<SignatureEvidence>, PocError> {
+        const ORIGIN_REL: &str =
+            "http://schemas.openxmlformats.org/package/2006/relationships/digital-signature/origin";
+        const SIGNATURE_REL: &str =
+            "http://schemas.openxmlformats.org/package/2006/relationships/digital-signature/signature";
+
+        let mut archive = ZipArchive::new(Cursor::new(package)).map_err(|error| {
+            PocError::SemanticExtractionFailed(format!("OOXML signature package: {error}"))
+        })?;
+
+        let has_signature_parts = (0..archive.len()).any(|index| {
+            archive
+                .by_index(index)
+                .ok()
+                .is_some_and(|file| {
+                    file.name().starts_with("_xmlsignatures/")
+                        && file.name().ends_with(".xml")
+                })
+        });
+
+        let root_rels = match read_zip_text(&mut archive, "_rels/.rels")? {
+            Some(value) => value,
+            None if has_signature_parts => {
+                return Ok(vec![ooxml_invalid_evidence(
+                    "signature-parts-present-without-package-relationships",
+                )]);
+            }
+            None => return Ok(Vec::new()),
+        };
+
+        let origins = relationship_targets(&root_rels, ORIGIN_REL)?;
+        if origins.is_empty() {
+            return if has_signature_parts {
+                Ok(vec![ooxml_invalid_evidence(
+                    "signature-parts-present-without-origin-relationship",
+                )])
+            } else {
+                Ok(Vec::new())
+            };
+        }
+        if origins.len() != 1 {
+            return Ok(vec![ooxml_invalid_evidence(
+                "multiple-digital-signature-origins",
+            )]);
+        }
+
+        let origin = resolve_opc_target("", &origins[0])?;
+        let origin_rels = relationship_part_name(&origin)?;
+        let Some(origin_rels_xml) = read_zip_text(&mut archive, &origin_rels)? else {
+            return Ok(vec![ooxml_invalid_evidence(
+                "digital-signature-origin-relationships-missing",
+            )]);
+        };
+
+        let mut signature_targets = relationship_targets(&origin_rels_xml, SIGNATURE_REL)?;
+        signature_targets.sort();
+        signature_targets.dedup();
+        if signature_targets.is_empty() {
+            return Ok(vec![ooxml_invalid_evidence(
+                "digital-signature-origin-has-no-signatures",
+            )]);
+        }
+
+        let mut evidence = Vec::with_capacity(signature_targets.len());
+        for target in signature_targets {
+            let part = resolve_opc_target(&origin, &target)?;
+            let Some(xml) = read_zip_text(&mut archive, &part)? else {
+                evidence.push(ooxml_invalid_evidence(
+                    "digital-signature-relationship-target-missing",
+                ));
+                continue;
+            };
+            let mut item = Self::verify_xmldsig(&xml, trust)?;
+            item.kind = "ooxml-xmldsig".into();
+            item.covered_content = Some(format!("ooxml-signature-part:{part}"));
+            item.validation_diagnostics
+                .push("opc-digital-signature-relationship-chain=valid".into());
+            evidence.push(item);
+        }
+        Ok(evidence)
+    }
+
     pub fn verify_xmldsig(
         xml: &str,
         trust: &SignatureTrustContext,
@@ -258,6 +345,143 @@ impl SignatureInspector {
 struct CmsStructure {
     signature_algorithm_oid: String,
     signer_count: usize,
+}
+
+fn ooxml_invalid_evidence(reason: &str) -> SignatureEvidence {
+    evidence(
+        "ooxml-xmldsig",
+        SignatureValidity::Invalid,
+        None,
+        "ooxml-signature-package",
+        vec![
+            "explicit-trust-only;network-retrieval=disabled".into(),
+            format!("ooxml-signature-invalid:{reason}"),
+        ],
+    )
+}
+
+fn read_zip_text(
+    archive: &mut ZipArchive<Cursor<&[u8]>>,
+    name: &str,
+) -> Result<Option<String>, PocError> {
+    let mut file = match archive.by_name(name) {
+        Ok(file) => file,
+        Err(zip::result::ZipError::FileNotFound) => return Ok(None),
+        Err(error) => {
+            return Err(PocError::SemanticExtractionFailed(format!(
+                "OOXML signature part {name}: {error}"
+            )));
+        }
+    };
+    if file.size() > 8 * 1024 * 1024 {
+        return Err(PocError::InspectionResourceLimitExceeded);
+    }
+    let mut bytes = Vec::with_capacity(file.size() as usize);
+    file.read_to_end(&mut bytes).map_err(|error| {
+        PocError::SemanticExtractionFailed(format!(
+            "OOXML signature part {name} read: {error}"
+        ))
+    })?;
+    String::from_utf8(bytes)
+        .map(Some)
+        .map_err(|_| {
+            PocError::SemanticExtractionFailed(format!(
+                "OOXML signature part {name} is not UTF-8 XML"
+            ))
+        })
+}
+
+fn relationship_targets(xml: &str, relationship_type: &str) -> Result<Vec<String>, PocError> {
+    let mut reader = quick_xml::Reader::from_str(xml);
+    let mut targets = Vec::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(event)) | Ok(Event::Empty(event))
+                if event.local_name().as_ref() == "Relationship" =>
+            {
+                let kind = xml_attribute(&event, "Type")?;
+                if kind.as_deref() == Some(relationship_type) {
+                    let target = xml_attribute(&event, "Target")?.ok_or_else(|| {
+                        PocError::SemanticExtractionFailed(
+                            "digital-signature relationship missing Target".into(),
+                        )
+                    })?;
+                    if xml_attribute(&event, "TargetMode")?
+                        .is_some_and(|value| value.eq_ignore_ascii_case("External"))
+                    {
+                        return Err(PocError::UnsupportedSemanticConstruct(
+                            "external OOXML digital-signature relationship".into(),
+                        ));
+                    }
+                    targets.push(target);
+                }
+            }
+            Ok(Event::Eof) => break,
+            Ok(_) => {}
+            Err(error) => {
+                return Err(PocError::SemanticExtractionFailed(format!(
+                    "OOXML signature relationships XML: {error}"
+                )));
+            }
+        }
+    }
+    Ok(targets)
+}
+
+fn xml_attribute(event: &BytesStart<'_>, name: &str) -> Result<Option<String>, PocError> {
+    for attribute in event.attributes() {
+        let attribute = attribute.map_err(|error| {
+            PocError::SemanticExtractionFailed(format!(
+                "OOXML signature relationship attribute: {error}"
+            ))
+        })?;
+        if attribute.key.local_name().as_ref() == name {
+            return Ok(Some(
+                String::from_utf8_lossy(attribute.value.as_ref()).into_owned(),
+            ));
+        }
+    }
+    Ok(None)
+}
+
+fn relationship_part_name(source: &str) -> Result<String, PocError> {
+    let (dir, file) = source.rsplit_once('/').unwrap_or(("", source));
+    if file.is_empty() {
+        return Err(PocError::SemanticExtractionFailed(
+            "empty OOXML digital-signature origin part".into(),
+        ));
+    }
+    Ok(if dir.is_empty() {
+        format!("_rels/{file}.rels")
+    } else {
+        format!("{dir}/_rels/{file}.rels")
+    })
+}
+
+fn resolve_opc_target(source: &str, target: &str) -> Result<String, PocError> {
+    if target.is_empty() || target.starts_with('/') || target.contains('\\') {
+        return Err(PocError::SemanticExtractionFailed(format!(
+            "unsafe OOXML digital-signature target {target:?}"
+        )));
+    }
+    let mut segments: Vec<&str> = source
+        .rsplit_once('/')
+        .map(|(dir, _)| dir.split('/').filter(|segment| !segment.is_empty()).collect())
+        .unwrap_or_default();
+    for segment in target.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                if segments.pop().is_none() {
+                    return Err(PocError::SemanticExtractionFailed(format!(
+                        "OOXML digital-signature target escapes package root: {target:?}"
+                    )));
+                }
+            }
+            value => segments.push(value),
+        }
+    }
+    Ok(segments.join("/"))
 }
 
 fn parse_cms_structure(input: &[u8]) -> Result<CmsStructure, String> {
