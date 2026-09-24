@@ -67,7 +67,7 @@ Review the new Document Semantic Inspection v0 Production Implementation Plan. A
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualificationは完了済みです。次はProduction Implementation Planを新規作成してください。PR #8・Execution Status・exact-head CIを正本にしてください。
+> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualificationは完了済みです。Production Implementation Planは `docs/superpowers/plans/2026-09-24-document-semantic-inspection-v0-production-implementation.md` に作成済みで、現在は明示承認待ちです。PR #8は未マージです。Plan承認とPR #8 mergeの両方が成立するまでProduction実装を開始しないでください。
 
 ## End-of-session rule
 
