@@ -435,9 +435,9 @@ fn xml_attribute(event: &BytesStart<'_>, name: &str) -> Result<Option<String>, P
                 "OOXML signature relationship attribute: {error}"
             ))
         })?;
-        if attribute.key.local_name().as_ref() == name.as_bytes() {
+        if attribute.key.local_name().as_ref() == name {
             return Ok(Some(
-                String::from_utf8_lossy(attribute.value.as_ref()).into_owned(),
+                attribute.value.as_ref().to_owned(),
             ));
         }
     }
