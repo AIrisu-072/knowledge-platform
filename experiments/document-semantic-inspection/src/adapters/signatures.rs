@@ -672,8 +672,7 @@ fn extract_x509_certificate(xml: &str) -> Result<Option<Vec<u8>>, PocError> {
                 break;
             }
             Ok(Event::Text(text)) if inside_certificate => {
-                let decoded = String::from_utf8_lossy(text.as_ref());
-                encoded.push_str(decoded.as_ref());
+                encoded.push_str(text.as_ref());
             }
             Ok(Event::Eof) => break,
             Ok(_) => {}
