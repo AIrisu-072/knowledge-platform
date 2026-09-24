@@ -739,6 +739,7 @@ dependencies = [
  "cfb 0.10.0",
  "cms",
  "csv",
+ "der 0.7.10",
  "encoding_rs",
  "hex",
  "html5ever",

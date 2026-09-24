@@ -4,6 +4,7 @@ mod html;
 mod pdf;
 mod pptx;
 mod spreadsheet;
+mod signatures;
 mod vba;
 mod text;
 
@@ -15,6 +16,7 @@ pub use pdf::PdfAdapter;
 pub use pptx::PptxAdapter;
 pub(crate) use pptx::is_pptx_package;
 pub use spreadsheet::SpreadsheetAdapter;
+pub use signatures::{SignatureInspector, SignatureTrustContext};
 pub(crate) use spreadsheet::spreadsheet_format;
 pub use vba::VbaAdapter;
 pub use text::TextAdapter;

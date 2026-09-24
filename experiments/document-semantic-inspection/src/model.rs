@@ -94,7 +94,14 @@ pub enum SignatureValidity {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignatureEvidence {
     pub kind: String,
+    pub signer_claim: Option<String>,
+    pub certificate_subject: Option<String>,
+    pub certificate_issuer: Option<String>,
+    pub certificate_fingerprint: Option<String>,
+    pub signed_at: Option<String>,
     pub validity: SignatureValidity,
+    pub covered_content: Option<String>,
+    pub validation_diagnostics: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
