@@ -2,11 +2,12 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **POC QUALIFICATION COMPLETE / PRODUCTION PLAN REQUIRED**
+- Overall phase: **PRODUCTION IMPLEMENTATION PLAN REVIEW**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
-- Execution branch: `test/document-semantic-inspection-poc-v0`
-- Execution PR: **#8 (Ready for review)**
+- PoC execution branch: `test/document-semantic-inspection-poc-v0`
+- Production planning branch: `plan/document-semantic-inspection-v0-production`
+- PoC execution PR: **#8 (Ready for review / unmerged)**
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
 - Last qualified code head: `a4fcef1cb5cac5672199165f433bd303c25135a6`
 - Task 3 dependency-preflight candidate head: `ec532ec12d89352d83dc9a85ae68a3da583c0ebb`
@@ -14,6 +15,7 @@
 - Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
 - Design approval: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design-approval.md`
 - PoC Qualification Plan: `docs/superpowers/plans/2026-09-20-document-semantic-inspection-v0-poc-qualification.md`
+- Production Implementation Plan: `docs/superpowers/plans/2026-09-24-document-semantic-inspection-v0-production-implementation.md` — **DRAFT / AWAITING EXPLICIT USER APPROVAL**
 
 ## Approval state
 
@@ -22,6 +24,32 @@
 - Production dependency promotion: **NOT AUTHORIZED** by this approval; PoC qualification only.
 
 PR #7 was advanced from review to approved state and merged after explicit user approval. The execution baseline is the resulting main merge commit `5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`.
+
+
+## Production planning state — 2026-09-24
+
+The PoC is complete and all eight required format gates passed. A separate Production Implementation Plan now exists on `plan/document-semantic-inspection-v0-production`.
+
+Current gates:
+
+- Production Implementation Plan: **DRAFT / AWAITING EXPLICIT USER APPROVAL**
+- PR #8: **Ready for review / unmerged**
+- Production dependency promotion: **NOT STARTED**
+- Production implementation branch: **NOT CREATED**
+- Production runtime/crates: **NOT STARTED**
+
+The plan identifies one production-hardening gap that must be resolved first: the qualified PoC wrapper proves CPU/file/memory and controller-timeout behavior, but production must additionally enforce the frozen no-network, no-credential, filesystem-confinement, fresh-process, and complete finite resource-profile boundary. Task 1 performs an isolated sandbox substrate preflight before any sandbox dependency is promoted.
+
+Required next order:
+
+1. user reviews and explicitly approves the Production Implementation Plan;
+2. PR #8 is merged only under separate explicit user merge instruction;
+3. fetch the exact merged `main` head and fresh CI;
+4. create `feat/document-semantic-inspection-v0` from that exact head;
+5. execute Production Task 1 only, with TDD and dependency/security gates;
+6. continue task-by-task only while each hard gate passes.
+
+Do not begin production code or dependency promotion before both the Plan approval and PR #8 merge gates are satisfied.
 
 ## Task 1 — COMPLETE
 
