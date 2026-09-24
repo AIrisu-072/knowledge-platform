@@ -110,8 +110,12 @@ struct ChildResult {
 }
 
 fn run_child_with_timeout(args: &[&str], timeout: Duration, output_dir: &std::path::Path) -> ChildResult {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_dsi-poc"))
-        .args(args)
+    let sandbox = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("scripts")
+        .join("run-sandboxed-case.sh");
+    let mut command = Command::new("bash");
+    command.arg(sandbox).arg(env!("CARGO_BIN_EXE_dsi-poc")).args(args);
+    let mut child = command
         .env("DSI_POC_OUTPUT_DIR", output_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
