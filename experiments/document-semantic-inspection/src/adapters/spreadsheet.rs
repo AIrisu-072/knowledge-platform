@@ -204,9 +204,12 @@ impl InspectionAdapter for SpreadsheetAdapter {
             semantic_projection: canonical_json_bytes(&projection)
                 .map_err(|error| PocError::InvalidWorkerResult(format!("spreadsheet projection: {error}")))?,
             capabilities: vec![
-                CapabilityEvidence { capability: "formula_logic".into(), present: formula_present },
-                CapabilityEvidence { capability: "hidden_content".into(), present: hidden_present },
-                CapabilityEvidence { capability: "vba_logic".into(), present: vba_present },
+                CapabilityEvidence::binary("reader_content", true, true, None),
+                CapabilityEvidence::binary("workbook_structure", true, true, None),
+                CapabilityEvidence::binary("formula_logic", formula_present, true, None),
+                CapabilityEvidence::binary("hidden_content", hidden_present, true, None),
+                CapabilityEvidence::binary("vba_logic", vba_present, true, None),
+                CapabilityEvidence::binary("external_references", !external_dependencies.is_empty(), true, None),
             ],
             editorial,
             external_dependencies,
