@@ -8,3 +8,8 @@ All files in this directory are **TEST ONLY synthetic fixtures** generated for D
 - `revoked.crl.der` is caller-supplied offline revocation evidence. Tests must not perform CRL/OCSP network retrieval.
 - CMS objects are detached signatures over `content.bin`.
 - The malformed/unsupported/tampered vectors are intentionally invalid test material.
+
+- `byte-range-root.der` is a separate TEST ONLY trust anchor for the synthetic PDF ByteRange vectors.
+- `valid-byte-range.pdf` is a structurally valid PDF 1.7 whose detached CMS signs the exact two ByteRange segments around `/Contents`.
+- `tampered-byte-range.pdf` changes signed page content without updating CMS.
+- `malformed-byte-range.pdf` carries an invalid overlapping/out-of-order ByteRange and must never be accepted.

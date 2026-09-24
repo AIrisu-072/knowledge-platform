@@ -72,3 +72,49 @@ fn valid_xmldsig_evidence_is_separate_from_semantic_identity() {
     assert_eq!(evidence.covered_content.as_deref(), Some("same-document-references"));
     assert!(evidence.certificate_fingerprint.as_deref().is_some_and(|v| v.len() == 64));
 }
+
+
+fn pdf_byte_range(name: &str) -> document_semantic_inspection_poc::SignatureEvidence {
+    let trust = SignatureTrustContext::new(vec![
+        fixture("fixtures/pdf/signatures/byte-range-root.der"),
+    ]);
+    SignatureInspector::verify_pdf_byte_range(
+        &fixture(&format!("fixtures/pdf/signatures/{name}.pdf")),
+        &trust,
+    )
+    .expect("invalid PDF signatures must still produce evidence")
+}
+
+#[test]
+fn pdf_byte_range_signature_vectors_validate_exact_covered_bytes() {
+    assert_eq!(
+        pdf_byte_range("valid-byte-range").validity,
+        SignatureValidity::Valid
+    );
+    assert_eq!(
+        pdf_byte_range("tampered-byte-range").validity,
+        SignatureValidity::Invalid
+    );
+    assert_eq!(
+        pdf_byte_range("malformed-byte-range").validity,
+        SignatureValidity::Invalid
+    );
+}
+
+#[test]
+fn valid_pdf_signature_evidence_records_byte_range_coverage() {
+    let evidence = pdf_byte_range("valid-byte-range");
+    assert_eq!(evidence.kind, "pdf-cms");
+    assert!(
+        evidence
+            .signer_claim
+            .as_deref()
+            .is_some_and(|value| value.contains("DSI TEST PDF SIGNER"))
+    );
+    assert!(
+        evidence
+            .covered_content
+            .as_deref()
+            .is_some_and(|value| value.starts_with("pdf-byte-range:"))
+    );
+}
