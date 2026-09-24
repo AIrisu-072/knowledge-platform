@@ -4,7 +4,7 @@ use crate::{
 };
 use lopdf::{Document, LoadOptions, Object};
 use pdfium_render::prelude::*;
-use serde_json::{json, Value};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
