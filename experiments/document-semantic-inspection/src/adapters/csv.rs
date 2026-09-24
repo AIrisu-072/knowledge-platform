@@ -1,5 +1,5 @@
 use crate::{
-    canonical_json_bytes, AdapterOutput, FormatId, InspectionAdapter, InspectionProfile, PocError,
+    canonical_json_bytes, AdapterOutput, CapabilityEvidence, FormatId, InspectionAdapter, InspectionProfile, PocError,
 };
 use ::csv::ReaderBuilder;
 use unicode_normalization::UnicodeNormalization;
@@ -42,8 +42,19 @@ impl InspectionAdapter for CsvAdapter {
             );
         }
 
-        let projection = canonical_json_bytes(&rows)
+        let semantic_projection = canonical_json_bytes(&rows)
             .map_err(|error| PocError::InvalidWorkerResult(error.to_string()))?;
-        Ok(AdapterOutput::projection_only(projection))
+        let equivalence = hex::encode(crate::fingerprint(&semantic_projection));
+        Ok(AdapterOutput {
+            semantic_projection,
+            capabilities: vec![
+                CapabilityEvidence::binary("reader_content", true, true, Some(equivalence.clone())),
+                CapabilityEvidence::binary("table_structure", true, true, Some(equivalence)),
+            ],
+            editorial: Default::default(),
+            external_dependencies: Vec::new(),
+            signatures: Vec::new(),
+            diagnostics: Vec::new(),
+        })
     }
 }
