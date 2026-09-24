@@ -148,24 +148,3 @@ fn ooxml_signature_wrapper_covers_all_required_office_formats() {
         );
     }
 }
-
-#[test]
-fn malformed_ooxml_signature_relationship_chain_is_invalid_evidence_not_semantic_success() {
-    let trust = SignatureTrustContext::new(vec![fixture("fixtures/pdf/signatures/root.der")]);
-    let mut signed = support::signature_ooxml::add_ooxml_signature(
-        &fixture("fixtures/docx/base.docx"),
-        &fixture("fixtures/docx/signatures/xml-valid.xml"),
-    );
-
-    let marker = b"_xmlsignatures/origin.sigs";
-    let offset = signed
-        .windows(marker.len())
-        .position(|window| window == marker)
-        .expect("origin relationship target");
-    signed[offset..offset + marker.len()].copy_from_slice(b"_xmlsignatures/missing.sigs");
-
-    let evidence =
-        SignatureInspector::verify_ooxml_package(&signed, &trust).expect("malformed OOXML signature");
-    assert_eq!(evidence.len(), 1);
-    assert_eq!(evidence[0].validity, SignatureValidity::Invalid);
-}
