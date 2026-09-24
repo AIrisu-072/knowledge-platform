@@ -162,6 +162,31 @@ impl SignatureInspector {
         Ok(evidence)
     }
 
+    pub fn verify_pdf_byte_range(
+        pdf: &[u8],
+        trust: &SignatureTrustContext,
+    ) -> Result<SignatureEvidence, PocError> {
+        let (covered, cms_der, coverage) = match parse_pdf_byte_range_signature(pdf) {
+            Ok(value) => value,
+            Err(reason) => {
+                return Ok(empty_evidence(
+                    "pdf-cms",
+                    SignatureValidity::Invalid,
+                    "pdf-byte-range:invalid",
+                    format!("pdf-byte-range-invalid:{reason}"),
+                ));
+            }
+        };
+
+        let mut evidence = Self::verify_detached_cms(&covered, &cms_der, trust)?;
+        evidence.kind = "pdf-cms".into();
+        evidence.covered_content = Some(coverage);
+        evidence
+            .validation_diagnostics
+            .push("pdf-byte-range-structure-valid".into());
+        Ok(evidence)
+    }
+
     pub fn verify_xmldsig(
         source: &str,
         trust: &SignatureTrustContext,
@@ -260,6 +285,134 @@ impl SignatureInspector {
 struct CmsStructure {
     signature_algorithm_oid: String,
     signer_count: usize,
+}
+
+fn parse_pdf_byte_range_signature(
+    pdf: &[u8],
+) -> Result<(Vec<u8>, Vec<u8>, String), &'static str> {
+    const BYTE_RANGE: &[u8] = b"/ByteRange";
+    const CONTENTS: &[u8] = b"/Contents";
+
+    let byte_range_offset =
+        find_subslice(pdf, BYTE_RANGE).ok_or("missing-byte-range")?;
+    if find_subslice(&pdf[byte_range_offset + BYTE_RANGE.len()..], BYTE_RANGE).is_some() {
+        return Err("multiple-byte-ranges");
+    }
+
+    let after_marker = &pdf[byte_range_offset + BYTE_RANGE.len()..];
+    let open_relative = after_marker
+        .iter()
+        .position(|byte| *byte == b'[')
+        .ok_or("missing-byte-range-array")?;
+    let after_open = &after_marker[open_relative + 1..];
+    let close_relative = after_open
+        .iter()
+        .position(|byte| *byte == b']')
+        .ok_or("unterminated-byte-range-array")?;
+    let array = &after_open[..close_relative];
+    let text = std::str::from_utf8(array).map_err(|_| "non-ascii-byte-range")?;
+    let numbers = text
+        .split_ascii_whitespace()
+        .map(|value| value.parse::<usize>().map_err(|_| "invalid-byte-range-number"))
+        .collect::<Result<Vec<_>, _>>()?;
+    if numbers.len() != 4 {
+        return Err("byte-range-arity");
+    }
+
+    let first_start = numbers[0];
+    let first_len = numbers[1];
+    let second_start = numbers[2];
+    let second_len = numbers[3];
+    if first_start != 0 || first_len == 0 {
+        return Err("unsupported-first-range");
+    }
+    let first_end = first_start
+        .checked_add(first_len)
+        .ok_or("byte-range-overflow")?;
+    let second_end = second_start
+        .checked_add(second_len)
+        .ok_or("byte-range-overflow")?;
+    if first_end >= second_start || second_end > pdf.len() {
+        return Err("overlapping-or-out-of-bounds-byte-range");
+    }
+
+    let gap = &pdf[first_end..second_start];
+    if gap.len() < 3 || gap.first() != Some(&b'<') || gap.last() != Some(&b'>') {
+        return Err("byte-range-gap-is-not-contents");
+    }
+    let prefix_start = first_end.saturating_sub(256);
+    if find_subslice(&pdf[prefix_start..first_end], CONTENTS).is_none() {
+        return Err("contents-marker-not-adjacent");
+    }
+
+    let hex_text = gap[1..gap.len() - 1]
+        .iter()
+        .copied()
+        .filter(|byte| !byte.is_ascii_whitespace())
+        .collect::<Vec<_>>();
+    if hex_text.is_empty() || hex_text.len() % 2 != 0 {
+        return Err("invalid-contents-hex-length");
+    }
+    let hex_text =
+        std::str::from_utf8(&hex_text).map_err(|_| "non-ascii-contents-hex")?;
+    let padded_der = hex::decode(hex_text).map_err(|_| "invalid-contents-hex")?;
+    let der_len = der_sequence_total_len(&padded_der)?;
+    if padded_der[der_len..].iter().any(|byte| *byte != 0) {
+        return Err("nonzero-contents-padding");
+    }
+    let cms_der = padded_der[..der_len].to_vec();
+
+    let mut covered = Vec::with_capacity(first_len + second_len);
+    covered.extend_from_slice(&pdf[first_start..first_end]);
+    covered.extend_from_slice(&pdf[second_start..second_end]);
+
+    Ok((
+        covered,
+        cms_der,
+        format!(
+            "pdf-byte-range:{}+{};{}+{}",
+            first_start, first_len, second_start, second_len
+        ),
+    ))
+}
+
+fn der_sequence_total_len(input: &[u8]) -> Result<usize, &'static str> {
+    if input.len() < 2 || input[0] != 0x30 {
+        return Err("contents-is-not-der-sequence");
+    }
+    let length_octet = input[1];
+    let (header_len, payload_len) = if length_octet & 0x80 == 0 {
+        (2usize, usize::from(length_octet))
+    } else {
+        let octets = usize::from(length_octet & 0x7f);
+        if octets == 0 || octets > std::mem::size_of::<usize>() || input.len() < 2 + octets {
+            return Err("invalid-der-length");
+        }
+        let mut payload_len = 0usize;
+        for byte in &input[2..2 + octets] {
+            payload_len = payload_len
+                .checked_mul(256)
+                .and_then(|value| value.checked_add(usize::from(*byte)))
+                .ok_or("der-length-overflow")?;
+        }
+        (2 + octets, payload_len)
+    };
+    let total = header_len
+        .checked_add(payload_len)
+        .ok_or("der-length-overflow")?;
+    if total > input.len() {
+        return Err("truncated-der-contents");
+    }
+    Ok(total)
+}
+
+fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(0);
+    }
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
 fn parse_cms(input: &[u8]) -> Result<CmsStructure, String> {
