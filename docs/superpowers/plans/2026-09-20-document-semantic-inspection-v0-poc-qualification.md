@@ -812,11 +812,11 @@ Hosted qualification evidence: exact Task 6 head `7f2dcbfa186d11d66e633fefb2c0bf
 > - No default/system trust paths and no network retrieval are permitted. Trust anchors, intermediates, CRLs, and signed bytes come only from fixture/input evidence.
 > - Frozen signature semantics are unchanged. Cost if wrong: Task 7 remains unqualified; no production promotion.
 
-- [ ] **Step 1: Add exact crypto dependencies and verify license/source gate**
+- [x] **Step 1: Add exact crypto dependencies and verify license/source gate**
 
 No network revocation fetch is enabled; CRL/OCSP evidence is supplied as fixture bytes.
 
-- [ ] **Step 2: Generate known-good and known-bad signature fixtures**
+- [x] **Step 2: Generate known-good and known-bad signature fixtures**
 
 Required vectors:
 - valid;
@@ -833,7 +833,7 @@ For XMLDSig, use project-owned synthetic XML/OOXML signature fixtures and cross-
 
 For PDF/CMS, build a small synthetic detached CMS signature over the PDF ByteRange bytes using test-only keys/certs generated and committed only as non-secret deterministic fixtures. Never commit a live private key; test keys are clearly marked `TEST ONLY`.
 
-- [ ] **Step 3: RED tests**
+- [x] **Step 3: RED tests**
 
 ```rust
 assert_eq!(signature_state("sig/valid"), SignatureValidity::Valid);
@@ -844,7 +844,7 @@ assert_eq!(signature_state("sig/unknown-issuer"), SignatureValidity::Unverifiabl
 
 Inspection success with invalid/unverifiable signatures is permitted at this PoC layer; evidence must preserve the state so Publish can fail later.
 
-- [ ] **Step 4: Implement format-specific wrappers**
+- [x] **Step 4: Implement format-specific wrappers**
 
 Do not expose xml-sec/CMS types to the common harness. Emit only `SignatureEvidence`.
 
@@ -855,7 +855,7 @@ PDF wrapper must validate:
 - chain policy;
 - supplied offline CRL/OCSP where the fixture requires it.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml --test signatures
@@ -863,6 +863,8 @@ mise run poc:dsi:verify
 git add experiments/document-semantic-inspection
 git commit -m "test: qualify document signature evidence"
 ```
+
+Hosted Task 7 qualification evidence: exact head `83dacc87cbfa02e85fee765d46ddcdcf63e5e6cc`; DSI PoC run `35947786029` Linux qualification — **SUCCESS**. Signature tests **7/7 PASS**; complete manifest **91 cases PASS**; advisories/bans/licenses/sources **PASS**. Coverage includes detached CMS valid/tampered/invalid-digest/expired/revoked/unknown-issuer/broken-chain/unsupported-algorithm/malformed vectors, XMLDSig equivalents, exact PDF ByteRange CMS validation, and OPC digital-signature relationship wrappers exercised against DOCX/XLSX/PPTX packages. The PDF ByteRange fixture is generated only after final ByteRange values are frozen, with a clearly marked TEST ONLY deterministic key; no live credential is committed. Full Linux/macOS cross-host qualification remains Task 8 Step 5.
 
 ---
 
