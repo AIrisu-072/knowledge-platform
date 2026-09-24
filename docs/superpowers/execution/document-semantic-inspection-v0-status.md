@@ -2,13 +2,13 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **POC QUALIFICATION EXECUTION / TASK 7 COMPLETE / TASK 8 RED NEXT**
+- Overall phase: **POC QUALIFICATION EXECUTION / TASK 8 COMPLETE ON UBUNTU / FINAL CROSS-HOST GATE RUNNING**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - Execution branch: `test/document-semantic-inspection-poc-v0`
 - Execution PR: **#8 (Draft)**
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
-- Last qualified code head: `83dacc87cbfa02e85fee765d46ddcdcf63e5e6cc`
+- Last qualified code head: `4232facae820e5914d4c9e4ed2433f58396bc2c5`
 - Task 3 dependency-preflight candidate head: `ec532ec12d89352d83dc9a85ae68a3da583c0ebb`
 - Task 3 dependency-preflight DSI run: `35545142423` — **SUCCESS**
 - Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
@@ -252,15 +252,34 @@ The standard CI policy/security/container/rust-static/rust-test jobs on this hea
 
 No Design amendment was required and no production dependency promotion is authorized.
 
+## Task 8 — COMPLETE ON UBUNTU / FINAL CROSS-HOST GATE RUNNING
+
+Qualification evidence at code head `4232facae820e5914d4c9e4ed2433f58396bc2c5`:
+
+- DSI PoC run `35952274108` Ubuntu qualification — **SUCCESS**
+- Standard CI run `35952274070` — **SUCCESS**
+- Cross-format capability tests: **4/4 PASS**
+- Determinism/security tests: **5/5 PASS**
+- Semantic manifest: **91 cases PASS**
+- Dependency gate: advisories/bans/licenses/sources **PASS**
+- Final machine report: **overall PASS**
+- Required formats: TXT / CSV / HTML / DOCX / XLSX / XLSM / PPTX / PDF — **all PASS**
+- Every per-format gate: `promotion_eligible=true`
+- Determinism: 20 in-process repetitions for every successful fixture; 5 child-process snapshots under TZ/LANG variation
+- Sandbox/resource evidence: hard CPU/file/VM limits, controller timeout, malformed/deep/oversized/invalid-VBA cases, no partial success output, no representative fixture-body leakage
+- Cross-format migration uses capability-state/equivalence evidence; there is no format-pair blanket allowlist
+- PR #8 has been moved out of Draft; unresolved review threads: **0**
+
+The final macOS Intel/arm64 DSI jobs are now the remaining Task 8 cross-host evidence.
+
 ## Current gate / next exact action
 
-Proceed to **Task 8 — cross-format capability, determinism, hostile-input, and sandbox evidence**:
+Proceed to the **final Task 8 cross-host gate**, then Task 9:
 
-1. add RED cross-format capability-preservation tests without a format-pair blanket allowlist;
-2. add RED 20x in-process / 5x child-process determinism tests with TZ/LANG variations;
-3. add child-process hostile/resource/no-body-leakage tests;
-4. implement per-format promotion-gate aggregation;
-5. run the final Linux/macOS hosted evidence on one exact head.
+1. require Ubuntu, macOS Intel, and macOS arm64 DSI PoC jobs to succeed on the same completion head;
+2. write the human qualification report from the machine PASS evidence and exact CI run IDs;
+3. update library/tool selection documents from evidence only;
+4. perform Task 9 final verification and stop before production implementation.
 
 Do not promote any qualified candidate into production crates during this Plan.
 
