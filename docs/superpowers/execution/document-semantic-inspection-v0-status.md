@@ -220,11 +220,20 @@ Initial preflight result:
 - Upstream 0.4.1 is aligned to `pkix-path 0.3.2`, `pkix-revocation 0.3.3`, and `x509-cert 0.2`; no semantic-policy change is required.
 - Offline-only revocation boundary remains mandatory.
 
+### PKIX security preflight result
+
+- `pkix-chain 0.1.1`: **REJECTED** — yanked.
+- `pkix-chain 0.4.1 + pkix-path 0.3.2`: **REJECTED** under the unchanged advisory gate.
+- DSI run `35936602764`: lock generation and compilation succeeded; cargo-deny failed on `rsa 0.9.10` via `pkix-path 0.3.2`, RUSTSEC-2023-0071.
+- No advisory ignore/exception will be added.
+- Replacement preflight candidate: `openssl 0.10.81` with `vendored`, retaining `cms 0.2.3`, `x509-cert 0.2.5`, and `xml-sec 0.1.16`.
+- Trust/chain/revocation remains offline-only: explicit trust anchors and CRL fixture bytes; no system trust and no network fetch.
+
 ## Current gate / next exact action
 
 Proceed to **Task 7 — digital-signature evidence dependency preflight**:
 
-1. re-run dependency preflight with `pkix-chain 0.4.1` replacing the yanked 0.1.1 candidate;
+1. re-run dependency preflight with `openssl 0.10.81` replacing the rejected PKIX verification stack;
 2. reject any candidate that violates the existing advisory/license/source policy rather than adding exceptions;
 3. keep revocation offline-only; no CRL/OCSP network fetch is authorized;
 4. only after preflight passes, build synthetic signature vectors and RED tests.
