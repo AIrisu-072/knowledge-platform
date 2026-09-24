@@ -6,7 +6,7 @@
 - Current phase: **POC QUALIFICATION COMPLETE / PRODUCTION PLAN REQUIRED**
 - Frozen Design PR: `#7` — merged
 - Execution branch: `test/document-semantic-inspection-poc-v0`
-- Execution PR: `#8` — Draft
+- Execution PR: `#8` — Ready for review
 - Approved Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
 - Design approval record: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design-approval.md`
 - Approved PoC Qualification Plan: `docs/superpowers/plans/2026-09-20-document-semantic-inspection-v0-poc-qualification.md`
