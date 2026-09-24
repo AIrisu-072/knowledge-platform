@@ -7,6 +7,7 @@
 - Frozen Design PR: `#7` — merged
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
+- Production planning PR: `#9` — Draft / Plan review
 - PoC execution PR: `#8` — Ready for review / unmerged
 - Approved Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
 - Design approval record: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design-approval.md`
@@ -63,11 +64,11 @@ PR #8 merge itself is not authorized by the plan-writing action.
 
 ## Next exact action
 
-Review the new Document Semantic Inspection v0 Production Implementation Plan. After explicit user approval, verify whether PR #8 has been explicitly authorized and merged. Only after both gates are satisfied, create `feat/document-semantic-inspection-v0` from the exact merged `main` head and execute Task 1.
+Review Production Planning PR #9 and the Document Semantic Inspection v0 Production Implementation Plan. After explicit user approval, verify whether PR #8 has been explicitly authorized and merged. Only after both gates are satisfied, create `feat/document-semantic-inspection-v0` from the exact merged `main` head and execute Task 1.
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualificationは完了済みです。Production Implementation Planは `docs/superpowers/plans/2026-09-24-document-semantic-inspection-v0-production-implementation.md` に作成済みで、現在は明示承認待ちです。PR #8は未マージです。Plan承認とPR #8 mergeの両方が成立するまでProduction実装を開始しないでください。
+> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualificationは完了済みです。Production Implementation Planは `docs/superpowers/plans/2026-09-24-document-semantic-inspection-v0-production-implementation.md` に作成済みで、Planning PR #9（Draft）でレビュー中・明示承認待ちです。PR #8は未マージです。Plan承認とPR #8 mergeの両方が成立するまでProduction実装を開始しないでください。
 
 ## End-of-session rule
 
