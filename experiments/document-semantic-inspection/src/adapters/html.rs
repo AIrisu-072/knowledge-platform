@@ -1,5 +1,5 @@
 use crate::{
-    canonical_json_bytes, AdapterOutput, FormatId, InspectionAdapter, InspectionProfile, PocError,
+    canonical_json_bytes, AdapterOutput, CapabilityEvidence, FormatId, InspectionAdapter, InspectionProfile, PocError,
 };
 use encoding_rs::UTF_8;
 use html5ever::{parse_document, tendril::TendrilSink};
@@ -44,9 +44,22 @@ impl InspectionAdapter for HtmlAdapter {
         let mut nodes = Vec::new();
         walk_semantic_nodes(&dom.document, &mut nodes);
 
-        let projection = canonical_json_bytes(&nodes)
+        let semantic_projection = canonical_json_bytes(&nodes)
             .map_err(|error| PocError::InvalidWorkerResult(error.to_string()))?;
-        Ok(AdapterOutput::projection_only(projection))
+        let equivalence = hex::encode(crate::fingerprint(&semantic_projection));
+        Ok(AdapterOutput {
+            semantic_projection,
+            capabilities: vec![CapabilityEvidence::binary(
+                "reader_content",
+                true,
+                true,
+                Some(equivalence),
+            )],
+            editorial: Default::default(),
+            external_dependencies: Vec::new(),
+            signatures: Vec::new(),
+            diagnostics: Vec::new(),
+        })
     }
 }
 
