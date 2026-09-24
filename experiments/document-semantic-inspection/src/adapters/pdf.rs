@@ -201,22 +201,13 @@ impl InspectionAdapter for PdfAdapter {
                 PocError::InvalidWorkerResult(format!("PDF projection: {error}"))
             })?,
             capabilities: vec![
-                CapabilityEvidence {
-                    capability: "native_text".into(),
-                    present: any_text,
-                },
-                CapabilityEvidence {
-                    capability: "form_fields".into(),
-                    present: structural.form_field_count > 0,
-                },
-                CapabilityEvidence {
-                    capability: "annotations".into(),
-                    present: structural.annotation_counts.iter().any(|count| *count > 0),
-                },
-                CapabilityEvidence {
-                    capability: "images".into(),
-                    present: total_images > 0,
-                },
+                CapabilityEvidence::binary("reader_content", any_text, true, None),
+                CapabilityEvidence::binary("form_fields", structural.form_field_count > 0, true, None),
+                CapabilityEvidence::binary("annotations", structural.annotation_counts.iter().any(|count| *count > 0), false, None),
+                CapabilityEvidence::binary("visual_content", total_images > 0, true, None),
+                CapabilityEvidence::new("formula_logic", crate::CapabilityState::NotRepresentable, true, None),
+                CapabilityEvidence::new("vba_logic", crate::CapabilityState::NotRepresentable, true, None),
+                CapabilityEvidence::new("hidden_content", crate::CapabilityState::NotVerifiable, true, None),
             ],
             editorial,
             external_dependencies,
