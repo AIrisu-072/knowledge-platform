@@ -1,6 +1,6 @@
 use document_semantic_inspection_poc::{
     aggregate_promotion_gates, CaseReport, CaseVerdict, ExternalGateEvidence, FixtureClass,
-    FormatId, GateCount, VerificationReport,
+    FixtureGateCounts, FormatId, GateCount, VerificationReport,
 };
 use std::collections::BTreeMap;
 
@@ -37,6 +37,7 @@ fn passing_report() -> VerificationReport {
 
 fn full_external_evidence() -> ExternalGateEvidence {
     ExternalGateEvidence {
+        supplemental_fixtures: BTreeMap::new(),
         determinism: BTreeMap::from([(
             FormatId::Docx,
             GateCount {
@@ -101,4 +102,39 @@ fn any_failed_required_fixture_blocks_promotion() {
     let gate = &aggregate_promotion_gates(&report, &full_external_evidence())[&FormatId::Docx];
     assert_eq!(gate.semantic_change, GateCount { passed: 1, required: 2 });
     assert!(!gate.promotion_eligible);
+}
+
+#[test]
+fn supplemental_xlsm_fixture_evidence_prevents_zero_over_zero_promotion() {
+    let report = VerificationReport {
+        passed: true,
+        cases: vec![case(
+            "xlsm/base",
+            FixtureClass::Base,
+            FormatId::Xlsm,
+            CaseVerdict::Pass,
+        )],
+    };
+    let evidence = ExternalGateEvidence {
+        supplemental_fixtures: BTreeMap::from([(
+            FormatId::Xlsm,
+            FixtureGateCounts {
+                semantic_change: GateCount { passed: 1, required: 1 },
+                noise_invariance: GateCount { passed: 2, required: 2 },
+                editorial: GateCount::default(),
+                fail_closed: GateCount { passed: 1, required: 1 },
+            },
+        )]),
+        determinism: BTreeMap::from([(
+            FormatId::Xlsm,
+            GateCount { passed: 1, required: 1 },
+        )]),
+        security_resource: BTreeMap::from([(FormatId::Xlsm, true)]),
+        license_dependency: true,
+    };
+    let gate = &aggregate_promotion_gates(&report, &evidence)[&FormatId::Xlsm];
+    assert_eq!(gate.semantic_change, GateCount { passed: 1, required: 1 });
+    assert_eq!(gate.noise_invariance, GateCount { passed: 2, required: 2 });
+    assert_eq!(gate.fail_closed, GateCount { passed: 1, required: 1 });
+    assert!(gate.promotion_eligible);
 }
