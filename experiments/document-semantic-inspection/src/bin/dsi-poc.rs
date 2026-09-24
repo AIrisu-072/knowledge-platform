@@ -1,6 +1,6 @@
 use document_semantic_inspection_poc::{
     AdapterRegistry, CsvAdapter, DocxAdapter, FixtureCase, FixtureManifest, FormatId, HtmlAdapter,
-    InspectionAdapter, PdfAdapter, PptxAdapter, SpreadsheetAdapter, TextAdapter,
+    InspectionAdapter, InspectionProfile, PdfAdapter, PptxAdapter, SpreadsheetAdapter, TextAdapter,
     fingerprint, run_case, verify_manifest, write_reports,
 };
 use std::collections::BTreeMap;
@@ -30,8 +30,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let case_id = args.next().ok_or("inspect-case requires a case id")?;
             inspect_case(&manifest, &case_id)
         }
+        "inspect-file" => {
+            let format = args.next().ok_or("inspect-file requires a format")?;
+            let path = args.next().ok_or("inspect-file requires a path")?;
+            inspect_file(&format, std::path::Path::new(&path))
+        }
         _ => Err(format!(
-            "unsupported command {command:?}; expected 'verify', 'snapshot', 'inspect-case', or 'self-test-hang'"
+            "unsupported command {command:?}; expected 'verify', 'snapshot', 'inspect-case', 'inspect-file', or 'self-test-hang'"
         )
         .into()),
     }
@@ -161,6 +166,50 @@ fn inspect_case(
                 "editorial": result.output.editorial,
                 "external_dependencies": result.output.external_dependencies,
                 "signatures": result.output.signatures,
+            });
+            println!("{}", serde_json::to_string(&snapshot)?);
+            Ok(())
+        }
+        Err(error) => {
+            let code = serde_json::to_string(&error.code())?;
+            eprintln!("inspection_error:{}", code.trim_matches('"'));
+            std::process::exit(2);
+        }
+    }
+}
+
+fn parse_format_selector(value: &str) -> Option<FormatId> {
+    match value {
+        "txt" => Some(FormatId::Txt),
+        "csv" => Some(FormatId::Csv),
+        "html" => Some(FormatId::Html),
+        "docx" => Some(FormatId::Docx),
+        "xlsx" => Some(FormatId::Xlsx),
+        "xlsm" => Some(FormatId::Xlsm),
+        "pptx" => Some(FormatId::Pptx),
+        "pdf" => Some(FormatId::Pdf),
+        _ => None,
+    }
+}
+
+fn inspect_file(
+    format: &str,
+    path: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(format) = parse_format_selector(format) else {
+        eprintln!("inspection_error:unsupported_document_format");
+        std::process::exit(2);
+    };
+    let bytes = std::fs::read(path)?;
+    let adapter = adapter_for(format);
+    match adapter.inspect(&bytes, &InspectionProfile::default()) {
+        Ok(output) => {
+            let snapshot = serde_json::json!({
+                "semantic_fingerprint": hex::encode(fingerprint(&output.semantic_projection)),
+                "capabilities": output.capabilities,
+                "editorial": output.editorial,
+                "external_dependencies": output.external_dependencies,
+                "signatures": output.signatures,
             });
             println!("{}", serde_json::to_string(&snapshot)?);
             Ok(())
