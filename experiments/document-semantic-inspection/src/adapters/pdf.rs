@@ -195,16 +195,18 @@ impl InspectionAdapter for PdfAdapter {
             "pages": semantic_pages,
             "form_values": form_values,
         });
+        let semantic_projection = canonical_json_bytes(&projection).map_err(|error| {
+            PocError::InvalidWorkerResult(format!("PDF projection: {error}"))
+        })?;
+        let semantic_equivalence = hex::encode(crate::fingerprint(&semantic_projection));
 
         Ok(AdapterOutput {
-            semantic_projection: canonical_json_bytes(&projection).map_err(|error| {
-                PocError::InvalidWorkerResult(format!("PDF projection: {error}"))
-            })?,
+            semantic_projection,
             capabilities: vec![
-                CapabilityEvidence::binary("reader_content", any_text, true, None),
-                CapabilityEvidence::binary("form_fields", structural.form_field_count > 0, true, None),
+                CapabilityEvidence::binary("reader_content", any_text, true, Some(semantic_equivalence.clone())),
+                CapabilityEvidence::binary("form_fields", structural.form_field_count > 0, true, Some(semantic_equivalence.clone())),
                 CapabilityEvidence::binary("annotations", structural.annotation_counts.iter().any(|count| *count > 0), false, None),
-                CapabilityEvidence::binary("visual_content", total_images > 0, true, None),
+                CapabilityEvidence::binary("visual_content", total_images > 0, true, Some(semantic_equivalence.clone())),
                 CapabilityEvidence::new("formula_logic", crate::CapabilityState::NotRepresentable, true, None),
                 CapabilityEvidence::new("vba_logic", crate::CapabilityState::NotRepresentable, true, None),
                 CapabilityEvidence::new("hidden_content", crate::CapabilityState::NotVerifiable, true, None),
