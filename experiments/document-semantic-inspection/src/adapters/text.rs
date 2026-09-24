@@ -1,4 +1,4 @@
-use crate::{AdapterOutput, FormatId, InspectionAdapter, InspectionProfile, PocError};
+use crate::{AdapterOutput, CapabilityEvidence, FormatId, InspectionAdapter, InspectionProfile, PocError};
 use encoding_rs::UTF_8;
 use unicode_normalization::UnicodeNormalization;
 
@@ -29,6 +29,20 @@ impl InspectionAdapter for TextAdapter {
 
         let line_normalized = decoded.replace("\r\n", "\n").replace('\r', "\n");
         let semantic: String = line_normalized.nfc().collect();
-        Ok(AdapterOutput::projection_only(semantic.into_bytes()))
+        let semantic_projection = semantic.into_bytes();
+        let equivalence = hex::encode(crate::fingerprint(&semantic_projection));
+        Ok(AdapterOutput {
+            semantic_projection,
+            capabilities: vec![CapabilityEvidence::binary(
+                "reader_content",
+                true,
+                true,
+                Some(equivalence),
+            )],
+            editorial: Default::default(),
+            external_dependencies: Vec::new(),
+            signatures: Vec::new(),
+            diagnostics: Vec::new(),
+        })
     }
 }
