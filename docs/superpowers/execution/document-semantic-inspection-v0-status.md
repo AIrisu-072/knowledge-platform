@@ -210,11 +210,21 @@ Fresh exact-head qualification evidence:
 
 No Design amendment was required. PDF dependencies and native runtime remain PoC-only.
 
+## Task 7 — DEPENDENCY PREFLIGHT IN PROGRESS
+
+Initial preflight result:
+
+- Planned `pkix-chain 0.1.1` — **REJECTED** because the crates.io release is yanked and cannot participate in a newly generated lock.
+- Failed DSI run: `35936215206` — lock generation stopped before compilation/deny evaluation.
+- Replacement candidate: `pkix-chain 0.4.1` with `crl` and `ocsp` features.
+- Upstream 0.4.1 is aligned to `pkix-path 0.3.2`, `pkix-revocation 0.3.3`, and `x509-cert 0.2`; no semantic-policy change is required.
+- Offline-only revocation boundary remains mandatory.
+
 ## Current gate / next exact action
 
 Proceed to **Task 7 — digital-signature evidence dependency preflight**:
 
-1. preflight `xml-sec 0.1.16`, `cms 0.2.3`, `x509-cert 0.2.5`, `pkix-path 0.3.2`, `pkix-chain 0.1.1`, and `pkix-revocation 0.3.3` inside the isolated PoC workspace;
+1. re-run dependency preflight with `pkix-chain 0.4.1` replacing the yanked 0.1.1 candidate;
 2. reject any candidate that violates the existing advisory/license/source policy rather than adding exceptions;
 3. keep revocation offline-only; no CRL/OCSP network fetch is authorized;
 4. only after preflight passes, build synthetic signature vectors and RED tests.
