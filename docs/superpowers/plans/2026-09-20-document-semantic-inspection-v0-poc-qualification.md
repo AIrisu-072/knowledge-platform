@@ -6,7 +6,7 @@
 
 **Architecture:** Build an isolated Rust PoC workspace under `experiments/document-semantic-inspection/`. Every adapter returns an opaque format-native semantic projection plus common evidence metadata; the harness hashes the projection and evaluates BASE / SEMANTIC / NOISE / EDITORIAL / HOSTILE fixture relations. Candidate libraries remain confined to the experiment workspace. The plan ends with a qualification report and selection update; production Document Semantic Inspection gets a separate implementation plan after actual PoC results are known.
 
-**Tech Stack:** Rust 1.98.1; isolated Cargo workspace; serde/serde_json; sha2; office_oxide 0.1.11 + strict raw OOXML sentinels for DOCX/PPTX; rxls 0.1.3; calamine 0.36.1; ovba 0.7.1; tree-sitter 0.25 + MIT `tmepple/tree-sitter-vba` pinned at `c691f237b2a703732d4b6a1f01d5b4f73f94d41e`; pdfium-render 0.9.4; lopdf 0.45.0; xml-sec 0.1.16; cms 0.2.3; x509-cert 0.2.5; pkix-path 0.3.2; pkix-chain 0.1.1; pkix-revocation 0.3.3; scraper 0.27.0 (html5ever 0.39 parser); csv 1.4.0; encoding_rs 0.8.41.
+**Tech Stack:** Rust 1.98.1; isolated Cargo workspace; serde/serde_json; sha2; office_oxide 0.1.11 + strict raw OOXML sentinels for DOCX/PPTX; rxls 0.1.3; calamine 0.36.1; ovba 0.7.1; tree-sitter 0.25 + MIT `tmepple/tree-sitter-vba` pinned at `c691f237b2a703732d4b6a1f01d5b4f73f94d41e`; pdfium-render 0.9.4; lopdf 0.45.0; xml-sec 0.1.16; cms 0.2.3; x509-cert 0.2.5; pkix-path 0.3.2; pkix-chain 0.4.1; pkix-revocation 0.3.3; scraper 0.27.0 (html5ever 0.39 parser); csv 1.4.0; encoding_rs 0.8.41.
 
 **Spec:** `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
 
@@ -794,7 +794,14 @@ Hosted qualification evidence: exact Task 6 head `7f2dcbfa186d11d66e633fefb2c0bf
 - XMLDSig: `xml-sec = "=0.1.16"`.
 - CMS: `cms = { version = "=0.2.3", features = ["std", "sha2", "signature"] }`.
 - X.509 model: `x509-cert = "=0.2.5"` for compatibility with cms/pkix line.
-- Path/revocation: `pkix-path = "=0.3.2"`, `pkix-chain = "=0.1.1"`, `pkix-revocation = { version = "=0.3.3", features = ["crl", "ocsp"] }`.
+- Path/revocation: `pkix-path = "=0.3.2"`, `pkix-chain = { version = "=0.4.1", features = ["crl", "ocsp"] }`, `pkix-revocation = { version = "=0.3.3", features = ["crl", "ocsp"] }`.
+
+> **Task 7 pkix-chain candidate Ruling (2026-09-24):**
+> - Planned `pkix-chain = "=0.1.1"` is **REJECTED** because crates.io has yanked that release; a fresh isolated lock cannot resolve it.
+> - Upstream `MarkAtwood/crate-pkix` currently declares `pkix-chain 0.4.1` with `pkix-path 0.3.2`, `pkix-revocation 0.3.3`, and `x509-cert 0.2`, matching the rest of this Task 7 dependency line.
+> - Replacement candidate: `pkix-chain = { version = "=0.4.1", features = ["crl", "ocsp"] }`.
+> - The frozen signature/revocation semantics are unchanged: CRL/OCSP remain caller-supplied offline evidence and no network revocation fetching is enabled.
+> - Failed initial preflight: DSI run `35936215206`, lock generation rejected the yanked 0.1.1 before compilation.
 
 - [ ] **Step 1: Add exact crypto dependencies and verify license/source gate**
 
