@@ -315,6 +315,6 @@ Final cross-host evidence at the same head:
 
 **PoC Qualification is complete.**
 
-Next exact action: write a separate **Document Semantic Inspection v0 Production Implementation Plan** from the frozen Design plus the qualification report.
+Next exact action: review and explicitly approve `docs/superpowers/plans/2026-09-24-document-semantic-inspection-v0-production-implementation.md`; production implementation remains blocked until that approval and PR #8 merge are both complete.
 
 Do not implement production Semantic Inspection crates inside PR #8.
