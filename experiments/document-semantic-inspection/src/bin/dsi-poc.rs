@@ -267,7 +267,7 @@ fn final_report(
 
     let xlsm_supplemental = FixtureGateCounts {
         semantic_change: GateCount {
-            passed: usize::from(runtime_passed),
+            passed: if runtime_passed { 1 } else { 0 },
             required: 1,
         },
         noise_invariance: GateCount {
@@ -276,7 +276,7 @@ fn final_report(
         },
         editorial: GateCount::default(),
         fail_closed: GateCount {
-            passed: usize::from(runtime_passed),
+            passed: if runtime_passed { 1 } else { 0 },
             required: 1,
         },
     };
