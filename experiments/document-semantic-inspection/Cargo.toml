@@ -45,9 +45,7 @@ lopdf = { version = "=0.45.0", default-features = false }
 xml-sec = "=0.1.16"
 cms = { version = "=0.2.3", features = ["std", "sha2", "signature"] }
 x509-cert = "=0.2.5"
-pkix-path = "=0.3.2"
-pkix-chain = { version = "=0.4.1", features = ["crl", "ocsp"] }
-pkix-revocation = { version = "=0.3.3", features = ["crl", "ocsp"] }
+openssl = { version = "=0.10.81", features = ["vendored"] }
 
 
 [build-dependencies]
