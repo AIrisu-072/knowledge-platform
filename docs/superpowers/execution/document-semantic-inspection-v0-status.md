@@ -2,13 +2,13 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **POC QUALIFICATION EXECUTION / TASK 6 COMPLETE / TASK 7 DEPENDENCY PREFLIGHT NEXT**
+- Overall phase: **POC QUALIFICATION EXECUTION / TASK 7 COMPLETE / TASK 8 RED NEXT**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - Execution branch: `test/document-semantic-inspection-poc-v0`
 - Execution PR: **#8 (Draft)**
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
-- Last qualified code head: `7f2dcbfa186d11d66e633fefb2c0bfc629fb7f6a`
+- Last qualified code head: `83dacc87cbfa02e85fee765d46ddcdcf63e5e6cc`
 - Task 3 dependency-preflight candidate head: `ec532ec12d89352d83dc9a85ae68a3da583c0ebb`
 - Task 3 dependency-preflight DSI run: `35545142423` — **SUCCESS**
 - Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
@@ -229,14 +229,38 @@ Initial preflight result:
 - Replacement preflight candidate: `openssl 0.10.81` with `vendored`, retaining `cms 0.2.3`, `x509-cert 0.2.5`, and `xml-sec 0.1.16`.
 - Trust/chain/revocation remains offline-only: explicit trust anchors and CRL fixture bytes; no system trust and no network fetch.
 
+## Task 7 — COMPLETE
+
+Qualification evidence:
+
+- Exact qualified head: `83dacc87cbfa02e85fee765d46ddcdcf63e5e6cc`
+- DSI PoC run: `35947786029` Linux job — **SUCCESS**
+- Signature tests: **7/7 PASS**
+- Existing semantic manifest: **91 cases PASS**
+- Dependency gate: advisories/bans/licenses/sources **PASS**
+- `pkix-chain 0.1.1`: **REJECTED** — yanked
+- `pkix-chain 0.4.1 + pkix-path 0.3.2`: **REJECTED** — `rsa 0.9.10` triggers RUSTSEC-2023-0071
+- Qualified PoC verification substrate: `xml-sec 0.1.16` + `cms 0.2.3` + `x509-cert 0.2.5` + `openssl 0.10.81` vendored
+- Trust boundary: explicit caller-supplied anchors; offline CRL evidence only; no system trust and no network CRL/OCSP/AIA retrieval
+- CMS negative vectors cover tamper, digest, time, revocation, unknown issuer, broken chain, unsupported algorithm, malformed signature
+- XMLDSig vectors cover valid/invalid/unverifiable classes using xml-sec
+- PDF ByteRange wrapper verifies exact covered bytes before CMS validation
+- OOXML OPC signature wrapper follows `digital-signature/origin -> signature` relationships and is exercised against DOCX/XLSX/PPTX
+- Signature evidence remains outside semantic identity and preserves signer/certificate/coverage/diagnostic fields
+
+The standard CI policy/security/container/rust-static/rust-test jobs on this head are green; macOS portability and DSI macOS jobs are runner-queued and are intentionally consolidated into Task 8's cross-host final gate.
+
+No Design amendment was required and no production dependency promotion is authorized.
+
 ## Current gate / next exact action
 
-Proceed to **Task 7 — digital-signature evidence dependency preflight**:
+Proceed to **Task 8 — cross-format capability, determinism, hostile-input, and sandbox evidence**:
 
-1. re-run dependency preflight with `openssl 0.10.81` replacing the rejected PKIX verification stack;
-2. reject any candidate that violates the existing advisory/license/source policy rather than adding exceptions;
-3. keep revocation offline-only; no CRL/OCSP network fetch is authorized;
-4. only after preflight passes, build synthetic signature vectors and RED tests.
+1. add RED cross-format capability-preservation tests without a format-pair blanket allowlist;
+2. add RED 20x in-process / 5x child-process determinism tests with TZ/LANG variations;
+3. add child-process hostile/resource/no-body-leakage tests;
+4. implement per-format promotion-gate aggregation;
+5. run the final Linux/macOS hosted evidence on one exact head.
 
 Do not promote any qualified candidate into production crates during this Plan.
 
