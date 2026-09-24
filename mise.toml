@@ -329,4 +329,5 @@ run = [
   "cargo deny --manifest-path experiments/document-semantic-inspection/Cargo.toml --config experiments/document-semantic-inspection/deny.toml check",
   "printf 'pass\\n' > experiments/document-semantic-inspection/target/dsi-poc/gates/license-dependency.ok",
   "cargo run --locked --manifest-path experiments/document-semantic-inspection/Cargo.toml --bin dsi-poc -- report --format json > experiments/document-semantic-inspection/target/dsi-poc/final.json",
+  "cat experiments/document-semantic-inspection/target/dsi-poc/final.json",
 ]
