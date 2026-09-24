@@ -36,10 +36,58 @@ impl Default for InspectionProfile {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CapabilityState {
+    Present,
+    Absent,
+    NotRepresentable,
+    NotVerifiable,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CapabilityEvidence {
     pub capability: String,
+    /// Compatibility projection for existing PoC consumers.
     pub present: bool,
+    pub state: CapabilityState,
+    pub version_significant: bool,
+    pub equivalence_fingerprint: Option<String>,
+}
+
+impl CapabilityEvidence {
+    pub fn new(
+        capability: impl Into<String>,
+        state: CapabilityState,
+        version_significant: bool,
+        equivalence_fingerprint: Option<String>,
+    ) -> Self {
+        Self {
+            capability: capability.into(),
+            present: state == CapabilityState::Present,
+            state,
+            version_significant,
+            equivalence_fingerprint,
+        }
+    }
+
+    pub fn binary(
+        capability: impl Into<String>,
+        present: bool,
+        version_significant: bool,
+        equivalence_fingerprint: Option<String>,
+    ) -> Self {
+        Self::new(
+            capability,
+            if present {
+                CapabilityState::Present
+            } else {
+                CapabilityState::Absent
+            },
+            version_significant,
+            equivalence_fingerprint,
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
