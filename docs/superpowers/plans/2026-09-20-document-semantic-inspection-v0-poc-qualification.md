@@ -967,7 +967,7 @@ git commit -m "test: enforce semantic inspection qualification gates"
 - Consumes exact PoC JSON/Markdown results and exact CI run IDs.
 - Produces authoritative library qualification decisions and the next planning gate.
 
-- [ ] **Step 1: Generate and inspect the final machine report**
+- [x] **Step 1: Generate and inspect the final machine report**
 
 Run:
 
@@ -978,7 +978,7 @@ cargo run --locked   --manifest-path experiments/document-semantic-inspection/Ca
 
 Every format must have an explicit outcome: `PASS`, `FAIL`, or `BLOCKED`. There is no implicit success.
 
-- [ ] **Step 2: Write the human qualification report**
+- [x] **Step 2: Write the human qualification report**
 
 Record:
 - exact repository head;
@@ -995,7 +995,7 @@ Record:
 
 No raw customer content is included.
 
-- [ ] **Step 3: Update selection documents from evidence only**
+- [x] **Step 3: Update selection documents from evidence only**
 
 For each candidate:
 - change to `SELECTED` only if the frozen promotion gate passes;
@@ -1004,7 +1004,7 @@ For each candidate:
 
 If a required v0 format fails qualification, **do not weaken the Design**. Status becomes blocked pending supplemental adapter/library or explicit Design amendment.
 
-- [ ] **Step 4: Update Active/Execution status**
+- [x] **Step 4: Update Active/Execution status**
 
 If all required format gates pass:
 
@@ -1020,7 +1020,7 @@ Phase = POC QUALIFICATION BLOCKED
 Next exact action = resolve named failing semantic gate; production implementation remains prohibited
 ```
 
-- [ ] **Step 5: Final verification**
+- [x] **Step 5: Final verification**
 
 ```bash
 mise run poc:dsi:verify
@@ -1033,12 +1033,14 @@ Require:
 - DSI PoC macOS green;
 - no unresolved blocking PR review finding.
 
-- [ ] **Step 6: Commit and stop**
+- [x] **Step 6: Commit and stop**
 
 ```bash
 git add docs/superpowers/execution spec/selection experiments/document-semantic-inspection .github/workflows/dsi-poc.yml mise.toml
 git commit -m "docs: record semantic inspection poc qualification"
 ```
+
+> **Task 9 final verification evidence:** final documentation/selection head before this checklist-record commit was `94ae6b50910aafa6c9f95ab29a3f5279971e014a`. DSI PoC run `35959412933` — Ubuntu, macOS 15 Intel, and macOS 15 arm64 all **SUCCESS**. Standard CI run `35959412808` — policy, rust-static, rust-test, security, portability-macos, container-build, and required-check all **SUCCESS**. PR #8 had no unresolved blocking review threads. The authoritative qualification report records the code qualification head `a4fcef1cb5cac5672199165f433bd303c25135a6` and the cross-host qualification run `35957940553`.
 
 **STOP.** Do not create production Semantic Inspection crates in this plan. If qualification passes, write a new Production Implementation Plan from the frozen Design plus this evidence. If it fails, return to the failing PoC gate or Design amendment process.
 
