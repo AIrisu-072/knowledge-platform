@@ -41,8 +41,17 @@ impl GateCount {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct FixtureGateCounts {
+    pub semantic_change: GateCount,
+    pub noise_invariance: GateCount,
+    pub editorial: GateCount,
+    pub fail_closed: GateCount,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExternalGateEvidence {
+    pub supplemental_fixtures: BTreeMap<FormatId, FixtureGateCounts>,
     pub determinism: BTreeMap<FormatId, GateCount>,
     pub security_resource: BTreeMap<FormatId, bool>,
     pub license_dependency: bool,
@@ -69,10 +78,15 @@ pub fn aggregate_promotion_gates(
     let mut result = BTreeMap::new();
 
     for format in formats {
-        let mut semantic_change = GateCount::default();
-        let mut noise_invariance = GateCount::default();
-        let mut editorial = GateCount::default();
-        let mut fail_closed = GateCount::default();
+        let supplemental = external
+            .supplemental_fixtures
+            .get(&format)
+            .copied()
+            .unwrap_or_default();
+        let mut semantic_change = supplemental.semantic_change;
+        let mut noise_invariance = supplemental.noise_invariance;
+        let mut editorial = supplemental.editorial;
+        let mut fail_closed = supplemental.fail_closed;
 
         for case in report.cases.iter().filter(|case| case.format == format) {
             let gate = match case.class {
