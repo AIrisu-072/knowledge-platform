@@ -119,3 +119,53 @@ fn valid_pdf_signature_evidence_records_byte_range_coverage() {
             .is_some_and(|value| value.starts_with("pdf-byte-range:"))
     );
 }
+
+#[test]
+fn ooxml_signature_wrapper_covers_all_required_office_formats() {
+    let trust = SignatureTrustContext::new(vec![fixture("fixtures/pdf/signatures/root.der")]);
+    let signature_xml = fixture("fixtures/docx/signatures/xml-valid.xml");
+
+    for path in [
+        "fixtures/docx/base.docx",
+        "fixtures/xlsx/base.xlsx",
+        "fixtures/pptx/base.pptx",
+    ] {
+        let unsigned = fixture(path);
+        let unsigned_evidence =
+            SignatureInspector::verify_ooxml_package(&unsigned, &trust).expect("unsigned package");
+        assert!(unsigned_evidence.is_empty(), "{path}");
+
+        let signed = support::signature_ooxml::add_ooxml_signature(&unsigned, &signature_xml);
+        let evidence =
+            SignatureInspector::verify_ooxml_package(&signed, &trust).expect("signed OOXML package");
+        assert_eq!(evidence.len(), 1, "{path}");
+        assert_eq!(evidence[0].kind, "ooxml-xmldsig", "{path}");
+        assert_eq!(evidence[0].validity, SignatureValidity::Valid, "{path}");
+        assert_eq!(
+            evidence[0].covered_content.as_deref(),
+            Some("ooxml-signature-part:_xmlsignatures/sig1.xml"),
+            "{path}"
+        );
+    }
+}
+
+#[test]
+fn malformed_ooxml_signature_relationship_chain_is_invalid_evidence_not_semantic_success() {
+    let trust = SignatureTrustContext::new(vec![fixture("fixtures/pdf/signatures/root.der")]);
+    let mut signed = support::signature_ooxml::add_ooxml_signature(
+        &fixture("fixtures/docx/base.docx"),
+        &fixture("fixtures/docx/signatures/xml-valid.xml"),
+    );
+
+    let marker = b"_xmlsignatures/origin.sigs";
+    let offset = signed
+        .windows(marker.len())
+        .position(|window| window == marker)
+        .expect("origin relationship target");
+    signed[offset..offset + marker.len()].copy_from_slice(b"_xmlsignatures/missing.sigs");
+
+    let evidence =
+        SignatureInspector::verify_ooxml_package(&signed, &trust).expect("malformed OOXML signature");
+    assert_eq!(evidence.len(), 1);
+    assert_eq!(evidence[0].validity, SignatureValidity::Invalid);
+}
