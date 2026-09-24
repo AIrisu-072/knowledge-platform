@@ -9,7 +9,8 @@ All files in this directory are **TEST ONLY synthetic fixtures** generated for D
 - CMS objects are detached signatures over `content.bin`.
 - The malformed/unsupported/tampered vectors are intentionally invalid test material.
 
-- `byte-range-root.der` is a separate TEST ONLY trust anchor for the synthetic PDF ByteRange vectors.
-- `valid-byte-range.pdf` is a structurally valid PDF 1.7 whose detached CMS signs the exact two ByteRange segments around `/Contents`.
-- `tampered-byte-range.pdf` changes signed page content without updating CMS.
-- `malformed-byte-range.pdf` carries an invalid overlapping/out-of-order ByteRange and must never be accepted.
+- PDF ByteRange vectors are generated in `tests/support/signature_pdf.rs` from fixed TEST ONLY SEC1 key bytes plus the public DER certificate in this directory.
+- The fixture builder freezes final PDF layout and ByteRange values **before** generating detached CMS, then embeds CMS only inside the excluded `/Contents` gap.
+- Tampered and malformed variants are derived only after valid signing, so failure causes are isolated.
+- The private scalar is represented only as an explicit TEST ONLY byte fixture in Rust source; no PEM/private-key artifact is tracked. It must never be reused outside this corpus.
+- The certificate validity interval is fixed to 2025-01-01 through 2035-01-01 to avoid host-clock-dependent fixture failure.

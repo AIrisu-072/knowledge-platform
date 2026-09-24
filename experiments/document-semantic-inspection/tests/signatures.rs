@@ -1,3 +1,4 @@
+mod support;
 use document_semantic_inspection_poc::{
     SignatureInspector, SignatureTrustContext, SignatureValidity,
 };
@@ -74,36 +75,36 @@ fn valid_xmldsig_evidence_is_separate_from_semantic_identity() {
 }
 
 
-fn pdf_byte_range(name: &str) -> document_semantic_inspection_poc::SignatureEvidence {
-    let trust = SignatureTrustContext::new(vec![
-        fixture("fixtures/pdf/signatures/byte-range-root.der"),
-    ]);
-    SignatureInspector::verify_pdf_byte_range(
-        &fixture(&format!("fixtures/pdf/signatures/{name}.pdf")),
-        &trust,
-    )
-    .expect("invalid PDF signatures must still produce evidence")
+fn pdf_byte_range(
+    variant: support::signature_pdf::PdfByteRangeVariant,
+) -> document_semantic_inspection_poc::SignatureEvidence {
+    let fixture = support::signature_pdf::build_pdf_byte_range_fixture(variant);
+    let trust = SignatureTrustContext::new(vec![fixture.trust_der]);
+    SignatureInspector::verify_pdf_byte_range(&fixture.pdf, &trust)
+        .expect("invalid PDF signatures must still produce evidence")
 }
 
 #[test]
 fn pdf_byte_range_signature_vectors_validate_exact_covered_bytes() {
+    use support::signature_pdf::PdfByteRangeVariant;
+
     assert_eq!(
-        pdf_byte_range("valid-byte-range").validity,
+        pdf_byte_range(PdfByteRangeVariant::Valid).validity,
         SignatureValidity::Valid
     );
     assert_eq!(
-        pdf_byte_range("tampered-byte-range").validity,
+        pdf_byte_range(PdfByteRangeVariant::Tampered).validity,
         SignatureValidity::Invalid
     );
     assert_eq!(
-        pdf_byte_range("malformed-byte-range").validity,
+        pdf_byte_range(PdfByteRangeVariant::MalformedByteRange).validity,
         SignatureValidity::Invalid
     );
 }
 
 #[test]
 fn valid_pdf_signature_evidence_records_byte_range_coverage() {
-    let evidence = pdf_byte_range("valid-byte-range");
+    let evidence = pdf_byte_range(support::signature_pdf::PdfByteRangeVariant::Valid);
     assert_eq!(evidence.kind, "pdf-cms");
     assert!(
         evidence
