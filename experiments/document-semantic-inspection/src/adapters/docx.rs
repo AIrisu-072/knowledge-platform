@@ -9,6 +9,7 @@ use sha2::{Digest, Sha256};
 use zip::ZipArchive;
 
 use crate::{
+    CapabilityEvidence,
     canonical_json_bytes, AdapterOutput, CommentEvidence, EditorialEvidence, FormatId,
     InspectionAdapter, InspectionProfile, PocError, TrackedChangeEvidence,
 };
@@ -113,10 +114,17 @@ impl InspectionAdapter for DocxAdapter {
         };
         let semantic_projection = canonical_json_bytes(&projection)
             .map_err(|error| PocError::InvalidWorkerResult(error.to_string()))?;
+        let semantic_equivalence = hex::encode(crate::fingerprint(&semantic_projection));
+        let reader_equivalence = hex::encode(crate::fingerprint(raw_visible_text.as_bytes()));
 
         Ok(AdapterOutput {
             semantic_projection,
-            capabilities: Vec::new(),
+            capabilities: vec![
+                CapabilityEvidence::binary("reader_content", true, true, Some(reader_equivalence)),
+                CapabilityEvidence::binary("document_structure", true, true, Some(semantic_equivalence.clone())),
+                CapabilityEvidence::binary("footnotes", !projection.footnotes.is_empty(), true, Some(semantic_equivalence.clone())),
+                CapabilityEvidence::binary("endnotes", !projection.endnotes.is_empty(), true, Some(semantic_equivalence)),
+            ],
             editorial: package.editorial,
             external_dependencies: Vec::new(),
             signatures: Vec::new(),
