@@ -44,3 +44,31 @@ fn valid_cms_evidence_preserves_signer_and_coverage_metadata() {
     assert_eq!(evidence.covered_content.as_deref(), Some("detached-content"));
     assert!(!evidence.validation_diagnostics.is_empty());
 }
+
+fn xml(name: &str) -> document_semantic_inspection_poc::SignatureEvidence {
+    let trust = SignatureTrustContext::new(vec![fixture("fixtures/pdf/signatures/root.der")]);
+    let source = String::from_utf8(
+        fixture(&format!("fixtures/docx/signatures/{name}.xml"))
+    ).expect("XML fixture is UTF-8");
+    SignatureInspector::verify_xmldsig(&source, &trust)
+        .expect("invalid XML signatures must still produce evidence")
+}
+
+#[test]
+fn xmldsig_signature_vectors_have_stable_validity_classes() {
+    assert_eq!(xml("xml-valid").validity, SignatureValidity::Valid);
+    assert_eq!(xml("xml-tampered").validity, SignatureValidity::Invalid);
+    assert_eq!(xml("xml-invalid-digest").validity, SignatureValidity::Invalid);
+    assert_eq!(xml("xml-expired").validity, SignatureValidity::Invalid);
+    assert_eq!(xml("xml-unknown").validity, SignatureValidity::Unverifiable);
+    assert_eq!(xml("xml-unsupported-algorithm").validity, SignatureValidity::Unverifiable);
+    assert_eq!(xml("xml-malformed").validity, SignatureValidity::Invalid);
+}
+
+#[test]
+fn valid_xmldsig_evidence_is_separate_from_semantic_identity() {
+    let evidence = xml("xml-valid");
+    assert_eq!(evidence.kind, "xmldsig");
+    assert_eq!(evidence.covered_content.as_deref(), Some("same-document-references"));
+    assert!(evidence.certificate_fingerprint.as_deref().is_some_and(|v| v.len() == 64));
+}
