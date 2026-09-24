@@ -23,5 +23,5 @@ pub use model::{
     ExternalDependency, FormatId, InspectionAdapter, InspectionProfile, InspectionResult,
     SignatureEvidence, SignatureValidity, TrackedChangeEvidence,
 };
-pub use report::{aggregate_promotion_gates, CaseReport, CaseVerdict, ExternalGateEvidence, FormatPromotionGate, GateCount, VerificationReport, write_reports};
+pub use report::{aggregate_promotion_gates, CaseReport, CaseVerdict, ExternalGateEvidence, FixtureGateCounts, FormatPromotionGate, GateCount, VerificationReport, write_reports};
 pub use runner::{AdapterRegistry, run_case, run_case_at, verify_manifest};
