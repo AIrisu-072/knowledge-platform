@@ -3,7 +3,7 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **POC QUALIFICATION EXECUTION / TASK 6 COMPLETE / TASK 7 DEPENDENCY PREFLIGHT NEXT**
+- Current phase: **POC QUALIFICATION EXECUTION / TASK 7 COMPLETE / TASK 8 RED NEXT**
 - Frozen Design PR: `#7` — merged
 - Execution branch: `test/document-semantic-inspection-poc-v0`
 - Execution PR: `#8` — Draft
@@ -12,13 +12,14 @@
 - Approved PoC Qualification Plan: `docs/superpowers/plans/2026-09-20-document-semantic-inspection-v0-poc-qualification.md`
 - Execution Status: `docs/superpowers/execution/document-semantic-inspection-v0-status.md`
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
-- Last qualified code head: `7f2dcbfa186d11d66e633fefb2c0bfc629fb7f6a`
+- Last qualified code head: `83dacc87cbfa02e85fee765d46ddcdcf63e5e6cc`
 - Task 4 DSI qualification: `35818792833` — SUCCESS
 - Task 4 standard CI: `35818792843` — SUCCESS
 - Task 5 DSI qualification: `35824677799` — SUCCESS
 - Task 5 standard CI: `35824677794` — SUCCESS
 - Task 6 DSI qualification: `35880533515` — SUCCESS (Linux + macOS Intel + macOS arm64)
 - Task 6 standard CI: `35880533521` — SUCCESS
+- Task 7 DSI qualification: `35947786029` — Linux SUCCESS; final macOS cross-host gate moves to Task 8
 - Task 3 dependency-preflight DSI: `35545142423` — SUCCESS
 
 ## Mandatory resume order
@@ -47,17 +48,17 @@ Task 2 produced one material qualification result: `scraper 0.27.0` was rejected
 
 ## Current hard gate
 
-The active task is **Task 7 — digital-signature evidence qualification**. Task 6 PDF is complete and exact-head qualified across Linux and both macOS architectures.
+The active task is **Task 8 — cross-format capability, determinism, hostile-input, and sandbox evidence**. Task 7 signature evidence is complete on the qualified Linux head; Task 8 owns the final cross-host Linux/macOS gate.
 
 Do not start production Semantic Inspection implementation. Do not accept unknown potentially semantic OOXML package parts as normal success.
 
 ## Next exact action
 
-Start Task 7 with advisory/license/source preflight for the exact XMLDSig/CMS/X.509/path/revocation candidates. Keep revocation evidence offline-only and do not weaken the current deny policy.
+Start Task 8 with RED cross-format capability-preservation tests, then host-nondeterminism and hostile/resource child-process tests. Do not implement a blanket format-pair migration allowlist.
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualification Task 7（Digital Signature Evidence）から再開してください。PR #8・Execution Status・exact-head CIを正本にしてください。
+> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualification Task 8（Cross-format / Determinism / Security Gates）から再開してください。PR #8・Execution Status・exact-head CIを正本にしてください。
 
 ## End-of-session rule
 
