@@ -150,16 +150,18 @@ impl InspectionAdapter for PptxAdapter {
         let projection = json!({
             "slides": slides,
         });
+        let semantic_projection = canonical_json_bytes(&projection).map_err(|error| {
+            PocError::InvalidWorkerResult(format!("PPTX projection serialization: {error}"))
+        })?;
+        let semantic_equivalence = hex::encode(crate::fingerprint(&semantic_projection));
 
         Ok(AdapterOutput {
-            semantic_projection: canonical_json_bytes(&projection).map_err(|error| {
-                PocError::InvalidWorkerResult(format!("PPTX projection serialization: {error}"))
-            })?,
+            semantic_projection,
             capabilities: vec![
-                CapabilityEvidence::binary("reader_content", true, true, None),
-                CapabilityEvidence::binary("presentation_structure", true, true, None),
-                CapabilityEvidence::binary("visual_content", visual_present, true, None),
-                CapabilityEvidence::binary("speaker_notes", notes_present, true, None),
+                CapabilityEvidence::binary("reader_content", true, true, Some(semantic_equivalence.clone())),
+                CapabilityEvidence::binary("presentation_structure", true, true, Some(semantic_equivalence.clone())),
+                CapabilityEvidence::binary("visual_content", visual_present, true, Some(semantic_equivalence.clone())),
+                CapabilityEvidence::binary("speaker_notes", notes_present, true, Some(semantic_equivalence.clone())),
                 CapabilityEvidence::new("formula_logic", crate::CapabilityState::NotRepresentable, true, None),
                 CapabilityEvidence::new("vba_logic", crate::CapabilityState::NotRepresentable, true, None),
             ],
