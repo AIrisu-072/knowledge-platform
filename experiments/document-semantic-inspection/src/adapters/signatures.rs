@@ -99,13 +99,14 @@ impl SignatureInspector {
                 "cms-signer-missing".into(),
             ));
         };
+        let signer = signer.to_owned();
 
-        let mut evidence = evidence_from_cert("cms", signer, "detached-content")?;
+        let mut evidence = evidence_from_cert("cms", &signer, "detached-content")?;
         evidence
             .validation_diagnostics
             .push(format!("cms-structural-parser:cms-0.2.3;signers={}", structural.signer_count));
 
-        if certificate_time_invalid(signer)? {
+        if certificate_time_invalid(&signer)? {
             evidence.validity = SignatureValidity::Invalid;
             evidence
                 .validation_diagnostics
@@ -113,7 +114,7 @@ impl SignatureInspector {
             return Ok(evidence);
         }
 
-        if certificate_revoked(signer, trust)? {
+        if certificate_revoked(&signer, trust)? {
             evidence.validity = SignatureValidity::Invalid;
             evidence
                 .validation_diagnostics
@@ -236,6 +237,12 @@ impl SignatureInspector {
                     evidence
                         .validation_diagnostics
                         .push(format!("xmldsig-invalid:{reason:?}"));
+                }
+                _ => {
+                    evidence.validity = SignatureValidity::Unverifiable;
+                    evidence
+                        .validation_diagnostics
+                        .push("xmldsig-unknown-verification-status".into());
                 }
             },
             Err(error) => {
