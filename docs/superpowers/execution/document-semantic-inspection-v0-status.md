@@ -2,13 +2,13 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **POC QUALIFICATION EXECUTION / TASK 8 COMPLETE ON UBUNTU / FINAL CROSS-HOST GATE RUNNING**
+- Overall phase: **POC QUALIFICATION COMPLETE / PRODUCTION PLAN REQUIRED**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - Execution branch: `test/document-semantic-inspection-poc-v0`
 - Execution PR: **#8 (Draft)**
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
-- Last qualified code head: `4232facae820e5914d4c9e4ed2433f58396bc2c5`
+- Last qualified code head: `a4fcef1cb5cac5672199165f433bd303c25135a6`
 - Task 3 dependency-preflight candidate head: `ec532ec12d89352d83dc9a85ae68a3da583c0ebb`
 - Task 3 dependency-preflight DSI run: `35545142423` — **SUCCESS**
 - Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
@@ -252,7 +252,7 @@ The standard CI policy/security/container/rust-static/rust-test jobs on this hea
 
 No Design amendment was required and no production dependency promotion is authorized.
 
-## Task 8 — COMPLETE ON UBUNTU / FINAL CROSS-HOST GATE RUNNING
+## Task 8 — COMPLETE
 
 Qualification evidence at code head `4232facae820e5914d4c9e4ed2433f58396bc2c5`:
 
@@ -270,27 +270,23 @@ Qualification evidence at code head `4232facae820e5914d4c9e4ed2433f58396bc2c5`:
 - Cross-format migration uses capability-state/equivalence evidence; there is no format-pair blanket allowlist
 - PR #8 has been moved out of Draft; unresolved review threads: **0**
 
-The final macOS Intel/arm64 DSI jobs are now the remaining Task 8 cross-host evidence.
+Final cross-host evidence at the same head:
+- DSI PoC run `35957940553`: Ubuntu `107500145955`, macOS Intel `107500146107`, macOS arm64 `107500146179` — **all SUCCESS**
+- Standard CI run `35957940565` — **SUCCESS**, including required-check
+
+## Task 9 — QUALIFICATION REPORT / SELECTION UPDATE COMPLETE
+
+- Human report: `docs/superpowers/execution/document-semantic-inspection-v0-poc-report.md`
+- Machine result at qualification head: **overall PASS**
+- Required formats: TXT / CSV / HTML / DOCX / XLSX / XLSM / PPTX / PDF — **all PASS**
+- Selection documents updated from PoC evidence only.
+- No production dependency was added to root production crates in this PoC.
+- No unresolved blocking PR review finding existed before the final report update.
 
 ## Current gate / next exact action
 
-Proceed to the **final Task 8 cross-host gate**, then Task 9:
+**PoC Qualification is complete.**
 
-1. require Ubuntu, macOS Intel, and macOS arm64 DSI PoC jobs to succeed on the same completion head;
-2. write the human qualification report from the machine PASS evidence and exact CI run IDs;
-3. update library/tool selection documents from evidence only;
-4. perform Task 9 final verification and stop before production implementation.
+Next exact action: write a separate **Document Semantic Inspection v0 Production Implementation Plan** from the frozen Design plus the qualification report.
 
-Do not promote any qualified candidate into production crates during this Plan.
-
-## Resume order
-
-1. `AGENTS.md`
-2. `docs/superpowers/execution/active.md`
-3. this status file
-4. frozen Design Spec
-5. Design approval record
-6. PoC Qualification Plan
-7. current GitHub state of branch `test/document-semantic-inspection-poc-v0`, PR #8, and exact-head CI
-
-Repository/GitHub state overrides chat memory.
+Do not implement production Semantic Inspection crates inside PR #8.

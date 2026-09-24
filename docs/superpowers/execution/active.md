@@ -3,7 +3,7 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **POC QUALIFICATION EXECUTION / TASK 8 COMPLETE ON UBUNTU / FINAL CROSS-HOST GATE RUNNING**
+- Current phase: **POC QUALIFICATION COMPLETE / PRODUCTION PLAN REQUIRED**
 - Frozen Design PR: `#7` — merged
 - Execution branch: `test/document-semantic-inspection-poc-v0`
 - Execution PR: `#8` — Draft
@@ -12,7 +12,7 @@
 - Approved PoC Qualification Plan: `docs/superpowers/plans/2026-09-20-document-semantic-inspection-v0-poc-qualification.md`
 - Execution Status: `docs/superpowers/execution/document-semantic-inspection-v0-status.md`
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
-- Last qualified code head: `4232facae820e5914d4c9e4ed2433f58396bc2c5`
+- Last qualified code head: `a4fcef1cb5cac5672199165f433bd303c25135a6`
 - Task 4 DSI qualification: `35818792833` — SUCCESS
 - Task 4 standard CI: `35818792843` — SUCCESS
 - Task 5 DSI qualification: `35824677799` — SUCCESS
@@ -20,6 +20,8 @@
 - Task 6 DSI qualification: `35880533515` — SUCCESS (Linux + macOS Intel + macOS arm64)
 - Task 6 standard CI: `35880533521` — SUCCESS
 - Task 7 DSI qualification: `35947786029` — Linux SUCCESS; final macOS cross-host gate moves to Task 8
+- Task 8 final cross-host DSI: `35957940553` — Ubuntu / macOS Intel / macOS arm64 SUCCESS
+- Task 8/9 standard CI evidence: `35957940565` — SUCCESS
 - Task 3 dependency-preflight DSI: `35545142423` — SUCCESS
 
 ## Mandatory resume order
@@ -48,17 +50,17 @@ Task 2 produced one material qualification result: `scraper 0.27.0` was rejected
 
 ## Current hard gate
 
-The active gate is **Task 8 final cross-host verification**. Ubuntu promotion evidence is complete and all eight required formats are PASS; PR #8 is ready-for-review so macOS Intel/arm64 qualification can execute.
+The PoC qualification gate is **complete**. All eight required formats passed the frozen promotion gate on Ubuntu, macOS Intel, and macOS arm64. Production implementation remains a separate planning phase.
 
 Do not start production Semantic Inspection implementation. Do not accept unknown potentially semantic OOXML package parts as normal success.
 
 ## Next exact action
 
-Wait only on the current hosted macOS qualification jobs. When both pass, execute Task 9: write the human qualification report, update selection records from evidence, run final verification, and stop before production implementation.
+Write the separate Document Semantic Inspection v0 Production Implementation Plan from the frozen Design and the completed PoC qualification report. Do not continue production implementation inside PR #8.
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualification Task 8 最終cross-host gateから再開し、PASSならTask 9へ進んでください。PR #8・Execution Status・exact-head CIを正本にしてください。
+> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualificationは完了済みです。次はProduction Implementation Planを新規作成してください。PR #8・Execution Status・exact-head CIを正本にしてください。
 
 ## End-of-session rule
 
