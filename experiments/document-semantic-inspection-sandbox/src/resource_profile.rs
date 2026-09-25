@@ -84,6 +84,12 @@ impl ProductionResourceProfile {
         pdf_decompressed_stream_bytes: 64 * MIB,
     };
 
+    /// Bash's non-POSIX `ulimit -f` uses 1024-byte increments. The PoC
+    /// qualified 2048 blocks, so the direct RLIMIT_FSIZE equivalent is 2 MiB.
+    pub const fn output_file_bytes(self) -> u64 {
+        self.output_file_blocks * 1024
+    }
+
     pub const fn limit(self, class: ResourceClass) -> u64 {
         match class {
             ResourceClass::CpuSeconds => self.cpu_seconds,
@@ -201,6 +207,7 @@ mod tests {
         let p = ProductionResourceProfile::DSI_V0;
         assert_eq!(p.cpu_seconds, 8);
         assert_eq!(p.output_file_blocks, 2_048);
+        assert_eq!(p.output_file_bytes(), 2 * MIB);
         assert_eq!(p.address_space_kib, 2_097_152);
         assert_eq!(p.docx_archive_entries, 256);
         assert_eq!(p.docx_entry_bytes, 8 * MIB);
