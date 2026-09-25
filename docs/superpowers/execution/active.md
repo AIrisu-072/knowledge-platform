@@ -3,7 +3,7 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **PRODUCTION IMPLEMENTATION — TASK 3 COMPLETE / TASK 4 RED READY**
+- Current phase: **PRODUCTION IMPLEMENTATION — TASK 4 RED CAPTURED / CLEAN RED RERUN REQUIRED**
 - Frozen Design PR: `#7` — merged
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
@@ -34,6 +34,10 @@
 - Production Task 3 standard CI: `36094896067` — SUCCESS, including required-check
 - Production Task 3 sandbox regression: `36094896150` — SUCCESS
 - Production Task 3 DSI PoC regression: `36094896352` — SUCCESS
+- Production Task 4 initial RED head: `9ed0f735474ff25381814cbad63ef2c5965c76f9`
+- Production Task 4 initial RED standard CI: `36095951774` — FAIL
+- Production Task 4 sandbox regression: `36095951807` — SUCCESS
+- Production Task 4 DSI PoC regression: `36095951824` — SUCCESS
 - Last qualified code head: `a4fcef1cb5cac5672199165f433bd303c25135a6`
 - Task 4 DSI qualification: `35818792833` — SUCCESS
 - Task 4 standard CI: `35818792843` — SUCCESS
@@ -74,15 +78,15 @@ Task 2 produced one material qualification result: `scraper 0.27.0` was rejected
 
 The PoC qualification gate is **complete**. The Production Implementation Plan was explicitly approved by the user on 2026-09-25, and PR #8 is merged.
 
-Production Tasks 1–3 are complete. The worker shell now enforces bounded request/input handling, inherited read-only FD input, raw-binding recomputation, content-based format detection, controlled failure/no-partial-success behavior, and extractor provenance. Production parser dependencies remain unpromoted.
+Production Tasks 1–3 are complete. Task 4 parity tests are committed at `9ed0f735474ff25381814cbad63ef2c5965c76f9`. The intended RED is present: `rust-test` fails on unresolved `AdapterProfile`, `TextAdapter`, `CsvAdapter`, `HtmlAdapter`, and `SemanticAdapter`. However, `rust-static` also fails earlier on `cargo fmt --check`, so Task 4 does not yet have a clean authoritative RED run. Production parser dependencies remain unpromoted.
 
 ## Next exact action
 
-Start Production Task 4 with RED TXT/CSV/HTML parity tests against the PoC-qualified semantics. Do not promote any dependency other than the Task 4-qualified text-format set.
+Format `crates/document-semantic-inspection-worker/tests/text_format_parity.rs` only, without implementing adapters or promoting dependencies; push and rerun exact-head CI until formatting passes and the authoritative RED failure is solely the unresolved Task 4 adapter contract. Then proceed to Task 4 GREEN with only the qualified text-format dependencies.
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualificationは完了済みです。Production Implementation Planは2026-09-25に明示承認済み、PR #8/#9はmerge済みです。`feat/document-semantic-inspection-v0` は `main@48045768d1d026eb785ee065877e401bbafd97ca` から作成済みで、baseline CI `36079233862` はgreenです。Production Task 1〜3は完了済みです。Task 4のTXT/CSV/HTML Production parity REDから再開してください。
+> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualificationは完了済みです。Production Implementation Planは2026-09-25に明示承認済み、PR #8/#9はmerge済みです。`feat/document-semantic-inspection-v0` は `main@48045768d1d026eb785ee065877e401bbafd97ca` から作成済みで、baseline CI `36079233862` はgreenです。Production Task 1〜3は完了済みです。Task 4 initial RED headは `9ed0f735474ff25381814cbad63ef2c5965c76f9`、standard CI `36095951774` はFAILです。`rust-test` は未実装Adapter importで想定どおりREDですが、`rust-static` がfmt差分でもFAILしているため、まず `text_format_parity.rs` のformatのみ修正し、adapter未実装だけで落ちるclean REDを再取得してください。Sandbox `36095951807` とDSI PoC `36095951824` はSUCCESSです。
 
 ## End-of-session rule
 
