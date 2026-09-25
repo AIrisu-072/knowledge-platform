@@ -2,7 +2,7 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **PRODUCTION IMPLEMENTATION — TASK 3 COMPLETE / TASK 4 RED READY**
+- Overall phase: **PRODUCTION IMPLEMENTATION — TASK 4 RED CAPTURED / CLEAN RED RERUN REQUIRED**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
@@ -44,17 +44,32 @@ Current gates:
 - Production implementation branch: **CREATED — `feat/document-semantic-inspection-v0`**
 - Production Task 1 sandbox preflight: **COMPLETE / PASS**
 - Production core crate: **TASK 2 COMPLETE / PASS**
-- Production runtime: **TASK 3 COMPLETE / PASS; Task 4 RED READY; parser dependency promotion not started**
+- Production runtime: **TASK 3 COMPLETE / PASS; Task 4 initial RED captured; clean RED rerun required; parser dependency promotion not started**
 
 The plan identifies one production-hardening gap that must be resolved first: the qualified PoC wrapper proves CPU/file/memory and controller-timeout behavior, but production must additionally enforce the frozen no-network, no-credential, filesystem-confinement, fresh-process, and complete finite resource-profile boundary. Task 1 performs an isolated sandbox substrate preflight before any sandbox dependency is promoted.
 
 Required next order:
 
-1. create Task 4 RED TXT/CSV/HTML parity tests from the qualified PoC semantics;
-2. capture the expected RED failure before text-format adapters exist;
-3. promote only the qualified Task 4 dependencies;
+1. run `cargo fmt` on `crates/document-semantic-inspection-worker/tests/text_format_parity.rs` only; do not implement adapters yet;
+2. push the formatting-only repair and require exact-head CI where fmt passes and Task 4 remains RED solely on unresolved adapter contract imports;
+3. after clean RED evidence, promote only the qualified Task 4 dependencies and implement TXT/CSV/HTML adapters;
 4. preserve fail-closed behavior and no script execution;
 5. require exact-head standard CI + Sandbox regression + DSI PoC regression before Task 4 completion.
+
+## Production Task 4 — INITIAL RED CAPTURED / CLEAN RED REQUIRED
+
+- Initial RED head: `9ed0f735474ff25381814cbad63ef2c5965c76f9`
+- Standard CI: `36095951774` — **FAIL**
+- Sandbox regression: `36095951807` — **SUCCESS**
+- DSI PoC regression: `36095951824` — **SUCCESS**
+- PR #10: **Draft / mergeable**
+- PR #10 unresolved review threads: **0**
+- Intended RED: `rust-test` fails compiling `text_format_parity.rs` because `AdapterProfile`, `TextAdapter`, `CsvAdapter`, `HtmlAdapter`, and `SemanticAdapter` do not exist yet.
+- Additional non-authoritative failure: `rust-static` fails at `cargo fmt --check` on `text_format_parity.rs` formatting only.
+- Therefore this run proves the missing adapter contract, but it is **not yet the clean authoritative RED evidence** because formatting must pass first.
+- Production Task 4 parser dependencies: **NOT PROMOTED**.
+
+Next exact action: format only `crates/document-semantic-inspection-worker/tests/text_format_parity.rs`, commit/push that formatting-only change, and rerun exact-head CI. Do not add adapters or Task 4 parser dependencies until the clean RED run is recorded.
 
 ## Production Task 3 — COMPLETE
 
