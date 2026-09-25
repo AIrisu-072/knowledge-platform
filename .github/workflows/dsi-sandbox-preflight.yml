@@ -35,11 +35,3 @@ jobs:
         run: mise run poc:dsi:sandbox-test
       - name: Task 1 dependency policy
         run: mise run poc:dsi:sandbox-deny
-
-      - name: Emit sandbox lockfile for pinning
-        run: |
-          test -f experiments/document-semantic-inspection-sandbox/Cargo.lock
-          echo 'DSI_SANDBOX_LOCK_BEGIN'
-          base64 -w0 experiments/document-semantic-inspection-sandbox/Cargo.lock
-          echo
-          echo 'DSI_SANDBOX_LOCK_END'
