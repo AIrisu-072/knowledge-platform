@@ -1,7 +1,7 @@
 # Library / Tool Selection v0
 
 - 状態: v0
-- 確認日: 2026-09-14
+- 確認日: 2026-09-24
 - 対象: Knowledge Platform
 - 目的: 既に確定したArchitecture / Error / Observability / Frontend UX / Development・Container・CI要件から、実装ライブラリと開発ツールを選定する
 - 原則:
@@ -11,7 +11,7 @@
   - Cargo / npmのfeatureは必要最小限のみ有効化する
   - 「選定済み」と「PoCが必要」を混同しない
   - versionはbootstrap時にlockfile / mise / toolchainへpinする
-  - 本文中のversionは2026-09-14時点の評価基準であり、実装時は同一major/minor内のsecurity/patch状況を再確認する
+  - 本文中の一般候補versionは2026-09-14時点の評価基準。Document Semantic Inspection v0の選定は2026-09-24 PoC evidenceを正本とする
 
 ---
 
@@ -598,69 +598,73 @@ Corpus:
 
 # 15. Extraction
 
-## 15.1 Office
+## 15.1 Document Semantic Inspection v0 — Office
 
-| Candidate | Status | License | Role |
+2026-09-24のPoC qualificationで、以下を **Document Semantic Inspection v0用途に限定してSELECTED** とする。
+
+| Candidate | Status | License | Qualified role |
 |---|---|---|---|
-| Office Oxide `office_oxide` 0.1.x | **POC REQUIRED** | MIT OR Apache-2.0 | DOCX/XLSX/PPTX + DOC/XLS/PPT unified extractor |
-| Calamine 0.36.x | **POC REQUIRED fallback** | MIT | XLS/XLSX/ODS spreadsheet fallback |
-| `zip` 8.x | **SELECTED** | MIT | archive traversal / ZIP source |
-| `quick-xml` 0.42.x | **DEFERRED fallback** | MIT | low-level OOXML fallback |
+| Office Oxide `office_oxide 0.1.11` | **SELECTED** | MIT OR Apache-2.0 | DOCX/PPTX typed semantic parser |
+| `rxls 0.1.3` | **SELECTED** | MIT | XLSX/XLSM typed workbook semantics |
+| Calamine `0.36.1` | **SELECTED** | MIT | spreadsheet differential oracle |
+| `ovba 0.7.1` | **SELECTED** | MIT | static VBA project/source extraction |
+| `tree-sitter 0.25.10` + vendored `tree-sitter-vba@c691f237...` | **SELECTED** | permissive / upstream grammar revision | strict VBA syntax/recovery gate |
+| `zip 8.6.0` deflate-only | **SELECTED** | MIT | bounded OOXML package traversal |
+| `quick-xml 0.42.0` | **SELECTED** | MIT | independent raw OOXML coverage/semantic oracle |
 
-Office Oxideは対応範囲が非常に魅力的だが0.1系で若いため、production採用前に実文書corpus PoCを必須とする。
+Selection scope is the frozen semantic-inspection contract. It does not assert that Office Oxide alone is a complete DOC/XLS/PPT legacy extractor.
 
-## Office corpus acceptance
+### Rejected Office/PPTX candidates
 
-最低限:
+| Candidate | Status | Reason |
+|---|---|---|
+| `stemma 0.5.0` | **REJECTED** | vulnerable Quick-XML line + legacy ZIP license conflict |
+| `docx-review-core 0.1.1` | **REJECTED** | vulnerable Quick-XML line |
+| `docxml 0.3.1` | **REJECTED** | ZIP codec graph outside project license allowlist |
+| direct `tree-sitter-vba` git crate at `c691f237...` | **REJECTED as package** | missing referenced Rust binding build file; exact generated parser revision is vendored instead |
+| `pptx 0.1.0` | **REJECTED** | Quick-XML 0.39.4 RustSec findings |
+| `powerpoint-ooxml 1.0.0` | **REJECTED** | required OPC/ZIP dependency graph violates license policy |
 
-- Japanese DOCX/XLSX/PPTX
-- legacy DOC/XLS/PPT
-- tables
-- headers/footers
-- sheets/slides
-- merged cells
-- hyperlinks
-- comments
-- nested Office in ZIP
-- malformed files
-- password/encrypted detection
-- large files
+## 15.2 Document Semantic Inspection v0 — TXT / CSV / HTML
 
-測定:
+| Candidate | Status | Qualified role |
+|---|---|---|
+| `encoding_rs 0.8.41` + `unicode-normalization` | **SELECTED** | strict TXT decoding/normalization |
+| `csv 1.4.0` | **SELECTED** | explicit-delimiter CSV semantics |
+| `html5ever 0.39.0` + `markup5ever_rcdom 0.39.0` | **SELECTED** | non-script HTML DOM semantics |
+| `scraper 0.27.0` | **REJECTED** | transitive MPL-2.0 path under current license policy |
 
-- text coverage
-- structural coverage
-- position/provenance preservation
-- panic/crash absence
-- memory peak
-- throughput
+## 15.3 Scope boundary
 
-Office Oxideが一部formatで不足する場合のみformat-specific fallbackをCompositionする。
+The semantic-inspection PoC does **not** close the separate Search Extraction or legacy DOC/XLS/PPT corpus PoCs. Those workloads keep their own acceptance criteria and may choose different extraction libraries.
 
 ---
 
-# 16. PDF
+# 16. PDF / Digital Signature Evidence
 
-| Candidate | Status | License | Role |
+## 16.1 Document Semantic Inspection v0 — PDF
+
+| Candidate | Status | License | Qualified role |
 |---|---|---|---|
-| `pdf-extract` 0.12.x | **POC REQUIRED** | MIT | text extraction candidate |
-| `lopdf` 0.45.x | **POC REQUIRED fallback** | MIT | low-level PDF parse/fallback |
-| OCR | **DEFERRED** | - | text layerがない文書のみ後続 |
+| `pdfium-render 0.9.4` + PDFium `151.0.7881.0` | **SELECTED** | MIT OR Apache-2.0 wrapper; native artifact separately verified | reader-visible PDF semantics |
+| `lopdf 0.45.0` | **SELECTED** | MIT | independent structural oracle |
+| `pdf-extract 0.12.x` | **POC REQUIRED** | MIT | Search Extraction candidate only; not selected by this DSI PoC |
+| OCR | **DEFERRED** | - | scan-only PDF is `RequiresOcr` in v0 |
 
-PDFは「ファイルが開ける」ではなく検索用text/provenanceが取れることを評価する。
+PDFium artifacts are pinned to release `chromium/7881` and SHA-256 verified per Linux/macOS platform. Required PDFium/lopdf disagreement fails closed; the adapter never selects a winner heuristically.
 
-PoC:
+## 16.2 Digital-signature evidence
 
-- Japanese embedded fonts
-- multi-column
-- tables
-- rotated text
-- scanned-only PDFs
-- malformed PDFs
-- very large PDFs
-- encrypted PDFs
+| Candidate | Status | Qualified role |
+|---|---|---|
+| `xml-sec 0.1.16` | **SELECTED** | XMLDSig core/reference verification |
+| `cms 0.2.3` | **SELECTED** | structured CMS parsing |
+| `x509-cert 0.2.5` | **SELECTED** | Rust X.509 model/cross-check |
+| `openssl 0.10.81` vendored | **SELECTED** | explicit X.509 chain verification and offline CRL validation |
+| `pkix-chain 0.1.1` | **REJECTED** | yanked |
+| `pkix-chain 0.4.1 + pkix-path 0.3.2` | **REJECTED** | `rsa 0.9.10` triggers RUSTSEC-2023-0071 |
 
-OCRを初期default pathにしない。
+Trust anchors/revocation material are caller-supplied and offline. No system trust or network CRL/OCSP/AIA retrieval is enabled.
 
 ---
 
@@ -868,11 +872,11 @@ Tantivy + Lindera辞書比較。
 
 ## P5 — Office extraction
 
-Office Oxide中心に6 format corpus。
+Search Extraction / legacy Office corpusとして継続。Document Semantic Inspection v0のDOCX/XLSX/XLSM/PPTX qualificationは2026-09-24に完了済みだが、このPoCとは評価目的が異なる。
 
 ## P6 — PDF extraction
 
-pdf-extract / lopdf corpus。
+Search Extraction向けpdf-extract等のcorpus評価として継続。Document Semantic Inspection v0のPDFium + lopdf dual-engine qualificationは完了済み。
 
 ## P7 — Observability/Audit adapters
 
@@ -939,6 +943,14 @@ Frontend
 ├─ Playwright
 └─ eslint-plugin-jsx-a11y
 
+Document Semantic Inspection v0
+├─ office_oxide 0.1.11 + raw OOXML oracle
+├─ rxls 0.1.3 + Calamine 0.36.1
+├─ ovba 0.7.1 + tree-sitter VBA syntax gate
+├─ PDFium 151.0.7881.0 + lopdf 0.45.0
+├─ html5ever 0.39.0 / csv 1.4.0 / encoding_rs 0.8.41
+└─ xml-sec 0.1.16 + cms 0.2.3 + OpenSSL 0.10.81
+
 Search / Storage
 ├─ Tantivy
 ├─ zip
@@ -976,6 +988,14 @@ Docspell
 
 Papra
   → AGPL-3.0
+
+Document Semantic Inspection rejected candidates
+  → scraper 0.27.0: MPL-2.0 transitive path
+  → stemma 0.5.0 / docx-review-core 0.1.1: vulnerable Quick-XML
+  → docxml 0.3.1 / powerpoint-ooxml 1.0.0: dependency license graph
+  → pptx 0.1.0: vulnerable Quick-XML
+  → pkix-chain 0.1.1: yanked
+  → pkix-chain 0.4.1 + pkix-path 0.3.2: RUSTSEC-2023-0071 path
 
 Native Windows dev
   → Architecture上非対応

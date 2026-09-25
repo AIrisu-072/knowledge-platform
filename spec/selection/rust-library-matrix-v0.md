@@ -1,4 +1,4 @@
-> **Status note (2026-09-14):** この文書は候補調査のスナップショットです。現在の採否判断は `library-tool-selection-v0.md` を正本とします。
+> **Status note (2026-09-24):** この文書は2026-09-14候補調査のスナップショットです。現在の採否判断は `library-tool-selection-v0.md` を正本とします。Document Semantic Inspection v0については末尾のPoC qualification updateを追加しています。
 
 # Rust Library Matrix v0
 
@@ -363,3 +363,28 @@ crates/
 - windows-rs: https://github.com/microsoft/windows-rs
 - tracing: https://github.com/tokio-rs/tracing
 - OpenTelemetry Rust: https://github.com/open-telemetry/opentelemetry-rust
+
+
+---
+
+# 10. Document Semantic Inspection v0 qualification update
+
+Qualification evidence: `docs/superpowers/execution/document-semantic-inspection-v0-poc-report.md`.
+
+| Area | Candidate / composition | Result | Scope |
+|---|---|---|---|
+| TXT | encoding_rs 0.8.41 + Unicode normalization | **Adopt for DSI v0** | strict text semantics |
+| CSV | csv 1.4.0 | **Adopt for DSI v0** | explicit-delimiter table semantics |
+| HTML | html5ever 0.39.0 + markup5ever_rcdom 0.39.0 | **Adopt for DSI v0** | script-free DOM semantics |
+| DOCX | office_oxide 0.1.11 + raw OOXML sentinel | **Adopt for DSI v0** | format-native semantics/editorial evidence |
+| XLSX/XLSM | rxls 0.1.3 + Calamine 0.36.1 + raw SpreadsheetML | **Adopt for DSI v0** | workbook semantics/differential oracle |
+| VBA | ovba 0.7.1 + tree-sitter 0.25.10 + vendored VBA grammar `c691f237...` | **Adopt for DSI v0** | static inspection only |
+| PPTX | office_oxide 0.1.11 + raw PresentationML oracle | **Adopt for DSI v0** | slide semantics/package coverage |
+| PDF | pdfium-render 0.9.4/PDFium 7881 + lopdf 0.45.0 | **Adopt for DSI v0** | dual-engine semantic/structural inspection |
+| Signatures | xml-sec 0.1.16 + cms 0.2.3 + x509-cert 0.2.5 + OpenSSL 0.10.81 | **Adopt for DSI v0** | explicit-trust/offline evidence |
+| scraper 0.27.0 | wrapper candidate | **Avoid for this project** | MPL-2.0 transitive path |
+| stemma/docx-review-core | DOCX candidates | **Avoid** | current RustSec findings |
+| pptx 0.1.0 | PPTX candidate | **Avoid** | current RustSec findings |
+| pkix-chain/path line | signature-chain candidate | **Avoid** | yanked/vulnerable dependency line |
+
+This update does not qualify legacy DOC/XLS/PPT, Search Extraction, OCR, or conversion/rendition generation. Those remain separate PoCs/workloads.

@@ -6,7 +6,7 @@
 
 **Architecture:** Build an isolated Rust PoC workspace under `experiments/document-semantic-inspection/`. Every adapter returns an opaque format-native semantic projection plus common evidence metadata; the harness hashes the projection and evaluates BASE / SEMANTIC / NOISE / EDITORIAL / HOSTILE fixture relations. Candidate libraries remain confined to the experiment workspace. The plan ends with a qualification report and selection update; production Document Semantic Inspection gets a separate implementation plan after actual PoC results are known.
 
-**Tech Stack:** Rust 1.98.1; isolated Cargo workspace; serde/serde_json; sha2; stemma 0.5.0; docx-review-core 0.1.1; rxls 0.1.3; calamine 0.36.1; ovba 0.7.1; tree-sitter 0.25 + MIT `tmepple/tree-sitter-vba` pinned at `c691f237b2a703732d4b6a1f01d5b4f73f94d41e`; pptx 0.1.0; powerpoint-ooxml 1.0.0; pdfium-render 0.9.4; lopdf 0.45.0; xml-sec 0.1.16; cms 0.2.3; x509-cert 0.2.5; pkix-path 0.3.2; pkix-chain 0.1.1; pkix-revocation 0.3.3; scraper 0.27.0 (html5ever 0.39 parser); csv 1.4.0; encoding_rs 0.8.41.
+**Tech Stack:** Rust 1.98.1; isolated Cargo workspace; serde/serde_json; sha2; office_oxide 0.1.11 + strict raw OOXML sentinels for DOCX/PPTX; rxls 0.1.3; calamine 0.36.1; ovba 0.7.1; tree-sitter 0.25 + MIT `tmepple/tree-sitter-vba` pinned at `c691f237b2a703732d4b6a1f01d5b4f73f94d41e`; pdfium-render 0.9.4; lopdf 0.45.0; xml-sec 0.1.16; cms 0.2.3; x509-cert 0.2.5; openssl 0.10.81 (vendored); scraper 0.27.0 (html5ever 0.39 parser); csv 1.4.0; encoding_rs 0.8.41.
 
 **Spec:** `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
 
@@ -160,7 +160,7 @@ Generated report scratch files stay under `target/` and are not committed. Do no
   }
   ```
 
-- [ ] **Step 1: Write failing harness contract tests**
+- [x] **Step 1: Write failing harness contract tests**
 
 Add tests that reject duplicate case IDs, missing BASE references, undeclared fixture classes, raw SHA mismatch, raw size mismatch, and format mismatch before an adapter result is accepted.
 
@@ -182,7 +182,7 @@ fn unknown_fixture_class_is_rejected() {
 }
 ```
 
-- [ ] **Step 2: Run the new test to prove RED**
+- [x] **Step 2: Run the new test to prove RED**
 
 Run:
 
@@ -192,7 +192,7 @@ cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml -
 
 Expected: FAIL because the isolated workspace/harness does not exist.
 
-- [ ] **Step 3: Create the isolated Cargo workspace**
+- [x] **Step 3: Create the isolated Cargo workspace**
 
 Use an independent workspace so root production Cargo metadata does not absorb PoC dependencies:
 
@@ -220,7 +220,7 @@ tempfile = "3"
 
 Generate and commit this experiment's own `Cargo.lock`.
 
-- [ ] **Step 4: Implement the common model without a common content IR**
+- [x] **Step 4: Implement the common model without a common content IR**
 
 Use common metadata only; keep `semantic_projection` opaque bytes owned by each adapter.
 
@@ -244,13 +244,13 @@ pub fn fingerprint(projection: &[u8]) -> [u8; 32] {
 
 All map-like canonical data used inside an adapter must use sorted structures (`BTreeMap`/`BTreeSet`) or explicit sorting before serialization.
 
-- [ ] **Step 5: Add manifest validation and report output**
+- [x] **Step 5: Add manifest validation and report output**
 
 `dsi-poc verify` reads the manifest, executes cases, checks relation expectations, and writes a JSON + Markdown report under `target/dsi-poc/`.
 
 Exit non-zero on any failed required case.
 
-- [ ] **Step 6: Add root mise tasks**
+- [x] **Step 6: Add root mise tasks**
 
 Add exactly these entrypoints:
 
@@ -270,7 +270,7 @@ depends = ["poc:dsi:test", "poc:dsi:run", "poc:dsi:deny"]
 
 The experiment `deny.toml` mirrors the repository permissive-license allowlist.
 
-- [ ] **Step 7: Add path-scoped hosted CI**
+- [x] **Step 7: Add path-scoped hosted CI**
 
 Create `.github/workflows/dsi-poc.yml` with:
 
@@ -282,7 +282,7 @@ Create `.github/workflows/dsi-poc.yml` with:
 
 Do not add this PoC workflow to the production `required-check` fan-in; merge gating for this capability will explicitly inspect both standard CI and DSI PoC CI.
 
-- [ ] **Step 8: Verify GREEN**
+- [x] **Step 8: Verify GREEN**
 
 Run:
 
@@ -294,7 +294,7 @@ mise run ci:lint
 
 Expected: PASS with only harness fixtures.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add experiments/document-semantic-inspection mise.toml .github/workflows/dsi-poc.yml
@@ -318,7 +318,7 @@ git commit -m "test: add semantic inspection poc harness"
 - Consumes: `InspectionAdapter`.
 - Produces: `TextAdapter`, `CsvAdapter`, `HtmlAdapter`.
 
-- [ ] **Step 1: Add exact PoC dependencies**
+- [x] **Step 1: Add exact PoC dependencies**
 
 ```toml
 encoding_rs = "=0.8.41"
@@ -330,7 +330,9 @@ url = "2"
 
 Update the isolated lockfile.
 
-- [ ] **Step 2: Write RED fixtures/tests**
+> **Qualification result (2026-09-21):** the planned `scraper = 0.27.0` wrapper was exercised but rejected by the permissive-license gate because its transitive `cssparser` / `selectors` path includes MPL-2.0. The HTML implementation therefore uses the frozen Design's underlying `html5ever` candidate directly as `html5ever = "=0.39.0"` plus `markup5ever_rcdom = "=0.39.0"`. The same HTML fixtures and semantic contract remained unchanged.
+
+- [x] **Step 2: Write RED fixtures/tests**
 
 TXT:
 - UTF-8 LF baseline;
@@ -358,7 +360,7 @@ assert_different("html/base", "html/link-target-change");
 assert_error("html/js-only-content", ErrorCode::UnsupportedSemanticConstruct);
 ```
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```bash
 cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml --test text_formats
@@ -366,7 +368,7 @@ cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml -
 
 Expected: FAIL because adapters are absent.
 
-- [ ] **Step 4: Implement strict text/CSV/HTML projections**
+- [x] **Step 4: Implement strict text/CSV/HTML projections**
 
 TXT projection: deterministic UTF-8 after allowed encoding decode, Unicode normalization, and line-ending normalization.
 
@@ -374,7 +376,7 @@ CSV projection: deterministic row/column JSON array; configure `csv::ReaderBuild
 
 HTML projection: parse without script execution; emit only version-significant DOM semantics in document order. Normalize URI strings; ignore pure CSS/style attributes. Reject when the fixture marks content as script-dependent.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml --test text_formats
@@ -398,20 +400,31 @@ git commit -m "test: qualify text csv and html semantic inspection"
 
 **Interfaces:**
 - Produces: `DocxAdapter`.
-- Primary parser candidate: `stemma = "=0.5.0"`.
-- Differential/editorial oracle: `docx-review-core = "=0.1.1"`.
-- Raw package coverage sentinel: `zip = "8"` + `quick-xml = "0.42"`.
+- Typed semantic candidate: `office_oxide = "=0.1.11"`.
+- Independent editorial/package oracle: project-owned strict raw OOXML inspection.
+- Raw package coverage sentinel:
+  ```toml
+  zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
+  quick-xml = "=0.42.0"
+  ```
 
-- [ ] **Step 1: Add dependencies**
+> **Task 3 candidate-selection Ruling (2026-09-21):**
+> - `stemma 0.5.0` and `docx-review-core 0.1.1` are **REJECTED**. Their transitive Quick-XML lines are affected by current RustSec DoS advisories; `stemma` also carries an incompatible license path through its legacy ZIP graph. Advisory/license exceptions are not permitted by the frozen security/dependency gates.
+> - `docxml 0.3.1` is **REJECTED** under the existing license allowlist because its default `zip 7.2` codec graph introduces unapproved `bzip2-1.0.6` and `CC0-1.0 OR MIT-0` license expressions.
+> - `office_oxide 0.1.11` plus a project-owned strict OOXML sentinel is the Task 3 PoC candidate. Dependency preflight passed unchanged security/license gates in DSI PoC run `35545142423`.
+> - The frozen DOCX semantic contract is unchanged. This ruling changes only the candidate implementation/oracle composition. Cost if wrong: Task 3 fails its semantic fixtures and remains unqualified; production promotion remains prohibited.
+
+- [x] **Step 1: Add dependencies and pass dependency preflight**
 
 ```toml
-stemma = "=0.5.0"
-docx-review-core = "=0.1.1"
-zip = "8"
-quick-xml = "0.42"
+office_oxide = "=0.1.11"
+zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
+quick-xml = "=0.42.0"
 ```
 
-- [ ] **Step 2: Build independent minimal OOXML fixture generation**
+Pin the isolated `Cargo.lock`; do not regenerate it in hosted CI.
+
+- [x] **Step 2: Build independent minimal OOXML fixture generation**
 
 `tests/support/ooxml.rs` must construct package parts directly with `zip` and literal OOXML, not by serializing through `stemma`.
 
@@ -437,7 +450,7 @@ Fixtures include:
 - unknown relationship/content type;
 - malformed/deep OOXML.
 
-- [ ] **Step 3: Write RED tests**
+- [x] **Step 3: Write RED tests**
 
 ```rust
 assert_same("docx/base", "docx/metadata-noise");
@@ -451,17 +464,19 @@ assert_eq!(projected_text("docx/tracked-replacement"), "new text");
 assert_error("docx/unknown-semantic-part", ErrorCode::UnsupportedSemanticConstruct);
 ```
 
-Also compare tracked-change/comment counts against `docx-review-core`; disagreement on a required editorial construct fails the PoC case.
+Also compare the typed parser's proposed-final view and shared structural facts against independent raw-OOXML golden expectations. Track-change/comment counts and resolved state come from the project-owned raw OOXML oracle; any disagreement on a shared required fact fails the PoC case.
 
-- [ ] **Step 4: Run RED**
+- [x] **Step 4: Run RED**
 
 ```bash
 cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml --test docx
 ```
 
-- [ ] **Step 5: Implement DOCX adapter and coverage sentinel**
+Hosted RED evidence: commit `21fea55cffebcb53dac5886ffedcbb923bc19cd5`, DSI PoC run `35546037242` failed exactly because `DocxAdapter` was not yet implemented.
 
-The adapter may use stemma's typed model internally, but serializes an adapter-owned semantic projection containing only frozen version-significant semantics. The raw OOXML sentinel enumerates package content types and relationships before semantic success.
+- [x] **Step 5: Implement DOCX adapter and coverage sentinel**
+
+The adapter uses `office_oxide` as the typed DOCX semantic candidate and serializes an adapter-owned semantic projection containing only frozen version-significant semantics. A separate project-owned raw OOXML sentinel/oracle enumerates package content types, relationships, revision/comment evidence, and hostile-container conditions before semantic success.
 
 Rules:
 - known non-semantic metadata parts may be ignored explicitly;
@@ -469,11 +484,11 @@ Rules:
 - unknown constructs that may affect reader-visible/version-significant semantics return `UnsupportedSemanticConstruct`;
 - parser-generated IDs never enter projection bytes.
 
-- [ ] **Step 6: Determinism repetition**
+- [x] **Step 6: Determinism repetition**
 
 Run each DOCX case 20 times in one process and in 5 fresh process invocations; all successful semantic/evidence JSON must match byte-for-byte after report normalization.
 
-- [ ] **Step 7: Verify and commit**
+- [x] **Step 7: Verify and commit**
 
 ```bash
 cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml --test docx
@@ -481,6 +496,8 @@ mise run poc:dsi:verify
 git add experiments/document-semantic-inspection
 git commit -m "test: qualify docx semantic inspection"
 ```
+
+Hosted qualification evidence: exact head `b4dae3c89fa84ce50deada7f268aa5b04830da5d`, DSI PoC run `35551781760` — **SUCCESS**. DOCX contract tests 13/13 PASS; complete PoC manifest 38 cases PASS; cargo-deny advisories/bans/licenses/sources all PASS. Standard CI at the same head also succeeded.
 
 ---
 
@@ -504,11 +521,13 @@ git commit -m "test: qualify docx semantic inspection"
   tree-sitter-vba = { git = "https://github.com/tmepple/tree-sitter-vba", rev = "c691f237b2a703732d4b6a1f01d5b4f73f94d41e" }
   ```
 
-- [ ] **Step 1: Add spreadsheet/VBA dependencies and lock them**
+- [x] **Step 1: Add spreadsheet/VBA dependencies and lock them**
 
 Update `Cargo.lock` and confirm `cargo deny` accepts every direct/transitive license/source.
 
-- [ ] **Step 2: Build XLSX fixtures independently of rxls**
+> **Task 4 VBA grammar packaging Ruling (2026-09-21):** the exact planned `tmepple/tree-sitter-vba@c691f237...` grammar revision is retained, but its upstream Cargo package is not buildable because `Cargo.toml` references a missing `bindings/rust/build.rs`. The generated `src/parser.c` and `src/tree_sitter/parser.h` from that exact commit are therefore vendored under the PoC workspace and compiled by the experiment's `build.rs`; no grammar source or revision is changed. The temporary git-source exception was removed. Dependency preflight DSI run `35606038480` passed tests, manifest verification, advisories, bans, licenses, and sources. Cost if wrong: strict VBA parse tests fail and XLSM remains unqualified; production promotion remains prohibited.
+
+- [x] **Step 2: Build XLSX fixtures independently of rxls**
 
 Use raw SpreadsheetML ZIP/XML helpers for:
 - value/type changes;
@@ -524,7 +543,7 @@ Use raw SpreadsheetML ZIP/XML helpers for:
 - cached result/XML ordering/style-only noise;
 - unknown OOXML relationship/content type.
 
-- [ ] **Step 3: Add a licensed synthetic XLSM seed with provenance**
+- [x] **Step 3: Add a licensed synthetic XLSM seed with provenance**
 
 Import Calamine's synthetic `tests/vba.xlsm` from upstream commit `0af05f4f6030351e3b8a999ea0810c8618368776` solely as a PoC seed. Record source path, upstream commit, MIT license, local SHA-256, and the fact that it is third-party test data in `provenance/third-party-fixtures.md`.
 
@@ -532,7 +551,7 @@ Do not use production/customer XLSM.
 
 Derive local semantic/noise variants from the seed by changing workbook XML independently of the VBA binary. For VBA source-change/noise fixtures, use `ovba` to extract modules and a dedicated fixture builder that replaces the VBA module source stream while preserving the rest of the synthetic project; if replacement cannot be implemented without corrupting MS-OVBA, mark the candidate **not qualified** rather than skipping VBA cases.
 
-- [ ] **Step 4: Write RED XLSX/XLSM tests**
+- [x] **Step 4: Write RED XLSX/XLSM tests**
 
 ```rust
 assert_different("xlsx/base", "xlsx/formula-source-change-same-cache");
@@ -547,7 +566,11 @@ assert_error("xlsm/vba-invalid-syntax", ErrorCode::SemanticExtractionFailed);
 
 For all required cell/formula/sheet/name/link fields, compare rxls against Calamine/golden expectations. Parser disagreement does not use majority vote; the case fails pending analysis.
 
-- [ ] **Step 5: Implement spreadsheet projection**
+Hosted RED evidence: commit `fe1abea83d2669c1a847203cdcfe84926acbdb4f`, DSI PoC run `35607642860` — **FAIL as expected** on unresolved imports `SpreadsheetAdapter` / `VbaAdapter`. Fixture/manifest parsing and dependency compilation introduced no earlier blocking failure.
+
+> **Adapter format Ruling:** one adapter implementation needs distinct XLSX and XLSM trait instances because `InspectionAdapter::format()` returns a single `FormatId`. Use associated constants `SpreadsheetAdapter::XLSX` and `SpreadsheetAdapter::XLSM` over one implementation type. Cost if wrong: only adapter registration/API shape changes; semantic contract is unaffected.
+
+- [x] **Step 5: Implement spreadsheet projection**
 
 The projection must include sorted:
 - sheet identity/order/visibility;
@@ -560,7 +583,7 @@ The projection must include sorted:
 
 Style-only/cached-result-only fields remain outside semantic bytes.
 
-- [ ] **Step 6: Implement strict VBA gate**
+- [x] **Step 6: Implement strict VBA gate**
 
 `ovba` extracts every module and reference. Tree-sitter parses each source module.
 
@@ -584,7 +607,7 @@ Canonicalization:
 
 If the Tree-sitter candidate cannot parse required synthetic/realistic VBA without recovery nodes, record FAIL and do not silently replace it with a hand-written permissive tokenizer.
 
-- [ ] **Step 7: Verify and commit**
+- [x] **Step 7: Verify and commit**
 
 ```bash
 cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml --test spreadsheet
@@ -592,6 +615,10 @@ mise run poc:dsi:verify
 git add experiments/document-semantic-inspection
 git commit -m "test: qualify xlsx xlsm and vba inspection"
 ```
+
+Hosted qualification evidence: exact qualified code head `cefd042776b64cd80b0a009989eafd48ef5e256d`; DSI PoC run `35818792833` — **SUCCESS**; standard CI run `35818792843` — **SUCCESS**. Spreadsheet/VBA tests 8/8 PASS; complete PoC manifest 59 cases PASS; cargo-deny advisories/bans/licenses/sources PASS.
+
+Qualification coverage includes sheet add/remove/order and visibility, typed cells, formula source independent of cached result, defined names, merged cells, tables, hyperlinks, chart/image evidence, external-workbook and ODBC definitions without dereference, unknown OOXML fail-closed behavior, real XLSM VBA source mutation, and strict Tree-sitter recovery rejection. The rxls/Calamine differential oracle compares common facts by position: sheet identity/type/visibility, non-formula values, formula source, defined names, and hyperlinks.
 
 ---
 
@@ -605,15 +632,22 @@ git commit -m "test: qualify xlsx xlsm and vba inspection"
 - Modify: `fixtures/manifest.json`
 
 **Interfaces:**
-- Primary candidate: `pptx = "=0.1.0"`.
-- Differential structural candidate: `powerpoint-ooxml = "=1.0.0"`.
-- Uses the raw OOXML package coverage helper from Task 3.
+- Typed semantic candidate: existing `office_oxide = "=0.1.11"` PPTX reader.
+- Independent structural/semantic oracle: project-owned raw PresentationML inspection.
+- Uses the raw OOXML package coverage principles from Task 3.
 
-- [ ] **Step 1: Add pinned candidates**
+> **Task 5 candidate-selection Ruling (2026-09-23):**
+> - Planned `pptx 0.1.0` is **REJECTED**: it resolves `quick-xml 0.39.4`, which is affected by RUSTSEC-2026-0194 and RUSTSEC-2026-0195. Security exceptions are prohibited.
+> - Planned `powerpoint-ooxml 1.0.0` is **REJECTED** under the existing dependency-license policy: its mandatory `opc-ooxml 1.0.0` dependency enables `zip ^8` default features, which pull unapproved `bzip2-1.0.6` and `CC0-1.0 OR MIT-0` codec-license expressions. The downstream PoC cannot disable those transitive defaults.
+> - Failed planned-candidate preflight: DSI run `35819356362`; semantic tests themselves remained green and the failure was the deny gate.
+> - Replacement: reuse already-qualified `office_oxide 0.1.11` PPTX parsing plus an independent project-owned raw PresentationML oracle/sentinel. The frozen PPTX semantic contract is unchanged.
+> - Replacement locked baseline: DSI run `35819760081` — **SUCCESS** with the existing 59-case suite and deny gate.
 
-Update lockfile and deny gate.
+- [x] **Step 1: Preflight candidates and freeze replacement ruling**
 
-- [ ] **Step 2: Generate raw PresentationML fixtures**
+No new Task 5 runtime dependency is added. Keep the existing isolated lockfile unchanged and hosted CI strictly `--locked`.
+
+- [x] **Step 2: Generate raw PresentationML fixtures**
 
 Direct OOXML fixtures cover:
 - slide add/remove/order;
@@ -629,7 +663,7 @@ Direct OOXML fixtures cover:
 - internal IDs/XML ordering noise;
 - unknown package part/relationship.
 
-- [ ] **Step 3: RED tests**
+- [x] **Step 3: RED tests**
 
 ```rust
 assert_different("pptx/base", "pptx/slide-order-change");
@@ -638,13 +672,15 @@ assert_same("pptx/base", "pptx/theme-only");
 assert_error("pptx/unknown-semantic-part", ErrorCode::UnsupportedSemanticConstruct);
 ```
 
-For semantics both candidates expose, require agreement with golden expectations.
+For semantics `office_oxide` exposes, require agreement with independent raw-OOXML golden expectations. Constructs not represented by the typed candidate (for example required chart/SmartArt structure) remain owned by the raw PresentationML oracle and must still pass the frozen semantic fixtures.
 
-- [ ] **Step 4: Implement projection + coverage sentinel**
+Hosted RED evidence: commit `e0c0011b92e95ce81cb95da0a4cb9edcf294c7b0`, DSI PoC run `35823478842` — **FAIL as expected** on unresolved import `PptxAdapter`; the fixture corpus and manifest reached compilation without an earlier binding failure.
+
+- [x] **Step 4: Implement projection + coverage sentinel**
 
 No unknown relationship/content type that can carry presentation meaning may be ignored. Internal shape IDs and theme-only formatting are excluded.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml --test pptx
@@ -653,9 +689,13 @@ git add experiments/document-semantic-inspection
 git commit -m "test: qualify pptx semantic inspection"
 ```
 
+Hosted qualification evidence: exact code head `eb09b72ac64a35c2ef503df38570a1d34d38a7b0`, DSI PoC run `35824677799` — **SUCCESS**, standard CI run `35824677794` — **SUCCESS**. PPTX tests 7/7 PASS; the full manifest is 78 cases PASS; advisories/bans/licenses/sources all PASS. The corpus contains 19 PPTX cases, including text-only semantic change and comment-only editorial separation in addition to slide/table/chart/SmartArt/image/link/note/group and noise/fail-closed cases.
+
 ---
 
 ### Task 6: PDF dual-engine qualification with pinned PDFium
+
+> **Task 6 plan-consistency Ruling (2026-09-23):** the two Step/Interface references to `chromium/8057` were stale internal-plan text. The frozen Global Constraints already pin `chromium/7881` / PDFium `151.0.7881.0` with exact platform hashes, and `pdfium-render 0.9.4` exposes `pdfium_7881` as its latest supported release API. Task 6 therefore uses `chromium/7881` everywhere. This is an internal plan consistency repair, not a Design amendment.
 
 **Files:**
 - Modify: experiment `Cargo.toml`
@@ -670,17 +710,17 @@ git commit -m "test: qualify pptx semantic inspection"
 **Interfaces:**
 - Semantic engine: `pdfium-render = "=0.9.4"`.
 - Structural engine: `lopdf = { version = "=0.45.0", default-features = false }`.
-- PDFium native build: chromium/8057 with hashes from Global Constraints.
+- PDFium native build: chromium/7881 with hashes from Global Constraints.
 
-- [ ] **Step 1: Add pinned Rust dependencies**
+- [x] **Step 1: Add pinned Rust dependencies**
 
 Disable unnecessary lopdf defaults. Configure pdfium-render only with features required for dynamic binding and current Pdfium API compatibility.
 
-- [ ] **Step 2: Implement deterministic PDFium installer**
+- [x] **Step 2: Implement deterministic PDFium installer**
 
 `scripts/install-pdfium.sh`:
 - detects Linux x64 or macOS x64/arm64;
-- downloads only release `chromium/8057`;
+- downloads only release `chromium/7881`;
 - verifies the exact SHA-256 listed in Global Constraints;
 - extracts under `target/dsi-poc/pdfium/7881/<platform>/`;
 - prints the library directory for `PDFIUM_DYNAMIC_LIB_PATH`;
@@ -688,7 +728,7 @@ Disable unnecessary lopdf defaults. Configure pdfium-render only with features r
 
 No native binary is committed.
 
-- [ ] **Step 3: Generate independent minimal PDF fixtures**
+- [x] **Step 3: Generate independent minimal PDF fixtures**
 
 `pdf_fixture.rs` builds small deterministic PDFs directly from PDF syntax for:
 - visible text;
@@ -703,7 +743,7 @@ No native binary is committed.
 
 Also include equivalent semantic PDFs with different object numbers/producer metadata to test noise invariance.
 
-- [ ] **Step 4: RED tests**
+- [x] **Step 4: RED tests**
 
 ```rust
 assert_same("pdf/base", "pdf/object-id-producer-noise");
@@ -714,7 +754,7 @@ assert_error("pdf/broken-xref", ErrorCode::SemanticExtractionFailed);
 
 Add a constructed fixture where lopdf sees a required object/annotation/link not represented by the PDFium semantic result; expected result is `ParserDisagreement`.
 
-- [ ] **Step 5: Implement dual-engine PDF adapter**
+- [x] **Step 5: Implement dual-engine PDF adapter**
 
 Rules:
 - both engines must open the document;
@@ -724,11 +764,11 @@ Rules:
 - PDFium build/version/hash is emitted in extractor provenance;
 - disagreement is never resolved by “trust PDFium” or “trust lopdf”.
 
-- [ ] **Step 6: Extend Linux/macOS PoC workflow**
+- [x] **Step 6: Extend Linux/macOS PoC workflow**
 
 Install pinned PDFium before `mise run poc:dsi:verify`. Add a macOS PoC job using the same installer. Do not allow “PDF tests skipped because library missing”.
 
-- [ ] **Step 7: Verify and commit**
+- [x] **Step 7: Verify and commit**
 
 ```bash
 PDFIUM_DYNAMIC_LIB_PATH="$(experiments/document-semantic-inspection/scripts/install-pdfium.sh)"   cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml --test pdf
@@ -736,6 +776,8 @@ mise run poc:dsi:verify
 git add experiments/document-semantic-inspection .github/workflows/dsi-poc.yml
 git commit -m "test: qualify pdf semantic inspection"
 ```
+
+Hosted qualification evidence: exact Task 6 head `7f2dcbfa186d11d66e633fefb2c0bfc629fb7f6a`; DSI PoC run `35880533515` — **SUCCESS** across Ubuntu 24.04, macOS 15 Intel, and macOS 15 arm64; standard CI run `35880533521` — **SUCCESS**. PDF tests 7/7 PASS on all three hosted targets; complete manifest 91 cases PASS; advisories/bans/licenses/sources PASS. PDFium `chromium/7881` artifacts were SHA-256 verified against the frozen hashes before use. Coverage includes semantic text/page/link/form/image changes, scan-only `RequiresOcr`, encrypted/broken fail-closed handling, explicit dual-engine disagreement, ambiguous text-order rejection, and annotation/editorial separation.
 
 ---
 
@@ -752,13 +794,29 @@ git commit -m "test: qualify pdf semantic inspection"
 - XMLDSig: `xml-sec = "=0.1.16"`.
 - CMS: `cms = { version = "=0.2.3", features = ["std", "sha2", "signature"] }`.
 - X.509 model: `x509-cert = "=0.2.5"` for compatibility with cms/pkix line.
-- Path/revocation: `pkix-path = "=0.3.2"`, `pkix-chain = "=0.1.1"`, `pkix-revocation = { version = "=0.3.3", features = ["crl", "ocsp"] }`.
+- CMS certificate-chain and offline CRL verification: `openssl = { version = "=0.10.81", features = ["vendored"] }`. `cms 0.2.3` remains the Rust structural parser and `x509-cert 0.2.5` remains the Rust certificate model.
 
-- [ ] **Step 1: Add exact crypto dependencies and verify license/source gate**
+> **Task 7 pkix-chain candidate Ruling (2026-09-24):**
+> - Planned `pkix-chain = "=0.1.1"` is **REJECTED** because crates.io has yanked that release; a fresh isolated lock cannot resolve it.
+> - Upstream `MarkAtwood/crate-pkix` currently declares `pkix-chain 0.4.1` with `pkix-path 0.3.2`, `pkix-revocation 0.3.3`, and `x509-cert 0.2`, matching the rest of this Task 7 dependency line.
+> - Replacement candidate: `pkix-chain = { version = "=0.4.1", features = ["crl", "ocsp"] }`.
+> - The frozen signature/revocation semantics are unchanged: CRL/OCSP remain caller-supplied offline evidence and no network revocation fetching is enabled.
+> - Failed initial preflight: DSI run `35936215206`, lock generation rejected the yanked 0.1.1 before compilation.
+
+> **Task 7 PKIX security Ruling (2026-09-24):**
+> - `pkix-chain 0.1.1` was first **REJECTED** because the crates.io release is yanked.
+> - Replacement `pkix-chain 0.4.1` resolves and compiles, but the required `pkix-path 0.3.2` default verification backend pulls `rsa 0.9.10`, which cargo-deny rejects under **RUSTSEC-2023-0071 (Marvin Attack)**. The advisory currently has no patched RustCrypto RSA release.
+> - DSI preflight `35936602764`: existing semantic suite reached verification, but the advisory gate failed on `rsa 0.9.10 <- pkix-path 0.3.2`.
+> - Security exceptions are prohibited, so `pkix-path / pkix-chain / pkix-revocation` are **REJECTED for this PoC** rather than allowlisted.
+> - Replacement verification substrate: `openssl 0.10.81` with vendored OpenSSL, used only for CMS cryptographic verification, X.509 path validation, and caller-supplied offline CRL validation. `cms 0.2.3` remains the structured CMS parser; `xml-sec 0.1.16` remains XMLDSig.
+> - No default/system trust paths and no network retrieval are permitted. Trust anchors, intermediates, CRLs, and signed bytes come only from fixture/input evidence.
+> - Frozen signature semantics are unchanged. Cost if wrong: Task 7 remains unqualified; no production promotion.
+
+- [x] **Step 1: Add exact crypto dependencies and verify license/source gate**
 
 No network revocation fetch is enabled; CRL/OCSP evidence is supplied as fixture bytes.
 
-- [ ] **Step 2: Generate known-good and known-bad signature fixtures**
+- [x] **Step 2: Generate known-good and known-bad signature fixtures**
 
 Required vectors:
 - valid;
@@ -775,7 +833,7 @@ For XMLDSig, use project-owned synthetic XML/OOXML signature fixtures and cross-
 
 For PDF/CMS, build a small synthetic detached CMS signature over the PDF ByteRange bytes using test-only keys/certs generated and committed only as non-secret deterministic fixtures. Never commit a live private key; test keys are clearly marked `TEST ONLY`.
 
-- [ ] **Step 3: RED tests**
+- [x] **Step 3: RED tests**
 
 ```rust
 assert_eq!(signature_state("sig/valid"), SignatureValidity::Valid);
@@ -786,7 +844,7 @@ assert_eq!(signature_state("sig/unknown-issuer"), SignatureValidity::Unverifiabl
 
 Inspection success with invalid/unverifiable signatures is permitted at this PoC layer; evidence must preserve the state so Publish can fail later.
 
-- [ ] **Step 4: Implement format-specific wrappers**
+- [x] **Step 4: Implement format-specific wrappers**
 
 Do not expose xml-sec/CMS types to the common harness. Emit only `SignatureEvidence`.
 
@@ -797,7 +855,7 @@ PDF wrapper must validate:
 - chain policy;
 - supplied offline CRL/OCSP where the fixture requires it.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 cargo test --manifest-path experiments/document-semantic-inspection/Cargo.toml --test signatures
@@ -805,6 +863,8 @@ mise run poc:dsi:verify
 git add experiments/document-semantic-inspection
 git commit -m "test: qualify document signature evidence"
 ```
+
+Hosted Task 7 qualification evidence: exact head `83dacc87cbfa02e85fee765d46ddcdcf63e5e6cc`; DSI PoC run `35947786029` Linux qualification — **SUCCESS**. Signature tests **7/7 PASS**; complete manifest **91 cases PASS**; advisories/bans/licenses/sources **PASS**. Coverage includes detached CMS valid/tampered/invalid-digest/expired/revoked/unknown-issuer/broken-chain/unsupported-algorithm/malformed vectors, XMLDSig equivalents, exact PDF ByteRange CMS validation, and OPC digital-signature relationship wrappers exercised against DOCX/XLSX/PPTX packages. The PDF ByteRange fixture is generated only after final ByteRange values are frozen, with a clearly marked TEST ONLY deterministic key; no live credential is committed. Full Linux/macOS cross-host qualification remains Task 8 Step 5.
 
 ---
 
@@ -822,7 +882,7 @@ git commit -m "test: qualify document signature evidence"
 - Consumes all adapters from Tasks 2–7.
 - Produces promotion-gate evidence per format.
 
-- [ ] **Step 1: RED cross-format capability tests**
+- [x] **Step 1: RED cross-format capability tests**
 
 Model capability preservation explicitly:
 
@@ -839,7 +899,7 @@ assert_eq!(decision, AuthorityMigrationDecision::Denied {
 
 DOCX->PDF may only be eligible if every source version-significant capability in that specific fixture is representable and verified; no format-pair blanket allowlist.
 
-- [ ] **Step 2: RED host-nondeterminism tests**
+- [x] **Step 2: RED host-nondeterminism tests**
 
 For each successful case:
 - 20 in-process runs;
@@ -848,7 +908,7 @@ For each successful case:
 
 Normalize only `inspected_at`/runtime diagnostics out of comparison. Fingerprint/capability/editorial/dependency/signature evidence must remain identical.
 
-- [ ] **Step 3: RED hostile/resource tests**
+- [x] **Step 3: RED hostile/resource tests**
 
 Run malformed/truncated/deep/oversized fixtures through a child-process harness with hard timeout. Assert:
 - non-zero controlled error rather than panic escape;
@@ -858,7 +918,7 @@ Run malformed/truncated/deep/oversized fixtures through a child-process harness 
 
 The PoC may use OS process limits available on Linux/macOS; record exact command/limit evidence in the report.
 
-- [ ] **Step 4: Implement promotion-gate aggregation**
+- [x] **Step 4: Implement promotion-gate aggregation**
 
 For every required format compute:
 
@@ -874,7 +934,7 @@ license/dependency  pass/fail
 
 `promotion_eligible=true` only when every required count is complete and 100%.
 
-- [ ] **Step 5: Run full Linux/macOS evidence**
+- [x] **Step 5: Run full Linux/macOS evidence**
 
 ```bash
 mise run poc:dsi:verify
@@ -883,12 +943,14 @@ mise run verify
 
 Hosted `dsi-poc.yml` must succeed on Ubuntu and macOS for the exact qualification head.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add experiments/document-semantic-inspection .github/workflows/dsi-poc.yml
 git commit -m "test: enforce semantic inspection qualification gates"
 ```
+
+> **Task 8 Ubuntu qualification evidence:** exact code head `4232facae820e5914d4c9e4ed2433f58396bc2c5`; DSI PoC run `35952274108` Ubuntu job — **SUCCESS**; standard CI run `35952274070` — **SUCCESS**. Cross-format tests 4/4 PASS; determinism/security tests 5/5 PASS; manifest 91 cases PASS; advisories/bans/licenses/sources PASS. Final machine report: `overall=PASS`, all eight required formats `PASS`, every per-format `promotion_eligible=true`. Determinism is 20x in-process over every successful fixture plus 5 fresh child-process snapshots across TZ/LANG variants. Hostile/resource evidence runs malformed/deep/oversized/VBA-invalid inputs through the sandbox wrapper with CPU/file/VM limits, timeout termination, no partial output, and body-leakage checks. PR #8 was then moved out of Draft so this Task's final macOS Intel/arm64 gate can run on the completion head.
 
 ---
 
@@ -905,7 +967,7 @@ git commit -m "test: enforce semantic inspection qualification gates"
 - Consumes exact PoC JSON/Markdown results and exact CI run IDs.
 - Produces authoritative library qualification decisions and the next planning gate.
 
-- [ ] **Step 1: Generate and inspect the final machine report**
+- [x] **Step 1: Generate and inspect the final machine report**
 
 Run:
 
@@ -916,7 +978,7 @@ cargo run --locked   --manifest-path experiments/document-semantic-inspection/Ca
 
 Every format must have an explicit outcome: `PASS`, `FAIL`, or `BLOCKED`. There is no implicit success.
 
-- [ ] **Step 2: Write the human qualification report**
+- [x] **Step 2: Write the human qualification report**
 
 Record:
 - exact repository head;
@@ -933,7 +995,7 @@ Record:
 
 No raw customer content is included.
 
-- [ ] **Step 3: Update selection documents from evidence only**
+- [x] **Step 3: Update selection documents from evidence only**
 
 For each candidate:
 - change to `SELECTED` only if the frozen promotion gate passes;
@@ -942,7 +1004,7 @@ For each candidate:
 
 If a required v0 format fails qualification, **do not weaken the Design**. Status becomes blocked pending supplemental adapter/library or explicit Design amendment.
 
-- [ ] **Step 4: Update Active/Execution status**
+- [x] **Step 4: Update Active/Execution status**
 
 If all required format gates pass:
 
@@ -958,7 +1020,7 @@ Phase = POC QUALIFICATION BLOCKED
 Next exact action = resolve named failing semantic gate; production implementation remains prohibited
 ```
 
-- [ ] **Step 5: Final verification**
+- [x] **Step 5: Final verification**
 
 ```bash
 mise run poc:dsi:verify
@@ -971,12 +1033,14 @@ Require:
 - DSI PoC macOS green;
 - no unresolved blocking PR review finding.
 
-- [ ] **Step 6: Commit and stop**
+- [x] **Step 6: Commit and stop**
 
 ```bash
 git add docs/superpowers/execution spec/selection experiments/document-semantic-inspection .github/workflows/dsi-poc.yml mise.toml
 git commit -m "docs: record semantic inspection poc qualification"
 ```
+
+> **Task 9 final verification evidence:** final documentation/selection head before this checklist-record commit was `94ae6b50910aafa6c9f95ab29a3f5279971e014a`. DSI PoC run `35959412933` — Ubuntu, macOS 15 Intel, and macOS 15 arm64 all **SUCCESS**. Standard CI run `35959412808` — policy, rust-static, rust-test, security, portability-macos, container-build, and required-check all **SUCCESS**. PR #8 had no unresolved blocking review threads. The authoritative qualification report records the code qualification head `a4fcef1cb5cac5672199165f433bd303c25135a6` and the cross-host qualification run `35957940553`.
 
 **STOP.** Do not create production Semantic Inspection crates in this plan. If qualification passes, write a new Production Implementation Plan from the frozen Design plus this evidence. If it fails, return to the failing PoC gate or Design amendment process.
 
