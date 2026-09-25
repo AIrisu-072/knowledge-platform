@@ -32,6 +32,6 @@ jobs:
           mise install rust
           mise install cargo:cargo-deny
       - name: Task 1 sandbox contract
-        run: cargo test --manifest-path experiments/document-semantic-inspection-sandbox/Cargo.toml
+        run: mise run poc:dsi:sandbox-test
       - name: Task 1 dependency policy
-        run: cargo deny --manifest-path experiments/document-semantic-inspection-sandbox/Cargo.toml --config experiments/document-semantic-inspection-sandbox/deny.toml check
+        run: mise run poc:dsi:sandbox-deny
