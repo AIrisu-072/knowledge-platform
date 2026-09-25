@@ -5,8 +5,8 @@ use document_semantic_inspection_core::{
     TraceContext, WorkerProtocolVersion, WorkerRequest,
 };
 use document_semantic_inspection_worker::{
-    PreparedInput, WorkerFailureCode, decode_request_bounded, detect_format,
-    extractor_provenance, guard_worker_execution, open_inherited_input, prepare_input_bounded,
+    PreparedInput, WorkerFailureCode, decode_request_bounded, detect_format, extractor_provenance,
+    guard_worker_execution, open_inherited_input, prepare_input_bounded,
 };
 
 fn request(media_type: &str, hash: [u8; 32], size: u64) -> WorkerRequest {
