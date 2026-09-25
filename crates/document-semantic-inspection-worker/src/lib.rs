@@ -9,6 +9,7 @@ mod detect;
 mod error;
 mod input;
 mod provenance;
+mod shell;
 
 pub use detect::detect_format;
 pub use error::{WorkerFailure, WorkerFailureCode};
@@ -17,3 +18,4 @@ pub use input::{
     prepare_input_bounded,
 };
 pub use provenance::{extractor_provenance, worker_build_id};
+pub use shell::{run_worker_shell, write_failure};
