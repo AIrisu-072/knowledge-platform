@@ -3,13 +3,16 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **POC QUALIFICATION COMPLETE / PRODUCTION PLAN REQUIRED**
+- Current phase: **PRODUCTION IMPLEMENTATION PLAN APPROVED / PLAN PR FINAL GATE**
 - Frozen Design PR: `#7` — merged
-- Execution branch: `test/document-semantic-inspection-poc-v0`
-- Execution PR: `#8` — Ready for review
+- PoC execution branch: `test/document-semantic-inspection-poc-v0`
+- Production planning branch: `plan/document-semantic-inspection-v0-production`
+- Production planning PR: `#9` — approved plan / final merge gate
+- PoC execution PR: `#8` — merged as `ab9ad6f9949128360e46fed07aca335bb6b10971`
 - Approved Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
 - Design approval record: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design-approval.md`
 - Approved PoC Qualification Plan: `docs/superpowers/plans/2026-09-20-document-semantic-inspection-v0-poc-qualification.md`
+- Production Implementation Plan: `docs/superpowers/plans/2026-09-24-document-semantic-inspection-v0-production-implementation.md` — **APPROVED 2026-09-25**
 - Execution Status: `docs/superpowers/execution/document-semantic-inspection-v0-status.md`
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
 - Last qualified code head: `a4fcef1cb5cac5672199165f433bd303c25135a6`
@@ -50,17 +53,17 @@ Task 2 produced one material qualification result: `scraper 0.27.0` was rejected
 
 ## Current hard gate
 
-The PoC qualification gate is **complete**. All eight required formats passed the frozen promotion gate on Ubuntu, macOS Intel, and macOS arm64. Production implementation remains a separate planning phase.
+The PoC qualification gate is **complete**. The Production Implementation Plan was explicitly approved by the user on 2026-09-25, and PR #8 is merged.
 
-Do not start production Semantic Inspection implementation. Do not accept unknown potentially semantic OOXML package parts as normal success.
+Do not create the production implementation branch until Planning PR #9 is merged and the resulting exact `main` head has fresh green CI. After that, execute Production Task 1 first; do not skip directly to production parser promotion.
 
 ## Next exact action
 
-Write the separate Document Semantic Inspection v0 Production Implementation Plan from the frozen Design and the completed PoC qualification report. Do not continue production implementation inside PR #8.
+Finalize and merge approved Planning PR #9, require fresh exact-head `main` CI, then create `feat/document-semantic-inspection-v0` from that exact `main` head and execute Production Task 1.
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualificationは完了済みです。次はProduction Implementation Planを新規作成してください。PR #8・Execution Status・exact-head CIを正本にしてください。
+> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualificationは完了済みです。Production Implementation Planは2026-09-25に明示承認済みです。PR #8は `ab9ad6f9949128360e46fed07aca335bb6b10971` でmerge済みです。Planning PR #9をmainへmergeし、そのexact-head CIがgreenになった後に `feat/document-semantic-inspection-v0` を作成してProduction Task 1から実行してください。
 
 ## End-of-session rule
 
