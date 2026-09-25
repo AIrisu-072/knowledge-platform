@@ -2,7 +2,7 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **PRODUCTION IMPLEMENTATION — TASK 4 RED CAPTURED / CLEAN RED RERUN REQUIRED**
+- Overall phase: **PRODUCTION IMPLEMENTATION — TASK 4 COMPLETE / TASK 5 RED NEXT**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
@@ -10,10 +10,11 @@
 - Production planning PR: **#9 MERGED — `48045768d1d026eb785ee065877e401bbafd97ca`**
 - Production implementation branch: `feat/document-semantic-inspection-v0`
 - Production implementation PR: **#10 (Draft)**
+- Current production implementation head: `963a144add686b32afa510cf43a4ecce967f042b`
 - PoC execution PR: **#8 (MERGED — `ab9ad6f9949128360e46fed07aca335bb6b10971`)**
 - Production implementation baseline: `main@48045768d1d026eb785ee065877e401bbafd97ca`
 - Baseline main CI: `36079233862` — **SUCCESS**
-- Last qualified code head: `a4fcef1cb5cac5672199165f433bd303c25135a6`
+- Last PoC-qualified code head: `a4fcef1cb5cac5672199165f433bd303c25135a6`
 - Task 3 dependency-preflight candidate head: `ec532ec12d89352d83dc9a85ae68a3da583c0ebb`
 - Task 3 dependency-preflight DSI run: `35545142423` — **SUCCESS**
 - Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
@@ -26,50 +27,55 @@
 - Frozen Design: **APPROVED / FROZEN**
 - PoC Qualification Plan: **APPROVED 2026-09-21**
 - Production Implementation Plan: **APPROVED 2026-09-25**
-- Production dependency promotion: **AUTHORIZED ONLY THROUGH THE APPROVED TASK SEQUENCE; NOT STARTED**
+- Production dependency promotion: **Task 1 sandbox dependencies and Task 4 TXT/CSV/HTML dependencies promoted through their approved gates; Task 5 dependencies not promoted**
 
 PR #7 was advanced from review to approved state and merged after explicit user approval. The execution baseline is the resulting main merge commit `5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`.
 
 
-## Production planning state — 2026-09-24
+## Production implementation state — current
 
 The PoC is complete and all eight required format gates passed. A separate Production Implementation Plan now exists on `plan/document-semantic-inspection-v0-production`.
 
 Current gates:
 
 - Production Implementation Plan: **APPROVED 2026-09-25**
-- Production planning PR #9: **approved plan / final merge gate**
+- Production planning PR #9: **MERGED**
 - PR #8: **MERGED — `ab9ad6f9949128360e46fed07aca335bb6b10971`**
-- Production dependency promotion: **NOT STARTED**
+- Production dependency promotion: **Task 1 sandbox and Task 4 TXT/CSV/HTML dependencies promoted; Task 5 dependencies not promoted**
 - Production implementation branch: **CREATED — `feat/document-semantic-inspection-v0`**
 - Production Task 1 sandbox preflight: **COMPLETE / PASS**
 - Production core crate: **TASK 2 COMPLETE / PASS**
-- Production runtime: **TASK 3 COMPLETE / PASS; Task 4 initial RED captured; clean RED rerun required; parser dependency promotion not started**
+- Production runtime: **TASKS 1–4 COMPLETE / PASS; Task 5 RED is next**
 
-The plan identifies one production-hardening gap that must be resolved first: the qualified PoC wrapper proves CPU/file/memory and controller-timeout behavior, but production must additionally enforce the frozen no-network, no-credential, filesystem-confinement, fresh-process, and complete finite resource-profile boundary. Task 1 performs an isolated sandbox substrate preflight before any sandbox dependency is promoted.
+The production-hardening gap is resolved for the frozen v0 profile. Task 1 preflight qualified and promoted the sandbox substrate, and its runtime enforces the no-network, no-credential, filesystem-confinement, fresh-process, and finite resource-profile boundary.
 
 Required next order:
 
-1. run `cargo fmt` on `crates/document-semantic-inspection-worker/tests/text_format_parity.rs` only; do not implement adapters yet;
-2. push the formatting-only repair and require exact-head CI where fmt passes and Task 4 remains RED solely on unresolved adapter contract imports;
-3. after clean RED evidence, promote only the qualified Task 4 dependencies and implement TXT/CSV/HTML adapters;
-4. preserve fail-closed behavior and no script execution;
-5. require exact-head standard CI + Sandbox regression + DSI PoC regression before Task 4 completion.
+1. begin Production Task 5 RED for DOCX semantics and the independent OOXML coverage sentinel, using the qualified fixture corpus;
+2. prove failures for body/heading/list order, tables/merges, headers/footers, notes, hyperlinks, images, sections, tracked changes, comments, package-order noise, hostile packages, and unknown potentially semantic parts;
+3. do not promote Task 5 parser dependencies until clean RED evidence is recorded;
+4. after RED, promote only the Task 5 dependencies allowed by the approved plan and implement DOCX semantics;
+5. require exact-head standard CI and DSI qualification before marking Task 5 complete.
 
-## Production Task 4 — INITIAL RED CAPTURED / CLEAN RED REQUIRED
+## Production Task 4 — COMPLETE
 
 - Initial RED head: `9ed0f735474ff25381814cbad63ef2c5965c76f9`
-- Standard CI: `36095951774` — **FAIL**
-- Sandbox regression: `36095951807` — **SUCCESS**
-- DSI PoC regression: `36095951824` — **SUCCESS**
-- PR #10: **Draft / mergeable**
-- PR #10 unresolved review threads: **0**
-- Intended RED: `rust-test` fails compiling `text_format_parity.rs` because `AdapterProfile`, `TextAdapter`, `CsvAdapter`, `HtmlAdapter`, and `SemanticAdapter` do not exist yet.
-- Additional non-authoritative failure: `rust-static` fails at `cargo fmt --check` on `text_format_parity.rs` formatting only.
-- Therefore this run proves the missing adapter contract, but it is **not yet the clean authoritative RED evidence** because formatting must pass first.
-- Production Task 4 parser dependencies: **NOT PROMOTED**.
-
-Next exact action: format only `crates/document-semantic-inspection-worker/tests/text_format_parity.rs`, commit/push that formatting-only change, and rerun exact-head CI. Do not add adapters or Task 4 parser dependencies until the clean RED run is recorded.
+- Initial standard CI: `36095951774` — **FAIL**, with the intended unresolved adapter imports plus a formatting failure
+- Clean RED head: `64e1419a43d45c178e2f85cb1825ea9a1ff27aad`
+- Clean RED standard CI: `36097679945` — **FAIL as expected only on unresolved Task 4 adapter contract imports; fmt and policy/security checks pass**
+- Clean RED Sandbox regression: `36097679887` — **SUCCESS**
+- Clean RED DSI PoC regression: `36097679960` — **SUCCESS**
+- First GREEN head: `50578e1f4722a2a5d461f5e13a1227d177b0ff3c`; standard CI `36099520593` found `clippy::collapsible_if` in the new text adapter; Sandbox `36099520660` and DSI PoC `36099520656` were **SUCCESS**
+- Final GREEN head: `963a144add686b32afa510cf43a4ecce967f042b`
+- Final standard CI: `36099955617` — **SUCCESS**, including required-check
+- Final DSI Sandbox Preflight regression: `36099955599` — **SUCCESS**
+- Final DSI PoC regression: `36099955606` — **SUCCESS**
+- Text-format parity tests: **4/4 PASS**
+- Worker contract tests: **12/12 PASS**
+- Production dependencies promoted: `encoding_rs 0.8.41`, `unicode-normalization 0.1.25`, `csv 1.4.0`, `html5ever 0.39.0`, `markup5ever_rcdom 0.39.0`; `scraper` was not added
+- CSV keeps the PoC's explicit delimiter contract and fails closed when a delimiter is not supplied; HTML never executes JavaScript and script-required profiles fail closed
+- PR #10 remains **OPEN / Draft / mergeable**; unresolved review threads: **0**
+- No Design amendment was required
 
 ## Production Task 3 — COMPLETE
 
@@ -388,8 +394,8 @@ Final cross-host evidence at the same head:
 
 ## Current gate / next exact action
 
-**PoC Qualification is complete.**
+**PoC Qualification and Production Tasks 1–4 are complete.**
 
-Next exact action: begin Production Task 4 with RED TXT/CSV/HTML parity tests. Promote only the Task 4-qualified dependencies after the RED evidence is captured.
+Next exact action: begin Production Task 5 RED for DOCX semantics and the OOXML coverage sentinel. Use the qualified fixtures and keep Task 5 parser dependencies unpromoted until the clean RED evidence is recorded.
 
 Do not implement production Semantic Inspection crates inside PR #8.

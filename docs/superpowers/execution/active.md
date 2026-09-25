@@ -3,7 +3,7 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **PRODUCTION IMPLEMENTATION — TASK 4 RED CAPTURED / CLEAN RED RERUN REQUIRED**
+- Current phase: **PRODUCTION IMPLEMENTATION — TASK 4 COMPLETE / TASK 5 RED NEXT**
 - Frozen Design PR: `#7` — merged
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
@@ -38,7 +38,16 @@
 - Production Task 4 initial RED standard CI: `36095951774` — FAIL
 - Production Task 4 sandbox regression: `36095951807` — SUCCESS
 - Production Task 4 DSI PoC regression: `36095951824` — SUCCESS
-- Last qualified code head: `a4fcef1cb5cac5672199165f433bd303c25135a6`
+- Production Task 4 clean RED head: `64e1419a43d45c178e2f85cb1825ea9a1ff27aad`
+- Production Task 4 clean RED standard CI: `36097679945` — FAIL as expected only on unresolved adapter contract imports
+- Production Task 4 clean RED Sandbox regression: `36097679887` — SUCCESS
+- Production Task 4 clean RED DSI PoC regression: `36097679960` — SUCCESS
+- Production Task 4 first GREEN head: `50578e1f4722a2a5d461f5e13a1227d177b0ff3c`; CI `36099520593` exposed one strict Clippy warning, fixed in the final head
+- Production Task 4 final GREEN head: `963a144add686b32afa510cf43a4ecce967f042b`
+- Production Task 4 standard CI: `36099955617` — SUCCESS
+- Production Task 4 Sandbox regression: `36099955599` — SUCCESS
+- Production Task 4 DSI PoC regression: `36099955606` — SUCCESS
+- Last PoC-qualified code head: `a4fcef1cb5cac5672199165f433bd303c25135a6`
 - Task 4 DSI qualification: `35818792833` — SUCCESS
 - Task 4 standard CI: `35818792843` — SUCCESS
 - Task 5 DSI qualification: `35824677799` — SUCCESS
@@ -62,7 +71,7 @@ Read in this order:
 4. frozen Design Spec
 5. Design approval record
 6. approved PoC Qualification Plan
-7. current GitHub state of `test/document-semantic-inspection-poc-v0`, PR #8, and exact-head CI
+7. current GitHub state of `feat/document-semantic-inspection-v0`, PR #10, and exact-head CI
 
 Repository and fresh GitHub state override remembered/chat state.
 
@@ -70,23 +79,23 @@ Repository and fresh GitHub state override remembered/chat state.
 
 Design is approved and frozen. PoC Qualification Plan was explicitly approved on 2026-09-21.
 
-Task 1 and Task 2 are complete. Candidate dependencies remain confined to `experiments/document-semantic-inspection/`; no production dependency promotion has occurred.
+Production Tasks 1–4 are complete. Task 4 promoted only its qualified TXT/CSV/HTML parser dependencies; `scraper` remains excluded. Task 5 dependencies have not been promoted.
 
 Task 2 produced one material qualification result: `scraper 0.27.0` was rejected because its transitive graph contains MPL-2.0. Direct `html5ever 0.39.0 + markup5ever_rcdom 0.39.0` passed the same semantic cases and the dependency gate.
 
 ## Current hard gate
 
-The PoC qualification gate is **complete**. The Production Implementation Plan was explicitly approved by the user on 2026-09-25, and PR #8 is merged.
+The PoC qualification gate is **complete**. The Production Implementation Plan was explicitly approved by the user on 2026-09-25, and PR #8 is merged. Task 4 is complete after a clean RED and fresh exact-head GREEN evidence.
 
-Production Tasks 1–3 are complete. Task 4 parity tests are committed at `9ed0f735474ff25381814cbad63ef2c5965c76f9`. The intended RED is present: `rust-test` fails on unresolved `AdapterProfile`, `TextAdapter`, `CsvAdapter`, `HtmlAdapter`, and `SemanticAdapter`. However, `rust-static` also fails earlier on `cargo fmt --check`, so Task 4 does not yet have a clean authoritative RED run. Production parser dependencies remain unpromoted.
+Production Tasks 1–4 are complete. Final Task 4 head `963a144add686b32afa510cf43a4ecce967f042b` passed standard CI, DSI Sandbox Preflight, and DSI PoC. PR #10 remains Draft and open; do not merge without explicit instruction.
 
 ## Next exact action
 
-Format `crates/document-semantic-inspection-worker/tests/text_format_parity.rs` only, without implementing adapters or promoting dependencies; push and rerun exact-head CI until formatting passes and the authoritative RED failure is solely the unresolved Task 4 adapter contract. Then proceed to Task 4 GREEN with only the qualified text-format dependencies.
+Begin Production Task 5 RED for DOCX semantics and the OOXML coverage sentinel. Add failing parity contracts using the qualified fixtures for body/heading/list order, table structure/merge, headers/footers, notes, hyperlinks, images, sections, tracked changes, comments, serialization/package-order noise, malformed/deep/oversized packages, and unknown potentially semantic parts. Do not promote Task 5 dependencies until its RED evidence is recorded.
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualificationは完了済みです。Production Implementation Planは2026-09-25に明示承認済み、PR #8/#9はmerge済みです。`feat/document-semantic-inspection-v0` は `main@48045768d1d026eb785ee065877e401bbafd97ca` から作成済みで、baseline CI `36079233862` はgreenです。Production Task 1〜3は完了済みです。Task 4 initial RED headは `9ed0f735474ff25381814cbad63ef2c5965c76f9`、standard CI `36095951774` はFAILです。`rust-test` は未実装Adapter importで想定どおりREDですが、`rust-static` がfmt差分でもFAILしているため、まず `text_format_parity.rs` のformatのみ修正し、adapter未実装だけで落ちるclean REDを再取得してください。Sandbox `36095951807` とDSI PoC `36095951824` はSUCCESSです。
+> `AIrisu-072/knowledge-platform` のrepository/GitHub現在状態を正本として続行してください。Frozen DesignとProduction Implementation Planは承認済み、PR #8/#9はmerge済みです。Production Task 1〜4は完了。Task 4 final code head `963a144add686b32afa510cf43a4ecce967f042b` は標準CI `36099955617`、Sandbox `36099955599`、DSI PoC `36099955606` がすべてSUCCESSです。PR #10はOPEN/Draft、unresolved review threadsは0件です。次は承認済みplanに従ってTask 5 DOCX/OOXML REDを作成し、clean RED後に限りqualify済み依存のGREENへ進んでください。PR #10は明示指示なしにmergeしないでください。
 
 ## End-of-session rule
 
