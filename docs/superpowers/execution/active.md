@@ -3,7 +3,7 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **PRODUCTION IMPLEMENTATION — TASK 1 COMPLETE / TASK 2 READY**
+- Current phase: **PRODUCTION IMPLEMENTATION — TASK 2 COMPLETE / TASK 3 RED**
 - Frozen Design PR: `#7` — merged
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
@@ -22,6 +22,12 @@
 - Production Task 1 RED run: `36080157697` — FAIL as expected
 - Production Task 1 qualified head: `0cd3345a12f53f30068c72e56ea8aead367cd0ff`
 - Production Task 1 hosted GREEN run: `36084114757` — SUCCESS
+- Production Task 2 RED head: `d0bab4a824b6f125a20a55edd9fec21b53233fb3`
+- Production Task 2 RED CI: `36086136455` — FAIL as expected on unresolved core contract imports
+- Production Task 2 GREEN head: `550913b93a2c37360544450ff9dc53164679cf8a`
+- Production Task 2 standard CI: `36086709602` — SUCCESS
+- Production Task 2 sandbox regression: `36086709619` — SUCCESS
+- Production Task 2 DSI PoC regression: `36086709653` — SUCCESS
 - Last qualified code head: `a4fcef1cb5cac5672199165f433bd303c25135a6`
 - Task 4 DSI qualification: `35818792833` — SUCCESS
 - Task 4 standard CI: `35818792843` — SUCCESS
@@ -62,15 +68,15 @@ Task 2 produced one material qualification result: `scraper 0.27.0` was rejected
 
 The PoC qualification gate is **complete**. The Production Implementation Plan was explicitly approved by the user on 2026-09-25, and PR #8 is merged.
 
-Production Task 1 sandbox substrate preflight is complete. Selected sandbox primitives remain isolated from production crates. Task 2 may now create the infrastructure-free production core contract; do not promote parser dependencies or create the production runner yet.
+Production Tasks 1 and 2 are complete. `document-semantic-inspection-core` is infrastructure-free and green. Task 3 may now add the worker shell/raw-binding/format-detection RED contract; parser dependencies remain unpromoted.
 
 ## Next exact action
 
-Start Production Task 2 with RED contract tests for `document-semantic-inspection-core`: profile/version, eight-format set, SHA-256 fingerprint shape, capability/evidence types, worker wire protocol, deterministic canonicalization, unknown protocol rejection, and bounded result decoding.
+Start Production Task 3 with RED worker-shell tests: worker-safe request only, inherited read-only input handle, raw hash/size recomputation, format mismatch/unknown format fail-closed, malformed request controlled failure, panic/no-partial-success behavior, and extractor provenance.
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualificationは完了済みです。Production Implementation Planは2026-09-25に明示承認済み、PR #8/#9はmerge済みです。`feat/document-semantic-inspection-v0` は `main@48045768d1d026eb785ee065877e401bbafd97ca` から作成済みで、baseline CI `36079233862` はgreenです。Production Task 1は完了済みです。Task 2のproduction core contract REDから再開してください。
+> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualificationは完了済みです。Production Implementation Planは2026-09-25に明示承認済み、PR #8/#9はmerge済みです。`feat/document-semantic-inspection-v0` は `main@48045768d1d026eb785ee065877e401bbafd97ca` から作成済みで、baseline CI `36079233862` はgreenです。Production Task 1/2は完了済みです。Task 3のworker shell / raw binding / format detection REDから再開してください。
 
 ## End-of-session rule
 
