@@ -259,7 +259,8 @@ fn xml_serialization_package_order_and_pure_margin_noise_are_invariant() {
 fn tracked_changes_use_proposed_final_projection_and_remain_editorial_evidence() {
     assert_same_as_base(TRACKED_REPLACEMENT);
 
-    let editorial = inspect(TRACKED_REPLACEMENT).editorial_provenance();
+    let inspection = inspect(TRACKED_REPLACEMENT);
+    let editorial = inspection.editorial_provenance();
     assert!(
         editorial
             .tracked_changes
@@ -293,7 +294,8 @@ fn comments_are_reported_as_editorial_evidence_without_changing_identity() {
         (COMMENT_RESOLVED, "resolved"),
     ] {
         assert_same_as_base(fixture);
-        let comments = &inspect(fixture).editorial_provenance().comments;
+        let inspection = inspect(fixture);
+        let comments = &inspection.editorial_provenance().comments;
         assert_eq!(comments.len(), 1);
         assert_eq!(comments[0].resolved_state, resolved_state);
         assert!(!comments[0].content.is_empty());
