@@ -82,6 +82,8 @@ const ROOT_RELATIONSHIPS: &str = r#"<?xml version="1.0" encoding="UTF-8" standal
 const EMPTY_DOCUMENT_RELATIONSHIPS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>"#;
 
+const NUMBERING_XML: &str = r#"<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/></w:lvl></w:abstractNum><w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num><w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num></w:numbering>"#;
+
 fn inspect(bytes: &[u8]) -> SemanticAdapterOutput {
     DocxAdapter
         .inspect(bytes, &AdapterProfile::default())
@@ -131,6 +133,42 @@ fn body_order_and_heading_list_structure_are_version_significant() {
             false
         )),
         "reader-visible paragraph order must be preserved",
+    );
+}
+
+#[test]
+fn numbering_format_order_is_version_significant() {
+    let first = numbered_list_docx("1", "2");
+    let reordered = numbered_list_docx("2", "1");
+
+    assert_ne!(
+        fingerprint(&first),
+        fingerprint(&reordered),
+        "list numbering format order must be preserved",
+    );
+}
+
+#[test]
+fn section_order_is_version_significant() {
+    let first = minimal_document(
+        r#"<w:p><w:pPr><w:sectPr><w:pgSz w:w="10000" w:h="14000"/></w:sectPr></w:pPr><w:r><w:t>First section paragraph</w:t></w:r></w:p>
+           <w:p><w:r><w:t>Second section paragraph</w:t></w:r></w:p>
+           <w:sectPr><w:pgSz w:w="12000" w:h="15000"/></w:sectPr>"#,
+    );
+    let reordered = minimal_document(
+        r#"<w:p><w:pPr><w:sectPr><w:pgSz w:w="12000" w:h="15000"/></w:sectPr></w:pPr><w:r><w:t>First section paragraph</w:t></w:r></w:p>
+           <w:p><w:r><w:t>Second section paragraph</w:t></w:r></w:p>
+           <w:sectPr><w:pgSz w:w="10000" w:h="14000"/></w:sectPr>"#,
+    );
+
+    assert_ne!(
+        fingerprint(&simple_docx(&first, EMPTY_DOCUMENT_RELATIONSHIPS, false)),
+        fingerprint(&simple_docx(
+            &reordered,
+            EMPTY_DOCUMENT_RELATIONSHIPS,
+            false
+        )),
+        "section order must be preserved",
     );
 }
 
@@ -186,6 +224,13 @@ fn xml_serialization_package_order_and_pure_margin_noise_are_invariant() {
     );
 
     assert_same_as_base(METADATA_NOISE);
+    assert_eq!(
+        inspect(METADATA_NOISE)
+            .editorial_provenance()
+            .last_modified_by
+            .as_deref(),
+        Some("Other")
+    );
     assert_same_as_base(FONT_ONLY);
     assert_same_as_base(RELATIONSHIP_ID_NOISE);
     assert_same_as_base(PACKAGE_ORDER_NOISE);
@@ -227,6 +272,12 @@ fn tracked_changes_use_proposed_final_projection_and_remain_editorial_evidence()
             .iter()
             .any(|change| change.kind == "deletion")
     );
+    assert!(editorial.tracked_changes.iter().any(|change| {
+        change.kind == "deletion" && change.source_locator == "word/document.xml#deletion:1"
+    }));
+    assert!(editorial.tracked_changes.iter().any(|change| {
+        change.kind == "insertion" && change.source_locator == "word/document.xml#insertion:2"
+    }));
     assert!(
         editorial
             .tracked_changes
@@ -246,6 +297,9 @@ fn comments_are_reported_as_editorial_evidence_without_changing_identity() {
         assert_eq!(comments.len(), 1);
         assert_eq!(comments[0].resolved_state, resolved_state);
         assert!(!comments[0].content.is_empty());
+        for comment in comments {
+            assert_eq!(comment.source_locator, "word/comments.xml#comment:0");
+        }
     }
 }
 
@@ -313,6 +367,32 @@ fn simple_docx(
         document_relationships_xml,
         Vec::new(),
         reverse_package_order,
+    )
+}
+
+fn numbered_list_docx(first_num_id: &str, second_num_id: &str) -> Vec<u8> {
+    let content_types = CONTENT_TYPES.replace(
+        "</Types>",
+        r#"<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>"#,
+    );
+    let document_relationships = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rIdNum" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>
+</Relationships>"#;
+    let document = minimal_document(&format!(
+        r#"<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="{first_num_id}"/></w:numPr></w:pPr><w:r><w:t>Same visible list item</w:t></w:r></w:p>
+           <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="{second_num_id}"/></w:numPr></w:pPr><w:r><w:t>Same visible list item</w:t></w:r></w:p>"#,
+    ));
+
+    package_with_parts(
+        &content_types,
+        &document,
+        document_relationships,
+        vec![(
+            "word/numbering.xml".to_owned(),
+            NUMBERING_XML.as_bytes().to_vec(),
+        )],
+        false,
     )
 }
 
