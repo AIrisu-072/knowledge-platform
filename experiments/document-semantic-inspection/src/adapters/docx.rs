@@ -4,6 +4,8 @@ use std::io::{Cursor, Read};
 use office_oxide::docx::DocxDocument;
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
+use quick_xml::name::ResolveResult;
+use quick_xml::reader::NsReader;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use zip::ZipArchive;
@@ -20,6 +22,16 @@ const MAX_XML_DEPTH: usize = 64;
 const MAX_DOCX_IMAGES: usize = 4_096;
 const MAX_DOCX_DECODED_PIXELS: u64 = 67_108_864;
 const MAX_DOCX_DECODED_OUTPUT_BYTES: usize = 268_435_456;
+
+const WORDPROCESSINGML_NS: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const OFFICE_RELATIONSHIPS_NS: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const DRAWINGML_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/main";
+const VML_NS: &str = "urn:schemas-microsoft-com:vml";
+const HEADER_RELATIONSHIP: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header";
+const FOOTER_RELATIONSHIP: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer";
 
 const WORD_MAIN: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml";
@@ -98,6 +110,8 @@ impl InspectionAdapter for DocxAdapter {
         let document = package.parts.get("word/document.xml").ok_or_else(|| {
             PocError::SemanticExtractionFailed("DOCX has no word/document.xml".into())
         })?;
+
+        reject_unprojected_nonbody_images(document, &package)?;
 
         let mut image_budget = ImageBudget::default();
         let (body_tokens, body_text) =
@@ -310,6 +324,234 @@ fn validate_xml(name: &str, data: &[u8]) -> Result<(), PocError> {
         )));
     }
     Ok(())
+}
+
+fn reject_unprojected_nonbody_images(
+    document: &[u8],
+    package: &PackageInspection,
+) -> Result<(), PocError> {
+    reject_document_vml_images(document)?;
+
+    let text = std::str::from_utf8(document)
+        .map_err(|_| PocError::SemanticExtractionFailed("document XML is not UTF-8".into()))?;
+    let mut reader = NsReader::from_str(text);
+    reader.config_mut().check_end_names = true;
+    let mut inspected_parts = BTreeSet::new();
+
+    loop {
+        let (namespace, event) = reader.read_resolved_event().map_err(|error| {
+            PocError::SemanticExtractionFailed(format!(
+                "document reference XML parse failed: {error}"
+            ))
+        })?;
+        let event = match event {
+            Event::Start(event) | Event::Empty(event) => event,
+            Event::Eof => break,
+            _ => continue,
+        };
+        let local_name = event.local_name();
+
+        let (relationship_kind, relationship_name) = match local_name.as_ref() {
+            "headerReference" => (HEADER_RELATIONSHIP, "header"),
+            "footerReference" => (FOOTER_RELATIONSHIP, "footer"),
+            _ => continue,
+        };
+
+        match &namespace {
+            ResolveResult::Bound(namespace) if namespace.as_ref() == WORDPROCESSINGML_NS => {}
+            ResolveResult::Unknown(prefix) => {
+                return Err(PocError::SemanticExtractionFailed(format!(
+                    "document {relationship_name} reference has an unbound namespace prefix {prefix}"
+                )));
+            }
+            _ => continue,
+        }
+
+        let relationship_id =
+            namespaced_attribute(&event, reader.resolver(), OFFICE_RELATIONSHIPS_NS, "id")?
+                .ok_or_else(|| {
+                    PocError::SemanticExtractionFailed(format!(
+                        "document {relationship_name} reference has no relationship id"
+                    ))
+                })?;
+        let relationship = package.relationships.get(&relationship_id).ok_or_else(|| {
+            PocError::SemanticExtractionFailed(format!(
+                "document {relationship_name} relationship {relationship_id} is missing"
+            ))
+        })?;
+        if relationship.kind != relationship_kind || relationship.external {
+            return Err(PocError::UnsupportedSemanticConstruct(format!(
+                "document reference {relationship_id} is not an internal {relationship_name}"
+            )));
+        }
+
+        let part_name = resolve_word_target(&relationship.target)?;
+        if inspected_parts.insert(part_name.clone()) {
+            let part = package.parts.get(&part_name).ok_or_else(|| {
+                PocError::SemanticExtractionFailed(format!(
+                    "referenced {relationship_name} part {part_name} is missing"
+                ))
+            })?;
+            if contains_unprojected_image_markup(part, &part_name)? {
+                return Err(PocError::UnsupportedSemanticConstruct(format!(
+                    "referenced {relationship_name} part {part_name} contains unprojected image semantics"
+                )));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn reject_document_vml_images(document: &[u8]) -> Result<(), PocError> {
+    let text = std::str::from_utf8(document)
+        .map_err(|_| PocError::SemanticExtractionFailed("document XML is not UTF-8".into()))?;
+    let mut reader = NsReader::from_str(text);
+    reader.config_mut().check_end_names = true;
+    let mut deleted_depth = 0usize;
+
+    loop {
+        let (namespace, event) = reader.read_resolved_event().map_err(|error| {
+            PocError::SemanticExtractionFailed(format!("document image XML parse failed: {error}"))
+        })?;
+
+        match event {
+            Event::Start(event) => {
+                let local_name = event.local_name();
+                reject_unbound_image_prefix(&namespace, local_name.as_ref(), "word/document.xml")?;
+                if is_xml_element(&namespace, local_name.as_ref(), WORDPROCESSINGML_NS, "del")
+                    || is_xml_element(
+                        &namespace,
+                        local_name.as_ref(),
+                        WORDPROCESSINGML_NS,
+                        "moveFrom",
+                    )
+                {
+                    deleted_depth = deleted_depth
+                        .checked_add(1)
+                        .ok_or(PocError::InspectionResourceLimitExceeded)?;
+                } else if deleted_depth == 0
+                    && is_xml_element(&namespace, local_name.as_ref(), VML_NS, "imagedata")
+                {
+                    return Err(PocError::UnsupportedSemanticConstruct(
+                        "VML image semantics in word/document.xml are not projected".into(),
+                    ));
+                }
+            }
+            Event::Empty(event) => {
+                let local_name = event.local_name();
+                reject_unbound_image_prefix(&namespace, local_name.as_ref(), "word/document.xml")?;
+                if deleted_depth == 0
+                    && is_xml_element(&namespace, local_name.as_ref(), VML_NS, "imagedata")
+                {
+                    return Err(PocError::UnsupportedSemanticConstruct(
+                        "VML image semantics in word/document.xml are not projected".into(),
+                    ));
+                }
+            }
+            Event::End(event) => {
+                let local_name = event.local_name();
+                if is_xml_element(&namespace, local_name.as_ref(), WORDPROCESSINGML_NS, "del")
+                    || is_xml_element(
+                        &namespace,
+                        local_name.as_ref(),
+                        WORDPROCESSINGML_NS,
+                        "moveFrom",
+                    )
+                {
+                    deleted_depth = deleted_depth.saturating_sub(1);
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
+fn contains_unprojected_image_markup(data: &[u8], part_name: &str) -> Result<bool, PocError> {
+    let text = std::str::from_utf8(data)
+        .map_err(|_| PocError::SemanticExtractionFailed(format!("{part_name} is not UTF-8 XML")))?;
+    let mut reader = NsReader::from_str(text);
+    reader.config_mut().check_end_names = true;
+
+    loop {
+        let (namespace, event) = reader.read_resolved_event().map_err(|error| {
+            PocError::SemanticExtractionFailed(format!(
+                "{part_name} image XML parse failed: {error}"
+            ))
+        })?;
+        let event = match event {
+            Event::Start(event) | Event::Empty(event) => event,
+            Event::Eof => return Ok(false),
+            _ => continue,
+        };
+        let local_name = event.local_name();
+        reject_unbound_image_prefix(&namespace, local_name.as_ref(), part_name)?;
+        if is_xml_element(&namespace, local_name.as_ref(), DRAWINGML_NS, "blip")
+            || is_xml_element(&namespace, local_name.as_ref(), VML_NS, "imagedata")
+        {
+            return Ok(true);
+        }
+    }
+}
+
+fn reject_unbound_image_prefix(
+    namespace: &ResolveResult<'_>,
+    local_name: &str,
+    part_name: &str,
+) -> Result<(), PocError> {
+    if let ResolveResult::Unknown(prefix) = namespace
+        && matches!(local_name, "blip" | "imagedata")
+    {
+        return Err(PocError::SemanticExtractionFailed(format!(
+            "{part_name} image element has unbound namespace prefix {prefix}"
+        )));
+    }
+    Ok(())
+}
+
+fn is_xml_element(
+    namespace: &ResolveResult<'_>,
+    local_name: &str,
+    expected_namespace: &str,
+    expected_name: &str,
+) -> bool {
+    matches!(namespace, ResolveResult::Bound(namespace)
+        if namespace.as_ref() == expected_namespace && local_name == expected_name)
+}
+
+fn namespaced_attribute(
+    event: &BytesStart<'_>,
+    resolver: &quick_xml::name::NamespaceResolver,
+    expected_namespace: &str,
+    expected_name: &str,
+) -> Result<Option<String>, PocError> {
+    let mut result = None;
+    for item in event.attributes() {
+        let item = item.map_err(|error| {
+            PocError::SemanticExtractionFailed(format!("invalid XML attribute: {error}"))
+        })?;
+        let (namespace, local_name) = resolver.resolve_attribute(item.key);
+        if local_name.as_ref() == expected_name
+            && matches!(namespace, ResolveResult::Bound(namespace)
+                if namespace.as_ref() == expected_namespace)
+        {
+            if result.is_some() {
+                return Err(PocError::SemanticExtractionFailed(format!(
+                    "duplicate relationship attribute {expected_name}"
+                )));
+            }
+            let value = quick_xml::escape::unescape(item.value.as_ref()).map_err(|error| {
+                PocError::SemanticExtractionFailed(format!(
+                    "attribute entity decode failed: {error}"
+                ))
+            })?;
+            result = Some(value.into_owned());
+        }
+    }
+    Ok(result)
 }
 
 fn validate_content_types(data: &[u8]) -> Result<(), PocError> {
