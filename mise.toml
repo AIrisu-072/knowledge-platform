@@ -331,3 +331,16 @@ run = [
   "cargo run --locked --manifest-path experiments/document-semantic-inspection/Cargo.toml --bin dsi-poc -- report --format json > experiments/document-semantic-inspection/target/dsi-poc/final.json",
   "cat experiments/document-semantic-inspection/target/dsi-poc/final.json",
 ]
+
+
+[tasks."poc:dsi:sandbox-test"]
+description = "Run Document Semantic Inspection Task 1 sandbox contract"
+run = ["cargo test --manifest-path experiments/document-semantic-inspection-sandbox/Cargo.toml"]
+
+[tasks."poc:dsi:sandbox-deny"]
+description = "Check Document Semantic Inspection sandbox candidate dependency policy"
+run = ["cargo deny --manifest-path experiments/document-semantic-inspection-sandbox/Cargo.toml --config experiments/document-semantic-inspection-sandbox/deny.toml check"]
+
+[tasks."poc:dsi:sandbox-verify"]
+description = "Run Document Semantic Inspection Task 1 sandbox preflight"
+depends = ["poc:dsi:sandbox-test", "poc:dsi:sandbox-deny"]
