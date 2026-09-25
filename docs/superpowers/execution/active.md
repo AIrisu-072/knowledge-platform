@@ -3,7 +3,7 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **PRODUCTION IMPLEMENTATION — TASK 1 RED SANDBOX CONTRACT**
+- Current phase: **PRODUCTION IMPLEMENTATION — TASK 1 COMPLETE / TASK 2 READY**
 - Frozen Design PR: `#7` — merged
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
@@ -18,6 +18,10 @@
 - Execution Status: `docs/superpowers/execution/document-semantic-inspection-v0-status.md`
 - Production implementation baseline: `main@48045768d1d026eb785ee065877e401bbafd97ca`
 - Baseline main CI: `36079233862` — SUCCESS
+- Production Task 1 RED head: `343aa9072da19da471a31b96e05eb92d80784820`
+- Production Task 1 RED run: `36080157697` — FAIL as expected
+- Production Task 1 qualified head: `0cd3345a12f53f30068c72e56ea8aead367cd0ff`
+- Production Task 1 hosted GREEN run: `36084114757` — SUCCESS
 - Last qualified code head: `a4fcef1cb5cac5672199165f433bd303c25135a6`
 - Task 4 DSI qualification: `35818792833` — SUCCESS
 - Task 4 standard CI: `35818792843` — SUCCESS
@@ -58,15 +62,15 @@ Task 2 produced one material qualification result: `scraper 0.27.0` was rejected
 
 The PoC qualification gate is **complete**. The Production Implementation Plan was explicitly approved by the user on 2026-09-25, and PR #8 is merged.
 
-Production implementation branch exists from the exact approved `main` baseline. Execute Task 1 sandbox substrate preflight first. Do not add production parser/sandbox dependencies to root production crates until Task 1 selection/security gates pass.
+Production Task 1 sandbox substrate preflight is complete. Selected sandbox primitives remain isolated from production crates. Task 2 may now create the infrastructure-free production core contract; do not promote parser dependencies or create the production runner yet.
 
 ## Next exact action
 
-Run the path-scoped hosted Ubuntu sandbox preflight on the exact RED contract head and record the expected unresolved sandbox-launcher failure before adding candidate dependencies.
+Start Production Task 2 with RED contract tests for `document-semantic-inspection-core`: profile/version, eight-format set, SHA-256 fingerprint shape, capability/evidence types, worker wire protocol, deterministic canonicalization, unknown protocol rejection, and bounded result decoding.
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualificationは完了済みです。Production Implementation Planは2026-09-25に明示承認済み、PR #8/#9はmerge済みです。`feat/document-semantic-inspection-v0` は `main@48045768d1d026eb785ee065877e401bbafd97ca` から作成済みで、baseline CI `36079233862` はgreenです。Production Task 1 sandbox preflightから再開してください。
+> `AIrisu-072/knowledge-platform` の `AGENTS.md` と Active Execution Pointer に従い、Document Semantic Inspection v0 のPoC Qualificationは完了済みです。Production Implementation Planは2026-09-25に明示承認済み、PR #8/#9はmerge済みです。`feat/document-semantic-inspection-v0` は `main@48045768d1d026eb785ee065877e401bbafd97ca` から作成済みで、baseline CI `36079233862` はgreenです。Production Task 1は完了済みです。Task 2のproduction core contract REDから再開してください。
 
 ## End-of-session rule
 
