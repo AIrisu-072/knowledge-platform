@@ -113,21 +113,26 @@ fn capability_and_evidence_wire_shape_is_stable() {
         source_locator: "xl/externalLinks/externalLink1.xml".into(),
         version_significant: true,
     });
-    response.digital_signature_evidence.push(DigitalSignatureEvidence {
-        signature_type: "cms".into(),
-        signer_claim: Some("Signer".into()),
-        certificate_subject: Some("CN=Signer".into()),
-        certificate_issuer: Some("CN=Issuer".into()),
-        certificate_fingerprint: Some("aa".repeat(32)),
-        signed_at: None,
-        cryptographic_validity: SignatureValidity::Unverifiable,
-        covered_content: vec!["bytes:0-99".into()],
-        validation_diagnostics: vec!["offline-trust".into()],
-    });
-    response.extractor_provenance.parser_libraries.push(ParserLibraryIdentity {
-        name: "encoding_rs".into(),
-        version: "0.8.41".into(),
-    });
+    response
+        .digital_signature_evidence
+        .push(DigitalSignatureEvidence {
+            signature_type: "cms".into(),
+            signer_claim: Some("Signer".into()),
+            certificate_subject: Some("CN=Signer".into()),
+            certificate_issuer: Some("CN=Issuer".into()),
+            certificate_fingerprint: Some("aa".repeat(32)),
+            signed_at: None,
+            cryptographic_validity: SignatureValidity::Unverifiable,
+            covered_content: vec!["bytes:0-99".into()],
+            validation_diagnostics: vec!["offline-trust".into()],
+        });
+    response
+        .extractor_provenance
+        .parser_libraries
+        .push(ParserLibraryIdentity {
+            name: "encoding_rs".into(),
+            version: "0.8.41".into(),
+        });
     response
         .extractor_provenance
         .native_dependency_identity
@@ -142,9 +147,18 @@ fn capability_and_evidence_wire_shape_is_stable() {
     });
 
     let value = serde_json::to_value(&response).unwrap();
-    assert_eq!(value["semantic_capabilities"][0]["capability_id"], "reader_content");
-    assert_eq!(value["editorial_provenance"]["tracked_changes"][0]["unresolved"], true);
-    assert_eq!(value["external_dependencies"][0]["version_significant"], true);
+    assert_eq!(
+        value["semantic_capabilities"][0]["capability_id"],
+        "reader_content"
+    );
+    assert_eq!(
+        value["editorial_provenance"]["tracked_changes"][0]["unresolved"],
+        true
+    );
+    assert_eq!(
+        value["external_dependencies"][0]["version_significant"],
+        true
+    );
     assert_eq!(
         value["digital_signature_evidence"][0]["cryptographic_validity"],
         "unverifiable"
@@ -179,7 +193,10 @@ fn worker_request_contains_only_worker_safe_identity_fields() {
         "database_url",
         "storage_credential",
     ] {
-        assert!(!json.contains(forbidden), "worker request leaked {forbidden}: {json}");
+        assert!(
+            !json.contains(forbidden),
+            "worker request leaked {forbidden}: {json}"
+        );
     }
 }
 
@@ -215,8 +232,14 @@ fn canonical_response_normalizes_semantically_unordered_collections() {
         },
     ];
     left.diagnostics = vec![
-        Diagnostic { code: "z".into(), message: "z".into() },
-        Diagnostic { code: "a".into(), message: "a".into() },
+        Diagnostic {
+            code: "z".into(),
+            message: "z".into(),
+        },
+        Diagnostic {
+            code: "a".into(),
+            message: "a".into(),
+        },
     ];
 
     let mut right = left.clone();
@@ -254,6 +277,8 @@ fn worker_protocol_rejects_unknown_versions_and_oversized_results() {
 #[test]
 fn worker_response_matches_versioned_golden_snapshot() {
     let actual = canonical_worker_response_bytes(&empty_response()).unwrap();
-    let expected = include_str!("golden/worker-response-v0.json").trim().as_bytes();
+    let expected = include_str!("golden/worker-response-v0.json")
+        .trim()
+        .as_bytes();
     assert_eq!(actual, expected);
 }
