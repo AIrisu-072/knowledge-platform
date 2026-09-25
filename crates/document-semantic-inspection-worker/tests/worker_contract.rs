@@ -5,8 +5,9 @@ use document_semantic_inspection_core::{
     TraceContext, WorkerProtocolVersion, WorkerRequest,
 };
 use document_semantic_inspection_worker::{
-    PreparedInput, WorkerFailureCode, decode_request_bounded, detect_format, extractor_provenance,
-    guard_worker_execution, open_inherited_input, prepare_input_bounded,
+    PreparedInput, WorkerFailure, WorkerFailureCode, decode_request_bounded, detect_format,
+    extractor_provenance, guard_worker_execution, open_inherited_input, prepare_input_bounded,
+    run_worker_shell,
 };
 
 fn request(media_type: &str, hash: [u8; 32], size: u64) -> WorkerRequest {
@@ -224,4 +225,53 @@ fn extractor_provenance_captures_build_adapter_parser_and_native_identity() {
         provenance.native_dependency_identity[0].version.as_deref(),
         Some("151.0.7881.0")
     );
+}
+
+
+#[test]
+fn worker_shell_malformed_request_is_structured_failure_with_no_partial_success() {
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let mut input = Cursor::new(b"unused".as_slice());
+
+    let exit = run_worker_shell(
+        b"{not-json",
+        &mut input,
+        &mut stdout,
+        &mut stderr,
+        64 * 1024,
+        1024,
+    );
+
+    assert_ne!(exit, 0);
+    assert!(stdout.is_empty());
+
+    let failure: WorkerFailure = serde_json::from_slice(&stderr).unwrap();
+    assert_eq!(failure.code(), WorkerFailureCode::MalformedRequest);
+}
+
+#[test]
+fn worker_shell_refuses_fake_success_before_format_adapter_is_promoted() {
+    let bytes = b"plain text\n";
+    let req = request("text/plain", sha256(bytes), bytes.len() as u64);
+    let request_json = serde_json::to_vec(&req).unwrap();
+    let mut input = Cursor::new(bytes.as_slice());
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+
+    let exit = run_worker_shell(
+        &request_json,
+        &mut input,
+        &mut stdout,
+        &mut stderr,
+        64 * 1024,
+        1024,
+    );
+
+    assert_ne!(exit, 0);
+    assert!(stdout.is_empty());
+
+    let failure: WorkerFailure = serde_json::from_slice(&stderr).unwrap();
+    assert_eq!(failure.code(), WorkerFailureCode::SemanticExtractionFailed);
+    assert!(!failure.message().contains("plain text"));
 }
