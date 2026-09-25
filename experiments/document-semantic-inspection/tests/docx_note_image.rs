@@ -126,6 +126,42 @@ fn note_run_boundary_does_not_insert_visible_whitespace() {
     );
 }
 
+#[test]
+fn note_revision_is_editorial_or_explicitly_unsupported() {
+    let image_one = rgba8_png_fixture([220, 20, 60, 255], PngDeflateEncoding::FixedHuffman);
+    let image_two = rgba8_png_fixture([30, 144, 255, 255], PngDeflateEncoding::FixedHuffman);
+    let plain = text_only_note_docx(&note_image_docx(
+        NoteKind::Footnote,
+        "image1.png",
+        &image_one,
+        &image_two,
+    ));
+    let mut parts = read_parts(&plain);
+    let note_path = "word/footnotes.xml";
+    let note_xml = String::from_utf8(parts[note_path].clone()).expect("note XML");
+    assert!(note_xml.contains("<w:r><w:t>Note text</w:t></w:r>"));
+    parts.insert(
+        note_path.to_owned(),
+        note_xml
+            .replacen(
+                "<w:r><w:t>Note text</w:t></w:r>",
+                "<w:ins w:id=\"17\" w:author=\"Test\"><w:r><w:t>Note text</w:t></w:r></w:ins>",
+                1,
+            )
+            .into_bytes(),
+    );
+    let revision = write_parts(parts.into_iter().collect());
+    assert_only_part_changed(&plain, &revision, note_path);
+
+    match DocxAdapter.inspect(&revision, &InspectionProfile::default()) {
+        Ok(output) => assert!(
+            output.editorial.tracked_changes_present,
+            "an accepted note revision must retain tracked-change evidence"
+        ),
+        Err(error) => assert_eq!(error.code(), ErrorCode::UnsupportedSemanticConstruct),
+    }
+}
+
 fn assert_note_image_target_is_semantic(kind: NoteKind) {
     let image_one = rgba8_png_fixture([220, 20, 60, 255], PngDeflateEncoding::FixedHuffman);
     let image_two = rgba8_png_fixture([30, 144, 255, 255], PngDeflateEncoding::FixedHuffman);
