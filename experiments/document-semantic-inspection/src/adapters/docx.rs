@@ -2,22 +2,24 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Cursor, Read};
 
 use office_oxide::docx::DocxDocument;
-use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
+use quick_xml::events::{BytesStart, Event};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use zip::ZipArchive;
 
 use crate::{
-    CapabilityEvidence,
-    canonical_json_bytes, AdapterOutput, CommentEvidence, EditorialEvidence, FormatId,
-    InspectionAdapter, InspectionProfile, PocError, TrackedChangeEvidence,
+    AdapterOutput, CapabilityEvidence, CommentEvidence, EditorialEvidence, FormatId,
+    InspectionAdapter, InspectionProfile, PocError, TrackedChangeEvidence, canonical_json_bytes,
 };
 
 const MAX_ENTRIES: usize = 256;
 const MAX_ENTRY_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_TOTAL_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_XML_DEPTH: usize = 64;
+const MAX_DOCX_IMAGES: usize = 4_096;
+const MAX_DOCX_DECODED_PIXELS: u64 = 67_108_864;
+const MAX_DOCX_DECODED_OUTPUT_BYTES: usize = 268_435_456;
 
 const WORD_MAIN: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml";
@@ -30,6 +32,30 @@ struct PackageInspection {
     parts: BTreeMap<String, Vec<u8>>,
     relationships: BTreeMap<String, Relationship>,
     editorial: EditorialEvidence,
+}
+
+#[derive(Debug, Default)]
+struct ImageBudget {
+    count: usize,
+    decoded_pixels: u64,
+    decoded_output_bytes: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct PngMetadata {
+    background: Option<[u8; 3]>,
+    physical_dimensions: Option<[u8; 9]>,
+}
+
+#[derive(Debug, Clone)]
+struct PngHeader {
+    width: u32,
+    height: u32,
+    color_type: u8,
+    bit_depth: u8,
+    palette_entries: usize,
+    palette: Vec<[u8; 3]>,
+    metadata: PngMetadata,
 }
 
 #[derive(Debug, Clone)]
@@ -69,13 +95,13 @@ impl InspectionAdapter for DocxAdapter {
                 .unwrap_or_default(),
         )?;
 
-        let document = package
-            .parts
-            .get("word/document.xml")
-            .ok_or_else(|| PocError::SemanticExtractionFailed("DOCX has no word/document.xml".into()))?;
+        let document = package.parts.get("word/document.xml").ok_or_else(|| {
+            PocError::SemanticExtractionFailed("DOCX has no word/document.xml".into())
+        })?;
 
+        let mut image_budget = ImageBudget::default();
         let (body_tokens, body_text) =
-            parse_document_projection(document, &package, &numbering)?;
+            parse_document_projection(document, &package, &numbering, &mut image_budget)?;
 
         let headers = texts_for_prefix(&package.parts, "word/header")?;
         let footers = texts_for_prefix(&package.parts, "word/footer")?;
@@ -92,10 +118,9 @@ impl InspectionAdapter for DocxAdapter {
 
         // Candidate parser is an independent typed interpretation. A successful
         // raw projection is not enough if the candidate disagrees on reader-visible text.
-        let candidate = DocxDocument::from_reader(Cursor::new(input))
-            .map_err(|error| PocError::SemanticExtractionFailed(format!(
-                "office_oxide rejected DOCX: {error}"
-            )))?;
+        let candidate = DocxDocument::from_reader(Cursor::new(input)).map_err(|error| {
+            PocError::SemanticExtractionFailed(format!("office_oxide rejected DOCX: {error}"))
+        })?;
         let candidate_text = normalize_text(&candidate.plain_text());
         if candidate_text != raw_visible_text {
             return Err(PocError::ParserDisagreement(format!(
@@ -121,9 +146,24 @@ impl InspectionAdapter for DocxAdapter {
             semantic_projection,
             capabilities: vec![
                 CapabilityEvidence::binary("reader_content", true, true, Some(reader_equivalence)),
-                CapabilityEvidence::binary("document_structure", true, true, Some(semantic_equivalence.clone())),
-                CapabilityEvidence::binary("footnotes", !projection.footnotes.is_empty(), true, Some(semantic_equivalence.clone())),
-                CapabilityEvidence::binary("endnotes", !projection.endnotes.is_empty(), true, Some(semantic_equivalence)),
+                CapabilityEvidence::binary(
+                    "document_structure",
+                    true,
+                    true,
+                    Some(semantic_equivalence.clone()),
+                ),
+                CapabilityEvidence::binary(
+                    "footnotes",
+                    !projection.footnotes.is_empty(),
+                    true,
+                    Some(semantic_equivalence.clone()),
+                ),
+                CapabilityEvidence::binary(
+                    "endnotes",
+                    !projection.endnotes.is_empty(),
+                    true,
+                    Some(semantic_equivalence),
+                ),
             ],
             editorial: package.editorial,
             external_dependencies: Vec::new(),
@@ -153,8 +193,9 @@ pub(crate) fn is_docx_package(input: &[u8]) -> bool {
 }
 
 fn inspect_package(input: &[u8]) -> Result<PackageInspection, PocError> {
-    let mut archive = ZipArchive::new(Cursor::new(input))
-        .map_err(|error| PocError::SemanticExtractionFailed(format!("invalid DOCX ZIP: {error}")))?;
+    let mut archive = ZipArchive::new(Cursor::new(input)).map_err(|error| {
+        PocError::SemanticExtractionFailed(format!("invalid DOCX ZIP: {error}"))
+    })?;
 
     if archive.len() > MAX_ENTRIES {
         return Err(PocError::InspectionResourceLimitExceeded);
@@ -163,9 +204,9 @@ fn inspect_package(input: &[u8]) -> Result<PackageInspection, PocError> {
     let mut total = 0u64;
     let mut parts = BTreeMap::new();
     for index in 0..archive.len() {
-        let mut file = archive
-            .by_index(index)
-            .map_err(|error| PocError::SemanticExtractionFailed(format!("invalid ZIP entry: {error}")))?;
+        let mut file = archive.by_index(index).map_err(|error| {
+            PocError::SemanticExtractionFailed(format!("invalid ZIP entry: {error}"))
+        })?;
         let name = file.name().to_owned();
         validate_part_name(&name)?;
         let size = file.size();
@@ -179,10 +220,9 @@ fn inspect_package(input: &[u8]) -> Result<PackageInspection, PocError> {
             return Err(PocError::InspectionResourceLimitExceeded);
         }
         let mut data = Vec::with_capacity(size as usize);
-        file.read_to_end(&mut data)
-            .map_err(|error| PocError::SemanticExtractionFailed(format!(
-                "cannot read ZIP entry {name}: {error}"
-            )))?;
+        file.read_to_end(&mut data).map_err(|error| {
+            PocError::SemanticExtractionFailed(format!("cannot read ZIP entry {name}: {error}"))
+        })?;
         if parts.insert(name.clone(), data).is_some() {
             return Err(PocError::SemanticExtractionFailed(format!(
                 "duplicate ZIP entry {name}"
@@ -408,7 +448,9 @@ fn has_any_element(data: &[u8], names: &[&str]) -> Result<bool, PocError> {
     loop {
         match reader.read_event() {
             Ok(Event::Start(event)) | Ok(Event::Empty(event))
-                if names.iter().any(|name| *name == event.local_name().as_ref()) =>
+                if names
+                    .iter()
+                    .any(|name| *name == event.local_name().as_ref()) =>
             {
                 return Ok(true);
             }
@@ -427,6 +469,7 @@ fn parse_document_projection(
     data: &[u8],
     package: &PackageInspection,
     numbering: &BTreeMap<(u32, u8), String>,
+    image_budget: &mut ImageBudget,
 ) -> Result<(Vec<String>, String), PocError> {
     let text = std::str::from_utf8(data)
         .map_err(|_| PocError::SemanticExtractionFailed("document XML is not UTF-8".into()))?;
@@ -475,7 +518,7 @@ fn parse_document_projection(
                         "vmerge:{}",
                         attr(&event, "val")?.unwrap_or_else(|| "continue".into())
                     )),
-                    "blip" => push_image_token(&event, package, &mut tokens)?,
+                    "blip" => push_image_token(&event, package, image_budget, &mut tokens)?,
                     "pgSz" => push_page_token(&event, &mut tokens)?,
                     "footnoteReference" => tokens.push("footnote-ref".into()),
                     "endnoteReference" => tokens.push("endnote-ref".into()),
@@ -501,7 +544,7 @@ fn parse_document_projection(
                         "vmerge:{}",
                         attr(&event, "val")?.unwrap_or_else(|| "continue".into())
                     )),
-                    "blip" => push_image_token(&event, package, &mut tokens)?,
+                    "blip" => push_image_token(&event, package, image_budget, &mut tokens)?,
                     "pgSz" => push_page_token(&event, &mut tokens)?,
                     "footnoteReference" => tokens.push("footnote-ref".into()),
                     "endnoteReference" => tokens.push("endnote-ref".into()),
@@ -509,10 +552,11 @@ fn parse_document_projection(
                 }
             }
             Ok(Event::Text(value)) if in_text && deleted_depth == 0 => {
-                let value = quick_xml::escape::unescape(value.as_ref())
-                    .map_err(|error| PocError::SemanticExtractionFailed(format!(
+                let value = quick_xml::escape::unescape(value.as_ref()).map_err(|error| {
+                    PocError::SemanticExtractionFailed(format!(
                         "text entity decode failed: {error}"
-                    )))?;
+                    ))
+                })?;
                 let value = value.into_owned();
                 if !value.is_empty() {
                     tokens.push(format!("text:{value}"));
@@ -570,6 +614,7 @@ fn push_numbering_token(
 fn push_image_token(
     event: &BytesStart<'_>,
     package: &PackageInspection,
+    image_budget: &mut ImageBudget,
     tokens: &mut Vec<String>,
 ) -> Result<(), PocError> {
     let Some(id) = attr(event, "embed")? else {
@@ -589,7 +634,10 @@ fn push_image_token(
     let bytes = package.parts.get(&path).ok_or_else(|| {
         PocError::SemanticExtractionFailed(format!("image target {path} is missing"))
     })?;
-    tokens.push(format!("image-sha256:{}", image_semantic_digest(bytes)?));
+    tokens.push(format!(
+        "image-sha256:{}",
+        image_semantic_digest(bytes, image_budget)?
+    ));
     Ok(())
 }
 
@@ -618,8 +666,8 @@ fn parse_numbering(data: &[u8]) -> Result<BTreeMap<(u32, u8), String>, PocError>
         match reader.read_event() {
             Ok(Event::Start(event)) => match event.local_name().as_ref() {
                 "abstractNum" => {
-                    abstract_id = attr(&event, "abstractNumId")?
-                        .and_then(|value| value.parse::<u32>().ok());
+                    abstract_id =
+                        attr(&event, "abstractNumId")?.and_then(|value| value.parse::<u32>().ok());
                 }
                 "lvl" => {
                     level = attr(&event, "ilvl")?
@@ -627,8 +675,7 @@ fn parse_numbering(data: &[u8]) -> Result<BTreeMap<(u32, u8), String>, PocError>
                         .unwrap_or(0);
                 }
                 "num" => {
-                    num_id = attr(&event, "numId")?
-                        .and_then(|value| value.parse::<u32>().ok());
+                    num_id = attr(&event, "numId")?.and_then(|value| value.parse::<u32>().ok());
                 }
                 "numFmt" => {
                     if let (Some(id), Some(format)) = (abstract_id, attr(&event, "val")?) {
@@ -708,7 +755,11 @@ fn note_texts(data: Option<&Vec<u8>>) -> Result<Vec<String>, PocError> {
         return Ok(Vec::new());
     };
     let text = extract_final_text(data)?;
-    Ok(if text.is_empty() { Vec::new() } else { vec![text] })
+    Ok(if text.is_empty() {
+        Vec::new()
+    } else {
+        vec![text]
+    })
 }
 
 fn extract_final_text(data: &[u8]) -> Result<String, PocError> {
@@ -726,10 +777,11 @@ fn extract_final_text(data: &[u8]) -> Result<String, PocError> {
                 _ => {}
             },
             Ok(Event::Text(value)) if in_text && deleted_depth == 0 => {
-                let value = quick_xml::escape::unescape(value.as_ref())
-                    .map_err(|error| PocError::SemanticExtractionFailed(format!(
+                let value = quick_xml::escape::unescape(value.as_ref()).map_err(|error| {
+                    PocError::SemanticExtractionFailed(format!(
                         "text entity decode failed: {error}"
-                    )))?;
+                    ))
+                })?;
                 values.push(value.into_owned());
             }
             Ok(Event::End(event)) => match event.local_name().as_ref() {
@@ -750,7 +802,10 @@ fn extract_final_text(data: &[u8]) -> Result<String, PocError> {
 }
 
 fn resolve_word_target(target: &str) -> Result<String, PocError> {
-    if target.starts_with('/') || target.contains('\\') || target.split('/').any(|part| part == "..") {
+    if target.starts_with('/')
+        || target.contains('\\')
+        || target.split('/').any(|part| part == "..")
+    {
         return Err(PocError::SemanticExtractionFailed(format!(
             "unsafe relationship target {target:?}"
         )));
@@ -761,7 +816,6 @@ fn resolve_word_target(target: &str) -> Result<String, PocError> {
 fn normalize_text(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
-
 
 fn parse_editorial_evidence(
     parts: &BTreeMap<String, Vec<u8>>,
@@ -857,9 +911,7 @@ fn parse_tracked_changes(data: &[u8]) -> Result<Vec<TrackedChangeEvidence>, PocE
     Ok(changes)
 }
 
-fn parse_comment_anchor_paragraphs(
-    document: &[u8],
-) -> Result<BTreeMap<String, String>, PocError> {
+fn parse_comment_anchor_paragraphs(document: &[u8]) -> Result<BTreeMap<String, String>, PocError> {
     let text = std::str::from_utf8(document)
         .map_err(|_| PocError::SemanticExtractionFailed("document XML is not UTF-8".into()))?;
     let mut reader = Reader::from_str(text);
@@ -984,9 +1036,7 @@ fn parse_comments(
                             } else {
                                 "unresolved".to_owned()
                             },
-                            source_locator: format!(
-                                "word/comments.xml#comment:{comment_id}"
-                            ),
+                            source_locator: format!("word/comments.xml#comment:{comment_id}"),
                             content: normalize_text(&comment.text.join(" ")),
                         });
                     }
@@ -1011,9 +1061,7 @@ fn parse_comments(
     Ok(comments)
 }
 
-fn parse_comment_resolution(
-    data: Option<&[u8]>,
-) -> Result<BTreeMap<String, bool>, PocError> {
+fn parse_comment_resolution(data: Option<&[u8]>) -> Result<BTreeMap<String, bool>, PocError> {
     let Some(data) = data else {
         return Ok(BTreeMap::new());
     };
@@ -1232,29 +1280,174 @@ fn visit_relationship_node(
     Ok(())
 }
 
-fn image_semantic_digest(bytes: &[u8]) -> Result<String, PocError> {
+fn image_semantic_digest(bytes: &[u8], budget: &mut ImageBudget) -> Result<String, PocError> {
     const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+    let image_count = budget
+        .count
+        .checked_add(1)
+        .ok_or(PocError::InspectionResourceLimitExceeded)?;
+    if image_count > MAX_DOCX_IMAGES {
+        return Err(PocError::InspectionResourceLimitExceeded);
+    }
+    budget.count = image_count;
+
     if !bytes.starts_with(PNG_SIGNATURE) {
-        return Ok(hex::encode(Sha256::digest(bytes)));
+        return Err(PocError::UnsupportedSemanticConstruct(
+            "DOCX image is not a supported PNG".into(),
+        ));
     }
 
-    let mut normalized = Vec::new();
-    normalized.extend_from_slice(PNG_SIGNATURE);
+    // Inspect the complete chunk stream before asking png to allocate image buffers.
+    // This bounds dimensions and rejects chunks whose display semantics are not in v0.
+    let header = preflight_png(bytes)?;
+    let pixels = u64::from(header.width)
+        .checked_mul(u64::from(header.height))
+        .ok_or(PocError::InspectionResourceLimitExceeded)?;
+    let total_pixels = budget
+        .decoded_pixels
+        .checked_add(pixels)
+        .ok_or(PocError::InspectionResourceLimitExceeded)?;
+    if total_pixels > MAX_DOCX_DECODED_PIXELS {
+        return Err(PocError::InspectionResourceLimitExceeded);
+    }
+    let output_bound = usize::try_from(pixels)
+        .ok()
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or(PocError::InspectionResourceLimitExceeded)?;
+    let total_output = budget
+        .decoded_output_bytes
+        .checked_add(output_bound)
+        .ok_or(PocError::InspectionResourceLimitExceeded)?;
+    if total_output > MAX_DOCX_DECODED_OUTPUT_BYTES {
+        return Err(PocError::InspectionResourceLimitExceeded);
+    }
+    budget.decoded_pixels = total_pixels;
+    budget.decoded_output_bytes = total_output;
+
+    if header.color_type == 3 {
+        validate_indexed_png_pixels(bytes, &header)?;
+    }
+
+    let normalized_png = normalize_png_transparency(bytes, &header)?;
+    let decoder_bytes = normalized_png.as_deref().unwrap_or(bytes);
+    let mut options = png::DecodeOptions::default();
+    options.set_ignore_checksums(false);
+    options.set_ignore_text_chunk(true);
+    options.set_skip_ancillary_crc_failures(false);
+
+    let mut decoder = png::Decoder::new_with_options(Cursor::new(decoder_bytes), options);
+    // Keep png's documented 64 MiB temporary-allocation ceiling; the separately
+    // checked frame output is bounded by the frozen DOCX pixel limit below.
+    decoder.set_limits(png::Limits {
+        bytes: 64 * 1024 * 1024,
+    });
+    decoder.set_transformations(png::Transformations::EXPAND);
+    let mut reader = decoder.read_info().map_err(png_decode_error)?;
+
+    let image_info = reader.info();
+    if image_info.width != header.width
+        || image_info.height != header.height
+        || image_info.animation_control.is_some()
+    {
+        return Err(PocError::SemanticExtractionFailed(
+            "PNG decoder metadata differs from strict preflight".into(),
+        ));
+    }
+
+    let (output_color_type, output_bit_depth) = reader.output_color_type();
+    if output_bit_depth != png::BitDepth::Eight {
+        return Err(PocError::UnsupportedSemanticConstruct(
+            "PNG decoder produced a non-8-bit pixel format".into(),
+        ));
+    }
+    let channels = match output_color_type {
+        png::ColorType::Grayscale => 1usize,
+        png::ColorType::GrayscaleAlpha => 2,
+        png::ColorType::Rgb => 3,
+        png::ColorType::Rgba => 4,
+        png::ColorType::Indexed => {
+            return Err(PocError::UnsupportedSemanticConstruct(
+                "PNG palette was not expanded by the decoder".into(),
+            ));
+        }
+    };
+    let expected_output_size = usize::try_from(pixels)
+        .ok()
+        .and_then(|pixels| pixels.checked_mul(channels))
+        .ok_or(PocError::InspectionResourceLimitExceeded)?;
+    let output_size = reader
+        .output_buffer_size()
+        .ok_or(PocError::InspectionResourceLimitExceeded)?;
+    if output_size != expected_output_size || output_size > output_bound {
+        return Err(PocError::InspectionResourceLimitExceeded);
+    }
+
+    let mut decoded = Vec::new();
+    decoded
+        .try_reserve_exact(output_size)
+        .map_err(|_| PocError::InspectionResourceLimitExceeded)?;
+    decoded.resize(output_size, 0);
+    let output_info = reader.next_frame(&mut decoded).map_err(png_decode_error)?;
+    let decoded = &decoded[..output_info.buffer_size()];
+    if output_info.width != header.width
+        || output_info.height != header.height
+        || output_info.color_type != output_color_type
+        || output_info.bit_depth != png::BitDepth::Eight
+        || decoded.len() != expected_output_size
+    {
+        return Err(PocError::SemanticExtractionFailed(
+            "PNG decoded frame differs from preflight dimensions or format".into(),
+        ));
+    }
+    reader.finish().map_err(png_decode_error)?;
+
+    let mut digest = Sha256::new();
+    digest.update(b"docx-png-rgba8-v1\0");
+    digest.update(header.width.to_be_bytes());
+    digest.update(header.height.to_be_bytes());
+    if let Some(background) = header.metadata.background {
+        hash_png_semantic_chunk(&mut digest, b"bKGD", &background)?;
+    }
+    if let Some(physical_dimensions) = header.metadata.physical_dimensions {
+        hash_png_semantic_chunk(&mut digest, b"pHYs", &physical_dimensions)?;
+    }
+    hash_rgba8_pixels(&mut digest, output_color_type, decoded)?;
+    Ok(hex::encode(digest.finalize()))
+}
+
+fn preflight_png(bytes: &[u8]) -> Result<PngHeader, PocError> {
+    const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+    if !bytes.starts_with(PNG_SIGNATURE) {
+        return Err(PocError::UnsupportedSemanticConstruct(
+            "DOCX image is not a supported PNG".into(),
+        ));
+    }
+
     let mut offset = PNG_SIGNATURE.len();
+    let mut header = None;
+    let mut saw_idat = false;
+    let mut ended_idat = false;
     let mut saw_iend = false;
+    let mut saw_palette = false;
+    let mut saw_transparency = false;
+    let mut saw_background = false;
+    let mut saw_physical_dimensions = false;
 
     while offset < bytes.len() {
-        if bytes.len().saturating_sub(offset) < 12 {
+        if bytes.len() - offset < 12 {
             return Err(PocError::SemanticExtractionFailed(
                 "truncated PNG chunk".into(),
             ));
         }
-        let length = u32::from_be_bytes(
+        let length = usize::try_from(u32::from_be_bytes(
             bytes[offset..offset + 4]
                 .try_into()
                 .map_err(|_| PocError::SemanticExtractionFailed("invalid PNG length".into()))?,
-        ) as usize;
-        let data_start = offset + 8;
+        ))
+        .map_err(|_| PocError::InspectionResourceLimitExceeded)?;
+        let data_start = offset
+            .checked_add(8)
+            .ok_or(PocError::InspectionResourceLimitExceeded)?;
         let data_end = data_start
             .checked_add(length)
             .ok_or(PocError::InspectionResourceLimitExceeded)?;
@@ -1266,29 +1459,541 @@ fn image_semantic_digest(bytes: &[u8]) -> Result<String, PocError> {
                 "PNG chunk exceeds image bytes".into(),
             ));
         }
-
         let chunk_type = &bytes[offset + 4..offset + 8];
-        let ignorable_metadata = matches!(
-            chunk_type,
-            b"tEXt" | b"zTXt" | b"iTXt" | b"tIME" | b"eXIf"
-        );
-        if !ignorable_metadata {
-            normalized.extend_from_slice(chunk_type);
-            normalized.extend_from_slice(&bytes[data_start..data_end]);
+        let data = &bytes[data_start..data_end];
+        if !chunk_type.iter().all(u8::is_ascii_alphabetic) || chunk_type[2].is_ascii_lowercase() {
+            return Err(PocError::SemanticExtractionFailed(
+                "invalid PNG chunk type".into(),
+            ));
         }
-        if chunk_type == b"IEND" {
-            saw_iend = true;
-            break;
+        if header.is_none() && (chunk_type != b"IHDR" || offset != PNG_SIGNATURE.len()) {
+            return Err(PocError::SemanticExtractionFailed(
+                "PNG IHDR must be the first chunk".into(),
+            ));
+        }
+        if header.is_some() && chunk_type == b"IHDR" {
+            return Err(PocError::SemanticExtractionFailed(
+                "PNG has multiple IHDR chunks".into(),
+            ));
+        }
+        if saw_idat && chunk_type != b"IDAT" {
+            ended_idat = true;
+        }
+        if chunk_type == b"IDAT" && ended_idat {
+            return Err(PocError::SemanticExtractionFailed(
+                "PNG IDAT chunks are not contiguous".into(),
+            ));
+        }
+
+        match chunk_type {
+            b"IHDR" => {
+                if length != 13 {
+                    return Err(PocError::SemanticExtractionFailed(
+                        "PNG IHDR must contain 13 bytes".into(),
+                    ));
+                }
+                let width =
+                    u32::from_be_bytes(data[0..4].try_into().map_err(|_| {
+                        PocError::SemanticExtractionFailed("invalid PNG width".into())
+                    })?);
+                let height = u32::from_be_bytes(data[4..8].try_into().map_err(|_| {
+                    PocError::SemanticExtractionFailed("invalid PNG height".into())
+                })?);
+                let bit_depth = data[8];
+                let color_type = data[9];
+                if width == 0 || height == 0 || data[10] != 0 || data[11] != 0 || data[12] > 1 {
+                    return Err(PocError::SemanticExtractionFailed(
+                        "invalid PNG dimensions or IHDR method".into(),
+                    ));
+                }
+                let valid_depth = match color_type {
+                    0 => matches!(bit_depth, 1 | 2 | 4 | 8),
+                    2 => bit_depth == 8,
+                    3 => matches!(bit_depth, 1 | 2 | 4 | 8),
+                    4 | 6 => bit_depth == 8,
+                    _ => false,
+                };
+                if !valid_depth {
+                    return Err(PocError::UnsupportedSemanticConstruct(
+                        "unsupported PNG color type or bit depth".into(),
+                    ));
+                }
+                header = Some(PngHeader {
+                    width,
+                    height,
+                    color_type,
+                    bit_depth,
+                    palette_entries: 0,
+                    palette: Vec::new(),
+                    metadata: PngMetadata::default(),
+                });
+            }
+            b"PLTE" => {
+                let image_header = header.as_mut().ok_or_else(|| {
+                    PocError::SemanticExtractionFailed("PNG PLTE precedes IHDR".into())
+                })?;
+                if saw_idat
+                    || saw_palette
+                    || saw_transparency
+                    || saw_background
+                    || matches!(image_header.color_type, 0 | 4)
+                    || length == 0
+                    || length > 768
+                    || length % 3 != 0
+                {
+                    return Err(PocError::SemanticExtractionFailed(
+                        "invalid PNG palette chunk".into(),
+                    ));
+                }
+                let palette_entries = length / 3;
+                if image_header.color_type == 3
+                    && palette_entries > (1usize << image_header.bit_depth)
+                {
+                    return Err(PocError::SemanticExtractionFailed(
+                        "indexed PNG palette exceeds its bit-depth range".into(),
+                    ));
+                }
+                saw_palette = true;
+                image_header.palette_entries = palette_entries;
+                image_header.palette = data
+                    .chunks_exact(3)
+                    .map(|entry| [entry[0], entry[1], entry[2]])
+                    .collect();
+            }
+            b"IDAT" => {
+                let image_header = header.as_ref().ok_or_else(|| {
+                    PocError::SemanticExtractionFailed("PNG IDAT precedes IHDR".into())
+                })?;
+                if image_header.color_type == 3 && !saw_palette {
+                    return Err(PocError::SemanticExtractionFailed(
+                        "indexed PNG has no palette".into(),
+                    ));
+                }
+                saw_idat = true;
+            }
+            b"IEND" => {
+                if !saw_idat || length != 0 || chunk_end != bytes.len() {
+                    return Err(PocError::SemanticExtractionFailed(
+                        "invalid PNG IEND or trailing bytes".into(),
+                    ));
+                }
+                saw_iend = true;
+                offset = chunk_end;
+                break;
+            }
+            b"tRNS" => {
+                let image_header = header.as_ref().ok_or_else(|| {
+                    PocError::SemanticExtractionFailed("PNG tRNS precedes IHDR".into())
+                })?;
+                let valid_length = match image_header.color_type {
+                    0 => length == 2,
+                    2 => length == 6,
+                    3 => saw_palette && length > 0 && length <= image_header.palette_entries,
+                    _ => false,
+                };
+                if saw_idat || saw_transparency || !valid_length {
+                    return Err(PocError::SemanticExtractionFailed(
+                        "invalid PNG transparency chunk".into(),
+                    ));
+                }
+                // For sub-16-bit grayscale/truecolor images, PNG requires a decoder
+                // to mask unused high sample bits before comparing the transparency key.
+                // The decoder input is normalized to that effective key below.
+                saw_transparency = true;
+            }
+            b"bKGD" => {
+                let image_header = header.as_mut().ok_or_else(|| {
+                    PocError::SemanticExtractionFailed("PNG bKGD precedes IHDR".into())
+                })?;
+                let valid_length = match image_header.color_type {
+                    0 | 4 => length == 2,
+                    2 | 6 => length == 6,
+                    3 => {
+                        saw_palette
+                            && length == 1
+                            && usize::from(data[0]) < image_header.palette_entries
+                    }
+                    _ => false,
+                };
+                if saw_idat || saw_background || !valid_length || length > 6 {
+                    return Err(PocError::SemanticExtractionFailed(
+                        "invalid PNG background chunk".into(),
+                    ));
+                }
+                let background = match image_header.color_type {
+                    0 | 4 => {
+                        let sample = u16::from_be_bytes([data[0], data[1]])
+                            & png_sample_mask(image_header.bit_depth);
+                        let gray = png_sample_to_u8(sample, image_header.bit_depth);
+                        [gray; 3]
+                    }
+                    2 | 6 => {
+                        let mut rgb = [0; 3];
+                        for (channel, sample_bytes) in data.chunks_exact(2).enumerate() {
+                            let sample = u16::from_be_bytes([sample_bytes[0], sample_bytes[1]])
+                                & png_sample_mask(image_header.bit_depth);
+                            rgb[channel] = png_sample_to_u8(sample, image_header.bit_depth);
+                        }
+                        rgb
+                    }
+                    3 => image_header
+                        .palette
+                        .get(usize::from(data[0]))
+                        .copied()
+                        .ok_or_else(|| {
+                            PocError::SemanticExtractionFailed(
+                                "indexed PNG background is outside its palette".into(),
+                            )
+                        })?,
+                    _ => {
+                        return Err(PocError::SemanticExtractionFailed(
+                            "invalid PNG background color type".into(),
+                        ));
+                    }
+                };
+                image_header.metadata.background = Some(background);
+                saw_background = true;
+            }
+            b"pHYs" => {
+                let image_header = header.as_mut().ok_or_else(|| {
+                    PocError::SemanticExtractionFailed("PNG pHYs precedes IHDR".into())
+                })?;
+                if saw_idat || saw_physical_dimensions || length != 9 || data[8] > 1 {
+                    return Err(PocError::SemanticExtractionFailed(
+                        "invalid PNG physical-dimensions chunk".into(),
+                    ));
+                }
+                let mut physical_dimensions: [u8; 9] = data.try_into().map_err(|_| {
+                    PocError::SemanticExtractionFailed("invalid PNG physical dimensions".into())
+                })?;
+                let pixels_per_unit_x =
+                    u32::from_be_bytes(physical_dimensions[..4].try_into().map_err(|_| {
+                        PocError::SemanticExtractionFailed("invalid PNG pHYs X value".into())
+                    })?);
+                let pixels_per_unit_y =
+                    u32::from_be_bytes(physical_dimensions[4..8].try_into().map_err(|_| {
+                        PocError::SemanticExtractionFailed("invalid PNG pHYs Y value".into())
+                    })?);
+                if pixels_per_unit_x == 0 || pixels_per_unit_y == 0 {
+                    return Err(PocError::SemanticExtractionFailed(
+                        "PNG pHYs dimensions must be nonzero".into(),
+                    ));
+                }
+                if physical_dimensions[8] == 0 {
+                    let divisor = greatest_common_divisor(pixels_per_unit_x, pixels_per_unit_y);
+                    physical_dimensions[..4]
+                        .copy_from_slice(&(pixels_per_unit_x / divisor).to_be_bytes());
+                    physical_dimensions[4..8]
+                        .copy_from_slice(&(pixels_per_unit_y / divisor).to_be_bytes());
+                }
+                image_header.metadata.physical_dimensions = Some(physical_dimensions);
+                saw_physical_dimensions = true;
+            }
+            b"tEXt" | b"zTXt" | b"iTXt" => {}
+            b"tIME" if length == 7 => {}
+            b"tIME" => {
+                return Err(PocError::SemanticExtractionFailed(
+                    "invalid PNG modification-time chunk".into(),
+                ));
+            }
+            b"acTL" | b"fcTL" | b"fdAT" => {
+                return Err(PocError::UnsupportedSemanticConstruct(
+                    "animated PNG is unsupported".into(),
+                ));
+            }
+            b"gAMA" | b"cHRM" | b"iCCP" | b"sRGB" | b"sBIT" | b"cICP" | b"mDCV" | b"cLLI" => {
+                return Err(PocError::UnsupportedSemanticConstruct(
+                    "PNG color profile or HDR metadata is unsupported".into(),
+                ));
+            }
+            b"eXIf" => {
+                return Err(PocError::UnsupportedSemanticConstruct(
+                    "PNG EXIF orientation metadata is unsupported".into(),
+                ));
+            }
+            _ if chunk_type[0].is_ascii_uppercase() => {
+                return Err(PocError::UnsupportedSemanticConstruct(
+                    "unknown critical PNG chunk".into(),
+                ));
+            }
+            _ => {
+                return Err(PocError::UnsupportedSemanticConstruct(
+                    "unknown ancillary PNG chunk".into(),
+                ));
+            }
         }
         offset = chunk_end;
     }
 
-    if !saw_iend {
+    if !saw_iend || offset != bytes.len() || !saw_idat {
         return Err(PocError::SemanticExtractionFailed(
-            "PNG has no IEND chunk".into(),
+            "PNG is missing a complete IDAT/IEND sequence".into(),
         ));
     }
-    Ok(hex::encode(Sha256::digest(&normalized)))
+    header.ok_or_else(|| PocError::SemanticExtractionFailed("PNG has no IHDR".into()))
+}
+
+fn validate_indexed_png_pixels(bytes: &[u8], header: &PngHeader) -> Result<(), PocError> {
+    let mut options = png::DecodeOptions::default();
+    options.set_ignore_checksums(false);
+    options.set_ignore_text_chunk(true);
+    options.set_skip_ancillary_crc_failures(false);
+
+    let mut decoder = png::Decoder::new_with_options(Cursor::new(bytes), options);
+    decoder.set_limits(png::Limits {
+        bytes: 64 * 1024 * 1024,
+    });
+    decoder.set_transformations(png::Transformations::IDENTITY);
+    let mut reader = decoder.read_info().map_err(png_decode_error)?;
+
+    let (color_type, bit_depth) = reader.output_color_type();
+    if color_type != png::ColorType::Indexed
+        || bit_depth as u8 != header.bit_depth
+        || reader.info().width != header.width
+        || reader.info().height != header.height
+    {
+        return Err(PocError::SemanticExtractionFailed(
+            "PNG indexed preflight metadata differs from decoder".into(),
+        ));
+    }
+
+    let width =
+        usize::try_from(header.width).map_err(|_| PocError::InspectionResourceLimitExceeded)?;
+    let height =
+        usize::try_from(header.height).map_err(|_| PocError::InspectionResourceLimitExceeded)?;
+    let bit_depth = usize::from(header.bit_depth);
+    let samples_per_byte = 8 / bit_depth;
+    let row_bytes = width
+        .checked_add(samples_per_byte - 1)
+        .and_then(|bits| bits.checked_mul(bit_depth))
+        .and_then(|bits| bits.checked_div(8))
+        .ok_or(PocError::InspectionResourceLimitExceeded)?;
+    let expected_size = row_bytes
+        .checked_mul(height)
+        .ok_or(PocError::InspectionResourceLimitExceeded)?;
+    if reader.output_buffer_size() != Some(expected_size) {
+        return Err(PocError::InspectionResourceLimitExceeded);
+    }
+
+    let mut decoded = Vec::new();
+    decoded
+        .try_reserve_exact(expected_size)
+        .map_err(|_| PocError::InspectionResourceLimitExceeded)?;
+    decoded.resize(expected_size, 0);
+    let output_info = reader.next_frame(&mut decoded).map_err(png_decode_error)?;
+    if output_info.width != header.width
+        || output_info.height != header.height
+        || output_info.color_type != png::ColorType::Indexed
+        || output_info.bit_depth as u8 != header.bit_depth
+        || output_info.buffer_size() != expected_size
+    {
+        return Err(PocError::SemanticExtractionFailed(
+            "PNG indexed frame differs from strict preflight".into(),
+        ));
+    }
+    reader.finish().map_err(png_decode_error)?;
+
+    let decoded = &decoded[..output_info.buffer_size()];
+    let index_mask = ((1u16 << header.bit_depth) - 1) as u8;
+    for row in decoded.chunks_exact(row_bytes) {
+        for x in 0..width {
+            let within_byte = x % samples_per_byte;
+            let shift = (samples_per_byte - within_byte - 1) * bit_depth;
+            let palette_index = usize::from((row[x / samples_per_byte] >> shift) & index_mask);
+            if palette_index >= header.palette_entries {
+                return Err(PocError::SemanticExtractionFailed(
+                    "indexed PNG pixel is outside its palette".into(),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn normalize_png_transparency(
+    bytes: &[u8],
+    header: &PngHeader,
+) -> Result<Option<Vec<u8>>, PocError> {
+    const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+    if !matches!(header.color_type, 0 | 2) {
+        return Ok(None);
+    }
+
+    let mut offset = PNG_SIGNATURE.len();
+    while offset < bytes.len() {
+        let length = usize::try_from(u32::from_be_bytes(
+            bytes[offset..offset + 4]
+                .try_into()
+                .map_err(|_| PocError::SemanticExtractionFailed("invalid PNG length".into()))?,
+        ))
+        .map_err(|_| PocError::InspectionResourceLimitExceeded)?;
+        let data_start = offset
+            .checked_add(8)
+            .ok_or(PocError::InspectionResourceLimitExceeded)?;
+        let data_end = data_start
+            .checked_add(length)
+            .ok_or(PocError::InspectionResourceLimitExceeded)?;
+        let chunk_end = data_end
+            .checked_add(4)
+            .ok_or(PocError::InspectionResourceLimitExceeded)?;
+        let chunk_type = &bytes[offset + 4..offset + 8];
+        if chunk_type == b"tRNS" {
+            let data = &bytes[data_start..data_end];
+            let stored_crc = u32::from_be_bytes(
+                bytes[data_end..chunk_end]
+                    .try_into()
+                    .map_err(|_| PocError::SemanticExtractionFailed("invalid PNG CRC".into()))?,
+            );
+            if png_chunk_crc32(chunk_type, data) != stored_crc {
+                return Err(PocError::SemanticExtractionFailed(
+                    "PNG transparency chunk checksum mismatch".into(),
+                ));
+            }
+
+            let sample_mask = png_sample_mask(header.bit_depth);
+            let mut normalized = Vec::with_capacity(data.len());
+            for encoded_sample in data.chunks_exact(2) {
+                let sample =
+                    u16::from_be_bytes([encoded_sample[0], encoded_sample[1]]) & sample_mask;
+                normalized.extend_from_slice(&sample.to_be_bytes());
+            }
+            if normalized == data {
+                return Ok(None);
+            }
+
+            let mut output = Vec::new();
+            output
+                .try_reserve_exact(bytes.len())
+                .map_err(|_| PocError::InspectionResourceLimitExceeded)?;
+            output.extend_from_slice(bytes);
+            output[data_start..data_end].copy_from_slice(&normalized);
+            let normalized_crc = png_chunk_crc32(chunk_type, &normalized);
+            output[data_end..chunk_end].copy_from_slice(&normalized_crc.to_be_bytes());
+            return Ok(Some(output));
+        }
+        offset = chunk_end;
+    }
+    Ok(None)
+}
+
+fn png_chunk_crc32(chunk_type: &[u8], data: &[u8]) -> u32 {
+    let mut crc = u32::MAX;
+    for byte in chunk_type.iter().chain(data) {
+        crc ^= u32::from(*byte);
+        for _ in 0..8 {
+            crc = if crc & 1 == 1 {
+                (crc >> 1) ^ 0xedb8_8320
+            } else {
+                crc >> 1
+            };
+        }
+    }
+    !crc
+}
+
+fn png_sample_mask(bit_depth: u8) -> u16 {
+    ((1u32 << bit_depth) - 1) as u16
+}
+
+fn png_sample_to_u8(sample: u16, bit_depth: u8) -> u8 {
+    let max_sample = png_sample_mask(bit_depth);
+    let normalized = (u32::from(sample & max_sample) * u32::from(u8::MAX)
+        + u32::from(max_sample) / 2)
+        / u32::from(max_sample);
+    normalized as u8
+}
+
+fn greatest_common_divisor(mut left: u32, mut right: u32) -> u32 {
+    while right != 0 {
+        let remainder = left % right;
+        left = right;
+        right = remainder;
+    }
+    left
+}
+
+fn hash_rgba8_pixels(
+    digest: &mut Sha256,
+    color_type: png::ColorType,
+    pixels: &[u8],
+) -> Result<(), PocError> {
+    if color_type == png::ColorType::Rgba {
+        digest.update(pixels);
+        return Ok(());
+    }
+    let source_channels = match color_type {
+        png::ColorType::Grayscale => 1,
+        png::ColorType::GrayscaleAlpha => 2,
+        png::ColorType::Rgb => 3,
+        png::ColorType::Rgba => 4,
+        png::ColorType::Indexed => {
+            return Err(PocError::UnsupportedSemanticConstruct(
+                "indexed PNG pixels were not expanded".into(),
+            ));
+        }
+    };
+    if !pixels.len().is_multiple_of(source_channels) {
+        return Err(PocError::SemanticExtractionFailed(
+            "PNG decoded pixel buffer has an incomplete pixel".into(),
+        ));
+    }
+
+    const PIXELS_PER_HASH_BATCH: usize = 1_024;
+    let mut rgba = [0u8; PIXELS_PER_HASH_BATCH * 4];
+    let mut output_len = 0usize;
+    for pixel in pixels.chunks_exact(source_channels) {
+        let channels = &mut rgba[output_len..output_len + 4];
+        match color_type {
+            png::ColorType::Grayscale => {
+                channels[..3].fill(pixel[0]);
+                channels[3] = u8::MAX;
+            }
+            png::ColorType::GrayscaleAlpha => {
+                channels[..3].fill(pixel[0]);
+                channels[3] = pixel[1];
+            }
+            png::ColorType::Rgb => {
+                channels[..3].copy_from_slice(pixel);
+                channels[3] = u8::MAX;
+            }
+            png::ColorType::Rgba => {
+                return Err(PocError::SemanticExtractionFailed(
+                    "unexpected RGBA branch during PNG canonicalization".into(),
+                ));
+            }
+            png::ColorType::Indexed => {
+                return Err(PocError::UnsupportedSemanticConstruct(
+                    "indexed PNG pixels were not expanded".into(),
+                ));
+            }
+        }
+        output_len += 4;
+        if output_len == rgba.len() {
+            digest.update(rgba);
+            output_len = 0;
+        }
+    }
+    if output_len > 0 {
+        digest.update(&rgba[..output_len]);
+    }
+    Ok(())
+}
+
+fn hash_png_semantic_chunk(
+    digest: &mut Sha256,
+    kind: &[u8; 4],
+    data: &[u8],
+) -> Result<(), PocError> {
+    digest.update(kind);
+    let length =
+        u64::try_from(data.len()).map_err(|_| PocError::InspectionResourceLimitExceeded)?;
+    digest.update(length.to_be_bytes());
+    digest.update(data);
+    Ok(())
+}
+
+fn png_decode_error(error: png::DecodingError) -> PocError {
+    PocError::SemanticExtractionFailed(format!("PNG decoding failed: {error}"))
 }
 
 fn attr_required(event: &BytesStart<'_>, name: &str) -> Result<String, PocError> {
@@ -1307,13 +2012,13 @@ fn attr(event: &BytesStart<'_>, name: &str) -> Result<Option<String>, PocError> 
             PocError::SemanticExtractionFailed(format!("invalid XML attribute: {error}"))
         })?;
         let key = item.key.as_ref();
-        let matches = key == name
-            || key.rsplit_once(':').is_some_and(|(_, local)| local == name);
+        let matches = key == name || key.rsplit_once(':').is_some_and(|(_, local)| local == name);
         if matches {
-            let value = quick_xml::escape::unescape(item.value.as_ref())
-                .map_err(|error| PocError::SemanticExtractionFailed(format!(
+            let value = quick_xml::escape::unescape(item.value.as_ref()).map_err(|error| {
+                PocError::SemanticExtractionFailed(format!(
                     "attribute entity decode failed: {error}"
-                )))?;
+                ))
+            })?;
             return Ok(Some(value.into_owned()));
         }
     }

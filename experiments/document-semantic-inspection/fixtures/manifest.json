@@ -231,7 +231,7 @@
       "class": "BASE",
       "path": "docx/base.docx",
       "format": "docx",
-      "sha256": "eef073663e3fea4f751bb4ed45386628a35e8494df70686d5a1b9a764290d801",
+      "sha256": "0b5dec2da757c86ecb1f7af4e18fd8b6b6f1c14d064fe35b1d6e821fc8765040",
       "size": 7389,
       "profile": "dsi-v0",
       "expected": {
@@ -243,7 +243,7 @@
       "class": "SEMANTIC",
       "path": "docx/body-text-change.docx",
       "format": "docx",
-      "sha256": "42645c373d4d64be2e9c6649fcc687062214f7658d89390ec852f3a8052004eb",
+      "sha256": "e4661ca1e9c96fef99bda9559a3ac4314290e29e6bf24a4681a2c54cb9ef24bc",
       "size": 7393,
       "profile": "dsi-v0",
       "expected": {
@@ -256,7 +256,7 @@
       "class": "EDITORIAL",
       "path": "docx/comment-resolved.docx",
       "format": "docx",
-      "sha256": "d1d26b6fad4af7212ea106ad5c82d0e0403a5aca4858adeddd4fd2614eab1b2d",
+      "sha256": "49a8e8f4ac02d29ec8d10e014d56a0bac7e78612729d62b61d5edf2119ff5af3",
       "size": 8543,
       "profile": "dsi-v0",
       "expected": {
@@ -269,7 +269,7 @@
       "class": "EDITORIAL",
       "path": "docx/comment-unresolved.docx",
       "format": "docx",
-      "sha256": "ecc871ea113c95f2475368c00820e2d1e200fef3727ea3d12bddc0758b07f1c7",
+      "sha256": "628dbd9a2e1aef12c311d42ac2db4b379593db0374765ca616bf904d8a4ddac6",
       "size": 8017,
       "profile": "dsi-v0",
       "expected": {
@@ -282,7 +282,7 @@
       "class": "HOSTILE",
       "path": "docx/deep-ooxml.docx",
       "format": "docx",
-      "sha256": "e5a33288e20be9158d4859136aaf7069e1251cd32f208c40e475855684293150",
+      "sha256": "de0cebf2660512cd85c528cee77fa031dd321f3cc5ad9db5e2f6f1d4f8748d9f",
       "size": 9549,
       "profile": "dsi-v0",
       "expected": {
@@ -295,7 +295,7 @@
       "class": "SEMANTIC",
       "path": "docx/endnote-change.docx",
       "format": "docx",
-      "sha256": "211e15cd8238b0ae7e4566443254dc6cfb997bbf32b6e38e524fc7f42a817ab5",
+      "sha256": "c752c307473226be05e188dea8e3f758e1ad4a425a3b6fdb5c3041e94eea675b",
       "size": 7393,
       "profile": "dsi-v0",
       "expected": {
@@ -308,7 +308,7 @@
       "class": "NOISE",
       "path": "docx/font-only.docx",
       "format": "docx",
-      "sha256": "fff52dc13cb13bc51aea9617e69b76bb09a2e242433ac040e0454972598bc411",
+      "sha256": "9cae2c573b89eda20ec60645bfe0babbc1788c3a0fa3b522a8d9298af6bd5bbd",
       "size": 7457,
       "profile": "dsi-v0",
       "expected": {
@@ -321,7 +321,7 @@
       "class": "SEMANTIC",
       "path": "docx/footer-change.docx",
       "format": "docx",
-      "sha256": "eed6c1445a4236aff810b79df3a44266e55e52dfc76e203d5037511b389f0835",
+      "sha256": "5acde2ef9059d7ff64c10e493fac603ac8ad9f23ce5c5f0e78085977de2b792f",
       "size": 7397,
       "profile": "dsi-v0",
       "expected": {
@@ -334,7 +334,7 @@
       "class": "SEMANTIC",
       "path": "docx/footnote-change.docx",
       "format": "docx",
-      "sha256": "b1591ef3bc9da3397c11794ddd0ee3b19b82cc7d27045b653824fa853053a7e3",
+      "sha256": "82d6aa226acd27ecd3bb5b3c74f14a9d05ddd79d264f94910120278ea572f798",
       "size": 7393,
       "profile": "dsi-v0",
       "expected": {
@@ -347,7 +347,7 @@
       "class": "SEMANTIC",
       "path": "docx/header-change.docx",
       "format": "docx",
-      "sha256": "1622e99d79ba98b72248bb781b0396fbb49252904caf47d3852b433ff550409e",
+      "sha256": "254a7adb88d772126f00560c8dcf3052c44959a39abc25868200cd41ec6223e6",
       "size": 7397,
       "profile": "dsi-v0",
       "expected": {
@@ -360,7 +360,7 @@
       "class": "SEMANTIC",
       "path": "docx/heading-list-change.docx",
       "format": "docx",
-      "sha256": "3830a4a666c8dbc37fa315eb9ff3b2cc19630f6c4c33c1adf5d8f5ee2bac4ef1",
+      "sha256": "3d5c35b267fcce1522e6bb50df1b47892affc60c6798bd5938dc508a5331bb72",
       "size": 7389,
       "profile": "dsi-v0",
       "expected": {
@@ -373,7 +373,7 @@
       "class": "SEMANTIC",
       "path": "docx/hyperlink-target-change.docx",
       "format": "docx",
-      "sha256": "955c242c5e527018635299a35abd42e51cd3d408ebe3b9cf50410b90bcbfb6f7",
+      "sha256": "06c60d298bdc19cedff5f37a2e1953be677b3e50b03b110b11ba702d9a0fab77",
       "size": 7389,
       "profile": "dsi-v0",
       "expected": {
@@ -399,7 +399,7 @@
       "class": "HOSTILE",
       "path": "docx/malformed.docx",
       "format": "docx",
-      "sha256": "dfd0f46bc387b3f599d50a5025f61fad8430fa6ae17adbe57bafe61c4b423be9",
+      "sha256": "d76c690d33df54f56784e00162be96676c4d94d7c2b246cdd0a1597ca5617a73",
       "size": 7366,
       "profile": "dsi-v0",
       "expected": {
@@ -412,7 +412,7 @@
       "class": "NOISE",
       "path": "docx/metadata-noise.docx",
       "format": "docx",
-      "sha256": "24a773a8858fe90ec3ffc40fca17743bfe53ece3e1f0d6367ecdd5a34a8d0779",
+      "sha256": "ee5448df7423d4098d8efa9de6f6d79492036611b4cbf8dd395909a72927d9ad",
       "size": 7388,
       "profile": "dsi-v0",
       "expected": {
@@ -425,7 +425,7 @@
       "class": "NOISE",
       "path": "docx/package-order-noise.docx",
       "format": "docx",
-      "sha256": "e774f27c51d02843f85c0f29f6882777aadd1189f1f62388b9e2dff9bbbc4a39",
+      "sha256": "4cf3018ef5e925fddff35086e28e938170446e4326912d5b6743f735ec89f7bd",
       "size": 7389,
       "profile": "dsi-v0",
       "expected": {
@@ -438,7 +438,7 @@
       "class": "NOISE",
       "path": "docx/relationship-id-noise.docx",
       "format": "docx",
-      "sha256": "9d018e2b757ad3037170aa9c0feee17c67a3bc7bf61beacaaa03c81bf91d9a79",
+      "sha256": "36f5df9090b810fa2f0e7529948a3939d2ace014f4cfe8ac19c6a987b6578268",
       "size": 7321,
       "profile": "dsi-v0",
       "expected": {
@@ -451,7 +451,7 @@
       "class": "SEMANTIC",
       "path": "docx/section-change.docx",
       "format": "docx",
-      "sha256": "d8a0f82abd2487112a152520c99ca26abc1655381e11c65f87ba3fa8dc7eebec",
+      "sha256": "6eaac5ee168dd2a095e481f4a5872e34f62f8d34097101255ee4689f1b1f1033",
       "size": 7390,
       "profile": "dsi-v0",
       "expected": {
@@ -464,7 +464,7 @@
       "class": "SEMANTIC",
       "path": "docx/table-merge-change.docx",
       "format": "docx",
-      "sha256": "6614a2575a708ed501294d59b9dc4ede7958e5376b75c1da32b529425029187d",
+      "sha256": "b1d18c023bd5a8e39b07b88295a91939ca0fe04fb44d132e3ef27fb0109fae13",
       "size": 7384,
       "profile": "dsi-v0",
       "expected": {
@@ -477,7 +477,7 @@
       "class": "EDITORIAL",
       "path": "docx/tracked-replacement.docx",
       "format": "docx",
-      "sha256": "d1fb459f90507060f27e253cc6da8a5637b739aa576f0b7e3154bdc86f9a3a0d",
+      "sha256": "64028d4de395144ec9cdc87e65db2126b588b6f4505d87aa85fa81cc08509260",
       "size": 7479,
       "profile": "dsi-v0",
       "expected": {
@@ -490,7 +490,7 @@
       "class": "HOSTILE",
       "path": "docx/unknown-semantic-part.docx",
       "format": "docx",
-      "sha256": "5f017ed15ad78c164748e07985886c5be83d6dea46b992ab33626ec98e629ca2",
+      "sha256": "b021e94cc324156febe484fbadee4f5c5d0ceb8db244aa919f73aa6419394dc4",
       "size": 7691,
       "profile": "dsi-v0",
       "expected": {
