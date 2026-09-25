@@ -2,7 +2,7 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **PRODUCTION IMPLEMENTATION — TASK 1 RED SANDBOX CONTRACT**
+- Overall phase: **PRODUCTION IMPLEMENTATION — TASK 2 COMPLETE / TASK 3 RED**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
@@ -43,18 +43,34 @@ Current gates:
 - Production dependency promotion: **NOT STARTED**
 - Production implementation branch: **CREATED — `feat/document-semantic-inspection-v0`**
 - Production Task 1 sandbox preflight: **COMPLETE / PASS**
-- Production runtime/crates: **Task 2 READY; parser/runner production promotion not started**
+- Production core crate: **TASK 2 COMPLETE / PASS**
+- Production runtime: **TASK 3 RED READY; parser/runner dependency promotion not started**
 
 The plan identifies one production-hardening gap that must be resolved first: the qualified PoC wrapper proves CPU/file/memory and controller-timeout behavior, but production must additionally enforce the frozen no-network, no-credential, filesystem-confinement, fresh-process, and complete finite resource-profile boundary. Task 1 performs an isolated sandbox substrate preflight before any sandbox dependency is promoted.
 
 Required next order:
 
-1. create Task 2 RED core-contract tests;
-2. capture the expected RED evidence before implementation;
-3. implement infrastructure-free core types/protocol only;
-4. keep parser, SQL, storage and sandbox dependencies out of the core crate;
-5. add deterministic protocol golden snapshots and bounded decode;
-6. require exact-head CI before Task 2 completion.
+1. create Task 3 RED worker-shell/raw-binding/format-detection tests;
+2. capture the expected RED compile/test failure;
+3. implement worker shell without format parser dependencies;
+4. keep FileId/DocumentId/Principal/StorageKey/credentials out of the worker protocol;
+5. require controlled failure with no partial success;
+6. require exact-head CI before Task 3 completion.
+
+## Production Task 2 — COMPLETE
+
+- RED contract head: `d0bab4a824b6f125a20a55edd9fec21b53233fb3`
+- RED standard CI: `36086136455` — **FAIL as expected**
+- RED failure: after formatting passed, `check:rust` / `test:rust` failed because the contract test imported the not-yet-implemented core types/functions; representative error was unresolved imports from `document_semantic_inspection_core`.
+- GREEN implementation head: `d0ea866b9f7ae28532304705a3a689f030e7f2d2`
+- Final formatted GREEN head: `550913b93a2c37360544450ff9dc53164679cf8a`
+- Standard CI: `36086709602` — **SUCCESS**, including required-check
+- Sandbox regression: `36086709619` — **SUCCESS**
+- DSI PoC regression: `36086709653` — **SUCCESS**
+- Core contract tests: **7/7 PASS**
+- Contract covers: `dsi-v0` profile, eight required formats, SHA-256/32-byte fingerprint, capability/evidence wire shape, worker-safe request fields, deterministic canonicalization, unknown protocol rejection, bounded result decode, and versioned golden snapshot.
+- Core crate remains infrastructure-free; no parser, SQL, storage, or OS sandbox dependency was added.
+- Production parser dependency promotion: **NOT STARTED**
 
 ## Production Task 1 — COMPLETE
 
