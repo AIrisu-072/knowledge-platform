@@ -2,13 +2,13 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **PRODUCTION IMPLEMENTATION PLAN REVIEW**
+- Overall phase: **PRODUCTION IMPLEMENTATION PLAN APPROVED / PLAN PR FINAL GATE**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
-- Production planning PR: **#9 (Draft / Plan review)**
-- PoC execution PR: **#8 (Ready for review / unmerged)**
+- Production planning PR: **#9 (approved plan / final merge gate)**
+- PoC execution PR: **#8 (MERGED — `ab9ad6f9949128360e46fed07aca335bb6b10971`)**
 - Execution baseline: `main@5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`
 - Last qualified code head: `a4fcef1cb5cac5672199165f433bd303c25135a6`
 - Task 3 dependency-preflight candidate head: `ec532ec12d89352d83dc9a85ae68a3da583c0ebb`
@@ -16,13 +16,14 @@
 - Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
 - Design approval: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design-approval.md`
 - PoC Qualification Plan: `docs/superpowers/plans/2026-09-20-document-semantic-inspection-v0-poc-qualification.md`
-- Production Implementation Plan: `docs/superpowers/plans/2026-09-24-document-semantic-inspection-v0-production-implementation.md` — **DRAFT / AWAITING EXPLICIT USER APPROVAL**
+- Production Implementation Plan: `docs/superpowers/plans/2026-09-24-document-semantic-inspection-v0-production-implementation.md` — **APPROVED 2026-09-25**
 
 ## Approval state
 
 - Frozen Design: **APPROVED / FROZEN**
 - PoC Qualification Plan: **APPROVED 2026-09-21**
-- Production dependency promotion: **NOT AUTHORIZED** by this approval; PoC qualification only.
+- Production Implementation Plan: **APPROVED 2026-09-25**
+- Production dependency promotion: **AUTHORIZED ONLY THROUGH THE APPROVED TASK SEQUENCE; NOT STARTED**
 
 PR #7 was advanced from review to approved state and merged after explicit user approval. The execution baseline is the resulting main merge commit `5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`.
 
@@ -33,9 +34,9 @@ The PoC is complete and all eight required format gates passed. A separate Produ
 
 Current gates:
 
-- Production Implementation Plan: **DRAFT / AWAITING EXPLICIT USER APPROVAL**
-- Production planning PR #9: **Draft / Plan review**
-- PR #8: **Ready for review / unmerged**
+- Production Implementation Plan: **APPROVED 2026-09-25**
+- Production planning PR #9: **approved plan / final merge gate**
+- PR #8: **MERGED — `ab9ad6f9949128360e46fed07aca335bb6b10971`**
 - Production dependency promotion: **NOT STARTED**
 - Production implementation branch: **NOT CREATED**
 - Production runtime/crates: **NOT STARTED**
@@ -44,14 +45,11 @@ The plan identifies one production-hardening gap that must be resolved first: th
 
 Required next order:
 
-1. user reviews and explicitly approves the Production Implementation Plan;
-2. PR #8 is merged only under separate explicit user merge instruction;
-3. fetch the exact merged `main` head and fresh CI;
-4. create `feat/document-semantic-inspection-v0` from that exact head;
-5. execute Production Task 1 only, with TDD and dependency/security gates;
-6. continue task-by-task only while each hard gate passes.
-
-Do not begin production code or dependency promotion before both the Plan approval and PR #8 merge gates are satisfied.
+1. merge approved Planning PR #9 into `main`;
+2. fetch the resulting exact `main` head and require fresh green CI;
+3. create `feat/document-semantic-inspection-v0` from that exact head;
+4. execute Production Task 1 only, with TDD and dependency/security gates;
+5. continue task-by-task only while each hard gate passes.
 
 ## Task 1 — COMPLETE
 
@@ -317,6 +315,6 @@ Final cross-host evidence at the same head:
 
 **PoC Qualification is complete.**
 
-Next exact action: review Planning PR #9 and explicitly approve `docs/superpowers/plans/2026-09-24-document-semantic-inspection-v0-production-implementation.md`; production implementation remains blocked until that approval and PR #8 merge are both complete.
+Next exact action: finalize/merge approved Planning PR #9, verify exact-head `main` CI, then create `feat/document-semantic-inspection-v0` and execute Production Task 1.
 
 Do not implement production Semantic Inspection crates inside PR #8.
