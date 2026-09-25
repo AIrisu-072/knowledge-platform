@@ -12,3 +12,9 @@ publish = false
 [[bin]]
 name = "dsi-sandbox-probe"
 path = "src/bin/dsi-sandbox-probe.rs"
+
+[dependencies]
+landlock = "=0.4.7"
+seccompiler = "=0.5.0"
+libc = "0.2"
+thiserror = "2"
