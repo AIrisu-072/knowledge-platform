@@ -2,7 +2,7 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **PRODUCTION IMPLEMENTATION — TASK 4 COMPLETE / TASK 5 RED NEXT**
+- Overall phase: **PRODUCTION IMPLEMENTATION — TASK 5 RED SUPPLEMENT / SELECTED RUNTIME BLOCKER**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
@@ -10,7 +10,7 @@
 - Production planning PR: **#9 MERGED — `48045768d1d026eb785ee065877e401bbafd97ca`**
 - Production implementation branch: `feat/document-semantic-inspection-v0`
 - Production implementation PR: **#10 (Draft)**
-- Current production implementation head: `963a144add686b32afa510cf43a4ecce967f042b`
+- Current production implementation head: `9cb472d5f7a81a1f4db803305df3137683375788`
 - PoC execution PR: **#8 (MERGED — `ab9ad6f9949128360e46fed07aca335bb6b10971`)**
 - Production implementation baseline: `main@48045768d1d026eb785ee065877e401bbafd97ca`
 - Baseline main CI: `36079233862` — **SUCCESS**
@@ -45,17 +45,32 @@ Current gates:
 - Production implementation branch: **CREATED — `feat/document-semantic-inspection-v0`**
 - Production Task 1 sandbox preflight: **COMPLETE / PASS**
 - Production core crate: **TASK 2 COMPLETE / PASS**
-- Production runtime: **TASKS 1–4 COMPLETE / PASS; Task 5 RED is next**
+- Production runtime: **TASKS 1–4 COMPLETE / PASS; Task 5 initial RED exists, but review gaps must be supplemented before GREEN**
 
 The production-hardening gap is resolved for the frozen v0 profile. Task 1 preflight qualified and promoted the sandbox substrate, and its runtime enforces the no-network, no-credential, filesystem-confinement, fresh-process, and finite resource-profile boundary.
 
 Required next order:
 
-1. begin Production Task 5 RED for DOCX semantics and the independent OOXML coverage sentinel, using the qualified fixture corpus;
-2. prove failures for body/heading/list order, tables/merges, headers/footers, notes, hyperlinks, images, sections, tracked changes, comments, package-order noise, hostile packages, and unknown potentially semantic parts;
-3. do not promote Task 5 parser dependencies until clean RED evidence is recorded;
-4. after RED, promote only the Task 5 dependencies allowed by the approved plan and implement DOCX semantics;
-5. require exact-head standard CI and DSI qualification before marking Task 5 complete.
+1. After the explicitly selected `gpt-6-luna/max` managed runtime responds, resume run `dsi-prod-task5-red-evidence-v3-20260925` with the same recorded spec; its current state has no pending operation and no write receipts.
+2. Modify only `crates/document-semantic-inspection-worker/tests/docx_format_parity.rs` to assert tracked-change/comment `source_locator`, metadata-noise `last_modified_by`, and list/section order. Do not add production code or dependencies.
+3. Commit/push the supplemental RED and require exact-head standard CI, Sandbox Preflight, DSI PoC, and independent review before Task 5 GREEN.
+4. Continue Tasks 5–14 in plan order with only explicitly qualified dependencies; do not merge PR #10.
+
+## Production Task 5 — DOCX RED REVIEW GAPS / MANAGED RUNTIME BLOCKER
+
+- Current branch/head: `feat/document-semantic-inspection-v0` / `9cb472d5f7a81a1f4db803305df3137683375788`; worktree clean.
+- GitHub PR #10: OPEN / Draft at the same head; no merge authorized.
+- Exact-head standard CI `36114655294`: FAILURE on the unimplemented Task 5 adapter/sentinel contract; security, policy, macOS portability, and container-build jobs passed, while `rust-static` and `rust-test` failed on the expected missing Task 5 APIs.
+- Exact-head DSI Sandbox Preflight `36114655281`: SUCCESS. Exact-head DSI PoC regression `36114655219`: SUCCESS.
+- Independent read-only review: NO-GO for Task 5 GREEN until tests assert tracked-change/comment source locators, `metadata-noise` editorial `last_modified_by`, list-item order, and section order.
+- Task 5 production dependencies have not been promoted; no Task 5 GREEN implementation has started.
+- First RED evidence run `dsi-prod-task5-red-evidence-20260925` is preserved: source inventory was 183,311 bytes against a 140,000-byte startup budget; a split was rejected at `max_tasks=1`; zero write receipts. Do not resume that run.
+- Run `dsi-prod-task5-red-evidence-v2-20260925` ended with `app-server timeout` at its 15-minute deadline; requested/resolved model `gpt-6-luna`, reported input 18,361 tokens, no write receipts.
+- Read-only route check `dsi-worker-route-health-20260925-1` also ended at its 3-minute deadline; it is not evidence that the model is unavailable.
+- Run `dsi-prod-task5-red-evidence-v3-20260925` used `gpt-6-luna/max`, with 60-minute total time, 100k input threshold, and three allowed fresh-session rotations. Two fresh workers failed before their first tool call with `turn failed or stopped without interrupt acknowledgement`; both resolved to `gpt-6-luna`, reported no input usage, and produced no write receipts. Current run state has `pending=null`, task incomplete, and no repository changes.
+- The local GitHub CLI request timed out, but the GitHub REST connector freshly confirmed PR #10 OPEN/Draft at this exact head and the three exact-head workflow results above.
+
+Next exact action: once the selected `gpt-6-luna/max` runtime responds, run `toolbox-context resume --workspace "/Users/airisu/.codex/worktrees/dsi-v0-production-task4/knowledge-platform" --run dsi-prod-task5-red-evidence-v3-20260925`; then verify the one-file RED patch, commit/push it, collect all three exact-head CI results, and obtain independent review before GREEN.
 
 ## Production Task 4 — COMPLETE
 

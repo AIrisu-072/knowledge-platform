@@ -3,13 +3,16 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **PRODUCTION IMPLEMENTATION — TASK 4 COMPLETE / TASK 5 RED NEXT**
+- Current phase: **PRODUCTION IMPLEMENTATION — TASK 5 RED SUPPLEMENT / SELECTED RUNTIME BLOCKER**
 - Frozen Design PR: `#7` — merged
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
 - Production planning PR: `#9` — merged as `48045768d1d026eb785ee065877e401bbafd97ca`
 - Production implementation branch: `feat/document-semantic-inspection-v0`
 - Production implementation PR: `#10` — Draft
+- Current production implementation head: `9cb472d5f7a81a1f4db803305df3137683375788`
+- Current GitHub PR #10: OPEN / Draft at that exact head; do not merge
+- Task 5 exact-head standard CI `36114655294`: FAILURE on the intended unimplemented adapter contract; Sandbox `36114655281` and PoC `36114655219`: SUCCESS
 - PoC execution PR: `#8` — merged as `ab9ad6f9949128360e46fed07aca335bb6b10971`
 - Approved Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
 - Design approval record: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design-approval.md`
@@ -91,11 +94,11 @@ Production Tasks 1–4 are complete. Final Task 4 head `963a144add686b32afa510cf
 
 ## Next exact action
 
-Begin Production Task 5 RED for DOCX semantics and the OOXML coverage sentinel. Add failing parity contracts using the qualified fixtures for body/heading/list order, table structure/merge, headers/footers, notes, hyperlinks, images, sections, tracked changes, comments, serialization/package-order noise, malformed/deep/oversized packages, and unknown potentially semantic parts. Do not promote Task 5 dependencies until its RED evidence is recorded.
+Task 5 initial RED is at `9cb472d5f7a81a1f4db803305df3137683375788`, but independent review found missing locator, editorial metadata, list-order, and section-order assertions. The selected `gpt-6-luna/max` managed runtime failed before its first tool call in two fresh workers; no repository files changed. After the exact selected runtime responds, resume `dsi-prod-task5-red-evidence-v3-20260925` with `toolbox-context resume --workspace "/Users/airisu/.codex/worktrees/dsi-v0-production-task4/knowledge-platform" --run dsi-prod-task5-red-evidence-v3-20260925`. Keep Task 5 GREEN and dependency promotion gated on a completed supplemental RED, fresh exact-head CI, and independent review.
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` のrepository/GitHub現在状態を正本として続行してください。Frozen DesignとProduction Implementation Planは承認済み、PR #8/#9はmerge済みです。Production Task 1〜4は完了。Task 4 final code head `963a144add686b32afa510cf43a4ecce967f042b` は標準CI `36099955617`、Sandbox `36099955599`、DSI PoC `36099955606` がすべてSUCCESSです。PR #10はOPEN/Draft、unresolved review threadsは0件です。次は承認済みplanに従ってTask 5 DOCX/OOXML REDを作成し、clean RED後に限りqualify済み依存のGREENへ進んでください。PR #10は明示指示なしにmergeしないでください。
+> `AIrisu-072/knowledge-platform` の現在状態を正本として続行してください。Frozen Design と Production Implementation Plan は承認済み、PR #8/#9 は merged。Tasks 1–4 complete、Task 4 final head `963a144add686b32afa510cf43a4ecce967f042b`。Task 5 initial RED head `9cb472d5f7a81a1f4db803305df3137683375788`。標準 CI `36114655294` は未実装 Task 5 adapter contract で failure、Sandbox `36114655281` と DSI PoC `36114655219` は success。独立レビューは locator / editorial metadata / list order / section order の assertion 不足で NO-GO、GREEN と Task 5 dependencies は未開始。PR #10 は GitHub 上 OPEN/Draft、同じ head。指定 runtime `gpt-6-luna/max` が複数の fresh worker で最初の tool call 前に失敗し、作業ツリーは clean。runtime 復旧後、同じ managed run `dsi-prod-task5-red-evidence-v3-20260925` を resume して RED 補強から再開。PR #10 は明示指示なしに merge しない。
 
 ## End-of-session rule
 
