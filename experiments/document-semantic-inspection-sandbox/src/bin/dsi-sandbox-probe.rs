@@ -3,7 +3,7 @@ use std::{
     fs::{self, File},
     hint::black_box,
     io::Write,
-    net::{TcpListener, UdpSocket},
+    net::{TcpListener, ToSocketAddrs, UdpSocket},
     process,
     thread,
     time::Duration,
@@ -46,6 +46,17 @@ fn main() {
                 allowed("udp-socket");
             }
             Err(error) => denied("udp-socket", error),
+        },
+        "dns" => match ("dsi-sandbox-probe.invalid", 443).to_socket_addrs() {
+            Ok(mut addresses) => match addresses.next() {
+                Some(_) => allowed("dns"),
+                None => denied("dns", "no address"),
+            },
+            Err(error) => denied("dns", error),
+        },
+        "pid" => {
+            println!("pid={}", process::id());
+            allowed("pid");
         },
         "read" => {
             let path = args.next().expect("read path");
@@ -99,6 +110,28 @@ fn main() {
                 written += len;
             }
             allowed("file-write");
+        }
+        "fill-dir" => {
+            let directory = std::path::PathBuf::from(args.next().expect("directory"));
+            let files: usize = args.next().expect("file count").parse().expect("usize");
+            let bytes: usize = args.next().expect("bytes per file").parse().expect("usize");
+            let chunk = [0_u8; 4096];
+            for index in 0..files {
+                let mut file = match File::create(directory.join(format!("part-{index}.bin"))) {
+                    Ok(file) => file,
+                    Err(error) => denied("fill-dir-create", error),
+                };
+                let mut written = 0usize;
+                while written < bytes {
+                    let len = (bytes - written).min(chunk.len());
+                    if let Err(error) = file.write_all(&chunk[..len]) {
+                        denied("fill-dir-write", error);
+                    }
+                    written += len;
+                }
+            }
+            thread::sleep(Duration::from_secs(5));
+            allowed("fill-dir");
         }
         "sleep" => {
             let millis: u64 = args.next().expect("sleep millis").parse().expect("u64");
