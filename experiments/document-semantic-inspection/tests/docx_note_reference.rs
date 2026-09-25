@@ -67,6 +67,31 @@ fn dangling_endnote_reference_fails_closed() {
     assert_dangling_note_reference_fails_closed(NoteKind::Endnote);
 }
 
+#[test]
+fn orphan_footnote_definition_fails_closed_without_body_reference() {
+    let referenced = single_note_docx(NoteKind::Footnote, 1);
+    let orphan = note_docx(NoteKind::Footnote, &[], &[(1, "Alpha note")]);
+    let orphan_parts = read_parts(&orphan);
+    let orphan_document =
+        std::str::from_utf8(&orphan_parts["word/document.xml"]).expect("document XML");
+    assert!(orphan_document.contains("same body text"));
+    assert!(!orphan_document.contains("footnoteReference"));
+    let orphan_notes =
+        std::str::from_utf8(&orphan_parts["word/footnotes.xml"]).expect("footnotes XML");
+    assert!(orphan_notes.contains("<w:footnote w:id=\"1\">"));
+    assert!(orphan_notes.contains("Alpha note"));
+    assert_single_note_reference(&referenced, NoteKind::Footnote, 1);
+    assert_only_document_part_differs(&referenced, &orphan);
+
+    inspect(&referenced).expect("single referenced footnote baseline is valid and supported");
+    let result = inspect(&orphan);
+    assert!(
+        result.is_err(),
+        "ordinary footnote ID 1 with no body reference was silently accepted: {:?}",
+        error_summary(result)
+    );
+}
+
 fn assert_note_reference_order_changes_or_fails_closed(kind: NoteKind) {
     let forward = two_note_docx(kind, [1, 2]);
     let reversed = two_note_docx(kind, [2, 1]);
