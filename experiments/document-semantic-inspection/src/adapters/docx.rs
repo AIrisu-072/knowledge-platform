@@ -3,7 +3,7 @@ use std::io::{Cursor, Read};
 
 use office_oxide::docx::DocxDocument;
 use quick_xml::Reader;
-use quick_xml::events::{BytesStart, Event};
+use quick_xml::events::{BytesEnd, BytesStart, Event};
 use quick_xml::name::ResolveResult;
 use quick_xml::reader::NsReader;
 use serde::Serialize;
@@ -19,6 +19,7 @@ const MAX_ENTRIES: usize = 256;
 const MAX_ENTRY_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_TOTAL_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_XML_DEPTH: usize = 64;
+const MAX_XML_NODES: usize = 2_000_000;
 const MAX_DOCX_IMAGES: usize = 4_096;
 const MAX_DOCX_DECODED_PIXELS: u64 = 67_108_864;
 const MAX_DOCX_DECODED_OUTPUT_BYTES: usize = 268_435_456;
@@ -27,6 +28,7 @@ const WORDPROCESSINGML_NS: &str = "http://schemas.openxmlformats.org/wordprocess
 const OFFICE_RELATIONSHIPS_NS: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const DRAWINGML_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/main";
+const DRAWINGML_PICTURE_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/picture";
 const VML_NS: &str = "urn:schemas-microsoft-com:vml";
 const HEADER_RELATIONSHIP: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header";
@@ -53,6 +55,25 @@ struct ImageBudget {
     decoded_output_bytes: usize,
 }
 
+#[derive(Debug, Default)]
+struct PictureGeometry {
+    has_embedded_image: bool,
+    saw_shape_properties: bool,
+    saw_preset_geometry: bool,
+    unsupported_geometry: bool,
+    adjustment_list_depth: usize,
+    has_adjustments: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum PictureGeometryElement {
+    PictureShapeProperties,
+    PresetGeometry,
+    AdjustmentList,
+    #[default]
+    Other,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 struct PngMetadata {
     background: Option<[u8; 3]>,
@@ -75,6 +96,188 @@ struct Relationship {
     kind: String,
     target: String,
     external: bool,
+}
+
+#[derive(Debug, Clone)]
+struct NumberingLevel {
+    format: String,
+    start: u32,
+    level_text: String,
+    multi_level_type: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct NumberingLevelBuilder {
+    format: Option<String>,
+    start: Option<u32>,
+    level_text: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct NumberingDefinitions {
+    abstract_ids: BTreeSet<u32>,
+    abstract_types: BTreeMap<u32, String>,
+    abstract_levels: BTreeMap<(u32, u8), NumberingLevelBuilder>,
+    num_ids: BTreeSet<u32>,
+    instances: BTreeMap<u32, u32>,
+    associated_styles: BTreeSet<String>,
+    unsupported_overrides: BTreeSet<(u32, u8)>,
+    start_override_ids: BTreeSet<(u32, u8)>,
+}
+
+#[derive(Debug, Default)]
+struct StyleDefinitions {
+    paragraph_styles: BTreeMap<String, ParagraphStyleDefinition>,
+    duplicate_style_ids: BTreeSet<String>,
+}
+
+#[derive(Debug, Default)]
+struct ParagraphStyleDefinition {
+    style_type: Option<String>,
+    based_on: Option<String>,
+    has_based_on: bool,
+    has_numbering_properties: bool,
+    duplicate_numbering_properties: bool,
+    has_num_id: bool,
+    num_id: Option<String>,
+    duplicate_num_id: bool,
+}
+
+#[derive(Debug)]
+struct StyleDefinitionBuilder {
+    style_id: String,
+    definition: ParagraphStyleDefinition,
+    paragraph_properties_depth: usize,
+    numbering_properties_depth: usize,
+}
+
+impl StyleDefinitions {
+    fn reject_if_numbered_style(
+        &self,
+        style_id: &str,
+        numbering: &NumberingDefinitions,
+    ) -> Result<(), PocError> {
+        let mut current_style = style_id;
+        let mut visited = BTreeSet::new();
+
+        loop {
+            if numbering.associated_styles.contains(current_style) {
+                return Err(PocError::UnsupportedSemanticConstruct(format!(
+                    "paragraph style {current_style} selects a numbering level that is not modeled"
+                )));
+            }
+            if !visited.insert(current_style.to_owned()) {
+                return Err(PocError::UnsupportedSemanticConstruct(format!(
+                    "paragraph style {style_id} has a cyclic basedOn chain"
+                )));
+            }
+            if self.duplicate_style_ids.contains(current_style) {
+                return Err(PocError::UnsupportedSemanticConstruct(format!(
+                    "paragraph style {current_style} has duplicate definitions"
+                )));
+            }
+
+            let Some(definition) = self.paragraph_styles.get(current_style) else {
+                // Normal is the built-in default paragraph style even when styles.xml
+                // omits its explicit definition. Other missing styles are unresolved.
+                if current_style == "Normal" {
+                    break;
+                }
+                return Err(PocError::UnsupportedSemanticConstruct(format!(
+                    "paragraph style {current_style} has no definition"
+                )));
+            };
+            if definition.style_type.as_deref() != Some("paragraph") {
+                return Err(PocError::UnsupportedSemanticConstruct(format!(
+                    "paragraph style {current_style} has an unsupported style type"
+                )));
+            }
+
+            if definition.has_numbering_properties {
+                if definition.duplicate_numbering_properties || definition.duplicate_num_id {
+                    return Err(PocError::UnsupportedSemanticConstruct(format!(
+                        "paragraph style {current_style} has ambiguous numbering properties"
+                    )));
+                }
+                let Some(num_id) = definition.num_id.as_deref() else {
+                    return Err(PocError::UnsupportedSemanticConstruct(format!(
+                        "paragraph style {current_style} has incomplete numbering properties"
+                    )));
+                };
+                match parse_numbering_decimal_value(num_id, "style numId") {
+                    Ok(0) => {}
+                    Ok(_) | Err(_) => {
+                        return Err(PocError::UnsupportedSemanticConstruct(format!(
+                            "paragraph style {current_style} defines list numbering that is not modeled"
+                        )));
+                    }
+                }
+            }
+
+            if !definition.has_based_on {
+                break;
+            }
+            let Some(base_style) = definition.based_on.as_deref() else {
+                return Err(PocError::UnsupportedSemanticConstruct(format!(
+                    "paragraph style {current_style} has an unresolved basedOn reference"
+                )));
+            };
+            current_style = base_style;
+        }
+
+        Ok(())
+    }
+}
+
+impl NumberingDefinitions {
+    fn resolve_level(&self, num_id: u32, level: u8) -> Result<NumberingLevel, PocError> {
+        let key = (num_id, level);
+        if self.unsupported_overrides.contains(&key) {
+            return Err(PocError::UnsupportedSemanticConstruct(format!(
+                "numbering override for numId {num_id} level {level} is not modeled"
+            )));
+        }
+
+        let abstract_id = self.instances.get(&num_id).ok_or_else(|| {
+            PocError::UnsupportedSemanticConstruct(format!(
+                "numbering reference numId {num_id} has no definition"
+            ))
+        })?;
+        if !self.abstract_ids.contains(abstract_id) {
+            return Err(PocError::UnsupportedSemanticConstruct(format!(
+                "numbering reference numId {num_id} has unresolved abstractNumId {abstract_id}"
+            )));
+        }
+
+        let builder = self
+            .abstract_levels
+            .get(&(*abstract_id, level))
+            .ok_or_else(|| {
+                PocError::UnsupportedSemanticConstruct(format!(
+                    "numbering reference numId {num_id} level {level} has no level definition"
+                ))
+            })?;
+        let format = builder.format.clone().ok_or_else(|| {
+            PocError::UnsupportedSemanticConstruct(format!(
+                "numbering reference numId {num_id} level {level} has no numFmt"
+            ))
+        })?;
+        Ok(NumberingLevel {
+            format,
+            start: builder.start.unwrap_or(0),
+            level_text: builder.level_text.clone().unwrap_or_default(),
+            multi_level_type: self.abstract_types.get(abstract_id).cloned(),
+        })
+    }
+}
+
+#[derive(Debug, Default)]
+struct NumberingParser {
+    definitions: NumberingDefinitions,
+    current_abstract: Option<u32>,
+    current_num: Option<u32>,
+    current_level: Option<(u32, u8)>,
+    current_override: Option<(u32, u8)>,
 }
 
 #[derive(Debug, Serialize)]
@@ -106,21 +309,38 @@ impl InspectionAdapter for DocxAdapter {
                 .map(Vec::as_slice)
                 .unwrap_or_default(),
         )?;
+        let styles = parse_styles(
+            package
+                .parts
+                .get("word/styles.xml")
+                .map(Vec::as_slice)
+                .unwrap_or_default(),
+        )?;
 
         let document = package.parts.get("word/document.xml").ok_or_else(|| {
             PocError::SemanticExtractionFailed("DOCX has no word/document.xml".into())
         })?;
 
-        reject_unprojected_nonbody_images(document, &package)?;
+        reject_unprojected_document_semantics(document, &package)?;
+        reject_unprojected_header_footer_hyperlinks(&package.parts)?;
+        styles.reject_if_numbered_style("Normal", &numbering)?;
 
         let mut image_budget = ImageBudget::default();
         let (body_tokens, body_text) =
-            parse_document_projection(document, &package, &numbering, &mut image_budget)?;
+            parse_document_projection(document, &package, &numbering, &styles, &mut image_budget)?;
 
         let headers = texts_for_prefix(&package.parts, "word/header")?;
         let footers = texts_for_prefix(&package.parts, "word/footer")?;
-        let footnotes = note_texts(package.parts.get("word/footnotes.xml"), "footnotes")?;
-        let endnotes = note_texts(package.parts.get("word/endnotes.xml"), "endnotes")?;
+        let (footnotes, footnote_definitions) =
+            note_texts(package.parts.get("word/footnotes.xml"), "footnotes")?;
+        let (endnotes, endnote_definitions) =
+            note_texts(package.parts.get("word/endnotes.xml"), "endnotes")?;
+        let note_references = collect_note_references(document)?;
+        validate_note_references(
+            &note_references,
+            &footnote_definitions,
+            &endnote_definitions,
+        )?;
 
         let mut visible = Vec::new();
         visible.extend(headers.iter().cloned());
@@ -244,9 +464,16 @@ fn inspect_package(input: &[u8]) -> Result<PackageInspection, PocError> {
         }
     }
 
+    let mut xml_nodes_total = 0usize;
     for (name, data) in &parts {
         if name.ends_with(".xml") || name.ends_with(".rels") {
-            validate_xml(name, data)?;
+            let part_nodes = validate_xml(name, data)?;
+            xml_nodes_total = xml_nodes_total
+                .checked_add(part_nodes)
+                .ok_or(PocError::InspectionResourceLimitExceeded)?;
+            if xml_nodes_total > MAX_XML_NODES {
+                return Err(PocError::InspectionResourceLimitExceeded);
+            }
         }
     }
 
@@ -287,20 +514,35 @@ fn validate_part_name(name: &str) -> Result<(), PocError> {
     Ok(())
 }
 
-fn validate_xml(name: &str, data: &[u8]) -> Result<(), PocError> {
+fn count_xml_node(nodes: &mut usize) -> Result<(), PocError> {
+    *nodes = (*nodes)
+        .checked_add(1)
+        .ok_or(PocError::InspectionResourceLimitExceeded)?;
+    if *nodes > MAX_XML_NODES {
+        return Err(PocError::InspectionResourceLimitExceeded);
+    }
+    Ok(())
+}
+
+fn validate_xml(name: &str, data: &[u8]) -> Result<usize, PocError> {
     let text = std::str::from_utf8(data)
         .map_err(|_| PocError::SemanticExtractionFailed(format!("{name} is not UTF-8 XML")))?;
     let mut reader = Reader::from_str(text);
     reader.config_mut().check_end_names = true;
     let mut depth = 0usize;
+    let mut nodes = 0usize;
     loop {
         match reader.read_event() {
             Ok(Event::Start(_)) => {
-                depth += 1;
+                depth = depth
+                    .checked_add(1)
+                    .ok_or(PocError::InspectionResourceLimitExceeded)?;
                 if depth > MAX_XML_DEPTH {
                     return Err(PocError::InspectionResourceLimitExceeded);
                 }
+                count_xml_node(&mut nodes)?;
             }
+            Ok(Event::Empty(_)) => count_xml_node(&mut nodes)?,
             Ok(Event::End(_)) => {
                 if depth == 0 {
                     return Err(PocError::SemanticExtractionFailed(format!(
@@ -310,7 +552,7 @@ fn validate_xml(name: &str, data: &[u8]) -> Result<(), PocError> {
                 depth -= 1;
             }
             Ok(Event::Eof) => break,
-            Ok(_) => {}
+            Ok(_) => count_xml_node(&mut nodes)?,
             Err(error) => {
                 return Err(PocError::SemanticExtractionFailed(format!(
                     "{name} XML parse failed: {error}"
@@ -323,14 +565,15 @@ fn validate_xml(name: &str, data: &[u8]) -> Result<(), PocError> {
             "{name} ended with {depth} unclosed XML elements"
         )));
     }
-    Ok(())
+    Ok(nodes)
 }
 
-fn reject_unprojected_nonbody_images(
+fn reject_unprojected_document_semantics(
     document: &[u8],
     package: &PackageInspection,
 ) -> Result<(), PocError> {
     reject_document_vml_images(document)?;
+    reject_unsupported_picture_geometry(document)?;
 
     let text = std::str::from_utf8(document)
         .map_err(|_| PocError::SemanticExtractionFailed("document XML is not UTF-8".into()))?;
@@ -351,6 +594,17 @@ fn reject_unprojected_nonbody_images(
         };
         let local_name = event.local_name();
 
+        if is_xml_element(
+            &namespace,
+            local_name.as_ref(),
+            WORDPROCESSINGML_NS,
+            "titlePg",
+        ) {
+            return Err(PocError::UnsupportedSemanticConstruct(
+                "first-page header/footer selection is not modeled".into(),
+            ));
+        }
+
         let (relationship_kind, relationship_name) = match local_name.as_ref() {
             "headerReference" => (HEADER_RELATIONSHIP, "header"),
             "footerReference" => (FOOTER_RELATIONSHIP, "footer"),
@@ -365,6 +619,14 @@ fn reject_unprojected_nonbody_images(
                 )));
             }
             _ => continue,
+        }
+
+        if namespaced_attribute(&event, reader.resolver(), WORDPROCESSINGML_NS, "type")?.as_deref()
+            == Some("even")
+        {
+            return Err(PocError::UnsupportedSemanticConstruct(format!(
+                "even {relationship_name} selection in word/document.xml is not modeled"
+            )));
         }
 
         let relationship_id =
@@ -401,6 +663,193 @@ fn reject_unprojected_nonbody_images(
     }
 
     Ok(())
+}
+
+fn reject_unsupported_picture_geometry(document: &[u8]) -> Result<(), PocError> {
+    let text = std::str::from_utf8(document)
+        .map_err(|_| PocError::SemanticExtractionFailed("document XML is not UTF-8".into()))?;
+    let mut reader = NsReader::from_str(text);
+    reader.config_mut().check_end_names = true;
+    let mut deleted_depth = 0usize;
+    let mut elements = Vec::new();
+    let mut pictures = Vec::<PictureGeometry>::new();
+
+    loop {
+        let (namespace, event) = reader.read_resolved_event().map_err(|error| {
+            PocError::SemanticExtractionFailed(format!(
+                "document picture geometry XML parse failed: {error}"
+            ))
+        })?;
+        match event {
+            Event::Start(event) => {
+                let local_name = event.local_name();
+                if is_xml_element(&namespace, local_name.as_ref(), WORDPROCESSINGML_NS, "del")
+                    || is_xml_element(
+                        &namespace,
+                        local_name.as_ref(),
+                        WORDPROCESSINGML_NS,
+                        "moveFrom",
+                    )
+                {
+                    deleted_depth = deleted_depth
+                        .checked_add(1)
+                        .ok_or(PocError::InspectionResourceLimitExceeded)?;
+                }
+                if deleted_depth == 0 {
+                    record_picture_geometry_open_event(
+                        &namespace,
+                        &event,
+                        &mut elements,
+                        &mut pictures,
+                        false,
+                    )?;
+                } else {
+                    elements.push(PictureGeometryElement::Other);
+                }
+            }
+            Event::Empty(event) => {
+                if deleted_depth == 0 {
+                    record_picture_geometry_open_event(
+                        &namespace,
+                        &event,
+                        &mut elements,
+                        &mut pictures,
+                        true,
+                    )?;
+                }
+            }
+            Event::End(event) => {
+                let local_name = event.local_name();
+                if deleted_depth == 0 {
+                    if is_xml_element(&namespace, local_name.as_ref(), DRAWINGML_PICTURE_NS, "pic")
+                        && let Some(picture) = pictures.pop()
+                        && picture.has_embedded_image
+                        && (picture.unsupported_geometry || picture.has_adjustments)
+                    {
+                        return Err(PocError::UnsupportedSemanticConstruct(
+                            "referenced picture geometry or adjustments are not modeled".into(),
+                        ));
+                    }
+                    if matches!(
+                        picture_geometry_element(&namespace, local_name.as_ref()),
+                        PictureGeometryElement::AdjustmentList
+                    ) && let Some(picture) = pictures.last_mut()
+                    {
+                        picture.adjustment_list_depth =
+                            picture.adjustment_list_depth.saturating_sub(1);
+                    }
+                }
+                elements.pop();
+                if is_xml_element(&namespace, local_name.as_ref(), WORDPROCESSINGML_NS, "del")
+                    || is_xml_element(
+                        &namespace,
+                        local_name.as_ref(),
+                        WORDPROCESSINGML_NS,
+                        "moveFrom",
+                    )
+                {
+                    deleted_depth = deleted_depth.saturating_sub(1);
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
+fn record_picture_geometry_open_event(
+    namespace: &ResolveResult<'_>,
+    event: &BytesStart<'_>,
+    elements: &mut Vec<PictureGeometryElement>,
+    pictures: &mut Vec<PictureGeometry>,
+    empty: bool,
+) -> Result<(), PocError> {
+    let local_name = event.local_name();
+    let kind = picture_geometry_element(namespace, local_name.as_ref());
+    let parent = elements.last().copied().unwrap_or_default();
+
+    if !empty && is_xml_element(namespace, local_name.as_ref(), DRAWINGML_PICTURE_NS, "pic") {
+        pictures.push(PictureGeometry::default());
+    } else if let Some(picture) = pictures.last_mut() {
+        if is_xml_element(namespace, local_name.as_ref(), DRAWINGML_NS, "srcRect") {
+            picture.unsupported_geometry = true;
+        } else if is_xml_element(namespace, local_name.as_ref(), DRAWINGML_NS, "xfrm") {
+            for coordinate in ["rot", "flipH", "flipV"] {
+                if let Some(value) = attr(event, coordinate)?
+                    && !matches!(value.as_str(), "0" | "false" | "off")
+                {
+                    picture.unsupported_geometry = true;
+                }
+            }
+        } else if is_xml_element(namespace, local_name.as_ref(), DRAWINGML_NS, "off") {
+            for coordinate in ["x", "y"] {
+                if let Some(value) = attr(event, coordinate)?
+                    && value != "0"
+                {
+                    picture.unsupported_geometry = true;
+                }
+            }
+        }
+
+        if kind == PictureGeometryElement::PictureShapeProperties {
+            if picture.saw_shape_properties {
+                picture.unsupported_geometry = true;
+            }
+            picture.saw_shape_properties = true;
+        } else if parent == PictureGeometryElement::PictureShapeProperties
+            && matches!(local_name.as_ref(), "prstGeom" | "custGeom")
+        {
+            if kind == PictureGeometryElement::PresetGeometry {
+                if picture.saw_preset_geometry || attr(event, "prst")?.as_deref() != Some("rect") {
+                    picture.unsupported_geometry = true;
+                }
+                picture.saw_preset_geometry = true;
+            } else {
+                picture.unsupported_geometry = true;
+            }
+        } else if parent == PictureGeometryElement::PresetGeometry && local_name.as_ref() == "avLst"
+        {
+            if kind == PictureGeometryElement::AdjustmentList {
+                if !empty {
+                    picture.adjustment_list_depth = picture
+                        .adjustment_list_depth
+                        .checked_add(1)
+                        .ok_or(PocError::InspectionResourceLimitExceeded)?;
+                }
+            } else {
+                picture.unsupported_geometry = true;
+            }
+        } else if picture.adjustment_list_depth > 0 {
+            // DrawingML guide entries change preset geometry even when the PNG is identical.
+            picture.has_adjustments = true;
+        }
+
+        if local_name.as_ref() == "blip" && attr(event, "embed")?.is_some() {
+            picture.has_embedded_image = true;
+        }
+    }
+
+    if !empty {
+        elements.push(kind);
+    }
+    Ok(())
+}
+
+fn picture_geometry_element(
+    namespace: &ResolveResult<'_>,
+    local_name: &str,
+) -> PictureGeometryElement {
+    if is_xml_element(namespace, local_name, DRAWINGML_PICTURE_NS, "spPr") {
+        PictureGeometryElement::PictureShapeProperties
+    } else if is_xml_element(namespace, local_name, DRAWINGML_NS, "prstGeom") {
+        PictureGeometryElement::PresetGeometry
+    } else if is_xml_element(namespace, local_name, DRAWINGML_NS, "avLst") {
+        PictureGeometryElement::AdjustmentList
+    } else {
+        PictureGeometryElement::Other
+    }
 }
 
 fn reject_document_vml_images(document: &[u8]) -> Result<(), PocError> {
@@ -540,7 +989,7 @@ fn namespaced_attribute(
         {
             if result.is_some() {
                 return Err(PocError::SemanticExtractionFailed(format!(
-                    "duplicate relationship attribute {expected_name}"
+                    "duplicate XML attribute {expected_name}"
                 )));
             }
             let value = quick_xml::escape::unescape(item.value.as_ref()).map_err(|error| {
@@ -706,7 +1155,8 @@ fn has_any_element(data: &[u8], names: &[&str]) -> Result<bool, PocError> {
 fn parse_document_projection(
     data: &[u8],
     package: &PackageInspection,
-    numbering: &BTreeMap<(u32, u8), String>,
+    numbering: &NumberingDefinitions,
+    styles: &StyleDefinitions,
     image_budget: &mut ImageBudget,
 ) -> Result<(Vec<String>, String), PocError> {
     let text = std::str::from_utf8(data)
@@ -717,6 +1167,9 @@ fn parse_document_projection(
     let mut in_text = false;
     let mut deleted_depth = 0usize;
     let mut paragraph_level = 0u8;
+    let mut numbering_instances = BTreeMap::new();
+    let mut drawing_depth = 0usize;
+    let mut frame_extent = None;
 
     loop {
         match reader.read_event() {
@@ -742,11 +1195,31 @@ fn parse_document_projection(
                         }
                     }
                     "t" => in_text = true,
-                    "pStyle" => push_style_token(&event, &mut tokens)?,
-                    "ilvl" => paragraph_level = attr_u8(&event, "val")?.unwrap_or(0),
-                    "numId" => {
-                        push_numbering_token(&event, paragraph_level, numbering, &mut tokens)?
+                    "drawing" => {
+                        drawing_depth += 1;
+                        frame_extent = None;
                     }
+                    "extent" if drawing_depth > 0 => {
+                        let extent = drawing_extent(&event)?;
+                        frame_extent = Some(extent);
+                        tokens.push(format!("image-frame-extent:{}:{}", extent.0, extent.1));
+                    }
+                    "ext" if drawing_depth > 0 => {
+                        if let Some(extent) = optional_drawing_extent(&event)?
+                            && Some(extent) != frame_extent
+                        {
+                            tokens.push(format!("image-shape-extent:{}:{}", extent.0, extent.1));
+                        }
+                    }
+                    "pStyle" => push_style_token(&event, styles, numbering, &mut tokens)?,
+                    "ilvl" => paragraph_level = numbering_level_index(&event)?.unwrap_or(0),
+                    "numId" => push_numbering_token(
+                        &event,
+                        paragraph_level,
+                        numbering,
+                        &mut numbering_instances,
+                        &mut tokens,
+                    )?,
                     "gridSpan" => {
                         if let Some(value) = attr(&event, "val")? {
                             tokens.push(format!("grid-span:{value}"));
@@ -768,11 +1241,32 @@ fn parse_document_projection(
                     continue;
                 }
                 match event.local_name().as_ref() {
-                    "pStyle" => push_style_token(&event, &mut tokens)?,
-                    "ilvl" => paragraph_level = attr_u8(&event, "val")?.unwrap_or(0),
-                    "numId" => {
-                        push_numbering_token(&event, paragraph_level, numbering, &mut tokens)?
+                    "extent" if drawing_depth > 0 => {
+                        let extent = drawing_extent(&event)?;
+                        frame_extent = Some(extent);
+                        tokens.push(format!("image-frame-extent:{}:{}", extent.0, extent.1));
                     }
+                    "ext" if drawing_depth > 0 => {
+                        if let Some(extent) = optional_drawing_extent(&event)?
+                            && Some(extent) != frame_extent
+                        {
+                            tokens.push(format!("image-shape-extent:{}:{}", extent.0, extent.1));
+                        }
+                    }
+                    "p" => {
+                        tokens.push("p+".into());
+                        tokens.push("p-".into());
+                        paragraph_level = 0;
+                    }
+                    "pStyle" => push_style_token(&event, styles, numbering, &mut tokens)?,
+                    "ilvl" => paragraph_level = numbering_level_index(&event)?.unwrap_or(0),
+                    "numId" => push_numbering_token(
+                        &event,
+                        paragraph_level,
+                        numbering,
+                        &mut numbering_instances,
+                        &mut tokens,
+                    )?,
                     "gridSpan" => {
                         if let Some(value) = attr(&event, "val")? {
                             tokens.push(format!("grid-span:{value}"));
@@ -804,6 +1298,10 @@ fn parse_document_projection(
             Ok(Event::End(event)) => match event.local_name().as_ref() {
                 "t" => in_text = false,
                 "del" | "moveFrom" => deleted_depth = deleted_depth.saturating_sub(1),
+                "drawing" if deleted_depth == 0 => {
+                    drawing_depth = drawing_depth.saturating_sub(1);
+                    frame_extent = None;
+                }
                 "p" if deleted_depth == 0 => tokens.push("p-".into()),
                 "tbl" if deleted_depth == 0 => tokens.push("table-".into()),
                 "tr" if deleted_depth == 0 => tokens.push("row-".into()),
@@ -823,8 +1321,14 @@ fn parse_document_projection(
     Ok((tokens, normalize_text(&visible_text.join(" "))))
 }
 
-fn push_style_token(event: &BytesStart<'_>, tokens: &mut Vec<String>) -> Result<(), PocError> {
+fn push_style_token(
+    event: &BytesStart<'_>,
+    styles: &StyleDefinitions,
+    numbering: &NumberingDefinitions,
+    tokens: &mut Vec<String>,
+) -> Result<(), PocError> {
     if let Some(style) = attr(event, "val")? {
+        styles.reject_if_numbered_style(&style, numbering)?;
         if style != "Normal" {
             tokens.push(format!("style:{style}"));
         }
@@ -835,17 +1339,26 @@ fn push_style_token(event: &BytesStart<'_>, tokens: &mut Vec<String>) -> Result<
 fn push_numbering_token(
     event: &BytesStart<'_>,
     level: u8,
-    numbering: &BTreeMap<(u32, u8), String>,
+    numbering: &NumberingDefinitions,
+    numbering_instances: &mut BTreeMap<u32, usize>,
     tokens: &mut Vec<String>,
 ) -> Result<(), PocError> {
-    let Some(num_id) = attr(event, "val")?.and_then(|value| value.parse::<u32>().ok()) else {
-        return Ok(());
+    let num_id = numbering_decimal_attribute(event, "val", "numId")?;
+    let number_level = numbering.resolve_level(num_id, level)?;
+    let instance = if let Some(instance) = numbering_instances.get(&num_id) {
+        *instance
+    } else {
+        let instance = numbering_instances.len() + 1;
+        numbering_instances.insert(num_id, instance);
+        instance
     };
-    let format = numbering
-        .get(&(num_id, level))
-        .cloned()
-        .unwrap_or_else(|| format!("unknown-num:{num_id}"));
-    tokens.push(format!("list:{format}:level:{level}"));
+    tokens.push(format!("list-instance:{instance}"));
+    tokens.push(format!("list:{}:level:{level}", number_level.format));
+    tokens.push(format!("list-start:{}", number_level.start));
+    tokens.push(format!("list-marker-text:{}", number_level.level_text));
+    if let Some(level_type) = number_level.multi_level_type {
+        tokens.push(format!("list-type:{level_type}"));
+    }
     Ok(())
 }
 
@@ -887,70 +1400,54 @@ fn push_page_token(event: &BytesStart<'_>, tokens: &mut Vec<String>) -> Result<(
     Ok(())
 }
 
-fn parse_numbering(data: &[u8]) -> Result<BTreeMap<(u32, u8), String>, PocError> {
+fn drawing_extent(event: &BytesStart<'_>) -> Result<(u64, u64), PocError> {
+    optional_drawing_extent(event)?.ok_or_else(|| {
+        PocError::UnsupportedSemanticConstruct("drawing extent is incomplete".into())
+    })
+}
+
+fn optional_drawing_extent(event: &BytesStart<'_>) -> Result<Option<(u64, u64)>, PocError> {
+    let width = attr(event, "cx")?;
+    let height = attr(event, "cy")?;
+    match (width, height) {
+        (None, None) => Ok(None),
+        (Some(width), Some(height)) => {
+            let parse = |value: &str| {
+                value.parse::<u64>().map_err(|_| {
+                    PocError::UnsupportedSemanticConstruct(
+                        "drawing extent has an invalid coordinate".into(),
+                    )
+                })
+            };
+            let width = parse(&width)?;
+            let height = parse(&height)?;
+            if width == 0 || height == 0 {
+                return Err(PocError::UnsupportedSemanticConstruct(
+                    "drawing extent is zero".into(),
+                ));
+            }
+            Ok(Some((width, height)))
+        }
+        _ => Err(PocError::UnsupportedSemanticConstruct(
+            "drawing extent is incomplete".into(),
+        )),
+    }
+}
+
+fn parse_numbering(data: &[u8]) -> Result<NumberingDefinitions, PocError> {
     if data.is_empty() {
-        return Ok(BTreeMap::new());
+        return Ok(NumberingDefinitions::default());
     }
     let text = std::str::from_utf8(data)
         .map_err(|_| PocError::SemanticExtractionFailed("numbering XML is not UTF-8".into()))?;
     let mut reader = Reader::from_str(text);
-    let mut abstract_formats: BTreeMap<(u32, u8), String> = BTreeMap::new();
-    let mut instances: BTreeMap<u32, u32> = BTreeMap::new();
-    let mut abstract_id = None;
-    let mut level = 0u8;
-    let mut num_id = None;
+    let mut parser = NumberingParser::default();
 
     loop {
         match reader.read_event() {
-            Ok(Event::Start(event)) => match event.local_name().as_ref() {
-                "abstractNum" => {
-                    abstract_id =
-                        attr(&event, "abstractNumId")?.and_then(|value| value.parse::<u32>().ok());
-                }
-                "lvl" => {
-                    level = attr(&event, "ilvl")?
-                        .and_then(|value| value.parse::<u8>().ok())
-                        .unwrap_or(0);
-                }
-                "num" => {
-                    num_id = attr(&event, "numId")?.and_then(|value| value.parse::<u32>().ok());
-                }
-                "numFmt" => {
-                    if let (Some(id), Some(format)) = (abstract_id, attr(&event, "val")?) {
-                        abstract_formats.insert((id, level), format);
-                    }
-                }
-                "abstractNumId" => {
-                    if let (Some(num), Some(abs)) = (
-                        num_id,
-                        attr(&event, "val")?.and_then(|value| value.parse::<u32>().ok()),
-                    ) {
-                        instances.insert(num, abs);
-                    }
-                }
-                _ => {}
-            },
-            Ok(Event::Empty(event)) => match event.local_name().as_ref() {
-                "numFmt" => {
-                    if let (Some(id), Some(format)) = (abstract_id, attr(&event, "val")?) {
-                        abstract_formats.insert((id, level), format);
-                    }
-                }
-                "abstractNumId" => {
-                    if let (Some(num), Some(abs)) = (
-                        num_id,
-                        attr(&event, "val")?.and_then(|value| value.parse::<u32>().ok()),
-                    ) {
-                        instances.insert(num, abs);
-                    }
-                }
-                _ => {}
-            },
-            Ok(Event::End(event)) => match event.local_name().as_ref() {
-                "abstractNum" => abstract_id = None,
-                "num" => num_id = None,
-                _ => {}
-            },
+            Ok(Event::Start(event)) => parser.open_element(&event, false)?,
+            Ok(Event::Empty(event)) => parser.open_element(&event, true)?,
+            Ok(Event::End(event)) => parser.close_element(&event)?,
             Ok(Event::Eof) => break,
             Ok(_) => {}
             Err(error) => {
@@ -961,15 +1458,545 @@ fn parse_numbering(data: &[u8]) -> Result<BTreeMap<(u32, u8), String>, PocError>
         }
     }
 
-    let mut resolved = BTreeMap::new();
-    for (num, abs) in instances {
-        for ((candidate_abs, candidate_level), format) in &abstract_formats {
-            if *candidate_abs == abs {
-                resolved.insert((num, *candidate_level), format.clone());
+    for num_id in &parser.definitions.num_ids {
+        if !parser.definitions.instances.contains_key(num_id) {
+            return Err(PocError::SemanticExtractionFailed(format!(
+                "numbering numId {num_id} has no abstractNumId reference"
+            )));
+        }
+    }
+
+    Ok(parser.definitions)
+}
+
+fn parse_styles(data: &[u8]) -> Result<StyleDefinitions, PocError> {
+    if data.is_empty() {
+        return Ok(StyleDefinitions::default());
+    }
+    reject_doc_defaults_numbering(data)?;
+    let text = std::str::from_utf8(data)
+        .map_err(|_| PocError::SemanticExtractionFailed("styles XML is not UTF-8".into()))?;
+    let mut reader = Reader::from_str(text);
+    let mut definitions = StyleDefinitions::default();
+    let mut current_style: Option<StyleDefinitionBuilder> = None;
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(event)) => match event.local_name().as_ref() {
+                "style" => {
+                    if current_style.is_some() {
+                        return Err(PocError::SemanticExtractionFailed(
+                            "nested style definition in styles.xml".into(),
+                        ));
+                    }
+                    if let Some(style_id) = attr(&event, "styleId")? {
+                        current_style = Some(StyleDefinitionBuilder {
+                            style_id,
+                            definition: ParagraphStyleDefinition {
+                                style_type: attr(&event, "type")?,
+                                ..ParagraphStyleDefinition::default()
+                            },
+                            paragraph_properties_depth: 0,
+                            numbering_properties_depth: 0,
+                        });
+                    }
+                }
+                "basedOn" => {
+                    if let Some(builder) = &mut current_style {
+                        if builder.definition.has_based_on {
+                            builder.definition.based_on = None;
+                        } else {
+                            builder.definition.has_based_on = true;
+                            builder.definition.based_on = attr(&event, "val")?;
+                        }
+                    }
+                }
+                "pPr" => {
+                    if let Some(builder) = &mut current_style {
+                        builder.paragraph_properties_depth += 1;
+                    }
+                }
+                "numPr" => {
+                    if let Some(builder) = &mut current_style {
+                        if builder.paragraph_properties_depth > 0 {
+                            if builder.definition.has_numbering_properties {
+                                builder.definition.duplicate_numbering_properties = true;
+                            }
+                            builder.definition.has_numbering_properties = true;
+                            builder.numbering_properties_depth += 1;
+                        }
+                    }
+                }
+                "numId" => {
+                    if let Some(builder) = &mut current_style {
+                        if builder.numbering_properties_depth > 0 {
+                            if builder.definition.has_num_id {
+                                builder.definition.duplicate_num_id = true;
+                            }
+                            builder.definition.has_num_id = true;
+                            builder.definition.num_id = attr(&event, "val")?;
+                        }
+                    }
+                }
+                _ => {}
+            },
+            Ok(Event::Empty(event)) => match event.local_name().as_ref() {
+                "style" => {
+                    let Some(style_id) = attr(&event, "styleId")? else {
+                        continue;
+                    };
+                    let definition = ParagraphStyleDefinition {
+                        style_type: attr(&event, "type")?,
+                        ..ParagraphStyleDefinition::default()
+                    };
+                    record_style_definition(&mut definitions, style_id, definition);
+                }
+                "basedOn" => {
+                    if let Some(builder) = &mut current_style {
+                        if builder.definition.has_based_on {
+                            builder.definition.based_on = None;
+                        } else {
+                            builder.definition.has_based_on = true;
+                            builder.definition.based_on = attr(&event, "val")?;
+                        }
+                    }
+                }
+                "pPr" => {}
+                "numPr" => {
+                    if let Some(builder) = &mut current_style {
+                        if builder.paragraph_properties_depth > 0 {
+                            if builder.definition.has_numbering_properties {
+                                builder.definition.duplicate_numbering_properties = true;
+                            }
+                            builder.definition.has_numbering_properties = true;
+                        }
+                    }
+                }
+                "numId" => {
+                    if let Some(builder) = &mut current_style {
+                        if builder.numbering_properties_depth > 0 {
+                            if builder.definition.has_num_id {
+                                builder.definition.duplicate_num_id = true;
+                            }
+                            builder.definition.has_num_id = true;
+                            builder.definition.num_id = attr(&event, "val")?;
+                        }
+                    }
+                }
+                _ => {}
+            },
+            Ok(Event::End(event)) => match event.local_name().as_ref() {
+                "numPr" => {
+                    if let Some(builder) = &mut current_style {
+                        builder.numbering_properties_depth =
+                            builder.numbering_properties_depth.saturating_sub(1);
+                    }
+                }
+                "pPr" => {
+                    if let Some(builder) = &mut current_style {
+                        builder.paragraph_properties_depth =
+                            builder.paragraph_properties_depth.saturating_sub(1);
+                    }
+                }
+                "style" => {
+                    if let Some(builder) = current_style.take() {
+                        record_style_definition(
+                            &mut definitions,
+                            builder.style_id,
+                            builder.definition,
+                        );
+                    }
+                }
+                _ => {}
+            },
+            Ok(Event::Eof) => break,
+            Ok(_) => {}
+            Err(error) => {
+                return Err(PocError::SemanticExtractionFailed(format!(
+                    "styles XML parse failed: {error}"
+                )));
             }
         }
     }
-    Ok(resolved)
+
+    Ok(definitions)
+}
+
+fn reject_doc_defaults_numbering(data: &[u8]) -> Result<(), PocError> {
+    let text = std::str::from_utf8(data)
+        .map_err(|_| PocError::SemanticExtractionFailed("styles XML is not UTF-8".into()))?;
+    let mut reader = NsReader::from_str(text);
+    reader.config_mut().check_end_names = true;
+    let mut defaults_depth = 0usize;
+    loop {
+        let (namespace, event) = reader.read_resolved_event().map_err(|error| {
+            PocError::SemanticExtractionFailed(format!("styles XML parse failed: {error}"))
+        })?;
+        match event {
+            Event::Start(event) => {
+                let local_name = event.local_name();
+                if is_xml_element(
+                    &namespace,
+                    local_name.as_ref(),
+                    WORDPROCESSINGML_NS,
+                    "docDefaults",
+                ) {
+                    defaults_depth += 1;
+                } else if defaults_depth > 0
+                    && is_xml_element(
+                        &namespace,
+                        local_name.as_ref(),
+                        WORDPROCESSINGML_NS,
+                        "numPr",
+                    )
+                {
+                    return Err(PocError::UnsupportedSemanticConstruct(
+                        "document-default paragraph numbering is not projected".into(),
+                    ));
+                }
+            }
+            Event::Empty(event)
+                if defaults_depth > 0
+                    && is_xml_element(
+                        &namespace,
+                        event.local_name().as_ref(),
+                        WORDPROCESSINGML_NS,
+                        "numPr",
+                    ) =>
+            {
+                return Err(PocError::UnsupportedSemanticConstruct(
+                    "document-default paragraph numbering is not projected".into(),
+                ));
+            }
+            Event::End(event)
+                if is_xml_element(
+                    &namespace,
+                    event.local_name().as_ref(),
+                    WORDPROCESSINGML_NS,
+                    "docDefaults",
+                ) =>
+            {
+                defaults_depth = defaults_depth.saturating_sub(1);
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn record_style_definition(
+    definitions: &mut StyleDefinitions,
+    style_id: String,
+    definition: ParagraphStyleDefinition,
+) {
+    if definitions
+        .paragraph_styles
+        .insert(style_id.clone(), definition)
+        .is_some()
+    {
+        definitions.duplicate_style_ids.insert(style_id);
+    }
+}
+
+impl NumberingParser {
+    fn open_element(&mut self, event: &BytesStart<'_>, empty: bool) -> Result<(), PocError> {
+        match event.local_name().as_ref() {
+            "abstractNum" => {
+                let id = numbering_decimal_attribute(event, "abstractNumId", "abstractNumId")?;
+                if !self.definitions.abstract_ids.insert(id) {
+                    return Err(PocError::SemanticExtractionFailed(format!(
+                        "duplicate numbering abstractNumId {id}"
+                    )));
+                }
+                if !empty {
+                    self.current_abstract = Some(id);
+                }
+            }
+            "num" => {
+                let id = numbering_decimal_attribute(event, "numId", "numId")?;
+                if !self.definitions.num_ids.insert(id) {
+                    return Err(PocError::SemanticExtractionFailed(format!(
+                        "duplicate numbering numId {id}"
+                    )));
+                }
+                if !empty {
+                    self.current_num = Some(id);
+                }
+            }
+            "lvl" => {
+                if self.current_override.is_some() {
+                    let _ = numbering_level_attribute(event, "ilvl")?;
+                    return Ok(());
+                }
+                let abstract_id = self.current_abstract.ok_or_else(|| {
+                    PocError::SemanticExtractionFailed(
+                        "numbering lvl is outside abstractNum".into(),
+                    )
+                })?;
+                let level = numbering_level_attribute(event, "ilvl")?;
+                let key = (abstract_id, level);
+                if self
+                    .definitions
+                    .abstract_levels
+                    .insert(key, NumberingLevelBuilder::default())
+                    .is_some()
+                {
+                    return Err(PocError::SemanticExtractionFailed(format!(
+                        "duplicate numbering level abstractNumId {abstract_id} ilvl {level}"
+                    )));
+                }
+                if !empty {
+                    self.current_level = Some(key);
+                }
+            }
+            "lvlOverride" => {
+                let num_id = self.current_num.ok_or_else(|| {
+                    PocError::SemanticExtractionFailed(
+                        "numbering lvlOverride is outside num".into(),
+                    )
+                })?;
+                let level = numbering_level_attribute(event, "ilvl")?;
+                let key = (num_id, level);
+                if !self.definitions.unsupported_overrides.insert(key) {
+                    return Err(PocError::SemanticExtractionFailed(format!(
+                        "duplicate numbering override numId {num_id} ilvl {level}"
+                    )));
+                }
+                if !empty {
+                    self.current_override = Some(key);
+                }
+            }
+            "numFmt" => {
+                if let Some(key) = self.current_level {
+                    let value = numbering_string_attribute(event, "val", "numFmt")?;
+                    set_numbering_field(
+                        &mut self
+                            .definitions
+                            .abstract_levels
+                            .get_mut(&key)
+                            .expect("current numbering level exists")
+                            .format,
+                        value,
+                        "numFmt",
+                    )?;
+                }
+            }
+            "start" => {
+                if let Some(key) = self.current_level {
+                    let value = numbering_decimal_attribute(event, "val", "start")?;
+                    set_numbering_field(
+                        &mut self
+                            .definitions
+                            .abstract_levels
+                            .get_mut(&key)
+                            .expect("current numbering level exists")
+                            .start,
+                        value,
+                        "start",
+                    )?;
+                }
+            }
+            "lvlText" => {
+                if let Some(key) = self.current_level {
+                    let value = numbering_string_attribute(event, "val", "lvlText")?;
+                    set_numbering_field(
+                        &mut self
+                            .definitions
+                            .abstract_levels
+                            .get_mut(&key)
+                            .expect("current numbering level exists")
+                            .level_text,
+                        value,
+                        "lvlText",
+                    )?;
+                }
+            }
+            "multiLevelType" => {
+                let abstract_id = self.current_abstract.ok_or_else(|| {
+                    PocError::UnsupportedSemanticConstruct(
+                        "numbering level type is outside an abstract definition".into(),
+                    )
+                })?;
+                let value = numbering_string_attribute(event, "val", "multiLevelType")?;
+                if !matches!(
+                    value.as_str(),
+                    "singleLevel" | "multilevel" | "hybridMultilevel"
+                ) {
+                    return Err(PocError::UnsupportedSemanticConstruct(
+                        "unsupported numbering level type".into(),
+                    ));
+                }
+                if self
+                    .definitions
+                    .abstract_types
+                    .insert(abstract_id, value)
+                    .is_some()
+                {
+                    return Err(PocError::SemanticExtractionFailed(
+                        "duplicate numbering level type".into(),
+                    ));
+                }
+            }
+            "lvlRestart" | "isLgl" | "styleLink" | "numStyleLink" => {
+                return Err(PocError::UnsupportedSemanticConstruct(
+                    "numbering restart, legal display, or linked style is not projected".into(),
+                ));
+            }
+            "pStyle" => {
+                if self.current_level.is_some() || self.current_override.is_some() {
+                    if let Some(style_id) = attr(event, "val")? {
+                        self.definitions.associated_styles.insert(style_id);
+                    }
+                }
+            }
+            "abstractNumId" => {
+                if let Some(num_id) = self.current_num {
+                    let abstract_id =
+                        numbering_decimal_attribute(event, "val", "abstractNumId reference")?;
+                    if self
+                        .definitions
+                        .instances
+                        .insert(num_id, abstract_id)
+                        .is_some()
+                    {
+                        return Err(PocError::SemanticExtractionFailed(format!(
+                            "duplicate abstractNumId reference for numId {num_id}"
+                        )));
+                    }
+                }
+            }
+            "startOverride" => {
+                if let Some(key) = self.current_override {
+                    let _ = numbering_decimal_attribute(event, "val", "startOverride")?;
+                    if !self.definitions.start_override_ids.insert(key) {
+                        return Err(PocError::SemanticExtractionFailed(format!(
+                            "duplicate startOverride for numId {} ilvl {}",
+                            key.0, key.1
+                        )));
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn close_element(&mut self, event: &BytesEnd<'_>) -> Result<(), PocError> {
+        match event.local_name().as_ref() {
+            "abstractNum" => self.current_abstract = None,
+            "lvl" => self.current_level = None,
+            "lvlOverride" => self.current_override = None,
+            "num" => {
+                if let Some(num_id) = self.current_num.take() {
+                    if !self.definitions.instances.contains_key(&num_id) {
+                        return Err(PocError::SemanticExtractionFailed(format!(
+                            "numbering numId {num_id} has no abstractNumId reference"
+                        )));
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
+fn numbering_level_index(event: &BytesStart<'_>) -> Result<Option<u8>, PocError> {
+    numbering_optional_attribute(event, "val")?
+        .map(|value| parse_numbering_level_value(&value, "ilvl"))
+        .transpose()
+}
+
+fn numbering_level_attribute(event: &BytesStart<'_>, name: &str) -> Result<u8, PocError> {
+    let value = numbering_optional_attribute(event, name)?.ok_or_else(|| {
+        PocError::SemanticExtractionFailed(format!("missing required numbering {name}"))
+    })?;
+    parse_numbering_level_value(&value, name)
+}
+
+fn parse_numbering_level_value(value: &str, name: &str) -> Result<u8, PocError> {
+    let level = parse_numbering_decimal_value(value, name)?;
+    let level = u8::try_from(level).map_err(|_| {
+        PocError::SemanticExtractionFailed(format!("numbering {name} is out of range"))
+    })?;
+    if level > 8 {
+        return Err(PocError::SemanticExtractionFailed(format!(
+            "numbering {name} is outside the supported 0..=8 range"
+        )));
+    }
+    Ok(level)
+}
+
+fn numbering_decimal_attribute(
+    event: &BytesStart<'_>,
+    attribute: &str,
+    name: &str,
+) -> Result<u32, PocError> {
+    let value = numbering_optional_attribute(event, attribute)?.ok_or_else(|| {
+        PocError::SemanticExtractionFailed(format!("missing required numbering {name}"))
+    })?;
+    parse_numbering_decimal_value(&value, name)
+}
+
+fn numbering_string_attribute(
+    event: &BytesStart<'_>,
+    attribute: &str,
+    name: &str,
+) -> Result<String, PocError> {
+    numbering_optional_attribute(event, attribute)?.ok_or_else(|| {
+        PocError::SemanticExtractionFailed(format!("missing required numbering {name} value"))
+    })
+}
+
+fn numbering_optional_attribute(
+    event: &BytesStart<'_>,
+    name: &str,
+) -> Result<Option<String>, PocError> {
+    let mut value = None;
+    for item in event.attributes() {
+        let item = item.map_err(|error| {
+            PocError::SemanticExtractionFailed(format!("invalid numbering attribute: {error}"))
+        })?;
+        let key = item.key.as_ref();
+        let matches = key == name || key.rsplit_once(':').is_some_and(|(_, local)| local == name);
+        if matches {
+            if value.is_some() {
+                return Err(PocError::SemanticExtractionFailed(format!(
+                    "duplicate numbering attribute {name}"
+                )));
+            }
+            let decoded = quick_xml::escape::unescape(item.value.as_ref()).map_err(|error| {
+                PocError::SemanticExtractionFailed(format!(
+                    "numbering attribute decode failed: {error}"
+                ))
+            })?;
+            value = Some(decoded.into_owned());
+        }
+    }
+    Ok(value)
+}
+
+fn parse_numbering_decimal_value(value: &str, name: &str) -> Result<u32, PocError> {
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(PocError::SemanticExtractionFailed(format!(
+            "numbering {name} is not a non-negative decimal integer"
+        )));
+    }
+    value.parse::<u32>().map_err(|_| {
+        PocError::SemanticExtractionFailed(format!(
+            "numbering {name} is outside the supported range"
+        ))
+    })
+}
+
+fn set_numbering_field<T>(field: &mut Option<T>, value: T, name: &str) -> Result<(), PocError> {
+    if field.replace(value).is_some() {
+        return Err(PocError::SemanticExtractionFailed(format!(
+            "duplicate numbering {name} field"
+        )));
+    }
+    Ok(())
 }
 
 fn texts_for_prefix(
@@ -988,16 +2015,88 @@ fn texts_for_prefix(
     Ok(values)
 }
 
-fn note_texts(data: Option<&Vec<u8>>, expected_root: &str) -> Result<Vec<String>, PocError> {
+fn reject_unprojected_header_footer_hyperlinks(
+    parts: &BTreeMap<String, Vec<u8>>,
+) -> Result<(), PocError> {
+    for (name, data) in parts {
+        if !(name.starts_with("word/header") || name.starts_with("word/footer"))
+            || !name.ends_with(".xml")
+        {
+            continue;
+        }
+        let text = std::str::from_utf8(data)
+            .map_err(|_| PocError::SemanticExtractionFailed(format!("{name} is not UTF-8")))?;
+        let mut reader = NsReader::from_str(text);
+        reader.config_mut().check_end_names = true;
+        loop {
+            let (namespace, event) = reader.read_resolved_event().map_err(|error| {
+                PocError::SemanticExtractionFailed(format!("{name} XML parse failed: {error}"))
+            })?;
+            match event {
+                Event::Start(event) | Event::Empty(event)
+                    if is_xml_element(
+                        &namespace,
+                        event.local_name().as_ref(),
+                        WORDPROCESSINGML_NS,
+                        "hyperlink",
+                    ) =>
+                {
+                    return Err(PocError::UnsupportedSemanticConstruct(format!(
+                        "{name} hyperlink target is not projected"
+                    )));
+                }
+                Event::Eof => break,
+                _ => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NoteReferenceKind {
+    Footnote,
+    Endnote,
+}
+
+impl NoteReferenceKind {
+    fn part_name(self) -> &'static str {
+        match self {
+            Self::Footnote => "footnotes",
+            Self::Endnote => "endnotes",
+        }
+    }
+
+    fn reference_name(self) -> &'static str {
+        match self {
+            Self::Footnote => "footnoteReference",
+            Self::Endnote => "endnoteReference",
+        }
+    }
+}
+
+#[derive(Debug)]
+struct NoteReference {
+    kind: NoteReferenceKind,
+    id: String,
+}
+
+fn note_texts(
+    data: Option<&Vec<u8>>,
+    expected_root: &str,
+) -> Result<(Vec<String>, BTreeMap<String, bool>), PocError> {
     let Some(data) = data else {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), BTreeMap::new()));
     };
-    let text = extract_final_note_text(data, expected_root)?;
-    Ok(if text.is_empty() {
-        Vec::new()
-    } else {
-        vec![text]
-    })
+    let (text, definitions) = extract_final_note_text(data, expected_root)?;
+    Ok((
+        if text.is_empty() {
+            Vec::new()
+        } else {
+            vec![text]
+        },
+        definitions,
+    ))
 }
 
 #[derive(Debug, Default)]
@@ -1010,7 +2109,10 @@ struct NoteXmlFrame {
     content_started: bool,
 }
 
-fn extract_final_note_text(data: &[u8], expected_root: &str) -> Result<String, PocError> {
+fn extract_final_note_text(
+    data: &[u8],
+    expected_root: &str,
+) -> Result<(String, BTreeMap<String, bool>), PocError> {
     let text = std::str::from_utf8(data)
         .map_err(|_| PocError::SemanticExtractionFailed("note XML is not UTF-8".into()))?;
     let mut reader = NsReader::from_str(text);
@@ -1020,6 +2122,7 @@ fn extract_final_note_text(data: &[u8], expected_root: &str) -> Result<String, P
     let mut root_closed = false;
     let mut deleted_depth = 0usize;
     let mut values = Vec::new();
+    let mut definitions = BTreeMap::new();
 
     loop {
         let (namespace, event) = reader.read_resolved_event().map_err(|error| {
@@ -1042,6 +2145,7 @@ fn extract_final_note_text(data: &[u8], expected_root: &str) -> Result<String, P
                     reader.resolver(),
                     expected_root,
                     &mut stack,
+                    &mut definitions,
                 )?;
                 if matches!(local_name, "del" | "moveFrom") {
                     deleted_depth = deleted_depth
@@ -1067,6 +2171,7 @@ fn extract_final_note_text(data: &[u8], expected_root: &str) -> Result<String, P
                     reader.resolver(),
                     expected_root,
                     &mut stack,
+                    &mut definitions,
                 )?;
                 append_note_control_character(local_name, deleted_depth, &stack, &mut values)?;
                 finish_note_element(&frame)?;
@@ -1171,7 +2276,204 @@ fn extract_final_note_text(data: &[u8], expected_root: &str) -> Result<String, P
             "note XML did not contain one complete root element".into(),
         ));
     }
-    Ok(normalize_text(&values.join("")))
+    Ok((normalize_text(&values.join("")), definitions))
+}
+
+fn collect_note_references(data: &[u8]) -> Result<Vec<NoteReference>, PocError> {
+    let text = std::str::from_utf8(data)
+        .map_err(|_| PocError::SemanticExtractionFailed("document XML is not UTF-8".into()))?;
+    let mut reader = NsReader::from_str(text);
+    reader.config_mut().check_end_names = true;
+    let mut deleted_depth = 0usize;
+    let mut text_box_depth = 0usize;
+    let mut references = Vec::new();
+
+    loop {
+        let (namespace, event) = reader.read_resolved_event().map_err(|error| {
+            PocError::SemanticExtractionFailed(format!("document note XML parse failed: {error}"))
+        })?;
+        match event {
+            Event::Start(event) => {
+                let local_name = event.local_name();
+                let is_text_box = is_xml_element(
+                    &namespace,
+                    local_name.as_ref(),
+                    WORDPROCESSINGML_NS,
+                    "txbxContent",
+                );
+                let is_deletion_element =
+                    is_xml_element(&namespace, local_name.as_ref(), WORDPROCESSINGML_NS, "del")
+                        || is_xml_element(
+                            &namespace,
+                            local_name.as_ref(),
+                            WORDPROCESSINGML_NS,
+                            "moveFrom",
+                        );
+                let kind = if deleted_depth == 0 {
+                    note_reference_kind(&namespace, local_name.as_ref())?
+                } else {
+                    None
+                };
+                if let Some(kind) = kind {
+                    if text_box_depth > 0 {
+                        return Err(unsupported_note_construct(
+                            "note reference inside a text box",
+                        ));
+                    }
+                    references.push(parse_note_reference(&event, reader.resolver(), kind)?);
+                }
+                if is_deletion_element {
+                    deleted_depth = deleted_depth
+                        .checked_add(1)
+                        .ok_or(PocError::InspectionResourceLimitExceeded)?;
+                }
+                if is_text_box {
+                    text_box_depth = text_box_depth
+                        .checked_add(1)
+                        .ok_or(PocError::InspectionResourceLimitExceeded)?;
+                }
+            }
+            Event::Empty(event) => {
+                let local_name = event.local_name();
+                let kind = if deleted_depth == 0 {
+                    note_reference_kind(&namespace, local_name.as_ref())?
+                } else {
+                    None
+                };
+                if let Some(kind) = kind {
+                    if text_box_depth > 0 {
+                        return Err(unsupported_note_construct(
+                            "note reference inside a text box",
+                        ));
+                    }
+                    references.push(parse_note_reference(&event, reader.resolver(), kind)?);
+                }
+            }
+            Event::End(event) => {
+                let local_name = event.local_name();
+                if is_xml_element(&namespace, local_name.as_ref(), WORDPROCESSINGML_NS, "del")
+                    || is_xml_element(
+                        &namespace,
+                        local_name.as_ref(),
+                        WORDPROCESSINGML_NS,
+                        "moveFrom",
+                    )
+                {
+                    deleted_depth = deleted_depth.saturating_sub(1);
+                }
+                if is_xml_element(
+                    &namespace,
+                    local_name.as_ref(),
+                    WORDPROCESSINGML_NS,
+                    "txbxContent",
+                ) {
+                    text_box_depth = text_box_depth.saturating_sub(1);
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+
+    Ok(references)
+}
+
+fn note_reference_kind(
+    namespace: &ResolveResult<'_>,
+    local_name: &str,
+) -> Result<Option<NoteReferenceKind>, PocError> {
+    let kind = match local_name {
+        "footnoteReference" => NoteReferenceKind::Footnote,
+        "endnoteReference" => NoteReferenceKind::Endnote,
+        _ => return Ok(None),
+    };
+    match namespace {
+        ResolveResult::Bound(namespace) if namespace.as_ref() == WORDPROCESSINGML_NS => {
+            Ok(Some(kind))
+        }
+        ResolveResult::Unknown(prefix) => Err(unsupported_note_construct(&format!(
+            "unbound namespace prefix {prefix}"
+        ))),
+        _ => Err(unsupported_note_construct(&format!(
+            "{} has an unexpected namespace",
+            kind.reference_name()
+        ))),
+    }
+}
+
+fn parse_note_reference(
+    event: &BytesStart<'_>,
+    resolver: &quick_xml::name::NamespaceResolver,
+    kind: NoteReferenceKind,
+) -> Result<NoteReference, PocError> {
+    let id =
+        namespaced_attribute(event, resolver, WORDPROCESSINGML_NS, "id")?.ok_or_else(|| {
+            PocError::SemanticExtractionFailed(format!(
+                "{} reference has no w:id",
+                kind.reference_name()
+            ))
+        })?;
+    let id = parse_note_id(&id)?;
+    Ok(NoteReference { kind, id })
+}
+
+fn parse_note_id(value: &str) -> Result<String, PocError> {
+    let id = value.parse::<i32>().map_err(|_| {
+        PocError::SemanticExtractionFailed("note ID is not a signed decimal integer".into())
+    })?;
+    Ok(id.to_string())
+}
+
+fn validate_note_references(
+    references: &[NoteReference],
+    footnotes: &BTreeMap<String, bool>,
+    endnotes: &BTreeMap<String, bool>,
+) -> Result<(), PocError> {
+    if ordinary_note_count(footnotes) > 1 || ordinary_note_count(endnotes) > 1 {
+        return Err(unsupported_note_construct(
+            "multiple ordinary notes are not projected with body references",
+        ));
+    }
+
+    for reference in references {
+        let definitions = match reference.kind {
+            NoteReferenceKind::Footnote => footnotes,
+            NoteReferenceKind::Endnote => endnotes,
+        };
+        if definitions.get(&reference.id) != Some(&true) {
+            return Err(PocError::SemanticExtractionFailed(format!(
+                "{} reference ID {} has no ordinary note definition",
+                reference.kind.part_name(),
+                reference.id
+            )));
+        }
+    }
+
+    for (kind, definitions) in [
+        (NoteReferenceKind::Footnote, footnotes),
+        (NoteReferenceKind::Endnote, endnotes),
+    ] {
+        for (id, is_ordinary) in definitions {
+            if *is_ordinary
+                && !references
+                    .iter()
+                    .any(|reference| reference.kind == kind && reference.id == *id)
+            {
+                return Err(unsupported_note_construct(&format!(
+                    "unreferenced ordinary {} definition ID {id}",
+                    kind.part_name()
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn ordinary_note_count(definitions: &BTreeMap<String, bool>) -> usize {
+    definitions
+        .values()
+        .filter(|is_ordinary| **is_ordinary)
+        .count()
 }
 
 fn note_element_name<'a>(
@@ -1195,6 +2497,7 @@ fn validate_note_element(
     resolver: &quick_xml::name::NamespaceResolver,
     expected_root: &str,
     stack: &mut [NoteXmlFrame],
+    definitions: &mut BTreeMap<String, bool>,
 ) -> Result<NoteXmlFrame, PocError> {
     let Some(parent_index) = stack.len().checked_sub(1) else {
         if local_name != expected_root {
@@ -1216,12 +2519,25 @@ fn validate_note_element(
         if local_name != note_element {
             return Err(unsupported_note_construct(local_name));
         }
+        let note_id = namespaced_attribute(event, resolver, WORDPROCESSINGML_NS, "id")?
+            .ok_or_else(|| {
+                PocError::SemanticExtractionFailed("note definition has no w:id".into())
+            })?;
+        let note_id = parse_note_id(&note_id)?;
         let note_type = namespaced_attribute(event, resolver, WORDPROCESSINGML_NS, "type")?;
         if note_type
             .as_deref()
             .is_some_and(|value| !matches!(value, "separator" | "continuationSeparator"))
         {
             return Err(unsupported_note_construct("unknown note type"));
+        }
+        if definitions
+            .insert(note_id.clone(), note_type.is_none())
+            .is_some()
+        {
+            return Err(PocError::SemanticExtractionFailed(format!(
+                "duplicate note definition ID {note_id}"
+            )));
         }
         return Ok(NoteXmlFrame {
             local_name: local_name.to_owned(),
@@ -2705,10 +4021,6 @@ fn attr_required(event: &BytesStart<'_>, name: &str) -> Result<String, PocError>
     attr(event, name)?.ok_or_else(|| {
         PocError::SemanticExtractionFailed(format!("missing required attribute {name}"))
     })
-}
-
-fn attr_u8(event: &BytesStart<'_>, name: &str) -> Result<Option<u8>, PocError> {
-    Ok(attr(event, name)?.and_then(|value| value.parse().ok()))
 }
 
 fn attr(event: &BytesStart<'_>, name: &str) -> Result<Option<String>, PocError> {

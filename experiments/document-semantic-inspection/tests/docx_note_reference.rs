@@ -69,25 +69,35 @@ fn dangling_endnote_reference_fails_closed() {
 
 #[test]
 fn orphan_footnote_definition_fails_closed_without_body_reference() {
-    let referenced = single_note_docx(NoteKind::Footnote, 1);
-    let orphan = note_docx(NoteKind::Footnote, &[], &[(1, "Alpha note")]);
+    assert_orphan_note_definition_fails_closed(NoteKind::Footnote);
+}
+
+#[test]
+fn orphan_endnote_definition_fails_closed_without_body_reference() {
+    assert_orphan_note_definition_fails_closed(NoteKind::Endnote);
+}
+
+fn assert_orphan_note_definition_fails_closed(kind: NoteKind) {
+    let referenced = single_note_docx(kind, 1);
+    let orphan = note_docx(kind, &[], &[(1, "Alpha note")]);
     let orphan_parts = read_parts(&orphan);
     let orphan_document =
         std::str::from_utf8(&orphan_parts["word/document.xml"]).expect("document XML");
     assert!(orphan_document.contains("same body text"));
-    assert!(!orphan_document.contains("footnoteReference"));
-    let orphan_notes =
-        std::str::from_utf8(&orphan_parts["word/footnotes.xml"]).expect("footnotes XML");
-    assert!(orphan_notes.contains("<w:footnote w:id=\"1\">"));
+    assert!(!orphan_document.contains(kind.reference_name()));
+    let note_part = format!("word/{}.xml", kind.part_name());
+    let orphan_notes = std::str::from_utf8(&orphan_parts[&note_part]).expect("notes XML");
+    assert!(orphan_notes.contains(&format!("<w:{} w:id=\"1\">", kind.note_name())));
     assert!(orphan_notes.contains("Alpha note"));
-    assert_single_note_reference(&referenced, NoteKind::Footnote, 1);
+    assert_single_note_reference(&referenced, kind, 1);
     assert_only_document_part_differs(&referenced, &orphan);
 
-    inspect(&referenced).expect("single referenced footnote baseline is valid and supported");
+    inspect(&referenced).expect("single referenced note baseline is valid and supported");
     let result = inspect(&orphan);
     assert!(
         result.is_err(),
-        "ordinary footnote ID 1 with no body reference was silently accepted: {:?}",
+        "ordinary {} ID 1 with no body reference was silently accepted: {:?}",
+        kind.part_name(),
         error_summary(result)
     );
 }
