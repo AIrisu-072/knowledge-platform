@@ -73,11 +73,17 @@ fn note_table_structure_changes_semantics_or_fails_closed() {
     let table_note = note_paragraph_in_table(&paragraph_note, NoteKind::Footnote);
     assert_only_part_changed(&paragraph_note, &table_note, "word/footnotes.xml");
 
-    assert_semantics_distinguish_or_explicitly_reject(
-        &paragraph_note,
-        &table_note,
-        "footnote table structure",
-    );
+    let paragraph = DocxAdapter
+        .inspect(&paragraph_note, &InspectionProfile::default())
+        .expect("plain-text note paragraph remains supported");
+    match DocxAdapter.inspect(&table_note, &InspectionProfile::default()) {
+        Ok(table) => assert_ne!(
+            semantic_fingerprint(&paragraph.semantic_projection),
+            semantic_fingerprint(&table.semantic_projection),
+            "footnote table structure changed while the semantic fingerprint stayed equal"
+        ),
+        Err(error) => assert_eq!(error.code(), ErrorCode::UnsupportedSemanticConstruct),
+    }
 }
 
 fn assert_note_image_target_is_semantic(kind: NoteKind) {
