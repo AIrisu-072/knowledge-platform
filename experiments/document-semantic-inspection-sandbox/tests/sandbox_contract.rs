@@ -35,7 +35,7 @@ fn network_syscalls_are_denied_for_tcp_and_udp() {
     let root = fresh_dir("network");
     let policy = test_policy(Vec::new(), vec![root]);
 
-    for action in ["tcp-socket", "udp-socket"] {
+    for action in ["tcp-socket", "udp-socket", "dns"] {
         let outcome = run_sandboxed(
             probe(),
             &policy,
@@ -83,12 +83,57 @@ fn filesystem_is_confined_to_explicit_read_and_write_surface() {
     assert_eq!(allowed_write_result.disposition(), &SandboxDisposition::Allowed);
 
     for launch in [
+        SandboxLaunch::new("write").arg(allowed_read.display().to_string()),
         SandboxLaunch::new("read").arg(outside_read.display().to_string()),
         SandboxLaunch::new("write").arg(outside_write.display().to_string()),
     ] {
         let outcome = run_sandboxed(probe(), &policy, &launch).expect("sandbox launch");
         assert_eq!(outcome.disposition(), &SandboxDisposition::Denied);
     }
+}
+
+#[test]
+fn every_inspection_uses_a_fresh_process() {
+    let root = fresh_dir("fresh-process");
+    let policy = test_policy(Vec::new(), vec![root]);
+    let mut pids = Vec::new();
+
+    for _ in 0..2 {
+        let outcome = run_sandboxed(probe(), &policy, &SandboxLaunch::new("pid"))
+            .expect("pid launch");
+        assert_eq!(outcome.disposition(), &SandboxDisposition::Allowed);
+        let pid = outcome
+            .stdout()
+            .lines()
+            .find_map(|line| line.strip_prefix("pid="))
+            .expect("probe pid")
+            .parse::<u32>()
+            .expect("numeric pid");
+        pids.push(pid);
+    }
+
+    assert_ne!(pids[0], pids[1], "worker process was reused");
+}
+
+#[test]
+fn aggregate_temp_disk_limit_is_enforced_across_multiple_files() {
+    let root = fresh_dir("temp-disk");
+    let mut policy = test_policy(Vec::new(), vec![root.clone()]);
+    policy.file_size_bytes = 64 * 1024;
+    policy.temp_disk_bytes = 128 * 1024;
+    policy.wall_timeout = Duration::from_secs(3);
+
+    let outcome = run_sandboxed(
+        probe(),
+        &policy,
+        &SandboxLaunch::new("fill-dir")
+            .arg(root.display().to_string())
+            .arg("16")
+            .arg((32usize * 1024).to_string()),
+    )
+    .expect("temp-disk launch");
+
+    assert_eq!(outcome.disposition(), &SandboxDisposition::ResourceLimit);
 }
 
 #[test]
