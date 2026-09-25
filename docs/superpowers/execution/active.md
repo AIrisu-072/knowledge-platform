@@ -3,12 +3,13 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **PRODUCTION IMPLEMENTATION — TASK 1 SANDBOX PREFLIGHT**
+- Current phase: **PRODUCTION IMPLEMENTATION — TASK 1 RED SANDBOX CONTRACT**
 - Frozen Design PR: `#7` — merged
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
 - Production planning PR: `#9` — merged as `48045768d1d026eb785ee065877e401bbafd97ca`
 - Production implementation branch: `feat/document-semantic-inspection-v0`
+- Production implementation PR: `#10` — Draft
 - PoC execution PR: `#8` — merged as `ab9ad6f9949128360e46fed07aca335bb6b10971`
 - Approved Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
 - Design approval record: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design-approval.md`
@@ -61,7 +62,7 @@ Production implementation branch exists from the exact approved `main` baseline.
 
 ## Next exact action
 
-Create the isolated Task 1 sandbox preflight RED contract under `experiments/document-semantic-inspection-sandbox/`, prove the RED failure in hosted Ubuntu CI, then qualify the sandbox composition and freeze `ProductionResourceProfile::DSI_V0`.
+Run the path-scoped hosted Ubuntu sandbox preflight on the exact RED contract head and record the expected unresolved sandbox-launcher failure before adding candidate dependencies.
 
 ## Resume command
 

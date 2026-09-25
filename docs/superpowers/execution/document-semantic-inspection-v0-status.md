@@ -2,13 +2,14 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **PRODUCTION IMPLEMENTATION — TASK 1 SANDBOX PREFLIGHT**
+- Overall phase: **PRODUCTION IMPLEMENTATION — TASK 1 RED SANDBOX CONTRACT**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
 - Production planning PR: **#9 MERGED — `48045768d1d026eb785ee065877e401bbafd97ca`**
 - Production implementation branch: `feat/document-semantic-inspection-v0`
+- Production implementation PR: **#10 (Draft)**
 - PoC execution PR: **#8 (MERGED — `ab9ad6f9949128360e46fed07aca335bb6b10971`)**
 - Production implementation baseline: `main@48045768d1d026eb785ee065877e401bbafd97ca`
 - Baseline main CI: `36079233862` — **SUCCESS**
@@ -318,6 +319,6 @@ Final cross-host evidence at the same head:
 
 **PoC Qualification is complete.**
 
-Next exact action: create the isolated Task 1 sandbox RED contract and path-scoped Ubuntu CI on `feat/document-semantic-inspection-v0`, then capture the expected RED failure before implementing the selected sandbox composition.
+Next exact action: run the path-scoped Ubuntu preflight on the exact Task 1 RED head and capture the expected unresolved sandbox launcher failure. Do not add a sandbox dependency before that RED evidence exists.
 
 Do not implement production Semantic Inspection crates inside PR #8.
