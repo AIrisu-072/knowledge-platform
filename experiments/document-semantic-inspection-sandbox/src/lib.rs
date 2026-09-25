@@ -351,7 +351,11 @@ fn set_rlimit(resource: libc::__rlimit_resource_t, value: u64) -> Result<(), San
 }
 
 fn apply_landlock(policy: &EncodedPolicy) -> Result<(), SandboxError> {
-    let abi = ABI::V9;
+    // ABI V3 is the production minimum: V2 adds REFER and V3 adds
+    // TRUNCATE, both required for complete path-write confinement. Newer
+    // Landlock rights are not required by this v0 filesystem contract;
+    // unsupported kernels fail closed through HardRequirement.
+    let abi = ABI::V3;
     let read_access = AccessFs::from_read(abi);
     let write_access = AccessFs::from_all(abi);
 
