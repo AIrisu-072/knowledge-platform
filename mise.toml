@@ -335,7 +335,7 @@ run = [
 
 [tasks."poc:dsi:sandbox-test"]
 description = "Run Document Semantic Inspection Task 1 sandbox contract"
-run = ["cargo test --manifest-path experiments/document-semantic-inspection-sandbox/Cargo.toml"]
+run = ["cargo test --locked --manifest-path experiments/document-semantic-inspection-sandbox/Cargo.toml"]
 
 [tasks."poc:dsi:sandbox-deny"]
 description = "Check Document Semantic Inspection sandbox candidate dependency policy"
