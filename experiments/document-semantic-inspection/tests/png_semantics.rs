@@ -110,7 +110,8 @@ fn indexed_png(index: u8, background_index: Option<u8>) -> Vec<u8> {
     if let Some(background_index) = background_index {
         chunks.push((*b"bKGD", vec![background_index]));
     }
-    chunks.push((*b"IDAT", zlib_stored(&[0, index])));
+    // One 1-bit pixel occupies the most significant bit; remaining bits are padding.
+    chunks.push((*b"IDAT", zlib_stored(&[0, index << 7])));
     chunks.push((*b"IEND", Vec::new()));
     encode_png_chunks(&chunks)
 }
