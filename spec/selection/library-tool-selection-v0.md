@@ -1191,3 +1191,35 @@ Custom Architecture LinterはRust CLIとして実装し、Assurance Providerと�
 
 Rule sourceはmachine-readable Architecture Contractとし、lint本体へproject policyを無秩序にhard-codeしない。
 
+
+
+---
+
+# 28. Document Semantic Inspection v0 Production Sandbox
+
+Qualification evidence: `docs/superpowers/execution/document-semantic-inspection-v0-sandbox-preflight.md`.
+
+Scope is the Linux production sandbox substrate for the frozen `Document Semantic Inspection v0` trust boundary only. Selection here does not add these crates to a production crate yet; Task 1 qualification remains isolated under `experiments/document-semantic-inspection-sandbox/` until the approved implementation sequence promotes the composition.
+
+| Candidate | Status | Qualified role | Evidence |
+|---|---|---|---|
+| `landlock 0.4.7` | **SELECTED for DSI v0 sandbox** | filesystem read/write confinement with ABI V3 hard requirement | hosted Ubuntu filesystem allow/deny contract PASS; fail-closed when required Landlock enforcement is unavailable |
+| `seccompiler 0.5.0` | **SELECTED for DSI v0 sandbox** | seccomp-BPF denial of network syscalls and production child-process creation | hosted Ubuntu TCP/UDP/DNS and fork/clone contract PASS |
+| `libc 0.2.189` | **SELECTED for DSI v0 sandbox support** | RLIMIT CPU/address-space/file-size, process groups, kill/wait primitives | hosted resource-limit and whole-process-group termination contract PASS |
+| `thiserror 2.0.21` | **SELECTED for preflight error contract** | typed fail-closed sandbox/preflight errors | dependency gate PASS |
+
+Task 1 acceptance evidence:
+
+- fresh process per inspection: PASS;
+- credential-like environment inheritance: denied;
+- network socket access: denied;
+- filesystem access outside explicit read/write surface: denied;
+- production child-process creation: denied;
+- wall timeout kills the process group;
+- aggregate private-temp disk monitoring: PASS;
+- CPU / address-space / per-file output limits: PASS;
+- every frozen `ProductionResourceProfile::DSI_V0` class has an explicit finite boundary;
+- independent Cargo lock is committed for reproducible preflight resolution;
+- cargo-deny advisories / bans / licenses / sources: PASS with no policy exception.
+
+Production support is Linux-first. macOS remains a semantic/parser portability target and is not selected as the v0 production sandbox substrate.
