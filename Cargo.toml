@@ -28,6 +28,7 @@ tempfile = "3"
 testcontainers = "0.28"
 encoding_rs = "=0.8.41"
 unicode-normalization = "=0.1.25"
+zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
 csv = "=1.4.0"
 html5ever = "=0.39.0"
 markup5ever_rcdom = "=0.39.0"
