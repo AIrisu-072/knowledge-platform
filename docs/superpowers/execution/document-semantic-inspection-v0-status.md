@@ -42,18 +42,38 @@ Current gates:
 - PR #8: **MERGED — `ab9ad6f9949128360e46fed07aca335bb6b10971`**
 - Production dependency promotion: **NOT STARTED**
 - Production implementation branch: **CREATED — `feat/document-semantic-inspection-v0`**
-- Production runtime/crates: **NOT STARTED; Task 1 remains isolated under `experiments/`**
+- Production Task 1 sandbox preflight: **COMPLETE / PASS**
+- Production runtime/crates: **Task 2 READY; parser/runner production promotion not started**
 
 The plan identifies one production-hardening gap that must be resolved first: the qualified PoC wrapper proves CPU/file/memory and controller-timeout behavior, but production must additionally enforce the frozen no-network, no-credential, filesystem-confinement, fresh-process, and complete finite resource-profile boundary. Task 1 performs an isolated sandbox substrate preflight before any sandbox dependency is promoted.
 
 Required next order:
 
-1. create Task 1 RED sandbox contract in isolated experiment;
-2. capture hosted Ubuntu RED evidence;
-3. qualify sandbox candidates without policy exceptions;
-4. freeze finite `ProductionResourceProfile::DSI_V0` values;
-5. update selection evidence only after the Task 1 gates pass;
-6. do not advance to Task 2 while any Task 1 hard gate is open.
+1. create Task 2 RED core-contract tests;
+2. capture the expected RED evidence before implementation;
+3. implement infrastructure-free core types/protocol only;
+4. keep parser, SQL, storage and sandbox dependencies out of the core crate;
+5. add deterministic protocol golden snapshots and bounded decode;
+6. require exact-head CI before Task 2 completion.
+
+## Production Task 1 — COMPLETE
+
+- Baseline: `main@48045768d1d026eb785ee065877e401bbafd97ca`
+- RED head: `343aa9072da19da471a31b96e05eb92d80784820`
+- RED hosted run: `36080157697` / job `107900137601` — **FAIL as expected**
+- RED failure: unresolved sandbox launcher contract imports
+- Qualified sandbox code/build head: `0cd3345a12f53f30068c72e56ea8aead367cd0ff`
+- Hosted GREEN run before final lock/docs: `36084114757` — **SUCCESS**
+- Resource profile tests: **4/4 PASS**
+- Sandbox contract tests: **9/9 PASS**
+- cargo-deny advisories/bans/licenses/sources: **PASS**
+- Selected composition: `landlock 0.4.7` + `seccompiler 0.5.0` + `libc 0.2.189` + `thiserror 2.0.21`
+- Independent sandbox `Cargo.lock`: **COMMITTED**
+- Every required production resource class: **FINITE / TESTED**
+- Selection documents: **UPDATED**
+- Production parser dependencies: **NOT PROMOTED**
+
+Final exact-head verification is required after the Task 1 completion documentation/selection changes. The authoritative report is `docs/superpowers/execution/document-semantic-inspection-v0-sandbox-preflight.md`.
 
 ## Task 1 — COMPLETE
 
@@ -319,6 +339,6 @@ Final cross-host evidence at the same head:
 
 **PoC Qualification is complete.**
 
-Next exact action: run the path-scoped Ubuntu preflight on the exact Task 1 RED head and capture the expected unresolved sandbox launcher failure. Do not add a sandbox dependency before that RED evidence exists.
+Next exact action: begin Production Task 2 with the RED contract for `document-semantic-inspection-core`. Do not promote parser or sandbox-runner dependencies into production during Task 2.
 
 Do not implement production Semantic Inspection crates inside PR #8.
