@@ -1,6 +1,6 @@
 # Document Semantic Inspection v0 — Production Implementation Plan
 
-- Status: **DRAFT — AWAITING EXPLICIT USER APPROVAL**
+- Status: **APPROVED — 2026-09-25**
 - Date: 2026-09-24
 - Capability: `Document Semantic Inspection v0`
 - Frozen Design: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
@@ -9,13 +9,13 @@
 - Completed PoC plan: `docs/superpowers/plans/2026-09-20-document-semantic-inspection-v0-poc-qualification.md`
 - Planning baseline: `test/document-semantic-inspection-poc-v0@245a3bad41f92d5a992560f60e3c26826abc20fb`
 - Planned implementation branch: `feat/document-semantic-inspection-v0`
-- Planned implementation baseline: **the exact `main` head after PR #8 is merged**
+- Planned implementation baseline: **the exact `main` head after PR #8 and this approved planning PR are merged**
 - Execution mode after approval: **task-by-task TDD**
-- Production dependency promotion: **NOT YET PERFORMED**
+- Production dependency promotion: **AUTHORIZED BY THIS PLAN, NOT YET PERFORMED**
 
-> **Approval gate:** Writing this plan does not authorize production implementation. Do not create the implementation branch, add production parser/sandbox dependencies, or create production Semantic Inspection crates until this plan is explicitly approved by the user and PR #8 has been merged into `main`.
+> **Approval record:** The user explicitly approved this Production Implementation Plan on 2026-09-25. Production execution remains task-by-task and subject to the hard gates in this plan.
 
-> **Merge gate:** PR #8 is currently Ready for review but unmerged. This plan does not authorize merging PR #8. Merge remains a separate explicit user action.
+> **PoC merge record:** The user separately authorized PR #8 merge on 2026-09-25; PR #8 was merged as `ab9ad6f9949128360e46fed07aca335bb6b10971`.
 
 ## 0. Goal
 
@@ -73,8 +73,9 @@ All must be true:
 2. PoC Qualification remains PASS for all eight required formats.
 3. PR #8 is merged into `main`.
 4. This Production Implementation Plan is explicitly approved by the user.
-5. `feat/document-semantic-inspection-v0` is created from the **exact merged `main` head**, not from this planning branch.
-6. Fresh baseline CI on that exact head is green.
+5. This approved planning PR is merged into `main` so the implementation branch carries the plan/Active/Status SSOT.
+6. `feat/document-semantic-inspection-v0` is created from the **exact merged `main` head**, not from the planning branch.
+7. Fresh baseline CI on that exact head is green.
 
 If any precondition is false, stop before production code or dependency promotion.
 
@@ -1157,6 +1158,6 @@ After explicit approval, the exact next sequence is:
 8. continue task-by-task with TDD and exact evidence
 ```
 
-Until approval, the repository phase remains:
+After approval, the repository phase advances only after this planning PR is merged and exact-head `main` CI is green:
 
-> **PRODUCTION IMPLEMENTATION PLAN REVIEW — NO PRODUCTION CODE AUTHORIZED**
+> **PRODUCTION IMPLEMENTATION TASK 1 READY — EXECUTE ONLY FROM THE APPROVED MAIN BASELINE**
