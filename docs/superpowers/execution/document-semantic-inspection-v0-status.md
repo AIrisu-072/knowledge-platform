@@ -2,15 +2,15 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **PRODUCTION IMPLEMENTATION — TASK 5 RED SUPPLEMENT / SELECTED RUNTIME BLOCKER**
+- Overall phase: **PRODUCTION IMPLEMENTATION — TASK 5 COMPLETE / TASK 6 RED NEXT**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
 - Production planning PR: **#9 MERGED — `48045768d1d026eb785ee065877e401bbafd97ca`**
 - Production implementation branch: `feat/document-semantic-inspection-v0`
-- Production implementation PR: **#10 (Draft)**
-- Current production implementation head: `9cb472d5f7a81a1f4db803305df3137683375788`
+- Production implementation PR: **#10 (OPEN / Draft)**
+- Last verified production code head: `14bcc4a63ec4ec56289619e4d76a9ca1792315ba`
 - PoC execution PR: **#8 (MERGED — `ab9ad6f9949128360e46fed07aca335bb6b10971`)**
 - Production implementation baseline: `main@48045768d1d026eb785ee065877e401bbafd97ca`
 - Baseline main CI: `36079233862` — **SUCCESS**
@@ -27,7 +27,7 @@
 - Frozen Design: **APPROVED / FROZEN**
 - PoC Qualification Plan: **APPROVED 2026-09-21**
 - Production Implementation Plan: **APPROVED 2026-09-25**
-- Production dependency promotion: **Task 1 sandbox dependencies and Task 4 TXT/CSV/HTML dependencies promoted through their approved gates; Task 5 dependencies not promoted**
+- Production dependency promotion: **Task 1 sandbox, Task 4 TXT/CSV/HTML, and Task 5 DOCX parser composition promoted through their approved gates**
 
 PR #7 was advanced from review to approved state and merged after explicit user approval. The execution baseline is the resulting main merge commit `5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`.
 
@@ -41,37 +41,55 @@ Current gates:
 - Production Implementation Plan: **APPROVED 2026-09-25**
 - Production planning PR #9: **MERGED**
 - PR #8: **MERGED — `ab9ad6f9949128360e46fed07aca335bb6b10971`**
-- Production dependency promotion: **Task 1 sandbox and Task 4 TXT/CSV/HTML dependencies promoted; Task 5 dependencies not promoted**
+- Production dependency promotion: **Task 1 sandbox, Task 4 TXT/CSV/HTML, and Task 5 DOCX parser composition promoted through their approved gates**
 - Production implementation branch: **CREATED — `feat/document-semantic-inspection-v0`**
 - Production Task 1 sandbox preflight: **COMPLETE / PASS**
 - Production core crate: **TASK 2 COMPLETE / PASS**
-- Production runtime: **TASKS 1–4 COMPLETE / PASS; Task 5 initial RED exists, but review gaps must be supplemented before GREEN**
+- Production runtime: **TASKS 1–5 COMPLETE / PASS; Task 6 XLSX/XLSM/VBA RED next**
 
 The production-hardening gap is resolved for the frozen v0 profile. Task 1 preflight qualified and promoted the sandbox substrate, and its runtime enforces the no-network, no-credential, filesystem-confinement, fresh-process, and finite resource-profile boundary.
 
 Required next order:
 
-1. After the explicitly selected `gpt-6-luna/max` managed runtime responds, resume run `dsi-prod-task5-red-evidence-v3-20260925` with the same recorded spec; its current state has no pending operation and no write receipts.
-2. Modify only `crates/document-semantic-inspection-worker/tests/docx_format_parity.rs` to assert tracked-change/comment `source_locator`, metadata-noise `last_modified_by`, and list/section order. Do not add production code or dependencies.
-3. Commit/push the supplemental RED and require exact-head standard CI, Sandbox Preflight, DSI PoC, and independent review before Task 5 GREEN.
-4. Continue Tasks 5–14 in plan order with only explicitly qualified dependencies; do not merge PR #10.
+1. Begin Task 6 RED contract tests for XLSX/XLSM/VBA in the approved plan, preserving PoC-qualified semantics and exact-head evidence.
+2. Promote only the Task 6 parser composition after clean RED and its own qualification gate.
+3. Require standard CI, DSI Sandbox Preflight, and DSI PoC SUCCESS at the final Task 6 exact head. Keep PR #10 Draft and unmerged.
 
-## Production Task 5 — DOCX RED REVIEW GAPS / MANAGED RUNTIME BLOCKER
+## Production Task 5 — DOCX COMPLETE
 
-- Task 5 implementation code head: `9cb472d5f7a81a1f4db803305df3137683375788`; status-only handoff commit pushed: `c6cd0a915758c62a58951c4a2f50ff8d31d2434c`; worktree clean.
-- GitHub PR #10: OPEN / Draft; the current branch ref and workflow PR association confirm head `c6cd0a915758c62a58951c4a2f50ff8d31d2434c`; no merge authorized.
-- Exact-head standard CI `36114655294`: FAILURE on the unimplemented Task 5 adapter/sentinel contract; security, policy, macOS portability, and container-build jobs passed, while `rust-static` and `rust-test` failed on the expected missing Task 5 APIs.
-- Exact-head DSI Sandbox Preflight `36114655281`: SUCCESS. Exact-head DSI PoC regression `36114655219`: SUCCESS.
-- Status-only handoff head `c6cd0a915758c62a58951c4a2f50ff8d31d2434c`: CI `36124450393` — expected Task 5 RED failure; Sandbox `36124450533` — SUCCESS; DSI PoC `36124450545` — SUCCESS.
-- Independent read-only review: NO-GO for Task 5 GREEN until tests assert tracked-change/comment source locators, `metadata-noise` editorial `last_modified_by`, list-item order, and section order.
-- Task 5 production dependencies have not been promoted; no Task 5 GREEN implementation has started.
-- First RED evidence run `dsi-prod-task5-red-evidence-20260925` is preserved: source inventory was 183,311 bytes against a 140,000-byte startup budget; a split was rejected at `max_tasks=1`; zero write receipts. Do not resume that run.
-- Run `dsi-prod-task5-red-evidence-v2-20260925` ended with `app-server timeout` at its 15-minute deadline; requested/resolved model `gpt-6-luna`, reported input 18,361 tokens, no write receipts.
-- Read-only route check `dsi-worker-route-health-20260925-1` also ended at its 3-minute deadline; it is not evidence that the model is unavailable.
-- Run `dsi-prod-task5-red-evidence-v3-20260925` used `gpt-6-luna/max`, with 60-minute total time, 100k input threshold, and three allowed fresh-session rotations. Two fresh workers failed before their first tool call with `turn failed or stopped without interrupt acknowledgement`; both resolved to `gpt-6-luna`, reported no input usage, and produced no write receipts. Current run state has `pending=null`, task incomplete, and no repository changes.
-- Local `gh` API requests timed out. GitHub REST workflow records associate handoff head `c6cd0a915758c62a58951c4a2f50ff8d31d2434c` with PR #10; `git ls-remote` confirms the branch ref. The PR metadata endpoint still returned the prior head during the same lookup.
+- Initial clean RED head: `65d6896322b93c6731f8a836be8b79fcf53beac5`; authoritative repaired clean RED head: `e3e6659d243233ff102c393e8be1515a05ba1398`.
+- Authoritative repaired RED exact-head CI `36135132794`: **FAIL as expected on missing DOCX APIs only**. Sandbox `36135132761` and DSI PoC `36135132763`: **SUCCESS**.
+- Supplemental test-only head: `bec052e43dfeedb049ac725f8c697cf564ec60b1`. Its tests assert tracked-change/comment `source_locator`, metadata-noise `last_modified_by`, list order, and section order. PR #10 is **OPEN / Draft**.
+- Supplemental exact-head CI `36136763103`: **FAIL as expected**. `rust-static` and `rust-test` fail because `docx_semantic_edges.rs` imports the not-yet-implemented `DocxAdapter` and calls the missing `editorial_provenance()` API. `fmt`, policy, security, macOS portability, and container-build passed; required-check failed because its predecessor jobs failed.
+- Supplemental DSI Sandbox Preflight `36136763068`: **SUCCESS**. DSI PoC `36136762918`: **SUCCESS**.
+- Intermediate ZIP-preflight test-only head `593eddd14c15b098b377fc91b272239af1b24b12` matched the local, remote, and PR #10 head at that time. Its five cases failed as intended against the local pre-fix ZIP guard (**0/5 PASS**); `cargo fmt --check` and strict worker Clippy passed.
+- ZIP-preflight exact-head CI `36138987613`: **FAIL as expected only on missing DOCX APIs**. `fmt`, policy, security, macOS portability, and container-build passed. Sandbox `36138987388` and DSI PoC `36138987376`: **SUCCESS**.
+- Prior ZIP-ambiguity test-only head `9bc17d6ba0074e253266c99f8f59b1fee91dbf8d` added no dependency. Exact-head CI `36144055858`: **FAIL only on the planned missing `DocxAdapter`, `OoxmlCoverageSentinel`, and `editorial_provenance()` APIs**; `fmt`, policy, security, macOS portability, and container-build passed. Sandbox `36144056194` and DSI PoC `36144056202`: **SUCCESS**.
+- Deep semantic test-only head `bae0c63a4c828b43da6a6a797bbdbefeb8161d4b` was a prior PR #10 head. Exact-head CI `36150028095`: **FAIL only on missing `DocxAdapter`, `OoxmlCoverageSentinel`, and `editorial_provenance()` APIs**; `fmt`, policy, security, macOS portability, and container-build passed. Sandbox `36150028138` and DSI PoC `36150028162`: **SUCCESS**. The commit contains only `docx_semantic_deep_a.rs` and `docx_semantic_deep_b.rs`, with no production dependency or implementation change.
+- PoC PNG test-only RED head `3e29954c453bebeae3bab76240e4f6bc28fc58e8` was a prior PR #10 head. Exact-head DSI PoC `36151814090`: **FAIL only on identical decoded PNG pixels with different IDAT encoding**; DOCX 13/14 passed. Sandbox `36151814219`: **SUCCESS**. Standard CI `36151814139`: **FAIL only on missing production DOCX APIs**; formatting, policy, security, macOS portability, and container build passed. This commit changes only two PoC test/support files and adds no dependency.
+- Corrected supplemental RED head `3fede76427991e0c63bc22c5f6615043c796486e` fixes a 1-bit PNG fixture's MSB-first pixel encoding. DSI PoC `36158858140`: **FAIL only on PNG IDAT equivalence** after DOCX 13/14; Sandbox `36158858241`: **SUCCESS**; standard CI `36158858108`: **FAIL only on missing production DOCX APIs** after fmt/policy/security/macOS/container pass.
+- PNG decoder/checksum candidate head `5d627ac6a39b6971077b081fcdab8e35e599f26f` was intermediate: DSI PoC `36159892918` passed DOCX 14/14 then failed on referenced header/footer image tests 0/2. Sandbox `36159892901` succeeded; standard CI `36159892994` failed on missing production DOCX APIs.
+- PoC nonbody-image GREEN head `e309cbeb9f9075c5c3b900df8905f8ae62490337`: DSI PoC `36161063199` **SUCCESS**, including PNG **12/12**, DOCX **14/14**, header/footer image **2/2**, VML image **1/1**, all **91 manifest cases**, and dependency/security gates. Sandbox `36161063009`: **SUCCESS**. Standard CI `36161063006`: **FAIL on planned missing production DOCX APIs** after fmt/policy/security/macOS/container success. Independent decoder/fixture review judged `png 0.18.1` qualified for the scoped DOCX pixel decoder. No production promotion is committed yet.
+- Current PoC note test-only RED head `b2bc048f9bcfe0fe6a95523e3d46b6e64ba5a7a0`: DSI PoC `36162476424` **FAIL only on three new note image/table-structure tests**, after DOCX **14/14 PASS**. Sandbox `36162476347`: **SUCCESS**. Standard CI `36162476288`: **FAIL on missing production DOCX APIs**; policy/security/macOS/container succeeded. This head contains no production implementation or dependency change.
+- Corrected PoC note/list-marker test-only RED head `dd62e881abcfd486e4d8ca02c9a35c2bf27e9704`: note-table comparison uses image-free notes so table structure is isolated, and two cases change `w:lvlText` / `w:start` with every other package part fixed. DSI PoC `36164163811` failed only the three note tests; Sandbox `36164163799` succeeded; CI `36164163875` failed on missing production DOCX APIs.
+- PoC note-structure GREEN / list-marker RED head `0a1a017afcfdd8c675afde1319f384a0414d17a4`: DSI PoC `36166088658` passed note tests **5/5** and DOCX **14/14**, then failed only on list-marker tests **2/2**. Sandbox `36166088662` **SUCCESS**. CI `36166088667` passed fmt, policy, security, macOS, and container; `rust-static` / `rust-test` failed only on the expected missing production DOCX API.
+- Current PoC note-reference test-only RED head `326d80ed369d695035f3889fe87bb853986ac643`: four focused local and hosted tests fail as intended, showing equal fingerprints after swapping two note IDs and accepted dangling references despite valid single-note baselines. DSI PoC `36166774786` passed DOCX **14/14** and note **5/5**, then failed only the four new note-reference cases. Sandbox `36166774731` **SUCCESS**. CI `36166774884` passed fmt/policy/security/macOS/container and failed only on the expected missing production DOCX APIs. This commit contains only the new PoC note-reference test.
+- Supplemental PoC orphan-note/even-header test-only RED head `52c514d3540105e3acdcedc0caf315d48adcfd3a` adds only two PoC test changes. Both cases have valid accepted baselines and fail locally against the pre-fix source: an unreferenced ordinary note is accepted and even header content changes fingerprint with no `settings.xml`. Exact-head DSI PoC `36170274726` failed only on the new even-header case after DOCX 14/14 passed; the runner stops at the first failing test binary, so the orphan-note RED remains locally observed only. Sandbox `36170274935` succeeded. CI `36170274841` passed formatting, policy, security, macOS portability, and container build; rust-static/rust-test failed only on the planned missing production DOCX APIs.
+- PoC semantic-boundary GREEN `0945e0870e70509628a90237be39bf125afdc273` contains only PoC DOCX source/tests. Exact-head DSI PoC `36180780592` **SUCCESS** (qualification job), Sandbox `36180780595` **SUCCESS**. Standard CI `36180780825` failed only on the expected absent production `DocxAdapter`/`OoxmlCoverageSentinel` imports; policy, security, macOS portability, and container build succeeded.
+- Supplemental production test-only RED head `9df2abc77f26867ebc4fd2cc8166e266a25f07ab` adds 21 DOCX tests plus PoC-qualified `zip 8.6.0` as a **dev-dependency only**, with its seven lockfile additions; no production adapter/dependency was committed. Exact-head CI `36181633068` **FAIL as expected only on unresolved `DocxAdapter`/`OoxmlCoverageSentinel` imports**; fmt, policy, security, macOS portability, and container build succeeded. Sandbox `36181633106` and DSI PoC `36181633146` **SUCCESS**. This is the clean supplemental production RED.
+- Production DOCX final GREEN `14bcc4a63ec4ec56289619e4d76a9ca1792315ba` promotes only the qualified Task 5 parser composition and the bounded DOCX adapter/sentinel. Precommit full `cargo test --workspace --locked`, strict workspace Clippy, root fmt, cargo-deny, and `git diff --cached --check` passed locally with pinned Rust 1.98.1. Exact-head standard CI `36182511870` **SUCCESS**, including required-check; Sandbox `36182511893` **SUCCESS**; DSI PoC `36182511885` **SUCCESS**. This satisfies Task 5's final exact-head gate. PR #10 remains OPEN/Draft and unmerged.
+- Before the PoC GREEN commit, note-reference/orphan/text-box/even-header/direct-numbering/XML-event/style-list/picture-geometry repairs passed note-reference **6/6**, note-image **5/5**, even-header **2/2**, numbering **2/2**, instance restart **1/1**, global comment-count **2/2**, style-list **2/2**, geometry **1/1**, DOCX **14/14**, and PNG **12/12** locally. The XML node-count fixture reproduced RED with 2,000,002 valid comments across two parts; style-defined `lvlText`/`numFmt` and `rect`→`ellipse` fixtures reproduced focused RED before scoped repairs. The full local PoC gate passed Cargo tests, **91/91 manifest cases**, dependency policy, and final `overall: PASS`. These changes are in hosted GREEN head `0945e087` above.
+- Before production GREEN, the DOCX draft passed note fail-closed tests, direct numbering **2/2**, style-list **2/2**, picture geometry **1/1**, numbering-instance restart **1/1**, XML event bound **1/1**, format-parity **11/11**, semantic-edge **5/5**, ZIP preflight **7/7**, ZIP gap/Unicode extra **2/2**, PNG decoded-pixel parity, the full workspace test suite, strict Clippy, fmt, and cargo-deny. The four earlier independent-audit gaps had focused local RED before scoped GREEN; they are included in hosted GREEN head `14bcc4a6` above.
+- Task 5 promoted PoC-qualified `office_oxide 0.1.11`, deflate-only `zip 8.6.0`, `quick-xml 0.42.0`, and supplemental `png 0.18.1` scoped to bounded DOCX pixel decoding. The plan records the supplemental qualification without a frozen Design amendment.
+- Final independent review found additional local DOCX gaps in selected header links, first-page header selection, picture transforms and extents, default and special numbering, empty-paragraph XML spelling, image position, and parser-disagreement stderr. Each reproduced a focused RED where the current adapter had a gap; the PoC now projects or rejects the relevant meaning, and production projects or rejects it with bounded diagnostics. Focused tests are locally GREEN. The review did not establish a new Design/profile change.
+- After the final review repairs, the exact `poc:dsi:verify` sequence run with pinned Rust 1.98.1/PDFium passed all **91/91** manifest cases and the dependency gate; production workspace tests, strict Clippy, fmt, and cargo-deny passed locally. Hosted exact-head GREEN for both PoC and production is recorded above.
+- No frozen Design amendment is required by the current evidence. Do not merge PR #10.
 
-Next exact action: once the selected `gpt-6-luna/max` runtime responds, run `toolbox-context resume --workspace "/Users/airisu/.codex/worktrees/dsi-v0-production-task4/knowledge-platform" --run dsi-prod-task5-red-evidence-v3-20260925`; then verify the one-file RED patch, commit/push it, collect all three exact-head CI results, and obtain independent review before GREEN.
+### Historical managed-worker attempts
+
+Earlier `dsi-prod-task5-red-evidence-*` managed runs timed out or failed before a first tool call and produced no write receipts. Those attempts explain the prior runtime-blocker note, but are not the current blocker: the supplemental RED is now committed and its exact-head workflows have completed.
+
+Next exact action: create Task 6 XLSX/XLSM/VBA RED contract tests only, covering the approved sheet/cell/formula/external-reference/VBA relations. Commit/push a clean RED before promoting the Task 6 qualified parser dependencies. Keep PR #10 Draft and unmerged; no Design amendment is in progress.
 
 ## Production Task 4 — COMPLETE
 
@@ -410,8 +428,8 @@ Final cross-host evidence at the same head:
 
 ## Current gate / next exact action
 
-**PoC Qualification and Production Tasks 1–4 are complete.**
+**PoC Qualification and Production Tasks 1–5 are complete.**
 
-Next exact action: begin Production Task 5 RED for DOCX semantics and the OOXML coverage sentinel. Use the qualified fixtures and keep Task 5 parser dependencies unpromoted until the clean RED evidence is recorded.
+Task 5 final production head `14bcc4a6` passed standard CI `36182511870`, Sandbox `36182511893`, and DSI PoC `36182511885`. The current exact action is Task 6 XLSX/XLSM/VBA RED tests and its clean hosted RED gate, followed by qualified dependency promotion and GREEN verification. Task 5's frozen Design remains unchanged.
 
-Do not implement production Semantic Inspection crates inside PR #8.
+PR #8 is merged. Keep production work on PR #10 and do not merge it without an explicit user instruction.
