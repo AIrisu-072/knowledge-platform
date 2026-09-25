@@ -8,7 +8,7 @@
 
 use std::{
     collections::BTreeMap,
-    ffi::{OsStr, OsString},
+    ffi::OsString,
     io,
     os::unix::process::CommandExt,
     path::{Path, PathBuf},
@@ -18,7 +18,7 @@ use std::{
 };
 
 use landlock::{
-    Access, AccessFs, CompatLevel, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus, ABI,
+    Access, AccessFs, CompatLevel, Compatible, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus, ABI,
     path_beneath_rules,
 };
 use seccompiler::{BpfProgram, SeccompAction, SeccompFilter, SeccompRule, TargetArch};
