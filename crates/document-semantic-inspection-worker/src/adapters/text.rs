@@ -24,13 +24,13 @@ impl SemanticAdapter for TextAdapter {
         input: &[u8],
         profile: &AdapterProfile,
     ) -> Result<SemanticAdapterOutput, WorkerFailure> {
-        if let Some(encoding) = profile.text_encoding() {
-            if encoding != "utf-8" {
-                return Err(WorkerFailure::new(
-                    WorkerFailureCode::SemanticExtractionFailed,
-                    format!("ambiguous or unsupported text encoding: {encoding}"),
-                ));
-            }
+        if let Some(encoding) = profile.text_encoding()
+            && encoding != "utf-8"
+        {
+            return Err(WorkerFailure::new(
+                WorkerFailureCode::SemanticExtractionFailed,
+                format!("ambiguous or unsupported text encoding: {encoding}"),
+            ));
         }
 
         let decoded = UTF_8
