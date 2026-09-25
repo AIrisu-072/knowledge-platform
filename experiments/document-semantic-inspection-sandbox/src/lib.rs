@@ -12,6 +12,7 @@ pub use resource_profile::{ProductionResourceProfile, ResourceClass, ResourceLim
 use std::{
     collections::BTreeMap,
     ffi::OsString,
+    fs,
     io,
     os::unix::process::CommandExt,
     path::{Path, PathBuf},
@@ -36,17 +37,18 @@ pub enum SandboxDisposition {
     Allowed,
     Denied,
     TimedOut,
+    ResourceLimit,
     Signaled(i32),
     Failed(i32),
 }
 
 impl SandboxDisposition {
     pub fn is_resource_termination(&self) -> bool {
-        matches!(self, Self::TimedOut | Self::Signaled(_))
+        matches!(self, Self::TimedOut | Self::ResourceLimit | Self::Signaled(_))
     }
 
     pub fn is_denied_or_signaled(&self) -> bool {
-        matches!(self, Self::Denied | Self::TimedOut | Self::Signaled(_))
+        matches!(self, Self::Denied | Self::TimedOut | Self::ResourceLimit | Self::Signaled(_))
     }
 }
 
@@ -78,6 +80,7 @@ pub struct SandboxPolicy {
     pub cpu_seconds: u64,
     pub address_space_bytes: u64,
     pub file_size_bytes: u64,
+    pub temp_disk_bytes: u64,
     pub wall_timeout: Duration,
 }
 
@@ -89,6 +92,7 @@ impl SandboxPolicy {
             cpu_seconds: 8,
             address_space_bytes: 2 * 1024 * 1024 * 1024,
             file_size_bytes: 2048 * 512,
+            temp_disk_bytes: ProductionResourceProfile::DSI_V0.temp_disk_bytes,
             wall_timeout: Duration::from_secs(10),
         }
     }
@@ -138,6 +142,8 @@ pub enum SandboxError {
     Spawn(#[source] io::Error),
     #[error("sandbox wait failed: {0}")]
     Wait(#[source] io::Error),
+    #[error("sandbox monitor failed: {0}")]
+    Monitor(#[source] io::Error),
     #[error("sandbox configuration is invalid: {0}")]
     InvalidConfig(String),
     #[error("sandbox enforcement failed: {0}")]
@@ -170,29 +176,33 @@ pub fn run_sandboxed(
     let pid = child.id() as i32;
     let deadline = Instant::now() + policy.wall_timeout;
     let mut timed_out = false;
+    let mut temp_disk_exceeded = false;
 
     loop {
         if child.try_wait().map_err(SandboxError::Wait)?.is_some() {
             break;
         }
+
+        let temp_bytes = sandbox_tree_bytes(&policy.write_paths)
+            .map_err(SandboxError::Monitor)?;
+        if temp_bytes > policy.temp_disk_bytes {
+            temp_disk_exceeded = true;
+            kill_process_group(pid)?;
+            break;
+        }
+
         if Instant::now() >= deadline {
             timed_out = true;
-            // The child is its own process-group leader. Kill the entire group
-            // so a malicious grandchild cannot survive the controller timeout.
-            let rc = unsafe { libc::kill(-pid, libc::SIGKILL) };
-            if rc != 0 {
-                let error = io::Error::last_os_error();
-                if error.raw_os_error() != Some(libc::ESRCH) {
-                    return Err(SandboxError::Wait(error));
-                }
-            }
+            kill_process_group(pid)?;
             break;
         }
         thread::sleep(Duration::from_millis(10));
     }
 
     let output = child.wait_with_output().map_err(SandboxError::Wait)?;
-    let disposition = if timed_out {
+    let disposition = if temp_disk_exceeded {
+        SandboxDisposition::ResourceLimit
+    } else if timed_out {
         SandboxDisposition::TimedOut
     } else if output.status.success() {
         SandboxDisposition::Allowed
@@ -211,6 +221,49 @@ pub fn run_sandboxed(
         disposition,
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
         stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    })
+}
+
+fn kill_process_group(pid: i32) -> Result<(), SandboxError> {
+    // The sandboxed child is its own process-group leader.
+    let rc = unsafe { libc::kill(-pid, libc::SIGKILL) };
+    if rc == 0 {
+        return Ok(());
+    }
+    let error = io::Error::last_os_error();
+    if error.raw_os_error() == Some(libc::ESRCH) {
+        Ok(())
+    } else {
+        Err(SandboxError::Wait(error))
+    }
+}
+
+fn sandbox_tree_bytes(paths: &[PathBuf]) -> io::Result<u64> {
+    paths.iter().try_fold(0_u64, |total, path| {
+        tree_bytes(path).map(|bytes| total.saturating_add(bytes))
+    })
+}
+
+fn tree_bytes(path: &Path) -> io::Result<u64> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(0),
+        Err(error) => return Err(error),
+    };
+
+    if metadata.file_type().is_symlink() {
+        return Ok(0);
+    }
+    if metadata.is_file() {
+        return Ok(metadata.len());
+    }
+    if !metadata.is_dir() {
+        return Ok(0);
+    }
+
+    fs::read_dir(path)?.try_fold(0_u64, |total, entry| {
+        let entry = entry?;
+        tree_bytes(&entry.path()).map(|bytes| total.saturating_add(bytes))
     })
 }
 
