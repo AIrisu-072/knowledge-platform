@@ -86,6 +86,46 @@ fn note_table_structure_changes_semantics_or_fails_closed() {
     }
 }
 
+#[test]
+fn note_run_boundary_does_not_insert_visible_whitespace() {
+    let image_one = rgba8_png_fixture([220, 20, 60, 255], PngDeflateEncoding::FixedHuffman);
+    let image_two = rgba8_png_fixture([30, 144, 255, 255], PngDeflateEncoding::FixedHuffman);
+    let spaced = text_only_note_docx(&note_image_docx(
+        NoteKind::Footnote,
+        "image1.png",
+        &image_one,
+        &image_two,
+    ));
+    let mut parts = read_parts(&spaced);
+    let note_path = "word/footnotes.xml";
+    let note_xml = String::from_utf8(parts[note_path].clone()).expect("note XML");
+    assert!(note_xml.contains("<w:t>Note text</w:t>"));
+    parts.insert(
+        note_path.to_owned(),
+        note_xml
+            .replacen(
+                "<w:t>Note text</w:t>",
+                "<w:t>Note</w:t></w:r><w:r><w:t>text</w:t>",
+                1,
+            )
+            .into_bytes(),
+    );
+    let joined = write_parts(parts.into_iter().collect());
+    assert_only_part_changed(&spaced, &joined, note_path);
+
+    let spaced = DocxAdapter
+        .inspect(&spaced, &InspectionProfile::default())
+        .expect("valid spaced note");
+    let joined = DocxAdapter
+        .inspect(&joined, &InspectionProfile::default())
+        .expect("valid adjacent note runs");
+    assert_ne!(
+        semantic_fingerprint(&spaced.semantic_projection),
+        semantic_fingerprint(&joined.semantic_projection),
+        "run boundaries must not synthesize visible spaces in note text"
+    );
+}
+
 fn assert_note_image_target_is_semantic(kind: NoteKind) {
     let image_one = rgba8_png_fixture([220, 20, 60, 255], PngDeflateEncoding::FixedHuffman);
     let image_two = rgba8_png_fixture([30, 144, 255, 255], PngDeflateEncoding::FixedHuffman);
