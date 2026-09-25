@@ -1,11 +1,12 @@
 use std::{io::Cursor, os::fd::AsRawFd};
 
 use document_semantic_inspection_core::{
-    FormatId, InspectionProfileVersion, TraceContext, WorkerProtocolVersion, WorkerRequest,
+    FormatId, InspectionProfileVersion, NativeDependencyIdentity, ParserLibraryIdentity,
+    TraceContext, WorkerProtocolVersion, WorkerRequest,
 };
 use document_semantic_inspection_worker::{
     PreparedInput, WorkerFailureCode, decode_request_bounded, detect_format,
-    guard_worker_execution, open_inherited_input, prepare_input_bounded,
+    extractor_provenance, guard_worker_execution, open_inherited_input, prepare_input_bounded,
 };
 
 fn request(media_type: &str, hash: [u8; 32], size: u64) -> WorkerRequest {
@@ -197,4 +198,30 @@ fn panic_guard_cannot_return_partial_success() {
 
     let error = outcome.unwrap_err();
     assert_eq!(error.code(), WorkerFailureCode::WorkerPanicked);
+}
+
+#[test]
+fn extractor_provenance_captures_build_adapter_parser_and_native_identity() {
+    let provenance = extractor_provenance(
+        "text",
+        "dsi-v0",
+        vec![ParserLibraryIdentity {
+            name: "encoding_rs".into(),
+            version: "0.8.41".into(),
+        }],
+        vec![NativeDependencyIdentity {
+            name: "pdfium".into(),
+            version: Some("151.0.7881.0".into()),
+            sha256: Some([3; 32]),
+        }],
+    );
+
+    assert!(!provenance.worker_build_id.trim().is_empty());
+    assert_eq!(provenance.adapter_id, "text");
+    assert_eq!(provenance.adapter_version, "dsi-v0");
+    assert_eq!(provenance.parser_libraries[0].name, "encoding_rs");
+    assert_eq!(
+        provenance.native_dependency_identity[0].version.as_deref(),
+        Some("151.0.7881.0")
+    );
 }

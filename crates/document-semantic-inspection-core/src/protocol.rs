@@ -30,6 +30,7 @@ pub struct TraceContext {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WorkerRequest {
     pub protocol_version: WorkerProtocolVersion,
     pub inspection_profile_version: InspectionProfileVersion,

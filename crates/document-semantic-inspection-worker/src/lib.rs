@@ -1,4 +1,19 @@
 //! Production worker shell for Document Semantic Inspection v0.
 //!
-//! Task 3 starts with RED contract tests. The actual worker shell is added only
-//! after those tests have demonstrated the missing contract.
+//! This crate owns the untrusted parser-process boundary. Task 3 implements
+//! request decoding, raw-binding verification, content-based format detection,
+//! inherited read-only input handling, panic containment, and provenance only.
+//! Format-specific semantic adapters are promoted in later tasks.
+
+mod detect;
+mod error;
+mod input;
+mod provenance;
+
+pub use detect::detect_format;
+pub use error::{WorkerFailure, WorkerFailureCode};
+pub use input::{
+    PreparedInput, decode_request_bounded, guard_worker_execution, open_inherited_input,
+    prepare_input_bounded,
+};
+pub use provenance::{extractor_provenance, worker_build_id};
