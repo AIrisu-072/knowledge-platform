@@ -10,9 +10,10 @@
 - Production planning PR: `#9` — merged as `48045768d1d026eb785ee065877e401bbafd97ca`
 - Production implementation branch: `feat/document-semantic-inspection-v0`
 - Production implementation PR: `#10` — Draft
-- Current production implementation head: `9cb472d5f7a81a1f4db803305df3137683375788`
-- Current GitHub PR #10: OPEN / Draft at that exact head; do not merge
+- Task 5 implementation code head: `9cb472d5f7a81a1f4db803305df3137683375788`
+- GitHub branch head after status-only handoff commit: `c6cd0a915758c62a58951c4a2f50ff8d31d2434c`; PR #10 remains OPEN / Draft; do not merge
 - Task 5 exact-head standard CI `36114655294`: FAILURE on the intended unimplemented adapter contract; Sandbox `36114655281` and PoC `36114655219`: SUCCESS
+- Status-only handoff head `c6cd0a915758c62a58951c4a2f50ff8d31d2434c`: CI `36124450393` — expected Task 5 RED failure; Sandbox `36124450533` and DSI PoC `36124450545` — SUCCESS
 - PoC execution PR: `#8` — merged as `ab9ad6f9949128360e46fed07aca335bb6b10971`
 - Approved Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
 - Design approval record: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design-approval.md`

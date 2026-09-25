@@ -58,17 +58,18 @@ Required next order:
 
 ## Production Task 5 — DOCX RED REVIEW GAPS / MANAGED RUNTIME BLOCKER
 
-- Current branch/head: `feat/document-semantic-inspection-v0` / `9cb472d5f7a81a1f4db803305df3137683375788`; worktree clean.
-- GitHub PR #10: OPEN / Draft at the same head; no merge authorized.
+- Task 5 implementation code head: `9cb472d5f7a81a1f4db803305df3137683375788`; status-only handoff commit pushed: `c6cd0a915758c62a58951c4a2f50ff8d31d2434c`; worktree clean.
+- GitHub PR #10: OPEN / Draft; the current branch ref and workflow PR association confirm head `c6cd0a915758c62a58951c4a2f50ff8d31d2434c`; no merge authorized.
 - Exact-head standard CI `36114655294`: FAILURE on the unimplemented Task 5 adapter/sentinel contract; security, policy, macOS portability, and container-build jobs passed, while `rust-static` and `rust-test` failed on the expected missing Task 5 APIs.
 - Exact-head DSI Sandbox Preflight `36114655281`: SUCCESS. Exact-head DSI PoC regression `36114655219`: SUCCESS.
+- Status-only handoff head `c6cd0a915758c62a58951c4a2f50ff8d31d2434c`: CI `36124450393` — expected Task 5 RED failure; Sandbox `36124450533` — SUCCESS; DSI PoC `36124450545` — SUCCESS.
 - Independent read-only review: NO-GO for Task 5 GREEN until tests assert tracked-change/comment source locators, `metadata-noise` editorial `last_modified_by`, list-item order, and section order.
 - Task 5 production dependencies have not been promoted; no Task 5 GREEN implementation has started.
 - First RED evidence run `dsi-prod-task5-red-evidence-20260925` is preserved: source inventory was 183,311 bytes against a 140,000-byte startup budget; a split was rejected at `max_tasks=1`; zero write receipts. Do not resume that run.
 - Run `dsi-prod-task5-red-evidence-v2-20260925` ended with `app-server timeout` at its 15-minute deadline; requested/resolved model `gpt-6-luna`, reported input 18,361 tokens, no write receipts.
 - Read-only route check `dsi-worker-route-health-20260925-1` also ended at its 3-minute deadline; it is not evidence that the model is unavailable.
 - Run `dsi-prod-task5-red-evidence-v3-20260925` used `gpt-6-luna/max`, with 60-minute total time, 100k input threshold, and three allowed fresh-session rotations. Two fresh workers failed before their first tool call with `turn failed or stopped without interrupt acknowledgement`; both resolved to `gpt-6-luna`, reported no input usage, and produced no write receipts. Current run state has `pending=null`, task incomplete, and no repository changes.
-- The local GitHub CLI request timed out, but the GitHub REST connector freshly confirmed PR #10 OPEN/Draft at this exact head and the three exact-head workflow results above.
+- Local `gh` API requests timed out. GitHub REST workflow records associate handoff head `c6cd0a915758c62a58951c4a2f50ff8d31d2434c` with PR #10; `git ls-remote` confirms the branch ref. The PR metadata endpoint still returned the prior head during the same lookup.
 
 Next exact action: once the selected `gpt-6-luna/max` runtime responds, run `toolbox-context resume --workspace "/Users/airisu/.codex/worktrees/dsi-v0-production-task4/knowledge-platform" --run dsi-prod-task5-red-evidence-v3-20260925`; then verify the one-file RED patch, commit/push it, collect all three exact-head CI results, and obtain independent review before GREEN.
 
