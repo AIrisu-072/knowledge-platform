@@ -119,8 +119,8 @@ impl InspectionAdapter for DocxAdapter {
 
         let headers = texts_for_prefix(&package.parts, "word/header")?;
         let footers = texts_for_prefix(&package.parts, "word/footer")?;
-        let footnotes = note_texts(package.parts.get("word/footnotes.xml"))?;
-        let endnotes = note_texts(package.parts.get("word/endnotes.xml"))?;
+        let footnotes = note_texts(package.parts.get("word/footnotes.xml"), "footnotes")?;
+        let endnotes = note_texts(package.parts.get("word/endnotes.xml"), "endnotes")?;
 
         let mut visible = Vec::new();
         visible.extend(headers.iter().cloned());
@@ -672,10 +672,6 @@ fn parse_relationships(data: &[u8]) -> Result<BTreeMap<String, Relationship>, Po
     Ok(relationships)
 }
 
-fn has_revision_markup(data: &[u8]) -> Result<bool, PocError> {
-    has_any_element(data, &["ins", "del", "moveFrom", "moveTo"])
-}
-
 fn has_comment_markup(data: &[u8]) -> Result<bool, PocError> {
     has_any_element(
         data,
@@ -992,16 +988,483 @@ fn texts_for_prefix(
     Ok(values)
 }
 
-fn note_texts(data: Option<&Vec<u8>>) -> Result<Vec<String>, PocError> {
+fn note_texts(data: Option<&Vec<u8>>, expected_root: &str) -> Result<Vec<String>, PocError> {
     let Some(data) = data else {
         return Ok(Vec::new());
     };
-    let text = extract_final_text(data)?;
+    let text = extract_final_note_text(data, expected_root)?;
     Ok(if text.is_empty() {
         Vec::new()
     } else {
         vec![text]
     })
+}
+
+#[derive(Debug, Default)]
+struct NoteXmlFrame {
+    local_name: String,
+    note_type: Option<String>,
+    paragraph_count: usize,
+    separator_count: usize,
+    properties_seen: bool,
+    content_started: bool,
+}
+
+fn extract_final_note_text(data: &[u8], expected_root: &str) -> Result<String, PocError> {
+    let text = std::str::from_utf8(data)
+        .map_err(|_| PocError::SemanticExtractionFailed("note XML is not UTF-8".into()))?;
+    let mut reader = NsReader::from_str(text);
+    reader.config_mut().check_end_names = true;
+    let mut stack: Vec<NoteXmlFrame> = Vec::new();
+    let mut root_seen = false;
+    let mut root_closed = false;
+    let mut deleted_depth = 0usize;
+    let mut values = Vec::new();
+
+    loop {
+        let (namespace, event) = reader.read_resolved_event().map_err(|error| {
+            PocError::SemanticExtractionFailed(format!("note XML parse failed: {error}"))
+        })?;
+        match event {
+            Event::Start(event) => {
+                let element_name = event.local_name();
+                let local_name = note_element_name(&namespace, element_name.as_ref())?;
+                let is_root = stack.is_empty();
+                if is_root {
+                    if root_seen || local_name != expected_root {
+                        return Err(unsupported_note_construct(local_name));
+                    }
+                    root_seen = true;
+                }
+                let frame = validate_note_element(
+                    local_name,
+                    &event,
+                    reader.resolver(),
+                    expected_root,
+                    &mut stack,
+                )?;
+                if matches!(local_name, "del" | "moveFrom") {
+                    deleted_depth = deleted_depth
+                        .checked_add(1)
+                        .ok_or(PocError::InspectionResourceLimitExceeded)?;
+                }
+                append_note_control_character(local_name, deleted_depth, &stack, &mut values)?;
+                stack.push(frame);
+            }
+            Event::Empty(event) => {
+                let element_name = event.local_name();
+                let local_name = note_element_name(&namespace, element_name.as_ref())?;
+                let is_root = stack.is_empty();
+                if is_root {
+                    if root_seen || local_name != expected_root {
+                        return Err(unsupported_note_construct(local_name));
+                    }
+                    root_seen = true;
+                }
+                let frame = validate_note_element(
+                    local_name,
+                    &event,
+                    reader.resolver(),
+                    expected_root,
+                    &mut stack,
+                )?;
+                append_note_control_character(local_name, deleted_depth, &stack, &mut values)?;
+                finish_note_element(&frame)?;
+                if is_root {
+                    root_closed = true;
+                }
+            }
+            Event::End(event) => {
+                let element_name = event.local_name();
+                let local_name = note_element_name(&namespace, element_name.as_ref())?;
+                let frame = stack.pop().ok_or_else(|| {
+                    PocError::SemanticExtractionFailed("note XML has an unmatched end tag".into())
+                })?;
+                if frame.local_name != local_name {
+                    return Err(PocError::SemanticExtractionFailed(
+                        "note XML end tag does not match its start tag".into(),
+                    ));
+                }
+                finish_note_element(&frame)?;
+                if matches!(local_name, "del" | "moveFrom") {
+                    deleted_depth = deleted_depth.saturating_sub(1);
+                }
+                if stack.is_empty() {
+                    root_closed = true;
+                }
+            }
+            Event::Text(value) => {
+                let current = stack.last().map(|frame| frame.local_name.as_str());
+                if matches!(current, Some("t")) {
+                    if current_note_is_special(&stack) {
+                        return Err(unsupported_note_construct("text in a separator note"));
+                    }
+                    if deleted_depth == 0 {
+                        let value =
+                            quick_xml::escape::unescape(value.as_ref()).map_err(|error| {
+                                PocError::SemanticExtractionFailed(format!(
+                                    "note text entity decode failed: {error}"
+                                ))
+                            })?;
+                        values.push(value.into_owned());
+                    }
+                } else if matches!(current, Some("delText")) {
+                    if deleted_depth == 0 {
+                        return Err(unsupported_note_construct("delText outside a deletion"));
+                    }
+                } else if !value.as_ref().chars().all(char::is_whitespace) {
+                    return Err(unsupported_note_construct("text outside w:t"));
+                }
+            }
+            Event::CData(value) => {
+                let current = stack.last().map(|frame| frame.local_name.as_str());
+                if matches!(current, Some("t")) {
+                    if current_note_is_special(&stack) {
+                        return Err(unsupported_note_construct("CDATA in a separator note"));
+                    }
+                    if deleted_depth == 0 {
+                        let value = value.as_ref();
+                        values.push(value.to_owned());
+                    }
+                } else if matches!(current, Some("delText")) {
+                    if deleted_depth == 0 {
+                        return Err(unsupported_note_construct("delText outside a deletion"));
+                    }
+                } else if !value.as_ref().chars().all(char::is_whitespace) {
+                    return Err(unsupported_note_construct("CDATA outside w:t"));
+                }
+            }
+            Event::GeneralRef(reference) => {
+                let current = stack.last().map(|frame| frame.local_name.as_str());
+                if matches!(current, Some("t")) {
+                    if current_note_is_special(&stack) {
+                        return Err(unsupported_note_construct("entity in a separator note"));
+                    }
+                    if deleted_depth == 0 && !current_note_is_special(&stack) {
+                        let name = reference.as_ref();
+                        let reference = format!("&{name};");
+                        let value = quick_xml::escape::unescape(&reference).map_err(|error| {
+                            PocError::SemanticExtractionFailed(format!(
+                                "note text entity decode failed: {error}"
+                            ))
+                        })?;
+                        values.push(value.into_owned());
+                    }
+                } else if matches!(current, Some("delText")) {
+                    if deleted_depth == 0 {
+                        return Err(unsupported_note_construct(
+                            "delText reference outside a deletion",
+                        ));
+                    }
+                } else {
+                    return Err(unsupported_note_construct("entity outside w:t"));
+                }
+            }
+            Event::DocType(_) => return Err(unsupported_note_construct("DOCTYPE")),
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+
+    if !root_seen || !root_closed || !stack.is_empty() {
+        return Err(PocError::SemanticExtractionFailed(
+            "note XML did not contain one complete root element".into(),
+        ));
+    }
+    Ok(normalize_text(&values.join("")))
+}
+
+fn note_element_name<'a>(
+    namespace: &ResolveResult<'_>,
+    local_name: &'a str,
+) -> Result<&'a str, PocError> {
+    match namespace {
+        ResolveResult::Bound(namespace) if namespace.as_ref() == WORDPROCESSINGML_NS => {
+            Ok(local_name)
+        }
+        ResolveResult::Unknown(prefix) => Err(unsupported_note_construct(&format!(
+            "unbound namespace prefix {prefix}"
+        ))),
+        _ => Err(unsupported_note_construct(local_name)),
+    }
+}
+
+fn validate_note_element(
+    local_name: &str,
+    event: &BytesStart<'_>,
+    resolver: &quick_xml::name::NamespaceResolver,
+    expected_root: &str,
+    stack: &mut [NoteXmlFrame],
+) -> Result<NoteXmlFrame, PocError> {
+    let Some(parent_index) = stack.len().checked_sub(1) else {
+        if local_name != expected_root {
+            return Err(unsupported_note_construct(local_name));
+        }
+        return Ok(NoteXmlFrame {
+            local_name: local_name.to_owned(),
+            ..NoteXmlFrame::default()
+        });
+    };
+
+    let parent_name = stack[parent_index].local_name.clone();
+    let note_element = if expected_root == "footnotes" {
+        "footnote"
+    } else {
+        "endnote"
+    };
+    if parent_name == expected_root {
+        if local_name != note_element {
+            return Err(unsupported_note_construct(local_name));
+        }
+        let note_type = namespaced_attribute(event, resolver, WORDPROCESSINGML_NS, "type")?;
+        if note_type
+            .as_deref()
+            .is_some_and(|value| !matches!(value, "separator" | "continuationSeparator"))
+        {
+            return Err(unsupported_note_construct("unknown note type"));
+        }
+        return Ok(NoteXmlFrame {
+            local_name: local_name.to_owned(),
+            note_type,
+            ..NoteXmlFrame::default()
+        });
+    }
+
+    if matches!(parent_name.as_str(), "footnote" | "endnote") {
+        if local_name != "p" {
+            return Err(unsupported_note_construct(local_name));
+        }
+        stack[parent_index].paragraph_count += 1;
+        if stack[parent_index].paragraph_count > 1 {
+            return Err(unsupported_note_construct("multiple note paragraphs"));
+        }
+        return Ok(NoteXmlFrame {
+            local_name: local_name.to_owned(),
+            ..NoteXmlFrame::default()
+        });
+    }
+
+    match parent_name.as_str() {
+        "p" => match local_name {
+            "pPr"
+                if !stack[parent_index].properties_seen && !stack[parent_index].content_started =>
+            {
+                stack[parent_index].properties_seen = true;
+            }
+            "r" => {
+                stack[parent_index].content_started = true;
+            }
+            "proofErr" | "bookmarkStart" | "bookmarkEnd" => {
+                stack[parent_index].content_started = true;
+            }
+            _ => return Err(unsupported_note_construct(local_name)),
+        },
+        "r" => match local_name {
+            "rPr"
+                if !stack[parent_index].properties_seen && !stack[parent_index].content_started =>
+            {
+                stack[parent_index].properties_seen = true;
+            }
+            "t" | "delText" | "tab" | "br" | "cr" | "noBreakHyphen" | "softHyphen" => {
+                if local_name == "delText"
+                    && !stack
+                        .iter()
+                        .any(|frame| matches!(frame.local_name.as_str(), "del" | "moveFrom"))
+                {
+                    return Err(unsupported_note_construct("delText outside a deletion"));
+                }
+                stack[parent_index].content_started = true;
+            }
+            "separator" | "continuationSeparator" => {
+                let note_index = stack
+                    .iter()
+                    .rposition(|frame| matches!(frame.local_name.as_str(), "footnote" | "endnote"))
+                    .ok_or_else(|| unsupported_note_construct(local_name))?;
+                if stack[note_index].note_type.as_deref() != Some(local_name) {
+                    return Err(unsupported_note_construct(local_name));
+                }
+                stack[note_index].separator_count += 1;
+                stack[parent_index].content_started = true;
+            }
+            "footnoteRef" | "endnoteRef" => {
+                let expected_ref = if expected_root == "footnotes" {
+                    "footnoteRef"
+                } else {
+                    "endnoteRef"
+                };
+                if local_name != expected_ref || current_note_is_special(stack) {
+                    return Err(unsupported_note_construct(local_name));
+                }
+                stack[parent_index].content_started = true;
+            }
+            _ => return Err(unsupported_note_construct(local_name)),
+        },
+        "pPr" => {
+            if !is_note_paragraph_formatting(local_name) {
+                return Err(unsupported_note_construct(local_name));
+            }
+            if local_name == "pStyle" {
+                let style = namespaced_attribute(event, resolver, WORDPROCESSINGML_NS, "val")?;
+                let expected_style = if expected_root == "footnotes" {
+                    "FootnoteText"
+                } else {
+                    "EndnoteText"
+                };
+                if style.as_deref() != Some(expected_style) {
+                    return Err(unsupported_note_construct(
+                        "nonstandard note paragraph style",
+                    ));
+                }
+            }
+        }
+        "rPr" => {
+            if local_name == "rStyle" {
+                let style = namespaced_attribute(event, resolver, WORDPROCESSINGML_NS, "val")?;
+                let expected_style = if expected_root == "footnotes" {
+                    "FootnoteReference"
+                } else {
+                    "EndnoteReference"
+                };
+                if style.as_deref() != Some(expected_style) {
+                    return Err(unsupported_note_construct("nonstandard note run style"));
+                }
+            } else if !is_note_run_formatting(local_name) {
+                return Err(unsupported_note_construct(local_name));
+            }
+        }
+        "t" | "delText" => return Err(unsupported_note_construct(local_name)),
+        _ => return Err(unsupported_note_construct(local_name)),
+    }
+
+    Ok(NoteXmlFrame {
+        local_name: local_name.to_owned(),
+        ..NoteXmlFrame::default()
+    })
+}
+
+fn finish_note_element(frame: &NoteXmlFrame) -> Result<(), PocError> {
+    if matches!(frame.local_name.as_str(), "footnote" | "endnote") {
+        if frame.paragraph_count != 1 {
+            return Err(unsupported_note_construct("note without one paragraph"));
+        }
+        match frame.note_type.as_deref() {
+            Some("separator" | "continuationSeparator") if frame.separator_count != 1 => {
+                return Err(unsupported_note_construct("malformed note separator"));
+            }
+            None if frame.separator_count != 0 => {
+                return Err(unsupported_note_construct("separator in a text note"));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn append_note_control_character(
+    local_name: &str,
+    deleted_depth: usize,
+    stack: &[NoteXmlFrame],
+    values: &mut Vec<String>,
+) -> Result<(), PocError> {
+    let character = match local_name {
+        "tab" | "br" | "cr" => " ",
+        "noBreakHyphen" => "\u{2011}",
+        "softHyphen" => "\u{00ad}",
+        _ => return Ok(()),
+    };
+    if current_note_is_special(stack) {
+        return Err(unsupported_note_construct(
+            "text control in a separator note",
+        ));
+    }
+    if deleted_depth == 0 {
+        values.push(character.to_owned());
+    }
+    Ok(())
+}
+
+fn current_note_is_special(stack: &[NoteXmlFrame]) -> bool {
+    stack
+        .iter()
+        .rev()
+        .find(|frame| matches!(frame.local_name.as_str(), "footnote" | "endnote"))
+        .is_some_and(|frame| frame.note_type.is_some())
+}
+
+fn is_note_paragraph_formatting(local_name: &str) -> bool {
+    matches!(
+        local_name,
+        "pStyle"
+            | "keepNext"
+            | "keepLines"
+            | "pageBreakBefore"
+            | "widowControl"
+            | "suppressLineNumbers"
+            | "suppressAutoHyphens"
+            | "kinsoku"
+            | "wordWrap"
+            | "overflowPunct"
+            | "topLinePunct"
+            | "autoSpaceDE"
+            | "autoSpaceDN"
+            | "bidi"
+            | "adjustRightInd"
+            | "snapToGrid"
+            | "spacing"
+            | "ind"
+            | "contextualSpacing"
+            | "mirrorIndents"
+            | "suppressOverlap"
+            | "jc"
+            | "textAlignment"
+            | "textboxTightWrap"
+    )
+}
+
+fn is_note_run_formatting(local_name: &str) -> bool {
+    matches!(
+        local_name,
+        "rFonts"
+            | "b"
+            | "bCs"
+            | "i"
+            | "iCs"
+            | "caps"
+            | "smallCaps"
+            | "strike"
+            | "dstrike"
+            | "outline"
+            | "shadow"
+            | "emboss"
+            | "imprint"
+            | "noProof"
+            | "snapToGrid"
+            | "color"
+            | "spacing"
+            | "w"
+            | "kern"
+            | "position"
+            | "sz"
+            | "szCs"
+            | "highlight"
+            | "u"
+            | "effect"
+            | "bdr"
+            | "shd"
+            | "fitText"
+            | "vertAlign"
+            | "rtl"
+            | "cs"
+            | "em"
+            | "lang"
+            | "eastAsianLayout"
+    )
+}
+
+fn unsupported_note_construct(name: &str) -> PocError {
+    PocError::UnsupportedSemanticConstruct(format!(
+        "note construct {name} is outside the text-only grammar"
+    ))
 }
 
 fn extract_final_text(data: &[u8]) -> Result<String, PocError> {
