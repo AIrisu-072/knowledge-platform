@@ -41,7 +41,7 @@ fn eocd_declared_entry_count_over_limit_is_resource_failure_before_archive_parse
     );
 
     // The central directory remains intact, while EOCD claims 257 entries.
-    // The declared count must hit the resource cap before ZipArchive parses it.
+    // The declared count must hit the resource cap before central-entry traversal.
     write_u16(&mut bytes, eocd + 8, 257);
     write_u16(&mut bytes, eocd + 10, 257);
     assert_eq!(read_u16(&bytes, eocd + 10), 257);
@@ -131,6 +131,121 @@ fn file_and_directory_with_the_same_part_name_are_rejected() {
     assert_sentinel_failure(&bytes, WorkerFailureCode::SemanticExtractionFailed);
 }
 
+#[test]
+fn unindexed_conflicting_local_record_before_central_directory_is_rejected() {
+    let mut bytes = minimal_docx();
+    let original_eocd = find_last_signature(&bytes, EOCD_SIGNATURE);
+    let original_central_offset = read_u32(&bytes, original_eocd + 16) as usize;
+    let hidden_record = stored_local_record(b"word/document.xml", b"conflicting document");
+    let hidden_record_len = u32::try_from(hidden_record.len()).expect("small fixture record");
+
+    bytes.splice(
+        original_central_offset..original_central_offset,
+        hidden_record.iter().copied(),
+    );
+    let eocd = find_last_signature(&bytes, EOCD_SIGNATURE);
+    let central_offset = original_central_offset + hidden_record.len();
+    write_u32(
+        &mut bytes,
+        eocd + 16,
+        u32::try_from(central_offset).expect("small fixture central offset"),
+    );
+    assert_eq!(
+        read_u32(&bytes, eocd + 16),
+        u32::try_from(original_central_offset).expect("small fixture central offset")
+            + hidden_record_len
+    );
+    assert_eq!(
+        read_u32(&bytes, central_offset),
+        CENTRAL_HEADER_SIGNATURE,
+        "the indexed central directory remains directly after the inserted local record"
+    );
+    assert_eq!(count_central_entries(&bytes, eocd), 4);
+
+    let hidden_record_end = assert_stored_local_record(
+        &bytes,
+        original_central_offset,
+        b"word/document.xml",
+        b"conflicting document",
+    );
+    assert_eq!(
+        hidden_record_end, central_offset,
+        "the complete hidden local record occupies the gap before the central directory"
+    );
+
+    let central_entries = central_directory_entries(&bytes, eocd);
+    assert_eq!(central_entries.len(), 4);
+    assert!(
+        central_entries
+            .iter()
+            .all(|entry| entry.local_offset != original_central_offset)
+    );
+    let indexed_document = central_entries
+        .iter()
+        .find(|entry| entry.name == b"word/document.xml")
+        .expect("the original indexed document part remains present");
+    assert_ne!(indexed_document.local_offset, original_central_offset);
+    assert_stored_local_record(
+        &bytes,
+        indexed_document.local_offset,
+        b"word/document.xml",
+        DOCUMENT,
+    );
+
+    assert_sentinel_failure(&bytes, WorkerFailureCode::SemanticExtractionFailed);
+}
+
+#[test]
+fn unicode_path_extra_alias_for_required_part_is_rejected() {
+    let raw_name = b"shadow.xml";
+    let mapped_name = b"word/document.xml";
+    let unicode_path = unicode_path_extra(raw_name, mapped_name);
+    let entries = vec![
+        StoredEntry::new(b"[Content_Types].xml", CONTENT_TYPES),
+        StoredEntry::new(b"_rels/.rels", ROOT_RELATIONSHIPS),
+        StoredEntry::new(raw_name, DOCUMENT).with_extra_fields(&unicode_path, &unicode_path),
+        StoredEntry::new(b"word/_rels/document.xml.rels", DOCUMENT_RELATIONSHIPS),
+    ];
+    assert!(
+        entries
+            .iter()
+            .all(|entry| entry.central_name.as_slice() != mapped_name)
+    );
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry.central_name.as_slice() == raw_name)
+    );
+    let bytes = stored_zip(&entries);
+    let eocd = find_last_signature(&bytes, EOCD_SIGNATURE);
+    assert_eq!(count_central_entries(&bytes, eocd), 4);
+
+    let central_entries = central_directory_entries(&bytes, eocd);
+    assert_eq!(central_entries.len(), 4);
+    assert!(
+        central_entries
+            .iter()
+            .all(|entry| entry.name.as_slice() != mapped_name)
+    );
+    let shadow_entry = central_entries
+        .iter()
+        .find(|entry| entry.name.as_slice() == raw_name)
+        .expect("the raw central name remains present");
+    assert_stored_local_record(&bytes, shadow_entry.local_offset, raw_name, DOCUMENT);
+    assert_unicode_path_extra(&shadow_entry.extra, raw_name, mapped_name);
+    let local_name_len = read_u16(&bytes, shadow_entry.local_offset + 26) as usize;
+    let local_extra_len = read_u16(&bytes, shadow_entry.local_offset + 28) as usize;
+    let local_extra_start = shadow_entry.local_offset + 30 + local_name_len;
+    let local_extra_end = local_extra_start + local_extra_len;
+    assert_unicode_path_extra(
+        &bytes[local_extra_start..local_extra_end],
+        raw_name,
+        mapped_name,
+    );
+
+    assert_sentinel_failure(&bytes, WorkerFailureCode::SemanticExtractionFailed);
+}
+
 fn assert_sentinel_failure(bytes: &[u8], expected: WorkerFailureCode) {
     let failure = OoxmlCoverageSentinel::validate_package(bytes)
         .expect_err("malformed or over-limit ZIP must fail closed");
@@ -142,6 +257,8 @@ struct StoredEntry {
     central_name: Vec<u8>,
     local_name: Vec<u8>,
     data: Vec<u8>,
+    local_extra: Vec<u8>,
+    central_extra: Vec<u8>,
 }
 
 impl StoredEntry {
@@ -154,7 +271,15 @@ impl StoredEntry {
             central_name: central_name.to_vec(),
             local_name: local_name.to_vec(),
             data: data.to_vec(),
+            local_extra: Vec::new(),
+            central_extra: Vec::new(),
         }
+    }
+
+    fn with_extra_fields(mut self, local_extra: &[u8], central_extra: &[u8]) -> Self {
+        self.local_extra = local_extra.to_vec();
+        self.central_extra = central_extra.to_vec();
+        self
     }
 }
 
@@ -183,6 +308,7 @@ fn stored_zip(entries: &[StoredEntry]) -> Vec<u8> {
         local_offsets.push(offset);
         let size = u32::try_from(entry.data.len()).expect("small fixture entry size");
         let name_len = u16::try_from(entry.local_name.len()).expect("fixture name length");
+        let extra_len = u16::try_from(entry.local_extra.len()).expect("fixture extra length");
 
         push_u32(&mut bytes, LOCAL_HEADER_SIGNATURE);
         push_u16(&mut bytes, 20); // version needed
@@ -194,8 +320,9 @@ fn stored_zip(entries: &[StoredEntry]) -> Vec<u8> {
         push_u32(&mut bytes, size);
         push_u32(&mut bytes, size);
         push_u16(&mut bytes, name_len);
-        push_u16(&mut bytes, 0); // extra length
+        push_u16(&mut bytes, extra_len);
         bytes.extend_from_slice(&entry.local_name);
+        bytes.extend_from_slice(&entry.local_extra);
         bytes.extend_from_slice(&entry.data);
     }
 
@@ -203,6 +330,7 @@ fn stored_zip(entries: &[StoredEntry]) -> Vec<u8> {
     for (entry, local_offset) in entries.iter().zip(local_offsets) {
         let size = u32::try_from(entry.data.len()).expect("small fixture entry size");
         let name_len = u16::try_from(entry.central_name.len()).expect("fixture name length");
+        let extra_len = u16::try_from(entry.central_extra.len()).expect("fixture extra length");
 
         push_u32(&mut bytes, CENTRAL_HEADER_SIGNATURE);
         push_u16(&mut bytes, 20); // version made by
@@ -215,13 +343,14 @@ fn stored_zip(entries: &[StoredEntry]) -> Vec<u8> {
         push_u32(&mut bytes, size);
         push_u32(&mut bytes, size);
         push_u16(&mut bytes, name_len);
-        push_u16(&mut bytes, 0); // extra length
+        push_u16(&mut bytes, extra_len);
         push_u16(&mut bytes, 0); // entry comment length
         push_u16(&mut bytes, 0); // disk number start
         push_u16(&mut bytes, 0); // internal attributes
         push_u32(&mut bytes, 0); // external attributes
         push_u32(&mut bytes, local_offset);
         bytes.extend_from_slice(&entry.central_name);
+        bytes.extend_from_slice(&entry.central_extra);
     }
     let central_end = u32::try_from(bytes.len()).expect("small fixture central end");
     let central_size = central_end - central_offset;
@@ -238,6 +367,38 @@ fn stored_zip(entries: &[StoredEntry]) -> Vec<u8> {
     bytes
 }
 
+fn stored_local_record(name: &[u8], data: &[u8]) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let size = u32::try_from(data.len()).expect("small fixture entry size");
+    let name_len = u16::try_from(name.len()).expect("fixture name length");
+
+    push_u32(&mut bytes, LOCAL_HEADER_SIGNATURE);
+    push_u16(&mut bytes, 20); // version needed
+    push_u16(&mut bytes, 0); // flags
+    push_u16(&mut bytes, 0); // stored
+    push_u16(&mut bytes, 0); // modification time
+    push_u16(&mut bytes, 0); // modification date
+    push_u32(&mut bytes, crc32(data));
+    push_u32(&mut bytes, size);
+    push_u32(&mut bytes, size);
+    push_u16(&mut bytes, name_len);
+    push_u16(&mut bytes, 0); // extra length
+    bytes.extend_from_slice(name);
+    bytes.extend_from_slice(data);
+    bytes
+}
+
+fn unicode_path_extra(raw_name: &[u8], unicode_name: &[u8]) -> Vec<u8> {
+    let data_len = u16::try_from(5 + unicode_name.len()).expect("fixture extra data length");
+    let mut extra = Vec::new();
+    push_u16(&mut extra, 0x7075); // Info-ZIP Unicode Path extra field
+    push_u16(&mut extra, data_len);
+    extra.push(1); // version
+    push_u32(&mut extra, crc32(raw_name));
+    extra.extend_from_slice(unicode_name);
+    extra
+}
+
 fn find_last_signature(bytes: &[u8], signature: u32) -> usize {
     let signature = signature.to_le_bytes();
     bytes
@@ -247,6 +408,16 @@ fn find_last_signature(bytes: &[u8], signature: u32) -> usize {
 }
 
 fn count_central_entries(bytes: &[u8], eocd: usize) -> usize {
+    central_directory_entries(bytes, eocd).len()
+}
+
+struct CentralDirectoryEntry {
+    name: Vec<u8>,
+    extra: Vec<u8>,
+    local_offset: usize,
+}
+
+fn central_directory_entries(bytes: &[u8], eocd: usize) -> Vec<CentralDirectoryEntry> {
     let central_offset = read_u32(bytes, eocd + 16) as usize;
     let central_size = read_u32(bytes, eocd + 12) as usize;
     let central_end = central_offset
@@ -255,18 +426,63 @@ fn count_central_entries(bytes: &[u8], eocd: usize) -> usize {
     assert!(central_end <= eocd, "central directory precedes EOCD");
 
     let mut offset = central_offset;
-    let mut count = 0;
+    let mut entries = Vec::new();
     while offset < central_end {
+        let record_offset = offset;
         assert_eq!(read_u32(bytes, offset), CENTRAL_HEADER_SIGNATURE);
         let name_len = read_u16(bytes, offset + 28) as usize;
         let extra_len = read_u16(bytes, offset + 30) as usize;
         let comment_len = read_u16(bytes, offset + 32) as usize;
-        offset = offset + 46 + name_len + extra_len + comment_len;
+        let name_start = offset + 46;
+        let name_end = name_start + name_len;
+        let extra_end = name_end + extra_len;
+        offset = extra_end + comment_len;
         assert!(offset <= central_end, "central record fits declared tail");
-        count += 1;
+        entries.push(CentralDirectoryEntry {
+            name: bytes[name_start..name_end].to_vec(),
+            extra: bytes[name_end..extra_end].to_vec(),
+            local_offset: read_u32(bytes, record_offset + 42) as usize,
+        });
     }
     assert_eq!(offset, central_end, "central directory tail is exact");
-    count
+    entries
+}
+
+fn assert_stored_local_record(
+    bytes: &[u8],
+    offset: usize,
+    expected_name: &[u8],
+    expected_data: &[u8],
+) -> usize {
+    assert_eq!(read_u32(bytes, offset), LOCAL_HEADER_SIGNATURE);
+    assert_eq!(read_u16(bytes, offset + 6), 0, "fixture has no ZIP flags");
+    assert_eq!(
+        read_u16(bytes, offset + 8),
+        0,
+        "fixture uses stored entries"
+    );
+    assert_eq!(read_u32(bytes, offset + 14), crc32(expected_data));
+    let compressed_size = read_u32(bytes, offset + 18) as usize;
+    let uncompressed_size = read_u32(bytes, offset + 22) as usize;
+    assert_eq!(compressed_size, expected_data.len());
+    assert_eq!(uncompressed_size, expected_data.len());
+    let name_len = read_u16(bytes, offset + 26) as usize;
+    let extra_len = read_u16(bytes, offset + 28) as usize;
+    let name_start = offset + 30;
+    let extra_start = name_start + name_len;
+    let data_start = extra_start + extra_len;
+    let data_end = data_start + compressed_size;
+    assert_eq!(&bytes[name_start..extra_start], expected_name);
+    assert_eq!(&bytes[data_start..data_end], expected_data);
+    data_end
+}
+
+fn assert_unicode_path_extra(extra: &[u8], raw_name: &[u8], unicode_name: &[u8]) {
+    assert_eq!(read_u16(extra, 0), 0x7075);
+    assert_eq!(read_u16(extra, 2) as usize, extra.len() - 4);
+    assert_eq!(extra[4], 1, "Unicode Path extra field version is 1");
+    assert_eq!(read_u32(extra, 5), crc32(raw_name));
+    assert_eq!(&extra[9..], unicode_name);
 }
 
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
