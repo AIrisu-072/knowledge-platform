@@ -91,7 +91,7 @@ impl SandboxPolicy {
             write_paths,
             cpu_seconds: 8,
             address_space_bytes: 2 * 1024 * 1024 * 1024,
-            file_size_bytes: 2048 * 512,
+            file_size_bytes: ProductionResourceProfile::DSI_V0.output_file_bytes(),
             temp_disk_bytes: ProductionResourceProfile::DSI_V0.temp_disk_bytes,
             wall_timeout: Duration::from_secs(10),
         }
