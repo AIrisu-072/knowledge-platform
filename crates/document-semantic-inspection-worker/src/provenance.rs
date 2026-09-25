@@ -3,8 +3,11 @@ use document_semantic_inspection_core::{
 };
 
 pub fn worker_build_id() -> &'static str {
-    option_env!("DSI_WORKER_BUILD_ID")
-        .unwrap_or(concat!(env!("CARGO_PKG_NAME"), "@", env!("CARGO_PKG_VERSION")))
+    option_env!("DSI_WORKER_BUILD_ID").unwrap_or(concat!(
+        env!("CARGO_PKG_NAME"),
+        "@",
+        env!("CARGO_PKG_VERSION")
+    ))
 }
 
 pub fn extractor_provenance(
