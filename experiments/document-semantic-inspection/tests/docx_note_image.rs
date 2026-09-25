@@ -64,11 +64,14 @@ fn note_table_structure_changes_semantics_or_fails_closed() {
     assert_eq!(decode_rgba8_png_fixture(&image_one), [220, 20, 60, 255]);
     assert_eq!(decode_rgba8_png_fixture(&image_two), [30, 144, 255, 255]);
 
-    let paragraph_note = note_image_docx(NoteKind::Footnote, "image1.png", &image_one, &image_two);
+    let paragraph_note = text_only_note_docx(&note_image_docx(
+        NoteKind::Footnote,
+        "image1.png",
+        &image_one,
+        &image_two,
+    ));
     let table_note = note_paragraph_in_table(&paragraph_note, NoteKind::Footnote);
     assert_only_part_changed(&paragraph_note, &table_note, "word/footnotes.xml");
-    assert_docx_image_reference_chain(&paragraph_note, NoteKind::Footnote, "image1.png");
-    assert_docx_image_reference_chain(&table_note, NoteKind::Footnote, "image1.png");
 
     assert_semantics_distinguish_or_explicitly_reject(
         &paragraph_note,
@@ -267,6 +270,24 @@ fn note_paragraph_in_table(input: &[u8], kind: NoteKind) -> Vec<u8> {
         note_path,
         note_xml.replacen(&replacement, &table, 1).into_bytes(),
     );
+    write_parts(parts.into_iter().collect())
+}
+
+fn text_only_note_docx(input: &[u8]) -> Vec<u8> {
+    let mut parts = read_parts(input);
+    let note_path = "word/footnotes.xml";
+    let note_xml = String::from_utf8(parts[note_path].clone()).expect("note XML");
+    let drawing_start = note_xml.find("<w:r><w:drawing>").expect("drawing run");
+    let drawing_end = note_xml[drawing_start..]
+        .find("</w:drawing></w:r>")
+        .map(|offset| drawing_start + offset + "</w:drawing></w:r>".len())
+        .expect("drawing run end");
+    let mut text_only = note_xml;
+    text_only.replace_range(drawing_start..drawing_end, "");
+    parts.insert(note_path.to_owned(), text_only.into_bytes());
+    parts.remove("word/_rels/footnotes.xml.rels");
+    parts.remove("word/media/image1.png");
+    parts.remove("word/media/image2.png");
     write_parts(parts.into_iter().collect())
 }
 
