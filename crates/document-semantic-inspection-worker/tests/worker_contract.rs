@@ -167,7 +167,8 @@ fn malformed_or_oversized_request_is_a_controlled_failure() {
     let malformed = decode_request_bounded(b"{not-json", 1024).unwrap_err();
     assert_eq!(malformed.code(), WorkerFailureCode::MalformedRequest);
 
-    let oversized = decode_request_bounded(br#"{"protocol_version":"dsi-worker-v0"}"#, 4).unwrap_err();
+    let oversized =
+        decode_request_bounded(br#"{"protocol_version":"dsi-worker-v0"}"#, 4).unwrap_err();
     assert_eq!(
         oversized.code(),
         WorkerFailureCode::InspectionResourceLimitExceeded
