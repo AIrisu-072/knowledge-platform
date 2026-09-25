@@ -13,7 +13,8 @@ mod provenance;
 mod shell;
 
 pub use adapters::{
-    AdapterProfile, CsvAdapter, HtmlAdapter, SemanticAdapter, SemanticAdapterOutput, TextAdapter,
+    AdapterProfile, CsvAdapter, DocxAdapter, HtmlAdapter, OoxmlCoverageSentinel, SemanticAdapter,
+    SemanticAdapterOutput, TextAdapter,
 };
 pub use detect::detect_format;
 pub use error::{WorkerFailure, WorkerFailureCode};

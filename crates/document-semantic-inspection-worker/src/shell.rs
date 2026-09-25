@@ -1,12 +1,12 @@
 use std::io::{Read, Write};
 
 use document_semantic_inspection_core::{
-    EditorialProvenance, WorkerProtocolVersion, WorkerResponse, canonical_worker_response_bytes,
+    WorkerProtocolVersion, WorkerResponse, canonical_worker_response_bytes,
 };
 
 use crate::{
-    AdapterProfile, CsvAdapter, HtmlAdapter, SemanticAdapter, SemanticAdapterOutput, TextAdapter,
-    WorkerFailure, WorkerFailureCode, decode_request_bounded, guard_worker_execution,
+    AdapterProfile, CsvAdapter, DocxAdapter, HtmlAdapter, SemanticAdapter, SemanticAdapterOutput,
+    TextAdapter, WorkerFailure, WorkerFailureCode, decode_request_bounded, guard_worker_execution,
     prepare_input_bounded,
 };
 
@@ -37,6 +37,9 @@ where
             }
             document_semantic_inspection_core::FormatId::Html => {
                 HtmlAdapter.inspect(prepared.bytes(), &profile)?
+            }
+            document_semantic_inspection_core::FormatId::Docx => {
+                DocxAdapter.inspect(prepared.bytes(), &profile)?
             }
             format => {
                 return Err(WorkerFailure::new(
@@ -98,7 +101,7 @@ fn worker_response(
         detected_format: prepared.detected_format(),
         semantic_fingerprint: adapter_output.semantic_fingerprint(),
         semantic_capabilities: adapter_output.semantic_capabilities().to_vec(),
-        editorial_provenance: EditorialProvenance::default(),
+        editorial_provenance: adapter_output.editorial_provenance().clone(),
         external_dependencies: Vec::new(),
         digital_signature_evidence: Vec::new(),
         extractor_provenance: adapter_output.extractor_provenance().clone(),

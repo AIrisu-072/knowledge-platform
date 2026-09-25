@@ -1,20 +1,25 @@
 mod csv;
+mod docx;
 mod html;
 mod text;
+
+#[cfg(test)]
+mod capability_state_behavior;
 
 use serde::Serialize;
 use serde_json::{Map, Value};
 
 pub use csv::CsvAdapter;
+pub use docx::{DocxAdapter, OoxmlCoverageSentinel};
 pub use html::HtmlAdapter;
 pub use text::TextAdapter;
 
 use document_semantic_inspection_core::{
-    CapabilityEvidence, CapabilityState, ExtractorProvenance, FormatId, ParserLibraryIdentity,
-    SemanticFingerprint,
+    CapabilityEvidence, CapabilityState, EditorialProvenance, ExtractorProvenance, FormatId,
+    ParserLibraryIdentity, SemanticFingerprint,
 };
 
-use crate::{WorkerFailure, extractor_provenance};
+use crate::{WorkerFailure, WorkerFailureCode, extractor_provenance};
 
 pub(super) fn canonical_json_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, serde_json::Error> {
     let value = serde_json::to_value(value)?;
@@ -88,12 +93,48 @@ pub trait SemanticAdapter {
 pub struct SemanticAdapterOutput {
     semantic_fingerprint: SemanticFingerprint,
     semantic_capabilities: Vec<CapabilityEvidence>,
+    editorial_provenance: EditorialProvenance,
     extractor_provenance: ExtractorProvenance,
 }
 
 impl SemanticAdapterOutput {
     pub const fn semantic_fingerprint(&self) -> SemanticFingerprint {
         self.semantic_fingerprint
+    }
+
+    pub fn editorial_provenance(&self) -> &EditorialProvenance {
+        &self.editorial_provenance
+    }
+
+    pub fn with_editorial_provenance(mut self, editorial: EditorialProvenance) -> Self {
+        self.editorial_provenance = editorial;
+        self
+    }
+
+    pub(crate) fn with_capability_state(
+        mut self,
+        capability_id: &str,
+        state: CapabilityState,
+    ) -> Result<Self, WorkerFailure> {
+        let Some(capability) = self
+            .semantic_capabilities
+            .iter_mut()
+            .find(|capability| capability.capability_id == capability_id)
+        else {
+            return Err(WorkerFailure::new(
+                WorkerFailureCode::InvalidWorkerResult,
+                format!("unknown semantic capability ID: {capability_id}"),
+            ));
+        };
+
+        capability.presence = state;
+        capability.equivalence_fingerprint = if state == CapabilityState::Present {
+            Some(self.semantic_fingerprint)
+        } else {
+            None
+        };
+
+        Ok(self)
     }
 
     pub(crate) fn semantic_capabilities(&self) -> &[CapabilityEvidence] {
@@ -131,6 +172,7 @@ impl SemanticAdapterOutput {
         Self {
             semantic_fingerprint,
             semantic_capabilities,
+            editorial_provenance: EditorialProvenance::default(),
             extractor_provenance: extractor_provenance(
                 adapter_id,
                 "dsi-v0",
