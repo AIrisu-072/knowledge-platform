@@ -7,23 +7,28 @@ const TXT_BASE: &[u8] =
     include_bytes!("../../../experiments/document-semantic-inspection/fixtures/txt/base.txt");
 const TXT_CRLF: &[u8] =
     include_bytes!("../../../experiments/document-semantic-inspection/fixtures/txt/crlf.txt");
-const TXT_NFD: &[u8] =
-    include_bytes!("../../../experiments/document-semantic-inspection/fixtures/txt/unicode-nfd.txt");
-const TXT_CHANGE: &[u8] =
-    include_bytes!("../../../experiments/document-semantic-inspection/fixtures/txt/text-change.txt");
+const TXT_NFD: &[u8] = include_bytes!(
+    "../../../experiments/document-semantic-inspection/fixtures/txt/unicode-nfd.txt"
+);
+const TXT_CHANGE: &[u8] = include_bytes!(
+    "../../../experiments/document-semantic-inspection/fixtures/txt/text-change.txt"
+);
 const TXT_AMBIGUOUS: &[u8] =
     include_bytes!("../../../experiments/document-semantic-inspection/fixtures/txt/ambiguous.txt");
 
 const CSV_BASE: &[u8] =
     include_bytes!("../../../experiments/document-semantic-inspection/fixtures/csv/base.csv");
-const CSV_QUOTE_NOISE: &[u8] =
-    include_bytes!("../../../experiments/document-semantic-inspection/fixtures/csv/quote-noise.csv");
-const CSV_CELL_CHANGE: &[u8] =
-    include_bytes!("../../../experiments/document-semantic-inspection/fixtures/csv/cell-change.csv");
+const CSV_QUOTE_NOISE: &[u8] = include_bytes!(
+    "../../../experiments/document-semantic-inspection/fixtures/csv/quote-noise.csv"
+);
+const CSV_CELL_CHANGE: &[u8] = include_bytes!(
+    "../../../experiments/document-semantic-inspection/fixtures/csv/cell-change.csv"
+);
 const CSV_ROW_CHANGE: &[u8] =
     include_bytes!("../../../experiments/document-semantic-inspection/fixtures/csv/row-change.csv");
-const CSV_INCONSISTENT: &[u8] =
-    include_bytes!("../../../experiments/document-semantic-inspection/fixtures/csv/inconsistent.csv");
+const CSV_INCONSISTENT: &[u8] = include_bytes!(
+    "../../../experiments/document-semantic-inspection/fixtures/csv/inconsistent.csv"
+);
 const CSV_AMBIGUOUS: &[u8] = include_bytes!(
     "../../../experiments/document-semantic-inspection/fixtures/csv/delimiter-ambiguous.csv"
 );
