@@ -227,7 +227,6 @@ fn extractor_provenance_captures_build_adapter_parser_and_native_identity() {
     );
 }
 
-
 #[test]
 fn worker_shell_malformed_request_is_structured_failure_with_no_partial_success() {
     let mut stdout = Vec::new();
