@@ -6,6 +6,9 @@
 
 #![cfg(target_os = "linux")]
 
+mod resource_profile;
+pub use resource_profile::{ProductionResourceProfile, ResourceClass, ResourceLimitExceeded};
+
 use std::{
     collections::BTreeMap,
     ffi::OsString,
