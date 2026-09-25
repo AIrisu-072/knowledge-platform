@@ -5,12 +5,16 @@
 //! inherited read-only input handling, panic containment, and provenance only.
 //! Format-specific semantic adapters are promoted in later tasks.
 
+mod adapters;
 mod detect;
 mod error;
 mod input;
 mod provenance;
 mod shell;
 
+pub use adapters::{
+    AdapterProfile, CsvAdapter, HtmlAdapter, SemanticAdapter, SemanticAdapterOutput, TextAdapter,
+};
 pub use detect::detect_format;
 pub use error::{WorkerFailure, WorkerFailureCode};
 pub use input::{

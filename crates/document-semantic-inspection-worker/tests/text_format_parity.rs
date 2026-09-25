@@ -105,6 +105,14 @@ fn csv_preserves_tabular_semantics_and_fails_closed() {
     assert_eq!(error.code(), WorkerFailureCode::SemanticExtractionFailed);
 
     let error = adapter
+        .inspect(CSV_BASE, &AdapterProfile::default())
+        .unwrap_err();
+    assert_eq!(
+        error.code(),
+        WorkerFailureCode::UnsupportedSemanticConstruct
+    );
+
+    let error = adapter
         .inspect(CSV_AMBIGUOUS, &AdapterProfile::default())
         .unwrap_err();
     assert_eq!(

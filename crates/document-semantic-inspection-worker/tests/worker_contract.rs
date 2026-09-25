@@ -2,7 +2,7 @@ use std::{io::Cursor, os::fd::AsRawFd};
 
 use document_semantic_inspection_core::{
     FormatId, InspectionProfileVersion, NativeDependencyIdentity, ParserLibraryIdentity,
-    TraceContext, WorkerProtocolVersion, WorkerRequest,
+    TraceContext, WorkerProtocolVersion, WorkerRequest, WorkerResponse,
 };
 use document_semantic_inspection_worker::{
     PreparedInput, WorkerFailure, WorkerFailureCode, decode_request_bounded, detect_format,
@@ -250,7 +250,7 @@ fn worker_shell_malformed_request_is_structured_failure_with_no_partial_success(
 }
 
 #[test]
-fn worker_shell_refuses_fake_success_before_format_adapter_is_promoted() {
+fn worker_shell_emits_a_valid_semantic_response_for_promoted_text_adapter() {
     let bytes = b"plain text\n";
     let req = request("text/plain", sha256(bytes), bytes.len() as u64);
     let request_json = serde_json::to_vec(&req).unwrap();
@@ -267,10 +267,13 @@ fn worker_shell_refuses_fake_success_before_format_adapter_is_promoted() {
         1024,
     );
 
-    assert_ne!(exit, 0);
-    assert!(stdout.is_empty());
+    assert_eq!(exit, 0);
+    assert!(stderr.is_empty());
 
-    let failure: WorkerFailure = serde_json::from_slice(&stderr).unwrap();
-    assert_eq!(failure.code(), WorkerFailureCode::SemanticExtractionFailed);
-    assert!(!failure.message().contains("plain text"));
+    let response: WorkerResponse = serde_json::from_slice(&stdout).unwrap();
+    response.validate().unwrap();
+    assert_eq!(response.detected_format, FormatId::Txt);
+    assert_eq!(response.observed_raw_content_hash, sha256(bytes));
+    assert_eq!(response.observed_size_bytes, bytes.len() as u64);
+    assert_eq!(response.extractor_provenance.adapter_id, "text");
 }
