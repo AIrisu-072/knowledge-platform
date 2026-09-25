@@ -2,18 +2,13 @@ use document_semantic_inspection_core::FormatId;
 
 use crate::{WorkerFailure, WorkerFailureCode};
 
-const DOCX_MEDIA: &str =
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-const XLSX_MEDIA: &str =
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const DOCX_MEDIA: &str = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const XLSX_MEDIA: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const XLSM_MEDIA: &str = "application/vnd.ms-excel.sheet.macroenabled.12";
 const PPTX_MEDIA: &str =
     "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
-pub fn detect_format(
-    bytes: &[u8],
-    declared_media_type: &str,
-) -> Result<FormatId, WorkerFailure> {
+pub fn detect_format(bytes: &[u8], declared_media_type: &str) -> Result<FormatId, WorkerFailure> {
     let declared = normalize_media_type(declared_media_type);
     let expected = declared_format(&declared);
 
@@ -159,13 +154,20 @@ fn is_textual(bytes: &[u8]) -> bool {
 
 fn looks_like_html(bytes: &[u8]) -> bool {
     let lower: Vec<u8> = bytes.iter().map(u8::to_ascii_lowercase).collect();
-    [b"<!doctype html".as_slice(), b"<html".as_slice(), b"<body".as_slice()]
-        .iter()
-        .any(|needle| lower.windows(needle.len()).any(|window| window == *needle))
+    [
+        b"<!doctype html".as_slice(),
+        b"<html".as_slice(),
+        b"<body".as_slice(),
+    ]
+    .iter()
+    .any(|needle| lower.windows(needle.len()).any(|window| window == *needle))
 }
 
 fn looks_like_csv(bytes: &[u8]) -> bool {
-    let Some(line_end) = bytes.iter().position(|byte| *byte == b'\n' || *byte == b'\r') else {
+    let Some(line_end) = bytes
+        .iter()
+        .position(|byte| *byte == b'\n' || *byte == b'\r')
+    else {
         return false;
     };
     bytes[..line_end]
