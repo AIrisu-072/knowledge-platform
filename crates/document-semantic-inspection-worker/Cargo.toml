@@ -1,0 +1,13 @@
+[package]
+name = "document-semantic-inspection-worker"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+document-semantic-inspection-core = { version = "0.0.0", path = "../document-semantic-inspection-core" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
