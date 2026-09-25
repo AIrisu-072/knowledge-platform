@@ -2,7 +2,7 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **PRODUCTION IMPLEMENTATION — TASK 2 COMPLETE / TASK 3 RED**
+- Overall phase: **PRODUCTION IMPLEMENTATION — TASK 3 COMPLETE / TASK 4 RED READY**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
@@ -44,18 +44,38 @@ Current gates:
 - Production implementation branch: **CREATED — `feat/document-semantic-inspection-v0`**
 - Production Task 1 sandbox preflight: **COMPLETE / PASS**
 - Production core crate: **TASK 2 COMPLETE / PASS**
-- Production runtime: **TASK 3 RED READY; parser/runner dependency promotion not started**
+- Production runtime: **TASK 3 COMPLETE / PASS; Task 4 RED READY; parser dependency promotion not started**
 
 The plan identifies one production-hardening gap that must be resolved first: the qualified PoC wrapper proves CPU/file/memory and controller-timeout behavior, but production must additionally enforce the frozen no-network, no-credential, filesystem-confinement, fresh-process, and complete finite resource-profile boundary. Task 1 performs an isolated sandbox substrate preflight before any sandbox dependency is promoted.
 
 Required next order:
 
-1. create Task 3 RED worker-shell/raw-binding/format-detection tests;
-2. capture the expected RED compile/test failure;
-3. implement worker shell without format parser dependencies;
-4. keep FileId/DocumentId/Principal/StorageKey/credentials out of the worker protocol;
-5. require controlled failure with no partial success;
-6. require exact-head CI before Task 3 completion.
+1. create Task 4 RED TXT/CSV/HTML parity tests from the qualified PoC semantics;
+2. capture the expected RED failure before text-format adapters exist;
+3. promote only the qualified Task 4 dependencies;
+4. preserve fail-closed behavior and no script execution;
+5. require exact-head standard CI + Sandbox regression + DSI PoC regression before Task 4 completion.
+
+## Production Task 3 — COMPLETE
+
+- Initial Task 3 contract head: `a3c695276073532308ef3e57833d256b64d712ab`
+- Authoritative shell RED head: `1911a80b0e018119cb4c2c94161dc72a24641c00`
+- Authoritative shell RED standard CI: `36094572575` — **FAIL as expected**
+- RED failure: formatting passed, then `check:rust` failed on unresolved import `document_semantic_inspection_worker::run_worker_shell`.
+- GREEN worker-shell head: `817c25330f5348b2ab2b0683141329241b3be3f2`
+- Standard CI: `36094896067` — **SUCCESS**, including required-check
+- DSI Sandbox Preflight regression: `36094896150` — **SUCCESS**
+- DSI PoC regression: `36094896352` — **SUCCESS**
+- Workspace tests: **100/100 PASS**
+- Worker contract tests: **12/12 PASS**
+- PR #10 unresolved review threads: **0**
+- Worker protocol remains free of FileId / DocumentId / DocumentVersionId / Principal / StorageKey / DB credentials / storage credentials.
+- Worker binary consumes bounded JSON request from stdin plus inherited read-only input FD.
+- Worker recomputes raw SHA-256 and size before semantic work and rejects raw-binding mismatch.
+- Format detection uses bytes/container structure plus declared media compatibility, never filename extension.
+- Malformed request, unsupported/mismatched format, panic, and pre-adapter semantic paths fail closed with no partial success on stdout.
+- Extractor provenance carries build / adapter / parser-library / native dependency identities and remains outside semantic fingerprint.
+- Production parser dependencies: **NOT PROMOTED**.
 
 ## Production Task 2 — COMPLETE
 
@@ -355,6 +375,6 @@ Final cross-host evidence at the same head:
 
 **PoC Qualification is complete.**
 
-Next exact action: begin Production Task 2 with the RED contract for `document-semantic-inspection-core`. Do not promote parser or sandbox-runner dependencies into production during Task 2.
+Next exact action: begin Production Task 4 with RED TXT/CSV/HTML parity tests. Promote only the Task 4-qualified dependencies after the RED evidence is captured.
 
 Do not implement production Semantic Inspection crates inside PR #8.
