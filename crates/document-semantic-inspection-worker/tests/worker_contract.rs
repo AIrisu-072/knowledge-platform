@@ -1,7 +1,4 @@
-use std::{
-    io::Cursor,
-    os::fd::AsRawFd,
-};
+use std::{io::Cursor, os::fd::AsRawFd};
 
 use document_semantic_inspection_core::{
     FormatId, InspectionProfileVersion, TraceContext, WorkerProtocolVersion, WorkerRequest,
@@ -82,7 +79,10 @@ fn input_bound_is_enforced_before_format_specific_parsing() {
     let mut reader = Cursor::new(bytes.as_slice());
 
     let error = prepare_input_bounded(&req, &mut reader, 5).unwrap_err();
-    assert_eq!(error.code(), WorkerFailureCode::InspectionResourceLimitExceeded);
+    assert_eq!(
+        error.code(),
+        WorkerFailureCode::InspectionResourceLimitExceeded
+    );
 }
 
 #[test]
