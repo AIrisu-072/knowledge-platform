@@ -4,10 +4,12 @@ use std::{
     hint::black_box,
     io::Write,
     net::{TcpListener, UdpSocket},
-    process::{self, Command},
+    process,
     thread,
     time::Duration,
 };
+
+use document_semantic_inspection_sandbox_preflight::bootstrap_current_process_from_env;
 
 const DENIED_EXIT: i32 = 77;
 
@@ -22,6 +24,11 @@ fn denied(label: &str, error: impl std::fmt::Display) -> ! {
 }
 
 fn main() {
+    if let Err(error) = bootstrap_current_process_from_env() {
+        eprintln!("sandbox-bootstrap-failed:{error}");
+        process::exit(78);
+    }
+
     let mut args = env::args().skip(1);
     let action = args.next().unwrap_or_default();
 
@@ -98,21 +105,34 @@ fn main() {
             thread::sleep(Duration::from_millis(millis));
             allowed("sleep");
         }
-        "spawn-child" => match Command::new("true").spawn() {
-            Ok(mut child) => {
-                let _ = child.wait();
-                allowed("spawn-child");
+        "spawn-child" => {
+            let pid = unsafe { libc::fork() };
+            if pid < 0 {
+                denied("spawn-child", std::io::Error::last_os_error());
             }
-            Err(error) => denied("spawn-child", error),
-        },
-        "spawn-child-sleep" => match Command::new("sleep").arg("30").spawn() {
-            Ok(child) => {
-                println!("child-pid={}", child.id());
-                std::io::stdout().flush().expect("flush child pid");
+            if pid == 0 {
+                unsafe { libc::_exit(0) };
+            }
+            let mut status = 0;
+            let waited = unsafe { libc::waitpid(pid, &mut status, 0) };
+            if waited < 0 {
+                denied("spawn-child-wait", std::io::Error::last_os_error());
+            }
+            allowed("spawn-child");
+        }
+        "spawn-child-sleep" => {
+            let pid = unsafe { libc::fork() };
+            if pid < 0 {
+                denied("spawn-child-sleep", std::io::Error::last_os_error());
+            }
+            if pid == 0 {
                 thread::sleep(Duration::from_secs(30));
-                allowed("spawn-child-sleep");
+                unsafe { libc::_exit(0) };
             }
-            Err(error) => denied("spawn-child-sleep", error),
+            println!("child-pid={pid}");
+            std::io::stdout().flush().expect("flush child pid");
+            thread::sleep(Duration::from_secs(30));
+            allowed("spawn-child-sleep");
         },
         other => {
             eprintln!("unknown action: {other}");
