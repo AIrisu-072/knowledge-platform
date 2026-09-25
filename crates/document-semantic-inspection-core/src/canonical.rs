@@ -3,9 +3,7 @@ use serde_json::{Map, Value};
 
 use crate::{CoreError, WorkerResponse};
 
-pub fn canonical_worker_response_bytes(
-    response: &WorkerResponse,
-) -> Result<Vec<u8>, CoreError> {
+pub fn canonical_worker_response_bytes(response: &WorkerResponse) -> Result<Vec<u8>, CoreError> {
     let mut normalized = response.clone();
     normalize_unordered_collections(&mut normalized);
     normalized.validate()?;
@@ -28,20 +26,18 @@ fn normalize_unordered_collections(response: &mut WorkerResponse) {
                 &right.source_locator,
             ))
     });
-    response
-        .digital_signature_evidence
-        .sort_by(|left, right| {
-            (
-                &left.signature_type,
-                &left.certificate_fingerprint,
-                &left.signed_at,
-            )
-                .cmp(&(
-                    &right.signature_type,
-                    &right.certificate_fingerprint,
-                    &right.signed_at,
-                ))
-        });
+    response.digital_signature_evidence.sort_by(|left, right| {
+        (
+            &left.signature_type,
+            &left.certificate_fingerprint,
+            &left.signed_at,
+        )
+            .cmp(&(
+                &right.signature_type,
+                &right.certificate_fingerprint,
+                &right.signed_at,
+            ))
+    });
     for signature in &mut response.digital_signature_evidence {
         signature.covered_content.sort();
         signature.covered_content.dedup();
@@ -49,21 +45,13 @@ fn normalize_unordered_collections(response: &mut WorkerResponse) {
         signature.validation_diagnostics.dedup();
     }
 
-    response
-        .editorial_provenance
-        .document_author_labels
-        .sort();
-    response
-        .editorial_provenance
-        .document_author_labels
-        .dedup();
+    response.editorial_provenance.document_author_labels.sort();
+    response.editorial_provenance.document_author_labels.dedup();
 
     response
         .extractor_provenance
         .parser_libraries
-        .sort_by(|left, right| {
-            (&left.name, &left.version).cmp(&(&right.name, &right.version))
-        });
+        .sort_by(|left, right| (&left.name, &left.version).cmp(&(&right.name, &right.version)));
     response
         .extractor_provenance
         .native_dependency_identity
