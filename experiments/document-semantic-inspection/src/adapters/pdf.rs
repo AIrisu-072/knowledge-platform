@@ -1,16 +1,19 @@
 use crate::{
-    canonical_json_bytes, AdapterOutput, CapabilityEvidence, CommentEvidence, Diagnostic,
-    EditorialEvidence, ExternalDependency, FormatId, InspectionAdapter, InspectionProfile, PocError,
+    AdapterOutput, CapabilityEvidence, CommentEvidence, Diagnostic, EditorialEvidence,
+    ExternalDependency, FormatId, InspectionAdapter, InspectionProfile, PocError,
+    canonical_json_bytes,
 };
+use lopdf::content::Content;
 use lopdf::{Document, LoadOptions, Object};
 use pdfium_render::prelude::*;
-use serde_json::json;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::sync::OnceLock;
 
 const MAX_DECOMPRESSED_STREAM: usize = 64 * 1024 * 1024;
+const MAX_PDF_OBJECT_DEPTH: usize = 64;
 
 static PDFIUM: OnceLock<Result<Pdfium, String>> = OnceLock::new();
 
@@ -187,29 +190,62 @@ impl InspectionAdapter for PdfAdapter {
             (left.kind.as_str(), left.definition.as_str())
                 .cmp(&(right.kind.as_str(), right.definition.as_str()))
         });
-        external_dependencies.dedup_by(|left, right| {
-            left.kind == right.kind && left.definition == right.definition
-        });
+        external_dependencies
+            .dedup_by(|left, right| left.kind == right.kind && left.definition == right.definition);
 
         let projection = json!({
             "pages": semantic_pages,
             "form_values": form_values,
         });
-        let semantic_projection = canonical_json_bytes(&projection).map_err(|error| {
-            PocError::InvalidWorkerResult(format!("PDF projection: {error}"))
-        })?;
+        let semantic_projection = canonical_json_bytes(&projection)
+            .map_err(|error| PocError::InvalidWorkerResult(format!("PDF projection: {error}")))?;
         let semantic_equivalence = hex::encode(crate::fingerprint(&semantic_projection));
 
         Ok(AdapterOutput {
             semantic_projection,
             capabilities: vec![
-                CapabilityEvidence::binary("reader_content", any_text, true, Some(semantic_equivalence.clone())),
-                CapabilityEvidence::binary("form_fields", structural.form_field_count > 0, true, Some(semantic_equivalence.clone())),
-                CapabilityEvidence::binary("annotations", structural.annotation_counts.iter().any(|count| *count > 0), false, None),
-                CapabilityEvidence::binary("visual_content", total_images > 0, true, Some(semantic_equivalence.clone())),
-                CapabilityEvidence::new("formula_logic", crate::CapabilityState::NotRepresentable, true, None),
-                CapabilityEvidence::new("vba_logic", crate::CapabilityState::NotRepresentable, true, None),
-                CapabilityEvidence::new("hidden_content", crate::CapabilityState::NotVerifiable, true, None),
+                CapabilityEvidence::binary(
+                    "reader_content",
+                    any_text,
+                    true,
+                    Some(semantic_equivalence.clone()),
+                ),
+                CapabilityEvidence::binary(
+                    "form_fields",
+                    structural.form_field_count > 0,
+                    true,
+                    Some(semantic_equivalence.clone()),
+                ),
+                CapabilityEvidence::binary(
+                    "annotations",
+                    structural.annotation_counts.iter().any(|count| *count > 0),
+                    false,
+                    None,
+                ),
+                CapabilityEvidence::binary(
+                    "visual_content",
+                    total_images > 0,
+                    true,
+                    Some(semantic_equivalence.clone()),
+                ),
+                CapabilityEvidence::new(
+                    "formula_logic",
+                    crate::CapabilityState::NotRepresentable,
+                    true,
+                    None,
+                ),
+                CapabilityEvidence::new(
+                    "vba_logic",
+                    crate::CapabilityState::NotRepresentable,
+                    true,
+                    None,
+                ),
+                CapabilityEvidence::new(
+                    "hidden_content",
+                    crate::CapabilityState::NotVerifiable,
+                    true,
+                    None,
+                ),
             ],
             editorial,
             external_dependencies,
@@ -308,11 +344,13 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, PocError> {
     let mut form_names = BTreeSet::new();
 
     for (page_number, page_id) in pages {
-        let page = document
-            .get_dictionary(page_id)
-            .map_err(|error| PocError::SemanticExtractionFailed(format!(
-                "lopdf page {page_number}: {error}"
-            )))?;
+        let page_content = document
+            .get_page_content_with_limit(page_id, MAX_DECOMPRESSED_STREAM)
+            .map_err(pdf_stream_error)?;
+        reject_inline_images(&page_content, page_number)?;
+        let page = document.get_dictionary(page_id).map_err(|error| {
+            PocError::SemanticExtractionFailed(format!("lopdf page {page_number}: {error}"))
+        })?;
 
         let mut annotation_count = 0usize;
         let mut link_count = 0usize;
@@ -372,7 +410,7 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, PocError> {
 
         annotation_counts.push(annotation_count);
         link_counts.push(link_count);
-        image_hashes.push(page_image_hashes(document, page, page_number)?);
+        image_hashes.push(page_image_hashes(document, page_id, page_number)?);
     }
 
     Ok(LopdfFacts {
@@ -386,53 +424,337 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, PocError> {
 
 fn page_image_hashes(
     document: &Document,
-    page: &lopdf::Dictionary,
+    page_id: lopdf::ObjectId,
     page_number: u32,
 ) -> Result<Vec<String>, PocError> {
-    let Ok(resources) = page.get_deref(b"Resources", document) else {
-        return Ok(Vec::new());
-    };
-    let resources = resources.as_dict().map_err(|error| {
-        PocError::SemanticExtractionFailed(format!(
-            "lopdf page {page_number} resources: {error}"
-        ))
-    })?;
-    let Ok(xobjects) = resources.get_deref(b"XObject", document) else {
-        return Ok(Vec::new());
-    };
-    let xobjects = xobjects.as_dict().map_err(|error| {
-        PocError::SemanticExtractionFailed(format!(
-            "lopdf page {page_number} XObject dictionary: {error}"
-        ))
-    })?;
-
-    let mut hashes = Vec::new();
-    for (_, object) in xobjects.iter() {
-        let (_, resolved) = document.dereference(object).map_err(|error| {
-            PocError::SemanticExtractionFailed(format!(
-                "lopdf page {page_number} XObject: {error}"
-            ))
-        })?;
-        let Ok(stream) = resolved.as_stream() else {
-            continue;
-        };
-        let is_image = stream
-            .dict
-            .get(b"Subtype")
-            .and_then(Object::as_name)
-            .is_ok_and(|name| name == b"Image");
-        if !is_image {
-            continue;
+    let mut current_id = page_id;
+    let mut visited = BTreeSet::new();
+    let mut resources = None;
+    for depth in 0..MAX_PDF_OBJECT_DEPTH {
+        if !visited.insert(current_id) {
+            return Err(PocError::ParserDisagreement(format!(
+                "lopdf page {page_number} has a cyclic page tree"
+            )));
         }
-        let bytes = stream.decompressed_content().map_err(|error| {
-            PocError::SemanticExtractionFailed(format!(
-                "lopdf page {page_number} image decode: {error}"
+        let node = document.get_dictionary(current_id).map_err(|error| {
+            PocError::ParserDisagreement(format!(
+                "lopdf page {page_number} page-tree node: {error}"
             ))
         })?;
-        hashes.push(hex::encode(Sha256::digest(bytes)));
+        match node.get_deref(b"Resources", document) {
+            Ok(value) => {
+                resources = Some(value.as_dict().map_err(|error| {
+                    PocError::ParserDisagreement(format!(
+                        "lopdf page {page_number} Resources: {error}"
+                    ))
+                })?);
+                break;
+            }
+            Err(lopdf::Error::DictKey(_)) => {}
+            Err(error) => {
+                return Err(PocError::ParserDisagreement(format!(
+                    "lopdf page {page_number} Resources: {error}"
+                )));
+            }
+        }
+        match node.get(b"Parent") {
+            Ok(Object::Reference(parent_id)) => current_id = *parent_id,
+            Err(lopdf::Error::DictKey(_)) => break,
+            Ok(_) | Err(_) => {
+                return Err(PocError::ParserDisagreement(format!(
+                    "lopdf page {page_number} Parent is invalid"
+                )));
+            }
+        }
+        if depth + 1 == MAX_PDF_OBJECT_DEPTH {
+            return Err(PocError::InspectionResourceLimitExceeded);
+        }
     }
+    let Some(resources) = resources else {
+        return Ok(Vec::new());
+    };
+    let mut hashes = Vec::new();
+    let mut active_forms = BTreeSet::new();
+    collect_resource_images(
+        document,
+        resources,
+        page_number,
+        0,
+        &mut active_forms,
+        &mut hashes,
+    )?;
     hashes.sort();
     Ok(hashes)
+}
+
+fn collect_resource_images(
+    document: &Document,
+    resources: &lopdf::Dictionary,
+    page_number: u32,
+    depth: usize,
+    active_forms: &mut BTreeSet<lopdf::ObjectId>,
+    hashes: &mut Vec<String>,
+) -> Result<(), PocError> {
+    if depth >= MAX_PDF_OBJECT_DEPTH {
+        return Err(PocError::InspectionResourceLimitExceeded);
+    }
+    let xobjects = match resources.get_deref(b"XObject", document) {
+        Ok(value) => value.as_dict().map_err(|error| {
+            PocError::ParserDisagreement(format!(
+                "lopdf page {page_number} XObject dictionary: {error}"
+            ))
+        })?,
+        Err(lopdf::Error::DictKey(_)) => return Ok(()),
+        Err(error) => {
+            return Err(PocError::ParserDisagreement(format!(
+                "lopdf page {page_number} XObject dictionary: {error}"
+            )));
+        }
+    };
+    for (_, object) in xobjects.iter() {
+        let (object_id, resolved) = document.dereference(object).map_err(|error| {
+            PocError::SemanticExtractionFailed(format!("lopdf page {page_number} XObject: {error}"))
+        })?;
+        let stream = resolved.as_stream().map_err(|error| {
+            PocError::ParserDisagreement(format!(
+                "lopdf page {page_number} XObject stream: {error}"
+            ))
+        })?;
+        let subtype = stream.dict.get(b"Subtype").and_then(Object::as_name).ok();
+        match subtype {
+            Some(b"Image") => {
+                hashes.push(image_semantic_hash(document, object_id, stream, resources)?)
+            }
+            Some(b"Form") => {
+                let form_id = object_id.ok_or_else(|| {
+                    PocError::UnsupportedSemanticConstruct(format!(
+                        "lopdf page {page_number} Form XObject is not indirect"
+                    ))
+                })?;
+                if !active_forms.insert(form_id) {
+                    return Err(PocError::UnsupportedSemanticConstruct(format!(
+                        "lopdf page {page_number} has a cyclic Form XObject"
+                    )));
+                }
+                let form_content = stream
+                    .decompressed_content_with_limit(MAX_DECOMPRESSED_STREAM)
+                    .map_err(pdf_stream_error)?;
+                reject_inline_images(&form_content, page_number)?;
+                let form_resources = match stream.dict.get_deref(b"Resources", document) {
+                    Ok(value) => value.as_dict().map_err(|error| {
+                        PocError::ParserDisagreement(format!(
+                            "lopdf page {page_number} Form Resources: {error}"
+                        ))
+                    })?,
+                    Err(lopdf::Error::DictKey(_)) => resources,
+                    Err(error) => {
+                        return Err(PocError::ParserDisagreement(format!(
+                            "lopdf page {page_number} Form Resources: {error}"
+                        )));
+                    }
+                };
+                let result = collect_resource_images(
+                    document,
+                    form_resources,
+                    page_number,
+                    depth + 1,
+                    active_forms,
+                    hashes,
+                );
+                active_forms.remove(&form_id);
+                result?;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn image_semantic_hash(
+    document: &Document,
+    image_id: Option<lopdf::ObjectId>,
+    stream: &lopdf::Stream,
+    resources: &lopdf::Dictionary,
+) -> Result<String, PocError> {
+    const IMAGE_KEYS: [&[u8]; 14] = [
+        b"Width",
+        b"Height",
+        b"ColorSpace",
+        b"BitsPerComponent",
+        b"Decode",
+        b"ImageMask",
+        b"Interpolate",
+        b"Intent",
+        b"Mask",
+        b"SMask",
+        b"SMaskInData",
+        b"Matte",
+        b"Alternates",
+        b"OC",
+    ];
+    let mut dictionary = serde_json::Map::new();
+    let mut active_references = BTreeSet::new();
+    if let Some(image_id) = image_id {
+        active_references.insert(image_id);
+    }
+    for key in IMAGE_KEYS {
+        if let Ok(value) = stream.dict.get(key) {
+            dictionary.insert(
+                String::from_utf8_lossy(key).into_owned(),
+                normalized_pdf_object(document, value, 0, &mut active_references)?,
+            );
+        }
+    }
+    if let Ok(Object::Name(name)) = stream.dict.get(b"ColorSpace") {
+        if !matches!(
+            name.as_slice(),
+            b"DeviceGray" | b"DeviceRGB" | b"DeviceCMYK"
+        ) {
+            let color_spaces = resources
+                .get_deref(b"ColorSpace", document)
+                .and_then(Object::as_dict)
+                .map_err(|error| {
+                    PocError::UnsupportedSemanticConstruct(format!(
+                        "named PDF image ColorSpace cannot be resolved: {error}"
+                    ))
+                })?;
+            let definition = color_spaces.get_deref(name, document).map_err(|error| {
+                PocError::UnsupportedSemanticConstruct(format!(
+                    "named PDF image ColorSpace definition: {error}"
+                ))
+            })?;
+            dictionary.insert(
+                "ResolvedColorSpace".into(),
+                normalized_pdf_object(document, definition, 0, &mut active_references)?,
+            );
+        }
+    }
+    let samples = stream
+        .decompressed_content_with_limit(MAX_DECOMPRESSED_STREAM)
+        .map_err(pdf_stream_error)?;
+    let projection = canonical_json_bytes(&json!({
+        "dictionary": dictionary,
+        "samples_sha256": hex::encode(Sha256::digest(samples)),
+    }))
+    .map_err(|error| PocError::InvalidWorkerResult(error.to_string()))?;
+    Ok(hex::encode(Sha256::digest(projection)))
+}
+
+fn reject_inline_images(content: &[u8], page_number: u32) -> Result<(), PocError> {
+    if !content.windows(2).any(|window| window == b"BI") {
+        return Ok(());
+    }
+    let operations = Content::decode_strict(content).map_err(|error| {
+        PocError::ParserDisagreement(format!(
+            "lopdf page {page_number} content operations: {error}"
+        ))
+    })?;
+    if operations
+        .operations
+        .iter()
+        .any(|operation| operation.operator == "BI")
+    {
+        return Err(PocError::UnsupportedSemanticConstruct(format!(
+            "lopdf page {page_number} inline images are unsupported"
+        )));
+    }
+    Ok(())
+}
+
+fn normalized_pdf_object(
+    document: &Document,
+    object: &Object,
+    depth: usize,
+    active_references: &mut BTreeSet<lopdf::ObjectId>,
+) -> Result<Value, PocError> {
+    if depth >= MAX_PDF_OBJECT_DEPTH {
+        return Err(PocError::InspectionResourceLimitExceeded);
+    }
+    match object {
+        Object::Null => Ok(Value::Null),
+        Object::Boolean(value) => Ok(json!(value)),
+        Object::Integer(value) => Ok(json!(value)),
+        Object::Real(value) if value.is_finite() => {
+            Ok(Value::String(format!("f32:{:08x}", value.to_bits())))
+        }
+        Object::Real(_) => Err(PocError::UnsupportedSemanticConstruct(
+            "non-finite PDF image number".into(),
+        )),
+        Object::Name(value) => Ok(json!({"name_hex": hex::encode(value)})),
+        Object::String(value, _) => Ok(json!({"string_hex": hex::encode(value)})),
+        Object::Reference(id) => {
+            if !active_references.insert(*id) {
+                return Err(PocError::UnsupportedSemanticConstruct(
+                    "PDF image reference cycle".into(),
+                ));
+            }
+            let result = document
+                .get_object(*id)
+                .map_err(|error| PocError::ParserDisagreement(error.to_string()))
+                .and_then(|value| {
+                    normalized_pdf_object(document, value, depth + 1, active_references)
+                });
+            active_references.remove(id);
+            result
+        }
+        Object::Array(values) => values
+            .iter()
+            .map(|value| normalized_pdf_object(document, value, depth + 1, active_references))
+            .collect::<Result<Vec<_>, _>>()
+            .map(Value::Array),
+        Object::Dictionary(dictionary) => {
+            normalized_pdf_dictionary(document, dictionary, depth + 1, active_references, false)
+        }
+        Object::Stream(stream) => {
+            let dictionary = normalized_pdf_dictionary(
+                document,
+                &stream.dict,
+                depth + 1,
+                active_references,
+                true,
+            )?;
+            let samples = stream
+                .decompressed_content_with_limit(MAX_DECOMPRESSED_STREAM)
+                .map_err(pdf_stream_error)?;
+            Ok(json!({
+                "dictionary": dictionary,
+                "samples_sha256": hex::encode(Sha256::digest(samples)),
+            }))
+        }
+    }
+}
+
+fn normalized_pdf_dictionary(
+    document: &Document,
+    dictionary: &lopdf::Dictionary,
+    depth: usize,
+    active_references: &mut BTreeSet<lopdf::ObjectId>,
+    omit_stream_encoding: bool,
+) -> Result<Value, PocError> {
+    if depth >= MAX_PDF_OBJECT_DEPTH {
+        return Err(PocError::InspectionResourceLimitExceeded);
+    }
+    let mut normalized = serde_json::Map::new();
+    for (key, value) in dictionary.iter() {
+        if omit_stream_encoding && matches!(key.as_slice(), b"Length" | b"Filter" | b"DecodeParms")
+        {
+            continue;
+        }
+        normalized.insert(
+            hex::encode(key),
+            normalized_pdf_object(document, value, depth + 1, active_references)?,
+        );
+    }
+    Ok(Value::Object(normalized))
+}
+
+fn pdf_stream_error(error: lopdf::Error) -> PocError {
+    match error {
+        lopdf::Error::Decompress(lopdf::DecompressError::MemoryLimitExceeded { .. }) => {
+            PocError::InspectionResourceLimitExceeded
+        }
+        other => PocError::SemanticExtractionFailed(other.to_string()),
+    }
 }
 
 fn pdfium_artifact_sha256() -> &'static str {

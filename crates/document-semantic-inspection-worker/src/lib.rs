@@ -14,8 +14,8 @@ mod shell;
 mod vba_language;
 
 pub use adapters::{
-    AdapterProfile, CsvAdapter, DocxAdapter, HtmlAdapter, OoxmlCoverageSentinel, PptxAdapter,
-    SemanticAdapter, SemanticAdapterOutput, SpreadsheetAdapter, TextAdapter,
+    AdapterProfile, CsvAdapter, DocxAdapter, HtmlAdapter, OoxmlCoverageSentinel, PdfAdapter,
+    PptxAdapter, SemanticAdapter, SemanticAdapterOutput, SpreadsheetAdapter, TextAdapter,
 };
 pub use detect::detect_format;
 pub use error::{WorkerFailure, WorkerFailureCode};

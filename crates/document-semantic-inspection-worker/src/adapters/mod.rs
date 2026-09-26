@@ -1,6 +1,7 @@
 mod csv;
 mod docx;
 mod html;
+mod pdf;
 mod pptx;
 mod pptx_package;
 mod spreadsheet;
@@ -18,6 +19,7 @@ use serde_json::{Map, Value};
 pub use csv::CsvAdapter;
 pub use docx::{DocxAdapter, OoxmlCoverageSentinel};
 pub use html::HtmlAdapter;
+pub use pdf::PdfAdapter;
 pub use pptx::PptxAdapter;
 pub use spreadsheet::SpreadsheetAdapter;
 pub use text::TextAdapter;

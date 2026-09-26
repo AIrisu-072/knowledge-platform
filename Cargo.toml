@@ -35,6 +35,8 @@ office_oxide = "=0.1.11"
 zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
 quick-xml = "=0.42.0"
 png = { version = "=0.18.1", default-features = false }
+pdfium-render = { version = "=0.9.4", default-features = false, features = ["pdfium_7881", "thread_safe"] }
+lopdf = { version = "=0.45.0", default-features = false }
 rxls = "=0.1.3"
 calamine = { version = "=0.36.1", features = ["picture"] }
 ovba = "=0.7.1"

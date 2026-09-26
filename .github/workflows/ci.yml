@@ -75,6 +75,10 @@ jobs:
         run: |
           mise install rust
           mise install cargo:cargo-nextest
+      - name: Install pinned PDFium for worker tests
+        run: |
+          pdfium_lib_dir="$(bash experiments/document-semantic-inspection/scripts/install-pdfium.sh)"
+          printf 'PDFIUM_DYNAMIC_LIB_PATH=%s\n' "${pdfium_lib_dir}" >> "${GITHUB_ENV}"
       - run: mise run test:rust
 
   security:

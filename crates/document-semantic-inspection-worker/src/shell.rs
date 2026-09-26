@@ -6,7 +6,7 @@ use document_semantic_inspection_core::{
 use serde::Serialize;
 
 use crate::{
-    AdapterProfile, CsvAdapter, DocxAdapter, HtmlAdapter, PptxAdapter, SemanticAdapter,
+    AdapterProfile, CsvAdapter, DocxAdapter, HtmlAdapter, PdfAdapter, PptxAdapter, SemanticAdapter,
     SemanticAdapterOutput, SpreadsheetAdapter, TextAdapter, WorkerFailure, WorkerFailureCode,
     decode_request_bounded, guard_worker_execution, prepare_input_bounded,
 };
@@ -44,6 +44,9 @@ where
             document_semantic_inspection_core::FormatId::Docx => {
                 DocxAdapter.inspect(prepared.bytes(), &profile)?
             }
+            document_semantic_inspection_core::FormatId::Pdf => {
+                PdfAdapter.inspect(prepared.bytes(), &profile)?
+            }
             document_semantic_inspection_core::FormatId::Xlsx => {
                 SpreadsheetAdapter::XLSX.inspect(prepared.bytes(), &profile)?
             }
@@ -52,12 +55,6 @@ where
             }
             document_semantic_inspection_core::FormatId::Pptx => {
                 PptxAdapter.inspect(prepared.bytes(), &profile)?
-            }
-            format => {
-                return Err(WorkerFailure::new(
-                    WorkerFailureCode::SemanticExtractionFailed,
-                    format!("semantic adapter is not promoted yet for detected format {format:?}"),
-                ));
             }
         };
 
