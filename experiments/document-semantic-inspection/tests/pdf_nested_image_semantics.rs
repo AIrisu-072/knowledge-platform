@@ -79,6 +79,7 @@ fn named_indexed_palette_changes_visible_image_identity() {
 
 #[test]
 fn visible_inline_image_changes_identity_or_fails_closed() {
+    let _ = inspect_native_text_pdf(&pdf_with_form_image(0x00), "PDFium setup");
     let black = pdf_with_inline_image([0, 0, 0]);
     let blue = pdf_with_inline_image([0, 0, 255]);
     assert_one_byte_diff(&black, &blue);

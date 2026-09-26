@@ -22,6 +22,8 @@ use super::{AdapterProfile, SemanticAdapter, SemanticAdapterOutput, canonical_js
 const PDFIUM_RELEASE: &str = "151.0.7881.0";
 const MAX_DECOMPRESSED_STREAM: usize = 64 * 1024 * 1024;
 const MAX_PDF_OBJECT_DEPTH: usize = 64;
+const MAX_PDF_CONTENT_OPERATIONS: usize = 1_000_000;
+const MAX_PDF_PAINT_EVENTS: usize = 100_000;
 
 const PARSER_LIBRARIES: [(&str, &str); 2] = [("pdfium-render", "0.9.4"), ("lopdf", "0.45.0")];
 
@@ -41,7 +43,8 @@ struct LopdfFacts {
     annotation_counts: Vec<usize>,
     link_counts: Vec<usize>,
     form_field_count: usize,
-    image_hashes: Vec<Vec<String>>,
+    image_paints: Vec<Vec<Value>>,
+    paint_orders: Vec<Vec<&'static str>>,
 }
 
 impl SemanticAdapter for PdfAdapter {
@@ -185,10 +188,31 @@ impl SemanticAdapter for PdfAdapter {
                         })?;
                         format!("page:{destination_page}")
                     } else {
-                        format!("action:{:?}", action.action_type()).to_lowercase()
+                        return Err(failure(
+                            WorkerFailureCode::UnsupportedSemanticConstruct,
+                            format!(
+                                "unsupported PDF link action on page {}: {:?}",
+                                page_index + 1,
+                                action.action_type()
+                            ),
+                        ));
                     }
+                } else if let Some(destination) = link.destination() {
+                    let destination_page = destination.page_index().map_err(|error| {
+                        failure(
+                            WorkerFailureCode::SemanticExtractionFailed,
+                            format!("PDFium link destination page index: {error}"),
+                        )
+                    })?;
+                    format!("page:{destination_page}")
                 } else {
-                    "none".to_owned()
+                    return Err(failure(
+                        WorkerFailureCode::UnsupportedSemanticConstruct,
+                        format!(
+                            "PDF link has no supported target on page {}",
+                            page_index + 1
+                        ),
+                    ));
                 };
                 links.push(target);
             }
@@ -205,15 +229,15 @@ impl SemanticAdapter for PdfAdapter {
                 ));
             }
 
-            let mut image_hashes = structural.image_hashes[page_index].clone();
-            image_hashes.sort();
-            total_images = total_images.saturating_add(image_hashes.len());
+            let image_paints = structural.image_paints[page_index].clone();
+            total_images = total_images.saturating_add(image_paints.len());
 
             semantic_pages.push(json!({
                 "index": page_index,
                 "text": text,
                 "links": links,
-                "images": image_hashes,
+                "images": image_paints,
+                "paint_order": structural.paint_orders[page_index],
             }));
         }
 
@@ -466,16 +490,31 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
     let pages = document.get_pages();
     let mut annotation_counts = Vec::with_capacity(pages.len());
     let mut link_counts = Vec::with_capacity(pages.len());
-    let mut image_hashes = Vec::with_capacity(pages.len());
+    let mut image_paints = Vec::with_capacity(pages.len());
+    let mut paint_orders = Vec::with_capacity(pages.len());
     let mut form_names = BTreeSet::new();
 
     for (page_number, page_id) in pages {
-        let page_content = document
-            .get_page_content_with_limit(page_id, MAX_DECOMPRESSED_STREAM)
-            .map_err(|error| {
-                map_lopdf_stream_error(error, &format!("page {page_number} content"))
-            })?;
-        reject_inline_images(&page_content, page_number)?;
+        let mut decode_budget = PdfDecodeBudget::default();
+        let page_content = decode_page_content(document, page_id, page_number, &mut decode_budget)?;
+        let operations = decode_content_operations(&page_content, page_number, "page")?;
+        let resources = inherited_page_resources(document, page_id, page_number)?;
+        let mut paint_context = PdfPaintContext {
+            document,
+            page_number,
+            active_forms: BTreeSet::new(),
+            paint_events: Vec::new(),
+            paint_order: Vec::new(),
+            operations_seen: 0,
+            decode_budget,
+        };
+        collect_content_paints(
+            &mut paint_context,
+            &operations,
+            resources,
+            0,
+            &mut PdfGraphicsState::default(),
+        )?;
         let page = document.get_dictionary(page_id).map_err(|error| {
             failure(
                 WorkerFailureCode::SemanticExtractionFailed,
@@ -558,7 +597,8 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
 
         annotation_counts.push(annotation_count);
         link_counts.push(link_count);
-        image_hashes.push(page_image_hashes(document, page_id, page_number)?);
+        image_paints.push(paint_context.paint_events);
+        paint_orders.push(paint_context.paint_order);
     }
 
     Ok(LopdfFacts {
@@ -566,32 +606,773 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
         annotation_counts,
         link_counts,
         form_field_count: form_names.len(),
-        image_hashes,
+        image_paints,
+        paint_orders,
     })
 }
 
-fn page_image_hashes(
+#[derive(Debug, Default)]
+struct PdfDecodeBudget {
+    used: usize,
+}
+
+impl PdfDecodeBudget {
+    fn remaining(&self) -> usize {
+        MAX_DECOMPRESSED_STREAM.saturating_sub(self.used)
+    }
+
+    fn charge(&mut self, amount: usize, context: &str) -> Result<(), WorkerFailure> {
+        if amount > self.remaining() {
+            return Err(failure(
+                WorkerFailureCode::InspectionResourceLimitExceeded,
+                format!("PDF {context} exceeded the configured 64 MiB decode budget"),
+            ));
+        }
+        self.used += amount;
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+struct PdfGraphicsState {
+    ctm: [f64; 6],
+    clips: Vec<PdfClip>,
+    text_render_mode: i64,
+}
+
+impl Default for PdfGraphicsState {
+    fn default() -> Self {
+        Self {
+            ctm: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            clips: Vec::new(),
+            text_render_mode: 0,
+        }
+    }
+}
+
+#[derive(Clone)]
+struct PdfClip {
+    bbox: [f64; 4],
+    ctm: [f64; 6],
+}
+
+struct PdfPaintContext<'a> {
+    document: &'a Document,
+    page_number: u32,
+    active_forms: BTreeSet<lopdf::ObjectId>,
+    paint_events: Vec<Value>,
+    paint_order: Vec<&'static str>,
+    operations_seen: usize,
+    decode_budget: PdfDecodeBudget,
+}
+
+fn decode_page_content(
     document: &Document,
     page_id: lopdf::ObjectId,
     page_number: u32,
-) -> Result<Vec<String>, WorkerFailure> {
-    let resources = inherited_page_resources(document, page_id, page_number)?;
-    let Some(resources) = resources else {
-        return Ok(Vec::new());
+    budget: &mut PdfDecodeBudget,
+) -> Result<Vec<u8>, WorkerFailure> {
+    let page = document.get_dictionary(page_id).map_err(|error| {
+        failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("lopdf page {page_number} dictionary: {error}"),
+        )
+    })?;
+    let contents = match page.get(b"Contents") {
+        Ok(contents) => contents,
+        Err(lopdf::Error::DictKey(_)) => return Ok(Vec::new()),
+        Err(error) => {
+            return Err(failure(
+                WorkerFailureCode::ParserDisagreement,
+                format!("lopdf page {page_number} Contents cannot be read: {error}"),
+            ));
+        }
     };
 
-    let mut hashes = Vec::new();
-    let mut active_forms = BTreeSet::new();
-    collect_resource_images(
+    let mut stream_ids = Vec::new();
+    let mut active_references = BTreeSet::new();
+    collect_content_stream_ids(
         document,
-        resources,
+        contents,
         page_number,
         0,
-        &mut active_forms,
-        &mut hashes,
+        &mut active_references,
+        &mut stream_ids,
     )?;
-    hashes.sort();
-    Ok(hashes)
+
+    let mut content = Vec::new();
+    for stream_id in stream_ids {
+        let stream = document
+            .get_object(stream_id)
+            .and_then(Object::as_stream)
+            .map_err(|error| {
+                failure(
+                    WorkerFailureCode::ParserDisagreement,
+                    format!("lopdf page {page_number} Contents stream: {error}"),
+                )
+            })?;
+        let decoded = stream
+            .decompressed_content_with_limit(budget.remaining())
+            .map_err(|error| map_required_content_error(error, page_number, "Contents"))?;
+        budget.charge(
+            decoded.len().saturating_add(1),
+            &format!("page {page_number} Contents"),
+        )?;
+        content.extend_from_slice(&decoded);
+        content.push(b'\n');
+    }
+    Ok(content)
+}
+
+fn collect_content_stream_ids(
+    document: &Document,
+    object: &Object,
+    page_number: u32,
+    depth: usize,
+    active_references: &mut BTreeSet<lopdf::ObjectId>,
+    streams: &mut Vec<lopdf::ObjectId>,
+) -> Result<(), WorkerFailure> {
+    if depth >= MAX_PDF_OBJECT_DEPTH {
+        return Err(failure(
+            WorkerFailureCode::InspectionResourceLimitExceeded,
+            format!("lopdf page {page_number} Contents exceeded the object depth limit"),
+        ));
+    }
+
+    match object {
+        Object::Reference(object_id) => {
+            if !active_references.insert(*object_id) {
+                return Err(failure(
+                    WorkerFailureCode::ParserDisagreement,
+                    format!("lopdf page {page_number} Contents has a reference cycle"),
+                ));
+            }
+            let referenced = document.get_object(*object_id).map_err(|error| {
+                failure(
+                    WorkerFailureCode::ParserDisagreement,
+                    format!("lopdf page {page_number} Contents reference: {error}"),
+                )
+            });
+            let result = match referenced {
+                Ok(Object::Stream(_)) => {
+                    streams.push(*object_id);
+                    Ok(())
+                }
+                Ok(referenced) => collect_content_stream_ids(
+                    document,
+                    referenced,
+                    page_number,
+                    depth + 1,
+                    active_references,
+                    streams,
+                ),
+                Err(error) => Err(error),
+            };
+            active_references.remove(object_id);
+            result
+        }
+        Object::Array(values) => {
+            for value in values {
+                collect_content_stream_ids(
+                    document,
+                    value,
+                    page_number,
+                    depth + 1,
+                    active_references,
+                    streams,
+                )?;
+            }
+            Ok(())
+        }
+        _ => Err(failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("lopdf page {page_number} Contents value is not a stream or stream array"),
+        )),
+    }
+}
+
+fn map_required_content_error(
+    error: lopdf::Error,
+    page_number: u32,
+    context: &str,
+) -> WorkerFailure {
+    match error {
+        lopdf::Error::Decompress(lopdf::DecompressError::MemoryLimitExceeded { .. }) => failure(
+            WorkerFailureCode::InspectionResourceLimitExceeded,
+            format!(
+                "PDF page {page_number} {context} exceeded the configured 64 MiB decode budget"
+            ),
+        ),
+        other => failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("PDF page {page_number} {context} cannot be decoded strictly: {other}"),
+        ),
+    }
+}
+
+fn decode_content_operations(
+    bytes: &[u8],
+    page_number: u32,
+    context: &str,
+) -> Result<Vec<lopdf::content::Operation>, WorkerFailure> {
+    let content = Content::decode_strict(bytes).map_err(|error| {
+        failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("lopdf page {page_number} {context} operations: {error}"),
+        )
+    })?;
+    enforce_operation_limit(content.operations.len(), page_number, context)?;
+    Ok(content.operations)
+}
+
+fn enforce_operation_limit(
+    count: usize,
+    page_number: u32,
+    context: &str,
+) -> Result<(), WorkerFailure> {
+    if count > MAX_PDF_CONTENT_OPERATIONS {
+        return Err(failure(
+            WorkerFailureCode::InspectionResourceLimitExceeded,
+            format!("PDF page {page_number} {context} exceeded the operation limit"),
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_image_paint_slot(count: usize, page_number: u32) -> Result<(), WorkerFailure> {
+    if count >= MAX_PDF_PAINT_EVENTS {
+        return Err(failure(
+            WorkerFailureCode::InspectionResourceLimitExceeded,
+            format!("PDF page {page_number} exceeded the image paint-event limit"),
+        ));
+    }
+    Ok(())
+}
+
+fn collect_content_paints(
+    context: &mut PdfPaintContext<'_>,
+    operations: &[lopdf::content::Operation],
+    resources: Option<&lopdf::Dictionary>,
+    depth: usize,
+    state: &mut PdfGraphicsState,
+) -> Result<(), WorkerFailure> {
+    let page_number = context.page_number;
+    if depth >= MAX_PDF_OBJECT_DEPTH {
+        return Err(failure(
+            WorkerFailureCode::InspectionResourceLimitExceeded,
+            format!("PDF page {page_number} Form XObjects exceeded the depth limit"),
+        ));
+    }
+
+    let mut saved_states = Vec::new();
+    for operation in operations {
+        context.operations_seen = context.operations_seen.saturating_add(1);
+        enforce_operation_limit(context.operations_seen, page_number, "operation traversal")?;
+
+        match operation.operator.as_str() {
+            "q" if operation.operands.is_empty() => {
+                if saved_states.len() >= MAX_PDF_OBJECT_DEPTH {
+                    return Err(failure(
+                        WorkerFailureCode::InspectionResourceLimitExceeded,
+                        format!(
+                            "PDF page {page_number} graphics-state stack exceeded the depth limit"
+                        ),
+                    ));
+                }
+                saved_states.push(state.clone());
+            }
+            "Q" if operation.operands.is_empty() => {
+                *state = saved_states.pop().ok_or_else(|| {
+                    failure(
+                        WorkerFailureCode::ParserDisagreement,
+                        format!("PDF page {page_number} has an unmatched Q operator"),
+                    )
+                })?;
+            }
+            "cm" => {
+                let matrix = parse_pdf_matrix(&operation.operands, page_number)?;
+                state.ctm = multiply_pdf_matrices(matrix, state.ctm);
+                validate_finite_matrix(&state.ctm, page_number)?;
+            }
+            "Do" => {
+                let [Object::Name(name)] = operation.operands.as_slice() else {
+                    return Err(failure(
+                        WorkerFailureCode::ParserDisagreement,
+                        format!("PDF page {page_number} Do operator has invalid operands"),
+                    ));
+                };
+                collect_xobject_paint(context, resources, name, depth, state)?;
+            }
+            "Tr" => {
+                state.text_render_mode = parse_text_render_mode(operation, page_number)?;
+            }
+            "Tf" => {
+                validate_selected_font(context.document, resources, operation, page_number)?;
+            }
+            "Tj" | "TJ" | "'" | "\"" => {
+                if text_show_has_bytes(operation, page_number)?
+                    && state.text_render_mode != 3
+                    && context.paint_order.last().copied() != Some("text")
+                {
+                    context.paint_order.push("text");
+                }
+            }
+            "BT" | "ET" | "Tc" | "Tw" | "Tz" | "TL" | "Ts" | "Td" | "TD" | "Tm" | "T*" => {}
+            operator => {
+                return Err(failure(
+                    WorkerFailureCode::UnsupportedSemanticConstruct,
+                    format!("unsupported PDF page {page_number} content operator: {operator}"),
+                ));
+            }
+        }
+    }
+    if !saved_states.is_empty() {
+        return Err(failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("PDF page {page_number} has an unmatched q operator"),
+        ));
+    }
+    Ok(())
+}
+
+fn parse_text_render_mode(
+    operation: &lopdf::content::Operation,
+    page_number: u32,
+) -> Result<i64, WorkerFailure> {
+    let [mode] = operation.operands.as_slice() else {
+        return Err(failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("PDF page {page_number} Tr operator has invalid operands"),
+        ));
+    };
+    let mode = mode.as_i64().map_err(|error| {
+        failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("PDF page {page_number} Tr mode is invalid: {error}"),
+        )
+    })?;
+    if !(0..=3).contains(&mode) {
+        return Err(failure(
+            WorkerFailureCode::UnsupportedSemanticConstruct,
+            format!("PDF page {page_number} text clipping mode is unsupported"),
+        ));
+    }
+    Ok(mode)
+}
+
+fn validate_selected_font(
+    document: &Document,
+    resources: Option<&lopdf::Dictionary>,
+    operation: &lopdf::content::Operation,
+    page_number: u32,
+) -> Result<(), WorkerFailure> {
+    let [Object::Name(name), size] = operation.operands.as_slice() else {
+        return Err(failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("PDF page {page_number} Tf operator has invalid operands"),
+        ));
+    };
+    numeric_values(std::slice::from_ref(size), 1, page_number, "font size")?;
+    let resources = resources.ok_or_else(|| {
+        failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("PDF page {page_number} selected font has no scoped Resources"),
+        )
+    })?;
+    let fonts = resources
+        .get_deref(b"Font", document)
+        .and_then(Object::as_dict)
+        .map_err(|error| {
+            failure(
+                WorkerFailureCode::ParserDisagreement,
+                format!("PDF page {page_number} Font resources cannot be resolved: {error}"),
+            )
+        })?;
+    let font = fonts.get(name).map_err(|error| {
+        failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("PDF page {page_number} selected font cannot be resolved: {error}"),
+        )
+    })?;
+    let (_, resolved) = document.dereference(font).map_err(|error| {
+        failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("PDF page {page_number} selected font reference is invalid: {error}"),
+        )
+    })?;
+    let font = resolved.as_dict().map_err(|error| {
+        failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("PDF page {page_number} selected font is not a dictionary: {error}"),
+        )
+    })?;
+    let subtype = font
+        .get_deref(b"Subtype", document)
+        .and_then(Object::as_name)
+        .map_err(|error| {
+            failure(
+                WorkerFailureCode::ParserDisagreement,
+                format!("PDF page {page_number} selected font has no valid Subtype: {error}"),
+            )
+        })?;
+    match subtype {
+        b"Type0" | b"Type1" | b"MMType1" | b"TrueType" => Ok(()),
+        b"Type3" => Err(failure(
+            WorkerFailureCode::UnsupportedSemanticConstruct,
+            format!("PDF page {page_number} Type 3 glyph drawing is unsupported"),
+        )),
+        _ => Err(failure(
+            WorkerFailureCode::UnsupportedSemanticConstruct,
+            format!("PDF page {page_number} selected font subtype is unsupported"),
+        )),
+    }
+}
+
+fn text_show_has_bytes(
+    operation: &lopdf::content::Operation,
+    page_number: u32,
+) -> Result<bool, WorkerFailure> {
+    let malformed = || {
+        failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!(
+                "PDF page {page_number} {} operator has invalid operands",
+                operation.operator
+            ),
+        )
+    };
+    match (operation.operator.as_str(), operation.operands.as_slice()) {
+        ("Tj" | "'", [Object::String(bytes, _)]) => Ok(!bytes.is_empty()),
+        (
+            "\"",
+            [
+                Object::Integer(_) | Object::Real(_),
+                Object::Integer(_) | Object::Real(_),
+                Object::String(bytes, _),
+            ],
+        ) => {
+            numeric_values(&operation.operands[..2], 2, page_number, "text spacing")?;
+            Ok(!bytes.is_empty())
+        }
+        ("TJ", [Object::Array(parts)]) => {
+            let mut has_bytes = false;
+            for part in parts {
+                match part {
+                    Object::String(bytes, _) => has_bytes |= !bytes.is_empty(),
+                    Object::Integer(_) => {}
+                    Object::Real(value) if value.is_finite() => {}
+                    _ => return Err(malformed()),
+                }
+            }
+            Ok(has_bytes)
+        }
+        _ => Err(malformed()),
+    }
+}
+
+fn collect_xobject_paint(
+    context: &mut PdfPaintContext<'_>,
+    resources: Option<&lopdf::Dictionary>,
+    name: &[u8],
+    depth: usize,
+    state: &PdfGraphicsState,
+) -> Result<(), WorkerFailure> {
+    let document = context.document;
+    let page_number = context.page_number;
+    let resources = resources.ok_or_else(|| {
+        failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("PDF page {page_number} Do operator has no scoped Resources"),
+        )
+    })?;
+    let xobjects = resources
+        .get_deref(b"XObject", document)
+        .and_then(Object::as_dict)
+        .map_err(|error| {
+            failure(
+                WorkerFailureCode::ParserDisagreement,
+                format!("PDF page {page_number} XObject resources: {error}"),
+            )
+        })?;
+    let object = xobjects.get(name).map_err(|error| {
+        failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!(
+                "PDF page {page_number} Do resource /{} cannot be resolved: {error}",
+                String::from_utf8_lossy(name)
+            ),
+        )
+    })?;
+    let (object_id, resolved) = document.dereference(object).map_err(|error| {
+        failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("PDF page {page_number} Do XObject reference: {error}"),
+        )
+    })?;
+    let object_id = object_id.ok_or_else(|| {
+        failure(
+            WorkerFailureCode::UnsupportedSemanticConstruct,
+            format!("PDF page {page_number} Do XObject must be an indirect stream"),
+        )
+    })?;
+    let stream = resolved.as_stream().map_err(|error| {
+        failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("PDF page {page_number} Do XObject is not a stream: {error}"),
+        )
+    })?;
+    let subtype = stream
+        .dict
+        .get(b"Subtype")
+        .and_then(Object::as_name)
+        .map_err(|error| {
+            failure(
+                WorkerFailureCode::UnsupportedSemanticConstruct,
+                format!("PDF page {page_number} Do XObject has no supported Subtype: {error}"),
+            )
+        })?;
+
+    match subtype {
+        b"Image" => {
+            if stream.dict.has(b"OC") {
+                return Err(failure(
+                    WorkerFailureCode::UnsupportedSemanticConstruct,
+                    format!(
+                        "PDF page {page_number} Image XObject optional-content visibility is unsupported"
+                    ),
+                ));
+            }
+            ensure_image_paint_slot(context.paint_events.len(), page_number)?;
+            let image_hash = image_semantic_hash(
+                document,
+                Some(object_id),
+                stream,
+                resources,
+                page_number,
+                &mut context.decode_budget,
+            )?;
+            let ctm = normalize_matrix(state.ctm);
+            let clips = state
+                .clips
+                .iter()
+                .map(|clip| {
+                    json!({
+                        "bbox": clip.bbox,
+                        "ctm": normalize_matrix(clip.ctm),
+                    })
+                })
+                .collect::<Vec<_>>();
+            context.paint_events.push(json!({
+                "image_sha256": image_hash,
+                "ctm": ctm,
+                "clips": clips,
+            }));
+            context.paint_order.push("image");
+            Ok(())
+        }
+        b"Form" => {
+            if stream.dict.has(b"Group") || stream.dict.has(b"OC") {
+                return Err(failure(
+                    WorkerFailureCode::UnsupportedSemanticConstruct,
+                    format!(
+                        "PDF page {page_number} Form XObject group/visibility semantics are unsupported"
+                    ),
+                ));
+            }
+            if !context.active_forms.insert(object_id) {
+                return Err(failure(
+                    WorkerFailureCode::UnsupportedSemanticConstruct,
+                    format!("PDF page {page_number} has a cyclic Form XObject"),
+                ));
+            }
+            let result = (|| {
+                let bbox = form_bbox(document, stream, page_number)?;
+                let form_matrix = form_matrix(document, stream, page_number)?;
+                let mut form_state = state.clone();
+                form_state.ctm = multiply_pdf_matrices(form_matrix, form_state.ctm);
+                validate_finite_matrix(&form_state.ctm, page_number)?;
+                form_state.clips.push(PdfClip {
+                    bbox,
+                    ctm: form_state.ctm,
+                });
+
+                let form_resources = match stream.dict.get_deref(b"Resources", document) {
+                    Ok(resources) => Some(resources.as_dict().map_err(|error| {
+                        failure(
+                            WorkerFailureCode::ParserDisagreement,
+                            format!("PDF page {page_number} Form Resources: {error}"),
+                        )
+                    })?),
+                    Err(lopdf::Error::DictKey(_)) => Some(resources),
+                    Err(error) => {
+                        return Err(failure(
+                            WorkerFailureCode::ParserDisagreement,
+                            format!("PDF page {page_number} Form Resources: {error}"),
+                        ));
+                    }
+                };
+                let decoded = stream
+                    .decompressed_content_with_limit(context.decode_budget.remaining())
+                    .map_err(|error| map_required_content_error(error, page_number, "Form"))?;
+                context
+                    .decode_budget
+                    .charge(decoded.len(), &format!("page {page_number} Form"))?;
+                let operations = decode_content_operations(&decoded, page_number, "Form")?;
+                collect_content_paints(
+                    context,
+                    &operations,
+                    form_resources,
+                    depth + 1,
+                    &mut form_state,
+                )
+            })();
+            context.active_forms.remove(&object_id);
+            result
+        }
+        other => Err(failure(
+            WorkerFailureCode::UnsupportedSemanticConstruct,
+            format!(
+                "unsupported PDF page {page_number} Do XObject subtype: {}",
+                String::from_utf8_lossy(other)
+            ),
+        )),
+    }
+}
+
+fn form_bbox(
+    document: &Document,
+    stream: &lopdf::Stream,
+    page_number: u32,
+) -> Result<[f64; 4], WorkerFailure> {
+    let bbox = stream.dict.get_deref(b"BBox", document).map_err(|error| {
+        failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("PDF page {page_number} Form BBox is missing: {error}"),
+        )
+    })?;
+    let values = numeric_array(bbox, 4, page_number, "Form BBox")?;
+    let bbox = [values[0], values[1], values[2], values[3]];
+    if bbox[0] > bbox[2] || bbox[1] > bbox[3] {
+        return Err(failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("PDF page {page_number} Form BBox bounds are reversed"),
+        ));
+    }
+    Ok(bbox)
+}
+
+fn form_matrix(
+    document: &Document,
+    stream: &lopdf::Stream,
+    page_number: u32,
+) -> Result<[f64; 6], WorkerFailure> {
+    let matrix = match stream.dict.get_deref(b"Matrix", document) {
+        Ok(matrix) => matrix,
+        Err(lopdf::Error::DictKey(_)) => return Ok(PdfGraphicsState::default().ctm),
+        Err(error) => {
+            return Err(failure(
+                WorkerFailureCode::ParserDisagreement,
+                format!("PDF page {page_number} Form Matrix cannot be resolved: {error}"),
+            ));
+        }
+    };
+    let values = numeric_array(matrix, 6, page_number, "Form Matrix")?;
+    let matrix = [
+        values[0], values[1], values[2], values[3], values[4], values[5],
+    ];
+    validate_finite_matrix(&matrix, page_number)?;
+    Ok(matrix)
+}
+
+fn parse_pdf_matrix(operands: &[Object], page_number: u32) -> Result<[f64; 6], WorkerFailure> {
+    let values = numeric_values(operands, 6, page_number, "cm")?;
+    let matrix = [
+        values[0], values[1], values[2], values[3], values[4], values[5],
+    ];
+    validate_finite_matrix(&matrix, page_number)?;
+    Ok(matrix)
+}
+
+fn numeric_array(
+    object: &Object,
+    expected_len: usize,
+    page_number: u32,
+    context: &str,
+) -> Result<Vec<f64>, WorkerFailure> {
+    let Object::Array(values) = object else {
+        return Err(failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("PDF page {page_number} {context} is not an array"),
+        ));
+    };
+    numeric_values(values, expected_len, page_number, context)
+}
+
+fn numeric_values(
+    values: &[Object],
+    expected_len: usize,
+    page_number: u32,
+    context: &str,
+) -> Result<Vec<f64>, WorkerFailure> {
+    if values.len() != expected_len {
+        return Err(failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("PDF page {page_number} {context} has an invalid element count"),
+        ));
+    }
+    values
+        .iter()
+        .map(|value| {
+            let number = match value {
+                Object::Integer(value) => *value as f64,
+                Object::Real(value) => f64::from(*value),
+                _ => {
+                    return Err(failure(
+                        WorkerFailureCode::ParserDisagreement,
+                        format!("PDF page {page_number} {context} contains a non-number"),
+                    ));
+                }
+            };
+            if !number.is_finite() {
+                return Err(failure(
+                    WorkerFailureCode::ParserDisagreement,
+                    format!("PDF page {page_number} {context} contains a non-finite number"),
+                ));
+            }
+            Ok(number)
+        })
+        .collect()
+}
+
+fn multiply_pdf_matrices(left: [f64; 6], right: [f64; 6]) -> [f64; 6] {
+    [
+        left[0] * right[0] + left[1] * right[2],
+        left[0] * right[1] + left[1] * right[3],
+        left[2] * right[0] + left[3] * right[2],
+        left[2] * right[1] + left[3] * right[3],
+        left[4] * right[0] + left[5] * right[2] + right[4],
+        left[4] * right[1] + left[5] * right[3] + right[5],
+    ]
+}
+
+fn validate_finite_matrix(matrix: &[f64; 6], page_number: u32) -> Result<(), WorkerFailure> {
+    if matrix.iter().all(|value| value.is_finite()) {
+        Ok(())
+    } else {
+        Err(failure(
+            WorkerFailureCode::ParserDisagreement,
+            format!("PDF page {page_number} effective matrix is non-finite"),
+        ))
+    }
+}
+
+fn normalize_matrix(mut matrix: [f64; 6]) -> [f64; 6] {
+    for value in &mut matrix {
+        if *value == 0.0 {
+            *value = 0.0;
+        }
+    }
+    matrix
 }
 
 fn inherited_page_resources(
@@ -664,126 +1445,15 @@ fn inherited_page_resources(
     ))
 }
 
-fn collect_resource_images(
-    document: &Document,
-    resources: &lopdf::Dictionary,
-    page_number: u32,
-    depth: usize,
-    active_forms: &mut BTreeSet<lopdf::ObjectId>,
-    hashes: &mut Vec<String>,
-) -> Result<(), WorkerFailure> {
-    if depth >= MAX_PDF_OBJECT_DEPTH {
-        return Err(failure(
-            WorkerFailureCode::InspectionResourceLimitExceeded,
-            format!("lopdf page {page_number} XObject tree exceeded the depth limit"),
-        ));
-    }
-
-    let xobjects = match resources.get_deref(b"XObject", document) {
-        Ok(xobjects) => xobjects,
-        Err(lopdf::Error::DictKey(_)) => return Ok(()),
-        Err(error) => {
-            return Err(failure(
-                WorkerFailureCode::ParserDisagreement,
-                format!("lopdf page {page_number} XObject dictionary: {error}"),
-            ));
-        }
-    };
-    let xobjects = xobjects.as_dict().map_err(|error| {
-        failure(
-            WorkerFailureCode::ParserDisagreement,
-            format!("lopdf page {page_number} XObject is not a dictionary: {error}"),
-        )
-    })?;
-
-    for (_, object) in xobjects.iter() {
-        let (object_id, resolved) = document.dereference(object).map_err(|error| {
-            failure(
-                WorkerFailureCode::SemanticExtractionFailed,
-                format!("lopdf page {page_number} XObject: {error}"),
-            )
-        })?;
-        let stream = resolved.as_stream().map_err(|error| {
-            failure(
-                WorkerFailureCode::ParserDisagreement,
-                format!("lopdf page {page_number} XObject is not a stream: {error}"),
-            )
-        })?;
-        let subtype = stream
-            .dict
-            .get(b"Subtype")
-            .and_then(Object::as_name)
-            .ok()
-            .map(|name| name.to_vec());
-
-        match subtype.as_deref() {
-            Some(b"Image") => hashes.push(image_semantic_hash(
-                document,
-                object_id,
-                stream,
-                resources,
-                page_number,
-            )?),
-            Some(b"Form") => {
-                let Some(form_id) = object_id else {
-                    return Err(failure(
-                        WorkerFailureCode::UnsupportedSemanticConstruct,
-                        format!("lopdf page {page_number} Form XObject is not indirect"),
-                    ));
-                };
-                let form_content = stream
-                    .decompressed_content_with_limit(MAX_DECOMPRESSED_STREAM)
-                    .map_err(|error| {
-                        map_lopdf_stream_error(error, &format!("page {page_number} Form content"))
-                    })?;
-                reject_inline_images(&form_content, page_number)?;
-                if !active_forms.insert(form_id) {
-                    return Err(failure(
-                        WorkerFailureCode::UnsupportedSemanticConstruct,
-                        format!("lopdf page {page_number} has a cyclic Form XObject"),
-                    ));
-                }
-                let form_resources = match stream.dict.get_deref(b"Resources", document) {
-                    Ok(form_resources) => form_resources.as_dict().map_err(|error| {
-                        failure(
-                            WorkerFailureCode::ParserDisagreement,
-                            format!("lopdf page {page_number} Form Resources: {error}"),
-                        )
-                    })?,
-                    Err(lopdf::Error::DictKey(_)) => resources,
-                    Err(error) => {
-                        active_forms.remove(&form_id);
-                        return Err(failure(
-                            WorkerFailureCode::ParserDisagreement,
-                            format!("lopdf page {page_number} Form Resources: {error}"),
-                        ));
-                    }
-                };
-                let result = collect_resource_images(
-                    document,
-                    form_resources,
-                    page_number,
-                    depth + 1,
-                    active_forms,
-                    hashes,
-                );
-                active_forms.remove(&form_id);
-                result?;
-            }
-            _ => {}
-        }
-    }
-    Ok(())
-}
-
 fn image_semantic_hash(
     document: &Document,
     image_id: Option<lopdf::ObjectId>,
     stream: &lopdf::Stream,
     resources: &lopdf::Dictionary,
     page_number: u32,
+    decode_budget: &mut PdfDecodeBudget,
 ) -> Result<String, WorkerFailure> {
-    const IMAGE_SEMANTIC_KEYS: [&[u8]; 14] = [
+    const IMAGE_SEMANTIC_KEYS: [&[u8]; 13] = [
         b"Width",
         b"Height",
         b"ColorSpace",
@@ -797,7 +1467,6 @@ fn image_semantic_hash(
         b"SMaskInData",
         b"Matte",
         b"Alternates",
-        b"OC",
     ];
     let mut image_dictionary = serde_json::Map::new();
     let mut active_references = BTreeSet::new();
@@ -842,10 +1511,11 @@ fn image_semantic_hash(
     }
 
     let samples = stream
-        .decompressed_content_with_limit(MAX_DECOMPRESSED_STREAM)
+        .decompressed_content_with_limit(decode_budget.remaining())
         .map_err(|error| {
             map_lopdf_stream_error(error, &format!("page {page_number} image stream"))
         })?;
+    decode_budget.charge(samples.len(), &format!("page {page_number} image samples"))?;
     let sample_hash: [u8; 32] = Sha256::digest(samples).into();
     let projection = canonical_json_bytes(&json!({
         "image_dictionary": image_dictionary,
@@ -859,29 +1529,6 @@ fn image_semantic_hash(
     })?;
     let semantic_hash: [u8; 32] = Sha256::digest(projection).into();
     Ok(format_sha256(&semantic_hash))
-}
-
-fn reject_inline_images(content: &[u8], page_number: u32) -> Result<(), WorkerFailure> {
-    if !content.windows(2).any(|window| window == b"BI") {
-        return Ok(());
-    }
-    let operations = Content::decode_strict(content).map_err(|error| {
-        failure(
-            WorkerFailureCode::ParserDisagreement,
-            format!("lopdf page {page_number} content operations: {error}"),
-        )
-    })?;
-    if operations
-        .operations
-        .iter()
-        .any(|operation| operation.operator == "BI")
-    {
-        return Err(failure(
-            WorkerFailureCode::UnsupportedSemanticConstruct,
-            format!("lopdf page {page_number} inline images are unsupported"),
-        ));
-    }
-    Ok(())
 }
 
 fn normalize_pdf_object(
@@ -1015,4 +1662,77 @@ fn format_bytes(bytes: &[u8]) -> String {
 
 fn failure(code: WorkerFailureCode, message: impl Into<String>) -> WorkerFailure {
     WorkerFailure::new(code, message)
+}
+
+#[cfg(test)]
+mod resource_limit_tests {
+    use super::{
+        MAX_PDF_CONTENT_OPERATIONS, MAX_PDF_PAINT_EVENTS, decode_content_operations,
+        enforce_operation_limit, ensure_image_paint_slot, text_show_has_bytes,
+    };
+    use crate::WorkerFailureCode;
+    use lopdf::content::Operation;
+    use lopdf::{Object, StringFormat};
+
+    #[test]
+    fn operation_limit_accepts_boundary_and_rejects_one_over() {
+        assert!(enforce_operation_limit(MAX_PDF_CONTENT_OPERATIONS, 1, "page").is_ok());
+        assert!(enforce_operation_limit(MAX_PDF_CONTENT_OPERATIONS, 1, "traversal").is_ok());
+        assert_eq!(
+            enforce_operation_limit(MAX_PDF_CONTENT_OPERATIONS + 1, 1, "page")
+                .unwrap_err()
+                .code(),
+            WorkerFailureCode::InspectionResourceLimitExceeded
+        );
+        assert_eq!(
+            enforce_operation_limit(MAX_PDF_CONTENT_OPERATIONS + 1, 1, "traversal")
+                .unwrap_err()
+                .code(),
+            WorkerFailureCode::InspectionResourceLimitExceeded
+        );
+    }
+
+    #[test]
+    fn image_paint_limit_accepts_last_slot_and_rejects_next() {
+        assert!(ensure_image_paint_slot(MAX_PDF_PAINT_EVENTS - 1, 1).is_ok());
+        assert_eq!(
+            ensure_image_paint_slot(MAX_PDF_PAINT_EVENTS, 1)
+                .unwrap_err()
+                .code(),
+            WorkerFailureCode::InspectionResourceLimitExceeded
+        );
+    }
+
+    #[test]
+    fn decoded_operations_accept_limit_and_reject_one_over() {
+        let exact = b"BT\n".repeat(MAX_PDF_CONTENT_OPERATIONS);
+        assert_eq!(
+            decode_content_operations(&exact, 1, "page")
+                .expect("exact operation limit is accepted")
+                .len(),
+            MAX_PDF_CONTENT_OPERATIONS
+        );
+        let content = b"BT\n".repeat(MAX_PDF_CONTENT_OPERATIONS + 1);
+        assert_eq!(
+            decode_content_operations(&content, 1, "page")
+                .unwrap_err()
+                .code(),
+            WorkerFailureCode::InspectionResourceLimitExceeded
+        );
+    }
+
+    #[test]
+    fn malformed_text_show_array_fails_closed() {
+        let operation = Operation::new(
+            "TJ",
+            vec![Object::Array(vec![
+                Object::String(b"visible".to_vec(), StringFormat::Literal),
+                Object::Boolean(true),
+            ])],
+        );
+        assert_eq!(
+            text_show_has_bytes(&operation, 1).unwrap_err().code(),
+            WorkerFailureCode::ParserDisagreement
+        );
+    }
 }

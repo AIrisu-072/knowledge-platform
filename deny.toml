@@ -17,9 +17,13 @@ allow = [
   "PostgreSQL",
   "Unicode-3.0",
   "Zlib",
-  "ISC",
 ]
 confidence-threshold = 0.8
+
+[[licenses.exceptions]]
+name = "libloading"
+version = "0.9.0"
+allow = ["ISC"]
 
 [licenses.private]
 ignore = true
