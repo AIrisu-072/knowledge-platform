@@ -20,6 +20,22 @@ const SIBLING_GRAPH: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   </dgm:cxnLst>
   <dgm:bg/><dgm:whole/>
 </dgm:dataModel>"#;
+const SHARED_DESTINATION_GRAPH: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<dgm:dataModel xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  <dgm:ptLst>
+    <dgm:pt modelId="0" type="doc"/>
+    <dgm:pt modelId="1"><dgm:t><a:p><a:r><a:t>Parent A</a:t></a:r></a:p></dgm:t></dgm:pt>
+    <dgm:pt modelId="2"><dgm:t><a:p><a:r><a:t>Parent B</a:t></a:r></a:p></dgm:t></dgm:pt>
+    <dgm:pt modelId="3"><dgm:t><a:p><a:r><a:t>Shared node</a:t></a:r></a:p></dgm:t></dgm:pt>
+  </dgm:ptLst>
+  <dgm:cxnLst>
+    <dgm:cxn modelId="4" srcId="0" destId="1" srcOrd="0" destOrd="0"/>
+    <dgm:cxn modelId="5" srcId="0" destId="2" srcOrd="1" destOrd="0"/>
+    <dgm:cxn modelId="6" srcId="1" destId="3" srcOrd="0" destOrd="0"/>
+    <dgm:cxn modelId="7" srcId="2" destId="3" srcOrd="0" destOrd="1"/>
+  </dgm:cxnLst>
+  <dgm:bg/><dgm:whole/>
+</dgm:dataModel>"#;
 
 #[test]
 fn smartart_sibling_src_order_changes_identity() {
@@ -62,6 +78,75 @@ fn smartart_sibling_src_order_changes_identity() {
         baseline_fingerprint,
         mutant_output.semantic_fingerprint(),
         "reordering children by SmartArt connection srcOrd must affect identity"
+    );
+}
+
+#[test]
+fn smartart_duplicate_sibling_src_order_fails_closed() {
+    let baseline = replace_part(BASE, SMARTART_DATA, |_| SIBLING_GRAPH.as_bytes().to_vec());
+    assert_valid_pptx_package(&baseline);
+    assert_only_smartart_data_differs(BASE, &baseline);
+    let baseline_xml = String::from_utf8(read_part(&baseline, SMARTART_DATA))
+        .expect("synthetic SmartArt data is UTF-8");
+    assert_sibling_order_preconditions(&baseline_xml, (0, 1));
+    inspect(&baseline, "qualified sibling-order baseline must inspect");
+
+    let mutant = replace_part(&baseline, SMARTART_DATA, |bytes| {
+        let xml = String::from_utf8(bytes.to_vec()).expect("SmartArt part is UTF-8");
+        let mutant = xml.replace(
+            "srcId=\"0\" destId=\"2\" srcOrd=\"1\"",
+            "srcId=\"0\" destId=\"2\" srcOrd=\"0\"",
+        );
+        assert_ne!(xml, mutant, "second sibling srcOrd is duplicated");
+        mutant.into_bytes()
+    });
+    assert_valid_pptx_package(&mutant);
+    assert_only_smartart_data_differs(&baseline, &mutant);
+    let mutant_xml = String::from_utf8(read_part(&mutant, SMARTART_DATA))
+        .expect("mutant SmartArt data is UTF-8");
+    assert_sibling_order_preconditions(&mutant_xml, (0, 0));
+
+    assert!(
+        PptxAdapter
+            .inspect(&mutant, &AdapterProfile::default())
+            .is_err(),
+        "duplicate outgoing sibling ordinals are ambiguous and must fail closed"
+    );
+}
+
+#[test]
+fn smartart_duplicate_incoming_dest_order_fails_closed() {
+    let baseline = replace_part(BASE, SMARTART_DATA, |_| {
+        SHARED_DESTINATION_GRAPH.as_bytes().to_vec()
+    });
+    assert_valid_pptx_package(&baseline);
+    assert_only_smartart_data_differs(BASE, &baseline);
+    let baseline_xml = String::from_utf8(read_part(&baseline, SMARTART_DATA))
+        .expect("synthetic SmartArt data is UTF-8");
+    assert!(baseline_xml.contains("srcId=\"1\" destId=\"3\" srcOrd=\"0\" destOrd=\"0\""));
+    assert!(baseline_xml.contains("srcId=\"2\" destId=\"3\" srcOrd=\"0\" destOrd=\"1\""));
+    inspect(
+        &baseline,
+        "qualified shared-destination baseline must inspect",
+    );
+
+    let mutant = replace_part(&baseline, SMARTART_DATA, |bytes| {
+        let xml = String::from_utf8(bytes.to_vec()).expect("SmartArt part is UTF-8");
+        let mutant = xml.replace(
+            "srcId=\"2\" destId=\"3\" srcOrd=\"0\" destOrd=\"1\"",
+            "srcId=\"2\" destId=\"3\" srcOrd=\"0\" destOrd=\"0\"",
+        );
+        assert_ne!(xml, mutant, "second incoming destOrd is duplicated");
+        mutant.into_bytes()
+    });
+    assert_valid_pptx_package(&mutant);
+    assert_only_smartart_data_differs(&baseline, &mutant);
+
+    assert!(
+        PptxAdapter
+            .inspect(&mutant, &AdapterProfile::default())
+            .is_err(),
+        "duplicate incoming destination ordinals are ambiguous and must fail closed"
     );
 }
 
