@@ -6,7 +6,6 @@ use document_semantic_inspection_runner::RunnerInspectionExecutor;
 #[cfg(target_os = "linux")]
 mod linux_tests {
     use std::{
-        ffi::OsString,
         io::Cursor,
         sync::{
             Arc,
@@ -126,10 +125,8 @@ mod linux_tests {
         let storage_root = TempDir::new().unwrap();
         let storage = Arc::new(FileSystemStorage::new(storage_root.path()));
         let repository = Arc::new(PostgresDocumentRepository::new(pool.clone()));
-        let worker = OsString::from(
-            std::env::var_os("DSI_WORKER_BIN")
-                .expect("DSI_WORKER_BIN must point to the built production worker"),
-        );
+        let worker = std::env::var_os("DSI_WORKER_BIN")
+            .expect("DSI_WORKER_BIN must point to the built production worker");
         let mut config = RunnerConfig::new(worker);
         if let Some(dir) = std::env::var_os("PDFIUM_DYNAMIC_LIB_PATH") {
             config = config.with_pdfium_runtime_dir(dir);
