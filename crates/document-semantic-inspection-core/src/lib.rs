@@ -5,6 +5,7 @@
 //! sandbox implementation.
 
 mod canonical;
+mod cross_format;
 mod error;
 mod evidence;
 mod fingerprint;
@@ -13,6 +14,7 @@ mod profile;
 mod protocol;
 
 pub use canonical::canonical_worker_response_bytes;
+pub use cross_format::{AuthorityMigrationDecision, assess_authority_migration};
 pub use error::CoreError;
 pub use evidence::{
     CapabilityEvidence, CapabilityState, CommentEvidence, Diagnostic, DigitalSignatureEvidence,

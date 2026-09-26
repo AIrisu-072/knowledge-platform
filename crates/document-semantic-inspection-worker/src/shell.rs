@@ -58,7 +58,10 @@ where
     let outcome = guard_worker_execution(|| -> Result<Vec<u8>, WorkerFailure> {
         let request = decode_request_bounded(request_bytes, max_request_bytes)?;
         let prepared = prepare_input_bounded(&request, input, max_input_bytes)?;
-        let profile = AdapterProfile::default();
+        let profile = AdapterProfile::from_declared_media_type(
+            &request.declared_media_type,
+            prepared.detected_format(),
+        )?;
         let adapter_output = match prepared.detected_format() {
             document_semantic_inspection_core::FormatId::Txt => {
                 TextAdapter.inspect(prepared.bytes(), &profile)?

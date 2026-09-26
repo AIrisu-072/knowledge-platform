@@ -61,6 +61,89 @@ pub struct AdapterProfile {
 }
 
 impl AdapterProfile {
+    /// Bind the PoC-qualified per-format controls to the declared media type
+    /// without adding fields to the frozen worker request protocol.
+    pub(crate) fn from_declared_media_type(
+        media_type: &str,
+        format: FormatId,
+    ) -> Result<Self, WorkerFailure> {
+        let mut profile = Self::default();
+        let mut seen = std::collections::HashSet::new();
+        for parameter in media_type.split(';').skip(1) {
+            let (key, raw_value) = parameter.trim().split_once('=').ok_or_else(|| {
+                WorkerFailure::new(
+                    WorkerFailureCode::UnsupportedSemanticConstruct,
+                    "malformed media type parameter",
+                )
+            })?;
+            let key = key.trim().to_ascii_lowercase();
+            if !seen.insert(key.clone()) {
+                return Err(WorkerFailure::new(
+                    WorkerFailureCode::UnsupportedSemanticConstruct,
+                    "duplicate media type parameter",
+                ));
+            }
+            let raw_value = raw_value.trim();
+            let value = if let Some(quoted) = raw_value.strip_prefix('"') {
+                quoted.strip_suffix('"').ok_or_else(|| {
+                    WorkerFailure::new(
+                        WorkerFailureCode::UnsupportedSemanticConstruct,
+                        "unterminated media type parameter",
+                    )
+                })?
+            } else {
+                raw_value
+            };
+            if value.is_empty() || value.contains(['"', '\\', ';']) {
+                return Err(WorkerFailure::new(
+                    WorkerFailureCode::UnsupportedSemanticConstruct,
+                    "unsupported media type parameter value",
+                ));
+            }
+            match key.as_str() {
+                "charset" if matches!(format, FormatId::Txt | FormatId::Csv | FormatId::Html) => {
+                    if !value.eq_ignore_ascii_case("utf-8") {
+                        return Err(WorkerFailure::new(
+                            WorkerFailureCode::SemanticExtractionFailed,
+                            "ambiguous or unsupported text encoding",
+                        ));
+                    }
+                    profile = profile.with_text_encoding("utf-8");
+                }
+                "delimiter" if format == FormatId::Csv => {
+                    let bytes = value.as_bytes();
+                    if bytes.len() != 1 || !bytes[0].is_ascii() {
+                        return Err(WorkerFailure::new(
+                            WorkerFailureCode::UnsupportedSemanticConstruct,
+                            "CSV delimiter must be exactly one ASCII byte",
+                        ));
+                    }
+                    profile = profile.with_csv_delimiter(bytes[0]);
+                }
+                "script-required" if format == FormatId::Html => {
+                    let required = match value.to_ascii_lowercase().as_str() {
+                        "true" => true,
+                        "false" => false,
+                        _ => {
+                            return Err(WorkerFailure::new(
+                                WorkerFailureCode::UnsupportedSemanticConstruct,
+                                "invalid HTML script-required value",
+                            ));
+                        }
+                    };
+                    profile = profile.with_html_script_required(required);
+                }
+                _ => {
+                    return Err(WorkerFailure::new(
+                        WorkerFailureCode::UnsupportedSemanticConstruct,
+                        "unqualified media type parameter",
+                    ));
+                }
+            }
+        }
+        Ok(profile)
+    }
+
     pub fn with_csv_delimiter(mut self, delimiter: u8) -> Self {
         self.csv_delimiter = Some(delimiter);
         self
