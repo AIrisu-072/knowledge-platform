@@ -1084,6 +1084,7 @@ dependencies = [
  "document-domain",
  "document-repository-postgres",
  "document-semantic-inspection-core",
+ "document-semantic-inspection-runner",
  "document-storage-fs",
  "serde_json",
  "sqlx",
