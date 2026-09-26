@@ -71,9 +71,11 @@ fn validate_zip_and_chart_xml(input: &[u8]) {
     let mut reader = Reader::from_reader(chart.as_slice());
     reader.config_mut().check_end_names = true;
     loop {
-        match reader.read_event().expect("well-formed chart XML") {
-            quick_xml::events::Event::Eof => break,
-            _ => {}
+        if matches!(
+            reader.read_event().expect("well-formed chart XML"),
+            quick_xml::events::Event::Eof
+        ) {
+            break;
         }
     }
 }
