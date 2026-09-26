@@ -2,13 +2,14 @@
 
 ## Latest checkpoint — 2026-09-27 JST
 
-- Last exact verified branch head: `bb34a59471620929757df573dda253765f06d40c` on `feat/document-semantic-inspection-v0`; PR #10 is **OPEN / Ready for review**. Implementation code head: `5045fa8e6274054f19931c2ba11bbec62fb546d5`.
+- Last exact verified branch head: `b7df56d789bb7281000d3e921d34c15dad0445c8` on `feat/document-semantic-inspection-v0`; PR #10 is **OPEN / Ready for review**. Implementation code head: `5045fa8e6274054f19931c2ba11bbec62fb546d5`.
 - Tasks 1–12: **COMPLETE**. Task 12 corrected GREEN head `feb3affb82ba2ed144a87d58706391d53890d7f5`: standard CI `36253230526`, Sandbox `36253230478`, and DSI PoC `36253230464` all **SUCCESS**.
 - Task 13 GREEN code head: `59d6679511751791e07180c61d8bd3b48ae6382b`, following test-only RED `30f8fa2b80bce1070053251cc1c26b061ed3c45a`. The requalified 91-case corpus, 20 repeats, 5 fresh worker processes, cross-format capability decisions, VBA, and signature targets pass locally. Original and corrected corpus manifests have identical expectations after removing only raw hash/size fields (`d786494a95e9670974e8945a86aecf1d0d5252e809ef130036cfa6e78cbaff81`).
 - Task 14 implementation head: `5045fa8e6274054f19931c2ba11bbec62fb546d5`. Linux inherited-FD isolation RED 0/1 and GREEN 1/1 were observed locally; `mise run verify:full` **SUCCESS**, including 385/385 Rust tests, `cargo deny check`, actionlint/zizmor, and SBOM. Exact-head hosted standard CI `36255207130`, Sandbox `36255207090`, and DSI PoC `36255207056` are all **SUCCESS**. Standard CI includes Ubuntu worker/runner tests and macOS Intel/arm64 semantic parity, both **SUCCESS**.
 - Documentation evidence head `bb34a59471620929757df573dda253765f06d40c`: standard CI `36255955719`, Sandbox `36255955708`, and DSI PoC `36255955764` all **SUCCESS**, including the Ubuntu/macOS Intel/macOS arm64 production semantic gate.
+- Ready-state head `3874b1597b136a1d0b3b157e12f8be6e2e244b46` exposed a test-only race: macOS arm64 parity job `108444879584` failed when the worker rejected invalid trust input before the test wrote stdin; the superseded workflow `36256756111` ended CANCELLED. Test-helper fix head `b7df56d789bb7281000d3e921d34c15dad0445c8` allows only that early `BrokenPipe` and still checks the worker's exit code and structured failure. Focused local test **2/2 PASS** and fmt **PASS**. Exact-head standard CI `36257156446`, Sandbox `36257156455`, and DSI PoC `36257156435` are all **SUCCESS**, including Ubuntu/macOS Intel/macOS arm64 gates.
 - Blocker: **none**. No frozen Design/profile amendment is proposed. PR #10 has 0 unresolved review threads and 0 submitted reviews at the latest check.
-- Next exact action: require exact-head hosted CI for this final status-only correction, then await review feedback. Address any blocking review findings before seeking an explicit merge instruction. **Do not merge now.**
+- Next exact action: commit/push this status-only record, verify standard CI, Sandbox, and DSI PoC at that exact head, then await PR #10 review feedback. Address any blocking finding before seeking an explicit merge instruction. **Do not merge now.**
 
 The checkpoint above supersedes historical progress lines below.
 
