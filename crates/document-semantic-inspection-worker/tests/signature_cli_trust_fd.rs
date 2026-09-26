@@ -2,7 +2,7 @@
 
 use std::{
     fs,
-    io::Write,
+    io::{ErrorKind, Write},
     os::fd::AsRawFd,
     os::unix::process::CommandExt,
     process::{Command, Output, Stdio},
@@ -112,12 +112,19 @@ fn run_worker(pdf: &[u8], trust_bundle: &[u8]) -> Output {
         });
     }
     let mut child = command.spawn().expect("spawn production worker binary");
-    child
+    if let Err(error) = child
         .stdin
         .take()
         .expect("worker stdin")
         .write_all(&request)
-        .expect("write WorkerRequest");
+    {
+        // An invalid trust bundle can close stdin before the request is written.
+        assert_eq!(
+            error.kind(),
+            ErrorKind::BrokenPipe,
+            "unexpected WorkerRequest write failure: {error}"
+        );
+    }
     child
         .wait_with_output()
         .expect("wait for production worker")
