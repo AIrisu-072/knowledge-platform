@@ -50,7 +50,14 @@ run = [
 
 [tasks."test:rust"]
 description = "Run Rust tests"
-run = ["cargo nextest run --workspace"]
+run = '''
+set -eu
+if [ "$(uname -s)" = Linux ]; then
+  cargo build --locked -p document-semantic-inspection-worker --bin document-semantic-inspection-worker
+  export DSI_WORKER_BIN="$(realpath "${CARGO_TARGET_DIR:-target}/debug/document-semantic-inspection-worker")"
+fi
+cargo nextest run --workspace
+'''
 
 [tasks."sqlx:prepare"]
 description = "Generate SQLx offline metadata against disposable PostgreSQL 18.6"

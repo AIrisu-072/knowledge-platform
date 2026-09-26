@@ -1138,6 +1138,7 @@ dependencies = [
 name = "document-semantic-inspection-runner"
 version = "0.0.0"
 dependencies = [
+ "document-application",
  "document-semantic-inspection-core",
  "landlock",
  "libc",
@@ -1147,6 +1148,7 @@ dependencies = [
  "sha2 0.11.0",
  "tempfile",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]

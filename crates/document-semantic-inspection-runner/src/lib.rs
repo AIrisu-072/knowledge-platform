@@ -9,10 +9,13 @@ use std::{path::PathBuf, time::Duration};
 use document_semantic_inspection_core::{TraceContext, WorkerResponse};
 use thiserror::Error;
 
+mod executor;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
 mod sandbox;
+
+pub use executor::RunnerInspectionExecutor;
 
 #[cfg(target_os = "linux")]
 const MAX_INPUT_BYTES: usize = 256 * 1024 * 1024;
