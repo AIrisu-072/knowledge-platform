@@ -197,6 +197,34 @@ fn self_contained_xml_signature_is_not_a_valid_package_signature() {
     }
 }
 
+#[test]
+fn unsigned_manifest_inside_valid_xml_signature_cannot_claim_package_coverage() {
+    let trust = SignatureTrustContext::new(vec![poc_fixture("fixtures/pdf/signatures/root.der")]);
+    let original = String::from_utf8(poc_fixture("fixtures/docx/signatures/xml-valid.xml"))
+        .expect("UTF-8 XML");
+    let unsigned_manifest = r#"<ds:Object Id="package-object"><ds:Manifest><ds:Reference URI="/word/document.xml?ContentType=application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</ds:DigestValue></ds:Reference></ds:Manifest></ds:Object></ds:Signature>"#;
+    let injected = original.replacen("</ds:Signature>", unsigned_manifest, 1);
+    assert_ne!(injected, original);
+
+    let package = poc_fixture("fixtures/docx/base.docx");
+    let wrapped = signature_ooxml::add_ooxml_signature(&package, injected.as_bytes());
+    let evidence =
+        SignatureInspector::verify_ooxml_package(&wrapped, &trust).expect("signature evidence");
+    assert_eq!(evidence.len(), 1);
+    assert_eq!(
+        evidence[0].cryptographic_validity,
+        SignatureValidity::Unverifiable,
+        "an unsigned Manifest cannot prove word/document.xml coverage"
+    );
+    assert!(
+        !evidence[0]
+            .covered_content
+            .iter()
+            .any(|part| part == "word/document.xml"),
+        "unsigned Manifest parts cannot be reported as authenticated coverage"
+    );
+}
+
 fn worker_response(pdf: &[u8], trust: &SignatureTrustContext) -> WorkerResponse {
     let request = WorkerRequest {
         protocol_version: WorkerProtocolVersion::V0,
