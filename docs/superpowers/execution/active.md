@@ -3,13 +3,13 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **PRODUCTION IMPLEMENTATION — TASKS 1–5 COMPLETE / TASK 6 GREEN CI REPAIR IN PROGRESS**
+- Current phase: **PRODUCTION IMPLEMENTATION — TASKS 1–6 COMPLETE / TASK 7 PPTX RED IN PROGRESS**
 - Frozen Design PR: `#7` — merged
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
 - Production planning PR: `#9` — merged as `48045768d1d026eb785ee065877e401bbafd97ca`
 - Production implementation branch: `feat/document-semantic-inspection-v0`
-- Production implementation PR: `#10` — OPEN / Draft; Task 5 final verified code head `14bcc4a63ec4ec56289619e4d76a9ca1792315ba`; read live GitHub for current PR head; do not merge
+- Production implementation PR: `#10` — OPEN / Draft; Task 6 final verified code head `98072f1732157c85ac3d26ce7bf78d64cc456568`; read live GitHub for current PR head; do not merge
 - Task 5 initial clean RED: `65d6896322b93c6731f8a836be8b79fcf53beac5`; authoritative repaired clean RED: `e3e6659d243233ff102c393e8be1515a05ba1398`; CI `36135132794` failed only on the expected missing DOCX APIs, Sandbox `36135132761` and DSI PoC `36135132763` passed
 - Supplemental test-only head: `bec052e43dfeedb049ac725f8c697cf564ec60b1`; exact-head CI `36136763103` failed on the expected missing `DocxAdapter` / `editorial_provenance()` APIs, Sandbox `36136763068` and DSI PoC `36136762918` passed
 - Intermediate ZIP-preflight test-only head: `593eddd14c15b098b377fc91b272239af1b24b12`; exact-head CI `36138987613` failed only on the expected missing DOCX APIs, Sandbox `36138987388` and DSI PoC `36138987376` passed. Its five cases failed as expected against the local pre-fix ZIP guard; fmt and strict worker Clippy passed.
@@ -101,23 +101,23 @@ Repository and fresh GitHub state override remembered/chat state.
 
 Design is approved and frozen. PoC Qualification Plan was explicitly approved on 2026-09-21.
 
-Production Tasks 1–5 are complete. Task 6 clean RED is complete and its committed GREEN candidate is undergoing a scoped container packaging repair. Task 4 promoted only its qualified TXT/CSV/HTML parser dependencies; `scraper` remains excluded. Task 5 promoted PoC-qualified `office_oxide 0.1.11`, deflate-only `zip 8.6.0`, `quick-xml 0.42.0`, and supplemental scoped `png 0.18.1` after clean RED and exact-head GREEN.
+Production Tasks 1–6 are complete. Task 6's final exact-head standard CI, Sandbox, and DSI PoC gates passed after its scoped container packaging repair. Task 4 promoted only its qualified TXT/CSV/HTML parser dependencies; `scraper` remains excluded. Task 5 promoted PoC-qualified `office_oxide 0.1.11`, deflate-only `zip 8.6.0`, `quick-xml 0.42.0`, and supplemental scoped `png 0.18.1` after clean RED and exact-head GREEN. Task 6 promoted only its qualified XLSX/XLSM/VBA parser composition.
 
 Task 2 produced one material qualification result: `scraper 0.27.0` was rejected because its transitive graph contains MPL-2.0. Direct `html5ever 0.39.0 + markup5ever_rcdom 0.39.0` passed the same semantic cases and the dependency gate.
 
 ## Current hard gate
 
-The PoC qualification gate is **complete**. The Production Implementation Plan was explicitly approved by the user on 2026-09-25, and PR #8 is merged. Production Tasks 1–5 are complete after clean RED and fresh exact-head GREEN evidence. Task 6 clean RED is complete and GREEN is in progress; no Design amendment is in progress.
+The PoC qualification gate is **complete**. The Production Implementation Plan was explicitly approved by the user on 2026-09-25, and PR #8 is merged. Production Tasks 1–6 are complete after clean RED and fresh exact-head GREEN evidence. Task 7 PPTX test-only RED is in progress; no Design amendment is in progress.
 
-Task 5 final head `14bcc4a63ec4ec56289619e4d76a9ca1792315ba` passed standard CI `36182511870`, Sandbox `36182511893`, and DSI PoC `36182511885`. Task 6 GREEN candidate is `7cf4986084649bcf5bccc5e8cca50930b090b75e` on PR #10, which remains OPEN / Draft. Its standard CI `36209080797` failed only in `container-build` because Dockerfile omitted tracked `third_party/`; all other code, policy, security, and portability jobs passed. Sandbox `36209080849` and DSI PoC `36209080799` succeeded at the same head. Read live GitHub before acting. Do not merge without explicit instruction.
+Task 6 final GREEN head `98072f1732157c85ac3d26ce7bf78d64cc456568` passed exact-head standard CI `36209740995`, Sandbox `36209740990`, and DSI PoC `36209741011`. Standard CI included a successful container-build and required-check. PR #10 remains OPEN / Draft. Read live GitHub before acting. Do not merge without explicit instruction.
 
 ## Next exact action
 
-Finish Task 6's scoped container packaging repair. The clean hosted Task 6 adapter RED is `7c9e31c184f34c79aa44f450dace05c281341ec0` with CI `36189581362` expected FAIL and Sandbox `36189581450` / DSI PoC `36189581454` SUCCESS. The Task 6 GREEN implementation was committed/pushed as `7cf4986084649bcf5bccc5e8cca50930b090b75e`; workspace tests, strict Clippy, fmt, cargo-deny, repository policy, and independent result-bound review passed locally. At that exact head, CI `36209080797` failed only in `container-build` because the Dockerfile omitted `third_party/`, which Cargo needs for the qualified ovba patch. Sandbox `36209080849` and DSI PoC `36209080799` succeeded. A one-line Dockerfile fix is in progress. Finish local container verification, commit/push the fix and execution docs, then require fresh standard CI, Sandbox, and DSI PoC SUCCESS at the same exact repaired head. Only then mark Task 6 COMPLETE and start Task 7 PPTX test-only RED. Keep PR #10 Draft and unmerged; no Design amendment is in progress.
+The eight Task 7 PPTX test-only RED contracts passed independent read-only review. Pinned Rust 1.98.1 formatting passed and focused compilation failed only on the expected missing `PptxAdapter` import. Commit/push the test and execution status without adding a Task 7 implementation or parser dependency. Require clean exact-head hosted RED: unrelated standard CI jobs pass, `rust-static`/`rust-test` fail only on missing PPTX adapter APIs, and DSI Sandbox Preflight and DSI PoC succeed. Then reproduce material supplemental RED for raw package coverage, resource bounds, XML namespace noise, and image re-encoding before Task 7 GREEN. Implement GREEN with `office_oxide 0.1.11` and an independent raw PresentationML oracle/sentinel only after the RED evidence is recorded. Keep PR #10 Draft and unmerged; no Design amendment is in progress.
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` のrepositoryとGitHubの現在状態を正本として続行してください。最初に `AGENTS.md`、このActive、Execution Status、Frozen Design、Design approval、承認済みProduction Plan、live branch/PR/CIの順に確認してください。Production Tasks 1–5 COMPLETE。Task 6 clean hosted REDは `7c9e31c184f34c79aa44f450dace05c281341ec0`、GREEN候補は `7cf4986084649bcf5bccc5e8cca50930b090b75e` です。後者のCI `36209080797` はDockerfileの`third_party/`未コピーのみで失敗し、Sandbox/PoCは成功しました。Dockerfileとexecution docsの修正をcommit/pushし、同一headのstandard CI/Sandbox/PoCを成功させてからTask 7 PPTX test-only REDへ進んでください。PR #10はOPEN/Draftのままmergeしません。Frozen Design/profileの意味変更が必要ならamendment gateへ戻ります。
+> `AIrisu-072/knowledge-platform` のrepositoryとGitHubの現在状態を正本として続行してください。最初に `AGENTS.md`、このActive、Execution Status、Frozen Design、Design approval、承認済みProduction Plan、live branch/PR/CIの順に確認してください。Production Tasks 1–6 COMPLETE。Task 6 final GREEN headは `98072f1732157c85ac3d26ce7bf78d64cc456568`、standard CI `36209740995` / Sandbox `36209740990` / DSI PoC `36209741011` は全てSUCCESSです。Task 7 PPTXの8件のtest-only REDはローカルfmt PASS・missing `PptxAdapter` E0432で意図したcompile REDです。独立review後にcommit/pushし、clean hosted REDを取得してください。続いてPoCのpackage/resource/namespace/image gapsを補助REDで確かめてからTask 7 GREENに進みます。PR #10はOPEN/Draftのままmergeしません。Frozen Design/profileの意味変更が必要ならamendment gateへ戻ります。
 
 ## End-of-session rule
 

@@ -2,7 +2,7 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **PRODUCTION IMPLEMENTATION — TASK 6 GREEN CI REPAIR IN PROGRESS**
+- Overall phase: **PRODUCTION IMPLEMENTATION — TASKS 1–6 COMPLETE / TASK 7 PPTX RED IN PROGRESS**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
@@ -10,7 +10,7 @@
 - Production planning PR: **#9 MERGED — `48045768d1d026eb785ee065877e401bbafd97ca`**
 - Production implementation branch: `feat/document-semantic-inspection-v0`
 - Production implementation PR: **#10 (OPEN / Draft)**
-- Last verified production code head: `14bcc4a63ec4ec56289619e4d76a9ca1792315ba`
+- Last verified production code head: `98072f1732157c85ac3d26ce7bf78d64cc456568`
 - PoC execution PR: **#8 (MERGED — `ab9ad6f9949128360e46fed07aca335bb6b10971`)**
 - Production implementation baseline: `main@48045768d1d026eb785ee065877e401bbafd97ca`
 - Baseline main CI: `36079233862` — **SUCCESS**
@@ -27,7 +27,7 @@
 - Frozen Design: **APPROVED / FROZEN**
 - PoC Qualification Plan: **APPROVED 2026-09-21**
 - Production Implementation Plan: **APPROVED 2026-09-25**
-- Production dependency promotion: **Task 1 sandbox, Task 4 TXT/CSV/HTML, Task 5 DOCX, and Task 6 XLSX/XLSM/VBA candidate parser compositions; Task 6 final hosted gate pending**
+- Production dependency promotion: **Task 1 sandbox, Task 4 TXT/CSV/HTML, Task 5 DOCX, and Task 6 XLSX/XLSM/VBA parser compositions passed their approved gates**
 
 PR #7 was advanced from review to approved state and merged after explicit user approval. The execution baseline is the resulting main merge commit `5cfe6cefebc1e695b04cd0dc4c19707aeb8b4eab`.
 
@@ -41,19 +41,19 @@ Current gates:
 - Production Implementation Plan: **APPROVED 2026-09-25**
 - Production planning PR #9: **MERGED**
 - PR #8: **MERGED — `ab9ad6f9949128360e46fed07aca335bb6b10971`**
-- Production dependency promotion: **Task 1 sandbox, Task 4 TXT/CSV/HTML, Task 5 DOCX, and Task 6 XLSX/XLSM/VBA candidate parser compositions; Task 6 final hosted gate pending**
+- Production dependency promotion: **Task 1 sandbox, Task 4 TXT/CSV/HTML, Task 5 DOCX, and Task 6 XLSX/XLSM/VBA parser compositions passed their approved gates**
 - Production implementation branch: **CREATED — `feat/document-semantic-inspection-v0`**
 - Production Task 1 sandbox preflight: **COMPLETE / PASS**
 - Production core crate: **TASK 2 COMPLETE / PASS**
-- Production runtime: **TASKS 1–5 COMPLETE / PASS; Task 6 XLSX/XLSM/VBA GREEN candidate built; container CI repair pending**
+- Production runtime: **TASKS 1–6 COMPLETE / PASS; Task 7 PPTX RED in progress**
 
 The production-hardening gap is resolved for the frozen v0 profile. Task 1 preflight qualified and promoted the sandbox substrate, and its runtime enforces the no-network, no-credential, filesystem-confinement, fresh-process, and finite resource-profile boundary.
 
 Required next order:
 
-1. Repair the Task 6 candidate's Docker build context so its qualified local parser patch is present in the image.
-2. Require standard CI, DSI Sandbox Preflight, and DSI PoC SUCCESS at the repaired Task 6 exact head.
-3. Start Task 7 PPTX test-only RED after the Task 6 gate. Keep PR #10 Draft and unmerged.
+1. Add Task 7 PPTX test-only RED for the qualified semantic, noise, editorial, and fail-closed fixtures.
+2. Require clean authoritative RED: formatting and unrelated CI jobs pass; only missing PPTX adapter contract fails.
+3. Promote no Task 7 implementation or dependency until clean RED is recorded. Keep PR #10 Draft and unmerged.
 
 ## Production Task 5 — DOCX COMPLETE
 
@@ -92,7 +92,7 @@ Earlier `dsi-prod-task5-red-evidence-*` managed runs timed out or failed before 
 
 That historical next action was completed by the Task 6 clean RED heads recorded below. The current next action is in the Task 6 section.
 
-## Production Task 6 — XLSX / XLSM / VBA GREEN CI REPAIR IN PROGRESS
+## Production Task 6 — XLSX / XLSM / VBA COMPLETE
 
 - Base head: `26afc64fd8703fdcf44af45497a2c9d0b41c30a1`; all three baseline workflows succeeded as above.
 - Initial test-only RED head: `75b0dbf8b2f59c24093098365c4257feceadddb2`. It contains workbook semantic/noise, hostile SpreadsheetML package, and external-dependency worker-response tests. Local focused adapter tests fail only on unresolved `SpreadsheetAdapter`; the worker-shell test compiles and fails with exit 65 because `Xlsx` is not yet dispatched. Rust 1.98.1 whole-workspace fmt and staged diff checks passed. Independent test review led to ordinary-hidden, applied-style, actual XML attribute-order, chart-title, image-pixel, and XLSM-repack assertions; a temporary PoC probe accepted each mutation. No Task 6 parser dependency or implementation was added.
@@ -109,8 +109,16 @@ That historical next action was completed by the Task 6 clean RED heads recorded
 - The DSI Sandbox Preflight and DSI PoC workflows previously filtered out production worker-only changes. Their PR path filters now include the DSI production crates, vendored parser, root Rust manifests, and execution status files, so the required regressions can run at the same Task 6 GREEN head. These workflow edits are uncommitted until the full local gate passes.
 - Task 6 GREEN implementation candidate head: `7cf4986084649bcf5bccc5e8cca50930b090b75e`, committed/pushed to PR #10. Its qualified dependency set and bounded adapter passed pinned Rust 1.98.1 workspace tests, strict Clippy, fmt, cargo-deny, and repository policy locally. The final scoped result-bound review found no unbounded dynamic `WorkerResponse` field.
 - Candidate exact-head CI `36209080797`: **FAIL**. `rust-test`, `rust-static`, policy, security, and macOS portability succeeded. Only `container-build` failed: Dockerfile did not copy tracked `third_party/` before `cargo build`, so Cargo could not read `/src/third_party/document-semantic-inspection/ovba-0.7.1/Cargo.toml` for the qualified `[patch.crates-io]`. The required-check consequently failed. This is a packaging failure, not a failing adapter contract. Exact-head Sandbox `36209080849`: **SUCCESS**. Exact-head DSI PoC `36209080799`: **SUCCESS**.
-- The scoped Dockerfile fix adds `COPY third_party ./third_party` before the image's Cargo build. The original CI failure is its RED evidence. Local canonical container build/smoke is in progress; fresh hosted GREEN has not yet been obtained. No Frozen Design amendment is required.
-- Exact next action: finish local container verification, commit/push the Dockerfile and execution-status repair, then require standard CI, Sandbox, and DSI PoC SUCCESS at the same repaired exact head before declaring Task 6 COMPLETE. Then start Task 7 PPTX test-only RED. PR #10 remains OPEN/Draft and unmerged.
+- The scoped Dockerfile fix adds `COPY third_party ./third_party` before the image's Cargo build. The original CI failure is its RED evidence. Its independent read-only review found that the one-line copy covers both the local ovba patch and VBA tree-sitter grammar. The local cross-architecture container build was stopped after the exact-head hosted container-build succeeded; local success is not claimed.
+- Final repaired GREEN head: `98072f1732157c85ac3d26ce7bf78d64cc456568`. Exact-head standard CI `36209740995`: **SUCCESS**, including `container-build`, `rust-test`, `rust-static`, policy, security, macOS portability, and required-check. DSI Sandbox Preflight `36209740990`: **SUCCESS**. DSI PoC `36209741011`: **SUCCESS**. Task 6 meets its final exact-head gate. No Frozen Design amendment was required.
+- Task 6 promoted only the PoC-qualified `rxls 0.1.3`, `calamine 0.36.1` with picture support, `ovba 0.7.1` with a scoped bounded local patch, `tree-sitter 0.25.10`, `tree-sitter-language 0.1.8`, and the exact qualified VBA grammar revision. VBA remains static-only. PR #10 remains OPEN/Draft and unmerged.
+
+## Production Task 7 — PPTX RED IN PROGRESS
+
+- Base head: `98072f1732157c85ac3d26ce7bf78d64cc456568`, with all three Task 6 final workflows SUCCESS.
+- A test-only RED file `crates/document-semantic-inspection-worker/tests/pptx_semantics.rs` now contains eight tests from the PoC-qualified PPTX fixtures. It covers slide/order, text/shape/group, table/chart/SmartArt/image/link/speaker-note significance; theme/font/background/internal-ID/package-order invariance; comment-only editorial evidence; unknown semantic part fail-closed; and worker shell dispatch/raw binding. Pinned direct Rust 1.98.1 `cargo fmt --all -- --check` and diff checks passed; focused test compilation failed only on the intended unresolved `PptxAdapter` import (E0432). Independent read-only test review found no initial RED blocker. Generated `experiments/document-semantic-inspection/target/` remains untracked and must not be staged.
+- Read-only promotion audit identified Task 7 supplemental RED candidates for PPTX package ambiguity, full content-type/part coverage, per-entry/XML/slides/shapes/images/resource bounds, SmartArt namespace-prefix invariance, and same-decoded-pixel image re-encoding. The frozen Design explicitly includes meaning-equivalent image re-encoding, but applying the qualified PNG decoder to PPTX needs its own candidate evidence before GREEN. Reproduce and scope each material case before repair; do not change Design/profile semantics silently.
+- No Task 7 production dependency or implementation has been added. Exact next action: commit/push the initial test-only RED with this execution update, then require a clean hosted RED. Next reproduce the material supplemental package/resource/namespace/image gaps with focused RED before Task 7 GREEN. No Design amendment is in progress.
 
 ## Production Task 4 — COMPLETE
 
@@ -449,9 +457,13 @@ Final cross-host evidence at the same head:
 
 ## Current gate / next exact action
 
-**PoC Qualification and Production Tasks 1–5 are complete. Task 6 GREEN is in progress.**
+**PoC Qualification and Production Tasks 1–6 are complete. Task 7 PPTX test-only RED is in progress.**
 
-Task 5 final production head `14bcc4a6` passed standard CI `36182511870`, Sandbox `36182511893`, and DSI PoC `36182511885`. Task 6 clean RED is `7c9e31c184f34c79aa44f450dace05c281341ec0` with expected CI failure `36189581362` and successful Sandbox `36189581450` / DSI PoC `36189581454`. The pre-rxls 4,096-image guard is locally GREEN. Current exact action: finish the full local gate and independent review after the structured-result-bound repair, commit/push the intended Task 6 GREEN changes, then require standard CI/Sandbox/PoC SUCCESS at the new exact head. The frozen Design remains unchanged.
+Task 6 final production head `98072f1732157c85ac3d26ce7bf78d64cc456568` passed standard CI `36209740995`, Sandbox `36209740990`, and DSI PoC `36209741011`. Its clean RED was `7c9e31c184f34c79aa44f450dace05c281341ec0` with expected CI failure `36189581362`. Current exact action: finish Task 7 test-only RED, verify format and missing-adapter compile failure locally, commit/push, and collect clean exact-head hosted RED before PPTX GREEN. No Task 7 dependency or adapter is promoted yet. The frozen Design remains unchanged.
+
+### Historical Task 6 local repair evidence
+
+The following interim local states were superseded by the final Task 6 exact-head GREEN above.
 
 Supplemental Task 6 local RED evidence (Rust 1.98.1, `spreadsheet_credential_leak.rs`, before source repair): the seven focused synthetic cases compiled and failed at behavioral assertions. ODBC `PWD=` and hyperlink/external-workbook URI userinfo reached stdout; `webPr` without `dbPr`, `refreshOnLoad`, foreign-namespace `dbPr`, and duplicate `dbPr` were accepted. The ordinary qualified ODBC fixture still passed. The test file passed rustfmt; no credential value was printed in diagnostics. The current source repair must return a generic failure and no result for these inputs while retaining qualified noncredential ODBC semantics.
 
