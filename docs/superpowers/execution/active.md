@@ -3,13 +3,13 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **PRODUCTION IMPLEMENTATION — TASKS 1–6 COMPLETE / TASK 7 PPTX RED COMPLETE, GREEN IN PROGRESS**
+- Current phase: **PRODUCTION IMPLEMENTATION — TASKS 1–7 COMPLETE / TASK 8 PDF RED NEXT**
 - Frozen Design PR: `#7` — merged
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
 - Production planning PR: `#9` — merged as `48045768d1d026eb785ee065877e401bbafd97ca`
 - Production implementation branch: `feat/document-semantic-inspection-v0`
-- Production implementation PR: `#10` — OPEN / Draft; Task 6 final verified code head `98072f1732157c85ac3d26ce7bf78d64cc456568`; read live GitHub for current PR head; do not merge
+- Production implementation PR: `#10` — OPEN / Draft; Task 7 final verified code head `42eeb9c2724d10a3a49d56a6d3f08a6336369de7`; read live GitHub for current PR head; do not merge
 - Task 5 initial clean RED: `65d6896322b93c6731f8a836be8b79fcf53beac5`; authoritative repaired clean RED: `e3e6659d243233ff102c393e8be1515a05ba1398`; CI `36135132794` failed only on the expected missing DOCX APIs, Sandbox `36135132761` and DSI PoC `36135132763` passed
 - Supplemental test-only head: `bec052e43dfeedb049ac725f8c697cf564ec60b1`; exact-head CI `36136763103` failed on the expected missing `DocxAdapter` / `editorial_provenance()` APIs, Sandbox `36136763068` and DSI PoC `36136762918` passed
 - Intermediate ZIP-preflight test-only head: `593eddd14c15b098b377fc91b272239af1b24b12`; exact-head CI `36138987613` failed only on the expected missing DOCX APIs, Sandbox `36138987388` and DSI PoC `36138987376` passed. Its five cases failed as expected against the local pre-fix ZIP guard; fmt and strict worker Clippy passed.
@@ -101,13 +101,13 @@ Repository and fresh GitHub state override remembered/chat state.
 
 Design is approved and frozen. PoC Qualification Plan was explicitly approved on 2026-09-21.
 
-Production Tasks 1–6 are complete. Task 6's final exact-head standard CI, Sandbox, and DSI PoC gates passed after its scoped container packaging repair. Task 4 promoted only its qualified TXT/CSV/HTML parser dependencies; `scraper` remains excluded. Task 5 promoted PoC-qualified `office_oxide 0.1.11`, deflate-only `zip 8.6.0`, `quick-xml 0.42.0`, and supplemental scoped `png 0.18.1` after clean RED and exact-head GREEN. Task 6 promoted only its qualified XLSX/XLSM/VBA parser composition. Task 7 initial clean RED is confirmed at `452c76d0d92aedb31c4c447cef5bae75388a8b63`, and supplemental clean RED at `6f32cbe87728a75ffd118862597cabbba54d2250`.
+Production Tasks 1–7 are complete. Task 7's final exact-head standard CI, Sandbox, and DSI PoC gates passed at `42eeb9c2724d10a3a49d56a6d3f08a6336369de7`. Task 4 promoted only its qualified TXT/CSV/HTML parser dependencies; `scraper` remains excluded. Task 5 promoted PoC-qualified `office_oxide 0.1.11`, deflate-only `zip 8.6.0`, `quick-xml 0.42.0`, and supplemental scoped `png 0.18.1` after clean RED and exact-head GREEN. Task 6 promoted only its qualified XLSX/XLSM/VBA parser composition. Task 7 initial clean RED is confirmed at `452c76d0d92aedb31c4c447cef5bae75388a8b63`, with further supplemental RED recorded below.
 
 Task 2 produced one material qualification result: `scraper 0.27.0` was rejected because its transitive graph contains MPL-2.0. Direct `html5ever 0.39.0 + markup5ever_rcdom 0.39.0` passed the same semantic cases and the dependency gate.
 
 ## Current hard gate
 
-The PoC qualification gate is **complete**. The Production Implementation Plan was explicitly approved by the user on 2026-09-25, and PR #8 is merged. Production Tasks 1–6 are complete after clean RED and fresh exact-head GREEN evidence. Task 7 PPTX initial and supplemental clean RED are complete; PoC GREEN is next. No Design amendment is in progress.
+The PoC qualification gate is **complete**. The Production Implementation Plan was explicitly approved by the user on 2026-09-25, and PR #8 is merged. Production Tasks 1–7 are complete after clean RED and fresh exact-head GREEN evidence. Task 8 PDF test-only RED is next. No Design amendment is in progress.
 
 Task 6 final GREEN head `98072f1732157c85ac3d26ce7bf78d64cc456568` passed exact-head standard CI `36209740995`, Sandbox `36209740990`, and DSI PoC `36209741011`. Standard CI included a successful container-build and required-check. PR #10 remains OPEN / Draft. Read live GitHub before acting. Do not merge without explicit instruction.
 
@@ -167,13 +167,15 @@ The final read-only audit found no additional proven source defect. It identifie
 
 PoC PPTX source and the independent OPC Target regression were promoted at exact head `94bf42a24a12f0f21d7f218600598a32ee9bb96d`. Hosted DSI PoC `36226998892` and Sandbox `36226998852` succeeded. Standard CI `36226998879` failed only on still-absent `PptxAdapter` E0432 in Rust static/test; fmt, policy, security, macOS portability, and container build succeeded. The production adapter candidate is staged separately, with pinned full workspace tests, strict all-target Clippy, fmt, cargo deny, and staged diff checks passing locally. No production GREEN or Task 7 completion is claimed yet.
 
+Production PPTX adapter promotion head `42eeb9c2724d10a3a49d56a6d3f08a6336369de7` is the final Task 7 GREEN: exact-head standard CI `36227354015`, DSI Sandbox Preflight `36227354068`, and DSI PoC `36227353971` all **SUCCESS**. Standard CI included Rust tests/static, policy, security, macOS portability, container build, and required-check. Local pinned full workspace tests, strict all-target Clippy, fmt, cargo deny, and staged diff check passed before promotion. Independent final read-only audit found no other proven source blocker. Task 7 is **COMPLETE**. PR #10 is still OPEN / Draft and unmerged; no Design amendment is in progress.
+
 ## Next exact action
 
-Read the current production promotion head and require fresh exact-head standard CI, Sandbox, and DSI PoC successes before Task 7 COMPLETE. If a gate fails, repair the specific failure and rerun all three workflows at the repaired head. Then continue Tasks 8–14 sequentially. Keep PR #10 Draft and unmerged; no Design amendment is in progress.
+Implement Task 8 Step 1 as PDF semantic **test-only RED**: add no parser dependency or adapter, format and commit/push the tests, then obtain clean exact-head standard CI failure only on missing PDF adapter APIs while Sandbox and DSI PoC pass. After recording RED, promote only the PoC-qualified PDF composition for Step 2 GREEN, then run separate signature RED/GREEN Steps 3–4. Continue Tasks 9–14 in approved order. Keep PR #10 Draft and unmerged; no Design amendment is in progress.
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` のrepositoryとGitHubの現在状態を正本として続行してください。最初に `AGENTS.md`、このActive、Execution Status、Frozen Design、Design approval、承認済みProduction Plan、live branch/PR/CIの順に確認してください。Production Tasks 1–6 COMPLETE。Task 7 PPTX の直近test-only RED headは `fcd33d973f6cff57a0a94b96b6a8e9b0014ac129` です。PoC source promotion head `94bf42a24a12f0f21d7f218600598a32ee9bb96d` はDSI PoC `36226998892`とSandbox `36226998852` SUCCESS、CI `36226998879`は未実装`PptxAdapter`のみでFAILしました。Production adapterはlocal full workspace tests、strict Clippy、fmt、cargo deny、独立レビューを通過してpromotion commitに含まれています。現在のHEADを読み、同一headのstandard CI・Sandbox・PoCすべてSUCCESSを確認してください。formula-only title候補は有効な参照先を証明できず閉じました。PPTX PNG再エンコード同一視とauto-shape geometry/rotation候補はDesign amendment未承認のため除外します。PR #10はOPEN/Draftのままmergeしません。その後Tasks 8–14を順に進めてください。
+> `AIrisu-072/knowledge-platform` のrepositoryとGitHubの現在状態を正本として続行してください。最初に `AGENTS.md`、このActive、Execution Status、Frozen Design、Design approval、承認済みProduction Plan、live branch/PR/CIの順に確認してください。Production Tasks 1–7 COMPLETE。Task 7 PPTX final GREEN head `42eeb9c2724d10a3a49d56a6d3f08a6336369de7` はstandard CI `36227354015`、Sandbox `36227354068`、DSI PoC `36227353971` がすべてSUCCESSです。次はTask 8 Step 1 PDF semantics test-only REDを実施し、fmt/policy/securityを通して未実装PDF APIだけが失敗するexact-head CIを記録してください。続いて承認済みPlanのPDF GREEN、署名RED/GREEN、Tasks 9–14を順に進めます。PR #10はOPEN/Draftのままmergeしません。
 
 ## End-of-session rule
 

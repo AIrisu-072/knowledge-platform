@@ -2,7 +2,7 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **PRODUCTION IMPLEMENTATION — TASKS 1–6 COMPLETE / TASK 7 PPTX RED COMPLETE, GREEN IN PROGRESS**
+- Overall phase: **PRODUCTION IMPLEMENTATION — TASKS 1–7 COMPLETE / TASK 8 PDF RED NEXT**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
@@ -10,7 +10,7 @@
 - Production planning PR: **#9 MERGED — `48045768d1d026eb785ee065877e401bbafd97ca`**
 - Production implementation branch: `feat/document-semantic-inspection-v0`
 - Production implementation PR: **#10 (OPEN / Draft)**
-- Last verified production code head: `98072f1732157c85ac3d26ce7bf78d64cc456568`
+- Last verified production code head: `42eeb9c2724d10a3a49d56a6d3f08a6336369de7`
 - PoC execution PR: **#8 (MERGED — `ab9ad6f9949128360e46fed07aca335bb6b10971`)**
 - Production implementation baseline: `main@48045768d1d026eb785ee065877e401bbafd97ca`
 - Baseline main CI: `36079233862` — **SUCCESS**
@@ -45,15 +45,15 @@ Current gates:
 - Production implementation branch: **CREATED — `feat/document-semantic-inspection-v0`**
 - Production Task 1 sandbox preflight: **COMPLETE / PASS**
 - Production core crate: **TASK 2 COMPLETE / PASS**
-- Production runtime: **TASKS 1–6 COMPLETE / PASS; Task 7 PPTX RED complete, PoC and production GREEN in progress**
+- Production runtime: **TASKS 1–7 COMPLETE / PASS; Task 8 PDF RED next**
 
 The production-hardening gap is resolved for the frozen v0 profile. Task 1 preflight qualified and promoted the sandbox substrate, and its runtime enforces the no-network, no-credential, filesystem-confinement, fresh-process, and finite resource-profile boundary.
 
 Required next order:
 
-1. Preserve Task 7 initial clean exact-head RED `452c76d0d92aedb31c4c447cef5bae75388a8b63` and its CI/Sandbox/PoC evidence below.
-2. Task 7 supplemental exact-head RED is complete at `6f32cbe87728a75ffd118862597cabbba54d2250` with the evidence below.
-3. Repair and qualify PoC semantics, then implement Task 7 production GREEN. Keep PR #10 Draft and unmerged.
+1. Preserve Task 7 clean RED and final exact-head GREEN evidence below.
+2. Start Task 8 Step 1 PDF semantics as test-only RED, without adding a parser dependency or implementing the PDF adapter.
+3. Obtain clean exact-head RED, then execute PDF GREEN and signature RED/GREEN in the approved order. Keep PR #10 Draft and unmerged.
 
 ## Production Task 5 — DOCX COMPLETE
 
@@ -113,7 +113,7 @@ That historical next action was completed by the Task 6 clean RED heads recorded
 - Final repaired GREEN head: `98072f1732157c85ac3d26ce7bf78d64cc456568`. Exact-head standard CI `36209740995`: **SUCCESS**, including `container-build`, `rust-test`, `rust-static`, policy, security, macOS portability, and required-check. DSI Sandbox Preflight `36209740990`: **SUCCESS**. DSI PoC `36209741011`: **SUCCESS**. Task 6 meets its final exact-head gate. No Frozen Design amendment was required.
 - Task 6 promoted only the PoC-qualified `rxls 0.1.3`, `calamine 0.36.1` with picture support, `ovba 0.7.1` with a scoped bounded local patch, `tree-sitter 0.25.10`, `tree-sitter-language 0.1.8`, and the exact qualified VBA grammar revision. VBA remains static-only. PR #10 remains OPEN/Draft and unmerged.
 
-## Production Task 7 — PPTX RED COMPLETE / GREEN NEXT
+## Production Task 7 — PPTX COMPLETE
 
 - Base head: `98072f1732157c85ac3d26ce7bf78d64cc456568`, with all three Task 6 final workflows SUCCESS.
 - Initial test-only RED head: `452c76d0d92aedb31c4c447cef5bae75388a8b63`. `crates/document-semantic-inspection-worker/tests/pptx_semantics.rs` contains eight tests from the PoC-qualified PPTX fixtures. It covers slide/order, text/shape/group, table/chart/SmartArt/image/link/speaker-note significance; theme/font/background/internal-ID/package-order invariance; comment-only editorial evidence; unknown semantic part fail-closed; and worker shell dispatch/raw binding. Pinned direct Rust 1.98.1 `cargo fmt --all -- --check` and diff checks passed; focused test compilation failed only on the intended unresolved `PptxAdapter` import (E0432). Independent read-only test review found no initial RED blocker.
@@ -149,7 +149,8 @@ That historical next action was completed by the Task 6 clean RED heads recorded
 - Local production GREEN for four audit repairs: all five focused new tests PASS. Pinned full workspace tests, strict all-target Clippy, root fmt, cargo deny, and diff check exit 0. Source remains uncommitted; final independent read-only audit is pending, and no hosted GREEN is claimed.
 - Final independent read-only audit found no other proven source defect. An added Target-only malformed OPC URI test passes 1/1 against current WIP; root fmt and strict Clippy remain green. The formula-only chart-title candidate was accepted by both WIP adapters with equal fingerprints, but no corpus fixture has a workbook or chart `externalData`; Microsoft Open XML guidance and independent scope review leave its PowerPoint meaning unproven. Temporary tests were removed; no source change or Design amendment was made for that candidate.
 - PoC PPTX source and independent OPC Target regression were promoted at exact head `94bf42a24a12f0f21d7f218600598a32ee9bb96d`. Hosted DSI PoC `36226998892` and Sandbox `36226998852` SUCCESS. Standard CI `36226998879` failed only on absent `PptxAdapter` E0432 in Rust static/test after fmt, policy, security, macOS portability, and container build passed. Production adapter candidate is staged separately; pinned full workspace tests, strict all-target Clippy, fmt, cargo deny, and staged diff checks passed locally. No production GREEN or Task 7 completion yet.
-- Exact next action: read current production promotion head and require same-head standard CI, Sandbox, and PoC SUCCESS. Keep PR #10 Draft and unmerged; continue Tasks 8–14 after Task 7 gate.
+- Final production GREEN head `42eeb9c2724d10a3a49d56a6d3f08a6336369de7`: exact-head standard CI `36227354015`, DSI Sandbox Preflight `36227354068`, and DSI PoC `36227353971` all **SUCCESS**. Standard CI passed Rust tests/static, policy, security, macOS portability, container build, and required-check. Local pinned full workspace tests, strict all-target Clippy, fmt, cargo deny, and staged diff check passed before promotion. The independent final read-only audit found no other proven source blocker. Task 7 is **COMPLETE**; PR #10 remains OPEN / Draft and unmerged.
+- Exact next action: implement Task 8 Step 1 PDF semantics as test-only RED, commit/push, and require exact-head standard CI failure only on missing PDF adapter APIs with Sandbox and DSI PoC SUCCESS. Then promote the qualified PDF composition for Step 2 GREEN, followed by separate signature RED/GREEN Steps 3–4. Keep PR #10 Draft and unmerged.
 
 ## Production Task 4 — COMPLETE
 
