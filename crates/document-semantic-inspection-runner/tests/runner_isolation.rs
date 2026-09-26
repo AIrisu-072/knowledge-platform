@@ -1,5 +1,6 @@
 #![cfg(target_os = "linux")]
 
+use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 #[cfg(target_os = "linux")]
 use std::time::Duration;
@@ -14,6 +15,7 @@ const INPUT_SHA256: [u8; 32] = [
     0xe3, 0x32, 0x78, 0x2c, 0xb3, 0xe2, 0x1c, 0x5f, 0xa0, 0x00, 0xd6, 0x6a, 0xee, 0x5b, 0x29, 0x1d,
 ];
 const TRUST_BUNDLE: &[u8] = br#"{"trusted_certificates_der":[],"crls_der":[]}"#;
+const UNLISTED_PARENT_FDS: [i32; 2] = [4, 200];
 
 fn synthetic_worker() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_dsi-runner-hostile-worker"))
@@ -67,6 +69,42 @@ fn sandbox_denies_network_and_worker_child_process_creation() {
             panic!("synthetic worker escaped {action} restriction: {error:?}")
         });
     }
+}
+
+#[test]
+fn runner_does_not_pass_an_unlisted_inheritable_parent_descriptor() {
+    if std::env::var_os("DSI_RUNNER_FD_CHILD").is_some() {
+        let directory = tempfile::tempdir().expect("private marker directory");
+        let marker = std::fs::File::create(directory.path().join("inheritable-marker"))
+            .expect("open synthetic parent descriptor");
+        // dup2 deliberately creates an inheritable FD, as a host process may have.
+        for fd in UNLISTED_PARENT_FDS {
+            assert_eq!(unsafe { libc::dup2(marker.as_raw_fd(), fd) }, fd);
+            assert_eq!(unsafe { libc::fcntl(fd, libc::F_SETFD, 0) }, 0);
+        }
+        let result = runner(None).inspect(input("inherited-fd"));
+        result.expect("worker must not inherit an unlisted parent descriptor");
+        runner(Some(TRUST_BUNDLE))
+            .inspect(input("inherited-fd"))
+            .expect("worker with explicit trust must not inherit unrelated descriptors");
+        return;
+    }
+
+    let output = std::process::Command::new(std::env::current_exe().expect("test executable"))
+        .args([
+            "--exact",
+            "runner_does_not_pass_an_unlisted_inheritable_parent_descriptor",
+            "--nocapture",
+        ])
+        .env("DSI_RUNNER_FD_CHILD", "1")
+        .output()
+        .expect("run isolated inherited-descriptor test");
+    assert!(
+        output.status.success(),
+        "an unlisted parent descriptor reached the worker: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]

@@ -117,6 +117,36 @@ jobs:
           mise install pnpm
       - run: mise run portability:macos
 
+  dsi-semantic-parity-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_BUILD_JOBS: "2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - run: mise install rust
+      - name: Install pinned PDFium for DSI semantic parity
+        run: |
+          pdfium_lib_dir="$(bash experiments/document-semantic-inspection/scripts/install-pdfium.sh)"
+          printf 'PDFIUM_DYNAMIC_LIB_PATH=%s\n' "${pdfium_lib_dir}" >> "${GITHUB_ENV}"
+      - name: DSI 91-case parity and supplemental semantic gates
+        run: |
+          cargo test --locked -p document-semantic-inspection-worker \
+            --test poc_production_parity \
+            --test xlsm_vba_semantics \
+            --test vba_resource_bounds \
+            --test signature_contract \
+            --test signature_cli_trust_fd
+
   container-build:
     runs-on: ubuntu-24.04
     steps:
@@ -138,6 +168,7 @@ jobs:
       - rust-test
       - security
       - portability-macos
+      - dsi-semantic-parity-macos
       - container-build
     runs-on: ubuntu-24.04
     steps:
@@ -148,9 +179,10 @@ jobs:
           RUST_TEST: ${{ needs.rust-test.result }}
           SECURITY: ${{ needs.security.result }}
           PORTABILITY_MACOS: ${{ needs.portability-macos.result }}
+          DSI_SEMANTIC_PARITY_MACOS: ${{ needs.dsi-semantic-parity-macos.result }}
           CONTAINER_BUILD: ${{ needs.container-build.result }}
         run: |
           set -eu
-          for result in "$POLICY" "$RUST_STATIC" "$RUST_TEST" "$SECURITY" "$PORTABILITY_MACOS" "$CONTAINER_BUILD"; do
+          for result in "$POLICY" "$RUST_STATIC" "$RUST_TEST" "$SECURITY" "$PORTABILITY_MACOS" "$DSI_SEMANTIC_PARITY_MACOS" "$CONTAINER_BUILD"; do
             test "$result" = success
           done

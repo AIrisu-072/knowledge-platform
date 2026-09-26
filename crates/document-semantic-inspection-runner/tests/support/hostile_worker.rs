@@ -16,8 +16,20 @@ fn main() {
     if !input_descriptor_matches() {
         exit(95);
     }
+    let inherited_fd_probe = request.contains("dsi-test=inherited-fd");
+    if inherited_fd_probe
+        && [4, 200].iter().any(|fd| {
+            std::fs::read_link(format!("/proc/self/fd/{fd}"))
+                .is_ok_and(|path| path.ends_with("inheritable-marker"))
+        })
+    {
+        exit(97);
+    }
     #[cfg(target_os = "linux")]
-    if std::env::var_os("DSI_TEST_SKIP_SANDBOX_SEAL").is_none() && seal_worker_sandbox().is_err() {
+    if !inherited_fd_probe
+        && std::env::var_os("DSI_TEST_SKIP_SANDBOX_SEAL").is_none()
+        && seal_worker_sandbox().is_err()
+    {
         exit(96);
     }
 

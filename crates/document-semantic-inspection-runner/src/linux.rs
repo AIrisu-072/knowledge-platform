@@ -193,6 +193,7 @@ fn run_child(
             {
                 return Err(io::Error::last_os_error());
             }
+            mark_unlisted_descriptors_close_on_exec(if trust_fd.is_some() { 5 } else { 4 })?;
             set_child_rlimit(libc::RLIMIT_CPU, CPU_SECONDS)?;
             set_child_rlimit(libc::RLIMIT_AS, ADDRESS_SPACE_BYTES)?;
             set_child_rlimit(libc::RLIMIT_FSIZE, OUTPUT_FILE_BYTES)?;
@@ -281,6 +282,58 @@ fn duplicate_for_child(file: &File) -> Result<File, RunnerError> {
         return Err(unavailable("inherited descriptor unavailable"));
     }
     Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+fn mark_unlisted_descriptors_close_on_exec(first_unlisted: i32) -> io::Result<()> {
+    // The host may have inheritable sockets or credentials. Preserve only
+    // stdio and explicit input/trust FDs. CLOEXEC keeps the spawn error pipe
+    // available until exec, including if a later pre-exec operation fails.
+    if unsafe {
+        libc::syscall(
+            libc::SYS_close_range,
+            first_unlisted as u32,
+            u32::MAX,
+            libc::CLOSE_RANGE_CLOEXEC,
+        )
+    } == 0
+    {
+        return Ok(());
+    }
+
+    // Some container seccomp profiles deny close_range. Sweep the complete
+    // possible FD table with async-signal-safe syscalls in that case.
+    let mut limit = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    if unsafe {
+        libc::syscall(
+            libc::SYS_prlimit64,
+            0,
+            libc::RLIMIT_NOFILE,
+            std::ptr::null::<libc::rlimit>(),
+            &mut limit,
+        )
+    } < 0
+        || limit.rlim_cur > i32::MAX as libc::rlim_t
+    {
+        return Err(io::Error::last_os_error());
+    }
+    for fd in first_unlisted..limit.rlim_cur as i32 {
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+        if flags < 0 {
+            if io::Error::last_os_error().raw_os_error() == Some(libc::EBADF) {
+                continue;
+            }
+            return Err(io::Error::last_os_error());
+        }
+        if flags & libc::FD_CLOEXEC == 0
+            && unsafe { libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) } < 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    Ok(())
 }
 
 fn set_child_rlimit(resource: libc::__rlimit_resource_t, value: u64) -> io::Result<()> {
