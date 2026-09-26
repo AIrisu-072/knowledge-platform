@@ -8,6 +8,8 @@ publish = false
 [dependencies]
 document-domain = { version = "0.0.0", path = "../document-domain" }
 document-application = { version = "0.0.0", path = "../document-application" }
+document-semantic-inspection-core = { version = "0.0.0", path = "../document-semantic-inspection-core" }
+serde.workspace = true
 sqlx.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -15,6 +17,5 @@ uuid.workspace = true
 time.workspace = true
 
 [dev-dependencies]
-document-semantic-inspection-core = { version = "0.0.0", path = "../document-semantic-inspection-core" }
 testcontainers.workspace = true
 tokio.workspace = true

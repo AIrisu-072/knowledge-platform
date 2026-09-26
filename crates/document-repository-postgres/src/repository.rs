@@ -18,7 +18,7 @@ const AUDIT_SOURCE: &str = "urn:knowledge-platform:document-platform";
 
 #[derive(Debug, Clone)]
 pub struct PostgresDocumentRepository {
-    pool: PgPool,
+    pub(crate) pool: PgPool,
 }
 
 impl PostgresDocumentRepository {

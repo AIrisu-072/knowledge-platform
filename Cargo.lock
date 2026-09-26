@@ -1113,6 +1113,7 @@ dependencies = [
  "document-application",
  "document-domain",
  "document-semantic-inspection-core",
+ "serde",
  "serde_json",
  "sqlx",
  "testcontainers",
