@@ -2,7 +2,7 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **PRODUCTION IMPLEMENTATION — TASKS 1–6 COMPLETE / TASK 7 PPTX SUPPLEMENTAL RED IN PROGRESS**
+- Overall phase: **PRODUCTION IMPLEMENTATION — TASKS 1–6 COMPLETE / TASK 7 PPTX RED COMPLETE, GREEN NEXT**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
@@ -52,7 +52,7 @@ The production-hardening gap is resolved for the frozen v0 profile. Task 1 prefl
 Required next order:
 
 1. Preserve Task 7 initial clean exact-head RED `452c76d0d92aedb31c4c447cef5bae75388a8b63` and its CI/Sandbox/PoC evidence below.
-2. Commit the supplemental PoC and production test-only cases for package ambiguity, XML namespace noise, and resource bounds; collect exact-head RED evidence before any repair.
+2. Task 7 supplemental exact-head RED is complete at `6f32cbe87728a75ffd118862597cabbba54d2250` with the evidence below.
 3. Repair and qualify PoC semantics, then implement Task 7 production GREEN. Keep PR #10 Draft and unmerged.
 
 ## Production Task 5 — DOCX COMPLETE
@@ -113,7 +113,7 @@ That historical next action was completed by the Task 6 clean RED heads recorded
 - Final repaired GREEN head: `98072f1732157c85ac3d26ce7bf78d64cc456568`. Exact-head standard CI `36209740995`: **SUCCESS**, including `container-build`, `rust-test`, `rust-static`, policy, security, macOS portability, and required-check. DSI Sandbox Preflight `36209740990`: **SUCCESS**. DSI PoC `36209741011`: **SUCCESS**. Task 6 meets its final exact-head gate. No Frozen Design amendment was required.
 - Task 6 promoted only the PoC-qualified `rxls 0.1.3`, `calamine 0.36.1` with picture support, `ovba 0.7.1` with a scoped bounded local patch, `tree-sitter 0.25.10`, `tree-sitter-language 0.1.8`, and the exact qualified VBA grammar revision. VBA remains static-only. PR #10 remains OPEN/Draft and unmerged.
 
-## Production Task 7 — PPTX RED IN PROGRESS
+## Production Task 7 — PPTX RED COMPLETE / GREEN NEXT
 
 - Base head: `98072f1732157c85ac3d26ce7bf78d64cc456568`, with all three Task 6 final workflows SUCCESS.
 - Initial test-only RED head: `452c76d0d92aedb31c4c447cef5bae75388a8b63`. `crates/document-semantic-inspection-worker/tests/pptx_semantics.rs` contains eight tests from the PoC-qualified PPTX fixtures. It covers slide/order, text/shape/group, table/chart/SmartArt/image/link/speaker-note significance; theme/font/background/internal-ID/package-order invariance; comment-only editorial evidence; unknown semantic part fail-closed; and worker shell dispatch/raw binding. Pinned direct Rust 1.98.1 `cargo fmt --all -- --check` and diff checks passed; focused test compilation failed only on the intended unresolved `PptxAdapter` import (E0432). Independent read-only test review found no initial RED blocker.
@@ -122,7 +122,8 @@ That historical next action was completed by the Task 6 clean RED heads recorded
 - A scoped design review found that identical decoded PNG pixels after re-encoding are required noise-same in frozen Design §13.2 for **DOCX**, while PPTX §13.5 and approved Task 7 do not establish that invariant. A PoC PPTX same-pixel test was locally RED, but it is **excluded from authoritative Task 7 RED and from promotion**. Applying that new PPTX fingerprint rule requires a separately approved Design amendment. This candidate is not a Task 7 blocker.
 - A separate scoped design review put auto-shape preset geometry and rotation changes on **HOLD**: Design §9.4/§13.5 and Task 7 do not define those as v0 fingerprint differences. A future rule to project or reject them needs an approved Design amendment; they are not Task 7 blockers.
 - Supplemental PoC tests reproduce valid XML-prefix/SmartArt, presentation relationship-prefix, generic-XML unknown-part, and chart-title label gaps. Focused PoC cases are locally behavioral RED against the existing source; independent read-only test review found no fixture blocker. Production package-safety, 64 MiB per-entry resource, chart-title, and presentation-prefix test-only cases also passed independent read-only review. Pinned Rust 1.98.1 root fmt and focused production compilations pass except for the expected missing `PptxAdapter` E0432. Generated `experiments/document-semantic-inspection/target/` remains untracked and must not be staged.
-- No Task 7 production dependency or implementation has been added. Exact next action: commit/push only the reviewed in-scope test files and execution records, and collect exact-head hosted RED before PoC or production source repair. No Design amendment is in progress.
+- Supplemental test-only RED head: `6f32cbe87728a75ffd118862597cabbba54d2250`, on local, remote, and PR #10 head. Exact-head standard CI `36212761629`: **FAIL as expected only on missing `PptxAdapter` E0432** in `rust-static` and `rust-test`; formatting, policy, security, macOS portability, and container build passed. Exact-head Sandbox `36212761543`: **SUCCESS**. Exact-head DSI PoC `36212761571`: **FAIL as expected on the new chart-title semantic assertion**, after preceding test suites passed. Cargo stopped at that first failing test binary; supplemental SmartArt/presentation-prefix/unknown-part tests each failed for their intended behavior in focused local runs. This records the clean supplemental RED before source repair.
+- No Task 7 production dependency or implementation has been added. Exact next action: repair the in-scope PoC namespace, unknown-part, and chart-title semantics; obtain a fresh hosted DSI PoC GREEN while production still fails only on absent `PptxAdapter`. Then implement the bounded production PPTX adapter/sentinel and require same-head triple GREEN. No Design amendment is in progress.
 
 ## Production Task 4 — COMPLETE
 
@@ -461,9 +462,9 @@ Final cross-host evidence at the same head:
 
 ## Current gate / next exact action
 
-**PoC Qualification and Production Tasks 1–6 are complete. Task 7 initial clean RED is confirmed; supplemental RED is in progress.**
+**PoC Qualification and Production Tasks 1–6 are complete. Task 7 initial and supplemental clean RED are confirmed; PoC GREEN is next.**
 
-Task 7 initial RED head `452c76d0d92aedb31c4c447cef5bae75388a8b63` has standard CI `36210857702` failing only on missing `PptxAdapter` after formatting and unrelated jobs passed; Sandbox `36210857803` and DSI PoC `36210857696` succeeded. Current exact action: finish independent review and bounded resource RED for the supplemental PPTX tests, commit/push only tests and execution records, and collect exact-head RED before PoC/production repairs. No Task 7 dependency or adapter is promoted yet. The frozen Design remains unchanged.
+Task 7 initial RED head `452c76d0d92aedb31c4c447cef5bae75388a8b63` had CI `36210857702` failing only on missing `PptxAdapter`, with Sandbox `36210857803` and DSI PoC `36210857696` successful. Supplemental RED head `6f32cbe87728a75ffd118862597cabbba54d2250` had CI `36212761629` failing only on the same missing adapter, Sandbox `36212761543` successful, and DSI PoC `36212761571` failing only on the new chart-title meaning assertion. Current exact action: repair in-scope PoC PPTX namespace, unknown-part, and chart-title semantics, then obtain hosted PoC GREEN before production implementation. No Task 7 dependency or adapter is promoted yet. The frozen Design remains unchanged.
 
 ### Historical Task 6 local repair evidence
 
