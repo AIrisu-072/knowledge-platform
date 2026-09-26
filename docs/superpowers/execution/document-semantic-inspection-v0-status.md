@@ -1,8 +1,21 @@
 # Document Semantic Inspection v0 — Execution Status
 
+## Latest production gate — 2026-09-27 JST
+
+- Branch / PR: `feat/document-semantic-inspection-v0` / PR #10 **OPEN / Draft** pending the documentation-only final gate; last exact verified implementation head `5045fa8e6274054f19931c2ba11bbec62fb546d5`.
+- Tasks 1–12 **COMPLETE**. Task 12 exact-head standard CI `36253230526`, Sandbox `36253230478`, and DSI PoC `36253230464` all **SUCCESS** at `feb3affb82ba2ed144a87d58706391d53890d7f5`.
+- Task 13 test-only RED `30f8fa2b80bce1070053251cc1c26b061ed3c45a`; GREEN code `59d6679511751791e07180c61d8bd3b48ae6382b`. Initial local parity RED was the missing qualified media-type profile handling; the supplemental cross-format RED was missing `assess_authority_migration`. Both now pass. Original PoC `a4fcef1...` corpus remains intact; the executable corrected corpus comes from PoC head `e309cbeb9f9075c5c3b900df8905f8ae62490337` / qualification `36161063199` and changes only 20 synthetic DOCX PNG bytes plus raw manifest hashes/sizes. All 91 relation/error expectations are unchanged (`d786494a95e9670974e8945a86aecf1d0d5252e809ef130036cfa6e78cbaff81` after stripping raw fields).
+- Local Task 13 verification: 91/91 cases, 20 repeated inspections per successful case, 5 fresh worker processes under locale/timezone variants, cross-format capability decisions, VBA and signature targets **PASS**. Original malformed PNG remains rejected.
+- Task 14 Linux inherited-FD review found an unlisted inheritable descriptor could reach the worker. Focused Docker/Linux RED failed 0/1; the allowlist fix passed 1/1 with and without the explicit trust FD. Local `mise run verify:full` **SUCCESS** in 200.27 s: 385 Rust tests passed, 4 platform-skipped; fmt, strict Clippy, architecture/API checks, `cargo deny check`, secrets/dependency/workflow scans, container build, and SBOM all passed.
+- Final implementation head `5045fa8e6274054f19931c2ba11bbec62fb546d5`: hosted CI `36255207130`, Sandbox `36255207090`, and DSI PoC `36255207056` all **SUCCESS**. The required standard CI matrix passed production semantic parity on macOS Intel and arm64; Ubuntu `rust-test` passed the same corpus and all worker/runner tests.
+- Review: 0 unresolved PR #10 threads and no submitted reviews at the latest check. Frozen Design/profile amendment: **none proposed**. Blocker: **none** at the verified implementation head.
+- Next exact action: commit/push this evidence-only status change; require exact-head hosted CI on the resulting documentation tree; mark PR #10 Ready for review when it passes. Then await review feedback and explicit merge instruction. Do not merge without that instruction.
+
+The latest production gate above supersedes historical “current” paragraphs below.
+
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **PRODUCTION IMPLEMENTATION — TASKS 1–8 COMPLETE / TASK 9 GREEN EXACT-HEAD CI NEXT**
+- Overall phase: **PRODUCTION IMPLEMENTATION — TASKS 1–14 VERIFIED AT IMPLEMENTATION HEAD / DOCUMENTATION-ONLY FINAL CI AND READY GATE NEXT**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
