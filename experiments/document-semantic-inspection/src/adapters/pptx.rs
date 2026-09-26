@@ -47,6 +47,7 @@ const DIAGRAM_COLORS_CONTENT_TYPE: &str =
     "application/vnd.openxmlformats-officedocument.drawingml.diagramColors+xml";
 const GENERIC_XML_CONTENT_TYPE: &str = "application/xml";
 const DRAWINGML_MAIN_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/main";
+const DRAWINGML_DIAGRAM_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/diagram";
 const PRESENTATION_NS: &str = "http://schemas.openxmlformats.org/presentationml/2006/main";
 const CHART_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/chart";
 const OFFICE_RELATIONSHIPS_NS: &str =
@@ -166,7 +167,8 @@ impl InspectionAdapter for PptxAdapter {
                 visual_present = true;
             }
 
-            let raw_shape_semantics = raw_shape_relationship_semantics(raw_slide, &slide.shapes)?;
+            let raw_shape_semantics =
+                raw_shape_relationship_semantics(slide_part, raw_slide, &rels, &slide.shapes)?;
             let mut shape_values = Vec::with_capacity(slide.shapes.len());
             let mut shape_path = Vec::new();
             for (shape_index, shape) in slide.shapes.iter().enumerate() {
@@ -178,6 +180,7 @@ impl InspectionAdapter for PptxAdapter {
                     &mut shape_path,
                     &raw_shape_semantics.connector_relationships,
                     &raw_shape_semantics.picture_transforms,
+                    &raw_shape_semantics.shape_click_hyperlinks,
                 )?;
                 shape_path.pop();
                 shape_values.push(value);
@@ -984,6 +987,106 @@ fn parse_relationships(data: &[u8]) -> Result<BTreeMap<String, Relationship>, Po
     Ok(out)
 }
 
+fn parse_shape_click_hyperlink(
+    event: &BytesStart<'_>,
+    slide_part: &str,
+    rels: &BTreeMap<String, Relationship>,
+) -> Result<RawShapeClickHyperlink, PocError> {
+    for item in event.attributes() {
+        let item = item.map_err(|error| {
+            PocError::SemanticExtractionFailed(format!(
+                "invalid shape hyperlink attribute: {error}"
+            ))
+        })?;
+        let key = item.key.as_ref();
+        if key == "xmlns" || key.starts_with("xmlns:") {
+            continue;
+        }
+        let recognized = if let Some((_, local)) = key.rsplit_once(':') {
+            local == "id"
+        } else {
+            matches!(
+                key,
+                "action"
+                    | "tgtFrame"
+                    | "tooltip"
+                    | "invalidUrl"
+                    | "history"
+                    | "highlightClick"
+                    | "endSnd"
+            )
+        };
+        if !recognized {
+            return Err(PocError::UnsupportedSemanticConstruct(
+                "unsupported shape click hyperlink attribute".into(),
+            ));
+        }
+    }
+
+    let relationship_id = relationship_attr(event, "id")?;
+    let action = normalized_unqualified_attr(event, "action")?;
+    let (target, external) = match relationship_id {
+        Some(id) => {
+            let relationship = rels.get(&id).ok_or_else(|| {
+                PocError::SemanticExtractionFailed(
+                    "shape click hyperlink relationship is missing".into(),
+                )
+            })?;
+            if !relationship.kind.ends_with("/hyperlink") {
+                return Err(PocError::UnsupportedSemanticConstruct(
+                    "shape click hyperlink references a non-hyperlink relationship".into(),
+                ));
+            }
+            let target = if relationship.external {
+                relationship.target.clone()
+            } else {
+                normalize_internal_hyperlink_target(slide_part, &relationship.target)?
+            };
+            (Some(target), relationship.external)
+        }
+        None if action.is_some() => (None, false),
+        None => {
+            return Err(PocError::SemanticExtractionFailed(
+                "shape click hyperlink has neither a relationship nor an action".into(),
+            ));
+        }
+    };
+
+    let boolean_attribute = |name, label| {
+        normalized_unqualified_attr(event, name)?
+            .map(|value| parse_on_off(&value, label))
+            .transpose()
+    };
+    Ok(RawShapeClickHyperlink {
+        target,
+        external,
+        action,
+        target_frame: normalized_unqualified_attr(event, "tgtFrame")?,
+        tooltip: normalized_unqualified_attr(event, "tooltip")?,
+        invalid_url: normalized_unqualified_attr(event, "invalidUrl")?,
+        history: boolean_attribute("history", "shape hyperlink history")?,
+        highlight_click: boolean_attribute("highlightClick", "shape hyperlink highlightClick")?,
+        end_sound: boolean_attribute("endSnd", "shape hyperlink endSnd")?,
+    })
+}
+
+fn normalize_internal_hyperlink_target(
+    source_part: &str,
+    target: &str,
+) -> Result<String, PocError> {
+    let (path, fragment) = target.split_once('#').unwrap_or((target, ""));
+    let resolved = if path.is_empty() {
+        source_part.to_owned()
+    } else {
+        resolve_target(source_part, path)?
+    };
+    if fragment.is_empty() {
+        Ok(resolved)
+    } else {
+        Ok(format!("{resolved}#{fragment}"))
+    }
+}
+
 fn known_relationship_type(value: &str) -> bool {
     if value
         == "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"
@@ -1277,10 +1380,26 @@ struct PptxPictureTransform {
 struct RawShapeSemantics {
     connector_relationships: BTreeMap<Vec<usize>, Value>,
     picture_transforms: BTreeMap<Vec<usize>, PptxPictureTransform>,
+    shape_click_hyperlinks: BTreeMap<Vec<usize>, RawShapeClickHyperlink>,
+}
+
+#[derive(Debug, Clone)]
+struct RawShapeClickHyperlink {
+    target: Option<String>,
+    external: bool,
+    action: Option<String>,
+    target_frame: Option<String>,
+    tooltip: Option<String>,
+    invalid_url: Option<String>,
+    history: Option<bool>,
+    highlight_click: Option<bool>,
+    end_sound: Option<bool>,
 }
 
 fn raw_shape_relationship_semantics(
+    slide_part: &str,
     slide_data: &[u8],
+    rels: &BTreeMap<String, Relationship>,
     office_shapes: &[Shape],
 ) -> Result<RawShapeSemantics, PocError> {
     let text = std::str::from_utf8(slide_data)
@@ -1294,6 +1413,8 @@ fn raw_shape_relationship_semantics(
     let mut identities = Vec::<PptxShapeIdentity>::new();
     let mut connectors = Vec::<RawConnector>::new();
     let mut picture_transforms = BTreeMap::new();
+    let mut shape_click_hyperlinks = BTreeMap::new();
+    let mut inside_non_visual_properties = false;
 
     loop {
         match reader.read_resolved_event() {
@@ -1345,12 +1466,36 @@ fn raw_shape_relationship_semantics(
                     if is_resolved_qname(&namespace, PRESENTATION_NS, "cNvPr", local)
                         && let Some(frame) = shape_stack.last_mut()
                     {
+                        if inside_non_visual_properties {
+                            return Err(PocError::SemanticExtractionFailed(
+                                "nested shape non-visual properties".into(),
+                            ));
+                        }
                         if frame.id.is_some() {
                             return Err(PocError::SemanticExtractionFailed(
                                 "shape has duplicate non-visual identifiers".into(),
                             ));
                         }
                         frame.id = Some(parse_shape_id(&event)?);
+                        inside_non_visual_properties = true;
+                    }
+                    if is_resolved_qname(&namespace, DRAWINGML_MAIN_NS, "hlinkClick", local)
+                        && inside_non_visual_properties
+                    {
+                        let hyperlink = parse_shape_click_hyperlink(&event, slide_part, rels)?;
+                        let frame = shape_stack.last().ok_or_else(|| {
+                            PocError::UnsupportedSemanticConstruct(
+                                "shape click hyperlink appears outside a shape".into(),
+                            )
+                        })?;
+                        if shape_click_hyperlinks
+                            .insert(frame.path.clone(), hyperlink)
+                            .is_some()
+                        {
+                            return Err(PocError::SemanticExtractionFailed(
+                                "shape has duplicate click hyperlinks".into(),
+                            ));
+                        }
                     }
                     if is_connector_endpoint_name(&namespace, local) {
                         let frame = shape_stack.last_mut().ok_or_else(|| {
@@ -1405,6 +1550,24 @@ fn raw_shape_relationship_semantics(
                         }
                         frame.id = Some(parse_shape_id(&event)?);
                     }
+                    if is_resolved_qname(&namespace, DRAWINGML_MAIN_NS, "hlinkClick", local)
+                        && inside_non_visual_properties
+                    {
+                        let hyperlink = parse_shape_click_hyperlink(&event, slide_part, rels)?;
+                        let frame = shape_stack.last().ok_or_else(|| {
+                            PocError::UnsupportedSemanticConstruct(
+                                "shape click hyperlink appears outside a shape".into(),
+                            )
+                        })?;
+                        if shape_click_hyperlinks
+                            .insert(frame.path.clone(), hyperlink)
+                            .is_some()
+                        {
+                            return Err(PocError::SemanticExtractionFailed(
+                                "shape has duplicate click hyperlinks".into(),
+                            ));
+                        }
+                    }
                     if is_connector_endpoint_name(&namespace, local) {
                         let frame = shape_stack.last_mut().ok_or_else(|| {
                             PocError::UnsupportedSemanticConstruct(
@@ -1436,6 +1599,14 @@ fn raw_shape_relationship_semantics(
                 let local = local_name.as_ref();
                 if let Some(frame) = shape_stack.last_mut() {
                     handle_picture_transform_end(frame, &namespace, local)?;
+                }
+                if is_resolved_qname(&namespace, PRESENTATION_NS, "cNvPr", local) {
+                    if !inside_non_visual_properties {
+                        return Err(PocError::SemanticExtractionFailed(
+                            "shape non-visual properties closed without an opening element".into(),
+                        ));
+                    }
+                    inside_non_visual_properties = false;
                 }
                 if inside_shape_tree
                     && is_resolved_qname(&namespace, PRESENTATION_NS, "spTree", local)
@@ -1503,7 +1674,11 @@ fn raw_shape_relationship_semantics(
         }
     }
 
-    if !saw_shape_tree || inside_shape_tree || !shape_stack.is_empty() {
+    if !saw_shape_tree
+        || inside_shape_tree
+        || !shape_stack.is_empty()
+        || inside_non_visual_properties
+    {
         return Err(PocError::SemanticExtractionFailed(
             "slide XML has no complete shape tree".into(),
         ));
@@ -1541,6 +1716,7 @@ fn raw_shape_relationship_semantics(
     Ok(RawShapeSemantics {
         connector_relationships,
         picture_transforms,
+        shape_click_hyperlinks,
     })
 }
 
@@ -1994,22 +2170,40 @@ fn raw_graphic_semantics(
 ) -> Result<Vec<Value>, PocError> {
     let text = std::str::from_utf8(slide_data)
         .map_err(|_| PocError::SemanticExtractionFailed("slide XML is not UTF-8".into()))?;
-    let mut reader = Reader::from_str(text);
+    let mut reader = NsReader::from_str(text);
+    reader.config_mut().check_end_names = true;
     let mut result = Vec::new();
     let mut frame_index = 0usize;
 
     loop {
-        match reader.read_event() {
-            Ok(Event::Start(event)) if event.local_name().as_ref() == "graphicFrame" => {
+        match reader.read_resolved_event() {
+            Ok((namespace, Event::Start(event)))
+                if is_resolved_qname(
+                    &namespace,
+                    PRESENTATION_NS,
+                    "graphicFrame",
+                    event.local_name().as_ref(),
+                ) =>
+            {
                 frame_index += 1;
             }
-            Ok(Event::Start(event)) | Ok(Event::Empty(event))
-                if event.local_name().as_ref() == "chart" =>
+            Ok((namespace, Event::Start(event))) | Ok((namespace, Event::Empty(event)))
+                if is_resolved_qname(
+                    &namespace,
+                    CHART_NS,
+                    "chart",
+                    event.local_name().as_ref(),
+                ) =>
             {
-                let rid = attr_required(&event, "id")?;
+                let rid = relationship_attr_required(&event, "id")?;
                 let rel = rels.get(&rid).ok_or_else(|| {
                     PocError::SemanticExtractionFailed(format!("chart relationship {rid} missing"))
                 })?;
+                if rel.external || !rel.kind.ends_with("/chart") {
+                    return Err(PocError::SemanticExtractionFailed(
+                        "chart reference is not an internal chart relationship".into(),
+                    ));
+                }
                 let target = resolve_target(slide_part, &rel.target)?;
                 let data = package.parts.get(&target).ok_or_else(|| {
                     PocError::SemanticExtractionFailed(format!("chart target {target} missing"))
@@ -2020,10 +2214,24 @@ fn raw_graphic_semantics(
                     "semantic": parse_chart_semantic(data)?,
                 }));
             }
-            Ok(Event::Start(event)) | Ok(Event::Empty(event))
-                if event.local_name().as_ref() == "relIds" =>
+            Ok((namespace, Event::Start(event))) | Ok((namespace, Event::Empty(event)))
+                if is_resolved_qname(
+                    &namespace,
+                    DRAWINGML_DIAGRAM_NS,
+                    "relIds",
+                    event.local_name().as_ref(),
+                ) =>
             {
-                let Some(rid) = attr(&event, "dm")? else {
+                let data_id = relationship_attr(&event, "dm")?;
+                let layout_id = relationship_attr(&event, "lo")?;
+                let quick_style_id = relationship_attr(&event, "qs")?;
+                let colors_id = relationship_attr(&event, "cs")?;
+                let Some(rid) = data_id else {
+                    if layout_id.is_some() || quick_style_id.is_some() || colors_id.is_some() {
+                        return Err(PocError::SemanticExtractionFailed(
+                            "SmartArt layout/style relationships have no data relationship".into(),
+                        ));
+                    }
                     continue;
                 };
                 let rel = rels.get(&rid).ok_or_else(|| {
@@ -2031,17 +2239,69 @@ fn raw_graphic_semantics(
                         "SmartArt relationship {rid} missing"
                     ))
                 })?;
+                if rel.external || !rel.kind.ends_with("/diagramData") {
+                    return Err(PocError::SemanticExtractionFailed(
+                        "SmartArt data reference is not an internal diagram-data relationship"
+                            .into(),
+                    ));
+                }
                 let target = resolve_target(slide_part, &rel.target)?;
                 let data = package.parts.get(&target).ok_or_else(|| {
                     PocError::SemanticExtractionFailed(format!("SmartArt target {target} missing"))
                 })?;
+                let mut semantic = parse_smartart_semantic(data)?;
+                if let Some(layout_id) = layout_id {
+                    let layout_relationship = rels.get(&layout_id).ok_or_else(|| {
+                        PocError::SemanticExtractionFailed(
+                            "SmartArt layout relationship is missing".into(),
+                        )
+                    })?;
+                    if layout_relationship.external
+                        || !layout_relationship.kind.ends_with("/diagramLayout")
+                    {
+                        return Err(PocError::SemanticExtractionFailed(
+                            "SmartArt layout reference is not an internal diagram-layout relationship"
+                                .into(),
+                        ));
+                    }
+                    let layout_target = resolve_target(slide_part, &layout_relationship.target)?;
+                    let layout_data = package.parts.get(&layout_target).ok_or_else(|| {
+                        PocError::SemanticExtractionFailed(format!(
+                            "SmartArt layout target {layout_target} missing"
+                        ))
+                    })?;
+                    semantic["layout"] = parse_smartart_layout_semantic(layout_data)?;
+                }
+                for (attribute, suffix, relationship_id) in [
+                    ("qs", "/diagramQuickStyle", quick_style_id),
+                    ("cs", "/diagramColors", colors_id),
+                ] {
+                    if let Some(relationship_id) = relationship_id {
+                        let relationship = rels.get(&relationship_id).ok_or_else(|| {
+                            PocError::SemanticExtractionFailed(format!(
+                                "SmartArt {attribute} relationship is missing"
+                            ))
+                        })?;
+                        if relationship.external || !relationship.kind.ends_with(suffix) {
+                            return Err(PocError::SemanticExtractionFailed(format!(
+                                "SmartArt {attribute} reference has the wrong relationship type"
+                            )));
+                        }
+                        let style_target = resolve_target(slide_part, &relationship.target)?;
+                        if !package.parts.contains_key(&style_target) {
+                            return Err(PocError::SemanticExtractionFailed(format!(
+                                "SmartArt {attribute} target {style_target} missing"
+                            )));
+                        }
+                    }
+                }
                 result.push(json!({
                     "frame_ordinal": frame_index,
                     "kind": "smartart",
-                    "semantic": parse_smartart_semantic(data)?,
+                    "semantic": semantic,
                 }));
             }
-            Ok(Event::Eof) => break,
+            Ok((_, Event::Eof)) => break,
             Ok(_) => {}
             Err(error) => {
                 return Err(PocError::SemanticExtractionFailed(format!(
@@ -2075,6 +2335,9 @@ struct ChartSeries {
     indexed_names: BTreeMap<u32, String>,
     categories: BTreeMap<u32, String>,
     values: BTreeMap<u32, String>,
+    name_formula: Option<String>,
+    category_formula: Option<String>,
+    value_formula: Option<String>,
     section: Option<ChartSeriesSection>,
     current_point: Option<(ChartSeriesSection, u32, bool)>,
     saw_categories: bool,
@@ -2092,6 +2355,9 @@ impl ChartSeries {
             indexed_names: BTreeMap::new(),
             categories: BTreeMap::new(),
             values: BTreeMap::new(),
+            name_formula: None,
+            category_formula: None,
+            value_formula: None,
             section: None,
             current_point: None,
             saw_categories: false,
@@ -2119,6 +2385,7 @@ struct ActiveChartDataLabels {
 struct ActiveChartTitle {
     scope: String,
     text: Vec<String>,
+    formula: Option<String>,
 }
 
 struct ActiveChartLegend {
@@ -2307,6 +2574,7 @@ fn parse_chart_semantic(data: &[u8]) -> Result<Value, PocError> {
                     active_title = Some(ActiveChartTitle {
                         scope,
                         text: Vec::new(),
+                        formula: None,
                     });
                 } else if is_chart && local == "dLbls" {
                     if labels_stack
@@ -2482,6 +2750,62 @@ fn parse_chart_semantic(data: &[u8]) -> Result<Value, PocError> {
                         )
                     })?;
                     set_chart_label_setting(labels, "separator", Some(json!(value)))?;
+                } else if is_chart && local == "f" {
+                    let formula = reader
+                        .read_text(event.name())
+                        .map_err(|error| {
+                            PocError::SemanticExtractionFailed(format!(
+                                "chart source formula XML: {error}"
+                            ))
+                        })?
+                        .trim()
+                        .to_owned();
+                    element_stack.pop();
+                    if formula.is_empty() {
+                        return Err(PocError::SemanticExtractionFailed(
+                            "chart source formula is empty".into(),
+                        ));
+                    }
+                    if !matches!(
+                        parent_chart_path.last().map(String::as_str),
+                        Some("strRef" | "numRef" | "multiLvlStrRef")
+                    ) {
+                        return Err(PocError::UnsupportedSemanticConstruct(
+                            "chart formula is outside a supported reference".into(),
+                        ));
+                    }
+                    if !labels_stack.is_empty() {
+                        return Err(PocError::UnsupportedSemanticConstruct(
+                            "formula-based chart data labels are unsupported".into(),
+                        ));
+                    }
+                    if let Some(title) = active_title.as_mut() {
+                        if title.formula.replace(formula).is_some() {
+                            return Err(PocError::SemanticExtractionFailed(
+                                "chart title has duplicate source formulas".into(),
+                            ));
+                        }
+                    } else if let Some(series) = current_series.as_mut() {
+                        let formula_slot = match series.section {
+                            Some(ChartSeriesSection::Name) => &mut series.name_formula,
+                            Some(ChartSeriesSection::Categories) => &mut series.category_formula,
+                            Some(ChartSeriesSection::Values) => &mut series.value_formula,
+                            None => {
+                                return Err(PocError::UnsupportedSemanticConstruct(
+                                    "chart formula is outside a series data source".into(),
+                                ));
+                            }
+                        };
+                        if formula_slot.replace(formula).is_some() {
+                            return Err(PocError::SemanticExtractionFailed(
+                                "chart series has duplicate source formulas".into(),
+                            ));
+                        }
+                    } else {
+                        return Err(PocError::UnsupportedSemanticConstruct(
+                            "chart formula has no title or series scope".into(),
+                        ));
+                    }
                 } else if (is_chart && local == "v") || (is_drawing && local == "t") {
                     let value = reader
                         .read_text(event.name())
@@ -2627,6 +2951,11 @@ fn parse_chart_semantic(data: &[u8]) -> Result<Value, PocError> {
                     chart_legend = Some(ActiveChartLegend::new());
                     continue;
                 }
+                if is_chart && local == "f" {
+                    return Err(PocError::SemanticExtractionFailed(
+                        "chart source formula must contain text".into(),
+                    ));
+                }
                 if is_chart && is_chart_type(&local) {
                     return Err(PocError::UnsupportedSemanticConstruct(
                         "empty chart type group is unsupported".into(),
@@ -2764,7 +3093,11 @@ fn parse_chart_semantic(data: &[u8]) -> Result<Value, PocError> {
                     "title" => {
                         if let Some(title) = active_title.take() {
                             if !title.text.is_empty() {
-                                titles.push(json!({"scope": title.scope, "text": title.text}));
+                                titles.push(json!({
+                                    "scope": title.scope,
+                                    "text": title.text,
+                                    "source_formula": title.formula,
+                                }));
                             }
                         }
                     }
@@ -2949,6 +3282,11 @@ fn parse_chart_semantic(data: &[u8]) -> Result<Value, PocError> {
                 "idx": index,
                 "order": order,
                 "name": name,
+                "source_formulas": {
+                    "name": series.name_formula,
+                    "categories": series.category_formula,
+                    "values": series.value_formula,
+                },
                 "points": points,
             }))
         })
@@ -3278,6 +3616,212 @@ fn parse_smartart_semantic(data: &[u8]) -> Result<Value, PocError> {
     }))
 }
 
+fn parse_smartart_layout_semantic(data: &[u8]) -> Result<Value, PocError> {
+    let text = std::str::from_utf8(data).map_err(|_| {
+        PocError::SemanticExtractionFailed("SmartArt layout XML is not UTF-8".into())
+    })?;
+    let mut reader = NsReader::from_str(text);
+    reader.config_mut().check_end_names = true;
+    let mut stack = Vec::<String>::new();
+    let mut projection = Vec::<Value>::new();
+    let mut root_seen = false;
+
+    loop {
+        match reader.read_resolved_event() {
+            Ok((namespace, Event::Start(event))) => {
+                let local_name = event.local_name();
+                let local = local_name.as_ref();
+                if !is_resolved_qname(&namespace, DRAWINGML_DIAGRAM_NS, local, local) {
+                    return Err(PocError::UnsupportedSemanticConstruct(
+                        "SmartArt layout element is outside the DrawingML diagram namespace".into(),
+                    ));
+                }
+                validate_smartart_layout_position(
+                    local,
+                    stack.last().map(String::as_str),
+                    &mut root_seen,
+                )?;
+                let attributes = smartart_layout_attributes(&reader, &event, local)?;
+                projection.push(json!({"start": local, "attributes": attributes}));
+                stack.push(local.to_owned());
+            }
+            Ok((namespace, Event::Empty(event))) => {
+                let local_name = event.local_name();
+                let local = local_name.as_ref();
+                if !is_resolved_qname(&namespace, DRAWINGML_DIAGRAM_NS, local, local) {
+                    return Err(PocError::UnsupportedSemanticConstruct(
+                        "SmartArt layout element is outside the DrawingML diagram namespace".into(),
+                    ));
+                }
+                validate_smartart_layout_position(
+                    local,
+                    stack.last().map(String::as_str),
+                    &mut root_seen,
+                )?;
+                if local == "layoutDef" {
+                    return Err(PocError::SemanticExtractionFailed(
+                        "SmartArt layout definition is empty".into(),
+                    ));
+                }
+                let attributes = smartart_layout_attributes(&reader, &event, local)?;
+                projection.push(json!({"start": local, "attributes": attributes}));
+                projection.push(json!({"end": local}));
+            }
+            Ok((namespace, Event::End(event))) => {
+                let local_name = event.local_name();
+                let local = local_name.as_ref();
+                if !is_resolved_qname(&namespace, DRAWINGML_DIAGRAM_NS, local, local) {
+                    return Err(PocError::UnsupportedSemanticConstruct(
+                        "SmartArt layout closing element is outside the DrawingML diagram namespace"
+                            .into(),
+                    ));
+                }
+                if stack.pop().as_deref() != Some(local) {
+                    return Err(PocError::SemanticExtractionFailed(
+                        "SmartArt layout elements are improperly nested".into(),
+                    ));
+                }
+                projection.push(json!({"end": local}));
+            }
+            Ok((_, Event::Text(event))) if !event.as_ref().trim().is_empty() => {
+                return Err(PocError::UnsupportedSemanticConstruct(
+                    "SmartArt layout text content is unsupported".into(),
+                ));
+            }
+            Ok((_, Event::CData(event))) if !event.as_ref().trim().is_empty() => {
+                return Err(PocError::UnsupportedSemanticConstruct(
+                    "SmartArt layout CDATA content is unsupported".into(),
+                ));
+            }
+            Ok((_, Event::Eof)) => break,
+            Ok(_) => {}
+            Err(error) => {
+                return Err(PocError::SemanticExtractionFailed(format!(
+                    "SmartArt layout XML: {error}"
+                )));
+            }
+        }
+        if projection.len() > MAX_XML_NODES {
+            return Err(PocError::InspectionResourceLimitExceeded);
+        }
+    }
+
+    if !root_seen || !stack.is_empty() {
+        return Err(PocError::SemanticExtractionFailed(
+            "SmartArt layout XML ended with an incomplete structure".into(),
+        ));
+    }
+    Ok(json!(projection))
+}
+
+fn validate_smartart_layout_position(
+    local: &str,
+    parent: Option<&str>,
+    root_seen: &mut bool,
+) -> Result<(), PocError> {
+    let valid = match (parent, local) {
+        (None, "layoutDef") => {
+            if std::mem::replace(root_seen, true) {
+                return Err(PocError::SemanticExtractionFailed(
+                    "SmartArt layout has multiple roots".into(),
+                ));
+            }
+            true
+        }
+        (Some("layoutDef"), "layoutNode")
+        | (Some("layoutNode"), "layoutNode" | "alg" | "presOf" | "forEach")
+        | (Some("forEach"), "layoutNode")
+        | (Some("alg"), "param") => true,
+        _ => false,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(PocError::UnsupportedSemanticConstruct(format!(
+            "unsupported SmartArt layout element {local}"
+        )))
+    }
+}
+
+fn smartart_layout_attributes<R>(
+    reader: &NsReader<R>,
+    event: &BytesStart<'_>,
+    element: &str,
+) -> Result<BTreeMap<String, String>, PocError> {
+    let allowed = match element {
+        "layoutDef" => &["uniqueId", "minVer"][..],
+        "layoutNode" => &["name", "styleLbl", "moveWith", "chOrder"][..],
+        "alg" => &["type", "rev"][..],
+        "param" => &["type", "val"][..],
+        "presOf" => &["axis", "ptType", "cnt"][..],
+        "forEach" => &["axis", "ptType", "cnt", "st", "step", "hideLastTrans"][..],
+        _ => {
+            return Err(PocError::UnsupportedSemanticConstruct(
+                "unsupported SmartArt layout element attributes".into(),
+            ));
+        }
+    };
+    let mut attributes = BTreeMap::new();
+    for item in event.attributes() {
+        let item = item.map_err(|error| {
+            PocError::SemanticExtractionFailed(format!(
+                "invalid SmartArt layout attribute: {error}"
+            ))
+        })?;
+        let key = item.key.as_ref();
+        if key == "xmlns" || key.starts_with("xmlns:") {
+            continue;
+        }
+        let (namespace, local) = reader.resolver().resolve_attribute(item.key);
+        if !matches!(namespace, ResolveResult::Unbound) || !allowed.contains(&local.as_ref()) {
+            return Err(PocError::UnsupportedSemanticConstruct(format!(
+                "unsupported SmartArt layout attribute on {element}"
+            )));
+        }
+        let name = local.as_ref().to_owned();
+        let value = item
+            .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+            .map_err(|error| {
+                PocError::SemanticExtractionFailed(format!(
+                    "invalid SmartArt layout attribute value: {error}"
+                ))
+            })?
+            .into_owned();
+        if attributes.insert(name, value).is_some() {
+            return Err(PocError::SemanticExtractionFailed(
+                "duplicate SmartArt layout attribute".into(),
+            ));
+        }
+    }
+    let required = match element {
+        "layoutNode" => &["name"][..],
+        "alg" => &["type"][..],
+        "param" => &["type", "val"][..],
+        "forEach" => &["axis", "ptType"][..],
+        _ => &[][..],
+    };
+    if required.iter().any(|name| !attributes.contains_key(*name)) {
+        return Err(PocError::SemanticExtractionFailed(format!(
+            "SmartArt layout {element} is missing a required attribute"
+        )));
+    }
+    if element == "layoutDef" {
+        attributes.remove("uniqueId");
+        attributes.remove("minVer");
+    }
+    if element == "param" && attributes.get("type").map(String::as_str) == Some("linDir") {
+        if !matches!(
+            attributes.get("val").map(String::as_str),
+            Some("fromL" | "fromR" | "fromT" | "fromB")
+        ) {
+            return Err(PocError::SemanticExtractionFailed(
+                "SmartArt linear direction is invalid".into(),
+            ));
+        }
+    }
+    Ok(attributes)
+}
+
 fn smartart_connection_order(event: &BytesStart<'_>, attribute: &str) -> Result<u32, PocError> {
     let value = normalized_unqualified_attr_required(event, attribute)?;
     value.parse::<u32>().map_err(|_| {
@@ -3294,9 +3838,10 @@ fn shape_projection(
     shape_path: &mut Vec<usize>,
     connector_relationships: &BTreeMap<Vec<usize>, Value>,
     picture_transforms: &BTreeMap<Vec<usize>, PptxPictureTransform>,
+    shape_click_hyperlinks: &BTreeMap<Vec<usize>, RawShapeClickHyperlink>,
 ) -> Result<Value, PocError> {
-    match shape {
-        Shape::AutoShape(shape) => Ok(json!({
+    let mut projection = match shape {
+        Shape::AutoShape(shape) => json!({
             "kind": "auto_shape",
             "position": position_projection(shape.position.as_ref()),
             "alt_text": shape.alt_text,
@@ -3307,7 +3852,7 @@ fn shape_projection(
             "text": shape.text_body.as_ref().map(|body| {
                 text_body_projection(body, external_dependencies)
             }).transpose()?,
-        })),
+        }),
         Shape::Picture(shape) => {
             *visual_present = true;
             let picture_transform = picture_transforms.get(shape_path).ok_or_else(|| {
@@ -3320,7 +3865,7 @@ fn shape_projection(
                     "picture relationship did not resolve to bytes".into(),
                 )
             })?;
-            Ok(json!({
+            json!({
                 "kind": "picture",
                 "position": position_projection(shape.position.as_ref()),
                 "alt_text": shape.alt_text,
@@ -3335,7 +3880,7 @@ fn shape_projection(
                     "flip_horizontal": picture_transform.flip_horizontal,
                     "flip_vertical": picture_transform.flip_vertical,
                 },
-            }))
+            })
         }
         Shape::Group(group) => {
             let mut children = Vec::with_capacity(group.children.len());
@@ -3348,14 +3893,15 @@ fn shape_projection(
                     shape_path,
                     connector_relationships,
                     picture_transforms,
+                    shape_click_hyperlinks,
                 )?);
                 shape_path.pop();
             }
-            Ok(json!({
+            json!({
                 "kind": "group",
                 "position": position_projection(group.position.as_ref()),
                 "children": children,
-            }))
+            })
         }
         Shape::GraphicFrame(frame) => {
             *visual_present = true;
@@ -3391,11 +3937,11 @@ fn shape_projection(
                 GraphicContent::Text(text) => json!({"kind": "graphic_text", "text": text}),
                 GraphicContent::Unknown => json!({"kind": "graphic_unknown"}),
             };
-            Ok(json!({
+            json!({
                 "kind": "graphic_frame",
                 "position": position_projection(frame.position.as_ref()),
                 "content": content,
-            }))
+            })
         }
         Shape::Connector(connector) => {
             let connections = connector_relationships.get(shape_path).ok_or_else(|| {
@@ -3403,13 +3949,46 @@ fn shape_projection(
                     "raw PresentationML connector occurrence is missing".into(),
                 )
             })?;
-            Ok(json!({
+            json!({
                 "kind": "connector",
                 "position": position_projection(connector.position.as_ref()),
                 "connections": connections,
-            }))
+            })
         }
+    };
+
+    if let Some(hyperlink) = shape_click_hyperlinks.get(shape_path) {
+        let kind = if hyperlink.external {
+            "external"
+        } else if hyperlink.target.is_some() {
+            "internal"
+        } else {
+            "action"
+        };
+        if hyperlink.external {
+            let target = hyperlink.target.as_ref().ok_or_else(|| {
+                PocError::SemanticExtractionFailed(
+                    "external shape click hyperlink has no target".into(),
+                )
+            })?;
+            external_dependencies.push(ExternalDependency {
+                kind: "hyperlink".into(),
+                definition: target.clone(),
+            });
+        }
+        projection["click_hyperlink"] = json!({
+            "kind": kind,
+            "target": hyperlink.target.as_deref(),
+            "action": hyperlink.action.as_deref(),
+            "target_frame": hyperlink.target_frame.as_deref(),
+            "tooltip": hyperlink.tooltip.as_deref(),
+            "invalid_url": hyperlink.invalid_url.as_deref(),
+            "history": hyperlink.history,
+            "highlight_click": hyperlink.highlight_click,
+            "end_sound": hyperlink.end_sound,
+        });
     }
+    Ok(projection)
 }
 
 fn position_projection(position: Option<&office_oxide::pptx::ShapePosition>) -> Value {
@@ -3587,6 +4166,20 @@ fn namespaced_attr_required<R>(
     namespace_uri: &str,
     local_name: &str,
 ) -> Result<String, PocError> {
+    namespaced_attr(reader, event, namespace_uri, local_name)?.ok_or_else(|| {
+        PocError::SemanticExtractionFailed(format!(
+            "missing required attribute {{{namespace_uri}}}{local_name}"
+        ))
+    })
+}
+
+fn namespaced_attr<R>(
+    reader: &NsReader<R>,
+    event: &BytesStart<'_>,
+    namespace_uri: &str,
+    local_name: &str,
+) -> Result<Option<String>, PocError> {
+    let mut found = None;
     for item in event.attributes() {
         let item = item.map_err(|error| {
             PocError::SemanticExtractionFailed(format!("invalid XML attribute: {error}"))
@@ -3595,12 +4188,15 @@ fn namespaced_attr_required<R>(
         if matches!(namespace, ResolveResult::Bound(namespace) if namespace.as_ref() == namespace_uri)
             && local.as_ref() == local_name
         {
-            return Ok(item.value.as_ref().to_owned());
+            if found.is_some() {
+                return Err(PocError::SemanticExtractionFailed(format!(
+                    "duplicate attribute {{{namespace_uri}}}{local_name}"
+                )));
+            }
+            found = Some(item.value.as_ref().to_owned());
         }
     }
-    Err(PocError::SemanticExtractionFailed(format!(
-        "missing required attribute {{{namespace_uri}}}{local_name}"
-    )))
+    Ok(found)
 }
 
 fn attr_required(event: &BytesStart<'_>, name: &str) -> Result<String, PocError> {
@@ -3621,6 +4217,44 @@ fn normalized_unqualified_attr_required(
 ) -> Result<String, PocError> {
     normalized_unqualified_attr(event, name)?.ok_or_else(|| {
         PocError::SemanticExtractionFailed(format!("missing required unqualified attribute {name}"))
+    })
+}
+
+fn relationship_attr(event: &BytesStart<'_>, local_name: &str) -> Result<Option<String>, PocError> {
+    let mut found = None;
+    for item in event.attributes() {
+        let item = item.map_err(|error| {
+            PocError::SemanticExtractionFailed(format!(
+                "invalid relationship reference attribute: {error}"
+            ))
+        })?;
+        let key = item.key.as_ref();
+        if key == local_name {
+            return Err(PocError::SemanticExtractionFailed(format!(
+                "relationship reference {local_name} must be namespace-qualified"
+            )));
+        }
+        if key
+            .rsplit_once(':')
+            .is_some_and(|(_, local)| local == local_name)
+        {
+            if found.is_some() {
+                return Err(PocError::SemanticExtractionFailed(format!(
+                    "duplicate relationship reference {local_name}"
+                )));
+            }
+            found = Some(item.value.as_ref().to_owned());
+        }
+    }
+    Ok(found)
+}
+
+fn relationship_attr_required(
+    event: &BytesStart<'_>,
+    local_name: &str,
+) -> Result<String, PocError> {
+    relationship_attr(event, local_name)?.ok_or_else(|| {
+        PocError::SemanticExtractionFailed(format!("missing relationship reference {local_name}"))
     })
 }
 
