@@ -1,6 +1,7 @@
 use document_semantic_inspection_poc::{
     InspectionAdapter, InspectionProfile, PdfAdapter, fingerprint,
 };
+use pdfium_render::prelude::{PdfRenderConfig, Pdfium};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -12,6 +13,8 @@ fn changed_pixel_inside_visible_form_xobject_changes_identity() {
 
     let baseline_fingerprint = inspect_native_text_pdf(&baseline, "baseline");
     let changed_fingerprint = inspect_native_text_pdf(&changed, "changed");
+    assert_eq!(render_rgb_pixel(&baseline), [0, 0, 0]);
+    assert_eq!(render_rgb_pixel(&changed), [255, 255, 255]);
     assert_ne!(
         baseline_fingerprint, changed_fingerprint,
         "a visible image nested inside a Form XObject is semantic PDF content"
@@ -26,6 +29,8 @@ fn changed_pixel_from_page_tree_inherited_resources_changes_identity() {
 
     let baseline_fingerprint = inspect_native_text_pdf(&baseline, "baseline");
     let changed_fingerprint = inspect_native_text_pdf(&changed, "changed");
+    assert_eq!(render_rgb_pixel(&baseline), [0, 0, 0]);
+    assert_eq!(render_rgb_pixel(&changed), [255, 255, 255]);
     assert_ne!(
         baseline_fingerprint, changed_fingerprint,
         "a visible image resolved through inherited page-tree Resources is semantic PDF content"
@@ -40,6 +45,8 @@ fn image_decode_array_changes_identity_when_raw_sample_is_unchanged() {
 
     let baseline_fingerprint = inspect_native_text_pdf(&baseline, "baseline");
     let changed_fingerprint = inspect_native_text_pdf(&changed, "changed");
+    assert_eq!(render_rgb_pixel(&baseline), [0, 0, 0]);
+    assert_eq!(render_rgb_pixel(&changed), [255, 255, 255]);
     assert_ne!(
         baseline_fingerprint, changed_fingerprint,
         "Decode reversal changes the visible pixel even when the raw 0x00 sample is identical"
@@ -58,6 +65,22 @@ fn inspect_native_text_pdf(input: &[u8], label: &str) -> [u8; 32] {
         "{label} must retain the same native text"
     );
     fingerprint(&output.semantic_projection)
+}
+
+fn render_rgb_pixel(input: &[u8]) -> [u8; 3] {
+    let pdfium = Pdfium::default();
+    let document = pdfium
+        .load_pdf_from_byte_slice(input, None)
+        .expect("PDFium must load the visible image fixture");
+    let page = document.pages().get(0).expect("first page");
+    let bitmap = page
+        .render_with_config(&PdfRenderConfig::new().set_target_width(200))
+        .expect("PDFium must render the visible image fixture");
+    let pixels = bitmap.as_rgba_bytes();
+    let offset = (140 * bitmap.width() as usize + 60) * 4;
+    pixels[offset..offset + 3]
+        .try_into()
+        .expect("RGB sample at the center of the rendered image")
 }
 
 fn assert_one_byte_diff(baseline: &[u8], changed: &[u8]) {
