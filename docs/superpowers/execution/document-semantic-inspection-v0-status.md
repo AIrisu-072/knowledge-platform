@@ -2,7 +2,7 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **PRODUCTION IMPLEMENTATION — TASKS 1–6 COMPLETE / TASK 7 PPTX RED IN PROGRESS**
+- Overall phase: **PRODUCTION IMPLEMENTATION — TASKS 1–6 COMPLETE / TASK 7 PPTX SUPPLEMENTAL RED IN PROGRESS**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
@@ -51,9 +51,9 @@ The production-hardening gap is resolved for the frozen v0 profile. Task 1 prefl
 
 Required next order:
 
-1. Add Task 7 PPTX test-only RED for the qualified semantic, noise, editorial, and fail-closed fixtures.
-2. Require clean authoritative RED: formatting and unrelated CI jobs pass; only missing PPTX adapter contract fails.
-3. Promote no Task 7 implementation or dependency until clean RED is recorded. Keep PR #10 Draft and unmerged.
+1. Preserve Task 7 initial clean exact-head RED `452c76d0d92aedb31c4c447cef5bae75388a8b63` and its CI/Sandbox/PoC evidence below.
+2. Commit the supplemental PoC and production test-only cases for package ambiguity, XML namespace noise, and resource bounds; collect exact-head RED evidence before any repair.
+3. Repair and qualify PoC semantics, then implement Task 7 production GREEN. Keep PR #10 Draft and unmerged.
 
 ## Production Task 5 — DOCX COMPLETE
 
@@ -116,9 +116,13 @@ That historical next action was completed by the Task 6 clean RED heads recorded
 ## Production Task 7 — PPTX RED IN PROGRESS
 
 - Base head: `98072f1732157c85ac3d26ce7bf78d64cc456568`, with all three Task 6 final workflows SUCCESS.
-- A test-only RED file `crates/document-semantic-inspection-worker/tests/pptx_semantics.rs` now contains eight tests from the PoC-qualified PPTX fixtures. It covers slide/order, text/shape/group, table/chart/SmartArt/image/link/speaker-note significance; theme/font/background/internal-ID/package-order invariance; comment-only editorial evidence; unknown semantic part fail-closed; and worker shell dispatch/raw binding. Pinned direct Rust 1.98.1 `cargo fmt --all -- --check` and diff checks passed; focused test compilation failed only on the intended unresolved `PptxAdapter` import (E0432). Independent read-only test review found no initial RED blocker. Generated `experiments/document-semantic-inspection/target/` remains untracked and must not be staged.
-- Read-only promotion audit identified Task 7 supplemental RED candidates for PPTX package ambiguity, full content-type/part coverage, per-entry/XML/slides/shapes/images/resource bounds, SmartArt namespace-prefix invariance, and same-decoded-pixel image re-encoding. The frozen Design explicitly includes meaning-equivalent image re-encoding, but applying the qualified PNG decoder to PPTX needs its own candidate evidence before GREEN. Reproduce and scope each material case before repair; do not change Design/profile semantics silently.
-- No Task 7 production dependency or implementation has been added. Exact next action: commit/push the initial test-only RED with this execution update, then require a clean hosted RED. Next reproduce the material supplemental package/resource/namespace/image gaps with focused RED before Task 7 GREEN. No Design amendment is in progress.
+- Initial test-only RED head: `452c76d0d92aedb31c4c447cef5bae75388a8b63`. `crates/document-semantic-inspection-worker/tests/pptx_semantics.rs` contains eight tests from the PoC-qualified PPTX fixtures. It covers slide/order, text/shape/group, table/chart/SmartArt/image/link/speaker-note significance; theme/font/background/internal-ID/package-order invariance; comment-only editorial evidence; unknown semantic part fail-closed; and worker shell dispatch/raw binding. Pinned direct Rust 1.98.1 `cargo fmt --all -- --check` and diff checks passed; focused test compilation failed only on the intended unresolved `PptxAdapter` import (E0432). Independent read-only test review found no initial RED blocker.
+- Initial exact-head standard CI `36210857702`: **FAIL as expected only on unresolved `PptxAdapter` E0432** in `rust-static` and `rust-test`. `rust-static` formatting, policy, security, macOS portability, and container build passed; `required-check` failed consequent to the planned Rust failures. Exact-head DSI Sandbox Preflight `36210857803`: **SUCCESS**. Exact-head DSI PoC `36210857696`: **SUCCESS**. PR #10 was verified OPEN/Draft at this same head. This is the clean authoritative Task 7 initial RED.
+- Read-only promotion audit identified Task 7 supplemental RED candidates for PPTX package ambiguity, full content-type/part coverage, per-entry/XML/slides/shapes/images/resource bounds, and XML namespace-prefix invariance. A separate probe found that valid chart-title cache label changes are omitted; frozen Design §9.4 explicitly includes chart labels. Reproduce and scope each material case before repair; do not change Design/profile semantics silently.
+- A scoped design review found that identical decoded PNG pixels after re-encoding are required noise-same in frozen Design §13.2 for **DOCX**, while PPTX §13.5 and approved Task 7 do not establish that invariant. A PoC PPTX same-pixel test was locally RED, but it is **excluded from authoritative Task 7 RED and from promotion**. Applying that new PPTX fingerprint rule requires a separately approved Design amendment. This candidate is not a Task 7 blocker.
+- A separate scoped design review put auto-shape preset geometry and rotation changes on **HOLD**: Design §9.4/§13.5 and Task 7 do not define those as v0 fingerprint differences. A future rule to project or reject them needs an approved Design amendment; they are not Task 7 blockers.
+- Supplemental PoC tests reproduce valid XML-prefix/SmartArt, presentation relationship-prefix, generic-XML unknown-part, and chart-title label gaps. Focused PoC cases are locally behavioral RED against the existing source; independent read-only test review found no fixture blocker. Production package-safety, 64 MiB per-entry resource, chart-title, and presentation-prefix test-only cases also passed independent read-only review. Pinned Rust 1.98.1 root fmt and focused production compilations pass except for the expected missing `PptxAdapter` E0432. Generated `experiments/document-semantic-inspection/target/` remains untracked and must not be staged.
+- No Task 7 production dependency or implementation has been added. Exact next action: commit/push only the reviewed in-scope test files and execution records, and collect exact-head hosted RED before PoC or production source repair. No Design amendment is in progress.
 
 ## Production Task 4 — COMPLETE
 
@@ -457,9 +461,9 @@ Final cross-host evidence at the same head:
 
 ## Current gate / next exact action
 
-**PoC Qualification and Production Tasks 1–6 are complete. Task 7 PPTX test-only RED is in progress.**
+**PoC Qualification and Production Tasks 1–6 are complete. Task 7 initial clean RED is confirmed; supplemental RED is in progress.**
 
-Task 6 final production head `98072f1732157c85ac3d26ce7bf78d64cc456568` passed standard CI `36209740995`, Sandbox `36209740990`, and DSI PoC `36209741011`. Its clean RED was `7c9e31c184f34c79aa44f450dace05c281341ec0` with expected CI failure `36189581362`. Current exact action: finish Task 7 test-only RED, verify format and missing-adapter compile failure locally, commit/push, and collect clean exact-head hosted RED before PPTX GREEN. No Task 7 dependency or adapter is promoted yet. The frozen Design remains unchanged.
+Task 7 initial RED head `452c76d0d92aedb31c4c447cef5bae75388a8b63` has standard CI `36210857702` failing only on missing `PptxAdapter` after formatting and unrelated jobs passed; Sandbox `36210857803` and DSI PoC `36210857696` succeeded. Current exact action: finish independent review and bounded resource RED for the supplemental PPTX tests, commit/push only tests and execution records, and collect exact-head RED before PoC/production repairs. No Task 7 dependency or adapter is promoted yet. The frozen Design remains unchanged.
 
 ### Historical Task 6 local repair evidence
 
