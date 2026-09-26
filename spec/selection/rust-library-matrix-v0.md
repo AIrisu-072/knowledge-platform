@@ -388,3 +388,19 @@ Qualification evidence: `docs/superpowers/execution/document-semantic-inspection
 | pkix-chain/path line | signature-chain candidate | **Avoid** | yanked/vulnerable dependency line |
 
 This update does not qualify legacy DOC/XLS/PPT, Search Extraction, OCR, or conversion/rendition generation. Those remain separate PoCs/workloads.
+
+
+---
+
+# 11. Document Semantic Inspection v0 production sandbox update
+
+Qualification evidence: `docs/superpowers/execution/document-semantic-inspection-v0-sandbox-preflight.md`.
+
+| Area | Candidate / composition | Result | Scope |
+|---|---|---|---|
+| Filesystem confinement | landlock 0.4.7 | **Adopt for DSI v0 production sandbox** | ABI V3 hard-required read/write confinement |
+| Syscall confinement | seccompiler 0.5.0 | **Adopt for DSI v0 production sandbox** | deny network and worker child-process syscalls |
+| Resource/process primitives | libc 0.2.189 | **Adopt for DSI v0 production sandbox support** | RLIMIT + process-group supervision |
+| Error contract | thiserror 2.0.21 | **Adopt for sandbox adapter/preflight** | typed fail-closed errors |
+
+The selected composition passed the Ubuntu 24.04 sandbox contract and the repository cargo-deny advisory/license/source gate without exceptions. It remains isolated in the Task 1 experiment until promotion into the production sandbox runner task. This selection does not broaden Document Semantic Inspection semantics and does not qualify a non-Linux production sandbox.
