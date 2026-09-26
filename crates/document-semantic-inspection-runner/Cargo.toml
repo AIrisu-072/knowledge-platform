@@ -1,0 +1,23 @@
+[package]
+name = "document-semantic-inspection-runner"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+document-semantic-inspection-core = { version = "0.0.0", path = "../document-semantic-inspection-core" }
+
+[[bin]]
+name = "dsi-runner-hostile-worker"
+path = "tests/support/hostile_worker.rs"
+test = false
+bench = false
+
+[[test]]
+name = "runner_baseline"
+path = "tests/runner_baseline.rs"
+
+[[test]]
+name = "runner_isolation"
+path = "tests/runner_isolation.rs"

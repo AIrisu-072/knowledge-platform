@@ -4,6 +4,7 @@ members = [
   "crates/document-application",
   "crates/document-semantic-inspection-core",
   "crates/document-semantic-inspection-worker",
+  "crates/document-semantic-inspection-runner",
   "crates/document-storage-fs",
   "crates/document-repository-postgres",
   "tools/architecture-lint",

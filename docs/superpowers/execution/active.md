@@ -3,13 +3,13 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **PRODUCTION IMPLEMENTATION — TASKS 1–7 COMPLETE / TASK 8 PDF COMPLETE / SIGNATURE RED NEXT**
+- Current phase: **PRODUCTION IMPLEMENTATION — TASKS 1–8 COMPLETE / TASK 9 RED IN PROGRESS**
 - Frozen Design PR: `#7` — merged
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
 - Production planning PR: `#9` — merged as `48045768d1d026eb785ee065877e401bbafd97ca`
 - Production implementation branch: `feat/document-semantic-inspection-v0`
-- Production implementation PR: `#10` — OPEN / Draft; current live head `303cc898b59fd3025bff97a93c431dbb598dd75d` (2026-09-26 check); do not merge
+- Production implementation PR: `#10` — OPEN / Draft; current live head `eeed985f229bbcacd08a7ea955b305e4fc30f010` (2026-09-26 check); do not merge
 - Task 5 initial clean RED: `65d6896322b93c6731f8a836be8b79fcf53beac5`; authoritative repaired clean RED: `e3e6659d243233ff102c393e8be1515a05ba1398`; CI `36135132794` failed only on the expected missing DOCX APIs, Sandbox `36135132761` and DSI PoC `36135132763` passed
 - Supplemental test-only head: `bec052e43dfeedb049ac725f8c697cf564ec60b1`; exact-head CI `36136763103` failed on the expected missing `DocxAdapter` / `editorial_provenance()` APIs, Sandbox `36136763068` and DSI PoC `36136762918` passed
 - Intermediate ZIP-preflight test-only head: `593eddd14c15b098b377fc91b272239af1b24b12`; exact-head CI `36138987613` failed only on the expected missing DOCX APIs, Sandbox `36138987388` and DSI PoC `36138987376` passed. Its five cases failed as expected against the local pre-fix ZIP guard; fmt and strict worker Clippy passed.
@@ -191,11 +191,11 @@ Task 8 Step 3 signature test-only RED is prepared locally with no production par
 
 Task 8 Step 3 initial signature test-only RED head `303cc898b59fd3025bff97a93c431dbb598dd75d` was committed/pushed without production source or dependency promotion; PR #10 remains OPEN/Draft at this head. Focused local Production compilation failed only on missing `SignatureInspector`, `SignatureTrustContext`, and explicit-trust worker-shell API. Focused PoC package-signature test failed only at the false `Valid` outcome for a self-contained XMLDSig. Root fmt and staged diff checks passed. Exact-head CI `36241424330` **FAIL** only on missing signature API imports in rust-static all-target Clippy and rust-test; fmt, cargo check, policy, security, container, and macOS portability succeeded. Sandbox `36241424298` **SUCCESS**. DSI PoC `36241424407` **FAIL** only on the intended self-contained XMLDSig false `Valid` assertion (6 other signature tests passed). This is clean initial signature RED. The initial RED also includes static test-only PDF ByteRange fixtures with recorded provenance.
 
-Supplemental signature test-only RED constructs a valid same-document XMLDSig with an injected unsigned `<Manifest>` that claims `word/document.xml` coverage. The PoC validates the XML itself, then incorrectly reports the wrapped DOCX signature as `Valid`; the focused test fails only at expected `Unverifiable`. The matching Production contract also prohibits reporting the unsigned part as authenticated coverage. These tests are uncommitted; no signature source or dependency has been promoted.
+Supplemental signature test-only RED constructs a valid same-document XMLDSig with an injected unsigned `<Manifest>` that claims `word/document.xml` coverage. The PoC validates the XML itself, then incorrectly reports the wrapped DOCX signature as `Valid`; the focused test fails only at expected `Unverifiable`. The matching Production contract also prohibits reporting the unsigned part as authenticated coverage. Test-only supplemental head `a592d6804ef75aadf98c904320d63066970e4f42` was committed/pushed; PR #10 remains OPEN/Draft at this head. CI `36242162962`, Sandbox `36242162900`, and PoC `36242162901` are running. No signature source or dependency has been promoted.
 
 ## Next exact action
 
-Commit/push the supplemental unsigned-Manifest test-only RED and obtain exact-head CI/Sandbox/PoC evidence. Then implement Task 8 Step 4 GREEN using only the qualified signature stack, with explicit offline trust and package-part digest coverage. Keep signature evidence outside the semantic fingerprint; require exact-head triple GREEN. Continue Tasks 9–14 in approved order; keep PR #10 Draft/unmerged. No Design amendment is in progress.
+Task 8 signature GREEN head `eeed985f229bbcacd08a7ea955b305e4fc30f010` passed exact-head standard CI `36245310311`, Sandbox `36245310222`, and PoC `36245310177` (all SUCCESS). Task 8 is COMPLETE. Task 9 is current: commit the test-only Linux sandbox runner RED, record the focused failure, then implement the approved runner and obtain exact-head GREEN. Continue Tasks 10–14 in approved order, using only necessary checks. Keep PR #10 Draft/unmerged. No Design amendment is in progress.
 
 ## Resume command
 

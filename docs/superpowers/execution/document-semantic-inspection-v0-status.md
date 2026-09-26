@@ -2,7 +2,7 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **PRODUCTION IMPLEMENTATION — TASKS 1–7 COMPLETE / TASK 8 PDF SUPPLEMENTAL CLEAN RED COMPLETE, GREEN REPAIR IN PROGRESS**
+- Overall phase: **PRODUCTION IMPLEMENTATION — TASKS 1–8 COMPLETE / TASK 9 RED IN PROGRESS**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
@@ -10,7 +10,7 @@
 - Production planning PR: **#9 MERGED — `48045768d1d026eb785ee065877e401bbafd97ca`**
 - Production implementation branch: `feat/document-semantic-inspection-v0`
 - Production implementation PR: **#10 (OPEN / Draft)**
-- Last verified production code head: `42eeb9c2724d10a3a49d56a6d3f08a6336369de7`
+- Last exact-head triple-verified production code head: `eeed985f229bbcacd08a7ea955b305e4fc30f010` (Task 8 signatures)
 - PoC execution PR: **#8 (MERGED — `ab9ad6f9949128360e46fed07aca335bb6b10971`)**
 - Production implementation baseline: `main@48045768d1d026eb785ee065877e401bbafd97ca`
 - Baseline main CI: `36079233862` — **SUCCESS**
@@ -168,9 +168,9 @@ That historical next action was completed by the Task 6 clean RED heads recorded
 - PDF Step 2 GREEN candidate head `acdf430c732bd504dfe6e38c0894c07b8bc8657b` was committed/pushed; local/origin/PR #10 heads match OPEN/Draft. It contains the scoped PDF repairs, narrow ISC license exception, invisible-text test, and current record. Exact-head CI `36240609880`, Sandbox `36240609839`, and PoC `36240609860` all completed SUCCESS at the same head. Task 8 Step 2 PDF is COMPLETE; signature Steps 3–4 remain.
 - Task 8 Step 3 signature test-only RED prepared locally without production source/dependency promotion. Production focused compile fails only on missing `SignatureInspector`, `SignatureTrustContext`, and explicit worker trust injection API. PoC focused OOXML signature test fails only at the self-contained XML false-Valid classification. Root pinned `cargo fmt --all -- --check` passed. Static synthetic PDF ByteRange fixtures and test-only source/hash provenance are included. Exact-head RED commit/CI remains pending.
 - Initial signature test-only RED head `303cc898b59fd3025bff97a93c431dbb598dd75d` committed/pushed with only tests, synthetic PDF fixtures, and execution docs; no production source or parser dependency promotion. PR #10 is OPEN/Draft at that head. Focused Production compile failed only on missing signature APIs; focused PoC failed only self-contained XMLDSig false-Valid. Root fmt and staged diff checks passed. Exact-head CI `36241424330` failed only missing signature API imports in rust-static all-target Clippy and rust-test; fmt, cargo check, policy, security, container and macOS portability passed. Sandbox `36241424298` succeeded. PoC `36241424407` failed only the intended self-contained XMLDSig false-Valid assertion (6 other signature tests passed). This is clean initial signature RED.
-- Supplemental signature test-only RED constructs a valid same-document XMLDSig with an injected unsigned Manifest claiming `word/document.xml` coverage. PoC verifies the XML itself, but the wrapped DOCX is incorrectly reported `Valid`; the focused test fails only at the expected `Unverifiable`. Matching Production contract forbids authenticated coverage from the unsigned Manifest. The tests are uncommitted; no signature source or dependency is promoted.
+- Supplemental signature test-only RED constructs a valid same-document XMLDSig with an injected unsigned Manifest claiming `word/document.xml` coverage. PoC verifies the XML itself, but the wrapped DOCX is incorrectly reported `Valid`; the focused test fails only at the expected `Unverifiable`. Matching Production contract forbids authenticated coverage from the unsigned Manifest. Test-only supplemental head `a592d6804ef75aadf98c904320d63066970e4f42` was committed/pushed; PR #10 remains OPEN/Draft at this head. Exact-head CI `36242162962`, Sandbox `36242162900`, and PoC `36242162901` are running. No signature source or dependency is promoted.
 - Read-only signature risk audit identified PoC acceptance of a self-contained XMLDSig as an OOXML package signature without checking signed package parts, and a possible forged PDF `/ByteRange` in raw comments. Reproduce and fix these in separate signature Step 3 RED/GREEN; do not promote unverified PoC behavior. No Design amendment is proposed.
-- Exact next action: commit/push supplemental unsigned-Manifest test-only RED, obtain exact-head CI/Sandbox/PoC evidence, then implement Task 8 Step 4 GREEN with only qualified signature dependencies, explicit offline trust, and separate evidence; require same-head triple GREEN before Task 9. Keep PR #10 OPEN/Draft and unmerged.
+- Exact next action: confirm supplemental unsigned-Manifest RED head `a592d6804ef75aadf98c904320d63066970e4f42` CI `36242162962`, Sandbox `36242162900`, and PoC `36242162901` outcomes, then implement Task 8 Step 4 GREEN with only qualified signature dependencies, explicit offline trust, and separate evidence; require same-head triple GREEN before Task 9. Keep PR #10 OPEN/Draft and unmerged.
 
 ## Production Task 4 — COMPLETE
 
@@ -509,7 +509,9 @@ Final cross-host evidence at the same head:
 
 ## Current gate / next exact action
 
-**PoC Qualification and Production Tasks 1–7 are complete. Task 8 PDF Step 2 is COMPLETE at the exact-head triple-success gate; Step 3 signature RED is next.**
+**PoC Qualification and Production Tasks 1–8 are COMPLETE. Task 9 Linux sandbox runner RED is current.**
+
+Signature clean initial RED head `303cc898b59fd3025bff97a93c431dbb598dd75d` had CI `36241424330` FAIL only on missing signature APIs, Sandbox `36241424298` SUCCESS, and PoC `36241424407` FAIL only on the self-contained XMLDSig false Valid case. Supplemental unsigned-Manifest RED head `a592d6804ef75aadf98c904320d63066970e4f42` had CI `36242162962` FAIL, Sandbox `36242162900` SUCCESS, and PoC `36242162901` FAIL as intended. GREEN head `eeed985f229bbcacd08a7ea955b305e4fc30f010` passed exact-head standard CI `36245310311`, Sandbox `36245310222`, and PoC `36245310177` (all SUCCESS). Focused signature contract 12/12, actual binary explicit-trust FD 2/2, strict worker Clippy, fmt, and staged diff checks passed. Independent reviews cleared package-part coverage, trust transport, and CMS SignerInfo/certificate binding blockers. Task 8 is COMPLETE. Next exact action: commit Task 9 test-only Linux sandbox runner RED, record the focused failure, then implement runner GREEN. Frozen Design remains unchanged; no amendment is proposed.
 
 Current head `acdf430c732bd504dfe6e38c0894c07b8bc8657b` is the PDF Step 2 GREEN candidate on local, origin, and PR #10 (OPEN/Draft); its exact-head CI `36240609880`, Sandbox `36240609839`, and PoC `36240609860` all succeeded. Earlier head `a53a52a12d0ef29e6e4f9a2f10a7dc69e6931de9` is the test-only Type 3 glyph supplemental RED. Its focused production and PoC tests failed only at equal-fingerprint assertions after pinned PDFium native-text/raster proof; CI `36239695270` failed only at known PDF link assertions, Sandbox `36239695276` succeeded, and PoC `36239695252` failed only at known CTM. Earlier paint-order RED at `e6e3d6d1d9f785827237a14d3a3c45d75fc33a13` remains recorded above. Local Type 3 GREEN passes pinned full Production 351/351 tests (4 skipped) and PoC 91/91 fixtures plus all regression and dependency gates. Independent narrow Type 3 review returned GO. Initial signature exact-head RED is clean. Next: supplemental package-part coverage RED, then Step 4 GREEN. Signature RED/GREEN follows. No Design amendment is proposed.
 
