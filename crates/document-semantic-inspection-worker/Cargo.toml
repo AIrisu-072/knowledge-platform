@@ -16,10 +16,19 @@ office_oxide.workspace = true
 zip.workspace = true
 quick-xml.workspace = true
 png.workspace = true
+rxls.workspace = true
+calamine.workspace = true
+ovba.workspace = true
+cfb.workspace = true
+tree-sitter.workspace = true
+tree-sitter-language.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+
+[build-dependencies]
+cc.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

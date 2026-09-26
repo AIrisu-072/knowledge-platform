@@ -3,7 +3,7 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **PRODUCTION IMPLEMENTATION — TASK 5 COMPLETE / TASK 6 RED NEXT**
+- Current phase: **PRODUCTION IMPLEMENTATION — TASK 5 COMPLETE / TASK 6 CLEAN RED COMPLETE / GREEN IN PROGRESS**
 - Frozen Design PR: `#7` — merged
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
@@ -28,6 +28,9 @@
 - PoC source/tests GREEN head `0945e0870e70509628a90237be39bf125afdc273`: exact-head DSI PoC `36180780592` and Sandbox `36180780595` SUCCESS. CI `36180780825` failed only on absent production DOCX APIs; other jobs succeeded.
 - Supplemental production test-only RED head `9df2abc77f26867ebc4fd2cc8166e266a25f07ab` includes 21 DOCX tests and qualified zip 8.6.0 as dev-dependency only. Exact-head CI `36181633068` failed only on absent production DOCX APIs; DSI PoC `36181633146` and Sandbox `36181633106` succeeded. This is clean RED; production source/dependencies were not included at that head.
 - Production DOCX final GREEN `14bcc4a63ec4ec56289619e4d76a9ca1792315ba`: standard CI `36182511870`, Sandbox `36182511893`, and DSI PoC `36182511885` all **SUCCESS** at this exact head. Precommit full workspace tests, strict Clippy, fmt, and cargo-deny passed locally. Task 5 is COMPLETE.
+- Task 5 handoff documentation head `26afc64fd8703fdcf44af45497a2c9d0b41c30a1`: standard CI `36183492393`, Sandbox `36183492436`, DSI PoC `36183492364` all SUCCESS. No code or dependency change.
+- Task 6 initial test-only RED head `75b0dbf8b2f59c24093098365c4257feceadddb2` contains XLSX/XLSM workbook semantics, SpreadsheetML package-safety, and worker-response external-dependency tests. Exact-head CI `36187706539` FAIL as expected only on unresolved `SpreadsheetAdapter` E0432; fmt, policy, security, macOS portability, and container-build passed. Sandbox `36187706713` and DSI PoC `36187706727` SUCCESS.
+- Task 6 VBA supplemental test-only RED head `7c9e31c184f34c79aa44f450dace05c281341ec0` adds VBA logic/noise/fail-closed/static-only contracts and a PoC-generated synthetic comment fixture. Exact-head CI `36189581362` failed only on the missing `SpreadsheetAdapter` E0432 in rust-static/rust-test; fmt, policy, security, macOS portability, and container build passed. Sandbox `36189581450` and DSI PoC `36189581454` succeeded. No Task 6 production dependency or implementation was included at this clean RED head.
 - Independent review findings for note structure, list markers, XML/style/geometry/numbering, headers, pictures, and bounded stderr were addressed with focused RED/GREEN. No frozen Design amendment was required.
 - PoC execution PR: `#8` — merged as `ab9ad6f9949128360e46fed07aca335bb6b10971`
 - Approved Design Spec: `docs/superpowers/specs/2026-09-20-document-semantic-inspection-v0-design.md`
@@ -89,7 +92,7 @@ Read in this order:
 3. `docs/superpowers/execution/document-semantic-inspection-v0-status.md`
 4. frozen Design Spec
 5. Design approval record
-6. approved PoC Qualification Plan
+6. approved Production Implementation Plan
 7. current GitHub state of `feat/document-semantic-inspection-v0`, PR #10, and exact-head CI
 
 Repository and fresh GitHub state override remembered/chat state.
@@ -98,23 +101,23 @@ Repository and fresh GitHub state override remembered/chat state.
 
 Design is approved and frozen. PoC Qualification Plan was explicitly approved on 2026-09-21.
 
-Production Tasks 1–5 are complete. Task 4 promoted only its qualified TXT/CSV/HTML parser dependencies; `scraper` remains excluded. Task 5 promoted PoC-qualified `office_oxide 0.1.11`, deflate-only `zip 8.6.0`, `quick-xml 0.42.0`, and supplemental scoped `png 0.18.1` after clean RED and exact-head GREEN.
+Production Tasks 1–5 are complete. Task 6 clean RED is complete and GREEN is in progress. Task 4 promoted only its qualified TXT/CSV/HTML parser dependencies; `scraper` remains excluded. Task 5 promoted PoC-qualified `office_oxide 0.1.11`, deflate-only `zip 8.6.0`, `quick-xml 0.42.0`, and supplemental scoped `png 0.18.1` after clean RED and exact-head GREEN.
 
 Task 2 produced one material qualification result: `scraper 0.27.0` was rejected because its transitive graph contains MPL-2.0. Direct `html5ever 0.39.0 + markup5ever_rcdom 0.39.0` passed the same semantic cases and the dependency gate.
 
 ## Current hard gate
 
-The PoC qualification gate is **complete**. The Production Implementation Plan was explicitly approved by the user on 2026-09-25, and PR #8 is merged. Production Tasks 1–5 are complete after clean RED and fresh exact-head GREEN evidence. Task 6 is next; no Design amendment is in progress.
+The PoC qualification gate is **complete**. The Production Implementation Plan was explicitly approved by the user on 2026-09-25, and PR #8 is merged. Production Tasks 1–5 are complete after clean RED and fresh exact-head GREEN evidence. Task 6 clean RED is complete and GREEN is in progress; no Design amendment is in progress.
 
-Task 5 final head `14bcc4a63ec4ec56289619e4d76a9ca1792315ba` passed standard CI `36182511870`, Sandbox `36182511893`, and DSI PoC `36182511885`. PR #10 remains OPEN / Draft at this head; do not merge without explicit instruction.
+Task 5 final head `14bcc4a63ec4ec56289619e4d76a9ca1792315ba` passed standard CI `36182511870`, Sandbox `36182511893`, and DSI PoC `36182511885`. PR #10 remains OPEN / Draft. Its current remote Task 6 clean RED head is `7c9e31c184f34c79aa44f450dace05c281341ec0`; read live GitHub before acting. Do not merge without explicit instruction.
 
 ## Next exact action
 
-Create Task 6 XLSX/XLSM/VBA RED contract tests only, covering the approved sheet/cell/formula/external-reference/VBA relations. Commit/push a clean exact-head RED before promoting the Task 6 qualified parser dependencies. Keep PR #10 Draft and unmerged.
+Finish Task 6 XLSX/XLSM/VBA GREEN. The approved 4,096-image bound, typed ODBC subset, ODBC split bound, and partial-drawing fail-closed guard passed local RED→GREEN. A subsequent independent review found an unbounded structured response: 2,200 qualified ODBC definitions produced 19,167,709 success bytes, above the approved 16 MiB result bound. The local repair bounds external-dependency evidence while accumulating it and measures the full response before canonicalization/output. The oversized-input regression now fails with empty stdout; the exact 16 MiB and one-byte-over serialization boundary test passes. Further review found early hyperlink comparison Vecs and comment editorial accumulation; both now have pre-clone byte budgets with local RED→GREEN boundary tests. Latest focused GREEN is credential **14/14**, spreadsheet semantics **9/9**, response **2/2**. Fresh full workspace tests, strict Clippy, fmt, cargo-deny, repository policy, and diff checks all passed after the comment repair. The final comment-bound independent review is in progress. After review, commit/push only intended source, tests, provenance, workflow triggers, and execution docs; require standard CI, Sandbox, and DSI PoC SUCCESS at the same exact head. The clean hosted Task 6 RED is `7c9e31c184f34c79aa44f450dace05c281341ec0` with CI `36189581362` expected FAIL and Sandbox `36189581450` / DSI PoC `36189581454` SUCCESS. Keep PR #10 Draft and unmerged.
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` のrepositoryとGitHubの現在状態を正本として続行してください。Frozen Design / Production Implementation Plan は承認済み、PR #8/#9 merged。Production Tasks 1–5 COMPLETE。Task 5 final exact head `14bcc4a63ec4ec56289619e4d76a9ca1792315ba` はCI `36182511870`、Sandbox `36182511893`、PoC `36182511885` がすべてSUCCESS。PR #10 はOPEN/Draftでmergeしない。次のexact actionはTask 6 XLSX/XLSM/VBAのRED契約テストだけを作成し、clean RED exact-head CIを取得してからPoC-qualified dependencyをpromotionする。Frozen Design変更が必要ならamendment gateへ戻る。
+> `AIrisu-072/knowledge-platform` のrepositoryとGitHubの現在状態を正本として続行してください。最初に `AGENTS.md`、このActive、Execution Status、Frozen Design、Design approval、承認済みProduction Plan、live branch/PR/CIの順に確認してください。Production Tasks 1–5 COMPLETE、Task 6 clean hosted REDは `7c9e31c184f34c79aa44f450dace05c281341ec0` で確定済み。現在Task 6 GREENは未コミットです。画像件数のpre-rxls guardはローカルGREEN、最終reviewでODBC/URI資格情報の出力と未知connection子要素の黙殺を発見し、追加RED→GREEN中です。その後に全ローカル検証、commit/push、同一headのstandard CI/Sandbox/PoCを要求します。PR #10はOPEN/Draftのままmergeしません。Frozen Design/profileの意味変更が必要ならamendment gateへ戻ります。
 
 ## End-of-session rule
 

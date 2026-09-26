@@ -11,10 +11,11 @@ mod error;
 mod input;
 mod provenance;
 mod shell;
+mod vba_language;
 
 pub use adapters::{
     AdapterProfile, CsvAdapter, DocxAdapter, HtmlAdapter, OoxmlCoverageSentinel, SemanticAdapter,
-    SemanticAdapterOutput, TextAdapter,
+    SemanticAdapterOutput, SpreadsheetAdapter, TextAdapter,
 };
 pub use detect::detect_format;
 pub use error::{WorkerFailure, WorkerFailureCode};

@@ -35,3 +35,15 @@ office_oxide = "=0.1.11"
 zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
 quick-xml = "=0.42.0"
 png = { version = "=0.18.1", default-features = false }
+rxls = "=0.1.3"
+calamine = { version = "=0.36.1", features = ["picture"] }
+ovba = "=0.7.1"
+cfb = "=0.10.0"
+tree-sitter = "=0.25.10"
+tree-sitter-language = "=0.1.8"
+cc = "=1.2.41"
+
+[patch.crates-io]
+# Task 6: exact ovba 0.7.1 source with bounded decode and strict dir consumption.
+# Source provenance and the scoped hardening diff are recorded under third_party.
+ovba = { path = "third_party/document-semantic-inspection/ovba-0.7.1" }

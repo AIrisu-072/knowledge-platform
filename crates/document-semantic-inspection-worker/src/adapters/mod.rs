@@ -1,7 +1,11 @@
 mod csv;
 mod docx;
 mod html;
+mod spreadsheet;
+mod spreadsheet_package;
 mod text;
+mod vba;
+mod vba_guard;
 
 #[cfg(test)]
 mod capability_state_behavior;
@@ -12,11 +16,12 @@ use serde_json::{Map, Value};
 pub use csv::CsvAdapter;
 pub use docx::{DocxAdapter, OoxmlCoverageSentinel};
 pub use html::HtmlAdapter;
+pub use spreadsheet::SpreadsheetAdapter;
 pub use text::TextAdapter;
 
 use document_semantic_inspection_core::{
-    CapabilityEvidence, CapabilityState, EditorialProvenance, ExtractorProvenance, FormatId,
-    ParserLibraryIdentity, SemanticFingerprint,
+    CapabilityEvidence, CapabilityState, EditorialProvenance, ExternalDependency,
+    ExtractorProvenance, FormatId, ParserLibraryIdentity, SemanticFingerprint,
 };
 
 use crate::{WorkerFailure, WorkerFailureCode, extractor_provenance};
@@ -94,6 +99,7 @@ pub struct SemanticAdapterOutput {
     semantic_fingerprint: SemanticFingerprint,
     semantic_capabilities: Vec<CapabilityEvidence>,
     editorial_provenance: EditorialProvenance,
+    external_dependencies: Vec<ExternalDependency>,
     extractor_provenance: ExtractorProvenance,
 }
 
@@ -109,6 +115,15 @@ impl SemanticAdapterOutput {
     pub fn with_editorial_provenance(mut self, editorial: EditorialProvenance) -> Self {
         self.editorial_provenance = editorial;
         self
+    }
+
+    pub fn with_external_dependencies(mut self, dependencies: Vec<ExternalDependency>) -> Self {
+        self.external_dependencies = dependencies;
+        self
+    }
+
+    pub fn external_dependencies(&self) -> &[ExternalDependency] {
+        &self.external_dependencies
     }
 
     pub(crate) fn with_capability_state(
@@ -173,6 +188,7 @@ impl SemanticAdapterOutput {
             semantic_fingerprint,
             semantic_capabilities,
             editorial_provenance: EditorialProvenance::default(),
+            external_dependencies: Vec::new(),
             extractor_provenance: extractor_provenance(
                 adapter_id,
                 "dsi-v0",

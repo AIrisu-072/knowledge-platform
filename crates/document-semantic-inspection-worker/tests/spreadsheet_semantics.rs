@@ -5,6 +5,7 @@ use document_semantic_inspection_worker::{
     AdapterProfile, SemanticAdapter, SemanticAdapterOutput, SpreadsheetAdapter, WorkerFailure,
     WorkerFailureCode,
 };
+use rxls::{StyleLossKind, Workbook};
 use zip::{CompressionMethod, ZipArchive, ZipWriter, write::SimpleFileOptions};
 
 const XLSX_BASE: &[u8] =
@@ -68,6 +69,7 @@ const WORKSHEET_RELS_PATH: &str = "xl/worksheets/_rels/sheet1.xml.rels";
 const WORKBOOK_PATH: &str = "xl/workbook.xml";
 const CHART_PATH: &str = "xl/charts/chart1.xml";
 const IMAGE_PATH: &str = "xl/media/image1.png";
+const DRAWING_PATH: &str = "xl/drawings/drawing1.xml";
 const BASE_A1_CELL: &str = r#"<c r="A1" t="inlineStr"><is><t>Hello</t></is></c>"#;
 
 fn inspect_xlsx(bytes: &[u8]) -> Result<SemanticAdapterOutput, WorkerFailure> {
@@ -442,4 +444,32 @@ fn xlsm_uses_workbook_cell_semantics_for_the_qualified_macro_enabled_fixture() {
     );
 
     assert_ne!(base, xlsm_fingerprint(&changed_cell));
+}
+
+#[test]
+fn partial_drawing_projection_fails_closed_instead_of_omitting_an_image() {
+    let drawing = String::from_utf8(read_package_entry(XLSX_IMAGE_ADD, DRAWING_PATH))
+        .expect("qualified drawing is UTF-8");
+    assert_eq!(drawing.matches("<xdr:pic>").count(), 1);
+    let nested = drawing
+        .replace("<xdr:pic>", "<xdr:oneCellAnchor><xdr:pic>")
+        .replace("</xdr:pic>", "</xdr:pic></xdr:oneCellAnchor>");
+    let mutated = replace_package_entries(XLSX_IMAGE_ADD, &[(DRAWING_PATH, nested.as_bytes())]);
+
+    let parsed = Workbook::open(&mutated).expect("rxls accepts the drawing package");
+    assert!(parsed.sheets.iter().any(|sheet| {
+        sheet
+            .style_losses()
+            .iter()
+            .any(|loss| loss.kind == StyleLossKind::DrawingMetadataPartial)
+    }));
+
+    let failure = match inspect_xlsx(&mutated) {
+        Err(failure) => failure,
+        Ok(_) => panic!("partial drawing parsing must not silently omit image semantics"),
+    };
+    assert_eq!(
+        failure.code(),
+        WorkerFailureCode::UnsupportedSemanticConstruct
+    );
 }

@@ -1,14 +1,17 @@
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 
 use document_semantic_inspection_core::{
     WorkerProtocolVersion, WorkerResponse, canonical_worker_response_bytes,
 };
+use serde::Serialize;
 
 use crate::{
     AdapterProfile, CsvAdapter, DocxAdapter, HtmlAdapter, SemanticAdapter, SemanticAdapterOutput,
-    TextAdapter, WorkerFailure, WorkerFailureCode, decode_request_bounded, guard_worker_execution,
-    prepare_input_bounded,
+    SpreadsheetAdapter, TextAdapter, WorkerFailure, WorkerFailureCode, decode_request_bounded,
+    guard_worker_execution, prepare_input_bounded,
 };
+
+pub(crate) const MAX_STRUCTURED_RESULT_BYTES: usize = 16 * 1024 * 1024;
 
 /// Runs the worker over a bounded request and inherited input.
 pub fn run_worker_shell<R, O, E>(
@@ -41,6 +44,12 @@ where
             document_semantic_inspection_core::FormatId::Docx => {
                 DocxAdapter.inspect(prepared.bytes(), &profile)?
             }
+            document_semantic_inspection_core::FormatId::Xlsx => {
+                SpreadsheetAdapter::XLSX.inspect(prepared.bytes(), &profile)?
+            }
+            document_semantic_inspection_core::FormatId::Xlsm => {
+                SpreadsheetAdapter::XLSM.inspect(prepared.bytes(), &profile)?
+            }
             format => {
                 return Err(WorkerFailure::new(
                     WorkerFailureCode::SemanticExtractionFailed,
@@ -56,12 +65,7 @@ where
                 format!("adapter produced an invalid worker result: {error}"),
             )
         })?;
-        canonical_worker_response_bytes(&response).map_err(|error| {
-            WorkerFailure::new(
-                WorkerFailureCode::InvalidWorkerResult,
-                format!("adapter result could not be canonicalized: {error}"),
-            )
-        })
+        canonical_response_bounded(&response)
     });
 
     match outcome {
@@ -88,6 +92,62 @@ where
     }
 }
 
+fn canonical_response_bounded(response: &WorkerResponse) -> Result<Vec<u8>, WorkerFailure> {
+    serialized_json_len_bounded(response)?;
+    let response_bytes = canonical_worker_response_bytes(response).map_err(|error| {
+        WorkerFailure::new(
+            WorkerFailureCode::InvalidWorkerResult,
+            format!("adapter result could not be canonicalized: {error}"),
+        )
+    })?;
+    if response_bytes.len() > MAX_STRUCTURED_RESULT_BYTES {
+        return Err(WorkerFailure::new(
+            WorkerFailureCode::InspectionResourceLimitExceeded,
+            "structured worker result exceeds its byte bound",
+        ));
+    }
+    Ok(response_bytes)
+}
+
+pub(crate) fn serialized_json_len_bounded<T: Serialize>(value: &T) -> Result<usize, WorkerFailure> {
+    let mut counter = BoundedJsonCounter::default();
+    if let Err(error) = serde_json::to_writer(&mut counter, value) {
+        if counter.exceeded {
+            return Err(WorkerFailure::new(
+                WorkerFailureCode::InspectionResourceLimitExceeded,
+                "structured worker result exceeds its byte bound",
+            ));
+        }
+        return Err(WorkerFailure::new(
+            WorkerFailureCode::InvalidWorkerResult,
+            format!("adapter result could not be measured: {error}"),
+        ));
+    }
+    Ok(counter.observed)
+}
+
+#[derive(Default)]
+struct BoundedJsonCounter {
+    observed: usize,
+    exceeded: bool,
+}
+
+impl Write for BoundedJsonCounter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let next = self.observed.checked_add(buf.len());
+        if next.is_none_or(|bytes| bytes > MAX_STRUCTURED_RESULT_BYTES) {
+            self.exceeded = true;
+            return Err(io::Error::other("structured result byte bound exceeded"));
+        }
+        self.observed = next.expect("checked above");
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 fn worker_response(
     request: &document_semantic_inspection_core::WorkerRequest,
     prepared: &crate::PreparedInput,
@@ -102,7 +162,7 @@ fn worker_response(
         semantic_fingerprint: adapter_output.semantic_fingerprint(),
         semantic_capabilities: adapter_output.semantic_capabilities().to_vec(),
         editorial_provenance: adapter_output.editorial_provenance().clone(),
-        external_dependencies: Vec::new(),
+        external_dependencies: adapter_output.external_dependencies().to_vec(),
         digital_signature_evidence: Vec::new(),
         extractor_provenance: adapter_output.extractor_provenance().clone(),
         diagnostics: Vec::new(),
@@ -133,5 +193,63 @@ const fn exit_code(code: WorkerFailureCode) -> i32 {
         | WorkerFailureCode::InspectionTimeout
         | WorkerFailureCode::InvalidWorkerResult => 69,
         WorkerFailureCode::WorkerPanicked => 70,
+    }
+}
+
+#[cfg(test)]
+mod result_size_boundary_tests {
+    use document_semantic_inspection_core::{
+        EditorialProvenance, ExternalDependency, ExtractorProvenance, FormatId,
+        InspectionProfileVersion, SemanticFingerprint,
+    };
+
+    use super::*;
+
+    #[test]
+    fn exact_structured_result_bound_is_accepted_and_one_over_fails() {
+        let mut response = WorkerResponse {
+            protocol_version: WorkerProtocolVersion::V0,
+            inspection_profile_version: InspectionProfileVersion::DsiV0,
+            observed_raw_content_hash: [7; 32],
+            observed_size_bytes: 3,
+            detected_format: FormatId::Xlsx,
+            semantic_fingerprint: SemanticFingerprint::sha256_from_slice(&[1; 32])
+                .expect("valid fingerprint"),
+            semantic_capabilities: Vec::new(),
+            editorial_provenance: EditorialProvenance::default(),
+            external_dependencies: vec![ExternalDependency {
+                dependency_kind: "external_workbook".into(),
+                normalized_reference: String::new(),
+                source_locator: "xl/externalLinks/externalLink1.xml".into(),
+                version_significant: true,
+            }],
+            digital_signature_evidence: Vec::new(),
+            extractor_provenance: ExtractorProvenance {
+                worker_build_id: "test".into(),
+                adapter_id: "spreadsheet".into(),
+                adapter_version: "dsi-v0".into(),
+                parser_libraries: Vec::new(),
+                native_dependency_identity: Vec::new(),
+            },
+            diagnostics: Vec::new(),
+        };
+        let base_bytes = serde_json::to_vec(&response)
+            .expect("serialize baseline")
+            .len();
+        response.external_dependencies[0].normalized_reference =
+            "a".repeat(MAX_STRUCTURED_RESULT_BYTES - base_bytes);
+
+        let exact = canonical_response_bounded(&response).expect("exact byte bound is allowed");
+        assert_eq!(exact.len(), MAX_STRUCTURED_RESULT_BYTES);
+
+        response.external_dependencies[0]
+            .normalized_reference
+            .push('a');
+        let failure = canonical_response_bounded(&response)
+            .expect_err("one byte over the bound must fail before canonicalization");
+        assert_eq!(
+            failure.code(),
+            WorkerFailureCode::InspectionResourceLimitExceeded
+        );
     }
 }
