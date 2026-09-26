@@ -47,6 +47,22 @@ struct LopdfFacts {
     paint_orders: Vec<Vec<&'static str>>,
 }
 
+impl PdfAdapter {
+    /// Loads and verifies the pinned PDFium binding before sandbox sealing.
+    ///
+    /// The worker binary calls this only after it has confirmed the bounded input's PDF header.
+    /// Keeping this as a separate entry point ensures the native library is already bound before
+    /// Landlock restricts filesystem access.
+    pub fn warm_up_native_runtime() -> Result<(), WorkerFailure> {
+        pdfium().map(|_| ()).map_err(|_| {
+            failure(
+                WorkerFailureCode::ExtractorUnavailable,
+                "PDFium initialization failed",
+            )
+        })
+    }
+}
+
 impl SemanticAdapter for PdfAdapter {
     fn format(&self) -> FormatId {
         FormatId::Pdf

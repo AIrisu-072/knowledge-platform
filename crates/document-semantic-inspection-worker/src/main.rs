@@ -1,8 +1,12 @@
 use std::{
+    ffi::OsStr,
+    fs::File,
     io::{Read, stderr, stdin, stdout},
     process::exit,
 };
 
+#[cfg(target_os = "linux")]
+use document_semantic_inspection_worker::{PdfAdapter, decode_request_bounded};
 use document_semantic_inspection_worker::{
     SignatureTrustContext, WorkerFailure, WorkerFailureCode, open_inherited_input,
     run_worker_shell_with_signature_trust, write_failure,
@@ -16,6 +20,7 @@ const MAX_TRUST_BUNDLE_BYTES: usize = 1024 * 1024;
 const MAX_TRUST_DER_BYTES: usize = 256 * 1024;
 const MAX_TRUST_CERTIFICATES: usize = 32;
 const MAX_TRUST_CRLS: usize = 32;
+const SANDBOX_REQUIRED_ENV: &str = "DSI_SANDBOX_REQUIRED";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -25,6 +30,11 @@ struct SignatureTrustBundle {
 }
 
 fn main() {
+    let sandbox_required = match sandbox_required() {
+        Ok(required) => required,
+        Err(failure) => exit_with_failure(failure, 69),
+    };
+
     let input_fd = match std::env::var("DSI_INPUT_FD")
         .ok()
         .and_then(|value| value.parse::<i32>().ok())
@@ -75,6 +85,15 @@ fn main() {
         exit(65);
     }
 
+    if sandbox_required && let Err(failure) = prepare_and_seal_worker(&input, &request_bytes) {
+        let code = if failure.code() == WorkerFailureCode::MalformedRequest {
+            65
+        } else {
+            69
+        };
+        exit_with_failure(failure, code);
+    }
+
     let mut stdout = stdout().lock();
     let mut stderr = stderr().lock();
     let code = run_worker_shell_with_signature_trust(
@@ -86,6 +105,97 @@ fn main() {
         MAX_INPUT_BYTES,
         &signature_trust,
     );
+    exit(code);
+}
+
+fn sandbox_required() -> Result<bool, WorkerFailure> {
+    match std::env::var_os(SANDBOX_REQUIRED_ENV) {
+        None => Ok(false),
+        Some(value) if value.as_os_str() == OsStr::new("1") => Ok(true),
+        Some(_) => Err(WorkerFailure::new(
+            WorkerFailureCode::ExtractorUnavailable,
+            "mandatory worker sandbox policy is invalid",
+        )),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn prepare_and_seal_worker(input: &File, request_bytes: &[u8]) -> Result<(), WorkerFailure> {
+    let request = decode_request_bounded(request_bytes, MAX_REQUEST_BYTES)
+        .map_err(|_| invalid_preseal_request())?;
+
+    if is_declared_pdf(&request.declared_media_type) && has_pdf_header(input)? {
+        PdfAdapter::warm_up_native_runtime().map_err(|_| {
+            WorkerFailure::new(
+                WorkerFailureCode::ExtractorUnavailable,
+                "mandatory worker native runtime initialization failed",
+            )
+        })?;
+    }
+
+    document_semantic_inspection_runner::seal_worker_sandbox().map_err(|_| {
+        WorkerFailure::new(
+            WorkerFailureCode::ExtractorUnavailable,
+            "mandatory worker sandbox setup failed",
+        )
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn prepare_and_seal_worker(_input: &File, _request_bytes: &[u8]) -> Result<(), WorkerFailure> {
+    Err(WorkerFailure::new(
+        WorkerFailureCode::ExtractorUnavailable,
+        "mandatory worker sandbox is unavailable on this platform",
+    ))
+}
+
+#[cfg(target_os = "linux")]
+fn has_pdf_header(input: &File) -> Result<bool, WorkerFailure> {
+    use std::os::unix::fs::FileExt;
+
+    let mut header = [0u8; 5];
+    let mut observed = 0;
+    while observed < header.len() {
+        let read = input
+            .read_at(&mut header[observed..], observed as u64)
+            .map_err(|_| input_preflight_failure())?;
+        if read == 0 {
+            break;
+        }
+        observed += read;
+    }
+    Ok(observed == header.len() && &header == b"%PDF-")
+}
+
+#[cfg(target_os = "linux")]
+fn is_declared_pdf(media_type: &str) -> bool {
+    media_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .eq_ignore_ascii_case("application/pdf")
+}
+
+#[cfg(target_os = "linux")]
+fn invalid_preseal_request() -> WorkerFailure {
+    WorkerFailure::new(
+        WorkerFailureCode::MalformedRequest,
+        "worker request is invalid",
+    )
+}
+
+#[cfg(target_os = "linux")]
+fn input_preflight_failure() -> WorkerFailure {
+    WorkerFailure::new(
+        WorkerFailureCode::ExtractorUnavailable,
+        "worker input preflight failed",
+    )
+}
+
+fn exit_with_failure(failure: WorkerFailure, code: i32) -> ! {
+    let mut stderr = stderr().lock();
+    write_failure(&mut stderr, &failure);
     exit(code);
 }
 

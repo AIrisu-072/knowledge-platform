@@ -2,7 +2,7 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **PRODUCTION IMPLEMENTATION — TASKS 1–8 COMPLETE / TASK 9 RED IN PROGRESS**
+- Overall phase: **PRODUCTION IMPLEMENTATION — TASKS 1–8 COMPLETE / TASK 9 GREEN EXACT-HEAD CI NEXT**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
@@ -509,9 +509,11 @@ Final cross-host evidence at the same head:
 
 ## Current gate / next exact action
 
-**PoC Qualification and Production Tasks 1–8 are COMPLETE. Task 9 Linux sandbox runner RED is current.**
+**PoC Qualification and Production Tasks 1–8 are COMPLETE. Task 9 Linux sandbox runner GREEN is local; exact-head hosted verification is next.**
 
 Signature clean initial RED head `303cc898b59fd3025bff97a93c431dbb598dd75d` had CI `36241424330` FAIL only on missing signature APIs, Sandbox `36241424298` SUCCESS, and PoC `36241424407` FAIL only on the self-contained XMLDSig false Valid case. Supplemental unsigned-Manifest RED head `a592d6804ef75aadf98c904320d63066970e4f42` had CI `36242162962` FAIL, Sandbox `36242162900` SUCCESS, and PoC `36242162901` FAIL as intended. GREEN head `eeed985f229bbcacd08a7ea955b305e4fc30f010` passed exact-head standard CI `36245310311`, Sandbox `36245310222`, and PoC `36245310177` (all SUCCESS). Focused signature contract 12/12, actual binary explicit-trust FD 2/2, strict worker Clippy, fmt, and staged diff checks passed. Independent reviews cleared package-part coverage, trust transport, and CMS SignerInfo/certificate binding blockers. Task 8 is COMPLETE. Next exact action: commit Task 9 test-only Linux sandbox runner RED, record the focused failure, then implement runner GREEN. Frozen Design remains unchanged; no amendment is proposed.
+
+Task 9 test-only RED commit `630501e12ed1283813b3015ce42bf498480116eb` was local only: synthetic worker baseline 1/1 PASS; isolation test compilation failed only on missing `LinuxSandboxRunner`, `RunnerConfig`, `RunnerInput`, and `RunnerError` APIs. GREEN candidate adds the qualified Landlock 0.4.7, seccompiler 0.5.0, libc 0.2.189, and thiserror 2.0.21 composition, bounded Linux supervisor, separate read-only input/trust FDs, private scratch, RLIMIT before worker native initialization, and worker-side Landlock/seccomp after PDFium warm-up. Focused Linux runner and worker compile and strict Clippy pass under Rust 1.98.1; macOS runner/worker strict Clippy and synthetic baseline 1/1 pass. Local Docker's Landlock status is `NotEnforced` and the isolation test fails closed there. Exact-head hosted Ubuntu enforcement/CI, Sandbox, and PoC results are required before completion. Next exact action: commit/push GREEN candidate and inspect those three runs. Frozen Design remains unchanged; no amendment is proposed.
 
 Current head `acdf430c732bd504dfe6e38c0894c07b8bc8657b` is the PDF Step 2 GREEN candidate on local, origin, and PR #10 (OPEN/Draft); its exact-head CI `36240609880`, Sandbox `36240609839`, and PoC `36240609860` all succeeded. Earlier head `a53a52a12d0ef29e6e4f9a2f10a7dc69e6931de9` is the test-only Type 3 glyph supplemental RED. Its focused production and PoC tests failed only at equal-fingerprint assertions after pinned PDFium native-text/raster proof; CI `36239695270` failed only at known PDF link assertions, Sandbox `36239695276` succeeded, and PoC `36239695252` failed only at known CTM. Earlier paint-order RED at `e6e3d6d1d9f785827237a14d3a3c45d75fc33a13` remains recorded above. Local Type 3 GREEN passes pinned full Production 351/351 tests (4 skipped) and PoC 91/91 fixtures plus all regression and dependency gates. Independent narrow Type 3 review returned GO. Initial signature exact-head RED is clean. Next: supplemental package-part coverage RED, then Step 4 GREEN. Signature RED/GREEN follows. No Design amendment is proposed.
 

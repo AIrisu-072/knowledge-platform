@@ -3,7 +3,7 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **PRODUCTION IMPLEMENTATION — TASKS 1–8 COMPLETE / TASK 9 RED IN PROGRESS**
+- Current phase: **PRODUCTION IMPLEMENTATION — TASKS 1–8 COMPLETE / TASK 9 GREEN EXACT-HEAD CI NEXT**
 - Frozen Design PR: `#7` — merged
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
@@ -195,7 +195,7 @@ Supplemental signature test-only RED constructs a valid same-document XMLDSig wi
 
 ## Next exact action
 
-Task 8 signature GREEN head `eeed985f229bbcacd08a7ea955b305e4fc30f010` passed exact-head standard CI `36245310311`, Sandbox `36245310222`, and PoC `36245310177` (all SUCCESS). Task 8 is COMPLETE. Task 9 is current: commit the test-only Linux sandbox runner RED, record the focused failure, then implement the approved runner and obtain exact-head GREEN. Continue Tasks 10–14 in approved order, using only necessary checks. Keep PR #10 Draft/unmerged. No Design amendment is in progress.
+Task 8 signature GREEN head `eeed985f229bbcacd08a7ea955b305e4fc30f010` passed exact-head standard CI `36245310311`, Sandbox `36245310222`, and PoC `36245310177` (all SUCCESS); Task 8 is COMPLETE. Task 9 test-only RED was committed locally at `630501e12ed1283813b3015ce42bf498480116eb`: baseline 1/1 PASS and isolation contract failed only on absent runner APIs. GREEN code is local: Linux runner and worker integration compile with Rust 1.98.1, strict Linux runner/worker Clippy passes, and macOS runner/worker strict Clippy passes. The local Docker kernel reported Landlock `NotEnforced`, so its isolation test failed closed; hosted Ubuntu is the enforcement gate. Next exact action: commit/push Task 9 GREEN and obtain exact-head standard CI, Sandbox, and PoC results. If all succeed, mark Task 9 COMPLETE and proceed to Task 10 RED. Keep PR #10 Draft/unmerged. No Design amendment is in progress.
 
 ## Resume command
 

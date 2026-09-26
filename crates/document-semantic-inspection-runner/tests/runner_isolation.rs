@@ -1,3 +1,5 @@
+#![cfg(target_os = "linux")]
+
 use std::path::PathBuf;
 #[cfg(target_os = "linux")]
 use std::time::Duration;
@@ -30,6 +32,7 @@ fn input(action: &str) -> RunnerInput<'static> {
         bytes: b"input-vector",
         declared_media_type: "text/plain",
         expected_raw_content_hash: INPUT_SHA256,
+        expected_size_bytes: 12,
         trace_context: Some(TraceContext {
             traceparent: "00-00000000000000000000000000000001-0000000000000001-01".into(),
             tracestate: Some(format!("dsi-test={action}")),
@@ -138,6 +141,18 @@ fn wall_timeout_and_oversized_result_fail_with_typed_errors() {
     assert!(!format!("{malformed:?}").contains("synthetic-body-marker"));
     assert!(matches!(
         runner.inspect(input("raw-binding-mismatch")),
+        Err(RunnerError::RawBindingMismatch { .. })
+    ));
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn authoritative_size_mismatch_fails_before_worker_launch() {
+    let runner = runner(None);
+    let mut wrong_size = input("baseline");
+    wrong_size.expected_size_bytes += 1;
+    assert!(matches!(
+        runner.inspect(wrong_size),
         Err(RunnerError::RawBindingMismatch { .. })
     ));
 }
