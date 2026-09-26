@@ -509,6 +509,14 @@ Final cross-host evidence at the same head:
 
 ## Current gate / next exact action
 
+### Production execution update — Task 10 complete / Task 11 GREEN pending (2026-09-26)
+
+- Task 10 GREEN exact head `f7f70130c3b51aeb0f894866c4a3441ac89adabd`: standard CI `36249100418`, DSI Sandbox Preflight `36249100413`, DSI PoC `36249100409` all **SUCCESS**. Focused Application contract 7/7 PASS, including cache order, raw-binding integrity, result validation, and signature evidence convergence. Task 10 is **COMPLETE**.
+- Task 11 test-only RED head `c2a8216c0fdf8e06359e5b7e7d06870fe2c048b9`: repository target compiled only to missing `SemanticInspectionRepository` methods (E0599); schema target failed only because `document_semantic_inspections` did not exist (42P01). No production schema/source was present at that head.
+- Task 11 local GREEN source head `ed0db578710a56f0bc336ea77a4e1144788a2cfa`: schema 1/1, repository 3/3, concurrent convergence 2/2 PASS against PostgreSQL 18.6; strict repository all-target Clippy, Rust 1.98.1 fmt, and diff checks PASS. It adds a typed immutable key/raw/fingerprint record and JSONB evidence, with no durable common content IR. Hosted exact-head gates remain pending; Task 11 is not yet COMPLETE.
+- PR #10 remains OPEN/Draft and unmerged. No Frozen Design amendment or Task 11 parser dependency promotion.
+- **Next exact action:** push Task 11 GREEN and this record once, inspect same-head standard CI / Sandbox / DSI PoC, then begin Task 12 test-only RED using real filesystem, PostgreSQL, Application, Linux runner, and worker.
+
 ### Production execution update — 2026-09-26 (supersedes older gate text below)
 
 - Tasks 1–9: **COMPLETE**. Task 9 GREEN exact head `51fea3f1aa216246acfded287a50148b275da599`: standard CI `36248487276` **SUCCESS**, DSI Sandbox Preflight `36248487335` **SUCCESS**, DSI PoC `36248487264` **SUCCESS**. Hosted Ubuntu runner isolation succeeded; local Docker's Landlock `NotEnforced` behavior remains a fail-closed environment observation, not a production fallback.
