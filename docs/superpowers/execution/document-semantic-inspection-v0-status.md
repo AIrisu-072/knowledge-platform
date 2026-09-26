@@ -509,6 +509,14 @@ Final cross-host evidence at the same head:
 
 ## Current gate / next exact action
 
+### Production execution update — Task 11 complete / Task 12 GREEN pending (2026-09-27 JST)
+
+- Task 11 exact head `7e93994a21e546916f7b0f7abd354677cd9d5e55`: standard CI `36249696461`, Sandbox `36249696404`, PoC `36249696311` all **SUCCESS**. PostgreSQL schema, immutable API, raw-binding cache integrity, and concurrent complete semantic-result convergence are verified. Task 11 is **COMPLETE**.
+- Task 12 test-only RED head `adeda5ac60d490c02af4fd8cecd5071de870c263`: Rust 1.98.1 focused compile failed only on absent `RunnerInspectionExecutor` E0432. It included no production runner-to-Application bridge.
+- Task 12 local GREEN source head `d113aabbb4432b6c14fc4e6af042a79294e18ce0`: bounded Application reader-to-Linux runner bridge, typed failure mapping, and production worker binary setup for Linux `test:rust`. Mac focused compile plus strict Application and runner Clippy, root fmt, and Linux amd64 focused integration-test compilation PASS. Vertical-slice cases cover authoritative create/inspect/cache hit, raw mismatch, malformed/corrupt content without row, scan-only/encrypted PDF, injected timeout/resource/malformed failure without row, explicit invalid signature evidence, external link without fetch, and static XLSM inspection. Local Docker Landlock `NotEnforced` prevents a valid runtime GREEN claim; hosted Ubuntu exact-head gate is pending.
+- PR #10 OPEN/Draft and unmerged. No Frozen Design amendment, parser dependency promotion, Search Extraction coupling, or common durable content IR in Task 12.
+- **Next exact action:** push Task 12 GREEN with this record once, inspect standard CI / Sandbox / DSI PoC at the same head, repair observed failures if any, and then begin Task 13 91-case parity RED.
+
 ### Production execution update — Task 10 complete / Task 11 GREEN pending (2026-09-26)
 
 - Task 10 GREEN exact head `f7f70130c3b51aeb0f894866c4a3441ac89adabd`: standard CI `36249100418`, DSI Sandbox Preflight `36249100413`, DSI PoC `36249100409` all **SUCCESS**. Focused Application contract 7/7 PASS, including cache order, raw-binding integrity, result validation, and signature evidence convergence. Task 10 is **COMPLETE**.

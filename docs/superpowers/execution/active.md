@@ -3,13 +3,13 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **PRODUCTION IMPLEMENTATION — TASKS 1–10 COMPLETE / TASK 11 GREEN EXACT-HEAD CI NEXT**
+- Current phase: **PRODUCTION IMPLEMENTATION — TASKS 1–11 COMPLETE / TASK 12 GREEN EXACT-HEAD CI NEXT**
 - Frozen Design PR: `#7` — merged
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
 - Production planning PR: `#9` — merged as `48045768d1d026eb785ee065877e401bbafd97ca`
 - Production implementation branch: `feat/document-semantic-inspection-v0`
-- Production implementation PR: `#10` — OPEN / Draft; live head `f7f70130c3b51aeb0f894866c4a3441ac89adabd` before the Task 11 push (2026-09-26 check); do not merge
+- Production implementation PR: `#10` — OPEN / Draft; live head `7e93994a21e546916f7b0f7abd354677cd9d5e55` before the Task 12 push (2026-09-27 JST check); do not merge
 - Task 5 initial clean RED: `65d6896322b93c6731f8a836be8b79fcf53beac5`; authoritative repaired clean RED: `e3e6659d243233ff102c393e8be1515a05ba1398`; CI `36135132794` failed only on the expected missing DOCX APIs, Sandbox `36135132761` and DSI PoC `36135132763` passed
 - Supplemental test-only head: `bec052e43dfeedb049ac725f8c697cf564ec60b1`; exact-head CI `36136763103` failed on the expected missing `DocxAdapter` / `editorial_provenance()` APIs, Sandbox `36136763068` and DSI PoC `36136762918` passed
 - Intermediate ZIP-preflight test-only head: `593eddd14c15b098b377fc91b272239af1b24b12`; exact-head CI `36138987613` failed only on the expected missing DOCX APIs, Sandbox `36138987388` and DSI PoC `36138987376` passed. Its five cases failed as expected against the local pre-fix ZIP guard; fmt and strict worker Clippy passed.
@@ -98,6 +98,8 @@ Read in this order:
 Repository and fresh GitHub state override remembered/chat state.
 
 ## Current scope
+
+Current production execution update (2026-09-27 JST, later checkpoint): Tasks 1–11 are COMPLETE. Task 11 exact head `7e93994a21e546916f7b0f7abd354677cd9d5e55` passed standard CI `36249696461`, DSI Sandbox Preflight `36249696404`, and DSI PoC `36249696311`. Task 12 test-only RED head `adeda5ac60d490c02af4fd8cecd5071de870c263` failed focused compile only on missing `RunnerInspectionExecutor`. Local GREEN source head `d113aabbb4432b6c14fc4e6af042a79294e18ce0` passes Mac Application/runner strict Clippy and Linux Rust 1.98.1 integration-test compilation; hosted Ubuntu runtime verification is pending because local Docker Landlock is `NotEnforced`. Next exact action: push Task 12 GREEN with this record, inspect exact-head standard CI/Sandbox/PoC, repair only observed failures, then start Task 13 91-case parity RED. PR #10 remains Draft/unmerged; no Design amendment is proposed.
 
 Current production execution update (2026-09-26, later checkpoint): Tasks 1–10 are COMPLETE. Task 10 exact head `f7f70130c3b51aeb0f894866c4a3441ac89adabd` passed standard CI `36249100418`, DSI Sandbox Preflight `36249100413`, and DSI PoC `36249100409`. Task 11 test-only RED head `c2a8216c0fdf8e06359e5b7e7d06870fe2c048b9` failed locally only because the table and repository API were absent. Local GREEN source head `ed0db578710a56f0bc336ea77a4e1144788a2cfa` passed six focused PostgreSQL schema/repository/concurrency tests and strict repository Clippy. Next exact action: push Task 11 GREEN with this record, inspect exact-head standard CI/Sandbox/PoC, then start Task 12 production vertical-slice RED. PR #10 remains Draft/unmerged; no Design amendment is proposed.
 
