@@ -121,6 +121,8 @@ where
             || persisted.response.semantic_capabilities != candidate.response.semantic_capabilities
             || persisted.response.editorial_provenance != candidate.response.editorial_provenance
             || persisted.response.external_dependencies != candidate.response.external_dependencies
+            || persisted.response.digital_signature_evidence
+                != candidate.response.digital_signature_evidence
         {
             return Err(ApplicationError::SemanticInspectionDeterminismViolation);
         }

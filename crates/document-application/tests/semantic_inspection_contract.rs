@@ -15,8 +15,8 @@ use document_domain::{
     ContentHash, FileId, FileObject, FileSize, MediaType, StorageKey, StoredFileDescriptor,
 };
 use document_semantic_inspection_core::{
-    CapabilityEvidence, CapabilityState, FormatId, InspectionProfileVersion, WorkerRequest,
-    WorkerResponse,
+    CapabilityEvidence, CapabilityState, DigitalSignatureEvidence, FormatId,
+    InspectionProfileVersion, SignatureValidity, WorkerRequest, WorkerResponse,
 };
 use time::OffsetDateTime;
 use tokio::io::AsyncReadExt;
@@ -74,6 +74,7 @@ type Events = Arc<Mutex<Vec<&'static str>>>;
 struct FakeRepository {
     file: Mutex<FileObject>,
     cached: Mutex<Option<SemanticInspectionRecord>>,
+    convergence_override: Mutex<Option<WorkerResponse>>,
     events: Events,
 }
 
@@ -105,6 +106,14 @@ impl SemanticInspectionRepository for FakeRepository {
         self.events.lock().unwrap().push("insert");
         let mut cached = self.cached.lock().unwrap();
         assert!(cached.is_none(), "first inspection should insert once");
+        if let Some(response) = self.convergence_override.lock().unwrap().take() {
+            return Ok(SemanticInspectionRecord::restore(
+                file_id(),
+                response,
+                OffsetDateTime::UNIX_EPOCH,
+            )
+            .unwrap());
+        }
         *cached = Some(record.clone());
         Ok(record)
     }
@@ -175,6 +184,7 @@ fn fixture() -> Fixture {
     let repository = Arc::new(FakeRepository {
         file: Mutex::new(file_object(HASH)),
         cached: Mutex::new(None),
+        convergence_override: Mutex::new(None),
         events: events.clone(),
     });
     let storage = Arc::new(FakeStorage {
@@ -323,4 +333,34 @@ async fn oversized_diagnostics_fail_before_insert() {
         .unwrap_err();
     assert_eq!(error, ApplicationError::InvalidWorkerResult);
     assert!(fixture.repository.cached.lock().unwrap().is_none());
+}
+
+#[tokio::test]
+async fn converged_signature_evidence_must_match() {
+    let fixture = fixture();
+    let mut persisted = response();
+    persisted
+        .digital_signature_evidence
+        .push(DigitalSignatureEvidence {
+            signature_type: "cms".into(),
+            signer_claim: None,
+            certificate_subject: None,
+            certificate_issuer: None,
+            certificate_fingerprint: None,
+            signed_at: None,
+            cryptographic_validity: SignatureValidity::Unverifiable,
+            covered_content: vec![],
+            validation_diagnostics: vec![],
+        });
+    *fixture.repository.convergence_override.lock().unwrap() = Some(persisted);
+
+    let error = fixture
+        .service
+        .ensure(file_id(), InspectionProfileVersion::DsiV0)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error,
+        ApplicationError::SemanticInspectionDeterminismViolation
+    );
 }

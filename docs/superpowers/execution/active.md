@@ -3,13 +3,13 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **PRODUCTION IMPLEMENTATION — TASKS 1–8 COMPLETE / TASK 9 GREEN EXACT-HEAD CI NEXT**
+- Current phase: **PRODUCTION IMPLEMENTATION — TASKS 1–9 COMPLETE / TASK 10 GREEN EXACT-HEAD CI NEXT**
 - Frozen Design PR: `#7` — merged
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
 - Production planning PR: `#9` — merged as `48045768d1d026eb785ee065877e401bbafd97ca`
 - Production implementation branch: `feat/document-semantic-inspection-v0`
-- Production implementation PR: `#10` — OPEN / Draft; current live head `eeed985f229bbcacd08a7ea955b305e4fc30f010` (2026-09-26 check); do not merge
+- Production implementation PR: `#10` — OPEN / Draft; live head `51fea3f1aa216246acfded287a50148b275da599` before the Task 10 push (2026-09-26 check); do not merge
 - Task 5 initial clean RED: `65d6896322b93c6731f8a836be8b79fcf53beac5`; authoritative repaired clean RED: `e3e6659d243233ff102c393e8be1515a05ba1398`; CI `36135132794` failed only on the expected missing DOCX APIs, Sandbox `36135132761` and DSI PoC `36135132763` passed
 - Supplemental test-only head: `bec052e43dfeedb049ac725f8c697cf564ec60b1`; exact-head CI `36136763103` failed on the expected missing `DocxAdapter` / `editorial_provenance()` APIs, Sandbox `36136763068` and DSI PoC `36136762918` passed
 - Intermediate ZIP-preflight test-only head: `593eddd14c15b098b377fc91b272239af1b24b12`; exact-head CI `36138987613` failed only on the expected missing DOCX APIs, Sandbox `36138987388` and DSI PoC `36138987376` passed. Its five cases failed as expected against the local pre-fix ZIP guard; fmt and strict worker Clippy passed.
@@ -98,6 +98,8 @@ Read in this order:
 Repository and fresh GitHub state override remembered/chat state.
 
 ## Current scope
+
+Current production execution update (2026-09-26; supersedes older phase summaries below): Tasks 1–9 are COMPLETE. Task 9 exact head `51fea3f1aa216246acfded287a50148b275da599` passed standard CI `36248487276`, DSI Sandbox Preflight `36248487335`, and DSI PoC `36248487264`. Task 10 RED head `015c7c3af9e828686cdcaa9eb0ff992d5fa71adf` failed focused compile only on absent Application inspection APIs. The local Task 10 GREEN contract is 7/7 PASS and strict Application Clippy passed; supplemental signature-convergence test was RED before the repair and is now GREEN. Next exact action: push the Task 10 GREEN head once, obtain its standard CI, Sandbox, and PoC exact-head results, then start Task 11 immutable PostgreSQL RED. PR #10 stays Draft and unmerged; no Design amendment is proposed.
 
 Design is approved and frozen. PoC Qualification Plan was explicitly approved on 2026-09-21.
 
