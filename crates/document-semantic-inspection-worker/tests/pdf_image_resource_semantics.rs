@@ -1,7 +1,9 @@
 use std::io::Write as _;
 use std::ops::Range;
 
-use document_semantic_inspection_worker::{AdapterProfile, PdfAdapter, SemanticAdapter};
+use document_semantic_inspection_worker::{
+    AdapterProfile, PdfAdapter, SemanticAdapter, WorkerFailureCode,
+};
 
 const PAGE_WIDTH: u32 = 612;
 const PAGE_HEIGHT: u32 = 792;
@@ -9,6 +11,12 @@ const IMAGE_LEFT: u32 = 100;
 const IMAGE_BOTTOM: u32 = 500;
 const IMAGE_WIDTH: u32 = 96;
 const IMAGE_HEIGHT: u32 = 96;
+const _: () = {
+    assert!(IMAGE_LEFT + IMAGE_WIDTH <= PAGE_WIDTH);
+    assert!(IMAGE_BOTTOM + IMAGE_HEIGHT <= PAGE_HEIGHT);
+};
+
+type SerializedPdf = (Vec<u8>, Option<Range<usize>>, Option<Range<usize>>, usize);
 
 #[derive(Clone, Copy)]
 enum ResourcePlacement {
@@ -26,6 +34,7 @@ enum ImagePlacement {
 enum ColorSpace {
     DeviceGray,
     DeviceRgb,
+    IndexedPalette([u8; 3]),
 }
 
 struct Fixture {
@@ -51,12 +60,10 @@ fn build_fixture(
     image_sample: &[u8],
     decode: Option<[u8; 2]>,
 ) -> Fixture {
-    assert!(IMAGE_LEFT + IMAGE_WIDTH <= PAGE_WIDTH);
-    assert!(IMAGE_BOTTOM + IMAGE_HEIGHT <= PAGE_HEIGHT);
     assert_eq!(
         image_sample.len(),
         match color_space {
-            ColorSpace::DeviceGray => 1,
+            ColorSpace::DeviceGray | ColorSpace::IndexedPalette(_) => 1,
             ColorSpace::DeviceRgb => 3,
         },
         "one 8-bit pixel is expected"
@@ -72,6 +79,7 @@ fn build_fixture(
         match color_space {
             ColorSpace::DeviceGray => "DeviceGray",
             ColorSpace::DeviceRgb => "DeviceRGB",
+            ColorSpace::IndexedPalette(_) => "CS1",
         },
         decode_clause,
     );
@@ -88,7 +96,15 @@ fn build_fixture(
         ImagePlacement::Direct => "/Im0 6 0 R".to_owned(),
         ImagePlacement::FormXObject => "/Fm0 7 0 R".to_owned(),
     };
-    let resources = format!("<< /Font << /F1 5 0 R >> /XObject << {image_resource} >> >>");
+    let color_space_resource = match color_space {
+        ColorSpace::IndexedPalette([red, green, blue]) => format!(
+            " /ColorSpace << /CS1 [/Indexed /DeviceRGB 0 <{red:02x}{green:02x}{blue:02x}>] >>"
+        ),
+        _ => String::new(),
+    };
+    let resources = format!(
+        "<< /Font << /F1 5 0 R >> /XObject << {image_resource} >>{color_space_resource} >>"
+    );
     let pages_resources = match resource_placement {
         ResourcePlacement::Page => String::new(),
         ResourcePlacement::ParentPages => format!(" /Resources {resources}"),
@@ -181,6 +197,63 @@ fn build_fixture(
     }
 }
 
+fn build_inline_image_fixture(pixel: [u8; 3]) -> Fixture {
+    let mut text_content = format!(
+        "BT /F1 18 Tf 72 720 Td (PDF NATIVE TEXT FIXTURE) Tj ET\nq {IMAGE_WIDTH} 0 0 {IMAGE_HEIGHT} {IMAGE_LEFT} {IMAGE_BOTTOM} cm BI /W 1 /H 1 /CS /RGB /BPC 8 ID "
+    )
+    .into_bytes();
+    let pixel_start = text_content.len();
+    text_content.extend_from_slice(&pixel);
+    text_content.extend_from_slice(b" EI Q\n");
+    let (content_body, content_range) = stream_body("<<", &text_content);
+    let objects = vec![
+        PdfObject {
+            id: 1,
+            body: b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            image_sample_range: None,
+            decode_array_range: None,
+        },
+        PdfObject {
+            id: 2,
+            body: b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            image_sample_range: None,
+            decode_array_range: None,
+        },
+        PdfObject {
+            id: 3,
+            body: format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {PAGE_WIDTH} {PAGE_HEIGHT}] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
+            )
+            .into_bytes(),
+            image_sample_range: None,
+            decode_array_range: None,
+        },
+        PdfObject {
+            id: 4,
+            body: content_body,
+            image_sample_range: Some(
+                content_range.start + pixel_start..content_range.start + pixel_start + pixel.len(),
+            ),
+            decode_array_range: None,
+        },
+        PdfObject {
+            id: 5,
+            body: b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+            image_sample_range: None,
+            decode_array_range: None,
+        },
+    ];
+    let (bytes, image_sample_range, _, xref_offset) = serialize_pdf(objects);
+    Fixture {
+        bytes,
+        image_sample: pixel.to_vec(),
+        image_sample_range: image_sample_range.expect("inline image sample range"),
+        decode_array_range: None,
+        text_content,
+        xref_offset,
+    }
+}
+
 fn stream_body(prefix: &str, data: &[u8]) -> (Vec<u8>, Range<usize>) {
     let mut body = format!("{prefix} /Length {} >>\nstream\n", data.len()).into_bytes();
     let start = body.len();
@@ -190,9 +263,7 @@ fn stream_body(prefix: &str, data: &[u8]) -> (Vec<u8>, Range<usize>) {
     (body, range)
 }
 
-fn serialize_pdf(
-    objects: Vec<PdfObject>,
-) -> (Vec<u8>, Option<Range<usize>>, Option<Range<usize>>, usize) {
+fn serialize_pdf(objects: Vec<PdfObject>) -> SerializedPdf {
     let mut bytes = b"%PDF-1.7\n%\xE2\xE3\xCF\xD3\n".to_vec();
     let mut offsets = vec![0usize];
     let mut image_sample_range = None;
@@ -205,7 +276,7 @@ fn serialize_pdf(
             "PDF object ids are dense"
         );
         let object_offset = bytes.len();
-        write!(bytes, "{} 0 obj\n", object.id).expect("write to Vec");
+        writeln!(bytes, "{} 0 obj", object.id).expect("write to Vec");
         let body_offset = bytes.len();
         bytes.extend_from_slice(&object.body);
         bytes.extend_from_slice(b"\nendobj\n");
@@ -222,7 +293,7 @@ fn serialize_pdf(
     let xref_offset = bytes.len();
     write!(bytes, "xref\n0 {}\n0000000000 65535 f \n", offsets.len()).expect("write xref header");
     for offset in offsets.iter().skip(1) {
-        write!(bytes, "{offset:010} 00000 n \n").expect("write xref entry");
+        writeln!(bytes, "{offset:010} 00000 n ").expect("write xref entry");
     }
     write!(
         bytes,
@@ -358,4 +429,64 @@ fn image_decode_array_changes_visible_pixels_and_fingerprint() {
         black_fingerprint, white_fingerprint,
         "visible black/white changes from /Decode are semantic"
     );
+}
+
+#[test]
+fn named_indexed_color_space_palette_changes_fingerprint() {
+    let black = build_fixture(
+        ResourcePlacement::Page,
+        ImagePlacement::Direct,
+        ColorSpace::IndexedPalette([0, 0, 0]),
+        &[0x00],
+        None,
+    );
+    let blue = build_fixture(
+        ResourcePlacement::Page,
+        ImagePlacement::Direct,
+        ColorSpace::IndexedPalette([0, 0, 255]),
+        &[0x00],
+        None,
+    );
+    assert_eq!(black.text_content, blue.text_content);
+    assert_eq!(black.image_sample, blue.image_sample);
+    assert_eq!(differing_offsets(&black.bytes, &blue.bytes).len(), 2);
+
+    let black_fingerprint = inspect(&black);
+    let blue_fingerprint = inspect(&blue);
+    assert_ne!(
+        black_fingerprint, blue_fingerprint,
+        "a named ColorSpace's palette changes visible image pixels"
+    );
+}
+
+#[test]
+fn visible_inline_image_changes_fingerprint_or_fails_closed() {
+    let black = build_inline_image_fixture([0, 0, 0]);
+    let blue = build_inline_image_fixture([0, 0, 255]);
+    assert_eq!(black.bytes.len(), blue.bytes.len());
+    assert_eq!(
+        differing_offsets(&black.bytes, &blue.bytes),
+        vec![black.image_sample_range.end - 1],
+        "only the visible inline image's blue sample may change"
+    );
+    assert_well_formed_pdf_input(&black);
+    assert_well_formed_pdf_input(&blue);
+
+    let black_result = PdfAdapter.inspect(&black.bytes, &AdapterProfile::default());
+    let blue_result = PdfAdapter.inspect(&blue.bytes, &AdapterProfile::default());
+    match (black_result, blue_result) {
+        (Ok(black), Ok(blue)) => assert_ne!(
+            black.semantic_fingerprint(),
+            blue.semantic_fingerprint(),
+            "visible inline image pixels must change identity"
+        ),
+        (Err(black), Err(blue)) => {
+            assert_eq!(black.code(), blue.code());
+            assert_eq!(
+                black.code(),
+                WorkerFailureCode::UnsupportedSemanticConstruct
+            );
+        }
+        (black, blue) => panic!("inline image handling must agree: {black:?} / {blue:?}"),
+    }
 }

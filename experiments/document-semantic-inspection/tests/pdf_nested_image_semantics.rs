@@ -53,6 +53,57 @@ fn image_decode_array_changes_identity_when_raw_sample_is_unchanged() {
     );
 }
 
+#[test]
+fn named_indexed_palette_changes_visible_image_identity() {
+    let black = pdf_with_indexed_palette([0, 0, 0]);
+    let blue = pdf_with_indexed_palette([0, 0, 255]);
+    assert_eq!(black.len(), blue.len());
+    assert_eq!(
+        black
+            .iter()
+            .zip(&blue)
+            .filter(|(left, right)| left != right)
+            .count(),
+        2,
+        "only the two hexadecimal digits of the palette's blue channel change"
+    );
+    let black_fingerprint = inspect_native_text_pdf(&black, "black");
+    let blue_fingerprint = inspect_native_text_pdf(&blue, "blue");
+    assert_eq!(render_rgb_pixel(&black), [0, 0, 0]);
+    assert_eq!(render_rgb_pixel(&blue), [0, 0, 255]);
+    assert_ne!(
+        black_fingerprint, blue_fingerprint,
+        "a named ColorSpace palette is visible image semantics"
+    );
+}
+
+#[test]
+fn visible_inline_image_changes_identity_or_fails_closed() {
+    let black = pdf_with_inline_image([0, 0, 0]);
+    let blue = pdf_with_inline_image([0, 0, 255]);
+    assert_one_byte_diff(&black, &blue);
+
+    let black_result = PdfAdapter.inspect(&black, &InspectionProfile::default());
+    let blue_result = PdfAdapter.inspect(&blue, &InspectionProfile::default());
+    assert_eq!(render_rgb_pixel(&black), [0, 0, 0]);
+    assert_eq!(render_rgb_pixel(&blue), [0, 0, 255]);
+    match (black_result, blue_result) {
+        (Ok(black), Ok(blue)) => assert_ne!(
+            fingerprint(&black.semantic_projection),
+            fingerprint(&blue.semantic_projection),
+            "visible inline image pixels must change identity"
+        ),
+        (Err(black), Err(blue)) => {
+            assert_eq!(black.code(), blue.code());
+            assert_eq!(
+                black.code(),
+                document_semantic_inspection_poc::ErrorCode::UnsupportedSemanticConstruct
+            );
+        }
+        (black, blue) => panic!("inline image handling must agree: {black:?} / {blue:?}"),
+    }
+}
+
 fn inspect_native_text_pdf(input: &[u8], label: &str) -> [u8; 32] {
     let output = PdfAdapter
         .inspect(input, &InspectionProfile::default())
@@ -206,6 +257,57 @@ fn pdf_with_decoded_direct_image(decode_array: &str) -> Vec<u8> {
     );
     objects.insert(7, b"<< /Producer (DSI fixture) >>".to_vec());
     write_pdf(objects, 1, Some(7))
+}
+
+fn pdf_with_indexed_palette(palette: [u8; 3]) -> Vec<u8> {
+    let page_content = b"BT /F1 12 Tf 20 160 Td (stable) Tj ET\nq 80 0 0 80 20 20 cm /Im0 Do Q";
+    let mut objects = BTreeMap::<u32, Vec<u8>>::new();
+    objects.insert(1, b"<< /Type /Catalog /Pages 2 0 R >>".to_vec());
+    objects.insert(2, b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec());
+    objects.insert(
+        3,
+        format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 5 0 R >> /XObject << /Im0 6 0 R >> /ColorSpace << /CS1 [/Indexed /DeviceRGB 0 <{:02x}{:02x}{:02x}>] >> >> /Contents 4 0 R >>",
+            palette[0], palette[1], palette[2]
+        )
+        .into_bytes(),
+    );
+    objects.insert(4, stream_object("", page_content));
+    objects.insert(
+        5,
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+    );
+    objects.insert(
+        6,
+        stream_object(
+            "/Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /CS1 /BitsPerComponent 8",
+            &[0x00],
+        ),
+    );
+    objects.insert(7, b"<< /Producer (DSI fixture) >>".to_vec());
+    write_pdf(objects, 1, Some(7))
+}
+
+fn pdf_with_inline_image(pixel: [u8; 3]) -> Vec<u8> {
+    let mut page_content =
+        b"BT /F1 12 Tf 20 160 Td (stable) Tj ET\nq 80 0 0 80 20 20 cm BI /W 1 /H 1 /CS /RGB /BPC 8 ID "
+            .to_vec();
+    page_content.extend_from_slice(&pixel);
+    page_content.extend_from_slice(b" EI Q");
+    let mut objects = BTreeMap::<u32, Vec<u8>>::new();
+    objects.insert(1, b"<< /Type /Catalog /Pages 2 0 R >>".to_vec());
+    objects.insert(2, b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec());
+    objects.insert(
+        3,
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".to_vec(),
+    );
+    objects.insert(4, stream_object("", &page_content));
+    objects.insert(
+        5,
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+    );
+    objects.insert(6, b"<< /Producer (DSI fixture) >>".to_vec());
+    write_pdf(objects, 1, Some(6))
 }
 
 fn stream_object(dictionary: &str, content: &[u8]) -> Vec<u8> {
