@@ -2,25 +2,26 @@
 
 ## Latest checkpoint — 2026-09-27 JST
 
-- Last exact verified implementation head: `5045fa8e6274054f19931c2ba11bbec62fb546d5` on `feat/document-semantic-inspection-v0`; PR #10 remains **OPEN / Draft** until the documentation-only final gate.
+- Last exact verified branch head: `bb34a59471620929757df573dda253765f06d40c` on `feat/document-semantic-inspection-v0`; PR #10 is **OPEN / Ready for review**. Implementation code head: `5045fa8e6274054f19931c2ba11bbec62fb546d5`.
 - Tasks 1–12: **COMPLETE**. Task 12 corrected GREEN head `feb3affb82ba2ed144a87d58706391d53890d7f5`: standard CI `36253230526`, Sandbox `36253230478`, and DSI PoC `36253230464` all **SUCCESS**.
 - Task 13 GREEN code head: `59d6679511751791e07180c61d8bd3b48ae6382b`, following test-only RED `30f8fa2b80bce1070053251cc1c26b061ed3c45a`. The requalified 91-case corpus, 20 repeats, 5 fresh worker processes, cross-format capability decisions, VBA, and signature targets pass locally. Original and corrected corpus manifests have identical expectations after removing only raw hash/size fields (`d786494a95e9670974e8945a86aecf1d0d5252e809ef130036cfa6e78cbaff81`).
 - Task 14 implementation head: `5045fa8e6274054f19931c2ba11bbec62fb546d5`. Linux inherited-FD isolation RED 0/1 and GREEN 1/1 were observed locally; `mise run verify:full` **SUCCESS**, including 385/385 Rust tests, `cargo deny check`, actionlint/zizmor, and SBOM. Exact-head hosted standard CI `36255207130`, Sandbox `36255207090`, and DSI PoC `36255207056` are all **SUCCESS**. Standard CI includes Ubuntu worker/runner tests and macOS Intel/arm64 semantic parity, both **SUCCESS**.
-- Blocker: **none** for the verified implementation head. No frozen Design/profile amendment is proposed. PR #10 has 0 unresolved review threads and 0 submitted reviews at the latest check.
-- Next exact action: commit/push this documentation-only evidence, require exact-head hosted CI on that final tree, then mark PR #10 Ready for review. After Ready, await review feedback and an explicit merge instruction. **Do not merge now.**
+- Documentation evidence head `bb34a59471620929757df573dda253765f06d40c`: standard CI `36255955719`, Sandbox `36255955708`, and DSI PoC `36255955764` all **SUCCESS**, including the Ubuntu/macOS Intel/macOS arm64 production semantic gate.
+- Blocker: **none**. No frozen Design/profile amendment is proposed. PR #10 has 0 unresolved review threads and 0 submitted reviews at the latest check.
+- Next exact action: require exact-head hosted CI for this final status-only correction, then await review feedback. Address any blocking review findings before seeking an explicit merge instruction. **Do not merge now.**
 
 The checkpoint above supersedes historical progress lines below.
 
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **PRODUCTION IMPLEMENTATION — TASKS 1–14 VERIFIED AT IMPLEMENTATION HEAD / DOCUMENTATION-ONLY FINAL CI AND READY GATE NEXT**
+- Current phase: **PRODUCTION IMPLEMENTATION — TASKS 1–14 COMPLETE / PR #10 READY FOR REVIEW**
 - Frozen Design PR: `#7` — merged
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
 - Production planning PR: `#9` — merged as `48045768d1d026eb785ee065877e401bbafd97ca`
 - Production implementation branch: `feat/document-semantic-inspection-v0`
-- Production implementation PR: `#10` — OPEN / Draft; current exact head is recorded in the latest checkpoint above; do not merge
+- Production implementation PR: `#10` — OPEN / Ready for review; last verified head is recorded in the latest checkpoint above; do not merge
 - Task 5 initial clean RED: `65d6896322b93c6731f8a836be8b79fcf53beac5`; authoritative repaired clean RED: `e3e6659d243233ff102c393e8be1515a05ba1398`; CI `36135132794` failed only on the expected missing DOCX APIs, Sandbox `36135132761` and DSI PoC `36135132763` passed
 - Supplemental test-only head: `bec052e43dfeedb049ac725f8c697cf564ec60b1`; exact-head CI `36136763103` failed on the expected missing `DocxAdapter` / `editorial_provenance()` APIs, Sandbox `36136763068` and DSI PoC `36136762918` passed
 - Intermediate ZIP-preflight test-only head: `593eddd14c15b098b377fc91b272239af1b24b12`; exact-head CI `36138987613` failed only on the expected missing DOCX APIs, Sandbox `36138987388` and DSI PoC `36138987376` passed. Its five cases failed as expected against the local pre-fix ZIP guard; fmt and strict worker Clippy passed.
