@@ -40,8 +40,38 @@ pub enum RepositoryError {
     CommitOutcomeUnknown,
     #[error("authoritative integrity violation")]
     IntegrityViolation,
+    #[error("semantic inspection determinism violation")]
+    SemanticInspectionDeterminismViolation,
     #[error("repository internal failure: {0}")]
     Internal(String),
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum InspectionExecutionError {
+    #[error("unsupported document format")]
+    UnsupportedDocumentFormat,
+    #[error("document requires OCR")]
+    RequiresOcr,
+    #[error("encrypted content is unsupported")]
+    EncryptedContentUnsupported,
+    #[error("declared and detected formats differ")]
+    FormatMismatch,
+    #[error("raw binding mismatch")]
+    RawBindingMismatch,
+    #[error("semantic extraction failed")]
+    SemanticExtractionFailed,
+    #[error("inspection timed out")]
+    InspectionTimeout,
+    #[error("inspection resource limit exceeded")]
+    InspectionResourceLimitExceeded,
+    #[error("extractor unavailable")]
+    ExtractorUnavailable,
+    #[error("invalid worker result")]
+    InvalidWorkerResult,
+    #[error("parser disagreement")]
+    ParserDisagreement,
+    #[error("unsupported semantic construct")]
+    UnsupportedSemanticConstruct,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -54,6 +84,8 @@ pub enum ApplicationError {
     DocumentNotFound,
     #[error("document version not found")]
     DocumentVersionNotFound,
+    #[error("file object not found")]
+    FileObjectNotFound,
     #[error("operation conflicts with current authoritative state")]
     Conflict,
     #[error("business rule rejected operation")]
@@ -70,6 +102,12 @@ pub enum ApplicationError {
     RepositoryUnavailable,
     #[error("authoritative integrity violation")]
     IntegrityViolation,
+    #[error("invalid semantic inspection worker result")]
+    InvalidWorkerResult,
+    #[error("semantic inspection determinism violation")]
+    SemanticInspectionDeterminismViolation,
+    #[error("semantic inspection failed: {0}")]
+    InspectionFailed(InspectionExecutionError),
     #[error("commit outcome is unknown")]
     CommitOutcomeUnknown {
         document_id: DocumentId,
@@ -118,7 +156,20 @@ impl From<RepositoryError> for ApplicationError {
                 "commit outcome unknown outside create operation identity context".to_owned(),
             ),
             RepositoryError::IntegrityViolation => Self::IntegrityViolation,
+            RepositoryError::SemanticInspectionDeterminismViolation => {
+                Self::SemanticInspectionDeterminismViolation
+            }
             RepositoryError::Internal(message) => Self::Internal(message),
+        }
+    }
+}
+
+impl From<InspectionExecutionError> for ApplicationError {
+    fn from(error: InspectionExecutionError) -> Self {
+        match error {
+            InspectionExecutionError::RawBindingMismatch => Self::IntegrityViolation,
+            InspectionExecutionError::InvalidWorkerResult => Self::InvalidWorkerResult,
+            other => Self::InspectionFailed(other),
         }
     }
 }
