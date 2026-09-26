@@ -3,7 +3,7 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **PRODUCTION IMPLEMENTATION — TASKS 1–7 COMPLETE / TASK 8 PDF RED NEXT**
+- Current phase: **PRODUCTION IMPLEMENTATION — TASKS 1–7 COMPLETE / TASK 8 PDF CLEAN RED COMPLETE, GREEN NEXT**
 - Frozen Design PR: `#7` — merged
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
@@ -101,13 +101,13 @@ Repository and fresh GitHub state override remembered/chat state.
 
 Design is approved and frozen. PoC Qualification Plan was explicitly approved on 2026-09-21.
 
-Production Tasks 1–7 are complete. Task 7's final exact-head standard CI, Sandbox, and DSI PoC gates passed at `42eeb9c2724d10a3a49d56a6d3f08a6336369de7`. Task 4 promoted only its qualified TXT/CSV/HTML parser dependencies; `scraper` remains excluded. Task 5 promoted PoC-qualified `office_oxide 0.1.11`, deflate-only `zip 8.6.0`, `quick-xml 0.42.0`, and supplemental scoped `png 0.18.1` after clean RED and exact-head GREEN. Task 6 promoted only its qualified XLSX/XLSM/VBA parser composition. Task 7 initial clean RED is confirmed at `452c76d0d92aedb31c4c447cef5bae75388a8b63`, with further supplemental RED recorded below.
+Production Tasks 1–7 are complete. Task 7's final exact-head standard CI, Sandbox, and DSI PoC gates passed at `42eeb9c2724d10a3a49d56a6d3f08a6336369de7`. Task 8 PDF test-only clean RED is confirmed at `49d66402d0b4ea482ace6bda955820ec0ead6c5c`; PDF GREEN is next. Task 4 promoted only its qualified TXT/CSV/HTML parser dependencies; `scraper` remains excluded. Task 5 promoted PoC-qualified `office_oxide 0.1.11`, deflate-only `zip 8.6.0`, `quick-xml 0.42.0`, and supplemental scoped `png 0.18.1` after clean RED and exact-head GREEN. Task 6 promoted only its qualified XLSX/XLSM/VBA parser composition.
 
 Task 2 produced one material qualification result: `scraper 0.27.0` was rejected because its transitive graph contains MPL-2.0. Direct `html5ever 0.39.0 + markup5ever_rcdom 0.39.0` passed the same semantic cases and the dependency gate.
 
 ## Current hard gate
 
-The PoC qualification gate is **complete**. The Production Implementation Plan was explicitly approved by the user on 2026-09-25, and PR #8 is merged. Production Tasks 1–7 are complete after clean RED and fresh exact-head GREEN evidence. Task 8 PDF test-only RED is next. No Design amendment is in progress.
+The PoC qualification gate is **complete**. The Production Implementation Plan was explicitly approved by the user on 2026-09-25, and PR #8 is merged. Production Tasks 1–7 are complete after clean RED and fresh exact-head GREEN evidence. Task 8 PDF test-only clean RED is complete; only PoC-qualified PDF dependencies may now be promoted for GREEN. No Design amendment is in progress.
 
 Task 6 final GREEN head `98072f1732157c85ac3d26ce7bf78d64cc456568` passed exact-head standard CI `36209740995`, Sandbox `36209740990`, and DSI PoC `36209741011`. Standard CI included a successful container-build and required-check. PR #10 remains OPEN / Draft. Read live GitHub before acting. Do not merge without explicit instruction.
 
@@ -169,13 +169,15 @@ PoC PPTX source and the independent OPC Target regression were promoted at exact
 
 Production PPTX adapter promotion head `42eeb9c2724d10a3a49d56a6d3f08a6336369de7` is the final Task 7 GREEN: exact-head standard CI `36227354015`, DSI Sandbox Preflight `36227354068`, and DSI PoC `36227353971` all **SUCCESS**. Standard CI included Rust tests/static, policy, security, macOS portability, container build, and required-check. Local pinned full workspace tests, strict all-target Clippy, fmt, cargo deny, and staged diff check passed before promotion. Independent final read-only audit found no other proven source blocker. Task 7 is **COMPLETE**. PR #10 is still OPEN / Draft and unmerged; no Design amendment is in progress.
 
+Task 8 PDF test-only RED head `49d66402d0b4ea482ace6bda955820ec0ead6c5c` has no parser dependencies or adapter implementation. Exact-head standard CI `36228434980` **FAIL as expected only on missing `PdfAdapter` E0432** in rust-static and rust-test; formatting, policy, security, macOS portability, and container build passed. Exact-head DSI Sandbox Preflight `36228435009` and DSI PoC `36228434957` both **SUCCESS**. Local pinned fmt passed, focused compile failed only on E0432, and independent read-only review returned GO. This is the clean authoritative Task 8 PDF RED. The test checks the exact PDFium 151.0.7881.0 native binary SHA for Linux x64, macOS x64, and macOS arm64. No signature Step 3 work has begun.
+
 ## Next exact action
 
-Implement Task 8 Step 1 as PDF semantic **test-only RED**: add no parser dependency or adapter, format and commit/push the tests, then obtain clean exact-head standard CI failure only on missing PDF adapter APIs while Sandbox and DSI PoC pass. After recording RED, promote only the PoC-qualified PDF composition for Step 2 GREEN, then run separate signature RED/GREEN Steps 3–4. Continue Tasks 9–14 in approved order. Keep PR #10 Draft and unmerged; no Design amendment is in progress.
+Implement Task 8 Step 2 PDF GREEN using only `pdfium-render 0.9.4` (`pdfium_7881`, `thread_safe`), pinned native PDFium `151.0.7881.0`, and `lopdf 0.45.0` without default features. Verify native library bytes/hash, dual-engine semantics, editorial evidence, worker dispatch, and exact-head standard CI/Sandbox/PoC before starting separate signature RED/GREEN Steps 3–4. A read-only audit identified OOXML package-part signature coverage and PDF forged ByteRange risks to reproduce during Step 3; do not promote the flawed PoC behavior unexamined. Continue Tasks 9–14 in approved order. Keep PR #10 Draft and unmerged; no Design amendment is in progress.
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` のrepositoryとGitHubの現在状態を正本として続行してください。最初に `AGENTS.md`、このActive、Execution Status、Frozen Design、Design approval、承認済みProduction Plan、live branch/PR/CIの順に確認してください。Production Tasks 1–7 COMPLETE。Task 7 PPTX final GREEN head `42eeb9c2724d10a3a49d56a6d3f08a6336369de7` はstandard CI `36227354015`、Sandbox `36227354068`、DSI PoC `36227353971` がすべてSUCCESSです。次はTask 8 Step 1 PDF semantics test-only REDを実施し、fmt/policy/securityを通して未実装PDF APIだけが失敗するexact-head CIを記録してください。続いて承認済みPlanのPDF GREEN、署名RED/GREEN、Tasks 9–14を順に進めます。PR #10はOPEN/Draftのままmergeしません。
+> `AIrisu-072/knowledge-platform` のrepositoryとGitHubの現在状態を正本として続行してください。最初に `AGENTS.md`、このActive、Execution Status、Frozen Design、Design approval、承認済みProduction Plan、live branch/PR/CIの順に確認してください。Production Tasks 1–7 COMPLETE。Task 8 PDF clean RED head `49d66402d0b4ea482ace6bda955820ec0ead6c5c` はCI `36228434980` が未実装`PdfAdapter` E0432のみで想定FAIL、Sandbox `36228435009` とDSI PoC `36228434957` はSUCCESSです。次はTask 8 Step 2 PDF GREENとしてPoC-qualified compositionのみを昇格し、exact-head standard CI/Sandbox/PoCを確認してください。その後、署名の独立RED/GREENとTasks 9–14を順に進めます。PR #10はOPEN/Draftのままmergeしません。
 
 ## End-of-session rule
 

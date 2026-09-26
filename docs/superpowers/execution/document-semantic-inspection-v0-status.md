@@ -2,7 +2,7 @@
 
 - Capability: `Document Semantic Inspection v0`
 - Execution mode: **Inline Execution**
-- Overall phase: **PRODUCTION IMPLEMENTATION — TASKS 1–7 COMPLETE / TASK 8 PDF RED NEXT**
+- Overall phase: **PRODUCTION IMPLEMENTATION — TASKS 1–7 COMPLETE / TASK 8 PDF CLEAN RED COMPLETE, GREEN NEXT**
 - Design path: **Architectural**
 - Frozen Design merged: PR #7
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
@@ -45,15 +45,15 @@ Current gates:
 - Production implementation branch: **CREATED — `feat/document-semantic-inspection-v0`**
 - Production Task 1 sandbox preflight: **COMPLETE / PASS**
 - Production core crate: **TASK 2 COMPLETE / PASS**
-- Production runtime: **TASKS 1–7 COMPLETE / PASS; Task 8 PDF RED next**
+- Production runtime: **TASKS 1–7 COMPLETE / PASS; Task 8 PDF clean RED complete, GREEN next**
 
 The production-hardening gap is resolved for the frozen v0 profile. Task 1 preflight qualified and promoted the sandbox substrate, and its runtime enforces the no-network, no-credential, filesystem-confinement, fresh-process, and finite resource-profile boundary.
 
 Required next order:
 
 1. Preserve Task 7 clean RED and final exact-head GREEN evidence below.
-2. Start Task 8 Step 1 PDF semantics as test-only RED, without adding a parser dependency or implementing the PDF adapter.
-3. Obtain clean exact-head RED, then execute PDF GREEN and signature RED/GREEN in the approved order. Keep PR #10 Draft and unmerged.
+2. Preserve Task 8 Step 1 clean test-only RED at `49d66402d0b4ea482ace6bda955820ec0ead6c5c` and its exact-head evidence below.
+3. Execute PDF GREEN, then separate signature RED/GREEN in the approved order. Keep PR #10 Draft and unmerged.
 
 ## Production Task 5 — DOCX COMPLETE
 
@@ -150,7 +150,16 @@ That historical next action was completed by the Task 6 clean RED heads recorded
 - Final independent read-only audit found no other proven source defect. An added Target-only malformed OPC URI test passes 1/1 against current WIP; root fmt and strict Clippy remain green. The formula-only chart-title candidate was accepted by both WIP adapters with equal fingerprints, but no corpus fixture has a workbook or chart `externalData`; Microsoft Open XML guidance and independent scope review leave its PowerPoint meaning unproven. Temporary tests were removed; no source change or Design amendment was made for that candidate.
 - PoC PPTX source and independent OPC Target regression were promoted at exact head `94bf42a24a12f0f21d7f218600598a32ee9bb96d`. Hosted DSI PoC `36226998892` and Sandbox `36226998852` SUCCESS. Standard CI `36226998879` failed only on absent `PptxAdapter` E0432 in Rust static/test after fmt, policy, security, macOS portability, and container build passed. Production adapter candidate is staged separately; pinned full workspace tests, strict all-target Clippy, fmt, cargo deny, and staged diff checks passed locally. No production GREEN or Task 7 completion yet.
 - Final production GREEN head `42eeb9c2724d10a3a49d56a6d3f08a6336369de7`: exact-head standard CI `36227354015`, DSI Sandbox Preflight `36227354068`, and DSI PoC `36227353971` all **SUCCESS**. Standard CI passed Rust tests/static, policy, security, macOS portability, container build, and required-check. Local pinned full workspace tests, strict all-target Clippy, fmt, cargo deny, and staged diff check passed before promotion. The independent final read-only audit found no other proven source blocker. Task 7 is **COMPLETE**; PR #10 remains OPEN / Draft and unmerged.
-- Exact next action: implement Task 8 Step 1 PDF semantics as test-only RED, commit/push, and require exact-head standard CI failure only on missing PDF adapter APIs with Sandbox and DSI PoC SUCCESS. Then promote the qualified PDF composition for Step 2 GREEN, followed by separate signature RED/GREEN Steps 3–4. Keep PR #10 Draft and unmerged.
+- Task 7 handoff action was completed by the Task 8 PDF clean RED recorded below.
+
+## Production Task 8 — PDF CLEAN RED COMPLETE / GREEN NEXT
+
+- PDF semantics test-only head: `49d66402d0b4ea482ace6bda955820ec0ead6c5c`. No Task 8 parser dependency or implementation was included. The tests cover text, page order, link, visible form value, image, annotation as editorial evidence, producer/object-id noise, scan-only, encrypted, broken xref, PDFium/lopdf disagreement, ambiguous read order, and exact PDFium native binary identity/hash for the three qualified platforms.
+- Exact-head standard CI `36228434980`: **FAIL as expected only on unresolved `PdfAdapter` E0432** in rust-static and rust-test. `cargo fmt --check`, policy, security, macOS portability, and container build passed; required-check failed consequent to the two expected Rust failures.
+- Exact-head DSI Sandbox Preflight `36228435009`: **SUCCESS**. Exact-head DSI PoC `36228434957`: **SUCCESS**.
+- Local pinned fmt passed, focused compile failed only on E0432, and independent read-only review returned GO. This is the clean authoritative Task 8 Step 1 PDF RED.
+- Read-only signature risk audit identified PoC acceptance of a self-contained XMLDSig as an OOXML package signature without checking signed package parts, and a possible forged PDF `/ByteRange` in raw comments. Reproduce and fix these in separate signature Step 3 RED/GREEN; do not promote unverified PoC behavior. No Design amendment is proposed.
+- Exact next action: implement Task 8 Step 2 PDF GREEN with only `pdfium-render 0.9.4` (`pdfium_7881`, `thread_safe`), pinned PDFium `151.0.7881.0`, and `lopdf 0.45.0` without default features. Verify exact native library hash, dual-engine semantics, worker dispatch and response evidence, then obtain exact-head standard CI/Sandbox/PoC SUCCESS before Step 3 signatures. Keep PR #10 OPEN/Draft and unmerged.
 
 ## Production Task 4 — COMPLETE
 
