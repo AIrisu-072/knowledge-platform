@@ -295,7 +295,7 @@ impl SignatureInspector {
         let mut archive = ZipArchive::new(Cursor::new(package)).map_err(|error| {
             SignatureError::SemanticExtractionFailed(format!("OOXML signature package: {error}"))
         })?;
-        if archive.len() > 4096 {
+        if archive.len() > 20_000 {
             return Err(SignatureError::InspectionResourceLimitExceeded);
         }
 
@@ -776,7 +776,7 @@ fn ooxml_manifest_payloads(
     archive: &mut ZipArchive<Cursor<&[u8]>>,
     references: &[OpcManifestReference],
 ) -> Result<HashMap<String, Vec<u8>>, String> {
-    if archive.len() > 4096 {
+    if archive.len() > 20_000 {
         return Err("opc-package-entry-limit".into());
     }
     let mut names = HashSet::new();
