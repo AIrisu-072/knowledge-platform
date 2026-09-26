@@ -1,14 +1,16 @@
 use std::io::{self, Read, Write};
 
 use document_semantic_inspection_core::{
-    WorkerProtocolVersion, WorkerResponse, canonical_worker_response_bytes,
+    DigitalSignatureEvidence, FormatId, WorkerProtocolVersion, WorkerResponse,
+    canonical_worker_response_bytes,
 };
 use serde::Serialize;
 
 use crate::{
     AdapterProfile, CsvAdapter, DocxAdapter, HtmlAdapter, PdfAdapter, PptxAdapter, SemanticAdapter,
-    SemanticAdapterOutput, SpreadsheetAdapter, TextAdapter, WorkerFailure, WorkerFailureCode,
-    decode_request_bounded, guard_worker_execution, prepare_input_bounded,
+    SemanticAdapterOutput, SignatureInspector, SignatureTrustContext, SpreadsheetAdapter,
+    TextAdapter, WorkerFailure, WorkerFailureCode, decode_request_bounded, guard_worker_execution,
+    prepare_input_bounded,
 };
 
 pub(crate) const MAX_STRUCTURED_RESULT_BYTES: usize = 16 * 1024 * 1024;
@@ -21,6 +23,32 @@ pub fn run_worker_shell<R, O, E>(
     stderr: &mut E,
     max_request_bytes: usize,
     max_input_bytes: usize,
+) -> i32
+where
+    R: Read,
+    O: Write,
+    E: Write,
+{
+    run_worker_shell_with_signature_trust(
+        request_bytes,
+        input,
+        stdout,
+        stderr,
+        max_request_bytes,
+        max_input_bytes,
+        &SignatureTrustContext::default(),
+    )
+}
+
+/// Runs the worker with explicit offline trust anchors and CRLs supplied by the caller.
+pub fn run_worker_shell_with_signature_trust<R, O, E>(
+    request_bytes: &[u8],
+    input: &mut R,
+    stdout: &mut O,
+    stderr: &mut E,
+    max_request_bytes: usize,
+    max_input_bytes: usize,
+    trust: &SignatureTrustContext,
 ) -> i32
 where
     R: Read,
@@ -58,7 +86,15 @@ where
             }
         };
 
-        let response = worker_response(&request, &prepared, adapter_output);
+        let signatures = match prepared.detected_format() {
+            FormatId::Pdf => SignatureInspector::inspect_pdf_signatures(prepared.bytes(), trust)?,
+            FormatId::Docx | FormatId::Xlsx | FormatId::Xlsm | FormatId::Pptx => {
+                SignatureInspector::verify_ooxml_package(prepared.bytes(), trust)
+                    .map_err(WorkerFailure::from)?
+            }
+            FormatId::Txt | FormatId::Csv | FormatId::Html => Vec::new(),
+        };
+        let response = worker_response(&request, &prepared, adapter_output, signatures);
         response.validate().map_err(|error| {
             WorkerFailure::new(
                 WorkerFailureCode::InvalidWorkerResult,
@@ -152,6 +188,7 @@ fn worker_response(
     request: &document_semantic_inspection_core::WorkerRequest,
     prepared: &crate::PreparedInput,
     adapter_output: SemanticAdapterOutput,
+    signatures: Vec<DigitalSignatureEvidence>,
 ) -> WorkerResponse {
     WorkerResponse {
         protocol_version: WorkerProtocolVersion::V0,
@@ -163,7 +200,7 @@ fn worker_response(
         semantic_capabilities: adapter_output.semantic_capabilities().to_vec(),
         editorial_provenance: adapter_output.editorial_provenance().clone(),
         external_dependencies: adapter_output.external_dependencies().to_vec(),
-        digital_signature_evidence: Vec::new(),
+        digital_signature_evidence: signatures,
         extractor_provenance: adapter_output.extractor_provenance().clone(),
         diagnostics: Vec::new(),
     }

@@ -1176,6 +1176,8 @@ fn validate_content_types(data: &[u8]) -> Result<(), WorkerFailure> {
         "application/vnd.openxmlformats-officedocument.extended-properties+xml",
         "application/vnd.openxmlformats-officedocument.presentationml.comments+xml",
         "application/vnd.openxmlformats-officedocument.presentationml.commentAuthors+xml",
+        "application/vnd.openxmlformats-package.digital-signature-origin",
+        "application/vnd.openxmlformats-package.digital-signature-xmlsignature+xml",
     ]
     .into_iter()
     .collect();
@@ -1337,6 +1339,12 @@ fn expected_non_relationship_content_type(name: &str) -> Option<&'static str> {
         "docProps/app.xml" => {
             Some("application/vnd.openxmlformats-officedocument.extended-properties+xml")
         }
+        "_xmlsignatures/origin.sigs" => {
+            Some("application/vnd.openxmlformats-package.digital-signature-origin")
+        }
+        _ if indexed_xml_part(name, "_xmlsignatures/sig") => {
+            Some("application/vnd.openxmlformats-package.digital-signature-xmlsignature+xml")
+        }
         _ if indexed_xml_part(name, "ppt/slides/slide") => Some(SLIDE_CONTENT_TYPE),
         _ if indexed_xml_part(name, "ppt/slideMasters/slideMaster") => {
             Some(SLIDE_MASTER_CONTENT_TYPE)
@@ -1448,9 +1456,12 @@ fn parse_relationships(data: &[u8]) -> Result<BTreeMap<String, Relationship>, Wo
 }
 
 fn known_relationship_type(value: &str) -> bool {
-    if value
-        == "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"
-    {
+    if matches!(
+        value,
+        "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"
+            | "http://schemas.openxmlformats.org/package/2006/relationships/digital-signature/origin"
+            | "http://schemas.openxmlformats.org/package/2006/relationships/digital-signature/signature"
+    ) {
         return true;
     }
     let Some(suffix) =

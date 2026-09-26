@@ -986,6 +986,8 @@ fn known_content_type(value: &str) -> bool {
             | "application/vnd.ms-office.vbaProject"
             | "application/vnd.ms-excel.controlproperties+xml"
             | "application/vnd.ms-excel.printerSettings"
+            | "application/vnd.openxmlformats-package.digital-signature-origin"
+            | "application/vnd.openxmlformats-package.digital-signature-xmlsignature+xml"
             | "image/png"
             | "image/jpeg"
     )
@@ -1005,6 +1007,8 @@ fn known_relationship_type(value: &str) -> bool {
         "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"
             | "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties"
             | "http://schemas.microsoft.com/office/2006/relationships/vbaProject"
+            | "http://schemas.openxmlformats.org/package/2006/relationships/digital-signature/origin"
+            | "http://schemas.openxmlformats.org/package/2006/relationships/digital-signature/signature"
     ) {
         return true;
     }
@@ -1169,7 +1173,9 @@ fn is_known_non_relationship_part(name: &str) -> bool {
             | "xl/calcChain.xml"
             | "xl/connections.xml"
             | "xl/vbaProject.bin"
+            | "_xmlsignatures/origin.sigs"
     ) || numbered_path(name, "xl/worksheets/sheet", ".xml")
+        || numbered_path(name, "_xmlsignatures/sig", ".xml")
         || numbered_path(name, "xl/tables/table", ".xml")
         || numbered_path(name, "xl/comments", ".xml")
         || numbered_path(name, "xl/externalLinks/externalLink", ".xml")
@@ -1231,6 +1237,10 @@ fn validate_part_content_type(name: &str, content_type: &str) -> Result<(), Work
         "application/vnd.openxmlformats-package.core-properties+xml"
     } else if name == "docProps/app.xml" {
         "application/vnd.openxmlformats-officedocument.extended-properties+xml"
+    } else if name == "_xmlsignatures/origin.sigs" {
+        "application/vnd.openxmlformats-package.digital-signature-origin"
+    } else if numbered_path(name, "_xmlsignatures/sig", ".xml") {
+        "application/vnd.openxmlformats-package.digital-signature-xmlsignature+xml"
     } else if name == "xl/worksheets/sheet1.xml"
         || numbered_path(name, "xl/worksheets/sheet", ".xml")
     {

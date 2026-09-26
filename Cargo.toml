@@ -44,6 +44,10 @@ cfb = "=0.10.0"
 tree-sitter = "=0.25.10"
 tree-sitter-language = "=0.1.8"
 cc = "=1.2.41"
+xml-sec = "=0.1.16"
+cms = { version = "=0.2.3", features = ["std", "sha2", "signature"] }
+x509-cert = "=0.2.5"
+openssl = { version = "=0.10.81", features = ["vendored"] }
 
 [patch.crates-io]
 # Task 6: exact ovba 0.7.1 source with bounded decode and strict dir consumption.

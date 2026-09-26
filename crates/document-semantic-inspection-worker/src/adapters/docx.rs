@@ -1739,6 +1739,8 @@ fn validate_content_types(
         "application/vnd.ms-word.commentsExtended+xml",
         "application/vnd.openxmlformats-package.core-properties+xml",
         "application/vnd.openxmlformats-officedocument.extended-properties+xml",
+        "application/vnd.openxmlformats-package.digital-signature-origin",
+        "application/vnd.openxmlformats-package.digital-signature-xmlsignature+xml",
         "image/png",
         "image/jpeg",
         "image/gif",
@@ -1986,6 +1988,12 @@ fn validate_part_type(part: &str, actual: &str) -> Result<(), WorkerFailure> {
         "docProps/app.xml" => {
             "application/vnd.openxmlformats-officedocument.extended-properties+xml"
         }
+        "_xmlsignatures/origin.sigs" => {
+            "application/vnd.openxmlformats-package.digital-signature-origin"
+        }
+        _ if part.starts_with("_xmlsignatures/sig") && part.ends_with(".xml") => {
+            "application/vnd.openxmlformats-package.digital-signature-xmlsignature+xml"
+        }
         _ if is_header_part(part) => {
             "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"
         }
@@ -2038,6 +2046,7 @@ fn numbered_word_part(name: &str, prefix: &str) -> bool {
 
 fn is_relationships_part(name: &str) -> bool {
     name == "_rels/.rels"
+        || name == "_xmlsignatures/_rels/origin.sigs.rels"
         || name
             .strip_prefix("word/_rels/")
             .is_some_and(|tail| tail.ends_with(".xml.rels"))
@@ -2046,6 +2055,9 @@ fn is_relationships_part(name: &str) -> bool {
 fn source_part_for_relationships(name: &str) -> Result<String, WorkerFailure> {
     if name == "_rels/.rels" {
         return Ok(String::new());
+    }
+    if name == "_xmlsignatures/_rels/origin.sigs.rels" {
+        return Ok("_xmlsignatures/origin.sigs".into());
     }
     let tail = name.strip_prefix("word/_rels/").ok_or_else(|| {
         failure(
@@ -2079,6 +2091,12 @@ fn parse_all_relationships(
         format!("{R}officeDocument"),
         CORE_PROPERTIES_RELATIONSHIP_TYPE.to_owned(),
         format!("{R}extended-properties"),
+        "http://schemas.openxmlformats.org/package/2006/relationships/digital-signature/origin"
+            .into(),
+    ];
+    let known_signature_origin = [
+        "http://schemas.openxmlformats.org/package/2006/relationships/digital-signature/signature"
+            .to_owned(),
     ];
     let known_word = [
         format!("{R}styles"),
@@ -2092,7 +2110,8 @@ fn parse_all_relationships(
         format!("{R}comments"),
         format!("{MS}commentsExtended"),
     ];
-    if !source.is_empty() && !source.starts_with("word/") {
+    if !source.is_empty() && !source.starts_with("word/") && source != "_xmlsignatures/origin.sigs"
+    {
         return Err(failure(
             WorkerFailureCode::UnsupportedSemanticConstruct,
             format!("unsupported relationship source {source}"),
@@ -2128,6 +2147,8 @@ fn parse_all_relationships(
                 };
                 let known = if source.is_empty() {
                     known_root.contains(&kind)
+                } else if source == "_xmlsignatures/origin.sigs" {
+                    known_signature_origin.contains(&kind)
                 } else {
                     known_word.contains(&kind)
                 };
@@ -2411,6 +2432,7 @@ fn visit_relationship_node(
 fn validate_known_parts_and_qnames(parts: &BTreeMap<String, Vec<u8>>) -> Result<(), WorkerFailure> {
     for (name, bytes) in parts {
         if is_relationships_part(name)
+            || name.starts_with("_xmlsignatures/")
             || matches!(
                 name.as_str(),
                 "[Content_Types].xml" | "docProps/core.xml" | "docProps/app.xml"

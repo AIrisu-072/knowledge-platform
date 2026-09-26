@@ -25,6 +25,16 @@ name = "libloading"
 version = "0.9.0"
 allow = ["ISC"]
 
+[[licenses.exceptions]]
+name = "ring"
+version = "0.17.14"
+allow = ["ISC"]
+
+[[licenses.exceptions]]
+name = "untrusted"
+version = "0.9.0"
+allow = ["ISC"]
+
 [licenses.private]
 ignore = true
 

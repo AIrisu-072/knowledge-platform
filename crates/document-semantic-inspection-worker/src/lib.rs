@@ -11,6 +11,7 @@ mod error;
 mod input;
 mod provenance;
 mod shell;
+mod signatures;
 mod vba_language;
 
 pub use adapters::{
@@ -24,4 +25,5 @@ pub use input::{
     prepare_input_bounded,
 };
 pub use provenance::{extractor_provenance, worker_build_id};
-pub use shell::{run_worker_shell, write_failure};
+pub use shell::{run_worker_shell, run_worker_shell_with_signature_trust, write_failure};
+pub use signatures::{SignatureError, SignatureInspector, SignatureTrustContext};

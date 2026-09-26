@@ -9,8 +9,8 @@ use document_semantic_inspection_core::{
     WorkerResponse,
 };
 use document_semantic_inspection_worker::{
-    AdapterProfile, PdfAdapter, SemanticAdapter, SignatureInspector, SignatureTrustContext,
-    run_worker_shell_with_signature_trust,
+    AdapterProfile, DocxAdapter, PdfAdapter, PptxAdapter, SemanticAdapter, SignatureInspector,
+    SignatureTrustContext, SpreadsheetAdapter, run_worker_shell_with_signature_trust,
 };
 use sha2::{Digest, Sha256};
 
@@ -24,7 +24,7 @@ const UNSIGNED_PDF: &[u8] =
 fn poc_fixture(path: &str) -> Vec<u8> {
     std::fs::read(
         Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../experiments/document-semantic-inspection")
+            .join("../../experiments/document-semantic-inspection")
             .join(path),
     )
     .expect("qualified synthetic signature fixture")
@@ -115,6 +115,23 @@ fn cms_nine_qualified_classes_remain_distinct() {
 }
 
 #[test]
+fn cms_trust_is_not_inferred_from_the_first_embedded_certificate() {
+    let content = b"synthetic detached CMS content";
+    let (signature, unrelated_trust_anchor) =
+        signature_ooxml::detached_cms_with_unrelated_trusted_certificate_first(content);
+    let trust = SignatureTrustContext::new(vec![unrelated_trust_anchor]);
+
+    let evidence = SignatureInspector::verify_detached_cms(content, &signature, &trust)
+        .expect("synthetic CMS signature produces evidence");
+
+    assert_ne!(
+        evidence.cryptographic_validity,
+        SignatureValidity::Valid,
+        "an unrelated embedded certificate must not establish the SignerInfo identity: {evidence:?}"
+    );
+}
+
+#[test]
 fn xmldsig_valid_invalid_and_unverifiable_are_evidence() {
     let trust = SignatureTrustContext::new(vec![poc_fixture("fixtures/pdf/signatures/root.der")]);
     for (name, expected) in [
@@ -132,6 +149,26 @@ fn xmldsig_valid_invalid_and_unverifiable_are_evidence() {
         assert_eq!(evidence.cryptographic_validity, expected, "{name}");
         assert_eq!(evidence.signature_type, "xmldsig");
     }
+}
+
+#[test]
+fn external_xmldsig_reference_is_unverifiable_without_retrieval() {
+    let trust = SignatureTrustContext::new(vec![poc_fixture("fixtures/pdf/signatures/root.der")]);
+    let original =
+        String::from_utf8(poc_fixture("fixtures/docx/signatures/xml-valid.xml")).unwrap();
+    let external = original.replace("URI=\"#doc\"", "URI=\"file:///tmp/dsi-do-not-read\"");
+    assert_ne!(external, original);
+    let evidence = SignatureInspector::verify_xmldsig(&external, &trust).unwrap();
+    assert_eq!(
+        evidence.cryptographic_validity,
+        SignatureValidity::Unverifiable
+    );
+    assert!(
+        evidence
+            .validation_diagnostics
+            .iter()
+            .any(|value| value == "xmldsig-external-reference=blocked")
+    );
 }
 
 #[test]
@@ -225,6 +262,79 @@ fn unsigned_manifest_inside_valid_xml_signature_cannot_claim_package_coverage() 
     );
 }
 
+#[test]
+fn authenticated_opc_manifests_cover_parts_and_detect_tampering() {
+    let signer = signature_ooxml::TestXmlSigner::new();
+    let trust = SignatureTrustContext::new(vec![signer.certificate_der().to_vec()]);
+    for (package_path, part_name, content_type) in [
+        (
+            "fixtures/docx/base.docx",
+            "word/document.xml",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+        ),
+        (
+            "fixtures/xlsx/base.xlsx",
+            "xl/workbook.xml",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
+        ),
+        (
+            "fixtures/pptx/base.pptx",
+            "ppt/presentation.xml",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml",
+        ),
+    ] {
+        let package = poc_fixture(package_path);
+        let signed = signer.sign_package_part(&package, part_name, content_type);
+        let valid = SignatureInspector::verify_ooxml_package(&signed, &trust)
+            .expect("signed OOXML package evidence");
+        assert_eq!(valid.len(), 1, "{package_path}");
+        assert_eq!(
+            valid[0].cryptographic_validity,
+            SignatureValidity::Valid,
+            "a SignedInfo-authenticated Manifest with the matching raw part digest must verify: {package_path}"
+        );
+        assert!(
+            valid[0]
+                .covered_content
+                .iter()
+                .any(|covered| covered.contains(part_name)),
+            "verified package-part coverage must name {part_name}"
+        );
+
+        let tampered = signature_ooxml::replace_zip_entry(&signed, part_name, b"<tampered/>");
+        let invalid = SignatureInspector::verify_ooxml_package(&tampered, &trust)
+            .expect("tampered OOXML package evidence");
+        assert_eq!(invalid.len(), 1, "{package_path}");
+        assert_eq!(
+            invalid[0].cryptographic_validity,
+            SignatureValidity::Invalid,
+            "changing a package part after signing must invalidate the authenticated raw digest: {package_path}"
+        );
+    }
+}
+
+#[test]
+fn unrelated_trusted_certificate_outside_key_info_cannot_trust_an_xml_signature() {
+    let package = poc_fixture("fixtures/docx/base.docx");
+    let unrelated_trusted_certificate = poc_fixture("fixtures/pdf/signatures/root.der");
+    let signer = signature_ooxml::TestXmlSigner::new();
+    let spoofed = signer.sign_package_part_with_unrelated_trusted_certificate(
+        &package,
+        "word/document.xml",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+        &unrelated_trusted_certificate,
+    );
+    let trust = SignatureTrustContext::new(vec![unrelated_trusted_certificate]);
+    let evidence = SignatureInspector::verify_ooxml_package(&spoofed, &trust)
+        .expect("spoofed signature should still produce evidence");
+    assert_eq!(evidence.len(), 1);
+    assert_ne!(
+        evidence[0].cryptographic_validity,
+        SignatureValidity::Valid,
+        "an unrelated certificate outside KeyInfo cannot establish signer trust"
+    );
+}
+
 fn worker_response(pdf: &[u8], trust: &SignatureTrustContext) -> WorkerResponse {
     let request = WorkerRequest {
         protocol_version: WorkerProtocolVersion::V0,
@@ -294,4 +404,71 @@ fn signature_validity_changes_evidence_without_changing_semantic_identity() {
         invalid.digital_signature_evidence[0].cryptographic_validity,
         SignatureValidity::Invalid
     );
+}
+
+#[test]
+fn signed_office_packages_report_signature_evidence() {
+    let trust = SignatureTrustContext::new(vec![poc_fixture("fixtures/pdf/signatures/root.der")]);
+    let signature_xml = poc_fixture("fixtures/docx/signatures/xml-valid.xml");
+    for (path, media_type) in [
+        (
+            "fixtures/docx/base.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
+        (
+            "fixtures/xlsx/base.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+        (
+            "fixtures/pptx/base.pptx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ),
+    ] {
+        let unsigned = poc_fixture(path);
+        let signed = signature_ooxml::add_ooxml_signature(&unsigned, &signature_xml);
+        let adapter: &dyn SemanticAdapter = match path {
+            "fixtures/docx/base.docx" => &DocxAdapter,
+            "fixtures/xlsx/base.xlsx" => &SpreadsheetAdapter::XLSX,
+            _ => &PptxAdapter,
+        };
+        let profile = AdapterProfile::default();
+        assert_eq!(
+            adapter
+                .inspect(&unsigned, &profile)
+                .expect(path)
+                .semantic_fingerprint(),
+            adapter
+                .inspect(&signed, &profile)
+                .expect(path)
+                .semantic_fingerprint(),
+            "signature metadata must not change semantic identity: {path}",
+        );
+        let request = WorkerRequest {
+            protocol_version: WorkerProtocolVersion::V0,
+            inspection_profile_version: InspectionProfileVersion::DsiV0,
+            declared_media_type: media_type.into(),
+            expected_raw_content_hash: Sha256::digest(&signed).into(),
+            expected_size_bytes: signed.len() as u64,
+            trace_context: None,
+        };
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let exit = run_worker_shell_with_signature_trust(
+            &serde_json::to_vec(&request).unwrap(),
+            &mut Cursor::new(&signed),
+            &mut stdout,
+            &mut stderr,
+            64 * 1024,
+            8 * 1024 * 1024,
+            &trust,
+        );
+        assert_eq!(exit, 0, "{path}: {}", String::from_utf8_lossy(&stderr));
+        let response: WorkerResponse = serde_json::from_slice(&stdout).unwrap();
+        assert_eq!(response.digital_signature_evidence.len(), 1, "{path}");
+        assert_eq!(
+            response.digital_signature_evidence[0].cryptographic_validity,
+            SignatureValidity::Unverifiable,
+            "{path}"
+        );
+    }
 }
