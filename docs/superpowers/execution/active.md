@@ -3,7 +3,7 @@
 - Status: **ACTIVE**
 - Execution mode: **Inline Execution**
 - Active capability: `Document Semantic Inspection v0`
-- Current phase: **PRODUCTION IMPLEMENTATION — TASK 5 COMPLETE / TASK 6 CLEAN RED COMPLETE / GREEN IN PROGRESS**
+- Current phase: **PRODUCTION IMPLEMENTATION — TASKS 1–5 COMPLETE / TASK 6 GREEN CI REPAIR IN PROGRESS**
 - Frozen Design PR: `#7` — merged
 - PoC execution branch: `test/document-semantic-inspection-poc-v0`
 - Production planning branch: `plan/document-semantic-inspection-v0-production`
@@ -101,7 +101,7 @@ Repository and fresh GitHub state override remembered/chat state.
 
 Design is approved and frozen. PoC Qualification Plan was explicitly approved on 2026-09-21.
 
-Production Tasks 1–5 are complete. Task 6 clean RED is complete and GREEN is in progress. Task 4 promoted only its qualified TXT/CSV/HTML parser dependencies; `scraper` remains excluded. Task 5 promoted PoC-qualified `office_oxide 0.1.11`, deflate-only `zip 8.6.0`, `quick-xml 0.42.0`, and supplemental scoped `png 0.18.1` after clean RED and exact-head GREEN.
+Production Tasks 1–5 are complete. Task 6 clean RED is complete and its committed GREEN candidate is undergoing a scoped container packaging repair. Task 4 promoted only its qualified TXT/CSV/HTML parser dependencies; `scraper` remains excluded. Task 5 promoted PoC-qualified `office_oxide 0.1.11`, deflate-only `zip 8.6.0`, `quick-xml 0.42.0`, and supplemental scoped `png 0.18.1` after clean RED and exact-head GREEN.
 
 Task 2 produced one material qualification result: `scraper 0.27.0` was rejected because its transitive graph contains MPL-2.0. Direct `html5ever 0.39.0 + markup5ever_rcdom 0.39.0` passed the same semantic cases and the dependency gate.
 
@@ -109,15 +109,15 @@ Task 2 produced one material qualification result: `scraper 0.27.0` was rejected
 
 The PoC qualification gate is **complete**. The Production Implementation Plan was explicitly approved by the user on 2026-09-25, and PR #8 is merged. Production Tasks 1–5 are complete after clean RED and fresh exact-head GREEN evidence. Task 6 clean RED is complete and GREEN is in progress; no Design amendment is in progress.
 
-Task 5 final head `14bcc4a63ec4ec56289619e4d76a9ca1792315ba` passed standard CI `36182511870`, Sandbox `36182511893`, and DSI PoC `36182511885`. PR #10 remains OPEN / Draft. Its current remote Task 6 clean RED head is `7c9e31c184f34c79aa44f450dace05c281341ec0`; read live GitHub before acting. Do not merge without explicit instruction.
+Task 5 final head `14bcc4a63ec4ec56289619e4d76a9ca1792315ba` passed standard CI `36182511870`, Sandbox `36182511893`, and DSI PoC `36182511885`. Task 6 GREEN candidate is `7cf4986084649bcf5bccc5e8cca50930b090b75e` on PR #10, which remains OPEN / Draft. Its standard CI `36209080797` failed only in `container-build` because Dockerfile omitted tracked `third_party/`; all other code, policy, security, and portability jobs passed. Sandbox `36209080849` and DSI PoC `36209080799` succeeded at the same head. Read live GitHub before acting. Do not merge without explicit instruction.
 
 ## Next exact action
 
-Finish Task 6 XLSX/XLSM/VBA GREEN. The approved 4,096-image bound, typed ODBC subset, ODBC split bound, and partial-drawing fail-closed guard passed local RED→GREEN. A subsequent independent review found an unbounded structured response: 2,200 qualified ODBC definitions produced 19,167,709 success bytes, above the approved 16 MiB result bound. The local repair bounds external-dependency evidence while accumulating it and measures the full response before canonicalization/output. The oversized-input regression now fails with empty stdout; the exact 16 MiB and one-byte-over serialization boundary test passes. Further review found early hyperlink comparison Vecs and comment editorial accumulation; both now have pre-clone byte budgets with local RED→GREEN boundary tests. Latest focused GREEN is credential **14/14**, spreadsheet semantics **9/9**, response **2/2**. Fresh full workspace tests, strict Clippy, fmt, cargo-deny, repository policy, and diff checks all passed after the comment repair. The final comment-bound independent review is in progress. After review, commit/push only intended source, tests, provenance, workflow triggers, and execution docs; require standard CI, Sandbox, and DSI PoC SUCCESS at the same exact head. The clean hosted Task 6 RED is `7c9e31c184f34c79aa44f450dace05c281341ec0` with CI `36189581362` expected FAIL and Sandbox `36189581450` / DSI PoC `36189581454` SUCCESS. Keep PR #10 Draft and unmerged.
+Finish Task 6's scoped container packaging repair. The clean hosted Task 6 adapter RED is `7c9e31c184f34c79aa44f450dace05c281341ec0` with CI `36189581362` expected FAIL and Sandbox `36189581450` / DSI PoC `36189581454` SUCCESS. The Task 6 GREEN implementation was committed/pushed as `7cf4986084649bcf5bccc5e8cca50930b090b75e`; workspace tests, strict Clippy, fmt, cargo-deny, repository policy, and independent result-bound review passed locally. At that exact head, CI `36209080797` failed only in `container-build` because the Dockerfile omitted `third_party/`, which Cargo needs for the qualified ovba patch. Sandbox `36209080849` and DSI PoC `36209080799` succeeded. A one-line Dockerfile fix is in progress. Finish local container verification, commit/push the fix and execution docs, then require fresh standard CI, Sandbox, and DSI PoC SUCCESS at the same exact repaired head. Only then mark Task 6 COMPLETE and start Task 7 PPTX test-only RED. Keep PR #10 Draft and unmerged; no Design amendment is in progress.
 
 ## Resume command
 
-> `AIrisu-072/knowledge-platform` のrepositoryとGitHubの現在状態を正本として続行してください。最初に `AGENTS.md`、このActive、Execution Status、Frozen Design、Design approval、承認済みProduction Plan、live branch/PR/CIの順に確認してください。Production Tasks 1–5 COMPLETE、Task 6 clean hosted REDは `7c9e31c184f34c79aa44f450dace05c281341ec0` で確定済み。現在Task 6 GREENは未コミットです。画像件数のpre-rxls guardはローカルGREEN、最終reviewでODBC/URI資格情報の出力と未知connection子要素の黙殺を発見し、追加RED→GREEN中です。その後に全ローカル検証、commit/push、同一headのstandard CI/Sandbox/PoCを要求します。PR #10はOPEN/Draftのままmergeしません。Frozen Design/profileの意味変更が必要ならamendment gateへ戻ります。
+> `AIrisu-072/knowledge-platform` のrepositoryとGitHubの現在状態を正本として続行してください。最初に `AGENTS.md`、このActive、Execution Status、Frozen Design、Design approval、承認済みProduction Plan、live branch/PR/CIの順に確認してください。Production Tasks 1–5 COMPLETE。Task 6 clean hosted REDは `7c9e31c184f34c79aa44f450dace05c281341ec0`、GREEN候補は `7cf4986084649bcf5bccc5e8cca50930b090b75e` です。後者のCI `36209080797` はDockerfileの`third_party/`未コピーのみで失敗し、Sandbox/PoCは成功しました。Dockerfileとexecution docsの修正をcommit/pushし、同一headのstandard CI/Sandbox/PoCを成功させてからTask 7 PPTX test-only REDへ進んでください。PR #10はOPEN/Draftのままmergeしません。Frozen Design/profileの意味変更が必要ならamendment gateへ戻ります。
 
 ## End-of-session rule
 
