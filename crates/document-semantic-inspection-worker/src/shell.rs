@@ -6,9 +6,9 @@ use document_semantic_inspection_core::{
 use serde::Serialize;
 
 use crate::{
-    AdapterProfile, CsvAdapter, DocxAdapter, HtmlAdapter, SemanticAdapter, SemanticAdapterOutput,
-    SpreadsheetAdapter, TextAdapter, WorkerFailure, WorkerFailureCode, decode_request_bounded,
-    guard_worker_execution, prepare_input_bounded,
+    AdapterProfile, CsvAdapter, DocxAdapter, HtmlAdapter, PptxAdapter, SemanticAdapter,
+    SemanticAdapterOutput, SpreadsheetAdapter, TextAdapter, WorkerFailure, WorkerFailureCode,
+    decode_request_bounded, guard_worker_execution, prepare_input_bounded,
 };
 
 pub(crate) const MAX_STRUCTURED_RESULT_BYTES: usize = 16 * 1024 * 1024;
@@ -49,6 +49,9 @@ where
             }
             document_semantic_inspection_core::FormatId::Xlsm => {
                 SpreadsheetAdapter::XLSM.inspect(prepared.bytes(), &profile)?
+            }
+            document_semantic_inspection_core::FormatId::Pptx => {
+                PptxAdapter.inspect(prepared.bytes(), &profile)?
             }
             format => {
                 return Err(WorkerFailure::new(
