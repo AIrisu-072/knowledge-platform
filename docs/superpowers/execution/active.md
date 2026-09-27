@@ -1,13 +1,13 @@
 # Active Execution Pointer
 
-## Active checkpoint — T10 read-boundary amendment, 2026-09-27 JST
+## Active checkpoint — T10 実装計画レビュー待ち、2026-09-27 JST
 
-- Status: **ACTIVE**. Current capability: **Document Publication End v0 (T10)**; phase: **JAPANESE DESIGN APPROVED / AMENDMENT 1 REVIEW PENDING**. Capability status: `docs/superpowers/execution/document-publication-end-v0-status.md`.
-- Baseline: `feat/document-versioning-v0@96b068bc9484a219b435d0633ea6669ddb7d7f97` (unmerged PR #12 on PR #11). T10 branch: `design/document-publication-end-v0`; Draft PR #13 targets PR #12.
-- The user's conditional approval of the written T10 Design was fulfilled by the Japanese translation commit `3593444f19f9b5b4d0d3138fea68efaf26bf4594`; approval record and normative T10 alignment are at `eca5465f498c4fb2f7e5815b4c88ef0bce461506`. No T10 production code exists.
-- Frozen Authoritative Core §§3.1/13/18.5 requires `GetDocument` and binary read for an initial `WORKING` Version. T10 §6's current-only assignment for the existing API conflicts with that contract. Amendment 1 proposes to preserve draft reads, block the existing read after T10, and add a separate current-only normal-public API. The frozen T10 body has not been changed.
-- Blocker: approval of `docs/superpowers/specs/2026-09-27-document-publication-end-v0-design-amendment-1.md`, then implementation-plan review. PR #11/#12 remain unmerged; no Versioning Design amendment is proposed. Do not merge without explicit instruction.
-- Next exact action: review amendment 1. If approved, amend T10 Design §6 and finalize the implementation plan. Do not begin T10 production code before plan approval.
+- Status: **ACTIVE**。対象は **Document Publication End v0 (T10)**。工程は **日本語版設計・読み取り境界改訂 1 承認済み／Production Implementation Plan レビュー待ち**。詳細は `docs/superpowers/execution/document-publication-end-v0-status.md`。
+- 基準: `feat/document-versioning-v0@96b068bc9484a219b435d0633ea6669ddb7d7f97`（未マージ PR #12、PR #11 が基点）。設計・計画ブランチ `design/document-publication-end-v0`、Draft PR #13 は PR #12 を base とする。
+- 設計・計画の substantive head: `19df8e24e8ba9afbd5170f367b966ff0f1ebf889`。承認済み改訂 1 により、既存の `GetDocument` は未終了の `WORKING` 初版を扱い、T10 後は遮断する。通常公開 API は現行 `PUBLISHED` 版専用。凍結済み Authoritative Core 設計は変更しない。
+- 検証: 文書差分の `git diff --cached --check` は PASS。T10 Production コード・テスト・ホスト CI はまだない。PR #11・#12 は OPEN／未マージ、PR #13 は Draft／OPEN と確認した。
+- Blocker: 日本語版実装計画の依頼者承認。PR #11・#12・#13 のマージ指示はない。
+- 次の exact action: PR #13 の `docs/superpowers/plans/2026-09-27-document-publication-end-v0-production-implementation.md` をレビューする。計画承認後、承認記録を作り、別の実装ブランチで Task 1 のローカル RED からインラインで進める。
 
 This checkpoint supersedes the prior T10 checkpoint below.
 
