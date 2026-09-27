@@ -82,8 +82,10 @@ async fn due_later_publication_cannot_run_early_and_replays_one_ledger_pair() {
     let first = first.unwrap();
     let second = second.unwrap();
     assert!(matches!(first, DueExecutionOutcome::Published(_)));
-    assert!(matches!(second, DueExecutionOutcome::Published(_)));
-    assert_eq!(first, second);
+    assert_eq!(
+        second, first,
+        "a concurrent runner must replay the published result"
+    );
     let stored = f.repository.get_schedule(id).await.unwrap().unwrap();
     assert_eq!(stored.status, "PUBLISHED");
     let row: (i64, Option<Uuid>) =

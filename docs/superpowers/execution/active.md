@@ -2,13 +2,14 @@
 
 ## Active checkpoint — 2026-09-27 JST
 
-- Status: **ACTIVE**. Current capability: **Document Versioning v0**; phase: **PRODUCTION IMPLEMENTATION — TASKS 1–9 IMPLEMENTED; FINAL PR HEAD VERIFICATION**. Capability status: `docs/superpowers/execution/document-versioning-v0-status.md`.
+- Status: **ACTIVE**. Current capability: **Document Versioning v0**; phase: **PRODUCTION IMPLEMENTATION — TASK 9 RACE REPAIR REQUALIFICATION**. Capability status: `docs/superpowers/execution/document-versioning-v0-status.md`.
 - Baseline: `main@09c8235755573d16e09b8af029c22dc27caf6472` with DSI v0 PR #10 merged. Approved planning head: `design/document-versioning-v0@987890d635f9563bb7028841a026663a9379d6f3`; Draft PR #11 remains open and unmerged.
-- Implementation branch: `feat/document-versioning-v0`; Draft PR #12: `https://github.com/AIrisu-072/knowledge-platform/pull/12`, based on PR #11. Last pushed code head: `68178c68ee32a1870c96260e69a9692e8e33a8df`.
+- Implementation branch: `feat/document-versioning-v0`; Draft PR #12: `https://github.com/AIrisu-072/knowledge-platform/pull/12`, based on PR #11. Last qualified code head: `68178c68ee32a1870c96260e69a9692e8e33a8df`; failed documentation head: `a9a2d3b360debb7b208bae6845a20d12a13e4f7a`.
 - Tasks 1–8 are complete with focused RED/GREEN evidence. Task 9 integration and audit repair are implemented. Local assembled `mise run verify`: 434/434 Rust tests passed, 4 intentionally skipped; final repair focused due 7/7, vertical slice 2/2, strict Clippy passed. Linux scheduler image and sandboxed due canary passed.
 - At code head `68178c68ee32a1870c96260e69a9692e8e33a8df`: standard CI `36307529282` **SUCCESS** (Ubuntu Rust and macOS Intel/arm64 included); DSI Sandbox Preflight `36307529226` **SUCCESS**; DSI PoC `36307529181` **SUCCESS**.
+- At documentation head `a9a2d3b360debb7b208bae6845a20d12a13e4f7a`: standard CI `36308294331` **FAIL** on the existing concurrent due replay assertion; Sandbox `36308294389` and DSI PoC `36308294391` **SUCCESS**. Two runners can cross between the first ledger read and `is_due`; the second must recheck the ledger before returning `NotDue`. Minimal repair passed local focused due tests 7/7 and fmt.
 - Frozen Design and Production Plan are approved; no amendment is proposed. User-approved withdrawal restores the immediate safe PUBLISHED base or null after recording WITHDRAWN. Execution remains inline; no worker is dispatched.
-- Blocker: the execution-record documentation change has not yet been committed or checked at its own head; the code head is fully verified. Next exact action: commit/push Active/Status, obtain exact-head standard CI, Sandbox, and DSI PoC success, record Task 9 completion, and update PR #12 with run IDs. Do not merge PR #11 or #12 without an explicit instruction.
+- Blocker: the concurrent replay repair has not yet passed hosted exact-head checks; Task 9 remains open. Next exact action: commit/push the minimal repair with Active/Status, obtain exact-head standard CI, Sandbox, and DSI PoC success, record Task 9 completion, and update PR #12 with run IDs. Do not merge PR #11 or #12 without an explicit instruction.
 
 This checkpoint supersedes the prior Document Versioning handoff below.
 

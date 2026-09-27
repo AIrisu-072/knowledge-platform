@@ -372,6 +372,17 @@ where
             return Ok(DueExecutionOutcome::Inactive);
         }
         if !self.repository.is_due(publish_operation_id).await? {
+            if let Some(stored) = self
+                .repository
+                .get_publish_operation(publish_operation_id)
+                .await?
+            {
+                return if stored.matches_identity(&identity) {
+                    Ok(DueExecutionOutcome::Published(stored.result().clone()))
+                } else {
+                    Err(ApplicationError::IntegrityViolation)
+                };
+            }
             return Ok(DueExecutionOutcome::NotDue);
         }
         let database_now = self.repository.database_now().await?;
