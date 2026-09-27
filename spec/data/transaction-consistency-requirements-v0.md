@@ -279,6 +279,7 @@ WITHDRAWN
 | `WORKING` かつ `approved_at IS NULL` | 下書き |
 | `WORKING` かつ `approved_at IS NOT NULL` かつ `scheduled_publish_at IS NULL` | 非公開 |
 | `WORKING` かつ `approved_at IS NOT NULL` かつ `scheduled_publish_at > now` | 公開待ち |
+| `WORKING` かつ有効な予約の `scheduled_publish_at <= now` | 公開遅延（公開実行・再検証待ち） |
 | `PUBLISHED` かつ `Document.current_version_id = self` | 現行版 |
 | `PUBLISHED` かつ `Document.current_version_id != self` | 過去版 |
 | `WITHDRAWN` | 公開終了 |
@@ -294,6 +295,7 @@ WITHDRAWN
 - `PUBLISHED` なら `published_at` が存在する
 - `WITHDRAWN` なら `withdrawn_at` が存在する
 - `scheduled_publish_at` を持つ `WORKING` 版は、公開可能と判断済みであることを表現できる
+- `scheduled_publish_at` は有効な予約台帳から同一transactionで更新する投影であり、時刻属性だけでは公開を実行しない
 - `Document.current_version_id` は `PUBLISHED` のVersionだけを指す
 
 ---
@@ -384,14 +386,14 @@ File Storageへの書込みはDB transactionと同一ACID境界にできない�
 
 - document_id
 - base_revision
-- new file
+- 1個以上のauthoritative ContentItemを持つ新しいmanifest
 - metadata変更
 - actor principal
 
 ### 変更対象
 
 - DocumentVersion
-- FileObject reference
+- ContentItem / FileObject reference
 - Outbox Event
 - Audit Event
 
@@ -399,11 +401,15 @@ File Storageへの書込みはDB transactionと同一ACID境界にできない�
 
 新規Versionは原則 `WORKING` として作成する。
 
+Documentごとの `WORKING` は高々1版とする。第2版以降の新規版は作成時の現行 `PUBLISHED` 版を `base_document_version_id` として記録する。初版のbaseはnull。`version_no` はRepository transaction内で採番する。各authoritative ContentItemはDocument Semantic Inspectionを成功させ、baseとの意味上の差分を確認する。意味上の差分がない場合は新しいVersionを作らない。
+
 公開前の表示ラベルは `approved_at` / `scheduled_publish_at` から「下書き」「非公開」「公開待ち」を導出する。
 
 ### 競合
 
 同一Documentに複数利用者が同時Version作成する可能性を許容するかは業務ルールで制御する。
+
+競合する作成要求のうち、同一Documentで成功できる `WORKING` Version作成は高々1件とする。Document revisionのOCCと短い行ロック、部分unique制約で守る。
 
 Version sequence採番は重複を許可しない。
 
@@ -442,6 +448,8 @@ OutboxEvent(document.version.published)
 AuditEvent(document.version.published)
 ```
 
+第2版以降はtargetのbaseがtransaction時点のcurrentと一致し、すべてのauthoritative ContentItemのInspection・原本参照・公開品質が有効であることを再検証する。未解決Track Changes、埋込コメント、既存の無効または検証不能な署名は公開しない。初版の通常公開は既存のDocument Publish v0契約を維持し、初版の予約公開は期限到達時に追加のInspection・公開品質確認を行う。公開操作は既存のPublish operation ID/ledgerで冪等化する。
+
 ### 守るInvariant
 
 - INV-01
@@ -458,6 +466,18 @@ AuditEvent(document.version.published)
 
 ---
 
+## T3a: DocumentVersionの公開を予約・実行・取消する
+
+公開予約は `DocumentVersion` の新たな永続化stateではなく、予約台帳に保持する将来のPublish意図である。初版と第2版以降の `WORKING` Versionを対象にできる。
+
+予約時はcaller UUIDv7のPublish operation ID、対象Version、base/current、Document revision、実行者Principal、未来のUTC日時、authoritative manifest/Inspection同一性を記録する。公開前提と品質を確認し、Document revisionを1増やし、`approved_at` と `scheduled_publish_at` の投影、Domain/Audit Outboxを同一transactionで更新する。`approved_at` は公開可能性を示し、独立した承認workflowを導入しない。同一operation IDの同一要求は結果を再生し、異なる要求はConflictとする。
+
+期限到達後、durable workerが予約台帳の有効な意図を取得し、保存済みPublish operation IDでT3を実行する。DB時刻で期限到達を確認し、早期公開を拒否する。原本、Inspection、公開品質、対象Version、base/current、Document revisionを再検証する。複数workerが同じ予約を取得しても、Publish ledgerとDocument行ロックにより成功は1件だけとなる。Publishと予約完了は同一transactionでcommitする。
+
+一時的な基盤障害は同じIDのまま再試行する。永続的な業務・整合性・品質failureでは公開せず、予約を終了して `scheduled_publish_at` を消し、Document revision、Domain/Audit Outboxを同一transactionで更新する。取消はcaller UUIDv7 operation IDと期待revisionを使う冪等・監査対象の操作とする。予約中の通常編集、再基準化、別IDでの手動公開は取消後に行う。Versionの永続化stateは `WORKING` のままである。
+
+---
+
 ## T4: DocumentVersionを取下げる
 
 ### 前提
@@ -469,6 +489,8 @@ AuditEvent(document.version.published)
 - `DocumentVersion.lifecycle_state -> WITHDRAWN`
 - `DocumentVersion.withdrawn_at`
 - `Document.current_version_id`（対象がcurrentの場合）
+- `Document.revision`
+- 影響を受ける有効な公開予約
 - Audit Event
 - Outbox Event
 
@@ -476,19 +498,17 @@ AuditEvent(document.version.published)
 
 `WITHDRAWN` は UI 上「公開終了」と導出する。
 
-### 要検討
+### 確定したcurrent復帰ルール
 
-current Versionを取下げる場合に、
+取下げ対象がcurrentなら、そのVersionの `base_document_version_id` が直前の復帰候補となる。候補が引き続き `PUBLISHED` であり、原本・Inspection・公開品質を安全に確認できる場合に限り `current_version_id` を候補へ戻す。候補がない、すでに `WITHDRAWN`、または検証できない場合は `current_version_id = null` とする。より古い祖先を自動で探して公開しない。対象が過去版ならcurrentは変更しない。
 
-- 直前の `PUBLISHED` Versionへcurrentを戻すか
-- `current_version_id = null` を許容するか
-
-は業務ルールとして後続確定する。
+対象Versionを `WITHDRAWN` とし、`withdrawn_at`、Document revisionの加算、復帰先またはnullへのcurrent切替、影響する予約の無効化、Domain/Audit Outbox、caller UUIDv7 operation IDの成功記録を同一transactionでcommitする。取下げ前後のcurrent IDと復帰不可の理由を履歴に残す。`withdrawal/restored` 等の追加フラグやlifecycle stateは作らない。復帰したVersionの本文と元の `published_at` は変更しない。
 
 ### 守るInvariant
 
 - 取下げ後もVersionおよびFileObjectは保持する
 - `WITHDRAWN` Versionを `current_version_id` が指し続けない
+- currentに復帰するVersionは同じDocumentの `PUBLISHED` 版であり、公開できる状態にある
 - Search Platformへ除外・再Indexイベントを確実に通知する
 
 
@@ -595,19 +615,15 @@ principal_id × document_version_id
 
 ---
 
-## T10: 文書全体の公開を終了する
+## T10: 文書全体の公開を終了する（Versioning v0のT4とは別操作）
 
 通常業務では論理削除・物理削除を行わない。
 
 文書を今後の通常利用・通常検索対象から外す必要がある場合は、削除ではなく公開終了として扱う。
 
-### 基本動作
+### 境界
 
-- current DocumentVersionを `WITHDRAWN` とする
-- `withdrawn_at` と理由を記録する
-- `Document.current_version_id` を業務ルールに従って更新する
-- 原本・過去Version・Auditは保持する
-- Search Platformへ通常検索対象から外すためのイベントを送る
+T4は直前の公開版をcurrentへ戻し得るため、T4だけを文書全体の公開終了として呼び出してはならない。文書全体を通常利用・通常検索の対象から外す操作は、復帰を伴わない別の公開終了transactionとして後続設計する。原本・過去Version・Auditは保持し、Search Platformへ除外イベントを送る。Versioning v0はこの別操作を実装しない。
 
 ### 方針
 
@@ -927,17 +943,17 @@ Search Platformの検索Indexは別責務とする。
 
 以下は後続要件として確定する。
 
-1. Version取下げ時のcurrent version挙動
-2. `scheduled_publish_at` 到達時の自動公開実行方式
-3. Document / Version metadataの境界
-4. AccessPolicy model
-5. Folder名重複ルール
-6. FileObjectのcommit protocol詳細
-7. Audit Eventの永久保存要否
-8. Audit Storeへの配送方式
-9. Outbox Event保持期間
-10. 例外的な物理削除を認める条件と管理手順
-11. SLA / RPO / RTO / HA要件
+Document Versioning v0の承認済み設計は、Version取下げ時のcurrent挙動と `scheduled_publish_at` 到達時の公開方式を確定した。文書全体の公開終了はT10として別に設計する。
+
+1. Document / Version metadataの境界
+2. AccessPolicy model
+3. Folder名重複ルール
+4. FileObjectのcommit protocol詳細
+5. Audit Eventの永久保存要否
+6. Audit Storeへの配送方式
+7. Outbox Event保持期間
+8. 例外的な物理削除を認める条件と管理手順
+9. SLA / RPO / RTO / HA要件
 
 ---
 

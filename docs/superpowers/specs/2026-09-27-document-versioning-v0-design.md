@@ -1,6 +1,6 @@
 # Document Versioning v0 — Design
 
-- Status: **PROPOSED — review and explicit approval required**
+- Status: **APPROVED — design freeze active**
 - Date: 2026-09-27
 - Capability: `Document Versioning v0`
 - Baseline: `main@09c8235755573d16e09b8af029c22dc27caf6472`
@@ -11,7 +11,7 @@
 
 Add Version #2+ creation and editing, semantic change detection, current-Version replacement, withdrawal with restoration of the preceding published Version, and durable scheduled publication. Reuse the existing Document Domain/Application/PostgreSQL boundaries and the successful-operation Publish ledger. Document Semantic Inspection (DSI) supplies format-native semantic evidence; Search Extraction does not decide Version identity.
 
-This is a proposed design, not authorization to implement. The approved Document Publish v0 operation remains the initial-Version baseline; this design explicitly extends its deferred Version #2+ and lifecycle behavior.
+This approved design does not authorize implementation without a separately approved plan. The approved Document Publish v0 operation remains the initial-Version baseline; this design explicitly extends its deferred Version #2+ and lifecycle behavior.
 
 ## 2. Normative context and precedence
 
@@ -170,9 +170,9 @@ The implementation plan must cover focused RED/GREEN evidence and the minimum de
 
 Run focused local checks while implementing; reserve exact-head hosted CI for coherent milestones and final approval evidence. A documentation-only design proposal does not need a production test run.
 
-## 13. Review and approval gate
+## 13. Frozen consequences and implementation gate
 
-This document is a proposal. Before it is frozen, review the following explicit consequences:
+The approval freezes these explicit consequences:
 
 - Withdrawal restores only the immediate recorded base if it is still safe; otherwise current becomes null. No older ancestor is silently exposed.
 - Withdrawal of Version #1 leaves no current and cannot be reversed by Versioning v0.
@@ -180,4 +180,4 @@ This document is a proposal. Before it is frozen, review the following explicit 
 - Active schedules block ordinary edits and manual Publish until cancelled.
 - The approved Publish v0 manual initial-Version behavior remains compatible; newly scheduled initial publication follows the new DSI/quality gate, and Version #2+ uses the replacement branch.
 
-After explicit design approval, record the approval, update the deferred T4/scheduled-publication rules in `spec/`, and write an implementation plan from the frozen design. Production Versioning code remains gated on separate plan approval.
+The approval record is `docs/superpowers/specs/2026-09-27-document-versioning-v0-design-approval.md`. The deferred T4/scheduled-publication rules in `spec/` must be updated, then an implementation plan written from this frozen design. Production Versioning code remains gated on separate plan approval.

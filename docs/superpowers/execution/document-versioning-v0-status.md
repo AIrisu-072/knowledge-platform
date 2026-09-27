@@ -1,11 +1,11 @@
 # Document Versioning v0 — Execution Status
 
-- Status: **ACTIVE — DESIGN DISCOVERY**
+- Status: **ACTIVE — PRODUCTION PLANNING**
 - Baseline: `main@09c8235755573d16e09b8af029c22dc27caf6472`
 - Active branch: `design/document-versioning-v0`
-- Proposed Design Spec head: `76d3d951f5dca82ad1955a916c083db3dd66d41b`, pushed to `design/document-versioning-v0`. Draft PR #11: `https://github.com/AIrisu-072/knowledge-platform/pull/11`. No Versioning production code exists.
-- Exact design-head GitHub runs: standard CI `36287858738`, DSI Sandbox Preflight `36287858740`, DSI PoC `36287858760` — all **IN_PROGRESS** at the 2026-09-27 status check. Baseline merge-head CI `36281613991` was **SUCCESS**. Documentation diff check **PASS**.
-- Design proposal: `docs/superpowers/specs/2026-09-27-document-versioning-v0-design.md` (**PROPOSED; not approved**). Implementation and implementation plan have not started.
+- Draft PR #11: `https://github.com/AIrisu-072/knowledge-platform/pull/11`. Last exact PR head before this planning update: `fbf42e9f41c1002a05aa79fc4932127620010c49`. Standard CI `36288001679`, DSI Sandbox Preflight `36288001693`, and DSI PoC `36288001688` are all **SUCCESS** at that head. These are documentation checks; no Versioning production code exists.
+- User-approved Frozen Design: `docs/superpowers/specs/2026-09-27-document-versioning-v0-design.md`. Approval record: `docs/superpowers/specs/2026-09-27-document-versioning-v0-design-approval.md` (explicit user response: “これで承認します。”).
+- Proposed Implementation Plan: `docs/superpowers/plans/2026-09-27-document-versioning-v0-production-implementation.md` (**not approved**). No Versioning production implementation has started.
 
 ## Completed prerequisite
 
@@ -19,9 +19,9 @@
 - The next design must preserve the separate Semantic Inspection and Search Extraction paths, avoid a durable common content IR, and require successful inspection of every authoritative ContentItem.
 - User-selected design scope includes withdrawal and scheduled publication. The user requested inline execution in this session, so no worker is dispatched. The exact route for any later worker is `gpt-6-sol` with `ultra` effort.
 - User-confirmed withdrawal rule: transition the withdrawn current Version to `WITHDRAWN`, then restore the immediately preceding eligible `PUBLISHED` Version as `current_version_id`; use null when no such Version exists. Do not add a withdrawal/restore flag. Existing lifecycle state and `withdrawn_at` express the withdrawn Version; Audit/Outbox history records the old and restored current IDs. Fallback integrity/quality behavior must be specified in the design.
-- The proposed Design Spec extends existing Domain/Application/PostgreSQL and the Publish ledger/API, preserves immutable authoritative FileObjects and DSI inspection for every ContentItem, and executes durable scheduled publication through the same idempotent Publish transition with due-time revalidation. It proposes immediate-base restoration on withdrawal, falling back to null if the base cannot be proved safe. The user has confirmed the no-extra-flag restoration direction but has not yet approved the full written Design Spec.
-- No Design/profile amendment is proposed. There is no approval to write production Versioning code yet.
+- The Frozen Design extends existing Domain/Application/PostgreSQL and the Publish ledger/API, preserves immutable authoritative FileObjects and DSI inspection for every ContentItem, and executes durable scheduled publication through the same idempotent Publish transition with due-time revalidation. It requires immediate-base restoration on withdrawal, falling back to null if the base cannot be proved safe.
+- The two normative `spec/data/` documents now resolve T4 and scheduled publication. Document-wide publication end (T10) remains separate because T4 can restore an older current Version. No Frozen Design amendment is proposed. There is no approval to write production Versioning code yet.
 
 ## Next exact action
 
-Review the proposed Design Spec with the user, especially first-Version withdrawal, fallback-to-null on failed predecessor validation, scheduled intent/cancellation, and stale `WORKING` rebase. Incorporate feedback and seek explicit written-spec approval. Then update the deferred normative T4/schedule rules, prepare a separate implementation plan, and seek plan approval before implementation.
+Complete focused self-review of the normative updates and proposed Production Implementation Plan, then commit/push the approval/spec/plan record to PR #11. Obtain explicit user approval of the plan. After approval, create the implementation branch from the approved planning baseline and start Task 1 inline with focused RED/GREEN evidence; do not start code or merge PR #11 on design approval alone.
