@@ -8,10 +8,11 @@ mod file;
 mod ids;
 mod metadata;
 mod principal;
+mod versioning;
 
 pub use document::{
-    CreateInitialDocument, Document, DocumentVersion, InitialDocument, LifecycleState,
-    PublishTransition, Title, VersionNo,
+    CreateInitialDocument, CreateWorkingVersion, Document, DocumentVersion, InitialDocument,
+    LifecycleState, PublishTransition, Title, VersionNo, WithdrawTransition,
 };
 pub use error::DomainError;
 pub use file::{
@@ -21,6 +22,7 @@ pub use file::{
 pub use ids::{AuditEventId, DocumentId, DocumentVersionId, EventId, FileId, FolderId};
 pub use metadata::Metadata;
 pub use principal::PrincipalRef;
+pub use versioning::{LogicalPath, SemanticContentItem, VersionManifest};
 
 #[cfg(test)]
 mod tests {

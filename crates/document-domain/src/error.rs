@@ -28,4 +28,24 @@ pub enum DomainError {
     VersionNotWorking,
     #[error("document revision overflow")]
     RevisionOverflow,
+    #[error("logical path must be a normalized relative path without ambiguous segments")]
+    InvalidLogicalPath,
+    #[error("semantic content manifest must contain at least one item")]
+    InvalidContentManifest,
+    #[error("content item key is duplicated")]
+    DuplicateContentItemKey,
+    #[error("semantic format identifier is invalid")]
+    InvalidSemanticFormat,
+    #[error("inspection profile identifier is invalid")]
+    InvalidInspectionProfile,
+    #[error("a current published version is required")]
+    NoCurrentPublishedVersion,
+    #[error("a working version already exists")]
+    ExistingWorkingVersion,
+    #[error("working version base does not match the current published version")]
+    StaleVersionBase,
+    #[error("document version is not published")]
+    VersionNotPublished,
+    #[error("withdrawal restoration candidate does not match the immediate published base")]
+    InvalidRestorationCandidate,
 }
