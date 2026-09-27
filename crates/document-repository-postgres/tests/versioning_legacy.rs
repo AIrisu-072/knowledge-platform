@@ -75,6 +75,39 @@ async fn versioning_migration_backfills_simple_primary_and_marks_ambiguous_legac
     sqlx::query("INSERT INTO version_files (document_version_id,file_id,role,ordinal,original_filename) VALUES ($1,$2,'ATTACHMENT',1,'ambiguous.txt')")
         .bind(id(12)).bind(id(23)).execute(&pool).await.unwrap();
 
+    let migration_sql = fs::read_to_string(format!(
+        "{}/migrations/0004_document_versioning_v0.sql",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
+    let mut dry_run = pool.begin().await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(migration_sql.as_str()))
+        .execute(&mut *dry_run)
+        .await
+        .unwrap();
+    let dry_run_marked: bool = sqlx::query_scalar(
+        "SELECT requires_content_classification FROM document_versions WHERE document_version_id = $1",
+    )
+    .bind(id(12))
+    .fetch_one(&mut *dry_run)
+    .await
+    .unwrap();
+    assert!(dry_run_marked);
+    dry_run.rollback().await.unwrap();
+    let migration_rolled_back: bool =
+        sqlx::query_scalar("SELECT to_regclass('public.content_items') IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(migration_rolled_back);
+    let retained_legacy: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM version_files WHERE document_version_id = $1")
+            .bind(id(12))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(retained_legacy, 2);
+
     migration(&pool, 4, "document_versioning_v0").await;
     let simple: (String, i32) = sqlx::query_as(
         "SELECT logical_path,ordinal FROM content_items WHERE document_version_id = $1",
