@@ -44,6 +44,26 @@ impl WithdrawTransition {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EndPublicationTransition {
+    former_current_version_id: Option<DocumentVersionId>,
+    resulting_document_revision: i64,
+}
+
+impl EndPublicationTransition {
+    pub const fn former_current_version_id(self) -> Option<DocumentVersionId> {
+        self.former_current_version_id
+    }
+
+    pub const fn resulting_current_version_id(self) -> Option<DocumentVersionId> {
+        None
+    }
+
+    pub const fn resulting_document_revision(self) -> i64 {
+        self.resulting_document_revision
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VersionNo(i64);
 
@@ -223,6 +243,34 @@ impl Document {
         self.current_version_id = Some(target.document_version_id);
         self.revision = next_revision;
         Ok(PublishTransition {
+            resulting_document_revision: next_revision,
+        })
+    }
+
+    pub fn end_publication(
+        &mut self,
+        current: &DocumentVersion,
+    ) -> Result<EndPublicationTransition, DomainError> {
+        if current.document_id != self.document_id {
+            return Err(DomainError::VersionDocumentMismatch);
+        }
+        let current_id = self
+            .current_version_id
+            .ok_or(DomainError::NoCurrentPublishedVersion)?;
+        if current.document_version_id != current_id {
+            return Err(DomainError::StaleVersionBase);
+        }
+        if current.lifecycle_state != LifecycleState::Published {
+            return Err(DomainError::VersionNotPublished);
+        }
+        let next_revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(DomainError::RevisionOverflow)?;
+        self.current_version_id = None;
+        self.revision = next_revision;
+        Ok(EndPublicationTransition {
+            former_current_version_id: Some(current_id),
             resulting_document_revision: next_revision,
         })
     }
@@ -708,5 +756,77 @@ mod tests {
         assert_eq!(error, DomainError::RevisionOverflow);
         assert_eq!(document, before_document);
         assert_eq!(version, before_version);
+    }
+
+    #[test]
+    fn publication_end_clears_current_without_changing_published_version() {
+        let (mut document, version) = fixture(1, 1, 2, 7, Some(2), LifecycleState::Published);
+        let before_version = version.clone();
+
+        let transition = document.end_publication(&version).unwrap();
+
+        assert_eq!(
+            transition.former_current_version_id(),
+            Some(version.document_version_id())
+        );
+        assert_eq!(transition.resulting_current_version_id(), None);
+        assert_eq!(transition.resulting_document_revision(), 8);
+        assert_eq!(document.current_version_id(), None);
+        assert_eq!(document.revision(), 8);
+        assert_eq!(version, before_version);
+    }
+
+    #[test]
+    fn publication_end_rejects_other_document_and_stale_current_without_mutation() {
+        let (mut other_document, other_version) =
+            fixture(1, 2, 3, 7, Some(3), LifecycleState::Published);
+        let before = other_document.clone();
+        assert_eq!(
+            other_document.end_publication(&other_version),
+            Err(DomainError::VersionDocumentMismatch)
+        );
+        assert_eq!(other_document, before);
+
+        let (mut stale_document, stale_version) =
+            fixture(1, 1, 3, 7, Some(2), LifecycleState::Published);
+        let before = stale_document.clone();
+        assert_eq!(
+            stale_document.end_publication(&stale_version),
+            Err(DomainError::StaleVersionBase)
+        );
+        assert_eq!(stale_document, before);
+    }
+
+    #[test]
+    fn publication_end_requires_current_published_version_without_mutation() {
+        let (mut unpublished_document, published_version) =
+            fixture(1, 1, 2, 7, None, LifecycleState::Published);
+        let before = unpublished_document.clone();
+        assert_eq!(
+            unpublished_document.end_publication(&published_version),
+            Err(DomainError::NoCurrentPublishedVersion)
+        );
+        assert_eq!(unpublished_document, before);
+
+        let (mut working_document, working_version) =
+            fixture(1, 1, 2, 7, Some(2), LifecycleState::Working);
+        let before = working_document.clone();
+        assert_eq!(
+            working_document.end_publication(&working_version),
+            Err(DomainError::VersionNotPublished)
+        );
+        assert_eq!(working_document, before);
+    }
+
+    #[test]
+    fn publication_end_rejects_revision_overflow_without_mutation() {
+        let (mut document, version) =
+            fixture(1, 1, 2, i64::MAX, Some(2), LifecycleState::Published);
+        let before = document.clone();
+        assert_eq!(
+            document.end_publication(&version),
+            Err(DomainError::RevisionOverflow)
+        );
+        assert_eq!(document, before);
     }
 }

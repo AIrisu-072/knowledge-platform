@@ -13,6 +13,10 @@ use crate::{
     AuditEventRecord, DomainEventRecord, InspectionExecutionError, RepositoryError,
     SemanticInspectionRecord, StorageError,
     command::{PublishDocumentCommand, PublishDocumentResult, PublishOperationId},
+    publication_end::{
+        EndDocumentPublicationResult, EndPublicationCandidate, EndPublicationOperationRecord,
+        EndPublicationRecord, PublicationEndOperationId,
+    },
     schedule::{
         CancelOperationRecord, CancelScheduleRecord, CancelScheduleResult, DueTerminalRecord,
         ScheduleOperationRecord, SchedulePublishRecord, SchedulePublishResult,
@@ -281,6 +285,24 @@ pub trait PublicationScheduleRepository: Send + Sync {
         id: crate::PublishOperationId,
     ) -> Result<OffsetDateTime, RepositoryError>;
     async fn terminalize(&self, record: DueTerminalRecord) -> Result<(), RepositoryError>;
+}
+
+#[allow(async_fn_in_trait)]
+pub trait PublicationEndRepository: Send + Sync {
+    async fn get_end_operation(
+        &self,
+        operation_id: PublicationEndOperationId,
+    ) -> Result<Option<EndPublicationOperationRecord>, RepositoryError>;
+
+    async fn get_end_candidate(
+        &self,
+        document_id: DocumentId,
+    ) -> Result<Option<EndPublicationCandidate>, RepositoryError>;
+
+    async fn end_document_publication(
+        &self,
+        record: EndPublicationRecord,
+    ) -> Result<EndDocumentPublicationResult, RepositoryError>;
 }
 
 #[allow(async_fn_in_trait)]
