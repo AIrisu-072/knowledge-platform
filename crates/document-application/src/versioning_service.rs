@@ -16,7 +16,7 @@ use crate::{
     RebaseWorkingVersionCommand, RepositoryError, SemanticInspectionExecutor,
     SemanticInspectionRepository, UpdateWorkingVersionCommand, VersionCommandIdentity,
     VersionMutationRecord, VersionOperationKind, VersionOperationResult, VersioningPreflight,
-    VersioningRepository,
+    VersioningRepository, WithdrawVersionCommand, WithdrawVersionRecord, WithdrawVersionResult,
 };
 
 pub struct DocumentVersionService<I, C, F, E, R> {
@@ -312,6 +312,111 @@ where
                     publish_operation_id: command.publish_operation_id(),
                     document_id: command.document_id(),
                     document_version_id: command.target_document_version_id(),
+                })
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    pub async fn withdraw_version(
+        &self,
+        command: WithdrawVersionCommand,
+    ) -> Result<WithdrawVersionResult, ApplicationError> {
+        if let Some(stored) = self
+            .repository
+            .get_withdraw_operation(command.operation_id())
+            .await?
+        {
+            return if stored.command_digest == command.command_digest() {
+                Ok(stored.result)
+            } else {
+                Err(ApplicationError::Conflict)
+            };
+        }
+        let target = self
+            .repository
+            .get_version_snapshot(command.document_id(), command.target_version_id())
+            .await?
+            .ok_or(ApplicationError::DocumentVersionNotFound)?;
+        if target.document().revision() != command.expected_revision() {
+            return Err(ApplicationError::Conflict);
+        }
+        if target.version().lifecycle_state() != LifecycleState::Published {
+            return Err(ApplicationError::BusinessRule);
+        }
+        let is_current =
+            target.document().current_version_id() == Some(command.target_version_id());
+        let mut eligible_base = None;
+        let mut eligible_base_manifest_digest = None;
+        let mut eligible_snapshot = None;
+        let mut withheld_reason = None;
+        if is_current {
+            if let Some(base_id) = target.version().base_document_version_id() {
+                let candidate = self
+                    .repository
+                    .get_version_snapshot(command.document_id(), base_id)
+                    .await;
+                match candidate {
+                    Ok(Some(candidate))
+                        if candidate.version().lifecycle_state() == LifecycleState::Published =>
+                    {
+                        let preflight = VersioningPreflight::new(
+                            self.repository.clone(),
+                            self.storage.clone(),
+                            self.executor.clone(),
+                            self.clock.clone(),
+                        );
+                        match preflight.inspect_existing(&candidate).await {
+                            Ok(prepared) => {
+                                match preflight.check_publish_quality(&prepared).await {
+                                    Ok(()) => {
+                                        eligible_base = Some(base_id);
+                                        eligible_base_manifest_digest =
+                                            Some(prepared.identity_digest());
+                                        eligible_snapshot = Some(candidate);
+                                    }
+                                    Err(_) => {
+                                        withheld_reason =
+                                            Some("base_quality_or_storage_unavailable".to_owned())
+                                    }
+                                }
+                            }
+                            Err(_) => {
+                                withheld_reason = Some("base_inspection_unavailable".to_owned())
+                            }
+                        }
+                    }
+                    _ => withheld_reason = Some("base_unavailable_or_not_published".to_owned()),
+                }
+            }
+        }
+        let mut document = target.document().clone();
+        let mut version = target.version().clone();
+        document
+            .withdraw_version(
+                &mut version,
+                eligible_snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.version()),
+                self.clock.now(),
+            )
+            .map_err(map_publish_transition_error)?;
+        let record = WithdrawVersionRecord {
+            command: command.clone(),
+            eligible_base_id: eligible_base,
+            eligible_base_manifest_digest,
+            restoration_withheld_reason: withheld_reason,
+            domain_event_id: EventId::from_uuid(self.ids.next_uuid_v7()),
+            audit_event_id: AuditEventId::from_uuid(self.ids.next_uuid_v7()),
+            withdrawn_at: self.clock.now(),
+        };
+        match self.repository.withdraw_version(record).await {
+            Ok(result) => Ok(result),
+            Err(RepositoryError::CommitOutcomeUnknown) => {
+                Err(ApplicationError::VersionCommitOutcomeUnknown {
+                    operation_id: command.operation_id(),
+                    document_id: command.document_id(),
+                    document_version_id: command.target_version_id(),
                 })
             }
             Err(error) => Err(error.into()),

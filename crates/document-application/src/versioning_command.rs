@@ -365,3 +365,97 @@ fn digest_field(hash: &mut Sha256, bytes: &[u8]) {
     hash.update((bytes.len() as u32).to_be_bytes());
     hash.update(bytes);
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WithdrawVersionCommand {
+    operation_id: VersionOperationId,
+    document_id: DocumentId,
+    target_version_id: DocumentVersionId,
+    expected_revision: i64,
+    actor: PrincipalRef,
+    reason: String,
+}
+
+impl WithdrawVersionCommand {
+    pub fn new(
+        operation_id: VersionOperationId,
+        document_id: DocumentId,
+        target_version_id: DocumentVersionId,
+        expected_revision: i64,
+        actor: PrincipalRef,
+        reason: impl Into<String>,
+    ) -> Result<Self, ApplicationError> {
+        let reason = reason.into();
+        let reason = reason.trim();
+        if expected_revision < 0 || reason.is_empty() {
+            return Err(ApplicationError::Validation(
+                "withdrawal requires a reason and nonnegative revision".to_owned(),
+            ));
+        }
+        Ok(Self {
+            operation_id,
+            document_id,
+            target_version_id,
+            expected_revision,
+            actor,
+            reason: reason.to_owned(),
+        })
+    }
+    pub const fn operation_id(&self) -> VersionOperationId {
+        self.operation_id
+    }
+    pub const fn document_id(&self) -> DocumentId {
+        self.document_id
+    }
+    pub const fn target_version_id(&self) -> DocumentVersionId {
+        self.target_version_id
+    }
+    pub const fn expected_revision(&self) -> i64 {
+        self.expected_revision
+    }
+    pub const fn actor(&self) -> &PrincipalRef {
+        &self.actor
+    }
+    pub fn reason(&self) -> &str {
+        &self.reason
+    }
+    pub fn command_digest(&self) -> [u8; 32] {
+        let mut hash = Sha256::new();
+        hash.update(b"document-version-withdraw-v0\0");
+        hash.update(self.document_id.as_uuid().as_bytes());
+        hash.update(self.target_version_id.as_uuid().as_bytes());
+        hash.update(self.expected_revision.to_be_bytes());
+        digest_field(&mut hash, self.actor.identity_provider().as_bytes());
+        digest_field(&mut hash, self.actor.principal_id().as_bytes());
+        digest_field(&mut hash, self.reason.as_bytes());
+        hash.finalize().into()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WithdrawVersionResult {
+    pub operation_id: VersionOperationId,
+    pub document_id: DocumentId,
+    pub target_version_id: DocumentVersionId,
+    pub former_current_version_id: Option<DocumentVersionId>,
+    pub resulting_current_version_id: Option<DocumentVersionId>,
+    pub resulting_revision: i64,
+    pub restoration_withheld_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WithdrawOperationRecord {
+    pub command_digest: [u8; 32],
+    pub result: WithdrawVersionResult,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WithdrawVersionRecord {
+    pub command: WithdrawVersionCommand,
+    pub eligible_base_id: Option<DocumentVersionId>,
+    pub eligible_base_manifest_digest: Option<[u8; 32]>,
+    pub restoration_withheld_reason: Option<String>,
+    pub domain_event_id: EventId,
+    pub audit_event_id: AuditEventId,
+    pub withdrawn_at: OffsetDateTime,
+}

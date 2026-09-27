@@ -1,12 +1,13 @@
 use document_application::{
     AuthoritativeDocument, RepositoryError, SemanticInspectionRepository, VersionMutationRecord,
     VersionOperationId, VersionOperationRecord, VersionOperationResult, VersioningRepository,
+    WithdrawOperationRecord, WithdrawVersionRecord, WithdrawVersionResult,
 };
 use document_domain::{DocumentId, DocumentVersionId, FileObject};
 
 use crate::{
     error::map_statement_error, repository::PostgresDocumentRepository, versioning_mutation,
-    versioning_rows,
+    versioning_rows, withdrawal,
 };
 
 impl VersioningRepository for PostgresDocumentRepository {
@@ -84,5 +85,19 @@ impl VersioningRepository for PostgresDocumentRepository {
             return Err(RepositoryError::IntegrityViolation);
         }
         versioning_mutation::mutate(&self.pool, record).await
+    }
+
+    async fn get_withdraw_operation(
+        &self,
+        operation_id: VersionOperationId,
+    ) -> Result<Option<WithdrawOperationRecord>, RepositoryError> {
+        withdrawal::get_operation(&self.pool, operation_id).await
+    }
+
+    async fn withdraw_version(
+        &self,
+        record: WithdrawVersionRecord,
+    ) -> Result<WithdrawVersionResult, RepositoryError> {
+        withdrawal::withdraw(&self.pool, record).await
     }
 }

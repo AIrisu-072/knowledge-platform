@@ -15,6 +15,7 @@ use crate::{
     command::{PublishDocumentCommand, PublishDocumentResult, PublishOperationId},
     versioning_command::{
         VersionMutationRecord, VersionOperationId, VersionOperationRecord, VersionOperationResult,
+        WithdrawOperationRecord, WithdrawVersionRecord, WithdrawVersionResult,
     },
 };
 
@@ -223,6 +224,24 @@ pub trait VersioningRepository: Send + Sync {
     ) -> Result<VersionOperationResult, RepositoryError> {
         Err(RepositoryError::Internal(
             "version mutation repository unavailable".to_owned(),
+        ))
+    }
+
+    async fn get_withdraw_operation(
+        &self,
+        _operation_id: VersionOperationId,
+    ) -> Result<Option<WithdrawOperationRecord>, RepositoryError> {
+        Err(RepositoryError::Internal(
+            "withdrawal repository unavailable".to_owned(),
+        ))
+    }
+
+    async fn withdraw_version(
+        &self,
+        _record: WithdrawVersionRecord,
+    ) -> Result<WithdrawVersionResult, RepositoryError> {
+        Err(RepositoryError::Internal(
+            "withdrawal repository unavailable".to_owned(),
         ))
     }
 }

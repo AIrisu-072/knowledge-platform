@@ -21,9 +21,10 @@ pub use command::{
 pub use error::{ApplicationError, InspectionExecutionError, RepositoryError, StorageError};
 pub use events::{
     AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_VERSION_CREATED, AUDIT_DOCUMENT_VERSION_PUBLISHED,
-    AUDIT_DOCUMENT_VERSION_REBASED, AUDIT_DOCUMENT_VERSION_UPDATED, AuditEventRecord,
-    DOCUMENT_CREATED, DOCUMENT_VERSION_CREATED, DOCUMENT_VERSION_PUBLISHED,
-    DOCUMENT_VERSION_REBASED, DOCUMENT_VERSION_UPDATED, DomainEventRecord,
+    AUDIT_DOCUMENT_VERSION_REBASED, AUDIT_DOCUMENT_VERSION_UPDATED,
+    AUDIT_DOCUMENT_VERSION_WITHDRAWN, AuditEventRecord, DOCUMENT_CREATED, DOCUMENT_VERSION_CREATED,
+    DOCUMENT_VERSION_PUBLISHED, DOCUMENT_VERSION_REBASED, DOCUMENT_VERSION_UPDATED,
+    DOCUMENT_VERSION_WITHDRAWN, DomainEventRecord,
 };
 pub use ports::{
     AuthoritativeContentItem, AuthoritativeDocument, Clock, ContentReader,
@@ -39,7 +40,8 @@ pub use service::DocumentService;
 pub use versioning_command::{
     CreateVersionCommand, RebaseWorkingVersionCommand, UpdateWorkingVersionCommand,
     VersionCommandIdentity, VersionMutationRecord, VersionOperationId, VersionOperationKind,
-    VersionOperationRecord, VersionOperationResult,
+    VersionOperationRecord, VersionOperationResult, WithdrawOperationRecord,
+    WithdrawVersionCommand, WithdrawVersionRecord, WithdrawVersionResult,
 };
 pub use versioning_preflight::{
     PreparedContentItem, PreparedManifest, PreparedRendition, VersioningItemInput,

@@ -79,7 +79,7 @@ fn map_operation(row: OperationRow) -> Result<VersionOperationRecord, Repository
         "CREATE" => VersionOperationKind::Create,
         "UPDATE" => VersionOperationKind::Update,
         "REBASE" => VersionOperationKind::Rebase,
-        _ => return Err(RepositoryError::IntegrityViolation),
+        _ => return Err(RepositoryError::Conflict),
     };
     let operation_id = VersionOperationId::try_from_uuid(row.operation_id)
         .map_err(|_| RepositoryError::IntegrityViolation)?;

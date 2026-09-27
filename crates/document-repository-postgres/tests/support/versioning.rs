@@ -1,7 +1,10 @@
 use std::{
     collections::HashMap,
     io::Cursor,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use document_application::{
@@ -46,6 +49,9 @@ impl TestStorage {
     fn insert(&self, key: &str, bytes: Vec<u8>) {
         self.objects.lock().unwrap().insert(key.to_owned(), bytes);
     }
+    pub(super) fn remove(&self, key: &str) {
+        self.objects.lock().unwrap().remove(key);
+    }
 }
 impl FileStorage for TestStorage {
     async fn put_immutable(&self, request: StoreFileRequest) -> Result<StoredFile, StorageError> {
@@ -79,13 +85,24 @@ impl FileStorage for TestStorage {
     }
 }
 
-pub(super) struct TestExecutor;
+#[derive(Default)]
+pub(super) struct TestExecutor {
+    unavailable: AtomicBool,
+}
+impl TestExecutor {
+    pub(super) fn set_unavailable(&self) {
+        self.unavailable.store(true, Ordering::SeqCst);
+    }
+}
 impl SemanticInspectionExecutor for TestExecutor {
     async fn inspect(
         &self,
         request: WorkerRequest,
         mut content: ContentReader,
     ) -> Result<WorkerResponse, InspectionExecutionError> {
+        if self.unavailable.load(Ordering::SeqCst) {
+            return Err(InspectionExecutionError::ExtractorUnavailable);
+        }
         let mut bytes = Vec::new();
         content.read_to_end(&mut bytes).await.unwrap();
         serde_json::from_value(serde_json::json!({
@@ -108,7 +125,7 @@ pub(super) struct Fixture {
     pub(super) repository: Arc<PostgresDocumentRepository>,
     pub(super) storage: Arc<TestStorage>,
     pub(super) clock: Arc<TestClock>,
-    executor: Arc<TestExecutor>,
+    pub(super) executor: Arc<TestExecutor>,
     pub(super) document_id: DocumentId,
     pub(super) base_id: DocumentVersionId,
 }
@@ -230,12 +247,13 @@ pub(super) async fn fixture() -> Fixture {
         repository: Arc::new(PostgresDocumentRepository::new(pool)),
         storage,
         clock: Arc::new(TestClock),
-        executor: Arc::new(TestExecutor),
+        executor: Arc::new(TestExecutor::default()),
         document_id,
         base_id,
     }
 }
 
+#[allow(dead_code)]
 pub(super) async fn install_new_current(f: &Fixture, title: &str, byte: u8) -> DocumentVersionId {
     let version_id = DocumentVersionId::from_uuid(Uuid::now_v7());
     let file_id = FileId::from_uuid(Uuid::now_v7());

@@ -13,6 +13,7 @@ mod semantic_inspection_rows;
 mod versioning;
 mod versioning_mutation;
 mod versioning_rows;
+mod withdrawal;
 
 use sqlx::{PgPool, migrate::MigrateError};
 use uuid::Uuid;

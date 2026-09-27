@@ -12,6 +12,8 @@ pub const DOCUMENT_VERSION_UPDATED: &str = "DocumentVersionUpdated";
 pub const DOCUMENT_VERSION_REBASED: &str = "DocumentVersionRebased";
 pub const AUDIT_DOCUMENT_VERSION_UPDATED: &str = "document.version.updated";
 pub const AUDIT_DOCUMENT_VERSION_REBASED: &str = "document.version.rebased";
+pub const DOCUMENT_VERSION_WITHDRAWN: &str = "DocumentVersionWithdrawn";
+pub const AUDIT_DOCUMENT_VERSION_WITHDRAWN: &str = "document.version.withdrawn";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DomainEventRecord {
