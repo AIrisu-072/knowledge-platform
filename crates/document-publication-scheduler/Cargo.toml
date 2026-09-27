@@ -1,0 +1,21 @@
+[package]
+name = "document-publication-scheduler"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+document-application = { path = "../document-application" }
+document-domain = { path = "../document-domain" }
+document-repository-postgres = { path = "../document-repository-postgres" }
+document-storage-fs = { path = "../document-storage-fs" }
+document-semantic-inspection-runner = { path = "../document-semantic-inspection-runner" }
+sqlx.workspace = true
+tokio = { workspace = true, features = ["signal"] }
+time.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+testcontainers.workspace = true
+uuid.workspace = true

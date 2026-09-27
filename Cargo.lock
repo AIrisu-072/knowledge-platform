@@ -1111,6 +1111,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "document-publication-scheduler"
+version = "0.0.0"
+dependencies = [
+ "document-application",
+ "document-domain",
+ "document-repository-postgres",
+ "document-semantic-inspection-runner",
+ "document-storage-fs",
+ "sqlx",
+ "testcontainers",
+ "thiserror",
+ "time",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "document-repository-postgres"
 version = "0.0.0"
 dependencies = [

@@ -267,3 +267,24 @@ async fn two_reservers_commit_only_one_pending_intent() {
         .bind(f.document_id.as_uuid()).fetch_one(&f.pool).await.unwrap();
     assert_eq!(pending, 1);
 }
+
+#[tokio::test]
+async fn due_listing_only_returns_pending_elapsed_intents() {
+    let f = fixture().await;
+    let target = working_replacement(&f).await;
+    f.service()
+        .schedule_publish(schedule(10, &f, target, 2, 2_000_000_000))
+        .await
+        .unwrap();
+    assert!(
+        f.repository
+            .list_due(due(1_999_999_999), 10)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        f.repository.list_due(due(2_000_000_001), 10).await.unwrap(),
+        vec![publish_id(10)]
+    );
+}
