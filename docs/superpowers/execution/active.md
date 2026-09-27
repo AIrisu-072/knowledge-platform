@@ -1,13 +1,14 @@
 # Active Execution Pointer
 
-## Active checkpoint — T10 実装計画レビュー待ち、2026-09-27 JST
+## Active checkpoint — T10 本番実装計画承認済み、2026-09-27 JST
 
-- Status: **ACTIVE**。対象は **Document Publication End v0 (T10)**。工程は **日本語版設計・読み取り境界改訂 1 承認済み／Production Implementation Plan レビュー待ち**。詳細は `docs/superpowers/execution/document-publication-end-v0-status.md`。
+- Status: **ACTIVE**。対象は **Document Publication End v0 (T10)**。工程は **日本語版設計・読み取り境界改訂 1・Production Implementation Plan 承認済み／Task 1 開始待ち**。詳細は `docs/superpowers/execution/document-publication-end-v0-status.md`。
 - 基準: `feat/document-versioning-v0@96b068bc9484a219b435d0633ea6669ddb7d7f97`（未マージ PR #12、PR #11 が基点）。設計・計画ブランチ `design/document-publication-end-v0`、Draft PR #13 は PR #12 を base とする。
 - 設計・計画の substantive head: `19df8e24e8ba9afbd5170f367b966ff0f1ebf889`。承認済み改訂 1 により、既存の `GetDocument` は未終了の `WORKING` 初版を扱い、T10 後は遮断する。通常公開 API は現行 `PUBLISHED` 版専用。凍結済み Authoritative Core 設計は変更しない。
-- 検証: 文書差分の `git diff --cached --check` は PASS。T10 Production コード・テスト・ホスト CI はまだない。PR #11・#12 は OPEN／未マージ、PR #13 は Draft／OPEN と確認した。
-- Blocker: 日本語版実装計画の依頼者承認。PR #11・#12・#13 のマージ指示はない。
-- 次の exact action: PR #13 の `docs/superpowers/plans/2026-09-27-document-publication-end-v0-production-implementation.md` をレビューする。計画承認後、承認記録を作り、別の実装ブランチで Task 1 のローカル RED からインラインで進める。
+- 計画承認: 依頼者の明示回答を `docs/superpowers/plans/2026-09-27-document-publication-end-v0-production-implementation-approval.md` に記録。Task 1–5 をインラインで実装・テストする。
+- 検証: 設計 PR #13 head `5177808ebf2c10cf9575dffe88c91daa5a43d1ef` の Sandbox `36325445926` と PoC `36325445932` は SUCCESS、標準 CI `36325445915` は直近確認時 IN_PROGRESS。T10 Production の証拠ではない。PR #11・#12 は OPEN／未マージ、PR #13 は Draft／OPEN。
+- Blocker: なし。PR #11・#12・#13 のマージ指示はない。
+- 次の exact action: 承認記録を commit/push し、独立した実装 worktree で Task 1 のローカル RED から進める。
 
 This checkpoint supersedes the prior T10 checkpoint below.
 
