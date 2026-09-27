@@ -1,6 +1,16 @@
 # Active Execution Pointer
 
-## Latest checkpoint — 2026-09-27 JST
+## Active checkpoint — 2026-09-27 JST
+
+- Status: **ACTIVE**. Current capability: **Document Versioning v0**; phase: **DESIGN DISCOVERY**. Capability status: `docs/superpowers/execution/document-versioning-v0-status.md`.
+- Baseline: `main@09c8235755573d16e09b8af029c22dc27caf6472`. Document Semantic Inspection v0 PR #10 is **MERGED** at this commit; merge-head CI `36281613991` is **SUCCESS**. The final PR head was `12047186787e2380bbc6ec74c4baa617b71b2525`.
+- Active branch: `design/document-versioning-v0`. The Versioning design spec and implementation plan do not exist yet; production implementation is **not authorized**. Starting references are `spec/data/logical-data-model-v0.md`, `spec/data/transaction-consistency-requirements-v0.md`, the approved Document Publish v0 design, and Document Semantic Inspection v0 Design §18.
+- Pending decisions: initial scope for withdrawal/scheduled publication; exact managed-worker model and effort. No Frozen Design amendment is proposed.
+- Next exact action: resolve the pending scope/model answers, compare minimal Versioning approaches against the existing Publish and Semantic Inspection contracts, obtain design approval, then write the Versioning design spec. Keep implementation gated on a separately approved plan.
+
+This active checkpoint supersedes the prior Document Semantic Inspection handoff below.
+
+## Previous Document Semantic Inspection checkpoint — 2026-09-27 JST
 
 - Last exact verified branch head: `b7df56d789bb7281000d3e921d34c15dad0445c8` on `feat/document-semantic-inspection-v0`; PR #10 is **OPEN / Ready for review**. Implementation code head: `5045fa8e6274054f19931c2ba11bbec62fb546d5`.
 - Tasks 1–12: **COMPLETE**. Task 12 corrected GREEN head `feb3affb82ba2ed144a87d58706391d53890d7f5`: standard CI `36253230526`, Sandbox `36253230478`, and DSI PoC `36253230464` all **SUCCESS**.
