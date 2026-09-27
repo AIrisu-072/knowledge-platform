@@ -634,7 +634,7 @@ T10 の対象は現行 `PUBLISHED` Version を持つ Document に限る。呼出
 
 ### 読み取りと Search
 
-通常の Document・ファイル読み取りは、同じ Document の現行 `PUBLISHED` Version のみを返す。現行版参照が null なら結果を返さず、過去版や `WORKING` Version へフォールバックしない。権限に基づく過去資料の参照は AccessPolicy を使う別経路とする。
+通常公開用の Document・ファイル読み取りは、同じ Document の現行 `PUBLISHED` Version のみを返す。現行版参照が null なら結果を返さず、過去版や `WORKING` Version へフォールバックしない。既存の編集・authoritative 読み取りは T10 未終了の `WORKING` 初版を扱えるが、T10 終了後は旧版を返さない。終了記録の確認と取得は同じ DB statement で行う。権限に基づく過去資料の参照は AccessPolicy を使う別経路とする。
 
 Search Index からの除外配送は遅延してよい。ただし検索結果を表示・利用する前に、Document 側で結果の Version が現行 `PUBLISHED` 版か確認し、T10 後の古い結果を抑止する。再構築元も現行 `PUBLISHED` 版だけを列挙する。Search consumer と再構築処理そのものは別機能とする。
 

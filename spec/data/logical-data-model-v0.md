@@ -180,7 +180,7 @@ Versionの取下げでは直前の公開版が現行に戻る場合がある。�
 
 文書全体の公開終了（T10）は、現行 `PUBLISHED` Version への参照を null にする。元の現行 Version は `PUBLISHED` の過去版として、原本・`published_at` とともに保持する。新しい Document フラグや Version lifecycle state は追加しない。現行版参照が null だけでは未公開・取下げ後・公開終了を区別できないため、意図的な公開終了は永続的な操作台帳から判定する。Document 単位の「公開終了」表示は操作台帳と null の現行版参照から導出し、Version 単位の表示とは区別する。
 
-T10 後は別途設計された再公開操作がない限り、通常の Version 作成・更新・再基準化・予約・公開から現行版を設定できない。通常読み取りは現行 `PUBLISHED` Version のみを返し、過去版や `WORKING` Version にフォールバックしない。過去資料へのアクセスは AccessPolicy に従う別経路とする。
+T10 後は別途設計された再公開操作がない限り、通常の Version 作成・更新・再基準化・予約・公開から現行版を設定できない。通常公開用の読み取りは現行 `PUBLISHED` Version のみを返し、過去版や `WORKING` Version にフォールバックしない。既存の編集・authoritative 読み取りは T10 未終了の `WORKING` 初版を扱えるが、T10 終了後は旧版へフォールバックしない。過去資料へのアクセスは AccessPolicy に従う別経路とする。
 
 物理削除は、法令・契約上の削除義務、誤登録機密情報、staging/orphan fileのGC等の例外的管理処理に限定し、通常のDocument lifecycleとは分離する。
 

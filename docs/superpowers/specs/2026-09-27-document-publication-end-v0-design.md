@@ -10,19 +10,19 @@
 
 文書全体の公開を、内容の削除や個別 Version の取下げを行わずに終了する。これは `spec/data/transaction-consistency-requirements-v0.md` の T10 で要求された独立操作である。T4 の Version 取下げでは直前の公開版が現行版へ戻り得るため、T4 だけでは文書全体を通常利用・通常検索から確実に外せない。
 
-依頼者が 2026-09-27 に承認した方針は、現行版参照を null にし、過去の Version と原本を保持し、冪等な公開終了操作を記録し、公開予約を無効化し、検索除外イベントを発行し、通常の読み取りを現行版に限定する、というもの。再公開は後続の別操作として設計する。依頼者は「日本語で書き直したら承認します」と条件を指定し、本日本語版がその条件を満たした。承認記録は `2026-09-27-document-publication-end-v0-design-approval.md` に残す。本番実装には別途、実装計画のレビューが必要である。
+依頼者が 2026-09-27 に承認した方針は、現行版参照を null にし、過去の Version と原本を保持し、冪等な公開終了操作を記録し、公開予約を無効化し、検索除外イベントを発行し、通常公開用の読み取りを現行版に限定する、というもの。再公開は後続の別操作として設計する。依頼者は「日本語で書き直したら承認します」と条件を指定し、本日本語版がその条件を満たした。承認記録は `2026-09-27-document-publication-end-v0-design-approval.md` に残す。§6 と受入項目 5 の API 割当ては、承認済みの `2026-09-27-document-publication-end-v0-design-amendment-1.md` に従って改訂した。本番実装には別途、実装計画のレビューが必要である。
 
 ## 2. 規範仕様と対象範囲
 
-`spec/data/logical-data-model-v0.md` と `spec/data/transaction-consistency-requirements-v0.md` を規範仕様とする。承認済みの Document Versioning v0 設計・実装が直近の基準である。Audit の生成は `spec/operations/observability-audit-requirements-v0.md` に従う。Search Index は transaction 要件に従い、正本より遅延してよい。T10 の未確定部分は、この設計の承認後、本番実装前に `spec/` と整合させる。凍結済みの Versioning 規則との衝突が見つかった場合は、暗黙に変更せず改訂承認を受ける。この提案は取下げ時の旧版復帰、Version の同一性、DSI、予約公開の意味を変更しない。
+`spec/data/logical-data-model-v0.md` と `spec/data/transaction-consistency-requirements-v0.md` を規範仕様とする。承認済みの Document Versioning v0 設計・実装が直近の基準である。Audit の生成は `spec/operations/observability-audit-requirements-v0.md` に従う。Search Index は transaction 要件に従い、正本より遅延してよい。T10 の境界は本番実装前に `spec/` と整合済みである。凍結済みの Versioning 規則との衝突が見つかった場合は、暗黙に変更せず改訂承認を受ける。本設計は取下げ時の旧版復帰、Version の同一性、DSI、予約公開の意味を変更しない。
 
-対象は、現行公開版を持つ Document の公開終了、その transaction と完全な再実行、公開予約の無効化、通常読み取りの可視性、Search 除外のための正本側証跡である。HTTP/UI、Search への配送・Index 実装、AccessPolicy 実装、法的削除、自動再公開、過去 Version の内容・状態の変更は対象外とする。Search Extraction と DSI は引き続き別経路とし、公開終了の実行にはどちらも必要としない。
+対象は、現行公開版を持つ Document の公開終了、その transaction と完全な再実行、公開予約の無効化、通常公開読み取りの可視性、Search 除外のための正本側証跡である。HTTP/UI、Search への配送・Index 実装、AccessPolicy 実装、法的削除、自動再公開、過去 Version の内容・状態の変更は対象外とする。Search Extraction と DSI は引き続き別経路とし、公開終了の実行にはどちらも必要としない。
 
 ## 3. 状態と意味
 
 Document の論理的な同一性は維持する。T10 は、現行の `PUBLISHED` Version を指す `Document.current_version_id` を null にし、`Document.revision` を 1 増やす。元の現行 Version は `PUBLISHED` のままとし、その `published_at`、内容、base 関係、原本は変更しない。T10 のために `DocumentVersion` を `WITHDRAWN` にせず、Document の新しいフラグ、Version の lifecycle state、重複する `ended` 列も追加しない。
 
-現行版参照が null という事実だけでは、未公開、旧版へ戻せなかった取下げ、文書全体の公開終了を区別できない。そのため、追記型の永続的な T10 操作記録を「文書全体の公開を終了した」証跡とする。Document 単位の「公開終了」表示は、その記録と null の現行版参照から導出できる。Version 単位の表示は引き続き lifecycle と現行版参照に従い、元の現行 `PUBLISHED` Version は過去版となる。通常の読み取りから現行版は見えなくなる。権限に基づく過去資料へのアクセスは別経路とし、通常読み取りのフォールバックには使わない。
+現行版参照が null という事実だけでは、未公開、旧版へ戻せなかった取下げ、文書全体の公開終了を区別できない。そのため、追記型の永続的な T10 操作記録を「文書全体の公開を終了した」証跡とする。Document 単位の「公開終了」表示は、その記録と null の現行版参照から導出できる。Version 単位の表示は引き続き lifecycle と現行版参照に従い、元の現行 `PUBLISHED` Version は過去版となる。通常公開用の読み取りから現行版は見えなくなる。権限に基づく過去資料へのアクセスは別経路とし、通常公開読み取りのフォールバックには使わない。
 
 T10 v0 は通常の公開操作に対して終端となる。既存の `WORKING` Version と過去版は保持するが、Version の作成・更新・rebase、予約・期限到達・手動 Publish、その他の現行版を設定し得る操作は、T10 記録がある Document に対して拒否する。将来の再公開には、独立した監査対象 transaction と可視性の規則が必要である。権限がある場合、T10 後も過去版に対する T4 取下げは許容する。ただし現行版参照は null のままとし、文書を再公開しない。
 
@@ -46,11 +46,13 @@ Application は完全な再実行を先に解決し、コマンド形式と信�
 
 Document 行ロックと revision の照合により、T10 は T3 Publish、T4 取下げ、公開予約の登録・取消・期限到達、Version 変更と直列化される。他の操作が先に成立した場合、T10 は Conflict とし、呼出側に再読込を求める。T10 が先に成立した場合、後続の期限到達 worker は終端済み予約を見て Publish できない。現行版を新たに設定し得る Version 作成・公開経路、現行版が null の場合の手動初版 Publish、公開予約の登録経路は、自身のロック済み transaction 内で T10 記録を確認しなければならない。事前検査だけでは足りない。T10 は公開範囲を狭め、内容を復帰させないため、Storage または DSI の障害で妨げない。
 
-## 6. 通常読み取りと Search の整合性
+## 6. 読み取り境界と Search の整合性
 
-既存の PostgreSQL `load_current` は `COALESCE(current_version_id, latest WORKING, latest Version)` を使う。現行の `DocumentService::get_document` と `open_primary_file` もその集約を使うため、参照を null にするだけでは旧版ファイルが見えてしまう。T10 では、`documents.current_version_id` と同じ Document の `PUBLISHED` Version だけを結合し、フォールバックしない公開中の現行版専用クエリを設ける。現行版参照が null なら通常読み取りの結果はない。null でない参照が非 `PUBLISHED` または別 Document の Version を指す場合は、フォールバックせず整合性違反とする。
+既存の PostgreSQL `load_current` は `COALESCE(current_version_id, latest WORKING, latest Version)` を使う。現行の `DocumentService::get_document` と `open_primary_file` もその集約を使うため、参照を null にするだけでは T10 後の旧版ファイルが見えてしまう。一方、凍結済み Document Authoritative Core 設計は、Create 直後の `WORKING` 初版を既存の `GetDocument` と原本読込で取得する契約を持つ。
 
-通常の Document 取得とファイルを開く API は、この現行版専用クエリを使う。既存のフォールバック取得を残す場合は、内部の編集・操作用 snapshot と分かる名前に限定し、通常・公開読み取りへ流用しない。既存の下書き取得呼出側は、通常読み取りの可視性を引き継がせず、明示的に別の編集用経路へ移す。T10 は公開の過去資料閲覧 API を追加しない。将来の過去版閲覧には、Version ID の指定と AccessPolicy による認可を必要とする。
+既存の `DocumentService::get_document` と `open_primary_file` は、T10 未終了 Document の編集・authoritative 読み取りとして維持し、`WORKING` 初版も取得できるようにする。ただし T10 が commit 済みの Document にはフォールバックせず NotFound とする。T10 操作台帳の確認と取得は同じ SQL statement で行い、commit 後に開始した読み取りから旧版を見せない。Create の commit 結果照会と、Versioning の明示的な Version ID による操作・履歴 snapshot は内部境界に残し、通常公開 API に流用しない。
+
+通常公開用に `get_current_published_document` と `open_current_primary_file` を別に設ける。これらは `documents.current_version_id` と同じ Document の `PUBLISHED` Version だけを単一 statement で取得し、`WORKING`、過去版、T10 終了済み Document を返さない。現行版参照が null なら結果はない。null でない参照が非 `PUBLISHED` または別 Document の Version を指す場合は、フォールバックせず整合性違反とする。将来の通常利用・Search 連携 transport はこの公開用経路を使い、既存の編集用 `get_document` に接続しない。T10 は公開の過去資料閲覧 API を追加しない。将来の過去版閲覧には Version ID の指定と AccessPolicy による認可を必要とする。
 
 Search からの除外は非同期である。検索結果を通常利用者や LLM に表示する前、またはファイル・内容を提供する前に、Document 側で結果の Document ID・Version ID が現在の `PUBLISHED` 版と一致するか検証する。T10 後の古い検索結果は、Index の削除が遅れていても抑止する。Search Index の再構築元は現行 `PUBLISHED` Version だけを列挙し、過去の `PUBLISHED` 行から T10 文書を再登場させない。本設計が定めるのは Document 側の契約であり、Search consumer の配送実装は別機能とする。
 
@@ -62,7 +64,7 @@ Search からの除外は非同期である。検索結果を通常利用者や 
 2. 現行版なし、別 Document の版、非公開状態の版、古い期待現行版・revision、および異なる T10 ID の並行実行から、誤った公開終了記録が生まれない。
 3. 同じ ID の完全な再実行、同じ ID・異なるコマンドの Conflict、commit 結果不明時の復旧で、台帳 1 行と Domain/Audit イベント各 1 件になる。
 4. 初版・後続版の予約は投影を消して終端となり、重複した期限到達 worker や手動の初版・後続版 Publish は T10 後の現行版を設定できない。
-5. 通常の Document・ファイル読み取りと古い Search 結果の検証は終了済み内容を隠し、内部・過去版 snapshot は定義された別経路だけに残る。
+5. T10 未終了の初版 `WORKING` は既存の `GetDocument` と原本読込で取得できる。T10 後は既存 API も旧版を隠す。新しい通常公開用の Document・ファイル読み取りは現行 `PUBLISHED` 版だけを返し、古い Search 結果も抑止する。内部・過去版 snapshot は定義された別経路だけに残る。
 6. 過去版に対する T4 取下げは別操作のままである。文書全体の公開終了のために Version を `WITHDRAWN` にせず、Storage・DSI の事前検査が T10 を妨げない。
 7. 除外イベント、Search 再構築用の現行版専用の正本クエリ契約、Audit の原子性、原本・過去記録の保持が、規範仕様 T10 の境界を満たす。Search consumer・再構築の実装は対象外とする。
 
