@@ -3,7 +3,7 @@
 - Status: **ACTIVE — PRODUCTION PLANNING**
 - Baseline: `main@09c8235755573d16e09b8af029c22dc27caf6472`
 - Active branch: `design/document-versioning-v0`
-- Draft PR #11: `https://github.com/AIrisu-072/knowledge-platform/pull/11`. Last exact PR head before this planning update: `fbf42e9f41c1002a05aa79fc4932127620010c49`. Standard CI `36288001679`, DSI Sandbox Preflight `36288001693`, and DSI PoC `36288001688` are all **SUCCESS** at that head. These are documentation checks; no Versioning production code exists.
+- Draft PR #11: `https://github.com/AIrisu-072/knowledge-platform/pull/11`. Latest reviewed planning head before this status update: `c3da1251b33aad6785e5b123110b96aaab16d3bf`. Standard CI `36293304960` is **IN PROGRESS**; DSI Sandbox Preflight `36293304958` and DSI PoC `36293304954` are **SUCCESS** at that head. These are documentation checks; no Versioning production code exists.
 - User-approved Frozen Design: `docs/superpowers/specs/2026-09-27-document-versioning-v0-design.md`. Approval record: `docs/superpowers/specs/2026-09-27-document-versioning-v0-design-approval.md` (explicit user response: “これで承認します。”).
 - Proposed Implementation Plan: `docs/superpowers/plans/2026-09-27-document-versioning-v0-production-implementation.md` (**not approved**). No Versioning production implementation has started.
 
@@ -24,4 +24,4 @@
 
 ## Next exact action
 
-Complete focused self-review of the normative updates and proposed Production Implementation Plan, then commit/push the approval/spec/plan record to PR #11. Obtain explicit user approval of the plan. After approval, create the implementation branch from the approved planning baseline and start Task 1 inline with focused RED/GREEN evidence; do not start code or merge PR #11 on design approval alone.
+Obtain explicit user approval or revision of the proposed Production Implementation Plan in PR #11. After approval, record it, create the implementation branch from the approved planning baseline, and start Task 1 inline with focused RED/GREEN evidence. Do not start code or merge PR #11 on design approval alone.
