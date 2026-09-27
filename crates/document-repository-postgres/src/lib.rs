@@ -8,6 +8,7 @@ mod publish;
 mod publish_rows;
 mod repository;
 mod rows;
+mod schedule;
 mod semantic_inspection;
 mod semantic_inspection_rows;
 mod versioning;

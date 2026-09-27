@@ -123,6 +123,12 @@ pub enum ApplicationError {
         document_id: DocumentId,
         document_version_id: DocumentVersionId,
     },
+    #[error("schedule commit outcome is unknown; retry the same publish operation id")]
+    ScheduleCommitOutcomeUnknown {
+        publish_operation_id: PublishOperationId,
+        document_id: DocumentId,
+        document_version_id: DocumentVersionId,
+    },
     #[error("version commit outcome is unknown; retry the same operation id")]
     VersionCommitOutcomeUnknown {
         operation_id: VersionOperationId,

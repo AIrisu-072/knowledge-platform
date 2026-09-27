@@ -9,11 +9,13 @@ use serde_json::json;
 
 use crate::{
     AUDIT_DOCUMENT_VERSION_PUBLISHED, ApplicationError, AuditEventRecord, AuthoritativeDocument,
-    Clock, CreateVersionCommand, DOCUMENT_VERSION_PUBLISHED, DocumentPublishRepository,
-    DocumentRepository, DomainEventRecord, EnsureSemanticInspection, FileStorage, IdGenerator,
-    PreparedManifest, PublishCommandIdentity, PublishDocumentCommand, PublishDocumentResult,
-    PublishInitialVersionRecord, PublishOperationRecord, PublishVersionRecord,
-    RebaseWorkingVersionCommand, RepositoryError, SemanticInspectionExecutor,
+    CancelScheduleCommand, CancelScheduleRecord, CancelScheduleResult, Clock, CreateVersionCommand,
+    DOCUMENT_VERSION_PUBLISHED, DocumentPublishRepository, DocumentRepository, DomainEventRecord,
+    EnsureSemanticInspection, FileStorage, IdGenerator, PreparedManifest,
+    PublicationScheduleRepository, PublishCommandIdentity, PublishDocumentCommand,
+    PublishDocumentResult, PublishInitialVersionRecord, PublishOperationRecord,
+    PublishVersionRecord, RebaseWorkingVersionCommand, RepositoryError, SchedulePublishCommand,
+    SchedulePublishRecord, SchedulePublishResult, SemanticInspectionExecutor,
     SemanticInspectionRepository, UpdateWorkingVersionCommand, VersionCommandIdentity,
     VersionMutationRecord, VersionOperationKind, VersionOperationResult, VersioningPreflight,
     VersioningRepository, WithdrawVersionCommand, WithdrawVersionRecord, WithdrawVersionResult,
@@ -411,6 +413,126 @@ where
             withdrawn_at: self.clock.now(),
         };
         match self.repository.withdraw_version(record).await {
+            Ok(result) => Ok(result),
+            Err(RepositoryError::CommitOutcomeUnknown) => {
+                Err(ApplicationError::VersionCommitOutcomeUnknown {
+                    operation_id: command.operation_id(),
+                    document_id: command.document_id(),
+                    document_version_id: command.target_version_id(),
+                })
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    pub async fn schedule_publish(
+        &self,
+        command: SchedulePublishCommand,
+    ) -> Result<SchedulePublishResult, ApplicationError>
+    where
+        R: PublicationScheduleRepository,
+    {
+        if let Some(stored) = self
+            .repository
+            .get_schedule(command.publish_operation_id())
+            .await?
+        {
+            return if stored.command == command {
+                Ok(stored.result)
+            } else {
+                Err(ApplicationError::Conflict)
+            };
+        }
+        if command.scheduled_publish_at() <= self.clock.now() {
+            return Err(ApplicationError::Validation(
+                "scheduled publication must be in the future".to_owned(),
+            ));
+        }
+        let target = self
+            .repository
+            .get_version_snapshot(command.document_id(), command.target_version_id())
+            .await?
+            .ok_or(ApplicationError::DocumentVersionNotFound)?;
+        if target.document().revision() != command.expected_revision() {
+            return Err(ApplicationError::Conflict);
+        }
+        if target.version().lifecycle_state() != LifecycleState::Working
+            || target.requires_content_classification()
+        {
+            return Err(ApplicationError::BusinessRule);
+        }
+        let preflight = VersioningPreflight::new(
+            self.repository.clone(),
+            self.storage.clone(),
+            self.executor.clone(),
+            self.clock.clone(),
+        );
+        let prepared = preflight.inspect_existing(&target).await?;
+        preflight.check_publish_quality(&prepared).await?;
+        let expected_current = if target.version().version_no().get() == 1 {
+            if target.document().current_version_id().is_some() {
+                return Err(ApplicationError::Conflict);
+            }
+            None
+        } else {
+            let current = self
+                .load_current(command.document_id(), command.expected_revision())
+                .await?;
+            if target.version().base_document_version_id()
+                != Some(current.version().document_version_id())
+            {
+                return Err(ApplicationError::Conflict);
+            }
+            let base = preflight.inspect_existing(&current).await?;
+            ensure_publish_difference(base.manifest(), prepared.manifest())?;
+            Some(current.version().document_version_id())
+        };
+        let record = SchedulePublishRecord {
+            command: command.clone(),
+            expected_current_version_id: expected_current,
+            manifest_digest: prepared.identity_digest(),
+            domain_event_id: EventId::from_uuid(self.ids.next_uuid_v7()),
+            audit_event_id: AuditEventId::from_uuid(self.ids.next_uuid_v7()),
+            occurred_at: self.clock.now(),
+        };
+        match self.repository.reserve(record).await {
+            Ok(result) => Ok(result),
+            Err(RepositoryError::CommitOutcomeUnknown) => {
+                Err(ApplicationError::ScheduleCommitOutcomeUnknown {
+                    publish_operation_id: command.publish_operation_id(),
+                    document_id: command.document_id(),
+                    document_version_id: command.target_version_id(),
+                })
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    pub async fn cancel_schedule(
+        &self,
+        command: CancelScheduleCommand,
+    ) -> Result<CancelScheduleResult, ApplicationError>
+    where
+        R: PublicationScheduleRepository,
+    {
+        if let Some(stored) = self
+            .repository
+            .get_cancel_operation(command.operation_id())
+            .await?
+        {
+            return if stored.command_digest == command.command_digest() {
+                Ok(stored.result)
+            } else {
+                Err(ApplicationError::Conflict)
+            };
+        }
+        let record = CancelScheduleRecord {
+            command: command.clone(),
+            domain_event_id: EventId::from_uuid(self.ids.next_uuid_v7()),
+            audit_event_id: AuditEventId::from_uuid(self.ids.next_uuid_v7()),
+            occurred_at: self.clock.now(),
+        };
+        match self.repository.cancel(record).await {
             Ok(result) => Ok(result),
             Err(RepositoryError::CommitOutcomeUnknown) => {
                 Err(ApplicationError::VersionCommitOutcomeUnknown {

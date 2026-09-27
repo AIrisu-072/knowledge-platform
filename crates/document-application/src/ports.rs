@@ -13,6 +13,10 @@ use crate::{
     AuditEventRecord, DomainEventRecord, InspectionExecutionError, RepositoryError,
     SemanticInspectionRecord, StorageError,
     command::{PublishDocumentCommand, PublishDocumentResult, PublishOperationId},
+    schedule::{
+        CancelOperationRecord, CancelScheduleRecord, CancelScheduleResult, ScheduleOperationRecord,
+        SchedulePublishRecord, SchedulePublishResult,
+    },
     versioning_command::{
         VersionMutationRecord, VersionOperationId, VersionOperationRecord, VersionOperationResult,
         WithdrawOperationRecord, WithdrawVersionRecord, WithdrawVersionResult,
@@ -244,6 +248,26 @@ pub trait VersioningRepository: Send + Sync {
             "withdrawal repository unavailable".to_owned(),
         ))
     }
+}
+
+#[allow(async_fn_in_trait)]
+pub trait PublicationScheduleRepository: Send + Sync {
+    async fn get_schedule(
+        &self,
+        id: crate::PublishOperationId,
+    ) -> Result<Option<ScheduleOperationRecord>, RepositoryError>;
+    async fn reserve(
+        &self,
+        record: SchedulePublishRecord,
+    ) -> Result<SchedulePublishResult, RepositoryError>;
+    async fn get_cancel_operation(
+        &self,
+        id: VersionOperationId,
+    ) -> Result<Option<CancelOperationRecord>, RepositoryError>;
+    async fn cancel(
+        &self,
+        record: CancelScheduleRecord,
+    ) -> Result<CancelScheduleResult, RepositoryError>;
 }
 
 #[allow(async_fn_in_trait)]
