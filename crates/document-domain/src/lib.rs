@@ -12,7 +12,8 @@ mod versioning;
 
 pub use document::{
     CreateInitialDocument, CreateWorkingVersion, Document, DocumentVersion, InitialDocument,
-    LifecycleState, PublishTransition, Title, VersionNo, WithdrawTransition,
+    LifecycleState, PublishTransition, RestoreDocument, RestoreDocumentVersion, Title, VersionNo,
+    WithdrawTransition,
 };
 pub use error::DomainError;
 pub use file::{

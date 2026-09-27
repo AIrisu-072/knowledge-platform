@@ -2,7 +2,7 @@ use std::pin::Pin;
 
 use document_domain::{
     ContentHash, Document, DocumentId, DocumentVersion, DocumentVersionId, FileId, FileObject,
-    FileSize, MediaType, PrincipalRef, StorageKey, StoredFileDescriptor, VersionFile,
+    FileSize, LogicalPath, MediaType, PrincipalRef, StorageKey, StoredFileDescriptor, VersionFile,
 };
 use document_semantic_inspection_core::{InspectionProfileVersion, WorkerRequest, WorkerResponse};
 use time::OffsetDateTime;
@@ -181,21 +181,70 @@ pub trait SemanticInspectionExecutor: Send + Sync {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthoritativeContentItem {
+    logical_path: LogicalPath,
+    ordinal: u32,
+    file: FileObject,
+    original_filename: String,
+}
+
+impl AuthoritativeContentItem {
+    pub fn new(
+        logical_path: LogicalPath,
+        ordinal: u32,
+        file: FileObject,
+        original_filename: impl Into<String>,
+    ) -> Self {
+        Self {
+            logical_path,
+            ordinal,
+            file,
+            original_filename: original_filename.into(),
+        }
+    }
+
+    pub fn logical_path(&self) -> &LogicalPath {
+        &self.logical_path
+    }
+
+    pub const fn ordinal(&self) -> u32 {
+        self.ordinal
+    }
+
+    pub const fn file(&self) -> &FileObject {
+        &self.file
+    }
+
+    pub fn original_filename(&self) -> &str {
+        &self.original_filename
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthoritativeDocument {
     document: Document,
     version: DocumentVersion,
     file: FileObject,
     version_file: VersionFile,
+    content_items: Vec<AuthoritativeContentItem>,
+    requires_content_classification: bool,
 }
 
 impl AuthoritativeDocument {
     pub fn from_initial(initial: document_domain::InitialDocument) -> Self {
         let (document, version, file, version_file) = initial.into_parts();
         Self {
+            content_items: vec![AuthoritativeContentItem::new(
+                LogicalPath::new("primary").expect("constant path is valid"),
+                0,
+                file.clone(),
+                version_file.original_filename(),
+            )],
             document,
             version,
             file,
             version_file,
+            requires_content_classification: false,
         }
     }
 
@@ -206,10 +255,35 @@ impl AuthoritativeDocument {
         version_file: VersionFile,
     ) -> Self {
         Self {
+            content_items: vec![AuthoritativeContentItem::new(
+                LogicalPath::new("primary").expect("constant path is valid"),
+                0,
+                file.clone(),
+                version_file.original_filename(),
+            )],
             document,
             version,
             file,
             version_file,
+            requires_content_classification: false,
+        }
+    }
+
+    pub fn from_parts_with_items(
+        document: Document,
+        version: DocumentVersion,
+        file: FileObject,
+        version_file: VersionFile,
+        content_items: Vec<AuthoritativeContentItem>,
+        requires_content_classification: bool,
+    ) -> Self {
+        Self {
+            document,
+            version,
+            file,
+            version_file,
+            content_items,
+            requires_content_classification,
         }
     }
 
@@ -227,6 +301,14 @@ impl AuthoritativeDocument {
 
     pub const fn version_file(&self) -> &VersionFile {
         &self.version_file
+    }
+
+    pub fn content_items(&self) -> &[AuthoritativeContentItem] {
+        &self.content_items
+    }
+
+    pub const fn requires_content_classification(&self) -> bool {
+        self.requires_content_classification
     }
 }
 

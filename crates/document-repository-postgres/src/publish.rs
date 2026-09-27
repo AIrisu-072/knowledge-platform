@@ -50,18 +50,22 @@ pub(crate) async fn get_publish_candidate(
         return Err(RepositoryError::DocumentNotFound);
     }
 
-    let version_document_id: Option<uuid::Uuid> = sqlx::query_scalar(
-        "SELECT document_id FROM document_versions WHERE document_version_id = $1",
+    let version_owner: Option<(uuid::Uuid, bool)> = sqlx::query_as(
+        "SELECT document_id, requires_content_classification \
+         FROM document_versions WHERE document_version_id = $1",
     )
     .bind(target_version_id.as_uuid())
     .fetch_optional(pool)
     .await
     .map_err(map_statement_error)?;
-    let Some(version_document_id) = version_document_id else {
+    let Some((version_document_id, requires_content_classification)) = version_owner else {
         return Err(RepositoryError::DocumentVersionNotFound);
     };
     if version_document_id != document_id.as_uuid() {
         return Err(RepositoryError::IntegrityViolation);
+    }
+    if requires_content_classification {
+        return Err(RepositoryError::BusinessRule);
     }
 
     let row = sqlx::query_as::<_, AuthoritativeRow>(
@@ -74,6 +78,8 @@ pub(crate) async fn get_publish_candidate(
             d.created_at AS document_created_at, \
             v.document_version_id, \
             v.version_no, \
+            v.base_document_version_id, \
+            v.requires_content_classification, \
             v.lifecycle_state, \
             v.title, \
             v.revision_reason, \
@@ -93,16 +99,21 @@ pub(crate) async fn get_publish_candidate(
             f.size_bytes, \
             f.storage_locator, \
             f.created_at AS file_created_at, \
-            vf.role, \
-            vf.ordinal, \
-            vf.original_filename \
+            'PRIMARY'::text AS role, \
+            ci.ordinal, \
+            ci.logical_path, \
+            cr.original_filename \
          FROM documents d \
          JOIN document_versions v \
            ON v.document_id = d.document_id AND v.document_version_id = $2 \
-         JOIN version_files vf \
-           ON vf.document_version_id = v.document_version_id AND vf.role = 'PRIMARY' \
+         JOIN content_items ci \
+           ON ci.document_version_id = v.document_version_id \
+          AND ci.logical_path = 'primary' AND ci.ordinal = 0 \
+         JOIN content_representations cr \
+           ON cr.content_representation_id = ci.authoritative_representation_id \
+          AND cr.content_item_id = ci.content_item_id AND cr.role = 'AUTHORITATIVE' \
          JOIN file_objects f \
-           ON f.file_id = vf.file_id \
+           ON f.file_id = cr.file_id \
          WHERE d.document_id = $1 \
          LIMIT 1",
     )
@@ -204,9 +215,14 @@ pub(crate) async fn publish_initial_version(
         let primary_exists: bool = sqlx::query_scalar(
             "SELECT EXISTS ( \
                 SELECT 1 \
-                FROM version_files vf \
-                JOIN file_objects f ON f.file_id = vf.file_id \
-                WHERE vf.document_version_id = $1 AND vf.role = 'PRIMARY' \
+                FROM content_items ci \
+                JOIN content_representations cr \
+                  ON cr.content_representation_id = ci.authoritative_representation_id \
+                 AND cr.content_item_id = ci.content_item_id AND cr.role = 'AUTHORITATIVE' \
+                JOIN file_objects f ON f.file_id = cr.file_id \
+                JOIN document_versions v ON v.document_version_id = ci.document_version_id \
+                WHERE ci.document_version_id = $1 AND ci.logical_path = 'primary' \
+                  AND ci.ordinal = 0 AND NOT v.requires_content_classification \
              )",
         )
         .bind(identity.target_document_version_id().as_uuid())
@@ -438,6 +454,8 @@ async fn load_authoritative_row_in_tx(
             d.created_at AS document_created_at, \
             v.document_version_id, \
             v.version_no, \
+            v.base_document_version_id, \
+            v.requires_content_classification, \
             v.lifecycle_state, \
             v.title, \
             v.revision_reason, \
@@ -457,16 +475,21 @@ async fn load_authoritative_row_in_tx(
             f.size_bytes, \
             f.storage_locator, \
             f.created_at AS file_created_at, \
-            vf.role, \
-            vf.ordinal, \
-            vf.original_filename \
+            'PRIMARY'::text AS role, \
+            ci.ordinal, \
+            ci.logical_path, \
+            cr.original_filename \
          FROM documents d \
          JOIN document_versions v \
            ON v.document_id = d.document_id AND v.document_version_id = $2 \
-         JOIN version_files vf \
-           ON vf.document_version_id = v.document_version_id AND vf.role = 'PRIMARY' \
+         JOIN content_items ci \
+           ON ci.document_version_id = v.document_version_id \
+          AND ci.logical_path = 'primary' AND ci.ordinal = 0 \
+         JOIN content_representations cr \
+           ON cr.content_representation_id = ci.authoritative_representation_id \
+          AND cr.content_item_id = ci.content_item_id AND cr.role = 'AUTHORITATIVE' \
          JOIN file_objects f \
-           ON f.file_id = vf.file_id \
+           ON f.file_id = cr.file_id \
          WHERE d.document_id = $1 \
          LIMIT 1",
     )
@@ -605,13 +628,11 @@ mod tests {
             .unwrap_err();
         assert_eq!(wrong_owner, RepositoryError::IntegrityViolation);
 
-        sqlx::query(
-            "DELETE FROM version_files WHERE document_version_id = $1 AND role = 'PRIMARY'",
-        )
-        .bind(version_a.as_uuid())
-        .execute(&pool)
-        .await
-        .expect("primary link delete should succeed");
+        sqlx::query("DELETE FROM content_items WHERE document_version_id = $1")
+            .bind(version_a.as_uuid())
+            .execute(&pool)
+            .await
+            .expect("primary link delete should succeed");
 
         let missing_primary = super::get_publish_candidate(&pool, document_a, version_a)
             .await
@@ -691,16 +712,33 @@ mod tests {
         .await
         .expect("file should insert");
 
+        let item_id = Uuid::now_v7();
+        let representation_id = Uuid::now_v7();
+        let mut tx = pool.begin().await.unwrap();
         sqlx::query(
-            "INSERT INTO version_files \
-             (document_version_id, file_id, role, ordinal, original_filename) \
-             VALUES ($1, $2, 'PRIMARY', 0, 'policy.pdf')",
+            "INSERT INTO content_items \
+             (content_item_id, document_version_id, logical_path, ordinal, \
+              authoritative_representation_id) \
+             VALUES ($1, $2, 'primary', 0, $3)",
         )
+        .bind(item_id)
         .bind(version_id.as_uuid())
-        .bind(file_id.as_uuid())
-        .execute(pool)
+        .bind(representation_id)
+        .execute(&mut *tx)
         .await
-        .expect("primary file link should insert");
+        .expect("content item should insert");
+        sqlx::query(
+            "INSERT INTO content_representations \
+             (content_representation_id, content_item_id, file_id, role, original_filename) \
+             VALUES ($1, $2, $3, 'AUTHORITATIVE', 'policy.pdf')",
+        )
+        .bind(representation_id)
+        .bind(item_id)
+        .bind(file_id.as_uuid())
+        .execute(&mut *tx)
+        .await
+        .expect("authoritative representation should insert");
+        tx.commit().await.unwrap();
     }
 
     fn id(value: u128) -> Uuid {

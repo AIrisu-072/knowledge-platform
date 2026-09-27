@@ -10,6 +10,7 @@ mod repository;
 mod rows;
 mod semantic_inspection;
 mod semantic_inspection_rows;
+mod versioning_rows;
 
 use sqlx::{PgPool, migrate::MigrateError};
 use uuid::Uuid;

@@ -48,4 +48,6 @@ pub enum DomainError {
     VersionNotPublished,
     #[error("withdrawal restoration candidate does not match the immediate published base")]
     InvalidRestorationCandidate,
+    #[error("persisted document state is invalid")]
+    InvalidPersistedState,
 }

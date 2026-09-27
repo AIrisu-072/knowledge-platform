@@ -111,6 +111,8 @@ async fn versioning_migration_backfills_simple_primary_and_marks_ambiguous_legac
         ambiguous.version().lifecycle_state(),
         LifecycleState::Working
     );
+    assert!(ambiguous.requires_content_classification());
+    assert!(ambiguous.content_items().is_empty());
     assert_eq!(ambiguous.version_file().file_id().as_uuid(), id(22));
 
     sqlx::query("UPDATE document_versions SET lifecycle_state='PUBLISHED',published_at=to_timestamp(1) WHERE document_version_id=$1")
@@ -152,4 +154,6 @@ async fn versioning_migration_backfills_simple_primary_and_marks_ambiguous_legac
         id(11)
     );
     assert_eq!(current.file().file_id().as_uuid(), id(24));
+    assert!(!current.requires_content_classification());
+    assert_eq!(current.content_items().len(), 1);
 }

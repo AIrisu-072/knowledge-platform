@@ -21,11 +21,11 @@ pub use events::{
     DomainEventRecord,
 };
 pub use ports::{
-    AuthoritativeDocument, Clock, ContentReader, CreateInitialDocumentRecord,
-    DocumentPublishRepository, DocumentRepository, FileStorage, IdGenerator, PublishCandidate,
-    PublishCommandIdentity, PublishInitialVersionRecord, PublishOperationRecord,
-    SemanticInspectionExecutor, SemanticInspectionRepository, StorageObjectInfo, StorageObjectKind,
-    StoreFileRequest, StoredFile,
+    AuthoritativeContentItem, AuthoritativeDocument, Clock, ContentReader,
+    CreateInitialDocumentRecord, DocumentPublishRepository, DocumentRepository, FileStorage,
+    IdGenerator, PublishCandidate, PublishCommandIdentity, PublishInitialVersionRecord,
+    PublishOperationRecord, SemanticInspectionExecutor, SemanticInspectionRepository,
+    StorageObjectInfo, StorageObjectKind, StoreFileRequest, StoredFile,
 };
 pub use reconciliation::{ReconciliationClassification, ReconciliationFinding, classify};
 pub use semantic_inspection::{EnsureSemanticInspection, SemanticInspectionRecord};

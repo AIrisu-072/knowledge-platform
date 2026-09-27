@@ -75,6 +75,17 @@ async fn repository_persists_reads_and_rolls_back_authoritative_state_atomically
             result.document_version_id().as_uuid(),
         )
         .await,
+        0,
+        "new Version #1 uses only the canonical ContentItem authority"
+    );
+    assert_eq!(
+        count_where_uuid(
+            &pool,
+            "content_items",
+            "document_version_id",
+            result.document_version_id().as_uuid(),
+        )
+        .await,
         1
     );
     assert_eq!(
@@ -182,6 +193,8 @@ async fn repository_persists_reads_and_rolls_back_authoritative_state_atomically
     assert_eq!(loaded.version_file().file_id(), result.file_id());
     assert_eq!(loaded.version_file().ordinal(), 0);
     assert_eq!(loaded.version_file().original_filename(), "policy.pdf");
+    assert_eq!(loaded.content_items().len(), 1);
+    assert_eq!(loaded.content_items()[0].logical_path().as_str(), "primary");
 
     assert!(
         repository
@@ -238,9 +251,10 @@ async fn repository_persists_reads_and_rolls_back_authoritative_state_atomically
     for (offset, table) in [
         (1_000_u128, "documents"),
         (2_000, "document_versions"),
-        (3_000, "version_files"),
-        (4_000, "outbox_events"),
-        (5_000, "audit_outbox_events"),
+        (3_000, "content_items"),
+        (4_000, "content_representations"),
+        (5_000, "outbox_events"),
+        (6_000, "audit_outbox_events"),
     ] {
         install_failure_trigger(&pool, table).await;
 
@@ -386,6 +400,22 @@ async fn count_where_uuid(pool: &PgPool, table: &str, column: &str, id: Uuid) ->
             )
             .await
         }
+        ("content_items", "document_version_id") => {
+            count_literal(
+                pool,
+                "SELECT count(*) FROM content_items WHERE document_version_id = $1",
+                id,
+            )
+            .await
+        }
+        ("content_representations", "file_id") => {
+            count_literal(
+                pool,
+                "SELECT count(*) FROM content_representations WHERE file_id = $1",
+                id,
+            )
+            .await
+        }
         ("outbox_events", "aggregate_id") => {
             count_literal(
                 pool,
@@ -422,8 +452,11 @@ async fn install_failure_trigger(pool: &PgPool, table: &str) {
         "document_versions" => {
             "CREATE TRIGGER kp_fail BEFORE INSERT ON document_versions FOR EACH STATEMENT EXECUTE FUNCTION kp_fail_insert()"
         }
-        "version_files" => {
-            "CREATE TRIGGER kp_fail BEFORE INSERT ON version_files FOR EACH STATEMENT EXECUTE FUNCTION kp_fail_insert()"
+        "content_items" => {
+            "CREATE TRIGGER kp_fail BEFORE INSERT ON content_items FOR EACH STATEMENT EXECUTE FUNCTION kp_fail_insert()"
+        }
+        "content_representations" => {
+            "CREATE TRIGGER kp_fail BEFORE INSERT ON content_representations FOR EACH STATEMENT EXECUTE FUNCTION kp_fail_insert()"
         }
         "outbox_events" => {
             "CREATE TRIGGER kp_fail BEFORE INSERT ON outbox_events FOR EACH STATEMENT EXECUTE FUNCTION kp_fail_insert()"
@@ -443,7 +476,8 @@ async fn drop_failure_trigger(pool: &PgPool, table: &str) {
     let sql = match table {
         "documents" => "DROP TRIGGER kp_fail ON documents",
         "document_versions" => "DROP TRIGGER kp_fail ON document_versions",
-        "version_files" => "DROP TRIGGER kp_fail ON version_files",
+        "content_items" => "DROP TRIGGER kp_fail ON content_items",
+        "content_representations" => "DROP TRIGGER kp_fail ON content_representations",
         "outbox_events" => "DROP TRIGGER kp_fail ON outbox_events",
         "audit_outbox_events" => "DROP TRIGGER kp_fail ON audit_outbox_events",
         _ => panic!("unsupported fixed trigger target: {table}"),
@@ -485,13 +519,24 @@ async fn assert_attempt_rows_zero(
     assert_eq!(
         count_where_uuid(
             pool,
-            "version_files",
+            "content_items",
             "document_version_id",
             version_id.as_uuid(),
         )
         .await,
         0,
-        "version_files must roll back after {failed_table} failure"
+        "content_items must roll back after {failed_table} failure"
+    );
+    assert_eq!(
+        count_where_uuid(
+            pool,
+            "content_representations",
+            "file_id",
+            file_id.as_uuid()
+        )
+        .await,
+        0,
+        "content_representations must roll back after {failed_table} failure"
     );
     assert_eq!(
         count_where_uuid(pool, "outbox_events", "aggregate_id", document_id.as_uuid(),).await,
