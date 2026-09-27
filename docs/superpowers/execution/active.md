@@ -1,5 +1,15 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document Publication End v0 design, 2026-09-27 JST
+
+- Status: **ACTIVE**. Current capability: **Document Publication End v0 (T10)**; phase: **DESIGN SPEC PROPOSED / WRITTEN REVIEW PENDING**. Capability status: `docs/superpowers/execution/document-publication-end-v0-status.md`.
+- Baseline: `feat/document-versioning-v0@96b068bc9484a219b435d0633ea6669ddb7d7f97` (PR #12, stacked on unmerged PR #11). Current design branch: `design/document-publication-end-v0`.
+- User approval covers the in-chat T10 direction: distinct document-wide end operation, null current, durable operation history, schedule invalidation, Search exclusion, current-only normal reads, and separately designed reopening. The written design spec is proposed, not yet approved; no T10 code or production plan exists.
+- Versioning PR #11 and #12 are Ready for review, unmerged, `CLEAN`, and passed their current-head CI/Sandbox/PoC checks. No Versioning Design amendment is proposed. Do not merge either without explicit instruction.
+- Next exact action: obtain review of the written T10 Design Spec on its Draft PR. Once approved, reconcile normative T10 and write a production implementation plan; production code remains gated on plan review.
+
+This checkpoint supersedes the prior Versioning checkpoint below.
+
 ## Active checkpoint — 2026-09-27 JST
 
 - Status: **ACTIVE**. Current capability: **Document Versioning v0**; phase: **PRODUCTION IMPLEMENTATION TASKS 1–9 COMPLETE / PR #12 DRAFT REVIEW**. Capability status: `docs/superpowers/execution/document-versioning-v0-status.md`.
