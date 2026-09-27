@@ -283,19 +283,22 @@ where
             }),
             published_at,
         );
+        let mut audit_payload = json!({
+            "publishOperationId": command.publish_operation_id().as_uuid().to_string(),
+            "expectedDocumentRevision": command.expected_document_revision(),
+            "resultingDocumentRevision": result.resulting_document_revision(),
+            "result": "success", "publishedAt": published_at,
+        });
+        if scheduled_due {
+            audit_payload["serviceExecutor"] = json!("document-publication-scheduler");
+        }
         let audit_event = AuditEventRecord::new(
             AuditEventId::from_uuid(self.ids.next_uuid_v7()),
             AUDIT_DOCUMENT_VERSION_PUBLISHED,
             command.principal().clone(),
             command.document_id(),
             Some(command.target_document_version_id()),
-            json!({
-                "publishOperationId": command.publish_operation_id().as_uuid().to_string(),
-                "expectedDocumentRevision": command.expected_document_revision(),
-                "resultingDocumentRevision": result.resulting_document_revision(),
-                "result": "success", "publishedAt": published_at,
-                "serviceExecutor": scheduled_due.then_some("document-publication-scheduler"),
-            }),
+            audit_payload,
             published_at,
         );
         let operation = PublishOperationRecord::new(identity, result);

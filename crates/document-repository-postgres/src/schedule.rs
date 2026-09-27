@@ -254,6 +254,7 @@ pub(crate) async fn reserve(
             domain_id: record.domain_event_id.as_uuid(), audit_id: record.audit_event_id.as_uuid(),
             domain_type: DOCUMENT_VERSION_PUBLICATION_SCHEDULED,
             audit_type: AUDIT_DOCUMENT_VERSION_PUBLICATION_SCHEDULED,
+            audit_result: "success",
             document_id: command.document_id(), target_id: command.target_version_id(),
             actor: command.actor(), payload, at: record.occurred_at,
         }).await?;
@@ -382,6 +383,7 @@ pub(crate) async fn cancel(
             domain_id: record.domain_event_id.as_uuid(), audit_id: record.audit_event_id.as_uuid(),
             domain_type: DOCUMENT_VERSION_PUBLICATION_CANCELLED,
             audit_type: AUDIT_DOCUMENT_VERSION_PUBLICATION_CANCELLED,
+            audit_result: "success",
             document_id: command.document_id(), target_id: command.target_version_id(),
             actor: command.actor(), payload, at: record.occurred_at,
         }).await?;
@@ -405,6 +407,7 @@ struct ScheduleEvent<'a> {
     audit_id: Uuid,
     domain_type: &'a str,
     audit_type: &'a str,
+    audit_result: &'a str,
     document_id: DocumentId,
     target_id: DocumentVersionId,
     actor: &'a PrincipalRef,
@@ -432,11 +435,11 @@ async fn insert_events(
         "INSERT INTO audit_outbox_events \
          (event_id,event_type,source,subject,actor_identity_provider,actor_principal_id,resource_id, \
           resource_version_id,result,trace_id,data,occurred_at,attempt_count,delivered_at) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'success',NULL,$9,$10,0,NULL)",
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NULL,$10,$11,0,NULL)",
     )
     .bind(event.audit_id).bind(event.audit_type).bind(AUDIT_SOURCE).bind(subject)
     .bind(event.actor.identity_provider()).bind(event.actor.principal_id()).bind(event.document_id.as_uuid())
-    .bind(event.target_id.as_uuid()).bind(event.payload).bind(event.at)
+    .bind(event.target_id.as_uuid()).bind(event.audit_result).bind(event.payload).bind(event.at)
     .execute(&mut **tx).await.map_err(map_statement_error)?;
     Ok(())
 }
@@ -542,6 +545,7 @@ async fn terminalize(pool: &PgPool, record: DueTerminalRecord) -> Result<(), Rep
             domain_id: record.domain_event_id.as_uuid(), audit_id: record.audit_event_id.as_uuid(),
             domain_type: "DocumentVersionPublicationTerminal",
             audit_type: "document.version.publication.terminal",
+            audit_result: "failure",
             document_id: DocumentId::from_uuid(document_id),
             target_id: DocumentVersionId::from_uuid(target_id),
             actor: &actor, payload, at: record.occurred_at,
