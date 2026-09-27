@@ -1,17 +1,22 @@
 use std::sync::Arc;
 
 use document_domain::{
-    AuditEventId, DocumentId, DocumentVersionId, EventId, LifecycleState, SemanticContentItem,
-    VersionManifest,
+    AuditEventId, DocumentId, DocumentVersionId, DomainError, EventId, LifecycleState,
+    SemanticContentItem, VersionManifest,
 };
 use document_semantic_inspection_core::{FormatId, InspectionProfileVersion};
+use serde_json::json;
 
 use crate::{
-    ApplicationError, AuthoritativeDocument, Clock, CreateVersionCommand, DocumentRepository,
-    EnsureSemanticInspection, FileStorage, IdGenerator, PreparedManifest,
+    AUDIT_DOCUMENT_VERSION_PUBLISHED, ApplicationError, AuditEventRecord, AuthoritativeDocument,
+    Clock, CreateVersionCommand, DOCUMENT_VERSION_PUBLISHED, DocumentPublishRepository,
+    DocumentRepository, DomainEventRecord, EnsureSemanticInspection, FileStorage, IdGenerator,
+    PreparedManifest, PublishCommandIdentity, PublishDocumentCommand, PublishDocumentResult,
+    PublishInitialVersionRecord, PublishOperationRecord, PublishVersionRecord,
     RebaseWorkingVersionCommand, RepositoryError, SemanticInspectionExecutor,
     SemanticInspectionRepository, UpdateWorkingVersionCommand, VersionCommandIdentity,
-    VersionMutationRecord, VersionOperationKind, VersionOperationResult, VersioningRepository,
+    VersionMutationRecord, VersionOperationKind, VersionOperationResult, VersioningPreflight,
+    VersioningRepository,
 };
 
 pub struct DocumentVersionService<I, C, F, E, R> {
@@ -169,6 +174,150 @@ where
         )
     }
 
+    pub async fn publish_document(
+        &self,
+        command: PublishDocumentCommand,
+    ) -> Result<PublishDocumentResult, ApplicationError>
+    where
+        R: DocumentPublishRepository,
+    {
+        let identity = PublishCommandIdentity::from_command(&command);
+        if let Some(stored) = self
+            .repository
+            .get_publish_operation(command.publish_operation_id())
+            .await?
+        {
+            return if stored.matches_identity(&identity) {
+                Ok(stored.result().clone())
+            } else {
+                Err(ApplicationError::Conflict)
+            };
+        }
+        let target = self
+            .repository
+            .get_version_snapshot(command.document_id(), command.target_document_version_id())
+            .await?
+            .ok_or(ApplicationError::DocumentVersionNotFound)?;
+        if target.document().revision() != command.expected_document_revision() {
+            return Err(ApplicationError::Conflict);
+        }
+        if target.version().lifecycle_state() != LifecycleState::Working
+            || target.requires_content_classification()
+        {
+            return Err(ApplicationError::BusinessRule);
+        }
+        let preflight = VersioningPreflight::new(
+            self.repository.clone(),
+            self.storage.clone(),
+            self.executor.clone(),
+            self.clock.clone(),
+        );
+        let prepared_target = preflight.inspect_existing(&target).await?;
+        preflight.check_publish_quality(&prepared_target).await?;
+        let published_at = self.clock.now();
+        let mut document = target.document().clone();
+        let mut version = target.version().clone();
+        let (transition, base) = if version.version_no().get() == 1 {
+            if document.current_version_id().is_some() {
+                return Err(ApplicationError::Conflict);
+            }
+            (
+                document
+                    .publish_initial_version(&mut version, published_at)
+                    .map_err(map_publish_transition_error)?,
+                None,
+            )
+        } else {
+            let current = self
+                .load_current(command.document_id(), command.expected_document_revision())
+                .await?;
+            if version.base_document_version_id() != Some(current.version().document_version_id()) {
+                return Err(ApplicationError::Conflict);
+            }
+            let prepared_base = preflight.inspect_existing(&current).await?;
+            ensure_publish_difference(prepared_base.manifest(), prepared_target.manifest())?;
+            let transition = document
+                .publish_next_version(&mut version, published_at)
+                .map_err(map_publish_transition_error)?;
+            (
+                transition,
+                Some((
+                    current.version().document_version_id(),
+                    prepared_base.identity_digest(),
+                )),
+            )
+        };
+        let result = PublishDocumentResult::from_persisted(
+            command.publish_operation_id(),
+            command.document_id(),
+            command.target_document_version_id(),
+            transition.resulting_document_revision(),
+            published_at,
+        );
+        let domain_event = DomainEventRecord::new(
+            EventId::from_uuid(self.ids.next_uuid_v7()),
+            DOCUMENT_VERSION_PUBLISHED,
+            command.document_id(),
+            json!({
+                "documentId": command.document_id().as_uuid().to_string(),
+                "documentVersionId": command.target_document_version_id().as_uuid().to_string(),
+                "resultingDocumentRevision": result.resulting_document_revision(),
+                "publishedAt": published_at,
+                "publishOperationId": command.publish_operation_id().as_uuid().to_string(),
+            }),
+            published_at,
+        );
+        let audit_event = AuditEventRecord::new(
+            AuditEventId::from_uuid(self.ids.next_uuid_v7()),
+            AUDIT_DOCUMENT_VERSION_PUBLISHED,
+            command.principal().clone(),
+            command.document_id(),
+            Some(command.target_document_version_id()),
+            json!({
+                "publishOperationId": command.publish_operation_id().as_uuid().to_string(),
+                "expectedDocumentRevision": command.expected_document_revision(),
+                "resultingDocumentRevision": result.resulting_document_revision(),
+                "result": "success", "publishedAt": published_at,
+            }),
+            published_at,
+        );
+        let operation = PublishOperationRecord::new(identity, result);
+        let persisted = match base {
+            Some((base_id, base_digest)) => {
+                self.repository
+                    .publish_next_version(PublishVersionRecord::new(
+                        operation,
+                        domain_event,
+                        audit_event,
+                        base_id,
+                        base_digest,
+                        prepared_target.identity_digest(),
+                    ))
+                    .await
+            }
+            None => {
+                self.repository
+                    .publish_initial_version(PublishInitialVersionRecord::new(
+                        operation,
+                        domain_event,
+                        audit_event,
+                    ))
+                    .await
+            }
+        };
+        match persisted {
+            Ok(result) => Ok(result),
+            Err(RepositoryError::CommitOutcomeUnknown) => {
+                Err(ApplicationError::PublishCommitOutcomeUnknown {
+                    publish_operation_id: command.publish_operation_id(),
+                    document_id: command.document_id(),
+                    document_version_id: command.target_document_version_id(),
+                })
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
     async fn replay(
         &self,
         identity: &VersionCommandIdentity,
@@ -317,6 +466,40 @@ where
             }
             Err(error) => Err(error.into()),
         }
+    }
+}
+
+fn ensure_publish_difference(
+    base: &VersionManifest,
+    candidate: &VersionManifest,
+) -> Result<(), ApplicationError> {
+    for old in base.items() {
+        if let Some(new) = candidate.items().iter().find(|item| {
+            item.ordinal() == old.ordinal() && item.logical_path() == old.logical_path()
+        }) {
+            if old.format_id() != new.format_id()
+                || old.inspection_profile_id() != new.inspection_profile_id()
+            {
+                return Err(ApplicationError::BusinessRule);
+            }
+        }
+    }
+    if base.identity_digest() == candidate.identity_digest() {
+        return Err(ApplicationError::BusinessRule);
+    }
+    Ok(())
+}
+
+fn map_publish_transition_error(error: DomainError) -> ApplicationError {
+    match error {
+        DomainError::VersionDocumentMismatch | DomainError::RevisionOverflow => {
+            ApplicationError::IntegrityViolation
+        }
+        DomainError::CurrentVersionAlreadySet
+        | DomainError::StaleVersionBase
+        | DomainError::NoCurrentPublishedVersion => ApplicationError::Conflict,
+        DomainError::VersionNotWorking => ApplicationError::BusinessRule,
+        other => ApplicationError::Validation(other.to_string()),
     }
 }
 

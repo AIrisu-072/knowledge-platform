@@ -6,9 +6,10 @@ use document_domain::{
 use document_semantic_inspection_core::{FormatId, InspectionProfileVersion};
 
 use crate::{
-    ApplicationError, Clock, ContentReader, EnsureSemanticInspection, FileStorage,
-    SemanticInspectionExecutor, SemanticInspectionRecord, SemanticInspectionRepository,
-    StoreFileRequest, VersioningRepository, publish_quality::check_publish_quality,
+    ApplicationError, AuthoritativeDocument, Clock, ContentReader, EnsureSemanticInspection,
+    FileStorage, SemanticInspectionExecutor, SemanticInspectionRecord,
+    SemanticInspectionRepository, StoreFileRequest, VersioningRepository,
+    publish_quality::check_publish_quality,
 };
 
 pub struct VersioningRenditionInput {
@@ -267,6 +268,53 @@ where
         prepared: &PreparedManifest,
     ) -> Result<(), ApplicationError> {
         check_publish_quality(prepared, self.storage.as_ref()).await
+    }
+
+    pub async fn inspect_existing(
+        &self,
+        snapshot: &AuthoritativeDocument,
+    ) -> Result<PreparedManifest, ApplicationError> {
+        if snapshot.requires_content_classification() || snapshot.content_items().is_empty() {
+            return Err(ApplicationError::BusinessRule);
+        }
+        let ensure = EnsureSemanticInspection::new(
+            self.repository.clone(),
+            self.storage.clone(),
+            self.executor.clone(),
+            self.clock.clone(),
+        );
+        let mut prepared_items = Vec::with_capacity(snapshot.content_items().len());
+        let mut semantic_items = Vec::with_capacity(snapshot.content_items().len());
+        for item in snapshot.content_items() {
+            let inspection = ensure
+                .ensure(item.file().file_id(), InspectionProfileVersion::DsiV0)
+                .await?;
+            let response = inspection.response();
+            semantic_items.push(SemanticContentItem::new(
+                item.logical_path().clone(),
+                item.ordinal(),
+                format_id(response.detected_format),
+                InspectionProfileVersion::DsiV0.as_str(),
+                *response.semantic_fingerprint.digest(),
+            )?);
+            prepared_items.push(PreparedContentItem {
+                logical_path: item.logical_path().clone(),
+                ordinal: item.ordinal(),
+                file: item.file().clone(),
+                inspection,
+                original_filename: item.original_filename().to_owned(),
+                renditions: vec![],
+            });
+        }
+        let manifest = VersionManifest::new(snapshot.version().title().clone(), semantic_items)?;
+        prepared_items.sort_by(|left, right| {
+            (left.ordinal, left.logical_path.as_str())
+                .cmp(&(right.ordinal, right.logical_path.as_str()))
+        });
+        Ok(PreparedManifest {
+            manifest,
+            items: prepared_items,
+        })
     }
 }
 

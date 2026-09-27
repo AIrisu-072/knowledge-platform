@@ -547,6 +547,55 @@ pub struct PublishInitialVersionRecord {
     audit_event: AuditEventRecord,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PublishVersionRecord {
+    operation: PublishOperationRecord,
+    domain_event: DomainEventRecord,
+    audit_event: AuditEventRecord,
+    base_version_id: DocumentVersionId,
+    base_manifest_digest: [u8; 32],
+    target_manifest_digest: [u8; 32],
+}
+
+impl PublishVersionRecord {
+    pub fn new(
+        operation: PublishOperationRecord,
+        domain_event: DomainEventRecord,
+        audit_event: AuditEventRecord,
+        base_version_id: DocumentVersionId,
+        base_manifest_digest: [u8; 32],
+        target_manifest_digest: [u8; 32],
+    ) -> Self {
+        Self {
+            operation,
+            domain_event,
+            audit_event,
+            base_version_id,
+            base_manifest_digest,
+            target_manifest_digest,
+        }
+    }
+    pub fn into_parts(
+        self,
+    ) -> (
+        PublishOperationRecord,
+        DomainEventRecord,
+        AuditEventRecord,
+        DocumentVersionId,
+        [u8; 32],
+        [u8; 32],
+    ) {
+        (
+            self.operation,
+            self.domain_event,
+            self.audit_event,
+            self.base_version_id,
+            self.base_manifest_digest,
+            self.target_manifest_digest,
+        )
+    }
+}
+
 impl PublishInitialVersionRecord {
     pub fn new(
         operation: PublishOperationRecord,
@@ -594,6 +643,15 @@ pub trait DocumentPublishRepository: Send + Sync {
         &self,
         record: PublishInitialVersionRecord,
     ) -> Result<PublishDocumentResult, RepositoryError>;
+
+    async fn publish_next_version(
+        &self,
+        _record: PublishVersionRecord,
+    ) -> Result<PublishDocumentResult, RepositoryError> {
+        Err(RepositoryError::Internal(
+            "replacement publish repository unavailable".to_owned(),
+        ))
+    }
 }
 
 #[allow(async_fn_in_trait)]

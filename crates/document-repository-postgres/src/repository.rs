@@ -1,7 +1,7 @@
 use document_application::{
     AuthoritativeDocument, CreateInitialDocumentRecord, DocumentPublishRepository,
     DocumentRepository, PublishCandidate, PublishDocumentResult, PublishInitialVersionRecord,
-    PublishOperationId, PublishOperationRecord, RepositoryError,
+    PublishOperationId, PublishOperationRecord, PublishVersionRecord, RepositoryError,
 };
 use document_domain::{DocumentId, FileId};
 use serde_json::Value;
@@ -251,5 +251,12 @@ impl DocumentPublishRepository for PostgresDocumentRepository {
         record: PublishInitialVersionRecord,
     ) -> Result<PublishDocumentResult, RepositoryError> {
         publish::publish_initial_version(&self.pool, record).await
+    }
+
+    async fn publish_next_version(
+        &self,
+        record: PublishVersionRecord,
+    ) -> Result<PublishDocumentResult, RepositoryError> {
+        publish::publish_next_version(&self.pool, record).await
     }
 }

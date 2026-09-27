@@ -314,7 +314,7 @@ async fn load_version_state(
     .map_err(map_statement_error)
 }
 
-async fn load_manifest(
+pub(crate) async fn load_manifest(
     tx: &mut Transaction<'_, Postgres>,
     version_id: Uuid,
 ) -> Result<VersionManifest, RepositoryError> {
@@ -388,7 +388,7 @@ async fn load_manifest(
     VersionManifest::new(title, items).map_err(|_| RepositoryError::IntegrityViolation)
 }
 
-fn ensure_semantic_change(
+pub(crate) fn ensure_semantic_change(
     base: &VersionManifest,
     candidate: &VersionManifest,
 ) -> Result<(), RepositoryError> {

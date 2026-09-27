@@ -29,8 +29,9 @@ pub use ports::{
     AuthoritativeContentItem, AuthoritativeDocument, Clock, ContentReader,
     CreateInitialDocumentRecord, DocumentPublishRepository, DocumentRepository, FileStorage,
     IdGenerator, PublishCandidate, PublishCommandIdentity, PublishInitialVersionRecord,
-    PublishOperationRecord, SemanticInspectionExecutor, SemanticInspectionRepository,
-    StorageObjectInfo, StorageObjectKind, StoreFileRequest, StoredFile, VersioningRepository,
+    PublishOperationRecord, PublishVersionRecord, SemanticInspectionExecutor,
+    SemanticInspectionRepository, StorageObjectInfo, StorageObjectKind, StoreFileRequest,
+    StoredFile, VersioningRepository,
 };
 pub use reconciliation::{ReconciliationClassification, ReconciliationFinding, classify};
 pub use semantic_inspection::{EnsureSemanticInspection, SemanticInspectionRecord};
