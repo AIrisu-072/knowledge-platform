@@ -40,7 +40,8 @@ pub use ports::{
 pub use reconciliation::{ReconciliationClassification, ReconciliationFinding, classify};
 pub use schedule::{
     CancelOperationRecord, CancelScheduleCommand, CancelScheduleRecord, CancelScheduleResult,
-    ScheduleOperationRecord, SchedulePublishCommand, SchedulePublishRecord, SchedulePublishResult,
+    DueExecutionOutcome, DueTerminalRecord, ScheduleOperationRecord, SchedulePublishCommand,
+    SchedulePublishRecord, SchedulePublishResult,
 };
 pub use semantic_inspection::{EnsureSemanticInspection, SemanticInspectionRecord};
 pub use service::DocumentService;

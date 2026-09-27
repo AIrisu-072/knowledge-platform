@@ -95,6 +95,9 @@ impl TestExecutor {
     pub(super) fn set_unavailable(&self) {
         self.unavailable.store(true, Ordering::SeqCst);
     }
+    pub(super) fn set_available(&self) {
+        self.unavailable.store(false, Ordering::SeqCst);
+    }
 }
 impl SemanticInspectionExecutor for TestExecutor {
     async fn inspect(

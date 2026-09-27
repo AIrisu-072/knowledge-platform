@@ -6,19 +6,21 @@ use document_domain::{
 };
 use document_semantic_inspection_core::{FormatId, InspectionProfileVersion};
 use serde_json::json;
+use time::OffsetDateTime;
 
 use crate::{
     AUDIT_DOCUMENT_VERSION_PUBLISHED, ApplicationError, AuditEventRecord, AuthoritativeDocument,
     CancelScheduleCommand, CancelScheduleRecord, CancelScheduleResult, Clock, CreateVersionCommand,
     DOCUMENT_VERSION_PUBLISHED, DocumentPublishRepository, DocumentRepository, DomainEventRecord,
-    EnsureSemanticInspection, FileStorage, IdGenerator, PreparedManifest,
-    PublicationScheduleRepository, PublishCommandIdentity, PublishDocumentCommand,
-    PublishDocumentResult, PublishInitialVersionRecord, PublishOperationRecord,
-    PublishVersionRecord, RebaseWorkingVersionCommand, RepositoryError, SchedulePublishCommand,
-    SchedulePublishRecord, SchedulePublishResult, SemanticInspectionExecutor,
-    SemanticInspectionRepository, UpdateWorkingVersionCommand, VersionCommandIdentity,
-    VersionMutationRecord, VersionOperationKind, VersionOperationResult, VersioningPreflight,
-    VersioningRepository, WithdrawVersionCommand, WithdrawVersionRecord, WithdrawVersionResult,
+    DueExecutionOutcome, DueTerminalRecord, EnsureSemanticInspection, FileStorage, IdGenerator,
+    InspectionExecutionError, PreparedManifest, PublicationScheduleRepository,
+    PublishCommandIdentity, PublishDocumentCommand, PublishDocumentResult,
+    PublishInitialVersionRecord, PublishOperationId, PublishOperationRecord, PublishVersionRecord,
+    RebaseWorkingVersionCommand, RepositoryError, SchedulePublishCommand, SchedulePublishRecord,
+    SchedulePublishResult, SemanticInspectionExecutor, SemanticInspectionRepository,
+    UpdateWorkingVersionCommand, VersionCommandIdentity, VersionMutationRecord,
+    VersionOperationKind, VersionOperationResult, VersioningPreflight, VersioningRepository,
+    WithdrawVersionCommand, WithdrawVersionRecord, WithdrawVersionResult,
 };
 
 pub struct DocumentVersionService<I, C, F, E, R> {
@@ -183,6 +185,18 @@ where
     where
         R: DocumentPublishRepository,
     {
+        self.publish_document_mode(command, None).await
+    }
+
+    async fn publish_document_mode(
+        &self,
+        command: PublishDocumentCommand,
+        due_at: Option<OffsetDateTime>,
+    ) -> Result<PublishDocumentResult, ApplicationError>
+    where
+        R: DocumentPublishRepository,
+    {
+        let scheduled_due = due_at.is_some();
         let identity = PublishCommandIdentity::from_command(&command);
         if let Some(stored) = self
             .repository
@@ -216,7 +230,7 @@ where
         );
         let prepared_target = preflight.inspect_existing(&target).await?;
         preflight.check_publish_quality(&prepared_target).await?;
-        let published_at = self.clock.now();
+        let published_at = due_at.unwrap_or_else(|| self.clock.now());
         let mut document = target.document().clone();
         let mut version = target.version().clone();
         let (transition, base) = if version.version_no().get() == 1 {
@@ -280,31 +294,33 @@ where
                 "expectedDocumentRevision": command.expected_document_revision(),
                 "resultingDocumentRevision": result.resulting_document_revision(),
                 "result": "success", "publishedAt": published_at,
+                "serviceExecutor": scheduled_due.then_some("document-publication-scheduler"),
             }),
             published_at,
         );
         let operation = PublishOperationRecord::new(identity, result);
         let persisted = match base {
             Some((base_id, base_digest)) => {
-                self.repository
-                    .publish_next_version(PublishVersionRecord::new(
-                        operation,
-                        domain_event,
-                        audit_event,
-                        base_id,
-                        base_digest,
-                        prepared_target.identity_digest(),
-                    ))
-                    .await
+                let mut record = PublishVersionRecord::new(
+                    operation,
+                    domain_event,
+                    audit_event,
+                    base_id,
+                    base_digest,
+                    prepared_target.identity_digest(),
+                );
+                if scheduled_due {
+                    record = record.for_due();
+                }
+                self.repository.publish_next_version(record).await
             }
             None => {
-                self.repository
-                    .publish_initial_version(PublishInitialVersionRecord::new(
-                        operation,
-                        domain_event,
-                        audit_event,
-                    ))
-                    .await
+                let mut record =
+                    PublishInitialVersionRecord::new(operation, domain_event, audit_event);
+                if scheduled_due {
+                    record = record.for_due();
+                }
+                self.repository.publish_initial_version(record).await
             }
         };
         match persisted {
@@ -317,6 +333,82 @@ where
                 })
             }
             Err(error) => Err(error.into()),
+        }
+    }
+
+    pub async fn execute_due(
+        &self,
+        publish_operation_id: PublishOperationId,
+    ) -> Result<DueExecutionOutcome, ApplicationError>
+    where
+        R: DocumentPublishRepository + PublicationScheduleRepository,
+    {
+        let Some(schedule) = self.repository.get_schedule(publish_operation_id).await? else {
+            return Ok(DueExecutionOutcome::Inactive);
+        };
+        let command = PublishDocumentCommand::new(
+            publish_operation_id,
+            schedule.command.document_id(),
+            schedule.command.target_version_id(),
+            schedule.result.accepted_revision,
+            schedule.command.actor().clone(),
+        )?;
+        let identity = PublishCommandIdentity::from_command(&command);
+        if let Some(stored) = self
+            .repository
+            .get_publish_operation(publish_operation_id)
+            .await?
+        {
+            return if stored.matches_identity(&identity) {
+                Ok(DueExecutionOutcome::Published(stored.result().clone()))
+            } else {
+                Err(ApplicationError::IntegrityViolation)
+            };
+        }
+        if schedule.status != "PENDING" {
+            return Ok(DueExecutionOutcome::Inactive);
+        }
+        if !self.repository.is_due(publish_operation_id).await? {
+            return Ok(DueExecutionOutcome::NotDue);
+        }
+        let database_now = self.repository.database_now().await?;
+        match self
+            .publish_document_mode(command, Some(database_now))
+            .await
+        {
+            Ok(result) => Ok(DueExecutionOutcome::Published(result)),
+            Err(error) => {
+                if let Some(stored) = self
+                    .repository
+                    .get_publish_operation(publish_operation_id)
+                    .await?
+                {
+                    if stored.matches_identity(&identity) {
+                        return Ok(DueExecutionOutcome::Published(stored.result().clone()));
+                    }
+                    return Err(ApplicationError::IntegrityViolation);
+                }
+                if due_failure_is_transient(&error) {
+                    return match self.repository.record_retry(publish_operation_id).await {
+                        Ok(next) => Ok(DueExecutionOutcome::RetryScheduled(next)),
+                        Err(RepositoryError::BusinessRule) => Ok(DueExecutionOutcome::Inactive),
+                        Err(error) => Err(error.into()),
+                    };
+                }
+                let reason = due_terminal_reason(&error).to_owned();
+                let record = DueTerminalRecord {
+                    publish_operation_id,
+                    reason: reason.clone(),
+                    domain_event_id: EventId::from_uuid(self.ids.next_uuid_v7()),
+                    audit_event_id: AuditEventId::from_uuid(self.ids.next_uuid_v7()),
+                    occurred_at: database_now,
+                };
+                match self.repository.terminalize(record).await {
+                    Ok(()) => Ok(DueExecutionOutcome::Terminal(reason)),
+                    Err(RepositoryError::BusinessRule) => Ok(DueExecutionOutcome::Inactive),
+                    Err(error) => Err(error.into()),
+                }
+            }
         }
     }
 
@@ -352,44 +444,37 @@ where
         let mut eligible_base_manifest_digest = None;
         let mut eligible_snapshot = None;
         let mut withheld_reason = None;
-        if is_current {
-            if let Some(base_id) = target.version().base_document_version_id() {
-                let candidate = self
-                    .repository
-                    .get_version_snapshot(command.document_id(), base_id)
-                    .await;
-                match candidate {
-                    Ok(Some(candidate))
-                        if candidate.version().lifecycle_state() == LifecycleState::Published =>
-                    {
-                        let preflight = VersioningPreflight::new(
-                            self.repository.clone(),
-                            self.storage.clone(),
-                            self.executor.clone(),
-                            self.clock.clone(),
-                        );
-                        match preflight.inspect_existing(&candidate).await {
-                            Ok(prepared) => {
-                                match preflight.check_publish_quality(&prepared).await {
-                                    Ok(()) => {
-                                        eligible_base = Some(base_id);
-                                        eligible_base_manifest_digest =
-                                            Some(prepared.identity_digest());
-                                        eligible_snapshot = Some(candidate);
-                                    }
-                                    Err(_) => {
-                                        withheld_reason =
-                                            Some("base_quality_or_storage_unavailable".to_owned())
-                                    }
-                                }
+        if is_current && let Some(base_id) = target.version().base_document_version_id() {
+            let candidate = self
+                .repository
+                .get_version_snapshot(command.document_id(), base_id)
+                .await;
+            match candidate {
+                Ok(Some(candidate))
+                    if candidate.version().lifecycle_state() == LifecycleState::Published =>
+                {
+                    let preflight = VersioningPreflight::new(
+                        self.repository.clone(),
+                        self.storage.clone(),
+                        self.executor.clone(),
+                        self.clock.clone(),
+                    );
+                    match preflight.inspect_existing(&candidate).await {
+                        Ok(prepared) => match preflight.check_publish_quality(&prepared).await {
+                            Ok(()) => {
+                                eligible_base = Some(base_id);
+                                eligible_base_manifest_digest = Some(prepared.identity_digest());
+                                eligible_snapshot = Some(candidate);
                             }
                             Err(_) => {
-                                withheld_reason = Some("base_inspection_unavailable".to_owned())
+                                withheld_reason =
+                                    Some("base_quality_or_storage_unavailable".to_owned())
                             }
-                        }
+                        },
+                        Err(_) => withheld_reason = Some("base_inspection_unavailable".to_owned()),
                     }
-                    _ => withheld_reason = Some("base_unavailable_or_not_published".to_owned()),
                 }
+                _ => withheld_reason = Some("base_unavailable_or_not_published".to_owned()),
             }
         }
         let mut document = target.document().clone();
@@ -612,12 +697,10 @@ where
         for old in base.items() {
             if let Some(new) = candidate.items().iter().find(|item| {
                 item.logical_path() == old.logical_path() && item.ordinal() == old.ordinal()
-            }) {
-                if new.format_id() != old.format_id()
-                    || new.inspection_profile_id() != old.inspection_profile_id()
-                {
-                    return Err(ApplicationError::BusinessRule);
-                }
+            }) && (new.format_id() != old.format_id()
+                || new.inspection_profile_id() != old.inspection_profile_id())
+            {
+                return Err(ApplicationError::BusinessRule);
             }
         }
         let base_digest = base.identity_digest();
@@ -703,12 +786,10 @@ fn ensure_publish_difference(
     for old in base.items() {
         if let Some(new) = candidate.items().iter().find(|item| {
             item.ordinal() == old.ordinal() && item.logical_path() == old.logical_path()
-        }) {
-            if old.format_id() != new.format_id()
-                || old.inspection_profile_id() != new.inspection_profile_id()
-            {
-                return Err(ApplicationError::BusinessRule);
-            }
+        }) && (old.format_id() != new.format_id()
+            || old.inspection_profile_id() != new.inspection_profile_id())
+        {
+            return Err(ApplicationError::BusinessRule);
         }
     }
     if base.identity_digest() == candidate.identity_digest() {
@@ -727,6 +808,37 @@ fn map_publish_transition_error(error: DomainError) -> ApplicationError {
         | DomainError::NoCurrentPublishedVersion => ApplicationError::Conflict,
         DomainError::VersionNotWorking => ApplicationError::BusinessRule,
         other => ApplicationError::Validation(other.to_string()),
+    }
+}
+
+fn due_failure_is_transient(error: &ApplicationError) -> bool {
+    matches!(
+        error,
+        ApplicationError::RepositoryUnavailable
+            | ApplicationError::StorageUnavailable
+            | ApplicationError::StorageWriteFailed
+            | ApplicationError::StorageSyncFailed
+            | ApplicationError::StorageFinalizeFailed
+            | ApplicationError::Internal(_)
+            | ApplicationError::PublishCommitOutcomeUnknown { .. }
+            | ApplicationError::InspectionFailed(
+                InspectionExecutionError::InspectionTimeout
+                    | InspectionExecutionError::InspectionResourceLimitExceeded
+                    | InspectionExecutionError::ExtractorUnavailable
+            )
+    )
+}
+
+fn due_terminal_reason(error: &ApplicationError) -> &'static str {
+    match error {
+        ApplicationError::PublishQualityRejected(_) => "publish_quality_rejected",
+        ApplicationError::Conflict => "stale_publication_intent",
+        ApplicationError::BusinessRule => "publication_business_rule",
+        ApplicationError::IntegrityViolation
+        | ApplicationError::SemanticInspectionDeterminismViolation
+        | ApplicationError::InvalidWorkerResult => "publication_integrity_failure",
+        ApplicationError::InspectionFailed(_) => "semantic_inspection_rejected",
+        _ => "publication_preflight_rejected",
     }
 }
 

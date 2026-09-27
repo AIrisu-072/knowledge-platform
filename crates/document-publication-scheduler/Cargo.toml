@@ -11,11 +11,14 @@ document-domain = { path = "../document-domain" }
 document-repository-postgres = { path = "../document-repository-postgres" }
 document-storage-fs = { path = "../document-storage-fs" }
 document-semantic-inspection-runner = { path = "../document-semantic-inspection-runner" }
+document-semantic-inspection-core = { path = "../document-semantic-inspection-core" }
 sqlx.workspace = true
 tokio = { workspace = true, features = ["signal"] }
 time.workspace = true
 thiserror.workspace = true
+sha2.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 testcontainers.workspace = true
-uuid.workspace = true
+tempfile.workspace = true

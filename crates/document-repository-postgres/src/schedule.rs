@@ -2,8 +2,9 @@ use document_application::{
     AUDIT_DOCUMENT_VERSION_PUBLICATION_CANCELLED, AUDIT_DOCUMENT_VERSION_PUBLICATION_SCHEDULED,
     CancelOperationRecord, CancelScheduleRecord, CancelScheduleResult,
     DOCUMENT_VERSION_PUBLICATION_CANCELLED, DOCUMENT_VERSION_PUBLICATION_SCHEDULED,
-    PublicationScheduleRepository, PublishOperationId, RepositoryError, ScheduleOperationRecord,
-    SchedulePublishCommand, SchedulePublishRecord, SchedulePublishResult, VersionOperationId,
+    DueTerminalRecord, PublicationScheduleRepository, PublishOperationId, RepositoryError,
+    ScheduleOperationRecord, SchedulePublishCommand, SchedulePublishRecord, SchedulePublishResult,
+    VersionOperationId,
 };
 use document_domain::{DocumentId, DocumentVersionId, PrincipalRef};
 use serde_json::{Value, json};
@@ -42,6 +43,60 @@ impl PublicationScheduleRepository for PostgresDocumentRepository {
         record: CancelScheduleRecord,
     ) -> Result<CancelScheduleResult, RepositoryError> {
         cancel(&self.pool, record).await
+    }
+
+    async fn database_now(&self) -> Result<time::OffsetDateTime, RepositoryError> {
+        sqlx::query_scalar("SELECT now()")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(map_statement_error)
+    }
+
+    async fn list_due(
+        &self,
+        database_now: time::OffsetDateTime,
+        limit: i64,
+    ) -> Result<Vec<PublishOperationId>, RepositoryError> {
+        if !(1..=1000).contains(&limit) {
+            return Err(RepositoryError::BusinessRule);
+        }
+        let ids: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT publish_operation_id FROM document_publish_schedules \
+             WHERE status = 'PENDING' AND scheduled_publish_at <= $1 \
+               AND (next_retry_at IS NULL OR next_retry_at <= $1) \
+             ORDER BY scheduled_publish_at, publish_operation_id LIMIT $2",
+        )
+        .bind(database_now)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_statement_error)?;
+        ids.into_iter()
+            .map(|id| {
+                PublishOperationId::try_from_uuid(id)
+                    .map_err(|_| RepositoryError::IntegrityViolation)
+            })
+            .collect()
+    }
+
+    async fn is_due(&self, id: PublishOperationId) -> Result<bool, RepositoryError> {
+        sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM document_publish_schedules WHERE publish_operation_id = $1 \
+             AND status = 'PENDING' AND scheduled_publish_at <= now() \
+             AND (next_retry_at IS NULL OR next_retry_at <= now()))",
+        )
+        .bind(id.as_uuid()).fetch_one(&self.pool).await.map_err(map_statement_error)
+    }
+
+    async fn record_retry(
+        &self,
+        id: PublishOperationId,
+    ) -> Result<time::OffsetDateTime, RepositoryError> {
+        record_retry(&self.pool, id).await
+    }
+
+    async fn terminalize(&self, record: DueTerminalRecord) -> Result<(), RepositoryError> {
+        terminalize(&self.pool, record).await
     }
 }
 
@@ -195,9 +250,13 @@ pub(crate) async fn reserve(
             "scheduledPublishAt": command.scheduled_publish_at(),
             "acceptedDocumentRevision": accepted,
         });
-        insert_events(&mut tx, record.domain_event_id.as_uuid(), record.audit_event_id.as_uuid(),
-            DOCUMENT_VERSION_PUBLICATION_SCHEDULED, AUDIT_DOCUMENT_VERSION_PUBLICATION_SCHEDULED,
-            command.document_id(), command.target_version_id(), command.actor(), payload, record.occurred_at).await?;
+        insert_events(&mut tx, ScheduleEvent {
+            domain_id: record.domain_event_id.as_uuid(), audit_id: record.audit_event_id.as_uuid(),
+            domain_type: DOCUMENT_VERSION_PUBLICATION_SCHEDULED,
+            audit_type: AUDIT_DOCUMENT_VERSION_PUBLICATION_SCHEDULED,
+            document_id: command.document_id(), target_id: command.target_version_id(),
+            actor: command.actor(), payload, at: record.occurred_at,
+        }).await?;
         Ok(SchedulePublishResult { publish_operation_id: command.publish_operation_id(), document_id: command.document_id(),
             target_version_id: command.target_version_id(), accepted_revision: accepted,
             scheduled_publish_at: command.scheduled_publish_at() })
@@ -319,9 +378,13 @@ pub(crate) async fn cancel(
             "publishOperationId": command.publish_operation_id().as_uuid().to_string(),
             "resultingDocumentRevision": next,
         });
-        insert_events(&mut tx, record.domain_event_id.as_uuid(), record.audit_event_id.as_uuid(),
-            DOCUMENT_VERSION_PUBLICATION_CANCELLED, AUDIT_DOCUMENT_VERSION_PUBLICATION_CANCELLED,
-            command.document_id(), command.target_version_id(), command.actor(), payload, record.occurred_at).await?;
+        insert_events(&mut tx, ScheduleEvent {
+            domain_id: record.domain_event_id.as_uuid(), audit_id: record.audit_event_id.as_uuid(),
+            domain_type: DOCUMENT_VERSION_PUBLICATION_CANCELLED,
+            audit_type: AUDIT_DOCUMENT_VERSION_PUBLICATION_CANCELLED,
+            document_id: command.document_id(), target_id: command.target_version_id(),
+            actor: command.actor(), payload, at: record.occurred_at,
+        }).await?;
         Ok(CancelScheduleResult { operation_id: command.operation_id(), publish_operation_id: command.publish_operation_id(),
             document_id: command.document_id(), target_version_id: command.target_version_id(), resulting_revision: next })
     }.await;
@@ -337,29 +400,33 @@ pub(crate) async fn cancel(
     }
 }
 
-async fn insert_events(
-    tx: &mut Transaction<'_, Postgres>,
+struct ScheduleEvent<'a> {
     domain_id: Uuid,
     audit_id: Uuid,
-    domain_type: &str,
-    audit_type: &str,
+    domain_type: &'a str,
+    audit_type: &'a str,
     document_id: DocumentId,
     target_id: DocumentVersionId,
-    actor: &PrincipalRef,
+    actor: &'a PrincipalRef,
     payload: Value,
     at: time::OffsetDateTime,
+}
+
+async fn insert_events(
+    tx: &mut Transaction<'_, Postgres>,
+    event: ScheduleEvent<'_>,
 ) -> Result<(), RepositoryError> {
     sqlx::query(
         "INSERT INTO outbox_events \
          (event_id,event_type,aggregate_type,aggregate_id,payload,occurred_at,available_at,attempt_count,delivered_at) \
          VALUES ($1,$2,'Document',$3,$4,$5,$5,0,NULL)",
     )
-    .bind(domain_id).bind(domain_type).bind(document_id.as_uuid()).bind(payload.clone()).bind(at)
+    .bind(event.domain_id).bind(event.domain_type).bind(event.document_id.as_uuid()).bind(event.payload.clone()).bind(event.at)
     .execute(&mut **tx).await.map_err(map_statement_error)?;
     let subject = format!(
         "document/{}/version/{}",
-        document_id.as_uuid(),
-        target_id.as_uuid()
+        event.document_id.as_uuid(),
+        event.target_id.as_uuid()
     );
     sqlx::query(
         "INSERT INTO audit_outbox_events \
@@ -367,21 +434,128 @@ async fn insert_events(
           resource_version_id,result,trace_id,data,occurred_at,attempt_count,delivered_at) \
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'success',NULL,$9,$10,0,NULL)",
     )
-    .bind(audit_id).bind(audit_type).bind(AUDIT_SOURCE).bind(subject)
-    .bind(actor.identity_provider()).bind(actor.principal_id()).bind(document_id.as_uuid())
-    .bind(target_id.as_uuid()).bind(payload).bind(at)
+    .bind(event.audit_id).bind(event.audit_type).bind(AUDIT_SOURCE).bind(subject)
+    .bind(event.actor.identity_provider()).bind(event.actor.principal_id()).bind(event.document_id.as_uuid())
+    .bind(event.target_id.as_uuid()).bind(event.payload).bind(event.at)
     .execute(&mut **tx).await.map_err(map_statement_error)?;
     Ok(())
 }
 
 fn map_schedule_error(error: sqlx::Error) -> RepositoryError {
-    if let sqlx::Error::Database(database) = &error {
-        if matches!(
+    if let sqlx::Error::Database(database) = &error
+        && matches!(
             database.code().as_deref(),
             Some("23505" | "23503" | "23514")
-        ) {
-            return RepositoryError::Conflict;
-        }
+        )
+    {
+        return RepositoryError::Conflict;
     }
     map_statement_error(error)
+}
+
+async fn lock_schedule_document(
+    tx: &mut Transaction<'_, Postgres>,
+    id: PublishOperationId,
+) -> Result<(Uuid, i64), RepositoryError> {
+    let document_id: Uuid = sqlx::query_scalar(
+        "SELECT document_id FROM document_publish_schedules WHERE publish_operation_id = $1",
+    )
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(map_statement_error)?
+    .ok_or(RepositoryError::DocumentVersionNotFound)?;
+    let revision: i64 =
+        sqlx::query_scalar("SELECT revision FROM documents WHERE document_id = $1 FOR UPDATE")
+            .bind(document_id)
+            .fetch_one(&mut **tx)
+            .await
+            .map_err(map_statement_error)?;
+    Ok((document_id, revision))
+}
+
+async fn record_retry(
+    pool: &PgPool,
+    id: PublishOperationId,
+) -> Result<time::OffsetDateTime, RepositoryError> {
+    let mut tx = pool.begin().await.map_err(map_statement_error)?;
+    let result: Result<time::OffsetDateTime, RepositoryError> = async {
+        let _ = lock_schedule_document(&mut tx, id).await?;
+        let row = sqlx::query("SELECT status,attempt_count,scheduled_publish_at,next_retry_at FROM document_publish_schedules WHERE publish_operation_id = $1 FOR UPDATE")
+            .bind(id.as_uuid()).fetch_one(&mut *tx).await.map_err(map_statement_error)?;
+        if row.get::<String, _>("status") != "PENDING" { return Err(RepositoryError::BusinessRule); }
+        let now: time::OffsetDateTime = sqlx::query_scalar("SELECT now()")
+            .fetch_one(&mut *tx).await.map_err(map_statement_error)?;
+        if row.get::<time::OffsetDateTime, _>("scheduled_publish_at") > now { return Err(RepositoryError::BusinessRule); }
+        if let Some(next) = row.get::<Option<time::OffsetDateTime>, _>("next_retry_at")
+            && next > now
+        {
+            return Ok(next);
+        }
+        let count: i32 = row.get("attempt_count");
+        let seconds = 2_i64.pow(u32::try_from(count.clamp(0, 11)).unwrap()).min(3600);
+        let next = now + time::Duration::seconds(seconds);
+        sqlx::query("UPDATE document_publish_schedules SET attempt_count = attempt_count + 1, last_attempt_at = $1, next_retry_at = $2 WHERE publish_operation_id = $3")
+            .bind(now).bind(next).bind(id.as_uuid()).execute(&mut *tx).await.map_err(map_statement_error)?;
+        Ok(next)
+    }.await;
+    match result {
+        Ok(next) => {
+            tx.commit().await.map_err(map_commit_error)?;
+            Ok(next)
+        }
+        Err(error) => {
+            let _ = tx.rollback().await;
+            Err(error)
+        }
+    }
+}
+
+async fn terminalize(pool: &PgPool, record: DueTerminalRecord) -> Result<(), RepositoryError> {
+    let mut tx = pool.begin().await.map_err(map_statement_error)?;
+    let result: Result<(), RepositoryError> = async {
+        let (document_id, revision) = lock_schedule_document(&mut tx, record.publish_operation_id).await?;
+        let row = sqlx::query("SELECT target_document_version_id,status,scheduled_publish_at,actor_identity_provider,actor_principal_id FROM document_publish_schedules WHERE publish_operation_id = $1 FOR UPDATE")
+            .bind(record.publish_operation_id.as_uuid()).fetch_one(&mut *tx).await.map_err(map_statement_error)?;
+        if row.get::<String, _>("status") != "PENDING" { return Err(RepositoryError::BusinessRule); }
+        let now: time::OffsetDateTime = sqlx::query_scalar("SELECT now()")
+            .fetch_one(&mut *tx).await.map_err(map_statement_error)?;
+        if row.get::<time::OffsetDateTime, _>("scheduled_publish_at") > now { return Err(RepositoryError::BusinessRule); }
+        let target_id: Uuid = row.get("target_document_version_id");
+        let next = revision.checked_add(1).ok_or(RepositoryError::IntegrityViolation)?;
+        sqlx::query("UPDATE document_publish_schedules SET status = 'TERMINAL', terminal_reason = $1, last_attempt_at = $2, next_retry_at = NULL, attempt_count = attempt_count + 1 WHERE publish_operation_id = $3")
+            .bind(&record.reason).bind(now).bind(record.publish_operation_id.as_uuid())
+            .execute(&mut *tx).await.map_err(map_statement_error)?;
+        sqlx::query("UPDATE document_versions SET scheduled_publish_at = NULL WHERE document_version_id = $1")
+            .bind(target_id).execute(&mut *tx).await.map_err(map_statement_error)?;
+        sqlx::query("UPDATE documents SET revision = $1 WHERE document_id = $2")
+            .bind(next).bind(document_id).execute(&mut *tx).await.map_err(map_statement_error)?;
+        let actor = PrincipalRef::new(row.get::<String, _>("actor_identity_provider"), row.get::<String, _>("actor_principal_id"))
+            .map_err(|_| RepositoryError::IntegrityViolation)?;
+        let payload = json!({
+            "documentId": document_id.to_string(), "documentVersionId": target_id.to_string(),
+            "publishOperationId": record.publish_operation_id.as_uuid().to_string(),
+            "terminalReason": record.reason, "resultingDocumentRevision": next,
+            "serviceExecutor": "document-publication-scheduler",
+        });
+        insert_events(&mut tx, ScheduleEvent {
+            domain_id: record.domain_event_id.as_uuid(), audit_id: record.audit_event_id.as_uuid(),
+            domain_type: "DocumentVersionPublicationTerminal",
+            audit_type: "document.version.publication.terminal",
+            document_id: DocumentId::from_uuid(document_id),
+            target_id: DocumentVersionId::from_uuid(target_id),
+            actor: &actor, payload, at: record.occurred_at,
+        }).await?;
+        Ok(())
+    }.await;
+    match result {
+        Ok(()) => {
+            tx.commit().await.map_err(map_commit_error)?;
+            Ok(())
+        }
+        Err(error) => {
+            let _ = tx.rollback().await;
+            Err(error)
+        }
+    }
 }

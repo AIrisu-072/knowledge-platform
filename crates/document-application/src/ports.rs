@@ -14,8 +14,8 @@ use crate::{
     SemanticInspectionRecord, StorageError,
     command::{PublishDocumentCommand, PublishDocumentResult, PublishOperationId},
     schedule::{
-        CancelOperationRecord, CancelScheduleRecord, CancelScheduleResult, ScheduleOperationRecord,
-        SchedulePublishRecord, SchedulePublishResult,
+        CancelOperationRecord, CancelScheduleRecord, CancelScheduleResult, DueTerminalRecord,
+        ScheduleOperationRecord, SchedulePublishRecord, SchedulePublishResult,
     },
     versioning_command::{
         VersionMutationRecord, VersionOperationId, VersionOperationRecord, VersionOperationResult,
@@ -268,6 +268,19 @@ pub trait PublicationScheduleRepository: Send + Sync {
         &self,
         record: CancelScheduleRecord,
     ) -> Result<CancelScheduleResult, RepositoryError>;
+
+    async fn database_now(&self) -> Result<OffsetDateTime, RepositoryError>;
+    async fn list_due(
+        &self,
+        database_now: OffsetDateTime,
+        limit: i64,
+    ) -> Result<Vec<crate::PublishOperationId>, RepositoryError>;
+    async fn is_due(&self, id: crate::PublishOperationId) -> Result<bool, RepositoryError>;
+    async fn record_retry(
+        &self,
+        id: crate::PublishOperationId,
+    ) -> Result<OffsetDateTime, RepositoryError>;
+    async fn terminalize(&self, record: DueTerminalRecord) -> Result<(), RepositoryError>;
 }
 
 #[allow(async_fn_in_trait)]
@@ -588,6 +601,7 @@ pub struct PublishInitialVersionRecord {
     operation: PublishOperationRecord,
     domain_event: DomainEventRecord,
     audit_event: AuditEventRecord,
+    scheduled_due: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -598,6 +612,7 @@ pub struct PublishVersionRecord {
     base_version_id: DocumentVersionId,
     base_manifest_digest: [u8; 32],
     target_manifest_digest: [u8; 32],
+    scheduled_due: bool,
 }
 
 impl PublishVersionRecord {
@@ -616,7 +631,16 @@ impl PublishVersionRecord {
             base_version_id,
             base_manifest_digest,
             target_manifest_digest,
+            scheduled_due: false,
         }
+    }
+
+    pub fn for_due(mut self) -> Self {
+        self.scheduled_due = true;
+        self
+    }
+    pub const fn scheduled_due(&self) -> bool {
+        self.scheduled_due
     }
     pub fn into_parts(
         self,
@@ -649,7 +673,16 @@ impl PublishInitialVersionRecord {
             operation,
             domain_event,
             audit_event,
+            scheduled_due: false,
         }
+    }
+
+    pub fn for_due(mut self) -> Self {
+        self.scheduled_due = true;
+        self
+    }
+    pub const fn scheduled_due(&self) -> bool {
+        self.scheduled_due
     }
 
     pub const fn operation(&self) -> &PublishOperationRecord {

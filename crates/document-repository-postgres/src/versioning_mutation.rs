@@ -395,12 +395,10 @@ pub(crate) fn ensure_semantic_change(
     for old in base.items() {
         if let Some(new) = candidate.items().iter().find(|item| {
             item.logical_path() == old.logical_path() && item.ordinal() == old.ordinal()
-        }) {
-            if new.format_id() != old.format_id()
-                || new.inspection_profile_id() != old.inspection_profile_id()
-            {
-                return Err(RepositoryError::BusinessRule);
-            }
+        }) && (new.format_id() != old.format_id()
+            || new.inspection_profile_id() != old.inspection_profile_id())
+        {
+            return Err(RepositoryError::BusinessRule);
         }
     }
     if base.identity_digest() == candidate.identity_digest() {
@@ -574,13 +572,13 @@ async fn insert_events(
 }
 
 fn map_mutation_error(error: sqlx::Error) -> RepositoryError {
-    if let sqlx::Error::Database(database) = &error {
-        if matches!(
+    if let sqlx::Error::Database(database) = &error
+        && matches!(
             database.code().as_deref(),
             Some("23505" | "23503" | "23514")
-        ) {
-            return RepositoryError::Conflict;
-        }
+        )
+    {
+        return RepositoryError::Conflict;
     }
     map_statement_error(error)
 }

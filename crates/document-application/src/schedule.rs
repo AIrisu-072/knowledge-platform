@@ -2,7 +2,25 @@ use document_domain::{AuditEventId, DocumentId, DocumentVersionId, EventId, Prin
 use sha2::{Digest, Sha256};
 use time::{OffsetDateTime, UtcOffset};
 
-use crate::{ApplicationError, PublishOperationId, VersionOperationId};
+use crate::{ApplicationError, PublishDocumentResult, PublishOperationId, VersionOperationId};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DueExecutionOutcome {
+    Published(PublishDocumentResult),
+    NotDue,
+    Inactive,
+    RetryScheduled(OffsetDateTime),
+    Terminal(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DueTerminalRecord {
+    pub publish_operation_id: PublishOperationId,
+    pub reason: String,
+    pub domain_event_id: EventId,
+    pub audit_event_id: AuditEventId,
+    pub occurred_at: OffsetDateTime,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SchedulePublishCommand {
