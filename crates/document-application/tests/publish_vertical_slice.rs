@@ -102,6 +102,37 @@ impl DocumentRepository for UnknownCommitRepository {
         self.inner.get_authoritative_document(id).await
     }
 
+    async fn get_authoring_document(
+        &self,
+        id: DocumentId,
+    ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
+        self.inner.get_authoring_document(id).await
+    }
+    async fn get_current_published_document(
+        &self,
+        id: DocumentId,
+    ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
+        self.inner.get_current_published_document(id).await
+    }
+    async fn is_current_published_version(
+        &self,
+        document_id: DocumentId,
+        version_id: document_domain::DocumentVersionId,
+    ) -> Result<bool, RepositoryError> {
+        self.inner
+            .is_current_published_version(document_id, version_id)
+            .await
+    }
+    async fn list_current_published_versions(
+        &self,
+        after: Option<DocumentId>,
+        limit: i64,
+    ) -> Result<Vec<document_application::CurrentPublishedVersionRef>, RepositoryError> {
+        self.inner
+            .list_current_published_versions(after, limit)
+            .await
+    }
+
     async fn file_reference_exists(&self, file_id: FileId) -> Result<bool, RepositoryError> {
         self.inner.file_reference_exists(file_id).await
     }

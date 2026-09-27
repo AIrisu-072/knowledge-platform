@@ -1,9 +1,10 @@
 use document_application::{
-    AuthoritativeDocument, CreateInitialDocumentRecord, DocumentPublishRepository,
-    DocumentRepository, PublishCandidate, PublishDocumentResult, PublishInitialVersionRecord,
-    PublishOperationId, PublishOperationRecord, PublishVersionRecord, RepositoryError,
+    AuthoritativeDocument, CreateInitialDocumentRecord, CurrentPublishedVersionRef,
+    DocumentPublishRepository, DocumentRepository, PublishCandidate, PublishDocumentResult,
+    PublishInitialVersionRecord, PublishOperationId, PublishOperationRecord, PublishVersionRecord,
+    RepositoryError,
 };
-use document_domain::{DocumentId, FileId};
+use document_domain::{DocumentId, DocumentVersionId, FileId};
 use serde_json::Value;
 use sqlx::PgPool;
 
@@ -195,6 +196,76 @@ impl DocumentRepository for PostgresDocumentRepository {
         id: DocumentId,
     ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
         versioning_rows::load_current(&self.pool, id).await
+    }
+
+    async fn get_authoring_document(
+        &self,
+        id: DocumentId,
+    ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
+        versioning_rows::load_authoring(&self.pool, id).await
+    }
+
+    async fn get_current_published_document(
+        &self,
+        id: DocumentId,
+    ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
+        versioning_rows::load_current_published(&self.pool, id).await
+    }
+
+    async fn is_current_published_version(
+        &self,
+        document_id: DocumentId,
+        version_id: DocumentVersionId,
+    ) -> Result<bool, RepositoryError> {
+        sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM documents d \
+             JOIN document_versions v ON v.document_version_id = d.current_version_id \
+                                    AND v.document_id = d.document_id \
+             WHERE d.document_id = $1 AND v.document_version_id = $2 \
+               AND v.lifecycle_state = 'PUBLISHED' \
+               AND NOT EXISTS (SELECT 1 FROM document_publication_end_operations e \
+                               WHERE e.document_id = d.document_id))",
+        )
+        .bind(document_id.as_uuid())
+        .bind(version_id.as_uuid())
+        .fetch_one(&self.pool)
+        .await
+        .map_err(map_statement_error)
+    }
+
+    async fn list_current_published_versions(
+        &self,
+        after: Option<DocumentId>,
+        limit: i64,
+    ) -> Result<Vec<CurrentPublishedVersionRef>, RepositoryError> {
+        if !(1..=1000).contains(&limit) {
+            return Err(RepositoryError::BusinessRule);
+        }
+        let rows: Vec<(uuid::Uuid, uuid::Uuid, i64)> = sqlx::query_as(
+            "SELECT d.document_id, v.document_version_id, d.revision FROM documents d \
+             JOIN document_versions v ON v.document_version_id = d.current_version_id \
+                                    AND v.document_id = d.document_id \
+             WHERE v.lifecycle_state = 'PUBLISHED' \
+               AND ($1::uuid IS NULL OR d.document_id > $1) \
+               AND NOT EXISTS (SELECT 1 FROM document_publication_end_operations e \
+                               WHERE e.document_id = d.document_id) \
+             ORDER BY d.document_id LIMIT $2",
+        )
+        .bind(after.map(|id| id.as_uuid()))
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_statement_error)?;
+        Ok(rows
+            .into_iter()
+            .map(|(document_id, version_id, revision)| {
+                CurrentPublishedVersionRef::new(
+                    DocumentId::from_uuid(document_id),
+                    DocumentVersionId::from_uuid(version_id),
+                    revision,
+                )
+            })
+            .collect())
     }
 
     async fn file_reference_exists(&self, file_id: FileId) -> Result<bool, RepositoryError> {

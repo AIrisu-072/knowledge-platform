@@ -764,7 +764,62 @@ pub trait DocumentRepository: Send + Sync {
         id: DocumentId,
     ) -> Result<Option<AuthoritativeDocument>, RepositoryError>;
 
+    async fn get_authoring_document(
+        &self,
+        id: DocumentId,
+    ) -> Result<Option<AuthoritativeDocument>, RepositoryError>;
+
+    async fn get_current_published_document(
+        &self,
+        id: DocumentId,
+    ) -> Result<Option<AuthoritativeDocument>, RepositoryError>;
+
+    async fn is_current_published_version(
+        &self,
+        document_id: DocumentId,
+        version_id: DocumentVersionId,
+    ) -> Result<bool, RepositoryError>;
+
+    async fn list_current_published_versions(
+        &self,
+        after: Option<DocumentId>,
+        limit: i64,
+    ) -> Result<Vec<CurrentPublishedVersionRef>, RepositoryError>;
+
     async fn file_reference_exists(&self, file_id: FileId) -> Result<bool, RepositoryError>;
 
     async fn list_referenced_file_ids(&self) -> Result<Vec<FileId>, RepositoryError>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CurrentPublishedVersionRef {
+    document_id: DocumentId,
+    current_version_id: DocumentVersionId,
+    document_revision: i64,
+}
+
+impl CurrentPublishedVersionRef {
+    pub fn new(
+        document_id: DocumentId,
+        current_version_id: DocumentVersionId,
+        document_revision: i64,
+    ) -> Self {
+        Self {
+            document_id,
+            current_version_id,
+            document_revision,
+        }
+    }
+
+    pub const fn document_id(self) -> DocumentId {
+        self.document_id
+    }
+
+    pub const fn current_version_id(self) -> DocumentVersionId {
+        self.current_version_id
+    }
+
+    pub const fn document_revision(self) -> i64 {
+        self.document_revision
+    }
 }

@@ -33,11 +33,12 @@ pub use events::{
 };
 pub use ports::{
     AuthoritativeContentItem, AuthoritativeDocument, Clock, ContentReader,
-    CreateInitialDocumentRecord, DocumentPublishRepository, DocumentRepository, FileStorage,
-    IdGenerator, PublicationEndRepository, PublicationScheduleRepository, PublishCandidate,
-    PublishCommandIdentity, PublishInitialVersionRecord, PublishOperationRecord,
-    PublishVersionRecord, SemanticInspectionExecutor, SemanticInspectionRepository,
-    StorageObjectInfo, StorageObjectKind, StoreFileRequest, StoredFile, VersioningRepository,
+    CreateInitialDocumentRecord, CurrentPublishedVersionRef, DocumentPublishRepository,
+    DocumentRepository, FileStorage, IdGenerator, PublicationEndRepository,
+    PublicationScheduleRepository, PublishCandidate, PublishCommandIdentity,
+    PublishInitialVersionRecord, PublishOperationRecord, PublishVersionRecord,
+    SemanticInspectionExecutor, SemanticInspectionRepository, StorageObjectInfo, StorageObjectKind,
+    StoreFileRequest, StoredFile, VersioningRepository,
 };
 pub use publication_end::{
     DocumentPublicationEndService, EndDocumentPublicationCommand, EndDocumentPublicationResult,

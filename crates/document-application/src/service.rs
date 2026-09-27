@@ -221,7 +221,7 @@ where
         document_id: DocumentId,
     ) -> Result<AuthoritativeDocument, ApplicationError> {
         self.repository
-            .get_authoritative_document(document_id)
+            .get_authoring_document(document_id)
             .await?
             .ok_or(ApplicationError::DocumentNotFound)
     }
@@ -233,6 +233,27 @@ where
         let authoritative = self.get_document(document_id).await?;
         let storage_key = authoritative.file().storage_key().clone();
         self.storage.open(&storage_key).await.map_err(Into::into)
+    }
+
+    pub async fn get_current_published_document(
+        &self,
+        document_id: DocumentId,
+    ) -> Result<AuthoritativeDocument, ApplicationError> {
+        self.repository
+            .get_current_published_document(document_id)
+            .await?
+            .ok_or(ApplicationError::DocumentNotFound)
+    }
+
+    pub async fn open_current_primary_file(
+        &self,
+        document_id: DocumentId,
+    ) -> Result<ContentReader, ApplicationError> {
+        let authoritative = self.get_current_published_document(document_id).await?;
+        self.storage
+            .open(authoritative.file().storage_key())
+            .await
+            .map_err(Into::into)
     }
 }
 
