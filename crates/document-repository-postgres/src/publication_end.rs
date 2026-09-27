@@ -172,6 +172,24 @@ fn candidate_from_row(row: PgRow) -> Result<EndPublicationCandidate, RepositoryE
     Ok(EndPublicationCandidate::new(document, current))
 }
 
+pub(crate) async fn ensure_not_ended(
+    tx: &mut Transaction<'_, Postgres>,
+    document_id: DocumentId,
+) -> Result<(), RepositoryError> {
+    let ended: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM document_publication_end_operations WHERE document_id = $1)",
+    )
+    .bind(document_id.as_uuid())
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(map_statement_error)?;
+    if ended {
+        Err(RepositoryError::BusinessRule)
+    } else {
+        Ok(())
+    }
+}
+
 async fn end_publication(
     pool: &PgPool,
     record: EndPublicationRecord,

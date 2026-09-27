@@ -8,6 +8,7 @@ use sqlx::{PgPool, Postgres, Transaction};
 use crate::{
     error::{map_commit_error, map_statement_error},
     mapping::to_authoritative,
+    publication_end,
     publish_rows::PublishOperationRow,
     rows::AuthoritativeRow,
     versioning_mutation,
@@ -178,6 +179,8 @@ pub(crate) async fn publish_initial_version(
         {
             return replay_or_conflict(stored, &identity);
         }
+
+        publication_end::ensure_not_ended(&mut tx, identity.document_id()).await?;
 
         if current_version_id.is_some() {
             return Err(RepositoryError::Conflict);
@@ -427,6 +430,7 @@ pub(crate) async fn publish_next_version(
         if let Some(stored) = get_publish_operation_in_tx(&mut tx, identity.publish_operation_id()).await? {
             return replay_or_conflict(stored, &identity);
         }
+        publication_end::ensure_not_ended(&mut tx, identity.document_id()).await?;
         if revision != identity.expected_document_revision() || current_id != Some(base_id.as_uuid()) {
             return Err(RepositoryError::Conflict);
         }
