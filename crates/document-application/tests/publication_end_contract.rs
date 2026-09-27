@@ -11,7 +11,7 @@ use document_domain::{
     LifecycleState, Metadata, PrincipalRef, RestoreDocument, RestoreDocumentVersion, Title,
     VersionNo,
 };
-use time::OffsetDateTime;
+use time::{OffsetDateTime, UtcOffset};
 use uuid::Uuid;
 
 fn operation_id() -> PublicationEndOperationId {
@@ -31,6 +31,26 @@ fn command(reason: &str, actor_id: &str) -> EndDocumentPublicationCommand {
         reason.to_owned(),
     )
     .unwrap()
+}
+
+#[test]
+fn publication_end_timestamp_is_normalized_to_utc() {
+    let local = OffsetDateTime::UNIX_EPOCH.to_offset(UtcOffset::from_hms(9, 0, 0).unwrap());
+    let result = EndDocumentPublicationResult::from_persisted(
+        operation_id(),
+        DocumentId::from_uuid(Uuid::from_u128(1)),
+        DocumentVersionId::from_uuid(Uuid::from_u128(2)),
+        5,
+        local,
+    );
+    assert_eq!(result.ended_at().offset(), UtcOffset::UTC);
+    let record = EndPublicationRecord::new(
+        command("end", "editor"),
+        local,
+        EventId::from_uuid(Uuid::from_u128(3)),
+        AuditEventId::from_uuid(Uuid::from_u128(4)),
+    );
+    assert_eq!(record.ended_at().offset(), UtcOffset::UTC);
 }
 
 fn candidate() -> EndPublicationCandidate {
@@ -325,17 +345,18 @@ async fn publication_end_rechecks_ledger_if_matching_commit_wins_between_reads()
         5,
         FixedClock.now(),
     );
-    let mut state = repo.0.lock().unwrap();
-    let previous = state.candidate.take().unwrap();
-    let mut ended = previous.document().clone();
-    ended.end_publication(previous.current().unwrap()).unwrap();
-    state.candidate = Some(EndPublicationCandidate::new(ended, None));
-    state.stored = Some(EndPublicationOperationRecord::new(
-        request.command_digest(),
-        result.clone(),
-    ));
-    state.hide_first_stored_lookup = true;
-    drop(state);
+    {
+        let mut state = repo.0.lock().unwrap();
+        let previous = state.candidate.take().unwrap();
+        let mut ended = previous.document().clone();
+        ended.end_publication(previous.current().unwrap()).unwrap();
+        state.candidate = Some(EndPublicationCandidate::new(ended, None));
+        state.stored = Some(EndPublicationOperationRecord::new(
+            request.command_digest(),
+            result.clone(),
+        ));
+        state.hide_first_stored_lookup = true;
+    }
 
     assert_eq!(
         service(repo.clone())
@@ -372,20 +393,21 @@ async fn publication_end_rejects_absent_unpublished_and_stale_documents_before_w
     assert_eq!(absent.writes(), 0);
 
     let unpublished = FakeRepository::published();
-    let mut state = unpublished.0.lock().unwrap();
-    state.candidate = Some(EndPublicationCandidate::new(
-        Document::restore(RestoreDocument {
-            document_id: DocumentId::from_uuid(Uuid::from_u128(1)),
-            folder_id: FolderId::from_uuid(Uuid::from_u128(3)),
-            current_version_id: None,
-            revision: 4,
-            metadata: Metadata::default(),
-            created_at: OffsetDateTime::UNIX_EPOCH,
-        })
-        .unwrap(),
-        None,
-    ));
-    drop(state);
+    {
+        let mut state = unpublished.0.lock().unwrap();
+        state.candidate = Some(EndPublicationCandidate::new(
+            Document::restore(RestoreDocument {
+                document_id: DocumentId::from_uuid(Uuid::from_u128(1)),
+                folder_id: FolderId::from_uuid(Uuid::from_u128(3)),
+                current_version_id: None,
+                revision: 4,
+                metadata: Metadata::default(),
+                created_at: OffsetDateTime::UNIX_EPOCH,
+            })
+            .unwrap(),
+            None,
+        ));
+    }
     assert_eq!(
         service(unpublished.clone())
             .end_document_publication(command("end", "editor"))

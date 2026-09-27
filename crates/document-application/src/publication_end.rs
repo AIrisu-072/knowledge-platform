@@ -5,7 +5,7 @@ use document_domain::{
     LifecycleState, PrincipalRef,
 };
 use sha2::{Digest, Sha256};
-use time::OffsetDateTime;
+use time::{OffsetDateTime, UtcOffset};
 use uuid::Uuid;
 
 use crate::{ApplicationError, Clock, IdGenerator, PublicationEndRepository, RepositoryError};
@@ -163,7 +163,7 @@ impl EndDocumentPublicationResult {
             document_id,
             former_current_version_id,
             resulting_document_revision,
-            ended_at,
+            ended_at: ended_at.to_offset(UtcOffset::UTC),
         }
     }
 
@@ -252,7 +252,7 @@ impl EndPublicationRecord {
     ) -> Self {
         Self {
             command,
-            ended_at,
+            ended_at: ended_at.to_offset(UtcOffset::UTC),
             domain_event_id,
             audit_event_id,
         }
