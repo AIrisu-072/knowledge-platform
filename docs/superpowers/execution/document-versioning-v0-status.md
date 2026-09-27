@@ -1,11 +1,11 @@
 # Document Versioning v0 — Execution Status
 
-- Status: **ACTIVE — PRODUCTION PLANNING**
+- Status: **ACTIVE — PRODUCTION IMPLEMENTATION / TASK 1**
 - Baseline: `main@09c8235755573d16e09b8af029c22dc27caf6472`
 - Active branch: `design/document-versioning-v0`
 - Draft PR #11: `https://github.com/AIrisu-072/knowledge-platform/pull/11`. Latest reviewed planning head before this status update: `c3da1251b33aad6785e5b123110b96aaab16d3bf`. Standard CI `36293304960` is **IN PROGRESS**; DSI Sandbox Preflight `36293304958` and DSI PoC `36293304954` are **SUCCESS** at that head. These are documentation checks; no Versioning production code exists.
 - User-approved Frozen Design: `docs/superpowers/specs/2026-09-27-document-versioning-v0-design.md`. Approval record: `docs/superpowers/specs/2026-09-27-document-versioning-v0-design-approval.md` (explicit user response: “これで承認します。”).
-- Proposed Implementation Plan: `docs/superpowers/plans/2026-09-27-document-versioning-v0-production-implementation.md` (**not approved**). No Versioning production implementation has started.
+- Approved Implementation Plan: `docs/superpowers/plans/2026-09-27-document-versioning-v0-production-implementation.md`. Approval record: `docs/superpowers/plans/2026-09-27-document-versioning-v0-production-implementation-approval.md` (explicit user response: “承認します。” to the proposed plan at `69371a01b8abff48a443554621816823af5ca9f2`). No Versioning production implementation has started yet.
 
 ## Completed prerequisite
 
@@ -24,4 +24,4 @@
 
 ## Next exact action
 
-Obtain explicit user approval or revision of the proposed Production Implementation Plan in PR #11. After approval, record it, create the implementation branch from the approved planning baseline, and start Task 1 inline with focused RED/GREEN evidence. Do not start code or merge PR #11 on design approval alone.
+Commit the approved plan record, create the isolated implementation branch from it, and start Task 1 inline with focused Domain contract RED/GREEN evidence. Do not merge PR #11 without a separate explicit instruction.

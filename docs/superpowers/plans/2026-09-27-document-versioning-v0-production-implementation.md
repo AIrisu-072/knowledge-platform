@@ -2,7 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task by task in the current session. Steps use checkbox (`- [ ]`) syntax for tracking. The user selected inline execution without worker delegation.
 
-**Status:** **PROPOSED — explicit plan approval required**
+**Status:** **APPROVED — production implementation authorized**
+
+**Approval:** The user explicitly replied “承認します。” to this plan on 2026-09-27 JST. The approved proposal head was `design/document-versioning-v0@69371a01b8abff48a443554621816823af5ca9f2`. The approval record is `docs/superpowers/plans/2026-09-27-document-versioning-v0-production-implementation-approval.md`.
 
 **Goal:** Implement Version #2+ management, semantic identity, safe withdrawal with preceding-Version restoration, and durable scheduled publication while preserving initial Publish and frozen DSI contracts.
 
@@ -154,4 +156,4 @@ Pin `VersionManifest::identity_digest()` to SHA-256 over a versioned, length-pre
 
 ## Plan approval gate
 
-This plan has not been approved. No production Versioning implementation starts until the user explicitly approves this plan. If implementation evidence requires changing frozen Version identity, withdrawal restoration, scheduled intent, Publish quality, or the DSI boundary, stop that implementation path and request a Design amendment before proceeding.
+This plan is approved for inline production implementation. If implementation evidence requires changing frozen Version identity, withdrawal restoration, scheduled intent, Publish quality, or the DSI boundary, stop that implementation path and request a Design amendment before proceeding.
