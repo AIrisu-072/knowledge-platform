@@ -1,13 +1,13 @@
 # Active Execution Pointer
 
-## Active checkpoint — T10 本番実装のローカル検証完了、2026-09-28 JST
+## Active checkpoint — T10 本番実装 Task 1–5 完了、2026-09-28 JST
 
-- Status: **ACTIVE**。対象は **Document Publication End v0 (T10)**。Tasks 1–4 完了、Task 5 は実装・ローカル検証完了、実装 Draft PR と exact-head CI・レビュー待ち。詳細は `docs/superpowers/execution/document-publication-end-v0-status.md`。
+- Status: **ACTIVE**。対象は **Document Publication End v0 (T10)**。Production Tasks 1–5 の実装・検証・PR 差分レビュー完了。詳細は `docs/superpowers/execution/document-publication-end-v0-status.md`。
 - 承認済み設計・計画: `design/document-publication-end-v0@8415d8995ea719d6a510fe7f4aafc1ebf01bfa80`、Draft PR #13。PR #13 の exact-head 標準 CI `36326032482`、Sandbox `36326032479`、PoC `36326032480` は SUCCESS。Versioning PR #11・#12 は未マージ。
-- 実装ブランチ: `feat/document-publication-end-v0`。ローカルで検証したコード head は `9715eb60445bb3b543b2ff6d4414136df49ebdaa`。T10 の Domain/Application、DB 原子 transaction、再公開防止、読み取り分離、実 DB 縦断テストを実装した。
-- 検証: pin 済み PDFium を設定した `mise run verify` は **459/459 テスト成功、既定の除外 4 件**。fmt、strict Clippy、architecture、API、security が PASS。最終 exact-head hosted CI は未実行。
-- Blocker: なし。Design Freeze 差分提案なし。実装 PR も含め、PR #11・#12・#13 のマージ指示はない。
-- 次の exact action: このチェックポイントを commit/push し、PR #13 を base とする Draft 実装 PR を作る。その head で標準 CI、DSI Sandbox Preflight、DSI PoC を確認し、PR 差分をレビューする。
+- 実装ブランチ: `feat/document-publication-end-v0`、Draft PR #14（base PR #13）。検証済み実装 head は `79c7ff944cfde49574d1960c2ffc5e20cdd066a7`。T10 の Domain/Application、DB 原子 transaction、再公開防止、読み取り分離、実 DB 縦断テストを実装した。
+- 検証: pin 済み PDFium を設定した `mise run verify` は **459/459 テスト成功、既定の除外 4 件**。fmt、strict Clippy、architecture、API、security が PASS。実装 head の標準 CI `36332829274`、DSI Sandbox Preflight `36332829304`、DSI PoC `36332829327` はすべて SUCCESS。標準 CI は Ubuntu Rust、macOS Intel/arm64、required-check まで SUCCESS。PR #14 の差分レビューに指摘なし、未解決 thread 0 件。
+- Blocker: なし。Design Freeze 差分提案なし。PR #11・#12・#13・#14 のマージ指示はない。
+- 次の exact action: Active/Status の完了記録だけを commit/push し、PR #14 の最終 exact-head 標準 CI・Sandbox・PoC を確認する。結果を PR #14 に記録し、レビューまたは明示的なマージ指示を待つ。
 
 This checkpoint supersedes the prior T10 checkpoint below.
 
