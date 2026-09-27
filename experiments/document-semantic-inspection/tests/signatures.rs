@@ -140,7 +140,11 @@ fn ooxml_signature_wrapper_covers_all_required_office_formats() {
             SignatureInspector::verify_ooxml_package(&signed, &trust).expect("signed OOXML package");
         assert_eq!(evidence.len(), 1, "{path}");
         assert_eq!(evidence[0].kind, "ooxml-xmldsig", "{path}");
-        assert_eq!(evidence[0].validity, SignatureValidity::Valid, "{path}");
+        assert_eq!(
+            evidence[0].validity,
+            SignatureValidity::Unverifiable,
+            "self-contained XMLDSig cannot authenticate package parts: {path}"
+        );
         assert_eq!(
             evidence[0].covered_content.as_deref(),
             Some("ooxml-signature-part:_xmlsignatures/sig1.xml"),

@@ -260,6 +260,11 @@ impl SignatureInspector {
             item.covered_content = Some(format!("ooxml-signature-part:{part}"));
             item.validation_diagnostics
                 .push("opc-digital-signature-relationship-chain=valid".into());
+            if item.validity == SignatureValidity::Valid {
+                item.validity = SignatureValidity::Unverifiable;
+                item.validation_diagnostics
+                    .push("opc-package-part-coverage=unverified".into());
+            }
             evidence.push(item);
         }
         Ok(evidence)

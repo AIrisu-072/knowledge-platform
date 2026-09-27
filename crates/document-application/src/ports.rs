@@ -4,12 +4,14 @@ use document_domain::{
     ContentHash, Document, DocumentId, DocumentVersion, DocumentVersionId, FileId, FileObject,
     FileSize, MediaType, PrincipalRef, StorageKey, StoredFileDescriptor, VersionFile,
 };
+use document_semantic_inspection_core::{InspectionProfileVersion, WorkerRequest, WorkerResponse};
 use time::OffsetDateTime;
 use tokio::io::AsyncRead;
 use uuid::Uuid;
 
 use crate::{
-    AuditEventRecord, DomainEventRecord, RepositoryError, StorageError,
+    AuditEventRecord, DomainEventRecord, InspectionExecutionError, RepositoryError,
+    SemanticInspectionRecord, StorageError,
     command::{PublishDocumentCommand, PublishDocumentResult, PublishOperationId},
 };
 
@@ -152,6 +154,30 @@ pub trait FileStorage: Send + Sync {
     async fn put_immutable(&self, request: StoreFileRequest) -> Result<StoredFile, StorageError>;
     async fn open(&self, key: &StorageKey) -> Result<ContentReader, StorageError>;
     async fn list_objects(&self) -> Result<Vec<StorageObjectInfo>, StorageError>;
+}
+
+#[allow(async_fn_in_trait)]
+pub trait SemanticInspectionRepository: Send + Sync {
+    async fn get_file_object(&self, file_id: FileId)
+    -> Result<Option<FileObject>, RepositoryError>;
+    async fn get_semantic_inspection(
+        &self,
+        file_id: FileId,
+        profile: InspectionProfileVersion,
+    ) -> Result<Option<SemanticInspectionRecord>, RepositoryError>;
+    async fn insert_or_converge_semantic_inspection(
+        &self,
+        record: SemanticInspectionRecord,
+    ) -> Result<SemanticInspectionRecord, RepositoryError>;
+}
+
+#[allow(async_fn_in_trait)]
+pub trait SemanticInspectionExecutor: Send + Sync {
+    async fn inspect(
+        &self,
+        request: WorkerRequest,
+        content: ContentReader,
+    ) -> Result<WorkerResponse, InspectionExecutionError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

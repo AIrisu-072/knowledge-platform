@@ -3,6 +3,14 @@ name: DSI PoC
 on:
   pull_request:
     paths:
+      - "crates/document-semantic-inspection-core/**"
+      - "crates/document-semantic-inspection-worker/**"
+      - "crates/document-semantic-inspection-runner/**"
+      - "third_party/document-semantic-inspection/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "docs/superpowers/execution/active.md"
+      - "docs/superpowers/execution/document-semantic-inspection-v0-status.md"
       - "experiments/document-semantic-inspection/**"
       - ".github/workflows/dsi-poc.yml"
       - "mise.toml"

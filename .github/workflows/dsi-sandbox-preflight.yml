@@ -1,0 +1,45 @@
+name: DSI Sandbox Preflight
+
+on:
+  pull_request:
+    paths:
+      - "crates/document-semantic-inspection-core/**"
+      - "crates/document-semantic-inspection-worker/**"
+      - "crates/document-semantic-inspection-runner/**"
+      - "third_party/document-semantic-inspection/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "docs/superpowers/execution/active.md"
+      - "docs/superpowers/execution/document-semantic-inspection-v0-status.md"
+      - "experiments/document-semantic-inspection-sandbox/**"
+      - ".github/workflows/dsi-sandbox-preflight.yml"
+      - "docs/superpowers/execution/document-semantic-inspection-v0-sandbox-preflight.md"
+      - "docs/superpowers/plans/2026-09-24-document-semantic-inspection-v0-production-implementation.md"
+      - "spec/selection/library-tool-selection-v0.md"
+      - "spec/selection/rust-library-matrix-v0.md"
+
+permissions:
+  contents: read
+
+env:
+  MISE_AUTO_INSTALL: "0"
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Install sandbox preflight toolchain
+        run: |
+          mise install rust
+          mise install cargo:cargo-deny
+      - name: Task 1 sandbox contract
+        run: mise run poc:dsi:sandbox-test
+      - name: Task 1 dependency policy
+        run: mise run poc:dsi:sandbox-deny

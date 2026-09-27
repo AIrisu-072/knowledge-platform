@@ -7,6 +7,7 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates ./crates
 COPY tools ./tools
 COPY spec ./spec
+COPY third_party ./third_party
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \

@@ -33,6 +33,8 @@ zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
 
 quick-xml = "=0.42.0"
 
+png = { version = "=0.18.1", default-features = false }
+
 rxls = "=0.1.3"
 calamine = { version = "=0.36.1", features = ["picture"] }
 ovba = "=0.7.1"

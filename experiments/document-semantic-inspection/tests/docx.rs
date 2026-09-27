@@ -8,10 +8,11 @@ use document_semantic_inspection_poc::{
     InspectionProfile, InspectionResult, fingerprint as semantic_fingerprint, run_case,
 };
 use support::ooxml::{
-    add_archive_bomb, add_duplicate_entry, add_relationship_cycle, add_traversal_entry,
-    add_traversal_relationship, add_unknown_relationship, docx_fixture, format_only_tracked_change,
-    image_ancillary_noise, margin_only_noise, move_markup_same_final_text,
-    mutate_zip_entry_order, xml_serialization_noise,
+    PngDeflateEncoding, add_archive_bomb, add_duplicate_entry, add_relationship_cycle,
+    add_traversal_entry, add_traversal_relationship, add_unknown_relationship,
+    decode_rgba8_png_fixture, docx_fixture, format_only_tracked_change, image_ancillary_noise,
+    margin_only_noise, move_markup_same_final_text, mutate_zip_entry_order, png_idat_payload,
+    replace_docx_image_png, rgba8_png_fixture, xml_serialization_noise,
 };
 use zip::ZipArchive;
 
@@ -115,7 +116,13 @@ fn tracked_changes_use_proposed_final_projection_and_preserve_editorial_evidence
 fn comments_are_editorial_not_version_identity() {
     for id in ["docx/comment-unresolved", "docx/comment-resolved"] {
         assert_same(id);
-        assert!(inspect(id).expect("comment fixture").output.editorial.comments_present);
+        assert!(
+            inspect(id)
+                .expect("comment fixture")
+                .output
+                .editorial
+                .comments_present
+        );
     }
 }
 
@@ -137,7 +144,6 @@ fn adapter_reports_docx_format() {
     use document_semantic_inspection_poc::FormatId;
     assert_eq!(DocxAdapter.format(), FormatId::Docx);
 }
-
 
 fn inspect_bytes(bytes: &[u8]) -> AdapterOutput {
     DocxAdapter
@@ -166,10 +172,7 @@ fn normalized_result(result: &InspectionResult) -> Vec<u8> {
 fn xml_serialization_and_margin_noise_are_invariant() {
     let base = docx_fixture("fixture text");
     let expected = inspect_bytes(&base);
-    for mutated in [
-        xml_serialization_noise(&base),
-        margin_only_noise(&base),
-    ] {
+    for mutated in [xml_serialization_noise(&base), margin_only_noise(&base)] {
         let actual = inspect_bytes(&mutated);
         assert_eq!(direct_fingerprint(&expected), direct_fingerprint(&actual));
     }
@@ -178,8 +181,7 @@ fn xml_serialization_and_margin_noise_are_invariant() {
 #[test]
 fn meaning_equivalent_png_ancillary_reencoding_is_invariant() {
     let bytes = std::fs::read(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("fixtures/docx/base.docx"),
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/docx/base.docx"),
     )
     .expect("base DOCX");
     let base = inspect_bytes(&bytes);
@@ -188,21 +190,72 @@ fn meaning_equivalent_png_ancillary_reencoding_is_invariant() {
 }
 
 #[test]
+fn meaning_equivalent_png_idat_reencoding_is_invariant_and_pixel_change_is_semantic() {
+    let pixel = [21, 87, 143, 255];
+    let changed_pixel = [21, 87, 144, 255];
+    let stored_png = rgba8_png_fixture(pixel, PngDeflateEncoding::Stored);
+    let fixed_huffman_png = rgba8_png_fixture(pixel, PngDeflateEncoding::FixedHuffman);
+    let changed_png = rgba8_png_fixture(changed_pixel, PngDeflateEncoding::FixedHuffman);
+
+    assert_eq!(decode_rgba8_png_fixture(&stored_png), pixel);
+    assert_eq!(decode_rgba8_png_fixture(&fixed_huffman_png), pixel);
+    assert_eq!(decode_rgba8_png_fixture(&changed_png), changed_pixel);
+    assert_ne!(
+        png_idat_payload(&stored_png),
+        png_idat_payload(&fixed_huffman_png),
+        "equivalent pixels use distinct valid IDAT encodings"
+    );
+    assert_ne!(
+        fixed_huffman_png, changed_png,
+        "the changed PNG is distinct"
+    );
+
+    let base = std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/docx/base.docx"),
+    )
+    .expect("base DOCX");
+    let stored_docx = replace_docx_image_png(&base, &stored_png);
+    let reencoded_docx = replace_docx_image_png(&base, &fixed_huffman_png);
+    let changed_docx = replace_docx_image_png(&base, &changed_png);
+
+    let stored = inspect_bytes(&stored_docx);
+    let reencoded = inspect_bytes(&reencoded_docx);
+    let changed = inspect_bytes(&changed_docx);
+    assert_ne!(
+        direct_fingerprint(&reencoded),
+        direct_fingerprint(&changed),
+        "a changed decoded pixel must change the semantic fingerprint"
+    );
+    assert_eq!(
+        direct_fingerprint(&stored),
+        direct_fingerprint(&reencoded),
+        "same decoded pixels must have the same semantic fingerprint"
+    );
+}
+
+#[test]
 fn editorial_provenance_preserves_change_and_comment_details() {
     let tracked = inspect("docx/tracked-replacement").expect("tracked");
     let tracked_json = serde_json::to_value(&tracked.output.editorial).expect("editorial JSON");
-    let changes = tracked_json["tracked_changes"].as_array().expect("tracked_changes");
+    let changes = tracked_json["tracked_changes"]
+        .as_array()
+        .expect("tracked_changes");
     assert!(!changes.is_empty());
     assert!(changes.iter().any(|change| change["kind"] == "insertion"));
     assert!(changes.iter().any(|change| change["kind"] == "deletion"));
     assert!(changes.iter().all(|change| change["unresolved"] == true));
 
     let unresolved = inspect("docx/comment-unresolved").expect("unresolved comment");
-    let unresolved_json = serde_json::to_value(&unresolved.output.editorial).expect("editorial JSON");
+    let unresolved_json =
+        serde_json::to_value(&unresolved.output.editorial).expect("editorial JSON");
     let comments = unresolved_json["comments"].as_array().expect("comments");
     assert_eq!(comments.len(), 1);
     assert_eq!(comments[0]["resolved_state"], "unresolved");
-    assert!(comments[0]["content"].as_str().is_some_and(|value| !value.is_empty()));
+    assert!(
+        comments[0]["content"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    );
 
     let resolved = inspect("docx/comment-resolved").expect("resolved comment");
     let resolved_json = serde_json::to_value(&resolved.output.editorial).expect("editorial JSON");
@@ -224,16 +277,20 @@ fn format_only_and_move_tracking_are_editorial_but_not_semantic() {
         direct_fingerprint(&format_only)
     );
     let format_json = serde_json::to_value(&format_only.editorial).expect("editorial JSON");
-    assert!(format_json["tracked_changes"]
-        .as_array()
-        .expect("tracked changes")
-        .iter()
-        .any(|change| change["kind"] == "format"));
+    assert!(
+        format_json["tracked_changes"]
+            .as_array()
+            .expect("tracked changes")
+            .iter()
+            .any(|change| change["kind"] == "format")
+    );
 
     let moved = inspect_bytes(&move_markup_same_final_text(&base));
     assert_eq!(direct_fingerprint(&expected), direct_fingerprint(&moved));
     let move_json = serde_json::to_value(&moved.editorial).expect("editorial JSON");
-    let changes = move_json["tracked_changes"].as_array().expect("tracked changes");
+    let changes = move_json["tracked_changes"]
+        .as_array()
+        .expect("tracked changes");
     assert!(changes.iter().any(|change| change["kind"] == "move_from"));
     assert!(changes.iter().any(|change| change["kind"] == "move_to"));
 }
@@ -243,7 +300,10 @@ fn relationship_cycles_traversal_archive_bombs_and_duplicates_fail_closed() {
     let base = docx_fixture("fixture text");
     let profile = document_semantic_inspection_poc::InspectionProfile::default();
 
-    for bytes in [add_relationship_cycle(&base), add_traversal_relationship(&base)] {
+    for bytes in [
+        add_relationship_cycle(&base),
+        add_traversal_relationship(&base),
+    ] {
         let error = DocxAdapter.inspect(&bytes, &profile).unwrap_err();
         assert_eq!(error.code(), ErrorCode::SemanticExtractionFailed);
     }
@@ -253,7 +313,9 @@ fn relationship_cycles_traversal_archive_bombs_and_duplicates_fail_closed() {
         .unwrap_err();
     assert_eq!(traversal.code(), ErrorCode::SemanticExtractionFailed);
 
-    let bomb = DocxAdapter.inspect(&add_archive_bomb(&base), &profile).unwrap_err();
+    let bomb = DocxAdapter
+        .inspect(&add_archive_bomb(&base), &profile)
+        .unwrap_err();
     assert_eq!(bomb.code(), ErrorCode::InspectionResourceLimitExceeded);
 
     let duplicate = DocxAdapter

@@ -334,7 +334,7 @@ The following parser composition has already passed the frozen PoC promotion gat
 | TXT | `encoding_rs 0.8.41` + `unicode-normalization` |
 | CSV | `csv 1.4.0` |
 | HTML | `html5ever 0.39.0` + `markup5ever_rcdom 0.39.0` |
-| DOCX | `office_oxide 0.1.11` + `zip 8.6.0` deflate-only + `quick-xml 0.42.0` |
+| DOCX | `office_oxide 0.1.11` + `zip 8.6.0` deflate-only + `quick-xml 0.42.0` + supplemental `png 0.18.1` (`default-features = false`) pixel decoder |
 | XLSX/XLSM | `rxls 0.1.3` + `calamine 0.36.1` + raw SpreadsheetML oracle |
 | VBA | `ovba 0.7.1` + `tree-sitter 0.25.10` + `tree-sitter-language 0.1.8` + generated VBA parser from `c691f237b2a703732d4b6a1f01d5b4f73f94d41e` |
 | PPTX | `office_oxide 0.1.11` + raw PresentationML oracle/sentinel |
@@ -343,6 +343,17 @@ The following parser composition has already passed the frozen PoC promotion gat
 | CMS/X.509 | `cms 0.2.3` + `x509-cert 0.2.5` + vendored `openssl 0.10.81` |
 
 Do not reintroduce any rejected candidate from the PoC report.
+
+Task 5 supplemental qualification (2026-09-25): the original DOCX PoC had a
+false difference for equal decoded PNG pixels with different IDAT encodings.
+The strict `png 0.18.1` decoder candidate at
+`e309cbeb9f9075c5c3b900df8905f8ae62490337` passed DSI PoC run
+`36161063199`: PNG boundary tests 12/12, DOCX tests 14/14, the full 91-case
+manifest, and advisories/bans/licenses/sources. The decoder remains scoped to
+DOCX image projection and bounded by the frozen image resource profile. This
+records a supplemental PoC-qualified implementation dependency under the
+unchanged frozen semantic and promotion gates; production promotion still
+requires Task 5 RED/GREEN and final exact-head CI.
 
 ### 4.1 PDFium native identity
 
@@ -644,6 +655,8 @@ Promote:
 - `office_oxide 0.1.11`;
 - `zip 8.6.0` with `default-features = false`, deflate only;
 - `quick-xml 0.42.0`;
+- supplemental PoC-qualified `png 0.18.1` with default features disabled for
+  bounded decoded-pixel image equivalence;
 - independent project-owned raw OOXML oracle/sentinel.
 
 Unknown potentially semantic content/relationship must fail closed.

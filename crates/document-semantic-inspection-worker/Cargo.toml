@@ -1,0 +1,43 @@
+[package]
+name = "document-semantic-inspection-worker"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+document-semantic-inspection-core = { version = "0.0.0", path = "../document-semantic-inspection-core" }
+encoding_rs.workspace = true
+unicode-normalization.workspace = true
+csv.workspace = true
+html5ever.workspace = true
+markup5ever_rcdom.workspace = true
+office_oxide.workspace = true
+zip.workspace = true
+quick-xml.workspace = true
+png.workspace = true
+pdfium-render.workspace = true
+lopdf.workspace = true
+rxls.workspace = true
+calamine.workspace = true
+ovba.workspace = true
+cfb.workspace = true
+tree-sitter.workspace = true
+tree-sitter-language.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+xml-sec.workspace = true
+cms.workspace = true
+x509-cert.workspace = true
+openssl.workspace = true
+
+[build-dependencies]
+cc.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+document-semantic-inspection-runner = { version = "0.0.0", path = "../document-semantic-inspection-runner" }

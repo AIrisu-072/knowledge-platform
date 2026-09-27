@@ -1,0 +1,1186 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "txt/base",
+      "class": "BASE",
+      "path": "txt/base.txt",
+      "format": "txt",
+      "sha256": "7b49b9e063bd91a4f9252b413261f5557b9c570aa61516989499f64a62dbcdd6",
+      "size": 6,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "success"
+      }
+    },
+    {
+      "id": "txt/crlf",
+      "class": "NOISE",
+      "path": "txt/crlf.txt",
+      "format": "txt",
+      "sha256": "7f2adbdb77890209f13a322e75d8aa13b9169722e702a2e367250125d33e8832",
+      "size": 7,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "txt/base"
+      }
+    },
+    {
+      "id": "txt/unicode-nfd",
+      "class": "NOISE",
+      "path": "txt/unicode-nfd.txt",
+      "format": "txt",
+      "sha256": "dcc492420fc77018ce8b7eb59458568e7901e9751194f4dbe7a1044ca16ccd2e",
+      "size": 7,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "txt/base"
+      }
+    },
+    {
+      "id": "txt/text-change",
+      "class": "SEMANTIC",
+      "path": "txt/text-change.txt",
+      "format": "txt",
+      "sha256": "87ddd0101c33c782c2d57a4943530ee26dc2da270323e01738b19cbdd19bb2ac",
+      "size": 7,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "txt/base"
+      }
+    },
+    {
+      "id": "txt/ambiguous-decode",
+      "class": "HOSTILE",
+      "path": "txt/ambiguous.txt",
+      "format": "txt",
+      "sha256": "1484735b49de70564db3e12a32d4b93ecd1097831fb917f86d3a07f0dbf1f647",
+      "size": 16,
+      "profile": "dsi-v0",
+      "text_encoding": "ambiguous",
+      "expected": {
+        "kind": "error",
+        "code": "semantic_extraction_failed"
+      }
+    },
+    {
+      "id": "csv/base",
+      "class": "BASE",
+      "path": "csv/base.csv",
+      "format": "csv",
+      "sha256": "71973a3a10f625073bc33e5c888f600c58f471d4ccc08e8ce0a064090549d761",
+      "size": 29,
+      "profile": "dsi-v0",
+      "delimiter": ",",
+      "expected": {
+        "kind": "success"
+      }
+    },
+    {
+      "id": "csv/quote-noise",
+      "class": "NOISE",
+      "path": "csv/quote-noise.csv",
+      "format": "csv",
+      "sha256": "59c100f13485a2c4eb3916e274ad00103ce7cbfb2697ae2743615a0889695eab",
+      "size": 41,
+      "profile": "dsi-v0",
+      "delimiter": ",",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "csv/base"
+      }
+    },
+    {
+      "id": "csv/cell-change",
+      "class": "SEMANTIC",
+      "path": "csv/cell-change.csv",
+      "format": "csv",
+      "sha256": "c93ea672905f44799279027a97d507ac8a646570dcd09ad74881de03025fbbb0",
+      "size": 29,
+      "profile": "dsi-v0",
+      "delimiter": ",",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "csv/base"
+      }
+    },
+    {
+      "id": "csv/row-change",
+      "class": "SEMANTIC",
+      "path": "csv/row-change.csv",
+      "format": "csv",
+      "sha256": "6c5472dea9c67dc0f75dc24c606586c2d40edc0e20755877266b9474d78108e0",
+      "size": 38,
+      "profile": "dsi-v0",
+      "delimiter": ",",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "csv/base"
+      }
+    },
+    {
+      "id": "csv/inconsistent",
+      "class": "HOSTILE",
+      "path": "csv/inconsistent.csv",
+      "format": "csv",
+      "sha256": "06649f0f7eeec5496bc94d395c71bbec8f15f63be3c670b711c68a71d3514125",
+      "size": 26,
+      "profile": "dsi-v0",
+      "delimiter": ",",
+      "expected": {
+        "kind": "error",
+        "code": "semantic_extraction_failed"
+      }
+    },
+    {
+      "id": "csv/delimiter-ambiguous",
+      "class": "HOSTILE",
+      "path": "csv/delimiter-ambiguous.csv",
+      "format": "csv",
+      "sha256": "6563b360dcc75de93cd221ef663f2f5299f296fbc632472ff91f686b0cc0dfb1",
+      "size": 12,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "unsupported_semantic_construct"
+      }
+    },
+    {
+      "id": "html/base",
+      "class": "BASE",
+      "path": "html/base.html",
+      "format": "html",
+      "sha256": "1b0a29acffad0095d41252d15373935264443c143b48cedb0c848b47ea522789",
+      "size": 263,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "success"
+      }
+    },
+    {
+      "id": "html/noise",
+      "class": "NOISE",
+      "path": "html/noise.html",
+      "format": "html",
+      "sha256": "f3c592abf8ac2ca7ad65ae35315f30a7d34118c98369d9e4b931848d44423bda",
+      "size": 339,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "html/base"
+      }
+    },
+    {
+      "id": "html/text-change",
+      "class": "SEMANTIC",
+      "path": "html/text-change.html",
+      "format": "html",
+      "sha256": "405ab6609cd4b2222c21bf2ed792fc80088e851f3b5adccfe813b63cdc996cd1",
+      "size": 264,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "html/base"
+      }
+    },
+    {
+      "id": "html/link-change",
+      "class": "SEMANTIC",
+      "path": "html/link-change.html",
+      "format": "html",
+      "sha256": "88ce232255333c8f3da7594e2d3b0d40c932e35b41eb183e6dd268c58b68d0df",
+      "size": 263,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "html/base"
+      }
+    },
+    {
+      "id": "html/image-change",
+      "class": "SEMANTIC",
+      "path": "html/image-change.html",
+      "format": "html",
+      "sha256": "5aa31c9220747eac97a0b1b0074c4c61d8db749045336f85b1029ed24d1f3472",
+      "size": 263,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "html/base"
+      }
+    },
+    {
+      "id": "html/js-only",
+      "class": "HOSTILE",
+      "path": "html/js-only.html",
+      "format": "html",
+      "sha256": "8d6a6f94a4bb9b43a3e5e7514baa6836edda14cee4cdd031027e4635d1d11027",
+      "size": 62,
+      "profile": "dsi-v0",
+      "script_required": true,
+      "expected": {
+        "kind": "error",
+        "code": "unsupported_semantic_construct"
+      }
+    },
+    {
+      "id": "docx/base",
+      "class": "BASE",
+      "path": "docx/base.docx",
+      "format": "docx",
+      "sha256": "eef073663e3fea4f751bb4ed45386628a35e8494df70686d5a1b9a764290d801",
+      "size": 7389,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "success"
+      }
+    },
+    {
+      "id": "docx/body-text-change",
+      "class": "SEMANTIC",
+      "path": "docx/body-text-change.docx",
+      "format": "docx",
+      "sha256": "42645c373d4d64be2e9c6649fcc687062214f7658d89390ec852f3a8052004eb",
+      "size": 7393,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/comment-resolved",
+      "class": "EDITORIAL",
+      "path": "docx/comment-resolved.docx",
+      "format": "docx",
+      "sha256": "d1d26b6fad4af7212ea106ad5c82d0e0403a5aca4858adeddd4fd2614eab1b2d",
+      "size": 8543,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/comment-unresolved",
+      "class": "EDITORIAL",
+      "path": "docx/comment-unresolved.docx",
+      "format": "docx",
+      "sha256": "ecc871ea113c95f2475368c00820e2d1e200fef3727ea3d12bddc0758b07f1c7",
+      "size": 8017,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/deep-ooxml",
+      "class": "HOSTILE",
+      "path": "docx/deep-ooxml.docx",
+      "format": "docx",
+      "sha256": "e5a33288e20be9158d4859136aaf7069e1251cd32f208c40e475855684293150",
+      "size": 9549,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "inspection_resource_limit_exceeded"
+      }
+    },
+    {
+      "id": "docx/endnote-change",
+      "class": "SEMANTIC",
+      "path": "docx/endnote-change.docx",
+      "format": "docx",
+      "sha256": "211e15cd8238b0ae7e4566443254dc6cfb997bbf32b6e38e524fc7f42a817ab5",
+      "size": 7393,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/font-only",
+      "class": "NOISE",
+      "path": "docx/font-only.docx",
+      "format": "docx",
+      "sha256": "fff52dc13cb13bc51aea9617e69b76bb09a2e242433ac040e0454972598bc411",
+      "size": 7457,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/footer-change",
+      "class": "SEMANTIC",
+      "path": "docx/footer-change.docx",
+      "format": "docx",
+      "sha256": "eed6c1445a4236aff810b79df3a44266e55e52dfc76e203d5037511b389f0835",
+      "size": 7397,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/footnote-change",
+      "class": "SEMANTIC",
+      "path": "docx/footnote-change.docx",
+      "format": "docx",
+      "sha256": "b1591ef3bc9da3397c11794ddd0ee3b19b82cc7d27045b653824fa853053a7e3",
+      "size": 7393,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/header-change",
+      "class": "SEMANTIC",
+      "path": "docx/header-change.docx",
+      "format": "docx",
+      "sha256": "1622e99d79ba98b72248bb781b0396fbb49252904caf47d3852b433ff550409e",
+      "size": 7397,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/heading-list-change",
+      "class": "SEMANTIC",
+      "path": "docx/heading-list-change.docx",
+      "format": "docx",
+      "sha256": "3830a4a666c8dbc37fa315eb9ff3b2cc19630f6c4c33c1adf5d8f5ee2bac4ef1",
+      "size": 7389,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/hyperlink-target-change",
+      "class": "SEMANTIC",
+      "path": "docx/hyperlink-target-change.docx",
+      "format": "docx",
+      "sha256": "955c242c5e527018635299a35abd42e51cd3d408ebe3b9cf50410b90bcbfb6f7",
+      "size": 7389,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/image-content-change",
+      "class": "SEMANTIC",
+      "path": "docx/image-content-change.docx",
+      "format": "docx",
+      "sha256": "dcf6b2343862840c33de762537e4ef85a059b0e83a45a8dbf67d117de9be0ff9",
+      "size": 7389,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/malformed",
+      "class": "HOSTILE",
+      "path": "docx/malformed.docx",
+      "format": "docx",
+      "sha256": "dfd0f46bc387b3f599d50a5025f61fad8430fa6ae17adbe57bafe61c4b423be9",
+      "size": 7366,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "semantic_extraction_failed"
+      }
+    },
+    {
+      "id": "docx/metadata-noise",
+      "class": "NOISE",
+      "path": "docx/metadata-noise.docx",
+      "format": "docx",
+      "sha256": "24a773a8858fe90ec3ffc40fca17743bfe53ece3e1f0d6367ecdd5a34a8d0779",
+      "size": 7388,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/package-order-noise",
+      "class": "NOISE",
+      "path": "docx/package-order-noise.docx",
+      "format": "docx",
+      "sha256": "e774f27c51d02843f85c0f29f6882777aadd1189f1f62388b9e2dff9bbbc4a39",
+      "size": 7389,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/relationship-id-noise",
+      "class": "NOISE",
+      "path": "docx/relationship-id-noise.docx",
+      "format": "docx",
+      "sha256": "9d018e2b757ad3037170aa9c0feee17c67a3bc7bf61beacaaa03c81bf91d9a79",
+      "size": 7321,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/section-change",
+      "class": "SEMANTIC",
+      "path": "docx/section-change.docx",
+      "format": "docx",
+      "sha256": "d8a0f82abd2487112a152520c99ca26abc1655381e11c65f87ba3fa8dc7eebec",
+      "size": 7390,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/table-merge-change",
+      "class": "SEMANTIC",
+      "path": "docx/table-merge-change.docx",
+      "format": "docx",
+      "sha256": "6614a2575a708ed501294d59b9dc4ede7958e5376b75c1da32b529425029187d",
+      "size": 7384,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/tracked-replacement",
+      "class": "EDITORIAL",
+      "path": "docx/tracked-replacement.docx",
+      "format": "docx",
+      "sha256": "d1fb459f90507060f27e253cc6da8a5637b739aa576f0b7e3154bdc86f9a3a0d",
+      "size": 7479,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "docx/base"
+      }
+    },
+    {
+      "id": "docx/unknown-semantic-part",
+      "class": "HOSTILE",
+      "path": "docx/unknown-semantic-part.docx",
+      "format": "docx",
+      "sha256": "5f017ed15ad78c164748e07985886c5be83d6dea46b992ab33626ec98e629ca2",
+      "size": 7691,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "unsupported_semantic_construct"
+      }
+    },
+    {
+      "id": "xlsx/base",
+      "class": "BASE",
+      "path": "xlsx/base.xlsx",
+      "format": "xlsx",
+      "sha256": "0aeda144a43a220161d34cb75eedb1d56979971ddd92cbcce0dff6bcdde8bcf6",
+      "size": 3373,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "success"
+      }
+    },
+    {
+      "id": "xlsx/formula-source-change-same-cache",
+      "class": "SEMANTIC",
+      "path": "xlsx/formula-source-change-same-cache.xlsx",
+      "format": "xlsx",
+      "sha256": "5565cf371e26d4b96061418db3efe96a36826438cc26b961ea19dafc53abeb1f",
+      "size": 3368,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/cached-result-only",
+      "class": "NOISE",
+      "path": "xlsx/cached-result-only.xlsx",
+      "format": "xlsx",
+      "sha256": "1999a0a10576116a88e8e4fe40611222f35e2c6e5eafbc3f4f0b3ea56baeb3b0",
+      "size": 3375,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/very-hidden-change",
+      "class": "SEMANTIC",
+      "path": "xlsx/very-hidden-change.xlsx",
+      "format": "xlsx",
+      "sha256": "1d7526ca40a0d383ba8ead01e69686d714cf31003e92dbebb41e0320790183e4",
+      "size": 3376,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/style-only",
+      "class": "NOISE",
+      "path": "xlsx/style-only.xlsx",
+      "format": "xlsx",
+      "sha256": "884aa27ea591089b88f21cc36dee3928447da18b85bc2c5ef38cf67e4d84551d",
+      "size": 3377,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/cell-value-change",
+      "class": "SEMANTIC",
+      "path": "xlsx/cell-value-change.xlsx",
+      "format": "xlsx",
+      "sha256": "0a7fd00bc579676edec302aac26cb346fb6e0b8e865b4389ba33396170d82c84",
+      "size": 3375,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/defined-name-change",
+      "class": "SEMANTIC",
+      "path": "xlsx/defined-name-change.xlsx",
+      "format": "xlsx",
+      "sha256": "2e91d66a56172f5bdc664e74a3e63283cca15945a6835abfff0b4e3d3528a9e2",
+      "size": 3373,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/merged-change",
+      "class": "SEMANTIC",
+      "path": "xlsx/merged-change.xlsx",
+      "format": "xlsx",
+      "sha256": "91ed6eab9aef123cf92bf0d2a86c158d6db5ef83d87312cd93c5cd1c1968a961",
+      "size": 3432,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/hyperlink-change",
+      "class": "SEMANTIC",
+      "path": "xlsx/hyperlink-change.xlsx",
+      "format": "xlsx",
+      "sha256": "1888cd0d19778b57c1da17872991aaaceb3c3ceff761f898b369e6d88006b000",
+      "size": 3373,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/xml-order-noise",
+      "class": "NOISE",
+      "path": "xlsx/xml-order-noise.xlsx",
+      "format": "xlsx",
+      "sha256": "1c7670417d0698b37264a8fe47dbfe7e6dcfd0d35f1384d157632b7e0f4365d9",
+      "size": 3373,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/unknown-semantic-part",
+      "class": "HOSTILE",
+      "path": "xlsx/unknown-semantic-part.xlsx",
+      "format": "xlsx",
+      "sha256": "6a711426f2e0884cf6e95cdd61faeb295a3894a4eb95babdecba9e9173b6f9fa",
+      "size": 3716,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "unsupported_semantic_construct"
+      }
+    },
+    {
+      "id": "xlsm/base",
+      "class": "BASE",
+      "path": "xlsm/calamine-vba.xlsm",
+      "format": "xlsm",
+      "sha256": "2fe9f89f4a969658c1e3f9b0e8c70ccb155840aa6ee1bad6b15df603f41da1c0",
+      "size": 12752,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "success"
+      }
+    },
+    {
+      "id": "xlsx/two-sheet-base",
+      "class": "BASE",
+      "path": "xlsx/sheet-add.xlsx",
+      "format": "xlsx",
+      "sha256": "cac859d25686d2d4c218027d241a035da4de083e4e4e7036f6e83c442218a447",
+      "size": 4015,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "success"
+      }
+    },
+    {
+      "id": "xlsx/sheet-add",
+      "class": "SEMANTIC",
+      "path": "xlsx/sheet-add.xlsx",
+      "format": "xlsx",
+      "sha256": "cac859d25686d2d4c218027d241a035da4de083e4e4e7036f6e83c442218a447",
+      "size": 4015,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/sheet-order-change",
+      "class": "SEMANTIC",
+      "path": "xlsx/sheet-order-change.xlsx",
+      "format": "xlsx",
+      "sha256": "3c2e8be956597896479755acb8e81d1fb7f7315562dc8c9942e61bc843f95c9b",
+      "size": 4015,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/two-sheet-base"
+      }
+    },
+    {
+      "id": "xlsx/table-add",
+      "class": "SEMANTIC",
+      "path": "xlsx/table-add.xlsx",
+      "format": "xlsx",
+      "sha256": "32d2e5f5d9a4f931c981d016ebb46e7f45bb83be98b8823fcf80dd620152a13d",
+      "size": 4227,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/external-reference-add",
+      "class": "SEMANTIC",
+      "path": "xlsx/external-reference-add.xlsx",
+      "format": "xlsx",
+      "sha256": "a37d98cdf4dda09af85e8c80dc76b478689319e018408b8fd3290aa6526e3942",
+      "size": 4615,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/chart-add",
+      "class": "SEMANTIC",
+      "path": "xlsx/chart-add.xlsx",
+      "format": "xlsx",
+      "sha256": "1859211c0645ac36b79274ed6d3cf3371d825d35fc04e301fd2ff28263b6be88",
+      "size": 5945,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/image-add",
+      "class": "SEMANTIC",
+      "path": "xlsx/image-add.xlsx",
+      "format": "xlsx",
+      "sha256": "adf4f36b59dc899714c853677f7f4f2486eb4627be62ce8f42d2af31fb6428a1",
+      "size": 5123,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/odbc-connection-add",
+      "class": "SEMANTIC",
+      "path": "xlsx/odbc-connection-add.xlsx",
+      "format": "xlsx",
+      "sha256": "203a62f9e13259cd136402c4ba6d1e9c4f63f52deacdb1ba9927784661d0c372",
+      "size": 4132,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/base"
+      }
+    },
+    {
+      "id": "xlsx/sheet-remove",
+      "class": "SEMANTIC",
+      "path": "xlsx/base.xlsx",
+      "format": "xlsx",
+      "sha256": "0aeda144a43a220161d34cb75eedb1d56979971ddd92cbcce0dff6bcdde8bcf6",
+      "size": 3373,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "xlsx/two-sheet-base"
+      }
+    },
+    {
+      "id": "pptx/base",
+      "class": "BASE",
+      "path": "pptx/base.pptx",
+      "format": "pptx",
+      "sha256": "9b9cb71df6514b7345ded871e9a5eaf038b27838015390a0416f8b215b805093",
+      "size": 11256,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "success"
+      }
+    },
+    {
+      "id": "pptx/slide-add",
+      "class": "SEMANTIC",
+      "path": "pptx/slide-add.pptx",
+      "format": "pptx",
+      "sha256": "efb202a4bcbafabe9c8d5cc8fb63da14e279327d30a83a34599142a9bce469bf",
+      "size": 12457,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/slide-remove",
+      "class": "SEMANTIC",
+      "path": "pptx/slide-remove.pptx",
+      "format": "pptx",
+      "sha256": "f9c1b07e3b7d96fc12af54df0e48333603a542efeb59001f68d5ee8e9ff7b149",
+      "size": 10011,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/slide-order-change",
+      "class": "SEMANTIC",
+      "path": "pptx/slide-order-change.pptx",
+      "format": "pptx",
+      "sha256": "f9e5ab74a55763a6994abf0fd7752ecdf59ab7957e0bca766348781c503917e0",
+      "size": 11256,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/shape-association-change",
+      "class": "SEMANTIC",
+      "path": "pptx/shape-association-change.pptx",
+      "format": "pptx",
+      "sha256": "f5ab6beda8014cf111a1d473415156a7707b60751ebf0393344ce92965be4072",
+      "size": 11256,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/table-change",
+      "class": "SEMANTIC",
+      "path": "pptx/table-change.pptx",
+      "format": "pptx",
+      "sha256": "aeee479f49ac21626c7e562c7a62bb3c4d840305e501586fb658bde0cd605fa7",
+      "size": 11261,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/chart-change",
+      "class": "SEMANTIC",
+      "path": "pptx/chart-change.pptx",
+      "format": "pptx",
+      "sha256": "ae8a9dc401235f02df24d2dfcab6dbe2854c6d376e68614d4b928f951bd373e7",
+      "size": 11256,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/smartart-change",
+      "class": "SEMANTIC",
+      "path": "pptx/smartart-change.pptx",
+      "format": "pptx",
+      "sha256": "ab4c5c5f61eee9cad3f79f1ebe24057b0338e62805a40700f5f739faa8e48a8d",
+      "size": 11256,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/image-change",
+      "class": "SEMANTIC",
+      "path": "pptx/image-change.pptx",
+      "format": "pptx",
+      "sha256": "b4d925b1e226c4dd507bceb2ad66297a785f8099d7043f1cc3bdd441586c3bff",
+      "size": 11208,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/hyperlink-change",
+      "class": "SEMANTIC",
+      "path": "pptx/hyperlink-change.pptx",
+      "format": "pptx",
+      "sha256": "2ae133013d8e5c609fc62da6532ebe6337c02efead0ab5d19b304a3edb0a6e79",
+      "size": 11208,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/speaker-note-change",
+      "class": "SEMANTIC",
+      "path": "pptx/speaker-note-change.pptx",
+      "format": "pptx",
+      "sha256": "aac5d48c129c84e226227477bd23799d3dabbdfaccbc8e0aba5c0355670769af",
+      "size": 11216,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/group-change",
+      "class": "SEMANTIC",
+      "path": "pptx/group-change.pptx",
+      "format": "pptx",
+      "sha256": "8b5e2b07bfb7f5b096a518780eda157c6a4e2341c8c4bc60077c935808fae5b9",
+      "size": 10936,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/theme-only",
+      "class": "NOISE",
+      "path": "pptx/theme-only.pptx",
+      "format": "pptx",
+      "sha256": "fe46f882964a806025ea0ecdb2741248fedeb1e5850dcd430cb871a79420c48a",
+      "size": 11228,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/font-only",
+      "class": "NOISE",
+      "path": "pptx/font-only.pptx",
+      "format": "pptx",
+      "sha256": "017813e2b4325ccdc0d1b99ddfc5dca292583d7b3bead86537fa187ba777a2be",
+      "size": 11228,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/background-only",
+      "class": "NOISE",
+      "path": "pptx/background-only.pptx",
+      "format": "pptx",
+      "sha256": "c86e32720528025382ac8462ce56fb4b9eb2b4b7054be203a674711acd3098c4",
+      "size": 11304,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/id-order-noise",
+      "class": "NOISE",
+      "path": "pptx/id-order-noise.pptx",
+      "format": "pptx",
+      "sha256": "559a4efbcfff5ca8d871236150b7da921ad68912d878264780baf41b7d10d38b",
+      "size": 11186,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/unknown-semantic-part",
+      "class": "HOSTILE",
+      "path": "pptx/unknown-semantic-part.pptx",
+      "format": "pptx",
+      "sha256": "3c69d6223c4e008f02d02c85c0f8188062ba5592fc53c4632455e104e6f659b4",
+      "size": 11567,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "unsupported_semantic_construct"
+      }
+    },
+    {
+      "id": "pptx/text-change",
+      "class": "SEMANTIC",
+      "path": "pptx/text-change.pptx",
+      "format": "pptx",
+      "sha256": "bf0137c2f6b59bccfd35eb4bce8f14bdbb693d3e5b177965a9771bf398bed762",
+      "size": 11256,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pptx/comment-only",
+      "class": "EDITORIAL",
+      "path": "pptx/comment-only.pptx",
+      "format": "pptx",
+      "sha256": "7f5948da5dd14fec694a1269318c5dd8dab867225fa4b51039d8060887ce5752",
+      "size": 11902,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "pptx/base"
+      }
+    },
+    {
+      "id": "pdf/base",
+      "class": "BASE",
+      "path": "pdf/base.pdf",
+      "format": "pdf",
+      "sha256": "5b756c455f9f6528f82fc026cbcf994cf12d9268155036e8f4d144c9df4e9cd1",
+      "size": 1741,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "success"
+      }
+    },
+    {
+      "id": "pdf/object-id-producer-noise",
+      "class": "NOISE",
+      "path": "pdf/object-id-producer-noise.pdf",
+      "format": "pdf",
+      "sha256": "aa03ba3b5e62220bd1863c41e425662fa67699fc8027aa42d1d5b6a29ff0d779",
+      "size": 2175,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "pdf/base"
+      }
+    },
+    {
+      "id": "pdf/text-change",
+      "class": "SEMANTIC",
+      "path": "pdf/text-change.pdf",
+      "format": "pdf",
+      "sha256": "e4e743a514d14a2c12e93fa2f494e24d874df5f5bd5b56ac43ad3ac117b4a94a",
+      "size": 1741,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pdf/base"
+      }
+    },
+    {
+      "id": "pdf/page-order-change",
+      "class": "SEMANTIC",
+      "path": "pdf/page-order-change.pdf",
+      "format": "pdf",
+      "sha256": "5acba15c7a623d5e182c1221e0dee79314c4e4a92788dcd908840dee6f21cb74",
+      "size": 1741,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pdf/base"
+      }
+    },
+    {
+      "id": "pdf/link-change",
+      "class": "SEMANTIC",
+      "path": "pdf/link-change.pdf",
+      "format": "pdf",
+      "sha256": "44fa9e46e0e5c3e18a9e37787e56191d7fa3872210823f2ed4aba6560ea1aa1f",
+      "size": 1741,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pdf/base"
+      }
+    },
+    {
+      "id": "pdf/annotation-change",
+      "class": "EDITORIAL",
+      "path": "pdf/annotation-change.pdf",
+      "format": "pdf",
+      "sha256": "285bda959ac83201f9ebb76cacdd7525bfefb0236417b54e4a0013a5ec84539f",
+      "size": 1741,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "same_as",
+        "case_id": "pdf/base"
+      }
+    },
+    {
+      "id": "pdf/form-value-change",
+      "class": "SEMANTIC",
+      "path": "pdf/form-value-change.pdf",
+      "format": "pdf",
+      "sha256": "a1203417b92b262d31013a1630c54c5092cbdf17db646aa99b0cedb984590df3",
+      "size": 1740,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pdf/base"
+      }
+    },
+    {
+      "id": "pdf/image-change",
+      "class": "SEMANTIC",
+      "path": "pdf/image-change.pdf",
+      "format": "pdf",
+      "sha256": "9e0ef838c346d1b1306344d2838fc979006766442b2ff3d9e9672dd4bddb0e4a",
+      "size": 1741,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "different_from",
+        "case_id": "pdf/base"
+      }
+    },
+    {
+      "id": "pdf/scan-only",
+      "class": "HOSTILE",
+      "path": "pdf/scan-only.pdf",
+      "format": "pdf",
+      "sha256": "d77953a606317ab288862da2c964fd750a97e654bd00202530fcde45180dd37c",
+      "size": 1181,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "requires_ocr"
+      }
+    },
+    {
+      "id": "pdf/broken-xref",
+      "class": "HOSTILE",
+      "path": "pdf/broken-xref.pdf",
+      "format": "pdf",
+      "sha256": "9a7404688dc8d4194d030924baf87ba67e8dc57804ab7d5cd5d9d650943bb596",
+      "size": 1738,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "semantic_extraction_failed"
+      }
+    },
+    {
+      "id": "pdf/encrypted",
+      "class": "HOSTILE",
+      "path": "pdf/encrypted.pdf",
+      "format": "pdf",
+      "sha256": "7bd855d2c76e12e184cebb14695212203dbf9dee270a2e68805a6a6f07d56c4a",
+      "size": 1920,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "encrypted_content_unsupported"
+      }
+    },
+    {
+      "id": "pdf/parser-disagreement",
+      "class": "HOSTILE",
+      "path": "pdf/parser-disagreement.pdf",
+      "format": "pdf",
+      "sha256": "90921eca6b4dc845d7295a0d41321b55b078d2ec8db006d64c15498b8f643b69",
+      "size": 1275,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "parser_disagreement"
+      }
+    },
+    {
+      "id": "pdf/ambiguous-read-order",
+      "class": "HOSTILE",
+      "path": "pdf/ambiguous-read-order.pdf",
+      "format": "pdf",
+      "sha256": "685fee9945a754bcde232ba1554b6bc979790f1dbe4b91a7de31f4ca2eb100c5",
+      "size": 698,
+      "profile": "dsi-v0",
+      "expected": {
+        "kind": "error",
+        "code": "unsupported_semantic_construct"
+      }
+    }
+  ]
+}

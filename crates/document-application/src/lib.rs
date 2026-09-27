@@ -7,13 +7,14 @@ mod error;
 mod events;
 mod ports;
 mod reconciliation;
+mod semantic_inspection;
 mod service;
 
 pub use command::{
     CreateDocumentCommand, CreateDocumentResult, PublishDocumentCommand, PublishDocumentResult,
     PublishOperationId,
 };
-pub use error::{ApplicationError, RepositoryError, StorageError};
+pub use error::{ApplicationError, InspectionExecutionError, RepositoryError, StorageError};
 pub use events::{
     AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_VERSION_CREATED, AUDIT_DOCUMENT_VERSION_PUBLISHED,
     AuditEventRecord, DOCUMENT_CREATED, DOCUMENT_VERSION_CREATED, DOCUMENT_VERSION_PUBLISHED,
@@ -22,8 +23,10 @@ pub use events::{
 pub use ports::{
     AuthoritativeDocument, Clock, ContentReader, CreateInitialDocumentRecord,
     DocumentPublishRepository, DocumentRepository, FileStorage, IdGenerator, PublishCandidate,
-    PublishCommandIdentity, PublishInitialVersionRecord, PublishOperationRecord, StorageObjectInfo,
-    StorageObjectKind, StoreFileRequest, StoredFile,
+    PublishCommandIdentity, PublishInitialVersionRecord, PublishOperationRecord,
+    SemanticInspectionExecutor, SemanticInspectionRepository, StorageObjectInfo, StorageObjectKind,
+    StoreFileRequest, StoredFile,
 };
 pub use reconciliation::{ReconciliationClassification, ReconciliationFinding, classify};
+pub use semantic_inspection::{EnsureSemanticInspection, SemanticInspectionRecord};
 pub use service::DocumentService;

@@ -160,6 +160,17 @@ impl FileObject {
         }
     }
 
+    /// Restore an authoritative file from already validated persistence values.
+    /// The descriptor's scalar types enforce hash length, nonnegative size,
+    /// media type, and relative storage-key invariants at the boundary.
+    pub fn restore(
+        file_id: FileId,
+        stored_file: StoredFileDescriptor,
+        created_at: OffsetDateTime,
+    ) -> Self {
+        Self::new(file_id, stored_file, created_at)
+    }
+
     pub const fn file_id(&self) -> FileId {
         self.file_id
     }
