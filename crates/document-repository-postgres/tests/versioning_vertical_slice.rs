@@ -57,6 +57,15 @@ async fn initial_to_replacement_schedule_withdrawal_and_rebase_preserve_one_line
         )
         .await
         .unwrap();
+    let manual_audit: serde_json::Value = sqlx::query_scalar(
+        "SELECT data FROM audit_outbox_events WHERE resource_id = $1 \
+         AND event_type = 'document.version.published'",
+    )
+    .bind(document_id.as_uuid())
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert!(manual_audit.get("serviceExecutor").is_none());
 
     let replacement_id = DocumentVersionId::from_uuid(Uuid::now_v7());
     let created = service

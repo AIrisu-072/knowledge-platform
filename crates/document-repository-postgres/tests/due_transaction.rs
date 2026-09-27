@@ -270,6 +270,15 @@ async fn manifest_and_quality_changes_terminalize_without_publication() {
     .await
     .unwrap();
     assert_eq!(published, 0);
+    let audit_result: String = sqlx::query_scalar(
+        "SELECT result FROM audit_outbox_events WHERE resource_id = $1 \
+         AND event_type = 'document.version.publication.terminal'",
+    )
+    .bind(f.document_id.as_uuid())
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(audit_result, "failure");
 }
 
 #[tokio::test]
