@@ -1087,6 +1087,7 @@ dependencies = [
  "document-semantic-inspection-runner",
  "document-storage-fs",
  "serde_json",
+ "sha2 0.11.0",
  "sqlx",
  "tempfile",
  "testcontainers",

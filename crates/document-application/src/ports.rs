@@ -13,6 +13,9 @@ use crate::{
     AuditEventRecord, DomainEventRecord, InspectionExecutionError, RepositoryError,
     SemanticInspectionRecord, StorageError,
     command::{PublishDocumentCommand, PublishDocumentResult, PublishOperationId},
+    versioning_command::{
+        VersionMutationRecord, VersionOperationId, VersionOperationRecord, VersionOperationResult,
+    },
 };
 
 pub type ContentReader = Pin<Box<dyn AsyncRead + Send + Unpin>>;
@@ -176,6 +179,52 @@ pub trait VersioningRepository: Send + Sync {
     /// Register an immutable FileObject before a Version can reference it.
     /// Replaying the same FileId is valid only for the same raw binding.
     async fn register_file_object(&self, file: FileObject) -> Result<(), RepositoryError>;
+
+    async fn get_version_operation(
+        &self,
+        _operation_id: VersionOperationId,
+    ) -> Result<Option<VersionOperationRecord>, RepositoryError> {
+        Err(RepositoryError::Internal(
+            "version mutation repository unavailable".to_owned(),
+        ))
+    }
+
+    async fn get_version_snapshot(
+        &self,
+        _document_id: DocumentId,
+        _version_id: DocumentVersionId,
+    ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
+        Err(RepositoryError::Internal(
+            "version mutation repository unavailable".to_owned(),
+        ))
+    }
+
+    async fn create_version(
+        &self,
+        _record: VersionMutationRecord,
+    ) -> Result<VersionOperationResult, RepositoryError> {
+        Err(RepositoryError::Internal(
+            "version mutation repository unavailable".to_owned(),
+        ))
+    }
+
+    async fn update_working(
+        &self,
+        _record: VersionMutationRecord,
+    ) -> Result<VersionOperationResult, RepositoryError> {
+        Err(RepositoryError::Internal(
+            "version mutation repository unavailable".to_owned(),
+        ))
+    }
+
+    async fn rebase_working(
+        &self,
+        _record: VersionMutationRecord,
+    ) -> Result<VersionOperationResult, RepositoryError> {
+        Err(RepositoryError::Internal(
+            "version mutation repository unavailable".to_owned(),
+        ))
+    }
 }
 
 #[allow(async_fn_in_trait)]

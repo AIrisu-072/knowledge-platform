@@ -10,7 +10,9 @@ mod publish_quality;
 mod reconciliation;
 mod semantic_inspection;
 mod service;
+mod versioning_command;
 mod versioning_preflight;
+mod versioning_service;
 
 pub use command::{
     CreateDocumentCommand, CreateDocumentResult, PublishDocumentCommand, PublishDocumentResult,
@@ -19,8 +21,9 @@ pub use command::{
 pub use error::{ApplicationError, InspectionExecutionError, RepositoryError, StorageError};
 pub use events::{
     AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_VERSION_CREATED, AUDIT_DOCUMENT_VERSION_PUBLISHED,
-    AuditEventRecord, DOCUMENT_CREATED, DOCUMENT_VERSION_CREATED, DOCUMENT_VERSION_PUBLISHED,
-    DomainEventRecord,
+    AUDIT_DOCUMENT_VERSION_REBASED, AUDIT_DOCUMENT_VERSION_UPDATED, AuditEventRecord,
+    DOCUMENT_CREATED, DOCUMENT_VERSION_CREATED, DOCUMENT_VERSION_PUBLISHED,
+    DOCUMENT_VERSION_REBASED, DOCUMENT_VERSION_UPDATED, DomainEventRecord,
 };
 pub use ports::{
     AuthoritativeContentItem, AuthoritativeDocument, Clock, ContentReader,
@@ -32,7 +35,13 @@ pub use ports::{
 pub use reconciliation::{ReconciliationClassification, ReconciliationFinding, classify};
 pub use semantic_inspection::{EnsureSemanticInspection, SemanticInspectionRecord};
 pub use service::DocumentService;
-pub use versioning_preflight::{
-    PreparedContentItem, PreparedManifest, VersioningItemInput, VersioningPreflight,
-    VersioningRenditionInput,
+pub use versioning_command::{
+    CreateVersionCommand, RebaseWorkingVersionCommand, UpdateWorkingVersionCommand,
+    VersionCommandIdentity, VersionMutationRecord, VersionOperationId, VersionOperationKind,
+    VersionOperationRecord, VersionOperationResult,
 };
+pub use versioning_preflight::{
+    PreparedContentItem, PreparedManifest, PreparedRendition, VersioningItemInput,
+    VersioningPreflight, VersioningRenditionInput,
+};
+pub use versioning_service::DocumentVersionService;

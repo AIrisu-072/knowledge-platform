@@ -8,6 +8,10 @@ pub const DOCUMENT_VERSION_PUBLISHED: &str = "DocumentVersionPublished";
 pub const AUDIT_DOCUMENT_CREATED: &str = "document.created";
 pub const AUDIT_DOCUMENT_VERSION_CREATED: &str = "document.version.created";
 pub const AUDIT_DOCUMENT_VERSION_PUBLISHED: &str = "document.version.published";
+pub const DOCUMENT_VERSION_UPDATED: &str = "DocumentVersionUpdated";
+pub const DOCUMENT_VERSION_REBASED: &str = "DocumentVersionRebased";
+pub const AUDIT_DOCUMENT_VERSION_UPDATED: &str = "document.version.updated";
+pub const AUDIT_DOCUMENT_VERSION_REBASED: &str = "document.version.rebased";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DomainEventRecord {

@@ -3,6 +3,7 @@ use thiserror::Error;
 use document_domain::{DocumentId, DocumentVersionId, DomainError, FileId};
 
 use crate::command::PublishOperationId;
+use crate::versioning_command::VersionOperationId;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum StorageError {
@@ -119,6 +120,12 @@ pub enum ApplicationError {
     #[error("publish commit outcome is unknown")]
     PublishCommitOutcomeUnknown {
         publish_operation_id: PublishOperationId,
+        document_id: DocumentId,
+        document_version_id: DocumentVersionId,
+    },
+    #[error("version commit outcome is unknown; retry the same operation id")]
+    VersionCommitOutcomeUnknown {
+        operation_id: VersionOperationId,
         document_id: DocumentId,
         document_version_id: DocumentVersionId,
     },

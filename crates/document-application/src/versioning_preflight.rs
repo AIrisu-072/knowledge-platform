@@ -71,13 +71,28 @@ impl VersioningItemInput {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparedRendition {
+    file: FileObject,
+    original_filename: String,
+}
+
+impl PreparedRendition {
+    pub const fn file(&self) -> &FileObject {
+        &self.file
+    }
+    pub fn original_filename(&self) -> &str {
+        &self.original_filename
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreparedContentItem {
     logical_path: LogicalPath,
     ordinal: u32,
     file: FileObject,
     inspection: SemanticInspectionRecord,
     original_filename: String,
-    renditions: Vec<FileObject>,
+    renditions: Vec<PreparedRendition>,
 }
 
 impl PreparedContentItem {
@@ -101,7 +116,7 @@ impl PreparedContentItem {
         &self.original_filename
     }
 
-    pub fn renditions(&self) -> &[FileObject] {
+    pub fn renditions(&self) -> &[PreparedRendition] {
         &self.renditions
     }
 }
@@ -221,7 +236,10 @@ where
                 self.repository
                     .register_file_object(rendition_file.clone())
                     .await?;
-                renditions.push(rendition_file);
+                renditions.push(PreparedRendition {
+                    file: rendition_file,
+                    original_filename: rendition.original_filename,
+                });
             }
             semantic_items.push(semantic);
             prepared_items.push(PreparedContentItem {

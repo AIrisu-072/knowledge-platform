@@ -1,7 +1,13 @@
-use document_application::{RepositoryError, SemanticInspectionRepository, VersioningRepository};
-use document_domain::FileObject;
+use document_application::{
+    AuthoritativeDocument, RepositoryError, SemanticInspectionRepository, VersionMutationRecord,
+    VersionOperationId, VersionOperationRecord, VersionOperationResult, VersioningRepository,
+};
+use document_domain::{DocumentId, DocumentVersionId, FileObject};
 
-use crate::{error::map_statement_error, repository::PostgresDocumentRepository};
+use crate::{
+    error::map_statement_error, repository::PostgresDocumentRepository, versioning_mutation,
+    versioning_rows,
+};
 
 impl VersioningRepository for PostgresDocumentRepository {
     async fn register_file_object(&self, file: FileObject) -> Result<(), RepositoryError> {
@@ -33,5 +39,50 @@ impl VersioningRepository for PostgresDocumentRepository {
             return Err(RepositoryError::IntegrityViolation);
         }
         Ok(())
+    }
+
+    async fn get_version_operation(
+        &self,
+        operation_id: VersionOperationId,
+    ) -> Result<Option<VersionOperationRecord>, RepositoryError> {
+        versioning_mutation::get_operation(&self.pool, operation_id).await
+    }
+
+    async fn get_version_snapshot(
+        &self,
+        document_id: DocumentId,
+        version_id: DocumentVersionId,
+    ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
+        versioning_rows::load_version(&self.pool, document_id, version_id).await
+    }
+
+    async fn create_version(
+        &self,
+        record: VersionMutationRecord,
+    ) -> Result<VersionOperationResult, RepositoryError> {
+        if record.identity().kind() != document_application::VersionOperationKind::Create {
+            return Err(RepositoryError::IntegrityViolation);
+        }
+        versioning_mutation::mutate(&self.pool, record).await
+    }
+
+    async fn update_working(
+        &self,
+        record: VersionMutationRecord,
+    ) -> Result<VersionOperationResult, RepositoryError> {
+        if record.identity().kind() != document_application::VersionOperationKind::Update {
+            return Err(RepositoryError::IntegrityViolation);
+        }
+        versioning_mutation::mutate(&self.pool, record).await
+    }
+
+    async fn rebase_working(
+        &self,
+        record: VersionMutationRecord,
+    ) -> Result<VersionOperationResult, RepositoryError> {
+        if record.identity().kind() != document_application::VersionOperationKind::Rebase {
+            return Err(RepositoryError::IntegrityViolation);
+        }
+        versioning_mutation::mutate(&self.pool, record).await
     }
 }

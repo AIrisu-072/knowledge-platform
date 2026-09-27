@@ -11,6 +11,7 @@ mod rows;
 mod semantic_inspection;
 mod semantic_inspection_rows;
 mod versioning;
+mod versioning_mutation;
 mod versioning_rows;
 
 use sqlx::{PgPool, migrate::MigrateError};
