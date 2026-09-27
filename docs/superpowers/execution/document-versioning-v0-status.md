@@ -3,6 +3,7 @@
 - Status: **ACTIVE — DESIGN DISCOVERY**
 - Baseline: `main@09c8235755573d16e09b8af029c22dc27caf6472`
 - Active branch: `design/document-versioning-v0`
+- Last committed branch head before this checkpoint update: `4b9df6962697f6969c42e45499be8071412f85f9`; no Versioning design code or CI run exists. The baseline merge-head CI is `36281613991` (**SUCCESS**).
 - Implementation: **not started**; no Versioning design spec or implementation plan has been approved.
 
 ## Completed prerequisite
@@ -15,9 +16,11 @@
 
 - `spec/` remains normative. The approved Document Semantic Inspection v0 design §18 carries forward one WORKING Version per Document, a base from the current PUBLISHED Version, repository-transaction version numbering, caller UUIDv7 operation IDs, Document revision increments, immutable PUBLISHED Versions, ContentItems, and reuse of the Publish operation ledger/API.
 - The next design must preserve the separate Semantic Inspection and Search Extraction paths, avoid a durable common content IR, and require successful inspection of every authoritative ContentItem.
-- Initial scope for withdrawal and scheduled publication is pending user selection. Managed-worker model and reasoning effort are also pending user selection under `AGENTS.md`.
+- User-selected design scope includes withdrawal and scheduled publication. The user requested inline execution in this session, so no worker is dispatched. The exact route for any later worker is `gpt-6-sol` with `ultra` effort.
+- Withdrawal of the current PUBLISHED Version remains a pending business decision. The current recommendation is to set `current_version_id` to null and never auto-publish an old Version; this also blocks new WORKING creation until a current PUBLISHED base is explicitly restored.
+- An inline architectural proposal has been presented: extend the existing Domain/Application/PostgreSQL and Publish ledger/API, preserve immutable authoritative FileObjects and DSI inspection for every ContentItem, and execute durable scheduled publication through the same idempotent Publish transition with due-time revalidation. The user has not yet approved that proposal.
 - No Design/profile amendment is proposed. There is no approval to write production Versioning code yet.
 
 ## Next exact action
 
-Resolve the two pending selections; inspect only the relevant existing Publish, Application, repository, and Semantic Inspection contracts; present the smallest coherent Versioning design for approval. After design approval, write and review the design spec, then prepare a separate implementation plan and request its approval before implementation.
+Receive the user's current-withdrawal rule and response to the presented architectural proposal. Incorporate both, then write and review the Versioning design spec only after conversational approval. Seek explicit written-spec approval before preparing a separate implementation plan; seek plan approval before implementation.

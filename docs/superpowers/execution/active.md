@@ -5,8 +5,11 @@
 - Status: **ACTIVE**. Current capability: **Document Versioning v0**; phase: **DESIGN DISCOVERY**. Capability status: `docs/superpowers/execution/document-versioning-v0-status.md`.
 - Baseline: `main@09c8235755573d16e09b8af029c22dc27caf6472`. Document Semantic Inspection v0 PR #10 is **MERGED** at this commit; merge-head CI `36281613991` is **SUCCESS**. The final PR head was `12047186787e2380bbc6ec74c4baa617b71b2525`.
 - Active branch: `design/document-versioning-v0`. The Versioning design spec and implementation plan do not exist yet; production implementation is **not authorized**. Starting references are `spec/data/logical-data-model-v0.md`, `spec/data/transaction-consistency-requirements-v0.md`, the approved Document Publish v0 design, and Document Semantic Inspection v0 Design §18.
-- Pending decisions: initial scope for withdrawal/scheduled publication; exact managed-worker model and effort. No Frozen Design amendment is proposed.
-- Next exact action: resolve the pending scope/model answers, compare minimal Versioning approaches against the existing Publish and Semantic Inspection contracts, obtain design approval, then write the Versioning design spec. Keep implementation gated on a separately approved plan.
+- Last committed branch head before this checkpoint update: `4b9df6962697f6969c42e45499be8071412f85f9`. No Versioning design CI has run; baseline merge-head CI `36281613991` is **SUCCESS**.
+- User scope decision: Document Versioning v0 design includes withdrawal and scheduled publication. Execution remains inline in this session; no worker is dispatched. If a worker is later requested, its specified route is `gpt-6-sol` / `ultra`. No Frozen Design amendment has been approved.
+- Pending design decision: withdrawal of the current PUBLISHED Version must specify whether `current_version_id` becomes null or another historical Version becomes current. The recommended fail-closed rule is null, with no automatic fallback.
+- Blocker: the user's withdrawal-current selection and response to the inline architectural proposal remain pending. The proposal uses the existing Publish transition for due scheduled publication with revalidation of the target, current Version, and publication quality.
+- Next exact action: receive those two answers, incorporate them into the architectural proposal, and write the Versioning design spec after conversational approval. Keep production implementation gated on a separately approved design and plan.
 
 This active checkpoint supersedes the prior Document Semantic Inspection handoff below.
 
