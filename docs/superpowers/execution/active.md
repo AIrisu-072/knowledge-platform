@@ -1,5 +1,16 @@
 # Active Execution Pointer
 
+## Active checkpoint — T10 read-boundary amendment, 2026-09-27 JST
+
+- Status: **ACTIVE**. Current capability: **Document Publication End v0 (T10)**; phase: **JAPANESE DESIGN APPROVED / AMENDMENT 1 REVIEW PENDING**. Capability status: `docs/superpowers/execution/document-publication-end-v0-status.md`.
+- Baseline: `feat/document-versioning-v0@96b068bc9484a219b435d0633ea6669ddb7d7f97` (unmerged PR #12 on PR #11). T10 branch: `design/document-publication-end-v0`; Draft PR #13 targets PR #12.
+- The user's conditional approval of the written T10 Design was fulfilled by the Japanese translation commit `3593444f19f9b5b4d0d3138fea68efaf26bf4594`; approval record and normative T10 alignment are at `eca5465f498c4fb2f7e5815b4c88ef0bce461506`. No T10 production code exists.
+- Frozen Authoritative Core §§3.1/13/18.5 requires `GetDocument` and binary read for an initial `WORKING` Version. T10 §6's current-only assignment for the existing API conflicts with that contract. Amendment 1 proposes to preserve draft reads, block the existing read after T10, and add a separate current-only normal-public API. The frozen T10 body has not been changed.
+- Blocker: approval of `docs/superpowers/specs/2026-09-27-document-publication-end-v0-design-amendment-1.md`, then implementation-plan review. PR #11/#12 remain unmerged; no Versioning Design amendment is proposed. Do not merge without explicit instruction.
+- Next exact action: review amendment 1. If approved, amend T10 Design §6 and finalize the implementation plan. Do not begin T10 production code before plan approval.
+
+This checkpoint supersedes the prior T10 checkpoint below.
+
 ## Active checkpoint — Document Publication End v0 design, 2026-09-27 JST
 
 - Status: **ACTIVE**. Current capability: **Document Publication End v0 (T10)**; phase: **DESIGN SPEC PROPOSED / WRITTEN REVIEW PENDING**. Capability status: `docs/superpowers/execution/document-publication-end-v0-status.md`.
