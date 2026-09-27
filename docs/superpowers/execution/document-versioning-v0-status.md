@@ -3,8 +3,8 @@
 - Status: **ACTIVE — DESIGN DISCOVERY**
 - Baseline: `main@09c8235755573d16e09b8af029c22dc27caf6472`
 - Active branch: `design/document-versioning-v0`
-- Last committed branch head before this checkpoint update: `4b9df6962697f6969c42e45499be8071412f85f9`; no Versioning design code or CI run exists. The baseline merge-head CI is `36281613991` (**SUCCESS**).
-- Implementation: **not started**; no Versioning design spec or implementation plan has been approved.
+- Last committed branch head before this proposed-design update: `cedc86c7127f42d3e4589eb199e8e864327f97bb`; no Versioning production code or design CI run exists. The baseline merge-head CI is `36281613991` (**SUCCESS**).
+- Design proposal: `docs/superpowers/specs/2026-09-27-document-versioning-v0-design.md` (**PROPOSED; not approved**). Implementation and implementation plan have not started.
 
 ## Completed prerequisite
 
@@ -17,10 +17,10 @@
 - `spec/` remains normative. The approved Document Semantic Inspection v0 design §18 carries forward one WORKING Version per Document, a base from the current PUBLISHED Version, repository-transaction version numbering, caller UUIDv7 operation IDs, Document revision increments, immutable PUBLISHED Versions, ContentItems, and reuse of the Publish operation ledger/API.
 - The next design must preserve the separate Semantic Inspection and Search Extraction paths, avoid a durable common content IR, and require successful inspection of every authoritative ContentItem.
 - User-selected design scope includes withdrawal and scheduled publication. The user requested inline execution in this session, so no worker is dispatched. The exact route for any later worker is `gpt-6-sol` with `ultra` effort.
-- Withdrawal of the current PUBLISHED Version remains a pending business decision. The current recommendation is to set `current_version_id` to null and never auto-publish an old Version; this also blocks new WORKING creation until a current PUBLISHED base is explicitly restored.
-- An inline architectural proposal has been presented: extend the existing Domain/Application/PostgreSQL and Publish ledger/API, preserve immutable authoritative FileObjects and DSI inspection for every ContentItem, and execute durable scheduled publication through the same idempotent Publish transition with due-time revalidation. The user has not yet approved that proposal.
+- User-confirmed withdrawal rule: transition the withdrawn current Version to `WITHDRAWN`, then restore the immediately preceding eligible `PUBLISHED` Version as `current_version_id`; use null when no such Version exists. Do not add a withdrawal/restore flag. Existing lifecycle state and `withdrawn_at` express the withdrawn Version; Audit/Outbox history records the old and restored current IDs. Fallback integrity/quality behavior must be specified in the design.
+- The proposed Design Spec extends existing Domain/Application/PostgreSQL and the Publish ledger/API, preserves immutable authoritative FileObjects and DSI inspection for every ContentItem, and executes durable scheduled publication through the same idempotent Publish transition with due-time revalidation. It proposes immediate-base restoration on withdrawal, falling back to null if the base cannot be proved safe. The user has not yet approved the full Design Spec.
 - No Design/profile amendment is proposed. There is no approval to write production Versioning code yet.
 
 ## Next exact action
 
-Receive the user's current-withdrawal rule and response to the presented architectural proposal. Incorporate both, then write and review the Versioning design spec only after conversational approval. Seek explicit written-spec approval before preparing a separate implementation plan; seek plan approval before implementation.
+Review the proposed Design Spec with the user, especially first-Version withdrawal, fallback-to-null on failed predecessor validation, scheduled intent/cancellation, and stale `WORKING` rebase. Incorporate feedback and seek explicit written-spec approval. Then update the deferred normative T4/schedule rules, prepare a separate implementation plan, and seek plan approval before implementation.
