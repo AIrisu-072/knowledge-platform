@@ -49,6 +49,7 @@ fn rendition(raw_id: u128, byte: u8) -> VersioningRenditionInput {
 enum Mode {
     Plain,
     Unsupported,
+    Ambiguous,
     UnresolvedChange,
     Comment,
     InvalidSignature,
@@ -167,6 +168,9 @@ impl SemanticInspectionExecutor for FakeExecutor {
         let mode = *self.mode.lock().unwrap();
         if matches!(mode, Mode::Unsupported) {
             return Err(InspectionExecutionError::UnsupportedDocumentFormat);
+        }
+        if matches!(mode, Mode::Ambiguous) {
+            return Err(InspectionExecutionError::ParserDisagreement);
         }
         let changes = if matches!(mode, Mode::UnresolvedChange) {
             vec![
@@ -327,6 +331,21 @@ async fn preflight_fails_closed_on_binding_mismatch_and_unsupported_inspection()
             .lock()
             .unwrap()
             .is_empty()
+    );
+
+    let ambiguous = fixture(Mode::Ambiguous);
+    let error = ambiguous
+        .service
+        .prepare(
+            Title::new("Policy").unwrap(),
+            vec![input("primary", 0, 8, 7)],
+            InspectionProfileVersion::DsiV0,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error,
+        ApplicationError::InspectionFailed(InspectionExecutionError::ParserDisagreement)
     );
 }
 

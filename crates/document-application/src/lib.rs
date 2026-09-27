@@ -6,9 +6,11 @@ mod command;
 mod error;
 mod events;
 mod ports;
+mod publish_quality;
 mod reconciliation;
 mod semantic_inspection;
 mod service;
+mod versioning_preflight;
 
 pub use command::{
     CreateDocumentCommand, CreateDocumentResult, PublishDocumentCommand, PublishDocumentResult,
@@ -25,8 +27,12 @@ pub use ports::{
     CreateInitialDocumentRecord, DocumentPublishRepository, DocumentRepository, FileStorage,
     IdGenerator, PublishCandidate, PublishCommandIdentity, PublishInitialVersionRecord,
     PublishOperationRecord, SemanticInspectionExecutor, SemanticInspectionRepository,
-    StorageObjectInfo, StorageObjectKind, StoreFileRequest, StoredFile,
+    StorageObjectInfo, StorageObjectKind, StoreFileRequest, StoredFile, VersioningRepository,
 };
 pub use reconciliation::{ReconciliationClassification, ReconciliationFinding, classify};
 pub use semantic_inspection::{EnsureSemanticInspection, SemanticInspectionRecord};
 pub use service::DocumentService;
+pub use versioning_preflight::{
+    PreparedContentItem, PreparedManifest, VersioningItemInput, VersioningPreflight,
+    VersioningRenditionInput,
+};

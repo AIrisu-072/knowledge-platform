@@ -172,6 +172,13 @@ pub trait SemanticInspectionRepository: Send + Sync {
 }
 
 #[allow(async_fn_in_trait)]
+pub trait VersioningRepository: Send + Sync {
+    /// Register an immutable FileObject before a Version can reference it.
+    /// Replaying the same FileId is valid only for the same raw binding.
+    async fn register_file_object(&self, file: FileObject) -> Result<(), RepositoryError>;
+}
+
+#[allow(async_fn_in_trait)]
 pub trait SemanticInspectionExecutor: Send + Sync {
     async fn inspect(
         &self,

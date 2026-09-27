@@ -90,6 +90,8 @@ pub enum ApplicationError {
     Conflict,
     #[error("business rule rejected operation")]
     BusinessRule,
+    #[error("publication quality rejected content: {0}")]
+    PublishQualityRejected(String),
     #[error("storage write failed")]
     StorageWriteFailed,
     #[error("storage sync failed")]
