@@ -9,7 +9,9 @@ multiple-versions = "warn"
 wildcards = "deny"
 
 [licenses]
-allow = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "Unicode-3.0", "Zlib", "ISC"]
+# webpki-roots is pulled by Lindera's dictionary fetch path in this isolated PoC.
+# This metadata gate does not clear the separately downloaded dictionary asset.
+allow = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "Unicode-3.0", "Zlib", "ISC", "CDLA-Permissive-2.0"]
 confidence-threshold = 0.8
 
 [licenses.private]
