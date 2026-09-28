@@ -53,4 +53,8 @@ PR C #18 のexact head `72c4bb29847efe838ec24d63c75f3d5011a1b467` は、標準CI
 
 ## 最終head gateと配備前提
 
-`mise run verify:fast` は2026-09-28のPR D局所差分でfmt、Rust check/strict Clippy、architecture、API、543/543 Rust tests PASS（既定の除外5）。その後、旧予約行と負荷fixtureのassertionを強化し、対象2試験を再実行してPASS。最終差分の `mise run verify` もfmt、Rust check/strict Clippy、architecture、API、security、543/543 Rust tests PASS（既定の除外5）。`verify:full` は今回の差分・repository policyが要求しないため未実行。D exact-head hosted標準CI・Sandbox・PoCのrun IDは実行後ここへ記録する。本番identity resolverとtransportの実接続はこのv0に含めず、schedulerは未接続時に起動を拒否する。Cedar/AWS Verified Permissionsへの移行は依頼者の選択により次期設計で検討する。PRはDraftのままレビューし、明示的なmerge指示を待つ。
+`mise run verify:fast` は2026-09-28のPR D局所差分でfmt、Rust check/strict Clippy、architecture、API、543/543 Rust tests PASS（既定の除外5）。その後、旧予約行と負荷fixtureのassertionを強化し、対象2試験を再実行してPASS。最終差分の `mise run verify` もfmt、Rust check/strict Clippy、architecture、API、security、543/543 Rust tests PASS（既定の除外5）。`verify:full` は今回の差分・repository policyが要求しないため未実行。
+
+PR D #19 の実装head `0f0b3d0322ac9c904a5dedb5f19b434fbb837bde` は、標準CI `36403750795`、DSI Sandbox Preflight `36403750803`、DSI PoC `36403750859` がすべてSUCCESS。PRはOPEN/Draft、baseはPR C #18、未解決review thread 0。以下の状態記録だけを追記するcommitは、別のexact headとして再確認する。
+
+本番identity resolverとtransportの実接続はこのv0に含めず、schedulerは未接続時に起動を拒否する。Cedar/AWS Verified Permissionsへの移行は依頼者の選択により次期設計で検討する。PRはDraftのままレビューし、明示的なmerge指示を待つ。
