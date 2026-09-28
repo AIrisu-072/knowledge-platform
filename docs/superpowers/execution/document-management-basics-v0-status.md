@@ -1,5 +1,16 @@
 # Document Management Basics v0 — 準備状況
 
+## Active checkpoint — PR C MB-08〜10 local GREEN、2026-09-28 JST
+
+- 状態: **IMPLEMENTATION ACTIVE — PR A/B exact-head GREEN、PR C local GREEN / hosted gate待ち**。MB-11とDMB-01〜25の全体受入は未完了。承認済み設計/計画blobは `38010802a04c285336810e9b9c637c656ed1a76b` / `3b5cc84a8593134cdd7e01ea026bd2a124fa9585` のまま。
+- PR A #16 `e66fba6f56fec8e7666d8b1df667625e64ef2049` は標準CI `36382662702`、Sandbox `36382662689`、PoC `36382662759` SUCCESS。PR B #17 `448d918ee3e1690695b8e02da4102d0f90e28664` は標準CI `36387421101`、Sandbox `36387421076`、PoC `36387421029` SUCCESS。Bの旧head `0dce053` の標準CIは legacy孤立Folder試験が新single-root制約に反してFAIL。試験を自己参照の非rooted Folderへ修正した `448d918` で局所試験・全3 hosted gate成功。両PRはOPEN/Draft、未マージ。
+- PR C branch `feat/document-management-basics-v0-c`。MB-08 code head `b675580`、MB-09 `3188980`、MB-10 `732a2680717b09835d76171a36275af872ff9072`。Cは未push・PR未作成。MB-08は未定義APIだけのREDから、複合主キーReadStateと初回監査の同一transactionを実装。並行/issuer分離/現行Version/T10/監査rollbackなど実DB7/7。MB-09はcursor未定義REDから、3種類の認可付き一覧とFolder直下一覧、NFC/literal検索、認可前のlimit禁止、本人未読、現在認可とcursor bindingを実装。cursor3/3、実DB6/6。MB-10は履歴/ファイルAPI未定義REDから、業務台帳とVersion fallbackの投影、旧予約終端NULLの保持、ContentItem/Representationの所属、監査commit後Storage openを実装。history2/2、file1/1、display name1/1。既存due7、schedule5、withdraw8、T10 transaction4の計24件PASS。対象strict Clippy/fmt/diff check PASS。Cのworkspace/exact-head CIは未実行。
+- M-Cは `0008_document_read_state_v0.sql`。production追加dependencyは既存workspaceの `serde` と PoC-qualified `unicode-normalization 0.1.25` のみ。検索Indexやdurable共通IRは追加していない。設計意味の変更提案なし。
+- 配備前提: 本番identity resolver接続は未提供でschedulerは未接続起動を拒否。Cedar／AWS Verified Permissionsは次期設計で検討。merge・deploy・本番migration指示なし。
+- 次の exact action: この記録をCにcommit/pushし、PR B #17 baseのDraft PR Cを作る。C exact-head標準CI/Sandbox/PoCを確認し、成功後にPR D branchへ進みMB-11横断REDを作る。
+
+以下は前回checkpointの履歴である。
+
 ## Active checkpoint — PR B MB-05〜07 local GREEN、2026-09-28 JST
 
 - 状態: **IMPLEMENTATION ACTIVE — PR A exact-head GREEN、PR B local GREEN / hosted gate待ち**。MB-08〜11とDMB-01〜25の全体受入は未完了。承認済み設計/計画blobは `38010802a04c285336810e9b9c637c656ed1a76b` / `3b5cc84a8593134cdd7e01ea026bd2a124fa9585` のまま。
