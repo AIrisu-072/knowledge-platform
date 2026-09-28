@@ -46,8 +46,8 @@ pub use events::{
 };
 pub use folder_service::FolderService;
 pub use management_command::{
-    ManagementCommand, ManagementErrorCode, ManagementMutationResult, ManagementOperationId,
-    ManagementResult,
+    ManagementCommand, ManagementErrorCode, ManagementMoveDetails, ManagementMutationResult,
+    ManagementOperationId, ManagementResult,
 };
 pub use management_digest::{
     canonical_command_bytes, canonical_json_bytes, management_command_digest,

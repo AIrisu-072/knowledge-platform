@@ -1,7 +1,7 @@
 use document_application::{
-    BootstrapRootPolicy, ManagementCommand, ManagementMutationResult, ManagementOperationId,
-    ManagementRepository, ManagementResult, RepositoryError, VerifiedActorContext,
-    management_command_digest,
+    BootstrapRootPolicy, ManagementCommand, ManagementMoveDetails, ManagementMutationResult,
+    ManagementOperationId, ManagementRepository, ManagementResult, RepositoryError,
+    VerifiedActorContext, management_command_digest,
 };
 use document_domain::{
     Action, FolderId, PolicyGrant, PolicyId, PolicyMode, PolicySubjectKind, PolicyTarget,
@@ -193,6 +193,28 @@ pub(crate) fn decode_result(
         .transpose()
         .map_err(|_| RepositoryError::IntegrityViolation)?;
     let access_revision = data.get("access_revision").and_then(Value::as_i64);
+    let movement = data
+        .get("movement")
+        .filter(|value| !value.is_null())
+        .map(|value| {
+            let from = value
+                .get("from_folder_id")
+                .and_then(Value::as_str)
+                .and_then(|value| Uuid::parse_str(value).ok())
+                .ok_or(RepositoryError::IntegrityViolation)?;
+            let to = value
+                .get("to_folder_id")
+                .and_then(Value::as_str)
+                .and_then(|value| Uuid::parse_str(value).ok())
+                .ok_or(RepositoryError::IntegrityViolation)?;
+            let subtree_affected = value.get("subtree_affected").and_then(Value::as_u64);
+            Ok(ManagementMoveDetails {
+                from_folder_id: FolderId::from_uuid(from),
+                to_folder_id: FolderId::from_uuid(to),
+                subtree_affected,
+            })
+        })
+        .transpose()?;
     let result = ManagementMutationResult {
         operation_id,
         resource,
@@ -212,10 +234,12 @@ pub(crate) fn decode_result(
         } else {
             None
         },
+        movement,
     };
     match operation_kind.as_str() {
         "set_access_policy" => Ok(ManagementResult::PolicyMutation(result)),
         "update_document_metadata" => Ok(ManagementResult::MetadataUpdate(result)),
+        "move_document" => Ok(ManagementResult::DocumentMove(result)),
         "create_folder" | "rename_folder" | "move_folder" => {
             Ok(ManagementResult::FolderMutation(result))
         }
@@ -251,6 +275,11 @@ pub(crate) async fn insert_operation(
         "policy_id": result.policy_id.map(|id| id.as_uuid().to_string()),
         "access_revision": result.access_revision,
         "document_metadata": result.document_metadata,
+        "movement": result.movement.as_ref().map(|move_details| json!({
+            "from_folder_id": move_details.from_folder_id.as_uuid().to_string(),
+            "to_folder_id": move_details.to_folder_id.as_uuid().to_string(),
+            "subtree_affected": move_details.subtree_affected,
+        })),
     }))
     .bind(result.resulting_revision)
     .bind(result.occurred_at)
@@ -381,6 +410,7 @@ impl PostgresDocumentRepository {
                 changed,
                 occurred_at: now,
                 document_metadata: None,
+                movement: None,
             };
             insert_operation(&mut tx, ctx, &command, digest, &mutation).await?;
             if changed {
@@ -432,11 +462,16 @@ impl ManagementRepository for PostgresDocumentRepository {
             command @ ManagementCommand::UpdateDocumentMetadata { .. } => {
                 self.execute_metadata_update(ctx, command).await
             }
+            command @ ManagementCommand::MoveDocument { .. } => {
+                self.execute_document_move(ctx, command).await
+            }
             command @ (ManagementCommand::CreateFolder { .. }
             | ManagementCommand::RenameFolder { .. }) => {
                 self.execute_folder_mutation(ctx, command).await
             }
-            _ => Err(RepositoryError::BusinessRule),
+            command @ ManagementCommand::MoveFolder { .. } => {
+                self.execute_folder_move(ctx, command).await
+            }
         };
         if matches!(result, Err(RepositoryError::Forbidden))
             && record_authorization_denied(&self.pool, ctx.principal(), operation_kind)
@@ -555,6 +590,7 @@ impl BootstrapRootPolicy for PostgresDocumentRepository {
                 changed: true,
                 occurred_at: now,
                 document_metadata: None,
+                movement: None,
             }))
         }
         .await;

@@ -1,10 +1,11 @@
 use document_application::{
-    ManagementCommand, ManagementMutationResult, ManagementResult, RepositoryError,
-    VerifiedActorContext, management_command_digest,
+    ManagementCommand, ManagementMoveDetails, ManagementMutationResult, ManagementResult,
+    RepositoryError, VerifiedActorContext, management_command_digest,
 };
 use document_domain::{Action, DocumentId, ResourceRef};
 use serde_json::{Value, json};
 use sqlx::{Postgres, Row, Transaction, postgres::PgRow};
+use uuid::Uuid;
 
 use crate::{
     PostgresDocumentRepository,
@@ -56,10 +57,64 @@ pub(crate) async fn authorize_management_operation(
                 .ok_or(RepositoryError::DocumentNotFound)?;
             authorize_metadata(tx, ctx, document_id).await
         }
+        ("move_document", ResourceRef::Document(document_id)) => {
+            sqlx::query("SELECT document_id FROM documents WHERE document_id = $1 FOR SHARE")
+                .bind(document_id.as_uuid())
+                .fetch_optional(&mut **tx)
+                .await
+                .map_err(map_statement_error)?
+                .ok_or(RepositoryError::DocumentNotFound)?;
+            let ManagementResult::DocumentMove(result) = decode_result(row)? else {
+                return Err(RepositoryError::IntegrityViolation);
+            };
+            let movement = result.movement.ok_or(RepositoryError::IntegrityViolation)?;
+            let mut actions = vec![Action::Read, Action::Write, Action::Administer];
+            if document_ended(tx, document_id).await? {
+                actions.push(Action::ReadHistory);
+            }
+            authorize_in_tx(
+                tx,
+                ctx,
+                &[
+                    (ResourceRef::Document(document_id), actions),
+                    (
+                        ResourceRef::Folder(movement.from_folder_id),
+                        vec![Action::Administer],
+                    ),
+                    (
+                        ResourceRef::Folder(movement.to_folder_id),
+                        vec![Action::Administer],
+                    ),
+                ],
+            )
+            .await
+        }
         ("set_access_policy", _) => {
             authorize_in_tx(tx, ctx, &[(resource, vec![Action::Administer])]).await
         }
-        ("create_folder" | "rename_folder" | "move_folder", ResourceRef::Folder(_)) => {
+        ("move_folder", ResourceRef::Folder(_)) => {
+            let ManagementResult::FolderMutation(result) = decode_result(row)? else {
+                return Err(RepositoryError::IntegrityViolation);
+            };
+            let movement = result.movement.ok_or(RepositoryError::IntegrityViolation)?;
+            authorize_in_tx(
+                tx,
+                ctx,
+                &[
+                    (resource, vec![Action::Administer]),
+                    (
+                        ResourceRef::Folder(movement.from_folder_id),
+                        vec![Action::Administer],
+                    ),
+                    (
+                        ResourceRef::Folder(movement.to_folder_id),
+                        vec![Action::Administer],
+                    ),
+                ],
+            )
+            .await
+        }
+        ("create_folder" | "rename_folder", ResourceRef::Folder(_)) => {
             authorize_in_tx(tx, ctx, &[(resource, vec![Action::Administer])]).await
         }
         _ => Err(RepositoryError::IntegrityViolation),
@@ -190,6 +245,7 @@ impl PostgresDocumentRepository {
                 changed,
                 occurred_at: now,
                 document_metadata: Some(updated),
+                movement: None,
             };
             insert_operation(&mut tx, ctx, &command, digest, &mutation).await?;
             if changed {
@@ -214,6 +270,172 @@ impl PostgresDocumentRepository {
                 .await?;
             }
             Ok(ManagementResult::MetadataUpdate(mutation))
+        }
+        .await;
+        match result {
+            Ok(result) => {
+                tx.commit().await.map_err(map_commit_error)?;
+                Ok(result)
+            }
+            Err(error) => {
+                let _ = tx.rollback().await;
+                Err(error)
+            }
+        }
+    }
+
+    pub(crate) async fn execute_document_move(
+        &self,
+        ctx: &VerifiedActorContext,
+        command: ManagementCommand,
+    ) -> Result<ManagementResult, RepositoryError> {
+        let ManagementCommand::MoveDocument {
+            document_id,
+            from_folder_id,
+            to_folder_id,
+            expected_document_revision,
+            reason,
+            ..
+        } = &command
+        else {
+            return Err(RepositoryError::BusinessRule);
+        };
+        let digest =
+            management_command_digest(ctx, &command).map_err(|_| RepositoryError::BusinessRule)?;
+        let document_id = *document_id;
+        let from = *from_folder_id;
+        let to = *to_folder_id;
+        let expected_revision = *expected_document_revision;
+        let mut tx = self.pool.begin().await.map_err(map_statement_error)?;
+        let result: Result<ManagementResult, RepositoryError> = async {
+            let access_revision = lock_access_state(&mut tx, AccessLockMode::Exclusive).await?;
+            if let Some(saved) = saved_operation(&mut tx, command.operation_id().as_uuid()).await? {
+                return replay_management(&mut tx, ctx, &saved, digest).await;
+            }
+            let mut folder_ids = vec![from.as_uuid(), to.as_uuid()];
+            folder_ids.sort();
+            folder_ids.dedup();
+            let folders = sqlx::query(
+                "SELECT folder_id,status FROM folders WHERE folder_id = ANY($1) \
+                 ORDER BY folder_id FOR UPDATE",
+            )
+            .bind(folder_ids)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(map_statement_error)?;
+            if folders.len() != usize::from(from != to) + 1 {
+                return Err(RepositoryError::FolderNotFound);
+            }
+            if folders
+                .iter()
+                .any(|row| row.get::<String, _>("status") != "ACTIVE")
+            {
+                return Err(RepositoryError::BusinessRule);
+            }
+            let document = sqlx::query(
+                "SELECT folder_id,revision FROM documents WHERE document_id = $1 FOR UPDATE",
+            )
+            .bind(document_id.as_uuid())
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(map_statement_error)?
+            .ok_or(RepositoryError::DocumentNotFound)?;
+            if let Some(saved) = saved_operation(&mut tx, command.operation_id().as_uuid()).await? {
+                return replay_management(&mut tx, ctx, &saved, digest).await;
+            }
+            let mut document_actions = vec![Action::Read, Action::Write, Action::Administer];
+            if document_ended(&mut tx, document_id).await? {
+                document_actions.push(Action::ReadHistory);
+            }
+            authorize_in_tx(
+                &mut tx,
+                ctx,
+                &[
+                    (ResourceRef::Document(document_id), document_actions),
+                    (ResourceRef::Folder(from), vec![Action::Administer]),
+                    (ResourceRef::Folder(to), vec![Action::Administer]),
+                ],
+            )
+            .await?;
+            let actual_from: Uuid = document.try_get("folder_id").map_err(map_statement_error)?;
+            let old_revision: i64 = document.try_get("revision").map_err(map_statement_error)?;
+            if actual_from != from.as_uuid() || old_revision != expected_revision {
+                return Err(RepositoryError::Conflict);
+            }
+            let changed = from != to;
+            let revision = old_revision
+                .checked_add(i64::from(changed))
+                .ok_or(RepositoryError::BusinessRule)?;
+            let new_access_revision = if changed {
+                let pending: bool = sqlx::query_scalar(
+                    "SELECT EXISTS (SELECT 1 FROM document_publish_schedules \
+                     WHERE document_id = $1 AND status = 'PENDING')",
+                )
+                .bind(document_id.as_uuid())
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(map_statement_error)?;
+                if pending {
+                    return Err(RepositoryError::BusinessRule);
+                }
+                sqlx::query(
+                    "UPDATE documents SET folder_id = $1, revision = $2 WHERE document_id = $3",
+                )
+                .bind(to.as_uuid())
+                .bind(revision)
+                .bind(document_id.as_uuid())
+                .execute(&mut *tx)
+                .await
+                .map_err(map_statement_error)?;
+                sqlx::query_scalar::<_, i64>(
+                    "UPDATE document_access_state SET access_revision = access_revision + 1 \
+                     WHERE id = 1 RETURNING access_revision",
+                )
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(map_statement_error)?
+            } else {
+                access_revision
+            };
+            let now = postgres_timestamp_now();
+            let mutation = ManagementMutationResult {
+                operation_id: command.operation_id(),
+                resource: ResourceRef::Document(document_id),
+                resulting_revision: revision,
+                access_revision: Some(new_access_revision),
+                policy_id: None,
+                changed,
+                occurred_at: now,
+                document_metadata: None,
+                movement: Some(ManagementMoveDetails {
+                    from_folder_id: from,
+                    to_folder_id: to,
+                    subtree_affected: None,
+                }),
+            };
+            insert_operation(&mut tx, ctx, &command, digest, &mutation).await?;
+            if changed {
+                insert_targeted_events(
+                    &mut tx,
+                    ResourceRef::Document(document_id),
+                    "DocumentMoved",
+                    "document.moved",
+                    ctx.principal(),
+                    now,
+                    json!({
+                        "operation_id": command.operation_id().as_uuid().to_string(),
+                        "document_id": document_id.as_uuid().to_string(),
+                        "from_folder_id": from.as_uuid().to_string(),
+                        "to_folder_id": to.as_uuid().to_string(),
+                        "document_revision": revision,
+                        "access_revision": new_access_revision,
+                        "visibility_changed": true,
+                        "reason": reason,
+                    }),
+                )
+                .await?;
+            }
+            Ok(ManagementResult::DocumentMove(mutation))
         }
         .await;
         match result {

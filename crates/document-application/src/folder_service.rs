@@ -44,6 +44,19 @@ impl<R: ManagementRepository> FolderService<R> {
         self.execute(ctx, command).await
     }
 
+    pub async fn move_folder(
+        &self,
+        ctx: &VerifiedActorContext,
+        command: ManagementCommand,
+    ) -> Result<ManagementMutationResult, ApplicationError> {
+        if !matches!(command, ManagementCommand::MoveFolder { .. }) {
+            return Err(ApplicationError::Validation(
+                "move_folder requires a folder move command".into(),
+            ));
+        }
+        self.execute(ctx, command).await
+    }
+
     async fn execute(
         &self,
         ctx: &VerifiedActorContext,
