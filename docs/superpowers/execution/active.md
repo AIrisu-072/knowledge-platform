@@ -1,5 +1,15 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document Management Basics v0、2026-09-28 JST
+
+- Status: **ACTIVE — 計画承認済み・規範反映中・MB-01開始準備**。詳細は `docs/superpowers/execution/document-management-basics-v0-status.md`。以前の Versioning/T10 checkpoint は完了した先行工程の記録。
+- 設計/計画: PR #15 `design/document-management-basics-v0`。凍結設計 blob `38010802a04c285336810e9b9c637c656ed1a76b`、依頼者承認済み計画 blob `3b5cc84a8593134cdd7e01ea026bd2a124fa9585`。承認・開始条件変更の記録は計画 approval 文書。
+- 正本の着手時状態: `main@55dc3d3a430c8f36e1db8277fee15c4429258466`、PR #15 head `35eb7bc72cb778d9a5689fe2db8410c468a9dd30`、OPEN/Draft、required checks SUCCESS、未解決 review thread 0。
+- 実行: MB-01〜11を依存順に進め、PR #15→A→B→C→DのDraft stackを準備する。開発ログ一元管理は依頼者の指示で今回の開始条件から除外されたが、完了確認ではない。merge、deploy、本番migrationは指示されていない。
+- Blocker: なし。製品実装は規範追記の差分確認・commit後に開始。次の exact action: 設計ブランチの規範追記をレビュー・commit/pushし、隔離実装worktreeでMB-01のRED試験を作る。
+
+This checkpoint supersedes the prior Versioning / T10 checkpoint below.
+
 ## Active checkpoint — Versioning / T10 main 統合、2026-09-28 JST
 
 - Status: **ACTIVE — 統合後の main CI 確認中**。Document Versioning v0 と Document Publication End v0 (T10) の実装は完了し、依頼者の明示指示で PR #11 → #12 → #13 → #14 を順に main へマージした。詳細は `docs/superpowers/execution/document-publication-end-v0-status.md`。

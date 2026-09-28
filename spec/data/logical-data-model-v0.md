@@ -97,6 +97,8 @@ Search Platform が保持する。
 
 `path` は原則派生値とし、正本 ID として使用しない。
 
+Document Management Basics v0 では root の既存固定 ID を維持し、通常操作で移動・改名・削除しない。新規 Folder の名前は前後空白を除き Unicode NFC に正規化する。空名、制御文字、`/`、`\\`、`.`、`..`、255 Unicode scalar values 超を拒否し、同じ親の下で正規化後の名前を大小文字を区別して一意にする。既存名の不正・衝突・孤立・cycle・複数 root は移行前に検出して停止し、自動改名しない。Folder 自身の revision は Document revision と別に保持する。
+
 ## 2.3 Document
 
 文書という論理的な同一性を表す。版が変わっても Document は同じ。
@@ -246,6 +248,8 @@ v0 では柔軟性を優先し、共通項目 + 拡張 metadata の構成とす�
 
 Source 固有項目は拡張 metadata として保持可能にする。
 
+Document Management Basics v0 の共通属性の編集対象は `document_type`、`owning_department`、`category`、JSON object の `extensions` に限定する。set/unset の部分更新では対象外の既存キーを保持し、同一キーの set/unset を同時指定しない。Version 固有 metadata、title、本文、原本、公開状態はこの操作では変えない。同値更新は Document revision と mutation event を増やさない。
+
 ## 2.8 Tag / Category
 
 必要に応じて many-to-many で Document と関連付ける。
@@ -262,7 +266,7 @@ Folder は物理的・階層的整理、Tag / Category は横断分類として�
 | principal_id | 外部 Principal ID |
 | document_version_id | 読んだ版 |
 | first_read_at | 初回既読日時 |
-| last_read_at | 最終閲覧日時。必要なら |
+| last_read_at | v0では保持しない。将来の拡張点 |
 
 論理主キー:
 
@@ -275,7 +279,9 @@ Folder は物理的・階層的整理、Tag / Category は横断分類として�
 - 「全員を未読に戻す」ための一括更新が不要。
 - 端末を変えても Principal が同一なら既読状態を維持できる。
 
-## 2.10 AccessPolicy（v0では拡張点）
+Document Management Basics v0 では、信頼済み HumanInteractive 本人による現行 `PUBLISHED` Version の明示確認でのみ `first_read_at` を作る。通常参照、Agent/Service、プレビュー先読みは既読にしない。重複確認は自然キーで冪等に扱い、初回の必須 Audit と同一 transaction にする。旧版を後から既読にしたり、新版へ既読を自動継承したりしない。
+
+## 2.10 AccessPolicy
 
 認証実装は後続でも、データモデル上は行き止まりを作らない。
 
@@ -286,6 +292,10 @@ Folder は物理的・階層的整理、Tag / Category は横断分類として�
 - read / write / publish / administer 等の action を定義可能
 
 Search Platform には権限判定用の派生 access scope を同期可能とする。
+
+Document Management Basics v0 では Folder または Document に安定した Policy ID と policy revision を持つ明示 policy を binding できる。主体は issuer 付き Principal / Group / Role、操作は `read`、`read_history`、`write`、`publish`、`administer` とし、操作間の暗黙の包含はない。allow-only とし、Document から祖先 Folder へたどった最も近い明示 policy が policy 全体を置換する。親子 policy を和集合にしない。明示空 policy は不正で、継承は明示 policy の解除として表す。root policy 未設定なら一般操作は拒否する。root の初期 policy は信頼済み bootstrap 専用操作で登録し、通常 T8 で回復・置換しない。
+
+単一の `access-state` revision/guard により policy 変更と Folder/Document 移動を、認可付き操作と直列化する。Policy、access-state、Folder、Document の revision はそれぞれ別である。管理操作台帳は操作 ID、型付き対象、期待 revision、actor、正規化 digest、changed/unchanged 結果、UTC 時刻を保持し、v0 では TTL を設けない。既存 Document に全員向け policy を推定付与しない。
 
 ---
 
