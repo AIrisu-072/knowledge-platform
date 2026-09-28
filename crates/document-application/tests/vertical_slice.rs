@@ -131,15 +131,17 @@ async fn real_filesystem_and_postgres_round_trip_authoritative_create_get_open()
             .expect("file object count query should succeed");
     assert_eq!(file_objects, 1);
 
-    let primary_version_files: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM version_files \
-         WHERE document_version_id = $1 AND role = 'PRIMARY'",
+    let primary_content_items: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM content_items ci \
+         JOIN content_representations cr ON cr.content_representation_id = ci.authoritative_representation_id \
+         WHERE ci.document_version_id = $1 AND ci.logical_path = 'primary' AND ci.ordinal = 0 \
+           AND cr.role = 'AUTHORITATIVE'",
     )
     .bind(created.document_version_id().as_uuid())
     .fetch_one(&pool)
     .await
-    .expect("version file count query should succeed");
-    assert_eq!(primary_version_files, 1);
+    .expect("canonical primary count query should succeed");
+    assert_eq!(primary_content_items, 1);
 
     let domain_outbox: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = $1")
@@ -254,15 +256,17 @@ async fn missing_physical_file_preserves_authoritative_state_and_surfaces_integr
             .expect("file object count query should succeed");
     assert_eq!(file_objects, 1);
 
-    let primary_version_files: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM version_files \
-         WHERE document_version_id = $1 AND role = 'PRIMARY'",
+    let primary_content_items: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM content_items ci \
+         JOIN content_representations cr ON cr.content_representation_id = ci.authoritative_representation_id \
+         WHERE ci.document_version_id = $1 AND ci.logical_path = 'primary' AND ci.ordinal = 0 \
+           AND cr.role = 'AUTHORITATIVE'",
     )
     .bind(created.document_version_id().as_uuid())
     .fetch_one(&pool)
     .await
-    .expect("version file count query should succeed");
-    assert_eq!(primary_version_files, 1);
+    .expect("canonical primary count query should succeed");
+    assert_eq!(primary_content_items, 1);
 
     let domain_outbox: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = $1")

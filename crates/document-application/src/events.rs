@@ -8,6 +8,18 @@ pub const DOCUMENT_VERSION_PUBLISHED: &str = "DocumentVersionPublished";
 pub const AUDIT_DOCUMENT_CREATED: &str = "document.created";
 pub const AUDIT_DOCUMENT_VERSION_CREATED: &str = "document.version.created";
 pub const AUDIT_DOCUMENT_VERSION_PUBLISHED: &str = "document.version.published";
+pub const DOCUMENT_VERSION_UPDATED: &str = "DocumentVersionUpdated";
+pub const DOCUMENT_VERSION_REBASED: &str = "DocumentVersionRebased";
+pub const AUDIT_DOCUMENT_VERSION_UPDATED: &str = "document.version.updated";
+pub const AUDIT_DOCUMENT_VERSION_REBASED: &str = "document.version.rebased";
+pub const DOCUMENT_VERSION_WITHDRAWN: &str = "DocumentVersionWithdrawn";
+pub const AUDIT_DOCUMENT_VERSION_WITHDRAWN: &str = "document.version.withdrawn";
+pub const DOCUMENT_VERSION_PUBLICATION_SCHEDULED: &str = "DocumentVersionPublicationScheduled";
+pub const AUDIT_DOCUMENT_VERSION_PUBLICATION_SCHEDULED: &str =
+    "document.version.publication.scheduled";
+pub const DOCUMENT_VERSION_PUBLICATION_CANCELLED: &str = "DocumentVersionPublicationCancelled";
+pub const AUDIT_DOCUMENT_VERSION_PUBLICATION_CANCELLED: &str =
+    "document.version.publication.cancelled";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DomainEventRecord {

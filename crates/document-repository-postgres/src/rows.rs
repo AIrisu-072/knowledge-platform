@@ -3,7 +3,7 @@ use sqlx::FromRow;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-#[derive(Debug, FromRow)]
+#[derive(Debug, Clone, FromRow)]
 pub(crate) struct AuthoritativeRow {
     pub(crate) document_id: Uuid,
     pub(crate) folder_id: Uuid,
@@ -13,6 +13,8 @@ pub(crate) struct AuthoritativeRow {
     pub(crate) document_created_at: OffsetDateTime,
     pub(crate) document_version_id: Uuid,
     pub(crate) version_no: i64,
+    pub(crate) base_document_version_id: Option<Uuid>,
+    pub(crate) requires_content_classification: bool,
     pub(crate) lifecycle_state: String,
     pub(crate) title: String,
     pub(crate) revision_reason: Option<String>,
@@ -34,5 +36,19 @@ pub(crate) struct AuthoritativeRow {
     pub(crate) file_created_at: OffsetDateTime,
     pub(crate) role: String,
     pub(crate) ordinal: i32,
+    pub(crate) logical_path: Option<String>,
+    pub(crate) original_filename: String,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub(crate) struct CanonicalContentRow {
+    pub(crate) logical_path: String,
+    pub(crate) ordinal: i32,
+    pub(crate) file_id: Uuid,
+    pub(crate) content_hash: Vec<u8>,
+    pub(crate) media_type: String,
+    pub(crate) size_bytes: i64,
+    pub(crate) storage_locator: String,
+    pub(crate) file_created_at: OffsetDateTime,
     pub(crate) original_filename: String,
 }

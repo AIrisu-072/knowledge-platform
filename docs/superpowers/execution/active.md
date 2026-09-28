@@ -2,6 +2,20 @@
 
 ## Active checkpoint — 2026-09-27 JST
 
+- Status: **ACTIVE**. Current capability: **Document Versioning v0**; phase: **PRODUCTION IMPLEMENTATION TASKS 1–9 COMPLETE / PR #12 DRAFT REVIEW**. Capability status: `docs/superpowers/execution/document-versioning-v0-status.md`.
+- Baseline: `main@09c8235755573d16e09b8af029c22dc27caf6472` with DSI v0 PR #10 merged. Approved planning head: `design/document-versioning-v0@987890d635f9563bb7028841a026663a9379d6f3`; Draft PR #11 remains open and unmerged.
+- Implementation branch: `feat/document-versioning-v0`; Draft PR #12: `https://github.com/AIrisu-072/knowledge-platform/pull/12`, based on PR #11. Last qualified code head: `a08075e5616b2daa0e6cad8b6eaa27caaec7913a`.
+- Tasks 1–8 are complete with focused RED/GREEN evidence. Task 9 integration and audit repair are implemented. Local assembled `mise run verify`: 434/434 Rust tests passed, 4 intentionally skipped; final repair focused due 7/7, vertical slice 2/2, strict Clippy passed. Linux scheduler image and sandboxed due canary passed.
+- At code head `68178c68ee32a1870c96260e69a9692e8e33a8df`: standard CI `36307529282` **SUCCESS** (Ubuntu Rust and macOS Intel/arm64 included); DSI Sandbox Preflight `36307529226` **SUCCESS**; DSI PoC `36307529181` **SUCCESS**.
+- At documentation head `a9a2d3b360debb7b208bae6845a20d12a13e4f7a`: standard CI `36308294331` **FAIL** on the existing concurrent due replay assertion; Sandbox `36308294389` and DSI PoC `36308294391` **SUCCESS**. Two runners can cross between the first ledger read and `is_due`; the second must recheck the ledger before returning `NotDue`. Minimal repair passed local focused due tests 7/7 and fmt.
+- At repair head `a08075e5616b2daa0e6cad8b6eaa27caaec7913a`: standard CI `36309356498` **SUCCESS** (required-check, Ubuntu Rust, macOS Intel/arm64); Sandbox `36309356526` **SUCCESS**; DSI PoC `36309356496` **SUCCESS**. Task 9 vertical slice 2/2 passed and its completion is in the local SDD ledger.
+- Frozen Design and Production Plan are approved; no amendment is proposed. User-approved withdrawal restores the immediate safe PUBLISHED base or null after recording WITHDRAWN. Execution remains inline; no worker is dispatched.
+- Blocker: none in implementation; PRs #11 and #12 remain draft/unmerged pending review and explicit integration instruction. Next exact action: commit/push this completion record, verify standard CI, Sandbox, and DSI PoC at its documentation head, then update PR #12 with final run IDs and await review or an explicit merge instruction. Do not merge PR #11 or #12 without an explicit instruction.
+
+This checkpoint supersedes the prior Document Versioning handoff below.
+
+## Previous Document Versioning checkpoint — 2026-09-27 JST
+
 - Status: **ACTIVE**. Current capability: **Document Versioning v0**; phase: **PRODUCTION IMPLEMENTATION — TASK 1**. Capability status: `docs/superpowers/execution/document-versioning-v0-status.md`.
 - Baseline: `main@09c8235755573d16e09b8af029c22dc27caf6472`. Document Semantic Inspection v0 PR #10 is **MERGED** at this commit; merge-head CI `36281613991` is **SUCCESS**. The final PR head was `12047186787e2380bbc6ec74c4baa617b71b2525`.
 - Planning branch: `design/document-versioning-v0`; Draft PR #11: `https://github.com/AIrisu-072/knowledge-platform/pull/11`. User-approved Frozen Design: `docs/superpowers/specs/2026-09-27-document-versioning-v0-design.md`; approval record: `docs/superpowers/specs/2026-09-27-document-versioning-v0-design-approval.md`. User-approved Production Implementation Plan: `docs/superpowers/plans/2026-09-27-document-versioning-v0-production-implementation.md`; approval record: `docs/superpowers/plans/2026-09-27-document-versioning-v0-production-implementation-approval.md`. Implementation branch will start from the approved planning baseline.

@@ -323,14 +323,31 @@ async fn seed_initial(
     .await
     .expect("file should insert");
 
+    let item_id = Uuid::now_v7();
+    let representation_id = Uuid::now_v7();
+    let mut tx = pool.begin().await.unwrap();
     sqlx::query(
-        "INSERT INTO version_files \
-         (document_version_id, file_id, role, ordinal, original_filename) \
-         VALUES ($1, $2, 'PRIMARY', 0, 'policy.pdf')",
+        "INSERT INTO content_items \
+         (content_item_id, document_version_id, logical_path, ordinal, \
+          authoritative_representation_id) \
+         VALUES ($1, $2, 'primary', 0, $3)",
     )
+    .bind(item_id)
     .bind(version_id.as_uuid())
-    .bind(file_id.as_uuid())
-    .execute(pool)
+    .bind(representation_id)
+    .execute(&mut *tx)
     .await
-    .expect("primary file link should insert");
+    .expect("content item should insert");
+    sqlx::query(
+        "INSERT INTO content_representations \
+         (content_representation_id, content_item_id, file_id, role, original_filename) \
+         VALUES ($1, $2, $3, 'AUTHORITATIVE', 'policy.pdf')",
+    )
+    .bind(representation_id)
+    .bind(item_id)
+    .bind(file_id.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .expect("authoritative representation should insert");
+    tx.commit().await.unwrap();
 }

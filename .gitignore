@@ -1,4 +1,5 @@
 /target/
+/experiments/document-semantic-inspection/target/
 /node_modules/
 /dist/
 /coverage/

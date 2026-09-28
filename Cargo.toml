@@ -7,6 +7,7 @@ members = [
   "crates/document-semantic-inspection-runner",
   "crates/document-storage-fs",
   "crates/document-repository-postgres",
+  "crates/document-publication-scheduler",
   "tools/architecture-lint",
   "tools/assurance",
 ]

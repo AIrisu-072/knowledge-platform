@@ -1,17 +1,15 @@
 use document_application::{
     AuthoritativeDocument, CreateInitialDocumentRecord, DocumentPublishRepository,
     DocumentRepository, PublishCandidate, PublishDocumentResult, PublishInitialVersionRecord,
-    PublishOperationId, PublishOperationRecord, RepositoryError,
+    PublishOperationId, PublishOperationRecord, PublishVersionRecord, RepositoryError,
 };
-use document_domain::{DocumentId, FileId, FileRole};
+use document_domain::{DocumentId, FileId};
 use serde_json::Value;
 use sqlx::PgPool;
 
 use crate::{
     error::{map_commit_error, map_statement_error},
-    mapping::to_authoritative,
-    publish,
-    rows::AuthoritativeRow,
+    publish, versioning_rows,
 };
 
 const AUDIT_SOURCE: &str = "urn:knowledge-platform:document-platform";
@@ -110,15 +108,28 @@ impl DocumentRepository for PostgresDocumentRepository {
             .await
             .map_err(map_statement_error)?;
 
+            let content_item_id = uuid::Uuid::now_v7();
+            let representation_id = uuid::Uuid::now_v7();
             sqlx::query(
-                "INSERT INTO version_files \
-                 (document_version_id, file_id, role, ordinal, original_filename) \
-                 VALUES ($1, $2, $3, $4, $5)",
+                "INSERT INTO content_items \
+                 (content_item_id, document_version_id, logical_path, ordinal, \
+                  authoritative_representation_id) \
+                 VALUES ($1, $2, 'primary', 0, $3)",
             )
+            .bind(content_item_id)
             .bind(version_file.document_version_id().as_uuid())
+            .bind(representation_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_statement_error)?;
+            sqlx::query(
+                "INSERT INTO content_representations \
+                 (content_representation_id, content_item_id, file_id, role, original_filename) \
+                 VALUES ($1, $2, $3, 'AUTHORITATIVE', $4)",
+            )
+            .bind(representation_id)
+            .bind(content_item_id)
             .bind(version_file.file_id().as_uuid())
-            .bind(file_role(version_file.role()))
-            .bind(i64::from(version_file.ordinal()))
             .bind(version_file.original_filename())
             .execute(&mut *tx)
             .await
@@ -183,70 +194,30 @@ impl DocumentRepository for PostgresDocumentRepository {
         &self,
         id: DocumentId,
     ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
-        let row = sqlx::query_as::<_, AuthoritativeRow>(
-            "SELECT \
-                d.document_id, \
-                d.folder_id, \
-                d.current_version_id, \
-                d.revision AS document_revision, \
-                d.metadata AS document_metadata, \
-                d.created_at AS document_created_at, \
-                v.document_version_id, \
-                v.version_no, \
-                v.lifecycle_state, \
-                v.title, \
-                v.revision_reason, \
-                v.approved_at, \
-                v.scheduled_publish_at, \
-                v.published_at, \
-                v.withdrawn_at, \
-                v.effective_from, \
-                v.effective_to, \
-                v.created_by_identity_provider, \
-                v.created_by_principal_id, \
-                v.metadata AS version_metadata, \
-                v.created_at AS version_created_at, \
-                f.file_id, \
-                f.content_hash, \
-                f.media_type, \
-                f.size_bytes, \
-                f.storage_locator, \
-                f.created_at AS file_created_at, \
-                vf.role, \
-                vf.ordinal, \
-                vf.original_filename \
-             FROM documents d \
-             JOIN document_versions v \
-               ON v.document_id = d.document_id AND v.version_no = 1 \
-             JOIN version_files vf \
-               ON vf.document_version_id = v.document_version_id AND vf.role = 'PRIMARY' \
-             JOIN file_objects f \
-               ON f.file_id = vf.file_id \
-             WHERE d.document_id = $1 \
-             LIMIT 1",
-        )
-        .bind(id.as_uuid())
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(map_statement_error)?;
-
-        row.map(to_authoritative).transpose()
+        versioning_rows::load_current(&self.pool, id).await
     }
 
     async fn file_reference_exists(&self, file_id: FileId) -> Result<bool, RepositoryError> {
-        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM version_files WHERE file_id = $1)")
-            .bind(file_id.as_uuid())
-            .fetch_one(&self.pool)
-            .await
-            .map_err(map_statement_error)
+        sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM content_representations WHERE file_id = $1) \
+                 OR EXISTS (SELECT 1 FROM version_files WHERE file_id = $1)",
+        )
+        .bind(file_id.as_uuid())
+        .fetch_one(&self.pool)
+        .await
+        .map_err(map_statement_error)
     }
 
     async fn list_referenced_file_ids(&self) -> Result<Vec<FileId>, RepositoryError> {
-        let ids: Vec<uuid::Uuid> =
-            sqlx::query_scalar("SELECT DISTINCT file_id FROM version_files ORDER BY file_id")
-                .fetch_all(&self.pool)
-                .await
-                .map_err(map_statement_error)?;
+        let ids: Vec<uuid::Uuid> = sqlx::query_scalar(
+            "SELECT file_id FROM ( \
+                 SELECT file_id FROM content_representations \
+                 UNION SELECT file_id FROM version_files \
+             ) refs ORDER BY file_id",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_statement_error)?;
         Ok(ids.into_iter().map(FileId::from_uuid).collect())
     }
 }
@@ -256,13 +227,6 @@ fn lifecycle_state(state: document_domain::LifecycleState) -> &'static str {
         document_domain::LifecycleState::Working => "WORKING",
         document_domain::LifecycleState::Published => "PUBLISHED",
         document_domain::LifecycleState::Withdrawn => "WITHDRAWN",
-    }
-}
-
-fn file_role(role: FileRole) -> &'static str {
-    match role {
-        FileRole::Primary => "PRIMARY",
-        FileRole::Attachment => "ATTACHMENT",
     }
 }
 
@@ -287,5 +251,12 @@ impl DocumentPublishRepository for PostgresDocumentRepository {
         record: PublishInitialVersionRecord,
     ) -> Result<PublishDocumentResult, RepositoryError> {
         publish::publish_initial_version(&self.pool, record).await
+    }
+
+    async fn publish_next_version(
+        &self,
+        record: PublishVersionRecord,
+    ) -> Result<PublishDocumentResult, RepositoryError> {
+        publish::publish_next_version(&self.pool, record).await
     }
 }

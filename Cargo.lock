@@ -1087,6 +1087,7 @@ dependencies = [
  "document-semantic-inspection-runner",
  "document-storage-fs",
  "serde_json",
+ "sha2 0.11.0",
  "sqlx",
  "tempfile",
  "testcontainers",
@@ -1102,8 +1103,30 @@ version = "0.0.0"
 dependencies = [
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror",
  "time",
+ "unicode-normalization",
+ "uuid",
+]
+
+[[package]]
+name = "document-publication-scheduler"
+version = "0.0.0"
+dependencies = [
+ "document-application",
+ "document-domain",
+ "document-repository-postgres",
+ "document-semantic-inspection-core",
+ "document-semantic-inspection-runner",
+ "document-storage-fs",
+ "sha2 0.11.0",
+ "sqlx",
+ "tempfile",
+ "testcontainers",
+ "thiserror",
+ "time",
+ "tokio",
  "uuid",
 ]
 
@@ -1114,9 +1137,11 @@ dependencies = [
  "document-application",
  "document-domain",
  "document-semantic-inspection-core",
+ "document-storage-fs",
  "serde",
  "serde_json",
  "sqlx",
+ "tempfile",
  "testcontainers",
  "thiserror",
  "time",

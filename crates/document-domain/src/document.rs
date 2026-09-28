@@ -23,6 +23,27 @@ impl PublishTransition {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WithdrawTransition {
+    former_current_version_id: Option<DocumentVersionId>,
+    resulting_current_version_id: Option<DocumentVersionId>,
+    resulting_document_revision: i64,
+}
+
+impl WithdrawTransition {
+    pub const fn former_current_version_id(self) -> Option<DocumentVersionId> {
+        self.former_current_version_id
+    }
+
+    pub const fn resulting_current_version_id(self) -> Option<DocumentVersionId> {
+        self.resulting_current_version_id
+    }
+
+    pub const fn resulting_document_revision(self) -> i64 {
+        self.resulting_document_revision
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VersionNo(i64);
 
@@ -68,7 +89,31 @@ pub struct Document {
     created_at: OffsetDateTime,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreDocument {
+    pub document_id: DocumentId,
+    pub folder_id: FolderId,
+    pub current_version_id: Option<DocumentVersionId>,
+    pub revision: i64,
+    pub metadata: Metadata,
+    pub created_at: OffsetDateTime,
+}
+
 impl Document {
+    pub fn restore(input: RestoreDocument) -> Result<Self, DomainError> {
+        if input.revision < 0 {
+            return Err(DomainError::InvalidPersistedState);
+        }
+        Ok(Self {
+            document_id: input.document_id,
+            folder_id: input.folder_id,
+            current_version_id: input.current_version_id,
+            revision: input.revision,
+            metadata: input.metadata,
+            created_at: input.created_at,
+        })
+    }
+
     pub const fn document_id(&self) -> DocumentId {
         self.document_id
     }
@@ -122,6 +167,124 @@ impl Document {
             resulting_document_revision: next_revision,
         })
     }
+
+    pub fn validate_new_working(
+        &self,
+        base: &DocumentVersion,
+        existing_working: Option<&DocumentVersion>,
+    ) -> Result<(), DomainError> {
+        if base.document_id != self.document_id {
+            return Err(DomainError::VersionDocumentMismatch);
+        }
+        if base.lifecycle_state != LifecycleState::Published {
+            return Err(DomainError::VersionNotPublished);
+        }
+        let current = self
+            .current_version_id
+            .ok_or(DomainError::NoCurrentPublishedVersion)?;
+        if base.document_version_id != current {
+            return Err(DomainError::StaleVersionBase);
+        }
+        if let Some(working) = existing_working {
+            if working.document_id != self.document_id {
+                return Err(DomainError::VersionDocumentMismatch);
+            }
+            if working.lifecycle_state == LifecycleState::Working {
+                return Err(DomainError::ExistingWorkingVersion);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn publish_next_version(
+        &mut self,
+        target: &mut DocumentVersion,
+        published_at: OffsetDateTime,
+    ) -> Result<PublishTransition, DomainError> {
+        if target.document_id != self.document_id {
+            return Err(DomainError::VersionDocumentMismatch);
+        }
+        if target.lifecycle_state != LifecycleState::Working {
+            return Err(DomainError::VersionNotWorking);
+        }
+        let current = self
+            .current_version_id
+            .ok_or(DomainError::NoCurrentPublishedVersion)?;
+        if target.base_document_version_id != Some(current) || target.document_version_id == current
+        {
+            return Err(DomainError::StaleVersionBase);
+        }
+        let next_revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(DomainError::RevisionOverflow)?;
+        target.lifecycle_state = LifecycleState::Published;
+        target.published_at = Some(published_at);
+        self.current_version_id = Some(target.document_version_id);
+        self.revision = next_revision;
+        Ok(PublishTransition {
+            resulting_document_revision: next_revision,
+        })
+    }
+
+    pub fn withdraw_version(
+        &mut self,
+        target: &mut DocumentVersion,
+        eligible_base: Option<&DocumentVersion>,
+        withdrawn_at: OffsetDateTime,
+    ) -> Result<WithdrawTransition, DomainError> {
+        if target.document_id != self.document_id {
+            return Err(DomainError::VersionDocumentMismatch);
+        }
+        if target.lifecycle_state != LifecycleState::Published {
+            return Err(DomainError::VersionNotPublished);
+        }
+        let former_current = self.current_version_id;
+        let resulting_current = if former_current == Some(target.document_version_id) {
+            match eligible_base {
+                Some(base) => {
+                    if Some(base.document_version_id) != target.base_document_version_id
+                        || base.document_id != self.document_id
+                        || base.lifecycle_state != LifecycleState::Published
+                    {
+                        return Err(DomainError::InvalidRestorationCandidate);
+                    }
+                    Some(base.document_version_id)
+                }
+                None => None,
+            }
+        } else {
+            if eligible_base.is_some() {
+                return Err(DomainError::InvalidRestorationCandidate);
+            }
+            former_current
+        };
+        let next_revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(DomainError::RevisionOverflow)?;
+        target.lifecycle_state = LifecycleState::Withdrawn;
+        target.withdrawn_at = Some(withdrawn_at);
+        self.current_version_id = resulting_current;
+        self.revision = next_revision;
+        Ok(WithdrawTransition {
+            former_current_version_id: former_current,
+            resulting_current_version_id: resulting_current,
+            resulting_document_revision: next_revision,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreateWorkingVersion {
+    pub document_version_id: DocumentVersionId,
+    pub document_id: DocumentId,
+    pub version_no: VersionNo,
+    pub base_document_version_id: DocumentVersionId,
+    pub title: Title,
+    pub created_by: PrincipalRef,
+    pub metadata: Metadata,
+    pub created_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,6 +292,7 @@ pub struct DocumentVersion {
     document_version_id: DocumentVersionId,
     document_id: DocumentId,
     version_no: VersionNo,
+    base_document_version_id: Option<DocumentVersionId>,
     lifecycle_state: LifecycleState,
     title: Title,
     revision_reason: Option<String>,
@@ -143,7 +307,83 @@ pub struct DocumentVersion {
     created_at: OffsetDateTime,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreDocumentVersion {
+    pub document_version_id: DocumentVersionId,
+    pub document_id: DocumentId,
+    pub version_no: VersionNo,
+    pub base_document_version_id: Option<DocumentVersionId>,
+    pub lifecycle_state: LifecycleState,
+    pub title: Title,
+    pub revision_reason: Option<String>,
+    pub approved_at: Option<OffsetDateTime>,
+    pub scheduled_publish_at: Option<OffsetDateTime>,
+    pub published_at: Option<OffsetDateTime>,
+    pub withdrawn_at: Option<OffsetDateTime>,
+    pub effective_from: Option<OffsetDateTime>,
+    pub effective_to: Option<OffsetDateTime>,
+    pub created_by: PrincipalRef,
+    pub metadata: Metadata,
+    pub created_at: OffsetDateTime,
+}
+
 impl DocumentVersion {
+    pub fn restore(input: RestoreDocumentVersion) -> Result<Self, DomainError> {
+        if (input.version_no.get() == 1) != input.base_document_version_id.is_none()
+            || input.base_document_version_id == Some(input.document_version_id)
+            || (input.lifecycle_state == LifecycleState::Published && input.published_at.is_none())
+            || (input.lifecycle_state == LifecycleState::Withdrawn && input.withdrawn_at.is_none())
+            || (input.lifecycle_state == LifecycleState::Working
+                && (input.published_at.is_some() || input.withdrawn_at.is_some()))
+        {
+            return Err(DomainError::InvalidPersistedState);
+        }
+        Ok(Self {
+            document_version_id: input.document_version_id,
+            document_id: input.document_id,
+            version_no: input.version_no,
+            base_document_version_id: input.base_document_version_id,
+            lifecycle_state: input.lifecycle_state,
+            title: input.title,
+            revision_reason: input.revision_reason,
+            approved_at: input.approved_at,
+            scheduled_publish_at: input.scheduled_publish_at,
+            published_at: input.published_at,
+            withdrawn_at: input.withdrawn_at,
+            effective_from: input.effective_from,
+            effective_to: input.effective_to,
+            created_by: input.created_by,
+            metadata: input.metadata,
+            created_at: input.created_at,
+        })
+    }
+
+    pub fn new_working(input: CreateWorkingVersion) -> Result<Self, DomainError> {
+        if input.version_no.get() <= 1
+            || input.document_version_id == input.base_document_version_id
+        {
+            return Err(DomainError::StaleVersionBase);
+        }
+        Ok(Self {
+            document_version_id: input.document_version_id,
+            document_id: input.document_id,
+            version_no: input.version_no,
+            base_document_version_id: Some(input.base_document_version_id),
+            lifecycle_state: LifecycleState::Working,
+            title: input.title,
+            revision_reason: None,
+            approved_at: None,
+            scheduled_publish_at: None,
+            published_at: None,
+            withdrawn_at: None,
+            effective_from: None,
+            effective_to: None,
+            created_by: input.created_by,
+            metadata: input.metadata,
+            created_at: input.created_at,
+        })
+    }
+
     pub const fn document_version_id(&self) -> DocumentVersionId {
         self.document_version_id
     }
@@ -154,6 +394,33 @@ impl DocumentVersion {
 
     pub const fn version_no(&self) -> VersionNo {
         self.version_no
+    }
+
+    pub const fn base_document_version_id(&self) -> Option<DocumentVersionId> {
+        self.base_document_version_id
+    }
+
+    pub fn rebase_to_current(
+        &mut self,
+        document: &Document,
+        base: &DocumentVersion,
+    ) -> Result<(), DomainError> {
+        if self.document_id != document.document_id || base.document_id != document.document_id {
+            return Err(DomainError::VersionDocumentMismatch);
+        }
+        if self.lifecycle_state != LifecycleState::Working {
+            return Err(DomainError::VersionNotWorking);
+        }
+        if base.lifecycle_state != LifecycleState::Published {
+            return Err(DomainError::VersionNotPublished);
+        }
+        if document.current_version_id != Some(base.document_version_id)
+            || self.document_version_id == base.document_version_id
+        {
+            return Err(DomainError::StaleVersionBase);
+        }
+        self.base_document_version_id = Some(base.document_version_id);
+        Ok(())
     }
 
     pub const fn lifecycle_state(&self) -> LifecycleState {
@@ -252,6 +519,7 @@ impl InitialDocument {
             document_version_id: input.version_id,
             document_id: input.document_id,
             version_no,
+            base_document_version_id: None,
             lifecycle_state: LifecycleState::Working,
             title: input.title,
             revision_reason: None,
@@ -338,6 +606,7 @@ mod tests {
             document_version_id: version_id,
             document_id: version_document_id,
             version_no: VersionNo::new(1).unwrap(),
+            base_document_version_id: None,
             lifecycle_state,
             title: Title::new("Policy v1").unwrap(),
             revision_reason: None,

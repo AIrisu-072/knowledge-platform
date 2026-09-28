@@ -2,7 +2,7 @@ use std::pin::Pin;
 
 use document_domain::{
     ContentHash, Document, DocumentId, DocumentVersion, DocumentVersionId, FileId, FileObject,
-    FileSize, MediaType, PrincipalRef, StorageKey, StoredFileDescriptor, VersionFile,
+    FileSize, LogicalPath, MediaType, PrincipalRef, StorageKey, StoredFileDescriptor, VersionFile,
 };
 use document_semantic_inspection_core::{InspectionProfileVersion, WorkerRequest, WorkerResponse};
 use time::OffsetDateTime;
@@ -13,6 +13,14 @@ use crate::{
     AuditEventRecord, DomainEventRecord, InspectionExecutionError, RepositoryError,
     SemanticInspectionRecord, StorageError,
     command::{PublishDocumentCommand, PublishDocumentResult, PublishOperationId},
+    schedule::{
+        CancelOperationRecord, CancelScheduleRecord, CancelScheduleResult, DueTerminalRecord,
+        ScheduleOperationRecord, SchedulePublishRecord, SchedulePublishResult,
+    },
+    versioning_command::{
+        VersionMutationRecord, VersionOperationId, VersionOperationRecord, VersionOperationResult,
+        WithdrawOperationRecord, WithdrawVersionRecord, WithdrawVersionResult,
+    },
 };
 
 pub type ContentReader = Pin<Box<dyn AsyncRead + Send + Unpin>>;
@@ -172,6 +180,110 @@ pub trait SemanticInspectionRepository: Send + Sync {
 }
 
 #[allow(async_fn_in_trait)]
+pub trait VersioningRepository: Send + Sync {
+    /// Register an immutable FileObject before a Version can reference it.
+    /// Replaying the same FileId is valid only for the same raw binding.
+    async fn register_file_object(&self, file: FileObject) -> Result<(), RepositoryError>;
+
+    async fn get_version_operation(
+        &self,
+        _operation_id: VersionOperationId,
+    ) -> Result<Option<VersionOperationRecord>, RepositoryError> {
+        Err(RepositoryError::Internal(
+            "version mutation repository unavailable".to_owned(),
+        ))
+    }
+
+    async fn get_version_snapshot(
+        &self,
+        _document_id: DocumentId,
+        _version_id: DocumentVersionId,
+    ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
+        Err(RepositoryError::Internal(
+            "version mutation repository unavailable".to_owned(),
+        ))
+    }
+
+    async fn create_version(
+        &self,
+        _record: VersionMutationRecord,
+    ) -> Result<VersionOperationResult, RepositoryError> {
+        Err(RepositoryError::Internal(
+            "version mutation repository unavailable".to_owned(),
+        ))
+    }
+
+    async fn update_working(
+        &self,
+        _record: VersionMutationRecord,
+    ) -> Result<VersionOperationResult, RepositoryError> {
+        Err(RepositoryError::Internal(
+            "version mutation repository unavailable".to_owned(),
+        ))
+    }
+
+    async fn rebase_working(
+        &self,
+        _record: VersionMutationRecord,
+    ) -> Result<VersionOperationResult, RepositoryError> {
+        Err(RepositoryError::Internal(
+            "version mutation repository unavailable".to_owned(),
+        ))
+    }
+
+    async fn get_withdraw_operation(
+        &self,
+        _operation_id: VersionOperationId,
+    ) -> Result<Option<WithdrawOperationRecord>, RepositoryError> {
+        Err(RepositoryError::Internal(
+            "withdrawal repository unavailable".to_owned(),
+        ))
+    }
+
+    async fn withdraw_version(
+        &self,
+        _record: WithdrawVersionRecord,
+    ) -> Result<WithdrawVersionResult, RepositoryError> {
+        Err(RepositoryError::Internal(
+            "withdrawal repository unavailable".to_owned(),
+        ))
+    }
+}
+
+#[allow(async_fn_in_trait)]
+pub trait PublicationScheduleRepository: Send + Sync {
+    async fn get_schedule(
+        &self,
+        id: crate::PublishOperationId,
+    ) -> Result<Option<ScheduleOperationRecord>, RepositoryError>;
+    async fn reserve(
+        &self,
+        record: SchedulePublishRecord,
+    ) -> Result<SchedulePublishResult, RepositoryError>;
+    async fn get_cancel_operation(
+        &self,
+        id: VersionOperationId,
+    ) -> Result<Option<CancelOperationRecord>, RepositoryError>;
+    async fn cancel(
+        &self,
+        record: CancelScheduleRecord,
+    ) -> Result<CancelScheduleResult, RepositoryError>;
+
+    async fn database_now(&self) -> Result<OffsetDateTime, RepositoryError>;
+    async fn list_due(
+        &self,
+        database_now: OffsetDateTime,
+        limit: i64,
+    ) -> Result<Vec<crate::PublishOperationId>, RepositoryError>;
+    async fn is_due(&self, id: crate::PublishOperationId) -> Result<bool, RepositoryError>;
+    async fn record_retry(
+        &self,
+        id: crate::PublishOperationId,
+    ) -> Result<OffsetDateTime, RepositoryError>;
+    async fn terminalize(&self, record: DueTerminalRecord) -> Result<(), RepositoryError>;
+}
+
+#[allow(async_fn_in_trait)]
 pub trait SemanticInspectionExecutor: Send + Sync {
     async fn inspect(
         &self,
@@ -181,21 +293,70 @@ pub trait SemanticInspectionExecutor: Send + Sync {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthoritativeContentItem {
+    logical_path: LogicalPath,
+    ordinal: u32,
+    file: FileObject,
+    original_filename: String,
+}
+
+impl AuthoritativeContentItem {
+    pub fn new(
+        logical_path: LogicalPath,
+        ordinal: u32,
+        file: FileObject,
+        original_filename: impl Into<String>,
+    ) -> Self {
+        Self {
+            logical_path,
+            ordinal,
+            file,
+            original_filename: original_filename.into(),
+        }
+    }
+
+    pub fn logical_path(&self) -> &LogicalPath {
+        &self.logical_path
+    }
+
+    pub const fn ordinal(&self) -> u32 {
+        self.ordinal
+    }
+
+    pub const fn file(&self) -> &FileObject {
+        &self.file
+    }
+
+    pub fn original_filename(&self) -> &str {
+        &self.original_filename
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthoritativeDocument {
     document: Document,
     version: DocumentVersion,
     file: FileObject,
     version_file: VersionFile,
+    content_items: Vec<AuthoritativeContentItem>,
+    requires_content_classification: bool,
 }
 
 impl AuthoritativeDocument {
     pub fn from_initial(initial: document_domain::InitialDocument) -> Self {
         let (document, version, file, version_file) = initial.into_parts();
         Self {
+            content_items: vec![AuthoritativeContentItem::new(
+                LogicalPath::new("primary").expect("constant path is valid"),
+                0,
+                file.clone(),
+                version_file.original_filename(),
+            )],
             document,
             version,
             file,
             version_file,
+            requires_content_classification: false,
         }
     }
 
@@ -206,10 +367,35 @@ impl AuthoritativeDocument {
         version_file: VersionFile,
     ) -> Self {
         Self {
+            content_items: vec![AuthoritativeContentItem::new(
+                LogicalPath::new("primary").expect("constant path is valid"),
+                0,
+                file.clone(),
+                version_file.original_filename(),
+            )],
             document,
             version,
             file,
             version_file,
+            requires_content_classification: false,
+        }
+    }
+
+    pub fn from_parts_with_items(
+        document: Document,
+        version: DocumentVersion,
+        file: FileObject,
+        version_file: VersionFile,
+        content_items: Vec<AuthoritativeContentItem>,
+        requires_content_classification: bool,
+    ) -> Self {
+        Self {
+            document,
+            version,
+            file,
+            version_file,
+            content_items,
+            requires_content_classification,
         }
     }
 
@@ -227,6 +413,14 @@ impl AuthoritativeDocument {
 
     pub const fn version_file(&self) -> &VersionFile {
         &self.version_file
+    }
+
+    pub fn content_items(&self) -> &[AuthoritativeContentItem] {
+        &self.content_items
+    }
+
+    pub const fn requires_content_classification(&self) -> bool {
+        self.requires_content_classification
     }
 }
 
@@ -407,6 +601,66 @@ pub struct PublishInitialVersionRecord {
     operation: PublishOperationRecord,
     domain_event: DomainEventRecord,
     audit_event: AuditEventRecord,
+    scheduled_due: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PublishVersionRecord {
+    operation: PublishOperationRecord,
+    domain_event: DomainEventRecord,
+    audit_event: AuditEventRecord,
+    base_version_id: DocumentVersionId,
+    base_manifest_digest: [u8; 32],
+    target_manifest_digest: [u8; 32],
+    scheduled_due: bool,
+}
+
+impl PublishVersionRecord {
+    pub fn new(
+        operation: PublishOperationRecord,
+        domain_event: DomainEventRecord,
+        audit_event: AuditEventRecord,
+        base_version_id: DocumentVersionId,
+        base_manifest_digest: [u8; 32],
+        target_manifest_digest: [u8; 32],
+    ) -> Self {
+        Self {
+            operation,
+            domain_event,
+            audit_event,
+            base_version_id,
+            base_manifest_digest,
+            target_manifest_digest,
+            scheduled_due: false,
+        }
+    }
+
+    pub fn for_due(mut self) -> Self {
+        self.scheduled_due = true;
+        self
+    }
+    pub const fn scheduled_due(&self) -> bool {
+        self.scheduled_due
+    }
+    pub fn into_parts(
+        self,
+    ) -> (
+        PublishOperationRecord,
+        DomainEventRecord,
+        AuditEventRecord,
+        DocumentVersionId,
+        [u8; 32],
+        [u8; 32],
+    ) {
+        (
+            self.operation,
+            self.domain_event,
+            self.audit_event,
+            self.base_version_id,
+            self.base_manifest_digest,
+            self.target_manifest_digest,
+        )
+    }
 }
 
 impl PublishInitialVersionRecord {
@@ -419,7 +673,16 @@ impl PublishInitialVersionRecord {
             operation,
             domain_event,
             audit_event,
+            scheduled_due: false,
         }
+    }
+
+    pub fn for_due(mut self) -> Self {
+        self.scheduled_due = true;
+        self
+    }
+    pub const fn scheduled_due(&self) -> bool {
+        self.scheduled_due
     }
 
     pub const fn operation(&self) -> &PublishOperationRecord {
@@ -456,6 +719,15 @@ pub trait DocumentPublishRepository: Send + Sync {
         &self,
         record: PublishInitialVersionRecord,
     ) -> Result<PublishDocumentResult, RepositoryError>;
+
+    async fn publish_next_version(
+        &self,
+        _record: PublishVersionRecord,
+    ) -> Result<PublishDocumentResult, RepositoryError> {
+        Err(RepositoryError::Internal(
+            "replacement publish repository unavailable".to_owned(),
+        ))
+    }
 }
 
 #[allow(async_fn_in_trait)]

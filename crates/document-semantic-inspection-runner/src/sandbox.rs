@@ -75,11 +75,13 @@ fn apply_seccomp() -> Result<(), RunnerError> {
         libc::SYS_shutdown,
         libc::SYS_clone,
         libc::SYS_clone3,
-        libc::SYS_fork,
-        libc::SYS_vfork,
         libc::SYS_execve,
         libc::SYS_execveat,
     ] {
+        denied.insert(syscall, Vec::new());
+    }
+    #[cfg(target_arch = "x86_64")]
+    for syscall in [libc::SYS_fork, libc::SYS_vfork] {
         denied.insert(syscall, Vec::new());
     }
     let filter = SeccompFilter::new(

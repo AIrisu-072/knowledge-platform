@@ -220,6 +220,21 @@ impl VersionFile {
         }
     }
 
+    pub fn restore_primary(
+        document_version_id: DocumentVersionId,
+        file_id: FileId,
+        original_filename: String,
+    ) -> Result<Self, DomainError> {
+        if original_filename.trim().is_empty() {
+            return Err(DomainError::BlankOriginalFilename);
+        }
+        Ok(Self::primary(
+            document_version_id,
+            file_id,
+            original_filename,
+        ))
+    }
+
     pub const fn document_version_id(&self) -> DocumentVersionId {
         self.document_version_id
     }
