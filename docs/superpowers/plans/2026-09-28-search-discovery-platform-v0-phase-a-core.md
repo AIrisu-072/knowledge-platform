@@ -101,7 +101,7 @@ Commit message: `build: establish search discovery crate boundaries`
 
 **Interfaces:**
 - Produces newtypes: `SourceId`, `ResourceId`, `LogicalResourceId`, `RepresentationId`, `ResourceVersionId`, `UsageProfileId`, `DiscoveryEvaluationId`, `BindingId`, `NeedId`, `SessionId`, `ClaimId`, `GapId`, `RelationId`, `AssertionId`, `ProjectionGenerationId`.
-- Produces `DiscoverableSource`, `DiscoverableResource`, `ResourceIdentity`, `ResourceBody`, `UsageProfile`, `DiscoveryProfile`, `TemporalDiscoveryProfile`.
+- Produces `DiscoverableSource`, `DiscoverableResource`, `ResourceIdentity`, `ResourceBody`, `UsageProfile`, `DiscoveryProfile`, `DiscoveryLens`, `TemporalDiscoveryProfile`, `CostProfile`.
 
 - [ ] **Step 1: Write failing domain contract tests**
 
@@ -367,6 +367,8 @@ Commit message: `feat: add discovery qualification and evidence contracts`
 - `SearchError` is imported from `search-application::error`.
 - Port traits returning `BoxFuture<'a, Result<T, SearchError>>` where asynchronous I/O is required:
   - `SourceRegistryPort`
+  - `AssertionStorePort`
+  - `ConceptRegistryPort`
   - `DirectoryRetrieverPort`
   - `StructuredRetrieverPort`
   - `LexicalRetrieverPort`
