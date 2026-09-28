@@ -19,7 +19,7 @@ use crate::{
     targeted_events::{insert_targeted_events, record_authorization_denied, resource_parts},
 };
 
-fn postgres_timestamp_now() -> OffsetDateTime {
+pub(crate) fn postgres_timestamp_now() -> OffsetDateTime {
     let now = OffsetDateTime::now_utc();
     now.replace_nanosecond(now.nanosecond() / 1_000 * 1_000)
         .expect("microsecond precision is a valid nanosecond value")
@@ -165,7 +165,7 @@ async fn persist_binding(
     Ok(Some(policy_id))
 }
 
-fn row_resource(row: &sqlx::postgres::PgRow) -> Result<ResourceRef, RepositoryError> {
+pub(crate) fn row_resource(row: &sqlx::postgres::PgRow) -> Result<ResourceRef, RepositoryError> {
     let resource_type: String = row.try_get("resource_type").map_err(map_statement_error)?;
     let resource_id: Uuid = row.try_get("resource_id").map_err(map_statement_error)?;
     let resource = match resource_type.as_str() {
@@ -177,11 +177,14 @@ fn row_resource(row: &sqlx::postgres::PgRow) -> Result<ResourceRef, RepositoryEr
     Ok(resource)
 }
 
-fn decode_result(row: &sqlx::postgres::PgRow) -> Result<ManagementResult, RepositoryError> {
+pub(crate) fn decode_result(
+    row: &sqlx::postgres::PgRow,
+) -> Result<ManagementResult, RepositoryError> {
     let operation_id: Uuid = row.try_get("operation_id").map_err(map_statement_error)?;
     let operation_id = ManagementOperationId::try_from_uuid(operation_id)
         .map_err(|_| RepositoryError::IntegrityViolation)?;
     let resource = row_resource(row)?;
+    let operation_kind: String = row.try_get("operation_kind").map_err(map_statement_error)?;
     let data: Value = row.try_get("result").map_err(map_statement_error)?;
     let policy_id = data
         .get("policy_id")
@@ -200,12 +203,24 @@ fn decode_result(row: &sqlx::postgres::PgRow) -> Result<ManagementResult, Reposi
         policy_id,
         changed: row.try_get("changed").map_err(map_statement_error)?,
         occurred_at: row.try_get("occurred_at").map_err(map_statement_error)?,
-        document_metadata: None,
+        document_metadata: if operation_kind == "update_document_metadata" {
+            let metadata = data
+                .get("document_metadata")
+                .filter(|value| value.is_object())
+                .ok_or(RepositoryError::IntegrityViolation)?;
+            Some(metadata.clone())
+        } else {
+            None
+        },
     };
-    Ok(ManagementResult::PolicyMutation(result))
+    match operation_kind.as_str() {
+        "set_access_policy" => Ok(ManagementResult::PolicyMutation(result)),
+        "update_document_metadata" => Ok(ManagementResult::MetadataUpdate(result)),
+        _ => Err(RepositoryError::IntegrityViolation),
+    }
 }
 
-async fn insert_operation(
+pub(crate) async fn insert_operation(
     tx: &mut Transaction<'_, Postgres>,
     ctx: &VerifiedActorContext,
     command: &ManagementCommand,
@@ -232,6 +247,7 @@ async fn insert_operation(
     .bind(json!({
         "policy_id": result.policy_id.map(|id| id.as_uuid().to_string()),
         "access_revision": result.access_revision,
+        "document_metadata": result.document_metadata,
     }))
     .bind(result.resulting_revision)
     .bind(result.occurred_at)
@@ -294,8 +310,13 @@ impl PostgresDocumentRepository {
             .map_err(map_statement_error)?;
             if let Some(row) = existing_operation {
                 let saved_resource = row_resource(&row)?;
-                authorize_in_tx(&mut tx, ctx, &[(saved_resource, vec![Action::Administer])])
-                    .await?;
+                crate::document_management::authorize_management_operation(
+                    &mut tx,
+                    ctx,
+                    saved_resource,
+                    &row,
+                )
+                .await?;
                 let saved_digest: Vec<u8> =
                     row.try_get("command_digest").map_err(map_statement_error)?;
                 if saved_digest != digest {
@@ -400,9 +421,18 @@ impl ManagementRepository for PostgresDocumentRepository {
         ctx: &VerifiedActorContext,
         command: ManagementCommand,
     ) -> Result<ManagementResult, RepositoryError> {
-        let result = self.execute_policy(ctx, command).await;
+        let operation_kind = command.operation_kind();
+        let result = match command {
+            command @ ManagementCommand::SetAccessPolicy { .. } => {
+                self.execute_policy(ctx, command).await
+            }
+            command @ ManagementCommand::UpdateDocumentMetadata { .. } => {
+                self.execute_metadata_update(ctx, command).await
+            }
+            _ => Err(RepositoryError::BusinessRule),
+        };
         if matches!(result, Err(RepositoryError::Forbidden))
-            && record_authorization_denied(&self.pool, ctx.principal(), "set_access_policy")
+            && record_authorization_denied(&self.pool, ctx.principal(), operation_kind)
                 .await
                 .is_err()
         {
@@ -430,7 +460,10 @@ impl ManagementRepository for PostgresDocumentRepository {
             .map_err(map_statement_error)?;
             if let Some(row) = row {
                 let resource = row_resource(&row)?;
-                authorize_in_tx(&mut tx, ctx, &[(resource, vec![Action::Administer])]).await?;
+                crate::document_management::authorize_management_operation(
+                    &mut tx, ctx, resource, &row,
+                )
+                .await?;
                 Ok(Some(decode_result(&row)?))
             } else {
                 Ok(None)

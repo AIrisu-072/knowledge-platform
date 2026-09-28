@@ -5,6 +5,7 @@
 mod access_control;
 mod access_policy;
 mod authorized_repository;
+mod document_management;
 mod error;
 mod mapping;
 mod publication_end;

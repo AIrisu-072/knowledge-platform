@@ -6,6 +6,7 @@ mod access_context;
 mod access_policy_service;
 mod authorized_document;
 mod command;
+mod document_management;
 mod error;
 mod events;
 mod management_command;
@@ -30,6 +31,7 @@ pub use command::{
     CreateDocumentCommand, CreateDocumentResult, PublishDocumentCommand, PublishDocumentResult,
     PublishOperationId,
 };
+pub use document_management::DocumentManagementService;
 pub use error::{ApplicationError, InspectionExecutionError, RepositoryError, StorageError};
 pub use events::{
     AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_PUBLICATION_ENDED, AUDIT_DOCUMENT_VERSION_CREATED,
