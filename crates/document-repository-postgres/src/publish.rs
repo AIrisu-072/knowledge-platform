@@ -4,6 +4,7 @@ use document_application::{
     VerifiedActorContext,
 };
 use document_domain::{Action, DocumentId, DocumentVersionId, DomainError, PrincipalRef};
+use serde_json::{Value, json};
 use sqlx::{PgPool, Postgres, Transaction};
 
 use crate::{
@@ -17,6 +18,28 @@ use crate::{
 };
 
 const AUDIT_SOURCE: &str = "urn:knowledge-platform:document-platform";
+
+fn publish_audit_data(
+    base: &Value,
+    ctx: Option<&VerifiedActorContext>,
+    scheduled_due: bool,
+) -> Result<Value, RepositoryError> {
+    let mut data = base.clone();
+    if scheduled_due && let Some(ctx) = ctx {
+        let executor = ctx.service_executor().ok_or(RepositoryError::Forbidden)?;
+        let object = data
+            .as_object_mut()
+            .ok_or(RepositoryError::IntegrityViolation)?;
+        object.insert(
+            "serviceExecutor".to_owned(),
+            json!({
+                "identityProvider": executor.identity_provider(),
+                "principalId": executor.principal_id(),
+            }),
+        );
+    }
+    Ok(data)
+}
 
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) async fn get_publish_operation(
@@ -398,7 +421,7 @@ pub(crate) async fn publish_initial_version(
         .bind(audit_event.resource_id().as_uuid())
         .bind(audit_event.resource_version_id().map(|id| id.as_uuid()))
         .bind(audit_event.result())
-        .bind(audit_event.data().clone())
+        .bind(publish_audit_data(audit_event.data(), ctx, scheduled_due)?)
         .bind(audit_event.occurred_at())
         .execute(&mut *tx)
         .await
@@ -557,7 +580,7 @@ pub(crate) async fn publish_next_version(
         .bind(audit_event.event_id().as_uuid()).bind(audit_event.event_type()).bind(AUDIT_SOURCE)
         .bind(subject).bind(audit_event.actor().identity_provider()).bind(audit_event.actor().principal_id())
         .bind(audit_event.resource_id().as_uuid()).bind(audit_event.resource_version_id().map(|id| id.as_uuid()))
-        .bind(audit_event.result()).bind(audit_event.data().clone()).bind(audit_event.occurred_at())
+        .bind(audit_event.result()).bind(publish_audit_data(audit_event.data(), ctx, scheduled_due)?).bind(audit_event.occurred_at())
         .execute(&mut *tx).await.map_err(map_statement_error)?;
         Ok(proposed_result.clone())
     }.await;

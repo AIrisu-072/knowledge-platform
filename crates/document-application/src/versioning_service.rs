@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use document_domain::{
     AuditEventId, DocumentId, DocumentVersionId, DomainError, EventId, LifecycleState,
-    SemanticContentItem, VersionManifest,
+    PrincipalRef, SemanticContentItem, VersionManifest,
 };
 use document_semantic_inspection_core::{FormatId, InspectionProfileVersion};
 use serde_json::json;
@@ -10,17 +10,19 @@ use time::OffsetDateTime;
 
 use crate::{
     AUDIT_DOCUMENT_VERSION_PUBLISHED, ApplicationError, AuditEventRecord, AuthoritativeDocument,
-    CancelScheduleCommand, CancelScheduleRecord, CancelScheduleResult, Clock, CreateVersionCommand,
-    DOCUMENT_VERSION_PUBLISHED, DocumentPublishRepository, DocumentRepository, DomainEventRecord,
-    DueExecutionOutcome, DueTerminalRecord, EnsureSemanticInspection, FileStorage, IdGenerator,
-    InspectionExecutionError, PreparedManifest, PublicationScheduleRepository,
-    PublishCommandIdentity, PublishDocumentCommand, PublishDocumentResult,
-    PublishInitialVersionRecord, PublishOperationId, PublishOperationRecord, PublishVersionRecord,
-    RebaseWorkingVersionCommand, RepositoryError, SchedulePublishCommand, SchedulePublishRecord,
-    SchedulePublishResult, SemanticInspectionExecutor, SemanticInspectionRepository,
-    UpdateWorkingVersionCommand, VersionCommandIdentity, VersionMutationRecord,
-    VersionOperationKind, VersionOperationResult, VersioningPreflight, VersioningRepository,
-    WithdrawVersionCommand, WithdrawVersionRecord, WithdrawVersionResult,
+    AuthorizationScope, CancelScheduleCommand, CancelScheduleRecord, CancelScheduleResult, Clock,
+    CreateVersionCommand, DOCUMENT_VERSION_PUBLISHED, DocumentPublishRepository,
+    DocumentRepository, DomainEventRecord, DueExecutionOutcome, DueTerminalRecord,
+    EnsureSemanticInspection, FileStorage, IdGenerator, IdentityContextResolver,
+    IdentityResolutionError, InspectionExecutionError, PreparedManifest,
+    PublicationScheduleRepository, PublishCommandIdentity, PublishDocumentCommand,
+    PublishDocumentResult, PublishInitialVersionRecord, PublishOperationId, PublishOperationRecord,
+    PublishVersionRecord, RebaseWorkingVersionCommand, RepositoryError, ScheduleOperationRecord,
+    SchedulePublishCommand, SchedulePublishRecord, SchedulePublishResult,
+    SemanticInspectionExecutor, SemanticInspectionRepository, UpdateWorkingVersionCommand,
+    VerifiedActorContext, VersionCommandIdentity, VersionMutationRecord, VersionOperationKind,
+    VersionOperationResult, VersioningPreflight, VersioningRepository, WithdrawVersionCommand,
+    WithdrawVersionRecord, WithdrawVersionResult, authorize_scheduled_publish,
 };
 
 pub struct DocumentVersionService<I, C, F, E, R> {
@@ -283,15 +285,12 @@ where
             }),
             published_at,
         );
-        let mut audit_payload = json!({
+        let audit_payload = json!({
             "publishOperationId": command.publish_operation_id().as_uuid().to_string(),
             "expectedDocumentRevision": command.expected_document_revision(),
             "resultingDocumentRevision": result.resulting_document_revision(),
             "result": "success", "publishedAt": published_at,
         });
-        if scheduled_due {
-            audit_payload["serviceExecutor"] = json!("document-publication-scheduler");
-        }
         let audit_event = AuditEventRecord::new(
             AuditEventId::from_uuid(self.ids.next_uuid_v7()),
             AUDIT_DOCUMENT_VERSION_PUBLISHED,
@@ -349,6 +348,103 @@ where
         let Some(schedule) = self.repository.get_schedule(publish_operation_id).await? else {
             return Ok(DueExecutionOutcome::Inactive);
         };
+        self.execute_due_from_schedule(publish_operation_id, schedule, None)
+            .await
+    }
+
+    pub async fn execute_due_authorized<Q: IdentityContextResolver>(
+        &self,
+        publish_operation_id: PublishOperationId,
+        resolver: &Q,
+        executor: &PrincipalRef,
+    ) -> Result<DueExecutionOutcome, ApplicationError>
+    where
+        R: AuthorizationScope + DocumentPublishRepository + PublicationScheduleRepository,
+    {
+        let Some(schedule) = self.repository.get_schedule(publish_operation_id).await? else {
+            return Ok(DueExecutionOutcome::Inactive);
+        };
+        if schedule.status != "PENDING" {
+            return self
+                .execute_due_from_schedule(publish_operation_id, schedule, None)
+                .await;
+        }
+        if !self.repository.is_due(publish_operation_id).await? {
+            return self
+                .execute_due_from_schedule(publish_operation_id, schedule, None)
+                .await;
+        }
+        let requester = schedule.command.actor();
+        let ctx = match authorize_scheduled_publish(resolver, requester, executor).await {
+            Ok(ctx) => ctx,
+            Err(IdentityResolutionError::Unavailable) => {
+                return match self.repository.record_retry(publish_operation_id).await {
+                    Ok(next) => Ok(DueExecutionOutcome::RetryScheduled(next)),
+                    Err(RepositoryError::BusinessRule) => Ok(DueExecutionOutcome::Inactive),
+                    Err(error) => Err(error.into()),
+                };
+            }
+            Err(IdentityResolutionError::InvalidIdentity) => {
+                let now = self.repository.database_now().await?;
+                return self
+                    .terminalize_due(
+                        publish_operation_id,
+                        "identity_invalid",
+                        now,
+                        Some(executor),
+                    )
+                    .await;
+            }
+        };
+        if !self
+            .repository
+            .authorize_due_document(&ctx, schedule.command.document_id())
+            .await?
+        {
+            let now = self.repository.database_now().await?;
+            return self
+                .terminalize_due(
+                    publish_operation_id,
+                    "authorization_revoked",
+                    now,
+                    Some(executor),
+                )
+                .await;
+        }
+        let scoped = Self::new(
+            self.ids.clone(),
+            self.clock.clone(),
+            self.storage.clone(),
+            self.executor.clone(),
+            Arc::new(self.repository.with_verified_actor(ctx.clone())),
+        );
+        match scoped
+            .execute_due_from_schedule(publish_operation_id, schedule, Some(&ctx))
+            .await
+        {
+            Err(ApplicationError::Forbidden) => {
+                let now = self.repository.database_now().await?;
+                self.terminalize_due(
+                    publish_operation_id,
+                    "authorization_revoked",
+                    now,
+                    Some(executor),
+                )
+                .await
+            }
+            other => other,
+        }
+    }
+
+    async fn execute_due_from_schedule(
+        &self,
+        publish_operation_id: PublishOperationId,
+        schedule: ScheduleOperationRecord,
+        ctx: Option<&VerifiedActorContext>,
+    ) -> Result<DueExecutionOutcome, ApplicationError>
+    where
+        R: DocumentPublishRepository + PublicationScheduleRepository,
+    {
         let command = PublishDocumentCommand::new(
             publish_operation_id,
             schedule.command.document_id(),
@@ -392,6 +488,21 @@ where
         {
             Ok(result) => Ok(DueExecutionOutcome::Published(result)),
             Err(error) => {
+                if let Some(ctx) = ctx
+                    && !self
+                        .repository
+                        .authorize_due_document(ctx, schedule.command.document_id())
+                        .await?
+                {
+                    return self
+                        .terminalize_due(
+                            publish_operation_id,
+                            "authorization_revoked",
+                            database_now,
+                            ctx.service_executor(),
+                        )
+                        .await;
+                }
                 if let Some(stored) = self
                     .repository
                     .get_publish_operation(publish_operation_id)
@@ -409,20 +520,39 @@ where
                         Err(error) => Err(error.into()),
                     };
                 }
-                let reason = due_terminal_reason(&error).to_owned();
-                let record = DueTerminalRecord {
+                self.terminalize_due(
                     publish_operation_id,
-                    reason: reason.clone(),
-                    domain_event_id: EventId::from_uuid(self.ids.next_uuid_v7()),
-                    audit_event_id: AuditEventId::from_uuid(self.ids.next_uuid_v7()),
-                    occurred_at: database_now,
-                };
-                match self.repository.terminalize(record).await {
-                    Ok(()) => Ok(DueExecutionOutcome::Terminal(reason)),
-                    Err(RepositoryError::BusinessRule) => Ok(DueExecutionOutcome::Inactive),
-                    Err(error) => Err(error.into()),
-                }
+                    due_terminal_reason(&error),
+                    database_now,
+                    ctx.and_then(VerifiedActorContext::service_executor),
+                )
+                .await
             }
+        }
+    }
+
+    async fn terminalize_due(
+        &self,
+        publish_operation_id: PublishOperationId,
+        reason: &str,
+        at: OffsetDateTime,
+        service_executor: Option<&PrincipalRef>,
+    ) -> Result<DueExecutionOutcome, ApplicationError>
+    where
+        R: PublicationScheduleRepository,
+    {
+        let record = DueTerminalRecord {
+            publish_operation_id,
+            reason: reason.to_owned(),
+            domain_event_id: EventId::from_uuid(self.ids.next_uuid_v7()),
+            audit_event_id: AuditEventId::from_uuid(self.ids.next_uuid_v7()),
+            occurred_at: at,
+            service_executor: service_executor.cloned(),
+        };
+        match self.repository.terminalize(record).await {
+            Ok(()) => Ok(DueExecutionOutcome::Terminal(reason.to_owned())),
+            Err(RepositoryError::BusinessRule) => Ok(DueExecutionOutcome::Inactive),
+            Err(error) => Err(error.into()),
         }
     }
 

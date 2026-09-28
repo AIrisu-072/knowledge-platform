@@ -6,7 +6,7 @@ use document_application::{
     ScheduleOperationRecord, SchedulePublishCommand, SchedulePublishRecord, SchedulePublishResult,
     VerifiedActorContext, VersionOperationId,
 };
-use document_domain::{Action, DocumentId, DocumentVersionId, PrincipalRef};
+use document_domain::{Action, DocumentId, DocumentVersionId, PrincipalRef, ResourceRef};
 use serde_json::{Value, json};
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
@@ -22,6 +22,19 @@ use crate::{
 const AUDIT_SOURCE: &str = "urn:knowledge-platform:document-platform";
 
 impl PublicationScheduleRepository for PostgresDocumentRepository {
+    async fn authorize_due_document(
+        &self,
+        ctx: &VerifiedActorContext,
+        document_id: DocumentId,
+    ) -> Result<bool, RepositoryError> {
+        self.authorize_resource(
+            ctx,
+            ResourceRef::Document(document_id),
+            &[Action::Read, Action::Publish],
+        )
+        .await
+    }
+
     async fn get_schedule(
         &self,
         id: PublishOperationId,
@@ -562,12 +575,17 @@ async fn terminalize(pool: &PgPool, record: DueTerminalRecord) -> Result<(), Rep
             .bind(next).bind(document_id).execute(&mut *tx).await.map_err(map_statement_error)?;
         let actor = PrincipalRef::new(row.get::<String, _>("actor_identity_provider"), row.get::<String, _>("actor_principal_id"))
             .map_err(|_| RepositoryError::IntegrityViolation)?;
-        let payload = json!({
+        let mut payload = json!({
             "documentId": document_id.to_string(), "documentVersionId": target_id.to_string(),
             "publishOperationId": record.publish_operation_id.as_uuid().to_string(),
             "terminalReason": record.reason, "resultingDocumentRevision": next,
-            "serviceExecutor": "document-publication-scheduler",
         });
+        if let Some(executor) = record.service_executor.as_ref() {
+            payload["serviceExecutor"] = json!({
+                "identityProvider": executor.identity_provider(),
+                "principalId": executor.principal_id(),
+            });
+        }
         insert_events(&mut tx, ScheduleEvent {
             domain_id: record.domain_event_id.as_uuid(), audit_id: record.audit_event_id.as_uuid(),
             domain_type: "DocumentVersionPublicationTerminal",

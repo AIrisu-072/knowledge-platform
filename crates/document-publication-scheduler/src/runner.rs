@@ -1,9 +1,10 @@
-use std::{io::Cursor, path::Path, sync::Arc, time::Duration};
+use std::{future::Future, io::Cursor, path::Path, pin::Pin, sync::Arc, time::Duration};
 
 use document_application::{
-    Clock, DocumentVersionService, IdGenerator, PublicationScheduleRepository,
-    SemanticInspectionExecutor,
+    Clock, DocumentVersionService, IdGenerator, IdentityContextResolver, IdentityResolutionError,
+    PublicationScheduleRepository, SemanticInspectionExecutor, VerifiedActorContext,
 };
+use document_domain::PrincipalRef;
 use document_repository_postgres::PostgresDocumentRepository;
 use document_semantic_inspection_core::{
     InspectionProfileVersion, WorkerProtocolVersion, WorkerRequest,
@@ -41,6 +42,34 @@ pub enum SchedulerError {
     StorageUnavailable,
     #[error("publication attempt could not be completed")]
     PublicationUnavailable,
+    #[error("publication scheduler requires an identity resolver")]
+    IdentityResolverRequired,
+}
+
+type Resolution<'a> =
+    Pin<Box<dyn Future<Output = Result<VerifiedActorContext, IdentityResolutionError>> + 'a>>;
+
+trait DynIdentityResolver: Send + Sync {
+    fn resolve<'a>(&'a self, principal: &'a PrincipalRef) -> Resolution<'a>;
+}
+
+impl<R: IdentityContextResolver> DynIdentityResolver for R {
+    fn resolve<'a>(&'a self, principal: &'a PrincipalRef) -> Resolution<'a> {
+        Box::pin(IdentityContextResolver::resolve(self, principal))
+    }
+}
+
+struct ResolverAdapter {
+    inner: Arc<dyn DynIdentityResolver>,
+}
+
+impl IdentityContextResolver for ResolverAdapter {
+    async fn resolve(
+        &self,
+        principal: &PrincipalRef,
+    ) -> Result<VerifiedActorContext, IdentityResolutionError> {
+        self.inner.resolve(principal).await
+    }
 }
 
 type VersionService = DocumentVersionService<
@@ -54,14 +83,27 @@ type VersionService = DocumentVersionService<
 pub struct DueScheduler {
     repository: Arc<PostgresDocumentRepository>,
     service: VersionService,
+    resolver: ResolverAdapter,
+    service_executor: PrincipalRef,
 }
 
 impl DueScheduler {
     pub async fn connect(
+        _database_url: &str,
+        _storage_root: &Path,
+        _worker_executable: &Path,
+        _pdfium_runtime_dir: Option<&Path>,
+    ) -> Result<Self, SchedulerError> {
+        Err(SchedulerError::IdentityResolverRequired)
+    }
+
+    pub async fn connect_with_resolver<R: IdentityContextResolver + 'static>(
         database_url: &str,
         storage_root: &Path,
         worker_executable: &Path,
         pdfium_runtime_dir: Option<&Path>,
+        resolver: Arc<R>,
+        service_executor: PrincipalRef,
     ) -> Result<Self, SchedulerError> {
         if !cfg!(target_os = "linux") {
             return Err(SchedulerError::LinuxRequired);
@@ -105,6 +147,8 @@ impl DueScheduler {
         Ok(Self {
             repository,
             service,
+            resolver: ResolverAdapter { inner: resolver },
+            service_executor,
         })
     }
 
@@ -122,7 +166,7 @@ impl DueScheduler {
         let count = due.len();
         for id in due {
             self.service
-                .execute_due(id)
+                .execute_due_authorized(id, &self.resolver, &self.service_executor)
                 .await
                 .map_err(|_| SchedulerError::PublicationUnavailable)?;
         }

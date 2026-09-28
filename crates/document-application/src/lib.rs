@@ -16,6 +16,7 @@ mod publication_end;
 mod publish_quality;
 mod reconciliation;
 mod schedule;
+mod scheduled_authorization;
 mod semantic_inspection;
 mod service;
 mod versioning_command;
@@ -68,6 +69,7 @@ pub use schedule::{
     DueExecutionOutcome, DueTerminalRecord, ScheduleOperationRecord, SchedulePublishCommand,
     SchedulePublishRecord, SchedulePublishResult,
 };
+pub use scheduled_authorization::authorize_scheduled_publish;
 pub use semantic_inspection::{EnsureSemanticInspection, SemanticInspectionRecord};
 pub use service::DocumentService;
 pub use versioning_command::{

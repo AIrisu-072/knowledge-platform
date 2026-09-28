@@ -20,6 +20,7 @@ pub struct DueTerminalRecord {
     pub domain_event_id: EventId,
     pub audit_event_id: AuditEventId,
     pub occurred_at: OffsetDateTime,
+    pub service_executor: Option<PrincipalRef>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
