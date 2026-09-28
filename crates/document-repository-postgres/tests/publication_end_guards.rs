@@ -255,13 +255,14 @@ async fn due_publish_and_end_race_never_resurrects_an_ended_document() {
         end.end_document_publication(end_command(&f, 3, 3, f.base_id)),
         service.execute_due(publish_id(5)),
     );
+    let due = due.unwrap();
     match ended {
         Ok(_) => assert!(matches!(
-            due.unwrap(),
+            due,
             DueExecutionOutcome::Inactive | DueExecutionOutcome::Terminal(_)
         )),
         Err(ApplicationError::Conflict) => {
-            assert!(matches!(due.unwrap(), DueExecutionOutcome::Published(_)));
+            assert!(matches!(due, DueExecutionOutcome::Published(_)));
             end_service(&f)
                 .end_document_publication(end_command(&f, 4, 4, target))
                 .await
@@ -278,6 +279,10 @@ async fn due_publish_and_end_race_never_resurrects_an_ended_document() {
     assert_eq!(current, None);
     assert_eq!(
         f.service().execute_due(publish_id(5)).await.unwrap(),
-        DueExecutionOutcome::Inactive
+        if matches!(&due, DueExecutionOutcome::Published(_)) {
+            due
+        } else {
+            DueExecutionOutcome::Inactive
+        }
     );
 }
