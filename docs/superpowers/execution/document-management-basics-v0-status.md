@@ -1,5 +1,19 @@
 # Document Management Basics v0 — 準備状況
 
+## Active checkpoint — PR A MB-01/02 local GREEN、2026-09-28 JST
+
+- 状態: **IMPLEMENTATION ACTIVE — MB-01/02 local GREEN、MB-03 next**。PR Aは未完成で、MB-03〜11およびDMB受入全体を完了扱いしない。この節は以下の開始準備より新しい。
+- 設計/計画branch `design/document-management-basics-v0@66a273629a0c0c62f8a5fc88a1bb88f12bcb1a39`、PR #15 OPEN/Draft。exact-head標準CI `36371656531`、Sandbox `36371656506`、PoC `36371656508` はすべて SUCCESS。凍結設計/承認計画 blob は変えていない。
+- 独立した実装branch `feat/document-management-basics-v0-a`。MB-01 commit `5de3646c6f34d4c0f96e05bb0a7c15b6025437f5`、MB-02 commit `5859c411492b575281e3a8277fbed177d44efb52`。Draft PR Aはまだ作成していない。
+- MB-01: Domain契約 RED は未定義policy APIのみ、Application契約 RED は容量不足の一次試行後、生成物整理・再試行で未定義management APIのみ。GREENはDomain 5/5、Application 5/5。canonical JSON vectorとコマンドdigestは独立Python計算の固定hexと一致。対象crate strict Clippy PASS。
+- MB-02: 未定義T8/Repository APIによるREDを確認。M-Aは `0006_document_management_access_v0.sql`。実PostgreSQLの `access_policy_transaction` 6/6 PASS（root fail closed、一度限りのbootstrap、nearest policy、予約中変更、再実行/現在認可、no-op、型付き監査、監査失敗の全rollback）。対象crate strict Clippy PASS。旧Document Audit行のresource type既定値も検査。
+- 環境: 初回Application REDのビルドでディスク容量不足。完了済みT10 worktreeのCargo生成物を `cargo clean` で整理し、19GiB空きを確保して再実行した。ソースは変更していない。
+- 未検証: PR Aのexact-head CI、`mise run verify:fast`、pin済みPDFium/Dockerの`mise run verify`、MB-03/04と後続PR。実装PRのCIを毎Taskでは起動しない。
+- blocker: なし。新しいproduction dependencyなし。Design Freeze意味変更なし。
+- 次の exact action: 実装branchをpushし、MB-03の認可付き既存経路をRED試験から実装する。既存業務transaction内のaccess guard、現在認可の再実行開示、T10通常参照遮断の回帰を先に固定する。MB-04までGREENになったらPR AをDraft作成し、まとまったheadでexact-head CIを確認する。
+
+以下は前回checkpointの履歴である。
+
 ## Active checkpoint — 計画承認・実装開始、2026-09-28 JST
 
 - 状態: **PLAN APPROVED / IMPLEMENTATION ACTIVE — MB-01 開始準備**。MB-01〜11はまだ未完了。この節は以下の旧準備記録より新しい。

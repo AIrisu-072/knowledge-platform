@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document Management Basics v0 PR A、2026-09-28 JST
+
+- Status: **ACTIVE — MB-01/02 local GREEN、MB-03 next**。詳細・RED/GREEN evidenceは `docs/superpowers/execution/document-management-basics-v0-status.md`。
+- 設計PR #15 head `66a273629a0c0c62f8a5fc88a1bb88f12bcb1a39` は標準CI/Sandbox/PoCがexact-head SUCCESS。承認済み設計・計画blobは維持。
+- 実装branch `feat/document-management-basics-v0-a`、MB-01 head `5de3646c6f34d4c0f96e05bb0a7c15b6025437f5`、MB-02 head `5859c411492b575281e3a8277fbed177d44efb52`。PR Aは未作成。M-Aは `0006_document_management_access_v0.sql`。MB-03〜11は未完了。
+- Blocker: なし。PR Aの最終CI・全体verificationは未実行。次の exact action: branchをpushし、MB-03の実PostgreSQL REDを作り、認可付き既存transaction/read/replayを実装する。PR #15と実装PRはmergeしない。
+
+This checkpoint supersedes the prior Document Management Basics start checkpoint below.
+
 ## Active checkpoint — Document Management Basics v0、2026-09-28 JST
 
 - Status: **ACTIVE — 計画承認済み・規範反映中・MB-01開始準備**。詳細は `docs/superpowers/execution/document-management-basics-v0-status.md`。以前の Versioning/T10 checkpoint は完了した先行工程の記録。
