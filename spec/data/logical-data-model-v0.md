@@ -44,7 +44,7 @@ Search Platform が保持する。
 - Vector representation / index
 - Metadata / structured index
 - Temporal representation
-- Graph representation（将来）
+- Typed HyperEdge graph representation
 
 ## 1.3 Operational Data
 
@@ -441,9 +441,9 @@ Embedding は検索アルゴリズムの一表現であり、正本ではない�
 
 単一 `timestamp` へ統合しない。
 
-### GraphRepresentation（将来）
+### HyperGraphRepresentation
 
-必要になった場合のみ追加。
+Search / Discovery Platform v0ではfirst-classな派生Projectionとして扱う。物理Graph backendは別途選定する。
 
 ---
 
@@ -675,3 +675,128 @@ Document DB と同じ製品にする必要はない。
 5. AccessPolicy の最低限の将来互換性を決める
 6. DB / Storage 候補を比較する
 7. Rust crate / library 対応表へ落とす
+
+
+---
+
+# Search / Discovery Platform v0 logical model amendment
+
+既存KnowledgeResourceSnapshot / KnowledgeUnitはKnowledgeResource系の一部として維持し、Search canonical modelを以下へ拡張する。
+
+## DiscoverableSource
+
+```text
+DiscoverableSource
+- source_id
+- source_type
+- resource_types[]
+- business_domains[]
+- concept_refs[]
+- discovery_modes[]
+- discovery_capabilities[]
+- enumeration_semantics
+- authority_scope
+- provenance
+- access_model
+- retention_mode
+- freshness_policy
+```
+
+## DiscoverableResource
+
+```text
+DiscoverableResource
+├─ ResourceIdentity
+├─ typed ResourceBody
+├─ UsageProfile[]
+├─ DiscoveryProfile
+├─ TemporalDiscoveryProfile
+└─ ResourceRelations[]
+```
+
+Resource family:
+
+- KnowledgeResource
+- SemanticResource
+- CapabilityResource
+- AgentSkillResource
+- WorkflowResource
+- PolicyResource
+
+KnowledgeResourceへ他Resource型を無理に畳み込まない。
+
+## Assertion
+
+```text
+Assertion
+- assertion_id
+- subject_ref
+- predicate
+- value
+- source_ref
+- origin
+- authority_scope
+- evidence_refs[]
+- observed_at
+- effective_from?
+- effective_to?
+- derived_by?
+```
+
+複数Assertionを保持し、Authority Resolution後のDiscovery Projectionから元Assertionへ追跡可能にする。
+
+## Logical resource identity
+
+```text
+LogicalResource
+    ↓
+ResourceRepresentation[]
+    ↓
+ResourceVersion[]
+    ↓
+DiscoveryProjection[]
+```
+
+SimilarityだけでLogical identityを確定しない。RESOLVED / PROVISIONAL / UNRESOLVED / CONFLICTを区別する。
+
+## UsageProfile / DiscoveryProfile
+
+UsageProfileはapplicable_when / not_applicable_whenを含み、1 Resourceに複数用途を許可する。
+DiscoveryProfileはcanonical_name / aliases / concept_refs / intents / high_signal_facets / confusable_with / distinguished_by等を持てる。
+
+## TypedRelationInstance
+
+Canonical Graph relation:
+
+```text
+TypedRelationInstance
+- relation_id
+- relation_type
+- participants[] { role, resource_ref }
+- qualifiers
+- temporal_scope
+- authority
+- provenance
+- evidence_refs[]
+```
+
+二項関係も同じn-ary modelで表現する。Canonical relationをlossy binary edgeへ変換しない。
+将来のbinary shortcutはderived acceleration artifactに限り、元RelationInstanceへ逆参照可能にする。
+
+## Discovery execution types
+
+最低限以下の型をDomain / Core側で表現可能にする。
+
+- IntentSignature
+- ApplicabilityResult
+- InformationGap
+- QualifiedResource
+- FederatedCandidate
+- EvidenceRequirement
+- Claim
+- EvidenceSet / EvidenceSufficiency
+- DiscoveryResult
+- LogicalResourceBinding
+- RepresentationBinding
+
+具体的なIndex / Graph / Vector backend型をこのlogical modelへ露出させない。

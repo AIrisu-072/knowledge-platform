@@ -398,7 +398,7 @@ Embedding Modelの変更で全面再生成が発生し得るため、正本扱�
 
 ---
 
-## 5.8 Graph Representation（将来）
+## 5.8 Typed HyperEdge Graph Representation
 
 | 特性 | 内容 |
 |---|---|
@@ -645,3 +645,59 @@ ZIP内のTier 1形式は可能な範囲で再帰Extractionする。
 4. 3〜5年の容量レンジ試算
 5. PoC向けLoad / Evaluation Plan作成
 
+
+
+---
+
+# Search / Discovery Platform v0 data characteristics amendment
+
+## Federated source characteristics
+
+Search PlatformはSourceごとに以下を区別する。
+
+- local / remote
+- complete enumeration / partial enumeration / query-only / none
+- persistent / cache / session-only / no-retention
+- authoritative scope
+- freshness semantics
+- latency / monetary / rate-limit profile
+
+Remote query missをabsenceとして扱わない。Source observationとResource lifecycleを分離する。
+
+## Projection characteristics
+
+以下は全て再生成可能な派生データとする。
+
+- Directory Projection
+- Structured Projection
+- Lexical Projection
+- Vector Projection
+- Temporal Projection
+- Access Projection
+- Typed HyperEdge Graph Projection
+- Session Working Index
+
+Projection generationはversioned / reproducibleにし、Source snapshotとschema / lens / analyzer / embedding / graph schema等のversionをManifestへ記録可能にする。
+
+## Retention and materialization
+
+Retentionとruntime materializationを直交させる。
+
+NO_RETENTIONでもProvider契約上許可されるruntime FULL_CONTENT利用は可能だが、永続保存してはならない。
+SESSION_ONLY / NO_RETENTION由来のAssertion / RelationはSession Working Index / Session Graphで扱える。
+
+## Graph characteristics
+
+Canonical relationはTyped N-ary Relation / HyperEdge。
+participant role、authority、provenance、temporal scope、evidence refsを保持する。
+Graph backendの物理製品は本データ特性で固定しない。
+
+## Consistency
+
+Source正本とSearch ProjectionはEventual Consistencyを許容する。
+Discovery evaluationは利用したProjection Generation / Observation snapshotをtrace可能にする。
+BindingされたResource identity/version/digestはIndex generation切替で暗黙更新しない。
+
+## Cost
+
+性能最適化は意味情報の不可逆削減ではなく、Source routing、structured filtering、candidate reduction、progressive materialization、targeted probe、content-addressed reuse等で不要処理を削減する。

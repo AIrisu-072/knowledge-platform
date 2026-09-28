@@ -6,81 +6,89 @@ vars: {
 
 direction: right
 
+sources: {
+  label: "Discoverable Sources（authoritative ownership）"
+  source: "DiscoverableSource\nmode / coverage / retention\nauthority / freshness"
+}
+
+resource_model: {
+  label: "Discovery Canonical Model"
+  logical: "LogicalResource"
+  repr: "ResourceRepresentation"
+  version: "ResourceVersion"
+  resource: "DiscoverableResource\nKnowledge / Semantic / Capability\nSkill / Workflow / Policy"
+  usage: "UsageProfile[]\napplicable / not_applicable"
+  profile: "DiscoveryProfile\nhigh_signal_facets"
+  temporal: "TemporalDiscoveryProfile"
+  assertion: "Assertion\norigin / authority / provenance"
+  relation: "TypedRelationInstance\nN-ary / HyperEdge\nparticipant role保持"
+
+  logical -> repr: "1:N"
+  repr -> version: "1:N"
+  logical -> resource
+  resource -> usage
+  resource -> profile
+  resource -> temporal
+  resource -> assertion
+  resource -> relation
+}
+
+projection: {
+  label: "Derived / Rebuildable Projections"
+  directory: "Directory"
+  structured: "Structured"
+  lexical: "Lexical"
+  vector: "Vector"
+  temporal: "Temporal"
+  access: "Access"
+  graph: "Typed HyperEdge Graph"
+}
+
+runtime: {
+  label: "Discovery Runtime"
+  need: "DiscoveryNeed / IntentSignature"
+  route: "SourceRoutePlan"
+  candidate: "FederatedCandidate"
+  qualify: "ApplicabilityResult\nAPPLICABLE / EXCLUDED\nUNRESOLVED / INVALID"
+  gap: "InformationGap"
+  evidence: "EvidenceRequirement / Claim\nEvidenceSet / Sufficiency"
+  qualified: "QualifiedResource"
+  result: "DiscoveryResult"
+  logical_binding: "LogicalResourceBinding"
+  repr_binding: "RepresentationBinding"
+
+  need -> route -> candidate -> qualify
+  qualify -> gap: "UNRESOLVED"
+  qualify -> qualified: "APPLICABLE"
+  gap -> evidence
+  qualified -> evidence
+  evidence -> result
+  qualified -> logical_binding -> repr_binding
+}
+
+sources.source -> resource_model.resource: "Adapter / Observation"
+resource_model.assertion -> projection.directory
+resource_model.assertion -> projection.structured
+resource_model.resource -> projection.lexical
+resource_model.resource -> projection.vector
+resource_model.temporal -> projection.temporal
+resource_model.resource -> projection.access
+resource_model.relation -> projection.graph
+
+projection.directory -> runtime.candidate
+projection.structured -> runtime.candidate
+projection.lexical -> runtime.candidate
+projection.vector -> runtime.candidate
+projection.temporal -> runtime.qualify
+projection.access -> runtime.qualify
+projection.graph -> runtime.candidate: "HyperGraph expansion"
+
 document_platform: {
-  label: "Document Platform (authoritative)"
-
-  principal: "ExternalPrincipalRef\nWindows SID / external identity"
-  folder: "Folder"
-  document: "Document"
-  version: "DocumentVersion\nWORKING / PUBLISHED / WITHDRAWN\nUI labels are derived"
-  file: "FileObject"
-  version_file: "VersionFile"
-  read_state: "ReadState\nPrincipal × DocumentVersion"
-  metadata: "Metadata\ncommon + extensible"
-
-  folder -> document: "1:N"
-  document -> version: "1:N"
-  version -> version_file: "1:N"
-  version_file -> file: "N:1"
-  principal -> read_state
-  version -> read_state
-  document -> metadata
-  version -> metadata
+  label: "Document Platform（authoritative）"
+  document: "Document / DocumentVersion"
+  unit: "KnowledgeUnit\nSearch-derived"
+  document -> unit
 }
 
-search_platform: {
-  label: "Search Platform (derived / rebuildable)"
-
-  source: "KnowledgeSource"
-  canonical: "CanonicalKnowledgeResourceSnapshot"
-  unit: "KnowledgeUnit\nsection / paragraph / table / sheet"
-  repr: {
-    label: "Search Representations"
-    lexical: "Lexical"
-    vector: "Vector"
-    metadata: "Metadata / Structured"
-    temporal: "Temporal"
-    graph: "Graph (future)"
-  }
-  retrieval: "Retrieval Engine"
-  fusion: "Fusion"
-  rerank: "Reranking"
-  result: "SearchResult"
-
-  source -> canonical: "ETL"
-  canonical -> unit: "Extraction / Normalization"
-  unit -> repr.lexical
-  unit -> repr.vector
-  unit -> repr.metadata
-  unit -> repr.temporal
-  unit -> repr.graph
-  repr.lexical -> retrieval
-  repr.vector -> retrieval
-  repr.metadata -> retrieval
-  repr.temporal -> retrieval
-  repr.graph -> retrieval
-  retrieval -> fusion
-  fusion -> rerank
-  rerank -> result
-}
-
-document_platform.version -> search_platform.source: "Document source event / sync"
-
-query_runtime: {
-  label: "Query Runtime"
-  request: "SearchRequest"
-  plan: "RetrievalPlan"
-  policy: "Plan Validator / Policy"
-  request -> plan
-  plan -> policy
-  policy -> search_platform.retrieval
-}
-
-clients: {
-  label: "Clients"
-  human: "Human Search UI"
-  llm: "LLM / Agent"
-}
-
-search_platform.result -> clients.human
-search_platform.result -> clients.llm
+document_platform.document -> sources.source: "Document Source"
+document_platform.unit -> resource_model.resource: "KnowledgeResource"
