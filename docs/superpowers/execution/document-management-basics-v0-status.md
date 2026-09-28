@@ -1,5 +1,19 @@
 # Document Management Basics v0 — 準備状況
 
+## Active checkpoint — 計画承認・実装開始、2026-09-28 JST
+
+- 状態: **PLAN APPROVED / IMPLEMENTATION ACTIVE — MB-01 開始準備**。MB-01〜11はまだ未完了。この節は以下の旧準備記録より新しい。
+- 依頼者は `2026-09-28-document-management-basics-v0-production-implementation.md` の blob `3b5cc84a8593134cdd7e01ea026bd2a124fa9585` を明示承認した。設計 blob `38010802a04c285336810e9b9c637c656ed1a76b` は凍結済み。計画承認記録は `docs/superpowers/plans/2026-09-28-document-management-basics-v0-production-implementation-approval.md`。
+- 開発ログ一元管理は**依頼者の指示で今回の開始条件から除外**した。別プロジェクトの完了を確認したわけではない。文書管理側の監査・イベント・運用観測要件は維持。
+- 実行方式: `superpowers:executing-plans` による MB 番号順の実装。設計PR #15→実装 Draft PR A→B→C→D。merge・本番配備・本番データmigrationの指示はない。
+- 着手時の正本: `main@55dc3d3a430c8f36e1db8277fee15c4429258466`、PR #15 `design/document-management-basics-v0@35eb7bc72cb778d9a5689fe2db8410c468a9dd30`。PR #15は OPEN/Draft、未解決 review thread 0、同 head の required checks は SUCCESS。承認対象の設計・計画 blob はこの head と一致。基準 main との差分は計画文書のみで、既存の同機能実装は見つかっていない。
+- 規範反映: 承認済み設計 §17・計画 §7 に沿い、logical-data-model、transaction-consistency、observability-auditへ追記した。Versioning の期限到達認可と T10 の履歴専用経路は別の接続文書へ記録し、既存承認記録を維持。製品コード・migration・依存はまだ変更していない。
+- 検証: 参照元 blob、PR #15 head/diff/checks、main head、関連 spec を確認。規範追記の差分レビュー中。Rust/実DBは未実行。設計PRの最終 head CI はcommit/push後に確認する。
+- blocker: なし。設計意味を超える差分が見つかればその箇所のみ改訂gateへ戻す。
+- 次の exact action: 規範追記の意味差分を確認し、この承認・規範記録を設計ブランチへcommit/pushする。独立実装worktreeを設計headから作り、MB-01の契約試験REDを作る。
+
+以下は計画承認前の履歴記録であり、現在の開始条件を示さない。
+
 - 状態: **DESIGN APPROVED / PLAN REVIEW PENDING / IMPLEMENTATION BLOCKED**
 - 日付: 2026-09-28 JST
 - 対象: transaction T5〜T9、認可付き一覧・版/操作履歴・ファイル参照、必要なT11/T12。

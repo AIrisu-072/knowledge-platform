@@ -555,6 +555,8 @@ SYSTEM_AUDIT
 
 `ReadState` は現在状態であり、履歴Auditの代替ではない。
 
+Document Management Basics v0 では、初回の明示的な既読確認 `document.version.read_confirmed` と、原本バイト開示前の `document.file.access_granted` を必須 Audit とする。重複既読確認、単純な一覧・metadata・履歴参照は v0 では全件 Audit としない。重要な認可拒否は `authorization.denied` として対象の存在や本文を開示しない理由分類中心の payload で別 transaction に記録し、監査記録失敗でもアクセスを許可しない。必須 Audit に sampling を適用しない。
+
 ---
 
 # 15. Audit durability
@@ -630,6 +632,8 @@ metadata
 機械判定はstable code / identifierで行う。
 
 Human-readable messageは補助情報とする。
+
+Document Management Basics v0 の `resource_type` は Document / Folder / AccessPolicy を区別し、Folder ID や Policy ID を Document ID に偽装しない。Policy 変更では binding 対象、policy revision、access_revision を区別する。監査 payload は操作と対象に必要な識別子、変更キー、結果、許可された理由分類に制限し、本文、ACL の全値、資格情報、Storage locator、無制限の入力を複製しない。既存 Document event の型と意味を維持する。
 
 ---
 

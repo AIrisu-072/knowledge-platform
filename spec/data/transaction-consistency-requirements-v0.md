@@ -474,6 +474,8 @@ AuditEvent(document.version.published)
 
 期限到達後、durable workerが予約台帳の有効な意図を取得し、保存済みPublish operation IDでT3を実行する。DB時刻で期限到達を確認し、早期公開を拒否する。原本、Inspection、公開品質、対象Version、base/current、Document revisionを再検証する。複数workerが同じ予約を取得しても、Publish ledgerとDocument行ロックにより成功は1件だけとなる。Publishと予約完了は同一transactionでcommitする。
 
+Document Management Basics v0 の認可付き経路では、worker は予約依頼者の現在の Principal・issuer 付き membership・有効期限を信頼済み resolver で再取得し、実行時の `read + publish` を access-state 共有 guard と同一確定 transaction 内で再確認する。service executor の権限で依頼者の不足を迂回しない。権限不足または identity の恒久的不正が確定した場合は既存の監査付き予約終端処理へ渡す。一時的な identity 障害は予約と Publish operation ID を維持して再試行し、公開も終端確定もしない。依頼者と executor を監査で区別する。既存の DB 時刻・DSI・品質・manifest・冪等性条件は保持する。
+
 一時的な基盤障害は同じIDのまま再試行する。永続的な業務・整合性・品質failureでは公開せず、予約を終了して `scheduled_publish_at` を消し、Document revision、Domain/Audit Outboxを同一transactionで更新する。取消はcaller UUIDv7 operation IDと期待revisionを使う冪等・監査対象の操作とする。予約中の通常編集、再基準化、別IDでの手動公開は取消後に行う。Versionの永続化stateは `WORKING` のままである。
 
 ---
@@ -528,6 +530,8 @@ Optimistic Concurrency Controlを基本とする。
 
 更新対象のrevision一致。
 
+Document Management Basics v0 は Document 共通属性 `document_type`、`owning_department`、`category`、`extensions` のみを set/unset する。対象外の既存キーを保持し、Version 固有 metadata・内容・原本は変更しない。期待 revision 不一致は同値要求でも Conflict とし、一致した同値要求は結果台帳へ `unchanged` を記録して revision・mutation event を増やさない。実変更は PENDING 公開予約中に拒否し、T10 後は `read + write + read_history + administer` を要求して公開状態を復帰させない。実変更、管理台帳、DocumentMetadataChanged、必須 Audit を同一 transaction に含める。
+
 検索用metadata更新はOutbox経由で非同期反映する。
 
 ---
@@ -546,6 +550,8 @@ Optimistic Concurrency Controlを基本とする。
 - 移動権限がある
 - Folder構造自体のcycleを作らない
 
+Document Management Basics v0 の移動は、Document の `read + write + administer` と旧親・新親 Folder の `administer` を要求する。旧親一致、期待 Document revision、両 Folder の利用可否を確認し、継承 policy の変更を access-state 排他 guard 下で確定する。PENDING 予約中の実移動は拒否し、T10 後は `read_history` も要求する。明示 Document policy、Version、原本、ReadState は保持する。同一場所は `unchanged`、実移動は Document revision と access_revision を各 1 増やし、管理台帳・DocumentMoved・必須 Audit と原子的に記録する。
+
 ---
 
 ## T7: Folderを作成・移動する
@@ -560,7 +566,9 @@ Optimistic Concurrency Controlを基本とする。
 
 - Folder cycle禁止
 - parent存在保証
-- 同一parent下での名前重複ルールは要件次第
+- 同一parent下での正規化済み名前重複は禁止（大文字小文字は区別）
+
+Document Management Basics v0 では、正規化済み Folder 名を同一親の下で大小文字を区別して一意にする。root は通常操作で変更しない。作成・改名は対象 revision と管理台帳、FolderCreated/FolderRenamed、必須 Audit を原子的に記録する。移動は対象・旧親・新親と、実効 policy が変わる継承対象の変更前 `administer` を必要とし、cycle、PENDING 予約を持つ配下 Document、期待 revision を排他 access guard 下で検査する。実変更時だけ対象 Folder revision と access_revision を増やし、FolderMoved と必須 Audit を同時 commit する。子孫 Document revision は一括加算しない。無検査の部分移行や既存 Folder の自動改名はしない。
 
 ### 必要機能
 
@@ -581,9 +589,13 @@ recursive query / hierarchical queryが有用。
 
 権限変更は監査対象。
 
-### 将来要件
+### Document Management Basics v0 の追加契約
 
-Windows Identity / group情報との同期方式に依存するため、policy modelの詳細は後続で定義する。
+信頼済み identity adapter が本人 Principal、issuer 付き group/role、有効期限、実行種別を検証する。未検証、期限切れ、root policy 未設定は fail closed とし、認証なし allow-all は置かない。v0 は Folder/Document の allow-only policy とし、最も近い明示 policy が全操作を置換する。`read`、`read_history`、`write`、`publish`、`administer` は独立で、明示空 policy は拒否する。初回 root policy は信頼済み bootstrap 専用操作とし、通常 T8 は変更前 `administer` を必要とする。
+
+通常の認可付き変更は単一 access-state 行を共有ロック、T8 と移動は排他ロックし、対象 Folder ID 順、Document ID 順、policy/操作台帳の順でロックする。確定 transaction 内で現在 policy と identity 有効期限を再検査する。T8 実変更は policy revision と access_revision を増やし、Document revision は増やさない。操作 ID と正規化 digest による完全再実行を記録し、再生結果の開示にも現在認可を要求する。異要求の同 ID は Conflict、同値 no-op は台帳だけを記録する。変更と AccessPolicyChanged、必須 Audit の原子性を保証する。権限変更は PENDING 予約があっても可能で、予約の期待 revision を書き換えない。
+
+Windows/AD 等の実接続と membership 反映遅延は後続設計とする。
 
 ---
 
@@ -592,14 +604,14 @@ Windows Identity / group情報との同期方式に依存するため、policy m
 ### 論理キー
 
 ```text
-principal_id × document_version_id
+identity_provider × principal_id × document_version_id
 ```
 
 ### 操作
 
 ```text
 未読 -> INSERT
-既読 -> 必要ならread_at更新
+既読 -> 保存済みfirst_read_atを再生し、更新しない
 ```
 
 ### 要件
@@ -608,6 +620,8 @@ principal_id × document_version_id
 - concurrent-safe
 - UPSERT可能
 - unique constraint必須
+
+Document Management Basics v0 では、信頼済み HumanInteractive 本人による現行 `PUBLISHED` Version の明示確認だけを登録する。access-state 共有 guard、Document lock、現在の `read`、Version 一致、T10 未終了を確認する。参照だけで既読にせず、過去版の新規確認も拒否する。初回 INSERT と `document.version.read_confirmed` 必須 Audit は同一 transaction、重複時は追加 event なし。Document revision は増やさない。
 
 ### 性能想定
 
@@ -636,6 +650,8 @@ T10 の対象は現行 `PUBLISHED` Version を持つ Document に限る。呼出
 
 通常公開用の Document・ファイル読み取りは、同じ Document の現行 `PUBLISHED` Version のみを返す。現行版参照が null なら結果を返さず、過去版や `WORKING` Version へフォールバックしない。既存の編集・authoritative 読み取りは T10 未終了の `WORKING` 初版を扱えるが、T10 終了後は旧版を返さない。終了記録の確認と取得は同じ DB statement で行う。権限に基づく過去資料の参照は AccessPolicy を使う別経路とする。
 
+Document Management Basics v0 の認可付き履歴経路は、明示 Document/Version ID と `read + read_history` を要求し、残存 `WORKING` の内容にはさらに `write` を要求する。この経路は通常公開用の取得へフォールバックせず、T10 の `current_version_id = null` や Version の内容・状態を変更しない。
+
 Search Index からの除外配送は遅延してよい。ただし検索結果を表示・利用する前に、Document 側で結果の Version が現行 `PUBLISHED` 版か確認し、T10 後の古い結果を抑止する。再構築元も現行 `PUBLISHED` 版だけを列挙する。Search consumer と再構築処理そのものは別機能とする。
 
 ```text
@@ -660,6 +676,8 @@ Transactional Outbox Patternを採用可能であることを必須要件とす�
 - 業務データ変更
 - Outbox Event追加
 
+Document Management Basics v0 の T5/T6/T7/T8 実変更では、型付き対象参照・対象 revision・操作 ID を持つ Domain Outbox を業務データと同時に記録する。T9 の初回既読確認や単純参照には Search Index 更新イベントを要求しない。Search consumer と配送 worker は本機能の実装対象外とする。
+
 ### transaction外
 
 - Extraction
@@ -681,6 +699,8 @@ Transactional Outbox Patternを採用可能であることを必須要件とす�
 2. Outboxへaudit eventを登録し専用Audit Storeへ配送
 
 v0では方式を固定しない。
+
+Document Management Basics v0 では既存の Audit Outbox staging を Document / Folder / AccessPolicy の型付き対象へ拡張する。T5/T6/T7/T8 の実変更、T9 の初回既読確認、原本バイト開示前の `document.file.access_granted` は必須 Audit を業務 transaction と同時に生成する。完全再実行、同値 no-op、既読重複では mutation Audit を増やさない。認可拒否の `authorization.denied` は独立 transaction に記録し、記録失敗でも拒否を許可へ反転しない。通常一覧・metadata・履歴の単純参照は v0 では全件 Audit 対象にしない。
 
 ---
 
