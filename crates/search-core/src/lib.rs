@@ -5,6 +5,7 @@
 pub mod applicability;
 pub mod assertion;
 pub mod authority;
+pub mod binding;
 pub mod contrast;
 pub mod discovery;
 pub mod evidence;
