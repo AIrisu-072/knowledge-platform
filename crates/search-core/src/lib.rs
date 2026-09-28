@@ -2,7 +2,9 @@
 
 #![forbid(unsafe_code)]
 
+pub mod fact;
 pub mod id;
+pub mod predicate;
 pub mod profile;
 pub mod resource;
 pub mod source;
