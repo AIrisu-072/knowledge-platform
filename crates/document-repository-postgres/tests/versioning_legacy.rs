@@ -134,6 +134,7 @@ async fn versioning_migration_backfills_simple_primary_and_marks_ambiguous_legac
             .await
             .unwrap();
     assert_eq!(retained, 2);
+    migration(&pool, 5, "document_publication_end_v0").await;
     let repository = PostgresDocumentRepository::new(pool.clone());
     let ambiguous = repository
         .get_authoritative_document(DocumentId::from_uuid(id(2)))

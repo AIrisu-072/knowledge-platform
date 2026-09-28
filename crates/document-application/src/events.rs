@@ -20,6 +20,8 @@ pub const AUDIT_DOCUMENT_VERSION_PUBLICATION_SCHEDULED: &str =
 pub const DOCUMENT_VERSION_PUBLICATION_CANCELLED: &str = "DocumentVersionPublicationCancelled";
 pub const AUDIT_DOCUMENT_VERSION_PUBLICATION_CANCELLED: &str =
     "document.version.publication.cancelled";
+pub const DOCUMENT_PUBLICATION_ENDED: &str = "DocumentPublicationEnded";
+pub const AUDIT_DOCUMENT_PUBLICATION_ENDED: &str = "document.publication.ended";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DomainEventRecord {

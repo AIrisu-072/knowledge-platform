@@ -13,6 +13,10 @@ use crate::{
     AuditEventRecord, DomainEventRecord, InspectionExecutionError, RepositoryError,
     SemanticInspectionRecord, StorageError,
     command::{PublishDocumentCommand, PublishDocumentResult, PublishOperationId},
+    publication_end::{
+        EndDocumentPublicationResult, EndPublicationCandidate, EndPublicationOperationRecord,
+        EndPublicationRecord, PublicationEndOperationId,
+    },
     schedule::{
         CancelOperationRecord, CancelScheduleRecord, CancelScheduleResult, DueTerminalRecord,
         ScheduleOperationRecord, SchedulePublishRecord, SchedulePublishResult,
@@ -281,6 +285,24 @@ pub trait PublicationScheduleRepository: Send + Sync {
         id: crate::PublishOperationId,
     ) -> Result<OffsetDateTime, RepositoryError>;
     async fn terminalize(&self, record: DueTerminalRecord) -> Result<(), RepositoryError>;
+}
+
+#[allow(async_fn_in_trait)]
+pub trait PublicationEndRepository: Send + Sync {
+    async fn get_end_operation(
+        &self,
+        operation_id: PublicationEndOperationId,
+    ) -> Result<Option<EndPublicationOperationRecord>, RepositoryError>;
+
+    async fn get_end_candidate(
+        &self,
+        document_id: DocumentId,
+    ) -> Result<Option<EndPublicationCandidate>, RepositoryError>;
+
+    async fn end_document_publication(
+        &self,
+        record: EndPublicationRecord,
+    ) -> Result<EndDocumentPublicationResult, RepositoryError>;
 }
 
 #[allow(async_fn_in_trait)]
@@ -742,7 +764,62 @@ pub trait DocumentRepository: Send + Sync {
         id: DocumentId,
     ) -> Result<Option<AuthoritativeDocument>, RepositoryError>;
 
+    async fn get_authoring_document(
+        &self,
+        id: DocumentId,
+    ) -> Result<Option<AuthoritativeDocument>, RepositoryError>;
+
+    async fn get_current_published_document(
+        &self,
+        id: DocumentId,
+    ) -> Result<Option<AuthoritativeDocument>, RepositoryError>;
+
+    async fn is_current_published_version(
+        &self,
+        document_id: DocumentId,
+        version_id: DocumentVersionId,
+    ) -> Result<bool, RepositoryError>;
+
+    async fn list_current_published_versions(
+        &self,
+        after: Option<DocumentId>,
+        limit: i64,
+    ) -> Result<Vec<CurrentPublishedVersionRef>, RepositoryError>;
+
     async fn file_reference_exists(&self, file_id: FileId) -> Result<bool, RepositoryError>;
 
     async fn list_referenced_file_ids(&self) -> Result<Vec<FileId>, RepositoryError>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CurrentPublishedVersionRef {
+    document_id: DocumentId,
+    current_version_id: DocumentVersionId,
+    document_revision: i64,
+}
+
+impl CurrentPublishedVersionRef {
+    pub fn new(
+        document_id: DocumentId,
+        current_version_id: DocumentVersionId,
+        document_revision: i64,
+    ) -> Self {
+        Self {
+            document_id,
+            current_version_id,
+            document_revision,
+        }
+    }
+
+    pub const fn document_id(self) -> DocumentId {
+        self.document_id
+    }
+
+    pub const fn current_version_id(self) -> DocumentVersionId {
+        self.current_version_id
+    }
+
+    pub const fn document_revision(self) -> i64 {
+        self.document_revision
+    }
 }

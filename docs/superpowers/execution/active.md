@@ -1,5 +1,16 @@
 # Active Execution Pointer
 
+## Active checkpoint — T10 本番実装 Task 1–5 完了、2026-09-28 JST
+
+- Status: **ACTIVE**。対象は **Document Publication End v0 (T10)**。Production Tasks 1–5 の実装・検証・PR 差分レビュー完了。詳細は `docs/superpowers/execution/document-publication-end-v0-status.md`。
+- 承認済み設計・計画: `design/document-publication-end-v0@8415d8995ea719d6a510fe7f4aafc1ebf01bfa80`、Draft PR #13。PR #13 の exact-head 標準 CI `36326032482`、Sandbox `36326032479`、PoC `36326032480` は SUCCESS。Versioning PR #11・#12 は未マージ。
+- 実装ブランチ: `feat/document-publication-end-v0`、Draft PR #14（base PR #13）。検証済み実装 head は `79c7ff944cfde49574d1960c2ffc5e20cdd066a7`。T10 の Domain/Application、DB 原子 transaction、再公開防止、読み取り分離、実 DB 縦断テストを実装した。
+- 検証: pin 済み PDFium を設定した `mise run verify` は **459/459 テスト成功、既定の除外 4 件**。fmt、strict Clippy、architecture、API、security が PASS。実装 head の標準 CI `36332829274`、DSI Sandbox Preflight `36332829304`、DSI PoC `36332829327` はすべて SUCCESS。標準 CI は Ubuntu Rust、macOS Intel/arm64、required-check まで SUCCESS。PR #14 の差分レビューに指摘なし、未解決 thread 0 件。
+- Blocker: なし。Design Freeze 差分提案なし。PR #11・#12・#13・#14 のマージ指示はない。
+- 次の exact action: Active/Status の完了記録だけを commit/push し、PR #14 の最終 exact-head 標準 CI・Sandbox・PoC を確認する。結果を PR #14 に記録し、レビューまたは明示的なマージ指示を待つ。
+
+This checkpoint supersedes the prior T10 checkpoint below.
+
 ## Active checkpoint — T10 本番実装計画承認済み、2026-09-27 JST
 
 - Status: **ACTIVE**。対象は **Document Publication End v0 (T10)**。工程は **日本語版設計・読み取り境界改訂 1・Production Implementation Plan 承認済み／Task 1 開始待ち**。詳細は `docs/superpowers/execution/document-publication-end-v0-status.md`。

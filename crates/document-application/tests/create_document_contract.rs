@@ -221,6 +221,43 @@ impl DocumentRepository for FakeRepository {
             .filter(|document| document.document().document_id() == id))
     }
 
+    async fn get_authoring_document(
+        &self,
+        id: DocumentId,
+    ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
+        self.get_authoritative_document(id).await
+    }
+    async fn get_current_published_document(
+        &self,
+        id: DocumentId,
+    ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
+        Ok(self
+            .get_authoritative_document(id)
+            .await?
+            .filter(|document| {
+                document.version().lifecycle_state() == document_domain::LifecycleState::Published
+                    && document.document().current_version_id()
+                        == Some(document.version().document_version_id())
+            }))
+    }
+    async fn is_current_published_version(
+        &self,
+        document_id: DocumentId,
+        version_id: DocumentVersionId,
+    ) -> Result<bool, RepositoryError> {
+        Ok(self
+            .get_current_published_document(document_id)
+            .await?
+            .is_some_and(|document| document.version().document_version_id() == version_id))
+    }
+    async fn list_current_published_versions(
+        &self,
+        _after: Option<DocumentId>,
+        _limit: i64,
+    ) -> Result<Vec<document_application::CurrentPublishedVersionRef>, RepositoryError> {
+        Ok(Vec::new())
+    }
+
     async fn file_reference_exists(&self, file_id: FileId) -> Result<bool, RepositoryError> {
         Ok(self
             .state

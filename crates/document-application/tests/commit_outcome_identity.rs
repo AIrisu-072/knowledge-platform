@@ -76,6 +76,33 @@ impl DocumentRepository for AmbiguousRepository {
         Ok(None)
     }
 
+    async fn get_authoring_document(
+        &self,
+        _id: DocumentId,
+    ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
+        Ok(None)
+    }
+    async fn get_current_published_document(
+        &self,
+        _id: DocumentId,
+    ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
+        Ok(None)
+    }
+    async fn is_current_published_version(
+        &self,
+        _document_id: DocumentId,
+        _version_id: DocumentVersionId,
+    ) -> Result<bool, RepositoryError> {
+        Ok(false)
+    }
+    async fn list_current_published_versions(
+        &self,
+        _after: Option<DocumentId>,
+        _limit: i64,
+    ) -> Result<Vec<document_application::CurrentPublishedVersionRef>, RepositoryError> {
+        Ok(Vec::new())
+    }
+
     async fn file_reference_exists(&self, _file_id: FileId) -> Result<bool, RepositoryError> {
         Ok(false)
     }

@@ -12,7 +12,10 @@ use serde_json::{Value, json};
 use sqlx::{FromRow, PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
-use crate::error::{map_commit_error, map_statement_error};
+use crate::{
+    error::{map_commit_error, map_statement_error},
+    publication_end,
+};
 
 const AUDIT_SOURCE: &str = "urn:knowledge-platform:document-platform";
 
@@ -145,6 +148,8 @@ pub(crate) async fn mutate(
                 Err(RepositoryError::Conflict)
             };
         }
+
+        publication_end::ensure_not_ended(&mut tx, identity.document_id()).await?;
 
         let revision: i64 = document.get("revision");
         let current_id: Option<Uuid> = document.get("current_version_id");

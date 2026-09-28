@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::{
     error::{map_commit_error, map_statement_error},
+    publication_end,
     repository::PostgresDocumentRepository,
     versioning_mutation,
 };
@@ -173,6 +174,7 @@ pub(crate) async fn reserve(
         if let Some(stored) = get_schedule_in_tx(&mut tx, command.publish_operation_id()).await? {
             return if stored.command == *command { Ok(stored.result) } else { Err(RepositoryError::Conflict) };
         }
+        publication_end::ensure_not_ended(&mut tx, command.document_id()).await?;
         let publish_id_claimed: bool = sqlx::query_scalar(
             "SELECT EXISTS (SELECT 1 FROM document_publish_operations WHERE publish_operation_id = $1)",
         )

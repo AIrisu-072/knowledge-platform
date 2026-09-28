@@ -6,6 +6,7 @@ mod command;
 mod error;
 mod events;
 mod ports;
+mod publication_end;
 mod publish_quality;
 mod reconciliation;
 mod schedule;
@@ -21,21 +22,28 @@ pub use command::{
 };
 pub use error::{ApplicationError, InspectionExecutionError, RepositoryError, StorageError};
 pub use events::{
-    AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_VERSION_CREATED,
+    AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_PUBLICATION_ENDED, AUDIT_DOCUMENT_VERSION_CREATED,
     AUDIT_DOCUMENT_VERSION_PUBLICATION_CANCELLED, AUDIT_DOCUMENT_VERSION_PUBLICATION_SCHEDULED,
     AUDIT_DOCUMENT_VERSION_PUBLISHED, AUDIT_DOCUMENT_VERSION_REBASED,
     AUDIT_DOCUMENT_VERSION_UPDATED, AUDIT_DOCUMENT_VERSION_WITHDRAWN, AuditEventRecord,
-    DOCUMENT_CREATED, DOCUMENT_VERSION_CREATED, DOCUMENT_VERSION_PUBLICATION_CANCELLED,
-    DOCUMENT_VERSION_PUBLICATION_SCHEDULED, DOCUMENT_VERSION_PUBLISHED, DOCUMENT_VERSION_REBASED,
-    DOCUMENT_VERSION_UPDATED, DOCUMENT_VERSION_WITHDRAWN, DomainEventRecord,
+    DOCUMENT_CREATED, DOCUMENT_PUBLICATION_ENDED, DOCUMENT_VERSION_CREATED,
+    DOCUMENT_VERSION_PUBLICATION_CANCELLED, DOCUMENT_VERSION_PUBLICATION_SCHEDULED,
+    DOCUMENT_VERSION_PUBLISHED, DOCUMENT_VERSION_REBASED, DOCUMENT_VERSION_UPDATED,
+    DOCUMENT_VERSION_WITHDRAWN, DomainEventRecord,
 };
 pub use ports::{
     AuthoritativeContentItem, AuthoritativeDocument, Clock, ContentReader,
-    CreateInitialDocumentRecord, DocumentPublishRepository, DocumentRepository, FileStorage,
-    IdGenerator, PublicationScheduleRepository, PublishCandidate, PublishCommandIdentity,
+    CreateInitialDocumentRecord, CurrentPublishedVersionRef, DocumentPublishRepository,
+    DocumentRepository, FileStorage, IdGenerator, PublicationEndRepository,
+    PublicationScheduleRepository, PublishCandidate, PublishCommandIdentity,
     PublishInitialVersionRecord, PublishOperationRecord, PublishVersionRecord,
     SemanticInspectionExecutor, SemanticInspectionRepository, StorageObjectInfo, StorageObjectKind,
     StoreFileRequest, StoredFile, VersioningRepository,
+};
+pub use publication_end::{
+    DocumentPublicationEndService, EndDocumentPublicationCommand, EndDocumentPublicationResult,
+    EndPublicationCandidate, EndPublicationOperationRecord, EndPublicationRecord,
+    PublicationEndOperationId,
 };
 pub use reconciliation::{ReconciliationClassification, ReconciliationFinding, classify};
 pub use schedule::{
