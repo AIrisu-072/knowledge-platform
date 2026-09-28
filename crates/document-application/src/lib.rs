@@ -16,6 +16,7 @@ mod management_ports;
 mod ports;
 mod publication_end;
 mod publish_quality;
+mod read_state;
 mod reconciliation;
 mod schedule;
 mod scheduled_authorization;
@@ -67,6 +68,7 @@ pub use publication_end::{
     EndPublicationCandidate, EndPublicationOperationRecord, EndPublicationRecord,
     PublicationEndOperationId,
 };
+pub use read_state::{MarkVersionRead, ReadStateRepository, ReadStateResult, ReadStateService};
 pub use reconciliation::{ReconciliationClassification, ReconciliationFinding, classify};
 pub use schedule::{
     CancelOperationRecord, CancelScheduleCommand, CancelScheduleRecord, CancelScheduleResult,

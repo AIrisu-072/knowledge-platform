@@ -35,6 +35,8 @@ pub enum RepositoryError {
     DocumentNotFound,
     #[error("document version not found")]
     DocumentVersionNotFound,
+    #[error("target version is no longer the current published version")]
+    StaleVersion,
     #[error("repository conflict")]
     Conflict,
     #[error("business rule rejected operation")]
@@ -91,6 +93,8 @@ pub enum ApplicationError {
     DocumentNotFound,
     #[error("document version not found")]
     DocumentVersionNotFound,
+    #[error("target version is no longer the current published version")]
+    StaleVersion,
     #[error("file object not found")]
     FileObjectNotFound,
     #[error("operation conflicts with current authoritative state")]
@@ -148,6 +152,10 @@ pub enum ApplicationError {
     },
     #[error("management commit outcome is unknown; retry the same operation id")]
     ManagementCommitOutcomeUnknown { operation_id: ManagementOperationId },
+    #[error("read confirmation commit outcome is unknown; retry the same version")]
+    ReadStateCommitOutcomeUnknown {
+        document_version_id: DocumentVersionId,
+    },
     #[error("internal failure: {0}")]
     Internal(String),
 }
@@ -178,6 +186,7 @@ impl From<RepositoryError> for ApplicationError {
             RepositoryError::FolderNotFound => Self::FolderNotFound,
             RepositoryError::DocumentNotFound => Self::DocumentNotFound,
             RepositoryError::DocumentVersionNotFound => Self::DocumentVersionNotFound,
+            RepositoryError::StaleVersion => Self::StaleVersion,
             RepositoryError::Conflict => Self::Conflict,
             RepositoryError::BusinessRule => Self::BusinessRule,
             RepositoryError::Unavailable => Self::RepositoryUnavailable,
