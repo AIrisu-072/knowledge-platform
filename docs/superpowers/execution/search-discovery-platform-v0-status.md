@@ -1,5 +1,70 @@
 # Search / Discovery Platform v0 — Execution Status
 
+## Current checkpoint — Phase A A8 qualification receipt, 2026-09-29 JST
+
+- Branch `feat/search-discovery-platform-v0-a`, stacked [Draft PR #21](https://github.com/AIrisu-072/knowledge-platform/pull/21), base `design/search-discovery-platform-v0@252245f5bbf63958739d2f9b6d82cf39d4ec94f6` (Draft PR #20). Pre-receipt code/evidence head `d3b93ea7aff229d08e5360fb4ca956889ccb84e7` matched `git ls-remote`, PR `headRefOid` and source-worktree HEAD.
+- For that head, [CI `36454218566`](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36454218566), [DSI Sandbox `36454218615`](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36454218615), and [DSI PoC `36454218338`](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36454218338) completed **SUCCESS**. CI `required-check` and every required job were green. This evidence commit advances HEAD, so use live PR checks to determine whether A8 is complete for the new exact head; never reuse the prior receipt as its gate.
+- A1–A7 implementation, six independent-review fixes and the security manifest correction are committed. Final Search suite 58/58, strict Clippy/fmt/architecture and `mise run security:deps` passed locally. `mise run verify:fast` did **not** complete locally: Document Semantic Inspection test linking exhausted disk (`errno=28`); hosted CI `rust-test` passed on the pre-receipt exact head. See `docs/superpowers/execution/search-discovery-platform-v0-phase-a.md` for task commits and details.
+- Current Task: A8 exact-head gate recheck after pushing this receipt. Completed Tasks: A1–A7; A8 conditional on the current head's hosted checks. No Design Freeze difference. Graph backend, tokenizer, Vector/embedding, reranker and fusion remain deferred to Phase B and Selection Gate S1. Managed A1/A2 runs remain inspect-before-resume; do not replay or alter repository-wide `active.md`.
+- Next exact action: commit and push this qualification record, verify remote head / PR `headRefOid` / source-worktree HEAD, inspect CI, DSI Sandbox and DSI PoC on that head. If green, create Phase B branch stacked on PR #21 and begin B1 RED; no merge.
+
+---
+
+## Current checkpoint — Phase A Draft PR #21, dependency policy correction, 2026-09-29 JST
+
+- Status: **PHASE A A8 HOSTED GATE PENDING**. Branch `feat/search-discovery-platform-v0-a` is stacked as [Draft PR #21](https://github.com/AIrisu-072/knowledge-platform/pull/21) against planning branch `design/search-discovery-platform-v0` (Draft PR #20). Latest code head before this status update: `9320aa5beaf1f51f196cc1919a347e8a56e1b97e`; the status commit advances HEAD, so recheck the remote and PR exact SHA.
+- First PR head `d3e8fc8c2cb8f98b8e8b070e5cf78abc8608b730`: CI run `36453599524`, DSI PoC `36453599598`, DSI Sandbox `36453599380`. DSI Sandbox passed; CI security failed in `cargo-deny` on three Search manifest fields after OSV Scanner installation succeeded. Other jobs on that head were still running at inspection and cannot qualify a new head.
+- `mise run security:deps` reproduced unlicensed `search-core`/`search-application` and wildcard internal path dependency. Commit `9320aa5` adds `publish = false` to both crates and `version = "0.0.0"` to the Search path dependency, matching existing private crates. The same local gate then passed; `cargo metadata --locked --no-deps` and `git diff --check` passed.
+- A1–A7 Search implementation and independent review fixes are in the Phase A evidence record. Final Search suite 58/58, focused strict Clippy/fmt/arch passed. Local `verify:fast` remains incomplete due to disk capacity in Document Semantic Inspection test linking (`errno=28`). No Design Freeze difference and no backend choice promoted.
+- Managed A1/A2 reads remain inspect-before-resume. Do not replay, take over `active.md`, or merge.
+- Next exact action: commit this checkpoint, push the branch, verify `git ls-remote` / PR `headRefOid`, then inspect CI, DSI PoC and DSI Sandbox for that **new exact head**. Start Phase B B1 RED only after Phase A hosted gates are qualified.
+
+---
+
+## Current checkpoint — Phase A code A1–A7 committed, A8 hosted gate pending, 2026-09-29 JST
+
+- Status: **PRODUCTION PLAN APPROVED / PHASE A A8 GATE PENDING**. Approved planning base `252245f5bbf63958739d2f9b6d82cf39d4ec94f6`; branch `feat/search-discovery-platform-v0-a`. Latest code commit before this checkpoint: `d82e397cc8f3f56910e552cd500f740cbca9280c`. The status commit will advance HEAD; check the live branch and PR exact head.
+- A1–A7 commits and evidence are in `docs/superpowers/execution/search-discovery-platform-v0-phase-a.md`. A7 `763f486` delivered provider-neutral ports and stable Binding; focused port/binding tests passed. The inherited planning-head OSV Scanner installer failure was addressed in `6e243d7` by pinning the published SLSA signer and issuer.
+- Independent read-only review found six edge cases in Fact provenance, independent Evidence origin, three-role HyperEdge constraints, identity rejection, decimal semantic equality and future freshness. RED tests reproduced all six; `d82e397` fixed them. Final Search suite passed 58/58, focused strict Clippy, fmt, architecture check and diff check passed.
+- `mise run verify:fast` passed format, workspace check/strict Clippy, architecture and OpenAPI lint, then failed in `test:rust` while linking Document Semantic Inspection tests because local disk filled (`errno=28`). This is an **incomplete local gate**; no Search test failure was observed. Current-worktree build artifacts were cleaned after recording diagnostics. Exact-head hosted gates must be green before Phase A is complete.
+- Planning PR #20 remained OPEN/Draft at the most recent live check. No Phase A PR yet at this checkpoint. Recheck the live base and head when creating the stacked Draft PR. No Design Freeze difference. Graph backend, tokenizer, Vector/embedding, reranker and fusion remain deferred to Phase B PoC/Selection Gate S1.
+- Managed A1/A2 read-only runs remain inspect-before-resume with pending reads; do not replay. The approved inline execution path was used for code. A native independent read-only reviewer examined the whole Phase A branch because managed review was blocked. Do not modify repository-wide `active.md` or merge.
+- Next exact action: commit this evidence checkpoint, push `feat/search-discovery-platform-v0-a`, create a stacked Draft PR against `design/search-discovery-platform-v0`, then inspect CI, DSI Sandbox and DSI PoC for the exact PR head. Start Phase B B1 RED only after Phase A's hosted gate is qualified.
+
+---
+
+## Current checkpoint — Phase A A1–A6 committed, A7 RED next, 2026-09-29 JST
+
+- Status: **PRODUCTION PLAN APPROVED / PHASE A IN PROGRESS**. Search implementation branch `feat/search-discovery-platform-v0-a` is based on approved planning head `252245f5bbf63958739d2f9b6d82cf39d4ec94f6`. Latest code head before this status update: `d05a6fe4306f63d6124d14536e8219dfe7da5145`. No Phase A PR yet; verify live Git for the status-commit exact head.
+- Planning PR #20 was OPEN/Draft on `design/search-discovery-platform-v0` at the start check, with no unresolved review threads; main was `6ea29e1ceea82bb0e20b195890b7c0e7efc85f68`. Parallel Document Diff work had no material Search conflict. Recheck live GitHub at Phase A PR creation.
+- A1 `af9fb294`: Search crate boundaries; RED architecture tests 7 failures, GREEN 7/7, full policy 18/18, strict Clippy/fmt/arch passed.
+- A2 `58c4352b`: typed Source/Resource/Usage/DiscoveryLens/Cost contracts; RED missing modules, GREEN 7/7, strict Clippy/fmt/arch passed.
+- A3 `ddeafb8`: typed Predicate IR and four-valued evaluator; RED missing modules, GREEN 15/15 contract tests plus `search-core` suite 22/22, strict Clippy/fmt/arch passed. Money/decimal use integer-based exact comparison; expression and nested collection evaluation have depth limits.
+- A4 `da37023`: Assertion/Authority/Identity/Observation/Temporal contracts; RED missing modules and scoped observation RED, GREEN 9/9 contract tests plus `search-core` suite 31/31, strict Clippy/fmt/arch passed.
+- A5 `f0c0dc3`: typed n-ary HyperEdge and constrained traversal; RED missing modules, GREEN 4/4 contract tests, strict Clippy/fmt/arch passed. Cross-relation false composite fixture is negative.
+- A6 `d05a6fe`: Applicability/Contrast/Evidence/Discovery contracts; RED missing modules, then RED false-SUFFICIENT tests, GREEN 12/12 contract tests, strict Clippy/fmt/arch passed. Authority/freshness requirements without evaluators remain `UNRESOLVED`; independent upstream origins are required for corroboration.
+- Hosted planning-head CI `36444150997` failed only in security tool installation: `mise.lock` requires an SLSA signer for `google/osv-scanner@2.5.1`; DSI Sandbox `36444151151` succeeded; DSI PoC did not trigger on the docs-only planning head. This inherited toolchain gate must be fixed and exact-head hosted gates rerun before declaring Phase A complete.
+- Managed read-only inspection runs `search-v0-a1-inspect-20260929` and `search-v0-a2-inspect-20260929` remain inspect-before-resume with pending reads; no code edits by those workers. Do not automatically replay. Phase A is following the user-authorized inline `executing-plans` fallback. Parent checkpoint and ignored SDD ledger contain task evidence.
+- Design Freeze difference: none. Graph backend, tokenizer, Vector engine, embedding, reranker, and fusion choices remain deferred to Phase B PoC/Selection Gate S1.
+- Next exact action: Task A7 RED tests in `crates/search-application/tests/port_contract.rs` and `binding_contract.rs`, then provider-neutral ports and stable Binding GREEN; run focused tests, strict Clippy/fmt/arch, commit. A8 follows. Do not modify repository-wide `active.md` or merge.
+
+---
+
+## Current checkpoint — Phase A A1/A2 committed, A3 RED next, 2026-09-29 JST
+
+- Status: **PRODUCTION PLAN APPROVED / PHASE A IN PROGRESS**. The approval record is `docs/superpowers/plans/2026-09-28-search-discovery-platform-v0-production-implementation-approval.md`.
+- Approved planning base: `design/search-discovery-platform-v0@252245f5bbf63958739d2f9b6d82cf39d4ec94f6`, PR #20 OPEN/Draft, base `main@6ea29e1ceea82bb0e20b195890b7c0e7efc85f68`, unresolved review threads 0. Planning branch is 30 commits ahead of main and 0 behind at the start check.
+- Implementation branch: `feat/search-discovery-platform-v0-a`, isolated worktree. Latest code commit at this checkpoint: A2 `58c4352b0dadafad91ebce24e20111e136ca4239`; no Phase A PR yet. The status-record commit itself advances the branch head, so verify live Git for the current exact head.
+- A1 commit `af9fb2945f327adff6fa174cea507f6a366ea5b1`: Search crate and architecture boundaries. RED: 7/7 new policy tests failed for absent rules. GREEN: 7/7; full policy 18/18, Search crate `cargo check`, strict Clippy, fmt, and `mise run arch:check` passed.
+- A2 commit `58c4352b0dadafad91ebce24e20111e136ca4239`: stable typed IDs, Source/Resource/Usage/Profile/Temporal/Cost contracts. RED: `resource_contract` failed compilation only on absent modules. GREEN: 7/7, strict `search-core` Clippy, fmt, and architecture check passed.
+- Planning-head hosted CI `36444150997` on `252245f5` **FAIL** in security tool installation: mise requires an SLSA signer for the pinned `google/osv-scanner@2.5.1`; other CI jobs succeeded. DSI Sandbox `36444151151` **SUCCESS**. DSI PoC did not trigger for the docs-only planning PR head. The same tool lock configuration exists on `main` and the planning branch; this is not a Search code test result.
+- Parallel Document Diff work observed on a separate branch with one added design document and no material Search implementation conflict. Do not change repository-wide `active.md`.
+- Managed read-only inspection runs `search-v0-a1-inspect-20260929` and `search-v0-a2-inspect-20260929` stopped at pending reads, with no code edits. Do not automatically replay them. The approved inline fallback is being used for Phase A tasks; the parent checkpoint and ignored SDD ledger record evidence.
+- Design Freeze difference: none. Physical backend/tokenizer/vector/reranker/fusion selection remains deferred.
+- Next exact action: write `crates/search-core/tests/predicate_contract.rs` for Task A3, run `cargo test -p search-core --test predicate_contract` to confirm RED, then implement the typed four-valued Predicate IR.
+
+---
+
 ## Current checkpoint — Design APPROVED / Production Plan APPROVED / Implementation Ready, 2026-09-29 JST
 
 - Status: **DESIGN APPROVED / NORMATIVE RECONCILIATION COMPLETE / PRODUCTION PLAN APPROVED / IMPLEMENTATION READY — TASK A1 RED NEXT**.

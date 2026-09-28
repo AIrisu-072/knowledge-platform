@@ -43,3 +43,13 @@ forbidden_source_patterns = ["std::fs", "std::path", "tokio::fs"]
 crate_path = "crates/document-application"
 forbidden_dependencies = ["sqlx", "axum"]
 forbidden_source_patterns = ["std::fs", "std::path", "tokio::fs"]
+
+[workspace.boundaries.search_core]
+crate_path = "crates/search-core"
+forbidden_dependencies = ["sqlx", "axum", "tokio", "tantivy"]
+forbidden_source_patterns = ["std::fs", "std::path", "tokio::fs"]
+
+[workspace.boundaries.search_application]
+crate_path = "crates/search-application"
+forbidden_dependencies = ["sqlx", "axum", "tantivy"]
+forbidden_source_patterns = ["std::fs", "std::path", "tokio::fs"]
