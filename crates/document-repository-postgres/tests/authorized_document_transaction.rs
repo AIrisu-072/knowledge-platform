@@ -170,7 +170,9 @@ async fn disconnected_folder_policy_cannot_grant_document_read() {
         .unwrap();
     let orphan_folder_id = Uuid::now_v7();
     let policy_id = Uuid::now_v7();
-    sqlx::query("INSERT INTO folders (folder_id,parent_folder_id,name,status,revision,created_at) VALUES ($1,NULL,'Orphan','ACTIVE',0,now())")
+    // A self-referencing Folder is disconnected from System Root without
+    // violating the single-root constraint installed by M-B.
+    sqlx::query("INSERT INTO folders (folder_id,parent_folder_id,name,status,revision,created_at) VALUES ($1,$1,'Orphan','ACTIVE',0,now())")
         .bind(orphan_folder_id)
         .execute(&f.pool)
         .await
