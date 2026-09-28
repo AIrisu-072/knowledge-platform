@@ -955,3 +955,98 @@ OpenTelemetry標準Semantic Conventionを再定義しない。
   - https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html
 - NIST SP 800-92
   - https://csrc.nist.gov/pubs/sp/800/92/final
+
+
+---
+
+# Search / Discovery Platform v0 observability amendment
+
+## Discovery trace
+
+Search Requestに加え、Discovery Requestでは最低限以下のstageを相関可能にする。
+
+```text
+Discovery Request
+├─ Intent / Need resolution
+├─ Source routing
+├─ Directory / structured filtering
+├─ Lexical retrieval
+├─ Vector retrieval (if used)
+├─ HyperGraph seed / traversal
+├─ Candidate federation / logical grouping
+├─ Applicability / contrast
+├─ Probe / materialization
+├─ Evidence update / sufficiency
+└─ Completion / unresolved gaps
+```
+
+候補属性:
+
+```text
+discovery_evaluation_id
+need_id
+source_route_count
+source_role
+projection_generation_id
+retriever.type
+candidate_count
+filtered_count
+graph.seed_count
+graph.nodes_expanded
+graph.relations_expanded
+probe.count
+materialization.level
+evidence.sufficiency
+gap.type
+completion.state
+fallback_used
+duration
+error.code
+```
+
+Resource本文、query全文、全candidate ID、全Graph pathを通常Traceへ大量記録しない。
+詳細はEvaluation Artifactへ分離する。
+
+## Discovery metrics
+
+最低限候補:
+
+- discovery request count / latency
+- source route count distribution
+- required source miss（evaluation環境）
+- directory candidate count
+- structured filtered count
+- lexical/vector candidate count
+- graph nodes / relations expanded distribution
+- probe count / bytes
+- full materialization count / bytes
+- remote call count / latency
+- evidence sufficiency state count
+- unresolved gap count by bounded low-cardinality class
+- no-progress termination count
+- context tokens（Agent integration時）
+
+Source ID、resource ID、query ID等をMetric labelへ入れない。
+
+## Evaluation separation
+
+以下は通常Telemetryの常時MetricではなくEvaluation Artifactで管理する。
+
+- Required Source Recall
+- LogicalResource Recall
+- MRR / nDCG / Recall@K
+- HyperEdge participant role accuracy
+- False Composite Relation Rate
+- Hard Discriminator False Accept / Reject
+- False Exclusion from Missing Fact
+- Evidence Attribution Accuracy
+- False Corroboration Rate
+- Sufficiency Precision / Recall
+- SOURCE_KNOWLEDGE_ABSENT attribution
+- Context quality vs token reduction
+
+## Search / Discovery audit privacy
+
+Discoveryで取得したRemote content、InformationGapの具体値、Tool schema、Evidence本文をAuditへ無条件複製しない。
+Audit対象に指定する場合もstable identifier / reason code / source class / result stateを優先する。
+NO_RETENTION Source由来本文をTelemetry / Auditへ保存してRetention contractを迂回してはならない。
