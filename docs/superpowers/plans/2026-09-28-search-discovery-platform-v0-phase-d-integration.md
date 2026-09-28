@@ -98,7 +98,7 @@
 
 ---
 
-### Task D4: Outbox-triggered idempotent indexing service
+### Task D4: Domain-event-driven idempotent Search consumer
 
 **Files:**
 - Create: `crates/search-source-document/src/outbox.rs`
@@ -106,14 +106,18 @@
 - Test: `crates/search-source-document/tests/outbox_indexing.rs`
 
 **Interfaces:**
+- `DocumentSourceEvent { event_id, event_type, aggregate_id, occurred_at }` is the transport-neutral input accepted by Search.
+- `DocumentIndexingService::handle(event: DocumentSourceEvent) -> Result<IndexingOutcome, SearchError>`.
 - recognizes relevant existing Domain event types, including create/version/publish/withdraw/publication-end/metadata/move/access-policy changes.
 - event is a trigger/invalidation signal, not the sole source of truth.
 - handler re-reads authoritative snapshot before publishing new Search generation.
+- Search consumer does **not** own or mutate the generic Document `outbox_events.delivered_at` lifecycle. A generic durable outbox delivery worker may feed this consumer later; that worker remains a separate capability.
+- duplicate/reordered delivery is safe through event identity + current authoritative snapshot + generation idempotency.
 
 - [ ] RED duplicate event/reordered event tests.
 - [ ] RED lost event followed by full rebuild test.
-- [ ] Implement idempotent trigger handling keyed by event ID + current source snapshot.
-- [ ] Assert Search failure leaves Document DB transaction/state untouched.
+- [ ] Implement idempotent consumer handling keyed by event ID + current source snapshot; a test-only/in-memory receipt store may prove the contract without selecting the generic delivery worker implementation.
+- [ ] Assert Search failure leaves Document DB transaction/state and generic outbox delivery fields untouched.
 - [ ] Commit `feat: index document source from outbox triggers`.
 
 ---
