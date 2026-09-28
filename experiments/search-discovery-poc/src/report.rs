@@ -21,6 +21,7 @@ pub enum GateVerdict {
 pub struct DependencyLicenseGate {
     pub dependency: GateVerdict,
     pub license: GateVerdict,
+    pub advisory_exception: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -48,6 +49,7 @@ impl QualificationReport {
             dependency_license_gate: DependencyLicenseGate {
                 dependency: GateVerdict::Pending,
                 license: GateVerdict::Pending,
+                advisory_exception: None,
             },
         }
     }
@@ -67,6 +69,9 @@ impl QualificationReport {
             || self.fusion_metrics.len() != 6
             || self.dependency_license_gate.dependency != GateVerdict::Pass
             || self.dependency_license_gate.license == GateVerdict::Fail
+            || self.dependency_license_gate.advisory_exception.as_deref()
+                != Some("RUSTSEC-2026-0253")
+            || !include_str!("../osv-scanner.toml").contains("id = \"RUSTSEC-2026-0253\"")
         {
             return Err("qualification report is incomplete or has a failed gate".into());
         }

@@ -36,6 +36,12 @@ fn receipt_rejects_stale_quality_version_and_failed_license() {
     let mut failed_license = original;
     failed_license.dependency_license_gate.license = GateVerdict::Fail;
     assert!(failed_license.verify_evidence().is_err());
+
+    let mut undisclosed_exception = QualificationReport::evidence().unwrap();
+    undisclosed_exception
+        .dependency_license_gate
+        .advisory_exception = None;
+    assert!(undisclosed_exception.verify_evidence().is_err());
 }
 
 #[test]
@@ -54,6 +60,10 @@ fn json_report_has_deterministic_qualification_schema() {
     assert!(!report.fusion_metrics.is_empty());
     assert_eq!(report.dependency_license_gate.dependency, GateVerdict::Pass);
     assert_eq!(report.dependency_license_gate.license, GateVerdict::Pending);
+    assert_eq!(
+        report.dependency_license_gate.advisory_exception.as_deref(),
+        Some("RUSTSEC-2026-0253")
+    );
 }
 
 #[test]

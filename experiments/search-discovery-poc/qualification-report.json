@@ -9,6 +9,7 @@
     "tokio-postgres": "0.7.18"
   },
   "dependency_license_gate": {
+    "advisory_exception": "RUSTSEC-2026-0253",
     "dependency": "pass",
     "license": "pending"
   },
