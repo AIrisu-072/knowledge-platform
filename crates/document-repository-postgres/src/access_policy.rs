@@ -19,6 +19,12 @@ use crate::{
     targeted_events::{insert_targeted_events, record_authorization_denied, resource_parts},
 };
 
+fn postgres_timestamp_now() -> OffsetDateTime {
+    let now = OffsetDateTime::now_utc();
+    now.replace_nanosecond(now.nanosecond() / 1_000 * 1_000)
+        .expect("microsecond precision is a valid nanosecond value")
+}
+
 fn target_parts(target: PolicyTarget) -> (Option<Uuid>, Option<Uuid>) {
     match target {
         PolicyTarget::Folder(id) => (Some(id.as_uuid()), None),
@@ -312,7 +318,7 @@ impl PostgresDocumentRepository {
                 .as_ref()
                 .is_none_or(|(_, _, old)| normalized_mode(old) != mode)
                 && !(existing.is_none() && matches!(mode, PolicyMode::Inherit));
-            let now = OffsetDateTime::now_utc();
+            let now = postgres_timestamp_now();
             let new_revision = if changed {
                 current_revision + 1
             } else {
@@ -467,7 +473,7 @@ impl BootstrapRootPolicy for PostgresDocumentRepository {
             if load_binding(&mut tx, root).await?.is_some() {
                 return Err(RepositoryError::BusinessRule);
             }
-            let now = OffsetDateTime::now_utc();
+            let now = postgres_timestamp_now();
             let policy_id =
                 persist_binding(&mut tx, root, None, 1, &PolicyMode::Explicit(grants), now)
                     .await?
