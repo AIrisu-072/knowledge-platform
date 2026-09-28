@@ -1,5 +1,7 @@
 [workspace]
 members = [
+  "crates/search-core",
+  "crates/search-application",
   "crates/document-domain",
   "crates/document-application",
   "crates/document-semantic-inspection-core",

@@ -187,6 +187,120 @@ fn document_application_filesystem_source_is_rejected() {
 }
 
 #[test]
+fn search_core_sqlx_dependency_is_rejected() {
+    let fixture = Fixture::valid().with_file(
+        "crates/search-core/Cargo.toml",
+        "[package]\nname = \"search-core\"\nversion = \"0.0.0\"\n\n[dependencies]\nsqlx = \"0.9\"\n",
+    );
+    let report = check_repository(fixture.root(), &config()).unwrap();
+    assert!(report.findings.iter().any(|finding| {
+        finding.code == "ARCH_FORBIDDEN_CRATE_DEPENDENCY"
+            && finding.path == "crates/search-core/Cargo.toml"
+            && finding.message.contains("sqlx")
+    }));
+}
+
+#[test]
+fn search_core_tantivy_dependency_is_rejected() {
+    let fixture = Fixture::valid().with_file(
+        "crates/search-core/Cargo.toml",
+        "[package]\nname = \"search-core\"\nversion = \"0.0.0\"\n\n[dependencies]\ntantivy = \"0.26\"\n",
+    );
+    let report = check_repository(fixture.root(), &config()).unwrap();
+    assert!(report.findings.iter().any(|finding| {
+        finding.code == "ARCH_FORBIDDEN_CRATE_DEPENDENCY"
+            && finding.path == "crates/search-core/Cargo.toml"
+            && finding.message.contains("tantivy")
+    }));
+}
+
+#[test]
+fn search_core_filesystem_source_is_rejected() {
+    let fixture = Fixture::valid().with_file(
+        "crates/search-core/src/lib.rs",
+        "use std::path::PathBuf;\npub fn leaked_path() -> PathBuf { PathBuf::new() }\n",
+    );
+    let report = check_repository(fixture.root(), &config()).unwrap();
+    assert!(report.findings.iter().any(|finding| {
+        finding.code == "ARCH_FORBIDDEN_SOURCE_PATTERN"
+            && finding.path == "crates/search-core/src/lib.rs"
+            && finding.message.contains("std::path")
+    }));
+}
+
+#[test]
+fn search_application_sqlx_dependency_is_rejected() {
+    let fixture = Fixture::valid().with_file(
+        "crates/search-application/Cargo.toml",
+        "[package]\nname = \"search-application\"\nversion = \"0.0.0\"\n\n[dependencies]\nsqlx = \"0.9\"\n",
+    );
+    let report = check_repository(fixture.root(), &config()).unwrap();
+    assert!(report.findings.iter().any(|finding| {
+        finding.code == "ARCH_FORBIDDEN_CRATE_DEPENDENCY"
+            && finding.path == "crates/search-application/Cargo.toml"
+            && finding.message.contains("sqlx")
+    }));
+}
+
+#[test]
+fn search_application_tantivy_dependency_is_rejected() {
+    let fixture = Fixture::valid().with_file(
+        "crates/search-application/Cargo.toml",
+        "[package]\nname = \"search-application\"\nversion = \"0.0.0\"\n\n[dependencies]\ntantivy = \"0.26\"\n",
+    );
+    let report = check_repository(fixture.root(), &config()).unwrap();
+    assert!(report.findings.iter().any(|finding| {
+        finding.code == "ARCH_FORBIDDEN_CRATE_DEPENDENCY"
+            && finding.path == "crates/search-application/Cargo.toml"
+            && finding.message.contains("tantivy")
+    }));
+}
+
+#[test]
+fn search_application_filesystem_source_is_rejected() {
+    let fixture = Fixture::valid().with_file(
+        "crates/search-application/src/lib.rs",
+        "pub async fn leaked_fs() { let _ = tokio::fs::read(\"x\").await; }\n",
+    );
+    let report = check_repository(fixture.root(), &config()).unwrap();
+    assert!(report.findings.iter().any(|finding| {
+        finding.code == "ARCH_FORBIDDEN_SOURCE_PATTERN"
+            && finding.path == "crates/search-application/src/lib.rs"
+            && finding.message.contains("tokio::fs")
+    }));
+}
+
+#[test]
+fn search_boundaries_are_present_in_real_policy() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let config = Config::load(&root).unwrap();
+    let core = config.workspace.boundaries.get("search_core").unwrap();
+    assert_eq!(core.crate_path, "crates/search-core");
+    assert_eq!(
+        core.forbidden_dependencies,
+        ["sqlx", "axum", "tokio", "tantivy"]
+    );
+    assert_eq!(
+        core.forbidden_source_patterns,
+        ["std::fs", "std::path", "tokio::fs"]
+    );
+    let application = config
+        .workspace
+        .boundaries
+        .get("search_application")
+        .unwrap();
+    assert_eq!(application.crate_path, "crates/search-application");
+    assert_eq!(
+        application.forbidden_dependencies,
+        ["sqlx", "axum", "tantivy"]
+    );
+    assert_eq!(
+        application.forbidden_source_patterns,
+        ["std::fs", "std::path", "tokio::fs"]
+    );
+}
+
+#[test]
 fn real_policy_requires_final_ci_contract() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let config = Config::load(&root).unwrap();

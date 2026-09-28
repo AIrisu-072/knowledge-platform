@@ -1,0 +1,9 @@
+[package]
+name = "search-application"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+search-core = { path = "../search-core" }
+thiserror.workspace = true
