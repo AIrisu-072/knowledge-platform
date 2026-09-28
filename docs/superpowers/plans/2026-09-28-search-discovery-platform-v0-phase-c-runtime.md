@@ -52,7 +52,32 @@
 
 ---
 
-### Task C2: Qualified lexical adapter
+### Task C2: In-process source-local projection store
+
+**Files:**
+- Create: `crates/search-projection-memory/Cargo.toml`
+- Create: `crates/search-projection-memory/src/lib.rs`
+- Create: `crates/search-projection-memory/src/store.rs`
+- Create: `crates/search-projection-memory/src/retrieval.rs`
+- Test: `crates/search-projection-memory/tests/projection_store.rs`
+- Modify: root `Cargo.toml`
+
+**Interfaces:**
+- implements `ProjectionGenerationStore`, `DirectoryRetrieverPort`, and `StructuredRetrieverPort`
+- stores immutable generation segments for Directory / Structured / Temporal / Access metadata
+- current generation switch is explicit and atomic within the adapter
+- this adapter is rebuildable/in-process and is not a durable-source-of-truth claim.
+
+- [ ] RED: failed/unvalidated generation cannot become current.
+- [ ] RED: a Discovery evaluation pinned to generation N continues reading N after N+1 is published.
+- [ ] RED: structured hard filter returns UNKNOWN facet separately from false mismatch.
+- [ ] Implement immutable generation maps and deterministic retrieval.
+- [ ] Run focused GREEN + strict Clippy.
+- [ ] Commit `feat: add source local projection store`.
+
+---
+
+### Task C3: Qualified lexical adapter
 
 **Files:**
 - Create: `crates/search-tantivy/Cargo.toml`
@@ -78,7 +103,7 @@
 
 ---
 
-### Task C3: In-process Typed HyperEdge projection/retriever
+### Task C4: In-process Typed HyperEdge projection/retriever
 
 **Files:**
 - Create: `crates/search-graph-memory/Cargo.toml`
@@ -103,7 +128,7 @@
 
 ---
 
-### Task C4: Candidate federation and logical grouping
+### Task C5: Candidate federation and logical grouping
 
 **Files:**
 - Create: `crates/search-application/src/candidate.rs`
@@ -123,7 +148,7 @@
 
 ---
 
-### Task C5: Source routing and retrieval profiles
+### Task C6: Source routing and retrieval profiles
 
 **Files:**
 - Create: `crates/search-application/src/routing.rs`
@@ -145,7 +170,7 @@
 
 ---
 
-### Task C6: Progressive materialization and probe orchestration
+### Task C7: Progressive materialization and probe orchestration
 
 **Files:**
 - Create: `crates/search-core/src/materialization.rs`
@@ -165,7 +190,7 @@
 
 ---
 
-### Task C7: Evidence-driven DiscoveryService
+### Task C8: Evidence-driven DiscoveryService
 
 **Files:**
 - Create: `crates/search-application/src/discovery_service.rs`
@@ -186,7 +211,7 @@
 
 ---
 
-### Task C8: Session Working Set, Binding, Context manifest
+### Task C9: Session Working Set, Binding, Context manifest
 
 **Files:**
 - Create: `crates/search-application/src/session.rs`
@@ -208,7 +233,7 @@
 
 ---
 
-### Task C9: Phase C integration / verification
+### Task C10: Phase C integration / verification
 
 **Files:**
 - Create: `docs/superpowers/execution/search-discovery-platform-v0-phase-c.md`
