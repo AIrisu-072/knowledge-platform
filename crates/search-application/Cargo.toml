@@ -3,9 +3,10 @@ name = "search-application"
 version = "0.0.0"
 edition.workspace = true
 rust-version.workspace = true
+publish = false
 
 [dependencies]
-search-core = { path = "../search-core" }
+search-core = { version = "0.0.0", path = "../search-core" }
 thiserror.workspace = true
 
 [dev-dependencies]
