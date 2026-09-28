@@ -1,5 +1,22 @@
 # Search / Discovery Platform v0 — Execution Status
 
+## Current checkpoint — Phase A A1–A6 committed, A7 RED next, 2026-09-29 JST
+
+- Status: **PRODUCTION PLAN APPROVED / PHASE A IN PROGRESS**. Search implementation branch `feat/search-discovery-platform-v0-a` is based on approved planning head `252245f5bbf63958739d2f9b6d82cf39d4ec94f6`. Latest code head before this status update: `d05a6fe4306f63d6124d14536e8219dfe7da5145`. No Phase A PR yet; verify live Git for the status-commit exact head.
+- Planning PR #20 was OPEN/Draft on `design/search-discovery-platform-v0` at the start check, with no unresolved review threads; main was `6ea29e1ceea82bb0e20b195890b7c0e7efc85f68`. Parallel Document Diff work had no material Search conflict. Recheck live GitHub at Phase A PR creation.
+- A1 `af9fb294`: Search crate boundaries; RED architecture tests 7 failures, GREEN 7/7, full policy 18/18, strict Clippy/fmt/arch passed.
+- A2 `58c4352b`: typed Source/Resource/Usage/DiscoveryLens/Cost contracts; RED missing modules, GREEN 7/7, strict Clippy/fmt/arch passed.
+- A3 `ddeafb8`: typed Predicate IR and four-valued evaluator; RED missing modules, GREEN 15/15 contract tests plus `search-core` suite 22/22, strict Clippy/fmt/arch passed. Money/decimal use integer-based exact comparison; expression and nested collection evaluation have depth limits.
+- A4 `da37023`: Assertion/Authority/Identity/Observation/Temporal contracts; RED missing modules and scoped observation RED, GREEN 9/9 contract tests plus `search-core` suite 31/31, strict Clippy/fmt/arch passed.
+- A5 `f0c0dc3`: typed n-ary HyperEdge and constrained traversal; RED missing modules, GREEN 4/4 contract tests, strict Clippy/fmt/arch passed. Cross-relation false composite fixture is negative.
+- A6 `d05a6fe`: Applicability/Contrast/Evidence/Discovery contracts; RED missing modules, then RED false-SUFFICIENT tests, GREEN 12/12 contract tests, strict Clippy/fmt/arch passed. Authority/freshness requirements without evaluators remain `UNRESOLVED`; independent upstream origins are required for corroboration.
+- Hosted planning-head CI `36444150997` failed only in security tool installation: `mise.lock` requires an SLSA signer for `google/osv-scanner@2.5.1`; DSI Sandbox `36444151151` succeeded; DSI PoC did not trigger on the docs-only planning head. This inherited toolchain gate must be fixed and exact-head hosted gates rerun before declaring Phase A complete.
+- Managed read-only inspection runs `search-v0-a1-inspect-20260929` and `search-v0-a2-inspect-20260929` remain inspect-before-resume with pending reads; no code edits by those workers. Do not automatically replay. Phase A is following the user-authorized inline `executing-plans` fallback. Parent checkpoint and ignored SDD ledger contain task evidence.
+- Design Freeze difference: none. Graph backend, tokenizer, Vector engine, embedding, reranker, and fusion choices remain deferred to Phase B PoC/Selection Gate S1.
+- Next exact action: Task A7 RED tests in `crates/search-application/tests/port_contract.rs` and `binding_contract.rs`, then provider-neutral ports and stable Binding GREEN; run focused tests, strict Clippy/fmt/arch, commit. A8 follows. Do not modify repository-wide `active.md` or merge.
+
+---
+
 ## Current checkpoint — Phase A A1/A2 committed, A3 RED next, 2026-09-29 JST
 
 - Status: **PRODUCTION PLAN APPROVED / PHASE A IN PROGRESS**. The approval record is `docs/superpowers/plans/2026-09-28-search-discovery-platform-v0-production-implementation-approval.md`.
