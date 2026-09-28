@@ -73,9 +73,9 @@ Creates pure `search-core` / `search-application` boundaries, Predicate IR, Auth
 No retrieval/index backend is promoted.
 
 ### Phase B — PoC / Selection
-Tasks B1–B5.
+Tasks B1–B6.
 
-Creates isolated `experiments/search-discovery-poc` for Japanese lexical retrieval and HyperEdge correctness/backend feasibility.
+Creates isolated `experiments/search-discovery-poc` for Japanese lexical retrieval, HyperEdge correctness/backend feasibility, and rank-fusion qualification.
 
 POC REQUIRED dependencies/backends cannot be promoted without recorded evidence. Material unpredetermined selection remains a requester gate.
 
@@ -87,7 +87,7 @@ Implements rebuildable projections, in-memory projection generation store, quali
 ### Phase D — Document Source / Acceptance
 Tasks D1–D9.
 
-Uses Document Platform as the first real Source, adds a read-only current-access use case by reusing existing Document authorization semantics, consumes existing outbox events as invalidation/index triggers, projects deterministic Document relations, adds Evaluation harness, and proves the vertical slice.
+Uses Document Platform as the first real Source, adds a read-only current-access use case by reusing existing Document authorization semantics, implements a transport-neutral idempotent Search consumer for existing Domain events without owning the generic outbox delivery lifecycle, projects deterministic Document relations, adds Evaluation harness, and proves the vertical slice.
 
 ## Search Extraction boundary
 
