@@ -2,12 +2,33 @@ use std::collections::BTreeMap;
 
 use document_application::{RepositoryError, VerifiedActorContext};
 use document_domain::{
-    Action, PolicyGrant, PolicyMode, PolicySubject, PolicySubjectKind, ResourceRef, evaluate_policy,
+    Action, DocumentId, PolicyGrant, PolicyMode, PolicySubject, PolicySubjectKind, PrincipalRef,
+    ResourceRef, evaluate_policy,
 };
-use sqlx::{Postgres, Row, Transaction};
+use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
 use crate::error::map_statement_error;
+
+pub(crate) fn verified_subjects_json(ctx: &VerifiedActorContext) -> serde_json::Value {
+    serde_json::Value::Array(
+        ctx.subjects()
+            .iter()
+            .map(|subject| {
+                let kind = match subject.kind() {
+                    PolicySubjectKind::Principal => "principal",
+                    PolicySubjectKind::Group => "group",
+                    PolicySubjectKind::Role => "role",
+                };
+                serde_json::json!({
+                    "kind": kind,
+                    "identity_provider": subject.identity_provider(),
+                    "subject_id": subject.subject_id(),
+                })
+            })
+            .collect(),
+    )
+}
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum AccessLockMode {
@@ -44,6 +65,17 @@ pub(crate) async fn authorize_in_tx(
     if requirements.is_empty() {
         return Err(RepositoryError::Forbidden);
     }
+    let root_initialized: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM access_policy_bindings \
+         WHERE folder_id = $1 AND mode = 'EXPLICIT')",
+    )
+    .bind(crate::SYSTEM_ROOT_FOLDER_ID)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(map_statement_error)?;
+    if !root_initialized {
+        return Err(RepositoryError::Forbidden);
+    }
     for (resource, actions) in requirements {
         let policy_id = nearest_policy_id(tx, *resource).await?;
         let Some(policy_id) = policy_id else {
@@ -57,23 +89,52 @@ pub(crate) async fn authorize_in_tx(
     Ok(())
 }
 
+pub(crate) async fn guard_document_mutation(
+    tx: &mut Transaction<'_, Postgres>,
+    ctx: Option<&VerifiedActorContext>,
+    document_id: DocumentId,
+    required: &[Action],
+    recorded_actor: &PrincipalRef,
+) -> Result<(), RepositoryError> {
+    let Some(ctx) = ctx else {
+        return Ok(());
+    };
+    lock_access_state(tx, AccessLockMode::Shared).await?;
+    if ctx.principal() != recorded_actor {
+        return Err(RepositoryError::Forbidden);
+    }
+    authorize_in_tx(
+        tx,
+        ctx,
+        &[(ResourceRef::Document(document_id), required.to_vec())],
+    )
+    .await
+}
+
+pub(crate) async fn authorize_document_snapshot(
+    pool: &PgPool,
+    ctx: &VerifiedActorContext,
+    document_id: DocumentId,
+    required: &[Action],
+) -> Result<(), RepositoryError> {
+    let mut tx = pool.begin().await.map_err(map_statement_error)?;
+    lock_access_state(&mut tx, AccessLockMode::Shared).await?;
+    let result = authorize_in_tx(
+        &mut tx,
+        ctx,
+        &[(ResourceRef::Document(document_id), required.to_vec())],
+    )
+    .await;
+    tx.rollback().await.map_err(map_statement_error)?;
+    result
+}
+
 async fn nearest_policy_id(
     tx: &mut Transaction<'_, Postgres>,
     resource: ResourceRef,
 ) -> Result<Option<Uuid>, RepositoryError> {
     let folder_id = match resource {
         ResourceRef::Document(document_id) => {
-            let document_binding: Option<(Uuid,)> = sqlx::query_as(
-                "SELECT policy_id FROM access_policy_bindings \
-                 WHERE document_id = $1 AND mode = 'EXPLICIT'",
-            )
-            .bind(document_id.as_uuid())
-            .fetch_optional(&mut **tx)
-            .await
-            .map_err(map_statement_error)?;
-            if let Some((policy_id,)) = document_binding {
-                return Ok(Some(policy_id));
-            }
             sqlx::query_scalar::<_, Uuid>("SELECT folder_id FROM documents WHERE document_id = $1")
                 .bind(document_id.as_uuid())
                 .fetch_optional(&mut **tx)
@@ -115,6 +176,37 @@ async fn nearest_policy_id(
     let Some(folder_id) = folder_id else {
         return Ok(None);
     };
+    let rooted: bool = sqlx::query_scalar(
+        "WITH RECURSIVE ancestors AS ( \
+             SELECT folder_id, parent_folder_id FROM folders WHERE folder_id = $1 \
+             UNION \
+             SELECT f.folder_id, f.parent_folder_id FROM folders f \
+             JOIN ancestors a ON f.folder_id = a.parent_folder_id \
+         ) \
+         SELECT EXISTS (SELECT 1 FROM ancestors \
+                        WHERE folder_id = $2 AND parent_folder_id IS NULL)",
+    )
+    .bind(folder_id)
+    .bind(crate::SYSTEM_ROOT_FOLDER_ID)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(map_statement_error)?;
+    if !rooted {
+        return Ok(None);
+    }
+    if let ResourceRef::Document(document_id) = resource {
+        let document_binding: Option<Uuid> = sqlx::query_scalar(
+            "SELECT policy_id FROM access_policy_bindings \
+             WHERE document_id = $1 AND mode = 'EXPLICIT'",
+        )
+        .bind(document_id.as_uuid())
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(map_statement_error)?;
+        if document_binding.is_some() {
+            return Ok(document_binding);
+        }
+    }
     sqlx::query_scalar(
         "WITH RECURSIVE ancestors AS ( \
              SELECT folder_id, parent_folder_id, 0 AS depth FROM folders WHERE folder_id = $1 \

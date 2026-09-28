@@ -4,6 +4,7 @@
 
 mod access_context;
 mod access_policy_service;
+mod authorized_document;
 mod command;
 mod error;
 mod events;
@@ -23,6 +24,7 @@ mod versioning_service;
 
 pub use access_context::{IdentityResolutionError, InvocationKind, VerifiedActorContext};
 pub use access_policy_service::AccessPolicyService;
+pub use authorized_document::{AuthorizationScope, AuthorizedDocumentService};
 pub use command::{
     CreateDocumentCommand, CreateDocumentResult, PublishDocumentCommand, PublishDocumentResult,
     PublishOperationId,

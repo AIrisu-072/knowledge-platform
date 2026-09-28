@@ -1,11 +1,11 @@
 use document_application::{
     AUDIT_DOCUMENT_PUBLICATION_ENDED, DOCUMENT_PUBLICATION_ENDED, EndDocumentPublicationResult,
     EndPublicationCandidate, EndPublicationOperationRecord, EndPublicationRecord,
-    PublicationEndOperationId, PublicationEndRepository, RepositoryError,
+    PublicationEndOperationId, PublicationEndRepository, RepositoryError, VerifiedActorContext,
 };
 use document_domain::{
-    Document, DocumentId, DocumentVersion, DocumentVersionId, FolderId, LifecycleState, Metadata,
-    PrincipalRef, RestoreDocument, RestoreDocumentVersion, Title, VersionNo,
+    Action, Document, DocumentId, DocumentVersion, DocumentVersionId, FolderId, LifecycleState,
+    Metadata, PrincipalRef, RestoreDocument, RestoreDocumentVersion, Title, VersionNo,
 };
 use serde_json::{Value, json};
 use sqlx::{PgPool, Postgres, Row, Transaction, postgres::PgRow};
@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::{
     PostgresDocumentRepository,
+    access_control::{authorize_document_snapshot, guard_document_mutation},
     error::{map_commit_error, map_statement_error},
 };
 
@@ -23,13 +24,27 @@ impl PublicationEndRepository for PostgresDocumentRepository {
         &self,
         id: PublicationEndOperationId,
     ) -> Result<Option<EndPublicationOperationRecord>, RepositoryError> {
-        get_operation(&self.pool, id).await
+        let operation = get_operation(&self.pool, id).await?;
+        if let (Some(ctx), Some(operation)) = (&self.verified_actor, &operation) {
+            authorize_document_snapshot(
+                &self.pool,
+                ctx,
+                operation.result().document_id(),
+                &[Action::Read, Action::Publish],
+            )
+            .await?;
+        }
+        Ok(operation)
     }
 
     async fn get_end_candidate(
         &self,
         id: DocumentId,
     ) -> Result<Option<EndPublicationCandidate>, RepositoryError> {
+        if let Some(ctx) = &self.verified_actor {
+            authorize_document_snapshot(&self.pool, ctx, id, &[Action::Read, Action::Publish])
+                .await?;
+        }
         let row = sqlx::query(
             "SELECT d.document_id, d.folder_id, d.current_version_id, d.revision, \
                     d.metadata AS document_metadata, d.created_at AS document_created_at, \
@@ -54,7 +69,7 @@ impl PublicationEndRepository for PostgresDocumentRepository {
         &self,
         record: EndPublicationRecord,
     ) -> Result<EndDocumentPublicationResult, RepositoryError> {
-        end_publication(&self.pool, record).await
+        end_publication(&self.pool, record, self.verified_actor.as_ref()).await
     }
 }
 
@@ -193,10 +208,12 @@ pub(crate) async fn ensure_not_ended(
 async fn end_publication(
     pool: &PgPool,
     record: EndPublicationRecord,
+    ctx: Option<&VerifiedActorContext>,
 ) -> Result<EndDocumentPublicationResult, RepositoryError> {
     let command = record.command();
     let mut tx = pool.begin().await.map_err(map_statement_error)?;
     let outcome: Result<EndDocumentPublicationResult, RepositoryError> = async {
+        guard_document_mutation(&mut tx, ctx, command.document_id(), &[Action::Read, Action::Publish], command.actor()).await?;
         // This lock serializes T10 with Publish, schedule and Version mutations.
         let state = sqlx::query(
             "SELECT current_version_id, revision FROM documents WHERE document_id = $1 FOR UPDATE",

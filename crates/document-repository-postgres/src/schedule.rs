@@ -4,14 +4,15 @@ use document_application::{
     DOCUMENT_VERSION_PUBLICATION_CANCELLED, DOCUMENT_VERSION_PUBLICATION_SCHEDULED,
     DueTerminalRecord, PublicationScheduleRepository, PublishOperationId, RepositoryError,
     ScheduleOperationRecord, SchedulePublishCommand, SchedulePublishRecord, SchedulePublishResult,
-    VersionOperationId,
+    VerifiedActorContext, VersionOperationId,
 };
-use document_domain::{DocumentId, DocumentVersionId, PrincipalRef};
+use document_domain::{Action, DocumentId, DocumentVersionId, PrincipalRef};
 use serde_json::{Value, json};
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
 use crate::{
+    access_control::{authorize_document_snapshot, guard_document_mutation},
     error::{map_commit_error, map_statement_error},
     publication_end,
     repository::PostgresDocumentRepository,
@@ -25,25 +26,45 @@ impl PublicationScheduleRepository for PostgresDocumentRepository {
         &self,
         id: PublishOperationId,
     ) -> Result<Option<ScheduleOperationRecord>, RepositoryError> {
-        get_schedule(&self.pool, id).await
+        let operation = get_schedule(&self.pool, id).await?;
+        if let (Some(ctx), Some(operation)) = (&self.verified_actor, &operation) {
+            authorize_document_snapshot(
+                &self.pool,
+                ctx,
+                operation.command.document_id(),
+                &[Action::Read, Action::Publish],
+            )
+            .await?;
+        }
+        Ok(operation)
     }
     async fn reserve(
         &self,
         record: SchedulePublishRecord,
     ) -> Result<SchedulePublishResult, RepositoryError> {
-        reserve(&self.pool, record).await
+        reserve(&self.pool, record, self.verified_actor.as_ref()).await
     }
     async fn get_cancel_operation(
         &self,
         id: VersionOperationId,
     ) -> Result<Option<CancelOperationRecord>, RepositoryError> {
-        get_cancel_operation(&self.pool, id).await
+        let operation = get_cancel_operation(&self.pool, id).await?;
+        if let (Some(ctx), Some(operation)) = (&self.verified_actor, &operation) {
+            authorize_document_snapshot(
+                &self.pool,
+                ctx,
+                operation.result.document_id,
+                &[Action::Read, Action::Publish],
+            )
+            .await?;
+        }
+        Ok(operation)
     }
     async fn cancel(
         &self,
         record: CancelScheduleRecord,
     ) -> Result<CancelScheduleResult, RepositoryError> {
-        cancel(&self.pool, record).await
+        cancel(&self.pool, record, self.verified_actor.as_ref()).await
     }
 
     async fn database_now(&self) -> Result<time::OffsetDateTime, RepositoryError> {
@@ -164,10 +185,12 @@ fn map_schedule(
 pub(crate) async fn reserve(
     pool: &PgPool,
     record: SchedulePublishRecord,
+    ctx: Option<&VerifiedActorContext>,
 ) -> Result<SchedulePublishResult, RepositoryError> {
     let command = &record.command;
     let mut tx = pool.begin().await.map_err(map_statement_error)?;
     let outcome: Result<SchedulePublishResult, RepositoryError> = async {
+        guard_document_mutation(&mut tx, ctx, command.document_id(), &[Action::Read, Action::Publish], command.actor()).await?;
         let state = sqlx::query("SELECT current_version_id, revision FROM documents WHERE document_id = $1 FOR UPDATE")
             .bind(command.document_id().as_uuid()).fetch_optional(&mut *tx).await.map_err(map_statement_error)?
             .ok_or(RepositoryError::DocumentNotFound)?;
@@ -333,10 +356,12 @@ fn map_cancel(
 pub(crate) async fn cancel(
     pool: &PgPool,
     record: CancelScheduleRecord,
+    ctx: Option<&VerifiedActorContext>,
 ) -> Result<CancelScheduleResult, RepositoryError> {
     let command = &record.command;
     let mut tx = pool.begin().await.map_err(map_statement_error)?;
     let outcome: Result<CancelScheduleResult, RepositoryError> = async {
+        guard_document_mutation(&mut tx, ctx, command.document_id(), &[Action::Read, Action::Publish], command.actor()).await?;
         let revision: i64 = sqlx::query_scalar("SELECT revision FROM documents WHERE document_id = $1 FOR UPDATE")
             .bind(command.document_id().as_uuid()).fetch_optional(&mut *tx).await.map_err(map_statement_error)?
             .ok_or(RepositoryError::DocumentNotFound)?;

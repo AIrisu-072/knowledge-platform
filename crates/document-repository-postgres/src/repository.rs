@@ -2,13 +2,18 @@ use document_application::{
     AuthoritativeDocument, CreateInitialDocumentRecord, CurrentPublishedVersionRef,
     DocumentPublishRepository, DocumentRepository, PublishCandidate, PublishDocumentResult,
     PublishInitialVersionRecord, PublishOperationId, PublishOperationRecord, PublishVersionRecord,
-    RepositoryError,
+    RepositoryError, VerifiedActorContext,
 };
+use document_domain::{Action, ResourceRef};
 use document_domain::{DocumentId, DocumentVersionId, FileId, PrincipalRef};
 use serde_json::Value;
 use sqlx::PgPool;
 
 use crate::{
+    access_control::{
+        AccessLockMode, authorize_document_snapshot, authorize_in_tx, lock_access_state,
+        verified_subjects_json,
+    },
     error::{map_commit_error, map_statement_error},
     publish, versioning_rows,
 };
@@ -19,6 +24,7 @@ const AUDIT_SOURCE: &str = "urn:knowledge-platform:document-platform";
 pub struct PostgresDocumentRepository {
     pub(crate) pool: PgPool,
     pub(crate) bootstrap_actor: Option<PrincipalRef>,
+    pub(crate) verified_actor: Option<VerifiedActorContext>,
 }
 
 impl PostgresDocumentRepository {
@@ -26,6 +32,7 @@ impl PostgresDocumentRepository {
         Self {
             pool,
             bootstrap_actor: None,
+            verified_actor: None,
         }
     }
 
@@ -33,6 +40,15 @@ impl PostgresDocumentRepository {
         Self {
             pool,
             bootstrap_actor: Some(bootstrap_actor),
+            verified_actor: None,
+        }
+    }
+
+    pub fn with_verified_actor(&self, actor: VerifiedActorContext) -> Self {
+        Self {
+            pool: self.pool.clone(),
+            bootstrap_actor: None,
+            verified_actor: Some(actor),
         }
     }
 }
@@ -51,6 +67,17 @@ impl DocumentRepository for PostgresDocumentRepository {
         let mut tx = self.pool.begin().await.map_err(map_statement_error)?;
 
         let result: Result<(), RepositoryError> = async {
+            if let Some(ctx) = &self.verified_actor {
+                lock_access_state(&mut tx, AccessLockMode::Shared).await?;
+                if version.created_by() != ctx.principal() {
+                    return Err(RepositoryError::Forbidden);
+                }
+                authorize_in_tx(
+                    &mut tx,
+                    ctx,
+                    &[(ResourceRef::Folder(document.folder_id()), vec![Action::Read, Action::Write])],
+                ).await?;
+            }
             let folder_exists: bool = sqlx::query_scalar(
                 "SELECT EXISTS (SELECT 1 FROM folders WHERE folder_id = $1)",
             )
@@ -206,21 +233,33 @@ impl DocumentRepository for PostgresDocumentRepository {
         &self,
         id: DocumentId,
     ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
-        versioning_rows::load_current(&self.pool, id).await
+        if let Some(ctx) = &self.verified_actor {
+            versioning_rows::load_current_scoped(&self.pool, id, ctx).await
+        } else {
+            versioning_rows::load_current(&self.pool, id).await
+        }
     }
 
     async fn get_authoring_document(
         &self,
         id: DocumentId,
     ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
-        versioning_rows::load_authoring(&self.pool, id).await
+        if let Some(ctx) = &self.verified_actor {
+            versioning_rows::load_authoring_scoped(&self.pool, id, ctx).await
+        } else {
+            versioning_rows::load_authoring(&self.pool, id).await
+        }
     }
 
     async fn get_current_published_document(
         &self,
         id: DocumentId,
     ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
-        versioning_rows::load_current_published(&self.pool, id).await
+        if let Some(ctx) = &self.verified_actor {
+            versioning_rows::load_current_published_scoped(&self.pool, id, ctx).await
+        } else {
+            versioning_rows::load_current_published(&self.pool, id).await
+        }
     }
 
     async fn is_current_published_version(
@@ -228,17 +267,27 @@ impl DocumentRepository for PostgresDocumentRepository {
         document_id: DocumentId,
         version_id: DocumentVersionId,
     ) -> Result<bool, RepositoryError> {
+        if self
+            .verified_actor
+            .as_ref()
+            .is_some_and(|ctx| ctx.ensure_current().is_err())
+        {
+            return Ok(false);
+        }
+        let subjects = self.verified_actor.as_ref().map(verified_subjects_json);
         sqlx::query_scalar(
             "SELECT EXISTS (SELECT 1 FROM documents d \
              JOIN document_versions v ON v.document_version_id = d.current_version_id \
                                     AND v.document_id = d.document_id \
              WHERE d.document_id = $1 AND v.document_version_id = $2 \
                AND v.lifecycle_state = 'PUBLISHED' \
+               AND ($3::jsonb IS NULL OR dmb_allows_document(d.document_id, $3, ARRAY['read']::text[])) \
                AND NOT EXISTS (SELECT 1 FROM document_publication_end_operations e \
                                WHERE e.document_id = d.document_id))",
         )
         .bind(document_id.as_uuid())
         .bind(version_id.as_uuid())
+        .bind(subjects)
         .fetch_one(&self.pool)
         .await
         .map_err(map_statement_error)
@@ -252,18 +301,28 @@ impl DocumentRepository for PostgresDocumentRepository {
         if !(1..=1000).contains(&limit) {
             return Err(RepositoryError::BusinessRule);
         }
+        if self
+            .verified_actor
+            .as_ref()
+            .is_some_and(|ctx| ctx.ensure_current().is_err())
+        {
+            return Ok(Vec::new());
+        }
+        let subjects = self.verified_actor.as_ref().map(verified_subjects_json);
         let rows: Vec<(uuid::Uuid, uuid::Uuid, i64)> = sqlx::query_as(
             "SELECT d.document_id, v.document_version_id, d.revision FROM documents d \
              JOIN document_versions v ON v.document_version_id = d.current_version_id \
                                     AND v.document_id = d.document_id \
              WHERE v.lifecycle_state = 'PUBLISHED' \
                AND ($1::uuid IS NULL OR d.document_id > $1) \
+               AND ($3::jsonb IS NULL OR dmb_allows_document(d.document_id, $3, ARRAY['read']::text[])) \
                AND NOT EXISTS (SELECT 1 FROM document_publication_end_operations e \
                                WHERE e.document_id = d.document_id) \
              ORDER BY d.document_id LIMIT $2",
         )
         .bind(after.map(|id| id.as_uuid()))
         .bind(limit)
+        .bind(subjects)
         .fetch_all(&self.pool)
         .await
         .map_err(map_statement_error)?;
@@ -317,7 +376,17 @@ impl DocumentPublishRepository for PostgresDocumentRepository {
         &self,
         operation_id: PublishOperationId,
     ) -> Result<Option<PublishOperationRecord>, RepositoryError> {
-        publish::get_publish_operation(&self.pool, operation_id).await
+        let operation = publish::get_publish_operation(&self.pool, operation_id).await?;
+        if let (Some(ctx), Some(operation)) = (&self.verified_actor, &operation) {
+            authorize_document_snapshot(
+                &self.pool,
+                ctx,
+                operation.identity().document_id(),
+                &[Action::Read, Action::Publish],
+            )
+            .await?;
+        }
+        Ok(operation)
     }
 
     async fn get_publish_candidate(
@@ -325,6 +394,15 @@ impl DocumentPublishRepository for PostgresDocumentRepository {
         document_id: DocumentId,
         target_version_id: document_domain::DocumentVersionId,
     ) -> Result<PublishCandidate, RepositoryError> {
+        if let Some(ctx) = &self.verified_actor {
+            authorize_document_snapshot(
+                &self.pool,
+                ctx,
+                document_id,
+                &[Action::Read, Action::Publish],
+            )
+            .await?;
+        }
         publish::get_publish_candidate(&self.pool, document_id, target_version_id).await
     }
 
@@ -332,13 +410,13 @@ impl DocumentPublishRepository for PostgresDocumentRepository {
         &self,
         record: PublishInitialVersionRecord,
     ) -> Result<PublishDocumentResult, RepositoryError> {
-        publish::publish_initial_version(&self.pool, record).await
+        publish::publish_initial_version(&self.pool, record, self.verified_actor.as_ref()).await
     }
 
     async fn publish_next_version(
         &self,
         record: PublishVersionRecord,
     ) -> Result<PublishDocumentResult, RepositoryError> {
-        publish::publish_next_version(&self.pool, record).await
+        publish::publish_next_version(&self.pool, record, self.verified_actor.as_ref()).await
     }
 }

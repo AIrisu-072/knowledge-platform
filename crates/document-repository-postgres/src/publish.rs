@@ -1,11 +1,13 @@
 use document_application::{
     PublishCandidate, PublishCommandIdentity, PublishDocumentResult, PublishInitialVersionRecord,
     PublishOperationId, PublishOperationRecord, PublishVersionRecord, RepositoryError,
+    VerifiedActorContext,
 };
-use document_domain::{DocumentId, DocumentVersionId, DomainError, PrincipalRef};
+use document_domain::{Action, DocumentId, DocumentVersionId, DomainError, PrincipalRef};
 use sqlx::{PgPool, Postgres, Transaction};
 
 use crate::{
+    access_control::guard_document_mutation,
     error::{map_commit_error, map_statement_error},
     mapping::to_authoritative,
     publication_end,
@@ -145,6 +147,7 @@ pub(crate) async fn get_publish_candidate(
 pub(crate) async fn publish_initial_version(
     pool: &PgPool,
     record: PublishInitialVersionRecord,
+    ctx: Option<&VerifiedActorContext>,
 ) -> Result<PublishDocumentResult, RepositoryError> {
     let scheduled_due = record.scheduled_due();
     let (operation, domain_event, audit_event) = record.into_parts();
@@ -152,13 +155,23 @@ pub(crate) async fn publish_initial_version(
 
     validate_proposed_result(&identity, &proposed_result)?;
 
-    if let Some(stored) = get_publish_operation(pool, identity.publish_operation_id()).await? {
+    if ctx.is_none()
+        && let Some(stored) = get_publish_operation(pool, identity.publish_operation_id()).await?
+    {
         return replay_or_conflict(stored, &identity);
     }
 
     let mut tx = pool.begin().await.map_err(map_statement_error)?;
 
     let outcome: Result<PublishDocumentResult, RepositoryError> = async {
+        guard_document_mutation(
+            &mut tx,
+            ctx,
+            identity.document_id(),
+            &[Action::Read, Action::Publish],
+            identity.principal(),
+        )
+        .await?;
         let document_state: Option<(Option<uuid::Uuid>, i64)> = sqlx::query_as(
             "SELECT current_version_id, revision \
              FROM documents \
@@ -410,17 +423,21 @@ pub(crate) async fn publish_initial_version(
 pub(crate) async fn publish_next_version(
     pool: &PgPool,
     record: PublishVersionRecord,
+    ctx: Option<&VerifiedActorContext>,
 ) -> Result<PublishDocumentResult, RepositoryError> {
     let scheduled_due = record.scheduled_due();
     let (operation, domain_event, audit_event, base_id, base_digest, target_digest) =
         record.into_parts();
     let (identity, proposed_result) = operation.into_parts();
     validate_proposed_result(&identity, &proposed_result)?;
-    if let Some(stored) = get_publish_operation(pool, identity.publish_operation_id()).await? {
+    if ctx.is_none()
+        && let Some(stored) = get_publish_operation(pool, identity.publish_operation_id()).await?
+    {
         return replay_or_conflict(stored, &identity);
     }
     let mut tx = pool.begin().await.map_err(map_statement_error)?;
     let outcome: Result<PublishDocumentResult, RepositoryError> = async {
+        guard_document_mutation(&mut tx, ctx, identity.document_id(), &[Action::Read, Action::Publish], identity.principal()).await?;
         let state: Option<(Option<uuid::Uuid>, i64)> = sqlx::query_as(
             "SELECT current_version_id, revision FROM documents WHERE document_id = $1 FOR UPDATE",
         )
