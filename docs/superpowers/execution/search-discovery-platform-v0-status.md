@@ -1,8 +1,8 @@
 # Search / Discovery Platform v0 — Execution Status
 
-## Current checkpoint — Design APPROVED / Production Plan Review Pending, 2026-09-28 JST
+## Current checkpoint — Design APPROVED / Production Plan APPROVED / Implementation Ready, 2026-09-29 JST
 
-- Status: **DESIGN APPROVED / NORMATIVE RECONCILIATION COMPLETE / PRODUCTION PLAN WRITTEN / PLAN REVIEW PENDING / IMPLEMENTATION BLOCKED**.
+- Status: **DESIGN APPROVED / NORMATIVE RECONCILIATION COMPLETE / PRODUCTION PLAN APPROVED / IMPLEMENTATION READY — TASK A1 RED NEXT**.
 - Repository baseline at design start: `main@6ea29e1ceea82bb0e20b195890b7c0e7efc85f68`.
 - Design branch: `design/search-discovery-platform-v0`.
 - Draft planning PR: #20.
@@ -15,7 +15,7 @@
   - `docs/superpowers/plans/2026-09-28-search-discovery-platform-v0-phase-c-runtime.md`
   - `docs/superpowers/plans/2026-09-28-search-discovery-platform-v0-phase-d-integration.md`
 - Production code / migration / production dependency changes: **none**.
-- Production Implementation Plan approval: **not yet granted**. Do not start implementation until an explicit approval record exists.
+- Production Implementation Plan approval: **APPROVED**. Approval record: `docs/superpowers/plans/2026-09-28-search-discovery-platform-v0-production-implementation-approval.md`.
 
 ## Approved design
 
@@ -120,10 +120,10 @@ At implementation-session start, re-read live `main`, PR #20 and any parallel Do
 
 ## Next exact action
 
-1. requester reviews and explicitly approves the Production master plan and Phase A–D plans;
-2. record that approval in `docs/superpowers/plans/2026-09-28-search-discovery-platform-v0-production-implementation-approval.md`;
-3. verify the approved planning head / PR #20 exact state;
-4. a fresh implementation session creates an isolated worktree/branch `feat/search-discovery-platform-v0-a` from the approved planning head;
-5. implementation starts at **Task A1 RED**.
+1. a fresh implementation session re-reads repository/GitHub live state, PR #20, Design/approval, Production Plan/approval, and the four phase plans;
+2. verify that the approved planning branch is not materially conflicted by parallel Document work and that the exact-head hosted gates are acceptable;
+3. create an isolated worktree/branch `feat/search-discovery-platform-v0-a` from the approved planning branch head;
+4. begin **Task A1 RED** exactly as written in the Phase A plan;
+5. keep this Search-specific status current and do not take over repository-wide `active.md` while another parallel capability owns it.
 
-Until step 1 is explicit, Production implementation is blocked.
+No further implementation confirmation is required unless an explicit selection gate, material repository conflict, or Design Freeze conflict is encountered.
