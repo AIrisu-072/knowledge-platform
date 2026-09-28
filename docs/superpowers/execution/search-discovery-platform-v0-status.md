@@ -1,5 +1,15 @@
 # Search / Discovery Platform v0 — Execution Status
 
+## Current checkpoint — Phase A A8 qualification receipt, 2026-09-29 JST
+
+- Branch `feat/search-discovery-platform-v0-a`, stacked [Draft PR #21](https://github.com/AIrisu-072/knowledge-platform/pull/21), base `design/search-discovery-platform-v0@252245f5bbf63958739d2f9b6d82cf39d4ec94f6` (Draft PR #20). Pre-receipt code/evidence head `d3b93ea7aff229d08e5360fb4ca956889ccb84e7` matched `git ls-remote`, PR `headRefOid` and source-worktree HEAD.
+- For that head, [CI `36454218566`](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36454218566), [DSI Sandbox `36454218615`](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36454218615), and [DSI PoC `36454218338`](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36454218338) completed **SUCCESS**. CI `required-check` and every required job were green. This evidence commit advances HEAD, so use live PR checks to determine whether A8 is complete for the new exact head; never reuse the prior receipt as its gate.
+- A1–A7 implementation, six independent-review fixes and the security manifest correction are committed. Final Search suite 58/58, strict Clippy/fmt/architecture and `mise run security:deps` passed locally. `mise run verify:fast` did **not** complete locally: Document Semantic Inspection test linking exhausted disk (`errno=28`); hosted CI `rust-test` passed on the pre-receipt exact head. See `docs/superpowers/execution/search-discovery-platform-v0-phase-a.md` for task commits and details.
+- Current Task: A8 exact-head gate recheck after pushing this receipt. Completed Tasks: A1–A7; A8 conditional on the current head's hosted checks. No Design Freeze difference. Graph backend, tokenizer, Vector/embedding, reranker and fusion remain deferred to Phase B and Selection Gate S1. Managed A1/A2 runs remain inspect-before-resume; do not replay or alter repository-wide `active.md`.
+- Next exact action: commit and push this qualification record, verify remote head / PR `headRefOid` / source-worktree HEAD, inspect CI, DSI Sandbox and DSI PoC on that head. If green, create Phase B branch stacked on PR #21 and begin B1 RED; no merge.
+
+---
+
 ## Current checkpoint — Phase A Draft PR #21, dependency policy correction, 2026-09-29 JST
 
 - Status: **PHASE A A8 HOSTED GATE PENDING**. Branch `feat/search-discovery-platform-v0-a` is stacked as [Draft PR #21](https://github.com/AIrisu-072/knowledge-platform/pull/21) against planning branch `design/search-discovery-platform-v0` (Draft PR #20). Latest code head before this status update: `9320aa5beaf1f51f196cc1919a347e8a56e1b97e`; the status commit advances HEAD, so recheck the remote and PR exact SHA.
