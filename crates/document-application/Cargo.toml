@@ -6,6 +6,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+serde.workspace = true
 document-domain = { version = "0.0.0", path = "../document-domain" }
 document-semantic-inspection-core = { version = "0.0.0", path = "../document-semantic-inspection-core" }
 tokio.workspace = true
@@ -14,6 +15,7 @@ thiserror.workspace = true
 uuid.workspace = true
 time.workspace = true
 sha2.workspace = true
+unicode-normalization.workspace = true
 
 [dev-dependencies]
 document-semantic-inspection-runner = { version = "0.0.0", path = "../document-semantic-inspection-runner" }

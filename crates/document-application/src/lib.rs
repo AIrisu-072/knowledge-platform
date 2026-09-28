@@ -7,6 +7,7 @@ mod access_policy_service;
 mod authorized_document;
 mod command;
 mod document_management;
+mod document_query;
 mod error;
 mod events;
 mod folder_service;
@@ -16,6 +17,7 @@ mod management_ports;
 mod ports;
 mod publication_end;
 mod publish_quality;
+mod query_cursor;
 mod read_state;
 mod reconciliation;
 mod schedule;
@@ -34,6 +36,11 @@ pub use command::{
     PublishOperationId,
 };
 pub use document_management::DocumentManagementService;
+pub use document_query::{
+    AuthoringDocumentSummary, AuthoringQuery, DocumentListFilter, DocumentQueryRepository,
+    DocumentQueryService, FolderPageQuery, FolderSummary, HistoryDocumentSummary, HistoryQuery,
+    Page, PublishedDocumentSummary, PublishedQuery,
+};
 pub use error::{ApplicationError, InspectionExecutionError, RepositoryError, StorageError};
 pub use events::{
     AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_PUBLICATION_ENDED, AUDIT_DOCUMENT_VERSION_CREATED,
@@ -67,6 +74,10 @@ pub use publication_end::{
     DocumentPublicationEndService, EndDocumentPublicationCommand, EndDocumentPublicationResult,
     EndPublicationCandidate, EndPublicationOperationRecord, EndPublicationRecord,
     PublicationEndOperationId,
+};
+pub use query_cursor::{
+    CursorBinding, CursorPosition, DocumentSort, QueryKind, decode_cursor, encode_cursor,
+    fingerprint_json, principal_fingerprint, validate_page_size,
 };
 pub use read_state::{MarkVersionRead, ReadStateRepository, ReadStateResult, ReadStateService};
 pub use reconciliation::{ReconciliationClassification, ReconciliationFinding, classify};

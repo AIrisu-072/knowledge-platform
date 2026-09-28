@@ -37,6 +37,10 @@ pub enum RepositoryError {
     DocumentVersionNotFound,
     #[error("target version is no longer the current published version")]
     StaleVersion,
+    #[error("query cursor no longer matches the current access or query context")]
+    CursorStale,
+    #[error("invalid query cursor")]
+    InvalidCursor,
     #[error("repository conflict")]
     Conflict,
     #[error("business rule rejected operation")]
@@ -95,6 +99,8 @@ pub enum ApplicationError {
     DocumentVersionNotFound,
     #[error("target version is no longer the current published version")]
     StaleVersion,
+    #[error("query cursor no longer matches the current access or query context")]
+    CursorStale,
     #[error("file object not found")]
     FileObjectNotFound,
     #[error("operation conflicts with current authoritative state")]
@@ -187,6 +193,8 @@ impl From<RepositoryError> for ApplicationError {
             RepositoryError::DocumentNotFound => Self::DocumentNotFound,
             RepositoryError::DocumentVersionNotFound => Self::DocumentVersionNotFound,
             RepositoryError::StaleVersion => Self::StaleVersion,
+            RepositoryError::CursorStale => Self::CursorStale,
+            RepositoryError::InvalidCursor => Self::Validation("invalid query cursor".into()),
             RepositoryError::Conflict => Self::Conflict,
             RepositoryError::BusinessRule => Self::BusinessRule,
             RepositoryError::Unavailable => Self::RepositoryUnavailable,

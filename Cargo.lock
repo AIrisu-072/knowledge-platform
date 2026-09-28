@@ -1086,6 +1086,7 @@ dependencies = [
  "document-semantic-inspection-core",
  "document-semantic-inspection-runner",
  "document-storage-fs",
+ "serde",
  "serde_json",
  "sha2 0.11.0",
  "sqlx",
@@ -1094,6 +1095,7 @@ dependencies = [
  "thiserror",
  "time",
  "tokio",
+ "unicode-normalization",
  "uuid",
 ]
 

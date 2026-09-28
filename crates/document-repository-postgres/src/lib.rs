@@ -6,6 +6,7 @@ mod access_control;
 mod access_policy;
 mod authorized_repository;
 mod document_management;
+mod document_query;
 mod error;
 mod folder_management;
 mod folder_preflight;
