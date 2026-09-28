@@ -318,6 +318,20 @@ description = "Full reproducibility/integration gate"
 depends = ["verify", "sbom"]
 
 
+[tasks."poc:search:test"]
+run = ["cargo test --locked --manifest-path experiments/search-discovery-poc/Cargo.toml"]
+
+[tasks."poc:search:deny"]
+run = ["cargo deny --manifest-path experiments/search-discovery-poc/Cargo.toml --config experiments/search-discovery-poc/deny.toml check"]
+
+[tasks."poc:search:verify"]
+run = [
+  "cargo test --locked --manifest-path experiments/search-discovery-poc/Cargo.toml",
+  "cargo run --locked --manifest-path experiments/search-discovery-poc/Cargo.toml --bin search-discovery-poc -- verify",
+  "cargo deny --manifest-path experiments/search-discovery-poc/Cargo.toml --config experiments/search-discovery-poc/deny.toml check",
+  "cargo run --locked --manifest-path experiments/search-discovery-poc/Cargo.toml --bin search-discovery-poc -- report --format json > experiments/search-discovery-poc/target/qualification.json",
+]
+
 [tasks."poc:dsi:test"]
 run = ["cargo test --locked --manifest-path experiments/document-semantic-inspection/Cargo.toml"]
 
