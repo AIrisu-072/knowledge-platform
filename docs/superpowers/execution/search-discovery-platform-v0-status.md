@@ -1,5 +1,17 @@
 # Search / Discovery Platform v0 — Execution Status
 
+## Current checkpoint — Phase A code A1–A7 committed, A8 hosted gate pending, 2026-09-29 JST
+
+- Status: **PRODUCTION PLAN APPROVED / PHASE A A8 GATE PENDING**. Approved planning base `252245f5bbf63958739d2f9b6d82cf39d4ec94f6`; branch `feat/search-discovery-platform-v0-a`. Latest code commit before this checkpoint: `d82e397cc8f3f56910e552cd500f740cbca9280c`. The status commit will advance HEAD; check the live branch and PR exact head.
+- A1–A7 commits and evidence are in `docs/superpowers/execution/search-discovery-platform-v0-phase-a.md`. A7 `763f486` delivered provider-neutral ports and stable Binding; focused port/binding tests passed. The inherited planning-head OSV Scanner installer failure was addressed in `6e243d7` by pinning the published SLSA signer and issuer.
+- Independent read-only review found six edge cases in Fact provenance, independent Evidence origin, three-role HyperEdge constraints, identity rejection, decimal semantic equality and future freshness. RED tests reproduced all six; `d82e397` fixed them. Final Search suite passed 58/58, focused strict Clippy, fmt, architecture check and diff check passed.
+- `mise run verify:fast` passed format, workspace check/strict Clippy, architecture and OpenAPI lint, then failed in `test:rust` while linking Document Semantic Inspection tests because local disk filled (`errno=28`). This is an **incomplete local gate**; no Search test failure was observed. Current-worktree build artifacts were cleaned after recording diagnostics. Exact-head hosted gates must be green before Phase A is complete.
+- Planning PR #20 remained OPEN/Draft at the most recent live check. No Phase A PR yet at this checkpoint. Recheck the live base and head when creating the stacked Draft PR. No Design Freeze difference. Graph backend, tokenizer, Vector/embedding, reranker and fusion remain deferred to Phase B PoC/Selection Gate S1.
+- Managed A1/A2 read-only runs remain inspect-before-resume with pending reads; do not replay. The approved inline execution path was used for code. A native independent read-only reviewer examined the whole Phase A branch because managed review was blocked. Do not modify repository-wide `active.md` or merge.
+- Next exact action: commit this evidence checkpoint, push `feat/search-discovery-platform-v0-a`, create a stacked Draft PR against `design/search-discovery-platform-v0`, then inspect CI, DSI Sandbox and DSI PoC for the exact PR head. Start Phase B B1 RED only after Phase A's hosted gate is qualified.
+
+---
+
 ## Current checkpoint — Phase A A1–A6 committed, A7 RED next, 2026-09-29 JST
 
 - Status: **PRODUCTION PLAN APPROVED / PHASE A IN PROGRESS**. Search implementation branch `feat/search-discovery-platform-v0-a` is based on approved planning head `252245f5bbf63958739d2f9b6d82cf39d4ec94f6`. Latest code head before this status update: `d05a6fe4306f63d6124d14536e8219dfe7da5145`. No Phase A PR yet; verify live Git for the status-commit exact head.
