@@ -5,7 +5,9 @@
 - 対象: transaction T5〜T9、利用者向け文書一覧・属性絞り込み・版/操作履歴・ファイル参照。
 - 設計: `docs/superpowers/specs/2026-09-28-document-management-basics-v0-design.md`
 - 設計ブランチ: `design/document-management-basics-v0`
+- 設計PR: [#15](https://github.com/AIrisu-072/knowledge-platform/pull/15) — Draft / Open / 未マージ。
 - 基準main: `55dc3d3a430c8f36e1db8277fee15c4429258466`
+- 設計本文commit: `ea2b1e7fcb43e12f3db2336903cf3128b61606ca`。本準備状況更新は本文を変更しない。最新PR headは必ずGitHubから取得する。
 
 ## 承認状態
 
@@ -29,14 +31,16 @@
 - GitHubで取得したmainは上記基準SHA。
 - 同じSHAに対するpush CI `36362239773` は `completed / success` を取得した。これは既存mainの証拠であり、本設計PRや未実装機能の成功証拠ではない。
 - 設計作成前のopen PR一覧は0件だった。以後はGitHubを再取得して判断する。
+- PR #15を作成し、差分を取得した。設計本文と本準備状況の新規Markdown 2ファイルのみで、Rustコード、migration、依存関係、OpenAPI、規範spec、既存active pointerに変更はない。
+- 設計本文head `ea2b1e7fcb43e12f3db2336903cf3128b61606ca` のPR CI `36367555265` は取得時 `in_progress`。この記録更新後のheadの成功証拠には流用しない。
 - 参照したコード: Applicationの既存登録処理、イベント対象型、現行公開参照、およびVersioningのmigration/操作台帳。既存版管理を再実装する計画にはしていない。
-- ローカルRustテスト・配備先検証は今回実行していない。
-- 設計のreview観点: scopeと承認状態、予約revision/認可の分離、T10非復活、既読と代理参照の分離、業務/監査の原子性、履歴のOutbox保持依存防止。
+- ローカルRustテスト・配備先検証は今回実行していない。25件の受入条件は未実装機能に対する将来の検証条件であり、PASS件数ではない。
+- 設計自己レビュー: scope/承認状態、予約revisionと現在認可の分離、T10非復活、既読と代理参照の分離、業務/監査原子性、履歴のOutbox保持依存防止を確認した。独立した実装レビューや実DB試験の代替ではない。
 - この設計ブランチでは新規Markdownのみ追加する。既存 `active.md` と先行作業の実行記録は上書きしない。
 
 ## 次のexact action
 
-1. GitHubでこのブランチをheadとする設計PR、実際のheadとチェック結果を取得する。
+1. GitHubでPR #15の実際のhead、差分、exact-headのチェック結果を取得する。
 2. written Design Specのレビューを受ける。未承認の間は本番実装計画・製品コードへ進まない。
 3. 書面設計承認後、必要な規範差分を追跡し、Production Implementation Planを作成・レビューする。
 4. 計画承認後もログ一元管理完了が未確認なら `READY / WAITING_FOR_LOG_CENTRALIZATION` として保持する。
