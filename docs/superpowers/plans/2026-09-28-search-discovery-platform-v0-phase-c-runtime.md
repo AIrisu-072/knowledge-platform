@@ -63,14 +63,16 @@
 - Modify: root `Cargo.toml`
 
 **Interfaces:**
-- implements `ProjectionGenerationStore`, `DirectoryRetrieverPort`, and `StructuredRetrieverPort`
-- stores immutable generation segments for Directory / Structured / Temporal / Access metadata
+- implements `ProjectionGenerationStore`, `AssertionStorePort`, `ConceptRegistryPort`, `DirectoryRetrieverPort`, and `StructuredRetrieverPort`
+- stores immutable generation segments for Directory / Structured / Temporal / Access metadata plus the minimal resolved Assertion/Semantic Registry state required by the active generation
 - current generation switch is explicit and atomic within the adapter
 - this adapter is rebuildable/in-process and is not a durable-source-of-truth claim.
 
 - [ ] RED: failed/unvalidated generation cannot become current.
 - [ ] RED: a Discovery evaluation pinned to generation N continues reading N after N+1 is published.
 - [ ] RED: structured hard filter returns UNKNOWN facet separately from false mismatch.
+- [ ] RED: synonym / IS_A resolution changes only when the pinned Semantic Registry generation changes.
+- [ ] RED: unresolved/conflicting Assertions remain traceable and are not overwritten in the store.
 - [ ] Implement immutable generation maps and deterministic retrieval.
 - [ ] Run focused GREEN + strict Clippy.
 - [ ] Commit `feat: add source local projection store`.
@@ -139,11 +141,14 @@
 - `CandidateIdentityClass::{DurableResource,RemoteStableReference,EphemeralCandidate}`
 - `FederatedCandidate`
 - `CandidateFederator::merge(...)`
+- `FusionStrategy` consumes per-retriever rank lists and returns backend-neutral fused ordering.
+- initial production strategy is exactly the Phase B-qualified rank-based strategy; if Phase B did not qualify one, stop before implementing fusion.
 - logical grouping preserves representation hits and per-retriever trace; no cross-source raw-score arithmetic.
 
 - [ ] RED duplicate/logical grouping tests.
 - [ ] Assert same logical resource from MCP/REST-like representations groups once while keeping representations.
-- [ ] Implement deterministic grouping.
+- [ ] Implement deterministic grouping and the qualified rank-fusion strategy behind `FusionStrategy`.
+- [ ] Assert hard graph/applicability facts are not converted into soft fusion scores.
 - [ ] GREEN + commit `feat: federate discovery candidates`.
 
 ---
