@@ -46,7 +46,7 @@ pub struct TraversalQuery {
     pub max_branching_per_node: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PathEvidence {
     pub target_resource_id: String,
     pub resource_path: Vec<String>,
@@ -161,6 +161,51 @@ impl IncidenceIndex {
 
     pub fn by_type_role(&self, relation_type: &str, role: &str) -> Vec<String> {
         self.ids(self.type_role.get(&(relation_type.into(), role.into())))
+    }
+
+    /// Lower-bound heap estimate; BTreeMap node allocations and allocator metadata are excluded.
+    pub fn estimated_bytes(&self) -> usize {
+        let relation_payload = self.relations.capacity() * std::mem::size_of::<Relation>()
+            + self
+                .relations
+                .iter()
+                .map(|relation| {
+                    relation.id.capacity()
+                        + relation.namespace.capacity()
+                        + relation.relation_type.capacity()
+                        + relation.participants.capacity() * std::mem::size_of::<Participant>()
+                        + relation
+                            .participants
+                            .iter()
+                            .map(|participant| {
+                                participant.role.capacity() + participant.resource_id.capacity()
+                            })
+                            .sum::<usize>()
+                })
+                .sum::<usize>();
+        let index_values = self
+            .resource
+            .values()
+            .chain(self.resource_role.values())
+            .chain(self.relation_type.values())
+            .chain(self.resource_type.values())
+            .chain(self.type_role.values())
+            .map(|positions| positions.capacity() * std::mem::size_of::<usize>())
+            .sum::<usize>();
+        let index_keys = self.resource.keys().map(String::capacity).sum::<usize>()
+            + self
+                .relation_type
+                .keys()
+                .map(String::capacity)
+                .sum::<usize>()
+            + self
+                .resource_role
+                .keys()
+                .chain(self.resource_type.keys())
+                .chain(self.type_role.keys())
+                .map(|(left, right)| left.capacity() + right.capacity())
+                .sum::<usize>();
+        std::mem::size_of::<Self>() + relation_payload + index_keys + index_values
     }
 
     pub fn traverse(&self, query: &TraversalQuery) -> Result<Vec<PathEvidence>, &'static str> {

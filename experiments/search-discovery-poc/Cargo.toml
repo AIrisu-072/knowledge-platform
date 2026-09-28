@@ -16,3 +16,8 @@ tantivy = "=0.26.2"
 tempfile = "3"
 lindera = { version = "=6.2.0", default-features = false, features = ["embed-ipadic"] }
 lindera-analysis = { version = "=6.2.0", default-features = false }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio-postgres = "0.7"
+
+[dev-dependencies]
+testcontainers = "0.28"
