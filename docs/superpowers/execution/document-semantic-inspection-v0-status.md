@@ -1,5 +1,13 @@
 # Document Semantic Inspection v0 — Execution Status
 
+## Merge closure — 2026-09-27 JST
+
+- Production Tasks 1–14: **COMPLETE**. PR #10 final head `12047186787e2380bbc6ec74c4baa617b71b2525` passed exact-head standard CI `36258026327`, Sandbox `36258026320`, and DSI PoC `36258026317`, all **SUCCESS**.
+- PR #10: **MERGED** into `main` as `09c8235755573d16e09b8af029c22dc27caf6472`. Exact merge-head CI `36281613991`: **SUCCESS**. There was no unresolved review thread at merge.
+- Blocker: **none**. No frozen DSI Design/profile amendment was required. The next capability is Document Versioning v0 design discovery; status is `docs/superpowers/execution/document-versioning-v0-status.md`.
+
+This merge closure supersedes the pre-merge gate below.
+
 ## Latest production gate — 2026-09-27 JST
 
 - Branch / PR: `feat/document-semantic-inspection-v0` / PR #10 **OPEN / Ready for review**; last exact verified branch head `b7df56d789bb7281000d3e921d34c15dad0445c8`, implementation code head `5045fa8e6274054f19931c2ba11bbec62fb546d5`.

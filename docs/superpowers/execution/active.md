@@ -1,6 +1,20 @@
 # Active Execution Pointer
 
-## Latest checkpoint — 2026-09-27 JST
+## Active checkpoint — 2026-09-27 JST
+
+- Status: **ACTIVE**. Current capability: **Document Versioning v0**; phase: **PRODUCTION IMPLEMENTATION — TASK 1**. Capability status: `docs/superpowers/execution/document-versioning-v0-status.md`.
+- Baseline: `main@09c8235755573d16e09b8af029c22dc27caf6472`. Document Semantic Inspection v0 PR #10 is **MERGED** at this commit; merge-head CI `36281613991` is **SUCCESS**. The final PR head was `12047186787e2380bbc6ec74c4baa617b71b2525`.
+- Planning branch: `design/document-versioning-v0`; Draft PR #11: `https://github.com/AIrisu-072/knowledge-platform/pull/11`. User-approved Frozen Design: `docs/superpowers/specs/2026-09-27-document-versioning-v0-design.md`; approval record: `docs/superpowers/specs/2026-09-27-document-versioning-v0-design-approval.md`. User-approved Production Implementation Plan: `docs/superpowers/plans/2026-09-27-document-versioning-v0-production-implementation.md`; approval record: `docs/superpowers/plans/2026-09-27-document-versioning-v0-production-implementation-approval.md`. Implementation branch will start from the approved planning baseline.
+- Latest reviewed planning head before this status update: `c3da1251b33aad6785e5b123110b96aaab16d3bf`. Standard CI `36293304960` is **IN PROGRESS**; Sandbox `36293304958` and DSI PoC `36293304954` are **SUCCESS** at that head. These are documentation checks, not Versioning production evidence.
+- User scope decision: Document Versioning v0 includes withdrawal and scheduled publication. Execution remains inline in this session; no worker is dispatched. If a worker is later requested, its specified route is `gpt-6-sol` / `ultra`. The user explicitly approved the Design Spec; no amendment to it is proposed.
+- User-confirmed withdrawal rule: set the withdrawn current Version to `WITHDRAWN`, restore the immediately preceding eligible `PUBLISHED` Version as current, or set current to null when none exists. Do not add a separate flag; record old/new current IDs in Audit/Outbox history. The design must define fallback eligibility and integrity/quality failure behavior.
+- Normative reconciliation: `spec/data/logical-data-model-v0.md` and `spec/data/transaction-consistency-requirements-v0.md` now specify ContentItems, T4 immediate-base restoration, and T3a scheduled execution. T10 document-wide publication end remains a separate future operation; T4 must not be used to hide an entire Document because it can restore an old published Version.
+- Current gate: plan approval **PASSED**. No production Versioning code has yet been changed or tested.
+- Next exact action: commit the approval record, create the isolated implementation branch from it, then run Task 1 Domain contract tests RED/GREEN inline. Do not merge PR #11 without a separate explicit instruction.
+
+This active checkpoint supersedes the prior Document Semantic Inspection handoff below.
+
+## Previous Document Semantic Inspection checkpoint — 2026-09-27 JST
 
 - Last exact verified branch head: `b7df56d789bb7281000d3e921d34c15dad0445c8` on `feat/document-semantic-inspection-v0`; PR #10 is **OPEN / Ready for review**. Implementation code head: `5045fa8e6274054f19931c2ba11bbec62fb546d5`.
 - Tasks 1–12: **COMPLETE**. Task 12 corrected GREEN head `feb3affb82ba2ed144a87d58706391d53890d7f5`: standard CI `36253230526`, Sandbox `36253230478`, and DSI PoC `36253230464` all **SUCCESS**.

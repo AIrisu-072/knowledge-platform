@@ -27,7 +27,7 @@ Document Platform が所有する。
 
 - Document
 - DocumentVersion
-- FileObject / VersionFile
+- FileObject / ContentItem / ContentRepresentation（旧VersionFileは移行対象）
 - Folder
 - Category / Tag
 - Document / Version Metadata
@@ -124,13 +124,14 @@ Document 自体には、版ごとに変わり得る本文・ファイルを持�
 |---|---|
 | document_version_id | 版 ID |
 | document_id | 親 Document |
+| base_document_version_id | この版を作成した時点の現行公開版。初版は null。明示的な再基準化以外では変更しない |
 | version_no | 文書内で単調増加する版番号 |
 | lifecycle_state | `WORKING` / `PUBLISHED` / `WITHDRAWN` |
 | title | その版のタイトル |
 | revision_reason | 改訂理由。任意 |
 | created_at | 作成日時 |
 | approved_at | 公開可能と判断された日時。承認フローを使う場合 |
-| scheduled_publish_at | 公開予定日時。未設定なら null |
+| scheduled_publish_at | 有効な公開予約の予定日時を表す投影。予約がなければ null |
 | published_at | 実際に公開された日時 |
 | withdrawn_at | 公開終了日時。`WITHDRAWN` の場合 |
 | effective_from | 適用開始日時。任意 |
@@ -140,10 +141,13 @@ Document 自体には、版ごとに変わり得る本文・ファイルを持�
 不変条件:
 
 - `(document_id, version_no)` は一意。
+- Documentごとの `WORKING` は高々1版。第2版以降は作成時の現行 `PUBLISHED` 版を base とする。
 - `PUBLISHED` 後の内容は原則変更せず、新しい版を作る。
 - `Document.current_version_id` は `PUBLISHED` の現行版だけを指す。
 - `PUBLISHED` なら `published_at` が存在する。
 - `WITHDRAWN` なら `withdrawn_at` が存在する。
+- 現行版を取下げる場合、直前の base が引き続き `PUBLISHED` で安全に公開できれば、それを現行版へ戻す。戻せなければ `current_version_id` は null。復帰した版の `published_at` は書き換えない。
+- 取下げ・旧版復帰は既存の状態と現行版参照、Audit/Outbox履歴で表現し、追加の真偽値を持たない。
 - `DRAFT` / `NON_PUBLIC` / `WAITING_FOR_PUBLICATION` / `CURRENT` / `SUPERSEDED` は永続化stateとして持たない。
 
 
@@ -156,6 +160,7 @@ UI上の状態名は `lifecycle_state` と属性から導出する。
 | `WORKING` かつ `approved_at IS NULL` | 下書き |
 | `WORKING` かつ `approved_at IS NOT NULL` かつ `scheduled_publish_at IS NULL` | 非公開 |
 | `WORKING` かつ `approved_at IS NOT NULL` かつ `scheduled_publish_at > now` | 公開待ち |
+| `WORKING` かつ有効な予約の `scheduled_publish_at <= now` | 公開遅延（公開実行・再検証待ち） |
 | `PUBLISHED` かつ `Document.current_version_id = document_version_id` | 現行版 |
 | `PUBLISHED` かつ `Document.current_version_id != document_version_id` | 過去版 |
 | `WITHDRAWN` | 公開終了 |
@@ -165,13 +170,13 @@ UI上の状態名は `lifecycle_state` と属性から導出する。
 - UI表示上の意味だけを理由にDB stateを増やさない。
 - 「過去版」は `SUPERSEDED` stateではなく、`PUBLISHED` だがcurrentでないことから導出する。
 - 「非公開」と「公開待ち」は別表示だが、内部stateはどちらも `WORKING` とする。
-- `scheduled_publish_at` 到達後の自動公開方式はTransaction要件側で後続確定する。
+- `scheduled_publish_at` は予約台帳から同一transactionで更新する投影であり、予約台帳の有効な公開意図だけが期限到達時の公開実行対象となる。
 
 ### 2.4.2 削除を通常ライフサイクルに含めない
 
 Document / DocumentVersion は原則永久保存し、通常業務では論理削除・物理削除を行わない。
 
-通常検索から外す必要がある場合は、current Versionの公開終了 (`WITHDRAWN`) と検索条件で表現する。
+Versionの取下げでは直前の公開版が現行に戻る場合がある。文書全体を通常検索から外す操作は、単一Versionの取下げと同一視せず、別の公開終了操作・検索条件として設計する。
 
 物理削除は、法令・契約上の削除義務、誤登録機密情報、staging/orphan fileのGC等の例外的管理処理に限定し、通常のDocument lifecycleとは分離する。
 
@@ -190,19 +195,25 @@ Document / DocumentVersion は原則永久保存し、通常業務では論理�
 
 ファイルパスそのものを外部 API の安定 ID にしない。
 
-## 2.6 VersionFile
+## 2.6 ContentItem / ContentRepresentation
 
-DocumentVersion と FileObject の関連。
+DocumentVersion は1個以上の順序付きContentItemを持つ。各ContentItemはちょうど1個のauthoritative representationと0個以上のrenditionを持ち、representationはimmutableなFileObjectを参照する。
 
-| Field | Meaning |
-|---|---|
-| document_version_id | Version |
-| file_id | FileObject |
-| role | primary / attachment |
-| ordinal | 表示順 |
-| original_filename | 利用者に見せるファイル名 |
+| Entity | Field | Meaning |
+|---|---|---|
+| ContentItem | content_item_id | Version内で安定するitem ID。Versionを跨ぐ意味上の同一性はこのIDから推測しない |
+| ContentItem | document_version_id | 所属Version |
+| ContentItem | logical_path | 版内の論理path。Unicode NFC、case-sensitive、`/` 区切りの相対path |
+| ContentItem | ordinal | 版内の非負の順序番号 |
+| ContentRepresentation | content_representation_id | representation ID |
+| ContentRepresentation | content_item_id | 所属ContentItem |
+| ContentRepresentation | file_id | 参照するFileObject |
+| ContentRepresentation | role | AUTHORITATIVE または RENDITION |
+| ContentRepresentation | original_filename | 利用者に見せる元ファイル名 |
 
-これにより 1 版に複数添付を持てる。
+`(document_version_id, logical_path, ordinal)` は一意。空のpath要素、先頭 `/`、`.` / `..`、曖昧な正規化結果は拒否する。Version identityは正規化したtitleと、`logical_path + ordinal` とauthoritative FileObjectのformat-native意味情報からなる順序付きmanifestで決める。renditionの追加・再生成はVersionを増やさない。ZIPは搬送手段でありauthoritative contentではない。Document Semantic InspectionはFileObjectから再生成可能な派生証拠であり、Search Extractionとは分離する。
+
+既存のVersionFile（PRIMARY / ATTACHMENT）は旧表現である。単一PRIMARYでATTACHMENTのない初版のみ `logical_path = "primary"`, `ordinal = 0` のContentItemへ確定的に移行できる。ATTACHMENTがある場合はauthoritative itemかrenditionかを推測せず、分類されるまでVersioning操作を拒否する。新しいContentItem表現を唯一の編集可能な正本とし、旧VersionFileを並行した正本にしない。
 
 ## 2.7 Metadata
 
@@ -635,14 +646,15 @@ Document DB と同じ製品にする必要はない。
 9. Canonical Model は薄く固定し、Source 固有属性は拡張 metadata とする
 10. Query 時の Office / ZIP 再解析は行わず、Indexing ETL で処理する
 11. Human UI と LLM / Agent は同じ API / SearchResult を利用する
-12. Audit と Observability は別責務
-13. DB 製品はこの論理モデル確定後に選定する
+12. Versionのcontentは1個以上のContentItemで表し、各itemにauthoritative representationをちょうど1個持つ
+13. Audit と Observability は別責務
+14. DB 製品はこの論理モデル確定後に選定する
 
 ---
 
 # 11. 次の設計ステップ
 
-1. 公開予約・公開終了時のtransaction挙動を確定する
+1. 承認済みDocument Versioning v0設計に従い、公開予約・Version取下げのtransactionを実装する
 2. Metadata v0 の必須共通項目を決める
 3. Canonical Knowledge Model v0 の型を具体化する
 4. KnowledgeUnit / chunking policy を決める
