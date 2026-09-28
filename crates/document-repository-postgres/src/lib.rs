@@ -2,6 +2,8 @@
 
 //! PostgreSQL authoritative persistence adapter for documents.
 
+mod access_control;
+mod access_policy;
 mod error;
 mod mapping;
 mod publication_end;
@@ -12,6 +14,7 @@ mod rows;
 mod schedule;
 mod semantic_inspection;
 mod semantic_inspection_rows;
+mod targeted_events;
 mod versioning;
 mod versioning_mutation;
 mod versioning_rows;

@@ -3,6 +3,7 @@
 //! Application services and ports for the authoritative document core.
 
 mod access_context;
+mod access_policy_service;
 mod command;
 mod error;
 mod events;
@@ -21,6 +22,7 @@ mod versioning_preflight;
 mod versioning_service;
 
 pub use access_context::{IdentityResolutionError, InvocationKind, VerifiedActorContext};
+pub use access_policy_service::AccessPolicyService;
 pub use command::{
     CreateDocumentCommand, CreateDocumentResult, PublishDocumentCommand, PublishDocumentResult,
     PublishOperationId,

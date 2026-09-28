@@ -4,7 +4,7 @@ use document_application::{
     PublishInitialVersionRecord, PublishOperationId, PublishOperationRecord, PublishVersionRecord,
     RepositoryError,
 };
-use document_domain::{DocumentId, DocumentVersionId, FileId};
+use document_domain::{DocumentId, DocumentVersionId, FileId, PrincipalRef};
 use serde_json::Value;
 use sqlx::PgPool;
 
@@ -18,11 +18,22 @@ const AUDIT_SOURCE: &str = "urn:knowledge-platform:document-platform";
 #[derive(Debug, Clone)]
 pub struct PostgresDocumentRepository {
     pub(crate) pool: PgPool,
+    pub(crate) bootstrap_actor: Option<PrincipalRef>,
 }
 
 impl PostgresDocumentRepository {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            bootstrap_actor: None,
+        }
+    }
+
+    pub fn new_with_bootstrap_actor(pool: PgPool, bootstrap_actor: PrincipalRef) -> Self {
+        Self {
+            pool,
+            bootstrap_actor: Some(bootstrap_actor),
+        }
     }
 }
 

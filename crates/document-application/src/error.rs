@@ -26,6 +26,8 @@ pub enum StorageError {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum RepositoryError {
+    #[error("access denied")]
+    Forbidden,
     #[error("folder not found")]
     FolderNotFound,
     #[error("document not found")]
@@ -78,6 +80,8 @@ pub enum InspectionExecutionError {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum ApplicationError {
+    #[error("access denied")]
+    Forbidden,
     #[error("validation failed: {0}")]
     Validation(String),
     #[error("folder not found")]
@@ -167,6 +171,7 @@ impl From<StorageError> for ApplicationError {
 impl From<RepositoryError> for ApplicationError {
     fn from(error: RepositoryError) -> Self {
         match error {
+            RepositoryError::Forbidden => Self::Forbidden,
             RepositoryError::FolderNotFound => Self::FolderNotFound,
             RepositoryError::DocumentNotFound => Self::DocumentNotFound,
             RepositoryError::DocumentVersionNotFound => Self::DocumentVersionNotFound,
