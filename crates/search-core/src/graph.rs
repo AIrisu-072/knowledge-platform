@@ -14,6 +14,8 @@ pub struct RelationPathPattern {
     pub to_role: String,
     pub from_resource: Option<ResourceId>,
     pub to_resource: Option<ResourceId>,
+    #[serde(default)]
+    pub required_participants: Vec<RelationParticipant>,
 }
 
 impl RelationPathPattern {
@@ -30,6 +32,7 @@ impl RelationPathPattern {
             to_role: to_role.into(),
             from_resource: None,
             to_resource: None,
+            required_participants: Vec::new(),
         }
     }
 
@@ -39,11 +42,20 @@ impl RelationPathPattern {
         self
     }
 
+    pub fn with_participant(mut self, role: impl Into<String>, resource_ref: ResourceId) -> Self {
+        self.required_participants
+            .push(RelationParticipant::new(role, resource_ref));
+        self
+    }
+
     pub fn matches_relation(&self, relation: &TypedRelationInstance) -> bool {
         relation.namespace == self.namespace
             && relation.relation_type == self.relation_type
             && relation.has_participant(&self.from_role, self.from_resource)
             && relation.has_participant(&self.to_role, self.to_resource)
+            && self.required_participants.iter().all(|participant| {
+                relation.has_participant(&participant.role, Some(participant.resource_ref))
+            })
     }
 }
 

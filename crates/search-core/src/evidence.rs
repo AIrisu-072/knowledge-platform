@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 
 use crate::id::ClaimId;
-use crate::predicate::TypedValue;
+use crate::predicate::{TypedValue, semantically_equal};
 use crate::relation::RelationTemporalScope;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -149,7 +149,7 @@ pub fn evaluate_evidence_sufficiency(
         let mut observed_value: Option<&TypedValue> = None;
         for claim in &matching {
             if let Some(value) = claim.value.as_ref() {
-                if observed_value.is_some_and(|existing| existing != value) {
+                if observed_value.is_some_and(|existing| !semantically_equal(existing, value)) {
                     return EvidenceSufficiency::Conflicted;
                 }
                 observed_value = Some(value);
@@ -177,9 +177,11 @@ pub fn evaluate_evidence_sufficiency(
         {
             return EvidenceSufficiency::Conflicted;
         }
-        let has_primary = evidence
-            .iter()
-            .any(|evidence| evidence.role == EvidenceRole::Primary && !evidence.is_summary);
+        let has_primary = evidence.iter().any(|evidence| {
+            evidence.role == EvidenceRole::Primary
+                && !evidence.is_summary
+                && !evidence.upstream_origin.trim().is_empty()
+        });
         let independent_origins: BTreeSet<&str> = evidence
             .iter()
             .filter(|evidence| {
@@ -187,6 +189,7 @@ pub fn evaluate_evidence_sufficiency(
                     evidence.role,
                     EvidenceRole::Primary | EvidenceRole::Corroborating
                 ) && !evidence.is_summary
+                    && !evidence.upstream_origin.trim().is_empty()
             })
             .map(|evidence| evidence.upstream_origin.as_str())
             .collect();

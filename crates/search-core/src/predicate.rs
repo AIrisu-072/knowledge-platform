@@ -274,6 +274,11 @@ fn values_equal(left: &TypedValue, right: &TypedValue) -> TruthValue {
     values_equal_at_depth(left, right, 0)
 }
 
+/// Reuse predicate value semantics when comparing independently supplied claims.
+pub(crate) fn semantically_equal(left: &TypedValue, right: &TypedValue) -> bool {
+    values_equal(left, right) == TruthValue::True
+}
+
 fn values_equal_at_depth(left: &TypedValue, right: &TypedValue, depth: usize) -> TruthValue {
     if depth > MAX_PREDICATE_DEPTH {
         return TruthValue::Error;

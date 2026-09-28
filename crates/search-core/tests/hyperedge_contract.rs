@@ -42,6 +42,25 @@ fn product_and_collateral_from_different_relations_never_form_a_composite() {
 }
 
 #[test]
+fn three_participant_constraints_must_match_the_same_relation() {
+    let r1 = relation(101, resource(2), resource(10));
+    let r2 = relation(102, resource(3), resource(11));
+    let pattern =
+        RelationPathPattern::new(RelationNamespace::Discovery, "loan", "borrower", "product")
+            .with_endpoints(resource(1), resource(2))
+            .with_participant("collateral", resource(11));
+    assert!(matching_relation_ids(&[r1.clone(), r2], &pattern).is_empty());
+    let matching =
+        RelationPathPattern::new(RelationNamespace::Discovery, "loan", "borrower", "product")
+            .with_endpoints(resource(1), resource(2))
+            .with_participant("collateral", resource(10));
+    assert_eq!(
+        matching_relation_ids(&[r1], &matching),
+        vec![RelationId::from_uuid(Uuid::from_u128(101))]
+    );
+}
+
+#[test]
 fn participant_order_does_not_change_relation_semantics_but_roles_do() {
     let first = relation(101, resource(2), resource(10));
     let mut reordered = first.clone();

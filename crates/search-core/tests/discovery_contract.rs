@@ -106,6 +106,38 @@ fn inferred_only_fact_cannot_satisfy_minimum_hard_evidence() {
 }
 
 #[test]
+fn inferred_fact_on_another_predicate_operand_cannot_satisfy_hard_rule() {
+    let mut facts = FactSet::default();
+    facts.insert(
+        "product.kind",
+        Fact::new(TypedValue::String("loan".into()), FactOrigin::Authoritative),
+    );
+    facts.insert(
+        "customer.segment",
+        Fact::new(TypedValue::String("corporate".into()), FactOrigin::Inferred),
+    );
+    let mut rule = Discriminator::new(
+        "product.kind",
+        DiscriminatorImportance::Hard,
+        PredicateExpr::And(vec![
+            PredicateExpr::Eq(
+                Operand::Fact("product.kind".into()),
+                Operand::Value(TypedValue::String("loan".into())),
+            ),
+            PredicateExpr::Eq(
+                Operand::Fact("customer.segment".into()),
+                Operand::Value(TypedValue::String("corporate".into())),
+            ),
+        ]),
+    );
+    rule.minimum_fact_evidence = MinimumFactEvidence::NotInferred;
+    let result = evaluate_applicability(&candidate(), &facts, &[rule], &NoConcepts);
+    assert_eq!(result.state, ApplicabilityState::Unresolved);
+    assert_eq!(result.gaps[0].required_fact, "customer.segment");
+    assert!(result.gaps[0].blocking);
+}
+
+#[test]
 fn nonblocking_unknown_survives_in_qualified_resource() {
     let result = evaluate_applicability(
         &candidate(),
@@ -209,6 +241,52 @@ fn copied_sources_do_not_count_as_independent_corroboration() {
     assert_eq!(
         evaluate_evidence_sufficiency(&requirement, &[claim]),
         EvidenceSufficiency::Insufficient
+    );
+}
+
+#[test]
+fn unknown_upstream_origin_is_not_independent_corroboration() {
+    let mut requirement = EvidenceRequirement::new(vec![claim_id(1)]);
+    requirement.minimum_independent_sources = 2;
+    let mut claim = Claim::new(claim_id(1), ClaimState::Supported);
+    claim.evidence_refs.push(EvidenceReference::new(
+        "source-a",
+        "publisher-1",
+        EvidenceRole::Primary,
+    ));
+    claim.evidence_refs.push(EvidenceReference::new(
+        "source-b",
+        "  ",
+        EvidenceRole::Corroborating,
+    ));
+    assert_eq!(
+        evaluate_evidence_sufficiency(&requirement, &[claim]),
+        EvidenceSufficiency::Insufficient,
+    );
+}
+
+#[test]
+fn equivalent_decimal_claim_values_do_not_conflict() {
+    use search_core::predicate::DecimalValue;
+
+    let requirement = EvidenceRequirement::new(vec![claim_id(1)]);
+    let mut first = Claim::new(claim_id(1), ClaimState::Supported);
+    first.value = Some(TypedValue::Decimal(DecimalValue::new(10, 1)));
+    first.evidence_refs.push(EvidenceReference::new(
+        "source-a",
+        "publisher-a",
+        EvidenceRole::Primary,
+    ));
+    let mut second = Claim::new(claim_id(1), ClaimState::Supported);
+    second.value = Some(TypedValue::Decimal(DecimalValue::new(100, 2)));
+    second.evidence_refs.push(EvidenceReference::new(
+        "source-b",
+        "publisher-b",
+        EvidenceRole::Corroborating,
+    ));
+    assert_eq!(
+        evaluate_evidence_sufficiency(&requirement, &[first, second]),
+        EvidenceSufficiency::Sufficient,
     );
 }
 

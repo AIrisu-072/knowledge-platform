@@ -52,7 +52,9 @@ pub fn evaluate_temporal_profile(
     max_current_age: Option<Duration>,
 ) -> TemporalEvaluation {
     let freshness = match (profile.freshness_anchor_at, max_current_age) {
-        (Some(anchor), Some(limit)) if limit >= Duration::ZERO => {
+        (Some(anchor), Some(limit))
+            if limit >= Duration::ZERO && anchor <= context.evaluated_at =>
+        {
             if context.evaluated_at - anchor > limit {
                 Freshness::Stale
             } else {

@@ -65,6 +65,8 @@ pub fn resolve_identity(evidence: &[IdentityEvidence]) -> IdentityState {
         IdentityState::Conflict
     } else if supports_strong {
         IdentityState::Resolved
+    } else if rejects_strong {
+        IdentityState::Unresolved
     } else if evidence.iter().any(|item| item.supports_same_resource) {
         IdentityState::Provisional
     } else {

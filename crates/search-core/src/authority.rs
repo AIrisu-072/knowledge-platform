@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::assertion::{Assertion, AssertionOrigin};
-use crate::predicate::TypedValue;
+use crate::predicate::{TypedValue, semantically_equal};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthorityPolicy {
@@ -91,7 +91,11 @@ pub fn resolve_assertions(
     };
     let mut values = Vec::new();
     for (assertion, rank) in eligible {
-        if rank == best_rank && !values.contains(&assertion.value) {
+        if rank == best_rank
+            && !values
+                .iter()
+                .any(|existing| semantically_equal(existing, &assertion.value))
+        {
             values.push(assertion.value.clone());
         }
     }

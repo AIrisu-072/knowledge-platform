@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::discovery::{FederatedCandidate, GapReason, InformationGap, QualifiedResource};
 use crate::fact::{FactOrigin, FactSet};
-use crate::predicate::{ConceptResolver, PredicateEvaluator, PredicateExpr, TruthValue};
+use crate::predicate::{ConceptResolver, Operand, PredicateEvaluator, PredicateExpr, TruthValue};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ApplicabilityState {
@@ -109,13 +109,18 @@ pub fn evaluate_applicability(
     let mut hard_unknown = false;
     let mut invalid = false;
     for rule in discriminators {
-        let insufficient_origin = facts
+        let insufficient_fact = facts
             .get(&rule.facet)
-            .is_some_and(|fact| !rule.minimum_fact_evidence.accepts(fact.origin));
-        let value = if insufficient_origin {
+            .filter(|fact| !rule.minimum_fact_evidence.accepts(fact.origin))
+            .map(|_| rule.facet.as_str())
+            .or_else(|| {
+                insufficient_predicate_fact(&rule.predicate, facts, rule.minimum_fact_evidence)
+            });
+        let evaluated = PredicateEvaluator::evaluate(&rule.predicate, facts, concepts);
+        let value = if insufficient_fact.is_some() && evaluated != TruthValue::Error {
             TruthValue::Unknown
         } else {
-            PredicateEvaluator::evaluate(&rule.predicate, facts, concepts)
+            evaluated
         };
         match (rule.importance, value) {
             (_, TruthValue::Error) => {
@@ -133,8 +138,8 @@ pub fn evaluate_applicability(
             (DiscriminatorImportance::Hard, TruthValue::Unknown) => {
                 hard_unknown = true;
                 result.gaps.push(InformationGap::new(
-                    &rule.facet,
-                    if insufficient_origin {
+                    insufficient_fact.unwrap_or(&rule.facet),
+                    if insufficient_fact.is_some() {
                         GapReason::InsufficientEvidenceClass
                     } else {
                         GapReason::MissingFact
@@ -175,4 +180,55 @@ pub fn evaluate_applicability(
         ApplicabilityState::Applicable
     };
     result
+}
+
+fn insufficient_predicate_fact<'a>(
+    expression: &'a PredicateExpr,
+    facts: &FactSet,
+    minimum: MinimumFactEvidence,
+) -> Option<&'a str> {
+    if minimum == MinimumFactEvidence::Any {
+        return None;
+    }
+    let mut pending = vec![expression];
+    while let Some(current) = pending.pop() {
+        match current {
+            PredicateExpr::And(children) | PredicateExpr::Or(children) => {
+                pending.extend(children.iter().rev());
+            }
+            PredicateExpr::Not(child) => pending.push(child),
+            PredicateExpr::Exists(key) | PredicateExpr::Missing(key) => {
+                if facts
+                    .get(key)
+                    .is_some_and(|fact| !minimum.accepts(fact.origin))
+                {
+                    return Some(key);
+                }
+            }
+            PredicateExpr::Eq(left, right)
+            | PredicateExpr::Ne(left, right)
+            | PredicateExpr::Lt(left, right)
+            | PredicateExpr::Lte(left, right)
+            | PredicateExpr::Gt(left, right)
+            | PredicateExpr::Gte(left, right)
+            | PredicateExpr::In(left, right)
+            | PredicateExpr::Contains(left, right)
+            | PredicateExpr::Intersects(left, right)
+            | PredicateExpr::Subset(left, right)
+            | PredicateExpr::SameConcept(left, right)
+            | PredicateExpr::IsA(left, right)
+            | PredicateExpr::DescendantOf(left, right) => {
+                for operand in [left, right] {
+                    if let Operand::Fact(key) = operand
+                        && facts
+                            .get(key)
+                            .is_some_and(|fact| !minimum.accepts(fact.origin))
+                    {
+                        return Some(key);
+                    }
+                }
+            }
+        }
+    }
+    None
 }

@@ -8,7 +8,7 @@ use search_core::observation::{
     Coverage, Freshness, Presence, Reachability, ResourceObservation,
     derive_effective_resource_state,
 };
-use search_core::predicate::{TruthValue, TypedValue};
+use search_core::predicate::{DecimalValue, TruthValue, TypedValue};
 use search_core::temporal::{
     TemporalDiscoveryProfile, TemporalEvaluationContext, evaluate_temporal_profile,
 };
@@ -81,6 +81,21 @@ fn equal_authority_conflicting_values_remain_a_conflict() {
 }
 
 #[test]
+fn equivalent_decimal_assertions_resolve_without_conflict() {
+    let mut policy = AuthorityPolicy::default();
+    policy.grant_rank("finance", "amount", AssertionOrigin::Curated, 50);
+    let mut first = assertion("unused", AssertionOrigin::Curated);
+    first.predicate = "amount".into();
+    first.value = TypedValue::Decimal(DecimalValue::new(10, 1));
+    let mut second = first.clone();
+    second.value = TypedValue::Decimal(DecimalValue::new(100, 2));
+    assert_eq!(
+        resolve_assertions(&[first, second], &policy, "resource-1", "amount", "finance"),
+        AuthorityResolution::Resolved(TypedValue::Decimal(DecimalValue::new(10, 1))),
+    );
+}
+
+#[test]
 fn names_and_schema_similarity_do_not_resolve_identity() {
     let weak = [
         IdentityEvidence::new(IdentityEvidenceKind::NameSimilarity, true),
@@ -104,6 +119,15 @@ fn opposing_strong_identity_evidence_is_a_conflict() {
         IdentityEvidence::new(IdentityEvidenceKind::ExplicitDeclaration, false),
     ];
     assert_eq!(resolve_identity(&evidence), IdentityState::Conflict);
+}
+
+#[test]
+fn explicit_nonidentity_overrides_weak_name_similarity() {
+    let evidence = [
+        IdentityEvidence::new(IdentityEvidenceKind::ExplicitDeclaration, false),
+        IdentityEvidence::new(IdentityEvidenceKind::NameSimilarity, true),
+    ];
+    assert_eq!(resolve_identity(&evidence), IdentityState::Unresolved);
 }
 
 fn observation(at: i64, coverage: Coverage, presence: Presence) -> ResourceObservation {
@@ -161,6 +185,22 @@ fn stale_current_guarantee_does_not_invalidate_historical_evidence() {
     let result = evaluate_temporal_profile(&profile, &context, Some(Duration::seconds(50)));
     assert_eq!(result.freshness, Freshness::Stale);
     assert_eq!(result.effective_at_target, TruthValue::True);
+}
+
+#[test]
+fn future_freshness_anchor_cannot_be_fresh() {
+    let profile = TemporalDiscoveryProfile {
+        freshness_anchor_at: Some(timestamp(301)),
+        ..Default::default()
+    };
+    let context = TemporalEvaluationContext::new(
+        DiscoveryEvaluationId::from_uuid(Uuid::nil()),
+        timestamp(300),
+        timestamp(300),
+        "Asia/Tokyo",
+    );
+    let result = evaluate_temporal_profile(&profile, &context, Some(Duration::seconds(50)));
+    assert_eq!(result.freshness, Freshness::Unknown);
 }
 
 #[test]
