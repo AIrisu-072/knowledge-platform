@@ -71,8 +71,33 @@ fn insert<K: Ord>(index: &mut BTreeMap<K, Vec<usize>>, key: K, relation_position
     }
 }
 
+pub(crate) fn validate_relations(relations: &[Relation]) -> Result<(), &'static str> {
+    let mut ids = BTreeSet::new();
+    for relation in relations {
+        if relation.id.is_empty()
+            || relation.namespace.is_empty()
+            || relation.relation_type.is_empty()
+            || relation.participants.len() < 2
+            || !ids.insert(&relation.id)
+        {
+            return Err("relation identity, namespace, type and participant count must be valid");
+        }
+        let mut participants = BTreeSet::new();
+        for participant in &relation.participants {
+            if participant.role.is_empty() || participant.resource_id.is_empty() {
+                return Err("participant role and resource must be nonempty");
+            }
+            if !participants.insert((&participant.role, &participant.resource_id)) {
+                return Err("duplicate relation participant");
+            }
+        }
+    }
+    Ok(())
+}
+
 impl IncidenceIndex {
     pub fn build(relations: Vec<Relation>) -> Result<Self, &'static str> {
+        validate_relations(&relations)?;
         let mut result = Self {
             relations,
             resource: BTreeMap::new(),
@@ -81,27 +106,13 @@ impl IncidenceIndex {
             resource_type: BTreeMap::new(),
             type_role: BTreeMap::new(),
         };
-        let mut ids = BTreeSet::new();
         for (position, relation) in result.relations.iter().enumerate() {
-            if relation.id.is_empty()
-                || relation.namespace.is_empty()
-                || relation.relation_type.is_empty()
-                || relation.participants.len() < 2
-                || !ids.insert(&relation.id)
-            {
-                return Err(
-                    "relation identity, namespace, type and participant count must be valid",
-                );
-            }
             insert(
                 &mut result.relation_type,
                 relation.relation_type.clone(),
                 position,
             );
             for participant in &relation.participants {
-                if participant.role.is_empty() || participant.resource_id.is_empty() {
-                    return Err("participant role and resource must be nonempty");
-                }
                 insert(
                     &mut result.resource,
                     participant.resource_id.clone(),
@@ -255,15 +266,15 @@ impl IncidenceIndex {
                         extended.relation_ids.push(relation.id.clone());
                         extended.participants.push(relation.participants.clone());
                         branches.push(extended);
+                        if branches.len() > query.max_branching_per_node {
+                            return Err("traversal branching budget exceeded");
+                        }
+                        if next.len().saturating_add(branches.len()) > query.max_paths {
+                            return Err("traversal path budget exceeded");
+                        }
                     }
                 }
-                if branches.len() > query.max_branching_per_node {
-                    return Err("traversal branching budget exceeded");
-                }
                 next.extend(branches);
-                if next.len() > query.max_paths {
-                    return Err("traversal path budget exceeded");
-                }
             }
             next.sort_by(|left, right| {
                 left.relation_ids

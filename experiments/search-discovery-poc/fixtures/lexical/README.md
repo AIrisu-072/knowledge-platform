@@ -10,9 +10,9 @@ Tantivy 0.26.2 の default tokenizer と、Lindera 6.2.0 + IPADIC の形態素�
 
 | Candidate | Recall@10 | MRR | nDCG@10 | Index bytes | Build ms | Query p50 ms | Query p95 ms |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Tantivy default | 0.8462 | 0.8077 | 0.8178 | 5,035 | 86.65 | 0.058 | 0.137 |
-| Lindera IPADIC pretokenization | 0.9231 | 0.8231 | 0.8475 | 5,939 | 90.56 | 0.144 | 0.192 |
+| Tantivy default | 0.8462 | 0.8077 | 0.8178 | 5,035 | 96.16 | 0.072 | 0.159 |
+| Lindera IPADIC pretokenization | 0.9231 | 0.8231 | 0.8475 | 5,939 | 100.18 | 0.150 | 0.196 |
 
 必須 exact/alias 11 case は両候補が期待 resource を top-10 で回収した。法人/個人、規程/手順などの紛らわしい hit は候補生成後の hard discriminator で除外できた。追加 diagnostic case の `compound-corporate-loan` は両候補で未回収、`compound-location-change` は Tantivy default のみ未回収だった。
 
-評価値は raw lexical top-10 に対するもの。Index bytes は Tantivy の生成ファイルだけを数え、組込み辞書や実行バイナリを含まない。`cargo deny` は crate metadata を確認できたが、build 時に取得する辞書データそのものの利用条件は未確認。13 case だけで Lindera の production 採用、辞書 packaging、性能要件は決めない。B6 で選択記録と未解決事項を整理する。
+評価値は raw lexical top-10 に対するもの。Index bytes は Tantivy の生成ファイルだけを数え、組込み辞書や実行バイナリを含まない。`cargo deny` は crate metadata を確認できたが、build 時に取得する辞書データそのものの利用条件は未確認。13 case だけで Lindera の production 採用、辞書 packaging、性能要件は決めない。B6 の選択記録を参照。

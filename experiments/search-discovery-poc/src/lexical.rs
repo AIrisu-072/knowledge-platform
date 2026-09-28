@@ -161,8 +161,6 @@ pub fn evaluate_lexical(
             let literal = format!("\"{}\"", analyze(&case.query)?.replace('"', "\\\""));
             let query = parser.parse_query(&literal)?;
             let top_docs = searcher.search(&query, &TopDocs::with_limit(10).order_by_score())?;
-            let elapsed = query_start.elapsed().as_secs_f64() * 1000.0;
-            query_samples.push(elapsed);
             retrieved_ids = top_docs
                 .into_iter()
                 .map(|(_, address)| {
@@ -174,6 +172,7 @@ pub fn evaluate_lexical(
                         .ok_or_else(|| "indexed resource is missing id".into())
                 })
                 .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
+            query_samples.push(query_start.elapsed().as_secs_f64() * 1000.0);
         }
         let qualified_ids = retrieved_ids
             .iter()

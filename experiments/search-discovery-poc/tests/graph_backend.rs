@@ -4,6 +4,7 @@ mod generate;
 use generate::{DegreeProfile, synthetic_graph};
 use search_discovery_poc::graph_backend::{PostgresIncidence, QueryExpansion};
 use search_discovery_poc::hypergraph::{IncidenceIndex, Relation, TraversalQuery, TraversalStep};
+use search_discovery_poc::report::POSTGRES_IMAGE_TAG;
 use std::time::Instant;
 use testcontainers::{
     GenericImage, ImageExt,
@@ -78,6 +79,21 @@ fn generator_has_reproducible_degree_profiles() {
     ] {
         let first = synthetic_graph(profile, 128);
         let second = synthetic_graph(profile, 128);
+        assert!(first.iter().all(|relation| {
+            relation.participants.len() >= 3
+                && relation
+                    .participants
+                    .iter()
+                    .any(|participant| participant.role == "borrower")
+                && relation
+                    .participants
+                    .iter()
+                    .any(|participant| participant.role == "product")
+                && relation
+                    .participants
+                    .iter()
+                    .any(|participant| participant.role == "collateral")
+        }));
         assert_eq!(
             first
                 .iter()
@@ -89,7 +105,7 @@ fn generator_has_reproducible_degree_profiles() {
                 .collect::<Vec<_>>()
         );
         let index = IncidenceIndex::build(first).unwrap();
-        let root_degree = index.by_resource("concept-root").len();
+        let root_degree = index.by_resource("company-root").len();
         assert_eq!(
             root_degree,
             if matches!(profile, DegreeProfile::High) {
@@ -103,7 +119,7 @@ fn generator_has_reproducible_degree_profiles() {
 
 #[tokio::test]
 async fn postgres_incidence_matches_reference_paths_and_reports_feasibility() {
-    let container = GenericImage::new("postgres", "18.6-bookworm")
+    let container = GenericImage::new("postgres", POSTGRES_IMAGE_TAG)
         .with_exposed_port(5432.tcp())
         .with_wait_for(WaitFor::message_on_stderr(
             "database system is ready to accept connections",
@@ -198,20 +214,24 @@ async fn postgres_incidence_matches_reference_paths_and_reports_feasibility() {
             .await
             .unwrap();
         let seed = match profile {
-            DegreeProfile::Sparse => "parent-31",
-            DegreeProfile::Moderate => "parent-3",
-            DegreeProfile::High => "concept-root",
+            DegreeProfile::Sparse => "company-31",
+            DegreeProfile::Moderate => "company-3",
+            DegreeProfile::High => "company-root",
         };
-        let mut case = query(seed, "semantic", "is_a", "parent", "child");
+        let mut case = query(seed, "discovery", "loan", "borrower", "product");
         if matches!(profile, DegreeProfile::High) {
             let mut broad = case.clone();
             broad.max_branching_per_node = 16;
             assert!(reference.traverse(&broad).is_err());
             assert!(postgres.traverse(&client, &broad).await.is_err());
+            let mut path_limited = case.clone();
+            path_limited.max_paths = 4;
+            assert!(reference.traverse(&path_limited).is_err());
+            assert!(postgres.traverse(&client, &path_limited).await.is_err());
             case.steps[0].required_participants =
                 vec![search_discovery_poc::hypergraph::Participant::new(
-                    "child",
-                    "concept-31",
+                    "product",
+                    "product-31",
                 )];
         }
         let expected = reference.traverse(&case).unwrap();
@@ -236,4 +256,28 @@ async fn postgres_incidence_matches_reference_paths_and_reports_feasibility() {
             })
         );
     }
+    let mut invalid = cases[0].clone();
+    invalid.steps[0].namespace.clear();
+    assert!(reference.traverse(&invalid).is_err());
+    assert!(postgres.traverse(&client, &invalid).await.is_err());
+
+    let mut duplicate = fixture[0].clone();
+    duplicate
+        .participants
+        .push(duplicate.participants[0].clone());
+    assert!(IncidenceIndex::build(vec![duplicate.clone()]).is_err());
+    assert!(
+        PostgresIncidence::load(&mut client, &[duplicate])
+            .await
+            .is_err()
+    );
+
+    let mut empty_id = fixture[0].clone();
+    empty_id.id.clear();
+    assert!(IncidenceIndex::build(vec![empty_id.clone()]).is_err());
+    assert!(
+        PostgresIncidence::load(&mut client, &[empty_id])
+            .await
+            .is_err()
+    );
 }

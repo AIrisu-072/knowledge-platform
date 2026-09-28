@@ -1,27 +1,27 @@
 [
-  {"id":"corporate-loan","expected_resource_id":"loan-corp","retrievers":[
+  {"id":"corporate-loan","lexical_query_id":"ambiguous-loan","eligible_resource_ids":["loan-corp"],"expected_resource_id":"loan-corp","retrievers":[
     {"id":"lexical","candidates":[{"resource_id":"loan-personal","raw_score":0.99},{"resource_id":"loan-corp","raw_score":0.67}]},
     {"id":"graph","candidates":[{"resource_id":"loan-corp","raw_score":0.002}]},
     {"id":"vector-like","candidates":[{"resource_id":"loan-corp","raw_score":12000.0},{"resource_id":"credit-manual","raw_score":300.0}]}
   ]},
-  {"id":"policy-or-procedure","expected_resource_id":"credit-policy","retrievers":[
+  {"id":"policy-or-procedure","lexical_query_id":"policy-vs-procedure","eligible_resource_ids":["credit-policy"],"expected_resource_id":"credit-policy","retrievers":[
     {"id":"lexical","candidates":[{"resource_id":"credit-procedure","raw_score":8.0},{"resource_id":"credit-policy","raw_score":7.0}]},
-    {"id":"graph","candidates":[{"resource_id":"credit-policy","raw_score":0.001}]},
+    {"id":"graph","candidates":[{"resource_id":"credit-procedure","raw_score":0.0011},{"resource_id":"credit-policy","raw_score":0.001}]},
     {"id":"vector-like","candidates":[{"resource_id":"credit-policy","raw_score":8000.0}]}
   ]},
-  {"id":"corporate-address","expected_resource_id":"address-corp","retrievers":[
+  {"id":"corporate-address","lexical_query_id":"corp-address-alias","eligible_resource_ids":["address-corp"],"expected_resource_id":"address-corp","retrievers":[
     {"id":"lexical","candidates":[{"resource_id":"address-personal","raw_score":0.9},{"resource_id":"address-corp","raw_score":0.8}]},
     {"id":"graph","candidates":[{"resource_id":"address-corp","raw_score":0.0004}]},
-    {"id":"vector-like","candidates":[{"resource_id":"address-corp","raw_score":17.0}]}
+    {"id":"vector-like","candidates":[{"resource_id":"address-personal","raw_score":18.0},{"resource_id":"address-corp","raw_score":17.0}]}
   ]},
-  {"id":"deposit-alias","expected_resource_id":"deposit-corp","retrievers":[
-    {"id":"lexical","candidates":[{"resource_id":"deposit-personal","raw_score":0.99}]},
+  {"id":"deposit-alias","lexical_query_id":"ambiguous-deposit","eligible_resource_ids":["deposit-corp"],"expected_resource_id":"deposit-corp","retrievers":[
+    {"id":"lexical","candidates":[{"resource_id":"deposit-personal","raw_score":0.99},{"resource_id":"deposit-corp","raw_score":0.55}]},
     {"id":"graph","candidates":[{"resource_id":"deposit-corp","raw_score":0.0001}]},
     {"id":"vector-like","candidates":[{"resource_id":"deposit-corp","raw_score":9000.0}]}
   ]},
-  {"id":"manual","expected_resource_id":"credit-manual","retrievers":[
+  {"id":"manual","lexical_query_id":"manual-vs-policy","eligible_resource_ids":["credit-manual"],"expected_resource_id":"credit-manual","retrievers":[
     {"id":"lexical","candidates":[{"resource_id":"credit-manual","raw_score":0.51},{"resource_id":"credit-policy","raw_score":0.50}]},
-    {"id":"graph","candidates":[{"resource_id":"credit-manual","raw_score":0.00002}]},
+    {"id":"graph","candidates":[{"resource_id":"credit-policy","raw_score":0.00003},{"resource_id":"credit-manual","raw_score":0.00002}]},
     {"id":"vector-like","candidates":[{"resource_id":"credit-manual","raw_score":3.0}]}
   ]}
 ]

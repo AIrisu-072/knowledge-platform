@@ -23,6 +23,8 @@ pub struct RetrieverList {
 #[serde(deny_unknown_fields)]
 pub struct FusionCase {
     pub id: String,
+    pub lexical_query_id: String,
+    pub eligible_resource_ids: Vec<String>,
     pub expected_resource_id: String,
     pub retrievers: Vec<RetrieverList>,
 }
@@ -119,16 +121,34 @@ pub fn rank_fuse(retrievers: &[RetrieverList], strategy: FusionStrategy) -> Vec<
     }
 }
 
+/// Fixture applicability gate. Production callers must apply their own hard predicate first.
+pub fn eligible_retrievers(case: &FusionCase) -> Vec<RetrieverList> {
+    let eligible = case.eligible_resource_ids.iter().collect::<BTreeSet<_>>();
+    case.retrievers
+        .iter()
+        .map(|retriever| RetrieverList {
+            id: retriever.id.clone(),
+            candidates: retriever
+                .candidates
+                .iter()
+                .filter(|candidate| eligible.contains(&candidate.resource_id))
+                .cloned()
+                .collect(),
+        })
+        .collect()
+}
+
 pub fn evaluate_fusion(cases: &[FusionCase], strategy: FusionStrategy) -> FusionMetrics {
     let mut found = 0usize;
     let mut reciprocal_sum = 0.0;
     let mut ndcg_sum = 0.0;
     let mut samples = Vec::new();
     for case in cases {
+        let eligible = eligible_retrievers(case);
         let mut ranked = Vec::new();
         for _ in 0..100 {
             let started = Instant::now();
-            ranked = rank_fuse(&case.retrievers, strategy);
+            ranked = rank_fuse(&eligible, strategy);
             samples.push(started.elapsed().as_secs_f64() * 1000.0);
         }
         if let Some(index) = ranked

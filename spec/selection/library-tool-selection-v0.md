@@ -1249,3 +1249,18 @@ Production support is Linux-first. macOS remains a semantic/parser portability t
 - Fusion implementation/library
 
 Graph backendをDEFERREDとすることはGraph semantics / Graph retrieval contractをDEFERREDにする意味ではない。
+
+## 13.3 Search / Discovery Phase B PoC receipt (2026-09-29)
+
+Evidence: `docs/superpowers/execution/search-discovery-platform-v0-poc-report.md` and the isolated `experiments/search-discovery-poc/qualification-report.json`. PoC `verify` checks five fixture SHA-256 hashes, locked candidate versions, hard eligibility and stable quality values; the full PoC gate also exercises PostgreSQL parity. No PoC dependency has been added to a production crate.
+
+| Item | Current decision after PoC | Evidence boundary |
+|---|---|---|
+| Tantivy 0.26.2 | **SELECTED unchanged** | Default tokenizer recovered all 11 mandatory exact/alias synthetic cases. Two diagnostic compound cases remain uncovered; no full-text/body extraction is implied. |
+| Lindera 6.2.0 IPADIC / lindera-tantivy | **POC REQUIRED unchanged** | Standalone pretokenization recovered 12/13 versus default 11/13; `lindera-tantivy` 4.0.0 targets Tantivy 0.25.x, and downloaded dictionary asset rights/packaging are not cleared. No production promotion. |
+| Typed HyperEdge reference | **REQUIRED contract, in-process implementation qualified for Phase C** | False composite, role swap, namespace, bounded high-degree traversal and PostgreSQL parity passed. The Phase C in-process adapter is rebuildable; this is not a durable backend selection. |
+| Durable Graph backend | **POC REQUIRED unchanged** | PostgreSQL incidence feasibility was measured to 1,024 synthetic relations; recovery/readiness/concurrency/production scale remain unmeasured. |
+| Rank fusion | **DEFERRED / POC REQUIRED unchanged; S1 pending** | After hard eligibility, each of five synthetic fixtures leaves one candidate and lexical-only, graph-only, priority concat and RRF tie at Recall@10/MRR/nDCG `1.0/1.0/1.0`. Earlier raw-candidate RRF advantage is withdrawn. Initial policy remains a material requester decision; `k` and RRF are not qualified. Raw score addition remains prohibited. |
+| Vector / Embedding / Reranker | **DEFERRED unchanged** | The PoC did not establish a need or select a candidate. |
+
+S1 options for requester review: (a) approve a conservative routed retriever-order priority concat behind `FusionStrategy`, with hard applicability before ranking and no claim of measured relevance gain; or (b) extend Phase B with hard-eligible multi-candidate and genuine graph-only relevance fixtures before selecting a strategy. Tantivy default for the initial lexical adapter and rebuildable in-process HyperEdge reference remain limited qualified candidates. Until S1 is resolved, the fusion row above is not SELECTED and Phase C must not begin.

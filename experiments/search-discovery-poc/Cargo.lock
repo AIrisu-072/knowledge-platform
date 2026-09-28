@@ -2358,6 +2358,7 @@ dependencies = [
  "lindera-analysis",
  "serde",
  "serde_json",
+ "sha2",
  "tantivy",
  "tempfile",
  "testcontainers",

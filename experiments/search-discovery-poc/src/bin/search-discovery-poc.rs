@@ -3,7 +3,7 @@ use search_discovery_poc::report::QualificationReport;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let report = QualificationReport::harness();
+    let report = QualificationReport::evidence()?;
     match args
         .iter()
         .map(String::as_str)
@@ -11,10 +11,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .as_slice()
     {
         ["verify"] => {
-            report.verify_harness()?;
-            println!("harness verified");
+            report.verify_evidence()?;
+            println!(
+                "qualification receipt source and stable quality verified; captured timings not rerun"
+            );
         }
         ["report", "--format", "json"] => {
+            report.verify_evidence()?;
             println!("{}", serde_json::to_string(&report)?);
         }
         ["measure-lexical", "--format", "json"] => {

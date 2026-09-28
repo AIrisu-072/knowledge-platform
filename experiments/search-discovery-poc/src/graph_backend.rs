@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use tokio_postgres::Client;
 
-use crate::hypergraph::{Participant, PathEvidence, Relation, TraversalQuery};
+use crate::hypergraph::{Participant, PathEvidence, Relation, TraversalQuery, validate_relations};
 
 pub struct PostgresIncidence {
     pub load_ms: f64,
@@ -25,6 +25,7 @@ pub struct QueryExpansion {
 impl PostgresIncidence {
     pub async fn load(client: &mut Client, relations: &[Relation]) -> Result<Self, Box<dyn Error>> {
         let started = Instant::now();
+        validate_relations(relations)?;
         client
             .batch_execute(
                 "DROP TABLE IF EXISTS search_participants;
@@ -126,6 +127,12 @@ impl PostgresIncidence {
             || query.steps.is_empty()
             || query.max_paths == 0
             || query.max_branching_per_node == 0
+            || query.steps.iter().any(|step| {
+                step.namespace.is_empty()
+                    || step.relation_type.is_empty()
+                    || step.from_role.is_empty()
+                    || step.to_role.is_empty()
+            })
         {
             return Err("traversal requires seed, typed steps and finite positive budgets".into());
         }
@@ -144,6 +151,7 @@ impl PostgresIncidence {
         for step in &query.steps {
             let mut next = Vec::new();
             for path in &paths {
+                expansion.expanded_nodes += 1;
                 let required_roles = step
                     .required_participants
                     .iter()
@@ -154,6 +162,15 @@ impl PostgresIncidence {
                     .iter()
                     .map(|participant| participant.resource_id.clone())
                     .collect::<Vec<_>>();
+                // Fetch at most one row beyond the tighter remaining budget. The
+                // extra row is enough to distinguish an exhausted path budget.
+                let remaining_paths = query.max_paths.saturating_sub(next.len());
+                let row_limit = i64::try_from(
+                    query
+                        .max_branching_per_node
+                        .min(remaining_paths)
+                        .saturating_add(1),
+                )?;
                 let rows = client
                     .query(
                         "SELECT relation.id, target.resource_id,
@@ -179,7 +196,8 @@ impl PostgresIncidence {
                                        AND actual.resource_id = required.resource_id
                                  )
                             )
-                          ORDER BY relation.id, target.resource_id",
+                          ORDER BY relation.id, target.resource_id
+                          LIMIT $8",
                         &[
                             &path.target_resource_id,
                             &step.from_role,
@@ -188,14 +206,17 @@ impl PostgresIncidence {
                             &step.relation_type,
                             &required_roles,
                             &required_resources,
+                            &row_limit,
                         ],
                     )
                     .await?;
                 if rows.len() > query.max_branching_per_node {
                     return Err("traversal branching budget exceeded".into());
                 }
+                if rows.len() > remaining_paths {
+                    return Err("traversal path budget exceeded".into());
+                }
                 expansion.returned_rows += rows.len();
-                expansion.expanded_nodes += rows.len();
                 for row in rows {
                     let relation_id: String = row.get(0);
                     let target_resource_id: String = row.get(1);
@@ -213,9 +234,6 @@ impl PostgresIncidence {
                     extended.relation_ids.push(relation_id);
                     extended.participants.push(participants);
                     next.push(extended);
-                }
-                if next.len() > query.max_paths {
-                    return Err("traversal path budget exceeded".into());
                 }
             }
             next.sort_by(|left, right| {
