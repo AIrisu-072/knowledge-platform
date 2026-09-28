@@ -1,5 +1,27 @@
 # Active Execution Pointer
 
+## Active checkpoint — T10 本番実装計画承認済み、2026-09-27 JST
+
+- Status: **ACTIVE**。対象は **Document Publication End v0 (T10)**。工程は **日本語版設計・読み取り境界改訂 1・Production Implementation Plan 承認済み／Task 1 開始待ち**。詳細は `docs/superpowers/execution/document-publication-end-v0-status.md`。
+- 基準: `feat/document-versioning-v0@96b068bc9484a219b435d0633ea6669ddb7d7f97`（未マージ PR #12、PR #11 が基点）。設計・計画ブランチ `design/document-publication-end-v0`、Draft PR #13 は PR #12 を base とする。
+- 設計・計画の substantive head: `19df8e24e8ba9afbd5170f367b966ff0f1ebf889`。承認済み改訂 1 により、既存の `GetDocument` は未終了の `WORKING` 初版を扱い、T10 後は遮断する。通常公開 API は現行 `PUBLISHED` 版専用。凍結済み Authoritative Core 設計は変更しない。
+- 計画承認: 依頼者の明示回答を `docs/superpowers/plans/2026-09-27-document-publication-end-v0-production-implementation-approval.md` に記録。Task 1–5 をインラインで実装・テストする。
+- 検証: 設計 PR #13 head `5177808ebf2c10cf9575dffe88c91daa5a43d1ef` の Sandbox `36325445926` と PoC `36325445932` は SUCCESS、標準 CI `36325445915` は直近確認時 IN_PROGRESS。T10 Production の証拠ではない。PR #11・#12 は OPEN／未マージ、PR #13 は Draft／OPEN。
+- Blocker: なし。PR #11・#12・#13 のマージ指示はない。
+- 次の exact action: 承認記録を commit/push し、独立した実装 worktree で Task 1 のローカル RED から進める。
+
+This checkpoint supersedes the prior T10 checkpoint below.
+
+## Active checkpoint — Document Publication End v0 design, 2026-09-27 JST
+
+- Status: **ACTIVE**. Current capability: **Document Publication End v0 (T10)**; phase: **DESIGN SPEC PROPOSED / WRITTEN REVIEW PENDING**. Capability status: `docs/superpowers/execution/document-publication-end-v0-status.md`.
+- Baseline: `feat/document-versioning-v0@96b068bc9484a219b435d0633ea6669ddb7d7f97` (PR #12, stacked on unmerged PR #11). Current design branch: `design/document-publication-end-v0`; design content commit `931b85715b8123d8eef95ce4c5c2fc058316f24a`; Draft PR #13 targets PR #12.
+- User approval covers the in-chat T10 direction: distinct document-wide end operation, null current, durable operation history, schedule invalidation, Search exclusion, current-only normal reads, and separately designed reopening. The written design spec is proposed, not yet approved; no T10 code or production plan exists.
+- Versioning PR #11 and #12 are Ready for review, unmerged, `CLEAN`, and passed their current-head CI/Sandbox/PoC checks. No Versioning Design amendment is proposed. Do not merge either without explicit instruction.
+- Next exact action: obtain review of the written T10 Design Spec on its Draft PR. Once approved, reconcile normative T10 and write a production implementation plan; production code remains gated on plan review.
+
+This checkpoint supersedes the prior Versioning checkpoint below.
+
 ## Active checkpoint — 2026-09-27 JST
 
 - Status: **ACTIVE**. Current capability: **Document Versioning v0**; phase: **PRODUCTION IMPLEMENTATION TASKS 1–9 COMPLETE / PR #12 DRAFT REVIEW**. Capability status: `docs/superpowers/execution/document-versioning-v0-status.md`.

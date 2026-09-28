@@ -284,7 +284,7 @@ WITHDRAWN
 | `PUBLISHED` かつ `Document.current_version_id != self` | 過去版 |
 | `WITHDRAWN` | 公開終了 |
 
-表示上の意味だけを理由に永続化stateを増やさない。
+表示上の意味だけを理由に永続化stateを増やさない。Document 単位の T10「公開終了」は、専用の操作記録と null の現行版参照から導出し、Version 単位の `WITHDRAWN` とは区別する。
 
 ---
 
@@ -617,15 +617,26 @@ principal_id × document_version_id
 
 ## T10: 文書全体の公開を終了する（Versioning v0のT4とは別操作）
 
-通常業務では論理削除・物理削除を行わない。
+通常業務では論理削除・物理削除を行わない。文書全体を今後の通常利用・通常検索対象から外す必要がある場合は、T4 の Version 取下げではなく独立した公開終了 transaction を使う。T4 は直前の公開版を current に戻し得るため、T10 の代用にならない。
 
-文書を今後の通常利用・通常検索対象から外す必要がある場合は、削除ではなく公開終了として扱う。
+### 前提と操作 ID
 
-### 境界
+T10 の対象は現行 `PUBLISHED` Version を持つ Document に限る。呼出側の UUIDv7 操作 ID、Document ID、期待 Document revision、期待現行 Version ID、実行者、空でない理由を要求する。期待 revision・現行版の不一致は Conflict、現行版がない場合は業務上の拒否とする。同じ ID・同じコマンドは保存済み結果を再生し、異なるコマンドは Conflict とする。別 ID による二度目の公開終了は拒否する。commit 結果が不明なら同じ ID で照会・再試行する。
 
-T4は直前の公開版をcurrentへ戻し得るため、T4だけを文書全体の公開終了として呼び出してはならない。文書全体を通常利用・通常検索の対象から外す操作は、復帰を伴わない別の公開終了transactionとして後続設計する。原本・過去Version・Auditは保持し、Search Platformへ除外イベントを送る。Versioning v0はこの別操作を実装しない。
+### 同一 transaction に含むもの
 
-### 方針
+- Document 行をロックして現行版・revision・Version の所属と `PUBLISHED` 状態を再確認する。
+- `Document.current_version_id = null` とし、revision を 1 増やす。元の現行 Version は `PUBLISHED` のまま、`published_at`・原本・過去記録を保持する。`WITHDRAWN` にしない。
+- その Document の有効な公開予約を終端化し、対応する `scheduled_publish_at` 投影を消す。予約履歴は保持する。
+- 冪等な公開終了の操作結果、検索対象から Document 全体を外す Domain Outbox Event、必須の Audit Outbox Event を記録する。いずれかの生成失敗では transaction 全体を commit しない。
+
+操作記録は現行版参照が null になった理由を区別する永続証跡となる。新しい Document フラグや Version lifecycle state は追加しない。T10 後、通常の Version 作成・更新・再基準化、予約・期限到達・手動 Publish は、新しい現行版を設定できない。各変更 transaction はロック下で T10 記録を確認し、事前検査だけに依存しない。再公開は別操作として後続設計する。T10 は内容を復帰させないため、Storage・DSI の障害を理由に妨げない。
+
+### 読み取りと Search
+
+通常公開用の Document・ファイル読み取りは、同じ Document の現行 `PUBLISHED` Version のみを返す。現行版参照が null なら結果を返さず、過去版や `WORKING` Version へフォールバックしない。既存の編集・authoritative 読み取りは T10 未終了の `WORKING` 初版を扱えるが、T10 終了後は旧版を返さない。終了記録の確認と取得は同じ DB statement で行う。権限に基づく過去資料の参照は AccessPolicy を使う別経路とする。
+
+Search Index からの除外配送は遅延してよい。ただし検索結果を表示・利用する前に、Document 側で結果の Version が現行 `PUBLISHED` 版か確認し、T10 後の古い結果を抑止する。再構築元も現行 `PUBLISHED` 版だけを列挙する。Search consumer と再構築処理そのものは別機能とする。
 
 ```text
 検索対象から外す
@@ -633,13 +644,7 @@ T4は直前の公開版をcurrentへ戻し得るため、T4だけを文書全体
 データを削除する
 ```
 
-過去資料としての参照可否はAccessPolicy / 検索条件で制御する。
-
-### 物理削除
-
-通常のDocument lifecycleには含めない。
-
-誤登録した機密情報、法令・契約上の削除義務、staging/orphan fileのGC等、例外的な管理処理のみ後続要件で定義する。
+物理削除は通常の Document lifecycle に含めず、例外的な管理処理として別に扱う。Document Versioning v0 は T10 を実装しない。
 
 
 ---
@@ -787,7 +792,7 @@ Search IndexはDocument Platformより遅延してよい。
 
 ## 8.2 Stale Result
 
-検索結果が旧Versionを返した場合、Document API側で `lifecycle_state` と `Document.current_version_id` を用いて現行性を検証可能であること。
+検索結果が旧Versionを返した場合、Document API側で `lifecycle_state` と `Document.current_version_id` を用いて現行性を検証可能であること。T10 の公開終了後は現行版参照が null となるため、Index からの除外配送を待たずにその Document の通常検索結果を抑止する。
 
 UI / LLM側へ検索結果を返す際にversion / source revisionを保持する。
 
@@ -943,7 +948,7 @@ Search Platformの検索Indexは別責務とする。
 
 以下は後続要件として確定する。
 
-Document Versioning v0の承認済み設計は、Version取下げ時のcurrent挙動と `scheduled_publish_at` 到達時の公開方式を確定した。文書全体の公開終了はT10として別に設計する。
+Document Versioning v0の承認済み設計は、Version取下げ時のcurrent挙動と `scheduled_publish_at` 到達時の公開方式を確定した。文書全体の公開終了は、承認済みの Document Publication End v0 設計に従う別の T10 操作であり、本番実装は別途計画する。
 
 1. Document / Version metadataの境界
 2. AccessPolicy model
