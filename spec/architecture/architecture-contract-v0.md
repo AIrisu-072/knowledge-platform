@@ -1,7 +1,7 @@
 # Architecture Contract v0
 
 - Status: v0
-- Scope: Knowledge / Document Platform
+- Scope: Knowledge / Document / Search Discovery Platform
 - Purpose: 実装・PoC・将来拡張に対して、アーキテクチャ上の不変条件・責務境界・依存方向を固定する
 - Language policy:
   - Backend / core: Rust優先
@@ -81,22 +81,24 @@ Search Index、Extraction結果、Vector表現等を正本として扱っては�
 
 ---
 
-## AC-02. Search Platform owns retrieval, not documents
+## AC-02. Search Platform owns discovery/retrieval derived state, not source truth
 
-Search Platformは文書そのものを所有しない。
+Search PlatformはDocument、CRM/SFA、業務DB、Remote Provider等のSource正本を所有しない。
 
-Search Platformが保持してよいものは、Knowledge Sourceから再生成可能な派生データのみとする。
+Search Platformが保持してよいものは、Sourceから再生成可能なDiscovery / Retrieval派生データと、Retention契約内のSession Working Stateに限る。
 
 例:
 
-- extracted text
-- KnowledgeUnit
+- DiscoverableSource registry / source-local discovery metadata
+- resolved Discovery Projection
+- extracted text / KnowledgeUnit
 - lexical index
 - vector index
-- metadata index
+- metadata / structured index
 - temporal representation
-- graph representation
-- retrieval cache
+- Typed HyperEdge graph projection
+- retrieval / evidence evaluation state
+- Session Working Index / permitted cache
 
 ---
 
@@ -146,7 +148,8 @@ LLM Context
 Generation
 ```
 
-Semantic / Vector RetrievalはSearch Platform内のRetrieverの1つとして扱う。
+Semantic / Vector / HyperGraph RetrievalはSearch Platform内のRetrieverまたは内部Expansion Operatorとして扱う。
+Graph RAGを独立した外部検索System/APIとして必須化しない。
 
 ---
 
@@ -166,24 +169,29 @@ Index update
 
 検索時は事前生成された検索表現を利用する。
 
-例外的なon-demand extractionを追加する場合は、明示的な設計判断を必要とする。
+例外的なon-demand処理は、Search / Discovery Platform v0で承認されたProbe / Progressive Materialization契約に従う場合のみ許可する。
+Queryごとの無条件な全文Extractionへ戻してはならず、Source capability、Retention、Cost、InformationGapに基づくtargeted probeとする。
 
 ---
 
 ## AC-07. Search representations are derived projections
 
-Canonical Knowledge Modelから複数の検索用表現を生成可能とする。
+Source Observation / Assertion / typed DiscoverableResourceから複数の検索用Projectionを生成可能とする。
 
 ```text
-Canonical Knowledge Resource
+Discoverable Resource / Assertions / TypedRelationInstance
+├─ Directory representation
 ├─ Lexical representation
 ├─ Vector representation
 ├─ Structured / Metadata representation
 ├─ Temporal representation
-└─ Graph representation
+├─ Typed HyperEdge graph representation
+└─ Access representation
 ```
 
-特定の検索方式をCanonical Modelへ埋め込まない。
+Graph Representationはv0のfirst-class Projectionであり、`future`扱いにしない。
+Canonical relation semanticsはTyped N-ary Relation / HyperEdgeとし、lossy binary edgeをCanonical Modelにしない。
+特定の検索方式・Graph backend・Vector engineをCanonical Modelへ埋め込まない。
 
 ---
 
@@ -332,18 +340,21 @@ WITHDRAWN
 
 ## 4.2 Search Platform owns
 
-- KnowledgeSource configuration
-- ETL state
-- Canonical snapshots used for indexing
+- DiscoverableSource registry / discovery capability metadata
+- ETL / Observation state
+- Assertion / resolved Discovery Projection（Retention契約が許可する範囲）
+- source-local Resource Directory
 - KnowledgeUnit
 - lexical representation
 - vector representation
 - metadata / structured representation
 - temporal representation
-- graph representation
-- retrieval execution state
+- Typed HyperEdge graph representation
+- Access Projection
+- retrieval / qualification / evidence evaluation state
+- Session Working Index
 - fusion / reranking results
-- search caches
+- permitted search caches
 
 ただし、これらはすべて正本ではない。
 
@@ -501,9 +512,9 @@ File Storage固有APIをDocument Domainへ露出させない。
 
 # 9. Search / ETL contract
 
-## 9.1 Knowledge Source Adapter
+## 9.1 Discoverable Source Adapter
 
-各Sourceは共通contractへ変換する。
+各SourceはDiscoverableSource contractへ登録し、Resourceをtyped DiscoverableResource / Assertion / TypedRelationInstanceへ投影可能にする。
 
 例:
 
@@ -514,39 +525,21 @@ File Storage固有APIをDocument Domainへ露出させない。
 
 Source自身の検索UI・検索順位へ依存しない。
 
-必要なのは検索可能な元データとprovenanceである。
+Source自身の正本性・権限・Retention・enumeration semanticsを失わずに探索可能であることが必要である。
+単一Global Resource Indexを必須にせず、Source Registry → source-local directory/index → authoritative resourceのFederated Discoveryを基本とする。
 
 ---
 
-## 9.2 Canonical Knowledge Model
+## 9.2 Discovery canonical model
 
-共通部分だけを比較的厳格にする。
+すべてを1種類の文書bodyへ潰さない。
 
-最低限候補:
+v0の基本Resource型は KnowledgeResource / SemanticResource / CapabilityResource / AgentSkillResource / WorkflowResource / PolicyResource とする。
+共通契約はResourceIdentity、UsageProfile、DiscoveryProfile、TemporalDiscoveryProfile、ResourceRelationsを中心とし、Source固有bodyはtyped extensionとして保持する。
 
-```text
-source_id
-resource_id
-version_id
-
-title
-content
-content_type
-language
-
-created_at
-updated_at
-effective_from
-effective_to
-
-provenance
-locator
-access_scope
-
-metadata {}
-```
-
-Source固有情報を無理に共通schemaへ押し込まず、`metadata`等で拡張可能にする。
+Discovery assertionはprovenance / authority / originを保持し、resolved projectionから元Assertionへ追跡可能にする。
+Graph relationはTypedRelationInstanceとしてparticipant roleを保持する。
+Source固有情報を意味損失のある共通schemaへ押し込まない。
 
 ---
 
@@ -1001,3 +994,32 @@ Explorationの自由度を維持し、Violation / Gap / Counterexampleをfeedbac
 
 v0 Code GraphはLevel 0-1を対象とし、Symbol/Semantic Graphは将来拡張とする。
 
+
+
+---
+
+# 26. Search / Discovery Platform v0 extension
+
+本節は承認済み `docs/superpowers/specs/2026-09-28-search-discovery-platform-v0-design.md` のArchitecture Contract反映であり、本書内の旧Search記述と矛盾する場合は本節を優先する。
+
+## 26.1 Discovery capability
+
+Search PlatformはRetrievalだけでなく、Needに対してSource / Resourceを発見し、Applicability / Contrast / Authority / Temporal / Evidence Sufficiencyを評価するDiscovery capabilityを持つ。
+
+Similarityはcandidate generationに限定し、Hard applicability / authority / temporal validityをrankingより優先する。
+Missing factはFalseへ変換せずUNKNOWN / InformationGapとして扱う。
+
+## 26.2 Federated source boundary
+
+Search PlatformはDiscoverableSource Registryを持ち、LOCAL_DIRECTORY / LOCAL_CONTENT_SEARCH / REMOTE_ENUMERATION / REMOTE_QUERY / DIRECT_ADDRESS / LIVE_ONLY等のSource capabilityを扱う。
+Source coverageはCOMPLETE / PARTIAL / QUERY_ONLY / NONE等を区別し、remote query missをabsence/deletionと同一視しない。
+
+## 26.3 Evidence-driven completion
+
+Discoveryは固定Top-Kで完了せず、EvidenceRequirementとEvidence Sufficiencyを停止条件にできる。
+SOURCE_KNOWLEDGE_ABSENTをRetrieval失敗と区別し、Failure Attribution可能にする。
+
+## 26.4 Session binding and execution boundary
+
+Discoveryはdynamic、Bindingはsession-stableとする。
+Search PlatformはQualifiedResource / Evidence / InformationGap / Binding candidateを返すが、Task DAG、current authorization、tool execution、retry、idempotency ledger、credential、human gateを所有しない。
