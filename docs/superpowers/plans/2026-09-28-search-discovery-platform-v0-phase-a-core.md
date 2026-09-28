@@ -37,6 +37,7 @@
 - Create: `crates/search-core/src/lib.rs`
 - Create: `crates/search-application/Cargo.toml`
 - Create: `crates/search-application/src/lib.rs`
+- Create: `crates/search-application/src/error.rs`
 - Modify: `spec/architecture/dependency-rules.toml`
 - Modify: `tools/architecture-lint/src/config.rs`
 - Modify: `tools/architecture-lint/tests/policy.rs`
@@ -44,6 +45,7 @@
 **Interfaces:**
 - Produces crates named exactly `search-core` and `search-application`.
 - `search-application` depends on `search-core`; `search-core` depends on no project infrastructure crate.
+- `search-application::SearchError` is the backend-neutral application error used by all Search ports; backend-specific errors are mapped at adapter boundaries.
 
 - [ ] **Step 1: Add failing architecture-lint fixtures**
 
@@ -98,7 +100,7 @@ Commit message: `build: establish search discovery crate boundaries`
 - Test: `crates/search-core/tests/resource_contract.rs`
 
 **Interfaces:**
-- Produces newtypes: `SourceId`, `ResourceId`, `LogicalResourceId`, `RepresentationId`, `ResourceVersionId`, `UsageProfileId`, `DiscoveryEvaluationId`, `BindingId`, `NeedId`, `ClaimId`, `GapId`, `RelationId`, `AssertionId`, `ProjectionGenerationId`.
+- Produces newtypes: `SourceId`, `ResourceId`, `LogicalResourceId`, `RepresentationId`, `ResourceVersionId`, `UsageProfileId`, `DiscoveryEvaluationId`, `BindingId`, `NeedId`, `SessionId`, `ClaimId`, `GapId`, `RelationId`, `AssertionId`, `ProjectionGenerationId`.
 - Produces `DiscoverableSource`, `DiscoverableResource`, `ResourceIdentity`, `ResourceBody`, `UsageProfile`, `DiscoveryProfile`, `TemporalDiscoveryProfile`.
 
 - [ ] **Step 1: Write failing domain contract tests**
@@ -304,6 +306,9 @@ Commit message: `feat: define typed hyperedge discovery graph contract`
 - `ApplicabilityState::{Applicable,Excluded,Unresolved,Invalid}`
 - `DiscriminatorImportance::{Hard,Soft}`
 - `ContrastSet`
+- `DiscoveryNeed`, `DiscoveryRequest`
+- `CandidateIdentityClass::{DurableResource,RemoteStableReference,EphemeralCandidate}`
+- `FederatedCandidate`
 - `InformationGap`
 - `QualifiedResource`
 - `RejectedCandidate`
@@ -359,6 +364,7 @@ Commit message: `feat: add discovery qualification and evidence contracts`
 - `BindingMode::{SnapshotPinned,RemoteVersionPinned,SessionSnapshot,LiveReference}`
 - `LogicalResourceBinding`
 - `RepresentationBinding`
+- `SearchError` is imported from `search-application::error`.
 - Port traits returning `BoxFuture<'a, Result<T, SearchError>>` where asynchronous I/O is required:
   - `SourceRegistryPort`
   - `DirectoryRetrieverPort`
