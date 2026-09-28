@@ -2,9 +2,13 @@
 
 //! Application services and ports for the authoritative document core.
 
+mod access_context;
 mod command;
 mod error;
 mod events;
+mod management_command;
+mod management_digest;
+mod management_ports;
 mod ports;
 mod publication_end;
 mod publish_quality;
@@ -16,6 +20,7 @@ mod versioning_command;
 mod versioning_preflight;
 mod versioning_service;
 
+pub use access_context::{IdentityResolutionError, InvocationKind, VerifiedActorContext};
 pub use command::{
     CreateDocumentCommand, CreateDocumentResult, PublishDocumentCommand, PublishDocumentResult,
     PublishOperationId,
@@ -31,6 +36,14 @@ pub use events::{
     DOCUMENT_VERSION_PUBLISHED, DOCUMENT_VERSION_REBASED, DOCUMENT_VERSION_UPDATED,
     DOCUMENT_VERSION_WITHDRAWN, DomainEventRecord,
 };
+pub use management_command::{
+    ManagementCommand, ManagementErrorCode, ManagementMutationResult, ManagementOperationId,
+    ManagementResult,
+};
+pub use management_digest::{
+    canonical_command_bytes, canonical_json_bytes, management_command_digest,
+};
+pub use management_ports::{BootstrapRootPolicy, IdentityContextResolver, ManagementRepository};
 pub use ports::{
     AuthoritativeContentItem, AuthoritativeDocument, Clock, ContentReader,
     CreateInitialDocumentRecord, CurrentPublishedVersionRef, DocumentPublishRepository,

@@ -50,4 +50,12 @@ pub enum DomainError {
     InvalidRestorationCandidate,
     #[error("persisted document state is invalid")]
     InvalidPersistedState,
+    #[error("policy subject issuer or id is invalid")]
+    InvalidPolicySubject,
+    #[error("policy grant must contain unique actions")]
+    InvalidPolicyGrant,
+    #[error("explicit policy must contain at least one grant")]
+    EmptyExplicitPolicy,
+    #[error("policy contains duplicate subject grants")]
+    DuplicatePolicySubject,
 }

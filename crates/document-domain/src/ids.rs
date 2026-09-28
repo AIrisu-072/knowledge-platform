@@ -24,3 +24,4 @@ typed_id!(FileId);
 typed_id!(FolderId);
 typed_id!(EventId);
 typed_id!(AuditEventId);
+typed_id!(PolicyId);
