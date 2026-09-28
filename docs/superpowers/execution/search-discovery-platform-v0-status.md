@@ -1,5 +1,14 @@
 # Search / Discovery Platform v0 — Execution Status
 
+## Current checkpoint — Phase B B2 committed, B3 RED next, 2026-09-29 JST
+
+- Branch `feat/search-discovery-platform-v0-b` remains stacked on Phase A head `02e869cc306f21430fcf9f2cf5c517dfcf9839fd`; no Phase B PR yet. B1 `f0afe8d43abd2aa3cf72db071028eb96691ccd29`, B2 `70c2e938261ce19969bdbd054930d546558a6194` are committed. No production crate or `active.md` change.
+- B2 RED failed on missing lexical module; Tantivy 0.26.2 baseline and isolated Lindera 6.2.0 IPADIC pretokenization candidate now pass 3/3 focused tests. `mise run poc:search:verify` passed on B2 head with isolated cargo-deny, as did strict isolated Clippy and fmt. The first deny run caught `webpki-roots` CDLA metadata; the isolated PoC allowlist now includes that exact license. Downloaded dictionary asset rights remain unverified for production.
+- The 13-case synthetic measurement (five alternating runs) is recorded at `experiments/search-discovery-poc/fixtures/lexical/README.md`: default raw Recall@10 11/13, Lindera 12/13; both recovered all 11 mandatory exact/alias cases. Tiny unoptimized local measurements do not justify production Lindera adoption. `lindera-tantivy` 4.0.0 targets Tantivy 0.25 rather than 0.26; current candidate uses pretokenization instead.
+- Current Task: B3 Typed HyperEdge correctness reference. Exact next action: add false-composite, role-swap, high-degree and evidence-namespace synthetic relations, write RED tests for typed incidence/traversal, then implement the pure-Rust semantic oracle. B4 backend, B5 fusion and B6 Selection Gate remain. Managed B1 read-only run is `inspect-before-resume` and must not be automatically replayed; no Design Freeze difference or merge.
+
+---
+
 ## Current checkpoint — Phase A complete, Phase B B1 committed, B2 RED next, 2026-09-29 JST
 
 - Phase A final head `02e869cc306f21430fcf9f2cf5c517dfcf9839fd` matched remote branch, PR #21 `headRefOid`, and source-worktree HEAD. Exact-head [CI `36456140293`](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36456140293), [DSI Sandbox `36456140493`](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36456140493), and [DSI PoC `36456140520`](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36456140520) all completed **SUCCESS**, including CI `required-check`. A8 is complete. [PR #21](https://github.com/AIrisu-072/knowledge-platform/pull/21) remains OPEN/Draft and unmerged, stacked on planning PR #20.
