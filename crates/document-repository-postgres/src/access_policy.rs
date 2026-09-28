@@ -216,6 +216,9 @@ pub(crate) fn decode_result(
     match operation_kind.as_str() {
         "set_access_policy" => Ok(ManagementResult::PolicyMutation(result)),
         "update_document_metadata" => Ok(ManagementResult::MetadataUpdate(result)),
+        "create_folder" | "rename_folder" | "move_folder" => {
+            Ok(ManagementResult::FolderMutation(result))
+        }
         _ => Err(RepositoryError::IntegrityViolation),
     }
 }
@@ -428,6 +431,10 @@ impl ManagementRepository for PostgresDocumentRepository {
             }
             command @ ManagementCommand::UpdateDocumentMetadata { .. } => {
                 self.execute_metadata_update(ctx, command).await
+            }
+            command @ (ManagementCommand::CreateFolder { .. }
+            | ManagementCommand::RenameFolder { .. }) => {
+                self.execute_folder_mutation(ctx, command).await
             }
             _ => Err(RepositoryError::BusinessRule),
         };

@@ -59,11 +59,14 @@ pub(crate) async fn authorize_management_operation(
         ("set_access_policy", _) => {
             authorize_in_tx(tx, ctx, &[(resource, vec![Action::Administer])]).await
         }
+        ("create_folder" | "rename_folder" | "move_folder", ResourceRef::Folder(_)) => {
+            authorize_in_tx(tx, ctx, &[(resource, vec![Action::Administer])]).await
+        }
         _ => Err(RepositoryError::IntegrityViolation),
     }
 }
 
-async fn saved_operation(
+pub(crate) async fn saved_operation(
     tx: &mut Transaction<'_, Postgres>,
     operation_id: uuid::Uuid,
 ) -> Result<Option<PgRow>, RepositoryError> {
@@ -78,7 +81,7 @@ async fn saved_operation(
     .map_err(map_statement_error)
 }
 
-async fn replay_metadata(
+pub(crate) async fn replay_management(
     tx: &mut Transaction<'_, Postgres>,
     ctx: &VerifiedActorContext,
     row: &PgRow,
@@ -118,7 +121,7 @@ impl PostgresDocumentRepository {
         let result: Result<ManagementResult, RepositoryError> = async {
             lock_access_state(&mut tx, AccessLockMode::Shared).await?;
             if let Some(row) = saved_operation(&mut tx, command.operation_id().as_uuid()).await? {
-                return replay_metadata(&mut tx, ctx, &row, digest).await;
+                return replay_management(&mut tx, ctx, &row, digest).await;
             }
             let row = sqlx::query(
                 "SELECT revision, metadata FROM documents WHERE document_id = $1 FOR UPDATE",
@@ -131,7 +134,7 @@ impl PostgresDocumentRepository {
             // A concurrent request with the same operation ID may have committed
             // while this transaction waited for the Document row.
             if let Some(saved) = saved_operation(&mut tx, command.operation_id().as_uuid()).await? {
-                return replay_metadata(&mut tx, ctx, &saved, digest).await;
+                return replay_management(&mut tx, ctx, &saved, digest).await;
             }
             authorize_metadata(&mut tx, ctx, document_id).await?;
             let current_revision: i64 = row.try_get("revision").map_err(map_statement_error)?;
@@ -151,6 +154,9 @@ impl PostgresDocumentRepository {
             }
             let updated = Value::Object(metadata);
             let changed = updated != previous;
+            let revision = current_revision
+                .checked_add(i64::from(changed))
+                .ok_or(RepositoryError::BusinessRule)?;
             if changed {
                 let pending: bool = sqlx::query_scalar(
                     "SELECT EXISTS (SELECT 1 FROM document_publish_schedules \
@@ -164,16 +170,16 @@ impl PostgresDocumentRepository {
                     return Err(RepositoryError::BusinessRule);
                 }
                 sqlx::query(
-                    "UPDATE documents SET metadata = $1, revision = revision + 1 \
-                     WHERE document_id = $2",
+                    "UPDATE documents SET metadata = $1, revision = $2 \
+                     WHERE document_id = $3",
                 )
                 .bind(&updated)
+                .bind(revision)
                 .bind(document_id.as_uuid())
                 .execute(&mut *tx)
                 .await
                 .map_err(map_statement_error)?;
             }
-            let revision = current_revision + i64::from(changed);
             let now = postgres_timestamp_now();
             let mutation = ManagementMutationResult {
                 operation_id: command.operation_id(),

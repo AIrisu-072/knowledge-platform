@@ -9,6 +9,7 @@ mod command;
 mod document_management;
 mod error;
 mod events;
+mod folder_service;
 mod management_command;
 mod management_digest;
 mod management_ports;
@@ -43,6 +44,7 @@ pub use events::{
     DOCUMENT_VERSION_PUBLISHED, DOCUMENT_VERSION_REBASED, DOCUMENT_VERSION_UPDATED,
     DOCUMENT_VERSION_WITHDRAWN, DomainEventRecord,
 };
+pub use folder_service::FolderService;
 pub use management_command::{
     ManagementCommand, ManagementErrorCode, ManagementMutationResult, ManagementOperationId,
     ManagementResult,

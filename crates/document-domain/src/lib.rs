@@ -6,6 +6,7 @@ mod access_policy;
 mod document;
 mod error;
 mod file;
+mod folder;
 mod ids;
 mod metadata;
 mod principal;
@@ -26,6 +27,7 @@ pub use file::{
     ContentHash, FileObject, FileRole, FileSize, MediaType, StorageKey, StoredFileDescriptor,
     VersionFile,
 };
+pub use folder::normalize_folder_name;
 pub use ids::{AuditEventId, DocumentId, DocumentVersionId, EventId, FileId, FolderId, PolicyId};
 pub use metadata::Metadata;
 pub use principal::PrincipalRef;

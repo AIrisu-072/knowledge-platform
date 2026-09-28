@@ -467,3 +467,30 @@ async fn audit_failure_rolls_back_metadata_revision_and_operation() {
         .fetch_one(&f.pool).await.unwrap();
     assert_eq!(operations, 0);
 }
+
+#[tokio::test]
+async fn metadata_revision_overflow_does_not_mutate() {
+    let f = fixture().await;
+    allow(&f, [Action::Read, Action::Write]).await;
+    sqlx::query("UPDATE documents SET revision = $1 WHERE document_id = $2")
+        .bind(i64::MAX)
+        .bind(f.document_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    let result = DocumentManagementService::new(f.repository.clone())
+        .update_document_metadata(
+            &context(),
+            command(
+                &f,
+                operation_id(),
+                i64::MAX,
+                set("category", json!("new")),
+                BTreeSet::new(),
+            ),
+        )
+        .await;
+    assert!(matches!(result, Err(ApplicationError::BusinessRule)));
+    assert_eq!(state(&f).await, (i64::MAX, json!({})));
+    assert_eq!(count(&f, "domain", "DocumentMetadataChanged").await, 0);
+}
