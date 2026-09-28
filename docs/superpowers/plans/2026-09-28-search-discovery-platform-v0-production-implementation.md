@@ -113,7 +113,7 @@ Deliverables:
 - Document Platform Source Adapter boundary
 - outbox-driven invalidation/indexing trigger without distributed transaction
 - authorized/rebuildable Document discovery snapshot
-- Document → Directory / Lexical / Structured / Temporal / HyperGraph vertical slice
+- Document → Directory / title/metadata Lexical / Structured / Temporal / HyperGraph vertical slice
 - current/past/T10/withdrawal/access-policy regressions
 - evaluation harness and failure attribution
 - Search/Discovery v0 acceptance record
@@ -171,7 +171,8 @@ Search / Discovery Platform v0 is complete only when:
 
 - typed Source/Resource/Assertion/HyperEdge contracts exist and are tested;
 - at least Document Platform works as a real Source through the common adapter boundary;
-- source-local lexical/structured/temporal/graph retrieval is operational using qualified backends;
+- source-local lexical/structured/temporal/graph retrieval is operational using qualified backends for fields actually supplied by the Source;
+- Document full-body lexical extraction is not silently implemented through DSI; if required, a separately approved Search Extraction capability must provide it;
 - Applicability/Contrast/UNKNOWN/Authority/Temporal semantics are enforced before soft ranking;
 - Evidence Sufficiency can stop or return UNRESOLVED without fabricated certainty;
 - Session Binding and generation drift are tested;
@@ -179,3 +180,15 @@ Search / Discovery Platform v0 is complete only when:
 - evaluation reports stage-level failure attribution;
 - all required repository gates are GREEN;
 - no approved Design invariant is weakened by optimization.
+
+
+## Explicit dependency: Search Extraction
+
+Current Document Semantic Inspection v0 returns semantic fingerprints, capability/evidence/provenance and dependency information; it is not a full Search Extraction payload.
+
+Therefore this plan MUST NOT:
+- reinterpret DSI fingerprint/evidence as full document text;
+- add format-specific body extraction inside Search core/runtime as an incidental implementation detail;
+- claim Document full-text search from title/metadata-only indexing.
+
+Phase D may index Document title, metadata, lifecycle, folder/access projection, DSI capability/evidence-derived structured fields and relations. Full body/section/table/sheet/slide Search Extraction is a separate capability requiring its own design approval before implementation.
