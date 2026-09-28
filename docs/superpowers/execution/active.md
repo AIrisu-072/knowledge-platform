@@ -1,5 +1,15 @@
 # Active Execution Pointer
 
+## Active checkpoint — Versioning / T10 main 統合、2026-09-28 JST
+
+- Status: **ACTIVE — 統合後の main CI 確認中**。Document Versioning v0 と Document Publication End v0 (T10) の実装は完了し、依頼者の明示指示で PR #11 → #12 → #13 → #14 を順に main へマージした。詳細は `docs/superpowers/execution/document-publication-end-v0-status.md`。
+- 統合 head: `main@bdd82d296de4cc2e57073fbde5731c756272cf74`。各 merge commit は #11 `e5e6b2e9de278cb8b9f8a41be7ab88e528f943ac`、#12 `daeb8d5fa607d95123947e852735bac88a049a8f`、#13 `d7da25a88d037bc226aa3bf03ea7c4320b745d43`、#14 `bdd82d296de4cc2e57073fbde5731c756272cf74`。４ PR とも MERGED。
+- 検証: 最終 PR #14 head `fc39bad9e0680831784af6a5d4129cf3498027fc` の標準 CI `36333558493`、Sandbox `36333558485`、DSI PoC `36333558539` はすべて SUCCESS。ローカル `mise run verify` は 459/459 成功、既定の除外 4 件。統合後 main CI はこの記録の push 後に exact head で確認する。
+- Blocker: なし。Design Freeze 差分提案なし。Search Index の処理は Search Platform 側、T10 の Domain Outbox 登録は文書側で完了。次の実装対象は未選定。
+- 次の exact action: この統合記録を commit/push し、main の最終 exact-head CI を確認する。成功後、次の文書管理機能の範囲と優先順位を依頼者と決める。
+
+This checkpoint supersedes the prior T10 checkpoint below.
+
 ## Active checkpoint — T10 本番実装 Task 1–5 完了、2026-09-28 JST
 
 - Status: **ACTIVE**。対象は **Document Publication End v0 (T10)**。Production Tasks 1–5 の実装・検証・PR 差分レビュー完了。詳細は `docs/superpowers/execution/document-publication-end-v0-status.md`。

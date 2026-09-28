@@ -1,6 +1,13 @@
 # Document Publication End v0 — 実行状況
 
-- 状態: **ACTIVE — Production Tasks 1–5 完了。実装 Draft PR #14 のレビュー待ち。**
+- 状態: **ACTIVE — Production Tasks 1–5 完了、PR #11–#14 を main へ統合済み。統合後 CI 確認中。**
+- main 統合: 依頼者の明示指示により PR #11、#12、#13、#14 をこの順に merge commit で統合した。最終コード head は `main@bdd82d296de4cc2e57073fbde5731c756272cf74`。４件とも GitHub で MERGED。`develop` ブランチは存在しない。
+- 最終実装 PR 検証: PR #14 head `fc39bad9e0680831784af6a5d4129cf3498027fc` の標準 CI `36333558493`、DSI Sandbox Preflight `36333558485`、DSI PoC `36333558539` はすべて SUCCESS。PR #11–#13 の exact-head checks も merge 時点で SUCCESS、未解決 review thread は４件とも 0。統合後 main の最終 exact-head CI はこの記録の push 後に確認する。
+- Blocker / Design Freeze: なし／差分提案なし。次の実装対象は未選定。T11 は検索 Index 処理の実装ではなく文書側イベント登録の要件で、T10 の `DocumentPublicationEnded` は登録済み。
+- 次の exact action: この統合記録を main に commit/push し、最終 head の CI を確認する。成功後、次に設計する文書管理機能の範囲と優先順位を決める。
+
+## 統合前の実装記録（2026-09-28 JST）
+
 - 基準: `feat/document-versioning-v0@96b068bc9484a219b435d0633ea6669ddb7d7f97`（PR #12、PR #11 が基点）。承認済み設計・計画は `design/document-publication-end-v0@8415d8995ea719d6a510fe7f4aafc1ebf01bfa80`、[Draft PR #13](https://github.com/AIrisu-072/knowledge-platform/pull/13)。PR #13 の exact-head 標準 CI `36326032482`、Sandbox `36326032479`、DSI PoC `36326032480` はすべて SUCCESS。
 - 実装: `feat/document-publication-end-v0`、[Draft PR #14](https://github.com/AIrisu-072/knowledge-platform/pull/14)。検証済み実装 head `79c7ff944cfde49574d1960c2ffc5e20cdd066a7`。Task 1 は Domain/Application 終了契約、Task 2 は PostgreSQL 一括 transaction、Task 3 は再公開防止、Task 4 は編集・通常公開・内部読み取りの分離。Task 5 の実 DB 縦断経路は初版公開→後続版公開→予約→T10 を確認した。
 - RED/GREEN: Task 1 の未実装 Domain/Application 契約、Task 2 の未実装 PostgreSQL port、Task 3 の終了後の初版再 Publish、Task 4 の未実装読み取り port/API を RED として記録。Task 5 の縦断テストは初回 GREEN、補足 UTC 正規化テストは RED→GREEN。詳細はこの worktree の SDD ledger に記録した。
