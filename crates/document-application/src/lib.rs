@@ -6,9 +6,12 @@ mod access_context;
 mod access_policy_service;
 mod authorized_document;
 mod command;
+mod document_history;
 mod document_management;
+mod document_query;
 mod error;
 mod events;
+mod file_access;
 mod folder_service;
 mod management_command;
 mod management_digest;
@@ -16,6 +19,8 @@ mod management_ports;
 mod ports;
 mod publication_end;
 mod publish_quality;
+mod query_cursor;
+mod read_state;
 mod reconciliation;
 mod schedule;
 mod scheduled_authorization;
@@ -32,7 +37,17 @@ pub use command::{
     CreateDocumentCommand, CreateDocumentResult, PublishDocumentCommand, PublishDocumentResult,
     PublishOperationId,
 };
+pub use document_history::{
+    DocumentHistoryEntry, DocumentHistoryRepository, DocumentHistoryService, HistoryPageQuery,
+    ProvenanceQuality, VersionDetail, VersionFileRequest, VersionFileSummary, VersionPageQuery,
+    VersionPurpose, VersionRequest, VersionSummary,
+};
 pub use document_management::DocumentManagementService;
+pub use document_query::{
+    AuthoringDocumentSummary, AuthoringQuery, DocumentListFilter, DocumentQueryRepository,
+    DocumentQueryService, FolderPageQuery, FolderSummary, HistoryDocumentSummary, HistoryQuery,
+    Page, PublishedDocumentSummary, PublishedQuery,
+};
 pub use error::{ApplicationError, InspectionExecutionError, RepositoryError, StorageError};
 pub use events::{
     AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_PUBLICATION_ENDED, AUDIT_DOCUMENT_VERSION_CREATED,
@@ -43,6 +58,9 @@ pub use events::{
     DOCUMENT_VERSION_PUBLICATION_CANCELLED, DOCUMENT_VERSION_PUBLICATION_SCHEDULED,
     DOCUMENT_VERSION_PUBLISHED, DOCUMENT_VERSION_REBASED, DOCUMENT_VERSION_UPDATED,
     DOCUMENT_VERSION_WITHDRAWN, DomainEventRecord,
+};
+pub use file_access::{
+    AuditedFileGrant, OpenedVersionFile, VersionFileAccessRepository, VersionFileAccessService,
 };
 pub use folder_service::FolderService;
 pub use management_command::{
@@ -67,6 +85,11 @@ pub use publication_end::{
     EndPublicationCandidate, EndPublicationOperationRecord, EndPublicationRecord,
     PublicationEndOperationId,
 };
+pub use query_cursor::{
+    CursorBinding, CursorPosition, DocumentSort, QueryKind, decode_cursor, encode_cursor,
+    fingerprint_json, principal_fingerprint, validate_page_size,
+};
+pub use read_state::{MarkVersionRead, ReadStateRepository, ReadStateResult, ReadStateService};
 pub use reconciliation::{ReconciliationClassification, ReconciliationFinding, classify};
 pub use schedule::{
     CancelOperationRecord, CancelScheduleCommand, CancelScheduleRecord, CancelScheduleResult,

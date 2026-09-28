@@ -35,6 +35,14 @@ pub enum RepositoryError {
     DocumentNotFound,
     #[error("document version not found")]
     DocumentVersionNotFound,
+    #[error("file object not found")]
+    FileObjectNotFound,
+    #[error("target version is no longer the current published version")]
+    StaleVersion,
+    #[error("query cursor no longer matches the current access or query context")]
+    CursorStale,
+    #[error("invalid query cursor")]
+    InvalidCursor,
     #[error("repository conflict")]
     Conflict,
     #[error("business rule rejected operation")]
@@ -91,6 +99,10 @@ pub enum ApplicationError {
     DocumentNotFound,
     #[error("document version not found")]
     DocumentVersionNotFound,
+    #[error("target version is no longer the current published version")]
+    StaleVersion,
+    #[error("query cursor no longer matches the current access or query context")]
+    CursorStale,
     #[error("file object not found")]
     FileObjectNotFound,
     #[error("operation conflicts with current authoritative state")]
@@ -148,6 +160,15 @@ pub enum ApplicationError {
     },
     #[error("management commit outcome is unknown; retry the same operation id")]
     ManagementCommitOutcomeUnknown { operation_id: ManagementOperationId },
+    #[error("read confirmation commit outcome is unknown; retry the same version")]
+    ReadStateCommitOutcomeUnknown {
+        document_version_id: DocumentVersionId,
+    },
+    #[error("file access audit commit outcome is unknown; content was not opened")]
+    FileAccessAuditCommitOutcomeUnknown {
+        document_id: DocumentId,
+        document_version_id: DocumentVersionId,
+    },
     #[error("internal failure: {0}")]
     Internal(String),
 }
@@ -178,6 +199,10 @@ impl From<RepositoryError> for ApplicationError {
             RepositoryError::FolderNotFound => Self::FolderNotFound,
             RepositoryError::DocumentNotFound => Self::DocumentNotFound,
             RepositoryError::DocumentVersionNotFound => Self::DocumentVersionNotFound,
+            RepositoryError::FileObjectNotFound => Self::FileObjectNotFound,
+            RepositoryError::StaleVersion => Self::StaleVersion,
+            RepositoryError::CursorStale => Self::CursorStale,
+            RepositoryError::InvalidCursor => Self::Validation("invalid query cursor".into()),
             RepositoryError::Conflict => Self::Conflict,
             RepositoryError::BusinessRule => Self::BusinessRule,
             RepositoryError::Unavailable => Self::RepositoryUnavailable,
