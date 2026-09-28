@@ -1,5 +1,17 @@
 # Document Management Basics v0 — 準備状況
 
+## Active checkpoint — PR B MB-05〜07 local GREEN、2026-09-28 JST
+
+- 状態: **IMPLEMENTATION ACTIVE — PR A exact-head GREEN、PR B local GREEN / hosted gate待ち**。MB-08〜11とDMB-01〜25の全体受入は未完了。承認済み設計/計画blobは `38010802a04c285336810e9b9c637c656ed1a76b` / `3b5cc84a8593134cdd7e01ea026bd2a124fa9585` のまま。
+- PR A #16 head `e66fba6f56fec8e7666d8b1df667625e64ef2049` のexact-head標準CI `36382662702`、Sandbox `36382662689`、PoC `36382662759` は全てSUCCESS。OPEN/Draft、未マージ。PR B branch `feat/document-management-basics-v0-b` のMB-07 code headは `ca344d3f6ab662708a62d4804f0b0ded9ff51f2b`。Bは未push/PR未作成。
+- MB-07 REDは `DocumentManagementService::move_document` と `FolderService::move_folder` 不在のみ。GREENではaccess排他guard、Folder ID順→Document ID順のlock、最新の旧/新親・Document権限、OCC、予約制限、cycle拒否、subtree全件の前後policy比較と旧policy administer再確認、access_revision、管理台帳とDomain/Audit outboxを原子commit。文書Version/原本/文書revisionの不要変更をしない。T10後はread_historyを追加要求してcurrent nullを保持。
+- 実DB局所回帰: T5 9/9、Folder 7/7、Move 9/9、T8 6/6、Domain Folder 2/2 PASS。移動試験は元不一致、no-op、PENDING、T10、相互移動cycle、明示Document/子Folder policy維持、影響件数、移動後の再実行開示拒否、監査失敗rollbackを含む。対象crate strict Clippy、fmt、diff check PASS。新production dependencyなし。大きいsubtreeは15秒statement timeoutで全体rollback。Bの全workspace/exact-head CIは未実行。
+- Planの「影響する子1件だけadminister不足」は、allow-onlyの最近傍policy置換では実効policyが変わる継承子は移動Folderと同じ旧policyを使うため、通常の有効状態として構成できない。実装は全影響対象の旧policy administerを個別に再確認し、明示policyで影響しない子を除外する実DB試験を固定した。設計意味の変更はない。
+- 配備前提: 本番identity resolver接続は未提供で、schedulerは未接続起動を拒否。依頼者選択によりCedar／AWS Verified Permissionsは次期設計で検討。今回のFrozen Designを変更しない。merge・deploy・本番migrationの指示なし。
+- 次の exact action: このcheckpointをBにcommit/pushし、PR A baseのDraft PR Bを作る。Bのexact-head標準CI/Sandbox/PoCを一度確認する。成功後、Bを未マージのままPR C branchへ進み、MB-08の実DB REDから続ける。
+
+以下は前回checkpointの履歴である。
+
 ## Active checkpoint — PR A exact-head GREEN、PR B MB-05/06 local GREEN、2026-09-28 JST
 
 - 状態: **IMPLEMENTATION ACTIVE**。MB-01〜04はPR Aのexact-head CI完了、MB-05/06はPR Bでlocal GREEN。MB-07〜11およびDMB-01〜25の全体受入は未完了。設計/計画承認blobは従来どおり `38010802a04c285336810e9b9c637c656ed1a76b` / `3b5cc84a8593134cdd7e01ea026bd2a124fa9585`。
