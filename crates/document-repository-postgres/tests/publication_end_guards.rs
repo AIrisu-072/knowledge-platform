@@ -257,10 +257,16 @@ async fn due_publish_and_end_race_never_resurrects_an_ended_document() {
     );
     let due = due.unwrap();
     match ended {
-        Ok(_) => assert!(matches!(
-            due,
-            DueExecutionOutcome::Inactive | DueExecutionOutcome::Terminal(_)
-        )),
+        // A worker can read PENDING before T10, then observe the terminal row in is_due.
+        Ok(_) => assert!(
+            matches!(
+                due,
+                DueExecutionOutcome::Inactive
+                    | DueExecutionOutcome::NotDue
+                    | DueExecutionOutcome::Terminal(_)
+            ),
+            "due outcome after successful end: {due:?}"
+        ),
         Err(ApplicationError::Conflict) => {
             assert!(matches!(due, DueExecutionOutcome::Published(_)));
             end_service(&f)
