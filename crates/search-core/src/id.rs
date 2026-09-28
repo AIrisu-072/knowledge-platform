@@ -39,3 +39,4 @@ typed_id!(AssertionId);
 typed_id!(ProjectionGenerationId);
 typed_id!(PredicateId);
 typed_id!(FactId);
+typed_id!(CandidateId);
