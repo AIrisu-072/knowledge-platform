@@ -1015,3 +1015,58 @@ G10 将来のbackup / replication / HA要件へ移行可能、または現実的
 8. DB選定
 
 DB製品名を先に固定せず、**本書のtransaction・consistency要件を満たすかを基準として比較する。**
+
+
+---
+
+# Search / Discovery Platform v0 consistency amendment
+
+## SD-T1: Source observation and projection publication
+
+Source正本の更新とSearch Projection更新を分散transactionで結合しない。
+Document Platform等のtransactional Sourceでは既存Transactional Outbox等からSearch配送可能にする。
+Remote SourceはSource capabilityに応じたObservationとして扱う。
+
+Projection更新は以下を満たす。
+
+1. Generation Nを利用中にGeneration N+1を別領域へbuildできる。
+2. N+1はvalidation完了前にcurrentとして公開しない。
+3. publishはatomicなgeneration pointer切替として扱える。
+4. failed generationはcurrent generationを壊さない。
+5. 同じSource snapshot / projection versionsからfull rebuildとincremental rebuildが論理的に同じ結果になることを検証可能にする。
+
+## SD-T2: Discovery evaluation snapshot
+
+1 Discovery evaluation内では `evaluated_at` と利用Projection generation / Observation snapshotを固定してtrace可能にする。
+探索途中のindex切替で既存candidate semanticsを暗黙に変更しない。
+必要なら新しいevaluationとして再探索する。
+
+## SD-T3: Session working state
+
+SESSION_ONLY / NO_RETENTION由来のWorking Index / GraphはPersistent Projectionと分離する。
+Retention期限・Session終了時に破棄可能であること。
+Persistent Sourceへの暗黙昇格を禁止する。
+
+## SD-T4: Binding stability
+
+Discoveryはdynamicだが、Session BindingしたLogicalResource / Representation / Version / digestを新Generationで暗黙置換しない。
+Rebindは新しいDiscovery / qualification / binding revisionとして記録する。
+Current authorization、availability、policy、temporal applicabilityは実行時に再評価する。
+
+## SD-T5: Evidence / qualification state
+
+Applicability、Evidence Sufficiency、InformationGap等のDiscovery実行状態はSource正本ではない。
+再計算可能であり、Projection / Observation / Rule versionをtraceできること。
+Missing factをFALSEへtransactionally固定しない。
+
+## SD-T6: HyperGraph projection
+
+TypedRelationInstanceをCanonical relation semanticsとする。
+Graph projection更新でparticipant role / provenance / authority / evidence referenceを失わない。
+Relation更新時に影響segmentだけをincremental rebuild可能にしてよいが、full rebuildと論理等価であること。
+
+## SD-T7: Remote outcome semantics
+
+REMOTE_QUERY / QUERY_ONLY Sourceで検索結果に存在しないことをResource deletionとしてcommitしない。
+COMPLETE_ENUMERATIONやauthoritative DIRECT_LOOKUP等、Source contractがabsence evidenceを提供する場合のみCurrentDiscoveryStateへ反映する。
+Source outageはResource単位の大量delete/updateとして表現しない。
