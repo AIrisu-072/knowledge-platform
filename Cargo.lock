@@ -3415,6 +3415,12 @@ dependencies = [
 [[package]]
 name = "search-core"
 version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "time",
+ "uuid",
+]
 
 [[package]]
 name = "sec1"
