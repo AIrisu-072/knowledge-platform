@@ -203,7 +203,40 @@ Commit message: `test: measure hypergraph backend candidates`
 
 ---
 
-### Task B5: Selection report and gate
+### Task B5: Rank fusion baseline
+
+**Files:**
+- Create: `experiments/search-discovery-poc/src/fusion.rs`
+- Create: `experiments/search-discovery-poc/tests/fusion.rs`
+
+**Interfaces:**
+- input is per-retriever ordered candidate lists; raw backend scores are retained only as trace metadata.
+- compare a thin Reciprocal Rank Fusion baseline with deterministic no-fusion/priority baselines.
+- report ranking quality and overhead; do not treat graph hard relations or hard applicability as soft fusion scores.
+
+- [ ] **Step 1: RED heterogeneous-score fixture**
+
+Create lexical/vector-like/graph candidate fixtures whose raw score scales are intentionally incompatible. Assert no implementation adds raw scores across retrievers.
+
+- [ ] **Step 2: Implement rank-only RRF reference**
+
+Use a configurable constant in the PoC report; do not freeze the production value yet.
+
+- [ ] **Step 3: Measure**
+
+Record MRR/nDCG on the synthetic retrieval fixtures plus fusion latency/allocations where practical.
+
+- [ ] **Step 4: Decide production strategy**
+
+Record whether thin internal RRF is qualified as the initial strategy or whether fusion remains deferred. Hard eligibility remains outside fusion.
+
+- [ ] **Step 5: Commit**
+
+Commit message: `test: qualify rank fusion baseline`
+
+---
+
+### Task B6: Selection report and gate
 
 **Files:**
 - Create: `docs/superpowers/execution/search-discovery-platform-v0-poc-report.md`
