@@ -52,7 +52,31 @@
 
 ---
 
-### Task D2: PostgreSQL read-side snapshot adapter
+### Task D2: Document current-access check use case
+
+**Files:**
+- Modify: `crates/document-application/src/document_query.rs`
+- Modify: `crates/document-application/src/lib.rs`
+- Modify: `crates/document-repository-postgres/src/access_control.rs`
+- Modify: `crates/document-repository-postgres/src/lib.rs`
+- Test: `crates/document-repository-postgres/tests/document_access_check.rs`
+
+**Interfaces:**
+- `DocumentAccessCheckRepository::check_document_access(&self, ctx: &VerifiedActorContext, document_id: DocumentId, required: &[document_domain::Action]) -> Result<(), RepositoryError>`
+- `DocumentAccessCheckService<R>::check(&self, ctx: &VerifiedActorContext, document_id: DocumentId, required: &[document_domain::Action]) -> Result<(), ApplicationError>`
+- PostgreSQL implementation delegates to the existing `authorize_document_snapshot` semantics rather than duplicating ACL evaluation.
+- Search adapters map both forbidden/not-visible outcomes to non-visible candidate state unless a higher-level contract explicitly allows disclosure.
+
+- [ ] RED: authorized Read passes; revoked Read fails immediately against current access state.
+- [ ] RED: history-only permission does not imply current Read and vice versa.
+- [ ] RED: expired `VerifiedActorContext` is rejected before repository check.
+- [ ] Implement the read-only application service and PostgreSQL adapter using existing access-control helpers.
+- [ ] Run existing Document access/query regressions plus focused GREEN.
+- [ ] Commit `feat: expose current document access check`.
+
+---
+
+### Task D3: PostgreSQL read-side snapshot adapter
 
 **Files:**
 - Create: `crates/search-source-document/src/postgres.rs`
@@ -63,6 +87,7 @@
 - `DocumentSnapshotReader::load_document_version(...)`
 - `DocumentSnapshotReader::enumerate_live(...)`
 - `DocumentSnapshotReader::enumerate_historical(...)`
+- `DocumentCurrentAccessAdapter` implements `CurrentAccessEvaluatorPort` by delegating to `DocumentAccessCheckService`.
 - read-side queries may use Document schema but must not mutate it.
 
 - [ ] RED against disposable PostgreSQL fixture using existing migrations.
@@ -73,7 +98,7 @@
 
 ---
 
-### Task D3: Outbox-triggered idempotent indexing service
+### Task D4: Outbox-triggered idempotent indexing service
 
 **Files:**
 - Create: `crates/search-source-document/src/outbox.rs`
@@ -93,7 +118,7 @@
 
 ---
 
-### Task D4: Document-derived HyperEdge relations
+### Task D5: Document-derived HyperEdge relations
 
 **Files:**
 - Create: `crates/search-source-document/src/relations.rs`
@@ -111,7 +136,7 @@
 
 ---
 
-### Task D5: Access and generation race tests
+### Task D6: Access and generation race tests
 
 **Files:**
 - Create: `crates/search-source-document/tests/access_visibility.rs`
@@ -125,7 +150,7 @@
 
 ---
 
-### Task D6: Evaluation harness
+### Task D7: Evaluation harness
 
 **Files:**
 - Create: `crates/search-evaluation/Cargo.toml`
@@ -149,7 +174,7 @@
 
 ---
 
-### Task D7: Final vertical slice
+### Task D8: Final vertical slice
 
 **Files:**
 - Create: `crates/search-source-document/tests/vertical_slice.rs`
@@ -172,7 +197,7 @@ Scenario:
 
 ---
 
-### Task D8: Final qualification / acceptance
+### Task D9: Final qualification / acceptance
 
 **Files:**
 - Create: `docs/superpowers/execution/search-discovery-platform-v0-acceptance.md`
