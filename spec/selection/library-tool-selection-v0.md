@@ -554,13 +554,14 @@ Design Tokens
 |---|---|---|---|---|
 | Lexical index/search | Tantivy 0.26.x | **SELECTED** | MIT | in-process BM25/search |
 | Japanese tokenizer | Lindera + lindera-tantivy | **POC REQUIRED** | MIT | Japanese corpus評価 |
-| Vector retrieval | - | **DEFERRED** | - | evaluation後 |
+| Vector retrieval | - | **DEFERRED / POC AFTER BASELINE** | - | Resource/Need type別に必要性を評価。ANN missはabsence evidenceにしない |
 | Embedding model/runtime | - | **DEFERRED** | - | evaluation後 |
-| Reranker | - | **DEFERRED** | - | candidate recall評価後 |
-| Graph retrieval | - | **DEFERRED** | - | concrete use case後 |
-| Fusion | library/custom thin algorithm | **DEFERRED** | - | retrieval evaluationで決定 |
+| Reranker | - | **DEFERRED** | - | candidate recall / qualification後の小候補集合で評価 |
+| Graph retrieval contract | Typed HyperEdge / n-ary relation | **REQUIRED** | project contract | Search / Discovery v0のfirst-class projection/retriever contract |
+| Graph backend | PostgreSQL / Rust adjacency / dedicated graph DB 等 | **POC REQUIRED** | varies | backend製品はbenchmark後に選定 |
+| Fusion | rank-based strategy候補（RRF等） | **DEFERRED / POC REQUIRED** | varies | raw score直接加算を避け、retrieval evaluationで決定 |
 
-Searchの初期PoCはまずlexical retrievalを基準線とし、vector等を先に必須化しない。
+Search / Discovery v0の初期実装はlexical / structuredを基準線としつつ、Graph contractは最初から保持する。Vector / Reranker / dedicated Graph backendを先に必須化しない。
 
 ---
 
@@ -1223,3 +1224,28 @@ Task 1 acceptance evidence:
 - cargo-deny advisories / bans / licenses / sources: PASS with no policy exception.
 
 Production support is Linux-first. macOS remains a semantic/parser portability target and is not selected as the v0 production sandbox substrate.
+
+
+## 13.2 Search / Discovery v0 backend selection boundary
+
+承認済みSearch / Discovery Platform v0では以下をDomain Contractとして先に固定する。
+
+- DiscoverableSource / typed DiscoverableResource
+- Assertion / Authority / Logical Identity
+- DiscoveryLens / Projection generation
+- Typed Predicate IR
+- Typed N-ary Relation / HyperEdge
+- GraphTraversalPlan / HyperGraphRetriever trait boundary
+- Evidence Requirement / Sufficiency
+- Session Binding
+
+以下はPoC evidenceなしにproductionへpromoteしない。
+
+- Japanese tokenizer
+- Vector engine / ANN
+- Embedding runtime/model
+- dedicated Graph backend
+- Reranker
+- Fusion implementation/library
+
+Graph backendをDEFERREDとすることはGraph semantics / Graph retrieval contractをDEFERREDにする意味ではない。
