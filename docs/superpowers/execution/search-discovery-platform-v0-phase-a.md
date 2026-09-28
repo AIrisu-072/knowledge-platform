@@ -20,6 +20,7 @@
 | A7 | `763f486` | Provider-neutral application ports and stable Binding |
 | Review fixes | `d82e397` | Fact provenance, independent origin, n-ary pattern, identity, decimal and freshness boundaries |
 | CI tool configuration | `6e243d7` | Pinned OSV Scanner SLSA signer and issuer in mise configuration |
+| Dependency policy correction | `9320aa5` | Private Search crates and versioned internal path dependency |
 
 ## Local verification
 
@@ -29,9 +30,10 @@
 - A read-only independent review found six contract edge cases. RED tests reproduced all six; the review-fix commit made the focused tests green. The reviewer did not run tests or approve hosted gates.
 - `mise run verify:fast` passed `fmt`, workspace `cargo check --locked`, workspace strict Clippy, architecture check and OpenAPI lint. Its `test:rust` step stopped at link time with `No space left on device` (`errno=28`) for `document-semantic-inspection-worker` tests. This is a **local capacity blocker**, not a passing fast gate or a Search test failure. The run used `CARGO_PROFILE_TEST_DEBUG=0`, `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_INCREMENTAL=0`, and `CARGO_BUILD_JOBS=2`; peak current-worktree `target` was 4.3 GiB and remaining disk reached 133 MiB. The build artifacts in this worktree were cleaned after preserving the diagnostic result.
 - The OSV Scanner signer configuration passed a local forced `mise install` with checksum and SLSA verification. Hosted security remains to be verified for the exact PR head.
+- The first hosted security job on PR #21 head `d3e8fc8` passed tool installation but failed `cargo-deny`: the two new Search crates lacked `publish = false`, and `search-application` had an unversioned internal path dependency. `mise run security:deps` reproduced these three findings locally, then passed after `9320aa5`. The updated PR head still needs its own hosted gates.
 
 ## Deferred decisions and next gate
 
 The concrete graph backend, Japanese tokenizer, vector/embedding, reranker and fusion choices remain deferred to Phase B PoC and Selection Gate S1. DSI is not represented as full document-body Search Extraction. Search does not own Document access policy or generic outbox delivery.
 
-Next exact action: push the Phase A branch, create a stacked **Draft** PR against `design/search-discovery-platform-v0`, and inspect CI, DSI Sandbox and DSI PoC on the exact PR head. Phase B B1 RED starts only after the Phase A gate is qualified. Do not merge either PR.
+Next exact action: push the manifest correction to stacked [Draft PR #21](https://github.com/AIrisu-072/knowledge-platform/pull/21), then inspect CI, DSI Sandbox and DSI PoC on the new exact PR head. Phase B B1 RED starts only after the Phase A gate is qualified. Do not merge either PR.

@@ -1,5 +1,16 @@
 # Search / Discovery Platform v0 — Execution Status
 
+## Current checkpoint — Phase A Draft PR #21, dependency policy correction, 2026-09-29 JST
+
+- Status: **PHASE A A8 HOSTED GATE PENDING**. Branch `feat/search-discovery-platform-v0-a` is stacked as [Draft PR #21](https://github.com/AIrisu-072/knowledge-platform/pull/21) against planning branch `design/search-discovery-platform-v0` (Draft PR #20). Latest code head before this status update: `9320aa5beaf1f51f196cc1919a347e8a56e1b97e`; the status commit advances HEAD, so recheck the remote and PR exact SHA.
+- First PR head `d3e8fc8c2cb8f98b8e8b070e5cf78abc8608b730`: CI run `36453599524`, DSI PoC `36453599598`, DSI Sandbox `36453599380`. DSI Sandbox passed; CI security failed in `cargo-deny` on three Search manifest fields after OSV Scanner installation succeeded. Other jobs on that head were still running at inspection and cannot qualify a new head.
+- `mise run security:deps` reproduced unlicensed `search-core`/`search-application` and wildcard internal path dependency. Commit `9320aa5` adds `publish = false` to both crates and `version = "0.0.0"` to the Search path dependency, matching existing private crates. The same local gate then passed; `cargo metadata --locked --no-deps` and `git diff --check` passed.
+- A1–A7 Search implementation and independent review fixes are in the Phase A evidence record. Final Search suite 58/58, focused strict Clippy/fmt/arch passed. Local `verify:fast` remains incomplete due to disk capacity in Document Semantic Inspection test linking (`errno=28`). No Design Freeze difference and no backend choice promoted.
+- Managed A1/A2 reads remain inspect-before-resume. Do not replay, take over `active.md`, or merge.
+- Next exact action: commit this checkpoint, push the branch, verify `git ls-remote` / PR `headRefOid`, then inspect CI, DSI PoC and DSI Sandbox for that **new exact head**. Start Phase B B1 RED only after Phase A hosted gates are qualified.
+
+---
+
 ## Current checkpoint — Phase A code A1–A7 committed, A8 hosted gate pending, 2026-09-29 JST
 
 - Status: **PRODUCTION PLAN APPROVED / PHASE A A8 GATE PENDING**. Approved planning base `252245f5bbf63958739d2f9b6d82cf39d4ec94f6`; branch `feat/search-discovery-platform-v0-a`. Latest code commit before this checkpoint: `d82e397cc8f3f56910e552cd500f740cbca9280c`. The status commit will advance HEAD; check the live branch and PR exact head.
