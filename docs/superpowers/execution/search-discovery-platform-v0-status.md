@@ -1,5 +1,14 @@
 # Search / Discovery Platform v0 — Execution Status
 
+## Current checkpoint — Phase A complete, Phase B B1 committed, B2 RED next, 2026-09-29 JST
+
+- Phase A final head `02e869cc306f21430fcf9f2cf5c517dfcf9839fd` matched remote branch, PR #21 `headRefOid`, and source-worktree HEAD. Exact-head [CI `36456140293`](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36456140293), [DSI Sandbox `36456140493`](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36456140493), and [DSI PoC `36456140520`](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36456140520) all completed **SUCCESS**, including CI `required-check`. A8 is complete. [PR #21](https://github.com/AIrisu-072/knowledge-platform/pull/21) remains OPEN/Draft and unmerged, stacked on planning PR #20.
+- Phase B branch `feat/search-discovery-platform-v0-b` starts at that exact Phase A head in the same clean managed worktree. No Phase B PR yet. B1 commit `f0afe8d43abd2aa3cf72db071028eb96691ccd29` adds isolated `experiments/search-discovery-poc` harness, deterministic JSON report schema and mise gates. RED failed on absent CLI/report API; GREEN `mise run poc:search:verify` passed, including 2/2 harness tests and cargo-deny. Isolated strict Clippy and fmt passed. Report gate fields remain `pending` until candidates are measured; B1 is not backend qualification.
+- Managed B1 read-only run `search-v0-b1-inspect-20260929` stopped with an uncertain tool operation and is `inspect-before-resume`. No report file or repository edits appeared. Do not replay it automatically. The user-authorized inline `executing-plans` path completed B1.
+- Current Task: B2 Japanese lexical baseline. Exact next action: add synthetic/public Japanese resources and queries covering the approved terms, then write the B2 RED retrieval tests before implementing Tantivy baseline and Lindera candidate comparison. The current `lindera-tantivy` 4.0.0 release declares Tantivy `^0.25.0`, while the approved baseline is Tantivy 0.26.x; treat integration compatibility as a PoC finding, not a production selection. No Design Freeze difference, no PoC dependency in production crates, no merge or `active.md` takeover.
+
+---
+
 ## Current checkpoint — Phase A A8 qualification receipt, 2026-09-29 JST
 
 - Branch `feat/search-discovery-platform-v0-a`, stacked [Draft PR #21](https://github.com/AIrisu-072/knowledge-platform/pull/21), base `design/search-discovery-platform-v0@252245f5bbf63958739d2f9b6d82cf39d4ec94f6` (Draft PR #20). Pre-receipt code/evidence head `d3b93ea7aff229d08e5360fb4ca956889ccb84e7` matched `git ls-remote`, PR `headRefOid` and source-worktree HEAD.
