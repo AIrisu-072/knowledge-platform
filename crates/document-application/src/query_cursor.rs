@@ -15,6 +15,8 @@ pub enum QueryKind {
     Authoring,
     History,
     Folders,
+    Versions,
+    DocumentHistory,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

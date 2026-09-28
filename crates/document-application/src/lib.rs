@@ -6,10 +6,12 @@ mod access_context;
 mod access_policy_service;
 mod authorized_document;
 mod command;
+mod document_history;
 mod document_management;
 mod document_query;
 mod error;
 mod events;
+mod file_access;
 mod folder_service;
 mod management_command;
 mod management_digest;
@@ -35,6 +37,11 @@ pub use command::{
     CreateDocumentCommand, CreateDocumentResult, PublishDocumentCommand, PublishDocumentResult,
     PublishOperationId,
 };
+pub use document_history::{
+    DocumentHistoryEntry, DocumentHistoryRepository, DocumentHistoryService, HistoryPageQuery,
+    ProvenanceQuality, VersionDetail, VersionFileRequest, VersionFileSummary, VersionPageQuery,
+    VersionPurpose, VersionRequest, VersionSummary,
+};
 pub use document_management::DocumentManagementService;
 pub use document_query::{
     AuthoringDocumentSummary, AuthoringQuery, DocumentListFilter, DocumentQueryRepository,
@@ -51,6 +58,9 @@ pub use events::{
     DOCUMENT_VERSION_PUBLICATION_CANCELLED, DOCUMENT_VERSION_PUBLICATION_SCHEDULED,
     DOCUMENT_VERSION_PUBLISHED, DOCUMENT_VERSION_REBASED, DOCUMENT_VERSION_UPDATED,
     DOCUMENT_VERSION_WITHDRAWN, DomainEventRecord,
+};
+pub use file_access::{
+    AuditedFileGrant, OpenedVersionFile, VersionFileAccessRepository, VersionFileAccessService,
 };
 pub use folder_service::FolderService;
 pub use management_command::{

@@ -9,6 +9,15 @@ CREATE TABLE document_read_states (
 CREATE INDEX ix_document_read_states_version
     ON document_read_states(document_version_id);
 
+ALTER TABLE document_publish_schedules
+    ADD COLUMN terminal_at TIMESTAMPTZ NULL,
+    ADD COLUMN terminal_executor_identity_provider TEXT NULL,
+    ADD COLUMN terminal_executor_principal_id TEXT NULL,
+    ADD CONSTRAINT ck_document_publish_schedule_terminal_executor_pair CHECK (
+        (terminal_executor_identity_provider IS NULL)
+        = (terminal_executor_principal_id IS NULL)
+    );
+
 -- Folder names are visible only when the same nearest-policy evaluator grants Read.
 CREATE FUNCTION dmb_allows_folder(
     target_folder_id UUID,

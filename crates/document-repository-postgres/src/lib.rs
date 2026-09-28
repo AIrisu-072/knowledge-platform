@@ -5,9 +5,11 @@
 mod access_control;
 mod access_policy;
 mod authorized_repository;
+mod document_history;
 mod document_management;
 mod document_query;
 mod error;
+mod file_access;
 mod folder_management;
 mod folder_preflight;
 mod mapping;

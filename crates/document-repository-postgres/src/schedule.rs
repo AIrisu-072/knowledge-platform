@@ -566,8 +566,11 @@ async fn terminalize(pool: &PgPool, record: DueTerminalRecord) -> Result<(), Rep
         if row.get::<time::OffsetDateTime, _>("scheduled_publish_at") > now { return Err(RepositoryError::BusinessRule); }
         let target_id: Uuid = row.get("target_document_version_id");
         let next = revision.checked_add(1).ok_or(RepositoryError::IntegrityViolation)?;
-        sqlx::query("UPDATE document_publish_schedules SET status = 'TERMINAL', terminal_reason = $1, last_attempt_at = $2, next_retry_at = NULL, attempt_count = attempt_count + 1 WHERE publish_operation_id = $3")
-            .bind(&record.reason).bind(now).bind(record.publish_operation_id.as_uuid())
+        sqlx::query("UPDATE document_publish_schedules SET status = 'TERMINAL', terminal_reason = $1, last_attempt_at = $2, next_retry_at = NULL, attempt_count = attempt_count + 1, terminal_at = $2, terminal_executor_identity_provider = $3, terminal_executor_principal_id = $4 WHERE publish_operation_id = $5")
+            .bind(&record.reason).bind(now)
+            .bind(record.service_executor.as_ref().map(|actor| actor.identity_provider()))
+            .bind(record.service_executor.as_ref().map(|actor| actor.principal_id()))
+            .bind(record.publish_operation_id.as_uuid())
             .execute(&mut *tx).await.map_err(map_statement_error)?;
         sqlx::query("UPDATE document_versions SET scheduled_publish_at = NULL WHERE document_version_id = $1")
             .bind(target_id).execute(&mut *tx).await.map_err(map_statement_error)?;

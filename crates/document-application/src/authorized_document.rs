@@ -15,6 +15,67 @@ use crate::{
     WithdrawVersionResult,
 };
 
+impl<I, C, F, E, R> AuthorizedDocumentService<I, C, F, E, R>
+where
+    F: FileStorage,
+    R: crate::VersionFileAccessRepository,
+{
+    pub async fn open_version_file(
+        &self,
+        ctx: &VerifiedActorContext,
+        request: crate::VersionFileRequest,
+    ) -> Result<crate::OpenedVersionFile, ApplicationError> {
+        crate::VersionFileAccessService::new(self.repository.clone(), self.storage.clone())
+            .open_version_file(ctx, request)
+            .await
+    }
+}
+
+impl<I, C, F, E, R> AuthorizedDocumentService<I, C, F, E, R>
+where
+    R: crate::DocumentHistoryRepository,
+{
+    pub async fn list_document_versions(
+        &self,
+        ctx: &VerifiedActorContext,
+        query: crate::VersionPageQuery,
+    ) -> Result<crate::Page<crate::VersionSummary>, ApplicationError> {
+        crate::DocumentHistoryService::new(self.repository.clone())
+            .list_document_versions(ctx, query)
+            .await
+    }
+
+    pub async fn list_document_history(
+        &self,
+        ctx: &VerifiedActorContext,
+        query: crate::HistoryPageQuery,
+    ) -> Result<crate::Page<crate::DocumentHistoryEntry>, ApplicationError> {
+        crate::DocumentHistoryService::new(self.repository.clone())
+            .list_document_history(ctx, query)
+            .await
+    }
+
+    pub async fn get_document_version(
+        &self,
+        ctx: &VerifiedActorContext,
+        request: crate::VersionRequest,
+    ) -> Result<crate::VersionDetail, ApplicationError> {
+        crate::DocumentHistoryService::new(self.repository.clone())
+            .get_document_version(ctx, request)
+            .await
+    }
+
+    pub async fn list_version_files(
+        &self,
+        ctx: &VerifiedActorContext,
+        request: crate::VersionRequest,
+    ) -> Result<Vec<crate::VersionFileSummary>, ApplicationError> {
+        crate::DocumentHistoryService::new(self.repository.clone())
+            .list_version_files(ctx, request)
+            .await
+    }
+}
+
 /// Binds one verified actor to a repository instance without mutating a shared
 /// repository. The scoped adapter must reauthorize inside every commit transaction.
 pub trait AuthorizationScope: Send + Sync + Sized {

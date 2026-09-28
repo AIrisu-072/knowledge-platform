@@ -35,6 +35,8 @@ pub enum RepositoryError {
     DocumentNotFound,
     #[error("document version not found")]
     DocumentVersionNotFound,
+    #[error("file object not found")]
+    FileObjectNotFound,
     #[error("target version is no longer the current published version")]
     StaleVersion,
     #[error("query cursor no longer matches the current access or query context")]
@@ -162,6 +164,11 @@ pub enum ApplicationError {
     ReadStateCommitOutcomeUnknown {
         document_version_id: DocumentVersionId,
     },
+    #[error("file access audit commit outcome is unknown; content was not opened")]
+    FileAccessAuditCommitOutcomeUnknown {
+        document_id: DocumentId,
+        document_version_id: DocumentVersionId,
+    },
     #[error("internal failure: {0}")]
     Internal(String),
 }
@@ -192,6 +199,7 @@ impl From<RepositoryError> for ApplicationError {
             RepositoryError::FolderNotFound => Self::FolderNotFound,
             RepositoryError::DocumentNotFound => Self::DocumentNotFound,
             RepositoryError::DocumentVersionNotFound => Self::DocumentVersionNotFound,
+            RepositoryError::FileObjectNotFound => Self::FileObjectNotFound,
             RepositoryError::StaleVersion => Self::StaleVersion,
             RepositoryError::CursorStale => Self::CursorStale,
             RepositoryError::InvalidCursor => Self::Validation("invalid query cursor".into()),

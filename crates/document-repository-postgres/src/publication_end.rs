@@ -277,11 +277,14 @@ async fn end_publication(
             .map_err(map_statement_error)?;
         let invalidated: Vec<Uuid> = sqlx::query_scalar(
             "UPDATE document_publish_schedules \
-             SET status = 'TERMINAL', terminal_reason = 'document_publication_ended', next_retry_at = NULL \
+             SET status = 'TERMINAL', terminal_reason = 'document_publication_ended', next_retry_at = NULL, terminal_at = $2, terminal_executor_identity_provider = $3, terminal_executor_principal_id = $4 \
              WHERE document_id = $1 AND status = 'PENDING' \
              RETURNING target_document_version_id",
         )
         .bind(command.document_id().as_uuid())
+        .bind(record.ended_at())
+        .bind(command.actor().identity_provider())
+        .bind(command.actor().principal_id())
         .fetch_all(&mut *tx)
         .await
         .map_err(map_statement_error)?;

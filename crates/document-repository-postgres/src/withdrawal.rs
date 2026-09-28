@@ -151,12 +151,15 @@ pub(crate) async fn withdraw(
             .bind(resulting_current).bind(next_revision).bind(command.document_id().as_uuid())
             .execute(&mut *tx).await.map_err(map_statement_error)?;
         let invalidated: Vec<Uuid> = sqlx::query_scalar(
-            "UPDATE document_publish_schedules SET status = 'TERMINAL', terminal_reason = 'withdrawal invalidated intent' \
+            "UPDATE document_publish_schedules SET status = 'TERMINAL', terminal_reason = 'withdrawal invalidated intent', terminal_at = $3, terminal_executor_identity_provider = $4, terminal_executor_principal_id = $5 \
              WHERE document_id = $1 AND status = 'PENDING' \
                AND (target_document_version_id = $2 OR current_version_id = $2 OR base_document_version_id = $2) \
              RETURNING target_document_version_id",
         )
         .bind(command.document_id().as_uuid()).bind(command.target_version_id().as_uuid())
+        .bind(record.withdrawn_at)
+        .bind(command.actor().identity_provider())
+        .bind(command.actor().principal_id())
         .fetch_all(&mut *tx).await.map_err(map_statement_error)?;
         for version_id in &invalidated {
             sqlx::query("UPDATE document_versions SET scheduled_publish_at = NULL WHERE document_version_id = $1")
