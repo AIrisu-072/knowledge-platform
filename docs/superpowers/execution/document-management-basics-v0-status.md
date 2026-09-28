@@ -1,5 +1,17 @@
 # Document Management Basics v0 — 準備状況
 
+## Active checkpoint — PR C exact-head GREEN、PR D MB-11 local verification complete、2026-09-28 JST
+
+- 状態: **IMPLEMENTATION ACTIVE — PR Dのhosted gate待ち**。承認済み設計/計画blobは `38010802a04c285336810e9b9c637c656ed1a76b` / `3b5cc84a8593134cdd7e01ea026bd2a124fa9585` のまま。設計意味の変更提案なし。
+- PR A #16 `e66fba6f56fec8e7666d8b1df667625e64ef2049`、PR B #17 `448d918ee3e1690695b8e02da4102d0f90e28664` は各exact-head標準CI/Sandbox/PoCがSUCCESS（run IDは前checkpoint）。PR C #18 head `72c4bb29847efe838ec24d63c75f3d5011a1b467` は標準CI `36399289710`、Sandbox `36399289754`、PoC `36399289760` がすべてSUCCESS。#15〜#18はOPEN/Draft、未マージ。
+- C旧head `dc7f491` / `8c67d10` の標準CIは既存のT10/期限到達競合テストでFAIL。予約公開が先行した保存結果の再実行と、T10が先行したときの一時的なNotDue観測を試験が許容していなかった。製品状態遷移を変更せず、両競合順序を明示したテスト修正 `8c67d10` / `72c4bb2` の後、同一headの3 hosted gateがSUCCESS。
+- PR D branch `feat/document-management-basics-v0-d`、作業前HEAD `72c4bb29847efe838ec24d63c75f3d5011a1b467`。MB-11はT5〜T9の型付きDomain/Audit対応、T9/Version切替競合、T5→T7→T6→一覧→T9→履歴→T8剥奪の縦断、旧0005相当DB→0006〜0008移行とrollback/旧snapshot復元を実DBで確認した。新しい試験は既存契約の追加確認として初回GREEN。縦断試験の初回入力は設計が拒否する空明示policyを成功ケースと誤指定していたため修正し、製品REDとは記録しない。Performance fixtureは1,000 principal、10,000文書、1,000 Folder、最大深さ10でPASSし、公開一覧50件7,873ms、文書移動58ms、初回既読33ms（最終fixtureのmacOSローカル測定）。これは合意SLOではなく、一覧性能は改善検討事項。
+- `mise run verify:fast` はfmt、workspace check/strict Clippy、architecture、API、543/543 Rust tests PASS（既定の除外5）。その後に旧予約行NULLと負荷fixtureのassertionを強化し、対象2試験PASS。最終差分の `mise run verify` もfmt、workspace check/strict Clippy、architecture、API、security、543/543 Rust tests PASS（既定の除外5）。`verify:full` は差分・repository policyが要求しないため未実行。Dのcommit/push、Draft PR、exact-head hosted gateは未実施。受入証拠は `document-management-basics-v0-acceptance.md`。
+- 本番identity resolver/transport実接続は未提供で、schedulerは未接続起動を拒否。Cedar／AWS Verified Permissionsは次期設計で検討。merge・deploy・本番migration指示なし。
+- 次の exact action: Dをcommit/pushし、PR C #18 baseのDraft PRを作成、最終exact-head標準CI/Sandbox/PoCを確認する。そのhead/run IDとblockerをActive/Statusへ残してレビュー待ちとする。
+
+以下は前checkpointの履歴である。
+
 ## Active checkpoint — PR C MB-08〜10 local GREEN、2026-09-28 JST
 
 - 状態: **IMPLEMENTATION ACTIVE — PR A/B exact-head GREEN、PR C local GREEN / hosted gate待ち**。MB-11とDMB-01〜25の全体受入は未完了。承認済み設計/計画blobは `38010802a04c285336810e9b9c637c656ed1a76b` / `3b5cc84a8593134cdd7e01ea026bd2a124fa9585` のまま。

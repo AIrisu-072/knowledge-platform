@@ -1,5 +1,15 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document Management Basics v0 PR D MB-11 local verification complete、2026-09-28 JST
+
+- Status: **ACTIVE — PR A/B/C exact-head GREEN、PR D MB-11 local GREEN / hosted gate待ち**。詳細は `docs/superpowers/execution/document-management-basics-v0-status.md` と `document-management-basics-v0-acceptance.md`。DMB-01〜25の最終hosted判定はまだ確定していない。
+- PR C #18 head `72c4bb29847efe838ec24d63c75f3d5011a1b467` は標準CI `36399289710`、Sandbox `36399289754`、PoC `36399289760` がすべてSUCCESS。PR #15〜18はOPEN/Draft、未マージ。
+- PR D branch `feat/document-management-basics-v0-d` の作業前HEADはC headと同じ `72c4bb29847efe838ec24d63c75f3d5011a1b467`。MB-11のイベント対応・並行T9・縦断・旧0005移行/復元の実DB試験が局所PASS。合成規模1,000 principal/10,000文書/1,000 Folder/深さ10を計測。`mise run verify:fast` と最終 `mise run verify` はいずれも543/543 PASS（既定の除外5）；標準verifyのsecurityもPASS。Dは未commit・未push・PR未作成。
+- 本番identity resolver/transport接続は未提供。Cedar／AWS Verified Permissionsは依頼者選択により次期設計で検討し、今回のFrozen Designは変更しない。merge・deploy・本番migration指示なし。
+- 次の exact action: Dをcommit/pushしてPR C #18 baseのDraft PRを作り、D exact-head標準CI/Sandbox/PoCを確認する。Active/Statusへhead・run ID・blockerを最終記録する。PR #15〜Dはmergeしない。
+
+This checkpoint supersedes the prior PR C checkpoint below.
+
 ## Active checkpoint — Document Management Basics v0 PR C local GREEN、2026-09-28 JST
 
 - Status: **ACTIVE — PR A/B exact-head GREEN、PR C MB-08〜10 local GREEN / hosted gate next**。詳細は `docs/superpowers/execution/document-management-basics-v0-status.md`。MB-11とDMB-01〜25の横断受入は未完了。
