@@ -129,7 +129,7 @@ pub(crate) async fn authorize_document_snapshot(
     result
 }
 
-async fn nearest_policy_id(
+pub(crate) async fn nearest_policy_id(
     tx: &mut Transaction<'_, Postgres>,
     resource: ResourceRef,
 ) -> Result<Option<Uuid>, RepositoryError> {

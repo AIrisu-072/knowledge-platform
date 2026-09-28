@@ -58,4 +58,6 @@ pub enum DomainError {
     EmptyExplicitPolicy,
     #[error("policy contains duplicate subject grants")]
     DuplicatePolicySubject,
+    #[error("folder name is invalid")]
+    InvalidFolderName,
 }

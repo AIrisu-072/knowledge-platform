@@ -3,6 +3,7 @@ use thiserror::Error;
 use document_domain::{DocumentId, DocumentVersionId, DomainError, FileId};
 
 use crate::command::PublishOperationId;
+use crate::management_command::ManagementOperationId;
 use crate::publication_end::PublicationEndOperationId;
 use crate::versioning_command::VersionOperationId;
 
@@ -145,6 +146,8 @@ pub enum ApplicationError {
         operation_id: PublicationEndOperationId,
         document_id: DocumentId,
     },
+    #[error("management commit outcome is unknown; retry the same operation id")]
+    ManagementCommitOutcomeUnknown { operation_id: ManagementOperationId },
     #[error("internal failure: {0}")]
     Internal(String),
 }

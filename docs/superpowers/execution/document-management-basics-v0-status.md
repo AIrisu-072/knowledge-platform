@@ -1,5 +1,28 @@
 # Document Management Basics v0 — 準備状況
 
+## Active checkpoint — PR B MB-05〜07 local GREEN、2026-09-28 JST
+
+- 状態: **IMPLEMENTATION ACTIVE — PR A exact-head GREEN、PR B local GREEN / hosted gate待ち**。MB-08〜11とDMB-01〜25の全体受入は未完了。承認済み設計/計画blobは `38010802a04c285336810e9b9c637c656ed1a76b` / `3b5cc84a8593134cdd7e01ea026bd2a124fa9585` のまま。
+- PR A #16 head `e66fba6f56fec8e7666d8b1df667625e64ef2049` のexact-head標準CI `36382662702`、Sandbox `36382662689`、PoC `36382662759` は全てSUCCESS。OPEN/Draft、未マージ。PR B branch `feat/document-management-basics-v0-b` のMB-07 code headは `ca344d3f6ab662708a62d4804f0b0ded9ff51f2b`。Bは未push/PR未作成。
+- MB-07 REDは `DocumentManagementService::move_document` と `FolderService::move_folder` 不在のみ。GREENではaccess排他guard、Folder ID順→Document ID順のlock、最新の旧/新親・Document権限、OCC、予約制限、cycle拒否、subtree全件の前後policy比較と旧policy administer再確認、access_revision、管理台帳とDomain/Audit outboxを原子commit。文書Version/原本/文書revisionの不要変更をしない。T10後はread_historyを追加要求してcurrent nullを保持。
+- 実DB局所回帰: T5 9/9、Folder 7/7、Move 9/9、T8 6/6、Domain Folder 2/2 PASS。移動試験は元不一致、no-op、PENDING、T10、相互移動cycle、明示Document/子Folder policy維持、影響件数、移動後の再実行開示拒否、監査失敗rollbackを含む。対象crate strict Clippy、fmt、diff check PASS。新production dependencyなし。大きいsubtreeは15秒statement timeoutで全体rollback。Bの全workspace/exact-head CIは未実行。
+- Planの「影響する子1件だけadminister不足」は、allow-onlyの最近傍policy置換では実効policyが変わる継承子は移動Folderと同じ旧policyを使うため、通常の有効状態として構成できない。実装は全影響対象の旧policy administerを個別に再確認し、明示policyで影響しない子を除外する実DB試験を固定した。設計意味の変更はない。
+- 配備前提: 本番identity resolver接続は未提供で、schedulerは未接続起動を拒否。依頼者選択によりCedar／AWS Verified Permissionsは次期設計で検討。今回のFrozen Designを変更しない。merge・deploy・本番migrationの指示なし。
+- 次の exact action: このcheckpointをBにcommit/pushし、PR A baseのDraft PR Bを作る。Bのexact-head標準CI/Sandbox/PoCを一度確認する。成功後、Bを未マージのままPR C branchへ進み、MB-08の実DB REDから続ける。
+
+以下は前回checkpointの履歴である。
+
+## Active checkpoint — PR A exact-head GREEN、PR B MB-05/06 local GREEN、2026-09-28 JST
+
+- 状態: **IMPLEMENTATION ACTIVE**。MB-01〜04はPR Aのexact-head CI完了、MB-05/06はPR Bでlocal GREEN。MB-07〜11およびDMB-01〜25の全体受入は未完了。設計/計画承認blobは従来どおり `38010802a04c285336810e9b9c637c656ed1a76b` / `3b5cc84a8593134cdd7e01ea026bd2a124fa9585`。
+- PR A #16: `feat/document-management-basics-v0-a@e66fba6f56fec8e7666d8b1df667625e64ef2049`、OPEN/Draft、base `design/document-management-basics-v0`、MERGEABLE。exact-head標準CI `36382662702`、Sandbox `36382662689`、PoC `36382662759` は全てSUCCESS。標準CIの前2回は保存時刻のPostgreSQL精度差と、旧版migration回帰試験が新認可関数を適用しないfixtureのためFAIL。各失敗を焦点試験で再現・修正した後の最終headが上記であり、古いrunをGREEN根拠にしない。
+- PR B: branch `feat/document-management-basics-v0-b`、MB-05 code commitはPR A修正を取り込んだ `43abf5e8adf676dfc45f414a9c133598f0f51de9`、MB-06 code head `cdf02419d021243bd00a1cece03976501d9ca354`。PR Bは未作成・未push。MB-05 REDは `DocumentManagementService` 不在のみ、GREENはT5実DB 9/9。未知キー保持、extensions全置換、重複/型拒否、同値no-op、古いrevision、PENDING実変更拒否、T10後の追加権限、現在認可付き再実行、同ID並行、監査失敗rollback、revision overflowを確認。
+- MB-06 REDは `normalize_folder_name` / `FolderService` 不在のみ。GREENはDomain 2/2、Folder実DB 7/7。NFC/trim/大小文字区別/255 scalar、root保護、親不在、同名並行、監査rollback、revision overflowを確認。M-B `0007_document_folder_names_v0.sql` は既存名を変更せず、preflightがinvalid名・非正規化・衝突・複数root・孤立・cycleをID/分類だけで報告し、migrationは問題時停止。Folder書込停止中のpreflight/適用が運用前提。対象3 crateのstrict Clippyとfmt PASS。新production dependencyなし。
+- 配備前提: 実identity resolverは未提供。schedulerは未接続で起動拒否する。依頼者はCedar／AWS Verified Permissionsを次期設計の検討対象とする方針を選択し、今回のFrozen Designを変更しない。merge・deploy・本番migrationの指示なし。
+- 次の exact action: Bにこのcheckpointをcommitし、MB-07文書移動/Folderサブツリー移動の実DB REDを作る。MB-07 GREENとBの局所回帰後にDraft PR BをPR A baseで作り、Bのexact-head標準CI/Sandbox/PoCを一度確認する。
+
+以下は前回checkpointの履歴である。
+
 ## Active checkpoint — PR A MB-01〜04 local GREEN、2026-09-28 JST
 
 - 状態: **IMPLEMENTATION ACTIVE — PR Aのlocal実装完了、exact-head CI待ち**。MB-05〜11およびDMB-01〜25の全体受入は未完了。

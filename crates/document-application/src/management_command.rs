@@ -171,6 +171,13 @@ impl ManagementCommand {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ManagementMoveDetails {
+    pub from_folder_id: FolderId,
+    pub to_folder_id: FolderId,
+    pub subtree_affected: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ManagementMutationResult {
     pub operation_id: ManagementOperationId,
     pub resource: ResourceRef,
@@ -180,6 +187,7 @@ pub struct ManagementMutationResult {
     pub changed: bool,
     pub occurred_at: OffsetDateTime,
     pub document_metadata: Option<Value>,
+    pub movement: Option<ManagementMoveDetails>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
