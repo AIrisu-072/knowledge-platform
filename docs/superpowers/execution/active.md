@@ -1,5 +1,15 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document Management Basics v0 PR A local GREEN、2026-09-28 JST
+
+- Status: **ACTIVE — MB-01〜04 local GREEN、PR A exact-head CI待ち**。詳細は `docs/superpowers/execution/document-management-basics-v0-status.md`。MB-05〜11とDMB受入全体は未完了。
+- 実装branch `feat/document-management-basics-v0-a`、MB-03 code head `7680a2da6d23d314252bc6918e8e6202a6639099`、MB-04 code head `d17925aa270dece0c5535889e0f19cff85d80858`。設計PR #15 head `66a273629a0c0c62f8a5fc88a1bb88f12bcb1a39` はOPEN/Draft、exact-head標準CI/Sandbox/PoC SUCCESS。
+- PR Aの対象は認可基盤、既存登録/版/公開/T10へのcommit/read/replay認可、期限到達予約の現在identity/権限確認。指定された実DB回帰、scheduler試験、strict ClippyはPASS。Aの最終CIは未実行。Frozen Design変更なし。
+- 配備前提: 本番identity resolver接続は未提供。schedulerはresolverなし起動を明示エラーで拒否する。これは実装Taskの完了判定とは分けて記録する。
+- 次の exact action: このcheckpointをcommit/pushし、設計PR #15をbaseとするDraft PR Aを作成する。Aのexact-head標準CI/Sandbox/PoCを一度確認し、成功後にAからstacked PR B用branchを作りMB-05のREDから進める。PR #15/Aはmergeしない。
+
+This checkpoint supersedes the prior PR A checkpoint below.
+
 ## Active checkpoint — Document Management Basics v0 PR A、2026-09-28 JST
 
 - Status: **ACTIVE — MB-01/02 local GREEN、MB-03 next**。詳細・RED/GREEN evidenceは `docs/superpowers/execution/document-management-basics-v0-status.md`。
