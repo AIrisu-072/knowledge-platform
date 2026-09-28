@@ -1,13 +1,15 @@
 use document_application::{
     AUDIT_DOCUMENT_VERSION_WITHDRAWN, DOCUMENT_VERSION_WITHDRAWN, RepositoryError,
-    VersionOperationId, WithdrawOperationRecord, WithdrawVersionRecord, WithdrawVersionResult,
+    VerifiedActorContext, VersionOperationId, WithdrawOperationRecord, WithdrawVersionRecord,
+    WithdrawVersionResult,
 };
-use document_domain::{DocumentId, DocumentVersionId};
+use document_domain::{Action, DocumentId, DocumentVersionId};
 use serde_json::{Value, json};
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
 use crate::{
+    access_control::guard_document_mutation,
     error::{map_commit_error, map_statement_error},
     versioning_mutation,
 };
@@ -85,10 +87,12 @@ fn optional_id(result: &Value, key: &str) -> Result<Option<DocumentVersionId>, R
 pub(crate) async fn withdraw(
     pool: &PgPool,
     record: WithdrawVersionRecord,
+    ctx: Option<&VerifiedActorContext>,
 ) -> Result<WithdrawVersionResult, RepositoryError> {
     let command = &record.command;
     let mut tx = pool.begin().await.map_err(map_statement_error)?;
     let outcome: Result<WithdrawVersionResult, RepositoryError> = async {
+        guard_document_mutation(&mut tx, ctx, command.document_id(), &[Action::Read, Action::Publish], command.actor()).await?;
         let state = sqlx::query("SELECT current_version_id, revision FROM documents WHERE document_id = $1 FOR UPDATE")
             .bind(command.document_id().as_uuid()).fetch_optional(&mut *tx).await.map_err(map_statement_error)?
             .ok_or(RepositoryError::DocumentNotFound)?;

@@ -1,11 +1,11 @@
 use document_application::{
     AUDIT_DOCUMENT_VERSION_CREATED, AUDIT_DOCUMENT_VERSION_REBASED, AUDIT_DOCUMENT_VERSION_UPDATED,
     DOCUMENT_VERSION_CREATED, DOCUMENT_VERSION_REBASED, DOCUMENT_VERSION_UPDATED, PreparedManifest,
-    RepositoryError, VersionCommandIdentity, VersionMutationRecord, VersionOperationId,
-    VersionOperationKind, VersionOperationRecord, VersionOperationResult,
+    RepositoryError, VerifiedActorContext, VersionCommandIdentity, VersionMutationRecord,
+    VersionOperationId, VersionOperationKind, VersionOperationRecord, VersionOperationResult,
 };
 use document_domain::{
-    DocumentId, DocumentVersionId, LogicalPath, PrincipalRef, SemanticContentItem, Title,
+    Action, DocumentId, DocumentVersionId, LogicalPath, PrincipalRef, SemanticContentItem, Title,
     VersionManifest,
 };
 use serde_json::{Value, json};
@@ -13,6 +13,7 @@ use sqlx::{FromRow, PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
 use crate::{
+    access_control::guard_document_mutation,
     error::{map_commit_error, map_statement_error},
     publication_end,
 };
@@ -125,13 +126,15 @@ fn map_operation(row: OperationRow) -> Result<VersionOperationRecord, Repository
     Ok(VersionOperationRecord::new(identity, result))
 }
 
-pub(crate) async fn mutate(
+pub(crate) async fn mutate_scoped(
     pool: &PgPool,
     record: VersionMutationRecord,
+    ctx: Option<&VerifiedActorContext>,
 ) -> Result<VersionOperationResult, RepositoryError> {
     let identity = record.identity();
     let mut tx = pool.begin().await.map_err(map_statement_error)?;
     let result: Result<VersionOperationResult, RepositoryError> = async {
+        guard_document_mutation(&mut tx, ctx, identity.document_id(), &[Action::Read, Action::Write], identity.actor()).await?;
         let document = sqlx::query(
             "SELECT revision, current_version_id FROM documents WHERE document_id = $1 FOR UPDATE",
         )

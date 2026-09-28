@@ -3,10 +3,15 @@
 use std::{io::Cursor, path::PathBuf, sync::Arc};
 
 use document_application::{
-    Clock, CreateDocumentCommand, DocumentService, DocumentVersionService, IdGenerator,
+    BootstrapRootPolicy, Clock, CreateDocumentCommand, DocumentService, DocumentVersionService,
+    IdGenerator, IdentityContextResolver, IdentityResolutionError, InvocationKind,
     PublicationScheduleRepository, PublishOperationId, SchedulePublishCommand,
+    VerifiedActorContext,
 };
-use document_domain::{FolderId, MediaType, Metadata, PrincipalRef};
+use document_domain::{
+    Action, FolderId, MediaType, Metadata, PolicyGrant, PolicySubject, PolicySubjectKind,
+    PrincipalRef,
+};
 use document_publication_scheduler::DueScheduler;
 use document_repository_postgres::{PostgresDocumentRepository, SYSTEM_ROOT_FOLDER_ID, migrate};
 use document_semantic_inspection_runner::{RunnerConfig, RunnerInspectionExecutor};
@@ -31,6 +36,29 @@ struct UuidV7Ids;
 impl IdGenerator for UuidV7Ids {
     fn next_uuid_v7(&self) -> Uuid {
         Uuid::now_v7()
+    }
+}
+
+struct CanaryResolver;
+impl IdentityContextResolver for CanaryResolver {
+    async fn resolve(
+        &self,
+        principal: &PrincipalRef,
+    ) -> Result<VerifiedActorContext, IdentityResolutionError> {
+        let subject = PolicySubject::new(
+            PolicySubjectKind::Principal,
+            principal.identity_provider(),
+            principal.principal_id(),
+        )
+        .map_err(|_| IdentityResolutionError::InvalidIdentity)?;
+        VerifiedActorContext::from_trusted_adapter(
+            principal.clone(),
+            vec![subject],
+            OffsetDateTime::now_utc() + time::Duration::hours(1),
+            InvocationKind::HumanInteractive,
+            None,
+        )
+        .map_err(|_| IdentityResolutionError::InvalidIdentity)
     }
 }
 
@@ -67,6 +95,23 @@ async fn scheduled_initial_publication_runs_with_postgres_file_storage_and_sandb
     let ids = Arc::new(UuidV7Ids);
     let clock = Arc::new(SystemClock);
     let actor = PrincipalRef::new("test", "scheduler-canary").unwrap();
+    let actor_context = CanaryResolver.resolve(&actor).await.unwrap();
+    let grants = vec![
+        PolicyGrant::new(
+            PolicySubject::new(PolicySubjectKind::Principal, "test", "scheduler-canary").unwrap(),
+            [
+                Action::Read,
+                Action::Write,
+                Action::Publish,
+                Action::Administer,
+            ],
+        )
+        .unwrap(),
+    ];
+    PostgresDocumentRepository::new_with_bootstrap_actor(pool.clone(), actor.clone())
+        .initialize_root_policy(&actor_context, grants)
+        .await
+        .unwrap();
     let document_service = DocumentService::new(
         ids.clone(),
         clock.clone(),
@@ -118,9 +163,16 @@ async fn scheduled_initial_publication_runs_with_postgres_file_storage_and_sandb
     .execute(&pool)
     .await
     .unwrap();
-    let scheduler = DueScheduler::connect(&url, root.path(), &worker, None)
-        .await
-        .unwrap();
+    let scheduler = DueScheduler::connect_with_resolver(
+        &url,
+        root.path(),
+        &worker,
+        None,
+        Arc::new(CanaryResolver),
+        PrincipalRef::new("service", "publication-scheduler").unwrap(),
+    )
+    .await
+    .unwrap();
     assert_eq!(scheduler.poll_once().await.unwrap(), 1);
     assert_eq!(scheduler.poll_once().await.unwrap(), 0);
     let status = repository.get_schedule(publish_id).await.unwrap().unwrap();

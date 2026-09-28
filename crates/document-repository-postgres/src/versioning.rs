@@ -3,11 +3,11 @@ use document_application::{
     VersionOperationId, VersionOperationRecord, VersionOperationResult, VersioningRepository,
     WithdrawOperationRecord, WithdrawVersionRecord, WithdrawVersionResult,
 };
-use document_domain::{DocumentId, DocumentVersionId, FileObject};
+use document_domain::{Action, DocumentId, DocumentVersionId, FileObject};
 
 use crate::{
-    error::map_statement_error, repository::PostgresDocumentRepository, versioning_mutation,
-    versioning_rows, withdrawal,
+    access_control::authorize_document_snapshot, error::map_statement_error,
+    repository::PostgresDocumentRepository, versioning_mutation, versioning_rows, withdrawal,
 };
 
 impl VersioningRepository for PostgresDocumentRepository {
@@ -46,7 +46,17 @@ impl VersioningRepository for PostgresDocumentRepository {
         &self,
         operation_id: VersionOperationId,
     ) -> Result<Option<VersionOperationRecord>, RepositoryError> {
-        versioning_mutation::get_operation(&self.pool, operation_id).await
+        let operation = versioning_mutation::get_operation(&self.pool, operation_id).await?;
+        if let (Some(ctx), Some(operation)) = (&self.verified_actor, &operation) {
+            authorize_document_snapshot(
+                &self.pool,
+                ctx,
+                operation.identity().document_id(),
+                &[Action::Read, Action::Write],
+            )
+            .await?;
+        }
+        Ok(operation)
     }
 
     async fn get_version_snapshot(
@@ -54,7 +64,13 @@ impl VersioningRepository for PostgresDocumentRepository {
         document_id: DocumentId,
         version_id: DocumentVersionId,
     ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
-        versioning_rows::load_version(&self.pool, document_id, version_id).await
+        versioning_rows::load_version(
+            &self.pool,
+            document_id,
+            version_id,
+            self.verified_actor.as_ref(),
+        )
+        .await
     }
 
     async fn create_version(
@@ -64,7 +80,7 @@ impl VersioningRepository for PostgresDocumentRepository {
         if record.identity().kind() != document_application::VersionOperationKind::Create {
             return Err(RepositoryError::IntegrityViolation);
         }
-        versioning_mutation::mutate(&self.pool, record).await
+        versioning_mutation::mutate_scoped(&self.pool, record, self.verified_actor.as_ref()).await
     }
 
     async fn update_working(
@@ -74,7 +90,7 @@ impl VersioningRepository for PostgresDocumentRepository {
         if record.identity().kind() != document_application::VersionOperationKind::Update {
             return Err(RepositoryError::IntegrityViolation);
         }
-        versioning_mutation::mutate(&self.pool, record).await
+        versioning_mutation::mutate_scoped(&self.pool, record, self.verified_actor.as_ref()).await
     }
 
     async fn rebase_working(
@@ -84,20 +100,30 @@ impl VersioningRepository for PostgresDocumentRepository {
         if record.identity().kind() != document_application::VersionOperationKind::Rebase {
             return Err(RepositoryError::IntegrityViolation);
         }
-        versioning_mutation::mutate(&self.pool, record).await
+        versioning_mutation::mutate_scoped(&self.pool, record, self.verified_actor.as_ref()).await
     }
 
     async fn get_withdraw_operation(
         &self,
         operation_id: VersionOperationId,
     ) -> Result<Option<WithdrawOperationRecord>, RepositoryError> {
-        withdrawal::get_operation(&self.pool, operation_id).await
+        let operation = withdrawal::get_operation(&self.pool, operation_id).await?;
+        if let (Some(ctx), Some(operation)) = (&self.verified_actor, &operation) {
+            authorize_document_snapshot(
+                &self.pool,
+                ctx,
+                operation.result.document_id,
+                &[Action::Read, Action::Publish],
+            )
+            .await?;
+        }
+        Ok(operation)
     }
 
     async fn withdraw_version(
         &self,
         record: WithdrawVersionRecord,
     ) -> Result<WithdrawVersionResult, RepositoryError> {
-        withdrawal::withdraw(&self.pool, record).await
+        withdrawal::withdraw(&self.pool, record, self.verified_actor.as_ref()).await
     }
 }

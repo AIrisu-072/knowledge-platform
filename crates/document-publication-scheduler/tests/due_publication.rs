@@ -1,7 +1,7 @@
-use document_publication_scheduler::DueScheduler;
+use document_publication_scheduler::{DueScheduler, SchedulerError};
 
 #[cfg(target_os = "linux")]
-use document_publication_scheduler::{SchedulerError, probe_mandatory_sandbox};
+use document_publication_scheduler::probe_mandatory_sandbox;
 #[cfg(target_os = "linux")]
 use document_semantic_inspection_runner::{RunnerConfig, RunnerInspectionExecutor};
 
@@ -9,6 +9,21 @@ use document_semantic_inspection_runner::{RunnerConfig, RunnerInspectionExecutor
 fn due_scheduler_has_a_runnable_entrypoint() {
     fn require_scheduler(_: DueScheduler) {}
     let _ = require_scheduler;
+}
+
+#[tokio::test]
+async fn startup_requires_an_identity_resolver() {
+    let result = DueScheduler::connect(
+        "unused",
+        std::path::Path::new("unused"),
+        std::path::Path::new("unused"),
+        None,
+    )
+    .await;
+    assert!(matches!(
+        result,
+        Err(SchedulerError::IdentityResolverRequired)
+    ));
 }
 
 #[cfg(target_os = "linux")]

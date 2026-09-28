@@ -2,14 +2,20 @@
 
 //! Infrastructure-free authoritative document domain.
 
+mod access_policy;
 mod document;
 mod error;
 mod file;
 mod ids;
 mod metadata;
 mod principal;
+mod resource_ref;
 mod versioning;
 
+pub use access_policy::{
+    Action, PolicyGrant, PolicyMode, PolicySubject, PolicySubjectKind, evaluate_policy,
+    nearest_explicit_policy,
+};
 pub use document::{
     CreateInitialDocument, CreateWorkingVersion, Document, DocumentVersion,
     EndPublicationTransition, InitialDocument, LifecycleState, PublishTransition, RestoreDocument,
@@ -20,9 +26,10 @@ pub use file::{
     ContentHash, FileObject, FileRole, FileSize, MediaType, StorageKey, StoredFileDescriptor,
     VersionFile,
 };
-pub use ids::{AuditEventId, DocumentId, DocumentVersionId, EventId, FileId, FolderId};
+pub use ids::{AuditEventId, DocumentId, DocumentVersionId, EventId, FileId, FolderId, PolicyId};
 pub use metadata::Metadata;
 pub use principal::PrincipalRef;
+pub use resource_ref::{PolicyTarget, ResourceRef};
 pub use versioning::{LogicalPath, SemanticContentItem, VersionManifest};
 
 #[cfg(test)]

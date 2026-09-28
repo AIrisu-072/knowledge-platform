@@ -1,8 +1,9 @@
-use document_application::{AuthoritativeDocument, RepositoryError};
+use document_application::{AuthoritativeDocument, RepositoryError, VerifiedActorContext};
 use document_domain::{DocumentId, DocumentVersionId};
 use sqlx::{PgPool, Row, postgres::PgRow};
 
 use crate::{
+    access_control::verified_subjects_json,
     error::map_statement_error,
     mapping::to_authoritative_with_items,
     rows::{AuthoritativeRow, CanonicalContentRow},
@@ -19,28 +20,67 @@ pub(crate) async fn load_current(
     pool: &PgPool,
     document_id: DocumentId,
 ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
-    load_selected(pool, document_id, ReadSelection::Internal).await
+    load_selected(pool, document_id, ReadSelection::Internal, None).await
+}
+
+pub(crate) async fn load_current_scoped(
+    pool: &PgPool,
+    document_id: DocumentId,
+    ctx: &VerifiedActorContext,
+) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
+    load_selected(pool, document_id, ReadSelection::Internal, Some(ctx)).await
 }
 
 pub(crate) async fn load_authoring(
     pool: &PgPool,
     document_id: DocumentId,
 ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
-    load_selected(pool, document_id, ReadSelection::Authoring).await
+    load_selected(pool, document_id, ReadSelection::Authoring, None).await
+}
+
+pub(crate) async fn load_authoring_scoped(
+    pool: &PgPool,
+    document_id: DocumentId,
+    ctx: &VerifiedActorContext,
+) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
+    load_selected(pool, document_id, ReadSelection::Authoring, Some(ctx)).await
 }
 
 pub(crate) async fn load_current_published(
     pool: &PgPool,
     document_id: DocumentId,
 ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
-    load_selected(pool, document_id, ReadSelection::CurrentPublished).await
+    load_selected(pool, document_id, ReadSelection::CurrentPublished, None).await
+}
+
+pub(crate) async fn load_current_published_scoped(
+    pool: &PgPool,
+    document_id: DocumentId,
+    ctx: &VerifiedActorContext,
+) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
+    load_selected(
+        pool,
+        document_id,
+        ReadSelection::CurrentPublished,
+        Some(ctx),
+    )
+    .await
 }
 
 async fn load_selected(
     pool: &PgPool,
     document_id: DocumentId,
     selection: ReadSelection,
+    ctx: Option<&VerifiedActorContext>,
 ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
+    if ctx.is_some_and(|ctx| ctx.ensure_current().is_err()) {
+        return Ok(None);
+    }
+    let subjects = ctx.map(verified_subjects_json);
+    let required: Vec<String> = match selection {
+        ReadSelection::Authoring => vec!["read".into(), "write".into()],
+        ReadSelection::Internal | ReadSelection::CurrentPublished => vec!["read".into()],
+    };
     // The Document row is retained when its Version is absent, so one statement
     // distinguishes a valid null current from a broken nonnull current.
     let row = sqlx::query(
@@ -90,10 +130,16 @@ async fn load_selected(
           AND vf.role = 'PRIMARY' AND v.requires_content_classification \
          LEFT JOIN file_objects f ON f.file_id = COALESCE(first_item.file_id, vf.file_id) \
          WHERE d.document_id = $1 \
+           AND ($3::jsonb IS NULL OR ( \
+               dmb_allows_document(d.document_id, $3, $4::text[]) \
+               AND ($2 <> 0 OR dmb_allows_document(d.document_id, $3, ARRAY['write']::text[]) \
+                   OR dmb_allows_document(d.document_id, $3, ARRAY['publish']::text[])))) \
          LIMIT 1",
     )
     .bind(document_id.as_uuid())
     .bind(selection as i32)
+    .bind(subjects)
+    .bind(required)
     .fetch_optional(pool)
     .await
     .map_err(map_statement_error)?;
@@ -191,7 +237,12 @@ pub(crate) async fn load_version(
     pool: &PgPool,
     document_id: DocumentId,
     version_id: DocumentVersionId,
+    ctx: Option<&VerifiedActorContext>,
 ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
+    if ctx.is_some_and(|ctx| ctx.ensure_current().is_err()) {
+        return Ok(None);
+    }
+    let subjects = ctx.map(verified_subjects_json);
     let row = sqlx::query_as::<_, AuthoritativeRow>(
         "SELECT d.document_id, d.folder_id, d.current_version_id, \
                 d.revision AS document_revision, d.metadata AS document_metadata, \
@@ -221,10 +272,16 @@ pub(crate) async fn load_version(
          LEFT JOIN version_files vf ON vf.document_version_id = v.document_version_id \
              AND vf.role = 'PRIMARY' AND v.requires_content_classification \
          JOIN file_objects f ON f.file_id = COALESCE(first_item.file_id, vf.file_id) \
-         WHERE d.document_id = $1 LIMIT 1",
+         WHERE d.document_id = $1 \
+           AND ($3::jsonb IS NULL OR ( \
+               dmb_allows_document(d.document_id, $3, ARRAY['read']::text[]) \
+               AND (dmb_allows_document(d.document_id, $3, ARRAY['write']::text[]) \
+                    OR dmb_allows_document(d.document_id, $3, ARRAY['publish']::text[])))) \
+         LIMIT 1",
     )
     .bind(document_id.as_uuid())
     .bind(version_id.as_uuid())
+    .bind(subjects)
     .fetch_optional(pool)
     .await
     .map_err(map_statement_error)?;

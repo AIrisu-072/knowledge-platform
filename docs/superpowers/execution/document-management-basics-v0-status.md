@@ -1,5 +1,32 @@
 # Document Management Basics v0 — 準備状況
 
+## Active checkpoint — PR A MB-01〜04 local GREEN、2026-09-28 JST
+
+- 状態: **IMPLEMENTATION ACTIVE — PR Aのlocal実装完了、exact-head CI待ち**。MB-05〜11およびDMB-01〜25の全体受入は未完了。
+- 設計/計画: 承認済みblob `38010802a04c285336810e9b9c637c656ed1a76b` / `3b5cc84a8593134cdd7e01ea026bd2a124fa9585` を維持。PR #15は `design/document-management-basics-v0@66a273629a0c0c62f8a5fc88a1bb88f12bcb1a39`、OPEN/Draft、標準CI `36371656531`、Sandbox `36371656506`、PoC `36371656508` はSUCCESS。基準mainは `55dc3d3a430c8f36e1db8277fee15c4429258466`。
+- 実装branch `feat/document-management-basics-v0-a`。MB-01 `5de3646c6f34d4c0f96e05bb0a7c15b6025437f5`、MB-02 `5859c411492b575281e3a8277fbed177d44efb52`、MB-03 `7680a2da6d23d314252bc6918e8e6202a6639099`、MB-04 `d17925aa270dece0c5535889e0f19cff85d80858`。M-Aは `0006_document_management_access_v0.sql`。新production dependencyなし。
+- MB-03: 版操作replayと孤立Folder policyの漏洩をREDで再現して修正。認可付き入口、業務transaction内のaccess guard、現在policyと版可視性を同じ読取statementで判定。初版WORKINGの編集取得、読取専用による公開拒否、T10通常取得遮断、検査中の剥奪を実DB試験8/8 PASS。既存 `publication_end_visibility` 3/3、`publication_end_guards` 3/3、`publish_transaction` 7/7、`versioning_transaction` 5/5 PASS。入口契約試験とstrict Clippy PASS。
+- MB-04: 未実装の期限到達認可APIをREDで確認。identity解決をDB lock外で実行し、依頼者の現在Read+Publishを確定前に再確認。権限剥奪・検査中剥奪は `authorization_revoked` 終端、一時障害は同じIDで再試行、無効identityは `identity_invalid` 終端。二重workerの公開/監査は1回。実DB試験5/5、既存due/schedule合わせて17/17、Application契約1/1、scheduler試験2件とstrict Clippy PASS。監査には実際のrequesterとservice executorを分け、旧記録にexecutorを捏造しない。
+- 未検証: PR Aのexact-head標準CI、Sandbox、PoC。Linux sandbox canaryは既定のignoreで、今回のmacOSローカル実行には含まない。Design Freezeの意味変更提案なし。
+- 配備前提: 本番identity resolverは未接続。`DueScheduler::connect` は `IdentityResolverRequired` で起動を拒否し、信頼済みresolverを注入した `connect_with_resolver` だけが稼働可能。本番schedulerの配備は接続提供まで不可。これは今回のコード実装を偽装して完了扱いしないための境界。
+- 次の exact action: この記録をcommit/pushし、設計PR #15 baseのDraft PR Aを作る。Aのexact-head標準CI/Sandbox/PoCを一度確認する。成功後、stacked PR B branchへAのrun IDを記録し、MB-05のREDに進む。merge・deploy・本番migrationは行わない。
+
+以下は前回checkpointの履歴である。
+
+## Active checkpoint — PR A MB-01/02 local GREEN、2026-09-28 JST
+
+- 状態: **IMPLEMENTATION ACTIVE — MB-01/02 local GREEN、MB-03 next**。PR Aは未完成で、MB-03〜11およびDMB受入全体を完了扱いしない。この節は以下の開始準備より新しい。
+- 設計/計画branch `design/document-management-basics-v0@66a273629a0c0c62f8a5fc88a1bb88f12bcb1a39`、PR #15 OPEN/Draft。exact-head標準CI `36371656531`、Sandbox `36371656506`、PoC `36371656508` はすべて SUCCESS。凍結設計/承認計画 blob は変えていない。
+- 独立した実装branch `feat/document-management-basics-v0-a`。MB-01 commit `5de3646c6f34d4c0f96e05bb0a7c15b6025437f5`、MB-02 commit `5859c411492b575281e3a8277fbed177d44efb52`。Draft PR Aはまだ作成していない。
+- MB-01: Domain契約 RED は未定義policy APIのみ、Application契約 RED は容量不足の一次試行後、生成物整理・再試行で未定義management APIのみ。GREENはDomain 5/5、Application 5/5。canonical JSON vectorとコマンドdigestは独立Python計算の固定hexと一致。対象crate strict Clippy PASS。
+- MB-02: 未定義T8/Repository APIによるREDを確認。M-Aは `0006_document_management_access_v0.sql`。実PostgreSQLの `access_policy_transaction` 6/6 PASS（root fail closed、一度限りのbootstrap、nearest policy、予約中変更、再実行/現在認可、no-op、型付き監査、監査失敗の全rollback）。対象crate strict Clippy PASS。旧Document Audit行のresource type既定値も検査。
+- 環境: 初回Application REDのビルドでディスク容量不足。完了済みT10 worktreeのCargo生成物を `cargo clean` で整理し、19GiB空きを確保して再実行した。ソースは変更していない。
+- 未検証: PR Aのexact-head CI、`mise run verify:fast`、pin済みPDFium/Dockerの`mise run verify`、MB-03/04と後続PR。実装PRのCIを毎Taskでは起動しない。
+- blocker: なし。新しいproduction dependencyなし。Design Freeze意味変更なし。
+- 次の exact action: 実装branchをpushし、MB-03の認可付き既存経路をRED試験から実装する。既存業務transaction内のaccess guard、現在認可の再実行開示、T10通常参照遮断の回帰を先に固定する。MB-04までGREENになったらPR AをDraft作成し、まとまったheadでexact-head CIを確認する。
+
+以下は前回checkpointの履歴である。
+
 ## Active checkpoint — 計画承認・実装開始、2026-09-28 JST
 
 - 状態: **PLAN APPROVED / IMPLEMENTATION ACTIVE — MB-01 開始準備**。MB-01〜11はまだ未完了。この節は以下の旧準備記録より新しい。

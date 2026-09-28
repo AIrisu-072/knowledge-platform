@@ -256,6 +256,16 @@ pub trait VersioningRepository: Send + Sync {
 
 #[allow(async_fn_in_trait)]
 pub trait PublicationScheduleRepository: Send + Sync {
+    async fn authorize_due_document(
+        &self,
+        _ctx: &crate::VerifiedActorContext,
+        _document_id: DocumentId,
+    ) -> Result<bool, RepositoryError> {
+        Err(RepositoryError::Internal(
+            "scheduled authorization repository unavailable".to_owned(),
+        ))
+    }
+
     async fn get_schedule(
         &self,
         id: crate::PublishOperationId,
