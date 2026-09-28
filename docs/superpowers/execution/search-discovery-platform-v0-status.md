@@ -1,5 +1,20 @@
 # Search / Discovery Platform v0 — Execution Status
 
+## Current checkpoint — Phase A A1/A2 committed, A3 RED next, 2026-09-29 JST
+
+- Status: **PRODUCTION PLAN APPROVED / PHASE A IN PROGRESS**. The approval record is `docs/superpowers/plans/2026-09-28-search-discovery-platform-v0-production-implementation-approval.md`.
+- Approved planning base: `design/search-discovery-platform-v0@252245f5bbf63958739d2f9b6d82cf39d4ec94f6`, PR #20 OPEN/Draft, base `main@6ea29e1ceea82bb0e20b195890b7c0e7efc85f68`, unresolved review threads 0. Planning branch is 30 commits ahead of main and 0 behind at the start check.
+- Implementation branch: `feat/search-discovery-platform-v0-a`, isolated worktree. Latest code commit at this checkpoint: A2 `58c4352b0dadafad91ebce24e20111e136ca4239`; no Phase A PR yet. The status-record commit itself advances the branch head, so verify live Git for the current exact head.
+- A1 commit `af9fb2945f327adff6fa174cea507f6a366ea5b1`: Search crate and architecture boundaries. RED: 7/7 new policy tests failed for absent rules. GREEN: 7/7; full policy 18/18, Search crate `cargo check`, strict Clippy, fmt, and `mise run arch:check` passed.
+- A2 commit `58c4352b0dadafad91ebce24e20111e136ca4239`: stable typed IDs, Source/Resource/Usage/Profile/Temporal/Cost contracts. RED: `resource_contract` failed compilation only on absent modules. GREEN: 7/7, strict `search-core` Clippy, fmt, and architecture check passed.
+- Planning-head hosted CI `36444150997` on `252245f5` **FAIL** in security tool installation: mise requires an SLSA signer for the pinned `google/osv-scanner@2.5.1`; other CI jobs succeeded. DSI Sandbox `36444151151` **SUCCESS**. DSI PoC did not trigger for the docs-only planning PR head. The same tool lock configuration exists on `main` and the planning branch; this is not a Search code test result.
+- Parallel Document Diff work observed on a separate branch with one added design document and no material Search implementation conflict. Do not change repository-wide `active.md`.
+- Managed read-only inspection runs `search-v0-a1-inspect-20260929` and `search-v0-a2-inspect-20260929` stopped at pending reads, with no code edits. Do not automatically replay them. The approved inline fallback is being used for Phase A tasks; the parent checkpoint and ignored SDD ledger record evidence.
+- Design Freeze difference: none. Physical backend/tokenizer/vector/reranker/fusion selection remains deferred.
+- Next exact action: write `crates/search-core/tests/predicate_contract.rs` for Task A3, run `cargo test -p search-core --test predicate_contract` to confirm RED, then implement the typed four-valued Predicate IR.
+
+---
+
 ## Current checkpoint — Design APPROVED / Production Plan APPROVED / Implementation Ready, 2026-09-29 JST
 
 - Status: **DESIGN APPROVED / NORMATIVE RECONCILIATION COMPLETE / PRODUCTION PLAN APPROVED / IMPLEMENTATION READY — TASK A1 RED NEXT**.
