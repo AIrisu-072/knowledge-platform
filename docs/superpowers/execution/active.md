@@ -1,5 +1,15 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document Management Basics v0 PR B、2026-09-28 JST
+
+- Status: **ACTIVE — PR A MB-01〜04 exact-head GREEN、PR B MB-05/06 local GREEN、MB-07 next**。詳細は `docs/superpowers/execution/document-management-basics-v0-status.md`。MB-07〜11とDMB-01〜25の全体受入は未完了。
+- PR A #16 は `feat/document-management-basics-v0-a@e66fba6f56fec8e7666d8b1df667625e64ef2049`、OPEN/Draft、base は設計PR #15。exact-head CI `36382662702`、Sandbox `36382662689`、PoC `36382662759` は全て SUCCESS。mergeしていない。
+- PR B のbranchは `feat/document-management-basics-v0-b`、MB-05/06 code head `cdf02419d021243bd00a1cece03976501d9ca354`。T5の部分更新/予約/no-op/再実行とT7のFolder作成/改名・安全な名前migrationを実装。対象の実DB試験はT5 9/9、Folder 7/7、Domain 2/2、strict Clippy PASS。Bのexact-head CIとDraft PRはまだない。
+- 本番identity resolver接続は今回の対象外で、schedulerは未接続時に起動拒否する。依頼者はCedar／AWS Verified Permissionsへの移行を**次期設計で検討**すると指定した。今回のFrozen Design変更なし。
+- 次の exact action: このcheckpointをBへcommitし、MB-07の文書・Folder移動について実DB REDを作る。MB-07 GREEN後、PR AをbaseとするDraft PR Bを作り、Bのexact-head CIを一度確認する。PR #15/#16/Bはmergeしない。
+
+This checkpoint supersedes the prior PR A checkpoint below.
+
 ## Active checkpoint — Document Management Basics v0 PR A local GREEN、2026-09-28 JST
 
 - Status: **ACTIVE — MB-01〜04 local GREEN、PR A exact-head CI待ち**。詳細は `docs/superpowers/execution/document-management-basics-v0-status.md`。MB-05〜11とDMB受入全体は未完了。
