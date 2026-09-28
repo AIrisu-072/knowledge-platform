@@ -5,11 +5,13 @@
 pub mod assertion;
 pub mod authority;
 pub mod fact;
+pub mod graph;
 pub mod id;
 pub mod identity;
 pub mod observation;
 pub mod predicate;
 pub mod profile;
+pub mod relation;
 pub mod resource;
 pub mod source;
 pub mod temporal;
