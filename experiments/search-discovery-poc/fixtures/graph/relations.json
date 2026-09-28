@@ -1,0 +1,11 @@
+[
+  {"id":"r1","namespace":"discovery","relation_type":"loan","participants":[{"role":"borrower","resource_id":"company-a"},{"role":"product","resource_id":"product-b"},{"role":"collateral","resource_id":"property-x"},{"role":"branch","resource_id":"branch-east"}]},
+  {"id":"r2","namespace":"discovery","relation_type":"loan","participants":[{"role":"borrower","resource_id":"company-a"},{"role":"product","resource_id":"product-c"},{"role":"collateral","resource_id":"property-y"},{"role":"branch","resource_id":"branch-west"}]},
+  {"id":"r3-role-swap","namespace":"discovery","relation_type":"loan","participants":[{"role":"borrower","resource_id":"product-b"},{"role":"product","resource_id":"company-a"},{"role":"collateral","resource_id":"property-x"}]},
+  {"id":"r4-evidence","namespace":"evidence","relation_type":"supported_by","participants":[{"role":"claim","resource_id":"product-b"},{"role":"evidence","resource_id":"policy-1"}]},
+  {"id":"r5","namespace":"semantic","relation_type":"is_a","participants":[{"role":"parent","resource_id":"concept-root"},{"role":"child","resource_id":"concept-1"}]},
+  {"id":"r6","namespace":"semantic","relation_type":"is_a","participants":[{"role":"parent","resource_id":"concept-root"},{"role":"child","resource_id":"concept-2"}]},
+  {"id":"r7","namespace":"semantic","relation_type":"is_a","participants":[{"role":"parent","resource_id":"concept-root"},{"role":"child","resource_id":"concept-3"}]},
+  {"id":"r8","namespace":"semantic","relation_type":"is_a","participants":[{"role":"parent","resource_id":"concept-root"},{"role":"child","resource_id":"concept-4"}]},
+  {"id":"r9","namespace":"semantic","relation_type":"is_a","participants":[{"role":"parent","resource_id":"concept-root"},{"role":"child","resource_id":"concept-5"}]}
+]
