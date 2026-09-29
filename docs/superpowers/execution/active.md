@@ -1,5 +1,15 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document Diff v0 設計PR統合済み・実装PR main統合中、2026-09-29 JST
+
+- Status: **ACTIVE — DIF-01〜15実装とD exact-head gate完了、PR #24 main統合中**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。Frozen Design blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`、Approved Plan blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`、意味変更提案なし。
+- 設計PR #23は `design/document-diff-v0@e3589299beab073d4f3e386fd7b6e7654c48d4f8` の標準CI `36530824234`、Sandbox `36530824242`、DSI PoC `36530824270` が全てSUCCESS後、mainへmerge commit `0587d44bd1d1fcb7612726997db824f88eec54eb` で統合済み。OSV scanner signer修正で旧security failureを解消。
+- 実装PR #24の記録前head `62d1937a345ab03c30ce2bbfda4798554d621543` は標準CI `36526300320`、Sandbox `36526300424`、DSI PoC `36526300495` が全てSUCCESS。DIF-01〜15の局所RED→GREENと8形式受入はStatus/qualificationに記録済み。ユーザーは統合作業を明示指示済み。
+- 現在のStep / blocker: PR #24のbaseをmainに変更し、この記録commit後の新exact headとmain統合条件のCIを確認する。実装意味のblockerなし。PR #24はその後merge、deployは別指示。
+- 次のexact action: この記録をcommit/pushし、PR #24をmain baseへ変更・Readyにする。新headの必要gateがSUCCESSならPR #24をmergeし、mainのmerge commitとCIを確認する。以後のUI/API・広い実文書評価・deployは別工程。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## Active checkpoint — Document Diff v0 DIF-01〜15実装・D code head hosted GREEN、2026-09-29 JST
 
 - Status: **ACTIVE — DIF-01〜15実装完了、PR #24 Draftレビュー待ち**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。Frozen Design blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`、Approved Plan blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。意味変更提案なし。

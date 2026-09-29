@@ -1,5 +1,15 @@
 # Document Diff v0 — Capability Execution Status
 
+## 2026-09-29 JST — 設計PR #23 main統合済み、実装PR #24統合中
+
+- 状態: **ACTIVE / DIF-01〜15実装・D gate完了 / PR #24 main統合中**。Frozen Design意味変更提案なし。承認設計blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`、計画blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。
+- PR #23: head `e3589299beab073d4f3e386fd7b6e7654c48d4f8` の標準CI `36530824234`、Sandbox `36530824242`、DSI PoC `36530824270` は同一head SUCCESS。旧CIのOSV scanner SLSA signer失敗を1行の設定修正で解消し、main merge commit `0587d44bd1d1fcb7612726997db824f88eec54eb` で統合済み。
+- PR #24: `feat/document-diff-v0` の記録前head `62d1937a345ab03c30ce2bbfda4798554d621543` は標準CI `36526300320`、Sandbox `36526300424`、DSI PoC `36526300495` が同一head SUCCESS。Linux PDF worker canaryもPASS。DIF-01〜15は全て局所・hostedの必要gateを完了。広い実文書corpusの精度とLinux peak memoryは未測定であり、資格済みとは主張しない。
+- 現在のStep / blocker: 依頼者は「統合作業をしてください」とPR mergeを明示指示した。PR #24のbaseをmainに変更し、この記録commit後の新exact headに対する必要gateとmergeabilityを確認する。実装意味のblockerなし。deploy指示なし。
+- 次のexact action: この記録をcommit/push、PR #24をmain baseへ変更・Readyにし、新headの必要gate SUCCESS後にmergeする。main merge commitと最終CIを確認する。merge完了後のDIF-01〜15残Taskはなし。UI/API、広い実文書評価、deployは別工程。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## 2026-09-29 JST — DIF-01〜15実装完了、D code head hosted GREEN・最終記録head gate NEXT
 
 - 状態: **ACTIVE / DIF-01〜15実装完了 / PR #24 Draftレビュー待ち**。Frozen Design意味変更提案なし。設計blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`、承認計画blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。
