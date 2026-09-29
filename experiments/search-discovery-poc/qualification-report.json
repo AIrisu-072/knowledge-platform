@@ -3,13 +3,14 @@
     "lindera": "6.2.0",
     "lindera-analysis": "6.2.0",
     "lindera-ipadic": "6.2.0",
+    "lru": "0.18.2",
     "postgres": "18.6-bookworm",
     "tantivy": "0.26.2",
     "testcontainers": "0.28.0",
     "tokio-postgres": "0.7.18"
   },
   "dependency_license_gate": {
-    "advisory_exception": "RUSTSEC-2026-0253",
+    "advisory_exception": null,
     "dependency": "pass",
     "license": "pending"
   },
