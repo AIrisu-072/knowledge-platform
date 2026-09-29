@@ -675,3 +675,11 @@ Document DB と同じ製品にする必要はない。
 5. AccessPolicy の最低限の将来互換性を決める
 6. DB / Storage 候補を比較する
 7. Rust crate / library 対応表へ落とす
+
+---
+
+# 12. Document Diff v0 の派生データ
+
+Document Diff v0 の `DiffResult` と新旧対照表は、二つの `DocumentVersion` snapshot と原本 `FileObject` から要求時に再生成する派生結果である。Document、DocumentVersion、ContentItem、authoritative ContentRepresentation、FileObject、DSI の正本関係を変更しない。Search Index や検索用 chunk を比較の正本にしない。
+
+cache key は方向付きの両 snapshot digest と比較・資源 profile を結合する。cache entry は主体別権限を保存せず、読み出し時に結果 digest と source binding を検証する。cache hit と新旧対照表の取得でも現在権限・入力鮮度の再確認と必須 Audit を省略しない。未比較範囲と原本参照は投影後も保持する。

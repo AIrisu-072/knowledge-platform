@@ -1081,6 +1081,8 @@ dependencies = [
 name = "document-application"
 version = "0.0.0"
 dependencies = [
+ "document-diff-core",
+ "document-diff-worker",
  "document-domain",
  "document-repository-postgres",
  "document-semantic-inspection-core",
@@ -1097,6 +1099,56 @@ dependencies = [
  "tokio",
  "unicode-normalization",
  "uuid",
+]
+
+[[package]]
+name = "document-diff-core"
+version = "0.0.0"
+dependencies = [
+ "document-semantic-inspection-core",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror",
+]
+
+[[package]]
+name = "document-diff-runner"
+version = "0.0.0"
+dependencies = [
+ "document-application",
+ "document-diff-core",
+ "document-semantic-inspection-runner",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "document-diff-worker"
+version = "0.0.0"
+dependencies = [
+ "csv",
+ "document-diff-core",
+ "document-diff-runner",
+ "document-semantic-inspection-core",
+ "document-semantic-inspection-runner",
+ "document-semantic-inspection-worker",
+ "encoding_rs",
+ "html5ever",
+ "markup5ever_rcdom",
+ "quick-xml 0.42.0",
+ "rxls",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror",
+ "unicode-normalization",
+ "zip 8.6.0",
 ]
 
 [[package]]
@@ -1137,11 +1189,13 @@ name = "document-repository-postgres"
 version = "0.0.0"
 dependencies = [
  "document-application",
+ "document-diff-core",
  "document-domain",
  "document-semantic-inspection-core",
  "document-storage-fs",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "sqlx",
  "tempfile",
  "testcontainers",

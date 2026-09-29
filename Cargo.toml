@@ -2,6 +2,9 @@
 members = [
   "crates/document-domain",
   "crates/document-application",
+  "crates/document-diff-core",
+  "crates/document-diff-worker",
+  "crates/document-diff-runner",
   "crates/document-semantic-inspection-core",
   "crates/document-semantic-inspection-worker",
   "crates/document-semantic-inspection-runner",

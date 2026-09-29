@@ -1,5 +1,114 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document Diff v0 設計PR統合済み・実装PR main統合中、2026-09-29 JST
+
+- Status: **ACTIVE — DIF-01〜15実装とD exact-head gate完了、PR #24 main統合中**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。Frozen Design blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`、Approved Plan blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`、意味変更提案なし。
+- 設計PR #23は `design/document-diff-v0@e3589299beab073d4f3e386fd7b6e7654c48d4f8` の標準CI `36530824234`、Sandbox `36530824242`、DSI PoC `36530824270` が全てSUCCESS後、mainへmerge commit `0587d44bd1d1fcb7612726997db824f88eec54eb` で統合済み。OSV scanner signer修正で旧security failureを解消。
+- 実装PR #24の記録前head `62d1937a345ab03c30ce2bbfda4798554d621543` は標準CI `36526300320`、Sandbox `36526300424`、DSI PoC `36526300495` が全てSUCCESS。DIF-01〜15の局所RED→GREENと8形式受入はStatus/qualificationに記録済み。ユーザーは統合作業を明示指示済み。
+- 現在のStep / blocker: PR #24のbaseをmainに変更し、この記録commit後の新exact headとmain統合条件のCIを確認する。実装意味のblockerなし。PR #24はその後merge、deployは別指示。
+- 次のexact action: この記録をcommit/pushし、PR #24をmain baseへ変更・Readyにする。新headの必要gateがSUCCESSならPR #24をmergeし、mainのmerge commitとCIを確認する。以後のUI/API・広い実文書評価・deployは別工程。
+
+以下は旧checkpoint。現在の工程ではない。
+
+## Active checkpoint — Document Diff v0 DIF-01〜15実装・D code head hosted GREEN、2026-09-29 JST
+
+- Status: **ACTIVE — DIF-01〜15実装完了、PR #24 Draftレビュー待ち**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。Frozen Design blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`、Approved Plan blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。意味変更提案なし。
+- branch/PR: `feat/document-diff-v0`、実装Draft PR #24（設計Draft PR #23にstack、両PR未merge）。D code + 既存記録のexact head `c8b20c9065ba48ca75ab70e514cec0387575e37e` はorigin/PRと一致。
+- D exact-head gate: 標準CI `36524865047`、DSI Sandbox Preflight `36524865121`、DSI PoC regression `36524864997` は全て同一headでSUCCESS。標準CIのLinux rust-testログで `document-diff-worker::pdf_runner qualified_pdfium_is_bound_before_linux_sandbox_seals` PASS。D共通local `verify:fast` は636/636 Rust tests（既定skip 5）、fmt/check/strict Clippy/architecture/API lint PASS。受入は8形式合成fixture、実TXT→Application→projection、実Postgres競合を確認。広い実文書corpusの精度値とは扱わない。
+- 現在のStep: この最終evidenceをActive/Status/qualification/PR説明へ記録する。記録commitでheadが変わるため、承認計画DIF-15に従い新exact headの標準CI、Sandbox、PoCを確認する。blockerは記録head gateのみ。merge・deploy指示なし。
+- 次のexact action: 記録のみをcommit/pushし、新headの3 gateを確認する。SUCCESSならPR #24をDraftのままレビュー待ちにし、FAILなら当該原因だけ修正する。
+
+以下は旧checkpoint。現在の工程ではない。
+
+## Active checkpoint — Document Diff v0 PDF Linux canaryをmacOSでも型検査、hosted再確認、2026-09-29 JST
+
+- Status: **ACTIVE — DIF-01〜13 hosted完了、DIF-14〜15局所・共通検証PASS、D final hosted gate待ち**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。設計凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`、計画承認blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`、意味変更提案なし。
+- branch/PR: 設計Draft PR #23 head `993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24 remote `8b345a3067d3f212b33e52ce2f156d40227b200e`。local canary修正head `78ea864e07a7b825b6c41a141b85933cf5a60bc5`、記録commit・push待ち。未merge、PR #24未解決review thread 0。
+- D local common: pinned PDFium pathの`mise run verify:fast`は636/636 Rust tests、fmt/check/strict Clippy/architecture/API lint PASS。DIF-14 PDF 6/6、DSI PDF 8/8、DIF-15受入3/3、Application縦断1/1、Postgres競合1/1。Linux canaryの最新変更はmacOSで単独test 1/1とstrict Clippy PASS。
+- D hosted attempts: `a5168221...` はSandbox `36523564697`とPoC `36523564667` SUCCESS、CI `36523564675` はLinux canaryのdev-dependency欠落で`rust-static` FAIL。`8b345a30...` はSandbox `36524232572`とPoC `36524232405` SUCCESS、CI `36524232404` はLinux canary内のmoved requestで`rust-static` FAIL。両CIの残りは原因判明後キャンセルした。`78ea864` でcanary本文をmacOSでも型検査し、`request.clone()`を追加。Linux実canaryとfinal exact-head CIは未確認。
+- 次の exact action: この記録をcommit/pushし、PR #24の新exact headで標準CI、Sandbox、DSI PoCを確認する。Linux `pdf_runner` canaryの実行結果を標準CI内で確認し、PR説明とStatusへ最終evidenceを反映する。merge・deploy指示なし。
+
+以下は旧checkpoint。現在の工程ではない。
+
+## Active checkpoint — Document Diff v0 D共通GREEN、Linux canary manifest修正後のhosted再確認、2026-09-29 JST
+
+- Status: **ACTIVE — DIF-01〜13 hosted完了、DIF-14〜15局所・共通検証PASS、D exact-head標準CI修正確認待ち**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
+- Approved Design Spec凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`、Approved Plan承認blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。意味変更提案なし。
+- GitHub: 設計Draft PR #23 head `993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24 remote initial D head `a5168221c9f0626cfb9056c548870bdac4838c05`。local manifest修正head `03b67220f0eeda894e1d584aba67c3a54380acff`、記録commit・push待ち。両PR未merge、PR #24未解決review thread 0。
+- D局所共通: pinned PDFium pathで `CARGO_INCREMENTAL=0 mise run verify:fast` SUCCESS、Rust 636/636（既定skip 5）、fmt/check/strict Clippy/architecture/API lint PASS。PDF 6/6、DSI PDF回帰8/8、8形式受入3/3、Application縦断1/1、Postgres競合1/1。
+- Initial D hosted `a5168221...`: Sandbox `36523564697` SUCCESS、DSI PoC `36523564667` SUCCESS。標準CI `36523564675` はLinux専用`pdf_runner.rs`の`document-diff-runner`テスト依存宣言欠落により`rust-static` compile FAILと判明し、無効headの残りをキャンセルした。`03b6722` でLinux限定dev-dependencyとCargo.lockを修正。Linux実canaryと最終標準CIは未確認。
+- 次の exact action: この記録をcommitして修正headをPR #24へpushし、そのexact headの標準CI、DSI Sandbox Preflight、DSI PoCを確認する。Linux `pdf_runner` canaryを標準CI内で確認し、失敗時は対象だけ修正する。最後にPR説明とStatusを証拠に合わせて更新する。merge・deploy指示なし。
+
+以下は旧checkpoint。現在の工程ではない。
+
+## Active checkpoint — Document Diff v0 Delivery C hosted GREEN、D局所GREEN・共通/hosted NEXT、2026-09-29 JST
+
+- Status: **ACTIVE — DIF-01〜13同一head hosted完了、DIF-14 PDFとDIF-15横断受入は局所検証済み、D共通/hosted gate待ち**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
+- Approved Design Spec: `docs/superpowers/specs/2026-09-28-document-diff-v0-design.md` の凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`。Approved Plan: `docs/superpowers/plans/2026-09-29-document-diff-v0-production-implementation.md` の承認blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。意味変更提案なし。
+- GitHub: 設計Draft PR #23 head `993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24 remote C head `a182c42a49417dfc6ca0394f9dc33506a5d1ea70`。local D code head `268a66a91b41dd5285eb3efe37c612ef30b08b4b`、未push。両PR未merge。
+- C exact-head gate: 標準CI `36521663888`、DSI Sandbox Preflight `36521663872`、DSI PoC `36521663869` はすべて `a182c42a49417dfc6ca0394f9dc33506a5d1ea70` でSUCCESS。
+- DIF-14: RED `52beacbfcacb0c02b7ef5e4cf80f08047c682eb9` は `PdfComparator` 不在でFAIL。GREEN `49cf67a087bc4c7c33a56fe9e22678252f877a56`、Linux native runtime準備 `ba93a7fa8bf17a18dec429e600eb5dfbfb3789dc`、page-level未比較補強 `268a66a91b41dd5285eb3efe37c612ef30b08b4b`。`pdf_diff` 6/6、共有DSI PDF回帰8/8、対象strict Clippy PASS。PDFium/LoPDFは既存pinのみ。Linux実worker canaryはD hosted待ち。
+- DIF-15局所: 8形式横断受入3/3、実TXT worker→Application→認可対照表1/1、WORKING revisionと最終Auditの実DB競合1/1。100,000行境界と1超過、候補・change・source byte上限と1超過を確認。合成fixtureでfalse unchanged/false change/locator errorは各0。macOS受入プロセス実測は0.47秒、最大RSS 53,100,544 bytes。Production Linux runner資源・最終gateは未確定。
+- 次の exact action: pinned PDFium pathで `CARGO_INCREMENTAL=0 mise run verify:fast` を最終D codeへ一度実行する。PASS後にD記録をcommit/pushし、PR #24 exact headの標準CI、DSI Sandbox Preflight、DSI PoCとLinux PDF runner canaryを確認する。結果をStatusへ反映し、記録commitでheadが変わるならそのheadの必要gateを再確認する。merge・deploy指示なし。
+
+以下は旧checkpoint。現在の工程ではない。
+
+## Active checkpoint — Document Diff v0 Delivery C共通検証GREEN、hosted NEXT、2026-09-29 JST
+
+- Status: **ACTIVE — DIF-01〜09 hosted完了、DIF-10〜13局所RED→GREEN、C共通検証PASS・hosted gate待ち、DIF-14〜15未着手**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
+- Approved Design Spec: `docs/superpowers/specs/2026-09-28-document-diff-v0-design.md`、凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`。Approved Plan: `docs/superpowers/plans/2026-09-29-document-diff-v0-production-implementation.md`、blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。設計意味の差分提案なし。
+- GitHub: 設計Draft PR #23 head `993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24 remote B head `7dde25a56784f3dd79b0a994d869ce06bb32acad`。local C code head `6819aca7415ad7374cf4b789adaac9010db641c6`、C記録commit・push待ち。両PR未merge。
+- B gate: 標準CI `36509161078`、Sandbox `36509161061`、DSI PoC `36509161323` は同一B headで全てSUCCESS。
+- C局所: DIF-10 DOCX RED `014a4cd`→GREEN `19343d0`、6/6。DIF-11 XLSX RED `694bff0`→GREEN `934dfc0`、7/7。DIF-12 XLSM RED `5a9fb0f`→GREEN `d062668`、4/4 + VBA参照unit 1/1 + DSI VBA回帰6/6。DIF-13 PPTX RED `1843f25`→GREEN `54a9358`、5/5 + shape曖昧性unit 1/1 + DSI PPTX回帰8/8。各対象strict Clippy/fmt PASS。C全体`verify:fast`とhosted gateはこれから。
+- C共通検証: pinned PDFium pathで `CARGO_INCREMENTAL=0 mise run verify:fast` SUCCESS。Rust 625/625、既定skip 5、fmt/check/strict Clippy/architecture/API lint PASS。初回はDIF-10以降も未対応とする旧worker-shell testでFAILし、資格済みDOCXの実fixtureによるshell dispatch検査へ更新して再実行した。PPTX linkのresource budget failureも未比較へ残すよう修正した。
+- 次の exact action: C記録をcommit/pushし、最終headの標準CI、Sandbox、DSI PoCを一度確認する。続いてDIF-14 PDFのREDへ進む。資源実測・全形式受入はDIF-15。merge・deploy指示なし。
+
+以下は旧checkpoint。現在の工程ではない。
+
+## Active checkpoint — Document Diff v0 B exact-head GREEN、DIF-10局所GREEN、2026-09-29 JST
+
+- Status: **ACTIVE — DIF-01〜09 hosted完了、DIF-10局所RED→GREEN、DIF-11〜15未着手**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
+- Approved Design Spec: `docs/superpowers/specs/2026-09-28-document-diff-v0-design.md`、凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`。Approved Plan: `docs/superpowers/plans/2026-09-29-document-diff-v0-production-implementation.md`、blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。設計意味の差分提案なし。
+- GitHub: 設計Draft PR #23は `design/document-diff-v0@993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24のremote B headは `feat/document-diff-v0@7dde25a56784f3dd79b0a994d869ce06bb32acad`。local DIF-10 GREEN headは `19343d089747fe7f038ea7009d8348d5c94c1452`、未push。両PRは未merge。
+- B exact-head gate: 標準CI `36509161078` SUCCESS、DSI Sandbox Preflight `36509161061` SUCCESS、DSI PoC `36509161323` SUCCESS、すべて `7dde25a56784f3dd79b0a994d869ce06bb32acad`。
+- DIF-10: RED `014a4cda8c29d5ae45ab98e1bb7829ae57f39bfd`、GREEN `19343d089747fe7f038ea7009d8348d5c94c1452`。DOCX 6/6、core protocol 6/6、Application contract 9/9、対象strict Clippy PASS。段落の安定IDによる移動＋本文変更、表cellの原本位置、編集由来の付随差、未知OOXMLの未比較を確認。DIF-10のhosted gateはC最終headで実行する。
+- 次の exact action: DIF-11 XLSXの既存DSI資格fixtureとproduction parser pinを確認し、XLSX比較のtest-only REDを作って焦点試験で失敗を記録する。DIF-15資源実測・C/D hosted gateは未完了。merge・deploy指示なし。
+
+以下は旧checkpoint。現在の工程ではない。
+
+## Active checkpoint — Document Diff v0 A exact-head GREEN、B local GREEN、2026-09-29 JST
+
+- Status: **ACTIVE — DIF-01〜09局所GREEN、A hosted GREEN、B hosted gate待ち、DIF-10〜15未着手**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
+- Approved Design Spec: `docs/superpowers/specs/2026-09-28-document-diff-v0-design.md`、凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`。Approved Plan: `docs/superpowers/plans/2026-09-29-document-diff-v0-production-implementation.md`、blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。設計意味の差分提案なし。
+- GitHub: 設計Draft PR #23は `design/document-diff-v0@993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24のremote A headは `feat/document-diff-v0@ddc3c1b6e94557ed13831ed343f5d86d5bc97cec`、ともに未merge。B local code headは `81086412cb1fa4dbfdff140f51ed81bd37391057`、B記録commit・pushはこれから。
+- A exact-head gate: 標準CI `36507722838` SUCCESS、DSI Sandbox Preflight `36507722786` SUCCESS、DSI PoC `36507722787` SUCCESS。Linux rust-testでDiff runner隔離canary3件PASS。baseline security setupのOSV Scanner signerを証明書に固定し、同headのsecurity jobもSUCCESS。
+- B局所検証: TXT 5/5、CSV 6/6、HTML 4/4、`PDFIUM_DYNAMIC_LIB_PATH=<cached pinned library> CARGO_INCREMENTAL=0 mise run verify:fast` はRust 599/599（既定skip 5）、fmt/check/strict Clippy/architecture/API lint PASS。B hosted CIとDIF-15資源実測は未実施。parserは既存pinのみpromote。
+- 次の exact action: B記録をcommit/pushしてPR #24のB最終headで標準CIを一度確認し、DIF-10 DOCXのREDから進む。merge・deployは未指示。
+
+以下は旧checkpoint。現在の工程ではない。
+
+## Active checkpoint — Document Diff v0 Delivery Unit A local GREEN、2026-09-29 JST
+
+- Status: **ACTIVE — DIF-01〜06 local GREEN、A hosted gate待ち、DIF-07〜15未着手**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
+- Approved Design Spec: `docs/superpowers/specs/2026-09-28-document-diff-v0-design.md`、凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`。
+- Approved Implementation Plan: `docs/superpowers/plans/2026-09-29-document-diff-v0-production-implementation.md`、承認blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。
+- GitHub / implementation: 設計・計画Draft PR #23 は `design/document-diff-v0@993cd094a09bdefcd4a9985b62e2a99aa9049b68`、未merge。実装branchは `feat/document-diff-v0@ebd58f66b1bb3ab94c9f067a4a3b5fa991a1dda5`、A記録commit・push・実装PRはこれから。凍結設計差分提案なし。
+- 検証: DIF-06焦点Application 9/9・Postgres 7/7、`PDFIUM_DYNAMIC_LIB_PATH=<cached pinned library> CARGO_INCREMENTAL=0 mise run verify:fast` はfmt/check/strict Clippy/architecture/API lintとRust 584/584 PASS（既定skip 5）。Linux runner/sandbox canaryと資源数値はhosted gate待ち。既存baseline security jobはmiseのOSV scanner lock provenance setup失敗であり未解決。
+- 次の exact action: A記録をcommit/pushし、PR #23をbaseにDraft実装PRを作成する。そのheadの標準CIとDSI Sandbox Preflightを一度確認し、実装起因の失敗を修正する。その後DIF-07 TXTのREDへ進む。merge・deployは未指示。
+
+以下は旧checkpoint。現在の工程ではない。
+
+## Active checkpoint — Document Diff v0 DIF-01〜03 local GREEN、2026-09-29 JST
+
+- Status: **ACTIVE — Delivery Unit A 実装中、DIF-04 NEXT**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
+- Approved Design Spec: `docs/superpowers/specs/2026-09-28-document-diff-v0-design.md`、凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`。
+- Approved Implementation Plan: `docs/superpowers/plans/2026-09-29-document-diff-v0-production-implementation.md`、承認blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。
+- GitHub / implementation: 設計・計画Draft PR #23、実装branch `feat/document-diff-v0@c042a27ec82738462a47d8d74c6d06c536e4af0a`（未push/実装PR未作成）。DIF-01〜03は局所RED→GREEN。A hosted gate未実行。
+- Blocker: DIF-04着手にはなし。凍結設計差分提案なし。merge・deployは未指示。
+- 次の exact action: DIF-04のworker/runner最小scaffoldと隔離・raw bindingのRED試験を作る。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## Active checkpoint — Document Diff v0 計画承認・実装開始、2026-09-29 JST
 
 - Status: **ACTIVE — 計画承認済み、DIF-01〜15実装開始指示済み、DIF-01着手前**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。

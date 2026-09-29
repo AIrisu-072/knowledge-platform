@@ -71,8 +71,20 @@ impl SemanticAdapter for PdfAdapter {
     fn inspect(
         &self,
         input: &[u8],
-        _profile: &AdapterProfile,
+        profile: &AdapterProfile,
     ) -> Result<SemanticAdapterOutput, WorkerFailure> {
+        self.inspect_with_projection(input, profile)
+            .map(|(output, _)| output)
+    }
+}
+
+impl PdfAdapter {
+    /// Returns the qualified native-text PDF projection for bounded Diff comparison.
+    pub fn inspect_with_projection(
+        &self,
+        input: &[u8],
+        _profile: &AdapterProfile,
+    ) -> Result<(SemanticAdapterOutput, Value), WorkerFailure> {
         let lopdf = load_lopdf(input)?;
         if lopdf.is_encrypted() || lopdf.was_encrypted() {
             return Err(failure(
@@ -281,11 +293,11 @@ impl SemanticAdapter for PdfAdapter {
                 && left.normalized_reference == right.normalized_reference
         });
 
-        let semantic_projection = canonical_json_bytes(&json!({
+        let projection = json!({
             "pages": semantic_pages,
             "form_values": form_values,
-        }))
-        .map_err(|error| {
+        });
+        let semantic_projection = canonical_json_bytes(&projection).map_err(|error| {
             failure(
                 WorkerFailureCode::InvalidWorkerResult,
                 format!("PDF semantic projection: {error}"),
@@ -343,7 +355,7 @@ impl SemanticAdapter for PdfAdapter {
                 sha256: Some(pdfium.sha256),
             });
 
-        Ok(output)
+        Ok((output, projection))
     }
 }
 

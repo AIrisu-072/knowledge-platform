@@ -1,0 +1,24 @@
+[package]
+name = "document-diff-runner"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+document-application = { version = "0.0.0", path = "../document-application" }
+document-diff-core = { version = "0.0.0", path = "../document-diff-core" }
+document-semantic-inspection-runner = { version = "0.0.0", path = "../document-semantic-inspection-runner" }
+libc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[[bin]]
+name = "diff-runner-hostile-worker"
+path = "tests/support/hostile_worker.rs"
+test = false
+bench = false

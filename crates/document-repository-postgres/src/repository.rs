@@ -1,3 +1,4 @@
+use crate::document_diff_cache::BoundedDiffCache;
 use document_application::{
     AuthoritativeDocument, CreateInitialDocumentRecord, CurrentPublishedVersionRef,
     DocumentPublishRepository, DocumentRepository, PublishCandidate, PublishDocumentResult,
@@ -8,6 +9,7 @@ use document_domain::{Action, ResourceRef};
 use document_domain::{DocumentId, DocumentVersionId, FileId, PrincipalRef};
 use serde_json::Value;
 use sqlx::PgPool;
+use std::sync::{Arc, Mutex};
 
 use crate::{
     access_control::{
@@ -23,6 +25,7 @@ const AUDIT_SOURCE: &str = "urn:knowledge-platform:document-platform";
 #[derive(Debug, Clone)]
 pub struct PostgresDocumentRepository {
     pub(crate) pool: PgPool,
+    pub(crate) diff_cache: Arc<Mutex<BoundedDiffCache>>,
     pub(crate) bootstrap_actor: Option<PrincipalRef>,
     pub(crate) verified_actor: Option<VerifiedActorContext>,
 }
@@ -31,6 +34,7 @@ impl PostgresDocumentRepository {
     pub fn new(pool: PgPool) -> Self {
         Self {
             pool,
+            diff_cache: Arc::new(Mutex::new(BoundedDiffCache::default())),
             bootstrap_actor: None,
             verified_actor: None,
         }
@@ -39,6 +43,7 @@ impl PostgresDocumentRepository {
     pub fn new_with_bootstrap_actor(pool: PgPool, bootstrap_actor: PrincipalRef) -> Self {
         Self {
             pool,
+            diff_cache: Arc::new(Mutex::new(BoundedDiffCache::default())),
             bootstrap_actor: Some(bootstrap_actor),
             verified_actor: None,
         }
@@ -47,6 +52,7 @@ impl PostgresDocumentRepository {
     pub fn with_verified_actor(&self, actor: VerifiedActorContext) -> Self {
         Self {
             pool: self.pool.clone(),
+            diff_cache: self.diff_cache.clone(),
             bootstrap_actor: None,
             verified_actor: Some(actor),
         }
