@@ -1,5 +1,15 @@
 # Document Diff v0 — Capability Execution Status
 
+## 2026-09-29 JST — D局所共通GREEN、Linux canary manifest修正後のhosted再確認
+
+- 状態: **ACTIVE**。DIF-01〜13はA/B/C同一head hosted gate完了。DIF-14〜15は局所とD共通検証PASS。D最終標準CI・Linux PDF worker canary待ち。Frozen Design意味変更提案なし。
+- branch/PR: 設計Draft PR #23 head `993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24 remote initial D head `a5168221c9f0626cfb9056c548870bdac4838c05`。local修正head `03b67220f0eeda894e1d584aba67c3a54380acff`、未push。両PR未merge、PR #24未解決review thread 0。
+- D共通: pinned PDFium pathで `CARGO_INCREMENTAL=0 mise run verify:fast` SUCCESS、Rust 636/636（既定skip 5）、fmt/check/strict Clippy/architecture/API lint PASS。局所DIF-14 PDF 6/6、DSI PDF回帰8/8、DIF-15横断3/3、Application縦断1/1、Postgres競合1/1。資源測定と合成fixtureのfalse unchanged/false change/locator error各0は下記とqualification ledgerに記録。
+- Initial D hosted `a5168221c9f0626cfb9056c548870bdac4838c05`: DSI Sandbox Preflight `36523564697` SUCCESS、DSI PoC `36523564667` SUCCESS。標準CI `36523564675` はLinux専用`pdf_runner.rs`の`document-diff-runner`テスト依存宣言欠落で`rust-static` compile FAIL。無効headの残りはキャンセルした。`03b67220f0eeda894e1d584aba67c3a54380acff` でLinux限定dev-dependency/Cargo.lockを修正。最終標準CIとLinux実worker canaryは未確認。
+- blocker / 次: 修正headのhosted gate。次のexact actionはこの記録をcommit/pushし、PR #24 exact headの標準CI、Sandbox、DSI PoCを確認する。PRはDraft維持、merge・deploy指示なし。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## 2026-09-29 JST — C hosted GREEN、DIF-14〜15局所GREEN、Delivery D共通/hosted NEXT
 
 - 状態: **ACTIVE**。DIF-01〜13はA/B/Cの同一head hosted gateまで完了。DIF-14 PDFとDIF-15横断評価は局所GREEN、D共通/hosted gate待ち。Frozen Design意味変更提案なし。

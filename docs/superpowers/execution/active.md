@@ -1,5 +1,16 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document Diff v0 D共通GREEN、Linux canary manifest修正後のhosted再確認、2026-09-29 JST
+
+- Status: **ACTIVE — DIF-01〜13 hosted完了、DIF-14〜15局所・共通検証PASS、D exact-head標準CI修正確認待ち**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
+- Approved Design Spec凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`、Approved Plan承認blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。意味変更提案なし。
+- GitHub: 設計Draft PR #23 head `993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24 remote initial D head `a5168221c9f0626cfb9056c548870bdac4838c05`。local manifest修正head `03b67220f0eeda894e1d584aba67c3a54380acff`、記録commit・push待ち。両PR未merge、PR #24未解決review thread 0。
+- D局所共通: pinned PDFium pathで `CARGO_INCREMENTAL=0 mise run verify:fast` SUCCESS、Rust 636/636（既定skip 5）、fmt/check/strict Clippy/architecture/API lint PASS。PDF 6/6、DSI PDF回帰8/8、8形式受入3/3、Application縦断1/1、Postgres競合1/1。
+- Initial D hosted `a5168221...`: Sandbox `36523564697` SUCCESS、DSI PoC `36523564667` SUCCESS。標準CI `36523564675` はLinux専用`pdf_runner.rs`の`document-diff-runner`テスト依存宣言欠落により`rust-static` compile FAILと判明し、無効headの残りをキャンセルした。`03b6722` でLinux限定dev-dependencyとCargo.lockを修正。Linux実canaryと最終標準CIは未確認。
+- 次の exact action: この記録をcommitして修正headをPR #24へpushし、そのexact headの標準CI、DSI Sandbox Preflight、DSI PoCを確認する。Linux `pdf_runner` canaryを標準CI内で確認し、失敗時は対象だけ修正する。最後にPR説明とStatusを証拠に合わせて更新する。merge・deploy指示なし。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## Active checkpoint — Document Diff v0 Delivery C hosted GREEN、D局所GREEN・共通/hosted NEXT、2026-09-29 JST
 
 - Status: **ACTIVE — DIF-01〜13同一head hosted完了、DIF-14 PDFとDIF-15横断受入は局所検証済み、D共通/hosted gate待ち**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
