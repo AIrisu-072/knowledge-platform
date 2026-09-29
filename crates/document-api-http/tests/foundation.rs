@@ -9,6 +9,7 @@ use axum::routing::get;
 use document_api_http::error::{ApiProblem, ErrorCode};
 use document_api_http::identity::{IdentityAdapter, IdentityRequestContext};
 use document_api_http::router::{StartupError, protect_routes};
+use document_api_http::trace::TraceContext;
 use document_api_http::validation::SchemaRegistry;
 use document_application::{
     ApplicationError, IdentityResolutionError, InvocationKind, VerifiedActorContext,
@@ -90,6 +91,19 @@ async fn identity_is_required_and_adapter_failures_are_closed() {
     .await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(body["code"], "IDENTITY_UNAVAILABLE");
+
+    let expired = VerifiedActorContext::from_trusted_adapter(
+        PrincipalRef::new("test-idp", "user-1").unwrap(),
+        vec![PolicySubject::new(PolicySubjectKind::Principal, "test-idp", "user-1").unwrap()],
+        OffsetDateTime::now_utc() + Duration::milliseconds(50),
+        InvocationKind::HumanInteractive,
+        None,
+    )
+    .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+    let (status, body, _) = request_json(fixture_router(Ok(expired)), "/v1/probe").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["code"], "AUTHENTICATION_REQUIRED");
 }
 
 #[tokio::test]
@@ -145,6 +159,68 @@ fn application_errors_map_to_stable_sanitized_problem() {
         ApiProblem::from_application(ApplicationError::Validation("bad".into()), "/", "t").status,
         422
     );
+}
+
+#[test]
+fn every_problem_code_agrees_with_the_error_registry() {
+    let registry = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../spec/errors/error-registry.yaml"
+    ));
+    for code in ErrorCode::ALL {
+        let prefix = format!("  {}: ", code.as_str());
+        let line = registry
+            .lines()
+            .find(|line| line.starts_with(&prefix))
+            .unwrap_or_else(|| panic!("missing registry code {}", code.as_str()));
+        assert!(
+            line.contains(&format!("status: {}", code.status())),
+            "registry status differs for {}",
+            code.as_str()
+        );
+        assert!(line.contains(code.title()));
+    }
+}
+
+#[tokio::test]
+async fn problem_responses_keep_stable_shape_and_trace_without_internal_text() {
+    let routes = Router::new().route(
+        "/v1/problems/{kind}",
+        get(
+            |axum::extract::Path(kind): axum::extract::Path<String>,
+             axum::Extension(trace): axum::Extension<TraceContext>| async move {
+                let error = match kind.as_str() {
+                    "forbidden" => ApplicationError::Forbidden,
+                    "invalid" => ApplicationError::Validation("private-input".into()),
+                    "conflict" => ApplicationError::Conflict,
+                    _ => ApplicationError::Internal("sql-secret".into()),
+                };
+                ApiProblem::from_application(error, "/v1/problems", &trace.trace_id)
+            },
+        ),
+    );
+    let router = protect_routes(
+        routes,
+        Some(Arc::new(FixtureIdentity {
+            outcome: Ok(actor()),
+        })),
+    )
+    .unwrap();
+    for (path, status, code) in [
+        ("/v1/problems/forbidden", 403, "FORBIDDEN"),
+        ("/v1/problems/invalid", 422, "VALIDATION_FAILED"),
+        ("/v1/problems/conflict", 409, "REVISION_CONFLICT"),
+        ("/v1/problems/internal", 500, "INTERNAL"),
+    ] {
+        let (actual_status, body, headers) = request_json(router.clone(), path).await;
+        assert_eq!(actual_status.as_u16(), status);
+        assert_eq!(body["status"], status);
+        assert_eq!(body["code"], code);
+        assert_eq!(body["traceId"], headers["trace-id"].to_str().unwrap());
+        assert_eq!(headers[header::CONTENT_TYPE], "application/problem+json");
+        assert!(!body.to_string().contains("sql-secret"));
+        assert!(!body.to_string().contains("private-input"));
+    }
 }
 
 #[test]

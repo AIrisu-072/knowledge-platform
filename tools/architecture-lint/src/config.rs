@@ -123,6 +123,28 @@ impl Config {
                             ],
                         },
                     ),
+                    (
+                        "document_api_http".into(),
+                        BoundaryRule {
+                            crate_path: "crates/document-api-http".into(),
+                            forbidden_dependencies: vec![
+                                "sqlx".into(),
+                                "document-repository-postgres".into(),
+                                "document-storage-fs".into(),
+                                "document-diff-runner".into(),
+                                "document-semantic-inspection-runner".into(),
+                            ],
+                            forbidden_source_patterns: vec![
+                                "document_repository_postgres".into(),
+                                "document_storage_fs".into(),
+                                "document_diff_runner".into(),
+                                "document_semantic_inspection_runner".into(),
+                                "SYSTEM_ROOT_FOLDER_ID".into(),
+                                "AllowAllIdentityAdapter".into(),
+                                "TestIdentityAdapter".into(),
+                            ],
+                        },
+                    ),
                 ]),
             },
         }
