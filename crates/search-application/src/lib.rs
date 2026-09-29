@@ -4,6 +4,7 @@
 
 pub mod error;
 pub mod ports;
+pub mod projection;
 pub mod qualification;
 pub mod source_registry;
 

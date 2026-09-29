@@ -17,6 +17,7 @@ pub mod intent;
 pub mod observation;
 pub mod predicate;
 pub mod profile;
+pub mod projection;
 pub mod relation;
 pub mod resource;
 pub mod source;
