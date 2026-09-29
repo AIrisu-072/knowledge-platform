@@ -1,5 +1,15 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document Diff v0 DIF-01〜15実装・D code head hosted GREEN、2026-09-29 JST
+
+- Status: **ACTIVE — DIF-01〜15実装完了、PR #24 Draftレビュー待ち**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。Frozen Design blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`、Approved Plan blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。意味変更提案なし。
+- branch/PR: `feat/document-diff-v0`、実装Draft PR #24（設計Draft PR #23にstack、両PR未merge）。D code + 既存記録のexact head `c8b20c9065ba48ca75ab70e514cec0387575e37e` はorigin/PRと一致。
+- D exact-head gate: 標準CI `36524865047`、DSI Sandbox Preflight `36524865121`、DSI PoC regression `36524864997` は全て同一headでSUCCESS。標準CIのLinux rust-testログで `document-diff-worker::pdf_runner qualified_pdfium_is_bound_before_linux_sandbox_seals` PASS。D共通local `verify:fast` は636/636 Rust tests（既定skip 5）、fmt/check/strict Clippy/architecture/API lint PASS。受入は8形式合成fixture、実TXT→Application→projection、実Postgres競合を確認。広い実文書corpusの精度値とは扱わない。
+- 現在のStep: この最終evidenceをActive/Status/qualification/PR説明へ記録する。記録commitでheadが変わるため、承認計画DIF-15に従い新exact headの標準CI、Sandbox、PoCを確認する。blockerは記録head gateのみ。merge・deploy指示なし。
+- 次のexact action: 記録のみをcommit/pushし、新headの3 gateを確認する。SUCCESSならPR #24をDraftのままレビュー待ちにし、FAILなら当該原因だけ修正する。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## Active checkpoint — Document Diff v0 PDF Linux canaryをmacOSでも型検査、hosted再確認、2026-09-29 JST
 
 - Status: **ACTIVE — DIF-01〜13 hosted完了、DIF-14〜15局所・共通検証PASS、D final hosted gate待ち**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。設計凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`、計画承認blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`、意味変更提案なし。

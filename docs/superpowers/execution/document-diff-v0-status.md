@@ -1,5 +1,16 @@
 # Document Diff v0 — Capability Execution Status
 
+## 2026-09-29 JST — DIF-01〜15実装完了、D code head hosted GREEN・最終記録head gate NEXT
+
+- 状態: **ACTIVE / DIF-01〜15実装完了 / PR #24 Draftレビュー待ち**。Frozen Design意味変更提案なし。設計blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`、承認計画blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。
+- branch/PR: `feat/document-diff-v0`、実装Draft PR #24は設計Draft PR #23にstack。両PR未merge。D code + 既存記録head `c8b20c9065ba48ca75ab70e514cec0387575e37e` はorigin/PRと一致。
+- 完了Task: A DIF-01〜06、B DIF-07〜09、C DIF-10〜13、D DIF-14〜15。各formatのRED→GREENとA/B/Cのexact-head gateは下記。D local `verify:fast` は636/636 Rust tests（既定skip 5）、fmt/check/strict Clippy/architecture/API lint PASS。8形式合成受入3/3、実TXT縦断1/1、実DB競合1/1、PDF比較6/6、共有DSI PDF回帰8/8。100,000行境界、候補/変更/原本byteの境界と1超過、合成fixtureのfalse unchanged・false change・locator error・hidden unverified各0。測定範囲と限界は `experiments/document-diff/qualification.md`。
+- D exact-head hosted: `c8b20c9065ba48ca75ab70e514cec0387575e37e` で標準CI `36524865047` SUCCESS、DSI Sandbox Preflight `36524865121` SUCCESS、DSI PoC `36524864997` SUCCESS。Linux rust-testで実PDF workerの `qualified_pdfium_is_bound_before_linux_sandbox_seals` PASS。初期D head 2件のLinux canary compile失敗は下記に記録済みで、最終GREENとして扱わない。
+- blocker / 未解決判断: 実装意味のblockerなし。広い実文書corpus精度やLinux runner peak memoryの測定値は資格済みと主張しない。新規parser versionのpromotionなし。記録commitで変わるheadの3 gateは未確認。PRレビューとmergeは別工程であり、merge・deploy指示なし。
+- 次のexact action: この最終記録をcommit/pushして新exact headの標準CI、Sandbox、PoCを確認する。SUCCESSならPR #24をDraftレビュー待ちにする。失敗時は原因だけ修正する。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## 2026-09-29 JST — PDF Linux canaryをmacOSでも型検査、D final hosted待ち
 
 - 状態: **ACTIVE**。DIF-01〜13はA/B/C hosted完了、DIF-14〜15は局所・共通検証PASS、D final hosted gate待ち。Frozen Design意味変更提案なし。
