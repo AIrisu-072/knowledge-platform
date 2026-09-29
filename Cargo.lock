@@ -1134,6 +1134,7 @@ version = "0.0.0"
 dependencies = [
  "csv",
  "document-diff-core",
+ "document-diff-runner",
  "document-semantic-inspection-core",
  "document-semantic-inspection-runner",
  "document-semantic-inspection-worker",
