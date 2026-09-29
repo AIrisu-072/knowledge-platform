@@ -3694,6 +3694,8 @@ version = "0.0.0"
 dependencies = [
  "search-application",
  "search-core",
+ "search-projection-memory",
+ "search-tantivy",
  "thiserror",
  "time",
  "tokio",
