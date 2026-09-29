@@ -488,6 +488,7 @@ fn source(
         SourceLocator::OfficePath { path } if !path.contains("#p[") && !path.contains("/p[") => {
             LocatorGranularity::Parent
         }
+        SourceLocator::SheetCell { cell, .. } if cell.contains(':') => LocatorGranularity::Parent,
         SourceLocator::SlideObject { object: None, .. }
         | SourceLocator::PdfPage { region: None, .. }
         | SourceLocator::VbaModule {

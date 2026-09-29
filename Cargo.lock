@@ -1140,6 +1140,7 @@ dependencies = [
  "html5ever",
  "markup5ever_rcdom",
  "quick-xml 0.42.0",
+ "rxls",
  "serde",
  "serde_json",
  "sha2 0.11.0",

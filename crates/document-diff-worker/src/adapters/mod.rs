@@ -8,6 +8,7 @@ use crate::WorkerError;
 pub(crate) mod csv;
 pub(crate) mod docx;
 pub(crate) mod html;
+pub(crate) mod spreadsheet;
 pub(crate) mod text;
 
 pub(crate) fn compare(
@@ -30,6 +31,10 @@ pub(crate) fn compare(
     if request.format == document_diff_core::FormatId::Docx {
         let mut budget = document_diff_core::ComparisonBudget::new(100_000, 100_000);
         return docx::DocxComparator::compare(request, base, target, &mut budget);
+    }
+    if request.format == document_diff_core::FormatId::Xlsx {
+        let mut budget = document_diff_core::ComparisonBudget::new(8_000_000, 100_000);
+        return spreadsheet::SpreadsheetComparator::xlsx(request, base, target, &mut budget);
     }
     // A format is promoted only after its independent qualification task.
     Ok(WorkerDiffResponse {

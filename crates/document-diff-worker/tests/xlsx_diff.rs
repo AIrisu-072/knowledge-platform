@@ -56,6 +56,17 @@ const IMAGE: &[u8] = include_bytes!(
 const UNKNOWN: &[u8] = include_bytes!(
     "../../../experiments/document-semantic-inspection/fixtures/xlsx/unknown-semantic-part.xlsx"
 );
+const DUPLICATE_ROWS_BASE: &[u8] = include_bytes!(
+    "../../../experiments/document-diff/fixtures/xlsx/duplicate-row-reorder-base.xlsx"
+);
+const DUPLICATE_ROWS_TARGET: &[u8] = include_bytes!(
+    "../../../experiments/document-diff/fixtures/xlsx/duplicate-row-reorder-target.xlsx"
+);
+const UNIQUE_ROWS_BASE: &[u8] =
+    include_bytes!("../../../experiments/document-diff/fixtures/xlsx/unique-row-reorder-base.xlsx");
+const UNIQUE_ROWS_TARGET: &[u8] = include_bytes!(
+    "../../../experiments/document-diff/fixtures/xlsx/unique-row-reorder-target.xlsx"
+);
 
 fn compare(base: &[u8], target: &[u8]) -> document_diff_core::WorkerDiffResponse {
     let request = WorkerDiffRequest {
@@ -164,5 +175,38 @@ fn unknown_spreadsheet_semantics_fail_closed() {
     assert_eq!(
         result.unverified_regions[0].base,
         Some(SourceLocator::ContentItem)
+    );
+}
+
+#[test]
+fn duplicated_rows_do_not_get_a_certain_move_or_cell_match() {
+    let result = compare(DUPLICATE_ROWS_BASE, DUPLICATE_ROWS_TARGET);
+    assert_ne!(result.coverage, DiffCoverage::Full);
+    assert!(
+        result
+            .unverified_regions
+            .iter()
+            .any(|region| region.reason == UnverifiedReason::AmbiguousAlignment)
+    );
+    assert!(
+        !result
+            .changes
+            .iter()
+            .any(|change| change.relocation.is_some() || change.facet == "xlsx_cell_value")
+    );
+}
+
+#[test]
+fn unique_rows_are_reordered_without_false_cell_edits() {
+    let result = compare(UNIQUE_ROWS_BASE, UNIQUE_ROWS_TARGET);
+    assert_eq!(result.coverage, DiffCoverage::Full);
+    assert!(result.changes.iter().any(|change| {
+        change.facet == "xlsx_row" && change.relocation == Some(RelocationKind::Reordered)
+    }));
+    assert!(
+        !result
+            .changes
+            .iter()
+            .any(|change| change.facet == "xlsx_cell_value")
     );
 }

@@ -7,6 +7,7 @@ mod shell;
 pub use adapters::csv::CsvComparator;
 pub use adapters::docx::DocxComparator;
 pub use adapters::html::HtmlComparator;
+pub use adapters::spreadsheet::SpreadsheetComparator;
 pub use adapters::text::TextComparator;
 pub use shell::{
     MAX_REQUEST_BYTES, MAX_RESULT_BYTES, MAX_SOURCE_BYTES, decode_request_bounded,
