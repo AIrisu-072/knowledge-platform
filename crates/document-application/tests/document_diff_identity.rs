@@ -34,6 +34,7 @@ fn version(version: u128, title: &str) -> VersionSnapshot {
     VersionSnapshot {
         document_id: document_id(),
         version_id: DocumentVersionId::from_uuid(Uuid::from_u128(version)),
+        reference_purpose: document_application::VersionPurpose::History,
         document_revision: 5,
         title: title.to_owned(),
         items: vec![item("part/a.txt", 0), item("part/b.txt", 1)],

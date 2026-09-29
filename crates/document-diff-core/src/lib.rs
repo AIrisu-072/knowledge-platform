@@ -1,9 +1,14 @@
 #![forbid(unsafe_code)]
 //! Document Diff worker contract and bounded comparison primitives.
 
+mod alignment;
 mod change;
 mod protocol;
 
+pub use alignment::{
+    AlignedPair, AlignmentBudget, AlignmentKind, AlignmentOutcome, ItemAnchor, UnresolvedCluster,
+    align_items,
+};
 pub use change::{
     ChangeOperation, ComparisonBudget, ContentVerdict, DiffCoverage, RelocationKind, SourceLocator,
     UnverifiedReason, WorkerChange, WorkerUnverifiedRegion,

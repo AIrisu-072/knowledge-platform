@@ -274,6 +274,7 @@ pub(crate) async fn capture_version(
     Ok(VersionSnapshot {
         document_id: request.document_id,
         version_id,
+        reference_purpose: purpose,
         document_revision,
         title,
         items,

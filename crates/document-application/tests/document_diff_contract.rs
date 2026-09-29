@@ -38,6 +38,7 @@ fn pair() -> DiffPairSnapshot {
     let version = |number: u128, raw: u8| VersionSnapshot {
         document_id,
         version_id: DocumentVersionId::from_uuid(Uuid::from_u128(number)),
+        reference_purpose: document_application::VersionPurpose::History,
         document_revision: 1,
         title: "Title".into(),
         items: vec![item(number, raw)],
@@ -300,4 +301,120 @@ async fn metadata_only_change_does_not_change_content_verdict_and_final_denial_r
         Err(ApplicationError::Forbidden)
     ));
     assert_eq!(denied.audits.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn changed_fingerprint_without_worker_locator_stays_different_with_unverified_detail() {
+    let mut source = pair();
+    source.target.items[0].semantic_fingerprint = Some([10; 32]);
+    let repository = Arc::new(FakeRepository {
+        pair: source.clone(),
+        audits: AtomicUsize::new(0),
+        deny_final: false,
+    });
+    let service = DocumentDiffService::new(
+        repository,
+        Arc::new(FakeStorage),
+        Arc::new(FakeExecutor { unsupported: false }),
+        Arc::new(MissingEvidence),
+    );
+    let output = service.compare(&context(), request(&source)).await.unwrap();
+    assert_eq!(output.result.verdict, ContentVerdict::Different);
+    assert_eq!(output.result.coverage, DiffCoverage::Partial);
+    assert_eq!(output.result.changes[0].facet, "content_item");
+    assert!(!output.result.unverified_regions.is_empty());
+}
+
+#[tokio::test]
+async fn ambiguous_item_correspondence_is_not_invented_as_add_remove_or_move() {
+    let mut source = pair();
+    let mut old_extra = source.base.items[0].clone();
+    old_extra.content_item_id = Uuid::from_u128(101);
+    old_extra.logical_path = "old/second".into();
+    old_extra.ordinal = 1;
+    source.base.items[0].logical_path = "old/first".into();
+    source.base.items.push(old_extra);
+    source.target.items[0].logical_path = "new/first".into();
+    let mut new_extra = source.target.items[0].clone();
+    new_extra.content_item_id = Uuid::from_u128(102);
+    new_extra.logical_path = "new/second".into();
+    new_extra.ordinal = 1;
+    new_extra.semantic_fingerprint = Some([11; 32]);
+    source.target.items.push(new_extra);
+    let repository = Arc::new(FakeRepository {
+        pair: source.clone(),
+        audits: AtomicUsize::new(0),
+        deny_final: false,
+    });
+    let service = DocumentDiffService::new(
+        repository,
+        Arc::new(FakeStorage),
+        Arc::new(FakeExecutor { unsupported: false }),
+        Arc::new(MissingEvidence),
+    );
+    let output = service.compare(&context(), request(&source)).await.unwrap();
+    assert_eq!(output.result.verdict, ContentVerdict::Unknown);
+    assert!(output.result.changes.is_empty());
+    assert!(
+        output
+            .result
+            .unverified_regions
+            .iter()
+            .all(|region| region.reason == UnverifiedReason::AmbiguousAlignment)
+    );
+}
+
+#[tokio::test]
+async fn unique_reorder_and_one_sided_manifest_addition_are_confirmed() {
+    let mut reordered = pair();
+    reordered.target.items[0].ordinal = 2;
+    let repository = Arc::new(FakeRepository {
+        pair: reordered.clone(),
+        audits: AtomicUsize::new(0),
+        deny_final: false,
+    });
+    let service = DocumentDiffService::new(
+        repository,
+        Arc::new(FakeStorage),
+        Arc::new(FakeExecutor { unsupported: false }),
+        Arc::new(MissingEvidence),
+    );
+    let output = service
+        .compare(&context(), request(&reordered))
+        .await
+        .unwrap();
+    assert_eq!(output.result.verdict, ContentVerdict::Different);
+    assert_eq!(output.result.coverage, DiffCoverage::Full);
+    assert!(
+        output
+            .result
+            .changes
+            .iter()
+            .any(|change| change.relocation == Some(document_diff_core::RelocationKind::Reordered))
+    );
+
+    let mut added = pair();
+    let mut extra = added.target.items[0].clone();
+    extra.content_item_id = Uuid::from_u128(300);
+    extra.authoritative_representation_id = Uuid::from_u128(301);
+    extra.file_id = FileId::from_uuid(Uuid::from_u128(302));
+    extra.logical_path = "appendix".into();
+    extra.ordinal = 1;
+    added.target.items.push(extra);
+    let repository = Arc::new(FakeRepository {
+        pair: added.clone(),
+        audits: AtomicUsize::new(0),
+        deny_final: false,
+    });
+    let service = DocumentDiffService::new(
+        repository,
+        Arc::new(FakeStorage),
+        Arc::new(FakeExecutor { unsupported: false }),
+        Arc::new(MissingEvidence),
+    );
+    let output = service.compare(&context(), request(&added)).await.unwrap();
+    assert!(output.result.changes.iter().any(|change| change.operation
+        == Some(document_diff_core::ChangeOperation::Added)
+        && change.base.is_none()
+        && change.target.is_some()));
 }

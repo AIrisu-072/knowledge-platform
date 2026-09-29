@@ -6,6 +6,8 @@ use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
+use crate::VersionPurpose;
+
 const SNAPSHOT_DOMAIN: &[u8] = b"document-diff-snapshot-v0\0";
 const SEMANTIC_DOMAIN: &[u8] = b"document-diff-semantic-v0\0";
 const CACHE_DOMAIN: &[u8] = b"document-diff-cache-v0\0";
@@ -29,6 +31,7 @@ pub struct SnapshotItem {
 pub struct VersionSnapshot {
     pub document_id: DocumentId,
     pub version_id: DocumentVersionId,
+    pub reference_purpose: VersionPurpose,
     pub document_revision: u64,
     pub title: String,
     pub items: Vec<SnapshotItem>,
@@ -133,7 +136,7 @@ impl VersionSnapshot {
     }
 }
 
-fn normalize_title(value: &str) -> String {
+pub(super) fn normalize_title(value: &str) -> String {
     let line_normalized = value.replace("\r\n", "\n").replace('\r', "\n");
     line_normalized.nfc().collect::<String>().trim().to_owned()
 }
@@ -157,6 +160,9 @@ impl DiffPairSnapshot {
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.base.version_id == self.target.version_id {
             return Err("base and target versions must differ");
+        }
+        if self.base.items.is_empty() || self.target.items.is_empty() {
+            return Err("both versions require authoritative content items");
         }
         if self.base.document_id != self.document_id || self.target.document_id != self.document_id
         {
