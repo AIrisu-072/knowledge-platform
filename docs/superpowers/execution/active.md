@@ -1,5 +1,17 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document Diff v0 Delivery C hosted GREEN、D局所GREEN・共通/hosted NEXT、2026-09-29 JST
+
+- Status: **ACTIVE — DIF-01〜13同一head hosted完了、DIF-14 PDFとDIF-15横断受入は局所検証済み、D共通/hosted gate待ち**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
+- Approved Design Spec: `docs/superpowers/specs/2026-09-28-document-diff-v0-design.md` の凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`。Approved Plan: `docs/superpowers/plans/2026-09-29-document-diff-v0-production-implementation.md` の承認blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。意味変更提案なし。
+- GitHub: 設計Draft PR #23 head `993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24 remote C head `a182c42a49417dfc6ca0394f9dc33506a5d1ea70`。local D code head `268a66a91b41dd5285eb3efe37c612ef30b08b4b`、未push。両PR未merge。
+- C exact-head gate: 標準CI `36521663888`、DSI Sandbox Preflight `36521663872`、DSI PoC `36521663869` はすべて `a182c42a49417dfc6ca0394f9dc33506a5d1ea70` でSUCCESS。
+- DIF-14: RED `52beacbfcacb0c02b7ef5e4cf80f08047c682eb9` は `PdfComparator` 不在でFAIL。GREEN `49cf67a087bc4c7c33a56fe9e22678252f877a56`、Linux native runtime準備 `ba93a7fa8bf17a18dec429e600eb5dfbfb3789dc`、page-level未比較補強 `268a66a91b41dd5285eb3efe37c612ef30b08b4b`。`pdf_diff` 6/6、共有DSI PDF回帰8/8、対象strict Clippy PASS。PDFium/LoPDFは既存pinのみ。Linux実worker canaryはD hosted待ち。
+- DIF-15局所: 8形式横断受入3/3、実TXT worker→Application→認可対照表1/1、WORKING revisionと最終Auditの実DB競合1/1。100,000行境界と1超過、候補・change・source byte上限と1超過を確認。合成fixtureでfalse unchanged/false change/locator errorは各0。macOS受入プロセス実測は0.47秒、最大RSS 53,100,544 bytes。Production Linux runner資源・最終gateは未確定。
+- 次の exact action: pinned PDFium pathで `CARGO_INCREMENTAL=0 mise run verify:fast` を最終D codeへ一度実行する。PASS後にD記録をcommit/pushし、PR #24 exact headの標準CI、DSI Sandbox Preflight、DSI PoCとLinux PDF runner canaryを確認する。結果をStatusへ反映し、記録commitでheadが変わるならそのheadの必要gateを再確認する。merge・deploy指示なし。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## Active checkpoint — Document Diff v0 Delivery C共通検証GREEN、hosted NEXT、2026-09-29 JST
 
 - Status: **ACTIVE — DIF-01〜09 hosted完了、DIF-10〜13局所RED→GREEN、C共通検証PASS・hosted gate待ち、DIF-14〜15未着手**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。

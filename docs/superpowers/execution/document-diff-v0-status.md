@@ -1,5 +1,16 @@
 # Document Diff v0 — Capability Execution Status
 
+## 2026-09-29 JST — C hosted GREEN、DIF-14〜15局所GREEN、Delivery D共通/hosted NEXT
+
+- 状態: **ACTIVE**。DIF-01〜13はA/B/Cの同一head hosted gateまで完了。DIF-14 PDFとDIF-15横断評価は局所GREEN、D共通/hosted gate待ち。Frozen Design意味変更提案なし。
+- branch/PR: 設計Draft PR #23 head `993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24 remote C head `a182c42a49417dfc6ca0394f9dc33506a5d1ea70`。local D code head `268a66a91b41dd5285eb3efe37c612ef30b08b4b`、未push。両PR未merge。
+- C exact-head: 標準CI `36521663888`、DSI Sandbox Preflight `36521663872`、DSI PoC `36521663869` は全て `a182c42a49417dfc6ca0394f9dc33506a5d1ea70` でSUCCESS。
+- DIF-14: test-only RED `52beacbfcacb0c02b7ef5e4cf80f08047c682eb9` は未実装`PdfComparator`だけでcompile FAIL。GREEN `49cf67a087bc4c7c33a56fe9e22678252f877a56`。Linux workerのPDFium warmup・明示runtime path `ba93a7fa8bf17a18dec429e600eb5dfbfb3789dc`、矩形を確定できない視覚差をpage-level未比較へ残す補強 `268a66a91b41dd5285eb3efe37c612ef30b08b4b`。PDF 6/6、既存DSI PDF 8/8、対象strict Clippy PASS。Linux実worker canaryはD hosted待ち。
+- DIF-15: 横断受入3/3、Applicationで実TXT worker→最終監査→新旧原本locatorを持つ対照表1/1、PostgresでWORKING更新と最終監査の行lock競合1/1 PASS。8形式の合成positive/noise/exact/unknown fixtureでfalse unchanged 0、false change 0、locator error 0。100,000行と1超過、candidate/change/source byte上限と1超過を検査。macOS受入プロセス実測は0.47秒、最大RSS 53,100,544 bytes。広い実文書corpusの精度ではなく資格fixture上の測定。
+- blocker / 次: D共通`verify:fast`と同一head標準CI/Sandbox/DSI PoC、Linux PDF runner canaryを未確認。次のexact actionはpinned PDFium pathで共通検証を一度実行し、PASSしたD記録をcommit/pushしてhosted gateを確認する。PRはDraftのまま。merge・deploy指示なし。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## 2026-09-29 JST — DIF-10〜13局所GREEN、Delivery C共通GREEN・hosted NEXT
 
 - 状態: **ACTIVE**。A/Bは同一head hosted gateまで完了。CのDIF-10〜13は局所RED→GREEN、C共通検証PASS・hosted gate待ち。DIF-14〜15未着手。Frozen Design意味変更提案なし。
