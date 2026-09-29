@@ -183,6 +183,26 @@ pub struct WorkerUnverifiedRegion {
     pub navigation_hint: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkerAncillaryChange {
+    pub kind: String,
+    pub base_digest: Option<[u8; 32]>,
+    pub target_digest: Option<[u8; 32]>,
+}
+
+impl WorkerAncillaryChange {
+    pub fn validate(&self) -> Result<(), DiffCoreError> {
+        if !valid_label(&self.kind) || (self.base_digest.is_none() && self.target_digest.is_none())
+        {
+            return Err(DiffCoreError::InvalidResponse(
+                "invalid ancillary change".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl WorkerUnverifiedRegion {
     pub fn validate(&self) -> Result<(), DiffCoreError> {
         if self.base.is_none() && self.target.is_none() {

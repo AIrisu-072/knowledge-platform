@@ -1,7 +1,7 @@
 use document_diff_core::{
     ChangeOperation, ComparisonBudget, DiffCoverage, DiffProfileVersion, FormatId,
-    ResourceProfileVersion, SourceLocator, WorkerChange, WorkerDiffRequest, WorkerDiffResponse,
-    WorkerProtocolVersion, decode_worker_response_bounded,
+    ResourceProfileVersion, SourceLocator, WorkerAncillaryChange, WorkerChange, WorkerDiffRequest,
+    WorkerDiffResponse, WorkerProtocolVersion, decode_worker_response_bounded,
 };
 use serde_json::{Value, json};
 
@@ -33,6 +33,7 @@ fn response() -> WorkerDiffResponse {
             reason_code: "text.changed".to_owned(),
         }],
         unverified_regions: vec![],
+        ancillary_changes: vec![],
         parser_provenance: "text-v0".to_owned(),
     }
 }
@@ -142,4 +143,22 @@ fn response_binding_requires_exact_input_profile_and_raw_hash() {
     let mut wrong = response;
     wrong.target_raw_sha256 = [3; 32];
     assert!(wrong.validate_against(&request).is_err());
+}
+
+#[test]
+fn ancillary_change_roundtrips_without_content_change() {
+    let mut candidate = response();
+    candidate.changes.clear();
+    candidate.ancillary_changes.push(WorkerAncillaryChange {
+        kind: "docx_editorial".to_owned(),
+        base_digest: Some([3; 32]),
+        target_digest: Some([4; 32]),
+    });
+    let encoded = serde_json::to_vec(&candidate).unwrap();
+    assert_eq!(
+        decode_worker_response_bounded(&encoded, encoded.len()).unwrap(),
+        candidate
+    );
+    candidate.ancillary_changes[0].kind.clear();
+    assert!(candidate.validate().is_err());
 }

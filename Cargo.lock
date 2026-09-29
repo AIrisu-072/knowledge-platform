@@ -1133,15 +1133,19 @@ version = "0.0.0"
 dependencies = [
  "csv",
  "document-diff-core",
+ "document-semantic-inspection-core",
  "document-semantic-inspection-runner",
+ "document-semantic-inspection-worker",
  "encoding_rs",
  "html5ever",
  "markup5ever_rcdom",
+ "quick-xml 0.42.0",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "thiserror",
  "unicode-normalization",
+ "zip 8.6.0",
 ]
 
 [[package]]

@@ -147,6 +147,7 @@ where
         let alignment = align_items(&base, &target, &mut budget);
         let mut changes = Vec::new();
         let mut unverified_regions = Vec::new();
+        let mut ancillary_changes = Vec::new();
         let mut verified_any = false;
         for matched in alignment.pairs {
             let old = &pair.base.items[matched.base_index];
@@ -274,6 +275,13 @@ where
                     navigation_hint: region.navigation_hint,
                 });
             }
+            for ancillary in response.ancillary_changes {
+                ancillary_changes.push(AncillaryChange {
+                    kind: ancillary.kind,
+                    base_digest: ancillary.base_digest,
+                    target_digest: ancillary.target_digest,
+                });
+            }
             if response.coverage != DiffCoverage::None {
                 verified_any = true;
             }
@@ -389,16 +397,13 @@ where
             });
             verified_any = true;
         }
-        let ancillary_changes =
-            if pair.base.version_metadata_digest != pair.target.version_metadata_digest {
-                vec![AncillaryChange {
-                    kind: "version_metadata".into(),
-                    base_digest: Some(pair.base.version_metadata_digest),
-                    target_digest: Some(pair.target.version_metadata_digest),
-                }]
-            } else {
-                Vec::new()
-            };
+        if pair.base.version_metadata_digest != pair.target.version_metadata_digest {
+            ancillary_changes.push(AncillaryChange {
+                kind: "version_metadata".into(),
+                base_digest: Some(pair.base.version_metadata_digest),
+                target_digest: Some(pair.target.version_metadata_digest),
+            });
+        }
         let (verdict, coverage) = if !changes.is_empty() {
             (
                 ContentVerdict::Different,
@@ -478,10 +483,17 @@ fn source(
     locator: SourceLocator,
     provenance: &str,
 ) -> SourceEvidence {
-    let granularity = if matches!(locator, SourceLocator::ContentItem) {
-        LocatorGranularity::ContentItem
-    } else {
-        LocatorGranularity::Exact
+    let granularity = match &locator {
+        SourceLocator::ContentItem => LocatorGranularity::ContentItem,
+        SourceLocator::OfficePath { path } if !path.contains("#p[") && !path.contains("/p[") => {
+            LocatorGranularity::Parent
+        }
+        SourceLocator::SlideObject { object: None, .. }
+        | SourceLocator::PdfPage { region: None, .. }
+        | SourceLocator::VbaModule {
+            procedure: None, ..
+        } => LocatorGranularity::Parent,
+        _ => LocatorGranularity::Exact,
     };
     SourceEvidence {
         document_id: version.document_id,

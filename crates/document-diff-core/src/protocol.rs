@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{DiffCoreError, DiffCoverage, WorkerChange, WorkerUnverifiedRegion};
+use crate::{
+    DiffCoreError, DiffCoverage, WorkerAncillaryChange, WorkerChange, WorkerUnverifiedRegion,
+};
 use document_semantic_inspection_core::FormatId;
 
 pub const MAX_SOURCE_BYTES_V0: u64 = 256 * 1024 * 1024;
@@ -88,6 +90,8 @@ pub struct WorkerDiffResponse {
     pub coverage: DiffCoverage,
     pub changes: Vec<WorkerChange>,
     pub unverified_regions: Vec<WorkerUnverifiedRegion>,
+    #[serde(default)]
+    pub ancillary_changes: Vec<WorkerAncillaryChange>,
     pub parser_provenance: String,
 }
 
@@ -98,7 +102,10 @@ impl WorkerDiffResponse {
                 "missing parser provenance".to_owned(),
             ));
         }
-        if self.changes.len() > MAX_CHANGES_V0 || self.unverified_regions.len() > MAX_CHANGES_V0 {
+        if self.changes.len() > MAX_CHANGES_V0
+            || self.unverified_regions.len() > MAX_CHANGES_V0
+            || self.ancillary_changes.len() > MAX_CHANGES_V0
+        {
             return Err(DiffCoreError::ResourceLimit("result entries"));
         }
         if self.coverage == DiffCoverage::Full && !self.unverified_regions.is_empty() {
@@ -123,6 +130,9 @@ impl WorkerDiffResponse {
         }
         for region in &self.unverified_regions {
             region.validate()?;
+        }
+        for ancillary in &self.ancillary_changes {
+            ancillary.validate()?;
         }
         Ok(())
     }

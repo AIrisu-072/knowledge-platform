@@ -56,6 +56,12 @@ const REL_ID_NOISE: &[u8] = include_bytes!(
 const UNKNOWN: &[u8] = include_bytes!(
     "../../../experiments/document-semantic-inspection/fixtures/docx/unknown-semantic-part.docx"
 );
+const MOVE_EDIT_BASE: &[u8] =
+    include_bytes!("../../../experiments/document-diff/fixtures/docx/move-edit-base.docx");
+const MOVE_EDIT_TARGET: &[u8] =
+    include_bytes!("../../../experiments/document-diff/fixtures/docx/move-edit-target.docx");
+const TABLE_CELL: &[u8] =
+    include_bytes!("../../../experiments/document-diff/fixtures/docx/table-cell-change.docx");
 
 fn request(base: &[u8], target: &[u8]) -> WorkerDiffRequest {
     WorkerDiffRequest {
@@ -158,4 +164,28 @@ fn unknown_ooxml_semantics_are_unverified_with_original_navigation() {
         result.unverified_regions[0].target,
         Some(SourceLocator::ContentItem)
     );
+}
+
+#[test]
+fn stable_paragraph_identity_preserves_move_plus_edit() {
+    let result = compare(MOVE_EDIT_BASE, MOVE_EDIT_TARGET);
+    assert_eq!(result.coverage, DiffCoverage::Full);
+    assert!(result.changes.iter().any(|change| {
+        change.facet == "docx_paragraph"
+            && change.operation == Some(ChangeOperation::Modified)
+            && change.relocation == Some(document_diff_core::RelocationKind::Reordered)
+            && matches!(change.base, Some(SourceLocator::OfficePath { ref path }) if path == "word/document.xml#p[2]")
+            && matches!(change.target, Some(SourceLocator::OfficePath { ref path }) if path == "word/document.xml#p[1]")
+    }));
+}
+
+#[test]
+fn changed_table_cell_is_located_to_the_original_cell() {
+    let result = compare(BASE, TABLE_CELL);
+    assert_eq!(result.coverage, DiffCoverage::Full);
+    assert!(result.changes.iter().any(|change| {
+        change.facet == "docx_table"
+            && matches!(change.base, Some(SourceLocator::OfficePath { ref path }) if path == "word/document.xml#table[1]/row[1]/cell[1]/p[1]")
+            && matches!(change.target, Some(SourceLocator::OfficePath { ref path }) if path == "word/document.xml#table[1]/row[1]/cell[1]/p[1]")
+    }));
 }

@@ -92,6 +92,7 @@ fn main() {
             reason: UnverifiedReason::UnsupportedSemanticConstruct,
             navigation_hint: Some("原本確認".to_owned()),
         }],
+        ancillary_changes: vec![],
         parser_provenance: format!("synthetic-pid-{}", std::process::id()),
     };
     let _ = serde_json::to_writer(std::io::stdout(), &response);

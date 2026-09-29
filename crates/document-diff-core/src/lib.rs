@@ -11,7 +11,7 @@ pub use alignment::{
 };
 pub use change::{
     ChangeOperation, ComparisonBudget, ContentVerdict, DiffCoverage, RelocationKind, SourceLocator,
-    UnverifiedReason, WorkerChange, WorkerUnverifiedRegion,
+    UnverifiedReason, WorkerAncillaryChange, WorkerChange, WorkerUnverifiedRegion,
 };
 pub use document_semantic_inspection_core::FormatId;
 pub use protocol::{

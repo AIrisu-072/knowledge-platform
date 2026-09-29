@@ -7,6 +7,8 @@ publish = false
 
 [dependencies]
 document-diff-core = { version = "0.0.0", path = "../document-diff-core" }
+document-semantic-inspection-worker = { version = "0.0.0", path = "../document-semantic-inspection-worker" }
+document-semantic-inspection-core = { version = "0.0.0", path = "../document-semantic-inspection-core" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -16,6 +18,8 @@ unicode-normalization.workspace = true
 csv.workspace = true
 html5ever.workspace = true
 markup5ever_rcdom.workspace = true
+zip.workspace = true
+quick-xml.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 document-semantic-inspection-runner = { version = "0.0.0", path = "../document-semantic-inspection-runner" }

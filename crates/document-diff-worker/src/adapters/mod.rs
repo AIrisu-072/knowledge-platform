@@ -6,6 +6,7 @@ use document_diff_core::{
 use crate::WorkerError;
 
 pub(crate) mod csv;
+pub(crate) mod docx;
 pub(crate) mod html;
 pub(crate) mod text;
 
@@ -26,6 +27,10 @@ pub(crate) fn compare(
         let mut budget = document_diff_core::ComparisonBudget::new(100_000, 100_000);
         return html::HtmlComparator::compare(request, base, target, &mut budget);
     }
+    if request.format == document_diff_core::FormatId::Docx {
+        let mut budget = document_diff_core::ComparisonBudget::new(100_000, 100_000);
+        return docx::DocxComparator::compare(request, base, target, &mut budget);
+    }
     // A format is promoted only after its independent qualification task.
     Ok(WorkerDiffResponse {
         protocol_version: request.protocol_version,
@@ -44,6 +49,7 @@ pub(crate) fn compare(
             reason: UnverifiedReason::UnsupportedSemanticConstruct,
             navigation_hint: Some("原本の両側を確認してください".to_owned()),
         }],
+        ancillary_changes: vec![],
         parser_provenance: "document-diff-unsupported-v0".to_owned(),
     })
 }

@@ -223,6 +223,7 @@ fn response(
         coverage,
         changes,
         unverified_regions,
+        ancillary_changes: vec![],
         parser_provenance: PARSER_PROVENANCE.to_owned(),
     }
 }

@@ -15,7 +15,8 @@ use document_application::{
 };
 use document_diff_core::{
     ContentVerdict, DiffCoverage, DiffProfileVersion, SourceLocator, UnverifiedReason,
-    WorkerDiffRequest, WorkerDiffResponse, WorkerProtocolVersion, WorkerUnverifiedRegion,
+    WorkerAncillaryChange, WorkerDiffRequest, WorkerDiffResponse, WorkerProtocolVersion,
+    WorkerUnverifiedRegion,
 };
 use document_domain::{DocumentId, DocumentVersionId, FileId, MediaType, StorageKey};
 use document_semantic_inspection_core::{FormatId, InspectionProfileVersion};
@@ -153,6 +154,7 @@ impl FileStorage for FakeStorage {
 
 struct FakeExecutor {
     unsupported: bool,
+    ancillary: bool,
 }
 impl DiffExecutor for FakeExecutor {
     async fn compare(
@@ -182,6 +184,15 @@ impl DiffExecutor for FakeExecutor {
                     target: Some(SourceLocator::ContentItem),
                     reason: UnverifiedReason::UnsupportedSemanticConstruct,
                     navigation_hint: Some("原本を確認".into()),
+                }]
+            } else {
+                vec![]
+            },
+            ancillary_changes: if self.ancillary {
+                vec![WorkerAncillaryChange {
+                    kind: "docx_editorial".into(),
+                    base_digest: Some([3; 32]),
+                    target_digest: Some([4; 32]),
                 }]
             } else {
                 vec![]
@@ -240,7 +251,10 @@ async fn equal_semantics_with_different_raw_bytes_stays_same_and_is_audited() {
     let service = DocumentDiffService::new(
         repository.clone(),
         Arc::new(FakeStorage),
-        Arc::new(FakeExecutor { unsupported: false }),
+        Arc::new(FakeExecutor {
+            unsupported: false,
+            ancillary: false,
+        }),
         Arc::new(MissingEvidence),
     );
     let output = service
@@ -267,7 +281,10 @@ async fn missing_inspection_and_unqualified_worker_never_claim_same() {
     let service = DocumentDiffService::new(
         repository.clone(),
         Arc::new(FakeStorage),
-        Arc::new(FakeExecutor { unsupported: true }),
+        Arc::new(FakeExecutor {
+            unsupported: true,
+            ancillary: false,
+        }),
         Arc::new(MissingEvidence),
     );
     let output = service
@@ -292,7 +309,10 @@ async fn cross_format_has_confirmed_format_change_and_unverified_detail() {
     let service = DocumentDiffService::new(
         repository.clone(),
         Arc::new(FakeStorage),
-        Arc::new(FakeExecutor { unsupported: false }),
+        Arc::new(FakeExecutor {
+            unsupported: false,
+            ancillary: false,
+        }),
         Arc::new(MissingEvidence),
     );
     let output = service
@@ -319,7 +339,10 @@ async fn metadata_only_change_does_not_change_content_verdict_and_final_denial_r
     let service = DocumentDiffService::new(
         repository.clone(),
         Arc::new(FakeStorage),
-        Arc::new(FakeExecutor { unsupported: false }),
+        Arc::new(FakeExecutor {
+            unsupported: false,
+            ancillary: false,
+        }),
         Arc::new(MissingEvidence),
     );
     let output = service.compare(&context(), request(&source)).await.unwrap();
@@ -335,7 +358,10 @@ async fn metadata_only_change_does_not_change_content_verdict_and_final_denial_r
     let service = DocumentDiffService::new(
         denied.clone(),
         Arc::new(FakeStorage),
-        Arc::new(FakeExecutor { unsupported: false }),
+        Arc::new(FakeExecutor {
+            unsupported: false,
+            ancillary: false,
+        }),
         Arc::new(MissingEvidence),
     );
     assert!(matches!(
@@ -343,6 +369,32 @@ async fn metadata_only_change_does_not_change_content_verdict_and_final_denial_r
         Err(ApplicationError::Forbidden)
     ));
     assert_eq!(denied.audits.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn worker_editorial_change_is_ancillary_and_does_not_change_content_verdict() {
+    let source = pair();
+    let repository = Arc::new(FakeRepository {
+        pair: source.clone(),
+        audits: AtomicUsize::new(0),
+        deny_final: false,
+        cache: Mutex::new(None),
+        cache_hits: Mutex::new(vec![]),
+    });
+    let service = DocumentDiffService::new(
+        repository.clone(),
+        Arc::new(FakeStorage),
+        Arc::new(FakeExecutor {
+            unsupported: false,
+            ancillary: true,
+        }),
+        Arc::new(MissingEvidence),
+    );
+    let output = service.compare(&context(), request(&source)).await.unwrap();
+    assert_eq!(output.result.verdict, ContentVerdict::Same);
+    assert_eq!(output.result.coverage, DiffCoverage::Full);
+    assert_eq!(output.result.ancillary_changes.len(), 1);
+    assert_eq!(output.result.ancillary_changes[0].kind, "docx_editorial");
 }
 
 #[tokio::test]
@@ -359,7 +411,10 @@ async fn changed_fingerprint_without_worker_locator_stays_different_with_unverif
     let service = DocumentDiffService::new(
         repository,
         Arc::new(FakeStorage),
-        Arc::new(FakeExecutor { unsupported: false }),
+        Arc::new(FakeExecutor {
+            unsupported: false,
+            ancillary: false,
+        }),
         Arc::new(MissingEvidence),
     );
     let output = service.compare(&context(), request(&source)).await.unwrap();
@@ -395,7 +450,10 @@ async fn ambiguous_item_correspondence_is_not_invented_as_add_remove_or_move() {
     let service = DocumentDiffService::new(
         repository,
         Arc::new(FakeStorage),
-        Arc::new(FakeExecutor { unsupported: false }),
+        Arc::new(FakeExecutor {
+            unsupported: false,
+            ancillary: false,
+        }),
         Arc::new(MissingEvidence),
     );
     let output = service.compare(&context(), request(&source)).await.unwrap();
@@ -424,7 +482,10 @@ async fn unique_reorder_and_one_sided_manifest_addition_are_confirmed() {
     let service = DocumentDiffService::new(
         repository,
         Arc::new(FakeStorage),
-        Arc::new(FakeExecutor { unsupported: false }),
+        Arc::new(FakeExecutor {
+            unsupported: false,
+            ancillary: false,
+        }),
         Arc::new(MissingEvidence),
     );
     let output = service
@@ -459,7 +520,10 @@ async fn unique_reorder_and_one_sided_manifest_addition_are_confirmed() {
     let service = DocumentDiffService::new(
         repository,
         Arc::new(FakeStorage),
-        Arc::new(FakeExecutor { unsupported: false }),
+        Arc::new(FakeExecutor {
+            unsupported: false,
+            ancillary: false,
+        }),
         Arc::new(MissingEvidence),
     );
     let output = service.compare(&context(), request(&added)).await.unwrap();
@@ -482,7 +546,10 @@ async fn cache_hit_and_table_retrieval_each_require_fresh_final_audit() {
     let service = DocumentDiffService::new(
         repository.clone(),
         Arc::new(FakeStorage),
-        Arc::new(FakeExecutor { unsupported: false }),
+        Arc::new(FakeExecutor {
+            unsupported: false,
+            ancillary: false,
+        }),
         Arc::new(MissingEvidence),
     );
     service.compare(&context(), request(&source)).await.unwrap();

@@ -5,6 +5,7 @@ mod adapters;
 mod shell;
 
 pub use adapters::csv::CsvComparator;
+pub use adapters::docx::DocxComparator;
 pub use adapters::html::HtmlComparator;
 pub use adapters::text::TextComparator;
 pub use shell::{
