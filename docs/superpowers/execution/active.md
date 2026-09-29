@@ -1,13 +1,14 @@
 # Active Execution Pointer
 
-## Active checkpoint — Document Diff v0 Delivery C局所実装済み、hosted NEXT、2026-09-29 JST
+## Active checkpoint — Document Diff v0 Delivery C共通検証GREEN、hosted NEXT、2026-09-29 JST
 
-- Status: **ACTIVE — DIF-01〜09 hosted完了、DIF-10〜13局所RED→GREEN、C共通/hosted gate待ち、DIF-14〜15未着手**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
+- Status: **ACTIVE — DIF-01〜09 hosted完了、DIF-10〜13局所RED→GREEN、C共通検証PASS・hosted gate待ち、DIF-14〜15未着手**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
 - Approved Design Spec: `docs/superpowers/specs/2026-09-28-document-diff-v0-design.md`、凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`。Approved Plan: `docs/superpowers/plans/2026-09-29-document-diff-v0-production-implementation.md`、blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。設計意味の差分提案なし。
-- GitHub: 設計Draft PR #23 head `993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24 remote B head `7dde25a56784f3dd79b0a994d869ce06bb32acad`。local C code head `54a935880321bbefdd9d4b195df0ea8a91b435f7`、C記録commit・push待ち。両PR未merge。
+- GitHub: 設計Draft PR #23 head `993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24 remote B head `7dde25a56784f3dd79b0a994d869ce06bb32acad`。local C code head `6819aca7415ad7374cf4b789adaac9010db641c6`、C記録commit・push待ち。両PR未merge。
 - B gate: 標準CI `36509161078`、Sandbox `36509161061`、DSI PoC `36509161323` は同一B headで全てSUCCESS。
 - C局所: DIF-10 DOCX RED `014a4cd`→GREEN `19343d0`、6/6。DIF-11 XLSX RED `694bff0`→GREEN `934dfc0`、7/7。DIF-12 XLSM RED `5a9fb0f`→GREEN `d062668`、4/4 + VBA参照unit 1/1 + DSI VBA回帰6/6。DIF-13 PPTX RED `1843f25`→GREEN `54a9358`、5/5 + shape曖昧性unit 1/1 + DSI PPTX回帰8/8。各対象strict Clippy/fmt PASS。C全体`verify:fast`とhosted gateはこれから。
-- 次の exact action: C記録をcommitし、pinned PDFium pathで `CARGO_INCREMENTAL=0 mise run verify:fast` を一度実行する。PASS後にC最終headをDraft PR #24へpushし、そのheadの標準CI、Sandbox、DSI PoCを一度確認する。続いてDIF-14 PDFのREDへ進む。資源実測・全形式受入はDIF-15。merge・deploy指示なし。
+- C共通検証: pinned PDFium pathで `CARGO_INCREMENTAL=0 mise run verify:fast` SUCCESS。Rust 625/625、既定skip 5、fmt/check/strict Clippy/architecture/API lint PASS。初回はDIF-10以降も未対応とする旧worker-shell testでFAILし、資格済みDOCXの実fixtureによるshell dispatch検査へ更新して再実行した。PPTX linkのresource budget failureも未比較へ残すよう修正した。
+- 次の exact action: C記録をcommit/pushし、最終headの標準CI、Sandbox、DSI PoCを一度確認する。続いてDIF-14 PDFのREDへ進む。資源実測・全形式受入はDIF-15。merge・deploy指示なし。
 
 以下は旧checkpoint。現在の工程ではない。
 
