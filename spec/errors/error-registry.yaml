@@ -1,0 +1,25 @@
+version: 1
+errors:
+  VALIDATION_FAILED: {status: 422, retryable: false, title: Validation failed}
+  AUTHENTICATION_REQUIRED: {status: 401, retryable: false, title: Authentication required}
+  FORBIDDEN: {status: 403, retryable: false, title: Forbidden}
+  DOCUMENT_NOT_FOUND: {status: 404, retryable: false, title: Document not found}
+  DOCUMENT_VERSION_NOT_FOUND: {status: 404, retryable: false, title: Document version not found}
+  FOLDER_NOT_FOUND: {status: 404, retryable: false, title: Folder not found}
+  REVISION_CONFLICT: {status: 409, retryable: false, title: Revision conflict}
+  OPERATION_CONFLICT: {status: 409, retryable: false, title: Operation conflict}
+  CURSOR_STALE: {status: 409, retryable: false, title: Cursor is stale}
+  STALE_VERSION: {status: 409, retryable: false, title: Version is stale}
+  STALE_COMPARISON_INPUT: {status: 409, retryable: false, title: Comparison input is stale}
+  BUSINESS_RULE_REJECTED: {status: 422, retryable: false, title: Business rule rejected}
+  RESERVED_DOCUMENT: {status: 409, retryable: false, title: Document is reserved}
+  FOLDER_CYCLE: {status: 409, retryable: false, title: Folder cycle}
+  ROOT_PROTECTED: {status: 409, retryable: false, title: Root folder is protected}
+  IDENTITY_UNAVAILABLE: {status: 503, retryable: true, title: Identity unavailable}
+  PUBLISH_QUALITY_REJECTED: {status: 422, retryable: false, title: Publish quality rejected}
+  UNSUPPORTED_MEDIA_TYPE: {status: 415, retryable: false, title: Unsupported media type}
+  DEPENDENCY_UNAVAILABLE: {status: 503, retryable: true, title: Dependency unavailable}
+  TIMEOUT: {status: 504, retryable: true, title: Timeout}
+  COMMIT_OUTCOME_UNKNOWN: {status: 503, retryable: operation-specific, title: Commit outcome unknown}
+  INTEGRITY_VIOLATION: {status: 500, retryable: false, title: Integrity violation}
+  INTERNAL: {status: 500, retryable: false, title: Internal error}

@@ -1,0 +1,171 @@
+$defs:
+  CreateDocument:
+    type: object
+    additionalProperties: false
+    required: [folderId, title, documentMetadata, versionMetadata]
+    properties:
+      folderId: {type: string, format: uuid}
+      title: {type: string, minLength: 1}
+      documentMetadata: {type: object}
+      versionMetadata: {type: object}
+  VersionContentItem:
+    type: object
+    additionalProperties: false
+    required: [logicalPath, ordinal, fileId, partId, mediaType, originalFilename]
+    properties:
+      logicalPath: {type: string, minLength: 1}
+      ordinal: {type: integer, minimum: 0}
+      fileId: {type: string, format: uuid}
+      partId: {type: string, minLength: 1, description: Matches the X-Part-Id header on exactly one binary multipart part.}
+      mediaType: {type: string, minLength: 1}
+      originalFilename: {type: string, minLength: 1}
+  VersionWrite:
+    type: object
+    additionalProperties: false
+    required: [operationId, targetVersionId, expectedRevision, items]
+    properties:
+      operationId: {$ref: '../common/identifiers.yaml#/$defs/OperationId'}
+      targetVersionId: {type: string, format: uuid}
+      expectedRevision: {type: integer, minimum: 0}
+      items:
+        type: array
+        minItems: 1
+        items: {$ref: '#/$defs/VersionContentItem'}
+      versionMetadata: {type: object}
+  RebaseVersion:
+    type: object
+    additionalProperties: false
+    required: [operationId, expectedRevision]
+    properties:
+      operationId: {$ref: '../common/identifiers.yaml#/$defs/OperationId'}
+      expectedRevision: {type: integer, minimum: 0}
+  PublishVersion:
+    type: object
+    additionalProperties: false
+    required: [operationId, expectedRevision]
+    properties:
+      operationId: {$ref: '../common/identifiers.yaml#/$defs/OperationId'}
+      expectedRevision: {type: integer, minimum: 0}
+  WithdrawVersion:
+    type: object
+    additionalProperties: false
+    required: [operationId, expectedRevision, reason]
+    properties:
+      operationId: {$ref: '../common/identifiers.yaml#/$defs/OperationId'}
+      expectedRevision: {type: integer, minimum: 0}
+      reason: {type: string, minLength: 1}
+  SchedulePublication:
+    type: object
+    additionalProperties: false
+    required: [operationId, expectedRevision, scheduledPublishAt]
+    properties:
+      operationId: {$ref: '../common/identifiers.yaml#/$defs/OperationId'}
+      expectedRevision: {type: integer, minimum: 0}
+      scheduledPublishAt: {type: string, format: date-time}
+  CancelPublicationSchedule:
+    type: object
+    additionalProperties: false
+    required: [operationId, publishOperationId, expectedRevision]
+    properties:
+      operationId: {$ref: '../common/identifiers.yaml#/$defs/OperationId'}
+      publishOperationId: {type: string, format: uuid}
+      expectedRevision: {type: integer, minimum: 0}
+  EndPublication:
+    type: object
+    additionalProperties: false
+    required: [operationId, expectedRevision, expectedCurrentVersionId, reason]
+    properties:
+      operationId: {$ref: '../common/identifiers.yaml#/$defs/OperationId'}
+      expectedRevision: {type: integer, minimum: 0}
+      expectedCurrentVersionId: {type: string, format: uuid}
+      reason: {type: string, minLength: 1}
+  MetadataPatch:
+    type: object
+    additionalProperties: false
+    required: [operationId, expectedDocumentRevision, set, unset, reason]
+    properties:
+      operationId: {$ref: '../common/identifiers.yaml#/$defs/OperationId'}
+      expectedDocumentRevision: {type: integer, minimum: 0}
+      set: {type: object}
+      unset: {type: array, uniqueItems: true, items: {type: string}}
+      reason: {type: string, minLength: 1}
+  MoveDocument:
+    type: object
+    additionalProperties: false
+    required: [operationId, fromFolderId, toFolderId, expectedDocumentRevision, reason]
+    properties:
+      operationId: {$ref: '../common/identifiers.yaml#/$defs/OperationId'}
+      fromFolderId: {type: string, format: uuid}
+      toFolderId: {type: string, format: uuid}
+      expectedDocumentRevision: {type: integer, minimum: 0}
+      reason: {type: string, minLength: 1}
+  CreateFolder:
+    type: object
+    additionalProperties: false
+    required: [operationId, folderId, parentFolderId, expectedParentRevision, name, reason]
+    properties:
+      operationId: {$ref: '../common/identifiers.yaml#/$defs/OperationId'}
+      folderId: {type: string, format: uuid}
+      parentFolderId: {type: string, format: uuid}
+      expectedParentRevision: {type: integer, minimum: 0}
+      name: {type: string, minLength: 1}
+      reason: {type: string, minLength: 1}
+  RenameFolder:
+    type: object
+    additionalProperties: false
+    required: [operationId, expectedFolderRevision, name, reason]
+    properties:
+      operationId: {$ref: '../common/identifiers.yaml#/$defs/OperationId'}
+      expectedFolderRevision: {type: integer, minimum: 0}
+      name: {type: string, minLength: 1}
+      reason: {type: string, minLength: 1}
+  MoveFolder:
+    type: object
+    additionalProperties: false
+    required: [operationId, fromParentId, toParentId, expectedFolderRevision, reason]
+    properties:
+      operationId: {$ref: '../common/identifiers.yaml#/$defs/OperationId'}
+      fromParentId: {type: string, format: uuid}
+      toParentId: {type: string, format: uuid}
+      expectedFolderRevision: {type: integer, minimum: 0}
+      reason: {type: string, minLength: 1}
+  PolicyInherit:
+    type: object
+    additionalProperties: false
+    required: [operationId, expectedPolicyRevision, reason, mode]
+    properties:
+      operationId: {$ref: '../common/identifiers.yaml#/$defs/OperationId'}
+      expectedPolicyRevision: {type: integer, minimum: 0}
+      reason: {type: string, minLength: 1}
+      mode: {const: inherit}
+  PolicyExplicit:
+    type: object
+    additionalProperties: false
+    required: [operationId, expectedPolicyRevision, reason, mode, grants]
+    properties:
+      operationId: {$ref: '../common/identifiers.yaml#/$defs/OperationId'}
+      expectedPolicyRevision: {type: integer, minimum: 0}
+      reason: {type: string, minLength: 1}
+      mode: {const: explicit}
+      grants:
+        type: array
+        minItems: 1
+        items: {$ref: './models.yaml#/$defs/PolicyGrant'}
+  SetAccessPolicy:
+    oneOf:
+      - $ref: '#/$defs/PolicyInherit'
+      - $ref: '#/$defs/PolicyExplicit'
+    discriminator:
+      propertyName: mode
+      mapping:
+        inherit: '#/$defs/PolicyInherit'
+        explicit: '#/$defs/PolicyExplicit'
+  ComparisonRequest:
+    type: object
+    additionalProperties: false
+    required: [baseVersionId, targetVersionId, profile, projection]
+    properties:
+      baseVersionId: {type: string, format: uuid}
+      targetVersionId: {type: string, format: uuid}
+      profile: {const: document-diff-v0}
+      projection: {type: string, enum: [diff, comparisonTable]}

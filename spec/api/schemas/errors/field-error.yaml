@@ -1,0 +1,12 @@
+type: object
+additionalProperties: false
+required: [pointer, code]
+properties:
+  pointer:
+    type: string
+    description: JSON Pointer to the invalid request field.
+  code:
+    type: string
+    minLength: 1
+  detail:
+    type: string

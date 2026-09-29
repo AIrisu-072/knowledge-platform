@@ -1,8 +1,1201 @@
 openapi: 3.2.1
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
 info:
-  title: Knowledge Platform API
-  version: 0.0.0
+  title: Knowledge Platform Document API
+  version: 0.1.0
+  description: One authorized Document API for human, agent and CLI clients. Identity is established only by a trusted
+    adapter; request data never supplies the actor.
 servers:
-  - url: http://localhost
-    description: Local bootstrap placeholder; no production endpoint is defined.
-paths: {}
+- url: /
+  description: Same-origin deployment; no production endpoint is fixed.
+x-error-registry: ../errors/error-registry.yaml
+paths:
+  /v1/documents:
+    get:
+      tags:
+      - Documents
+      summary: List documents by authorized view
+      operationId: listDocuments
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/DocumentList'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - $ref: '#/components/parameters/view'
+      - $ref: '#/components/parameters/titleContains'
+      - $ref: '#/components/parameters/queryFolderId'
+      - $ref: '#/components/parameters/includeDescendants'
+      - $ref: '#/components/parameters/documentType'
+      - $ref: '#/components/parameters/owningDepartment'
+      - $ref: '#/components/parameters/category'
+      - $ref: '#/components/parameters/createdFrom'
+      - $ref: '#/components/parameters/createdBefore'
+      - $ref: '#/components/parameters/sort'
+      - $ref: '#/components/parameters/pageSize'
+      - $ref: '#/components/parameters/cursor'
+      - $ref: '#/components/parameters/unreadOnly'
+    post:
+      tags:
+      - Documents
+      summary: Create initial document and primary file
+      operationId: createDocument
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '201':
+          $ref: '#/components/responses/CreateDocumentResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/CreateDocumentMultipart'
+  /v1/documents/{documentId}:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    get:
+      tags:
+      - Documents
+      summary: Read document by authorized view or recover initial create outcome
+      operationId: getDocument
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/DocumentDetail'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - $ref: '#/components/parameters/detailView'
+  /v1/documents/{documentId}/versions:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    get:
+      tags:
+      - Versions
+      summary: List authorized versions
+      operationId: listDocumentVersions
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/VersionList'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - $ref: '#/components/parameters/purpose'
+    post:
+      tags:
+      - Versions
+      summary: Create a working version
+      operationId: createDocumentVersion
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '201':
+          $ref: '#/components/responses/MutationResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/VersionMultipart'
+  /v1/documents/{documentId}/versions/{versionId}:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    - $ref: '#/components/parameters/versionId'
+    get:
+      tags:
+      - Versions
+      summary: Read an authorized version
+      operationId: getDocumentVersion
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/Version'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - $ref: '#/components/parameters/purpose'
+    put:
+      tags:
+      - Versions
+      summary: Update a working version
+      operationId: updateWorkingVersion
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/MutationResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/VersionMultipart'
+  /v1/documents/{documentId}/versions/{versionId}:rebase:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    - $ref: '#/components/parameters/versionId'
+    post:
+      tags:
+      - Versions
+      summary: Rebase a working version
+      operationId: rebaseWorkingVersion
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/MutationResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/RebaseVersion'
+  /v1/documents/{documentId}/versions/{versionId}:publish:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    - $ref: '#/components/parameters/versionId'
+    post:
+      tags:
+      - Lifecycle
+      summary: Publish a version
+      operationId: publishVersion
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/MutationResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/PublishVersion'
+  /v1/documents/{documentId}/versions/{versionId}:withdraw:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    - $ref: '#/components/parameters/versionId'
+    post:
+      tags:
+      - Lifecycle
+      summary: Withdraw a version
+      operationId: withdrawVersion
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/MutationResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/WithdrawVersion'
+  /v1/documents/{documentId}/versions/{versionId}:schedule-publication:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    - $ref: '#/components/parameters/versionId'
+    post:
+      tags:
+      - Lifecycle
+      summary: Schedule version publication
+      operationId: schedulePublication
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/MutationResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/SchedulePublication'
+  /v1/documents/{documentId}/versions/{versionId}:cancel-publication-schedule:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    - $ref: '#/components/parameters/versionId'
+    post:
+      tags:
+      - Lifecycle
+      summary: Cancel a publication schedule
+      operationId: cancelPublicationSchedule
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/MutationResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/CancelPublicationSchedule'
+  /v1/documents/{documentId}:end-publication:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    post:
+      tags:
+      - Lifecycle
+      summary: End publication without fallback
+      operationId: endDocumentPublication
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/MutationResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/EndPublication'
+  /v1/documents/{documentId}/metadata:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    patch:
+      tags:
+      - Management
+      summary: Set and unset document metadata
+      operationId: patchDocumentMetadata
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/MutationResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/MetadataPatch'
+  /v1/documents/{documentId}:move:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    post:
+      tags:
+      - Management
+      summary: Move a document
+      operationId: moveDocument
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/MutationResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/MoveDocument'
+  /v1/documents/{documentId}/access-policy:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    get:
+      tags:
+      - Policy
+      summary: Read local and effective document policy with administer permission
+      operationId: getDocumentAccessPolicy
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/AccessPolicyRead'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      tags:
+      - Policy
+      summary: Set document policy
+      operationId: setDocumentAccessPolicy
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/MutationResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/SetAccessPolicy'
+  /v1/documents/{documentId}/versions/{versionId}/read-state:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    - $ref: '#/components/parameters/versionId'
+    put:
+      tags:
+      - ReadState
+      summary: Explicit HumanInteractive read confirmation
+      operationId: markDocumentVersionRead
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/ReadStateResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/documents/{documentId}/history:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    get:
+      tags:
+      - History
+      summary: Read authorized document history
+      operationId: getDocumentHistory
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/History'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/documents/{documentId}/versions/{versionId}/files:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    - $ref: '#/components/parameters/versionId'
+    get:
+      tags:
+      - Files
+      summary: List authorized version files
+      operationId: listVersionFiles
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/FileList'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - $ref: '#/components/parameters/purpose'
+  /v1/documents/{documentId}/versions/{versionId}/files/{contentItemId}/{representationId}:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    - $ref: '#/components/parameters/versionId'
+    - $ref: '#/components/parameters/contentItemId'
+    - $ref: '#/components/parameters/representationId'
+    get:
+      tags:
+      - Files
+      summary: Download only after authorization and Audit commit
+      operationId: downloadVersionFile
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/BinaryDownload'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - $ref: '#/components/parameters/purpose'
+  /v1/documents/{documentId}/comparisons:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    post:
+      tags:
+      - Comparisons
+      summary: Compare authorized version pair
+      operationId: compareDocumentVersions
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/ComparisonResponse'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/ComparisonRequest'
+  /v1/folders/root:
+    get:
+      tags:
+      - Folders
+      summary: Discover authorized root folder
+      operationId: getRootFolder
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/Folder'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/folders/{folderId}/children:
+    parameters:
+    - $ref: '#/components/parameters/folderId'
+    get:
+      tags:
+      - Folders
+      summary: List visible direct children
+      operationId: listFolderChildren
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/FolderChildren'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/folders:
+    post:
+      tags:
+      - Folders
+      summary: Create a folder with caller-fixed folder ID
+      operationId: createFolder
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '201':
+          $ref: '#/components/responses/MutationResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/CreateFolder'
+  /v1/folders/{folderId}:
+    parameters:
+    - $ref: '#/components/parameters/folderId'
+    patch:
+      tags:
+      - Folders
+      summary: Rename a folder
+      operationId: renameFolder
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/MutationResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/RenameFolder'
+  /v1/folders/{folderId}:move:
+    parameters:
+    - $ref: '#/components/parameters/folderId'
+    post:
+      tags:
+      - Folders
+      summary: Move a folder
+      operationId: moveFolder
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/MutationResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/MoveFolder'
+  /v1/folders/{folderId}/access-policy:
+    parameters:
+    - $ref: '#/components/parameters/folderId'
+    get:
+      tags:
+      - Policy
+      summary: Read local and effective folder policy with administer permission
+      operationId: getFolderAccessPolicy
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/AccessPolicyRead'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      tags:
+      - Policy
+      summary: Set folder policy
+      operationId: setFolderAccessPolicy
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      responses:
+        '200':
+          $ref: '#/components/responses/MutationResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/SetAccessPolicy'
+components:
+  schemas:
+    Uuid:
+      $ref: ./schemas/common/identifiers.yaml#/$defs/Uuid
+    Cursor:
+      $ref: ./schemas/common/identifiers.yaml#/$defs/Cursor
+    FieldError:
+      $ref: ./schemas/errors/field-error.yaml
+    Problem:
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      - title
+      - status
+      - code
+      - traceId
+      - retryable
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+        code:
+          type: string
+          description: Stable machine code from spec/errors/error-registry.yaml.
+        traceId:
+          type: string
+        retryable:
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldError'
+        recovery:
+          $ref: '#/components/schemas/CreateRecovery'
+        exactRetry:
+          type: boolean
+          description: Only the same operation ID and payload may be retried.
+    CreateRecovery:
+      type: object
+      additionalProperties: false
+      required:
+      - documentId
+      - documentVersionId
+      - fileId
+      - recoveryEndpoint
+      properties:
+        documentId:
+          $ref: '#/components/schemas/Uuid'
+        documentVersionId:
+          $ref: '#/components/schemas/Uuid'
+        fileId:
+          $ref: '#/components/schemas/Uuid'
+        recoveryEndpoint:
+          type: string
+          format: uri-reference
+    PublishedDocument:
+      $ref: ./schemas/document/models.yaml#/$defs/PublishedDocument
+    AuthoringDocument:
+      $ref: ./schemas/document/models.yaml#/$defs/AuthoringDocument
+    DocumentList:
+      $ref: ./schemas/document/models.yaml#/$defs/DocumentList
+    DocumentDetail:
+      $ref: ./schemas/document/models.yaml#/$defs/DocumentDetail
+    Version:
+      $ref: ./schemas/document/models.yaml#/$defs/Version
+    VersionList:
+      $ref: ./schemas/document/models.yaml#/$defs/VersionList
+    History:
+      $ref: ./schemas/document/models.yaml#/$defs/History
+    FileList:
+      $ref: ./schemas/document/models.yaml#/$defs/FileList
+    Folder:
+      $ref: ./schemas/document/models.yaml#/$defs/Folder
+    FolderChildren:
+      $ref: ./schemas/document/models.yaml#/$defs/FolderChildren
+    AccessPolicyRead:
+      $ref: ./schemas/document/models.yaml#/$defs/AccessPolicyRead
+    PolicyGrant:
+      $ref: ./schemas/document/models.yaml#/$defs/PolicyGrant
+    CreateDocumentResult:
+      $ref: ./schemas/document/models.yaml#/$defs/CreateDocumentResult
+    MutationResult:
+      $ref: ./schemas/document/models.yaml#/$defs/MutationResult
+    ReadStateResult:
+      $ref: ./schemas/document/models.yaml#/$defs/ReadStateResult
+    SourceEvidence:
+      $ref: ./schemas/document/models.yaml#/$defs/SourceEvidence
+    SourceLocator:
+      $ref: ./schemas/document/models.yaml#/$defs/SourceLocator
+    DiffChange:
+      $ref: ./schemas/document/models.yaml#/$defs/DiffChange
+    UnverifiedRegion:
+      $ref: ./schemas/document/models.yaml#/$defs/UnverifiedRegion
+    AncillaryChange:
+      $ref: ./schemas/document/models.yaml#/$defs/AncillaryChange
+    ComparisonRow:
+      $ref: ./schemas/document/models.yaml#/$defs/ComparisonRow
+    DiffProjection:
+      $ref: ./schemas/document/models.yaml#/$defs/DiffProjection
+    ComparisonTableProjection:
+      $ref: ./schemas/document/models.yaml#/$defs/ComparisonTableProjection
+    ComparisonResponse:
+      $ref: ./schemas/document/models.yaml#/$defs/ComparisonResponse
+    CreateDocument:
+      $ref: ./schemas/document/commands.yaml#/$defs/CreateDocument
+    VersionContentItem:
+      $ref: ./schemas/document/commands.yaml#/$defs/VersionContentItem
+    VersionWrite:
+      $ref: ./schemas/document/commands.yaml#/$defs/VersionWrite
+    RebaseVersion:
+      $ref: ./schemas/document/commands.yaml#/$defs/RebaseVersion
+    PublishVersion:
+      $ref: ./schemas/document/commands.yaml#/$defs/PublishVersion
+    WithdrawVersion:
+      $ref: ./schemas/document/commands.yaml#/$defs/WithdrawVersion
+    SchedulePublication:
+      $ref: ./schemas/document/commands.yaml#/$defs/SchedulePublication
+    CancelPublicationSchedule:
+      $ref: ./schemas/document/commands.yaml#/$defs/CancelPublicationSchedule
+    EndPublication:
+      $ref: ./schemas/document/commands.yaml#/$defs/EndPublication
+    MetadataPatch:
+      $ref: ./schemas/document/commands.yaml#/$defs/MetadataPatch
+    MoveDocument:
+      $ref: ./schemas/document/commands.yaml#/$defs/MoveDocument
+    CreateFolder:
+      $ref: ./schemas/document/commands.yaml#/$defs/CreateFolder
+    RenameFolder:
+      $ref: ./schemas/document/commands.yaml#/$defs/RenameFolder
+    MoveFolder:
+      $ref: ./schemas/document/commands.yaml#/$defs/MoveFolder
+    PolicyInherit:
+      $ref: ./schemas/document/commands.yaml#/$defs/PolicyInherit
+    PolicyExplicit:
+      $ref: ./schemas/document/commands.yaml#/$defs/PolicyExplicit
+    SetAccessPolicy:
+      $ref: ./schemas/document/commands.yaml#/$defs/SetAccessPolicy
+    ComparisonRequest:
+      $ref: ./schemas/document/commands.yaml#/$defs/ComparisonRequest
+  parameters:
+    documentId:
+      name: documentId
+      in: path
+      required: true
+      description: Document identifier.
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    versionId:
+      name: versionId
+      in: path
+      required: true
+      description: Version identifier.
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    folderId:
+      name: folderId
+      in: path
+      required: true
+      description: Folder identifier.
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    contentItemId:
+      name: contentItemId
+      in: path
+      required: true
+      description: Content item identifier.
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    representationId:
+      name: representationId
+      in: path
+      required: true
+      description: Representation identifier.
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    view:
+      name: view
+      in: query
+      required: true
+      description: A distinct authorization and projection view.
+      schema:
+        type: string
+        enum:
+        - published
+        - authoring
+        - history
+    detailView:
+      name: view
+      in: query
+      required: true
+      description: Detail view.
+      schema:
+        type: string
+        enum:
+        - published
+        - authoring
+    purpose:
+      name: purpose
+      in: query
+      required: true
+      description: Authorization purpose; it cannot be omitted to broaden access.
+      schema:
+        type: string
+        enum:
+        - published
+        - authoring
+        - history
+    titleContains:
+      name: titleContains
+      in: query
+      required: false
+      description: Title filter.
+      schema:
+        type: string
+    queryFolderId:
+      name: folderId
+      in: query
+      required: false
+      description: Folder filter.
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    includeDescendants:
+      name: includeDescendants
+      in: query
+      required: false
+      description: Include visible descendants.
+      schema:
+        type: boolean
+    documentType:
+      name: documentType
+      in: query
+      required: false
+      description: Document type filter.
+      schema:
+        type: string
+    owningDepartment:
+      name: owningDepartment
+      in: query
+      required: false
+      description: Owning department filter.
+      schema:
+        type: string
+    category:
+      name: category
+      in: query
+      required: false
+      description: Category filter.
+      schema:
+        type: string
+    createdFrom:
+      name: createdFrom
+      in: query
+      required: false
+      description: Creation lower bound.
+      schema:
+        type: string
+        format: date-time
+    createdBefore:
+      name: createdBefore
+      in: query
+      required: false
+      description: Creation upper bound.
+      schema:
+        type: string
+        format: date-time
+    sort:
+      name: sort
+      in: query
+      required: false
+      description: Stable sort key.
+      schema:
+        type: string
+    pageSize:
+      name: pageSize
+      in: query
+      required: false
+      description: Page size.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque, principal and query bound cursor.
+      schema:
+        $ref: '#/components/schemas/Cursor'
+    unreadOnly:
+      name: unreadOnly
+      in: query
+      required: false
+      description: Valid only when view=published.
+      schema:
+        type: boolean
+  requestBodies:
+    RebaseVersion:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RebaseVersion'
+    PublishVersion:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PublishVersion'
+    WithdrawVersion:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WithdrawVersion'
+    SchedulePublication:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SchedulePublication'
+    CancelPublicationSchedule:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CancelPublicationSchedule'
+    EndPublication:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EndPublication'
+    MetadataPatch:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MetadataPatch'
+    MoveDocument:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MoveDocument'
+    CreateFolder:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateFolder'
+    RenameFolder:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RenameFolder'
+    MoveFolder:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MoveFolder'
+    SetAccessPolicy:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SetAccessPolicy'
+    ComparisonRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ComparisonRequest'
+    CreateDocumentMultipart:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            additionalProperties: false
+            required:
+            - request
+            - file
+            properties:
+              request:
+                $ref: '#/components/schemas/CreateDocument'
+              file:
+                type: string
+                format: binary
+          encoding:
+            request:
+              contentType: application/json
+            file:
+              contentType: application/octet-stream
+    VersionMultipart:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            additionalProperties: false
+            required:
+            - request
+            - files
+            properties:
+              request:
+                $ref: '#/components/schemas/VersionWrite'
+              files:
+                type: array
+                minItems: 1
+                items:
+                  type: string
+                  format: binary
+          encoding:
+            request:
+              contentType: application/json
+            files:
+              contentType: application/octet-stream
+              headers:
+                X-Part-Id:
+                  description: Matches one VersionContentItem.partId; part order is immaterial.
+                  schema:
+                    type: string
+  responses:
+    DocumentList:
+      description: DocumentList
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DocumentList'
+          example:
+            view: published
+            items: []
+            nextCursor: null
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    DocumentDetail:
+      description: DocumentDetail
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DocumentDetail'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    Version:
+      description: Version
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Version'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    VersionList:
+      description: VersionList
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VersionList'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    History:
+      description: History
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/History'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    FileList:
+      description: FileList
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FileList'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    Folder:
+      description: Folder
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Folder'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    FolderChildren:
+      description: FolderChildren
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FolderChildren'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    AccessPolicyRead:
+      description: AccessPolicyRead
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AccessPolicyRead'
+          example:
+            target: 00000000-0000-4000-8000-000000000001
+            bindingMode: inherit
+            policyId: null
+            policyRevision: 0
+            effectivePolicyId: 00000000-0000-4000-8000-000000000002
+            effectiveSource: 00000000-0000-4000-8000-000000000003
+            effectiveGrants:
+            - subjectKind: role
+              identityProvider: directory
+              subjectId: reviewer
+              actions:
+              - read
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    CreateDocumentResult:
+      description: CreateDocumentResult
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateDocumentResult'
+          example:
+            documentId: 00000000-0000-4000-8000-000000000001
+            documentVersionId: 00000000-0000-4000-8000-000000000002
+            fileId: 00000000-0000-4000-8000-000000000003
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    MutationResult:
+      description: MutationResult
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MutationResult'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    ReadStateResult:
+      description: ReadStateResult
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ReadStateResult'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    ComparisonResponse:
+      description: ComparisonResponse
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ComparisonResponse'
+          example:
+            projection: diff
+            verdict: different
+            coverage: partial
+            resultDigest: '0000000000000000000000000000000000000000000000000000000000000000'
+            changes:
+            - operation: modified
+              relocation: null
+              facet: text
+              base: null
+              target: null
+              reasonCode: textChanged
+            unverifiedRegions:
+            - reason: unsupportedSemanticConstruct
+              base: null
+              target: null
+              navigationHint: Inspect the marked range in the original documents.
+            ancillaryChanges: []
+            auditEventId: 00000000-0000-4000-8000-000000000004
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    BinaryDownload:
+      description: Authorized and audited full file body; Range is rejected in v0.
+      headers:
+        Content-Disposition:
+          schema:
+            type: string
+          description: attachment with sanitized safe_display_name
+        Content-Length:
+          schema:
+            type: integer
+            minimum: 0
+        X-Content-Type-Options:
+          schema:
+            type: string
+            const: nosniff
+        Cache-Control:
+          schema:
+            type: string
+            const: private, no-store
+      content:
+        application/octet-stream:
+          schema:
+            type: string
+            format: binary
+    Problem:
+      description: RFC 9457 problem with stable machine code.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Validation failed
+            status: 422
+            code: VALIDATION_FAILED
+            traceId: example-trace
+            retryable: false
+            errors: []
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            const: private, no-store

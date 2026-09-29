@@ -1,0 +1,331 @@
+$defs:
+  PublishedDocument:
+    type: object
+    additionalProperties: false
+    required: [documentId, title, folderId, currentVersionId, revision]
+    properties:
+      documentId: {type: string, format: uuid}
+      title: {type: string}
+      folderId: {type: string, format: uuid}
+      currentVersionId: {type: string, format: uuid}
+      revision: {type: integer, minimum: 0}
+      unread: {type: boolean}
+      metadata: {type: object}
+  AuthoringDocument:
+    type: object
+    additionalProperties: false
+    required: [documentId, title, folderId, revision, versions]
+    properties:
+      documentId: {type: string, format: uuid}
+      title: {type: string}
+      folderId: {type: string, format: uuid}
+      revision: {type: integer, minimum: 0}
+      currentVersionId: {type: [string, 'null'], format: uuid}
+      versions:
+        type: array
+        items: {$ref: '#/$defs/Version'}
+      metadata: {type: object}
+  DocumentList:
+    oneOf:
+      - type: object
+        additionalProperties: false
+        required: [view, items, nextCursor]
+        properties:
+          view: {const: published}
+          items: {type: array, items: {$ref: '#/$defs/PublishedDocument'}}
+          nextCursor: {type: [string, 'null']}
+      - type: object
+        additionalProperties: false
+        required: [view, items, nextCursor]
+        properties:
+          view: {const: authoring}
+          items: {type: array, items: {$ref: '#/$defs/AuthoringDocument'}}
+          nextCursor: {type: [string, 'null']}
+      - type: object
+        additionalProperties: false
+        required: [view, items, nextCursor]
+        properties:
+          view: {const: history}
+          items: {type: array, items: {$ref: '#/$defs/Version'}}
+          nextCursor: {type: [string, 'null']}
+  DocumentDetail:
+    oneOf:
+      - $ref: '#/$defs/PublishedDocument'
+      - $ref: '#/$defs/AuthoringDocument'
+  Version:
+    type: object
+    additionalProperties: false
+    required: [versionId, documentId, state, revision, createdAt]
+    properties:
+      versionId: {type: string, format: uuid}
+      documentId: {type: string, format: uuid}
+      state: {type: string, enum: [working, published, withdrawn]}
+      revision: {type: integer, minimum: 0}
+      createdAt: {type: string, format: date-time}
+      metadata: {type: object}
+  VersionList:
+    type: object
+    additionalProperties: false
+    required: [items]
+    properties:
+      items: {type: array, items: {$ref: '#/$defs/Version'}}
+  History:
+    type: object
+    additionalProperties: false
+    required: [items]
+    properties:
+      items:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [eventId, occurredAt, eventType]
+          properties:
+            eventId: {type: string, format: uuid}
+            occurredAt: {type: string, format: date-time}
+            eventType: {type: string}
+            versionId: {type: [string, 'null'], format: uuid}
+  FileList:
+    type: object
+    additionalProperties: false
+    required: [items]
+    properties:
+      items:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [contentItemId, representationId, displayName, mediaType]
+          properties:
+            contentItemId: {type: string, format: uuid}
+            representationId: {type: string, format: uuid}
+            displayName: {type: string}
+            mediaType: {type: string}
+            sizeBytes: {type: [integer, 'null'], minimum: 0}
+  Folder:
+    type: object
+    additionalProperties: false
+    required: [folderId, name, revision]
+    properties:
+      folderId: {type: string, format: uuid}
+      name: {type: string}
+      revision: {type: integer, minimum: 0}
+      parentFolderId: {type: [string, 'null'], format: uuid}
+  FolderChildren:
+    type: object
+    additionalProperties: false
+    required: [items]
+    properties:
+      items: {type: array, items: {$ref: '#/$defs/Folder'}}
+  AccessPolicyRead:
+    type: object
+    additionalProperties: false
+    required: [target, bindingMode, policyId, policyRevision, effectivePolicyId, effectiveSource, effectiveGrants]
+    properties:
+      target: {type: string, format: uuid}
+      bindingMode: {type: string, enum: [inherit, explicit]}
+      policyId: {type: [string, 'null'], format: uuid}
+      policyRevision: {type: integer, minimum: 0}
+      effectivePolicyId: {type: string, format: uuid}
+      effectiveSource: {type: string, format: uuid}
+      effectiveGrants:
+        type: array
+        items: {$ref: '#/$defs/PolicyGrant'}
+  PolicyGrant:
+    type: object
+    additionalProperties: false
+    required: [subjectKind, identityProvider, subjectId, actions]
+    properties:
+      subjectKind: {type: string, enum: [principal, group, role]}
+      identityProvider: {type: string, minLength: 1}
+      subjectId: {type: string}
+      actions:
+        type: array
+        uniqueItems: true
+        minItems: 1
+        items: {type: string, enum: [read, readHistory, write, publish, administer]}
+  CreateDocumentResult:
+    type: object
+    additionalProperties: false
+    required: [documentId, documentVersionId, fileId]
+    properties:
+      documentId: {type: string, format: uuid}
+      documentVersionId: {type: string, format: uuid}
+      fileId: {type: string, format: uuid}
+  MutationResult:
+    type: object
+    additionalProperties: false
+    required: [operationId, resourceId, resultingRevision, changed, occurredAt]
+    properties:
+      operationId: {type: string, format: uuid}
+      resourceId: {type: string, format: uuid}
+      resultingRevision: {type: integer, minimum: 0}
+      changed: {type: boolean}
+      occurredAt: {type: string, format: date-time}
+      auditEventId: {type: string, format: uuid}
+  ReadStateResult:
+    type: object
+    additionalProperties: false
+    required: [documentId, versionId, firstReadAt, inserted]
+    properties:
+      documentId: {type: string, format: uuid}
+      versionId: {type: string, format: uuid}
+      firstReadAt: {type: string, format: date-time}
+      inserted: {type: boolean}
+  SourceEvidence:
+    type: object
+    additionalProperties: false
+    required: [documentId, versionId, contentItemId, representationId, fileId, rawSha256, inspectionProfile, locator, granularity, parserProvenance]
+    properties:
+      documentId: {type: string, format: uuid}
+      versionId: {type: string, format: uuid}
+      contentItemId: {type: string, format: uuid}
+      representationId: {type: string, format: uuid}
+      fileId: {type: string, format: uuid}
+      rawSha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+      inspectionProfile: {type: string}
+      locator: {$ref: '#/$defs/SourceLocator'}
+      granularity: {type: string, enum: [exact, parent, contentItem]}
+      parserProvenance: {type: string}
+  SourceLocator:
+    description: Navigation in the authoritative original; never a StorageKey.
+    oneOf:
+      - type: object
+        additionalProperties: false
+        required: [kind]
+        properties: {kind: {const: contentItem}}
+      - type: object
+        additionalProperties: false
+        required: [kind, line, byteStart, byteEnd]
+        properties:
+          kind: {const: textSpan}
+          line: {type: integer, minimum: 1}
+          byteStart: {type: integer, minimum: 0}
+          byteEnd: {type: integer, minimum: 1}
+      - type: object
+        additionalProperties: false
+        required: [kind, row, column]
+        properties:
+          kind: {const: csvCell}
+          row: {type: integer, minimum: 1}
+          column: {type: integer, minimum: 1}
+      - type: object
+        additionalProperties: false
+        required: [kind, path]
+        properties:
+          kind: {const: htmlNode}
+          path: {type: string, minLength: 1}
+      - type: object
+        additionalProperties: false
+        required: [kind, path]
+        properties:
+          kind: {const: officePath}
+          path: {type: string, minLength: 1}
+      - type: object
+        additionalProperties: false
+        required: [kind, sheet, cell]
+        properties:
+          kind: {const: sheetCell}
+          sheet: {type: string, minLength: 1}
+          cell: {type: string, minLength: 1}
+      - type: object
+        additionalProperties: false
+        required: [kind, module, procedure]
+        properties:
+          kind: {const: vbaModule}
+          module: {type: string, minLength: 1}
+          procedure: {type: [string, 'null']}
+      - type: object
+        additionalProperties: false
+        required: [kind, slide, object]
+        properties:
+          kind: {const: slideObject}
+          slide: {type: integer, minimum: 1}
+          object: {type: [string, 'null']}
+      - type: object
+        additionalProperties: false
+        required: [kind, page, region]
+        properties:
+          kind: {const: pdfPage}
+          page: {type: integer, minimum: 1}
+          region:
+            oneOf:
+              - type: 'null'
+              - type: array
+                prefixItems:
+                  - {type: integer, minimum: 0}
+                  - {type: integer, minimum: 0}
+                  - {type: integer, minimum: 0}
+                  - {type: integer, minimum: 0}
+                minItems: 4
+                maxItems: 4
+  DiffChange:
+    type: object
+    additionalProperties: false
+    required: [operation, relocation, facet, base, target, reasonCode]
+    properties:
+      operation: {type: [string, 'null'], enum: [added, removed, modified, null]}
+      relocation: {type: [string, 'null'], enum: [moved, reordered, renamed, null]}
+      facet: {type: string}
+      base: {oneOf: [{$ref: '#/$defs/SourceEvidence'}, {type: 'null'}]}
+      target: {oneOf: [{$ref: '#/$defs/SourceEvidence'}, {type: 'null'}]}
+      reasonCode: {type: string}
+  UnverifiedRegion:
+    type: object
+    additionalProperties: false
+    required: [reason, base, target, navigationHint]
+    properties:
+      reason: {type: string, enum: [unsupportedSemanticConstruct, corruptedSource, missingInspectionEvidence, ambiguousAlignment, resourceLimit]}
+      base: {oneOf: [{$ref: '#/$defs/SourceEvidence'}, {type: 'null'}]}
+      target: {oneOf: [{$ref: '#/$defs/SourceEvidence'}, {type: 'null'}]}
+      navigationHint: {type: [string, 'null']}
+  AncillaryChange:
+    type: object
+    additionalProperties: false
+    required: [kind, baseDigest, targetDigest]
+    properties:
+      kind: {type: string}
+      baseDigest: {type: [string, 'null'], pattern: '^[0-9a-f]{64}$'}
+      targetDigest: {type: [string, 'null'], pattern: '^[0-9a-f]{64}$'}
+  ComparisonRow:
+    type: object
+    additionalProperties: false
+    required: [state, facet, operation, relocation, base, target, reason, navigationHint]
+    properties:
+      state: {type: string, enum: [confirmed, unverified, ancillary]}
+      facet: {type: string}
+      operation: {type: [string, 'null'], enum: [added, removed, modified, null]}
+      relocation: {type: [string, 'null'], enum: [moved, reordered, renamed, null]}
+      base: {oneOf: [{$ref: '#/$defs/SourceEvidence'}, {type: 'null'}]}
+      target: {oneOf: [{$ref: '#/$defs/SourceEvidence'}, {type: 'null'}]}
+      reason: {type: string}
+      navigationHint: {type: [string, 'null']}
+  DiffProjection:
+    type: object
+    additionalProperties: false
+    required: [projection, verdict, coverage, resultDigest, changes, unverifiedRegions, ancillaryChanges, auditEventId]
+    properties:
+      projection: {const: diff}
+      verdict: {type: string, enum: [same, different, unknown]}
+      coverage: {type: string, enum: [full, partial, none]}
+      resultDigest: {type: string, pattern: '^[0-9a-f]{64}$'}
+      changes: {type: array, items: {$ref: '#/$defs/DiffChange'}}
+      unverifiedRegions: {type: array, items: {$ref: '#/$defs/UnverifiedRegion'}}
+      ancillaryChanges: {type: array, items: {$ref: '#/$defs/AncillaryChange'}}
+      auditEventId: {type: string, format: uuid}
+  ComparisonTableProjection:
+    type: object
+    additionalProperties: false
+    required: [projection, verdict, coverage, resultDigest, rows, unverifiedRegions, auditEventId]
+    properties:
+      projection: {const: comparisonTable}
+      verdict: {type: string, enum: [same, different, unknown]}
+      coverage: {type: string, enum: [full, partial, none]}
+      resultDigest: {type: string, pattern: '^[0-9a-f]{64}$'}
+      rows: {type: array, items: {$ref: '#/$defs/ComparisonRow'}}
+      unverifiedRegions: {type: array, items: {$ref: '#/$defs/UnverifiedRegion'}}
+      auditEventId: {type: string, format: uuid}
+  ComparisonResponse:
+    oneOf:
+      - $ref: '#/$defs/DiffProjection'
+      - $ref: '#/$defs/ComparisonTableProjection'
