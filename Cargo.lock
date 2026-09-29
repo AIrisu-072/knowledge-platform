@@ -3426,6 +3426,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "search-projection-memory"
+version = "0.0.0"
+dependencies = [
+ "search-application",
+ "search-core",
+ "serde_json",
+ "sha2 0.11.0",
+ "time",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "sec1"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -2,6 +2,7 @@
 members = [
   "crates/search-core",
   "crates/search-application",
+  "crates/search-projection-memory",
   "crates/document-domain",
   "crates/document-application",
   "crates/document-semantic-inspection-core",
