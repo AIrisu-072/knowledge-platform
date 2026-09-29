@@ -8,6 +8,8 @@ pub mod federation;
 pub mod ports;
 pub mod projection;
 pub mod qualification;
+pub mod retrieval;
+pub mod routing;
 pub mod source_registry;
 
 pub use error::SearchError;
