@@ -22,7 +22,7 @@ use search_core::source::RetentionMode;
 
 use crate::error::SearchError;
 use crate::materialization::{
-    MaterializationBudget, ProbeRequest, ProbeResult, ResourceCostEstimate,
+    MaterializationBudget, ProbeCapability, ProbeRequest, ProbeResult, ResourceCostEstimate,
 };
 use crate::projection::{PersistableGenerationManifest, PersistableResourceProjection};
 
@@ -31,6 +31,10 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, SearchError>> 
 #[path = "evidence_resolution.rs"]
 mod evidence_resolution;
 pub use evidence_resolution::{assemble_resource_claims, assess_claim_evidence};
+
+#[path = "probe_execution.rs"]
+mod probe_execution;
+pub use probe_execution::{ProbeExecutionInput, ProbeExecutionService};
 
 pub trait SourceRegistryPort: Send + Sync {
     fn get_source<'a>(&'a self, source_id: SourceId) -> BoxFuture<'a, Option<DiscoverableSource>>;
@@ -283,6 +287,25 @@ pub struct GraphRetrievalHit {
 /// provider grant, and execution budget at call time after application preflight.
 pub trait ProbePort: Send + Sync {
     fn probe<'a>(&'a self, request: &'a ProbeRequest) -> BoxFuture<'a, ProbeResult>;
+}
+
+/// A current Source-owned capability bound to the exact candidate and facet.
+/// It is never copied from a retrieval projection or public Discovery request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CurrentProbeCapability {
+    pub candidate_id: String,
+    pub resource_ref: Option<ResourceId>,
+    pub facet: String,
+    pub capability: ProbeCapability,
+}
+
+pub trait ProbeCapabilityCatalogPort: Send + Sync {
+    fn for_candidate<'a>(
+        &'a self,
+        candidate: &'a FederatedCandidate,
+        facet: &'a str,
+        access_context: &'a str,
+    ) -> BoxFuture<'a, Option<CurrentProbeCapability>>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

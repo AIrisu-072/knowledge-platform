@@ -3,7 +3,7 @@
 use std::fmt;
 use std::io::{self, Write};
 
-use search_core::discovery::{FederatedCandidate, InformationGap};
+use search_core::discovery::{CandidateIdentityClass, FederatedCandidate, InformationGap};
 use search_core::fact::FactSet;
 use search_core::id::{ResourceId, SourceId};
 use search_core::materialization::{
@@ -481,6 +481,13 @@ impl MaterializationService {
         ) {
             return Err(SearchError::InvalidRequest(
                 "current probe access is not authorized".into(),
+            ));
+        }
+        if request.candidate.identity_class == CandidateIdentityClass::EphemeralCandidate
+            && request.candidate.resource_ref.is_none()
+        {
+            return Ok(ProbeResult::unsupported(
+                "ephemeral-target-has-no-resource-id",
             ));
         }
         let current_policy = source_policy

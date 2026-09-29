@@ -156,6 +156,22 @@ impl CurrentCandidateAccessEvaluatorPort for FakeCandidateAccess {
     }
 }
 
+struct CountingAllowedCandidateAccess {
+    calls: AtomicUsize,
+}
+
+impl CurrentCandidateAccessEvaluatorPort for CountingAllowedCandidateAccess {
+    fn evaluate<'a>(
+        &'a self,
+        candidate: &'a FederatedCandidate,
+        _access_context: &'a str,
+    ) -> BoxFuture<'a, AccessDecision> {
+        assert_eq!(candidate.source_ref, source_id());
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async { Ok(AccessDecision::Allowed) })
+    }
+}
+
 #[derive(Clone, Copy)]
 enum AccessEvaluation {
     Decision(AccessDecision),
@@ -1359,6 +1375,41 @@ async fn remote_candidate_without_resource_id_uses_candidate_current_access() {
         );
     }
     assert_eq!(denied_port.calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn direct_probe_rejects_ephemeral_candidates_without_resource_id_after_current_access() {
+    let mut facts = FactSet::default();
+    facts.insert(
+        "suitable",
+        Fact::new(TypedValue::Bool(true), FactOrigin::Observed),
+    );
+    let mut shared_evidence = evidence();
+    shared_evidence.resource_ref = None;
+
+    for locator in ["provider://candidate-a", "provider://candidate-b"] {
+        let mut request = probe_request();
+        request.candidate.identity_class = CandidateIdentityClass::EphemeralCandidate;
+        request.candidate.resource_ref = None;
+        request.candidate.locator = Some(locator.into());
+        let access = CountingAllowedCandidateAccess {
+            calls: AtomicUsize::new(0),
+        };
+        let policy = counting_source_policy(true);
+        let port = FakeProbe {
+            calls: AtomicUsize::new(0),
+            result: ProbeResult::found(facts.clone(), shared_evidence.clone()),
+        };
+
+        let result = MaterializationService::probe(&port, &access, &policy, &request)
+            .await
+            .unwrap();
+        assert_eq!(result.outcome(), ProbeOutcome::Unsupported);
+        assert!(result.facts().is_none());
+        assert_eq!(access.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(policy.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(port.calls.load(Ordering::SeqCst), 0);
+    }
 }
 
 #[tokio::test]
