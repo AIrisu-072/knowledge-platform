@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::id::ClaimId;
+use crate::id::{ClaimId, SourceId};
 use crate::predicate::{TypedValue, semantically_equal};
 use crate::relation::RelationTemporalScope;
 
@@ -19,7 +19,11 @@ pub enum EvidenceRole {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EvidenceReference {
-    pub source_ref: String,
+    /// Stable identity of the Source that resolved this evidence.
+    pub source_ref: SourceId,
+    /// Opaque handle within that Source, if one exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_ref: Option<String>,
     pub upstream_origin: String,
     pub role: EvidenceRole,
     pub citation_chain: Vec<String>,
@@ -29,12 +33,13 @@ pub struct EvidenceReference {
 
 impl EvidenceReference {
     pub fn new(
-        source_ref: impl Into<String>,
+        source_ref: SourceId,
         upstream_origin: impl Into<String>,
         role: EvidenceRole,
     ) -> Self {
         Self {
-            source_ref: source_ref.into(),
+            source_ref,
+            evidence_ref: None,
             upstream_origin: upstream_origin.into(),
             role,
             citation_chain: Vec::new(),
@@ -42,6 +47,25 @@ impl EvidenceReference {
             is_summary: false,
         }
     }
+}
+
+/// Use the same typed value equality as predicates and claim sufficiency.
+pub fn claim_values_semantically_equal(left: &TypedValue, right: &TypedValue) -> bool {
+    semantically_equal(left, right)
+}
+
+/// Only direct, origin-attributed claim evidence can verify support or conflict.
+pub fn is_verified_direct_claim_evidence(
+    role: EvidenceRole,
+    is_summary: bool,
+    upstream_origin: &str,
+) -> bool {
+    !is_summary
+        && !upstream_origin.trim().is_empty()
+        && matches!(
+            role,
+            EvidenceRole::Primary | EvidenceRole::Corroborating | EvidenceRole::Contradicting
+        )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -147,13 +171,38 @@ pub fn evaluate_evidence_sufficiency(
             return EvidenceSufficiency::Conflicted;
         }
         let mut observed_value: Option<&TypedValue> = None;
-        for claim in &matching {
+        for claim in matching
+            .iter()
+            .filter(|claim| claim.state == ClaimState::Supported)
+        {
             if let Some(value) = claim.value.as_ref() {
-                if observed_value.is_some_and(|existing| !semantically_equal(existing, value)) {
+                if observed_value
+                    .is_some_and(|existing| !claim_values_semantically_equal(existing, value))
+                {
                     return EvidenceSufficiency::Conflicted;
                 }
                 observed_value = Some(value);
             }
+        }
+        let evidence: Vec<&EvidenceReference> = matching
+            .iter()
+            .flat_map(|claim| claim.evidence_refs.iter())
+            .collect();
+        if evidence.iter().any(|evidence| {
+            evidence.role == EvidenceRole::Contradicting
+                && is_verified_direct_claim_evidence(
+                    evidence.role,
+                    evidence.is_summary,
+                    &evidence.upstream_origin,
+                )
+        }) {
+            return EvidenceSufficiency::Conflicted;
+        }
+        if evidence
+            .iter()
+            .any(|evidence| evidence.role == EvidenceRole::Contradicting)
+        {
+            unresolved = true;
         }
         if absent {
             insufficient = true;
@@ -167,20 +216,13 @@ pub fn evaluate_evidence_sufficiency(
             unresolved = true;
             continue;
         }
-        let evidence: Vec<&EvidenceReference> = matching
-            .iter()
-            .flat_map(|claim| claim.evidence_refs.iter())
-            .collect();
-        if evidence
-            .iter()
-            .any(|evidence| evidence.role == EvidenceRole::Contradicting)
-        {
-            return EvidenceSufficiency::Conflicted;
-        }
         let has_primary = evidence.iter().any(|evidence| {
             evidence.role == EvidenceRole::Primary
-                && !evidence.is_summary
-                && !evidence.upstream_origin.trim().is_empty()
+                && is_verified_direct_claim_evidence(
+                    evidence.role,
+                    evidence.is_summary,
+                    &evidence.upstream_origin,
+                )
         });
         let independent_origins: BTreeSet<&str> = evidence
             .iter()
@@ -188,10 +230,13 @@ pub fn evaluate_evidence_sufficiency(
                 matches!(
                     evidence.role,
                     EvidenceRole::Primary | EvidenceRole::Corroborating
-                ) && !evidence.is_summary
-                    && !evidence.upstream_origin.trim().is_empty()
+                ) && is_verified_direct_claim_evidence(
+                    evidence.role,
+                    evidence.is_summary,
+                    &evidence.upstream_origin,
+                )
             })
-            .map(|evidence| evidence.upstream_origin.as_str())
+            .map(|evidence| evidence.upstream_origin.trim())
             .collect();
         if !has_primary || independent_origins.len() < requirement.minimum_independent_sources {
             insufficient = true;

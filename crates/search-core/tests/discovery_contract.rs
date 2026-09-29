@@ -30,6 +30,10 @@ fn resource(value: u128) -> ResourceId {
     ResourceId::from_uuid(Uuid::from_u128(value))
 }
 
+fn source(value: u128) -> SourceId {
+    SourceId::from_uuid(Uuid::from_u128(value))
+}
+
 fn candidate() -> FederatedCandidate {
     let mut candidate = FederatedCandidate::new(
         "candidate-1",
@@ -192,14 +196,14 @@ fn duplicate_claim_records_with_different_values_are_conflicted() {
     let mut first = Claim::new(claim_id(1), ClaimState::Supported);
     first.value = Some(TypedValue::String("loan".into()));
     first.evidence_refs.push(EvidenceReference::new(
-        "source-a",
+        source(1),
         "publisher-a",
         EvidenceRole::Primary,
     ));
     let mut second = Claim::new(claim_id(1), ClaimState::Supported);
     second.value = Some(TypedValue::String("deposit".into()));
     second.evidence_refs.push(EvidenceReference::new(
-        "source-b",
+        source(2),
         "publisher-b",
         EvidenceRole::Primary,
     ));
@@ -229,12 +233,12 @@ fn copied_sources_do_not_count_as_independent_corroboration() {
     requirement.minimum_independent_sources = 2;
     let mut claim = Claim::new(claim_id(1), ClaimState::Supported);
     claim.evidence_refs.push(EvidenceReference::new(
-        "source-a",
+        source(1),
         "publisher-1",
         EvidenceRole::Primary,
     ));
     claim.evidence_refs.push(EvidenceReference::new(
-        "source-b",
+        source(2),
         "publisher-1",
         EvidenceRole::Corroborating,
     ));
@@ -245,17 +249,69 @@ fn copied_sources_do_not_count_as_independent_corroboration() {
 }
 
 #[test]
+fn whitespace_variants_of_one_upstream_origin_are_not_independent() {
+    let mut requirement = EvidenceRequirement::new(vec![claim_id(1)]);
+    requirement.minimum_independent_sources = 2;
+    let mut claim = Claim::new(claim_id(1), ClaimState::Supported);
+    claim.evidence_refs.push(EvidenceReference::new(
+        source(1),
+        "publisher-a",
+        EvidenceRole::Primary,
+    ));
+    claim.evidence_refs.push(EvidenceReference::new(
+        source(2),
+        " publisher-a ",
+        EvidenceRole::Corroborating,
+    ));
+
+    assert_eq!(
+        evaluate_evidence_sufficiency(&requirement, &[claim]),
+        EvidenceSufficiency::Insufficient,
+    );
+}
+
+#[test]
+fn unknown_claim_value_does_not_conflict_with_verified_supported_value() {
+    let requirement = EvidenceRequirement::new(vec![claim_id(1)]);
+    let mut supported = Claim::new(claim_id(1), ClaimState::Supported);
+    supported.value = Some(TypedValue::String("loan".into()));
+    supported.evidence_refs.push(EvidenceReference::new(
+        source(1),
+        "publisher-a",
+        EvidenceRole::Primary,
+    ));
+    let mut unknown = Claim::new(claim_id(1), ClaimState::Unknown);
+    unknown.value = Some(TypedValue::String("deposit".into()));
+
+    assert_eq!(
+        evaluate_evidence_sufficiency(&requirement, &[supported, unknown]),
+        EvidenceSufficiency::Unresolved,
+    );
+}
+
+#[test]
+fn evidence_reference_round_trip_keeps_typed_source_and_opaque_ref_separate() {
+    let mut reference = EvidenceReference::new(source(1), "publisher-1", EvidenceRole::Primary);
+    reference.evidence_ref = Some("source-local-ref".into());
+    let encoded = serde_json::to_value(&reference).unwrap();
+    assert_eq!(encoded["source_ref"], source(1).as_uuid().to_string());
+    assert_eq!(encoded["evidence_ref"], "source-local-ref");
+    let decoded: EvidenceReference = serde_json::from_value(encoded).unwrap();
+    assert_eq!(decoded, reference);
+}
+
+#[test]
 fn unknown_upstream_origin_is_not_independent_corroboration() {
     let mut requirement = EvidenceRequirement::new(vec![claim_id(1)]);
     requirement.minimum_independent_sources = 2;
     let mut claim = Claim::new(claim_id(1), ClaimState::Supported);
     claim.evidence_refs.push(EvidenceReference::new(
-        "source-a",
+        source(1),
         "publisher-1",
         EvidenceRole::Primary,
     ));
     claim.evidence_refs.push(EvidenceReference::new(
-        "source-b",
+        source(2),
         "  ",
         EvidenceRole::Corroborating,
     ));
@@ -273,14 +329,14 @@ fn equivalent_decimal_claim_values_do_not_conflict() {
     let mut first = Claim::new(claim_id(1), ClaimState::Supported);
     first.value = Some(TypedValue::Decimal(DecimalValue::new(10, 1)));
     first.evidence_refs.push(EvidenceReference::new(
-        "source-a",
+        source(1),
         "publisher-a",
         EvidenceRole::Primary,
     ));
     let mut second = Claim::new(claim_id(1), ClaimState::Supported);
     second.value = Some(TypedValue::Decimal(DecimalValue::new(100, 2)));
     second.evidence_refs.push(EvidenceReference::new(
-        "source-b",
+        source(2),
         "publisher-b",
         EvidenceRole::Corroborating,
     ));
@@ -312,12 +368,53 @@ fn unevaluated_authority_and_freshness_requirements_cannot_be_sufficient() {
 fn summary_only_evidence_does_not_meet_primary_requirement() {
     let requirement = EvidenceRequirement::new(vec![claim_id(1)]);
     let mut claim = Claim::new(claim_id(1), ClaimState::Supported);
-    let mut summary = EvidenceReference::new("summary", "source-a", EvidenceRole::Primary);
+    let mut summary = EvidenceReference::new(source(1), "source-a", EvidenceRole::Primary);
     summary.is_summary = true;
     claim.evidence_refs.push(summary);
     assert_eq!(
         evaluate_evidence_sufficiency(&requirement, &[claim]),
         EvidenceSufficiency::Insufficient,
+    );
+}
+
+#[test]
+fn summary_only_contradiction_beside_direct_primary_remains_unresolved() {
+    let requirement = EvidenceRequirement::new(vec![claim_id(1)]);
+    let mut claim = Claim::new(claim_id(1), ClaimState::Supported);
+    claim.evidence_refs.push(EvidenceReference::new(
+        source(1),
+        "publisher-a",
+        EvidenceRole::Primary,
+    ));
+    let mut summary = EvidenceReference::new(source(2), "publisher-b", EvidenceRole::Contradicting);
+    summary.is_summary = true;
+    claim.evidence_refs.push(summary);
+
+    assert_eq!(
+        evaluate_evidence_sufficiency(&requirement, &[claim]),
+        EvidenceSufficiency::Unresolved,
+    );
+}
+
+#[test]
+fn direct_contradiction_stays_conflicted_with_an_unknown_claim() {
+    let requirement = EvidenceRequirement::new(vec![claim_id(1)]);
+    let mut supported = Claim::new(claim_id(1), ClaimState::Supported);
+    supported.evidence_refs.push(EvidenceReference::new(
+        source(1),
+        "publisher-a",
+        EvidenceRole::Primary,
+    ));
+    supported.evidence_refs.push(EvidenceReference::new(
+        source(2),
+        "publisher-b",
+        EvidenceRole::Contradicting,
+    ));
+    let unknown = Claim::new(claim_id(1), ClaimState::Unknown);
+
+    assert_eq!(
+        evaluate_evidence_sufficiency(&requirement, &[supported, unknown]),
+        EvidenceSufficiency::Conflicted,
     );
 }
 

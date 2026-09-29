@@ -8,8 +8,9 @@ use std::sync::Arc;
 use search_core::assertion::Assertion;
 use search_core::binding::RepresentationBinding;
 use search_core::discovery::{DiscoveryRequest, FederatedCandidate};
+use search_core::evidence::EvidenceRole;
 use search_core::graph::{GraphPathEvidence, GraphTraversalPlan};
-use search_core::id::{ResourceId, SourceId};
+use search_core::id::{ClaimId, ResourceId, SourceId};
 use search_core::materialization::{MaterializationState, ProviderContentPermission};
 use search_core::predicate::{ConceptResolver, TruthValue, TypedValue};
 use search_core::projection::{
@@ -27,6 +28,10 @@ use crate::projection::{PersistableGenerationManifest, PersistableResourceProjec
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, SearchError>> + Send + 'a>>;
 
+#[path = "evidence_resolution.rs"]
+mod evidence_resolution;
+pub use evidence_resolution::{assemble_resource_claims, assess_claim_evidence};
+
 pub trait SourceRegistryPort: Send + Sync {
     fn get_source<'a>(&'a self, source_id: SourceId) -> BoxFuture<'a, Option<DiscoverableSource>>;
     fn list_sources<'a>(&'a self) -> BoxFuture<'a, Vec<DiscoverableSource>>;
@@ -39,6 +44,48 @@ pub trait AssertionStorePort: Send + Sync {
         resource_ref: ResourceId,
         predicate: &'a str,
     ) -> BoxFuture<'a, Vec<Assertion>>;
+}
+
+/// A trusted ClaimId lookup, pinned to the same generation as Assertion reads.
+/// DiscoveryRequest carries only IDs and cannot supply or reinterpret selectors.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaimSelector {
+    pub claim_id: ClaimId,
+    pub subject_ref: String,
+    pub predicate: String,
+    pub expected_value: Option<TypedValue>,
+}
+
+pub trait ClaimSelectorPort: Send + Sync {
+    fn selector_for<'a>(
+        &'a self,
+        generation: ProjectionGenerationKey,
+        claim_id: ClaimId,
+    ) -> BoxFuture<'a, Option<ClaimSelector>>;
+}
+
+/// Provenance resolved by the owning Source adapter from an opaque Assertion ref.
+/// The application checks every identity field before it becomes Claim evidence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedAssertionEvidence {
+    pub generation: ProjectionGenerationKey,
+    pub source_id: SourceId,
+    pub resource_id: ResourceId,
+    pub evidence_ref: String,
+    pub upstream_origin: String,
+    pub role: EvidenceRole,
+    pub citation_chain: Vec<String>,
+    pub content_digest: Option<String>,
+    pub is_summary: bool,
+}
+
+pub trait EvidenceResolverPort: Send + Sync {
+    fn resolve<'a>(
+        &'a self,
+        generation: ProjectionGenerationKey,
+        resource_ref: ResourceId,
+        evidence_ref: &'a str,
+    ) -> BoxFuture<'a, Option<ResolvedAssertionEvidence>>;
 }
 
 pub trait ConceptRegistryPort: Send + Sync {
