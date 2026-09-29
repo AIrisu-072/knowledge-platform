@@ -11,5 +11,6 @@
 - Version/Folder作成ではApplication commandにtarget resource IDが含まれるため、Clientがresource IDをoperation開始前に生成しretryでも固定する。Transport側でretryごとに再生成しない。
 - IdentityのWindows/AD/SSPI実接続、GUI、Agent Tool/CLI、Search API、deployは別工程。
 - Production Implementation Plan: `docs/superpowers/plans/2026-09-29-document-http-openapi-transport-v0-production-implementation.md`。HAPI-01〜12、A→B→C→D。現時点では未承認。
+- Plan self-review: UI実利用に必要なpolicy read/root discovery/create recovery/typed management errorをApplication補完として先行し、HTTP resource profile candidate（JSON 1 MiB、file 256 MiB、multipart total 1 GiB、Diff 45 s等）を有限境界として追加。設計意味の変更なし。
 - blocker: Production Implementation Planの依頼者承認。承認前に製品実装へ進まない。
 - 次のexact action: Production Implementation Planを自己レビューして依頼者へ提示する。承認されたらplan approval recordを作り、別session向け実装開始promptからGitHub正本を再取得してHAPI-01 REDへ進む。

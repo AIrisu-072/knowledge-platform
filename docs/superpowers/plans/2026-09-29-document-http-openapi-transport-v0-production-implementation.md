@@ -192,6 +192,31 @@ POST /v1/documents/{documentId}/comparisons
 
 実装中にURIを変更したくなった場合、resource/action意味が同じでもOpenAPIと設計の対応を確認する。意味が変わる場合はDesign Amendment。
 
+### 4.1 Initial HTTP resource profile candidate
+
+以下は**実装・資格試験の開始値**であり、未測定のSLOや将来容量保証ではない。HAPI-11で境界値・1-over・代表fixtureを実測し、内側worker/profileとUXの両方に対して妥当と確認できた場合だけv0として固定する。
+
+| 項目 | candidate |
+|---|---:|
+| JSON request body | 1 MiB |
+| multipart JSON metadata part | 1 MiB |
+| authoritative file 1件 | 256 MiB |
+| multipart request total | 1 GiB |
+| multipart parts | 64 |
+| filename / display-name input | 1,024 UTF-8 bytes |
+| aggregate request headers | 32 KiB |
+| non-binary JSON response | 32 MiB |
+| ordinary read/mutation operation budget | 30 s |
+| create/version multipart operation budget | 120 s |
+| Document Diff API operation budget | 45 s |
+| streaming download idle budget | 30 s |
+
+- per-file 256 MiBは既存DSI executorとDiff sourceの有限境界に合わせた開始値。HTTPでこれを超えて受け入れても後段が安全に処理できないため、少なくともv0のqualified pathでは上限を一致させる。
+- multipart total 1 GiBは複数ContentItem Versionのtransport全体だけの上限であり、各itemの256 MiB上限を緩和しない。
+- Diff API 45秒は既存Diff worker wall 30秒より外側に置く開始値。DB/Audit/queue overheadの実測で不足する場合は、依存timeoutとの階層を保った計画差分を提示する。
+- downloadは既知Content-Lengthを持つ原本のstreamingを前提とし、全bodyを30秒で終える意味ではない。idle/stallを有限化する候補である。
+- exact値をtest通過のためだけに引き上げない。代表業務文書が正当な範囲で失敗する、またはmemory/disk/latencyが危険ならSTOP条件として値を再レビューする。
+
 ## 5. Delivery / Verification Units
 
 | Unit | Tasks | Draft PR / gate |
@@ -285,7 +310,7 @@ A→B→C→Dの依存順。stacked Draft PRにしてよい。各Taskで焦点RE
 - [ ] **RED:** valid multipart、request part欠落、file欠落、duplicate part、unknown part、oversized metadata/header/filename/file、invalid media type、client disconnect before commit、commit outcome unknownを固定する。
 - [ ] `POST /v1/documents` は `request` JSON part + primary `file` part。filename/media typeはsemantic trust根拠にしない。
 - [ ] uploadを無制限RAM bufferせず、bounded stream/spoolを既存 `ContentReader` へ渡す。temp strategyを使う場合もHTTP crateがauthoritative Storageを直接管理しない。
-- [ ] body/file上限はDSI/Diff/Storageの内側安全上限と矛盾しない有限値をHAPI-11実測前のcandidateとして置き、境界/1-over試験を作る。値を緩和してtestを通さない。
+- [ ] §4.1 candidate（per-file 256 MiB / multipart total 1 GiB等）を実装し、境界/1-over試験を作る。値を緩和してtestを通さない。
 - [ ] `CommitOutcomeUnknown` は503 + `retryable=false` + generated IDs + recovery locationを返し、POST自動retryを禁止する。
 - [ ] `GET /v1/document-creation-outcomes/{documentId}` はversion/file IDsを照合し、現在認可で結果を開示する。
 - [ ] **GREEN:** failure時に重複Documentを作らず、blind retry pathが存在しないことをassert。
@@ -346,7 +371,7 @@ A→B→C→Dの依存順。stacked Draft PRにしてよい。各Taskで焦点RE
 
 **Files:** HTTP `src/{limits.rs,timeout.rs,security_headers.rs,trace.rs}`, `mise.toml`/tests/acceptance evidence as needed.
 
-- [ ] JSON、multipart total、part count、per-file、header/filename、response JSON、Diff operation timeoutのcandidate boundsを明文化し、exact boundaryと1-over試験を追加する。既存Diff source 256 MiB等の内側profileを超えて意味安全性を緩和しない。
+- [ ] §4.1のJSON、multipart total、part count、per-file、header/filename、response JSON、operation/idle timeout候補についてexact boundaryと1-over試験を追加する。既存Diff/DSI source 256 MiB等の内側profileを超えて意味安全性を緩和しない。
 - [ ] 代表small/large fixtureでLinux CIまたは同等環境のwall/memoryを測定し、候補上限が不合理なら勝手に緩和せずSTOPして計画差分を提示する。
 - [ ] timeout階層 `client > API operation > dependency` を満たす。Diff worker wall 30秒よりAPI operation budgetが短くならない。
 - [ ] client cancellationを可能な範囲で伝播するが、DB commit結果を推測しない。commit start後のunknown outcome testを追加。
