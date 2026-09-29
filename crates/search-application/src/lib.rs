@@ -2,8 +2,11 @@
 
 #![forbid(unsafe_code)]
 
+pub mod action_selection;
+
 pub mod candidate;
 pub mod context;
+pub mod discovery_service;
 pub mod error;
 pub mod federation;
 pub mod materialization;
