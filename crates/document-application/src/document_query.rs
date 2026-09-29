@@ -189,8 +189,20 @@ pub struct FolderSummary {
     pub revision: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RootFolderSummary {
+    pub folder_id: FolderId,
+    pub name: String,
+    pub revision: i64,
+}
+
 #[allow(async_fn_in_trait)]
 pub trait DocumentQueryRepository: Send + Sync {
+    async fn get_root_folder(
+        &self,
+        ctx: &VerifiedActorContext,
+    ) -> Result<RootFolderSummary, RepositoryError>;
+
     async fn list_published_documents(
         &self,
         ctx: &VerifiedActorContext,
@@ -223,6 +235,17 @@ pub struct DocumentQueryService<R> {
 impl<R: DocumentQueryRepository> DocumentQueryService<R> {
     pub fn new(repository: Arc<R>) -> Self {
         Self { repository }
+    }
+
+    pub async fn get_root_folder(
+        &self,
+        ctx: &VerifiedActorContext,
+    ) -> Result<RootFolderSummary, ApplicationError> {
+        ctx.ensure_current()?;
+        self.repository
+            .get_root_folder(ctx)
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn list_published_documents(
