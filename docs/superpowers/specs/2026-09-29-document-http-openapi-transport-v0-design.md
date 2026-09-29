@@ -332,6 +332,13 @@ Version、Publish、Schedule、Publication End、Managementで既に定義済み
 
 Clientはwrite開始前にoperation IDを生成し、commit結果不明またはretryable transport failure時は**同一operation ID・同一payload**でのみ再試行する。異なるpayloadで同じIDを使った場合はConflict。
 
+既存Application commandでは、Version作成の `targetVersionId` とFolder作成の `folderId` もcommand inputでありcommand digest / replay identityの一部になる。したがってClientはこれらの新規resource IDもrequest開始前に一度生成し、同じoperationのretryでは同一値を再利用する。Transportがrequestごとに新しいtarget IDを生成し直してはならない。
+
+- `POST /documents/{documentId}/versions`: `operationId` + `targetVersionId`
+- `POST /folders`: `operationId` + `folderId`
+
+resource IDはcanonical UUIDとしてtransportし、Client SDKはUUIDv7生成helperを提供する。既存Domain/Applicationがresource ID自体へUUID version制約を課していない箇所について、HTTPだけが独自に新しい拒否規則を追加するかはImplementation Planのcontract testで決める。operation IDのUUIDv7制約は既存Applicationどおり必須である。
+
 ### 9.2 Optimistic concurrency
 
 既存commandの:
@@ -637,7 +644,8 @@ Transport実装のためにApplicationへ追加してよいのは、既存Domain
 13. caller-generated operation IDを同一payloadで再実行できる。
 14. revision conflictを409としてmachine-readableに返す。
 15. initial createのcommit unknownはblind retryせずrecovery lookupへ誘導する。
-16. request size / timeout / cancellationに有限境界がある。
+16. Version/Folder作成のretryで `targetVersionId` / `folderId` が変化せず、同一operation replay identityを維持する。
+17. request size / timeout / cancellationに有限境界がある.
 17. cursor invalidとcursor staleを区別する。
 
 ### Tooling / UI readiness
@@ -647,8 +655,8 @@ Transport実装のためにApplicationへ追加してよいのは、既存Domain
 20. TypeScript側がraw fetch/API URLをPresentationへ漏らさずGenerated/typed client境界を構成可能。
 21. GUIを作らなくてもcontract testで全operationを縦断検証できる。
 22. AccessPolicy管理Clientが `administer` 認可済みGETからlocal policy revisionとeffective grantsを取得でき、Repositoryへ直接接続しない。
-23. Folder Clientが `/v1/folders/root` からtree探索を開始でき、Infrastructureのroot UUIDを知る必要がない。
-24. Management errorのmachine判定がhuman-readable error文字列に依存しない。
+24. Folder Clientが `/v1/folders/root` からtree探索を開始でき、Infrastructureのroot UUIDを知る必要がない。
+25. Management errorのmachine判定がhuman-readable error文字列に依存しない。
 
 ## 21. 実装順序の方針
 
