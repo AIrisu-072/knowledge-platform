@@ -1,8 +1,8 @@
 use std::io::Cursor;
 
 use document_diff_core::{
-    DiffCoverage, DiffProfileVersion, FormatId, ResourceProfileVersion, UnverifiedReason,
-    WorkerDiffRequest, WorkerProtocolVersion,
+    DiffCoverage, DiffProfileVersion, FormatId, ResourceProfileVersion, WorkerDiffRequest,
+    WorkerProtocolVersion,
 };
 use document_diff_worker::{WorkerError, guard_worker_execution, run_worker_shell};
 use sha2::{Digest, Sha256};
@@ -21,20 +21,24 @@ fn request(base: &[u8], target: &[u8]) -> WorkerDiffRequest {
 }
 
 #[test]
-fn two_inputs_are_bound_independently_and_unsupported_format_is_unverified() {
-    let base = b"old";
-    let target = b"new";
+fn two_inputs_are_bound_independently_and_dispatched_to_the_qualified_adapter() {
+    let base =
+        include_bytes!("../../../experiments/document-semantic-inspection/fixtures/docx/base.docx");
+    let target = include_bytes!(
+        "../../../experiments/document-semantic-inspection/fixtures/docx/body-text-change.docx"
+    );
     let request = request(base, target);
     let encoded = serde_json::to_vec(&request).unwrap();
     let response = run_worker_shell(&encoded, Cursor::new(base), Cursor::new(target)).unwrap();
     response.validate_against(&request).unwrap();
-    assert_eq!(response.coverage, DiffCoverage::None);
-    assert_eq!(
-        response.unverified_regions[0].reason,
-        UnverifiedReason::UnsupportedSemanticConstruct
+    assert_eq!(response.coverage, DiffCoverage::Full);
+    assert!(!response.changes.is_empty());
+    assert!(
+        response
+            .changes
+            .iter()
+            .any(|change| change.base.is_some() && change.target.is_some())
     );
-    assert!(response.unverified_regions[0].base.is_some());
-    assert!(response.unverified_regions[0].target.is_some());
 }
 
 #[test]

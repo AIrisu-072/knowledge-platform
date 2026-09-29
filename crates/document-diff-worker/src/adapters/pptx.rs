@@ -145,8 +145,7 @@ impl PptxComparator {
         }
         if old_inspection.external_dependencies() != new_inspection.external_dependencies()
             && !changes.iter().any(|change| change.facet == "pptx_link")
-        {
-            if let Err(reason) = push(
+            && let Err(reason) = push(
                 &mut changes,
                 budget,
                 Some(ChangeOperation::Modified),
@@ -155,9 +154,9 @@ impl PptxComparator {
                 Some(SourceLocator::ContentItem),
                 Some(SourceLocator::ContentItem),
                 "external_hyperlink_changed",
-            ) {
-                regions.push(unverified_region(reason));
-            }
+            )
+        {
+            regions.push(unverified_region(reason));
         }
         if changes.is_empty() {
             changes.push(WorkerChange {
