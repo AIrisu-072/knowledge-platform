@@ -210,6 +210,9 @@ impl QualificationReport {
                 .iter()
                 .find(|query| query.id == case.lexical_query_id)
                 .ok_or("fusion case has no lexical hard-discriminator contract")?;
+            if !fusion_truth_matches_query(case, query) {
+                return Err(format!("fusion relevance truth mismatch: {}", case.id).into());
+            }
             let candidates = case
                 .retrievers
                 .iter()
@@ -294,6 +297,12 @@ impl QualificationReport {
     }
 }
 
+fn fusion_truth_matches_query(case: &FusionCase, query: &LexicalCase) -> bool {
+    query
+        .expected_resource_ids
+        .contains(&case.expected_resource_id)
+}
+
 fn compare_quality(
     record: &serde_json::Value,
     recall: f64,
@@ -307,4 +316,32 @@ fn compare_quality(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fusion_truth_rejects_a_hard_eligible_but_irrelevant_target() {
+        let cases: Vec<FusionCase> =
+            serde_json::from_str(include_str!("../fixtures/fusion/cases.json")).unwrap();
+        let queries: Vec<LexicalCase> =
+            serde_json::from_str(include_str!("../fixtures/lexical/queries.json")).unwrap();
+        let mut case = cases
+            .into_iter()
+            .find(|case| case.id == "eligible-graph-rescues-lexical-rank")
+            .unwrap();
+        let query = queries
+            .iter()
+            .find(|query| query.id == case.lexical_query_id)
+            .unwrap();
+        assert!(fusion_truth_matches_query(&case, query));
+        case.expected_resource_id = "deposit-corp".into();
+        assert!(
+            case.eligible_resource_ids
+                .contains(&case.expected_resource_id)
+        );
+        assert!(!fusion_truth_matches_query(&case, query));
+    }
 }
