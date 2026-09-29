@@ -1,0 +1,18 @@
+[package]
+name = "search-tantivy"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+search-core = { version = "0.0.0", path = "../search-core" }
+search-application = { version = "0.0.0", path = "../search-application" }
+tantivy.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+time.workspace = true
+tokio.workspace = true
+uuid.workspace = true

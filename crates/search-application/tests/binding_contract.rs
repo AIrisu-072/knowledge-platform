@@ -28,10 +28,7 @@ fn registry_updates_do_not_silently_replace_an_existing_binding() {
             .representation_ref,
         first.representation_ref
     );
-    assert_eq!(
-        session.bind_if_absent(newer).unwrap().representation_ref,
-        first.representation_ref
-    );
+    assert!(session.bind_if_absent(newer).is_err());
     assert_eq!(
         session.get(first.binding_id).unwrap().representation_ref,
         first.representation_ref

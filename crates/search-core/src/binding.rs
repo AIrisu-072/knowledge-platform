@@ -107,6 +107,13 @@ impl SessionBindingSet {
         binding: RepresentationBinding,
     ) -> Result<&RepresentationBinding, &'static str> {
         binding.validate()?;
+        if self
+            .bindings
+            .get(&binding.binding_id)
+            .is_some_and(|existing| existing != &binding)
+        {
+            return Err("BindingId collision with different representation binding");
+        }
         Ok(self.bindings.entry(binding.binding_id).or_insert(binding))
     }
 

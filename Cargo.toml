@@ -2,6 +2,9 @@
 members = [
   "crates/search-core",
   "crates/search-application",
+  "crates/search-projection-memory",
+  "crates/search-tantivy",
+  "crates/search-graph-memory",
   "crates/document-domain",
   "crates/document-application",
   "crates/document-semantic-inspection-core",
@@ -55,8 +58,11 @@ xml-sec = "=0.1.16"
 cms = { version = "=0.2.3", features = ["std", "sha2", "signature"] }
 x509-cert = "=0.2.5"
 openssl = { version = "=0.10.81", features = ["vendored"] }
+tantivy = "=0.26.2"
 
 [patch.crates-io]
 # Task 6: exact ovba 0.7.1 source with bounded decode and strict dir consumption.
 # Source provenance and the scoped hardening diff are recorded under third_party.
 ovba = { path = "third_party/document-semantic-inspection/ovba-0.7.1" }
+# Reviewed 0.26.2 archive with lru pinned to fixed 0.18.2.
+tantivy = { path = "third_party/search/tantivy-0.26.2" }

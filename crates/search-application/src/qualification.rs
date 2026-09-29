@@ -1,28 +1,31 @@
 //! Qualification orchestration depends on contract ports, never a graph backend.
 
 use search_core::applicability::{ApplicabilityEvaluation, Discriminator, evaluate_applicability};
-use search_core::discovery::FederatedCandidate;
 use search_core::fact::FactSet;
 use search_core::graph::GraphTraversalPlan;
 use search_core::predicate::ConceptResolver;
+use search_core::projection::ProjectionGenerationKey;
 
 use crate::error::SearchError;
-use crate::ports::HyperGraphRetrieverPort;
+use crate::ports::{GraphRetrievalResult, HyperGraphRetrieverPort};
 
 pub struct QualificationService;
 
 impl QualificationService {
-    pub async fn candidates_from_graph(
+    /// Fetch raw adapter output for the executor. Per-hit data is untrusted
+    /// until the executor has checked current candidate and path access.
+    pub(crate) async fn candidates_from_graph(
         retriever: &dyn HyperGraphRetrieverPort,
+        generation: ProjectionGenerationKey,
         plan: &GraphTraversalPlan,
-    ) -> Result<Vec<FederatedCandidate>, SearchError> {
+    ) -> Result<GraphRetrievalResult, SearchError> {
         plan.validate()
             .map_err(|reason| SearchError::InvalidRequest(reason.into()))?;
-        retriever.retrieve(plan).await
+        retriever.retrieve(generation, plan).await
     }
 
     pub fn qualify_candidate(
-        candidate: &FederatedCandidate,
+        candidate: &search_core::discovery::FederatedCandidate,
         facts: &FactSet,
         discriminators: &[Discriminator],
         concepts: &dyn ConceptResolver,

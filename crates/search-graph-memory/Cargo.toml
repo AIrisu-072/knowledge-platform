@@ -1,0 +1,18 @@
+[package]
+name = "search-graph-memory"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+search-application = { version = "0.0.0", path = "../search-application" }
+search-core = { version = "0.0.0", path = "../search-core" }
+thiserror.workspace = true
+
+[dev-dependencies]
+search-projection-memory = { version = "0.0.0", path = "../search-projection-memory" }
+search-tantivy = { version = "0.0.0", path = "../search-tantivy" }
+time.workspace = true
+tokio.workspace = true
+uuid.workspace = true
