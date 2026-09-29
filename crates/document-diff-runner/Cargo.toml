@@ -16,3 +16,9 @@ sha2.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+
+[[bin]]
+name = "diff-runner-hostile-worker"
+path = "tests/support/hostile_worker.rs"
+test = false
+bench = false

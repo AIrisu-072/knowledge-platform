@@ -4,7 +4,7 @@ use document_diff_core::{
     DiffCoverage, DiffProfileVersion, FormatId, ResourceProfileVersion, UnverifiedReason,
     WorkerDiffRequest, WorkerProtocolVersion,
 };
-use document_diff_worker::run_worker_shell;
+use document_diff_worker::{WorkerError, guard_worker_execution, run_worker_shell};
 use sha2::{Digest, Sha256};
 
 fn request(base: &[u8], target: &[u8]) -> WorkerDiffRequest {
@@ -84,4 +84,13 @@ fn oversized_or_unexpected_request_fields_are_rejected() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn worker_panic_is_contained_without_result_disclosure() {
+    let outcome = guard_worker_execution(|| -> Result<(), WorkerError> {
+        panic!("synthetic private document body");
+    });
+    assert_eq!(outcome, Err(WorkerError::WorkerPanic));
+    assert!(!format!("{:?}", outcome).contains("private document body"));
 }
