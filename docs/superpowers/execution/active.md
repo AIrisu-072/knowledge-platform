@@ -6,6 +6,7 @@
 - Frozen Design: `docs/superpowers/specs/2026-09-29-document-http-openapi-transport-v0-design.md` blob `88f7046a5d14a77f4091df0c92691f6634dd57d7`。承認記録 `docs/superpowers/specs/2026-09-29-document-http-openapi-transport-v0-design-approval.md`。
 - Production Plan: `docs/superpowers/plans/2026-09-29-document-http-openapi-transport-v0-production-implementation.md`。**未承認**。HAPI-01〜12は未着手。
 - GitHub: Draft PR #27、`design/document-http-openapi-transport-v0`。基準main `77b13a1d35d15eea0112ca2d73f8cbd3dfffe1c9`。製品コード/OpenAPI paths/dependency/deployは未変更。
+- Implementation handoff: `docs/superpowers/handoffs/2026-09-29-document-http-openapi-transport-v0-implementation.md`。計画承認blob一致を必須gateとする。
 - blocker: Production Implementation Planの依頼者承認と別sessionでの実装開始指示。
 - 次のexact action: 計画を自己レビューして依頼者へ提示する。計画承認前は実装しない。
 
