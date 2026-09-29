@@ -12,7 +12,7 @@ fn request(base: &[u8], target: &[u8]) -> WorkerDiffRequest {
         protocol_version: WorkerProtocolVersion::V0,
         diff_profile_version: DiffProfileVersion::V0,
         resource_profile_version: ResourceProfileVersion::V0,
-        format: FormatId::Txt,
+        format: FormatId::Docx,
         base_raw_sha256: Sha256::digest(base).into(),
         base_size_bytes: base.len() as u64,
         target_raw_sha256: Sha256::digest(target).into(),

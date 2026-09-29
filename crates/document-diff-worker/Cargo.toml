@@ -11,6 +11,8 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+encoding_rs.workspace = true
+unicode-normalization.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 document-semantic-inspection-runner = { version = "0.0.0", path = "../document-semantic-inspection-runner" }

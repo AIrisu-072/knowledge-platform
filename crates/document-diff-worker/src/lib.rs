@@ -4,6 +4,7 @@
 mod adapters;
 mod shell;
 
+pub use adapters::text::TextComparator;
 pub use shell::{
     MAX_REQUEST_BYTES, MAX_RESULT_BYTES, MAX_SOURCE_BYTES, decode_request_bounded,
     guard_worker_execution, run_worker_shell,

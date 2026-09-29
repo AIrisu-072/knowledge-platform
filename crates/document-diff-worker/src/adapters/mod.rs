@@ -5,11 +5,17 @@ use document_diff_core::{
 
 use crate::WorkerError;
 
+pub(crate) mod text;
+
 pub(crate) fn compare(
     request: &WorkerDiffRequest,
-    _base: &[u8],
-    _target: &[u8],
+    base: &[u8],
+    target: &[u8],
 ) -> Result<WorkerDiffResponse, WorkerError> {
+    if request.format == document_diff_core::FormatId::Txt {
+        let mut budget = document_diff_core::ComparisonBudget::new(100_000, 100_000);
+        return text::TextComparator::compare(request, base, target, &mut budget);
+    }
     // A format is promoted only after its independent qualification task.
     Ok(WorkerDiffResponse {
         protocol_version: request.protocol_version,

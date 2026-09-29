@@ -3,7 +3,7 @@ use document_diff_core::{
     ResourceProfileVersion, SourceLocator, UnverifiedReason, WorkerDiffRequest,
     WorkerProtocolVersion,
 };
-use document_diff_worker::TextComparator;
+use document_diff_worker::{TextComparator, WorkerError, run_worker_shell};
 use sha2::{Digest, Sha256};
 
 fn request(base: &[u8], target: &[u8]) -> WorkerDiffRequest {
@@ -115,5 +115,26 @@ fn ambiguous_decoding_keeps_the_whole_item_unverified() {
     assert_eq!(
         result.unverified_regions[0].target,
         Some(SourceLocator::ContentItem)
+    );
+}
+
+#[test]
+fn shell_dispatch_and_direct_adapter_both_preserve_raw_binding() {
+    let base = b"old\n";
+    let target = b"new\n";
+    let request = request(base, target);
+    let shell = run_worker_shell(
+        &serde_json::to_vec(&request).unwrap(),
+        std::io::Cursor::new(base),
+        std::io::Cursor::new(target),
+    )
+    .unwrap();
+    assert_eq!(shell.coverage, DiffCoverage::Full);
+    assert_eq!(shell.changes.len(), 1);
+
+    let mut budget = ComparisonBudget::new(100, 100);
+    assert_eq!(
+        TextComparator::compare(&request, base, b"tampered\n", &mut budget).unwrap_err(),
+        WorkerError::RawBindingMismatch
     );
 }
