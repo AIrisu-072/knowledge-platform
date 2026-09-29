@@ -257,6 +257,26 @@ fn search_application_tantivy_dependency_is_rejected() {
 }
 
 #[test]
+fn search_application_search_tantivy_dependency_is_rejected_by_real_policy() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let config = Config::load(&root).unwrap();
+    let fixture = Fixture::valid().with_file(
+        "crates/search-application/Cargo.toml",
+        "[package]\nname = \"search-application\"\nversion = \"0.0.0\"\n\n[dependencies]\nsearch-tantivy = { path = \"../search-tantivy\" }\n",
+    );
+    let report = check_repository(fixture.root(), &config).unwrap();
+    assert!(
+        report.findings.iter().any(|finding| {
+            finding.code == "ARCH_FORBIDDEN_CRATE_DEPENDENCY"
+                && finding.path == "crates/search-application/Cargo.toml"
+                && finding.message.contains("'search-tantivy'")
+        }),
+        "{:#?}",
+        report.findings
+    );
+}
+
+#[test]
 fn search_application_filesystem_source_is_rejected() {
     let fixture = Fixture::valid().with_file(
         "crates/search-application/src/lib.rs",
@@ -278,7 +298,7 @@ fn search_boundaries_are_present_in_real_policy() {
     assert_eq!(core.crate_path, "crates/search-core");
     assert_eq!(
         core.forbidden_dependencies,
-        ["sqlx", "axum", "tokio", "tantivy"]
+        ["sqlx", "axum", "tokio", "tantivy", "search-tantivy"]
     );
     assert_eq!(
         core.forbidden_source_patterns,
@@ -292,7 +312,7 @@ fn search_boundaries_are_present_in_real_policy() {
     assert_eq!(application.crate_path, "crates/search-application");
     assert_eq!(
         application.forbidden_dependencies,
-        ["sqlx", "axum", "tantivy"]
+        ["sqlx", "axum", "tantivy", "search-tantivy"]
     );
     assert_eq!(
         application.forbidden_source_patterns,
