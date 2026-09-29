@@ -5,7 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use document_application::{
     AccessPolicyService, ApplicationError, BootstrapRootPolicy, DocumentManagementService,
-    ManagementCommand, ManagementOperationId, ManagementRepository, ManagementResult,
+    ManagementCommand, ManagementErrorCode, ManagementOperationId, ManagementRepository,
+    ManagementResult,
 };
 use document_domain::{
     Action, PolicyGrant, PolicyMode, PolicySubject, PolicySubjectKind, PolicyTarget,
@@ -355,7 +356,9 @@ async fn pending_schedule_rejects_real_change_but_allows_noop() {
                 )
             )
             .await,
-        Err(ApplicationError::BusinessRule)
+        Err(ApplicationError::Management(
+            ManagementErrorCode::ReservedDocument
+        ))
     ));
     assert_eq!(state(&f).await, (1, json!({})));
     sqlx::query("UPDATE document_publish_schedules SET status = 'CANCELLED', cancelled_at = now() WHERE publish_operation_id = $1")

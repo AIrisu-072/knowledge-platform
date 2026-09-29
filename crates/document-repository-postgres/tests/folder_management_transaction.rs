@@ -2,7 +2,8 @@
 mod support;
 
 use document_application::{
-    ApplicationError, BootstrapRootPolicy, FolderService, ManagementCommand, ManagementOperationId,
+    ApplicationError, BootstrapRootPolicy, FolderService, ManagementCommand, ManagementErrorCode,
+    ManagementOperationId,
 };
 use document_domain::{Action, FolderId, PolicyGrant, PolicySubject, PolicySubjectKind};
 use document_repository_postgres::{FolderPreflightCategory, preflight_folder_names};
@@ -131,7 +132,9 @@ async fn invalid_parent_root_and_stale_revision_do_not_mutate() {
         service
             .rename_folder(&context(), rename(f.root_id, 0, "Other Root"))
             .await,
-        Err(ApplicationError::BusinessRule)
+        Err(ApplicationError::Management(
+            ManagementErrorCode::RootProtected
+        ))
     ));
     assert!(matches!(
         service
