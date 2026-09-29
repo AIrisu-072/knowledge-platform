@@ -1,5 +1,14 @@
 # Search / Discovery Platform v0 — Execution Status
 
+## Current checkpoint — S1 selected and Phase C C1 ready, 2026-09-29 JST
+
+- The requester selected routed retriever-order priority concatenation as the initial S1 fusion policy on 2026-09-29, accepting the eight-case sensitivity evidence and its explicit rank-3 rescue-case limitation. Hard eligibility precedes fusion, raw heterogeneous scores are trace-only, and RRF `k=20` / any external fusion library remain unselected. The normative selection record and Phase B report now record this decision. No Design Freeze semantic change is proposed.
+- New worktree branch `feat/search-discovery-platform-v0-c` starts at production-selection [Draft PR #26](https://github.com/AIrisu-072/knowledge-platform/pull/26) exact head `3080553c09500f688b68eb5f5df592e7fde0de95`; PR #26 remains OPEN/Draft with [CI `36526394524`](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36526394524) and [DSI Sandbox `36526394559`](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36526394559) SUCCESS. Patch PR #25 remains OPEN/Draft. Main remains at `6ea29e1ceea82bb0e20b195890b7c0e7efc85f68`; the parallel Document Management Basics PR #19 was already merged at that main head and no new material conflict was found. Planning PR #20's old security failure is not used as a current Phase C qualification receipt.
+- Completed Task: Phase B S1 decision and Tantivy production dependency selection. Current Task: C1 projection generation contracts/compiler, starting at RED. No Phase C production code or root Cargo patch has been added yet. Phase C C3 will introduce `crates/search-tantivy` and the root patch together and repeat lock-graph, license/security and lexical-contract checks. Lindera, durable Graph, Vector, Embedding and Reranker remain deferred.
+- Exact next action: commit the S1 decision record, verify clean branch state, then write and run C1 RED tests for generation identity and failed-publication behavior before implementing the compiler. Use scoped workers/review and preserve `active.md`; do not merge or deploy.
+
+---
+
 ## Current checkpoint — patched Tantivy selected for production adapter; S1 pending, 2026-09-29 JST
 
 - The requester explicitly chose production adoption of the reviewed Tantivy 0.26.2 patch with `lru = "=0.18.2"`. New branch `feat/search-tantivy-production-selection` starts at patch PR #25 head `11f2d1163819b18f0ccd9efffaa836b5806a09ea`. The selection spec, patch record and vendor provenance now record the production dependency choice. This is a selection record only: no root Cargo patch, production lockfile entry or `crates/search-tantivy` adapter has been added, and no PR has been merged or deployed.
