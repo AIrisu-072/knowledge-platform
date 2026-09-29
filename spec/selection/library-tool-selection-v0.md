@@ -174,6 +174,8 @@ PoC通過前にCore DomainへSSPI固有型を導入しない。
 | OpenAPI → TS operations/types | `openapi-typescript` 7.13.0 | **POC REQUIRED** | MIT | 3.2.1実contractから29操作を生成したがbinary multipartが`string`。公式3.2完全対応宣言もないためpromotion保留 |
 | OpenAPI Generator | OpenAPI Generator | **REJECTED** | Apache-2.0 | 3.2非対応。3.1もbeta表記 |
 
+`jsonschema 0.55.0` の推移依存 `referencing 0.55.1` → `fluent-uri 0.4.1` → `borrow-or-share 0.2.4` は `MIT-0`。これは上記の「Public Domain相当のpermissive license」に該当するため、`deny.toml` の許可SPDX識別子へ追加する。根拠: [SPDX MIT-0](https://spdx.org/licenses/MIT-0.html)、crate manifest、Unit Aの `cargo deny check`。`MPL-2.0` 等の原則不許可licenseの例外は設けない。
+
 ## 5.2 Codegen policy
 
 Canonical relation:
