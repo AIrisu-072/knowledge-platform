@@ -19,6 +19,7 @@ sha2.workspace = true
 unicode-normalization.workspace = true
 
 [dev-dependencies]
+document-diff-worker = { version = "0.0.0", path = "../document-diff-worker" }
 document-semantic-inspection-runner = { version = "0.0.0", path = "../document-semantic-inspection-runner" }
 document-storage-fs = { version = "0.0.0", path = "../document-storage-fs" }
 document-repository-postgres = { version = "0.0.0", path = "../document-repository-postgres" }

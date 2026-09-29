@@ -1082,6 +1082,7 @@ name = "document-application"
 version = "0.0.0"
 dependencies = [
  "document-diff-core",
+ "document-diff-worker",
  "document-domain",
  "document-repository-postgres",
  "document-semantic-inspection-core",
