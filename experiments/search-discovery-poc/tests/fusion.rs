@@ -1,11 +1,124 @@
 use search_discovery_poc::fusion::{
     FusionCase, FusionStrategy, eligible_retrievers, evaluate_fusion, rank_fuse,
 };
-use search_discovery_poc::lexical::{LexicalCase, LexicalResource};
+use search_discovery_poc::hypergraph::{
+    IncidenceIndex, Participant, Relation, TraversalQuery, TraversalStep,
+};
+use search_discovery_poc::lexical::{AnalyzerKind, LexicalCase, LexicalResource, evaluate_lexical};
 use std::collections::BTreeSet;
 
 fn cases() -> Vec<FusionCase> {
     serde_json::from_str(include_str!("../fixtures/fusion/cases.json")).unwrap()
+}
+
+fn case_named(id: &str) -> FusionCase {
+    cases()
+        .into_iter()
+        .find(|case| case.id == id)
+        .unwrap_or_else(|| panic!("missing fusion scenario: {id}"))
+}
+
+fn rank_of_expected(case: &FusionCase, strategy: FusionStrategy) -> Option<usize> {
+    rank_fuse(&eligible_retrievers(case), strategy)
+        .iter()
+        .position(|candidate| candidate.resource_id == case.expected_resource_id)
+        .map(|position| position + 1)
+}
+
+#[test]
+fn multiple_hard_eligible_candidates_expose_rrf_help_and_harm() {
+    let rescue = case_named("eligible-graph-rescues-lexical-rank");
+    let noisy = case_named("eligible-noisy-graph-harms-rrf");
+    for case in [&rescue, &noisy] {
+        assert!(case.eligible_resource_ids.len() >= 3, "{}", case.id);
+        assert!(
+            case.eligible_resource_ids
+                .contains(&case.expected_resource_id)
+        );
+    }
+    assert_eq!(
+        rank_of_expected(&rescue, FusionStrategy::PriorityConcat),
+        Some(3)
+    );
+    assert_eq!(
+        rank_of_expected(&rescue, FusionStrategy::Rrf { k: 20 }),
+        Some(1)
+    );
+    assert_eq!(
+        rank_of_expected(&noisy, FusionStrategy::PriorityConcat),
+        Some(1)
+    );
+    assert_eq!(
+        rank_of_expected(&noisy, FusionStrategy::Rrf { k: 20 }),
+        Some(2)
+    );
+}
+
+#[test]
+fn graph_only_relevance_has_a_typed_path_and_an_observed_lexical_miss() {
+    let case = case_named("graph-only-corporate-loan");
+    let resources: Vec<LexicalResource> =
+        serde_json::from_str(include_str!("../fixtures/lexical/resources.json")).unwrap();
+    let queries: Vec<LexicalCase> =
+        serde_json::from_str(include_str!("../fixtures/lexical/queries.json")).unwrap();
+    let query = queries
+        .into_iter()
+        .find(|query| query.id == case.lexical_query_id)
+        .unwrap();
+    let lexical = evaluate_lexical(AnalyzerKind::TantivyDefault, &resources, &[query]).unwrap();
+    let qualified = &lexical.cases[0].qualified_ids;
+    assert!(!qualified.contains(&case.expected_resource_id));
+    assert_eq!(
+        case.retrievers[0]
+            .candidates
+            .iter()
+            .map(|candidate| &candidate.resource_id)
+            .collect::<Vec<_>>(),
+        qualified.iter().collect::<Vec<_>>()
+    );
+
+    let graph_fixture = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/fixtures/fusion/graph-relations.json"
+    ))
+    .unwrap();
+    let relations: Vec<Relation> = serde_json::from_str(&graph_fixture).unwrap();
+    let index = IncidenceIndex::build(relations).unwrap();
+    let path = index
+        .traverse(&TraversalQuery {
+            seed_resource_id: "company-a".into(),
+            steps: vec![TraversalStep {
+                namespace: "discovery".into(),
+                relation_type: "workflow_for_product".into(),
+                from_role: "source".into(),
+                to_role: "workflow".into(),
+                required_participants: vec![Participant::new("product", "product-b")],
+            }],
+            max_paths: 4,
+            max_branching_per_node: 4,
+        })
+        .unwrap();
+    assert_eq!(path.len(), 1);
+    assert_eq!(path[0].relation_ids, vec!["fusion-loan-workflow"]);
+    assert_eq!(path[0].target_resource_id, case.expected_resource_id);
+    assert_eq!(
+        case.retrievers[1]
+            .candidates
+            .iter()
+            .map(|candidate| &candidate.resource_id)
+            .collect::<Vec<_>>(),
+        path.iter()
+            .map(|path| &path.target_resource_id)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        rank_of_expected(&case, FusionStrategy::FirstRetrieverOnly),
+        None
+    );
+    assert_eq!(
+        rank_of_expected(&case, FusionStrategy::PriorityConcat),
+        Some(1)
+    );
 }
 
 #[test]
@@ -156,19 +269,14 @@ fn strategy_measurements_are_reported_without_universal_slo() {
         })
         .collect::<Vec<_>>();
     let rrf_lexical_graph = evaluate_fusion(&lexical_graph, FusionStrategy::Rrf { k: 20 });
-    // Hard eligibility removes every confusable head hit in this fixture.
-    // It cannot qualify RRF as a quality improvement over a simpler ordering.
-    for metrics in [
-        &first,
-        &graph_only,
-        &vector_like_only,
-        &priority,
-        &rrf_lexical_graph,
-        &rrf,
-    ] {
-        assert_eq!(metrics.mrr, 1.0);
-    }
-    assert_eq!(rrf.recall_at_10, 1.0);
+    // The added cases contain several eligible candidates and one observed
+    // lexical miss. They expose both an RRF gain and a noisy-graph regression.
+    assert_eq!(fixtures.len(), 8);
+    assert_eq!(first.recall_at_10, 7.0 / 8.0);
+    assert_eq!(priority.recall_at_10, 1.0);
+    assert_eq!(rrf_lexical_graph.recall_at_10, 1.0);
+    assert!(rrf_lexical_graph.mrr > priority.mrr);
+    assert!(rrf_lexical_graph.mrr < 1.0);
     for (name, metrics) in [
         ("first", first),
         ("graph_only", graph_only),

@@ -61,7 +61,7 @@ impl QualificationReport {
     /// Rechecks deterministic quality and source identity. Timings remain captured measurements.
     pub fn verify_evidence(&self) -> Result<(), Box<dyn Error>> {
         if self.fixture_set != "search-discovery-synthetic-v0"
-            || self.fixture_sha256.len() != 5
+            || self.fixture_sha256.len() != 6
             || self.candidate_versions.len() != 7
             || self.lexical_metrics.len() != 2
             || self.graph_correctness_metrics.len() != 1
@@ -116,6 +116,10 @@ impl QualificationReport {
             (
                 "fusion/cases.json",
                 include_bytes!("../fixtures/fusion/cases.json").as_slice(),
+            ),
+            (
+                "fusion/graph-relations.json",
+                include_bytes!("../fixtures/fusion/graph-relations.json").as_slice(),
             ),
         ] {
             let observed = Sha256::digest(content)

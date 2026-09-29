@@ -23,5 +23,20 @@
     {"id":"lexical","candidates":[{"resource_id":"credit-manual","raw_score":0.51},{"resource_id":"credit-policy","raw_score":0.50}]},
     {"id":"graph","candidates":[{"resource_id":"credit-policy","raw_score":0.00003},{"resource_id":"credit-manual","raw_score":0.00002}]},
     {"id":"vector-like","candidates":[{"resource_id":"credit-manual","raw_score":3.0}]}
+  ]},
+  {"id":"eligible-graph-rescues-lexical-rank","lexical_query_id":"ambiguous-loan","eligible_resource_ids":["loan-corp","deposit-corp","address-corp"],"expected_resource_id":"loan-corp","retrievers":[
+    {"id":"lexical","candidates":[{"resource_id":"deposit-corp","raw_score":0.91},{"resource_id":"address-corp","raw_score":0.82},{"resource_id":"loan-corp","raw_score":0.64}]},
+    {"id":"graph","candidates":[{"resource_id":"loan-corp","raw_score":0.0003}]},
+    {"id":"vector-like","candidates":[{"resource_id":"address-corp","raw_score":9000.0},{"resource_id":"loan-corp","raw_score":100.0}]}
+  ]},
+  {"id":"eligible-noisy-graph-harms-rrf","lexical_query_id":"ambiguous-deposit","eligible_resource_ids":["loan-corp","deposit-corp","address-corp"],"expected_resource_id":"deposit-corp","retrievers":[
+    {"id":"lexical","candidates":[{"resource_id":"deposit-corp","raw_score":0.93},{"resource_id":"loan-corp","raw_score":0.85},{"resource_id":"address-corp","raw_score":0.73}]},
+    {"id":"graph","candidates":[{"resource_id":"loan-corp","raw_score":0.0004},{"resource_id":"address-corp","raw_score":0.0003},{"resource_id":"deposit-corp","raw_score":0.0001}]},
+    {"id":"vector-like","candidates":[{"resource_id":"address-corp","raw_score":8000.0},{"resource_id":"deposit-corp","raw_score":500.0}]}
+  ]},
+  {"id":"graph-only-corporate-loan","lexical_query_id":"compound-corporate-loan","eligible_resource_ids":["loan-corp","deposit-corp"],"expected_resource_id":"loan-corp","retrievers":[
+    {"id":"lexical","candidates":[]},
+    {"id":"graph","candidates":[{"resource_id":"loan-corp","raw_score":0.0002}]},
+    {"id":"vector-like","candidates":[{"resource_id":"deposit-corp","raw_score":7000.0}]}
   ]}
 ]

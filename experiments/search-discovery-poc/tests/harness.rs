@@ -91,6 +91,10 @@ fn recorded_fixture_hashes_match_the_inputs() {
             "fusion/cases.json",
             include_bytes!("../fixtures/fusion/cases.json").as_slice(),
         ),
+        (
+            "fusion/graph-relations.json",
+            include_bytes!("../fixtures/fusion/graph-relations.json").as_slice(),
+        ),
     ] {
         let observed = Sha256::digest(content)
             .iter()
@@ -98,4 +102,17 @@ fn recorded_fixture_hashes_match_the_inputs() {
             .collect::<String>();
         assert_eq!(report.fixture_sha256[name], observed);
     }
+}
+
+#[test]
+fn graph_only_relation_fixture_is_pinned_in_the_receipt() {
+    let report = QualificationReport::evidence().unwrap();
+    let observed = Sha256::digest(include_bytes!("../fixtures/fusion/graph-relations.json"))
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    assert_eq!(
+        report.fixture_sha256.get("fusion/graph-relations.json"),
+        Some(&observed)
+    );
 }

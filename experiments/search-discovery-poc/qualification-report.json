@@ -15,7 +15,8 @@
   },
   "fixture_set": "search-discovery-synthetic-v0",
   "fixture_sha256": {
-    "fusion/cases.json": "505ab0c9306396c15d3ec973c7c30f46b687858d172d6534b26836b004418136",
+    "fusion/cases.json": "8fe75e39c5224560aa3088cb2b9dbb001502f5426fe2332779c52662977a1f76",
+    "fusion/graph-relations.json": "35ba415091406aff86e7365a3f71d309a9e358562e16645c73f75abf6e272e3d",
     "graph/generate.rs": "c5df94b3b8f0be97309b1c0c82c9732726a3c8fb463943388d8975d0b1c737d4",
     "graph/relations.json": "ac2727be71953fd41d6a13ece2d48f7d9709ba8062b894fbd96e8cd4caf71867",
     "lexical/queries.json": "1e386096e607bfc04a7e19cb90dfd5c99eb3a343314d9ee487f8e42a74d7f030",
@@ -24,60 +25,60 @@
   "fusion_metrics": [
     {
       "metrics": {
-        "case_count": 5,
-        "mrr": 1.0,
-        "ndcg_at_10": 1.0,
-        "p50_ms": 0.000625,
-        "recall_at_10": 1.0
+        "case_count": 8,
+        "mrr": 0.7916666666666666,
+        "ndcg_at_10": 0.8125,
+        "p50_ms": 0.00025,
+        "recall_at_10": 0.875
       },
       "strategy": "first"
     },
     {
       "metrics": {
-        "case_count": 5,
-        "mrr": 1.0,
-        "ndcg_at_10": 1.0,
-        "p50_ms": 0.000625,
+        "case_count": 8,
+        "mrr": 0.9166666666666666,
+        "ndcg_at_10": 0.9375,
+        "p50_ms": 0.00025,
         "recall_at_10": 1.0
       },
       "strategy": "graph_only"
     },
     {
       "metrics": {
-        "case_count": 5,
-        "mrr": 1.0,
-        "ndcg_at_10": 1.0,
-        "p50_ms": 0.000625,
-        "recall_at_10": 1.0
+        "case_count": 8,
+        "mrr": 0.75,
+        "ndcg_at_10": 0.7827324383928644,
+        "p50_ms": 0.00025,
+        "recall_at_10": 0.875
       },
       "strategy": "vector_like_only"
     },
     {
       "metrics": {
-        "case_count": 5,
-        "mrr": 1.0,
-        "ndcg_at_10": 1.0,
-        "p50_ms": 0.000917,
+        "case_count": 8,
+        "mrr": 0.9166666666666666,
+        "ndcg_at_10": 0.9375,
+        "p50_ms": 0.000375,
         "recall_at_10": 1.0
       },
       "strategy": "priority"
     },
     {
       "metrics": {
-        "case_count": 5,
-        "mrr": 1.0,
-        "ndcg_at_10": 1.0,
-        "p50_ms": 0.001459,
+        "case_count": 8,
+        "mrr": 0.9375,
+        "ndcg_at_10": 0.9538662191964322,
+        "p50_ms": 0.000625,
         "recall_at_10": 1.0
       },
       "strategy": "rrf_lexical_graph_k20"
     },
     {
       "metrics": {
-        "case_count": 5,
-        "mrr": 1.0,
-        "ndcg_at_10": 1.0,
-        "p50_ms": 0.001917,
+        "case_count": 8,
+        "mrr": 0.875,
+        "ndcg_at_10": 0.9077324383928644,
+        "p50_ms": 0.000792,
         "recall_at_10": 1.0
       },
       "strategy": "rrf_k20"
