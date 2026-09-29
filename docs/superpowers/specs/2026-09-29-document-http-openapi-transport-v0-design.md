@@ -388,7 +388,9 @@ header:
 
 - `Content-Type`: 保存済みmedia type
 - `Content-Disposition`: sanitized `safe_display_name`
-- `Content-Length`:既知なら設定
+- `Content-Length`: 既知なら設定
+- `Content-Disposition`: 常にattachment
+- `X-Content-Type-Options: nosniff`
 - `Cache-Control: private, no-store`
 
 v0ではHTTP Rangeを提供しない。Range対応には部分取得時のAudit・整合性意味を別途設計する。
@@ -645,16 +647,16 @@ Transport実装のためにApplicationへ追加してよいのは、既存Domain
 14. revision conflictを409としてmachine-readableに返す。
 15. initial createのcommit unknownはblind retryせずrecovery lookupへ誘導する。
 16. Version/Folder作成のretryで `targetVersionId` / `folderId` が変化せず、同一operation replay identityを維持する。
-17. request size / timeout / cancellationに有限境界がある.
-17. cursor invalidとcursor staleを区別する。
+17. request size / timeout / cancellationに有限境界がある。
+18. cursor invalidとcursor staleを区別する。
 
 ### Tooling / UI readiness
 
-18. Redocly / JSON Schema validationがCIでPASS。
-19. OpenAPI 3.2 codegen候補はPOC REQUIRED gateを通るまでproductionへ入らない。
-20. TypeScript側がraw fetch/API URLをPresentationへ漏らさずGenerated/typed client境界を構成可能。
-21. GUIを作らなくてもcontract testで全operationを縦断検証できる。
-22. AccessPolicy管理Clientが `administer` 認可済みGETからlocal policy revisionとeffective grantsを取得でき、Repositoryへ直接接続しない。
+19. Redocly / JSON Schema validationがCIでPASS。
+20. OpenAPI 3.2 codegen候補はPOC REQUIRED gateを通るまでproductionへ入らない。
+21. TypeScript側がraw fetch/API URLをPresentationへ漏らさずGenerated/typed client境界を構成可能。
+22. GUIを作らなくてもcontract testで全operationを縦断検証できる。
+23. AccessPolicy管理Clientが `administer` 認可済みGETからlocal policy revisionとeffective grantsを取得でき、Repositoryへ直接接続しない。
 24. Folder Clientが `/v1/folders/root` からtree探索を開始でき、Infrastructureのroot UUIDを知る必要がない。
 25. Management errorのmachine判定がhuman-readable error文字列に依存しない。
 
