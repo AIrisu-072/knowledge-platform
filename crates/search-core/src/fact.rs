@@ -60,4 +60,12 @@ impl FactSet {
     pub fn contains(&self, key: &str) -> bool {
         self.facts.contains_key(key)
     }
+
+    pub fn len(&self) -> usize {
+        self.facts.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.facts.is_empty()
+    }
 }

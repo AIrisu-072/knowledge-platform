@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 search-core = { version = "0.0.0", path = "../search-core" }
+serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

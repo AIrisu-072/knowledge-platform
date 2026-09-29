@@ -8,16 +8,21 @@ use std::sync::Arc;
 use search_core::assertion::Assertion;
 use search_core::binding::RepresentationBinding;
 use search_core::discovery::{DiscoveryRequest, FederatedCandidate};
-use search_core::fact::FactSet;
 use search_core::graph::{GraphPathEvidence, GraphTraversalPlan};
 use search_core::id::{ResourceId, SourceId};
+use search_core::materialization::{MaterializationState, ProviderContentPermission};
 use search_core::predicate::{ConceptResolver, TruthValue, TypedValue};
 use search_core::projection::{
     CompiledResourceProjection, ProjectionGenerationKey, ProjectionGenerationManifest,
 };
+use search_core::resource::ResourceKind;
 use search_core::source::DiscoverableSource;
+use search_core::source::RetentionMode;
 
 use crate::error::SearchError;
+use crate::materialization::{
+    MaterializationBudget, ProbeRequest, ProbeResult, ResourceCostEstimate,
+};
 use crate::projection::{PersistableGenerationManifest, PersistableResourceProjection};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, SearchError>> + Send + 'a>>;
@@ -227,8 +232,10 @@ pub struct GraphRetrievalHit {
     pub paths: Vec<GraphPathEvidence>,
 }
 
+/// The Source adapter must revalidate candidate access, current capability,
+/// provider grant, and execution budget at call time after application preflight.
 pub trait ProbePort: Send + Sync {
-    fn probe<'a>(&'a self, candidate: &'a FederatedCandidate) -> BoxFuture<'a, FactSet>;
+    fn probe<'a>(&'a self, request: &'a ProbeRequest) -> BoxFuture<'a, ProbeResult>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -246,17 +253,227 @@ pub trait CurrentAccessEvaluatorPort: Send + Sync {
     ) -> BoxFuture<'a, AccessDecision>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MaterializationReceipt {
-    pub resource_ref: ResourceId,
-    pub content_digest: Option<String>,
-    pub locator: Option<String>,
+/// Evaluates SourceId plus the full candidate identity, including remote
+/// candidates with no ResourceId. Unknown must fail closed at the caller.
+pub trait CurrentCandidateAccessEvaluatorPort: Send + Sync {
+    fn evaluate<'a>(
+        &'a self,
+        candidate: &'a FederatedCandidate,
+        access_context: &'a str,
+    ) -> BoxFuture<'a, AccessDecision>;
 }
 
+/// A current, target-specific grant from the authoritative Source boundary.
+/// The caller must not construct this from the public request or a projection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CurrentSourcePolicy {
+    pub resource_kind: ResourceKind,
+    pub provider_permission: ProviderContentPermission,
+    pub retention_mode: RetentionMode,
+    pub probe_allowed: bool,
+}
+
+pub trait CurrentSourcePolicyPort: Send + Sync {
+    fn for_candidate<'a>(
+        &'a self,
+        candidate: &'a FederatedCandidate,
+        access_context: &'a str,
+    ) -> BoxFuture<'a, Option<CurrentSourcePolicy>>;
+
+    fn for_resource<'a>(
+        &'a self,
+        source_ref: SourceId,
+        resource_ref: ResourceId,
+        binding: &'a RepresentationBinding,
+        access_context: &'a str,
+    ) -> BoxFuture<'a, Option<CurrentSourcePolicy>>;
+}
+
+/// The session-owned working state for this exact bound representation.
+/// A missing or failed lookup cannot authorize a materialization transition.
+pub trait CurrentMaterializationStatePort: Send + Sync {
+    fn for_resource<'a>(
+        &'a self,
+        source_ref: SourceId,
+        resource_ref: ResourceId,
+        binding: &'a RepresentationBinding,
+        access_context: &'a str,
+    ) -> BoxFuture<'a, Option<MaterializationState>>;
+}
+
+/// The Source adapter receives the authorized target stage and the bounds that
+/// the application validated. It must not broaden either permission or stage.
+pub struct MaterializationRequest {
+    pub resource_ref: ResourceId,
+    pub binding: RepresentationBinding,
+    /// Caller assertion; checked against the session-owned current state at I/O time.
+    pub current_state: MaterializationState,
+    pub requested_state: MaterializationState,
+    pub access_context: String,
+    pub access: AccessDecision,
+    pub provider_permission: ProviderContentPermission,
+    pub retention_mode: RetentionMode,
+    pub estimate: ResourceCostEstimate,
+    pub budget: MaterializationBudget,
+    pub allow_direct_full: bool,
+}
+
+pub struct MaterializationReceipt {
+    pub(crate) resource_ref: ResourceId,
+    pub(crate) binding: RepresentationBinding,
+    pub(crate) requested_state: MaterializationState,
+    pub(crate) achieved_state: MaterializationState,
+    pub(crate) retention_mode: RetentionMode,
+    pub(crate) content_digest: Option<String>,
+    pub(crate) locator: Option<String>,
+    // Runtime bytes deliberately have no Serialize implementation.
+    pub(crate) content: Option<Vec<u8>>,
+    /// Only the application can stamp a checked, current Source grant.
+    pub(crate) policy_verified: bool,
+}
+
+impl MaterializationReceipt {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        resource_ref: ResourceId,
+        binding: RepresentationBinding,
+        requested_state: MaterializationState,
+        achieved_state: MaterializationState,
+        retention_mode: RetentionMode,
+        content_digest: Option<String>,
+        locator: Option<String>,
+        content: Option<Vec<u8>>,
+    ) -> Self {
+        Self {
+            resource_ref,
+            binding,
+            requested_state,
+            achieved_state,
+            retention_mode,
+            content_digest,
+            locator,
+            content,
+            policy_verified: false,
+        }
+    }
+
+    pub const fn achieved_state(&self) -> MaterializationState {
+        self.achieved_state
+    }
+
+    pub fn content(&self) -> Option<&[u8]> {
+        self.content.as_deref()
+    }
+
+    /// Low-cardinality telemetry; neither content, locator nor digest enters it.
+    pub fn trace(&self) -> MaterializationTrace {
+        MaterializationTrace {
+            requested_state: self.requested_state,
+            achieved_state: self.achieved_state,
+            retention_mode: self.retention_mode,
+            content_bytes: self.content.as_ref().map_or(0, Vec::len),
+        }
+    }
+
+    /// Produces a durable Session Working Store record without body bytes.
+    /// SESSION_ONLY, NO_RETENTION and expiry-bound content require a separate
+    /// non-durable/expiry-aware store contract and cannot use this conversion.
+    pub fn to_session_store_record(&self) -> Result<PersistableMaterializationRecord, SearchError> {
+        if !self.policy_verified {
+            return Err(SearchError::InvalidRequest(
+                "current Source retention policy was not verified".into(),
+            ));
+        }
+        match self.retention_mode {
+            RetentionMode::PersistentResource => {}
+            RetentionMode::PersistentDiscoveryMetadata
+                if self.achieved_state <= MaterializationState::Metadata => {}
+            _ => {
+                return Err(SearchError::InvalidRequest(
+                    "retention forbids durable materialization record".into(),
+                ));
+            }
+        }
+        Ok(PersistableMaterializationRecord {
+            resource_ref: self.resource_ref,
+            binding: self.binding.clone(),
+            achieved_state: self.achieved_state,
+            content_digest: self.content_digest.clone(),
+            locator: self.locator.clone(),
+        })
+    }
+}
+
+impl std::fmt::Debug for MaterializationReceipt {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("MaterializationReceipt")
+            .field("trace", &self.trace())
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MaterializationTrace {
+    pub requested_state: MaterializationState,
+    pub achieved_state: MaterializationState,
+    pub retention_mode: RetentionMode,
+    pub content_bytes: usize,
+}
+
+/// Durable metadata created only after the current Source grant is checked.
+/// External Session Working Store code cannot bypass that check with a literal.
+///
+/// ```compile_fail
+/// use search_application::ports::PersistableMaterializationRecord;
+/// use search_application::search_core::id::ResourceId;
+/// use search_application::search_core::materialization::MaterializationState;
+///
+/// let _forged = PersistableMaterializationRecord {
+///     resource_ref: ResourceId::from_uuid("00000000-0000-0000-0000-000000000002".parse().unwrap()),
+///     binding: unreachable!(),
+///     achieved_state: MaterializationState::FullContent,
+///     content_digest: Some("digest".into()),
+///     locator: Some("locator".into()),
+/// };
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PersistableMaterializationRecord {
+    resource_ref: ResourceId,
+    binding: RepresentationBinding,
+    achieved_state: MaterializationState,
+    content_digest: Option<String>,
+    locator: Option<String>,
+}
+
+impl PersistableMaterializationRecord {
+    pub const fn resource_ref(&self) -> ResourceId {
+        self.resource_ref
+    }
+
+    pub const fn binding(&self) -> &RepresentationBinding {
+        &self.binding
+    }
+
+    pub const fn achieved_state(&self) -> MaterializationState {
+        self.achieved_state
+    }
+
+    pub fn content_digest(&self) -> Option<&str> {
+        self.content_digest.as_deref()
+    }
+
+    pub fn locator(&self) -> Option<&str> {
+        self.locator.as_deref()
+    }
+}
+
+/// The Source adapter must revalidate resource access, exact representation
+/// identity and bytes/locator, provider permission, retention, and budget at
+/// execution time; application preflight cannot prove the actual remote read.
 pub trait MaterializerPort: Send + Sync {
     fn materialize<'a>(
         &'a self,
-        binding: &'a RepresentationBinding,
-        access_context: &'a str,
+        request: &'a MaterializationRequest,
     ) -> BoxFuture<'a, MaterializationReceipt>;
 }

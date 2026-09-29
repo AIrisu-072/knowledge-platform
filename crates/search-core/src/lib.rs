@@ -14,6 +14,7 @@ pub mod graph;
 pub mod id;
 pub mod identity;
 pub mod intent;
+pub mod materialization;
 pub mod observation;
 pub mod predicate;
 pub mod profile;

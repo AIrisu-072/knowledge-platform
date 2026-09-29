@@ -5,6 +5,7 @@
 pub mod candidate;
 pub mod error;
 pub mod federation;
+pub mod materialization;
 pub mod ports;
 pub mod projection;
 pub mod qualification;
