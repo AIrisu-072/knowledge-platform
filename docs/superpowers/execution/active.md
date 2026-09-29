@@ -1,5 +1,16 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document Diff v0 Delivery Unit A local GREEN、2026-09-29 JST
+
+- Status: **ACTIVE — DIF-01〜06 local GREEN、A hosted gate待ち、DIF-07〜15未着手**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
+- Approved Design Spec: `docs/superpowers/specs/2026-09-28-document-diff-v0-design.md`、凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`。
+- Approved Implementation Plan: `docs/superpowers/plans/2026-09-29-document-diff-v0-production-implementation.md`、承認blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。
+- GitHub / implementation: 設計・計画Draft PR #23 は `design/document-diff-v0@993cd094a09bdefcd4a9985b62e2a99aa9049b68`、未merge。実装branchは `feat/document-diff-v0@ebd58f66b1bb3ab94c9f067a4a3b5fa991a1dda5`、A記録commit・push・実装PRはこれから。凍結設計差分提案なし。
+- 検証: DIF-06焦点Application 9/9・Postgres 7/7、`PDFIUM_DYNAMIC_LIB_PATH=<cached pinned library> CARGO_INCREMENTAL=0 mise run verify:fast` はfmt/check/strict Clippy/architecture/API lintとRust 584/584 PASS（既定skip 5）。Linux runner/sandbox canaryと資源数値はhosted gate待ち。既存baseline security jobはmiseのOSV scanner lock provenance setup失敗であり未解決。
+- 次の exact action: A記録をcommit/pushし、PR #23をbaseにDraft実装PRを作成する。そのheadの標準CIとDSI Sandbox Preflightを一度確認し、実装起因の失敗を修正する。その後DIF-07 TXTのREDへ進む。merge・deployは未指示。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## Active checkpoint — Document Diff v0 DIF-01〜03 local GREEN、2026-09-29 JST
 
 - Status: **ACTIVE — Delivery Unit A 実装中、DIF-04 NEXT**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。

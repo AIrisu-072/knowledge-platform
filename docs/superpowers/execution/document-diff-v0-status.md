@@ -1,5 +1,18 @@
 # Document Diff v0 — Capability Execution Status
 
+## 2026-09-29 JST — DIF-01〜06 Delivery Unit A local GREEN、hosted gate NEXT
+
+- 状態: **ACTIVE / A局所実装済み / hosted未判定**。DIF-01〜06のRED→GREENをcommitに記録。DIF-07〜15は未着手。設計意味の変更提案なし。
+- 実装branch: `feat/document-diff-v0@ebd58f66b1bb3ab94c9f067a4a3b5fa991a1dda5`。設計・計画Draft PR #23 head `993cd094a09bdefcd4a9985b62e2a99aa9049b68`、未merge。A記録commit・push・実装PRはこれから。
+- DIF-04: RED `4ca474a`、GREEN `4555645`。二原本FD worker/runner、portable shell 4/4、macOS拒否1/1。Linux強制canaryと資源profile候補はhosted qualification待ち。
+- DIF-05: RED `95e5e34`、GREEN `4a2b851`。core alignment 4/4、Application service 7/7 PASS。曖昧対応を未比較として残し、現時点のpolicyとAuditを通して開示する。
+- DIF-06: RED `3d6aef7`、GREEN `ebd58f6`。Application contract 8/8とprojection 1/1、Postgres cache 2/2とaccess実DB5/5 PASS。容量制限・digest照合・cache hitと表取得時の再認可/Auditを実装。
+- A局所検証: `PDFIUM_DYNAMIC_LIB_PATH=<cached pinned PDFium> CARGO_INCREMENTAL=0 mise run verify:fast` PASS。Rust 584/584（既定skip 5）、fmt、workspace check、strict Clippy、architecture、API lintがPASS。初回はPDFium env未設定で既存DSI PDF試験1件がExtractorUnavailableとなったが、同版ライブラリ指定の焦点再実行と全体再実行がPASS。ディスク容量不足は回復済み。
+- blocker / 注意: A exact-head標準CIとDSI Sandbox Preflightは未実行。PR #23の直近標準CIはrust-test等がSUCCESSだがsecurity jobがmiseの`github:google/osv-scanner@2.5.1` SLSA signer不在でsetup失敗。これはDiffコードの成否でなく、最終GREENには別途解消が必要。新Diff parser dependencyは未promotion。merge・deployは未指示。
+- 次の exact action: この記録をcommit/pushし、PR #23をbaseにDraft実装PRを作る。A最終headの標準CI/Sandboxを一度確認し、失敗箇所だけ修正・再実行する。続いてDIF-07 TXTのRED試験へ進む。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## 2026-09-29 JST — DIF-01〜03 local GREEN、DIF-04 NEXT
 
 - 状態: **ACTIVE / Delivery Unit A 実装中**。DIF-01〜03は局所TDDを完了。DIF-04〜15とAのhosted gateは未完了。
