@@ -387,9 +387,8 @@ GET /v1/documents/{documentId}/versions/{versionId}/files/{contentItemId}/{repre
 header:
 
 - `Content-Type`: 保存済みmedia type
-- `Content-Disposition`: sanitized `safe_display_name`
+- `Content-Disposition`: 常に `attachment` とし、filenameにはsanitized `safe_display_name` を使う
 - `Content-Length`: 既知なら設定
-- `Content-Disposition`: 常にattachment
 - `X-Content-Type-Options: nosniff`
 - `Cache-Control: private, no-store`
 
