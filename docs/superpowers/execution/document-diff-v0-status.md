@@ -1,5 +1,17 @@
 # Document Diff v0 — Capability Execution Status
 
+## 2026-09-29 JST — DIF-10〜13局所GREEN、Delivery C共通/hosted NEXT
+
+- 状態: **ACTIVE**。A/Bは同一head hosted gateまで完了。CのDIF-10〜13は局所RED→GREEN、C共通/hosted gate待ち。DIF-14〜15未着手。Frozen Design意味変更提案なし。
+- branch/PR: 設計Draft PR #23 head `993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24 remote B head `7dde25a56784f3dd79b0a994d869ce06bb32acad`。local C code head `54a935880321bbefdd9d4b195df0ea8a91b435f7`、未push。両PR未merge。
+- DIF-10: RED `014a4cd`→GREEN `19343d0`。DOCX 6/6、core protocol 6/6、Application contract 9/9、対象strict Clippy PASS。安定段落IDによる移動＋編集、表cell位置、付随編集、未知OOXML未比較。
+- DIF-11: RED `694bff0`→GREEN `934dfc0`。XLSX 7/7、対象strict Clippy PASS。value/formula、sheet/order/visibility、range/table/chart/image/link/external、計算cache等価、一意行reorder、重複行の曖昧性。既存pin `rxls 0.1.3` をDiffにpromotion。
+- DIF-12: RED `5a9fb0f`→GREEN `d062668`。XLSM 4/4、VBA参照unit 1/1、共有DSI `xlsm_vba_semantics` 6/6、対象strict Clippy PASS。既存DSIのVBA正規化投影をformat-specific APIで再利用し、worksheetとmodule/procedure/referenceを分離。macro非実行、無意味な空白/コメント/大小文字は同一。新version parserなし。
+- DIF-13: RED `1843f25`→GREEN `54a9358`。PPTX 5/5、重複shape曖昧性unit 1/1、共有DSI `pptx_semantics` 8/8、対象strict Clippy PASS。DSI資格済みformat-specific slide投影を再利用し、slide/shape/text/table/chart/SmartArt/image/link/notesを区別。theme/font/background/internal ID noise等価。曖昧shapeはslide未比較。
+- blocker / 次: C全体`verify:fast`と同一head標準CI/Sandbox/DSI PoC、DIF-15の資源実測・全形式受入は未完了。ディスク逼迫のためCargo生成物のみ`cargo clean`し、追跡ファイルは保全した。次のexact actionはこの記録をcommitしてC共通`verify:fast`を一度実行し、PASSしたC最終headをpushして3つのhosted gateを確認する。その後DIF-14 PDF RED。merge・deploy指示なし。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## 2026-09-29 JST — B hosted GREEN、DIF-10局所GREEN、DIF-11 NEXT
 
 - 状態: **ACTIVE**。DIF-01〜09はDelivery A/Bの同一head hosted gateまで完了。DIF-10は局所RED→GREEN、DIF-11〜15未着手。Frozen Design意味変更提案なし。
