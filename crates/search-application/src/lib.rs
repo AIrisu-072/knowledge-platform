@@ -2,7 +2,9 @@
 
 #![forbid(unsafe_code)]
 
+pub mod candidate;
 pub mod error;
+pub mod federation;
 pub mod ports;
 pub mod projection;
 pub mod qualification;
