@@ -23,6 +23,7 @@ pub use pdf::PdfAdapter;
 pub use pptx::PptxAdapter;
 pub use spreadsheet::SpreadsheetAdapter;
 pub use text::TextAdapter;
+pub use vba::{VbaInspection, inspect_xlsm as inspect_vba_project};
 
 use document_semantic_inspection_core::{
     CapabilityEvidence, CapabilityState, EditorialProvenance, ExternalDependency,

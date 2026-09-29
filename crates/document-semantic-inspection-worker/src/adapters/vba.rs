@@ -14,12 +14,12 @@ const MAX_VBA_PROJECT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_VBA_MODULES: usize = 1_024;
 const MAX_VBA_SOURCE_BYTES: usize = 16 * 1024 * 1024;
 
-pub(super) struct VbaInspection {
+pub struct VbaInspection {
     pub projection: Value,
     pub module_count: usize,
 }
 
-pub(super) fn inspect_xlsm(input: &[u8]) -> Result<VbaInspection, WorkerFailure> {
+pub fn inspect_xlsm(input: &[u8]) -> Result<VbaInspection, WorkerFailure> {
     let mut archive = ZipArchive::new(Cursor::new(input)).map_err(|_| semantic_failure())?;
     let vba_bytes = {
         let entry = archive

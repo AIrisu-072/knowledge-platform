@@ -19,6 +19,7 @@ const MAX_SHEETS: usize = 1_024;
 const MAX_CELLS: usize = 1_000_000;
 const PARSER_PROVENANCE: &str =
     "document-diff-xlsx-v0;dsi-spreadsheet-v0;rxls=0.1.3;calamine=0.36.1;quick-xml=0.42.0";
+const XLSM_PARSER_PROVENANCE: &str = "document-diff-xlsm-v0;dsi-spreadsheet-v0;rxls=0.1.3;calamine=0.36.1;ovba=0.7.1;tree-sitter=0.25.10";
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SpreadsheetComparator;
@@ -36,7 +37,26 @@ impl SpreadsheetComparator {
         target: &[u8],
         budget: &mut ComparisonBudget,
     ) -> Result<WorkerDiffResponse, WorkerError> {
-        if request.format != FormatId::Xlsx {
+        Self::compare(request, base, target, budget, FormatId::Xlsx)
+    }
+
+    pub fn xlsm(
+        request: &WorkerDiffRequest,
+        base: &[u8],
+        target: &[u8],
+        budget: &mut ComparisonBudget,
+    ) -> Result<WorkerDiffResponse, WorkerError> {
+        Self::compare(request, base, target, budget, FormatId::Xlsm)
+    }
+
+    fn compare(
+        request: &WorkerDiffRequest,
+        base: &[u8],
+        target: &[u8],
+        budget: &mut ComparisonBudget,
+        format: FormatId,
+    ) -> Result<WorkerDiffResponse, WorkerError> {
+        if request.format != format {
             return Err(WorkerError::InvalidRequest);
         }
         request
@@ -52,16 +72,19 @@ impl SpreadsheetComparator {
         if base.len().saturating_add(target.len()) > MAX_COMBINED_BYTES {
             return Ok(unverified(request, UnverifiedReason::ResourceLimit));
         }
-        let old_inspection =
-            match SpreadsheetAdapter::XLSX.inspect(base, &AdapterProfile::default()) {
-                Ok(value) => value,
-                Err(error) => return Ok(unverified(request, inspection_reason(error.code()))),
-            };
-        let new_inspection =
-            match SpreadsheetAdapter::XLSX.inspect(target, &AdapterProfile::default()) {
-                Ok(value) => value,
-                Err(error) => return Ok(unverified(request, inspection_reason(error.code()))),
-            };
+        let adapter = if format == FormatId::Xlsm {
+            SpreadsheetAdapter::XLSM
+        } else {
+            SpreadsheetAdapter::XLSX
+        };
+        let old_inspection = match adapter.inspect(base, &AdapterProfile::default()) {
+            Ok(value) => value,
+            Err(error) => return Ok(unverified(request, inspection_reason(error.code()))),
+        };
+        let new_inspection = match adapter.inspect(target, &AdapterProfile::default()) {
+            Ok(value) => value,
+            Err(error) => return Ok(unverified(request, inspection_reason(error.code()))),
+        };
         let ancillary_changes = editorial_change(
             old_inspection.editorial_provenance(),
             new_inspection.editorial_provenance(),
@@ -94,6 +117,11 @@ impl SpreadsheetComparator {
         );
         let mut regions = Vec::new();
         if let Err(reason) = result {
+            regions.push(unverified_region(reason));
+        }
+        if format == FormatId::Xlsm
+            && let Err(reason) = super::vba::compare_vba(base, target, budget, &mut changes)
+        {
             regions.push(unverified_region(reason));
         }
         if changes.is_empty() {
@@ -656,6 +684,11 @@ fn response(
         changes,
         unverified_regions,
         ancillary_changes,
-        parser_provenance: PARSER_PROVENANCE.to_owned(),
+        parser_provenance: if request.format == FormatId::Xlsm {
+            XLSM_PARSER_PROVENANCE
+        } else {
+            PARSER_PROVENANCE
+        }
+        .to_owned(),
     }
 }
