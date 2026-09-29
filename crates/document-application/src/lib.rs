@@ -44,9 +44,10 @@ pub use document_history::{
 };
 pub use document_management::DocumentManagementService;
 pub use document_query::{
-    AuthoringDocumentSummary, AuthoringQuery, DocumentListFilter, DocumentQueryRepository,
-    DocumentQueryService, FolderPageQuery, FolderSummary, HistoryDocumentSummary, HistoryQuery,
-    Page, PublishedDocumentSummary, PublishedQuery,
+    AuthoringDocumentSummary, AuthoringQuery, DocumentAccessCheckRepository,
+    DocumentAccessCheckService, DocumentListFilter, DocumentQueryRepository, DocumentQueryService,
+    FolderPageQuery, FolderSummary, HistoryDocumentSummary, HistoryQuery, Page,
+    PublishedDocumentSummary, PublishedQuery,
 };
 pub use error::{ApplicationError, InspectionExecutionError, RepositoryError, StorageError};
 pub use events::{

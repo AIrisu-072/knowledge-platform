@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use document_domain::{DocumentId, DocumentVersionId, FolderId};
+use document_domain::{Action, DocumentId, DocumentVersionId, FolderId};
 use serde_json::{Value, json};
 use time::OffsetDateTime;
 use unicode_normalization::UnicodeNormalization;
@@ -286,6 +286,44 @@ impl<R: DocumentQueryRepository> DocumentQueryService<R> {
         validate_page_size(query.page_size.unwrap_or(50))?;
         self.repository
             .list_child_folders(ctx, query)
+            .await
+            .map_err(Into::into)
+    }
+}
+
+/// Checks the current Document AccessPolicy only. Callers must separately verify
+/// that a requested version is the current published version and has not been
+/// removed from normal visibility by T10. Historical content uses the separate
+/// Document history path, including both Read and ReadHistory (and Write for
+/// remaining Working content); this check alone cannot grant history visibility.
+#[allow(async_fn_in_trait)]
+pub trait DocumentAccessCheckRepository: Send + Sync {
+    async fn check_document_access(
+        &self,
+        ctx: &VerifiedActorContext,
+        document_id: DocumentId,
+        required: &[Action],
+    ) -> Result<(), RepositoryError>;
+}
+
+pub struct DocumentAccessCheckService<R> {
+    repository: Arc<R>,
+}
+
+impl<R: DocumentAccessCheckRepository> DocumentAccessCheckService<R> {
+    pub fn new(repository: Arc<R>) -> Self {
+        Self { repository }
+    }
+
+    pub async fn check(
+        &self,
+        ctx: &VerifiedActorContext,
+        document_id: DocumentId,
+        required: &[Action],
+    ) -> Result<(), ApplicationError> {
+        ctx.ensure_current()?;
+        self.repository
+            .check_document_access(ctx, document_id, required)
             .await
             .map_err(Into::into)
     }
