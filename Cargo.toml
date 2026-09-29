@@ -5,6 +5,7 @@ members = [
   "crates/search-projection-memory",
   "crates/search-tantivy",
   "crates/search-graph-memory",
+  "crates/search-source-document",
   "crates/document-domain",
   "crates/document-application",
   "crates/document-semantic-inspection-core",

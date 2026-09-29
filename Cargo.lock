@@ -3716,6 +3716,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "search-source-document"
+version = "0.0.0"
+dependencies = [
+ "document-domain",
+ "search-application",
+ "search-core",
+ "search-tantivy",
+ "thiserror",
+ "time",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "search-tantivy"
 version = "0.0.0"
 dependencies = [

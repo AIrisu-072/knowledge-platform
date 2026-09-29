@@ -1,0 +1,18 @@
+[package]
+name = "search-source-document"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+document-domain = { version = "0.0.0", path = "../document-domain" }
+search-application = { version = "0.0.0", path = "../search-application" }
+search-core = { version = "0.0.0", path = "../search-core" }
+search-tantivy = { version = "0.0.0", path = "../search-tantivy" }
+thiserror.workspace = true
+time.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
