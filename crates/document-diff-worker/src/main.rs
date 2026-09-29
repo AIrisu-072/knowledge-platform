@@ -4,7 +4,11 @@ use std::{
     process::ExitCode,
 };
 
-use document_diff_worker::{MAX_REQUEST_BYTES, WorkerError, run_worker_shell};
+use document_diff_core::FormatId;
+use document_diff_worker::{
+    MAX_REQUEST_BYTES, WorkerError, decode_request_bounded, run_worker_shell,
+};
+use document_semantic_inspection_worker::PdfAdapter;
 
 fn main() -> ExitCode {
     std::panic::set_hook(Box::new(|_| {}));
@@ -39,6 +43,9 @@ fn execute() -> Result<(), WorkerError> {
     if std::env::var_os("DIFF_SANDBOX_REQUIRED").is_some() {
         if std::env::var("DIFF_SANDBOX_REQUIRED").as_deref() != Ok("1") {
             return Err(WorkerError::UnreadableInput);
+        }
+        if decode_request_bounded(&request_bytes)?.format == FormatId::Pdf {
+            PdfAdapter::warm_up_native_runtime().map_err(|_| WorkerError::UnreadableInput)?;
         }
         #[cfg(target_os = "linux")]
         document_semantic_inspection_runner::seal_worker_sandbox()

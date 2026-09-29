@@ -11,7 +11,9 @@ use std::{
     time::Instant,
 };
 
-use document_diff_core::{WorkerDiffRequest, WorkerDiffResponse, decode_worker_response_bounded};
+use document_diff_core::{
+    FormatId, WorkerDiffRequest, WorkerDiffResponse, decode_worker_response_bounded,
+};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -29,6 +31,10 @@ pub(super) fn validate_config(config: &RunnerConfig) -> Result<(), RunnerError> 
         || !fs::metadata(&config.worker_executable).is_ok_and(|m| m.is_file())
         || config.wall_timeout.is_zero()
         || config.wall_timeout > MAX_WALL_TIMEOUT
+        || config
+            .pdfium_runtime_dir
+            .as_ref()
+            .is_some_and(|directory| !directory.is_absolute() || !directory.is_dir())
     {
         return Err(RunnerError::Unavailable(
             "invalid trusted runner configuration",
@@ -44,6 +50,9 @@ pub(super) fn compare(
     target: &[u8],
 ) -> Result<WorkerDiffResponse, RunnerError> {
     request.validate().map_err(|_| resource("source bytes"))?;
+    if request.format == FormatId::Pdf && config.pdfium_runtime_dir.is_none() {
+        return Err(unavailable("qualified PDFium runtime path"));
+    }
     check_raw(base, request.base_size_bytes, request.base_raw_sha256)?;
     check_raw(target, request.target_size_bytes, request.target_raw_sha256)?;
     let request_bytes = serde_json::to_vec(&request)
@@ -131,6 +140,9 @@ fn run_child(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0);
+    if let Some(directory) = &config.pdfium_runtime_dir {
+        command.env("PDFIUM_DYNAMIC_LIB_PATH", directory);
+    }
     // SAFETY: only async-signal-safe libc calls are made between fork and exec.
     unsafe {
         command.pre_exec(move || {

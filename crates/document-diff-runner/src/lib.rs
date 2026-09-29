@@ -22,6 +22,7 @@ pub const MAX_WALL_TIMEOUT: Duration = Duration::from_secs(30);
 pub struct RunnerConfig {
     worker_executable: PathBuf,
     wall_timeout: Duration,
+    pdfium_runtime_dir: Option<PathBuf>,
 }
 
 impl RunnerConfig {
@@ -29,11 +30,17 @@ impl RunnerConfig {
         Self {
             worker_executable: worker_executable.into(),
             wall_timeout: MAX_WALL_TIMEOUT,
+            pdfium_runtime_dir: None,
         }
     }
 
     pub fn with_wall_timeout(mut self, timeout: Duration) -> Self {
         self.wall_timeout = timeout;
+        self
+    }
+
+    pub fn with_pdfium_runtime_dir(mut self, directory: impl Into<PathBuf>) -> Self {
+        self.pdfium_runtime_dir = Some(directory.into());
         self
     }
 }
