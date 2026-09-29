@@ -3,7 +3,18 @@ use uuid::Uuid;
 
 use crate::{ContentReader, RepositoryError, VerifiedActorContext};
 
-use super::{DiffPairSnapshot, DiffRequest, DiffResult};
+use super::{DiffCacheKey, DiffPairSnapshot, DiffRequest, DiffResult};
+
+#[allow(async_fn_in_trait)]
+pub trait DiffCache: Send + Sync {
+    async fn get(&self, key: &DiffCacheKey) -> Result<Option<DiffResult>, RepositoryError>;
+    async fn put(
+        &self,
+        key: DiffCacheKey,
+        result: DiffResult,
+        expected_digest: [u8; 32],
+    ) -> Result<(), RepositoryError>;
+}
 
 #[allow(async_fn_in_trait)]
 pub trait DocumentDiffRepository: Send + Sync {

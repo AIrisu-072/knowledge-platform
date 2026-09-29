@@ -44,6 +44,18 @@ pub enum UnverifiedReason {
     ResourceLimit,
 }
 
+impl UnverifiedReason {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::UnsupportedSemanticConstruct => "unsupported_semantic_construct",
+            Self::CorruptedSource => "corrupted_source",
+            Self::MissingInspectionEvidence => "missing_inspection_evidence",
+            Self::AmbiguousAlignment => "ambiguous_alignment",
+            Self::ResourceLimit => "resource_limit",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SourceLocator {

@@ -287,3 +287,66 @@ async fn publication_end_invalidates_pair_even_when_both_versions_remain_readabl
         RepositoryError::StaleComparisonInput
     );
 }
+
+#[tokio::test]
+async fn cached_result_and_projection_repeat_current_authorization_and_audit() {
+    use document_application::document_diff::{DiffCache, DiffCacheKey};
+    let f = fixture().await;
+    f.repository
+        .initialize_root_policy(&context(), vec![grant([Action::Read, Action::ReadHistory])])
+        .await
+        .unwrap();
+    let a = seed_version(&f.pool, f.document_id.as_uuid(), 1, "PUBLISHED").await;
+    let b = seed_version(&f.pool, f.document_id.as_uuid(), 2, "PUBLISHED").await;
+    sqlx::query("UPDATE documents SET current_version_id = $1 WHERE document_id = $2")
+        .bind(b.as_uuid())
+        .bind(f.document_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    let pair = f
+        .repository
+        .capture_pair(&context(), request(f.document_id, a, b))
+        .await
+        .unwrap();
+    let result = result(&pair);
+    let key = DiffCacheKey::from_result(&result);
+    f.repository
+        .put(key, result.clone(), result.canonical_digest())
+        .await
+        .unwrap();
+    for _ in 0..2 {
+        let cached = f.repository.get(&key).await.unwrap().unwrap();
+        f.repository
+            .authorize_and_audit_result(&context(), &pair, &cached, true, None)
+            .await
+            .unwrap();
+    }
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM audit_outbox_events WHERE event_type = 'document.diff.result_access_granted'")
+        .fetch_one(&f.pool).await.unwrap();
+    assert_eq!(count, 2);
+    let policy: Uuid =
+        sqlx::query_scalar("SELECT policy_id FROM access_policy_bindings WHERE folder_id = $1")
+            .bind(f.root_id.as_uuid())
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    sqlx::query(
+        "DELETE FROM access_policy_grants WHERE policy_id = $1 AND action = 'read_history'",
+    )
+    .bind(policy)
+    .execute(&f.pool)
+    .await
+    .unwrap();
+    let cached = f.repository.get(&key).await.unwrap().unwrap();
+    assert_eq!(
+        f.repository
+            .authorize_and_audit_result(&context(), &pair, &cached, true, None)
+            .await
+            .unwrap_err(),
+        RepositoryError::Forbidden
+    );
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM audit_outbox_events WHERE event_type = 'document.diff.result_access_granted'")
+        .fetch_one(&f.pool).await.unwrap();
+    assert_eq!(count, 2);
+}

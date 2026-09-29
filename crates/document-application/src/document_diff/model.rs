@@ -4,7 +4,7 @@ use document_diff_core::{
 };
 use document_domain::{DocumentId, DocumentVersionId, FileId};
 use document_semantic_inspection_core::InspectionProfileVersion;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -27,14 +27,14 @@ impl DiffRequest {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LocatorGranularity {
     Exact,
     Parent,
     ContentItem,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceEvidence {
     pub document_id: DocumentId,
     pub version_id: DocumentVersionId,
@@ -48,7 +48,7 @@ pub struct SourceEvidence {
     pub parser_provenance: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Change {
     pub operation: Option<ChangeOperation>,
     pub relocation: Option<RelocationKind>,
@@ -58,7 +58,7 @@ pub struct Change {
     pub reason_code: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnverifiedRegion {
     pub base: Option<SourceEvidence>,
     pub target: Option<SourceEvidence>,
@@ -66,14 +66,14 @@ pub struct UnverifiedRegion {
     pub navigation_hint: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AncillaryChange {
     pub kind: String,
     pub base_digest: Option<[u8; 32]>,
     pub target_digest: Option<[u8; 32]>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiffResult {
     pub document_id: DocumentId,
     pub base_version_id: DocumentVersionId,

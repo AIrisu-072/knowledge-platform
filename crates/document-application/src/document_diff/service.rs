@@ -15,9 +15,10 @@ use crate::{
 use super::ports::{DiffExecutionError, DiffExecutor};
 use super::snapshot::normalize_title;
 use super::{
-    AncillaryChange, Change, DiffInspectionEvidence, DiffPairSnapshot, DiffRequest, DiffResult,
-    DocumentDiffRepository, LocatorGranularity, SnapshotItem, SourceEvidence, UnverifiedRegion,
-    VersionSnapshot, capture_pair_with_evidence,
+    AncillaryChange, AuthorizedComparisonTable, Change, DiffCache, DiffCacheKey,
+    DiffInspectionEvidence, DiffPairSnapshot, DiffRequest, DiffResult, DocumentDiffRepository,
+    LocatorGranularity, SnapshotItem, SourceEvidence, UnverifiedRegion, VersionSnapshot,
+    capture_pair_with_evidence, project_comparison_table,
 };
 
 pub struct AuthorizedDiff {
@@ -35,7 +36,7 @@ pub struct DocumentDiffService<R, F, E, I> {
 
 impl<R, F, E, I> DocumentDiffService<R, F, E, I>
 where
-    R: DocumentDiffRepository + VersionFileAccessRepository,
+    R: DocumentDiffRepository + VersionFileAccessRepository + DiffCache,
     F: FileStorage,
     E: DiffExecutor,
     I: DiffInspectionEvidence,
@@ -67,6 +68,31 @@ where
         .await?;
         pair.validate()
             .map_err(|_| ApplicationError::IntegrityViolation)?;
+        let key = DiffCacheKey::from_pair(&pair, request.profile, ResourceProfileVersion::V0);
+        match self.repository.get(&key).await {
+            Ok(Some(cached)) => {
+                if cached.validate().is_err()
+                    || DiffCacheKey::from_result(&cached) != key
+                    || cached.document_id != pair.document_id
+                    || cached.base_version_id != pair.base.version_id
+                    || cached.target_version_id != pair.target.version_id
+                {
+                    return Err(ApplicationError::IntegrityViolation);
+                }
+                let result_digest = cached.canonical_digest();
+                let audit_event_id = self
+                    .repository
+                    .authorize_and_audit_result(actor, &pair, &cached, true, None)
+                    .await?;
+                return Ok(AuthorizedDiff {
+                    result: cached,
+                    result_digest,
+                    audit_event_id,
+                });
+            }
+            Ok(None) | Err(crate::RepositoryError::Unavailable) => {}
+            Err(error) => return Err(error.into()),
+        }
         let result = self.compose(actor, &pair, request.profile).await?;
         result
             .validate()
@@ -76,10 +102,36 @@ where
             .repository
             .authorize_and_audit_result(actor, &pair, &result, false, None)
             .await?;
+        if cacheable(&result) {
+            match self
+                .repository
+                .put(key, result.clone(), result_digest)
+                .await
+            {
+                Ok(()) | Err(crate::RepositoryError::Unavailable) => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
         Ok(AuthorizedDiff {
             result,
             result_digest,
             audit_event_id,
+        })
+    }
+
+    pub async fn comparison_table(
+        &self,
+        actor: &VerifiedActorContext,
+        request: DiffRequest,
+    ) -> Result<AuthorizedComparisonTable, ApplicationError> {
+        let authorized = self.compare(actor, request).await?;
+        let rows = project_comparison_table(&authorized.result);
+        Ok(AuthorizedComparisonTable {
+            rows,
+            verdict: authorized.result.verdict,
+            coverage: authorized.result.coverage,
+            result_digest: authorized.result_digest,
+            audit_event_id: authorized.audit_event_id,
         })
     }
 
@@ -383,6 +435,19 @@ where
             ancillary_changes,
         })
     }
+}
+
+fn cacheable(result: &DiffResult) -> bool {
+    result.coverage == DiffCoverage::Full
+        || (result.coverage == DiffCoverage::Partial
+            && result.unverified_regions.iter().all(|region| {
+                matches!(
+                    region.reason,
+                    UnverifiedReason::UnsupportedSemanticConstruct
+                        | UnverifiedReason::AmbiguousAlignment
+                        | UnverifiedReason::CorruptedSource
+                )
+            }))
 }
 
 fn anchor(item: &SnapshotItem) -> ItemAnchor {

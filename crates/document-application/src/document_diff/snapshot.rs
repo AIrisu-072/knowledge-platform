@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
+use super::model::DiffResult;
 use crate::VersionPurpose;
 
 const SNAPSHOT_DOMAIN: &[u8] = b"document-diff-snapshot-v0\0";
@@ -188,6 +189,17 @@ impl DiffCacheKey {
         digest.update(pair.target.snapshot_digest());
         digest.update(profile.as_str().as_bytes());
         digest.update(resource.as_str().as_bytes());
+        Self(digest.finalize().into())
+    }
+
+    pub fn from_result(result: &DiffResult) -> Self {
+        let mut digest = Sha256::new();
+        digest.update(CACHE_DOMAIN);
+        digest.update(result.document_id.as_uuid().as_bytes());
+        digest.update(result.base_snapshot_digest);
+        digest.update(result.target_snapshot_digest);
+        digest.update(result.profile.as_str().as_bytes());
+        digest.update(result.resource_profile.as_str().as_bytes());
         Self(digest.finalize().into())
     }
 

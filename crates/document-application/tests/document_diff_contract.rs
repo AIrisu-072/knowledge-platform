@@ -1,5 +1,5 @@
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
 };
 
@@ -8,8 +8,9 @@ use document_application::{
     RepositoryError, SemanticInspectionRecord, StorageError, StorageObjectInfo, StoreFileRequest,
     StoredFile, VerifiedActorContext, VersionFileAccessRepository, VersionFileRequest,
     document_diff::{
-        DiffExecutionError, DiffExecutor, DiffInspectionEvidence, DiffPairSnapshot, DiffRequest,
-        DocumentDiffRepository, DocumentDiffService, SnapshotItem, VersionSnapshot,
+        DiffCache, DiffCacheKey, DiffExecutionError, DiffExecutor, DiffInspectionEvidence,
+        DiffPairSnapshot, DiffRequest, DocumentDiffRepository, DocumentDiffService, SnapshotItem,
+        VersionSnapshot,
     },
 };
 use document_diff_core::{
@@ -56,6 +57,36 @@ struct FakeRepository {
     pair: DiffPairSnapshot,
     audits: AtomicUsize,
     deny_final: bool,
+    cache: Mutex<
+        Option<(
+            DiffCacheKey,
+            document_application::document_diff::DiffResult,
+        )>,
+    >,
+    cache_hits: Mutex<Vec<bool>>,
+}
+
+impl DiffCache for FakeRepository {
+    async fn get(
+        &self,
+        key: &DiffCacheKey,
+    ) -> Result<Option<document_application::document_diff::DiffResult>, RepositoryError> {
+        Ok(self
+            .cache
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|(saved, result)| (saved == key).then(|| result.clone())))
+    }
+    async fn put(
+        &self,
+        key: DiffCacheKey,
+        result: document_application::document_diff::DiffResult,
+        _expected_digest: [u8; 32],
+    ) -> Result<(), RepositoryError> {
+        *self.cache.lock().unwrap() = Some((key, result));
+        Ok(())
+    }
 }
 
 impl DocumentDiffRepository for FakeRepository {
@@ -71,13 +102,14 @@ impl DocumentDiffRepository for FakeRepository {
         _actor: &VerifiedActorContext,
         _pair: &DiffPairSnapshot,
         _result: &document_application::document_diff::DiffResult,
-        _cache_hit: bool,
+        cache_hit: bool,
         _correlation_id: Option<&str>,
     ) -> Result<Uuid, RepositoryError> {
         if self.deny_final {
             return Err(RepositoryError::Forbidden);
         }
         self.audits.fetch_add(1, Ordering::SeqCst);
+        self.cache_hits.lock().unwrap().push(cache_hit);
         Ok(Uuid::from_u128(55))
     }
 }
@@ -202,6 +234,8 @@ async fn equal_semantics_with_different_raw_bytes_stays_same_and_is_audited() {
         pair: pair(),
         audits: AtomicUsize::new(0),
         deny_final: false,
+        cache: Mutex::new(None),
+        cache_hits: Mutex::new(vec![]),
     });
     let service = DocumentDiffService::new(
         repository.clone(),
@@ -227,6 +261,8 @@ async fn missing_inspection_and_unqualified_worker_never_claim_same() {
         pair: source,
         audits: AtomicUsize::new(0),
         deny_final: false,
+        cache: Mutex::new(None),
+        cache_hits: Mutex::new(vec![]),
     });
     let service = DocumentDiffService::new(
         repository.clone(),
@@ -250,6 +286,8 @@ async fn cross_format_has_confirmed_format_change_and_unverified_detail() {
         pair: source,
         audits: AtomicUsize::new(0),
         deny_final: false,
+        cache: Mutex::new(None),
+        cache_hits: Mutex::new(vec![]),
     });
     let service = DocumentDiffService::new(
         repository.clone(),
@@ -275,6 +313,8 @@ async fn metadata_only_change_does_not_change_content_verdict_and_final_denial_r
         pair: source.clone(),
         audits: AtomicUsize::new(0),
         deny_final: false,
+        cache: Mutex::new(None),
+        cache_hits: Mutex::new(vec![]),
     });
     let service = DocumentDiffService::new(
         repository.clone(),
@@ -289,6 +329,8 @@ async fn metadata_only_change_does_not_change_content_verdict_and_final_denial_r
         pair: source.clone(),
         audits: AtomicUsize::new(0),
         deny_final: true,
+        cache: Mutex::new(None),
+        cache_hits: Mutex::new(vec![]),
     });
     let service = DocumentDiffService::new(
         denied.clone(),
@@ -311,6 +353,8 @@ async fn changed_fingerprint_without_worker_locator_stays_different_with_unverif
         pair: source.clone(),
         audits: AtomicUsize::new(0),
         deny_final: false,
+        cache: Mutex::new(None),
+        cache_hits: Mutex::new(vec![]),
     });
     let service = DocumentDiffService::new(
         repository,
@@ -345,6 +389,8 @@ async fn ambiguous_item_correspondence_is_not_invented_as_add_remove_or_move() {
         pair: source.clone(),
         audits: AtomicUsize::new(0),
         deny_final: false,
+        cache: Mutex::new(None),
+        cache_hits: Mutex::new(vec![]),
     });
     let service = DocumentDiffService::new(
         repository,
@@ -372,6 +418,8 @@ async fn unique_reorder_and_one_sided_manifest_addition_are_confirmed() {
         pair: reordered.clone(),
         audits: AtomicUsize::new(0),
         deny_final: false,
+        cache: Mutex::new(None),
+        cache_hits: Mutex::new(vec![]),
     });
     let service = DocumentDiffService::new(
         repository,
@@ -405,6 +453,8 @@ async fn unique_reorder_and_one_sided_manifest_addition_are_confirmed() {
         pair: added.clone(),
         audits: AtomicUsize::new(0),
         deny_final: false,
+        cache: Mutex::new(None),
+        cache_hits: Mutex::new(vec![]),
     });
     let service = DocumentDiffService::new(
         repository,
@@ -417,4 +467,34 @@ async fn unique_reorder_and_one_sided_manifest_addition_are_confirmed() {
         == Some(document_diff_core::ChangeOperation::Added)
         && change.base.is_none()
         && change.target.is_some()));
+}
+
+#[tokio::test]
+async fn cache_hit_and_table_retrieval_each_require_fresh_final_audit() {
+    let source = pair();
+    let repository = Arc::new(FakeRepository {
+        pair: source.clone(),
+        audits: AtomicUsize::new(0),
+        deny_final: false,
+        cache: Mutex::new(None),
+        cache_hits: Mutex::new(vec![]),
+    });
+    let service = DocumentDiffService::new(
+        repository.clone(),
+        Arc::new(FakeStorage),
+        Arc::new(FakeExecutor { unsupported: false }),
+        Arc::new(MissingEvidence),
+    );
+    service.compare(&context(), request(&source)).await.unwrap();
+    service.compare(&context(), request(&source)).await.unwrap();
+    let table = service
+        .comparison_table(&context(), request(&source))
+        .await
+        .unwrap();
+    assert_eq!(table.verdict, ContentVerdict::Same);
+    assert_eq!(repository.audits.load(Ordering::SeqCst), 3);
+    assert_eq!(
+        &*repository.cache_hits.lock().unwrap(),
+        &[false, true, true]
+    );
 }
