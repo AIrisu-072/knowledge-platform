@@ -62,16 +62,14 @@ impl QualificationReport {
     pub fn verify_evidence(&self) -> Result<(), Box<dyn Error>> {
         if self.fixture_set != "search-discovery-synthetic-v0"
             || self.fixture_sha256.len() != 6
-            || self.candidate_versions.len() != 7
+            || self.candidate_versions.len() != 8
             || self.lexical_metrics.len() != 2
             || self.graph_correctness_metrics.len() != 1
             || self.graph_traversal_measurements.len() != 5
             || self.fusion_metrics.len() != 6
             || self.dependency_license_gate.dependency != GateVerdict::Pass
             || self.dependency_license_gate.license == GateVerdict::Fail
-            || self.dependency_license_gate.advisory_exception.as_deref()
-                != Some("RUSTSEC-2026-0253")
-            || !include_str!("../osv-scanner.toml").contains("id = \"RUSTSEC-2026-0253\"")
+            || self.dependency_license_gate.advisory_exception.is_some()
         {
             return Err("qualification report is incomplete or has a failed gate".into());
         }
@@ -140,6 +138,7 @@ impl QualificationReport {
                 "lindera",
                 "lindera-analysis",
                 "lindera-ipadic",
+                "lru",
                 "postgres",
                 "tantivy",
                 "testcontainers",

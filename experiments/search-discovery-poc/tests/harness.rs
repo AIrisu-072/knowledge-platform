@@ -36,12 +36,28 @@ fn receipt_rejects_stale_quality_version_and_failed_license() {
     let mut failed_license = original;
     failed_license.dependency_license_gate.license = GateVerdict::Fail;
     assert!(failed_license.verify_evidence().is_err());
+}
 
-    let mut undisclosed_exception = QualificationReport::evidence().unwrap();
-    undisclosed_exception
+#[test]
+fn patched_receipt_requires_fixed_lru_without_an_advisory_exception() {
+    let mut patched = QualificationReport::evidence().unwrap();
+    patched
+        .candidate_versions
+        .insert("lru".into(), "0.18.2".into());
+    patched.dependency_license_gate.advisory_exception = None;
+    patched.verify_evidence().unwrap();
+
+    let mut obsolete_exception = patched.clone();
+    obsolete_exception
         .dependency_license_gate
-        .advisory_exception = None;
-    assert!(undisclosed_exception.verify_evidence().is_err());
+        .advisory_exception = Some("RUSTSEC-2026-0253".into());
+    assert!(obsolete_exception.verify_evidence().is_err());
+
+    let mut stale_lru = patched;
+    stale_lru
+        .candidate_versions
+        .insert("lru".into(), "0.16.4".into());
+    assert!(stale_lru.verify_evidence().is_err());
 }
 
 #[test]
@@ -54,16 +70,14 @@ fn json_report_has_deterministic_qualification_schema() {
     let report: QualificationReport = serde_json::from_slice(&first.stdout).unwrap();
     assert_eq!(report.fixture_set, "search-discovery-synthetic-v0");
     assert_eq!(report.candidate_versions["tantivy"], "0.26.2");
+    assert_eq!(report.candidate_versions["lru"], "0.18.2");
     assert!(!report.lexical_metrics.is_empty());
     assert!(!report.graph_correctness_metrics.is_empty());
     assert!(!report.graph_traversal_measurements.is_empty());
     assert!(!report.fusion_metrics.is_empty());
     assert_eq!(report.dependency_license_gate.dependency, GateVerdict::Pass);
     assert_eq!(report.dependency_license_gate.license, GateVerdict::Pending);
-    assert_eq!(
-        report.dependency_license_gate.advisory_exception.as_deref(),
-        Some("RUSTSEC-2026-0253")
-    );
+    assert!(report.dependency_license_gate.advisory_exception.is_none());
 }
 
 #[test]

@@ -22,3 +22,7 @@ sha2 = "0.11"
 
 [dev-dependencies]
 testcontainers = "0.28"
+
+[patch.crates-io]
+# PoC-only Tantivy 0.26.2 patch; see third_party/search/tantivy-0.26.2/PROVENANCE.md.
+tantivy = { path = "../../third_party/search/tantivy-0.26.2" }

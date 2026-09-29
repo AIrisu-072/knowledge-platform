@@ -1,9 +1,0 @@
-# Scoped to this isolated PoC Cargo.lock. This does not waive production Search dependencies.
-# Tantivy 0.26.2 depends on lru 0.16.x and uses LruCache<usize, Block> only in
-# src/store/reader.rs. RUSTSEC-2026-0253 requires a key with a panicking Drop
-# during LruCache::pop(); usize has no Drop implementation. Reassess before
-# any Tantivy production promotion or when Tantivy changes its cache key type.
-[[IgnoredVulns]]
-id = "RUSTSEC-2026-0253"
-ignoreUntil = 2026-12-31
-reason = "PoC-only Tantivy 0.26.2 uses LruCache<usize, Block>; advisory requires a key Drop panic, impossible for usize. No production waiver."
