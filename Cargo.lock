@@ -1149,11 +1149,13 @@ name = "document-repository-postgres"
 version = "0.0.0"
 dependencies = [
  "document-application",
+ "document-diff-core",
  "document-domain",
  "document-semantic-inspection-core",
  "document-storage-fs",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "sqlx",
  "tempfile",
  "testcontainers",

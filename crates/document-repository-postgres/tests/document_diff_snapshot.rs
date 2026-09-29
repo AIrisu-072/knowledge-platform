@@ -100,7 +100,7 @@ async fn captures_current_history_withdrawn_and_working_under_current_permission
         .unwrap();
     assert_eq!(pair.base.version_id, current);
     assert_eq!(pair.target.version_id, working);
-    assert_eq!(pair.base.items[0].format, FormatId::Txt);
+    assert_eq!(pair.base.items[0].format, Some(FormatId::Txt));
     assert!(pair.base.items[0].inspection_binding_digest.is_some());
     let pair = f
         .repository
@@ -235,4 +235,118 @@ async fn missing_dsi_is_explicit_and_t10_requires_history_permission() {
             .unwrap_err(),
         RepositoryError::Forbidden
     );
+}
+
+struct RegenerateEvidence {
+    repository: PostgresDocumentRepository,
+    pool: sqlx::PgPool,
+    changed_version: Option<DocumentVersionId>,
+}
+
+impl document_application::document_diff::DiffInspectionEvidence for RegenerateEvidence {
+    async fn ensure(
+        &self,
+        file_id: document_domain::FileId,
+        _profile: document_semantic_inspection_core::InspectionProfileVersion,
+    ) -> Result<
+        document_application::SemanticInspectionRecord,
+        document_application::ApplicationError,
+    > {
+        let record = self
+            .repository
+            .insert_or_converge_semantic_inspection(semantic_support::record(file_id.as_uuid(), 2))
+            .await?;
+        if let Some(version) = self.changed_version {
+            sqlx::query("UPDATE content_items SET logical_path = 'changed/path' WHERE document_version_id = $1")
+                .bind(version.as_uuid()).execute(&self.pool).await.unwrap();
+        }
+        Ok(record)
+    }
+}
+
+#[tokio::test]
+async fn regenerated_dsi_is_recaptured_and_concurrent_manifest_change_is_rejected() {
+    use document_application::{ApplicationError, document_diff::capture_pair_with_evidence};
+    let f = fixture().await;
+    f.repository
+        .initialize_root_policy(&context(), vec![grant([Action::Read, Action::ReadHistory])])
+        .await
+        .unwrap();
+    let a = seed_version(&f.pool, f.document_id, 1, "PUBLISHED", true, true).await;
+    let missing = seed_version(&f.pool, f.document_id, 2, "PUBLISHED", true, false).await;
+    sqlx::query("UPDATE documents SET current_version_id = $1 WHERE document_id = $2")
+        .bind(missing.as_uuid())
+        .bind(f.document_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    let evidence = RegenerateEvidence {
+        repository: PostgresDocumentRepository::new(f.pool.clone()),
+        pool: f.pool.clone(),
+        changed_version: Some(missing),
+    };
+    assert!(matches!(
+        capture_pair_with_evidence(
+            &*f.repository,
+            &evidence,
+            &context(),
+            request(f.document_id, a, missing)
+        )
+        .await,
+        Err(ApplicationError::StaleComparisonInput)
+    ));
+    sqlx::query("UPDATE content_items SET logical_path = 'primary' WHERE document_version_id = $1")
+        .bind(missing.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    let pair = capture_pair_with_evidence(
+        &*f.repository,
+        &evidence,
+        &context(),
+        request(f.document_id, a, missing),
+    )
+    .await
+    .unwrap();
+    assert!(pair.target.items[0].inspection_binding_digest.is_some());
+    assert!(pair.target.items[0].semantic_fingerprint.is_some());
+}
+
+struct UnsupportedEvidence;
+
+impl document_application::document_diff::DiffInspectionEvidence for UnsupportedEvidence {
+    async fn ensure(
+        &self,
+        _file_id: document_domain::FileId,
+        _profile: document_semantic_inspection_core::InspectionProfileVersion,
+    ) -> Result<
+        document_application::SemanticInspectionRecord,
+        document_application::ApplicationError,
+    > {
+        Err(document_application::ApplicationError::InspectionFailed(
+            document_application::InspectionExecutionError::UnsupportedDocumentFormat,
+        ))
+    }
+}
+
+#[tokio::test]
+async fn unavailable_semantic_evidence_remains_unverified() {
+    use document_application::document_diff::capture_pair_with_evidence;
+    let f = fixture().await;
+    f.repository
+        .initialize_root_policy(&context(), vec![grant([Action::Read, Action::ReadHistory])])
+        .await
+        .unwrap();
+    let a = seed_version(&f.pool, f.document_id, 1, "PUBLISHED", true, true).await;
+    let missing = seed_version(&f.pool, f.document_id, 2, "PUBLISHED", true, false).await;
+    let pair = capture_pair_with_evidence(
+        &*f.repository,
+        &UnsupportedEvidence,
+        &context(),
+        request(f.document_id, a, missing),
+    )
+    .await
+    .unwrap();
+    assert_eq!(pair.target.items[0].semantic_fingerprint, None);
+    assert_eq!(pair.target.items[0].inspection_binding_digest, None);
 }

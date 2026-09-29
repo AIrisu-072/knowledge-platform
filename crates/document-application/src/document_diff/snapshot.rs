@@ -17,7 +17,7 @@ pub struct SnapshotItem {
     pub ordinal: u32,
     pub authoritative_representation_id: Uuid,
     pub file_id: FileId,
-    pub format: FormatId,
+    pub format: Option<FormatId>,
     pub inspection_profile: InspectionProfileVersion,
     pub semantic_fingerprint: Option<[u8; 32]>,
     pub inspection_binding_digest: Option<[u8; 32]>,
@@ -60,12 +60,48 @@ impl VersionSnapshot {
         )
     }
 
+    pub fn source_binding_digest(&self) -> [u8; 32] {
+        #[derive(Serialize)]
+        struct SourceItem<'a> {
+            content_item_id: Uuid,
+            logical_path: &'a str,
+            ordinal: u32,
+            authoritative_representation_id: Uuid,
+            file_id: FileId,
+            raw_sha256: [u8; 32],
+            size_bytes: u64,
+        }
+        let items: Vec<_> = self
+            .items
+            .iter()
+            .map(|item| SourceItem {
+                content_item_id: item.content_item_id,
+                logical_path: &item.logical_path,
+                ordinal: item.ordinal,
+                authoritative_representation_id: item.authoritative_representation_id,
+                file_id: item.file_id,
+                raw_sha256: item.raw_sha256,
+                size_bytes: item.size_bytes,
+            })
+            .collect();
+        digest_json(
+            b"document-diff-source-binding-v0\0",
+            &(
+                self.document_id,
+                self.version_id,
+                normalize_title(&self.title),
+                &items,
+                self.version_metadata_digest,
+            ),
+        )
+    }
+
     pub fn semantic_identity_digest(&self) -> [u8; 32] {
         #[derive(Serialize)]
         struct SemanticItem<'a> {
             logical_path: &'a str,
             ordinal: u32,
-            format: FormatId,
+            format: Option<FormatId>,
             inspection_profile: InspectionProfileVersion,
             semantic_fingerprint: Option<[u8; 32]>,
         }
@@ -152,4 +188,30 @@ impl DiffCacheKey {
     pub const fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
+}
+
+/// Stable version manifest identity; missing inspection evidence remains a visible marker.
+pub fn manifest_fingerprint(title: &str, items: &[SnapshotItem]) -> [u8; 32] {
+    #[derive(Serialize)]
+    struct ManifestItem<'a> {
+        logical_path: &'a str,
+        ordinal: u32,
+        format: Option<FormatId>,
+        profile: InspectionProfileVersion,
+        fingerprint: Option<[u8; 32]>,
+    }
+    let items: Vec<_> = items
+        .iter()
+        .map(|item| ManifestItem {
+            logical_path: &item.logical_path,
+            ordinal: item.ordinal,
+            format: item.format,
+            profile: item.inspection_profile,
+            fingerprint: item.semantic_fingerprint,
+        })
+        .collect();
+    digest_json(
+        b"document-diff-manifest-v0\0",
+        &(normalize_title(title), items),
+    )
 }

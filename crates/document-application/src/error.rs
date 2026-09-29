@@ -41,6 +41,8 @@ pub enum RepositoryError {
     StaleVersion,
     #[error("query cursor no longer matches the current access or query context")]
     CursorStale,
+    #[error("document diff input changed during comparison")]
+    StaleComparisonInput,
     #[error("invalid query cursor")]
     InvalidCursor,
     #[error("repository conflict")]
@@ -103,6 +105,8 @@ pub enum ApplicationError {
     StaleVersion,
     #[error("query cursor no longer matches the current access or query context")]
     CursorStale,
+    #[error("document diff input changed during comparison")]
+    StaleComparisonInput,
     #[error("file object not found")]
     FileObjectNotFound,
     #[error("operation conflicts with current authoritative state")]
@@ -202,6 +206,7 @@ impl From<RepositoryError> for ApplicationError {
             RepositoryError::FileObjectNotFound => Self::FileObjectNotFound,
             RepositoryError::StaleVersion => Self::StaleVersion,
             RepositoryError::CursorStale => Self::CursorStale,
+            RepositoryError::StaleComparisonInput => Self::StaleComparisonInput,
             RepositoryError::InvalidCursor => Self::Validation("invalid query cursor".into()),
             RepositoryError::Conflict => Self::Conflict,
             RepositoryError::BusinessRule => Self::BusinessRule,

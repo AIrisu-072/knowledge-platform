@@ -21,7 +21,7 @@ fn item(path: &str, ordinal: u32) -> SnapshotItem {
         ordinal,
         authoritative_representation_id: Uuid::from_u128(200 + u128::from(ordinal)),
         file_id: FileId::from_uuid(Uuid::from_u128(300 + u128::from(ordinal))),
-        format: FormatId::Txt,
+        format: Some(FormatId::Txt),
         inspection_profile: InspectionProfileVersion::DsiV0,
         semantic_fingerprint: Some([7; 32]),
         inspection_binding_digest: Some([8; 32]),
@@ -88,7 +88,7 @@ fn snapshot_binds_manifest_and_raw_but_revision_is_only_a_concurrency_token() {
     );
 
     let mut changed = base.clone();
-    changed.items[0].format = FormatId::Csv;
+    changed.items[0].format = Some(FormatId::Csv);
     assert_ne!(base.snapshot_digest(), changed.snapshot_digest());
     assert_ne!(
         base.semantic_identity_digest(),
