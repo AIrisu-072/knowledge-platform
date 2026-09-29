@@ -1135,6 +1135,8 @@ dependencies = [
  "document-diff-core",
  "document-semantic-inspection-runner",
  "encoding_rs",
+ "html5ever",
+ "markup5ever_rcdom",
  "serde",
  "serde_json",
  "sha2 0.11.0",
