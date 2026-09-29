@@ -65,10 +65,10 @@ fn timeout_and_oversized_or_malformed_output_fail_closed() {
             .with_wall_timeout(std::time::Duration::from_millis(250)),
     )
     .unwrap();
-    let mut request = request();
-    request.format = document_diff_core::FormatId::Docx;
+    let mut timeout_request = request();
+    timeout_request.format = document_diff_core::FormatId::Docx;
     assert!(matches!(
-        runner.compare(request, b"base", b"target"),
+        runner.compare(timeout_request, b"base", b"target"),
         Err(document_diff_runner::RunnerError::Timeout)
     ));
     let runner = synthetic_runner();
