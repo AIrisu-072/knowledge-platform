@@ -72,6 +72,7 @@ fn hit(candidate: FederatedCandidate, raw_score: Option<f64>) -> RankedCandidate
             applicability: applicable(),
             structured: gate(ApplicabilityState::Applicable, ""),
             access: gate(ApplicabilityState::Applicable, ""),
+            temporal: gate(ApplicabilityState::Applicable, ""),
         },
         identity_evidence: vec![],
         raw_score,
@@ -712,4 +713,197 @@ fn duplicate_unresolved_hits_group_before_probe_without_losing_each_gap_or_rank(
     );
     assert_eq!(result.pending[0].hits[0].hit.trace.retriever_id, "lexical");
     assert_eq!(result.pending[0].hits[1].hit.trace.retriever_id, "graph");
+}
+
+#[test]
+fn known_temporal_period_exclusion_is_rejected_before_priority_concat() {
+    let mut out_of_period = hit(
+        candidate("out-of-period", source(1), "lexical"),
+        Some(1000.0),
+    );
+    out_of_period.hard_gates.temporal = gate(
+        ApplicabilityState::Excluded,
+        "effective period excludes the as-of target",
+    );
+    let current = hit(candidate("current", source(1), "lexical"), Some(-10.0));
+    let graph = hit(candidate("graph-only", source(1), "graph"), Some(20.0));
+
+    let result = CandidateFederator::merge(
+        &[
+            list("lexical", source(1), vec![out_of_period, current]),
+            list("graph", source(1), vec![graph]),
+        ],
+        FusionStrategy::PriorityConcat,
+    )
+    .expect("valid source and generation");
+
+    assert_eq!(result.ranked.len(), 2);
+    assert_eq!(result.ranked[0].hits[0].candidate.candidate_id, "current");
+    assert_eq!(result.ranked[0].hits[0].trace.rank, 2);
+    assert_eq!(
+        result.ranked[1].hits[0].candidate.candidate_id,
+        "graph-only"
+    );
+    assert!(result.pending.is_empty());
+    assert_eq!(result.rejected.len(), 1);
+    assert_eq!(result.rejected[0].rejection.candidate_id, "out-of-period");
+    assert_eq!(
+        result.rejected[0].rejection.state,
+        ApplicabilityState::Excluded
+    );
+    assert_eq!(
+        result.rejected[0].rejection.reason_trace,
+        vec!["temporal: effective period excludes the as-of target"]
+    );
+    assert_eq!(result.rejected[0].hit.trace.raw_score, Some(1000.0));
+}
+
+#[test]
+fn unknown_required_freshness_remains_pending_with_its_gap_and_reason() {
+    let mut freshness_unknown = hit(
+        candidate("freshness-unknown", source(1), "lexical"),
+        Some(1000.0),
+    );
+    freshness_unknown.hard_gates.temporal = gate(
+        ApplicabilityState::Unresolved,
+        "required freshness cannot be established",
+    );
+    let mut freshness_gap = InformationGap::new("required_freshness", GapReason::Freshness, false);
+    freshness_gap.acceptable_evidence = vec!["recent_source_observation".into()];
+    freshness_unknown.hard_gates.temporal.gaps = vec![freshness_gap];
+    let current = hit(candidate("current", source(1), "lexical"), Some(-10.0));
+
+    let result = CandidateFederator::merge(
+        &[list("lexical", source(1), vec![freshness_unknown, current])],
+        FusionStrategy::PriorityConcat,
+    )
+    .expect("valid source and generation");
+
+    assert_eq!(result.ranked.len(), 1);
+    assert_eq!(result.ranked[0].hits[0].candidate.candidate_id, "current");
+    assert_eq!(result.pending.len(), 1);
+    assert_eq!(result.pending[0].hits[0].hit.trace.rank, 1);
+    assert_eq!(result.pending[0].hits[0].gaps.len(), 1);
+    assert_eq!(
+        result.pending[0].hits[0].gaps[0].required_fact,
+        "required_freshness"
+    );
+    assert_eq!(
+        result.pending[0].hits[0].gaps[0].reason,
+        GapReason::Freshness
+    );
+    assert!(result.pending[0].hits[0].gaps[0].blocking);
+    assert_eq!(
+        result.pending[0].hits[0].gaps[0].acceptable_evidence,
+        vec!["recent_source_observation"]
+    );
+    assert!(!result.pending[0].hits[0].hit.hard_gates.temporal.gaps[0].blocking);
+    assert_eq!(
+        result.pending[0].hits[0].reason_trace,
+        vec!["temporal: required freshness cannot be established"]
+    );
+    assert!(result.rejected.is_empty());
+}
+
+#[test]
+fn unknown_required_period_normalizes_supplied_gap_without_promoting_optional_gap() {
+    let mut period_unknown = hit(
+        candidate("period-unknown", source(1), "lexical"),
+        Some(1000.0),
+    );
+    period_unknown.hard_gates.structured.gaps = vec![InformationGap::new(
+        "optional_display_label",
+        GapReason::MissingFact,
+        false,
+    )];
+    period_unknown.hard_gates.temporal = gate(
+        ApplicabilityState::Unresolved,
+        "effective period cannot be established",
+    );
+    let mut period_gap = InformationGap::new("effective_period", GapReason::MissingFact, false);
+    period_gap.acceptable_evidence = vec!["effective_from".into(), "effective_to".into()];
+    period_unknown.hard_gates.temporal.gaps = vec![period_gap];
+    let current = hit(candidate("current", source(1), "lexical"), Some(-10.0));
+
+    let result = CandidateFederator::merge(
+        &[list("lexical", source(1), vec![period_unknown, current])],
+        FusionStrategy::PriorityConcat,
+    )
+    .expect("valid source and generation");
+
+    assert_eq!(result.ranked.len(), 1);
+    assert_eq!(result.ranked[0].hits[0].candidate.candidate_id, "current");
+    assert_eq!(result.ranked[0].hits[0].trace.rank, 2);
+    assert_eq!(result.pending.len(), 1);
+    let pending = &result.pending[0].hits[0];
+    assert_eq!(pending.hit.candidate.candidate_id, "period-unknown");
+    assert_eq!(pending.hit.trace.rank, 1);
+    assert_eq!(pending.gaps.len(), 2);
+    assert_eq!(pending.gaps[0].required_fact, "optional_display_label");
+    assert!(!pending.gaps[0].blocking);
+    assert_eq!(pending.gaps[1].required_fact, "effective_period");
+    assert_eq!(pending.gaps[1].reason, GapReason::MissingFact);
+    assert!(pending.gaps[1].blocking);
+    assert_eq!(
+        pending.gaps[1].acceptable_evidence,
+        vec!["effective_from", "effective_to"]
+    );
+    assert!(result.rejected.is_empty());
+}
+
+#[test]
+fn unresolved_temporal_gate_without_supplied_gap_gets_a_blocking_gap() {
+    let mut unknown = hit(candidate("temporal-unknown", source(1), "graph"), None);
+    unknown.hard_gates.temporal = gate(ApplicabilityState::Unresolved, "");
+
+    let result = CandidateFederator::merge(
+        &[list("graph", source(1), vec![unknown])],
+        FusionStrategy::PriorityConcat,
+    )
+    .expect("valid source and generation");
+
+    assert!(result.ranked.is_empty());
+    assert_eq!(result.pending.len(), 1);
+    assert_eq!(result.pending[0].hits[0].gaps.len(), 1);
+    assert_eq!(
+        result.pending[0].hits[0].gaps[0].required_fact,
+        "temporal_hard_gate"
+    );
+    assert_eq!(
+        result.pending[0].hits[0].gaps[0].reason,
+        GapReason::MissingFact
+    );
+    assert!(result.pending[0].hits[0].gaps[0].blocking);
+    assert_eq!(
+        result.pending[0].hits[0].reason_trace,
+        vec!["temporal: Unresolved"]
+    );
+}
+
+#[test]
+fn invalid_temporal_gate_is_rejected_even_when_another_gate_is_unresolved() {
+    let mut invalid = hit(candidate("invalid-time", source(1), "lexical"), None);
+    invalid.hard_gates.temporal = gate(ApplicabilityState::Invalid, "invalid period bounds");
+    invalid.hard_gates.structured = gate(ApplicabilityState::Unresolved, "facet unknown");
+
+    let result = CandidateFederator::merge(
+        &[list("lexical", source(1), vec![invalid])],
+        FusionStrategy::PriorityConcat,
+    )
+    .expect("valid source and generation");
+
+    assert!(result.ranked.is_empty());
+    assert!(result.pending.is_empty());
+    assert_eq!(result.rejected.len(), 1);
+    assert_eq!(
+        result.rejected[0].rejection.state,
+        ApplicabilityState::Invalid
+    );
+    assert_eq!(
+        result.rejected[0].rejection.reason_trace,
+        vec![
+            "structured: facet unknown",
+            "temporal: invalid period bounds"
+        ]
+    );
 }

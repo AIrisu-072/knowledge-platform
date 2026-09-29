@@ -150,6 +150,7 @@ fn gate_state(gates: &CandidateHardGates) -> ApplicabilityState {
         gates.applicability.state,
         gates.structured.state,
         gates.access.state,
+        gates.temporal.state,
     ];
     if states.contains(&ApplicabilityState::Invalid) {
         ApplicabilityState::Invalid
@@ -183,8 +184,19 @@ fn gate_gaps(gates: &CandidateHardGates) -> Vec<InformationGap> {
             "current_access",
             GapReason::Availability,
         ),
+        (
+            gates.temporal.state,
+            &gates.temporal.gaps,
+            "temporal_hard_gate",
+            GapReason::MissingFact,
+        ),
     ] {
-        gaps.extend(supplied.iter().cloned());
+        gaps.extend(supplied.iter().cloned().map(|mut gap| {
+            if state == ApplicabilityState::Unresolved {
+                gap.blocking = true;
+            }
+            gap
+        }));
         if state == ApplicabilityState::Unresolved && supplied.is_empty() {
             gaps.push(InformationGap::new(required_fact, reason, true));
         }
@@ -205,6 +217,7 @@ fn gate_reasons(gates: &CandidateHardGates) -> Vec<String> {
             &gates.structured.reasons,
         ),
         ("access", gates.access.state, &gates.access.reasons),
+        ("temporal", gates.temporal.state, &gates.temporal.reasons),
     ]
     .into_iter()
     .filter(|(_, state, _)| *state != ApplicabilityState::Applicable)

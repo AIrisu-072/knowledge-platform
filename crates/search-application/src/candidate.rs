@@ -6,8 +6,8 @@ use search_core::id::LogicalResourceId;
 use search_core::identity::IdentityEvidence;
 use search_core::projection::ProjectionGenerationKey;
 
-/// Structured and current-access checks are evaluated upstream. An unknown
-/// check must arrive as `Unresolved`, with its gap when one is known.
+/// Structured, current-access, and temporal checks are evaluated upstream.
+/// An unknown check must arrive as `Unresolved`, with its gap when one is known.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HardGateEvaluation {
     pub state: ApplicabilityState,
@@ -20,6 +20,9 @@ pub struct CandidateHardGates {
     pub applicability: ApplicabilityEvaluation,
     pub structured: HardGateEvaluation,
     pub access: HardGateEvaluation,
+    /// Target-time validity and any required freshness must be evaluated
+    /// before fusion; an unknown required value is `Unresolved`.
+    pub temporal: HardGateEvaluation,
 }
 
 /// The caller supplies hits in its routed retriever order and each retriever's
