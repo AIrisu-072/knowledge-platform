@@ -1,6 +1,6 @@
-# Search / Discovery Platform v0 — Tantivy dependency patch candidate
+# Search / Discovery Platform v0 — Tantivy dependency patch and production selection
 
-Date: 2026-09-29 JST. Branch: `feat/search-discovery-platform-v0-tantivy-patch`, based on Phase B head `2985dc1d0fa5b9f56de9434e64513b00e35f3e4f`. This is a PoC-only dependency remediation candidate. It does not add Tantivy to a production crate or select the S1 fusion policy.
+Date: 2026-09-29 JST. The patch was qualified on `feat/search-discovery-platform-v0-tantivy-patch`, based on Phase B head `2985dc1d0fa5b9f56de9434e64513b00e35f3e4f`. The requester subsequently selected this reviewed patch for the production lexical adapter. This record does not claim a production crate or root patch already uses it, and it does not select the S1 fusion policy.
 
 ## Decision and source
 
@@ -20,4 +20,4 @@ After the requester reset the model limit, an independent read-only review with 
 
 ## Remaining gates
 
-This patch establishes a locally verified way to eliminate the known `lru` advisory from the isolated PoC. A production `crates/search-tantivy` dependency and root Cargo patch have not been added; their source, license and security checks must be repeated on the exact production adapter head. S1 has no selected initial fusion policy, and Lindera dictionary asset rights/packaging remain unresolved. Phase C must not start from this patch alone. Keep the patch PR Draft and stacked on Phase B while S1 and production dependency promotion remain open.
+This patch establishes a locally verified way to eliminate the known `lru` advisory from the isolated PoC. The requester selected it for production use on 2026-09-29, clearing the dependency selection gate. A production `crates/search-tantivy` dependency, root Cargo patch and production lockfile entry have not been added; their source, license and security checks must be repeated on the exact production adapter head. S1 has no selected initial fusion policy, and Lindera dictionary asset rights/packaging remain unresolved. Phase C must not start until S1 is decided. Keep the patch PR Draft and stacked on Phase B; merge and deployment remain separate decisions.
