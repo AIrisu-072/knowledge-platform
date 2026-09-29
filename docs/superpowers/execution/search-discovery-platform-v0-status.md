@@ -1,5 +1,13 @@
 # Search / Discovery Platform v0 — Execution Status
 
+## Current checkpoint — Phase D starts from qualified Phase C head, 2026-09-29 JST
+
+- Draft Phase C PR #28 is OPEN at exact head `a8df10d7582f9d2947b0b58cfbd4713281fca912` against `feat/search-tantivy-production-selection`. [CI run 36580213345](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36580213345) passed, including `rust-test` and `required-check`; [DSI Sandbox 36580213402](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36580213402) and [DSI PoC 36580213444](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36580213444) succeeded at the same head. The optional PoC macOS job was skipped. Local `mise run verify` remained incomplete due to disk exhaustion during Document test linking; this is preserved in the Phase C receipt and PR body. No merge or deployment occurred.
+- Phase D branch `feat/search-discovery-platform-v0-d` was created from that checked Phase C head in a separate worktree. The ignored local task graph validates at 29 tasks / 33 artifacts / 8 claims; D0 exact-head gate is recorded complete. D1 Document Source translation and D2 current-access service are the first ready implementation tasks. Actual Document snapshot, outbox, races, evaluation harness, and final vertical remain unimplemented.
+- Exact next action: implement D1 against `ProjectionInput` plus same-snapshot `LexicalBuildInput` with title/metadata only and explicit lifecycle classes; in parallel, implement D2 by delegating to existing Document authorization semantics. Use independent read-only review and focused verification before each commit. Do not infer T10 solely from `current_version_id=None`, copy ACL bodies into Search, parse document bodies, replay uncertain managed C1 runs, merge, deploy, or edit repository-wide `active.md`.
+
+---
+
 ## Current checkpoint — Phase C C8/C10 committed; hosted qualification pending, 2026-09-29 JST
 
 - Branch `feat/search-discovery-platform-v0-c` is at local code head `3b4af0b`, before the Phase C receipt/status commit. C8 DiscoveryService `6609414`, C10 real-adapter vertical `6f309dc`, and the architecture policy test repair `3b4af0b` were committed after separate independent GO reviews. No Phase C PR, merge or deployment has occurred.
