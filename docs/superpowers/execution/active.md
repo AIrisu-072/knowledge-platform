@@ -1,5 +1,16 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document Diff v0 計画承認・実装開始、2026-09-29 JST
+
+- Status: **ACTIVE — 計画承認済み、DIF-01〜15実装開始指示済み、DIF-01着手前**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
+- Approved Design Spec: `docs/superpowers/specs/2026-09-28-document-diff-v0-design.md`、凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`。
+- Approved Implementation Plan: `docs/superpowers/plans/2026-09-29-document-diff-v0-production-implementation.md`、承認blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。承認記録は同名の `-approval.md`。
+- GitHub: `design/document-diff-v0@88722648db35407ca38599312f93164796bf8b90`、Document Diff PRなし。基準main `6ea29e1ceea82bb0e20b195890b7c0e7efc85f68` のCI `36419479837` はsecurity setup失敗。最新branch/PR/CIは作業時に再取得する。
+- Blocker: DIF-01着手にはなし。凍結設計からの差分提案なし。merge・deployは未指示。
+- 次の exact action: 承認/Status記録をcommit/pushし、Draft計画PRと隔離実装branchを用意してDIF-01のREDから進む。
+
+以下は計画承認前のcheckpointであり、現在の工程ではない。
+
 ## Active checkpoint — Document Diff v0 実装計画レビュー待ち、2026-09-29 JST
 
 - Status: **ACTIVE — 書面設計承認済み、Production Implementation Planはレビュー待ち、製品実装未着手**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
