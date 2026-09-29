@@ -141,6 +141,7 @@ impl PdfComparator {
                 new_index,
                 budget,
                 &mut changes,
+                &mut regions,
             ) {
                 regions.push(unverified_region(reason));
                 break;
@@ -290,6 +291,7 @@ fn compare_page(
     new_index: usize,
     budget: &mut ComparisonBudget,
     changes: &mut Vec<WorkerChange>,
+    regions: &mut Vec<WorkerUnverifiedRegion>,
 ) -> Result<(), UnverifiedReason> {
     if semantic_key(base) == semantic_key(target) {
         return Ok(());
@@ -312,6 +314,16 @@ fn compare_page(
                 reason,
             )?;
         }
+    }
+    if base["images"] != target["images"] || base["paint_order"] != target["paint_order"] {
+        regions.push(WorkerUnverifiedRegion {
+            base: Some(page(old_index)),
+            target: Some(page(new_index)),
+            reason: UnverifiedReason::UnsupportedSemanticConstruct,
+            navigation_hint: Some(
+                "視覚差の矩形範囲は未確定です。両原本の該当ページを確認してください".to_owned(),
+            ),
+        });
     }
     Ok(())
 }

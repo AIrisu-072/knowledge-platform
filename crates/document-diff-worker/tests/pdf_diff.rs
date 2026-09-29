@@ -86,6 +86,17 @@ fn visual_link_and_form_changes_have_separate_facets() {
             "{facet}"
         );
     }
+    let visual = compare(BASE, IMAGE);
+    assert_eq!(visual.coverage, DiffCoverage::Partial);
+    assert!(visual.unverified_regions.iter().any(|region| {
+        matches!(
+            region.base,
+            Some(SourceLocator::PdfPage {
+                page: 1,
+                region: None
+            })
+        ) && region.reason == UnverifiedReason::UnsupportedSemanticConstruct
+    }));
 }
 
 #[test]
@@ -131,7 +142,16 @@ fn overlapping_text_and_image_paint_order_is_a_visual_change() {
     let text_then_image = paint_order_pdf(true);
     let image_then_text = paint_order_pdf(false);
     let result = compare(&text_then_image, &image_then_text);
-    assert_eq!(result.coverage, DiffCoverage::Full);
+    assert_eq!(result.coverage, DiffCoverage::Partial);
+    assert!(result.unverified_regions.iter().any(|region| {
+        matches!(
+            region.base,
+            Some(SourceLocator::PdfPage {
+                page: 1,
+                region: None
+            })
+        )
+    }));
     assert!(result.changes.iter().any(|change| {
         change.facet == "pdf_visual"
             && change.reason_code == "paint_order_changed"
