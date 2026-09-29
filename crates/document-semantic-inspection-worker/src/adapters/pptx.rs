@@ -91,8 +91,20 @@ impl super::SemanticAdapter for PptxAdapter {
     fn inspect(
         &self,
         input: &[u8],
-        _profile: &super::AdapterProfile,
+        profile: &super::AdapterProfile,
     ) -> Result<super::SemanticAdapterOutput, WorkerFailure> {
+        self.inspect_with_projection(input, profile)
+            .map(|(output, _)| output)
+    }
+}
+
+impl PptxAdapter {
+    /// Returns the qualified, format-specific slide projection for bounded Diff comparison.
+    pub fn inspect_with_projection(
+        &self,
+        input: &[u8],
+        _profile: &super::AdapterProfile,
+    ) -> Result<(super::SemanticAdapterOutput, Vec<Value>), WorkerFailure> {
         if input.len() > MAX_INPUT_BYTES {
             return Err(resource_limit());
         }
@@ -281,7 +293,7 @@ impl super::SemanticAdapter for PptxAdapter {
             .dedup_by(|left, right| left.kind == right.kind && left.definition == right.definition);
 
         let semantic_projection =
-            canonical_json_bytes(&json!({"slides": slides})).map_err(|error| {
+            canonical_json_bytes(&json!({"slides": &slides})).map_err(|error| {
                 failure(
                     WorkerFailureCode::InvalidWorkerResult,
                     format!("PPTX projection serialization: {error}"),
@@ -335,7 +347,7 @@ impl super::SemanticAdapter for PptxAdapter {
             "vba_logic",
             document_semantic_inspection_core::CapabilityState::NotRepresentable,
         )?;
-        Ok(output)
+        Ok((output, slides))
     }
 }
 
