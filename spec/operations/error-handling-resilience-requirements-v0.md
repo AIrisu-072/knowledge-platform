@@ -866,3 +866,13 @@ API Versioning方式は後続仕様で決定する。
   - https://www.w3.org/TR/trace-context/
 - OpenTelemetry
   - https://opentelemetry.io/docs/specs/
+
+---
+
+## 31. Document Diff v0 failure boundary
+
+Document Diffの `ContentVerdict` と `DiffCoverage` は独立した軸である。原本位置を伴う確定変更があり、他に未比較範囲が残る場合は `Different + Partial` を許す。未比較範囲がある結果を `Same` や人間の確認完了に変換してはならない。
+
+未対応の意味構造、局所的な原本破損、曖昧な対応、比較資源上限、再生成できなかったDSI証拠は、影響範囲を明示した部分結果にする。安全な局所位置を示せない場合はContentItem全体を未比較とする。これらをDSIの成功済み完全検査へ書き戻してはならない。
+
+比較中のWORKING更新、現在認可失敗、FileObject raw hash・size不一致、cache/source binding不整合、必須Diff開示監査の失敗は結果を返さないhard errorである。cache hitでも同じhard error境界を適用し、失敗した旧結果を無言で返さない。API/Telemetryに原文・抜粋・Storage locator・credentialsを含めない。

@@ -6,6 +6,7 @@ mod access_context;
 mod access_policy_service;
 mod authorized_document;
 mod command;
+pub mod document_diff;
 mod document_history;
 mod document_management;
 mod document_query;

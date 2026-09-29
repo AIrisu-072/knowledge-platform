@@ -1,7 +1,7 @@
 use document_diff_core::{
-    ChangeOperation, DiffCoverage, DiffProfileVersion, FormatId, ResourceProfileVersion,
-    SourceLocator, WorkerChange, WorkerDiffRequest, WorkerDiffResponse, WorkerProtocolVersion,
-    decode_worker_response_bounded,
+    ChangeOperation, ComparisonBudget, DiffCoverage, DiffProfileVersion, FormatId,
+    ResourceProfileVersion, SourceLocator, WorkerChange, WorkerDiffRequest, WorkerDiffResponse,
+    WorkerProtocolVersion, decode_worker_response_bounded,
 };
 use serde_json::{Value, json};
 
@@ -114,4 +114,32 @@ fn response_decoder_rejects_unknown_version_and_excess_bytes() {
     value["protocol_version"] = json!("diff-worker-v999");
     let unknown = serde_json::to_vec(&value).unwrap();
     assert!(decode_worker_response_bounded(&unknown, unknown.len()).is_err());
+}
+
+#[test]
+fn comparison_budget_rejects_one_over_limit() {
+    let mut budget = ComparisonBudget::new(2, 1);
+    assert!(budget.consume_candidates(2).is_ok());
+    assert!(budget.consume_candidates(1).is_err());
+    assert!(budget.consume_changes(1).is_ok());
+    assert!(budget.consume_changes(1).is_err());
+}
+
+#[test]
+fn response_binding_requires_exact_input_profile_and_raw_hash() {
+    let request = WorkerDiffRequest {
+        protocol_version: WorkerProtocolVersion::V0,
+        diff_profile_version: DiffProfileVersion::V0,
+        resource_profile_version: ResourceProfileVersion::V0,
+        format: FormatId::Txt,
+        base_raw_sha256: [1; 32],
+        base_size_bytes: 8,
+        target_raw_sha256: [2; 32],
+        target_size_bytes: 10,
+    };
+    let response = response();
+    assert!(response.validate_against(&request).is_ok());
+    let mut wrong = response;
+    wrong.target_raw_sha256 = [3; 32];
+    assert!(wrong.validate_against(&request).is_err());
 }

@@ -226,6 +226,14 @@ principal_id × document_version_id
 
 ---
 
+## AC-11. Document Diff is a derived comparison
+
+Document Diffは同一Documentの異なる2つのDocumentVersionのauthoritative原本を比較し、原本位置へ戻れる差分と未比較範囲を返す派生Capabilityとする。Document、DocumentVersion、ContentItem、ContentRepresentation、FileObject、DSIの保存済み意味証拠を正本のまま維持する。Search用chunkやrenditionを比較の正本にしない。
+
+形式固有の一時parse modelを永続的な共通cross-format content IRへ置き換えない。DiffResultと新旧対照表は別物であり、どちらもDocumentの正本ではない。比較済み範囲と未比較範囲を型で区別し、未比較を「変更なし」と表示しない。現在認可・原本アクセス監査・結果開示監査の境界は `spec/operations/observability-audit-requirements-v0.md` と `spec/data/transaction-consistency-requirements-v0.md` に従う。
+
+---
+
 # 3. DocumentVersion lifecycle contract
 
 ## 3.1 Persisted lifecycle state

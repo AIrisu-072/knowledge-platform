@@ -1,7 +1,11 @@
 use document_application::document_diff::{
-    DiffCacheKey, DiffPairSnapshot, DiffRequest, SnapshotItem, VersionSnapshot,
+    DiffCacheKey, DiffPairSnapshot, DiffRequest, DiffResult, LocatorGranularity, SnapshotItem,
+    SourceEvidence, UnverifiedRegion, VersionSnapshot,
 };
-use document_diff_core::{DiffProfileVersion, ResourceProfileVersion};
+use document_diff_core::{
+    ContentVerdict, DiffCoverage, DiffProfileVersion, ResourceProfileVersion, SourceLocator,
+    UnverifiedReason,
+};
 use document_domain::{DocumentId, DocumentVersionId, FileId};
 use document_semantic_inspection_core::{FormatId, InspectionProfileVersion};
 use uuid::Uuid;
@@ -173,4 +177,55 @@ fn request_carries_only_two_distinct_versions_of_one_document() {
         .validate()
         .is_err()
     );
+}
+
+#[test]
+fn canonical_result_digest_changes_with_verdict_and_not_with_transient_audit() {
+    let pair = pair();
+    let result = DiffResult {
+        document_id: pair.document_id,
+        base_version_id: pair.base.version_id,
+        target_version_id: pair.target.version_id,
+        base_snapshot_digest: pair.base.snapshot_digest(),
+        target_snapshot_digest: pair.target.snapshot_digest(),
+        profile: DiffProfileVersion::V0,
+        resource_profile: ResourceProfileVersion::V0,
+        verdict: ContentVerdict::Same,
+        coverage: DiffCoverage::Full,
+        changes: vec![],
+        unverified_regions: vec![],
+        ancillary_changes: vec![],
+    };
+    assert_eq!(result.canonical_digest(), result.clone().canonical_digest());
+    assert!(result.validate().is_ok());
+    let mut incomplete = result.clone();
+    incomplete.coverage = DiffCoverage::Partial;
+    assert!(incomplete.validate().is_err());
+
+    let mut incorrectly_different = result.clone();
+    incorrectly_different.verdict = ContentVerdict::Different;
+    incorrectly_different.coverage = DiffCoverage::Partial;
+    incorrectly_different
+        .unverified_regions
+        .push(UnverifiedRegion {
+            base: Some(SourceEvidence {
+                document_id: pair.document_id,
+                version_id: pair.base.version_id,
+                content_item_id: pair.base.items[0].content_item_id,
+                authoritative_representation_id: pair.base.items[0].authoritative_representation_id,
+                file_id: pair.base.items[0].file_id,
+                raw_sha256: pair.base.items[0].raw_sha256,
+                inspection_profile: InspectionProfileVersion::DsiV0,
+                locator: SourceLocator::ContentItem,
+                granularity: LocatorGranularity::ContentItem,
+                parser_provenance: "identity-v0".to_owned(),
+            }),
+            target: None,
+            reason: UnverifiedReason::ResourceLimit,
+            navigation_hint: None,
+        });
+    assert!(incorrectly_different.validate().is_err());
+    let mut changed = result.clone();
+    changed.verdict = ContentVerdict::Different;
+    assert_ne!(changed.canonical_digest(), result.canonical_digest());
 }
