@@ -1,5 +1,3 @@
-#![cfg(target_os = "linux")]
-
 use document_diff_core::{
     DiffCoverage, DiffProfileVersion, FormatId, ResourceProfileVersion, WorkerDiffRequest,
     WorkerProtocolVersion,
@@ -15,6 +13,15 @@ const TEXT: &[u8] = include_bytes!(
 
 #[test]
 fn qualified_pdfium_is_bound_before_linux_sandbox_seals() {
+    if !cfg!(target_os = "linux") {
+        assert!(
+            LinuxSandboxRunner::new(RunnerConfig::new(env!(
+                "CARGO_BIN_EXE_document-diff-worker"
+            )))
+            .is_err()
+        );
+        return;
+    }
     let request = WorkerDiffRequest {
         protocol_version: WorkerProtocolVersion::V0,
         diff_profile_version: DiffProfileVersion::V0,
@@ -30,7 +37,7 @@ fn qualified_pdfium_is_bound_before_linux_sandbox_seals() {
     )))
     .unwrap();
     assert_eq!(
-        unconfigured.compare(request, BASE, TEXT),
+        unconfigured.compare(request.clone(), BASE, TEXT),
         Err(RunnerError::Unavailable("qualified PDFium runtime path"))
     );
 
@@ -41,7 +48,7 @@ fn qualified_pdfium_is_bound_before_linux_sandbox_seals() {
             .with_pdfium_runtime_dir(directory),
     )
     .unwrap();
-    let result = runner.compare(request, BASE, TEXT).unwrap();
+    let result = runner.compare(request.clone(), BASE, TEXT).unwrap();
     result.validate_against(&request).unwrap();
     assert_eq!(result.coverage, DiffCoverage::Full);
     assert!(

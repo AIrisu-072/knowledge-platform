@@ -22,8 +22,8 @@ zip.workspace = true
 quick-xml.workspace = true
 rxls.workspace = true
 
+[dev-dependencies]
+document-diff-runner = { version = "0.0.0", path = "../document-diff-runner" }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 document-semantic-inspection-runner = { version = "0.0.0", path = "../document-semantic-inspection-runner" }
-
-[target.'cfg(target_os = "linux")'.dev-dependencies]
-document-diff-runner = { version = "0.0.0", path = "../document-diff-runner" }
