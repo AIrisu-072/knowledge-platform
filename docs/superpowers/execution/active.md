@@ -1,5 +1,16 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document Diff v0 DIF-01〜03 local GREEN、2026-09-29 JST
+
+- Status: **ACTIVE — Delivery Unit A 実装中、DIF-04 NEXT**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
+- Approved Design Spec: `docs/superpowers/specs/2026-09-28-document-diff-v0-design.md`、凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`。
+- Approved Implementation Plan: `docs/superpowers/plans/2026-09-29-document-diff-v0-production-implementation.md`、承認blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。
+- GitHub / implementation: 設計・計画Draft PR #23、実装branch `feat/document-diff-v0@c042a27ec82738462a47d8d74c6d06c536e4af0a`（未push/実装PR未作成）。DIF-01〜03は局所RED→GREEN。A hosted gate未実行。
+- Blocker: DIF-04着手にはなし。凍結設計差分提案なし。merge・deployは未指示。
+- 次の exact action: DIF-04のworker/runner最小scaffoldと隔離・raw bindingのRED試験を作る。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## Active checkpoint — Document Diff v0 計画承認・実装開始、2026-09-29 JST
 
 - Status: **ACTIVE — 計画承認済み、DIF-01〜15実装開始指示済み、DIF-01着手前**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。

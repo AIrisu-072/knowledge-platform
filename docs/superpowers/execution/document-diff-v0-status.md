@@ -1,5 +1,18 @@
 # Document Diff v0 — Capability Execution Status
 
+## 2026-09-29 JST — DIF-01〜03 local GREEN、DIF-04 NEXT
+
+- 状態: **ACTIVE / Delivery Unit A 実装中**。DIF-01〜03は局所TDDを完了。DIF-04〜15とAのhosted gateは未完了。
+- 実装branch: `feat/document-diff-v0@c042a27ec82738462a47d8d74c6d06c536e4af0a`（隔離worktree）。設計・計画Draft PR #23は未merge。実装PRは未作成。凍結設計blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`、承認計画blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c` を維持。
+- DIF-01: RED `cbbe46d`、GREEN `0d886d7`。Application identity 5/5、core protocol 5/5 PASS。
+- DIF-02: RED `a128d6a`、GREEN `b4bfca0`。snapshot実DB5/5、identity5/5、history回帰2/2、対象strict Clippy PASS。DSI欠落markerと再生成後のsnapshot再取得を実装。
+- DIF-03: RED `724d73e`、GREEN `c042a27`。最終認可/Audit実DB4/4、file access回帰1/1、対象strict Clippy・fmt PASS。cache hitの再監査、policy剥奪、WORKING更新、T10、actor期限切れ、Audit失敗を確認。
+- CI: DIF-01〜03のhosted exact-head CIは未実行。計画どおりA末尾で一度確認する。main baseline CI `36419479837` はsecurity setup失敗でありDiffの成否ではない。
+- blocker / 判断: 現時点のDIF-04着手blockerなし。設計意味の変更提案なし。新Diff parser dependencyは未promotion。`executing-plans` helperはDIF見出しを解析できないため、承認計画を変えずledgerに手動記録している。
+- 次の exact action: `feat/document-diff-v0` のDIF-04 briefに従いworker/runner crateの最小scaffoldと二原本・隔離のRED試験を先に置く。DSI公開sandbox sealを再利用し、Linux強制canaryはA hosted gateで確認する。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## 2026-09-29 JST — 計画承認・実装開始
 
 - 状態: **PLAN APPROVED / IMPLEMENTATION AUTHORIZED / DIF-01 NEXT**。DIF-01〜15はまだ未着手。
