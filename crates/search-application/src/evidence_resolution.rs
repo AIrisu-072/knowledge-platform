@@ -50,6 +50,11 @@ pub async fn assemble_resource_claims(
         let stored = assertions
             .assertions_for(generation, resource_ref, &selector.predicate)
             .await?;
+        if stored.is_empty() {
+            // A resource with no Assertion contributes no Claim; the required
+            // Claim stays unresolved unless another resource supports it.
+            continue;
+        }
         let mut matched = false;
         for assertion in stored {
             if assertion.subject_ref != selector.subject_ref

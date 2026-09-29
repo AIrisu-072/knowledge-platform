@@ -86,7 +86,7 @@ fn resolved_for(
     }
 }
 
-struct Assertions(ProjectionGenerationKey, Vec<Assertion>);
+struct Assertions(ProjectionGenerationKey, ResourceId, Vec<Assertion>);
 
 impl AssertionStorePort for Assertions {
     fn assertions_for<'a>(
@@ -96,8 +96,8 @@ impl AssertionStorePort for Assertions {
         _predicate: &'a str,
     ) -> BoxFuture<'a, Vec<Assertion>> {
         assert_eq!(pinned, self.0);
-        assert_eq!(resource_ref, resource(2));
-        Box::pin(async move { Ok(self.1.clone()) })
+        assert_eq!(resource_ref, self.1);
+        Box::pin(async move { Ok(self.2.clone()) })
     }
 }
 
@@ -162,10 +162,51 @@ async fn assemble_at(
         resource(2),
         requirement,
         &Selectors(pinned, Some(selector())),
-        &Assertions(pinned, assertions),
+        &Assertions(pinned, resource(2), assertions),
         &evidence(pinned, records),
     )
     .await
+}
+
+#[tokio::test]
+async fn resource_without_assertions_does_not_veto_supported_alternate() {
+    let pinned = generation();
+    let requirement = EvidenceRequirement::new(vec![claim_id()]);
+    let without_assertions = assemble_resource_claims(
+        pinned,
+        resource(12),
+        &requirement,
+        &Selectors(pinned, Some(selector())),
+        &Assertions(pinned, resource(12), vec![]),
+        &evidence(pinned, vec![]),
+    )
+    .await
+    .unwrap();
+    assert!(without_assertions.is_empty());
+    assert_eq!(
+        assess_claim_evidence(&requirement, &without_assertions).unwrap(),
+        EvidenceSufficiency::Unresolved
+    );
+
+    let supported = assemble(
+        &requirement,
+        vec![assertion(true, &["ev-1"])],
+        vec![resolved(
+            "ev-1",
+            EvidenceRole::Primary,
+            "original-publication",
+        )],
+    )
+    .await
+    .unwrap();
+    let all_claims = without_assertions
+        .into_iter()
+        .chain(supported)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        assess_claim_evidence(&requirement, &all_claims).unwrap(),
+        EvidenceSufficiency::Sufficient
+    );
 }
 
 #[tokio::test]
@@ -266,7 +307,7 @@ async fn semantically_equal_decimal_selector_and_assertion_support_claim() {
         resource(2),
         &requirement,
         &Selectors(generation(), Some(expected)),
-        &Assertions(generation(), vec![observed]),
+        &Assertions(generation(), resource(2), vec![observed]),
         &evidence(
             generation(),
             vec![resolved(
@@ -534,7 +575,7 @@ async fn resolved_identity_must_match_generation_source_resource_and_reference()
             resource(2),
             &requirement,
             &Selectors(generation(), Some(selector())),
-            &Assertions(generation(), vec![assertion(true, &["ev-1"])]),
+            &Assertions(generation(), resource(2), vec![assertion(true, &["ev-1"])]),
             &returned,
         )
         .await
