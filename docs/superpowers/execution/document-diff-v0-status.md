@@ -1,5 +1,18 @@
 # Document Diff v0 — Capability Execution Status
 
+## 2026-09-29 JST — A exact-head GREEN、B局所GREEN・hosted NEXT
+
+- 状態: **ACTIVE**。DIF-01〜06のAはhosted gateまで完了。DIF-07〜09のBは局所RED→GREENと共通検証済み、hosted未判定。DIF-10〜15は未着手。Frozen Designの意味変更提案なし。
+- branch/PR: 設計Draft PR #23 head `993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24 remote A head `ddc3c1b6e94557ed13831ed343f5d86d5bc97cec`。local B code head `81086412cb1fa4dbfdff140f51ed81bd37391057`、B記録commit・pushは次。PRはいずれも未merge。
+- A gate: 標準CI `36507722838` SUCCESS、DSI Sandbox Preflight `36507722786` SUCCESS、DSI PoC `36507722787` SUCCESS、すべて `ddc3c1b6e94557ed13831ed343f5d86d5bc97cec`。Linux rust-testでDiff runner隔離3件PASS。先行A head `f05f4f9` の標準CI `36507007629` はLinux試験の変数shadowとmise OSV Scanner署名者未設定でFAILし、`ddc3c1b`で修正・再確認した。
+- DIF-07: RED `a2abff6`（A修正後 `9bb61cd`）、GREEN `2379212`。TXT 5/5、shell 4/4、strict Clippy PASS。CRLF/NFC、変更・追加・削除のraw位置、ambiguous decodeの未比較。
+- DIF-08: RED `373df77`、GREEN `0fbb26a`。CSV 6/6、strict Clippy PASS。quote noise、cell/row/column locator、一意なreorder、重複・不整合・delimiter曖昧性、資源上限理由を確認。
+- DIF-09: RED `f4760b0`、GREEN `8108641`。HTML 4/4、strict Clippy PASS。visible text/link/imageと見出し/表構造、装飾noise、script非実行、意味が空のページを未比較とする。parser promotionはTXT `encoding_rs`/Unicode、CSV `csv 1.4.0`、HTML `html5ever`/`markup5ever_rcdom 0.39.0` の既存pinのみ。
+- B局所共通検証: pinned PDFium pathを指定した `CARGO_INCREMENTAL=0 mise run verify:fast` SUCCESS、599/599 Rust tests（既定skip 5）、fmt/check/strict Clippy/architecture/API lint PASS。ディスク容量のため、完了済み旧worktreeの生成物に `cargo clean` を実行して空きを確保した。追跡ファイルは変更していない。
+- blocker / 次: B hosted exact-head標準CIとDIF-15資源・大入力測定は未完了。次のexact actionはB記録をcommit/pushし、PR #24のB head CIを一度確認してからDIF-10 DOCXのRED試験へ進む。merge・deploy指示なし。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## 2026-09-29 JST — DIF-01〜06 Delivery Unit A local GREEN、hosted gate NEXT
 
 - 状態: **ACTIVE / A局所実装済み / hosted未判定**。DIF-01〜06のRED→GREENをcommitに記録。DIF-07〜15は未着手。設計意味の変更提案なし。

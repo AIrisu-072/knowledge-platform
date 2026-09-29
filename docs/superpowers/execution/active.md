@@ -1,5 +1,16 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document Diff v0 A exact-head GREEN、B local GREEN、2026-09-29 JST
+
+- Status: **ACTIVE — DIF-01〜09局所GREEN、A hosted GREEN、B hosted gate待ち、DIF-10〜15未着手**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
+- Approved Design Spec: `docs/superpowers/specs/2026-09-28-document-diff-v0-design.md`、凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`。Approved Plan: `docs/superpowers/plans/2026-09-29-document-diff-v0-production-implementation.md`、blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。設計意味の差分提案なし。
+- GitHub: 設計Draft PR #23は `design/document-diff-v0@993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24のremote A headは `feat/document-diff-v0@ddc3c1b6e94557ed13831ed343f5d86d5bc97cec`、ともに未merge。B local code headは `81086412cb1fa4dbfdff140f51ed81bd37391057`、B記録commit・pushはこれから。
+- A exact-head gate: 標準CI `36507722838` SUCCESS、DSI Sandbox Preflight `36507722786` SUCCESS、DSI PoC `36507722787` SUCCESS。Linux rust-testでDiff runner隔離canary3件PASS。baseline security setupのOSV Scanner signerを証明書に固定し、同headのsecurity jobもSUCCESS。
+- B局所検証: TXT 5/5、CSV 6/6、HTML 4/4、`PDFIUM_DYNAMIC_LIB_PATH=<cached pinned library> CARGO_INCREMENTAL=0 mise run verify:fast` はRust 599/599（既定skip 5）、fmt/check/strict Clippy/architecture/API lint PASS。B hosted CIとDIF-15資源実測は未実施。parserは既存pinのみpromote。
+- 次の exact action: B記録をcommit/pushしてPR #24のB最終headで標準CIを一度確認し、DIF-10 DOCXのREDから進む。merge・deployは未指示。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## Active checkpoint — Document Diff v0 Delivery Unit A local GREEN、2026-09-29 JST
 
 - Status: **ACTIVE — DIF-01〜06 local GREEN、A hosted gate待ち、DIF-07〜15未着手**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。

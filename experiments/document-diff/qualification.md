@@ -9,3 +9,15 @@ Candidate profile `diff-resource-v0`: each source 256 MiB, combined sources 512 
 Local macOS evidence: portable worker shell tests cover independent raw bindings, malformed/oversized request, unsupported-format unverified result, and panic containment. Strict Clippy and formatting pass. The runner rejects production construction on macOS. Linux tests for fresh process, network/exec denial, environment/descriptor isolation, timeout and output bounds are written but require the hosted Sandbox gate. No Diff format adapter or parser dependency is promoted at DIF-04.
 
 Outstanding: hosted Linux compile/runtime, Landlock/seccomp enforcement canary, exact limits and 1-over checks, native-runtime warmup for later PDF adapter, representative large-document measurements. Until these pass, the candidate profile is not qualified for production disclosure.
+
+## Delivery Unit A hosted isolation evidence
+
+At exact head `ddc3c1b6e94557ed13831ed343f5d86d5bc97cec`, standard CI `36507722838`, DSI Sandbox Preflight `36507722786`, and DSI PoC regression `36507722787` succeeded. The Linux standard CI rust-test job ran all three `document-diff-runner::runner_isolation` canaries, including fresh sandbox/network/exec denial and timeout/output failure handling. The earlier A head failed on a Linux-only test binding shadow and the pre-existing mise OSV Scanner signer setup; both were fixed before this GREEN head. This qualifies the Linux isolation behavior exercised by those canaries. Numeric Diff resource bounds and representative large inputs remain candidates until DIF-15.
+
+## DIF-07–09 format candidate qualification
+
+- TXT: pinned `encoding_rs 0.8.41` and `unicode-normalization 0.1.25`; CRLF/LF and NFC relations, changed/add/remove raw byte spans, invalid UTF-8 fail-closed. Focused `text_diff` 5/5.
+- CSV: pinned `csv 1.4.0` and existing Unicode normalization; quote noise, cell/row/column locators, unique reorder, duplicate ambiguity, inconsistent rows, ambiguous delimiter, and row-limit reason. Focused `csv_diff` 6/6. The v0 comparator accepts a delimiter only when one of comma, semicolon, tab, or pipe is the unique consistent multi-column parse for each source. Any ambiguous or unsupported delimiter profile remains unverified; no delimiter is guessed when more than one interpretation works.
+- HTML: pinned `html5ever 0.39.0` and `markup5ever_rcdom 0.39.0`; visible text/link/image/heading/table changes, whitespace/decorative noise, script non-execution, script-only fail-closed, bounded DOM traversal. Focused `html_diff` 4/4. DOM paths identify original parsed nodes; where no safe node is available, the whole ContentItem is unverified.
+
+All three format libraries were already selected for DSI production, but these Diff-specific fixtures and bounds are the promotion evidence for Document Diff. B local `verify:fast` passed 599/599 Rust tests (five default skips) with the pinned PDFium library path. Hosted B CI and the final DIF-15 resource/large-document measurements are still pending; these local results alone do not qualify the whole capability.
