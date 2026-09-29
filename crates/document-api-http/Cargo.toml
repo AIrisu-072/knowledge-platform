@@ -1,0 +1,22 @@
+[package]
+name = "document-api-http"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+axum = { version = "=0.8.9", features = ["json", "matched-path"] }
+tower-http = { version = "=0.7.1", default-features = false, features = ["cors", "set-header"] }
+jsonschema = { version = "=0.55.0", default-features = false }
+document-application = { version = "0.0.0", path = "../document-application" }
+document-domain = { version = "0.0.0", path = "../document-domain" }
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tower = "0.5"
+tokio.workspace = true
+time.workspace = true
+
