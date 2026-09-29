@@ -176,7 +176,26 @@ pub trait LexicalRetrieverPort: Send + Sync {
         &'a self,
         generation: ProjectionGenerationKey,
         request: &'a DiscoveryRequest,
+        query: &'a LexicalQuery,
     ) -> BoxFuture<'a, Vec<FederatedCandidate>>;
+}
+
+/// Explicit lexical input; DiscoveryRequest is an intent/evidence request,
+/// not a free-text query. The list limit is a retrieval window, not a
+/// Discovery completion condition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LexicalQuery {
+    pub text: String,
+    pub limit: usize,
+}
+
+impl LexicalQuery {
+    pub fn new(text: impl Into<String>, limit: usize) -> Self {
+        Self {
+            text: text.into(),
+            limit,
+        }
+    }
 }
 
 pub trait VectorRetrieverPort: Send + Sync {
