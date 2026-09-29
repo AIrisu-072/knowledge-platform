@@ -1015,3 +1015,13 @@ G10 将来のbackup / replication / HA要件へ移行可能、または現実的
 8. DB選定
 
 DB製品名を先に固定せず、**本書のtransaction・consistency要件を満たすかを基準として比較する。**
+
+---
+
+# 16. Document Diff v0 の読取確定境界
+
+Diff は両版の原本と DSI 証拠を整合した snapshot で取得する。原本 byte の取得は既存の版別 file access 監査を確定させてから行い、比較計算中は長い DB lock を保持しない。
+
+結果を開示する直前に、現在の policy、actor の有効期限、両版の lifecycle/current/T10 状態と snapshot binding を再確認する。WORKING を含む場合は Document revision も照合する。変更があれば `StaleComparisonInput` として古い結果を返さない。cache hit と対照表 Projection にも同じ確認を適用する。
+
+最終認可、鮮度確認、必須 `document.diff.result_access_granted` Audit の挿入を同一の短い transaction で確定する。この commit が結果開示の線形化点である。Audit の失敗または commit 結果不明時には結果を開示しない。送信完了はこの transaction の意味に含めない。

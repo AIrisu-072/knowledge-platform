@@ -937,7 +937,15 @@ OpenTelemetry標準Semantic Conventionを再定義しない。
 
 ---
 
-# 33. References
+# 33. Document Diff v0 の必須 Audit
+
+Document Diff v0 の必須 Audit は `document.diff.result_access_granted` とする。これは結果の開示許可が最終認可・鮮度確認と同じ transaction で確定した事実を表し、transport の送信完了や利用者の確認完了を表さない。cache hit、再実行、対照表 Projection でも毎回作成し、sampling しない。
+
+actor、Document と両 Version ID、両 snapshot digest、比較/profile/resource version、結果 digest、判定・比較範囲、cache hit、UTC 時刻、利用可能な相関 ID のみを記録する。本文、抜粋、原本 byte、Storage locator、credentials は記録しない。Audit insert/commit が失敗した場合、結果を開示しない。処理時間や候補数などの sampling 可能な Telemetry はこの必須 Audit と区別する。
+
+---
+
+# 34. References
 
 - OpenTelemetry Specification
   - https://opentelemetry.io/docs/specs/otel/

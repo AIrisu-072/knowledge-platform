@@ -242,3 +242,48 @@ async fn expired_actor_and_audit_insert_failure_do_not_disclose() {
         .fetch_one(&f.pool).await.unwrap();
     assert_eq!(count, 0);
 }
+
+#[tokio::test]
+async fn publication_end_invalidates_pair_even_when_both_versions_remain_readable_as_history() {
+    let f = fixture().await;
+    f.repository
+        .initialize_root_policy(&context(), vec![grant([Action::Read, Action::ReadHistory])])
+        .await
+        .unwrap();
+    let a = seed_version(&f.pool, f.document_id.as_uuid(), 1, "PUBLISHED").await;
+    let b = seed_version(&f.pool, f.document_id.as_uuid(), 2, "PUBLISHED").await;
+    sqlx::query("UPDATE documents SET current_version_id = $1 WHERE document_id = $2")
+        .bind(b.as_uuid())
+        .bind(f.document_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    let pair = f
+        .repository
+        .capture_pair(&context(), request(f.document_id, a, b))
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO document_publication_end_operations (operation_id,document_id,command_digest,expected_document_revision,expected_current_version_id,actor_identity_provider,actor_principal_id,reason,former_current_version_id,resulting_document_revision,ended_at) VALUES ($1,$2,$3,1,$4,'test-idp','policy-admin','end',$4,2,now())")
+        .bind(Uuid::now_v7()).bind(f.document_id.as_uuid()).bind(vec![0_u8;32]).bind(b.as_uuid())
+        .execute(&f.pool).await.unwrap();
+    sqlx::query(
+        "UPDATE documents SET current_version_id = NULL, revision = 2 WHERE document_id = $1",
+    )
+    .bind(f.document_id.as_uuid())
+    .execute(&f.pool)
+    .await
+    .unwrap();
+    assert!(
+        f.repository
+            .capture_pair(&context(), request(f.document_id, a, b))
+            .await
+            .is_ok()
+    );
+    assert_eq!(
+        f.repository
+            .authorize_and_audit_result(&context(), &pair, &result(&pair), false, None)
+            .await
+            .unwrap_err(),
+        RepositoryError::StaleComparisonInput
+    );
+}

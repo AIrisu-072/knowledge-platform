@@ -58,9 +58,21 @@ impl DocumentDiffRepository for PostgresDocumentRepository {
         tx.commit().await.map_err(crate::error::map_commit_error)?;
         Ok(pair)
     }
+
+    async fn authorize_and_audit_result(
+        &self,
+        actor: &VerifiedActorContext,
+        pair: &DiffPairSnapshot,
+        result: &document_application::document_diff::DiffResult,
+        cache_hit: bool,
+        correlation_id: Option<&str>,
+    ) -> Result<Uuid, RepositoryError> {
+        self.finalize_document_diff_result(actor, pair, result, cache_hit, correlation_id)
+            .await
+    }
 }
 
-async fn capture_version(
+pub(crate) async fn capture_version(
     tx: &mut Transaction<'_, Postgres>,
     actor: &VerifiedActorContext,
     request: &DiffRequest,
@@ -121,6 +133,8 @@ async fn capture_version(
         &serde_json::to_vec(&json!({
             "version_no": version.try_get::<i64, _>("version_no").map_err(map_statement_error)?,
             "lifecycle_state": lifecycle,
+            "current_published": purpose == VersionPurpose::Published,
+            "publication_ended": ended,
             "revision_reason": version.try_get::<Option<String>, _>("revision_reason").map_err(map_statement_error)?,
             "approved_at": version.try_get::<Option<time::OffsetDateTime>, _>("approved_at").map_err(map_statement_error)?,
             "scheduled_publish_at": version.try_get::<Option<time::OffsetDateTime>, _>("scheduled_publish_at").map_err(map_statement_error)?,
