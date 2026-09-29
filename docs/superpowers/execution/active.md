@@ -1,5 +1,15 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document Diff v0 PDF Linux canaryをmacOSでも型検査、hosted再確認、2026-09-29 JST
+
+- Status: **ACTIVE — DIF-01〜13 hosted完了、DIF-14〜15局所・共通検証PASS、D final hosted gate待ち**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。設計凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`、計画承認blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`、意味変更提案なし。
+- branch/PR: 設計Draft PR #23 head `993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24 remote `8b345a3067d3f212b33e52ce2f156d40227b200e`。local canary修正head `78ea864e07a7b825b6c41a141b85933cf5a60bc5`、記録commit・push待ち。未merge、PR #24未解決review thread 0。
+- D local common: pinned PDFium pathの`mise run verify:fast`は636/636 Rust tests、fmt/check/strict Clippy/architecture/API lint PASS。DIF-14 PDF 6/6、DSI PDF 8/8、DIF-15受入3/3、Application縦断1/1、Postgres競合1/1。Linux canaryの最新変更はmacOSで単独test 1/1とstrict Clippy PASS。
+- D hosted attempts: `a5168221...` はSandbox `36523564697`とPoC `36523564667` SUCCESS、CI `36523564675` はLinux canaryのdev-dependency欠落で`rust-static` FAIL。`8b345a30...` はSandbox `36524232572`とPoC `36524232405` SUCCESS、CI `36524232404` はLinux canary内のmoved requestで`rust-static` FAIL。両CIの残りは原因判明後キャンセルした。`78ea864` でcanary本文をmacOSでも型検査し、`request.clone()`を追加。Linux実canaryとfinal exact-head CIは未確認。
+- 次の exact action: この記録をcommit/pushし、PR #24の新exact headで標準CI、Sandbox、DSI PoCを確認する。Linux `pdf_runner` canaryの実行結果を標準CI内で確認し、PR説明とStatusへ最終evidenceを反映する。merge・deploy指示なし。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## Active checkpoint — Document Diff v0 D共通GREEN、Linux canary manifest修正後のhosted再確認、2026-09-29 JST
 
 - Status: **ACTIVE — DIF-01〜13 hosted完了、DIF-14〜15局所・共通検証PASS、D exact-head標準CI修正確認待ち**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
