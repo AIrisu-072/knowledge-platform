@@ -1,5 +1,17 @@
 # Document Diff v0 — Capability Execution Status
 
+## 2026-09-29 JST — CLOSED / main統合済み
+
+- 状態: **COMPLETED / INTEGRATED**。DIF-01〜15のProduction Implementationは完了し、設計PR #23と実装PR #24はmainへ統合済み。Frozen Design意味変更なし。
+- PR #23 merge commit: `0587d44bd1d1fcb7612726997db824f88eec54eb`。
+- PR #24 merge commit / 現在のmain: `77b13a1d35d15eea0112ca2d73f8cbd3dfffe1c9`。
+- main CI `36533301309`: exact merge commit `77b13a1d35d15eea0112ca2d73f8cbd3dfffe1c9` で **SUCCESS**。
+- 実装残Task: なし。広い実文書corpus精度とLinux runner peak memoryは既存qualification記録どおり別評価であり、今回の統合完了条件には含めない。
+- 本番deploy: **未実施**。deployは別指示。
+- 後続工程: Document HTTP/OpenAPI Transport v0。Document DiffのHTTP公開では既存の現在認可・鮮度確認・必須Audit・verdict/coverage/unverified契約を変更しない。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## 2026-09-29 JST — 設計PR #23 main統合済み、実装PR #24統合中
 
 - 状態: **ACTIVE / DIF-01〜15実装・D gate完了 / PR #24 main統合中**。Frozen Design意味変更提案なし。承認設計blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`、計画blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。

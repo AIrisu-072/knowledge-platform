@@ -1,5 +1,15 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document HTTP/OpenAPI Transport v0 設計開始、2026-09-29 JST
+
+- Status: **DESIGN ACTIVE — WRITTEN SPEC REVIEW PENDING**。詳細は `docs/superpowers/execution/document-http-openapi-transport-v0-status.md`。
+- 基準main: `77b13a1d35d15eea0112ca2d73f8cbd3dfffe1c9`。PR #24はmerge済み。main CI `36533301309` はSUCCESS。本番deployは未実施。
+- Active Design: `docs/superpowers/specs/2026-09-29-document-http-openapi-transport-v0-design.md`。OpenAPI 3.2.1、Human/Agent共通API、verified identity境界、RFC 9457、既存operation ID/revision、監査済みfile access、Document Diff projectionを設計対象とする。
+- 現在のStep / blocker: 設計書をDraft PRへ載せて依頼者レビューを受ける。製品コード・`spec/api/openapi.yaml` paths・production dependencyはまだ変更しない。blockerは設計承認のみ。
+- 次のexact action: 設計PRを作成し、書面設計の承認後にapproval recordとProduction Implementation Planを作る。実装・merge・deployは別の明示指示を必要とする。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## Active checkpoint — Document Diff v0 設計PR統合済み・実装PR main統合中、2026-09-29 JST
 
 - Status: **ACTIVE — DIF-01〜15実装とD exact-head gate完了、PR #24 main統合中**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。Frozen Design blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`、Approved Plan blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`、意味変更提案なし。
