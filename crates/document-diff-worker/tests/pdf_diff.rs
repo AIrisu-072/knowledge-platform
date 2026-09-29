@@ -26,6 +26,9 @@ const FORM: &[u8] = include_bytes!(
 const NOISE: &[u8] = include_bytes!(
     "../../../experiments/document-semantic-inspection/fixtures/pdf/object-id-producer-noise.pdf"
 );
+const ANNOTATION: &[u8] = include_bytes!(
+    "../../../experiments/document-semantic-inspection/fixtures/pdf/annotation-change.pdf"
+);
 const SCAN: &[u8] =
     include_bytes!("../../../experiments/document-semantic-inspection/fixtures/pdf/scan-only.pdf");
 const AMBIGUOUS: &[u8] = include_bytes!(
@@ -94,6 +97,14 @@ fn producer_and_object_id_noise_does_not_change_content() {
 }
 
 #[test]
+fn annotation_edits_are_ancillary_without_false_content_change() {
+    let result = compare(BASE, ANNOTATION);
+    assert_eq!(result.coverage, DiffCoverage::Full);
+    assert!(result.changes.is_empty());
+    assert!(!result.ancillary_changes.is_empty());
+}
+
+#[test]
 fn scan_ambiguous_read_order_and_corruption_remain_unverified() {
     for (target, reason) in [
         (SCAN, UnverifiedReason::UnsupportedSemanticConstruct),
@@ -114,3 +125,71 @@ fn scan_ambiguous_read_order_and_corruption_remain_unverified() {
         );
     }
 }
+
+#[test]
+fn overlapping_text_and_image_paint_order_is_a_visual_change() {
+    let text_then_image = paint_order_pdf(true);
+    let image_then_text = paint_order_pdf(false);
+    let result = compare(&text_then_image, &image_then_text);
+    assert_eq!(result.coverage, DiffCoverage::Full);
+    assert!(result.changes.iter().any(|change| {
+        change.facet == "pdf_visual"
+            && change.reason_code == "paint_order_changed"
+            && matches!(change.base, Some(SourceLocator::PdfPage { page: 1, .. }))
+    }));
+}
+
+fn paint_order_pdf(text_before_image: bool) -> Vec<u8> {
+    let text = "BT /F1 12 Tf 12 180 Td (SAME NATIVE TEXT) Tj ET";
+    let image = "q 200 0 0 200 0 0 cm /Im0 Do Q";
+    let content = if text_before_image {
+        format!("{text}\n{image}")
+    } else {
+        format!("{image}\n{text}")
+    };
+    serialize_pdf(vec![
+        (1, b"<< /Type /Catalog /Pages 2 0 R >>".to_vec()),
+        (2, b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec()),
+        (3, b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 5 0 R >> /XObject << /Im0 6 0 R >> >> /Contents 4 0 R >>".to_vec()),
+        (4, pdf_stream(b"", content.as_bytes())),
+        (5, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec()),
+        (6, pdf_stream(b"/Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8", &[255, 0, 0])),
+    ])
+}
+
+fn pdf_stream(attributes: &[u8], data: &[u8]) -> Vec<u8> {
+    let mut body = format!(
+        "<< {} /Length {} >>\nstream\n",
+        String::from_utf8_lossy(attributes),
+        data.len()
+    )
+    .into_bytes();
+    body.extend_from_slice(data);
+    body.extend_from_slice(b"\nendstream");
+    body
+}
+
+fn serialize_pdf(objects: Vec<(u32, Vec<u8>)>) -> Vec<u8> {
+    let mut bytes = b"%PDF-1.7\n%\xE2\xE3\xCF\xD3\n".to_vec();
+    let mut offsets = vec![0usize];
+    for (id, body) in objects {
+        assert_eq!(id as usize, offsets.len());
+        offsets.push(bytes.len());
+        writeln!(bytes, "{id} 0 obj").unwrap();
+        bytes.extend_from_slice(&body);
+        bytes.extend_from_slice(b"\nendobj\n");
+    }
+    let xref_offset = bytes.len();
+    write!(bytes, "xref\n0 {}\n0000000000 65535 f \n", offsets.len()).unwrap();
+    for offset in offsets.iter().skip(1) {
+        writeln!(bytes, "{offset:010} 00000 n ").unwrap();
+    }
+    write!(
+        bytes,
+        "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n",
+        offsets.len()
+    )
+    .unwrap();
+    bytes
+}
+use std::io::Write as _;
