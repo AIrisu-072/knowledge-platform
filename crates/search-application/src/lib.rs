@@ -11,6 +11,7 @@ pub mod ports;
 pub mod projection;
 pub mod qualification;
 pub mod retrieval;
+pub mod retrieval_execution;
 pub mod routing;
 pub mod session;
 pub mod source_registry;

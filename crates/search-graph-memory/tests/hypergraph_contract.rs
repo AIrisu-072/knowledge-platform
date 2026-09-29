@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use search_application::SearchError;
 use search_application::ports::{
     AccessDecision, BoxFuture, CurrentAccessEvaluatorPort, HyperGraphRetrieverPort,
 };
@@ -158,6 +159,13 @@ impl CurrentAccessEvaluatorPort for CountingAccess {
     fn evaluate<'a>(&'a self, _id: ResourceId, _context: &'a str) -> BoxFuture<'a, AccessDecision> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Box::pin(async { Ok(AccessDecision::Allowed) })
+    }
+}
+
+struct FailingAccess;
+impl CurrentAccessEvaluatorPort for FailingAccess {
+    fn evaluate<'a>(&'a self, _id: ResourceId, _context: &'a str) -> BoxFuture<'a, AccessDecision> {
+        Box::pin(async { Err(SearchError::SourceUnavailable("secret marker".into())) })
     }
 }
 
@@ -560,6 +568,37 @@ async fn denied_or_unknown_seed_target_and_any_participant_are_invisible() {
             .hits
             .is_empty()
     );
+}
+
+#[tokio::test]
+async fn access_error_for_indexed_seed_is_indistinguishable_from_absent_seed() {
+    let owner_id = source(1);
+    let manifest = manifest(owner_id, 1, 3, 1);
+    let graph = MemoryGraphRetriever::new(Arc::new(FailingAccess));
+    graph
+        .build_generation(
+            manifest.clone(),
+            &owner(owner_id, RetentionMode::PersistentDiscoveryMetadata),
+            batch(
+                &manifest,
+                vec![loan(101, resource(1), resource(2), resource(10))],
+            ),
+        )
+        .unwrap();
+    let existing = graph
+        .retrieve(
+            manifest.key(),
+            &plan(resource(1), vec![step("borrower", "product")]),
+        )
+        .await;
+    let absent = graph
+        .retrieve(
+            manifest.key(),
+            &plan(resource(999), vec![step("borrower", "product")]),
+        )
+        .await
+        .unwrap();
+    assert_eq!(existing.unwrap(), absent);
 }
 
 #[tokio::test]

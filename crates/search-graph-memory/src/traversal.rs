@@ -53,8 +53,10 @@ impl MemoryGraphRetriever {
             cache.insert(id, false);
             return Ok(false);
         }
-        let current = self.access.evaluate(id, &plan.access_context).await?;
-        let visible = current == AccessDecision::Allowed;
+        let visible = matches!(
+            self.access.evaluate(id, &plan.access_context).await,
+            Ok(AccessDecision::Allowed)
+        );
         cache.insert(id, visible);
         Ok(visible)
     }

@@ -12,32 +12,16 @@ use crate::ports::{GraphRetrievalResult, HyperGraphRetrieverPort};
 pub struct QualificationService;
 
 impl QualificationService {
-    pub async fn candidates_from_graph(
+    /// Fetch raw adapter output for the executor. Per-hit data is untrusted
+    /// until the executor has checked current candidate and path access.
+    pub(crate) async fn candidates_from_graph(
         retriever: &dyn HyperGraphRetrieverPort,
         generation: ProjectionGenerationKey,
         plan: &GraphTraversalPlan,
     ) -> Result<GraphRetrievalResult, SearchError> {
         plan.validate()
             .map_err(|reason| SearchError::InvalidRequest(reason.into()))?;
-        let result = retriever.retrieve(generation, plan).await?;
-        if result.generation != generation {
-            return Err(SearchError::OperationFailed(
-                "graph retriever returned another generation".into(),
-            ));
-        }
-        for hit in &result.hits {
-            if hit.candidate.source_ref != generation.source_id {
-                return Err(SearchError::OperationFailed(
-                    "graph retriever returned another Source".into(),
-                ));
-            }
-            if hit.paths.is_empty() || hit.paths.iter().any(|path| path.steps.is_empty()) {
-                return Err(SearchError::OperationFailed(
-                    "graph retriever returned a hit without path evidence".into(),
-                ));
-            }
-        }
-        Ok(result)
+        retriever.retrieve(generation, plan).await
     }
 
     pub fn qualify_candidate(
