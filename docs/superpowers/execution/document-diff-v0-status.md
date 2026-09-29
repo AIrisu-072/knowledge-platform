@@ -1,5 +1,15 @@
 # Document Diff v0 — Capability Execution Status
 
+## 2026-09-29 JST — B hosted GREEN、DIF-10局所GREEN、DIF-11 NEXT
+
+- 状態: **ACTIVE**。DIF-01〜09はDelivery A/Bの同一head hosted gateまで完了。DIF-10は局所RED→GREEN、DIF-11〜15未着手。Frozen Design意味変更提案なし。
+- branch/PR: 設計Draft PR #23 head `993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24 remote B head `7dde25a56784f3dd79b0a994d869ce06bb32acad`。local DIF-10 GREEN `19343d089747fe7f038ea7009d8348d5c94c1452`、未push。両PR未merge。
+- B exact-head: 標準CI `36509161078` SUCCESS、DSI Sandbox Preflight `36509161061` SUCCESS、DSI PoC `36509161323` SUCCESS、すべて `7dde25a56784f3dd79b0a994d869ce06bb32acad`。
+- DIF-10: test-only RED `014a4cda8c29d5ae45ab98e1bb7829ae57f39bfd` は `DocxComparator` とworker付随差契約の不在だけでcompile FAIL。GREEN `19343d089747fe7f038ea7009d8348d5c94c1452` でDOCX 6/6、core protocol 6/6、Application contract 9/9、対象strict Clippy PASS。補足fixtureの移動＋本文変更とtable cell位置は各々焦点RED→GREEN。DSI-qualified意味fingerprintをguardとし、確定位置がない範囲を未比較とする。コメント/編集由来は内容差分から分離する。新規parser versionはpromoteせず既存pinの`office_oxide`/`quick-xml`/`zip`のみ使用。
+- blocker / 次: DIF-10のhosted gateはC最終headで確認する。DIF-15の資源実測・全形式受入は未完了。次のexact actionはDIF-11 XLSXのDSI資格fixtureとparser pinを確認し、test-only REDを作る。merge・deploy指示なし。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## 2026-09-29 JST — A exact-head GREEN、B局所GREEN・hosted NEXT
 
 - 状態: **ACTIVE**。DIF-01〜06のAはhosted gateまで完了。DIF-07〜09のBは局所RED→GREENと共通検証済み、hosted未判定。DIF-10〜15は未着手。Frozen Designの意味変更提案なし。

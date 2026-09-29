@@ -1,5 +1,16 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document Diff v0 B exact-head GREEN、DIF-10局所GREEN、2026-09-29 JST
+
+- Status: **ACTIVE — DIF-01〜09 hosted完了、DIF-10局所RED→GREEN、DIF-11〜15未着手**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
+- Approved Design Spec: `docs/superpowers/specs/2026-09-28-document-diff-v0-design.md`、凍結blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`。Approved Plan: `docs/superpowers/plans/2026-09-29-document-diff-v0-production-implementation.md`、blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`。設計意味の差分提案なし。
+- GitHub: 設計Draft PR #23は `design/document-diff-v0@993cd094a09bdefcd4a9985b62e2a99aa9049b68`、実装Draft PR #24のremote B headは `feat/document-diff-v0@7dde25a56784f3dd79b0a994d869ce06bb32acad`。local DIF-10 GREEN headは `19343d089747fe7f038ea7009d8348d5c94c1452`、未push。両PRは未merge。
+- B exact-head gate: 標準CI `36509161078` SUCCESS、DSI Sandbox Preflight `36509161061` SUCCESS、DSI PoC `36509161323` SUCCESS、すべて `7dde25a56784f3dd79b0a994d869ce06bb32acad`。
+- DIF-10: RED `014a4cda8c29d5ae45ab98e1bb7829ae57f39bfd`、GREEN `19343d089747fe7f038ea7009d8348d5c94c1452`。DOCX 6/6、core protocol 6/6、Application contract 9/9、対象strict Clippy PASS。段落の安定IDによる移動＋本文変更、表cellの原本位置、編集由来の付随差、未知OOXMLの未比較を確認。DIF-10のhosted gateはC最終headで実行する。
+- 次の exact action: DIF-11 XLSXの既存DSI資格fixtureとproduction parser pinを確認し、XLSX比較のtest-only REDを作って焦点試験で失敗を記録する。DIF-15資源実測・C/D hosted gateは未完了。merge・deploy指示なし。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## Active checkpoint — Document Diff v0 A exact-head GREEN、B local GREEN、2026-09-29 JST
 
 - Status: **ACTIVE — DIF-01〜09局所GREEN、A hosted GREEN、B hosted gate待ち、DIF-10〜15未着手**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。
