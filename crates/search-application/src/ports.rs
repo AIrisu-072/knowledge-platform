@@ -9,7 +9,7 @@ use search_core::assertion::Assertion;
 use search_core::binding::RepresentationBinding;
 use search_core::discovery::{DiscoveryRequest, FederatedCandidate};
 use search_core::fact::FactSet;
-use search_core::graph::GraphTraversalPlan;
+use search_core::graph::{GraphPathEvidence, GraphTraversalPlan};
 use search_core::id::{ResourceId, SourceId};
 use search_core::predicate::{ConceptResolver, TruthValue, TypedValue};
 use search_core::projection::{
@@ -209,8 +209,22 @@ pub trait VectorRetrieverPort: Send + Sync {
 pub trait HyperGraphRetrieverPort: Send + Sync {
     fn retrieve<'a>(
         &'a self,
+        generation: ProjectionGenerationKey,
         plan: &'a GraphTraversalPlan,
-    ) -> BoxFuture<'a, Vec<FederatedCandidate>>;
+    ) -> BoxFuture<'a, GraphRetrievalResult>;
+}
+
+/// The generation and all relation-local path evidence travel with candidates.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GraphRetrievalResult {
+    pub generation: ProjectionGenerationKey,
+    pub hits: Vec<GraphRetrievalHit>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GraphRetrievalHit {
+    pub candidate: FederatedCandidate,
+    pub paths: Vec<GraphPathEvidence>,
 }
 
 pub trait ProbePort: Send + Sync {

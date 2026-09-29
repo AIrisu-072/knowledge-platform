@@ -64,6 +64,8 @@ pub struct TraversalBudget {
     pub max_hops: usize,
     pub max_relations: usize,
     pub max_branching_per_node: usize,
+    pub max_seed_nodes: usize,
+    pub max_paths: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,8 +96,16 @@ impl GraphTraversalPlan {
         if self.expansion_budget.max_hops == 0
             || self.expansion_budget.max_relations == 0
             || self.expansion_budget.max_branching_per_node == 0
+            || self.expansion_budget.max_seed_nodes == 0
+            || self.expansion_budget.max_paths == 0
         {
             return Err("traversal requires finite positive budgets");
+        }
+        if self.seed_nodes.len() > self.expansion_budget.max_seed_nodes {
+            return Err("graph seed budget exceeded");
+        }
+        if !self.stop_conditions.is_empty() {
+            return Err("graph stop conditions are not supported");
         }
         Ok(())
     }
@@ -123,9 +133,24 @@ impl GraphTraversalPlan {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GraphPathEvidence {
-    pub relation_path: Vec<RelationId>,
+/// One relation occurrence in an ordered path. Participant sets remain tied to
+/// their relation ID, so paths cannot manufacture a composite n-ary relation.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GraphPathStepEvidence {
+    pub relation_id: RelationId,
+    pub namespace: RelationNamespace,
+    pub relation_type: String,
+    pub from_role: String,
+    pub from_resource: ResourceId,
+    pub to_role: String,
+    pub to_resource: ResourceId,
     pub participants: Vec<RelationParticipant>,
     pub evidence_refs: Vec<String>,
+    pub provenance: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GraphPathEvidence {
+    pub resource_path: Vec<ResourceId>,
+    pub steps: Vec<GraphPathStepEvidence>,
 }

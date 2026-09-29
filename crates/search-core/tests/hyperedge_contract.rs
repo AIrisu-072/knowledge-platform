@@ -95,8 +95,10 @@ fn traversal_is_constrained_by_type_roles_scope_access_authority_and_budget() {
             max_hops: 2,
             max_relations: 10,
             max_branching_per_node: 3,
+            max_seed_nodes: 1,
+            max_paths: 10,
         },
-        stop_conditions: vec!["sufficient-evidence".into()],
+        stop_conditions: vec![],
     };
     assert!(plan.validate().is_ok());
     assert!(plan.allows(&relation(101, resource(2), resource(10))));
@@ -119,6 +121,8 @@ fn unlimited_or_context_free_traversal_is_invalid() {
             max_hops: 0,
             max_relations: 0,
             max_branching_per_node: 0,
+            max_seed_nodes: 0,
+            max_paths: 0,
         },
         stop_conditions: vec![],
     };

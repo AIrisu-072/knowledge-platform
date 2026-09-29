@@ -3687,6 +3687,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "search-graph-memory"
+version = "0.0.0"
+dependencies = [
+ "search-application",
+ "search-core",
+ "thiserror",
+ "time",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "search-projection-memory"
 version = "0.0.0"
 dependencies = [
