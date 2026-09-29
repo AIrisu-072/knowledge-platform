@@ -232,11 +232,16 @@ GET /v1/documents/{documentId}/versions/{versionId}/files?purpose=published|auth
 
 `purpose` は既存 `VersionPurpose` の認可意味を保持し、同じVersion IDでも用途を省略して権限を広げない。
 
-### 7.4 Folder children
+### 7.4 Folder root / children
 
 ```http
+GET /v1/folders/root
 GET /v1/folders/{folderId}/children
 ```
+
+`/folders/root` は論理的なroot discovery endpointであり、transportが `document-repository-postgres::SYSTEM_ROOT_FOLDER_ID` をimportまたはhard-codeすることを禁止する。Application Layerが現在認可を評価したうえでrootの `folderId` と `revision` を返す狭いread contractを持つ。
+
+これによりGUI/AgentはInfrastructure定数を知らずにFolder treeを開始でき、root直下へのFolder作成で必要な `expectedParentRevision` も取得できる。
 
 読めないFolder名、祖先名、子件数を漏らさない。
 
@@ -285,7 +290,9 @@ POST  /v1/folders
 PATCH /v1/folders/{folderId}
 POST  /v1/folders/{folderId}:move
 
+GET /v1/documents/{documentId}/access-policy
 PUT /v1/documents/{documentId}/access-policy
+GET /v1/folders/{folderId}/access-policy
 PUT /v1/folders/{folderId}/access-policy
 ```
 
@@ -293,7 +300,19 @@ metadata PATCHはJSON Merge Patchの一般意味を採用せず、既存command�
 
 AccessPolicyは `inherit` または明示grant集合を表すdiscriminated unionにする。明示空grantは既存Domain契約どおり拒否する。
 
-**AccessPolicyの読取endpointはv0では作らない。** 現在のApplication Layerに認可済みpolicy-read契約がないため、transportからRepositoryを直接読ませない。UI要件として必要になった時点で、先にApplicationのread contractを設計する。
+AccessPolicyのGETは既存Document Management Basics設計どおり対象への `administer` を要求する。Transport実装前に、現在Application Layerで不足している認可済みpolicy-read contractを追加する。TransportからRepositoryの `read_grants` やpolicy tableを直接読んではならない。
+
+policy read responseは、更新に必要なlocal bindingと利用者が理解するためのeffective policyを区別する。
+
+- `target`
+- `bindingMode = inherit | explicit`
+- `policyId`（local bindingが存在する場合）
+- `policyRevision`（local binding未作成なら0。PUTの `expectedPolicyRevision` に利用）
+- `effectivePolicyId`
+- `effectiveSource`（target自身または継承元Folder）
+- `effectiveGrants`
+
+継承中にeffective grantsだけを返してlocal bindingの有無を隠すと、PUT時のrevision競合制御ができないため、この二つを混同しない。
 
 ### 8.4 Read state
 
@@ -432,7 +451,11 @@ API errorは原則 `application/problem+json`。
 | `CURSOR_STALE` | 409 | false | cursor binding失効 |
 | `STALE_VERSION` | 409 | false | Version前提が古い |
 | `STALE_COMPARISON_INPUT` | 409 | false | Diff中に入力前提変更 |
-| `BUSINESS_RULE_REJECTED` | 422 | false | 業務遷移拒否 |
+| `BUSINESS_RULE_REJECTED` | 422 | false | 型付き理由へ分解できない残余の業務拒否 |
+| `RESERVED_DOCUMENT` | 409 | false | 予約中等の文書変更制約 |
+| `FOLDER_CYCLE` | 409 | false | Folder移動でcycle発生 |
+| `ROOT_PROTECTED` | 409 | false | rootへの禁止操作 |
+| `IDENTITY_UNAVAILABLE` | 503 | true | identity resolution一時失敗 |
 | `PUBLISH_QUALITY_REJECTED` | 422 | false | 公開品質条件未達 |
 | `UNSUPPORTED_MEDIA_TYPE` | 415 | false | transport media type非対応 |
 | `DEPENDENCY_UNAVAILABLE` | 503 | true | 一時依存障害 |
@@ -444,6 +467,8 @@ API errorは原則 `application/problem+json`。
 operation IDを持つmutationの `COMMIT_OUTCOME_UNKNOWN` は「同一ID・同一payloadの再実行だけ許可」をProblem extensionで示す。initial createだけは§9.3のrecoveryを使い、自動再POSTしない。
 
 ProblemにSQL、Storage locator、credential、原文、stack traceを含めない。
+
+Document Management Basicsの設計・計画では `ManagementErrorCode` として `ReservedDocument`、`FolderCycle`、`RootProtected`、`IdentityUnavailable` 等をmachine-readableに区別する方針が既にある。一方、現在の一部実装経路はこれらを `ApplicationError::BusinessRule` へ集約している。HTTP adapterがerror文字列やSQL状態から原因を推測することは禁止する。Transport実装前に、必要な区別をApplicationの型付きerror surfaceへ復元し、その型からError Registryへ写像する。
 
 実装時に `spec/errors/error-registry.yaml` を作成し、OpenAPI schemaとRust mappingの双方から参照する。
 
@@ -580,9 +605,12 @@ Transport実装のためにApplicationへ追加してよいのは、既存Domain
 現時点で必要と判断するもの:
 
 1. initial createのcommit outcomeを安全に照会する**認可済みcreate outcome lookup**。
-2. Transport assemblyが既存Query/Management/History/Diff serviceを同じverified actorで利用するための薄いfacadeまたは明示的なservice composition。
+2. Document Management Basicsで既に定義済みの「policy設定の参照にはadministerが必要」という意味を公開する**認可済みAccessPolicy read contract**。local bindingのmode/revisionとeffective inherited policyを区別して返す。
+3. Repository具象の `SYSTEM_ROOT_FOLDER_ID` をtransportへ漏らさないための**認可済みroot Folder discovery/read contract**。
+4. 既存設計上はmachine-readableである管理エラー理由が現在 `ApplicationError::BusinessRule` に集約される箇所について、HTTPが文字列解析せず扱える**型付きApplication error surfaceの補完**。
+5. Transport assemblyが既存Query/Management/History/Diff serviceを同じverified actorで利用するための薄いfacadeまたは明示的なservice composition。
 
-AccessPolicyのread契約など、新しい業務意味を伴うものは本Capabilityへ便乗させない。
+これらは既存Document Management Basicsの意味をtransportから利用可能にする補完であり、新しいACLモデルや新しいFolder業務規則を導入しない。新しいworkflow・policy言語・権限意味は本Capabilityへ便乗させない。
 
 ## 20. Acceptance criteria
 
@@ -618,6 +646,9 @@ AccessPolicyのread契約など、新しい業務意味を伴うものは本Capa
 19. OpenAPI 3.2 codegen候補はPOC REQUIRED gateを通るまでproductionへ入らない。
 20. TypeScript側がraw fetch/API URLをPresentationへ漏らさずGenerated/typed client境界を構成可能。
 21. GUIを作らなくてもcontract testで全operationを縦断検証できる。
+22. AccessPolicy管理Clientが `administer` 認可済みGETからlocal policy revisionとeffective grantsを取得でき、Repositoryへ直接接続しない。
+23. Folder Clientが `/v1/folders/root` からtree探索を開始でき、Infrastructureのroot UUIDを知る必要がない。
+24. Management errorのmachine判定がhuman-readable error文字列に依存しない。
 
 ## 21. 実装順序の方針
 
