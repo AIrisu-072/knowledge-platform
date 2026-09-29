@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 serde.workspace = true
 document-domain = { version = "0.0.0", path = "../document-domain" }
+document-diff-core = { version = "0.0.0", path = "../document-diff-core" }
 document-semantic-inspection-core = { version = "0.0.0", path = "../document-semantic-inspection-core" }
 tokio.workspace = true
 serde_json.workspace = true

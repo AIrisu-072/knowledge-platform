@@ -1081,6 +1081,7 @@ dependencies = [
 name = "document-application"
 version = "0.0.0"
 dependencies = [
+ "document-diff-core",
  "document-domain",
  "document-repository-postgres",
  "document-semantic-inspection-core",
@@ -1097,6 +1098,17 @@ dependencies = [
  "tokio",
  "unicode-normalization",
  "uuid",
+]
+
+[[package]]
+name = "document-diff-core"
+version = "0.0.0"
+dependencies = [
+ "document-semantic-inspection-core",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror",
 ]
 
 [[package]]
