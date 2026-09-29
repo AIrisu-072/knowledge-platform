@@ -16,7 +16,9 @@ serde_json.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+document-repository-postgres = { version = "0.0.0", path = "../document-repository-postgres" }
+sqlx.workspace = true
+testcontainers.workspace = true
 tower = "0.5"
 tokio.workspace = true
 time.workspace = true
-
