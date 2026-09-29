@@ -109,6 +109,10 @@ fn unique_row_reorder_is_confirmed_but_duplicate_row_alignment_is_not() {
         duplicate.unverified_regions[0].reason,
         UnverifiedReason::AmbiguousAlignment
     );
+
+    let duplicated_target = compare(b"id,val\na,1\nb,2\n", b"id,val\na,1\na,1\n");
+    assert_eq!(duplicated_target.coverage, DiffCoverage::None);
+    assert!(duplicated_target.changes.is_empty());
 }
 
 #[test]
@@ -119,4 +123,15 @@ fn inconsistent_structure_and_ambiguous_delimiter_are_unverified() {
         assert!(result.changes.is_empty());
         assert!(!result.unverified_regions.is_empty());
     }
+}
+
+#[test]
+fn row_limit_is_a_resource_unverified_region() {
+    let many_rows = b"a,b\n".repeat(100_001);
+    let result = compare(BASE, &many_rows);
+    assert_eq!(result.coverage, DiffCoverage::None);
+    assert_eq!(
+        result.unverified_regions[0].reason,
+        UnverifiedReason::ResourceLimit
+    );
 }
