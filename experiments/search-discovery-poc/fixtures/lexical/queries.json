@@ -1,0 +1,15 @@
+[
+  {"id":"corp-loan-exact","query":"法人融資申込","expected_resource_ids":["loan-corp"],"forbidden_resource_ids":["loan-personal"],"required_kind":"workflow","required_audience":"corporate","mandatory":true},
+  {"id":"personal-loan-exact","query":"個人融資申込","expected_resource_ids":["loan-personal"],"forbidden_resource_ids":["loan-corp"],"required_kind":"workflow","required_audience":"personal","mandatory":true},
+  {"id":"corp-address-alias","query":"法人住所変更","expected_resource_ids":["address-corp"],"forbidden_resource_ids":["address-personal"],"required_kind":"workflow","required_audience":"corporate","mandatory":true},
+  {"id":"personal-address-alias","query":"個人住所変更","expected_resource_ids":["address-personal"],"forbidden_resource_ids":["address-corp"],"required_kind":"workflow","required_audience":"personal","mandatory":true},
+  {"id":"business-loan-alias","query":"事業性融資手続","expected_resource_ids":["loan-corp"],"forbidden_resource_ids":["loan-personal"],"required_kind":"workflow","required_audience":"corporate","mandatory":true},
+  {"id":"policy-vs-procedure","query":"融資審査規程","expected_resource_ids":["credit-policy"],"forbidden_resource_ids":["credit-procedure"],"required_kind":"policy","required_audience":null,"mandatory":true},
+  {"id":"procedure-vs-policy","query":"融資審査手順","expected_resource_ids":["credit-procedure"],"forbidden_resource_ids":["credit-policy"],"required_kind":"workflow","required_audience":null,"mandatory":true},
+  {"id":"manual-vs-policy","query":"融資マニュアル","expected_resource_ids":["credit-manual"],"forbidden_resource_ids":["credit-policy"],"required_kind":"knowledge","required_audience":null,"mandatory":true},
+  {"id":"mixed-ascii-date-number","query":"API 2026-04 融資連携マニュアル","expected_resource_ids":["api-manual"],"forbidden_resource_ids":[],"required_kind":"knowledge","required_audience":null,"mandatory":true},
+  {"id":"ambiguous-loan","query":"融資","expected_resource_ids":["loan-corp"],"forbidden_resource_ids":["loan-personal"],"required_kind":"workflow","required_audience":"corporate","mandatory":true},
+  {"id":"ambiguous-deposit","query":"預金","expected_resource_ids":["deposit-corp"],"forbidden_resource_ids":["deposit-personal"],"required_kind":"workflow","required_audience":"corporate","mandatory":true},
+  {"id":"compound-corporate-loan","query":"コーポレート融資","expected_resource_ids":["loan-corp"],"forbidden_resource_ids":["loan-personal"],"required_kind":"workflow","required_audience":"corporate","mandatory":false},
+  {"id":"compound-location-change","query":"所在地変更","expected_resource_ids":["address-corp"],"forbidden_resource_ids":["address-personal"],"required_kind":"workflow","required_audience":"corporate","mandatory":false}
+]
