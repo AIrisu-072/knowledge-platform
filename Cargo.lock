@@ -1112,6 +1112,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "document-diff-runner"
+version = "0.0.0"
+dependencies = [
+ "document-application",
+ "document-diff-core",
+ "document-semantic-inspection-runner",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "document-diff-worker"
+version = "0.0.0"
+dependencies = [
+ "document-diff-core",
+ "document-semantic-inspection-runner",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror",
+]
+
+[[package]]
 name = "document-domain"
 version = "0.0.0"
 dependencies = [
