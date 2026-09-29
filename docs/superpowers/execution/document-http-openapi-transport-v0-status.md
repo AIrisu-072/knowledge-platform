@@ -1,5 +1,15 @@
 # Document HTTP/OpenAPI Transport v0 — Capability Execution Status
 
+## 2026-09-29 JST — 計画承認・HAPI-01開始準備
+
+- 状態: **PLAN APPROVED / IMPLEMENTATION AUTHORIZED / HAPI-01 NEXT**。HAPI-01〜12は未実装。Frozen Design blob `88f7046a5d14a77f4091df0c92691f6634dd57d7`、承認済みProduction Plan blob `111914181143672d3fec901dae75fc2af0256b15`。依頼者の明示承認と実装指示は計画 `-approval.md` に記録。設計意味変更提案なし。
+- branch/PR: `design/document-http-openapi-transport-v0`、Draft PR #27。承認前head `a1b69e182e5f94a2054de2087b65eafc5a0b5ba4`、基準main `77b13a1d35d15eea0112ca2d73f8cbd3dfffe1c9`。PR #27の標準CI `36571955105`、Sandbox `36571954899`、DSI PoC `36571954725` は同一head SUCCESS。
+- verification: `AGENTS.md`、Active/Status、Frozen Designと承認、Planとblob、PR #27/mainを現在状態で確認。承認記録欠落時は製品実装を開始しなかった。承認記録は本commitで追加する。製品code/testはまだ実行・変更していない。
+- blocker / 未解決判断: 計画承認gateは解消。実装上のSTOP条件はHAPI-01以降で判定する。merge、deploy、AD実接続は対象外。新production dependencyはqualification前にpromoteしない。
+- 次のexact action: 本承認記録をcommit/pushし、そのheadから `feat/document-http-openapi-transport-v0-a` を作る。最新main/lock/migration/architecture rulesを確認し、HAPI-01のOpenAPI contract test-only REDを作成する。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## 2026-09-29 JST — 設計承認・Production Implementation Planレビュー待ち
 
 - 状態: **DESIGN APPROVED / PLAN REVIEW PENDING / IMPLEMENTATION BLOCKED**。製品コード、OpenAPI paths、production dependency、本番deployは未変更。
