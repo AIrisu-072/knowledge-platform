@@ -14,3 +14,15 @@
 {"ts":"2026-09-30T14:26:36+09:00","event":"dispatched","task":"p5-architecture"}
 {"ts":"2026-09-30T14:26:36+09:00","event":"completed","task":"p6-design"}
 {"ts":"2026-09-30T14:26:36+09:00","event":"dispatched","task":"p6-architecture"}
+{"ts":"2026-09-30T14:29:06+09:00","event":"dispatched","task":"inspect-environment"}
+{"ts":"2026-09-30T14:31:22+09:00","event":"completed","task":"p3-architecture","detail":"Review report complete, verdict NO-GO; freeze blocked until revised design passes independent recheck"}
+{"ts":"2026-09-30T14:31:22+09:00","event":"dispatched","task":"p3-repair-design"}
+{"ts":"2026-09-30T14:31:22+09:00","event":"completed","task":"p4-architecture","detail":"Review report complete, verdict NO-GO; freeze blocked until revised design passes independent recheck"}
+{"ts":"2026-09-30T14:31:22+09:00","event":"dispatched","task":"p4-repair-design"}
+{"ts":"2026-09-30T14:35:24+09:00","event":"completed","task":"p1-architecture","detail":"Independent review complete NO-GO; no design freeze or production claim"}
+{"ts":"2026-09-30T14:35:24+09:00","event":"dispatched","task":"p1-repair-design"}
+{"ts":"2026-09-30T14:35:24+09:00","event":"completed","task":"p5-architecture","detail":"Independent review complete NO-GO; no design freeze or production claim"}
+{"ts":"2026-09-30T14:35:24+09:00","event":"dispatched","task":"p5-repair-design"}
+{"ts":"2026-09-30T14:35:24+09:00","event":"completed","task":"p6-architecture","detail":"Independent review complete NO-GO; no design freeze or production claim"}
+{"ts":"2026-09-30T14:35:24+09:00","event":"dispatched","task":"p6-repair-design"}
+{"ts":"2026-09-30T14:35:24+09:00","event":"completed","task":"inspect-environment"}

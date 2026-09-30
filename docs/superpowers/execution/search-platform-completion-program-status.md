@@ -37,3 +37,21 @@ Parent Work checkpoint: `parent-f44595738c9443daaa07124d8947b2bd`, generation 1,
 Integration decision: keep the foundation branch/PR for program contracts and frozen designs. Capability code is developed with isolated write scopes and reviewable Draft branches; dependent Vector/API/Runtime consume frozen contracts and accepted capability commits. Shared Cargo/lock/architecture/API schema edits are serialized by the parent or a dedicated scoped task; no concurrent editing of them. Local integration may join accepted commits, but GitHub PRs remain unmerged Draft and no live deployment occurs. Keep Document HTTP and Document Diff status artifacts unchanged.
 
 Exact next action: consume independent architecture findings, repair only findings, freeze reviewed contracts and concrete plans, then dispatch bounded implementation tasks. P2 waits only for P1 contract freeze.
+
+## Architecture review repair — 2026-09-30
+
+All five initial architecture reports are complete, verdict NO-GO; none is an accepted freeze or production receipt. Graph now models separate revision-1 designs and independent rechecks. The original reports remain immutable artifacts. Review task completion means the report was delivered, not that its verdict passed.
+
+| Capability | Findings | Fresh repair worker | Key correction |
+| --- | --- | --- | --- |
+| P1 | 4 P1, 1 P2 | `/root/completion_p1_design_repair` | BodyRequired scope/current access; additive unit bundle digest; canonical Unit/locator; verified Extracted evidence; failure matrix |
+| P3 | 5 P2 | `/root/completion_p3_design_repair` | READY/pointer/pin/GC locks; trusted owner; temporal serialization; relation-only incremental closure; enforceable disclosure threat model |
+| P4 | 2 P1, 3 P2 | `/root/completion_p4_design_repair` | one generation per Source; tenant/actor context; ephemeral identity; retention lifetime; evidence authority |
+| P5 | 2 P1 plus P2 | `/root/completion_p5_design_repair` | pre-routing Source visibility; confidential cursor/no retention; claim visibility; final access; HTTP deadline/partial semantics |
+| P6 | 4 P2 | `/root/completion_p6_design_repair` | dispatch-time lease/fence; final-attempt crash recovery; distributed Source serialization; stale receipt fencing |
+
+Environment artifact complete: Rust1.98.1/macOS arm64, local PostgreSQL18.6 Docker image, pinned PDFium available in another managed worktree, 12GiB free. No new tests/builds ran. Use reduced debug and no incremental for focused code gates; actual pin paths and nextest resolution mismatch are in `environment.md`.
+
+Current foundation local head before this record: `2acbca2`; PR #34 remote head remains `a877f44` until the next batched push. New graph gate PASS: 66 tasks / 74 artifacts / 11 claims. Goal contract JSON schema PASS (manual trigger corrected).
+
+Exact next action: receive revision-1 artifacts, independently recheck with new reviewer contexts, freeze exact reviewed minimal P1 contract to release P2, and prepare explicit scoped plans. No Hard Stop reached.

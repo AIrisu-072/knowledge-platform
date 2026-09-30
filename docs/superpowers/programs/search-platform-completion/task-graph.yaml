@@ -529,6 +529,87 @@
         "G3"
       ],
       "path": "docs/superpowers/programs/search-platform-completion/acceptance.md"
+    },
+    {
+      "id": "environment-evidence",
+      "kind": "knowledge",
+      "path": "docs/superpowers/programs/search-platform-completion/environment.md",
+      "purpose": "current runtime toolchain container PDFium and capacity discovery without secret reads"
+    },
+    {
+      "id": "p3-revised",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p3-graph-design-revision-1.md",
+      "purpose": "Revised design resolving independent architecture findings"
+    },
+    {
+      "id": "p3-arch-recheck",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p3-graph-architecture-recheck.md",
+      "supports": [
+        "P3"
+      ],
+      "purpose": "Independent revised exact design architecture gate"
+    },
+    {
+      "id": "p4-revised",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p4-remote-design-revision-1.md",
+      "purpose": "Revised design resolving independent architecture findings"
+    },
+    {
+      "id": "p4-arch-recheck",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p4-remote-architecture-recheck.md",
+      "supports": [
+        "P4"
+      ],
+      "purpose": "Independent revised exact design architecture gate"
+    },
+    {
+      "id": "p1-revised",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-extraction-design-revision-1.md",
+      "purpose": "Revised design resolving independent architecture findings"
+    },
+    {
+      "id": "p1-arch-recheck",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-extraction-architecture-recheck.md",
+      "supports": [
+        "P1"
+      ],
+      "purpose": "Independent revised exact design architecture gate"
+    },
+    {
+      "id": "p5-revised",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p5-api-design-revision-1.md",
+      "purpose": "Revised design resolving independent architecture findings"
+    },
+    {
+      "id": "p5-arch-recheck",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p5-api-architecture-recheck.md",
+      "supports": [
+        "P5"
+      ],
+      "purpose": "Independent revised exact design architecture gate"
+    },
+    {
+      "id": "p6-revised",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p6-outbox-design-revision-1.md",
+      "purpose": "Revised design resolving independent architecture findings"
+    },
+    {
+      "id": "p6-arch-recheck",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p6-outbox-architecture-recheck.md",
+      "supports": [
+        "P6"
+      ],
+      "purpose": "Independent revised exact design architecture gate"
     }
   ],
   "tasks": [
@@ -580,15 +661,15 @@
       "write_scope": [
         "docs/superpowers/programs/search-platform-completion/p1-extraction-architecture-review.md"
       ],
-      "acceptance": "No blocking architecture P1/P2"
+      "acceptance": "Independent report records GO or actionable blocking findings; NO-GO requires a revised exact-design review before freeze"
     },
     {
       "id": "p1-freeze",
       "kind": "decision",
       "summary": "Freeze reviewed extraction contract and bounded implementation plan",
       "consumes": [
-        "p1-draft",
-        "p1-arch"
+        "p1-revised",
+        "p1-arch-recheck"
       ],
       "produces": [
         "p1-contract",
@@ -627,7 +708,8 @@
       "summary": "Qualify extraction behavior and measured limits",
       "consumes": [
         "p1-code",
-        "p1-contract"
+        "p1-contract",
+        "environment-evidence"
       ],
       "produces": [
         "p1-test"
@@ -842,15 +924,15 @@
       "write_scope": [
         "docs/superpowers/programs/search-platform-completion/p3-graph-architecture-review.md"
       ],
-      "acceptance": "No blocking architecture P1/P2"
+      "acceptance": "Independent report records GO or actionable blocking findings; NO-GO requires a revised exact-design review before freeze"
     },
     {
       "id": "p3-freeze",
       "kind": "decision",
       "summary": "Freeze reviewed graph contract and bounded implementation plan",
       "consumes": [
-        "p3-draft",
-        "p3-arch"
+        "p3-revised",
+        "p3-arch-recheck"
       ],
       "produces": [
         "p3-contract",
@@ -889,7 +971,8 @@
       "summary": "Qualify graph behavior and measured limits",
       "consumes": [
         "p3-code",
-        "p3-contract"
+        "p3-contract",
+        "environment-evidence"
       ],
       "produces": [
         "p3-test"
@@ -972,15 +1055,15 @@
       "write_scope": [
         "docs/superpowers/programs/search-platform-completion/p4-remote-architecture-review.md"
       ],
-      "acceptance": "No blocking architecture P1/P2"
+      "acceptance": "Independent report records GO or actionable blocking findings; NO-GO requires a revised exact-design review before freeze"
     },
     {
       "id": "p4-freeze",
       "kind": "decision",
       "summary": "Freeze reviewed remote contract and bounded implementation plan",
       "consumes": [
-        "p4-draft",
-        "p4-arch"
+        "p4-revised",
+        "p4-arch-recheck"
       ],
       "produces": [
         "p4-contract",
@@ -1102,15 +1185,19 @@
       "write_scope": [
         "docs/superpowers/programs/search-platform-completion/p5-api-architecture-review.md"
       ],
-      "acceptance": "No blocking architecture P1/P2"
+      "acceptance": "Independent report records GO or actionable blocking findings; NO-GO requires a revised exact-design review before freeze"
     },
     {
       "id": "p5-freeze",
       "kind": "decision",
       "summary": "Freeze reviewed api contract and bounded implementation plan",
       "consumes": [
-        "p5-draft",
-        "p5-arch"
+        "p5-revised",
+        "p5-arch-recheck",
+        "p1-contract",
+        "p2-contract",
+        "p3-contract",
+        "p4-contract"
       ],
       "produces": [
         "p5-contract",
@@ -1236,15 +1323,15 @@
       "write_scope": [
         "docs/superpowers/programs/search-platform-completion/p6-outbox-architecture-review.md"
       ],
-      "acceptance": "No blocking architecture P1/P2"
+      "acceptance": "Independent report records GO or actionable blocking findings; NO-GO requires a revised exact-design review before freeze"
     },
     {
       "id": "p6-freeze",
       "kind": "decision",
       "summary": "Freeze reviewed outbox contract and bounded implementation plan",
       "consumes": [
-        "p6-draft",
-        "p6-arch"
+        "p6-revised",
+        "p6-arch-recheck"
       ],
       "produces": [
         "p6-contract",
@@ -1283,7 +1370,8 @@
       "summary": "Qualify outbox behavior and measured limits",
       "consumes": [
         "p6-code",
-        "p6-contract"
+        "p6-contract",
+        "environment-evidence"
       ],
       "produces": [
         "p6-test"
@@ -1343,7 +1431,8 @@
         "p3-receipt",
         "p4-receipt",
         "p5-receipt",
-        "p6-receipt"
+        "p6-receipt",
+        "environment-evidence"
       ],
       "produces": [
         "p7-draft"
@@ -1478,7 +1567,8 @@
         "p4-code",
         "p5-code",
         "p6-code",
-        "p7-code"
+        "p7-code",
+        "environment-evidence"
       ],
       "produces": [
         "capacity"
@@ -1558,6 +1648,208 @@
       ],
       "estimate": "S",
       "acceptance": "All user completion criteria have fresh evidence and explicit external boundaries"
+    },
+    {
+      "id": "inspect-environment",
+      "kind": "spike",
+      "summary": "Inspect current runtime toolchain fixtures and local capacity for bounded qualification",
+      "consumes": [
+        "p0-closure"
+      ],
+      "produces": [
+        "environment-evidence"
+      ],
+      "estimate": "S",
+      "role": "explorer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/environment.md"
+      ],
+      "acceptance": "Concrete verified executable dependency and fixture paths with limits and no secret reads"
+    },
+    {
+      "id": "p3-repair-design",
+      "kind": "docs",
+      "summary": "Revise graph design to resolve recorded independent architecture findings",
+      "consumes": [
+        "p3-draft",
+        "p3-arch"
+      ],
+      "produces": [
+        "p3-revised"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p3-graph-design-revision-1.md"
+      ],
+      "acceptance": "Revised design explicitly addresses all architecture blockers without changing frozen Search semantics"
+    },
+    {
+      "id": "p3-recheck-design",
+      "kind": "audit",
+      "summary": "Independently verify revised graph architecture closes blockers",
+      "consumes": [
+        "p3-revised",
+        "p3-arch",
+        "baseline"
+      ],
+      "produces": [
+        "p3-arch-recheck"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p3-graph-architecture-recheck.md"
+      ],
+      "acceptance": "No blocking P1/P2 remains on exact revised design"
+    },
+    {
+      "id": "p4-repair-design",
+      "kind": "docs",
+      "summary": "Revise remote design to resolve recorded independent architecture findings",
+      "consumes": [
+        "p4-draft",
+        "p4-arch"
+      ],
+      "produces": [
+        "p4-revised"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p4-remote-design-revision-1.md"
+      ],
+      "acceptance": "Revised design explicitly addresses all architecture blockers without changing frozen Search semantics"
+    },
+    {
+      "id": "p4-recheck-design",
+      "kind": "audit",
+      "summary": "Independently verify revised remote architecture closes blockers",
+      "consumes": [
+        "p4-revised",
+        "p4-arch",
+        "baseline"
+      ],
+      "produces": [
+        "p4-arch-recheck"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p4-remote-architecture-recheck.md"
+      ],
+      "acceptance": "No blocking P1/P2 remains on exact revised design"
+    },
+    {
+      "id": "p1-repair-design",
+      "kind": "docs",
+      "summary": "Revise extraction design to resolve recorded independent architecture findings",
+      "consumes": [
+        "p1-draft",
+        "p1-arch"
+      ],
+      "produces": [
+        "p1-revised"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-extraction-design-revision-1.md"
+      ],
+      "acceptance": "Revised design explicitly addresses all architecture blockers without changing frozen Search semantics"
+    },
+    {
+      "id": "p1-recheck-design",
+      "kind": "audit",
+      "summary": "Independently verify revised extraction architecture closes blockers",
+      "consumes": [
+        "p1-revised",
+        "p1-arch",
+        "baseline"
+      ],
+      "produces": [
+        "p1-arch-recheck"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-extraction-architecture-recheck.md"
+      ],
+      "acceptance": "No blocking P1/P2 remains on exact revised design"
+    },
+    {
+      "id": "p5-repair-design",
+      "kind": "docs",
+      "summary": "Revise api design to resolve recorded independent architecture findings",
+      "consumes": [
+        "p5-draft",
+        "p5-arch"
+      ],
+      "produces": [
+        "p5-revised"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p5-api-design-revision-1.md"
+      ],
+      "acceptance": "Revised design explicitly addresses all architecture blockers without changing frozen Search semantics"
+    },
+    {
+      "id": "p5-recheck-design",
+      "kind": "audit",
+      "summary": "Independently verify revised api architecture closes blockers",
+      "consumes": [
+        "p5-revised",
+        "p5-arch",
+        "baseline"
+      ],
+      "produces": [
+        "p5-arch-recheck"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p5-api-architecture-recheck.md"
+      ],
+      "acceptance": "No blocking P1/P2 remains on exact revised design"
+    },
+    {
+      "id": "p6-repair-design",
+      "kind": "docs",
+      "summary": "Revise outbox design to resolve recorded independent architecture findings",
+      "consumes": [
+        "p6-draft",
+        "p6-arch"
+      ],
+      "produces": [
+        "p6-revised"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p6-outbox-design-revision-1.md"
+      ],
+      "acceptance": "Revised design explicitly addresses all architecture blockers without changing frozen Search semantics"
+    },
+    {
+      "id": "p6-recheck-design",
+      "kind": "audit",
+      "summary": "Independently verify revised outbox architecture closes blockers",
+      "consumes": [
+        "p6-revised",
+        "p6-arch",
+        "baseline"
+      ],
+      "produces": [
+        "p6-arch-recheck"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p6-outbox-architecture-recheck.md"
+      ],
+      "acceptance": "No blocking P1/P2 remains on exact revised design"
     }
   ],
   "gate_overrides": [

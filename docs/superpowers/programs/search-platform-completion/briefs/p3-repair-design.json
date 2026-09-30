@@ -1,0 +1,19 @@
+# 仕事の手渡し: p3-repair-design
+
+- 種類: docs / 役: DomainDesigner / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Revise graph design to resolve recorded independent architecture findings
+
+## 入力
+- `p3-draft` (docs/superpowers/programs/search-platform-completion/p3-graph-design.md) — graph draft [`p3-design` が作る (済み)]
+- `p3-arch` (docs/superpowers/programs/search-platform-completion/p3-graph-architecture-review.md) — graph arch [`p3-architecture` が作る (済み)]
+
+## 出すもの
+- `p3-revised` (docs/superpowers/programs/search-platform-completion/p3-graph-design-revision-1.md) — Revised design resolving independent architecture findings
+
+## 受入条件
+Revised design explicitly addresses all architecture blockers without changing frozen Search semantics
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p3-graph-design-revision-1.md` だけ。他は触らない。

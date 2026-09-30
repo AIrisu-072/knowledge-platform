@@ -10,7 +10,10 @@
   ],
   "domain": "software-dev",
   "runtime": "codex",
-  "trigger": "user-request",
+  "trigger": {
+    "type": "manual",
+    "source": "requester Completion Program attachment 2026-09-30"
+  },
   "model_selection": [
     {
       "phase": "all-workers",
