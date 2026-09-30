@@ -18,12 +18,17 @@ serde.workspace = true
 serde_json.workspace = true
 time = { workspace = true, features = ["formatting", "parsing"] }
 tokio.workspace = true
+tower = "=0.5.3"
 uuid.workspace = true
 
 [dev-dependencies]
 document-diff-runner = { version = "0.0.0", path = "../document-diff-runner" }
+document-diff-worker = { version = "0.0.0", path = "../document-diff-worker" }
 document-repository-postgres = { version = "0.0.0", path = "../document-repository-postgres" }
 document-semantic-inspection-core = { version = "0.0.0", path = "../document-semantic-inspection-core" }
+document-semantic-inspection-runner = { version = "0.0.0", path = "../document-semantic-inspection-runner" }
+document-semantic-inspection-worker = { version = "0.0.0", path = "../document-semantic-inspection-worker" }
+document-storage-fs = { version = "0.0.0", path = "../document-storage-fs" }
 sqlx.workspace = true
+tempfile.workspace = true
 testcontainers.workspace = true
-tower = "0.5"

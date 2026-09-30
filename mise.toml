@@ -54,7 +54,9 @@ run = '''
 set -eu
 if [ "$(uname -s)" = Linux ]; then
   cargo build --locked -p document-semantic-inspection-worker --bin document-semantic-inspection-worker
+  cargo build --locked -p document-diff-worker --bin document-diff-worker
   export DSI_WORKER_BIN="$(realpath "${CARGO_TARGET_DIR:-target}/debug/document-semantic-inspection-worker")"
+  export DIFF_WORKER_BIN="$(realpath "${CARGO_TARGET_DIR:-target}/debug/document-diff-worker")"
 fi
 cargo nextest run --workspace
 '''
