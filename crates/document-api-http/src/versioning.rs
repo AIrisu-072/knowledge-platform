@@ -20,11 +20,14 @@ use uuid::Uuid;
 
 use crate::error::{ApiError, ApiProblem, ErrorCode};
 use crate::identity::IdentityAdapter;
-use crate::limits::{MAX_JSON_BODY_BYTES, UploadLimits};
+use crate::limits::{
+    MAX_JSON_BODY_BYTES, MULTIPART_OPERATION_TIMEOUT, ORDINARY_OPERATION_TIMEOUT, UploadLimits,
+};
 use crate::multipart::{
     MultipartFailure, VersionUpload, parse_version_upload, request_header_bytes, valid_media_type,
 };
 use crate::router::{StartupError, protect_routes};
+use crate::timeout::with_operation_timeout;
 use crate::trace::TraceContext;
 
 pub trait VersioningApiRepository:
@@ -112,7 +115,11 @@ where
         )
         .with_state(state)
         .layer(DefaultBodyLimit::max(MAX_JSON_BODY_BYTES));
-    protect_routes(multipart.merge(rebase), Some(identity_adapter))
+    protect_routes(
+        with_operation_timeout(multipart, MULTIPART_OPERATION_TIMEOUT)
+            .merge(with_operation_timeout(rebase, ORDINARY_OPERATION_TIMEOUT)),
+        Some(identity_adapter),
+    )
 }
 
 #[derive(Debug, Deserialize)]

@@ -18,9 +18,10 @@ use uuid::Uuid;
 
 use crate::error::{ApiError, ApiProblem, ErrorCode};
 use crate::identity::IdentityAdapter;
-use crate::limits::UploadLimits;
+use crate::limits::{MULTIPART_OPERATION_TIMEOUT, ORDINARY_OPERATION_TIMEOUT, UploadLimits};
 use crate::multipart::{MultipartFailure, parse_initial_upload, request_header_bytes};
 use crate::router::{StartupError, protect_routes};
+use crate::timeout::with_operation_timeout;
 use crate::trace::TraceContext;
 
 pub trait CreateApiRepository:
@@ -100,15 +101,21 @@ where
         repository,
         limits,
     };
-    let routes = Router::new()
+    let create = Router::new()
         .route("/v1/documents", post(create_document::<I, C, F, R>))
+        .with_state(state.clone())
+        .layer(DefaultBodyLimit::max(total_bytes));
+    let recovery = Router::new()
         .route(
             "/v1/document-creation-outcomes/{document_id}",
             get(recover_create::<I, C, F, R>),
         )
-        .with_state(state)
-        .layer(DefaultBodyLimit::max(total_bytes));
-    protect_routes(routes, Some(identity_adapter))
+        .with_state(state);
+    protect_routes(
+        with_operation_timeout(create, MULTIPART_OPERATION_TIMEOUT)
+            .merge(with_operation_timeout(recovery, ORDINARY_OPERATION_TIMEOUT)),
+        Some(identity_adapter),
+    )
 }
 
 #[derive(Debug, Deserialize)]

@@ -23,9 +23,10 @@ use uuid::Uuid;
 
 use crate::error::ApiError;
 use crate::identity::IdentityAdapter;
-use crate::limits::MAX_JSON_BODY_BYTES;
+use crate::limits::{MAX_JSON_BODY_BYTES, ORDINARY_OPERATION_TIMEOUT};
 use crate::management::{document_id_value, format_time, problem, validation};
 use crate::router::{StartupError, protect_routes};
+use crate::timeout::with_operation_timeout;
 use crate::trace::TraceContext;
 
 pub trait PublicationApiRepository:
@@ -109,7 +110,10 @@ where
         )
         .with_state(state)
         .layer(DefaultBodyLimit::max(MAX_JSON_BODY_BYTES));
-    protect_routes(routes, Some(identity_adapter))
+    protect_routes(
+        with_operation_timeout(routes, ORDINARY_OPERATION_TIMEOUT),
+        Some(identity_adapter),
+    )
 }
 
 #[derive(Debug, Deserialize)]

@@ -20,8 +20,10 @@ use uuid::Uuid;
 
 use crate::error::ApiError;
 use crate::identity::IdentityAdapter;
+use crate::limits::DIFF_OPERATION_TIMEOUT;
 use crate::management::{document_id_value, problem, validation};
 use crate::router::{StartupError, protect_routes};
+use crate::timeout::with_operation_timeout;
 use crate::trace::TraceContext;
 
 pub trait DiffApiRepository:
@@ -76,7 +78,10 @@ where
             executor,
             inspection,
         });
-    protect_routes(routes, Some(identity_adapter))
+    protect_routes(
+        with_operation_timeout(routes, DIFF_OPERATION_TIMEOUT),
+        Some(identity_adapter),
+    )
 }
 
 #[derive(Debug, Deserialize)]

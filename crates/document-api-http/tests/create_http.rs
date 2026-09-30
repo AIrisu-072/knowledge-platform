@@ -9,7 +9,7 @@ use axum::http::{Method, Request, StatusCode, header};
 use document_api_http::create::{create_router, create_router_with_limits};
 use document_api_http::identity::{IdentityAdapter, IdentityRequestContext};
 use document_api_http::limits::{
-    MAX_FILENAME_BYTES, MAX_MULTIPART_FILE_BYTES, MAX_MULTIPART_HEADER_BYTES,
+    MAX_FILENAME_BYTES, MAX_JSON_BODY_BYTES, MAX_MULTIPART_FILE_BYTES, MAX_MULTIPART_HEADER_BYTES,
     MAX_MULTIPART_JSON_BYTES, MAX_MULTIPART_PARTS, MAX_MULTIPART_TOTAL_BYTES, UploadLimits,
 };
 use document_application::{
@@ -532,6 +532,25 @@ async fn tightened_multipart_limits_accept_exact_boundaries_and_reject_one_over(
         assert!(status.is_client_error(), "{status} {body}");
         assert_eq!(repository.create_calls(), 0);
     }
+}
+
+#[tokio::test]
+async fn multipart_profile_accepts_a_representative_file_larger_than_the_json_limit() {
+    let repository = Arc::new(RecordingRepository::default());
+    let storage = Arc::new(RecordingStorage::default());
+    let file = vec![5; MAX_JSON_BODY_BYTES + 1];
+    let (status, body) = send(
+        router(repository.clone(), storage.clone()),
+        &[Part::request(create_request_json()), Part::file(file)],
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(repository.create_calls(), 1);
+    assert_eq!(
+        storage.0.lock().unwrap().bytes.len(),
+        MAX_JSON_BODY_BYTES + 1
+    );
 }
 
 #[tokio::test]

@@ -1,10 +1,18 @@
+use std::time::Duration;
+
 pub const MAX_JSON_BODY_BYTES: usize = 1024 * 1024;
+pub const MAX_REQUEST_HEADER_BYTES: usize = 32 * 1024;
+pub const MAX_JSON_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_MULTIPART_JSON_BYTES: usize = 1024 * 1024;
 pub const MAX_MULTIPART_FILE_BYTES: usize = 256 * 1024 * 1024;
 pub const MAX_MULTIPART_TOTAL_BYTES: usize = 1024 * 1024 * 1024;
 pub const MAX_MULTIPART_PARTS: usize = 64;
 pub const MAX_FILENAME_BYTES: usize = 1024;
 pub const MAX_MULTIPART_HEADER_BYTES: usize = 32 * 1024;
+pub const ORDINARY_OPERATION_TIMEOUT: Duration = Duration::from_secs(30);
+pub const MULTIPART_OPERATION_TIMEOUT: Duration = Duration::from_secs(120);
+pub const DIFF_OPERATION_TIMEOUT: Duration = Duration::from_secs(45);
+pub const DOWNLOAD_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UploadLimits {

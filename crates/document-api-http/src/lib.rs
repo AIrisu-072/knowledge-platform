@@ -12,6 +12,7 @@ pub mod publication;
 pub mod read;
 mod read_state;
 pub mod router;
+pub mod timeout;
 pub mod trace;
 pub mod validation;
 pub mod versioning;
