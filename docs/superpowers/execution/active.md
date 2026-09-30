@@ -1,5 +1,18 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document GUI Integration v0 Design approved / Plan review pending、2026-09-30 JST
+
+- Status: **DESIGN APPROVED / PLAN REVIEW PENDING / IMPLEMENTATION BLOCKED**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。
+- Frozen Design: `docs/superpowers/specs/2026-09-30-document-gui-integration-v0-design.md` blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`。Design Approval記録済み。
+- Production Plan: `docs/superpowers/plans/2026-09-30-document-gui-integration-v0-production-implementation.md` blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`。G0〜G9、**未承認**。
+- Implementation handoff: `docs/superpowers/handoffs/2026-09-30-document-gui-integration-v0-implementation.md`。Plan approval一致時のみ実装開始。
+- branch / PR: `design/document-gui-integration-v0` / Draft PR #35。基点はHTTP accepted head `3f870a92525afb6741e1ee72ee6c932eac0f0511`。
+- predecessor: HTTP final 3 gateはSUCCESS。旧HTTP COMPLETE記録とstacked PR #27/#29/#30/#31/#32 integrationはPlan G0。
+- blocker: Production Implementation Planの依頼者承認。
+- 次のexact action: Planレビュー。承認後にplan approval recordを作り、別sessionでG0〜G9を実施する。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## Active checkpoint — Document GUI Integration v0 Written Design review pending、2026-09-30 JST
 
 - Status: **DESIGN ACTIVE / WRITTEN SPEC REVIEW PENDING / IMPLEMENTATION BLOCKED**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。
