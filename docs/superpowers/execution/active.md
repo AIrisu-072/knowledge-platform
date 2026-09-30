@@ -1,6 +1,20 @@
 # Active Execution Pointer
 
-## Current checkpoint — Document GUI Integration v0 G2 COMPLETE / G3 NEXT、2026-10-01 JST
+## Current checkpoint — Document GUI Integration v0 G3 COMPLETE / G4 NEXT、2026-10-01 JST
+
+- Status: **G0〜G3 COMPLETE / G4 Identity Presentation NEXT**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。
+- Implementation branch `feat/document-gui-integration-v0`。G3 GREEN code head `ba199191c91f11091c5fa7df87af57f441074a11`。Product branchは未push、Draft product PR未作成。
+- 最新main `d71753d46590bb4406a1c0b74894ab90a27a6c88`。PR #27/#29/#30/#31/#32/#35は全てMERGED。Main CI `36718016267` SUCCESS。Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`、approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`、Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。Design amendmentなし。
+- G3 initial test-only contract commit `0a675ac94f00e2c7a894eabd0de721d73e6cba1a`。このsessionで観測したsupplemental REDはcurrent Published Versionがない`endPublication`のreason mismatch（`lifecycle` vs `notCurrent`）。Policy revoke / schedule reservation後も古い`available` hintを使ったMutationが拒否される契約を追加。
+- G3 implementation: backend detail-only Document/Version/Folder capabilities。typed `available | disabled(reason)`、current policy/lifecycle/pending/stale-base判定、root操作unsupported、list全件評価なし。Mutation経路は既存再認可を維持。`endPublication`はcurrentなしを`notCurrent`、T10後を`lifecycle`とする。OpenAPI説明にhint・Mutation再認可・高コストpreflightの境界を記録。依存追加なし。
+- G3 local verification: `read_http -- --test-threads=1` 10/10、`management_http -- --test-threads=1` 3/3、Node API contract 11/11、Redocly CLI 2.52.1 lint PASS、`cargo fmt --all -- --check` / `git diff --check` PASS。初回の並列`read_http`はPostgreSQL testcontainerの同時初期化でdisk fullとなり8件が起動前失敗したため、直列で再実行して全件PASS。Docker daemonの`system df`は古いsnapshot欠落を報告。今後PostgreSQL testsは直列実行する。
+- `mise run api:check`はworkspace `mise.toml` untrusted、pinned pnpm 12.4.1 shim欠落。今回のNode contractとRedocly lintは固定版CLIを一時導入して直接実行し、`node_modules`は削除済み。Cargo/pnpm lock変更なし。
+- Hosted CIはG9 final same-head gateへ集約。Blockerなし。Disk capacityはG9前に再確認が必要。product PR merge / deploy / production migration / AD-SSPI接続なし。
+- 次のexact action: G4のIdentity ownership/adapter境界と既存History/AccessPolicy/session read routesを確認し、resolver batch/fail-soft fallbackおよび`GET /v1/session`のfocused REDから進む。Production AD接続やallow-all identityは追加しない。
+
+---
+
+## Superseded checkpoint — Document GUI Integration v0 G2 COMPLETE / G3 NEXT、2026-10-01 JST
 
 - Status: **G0〜G2 COMPLETE / G3 Action Capability Projection NEXT**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。
 - Implementation branch `feat/document-gui-integration-v0`。G2 GREEN code head `6d58cef3a119424d005018cb412bad183da624d2`。Draft product PRはまだ未作成、main未merge。

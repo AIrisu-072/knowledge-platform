@@ -1,6 +1,22 @@
 # Document GUI Integration v0 — Capability Execution Status
 
-## 2026-10-01 JST — G2 COMPLETE / G3 NEXT
+## 2026-10-01 JST — G3 COMPLETE / G4 NEXT
+
+- 状態: **G0〜G3 COMPLETE。次はG4 Identity Presentation / session。** Frozen Design / approved Planに意味変更なし。
+- Implementation branch `feat/document-gui-integration-v0`。G3 GREEN code head `ba199191c91f11091c5fa7df87af57f441074a11`。Product branch未push、Draft product PR未作成。
+- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`、approved Production Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`、Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。Design amendmentなし。
+- G3 initial test-only contract commit `0a675ac94f00e2c7a894eabd0de721d73e6cba1a`。このsessionで観測したsupplemental REDはcurrent Published Versionなしの`endPublication`が`lifecycle`ではなく`notCurrent`であるべき差分。GREEN commit `ba199191c91f11091c5fa7df87af57f441074a11`。
+- G3実装: Document/Version detailおよびFolder readへtyped Action Capability Projectionを追加。各操作を現在権限、lifecycle、pending schedule、stale base、human-interactive contextから評価。root folderのrename/moveはunsupported。listには重いcapability計算を追加しない。CapabilityはUI hintで、Mutationは従来どおりサーバ側で再認可。古いavailable表示の後にpolicy revokeまたはschedule reservationが起きたMutation拒否を検証。
+- Reason mapping: `endPublication`はcurrent Publishedがない場合`notCurrent`、T10終了後は`lifecycle`。high-cost publication quality/DSI preflightはMutation時に実行することをOpenAPI説明へ明記。これは既承認reason集合内の割当で、設計意味変更ではない。
+- Local verification: `cargo test -p document-api-http --test read_http -- --test-threads=1` 10/10 PASS、`cargo test -p document-api-http --test management_http -- --test-threads=1` 3/3 PASS、`node --test tools/api-contract/contract.test.mjs` 11/11 PASS、Redocly CLI 2.52.1 lint PASS、`cargo fmt --all -- --check` PASS、`git diff --check` PASS。Node/OpenAPI CLI実行のため一時導入した`node_modules`は削除。Cargo/pnpm lock、dependency、migration変更なし。
+- 初回の並列read_http suiteはPostgreSQL testcontainer同時起動でdisk fullとなり8件が開始時に失敗した。直列再実行は10/10 PASS。Disk空きは823 MiB観測、Docker `system df`は既存container snapshot欠落でエラー。コード失敗ではないがG9実DB試験前に容量を再確認する。Postgresを使うfocused suitesは直列にする。
+- Current GitHub: main `d71753d46590bb4406a1c0b74894ab90a27a6c88`、PR #27/#29/#30/#31/#32/#35 MERGED、main CI `36718016267` SUCCESS。Product branch/PRは未push/未作成。中間hosted CIなし、G9のexact-head gateで実行予定。
+- Blocker: なし。product PRはmergeせずDraftで終了。deploy、本番migration実行、AD/SSPI接続は禁止。
+- 次のexact action: G4のIdentityPresentationResolver port、History/AccessPolicy DTO、認証adapterを確認し、batch enrichment/fail-soft subjectId fallback/`GET /v1/session`をREDから実装する。Production AD接続やallow-all identityを追加しない。
+
+---
+
+## Superseded checkpoint — 2026-10-01 JST G2 COMPLETE / G3 NEXT
 
 - 状態: **G0〜G2 COMPLETE。次はG3 Action Capability Projection。** Frozen Design / approved Planに意味変更なし。
 - Implementation branch `feat/document-gui-integration-v0`。G2 GREEN code head `6d58cef3a119424d005018cb412bad183da624d2`。Draft product PRは未作成、main未merge、deployなし。
