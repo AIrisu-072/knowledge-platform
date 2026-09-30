@@ -1,16 +1,17 @@
 # Document HTTP/OpenAPI Transport v0 — Capability Execution Status
 
-## 2026-09-30 JST — HAPI-01〜12 COMPLETE / predecessor G0 integration pending
+## 2026-09-30 JST — HAPI-01〜12 COMPLETE / PR #27〜31 merged / PR #32 final gate pending
 
-- 状態: **HAPI-01〜12 COMPLETE / ACCEPTANCE GREEN / STACKED MERGE PENDING**。Frozen Design blob `88f7046a5d14a77f4091df0c92691f6634dd57d7`、承認済みProduction Plan blob `111914181143672d3fec901dae75fc2af0256b15`。設計意味変更提案、新migration、本番identity接続、deployはない。
-- branch/PR: `feat/document-http-openapi-transport-v0-d`、Draft PR #32（base PR #31 branch）。実装head `3f870a92525afb6741e1ee72ee6c932eac0f0511` の標準CI `36662871915`、Sandbox `36662871921`、DSI PoC `36662871930` は全てSUCCESS。Unit A/B/CもDraft PR #29/#30/#31でexact-head 3 gate SUCCESS。全PR未merge。
+- 状態: **HAPI-01〜12 COMPLETE / PR #27〜31 MERGED / PR #32 FINAL DOCUMENT HEAD GATE PENDING**。Frozen Design blob `88f7046a5d14a77f4091df0c92691f6634dd57d7`、承認済みProduction Plan blob `111914181143672d3fec901dae75fc2af0256b15`。設計意味変更提案、新migration、本番identity接続、deployはない。
+- G0 merge receipts: PR #27 `95f60f02fbc4205bfc38b6097d419fadee9682a1`、#29 `2ebfbd46f80c65590950d35d7ef9534377a72035`、#30 `2a49a2ddc28a77fba286d5d70d17464fcf4949a1`、#31 `6240ebbebb0db45a7360efbf568d63a2a6101db3`。Current main after #31 is `6240ebbebb0db45a7360efbf568d63a2a6101db3`.
+- branch/PR: `feat/document-http-openapi-transport-v0-d`、Draft PR #32を`main`へretarget済み。実装head `3f870a92525afb6741e1ee72ee6c932eac0f0511` のStandard CI `36662871915`、Sandbox `36662871921`、DSI PoC `36662871930` は全てSUCCESS。直前の文書更新head `531394b4fb24eba785fab81ae1b3e43e81aaa15e` のCI `36710230567` はretarget時点で実行中、Sandbox `36710230563` とDSI PoC `36710230743` はSUCCESS。G0進捗記録を更新するため新headを作るので、最終3 gateはその新headで取り直す。
 - HAPI-10: RED `3ef7e4159d0b5951ff8060985f926b386da5451a` → GREEN `8b6689d3b20b50d35ff3b7d0df1c1c6e41e93fd9`。Diff verdict/coverage/result/evidenceをlossなくHTTPへ写像し、Partial/Unknownを成功応答として保持。HTTP 3/3とschema回帰PASS。
 - HAPI-11: RED `ae5b14a406c782b3da44561c85925c060c94c43e` → GREEN `2215eb4bfa79adaa08608cc62233bdb4c3a073d7`。finite request/response/upload/timeout/idle、cancel、same-origin、security header、秘匿traceを確認。ローカル実測はsmall 0.45秒 / 124,616,704 bytes、1 MiB+1 0.15秒 / 125,337,600 bytes。SLOではない。
 - HAPI-12: RED `c3da21a7a2d1c9efa4171a1138af6ba2fcc38607` → GREEN `d1ddfa264ded0024c3850f0087c4e62adc2c2e1d`。30 operation dispatcherと実PostgreSQL 18.6 + FileSystemStorage + DSI/Diff worker縦断を追加。review RED `6336ac51968f2420c961b3dd219077a5f2d50eff` で全operation example欠落を検出し、`e0c4842bdf348fd7f807aad0d3cb548b1a7c9f22` で全request/response exampleとRedocly schema検証を補完。
 - verification: HAPI-12 E2E 1/1、dispatch 1/1、HTTP crate 40/40、API contract 10/10、strict Clippy、fmt、architecture、negative smoke PASS。macOS workspace testは686/686 PASS（既定skip 5）。Linux standard CIはproduction DSI/Diff worker build後にHAPI-12 E2EをPASSし、702/702 PASS（既定skip 6）。`mise run verify` のlocal test linkだけがhost容量0で中断したため、再生成可能targetを整理し、未完了の `mise run test:rust` のみ同source headで完走した。security/static/API/architectureは最初のrunでPASS。
 - codegen: `openapi-typescript` / `json-schema-to-typescript` はbinaryを `string` / `string[]` に縮退するためPOC REQUIRED継続、`typify` はcompile failureでREJECT。production生成器はpromoteしていない。API contractは完成、Blobを保つtyped client generatorはGUI工程のgap。
-- 詳細受入: `docs/superpowers/execution/document-http-openapi-transport-v0-acceptance.md`。Linux production runner経路を含む実装・受入blockerは解消。HAPIの実装・受入blockerはない。PR #32のstacked mergeとmain exact-head gateをProduction Plan G0で行う。
-- 次のexact action: PR #27→#29→#30→#31→#32をProduction Plan G0の順でmainへ統合し、各必要headとmain merge commitのgateを確認する。deployはしない。
+- 詳細受入: `docs/superpowers/execution/document-http-openapi-transport-v0-acceptance.md`。HAPIの実装・受入blockerはない。G0のHTTP統合はPR #32とmain merge commitのexact-head gateが残る。
+- 次のexact action: このActive/Status更新をPR #32 branchへcommit/pushし、新しいexact headのStandard CI/Sandbox/DSI PoCを確認する。全てSUCCESSならPR #32をmergeし、main merge commit gatesを確認する。deployはしない。
 
 以下は旧checkpoint。現在の工程ではない。
 
