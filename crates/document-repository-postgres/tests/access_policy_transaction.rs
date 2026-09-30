@@ -2,8 +2,8 @@
 mod support;
 
 use document_application::{
-    AccessPolicyService, ApplicationError, BootstrapRootPolicy, ManagementOperationId,
-    ManagementRepository,
+    AccessPolicyService, ApplicationError, BootstrapRootPolicy, ManagementErrorCode,
+    ManagementOperationId, ManagementRepository,
 };
 use document_domain::{
     Action, PolicyGrant, PolicyMode, PolicySubject, PolicySubjectKind, PolicyTarget, ResourceRef,
@@ -167,7 +167,9 @@ async fn same_id_replay_conflict_noop_and_audit_failure_rollback() {
     }
     assert!(matches!(
         service.set_access_policy(&context(), changed).await,
-        Err(ApplicationError::Conflict)
+        Err(ApplicationError::Management(
+            ManagementErrorCode::OperationConflict
+        ))
     ));
     let noop = service
         .set_access_policy(

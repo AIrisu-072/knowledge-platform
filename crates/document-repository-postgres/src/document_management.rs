@@ -146,7 +146,9 @@ pub(crate) async fn replay_management(
     authorize_management_operation(tx, ctx, saved_resource, row).await?;
     let saved_digest: Vec<u8> = row.try_get("command_digest").map_err(map_statement_error)?;
     if saved_digest != digest {
-        return Err(RepositoryError::Conflict);
+        return Err(RepositoryError::Management(
+            ManagementErrorCode::OperationConflict,
+        ));
     }
     decode_result(row)
 }
@@ -194,7 +196,9 @@ impl PostgresDocumentRepository {
             authorize_metadata(&mut tx, ctx, document_id).await?;
             let current_revision: i64 = row.try_get("revision").map_err(map_statement_error)?;
             if current_revision != expected_revision {
-                return Err(RepositoryError::Conflict);
+                return Err(RepositoryError::Management(
+                    ManagementErrorCode::RevisionConflict,
+                ));
             }
             let previous: Value = row.try_get("metadata").map_err(map_statement_error)?;
             let mut metadata = previous
@@ -362,7 +366,9 @@ impl PostgresDocumentRepository {
             let actual_from: Uuid = document.try_get("folder_id").map_err(map_statement_error)?;
             let old_revision: i64 = document.try_get("revision").map_err(map_statement_error)?;
             if actual_from != from.as_uuid() || old_revision != expected_revision {
-                return Err(RepositoryError::Conflict);
+                return Err(RepositoryError::Management(
+                    ManagementErrorCode::RevisionConflict,
+                ));
             }
             let changed = from != to;
             let revision = old_revision

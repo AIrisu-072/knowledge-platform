@@ -102,7 +102,9 @@ impl PostgresDocumentRepository {
                         return Err(RepositoryError::BusinessRule);
                     }
                     if parent_revision != *expected_parent_revision {
-                        return Err(RepositoryError::Conflict);
+                        return Err(RepositoryError::Management(
+                            ManagementErrorCode::RevisionConflict,
+                        ));
                     }
                     let normalized =
                         normalize_folder_name(name).map_err(|_| RepositoryError::BusinessRule)?;
@@ -170,7 +172,9 @@ impl PostgresDocumentRepository {
                     }
                     let old_revision: i64 = row.try_get("revision").map_err(map_statement_error)?;
                     if old_revision != *expected_folder_revision {
-                        return Err(RepositoryError::Conflict);
+                        return Err(RepositoryError::Management(
+                            ManagementErrorCode::RevisionConflict,
+                        ));
                     }
                     let old_name: String = row.try_get("name").map_err(map_statement_error)?;
                     let normalized =
@@ -335,7 +339,9 @@ impl PostgresDocumentRepository {
                 .map_err(map_statement_error)?;
             let old_revision: i64 = moved.try_get("revision").map_err(map_statement_error)?;
             if actual_parent != Some(from.as_uuid()) || old_revision != expected_revision {
-                return Err(RepositoryError::Conflict);
+                return Err(RepositoryError::Management(
+                    ManagementErrorCode::RevisionConflict,
+                ));
             }
             let document_ids: Vec<Uuid> = sqlx::query_scalar(
                 "SELECT document_id FROM documents WHERE folder_id = ANY($1) \

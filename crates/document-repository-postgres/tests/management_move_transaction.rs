@@ -132,7 +132,9 @@ async fn document_move_changes_parent_revision_and_access_epoch_without_touching
         service
             .move_document(&context(), move_document(&f, to, f.root_id, 1))
             .await,
-        Err(ApplicationError::Conflict)
+        Err(ApplicationError::Management(
+            ManagementErrorCode::RevisionConflict
+        ))
     ));
     let moved = service
         .move_document(&context(), move_document(&f, f.root_id, to, 1))
@@ -161,7 +163,9 @@ async fn document_move_changes_parent_revision_and_access_epoch_without_touching
         service
             .move_document(&context(), move_document(&f, to, f.root_id, 1))
             .await,
-        Err(ApplicationError::Conflict)
+        Err(ApplicationError::Management(
+            ManagementErrorCode::RevisionConflict
+        ))
     ));
 }
 

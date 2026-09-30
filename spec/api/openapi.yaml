@@ -89,6 +89,8 @@ paths:
           $ref: '#/components/responses/Problem'
       parameters:
       - $ref: '#/components/parameters/purpose'
+      - $ref: '#/components/parameters/pageSize'
+      - $ref: '#/components/parameters/cursor'
     post:
       tags:
       - Versions
@@ -351,6 +353,9 @@ paths:
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
+      parameters:
+      - $ref: '#/components/parameters/pageSize'
+      - $ref: '#/components/parameters/cursor'
   /v1/documents/{documentId}/versions/{versionId}/files:
     parameters:
     - $ref: '#/components/parameters/documentId'
@@ -439,6 +444,9 @@ paths:
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
+      parameters:
+      - $ref: '#/components/parameters/pageSize'
+      - $ref: '#/components/parameters/cursor'
   /v1/folders:
     post:
       tags:
@@ -593,6 +601,8 @@ components:
       $ref: ./schemas/document/models.yaml#/$defs/PublishedDocument
     AuthoringDocument:
       $ref: ./schemas/document/models.yaml#/$defs/AuthoringDocument
+    HistoryDocument:
+      $ref: ./schemas/document/models.yaml#/$defs/HistoryDocument
     DocumentList:
       $ref: ./schemas/document/models.yaml#/$defs/DocumentList
     DocumentDetail:
@@ -611,6 +621,8 @@ components:
       $ref: ./schemas/document/models.yaml#/$defs/FolderChildren
     AccessPolicyRead:
       $ref: ./schemas/document/models.yaml#/$defs/AccessPolicyRead
+    PolicyTarget:
+      $ref: ./schemas/document/models.yaml#/$defs/PolicyTarget
     PolicyGrant:
       $ref: ./schemas/document/models.yaml#/$defs/PolicyGrant
     CreateDocumentResult:
@@ -1067,12 +1079,16 @@ components:
           schema:
             $ref: '#/components/schemas/AccessPolicyRead'
           example:
-            target: 00000000-0000-4000-8000-000000000001
+            target:
+              kind: document
+              id: 00000000-0000-4000-8000-000000000001
             bindingMode: inherit
             policyId: null
             policyRevision: 0
             effectivePolicyId: 00000000-0000-4000-8000-000000000002
-            effectiveSource: 00000000-0000-4000-8000-000000000003
+            effectiveSource:
+              kind: folder
+              id: 00000000-0000-4000-8000-000000000003
             effectiveGrants:
             - subjectKind: role
               identityProvider: directory

@@ -164,3 +164,38 @@ test('read confirmation exposes its recorded timestamp without echoing the actor
   assert.ok(result.required.includes('inserted'));
   assert.equal(result.properties.principal, undefined);
 });
+
+test('read projections preserve authorized Application fields and pagination', () => {
+  const published = resolved(contract.components.schemas.PublishedDocument);
+  assert.ok(published.properties.folderId.type.includes('null'), 'hidden folder cannot be forced into a UUID');
+  const authoring = resolved(contract.components.schemas.AuthoringDocument);
+  assert.ok(authoring.required.includes('documentVersionId'));
+  assert.ok(authoring.required.includes('lifecycleState'));
+  assert.equal(authoring.properties.versions, undefined, 'a list row is not a complete version list');
+
+  const list = resolved(contract.components.schemas.DocumentList);
+  const historyItems = resolved(list.oneOf[2]).properties.items.items;
+  assert.equal(historyItems.$ref, '#/components/schemas/HistoryDocument');
+  const version = resolved(contract.components.schemas.Version);
+  assert.ok(version.required.includes('versionNo'));
+  assert.ok(version.required.includes('isCurrent'));
+  assert.equal(version.properties.revision, undefined, 'Version has no version revision');
+  const history = resolved(contract.components.schemas.History);
+  assert.ok(history.required.includes('nextCursor'));
+  const event = resolved(history.properties.items.items);
+  assert.ok(event.required.includes('sourceKey'));
+  assert.ok(event.properties.occurredAt.type.includes('null'));
+  assert.ok(resolved(contract.components.schemas.VersionList).required.includes('nextCursor'));
+  assert.ok(resolved(contract.components.schemas.FolderChildren).required.includes('nextCursor'));
+
+  const policy = resolved(contract.components.schemas.AccessPolicyRead);
+  assert.equal(policy.properties.effectiveSource.$ref, '#/components/schemas/PolicyTarget');
+  const policyExample = resolved(contract.components.responses.AccessPolicyRead).content['application/json'].example;
+  assert.equal(typeof policyExample.target, 'object');
+  assert.equal(typeof policyExample.effectiveSource, 'object');
+  for (const path of ['/v1/documents/{documentId}/versions', '/v1/documents/{documentId}/history', '/v1/folders/{folderId}/children']) {
+    const parameters = operation('get', path).parameters.map((parameter) => resolved(parameter).name);
+    assert.ok(parameters.includes('pageSize'), `${path} missing pageSize`);
+    assert.ok(parameters.includes('cursor'), `${path} missing cursor`);
+  }
+});

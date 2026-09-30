@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::Arc;
 
 use document_domain::{DocumentId, DocumentVersionId, PrincipalRef};
@@ -31,6 +32,7 @@ pub struct VersionFileRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionPageQuery {
     pub document_id: DocumentId,
+    pub purpose: VersionPurpose,
     pub page_size: Option<u16>,
     pub cursor: Option<String>,
 }
@@ -91,31 +93,30 @@ pub struct DocumentHistoryEntry {
     pub provenance_quality: ProvenanceQuality,
 }
 
-#[allow(async_fn_in_trait)]
 pub trait DocumentHistoryRepository: Send + Sync {
-    async fn list_document_versions(
+    fn list_document_versions(
         &self,
         ctx: &VerifiedActorContext,
         query: VersionPageQuery,
-    ) -> Result<Page<VersionSummary>, RepositoryError>;
+    ) -> impl Future<Output = Result<Page<VersionSummary>, RepositoryError>> + Send;
 
-    async fn list_document_history(
+    fn list_document_history(
         &self,
         ctx: &VerifiedActorContext,
         query: HistoryPageQuery,
-    ) -> Result<Page<DocumentHistoryEntry>, RepositoryError>;
+    ) -> impl Future<Output = Result<Page<DocumentHistoryEntry>, RepositoryError>> + Send;
 
-    async fn get_document_version(
+    fn get_document_version(
         &self,
         ctx: &VerifiedActorContext,
         request: VersionRequest,
-    ) -> Result<VersionDetail, RepositoryError>;
+    ) -> impl Future<Output = Result<VersionDetail, RepositoryError>> + Send;
 
-    async fn list_version_files(
+    fn list_version_files(
         &self,
         ctx: &VerifiedActorContext,
         request: VersionRequest,
-    ) -> Result<Vec<VersionFileSummary>, RepositoryError>;
+    ) -> impl Future<Output = Result<Vec<VersionFileSummary>, RepositoryError>> + Send;
 }
 
 pub struct DocumentHistoryService<R> {

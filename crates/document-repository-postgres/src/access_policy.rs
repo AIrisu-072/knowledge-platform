@@ -413,7 +413,9 @@ impl PostgresDocumentRepository {
                 let saved_digest: Vec<u8> =
                     row.try_get("command_digest").map_err(map_statement_error)?;
                 if saved_digest != digest {
-                    return Err(RepositoryError::Conflict);
+                    return Err(RepositoryError::Management(
+                        ManagementErrorCode::OperationConflict,
+                    ));
                 }
                 return decode_result(&row);
             }
@@ -428,7 +430,9 @@ impl PostgresDocumentRepository {
             let existing = load_binding(&mut tx, target).await?;
             let current_revision = existing.as_ref().map_or(0, |(_, revision, _)| *revision);
             if current_revision != expected_policy_revision {
-                return Err(RepositoryError::Conflict);
+                return Err(RepositoryError::Management(
+                    ManagementErrorCode::RevisionConflict,
+                ));
             }
             let changed = existing
                 .as_ref()

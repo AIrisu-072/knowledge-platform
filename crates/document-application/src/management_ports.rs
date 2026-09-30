@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use document_domain::{PolicyGrant, PrincipalRef};
 
 use crate::{
@@ -13,19 +15,18 @@ pub trait IdentityContextResolver: Send + Sync {
     ) -> Result<VerifiedActorContext, IdentityResolutionError>;
 }
 
-#[allow(async_fn_in_trait)]
 pub trait ManagementRepository: Send + Sync {
-    async fn execute(
+    fn execute(
         &self,
         ctx: &VerifiedActorContext,
         command: ManagementCommand,
-    ) -> Result<ManagementResult, RepositoryError>;
+    ) -> impl Future<Output = Result<ManagementResult, RepositoryError>> + Send;
 
-    async fn lookup(
+    fn lookup(
         &self,
         ctx: &VerifiedActorContext,
         operation_id: ManagementOperationId,
-    ) -> Result<Option<ManagementResult>, RepositoryError>;
+    ) -> impl Future<Output = Result<Option<ManagementResult>, RepositoryError>> + Send;
 }
 
 #[allow(async_fn_in_trait)]

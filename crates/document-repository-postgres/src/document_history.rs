@@ -219,12 +219,16 @@ fn page_binding(
     document_id: DocumentId,
     kind: QueryKind,
     revision: i64,
+    purpose: &str,
 ) -> Result<CursorBinding, RepositoryError> {
     Ok(CursorBinding {
         kind,
         sort: DocumentSort::CreatedAtDesc,
-        filter_fingerprint: fingerprint_json(&json!({"document_id": document_id.as_uuid()}))
-            .map_err(|_| RepositoryError::InvalidCursor)?,
+        filter_fingerprint: fingerprint_json(&json!({
+            "document_id": document_id.as_uuid(),
+            "purpose": purpose,
+        }))
+        .map_err(|_| RepositoryError::InvalidCursor)?,
         principal_fingerprint: principal_fingerprint(ctx)
             .map_err(|_| RepositoryError::Forbidden)?,
         access_revision: revision,
@@ -314,8 +318,40 @@ impl DocumentHistoryRepository for PostgresDocumentRepository {
     ) -> Result<Page<VersionSummary>, RepositoryError> {
         let mut tx = begin_snapshot(&self.pool).await?;
         let revision = lock_access_state(&mut tx, AccessLockMode::Shared).await?;
-        authorize_history(&mut tx, ctx, query.document_id).await?;
-        let binding = page_binding(ctx, query.document_id, QueryKind::Versions, revision)?;
+        let resource = ResourceRef::Document(query.document_id);
+        match query.purpose {
+            VersionPurpose::Published => {
+                match authorize_in_tx(&mut tx, ctx, &[(resource, vec![Action::Read])]).await {
+                    Err(RepositoryError::Forbidden) => {
+                        return Err(RepositoryError::DocumentNotFound);
+                    }
+                    other => other?,
+                }
+            }
+            VersionPurpose::Authoring => match authorize_in_tx(
+                &mut tx,
+                ctx,
+                &[(resource, vec![Action::Read, Action::Write])],
+            )
+            .await
+            {
+                Err(RepositoryError::Forbidden) => return Err(RepositoryError::DocumentNotFound),
+                other => other?,
+            },
+            VersionPurpose::History => authorize_history(&mut tx, ctx, query.document_id).await?,
+        }
+        let purpose = match query.purpose {
+            VersionPurpose::Published => "published",
+            VersionPurpose::Authoring => "authoring",
+            VersionPurpose::History => "history",
+        };
+        let binding = page_binding(
+            ctx,
+            query.document_id,
+            QueryKind::Versions,
+            revision,
+            purpose,
+        )?;
         let offset = page_offset(query.cursor.as_deref(), &binding, query.document_id)?;
         let size = i64::from(query.page_size.unwrap_or(50));
         let rows = sqlx::query(
@@ -325,14 +361,23 @@ impl DocumentHistoryRepository for PostgresDocumentRepository {
              LEFT JOIN document_read_states rs \
                ON rs.document_version_id = v.document_version_id \
               AND rs.identity_provider = $3 AND rs.principal_id = $4 \
-             WHERE d.document_id = $1 AND (v.lifecycle_state <> 'WORKING' \
-                 OR dmb_allows_document(d.document_id,$2,ARRAY['read','write']::text[])) \
-             ORDER BY v.version_no DESC,v.document_version_id DESC LIMIT $5 OFFSET $6",
+             WHERE d.document_id = $1 AND ( \
+                 ($5 = 'published' AND v.document_version_id = d.current_version_id \
+                    AND v.lifecycle_state = 'PUBLISHED' \
+                    AND NOT EXISTS (SELECT 1 FROM document_publication_end_operations ended \
+                                    WHERE ended.document_id = d.document_id)) \
+                 OR ($5 = 'authoring' AND v.lifecycle_state = 'WORKING' \
+                    AND NOT EXISTS (SELECT 1 FROM document_publication_end_operations ended \
+                                    WHERE ended.document_id = d.document_id)) \
+                 OR ($5 = 'history' AND (v.lifecycle_state <> 'WORKING' \
+                    OR dmb_allows_document(d.document_id,$2,ARRAY['read','write']::text[])))) \
+             ORDER BY v.version_no DESC,v.document_version_id DESC LIMIT $6 OFFSET $7",
         )
         .bind(query.document_id.as_uuid())
         .bind(verified_subjects_json(ctx))
         .bind(ctx.principal().identity_provider())
         .bind(ctx.principal().principal_id())
+        .bind(purpose)
         .bind(size + 1)
         .bind(offset)
         .fetch_all(&mut *tx)
@@ -371,7 +416,13 @@ impl DocumentHistoryRepository for PostgresDocumentRepository {
         let mut tx = begin_snapshot(&self.pool).await?;
         let revision = lock_access_state(&mut tx, AccessLockMode::Shared).await?;
         authorize_history(&mut tx, ctx, query.document_id).await?;
-        let binding = page_binding(ctx, query.document_id, QueryKind::DocumentHistory, revision)?;
+        let binding = page_binding(
+            ctx,
+            query.document_id,
+            QueryKind::DocumentHistory,
+            revision,
+            "history",
+        )?;
         let offset = page_offset(query.cursor.as_deref(), &binding, query.document_id)?;
         let size = i64::from(query.page_size.unwrap_or(50));
         let rows = sqlx::query(HISTORY_SQL)

@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::Arc;
 
 use document_domain::{DocumentId, DocumentVersionId, FolderId};
@@ -11,6 +12,7 @@ use crate::{
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DocumentListFilter {
+    pub exact_document_id: Option<DocumentId>,
     pub title_contains: Option<String>,
     pub folder_id: Option<FolderId>,
     pub include_descendants: bool,
@@ -55,6 +57,7 @@ impl DocumentListFilter {
 
     pub fn fingerprint_value(&self) -> Value {
         json!({
+            "exact_document_id": self.exact_document_id.map(|id| id.as_uuid()),
             "title_contains": self.title_contains,
             "folder_id": self.folder_id.map(|id| id.as_uuid()),
             "include_descendants": self.include_descendants,
@@ -196,36 +199,35 @@ pub struct RootFolderSummary {
     pub revision: i64,
 }
 
-#[allow(async_fn_in_trait)]
 pub trait DocumentQueryRepository: Send + Sync {
-    async fn get_root_folder(
+    fn get_root_folder(
         &self,
         ctx: &VerifiedActorContext,
-    ) -> Result<RootFolderSummary, RepositoryError>;
+    ) -> impl Future<Output = Result<RootFolderSummary, RepositoryError>> + Send;
 
-    async fn list_published_documents(
+    fn list_published_documents(
         &self,
         ctx: &VerifiedActorContext,
         query: PublishedQuery,
-    ) -> Result<Page<PublishedDocumentSummary>, RepositoryError>;
+    ) -> impl Future<Output = Result<Page<PublishedDocumentSummary>, RepositoryError>> + Send;
 
-    async fn list_authoring_documents(
+    fn list_authoring_documents(
         &self,
         ctx: &VerifiedActorContext,
         query: AuthoringQuery,
-    ) -> Result<Page<AuthoringDocumentSummary>, RepositoryError>;
+    ) -> impl Future<Output = Result<Page<AuthoringDocumentSummary>, RepositoryError>> + Send;
 
-    async fn list_history_documents(
+    fn list_history_documents(
         &self,
         ctx: &VerifiedActorContext,
         query: HistoryQuery,
-    ) -> Result<Page<HistoryDocumentSummary>, RepositoryError>;
+    ) -> impl Future<Output = Result<Page<HistoryDocumentSummary>, RepositoryError>> + Send;
 
-    async fn list_child_folders(
+    fn list_child_folders(
         &self,
         ctx: &VerifiedActorContext,
         query: FolderPageQuery,
-    ) -> Result<Page<FolderSummary>, RepositoryError>;
+    ) -> impl Future<Output = Result<Page<FolderSummary>, RepositoryError>> + Send;
 }
 
 pub struct DocumentQueryService<R> {

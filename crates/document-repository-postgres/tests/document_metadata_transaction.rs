@@ -309,7 +309,9 @@ async fn invalid_patch_is_rejected_and_noop_records_only_the_operation() {
                 command(&f, operation_id(), 0, BTreeMap::new(), BTreeSet::new())
             )
             .await,
-        Err(ApplicationError::Conflict)
+        Err(ApplicationError::Management(
+            ManagementErrorCode::RevisionConflict
+        ))
     ));
     let mut different = noop_command;
     if let ManagementCommand::UpdateDocumentMetadata { reason, .. } = &mut different {
@@ -319,7 +321,9 @@ async fn invalid_patch_is_rejected_and_noop_records_only_the_operation() {
         service
             .update_document_metadata(&context(), different)
             .await,
-        Err(ApplicationError::Conflict)
+        Err(ApplicationError::Management(
+            ManagementErrorCode::OperationConflict
+        ))
     ));
 }
 
