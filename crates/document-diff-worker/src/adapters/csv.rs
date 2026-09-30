@@ -86,6 +86,19 @@ fn detect_and_parse(input: &[u8]) -> Result<ParsedCsv, UnverifiedReason> {
     selected.ok_or(UnverifiedReason::CorruptedSource)
 }
 
+pub(super) fn display_value(
+    input: &[u8],
+    row: u32,
+    column: u32,
+) -> Result<Option<String>, UnverifiedReason> {
+    let parsed = detect_and_parse(input)?;
+    Ok(parsed
+        .rows
+        .get(row.saturating_sub(1) as usize)
+        .and_then(|cells| cells.get(column.saturating_sub(1) as usize))
+        .cloned())
+}
+
 fn unquoted_bytes(input: &[u8]) -> Result<HashSet<u8>, UnverifiedReason> {
     let mut outside = HashSet::new();
     let mut quoted = false;

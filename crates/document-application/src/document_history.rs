@@ -30,6 +30,7 @@ pub struct VersionFileRequest {
     pub version: VersionRequest,
     pub content_item_id: Uuid,
     pub representation_id: Uuid,
+    pub correlation_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

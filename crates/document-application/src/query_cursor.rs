@@ -18,6 +18,7 @@ pub enum QueryKind {
     Versions,
     DocumentHistory,
     DocumentRevisions,
+    DiffDisplay,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -155,7 +156,12 @@ fn validate_position(
     binding: &CursorBinding,
     position: &CursorPosition,
 ) -> Result<(), ApplicationError> {
-    let valid = if binding.kind == QueryKind::DocumentRevisions {
+    let valid = if binding.kind == QueryKind::DiffDisplay {
+        binding.sort == DocumentSort::CreatedAtDesc
+            && position.sort_time_micros.is_some_and(|offset| offset >= 0)
+            && position.sort_title.is_none()
+            && position.sort_revision_key.is_none()
+    } else if binding.kind == QueryKind::DocumentRevisions {
         binding.sort == DocumentSort::RevisionNumberDesc
             && position.sort_time_micros.is_none()
             && position.sort_title.is_none()

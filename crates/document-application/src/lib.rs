@@ -73,6 +73,7 @@ pub use document_query::{
 pub use document_revision_read::{
     DocumentRevisionDetail, DocumentRevisionDetailQuery, DocumentRevisionPageQuery,
     DocumentRevisionReadRepository, DocumentRevisionReadService, DocumentRevisionSummary,
+    RevisionComparisonAuditRequest,
 };
 pub use error::{ApplicationError, InspectionExecutionError, RepositoryError, StorageError};
 pub use events::{

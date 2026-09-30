@@ -78,6 +78,7 @@ async fn audit_is_committed_before_storage_open_and_membership_is_checked() {
         },
         content_item_id: item_id,
         representation_id,
+        correlation_id: None,
     };
     let wrong = service
         .open_version_file(

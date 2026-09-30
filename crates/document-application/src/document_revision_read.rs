@@ -40,6 +40,19 @@ pub struct DocumentRevisionDetail {
     pub reason: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevisionComparisonAuditRequest {
+    pub document_id: DocumentId,
+    pub base_revision_id: Uuid,
+    pub target_revision_id: Uuid,
+    pub content_comparison_status: String,
+    pub content_result_digest: Option<[u8; 32]>,
+    pub content_audit_event_id: Option<Uuid>,
+    pub metadata_comparison_status: String,
+    pub base_metadata_snapshot_digest: Option<[u8; 32]>,
+    pub target_metadata_snapshot_digest: Option<[u8; 32]>,
+}
+
 pub trait DocumentRevisionReadRepository: Send + Sync {
     fn list_document_revisions(
         &self,
@@ -52,6 +65,12 @@ pub trait DocumentRevisionReadRepository: Send + Sync {
         ctx: &VerifiedActorContext,
         query: DocumentRevisionDetailQuery,
     ) -> impl Future<Output = Result<DocumentRevisionDetail, RepositoryError>> + Send;
+
+    fn authorize_and_audit_revision_comparison(
+        &self,
+        ctx: &VerifiedActorContext,
+        request: RevisionComparisonAuditRequest,
+    ) -> impl Future<Output = Result<Uuid, RepositoryError>> + Send;
 }
 
 pub struct DocumentRevisionReadService<R> {

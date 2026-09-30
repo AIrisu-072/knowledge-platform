@@ -181,3 +181,11 @@ $defs:
       targetVersionId: {type: string, format: uuid}
       profile: {const: document-diff-v0}
       projection: {type: string, enum: [diff, comparisonTable]}
+  RevisionComparisonRequest:
+    type: object
+    additionalProperties: false
+    required: [baseRevisionId, targetRevisionId, projection]
+    properties:
+      baseRevisionId: {type: string, format: uuid}
+      targetRevisionId: {type: string, format: uuid}
+      projection: {type: string, enum: [diff, comparisonTable]}

@@ -140,6 +140,7 @@ where
             .map_err(|error| problem(error, &path, &trace))?,
         representation_id: uuid_value(&representation_id, "representationId")
             .map_err(|error| problem(error, &path, &trace))?,
+        correlation_id: None,
     };
     let opened = VersionFileAccessService::new(state.repository, state.storage)
         .open_version_file(&ctx, request)

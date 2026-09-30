@@ -1,6 +1,6 @@
 use document_diff_core::{
-    ChangeOperation, ContentVerdict, DiffCoverage, DiffProfileVersion, RelocationKind,
-    ResourceProfileVersion, SourceLocator, UnverifiedReason,
+    ChangeOperation, ContentVerdict, DiffCoverage, DiffProfileVersion, DisplayFragment,
+    RelocationKind, ResourceProfileVersion, SourceLocator, UnverifiedReason,
 };
 use document_domain::{DocumentId, DocumentVersionId, FileId};
 use document_semantic_inspection_core::InspectionProfileVersion;
@@ -87,6 +87,32 @@ pub struct DiffResult {
     pub changes: Vec<Change>,
     pub unverified_regions: Vec<UnverifiedRegion>,
     pub ancillary_changes: Vec<AncillaryChange>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffDisplayItem {
+    pub change_index: u32,
+    pub operation: Option<ChangeOperation>,
+    pub relocation: Option<RelocationKind>,
+    pub facet: String,
+    pub base_locator: Option<SourceLocator>,
+    pub target_locator: Option<SourceLocator>,
+    pub base: Option<DisplayFragment>,
+    pub target: Option<DisplayFragment>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthorizedDiffDisplay {
+    pub result: DiffResult,
+    pub result_digest: [u8; 32],
+    pub result_audit_event_id: Uuid,
+    pub display_audit_event_id: Uuid,
+    pub items: Vec<DiffDisplayItem>,
+    pub unverified_regions: Vec<UnverifiedRegion>,
+    pub page_size: u16,
+    pub next_cursor: Option<String>,
 }
 
 impl DiffResult {

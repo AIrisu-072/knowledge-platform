@@ -15,8 +15,8 @@ use crate::document_diff::{
 };
 use crate::{
     ApplicationError, DocumentRevisionDetail, DocumentRevisionDetailQuery,
-    DocumentRevisionReadRepository, DocumentRevisionReadService, FileStorage, VerifiedActorContext,
-    VersionFileAccessRepository,
+    DocumentRevisionReadRepository, DocumentRevisionReadService, FileStorage,
+    RevisionComparisonAuditRequest, VerifiedActorContext, VersionFileAccessRepository,
 };
 
 const METADATA_SNAPSHOT_DOMAIN: &[u8] = b"document-revision-metadata-snapshot-v0\0";
@@ -141,7 +141,7 @@ fn metadata_digest(snapshot: &Value) -> [u8; 32] {
 
 pub enum RevisionContentComparison {
     SameAuthoritativeVersion,
-    DifferentAuthoritativeVersions(AuthorizedDiff),
+    DifferentAuthoritativeVersions(Box<AuthorizedDiff>),
 }
 
 pub struct RevisionComparison {
@@ -149,6 +149,8 @@ pub struct RevisionComparison {
     pub target: DocumentRevisionDetail,
     pub content: RevisionContentComparison,
     pub metadata: MetadataComparison,
+    pub audit_event_id: Uuid,
+    pub content_audit_event_id: Option<Uuid>,
 }
 
 pub trait RevisionContentComparator: Send + Sync {
@@ -250,13 +252,43 @@ where
                     },
                 )
                 .await?;
-            RevisionContentComparison::DifferentAuthoritativeVersions(authorized)
+            RevisionContentComparison::DifferentAuthoritativeVersions(Box::new(authorized))
         };
+        let (content_comparison_status, content_result_digest, content_audit_event_id) =
+            match &content {
+                RevisionContentComparison::SameAuthoritativeVersion => {
+                    ("sameAuthoritativeVersion", None, None)
+                }
+                RevisionContentComparison::DifferentAuthoritativeVersions(authorized) => (
+                    "differentAuthoritativeVersions",
+                    Some(authorized.result_digest),
+                    Some(authorized.audit_event_id),
+                ),
+            };
+        let audit_event_id = self
+            .repository
+            .authorize_and_audit_revision_comparison(
+                ctx,
+                RevisionComparisonAuditRequest {
+                    document_id,
+                    base_revision_id,
+                    target_revision_id,
+                    content_comparison_status: content_comparison_status.into(),
+                    content_result_digest,
+                    content_audit_event_id,
+                    metadata_comparison_status: metadata.status.as_str().into(),
+                    base_metadata_snapshot_digest: metadata.base_snapshot_digest,
+                    target_metadata_snapshot_digest: metadata.target_snapshot_digest,
+                },
+            )
+            .await?;
         Ok(RevisionComparison {
             base,
             target,
             content,
             metadata,
+            audit_event_id,
+            content_audit_event_id,
         })
     }
 }

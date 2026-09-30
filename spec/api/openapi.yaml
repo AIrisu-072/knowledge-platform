@@ -506,6 +506,24 @@ paths:
           $ref: '#/components/responses/Problem'
       requestBody:
         $ref: '#/components/requestBodies/ComparisonRequest'
+  /v1/documents/{documentId}/revision-comparisons:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    post:
+      tags:
+      - Comparisons
+      summary: Compare authorized formal revision pair
+      operationId: compareDocumentRevisions
+      description: Compares revision metadata snapshots and reuses Document Diff only when their authoritative DocumentVersions differ.
+      responses:
+        '200':
+          $ref: '#/components/responses/RevisionComparison'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/RevisionComparisonRequest'
   /v1/folders/root:
     get:
       tags:
@@ -779,6 +797,8 @@ components:
       $ref: ./schemas/document/models.yaml#/$defs/ComparisonTableProjection
     ComparisonResponse:
       $ref: ./schemas/document/models.yaml#/$defs/ComparisonResponse
+    RevisionComparisonResponse:
+      $ref: ./schemas/document/models.yaml#/$defs/RevisionComparisonResponse
     CreateDocument:
       $ref: ./schemas/document/commands.yaml#/$defs/CreateDocument
     VersionContentItem:
@@ -817,6 +837,8 @@ components:
       $ref: ./schemas/document/commands.yaml#/$defs/SetAccessPolicy
     ComparisonRequest:
       $ref: ./schemas/document/commands.yaml#/$defs/ComparisonRequest
+    RevisionComparisonRequest:
+      $ref: ./schemas/document/commands.yaml#/$defs/RevisionComparisonRequest
   parameters:
     documentId:
       name: documentId
@@ -1131,6 +1153,16 @@ components:
             targetVersionId: 00000000-0000-4000-8000-000000000022
             profile: document-diff-v0
             projection: comparisonTable
+    RevisionComparisonRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RevisionComparisonRequest'
+          example:
+            baseRevisionId: 00000000-0000-4000-8000-000000000031
+            targetRevisionId: 00000000-0000-4000-8000-000000000032
+            projection: diff
     CreateDocumentMultipart:
       required: true
       content:
@@ -1721,6 +1753,49 @@ components:
               navigationHint: Inspect the marked range in the original documents.
             ancillaryChanges: []
             auditEventId: 00000000-0000-4000-8000-000000000004
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    RevisionComparison:
+      description: Authorized comparison of two formal revisions with separate content and metadata results.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RevisionComparisonResponse'
+          example:
+            projection: diff
+            baseRevision:
+              revisionId: 00000000-0000-4000-8000-000000000031
+              documentVersionId: 00000000-0000-4000-8000-000000000021
+              major: 1
+              minor: 0
+              createdAt: '2029-01-01T00:00:00Z'
+            targetRevision:
+              revisionId: 00000000-0000-4000-8000-000000000032
+              documentVersionId: 00000000-0000-4000-8000-000000000022
+              major: 2
+              minor: 0
+              createdAt: '2029-02-01T00:00:00Z'
+            contentComparisonStatus: differentAuthoritativeVersions
+            verdict: different
+            coverage: full
+            resultDigest: '0000000000000000000000000000000000000000000000000000000000000000'
+            changes: []
+            rows: []
+            unverifiedRegions: []
+            ancillaryChanges: []
+            metadataComparisonStatus: different
+            metadataChanges:
+            - path: /category
+              baseValue: policy
+              targetValue: guideline
+            baseMetadataSnapshotDigest: '0000000000000000000000000000000000000000000000000000000000000000'
+            targetMetadataSnapshotDigest: '1111111111111111111111111111111111111111111111111111111111111111'
+            auditEventId: 00000000-0000-4000-8000-000000000041
+            contentAuditEventId: 00000000-0000-4000-8000-000000000042
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.

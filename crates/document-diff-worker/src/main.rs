@@ -5,8 +5,11 @@ use std::{
 };
 
 use document_diff_core::FormatId;
+#[cfg(target_os = "linux")]
+use document_diff_worker::run_display_worker_shell;
 use document_diff_worker::{
-    MAX_REQUEST_BYTES, WorkerError, decode_request_bounded, run_worker_shell,
+    MAX_REQUEST_BYTES, WorkerError, decode_display_request_bounded, decode_request_bounded,
+    run_worker_shell,
 };
 use document_semantic_inspection_worker::PdfAdapter;
 
@@ -35,11 +38,34 @@ fn execute() -> Result<(), WorkerError> {
         File::open(format!("/proc/self/fd/{base_fd}")).map_err(|_| WorkerError::UnreadableInput)?;
     let target = File::open(format!("/proc/self/fd/{target_fd}"))
         .map_err(|_| WorkerError::UnreadableInput)?;
+    let operation = std::env::var("DIFF_OPERATION").unwrap_or_else(|_| "compare".into());
     let mut request_bytes = Vec::new();
     std::io::stdin()
         .take((MAX_REQUEST_BYTES + 1) as u64)
         .read_to_end(&mut request_bytes)
         .map_err(|_| WorkerError::InvalidRequest)?;
+    if operation == "display" {
+        decode_display_request_bounded(&request_bytes)?;
+        if std::env::var("DIFF_SANDBOX_REQUIRED").as_deref() != Ok("1") {
+            return Err(WorkerError::UnreadableInput);
+        }
+        #[cfg(target_os = "linux")]
+        {
+            document_semantic_inspection_runner::seal_worker_sandbox()
+                .map_err(|_| WorkerError::UnreadableInput)?;
+            let response = run_display_worker_shell(&request_bytes, base)?;
+            let bytes = serde_json::to_vec(&response).map_err(|_| WorkerError::InvalidResult)?;
+            std::io::stdout()
+                .write_all(&bytes)
+                .map_err(|_| WorkerError::UnreadableInput)?;
+            return Ok(());
+        }
+        #[cfg(not(target_os = "linux"))]
+        return Err(WorkerError::UnreadableInput);
+    }
+    if operation != "compare" {
+        return Err(WorkerError::InvalidRequest);
+    }
     if std::env::var_os("DIFF_SANDBOX_REQUIRED").is_some() {
         if std::env::var("DIFF_SANDBOX_REQUIRED").as_deref() != Ok("1") {
             return Err(WorkerError::UnreadableInput);

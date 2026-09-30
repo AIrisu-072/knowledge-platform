@@ -719,3 +719,60 @@ $defs:
     oneOf:
       - $ref: '#/$defs/DiffProjection'
       - $ref: '#/$defs/ComparisonTableProjection'
+  RevisionSummary:
+    type: object
+    additionalProperties: false
+    required: [revisionId, documentVersionId, major, minor, createdAt]
+    properties:
+      revisionId: {type: string, format: uuid}
+      documentVersionId: {type: string, format: uuid}
+      major: {type: integer, minimum: 1}
+      minor: {type: integer, minimum: 0}
+      createdAt: {type: string, format: date-time}
+  MetadataChange:
+    type: object
+    additionalProperties: false
+    required: [path, baseValue, targetValue]
+    properties:
+      path: {type: string}
+      baseValue: {}
+      targetValue: {}
+  RevisionComparisonResponse:
+    type: object
+    additionalProperties: false
+    required:
+      - projection
+      - baseRevision
+      - targetRevision
+      - contentComparisonStatus
+      - changes
+      - rows
+      - unverifiedRegions
+      - ancillaryChanges
+      - metadataComparisonStatus
+      - metadataChanges
+      - baseMetadataSnapshotDigest
+      - targetMetadataSnapshotDigest
+      - auditEventId
+    properties:
+      projection: {type: string, enum: [diff, comparisonTable]}
+      baseRevision: {$ref: '#/$defs/RevisionSummary'}
+      targetRevision: {$ref: '#/$defs/RevisionSummary'}
+      contentComparisonStatus:
+        type: string
+        enum: [sameAuthoritativeVersion, differentAuthoritativeVersions]
+      verdict: {type: string, enum: [same, different, unknown]}
+      coverage: {type: string, enum: [full, partial, none]}
+      resultDigest: {type: string, pattern: '^[0-9a-f]{64}$'}
+      changes: {type: array, items: {$ref: '#/$defs/DiffChange'}}
+      rows: {type: array, items: {$ref: '#/$defs/ComparisonRow'}}
+      unverifiedRegions: {type: array, items: {$ref: '#/$defs/UnverifiedRegion'}}
+      ancillaryChanges: {type: array, items: {$ref: '#/$defs/AncillaryChange'}}
+      metadataComparisonStatus:
+        type: string
+        enum: [same, different, unavailableLegacy]
+      metadataChanges: {type: array, items: {$ref: '#/$defs/MetadataChange'}}
+      baseMetadataSnapshotDigest: {type: [string, 'null'], pattern: '^[0-9a-f]{64}$'}
+      targetMetadataSnapshotDigest: {type: [string, 'null'], pattern: '^[0-9a-f]{64}$'}
+      auditEventId: {type: string, format: uuid}
+      contentAuditEventId: {type: string, format: uuid}

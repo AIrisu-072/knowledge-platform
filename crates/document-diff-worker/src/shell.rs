@@ -1,6 +1,8 @@
 use std::io::Read;
 
-use document_diff_core::{WorkerDiffRequest, WorkerDiffResponse};
+use document_diff_core::{
+    WorkerDiffRequest, WorkerDiffResponse, WorkerDisplayRequest, WorkerDisplayResponse,
+};
 use sha2::{Digest, Sha256};
 
 use crate::{WorkerError, adapters};
@@ -44,6 +46,44 @@ pub fn run_worker_shell<B: Read, T: Read>(
         }
         Ok(response)
     })
+}
+
+pub fn run_display_worker_shell<R: Read>(
+    request_bytes: &[u8],
+    mut source: R,
+) -> Result<WorkerDisplayResponse, WorkerError> {
+    guard_worker_execution(|| {
+        let request = decode_display_request_bounded(request_bytes)?;
+        let raw = read_source(&mut source, request.size_bytes, request.raw_sha256)?;
+        let fragment = adapters::extract_display(&request, &raw)?;
+        let response = WorkerDisplayResponse {
+            protocol_version: request.protocol_version,
+            format: request.format,
+            raw_sha256: request.raw_sha256,
+            size_bytes: request.size_bytes,
+            fragment,
+        };
+        response
+            .validate_against(&request)
+            .map_err(|_| WorkerError::InvalidResult)?;
+        let bytes = serde_json::to_vec(&response).map_err(|_| WorkerError::InvalidResult)?;
+        if bytes.len() > MAX_RESULT_BYTES {
+            return Err(WorkerError::ResourceLimit("display result bytes"));
+        }
+        Ok(response)
+    })
+}
+
+pub fn decode_display_request_bounded(bytes: &[u8]) -> Result<WorkerDisplayRequest, WorkerError> {
+    if bytes.len() > MAX_REQUEST_BYTES {
+        return Err(WorkerError::ResourceLimit("request bytes"));
+    }
+    let request: WorkerDisplayRequest =
+        serde_json::from_slice(bytes).map_err(|_| WorkerError::InvalidRequest)?;
+    request
+        .validate()
+        .map_err(|_| WorkerError::ResourceLimit("display request bounds"))?;
+    Ok(request)
 }
 
 pub fn guard_worker_execution<T>(

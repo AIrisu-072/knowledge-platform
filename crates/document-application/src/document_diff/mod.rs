@@ -7,8 +7,8 @@ mod snapshot;
 
 pub use evidence::{DiffInspectionEvidence, capture_pair_with_evidence};
 pub use model::{
-    AncillaryChange, Change, DiffRequest, DiffResult, LocatorGranularity, SourceEvidence,
-    UnverifiedRegion,
+    AncillaryChange, AuthorizedDiffDisplay, Change, DiffDisplayItem, DiffRequest, DiffResult,
+    LocatorGranularity, SourceEvidence, UnverifiedRegion,
 };
 pub use ports::{DiffCache, DiffExecutionError, DiffExecutor, DocumentDiffRepository};
 pub use projection::{

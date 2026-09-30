@@ -3,6 +3,7 @@
 
 mod alignment;
 mod change;
+mod display;
 mod protocol;
 
 pub use alignment::{
@@ -12,6 +13,11 @@ pub use alignment::{
 pub use change::{
     ChangeOperation, ComparisonBudget, ContentVerdict, DiffCoverage, RelocationKind, SourceLocator,
     UnverifiedReason, WorkerAncillaryChange, WorkerChange, WorkerUnverifiedRegion,
+};
+pub use display::{
+    DisplayCell, DisplayFragment, DisplayUnavailableReason, MAX_DISPLAY_FRAGMENT_BYTES_V0,
+    MAX_DISPLAY_PAGE_BYTES_V0, MAX_DISPLAY_SOURCE_BYTES_V0, WorkerDisplayRequest,
+    WorkerDisplayResponse, serialized_fragment_bytes,
 };
 pub use document_semantic_inspection_core::FormatId;
 pub use protocol::{

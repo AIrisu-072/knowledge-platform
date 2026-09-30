@@ -1,6 +1,8 @@
 use std::future::Future;
 
-use document_diff_core::{WorkerDiffRequest, WorkerDiffResponse};
+use document_diff_core::{
+    WorkerDiffRequest, WorkerDiffResponse, WorkerDisplayRequest, WorkerDisplayResponse,
+};
 use uuid::Uuid;
 
 use crate::{ContentReader, RepositoryError, VerifiedActorContext};
@@ -58,4 +60,13 @@ pub trait DiffExecutor: Send + Sync {
         base: ContentReader,
         target: ContentReader,
     ) -> impl Future<Output = Result<WorkerDiffResponse, DiffExecutionError>> + Send;
+
+    fn extract_display(
+        &self,
+        request: WorkerDisplayRequest,
+        source: ContentReader,
+    ) -> impl Future<Output = Result<WorkerDisplayResponse, DiffExecutionError>> + Send {
+        let _ = (request, source);
+        async { Err(DiffExecutionError::Unavailable) }
+    }
 }

@@ -1,8 +1,8 @@
 use document_application::{
     CursorBinding, CursorPosition, DocumentRevisionDetail, DocumentRevisionDetailQuery,
     DocumentRevisionPageQuery, DocumentRevisionReadRepository, DocumentRevisionSummary,
-    DocumentSort, Page, QueryKind, RepositoryError, VerifiedActorContext, decode_cursor,
-    encode_cursor, fingerprint_json, principal_fingerprint,
+    DocumentSort, Page, QueryKind, RepositoryError, RevisionComparisonAuditRequest,
+    VerifiedActorContext, decode_cursor, encode_cursor, fingerprint_json, principal_fingerprint,
 };
 use document_domain::{DocumentId, DocumentVersionId, PrincipalRef};
 use serde_json::json;
@@ -12,8 +12,9 @@ use crate::{
     PostgresDocumentRepository,
     access_control::{AccessLockMode, lock_access_state},
     document_history::{authorize_history, begin_snapshot},
-    error::map_statement_error,
+    error::{map_commit_error, map_statement_error},
 };
+use uuid::Uuid;
 
 fn revision_binding(
     ctx: &VerifiedActorContext,
@@ -176,5 +177,78 @@ impl DocumentRevisionReadRepository for PostgresDocumentRepository {
             actor: actor_from_row(&row)?,
             reason: row.try_get("reason").map_err(map_statement_error)?,
         })
+    }
+
+    async fn authorize_and_audit_revision_comparison(
+        &self,
+        ctx: &VerifiedActorContext,
+        request: RevisionComparisonAuditRequest,
+    ) -> Result<Uuid, RepositoryError> {
+        ctx.ensure_current()
+            .map_err(|_| RepositoryError::Forbidden)?;
+        if request.base_revision_id == request.target_revision_id {
+            return Err(RepositoryError::BusinessRule);
+        }
+        let mut tx = begin_snapshot(&self.pool).await?;
+        lock_access_state(&mut tx, AccessLockMode::Shared).await?;
+        authorize_history(&mut tx, ctx, request.document_id).await?;
+        let rows = sqlx::query(
+            "SELECT revision_id, document_version_id FROM document_revisions \
+             WHERE document_id = $1 AND revision_id = ANY($2::uuid[])",
+        )
+        .bind(request.document_id.as_uuid())
+        .bind(vec![request.base_revision_id, request.target_revision_id])
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(map_statement_error)?;
+        if rows.len() != 2 {
+            return Err(RepositoryError::DocumentRevisionNotFound);
+        }
+        let target_version_id = rows
+            .iter()
+            .find(|row| {
+                row.try_get::<Uuid, _>("revision_id")
+                    .is_ok_and(|id| id == request.target_revision_id)
+            })
+            .and_then(|row| row.try_get::<Uuid, _>("document_version_id").ok())
+            .ok_or(RepositoryError::IntegrityViolation)?;
+        ctx.ensure_current()
+            .map_err(|_| RepositoryError::Forbidden)?;
+        let event_id = Uuid::now_v7();
+        sqlx::query(
+            "INSERT INTO audit_outbox_events \
+             (event_id,event_type,source,subject,actor_identity_provider,actor_principal_id, \
+              resource_type,resource_id,resource_version_id,result,trace_id,data,occurred_at) \
+             VALUES ($1,'document.revision_comparison.result_access_granted', \
+                     'urn:knowledge-platform:document-platform',$2,$3,$4, \
+                     'Document',$5,$6,'success',$7,$8,now())",
+        )
+        .bind(event_id)
+        .bind(format!(
+            "document/{}/revision-comparison",
+            request.document_id.as_uuid()
+        ))
+        .bind(ctx.principal().identity_provider())
+        .bind(ctx.principal().principal_id())
+        .bind(request.document_id.as_uuid())
+        .bind(target_version_id)
+        .bind(request.content_audit_event_id.map(|id| id.to_string()))
+        .bind(json!({
+            "base_revision_id": request.base_revision_id,
+            "target_revision_id": request.target_revision_id,
+            "content_comparison_status": request.content_comparison_status,
+            "content_result_digest": request.content_result_digest,
+            "content_audit_event_id": request.content_audit_event_id,
+            "metadata_comparison_status": request.metadata_comparison_status,
+            "base_metadata_snapshot_digest": request.base_metadata_snapshot_digest,
+            "target_metadata_snapshot_digest": request.target_metadata_snapshot_digest,
+        }))
+        .execute(&mut *tx)
+        .await
+        .map_err(map_statement_error)?;
+        ctx.ensure_current()
+            .map_err(|_| RepositoryError::Forbidden)?;
+        tx.commit().await.map_err(map_commit_error)?;
+        Ok(event_id)
     }
 }

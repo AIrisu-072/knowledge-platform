@@ -6,6 +6,7 @@ use document_diff_core::{
 use crate::WorkerError;
 
 pub(crate) mod csv;
+pub(crate) mod display;
 pub(crate) mod docx;
 pub(crate) mod html;
 pub(crate) mod pdf;
@@ -72,4 +73,11 @@ pub(crate) fn compare(
         ancillary_changes: vec![],
         parser_provenance: "document-diff-unsupported-v0".to_owned(),
     })
+}
+
+pub(crate) fn extract_display(
+    request: &document_diff_core::WorkerDisplayRequest,
+    raw: &[u8],
+) -> Result<document_diff_core::DisplayFragment, WorkerError> {
+    display::extract(request, raw)
 }

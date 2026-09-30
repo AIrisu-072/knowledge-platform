@@ -8,9 +8,9 @@ use document_application::document_diff::{AuthorizedDiff, DiffRequest};
 use document_application::{
     ApplicationError, DocumentRevisionDetail, DocumentRevisionDetailQuery,
     DocumentRevisionPageQuery, DocumentRevisionReadRepository, DocumentRevisionSummary,
-    InvocationKind, MetadataComparisonStatus, Page, RevisionComparisonService,
-    RevisionContentComparator, RevisionContentComparison, VerifiedActorContext,
-    compare_revision_metadata,
+    InvocationKind, MetadataComparisonStatus, Page, RevisionComparisonAuditRequest,
+    RevisionComparisonService, RevisionContentComparator, RevisionContentComparison,
+    VerifiedActorContext, compare_revision_metadata,
 };
 use document_domain::{
     DocumentId, DocumentVersionId, PolicySubject, PolicySubjectKind, PrincipalRef,
@@ -44,6 +44,14 @@ impl DocumentRevisionReadRepository for RevisionRepository {
             .get(&query.revision_id)
             .cloned()
             .ok_or(document_application::RepositoryError::DocumentRevisionNotFound)
+    }
+
+    async fn authorize_and_audit_revision_comparison(
+        &self,
+        _ctx: &VerifiedActorContext,
+        _request: RevisionComparisonAuditRequest,
+    ) -> Result<Uuid, document_application::RepositoryError> {
+        Ok(Uuid::now_v7())
     }
 }
 
