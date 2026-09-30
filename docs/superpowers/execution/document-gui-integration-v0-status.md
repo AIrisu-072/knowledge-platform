@@ -1,18 +1,18 @@
 # Document GUI Integration v0 — Capability Execution Status
 
-## 2026-09-30 JST — Written Design approved / Production Plan review pending
+## 2026-09-30 JST — G0 predecessor integration complete / PR #35 finalization in progress
 
-- 状態: **DESIGN APPROVED / PLAN REVIEW PENDING / IMPLEMENTATION BLOCKED**。
-- branch: `design/document-gui-integration-v0`。基点はDocument HTTP/OpenAPI Transport v0 final accepted head `3f870a92525afb6741e1ee72ee6c932eac0f0511`。
-- Design: `docs/superpowers/specs/2026-09-30-document-gui-integration-v0-design.md`。
-- Frozen Design blob: `f132910ca5d3e638502f0b38447d9a1ec4020f24`。依頼者が2026-09-30に明示承認。承認記録 `docs/superpowers/specs/2026-09-30-document-gui-integration-v0-design-approval.md`。
-- Human GUI Source Design artifact SHA-256: `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。Mock 1〜7 / Design System / Motion / Keyboard / Error states / GUI API gapsをレビュー済み。ZIP自体はrepository normative SSOTではない。
-- 主要設計決定: `DocumentVersion.version_no`（内容世代）、`DocumentRevision Major.Minor`（人間向け改訂）、`Document.revision`（OCC）を分離。表示MajorはVersion番号と直結せずDocument単位で単調増加し、Withdraw fallbackでも逆行させない。
-- metadata改訂対象はT5の `document_type / owning_department / category / extensions`。実変更だけMinor+1。Folder/ACL/ReadState/schedule/T10単独では表示Revisionを増やさない。
-- GUI gapはRead Model、Action Capability、Identity Presentation、Revision/Diff Display、Typed Client/Binary Bridgeの5境界として統合。Diff表示はauthoritative bytes + source locatorから監査付きbounded projectionとして生成し、既存comparisonへ`projection=display`、正式Revision比較は専用`revision-comparisons` endpointとする。
-- Frontend方針: React 19 / Vite 8 / TanStack Router+Query+Table+Virtual / Motion / CSS Modules+CSS Custom Properties。React Aria Componentsはpreferred PoC candidate。TanStack Store/XStateはv0 productionへ追加しない。
-- predecessor residual: PR #32 exact headのStandard CI `36662871915`、Sandbox `36662871921`、DSI PoC `36662871930` はSUCCESSだが、旧HTTP Active/Statusは最終COMPLETEへ未更新。stacked PR #27/#29/#30/#31/#32も未merge。承認後のProduction PlanではG0として最初に閉じる。
-- Production Implementation Plan: `docs/superpowers/plans/2026-09-30-document-gui-integration-v0-production-implementation.md` blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`。G0〜G9を単一計画で実行する。**未承認**。
-- Implementation handoff: `docs/superpowers/handoffs/2026-09-30-document-gui-integration-v0-implementation.md`。Plan approval blob一致を必須gateとする。
-- blocker: Production Implementation Planの依頼者承認。承認前にmigration、product code、OpenAPI product差分、frontend app、production dependency promotion、predecessor mergeへ進まない。
-- 次のexact action: Production Implementation Planを依頼者へ提示する。明示承認後にplan approval recordを作成し、別session promptからG0へ進む。
+- 状態: **G0 predecessor PR #27/#29/#30/#31/#32 MERGED。PR #35はmainへretarget済み。PR #35のexecution docs reconciliationとexact-head gatesが残る。G1〜G9は未開始。**
+- Frozen Design blob: f132910ca5d3e638502f0b38447d9a1ec4020f24。承認済みProduction Plan blob: 0830c306ebb38290e4c3dc277f6c97a0759cf912。Plan Approval recordにG0〜G9の明示承認と禁止境界を記録済み。
+- Source Design ZIP SHA-256: ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86。
+- G0 merge commits: #27 95f60f02fbc4205bfc38b6097d419fadee9682a1; #29 2ebfbd46f80c65590950d35d7ef9534377a72035; #30 2a49a2ddc28a77fba286d5d70d17464fcf4949a1; #31 6240ebbebb0db45a7360efbf568d63a2a6101db3; #32 5a81fd856d81b557e4936f663aa8b0ab3fcaa5e2.
+- PR #32 head 04ccb84a6d9a99f63eca8d7512888225393058fa: Standard CI 36713044816, Sandbox 36713044612, DSI PoC 36713044474 SUCCESS. Merge commit tree bd2b7df1717503ff3ef937ede581e0b235f20e87 matches that exact PR head. Main push CI 36714907650 is in progress.
+- PR #35 is open/Draft, base main, no unresolved review threads. Branch merge with latest main found only an active.md content conflict; it is being reconciled. The final PR head and three gates are pending.
+- Frozen design差分なし。product implementation branchはまだ作成していない。Product PRのmain merge、production deploy、production migration execution、本番AD/SSPI接続は禁止。
+- 次のexact action: main CI 36714907650完了を確認し、PR #35のActive/Status/HTTP closure記録を反映してpush。新しいPR #35 headのStandard CI/Sandbox/DSI PoCを確認し、全てSUCCESSなら#35をmergeしてmain push CIを確認。最新mainからproduct branchを作りG1を開始する。
+
+## Approved scope and immutable decisions
+
+- DocumentVersion.version_no、human-facing DocumentRevision Major.Minor、Document.revision OCCは別概念のまま維持する。
+- Frozen Design、承認済みProduction Plan、Source Design checksumは上記blob/hashのまま。amendment gateは未使用。
+- Plan boundaries: G0のpredecessor/Design-Plan PR mergeとDraft product PR作成は許可。product PRのmain merge、production deploy/migration実行、本番AD/SSPI接続は不可。

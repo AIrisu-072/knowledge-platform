@@ -1,40 +1,23 @@
 # Active Execution Pointer
 
-## Active checkpoint — Document GUI Integration v0 Design approved / Plan review pending、2026-09-30 JST
+## Active checkpoint — Document GUI Integration v0 G0 predecessor integration complete / PR #35 finalization in progress、2026-09-30 JST
 
-- Status: **DESIGN APPROVED / PLAN REVIEW PENDING / IMPLEMENTATION BLOCKED**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。
-- Frozen Design: `docs/superpowers/specs/2026-09-30-document-gui-integration-v0-design.md` blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`。Design Approval記録済み。
-- Production Plan: `docs/superpowers/plans/2026-09-30-document-gui-integration-v0-production-implementation.md` blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`。G0〜G9、**未承認**。
-- Implementation handoff: `docs/superpowers/handoffs/2026-09-30-document-gui-integration-v0-implementation.md`。Plan approval一致時のみ実装開始。
-- branch / PR: `design/document-gui-integration-v0` / Draft PR #35。基点はHTTP accepted head `3f870a92525afb6741e1ee72ee6c932eac0f0511`。
-- predecessor: HTTP final 3 gateはSUCCESS。旧HTTP COMPLETE記録とstacked PR #27/#29/#30/#31/#32 integrationはPlan G0。
-- blocker: Production Implementation Planの依頼者承認。
-- 次のexact action: Planレビュー。承認後にplan approval recordを作り、別sessionでG0〜G9を実施する。
+- Status: **G0 predecessor #27/#29/#30/#31/#32 MERGED; PR #35 retargeted to main; PR #35 docs reconciliation and exact-head gates pending**. G1 has not started. Details: docs/superpowers/execution/document-gui-integration-v0-status.md.
+- Frozen Design blob f132910ca5d3e638502f0b38447d9a1ec4020f24; approved Production Plan blob 0830c306ebb38290e4c3dc277f6c97a0759cf912; Plan Approval record is present. No Design amendment proposed.
+- G0 merge commits: #27 95f60f02fbc4205bfc38b6097d419fadee9682a1; #29 2ebfbd46f80c65590950d35d7ef9534377a72035; #30 2a49a2ddc28a77fba286d5d70d17464fcf4949a1; #31 6240ebbebb0db45a7360efbf568d63a2a6101db3; #32 5a81fd856d81b557e4936f663aa8b0ab3fcaa5e2.
+- PR #32 exact head 04ccb84a6d9a99f63eca8d7512888225393058fa: Standard CI 36713044816, Sandbox 36713044612, and DSI PoC 36713044474 all SUCCESS. Main merge commit 5a81fd856d81b557e4936f663aa8b0ab3fcaa5e2 has the same tree bd2b7df1717503ff3ef937ede581e0b235f20e87; push CI 36714907650 is still in progress. Sandbox and DSI PoC workflows are pull-request-triggered only.
+- PR #35 is open/Draft, retargeted to main, and has zero unresolved review threads. Its current branch needs the main active pointer/status reconciled; the only detected merge conflict is active.md.
+- G1–G9 product work will start only from the latest main after PR #35 is merged. Product PR remains Draft/unmerged; no production deploy, production migration execution, or production AD/SSPI connection.
+- Next exact action: wait for main CI 36714907650; finish the docs-only reconciliation for PR #35, push the new head, confirm its exact-head Standard CI/Sandbox/DSI PoC, then merge #35 and verify its main push CI.
 
-以下は旧checkpoint。現在の工程ではない。
+## HTTP/OpenAPI transport checkpoint — HAPI-01〜12 COMPLETE / PR #27〜32 MERGED / MERGED, NOT DEPLOYED、2026-09-30 JST
 
-## Active checkpoint — Document GUI Integration v0 Written Design review pending、2026-09-30 JST
+- Status: **HAPI-01〜12 COMPLETE / CLOSED / MERGED / NOT DEPLOYED**. Frozen Design blob 88f7046a5d14a77f4091df0c92691f6634dd57d7, approved Production Plan blob 111914181143672d3fec901dae75fc2af0256b15. Production Identity connection and deployment have not happened.
+- G0 merge commits: PR #27 95f60f02fbc4205bfc38b6097d419fadee9682a1; #29 2ebfbd46f80c65590950d35d7ef9534377a72035; #30 2a49a2ddc28a77fba286d5d70d17464fcf4949a1; #31 6240ebbebb0db45a7360efbf568d63a2a6101db3; #32 5a81fd856d81b557e4936f663aa8b0ab3fcaa5e2. Current main merge commit: 5a81fd856d81b557e4936f663aa8b0ab3fcaa5e2.
+- PR #32 exact head 04ccb84a6d9a99f63eca8d7512888225393058fa passed Standard CI 36713044816, Sandbox 36713044612, and DSI PoC 36713044474. Its tree is identical to merge commit 5a81fd856d81b557e4936f663aa8b0ab3fcaa5e2 (bd2b7df1717503ff3ef937ede581e0b235f20e87); main push Standard CI 36714907650 is still running. Sandbox/PoC workflows do not run on push.
+- HAPI-01〜12 implementation and acceptance remain complete; codegen candidate was not promoted, and there is no production Identity adapter, server/deploy, or identity-provider connection.
+- Next exact action: finish G0 by merging approved PR #35 after its exact-head gates, then verify main push CI. No deployment.
 
-- Status: **DESIGN ACTIVE / WRITTEN SPEC REVIEW PENDING / IMPLEMENTATION BLOCKED**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。
-- Design: `docs/superpowers/specs/2026-09-30-document-gui-integration-v0-design.md` blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`。
-- branch: `design/document-gui-integration-v0`。基点はDocument HTTP/OpenAPI Transport v0 accepted head `3f870a92525afb6741e1ee72ee6c932eac0f0511` / Draft PR #32。
-- Human GUI Source Design artifact SHA-256: `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。Visual referenceはMock 1〜7、Design/Motion/Keyboard/Error states。repository normative SSOTは本設計。
-- 主要決定: `DocumentVersion.version_no`=内容世代、`DocumentRevision Major.Minor`=人間向け改訂、`Document.revision`=OCC。表示MajorはDocument単位で単調増加し、Withdraw fallbackでも逆行しない。
-- GUI/API gapはRead Model、Action Capability、Identity Presentation、Revision/Diff Display、Typed Client/Binary Bridgeへ統合。React GUIはSource Designの3-pane / Workspace / Motion Systemを維持する。
-- predecessor残作業: PR #32 final 3 gateはSUCCESSだが旧HTTP Active/StatusのCOMPLETE追随とstacked PR #27/#29/#30/#31/#32のmain統合は未実施。設計承認後のProduction Plan G0で最初に閉じる。
-- blocker: 依頼者のWritten Design承認。承認前にproduct implementation、migration、OpenAPI product変更、frontend production dependency promotion、predecessor mergeを行わない。
-- 次のexact action: Written Designをレビューへ提示する。明示承認後、Design Approval recordとG0〜G9を含む単一Production Implementation Planを作成する。
-
-以下は旧checkpoint。現在の工程ではない。
-
-## Active checkpoint — Document HTTP/OpenAPI Transport v0実装・受入head hosted GREEN、2026-09-30 JST
-
-- Status: **ACTIVE / HAPI-01〜12 IMPLEMENTATION・ACCEPTANCE HOSTED GREEN / FINAL EVIDENCE RECORD GATE NEXT**。詳細は `docs/superpowers/execution/document-http-openapi-transport-v0-status.md` と `document-http-openapi-transport-v0-acceptance.md`。
-- Frozen Design blob `88f7046a5d14a77f4091df0c92691f6634dd57d7`、承認済みProduction Plan blob `111914181143672d3fec901dae75fc2af0256b15`。設計意味変更提案なし。
-- branch `feat/document-http-openapi-transport-v0-d`、Draft PR #32（base PR #31 branch）、全PR未merge。受入記録込みhead `423194cb8dec6c7c384df4d92c4e7ccfbde9c518` の標準CI `36661472741`、Sandbox `36661472033`、DSI PoC `36661472021` は全てSUCCESS。Unit A/B/C Draft PR #29/#30/#31も各exact-head 3 gate SUCCESS。
-- HAPI-01〜12の実装・横断受入は完了。macOS workspace 686/686 PASS（skip 5）、Linux standard CI 702/702 PASS（skip 6）でproduction DSI/Diff runnerを使うHAPI-12 E2EもPASS。HTTP 40/40、API contract 10/10、strict Clippy、fmt、architecture/negative smoke PASS。
-- codegen候補はbinary typingを保てずproductionへpromoteしていない。本番Identity Adapter、server/deploy、GUI/CLI/Agent Toolは未接続。実装blockerはなく、残るblockerはこのevidence記録commitのexact-head 3 gateのみ。
-- 次のexact action: このActive/Status/acceptance evidence追記だけをcommit/pushし、新exact headの標準CI、Sandbox、PoCを一度確認する。SUCCESSならCOMPLETEとしてPR #32をDraftレビュー待ちにし、merge/deployしない。
 
 以下は旧checkpoint。現在の工程ではない。
 

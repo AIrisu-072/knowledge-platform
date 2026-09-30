@@ -11,9 +11,9 @@ Delivery UnitはA→B→C→Dのstacked Draft PRで読む。既存のexact-head 
 | A: contract / foundation | `cea5f75b19ec0c68d41f3e7e782a6a44cb21f8a9` | #29 | `36587061407` SUCCESS | `36587061863` SUCCESS | `36587061414` SUCCESS |
 | B: read / management | `241c5d7e97ca747eea72dca4e7cd58dcfa9c15a3` | #30 | `36651316701` SUCCESS | `36651316802` SUCCESS | `36651316757` SUCCESS |
 | C: create / version / lifecycle / file | `4cbca3957ebee4d086aa1601aa1f0d104de35dd3` | #31 | `36656005136` SUCCESS | `36656005182` SUCCESS | `36656005133` SUCCESS |
-| D: Diff / hardening / acceptance | `423194cb8dec6c7c384df4d92c4e7ccfbde9c518` | #32 | `36661472741` SUCCESS | `36661472033` SUCCESS | `36661472021` SUCCESS |
+| D: Diff / hardening / acceptance | `3f870a92525afb6741e1ee72ee6c932eac0f0511` | #32 | `36662871915` SUCCESS | `36662871921` SUCCESS | `36662871930` SUCCESS |
 
-Unit Dのreview済みcode headは `e0c4842bdf348fd7f807aad0d3cb548b1a7c9f22`、受入記録込みの初回hosted GREEN headは `423194cb8dec6c7c384df4d92c4e7ccfbde9c518`。このevidence追記commitを最終exact headとしてもう一度3 gateで確認する。merge・deployは別の明示指示を要する。
+Unit Dのreview済みcode headは `e0c4842bdf348fd7f807aad0d3cb548b1a7c9f22`。最終実装head `3f870a92525afb6741e1ee72ee6c932eac0f0511` は3 gateが全てSUCCESS。HAPI-01〜12はCOMPLETE。stacked PR mergeはProduction Plan G0の明示承認範囲。deployは含まれない。
 
 ## RED → GREEN
 
