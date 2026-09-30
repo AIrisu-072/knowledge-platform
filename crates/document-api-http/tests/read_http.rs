@@ -141,6 +141,18 @@ fn context_for(principal_id: &str) -> VerifiedActorContext {
     .unwrap()
 }
 
+fn context_for_kind(principal_id: &str, invocation_kind: InvocationKind) -> VerifiedActorContext {
+    let principal = PrincipalRef::new("test-idp", principal_id).unwrap();
+    VerifiedActorContext::from_trusted_adapter(
+        principal,
+        vec![PolicySubject::new(PolicySubjectKind::Principal, "test-idp", principal_id).unwrap()],
+        OffsetDateTime::now_utc() + Duration::hours(1),
+        invocation_kind,
+        None,
+    )
+    .unwrap()
+}
+
 fn grant_for(principal_id: &str, actions: impl IntoIterator<Item = Action>) -> PolicyGrant {
     PolicyGrant::new(
         PolicySubject::new(PolicySubjectKind::Principal, "test-idp", principal_id).unwrap(),
@@ -347,6 +359,111 @@ async fn revision_history_is_keyset_paginated_authorized_and_has_detail_snapshot
     assert_eq!(detail["reason"], "classify");
     assert_eq!(detail["metadataSnapshot"]["document_type"], "policy");
     assert_eq!(detail["metadataSnapshotStatus"], "complete");
+}
+
+#[tokio::test]
+async fn detail_capabilities_reflect_permission_lifecycle_and_human_context() {
+    let f = fixture().await;
+    let (published, _) = seed_gui_document(&f).await;
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![
+                grant_for(
+                    "policy-admin",
+                    [
+                        Action::Read,
+                        Action::ReadHistory,
+                        Action::Write,
+                        Action::Publish,
+                        Action::Administer,
+                    ],
+                ),
+                grant_for("reader-two", [Action::Read]),
+                grant_for(
+                    "service-actor",
+                    [
+                        Action::Read,
+                        Action::ReadHistory,
+                        Action::Write,
+                        Action::Publish,
+                        Action::Administer,
+                    ],
+                ),
+            ],
+        )
+        .await
+        .unwrap();
+    let document_path = format!("/v1/documents/{}?view=published", f.document_id.as_uuid());
+    let version_path = format!(
+        "/v1/documents/{}/versions/{}?purpose=published",
+        f.document_id.as_uuid(),
+        published
+    );
+
+    let admin = read_router(f.repository.clone(), Arc::new(FixedIdentity(context()))).unwrap();
+    let (status, document) = get(admin.clone(), &document_path).await;
+    assert_eq!(status, StatusCode::OK, "{document}");
+    assert_eq!(
+        document["capabilities"]["createVersion"]["status"],
+        "available"
+    );
+    assert_eq!(
+        document["capabilities"]["manageAccess"]["status"],
+        "available"
+    );
+
+    let (status, version) = get(admin.clone(), &version_path).await;
+    assert_eq!(status, StatusCode::OK, "{version}");
+    assert_eq!(version["capabilities"]["withdraw"]["status"], "available");
+    assert_eq!(version["capabilities"]["download"]["status"], "available");
+    assert_eq!(
+        version["capabilities"]["edit"],
+        json!({"status": "disabled", "reason": "lifecycle"})
+    );
+
+    let (status, root) = get(admin.clone(), "/v1/folders/root").await;
+    assert_eq!(status, StatusCode::OK, "{root}");
+    assert_eq!(
+        root["capabilities"]["createDocument"]["status"],
+        "available"
+    );
+    assert_eq!(root["capabilities"]["manageAccess"]["status"], "available");
+
+    let children_path = format!("/v1/folders/{}/children", f.root_id.as_uuid());
+    let (status, children) = get(admin, &children_path).await;
+    assert_eq!(status, StatusCode::OK, "{children}");
+    assert_eq!(
+        children["capabilities"]["createFolder"]["status"],
+        "available"
+    );
+
+    let reader = read_router(
+        f.repository.clone(),
+        Arc::new(FixedIdentity(context_for("reader-two"))),
+    )
+    .unwrap();
+    let (status, document) = get(reader, &document_path).await;
+    assert_eq!(status, StatusCode::OK, "{document}");
+    assert_eq!(
+        document["capabilities"]["createVersion"],
+        json!({"status": "disabled", "reason": "permission"})
+    );
+
+    let service = read_router(
+        f.repository.clone(),
+        Arc::new(FixedIdentity(context_for_kind(
+            "service-actor",
+            InvocationKind::Service,
+        ))),
+    )
+    .unwrap();
+    let (status, document) = get(service, &document_path).await;
+    assert_eq!(status, StatusCode::OK, "{document}");
+    assert_eq!(
+        document["capabilities"]["createVersion"],
+        json!({"status": "disabled", "reason": "notHumanInteractive"})
+    );
 }
 
 #[tokio::test]
