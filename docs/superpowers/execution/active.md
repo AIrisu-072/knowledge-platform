@@ -1,5 +1,17 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document HTTP/OpenAPI Transport v0 HAPI-01〜12 COMPLETE / PR #27〜31 merged / PR #32 final gate pending、2026-09-30 JST
+
+- Status: **HAPI-01〜12 COMPLETE / PR #27〜31 MERGED / PR #32 FINAL DOCUMENT HEAD GATE PENDING**。詳細は `docs/superpowers/execution/document-http-openapi-transport-v0-status.md` と `document-http-openapi-transport-v0-acceptance.md`。
+- Frozen Design blob `88f7046a5d14a77f4091df0c92691f6634dd57d7`、承認済みProduction Plan blob `111914181143672d3fec901dae75fc2af0256b15`。設計意味変更提案なし。
+- G0 integration: PR #27 merge `95f60f02fbc4205bfc38b6097d419fadee9682a1`、#29 `2ebfbd46f80c65590950d35d7ef9534377a72035`、#30 `2a49a2ddc28a77fba286d5d70d17464fcf4949a1`、#31 `6240ebbebb0db45a7360efbf568d63a2a6101db3`。Current main is `6240ebbebb0db45a7360efbf568d63a2a6101db3`.
+- branch `feat/document-http-openapi-transport-v0-d`、Draft PR #32 is now based on `main`. Its implementation code head `3f870a92525afb6741e1ee72ee6c932eac0f0511` had Standard CI `36662871915`, Sandbox `36662871921`, DSI PoC `36662871930` SUCCESS. The prior docs head `531394b4fb24eba785fab81ae1b3e43e81aaa15e` had CI `36710230567` in progress, Sandbox `36710230563` SUCCESS and DSI PoC `36710230743` SUCCESS; the current G0 status edit will create a new head, so those docs-head checks do not qualify it.
+- HAPI-01〜12の実装・横断受入は完了。macOS workspace 686/686 PASS（skip 5）、Linux standard CI 702/702 PASS（skip 6）でproduction DSI/Diff runnerを使うHAPI-12 E2EもPASS。HTTP 40/40、API contract 10/10、strict Clippy、fmt、architecture/negative smoke PASS。
+- codegen候補はbinary typingを保てずproductionへpromoteしていない。本番Identity Adapter、server/deploy、GUI/CLI/Agent Toolは未接続。G0 blockerなし。production implementation PR merge、deploy、AD接続はしない。
+- 次のexact action: G0のmerge状況をActive/Statusへ記録してPR #32へpushし、新しいexact headのStandard CI/Sandbox/DSI PoCを確認する。全てSUCCESSなら#32をmergeし、main merge commit gatesを確認する。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## Active checkpoint — Document HTTP/OpenAPI Transport v0 Unit A local GREEN、2026-09-29 JST
 
 - Status: **ACTIVE / HAPI-01〜03 LOCAL GREEN / UNIT A EXACT-HEAD GATE NEXT**。詳細は `docs/superpowers/execution/document-http-openapi-transport-v0-status.md`。

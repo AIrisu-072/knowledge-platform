@@ -317,7 +317,9 @@ fn management_code(code: ManagementErrorCode) -> ErrorCode {
 impl IntoResponse for ApiProblem {
     fn into_response(self) -> Response {
         let status = StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        let code = self.code;
         let mut response = (status, Json(self)).into_response();
+        response.extensions_mut().insert(code);
         response.headers_mut().insert(
             header::CONTENT_TYPE,
             HeaderValue::from_static("application/problem+json"),

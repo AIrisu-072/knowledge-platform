@@ -25,7 +25,9 @@ use uuid::Uuid;
 
 use crate::error::{ApiError, ApiProblem};
 use crate::identity::IdentityAdapter;
+use crate::limits::ORDINARY_OPERATION_TIMEOUT;
 use crate::router::{StartupError, protect_routes};
+use crate::timeout::with_operation_timeout;
 use crate::trace::TraceContext;
 
 pub trait AuthorizedReadRepository:
@@ -97,7 +99,10 @@ pub fn read_router<R: AuthorizedReadRepository>(
             get(get_folder_policy::<R>),
         )
         .with_state(ReadState { repository });
-    protect_routes(routes, Some(identity_adapter))
+    protect_routes(
+        with_operation_timeout(routes, ORDINARY_OPERATION_TIMEOUT),
+        Some(identity_adapter),
+    )
 }
 
 #[derive(Debug, Deserialize)]

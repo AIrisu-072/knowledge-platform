@@ -9,7 +9,7 @@ use axum::http::{Method, Request, StatusCode, header};
 use document_api_http::create::{create_router, create_router_with_limits};
 use document_api_http::identity::{IdentityAdapter, IdentityRequestContext};
 use document_api_http::limits::{
-    MAX_FILENAME_BYTES, MAX_MULTIPART_FILE_BYTES, MAX_MULTIPART_HEADER_BYTES,
+    MAX_FILENAME_BYTES, MAX_JSON_BODY_BYTES, MAX_MULTIPART_FILE_BYTES, MAX_MULTIPART_HEADER_BYTES,
     MAX_MULTIPART_JSON_BYTES, MAX_MULTIPART_PARTS, MAX_MULTIPART_TOTAL_BYTES, UploadLimits,
 };
 use document_application::{
@@ -371,6 +371,14 @@ fn constrained_router(
     storage: Arc<RecordingStorage>,
 ) -> Router {
     let limits = UploadLimits::tightened(512, 8, 4096, 8, 16, 256).unwrap();
+    router_with_limits(repository, storage, limits)
+}
+
+fn router_with_limits(
+    repository: Arc<RecordingRepository>,
+    storage: Arc<RecordingStorage>,
+    limits: UploadLimits,
+) -> Router {
     create_router_with_limits(
         Arc::new(GeneratedIds),
         Arc::new(FixedClock),
@@ -380,6 +388,23 @@ fn constrained_router(
         limits,
     )
     .unwrap()
+}
+
+fn encoded_header_bytes(part: &Part) -> usize {
+    let filename = part
+        .filename
+        .as_ref()
+        .map(|value| format!("; filename=\"{value}\""))
+        .unwrap_or_default();
+    let disposition = format!("form-data; name=\"{}\"{filename}", part.name);
+    let mut bytes = "content-disposition".len() + disposition.len() + 4;
+    if let Some(content_type) = &part.content_type {
+        bytes += "content-type".len() + content_type.len() + 4;
+    }
+    if let Some(value) = &part.extra_header {
+        bytes += "x-extra".len() + value.len() + 4;
+    }
+    bytes
 }
 
 #[test]
@@ -400,6 +425,131 @@ fn production_upload_profile_is_finite_and_fixed() {
             MAX_MULTIPART_HEADER_BYTES,
         )
         .is_err()
+    );
+}
+
+#[tokio::test]
+async fn tightened_multipart_limits_accept_exact_boundaries_and_reject_one_over() {
+    let request = Part::request(create_request_json());
+    let file = Part::file(vec![7; 8]);
+    let parts = [request, file];
+    let total_bytes = multipart(&parts, true).1.len();
+    let json_bytes = parts[0].body.len();
+    let file_bytes = parts[1].body.len();
+    let filename_bytes = parts[1].filename.as_ref().unwrap().len();
+    let header_bytes = parts.iter().map(encoded_header_bytes).max().unwrap();
+    let exact = UploadLimits::tightened(
+        json_bytes,
+        file_bytes,
+        total_bytes,
+        parts.len(),
+        filename_bytes,
+        header_bytes,
+    )
+    .unwrap();
+    let repository = Arc::new(RecordingRepository::default());
+    let (status, body) = send(
+        router_with_limits(
+            repository.clone(),
+            Arc::new(RecordingStorage::default()),
+            exact,
+        ),
+        &parts,
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(repository.create_calls(), 1);
+
+    let one_over_profiles = [
+        UploadLimits::tightened(
+            json_bytes - 1,
+            file_bytes,
+            total_bytes,
+            parts.len(),
+            filename_bytes,
+            header_bytes,
+        )
+        .unwrap(),
+        UploadLimits::tightened(
+            json_bytes,
+            file_bytes - 1,
+            total_bytes,
+            parts.len(),
+            filename_bytes,
+            header_bytes,
+        )
+        .unwrap(),
+        UploadLimits::tightened(
+            json_bytes,
+            file_bytes,
+            total_bytes - 1,
+            parts.len(),
+            filename_bytes,
+            header_bytes,
+        )
+        .unwrap(),
+        UploadLimits::tightened(
+            json_bytes,
+            file_bytes,
+            total_bytes,
+            parts.len() - 1,
+            filename_bytes,
+            header_bytes,
+        )
+        .unwrap(),
+        UploadLimits::tightened(
+            json_bytes,
+            file_bytes,
+            total_bytes,
+            parts.len(),
+            filename_bytes - 1,
+            header_bytes,
+        )
+        .unwrap(),
+        UploadLimits::tightened(
+            json_bytes,
+            file_bytes,
+            total_bytes,
+            parts.len(),
+            filename_bytes,
+            header_bytes - 1,
+        )
+        .unwrap(),
+    ];
+    for limits in one_over_profiles {
+        let repository = Arc::new(RecordingRepository::default());
+        let (status, body) = send(
+            router_with_limits(
+                repository.clone(),
+                Arc::new(RecordingStorage::default()),
+                limits,
+            ),
+            &parts,
+            true,
+        )
+        .await;
+        assert!(status.is_client_error(), "{status} {body}");
+        assert_eq!(repository.create_calls(), 0);
+    }
+}
+
+#[tokio::test]
+async fn multipart_profile_accepts_a_representative_file_larger_than_the_json_limit() {
+    let repository = Arc::new(RecordingRepository::default());
+    let storage = Arc::new(RecordingStorage::default());
+    let file = vec![5; MAX_JSON_BODY_BYTES + 1];
+    let (status, body) = send(
+        router(repository.clone(), storage.clone()),
+        &[Part::request(create_request_json()), Part::file(file)],
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(repository.create_calls(), 1);
+    assert_eq!(
+        storage.0.lock().unwrap().bytes.len(),
+        MAX_JSON_BODY_BYTES + 1
     );
 }
 

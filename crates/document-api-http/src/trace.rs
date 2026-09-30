@@ -1,7 +1,45 @@
-use axum::extract::Request;
+use std::sync::Arc;
+use std::time::Instant;
+
+use axum::extract::{MatchedPath, Request, State};
 use axum::http::HeaderValue;
 use axum::middleware::Next;
 use axum::response::Response;
+
+use crate::error::ErrorCode;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HttpObservation {
+    pub trace_id: String,
+    pub route_template: String,
+    pub method: String,
+    pub status: u16,
+    pub duration_micros: u64,
+    pub invocation_kind: Option<&'static str>,
+    pub error_code: Option<ErrorCode>,
+}
+
+pub trait HttpObservationSink: Send + Sync + 'static {
+    fn record(&self, observation: HttpObservation);
+}
+
+pub struct TracingObservationSink;
+
+impl HttpObservationSink for TracingObservationSink {
+    fn record(&self, observation: HttpObservation) {
+        tracing::info!(
+            target: "document_api_http",
+            trace_id = %observation.trace_id,
+            route_template = %observation.route_template,
+            method = %observation.method,
+            status = observation.status,
+            duration_micros = observation.duration_micros,
+            invocation_kind = ?observation.invocation_kind,
+            error_code = ?observation.error_code,
+            "document HTTP request"
+        );
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TraceContext {
@@ -51,5 +89,40 @@ pub async fn attach_trace(mut request: Request, next: Next) -> Response {
     if let Ok(value) = HeaderValue::from_str(&trace.trace_id) {
         response.headers_mut().insert("trace-id", value);
     }
+    response
+}
+
+pub(crate) async fn observe_request(
+    State(sink): State<Arc<dyn HttpObservationSink>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let started = Instant::now();
+    let trace_id = request
+        .extensions()
+        .get::<TraceContext>()
+        .map(|trace| trace.trace_id.clone())
+        .unwrap_or_default();
+    let route_template = request
+        .extensions()
+        .get::<MatchedPath>()
+        .map(|path| path.as_str().to_owned())
+        .unwrap_or_else(|| "<unmatched>".to_owned());
+    let method = request.method().as_str().to_owned();
+    let invocation_kind = request
+        .extensions()
+        .get::<document_application::VerifiedActorContext>()
+        .map(|actor| actor.invocation_kind().as_str());
+    let response = next.run(request).await;
+    let elapsed = started.elapsed().as_micros();
+    sink.record(HttpObservation {
+        trace_id,
+        route_template,
+        method,
+        status: response.status().as_u16(),
+        duration_micros: u64::try_from(elapsed).unwrap_or(u64::MAX),
+        invocation_kind,
+        error_code: response.extensions().get::<ErrorCode>().copied(),
+    });
     response
 }

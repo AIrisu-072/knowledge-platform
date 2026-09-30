@@ -53,6 +53,39 @@ const operations = [
   ['put', '/v1/folders/{folderId}/access-policy'],
 ];
 
+const acceptanceEvidence = [
+  ['listDocuments', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['createDocument', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['recoverDocumentCreation', 'crates/document-api-http/tests/create_http.rs', 'valid_create_streams_primary_file_and_authorized_recovery_matches_all_ids'],
+  ['getDocument', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['listDocumentVersions', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['createDocumentVersion', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['getDocumentVersion', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['updateWorkingVersion', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['rebaseWorkingVersion', 'crates/document-api-http/tests/versioning_http.rs', 'create_update_replay_and_rebase_preserve_manifest_binding'],
+  ['publishVersion', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['withdrawVersion', 'crates/document-api-http/tests/publication_http.rs', 'lifecycle_actions_preserve_exact_results_and_operation_identity'],
+  ['schedulePublication', 'crates/document-api-http/tests/publication_http.rs', 'lifecycle_actions_preserve_exact_results_and_operation_identity'],
+  ['cancelPublicationSchedule', 'crates/document-api-http/tests/publication_http.rs', 'lifecycle_actions_preserve_exact_results_and_operation_identity'],
+  ['endDocumentPublication', 'crates/document-api-http/tests/publication_http.rs', 'lifecycle_actions_preserve_exact_results_and_operation_identity'],
+  ['patchDocumentMetadata', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['moveDocument', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['getDocumentAccessPolicy', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['setDocumentAccessPolicy', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['markDocumentVersionRead', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['getDocumentHistory', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['listVersionFiles', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['downloadVersionFile', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['compareDocumentVersions', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['getRootFolder', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['listFolderChildren', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['createFolder', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['renameFolder', 'crates/document-api-http/tests/management_http.rs', 'management_commands_preserve_replay_revision_and_typed_error_contracts'],
+  ['moveFolder', 'crates/document-api-http/tests/management_http.rs', 'management_commands_preserve_replay_revision_and_typed_error_contracts'],
+  ['getFolderAccessPolicy', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['setFolderAccessPolicy', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+];
+
 function operation(method, path) {
   return contract.paths?.[path]?.[method];
 }
@@ -75,6 +108,43 @@ test('OpenAPI 3.2.1 exposes every approved Document operation with unique IDs', 
     ids.push(endpoint.operationId);
   }
   assert.equal(new Set(ids).size, ids.length, 'operationId collision');
+});
+
+test('every operation has examples, schemas and executable HTTP evidence', () => {
+  const contractIds = new Set();
+  for (const [method, path] of operations) {
+    const endpoint = operation(method, path);
+    contractIds.add(endpoint.operationId);
+    const success = Object.entries(endpoint.responses ?? {})
+      .find(([status]) => /^2\d\d$/.test(status));
+    assert.ok(success, `${endpoint.operationId} has no success response`);
+    const response = resolved(success[1]);
+    const contents = Object.values(response.content ?? {});
+    assert.ok(contents.length > 0, `${endpoint.operationId} has no success media type`);
+    assert.ok(contents.every((content) => content.schema), `${endpoint.operationId} has an untyped success body`);
+    assert.ok(
+      contents.every((content) => content.example !== undefined || content.examples !== undefined),
+      `${endpoint.operationId} has no success example`,
+    );
+    if (endpoint.requestBody) {
+      const request = resolved(endpoint.requestBody);
+      const requestContents = Object.values(request.content ?? {});
+      assert.ok(requestContents.length > 0, `${endpoint.operationId} has no request media type`);
+      assert.ok(requestContents.every((content) => content.schema), `${endpoint.operationId} has an untyped request body`);
+      assert.ok(
+        requestContents.every((content) => content.example !== undefined || content.examples !== undefined),
+        `${endpoint.operationId} has no request example`,
+      );
+    }
+  }
+
+  const evidenceIds = new Set(acceptanceEvidence.map(([operationId]) => operationId));
+  assert.equal(evidenceIds.size, acceptanceEvidence.length, 'duplicate operation evidence');
+  assert.deepEqual([...evidenceIds].sort(), [...contractIds].sort(), 'operation evidence drift');
+  for (const [operationId, sourcePath, testName] of acceptanceEvidence) {
+    const source = readFileSync(join(repository, sourcePath), 'utf8');
+    assert.match(source, new RegExp(`(?:async\\s+)?fn\\s+${testName}\\s*\\(`), `${operationId} evidence is missing`);
+  }
 });
 
 test('the contract describes multipart writes and audited binary download', () => {

@@ -23,7 +23,9 @@ use uuid::Uuid;
 
 use crate::error::{ApiError, ApiProblem};
 use crate::identity::IdentityAdapter;
+use crate::limits::ORDINARY_OPERATION_TIMEOUT;
 use crate::router::{StartupError, protect_routes};
+use crate::timeout::with_operation_timeout;
 use crate::trace::TraceContext;
 
 pub trait ManagementApiRepository:
@@ -61,7 +63,10 @@ pub fn management_router<R: ManagementApiRepository>(
         )
         .merge(crate::read_state::read_state_routes::<R>())
         .with_state(repository);
-    protect_routes(routes, Some(identity_adapter))
+    protect_routes(
+        with_operation_timeout(routes, ORDINARY_OPERATION_TIMEOUT),
+        Some(identity_adapter),
+    )
 }
 
 #[derive(Debug, Deserialize)]

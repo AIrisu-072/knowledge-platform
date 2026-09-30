@@ -1,7 +1,9 @@
+use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 use axum::body::{Body, Bytes};
 use axum::extract::rejection::QueryRejection;
@@ -23,8 +25,10 @@ use uuid::Uuid;
 
 use crate::error::{ApiError, ApiProblem, ErrorCode};
 use crate::identity::IdentityAdapter;
+use crate::limits::{DOWNLOAD_IDLE_TIMEOUT, ORDINARY_OPERATION_TIMEOUT};
 use crate::management::{problem, validation};
 use crate::router::{StartupError, protect_routes};
+use crate::timeout::with_operation_timeout;
 use crate::trace::TraceContext;
 
 const STREAM_CHUNK_BYTES: usize = 64 * 1024;
@@ -36,6 +40,7 @@ impl<T> FileDownloadRepository for T where T: VersionFileAccessRepository + Send
 struct FileDownloadState<R, F> {
     repository: Arc<R>,
     storage: Arc<F>,
+    idle_timeout: Duration,
 }
 
 impl<R, F> Clone for FileDownloadState<R, F> {
@@ -43,6 +48,7 @@ impl<R, F> Clone for FileDownloadState<R, F> {
         Self {
             repository: self.repository.clone(),
             storage: self.storage.clone(),
+            idle_timeout: self.idle_timeout,
         }
     }
 }
@@ -56,7 +62,26 @@ where
     R: FileDownloadRepository,
     F: FileStorage + 'static,
 {
-    let route = Router::new()
+    file_download_router_with_idle_timeout(
+        repository,
+        storage,
+        identity_adapter,
+        DOWNLOAD_IDLE_TIMEOUT,
+    )
+}
+
+pub fn file_download_router_with_idle_timeout<R, F>(
+    repository: Arc<R>,
+    storage: Arc<F>,
+    identity_adapter: Arc<dyn IdentityAdapter>,
+    idle_timeout: Duration,
+) -> Result<Router, StartupError>
+where
+    R: FileDownloadRepository,
+    F: FileStorage + 'static,
+{
+    let route = with_operation_timeout(
+        Router::new()
         .route(
             "/v1/documents/{document_id}/versions/{version_id}/files/{content_item_id}/{representation_id}",
             get(download::<R, F>),
@@ -64,7 +89,10 @@ where
         .with_state(FileDownloadState {
             repository,
             storage,
-        });
+            idle_timeout,
+        }),
+        ORDINARY_OPERATION_TIMEOUT,
+    );
     protect_routes(route, Some(identity_adapter))
 }
 
@@ -128,7 +156,11 @@ where
         .header(header::CONTENT_TYPE, media_type)
         .header(header::CONTENT_LENGTH, size_bytes)
         .header(header::CONTENT_DISPOSITION, disposition)
-        .body(Body::new(AsyncReadBody::new(opened.content, size_bytes)))
+        .body(Body::new(AsyncReadBody::new(
+            opened.content,
+            size_bytes,
+            state.idle_timeout,
+        )))
         .map_err(|_| ApiProblem::new(ErrorCode::Internal, &path, &trace.trace_id).into())
 }
 
@@ -183,13 +215,17 @@ fn content_disposition(name: &str) -> String {
 struct AsyncReadBody {
     reader: ContentReader,
     remaining: u64,
+    idle_timeout: Duration,
+    idle: Pin<Box<tokio::time::Sleep>>,
 }
 
 impl AsyncReadBody {
-    fn new(reader: ContentReader, size_bytes: u64) -> Self {
+    fn new(reader: ContentReader, size_bytes: u64, idle_timeout: Duration) -> Self {
         Self {
             reader,
             remaining: size_bytes,
+            idle_timeout,
+            idle: Box::pin(tokio::time::sleep(idle_timeout)),
         }
     }
 }
@@ -210,7 +246,13 @@ impl http_body::Body for AsyncReadBody {
         let mut chunk = vec![0_u8; chunk_size];
         let mut read_buffer = ReadBuf::new(&mut chunk);
         match tokio::io::AsyncRead::poll_read(self.reader.as_mut(), cx, &mut read_buffer) {
-            Poll::Pending => Poll::Pending,
+            Poll::Pending => match self.idle.as_mut().poll(cx) {
+                Poll::Pending => Poll::Pending,
+                Poll::Ready(()) => Poll::Ready(Some(Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "download stream idle timeout",
+                )))),
+            },
             Poll::Ready(Err(error)) => Poll::Ready(Some(Err(error))),
             Poll::Ready(Ok(())) => {
                 let read = read_buffer.filled().len();
@@ -222,6 +264,8 @@ impl http_body::Body for AsyncReadBody {
                 }
                 chunk.truncate(read);
                 self.remaining -= read as u64;
+                let deadline = tokio::time::Instant::now() + self.idle_timeout;
+                self.idle.as_mut().reset(deadline);
                 Poll::Ready(Some(Ok(Frame::data(Bytes::from(chunk)))))
             }
         }
