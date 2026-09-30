@@ -5,6 +5,7 @@
 mod model;
 mod outbox;
 mod postgres;
+mod relations;
 mod translate;
 
 pub use model::{
@@ -19,6 +20,10 @@ pub use outbox::{
 pub use postgres::{
     DocumentCurrentAccessAdapter, DocumentOutboxSnapshot, DocumentSnapshotReader, DsiReadState,
     PostgresDocumentSnapshotReader, SnapshotReadError, VersionSnapshotRecord,
+};
+pub use relations::{
+    DocumentRelationProjection, DocumentRelationProjector, RelationProjectionError,
+    document_resource_id, folder_resource_id,
 };
 pub use translate::{
     DocumentIndexInputs, DocumentSourceTranslation, DocumentSourceTranslator,

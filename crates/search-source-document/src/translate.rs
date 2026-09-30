@@ -10,6 +10,8 @@ use search_core::source::DiscoverableSource;
 use search_tantivy::{LexicalBuildInput, LexicalDocument};
 
 use crate::model::{DocumentSourceSnapshot, DsiEvidenceRefs, PublicationEndRecord};
+use crate::postgres::VersionSnapshotRecord;
+use crate::relations::{DocumentRelationProjector, RelationProjectionError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocumentVisibilityClass {
@@ -104,6 +106,8 @@ pub enum TranslationError {
     InvalidSourceConfiguration,
     #[error("Document Lens requests a lexical field outside title and permitted metadata")]
     UnsupportedLexicalField,
+    #[error("Document relation projection failed: {0}")]
+    RelationProjection(#[from] RelationProjectionError),
 }
 
 pub struct DocumentSourceTranslator {
@@ -126,6 +130,32 @@ impl DocumentSourceTranslator {
             projection_schema_version: projection_schema_version.into(),
             semantic_registry_version: semantic_registry_version.into(),
         }
+    }
+
+    /// Translate a D3 record when relation projection and explicit DSI
+    /// unknown state are required by a live generation.
+    pub fn translate_record(
+        &self,
+        record: VersionSnapshotRecord,
+    ) -> Result<DocumentSourceTranslation, TranslationError> {
+        let projected = DocumentRelationProjector::new(self.source.source_id).project(&record)?;
+        let mut translation = self.translate(record.snapshot)?;
+        let inputs = match &mut translation {
+            DocumentSourceTranslation::Live(inputs)
+            | DocumentSourceTranslation::Historical { inputs, .. }
+            | DocumentSourceTranslation::Authoring { inputs, .. } => inputs,
+        };
+        inputs.projection.resource.relation_ids = projected
+            .relations
+            .iter()
+            .map(|relation| relation.relation_id)
+            .collect();
+        inputs.projection.relations = projected.relations;
+        inputs.projection.typed_facets.insert(
+            "document.dsi_external_dependencies".into(),
+            projected.dsi_dependency_state,
+        );
+        Ok(translation)
     }
 
     pub fn translate(

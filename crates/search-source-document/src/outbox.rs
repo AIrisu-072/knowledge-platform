@@ -385,7 +385,7 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
         let mut projections = Vec::with_capacity(live_count);
         let mut lexical_documents = Vec::with_capacity(live_count);
         for record in records {
-            let translation = translator.translate(record.snapshot).map_err(|error| {
+            let translation = translator.translate_record(record).map_err(|error| {
                 SearchError::OperationFailed(format!("Document translation failed: {error}"))
             })?;
             let inputs = match translation {
