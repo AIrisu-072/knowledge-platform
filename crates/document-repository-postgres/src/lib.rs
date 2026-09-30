@@ -12,6 +12,7 @@ mod document_diff_snapshot;
 mod document_history;
 mod document_management;
 mod document_query;
+mod document_revision;
 mod error;
 mod file_access;
 mod folder_management;

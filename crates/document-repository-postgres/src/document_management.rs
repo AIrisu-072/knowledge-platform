@@ -11,6 +11,7 @@ use crate::{
     PostgresDocumentRepository,
     access_control::{AccessLockMode, authorize_in_tx, lock_access_state},
     access_policy::{decode_result, insert_operation, postgres_timestamp_now, row_resource},
+    document_revision::issue_metadata_revision,
     error::{map_commit_error, map_statement_error},
     targeted_events::insert_targeted_events,
 };
@@ -181,7 +182,7 @@ impl PostgresDocumentRepository {
                 return replay_management(&mut tx, ctx, &row, digest).await;
             }
             let row = sqlx::query(
-                "SELECT revision, metadata FROM documents WHERE document_id = $1 FOR UPDATE",
+                "SELECT revision, metadata, current_version_id FROM documents WHERE document_id = $1 FOR UPDATE",
             )
             .bind(document_id.as_uuid())
             .fetch_optional(&mut *tx)
@@ -195,6 +196,9 @@ impl PostgresDocumentRepository {
             }
             authorize_metadata(&mut tx, ctx, document_id).await?;
             let current_revision: i64 = row.try_get("revision").map_err(map_statement_error)?;
+            let current_version_id: Option<Uuid> = row
+                .try_get("current_version_id")
+                .map_err(map_statement_error)?;
             if current_revision != expected_revision {
                 return Err(RepositoryError::Management(
                     ManagementErrorCode::RevisionConflict,
@@ -250,11 +254,22 @@ impl PostgresDocumentRepository {
                 policy_id: None,
                 changed,
                 occurred_at: now,
-                document_metadata: Some(updated),
+                document_metadata: Some(updated.clone()),
                 movement: None,
             };
             insert_operation(&mut tx, ctx, &command, digest, &mutation).await?;
             if changed {
+                issue_metadata_revision(
+                    &mut tx,
+                    document_id,
+                    current_version_id.map(document_domain::DocumentVersionId::from_uuid),
+                    &updated,
+                    command.operation_id().as_uuid(),
+                    ctx.principal(),
+                    reason,
+                    now,
+                )
+                .await?;
                 let mut keys: Vec<_> = set.keys().chain(unset.iter()).cloned().collect();
                 keys.sort();
                 keys.dedup();
