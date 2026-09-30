@@ -36,11 +36,15 @@ fn candidate(
 }
 
 fn relevant_kind(projection: &CompiledResourceProjection, request: &DiscoveryRequest) -> bool {
-    request.need.required_resource_types.is_empty()
+    !matches!(
+        projection.directory.kind,
+        search_core::resource::ResourceKind::Document
+            | search_core::resource::ResourceKind::FolderPlacement
+    ) && (request.need.required_resource_types.is_empty()
         || request
             .need
             .required_resource_types
-            .contains(&projection.directory.kind)
+            .contains(&projection.directory.kind))
 }
 
 impl DirectoryRetrieverPort for MemoryProjectionStore {

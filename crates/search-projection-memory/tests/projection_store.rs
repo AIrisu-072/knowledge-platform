@@ -178,6 +178,99 @@ fn request() -> DiscoveryRequest {
 }
 
 #[tokio::test]
+async fn discard_unpublished_generation_releases_all_state_and_reuses_its_key() {
+    for phase in ["building", "validated", "failed"] {
+        let store = MemoryProjectionStore::new();
+        let semantic = registry("registry-1", false);
+        let draft = manifest(source(90), generation(1), phase, 1);
+        let draft_resource = projection(&draft, resource(90), "draft");
+        let draft = finalized(draft, std::slice::from_ref(&draft_resource), &semantic);
+        store
+            .begin_generation(persist_manifest(draft.clone()))
+            .await
+            .unwrap();
+        store
+            .stage_concept_registry(draft.key(), semantic.clone())
+            .await
+            .unwrap();
+        store
+            .stage_resource(persist_resource(rebound(draft_resource.clone(), &draft)))
+            .await
+            .unwrap();
+        if phase == "validated" {
+            store.validate_generation(draft.key()).await.unwrap();
+        } else if phase == "failed" {
+            store.fail_generation(draft.key()).await.unwrap();
+        }
+
+        assert!(store.discard_unpublished_generation(draft.key()).unwrap());
+        assert!(!store.discard_unpublished_generation(draft.key()).unwrap());
+        store
+            .begin_generation(persist_manifest(draft.clone()))
+            .await
+            .unwrap();
+        store
+            .stage_concept_registry(draft.key(), semantic.clone())
+            .await
+            .unwrap();
+        store
+            .stage_resource(persist_resource(rebound(draft_resource, &draft)))
+            .await
+            .unwrap();
+        store.validate_generation(draft.key()).await.unwrap();
+        store.publish_generation(draft.key()).await.unwrap();
+        assert!(
+            store
+                .resource_at(draft.key(), resource(90))
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+}
+
+#[tokio::test]
+async fn discard_unpublished_generation_rejects_current_and_retired() {
+    let store = MemoryProjectionStore::new();
+    let semantic = registry("registry-1", false);
+    let mut published = Vec::new();
+    for id in [1, 2] {
+        let draft = manifest(source(91), generation(id), "published", 1);
+        let item = projection(&draft, resource(id), "published");
+        let draft = finalized(draft, std::slice::from_ref(&item), &semantic);
+        store
+            .begin_generation(persist_manifest(draft.clone()))
+            .await
+            .unwrap();
+        store
+            .stage_concept_registry(draft.key(), semantic.clone())
+            .await
+            .unwrap();
+        store
+            .stage_resource(persist_resource(rebound(item, &draft)))
+            .await
+            .unwrap();
+        store.validate_generation(draft.key()).await.unwrap();
+        store.publish_generation(draft.key()).await.unwrap();
+        published.push(draft);
+    }
+    for (index, draft) in published.iter().enumerate() {
+        assert!(store.discard_unpublished_generation(draft.key()).is_err());
+        assert!(
+            store
+                .resource_at(draft.key(), resource(index as u128 + 1))
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+    assert_eq!(
+        store.pin_current(source(91)).await.unwrap(),
+        Some(published[1].clone())
+    );
+}
+
+#[tokio::test]
 async fn validation_and_publication_reject_missing_duplicate_wrong_count_and_wrong_digest() {
     let store = MemoryProjectionStore::new();
     let s = source(1);

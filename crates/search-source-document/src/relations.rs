@@ -76,7 +76,8 @@ impl DocumentRelationProjector {
             && snapshot.published_at.is_some()
             && snapshot.withdrawn_at.is_none()
         {
-            let folder = folder_resource_id(self.source_id, snapshot.folder_id);
+            let folder =
+                folder_resource_id(self.source_id, snapshot.document_id, snapshot.folder_id);
             if folder == document || folder == version {
                 return Err(RelationProjectionError::ResourceIdentityCollision);
             }
@@ -147,8 +148,18 @@ pub fn document_resource_id(source_id: SourceId, id: DocumentId) -> ResourceId {
     namespaced_resource_id(source_id, b"document", id.as_uuid())
 }
 
-pub fn folder_resource_id(source_id: SourceId, id: FolderId) -> ResourceId {
-    namespaced_resource_id(source_id, b"folder", id.as_uuid())
+pub fn folder_resource_id(
+    source_id: SourceId,
+    document_id: DocumentId,
+    id: FolderId,
+) -> ResourceId {
+    let mut hasher = Sha256::new();
+    frame(&mut hasher, b"search-source-document:resource:v1");
+    frame(&mut hasher, source_id.as_uuid().as_bytes());
+    frame(&mut hasher, b"folder_placement");
+    frame(&mut hasher, document_id.as_uuid().as_bytes());
+    frame(&mut hasher, id.as_uuid().as_bytes());
+    ResourceId::from_uuid(uuid_from_digest(hasher))
 }
 
 fn namespaced_resource_id(source_id: SourceId, kind: &[u8], native_id: Uuid) -> ResourceId {

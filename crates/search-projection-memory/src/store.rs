@@ -102,6 +102,32 @@ impl MemoryProjectionStore {
         Ok(segment)
     }
 
+    /// Remove an unpublished generation, including its staged resources and
+    /// semantic registry. Published generations remain available to pinned
+    /// evaluations even after the current pointer advances.
+    pub fn discard_unpublished_generation(
+        &self,
+        key: ProjectionGenerationKey,
+    ) -> Result<bool, SearchError> {
+        let mut state = self.write()?;
+        let Some(source) = state.sources.get_mut(&key.source_id) else {
+            return Ok(false);
+        };
+        let Some(segment) = source.generations.get(&key.generation_id) else {
+            return Ok(false);
+        };
+        if segment.phase.is_published() || source.current == Some(key.generation_id) {
+            return Err(invalid(
+                "published projection generation cannot be discarded",
+            ));
+        }
+        source.generations.remove(&key.generation_id);
+        if source.generations.is_empty() {
+            state.sources.remove(&key.source_id);
+        }
+        Ok(true)
+    }
+
     /// Atomically publish a validated generation only if the Source current
     /// pointer is still the one observed before an authoritative read began.
     /// A stale builder must not rewind a newer generation.

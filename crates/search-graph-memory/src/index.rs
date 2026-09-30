@@ -177,4 +177,17 @@ impl MemoryGraphRetriever {
             }
         }
     }
+
+    /// Roll back an unpublished generation after a failed staged build or CAS.
+    pub fn discard_generation(
+        &self,
+        key: ProjectionGenerationKey,
+    ) -> Result<bool, GraphIndexError> {
+        Ok(self
+            .generations
+            .write()
+            .map_err(|_| GraphIndexError::LockPoisoned)?
+            .remove(&key)
+            .is_some())
+    }
 }

@@ -600,7 +600,7 @@ async fn older_event_reloads_post_commit_publish_withdraw_and_explicit_t10() {
         let manifest = reader.pin_current(source_id).await.unwrap().unwrap();
         assert_eq!(manifest.key(), next_key);
         assert_eq!(manifest.source_snapshot, captured.source_snapshot);
-        assert_eq!(manifest.resource_count, captured.live.len() as u64);
+        assert_eq!(manifest.resource_count, (captured.live.len() * 3) as u64);
         assert_eq!(
             receipts
                 .0

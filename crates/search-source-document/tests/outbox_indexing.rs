@@ -1,35 +1,48 @@
+#[path = "../../document-repository-postgres/tests/support/versioning.rs"]
+mod versioning_support;
+
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use document_domain::{DocumentId, DocumentVersionId, FolderId, LifecycleState, Title};
-use document_repository_postgres::{SYSTEM_ROOT_FOLDER_ID, migrate};
+use document_application::{
+    BootstrapRootPolicy, DocumentAccessCheckService, InvocationKind, VerifiedActorContext,
+};
+use document_domain::{
+    Action, DocumentId, DocumentVersionId, FolderId, LifecycleState, PolicyGrant, PolicySubject,
+    PolicySubjectKind, Title,
+};
+use document_repository_postgres::{PostgresDocumentRepository, SYSTEM_ROOT_FOLDER_ID, migrate};
 use search_application::SearchError;
 use search_application::indexing_service::{
     DocumentIndexingService, DocumentSourceEvent, IndexingOutcome,
 };
 use search_application::ports::{
-    BoxFuture, LexicalQuery, LexicalRetrieverPort, ProjectionGenerationStore,
-    SemanticRegistrySnapshot,
+    AccessDecision, BoxFuture, CurrentAccessEvaluatorPort, HyperGraphRetrieverPort, LexicalQuery,
+    LexicalRetrieverPort, ProjectionGenerationStore, SemanticRegistrySnapshot,
 };
 use search_application::projection::{
     PersistableGenerationManifest, PersistableResourceProjection,
 };
 use search_core::discovery::{DiscoveryNeed, DiscoveryRequest};
 use search_core::evidence::EvidenceRequirement;
-use search_core::id::{DiscoveryEvaluationId, NeedId, ResourceId, SourceId};
+use search_core::graph::{GraphTraversalPlan, RelationPathPattern, TraversalBudget};
+use search_core::id::{
+    DiscoveryEvaluationId, NeedId, ProjectionGenerationId, ResourceId, SourceId,
+};
 use search_core::intent::{IntentFact, IntentFactOrigin, IntentSignature};
 use search_core::profile::DiscoveryLens;
 use search_core::projection::{ProjectionGenerationKey, ProjectionGenerationManifest};
+use search_core::relation::RelationNamespace;
 use search_core::resource::ResourceKind;
 use search_core::source::{DiscoverableSource, EnumerationSemantics, RetentionMode};
 use search_core::temporal::TemporalEvaluationContext;
 use search_source_document::{
-    DocumentAccessProjectionInput, DocumentIndexRuntime, DocumentIndexingConfig,
-    DocumentOutboxIndexer, DocumentOutboxReader, DocumentOutboxSnapshot, DocumentSourceSnapshot,
-    DsiReadState, IndexingReceipt, IndexingReceiptStore, MemoryDocumentIndexRuntime,
-    PermittedDocumentMetadata, PostgresDocumentSnapshotReader, PublicationEndRecord,
-    VersionSnapshotRecord,
+    DocumentAccessProjectionInput, DocumentCurrentAccessAdapter, DocumentIndexRuntime,
+    DocumentIndexingConfig, DocumentOutboxIndexer, DocumentOutboxReader, DocumentOutboxSnapshot,
+    DocumentSourceSnapshot, DsiReadState, IndexingReceipt, IndexingReceiptStore,
+    MemoryDocumentIndexRuntime, PermittedDocumentMetadata, PostgresDocumentSnapshotReader,
+    PublicationEndRecord, VersionSnapshotRecord, document_resource_id, folder_resource_id,
 };
 use search_tantivy::{LexicalBuildInput, LexicalIndexError};
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -38,7 +51,7 @@ use testcontainers::{
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
 };
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 use tokio::sync::Notify;
 use uuid::Uuid;
 
@@ -152,13 +165,17 @@ impl DocumentOutboxReader for MixedReader {
 enum FaultPhase {
     Stage,
     Validate,
+    Lexical,
+    Graph,
     Publish,
+    CasFalse,
+    Cleanup,
 }
 
 struct FaultRuntime {
     inner: MemoryDocumentIndexRuntime,
     phase: FaultPhase,
-    attempted: Arc<Mutex<Option<ProjectionGenerationKey>>>,
+    attempted: Arc<Mutex<Vec<ProjectionGenerationKey>>>,
 }
 
 impl DocumentIndexRuntime for FaultRuntime {
@@ -173,7 +190,10 @@ impl DocumentIndexRuntime for FaultRuntime {
         &'a self,
         manifest: PersistableGenerationManifest,
     ) -> BoxFuture<'a, ()> {
-        *self.attempted.lock().unwrap() = Some(manifest.manifest().key());
+        self.attempted
+            .lock()
+            .unwrap()
+            .push(manifest.manifest().key());
         DocumentIndexRuntime::begin_generation(&self.inner, manifest)
     }
 
@@ -182,7 +202,7 @@ impl DocumentIndexRuntime for FaultRuntime {
         key: ProjectionGenerationKey,
         registry: SemanticRegistrySnapshot,
     ) -> BoxFuture<'a, ()> {
-        if matches!(self.phase, FaultPhase::Stage) {
+        if matches!(self.phase, FaultPhase::Stage | FaultPhase::Cleanup) {
             return Box::pin(async {
                 Err(SearchError::OperationFailed(
                     "injected stage failure".into(),
@@ -218,6 +238,9 @@ impl DocumentIndexRuntime for FaultRuntime {
                     "injected publish failure".into(),
                 ));
             }
+            if matches!(self.phase, FaultPhase::CasFalse) {
+                return Ok(false);
+            }
             DocumentIndexRuntime::publish_if_current(&self.inner, key, expected_current).await
         })
     }
@@ -226,12 +249,29 @@ impl DocumentIndexRuntime for FaultRuntime {
         DocumentIndexRuntime::fail_generation(&self.inner, key)
     }
 
+    fn discard_projection_generation<'a>(
+        &'a self,
+        key: ProjectionGenerationKey,
+    ) -> BoxFuture<'a, bool> {
+        if matches!(self.phase, FaultPhase::Cleanup) {
+            return Box::pin(async {
+                Err(SearchError::OperationFailed(
+                    "injected projection cleanup failure".into(),
+                ))
+            });
+        }
+        DocumentIndexRuntime::discard_projection_generation(&self.inner, key)
+    }
+
     fn build_lexical_generation(
         &self,
         manifest: ProjectionGenerationManifest,
         source: &DiscoverableSource,
         input: LexicalBuildInput,
     ) -> Result<(), LexicalIndexError> {
+        if matches!(self.phase, FaultPhase::Lexical) {
+            return Err(LexicalIndexError::AnalyzerMismatch);
+        }
         DocumentIndexRuntime::build_lexical_generation(&self.inner, manifest, source, input)
     }
 
@@ -239,7 +279,40 @@ impl DocumentIndexRuntime for FaultRuntime {
         &self,
         key: ProjectionGenerationKey,
     ) -> Result<bool, LexicalIndexError> {
+        if matches!(self.phase, FaultPhase::Cleanup) {
+            return Err(LexicalIndexError::LockPoisoned);
+        }
         DocumentIndexRuntime::discard_lexical_generation(&self.inner, key)
+    }
+
+    fn build_graph_generation(
+        &self,
+        manifest: ProjectionGenerationManifest,
+        source: &DiscoverableSource,
+        projections: Vec<search_core::projection::CompiledResourceProjection>,
+        ownership: Vec<(ResourceId, DocumentId)>,
+    ) -> Result<(), SearchError> {
+        if matches!(self.phase, FaultPhase::Graph) {
+            return Err(SearchError::OperationFailed(
+                "injected graph failure".into(),
+            ));
+        }
+        DocumentIndexRuntime::build_graph_generation(
+            &self.inner,
+            manifest,
+            source,
+            projections,
+            ownership,
+        )
+    }
+
+    fn discard_graph_generation(&self, key: ProjectionGenerationKey) -> Result<bool, SearchError> {
+        if matches!(self.phase, FaultPhase::Cleanup) {
+            return Err(SearchError::OperationFailed(
+                "injected graph cleanup failure".into(),
+            ));
+        }
+        DocumentIndexRuntime::discard_graph_generation(&self.inner, key)
     }
 }
 
@@ -256,6 +329,39 @@ impl IndexingReceiptStore for MemoryReceipts {
             self.0.lock().unwrap().insert(event_id, receipt);
             Ok(())
         })
+    }
+}
+
+#[derive(Clone)]
+struct FailOnceReceipts {
+    stored: MemoryReceipts,
+    fail_next_put: Arc<AtomicBool>,
+}
+
+impl FailOnceReceipts {
+    fn new() -> Self {
+        Self {
+            stored: MemoryReceipts::default(),
+            fail_next_put: Arc::new(AtomicBool::new(true)),
+        }
+    }
+}
+
+impl IndexingReceiptStore for FailOnceReceipts {
+    fn get<'a>(&'a self, event_id: Uuid) -> BoxFuture<'a, Option<IndexingReceipt>> {
+        self.stored.get(event_id)
+    }
+
+    fn put<'a>(&'a self, event_id: Uuid, receipt: IndexingReceipt) -> BoxFuture<'a, ()> {
+        if self.fail_next_put.swap(false, Ordering::SeqCst) {
+            Box::pin(async {
+                Err(SearchError::OperationFailed(
+                    "injected receipt persistence failure".into(),
+                ))
+            })
+        } else {
+            self.stored.put(event_id, receipt)
+        }
     }
 }
 
@@ -336,6 +442,35 @@ fn request() -> DiscoveryRequest {
             "UTC",
         ),
         access_context: "actor".into(),
+    }
+}
+
+fn graph_plan() -> GraphTraversalPlan {
+    let source = config("tantivy-default-0.26.2").source.source_id;
+    GraphTraversalPlan {
+        seed_nodes: vec![document_resource_id(
+            source,
+            DocumentId::from_uuid(Uuid::from_u128(10)),
+        )],
+        path_patterns: vec![RelationPathPattern::new(
+            RelationNamespace::Discovery,
+            "document_has_version",
+            "document",
+            "version",
+        )],
+        allowed_relation_types: vec!["document_has_version".into()],
+        allowed_namespaces: vec![RelationNamespace::Discovery],
+        authority_requirement: Some(source.as_uuid().to_string()),
+        temporal_context: Some(request().temporal_context),
+        access_context: "actor".into(),
+        expansion_budget: TraversalBudget {
+            max_hops: 1,
+            max_relations: 2,
+            max_branching_per_node: 2,
+            max_seed_nodes: 1,
+            max_paths: 2,
+        },
+        stop_conditions: vec![],
     }
 }
 
@@ -602,9 +737,16 @@ async fn mixed_authoritative_snapshots_cannot_publish_an_empty_live_generation()
 
 #[tokio::test]
 async fn stage_validate_and_publish_failures_leave_no_lexical_generation() {
-    for phase in [FaultPhase::Stage, FaultPhase::Validate, FaultPhase::Publish] {
+    for phase in [
+        FaultPhase::Stage,
+        FaultPhase::Validate,
+        FaultPhase::Lexical,
+        FaultPhase::Graph,
+        FaultPhase::Publish,
+        FaultPhase::CasFalse,
+    ] {
         let inner = MemoryDocumentIndexRuntime::new();
-        let attempted = Arc::new(Mutex::new(None));
+        let attempted = Arc::new(Mutex::new(Vec::new()));
         let receipts = MemoryReceipts::default();
         let service = DocumentIndexingService::new(DocumentOutboxIndexer::new(
             FakeReader(Arc::new(Mutex::new(vec![record(
@@ -628,24 +770,556 @@ async fn stage_validate_and_publish_failures_leave_no_lexical_generation() {
             ),
             "{phase:?}"
         );
-        let key = attempted.lock().unwrap().expect("generation was begun");
-        assert!(
-            inner
-                .lexical_reader()
-                .retrieve(key, &request(), &LexicalQuery::new("current", 10))
-                .await
-                .is_err(),
-            "{phase:?} left an unpublished lexical segment"
-        );
+        let attempted = attempted.lock().unwrap().clone();
+        assert!(!attempted.is_empty());
+        for key in attempted {
+            assert!(
+                inner
+                    .lexical_reader()
+                    .retrieve(key, &request(), &LexicalQuery::new("current", 10))
+                    .await
+                    .is_err(),
+                "{phase:?} left an unpublished lexical segment"
+            );
+            assert!(
+                inner
+                    .graph_reader()
+                    .retrieve(key, &graph_plan())
+                    .await
+                    .is_err(),
+                "{phase:?} left an unpublished graph segment"
+            );
+            assert!(
+                !DocumentIndexRuntime::discard_projection_generation(&inner, key)
+                    .await
+                    .unwrap(),
+                "{phase:?} left an unpublished projection segment"
+            );
+        }
         assert!(
             inner
                 .projection_reader()
-                .pin_current(key.source_id)
+                .pin_current(config("tantivy-default-0.26.2").source.source_id)
                 .await
                 .unwrap()
                 .is_none()
         );
         assert!(receipts.get(Uuid::from_u128(101)).await.unwrap().is_none());
+    }
+}
+
+#[tokio::test]
+async fn cleanup_attempts_all_segments_and_reports_original_and_rollback_errors() {
+    let inner = MemoryDocumentIndexRuntime::new();
+    let service = DocumentIndexingService::new(DocumentOutboxIndexer::new(
+        FakeReader(Arc::new(Mutex::new(vec![record(
+            1,
+            "current title",
+            "snapshot-1",
+            true,
+        )]))),
+        config("tantivy-default-0.26.2"),
+        FaultRuntime {
+            inner,
+            phase: FaultPhase::Cleanup,
+            attempted: Arc::new(Mutex::new(Vec::new())),
+        },
+        MemoryReceipts::default(),
+    ));
+    let error = service
+        .handle(event(102, "DocumentVersionPublished"))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("injected stage failure"), "{error}");
+    assert!(error.contains("graph cleanup"), "{error}");
+    assert!(error.contains("lexical cleanup"), "{error}");
+    assert!(error.contains("projection cleanup"), "{error}");
+}
+
+#[tokio::test]
+async fn graph_build_failure_preserves_old_pointer_lexical_and_graph() {
+    let reader = FakeReader(Arc::new(Mutex::new(vec![record(
+        1,
+        "old title",
+        "snapshot-1",
+        true,
+    )])));
+    let runtime = MemoryDocumentIndexRuntime::new();
+    let old_key = match service(reader.clone(), runtime.clone())
+        .handle(event(501, "DocumentVersionPublished"))
+        .await
+        .unwrap()
+    {
+        IndexingOutcome::Published(key) => key,
+        other => panic!("{other:?}"),
+    };
+    reader.set(vec![record(1, "new title", "snapshot-2", true)]);
+    let attempted = Arc::new(Mutex::new(Vec::new()));
+    let failing = DocumentIndexingService::new(DocumentOutboxIndexer::new(
+        reader,
+        config("tantivy-default-0.26.2"),
+        FaultRuntime {
+            inner: runtime.clone(),
+            phase: FaultPhase::Graph,
+            attempted: attempted.clone(),
+        },
+        MemoryReceipts::default(),
+    ));
+    assert!(matches!(
+        failing.handle(event(502, "DocumentVersionPublished")).await,
+        Err(SearchError::OperationFailed(_))
+    ));
+    let unpublished = *attempted.lock().unwrap().last().unwrap();
+    assert_ne!(unpublished, old_key);
+    assert_eq!(
+        runtime
+            .projection_reader()
+            .pin_current(old_key.source_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .key(),
+        old_key,
+    );
+    assert_eq!(
+        runtime
+            .lexical_reader()
+            .retrieve(old_key, &request(), &LexicalQuery::new("old", 10))
+            .await
+            .unwrap()
+            .len(),
+        1,
+    );
+    assert!(
+        runtime
+            .graph_reader()
+            .retrieve(old_key, &graph_plan())
+            .await
+            .is_ok()
+    );
+    assert!(
+        runtime
+            .graph_reader()
+            .retrieve(unpublished, &graph_plan())
+            .await
+            .is_err()
+    );
+    assert!(
+        runtime
+            .lexical_reader()
+            .retrieve(unpublished, &request(), &LexicalQuery::new("new", 10))
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn receipt_failure_after_publish_preserves_generation_and_retry_records_receipt() {
+    let fixture = versioning_support::fixture().await;
+    let subject = PolicySubject::new(PolicySubjectKind::Principal, "test-idp", "editor").unwrap();
+    let actor = VerifiedActorContext::from_trusted_adapter(
+        versioning_support::actor(),
+        vec![subject.clone()],
+        OffsetDateTime::now_utc() + Duration::hours(1),
+        InvocationKind::HumanInteractive,
+        None,
+    )
+    .unwrap();
+    let repository = Arc::new(PostgresDocumentRepository::new_with_bootstrap_actor(
+        fixture.pool.clone(),
+        versioning_support::actor(),
+    ));
+    repository
+        .initialize_root_policy(
+            &actor,
+            vec![PolicyGrant::new(subject, [Action::Read]).unwrap()],
+        )
+        .await
+        .unwrap();
+    let source_id = config("tantivy-default-0.26.2").source.source_id;
+    let access = Arc::new(DocumentCurrentAccessAdapter::new(
+        source_id,
+        fixture.pool.clone(),
+        DocumentAccessCheckService::new(repository),
+        actor,
+        "trusted-session".into(),
+    ));
+    let runtime = MemoryDocumentIndexRuntime::with_current_access(access);
+    let receipts = FailOnceReceipts::new();
+    let service = DocumentIndexingService::new(DocumentOutboxIndexer::new(
+        PostgresDocumentSnapshotReader::new(fixture.pool.clone()),
+        config("tantivy-default-0.26.2"),
+        runtime.clone(),
+        receipts.clone(),
+    ));
+    let event = event(405, "DocumentVersionPublished");
+    let error = service.handle(event.clone()).await.unwrap_err();
+    assert!(matches!(
+        error,
+        SearchError::OperationFailed(message) if message == "injected receipt persistence failure"
+    ));
+    assert!(receipts.get(event.event_id).await.unwrap().is_none());
+
+    let published = runtime
+        .projection_reader()
+        .pin_current(source_id)
+        .await
+        .unwrap()
+        .expect("publish must remain current after receipt failure");
+    let key = published.key();
+    let document = document_resource_id(source_id, fixture.document_id);
+    let snapshot = PostgresDocumentSnapshotReader::new(fixture.pool.clone())
+        .enumerate_outbox_snapshot()
+        .await
+        .unwrap();
+    let folder = folder_resource_id(
+        source_id,
+        fixture.document_id,
+        snapshot.live[0].snapshot.folder_id,
+    );
+    for resource in [document, folder] {
+        assert!(
+            runtime
+                .projection_reader()
+                .resource_at(key, resource)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(
+            runtime
+                .graph_access_reader()
+                .evaluate(resource, "trusted-session")
+                .await
+                .unwrap(),
+            AccessDecision::Allowed
+        );
+    }
+    let lexical = runtime
+        .lexical_reader()
+        .retrieve(key, &request(), &LexicalQuery::new("Base", 10))
+        .await
+        .unwrap();
+    assert_eq!(lexical.len(), 1);
+    let mut plan = graph_plan();
+    plan.seed_nodes = vec![document];
+    plan.access_context = "trusted-session".into();
+    let graph = runtime.graph_reader().retrieve(key, &plan).await.unwrap();
+    assert!(graph.hits.iter().any(|hit| {
+        hit.candidate.resource_ref == Some(ResourceId::from_uuid(fixture.base_id.as_uuid()))
+    }));
+
+    assert_eq!(
+        service.handle(event.clone()).await.unwrap(),
+        IndexingOutcome::Unchanged(key),
+        "retry should save the receipt against the published generation"
+    );
+    assert_eq!(
+        runtime
+            .projection_reader()
+            .pin_current(source_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .key(),
+        key
+    );
+    assert_eq!(
+        receipts.get(event.event_id).await.unwrap(),
+        Some(IndexingReceipt {
+            digest: published.digest,
+            generation: key,
+        })
+    );
+    assert_eq!(
+        runtime
+            .lexical_reader()
+            .retrieve(key, &request(), &LexicalQuery::new("Base", 10))
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        runtime.graph_reader().retrieve(key, &plan).await.unwrap(),
+        graph
+    );
+    assert_eq!(
+        runtime
+            .graph_access_reader()
+            .evaluate(folder, "trusted-session")
+            .await
+            .unwrap(),
+        AccessDecision::Allowed
+    );
+}
+
+#[tokio::test]
+async fn cas_failure_does_not_rebind_published_auxiliary_to_an_unpublished_version() {
+    let fixture = versioning_support::fixture().await;
+    let subject = PolicySubject::new(PolicySubjectKind::Principal, "test-idp", "editor").unwrap();
+    let actor = VerifiedActorContext::from_trusted_adapter(
+        versioning_support::actor(),
+        vec![subject.clone()],
+        OffsetDateTime::now_utc() + Duration::hours(1),
+        InvocationKind::HumanInteractive,
+        None,
+    )
+    .unwrap();
+    let repository = Arc::new(PostgresDocumentRepository::new_with_bootstrap_actor(
+        fixture.pool.clone(),
+        versioning_support::actor(),
+    ));
+    repository
+        .initialize_root_policy(
+            &actor,
+            vec![PolicyGrant::new(subject, [Action::Read]).unwrap()],
+        )
+        .await
+        .unwrap();
+    let source_id = config("tantivy-default-0.26.2").source.source_id;
+    let access = Arc::new(DocumentCurrentAccessAdapter::new(
+        source_id,
+        fixture.pool.clone(),
+        DocumentAccessCheckService::new(repository),
+        actor,
+        "trusted-session".into(),
+    ));
+    let runtime = MemoryDocumentIndexRuntime::with_current_access(access);
+    let first = DocumentIndexingService::new(DocumentOutboxIndexer::new(
+        PostgresDocumentSnapshotReader::new(fixture.pool.clone()),
+        config("tantivy-default-0.26.2"),
+        runtime.clone(),
+        MemoryReceipts::default(),
+    ));
+    let old_key = match first
+        .handle(event(401, "DocumentVersionPublished"))
+        .await
+        .unwrap()
+    {
+        IndexingOutcome::Published(key) => key,
+        other => panic!("{other:?}"),
+    };
+    let auxiliary = document_resource_id(source_id, fixture.document_id);
+    assert_eq!(
+        runtime
+            .graph_access_reader()
+            .evaluate(auxiliary, "trusted-session")
+            .await
+            .unwrap(),
+        AccessDecision::Allowed
+    );
+    let real_snapshot = PostgresDocumentSnapshotReader::new(fixture.pool.clone())
+        .enumerate_outbox_snapshot()
+        .await
+        .unwrap();
+    let old_folder = folder_resource_id(
+        source_id,
+        fixture.document_id,
+        real_snapshot.live[0].snapshot.folder_id,
+    );
+    let mut unpublished = real_snapshot.live[0].clone();
+    let unpublished_folder = FolderId::from_uuid(Uuid::now_v7());
+    unpublished.snapshot.folder_id = unpublished_folder;
+    let unpublished_folder_resource =
+        folder_resource_id(source_id, fixture.document_id, unpublished_folder);
+    let phantom = DocumentVersionId::from_uuid(Uuid::now_v7());
+    unpublished.snapshot.document_version_id = phantom;
+    unpublished.snapshot.current_version_id = Some(phantom);
+    unpublished.snapshot.title = Title::new("Unpublished phantom").unwrap();
+    unpublished.snapshot.source_snapshot = "unpublished-snapshot".into();
+    for (number, phase) in [FaultPhase::Publish, FaultPhase::CasFalse]
+        .into_iter()
+        .enumerate()
+    {
+        let attempted = Arc::new(Mutex::new(Vec::new()));
+        let losing = DocumentIndexingService::new(DocumentOutboxIndexer::new(
+            FakeReader(Arc::new(Mutex::new(vec![unpublished.clone()]))),
+            config("tantivy-default-0.26.2"),
+            FaultRuntime {
+                inner: runtime.clone(),
+                phase,
+                attempted: attempted.clone(),
+            },
+            MemoryReceipts::default(),
+        ));
+        assert!(matches!(
+            losing
+                .handle(event(402 + number as u128, "DocumentVersionPublished"))
+                .await,
+            Err(SearchError::OperationFailed(_))
+        ));
+        let attempted = attempted.lock().unwrap().clone();
+        assert_eq!(
+            attempted.len(),
+            if matches!(phase, FaultPhase::CasFalse) {
+                3
+            } else {
+                1
+            }
+        );
+        assert_eq!(
+            runtime
+                .projection_reader()
+                .pin_current(source_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .key(),
+            old_key
+        );
+        assert_eq!(
+            runtime
+                .graph_access_reader()
+                .evaluate(auxiliary, "trusted-session")
+                .await
+                .unwrap(),
+            AccessDecision::Allowed,
+            "an unpublished Version must not replace the Document ownership check"
+        );
+        assert_eq!(
+            runtime
+                .graph_access_reader()
+                .evaluate(old_folder, "trusted-session")
+                .await
+                .unwrap(),
+            AccessDecision::Allowed,
+        );
+        assert_eq!(
+            runtime
+                .graph_access_reader()
+                .evaluate(unpublished_folder_resource, "trusted-session")
+                .await
+                .unwrap(),
+            AccessDecision::Denied,
+            "a discarded graph generation must release its unique FolderPlacement owner"
+        );
+        assert_eq!(
+            runtime
+                .lexical_reader()
+                .retrieve(old_key, &request(), &LexicalQuery::new("Base", 10))
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(
+            runtime
+                .graph_reader()
+                .retrieve(old_key, &graph_plan())
+                .await
+                .is_ok()
+        );
+        for unpublished_key in attempted {
+            assert_ne!(unpublished_key, old_key);
+            assert!(
+                runtime
+                    .graph_reader()
+                    .retrieve(unpublished_key, &graph_plan())
+                    .await
+                    .is_err()
+            );
+            assert!(
+                runtime
+                    .lexical_reader()
+                    .retrieve(
+                        unpublished_key,
+                        &request(),
+                        &LexicalQuery::new("Unpublished", 10),
+                    )
+                    .await
+                    .is_err()
+            );
+            assert!(
+                !DocumentIndexRuntime::discard_projection_generation(&runtime, unpublished_key)
+                    .await
+                    .unwrap(),
+                "the CAS loser must not retain a projection generation"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn graph_build_rejects_missing_duplicate_and_non_auxiliary_owners() {
+    let record = record(1, "current title", "snapshot-1", true);
+    let document = record.snapshot.document_id;
+    let source = config("tantivy-default-0.26.2").source;
+    let version = ResourceId::from_uuid(record.snapshot.document_version_id.as_uuid());
+    let document_node = document_resource_id(source.source_id, document);
+    let folder_node = folder_resource_id(source.source_id, document, record.snapshot.folder_id);
+    let runtime = MemoryDocumentIndexRuntime::new();
+    let old_key = match service(
+        FakeReader(Arc::new(Mutex::new(vec![record]))),
+        runtime.clone(),
+    )
+    .rebuild()
+    .await
+    .unwrap()
+    {
+        IndexingOutcome::Published(key) => key,
+        other => panic!("{other:?}"),
+    };
+    let old_manifest = runtime
+        .projection_reader()
+        .pin_current(source.source_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let mut projections = Vec::new();
+    for id in [version, document_node, folder_node] {
+        projections.push(
+            runtime
+                .projection_reader()
+                .resource_at(old_key, id)
+                .await
+                .unwrap()
+                .unwrap(),
+        );
+    }
+    for (number, owners) in [
+        vec![],
+        vec![(document_node, document)],
+        vec![
+            (document_node, document),
+            (folder_node, document),
+            (version, document),
+        ],
+        vec![
+            (document_node, document),
+            (folder_node, document),
+            (folder_node, document),
+        ],
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut manifest = old_manifest.clone();
+        manifest.generation_id =
+            ProjectionGenerationId::from_uuid(Uuid::from_u128(500 + number as u128));
+        let mut rebased = projections.clone();
+        for projection in &mut rebased {
+            projection.manifest = manifest.clone();
+        }
+        assert!(
+            DocumentIndexRuntime::build_graph_generation(
+                &runtime,
+                manifest.clone(),
+                &source,
+                rebased,
+                owners,
+            )
+            .is_err(),
+            "invalid owner set {number} was accepted"
+        );
+        assert!(
+            runtime
+                .graph_reader()
+                .retrieve(manifest.key(), &graph_plan())
+                .await
+                .is_err()
+        );
     }
 }
 

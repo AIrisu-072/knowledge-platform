@@ -55,6 +55,7 @@ pub fn source(source_id: SourceId) -> DiscoverableSource {
     source
         .discovery_modes
         .push(DiscoveryMode::LocalContentSearch);
+    source.discovery_modes.push(DiscoveryMode::LocalDirectory);
     source.access_model = Some("document-current-check".into());
     source
 }

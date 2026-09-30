@@ -11,7 +11,9 @@ use search_tantivy::{LexicalBuildInput, LexicalDocument};
 
 use crate::model::{DocumentSourceSnapshot, DsiEvidenceRefs, PublicationEndRecord};
 use crate::postgres::VersionSnapshotRecord;
-use crate::relations::{DocumentRelationProjector, RelationProjectionError};
+use crate::relations::{
+    DocumentRelationProjector, RelationProjectionError, document_resource_id, folder_resource_id,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocumentVisibilityClass {
@@ -37,6 +39,8 @@ impl DocumentVisibilityClass {
 #[derive(Debug, Clone)]
 pub struct DocumentIndexInputs {
     pub projection: ProjectionInput,
+    /// Structural graph participants from the same authoritative record.
+    pub auxiliary_projections: Vec<ProjectionInput>,
     /// One version's lexical fields, available for same-snapshot generation assembly.
     pub lexical_document: LexicalDocument,
     pub lexical: LexicalBuildInput,
@@ -139,6 +143,7 @@ impl DocumentSourceTranslator {
         record: VersionSnapshotRecord,
     ) -> Result<DocumentSourceTranslation, TranslationError> {
         let projected = DocumentRelationProjector::new(self.source.source_id).project(&record)?;
+        let snapshot = record.snapshot.clone();
         let mut translation = self.translate(record.snapshot)?;
         let inputs = match &mut translation {
             DocumentSourceTranslation::Live(inputs)
@@ -151,11 +156,85 @@ impl DocumentSourceTranslator {
             .map(|relation| relation.relation_id)
             .collect();
         inputs.projection.relations = projected.relations;
+        let document = document_resource_id(self.source.source_id, snapshot.document_id);
+        let folder = folder_resource_id(
+            self.source.source_id,
+            snapshot.document_id,
+            snapshot.folder_id,
+        );
+        inputs.auxiliary_projections.push(self.auxiliary_projection(
+            &snapshot,
+            document,
+            ResourceKind::Document,
+            ResourceBody::Document,
+            "Document",
+            &inputs.projection.relations,
+        ));
+        if inputs.projection.relations.iter().any(|relation| {
+            relation
+                .participants
+                .iter()
+                .any(|participant| participant.resource_ref == folder)
+        }) {
+            inputs.auxiliary_projections.push(self.auxiliary_projection(
+                &snapshot,
+                folder,
+                ResourceKind::FolderPlacement,
+                ResourceBody::FolderPlacement,
+                "Folder placement",
+                &inputs.projection.relations,
+            ));
+        }
         inputs.projection.typed_facets.insert(
             "document.dsi_external_dependencies".into(),
             projected.dsi_dependency_state,
         );
         Ok(translation)
+    }
+
+    fn auxiliary_projection(
+        &self,
+        snapshot: &DocumentSourceSnapshot,
+        resource_ref: ResourceId,
+        kind: ResourceKind,
+        body: ResourceBody,
+        name: &str,
+        all_relations: &[search_core::relation::TypedRelationInstance],
+    ) -> ProjectionInput {
+        let relations: Vec<_> = all_relations
+            .iter()
+            .filter(|relation| {
+                relation
+                    .participants
+                    .iter()
+                    .any(|participant| participant.resource_ref == resource_ref)
+            })
+            .cloned()
+            .collect();
+        let mut identity = ResourceIdentity::new(resource_ref, kind, self.source.source_id);
+        identity.source_native_id = Some(snapshot.document_id.as_uuid().to_string());
+        let mut resource = DiscoverableResource::new(identity, body, DiscoveryProfile::new(name));
+        resource.relation_ids = relations
+            .iter()
+            .map(|relation| relation.relation_id)
+            .collect();
+        let mut lens = self.lens.clone();
+        lens.resource_type = kind;
+        lens.high_signal_facets.clear();
+        lens.searchable_fields.clear();
+        ProjectionInput {
+            resource,
+            source: self.source.clone(),
+            lens,
+            source_snapshot: snapshot.source_snapshot.clone(),
+            projection_schema_version: self.projection_schema_version.clone(),
+            semantic_registry_version: self.semantic_registry_version.clone(),
+            title: None,
+            typed_facets: BTreeMap::new(),
+            assertions: Vec::new(),
+            authority_resolutions: BTreeMap::new(),
+            relations,
+        }
     }
 
     pub fn translate(
@@ -310,6 +389,7 @@ impl DocumentSourceTranslator {
                 authority_resolutions: BTreeMap::new(),
                 relations: Vec::new(),
             },
+            auxiliary_projections: Vec::new(),
             lexical_document,
             lexical,
             publication_end: snapshot.publication_end,

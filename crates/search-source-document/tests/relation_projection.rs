@@ -142,12 +142,51 @@ fn stable_ids_and_canonical_order_bind_source_type_roles_and_participants() {
     let raw = Uuid::from_u128(10);
     assert_ne!(
         document_resource_id(source_id(), DocumentId::from_uuid(raw)),
-        folder_resource_id(source_id(), FolderId::from_uuid(raw))
+        folder_resource_id(
+            source_id(),
+            DocumentId::from_uuid(raw),
+            FolderId::from_uuid(raw)
+        )
     );
     assert_ne!(
         document_resource_id(source_id(), DocumentId::from_uuid(raw)),
         ResourceId::from_uuid(raw)
     );
+}
+
+#[test]
+fn folder_placement_id_is_scoped_to_document_even_when_folder_is_shared() {
+    let first = record(20);
+    let mut second = record(21);
+    second.snapshot.document_id = DocumentId::from_uuid(Uuid::from_u128(11));
+    assert_eq!(first.snapshot.folder_id, second.snapshot.folder_id);
+    let first_folder = folder_resource_id(
+        source_id(),
+        first.snapshot.document_id,
+        first.snapshot.folder_id,
+    );
+    let second_folder = folder_resource_id(
+        source_id(),
+        second.snapshot.document_id,
+        second.snapshot.folder_id,
+    );
+    assert_ne!(first_folder, second_folder);
+    let projector = DocumentRelationProjector::new(source_id());
+    let first_relation = projector.project(&first).unwrap();
+    let second_relation = projector.project(&second).unwrap();
+    for (projected, expected) in [
+        (&first_relation, first_folder),
+        (&second_relation, second_folder),
+    ] {
+        let placement = projected
+            .relations
+            .iter()
+            .find(|relation| relation.relation_type == "document_current_placement")
+            .unwrap();
+        assert!(placement.participants.iter().any(|participant| {
+            participant.role == "folder" && participant.resource_ref == expected
+        }));
+    }
 }
 
 #[test]
@@ -170,7 +209,12 @@ fn version_id_colliding_with_current_folder_resource_id_fails_closed() {
     let projector = DocumentRelationProjector::new(source_id());
     let mut item = record(20);
     let version_id = DocumentVersionId::from_uuid(
-        folder_resource_id(source_id(), item.snapshot.folder_id).as_uuid(),
+        folder_resource_id(
+            source_id(),
+            item.snapshot.document_id,
+            item.snapshot.folder_id,
+        )
+        .as_uuid(),
     );
     item.snapshot.document_version_id = version_id;
     item.snapshot.current_version_id = Some(version_id);
@@ -227,7 +271,11 @@ fn binary_membership_and_current_ternary_placement_keep_exact_roles_and_provenan
     );
     assert_eq!(
         placement.participants[2].resource_ref,
-        folder_resource_id(source_id(), record.snapshot.folder_id)
+        folder_resource_id(
+            source_id(),
+            record.snapshot.document_id,
+            record.snapshot.folder_id
+        )
     );
     let authority = source_id().as_uuid().to_string();
     let provenance = record.snapshot.document_id.as_uuid().to_string();
@@ -293,7 +341,11 @@ fn folder_change_rebuilds_current_placement_without_claiming_old_history() {
     assert_ne!(old_current.relation_id, new_current.relation_id);
     assert_eq!(
         new_current.participants[2].resource_ref,
-        folder_resource_id(source_id(), moved.snapshot.folder_id)
+        folder_resource_id(
+            source_id(),
+            moved.snapshot.document_id,
+            moved.snapshot.folder_id
+        )
     );
     assert!(new.relations.iter().all(|relation| {
         !relation
@@ -360,8 +412,11 @@ fn role_swap_missing_extra_and_cross_document_composite_are_rejected() {
             .is_err()
     );
     let mut foreign_folder = placement;
-    foreign_folder.participants[2].resource_ref =
-        folder_resource_id(source_id(), FolderId::from_uuid(Uuid::from_u128(31)));
+    foreign_folder.participants[2].resource_ref = folder_resource_id(
+        source_id(),
+        item.snapshot.document_id,
+        FolderId::from_uuid(Uuid::from_u128(31)),
+    );
     assert!(projector.validate_relation(&item, &foreign_folder).is_err());
 }
 

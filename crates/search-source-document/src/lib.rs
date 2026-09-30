@@ -2,20 +2,26 @@
 
 #![forbid(unsafe_code)]
 
+mod coverage;
+mod evidence;
+mod history;
 mod model;
 mod outbox;
 mod postgres;
 mod relations;
 mod translate;
 
+pub use coverage::{DocumentCoveragePreflight, DocumentCoverageRequirement};
+pub use evidence::{DocumentEvidenceCatalog, DocumentEvidenceField};
+pub use history::DocumentHistoricalLookup;
 pub use model::{
     DocumentAccessProjectionInput, DocumentSourceSnapshot, DsiEvidenceRefs,
     PermittedDocumentMetadata, PublicationEndRecord,
 };
 pub use outbox::{
-    DocumentIndexRuntime, DocumentIndexingConfig, DocumentLexicalReader, DocumentOutboxIndexer,
-    DocumentOutboxReader, DocumentProjectionReader, IndexingReceipt, IndexingReceiptStore,
-    MemoryDocumentIndexRuntime,
+    DocumentGraphAccessReader, DocumentGraphReader, DocumentIndexRuntime, DocumentIndexingConfig,
+    DocumentLexicalReader, DocumentOutboxIndexer, DocumentOutboxReader, DocumentProjectionReader,
+    IndexingReceipt, IndexingReceiptStore, MemoryDocumentIndexRuntime,
 };
 pub use postgres::{
     DocumentCurrentAccessAdapter, DocumentOutboxSnapshot, DocumentSnapshotReader, DsiReadState,

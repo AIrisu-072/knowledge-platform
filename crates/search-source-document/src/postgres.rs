@@ -437,6 +437,67 @@ impl DocumentCurrentAccessAdapter {
         .fetch_optional(&self.pool)
         .await
     }
+
+    /// A graph-only structural node resolves its owning Document and checks
+    /// current publication plus the existing Document Read authorization.
+    /// No Version pointer is cached in the graph ownership map.
+    pub(crate) async fn evaluate_owned_document(
+        &self,
+        owner: DocumentId,
+        access_context: &str,
+    ) -> Result<AccessDecision, search_application::SearchError> {
+        if self.access_context_binding.is_empty()
+            || access_context != self.access_context_binding
+            || self.actor.ensure_current().is_err()
+        {
+            return Ok(AccessDecision::Unknown);
+        }
+        let current = self.current_document(owner).await.map_err(|error| {
+            search_application::SearchError::SourceUnavailable(error.to_string())
+        })?;
+        let Some(revision) = current else {
+            return Ok(AccessDecision::Denied);
+        };
+        match self
+            .service
+            .check(&self.actor, owner, &[Action::Read])
+            .await
+        {
+            Ok(()) => {}
+            Err(
+                ApplicationError::Forbidden
+                | ApplicationError::DocumentNotFound
+                | ApplicationError::DocumentVersionNotFound
+                | ApplicationError::StaleVersion,
+            ) => return Ok(AccessDecision::Denied),
+            Err(_) => return Ok(AccessDecision::Unknown),
+        }
+        let after = self.current_document(owner).await.map_err(|error| {
+            search_application::SearchError::SourceUnavailable(error.to_string())
+        })?;
+        Ok(if after == Some(revision) {
+            AccessDecision::Allowed
+        } else {
+            AccessDecision::Denied
+        })
+    }
+
+    async fn current_document(
+        &self,
+        owner: DocumentId,
+    ) -> Result<Option<(Uuid, i64)>, sqlx::Error> {
+        sqlx::query_as(
+            "SELECT d.current_version_id, a.access_revision FROM documents d \
+             JOIN document_versions v ON v.document_version_id = d.current_version_id \
+             CROSS JOIN document_access_state a \
+             WHERE d.document_id = $1 AND v.lifecycle_state = 'PUBLISHED' AND a.id = 1 \
+               AND NOT EXISTS (SELECT 1 FROM document_publication_end_operations e \
+                               WHERE e.document_id = d.document_id)",
+        )
+        .bind(owner.as_uuid())
+        .fetch_optional(&self.pool)
+        .await
+    }
 }
 
 impl CurrentCandidateAccessEvaluatorPort for DocumentCurrentAccessAdapter {
