@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::pin::Pin;
 
 use document_domain::{
@@ -161,11 +162,18 @@ impl StorageObjectInfo {
     }
 }
 
-#[allow(async_fn_in_trait)]
 pub trait FileStorage: Send + Sync {
-    async fn put_immutable(&self, request: StoreFileRequest) -> Result<StoredFile, StorageError>;
-    async fn open(&self, key: &StorageKey) -> Result<ContentReader, StorageError>;
-    async fn list_objects(&self) -> Result<Vec<StorageObjectInfo>, StorageError>;
+    fn put_immutable(
+        &self,
+        request: StoreFileRequest,
+    ) -> impl Future<Output = Result<StoredFile, StorageError>> + Send;
+    fn open(
+        &self,
+        key: &StorageKey,
+    ) -> impl Future<Output = Result<ContentReader, StorageError>> + Send;
+    fn list_objects(
+        &self,
+    ) -> impl Future<Output = Result<Vec<StorageObjectInfo>, StorageError>> + Send;
 }
 
 #[allow(async_fn_in_trait)]
@@ -762,43 +770,47 @@ pub trait DocumentPublishRepository: Send + Sync {
     }
 }
 
-#[allow(async_fn_in_trait)]
 pub trait DocumentRepository: Send + Sync {
-    async fn create_initial_document(
+    fn create_initial_document(
         &self,
         record: CreateInitialDocumentRecord,
-    ) -> Result<(), RepositoryError>;
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
 
-    async fn get_authoritative_document(
+    fn get_authoritative_document(
         &self,
         id: DocumentId,
-    ) -> Result<Option<AuthoritativeDocument>, RepositoryError>;
+    ) -> impl Future<Output = Result<Option<AuthoritativeDocument>, RepositoryError>> + Send;
 
-    async fn get_authoring_document(
+    fn get_authoring_document(
         &self,
         id: DocumentId,
-    ) -> Result<Option<AuthoritativeDocument>, RepositoryError>;
+    ) -> impl Future<Output = Result<Option<AuthoritativeDocument>, RepositoryError>> + Send;
 
-    async fn get_current_published_document(
+    fn get_current_published_document(
         &self,
         id: DocumentId,
-    ) -> Result<Option<AuthoritativeDocument>, RepositoryError>;
+    ) -> impl Future<Output = Result<Option<AuthoritativeDocument>, RepositoryError>> + Send;
 
-    async fn is_current_published_version(
+    fn is_current_published_version(
         &self,
         document_id: DocumentId,
         version_id: DocumentVersionId,
-    ) -> Result<bool, RepositoryError>;
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
-    async fn list_current_published_versions(
+    fn list_current_published_versions(
         &self,
         after: Option<DocumentId>,
         limit: i64,
-    ) -> Result<Vec<CurrentPublishedVersionRef>, RepositoryError>;
+    ) -> impl Future<Output = Result<Vec<CurrentPublishedVersionRef>, RepositoryError>> + Send;
 
-    async fn file_reference_exists(&self, file_id: FileId) -> Result<bool, RepositoryError>;
+    fn file_reference_exists(
+        &self,
+        file_id: FileId,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
-    async fn list_referenced_file_ids(&self) -> Result<Vec<FileId>, RepositoryError>;
+    fn list_referenced_file_ids(
+        &self,
+    ) -> impl Future<Output = Result<Vec<FileId>, RepositoryError>> + Send;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

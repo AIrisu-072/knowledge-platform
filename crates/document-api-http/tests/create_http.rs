@@ -419,10 +419,11 @@ async fn valid_create_streams_primary_file_and_authorized_recovery_matches_all_i
     .await;
     assert_eq!(status, StatusCode::CREATED, "{created}");
     assert_eq!(repository.create_calls(), 1);
-    let stored = storage.0.lock().unwrap();
-    assert_eq!(stored.bytes, b"authoritative content");
-    assert_eq!(stored.media_type, "text/plain");
-    drop(stored);
+    {
+        let stored = storage.0.lock().unwrap();
+        assert_eq!(stored.bytes, b"authoritative content");
+        assert_eq!(stored.media_type, "text/plain");
+    }
 
     let recovery_uri = format!(
         "/v1/document-creation-outcomes/{}?documentVersionId={}&fileId={}",

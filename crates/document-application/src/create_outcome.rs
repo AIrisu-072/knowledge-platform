@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::Arc;
 
 use document_domain::{DocumentId, DocumentVersionId, FileId};
@@ -11,13 +12,12 @@ pub struct CreateOutcomeProbe {
     pub file_id: FileId,
 }
 
-#[allow(async_fn_in_trait)]
 pub trait CreateOutcomeRepository: Send + Sync {
-    async fn recover_initial_create(
+    fn recover_initial_create(
         &self,
         ctx: &VerifiedActorContext,
         probe: CreateOutcomeProbe,
-    ) -> Result<bool, RepositoryError>;
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 }
 
 pub struct CreateOutcomeRecoveryService<R> {

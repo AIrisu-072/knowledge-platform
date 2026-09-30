@@ -53,13 +53,42 @@ paths:
           $ref: '#/components/responses/Problem'
       requestBody:
         $ref: '#/components/requestBodies/CreateDocumentMultipart'
+  /v1/document-creation-outcomes/{documentId}:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    get:
+      tags:
+      - Documents
+      summary: Recover an initial document creation outcome
+      operationId: recoverDocumentCreation
+      description: All generated IDs must match and current authoring authorization is re-evaluated before disclosure.
+      parameters:
+      - name: documentVersionId
+        in: query
+        required: true
+        schema:
+          $ref: '#/components/schemas/Uuid'
+      - name: fileId
+        in: query
+        required: true
+        schema:
+          $ref: '#/components/schemas/Uuid'
+      responses:
+        '200':
+          $ref: '#/components/responses/CreateDocumentResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/documents/{documentId}:
     parameters:
     - $ref: '#/components/parameters/documentId'
     get:
       tags:
       - Documents
-      summary: Read document by authorized view or recover initial create outcome
+      summary: Read document by authorized view
       operationId: getDocument
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
