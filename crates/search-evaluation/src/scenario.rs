@@ -239,10 +239,20 @@ pub fn evaluate_scenario(
     let hard_ineligible: BTreeSet<_> = scenario.hard_ineligible_resources.iter().copied().collect();
     safety.hard_false_accepts = hard_ineligible.intersection(&qualified).count();
     let unauthorized: BTreeSet<_> = scenario.unauthorized_resources.iter().copied().collect();
-    safety.unauthorized_exposures = unauthorized
-        .iter()
-        .filter(|resource| retrieved_resources.contains(resource) || qualified.contains(resource))
-        .count();
+    let mut exposed_resources = retrieved_resources.clone();
+    exposed_resources.extend(qualified.iter().copied());
+    for path in &observed.graph_paths {
+        exposed_resources.extend(path.resource_path.iter().copied());
+        for step in &path.steps {
+            exposed_resources.extend([step.from_resource, step.to_resource]);
+            exposed_resources.extend(
+                step.participants
+                    .iter()
+                    .map(|participant| participant.resource_ref),
+            );
+        }
+    }
+    safety.unauthorized_exposures = unauthorized.intersection(&exposed_resources).count();
     let eligible_resources: BTreeSet<_> = relevant_resources
         .difference(&hard_ineligible)
         .copied()

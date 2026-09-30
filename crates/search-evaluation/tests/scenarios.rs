@@ -372,6 +372,46 @@ fn access_exposure_is_counted_even_when_a_valid_resource_is_found() {
 }
 
 #[test]
+fn unauthorized_n_ary_participant_is_a_security_exposure_with_an_authorized_endpoint() {
+    let mut scenario = present(ScenarioCategory::SecurityAccess);
+    scenario.unauthorized_resources.push(resource(99));
+    scenario.graph_truth_complete = true;
+    let mut known_relation = valid_relation();
+    known_relation.participants[2] = RelationParticipant::new("authority", resource(99));
+    let participants = known_relation.participants.clone();
+    scenario.known_relations.push(known_relation);
+    scenario.required_relations.push(relation(100));
+
+    let mut observed = observation();
+    observed.planned_sources.push(source(1));
+    observed.retrieved_resources.push(resource(10));
+    observed.qualified_resources.push(resource(10));
+    observed.graph_paths.push(path(participants));
+
+    let outcome = evaluate_scenario(&scenario, &observed);
+    assert_eq!(outcome.metrics.graph.found, 1);
+    assert_eq!(outcome.safety.unauthorized_exposures, 1);
+    assert_eq!(outcome.failure, Some(FailureClass::SecurityExposure));
+}
+
+#[test]
+fn unauthorized_graph_resource_path_member_is_a_security_exposure() {
+    let mut scenario = present(ScenarioCategory::SecurityAccess);
+    scenario.unauthorized_resources.push(resource(99));
+    let mut observed = observation();
+    observed.planned_sources.push(source(1));
+    observed.retrieved_resources.push(resource(10));
+    observed.qualified_resources.push(resource(10));
+    let mut graph_path = path(valid_relation().participants);
+    graph_path.resource_path.insert(1, resource(99));
+    observed.graph_paths.push(graph_path);
+
+    let outcome = evaluate_scenario(&scenario, &observed);
+    assert_eq!(outcome.safety.unauthorized_exposures, 1);
+    assert_eq!(outcome.failure, Some(FailureClass::SecurityExposure));
+}
+
+#[test]
 fn fault_gap_is_kept_distinct_from_verified_source_absence() {
     let mut scenario = EvaluationScenario::new(
         ScenarioCategory::FaultInjection,
