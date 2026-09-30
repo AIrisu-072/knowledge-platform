@@ -7,3 +7,6 @@ rules:
   security-defined: off
   # The repository does not publish an API license; do not invent one here.
   info-license: off
+  # Every Document operation carries a concrete media-type example. Keep those
+  # examples executable against the declared request/response schemas.
+  no-invalid-media-type-examples: error
