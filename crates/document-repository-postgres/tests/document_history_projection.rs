@@ -99,6 +99,7 @@ async fn history_is_authorized_and_survives_outbox_cleanup() {
             &context(),
             VersionPageQuery {
                 document_id: f.document_id,
+                purpose: document_application::VersionPurpose::History,
                 page_size: None,
                 cursor: None,
             },
@@ -115,6 +116,7 @@ async fn history_is_authorized_and_survives_outbox_cleanup() {
             &context(),
             VersionPageQuery {
                 document_id: f.document_id,
+                purpose: document_application::VersionPurpose::History,
                 page_size: None,
                 cursor: None,
             },
@@ -129,6 +131,7 @@ async fn history_is_authorized_and_survives_outbox_cleanup() {
             &context(),
             VersionPageQuery {
                 document_id: f.document_id,
+                purpose: document_application::VersionPurpose::History,
                 page_size: None,
                 cursor: None,
             },

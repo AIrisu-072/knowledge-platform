@@ -185,6 +185,20 @@ pub struct ApiProblem {
     pub exact_retry: Option<bool>,
 }
 
+pub struct ApiError(Box<ApiProblem>);
+
+impl From<ApiProblem> for ApiError {
+    fn from(problem: ApiProblem) -> Self {
+        Self(Box::new(problem))
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        self.0.into_response()
+    }
+}
+
 impl ApiProblem {
     pub fn new(code: ErrorCode, instance: &str, trace_id: &str) -> Self {
         Self {

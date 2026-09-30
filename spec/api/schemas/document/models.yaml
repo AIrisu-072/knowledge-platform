@@ -2,29 +2,50 @@ $defs:
   PublishedDocument:
     type: object
     additionalProperties: false
-    required: [documentId, title, folderId, currentVersionId, revision]
+    required: [documentId, documentVersionId, title, folderId, currentVersionId, revision]
     properties:
       documentId: {type: string, format: uuid}
+      documentVersionId: {type: string, format: uuid}
       title: {type: string}
-      folderId: {type: string, format: uuid}
+      folderId: {type: [string, 'null'], format: uuid}
+      folderName: {type: [string, 'null']}
       currentVersionId: {type: string, format: uuid}
       revision: {type: integer, minimum: 0}
       unread: {type: boolean}
       metadata: {type: object}
+      createdAt: {type: string, format: date-time}
+      publishedAt: {type: string, format: date-time}
+      firstReadAt: {type: [string, 'null'], format: date-time}
   AuthoringDocument:
     type: object
     additionalProperties: false
-    required: [documentId, title, folderId, revision, versions]
+    required: [documentId, documentVersionId, title, lifecycleState, folderId, revision, currentVersionId]
     properties:
       documentId: {type: string, format: uuid}
+      documentVersionId: {type: string, format: uuid}
       title: {type: string}
-      folderId: {type: string, format: uuid}
+      lifecycleState: {type: string, enum: [working, published, withdrawn]}
+      folderId: {type: [string, 'null'], format: uuid}
+      folderName: {type: [string, 'null']}
       revision: {type: integer, minimum: 0}
       currentVersionId: {type: [string, 'null'], format: uuid}
-      versions:
-        type: array
-        items: {$ref: '#/$defs/Version'}
       metadata: {type: object}
+      createdAt: {type: string, format: date-time}
+  HistoryDocument:
+    type: object
+    additionalProperties: false
+    required: [documentId, documentVersionId, title, lifecycleState, ended, folderId, revision]
+    properties:
+      documentId: {type: string, format: uuid}
+      documentVersionId: {type: string, format: uuid}
+      title: {type: string}
+      lifecycleState: {type: string, enum: [working, published, withdrawn]}
+      ended: {type: boolean}
+      folderId: {type: [string, 'null'], format: uuid}
+      folderName: {type: [string, 'null']}
+      revision: {type: integer, minimum: 0}
+      metadata: {type: object}
+      createdAt: {type: string, format: date-time}
   DocumentList:
     oneOf:
       - type: object
@@ -46,7 +67,7 @@ $defs:
         required: [view, items, nextCursor]
         properties:
           view: {const: history}
-          items: {type: array, items: {$ref: '#/$defs/Version'}}
+          items: {type: array, items: {$ref: '#/$defs/HistoryDocument'}}
           nextCursor: {type: [string, 'null']}
   DocumentDetail:
     oneOf:
@@ -55,36 +76,49 @@ $defs:
   Version:
     type: object
     additionalProperties: false
-    required: [versionId, documentId, state, revision, createdAt]
+    required: [versionId, versionNo, lifecycleState, isCurrent, createdAt]
     properties:
       versionId: {type: string, format: uuid}
-      documentId: {type: string, format: uuid}
-      state: {type: string, enum: [working, published, withdrawn]}
-      revision: {type: integer, minimum: 0}
+      versionNo: {type: integer, minimum: 1}
+      lifecycleState: {type: string, enum: [working, published, withdrawn]}
+      isCurrent: {type: boolean}
       createdAt: {type: string, format: date-time}
+      publishedAt: {type: [string, 'null'], format: date-time}
+      withdrawnAt: {type: [string, 'null'], format: date-time}
+      firstReadAt: {type: [string, 'null'], format: date-time}
+      title: {type: string}
       metadata: {type: object}
   VersionList:
     type: object
     additionalProperties: false
-    required: [items]
+    required: [items, nextCursor]
     properties:
       items: {type: array, items: {$ref: '#/$defs/Version'}}
+      nextCursor: {type: [string, 'null']}
   History:
     type: object
     additionalProperties: false
-    required: [items]
+    required: [items, nextCursor]
     properties:
+      nextCursor: {type: [string, 'null']}
       items:
         type: array
         items:
           type: object
           additionalProperties: false
-          required: [eventId, occurredAt, eventType]
+          required: [sourceKind, sourceKey, occurredAt, actionCode, details, provenanceQuality]
           properties:
-            eventId: {type: string, format: uuid}
-            occurredAt: {type: string, format: date-time}
-            eventType: {type: string}
-            versionId: {type: [string, 'null'], format: uuid}
+            sourceKind: {type: string}
+            sourceKey: {type: string}
+            occurredAt: {type: [string, 'null'], format: date-time}
+            actionCode: {type: string}
+            details: {type: object}
+            provenanceQuality: {type: string, enum: [operationLedger, versionFallback, legacyUnknown]}
+            actor:
+              type: [object, 'null']
+              properties:
+                identityProvider: {type: string}
+                principalId: {type: string}
   FileList:
     type: object
     additionalProperties: false
@@ -95,13 +129,16 @@ $defs:
         items:
           type: object
           additionalProperties: false
-          required: [contentItemId, representationId, displayName, mediaType]
+          required: [contentItemId, representationId, logicalPath, ordinal, role, displayName, mediaType, sizeBytes]
           properties:
             contentItemId: {type: string, format: uuid}
             representationId: {type: string, format: uuid}
+            logicalPath: {type: string}
+            ordinal: {type: integer, minimum: 0}
+            role: {type: string}
             displayName: {type: string}
             mediaType: {type: string}
-            sizeBytes: {type: [integer, 'null'], minimum: 0}
+            sizeBytes: {type: integer, minimum: 0}
   Folder:
     type: object
     additionalProperties: false
@@ -114,20 +151,28 @@ $defs:
   FolderChildren:
     type: object
     additionalProperties: false
-    required: [items]
+    required: [items, nextCursor]
     properties:
       items: {type: array, items: {$ref: '#/$defs/Folder'}}
+      nextCursor: {type: [string, 'null']}
+  PolicyTarget:
+    type: object
+    additionalProperties: false
+    required: [kind, id]
+    properties:
+      kind: {type: string, enum: [document, folder]}
+      id: {type: string, format: uuid}
   AccessPolicyRead:
     type: object
     additionalProperties: false
     required: [target, bindingMode, policyId, policyRevision, effectivePolicyId, effectiveSource, effectiveGrants]
     properties:
-      target: {type: string, format: uuid}
+      target: {$ref: '#/$defs/PolicyTarget'}
       bindingMode: {type: string, enum: [inherit, explicit]}
       policyId: {type: [string, 'null'], format: uuid}
       policyRevision: {type: integer, minimum: 0}
       effectivePolicyId: {type: string, format: uuid}
-      effectiveSource: {type: string, format: uuid}
+      effectiveSource: {$ref: '#/$defs/PolicyTarget'}
       effectiveGrants:
         type: array
         items: {$ref: '#/$defs/PolicyGrant'}

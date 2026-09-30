@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::Arc;
 
 use document_domain::{PolicyGrant, PolicyId, PolicyTarget};
@@ -21,13 +22,12 @@ pub struct AccessPolicyRead {
     pub effective_grants: Vec<PolicyGrant>,
 }
 
-#[allow(async_fn_in_trait)]
 pub trait AccessPolicyReadRepository: Send + Sync {
-    async fn read_access_policy(
+    fn read_access_policy(
         &self,
         ctx: &VerifiedActorContext,
         target: PolicyTarget,
-    ) -> Result<AccessPolicyRead, RepositoryError>;
+    ) -> impl Future<Output = Result<AccessPolicyRead, RepositoryError>> + Send;
 }
 
 pub struct AccessPolicyReadService<R> {

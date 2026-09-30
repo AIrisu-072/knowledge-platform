@@ -8,6 +8,7 @@ mod access_policy_service;
 mod authorized_document;
 mod command;
 mod create_outcome;
+mod document_detail;
 pub mod document_diff;
 mod document_history;
 mod document_management;
@@ -46,6 +47,7 @@ pub use command::{
 pub use create_outcome::{
     CreateOutcomeProbe, CreateOutcomeRecoveryService, CreateOutcomeRepository,
 };
+pub use document_detail::{DocumentDetailPurpose, DocumentDetailRead, DocumentDetailReadService};
 pub use document_history::{
     DocumentHistoryEntry, DocumentHistoryRepository, DocumentHistoryService, HistoryPageQuery,
     ProvenanceQuality, VersionDetail, VersionFileRequest, VersionFileSummary, VersionPageQuery,

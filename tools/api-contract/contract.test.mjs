@@ -190,6 +190,9 @@ test('read projections preserve authorized Application fields and pagination', (
 
   const policy = resolved(contract.components.schemas.AccessPolicyRead);
   assert.equal(policy.properties.effectiveSource.$ref, '#/components/schemas/PolicyTarget');
+  const policyExample = resolved(contract.components.responses.AccessPolicyRead).content['application/json'].example;
+  assert.equal(typeof policyExample.target, 'object');
+  assert.equal(typeof policyExample.effectiveSource, 'object');
   for (const path of ['/v1/documents/{documentId}/versions', '/v1/documents/{documentId}/history', '/v1/folders/{folderId}/children']) {
     const parameters = operation('get', path).parameters.map((parameter) => resolved(parameter).name);
     assert.ok(parameters.includes('pageSize'), `${path} missing pageSize`);

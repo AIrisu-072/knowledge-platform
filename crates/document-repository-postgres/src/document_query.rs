@@ -70,6 +70,7 @@ WITH RECURSIVE selected_folders(folder_id, depth) AS (
 )
 SELECT authorized.* FROM authorized
 WHERE ($6::text IS NULL OR strpos(title_key, $6::text) > 0)
+  AND ($20::uuid IS NULL OR document_id = $20::uuid)
   AND ($7::text IS NULL OR metadata->>'document_type' = $7::text)
   AND ($8::text IS NULL OR metadata->>'owning_department' = $8::text)
   AND ($9::text IS NULL OR metadata->>'category' = $9::text)
@@ -332,6 +333,7 @@ impl PostgresDocumentRepository {
             .bind(ctx.principal().identity_provider())
             .bind(ctx.principal().principal_id())
             .bind(page_size + 1)
+            .bind(filter.exact_document_id.map(|id| id.as_uuid()))
             .fetch_all(&mut *tx)
             .await
             .map_err(map_statement_error)?;

@@ -2,6 +2,7 @@
 
 pub mod error;
 pub mod identity;
+pub mod read;
 pub mod router;
 pub mod trace;
 pub mod validation;
