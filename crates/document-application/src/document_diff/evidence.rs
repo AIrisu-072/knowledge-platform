@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use document_domain::FileId;
 use document_semantic_inspection_core::InspectionProfileVersion;
 
@@ -8,13 +10,12 @@ use crate::{
 
 use super::{DiffPairSnapshot, DiffRequest, DocumentDiffRepository, SnapshotItem};
 
-#[allow(async_fn_in_trait)]
 pub trait DiffInspectionEvidence: Send + Sync {
-    async fn ensure(
+    fn ensure(
         &self,
         file_id: FileId,
         profile: InspectionProfileVersion,
-    ) -> Result<SemanticInspectionRecord, ApplicationError>;
+    ) -> impl Future<Output = Result<SemanticInspectionRecord, ApplicationError>> + Send;
 }
 
 impl<R, F, E, C> DiffInspectionEvidence for EnsureSemanticInspection<R, F, E, C>

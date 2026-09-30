@@ -1,6 +1,7 @@
 //! Document HTTP transport boundary. Infrastructure is assembled outside this crate.
 
 pub mod create;
+pub mod diff;
 pub mod error;
 pub mod file_download;
 pub mod identity;

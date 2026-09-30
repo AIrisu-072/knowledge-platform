@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use document_diff_core::{WorkerDiffRequest, WorkerDiffResponse};
 use uuid::Uuid;
 
@@ -5,33 +7,34 @@ use crate::{ContentReader, RepositoryError, VerifiedActorContext};
 
 use super::{DiffCacheKey, DiffPairSnapshot, DiffRequest, DiffResult};
 
-#[allow(async_fn_in_trait)]
 pub trait DiffCache: Send + Sync {
-    async fn get(&self, key: &DiffCacheKey) -> Result<Option<DiffResult>, RepositoryError>;
-    async fn put(
+    fn get(
+        &self,
+        key: &DiffCacheKey,
+    ) -> impl Future<Output = Result<Option<DiffResult>, RepositoryError>> + Send;
+    fn put(
         &self,
         key: DiffCacheKey,
         result: DiffResult,
         expected_digest: [u8; 32],
-    ) -> Result<(), RepositoryError>;
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
 }
 
-#[allow(async_fn_in_trait)]
 pub trait DocumentDiffRepository: Send + Sync {
-    async fn capture_pair(
+    fn capture_pair(
         &self,
         actor: &VerifiedActorContext,
         request: DiffRequest,
-    ) -> Result<DiffPairSnapshot, RepositoryError>;
+    ) -> impl Future<Output = Result<DiffPairSnapshot, RepositoryError>> + Send;
 
-    async fn authorize_and_audit_result(
+    fn authorize_and_audit_result(
         &self,
         actor: &VerifiedActorContext,
         pair: &DiffPairSnapshot,
         result: &DiffResult,
         cache_hit: bool,
         correlation_id: Option<&str>,
-    ) -> Result<Uuid, RepositoryError>;
+    ) -> impl Future<Output = Result<Uuid, RepositoryError>> + Send;
 }
 
 #[derive(Debug, thiserror::Error, Clone, Copy, PartialEq, Eq)]
@@ -48,12 +51,11 @@ pub enum DiffExecutionError {
     InvalidWorkerResult,
 }
 
-#[allow(async_fn_in_trait)]
 pub trait DiffExecutor: Send + Sync {
-    async fn compare(
+    fn compare(
         &self,
         request: WorkerDiffRequest,
         base: ContentReader,
         target: ContentReader,
-    ) -> Result<WorkerDiffResponse, DiffExecutionError>;
+    ) -> impl Future<Output = Result<WorkerDiffResponse, DiffExecutionError>> + Send;
 }
