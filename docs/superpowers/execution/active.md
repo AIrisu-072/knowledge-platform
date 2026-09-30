@@ -1,5 +1,38 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document HTTP/OpenAPI Transport v0 計画承認・HAPI-01開始準備、2026-09-29 JST
+
+- Status: **PLAN APPROVED / IMPLEMENTATION AUTHORIZED / HAPI-01 NEXT**。詳細は `docs/superpowers/execution/document-http-openapi-transport-v0-status.md`。
+- Frozen Designは `docs/superpowers/specs/2026-09-29-document-http-openapi-transport-v0-design.md` blob `88f7046a5d14a77f4091df0c92691f6634dd57d7`。Production Planは `docs/superpowers/plans/2026-09-29-document-http-openapi-transport-v0-production-implementation.md` blob `111914181143672d3fec901dae75fc2af0256b15`。依頼者の明示承認を同名 `-approval.md` に記録した。設計意味変更提案なし。
+- GitHub: 設計・計画Draft PR #27 head `a1b69e182e5f94a2054de2087b65eafc5a0b5ba4` の標準CI `36571955105`、Sandbox `36571954899`、DSI PoC `36571954725` はSUCCESS。基準main `77b13a1d35d15eea0112ca2d73f8cbd3dfffe1c9`。承認記録commit/push待ち。
+- 完了: 承認前gateで製品実装を止め、GitHubのPR #27 headと設計/計画blobを再確認。現在TaskはHAPI-01着手前。製品コード・OpenAPI paths・dependency未変更。blockerは承認により解消。merge・deploy・AD接続は指示なし。
+- 次のexact action: 承認記録とActive/Statusをcommit/pushし、新exact headを実装branch `feat/document-http-openapi-transport-v0-a` の基点にする。最新main、Cargo/pnpm lock、migration番号、architecture rulesを点検してHAPI-01のfocused REDを作る。
+
+以下は旧checkpoint。現在の工程ではない。
+
+## Active checkpoint — Document HTTP/OpenAPI Transport v0 設計承認・実装計画レビュー待ち、2026-09-29 JST
+
+- Status: **DESIGN APPROVED / PLAN REVIEW PENDING / IMPLEMENTATION BLOCKED**。詳細は `docs/superpowers/execution/document-http-openapi-transport-v0-status.md`。
+- Frozen Design: `docs/superpowers/specs/2026-09-29-document-http-openapi-transport-v0-design.md` blob `88f7046a5d14a77f4091df0c92691f6634dd57d7`。承認記録 `docs/superpowers/specs/2026-09-29-document-http-openapi-transport-v0-design-approval.md`。
+- Production Plan: `docs/superpowers/plans/2026-09-29-document-http-openapi-transport-v0-production-implementation.md`。**未承認**。HAPI-01〜12は未着手。
+- GitHub: Draft PR #27、`design/document-http-openapi-transport-v0`。基準main `77b13a1d35d15eea0112ca2d73f8cbd3dfffe1c9`。製品コード/OpenAPI paths/dependency/deployは未変更。
+- Implementation handoff: `docs/superpowers/handoffs/2026-09-29-document-http-openapi-transport-v0-implementation.md`。計画承認blob一致を必須gateとする。
+- blocker: Production Implementation Planの依頼者承認と別sessionでの実装開始指示。
+- 次のexact action: 計画を自己レビューして依頼者へ提示する。計画承認前は実装しない。
+
+以下は旧checkpoint。現在の工程ではない。
+
+## Active checkpoint — Document HTTP/OpenAPI Transport v0 設計開始、2026-09-29 JST
+
+- Status: **DESIGN ACTIVE — WRITTEN SPEC REVIEW PENDING**。詳細は `docs/superpowers/execution/document-http-openapi-transport-v0-status.md`。
+- 基準main: `77b13a1d35d15eea0112ca2d73f8cbd3dfffe1c9`。PR #24はmerge済み。main CI `36533301309` はSUCCESS。本番deployは未実施。
+- Active Design: `docs/superpowers/specs/2026-09-29-document-http-openapi-transport-v0-design.md`。OpenAPI 3.2.1、Human/Agent共通API、verified identity境界、RFC 9457、既存operation ID/revision、監査済みfile access、Document Diff projectionを設計対象とする。
+- GitHub: Draft PR #27（`design/document-http-openapi-transport-v0` → `main`）。
+- 現在のStep / blocker: PR #27の設計書を依頼者レビューへ出す。製品コード・`spec/api/openapi.yaml` paths・production dependencyはまだ変更しない。blockerは設計承認のみ。
+- 次のexact action: 設計PRを作成し、書面設計の承認後にapproval recordとProduction Implementation Planを作る。実装・merge・deployは別の明示指示を必要とする。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## Active checkpoint — Document Diff v0 設計PR統合済み・実装PR main統合中、2026-09-29 JST
 
 - Status: **ACTIVE — DIF-01〜15実装とD exact-head gate完了、PR #24 main統合中**。詳細は `docs/superpowers/execution/document-diff-v0-status.md`。Frozen Design blob `afee4e9351c5027b1252e8c7b74e542a295f0e67`、Approved Plan blob `0bdbba832ebcfc2d211fddbba18dc31e69e1a28c`、意味変更提案なし。
