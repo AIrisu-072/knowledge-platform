@@ -3719,10 +3719,16 @@ dependencies = [
 name = "search-source-document"
 version = "0.0.0"
 dependencies = [
+ "document-application",
  "document-domain",
+ "document-repository-postgres",
+ "document-semantic-inspection-core",
  "search-application",
  "search-core",
  "search-tantivy",
+ "serde_json",
+ "sqlx",
+ "testcontainers",
  "thiserror",
  "time",
  "tokio",

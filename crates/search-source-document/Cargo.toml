@@ -6,13 +6,19 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+document-application = { version = "0.0.0", path = "../document-application" }
 document-domain = { version = "0.0.0", path = "../document-domain" }
+document-repository-postgres = { version = "0.0.0", path = "../document-repository-postgres" }
+document-semantic-inspection-core = { version = "0.0.0", path = "../document-semantic-inspection-core" }
 search-application = { version = "0.0.0", path = "../search-application" }
 search-core = { version = "0.0.0", path = "../search-core" }
 search-tantivy = { version = "0.0.0", path = "../search-tantivy" }
+serde_json.workspace = true
+sqlx.workspace = true
 thiserror.workspace = true
 time.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+testcontainers.workspace = true
 tokio.workspace = true
