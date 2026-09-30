@@ -126,6 +126,42 @@ async fn publish_transaction_commits_state_events_audit_and_operation_atomically
     assert_eq!(state.2, "PUBLISHED");
     assert_eq!(state.3, Some(published_at));
 
+    let issued_revision: (i64, i64, Uuid, String, Uuid, String) = sqlx::query_as(
+        "SELECT major_no,minor_no,document_version_id,source_kind,operation_id,actor_principal_id \
+         FROM document_revisions WHERE document_id = $1",
+    )
+    .bind(document_id.as_uuid())
+    .fetch_one(&pool)
+    .await
+    .expect("initial publish should issue one human-facing revision");
+    assert_eq!(
+        issued_revision,
+        (
+            1,
+            0,
+            version_id.as_uuid(),
+            "initialPublication".to_owned(),
+            operation_id.as_uuid(),
+            "actor-1".to_owned()
+        )
+    );
+    let initial_snapshot: serde_json::Value = sqlx::query_scalar(
+        "SELECT metadata_snapshot FROM document_revisions WHERE document_id = $1",
+    )
+    .bind(document_id.as_uuid())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        initial_snapshot,
+        serde_json::json!({
+            "document_type": null,
+            "owning_department": null,
+            "category": null,
+            "extensions": null
+        })
+    );
+
     assert_eq!(count_publish_operations(&pool, document_id).await, 1);
     assert_eq!(
         count_event_type(&pool, "outbox_events", "DocumentVersionPublished").await,
@@ -170,6 +206,13 @@ async fn publish_replay_is_idempotent_and_operation_id_misuse_conflicts() {
         .await
         .expect("same operation should replay");
     assert_eq!(first, replay);
+    let revisions: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM document_revisions WHERE document_id = $1")
+            .bind(document_id.as_uuid())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(revisions, 1, "replay must not issue a duplicate revision");
     assert_eq!(count_publish_operations(&pool, document_id).await, 1);
     assert_eq!(
         count_event_type(&pool, "outbox_events", "DocumentVersionPublished").await,

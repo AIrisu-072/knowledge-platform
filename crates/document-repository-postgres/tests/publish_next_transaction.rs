@@ -36,6 +36,24 @@ async fn replacement_publish_switches_current_and_replays_once() {
         PublishDocumentCommand::new(publish_id(1), f.document_id, target_id, 2, actor()).unwrap();
     let published = service.publish_document(command.clone()).await.unwrap();
     assert_eq!(published.resulting_document_revision(), 3);
+    let issued_revision: (i64, i64, Uuid, String, Option<Uuid>) = sqlx::query_as(
+        "SELECT major_no,minor_no,document_version_id,source_kind,operation_id \
+         FROM document_revisions WHERE document_id = $1 ORDER BY major_no DESC,minor_no DESC LIMIT 1",
+    )
+    .bind(f.document_id.as_uuid())
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        issued_revision,
+        (
+            2,
+            0,
+            target_id.as_uuid(),
+            "contentPublication".to_owned(),
+            Some(publish_id(1).as_uuid())
+        )
+    );
     assert_eq!(
         service.publish_document(command.clone()).await.unwrap(),
         published
@@ -47,6 +65,16 @@ async fn replacement_publish_switches_current_and_replays_once() {
             .await
             .unwrap();
     assert_eq!(current, target_id.as_uuid());
+    let revision_count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM document_revisions WHERE document_id = $1")
+            .bind(f.document_id.as_uuid())
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        revision_count, 2,
+        "publish replay cannot create another revision"
+    );
     let old: String = sqlx::query_scalar(
         "SELECT lifecycle_state FROM document_versions WHERE document_version_id = $1",
     )

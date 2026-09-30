@@ -49,10 +49,26 @@ async fn management_changes_flow_into_published_list_read_state_and_history_then
         .execute(&f.pool)
         .await
         .unwrap();
+    sqlx::query(
+        "INSERT INTO document_revisions \
+         (document_id,document_version_id,major_no,minor_no,metadata_snapshot, \
+          metadata_snapshot_status,source_kind,operation_id,created_at, \
+          actor_identity_provider,actor_principal_id,reason) \
+         VALUES ($1,$2,1,0, \
+                 jsonb_build_object('document_type',NULL,'owning_department',NULL, \
+                                    'category',NULL,'extensions',NULL), \
+                 'complete','legacyBackfill',NULL,now(),NULL,NULL,NULL)",
+    )
+    .bind(f.document_id.as_uuid())
+    .bind(version_id.as_uuid())
+    .execute(&f.pool)
+    .await
+    .unwrap();
 
     let management = DocumentManagementService::new(f.repository.clone());
+    let metadata_operation_id = operation_id();
     let metadata_command = ManagementCommand::UpdateDocumentMetadata {
-        operation_id: operation_id(),
+        operation_id: metadata_operation_id,
         document_id: f.document_id,
         expected_document_revision: 1,
         set: BTreeMap::from([("category".into(), json!("operations"))]),
@@ -64,6 +80,65 @@ async fn management_changes_flow_into_published_list_read_state_and_history_then
         .await
         .unwrap();
     assert_eq!(updated.resulting_revision, 2);
+    let metadata_revision: (
+        i64,
+        i64,
+        String,
+        Option<Uuid>,
+        Option<String>,
+        Option<String>,
+        Option<serde_json::Value>,
+    ) = sqlx::query_as(
+        "SELECT major_no,minor_no,source_kind,operation_id,actor_identity_provider, \
+                    actor_principal_id,metadata_snapshot \
+             FROM document_revisions WHERE document_id = $1 \
+             ORDER BY major_no DESC,minor_no DESC LIMIT 1",
+    )
+    .bind(f.document_id.as_uuid())
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        metadata_revision,
+        (
+            1,
+            1,
+            "metadataRevision".to_owned(),
+            Some(metadata_operation_id.as_uuid()),
+            Some("test-idp".to_owned()),
+            Some("policy-admin".to_owned()),
+            Some(serde_json::json!({
+                "document_type": null,
+                "owning_department": null,
+                "category": "operations",
+                "extensions": null
+            }))
+        )
+    );
+    assert_eq!(
+        management
+            .update_document_metadata(&context(), metadata_command.clone())
+            .await
+            .unwrap(),
+        updated,
+        "exact management replay returns the prior mutation"
+    );
+    let no_op = management
+        .update_document_metadata(
+            &context(),
+            ManagementCommand::UpdateDocumentMetadata {
+                operation_id: operation_id(),
+                document_id: f.document_id,
+                expected_document_revision: 2,
+                set: BTreeMap::from([("category".into(), json!("operations"))]),
+                unset: BTreeSet::new(),
+                reason: "repeat classification".into(),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!no_op.changed);
+    assert_eq!(no_op.resulting_revision, 2);
 
     let folder_id = FolderId::from_uuid(Uuid::now_v7());
     FolderService::new(f.repository.clone())
@@ -105,6 +180,16 @@ async fn management_changes_flow_into_published_list_read_state_and_history_then
     assert_eq!(
         persisted,
         (folder_id.as_uuid(), Some(version_id.as_uuid()), 3)
+    );
+    let revision_count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM document_revisions WHERE document_id = $1")
+            .bind(f.document_id.as_uuid())
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        revision_count, 2,
+        "folder, policy and read-state changes do not revise content"
     );
 
     let query = DocumentQueryService::new(f.repository.clone());

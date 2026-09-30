@@ -60,6 +60,24 @@ async fn current_withdrawal_restores_only_immediate_safe_base_and_replays() {
     assert_eq!(result.resulting_current_version_id, Some(f.base_id));
     assert_eq!(result.resulting_revision, 4);
     assert_eq!(result.restoration_withheld_reason, None);
+    let fallback_revision: (i64, i64, Uuid, String, Option<Uuid>) = sqlx::query_as(
+        "SELECT major_no,minor_no,document_version_id,source_kind,operation_id \
+         FROM document_revisions WHERE document_id = $1 ORDER BY major_no DESC,minor_no DESC LIMIT 1",
+    )
+    .bind(f.document_id.as_uuid())
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        fallback_revision,
+        (
+            3,
+            0,
+            f.base_id.as_uuid(),
+            "withdrawFallback".to_owned(),
+            Some(operation_id(32).as_uuid())
+        )
+    );
     assert_eq!(
         service.withdraw_version(command.clone()).await.unwrap(),
         result
@@ -69,6 +87,16 @@ async fn current_withdrawal_restores_only_immediate_safe_base_and_replays() {
             .withdraw_version(withdrawal(32, f.document_id, target, 3, "different reason"))
             .await,
         Err(ApplicationError::OperationConflict)
+    );
+    let revision_count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM document_revisions WHERE document_id = $1")
+            .bind(f.document_id.as_uuid())
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        revision_count, 3,
+        "withdraw replay does not add a second fallback"
     );
     let current: Uuid =
         sqlx::query_scalar("SELECT current_version_id FROM documents WHERE document_id = $1")
@@ -128,6 +156,16 @@ async fn first_version_withdrawal_has_null_current() {
     assert_eq!(result.former_current_version_id, Some(f.base_id));
     assert_eq!(result.resulting_current_version_id, None);
     assert_eq!(result.restoration_withheld_reason, None);
+    let revision_count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM document_revisions WHERE document_id = $1")
+            .bind(f.document_id.as_uuid())
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        revision_count, 1,
+        "withdrawal without fallback does not issue a revision"
+    );
     let current: Option<Uuid> =
         sqlx::query_scalar("SELECT current_version_id FROM documents WHERE document_id = $1")
             .bind(f.document_id.as_uuid())
