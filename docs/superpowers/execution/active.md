@@ -1,5 +1,18 @@
 # Active Execution Pointer
 
+## Current checkpoint — Document GUI Integration v0 G2 COMPLETE / G3 NEXT、2026-10-01 JST
+
+- Status: **G0〜G2 COMPLETE / G3 Action Capability Projection NEXT**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。
+- Implementation branch `feat/document-gui-integration-v0`。G2 GREEN code head `6d58cef3a119424d005018cb412bad183da624d2`。Draft product PRはまだ未作成、main未merge。
+- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`、approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`、Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。差分提案なし。
+- G2 RED: GUI list/revision test commit `bb0a26352cf03cee3196de6799c3de5fa65a2273` は`displayVersion.versionNo`欠落とrevision route 404を検出。Version projection追加RED `aaf94d2e5720af95fabdc3be50011499ae033c91` は`updatedAt`欠落を検出。GREEN implementation head `6d58cef3a119424d005018cb412bad183da624d2`。
+- G2 focused verification: `read_http` 7/7、`query_cursor_contract` 4/4、HTTP dispatch contract 1/1、problem registry 1/1、Node API contract 10/10、Redocly 2.52.1 OpenAPI lint PASS、`cargo fmt --all -- --check` / `git diff --check` PASS。`document_version_updated_at` PostgreSQL focused testもPASS済み。
+- `mise run api:check`はworkspace `mise.toml` untrustedで起動できなかったため、定義された2コマンドを直接実行。pnpmのpinned 12.4.1 shimも欠落していたためRedocly 2.52.1を一時的にnpm installして検証した。これは実装blockerではない。
+- Blocker: なし。中間hosted CIは実行していない。G9で同一headのfinal gatesを実行する。
+- 次のexact action: G3のFrozen Design / Plan記述と既存Document/Version/Folder detail routesを読み、`available | disabled(reason)` capability matrixのfocused RED testsを追加して、current authorizationとmutation時再評価を維持する。
+
+---
+
 ## Current checkpoint — Document GUI Integration v0 G1 COMPLETE / G2 NEXT、2026-09-30 JST
 
 - G0 COMPLETE: PR #27/#29/#30/#31/#32/#35 merged. Product branch base is main `d71753d46590bb4406a1c0b74894ab90a27a6c88`.
