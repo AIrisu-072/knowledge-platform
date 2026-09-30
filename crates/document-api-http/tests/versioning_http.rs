@@ -92,9 +92,11 @@ fn multipart(parts: &[Part], terminated: bool) -> (String, Vec<u8>) {
     let mut body = Vec::new();
     for part in parts {
         body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
-        let filename = (part.name == "files")
-            .then_some("; filename=\"transport-name.bin\"")
-            .unwrap_or_default();
+        let filename = if part.name == "files" {
+            "; filename=\"transport-name.bin\""
+        } else {
+            ""
+        };
         body.extend_from_slice(
             format!(
                 "Content-Disposition: form-data; name=\"{}\"{filename}\r\n",
@@ -373,6 +375,48 @@ async fn malformed_binding_path_and_disconnect_fail_before_version_commit() {
     )
     .await;
     assert!(status.is_client_error(), "{problem}");
+
+    let mut invalid_media = version_request(
+        operation_id(122),
+        Uuid::now_v7(),
+        1,
+        Uuid::now_v7(),
+        "invalid-media",
+        "Invalid media",
+    );
+    invalid_media["items"][0]["mediaType"] = json!("not-a-media-type");
+    let (status, problem) = send_multipart(
+        api.clone(),
+        Method::POST,
+        &create_uri,
+        &[request_part(invalid_media), file_part("invalid-media", 2)],
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE, "{problem}");
+
+    let mut parser_disagreement = version_request(
+        operation_id(123),
+        Uuid::now_v7(),
+        1,
+        Uuid::now_v7(),
+        "parser-disagreement",
+        "Parser disagreement",
+    );
+    parser_disagreement["items"][0]["mediaType"] = json!("application/pdf");
+    let (status, problem) = send_multipart(
+        api.clone(),
+        Method::POST,
+        &create_uri,
+        &[
+            request_part(parser_disagreement),
+            file_part("parser-disagreement", 2),
+        ],
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{problem}");
+    assert_eq!(problem["code"], "INTEGRITY_VIOLATION");
 
     let mismatched_path = format!("/v1/documents/{document_id}/versions/{}", Uuid::now_v7());
     let (status, problem) = send_multipart(

@@ -128,7 +128,7 @@ paths:
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
         '201':
-          $ref: '#/components/responses/MutationResult'
+          $ref: '#/components/responses/VersionMutationResult'
         '401':
           $ref: '#/components/responses/Problem'
         default:
@@ -162,7 +162,7 @@ paths:
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
         '200':
-          $ref: '#/components/responses/MutationResult'
+          $ref: '#/components/responses/VersionMutationResult'
         '401':
           $ref: '#/components/responses/Problem'
         default:
@@ -181,7 +181,7 @@ paths:
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
         '200':
-          $ref: '#/components/responses/MutationResult'
+          $ref: '#/components/responses/VersionMutationResult'
         '401':
           $ref: '#/components/responses/Problem'
         default:
@@ -658,6 +658,8 @@ components:
       $ref: ./schemas/document/models.yaml#/$defs/CreateDocumentResult
     MutationResult:
       $ref: ./schemas/document/models.yaml#/$defs/MutationResult
+    VersionMutationResult:
+      $ref: ./schemas/document/models.yaml#/$defs/VersionMutationResult
     ReadStateResult:
       $ref: ./schemas/document/models.yaml#/$defs/ReadStateResult
     SourceEvidence:
@@ -682,6 +684,8 @@ components:
       $ref: ./schemas/document/commands.yaml#/$defs/CreateDocument
     VersionContentItem:
       $ref: ./schemas/document/commands.yaml#/$defs/VersionContentItem
+    VersionRendition:
+      $ref: ./schemas/document/commands.yaml#/$defs/VersionRendition
     VersionWrite:
       $ref: ./schemas/document/commands.yaml#/$defs/VersionWrite
     RebaseVersion:
@@ -1152,6 +1156,18 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/MutationResult'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    VersionMutationResult:
+      description: VersionMutationResult
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VersionMutationResult'
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.

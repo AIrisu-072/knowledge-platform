@@ -176,89 +176,106 @@ pub trait FileStorage: Send + Sync {
     ) -> impl Future<Output = Result<Vec<StorageObjectInfo>, StorageError>> + Send;
 }
 
-#[allow(async_fn_in_trait)]
 pub trait SemanticInspectionRepository: Send + Sync {
-    async fn get_file_object(&self, file_id: FileId)
-    -> Result<Option<FileObject>, RepositoryError>;
-    async fn get_semantic_inspection(
+    fn get_file_object(
+        &self,
+        file_id: FileId,
+    ) -> impl Future<Output = Result<Option<FileObject>, RepositoryError>> + Send;
+    fn get_semantic_inspection(
         &self,
         file_id: FileId,
         profile: InspectionProfileVersion,
-    ) -> Result<Option<SemanticInspectionRecord>, RepositoryError>;
-    async fn insert_or_converge_semantic_inspection(
+    ) -> impl Future<Output = Result<Option<SemanticInspectionRecord>, RepositoryError>> + Send;
+    fn insert_or_converge_semantic_inspection(
         &self,
         record: SemanticInspectionRecord,
-    ) -> Result<SemanticInspectionRecord, RepositoryError>;
+    ) -> impl Future<Output = Result<SemanticInspectionRecord, RepositoryError>> + Send;
 }
 
-#[allow(async_fn_in_trait)]
 pub trait VersioningRepository: Send + Sync {
     /// Register an immutable FileObject before a Version can reference it.
     /// Replaying the same FileId is valid only for the same raw binding.
-    async fn register_file_object(&self, file: FileObject) -> Result<(), RepositoryError>;
+    fn register_file_object(
+        &self,
+        file: FileObject,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
 
-    async fn get_version_operation(
+    fn get_version_operation(
         &self,
         _operation_id: VersionOperationId,
-    ) -> Result<Option<VersionOperationRecord>, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "version mutation repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<Option<VersionOperationRecord>, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "version mutation repository unavailable".to_owned(),
+            ))
+        }
     }
 
-    async fn get_version_snapshot(
+    fn get_version_snapshot(
         &self,
         _document_id: DocumentId,
         _version_id: DocumentVersionId,
-    ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "version mutation repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<Option<AuthoritativeDocument>, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "version mutation repository unavailable".to_owned(),
+            ))
+        }
     }
 
-    async fn create_version(
+    fn create_version(
         &self,
         _record: VersionMutationRecord,
-    ) -> Result<VersionOperationResult, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "version mutation repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<VersionOperationResult, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "version mutation repository unavailable".to_owned(),
+            ))
+        }
     }
 
-    async fn update_working(
+    fn update_working(
         &self,
         _record: VersionMutationRecord,
-    ) -> Result<VersionOperationResult, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "version mutation repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<VersionOperationResult, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "version mutation repository unavailable".to_owned(),
+            ))
+        }
     }
 
-    async fn rebase_working(
+    fn rebase_working(
         &self,
         _record: VersionMutationRecord,
-    ) -> Result<VersionOperationResult, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "version mutation repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<VersionOperationResult, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "version mutation repository unavailable".to_owned(),
+            ))
+        }
     }
 
-    async fn get_withdraw_operation(
+    fn get_withdraw_operation(
         &self,
         _operation_id: VersionOperationId,
-    ) -> Result<Option<WithdrawOperationRecord>, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "withdrawal repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<Option<WithdrawOperationRecord>, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "withdrawal repository unavailable".to_owned(),
+            ))
+        }
     }
 
-    async fn withdraw_version(
+    fn withdraw_version(
         &self,
         _record: WithdrawVersionRecord,
-    ) -> Result<WithdrawVersionResult, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "withdrawal repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<WithdrawVersionResult, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "withdrawal repository unavailable".to_owned(),
+            ))
+        }
     }
 }
 
@@ -323,13 +340,12 @@ pub trait PublicationEndRepository: Send + Sync {
     ) -> Result<EndDocumentPublicationResult, RepositoryError>;
 }
 
-#[allow(async_fn_in_trait)]
 pub trait SemanticInspectionExecutor: Send + Sync {
-    async fn inspect(
+    fn inspect(
         &self,
         request: WorkerRequest,
         content: ContentReader,
-    ) -> Result<WorkerResponse, InspectionExecutionError>;
+    ) -> impl Future<Output = Result<WorkerResponse, InspectionExecutionError>> + Send;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

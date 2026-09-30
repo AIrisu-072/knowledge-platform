@@ -121,6 +121,17 @@ test('write contracts bind replay IDs and do not accept actor self assertions', 
   assert.ok(version.required.includes('operationId'));
   assert.ok(version.required.includes('targetVersionId'));
   assert.ok(version.required.includes('expectedRevision'));
+  assert.ok(version.required.includes('title'));
+  const versionItem = resolved(version.properties.items.items);
+  assert.equal(resolved(versionItem.properties.renditions.items).required.includes('partId'), true);
+  for (const path of ['/v1/documents/{documentId}/versions', '/v1/documents/{documentId}/versions/{versionId}', '/v1/documents/{documentId}/versions/{versionId}:rebase']) {
+    const method = path.endsWith('/versions') ? 'post' : path.endsWith(':rebase') ? 'post' : 'put';
+    const success = path.endsWith('/versions') ? '201' : '200';
+    assert.equal(
+      resolved(operation(method, path).responses[success]).content['application/json'].schema.$ref,
+      '#/components/schemas/VersionMutationResult',
+    );
+  }
   const policy = resolved(contract.components?.schemas?.SetAccessPolicy);
   assert.equal(policy.oneOf.length, 2);
   assert.equal(resolved(policy.oneOf[0]).properties.mode.const, 'inherit');

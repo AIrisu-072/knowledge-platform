@@ -208,6 +208,17 @@ $defs:
       changed: {type: boolean}
       occurredAt: {type: string, format: date-time}
       auditEventId: {type: string, format: uuid}
+  VersionMutationResult:
+    type: object
+    additionalProperties: false
+    required: [operationId, documentId, targetVersionId, versionNo, baseVersionId, resultingRevision]
+    properties:
+      operationId: {type: string, format: uuid}
+      documentId: {type: string, format: uuid}
+      targetVersionId: {type: string, format: uuid}
+      versionNo: {type: integer, minimum: 1}
+      baseVersionId: {type: string, format: uuid}
+      resultingRevision: {type: integer, minimum: 0}
   ReadStateResult:
     type: object
     additionalProperties: false

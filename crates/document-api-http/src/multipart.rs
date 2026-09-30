@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::io;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -17,6 +18,11 @@ pub(crate) struct InitialUpload {
     pub original_filename: String,
     pub media_type: String,
     pub content: ContentReader,
+}
+
+pub(crate) struct VersionUpload {
+    pub request_json: Vec<u8>,
+    pub files: BTreeMap<String, ContentReader>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,6 +87,55 @@ pub(crate) async fn parse_initial_upload(
         original_filename,
         media_type,
         content,
+    })
+}
+
+pub(crate) async fn parse_version_upload(
+    mut multipart: Multipart,
+    limits: UploadLimits,
+) -> Result<VersionUpload, MultipartFailure> {
+    let mut request_json = None;
+    let mut files = BTreeMap::new();
+    let mut part_count = 0_usize;
+    while let Some(mut field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| MultipartFailure::Validation)?
+    {
+        part_count = part_count
+            .checked_add(1)
+            .ok_or(MultipartFailure::Validation)?;
+        if part_count > limits.parts || header_bytes(field.headers()) > limits.header_bytes {
+            return Err(MultipartFailure::Validation);
+        }
+        let name = field.name().ok_or(MultipartFailure::Validation)?.to_owned();
+        match name.as_str() {
+            "request" => {
+                if request_json.is_some() || !is_json(field.content_type()) {
+                    return Err(MultipartFailure::Validation);
+                }
+                request_json = Some(read_bounded(&mut field, limits.json_bytes).await?);
+            }
+            "files" => {
+                let part_id = field
+                    .headers()
+                    .get("x-part-id")
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty() && value.len() <= limits.filename_bytes)
+                    .ok_or(MultipartFailure::Validation)?
+                    .to_owned();
+                if files.contains_key(&part_id) {
+                    return Err(MultipartFailure::Validation);
+                }
+                files.insert(part_id, spool_bounded(&mut field, limits.file_bytes).await?);
+            }
+            _ => return Err(MultipartFailure::Validation),
+        }
+    }
+    Ok(VersionUpload {
+        request_json: request_json.ok_or(MultipartFailure::Validation)?,
+        files,
     })
 }
 
@@ -226,7 +281,7 @@ fn is_json(value: Option<&str>) -> bool {
         .is_some_and(|value| value.trim().eq_ignore_ascii_case("application/json"))
 }
 
-fn valid_media_type(value: &str) -> bool {
+pub(crate) fn valid_media_type(value: &str) -> bool {
     let mut segments = value.split(';');
     let Some(essence) = segments.next().map(str::trim) else {
         return false;
