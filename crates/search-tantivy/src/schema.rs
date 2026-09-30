@@ -42,6 +42,8 @@ pub(crate) const fn kind_token(kind: search_core::resource::ResourceKind) -> &'s
     use search_core::resource::ResourceKind;
     match kind {
         ResourceKind::Knowledge => "knowledge",
+        ResourceKind::Document => "document",
+        ResourceKind::FolderPlacement => "folder_placement",
         ResourceKind::Semantic => "semantic",
         ResourceKind::Capability => "capability",
         ResourceKind::AgentSkill => "agent_skill",

@@ -10,6 +10,10 @@ use crate::temporal::TemporalDiscoveryProfile;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ResourceKind {
     Knowledge,
+    /// Source-local structural node; never a Document Version search result.
+    Document,
+    /// A Folder placement owned by one Document, not a shared Folder identity.
+    FolderPlacement,
     Semantic,
     Capability,
     AgentSkill,
@@ -21,6 +25,8 @@ pub enum ResourceKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ResourceBody {
     Knowledge,
+    Document,
+    FolderPlacement,
     Semantic,
     Capability,
     AgentSkill,
@@ -32,6 +38,8 @@ impl ResourceBody {
     pub const fn kind(self) -> ResourceKind {
         match self {
             Self::Knowledge => ResourceKind::Knowledge,
+            Self::Document => ResourceKind::Document,
+            Self::FolderPlacement => ResourceKind::FolderPlacement,
             Self::Semantic => ResourceKind::Semantic,
             Self::Capability => ResourceKind::Capability,
             Self::AgentSkill => ResourceKind::AgentSkill,

@@ -3689,6 +3689,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "search-evaluation"
+version = "0.0.0"
+dependencies = [
+ "search-application",
+ "search-core",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "search-graph-memory"
 version = "0.0.0"
 dependencies = [
@@ -3710,6 +3721,29 @@ dependencies = [
  "search-core",
  "serde_json",
  "sha2 0.11.0",
+ "time",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "search-source-document"
+version = "0.0.0"
+dependencies = [
+ "document-application",
+ "document-domain",
+ "document-repository-postgres",
+ "document-semantic-inspection-core",
+ "search-application",
+ "search-core",
+ "search-graph-memory",
+ "search-projection-memory",
+ "search-tantivy",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "testcontainers",
+ "thiserror",
  "time",
  "tokio",
  "uuid",

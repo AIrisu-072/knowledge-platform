@@ -133,6 +133,20 @@ impl TantivyLexicalIndex {
         Self::default()
     }
 
+    /// Remove a privately built generation after the shared projection
+    /// publication rejects it. Callers must never pass a published key.
+    pub fn discard_generation(
+        &self,
+        key: ProjectionGenerationKey,
+    ) -> Result<bool, LexicalIndexError> {
+        Ok(self
+            .generations
+            .write()
+            .map_err(|_| LexicalIndexError::LockPoisoned)?
+            .remove(&key)
+            .is_some())
+    }
+
     pub fn build_generation(
         &self,
         manifest: ProjectionGenerationManifest,
