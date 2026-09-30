@@ -42,7 +42,7 @@ Primary evidenceへ昇格できるのは同じgeneration/resourceに束縛した
 
 Phase DのbaseであるPhase C Draft PR #28 head `a8df10d7582f9d2947b0b58cfbd4713281fca912` は、CI `36580213345`、DSI Sandbox `36580213402`、DSI PoC `36580213444` がSUCCESSしている。これはPhase D headのhosted証拠ではない。
 
-Phase Dはこの文書を含む最終commitをstacked Draft PRとしてpushし、remote head、PR `headRefOid`、source-worktree HEADを一致させてから、標準CIの `required-check` とpath条件で起動したDSI Sandbox/PoCを確認する。hosted exact-head結果が得られるまでPhase Dのhosted qualificationは **PENDING** とする。
+2026-09-30にlive GitHub状態を再確認した。Draft PR #33はOPEN、baseはPhase Cであり、head `4892ba5d2736b35bf95de25f834f016609d2e0d4` に対する [標準CI 36665497017](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36665497017)、[DSI PoC 36665497015](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36665497015)、[DSI Sandbox 36665497041](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36665497041) は全てcompleted/SUCCESSである。Phase Dのhosted qualificationは **PASS**。このclosure記録はCompletion Program branch上に置き、検証済みのPR #33 headを動かさない。
 
 ## Deferred capabilities
 
@@ -58,4 +58,4 @@ Phase Dはこの文書を含む最終commitをstacked Draft PRとしてpushし�
 
 ## 受入状態
 
-Local focused/evaluation evidenceは **PASS**。local standard gateは容量blockerのため **INCOMPLETE**。whole-branch independent reviewは修正後 **GO**。Phase D exact-head hosted gatesは **PENDING**。Draft PRを作成してhosted gateを行う段階であり、merge/deployの受入ではない。
+Local focused/evaluation evidenceは **PASS**。local standard gateは容量blockerのため **INCOMPLETE**。whole-branch independent reviewは修正後 **GO**。Phase D exact-head hosted gatesは **PASS**（`4892ba5`、上記3 run）。Draft PR #33はOPENであり、merge/deployは未実施。
