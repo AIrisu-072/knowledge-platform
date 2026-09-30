@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::Arc;
 
 use document_domain::{MediaType, StorageKey};
@@ -52,13 +53,12 @@ pub struct OpenedVersionFile {
     pub audit_event_id: Uuid,
 }
 
-#[allow(async_fn_in_trait)]
 pub trait VersionFileAccessRepository: Send + Sync {
-    async fn authorize_and_audit_file(
+    fn authorize_and_audit_file(
         &self,
         ctx: &VerifiedActorContext,
         request: VersionFileRequest,
-    ) -> Result<AuditedFileGrant, RepositoryError>;
+    ) -> impl Future<Output = Result<AuditedFileGrant, RepositoryError>> + Send;
 }
 
 pub struct VersionFileAccessService<R, F> {

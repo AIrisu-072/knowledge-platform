@@ -232,7 +232,7 @@ async fn audited_stream_sets_safe_headers_and_delays_body_read() {
     assert_eq!(&body[..], FILE_BYTES);
     assert_eq!(
         *repository.events.lock().unwrap(),
-        vec!["audit", "open", "read", "read"]
+        vec!["audit", "open", "read"]
     );
     let captured = repository.last_request.lock().unwrap().unwrap();
     assert_eq!(captured.version.document_id.as_uuid(), request_ids.0);

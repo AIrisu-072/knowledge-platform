@@ -421,6 +421,8 @@ paths:
           $ref: '#/components/responses/BinaryDownload'
         '401':
           $ref: '#/components/responses/Problem'
+        '416':
+          description: Range requests are not supported in v0; no file bytes are returned.
         default:
           $ref: '#/components/responses/Problem'
       parameters:

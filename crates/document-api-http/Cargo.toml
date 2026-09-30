@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 axum = { version = "=0.8.9", features = ["json", "matched-path", "multipart"] }
+http-body = "=1.1.0"
 tower-http = { version = "=0.7.1", default-features = false, features = ["cors", "set-header"] }
 jsonschema = { version = "=0.55.0", default-features = false }
 document-application = { version = "0.0.0", path = "../document-application" }

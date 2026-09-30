@@ -2,6 +2,7 @@
 
 pub mod create;
 pub mod error;
+pub mod file_download;
 pub mod identity;
 pub mod limits;
 pub mod management;
