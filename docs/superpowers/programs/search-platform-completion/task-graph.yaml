@@ -631,6 +631,21 @@
       "kind": "contract",
       "path": "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md",
       "purpose": "Frozen provider neutral input contract for Vector evaluation"
+    },
+    {
+      "id": "p3-build-guard",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p3-graph-build-guard-amendment.md",
+      "purpose": "Bound source/base/target build leases prevent incremental-copy and GC races"
+    },
+    {
+      "id": "p3-final-arch",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p3-graph-build-guard-review.md",
+      "supports": [
+        "P3"
+      ],
+      "purpose": "Independent final single-finding architecture closure"
     }
   ],
   "tasks": [
@@ -954,7 +969,8 @@
       "summary": "Freeze reviewed graph contract and bounded implementation plan",
       "consumes": [
         "p3-revised",
-        "p3-arch-recheck"
+        "p3-build-guard",
+        "p3-final-arch"
       ],
       "produces": [
         "p3-contract",
@@ -1723,7 +1739,7 @@
       "write_scope": [
         "docs/superpowers/programs/search-platform-completion/p3-graph-architecture-recheck.md"
       ],
-      "acceptance": "No blocking P1/P2 remains on exact revised design"
+      "acceptance": "Independent exact-revision report records closure and any remaining actionable blocker; full freeze requires subsequent GO"
     },
     {
       "id": "p4-repair-design",
@@ -1768,17 +1784,16 @@
       "summary": "Revise extraction design to resolve recorded independent architecture findings",
       "consumes": [
         "p1-draft",
-        "p1-arch"
+        "p1-arch",
+        "p1-unit-draft"
       ],
       "produces": [
-        "p1-revised",
-        "p1-unit-draft"
+        "p1-revised"
       ],
       "estimate": "S",
       "role": "domain-designer",
       "write_scope": [
-        "docs/superpowers/programs/search-platform-completion/p1-extraction-design-revision-1.md",
-        "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-contract.md"
+        "docs/superpowers/programs/search-platform-completion/p1-extraction-design-revision-1.md"
       ],
       "acceptance": "Revised design explicitly addresses all architecture blockers without changing frozen Search semantics"
     },
@@ -1910,6 +1925,61 @@
         "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md"
       ],
       "acceptance": "Exact input contract digest recorded with independent GO; body integration remains separately gated"
+    },
+    {
+      "id": "p1-repair-unit-contract",
+      "kind": "docs",
+      "summary": "Extract stable exact minimal KnowledgeUnit contract from the P1 repair responsibility",
+      "consumes": [
+        "p1-draft",
+        "p1-arch"
+      ],
+      "produces": [
+        "p1-unit-draft"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-contract.md"
+      ],
+      "acceptance": "Canonical Unit fields locator profile ID golden vectors and P2 cache validation contract recorded"
+    },
+    {
+      "id": "p3-fix-build-guard",
+      "kind": "docs",
+      "summary": "Specify durable base and target build guard for remaining incremental GC race",
+      "consumes": [
+        "p3-revised",
+        "p3-arch-recheck"
+      ],
+      "produces": [
+        "p3-build-guard"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p3-graph-build-guard-amendment.md"
+      ],
+      "acceptance": "Active base/target builders protected and each copy batch validates locks digest and unexpired guard fencing"
+    },
+    {
+      "id": "p3-review-build-guard",
+      "kind": "audit",
+      "summary": "Verify single remaining incremental base and active staging GC blocker closes",
+      "consumes": [
+        "p3-revised",
+        "p3-build-guard",
+        "p3-arch-recheck"
+      ],
+      "produces": [
+        "p3-final-arch"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p3-graph-build-guard-review.md"
+      ],
+      "acceptance": "No P1/P2 remains in composed revised design and guard amendment"
     }
   ],
   "gate_overrides": [

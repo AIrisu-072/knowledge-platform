@@ -28,3 +28,15 @@
 {"ts":"2026-09-30T14:35:24+09:00","event":"completed","task":"inspect-environment"}
 {"ts":"2026-09-30T14:47:37+09:00","event":"completed","task":"p3-repair-design"}
 {"ts":"2026-09-30T14:47:37+09:00","event":"dispatched","task":"p3-recheck-design"}
+{"ts":"2026-09-30T14:51:31+09:00","event":"completed","task":"p4-repair-design"}
+{"ts":"2026-09-30T14:51:31+09:00","event":"dispatched","task":"p4-recheck-design"}
+{"ts":"2026-09-30T14:55:05+09:00","event":"completed","task":"p1-repair-unit-contract","detail":"Node split records stable partial output from the still-active P1 design repair responsibility; Unit artifact is immutable, full body integration remains active"}
+{"ts":"2026-09-30T14:55:05+09:00","event":"dispatched","task":"p1-review-unit"}
+{"ts":"2026-09-30T14:56:30+09:00","event":"completed","task":"p5-repair-design"}
+{"ts":"2026-09-30T14:56:30+09:00","event":"dispatched","task":"p5-recheck-design"}
+{"ts":"2026-09-30T14:59:00+09:00","event":"completed","task":"p6-repair-design"}
+{"ts":"2026-09-30T14:59:00+09:00","event":"dispatched","task":"p6-recheck-design"}
+{"ts":"2026-09-30T15:00:56+09:00","event":"completed","task":"p4-recheck-design"}
+{"ts":"2026-09-30T15:00:56+09:00","event":"dispatched","task":"p4-freeze","detail":"Parent fixed independent GO exact design digest; scoped plan writer prepares plan before node completion"}
+{"ts":"2026-09-30T15:02:45+09:00","event":"completed","task":"p3-recheck-design","detail":"Four prior findings closed; one remaining incremental base/staging GC race requires build guard amendment"}
+{"ts":"2026-09-30T15:02:45+09:00","event":"dispatched","task":"p3-fix-build-guard"}

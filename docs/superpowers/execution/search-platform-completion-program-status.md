@@ -64,3 +64,12 @@ Exact next action: receive revision-1 artifacts, independently recheck with new 
 - Active workers: P1/P4/P5/P6 design repair, P3 architecture recheck. Environment worker is complete. No new production code.
 - Foundation PR #34 remote/source head `c156b32c3d11c0d03b20322ce4e32bce0834e88a` was verified live. Its CI `36674528354` is in progress; no Completion qualification claim.
 - Graph gate PASS after split: 68 tasks / 77 artifacts / 11 claims. Exact next action: finish stable revisions, dispatch scoped rechecks, freeze passing contracts/prepare concrete plans and measured P3 PoC; start P2 when Unit contract GO is recorded.
+
+## Contract gates — 2026-09-30
+
+- P4 revised architecture recheck **GO** at design SHA-256 `f4112c7aa0cf7cbf61dca19c4beebcfb14a6578432ac45861644ab8ea616f9e9`; exact contract fixed in `p4-remote-freeze.md`. `/root/completion_p4_plan` is writing only the concrete plan. P4 production, HTTP-client PoC, E2E and CI remain unrun. Graph freeze node completes after its plan artifact is ready.
+- P1 minimal `p1-knowledgeunit-contract.md` is stable, 104 lines; `/root/completion_p1_unit_review` verifies exact codec/locator/golden vectors/cache/input boundary. P1 full revision still owned by `/root/completion_p1_design_repair`; do not duplicate either. Node split records the delivered minimal contract while full body-generation/evidence repair stays active.
+- P3 revision recheck closes four original findings but remains NO-GO for one incremental base/active BUILDING GC race. `/root/completion_p3_build_guard` writes only `p3-graph-build-guard-amendment.md`; separate fresh review follows, then composed design freeze/PoC plan.
+- P5 revision complete; `/root/completion_p5_architecture_recheck` checks security closure. Final schema/type reconciliation with P1-P4 remains required before freeze. Ruling: P5 uses exact P4 `TrustedSearchScope` / `AuthorizedSourceScope` / `ScopedSourceRegistryPort`, no separate trust minting path. Problem type namespace must use standards-valid existing registry convention or `about:blank` plus declared code extension.
+- P6 revision complete; `/root/completion_p6_architecture_recheck` checks lease/reaper/distributed Source fence/stale receipt closure.
+- Graph gate PASS: 71 tasks / 79 artifacts / 11 claims. Exact next action: consume these gates without redispatch, freeze reviewed Unit core for P2, dispatch plans/scoped implementations and measured candidate PoCs as their prerequisites pass. No Hard Stop reached.
