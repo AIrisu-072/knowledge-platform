@@ -894,78 +894,149 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/RebaseVersion'
+          example:
+            operationId: 01890f7a-6f6e-7b0a-8000-000000000001
+            expectedRevision: 2
     PublishVersion:
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/PublishVersion'
+          example:
+            operationId: 01890f7a-6f6e-7b0a-8000-000000000002
+            expectedRevision: 3
     WithdrawVersion:
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/WithdrawVersion'
+          example:
+            operationId: 01890f7a-6f6e-7b0a-8000-000000000003
+            expectedRevision: 4
+            reason: Superseded publication
     SchedulePublication:
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/SchedulePublication'
+          example:
+            operationId: 01890f7a-6f6e-7b0a-8000-000000000004
+            expectedRevision: 5
+            scheduledPublishAt: '2030-01-02T03:04:05Z'
     CancelPublicationSchedule:
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/CancelPublicationSchedule'
+          example:
+            operationId: 01890f7a-6f6e-7b0a-8000-000000000005
+            publishOperationId: 01890f7a-6f6e-7b0a-8000-000000000004
+            expectedRevision: 6
     EndPublication:
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/EndPublication'
+          example:
+            operationId: 01890f7a-6f6e-7b0a-8000-000000000006
+            expectedRevision: 7
+            expectedCurrentVersionId: 00000000-0000-4000-8000-000000000020
+            reason: Publication period ended
     MetadataPatch:
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/MetadataPatch'
+          example:
+            operationId: 01890f7a-6f6e-7b0a-8000-000000000007
+            expectedDocumentRevision: 8
+            set:
+              owning_department: quality
+            unset:
+            - category
+            reason: Correct document metadata
     MoveDocument:
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/MoveDocument'
+          example:
+            operationId: 01890f7a-6f6e-7b0a-8000-000000000008
+            fromFolderId: 00000000-0000-4000-8000-000000000030
+            toFolderId: 00000000-0000-4000-8000-000000000031
+            expectedDocumentRevision: 9
+            reason: Move to the quality folder
     CreateFolder:
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/CreateFolder'
+          example:
+            operationId: 01890f7a-6f6e-7b0a-8000-000000000009
+            folderId: 00000000-0000-4000-8000-000000000032
+            parentFolderId: 00000000-0000-4000-8000-000000000030
+            expectedParentRevision: 10
+            name: Quality
+            reason: Create a quality folder
     RenameFolder:
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/RenameFolder'
+          example:
+            operationId: 01890f7a-6f6e-7b0a-8000-000000000010
+            expectedFolderRevision: 11
+            name: Quality assurance
+            reason: Clarify the folder name
     MoveFolder:
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/MoveFolder'
+          example:
+            operationId: 01890f7a-6f6e-7b0a-8000-000000000011
+            fromParentId: 00000000-0000-4000-8000-000000000030
+            toParentId: 00000000-0000-4000-8000-000000000031
+            expectedFolderRevision: 12
+            reason: Reorganize the folder tree
     SetAccessPolicy:
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/SetAccessPolicy'
+          example:
+            operationId: 01890f7a-6f6e-7b0a-8000-000000000012
+            expectedPolicyRevision: 2
+            reason: Grant document reviewers read access
+            mode: explicit
+            grants:
+            - subjectKind: role
+              identityProvider: directory
+              subjectId: reviewer
+              actions:
+              - read
     ComparisonRequest:
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ComparisonRequest'
+          example:
+            baseVersionId: 00000000-0000-4000-8000-000000000021
+            targetVersionId: 00000000-0000-4000-8000-000000000022
+            profile: document-diff-v0
+            projection: comparisonTable
     CreateDocumentMultipart:
       required: true
       content:
@@ -982,6 +1053,15 @@ components:
               file:
                 type: string
                 format: binary
+          example:
+            request:
+              folderId: 00000000-0000-4000-8000-000000000030
+              title: Initial document
+              documentMetadata:
+                category: policy
+              versionMetadata:
+                source: upload
+            file: initial document bytes
           encoding:
             request:
               contentType: application/json
@@ -1006,6 +1086,22 @@ components:
                 items:
                   type: string
                   format: binary
+          example:
+            request:
+              operationId: 01890f7a-6f6e-7b0a-8000-000000000013
+              targetVersionId: 00000000-0000-4000-8000-000000000022
+              expectedRevision: 3
+              title: Revised document
+              items:
+              - logicalPath: primary
+                ordinal: 0
+                fileId: 00000000-0000-4000-8000-000000000040
+                partId: primary
+                mediaType: text/plain
+                originalFilename: document.txt
+                renditions: []
+            files:
+            - revised document bytes
           encoding:
             request:
               contentType: application/json
@@ -1039,6 +1135,19 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/DocumentDetail'
+          example:
+            documentId: 00000000-0000-4000-8000-000000000001
+            documentVersionId: 00000000-0000-4000-8000-000000000002
+            title: Published policy
+            folderId: 00000000-0000-4000-8000-000000000003
+            folderName: Policies
+            currentVersionId: 00000000-0000-4000-8000-000000000002
+            revision: 4
+            unread: false
+            metadata: {}
+            createdAt: '2029-01-01T00:00:00Z'
+            publishedAt: '2029-01-02T00:00:00Z'
+            firstReadAt: null
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1051,6 +1160,17 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Version'
+          example:
+            versionId: 00000000-0000-4000-8000-000000000002
+            versionNo: 2
+            lifecycleState: published
+            isCurrent: true
+            createdAt: '2029-01-01T00:00:00Z'
+            publishedAt: '2029-01-02T00:00:00Z'
+            withdrawnAt: null
+            firstReadAt: null
+            title: Published policy
+            metadata: {}
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1063,6 +1183,9 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/VersionList'
+          example:
+            items: []
+            nextCursor: null
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1075,6 +1198,9 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/History'
+          example:
+            items: []
+            nextCursor: null
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1087,6 +1213,16 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/FileList'
+          example:
+            items:
+            - contentItemId: 00000000-0000-4000-8000-000000000041
+              representationId: 00000000-0000-4000-8000-000000000042
+              logicalPath: primary
+              ordinal: 0
+              role: authoritative
+              displayName: document.txt
+              mediaType: text/plain
+              sizeBytes: 23
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1099,6 +1235,11 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Folder'
+          example:
+            folderId: 00000000-0000-4000-8000-000000000030
+            parentFolderId: null
+            name: Root
+            revision: 1
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1111,6 +1252,9 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/FolderChildren'
+          example:
+            items: []
+            nextCursor: null
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1168,6 +1312,13 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/MutationResult'
+          example:
+            operationId: 01890f7a-6f6e-7b0a-8000-000000000014
+            resourceId: 00000000-0000-4000-8000-000000000001
+            resultingRevision: 5
+            changed: true
+            occurredAt: '2029-01-03T00:00:00Z'
+            auditEventId: 00000000-0000-4000-8000-000000000050
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1180,6 +1331,13 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/VersionMutationResult'
+          example:
+            operationId: 01890f7a-6f6e-7b0a-8000-000000000013
+            documentId: 00000000-0000-4000-8000-000000000001
+            targetVersionId: 00000000-0000-4000-8000-000000000022
+            versionNo: 2
+            baseVersionId: 00000000-0000-4000-8000-000000000002
+            resultingRevision: 5
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1192,6 +1350,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/PublishResult'
+          example:
+            publishOperationId: 01890f7a-6f6e-7b0a-8000-000000000002
+            documentId: 00000000-0000-4000-8000-000000000001
+            documentVersionId: 00000000-0000-4000-8000-000000000022
+            resultingDocumentRevision: 6
+            publishedAt: '2029-01-04T00:00:00Z'
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1202,6 +1366,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/WithdrawResult'
+          example:
+            operationId: 01890f7a-6f6e-7b0a-8000-000000000003
+            documentId: 00000000-0000-4000-8000-000000000001
+            targetVersionId: 00000000-0000-4000-8000-000000000022
+            formerCurrentVersionId: 00000000-0000-4000-8000-000000000022
+            resultingCurrentVersionId: 00000000-0000-4000-8000-000000000002
+            resultingRevision: 7
+            restorationWithheldReason: null
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1212,6 +1384,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/SchedulePublicationResult'
+          example:
+            publishOperationId: 01890f7a-6f6e-7b0a-8000-000000000004
+            documentId: 00000000-0000-4000-8000-000000000001
+            targetVersionId: 00000000-0000-4000-8000-000000000022
+            acceptedRevision: 7
+            scheduledPublishAt: '2030-01-02T03:04:05Z'
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1222,6 +1400,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/CancelPublicationResult'
+          example:
+            operationId: 01890f7a-6f6e-7b0a-8000-000000000005
+            publishOperationId: 01890f7a-6f6e-7b0a-8000-000000000004
+            documentId: 00000000-0000-4000-8000-000000000001
+            targetVersionId: 00000000-0000-4000-8000-000000000022
+            resultingRevision: 8
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1232,6 +1416,13 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/EndPublicationResult'
+          example:
+            operationId: 01890f7a-6f6e-7b0a-8000-000000000006
+            documentId: 00000000-0000-4000-8000-000000000001
+            formerCurrentVersionId: 00000000-0000-4000-8000-000000000022
+            resultingCurrentVersionId: null
+            resultingDocumentRevision: 9
+            endedAt: '2030-02-01T00:00:00Z'
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1242,6 +1433,11 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ReadStateResult'
+          example:
+            documentId: 00000000-0000-4000-8000-000000000001
+            versionId: 00000000-0000-4000-8000-000000000022
+            firstReadAt: '2029-01-05T00:00:00Z'
+            inserted: true
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1303,6 +1499,7 @@ components:
           schema:
             type: string
             format: binary
+          example: authorized document bytes
     Problem:
       description: RFC 9457 problem with stable machine code.
       content:
