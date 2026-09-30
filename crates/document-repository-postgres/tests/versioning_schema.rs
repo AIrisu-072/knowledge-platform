@@ -107,3 +107,138 @@ async fn versioning_schema_enforces_lineage_working_and_authoritative_representa
         "one ContentItem cannot have two authoritative representations"
     );
 }
+
+#[tokio::test]
+async fn document_revision_relation_is_installed_by_migration() {
+    let (_container, pool) = postgres().await;
+    migrate(&pool).await.unwrap();
+
+    let table: Option<String> =
+        sqlx::query_scalar("SELECT to_regclass('public.document_revisions')::text")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    assert_eq!(table.as_deref(), Some("document_revisions"));
+}
+
+#[tokio::test]
+async fn document_revision_schema_enforces_identity_snapshot_and_append_only_rules() {
+    let (_container, pool) = postgres().await;
+    migrate(&pool).await.unwrap();
+    let document_id = id(71);
+    let version_id = id(72);
+    document(&pool, document_id).await;
+    version(&pool, version_id, document_id, 1, "PUBLISHED").await;
+
+    let revision_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO document_revisions (
+             revision_id, document_id, document_version_id, major_no, minor_no,
+             metadata_snapshot, metadata_snapshot_status, source_kind, operation_id,
+             created_at, actor_identity_provider, actor_principal_id, reason
+         ) VALUES (
+             uuidv7(), $1, $2, 1, 0,
+             '{\"document_type\":\"policy\",\"owning_department\":\"legal\",\"category\":\"internal\",\"extensions\":{}}',
+             'complete', 'initialPublication', uuidv7(), now(), 'test-idp', 'publisher', 'initial release'
+         ) RETURNING revision_id",
+    )
+    .bind(document_id)
+    .bind(version_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    let version: i16 = sqlx::query_scalar("SELECT uuid_extract_version($1)")
+        .bind(revision_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(version, 7, "revision identifiers are UUIDv7");
+
+    assert!(
+        sqlx::query(
+            "INSERT INTO document_revisions (
+                 revision_id, document_id, document_version_id, major_no, minor_no,
+                 metadata_snapshot, metadata_snapshot_status, source_kind, created_at
+             ) VALUES (uuidv7(), $1, $2, 1, 0, '{}', 'complete', 'initialPublication', now())",
+        )
+        .bind(document_id)
+        .bind(version_id)
+        .execute(&pool)
+        .await
+        .is_err(),
+        "document, major, and minor identify one immutable revision"
+    );
+    assert!(
+        sqlx::query(
+            "INSERT INTO document_revisions (
+                 revision_id, document_id, document_version_id, major_no, minor_no,
+                 metadata_snapshot, metadata_snapshot_status, source_kind, created_at
+             ) VALUES (uuidv7(), $1, $2, 0, 0, '{}', 'complete', 'initialPublication', now())",
+        )
+        .bind(document_id)
+        .bind(version_id)
+        .execute(&pool)
+        .await
+        .is_err(),
+        "major numbers start at one"
+    );
+    assert!(
+        sqlx::query(
+            "INSERT INTO document_revisions (
+                 revision_id, document_id, document_version_id, major_no, minor_no,
+                 metadata_snapshot, metadata_snapshot_status, source_kind, created_at
+             ) VALUES (uuidv7(), $1, $2, 2, -1, '{}', 'complete', 'initialPublication', now())",
+        )
+        .bind(document_id)
+        .bind(version_id)
+        .execute(&pool)
+        .await
+        .is_err(),
+        "minor numbers are non-negative"
+    );
+    assert!(
+        sqlx::query(
+            "INSERT INTO document_revisions (
+                 revision_id, document_id, document_version_id, major_no, minor_no,
+                 metadata_snapshot, metadata_snapshot_status, source_kind, created_at
+             ) VALUES (uuidv7(), $1, $2, 2, 0, NULL, 'complete', 'initialPublication', now())",
+        )
+        .bind(document_id)
+        .bind(version_id)
+        .execute(&pool)
+        .await
+        .is_err(),
+        "complete metadata snapshots cannot be absent"
+    );
+
+    sqlx::query(
+        "INSERT INTO document_revisions (
+             revision_id, document_id, document_version_id, major_no, minor_no,
+             metadata_snapshot, metadata_snapshot_status, source_kind, operation_id,
+             created_at, actor_identity_provider, actor_principal_id, reason
+         ) VALUES (uuidv7(), $1, $2, 2, 0, NULL, 'unavailable_legacy', 'legacyBackfill', NULL, now(), NULL, NULL, NULL)",
+    )
+    .bind(document_id)
+    .bind(version_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    assert!(
+        sqlx::query("UPDATE document_revisions SET reason = 'rewritten' WHERE revision_id = $1")
+            .bind(revision_id)
+            .execute(&pool)
+            .await
+            .is_err(),
+        "issued revisions are append-only"
+    );
+    assert!(
+        sqlx::query("DELETE FROM document_revisions WHERE revision_id = $1")
+            .bind(revision_id)
+            .execute(&pool)
+            .await
+            .is_err(),
+        "issued revisions cannot be deleted"
+    );
+}

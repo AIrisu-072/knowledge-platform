@@ -1,8 +1,17 @@
 # Active Execution Pointer
 
-## Active checkpoint — Document GUI Integration v0 G0 predecessor integration complete / PR #35 finalization in progress、2026-09-30 JST
+## Current checkpoint — Document GUI Integration v0 G0 complete / G1 schema RED、2026-09-30 JST
 
-- Status: **G0 predecessor #27/#29/#30/#31/#32 MERGED; PR #35 retargeted to main; PR #35 docs reconciliation and exact-head gates pending**. G1 has not started. Details: docs/superpowers/execution/document-gui-integration-v0-status.md.
+- G0 COMPLETE: PR #27/#29/#30/#31/#32/#35 merged. Latest main and product branch base: `d71753d46590bb4406a1c0b74894ab90a27a6c88`.
+- PR #32 head `04ccb84a6d9a99f63eca8d7512888225393058fa`: CI `36713044816`, Sandbox `36713044612`, DSI PoC `36713044474` SUCCESS; main CI `36714907650` SUCCESS.
+- PR #35 head `4b9df28d054526114dd8a48956d5ac4ddecd5f46`: CI `36716092331`, Sandbox `36716092340`, DSI PoC `36716092268` SUCCESS; merge commit `d71753d46590bb4406a1c0b74894ab90a27a6c88`, main CI `36718016267` SUCCESS.
+- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`, approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`; attached Source Design ZIP SHA matches `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`.
+- G1 test-only RED: `cargo test -p document-repository-postgres --test versioning_schema document_revision_ -- --nocapture` fails the two new contracts only because `document_revisions` is absent; existing schema regression and `cargo fmt --all -- --check` pass.
+- Product branch `feat/document-gui-integration-v0`; no product PR yet. No STOP condition. Next: commit test-only RED and G0 closure record, then implement migration 0009 and continue G1–G9. Keep product PR Draft/unmerged; no production deploy, migration execution, or AD/SSPI connection.
+
+## Superseded checkpoint — Document GUI Integration v0 G0 predecessor integration complete / PR #35 finalization in progress、2026-09-30 JST
+
+- Status: **G0 COMPLETE**。PR #27/#29/#30/#31/#32とDesign/Plan PR #35はMERGED。G1着手済みで、現在はtest-only schema contract RED。詳細: `docs/superpowers/execution/document-gui-integration-v0-status.md`。
 - Frozen Design blob f132910ca5d3e638502f0b38447d9a1ec4020f24; approved Production Plan blob 0830c306ebb38290e4c3dc277f6c97a0759cf912; Plan Approval record is present. No Design amendment proposed.
 - G0 merge commits: #27 95f60f02fbc4205bfc38b6097d419fadee9682a1; #29 2ebfbd46f80c65590950d35d7ef9534377a72035; #30 2a49a2ddc28a77fba286d5d70d17464fcf4949a1; #31 6240ebbebb0db45a7360efbf568d63a2a6101db3; #32 5a81fd856d81b557e4936f663aa8b0ab3fcaa5e2.
 - PR #32 exact head 04ccb84a6d9a99f63eca8d7512888225393058fa: Standard CI 36713044816, Sandbox 36713044612, and DSI PoC 36713044474 all SUCCESS. Main merge commit 5a81fd856d81b557e4936f663aa8b0ab3fcaa5e2 has the same tree bd2b7df1717503ff3ef937ede581e0b235f20e87; push CI 36714907650 is still in progress. Sandbox and DSI PoC workflows are pull-request-triggered only.
