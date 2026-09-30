@@ -1,5 +1,16 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document HTTP/OpenAPI Transport v0 HAPI-01〜12 local GREEN、2026-09-30 JST
+
+- Status: **ACTIVE / HAPI-01〜12 LOCAL GREEN / UNIT D DRAFT PR・FINAL EXACT-HEAD GATE NEXT**。詳細は `docs/superpowers/execution/document-http-openapi-transport-v0-status.md` と `document-http-openapi-transport-v0-acceptance.md`。
+- Frozen Design blob `88f7046a5d14a77f4091df0c92691f6634dd57d7`、承認済みProduction Plan blob `111914181143672d3fec901dae75fc2af0256b15`。設計意味変更提案なし。
+- branch `feat/document-http-openapi-transport-v0-d`、review済みcode head `e0c4842bdf348fd7f807aad0d3cb548b1a7c9f22`。Unit A/B/C Draft PR #29/#30/#31の各exact-head標準CI・Sandbox・PoCは全てSUCCESS。Unit D Draft PRは未作成、全PR未merge。
+- HAPI-10〜12を完了。30 operationの完全dispatch、実PostgreSQL 18.6 + FileSystemStorage + DSI/Diff workerを通るHTTP縦断、finite hardening、全operationのOpenAPI request/response exampleと実行証拠を追加した。workspace test 686/686 PASS（既定skip 5）、HTTP 40/40、API contract 10/10、strict Clippy、fmt、architecture/negative smoke PASS。
+- codegen候補はbinary typingを保てずproductionへpromoteしていない。本番Identity Adapter、server/deploy、GUI/CLI/Agent Toolは未接続。blockerはUnit D記録headの標準CI、DSI Sandbox Preflight、DSI PoCとLinux production runner経路の確認のみ。
+- 次のexact action: acceptance/Status/Activeをcommitし、`feat/document-http-openapi-transport-v0-d` をpushする。PR #31をbaseとするDraft PRを作成し、同一headの3 hosted gateを一度確認する。SUCCESS後もmerge/deployせずレビュー待ちにする。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## Active checkpoint — Document HTTP/OpenAPI Transport v0 Unit A local GREEN、2026-09-29 JST
 
 - Status: **ACTIVE / HAPI-01〜03 LOCAL GREEN / UNIT A EXACT-HEAD GATE NEXT**。詳細は `docs/superpowers/execution/document-http-openapi-transport-v0-status.md`。
