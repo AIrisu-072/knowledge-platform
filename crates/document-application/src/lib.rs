@@ -29,6 +29,7 @@ mod publish_quality;
 mod query_cursor;
 mod read_state;
 mod reconciliation;
+mod revision_comparison;
 mod schedule;
 mod scheduled_authorization;
 mod semantic_inspection;
@@ -121,6 +122,11 @@ pub use query_cursor::{
 };
 pub use read_state::{MarkVersionRead, ReadStateRepository, ReadStateResult, ReadStateService};
 pub use reconciliation::{ReconciliationClassification, ReconciliationFinding, classify};
+pub use revision_comparison::{
+    MetadataChange, MetadataComparison, MetadataComparisonStatus, RevisionComparison,
+    RevisionComparisonService, RevisionContentComparator, RevisionContentComparison,
+    compare_revision_metadata, document_version_pair,
+};
 pub use schedule::{
     CancelOperationRecord, CancelScheduleCommand, CancelScheduleRecord, CancelScheduleResult,
     DueExecutionOutcome, DueTerminalRecord, ScheduleOperationRecord, SchedulePublishCommand,

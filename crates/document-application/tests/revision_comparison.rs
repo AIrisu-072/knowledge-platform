@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use document_application::document_diff::{AuthorizedDiff, DiffRequest};
 use document_application::{
@@ -12,7 +12,9 @@ use document_application::{
     RevisionContentComparator, RevisionContentComparison, VerifiedActorContext,
     compare_revision_metadata,
 };
-use document_domain::{DocumentId, DocumentVersionId, PolicySubject, PolicySubjectKind, PrincipalRef};
+use document_domain::{
+    DocumentId, DocumentVersionId, PolicySubject, PolicySubjectKind, PrincipalRef,
+};
 use serde_json::{Value, json};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
@@ -60,11 +62,7 @@ impl RevisionContentComparator for RecordingContentComparator {
     }
 }
 
-fn revision(
-    revision_id: Uuid,
-    version_id: Uuid,
-    metadata: Value,
-) -> DocumentRevisionDetail {
+fn revision(revision_id: Uuid, version_id: Uuid, metadata: Value) -> DocumentRevisionDetail {
     DocumentRevisionDetail {
         summary: DocumentRevisionSummary {
             revision_id,
@@ -98,8 +96,8 @@ fn metadata_comparison_reports_structural_paths_without_inventing_legacy_values(
     let base = json!({"category": "policy", "extensions": {"reviewers/team": ["a", "b"]}});
     let target = json!({"category": "guideline", "extensions": {"reviewers/team": ["a", "c"], "owner": "ops"}});
 
-    let different = compare_revision_metadata("complete", Some(&base), "complete", Some(&target))
-        .unwrap();
+    let different =
+        compare_revision_metadata("complete", Some(&base), "complete", Some(&target)).unwrap();
 
     assert_eq!(different.status, MetadataComparisonStatus::Different);
     assert_eq!(
@@ -108,18 +106,22 @@ fn metadata_comparison_reports_structural_paths_without_inventing_legacy_values(
             .iter()
             .map(|change| change.json_pointer.as_str())
             .collect::<Vec<_>>(),
-        ["/category", "/extensions/owner", "/extensions/reviewers~1team"]
+        [
+            "/category",
+            "/extensions/owner",
+            "/extensions/reviewers~1team"
+        ]
     );
 
-    let unavailable = compare_revision_metadata(
-        "unavailable_legacy",
-        None,
-        "complete",
-        Some(&target),
-    )
-    .unwrap();
-    assert_eq!(unavailable.status, MetadataComparisonStatus::UnavailableLegacy);
+    let unavailable =
+        compare_revision_metadata("unavailable_legacy", None, "complete", Some(&target)).unwrap();
+    assert_eq!(
+        unavailable.status,
+        MetadataComparisonStatus::UnavailableLegacy
+    );
     assert!(unavailable.changes.is_empty());
+    assert!(unavailable.base_snapshot_digest.is_none());
+    assert!(unavailable.target_snapshot_digest.is_some());
 }
 
 #[tokio::test]
@@ -130,7 +132,10 @@ async fn same_authoritative_version_revision_pair_never_calls_content_diff() {
     let version_id = Uuid::now_v7();
     let repository = Arc::new(RevisionRepository {
         revisions: HashMap::from([
-            (base_id, revision(base_id, version_id, json!({"category": "policy"}))),
+            (
+                base_id,
+                revision(base_id, version_id, json!({"category": "policy"})),
+            ),
             (
                 target_id,
                 revision(target_id, version_id, json!({"category": "guideline"})),
@@ -151,7 +156,10 @@ async fn same_authoritative_version_revision_pair_never_calls_content_diff() {
         comparison.content,
         RevisionContentComparison::SameAuthoritativeVersion
     ));
-    assert_eq!(comparison.metadata.status, MetadataComparisonStatus::Different);
+    assert_eq!(
+        comparison.metadata.status,
+        MetadataComparisonStatus::Different
+    );
     assert_eq!(content.calls.load(Ordering::SeqCst), 0);
 }
 
@@ -171,8 +179,13 @@ async fn different_authoritative_versions_reuse_the_content_diff_comparator() {
     });
     let service = RevisionComparisonService::new(repository, content.clone());
 
-    let result = service.compare(&context(), document_id, base_id, target_id).await;
+    let result = service
+        .compare(&context(), document_id, base_id, target_id)
+        .await;
 
-    assert_eq!(result.unwrap_err(), ApplicationError::RepositoryUnavailable);
+    assert!(matches!(
+        result,
+        Err(ApplicationError::RepositoryUnavailable)
+    ));
     assert_eq!(content.calls.load(Ordering::SeqCst), 1);
 }
