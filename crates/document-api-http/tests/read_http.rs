@@ -166,12 +166,13 @@ fn assert_schema(definition: &str, value: &Value) {
         "Folder" => json!({
             "type": "object",
             "additionalProperties": false,
-            "required": ["folderId", "name", "revision"],
+            "required": ["folderId", "name", "revision", "capabilities"],
             "properties": {
                 "folderId": {"type": "string", "format": "uuid"},
                 "parentFolderId": {"type": ["string", "null"], "format": "uuid"},
                 "name": {"type": "string"},
-                "revision": {"type": "integer", "minimum": 0}
+                "revision": {"type": "integer", "minimum": 0},
+                "capabilities": {"type": "object"}
             }
         }),
         "VersionList" => json!({
@@ -214,7 +215,7 @@ fn assert_schema(definition: &str, value: &Value) {
         "Version" => json!({
             "type": "object",
             "additionalProperties": false,
-            "required": ["versionId", "versionNo", "baseVersionId", "lifecycleState", "isCurrent", "createdAt", "approvedAt", "scheduledPublishAt", "publishedAt", "withdrawnAt", "updatedAt", "fileSummary", "firstReadAt", "title", "metadata"],
+            "required": ["versionId", "versionNo", "baseVersionId", "lifecycleState", "isCurrent", "createdAt", "approvedAt", "scheduledPublishAt", "publishedAt", "withdrawnAt", "updatedAt", "fileSummary", "firstReadAt", "title", "metadata", "capabilities"],
             "properties": {
                 "versionId": {"type": "string", "format": "uuid"},
                 "versionNo": {"type": "integer", "minimum": 1},
@@ -239,7 +240,8 @@ fn assert_schema(definition: &str, value: &Value) {
                 },
                 "firstReadAt": {"type": ["string", "null"], "format": "date-time"},
                 "title": {"type": "string"},
-                "metadata": {"type": "object"}
+                "metadata": {"type": "object"},
+                "capabilities": {"type": "object"}
             }
         }),
         _ => panic!("unknown schema fixture"),
@@ -463,6 +465,106 @@ async fn detail_capabilities_reflect_permission_lifecycle_and_human_context() {
     assert_eq!(
         document["capabilities"]["createVersion"],
         json!({"status": "disabled", "reason": "notHumanInteractive"})
+    );
+}
+
+#[tokio::test]
+async fn working_version_capabilities_disable_publish_and_enable_rebase_for_stale_base() {
+    let f = fixture().await;
+    let (base_version_id, _) = seed_gui_document(&f).await;
+    let newer_current_id = uuid::Uuid::now_v7();
+    let stale_working_id = uuid::Uuid::now_v7();
+    sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,base_document_version_id,lifecycle_state,title,published_at,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,2,$3,'PUBLISHED','New current',now(),'test-idp','policy-admin','{}',now())")
+        .bind(newer_current_id)
+        .bind(f.document_id.as_uuid())
+        .bind(base_version_id)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,base_document_version_id,lifecycle_state,title,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,3,$3,'WORKING','Stale working','test-idp','policy-admin','{}',now())")
+        .bind(stale_working_id)
+        .bind(f.document_id.as_uuid())
+        .bind(base_version_id)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE documents SET current_version_id = $1 WHERE document_id = $2")
+        .bind(newer_current_id)
+        .bind(f.document_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![grant_for(
+                "policy-admin",
+                [
+                    Action::Read,
+                    Action::ReadHistory,
+                    Action::Write,
+                    Action::Publish,
+                ],
+            )],
+        )
+        .await
+        .unwrap();
+    let router = read_router(f.repository.clone(), Arc::new(FixedIdentity(context()))).unwrap();
+    let path = format!(
+        "/v1/documents/{}/versions/{}?purpose=authoring",
+        f.document_id.as_uuid(),
+        stale_working_id
+    );
+    let (status, version) = get(router, &path).await;
+    assert_eq!(status, StatusCode::OK, "{version}");
+    assert_eq!(version["capabilities"]["rebase"]["status"], "available");
+    assert_eq!(
+        version["capabilities"]["publish"],
+        json!({"status": "disabled", "reason": "staleBase"})
+    );
+}
+
+#[tokio::test]
+async fn document_capabilities_distinguish_missing_current_from_ended_publication() {
+    let f = fixture().await;
+    let (published_id, _) = seed_gui_document(&f).await;
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![grant_for(
+                "policy-admin",
+                [
+                    Action::Read,
+                    Action::ReadHistory,
+                    Action::Write,
+                    Action::Publish,
+                    Action::Administer,
+                ],
+            )],
+        )
+        .await
+        .unwrap();
+    let working_id = uuid::Uuid::now_v7();
+    sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,base_document_version_id,lifecycle_state,title,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,2,$3,'WORKING','Working after withdrawal','test-idp','policy-admin','{}',now())")
+        .bind(working_id)
+        .bind(f.document_id.as_uuid())
+        .bind(published_id)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE documents SET current_version_id = NULL WHERE document_id = $1")
+        .bind(f.document_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+
+    let router = read_router(f.repository.clone(), Arc::new(FixedIdentity(context()))).unwrap();
+    let path = format!("/v1/documents/{}?view=authoring", f.document_id.as_uuid());
+    let (status, document) = get(router, &path).await;
+    assert_eq!(status, StatusCode::OK, "{document}");
+    assert_eq!(
+        document["capabilities"]["endPublication"],
+        json!({"status": "disabled", "reason": "notCurrent"})
     );
 }
 

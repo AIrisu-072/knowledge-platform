@@ -4,6 +4,7 @@
 
 mod access_control;
 mod access_policy;
+mod action_capability;
 mod authorized_repository;
 mod create_outcome;
 mod document_diff_access;

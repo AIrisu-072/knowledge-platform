@@ -5,16 +5,17 @@ use axum::extract::{Path, Query, State};
 use axum::routing::get;
 use axum::{Extension, Json, Router};
 use document_application::{
-    AccessPolicyReadRepository, AccessPolicyReadService, ApplicationError,
-    AuthoringDocumentSummary, AuthoringQuery, DisplayTimestampKind, DocumentDetailPurpose,
-    DocumentDetailRead, DocumentDetailReadService, DocumentHistoryEntry, DocumentHistoryRepository,
-    DocumentHistoryService, DocumentListFilter, DocumentQueryRepository, DocumentQueryService,
-    DocumentRevisionDetail, DocumentRevisionDetailQuery, DocumentRevisionPageQuery,
-    DocumentRevisionReadRepository, DocumentRevisionReadService, DocumentRevisionSummary,
-    DocumentSort, FolderPageQuery, GuiDocumentReadModel, GuiVersionFileSummary, GuiVersionSummary,
+    AccessPolicyReadRepository, AccessPolicyReadService, ActionCapabilityReadRepository,
+    ActionCapabilityReadService, ApplicationError, AuthoringDocumentSummary, AuthoringQuery,
+    DisplayTimestampKind, DocumentDetailPurpose, DocumentDetailRead, DocumentDetailReadService,
+    DocumentHistoryEntry, DocumentHistoryRepository, DocumentHistoryService, DocumentListFilter,
+    DocumentQueryRepository, DocumentQueryService, DocumentRevisionDetail,
+    DocumentRevisionDetailQuery, DocumentRevisionPageQuery, DocumentRevisionReadRepository,
+    DocumentRevisionReadService, DocumentRevisionSummary, DocumentSort, FolderActionCapabilities,
+    FolderPageQuery, GuiDocumentReadModel, GuiVersionFileSummary, GuiVersionSummary,
     HistoryDocumentSummary, HistoryPageQuery, HistoryQuery, Page, PolicyBindingMode,
-    ProvenanceQuality, PublishedDocumentSummary, PublishedQuery, RootFolderSummary,
-    VerifiedActorContext, VersionDetail, VersionFileSummary, VersionPageQuery, VersionPurpose,
+    ProvenanceQuality, PublishedDocumentSummary, PublishedQuery, VerifiedActorContext,
+    VersionActionCapabilities, VersionDetail, VersionFileSummary, VersionPageQuery, VersionPurpose,
     VersionRequest, VersionSummary,
 };
 use document_domain::{
@@ -37,6 +38,7 @@ pub trait AuthorizedReadRepository:
     DocumentQueryRepository
     + DocumentHistoryRepository
     + DocumentRevisionReadRepository
+    + ActionCapabilityReadRepository
     + AccessPolicyReadRepository
     + Send
     + Sync
@@ -48,6 +50,7 @@ impl<T> AuthorizedReadRepository for T where
     T: DocumentQueryRepository
         + DocumentHistoryRepository
         + DocumentRevisionReadRepository
+        + ActionCapabilityReadRepository
         + AccessPolicyReadRepository
         + Send
         + Sync
@@ -347,6 +350,14 @@ struct VersionDto {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct VersionDetailDto {
+    #[serde(flatten)]
+    version: VersionDto,
+    capabilities: VersionActionCapabilities,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct PageDto<T> {
     items: Vec<T>,
     next_cursor: Option<String>,
@@ -397,6 +408,24 @@ struct FolderDto {
     parent_folder_id: Option<Uuid>,
     name: String,
     revision: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FolderDetailDto {
+    folder_id: Uuid,
+    parent_folder_id: Option<Uuid>,
+    name: String,
+    revision: i64,
+    capabilities: FolderActionCapabilities,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FolderChildrenDto {
+    items: Vec<FolderDto>,
+    next_cursor: Option<String>,
+    capabilities: FolderActionCapabilities,
 }
 
 #[derive(Debug, Serialize)]
@@ -538,11 +567,11 @@ async fn get_document<R: AuthorizedReadRepository>(
         _ => return Err(problem(validation("invalid view"), &path, &trace)),
     };
     let id = document_id_value(&document_id).map_err(|error| problem(error, &path, &trace))?;
-    let detail = DocumentDetailReadService::new(state.repository)
+    let detail = DocumentDetailReadService::new(state.repository.clone())
         .read(&ctx, id, purpose)
         .await
         .map_err(|error| problem(error, &path, &trace))?;
-    let value = match detail {
+    let mut value = match detail {
         DocumentDetailRead::Published(summary) => serde_json::to_value(
             published_dto(summary).map_err(|error| problem(error, &path, &trace))?,
         ),
@@ -557,6 +586,11 @@ async fn get_document<R: AuthorizedReadRepository>(
             &trace,
         )
     })?;
+    let capabilities = ActionCapabilityReadService::new(state.repository)
+        .read_document(&ctx, id)
+        .await
+        .map_err(|error| problem(error, &path, &trace))?;
+    insert_capabilities(&mut value, capabilities).map_err(|error| problem(error, &path, &trace))?;
     Ok(Json(value))
 }
 
@@ -595,20 +629,23 @@ async fn get_version<R: AuthorizedReadRepository>(
     Extension(trace): Extension<TraceContext>,
     Path((document_id, version_id)): Path<(String, String)>,
     query: Result<Query<PurposeParams>, QueryRejection>,
-) -> Result<Json<VersionDto>, ApiError> {
+) -> Result<Json<VersionDetailDto>, ApiError> {
     let path = format!("/v1/documents/{document_id}/versions/{version_id}");
     let params = query_params(query, &path, &trace)?;
-    let detail = DocumentHistoryService::new(state.repository)
-        .get_document_version(
-            &ctx,
-            version_request(&document_id, &version_id, params.purpose.as_deref())
-                .map_err(|error| problem(error, &path, &trace))?,
-        )
+    let request = version_request(&document_id, &version_id, params.purpose.as_deref())
+        .map_err(|error| problem(error, &path, &trace))?;
+    let detail = DocumentHistoryService::new(state.repository.clone())
+        .get_document_version(&ctx, request)
         .await
         .map_err(|error| problem(error, &path, &trace))?;
-    Ok(Json(
-        version_detail_dto(detail).map_err(|error| problem(error, &path, &trace))?,
-    ))
+    let capabilities = ActionCapabilityReadService::new(state.repository)
+        .read_version(&ctx, request)
+        .await
+        .map_err(|error| problem(error, &path, &trace))?;
+    Ok(Json(VersionDetailDto {
+        version: version_detail_dto(detail).map_err(|error| problem(error, &path, &trace))?,
+        capabilities,
+    }))
 }
 
 async fn list_history<R: AuthorizedReadRepository>(
@@ -729,12 +766,22 @@ async fn get_root<R: AuthorizedReadRepository>(
     State(state): State<ReadState<R>>,
     Extension(ctx): Extension<VerifiedActorContext>,
     Extension(trace): Extension<TraceContext>,
-) -> Result<Json<FolderDto>, ApiError> {
-    let root = DocumentQueryService::new(state.repository)
+) -> Result<Json<FolderDetailDto>, ApiError> {
+    let root = DocumentQueryService::new(state.repository.clone())
         .get_root_folder(&ctx)
         .await
         .map_err(|error| problem(error, "/v1/folders/root", &trace))?;
-    Ok(Json(root_folder_dto(root)))
+    let capabilities = ActionCapabilityReadService::new(state.repository)
+        .read_folder(&ctx, root.folder_id)
+        .await
+        .map_err(|error| problem(error, "/v1/folders/root", &trace))?;
+    Ok(Json(FolderDetailDto {
+        folder_id: root.folder_id.as_uuid(),
+        parent_folder_id: None,
+        name: root.name,
+        revision: root.revision,
+        capabilities,
+    }))
 }
 
 async fn list_folder_children<R: AuthorizedReadRepository>(
@@ -743,22 +790,27 @@ async fn list_folder_children<R: AuthorizedReadRepository>(
     Extension(trace): Extension<TraceContext>,
     Path(folder_id): Path<String>,
     query: Result<Query<PageParams>, QueryRejection>,
-) -> Result<Json<PageDto<FolderDto>>, ApiError> {
+) -> Result<Json<FolderChildrenDto>, ApiError> {
     let path = format!("/v1/folders/{folder_id}/children");
     let params = query_params(query, &path, &trace)?;
-    let page = DocumentQueryService::new(state.repository)
+    let parent_folder_id =
+        folder_id_value(&folder_id).map_err(|error| problem(error, &path, &trace))?;
+    let page = DocumentQueryService::new(state.repository.clone())
         .list_child_folders(
             &ctx,
             FolderPageQuery {
-                parent_folder_id: folder_id_value(&folder_id)
-                    .map_err(|error| problem(error, &path, &trace))?,
+                parent_folder_id,
                 page_size: params.page_size,
                 cursor: params.cursor,
             },
         )
         .await
         .map_err(|error| problem(error, &path, &trace))?;
-    Ok(Json(PageDto {
+    let capabilities = ActionCapabilityReadService::new(state.repository)
+        .read_folder(&ctx, parent_folder_id)
+        .await
+        .map_err(|error| problem(error, &path, &trace))?;
+    Ok(Json(FolderChildrenDto {
         items: page
             .items
             .into_iter()
@@ -770,6 +822,7 @@ async fn list_folder_children<R: AuthorizedReadRepository>(
             })
             .collect(),
         next_cursor: page.next_cursor,
+        capabilities,
     }))
 }
 
@@ -981,6 +1034,19 @@ fn gui_fields_dto(value: GuiDocumentReadModel) -> Result<GuiDocumentFieldsDto, A
     })
 }
 
+fn insert_capabilities<T: Serialize>(
+    value: &mut Value,
+    capabilities: T,
+) -> Result<(), ApplicationError> {
+    let encoded =
+        serde_json::to_value(capabilities).map_err(|_| ApplicationError::IntegrityViolation)?;
+    value
+        .as_object_mut()
+        .ok_or(ApplicationError::IntegrityViolation)?
+        .insert("capabilities".into(), encoded);
+    Ok(())
+}
+
 fn gui_version_summary_dto(
     value: GuiVersionSummary,
 ) -> Result<GuiVersionSummaryDto, ApplicationError> {
@@ -1169,15 +1235,6 @@ fn file_dto(value: VersionFileSummary) -> FileDto {
         display_name: value.safe_display_name,
         media_type: value.media_type,
         size_bytes: value.size_bytes,
-    }
-}
-
-fn root_folder_dto(value: RootFolderSummary) -> FolderDto {
-    FolderDto {
-        folder_id: value.folder_id.as_uuid(),
-        parent_folder_id: None,
-        name: value.name,
-        revision: value.revision,
     }
 }
 

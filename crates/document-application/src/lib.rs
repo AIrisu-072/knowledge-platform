@@ -5,6 +5,7 @@
 mod access_context;
 mod access_policy_read;
 mod access_policy_service;
+mod action_capability;
 mod authorized_document;
 mod command;
 mod create_outcome;
@@ -40,6 +41,11 @@ pub use access_policy_read::{
     AccessPolicyRead, AccessPolicyReadRepository, AccessPolicyReadService, PolicyBindingMode,
 };
 pub use access_policy_service::AccessPolicyService;
+pub use action_capability::{
+    ActionAvailability, ActionCapabilityReadRepository, ActionCapabilityReadService,
+    CapabilityDisabledReason, DocumentActionCapabilities, FolderActionCapabilities,
+    VersionActionCapabilities,
+};
 pub use authorized_document::{AuthorizationScope, AuthorizedDocumentService};
 pub use command::{
     CreateDocumentCommand, CreateDocumentResult, PublishDocumentCommand, PublishDocumentResult,

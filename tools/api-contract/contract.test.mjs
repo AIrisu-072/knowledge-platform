@@ -302,3 +302,30 @@ test('read projections preserve authorized Application fields and pagination', (
     assert.ok(parameters.includes('cursor'), `${path} missing cursor`);
   }
 });
+
+test('action capabilities are detail-scoped hints with typed reasons', () => {
+  const documentDetail = resolved(contract.components.schemas.DocumentDetail);
+  assert.ok(documentDetail.oneOf);
+  const versionDetail = resolved(contract.components.schemas.VersionDetail);
+  assert.ok(versionDetail.required.includes('capabilities'));
+  const folderDetail = resolved(contract.components.schemas.FolderDetail);
+  assert.ok(folderDetail.required.includes('capabilities'));
+  const folderChildren = resolved(contract.components.schemas.FolderChildren);
+  assert.ok(folderChildren.required.includes('capabilities'));
+  const availability = resolved(contract.components.schemas.ActionAvailability);
+  assert.match(availability.description, /UI (?:presentation )?hint/i);
+  assert.match(availability.description, /reauthori[sz]/i);
+  assert.match(availability.description, /preflight/i);
+  assert.deepEqual(availability.oneOf[1].properties.reason.enum, [
+    'permission', 'lifecycle', 'pendingSchedule', 'staleBase', 'notCurrent',
+    'notHumanInteractive', 'unsupported',
+  ]);
+  assert.equal(resolved(contract.components.schemas.PublishedDocument).properties.capabilities, undefined);
+  const versionListItem = resolved(
+    resolved(contract.components.schemas.VersionList).properties.items.items,
+  );
+  assert.equal(
+    versionListItem.properties.capabilities,
+    undefined,
+  );
+});

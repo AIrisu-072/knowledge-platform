@@ -690,8 +690,18 @@ components:
       $ref: ./schemas/document/models.yaml#/$defs/DocumentRevisionDetail
     DocumentDetail:
       $ref: ./schemas/document/models.yaml#/$defs/DocumentDetail
+    ActionAvailability:
+      $ref: ./schemas/document/models.yaml#/$defs/ActionAvailability
+    DocumentCapabilities:
+      $ref: ./schemas/document/models.yaml#/$defs/DocumentCapabilities
+    VersionCapabilities:
+      $ref: ./schemas/document/models.yaml#/$defs/VersionCapabilities
+    FolderCapabilities:
+      $ref: ./schemas/document/models.yaml#/$defs/FolderCapabilities
     Version:
       $ref: ./schemas/document/models.yaml#/$defs/Version
+    VersionDetail:
+      $ref: ./schemas/document/models.yaml#/$defs/VersionDetail
     VersionList:
       $ref: ./schemas/document/models.yaml#/$defs/VersionList
     History:
@@ -700,6 +710,8 @@ components:
       $ref: ./schemas/document/models.yaml#/$defs/FileList
     Folder:
       $ref: ./schemas/document/models.yaml#/$defs/Folder
+    FolderDetail:
+      $ref: ./schemas/document/models.yaml#/$defs/FolderDetail
     FolderChildren:
       $ref: ./schemas/document/models.yaml#/$defs/FolderChildren
     AccessPolicyRead:
@@ -1240,6 +1252,13 @@ components:
             displayTimestamp:
               kind: revisionCreatedAt
               value: '2029-01-02T00:00:00Z'
+            capabilities:
+              createVersion: {status: available}
+              updateMetadata: {status: available}
+              moveDocument: {status: available}
+              endPublication: {status: available}
+              manageAccess: {status: available}
+              compareVersions: {status: available}
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1251,7 +1270,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Version'
+            $ref: '#/components/schemas/VersionDetail'
           example:
             versionId: 00000000-0000-4000-8000-000000000002
             versionNo: 2
@@ -1274,6 +1293,14 @@ components:
             firstReadAt: null
             title: Published policy
             metadata: {}
+            capabilities:
+              edit: {status: disabled, reason: lifecycle}
+              rebase: {status: disabled, reason: lifecycle}
+              publish: {status: disabled, reason: lifecycle}
+              withdraw: {status: available}
+              schedulePublication: {status: disabled, reason: lifecycle}
+              cancelPublicationSchedule: {status: disabled, reason: lifecycle}
+              download: {status: available}
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1390,12 +1417,18 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Folder'
+            $ref: '#/components/schemas/FolderDetail'
           example:
             folderId: 00000000-0000-4000-8000-000000000030
             parentFolderId: null
             name: Root
             revision: 1
+            capabilities:
+              createDocument: {status: available}
+              createFolder: {status: available}
+              renameFolder: {status: disabled, reason: unsupported}
+              moveFolder: {status: disabled, reason: unsupported}
+              manageAccess: {status: available}
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1411,6 +1444,12 @@ components:
           example:
             items: []
             nextCursor: null
+            capabilities:
+              createDocument: {status: available}
+              createFolder: {status: available}
+              renameFolder: {status: disabled, reason: unsupported}
+              moveFolder: {status: disabled, reason: unsupported}
+              manageAccess: {status: available}
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.

@@ -83,8 +83,101 @@ $defs:
           nextCursor: {type: [string, 'null']}
   DocumentDetail:
     oneOf:
-      - $ref: '#/$defs/PublishedDocument'
-      - $ref: '#/$defs/AuthoringDocument'
+    - $ref: '#/$defs/PublishedDocumentDetail'
+    - $ref: '#/$defs/AuthoringDocumentDetail'
+  PublishedDocumentDetail:
+    type: object
+    additionalProperties: false
+    required: [documentId, documentVersionId, title, folderId, currentVersionId, revision, displayVersion, displayRevision, readState, displayTimestamp, capabilities]
+    properties:
+      documentId: {type: string, format: uuid}
+      documentVersionId: {type: string, format: uuid}
+      title: {type: string}
+      folderId: {type: [string, 'null'], format: uuid}
+      folderName: {type: [string, 'null']}
+      currentVersionId: {type: string, format: uuid}
+      revision: {type: integer, minimum: 0}
+      unread: {type: boolean}
+      metadata: {type: object}
+      createdAt: {type: string, format: date-time}
+      publishedAt: {type: string, format: date-time}
+      firstReadAt: {type: [string, 'null'], format: date-time}
+      displayVersion: {$ref: '#/$defs/GuiVersionSummary'}
+      displayRevision: {oneOf: [{$ref: '#/$defs/DocumentRevisionSummary'}, {type: 'null'}]}
+      readState: {$ref: '#/$defs/GuiReadState'}
+      displayTimestamp: {$ref: '#/$defs/GuiDisplayTimestamp'}
+      capabilities: {$ref: '#/$defs/DocumentCapabilities'}
+  AuthoringDocumentDetail:
+    type: object
+    additionalProperties: false
+    required: [documentId, documentVersionId, title, lifecycleState, folderId, revision, currentVersionId, displayVersion, displayRevision, readState, displayTimestamp, capabilities]
+    properties:
+      documentId: {type: string, format: uuid}
+      documentVersionId: {type: string, format: uuid}
+      title: {type: string}
+      lifecycleState: {type: string, enum: [working, published, withdrawn]}
+      folderId: {type: [string, 'null'], format: uuid}
+      folderName: {type: [string, 'null']}
+      revision: {type: integer, minimum: 0}
+      currentVersionId: {type: [string, 'null'], format: uuid}
+      metadata: {type: object}
+      createdAt: {type: string, format: date-time}
+      displayVersion: {$ref: '#/$defs/GuiVersionSummary'}
+      displayRevision: {oneOf: [{$ref: '#/$defs/DocumentRevisionSummary'}, {type: 'null'}]}
+      readState: {$ref: '#/$defs/GuiReadState'}
+      displayTimestamp: {$ref: '#/$defs/GuiDisplayTimestamp'}
+      capabilities: {$ref: '#/$defs/DocumentCapabilities'}
+  ActionAvailability:
+    oneOf:
+    - type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: {const: available}
+    - type: object
+      additionalProperties: false
+      required: [status, reason]
+      properties:
+        status: {const: disabled}
+        reason: {type: string, enum: [permission, lifecycle, pendingSchedule, staleBase, notCurrent, notHumanInteractive, unsupported]}
+    description: >-
+      UI presentation hint based on the current verified actor and authoritative state.
+      A mutation endpoint must reauthorize the request. An available result does not
+      promise mutation success; publication quality and DSI preflight run when the
+      corresponding mutation is requested.
+  DocumentCapabilities:
+    type: object
+    additionalProperties: false
+    required: [createVersion, updateMetadata, moveDocument, endPublication, manageAccess, compareVersions]
+    properties:
+      createVersion: {$ref: '#/$defs/ActionAvailability'}
+      updateMetadata: {$ref: '#/$defs/ActionAvailability'}
+      moveDocument: {$ref: '#/$defs/ActionAvailability'}
+      endPublication: {$ref: '#/$defs/ActionAvailability'}
+      manageAccess: {$ref: '#/$defs/ActionAvailability'}
+      compareVersions: {$ref: '#/$defs/ActionAvailability'}
+  VersionCapabilities:
+    type: object
+    additionalProperties: false
+    required: [edit, rebase, publish, withdraw, schedulePublication, cancelPublicationSchedule, download]
+    properties:
+      edit: {$ref: '#/$defs/ActionAvailability'}
+      rebase: {$ref: '#/$defs/ActionAvailability'}
+      publish: {$ref: '#/$defs/ActionAvailability'}
+      withdraw: {$ref: '#/$defs/ActionAvailability'}
+      schedulePublication: {$ref: '#/$defs/ActionAvailability'}
+      cancelPublicationSchedule: {$ref: '#/$defs/ActionAvailability'}
+      download: {$ref: '#/$defs/ActionAvailability'}
+  FolderCapabilities:
+    type: object
+    additionalProperties: false
+    required: [createDocument, createFolder, renameFolder, moveFolder, manageAccess]
+    properties:
+      createDocument: {$ref: '#/$defs/ActionAvailability'}
+      createFolder: {$ref: '#/$defs/ActionAvailability'}
+      renameFolder: {$ref: '#/$defs/ActionAvailability'}
+      moveFolder: {$ref: '#/$defs/ActionAvailability'}
+      manageAccess: {$ref: '#/$defs/ActionAvailability'}
   GuiVersionSummary:
     type: object
     additionalProperties: false
@@ -202,6 +295,27 @@ $defs:
     properties:
       items: {type: array, items: {$ref: '#/$defs/Version'}}
       nextCursor: {type: [string, 'null']}
+  VersionDetail:
+    type: object
+    additionalProperties: false
+    required: [versionId, versionNo, baseVersionId, lifecycleState, isCurrent, createdAt, approvedAt, scheduledPublishAt, publishedAt, withdrawnAt, updatedAt, fileSummary, firstReadAt, title, metadata, capabilities]
+    properties:
+      versionId: {type: string, format: uuid}
+      versionNo: {type: integer, minimum: 1}
+      baseVersionId: {type: [string, 'null'], format: uuid}
+      lifecycleState: {type: string, enum: [working, published, withdrawn]}
+      isCurrent: {type: boolean}
+      createdAt: {type: string, format: date-time}
+      approvedAt: {type: [string, 'null'], format: date-time}
+      scheduledPublishAt: {type: [string, 'null'], format: date-time}
+      publishedAt: {type: [string, 'null'], format: date-time}
+      withdrawnAt: {type: [string, 'null'], format: date-time}
+      updatedAt: {type: string, format: date-time}
+      fileSummary: {$ref: '#/$defs/VersionFileSummary'}
+      firstReadAt: {type: [string, 'null'], format: date-time}
+      title: {type: string}
+      metadata: {type: object}
+      capabilities: {$ref: '#/$defs/VersionCapabilities'}
   History:
     type: object
     additionalProperties: false
@@ -255,13 +369,24 @@ $defs:
       name: {type: string}
       revision: {type: integer, minimum: 0}
       parentFolderId: {type: [string, 'null'], format: uuid}
+  FolderDetail:
+    type: object
+    additionalProperties: false
+    required: [folderId, name, revision, parentFolderId, capabilities]
+    properties:
+      folderId: {type: string, format: uuid}
+      name: {type: string}
+      revision: {type: integer, minimum: 0}
+      parentFolderId: {type: [string, 'null'], format: uuid}
+      capabilities: {$ref: '#/$defs/FolderCapabilities'}
   FolderChildren:
     type: object
     additionalProperties: false
-    required: [items, nextCursor]
+    required: [items, nextCursor, capabilities]
     properties:
       items: {type: array, items: {$ref: '#/$defs/Folder'}}
       nextCursor: {type: [string, 'null']}
+      capabilities: {$ref: '#/$defs/FolderCapabilities'}
   PolicyTarget:
     type: object
     additionalProperties: false

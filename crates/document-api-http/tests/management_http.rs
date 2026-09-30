@@ -486,3 +486,145 @@ async fn read_state_is_explicit_idempotent_and_human_interactive_only() {
         .unwrap();
     assert_eq!(count, 1);
 }
+
+#[tokio::test]
+async fn capability_snapshot_does_not_authorize_a_later_mutation_after_schedule_reservation() {
+    let f = fixture().await;
+    allow_all(&f).await;
+    let published_id = Uuid::now_v7();
+    let working_id = Uuid::now_v7();
+    let publish_operation_id = Uuid::now_v7();
+    sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,lifecycle_state,title,published_at,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,1,'PUBLISHED','Published',now(),'test-idp','policy-admin','{}',now())")
+        .bind(published_id)
+        .bind(f.document_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE documents SET current_version_id = $1 WHERE document_id = $2")
+        .bind(published_id)
+        .bind(f.document_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+
+    let identity: Arc<dyn IdentityAdapter> = Arc::new(FixedIdentity(context()));
+    let read = read_router(f.repository.clone(), identity.clone()).unwrap();
+    let management = management_router(f.repository.clone(), identity).unwrap();
+    let document_id = f.document_id.as_uuid();
+    let detail_uri = format!("/v1/documents/{document_id}?view=published");
+    let (status, before) = json_request(read.clone(), Method::GET, &detail_uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{before}");
+    assert_eq!(
+        before["capabilities"]["updateMetadata"]["status"],
+        "available"
+    );
+
+    let document_revision: i64 =
+        sqlx::query_scalar("SELECT revision FROM documents WHERE document_id = $1")
+            .bind(document_id)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    sqlx::query("DELETE FROM access_policy_grants WHERE policy_id = (SELECT policy_id FROM access_policy_bindings WHERE folder_id = $1) AND subject_kind = 'principal' AND identity_provider = 'test-idp' AND subject_id = 'policy-admin' AND action = 'write'")
+        .bind(f.root_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE document_access_state SET access_revision = access_revision + 1 WHERE id = 1",
+    )
+    .execute(&f.pool)
+    .await
+    .unwrap();
+    let (status, problem) = json_request(
+        management.clone(),
+        Method::PATCH,
+        &format!("/v1/documents/{document_id}/metadata"),
+        Some(&json!({
+            "operationId": Uuid::now_v7(),
+            "expectedDocumentRevision": document_revision,
+            "set": {"category": "revoked"},
+            "unset": [],
+            "reason": "Test policy revalidation"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{problem}");
+    assert_eq!(problem["code"], "FORBIDDEN");
+    let (status, revoked) = json_request(read.clone(), Method::GET, &detail_uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{revoked}");
+    assert_eq!(
+        revoked["capabilities"]["updateMetadata"],
+        json!({"status": "disabled", "reason": "permission"})
+    );
+    sqlx::query("INSERT INTO access_policy_grants (policy_id,subject_kind,identity_provider,subject_id,action) SELECT policy_id,'principal','test-idp','policy-admin','write' FROM access_policy_bindings WHERE folder_id = $1")
+        .bind(f.root_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE document_access_state SET access_revision = access_revision + 1 WHERE id = 1",
+    )
+    .execute(&f.pool)
+    .await
+    .unwrap();
+
+    let (status, before_schedule) =
+        json_request(read.clone(), Method::GET, &detail_uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{before_schedule}");
+    assert_eq!(
+        before_schedule["capabilities"]["updateMetadata"]["status"],
+        "available"
+    );
+
+    sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,base_document_version_id,lifecycle_state,title,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,2,$3,'WORKING','Scheduled working','test-idp','policy-admin','{}',now())")
+        .bind(working_id)
+        .bind(document_id)
+        .bind(published_id)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    let scheduled_at = OffsetDateTime::now_utc() + Duration::days(1);
+    sqlx::query("INSERT INTO document_publish_schedules (publish_operation_id,document_id,target_document_version_id,base_document_version_id,current_version_id,expected_document_revision,accepted_document_revision,scheduled_publish_at,actor_identity_provider,actor_principal_id,manifest_digest,status,created_at) VALUES ($1,$2,$3,$4,$4,$5,$6,$7,'test-idp','policy-admin',$8,'PENDING',now())")
+        .bind(publish_operation_id)
+        .bind(document_id)
+        .bind(working_id)
+        .bind(published_id)
+        .bind(document_revision)
+        .bind(document_revision + 1)
+        .bind(scheduled_at)
+        .bind(vec![7_u8; 32])
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE document_versions SET scheduled_publish_at = $1 WHERE document_version_id = $2",
+    )
+    .bind(scheduled_at)
+    .bind(working_id)
+    .execute(&f.pool)
+    .await
+    .unwrap();
+
+    let (status, problem) = json_request(
+        management,
+        Method::PATCH,
+        &format!("/v1/documents/{document_id}/metadata"),
+        Some(&json!({
+            "operationId": Uuid::now_v7(),
+            "expectedDocumentRevision": document_revision,
+            "set": {"category": "changed"},
+            "unset": [],
+            "reason": "Test state revalidation"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{problem}");
+    assert_eq!(problem["code"], "RESERVED_DOCUMENT");
+    let (status, after) = json_request(read, Method::GET, &detail_uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{after}");
+    assert_eq!(
+        after["capabilities"]["updateMetadata"],
+        json!({"status": "disabled", "reason": "pendingSchedule"})
+    );
+}
