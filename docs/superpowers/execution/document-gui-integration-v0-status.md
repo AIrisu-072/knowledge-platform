@@ -1,6 +1,20 @@
 # Document GUI Integration v0 — Capability Execution Status
 
-## 2026-10-01 JST — G3 COMPLETE / G4 NEXT
+## 2026-10-01 JST — G4 COMPLETE / G5 NEXT
+
+- 状態: **G0〜G4 COMPLETE。次はG5 Revision comparison / Diff Display Projection。** Frozen Design / approved Planに意味変更なし。
+- Implementation branch `feat/document-gui-integration-v0`、exact head `27c069c657679676d5c8c51b3f206ad12234bb0e`。G4 RED test-only commit `b9b6e3be02d55cd8c3fc2177f7520f8b91fa2909`、GREEN code commit `27c069c657679676d5c8c51b3f206ad12234bb0e`。Product branch未push、Draft product PR未作成。
+- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`、approved Production Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`、Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。PR #27/#29/#30/#31/#32/#35 MERGED。GitHub main `d71753d46590bb4406a1c0b74894ab90a27a6c88`、main CI `36718016267` SUCCESS。
+- G4 RED: committed tests `b9b6e3be02d55cd8c3fc2177f7520f8b91fa2909` failed to compile because the Application presentation types and HTTP session route did not exist. GREEN: `27c069c657679676d5c8c51b3f206ad12234bb0e`.
+- G4実装: `IdentityPresentationResolver` Application portを追加し、request refsをdeduplicateして1 batch callで解決。resolver unavailable、response omission、notFoundでは`IdentityRef`のprovider/kind/subjectIdを保ち、displayName/secondaryTextをnullにして`resolution`を返す。History actorとAccessPolicy grantsをinline enrichment。`GET /v1/session`はverified principal、presentation、invocationKind、expiresAtを返す。spoof header/queryを無視すること、resolver unavailableでもsession/History/Policy readが成功することを確認。Identity display nameはDBに保存せず、production AD/SSPI接続やallow-all authは追加していない。OpenAPI 3.2.1を維持し、PolicyGrant read projectionとPolicyGrantInputを分離。
+- G4 local verification: `cargo test -p document-application --test identity_presentation` 2/2 PASS、`cargo test -p document-api-http --test session_http` 2/2 PASS、`cargo test -p document-api-http --test read_http identity -- --test-threads=1` 2/2 PASS。`node --test tools/api-contract/contract.test.mjs` 11/11 PASS、Redocly CLI 2.52.1 `lint spec/api/openapi.yaml` PASS、`cargo fmt --all -- --check` / `git diff --check` PASS。中間hosted CIなし。Dependencies / migrations / Cargo/pnpm lockは変更なし。
+- Docker focused PostgreSQL testsは成功。`docker system df`は古いcontainer snapshot欠落を報告し、disk空きは約771 MiB。Postgres test suitesはserialで実行し、G9前に容量を再確認。
+- Blockerなし。Product branch未push/PR未作成。Product PR merge、deploy、本番migration実行、AD/SSPI接続なし。
+- 次のexact action: Frozen Design / Plan G5と既存`DocumentDiffService`、HTTP comparison handler、revision metadata snapshot read modelを確認し、same-version metadata-only comparisonとbounded display projectionをREDから実装する。
+
+---
+
+## Superseded checkpoint — 2026-10-01 JST G3 COMPLETE / G4 NEXT
 
 - 状態: **G0〜G3 COMPLETE。次はG4 Identity Presentation / session。** Frozen Design / approved Planに意味変更なし。
 - Implementation branch `feat/document-gui-integration-v0`。G3 GREEN code head `ba199191c91f11091c5fa7df87af57f441074a11`。Product branch未push、Draft product PR未作成。
