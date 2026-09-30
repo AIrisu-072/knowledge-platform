@@ -11,8 +11,9 @@ Delivery UnitはA→B→C→Dのstacked Draft PRで読む。既存のexact-head 
 | A: contract / foundation | `cea5f75b19ec0c68d41f3e7e782a6a44cb21f8a9` | #29 | `36587061407` SUCCESS | `36587061863` SUCCESS | `36587061414` SUCCESS |
 | B: read / management | `241c5d7e97ca747eea72dca4e7cd58dcfa9c15a3` | #30 | `36651316701` SUCCESS | `36651316802` SUCCESS | `36651316757` SUCCESS |
 | C: create / version / lifecycle / file | `4cbca3957ebee4d086aa1601aa1f0d104de35dd3` | #31 | `36656005136` SUCCESS | `36656005182` SUCCESS | `36656005133` SUCCESS |
+| D: Diff / hardening / acceptance | `423194cb8dec6c7c384df4d92c4e7ccfbde9c518` | #32 | `36661472741` SUCCESS | `36661472033` SUCCESS | `36661472021` SUCCESS |
 
-Unit Dのreview済みcode headは `e0c4842bdf348fd7f807aad0d3cb548b1a7c9f22`。この受入記録を含む最終headのhosted gateとDraft PRは記録commit後に取得する。merge・deployは別の明示指示を要する。
+Unit Dのreview済みcode headは `e0c4842bdf348fd7f807aad0d3cb548b1a7c9f22`、受入記録込みの初回hosted GREEN headは `423194cb8dec6c7c384df4d92c4e7ccfbde9c518`。このevidence追記commitを最終exact headとしてもう一度3 gateで確認する。merge・deployは別の明示指示を要する。
 
 ## RED → GREEN
 
@@ -57,6 +58,7 @@ Unit Dのreview済みcode headは `e0c4842bdf348fd7f807aad0d3cb548b1a7c9f22`。�
 
 - HAPI-12 focused: E2E 1/1、dispatch 1/1、HTTP crate 40/40、strict Clippy、fmt、`mise run api:check` 10/10、`mise run arch:check`、`mise run arch:negative-smoke` がPASS。
 - workspace test: `cargo nextest run --workspace` 相当の `mise run test:rust` は **686/686 PASS、既定skip 5**。
+- Linux hosted standard CIはproduction DSI/Diff workerをbuild後、`document-api-http::e2e postgres_filesystem_and_workers_complete_the_document_http_journey` をPASSし、workspace **702/702 PASS、既定skip 6**。
 - `mise run verify` のsecurity、fmt、workspace check、strict Clippy、architecture、APIはPASS。最初のtest linkだけがhostの空き容量0で失敗したため、再生成可能なcurrent-worktree targetを `cargo clean` で9.2 GiB整理し、未完了だった `mise run test:rust` だけを同じsource headで再実行して上記686/686を得た。source/test failureではない。
 - HAPI-11ローカル実測: small upload 0.45秒 / max RSS 124,616,704 bytes、1 MiB + 1 byte upload 0.15秒 / max RSS 125,337,600 bytes、差約0.7 MiB。macOSローカル候補の妥当性証拠でありSLOではない。
 
