@@ -1,0 +1,161 @@
+{
+  "schema_version": "0.1.0",
+  "goal_id": "search-platform-completion-program",
+  "title": "Search Platform Completion Program",
+  "source_request": "Requester attachment 2026-09-30: autonomous P0-P7 design, qualification, production implementation and Draft integration; no merge/deploy",
+  "profile": [
+    "evidence-first",
+    "build-verify-repair",
+    "adversarial-review"
+  ],
+  "domain": "software-dev",
+  "runtime": "codex",
+  "trigger": "user-request",
+  "model_selection": [
+    {
+      "phase": "all-workers",
+      "model": "gpt-6-sol",
+      "effort": "max",
+      "requested_by": "requester explicit session selection"
+    }
+  ],
+  "success_criteria": [
+    {
+      "id": "P0",
+      "statement": "Phase D exact-head qualification is reconciled",
+      "kind": "deterministic",
+      "evidence_required": [
+        "capability receipt",
+        "independent review",
+        "qualification evidence"
+      ]
+    },
+    {
+      "id": "P1",
+      "statement": "Deterministic sandboxed extraction supplies body KnowledgeUnits with native locators",
+      "kind": "deterministic",
+      "evidence_required": [
+        "capability receipt",
+        "independent review",
+        "qualification evidence"
+      ]
+    },
+    {
+      "id": "P2",
+      "statement": "Provider neutral dense retrieval and measured adoption decision preserve S1",
+      "kind": "deterministic",
+      "evidence_required": [
+        "capability receipt",
+        "independent review",
+        "qualification evidence"
+      ]
+    },
+    {
+      "id": "P3",
+      "statement": "Durable typed n-ary graph matches the semantic oracle and recovers generations",
+      "kind": "deterministic",
+      "evidence_required": [
+        "capability receipt",
+        "independent review",
+        "qualification evidence"
+      ]
+    },
+    {
+      "id": "P4",
+      "statement": "Concrete remote adapter preserves coverage, current authority and retention",
+      "kind": "deterministic",
+      "evidence_required": [
+        "capability receipt",
+        "independent review",
+        "qualification evidence"
+      ]
+    },
+    {
+      "id": "P5",
+      "statement": "Common trusted-identity Search Discovery HTTP API invokes real core",
+      "kind": "deterministic",
+      "evidence_required": [
+        "capability receipt",
+        "independent review",
+        "qualification evidence"
+      ]
+    },
+    {
+      "id": "P6",
+      "statement": "Generic durable outbox delivery safely dispatches at least once to Search",
+      "kind": "deterministic",
+      "evidence_required": [
+        "capability receipt",
+        "independent review",
+        "qualification evidence"
+      ]
+    },
+    {
+      "id": "P7",
+      "statement": "Consolidated production runtime supports rebuild and safe observability",
+      "kind": "deterministic",
+      "evidence_required": [
+        "capability receipt",
+        "independent review",
+        "qualification evidence"
+      ]
+    },
+    {
+      "id": "G1",
+      "statement": "Measured capacity and operational SLO proposals are reproducible",
+      "kind": "deterministic",
+      "evidence_required": [
+        "capability receipt",
+        "independent review",
+        "qualification evidence"
+      ]
+    },
+    {
+      "id": "G2",
+      "statement": "Independent whole-program security and correctness reviews have no P1/P2",
+      "kind": "deterministic",
+      "evidence_required": [
+        "capability receipt",
+        "independent review",
+        "qualification evidence"
+      ]
+    },
+    {
+      "id": "G3",
+      "statement": "Final Draft PR stack has exact-head hosted qualification",
+      "kind": "deterministic",
+      "evidence_required": [
+        "capability receipt",
+        "independent review",
+        "qualification evidence"
+      ]
+    }
+  ],
+  "stop_conditions": [
+    "All completion criteria qualified on final exact head",
+    "Existing frozen semantics must be broken",
+    "Irreversible migration",
+    "Live deployment target decision",
+    "External credentials payment contract",
+    "Legal or license blocker",
+    "Major human security tradeoff",
+    "Architecture alternatives alter business semantics without repository authority"
+  ],
+  "artifacts": [
+    {
+      "path": "docs/superpowers/execution/search-platform-completion-program-status.md",
+      "purpose": "durable progress and exact next action"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion",
+      "purpose": "contracts graph evidence and receipts"
+    }
+  ],
+  "guardrails": [
+    "Keep all PRs Draft and do not merge/deploy",
+    "No customer or secret data",
+    "No uncertain managed operation replay",
+    "Respect canonical typed n-ary, current authority, retention, S1 priority concatenation",
+    "Scope each worker and require independent review"
+  ]
+}
