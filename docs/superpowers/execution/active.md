@@ -1,13 +1,15 @@
 # Active Execution Pointer
 
-## Current checkpoint — Document GUI Integration v0 G0 complete / G1 schema RED、2026-09-30 JST
+## Current checkpoint — Document GUI Integration v0 G1 COMPLETE / G2 NEXT、2026-09-30 JST
 
-- G0 COMPLETE: PR #27/#29/#30/#31/#32/#35 merged. Latest main and product branch base: `d71753d46590bb4406a1c0b74894ab90a27a6c88`.
-- PR #32 head `04ccb84a6d9a99f63eca8d7512888225393058fa`: CI `36713044816`, Sandbox `36713044612`, DSI PoC `36713044474` SUCCESS; main CI `36714907650` SUCCESS.
-- PR #35 head `4b9df28d054526114dd8a48956d5ac4ddecd5f46`: CI `36716092331`, Sandbox `36716092340`, DSI PoC `36716092268` SUCCESS; merge commit `d71753d46590bb4406a1c0b74894ab90a27a6c88`, main CI `36718016267` SUCCESS.
-- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`, approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`; attached Source Design ZIP SHA matches `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`.
-- G1 test-only RED: `cargo test -p document-repository-postgres --test versioning_schema document_revision_ -- --nocapture` fails the two new contracts only because `document_revisions` is absent; existing schema regression and `cargo fmt --all -- --check` pass.
-- Product branch `feat/document-gui-integration-v0`; no product PR yet. No STOP condition. Next: commit test-only RED and G0 closure record, then implement migration 0009 and continue G1–G9. Keep product PR Draft/unmerged; no production deploy, migration execution, or AD/SSPI connection.
+- G0 COMPLETE: PR #27/#29/#30/#31/#32/#35 merged. Product branch base is main `d71753d46590bb4406a1c0b74894ab90a27a6c88`.
+- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`, approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`; attached Source Design ZIP SHA `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`. No amendment proposed.
+- G1 COMPLETE on `feat/document-gui-integration-v0` at `069fcf23ee19c9592e15499aea1d2ddda6448512`. Test-only commits: schema RED `1fd1b14dce6f4674f7757861972e9a042a652252`; issuance contracts `a48f4c2566568d1eb9fc02baf034dbabf864dc09`; GREEN implementation commit is the current head.
+- G1 changed files add migration 0009/backfill, typed append-only DocumentRevision domain contract and atomic issuance in publish, metadata mutation, and eligible withdrawal fallback transactions. OCC revision, DocumentVersion.version_no, and human major.minor remain independent. Replay/no-op/non-revision operations do not create extra rows; unavailable legacy metadata stays null.
+- RED observed before transaction integration: absent initial-publication row, absent content-publication and withdrawal-fallback rows, and metadata mutation returning only the seeded legacy row. Schema tests first failed only because `document_revisions` did not exist. Migration/backfill focused checks subsequently passed, including rollback and rerun.
+- Local GREEN: `cargo fmt --all -- --check`; `cargo test -p document-domain --lib` (24/24); focused Postgres targets `versioning_schema`, `versioning_legacy`, `publish_transaction`, `publish_next_transaction`, `withdrawal_transaction`, `management_vertical_slice`, `publication_end_vertical_slice`, and `publish_concurrency` (28/28). No hosted CI was run for this intermediate task; final same-head hosted gates remain for G9, matching the request to avoid CI on every task.
+- Product PR has not been created yet. No blocker. Keep implementation PR Draft/unmerged; no deployment, production migration execution, or AD/SSPI connection.
+- Next exact action: begin G2 RED by inspecting the existing GUI document-list/history query and HTTP route composition, then add focused contracts for `document_versions.updated_at`, bounded file summaries, GUI displayVersion/displayRevision projections, and revision list/detail endpoints. Preserve current authorization, cursor binding, and T10 history semantics.
 
 ## Superseded checkpoint — Document GUI Integration v0 G0 predecessor integration complete / PR #35 finalization in progress、2026-09-30 JST
 
