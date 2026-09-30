@@ -1,15 +1,15 @@
 # Active Execution Pointer
 
-## Current checkpoint — Document GUI Integration v0 G4 COMPLETE / G5 NEXT、2026-10-01 JST
+## Current checkpoint — Document GUI Integration v0 G5 COMPLETE / G6 NEXT、2026-10-01 JST
 
-- Status: **G0〜G4 COMPLETE / G5 Revision comparison and Diff Display NEXT**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。
-- Implementation branch `feat/document-gui-integration-v0`、exact head `27c069c657679676d5c8c51b3f206ad12234bb0e`。G4 RED test-only commit `b9b6e3be02d55cd8c3fc2177f7520f8b91fa2909`、GREEN code commit `27c069c657679676d5c8c51b3f206ad12234bb0e`。Product branch未push、Draft product PR未作成。
+- Status: **G0〜G5 COMPLETE / G6 OpenAPI + typed client NEXT**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。
+- Implementation branch `feat/document-gui-integration-v0`。G5 RED test-only commit `d2c563b7941e84af10161b18e55f549a09290cd4`、GREEN code commit `c12e81943098862ab0dec75c6b1bed9b048ed1f0`。Product branchはlocal only、Draft product PR未作成。
 - GitHub main `d71753d46590bb4406a1c0b74894ab90a27a6c88`。PR #27/#29/#30/#31/#32/#35はMERGED。Main CI `36718016267` SUCCESS。Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`、approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`、Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。Design amendmentなし。
-- G4: Application `IdentityPresentationResolver` batch portとdeduplicating fail-soft serviceを追加。History / AccessPolicy responsesをinline enrichmentし、resolver error/missing/notFoundではmachine refを残してnameを空にする。`GET /v1/session`はtrusted middlewareのverified principal / invocationKind / expiryだけを返し、spoof header/query testで自己申告identityを無視することを確認。Identity display nameのDB保存、production AD/SSPI接続、allow-all認証なし。OpenAPIは3.2.1を維持し、policy read grantとmutation input grantのschemaを分離。
-- G4 local verification: Application identity contract 2/2、HTTP session 2/2、History/Policy identity HTTP tests 2/2（serial PostgreSQL Testcontainers）、Node API contract 11/11、Redocly CLI 2.52.1 lint PASS、`cargo fmt --all -- --check` / `git diff --check` PASS。Task 4ではdependencies / migrations / locks変更なし。Hosted CIはG9 final same-head gateへ集約。
-- Environment: Dockerのfocused PostgreSQL testsは成功。`docker system df`は古いcontainer snapshot欠落を報告し、disk空きは約771 MiB。G9前に再確認し、Postgres suitesは直列で実行する。
+- G5: Revision metadata snapshot差分を`same` / `different` / `unavailableLegacy`で表し、同一DocumentVersion pairではcontent diffを呼ばず、異なるpairでは既存Diff serviceを再利用。Revision comparisonと`projection=display`を追加。TXT/CSV/HTML display fragmentはauthoritative bytesとsource locatorからsandbox workerで生成し、semantic verdict/coverageは維持。bounded pagingはpageSize default 50/max 100、fragment 16 KiB、item 32 KiB、page 1 MiBを守り、unverified regionもcursorで取得可能。fresh authorization、file/result/display audit correlationを維持し、fragment本文をaudit/telemetry/cacheへ保存しない。Office/PDF previewやFrontend parserは追加なし。
+- G5 local verification: `revision_comparison` 3/3、HTTP `diff_http` 12/12、worker `display_projection` 4/4、HTTP display unit tests 2/2、Application item-boundary test 1/1。`cargo clippy -p document-api-http -p document-application -p document-diff-worker --all-targets --no-deps -- -D warnings` PASS。`cargo fmt --all -- --check` / `git diff --check` PASS。中間hosted CIなし。広い依存lintでは既存Postgres capability/revision helperのClippy警告が出たため、対象crateのみをlintしてPASSを確認。
+- Environment: disk空きは約1.1 GiB。G9前に再確認し、Postgres suitesは直列で実行する。
 - Blockerなし。Product PR merge / deploy / production migration execution / AD-SSPI接続なし。
-- 次のexact action: Frozen Design / PlanのG5節と既存`DocumentDiffService`、HTTP comparison handler、revision metadata snapshot modelを読み、same-version metadata-only comparisonとbounded display projectionのfocused REDを追加する。
+- 次のexact action: G6でG1〜G5のrequest/responseをOpenAPI 3.2.1へ揃え、all examplesとdisplay union/nullabilityを検証する。続けて指定client generatorの3.2.1対応PoCとBinaryTransportBridgeを実装し、失格時はproduction dependencyにpromoteせずSTOP条件に従う。
 
 ---
 
