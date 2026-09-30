@@ -394,7 +394,31 @@ async fn version_list_requires_and_honors_the_authorization_purpose() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["items"].as_array().unwrap().len(), 1);
     assert_eq!(body["items"][0]["versionId"], published.to_string());
+    assert_eq!(body["items"][0]["versionNo"], 1);
+    assert_eq!(body["items"][0]["baseVersionId"], serde_json::Value::Null);
+    assert!(body["items"][0]["updatedAt"].as_str().is_some());
+    assert_eq!(body["items"][0]["fileSummary"]["authoritativeItemCount"], 0);
+    assert_eq!(body["items"][0]["fileSummary"]["totalSizeBytes"], 0);
+    assert_eq!(
+        body["items"][0]["fileSummary"]["primary"],
+        serde_json::Value::Null
+    );
     assert_schema("VersionList", &body);
+
+    let (status, detail) = get(
+        router.clone(),
+        &format!(
+            "/v1/documents/{}/versions/{}?purpose=published",
+            f.document_id.as_uuid(),
+            published
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{detail}");
+    assert_eq!(detail["baseVersionId"], serde_json::Value::Null);
+    assert!(detail["updatedAt"].as_str().is_some());
+    assert_eq!(detail["fileSummary"]["authoritativeItemCount"], 0);
+    assert_schema("Version", &detail);
 
     let (status, body) = get(router, &format!("{base}?purpose=authoring")).await;
     assert_eq!(status, StatusCode::OK);
