@@ -110,7 +110,7 @@ test('OpenAPI 3.2.1 exposes every approved Document operation with unique IDs', 
   assert.equal(new Set(ids).size, ids.length, 'operationId collision');
 });
 
-test('every operation has a success schema and executable HTTP evidence', () => {
+test('every operation has examples, schemas and executable HTTP evidence', () => {
   const contractIds = new Set();
   for (const [method, path] of operations) {
     const endpoint = operation(method, path);
@@ -122,11 +122,19 @@ test('every operation has a success schema and executable HTTP evidence', () => 
     const contents = Object.values(response.content ?? {});
     assert.ok(contents.length > 0, `${endpoint.operationId} has no success media type`);
     assert.ok(contents.every((content) => content.schema), `${endpoint.operationId} has an untyped success body`);
+    assert.ok(
+      contents.every((content) => content.example !== undefined || content.examples !== undefined),
+      `${endpoint.operationId} has no success example`,
+    );
     if (endpoint.requestBody) {
       const request = resolved(endpoint.requestBody);
       const requestContents = Object.values(request.content ?? {});
       assert.ok(requestContents.length > 0, `${endpoint.operationId} has no request media type`);
       assert.ok(requestContents.every((content) => content.schema), `${endpoint.operationId} has an untyped request body`);
+      assert.ok(
+        requestContents.every((content) => content.example !== undefined || content.examples !== undefined),
+        `${endpoint.operationId} has no request example`,
+      );
     }
   }
 
