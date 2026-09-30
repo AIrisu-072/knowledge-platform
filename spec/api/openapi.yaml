@@ -33,7 +33,7 @@ paths:
       - Documents
       summary: List documents by authorized view
       operationId: listDocuments
-      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application. projection=display adds bounded source-located fragments and pageSize/cursor without changing semantic verdict or coverage.
       responses:
         '200':
           $ref: '#/components/responses/DocumentList'
@@ -514,7 +514,7 @@ paths:
       - Comparisons
       summary: Compare authorized formal revision pair
       operationId: compareDocumentRevisions
-      description: Compares revision metadata snapshots and reuses Document Diff only when their authoritative DocumentVersions differ.
+      description: Compares revision metadata snapshots and reuses Document Diff only when their authoritative DocumentVersions differ. projection=display adds bounded source-located fragments and pageSize/cursor without changing semantic verdict or coverage.
       responses:
         '200':
           $ref: '#/components/responses/RevisionComparison'
@@ -795,6 +795,12 @@ components:
       $ref: ./schemas/document/models.yaml#/$defs/DiffProjection
     ComparisonTableProjection:
       $ref: ./schemas/document/models.yaml#/$defs/ComparisonTableProjection
+    DiffDisplayProjection:
+      $ref: ./schemas/document/models.yaml#/$defs/DiffDisplayProjection
+    DiffDisplayItem:
+      $ref: ./schemas/document/models.yaml#/$defs/DiffDisplayItem
+    DisplayFragment:
+      $ref: ./schemas/document/models.yaml#/$defs/DisplayFragment
     ComparisonResponse:
       $ref: ./schemas/document/models.yaml#/$defs/ComparisonResponse
     RevisionComparisonResponse:
@@ -1148,21 +1154,49 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ComparisonRequest'
-          example:
-            baseVersionId: 00000000-0000-4000-8000-000000000021
-            targetVersionId: 00000000-0000-4000-8000-000000000022
-            profile: document-diff-v0
-            projection: comparisonTable
+          examples:
+            diff:
+              summary: Semantic comparison
+              value:
+                baseVersionId: 00000000-0000-4000-8000-000000000021
+                targetVersionId: 00000000-0000-4000-8000-000000000022
+                profile: document-diff-v0
+                projection: diff
+            comparisonTable:
+              summary: Tabular comparison
+              value:
+                baseVersionId: 00000000-0000-4000-8000-000000000021
+                targetVersionId: 00000000-0000-4000-8000-000000000022
+                profile: document-diff-v0
+                projection: comparisonTable
+            display:
+              summary: Bounded source-located display fragments
+              value:
+                baseVersionId: 00000000-0000-4000-8000-000000000021
+                targetVersionId: 00000000-0000-4000-8000-000000000022
+                profile: document-diff-v0
+                projection: display
+                pageSize: 50
     RevisionComparisonRequest:
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/RevisionComparisonRequest'
-          example:
-            baseRevisionId: 00000000-0000-4000-8000-000000000031
-            targetRevisionId: 00000000-0000-4000-8000-000000000032
-            projection: diff
+          examples:
+            diff:
+              summary: Formal revision comparison
+              value:
+                baseRevisionId: 00000000-0000-4000-8000-000000000031
+                targetRevisionId: 00000000-0000-4000-8000-000000000032
+                projection: diff
+            display:
+              summary: Bounded formal revision display
+              value:
+                baseRevisionId: 00000000-0000-4000-8000-000000000031
+                targetRevisionId: 00000000-0000-4000-8000-000000000032
+                projection: display
+                pageSize: 50
     CreateDocumentMultipart:
       required: true
       content:
@@ -1729,30 +1763,72 @@ components:
             type: string
             const: private, no-store
     ComparisonResponse:
-      description: ComparisonResponse
+      description: Semantic Diff, comparison table, or bounded human-readable display; display does not alter verdict or coverage.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ComparisonResponse'
-          example:
-            projection: diff
-            verdict: different
-            coverage: partial
-            resultDigest: '0000000000000000000000000000000000000000000000000000000000000000'
-            changes:
-            - operation: modified
-              relocation: null
-              facet: text
-              base: null
-              target: null
-              reasonCode: textChanged
-            unverifiedRegions:
-            - reason: unsupportedSemanticConstruct
-              base: null
-              target: null
-              navigationHint: Inspect the marked range in the original documents.
-            ancillaryChanges: []
-            auditEventId: 00000000-0000-4000-8000-000000000004
+          examples:
+            diff:
+              summary: Semantic comparison with a partially verified change
+              value:
+                projection: diff
+                verdict: different
+                coverage: partial
+                resultDigest: '0000000000000000000000000000000000000000000000000000000000000000'
+                changes:
+                - operation: modified
+                  relocation: null
+                  facet: text
+                  base: null
+                  target: null
+                  reasonCode: textChanged
+                unverifiedRegions:
+                - reason: unsupportedSemanticConstruct
+                  base: null
+                  target: null
+                  navigationHint: Inspect the marked range in the original documents.
+                ancillaryChanges: []
+                auditEventId: 00000000-0000-4000-8000-000000000004
+            comparisonTable:
+              summary: Table projection of an unchanged pair
+              value:
+                projection: comparisonTable
+                verdict: same
+                coverage: full
+                resultDigest: '0000000000000000000000000000000000000000000000000000000000000000'
+                rows: []
+                unverifiedRegions: []
+                auditEventId: 00000000-0000-4000-8000-000000000004
+            display:
+              summary: Bounded source-located text fragments
+              value:
+                projection: display
+                verdict: different
+                coverage: full
+                resultDigest: '0000000000000000000000000000000000000000000000000000000000000000'
+                items:
+                - changeIndex: 0
+                  operation: modified
+                  relocation: null
+                  facet: text
+                  baseLocator: {kind: textSpan, line: 1, byteStart: 0, byteEnd: 3}
+                  targetLocator: {kind: textSpan, line: 1, byteStart: 0, byteEnd: 3}
+                  base:
+                    kind: text
+                    text: old
+                    truncated: false
+                    locator: {kind: textSpan, line: 1, byteStart: 0, byteEnd: 3}
+                  target:
+                    kind: text
+                    text: new
+                    truncated: false
+                    locator: {kind: textSpan, line: 1, byteStart: 0, byteEnd: 3}
+                unverifiedRegions: []
+                pageSize: 50
+                nextCursor: null
+                auditEventId: 00000000-0000-4000-8000-000000000004
+                resultAuditEventId: 00000000-0000-4000-8000-000000000005
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1765,37 +1841,85 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/RevisionComparisonResponse'
-          example:
-            projection: diff
-            baseRevision:
-              revisionId: 00000000-0000-4000-8000-000000000031
-              documentVersionId: 00000000-0000-4000-8000-000000000021
-              major: 1
-              minor: 0
-              createdAt: '2029-01-01T00:00:00Z'
-            targetRevision:
-              revisionId: 00000000-0000-4000-8000-000000000032
-              documentVersionId: 00000000-0000-4000-8000-000000000022
-              major: 2
-              minor: 0
-              createdAt: '2029-02-01T00:00:00Z'
-            contentComparisonStatus: differentAuthoritativeVersions
-            verdict: different
-            coverage: full
-            resultDigest: '0000000000000000000000000000000000000000000000000000000000000000'
-            changes: []
-            rows: []
-            unverifiedRegions: []
-            ancillaryChanges: []
-            metadataComparisonStatus: different
-            metadataChanges:
-            - path: /category
-              baseValue: policy
-              targetValue: guideline
-            baseMetadataSnapshotDigest: '0000000000000000000000000000000000000000000000000000000000000000'
-            targetMetadataSnapshotDigest: '1111111111111111111111111111111111111111111111111111111111111111'
-            auditEventId: 00000000-0000-4000-8000-000000000041
-            contentAuditEventId: 00000000-0000-4000-8000-000000000042
+          examples:
+            sameVersionMetadataOnly:
+              summary: Same authoritative content with unavailable legacy metadata
+              value:
+                projection: diff
+                baseRevision: {revisionId: 00000000-0000-4000-8000-000000000031, documentVersionId: 00000000-0000-4000-8000-000000000021, major: 1, minor: 0, createdAt: '2029-01-01T00:00:00Z'}
+                targetRevision: {revisionId: 00000000-0000-4000-8000-000000000032, documentVersionId: 00000000-0000-4000-8000-000000000021, major: 1, minor: 1, createdAt: '2029-01-02T00:00:00Z'}
+                contentComparisonStatus: sameAuthoritativeVersion
+                changes: []
+                rows: []
+                unverifiedRegions: []
+                ancillaryChanges: []
+                metadataComparisonStatus: unavailableLegacy
+                metadataChanges: []
+                baseMetadataSnapshotDigest: null
+                targetMetadataSnapshotDigest: null
+                auditEventId: 00000000-0000-4000-8000-000000000041
+                displayItems: []
+                pageSize: null
+                nextCursor: null
+            differentVersions:
+              summary: Separate content and metadata comparison results
+              value:
+                projection: diff
+                baseRevision: {revisionId: 00000000-0000-4000-8000-000000000031, documentVersionId: 00000000-0000-4000-8000-000000000021, major: 1, minor: 0, createdAt: '2029-01-01T00:00:00Z'}
+                targetRevision: {revisionId: 00000000-0000-4000-8000-000000000032, documentVersionId: 00000000-0000-4000-8000-000000000022, major: 2, minor: 0, createdAt: '2029-02-01T00:00:00Z'}
+                contentComparisonStatus: differentAuthoritativeVersions
+                verdict: unknown
+                coverage: none
+                resultDigest: '0000000000000000000000000000000000000000000000000000000000000000'
+                changes: []
+                rows: []
+                unverifiedRegions: []
+                ancillaryChanges: []
+                metadataComparisonStatus: different
+                metadataChanges:
+                - path: /category
+                  baseValue: policy
+                  targetValue: guideline
+                baseMetadataSnapshotDigest: '0000000000000000000000000000000000000000000000000000000000000000'
+                targetMetadataSnapshotDigest: '1111111111111111111111111111111111111111111111111111111111111111'
+                auditEventId: 00000000-0000-4000-8000-000000000041
+                contentAuditEventId: 00000000-0000-4000-8000-000000000042
+                displayItems: []
+                pageSize: null
+                nextCursor: null
+            display:
+              summary: Revision display with separately identified audit evidence
+              value:
+                projection: display
+                baseRevision: {revisionId: 00000000-0000-4000-8000-000000000031, documentVersionId: 00000000-0000-4000-8000-000000000021, major: 1, minor: 0, createdAt: '2029-01-01T00:00:00Z'}
+                targetRevision: {revisionId: 00000000-0000-4000-8000-000000000032, documentVersionId: 00000000-0000-4000-8000-000000000022, major: 2, minor: 0, createdAt: '2029-02-01T00:00:00Z'}
+                contentComparisonStatus: differentAuthoritativeVersions
+                verdict: different
+                coverage: full
+                resultDigest: '0000000000000000000000000000000000000000000000000000000000000000'
+                changes: []
+                rows: []
+                unverifiedRegions: []
+                ancillaryChanges: []
+                metadataComparisonStatus: different
+                metadataChanges: []
+                baseMetadataSnapshotDigest: '0000000000000000000000000000000000000000000000000000000000000000'
+                targetMetadataSnapshotDigest: '1111111111111111111111111111111111111111111111111111111111111111'
+                auditEventId: 00000000-0000-4000-8000-000000000041
+                contentAuditEventId: 00000000-0000-4000-8000-000000000042
+                displayItems:
+                - changeIndex: 0
+                  operation: modified
+                  relocation: null
+                  facet: text
+                  baseLocator: {kind: textSpan, line: 1, byteStart: 0, byteEnd: 3}
+                  targetLocator: {kind: textSpan, line: 1, byteStart: 0, byteEnd: 3}
+                  base: {kind: text, text: old, truncated: false, locator: {kind: textSpan, line: 1, byteStart: 0, byteEnd: 3}}
+                  target: {kind: text, text: new, truncated: false, locator: {kind: textSpan, line: 1, byteStart: 0, byteEnd: 3}}
+                pageSize: 50
+                nextCursor: null
+                displayAuditEventId: 00000000-0000-4000-8000-000000000043
+                displayResultAuditEventId: 00000000-0000-4000-8000-000000000042
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.

@@ -10,6 +10,7 @@ import {
 const documentId = '00000000-0000-4000-8000-000000000001';
 const versionId = '00000000-0000-4000-8000-000000000002';
 const fileId = '00000000-0000-4000-8000-000000000003';
+const renditionId = '00000000-0000-4000-8000-000000000004';
 const operationId = '01890f7a-6f6e-7b0a-8000-000000000013';
 
 function jsonResponse(value, status = 200) {
@@ -45,6 +46,7 @@ test('initial document upload maps the generated JSON request and binary file to
 
   assert.deepEqual(result, { documentId, documentVersionId: versionId, fileId });
   assert.equal(captured.url, 'https://documents.test/v1/documents');
+  assert.equal(captured.init.method, 'POST');
   assert.ok(captured.init.body instanceof FormData);
   assert.equal(captured.init.headers?.['Content-Type'], undefined);
   assert.deepEqual(JSON.parse(await captured.init.body.get('request').text()), request);
@@ -74,16 +76,25 @@ test('version uploads bind manifest part IDs to bounded multipart file parts', a
       partId: 'primary-file',
       mediaType: 'text/plain',
       originalFilename: 'revised.txt',
-      renditions: [],
+      renditions: [{
+        fileId: renditionId,
+        partId: 'rendition-file',
+        mediaType: 'application/pdf',
+        originalFilename: 'preview.pdf',
+      }],
     }],
   };
 
   await bridge.createVersion(documentId, {
     request,
-    files: new Map([['primary-file', new Blob(['revised bytes'])]]),
+    files: new Map([
+      ['primary-file', new Blob(['revised bytes'])],
+      ['rendition-file', new Blob(['rendition bytes'])],
+    ]),
   });
 
   assert.equal(captured.url, `https://documents.test/api/v1/documents/${documentId}/versions`);
+  assert.equal(captured.init.method, 'POST');
   assert.ok(captured.init.body instanceof Blob);
   assert.match(captured.init.headers['Content-Type'], /^multipart\/form-data; boundary=/);
   const wireBody = await captured.init.body.text();
@@ -91,20 +102,33 @@ test('version uploads bind manifest part IDs to bounded multipart file parts', a
   assert.ok(wireBody.includes(JSON.stringify(request)));
   assert.ok(wireBody.includes('name="files"; filename="binary"'));
   assert.ok(wireBody.includes('X-Part-Id: primary-file\r\n'));
+  assert.ok(wireBody.includes('X-Part-Id: rendition-file\r\n'));
   assert.ok(wireBody.includes('revised bytes'));
+  assert.ok(wireBody.includes('rendition bytes'));
 
   await assert.rejects(
     bridge.createVersion(documentId, { request, files: new Map() }),
     (error) => error instanceof BinaryTransportError,
   );
+  await assert.rejects(
+    bridge.createVersion(documentId, {
+      request,
+      files: new Map([
+        ['primary-file', new Blob()],
+        ['rendition-file', new Blob()],
+        ['extra-file', new Blob()],
+      ]),
+    }),
+    (error) => error instanceof BinaryTransportError,
+  );
 });
 
 test('working-version update uses the encoded document and version path', async () => {
-  let capturedUrl;
+  let captured;
   const bridge = new BinaryTransportBridge({
     baseUrl: 'https://documents.test',
-    fetch: async (url) => {
-      capturedUrl = String(url);
+    fetch: async (url, init) => {
+      captured = { url: String(url), init };
       return jsonResponse({ operationId, documentId, targetVersionId: versionId, versionNo: 2, baseVersionId: versionId, resultingRevision: 4 });
     },
   });
@@ -121,7 +145,8 @@ test('working-version update uses the encoded document and version path', async 
     files: new Map([['body', new Blob(['new'])]]),
   });
 
-  assert.equal(capturedUrl, `https://documents.test/v1/documents/${documentId}/versions/${versionId}`);
+  assert.equal(captured.url, `https://documents.test/v1/documents/${documentId}/versions/${versionId}`);
+  assert.equal(captured.init.method, 'PUT');
 });
 
 test('binary downloads expose Blob and ReadableStream results', async () => {

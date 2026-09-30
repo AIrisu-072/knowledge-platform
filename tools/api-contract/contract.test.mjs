@@ -211,7 +211,8 @@ test('revision and display comparisons describe bounded paging and fragment unio
     'projection', 'verdict', 'coverage', 'resultDigest', 'items', 'unverifiedRegions',
     'pageSize', 'nextCursor', 'auditEventId', 'resultAuditEventId',
   ]);
-  assert.equal(resolved(display.properties.items.items).$ref, '#/components/schemas/DiffDisplayItem');
+  assert.ok(resolved(display.properties.items.items).properties?.changeIndex);
+  assert.ok(resolved(display.properties.items.items).properties?.baseLocator);
 
   const fragment = resolved(contract.components?.schemas?.DisplayFragment);
   assert.deepEqual(fragment.oneOf.map((variant) => resolved(variant).properties.kind.const), [

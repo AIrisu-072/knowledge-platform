@@ -719,6 +719,75 @@ $defs:
     oneOf:
       - $ref: '#/$defs/DiffProjection'
       - $ref: '#/$defs/ComparisonTableProjection'
+      - $ref: '#/$defs/DiffDisplayProjection'
+  DiffDisplayItem:
+    type: object
+    additionalProperties: false
+    required: [changeIndex, operation, relocation, facet, baseLocator, targetLocator, base, target]
+    properties:
+      changeIndex: {type: integer, minimum: 0}
+      operation: {type: [string, 'null'], enum: [added, removed, modified, null]}
+      relocation: {type: [string, 'null'], enum: [moved, reordered, renamed, null]}
+      facet: {type: string}
+      baseLocator: {oneOf: [{$ref: '#/$defs/SourceLocator'}, {type: 'null'}]}
+      targetLocator: {oneOf: [{$ref: '#/$defs/SourceLocator'}, {type: 'null'}]}
+      base: {oneOf: [{$ref: '#/$defs/DisplayFragment'}, {type: 'null'}]}
+      target: {oneOf: [{$ref: '#/$defs/DisplayFragment'}, {type: 'null'}]}
+  DisplayCell:
+    type: object
+    additionalProperties: false
+    required: [row, column, label, value]
+    properties:
+      row: {type: [integer, 'null'], minimum: 0}
+      column: {type: [integer, 'null'], minimum: 0}
+      label: {type: [string, 'null']}
+      value: {type: string}
+  DisplayFragment:
+    oneOf:
+      - type: object
+        additionalProperties: false
+        required: [kind, text, truncated, locator]
+        properties:
+          kind: {const: text}
+          text: {type: string}
+          truncated: {type: boolean}
+          locator: {$ref: '#/$defs/SourceLocator'}
+      - type: object
+        additionalProperties: false
+        required: [kind, cells, truncated, locator]
+        properties:
+          kind: {const: table}
+          cells: {type: array, items: {$ref: '#/$defs/DisplayCell'}}
+          truncated: {type: boolean}
+          locator: {$ref: '#/$defs/SourceLocator'}
+      - type: object
+        additionalProperties: false
+        required: [kind, summary, locator]
+        properties:
+          kind: {const: structural}
+          summary: {type: string}
+          locator: {$ref: '#/$defs/SourceLocator'}
+      - type: object
+        additionalProperties: false
+        required: [kind, reason]
+        properties:
+          kind: {const: unavailable}
+          reason: {type: string, enum: [nonTextual, unverified, resourceLimit, unsupported]}
+  DiffDisplayProjection:
+    type: object
+    additionalProperties: false
+    required: [projection, verdict, coverage, resultDigest, items, unverifiedRegions, pageSize, nextCursor, auditEventId, resultAuditEventId]
+    properties:
+      projection: {const: display}
+      verdict: {type: string, enum: [same, different, unknown]}
+      coverage: {type: string, enum: [full, partial, none]}
+      resultDigest: {type: string, pattern: '^[0-9a-f]{64}$'}
+      items: {type: array, items: {$ref: '#/$defs/DiffDisplayItem'}}
+      unverifiedRegions: {type: array, items: {$ref: '#/$defs/UnverifiedRegion'}}
+      pageSize: {type: integer, minimum: 1, maximum: 100}
+      nextCursor: {type: [string, 'null']}
+      auditEventId: {type: string, format: uuid}
+      resultAuditEventId: {type: string, format: uuid}
   RevisionSummary:
     type: object
     additionalProperties: false
@@ -754,8 +823,11 @@ $defs:
       - baseMetadataSnapshotDigest
       - targetMetadataSnapshotDigest
       - auditEventId
+      - displayItems
+      - pageSize
+      - nextCursor
     properties:
-      projection: {type: string, enum: [diff, comparisonTable]}
+      projection: {type: string, enum: [diff, comparisonTable, display]}
       baseRevision: {$ref: '#/$defs/RevisionSummary'}
       targetRevision: {$ref: '#/$defs/RevisionSummary'}
       contentComparisonStatus:
@@ -776,3 +848,8 @@ $defs:
       targetMetadataSnapshotDigest: {type: [string, 'null'], pattern: '^[0-9a-f]{64}$'}
       auditEventId: {type: string, format: uuid}
       contentAuditEventId: {type: string, format: uuid}
+      displayItems: {type: array, items: {$ref: '#/$defs/DiffDisplayItem'}}
+      pageSize: {type: [integer, 'null'], minimum: 1, maximum: 100}
+      nextCursor: {type: [string, 'null']}
+      displayAuditEventId: {type: string, format: uuid}
+      displayResultAuditEventId: {type: string, format: uuid}
