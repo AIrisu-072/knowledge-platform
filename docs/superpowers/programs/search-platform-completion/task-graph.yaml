@@ -610,6 +610,27 @@
         "P6"
       ],
       "purpose": "Independent revised exact design architecture gate"
+    },
+    {
+      "id": "p1-unit-draft",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-contract.md",
+      "purpose": "Exact minimal KnowledgeUnit extraction contract independent of full body wiring"
+    },
+    {
+      "id": "p1-unit-review",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-review.md",
+      "supports": [
+        "P1"
+      ],
+      "purpose": "Independent minimal unit input contract review for P2"
+    },
+    {
+      "id": "p1-unit-frozen",
+      "kind": "contract",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md",
+      "purpose": "Frozen provider neutral input contract for Vector evaluation"
     }
   ],
   "tasks": [
@@ -669,7 +690,8 @@
       "summary": "Freeze reviewed extraction contract and bounded implementation plan",
       "consumes": [
         "p1-revised",
-        "p1-arch-recheck"
+        "p1-arch-recheck",
+        "p1-unit-frozen"
       ],
       "produces": [
         "p1-contract",
@@ -764,7 +786,7 @@
       "consumes": [
         "p0-closure",
         "baseline",
-        "p1-contract"
+        "p1-unit-frozen"
       ],
       "produces": [
         "p2-draft"
@@ -1749,12 +1771,14 @@
         "p1-arch"
       ],
       "produces": [
-        "p1-revised"
+        "p1-revised",
+        "p1-unit-draft"
       ],
       "estimate": "S",
       "role": "domain-designer",
       "write_scope": [
-        "docs/superpowers/programs/search-platform-completion/p1-extraction-design-revision-1.md"
+        "docs/superpowers/programs/search-platform-completion/p1-extraction-design-revision-1.md",
+        "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-contract.md"
       ],
       "acceptance": "Revised design explicitly addresses all architecture blockers without changing frozen Search semantics"
     },
@@ -1850,6 +1874,42 @@
         "docs/superpowers/programs/search-platform-completion/p6-outbox-architecture-recheck.md"
       ],
       "acceptance": "No blocking P1/P2 remains on exact revised design"
+    },
+    {
+      "id": "p1-review-unit",
+      "kind": "audit",
+      "summary": "Independently review minimal canonical KnowledgeUnit contract to unblock P2",
+      "consumes": [
+        "p1-unit-draft",
+        "baseline"
+      ],
+      "produces": [
+        "p1-unit-review"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-review.md"
+      ],
+      "acceptance": "Unit identity locator provenance and validation are exact provider neutral and consistent with frozen Source semantics"
+    },
+    {
+      "id": "p1-freeze-unit",
+      "kind": "decision",
+      "summary": "Freeze exact reviewed KnowledgeUnit contract for Vector harness input",
+      "consumes": [
+        "p1-unit-draft",
+        "p1-unit-review"
+      ],
+      "produces": [
+        "p1-unit-frozen"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md"
+      ],
+      "acceptance": "Exact input contract digest recorded with independent GO; body integration remains separately gated"
     }
   ],
   "gate_overrides": [

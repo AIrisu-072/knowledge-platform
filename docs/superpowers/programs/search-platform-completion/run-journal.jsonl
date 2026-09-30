@@ -26,3 +26,5 @@
 {"ts":"2026-09-30T14:35:24+09:00","event":"completed","task":"p6-architecture","detail":"Independent review complete NO-GO; no design freeze or production claim"}
 {"ts":"2026-09-30T14:35:24+09:00","event":"dispatched","task":"p6-repair-design"}
 {"ts":"2026-09-30T14:35:24+09:00","event":"completed","task":"inspect-environment"}
+{"ts":"2026-09-30T14:47:37+09:00","event":"completed","task":"p3-repair-design"}
+{"ts":"2026-09-30T14:47:37+09:00","event":"dispatched","task":"p3-recheck-design"}

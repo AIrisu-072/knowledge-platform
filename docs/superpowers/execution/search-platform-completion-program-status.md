@@ -55,3 +55,12 @@ Environment artifact complete: Rust1.98.1/macOS arm64, local PostgreSQL18.6 Dock
 Current foundation local head before this record: `2acbca2`; PR #34 remote head remains `a877f44` until the next batched push. New graph gate PASS: 66 tasks / 74 artifacts / 11 claims. Goal contract JSON schema PASS (manual trigger corrected).
 
 Exact next action: receive revision-1 artifacts, independently recheck with new reviewer contexts, freeze exact reviewed minimal P1 contract to release P2, and prepare explicit scoped plans. No Hard Stop reached.
+
+## Critical-path split and revision recheck — 2026-09-30
+
+- P3 revised design is complete at `p3-graph-design-revision-1.md`; fresh reviewer `/root/completion_p3_architecture_recheck` is checking the five findings. No P3 freeze or backend adoption yet.
+- P1 repair scope additionally emits `p1-knowledgeunit-contract.md`. Graph now separates an independent minimal Unit-contract review/freeze from the complete body-generation/evidence integration recheck. P2 design waits for this reviewed core contract, avoiding unnecessary full-integration serialization. P1 production still requires the full P1 architecture GO and plan.
+- Cross-cap ruling: server-owned SourceId must be globally unique across the configured runtime; assigning an identical SourceId to different tenants is rejected at registry startup, because existing Projection/Graph keys are SourceId+generation. Every API/remote request still binds trusted tenant and actor to visible Sources before routing, gaps or traces. P4/P5 repair workers received this invariant; it preserves existing Source-local generation semantics.
+- Active workers: P1/P4/P5/P6 design repair, P3 architecture recheck. Environment worker is complete. No new production code.
+- Foundation PR #34 remote/source head `c156b32c3d11c0d03b20322ce4e32bce0834e88a` was verified live. Its CI `36674528354` is in progress; no Completion qualification claim.
+- Graph gate PASS after split: 68 tasks / 77 artifacts / 11 claims. Exact next action: finish stable revisions, dispatch scoped rechecks, freeze passing contracts/prepare concrete plans and measured P3 PoC; start P2 when Unit contract GO is recorded.
