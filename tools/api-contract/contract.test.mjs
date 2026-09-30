@@ -46,6 +46,7 @@ const operations = [
   ['get', '/v1/documents/{documentId}/versions/{versionId}/files'],
   ['get', '/v1/documents/{documentId}/versions/{versionId}/files/{contentItemId}/{representationId}'],
   ['post', '/v1/documents/{documentId}/comparisons'],
+  ['post', '/v1/documents/{documentId}/revision-comparisons'],
   ['get', '/v1/folders/root'],
   ['get', '/v1/folders/{folderId}/children'],
   ['post', '/v1/folders'],
@@ -81,6 +82,7 @@ const acceptanceEvidence = [
   ['listVersionFiles', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['downloadVersionFile', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['compareDocumentVersions', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['compareDocumentRevisions', 'crates/document-api-http/tests/diff_http.rs', 'revision_comparison_keeps_content_and_metadata_projections_separate'],
   ['getRootFolder', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['listFolderChildren', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['createFolder', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
@@ -188,6 +190,42 @@ test('comparison coverage, cursor, examples and nullable policy binding survive 
   assert.ok(list?.parameters?.some((parameter) => resolved(parameter)?.name === 'cursor'));
   assert.ok(resolved(list?.responses?.['200'])?.content?.['application/json']?.example);
   assert.ok(resolved(contract.components?.schemas?.AccessPolicyRead)?.properties?.policyId?.type?.includes('null'));
+});
+
+test('revision and display comparisons describe bounded paging and fragment unions', () => {
+  const versionRequest = resolved(contract.components?.schemas?.ComparisonRequest);
+  const revisionRequest = resolved(contract.components?.schemas?.RevisionComparisonRequest);
+  for (const request of [versionRequest, revisionRequest]) {
+    assert.ok(request.required.includes('projection'));
+    assert.deepEqual(request.properties.projection.enum, ['diff', 'comparisonTable', 'display']);
+    assert.equal(request.properties.pageSize.minimum, 1);
+    assert.equal(request.properties.pageSize.maximum, 100);
+    assert.equal(request.properties.cursor.type, 'string');
+  }
+
+  const versionResponse = resolved(contract.components?.schemas?.ComparisonResponse);
+  assert.equal(versionResponse.oneOf.length, 3);
+  assert.ok(versionResponse.oneOf.some((variant) => variant.$ref.endsWith('/DiffDisplayProjection')));
+  const display = resolved(contract.components?.schemas?.DiffDisplayProjection);
+  assert.deepEqual(display.required, [
+    'projection', 'verdict', 'coverage', 'resultDigest', 'items', 'unverifiedRegions',
+    'pageSize', 'nextCursor', 'auditEventId', 'resultAuditEventId',
+  ]);
+  assert.equal(resolved(display.properties.items.items).$ref, '#/components/schemas/DiffDisplayItem');
+
+  const fragment = resolved(contract.components?.schemas?.DisplayFragment);
+  assert.deepEqual(fragment.oneOf.map((variant) => resolved(variant).properties.kind.const), [
+    'text', 'table', 'structural', 'unavailable',
+  ]);
+  const table = resolved(fragment.oneOf[1]);
+  assert.equal(resolved(table.properties.cells.items).properties.row.type[1], 'null');
+  assert.equal(resolved(table.properties.cells.items).properties.column.type[1], 'null');
+
+  const revisionResponse = resolved(contract.components?.schemas?.RevisionComparisonResponse);
+  for (const name of ['displayItems', 'pageSize', 'nextCursor', 'displayAuditEventId', 'displayResultAuditEventId']) {
+    assert.ok(revisionResponse.properties[name], `revision comparison is missing ${name}`);
+  }
+  assert.deepEqual(revisionResponse.properties.projection.enum, ['diff', 'comparisonTable', 'display']);
 });
 
 test('write contracts bind replay IDs and do not accept actor self assertions', () => {
