@@ -28,6 +28,8 @@ const operations = [
   ['get', '/v1/documents/{documentId}/versions'],
   ['post', '/v1/documents/{documentId}/versions'],
   ['get', '/v1/documents/{documentId}/versions/{versionId}'],
+  ['get', '/v1/documents/{documentId}/revisions'],
+  ['get', '/v1/documents/{documentId}/revisions/{revisionId}'],
   ['put', '/v1/documents/{documentId}/versions/{versionId}'],
   ['post', '/v1/documents/{documentId}/versions/{versionId}:rebase'],
   ['post', '/v1/documents/{documentId}/versions/{versionId}:publish'],
@@ -61,6 +63,8 @@ const acceptanceEvidence = [
   ['listDocumentVersions', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['createDocumentVersion', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['getDocumentVersion', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['listDocumentRevisions', 'crates/document-api-http/tests/read_http.rs', 'revision_history_is_keyset_paginated_authorized_and_has_detail_snapshot'],
+  ['getDocumentRevision', 'crates/document-api-http/tests/read_http.rs', 'revision_history_is_keyset_paginated_authorized_and_has_detail_snapshot'],
   ['updateWorkingVersion', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['rebaseWorkingVersion', 'crates/document-api-http/tests/versioning_http.rs', 'create_update_replay_and_rebase_preserve_manifest_binding'],
   ['publishVersion', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
@@ -164,7 +168,7 @@ test('machine error registry and RFC 9457 extension are present', () => {
     'STALE_COMPARISON_INPUT', 'BUSINESS_RULE_REJECTED', 'RESERVED_DOCUMENT',
     'FOLDER_CYCLE', 'ROOT_PROTECTED', 'IDENTITY_UNAVAILABLE', 'PUBLISH_QUALITY_REJECTED',
     'UNSUPPORTED_MEDIA_TYPE', 'DEPENDENCY_UNAVAILABLE', 'TIMEOUT',
-    'COMMIT_OUTCOME_UNKNOWN', 'INTEGRITY_VIOLATION', 'INTERNAL',
+    'COMMIT_OUTCOME_UNKNOWN', 'INTEGRITY_VIOLATION', 'REVISION_NOT_FOUND', 'INTERNAL',
   ]) {
     assert.match(registry, new RegExp(`\\b${code}\\b`));
   }

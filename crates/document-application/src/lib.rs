@@ -13,6 +13,7 @@ pub mod document_diff;
 mod document_history;
 mod document_management;
 mod document_query;
+mod document_revision_read;
 mod error;
 mod events;
 mod file_access;
@@ -55,9 +56,15 @@ pub use document_history::{
 };
 pub use document_management::DocumentManagementService;
 pub use document_query::{
-    AuthoringDocumentSummary, AuthoringQuery, DocumentListFilter, DocumentQueryRepository,
-    DocumentQueryService, FolderPageQuery, FolderSummary, HistoryDocumentSummary, HistoryQuery,
-    Page, PublishedDocumentSummary, PublishedQuery, RootFolderSummary,
+    AuthoringDocumentSummary, AuthoringQuery, DisplayTimestampKind, DocumentListFilter,
+    DocumentQueryRepository, DocumentQueryService, FolderPageQuery, FolderSummary,
+    GuiDisplayTimestamp, GuiDocumentReadModel, GuiPrimaryFileSummary, GuiVersionFileSummary,
+    GuiVersionSummary, HistoryDocumentSummary, HistoryQuery, Page, PublishedDocumentSummary,
+    PublishedQuery, RootFolderSummary,
+};
+pub use document_revision_read::{
+    DocumentRevisionDetail, DocumentRevisionDetailQuery, DocumentRevisionPageQuery,
+    DocumentRevisionReadRepository, DocumentRevisionReadService, DocumentRevisionSummary,
 };
 pub use error::{ApplicationError, InspectionExecutionError, RepositoryError, StorageError};
 pub use events::{
@@ -97,8 +104,8 @@ pub use publication_end::{
     PublicationEndOperationId,
 };
 pub use query_cursor::{
-    CursorBinding, CursorPosition, DocumentSort, QueryKind, decode_cursor, encode_cursor,
-    fingerprint_json, principal_fingerprint, validate_page_size,
+    CursorBinding, CursorPosition, DocumentSort, QueryKind, RevisionSortKey, decode_cursor,
+    encode_cursor, fingerprint_json, principal_fingerprint, validate_page_size,
 };
 pub use read_state::{MarkVersionRead, ReadStateRepository, ReadStateResult, ReadStateService};
 pub use reconciliation::{ReconciliationClassification, ReconciliationFinding, classify};

@@ -17,6 +17,7 @@ pub enum QueryKind {
     Folders,
     Versions,
     DocumentHistory,
+    DocumentRevisions,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,6 +26,7 @@ pub enum DocumentSort {
     CreatedAtDesc,
     TitleAsc,
     PublishedAtDesc,
+    RevisionNumberDesc,
 }
 
 impl DocumentSort {
@@ -33,6 +35,7 @@ impl DocumentSort {
             Self::CreatedAtDesc => "created_at_desc",
             Self::TitleAsc => "title_asc",
             Self::PublishedAtDesc => "published_at_desc",
+            Self::RevisionNumberDesc => "revision_number_desc",
         }
     }
 }
@@ -53,6 +56,15 @@ pub struct CursorPosition {
     pub document_id: Uuid,
     pub sort_time_micros: Option<i64>,
     pub sort_title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort_revision_key: Option<RevisionSortKey>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RevisionSortKey {
+    pub major: i64,
+    pub minor: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -104,7 +116,7 @@ pub fn encode_cursor(
     binding: &CursorBinding,
     position: &CursorPosition,
 ) -> Result<String, ApplicationError> {
-    validate_position(binding.sort, position)?;
+    validate_position(binding, position)?;
     let bytes = serde_json::to_vec(&CursorEnvelope {
         version: CURSOR_VERSION,
         binding: binding.clone(),
@@ -132,7 +144,7 @@ pub fn decode_cursor(
             "unsupported cursor version".into(),
         ));
     }
-    validate_position(envelope.binding.sort, &envelope.position)?;
+    validate_position(&envelope.binding, &envelope.position)?;
     if &envelope.binding != expected {
         return Err(ApplicationError::CursorStale);
     }
@@ -140,16 +152,27 @@ pub fn decode_cursor(
 }
 
 fn validate_position(
-    sort: DocumentSort,
+    binding: &CursorBinding,
     position: &CursorPosition,
 ) -> Result<(), ApplicationError> {
-    let valid = match sort {
-        DocumentSort::TitleAsc => {
-            position.sort_title.is_some() && position.sort_time_micros.is_none()
-        }
-        DocumentSort::CreatedAtDesc | DocumentSort::PublishedAtDesc => {
-            position.sort_time_micros.is_some() && position.sort_title.is_none()
-        }
+    let valid = if binding.kind == QueryKind::DocumentRevisions {
+        binding.sort == DocumentSort::RevisionNumberDesc
+            && position.sort_time_micros.is_none()
+            && position.sort_title.is_none()
+            && position
+                .sort_revision_key
+                .is_some_and(|key| key.major >= 1 && key.minor >= 0)
+    } else {
+        position.sort_revision_key.is_none()
+            && match binding.sort {
+                DocumentSort::TitleAsc => {
+                    position.sort_title.is_some() && position.sort_time_micros.is_none()
+                }
+                DocumentSort::CreatedAtDesc | DocumentSort::PublishedAtDesc => {
+                    position.sort_time_micros.is_some() && position.sort_title.is_none()
+                }
+                DocumentSort::RevisionNumberDesc => false,
+            }
     };
     if valid {
         Ok(())

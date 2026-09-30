@@ -6,7 +6,10 @@ use serde_json::Value;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::{ApplicationError, Page, RepositoryError, VerifiedActorContext, validate_page_size};
+use crate::{
+    ApplicationError, GuiVersionFileSummary, Page, RepositoryError, VerifiedActorContext,
+    validate_page_size,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VersionPurpose {
@@ -48,11 +51,16 @@ pub struct HistoryPageQuery {
 pub struct VersionSummary {
     pub document_version_id: DocumentVersionId,
     pub version_no: i64,
+    pub base_document_version_id: Option<DocumentVersionId>,
     pub lifecycle_state: String,
     pub is_current: bool,
     pub created_at: OffsetDateTime,
+    pub approved_at: Option<OffsetDateTime>,
+    pub scheduled_publish_at: Option<OffsetDateTime>,
     pub published_at: Option<OffsetDateTime>,
     pub withdrawn_at: Option<OffsetDateTime>,
+    pub updated_at: OffsetDateTime,
+    pub file_summary: GuiVersionFileSummary,
     pub first_read_at: Option<OffsetDateTime>,
 }
 

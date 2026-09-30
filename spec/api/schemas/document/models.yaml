@@ -2,7 +2,7 @@ $defs:
   PublishedDocument:
     type: object
     additionalProperties: false
-    required: [documentId, documentVersionId, title, folderId, currentVersionId, revision]
+    required: [documentId, documentVersionId, title, folderId, currentVersionId, revision, displayVersion, displayRevision, readState, displayTimestamp]
     properties:
       documentId: {type: string, format: uuid}
       documentVersionId: {type: string, format: uuid}
@@ -16,10 +16,14 @@ $defs:
       createdAt: {type: string, format: date-time}
       publishedAt: {type: string, format: date-time}
       firstReadAt: {type: [string, 'null'], format: date-time}
+      displayVersion: {$ref: '#/$defs/GuiVersionSummary'}
+      displayRevision: {oneOf: [{$ref: '#/$defs/DocumentRevisionSummary'}, {type: 'null'}]}
+      readState: {$ref: '#/$defs/GuiReadState'}
+      displayTimestamp: {$ref: '#/$defs/GuiDisplayTimestamp'}
   AuthoringDocument:
     type: object
     additionalProperties: false
-    required: [documentId, documentVersionId, title, lifecycleState, folderId, revision, currentVersionId]
+    required: [documentId, documentVersionId, title, lifecycleState, folderId, revision, currentVersionId, displayVersion, displayRevision, readState, displayTimestamp]
     properties:
       documentId: {type: string, format: uuid}
       documentVersionId: {type: string, format: uuid}
@@ -31,10 +35,14 @@ $defs:
       currentVersionId: {type: [string, 'null'], format: uuid}
       metadata: {type: object}
       createdAt: {type: string, format: date-time}
+      displayVersion: {$ref: '#/$defs/GuiVersionSummary'}
+      displayRevision: {oneOf: [{$ref: '#/$defs/DocumentRevisionSummary'}, {type: 'null'}]}
+      readState: {$ref: '#/$defs/GuiReadState'}
+      displayTimestamp: {$ref: '#/$defs/GuiDisplayTimestamp'}
   HistoryDocument:
     type: object
     additionalProperties: false
-    required: [documentId, documentVersionId, title, lifecycleState, ended, folderId, revision]
+    required: [documentId, documentVersionId, title, lifecycleState, ended, folderId, revision, displayVersion, displayRevision, readState, displayTimestamp]
     properties:
       documentId: {type: string, format: uuid}
       documentVersionId: {type: string, format: uuid}
@@ -46,6 +54,10 @@ $defs:
       revision: {type: integer, minimum: 0}
       metadata: {type: object}
       createdAt: {type: string, format: date-time}
+      displayVersion: {$ref: '#/$defs/GuiVersionSummary'}
+      displayRevision: {oneOf: [{$ref: '#/$defs/DocumentRevisionSummary'}, {type: 'null'}]}
+      readState: {$ref: '#/$defs/GuiReadState'}
+      displayTimestamp: {$ref: '#/$defs/GuiDisplayTimestamp'}
   DocumentList:
     oneOf:
       - type: object
@@ -73,18 +85,113 @@ $defs:
     oneOf:
       - $ref: '#/$defs/PublishedDocument'
       - $ref: '#/$defs/AuthoringDocument'
-  Version:
+  GuiVersionSummary:
     type: object
     additionalProperties: false
-    required: [versionId, versionNo, lifecycleState, isCurrent, createdAt]
+    required: [versionId, versionNo, baseVersionId, lifecycleState, isCurrent, approvedAt, scheduledPublishAt, publishedAt, withdrawnAt, updatedAt, fileSummary]
     properties:
       versionId: {type: string, format: uuid}
       versionNo: {type: integer, minimum: 1}
+      baseVersionId: {type: [string, 'null'], format: uuid}
+      lifecycleState: {type: string, enum: [WORKING, PUBLISHED, WITHDRAWN]}
+      isCurrent: {type: boolean}
+      approvedAt: {type: [string, 'null'], format: date-time}
+      scheduledPublishAt: {type: [string, 'null'], format: date-time}
+      publishedAt: {type: [string, 'null'], format: date-time}
+      withdrawnAt: {type: [string, 'null'], format: date-time}
+      updatedAt: {type: string, format: date-time}
+      fileSummary: {$ref: '#/$defs/VersionFileSummary'}
+  VersionFileSummary:
+    type: object
+    additionalProperties: false
+    required: [authoritativeItemCount, totalSizeBytes, primary]
+    properties:
+      authoritativeItemCount: {type: integer, minimum: 0}
+      totalSizeBytes: {type: integer, minimum: 0}
+      primary: {oneOf: [{$ref: '#/$defs/PrimaryFileSummary'}, {type: 'null'}]}
+  PrimaryFileSummary:
+    type: object
+    additionalProperties: false
+    required: [displayName, mediaType, sizeBytes]
+    properties:
+      displayName: {type: string}
+      mediaType: {type: string}
+      sizeBytes: {type: integer, minimum: 0}
+  GuiReadState:
+    type: object
+    additionalProperties: false
+    required: [isRead, firstReadAt]
+    properties:
+      isRead: {type: boolean}
+      firstReadAt: {type: [string, 'null'], format: date-time}
+  GuiDisplayTimestamp:
+    type: object
+    additionalProperties: false
+    required: [kind, value]
+    properties:
+      kind: {type: string, enum: [revisionCreatedAt, workingUpdatedAt]}
+      value: {type: string, format: date-time}
+  DocumentRevisionSummary:
+    type: object
+    additionalProperties: false
+    required: [revisionId, documentVersionId, major, minor, label, createdAt, sourceKind, metadataSnapshotStatus]
+    properties:
+      revisionId: {type: string, format: uuid}
+      documentVersionId: {type: string, format: uuid}
+      major: {type: integer, minimum: 1}
+      minor: {type: integer, minimum: 0}
+      label: {type: string}
+      createdAt: {type: string, format: date-time}
+      sourceKind: {type: string, enum: [initialPublication, contentPublication, metadataRevision, withdrawFallback, legacyBackfill]}
+      metadataSnapshotStatus: {type: string, enum: [complete, unavailableLegacy]}
+  DocumentRevisionPage:
+    type: object
+    additionalProperties: false
+    required: [items, nextCursor]
+    properties:
+      items: {type: array, items: {$ref: '#/$defs/DocumentRevisionSummary'}}
+      nextCursor: {type: [string, 'null']}
+  DocumentRevisionDetail:
+    type: object
+    additionalProperties: false
+    required: [revisionId, documentVersionId, major, minor, label, createdAt, sourceKind, metadataSnapshotStatus, metadataSnapshot, actor, reason]
+    properties:
+      revisionId: {type: string, format: uuid}
+      documentVersionId: {type: string, format: uuid}
+      major: {type: integer, minimum: 1}
+      minor: {type: integer, minimum: 0}
+      label: {type: string}
+      createdAt: {type: string, format: date-time}
+      sourceKind: {type: string, enum: [initialPublication, contentPublication, metadataRevision, withdrawFallback, legacyBackfill]}
+      metadataSnapshotStatus: {type: string, enum: [complete, unavailableLegacy]}
+      metadataSnapshot: {type: [object, 'null']}
+      actor:
+        oneOf:
+        - type: object
+          additionalProperties: false
+          required: [identityProvider, principalId]
+          properties:
+            identityProvider: {type: string, minLength: 1}
+            principalId: {type: string, minLength: 1}
+        - type: 'null'
+      reason: {type: [string, 'null']}
+  Version:
+    type: object
+    additionalProperties: false
+    required: [versionId, versionNo, baseVersionId, lifecycleState, isCurrent, createdAt, approvedAt, scheduledPublishAt, publishedAt, withdrawnAt, updatedAt, fileSummary, firstReadAt]
+    properties:
+      versionId: {type: string, format: uuid}
+      versionNo: {type: integer, minimum: 1}
+      baseVersionId: {type: [string, 'null'], format: uuid}
       lifecycleState: {type: string, enum: [working, published, withdrawn]}
       isCurrent: {type: boolean}
       createdAt: {type: string, format: date-time}
+      approvedAt: {type: [string, 'null'], format: date-time}
+      scheduledPublishAt: {type: [string, 'null'], format: date-time}
       publishedAt: {type: [string, 'null'], format: date-time}
       withdrawnAt: {type: [string, 'null'], format: date-time}
+      updatedAt: {type: string, format: date-time}
+      fileSummary: {$ref: '#/$defs/VersionFileSummary'}
       firstReadAt: {type: [string, 'null'], format: date-time}
       title: {type: string}
       metadata: {type: object}

@@ -169,6 +169,50 @@ paths:
           $ref: '#/components/responses/Problem'
       requestBody:
         $ref: '#/components/requestBodies/VersionMultipart'
+  /v1/documents/{documentId}/revisions:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    get:
+      tags:
+      - History
+      summary: List human-facing document revisions
+      operationId: listDocumentRevisions
+      description: Newest-first keyset pagination. Current Read and ReadHistory authorization is checked on every request.
+      parameters:
+      - $ref: '#/components/parameters/pageSize'
+      - $ref: '#/components/parameters/cursor'
+      responses:
+        '200':
+          $ref: '#/components/responses/DocumentRevisionPage'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/documents/{documentId}/revisions/{revisionId}:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    - $ref: '#/components/parameters/revisionId'
+    get:
+      tags:
+      - History
+      summary: Read a human-facing document revision
+      operationId: getDocumentRevision
+      description: Current Read and ReadHistory authorization is checked for each detail request.
+      responses:
+        '200':
+          $ref: '#/components/responses/DocumentRevision'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/documents/{documentId}/versions/{versionId}:rebase:
     parameters:
     - $ref: '#/components/parameters/documentId'
@@ -636,6 +680,14 @@ components:
       $ref: ./schemas/document/models.yaml#/$defs/HistoryDocument
     DocumentList:
       $ref: ./schemas/document/models.yaml#/$defs/DocumentList
+    GuiVersionSummary:
+      $ref: ./schemas/document/models.yaml#/$defs/GuiVersionSummary
+    DocumentRevisionSummary:
+      $ref: ./schemas/document/models.yaml#/$defs/DocumentRevisionSummary
+    DocumentRevisionPage:
+      $ref: ./schemas/document/models.yaml#/$defs/DocumentRevisionPage
+    DocumentRevisionDetail:
+      $ref: ./schemas/document/models.yaml#/$defs/DocumentRevisionDetail
     DocumentDetail:
       $ref: ./schemas/document/models.yaml#/$defs/DocumentDetail
     Version:
@@ -743,6 +795,13 @@ components:
       in: path
       required: true
       description: Version identifier.
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    revisionId:
+      name: revisionId
+      in: path
+      required: true
+      description: Human-facing document revision identifier.
       schema:
         $ref: '#/components/schemas/Uuid'
     folderId:
@@ -1148,6 +1207,39 @@ components:
             createdAt: '2029-01-01T00:00:00Z'
             publishedAt: '2029-01-02T00:00:00Z'
             firstReadAt: null
+            displayVersion:
+              versionId: 00000000-0000-4000-8000-000000000002
+              versionNo: 2
+              baseVersionId: 00000000-0000-4000-8000-000000000001
+              lifecycleState: PUBLISHED
+              isCurrent: true
+              approvedAt: '2029-01-01T12:00:00Z'
+              scheduledPublishAt: null
+              publishedAt: '2029-01-02T00:00:00Z'
+              withdrawnAt: null
+              updatedAt: '2029-01-02T00:00:00Z'
+              fileSummary:
+                authoritativeItemCount: 1
+                totalSizeBytes: 4096
+                primary:
+                  displayName: published-policy.pdf
+                  mediaType: application/pdf
+                  sizeBytes: 4096
+            displayRevision:
+              revisionId: 00000000-0000-4000-8000-000000000011
+              documentVersionId: 00000000-0000-4000-8000-000000000002
+              major: 2
+              minor: 0
+              label: '2.0'
+              createdAt: '2029-01-02T00:00:00Z'
+              sourceKind: initialPublication
+              metadataSnapshotStatus: complete
+            readState:
+              isRead: false
+              firstReadAt: null
+            displayTimestamp:
+              kind: revisionCreatedAt
+              value: '2029-01-02T00:00:00Z'
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1163,11 +1255,22 @@ components:
           example:
             versionId: 00000000-0000-4000-8000-000000000002
             versionNo: 2
+            baseVersionId: 00000000-0000-4000-8000-000000000001
             lifecycleState: published
             isCurrent: true
             createdAt: '2029-01-01T00:00:00Z'
+            approvedAt: '2029-01-01T12:00:00Z'
+            scheduledPublishAt: null
             publishedAt: '2029-01-02T00:00:00Z'
             withdrawnAt: null
+            updatedAt: '2029-01-02T00:00:00Z'
+            fileSummary:
+              authoritativeItemCount: 1
+              totalSizeBytes: 4096
+              primary:
+                displayName: published-policy.pdf
+                mediaType: application/pdf
+                sizeBytes: 4096
             firstReadAt: null
             title: Published policy
             metadata: {}
@@ -1186,6 +1289,59 @@ components:
           example:
             items: []
             nextCursor: null
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    DocumentRevisionPage:
+      description: DocumentRevisionPage
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DocumentRevisionPage'
+          example:
+            items:
+            - revisionId: 00000000-0000-4000-8000-000000000011
+              documentVersionId: 00000000-0000-4000-8000-000000000002
+              major: 3
+              minor: 1
+              label: '3.1'
+              createdAt: '2029-01-03T12:00:00Z'
+              sourceKind: metadataRevision
+              metadataSnapshotStatus: complete
+            nextCursor: null
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    DocumentRevision:
+      description: DocumentRevision
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DocumentRevisionDetail'
+          example:
+            revisionId: 00000000-0000-4000-8000-000000000011
+            documentVersionId: 00000000-0000-4000-8000-000000000002
+            major: 3
+            minor: 1
+            label: '3.1'
+            createdAt: '2029-01-03T12:00:00Z'
+            sourceKind: metadataRevision
+            metadataSnapshotStatus: complete
+            metadataSnapshot:
+              document_type: policy
+              owning_department: null
+              category: operations
+              extensions: null
+            actor:
+              identityProvider: example-idp
+              principalId: policy-admin
+            reason: annual-review
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.

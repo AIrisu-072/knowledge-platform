@@ -170,19 +170,64 @@ fn assert_schema(definition: &str, value: &Value) {
                 "items": {"type": "array", "items": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["versionId", "versionNo", "lifecycleState", "isCurrent", "createdAt"],
+                    "required": ["versionId", "versionNo", "baseVersionId", "lifecycleState", "isCurrent", "createdAt", "approvedAt", "scheduledPublishAt", "publishedAt", "withdrawnAt", "updatedAt", "fileSummary", "firstReadAt"],
                     "properties": {
                         "versionId": {"type": "string", "format": "uuid"},
                         "versionNo": {"type": "integer", "minimum": 1},
+                        "baseVersionId": {"type": ["string", "null"], "format": "uuid"},
                         "lifecycleState": {"enum": ["working", "published", "withdrawn"]},
                         "isCurrent": {"type": "boolean"},
                         "createdAt": {"type": "string", "format": "date-time"},
+                        "approvedAt": {"type": ["string", "null"], "format": "date-time"},
+                        "scheduledPublishAt": {"type": ["string", "null"], "format": "date-time"},
                         "publishedAt": {"type": ["string", "null"], "format": "date-time"},
                         "withdrawnAt": {"type": ["string", "null"], "format": "date-time"},
+                        "updatedAt": {"type": "string", "format": "date-time"},
+                        "fileSummary": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["authoritativeItemCount", "totalSizeBytes", "primary"],
+                            "properties": {
+                                "authoritativeItemCount": {"type": "integer", "minimum": 0},
+                                "totalSizeBytes": {"type": "integer", "minimum": 0},
+                                "primary": {"type": ["object", "null"]}
+                            }
+                        },
                         "firstReadAt": {"type": ["string", "null"], "format": "date-time"}
                     }
                 }},
                 "nextCursor": {"type": ["string", "null"]}
+            }
+        }),
+        "Version" => json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["versionId", "versionNo", "baseVersionId", "lifecycleState", "isCurrent", "createdAt", "approvedAt", "scheduledPublishAt", "publishedAt", "withdrawnAt", "updatedAt", "fileSummary", "firstReadAt", "title", "metadata"],
+            "properties": {
+                "versionId": {"type": "string", "format": "uuid"},
+                "versionNo": {"type": "integer", "minimum": 1},
+                "baseVersionId": {"type": ["string", "null"], "format": "uuid"},
+                "lifecycleState": {"enum": ["working", "published", "withdrawn"]},
+                "isCurrent": {"type": "boolean"},
+                "createdAt": {"type": "string", "format": "date-time"},
+                "approvedAt": {"type": ["string", "null"], "format": "date-time"},
+                "scheduledPublishAt": {"type": ["string", "null"], "format": "date-time"},
+                "publishedAt": {"type": ["string", "null"], "format": "date-time"},
+                "withdrawnAt": {"type": ["string", "null"], "format": "date-time"},
+                "updatedAt": {"type": "string", "format": "date-time"},
+                "fileSummary": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["authoritativeItemCount", "totalSizeBytes", "primary"],
+                    "properties": {
+                        "authoritativeItemCount": {"type": "integer", "minimum": 0},
+                        "totalSizeBytes": {"type": "integer", "minimum": 0},
+                        "primary": {"type": ["object", "null"]}
+                    }
+                },
+                "firstReadAt": {"type": ["string", "null"], "format": "date-time"},
+                "title": {"type": "string"},
+                "metadata": {"type": "object"}
             }
         }),
         _ => panic!("unknown schema fixture"),

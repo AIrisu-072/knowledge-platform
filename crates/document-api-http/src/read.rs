@@ -6,13 +6,16 @@ use axum::routing::get;
 use axum::{Extension, Json, Router};
 use document_application::{
     AccessPolicyReadRepository, AccessPolicyReadService, ApplicationError,
-    AuthoringDocumentSummary, AuthoringQuery, DocumentDetailPurpose, DocumentDetailRead,
-    DocumentDetailReadService, DocumentHistoryEntry, DocumentHistoryRepository,
+    AuthoringDocumentSummary, AuthoringQuery, DisplayTimestampKind, DocumentDetailPurpose,
+    DocumentDetailRead, DocumentDetailReadService, DocumentHistoryEntry, DocumentHistoryRepository,
     DocumentHistoryService, DocumentListFilter, DocumentQueryRepository, DocumentQueryService,
-    DocumentSort, FolderPageQuery, HistoryDocumentSummary, HistoryPageQuery, HistoryQuery, Page,
-    PolicyBindingMode, ProvenanceQuality, PublishedDocumentSummary, PublishedQuery,
-    RootFolderSummary, VerifiedActorContext, VersionDetail, VersionFileSummary, VersionPageQuery,
-    VersionPurpose, VersionRequest, VersionSummary,
+    DocumentRevisionDetail, DocumentRevisionDetailQuery, DocumentRevisionPageQuery,
+    DocumentRevisionReadRepository, DocumentRevisionReadService, DocumentRevisionSummary,
+    DocumentSort, FolderPageQuery, GuiDocumentReadModel, GuiVersionFileSummary, GuiVersionSummary,
+    HistoryDocumentSummary, HistoryPageQuery, HistoryQuery, Page, PolicyBindingMode,
+    ProvenanceQuality, PublishedDocumentSummary, PublishedQuery, RootFolderSummary,
+    VerifiedActorContext, VersionDetail, VersionFileSummary, VersionPageQuery, VersionPurpose,
+    VersionRequest, VersionSummary,
 };
 use document_domain::{
     Action, DocumentId, DocumentVersionId, PolicyGrant, PolicySubjectKind, PolicyTarget,
@@ -33,6 +36,7 @@ use crate::trace::TraceContext;
 pub trait AuthorizedReadRepository:
     DocumentQueryRepository
     + DocumentHistoryRepository
+    + DocumentRevisionReadRepository
     + AccessPolicyReadRepository
     + Send
     + Sync
@@ -43,6 +47,7 @@ pub trait AuthorizedReadRepository:
 impl<T> AuthorizedReadRepository for T where
     T: DocumentQueryRepository
         + DocumentHistoryRepository
+        + DocumentRevisionReadRepository
         + AccessPolicyReadRepository
         + Send
         + Sync
@@ -76,6 +81,14 @@ pub fn read_router<R: AuthorizedReadRepository>(
         .route(
             "/v1/documents/{document_id}/versions/{version_id}",
             get(get_version::<R>),
+        )
+        .route(
+            "/v1/documents/{document_id}/revisions",
+            get(list_revisions::<R>),
+        )
+        .route(
+            "/v1/documents/{document_id}/revisions/{revision_id}",
+            get(get_revision::<R>),
         )
         .route(
             "/v1/documents/{document_id}/history",
@@ -166,6 +179,8 @@ struct PublishedDocumentDto {
     published_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     first_read_at: Option<String>,
+    #[serde(flatten)]
+    gui: GuiDocumentFieldsDto,
 }
 
 #[derive(Debug, Serialize)]
@@ -181,6 +196,8 @@ struct AuthoringDocumentDto {
     current_version_id: Option<Uuid>,
     metadata: Value,
     created_at: String,
+    #[serde(flatten)]
+    gui: GuiDocumentFieldsDto,
 }
 
 #[derive(Debug, Serialize)]
@@ -196,6 +213,93 @@ struct HistoryDocumentDto {
     revision: i64,
     metadata: Value,
     created_at: String,
+    #[serde(flatten)]
+    gui: GuiDocumentFieldsDto,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GuiDocumentFieldsDto {
+    display_version: GuiVersionSummaryDto,
+    display_revision: Option<DocumentRevisionSummaryDto>,
+    read_state: GuiReadStateDto,
+    display_timestamp: GuiDisplayTimestampDto,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GuiVersionSummaryDto {
+    version_id: Uuid,
+    version_no: i64,
+    base_version_id: Option<Uuid>,
+    lifecycle_state: String,
+    is_current: bool,
+    approved_at: Option<String>,
+    scheduled_publish_at: Option<String>,
+    published_at: Option<String>,
+    withdrawn_at: Option<String>,
+    updated_at: String,
+    file_summary: GuiVersionFileSummaryDto,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GuiVersionFileSummaryDto {
+    authoritative_item_count: i64,
+    total_size_bytes: i64,
+    primary: Option<GuiPrimaryFileSummaryDto>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GuiPrimaryFileSummaryDto {
+    display_name: String,
+    media_type: String,
+    size_bytes: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GuiReadStateDto {
+    is_read: bool,
+    first_read_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GuiDisplayTimestampDto {
+    kind: &'static str,
+    value: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DocumentRevisionSummaryDto {
+    revision_id: Uuid,
+    document_version_id: Uuid,
+    major: i64,
+    minor: i64,
+    label: String,
+    created_at: String,
+    source_kind: String,
+    metadata_snapshot_status: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RevisionActorDto {
+    identity_provider: String,
+    principal_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DocumentRevisionDetailDto {
+    #[serde(flatten)]
+    summary: DocumentRevisionSummaryDto,
+    metadata_snapshot: Option<Value>,
+    actor: Option<RevisionActorDto>,
+    reason: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -224,11 +328,16 @@ enum DocumentListDto {
 struct VersionDto {
     version_id: Uuid,
     version_no: i64,
+    base_version_id: Option<Uuid>,
     lifecycle_state: String,
     is_current: bool,
     created_at: String,
+    approved_at: Option<String>,
+    scheduled_publish_at: Option<String>,
     published_at: Option<String>,
     withdrawn_at: Option<String>,
+    updated_at: String,
+    file_summary: GuiVersionFileSummaryDto,
     first_read_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<String>,
@@ -535,6 +644,65 @@ async fn list_history<R: AuthorizedReadRepository>(
     }))
 }
 
+async fn list_revisions<R: AuthorizedReadRepository>(
+    State(state): State<ReadState<R>>,
+    Extension(ctx): Extension<VerifiedActorContext>,
+    Extension(trace): Extension<TraceContext>,
+    Path(document_id): Path<String>,
+    query: Result<Query<PageParams>, QueryRejection>,
+) -> Result<Json<PageDto<DocumentRevisionSummaryDto>>, ApiError> {
+    let path = format!("/v1/documents/{document_id}/revisions");
+    let params = query_params(query, &path, &trace)?;
+    let page = DocumentRevisionReadService::new(state.repository)
+        .list_document_revisions(
+            &ctx,
+            DocumentRevisionPageQuery {
+                document_id: document_id_value(&document_id)
+                    .map_err(|error| problem(error, &path, &trace))?,
+                page_size: params.page_size,
+                cursor: params.cursor,
+            },
+        )
+        .await
+        .map_err(|error| problem(error, &path, &trace))?;
+    let items = page
+        .items
+        .into_iter()
+        .map(revision_summary_dto)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| problem(error, &path, &trace))?;
+    Ok(Json(PageDto {
+        items,
+        next_cursor: page.next_cursor,
+    }))
+}
+
+async fn get_revision<R: AuthorizedReadRepository>(
+    State(state): State<ReadState<R>>,
+    Extension(ctx): Extension<VerifiedActorContext>,
+    Extension(trace): Extension<TraceContext>,
+    Path((document_id, revision_id)): Path<(String, String)>,
+) -> Result<Json<DocumentRevisionDetailDto>, ApiError> {
+    let path = format!("/v1/documents/{document_id}/revisions/{revision_id}");
+    let document_id =
+        document_id_value(&document_id).map_err(|error| problem(error, &path, &trace))?;
+    let revision_id = Uuid::parse_str(&revision_id)
+        .map_err(|_| problem(validation("invalid revision id"), &path, &trace))?;
+    let detail = DocumentRevisionReadService::new(state.repository)
+        .get_document_revision(
+            &ctx,
+            DocumentRevisionDetailQuery {
+                document_id,
+                revision_id,
+            },
+        )
+        .await
+        .map_err(|error| problem(error, &path, &trace))?;
+    Ok(Json(
+        document_revision_detail_dto(detail).map_err(|error| problem(error, &path, &trace))?,
+    ))
+}
+
 async fn list_files<R: AuthorizedReadRepository>(
     State(state): State<ReadState<R>>,
     Extension(ctx): Extension<VerifiedActorContext>,
@@ -790,6 +958,94 @@ fn optional_timestamp(value: Option<OffsetDateTime>) -> Result<Option<String>, A
     value.map(timestamp).transpose()
 }
 
+fn gui_fields_dto(value: GuiDocumentReadModel) -> Result<GuiDocumentFieldsDto, ApplicationError> {
+    let first_read_at = optional_timestamp(value.first_read_at)?;
+    let display_timestamp = GuiDisplayTimestampDto {
+        kind: match value.display_timestamp.kind {
+            DisplayTimestampKind::RevisionCreatedAt => "revisionCreatedAt",
+            DisplayTimestampKind::WorkingUpdatedAt => "workingUpdatedAt",
+        },
+        value: timestamp(value.display_timestamp.value)?,
+    };
+    Ok(GuiDocumentFieldsDto {
+        display_version: gui_version_summary_dto(value.display_version)?,
+        display_revision: value
+            .display_revision
+            .map(revision_summary_dto)
+            .transpose()?,
+        read_state: GuiReadStateDto {
+            is_read: first_read_at.is_some(),
+            first_read_at,
+        },
+        display_timestamp,
+    })
+}
+
+fn gui_version_summary_dto(
+    value: GuiVersionSummary,
+) -> Result<GuiVersionSummaryDto, ApplicationError> {
+    Ok(GuiVersionSummaryDto {
+        version_id: value.document_version_id.as_uuid(),
+        version_no: value.version_no,
+        base_version_id: value.base_document_version_id.map(|id| id.as_uuid()),
+        lifecycle_state: value.lifecycle_state,
+        is_current: value.is_current,
+        approved_at: optional_timestamp(value.approved_at)?,
+        scheduled_publish_at: optional_timestamp(value.scheduled_publish_at)?,
+        published_at: optional_timestamp(value.published_at)?,
+        withdrawn_at: optional_timestamp(value.withdrawn_at)?,
+        updated_at: timestamp(value.updated_at)?,
+        file_summary: gui_file_summary_dto(value.file_summary),
+    })
+}
+
+fn gui_file_summary_dto(value: GuiVersionFileSummary) -> GuiVersionFileSummaryDto {
+    GuiVersionFileSummaryDto {
+        authoritative_item_count: value.authoritative_item_count,
+        total_size_bytes: value.total_size_bytes,
+        primary: value.primary.map(|primary| GuiPrimaryFileSummaryDto {
+            display_name: primary.display_name,
+            media_type: primary.media_type,
+            size_bytes: primary.size_bytes,
+        }),
+    }
+}
+
+fn revision_summary_dto(
+    value: DocumentRevisionSummary,
+) -> Result<DocumentRevisionSummaryDto, ApplicationError> {
+    let metadata_snapshot_status = match value.metadata_snapshot_status.as_str() {
+        "complete" => "complete",
+        "unavailable_legacy" => "unavailableLegacy",
+        _ => return Err(ApplicationError::IntegrityViolation),
+    };
+    Ok(DocumentRevisionSummaryDto {
+        revision_id: value.revision_id,
+        document_version_id: value.document_version_id.as_uuid(),
+        major: value.major_no,
+        minor: value.minor_no,
+        label: format!("{}.{}", value.major_no, value.minor_no),
+        created_at: timestamp(value.created_at)?,
+        source_kind: value.source_kind,
+        metadata_snapshot_status: metadata_snapshot_status.to_owned(),
+    })
+}
+
+fn document_revision_detail_dto(
+    value: DocumentRevisionDetail,
+) -> Result<DocumentRevisionDetailDto, ApplicationError> {
+    let actor = value.actor.map(|principal| RevisionActorDto {
+        identity_provider: principal.identity_provider().to_owned(),
+        principal_id: principal.principal_id().to_owned(),
+    });
+    Ok(DocumentRevisionDetailDto {
+        summary: revision_summary_dto(value.summary)?,
+        metadata_snapshot: value.metadata_snapshot,
+        actor,
+        reason: value.reason,
+    })
+}
+
 fn published_dto(
     value: PublishedDocumentSummary,
 ) -> Result<PublishedDocumentDto, ApplicationError> {
@@ -806,6 +1062,7 @@ fn published_dto(
         created_at: timestamp(value.created_at)?,
         published_at: timestamp(value.published_at)?,
         first_read_at: optional_timestamp(value.first_read_at)?,
+        gui: gui_fields_dto(value.gui)?,
     })
 }
 
@@ -823,6 +1080,7 @@ fn authoring_dto(
         current_version_id: value.current_version_id.map(|id| id.as_uuid()),
         metadata: value.document_metadata,
         created_at: timestamp(value.created_at)?,
+        gui: gui_fields_dto(value.gui)?,
     })
 }
 
@@ -840,6 +1098,7 @@ fn history_document_dto(
         revision: value.document_revision,
         metadata: value.document_metadata,
         created_at: timestamp(value.created_at)?,
+        gui: gui_fields_dto(value.gui)?,
     })
 }
 
@@ -858,11 +1117,16 @@ fn version_summary_dto(value: VersionSummary) -> Result<VersionDto, ApplicationE
     Ok(VersionDto {
         version_id: value.document_version_id.as_uuid(),
         version_no: value.version_no,
+        base_version_id: value.base_document_version_id.map(|id| id.as_uuid()),
         lifecycle_state: value.lifecycle_state.to_ascii_lowercase(),
         is_current: value.is_current,
         created_at: timestamp(value.created_at)?,
+        approved_at: optional_timestamp(value.approved_at)?,
+        scheduled_publish_at: optional_timestamp(value.scheduled_publish_at)?,
         published_at: optional_timestamp(value.published_at)?,
         withdrawn_at: optional_timestamp(value.withdrawn_at)?,
+        updated_at: timestamp(value.updated_at)?,
+        file_summary: gui_file_summary_dto(value.file_summary),
         first_read_at: optional_timestamp(value.first_read_at)?,
         title: None,
         metadata: None,
