@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::Arc;
 
 use document_domain::{DocumentId, DocumentVersionId, PrincipalRef};
@@ -19,13 +20,12 @@ pub struct ReadStateResult {
     pub inserted: bool,
 }
 
-#[allow(async_fn_in_trait)]
 pub trait ReadStateRepository: Send + Sync {
-    async fn mark_version_read(
+    fn mark_version_read(
         &self,
         ctx: &VerifiedActorContext,
         command: MarkVersionRead,
-    ) -> Result<ReadStateResult, RepositoryError>;
+    ) -> impl Future<Output = Result<ReadStateResult, RepositoryError>> + Send;
 }
 
 pub struct ReadStateService<R> {

@@ -143,7 +143,9 @@ async fn invalid_parent_root_and_stale_revision_do_not_mutate() {
                 create(FolderId::from_uuid(Uuid::now_v7()), f.root_id, 1, "Child")
             )
             .await,
-        Err(ApplicationError::Conflict)
+        Err(ApplicationError::Management(
+            ManagementErrorCode::RevisionConflict
+        ))
     ));
     let root = folder(&f, f.root_id).await;
     assert_eq!(root.0, None);
