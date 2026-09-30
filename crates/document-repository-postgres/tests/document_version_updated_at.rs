@@ -32,6 +32,7 @@ async fn updated_at(f: &support::Fixture, version_id: DocumentVersionId) -> Offs
 #[tokio::test]
 async fn version_projection_timestamp_tracks_content_schedule_publication_and_withdrawal() {
     let f = fixture().await;
+    assert_eq!(updated_at(&f, f.base_id).await, due(0));
     let service = f.service();
     let version_id = DocumentVersionId::from_uuid(Uuid::now_v7());
     service
