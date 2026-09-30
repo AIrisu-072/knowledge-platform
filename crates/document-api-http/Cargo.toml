@@ -19,6 +19,7 @@ tokio.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+document-diff-core = { version = "0.0.0", path = "../document-diff-core" }
 document-repository-postgres = { version = "0.0.0", path = "../document-repository-postgres" }
 document-semantic-inspection-core = { version = "0.0.0", path = "../document-semantic-inspection-core" }
 sqlx.workspace = true
