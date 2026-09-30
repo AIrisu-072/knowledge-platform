@@ -6,7 +6,9 @@ use std::task::{Context, Poll};
 
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode, header};
-use document_api_http::file_download::file_download_router;
+use document_api_http::file_download::{
+    file_download_router, file_download_router_with_idle_timeout,
+};
 use document_api_http::identity::{IdentityAdapter, IdentityRequestContext};
 use document_application::{
     AuditedFileGrant, ContentReader, FileStorage, IdentityResolutionError, InvocationKind,
@@ -109,6 +111,18 @@ struct RecordingReader {
     events: Arc<Mutex<Vec<&'static str>>>,
 }
 
+struct PendingReader;
+
+impl AsyncRead for PendingReader {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        _buffer: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        Poll::Pending
+    }
+}
+
 impl AsyncRead for RecordingReader {
     fn poll_read(
         self: Pin<&mut Self>,
@@ -130,6 +144,7 @@ impl AsyncRead for RecordingReader {
 #[derive(Default)]
 struct CountingStorage {
     fail: AtomicBool,
+    stall: AtomicBool,
     opens: AtomicUsize,
     events: Arc<Mutex<Vec<&'static str>>>,
 }
@@ -145,6 +160,9 @@ impl FileStorage for CountingStorage {
         if self.fail.load(Ordering::SeqCst) {
             return Err(StorageError::Unavailable);
         }
+        if self.stall.load(Ordering::SeqCst) {
+            return Ok(Box::pin(PendingReader));
+        }
         Ok(Box::pin(RecordingReader {
             bytes: FILE_BYTES,
             offset: 0,
@@ -156,6 +174,27 @@ impl FileStorage for CountingStorage {
     async fn list_objects(&self) -> Result<Vec<StorageObjectInfo>, StorageError> {
         Ok(Vec::new())
     }
+}
+
+#[tokio::test]
+async fn stalled_download_body_fails_after_the_finite_idle_budget() {
+    let repository = Arc::new(FakeRepository::default());
+    let storage = Arc::new(CountingStorage {
+        stall: AtomicBool::new(true),
+        events: repository.events.clone(),
+        ..CountingStorage::default()
+    });
+    let router = file_download_router_with_idle_timeout(
+        repository.clone(),
+        storage,
+        Arc::new(FixedIdentity(context())),
+        std::time::Duration::from_millis(20),
+    )
+    .unwrap();
+    let response = request(router, &uri(ids(), "history"), None).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(to_bytes(response.into_body(), 1024).await.is_err());
+    assert_eq!(*repository.events.lock().unwrap(), vec!["audit", "open"]);
 }
 
 fn ids() -> (Uuid, Uuid, Uuid, Uuid) {

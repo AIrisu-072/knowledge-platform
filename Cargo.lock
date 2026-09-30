@@ -1135,6 +1135,7 @@ dependencies = [
  "axum",
  "document-application",
  "document-diff-core",
+ "document-diff-runner",
  "document-domain",
  "document-repository-postgres",
  "document-semantic-inspection-core",
