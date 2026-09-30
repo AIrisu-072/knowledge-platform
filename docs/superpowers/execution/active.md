@@ -1,5 +1,19 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document GUI Integration v0 Written Design review pending、2026-09-30 JST
+
+- Status: **DESIGN ACTIVE / WRITTEN SPEC REVIEW PENDING / IMPLEMENTATION BLOCKED**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。
+- Design: `docs/superpowers/specs/2026-09-30-document-gui-integration-v0-design.md` blob `0b8c4366162d2f0539db4fdcced4a45c4f0012c4`。
+- branch: `design/document-gui-integration-v0`。基点はDocument HTTP/OpenAPI Transport v0 accepted head `3f870a92525afb6741e1ee72ee6c932eac0f0511` / Draft PR #32。
+- Human GUI Source Design artifact SHA-256: `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。Visual referenceはMock 1〜7、Design/Motion/Keyboard/Error states。repository normative SSOTは本設計。
+- 主要決定: `DocumentVersion.version_no`=内容世代、`DocumentRevision Major.Minor`=人間向け改訂、`Document.revision`=OCC。表示MajorはDocument単位で単調増加し、Withdraw fallbackでも逆行しない。
+- GUI/API gapはRead Model、Action Capability、Identity Presentation、Revision/Diff Display、Typed Client/Binary Bridgeへ統合。React GUIはSource Designの3-pane / Workspace / Motion Systemを維持する。
+- predecessor残作業: PR #32 final 3 gateはSUCCESSだが旧HTTP Active/StatusのCOMPLETE追随とstacked PR #27/#29/#30/#31/#32のmain統合は未実施。設計承認後のProduction Plan G0で最初に閉じる。
+- blocker: 依頼者のWritten Design承認。承認前にproduct implementation、migration、OpenAPI product変更、frontend production dependency promotion、predecessor mergeを行わない。
+- 次のexact action: Written Designをレビューへ提示する。明示承認後、Design Approval recordとG0〜G9を含む単一Production Implementation Planを作成する。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## Active checkpoint — Document HTTP/OpenAPI Transport v0実装・受入head hosted GREEN、2026-09-30 JST
 
 - Status: **ACTIVE / HAPI-01〜12 IMPLEMENTATION・ACCEPTANCE HOSTED GREEN / FINAL EVIDENCE RECORD GATE NEXT**。詳細は `docs/superpowers/execution/document-http-openapi-transport-v0-status.md` と `document-http-openapi-transport-v0-acceptance.md`。
