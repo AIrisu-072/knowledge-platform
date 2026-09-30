@@ -640,9 +640,43 @@ type DisplayFragment =
 
 FrontendにDOCX/XLSX/PPTX/PDF parserを置かない。
 
-原本表示用内容はqualified format adapter / Diff evidenceからBackendで作る。
+原本表示用内容はauthoritative file bytesとDiffのsource locatorからBackendで作る。Search extraction / rendition / browser-side parserを表示本文の正本にしない。
 
-### 16.3 Resource profile
+### 16.3 Execution / authorization boundary
+
+Version同士の表示本文は既存Comparison endpointを拡張する。
+
+```http
+POST /v1/documents/{documentId}/comparisons
+```
+
+既存 `projection=diff|comparisonTable` に `projection=display` を追加する。
+
+`display` requestは少なくとも:
+
+- baseVersionId
+- targetVersionId
+- profile
+- pageSize
+- cursor
+
+を持つ。
+
+Display Projectionは以下を必須とする。
+
+1. 現在のVerifiedActorContextで両Versionの現在認可を確認する。
+2. semantic DiffResultを既存DocumentDiffServiceの意味で確定する。
+3. display fragment用authoritative bytesを必要な範囲だけ既存の監査付きfile access境界から取得する。
+4. source locatorとraw bindingを再確認する。
+5. bounded format-specific display executorでfragmentを生成する。
+6. 結果開示直前に現在認可・input freshnessを再確認し、Diff結果開示Auditと相関可能なdisplay access evidenceを残す。
+7. Audit/authorization/commit outcome unknownではfragmentを返さない。
+
+実装最適化でDiff計算とdisplay生成のfile openを共有してよいが、必須Auditと現在認可の意味を弱めない。
+
+Display fragmentはcanonical DiffResult / result digestへ含めない。永続保存しない。v0ではcross-requestのpersistent display cacheを作らない。bounded in-process ephemeral cacheを導入する場合も、keyをresult digest + display profileへbindingし、cache hitごとに現在認可を再確認する。
+
+### 16.4 Resource profile
 
 開始値:
 
@@ -662,6 +696,23 @@ FrontendにDOCX/XLSX/PPTX/PDF parserを置かない。
 
 正式Revision同士を比較する新しいApplication compositionを追加する。
 
+HTTP endpoint:
+
+```http
+POST /v1/documents/{documentId}/revision-comparisons
+```
+
+Request:
+
+```text
+baseRevisionId
+targetRevisionId
+projection = diff | comparisonTable | display
+pageSize / cursor  // display時
+```
+
+同一Documentの異なるRevisionだけを許可する。
+
 ```text
 Revision A
 ├─ DocumentVersion A
@@ -679,14 +730,21 @@ Revision B
 Responseは:
 
 - base/target revision
-- content verdict / coverage
+- content comparison status
+- content verdict / coverage（異なるDocumentVersionの場合）
 - metadata comparison status
-- display items
+- metadata changes
+- display items（projection=display）
 - unverified regions
-- result digest(s)
+- content result digest（存在する場合）
+- metadata snapshot digests
 - audit event
 
 を分離して持つ。
+
+同一DocumentVersionのRevision比較ではcontent comparison statusを `sameAuthoritativeVersion` とし、Document Diffを再計算しない。metadata snapshotだけを比較する。
+
+Revision comparison cursorはprincipal、documentId、baseRevisionId、targetRevisionId、metadata snapshot digest、content result digest（存在時）、projection、page positionへbindingする。
 
 WORKING Version対正式Revisionの内容比較は既存Version comparison APIを使用する。WORKINGを正式Revisionとして捏造しない。
 
@@ -940,9 +998,10 @@ ConflictはToastだけで終わらせず対象面へ表示。
 5. Document/Version/Folder detailへAction Capability Projection
 6. History / Policy responsesへIdentityPresentation enrichment
 7. `GET /v1/session`
-8. revision comparison / bounded display projection API
-9. machine-readable metadata comparison
-10. exact OpenAPI examples + schema tests
+8. existing `POST /v1/documents/{documentId}/comparisons` へ `projection=display` とbounded pagingを追加
+9. `POST /v1/documents/{documentId}/revision-comparisons`
+10. machine-readable metadata comparison
+11. exact OpenAPI examples + schema tests
 
 OpenAPI 3.2.1が引き続きtransport SSOT。
 
