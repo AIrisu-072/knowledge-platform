@@ -219,6 +219,59 @@ $defs:
       versionNo: {type: integer, minimum: 1}
       baseVersionId: {type: string, format: uuid}
       resultingRevision: {type: integer, minimum: 0}
+  PublishResult:
+    type: object
+    additionalProperties: false
+    required: [publishOperationId, documentId, documentVersionId, resultingDocumentRevision, publishedAt]
+    properties:
+      publishOperationId: {type: string, format: uuid}
+      documentId: {type: string, format: uuid}
+      documentVersionId: {type: string, format: uuid}
+      resultingDocumentRevision: {type: integer, minimum: 0}
+      publishedAt: {type: string, format: date-time}
+  WithdrawResult:
+    type: object
+    additionalProperties: false
+    required: [operationId, documentId, targetVersionId, formerCurrentVersionId, resultingCurrentVersionId, resultingRevision, restorationWithheldReason]
+    properties:
+      operationId: {type: string, format: uuid}
+      documentId: {type: string, format: uuid}
+      targetVersionId: {type: string, format: uuid}
+      formerCurrentVersionId: {type: [string, 'null'], format: uuid}
+      resultingCurrentVersionId: {type: [string, 'null'], format: uuid}
+      resultingRevision: {type: integer, minimum: 0}
+      restorationWithheldReason: {type: [string, 'null']}
+  SchedulePublicationResult:
+    type: object
+    additionalProperties: false
+    required: [publishOperationId, documentId, targetVersionId, acceptedRevision, scheduledPublishAt]
+    properties:
+      publishOperationId: {type: string, format: uuid}
+      documentId: {type: string, format: uuid}
+      targetVersionId: {type: string, format: uuid}
+      acceptedRevision: {type: integer, minimum: 0}
+      scheduledPublishAt: {type: string, format: date-time}
+  CancelPublicationResult:
+    type: object
+    additionalProperties: false
+    required: [operationId, publishOperationId, documentId, targetVersionId, resultingRevision]
+    properties:
+      operationId: {type: string, format: uuid}
+      publishOperationId: {type: string, format: uuid}
+      documentId: {type: string, format: uuid}
+      targetVersionId: {type: string, format: uuid}
+      resultingRevision: {type: integer, minimum: 0}
+  EndPublicationResult:
+    type: object
+    additionalProperties: false
+    required: [operationId, documentId, formerCurrentVersionId, resultingCurrentVersionId, resultingDocumentRevision, endedAt]
+    properties:
+      operationId: {type: string, format: uuid}
+      documentId: {type: string, format: uuid}
+      formerCurrentVersionId: {type: string, format: uuid}
+      resultingCurrentVersionId: {type: 'null'}
+      resultingDocumentRevision: {type: integer, minimum: 0}
+      endedAt: {type: string, format: date-time}
   ReadStateResult:
     type: object
     additionalProperties: false

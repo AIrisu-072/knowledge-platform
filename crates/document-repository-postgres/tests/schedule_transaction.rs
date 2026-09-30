@@ -90,7 +90,7 @@ async fn later_version_reservation_replay_and_cancellation_are_atomic() {
         service
             .schedule_publish(schedule(1, &f, target, 2, 2_000_000_001))
             .await,
-        Err(ApplicationError::Conflict)
+        Err(ApplicationError::OperationConflict)
     );
     assert_eq!(
         service
@@ -139,7 +139,7 @@ async fn later_version_reservation_replay_and_cancellation_are_atomic() {
     .unwrap();
     assert_eq!(
         service.cancel_schedule(mismatch).await,
-        Err(ApplicationError::Conflict)
+        Err(ApplicationError::OperationConflict)
     );
     let stored = f
         .repository

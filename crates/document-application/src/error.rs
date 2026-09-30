@@ -113,6 +113,8 @@ pub enum ApplicationError {
     FileObjectNotFound,
     #[error("operation conflicts with current authoritative state")]
     Conflict,
+    #[error("operation id was already used with a different payload")]
+    OperationConflict,
     #[error("business rule rejected operation")]
     BusinessRule,
     #[error("management operation rejected: {0:?}")]

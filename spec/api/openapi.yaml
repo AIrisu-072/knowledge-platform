@@ -200,7 +200,7 @@ paths:
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
         '200':
-          $ref: '#/components/responses/MutationResult'
+          $ref: '#/components/responses/PublishResult'
         '401':
           $ref: '#/components/responses/Problem'
         default:
@@ -219,7 +219,7 @@ paths:
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
         '200':
-          $ref: '#/components/responses/MutationResult'
+          $ref: '#/components/responses/WithdrawResult'
         '401':
           $ref: '#/components/responses/Problem'
         default:
@@ -238,7 +238,7 @@ paths:
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
         '200':
-          $ref: '#/components/responses/MutationResult'
+          $ref: '#/components/responses/SchedulePublicationResult'
         '401':
           $ref: '#/components/responses/Problem'
         default:
@@ -257,7 +257,7 @@ paths:
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
         '200':
-          $ref: '#/components/responses/MutationResult'
+          $ref: '#/components/responses/CancelPublicationResult'
         '401':
           $ref: '#/components/responses/Problem'
         default:
@@ -275,7 +275,7 @@ paths:
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
         '200':
-          $ref: '#/components/responses/MutationResult'
+          $ref: '#/components/responses/EndPublicationResult'
         '401':
           $ref: '#/components/responses/Problem'
         default:
@@ -660,6 +660,16 @@ components:
       $ref: ./schemas/document/models.yaml#/$defs/MutationResult
     VersionMutationResult:
       $ref: ./schemas/document/models.yaml#/$defs/VersionMutationResult
+    PublishResult:
+      $ref: ./schemas/document/models.yaml#/$defs/PublishResult
+    WithdrawResult:
+      $ref: ./schemas/document/models.yaml#/$defs/WithdrawResult
+    SchedulePublicationResult:
+      $ref: ./schemas/document/models.yaml#/$defs/SchedulePublicationResult
+    CancelPublicationResult:
+      $ref: ./schemas/document/models.yaml#/$defs/CancelPublicationResult
+    EndPublicationResult:
+      $ref: ./schemas/document/models.yaml#/$defs/EndPublicationResult
     ReadStateResult:
       $ref: ./schemas/document/models.yaml#/$defs/ReadStateResult
     SourceEvidence:
@@ -1174,6 +1184,56 @@ components:
           schema:
             type: string
             const: private, no-store
+    PublishResult:
+      description: PublishResult
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PublishResult'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema: {type: string, const: 'private, no-store'}
+    WithdrawResult:
+      description: WithdrawResult
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WithdrawResult'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema: {type: string, const: 'private, no-store'}
+    SchedulePublicationResult:
+      description: SchedulePublicationResult
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SchedulePublicationResult'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema: {type: string, const: 'private, no-store'}
+    CancelPublicationResult:
+      description: CancelPublicationResult
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CancelPublicationResult'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema: {type: string, const: 'private, no-store'}
+    EndPublicationResult:
+      description: EndPublicationResult
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EndPublicationResult'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema: {type: string, const: 'private, no-store'}
     ReadStateResult:
       description: ReadStateResult
       content:

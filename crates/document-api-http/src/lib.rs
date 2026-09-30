@@ -6,6 +6,7 @@ pub mod identity;
 pub mod limits;
 pub mod management;
 mod multipart;
+pub mod publication;
 pub mod read;
 mod read_state;
 pub mod router;

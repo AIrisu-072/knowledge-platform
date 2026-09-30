@@ -69,7 +69,7 @@ async fn replacement_publish_switches_current_and_replays_once() {
         PublishDocumentCommand::new(publish_id(1), f.document_id, f.base_id, 2, actor()).unwrap();
     assert_eq!(
         service.publish_document(bad_replay).await,
-        Err(ApplicationError::Conflict)
+        Err(ApplicationError::OperationConflict)
     );
     let event_count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM outbox_events WHERE aggregate_id = $1")

@@ -229,6 +229,7 @@ impl ApiProblem {
             ApplicationError::CursorStale => ErrorCode::CursorStale,
             ApplicationError::StaleComparisonInput => ErrorCode::StaleComparisonInput,
             ApplicationError::Conflict => ErrorCode::RevisionConflict,
+            ApplicationError::OperationConflict => ErrorCode::OperationConflict,
             ApplicationError::BusinessRule => ErrorCode::BusinessRuleRejected,
             ApplicationError::Management(code) => management_code(*code),
             ApplicationError::PublishQualityRejected(_) => ErrorCode::PublishQualityRejected,

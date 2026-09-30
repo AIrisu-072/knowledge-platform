@@ -279,65 +279,71 @@ pub trait VersioningRepository: Send + Sync {
     }
 }
 
-#[allow(async_fn_in_trait)]
 pub trait PublicationScheduleRepository: Send + Sync {
-    async fn authorize_due_document(
+    fn authorize_due_document(
         &self,
         _ctx: &crate::VerifiedActorContext,
         _document_id: DocumentId,
-    ) -> Result<bool, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "scheduled authorization repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "scheduled authorization repository unavailable".to_owned(),
+            ))
+        }
     }
 
-    async fn get_schedule(
+    fn get_schedule(
         &self,
         id: crate::PublishOperationId,
-    ) -> Result<Option<ScheduleOperationRecord>, RepositoryError>;
-    async fn reserve(
+    ) -> impl Future<Output = Result<Option<ScheduleOperationRecord>, RepositoryError>> + Send;
+    fn reserve(
         &self,
         record: SchedulePublishRecord,
-    ) -> Result<SchedulePublishResult, RepositoryError>;
-    async fn get_cancel_operation(
+    ) -> impl Future<Output = Result<SchedulePublishResult, RepositoryError>> + Send;
+    fn get_cancel_operation(
         &self,
         id: VersionOperationId,
-    ) -> Result<Option<CancelOperationRecord>, RepositoryError>;
-    async fn cancel(
+    ) -> impl Future<Output = Result<Option<CancelOperationRecord>, RepositoryError>> + Send;
+    fn cancel(
         &self,
         record: CancelScheduleRecord,
-    ) -> Result<CancelScheduleResult, RepositoryError>;
+    ) -> impl Future<Output = Result<CancelScheduleResult, RepositoryError>> + Send;
 
-    async fn database_now(&self) -> Result<OffsetDateTime, RepositoryError>;
-    async fn list_due(
+    fn database_now(&self) -> impl Future<Output = Result<OffsetDateTime, RepositoryError>> + Send;
+    fn list_due(
         &self,
         database_now: OffsetDateTime,
         limit: i64,
-    ) -> Result<Vec<crate::PublishOperationId>, RepositoryError>;
-    async fn is_due(&self, id: crate::PublishOperationId) -> Result<bool, RepositoryError>;
-    async fn record_retry(
+    ) -> impl Future<Output = Result<Vec<crate::PublishOperationId>, RepositoryError>> + Send;
+    fn is_due(
         &self,
         id: crate::PublishOperationId,
-    ) -> Result<OffsetDateTime, RepositoryError>;
-    async fn terminalize(&self, record: DueTerminalRecord) -> Result<(), RepositoryError>;
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
+    fn record_retry(
+        &self,
+        id: crate::PublishOperationId,
+    ) -> impl Future<Output = Result<OffsetDateTime, RepositoryError>> + Send;
+    fn terminalize(
+        &self,
+        record: DueTerminalRecord,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
 }
 
-#[allow(async_fn_in_trait)]
 pub trait PublicationEndRepository: Send + Sync {
-    async fn get_end_operation(
+    fn get_end_operation(
         &self,
         operation_id: PublicationEndOperationId,
-    ) -> Result<Option<EndPublicationOperationRecord>, RepositoryError>;
+    ) -> impl Future<Output = Result<Option<EndPublicationOperationRecord>, RepositoryError>> + Send;
 
-    async fn get_end_candidate(
+    fn get_end_candidate(
         &self,
         document_id: DocumentId,
-    ) -> Result<Option<EndPublicationCandidate>, RepositoryError>;
+    ) -> impl Future<Output = Result<Option<EndPublicationCandidate>, RepositoryError>> + Send;
 
-    async fn end_document_publication(
+    fn end_document_publication(
         &self,
         record: EndPublicationRecord,
-    ) -> Result<EndDocumentPublicationResult, RepositoryError>;
+    ) -> impl Future<Output = Result<EndDocumentPublicationResult, RepositoryError>> + Send;
 }
 
 pub trait SemanticInspectionExecutor: Send + Sync {
@@ -758,31 +764,32 @@ impl PublishInitialVersionRecord {
     }
 }
 
-#[allow(async_fn_in_trait)]
 pub trait DocumentPublishRepository: Send + Sync {
-    async fn get_publish_operation(
+    fn get_publish_operation(
         &self,
         operation_id: PublishOperationId,
-    ) -> Result<Option<PublishOperationRecord>, RepositoryError>;
+    ) -> impl Future<Output = Result<Option<PublishOperationRecord>, RepositoryError>> + Send;
 
-    async fn get_publish_candidate(
+    fn get_publish_candidate(
         &self,
         document_id: DocumentId,
         target_version_id: DocumentVersionId,
-    ) -> Result<PublishCandidate, RepositoryError>;
+    ) -> impl Future<Output = Result<PublishCandidate, RepositoryError>> + Send;
 
-    async fn publish_initial_version(
+    fn publish_initial_version(
         &self,
         record: PublishInitialVersionRecord,
-    ) -> Result<PublishDocumentResult, RepositoryError>;
+    ) -> impl Future<Output = Result<PublishDocumentResult, RepositoryError>> + Send;
 
-    async fn publish_next_version(
+    fn publish_next_version(
         &self,
         _record: PublishVersionRecord,
-    ) -> Result<PublishDocumentResult, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "replacement publish repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<PublishDocumentResult, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "replacement publish repository unavailable".to_owned(),
+            ))
+        }
     }
 }
 

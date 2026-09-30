@@ -11,10 +11,12 @@ use axum::http::{Method, Request, StatusCode, header};
 use document_api_http::identity::{IdentityAdapter, IdentityRequestContext};
 use document_api_http::publication::publication_router;
 use document_application::{
-    BootstrapRootPolicy, CreateVersionCommand, IdentityResolutionError, InvocationKind,
-    VerifiedActorContext,
+    AccessPolicyService, BootstrapRootPolicy, CreateVersionCommand, IdentityResolutionError,
+    InvocationKind, ManagementCommand, ManagementOperationId, VerifiedActorContext,
 };
-use document_domain::{Action, PolicyGrant, PolicySubject, PolicySubjectKind};
+use document_domain::{
+    Action, PolicyGrant, PolicyMode, PolicySubject, PolicySubjectKind, PolicyTarget,
+};
 use serde_json::{Value, json};
 use support::{TestIds, actor, fixture, operation_id};
 use time::{Duration, OffsetDateTime};
@@ -374,16 +376,30 @@ async fn lifecycle_rejects_quality_failure_and_policy_revocation() {
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{quality}");
     assert_eq!(quality["code"], "PUBLISH_QUALITY_REJECTED");
 
-    sqlx::query("DELETE FROM access_policy_grants WHERE action = 'publish'")
-        .execute(&f.pool)
+    let read_only = PolicyGrant::new(
+        PolicySubject::new(PolicySubjectKind::Principal, "test-idp", "editor").unwrap(),
+        [Action::Read],
+    )
+    .unwrap();
+    AccessPolicyService::new(f.repository.clone())
+        .set_access_policy(
+            &context(),
+            ManagementCommand::SetAccessPolicy {
+                operation_id: ManagementOperationId::try_from_uuid(id(0x8080, 1)).unwrap(),
+                target: PolicyTarget::Document(f.document_id),
+                expected_policy_revision: 0,
+                mode: PolicyMode::Explicit(vec![read_only]),
+                reason: "revoke publish".into(),
+            },
+        )
         .await
         .unwrap();
-    let (status, forbidden) = send_json(
+    let (status, hidden) = send_json(
         api,
         &uri,
         &json!({"operationId": id(0x8070, 2), "expectedRevision": 2}),
     )
     .await;
-    assert_eq!(status, StatusCode::FORBIDDEN, "{forbidden}");
-    assert_eq!(forbidden["code"], "FORBIDDEN");
+    assert_eq!(status, StatusCode::NOT_FOUND, "{hidden}");
+    assert_eq!(hidden["code"], "DOCUMENT_VERSION_NOT_FOUND");
 }

@@ -217,7 +217,7 @@ async fn publication_end_is_atomic_replayable_and_preserves_published_history() 
         service
             .end_document_publication(command(&f, 1, 1, f.base_id, "different"))
             .await,
-        Err(ApplicationError::Conflict)
+        Err(ApplicationError::OperationConflict)
     );
     assert_eq!(
         service
