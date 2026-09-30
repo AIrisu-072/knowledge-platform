@@ -1,13 +1,13 @@
 # Active Execution Pointer
 
-## Active checkpoint — Document HTTP/OpenAPI Transport v0実装・受入head hosted GREEN、2026-09-30 JST
+## Active checkpoint — Document HTTP/OpenAPI Transport v0 HAPI-01〜12 COMPLETE / G0 integration pending、2026-09-30 JST
 
-- Status: **ACTIVE / HAPI-01〜12 IMPLEMENTATION・ACCEPTANCE HOSTED GREEN / FINAL EVIDENCE RECORD GATE NEXT**。詳細は `docs/superpowers/execution/document-http-openapi-transport-v0-status.md` と `document-http-openapi-transport-v0-acceptance.md`。
+- Status: **HAPI-01〜12 COMPLETE / IMPLEMENTATION HEAD GREEN / STACKED PR INTEGRATION PENDING**。詳細は `docs/superpowers/execution/document-http-openapi-transport-v0-status.md` と `document-http-openapi-transport-v0-acceptance.md`。
 - Frozen Design blob `88f7046a5d14a77f4091df0c92691f6634dd57d7`、承認済みProduction Plan blob `111914181143672d3fec901dae75fc2af0256b15`。設計意味変更提案なし。
-- branch `feat/document-http-openapi-transport-v0-d`、Draft PR #32（base PR #31 branch）、全PR未merge。受入記録込みhead `423194cb8dec6c7c384df4d92c4e7ccfbde9c518` の標準CI `36661472741`、Sandbox `36661472033`、DSI PoC `36661472021` は全てSUCCESS。Unit A/B/C Draft PR #29/#30/#31も各exact-head 3 gate SUCCESS。
+- branch `feat/document-http-openapi-transport-v0-d`、Draft PR #32（base PR #31 branch）、PR #27/#29/#30/#31/#32はまだ未merge。実装head `3f870a92525afb6741e1ee72ee6c932eac0f0511` の標準CI `36662871915`、Sandbox `36662871921`、DSI PoC `36662871930` は全てSUCCESS。Unit A/B/C Draft PR #29/#30/#31もexact-head 3 gate SUCCESS。
 - HAPI-01〜12の実装・横断受入は完了。macOS workspace 686/686 PASS（skip 5）、Linux standard CI 702/702 PASS（skip 6）でproduction DSI/Diff runnerを使うHAPI-12 E2EもPASS。HTTP 40/40、API contract 10/10、strict Clippy、fmt、architecture/negative smoke PASS。
-- codegen候補はbinary typingを保てずproductionへpromoteしていない。本番Identity Adapter、server/deploy、GUI/CLI/Agent Toolは未接続。実装blockerはなく、残るblockerはこのevidence記録commitのexact-head 3 gateのみ。
-- 次のexact action: このActive/Status/acceptance evidence追記だけをcommit/pushし、新exact headの標準CI、Sandbox、PoCを一度確認する。SUCCESSならCOMPLETEとしてPR #32をDraftレビュー待ちにし、merge/deployしない。
+- codegen候補はbinary typingを保てずproductionへpromoteしていない。本番Identity Adapter、server/deploy、GUI/CLI/Agent Toolは未接続。G0 blockerなし。production implementation PR merge、deploy、AD接続はしない。
+- 次のexact action: Document GUI Integration Plan G0としてPR #27→#29→#30→#31→#32をmainへ順に統合し、必要なexact-head/main gatesを確認する。
 
 以下は旧checkpoint。現在の工程ではない。
 
