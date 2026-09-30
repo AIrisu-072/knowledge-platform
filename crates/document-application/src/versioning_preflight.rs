@@ -263,6 +263,15 @@ where
         })
     }
 
+    pub async fn prepare_dsi_v0(
+        &self,
+        title: Title,
+        items: Vec<VersioningItemInput>,
+    ) -> Result<PreparedManifest, ApplicationError> {
+        self.prepare(title, items, InspectionProfileVersion::DsiV0)
+            .await
+    }
+
     pub async fn check_publish_quality(
         &self,
         prepared: &PreparedManifest,

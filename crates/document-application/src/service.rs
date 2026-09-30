@@ -278,7 +278,7 @@ where
             if stored.matches_identity(&identity) {
                 return Ok(stored.result().clone());
             }
-            return Err(ApplicationError::Conflict);
+            return Err(ApplicationError::OperationConflict);
         }
 
         let candidate = match self
@@ -292,9 +292,12 @@ where
                     .repository
                     .get_publish_operation(command.publish_operation_id())
                     .await?
-                    && stored.matches_identity(&identity)
                 {
-                    return Ok(stored.result().clone());
+                    return if stored.matches_identity(&identity) {
+                        Ok(stored.result().clone())
+                    } else {
+                        Err(ApplicationError::OperationConflict)
+                    };
                 }
                 return Err(ApplicationError::Conflict);
             }

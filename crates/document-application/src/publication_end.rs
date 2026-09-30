@@ -360,7 +360,7 @@ where
             Some(stored) if stored.command_digest() == command.command_digest() => {
                 Ok(Some(stored.result().clone()))
             }
-            Some(_) => Err(ApplicationError::Conflict),
+            Some(_) => Err(ApplicationError::OperationConflict),
             None => Ok(None),
         }
     }

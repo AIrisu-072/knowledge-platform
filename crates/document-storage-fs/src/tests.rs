@@ -71,6 +71,33 @@ async fn storage_identity_is_derived_only_from_file_id() {
 }
 
 #[tokio::test]
+async fn immutable_upload_replays_only_the_exact_file_bytes() {
+    let temp = TempDir::new().unwrap();
+    let storage = FileSystemStorage::new(temp.path());
+    let id = file_id();
+
+    let first = storage.put_immutable(request(id)).await.unwrap();
+    let replay = storage.put_immutable(request(id)).await.unwrap();
+    assert_eq!(replay.storage_key(), first.storage_key());
+    assert_eq!(replay.content_hash(), first.content_hash());
+    assert_eq!(replay.size_bytes(), first.size_bytes());
+
+    let changed = StoreFileRequest::new(
+        id,
+        Box::pin(Cursor::new(b"changed-content".to_vec())),
+        MediaType::new("application/pdf").unwrap(),
+    );
+    assert_eq!(
+        storage.put_immutable(changed).await,
+        Err(StorageError::FinalizeFailed)
+    );
+    let mut reader = storage.open(first.storage_key()).await.unwrap();
+    let mut bytes = Vec::new();
+    reader.read_to_end(&mut bytes).await.unwrap();
+    assert_eq!(bytes, CONTENT);
+}
+
+#[tokio::test]
 async fn injected_failure_points_surface_precise_errors_without_false_success() {
     let cases = [
         (FsFailurePoint::Write, StorageError::WriteFailed, false),

@@ -6,7 +6,8 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-axum = { version = "=0.8.9", features = ["json", "matched-path"] }
+axum = { version = "=0.8.9", features = ["json", "matched-path", "multipart"] }
+http-body = "=1.1.0"
 tower-http = { version = "=0.7.1", default-features = false, features = ["cors", "set-header"] }
 jsonschema = { version = "=0.55.0", default-features = false }
 document-application = { version = "0.0.0", path = "../document-application" }
@@ -14,11 +15,12 @@ document-domain = { version = "0.0.0", path = "../document-domain" }
 serde.workspace = true
 serde_json.workspace = true
 time = { workspace = true, features = ["formatting", "parsing"] }
+tokio.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
 document-repository-postgres = { version = "0.0.0", path = "../document-repository-postgres" }
+document-semantic-inspection-core = { version = "0.0.0", path = "../document-semantic-inspection-core" }
 sqlx.workspace = true
 testcontainers.workspace = true
 tower = "0.5"
-tokio.workspace = true

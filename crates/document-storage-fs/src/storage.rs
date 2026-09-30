@@ -238,10 +238,32 @@ impl FileStorage for FileSystemStorage {
         staging_file.sync_all().await.map_err(map_sync_error)?;
         drop(staging_file);
 
+        let digest: [u8; 32] = hasher.finalize().into();
+        let size_bytes = i64::try_from(size_bytes)
+            .map_err(|_| StorageError::Internal("file size exceeds i64".to_owned()))?;
+        let size_bytes =
+            FileSize::new(size_bytes).map_err(|error| StorageError::Internal(error.to_string()))?;
+        let storage_key = StorageKey::new(final_relative_key)
+            .map_err(|error| StorageError::Internal(error.to_string()))?;
+
         if fs::try_exists(&final_path)
             .await
             .map_err(map_finalize_error)?
         {
+            let exact = file_matches(&final_path, &digest, size_bytes.get() as u64).await?;
+            fs::remove_file(&staging_path)
+                .await
+                .map_err(map_finalize_error)?;
+            if exact {
+                let content_hash = ContentHash::from_slice(&digest)
+                    .map_err(|error| StorageError::Internal(error.to_string()))?;
+                return Ok(StoredFile::new(
+                    storage_key,
+                    content_hash,
+                    size_bytes,
+                    media_type,
+                ));
+            }
             return Err(StorageError::FinalizeFailed);
         }
 
@@ -255,14 +277,7 @@ impl FileStorage for FileSystemStorage {
             sync_directory(&directory)?;
         }
 
-        let digest: [u8; 32] = hasher.finalize().into();
         let content_hash = ContentHash::from_slice(&digest)
-            .map_err(|error| StorageError::Internal(error.to_string()))?;
-        let size_bytes = i64::try_from(size_bytes)
-            .map_err(|_| StorageError::Internal("file size exceeds i64".to_owned()))?;
-        let size_bytes =
-            FileSize::new(size_bytes).map_err(|error| StorageError::Internal(error.to_string()))?;
-        let storage_key = StorageKey::new(final_relative_key)
             .map_err(|error| StorageError::Internal(error.to_string()))?;
 
         Ok(StoredFile::new(
@@ -286,6 +301,29 @@ impl FileStorage for FileSystemStorage {
         self.collect_final_objects(&mut objects).await?;
         Ok(objects)
     }
+}
+
+async fn file_matches(
+    path: &Path,
+    expected_hash: &[u8; 32],
+    expected_size: u64,
+) -> Result<bool, StorageError> {
+    let mut file = fs::File::open(path).await.map_err(map_finalize_error)?;
+    let mut hasher = Sha256::new();
+    let mut size = 0_u64;
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer).await.map_err(map_finalize_error)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+        size = size
+            .checked_add(read as u64)
+            .ok_or_else(|| StorageError::Internal("file size overflow".to_owned()))?;
+    }
+    let actual_hash: [u8; 32] = hasher.finalize().into();
+    Ok(size == expected_size && &actual_hash == expected_hash)
 }
 
 async fn read_dir_if_exists(path: PathBuf) -> Result<Option<fs::ReadDir>, StorageError> {

@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::pin::Pin;
 
 use document_domain::{
@@ -161,167 +162,196 @@ impl StorageObjectInfo {
     }
 }
 
-#[allow(async_fn_in_trait)]
 pub trait FileStorage: Send + Sync {
-    async fn put_immutable(&self, request: StoreFileRequest) -> Result<StoredFile, StorageError>;
-    async fn open(&self, key: &StorageKey) -> Result<ContentReader, StorageError>;
-    async fn list_objects(&self) -> Result<Vec<StorageObjectInfo>, StorageError>;
+    fn put_immutable(
+        &self,
+        request: StoreFileRequest,
+    ) -> impl Future<Output = Result<StoredFile, StorageError>> + Send;
+    fn open(
+        &self,
+        key: &StorageKey,
+    ) -> impl Future<Output = Result<ContentReader, StorageError>> + Send;
+    fn list_objects(
+        &self,
+    ) -> impl Future<Output = Result<Vec<StorageObjectInfo>, StorageError>> + Send;
 }
 
-#[allow(async_fn_in_trait)]
 pub trait SemanticInspectionRepository: Send + Sync {
-    async fn get_file_object(&self, file_id: FileId)
-    -> Result<Option<FileObject>, RepositoryError>;
-    async fn get_semantic_inspection(
+    fn get_file_object(
+        &self,
+        file_id: FileId,
+    ) -> impl Future<Output = Result<Option<FileObject>, RepositoryError>> + Send;
+    fn get_semantic_inspection(
         &self,
         file_id: FileId,
         profile: InspectionProfileVersion,
-    ) -> Result<Option<SemanticInspectionRecord>, RepositoryError>;
-    async fn insert_or_converge_semantic_inspection(
+    ) -> impl Future<Output = Result<Option<SemanticInspectionRecord>, RepositoryError>> + Send;
+    fn insert_or_converge_semantic_inspection(
         &self,
         record: SemanticInspectionRecord,
-    ) -> Result<SemanticInspectionRecord, RepositoryError>;
+    ) -> impl Future<Output = Result<SemanticInspectionRecord, RepositoryError>> + Send;
 }
 
-#[allow(async_fn_in_trait)]
 pub trait VersioningRepository: Send + Sync {
     /// Register an immutable FileObject before a Version can reference it.
     /// Replaying the same FileId is valid only for the same raw binding.
-    async fn register_file_object(&self, file: FileObject) -> Result<(), RepositoryError>;
+    fn register_file_object(
+        &self,
+        file: FileObject,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
 
-    async fn get_version_operation(
+    fn get_version_operation(
         &self,
         _operation_id: VersionOperationId,
-    ) -> Result<Option<VersionOperationRecord>, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "version mutation repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<Option<VersionOperationRecord>, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "version mutation repository unavailable".to_owned(),
+            ))
+        }
     }
 
-    async fn get_version_snapshot(
+    fn get_version_snapshot(
         &self,
         _document_id: DocumentId,
         _version_id: DocumentVersionId,
-    ) -> Result<Option<AuthoritativeDocument>, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "version mutation repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<Option<AuthoritativeDocument>, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "version mutation repository unavailable".to_owned(),
+            ))
+        }
     }
 
-    async fn create_version(
+    fn create_version(
         &self,
         _record: VersionMutationRecord,
-    ) -> Result<VersionOperationResult, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "version mutation repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<VersionOperationResult, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "version mutation repository unavailable".to_owned(),
+            ))
+        }
     }
 
-    async fn update_working(
+    fn update_working(
         &self,
         _record: VersionMutationRecord,
-    ) -> Result<VersionOperationResult, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "version mutation repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<VersionOperationResult, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "version mutation repository unavailable".to_owned(),
+            ))
+        }
     }
 
-    async fn rebase_working(
+    fn rebase_working(
         &self,
         _record: VersionMutationRecord,
-    ) -> Result<VersionOperationResult, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "version mutation repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<VersionOperationResult, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "version mutation repository unavailable".to_owned(),
+            ))
+        }
     }
 
-    async fn get_withdraw_operation(
+    fn get_withdraw_operation(
         &self,
         _operation_id: VersionOperationId,
-    ) -> Result<Option<WithdrawOperationRecord>, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "withdrawal repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<Option<WithdrawOperationRecord>, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "withdrawal repository unavailable".to_owned(),
+            ))
+        }
     }
 
-    async fn withdraw_version(
+    fn withdraw_version(
         &self,
         _record: WithdrawVersionRecord,
-    ) -> Result<WithdrawVersionResult, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "withdrawal repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<WithdrawVersionResult, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "withdrawal repository unavailable".to_owned(),
+            ))
+        }
     }
 }
 
-#[allow(async_fn_in_trait)]
 pub trait PublicationScheduleRepository: Send + Sync {
-    async fn authorize_due_document(
+    fn authorize_due_document(
         &self,
         _ctx: &crate::VerifiedActorContext,
         _document_id: DocumentId,
-    ) -> Result<bool, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "scheduled authorization repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "scheduled authorization repository unavailable".to_owned(),
+            ))
+        }
     }
 
-    async fn get_schedule(
+    fn get_schedule(
         &self,
         id: crate::PublishOperationId,
-    ) -> Result<Option<ScheduleOperationRecord>, RepositoryError>;
-    async fn reserve(
+    ) -> impl Future<Output = Result<Option<ScheduleOperationRecord>, RepositoryError>> + Send;
+    fn reserve(
         &self,
         record: SchedulePublishRecord,
-    ) -> Result<SchedulePublishResult, RepositoryError>;
-    async fn get_cancel_operation(
+    ) -> impl Future<Output = Result<SchedulePublishResult, RepositoryError>> + Send;
+    fn get_cancel_operation(
         &self,
         id: VersionOperationId,
-    ) -> Result<Option<CancelOperationRecord>, RepositoryError>;
-    async fn cancel(
+    ) -> impl Future<Output = Result<Option<CancelOperationRecord>, RepositoryError>> + Send;
+    fn cancel(
         &self,
         record: CancelScheduleRecord,
-    ) -> Result<CancelScheduleResult, RepositoryError>;
+    ) -> impl Future<Output = Result<CancelScheduleResult, RepositoryError>> + Send;
 
-    async fn database_now(&self) -> Result<OffsetDateTime, RepositoryError>;
-    async fn list_due(
+    fn database_now(&self) -> impl Future<Output = Result<OffsetDateTime, RepositoryError>> + Send;
+    fn list_due(
         &self,
         database_now: OffsetDateTime,
         limit: i64,
-    ) -> Result<Vec<crate::PublishOperationId>, RepositoryError>;
-    async fn is_due(&self, id: crate::PublishOperationId) -> Result<bool, RepositoryError>;
-    async fn record_retry(
+    ) -> impl Future<Output = Result<Vec<crate::PublishOperationId>, RepositoryError>> + Send;
+    fn is_due(
         &self,
         id: crate::PublishOperationId,
-    ) -> Result<OffsetDateTime, RepositoryError>;
-    async fn terminalize(&self, record: DueTerminalRecord) -> Result<(), RepositoryError>;
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
+    fn record_retry(
+        &self,
+        id: crate::PublishOperationId,
+    ) -> impl Future<Output = Result<OffsetDateTime, RepositoryError>> + Send;
+    fn terminalize(
+        &self,
+        record: DueTerminalRecord,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
 }
 
-#[allow(async_fn_in_trait)]
 pub trait PublicationEndRepository: Send + Sync {
-    async fn get_end_operation(
+    fn get_end_operation(
         &self,
         operation_id: PublicationEndOperationId,
-    ) -> Result<Option<EndPublicationOperationRecord>, RepositoryError>;
+    ) -> impl Future<Output = Result<Option<EndPublicationOperationRecord>, RepositoryError>> + Send;
 
-    async fn get_end_candidate(
+    fn get_end_candidate(
         &self,
         document_id: DocumentId,
-    ) -> Result<Option<EndPublicationCandidate>, RepositoryError>;
+    ) -> impl Future<Output = Result<Option<EndPublicationCandidate>, RepositoryError>> + Send;
 
-    async fn end_document_publication(
+    fn end_document_publication(
         &self,
         record: EndPublicationRecord,
-    ) -> Result<EndDocumentPublicationResult, RepositoryError>;
+    ) -> impl Future<Output = Result<EndDocumentPublicationResult, RepositoryError>> + Send;
 }
 
-#[allow(async_fn_in_trait)]
 pub trait SemanticInspectionExecutor: Send + Sync {
-    async fn inspect(
+    fn inspect(
         &self,
         request: WorkerRequest,
         content: ContentReader,
-    ) -> Result<WorkerResponse, InspectionExecutionError>;
+    ) -> impl Future<Output = Result<WorkerResponse, InspectionExecutionError>> + Send;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -734,71 +764,76 @@ impl PublishInitialVersionRecord {
     }
 }
 
-#[allow(async_fn_in_trait)]
 pub trait DocumentPublishRepository: Send + Sync {
-    async fn get_publish_operation(
+    fn get_publish_operation(
         &self,
         operation_id: PublishOperationId,
-    ) -> Result<Option<PublishOperationRecord>, RepositoryError>;
+    ) -> impl Future<Output = Result<Option<PublishOperationRecord>, RepositoryError>> + Send;
 
-    async fn get_publish_candidate(
+    fn get_publish_candidate(
         &self,
         document_id: DocumentId,
         target_version_id: DocumentVersionId,
-    ) -> Result<PublishCandidate, RepositoryError>;
+    ) -> impl Future<Output = Result<PublishCandidate, RepositoryError>> + Send;
 
-    async fn publish_initial_version(
+    fn publish_initial_version(
         &self,
         record: PublishInitialVersionRecord,
-    ) -> Result<PublishDocumentResult, RepositoryError>;
+    ) -> impl Future<Output = Result<PublishDocumentResult, RepositoryError>> + Send;
 
-    async fn publish_next_version(
+    fn publish_next_version(
         &self,
         _record: PublishVersionRecord,
-    ) -> Result<PublishDocumentResult, RepositoryError> {
-        Err(RepositoryError::Internal(
-            "replacement publish repository unavailable".to_owned(),
-        ))
+    ) -> impl Future<Output = Result<PublishDocumentResult, RepositoryError>> + Send {
+        async {
+            Err(RepositoryError::Internal(
+                "replacement publish repository unavailable".to_owned(),
+            ))
+        }
     }
 }
 
-#[allow(async_fn_in_trait)]
 pub trait DocumentRepository: Send + Sync {
-    async fn create_initial_document(
+    fn create_initial_document(
         &self,
         record: CreateInitialDocumentRecord,
-    ) -> Result<(), RepositoryError>;
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
 
-    async fn get_authoritative_document(
+    fn get_authoritative_document(
         &self,
         id: DocumentId,
-    ) -> Result<Option<AuthoritativeDocument>, RepositoryError>;
+    ) -> impl Future<Output = Result<Option<AuthoritativeDocument>, RepositoryError>> + Send;
 
-    async fn get_authoring_document(
+    fn get_authoring_document(
         &self,
         id: DocumentId,
-    ) -> Result<Option<AuthoritativeDocument>, RepositoryError>;
+    ) -> impl Future<Output = Result<Option<AuthoritativeDocument>, RepositoryError>> + Send;
 
-    async fn get_current_published_document(
+    fn get_current_published_document(
         &self,
         id: DocumentId,
-    ) -> Result<Option<AuthoritativeDocument>, RepositoryError>;
+    ) -> impl Future<Output = Result<Option<AuthoritativeDocument>, RepositoryError>> + Send;
 
-    async fn is_current_published_version(
+    fn is_current_published_version(
         &self,
         document_id: DocumentId,
         version_id: DocumentVersionId,
-    ) -> Result<bool, RepositoryError>;
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
-    async fn list_current_published_versions(
+    fn list_current_published_versions(
         &self,
         after: Option<DocumentId>,
         limit: i64,
-    ) -> Result<Vec<CurrentPublishedVersionRef>, RepositoryError>;
+    ) -> impl Future<Output = Result<Vec<CurrentPublishedVersionRef>, RepositoryError>> + Send;
 
-    async fn file_reference_exists(&self, file_id: FileId) -> Result<bool, RepositoryError>;
+    fn file_reference_exists(
+        &self,
+        file_id: FileId,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
-    async fn list_referenced_file_ids(&self) -> Result<Vec<FileId>, RepositoryError>;
+    fn list_referenced_file_ids(
+        &self,
+    ) -> impl Future<Output = Result<Vec<FileId>, RepositoryError>> + Send;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

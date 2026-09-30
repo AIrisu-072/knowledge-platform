@@ -184,7 +184,7 @@ async fn publish_replay_is_idempotent_and_operation_id_misuse_conflicts() {
         .publish_document(publish_command(operation_id, 0, "actor-2"))
         .await
         .unwrap_err();
-    assert_eq!(misuse, ApplicationError::Conflict);
+    assert_eq!(misuse, ApplicationError::OperationConflict);
 }
 
 #[tokio::test]

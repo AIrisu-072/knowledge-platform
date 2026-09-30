@@ -23,6 +23,7 @@ try {
 const operations = [
   ['get', '/v1/documents'],
   ['post', '/v1/documents'],
+  ['get', '/v1/document-creation-outcomes/{documentId}'],
   ['get', '/v1/documents/{documentId}'],
   ['get', '/v1/documents/{documentId}/versions'],
   ['post', '/v1/documents/{documentId}/versions'],
@@ -120,6 +121,17 @@ test('write contracts bind replay IDs and do not accept actor self assertions', 
   assert.ok(version.required.includes('operationId'));
   assert.ok(version.required.includes('targetVersionId'));
   assert.ok(version.required.includes('expectedRevision'));
+  assert.ok(version.required.includes('title'));
+  const versionItem = resolved(version.properties.items.items);
+  assert.equal(resolved(versionItem.properties.renditions.items).required.includes('partId'), true);
+  for (const path of ['/v1/documents/{documentId}/versions', '/v1/documents/{documentId}/versions/{versionId}', '/v1/documents/{documentId}/versions/{versionId}:rebase']) {
+    const method = path.endsWith('/versions') ? 'post' : path.endsWith(':rebase') ? 'post' : 'put';
+    const success = path.endsWith('/versions') ? '201' : '200';
+    assert.equal(
+      resolved(operation(method, path).responses[success]).content['application/json'].schema.$ref,
+      '#/components/schemas/VersionMutationResult',
+    );
+  }
   const policy = resolved(contract.components?.schemas?.SetAccessPolicy);
   assert.equal(policy.oneOf.length, 2);
   assert.equal(resolved(policy.oneOf[0]).properties.mode.const, 'inherit');
@@ -163,6 +175,23 @@ test('read confirmation exposes its recorded timestamp without echoing the actor
   assert.ok(result.required.includes('firstReadAt'));
   assert.ok(result.required.includes('inserted'));
   assert.equal(result.properties.principal, undefined);
+});
+
+test('initial create recovery requires the complete generated identity tuple', () => {
+  const recovery = operation('get', '/v1/document-creation-outcomes/{documentId}');
+  const parameters = [
+    ...(contract.paths['/v1/document-creation-outcomes/{documentId}'].parameters ?? []),
+    ...(recovery.parameters ?? []),
+  ].map(resolved);
+  for (const name of ['documentId', 'documentVersionId', 'fileId']) {
+    const parameter = parameters.find((candidate) => candidate.name === name);
+    assert.ok(parameter, `create recovery missing ${name}`);
+    assert.equal(parameter.required, true);
+  }
+  assert.equal(
+    resolved(recovery.responses['200']).content['application/json'].schema.$ref,
+    '#/components/schemas/CreateDocumentResult',
+  );
 });
 
 test('read projections preserve authorized Application fields and pagination', () => {

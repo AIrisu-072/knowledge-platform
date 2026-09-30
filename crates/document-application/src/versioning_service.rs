@@ -208,7 +208,7 @@ where
             return if stored.matches_identity(&identity) {
                 Ok(stored.result().clone())
             } else {
-                Err(ApplicationError::Conflict)
+                Err(ApplicationError::OperationConflict)
             };
         }
         let target = self
@@ -568,7 +568,7 @@ where
             return if stored.command_digest == command.command_digest() {
                 Ok(stored.result)
             } else {
-                Err(ApplicationError::Conflict)
+                Err(ApplicationError::OperationConflict)
             };
         }
         let target = self
@@ -669,7 +669,7 @@ where
             return if stored.command == command {
                 Ok(stored.result)
             } else {
-                Err(ApplicationError::Conflict)
+                Err(ApplicationError::OperationConflict)
             };
         }
         if command.scheduled_publish_at() <= self.clock.now() {
@@ -752,7 +752,7 @@ where
             return if stored.command_digest == command.command_digest() {
                 Ok(stored.result)
             } else {
-                Err(ApplicationError::Conflict)
+                Err(ApplicationError::OperationConflict)
             };
         }
         let record = CancelScheduleRecord {

@@ -68,7 +68,7 @@ async fn current_withdrawal_restores_only_immediate_safe_base_and_replays() {
         service
             .withdraw_version(withdrawal(32, f.document_id, target, 3, "different reason"))
             .await,
-        Err(ApplicationError::Conflict)
+        Err(ApplicationError::OperationConflict)
     );
     let current: Uuid =
         sqlx::query_scalar("SELECT current_version_id FROM documents WHERE document_id = $1")

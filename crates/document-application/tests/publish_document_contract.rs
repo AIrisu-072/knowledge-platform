@@ -377,7 +377,7 @@ async fn publish_operation_id_misuse_conflicts_before_storage_preflight() {
 
     let error = service.publish_document(incoming).await.unwrap_err();
 
-    assert_eq!(error, ApplicationError::Conflict);
+    assert_eq!(error, ApplicationError::OperationConflict);
     assert_eq!(repository.candidate_calls(), 0);
     assert_eq!(storage.open_calls(), 0);
     assert_eq!(repository.write_calls(), 0);

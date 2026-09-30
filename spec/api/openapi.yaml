@@ -53,13 +53,42 @@ paths:
           $ref: '#/components/responses/Problem'
       requestBody:
         $ref: '#/components/requestBodies/CreateDocumentMultipart'
+  /v1/document-creation-outcomes/{documentId}:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    get:
+      tags:
+      - Documents
+      summary: Recover an initial document creation outcome
+      operationId: recoverDocumentCreation
+      description: All generated IDs must match and current authoring authorization is re-evaluated before disclosure.
+      parameters:
+      - name: documentVersionId
+        in: query
+        required: true
+        schema:
+          $ref: '#/components/schemas/Uuid'
+      - name: fileId
+        in: query
+        required: true
+        schema:
+          $ref: '#/components/schemas/Uuid'
+      responses:
+        '200':
+          $ref: '#/components/responses/CreateDocumentResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/documents/{documentId}:
     parameters:
     - $ref: '#/components/parameters/documentId'
     get:
       tags:
       - Documents
-      summary: Read document by authorized view or recover initial create outcome
+      summary: Read document by authorized view
       operationId: getDocument
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
@@ -99,7 +128,7 @@ paths:
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
         '201':
-          $ref: '#/components/responses/MutationResult'
+          $ref: '#/components/responses/VersionMutationResult'
         '401':
           $ref: '#/components/responses/Problem'
         default:
@@ -133,7 +162,7 @@ paths:
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
         '200':
-          $ref: '#/components/responses/MutationResult'
+          $ref: '#/components/responses/VersionMutationResult'
         '401':
           $ref: '#/components/responses/Problem'
         default:
@@ -152,7 +181,7 @@ paths:
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
         '200':
-          $ref: '#/components/responses/MutationResult'
+          $ref: '#/components/responses/VersionMutationResult'
         '401':
           $ref: '#/components/responses/Problem'
         default:
@@ -171,7 +200,7 @@ paths:
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
         '200':
-          $ref: '#/components/responses/MutationResult'
+          $ref: '#/components/responses/PublishResult'
         '401':
           $ref: '#/components/responses/Problem'
         default:
@@ -190,7 +219,7 @@ paths:
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
         '200':
-          $ref: '#/components/responses/MutationResult'
+          $ref: '#/components/responses/WithdrawResult'
         '401':
           $ref: '#/components/responses/Problem'
         default:
@@ -209,7 +238,7 @@ paths:
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
         '200':
-          $ref: '#/components/responses/MutationResult'
+          $ref: '#/components/responses/SchedulePublicationResult'
         '401':
           $ref: '#/components/responses/Problem'
         default:
@@ -228,7 +257,7 @@ paths:
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
         '200':
-          $ref: '#/components/responses/MutationResult'
+          $ref: '#/components/responses/CancelPublicationResult'
         '401':
           $ref: '#/components/responses/Problem'
         default:
@@ -246,7 +275,7 @@ paths:
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
         '200':
-          $ref: '#/components/responses/MutationResult'
+          $ref: '#/components/responses/EndPublicationResult'
         '401':
           $ref: '#/components/responses/Problem'
         default:
@@ -392,6 +421,8 @@ paths:
           $ref: '#/components/responses/BinaryDownload'
         '401':
           $ref: '#/components/responses/Problem'
+        '416':
+          description: Range requests are not supported in v0; no file bytes are returned.
         default:
           $ref: '#/components/responses/Problem'
       parameters:
@@ -629,6 +660,18 @@ components:
       $ref: ./schemas/document/models.yaml#/$defs/CreateDocumentResult
     MutationResult:
       $ref: ./schemas/document/models.yaml#/$defs/MutationResult
+    VersionMutationResult:
+      $ref: ./schemas/document/models.yaml#/$defs/VersionMutationResult
+    PublishResult:
+      $ref: ./schemas/document/models.yaml#/$defs/PublishResult
+    WithdrawResult:
+      $ref: ./schemas/document/models.yaml#/$defs/WithdrawResult
+    SchedulePublicationResult:
+      $ref: ./schemas/document/models.yaml#/$defs/SchedulePublicationResult
+    CancelPublicationResult:
+      $ref: ./schemas/document/models.yaml#/$defs/CancelPublicationResult
+    EndPublicationResult:
+      $ref: ./schemas/document/models.yaml#/$defs/EndPublicationResult
     ReadStateResult:
       $ref: ./schemas/document/models.yaml#/$defs/ReadStateResult
     SourceEvidence:
@@ -653,6 +696,8 @@ components:
       $ref: ./schemas/document/commands.yaml#/$defs/CreateDocument
     VersionContentItem:
       $ref: ./schemas/document/commands.yaml#/$defs/VersionContentItem
+    VersionRendition:
+      $ref: ./schemas/document/commands.yaml#/$defs/VersionRendition
     VersionWrite:
       $ref: ./schemas/document/commands.yaml#/$defs/VersionWrite
     RebaseVersion:
@@ -1129,6 +1174,68 @@ components:
           schema:
             type: string
             const: private, no-store
+    VersionMutationResult:
+      description: VersionMutationResult
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VersionMutationResult'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    PublishResult:
+      description: PublishResult
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PublishResult'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema: {type: string, const: 'private, no-store'}
+    WithdrawResult:
+      description: WithdrawResult
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WithdrawResult'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema: {type: string, const: 'private, no-store'}
+    SchedulePublicationResult:
+      description: SchedulePublicationResult
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SchedulePublicationResult'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema: {type: string, const: 'private, no-store'}
+    CancelPublicationResult:
+      description: CancelPublicationResult
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CancelPublicationResult'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema: {type: string, const: 'private, no-store'}
+    EndPublicationResult:
+      description: EndPublicationResult
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EndPublicationResult'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema: {type: string, const: 'private, no-store'}
     ReadStateResult:
       description: ReadStateResult
       content:

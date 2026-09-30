@@ -306,13 +306,13 @@ async fn publication_end_replays_same_command_before_stale_preconditions() {
         service
             .end_document_publication(command("different", "editor"))
             .await,
-        Err(ApplicationError::Conflict)
+        Err(ApplicationError::OperationConflict)
     );
     assert_eq!(
         service
             .end_document_publication(command("superseded", "another-editor"))
             .await,
-        Err(ApplicationError::Conflict)
+        Err(ApplicationError::OperationConflict)
     );
     assert_eq!(repo.writes(), 1);
 }
