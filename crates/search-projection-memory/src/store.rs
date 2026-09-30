@@ -101,6 +101,49 @@ impl MemoryProjectionStore {
         }
         Ok(segment)
     }
+
+    /// Atomically publish a validated generation only if the Source current
+    /// pointer is still the one observed before an authoritative read began.
+    /// A stale builder must not rewind a newer generation.
+    pub fn publish_generation_if_current(
+        &self,
+        key: ProjectionGenerationKey,
+        expected_current: Option<ProjectionGenerationKey>,
+    ) -> Result<bool, SearchError> {
+        if expected_current.is_some_and(|expected| expected.source_id != key.source_id) {
+            return Err(invalid("expected current belongs to another source"));
+        }
+        let mut state = self.write()?;
+        let source = state
+            .sources
+            .get_mut(&key.source_id)
+            .ok_or_else(|| invalid("unknown projection source"))?;
+        if source.current != expected_current.map(|expected| expected.generation_id) {
+            return Ok(false);
+        }
+        if source
+            .generations
+            .get(&key.generation_id)
+            .map(|segment| segment.phase)
+            != Some(Phase::Validated)
+        {
+            return Err(invalid("generation is not validated"));
+        }
+        if let Some(previous) = source.current {
+            source
+                .generations
+                .get_mut(&previous)
+                .expect("current generation must exist")
+                .phase = Phase::Retired;
+        }
+        source
+            .generations
+            .get_mut(&key.generation_id)
+            .expect("validated generation must exist")
+            .phase = Phase::Current;
+        source.current = Some(key.generation_id);
+        Ok(true)
+    }
 }
 
 fn base_compatible(

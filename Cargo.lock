@@ -3736,6 +3736,7 @@ dependencies = [
  "document-semantic-inspection-core",
  "search-application",
  "search-core",
+ "search-projection-memory",
  "search-tantivy",
  "serde_json",
  "sqlx",

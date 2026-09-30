@@ -34,6 +34,15 @@ pub struct VersionSnapshotRecord {
     pub dsi_state: DsiReadState,
 }
 
+/// One authoritative enumeration for the Search Live generation. Both tiers
+/// and the empty-state token come from one read-only PostgreSQL snapshot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentOutboxSnapshot {
+    pub source_snapshot: String,
+    pub live: Vec<VersionSnapshotRecord>,
+    pub historical: Vec<VersionSnapshotRecord>,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SnapshotReadError {
     #[error("Document snapshot query failed: {0}")]
@@ -68,7 +77,7 @@ impl PostgresDocumentSnapshotReader {
         &self,
         version_id: Option<DocumentVersionId>,
         mode: &'static str,
-    ) -> Result<Vec<VersionSnapshotRecord>, SnapshotReadError> {
+    ) -> Result<(String, Vec<VersionSnapshotRecord>), SnapshotReadError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
             .execute(&mut *tx)
@@ -98,7 +107,8 @@ impl PostgresDocumentSnapshotReader {
                        AND v.lifecycle_state = 'PUBLISHED' AND e.operation_id IS NULL) \
                    OR ($2::text = 'historical' AND v.lifecycle_state IN ('PUBLISHED', 'WITHDRAWN') \
                        AND (d.current_version_id IS DISTINCT FROM v.document_version_id \
-                            OR e.operation_id IS NOT NULL))\
+                            OR e.operation_id IS NOT NULL)) \
+                   OR ($2::text = 'indexable' AND v.lifecycle_state IN ('PUBLISHED', 'WITHDRAWN'))\
                ) \
              ORDER BY d.document_id, v.version_no",
         )
@@ -113,7 +123,24 @@ impl PostgresDocumentSnapshotReader {
             records.push(row.restore(&source_snapshot, access_revision, dsi_state, dsi)?);
         }
         tx.rollback().await?;
-        Ok(records)
+        Ok((source_snapshot, records))
+    }
+
+    pub async fn enumerate_outbox_snapshot(
+        &self,
+    ) -> Result<DocumentOutboxSnapshot, SnapshotReadError> {
+        let (source_snapshot, records) = self.read(None, "indexable").await?;
+        let (live, historical) = records.into_iter().partition(|record| {
+            let snapshot = &record.snapshot;
+            snapshot.lifecycle_state == LifecycleState::Published
+                && snapshot.current_version_id == Some(snapshot.document_version_id)
+                && snapshot.publication_end.is_none()
+        });
+        Ok(DocumentOutboxSnapshot {
+            source_snapshot,
+            live,
+            historical,
+        })
     }
 }
 
@@ -122,15 +149,20 @@ impl DocumentSnapshotReader for PostgresDocumentSnapshotReader {
         &self,
         version_id: DocumentVersionId,
     ) -> Result<Option<VersionSnapshotRecord>, SnapshotReadError> {
-        Ok(self.read(Some(version_id), "one").await?.into_iter().next())
+        Ok(self
+            .read(Some(version_id), "one")
+            .await?
+            .1
+            .into_iter()
+            .next())
     }
 
     async fn enumerate_live(&self) -> Result<Vec<VersionSnapshotRecord>, SnapshotReadError> {
-        self.read(None, "live").await
+        Ok(self.read(None, "live").await?.1)
     }
 
     async fn enumerate_historical(&self) -> Result<Vec<VersionSnapshotRecord>, SnapshotReadError> {
-        self.read(None, "historical").await
+        Ok(self.read(None, "historical").await?.1)
     }
 }
 

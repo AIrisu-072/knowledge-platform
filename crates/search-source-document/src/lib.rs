@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 mod model;
+mod outbox;
 mod postgres;
 mod translate;
 
@@ -10,8 +11,13 @@ pub use model::{
     DocumentAccessProjectionInput, DocumentSourceSnapshot, DsiEvidenceRefs,
     PermittedDocumentMetadata, PublicationEndRecord,
 };
+pub use outbox::{
+    DocumentIndexRuntime, DocumentIndexingConfig, DocumentLexicalReader, DocumentOutboxIndexer,
+    DocumentOutboxReader, DocumentProjectionReader, IndexingReceipt, IndexingReceiptStore,
+    MemoryDocumentIndexRuntime,
+};
 pub use postgres::{
-    DocumentCurrentAccessAdapter, DocumentSnapshotReader, DsiReadState,
+    DocumentCurrentAccessAdapter, DocumentOutboxSnapshot, DocumentSnapshotReader, DsiReadState,
     PostgresDocumentSnapshotReader, SnapshotReadError, VersionSnapshotRecord,
 };
 pub use translate::{
