@@ -1,5 +1,16 @@
 # Document GUI Integration v0 — Capability Execution Status
 
+## 2026-10-01 JST — G6 COMPLETE / G7 NEXT
+
+- 状態: **G0〜G6 COMPLETE。次はG7 Frontend foundation / Operational Design System。** Frozen Design / approved Planに意味変更なし、Design amendmentなし。
+- Implementation branch `feat/document-gui-integration-v0`。G6 contract RED commit `405ac30ac379423cbd9c055168c0a35232a5357a`、Binary Bridge RED commit `5c4324076ce2abb6285ce4cfefc8d966da7c756f`、GREEN commit/head `3b3d2b737942c0fd4eb27abb3777395507dcf0e2`。Product branchはlocal only、Draft product PR未作成。
+- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`、approved Production Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`、Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。PR #27/#29/#30/#31/#32/#35 MERGED、main `d71753d46590bb4406a1c0b74894ab90a27a6c88`、main CI `36718016267` SUCCESS。
+- G6実装: OpenAPI 3.2.1 / JSON Schema 2020-12でG1〜G5 contractとexamplesを揃えた。`@hey-api/openapi-ts` 0.99.0、TypeScript 6.0.3をexact-pinし、4 generated files / 34 operationsを追加。TS7 candidateはgenerator startupで`ts.SyntaxKind.AnyKeyword` incompatibilityとなったため、Design所定のTS6 fallbackを選択。`type-contracts.ts`でprojection/fragment/verdict unionsとnullabilityを固定。BinaryTransportBridgeはcreate document、create/update version、manifest item+renditionのpart mapping、Blob/ReadableStream download、RFC 9457 Problem normalizationを提供し、request/response DTOはgenerated typesを使用。
+- G6 qualification: contract REDではrevision projection/display paging/union/nullability欠落を検出。Binary REDではbridge未実装を検出。`node --test tools/api-contract/contract.test.mjs` 12/12 PASS、Redocly 2.52.1 lint (全request/response examples schema validation) PASS、TS6 typecheck PASS、client/binary/generated-operation tests 6/6 PASS、34 OpenAPI operationIdとgenerated SDK operation set一致。generator再実行後の全4生成ファイルhashが一致。`pnpm audit --audit-level=low` 既知脆弱性0件。`js-yaml 4.3.2` overrideをworkspaceへ置き、candidateのlicense inventoryはPoC時にpermissive-onlyで確認。Hosted CIはユーザー方針どおりTask単位で実行せず、G9 final exact-head gateに集約。
+- G6で追加したファイル: `packages/document-api-client/`（generated SDK/types、Bridge、compile-time qualification、focused tests）。Root scriptsはhostのpnpm shimに依存しないTypeScript/Node呼び出しとした。
+- Blocker: なし。Product branch/PRは未push/未作成。product PR merge、deploy、本番migration実行、AD/SSPI接続なし。直近disk空き約855 MiB、G9前に再確認してPostgres suitesはserial実行する。
+- 次のexact action: G7でReact 19 / Vite 8 / TanStack stack / Motion / Ajv / testing stackの現行公式package versionとReact Aria Componentsをfocused qualifyし、foundation/token/architecture testsを追加する。React Ariaのkeyboard/a11y/composition/performance/license/securityに問題があればBase UI比較へSTOPする。
+
 ## 2026-10-01 JST — G5 COMPLETE / G6 NEXT
 
 - 状態: **G0〜G5 COMPLETE。次はG6 OpenAPI 3.2 / typed client / Binary Bridge。** Frozen Design / approved Planに意味変更なし、Design amendmentなし。
