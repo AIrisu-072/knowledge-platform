@@ -74,8 +74,8 @@ Production Implementation Plan blobはapproval record記載値を必ず照合し
 実装開始時のcurrent GitHub stateを見てPlan G0を実施してください。
 
 - predecessor #27/#29/#30/#31/#32はPlan G0の範囲で順序どおりmainへ統合する。
-- GUI Design PR #35は承認済みDesign/Plan docsをmainへ統合するための設計PRとして扱う。
-- product implementationは最新mainから新しいfeature branchを作る。
+- GUI Design PR #35は承認済みDesign/Plan docsをmainへ統合するための設計PRとして扱う。predecessor merge後にmainへretargetし、exact-head gate成功後にPlan G0の範囲でmergeする。
+- product implementationは**PR #35まで統合された最新main**から新しいfeature branchを作る。
 - mainへ直接pushしない。
 - product implementationはUnit A/B/C/Dでstacked Draft PRに分けてよい。
 - commit/push/Draft PR作成・更新は実装範囲。
