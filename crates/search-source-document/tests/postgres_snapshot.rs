@@ -6,7 +6,7 @@ use document_domain::{
 };
 use document_repository_postgres::{PostgresDocumentRepository, SYSTEM_ROOT_FOLDER_ID, migrate};
 use search_application::ports::{AccessDecision, CurrentAccessEvaluatorPort};
-use search_core::id::ResourceId;
+use search_core::id::{ResourceId, SourceId};
 use search_source_document::{
     DocumentCurrentAccessAdapter, DocumentSnapshotReader, DsiReadState,
     PostgresDocumentSnapshotReader,
@@ -429,6 +429,7 @@ async fn current_access_uses_bound_actor_and_rechecks_current_version_after_revo
     let service =
         DocumentAccessCheckService::new(Arc::new(PostgresDocumentRepository::new(f.pool.clone())));
     let adapter = DocumentCurrentAccessAdapter::new(
+        SourceId::from_uuid(Uuid::now_v7()),
         f.pool.clone(),
         service,
         actor(),

@@ -9,7 +9,7 @@ use search_application::indexing_service::{
     DocumentIndexingPort, DocumentSourceEvent, IndexingOutcome,
 };
 use search_application::ports::{
-    BoxFuture, LexicalQuery, LexicalRetrieverPort, ProjectionGenerationStore,
+    BoxFuture, ConceptRegistryPort, LexicalQuery, LexicalRetrieverPort, ProjectionGenerationStore,
     SemanticRegistrySnapshot,
 };
 use search_application::projection::{
@@ -18,6 +18,7 @@ use search_application::projection::{
 use search_core::discovery::{DiscoveryRequest, FederatedCandidate};
 use search_core::id::{ProjectionGenerationId, ResourceId, SourceId};
 use search_core::observation::Coverage;
+use search_core::predicate::{ConceptResolver, TruthValue};
 use search_core::profile::DiscoveryLens;
 use search_core::projection::{
     CompiledResourceProjection, ProjectionGenerationKey, ProjectionGenerationManifest,
@@ -156,7 +157,7 @@ fn read_only_projection<'a>() -> BoxFuture<'a, ()> {
     })
 }
 
-// D8 currently accepts ProjectionGenerationStore for generation pinning. This
+// Discovery accepts ProjectionGenerationStore for generation pinning. This
 // facade satisfies that query port while denying every mutation, so a caller
 // cannot publish a projection without its runtime-owned lexical generation.
 impl ProjectionGenerationStore for DocumentProjectionReader {
@@ -213,6 +214,33 @@ impl ProjectionGenerationStore for DocumentProjectionReader {
         resource_id: ResourceId,
     ) -> BoxFuture<'a, Option<CompiledResourceProjection>> {
         ProjectionGenerationStore::resource_at(&self.0, key, resource_id)
+    }
+}
+
+impl ConceptRegistryPort for DocumentProjectionReader {
+    fn pin_view<'a>(
+        &'a self,
+        key: ProjectionGenerationKey,
+    ) -> BoxFuture<'a, Arc<dyn ConceptResolver + Send + Sync>> {
+        ConceptRegistryPort::pin_view(&self.0, key)
+    }
+
+    fn same_concept<'a>(
+        &'a self,
+        key: ProjectionGenerationKey,
+        left: &'a str,
+        right: &'a str,
+    ) -> BoxFuture<'a, TruthValue> {
+        ConceptRegistryPort::same_concept(&self.0, key, left, right)
+    }
+
+    fn is_a<'a>(
+        &'a self,
+        key: ProjectionGenerationKey,
+        child: &'a str,
+        parent: &'a str,
+    ) -> BoxFuture<'a, TruthValue> {
+        ConceptRegistryPort::is_a(&self.0, key, child, parent)
     }
 }
 

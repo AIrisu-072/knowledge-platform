@@ -7,8 +7,11 @@ use document_application::{ApplicationError, DocumentAccessCheckService, Verifie
 use document_domain::{Action, DocumentId, DocumentVersionId, FolderId, LifecycleState, Title};
 use document_repository_postgres::PostgresDocumentRepository;
 use document_semantic_inspection_core::{CapabilityEvidence, CapabilityState};
-use search_application::ports::{AccessDecision, BoxFuture, CurrentAccessEvaluatorPort};
-use search_core::id::ResourceId;
+use search_application::ports::{
+    AccessDecision, BoxFuture, CurrentAccessEvaluatorPort, CurrentCandidateAccessEvaluatorPort,
+};
+use search_core::discovery::{CandidateIdentityClass, FederatedCandidate};
+use search_core::id::{ResourceId, SourceId};
 use serde_json::Value;
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use time::OffsetDateTime;
@@ -394,6 +397,7 @@ fn valid_dsi_binding(row: &AuthoritativeDsiRow) -> bool {
 /// Session-scoped adapter. The string from Search is only an exact binding key;
 /// it never becomes a principal or a set of claims.
 pub struct DocumentCurrentAccessAdapter {
+    expected_source_id: SourceId,
     pool: PgPool,
     service: DocumentAccessCheckService<PostgresDocumentRepository>,
     actor: VerifiedActorContext,
@@ -402,12 +406,14 @@ pub struct DocumentCurrentAccessAdapter {
 
 impl DocumentCurrentAccessAdapter {
     pub fn new(
+        expected_source_id: SourceId,
         pool: PgPool,
         service: DocumentAccessCheckService<PostgresDocumentRepository>,
         actor: VerifiedActorContext,
         access_context_binding: String,
     ) -> Self {
         Self {
+            expected_source_id,
             pool,
             service,
             actor,
@@ -430,6 +436,35 @@ impl DocumentCurrentAccessAdapter {
         .bind(version_id)
         .fetch_optional(&self.pool)
         .await
+    }
+}
+
+impl CurrentCandidateAccessEvaluatorPort for DocumentCurrentAccessAdapter {
+    fn evaluate<'a>(
+        &'a self,
+        candidate: &'a FederatedCandidate,
+        access_context: &'a str,
+    ) -> BoxFuture<'a, AccessDecision> {
+        Box::pin(async move {
+            let Some(resource) = candidate.resource_ref else {
+                return Ok(AccessDecision::Denied);
+            };
+            // The two identifiers are Source-owned bindings, not request-supplied
+            // actor material. Only a Document Version with the canonical durable
+            // identity can reach the current Document authorization service.
+            if candidate.source_ref != self.expected_source_id
+                || candidate.identity_class != CandidateIdentityClass::DurableResource
+                || candidate.candidate_id
+                    != format!(
+                        "{}:{}",
+                        self.expected_source_id.as_uuid(),
+                        resource.as_uuid()
+                    )
+            {
+                return Ok(AccessDecision::Denied);
+            }
+            CurrentAccessEvaluatorPort::evaluate(self, resource, access_context).await
+        })
     }
 }
 
