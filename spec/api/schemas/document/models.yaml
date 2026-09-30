@@ -337,9 +337,12 @@ $defs:
             provenanceQuality: {type: string, enum: [operationLedger, versionFallback, legacyUnknown]}
             actor:
               type: [object, 'null']
+              additionalProperties: false
+              required: [identityProvider, principalId, presentation]
               properties:
-                identityProvider: {type: string}
-                principalId: {type: string}
+                identityProvider: {type: string, minLength: 1}
+                principalId: {type: string, minLength: 1}
+                presentation: {$ref: '#/$defs/IdentityPresentation'}
   FileList:
     type: object
     additionalProperties: false
@@ -411,7 +414,7 @@ $defs:
   PolicyGrant:
     type: object
     additionalProperties: false
-    required: [subjectKind, identityProvider, subjectId, actions]
+    required: [subjectKind, identityProvider, subjectId, actions, presentation]
     properties:
       subjectKind: {type: string, enum: [principal, group, role]}
       identityProvider: {type: string, minLength: 1}
@@ -421,6 +424,52 @@ $defs:
         uniqueItems: true
         minItems: 1
         items: {type: string, enum: [read, readHistory, write, publish, administer]}
+      presentation: {$ref: '#/$defs/IdentityPresentation'}
+  PolicyGrantInput:
+    type: object
+    additionalProperties: false
+    required: [subjectKind, identityProvider, subjectId, actions]
+    properties:
+      subjectKind: {type: string, enum: [principal, group, role]}
+      identityProvider: {type: string, minLength: 1}
+      subjectId: {type: string, minLength: 1}
+      actions:
+        type: array
+        uniqueItems: true
+        minItems: 1
+        items: {type: string, enum: [read, readHistory, write, publish, administer]}
+  IdentityRef:
+    type: object
+    additionalProperties: false
+    required: [provider, kind, subjectId]
+    properties:
+      provider: {type: string, minLength: 1}
+      kind: {type: string, enum: [principal, group, role]}
+      subjectId: {type: string, minLength: 1}
+  IdentityPresentation:
+    type: object
+    additionalProperties: false
+    required: [ref, displayName, secondaryText, resolution]
+    properties:
+      ref: {$ref: '#/$defs/IdentityRef'}
+      displayName: {type: [string, 'null']}
+      secondaryText: {type: [string, 'null']}
+      resolution: {type: string, enum: [resolved, notFound, unavailable]}
+  Session:
+    type: object
+    additionalProperties: false
+    required: [principal, presentation, invocationKind, expiresAt]
+    properties:
+      principal:
+        type: object
+        additionalProperties: false
+        required: [identityProvider, principalId]
+        properties:
+          identityProvider: {type: string, minLength: 1}
+          principalId: {type: string, minLength: 1}
+      presentation: {$ref: '#/$defs/IdentityPresentation'}
+      invocationKind: {type: string, enum: [human_interactive, agent, service]}
+      expiresAt: {type: string, format: date-time}
   CreateDocumentResult:
     type: object
     additionalProperties: false

@@ -162,7 +162,7 @@ $defs:
       grants:
         type: array
         minItems: 1
-        items: {$ref: './models.yaml#/$defs/PolicyGrant'}
+        items: {$ref: './models.yaml#/$defs/PolicyGrantInput'}
   SetAccessPolicy:
     oneOf:
       - $ref: '#/$defs/PolicyInherit'

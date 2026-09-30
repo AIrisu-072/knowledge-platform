@@ -10,6 +10,23 @@ servers:
   description: Same-origin deployment; no production endpoint is fixed.
 x-error-registry: ../errors/error-registry.yaml
 paths:
+  /v1/session:
+    get:
+      tags:
+      - Session
+      summary: Read the verified current session
+      operationId: getSession
+      description: >-
+        Returns the actor verified by the trusted identity adapter. Request headers
+        and query parameters cannot replace the verified principal. Identity
+        presentation is resolved separately and falls back to the stable subject ID.
+      responses:
+        '200':
+          $ref: '#/components/responses/Session'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/documents:
     get:
       tags:
@@ -611,6 +628,12 @@ components:
       $ref: ./schemas/common/identifiers.yaml#/$defs/Uuid
     Cursor:
       $ref: ./schemas/common/identifiers.yaml#/$defs/Cursor
+    IdentityRef:
+      $ref: ./schemas/document/models.yaml#/$defs/IdentityRef
+    IdentityPresentation:
+      $ref: ./schemas/document/models.yaml#/$defs/IdentityPresentation
+    Session:
+      $ref: ./schemas/document/models.yaml#/$defs/Session
     FieldError:
       $ref: ./schemas/errors/field-error.yaml
     Problem:
@@ -1184,6 +1207,32 @@ components:
                   schema:
                     type: string
   responses:
+    Session:
+      description: Verified current session
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Session'
+          example:
+            principal:
+              identityProvider: directory
+              principalId: user-123
+            presentation:
+              ref:
+                provider: directory
+                kind: principal
+                subjectId: user-123
+              displayName: Aki Tanaka
+              secondaryText: Quality Assurance
+              resolution: resolved
+            invocationKind: human_interactive
+            expiresAt: '2029-01-03T12:30:00Z'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
     DocumentList:
       description: DocumentList
       content:
@@ -1479,6 +1528,14 @@ components:
               subjectId: reviewer
               actions:
               - read
+              presentation:
+                ref:
+                  provider: directory
+                  kind: role
+                  subjectId: reviewer
+                displayName: Reviewer
+                secondaryText: null
+                resolution: resolved
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.

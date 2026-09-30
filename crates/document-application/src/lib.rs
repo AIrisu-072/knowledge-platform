@@ -19,6 +19,7 @@ mod error;
 mod events;
 mod file_access;
 mod folder_service;
+mod identity_presentation;
 mod management_command;
 mod management_digest;
 mod management_ports;
@@ -87,6 +88,11 @@ pub use file_access::{
     AuditedFileGrant, OpenedVersionFile, VersionFileAccessRepository, VersionFileAccessService,
 };
 pub use folder_service::FolderService;
+pub use identity_presentation::{
+    IdentityKind, IdentityPresentation, IdentityPresentationResolution,
+    IdentityPresentationResolutionError, IdentityPresentationResolver, IdentityPresentationService,
+    IdentityRef,
+};
 pub use management_command::{
     ManagementCommand, ManagementErrorCode, ManagementMoveDetails, ManagementMutationResult,
     ManagementOperationId, ManagementResult,

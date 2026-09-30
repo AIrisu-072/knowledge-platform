@@ -3,15 +3,18 @@ mod support;
 
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use document_api_http::identity::{IdentityAdapter, IdentityRequestContext};
-use document_api_http::read::read_router;
+use document_api_http::read::{read_router, read_router_with_identity_presentation};
 use document_api_http::validation::SchemaRegistry;
 use document_application::{
-    BootstrapRootPolicy, IdentityResolutionError, InvocationKind, VerifiedActorContext,
+    BootstrapRootPolicy, IdentityPresentation, IdentityPresentationResolution,
+    IdentityPresentationResolutionError, IdentityPresentationResolver, IdentityRef,
+    IdentityResolutionError, InvocationKind, VerifiedActorContext,
 };
 use document_domain::{Action, PolicyGrant, PolicySubject, PolicySubjectKind, PrincipalRef};
 use serde_json::{Value, json};
@@ -30,6 +33,62 @@ impl IdentityAdapter for FixedIdentity {
         Box<dyn Future<Output = Result<VerifiedActorContext, IdentityResolutionError>> + Send + 'a>,
     > {
         Box::pin(async { Ok(self.0.clone()) })
+    }
+}
+
+#[derive(Clone)]
+struct TestPresentationResolver {
+    calls: Arc<AtomicUsize>,
+    requested: Arc<Mutex<Vec<Vec<IdentityRef>>>>,
+    unavailable: bool,
+}
+
+impl TestPresentationResolver {
+    fn new(unavailable: bool) -> Self {
+        Self {
+            calls: Arc::new(AtomicUsize::new(0)),
+            requested: Arc::new(Mutex::new(Vec::new())),
+            unavailable,
+        }
+    }
+}
+
+impl IdentityPresentationResolver for TestPresentationResolver {
+    fn resolve_batch<'a>(
+        &'a self,
+        refs: &'a [IdentityRef],
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<Vec<IdentityPresentation>, IdentityPresentationResolutionError>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        self.requested.lock().unwrap().push(refs.to_vec());
+        let unavailable = self.unavailable;
+        let presentations = refs
+            .iter()
+            .cloned()
+            .map(|reference| IdentityPresentation {
+                display_name: Some(format!(
+                    "{} {}",
+                    reference.kind.as_str(),
+                    reference.subject_id
+                )),
+                secondary_text: Some(reference.provider.clone()),
+                reference,
+                resolution: IdentityPresentationResolution::Resolved,
+            })
+            .collect();
+        Box::pin(async move {
+            if unavailable {
+                Err(IdentityPresentationResolutionError::Unavailable)
+            } else {
+                Ok(presentations)
+            }
+        })
     }
 }
 
@@ -854,4 +913,144 @@ async fn policy_read_requires_administer_permission() {
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(body["code"], "FORBIDDEN");
+}
+
+#[tokio::test]
+async fn history_and_policy_resolve_identity_presentations_once_per_response() {
+    let f = fixture().await;
+    seed_gui_document(&f).await;
+    let group = PolicyGrant::new(
+        PolicySubject::new(PolicySubjectKind::Group, "directory", "reviewers").unwrap(),
+        [Action::Read],
+    )
+    .unwrap();
+    let role = PolicyGrant::new(
+        PolicySubject::new(PolicySubjectKind::Role, "directory", "auditor").unwrap(),
+        [Action::Read],
+    )
+    .unwrap();
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![
+                grant_for(
+                    "policy-admin",
+                    [Action::Read, Action::ReadHistory, Action::Administer],
+                ),
+                group,
+                role,
+            ],
+        )
+        .await
+        .unwrap();
+    let resolver = TestPresentationResolver::new(false);
+    let router = read_router_with_identity_presentation(
+        f.repository.clone(),
+        Arc::new(FixedIdentity(context())),
+        Arc::new(resolver.clone()),
+    )
+    .unwrap();
+
+    let (status, history) = get(
+        router.clone(),
+        &format!("/v1/documents/{}/history", f.document_id.as_uuid()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{history}");
+    let history_actor = history["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find_map(|item| item.get("actor").filter(|actor| !actor.is_null()))
+        .expect("version history includes an actor");
+    assert_eq!(
+        history_actor["presentation"]["ref"]["subjectId"],
+        "policy-admin"
+    );
+    assert_eq!(
+        history_actor["presentation"]["displayName"],
+        "principal policy-admin"
+    );
+
+    let (status, policy) = get(
+        router,
+        &format!("/v1/folders/{}/access-policy", f.root_id.as_uuid()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{policy}");
+    let grants = policy["effectiveGrants"].as_array().unwrap();
+    assert_eq!(grants.len(), 3);
+    assert!(grants.iter().all(|grant| {
+        grant["presentation"]["resolution"] == "resolved"
+            && grant["presentation"]["ref"]["subjectId"] == grant["subjectId"]
+    }));
+    let requested = resolver.requested.lock().unwrap();
+    assert_eq!(resolver.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(requested.len(), 2);
+    assert_eq!(
+        requested[0].len(),
+        1,
+        "repeated history actors are deduplicated"
+    );
+    assert_eq!(
+        requested[1].len(),
+        3,
+        "policy subjects resolve in one batch"
+    );
+}
+
+#[tokio::test]
+async fn unavailable_identity_presentation_does_not_fail_history_or_policy_reads() {
+    let f = fixture().await;
+    seed_gui_document(&f).await;
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![grant_for(
+                "policy-admin",
+                [Action::Read, Action::ReadHistory, Action::Administer],
+            )],
+        )
+        .await
+        .unwrap();
+    let router = read_router_with_identity_presentation(
+        f.repository.clone(),
+        Arc::new(FixedIdentity(context())),
+        Arc::new(TestPresentationResolver::new(true)),
+    )
+    .unwrap();
+
+    let (status, history) = get(
+        router.clone(),
+        &format!("/v1/documents/{}/history", f.document_id.as_uuid()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{history}");
+    let history_actor = history["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find_map(|item| item.get("actor").filter(|actor| !actor.is_null()))
+        .expect("version history includes an actor");
+    assert_eq!(history_actor["presentation"]["resolution"], "unavailable");
+    assert_eq!(history_actor["presentation"]["displayName"], Value::Null);
+    assert_eq!(
+        history_actor["presentation"]["ref"]["subjectId"],
+        "policy-admin"
+    );
+
+    let (status, policy) = get(
+        router,
+        &format!("/v1/folders/{}/access-policy", f.root_id.as_uuid()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{policy}");
+    assert_eq!(
+        policy["effectiveGrants"][0]["presentation"]["resolution"],
+        "unavailable"
+    );
+    assert_eq!(
+        policy["effectiveGrants"][0]["presentation"]["ref"]["subjectId"],
+        "policy-admin"
+    );
 }

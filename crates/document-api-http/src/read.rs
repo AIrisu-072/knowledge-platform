@@ -1,3 +1,5 @@
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
 use axum::extract::rejection::QueryRejection;
@@ -13,10 +15,11 @@ use document_application::{
     DocumentRevisionDetailQuery, DocumentRevisionPageQuery, DocumentRevisionReadRepository,
     DocumentRevisionReadService, DocumentRevisionSummary, DocumentSort, FolderActionCapabilities,
     FolderPageQuery, GuiDocumentReadModel, GuiVersionFileSummary, GuiVersionSummary,
-    HistoryDocumentSummary, HistoryPageQuery, HistoryQuery, Page, PolicyBindingMode,
-    ProvenanceQuality, PublishedDocumentSummary, PublishedQuery, VerifiedActorContext,
-    VersionActionCapabilities, VersionDetail, VersionFileSummary, VersionPageQuery, VersionPurpose,
-    VersionRequest, VersionSummary,
+    HistoryDocumentSummary, HistoryPageQuery, HistoryQuery, IdentityPresentation,
+    IdentityPresentationResolver, IdentityPresentationService, IdentityRef, Page,
+    PolicyBindingMode, ProvenanceQuality, PublishedDocumentSummary, PublishedQuery,
+    VerifiedActorContext, VersionActionCapabilities, VersionDetail, VersionFileSummary,
+    VersionPageQuery, VersionPurpose, VersionRequest, VersionSummary,
 };
 use document_domain::{
     Action, DocumentId, DocumentVersionId, PolicyGrant, PolicySubjectKind, PolicyTarget,
@@ -60,20 +63,43 @@ impl<T> AuthorizedReadRepository for T where
 
 struct ReadState<R> {
     repository: Arc<R>,
+    identity_presentations: Arc<dyn IdentityPresentationResolver>,
 }
 
 impl<R> Clone for ReadState<R> {
     fn clone(&self) -> Self {
         Self {
             repository: self.repository.clone(),
+            identity_presentations: self.identity_presentations.clone(),
         }
     }
 }
 
+#[derive(Clone)]
+struct SessionState {
+    identity_presentations: Arc<dyn IdentityPresentationResolver>,
+}
+
+/// Builds read routes with subject-ID fallback when no presentation source is configured.
+/// Hosts with an Identity presentation source should use
+/// [`read_router_with_identity_presentation`] to enable display-name enrichment.
 pub fn read_router<R: AuthorizedReadRepository>(
     repository: Arc<R>,
     identity_adapter: Arc<dyn IdentityAdapter>,
 ) -> Result<Router, StartupError> {
+    read_router_with_identity_presentation(
+        repository,
+        identity_adapter,
+        Arc::new(UnavailableIdentityPresentationResolver),
+    )
+}
+
+pub fn read_router_with_identity_presentation<R: AuthorizedReadRepository>(
+    repository: Arc<R>,
+    identity_adapter: Arc<dyn IdentityAdapter>,
+    identity_presentations: Arc<dyn IdentityPresentationResolver>,
+) -> Result<Router, StartupError> {
+    let session_routes = session_routes(identity_presentations.clone());
     let routes = Router::new()
         .route("/v1/documents", get(list_documents::<R>))
         .route("/v1/documents/{document_id}", get(get_document::<R>))
@@ -114,11 +140,59 @@ pub fn read_router<R: AuthorizedReadRepository>(
             "/v1/folders/{folder_id}/access-policy",
             get(get_folder_policy::<R>),
         )
-        .with_state(ReadState { repository });
+        .with_state(ReadState {
+            repository,
+            identity_presentations,
+        })
+        .merge(session_routes);
     protect_routes(
         with_operation_timeout(routes, ORDINARY_OPERATION_TIMEOUT),
         Some(identity_adapter),
     )
+}
+
+pub fn session_router(
+    identity_adapter: Arc<dyn IdentityAdapter>,
+    identity_presentations: Arc<dyn IdentityPresentationResolver>,
+) -> Result<Router, StartupError> {
+    protect_routes(
+        with_operation_timeout(
+            session_routes(identity_presentations),
+            ORDINARY_OPERATION_TIMEOUT,
+        ),
+        Some(identity_adapter),
+    )
+}
+
+fn session_routes(identity_presentations: Arc<dyn IdentityPresentationResolver>) -> Router {
+    Router::new()
+        .route("/v1/session", get(get_session))
+        .with_state(SessionState {
+            identity_presentations,
+        })
+}
+
+struct UnavailableIdentityPresentationResolver;
+
+impl IdentityPresentationResolver for UnavailableIdentityPresentationResolver {
+    fn resolve_batch<'a>(
+        &'a self,
+        _refs: &'a [IdentityRef],
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<
+                        Vec<IdentityPresentation>,
+                        document_application::IdentityPresentationResolutionError,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async {
+            Err(document_application::IdentityPresentationResolutionError::Unavailable)
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -365,6 +439,40 @@ struct PageDto<T> {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct SessionDto {
+    principal: PrincipalDto,
+    presentation: IdentityPresentationDto,
+    invocation_kind: &'static str,
+    expires_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PrincipalDto {
+    identity_provider: String,
+    principal_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IdentityPresentationDto {
+    #[serde(rename = "ref")]
+    reference: IdentityRefDto,
+    display_name: Option<String>,
+    secondary_text: Option<String>,
+    resolution: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IdentityRefDto {
+    provider: String,
+    kind: &'static str,
+    subject_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct HistoryEntryDto {
     source_kind: String,
     source_key: String,
@@ -380,6 +488,7 @@ struct HistoryEntryDto {
 struct ActorDto {
     identity_provider: String,
     principal_id: String,
+    presentation: IdentityPresentationDto,
 }
 
 #[derive(Debug, Serialize)]
@@ -442,6 +551,7 @@ struct PolicyGrantDto {
     identity_provider: String,
     subject_id: String,
     actions: Vec<&'static str>,
+    presentation: IdentityPresentationDto,
 }
 
 #[derive(Debug, Serialize)]
@@ -454,6 +564,37 @@ struct AccessPolicyDto {
     effective_policy_id: Uuid,
     effective_source: PolicyTargetDto,
     effective_grants: Vec<PolicyGrantDto>,
+}
+
+async fn get_session(
+    State(state): State<SessionState>,
+    Extension(ctx): Extension<VerifiedActorContext>,
+    Extension(trace): Extension<TraceContext>,
+) -> Result<Json<SessionDto>, ApiError> {
+    let path = "/v1/session";
+    ctx.ensure_current()
+        .map_err(|error| problem(error, path, &trace))?;
+    let reference = IdentityRef::from_principal(ctx.principal());
+    let presentation = IdentityPresentationService::resolve_batch(
+        state.identity_presentations.as_ref(),
+        std::slice::from_ref(&reference),
+    )
+    .await
+    .into_iter()
+    .next()
+    .unwrap_or_else(|| IdentityPresentation::unavailable(reference));
+    ctx.ensure_current()
+        .map_err(|error| problem(error, path, &trace))?;
+
+    Ok(Json(SessionDto {
+        principal: PrincipalDto {
+            identity_provider: ctx.principal().identity_provider().to_owned(),
+            principal_id: ctx.principal().principal_id().to_owned(),
+        },
+        presentation: identity_presentation_dto(presentation),
+        invocation_kind: ctx.invocation_kind().as_str(),
+        expires_at: timestamp(ctx.valid_until()).map_err(|error| problem(error, path, &trace))?,
+    }))
 }
 
 async fn list_documents<R: AuthorizedReadRepository>(
@@ -657,7 +798,7 @@ async fn list_history<R: AuthorizedReadRepository>(
 ) -> Result<Json<PageDto<HistoryEntryDto>>, ApiError> {
     let path = format!("/v1/documents/{document_id}/history");
     let params = query_params(query, &path, &trace)?;
-    let page = DocumentHistoryService::new(state.repository)
+    let page = DocumentHistoryService::new(state.repository.clone())
         .list_document_history(
             &ctx,
             HistoryPageQuery {
@@ -669,10 +810,29 @@ async fn list_history<R: AuthorizedReadRepository>(
         )
         .await
         .map_err(|error| problem(error, &path, &trace))?;
+    let actor_refs = page
+        .items
+        .iter()
+        .filter_map(|entry| entry.actor.as_ref())
+        .map(IdentityRef::from_principal)
+        .collect::<Vec<_>>();
+    let actor_presentations = IdentityPresentationService::resolve_batch(
+        state.identity_presentations.as_ref(),
+        &actor_refs,
+    )
+    .await;
+    let mut actor_presentations = actor_presentations.into_iter();
     let items = page
         .items
         .into_iter()
-        .map(history_entry_dto)
+        .map(|entry| {
+            let presentation = entry.actor.as_ref().map(|actor| {
+                actor_presentations.next().unwrap_or_else(|| {
+                    IdentityPresentation::unavailable(IdentityRef::from_principal(actor))
+                })
+            });
+            history_entry_dto(entry, presentation)
+        })
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| problem(error, &path, &trace))?;
     Ok(Json(PageDto {
@@ -871,10 +1031,26 @@ async fn policy_response<R: AuthorizedReadRepository>(
     path: &str,
     trace: &TraceContext,
 ) -> Result<Json<AccessPolicyDto>, ApiError> {
-    let policy = AccessPolicyReadService::new(state.repository)
+    let policy = AccessPolicyReadService::new(state.repository.clone())
         .read(&ctx, target)
         .await
         .map_err(|error| problem(error, path, trace))?;
+    let identity_refs = policy
+        .effective_grants
+        .iter()
+        .map(|grant| IdentityRef::from_policy_subject(grant.subject()))
+        .collect::<Vec<_>>();
+    let presentations = IdentityPresentationService::resolve_batch(
+        state.identity_presentations.as_ref(),
+        &identity_refs,
+    )
+    .await;
+    let effective_grants = policy
+        .effective_grants
+        .into_iter()
+        .zip(presentations)
+        .map(|(grant, presentation)| policy_grant_dto(grant, presentation))
+        .collect();
     Ok(Json(AccessPolicyDto {
         target: policy_target_dto(policy.target),
         binding_mode: match policy.binding_mode {
@@ -885,11 +1061,7 @@ async fn policy_response<R: AuthorizedReadRepository>(
         policy_revision: policy.policy_revision,
         effective_policy_id: policy.effective_policy_id.as_uuid(),
         effective_source: policy_target_dto(policy.effective_source),
-        effective_grants: policy
-            .effective_grants
-            .into_iter()
-            .map(policy_grant_dto)
-            .collect(),
+        effective_grants,
     }))
 }
 
@@ -1206,14 +1378,23 @@ fn version_detail_dto(value: VersionDetail) -> Result<VersionDto, ApplicationErr
     Ok(dto)
 }
 
-fn history_entry_dto(value: DocumentHistoryEntry) -> Result<HistoryEntryDto, ApplicationError> {
+fn history_entry_dto(
+    value: DocumentHistoryEntry,
+    presentation: Option<IdentityPresentation>,
+) -> Result<HistoryEntryDto, ApplicationError> {
     Ok(HistoryEntryDto {
         source_kind: value.source_kind,
         source_key: value.source_key,
         occurred_at: optional_timestamp(value.occurred_at)?,
-        actor: value.actor.map(|actor| ActorDto {
-            identity_provider: actor.identity_provider().to_owned(),
-            principal_id: actor.principal_id().to_owned(),
+        actor: value.actor.map(|actor| {
+            let reference = IdentityRef::from_principal(&actor);
+            let presentation =
+                presentation.unwrap_or_else(|| IdentityPresentation::unavailable(reference));
+            ActorDto {
+                identity_provider: actor.identity_provider().to_owned(),
+                principal_id: actor.principal_id().to_owned(),
+                presentation: identity_presentation_dto(presentation),
+            }
         }),
         action_code: value.action_code,
         details: value.details,
@@ -1223,6 +1404,19 @@ fn history_entry_dto(value: DocumentHistoryEntry) -> Result<HistoryEntryDto, App
             ProvenanceQuality::LegacyUnknown => "legacyUnknown",
         },
     })
+}
+
+fn identity_presentation_dto(value: IdentityPresentation) -> IdentityPresentationDto {
+    IdentityPresentationDto {
+        reference: IdentityRefDto {
+            provider: value.reference.provider,
+            kind: value.reference.kind.as_str(),
+            subject_id: value.reference.subject_id,
+        },
+        display_name: value.display_name,
+        secondary_text: value.secondary_text,
+        resolution: value.resolution.as_str(),
+    }
 }
 
 fn file_dto(value: VersionFileSummary) -> FileDto {
@@ -1251,7 +1445,7 @@ fn policy_target_dto(value: PolicyTarget) -> PolicyTargetDto {
     }
 }
 
-fn policy_grant_dto(value: PolicyGrant) -> PolicyGrantDto {
+fn policy_grant_dto(value: PolicyGrant, presentation: IdentityPresentation) -> PolicyGrantDto {
     let subject = value.subject();
     PolicyGrantDto {
         subject_kind: match subject.kind() {
@@ -1272,5 +1466,6 @@ fn policy_grant_dto(value: PolicyGrant) -> PolicyGrantDto {
                 Action::Administer => "administer",
             })
             .collect(),
+        presentation: identity_presentation_dto(presentation),
     }
 }

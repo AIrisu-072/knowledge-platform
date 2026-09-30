@@ -24,7 +24,15 @@ impl IdentityAdapter for FixedIdentity {
         &'a self,
         _request: &'a IdentityRequestContext,
     ) -> Pin<
-        Box<dyn Future<Output = Result<VerifiedActorContext, document_application::IdentityResolutionError>> + Send + 'a>,
+        Box<
+            dyn Future<
+                    Output = Result<
+                        VerifiedActorContext,
+                        document_application::IdentityResolutionError,
+                    >,
+                > + Send
+                + 'a,
+        >,
     > {
         let verified = self.0.clone();
         Box::pin(async move { Ok(verified) })
@@ -44,8 +52,9 @@ impl IdentityPresentationResolver for FixedPresentation {
         refs: &'a [IdentityRef],
     ) -> Pin<
         Box<
-            dyn Future<Output = Result<Vec<IdentityPresentation>, IdentityPresentationResolutionError>>
-                + Send
+            dyn Future<
+                    Output = Result<Vec<IdentityPresentation>, IdentityPresentationResolutionError>,
+                > + Send
                 + 'a,
         >,
     > {
@@ -60,12 +69,14 @@ fn verified_actor() -> VerifiedActorContext {
     let principal = PrincipalRef::new("trusted-directory", "verified-user-7").unwrap();
     VerifiedActorContext::from_trusted_adapter(
         principal,
-        vec![PolicySubject::new(
-            PolicySubjectKind::Principal,
-            "trusted-directory",
-            "verified-user-7",
-        )
-        .unwrap()],
+        vec![
+            PolicySubject::new(
+                PolicySubjectKind::Principal,
+                "trusted-directory",
+                "verified-user-7",
+            )
+            .unwrap(),
+        ],
         OffsetDateTime::now_utc() + Duration::minutes(30),
         InvocationKind::HumanInteractive,
         None,
@@ -93,7 +104,10 @@ async fn get_session(router: axum::Router) -> (StatusCode, Value) {
 #[tokio::test]
 async fn session_uses_only_verified_actor_for_principal_and_identity_presentation() {
     let actor = verified_actor();
-    let expected_expiry = actor.valid_until().format(&time::format_description::well_known::Rfc3339).unwrap();
+    let expected_expiry = actor
+        .valid_until()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap();
     let expected_ref = IdentityRef::from_principal(actor.principal());
     let resolver = FixedPresentation {
         calls: Arc::new(AtomicUsize::new(0)),
@@ -105,7 +119,8 @@ async fn session_uses_only_verified_actor_for_principal_and_identity_presentatio
             resolution: IdentityPresentationResolution::Resolved,
         }]),
     };
-    let router = session_router(Arc::new(FixedIdentity(actor)), Arc::new(resolver.clone())).unwrap();
+    let router =
+        session_router(Arc::new(FixedIdentity(actor)), Arc::new(resolver.clone())).unwrap();
 
     let (status, body) = get_session(router).await;
 
@@ -118,7 +133,10 @@ async fn session_uses_only_verified_actor_for_principal_and_identity_presentatio
     assert_eq!(body["invocationKind"], "human_interactive");
     assert_eq!(body["expiresAt"], expected_expiry);
     assert_eq!(resolver.calls.load(Ordering::SeqCst), 1);
-    assert_eq!(resolver.requested.lock().unwrap().as_slice(), &[vec![expected_ref]]);
+    assert_eq!(
+        resolver.requested.lock().unwrap().as_slice(),
+        &[vec![expected_ref]]
+    );
 }
 
 #[tokio::test]

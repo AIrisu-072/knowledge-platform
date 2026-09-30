@@ -34,8 +34,9 @@ impl IdentityPresentationResolver for RecordingResolver {
         refs: &'a [IdentityRef],
     ) -> Pin<
         Box<
-            dyn Future<Output = Result<Vec<IdentityPresentation>, IdentityPresentationResolutionError>>
-                + Send
+            dyn Future<
+                    Output = Result<Vec<IdentityPresentation>, IdentityPresentationResolutionError>,
+                > + Send
                 + 'a,
         >,
     > {
@@ -83,7 +84,10 @@ async fn batch_resolution_deduplicates_refs_and_preserves_fallback_status() {
     assert_eq!(resolved.len(), 3);
     assert_eq!(resolved[0].display_name.as_deref(), Some("Alice Chen"));
     assert_eq!(resolved[1].reference, group);
-    assert_eq!(resolved[1].resolution, IdentityPresentationResolution::NotFound);
+    assert_eq!(
+        resolved[1].resolution,
+        IdentityPresentationResolution::NotFound
+    );
     assert_eq!(resolved[1].display_name, None);
     assert_eq!(resolved[1].secondary_text, None);
     assert_eq!(resolved[2], resolved[0]);
@@ -94,15 +98,29 @@ async fn unavailable_or_missing_resolver_results_fall_back_without_losing_identi
     let principal = IdentityRef::from_policy_subject(
         &PolicySubject::new(PolicySubjectKind::Role, "directory", "document-editor").unwrap(),
     );
-    let resolver = RecordingResolver::returning(Err(
-        IdentityPresentationResolutionError::Unavailable,
-    ));
+    let resolver =
+        RecordingResolver::returning(Err(IdentityPresentationResolutionError::Unavailable));
 
-    let resolved = IdentityPresentationService::resolve_batch(&resolver, std::slice::from_ref(&principal)).await;
+    let resolved =
+        IdentityPresentationService::resolve_batch(&resolver, std::slice::from_ref(&principal))
+            .await;
 
     assert_eq!(resolved.len(), 1);
     assert_eq!(resolved[0].reference, principal);
     assert_eq!(resolved[0].display_name, None);
     assert_eq!(resolved[0].secondary_text, None);
-    assert_eq!(resolved[0].resolution, IdentityPresentationResolution::Unavailable);
+    assert_eq!(
+        resolved[0].resolution,
+        IdentityPresentationResolution::Unavailable
+    );
+
+    let missing = RecordingResolver::returning(Ok(Vec::new()));
+    let missing_result =
+        IdentityPresentationService::resolve_batch(&missing, std::slice::from_ref(&principal))
+            .await;
+    assert_eq!(missing_result[0].reference, principal);
+    assert_eq!(
+        missing_result[0].resolution,
+        IdentityPresentationResolution::Unavailable
+    );
 }
