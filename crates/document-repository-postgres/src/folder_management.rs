@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use document_application::{
-    ManagementCommand, ManagementMoveDetails, ManagementMutationResult, ManagementResult,
-    RepositoryError, VerifiedActorContext, management_command_digest,
+    ManagementCommand, ManagementErrorCode, ManagementMoveDetails, ManagementMutationResult,
+    ManagementResult, RepositoryError, VerifiedActorContext, management_command_digest,
 };
 use document_domain::{
     Action, DocumentId, FolderId, PolicyMode, ResourceRef, evaluate_policy, normalize_folder_name,
@@ -69,7 +69,9 @@ impl PostgresDocumentRepository {
                     ..
                 } => {
                     if folder_id.as_uuid() == SYSTEM_ROOT_FOLDER_ID {
-                        return Err(RepositoryError::BusinessRule);
+                        return Err(RepositoryError::Management(
+                            ManagementErrorCode::RootProtected,
+                        ));
                     }
                     let parent = sqlx::query(
                         "SELECT revision,status FROM folders WHERE folder_id = $1 FOR UPDATE",
@@ -158,7 +160,9 @@ impl PostgresDocumentRepository {
                     )
                     .await?;
                     if folder_id.as_uuid() == SYSTEM_ROOT_FOLDER_ID {
-                        return Err(RepositoryError::BusinessRule);
+                        return Err(RepositoryError::Management(
+                            ManagementErrorCode::RootProtected,
+                        ));
                     }
                     let status: String = row.try_get("status").map_err(map_statement_error)?;
                     if status != "ACTIVE" {
@@ -277,7 +281,9 @@ impl PostgresDocumentRepository {
                 return replay_management(&mut tx, ctx, &saved, digest).await;
             }
             if folder_id.as_uuid() == SYSTEM_ROOT_FOLDER_ID {
-                return Err(RepositoryError::BusinessRule);
+                return Err(RepositoryError::Management(
+                    ManagementErrorCode::RootProtected,
+                ));
             }
             let subtree_ids: Vec<Uuid> = sqlx::query_scalar(
                 "WITH RECURSIVE subtree(folder_id) AS ( \
@@ -295,7 +301,9 @@ impl PostgresDocumentRepository {
                 return Err(RepositoryError::FolderNotFound);
             }
             if subtree_ids.contains(&to.as_uuid()) {
-                return Err(RepositoryError::BusinessRule);
+                return Err(RepositoryError::Management(
+                    ManagementErrorCode::FolderCycle,
+                ));
             }
             let mut lock_ids = subtree_ids.clone();
             lock_ids.extend([from.as_uuid(), to.as_uuid()]);
@@ -365,7 +373,9 @@ impl PostgresDocumentRepository {
                 .await
                 .map_err(map_statement_error)?;
                 if pending {
-                    return Err(RepositoryError::BusinessRule);
+                    return Err(RepositoryError::Management(
+                        ManagementErrorCode::ReservedDocument,
+                    ));
                 }
                 let resources: Vec<ResourceRef> = subtree_ids
                     .iter()

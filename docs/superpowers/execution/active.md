@@ -1,5 +1,16 @@
 # Active Execution Pointer
 
+## Active checkpoint — Document HTTP/OpenAPI Transport v0 Unit A local GREEN、2026-09-29 JST
+
+- Status: **ACTIVE / HAPI-01〜03 LOCAL GREEN / UNIT A EXACT-HEAD GATE NEXT**。詳細は `docs/superpowers/execution/document-http-openapi-transport-v0-status.md`。
+- Frozen Design blob `88f7046a5d14a77f4091df0c92691f6634dd57d7`、承認済みProduction Plan blob `111914181143672d3fec901dae75fc2af0256b15`。設計意味変更提案なし。
+- branch `feat/document-http-openapi-transport-v0-a`、Unit A実装head `bd73d36ae17e0a7e00bca3f1c029df47e58680aa`。基準はDraft PR #27の承認head `838190aaa5cdb55a12cd9543152b06e517d2df37`、main `77b13a1d35d15eea0112ca2d73f8cbd3dfffe1c9`。Unit A PRは未作成。merge/deploy/本番identity接続は指示なし。
+- HAPI-01〜03はfocused RED→GREENをcommit済み。HAPI-02対象DB 16件、HAPI-03 HTTP基盤6件・architecture negative 2件、API contract 7件、対象Clippy/fmt/architecture checkがPASS。Unit Aの標準CI/全体gateは未実行であり、Unit A COMPLETEではない。
+- blocker: Unit A exact-head `mise run verify:fast` と標準CI。ローカルbuild出力でディスクが逼迫したため、再生成可能なCargo targetを `cargo clean` で整理し、対象テストはdebug infoを減らして実行。Docker daemon停止時の失敗は `orb start` 後に対象DB 16件PASSで解消。
+- 次のexact action: 本checkpointをcommitし、新headで `mise run verify:fast`、必要な対象テストを確認。branchをpushしてDraft PR Aを作成し、同一headの標準CI SUCCESS後にHAPI-04のREDへ進む。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## Active checkpoint — Document HTTP/OpenAPI Transport v0 計画承認・HAPI-01開始準備、2026-09-29 JST
 
 - Status: **PLAN APPROVED / IMPLEMENTATION AUTHORIZED / HAPI-01 NEXT**。詳細は `docs/superpowers/execution/document-http-openapi-transport-v0-status.md`。

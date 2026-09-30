@@ -203,3 +203,43 @@ fn real_policy_requires_final_ci_contract() {
         "real policy must require workflow-level permissions"
     );
 }
+
+#[test]
+fn document_http_transport_cannot_depend_on_infrastructure() {
+    let fixture = Fixture::valid().with_file(
+        "crates/document-api-http/Cargo.toml",
+        "[package]\nname = \"document-api-http\"\nversion = \"0.0.0\"\n\n[dependencies]\nsqlx = \"0.9\"\ndocument-repository-postgres = \"0.0.0\"\ndocument-storage-fs = \"0.0.0\"\n",
+    );
+    let report = check_repository(fixture.root(), &config()).unwrap();
+    for dependency in [
+        "sqlx",
+        "document-repository-postgres",
+        "document-storage-fs",
+    ] {
+        assert!(report.findings.iter().any(|finding| {
+            finding.code == "ARCH_FORBIDDEN_CRATE_DEPENDENCY"
+                && finding.path == "crates/document-api-http/Cargo.toml"
+                && finding.message.contains(dependency)
+        }));
+    }
+}
+
+#[test]
+fn document_http_transport_cannot_import_root_or_runner_implementation() {
+    let fixture = Fixture::valid().with_file(
+        "crates/document-api-http/src/lib.rs",
+        "use document_repository_postgres::SYSTEM_ROOT_FOLDER_ID;\nuse document_diff_runner::Runner;\n",
+    );
+    let report = check_repository(fixture.root(), &config()).unwrap();
+    for source in [
+        "document_repository_postgres",
+        "document_diff_runner",
+        "SYSTEM_ROOT_FOLDER_ID",
+    ] {
+        assert!(report.findings.iter().any(|finding| {
+            finding.code == "ARCH_FORBIDDEN_SOURCE_PATTERN"
+                && finding.path == "crates/document-api-http/src/lib.rs"
+                && finding.message.contains(source)
+        }));
+    }
+}

@@ -1,6 +1,7 @@
 use document_application::{
-    BootstrapRootPolicy, ManagementCommand, ManagementMoveDetails, ManagementMutationResult,
-    ManagementOperationId, ManagementRepository, ManagementResult, RepositoryError,
+    AccessPolicyRead, AccessPolicyReadRepository, BootstrapRootPolicy, ManagementCommand,
+    ManagementErrorCode, ManagementMoveDetails, ManagementMutationResult, ManagementOperationId,
+    ManagementRepository, ManagementResult, PolicyBindingMode, RepositoryError,
     VerifiedActorContext, management_command_digest,
 };
 use document_domain::{
@@ -14,7 +15,9 @@ use uuid::Uuid;
 
 use crate::{
     PostgresDocumentRepository, SYSTEM_ROOT_FOLDER_ID,
-    access_control::{AccessLockMode, authorize_in_tx, lock_access_state, read_grants},
+    access_control::{
+        AccessLockMode, authorize_in_tx, lock_access_state, nearest_policy_id, read_grants,
+    },
     error::{map_commit_error, map_statement_error},
     targeted_events::{insert_targeted_events, record_authorization_denied, resource_parts},
 };
@@ -40,6 +43,64 @@ fn normalized_mode(mode: &PolicyMode) -> PolicyMode {
             grants.sort_by(|a, b| a.subject().cmp(b.subject()));
             PolicyMode::Explicit(grants)
         }
+    }
+}
+
+impl AccessPolicyReadRepository for PostgresDocumentRepository {
+    async fn read_access_policy(
+        &self,
+        ctx: &VerifiedActorContext,
+        target: PolicyTarget,
+    ) -> Result<AccessPolicyRead, RepositoryError> {
+        let mut tx = self.pool.begin().await.map_err(map_statement_error)?;
+        let result: Result<AccessPolicyRead, RepositoryError> = async {
+            lock_access_state(&mut tx, AccessLockMode::Shared).await?;
+            authorize_in_tx(&mut tx, ctx, &[(target.into(), vec![Action::Administer])]).await?;
+            let binding = load_binding(&mut tx, target).await?;
+            let effective_id = nearest_policy_id(&mut tx, target.into())
+                .await?
+                .ok_or(RepositoryError::IntegrityViolation)?;
+            let source = sqlx::query(
+                "SELECT folder_id,document_id FROM access_policy_bindings WHERE policy_id = $1",
+            )
+            .bind(effective_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(map_statement_error)?
+            .ok_or(RepositoryError::IntegrityViolation)?;
+            let folder_id: Option<Uuid> =
+                source.try_get("folder_id").map_err(map_statement_error)?;
+            let document_id: Option<Uuid> =
+                source.try_get("document_id").map_err(map_statement_error)?;
+            let effective_source = match (folder_id, document_id) {
+                (Some(id), None) => PolicyTarget::Folder(FolderId::from_uuid(id)),
+                (None, Some(id)) => {
+                    PolicyTarget::Document(document_domain::DocumentId::from_uuid(id))
+                }
+                _ => return Err(RepositoryError::IntegrityViolation),
+            };
+            let (binding_mode, policy_id, policy_revision) = match binding {
+                None => (PolicyBindingMode::Inherit, None, 0),
+                Some((id, revision, PolicyMode::Inherit)) => {
+                    (PolicyBindingMode::Inherit, Some(id), revision)
+                }
+                Some((id, revision, PolicyMode::Explicit(_))) => {
+                    (PolicyBindingMode::Explicit, Some(id), revision)
+                }
+            };
+            Ok(AccessPolicyRead {
+                target,
+                binding_mode,
+                policy_id,
+                policy_revision,
+                effective_policy_id: PolicyId::from_uuid(effective_id),
+                effective_source,
+                effective_grants: read_grants(&mut tx, effective_id).await?,
+            })
+        }
+        .await;
+        tx.rollback().await.map_err(map_statement_error)?;
+        result
     }
 }
 
@@ -359,7 +420,9 @@ impl PostgresDocumentRepository {
 
             authorize_in_tx(&mut tx, ctx, &[(resource, vec![Action::Administer])]).await?;
             if target == PolicyTarget::Folder(FolderId::from_uuid(SYSTEM_ROOT_FOLDER_ID)) {
-                return Err(RepositoryError::BusinessRule);
+                return Err(RepositoryError::Management(
+                    ManagementErrorCode::RootProtected,
+                ));
             }
 
             let existing = load_binding(&mut tx, target).await?;

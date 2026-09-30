@@ -2,17 +2,18 @@ use document_application::{
     AuthoringDocumentSummary, AuthoringQuery, CursorBinding, CursorPosition, DocumentListFilter,
     DocumentQueryRepository, DocumentSort, FolderPageQuery, FolderSummary, HistoryDocumentSummary,
     HistoryQuery, Page, PublishedDocumentSummary, PublishedQuery, QueryKind, RepositoryError,
-    VerifiedActorContext, decode_cursor, encode_cursor, fingerprint_json, principal_fingerprint,
+    RootFolderSummary, VerifiedActorContext, decode_cursor, encode_cursor, fingerprint_json,
+    principal_fingerprint,
 };
-use document_domain::{DocumentId, DocumentVersionId, FolderId};
+use document_domain::{Action, DocumentId, DocumentVersionId, FolderId, ResourceRef};
 use serde_json::{Value, json};
 use sqlx::{Postgres, Row, Transaction, postgres::PgRow};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
-    PostgresDocumentRepository,
-    access_control::{AccessLockMode, lock_access_state, verified_subjects_json},
+    PostgresDocumentRepository, SYSTEM_ROOT_FOLDER_ID,
+    access_control::{AccessLockMode, authorize_in_tx, lock_access_state, verified_subjects_json},
     error::map_statement_error,
 };
 
@@ -362,6 +363,44 @@ impl PostgresDocumentRepository {
 }
 
 impl DocumentQueryRepository for PostgresDocumentRepository {
+    async fn get_root_folder(
+        &self,
+        ctx: &VerifiedActorContext,
+    ) -> Result<RootFolderSummary, RepositoryError> {
+        let mut tx = self.pool.begin().await.map_err(map_statement_error)?;
+        let result: Result<RootFolderSummary, RepositoryError> = async {
+            lock_access_state(&mut tx, AccessLockMode::Shared).await?;
+            let root_id = FolderId::from_uuid(SYSTEM_ROOT_FOLDER_ID);
+            match authorize_in_tx(
+                &mut tx,
+                ctx,
+                &[(ResourceRef::Folder(root_id), vec![Action::Read])],
+            )
+            .await
+            {
+                Ok(()) => {}
+                Err(RepositoryError::Forbidden) => return Err(RepositoryError::FolderNotFound),
+                Err(error) => return Err(error),
+            }
+            let row = sqlx::query(
+                "SELECT name,revision FROM folders WHERE folder_id = $1 AND parent_folder_id IS NULL AND status = 'ACTIVE'",
+            )
+            .bind(SYSTEM_ROOT_FOLDER_ID)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(map_statement_error)?
+            .ok_or(RepositoryError::FolderNotFound)?;
+            Ok(RootFolderSummary {
+                folder_id: root_id,
+                name: row.try_get("name").map_err(map_statement_error)?,
+                revision: row.try_get("revision").map_err(map_statement_error)?,
+            })
+        }
+        .await;
+        tx.rollback().await.map_err(map_statement_error)?;
+        result
+    }
+
     async fn list_published_documents(
         &self,
         ctx: &VerifiedActorContext,

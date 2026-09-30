@@ -1,0 +1,9 @@
+extends:
+  - recommended
+rules:
+  # Authentication technology is deliberately not selected. The trusted Identity
+  # Adapter establishes actor context; advertising a client-supplied scheme would
+  # incorrectly authorize bearer, cookie, or custom-header self assertions.
+  security-defined: off
+  # The repository does not publish an API license; do not invent one here.
+  info-license: off

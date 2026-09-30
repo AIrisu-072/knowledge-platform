@@ -1,6 +1,6 @@
 use document_application::{
-    ManagementCommand, ManagementMoveDetails, ManagementMutationResult, ManagementResult,
-    RepositoryError, VerifiedActorContext, management_command_digest,
+    ManagementCommand, ManagementErrorCode, ManagementMoveDetails, ManagementMutationResult,
+    ManagementResult, RepositoryError, VerifiedActorContext, management_command_digest,
 };
 use document_domain::{Action, DocumentId, ResourceRef};
 use serde_json::{Value, json};
@@ -222,7 +222,9 @@ impl PostgresDocumentRepository {
                 .await
                 .map_err(map_statement_error)?;
                 if pending {
-                    return Err(RepositoryError::BusinessRule);
+                    return Err(RepositoryError::Management(
+                        ManagementErrorCode::ReservedDocument,
+                    ));
                 }
                 sqlx::query(
                     "UPDATE documents SET metadata = $1, revision = $2 \
@@ -376,7 +378,9 @@ impl PostgresDocumentRepository {
                 .await
                 .map_err(map_statement_error)?;
                 if pending {
-                    return Err(RepositoryError::BusinessRule);
+                    return Err(RepositoryError::Management(
+                        ManagementErrorCode::ReservedDocument,
+                    ));
                 }
                 sqlx::query(
                     "UPDATE documents SET folder_id = $1, revision = $2 WHERE document_id = $3",

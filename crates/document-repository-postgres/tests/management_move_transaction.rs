@@ -3,7 +3,8 @@ mod support;
 
 use document_application::{
     AccessPolicyService, ApplicationError, BootstrapRootPolicy, DocumentManagementService,
-    FolderService, ManagementCommand, ManagementOperationId, ManagementRepository,
+    FolderService, ManagementCommand, ManagementErrorCode, ManagementOperationId,
+    ManagementRepository,
 };
 use document_domain::{
     Action, FolderId, PolicyGrant, PolicyMode, PolicySubject, PolicySubjectKind, PolicyTarget,
@@ -187,7 +188,9 @@ async fn pending_schedule_blocks_real_document_move_but_not_noop() {
         service
             .move_document(&context(), move_document(&f, f.root_id, to, 1))
             .await,
-        Err(ApplicationError::BusinessRule)
+        Err(ApplicationError::Management(
+            ManagementErrorCode::ReservedDocument
+        ))
     ));
     assert_eq!(document_state(&f).await.0, f.root_id.as_uuid());
     assert_eq!(event_count(&f, "DocumentMoved").await, 0);
@@ -271,7 +274,9 @@ async fn folder_move_rejects_pending_subtree_and_preserves_document_revision() {
         service
             .move_folder(&context(), move_folder(a, f.root_id, b, 0))
             .await,
-        Err(ApplicationError::BusinessRule)
+        Err(ApplicationError::Management(
+            ManagementErrorCode::ReservedDocument
+        ))
     ));
     sqlx::query("UPDATE document_publish_schedules SET status='CANCELLED',cancelled_at=now() WHERE publish_operation_id=$1")
         .bind(publish_id).execute(&f.pool).await.unwrap();

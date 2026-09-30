@@ -6,6 +6,7 @@
     "@redocly/cli": "2.52.1"
   },
   "scripts": {
-    "api:lint": "redocly lint spec/api/openapi.yaml"
+    "api:lint": "redocly lint spec/api/openapi.yaml",
+    "api:contract": "node --test tools/api-contract/contract.test.mjs"
   }
 }

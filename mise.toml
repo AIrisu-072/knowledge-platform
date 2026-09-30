@@ -133,7 +133,7 @@ cargo sqlx prepare --check --workspace -- --all-targets
 
 [tasks."api:check"]
 description = "Validate the OpenAPI contract"
-run = ["pnpm api:lint"]
+run = ["pnpm api:lint", "pnpm api:contract"]
 
 [tasks."arch:check"]
 description = "Run machine-enforced architecture policy"

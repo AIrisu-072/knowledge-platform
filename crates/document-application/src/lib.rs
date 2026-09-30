@@ -3,9 +3,11 @@
 //! Application services and ports for the authoritative document core.
 
 mod access_context;
+mod access_policy_read;
 mod access_policy_service;
 mod authorized_document;
 mod command;
+mod create_outcome;
 pub mod document_diff;
 mod document_history;
 mod document_management;
@@ -32,11 +34,17 @@ mod versioning_preflight;
 mod versioning_service;
 
 pub use access_context::{IdentityResolutionError, InvocationKind, VerifiedActorContext};
+pub use access_policy_read::{
+    AccessPolicyRead, AccessPolicyReadRepository, AccessPolicyReadService, PolicyBindingMode,
+};
 pub use access_policy_service::AccessPolicyService;
 pub use authorized_document::{AuthorizationScope, AuthorizedDocumentService};
 pub use command::{
     CreateDocumentCommand, CreateDocumentResult, PublishDocumentCommand, PublishDocumentResult,
     PublishOperationId,
+};
+pub use create_outcome::{
+    CreateOutcomeProbe, CreateOutcomeRecoveryService, CreateOutcomeRepository,
 };
 pub use document_history::{
     DocumentHistoryEntry, DocumentHistoryRepository, DocumentHistoryService, HistoryPageQuery,
@@ -47,7 +55,7 @@ pub use document_management::DocumentManagementService;
 pub use document_query::{
     AuthoringDocumentSummary, AuthoringQuery, DocumentListFilter, DocumentQueryRepository,
     DocumentQueryService, FolderPageQuery, FolderSummary, HistoryDocumentSummary, HistoryQuery,
-    Page, PublishedDocumentSummary, PublishedQuery,
+    Page, PublishedDocumentSummary, PublishedQuery, RootFolderSummary,
 };
 pub use error::{ApplicationError, InspectionExecutionError, RepositoryError, StorageError};
 pub use events::{

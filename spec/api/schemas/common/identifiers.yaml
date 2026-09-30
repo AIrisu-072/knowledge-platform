@@ -1,0 +1,24 @@
+$defs:
+  Uuid:
+    type: string
+    format: uuid
+  OperationId:
+    type: string
+    format: uuid
+    description: Caller-generated UUIDv7; preserve this value on exact retry.
+    pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+  Revision:
+    type: integer
+    format: int64
+    minimum: 0
+  Timestamp:
+    type: string
+    format: date-time
+    description: RFC 3339 UTC timestamp.
+  Digest:
+    type: string
+    pattern: '^[0-9a-f]{64}$'
+  Cursor:
+    type: string
+    minLength: 1
+    description: Opaque cursor bound to the authorized principal, view, filters and sort.

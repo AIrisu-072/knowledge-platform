@@ -3,7 +3,7 @@ use thiserror::Error;
 use document_domain::{DocumentId, DocumentVersionId, DomainError, FileId};
 
 use crate::command::PublishOperationId;
-use crate::management_command::ManagementOperationId;
+use crate::management_command::{ManagementErrorCode, ManagementOperationId};
 use crate::publication_end::PublicationEndOperationId;
 use crate::versioning_command::VersionOperationId;
 
@@ -49,6 +49,8 @@ pub enum RepositoryError {
     Conflict,
     #[error("business rule rejected operation")]
     BusinessRule,
+    #[error("management operation rejected: {0:?}")]
+    Management(ManagementErrorCode),
     #[error("repository unavailable")]
     Unavailable,
     #[error("commit outcome is unknown")]
@@ -113,6 +115,8 @@ pub enum ApplicationError {
     Conflict,
     #[error("business rule rejected operation")]
     BusinessRule,
+    #[error("management operation rejected: {0:?}")]
+    Management(ManagementErrorCode),
     #[error("publication quality rejected content: {0}")]
     PublishQualityRejected(String),
     #[error("storage write failed")]
@@ -210,6 +214,7 @@ impl From<RepositoryError> for ApplicationError {
             RepositoryError::InvalidCursor => Self::Validation("invalid query cursor".into()),
             RepositoryError::Conflict => Self::Conflict,
             RepositoryError::BusinessRule => Self::BusinessRule,
+            RepositoryError::Management(code) => Self::Management(code),
             RepositoryError::Unavailable => Self::RepositoryUnavailable,
             RepositoryError::CommitOutcomeUnknown => Self::Internal(
                 "commit outcome unknown outside create operation identity context".to_owned(),

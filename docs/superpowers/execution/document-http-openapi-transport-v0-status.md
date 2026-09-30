@@ -1,5 +1,18 @@
 # Document HTTP/OpenAPI Transport v0 — Capability Execution Status
 
+## 2026-09-29 JST — Unit A HAPI-01〜03 local GREEN / exact-head gate next
+
+- 状態: **ACTIVE / HAPI-01〜03 LOCAL GREEN / UNIT A EXACT-HEAD GATE NEXT**。Frozen Design blob `88f7046a5d14a77f4091df0c92691f6634dd57d7`、承認済みProduction Plan blob `111914181143672d3fec901dae75fc2af0256b15`。設計意味変更提案なし。
+- branch/PR: `feat/document-http-openapi-transport-v0-a`、Unit A実装head `bd73d36ae17e0a7e00bca3f1c029df47e58680aa`。設計・計画Draft PR #27の承認head `838190aaa5cdb55a12cd9543152b06e517d2df37` から分岐。Unit A PR未作成。main基準 `77b13a1d35d15eea0112ca2d73f8cbd3dfffe1c9`。
+- HAPI-01: RED `c5b2ba90b10ce27fe4c0eddecbbd1ba971e66848` → GREEN `7ca6d5cf39b52df527c0e6708c7686ae75e61e87`。OpenAPI 3.2.1、29 operation、Error Registry、codegen qualification。`mise run api:check` PASS（contract 7/7）。qualified codegen結果はexperimentのみで、production生成器へpromoteしていない。
+- HAPI-02: RED `44af801fdfc39f8cadf9d7c59762f05279d55357` → GREEN `f22880c885c8cf0d2c9cf2f555bfabb6bba4bc31`。policy read、root discovery、create recovery、型付きmanagement errorをApplication/Postgresへ追加。対象DB 16/16 PASS。migration/dependency追加なし。
+- HAPI-03: architecture RED `5e13115388a29c4c943487708e372a4b61b3a6ac`、HTTP contract RED `202e4cd1d5f146c491e721fbf55f4d18fc0909c1` → GREEN `bd73d36ae17e0a7e00bca3f1c029df47e58680aa`。trusted identity adapter必須、RFC9457 Problem、2020-12 schema validation、trace boundary、same-origin既定、HTTP→Infrastructure依存禁止。HTTP focused 6/6、architecture negative 2/2、対象Clippy/fmt/architecture check PASS。
+- verification未完了: Unit A exact-head `mise run verify:fast`、標準CI。初回DB回帰は停止中のDocker daemonで失敗し、`orb start` 後に対象16件PASS。ディスク逼迫に対し再生成可能なCargo targetを `cargo clean` で整理。これらはsource failureではない。
+- blocker / 未解決判断: Unit A exact-head gate、Draft PR A。merge/deploy/Windows AD実接続は対象外。HAPI-04〜12未着手。
+- 次のexact action: Active/Status checkpointをcommitし、新headの `mise run verify:fast` と標準CIを一度確認。Draft PR Aを作り、SUCCESS後にHAPI-04 REDへ進む。
+
+以下は旧checkpoint。現在の工程ではない。
+
 ## 2026-09-29 JST — 計画承認・HAPI-01開始準備
 
 - 状態: **PLAN APPROVED / IMPLEMENTATION AUTHORIZED / HAPI-01 NEXT**。HAPI-01〜12は未実装。Frozen Design blob `88f7046a5d14a77f4091df0c92691f6634dd57d7`、承認済みProduction Plan blob `111914181143672d3fec901dae75fc2af0256b15`。依頼者の明示承認と実装指示は計画 `-approval.md` に記録。設計意味変更提案なし。
