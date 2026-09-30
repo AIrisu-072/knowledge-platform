@@ -701,3 +701,39 @@ BindingされたResource identity/version/digestはIndex generation切替で暗�
 ## Cost
 
 性能最適化は意味情報の不可逆削減ではなく、Source routing、structured filtering、candidate reduction、progressive materialization、targeted probe、content-addressed reuse等で不要処理を削減する。
+
+# P4 Remote Source data characteristics amendment
+
+以下のSD-D1〜SD-D3はremote Sourceに限定した追加条件である。根拠は[P4設計改訂1](../../docs/superpowers/programs/search-platform-completion/p4-remote-design-revision-1.md)、実装責務は[P4実装計画](../../docs/superpowers/programs/search-platform-completion/p4-remote-plan.md)に従う。
+
+## SD-D1: Stable remote identity and qualification
+
+対応: P4設計改訂1 §§3, 5、P4-02/08/14。
+
+登録済みSourceのtenant、server-owned SourceId、provider kind、固定endpoint、mode、authority/predicate、current access、retention、canonical upstream lineageの契約はprovider応答で変更できない。stable native IDはbounded canonical formに正規化し、length-framed `(tenant, source, provider kind, native ID)`のversioned SHA-256 namespaceからSource-local `ResourceId`とcandidate IDを生成する。providerはこれらのIDを選べない。stable IDのhitだけがsealed projection、current item access、hard gatesを経て`QualifiedResource`へ進む。
+
+stable IDのないhitは評価RAM内の`EphemeralCandidate`に限る。認可済みSourceに`ephemeral_identity_not_qualifiable`の`UnsupportedCoverage` gapを明示し、federation list、qualified result、probe、binding、durable GET linkへ渡さない。stable `LIVE_ONLY`の`LiveReference`はstable native IDとversion/digestをpinし、`RevalidationMarker::Required`でfresh readを照合する。version/digestが欠けるか変化した場合は暗黙にrebindしない。
+
+## SD-D2: Verified evidence provenance and Graph scope
+
+対応: P4設計改訂1 §§5–6、P4-08/10/11。
+
+provider JSONの`role`、`Primary`、`Authoritative`、`is_summary`、`upstream_origin`の自己申告はevidence proofではない。adapterは登録済みpredicate/authority grant、固定Sourceのprovenance lookup、Resource/version/digest、directness、citation chainを検証したprivate `VerifiedProvenance`からのみ`ResolvedAssertionEvidence`を構築する。未検証・引用・要約・転載・モデル推定はdirect supportへ昇格させず、根拠不明は`Unknown`のまま扱う。
+
+独立originはprovider表示ラベルでなく登録済みcanonical lineage groupで数える。同じupstreamのmirror、別ラベル、同一文書の別引用は一つに畳み、lineageの独立性を証明できないものを複数票にしない。Graphへ入るremote relationはexplicit typed n-ary relation、検証済みparticipant、同じgenerationと可視scopeを満たすものに限る。Graph pathのparticipantとrelation metadataもcurrent accessで検査する。
+
+## SD-D3: Five retention owners and derived stores
+
+対応: P4設計改訂1 §7、P4-07/09/11/13。
+
+Remote由来のbody、metadata、assertion/evidence、selector、Graph、probe、receipt、materialization bytes、query/result trace、cache key、indexは、trusted actor/Source/evaluation/retention modeのownerとleaseの下に置く。read/writeと非同期readの返却直前にcurrent actor/Source/item/field policy、revision、retention、期限を確認する。close、取消、期限切れ、ACL/retention変更、error、cancelでは全派生と保持済みhandleを無効化し、失効した参照から再読させない。
+
+| `RetentionMode` | remote由来データの許容範囲 |
+| --- | --- |
+| `PERSISTENT_RESOURCE` | Source grantとfield allowlistが許す再生成可能なdurable projection。credentialとraw provider responseは保存しない。read時はcurrent accessを再確認する。 |
+| `PERSISTENT_DISCOVERY_METADATA` | typed field proofが許すidentity/title/facet/provenanceのみ。body、fragment、content-bearing assertion/evidence、禁止relationをpersistent変換前に拒否する。 |
+| `CACHE_WITH_EXPIRY` | tenant/Source/principal/access revision/normalized operationで分離したbounded RAM cache。provider TTL、registration ceiling、actor/session期限の最短までとし、read/write時に期限とcurrent policyを確認する。principal間再利用、durable変換は禁止する。 |
+| `SESSION_ONLY` | trusted session ownerとabsolute/idle期限を持つRAM working index/Graph/receipt/bytes。同一sessionのreadもgateを通し、closeで破棄する。disk spill、serialize、persistent変換は禁止する。 |
+| `NO_RETENTION` | `EvaluationLease`下の評価呼出しRAMだけ。session/cache/persistent storeに入れず、呼出し終了時にGraph/probe/receipt/raw responseを含め破棄する。許可済み返却fieldだけ別の短命`TransientDisclosureLease`に移す。 |
+
+`CACHE_WITH_EXPIRY`のcache hitも新しいevaluation generationへsealし、revision/retention変更時は無効化する。`SESSION_ONLY`は全read/writeをowner gateへ入れるまで有効化しない。既存のSession Working Index/Graphという分類は、P4 remote `NO_RETENTION`を`SessionWorkingSet`へ保管する許可を意味しない。retentionの緩和で旧entryを昇格せず、厳格化時は即無効化する。runtime materializationはretentionとは別にSource content permission、budget、current access、version/digestで制限する。

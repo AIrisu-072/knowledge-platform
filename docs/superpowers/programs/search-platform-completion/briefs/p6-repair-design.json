@@ -1,0 +1,19 @@
+# 仕事の手渡し: p6-repair-design
+
+- 種類: docs / 役: DomainDesigner / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Revise outbox design to resolve recorded independent architecture findings
+
+## 入力
+- `p6-draft` (docs/superpowers/programs/search-platform-completion/p6-outbox-design.md) — outbox draft [`p6-design` が作る (済み)]
+- `p6-arch` (docs/superpowers/programs/search-platform-completion/p6-outbox-architecture-review.md) — outbox arch [`p6-architecture` が作る (済み)]
+
+## 出すもの
+- `p6-revised` (docs/superpowers/programs/search-platform-completion/p6-outbox-design-revision-1.md) — Revised design resolving independent architecture findings
+
+## 受入条件
+Revised design explicitly addresses all architecture blockers without changing frozen Search semantics
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p6-outbox-design-revision-1.md` だけ。他は触らない。

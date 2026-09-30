@@ -1,0 +1,2726 @@
+{
+  "schema_version": "0.1.0",
+  "graph_id": "search-platform-completion",
+  "goal_ref": "docs/superpowers/programs/search-platform-completion/goal-contract.json",
+  "claims": [
+    {
+      "id": "P0",
+      "statement": "Phase D exact-head qualification is reconciled"
+    },
+    {
+      "id": "P1",
+      "statement": "Deterministic sandboxed extraction supplies body KnowledgeUnits with native locators"
+    },
+    {
+      "id": "P2",
+      "statement": "Provider neutral dense retrieval and measured adoption decision preserve S1"
+    },
+    {
+      "id": "P3",
+      "statement": "Durable typed n-ary graph matches the semantic oracle and recovers generations"
+    },
+    {
+      "id": "P4",
+      "statement": "Concrete remote adapter preserves coverage, current authority and retention"
+    },
+    {
+      "id": "P5",
+      "statement": "Common trusted-identity Search Discovery HTTP API invokes real core"
+    },
+    {
+      "id": "P6",
+      "statement": "Generic durable outbox delivery safely dispatches at least once to Search"
+    },
+    {
+      "id": "P7",
+      "statement": "Consolidated production runtime supports rebuild and safe observability"
+    },
+    {
+      "id": "G1",
+      "statement": "Measured capacity and operational SLO proposals are reproducible"
+    },
+    {
+      "id": "G2",
+      "statement": "Independent whole-program security and correctness reviews have no P1/P2"
+    },
+    {
+      "id": "G3",
+      "statement": "Final Draft PR stack has exact-head hosted qualification"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "baseline",
+      "kind": "contract",
+      "path": "docs/superpowers/specs/2026-09-28-search-discovery-platform-v0-design.md",
+      "exists": true,
+      "purpose": "existing approved Search semantics"
+    },
+    {
+      "id": "p0-closure",
+      "kind": "evidence",
+      "path": "docs/superpowers/execution/search-discovery-platform-v0-acceptance.md",
+      "supports": [
+        "P0"
+      ],
+      "purpose": "live exact head qualification"
+    },
+    {
+      "id": "p1-draft",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-extraction-design.md",
+      "purpose": "extraction draft"
+    },
+    {
+      "id": "p1-arch",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-extraction-architecture-review.md",
+      "purpose": "extraction arch",
+      "supports": [
+        "P1"
+      ]
+    },
+    {
+      "id": "p1-contract",
+      "kind": "contract",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-extraction-freeze.md",
+      "purpose": "extraction contract"
+    },
+    {
+      "id": "p1-plan",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-extraction-plan.md",
+      "purpose": "extraction plan"
+    },
+    {
+      "id": "p1-code",
+      "kind": "code",
+      "path": "crates/search-extraction",
+      "purpose": "extraction code"
+    },
+    {
+      "id": "p1-test",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-extraction-qualification.md",
+      "purpose": "extraction test",
+      "supports": [
+        "P1"
+      ]
+    },
+    {
+      "id": "p1-review",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-extraction-code-review.md",
+      "purpose": "extraction review",
+      "supports": [
+        "P1"
+      ]
+    },
+    {
+      "id": "p1-receipt",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-extraction-receipt.md",
+      "purpose": "extraction receipt",
+      "supports": [
+        "P1"
+      ]
+    },
+    {
+      "id": "p2-draft",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p2-vector-design.md",
+      "purpose": "vector draft"
+    },
+    {
+      "id": "p2-arch",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p2-vector-architecture-review.md",
+      "purpose": "vector arch",
+      "supports": [
+        "P2"
+      ]
+    },
+    {
+      "id": "p2-contract",
+      "kind": "contract",
+      "path": "docs/superpowers/programs/search-platform-completion/p2-vector-freeze.md",
+      "purpose": "vector contract"
+    },
+    {
+      "id": "p2-plan",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p2-vector-plan.md",
+      "purpose": "vector plan"
+    },
+    {
+      "id": "p2-code",
+      "kind": "code",
+      "path": "crates/search-vector",
+      "purpose": "vector code"
+    },
+    {
+      "id": "p2-test",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p2-vector-qualification.md",
+      "purpose": "vector test",
+      "supports": [
+        "P2"
+      ]
+    },
+    {
+      "id": "p2-review",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p2-vector-code-review.md",
+      "purpose": "vector review",
+      "supports": [
+        "P2"
+      ]
+    },
+    {
+      "id": "p2-receipt",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p2-vector-receipt.md",
+      "purpose": "vector receipt",
+      "supports": [
+        "P2"
+      ]
+    },
+    {
+      "id": "p3-draft",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p3-graph-design.md",
+      "purpose": "graph draft"
+    },
+    {
+      "id": "p3-arch",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p3-graph-architecture-review.md",
+      "purpose": "graph arch",
+      "supports": [
+        "P3"
+      ]
+    },
+    {
+      "id": "p3-contract",
+      "kind": "contract",
+      "path": "docs/superpowers/programs/search-platform-completion/p3-graph-freeze.md",
+      "purpose": "graph contract"
+    },
+    {
+      "id": "p3-plan",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p3-graph-plan.md",
+      "purpose": "graph plan"
+    },
+    {
+      "id": "p3-code",
+      "kind": "code",
+      "path": "crates/search-graph",
+      "purpose": "graph code"
+    },
+    {
+      "id": "p3-test",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p3-graph-qualification.md",
+      "purpose": "graph test",
+      "supports": [
+        "P3"
+      ]
+    },
+    {
+      "id": "p3-review",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p3-graph-code-review.md",
+      "purpose": "graph review",
+      "supports": [
+        "P3"
+      ]
+    },
+    {
+      "id": "p3-receipt",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p3-graph-receipt.md",
+      "purpose": "graph receipt",
+      "supports": [
+        "P3"
+      ]
+    },
+    {
+      "id": "p4-draft",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p4-remote-design.md",
+      "purpose": "remote draft"
+    },
+    {
+      "id": "p4-arch",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p4-remote-architecture-review.md",
+      "purpose": "remote arch",
+      "supports": [
+        "P4"
+      ]
+    },
+    {
+      "id": "p4-contract",
+      "kind": "contract",
+      "path": "docs/superpowers/programs/search-platform-completion/p4-remote-freeze.md",
+      "purpose": "remote contract"
+    },
+    {
+      "id": "p4-plan",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p4-remote-plan.md",
+      "purpose": "remote plan"
+    },
+    {
+      "id": "p4-code",
+      "kind": "code",
+      "path": "crates/search-source-http",
+      "purpose": "remote code"
+    },
+    {
+      "id": "p4-test",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p4-remote-qualification.md",
+      "purpose": "remote test",
+      "supports": [
+        "P4"
+      ]
+    },
+    {
+      "id": "p4-review",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p4-remote-code-review.md",
+      "purpose": "remote review",
+      "supports": [
+        "P4"
+      ]
+    },
+    {
+      "id": "p4-receipt",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p4-remote-receipt.md",
+      "purpose": "remote receipt",
+      "supports": [
+        "P4"
+      ]
+    },
+    {
+      "id": "p5-draft",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p5-api-design.md",
+      "purpose": "api draft"
+    },
+    {
+      "id": "p5-arch",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p5-api-architecture-review.md",
+      "purpose": "api arch",
+      "supports": [
+        "P5"
+      ]
+    },
+    {
+      "id": "p5-contract",
+      "kind": "contract",
+      "path": "docs/superpowers/programs/search-platform-completion/p5-api-freeze.md",
+      "purpose": "api contract"
+    },
+    {
+      "id": "p5-plan",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p5-api-plan.md",
+      "purpose": "api plan"
+    },
+    {
+      "id": "p5-code",
+      "kind": "code",
+      "path": "crates/search-api",
+      "purpose": "api code"
+    },
+    {
+      "id": "p5-test",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p5-api-qualification.md",
+      "purpose": "api test",
+      "supports": [
+        "P5"
+      ]
+    },
+    {
+      "id": "p5-review",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p5-api-code-review.md",
+      "purpose": "api review",
+      "supports": [
+        "P5"
+      ]
+    },
+    {
+      "id": "p5-receipt",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p5-api-receipt.md",
+      "purpose": "api receipt",
+      "supports": [
+        "P5"
+      ]
+    },
+    {
+      "id": "p6-draft",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p6-outbox-design.md",
+      "purpose": "outbox draft"
+    },
+    {
+      "id": "p6-arch",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p6-outbox-architecture-review.md",
+      "purpose": "outbox arch",
+      "supports": [
+        "P6"
+      ]
+    },
+    {
+      "id": "p6-contract",
+      "kind": "contract",
+      "path": "docs/superpowers/programs/search-platform-completion/p6-outbox-freeze.md",
+      "purpose": "outbox contract"
+    },
+    {
+      "id": "p6-plan",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p6-outbox-plan.md",
+      "purpose": "outbox plan"
+    },
+    {
+      "id": "p6-code",
+      "kind": "code",
+      "path": "crates/outbox-delivery",
+      "purpose": "outbox code"
+    },
+    {
+      "id": "p6-test",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p6-outbox-qualification.md",
+      "purpose": "outbox test",
+      "supports": [
+        "P6"
+      ]
+    },
+    {
+      "id": "p6-review",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p6-outbox-code-review.md",
+      "purpose": "outbox review",
+      "supports": [
+        "P6"
+      ]
+    },
+    {
+      "id": "p6-receipt",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p6-outbox-receipt.md",
+      "purpose": "outbox receipt",
+      "supports": [
+        "P6"
+      ]
+    },
+    {
+      "id": "p7-draft",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p7-runtime-design.md",
+      "purpose": "runtime draft"
+    },
+    {
+      "id": "p7-arch",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p7-runtime-architecture-review.md",
+      "purpose": "runtime arch",
+      "supports": [
+        "P7"
+      ]
+    },
+    {
+      "id": "p7-contract",
+      "kind": "contract",
+      "path": "docs/superpowers/programs/search-platform-completion/p7-runtime-freeze.md",
+      "purpose": "runtime contract"
+    },
+    {
+      "id": "p7-plan",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p7-runtime-plan.md",
+      "purpose": "runtime plan"
+    },
+    {
+      "id": "p7-code",
+      "kind": "code",
+      "path": "crates/search-runtime",
+      "purpose": "runtime code"
+    },
+    {
+      "id": "p7-test",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p7-runtime-qualification.md",
+      "purpose": "runtime test",
+      "supports": [
+        "P7"
+      ]
+    },
+    {
+      "id": "p7-review",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p7-runtime-code-review.md",
+      "purpose": "runtime review",
+      "supports": [
+        "P7"
+      ]
+    },
+    {
+      "id": "p7-receipt",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p7-runtime-receipt.md",
+      "purpose": "runtime receipt",
+      "supports": [
+        "P7"
+      ]
+    },
+    {
+      "id": "capacity",
+      "kind": "evidence",
+      "purpose": "capacity",
+      "supports": [
+        "G1"
+      ],
+      "path": "docs/superpowers/programs/search-platform-completion/capacity.md"
+    },
+    {
+      "id": "security",
+      "kind": "evidence",
+      "purpose": "security",
+      "supports": [
+        "G2"
+      ],
+      "path": "docs/superpowers/programs/search-platform-completion/security.md"
+    },
+    {
+      "id": "whole-review",
+      "kind": "evidence",
+      "purpose": "whole-review",
+      "supports": [
+        "G2"
+      ],
+      "path": "docs/superpowers/programs/search-platform-completion/whole-review.md"
+    },
+    {
+      "id": "hosted",
+      "kind": "evidence",
+      "purpose": "hosted",
+      "supports": [
+        "G3"
+      ],
+      "path": "docs/superpowers/programs/search-platform-completion/hosted.md"
+    },
+    {
+      "id": "acceptance",
+      "kind": "evidence",
+      "purpose": "acceptance",
+      "supports": [
+        "G3"
+      ],
+      "path": "docs/superpowers/programs/search-platform-completion/acceptance.md"
+    },
+    {
+      "id": "environment-evidence",
+      "kind": "knowledge",
+      "path": "docs/superpowers/programs/search-platform-completion/environment.md",
+      "purpose": "current runtime toolchain container PDFium and capacity discovery without secret reads"
+    },
+    {
+      "id": "p3-revised",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p3-graph-design-revision-1.md",
+      "purpose": "Revised design resolving independent architecture findings"
+    },
+    {
+      "id": "p3-arch-recheck",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p3-graph-architecture-recheck.md",
+      "supports": [
+        "P3"
+      ],
+      "purpose": "Independent revised exact design architecture gate"
+    },
+    {
+      "id": "p4-revised",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p4-remote-design-revision-1.md",
+      "purpose": "Revised design resolving independent architecture findings"
+    },
+    {
+      "id": "p4-arch-recheck",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p4-remote-architecture-recheck.md",
+      "supports": [
+        "P4"
+      ],
+      "purpose": "Independent revised exact design architecture gate"
+    },
+    {
+      "id": "p1-revised",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-extraction-design-revision-1.md",
+      "purpose": "Revised design resolving independent architecture findings"
+    },
+    {
+      "id": "p1-arch-recheck",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-extraction-architecture-recheck.md",
+      "supports": [
+        "P1"
+      ],
+      "purpose": "Independent revised exact design architecture gate"
+    },
+    {
+      "id": "p5-revised",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p5-api-design-revision-1.md",
+      "purpose": "Revised design resolving independent architecture findings"
+    },
+    {
+      "id": "p5-arch-recheck",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p5-api-architecture-recheck.md",
+      "supports": [
+        "P5"
+      ],
+      "purpose": "Independent revised exact design architecture gate"
+    },
+    {
+      "id": "p6-revised",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p6-outbox-design-revision-1.md",
+      "purpose": "Revised design resolving independent architecture findings"
+    },
+    {
+      "id": "p6-arch-recheck",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p6-outbox-architecture-recheck.md",
+      "supports": [
+        "P6"
+      ],
+      "purpose": "Independent revised exact design architecture gate"
+    },
+    {
+      "id": "p1-unit-draft",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-contract.md",
+      "purpose": "Exact minimal KnowledgeUnit extraction contract independent of full body wiring"
+    },
+    {
+      "id": "p1-unit-review",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-review.md",
+      "supports": [
+        "P1"
+      ],
+      "purpose": "Independent minimal unit input contract review for P2"
+    },
+    {
+      "id": "p1-unit-frozen",
+      "kind": "contract",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md",
+      "purpose": "Frozen provider neutral input contract for Vector evaluation"
+    },
+    {
+      "id": "p3-build-guard",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p3-graph-build-guard-amendment.md",
+      "purpose": "Bound source/base/target build leases prevent incremental-copy and GC races"
+    },
+    {
+      "id": "p3-final-arch",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p3-graph-build-guard-review.md",
+      "supports": [
+        "P3"
+      ],
+      "purpose": "Independent final single-finding architecture closure"
+    },
+    {
+      "id": "p1-unit-amendment",
+      "kind": "contract",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-amendment.md",
+      "purpose": "Archive profile and Vector retention binding corrections"
+    },
+    {
+      "id": "p1-unit-recheck",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-recheck.md",
+      "purpose": "Independent narrow closure of two minimal Unit findings"
+    },
+    {
+      "id": "p7-early-contract",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p7-runtime-contract-draft.md",
+      "purpose": "Early consolidated runtime composition and shared coordination contract, reconcile required"
+    },
+    {
+      "id": "p4-normative",
+      "kind": "contract",
+      "path": "spec/data/transaction-consistency-requirements-v0.md",
+      "purpose": "Frozen remote clauses in normative SSOT"
+    },
+    {
+      "id": "p4-http-poc-code",
+      "kind": "code",
+      "path": "experiments/search-http-client-poc",
+      "purpose": "Isolated real TCP transport qualification code"
+    },
+    {
+      "id": "p4-http-selection",
+      "kind": "evidence",
+      "path": "experiments/search-http-client-poc/report.md",
+      "purpose": "Measured exact HTTP client selection",
+      "supports": [
+        "P4"
+      ]
+    },
+    {
+      "id": "p4-http-poc-review",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p4-http-poc-review.md",
+      "purpose": "Independent qualification boundary review",
+      "supports": [
+        "P4"
+      ]
+    },
+    {
+      "id": "p1-body-amendment",
+      "kind": "contract",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-body-absence-amendment.md",
+      "purpose": "Exact text negative proof and shared discovery signature correction"
+    },
+    {
+      "id": "p1-body-final-review",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-body-absence-review.md",
+      "purpose": "Exact text negative proof and shared discovery signature correction"
+    },
+    {
+      "id": "p3-cleanup-order",
+      "kind": "contract",
+      "path": "docs/superpowers/programs/search-platform-completion/p3-graph-cleanup-order-correction.md",
+      "purpose": "Correct RESTRICT foreign key cleanup ordering atomically"
+    },
+    {
+      "id": "p4-trust-code",
+      "kind": "code",
+      "path": "crates/search-application/src/scoped.rs",
+      "purpose": "P4-02 sealed trusted actor and globally unique visible catalog"
+    },
+    {
+      "id": "p4-visible-code",
+      "kind": "code",
+      "path": "crates/search-application/src/visible_routing.rs",
+      "purpose": "P4-03 invisible required indistinguishable from missing"
+    },
+    {
+      "id": "p4-planner-code",
+      "kind": "code",
+      "path": "crates/search-application/src/retrieval.rs",
+      "purpose": "P4-04 four remote modes and bounded typed inputs"
+    },
+    {
+      "id": "p4-observation-code",
+      "kind": "code",
+      "path": "crates/search-application/src/remote.rs",
+      "purpose": "P4-05 trusted remote batch/proof port and verified absence"
+    },
+    {
+      "id": "p4-lease-code",
+      "kind": "code",
+      "path": "crates/search-application/src/remote_lease.rs",
+      "purpose": "P4-07 owned leases fail closed before and after async read"
+    },
+    {
+      "id": "p4-generation-code",
+      "kind": "code",
+      "path": "crates/search-application/src/remote_identity.rs",
+      "purpose": "P4-06 stable identities and one immutable Source generation"
+    },
+    {
+      "id": "p4-stores-code",
+      "kind": "code",
+      "path": "crates/search-application/src/remote_cache.rs",
+      "purpose": "P4-08 bounded cache and session owner invalidation"
+    },
+    {
+      "id": "p4-persistence-code",
+      "kind": "code",
+      "path": "crates/search-application/src/projection.rs",
+      "purpose": "P4-09 verified metadata-only durable field proof"
+    },
+    {
+      "id": "p4-evidence-code",
+      "kind": "code",
+      "path": "crates/search-application/src/remote_evidence.rs",
+      "purpose": "P4-10 trusted evidence origin and canonical lineage"
+    },
+    {
+      "id": "p4-read-executor-code",
+      "kind": "code",
+      "path": "crates/search-application/src/remote_read_view.rs",
+      "purpose": "P4-11 explicit-key composite read and real remote executor"
+    },
+    {
+      "id": "p4-discovery-code",
+      "kind": "code",
+      "path": "crates/search-application/src/discovery_service.rs",
+      "purpose": "P4-12 same evaluator and content_scope reconciliation"
+    },
+    {
+      "id": "p4-disclosure-code",
+      "kind": "code",
+      "path": "crates/search-application/src/remote_disclosure.rs",
+      "purpose": "P4-13 checked scoped result and NoRetention response lifetime"
+    },
+    {
+      "id": "p4-binding-code",
+      "kind": "code",
+      "path": "crates/search-application/src/remote_binding.rs",
+      "purpose": "P4-14 current access and version/digest remote materialization pin"
+    },
+    {
+      "id": "p4-transport-code",
+      "kind": "code",
+      "path": "crates/search-source-http/Cargo.toml",
+      "purpose": "P4-16 selected pinned dependency and guarded fixed-origin real transport"
+    },
+    {
+      "id": "p4-adapter-code",
+      "kind": "code",
+      "path": "crates/search-source-http/src/protocol.rs",
+      "purpose": "P4-17 all four RemoteSourcePort operations and bounded untrusted protocol"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "p0-close",
+      "kind": "docs",
+      "summary": "Reconcile Phase D live hosted gates as the first Completion commit",
+      "consumes": [
+        "baseline"
+      ],
+      "produces": [
+        "p0-closure"
+      ],
+      "estimate": "S",
+      "acceptance": "CI PoC Sandbox success at PR33 exact head"
+    },
+    {
+      "id": "p1-design",
+      "kind": "docs",
+      "summary": "Inspect and design extraction with evidence and explicit extension contracts",
+      "consumes": [
+        "p0-closure",
+        "baseline"
+      ],
+      "produces": [
+        "p1-draft"
+      ],
+      "estimate": "M",
+      "risk": "high",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-extraction-design.md"
+      ],
+      "acceptance": "Design enumerates repository contracts, options, security, qualification and scoped implementation artifacts"
+    },
+    {
+      "id": "p1-architecture",
+      "kind": "audit",
+      "summary": "Independently review extraction design against frozen architecture",
+      "consumes": [
+        "p1-draft",
+        "baseline"
+      ],
+      "produces": [
+        "p1-arch"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-extraction-architecture-review.md"
+      ],
+      "acceptance": "Independent report records GO or actionable blocking findings; NO-GO requires a revised exact-design review before freeze"
+    },
+    {
+      "id": "p1-freeze",
+      "kind": "decision",
+      "summary": "Freeze reviewed extraction contract and bounded implementation plan",
+      "consumes": [
+        "p1-revised",
+        "p1-arch-recheck",
+        "p1-unit-frozen",
+        "p1-body-amendment",
+        "p1-body-final-review"
+      ],
+      "produces": [
+        "p1-contract",
+        "p1-plan"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-extraction-freeze.md",
+        "docs/superpowers/programs/search-platform-completion/p1-extraction-plan.md"
+      ],
+      "acceptance": "Independent findings resolved and exact contract digest recorded"
+    },
+    {
+      "id": "p1-implement",
+      "kind": "impl",
+      "summary": "Implement extraction against frozen plan using focused RED GREEN",
+      "consumes": [
+        "p1-contract",
+        "p1-plan"
+      ],
+      "produces": [
+        "p1-code"
+      ],
+      "estimate": "L",
+      "risk": "high",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-extraction"
+      ],
+      "acceptance": "extraction production path and meaningful contract regressions implemented"
+    },
+    {
+      "id": "p1-qualify",
+      "kind": "verify",
+      "summary": "Qualify extraction behavior and measured limits",
+      "consumes": [
+        "p1-code",
+        "p1-contract",
+        "environment-evidence"
+      ],
+      "produces": [
+        "p1-test"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-extraction-qualification.md"
+      ],
+      "acceptance": "Focused contracts and specified benchmark or failure recovery pass"
+    },
+    {
+      "id": "p1-review-code",
+      "kind": "audit",
+      "summary": "Independently audit extraction implementation",
+      "consumes": [
+        "p1-code",
+        "p1-contract"
+      ],
+      "produces": [
+        "p1-review"
+      ],
+      "estimate": "M",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-extraction-code-review.md"
+      ],
+      "acceptance": "No remaining blocking P1/P2"
+    },
+    {
+      "id": "p1-receipt-write",
+      "kind": "docs",
+      "summary": "Record extraction qualified acceptance boundary",
+      "consumes": [
+        "p1-test",
+        "p1-review"
+      ],
+      "produces": [
+        "p1-receipt"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-extraction-receipt.md"
+      ],
+      "acceptance": "Tests reviews selection measurement and limits trace to exact code"
+    },
+    {
+      "id": "p2-design",
+      "kind": "spike",
+      "summary": "Inspect and design vector with evidence and explicit extension contracts",
+      "consumes": [
+        "p0-closure",
+        "baseline",
+        "p1-unit-frozen"
+      ],
+      "produces": [
+        "p2-draft"
+      ],
+      "estimate": "M",
+      "risk": "high",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p2-vector-design.md"
+      ],
+      "acceptance": "Design enumerates repository contracts, options, security, qualification and scoped implementation artifacts"
+    },
+    {
+      "id": "p2-architecture",
+      "kind": "audit",
+      "summary": "Independently review vector design against frozen architecture",
+      "consumes": [
+        "p2-draft",
+        "baseline"
+      ],
+      "produces": [
+        "p2-arch"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p2-vector-architecture-review.md"
+      ],
+      "acceptance": "No blocking architecture P1/P2"
+    },
+    {
+      "id": "p2-freeze",
+      "kind": "decision",
+      "summary": "Freeze reviewed vector contract and bounded implementation plan",
+      "consumes": [
+        "p2-draft",
+        "p2-arch"
+      ],
+      "produces": [
+        "p2-contract",
+        "p2-plan"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p2-vector-freeze.md",
+        "docs/superpowers/programs/search-platform-completion/p2-vector-plan.md"
+      ],
+      "acceptance": "Independent findings resolved and exact contract digest recorded"
+    },
+    {
+      "id": "p2-implement",
+      "kind": "impl",
+      "summary": "Implement vector against frozen plan using focused RED GREEN",
+      "consumes": [
+        "p2-contract",
+        "p2-plan",
+        "p1-code"
+      ],
+      "produces": [
+        "p2-code"
+      ],
+      "estimate": "L",
+      "risk": "high",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-vector"
+      ],
+      "acceptance": "vector production path and meaningful contract regressions implemented"
+    },
+    {
+      "id": "p2-qualify",
+      "kind": "verify",
+      "summary": "Qualify vector behavior and measured limits",
+      "consumes": [
+        "p2-code",
+        "p2-contract"
+      ],
+      "produces": [
+        "p2-test"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p2-vector-qualification.md"
+      ],
+      "acceptance": "Focused contracts and specified benchmark or failure recovery pass"
+    },
+    {
+      "id": "p2-review-code",
+      "kind": "audit",
+      "summary": "Independently audit vector implementation",
+      "consumes": [
+        "p2-code",
+        "p2-contract"
+      ],
+      "produces": [
+        "p2-review"
+      ],
+      "estimate": "M",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p2-vector-code-review.md"
+      ],
+      "acceptance": "No remaining blocking P1/P2"
+    },
+    {
+      "id": "p2-receipt-write",
+      "kind": "docs",
+      "summary": "Record vector qualified acceptance boundary",
+      "consumes": [
+        "p2-test",
+        "p2-review"
+      ],
+      "produces": [
+        "p2-receipt"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p2-vector-receipt.md"
+      ],
+      "acceptance": "Tests reviews selection measurement and limits trace to exact code"
+    },
+    {
+      "id": "p3-design",
+      "kind": "spike",
+      "summary": "Inspect and design graph with evidence and explicit extension contracts",
+      "consumes": [
+        "p0-closure",
+        "baseline"
+      ],
+      "produces": [
+        "p3-draft"
+      ],
+      "estimate": "M",
+      "risk": "high",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p3-graph-design.md"
+      ],
+      "acceptance": "Design enumerates repository contracts, options, security, qualification and scoped implementation artifacts"
+    },
+    {
+      "id": "p3-architecture",
+      "kind": "audit",
+      "summary": "Independently review graph design against frozen architecture",
+      "consumes": [
+        "p3-draft",
+        "baseline"
+      ],
+      "produces": [
+        "p3-arch"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p3-graph-architecture-review.md"
+      ],
+      "acceptance": "Independent report records GO or actionable blocking findings; NO-GO requires a revised exact-design review before freeze"
+    },
+    {
+      "id": "p3-freeze",
+      "kind": "decision",
+      "summary": "Freeze reviewed graph contract and bounded implementation plan",
+      "consumes": [
+        "p3-revised",
+        "p3-build-guard",
+        "p3-final-arch",
+        "p3-cleanup-order"
+      ],
+      "produces": [
+        "p3-contract",
+        "p3-plan"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p3-graph-freeze.md",
+        "docs/superpowers/programs/search-platform-completion/p3-graph-plan.md"
+      ],
+      "acceptance": "Independent findings resolved and exact contract digest recorded"
+    },
+    {
+      "id": "p3-implement",
+      "kind": "impl",
+      "summary": "Implement graph against frozen plan using focused RED GREEN",
+      "consumes": [
+        "p3-contract",
+        "p3-plan"
+      ],
+      "produces": [
+        "p3-code"
+      ],
+      "estimate": "L",
+      "risk": "high",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-graph"
+      ],
+      "acceptance": "graph production path and meaningful contract regressions implemented"
+    },
+    {
+      "id": "p3-qualify",
+      "kind": "verify",
+      "summary": "Qualify graph behavior and measured limits",
+      "consumes": [
+        "p3-code",
+        "p3-contract",
+        "environment-evidence"
+      ],
+      "produces": [
+        "p3-test"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p3-graph-qualification.md"
+      ],
+      "acceptance": "Focused contracts and specified benchmark or failure recovery pass"
+    },
+    {
+      "id": "p3-review-code",
+      "kind": "audit",
+      "summary": "Independently audit graph implementation",
+      "consumes": [
+        "p3-code",
+        "p3-contract"
+      ],
+      "produces": [
+        "p3-review"
+      ],
+      "estimate": "M",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p3-graph-code-review.md"
+      ],
+      "acceptance": "No remaining blocking P1/P2"
+    },
+    {
+      "id": "p3-receipt-write",
+      "kind": "docs",
+      "summary": "Record graph qualified acceptance boundary",
+      "consumes": [
+        "p3-test",
+        "p3-review"
+      ],
+      "produces": [
+        "p3-receipt"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p3-graph-receipt.md"
+      ],
+      "acceptance": "Tests reviews selection measurement and limits trace to exact code"
+    },
+    {
+      "id": "p4-design",
+      "kind": "docs",
+      "summary": "Inspect and design remote with evidence and explicit extension contracts",
+      "consumes": [
+        "p0-closure",
+        "baseline"
+      ],
+      "produces": [
+        "p4-draft"
+      ],
+      "estimate": "M",
+      "risk": "high",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p4-remote-design.md"
+      ],
+      "acceptance": "Design enumerates repository contracts, options, security, qualification and scoped implementation artifacts"
+    },
+    {
+      "id": "p4-architecture",
+      "kind": "audit",
+      "summary": "Independently review remote design against frozen architecture",
+      "consumes": [
+        "p4-draft",
+        "baseline"
+      ],
+      "produces": [
+        "p4-arch"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p4-remote-architecture-review.md"
+      ],
+      "acceptance": "Independent report records GO or actionable blocking findings; NO-GO requires a revised exact-design review before freeze"
+    },
+    {
+      "id": "p4-freeze",
+      "kind": "decision",
+      "summary": "Prepare bounded plan from frozen remote architecture",
+      "consumes": [
+        "p4-contract"
+      ],
+      "produces": [
+        "p4-plan"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p4-remote-plan.md"
+      ],
+      "acceptance": "Independent findings resolved and exact contract digest recorded"
+    },
+    {
+      "id": "p4-implement",
+      "kind": "integrate",
+      "summary": "Integrate bounded remote production slices and serialized exports",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-normative",
+        "p4-http-poc-review",
+        "p4-trust-code",
+        "p4-visible-code",
+        "p4-planner-code",
+        "p4-observation-code",
+        "p4-lease-code",
+        "p4-generation-code",
+        "p4-stores-code",
+        "p4-persistence-code",
+        "p4-evidence-code",
+        "p4-read-executor-code",
+        "p4-discovery-code",
+        "p4-disclosure-code",
+        "p4-binding-code",
+        "p4-transport-code",
+        "p4-adapter-code"
+      ],
+      "produces": [
+        "p4-code"
+      ],
+      "estimate": "S",
+      "risk": "high",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/lib.rs",
+        "crates/search-source-http/src/lib.rs"
+      ],
+      "acceptance": "All scoped remote modules wired and focused package contracts pass; real TCP qualification remains next"
+    },
+    {
+      "id": "p4-qualify",
+      "kind": "verify",
+      "summary": "Qualify remote behavior and measured limits",
+      "consumes": [
+        "p4-code",
+        "p4-contract"
+      ],
+      "produces": [
+        "p4-test"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p4-remote-qualification.md"
+      ],
+      "acceptance": "Focused contracts and specified benchmark or failure recovery pass"
+    },
+    {
+      "id": "p4-review-code",
+      "kind": "audit",
+      "summary": "Independently audit remote implementation",
+      "consumes": [
+        "p4-code",
+        "p4-contract"
+      ],
+      "produces": [
+        "p4-review"
+      ],
+      "estimate": "M",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p4-remote-code-review.md"
+      ],
+      "acceptance": "No remaining blocking P1/P2"
+    },
+    {
+      "id": "p4-receipt-write",
+      "kind": "docs",
+      "summary": "Record remote qualified acceptance boundary",
+      "consumes": [
+        "p4-test",
+        "p4-review"
+      ],
+      "produces": [
+        "p4-receipt"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p4-remote-receipt.md"
+      ],
+      "acceptance": "Tests reviews selection measurement and limits trace to exact code"
+    },
+    {
+      "id": "p5-design",
+      "kind": "docs",
+      "summary": "Inspect and design api with evidence and explicit extension contracts",
+      "consumes": [
+        "p0-closure",
+        "baseline"
+      ],
+      "produces": [
+        "p5-draft"
+      ],
+      "estimate": "M",
+      "risk": "high",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p5-api-design.md"
+      ],
+      "acceptance": "Design enumerates repository contracts, options, security, qualification and scoped implementation artifacts"
+    },
+    {
+      "id": "p5-architecture",
+      "kind": "audit",
+      "summary": "Independently review api design against frozen architecture",
+      "consumes": [
+        "p5-draft",
+        "baseline"
+      ],
+      "produces": [
+        "p5-arch"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p5-api-architecture-review.md"
+      ],
+      "acceptance": "Independent report records GO or actionable blocking findings; NO-GO requires a revised exact-design review before freeze"
+    },
+    {
+      "id": "p5-freeze",
+      "kind": "decision",
+      "summary": "Freeze reviewed api contract and bounded implementation plan",
+      "consumes": [
+        "p5-revised",
+        "p5-arch-recheck",
+        "p1-contract",
+        "p2-contract",
+        "p3-contract",
+        "p4-contract"
+      ],
+      "produces": [
+        "p5-contract",
+        "p5-plan"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p5-api-freeze.md",
+        "docs/superpowers/programs/search-platform-completion/p5-api-plan.md"
+      ],
+      "acceptance": "Independent findings resolved and exact contract digest recorded"
+    },
+    {
+      "id": "p5-implement",
+      "kind": "impl",
+      "summary": "Implement api against frozen plan using focused RED GREEN",
+      "consumes": [
+        "p5-contract",
+        "p5-plan",
+        "p1-contract",
+        "p2-contract",
+        "p3-contract",
+        "p4-contract"
+      ],
+      "produces": [
+        "p5-code"
+      ],
+      "estimate": "L",
+      "risk": "high",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-api"
+      ],
+      "acceptance": "api production path and meaningful contract regressions implemented"
+    },
+    {
+      "id": "p5-qualify",
+      "kind": "verify",
+      "summary": "Qualify api behavior and measured limits",
+      "consumes": [
+        "p5-code",
+        "p5-contract"
+      ],
+      "produces": [
+        "p5-test"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p5-api-qualification.md"
+      ],
+      "acceptance": "Focused contracts and specified benchmark or failure recovery pass"
+    },
+    {
+      "id": "p5-review-code",
+      "kind": "audit",
+      "summary": "Independently audit api implementation",
+      "consumes": [
+        "p5-code",
+        "p5-contract"
+      ],
+      "produces": [
+        "p5-review"
+      ],
+      "estimate": "M",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p5-api-code-review.md"
+      ],
+      "acceptance": "No remaining blocking P1/P2"
+    },
+    {
+      "id": "p5-receipt-write",
+      "kind": "docs",
+      "summary": "Record api qualified acceptance boundary",
+      "consumes": [
+        "p5-test",
+        "p5-review"
+      ],
+      "produces": [
+        "p5-receipt"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p5-api-receipt.md"
+      ],
+      "acceptance": "Tests reviews selection measurement and limits trace to exact code"
+    },
+    {
+      "id": "p6-design",
+      "kind": "docs",
+      "summary": "Inspect and design outbox with evidence and explicit extension contracts",
+      "consumes": [
+        "p0-closure",
+        "baseline"
+      ],
+      "produces": [
+        "p6-draft"
+      ],
+      "estimate": "M",
+      "risk": "high",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p6-outbox-design.md"
+      ],
+      "acceptance": "Design enumerates repository contracts, options, security, qualification and scoped implementation artifacts"
+    },
+    {
+      "id": "p6-architecture",
+      "kind": "audit",
+      "summary": "Independently review outbox design against frozen architecture",
+      "consumes": [
+        "p6-draft",
+        "baseline"
+      ],
+      "produces": [
+        "p6-arch"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p6-outbox-architecture-review.md"
+      ],
+      "acceptance": "Independent report records GO or actionable blocking findings; NO-GO requires a revised exact-design review before freeze"
+    },
+    {
+      "id": "p6-freeze",
+      "kind": "decision",
+      "summary": "Freeze reviewed outbox contract and bounded implementation plan",
+      "consumes": [
+        "p6-revised",
+        "p6-arch-recheck"
+      ],
+      "produces": [
+        "p6-contract",
+        "p6-plan"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p6-outbox-freeze.md",
+        "docs/superpowers/programs/search-platform-completion/p6-outbox-plan.md"
+      ],
+      "acceptance": "Independent findings resolved and exact contract digest recorded"
+    },
+    {
+      "id": "p6-implement",
+      "kind": "impl",
+      "summary": "Implement outbox against frozen plan using focused RED GREEN",
+      "consumes": [
+        "p6-contract",
+        "p6-plan"
+      ],
+      "produces": [
+        "p6-code"
+      ],
+      "estimate": "L",
+      "risk": "high",
+      "role": "worker",
+      "write_scope": [
+        "crates/outbox-delivery"
+      ],
+      "acceptance": "outbox production path and meaningful contract regressions implemented"
+    },
+    {
+      "id": "p6-qualify",
+      "kind": "verify",
+      "summary": "Qualify outbox behavior and measured limits",
+      "consumes": [
+        "p6-code",
+        "p6-contract",
+        "environment-evidence"
+      ],
+      "produces": [
+        "p6-test"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p6-outbox-qualification.md"
+      ],
+      "acceptance": "Focused contracts and specified benchmark or failure recovery pass"
+    },
+    {
+      "id": "p6-review-code",
+      "kind": "audit",
+      "summary": "Independently audit outbox implementation",
+      "consumes": [
+        "p6-code",
+        "p6-contract"
+      ],
+      "produces": [
+        "p6-review"
+      ],
+      "estimate": "M",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p6-outbox-code-review.md"
+      ],
+      "acceptance": "No remaining blocking P1/P2"
+    },
+    {
+      "id": "p6-receipt-write",
+      "kind": "docs",
+      "summary": "Record outbox qualified acceptance boundary",
+      "consumes": [
+        "p6-test",
+        "p6-review"
+      ],
+      "produces": [
+        "p6-receipt"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p6-outbox-receipt.md"
+      ],
+      "acceptance": "Tests reviews selection measurement and limits trace to exact code"
+    },
+    {
+      "id": "p7-design",
+      "kind": "docs",
+      "summary": "Inspect and design runtime with evidence and explicit extension contracts",
+      "consumes": [
+        "p0-closure",
+        "baseline",
+        "p1-receipt",
+        "p2-receipt",
+        "p3-receipt",
+        "p4-receipt",
+        "p5-receipt",
+        "p6-receipt",
+        "environment-evidence",
+        "p7-early-contract"
+      ],
+      "produces": [
+        "p7-draft"
+      ],
+      "estimate": "M",
+      "risk": "high",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p7-runtime-design.md"
+      ],
+      "acceptance": "Design enumerates repository contracts, options, security, qualification and scoped implementation artifacts"
+    },
+    {
+      "id": "p7-architecture",
+      "kind": "audit",
+      "summary": "Independently review runtime design against frozen architecture",
+      "consumes": [
+        "p7-draft",
+        "baseline"
+      ],
+      "produces": [
+        "p7-arch"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p7-runtime-architecture-review.md"
+      ],
+      "acceptance": "No blocking architecture P1/P2"
+    },
+    {
+      "id": "p7-freeze",
+      "kind": "decision",
+      "summary": "Freeze reviewed runtime contract and bounded implementation plan",
+      "consumes": [
+        "p7-draft",
+        "p7-arch"
+      ],
+      "produces": [
+        "p7-contract",
+        "p7-plan"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p7-runtime-freeze.md",
+        "docs/superpowers/programs/search-platform-completion/p7-runtime-plan.md"
+      ],
+      "acceptance": "Independent findings resolved and exact contract digest recorded"
+    },
+    {
+      "id": "p7-implement",
+      "kind": "impl",
+      "summary": "Implement runtime against frozen plan using focused RED GREEN",
+      "consumes": [
+        "p7-contract",
+        "p7-plan"
+      ],
+      "produces": [
+        "p7-code"
+      ],
+      "estimate": "L",
+      "risk": "high",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-runtime"
+      ],
+      "acceptance": "runtime production path and meaningful contract regressions implemented"
+    },
+    {
+      "id": "p7-qualify",
+      "kind": "verify",
+      "summary": "Qualify runtime behavior and measured limits",
+      "consumes": [
+        "p7-code",
+        "p7-contract"
+      ],
+      "produces": [
+        "p7-test"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p7-runtime-qualification.md"
+      ],
+      "acceptance": "Focused contracts and specified benchmark or failure recovery pass"
+    },
+    {
+      "id": "p7-review-code",
+      "kind": "audit",
+      "summary": "Independently audit runtime implementation",
+      "consumes": [
+        "p7-code",
+        "p7-contract"
+      ],
+      "produces": [
+        "p7-review"
+      ],
+      "estimate": "M",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p7-runtime-code-review.md"
+      ],
+      "acceptance": "No remaining blocking P1/P2"
+    },
+    {
+      "id": "p7-receipt-write",
+      "kind": "docs",
+      "summary": "Record runtime qualified acceptance boundary",
+      "consumes": [
+        "p7-test",
+        "p7-review"
+      ],
+      "produces": [
+        "p7-receipt"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p7-runtime-receipt.md"
+      ],
+      "acceptance": "Tests reviews selection measurement and limits trace to exact code"
+    },
+    {
+      "id": "measure-capacity",
+      "kind": "verify",
+      "summary": "Measure consolidated runtime at multiple synthetic corpus scales",
+      "consumes": [
+        "p1-code",
+        "p2-code",
+        "p3-code",
+        "p4-code",
+        "p5-code",
+        "p6-code",
+        "p7-code",
+        "environment-evidence"
+      ],
+      "produces": [
+        "capacity"
+      ],
+      "estimate": "M",
+      "acceptance": "Reproducible p50 p95 p99 throughput memory disk recovery and context measurements"
+    },
+    {
+      "id": "audit-security",
+      "kind": "audit",
+      "summary": "Independently audit whole program security surfaces",
+      "consumes": [
+        "p1-code",
+        "p2-code",
+        "p3-code",
+        "p4-code",
+        "p5-code",
+        "p6-code",
+        "p7-code"
+      ],
+      "produces": [
+        "security"
+      ],
+      "estimate": "M",
+      "acceptance": "No blocking authority retention SSRF parser or API security finding"
+    },
+    {
+      "id": "audit-whole",
+      "kind": "audit",
+      "summary": "Independently review whole program correctness and integration",
+      "consumes": [
+        "p1-code",
+        "p2-code",
+        "p3-code",
+        "p4-code",
+        "p5-code",
+        "p6-code",
+        "p7-code"
+      ],
+      "produces": [
+        "whole-review"
+      ],
+      "estimate": "M",
+      "acceptance": "No blocking P1/P2 integration finding"
+    },
+    {
+      "id": "hosted-final",
+      "kind": "verify",
+      "summary": "Qualify final stacked Draft PR exact head in hosted CI",
+      "consumes": [
+        "capacity",
+        "security",
+        "whole-review"
+      ],
+      "produces": [
+        "hosted"
+      ],
+      "estimate": "M",
+      "acceptance": "Exact final head required hosted gates success"
+    },
+    {
+      "id": "accept-program",
+      "kind": "docs",
+      "summary": "Record final acceptance runbooks SLO and Draft stack",
+      "consumes": [
+        "hosted",
+        "p1-receipt",
+        "p2-receipt",
+        "p3-receipt",
+        "p4-receipt",
+        "p5-receipt",
+        "p6-receipt",
+        "p7-receipt"
+      ],
+      "produces": [
+        "acceptance"
+      ],
+      "estimate": "S",
+      "acceptance": "All user completion criteria have fresh evidence and explicit external boundaries"
+    },
+    {
+      "id": "inspect-environment",
+      "kind": "spike",
+      "summary": "Inspect current runtime toolchain fixtures and local capacity for bounded qualification",
+      "consumes": [
+        "p0-closure"
+      ],
+      "produces": [
+        "environment-evidence"
+      ],
+      "estimate": "S",
+      "role": "explorer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/environment.md"
+      ],
+      "acceptance": "Concrete verified executable dependency and fixture paths with limits and no secret reads"
+    },
+    {
+      "id": "p3-repair-design",
+      "kind": "docs",
+      "summary": "Revise graph design to resolve recorded independent architecture findings",
+      "consumes": [
+        "p3-draft",
+        "p3-arch"
+      ],
+      "produces": [
+        "p3-revised"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p3-graph-design-revision-1.md"
+      ],
+      "acceptance": "Revised design explicitly addresses all architecture blockers without changing frozen Search semantics"
+    },
+    {
+      "id": "p3-recheck-design",
+      "kind": "audit",
+      "summary": "Independently verify revised graph architecture closes blockers",
+      "consumes": [
+        "p3-revised",
+        "p3-arch",
+        "baseline"
+      ],
+      "produces": [
+        "p3-arch-recheck"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p3-graph-architecture-recheck.md"
+      ],
+      "acceptance": "Independent exact-revision report records closure and any remaining actionable blocker; full freeze requires subsequent GO"
+    },
+    {
+      "id": "p4-repair-design",
+      "kind": "docs",
+      "summary": "Revise remote design to resolve recorded independent architecture findings",
+      "consumes": [
+        "p4-draft",
+        "p4-arch"
+      ],
+      "produces": [
+        "p4-revised"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p4-remote-design-revision-1.md"
+      ],
+      "acceptance": "Revised design explicitly addresses all architecture blockers without changing frozen Search semantics"
+    },
+    {
+      "id": "p4-recheck-design",
+      "kind": "audit",
+      "summary": "Independently verify revised remote architecture closes blockers",
+      "consumes": [
+        "p4-revised",
+        "p4-arch",
+        "baseline"
+      ],
+      "produces": [
+        "p4-arch-recheck"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p4-remote-architecture-recheck.md"
+      ],
+      "acceptance": "No blocking P1/P2 remains on exact revised design"
+    },
+    {
+      "id": "p1-repair-design",
+      "kind": "docs",
+      "summary": "Revise extraction design to resolve recorded independent architecture findings",
+      "consumes": [
+        "p1-draft",
+        "p1-arch",
+        "p1-unit-draft"
+      ],
+      "produces": [
+        "p1-revised"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-extraction-design-revision-1.md"
+      ],
+      "acceptance": "Revised design explicitly addresses all architecture blockers without changing frozen Search semantics"
+    },
+    {
+      "id": "p1-recheck-design",
+      "kind": "audit",
+      "summary": "Independently verify revised extraction architecture closes blockers",
+      "consumes": [
+        "p1-revised",
+        "p1-arch",
+        "baseline",
+        "p1-unit-draft"
+      ],
+      "produces": [
+        "p1-arch-recheck"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-extraction-architecture-recheck.md"
+      ],
+      "acceptance": "No blocking P1/P2 remains on exact revised design"
+    },
+    {
+      "id": "p5-repair-design",
+      "kind": "docs",
+      "summary": "Revise api design to resolve recorded independent architecture findings",
+      "consumes": [
+        "p5-draft",
+        "p5-arch"
+      ],
+      "produces": [
+        "p5-revised"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p5-api-design-revision-1.md"
+      ],
+      "acceptance": "Revised design explicitly addresses all architecture blockers without changing frozen Search semantics"
+    },
+    {
+      "id": "p5-recheck-design",
+      "kind": "audit",
+      "summary": "Independently verify revised api architecture closes blockers",
+      "consumes": [
+        "p5-revised",
+        "p5-arch",
+        "baseline"
+      ],
+      "produces": [
+        "p5-arch-recheck"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p5-api-architecture-recheck.md"
+      ],
+      "acceptance": "No blocking P1/P2 remains on exact revised design"
+    },
+    {
+      "id": "p6-repair-design",
+      "kind": "docs",
+      "summary": "Revise outbox design to resolve recorded independent architecture findings",
+      "consumes": [
+        "p6-draft",
+        "p6-arch"
+      ],
+      "produces": [
+        "p6-revised"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p6-outbox-design-revision-1.md"
+      ],
+      "acceptance": "Revised design explicitly addresses all architecture blockers without changing frozen Search semantics"
+    },
+    {
+      "id": "p6-recheck-design",
+      "kind": "audit",
+      "summary": "Independently verify revised outbox architecture closes blockers",
+      "consumes": [
+        "p6-revised",
+        "p6-arch",
+        "baseline"
+      ],
+      "produces": [
+        "p6-arch-recheck"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p6-outbox-architecture-recheck.md"
+      ],
+      "acceptance": "No blocking P1/P2 remains on exact revised design"
+    },
+    {
+      "id": "p1-review-unit",
+      "kind": "audit",
+      "summary": "Independently review minimal canonical KnowledgeUnit contract to unblock P2",
+      "consumes": [
+        "p1-unit-draft",
+        "baseline"
+      ],
+      "produces": [
+        "p1-unit-review"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-review.md"
+      ],
+      "acceptance": "Report records GO or concrete correction conditions for canonical Unit contract"
+    },
+    {
+      "id": "p1-freeze-unit",
+      "kind": "decision",
+      "summary": "Freeze exact reviewed KnowledgeUnit contract for Vector harness input",
+      "consumes": [
+        "p1-unit-draft",
+        "p1-unit-amendment",
+        "p1-unit-recheck"
+      ],
+      "produces": [
+        "p1-unit-frozen"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md"
+      ],
+      "acceptance": "Exact input contract digest recorded with independent GO; body integration remains separately gated"
+    },
+    {
+      "id": "p1-repair-unit-contract",
+      "kind": "docs",
+      "summary": "Extract stable exact minimal KnowledgeUnit contract from the P1 repair responsibility",
+      "consumes": [
+        "p1-draft",
+        "p1-arch"
+      ],
+      "produces": [
+        "p1-unit-draft"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-contract.md"
+      ],
+      "acceptance": "Canonical Unit fields locator profile ID golden vectors and P2 cache validation contract recorded"
+    },
+    {
+      "id": "p3-fix-build-guard",
+      "kind": "docs",
+      "summary": "Specify durable base and target build guard for remaining incremental GC race",
+      "consumes": [
+        "p3-revised",
+        "p3-arch-recheck"
+      ],
+      "produces": [
+        "p3-build-guard"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p3-graph-build-guard-amendment.md"
+      ],
+      "acceptance": "Active base/target builders protected and each copy batch validates locks digest and unexpired guard fencing"
+    },
+    {
+      "id": "p3-review-build-guard",
+      "kind": "audit",
+      "summary": "Verify single remaining incremental base and active staging GC blocker closes",
+      "consumes": [
+        "p3-revised",
+        "p3-build-guard",
+        "p3-arch-recheck",
+        "p3-cleanup-order"
+      ],
+      "produces": [
+        "p3-final-arch"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p3-graph-build-guard-review.md"
+      ],
+      "acceptance": "No P1/P2 remains in composed revised design and guard amendment"
+    },
+    {
+      "id": "p1-amend-unit",
+      "kind": "decision",
+      "summary": "Correct Archive profile and Vector cache authority constraints",
+      "consumes": [
+        "p1-unit-draft",
+        "p1-unit-review",
+        "baseline"
+      ],
+      "produces": [
+        "p1-unit-amendment"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-amendment.md"
+      ],
+      "acceptance": "Both minimal Unit findings concretely corrected; original contract immutable"
+    },
+    {
+      "id": "p1-recheck-unit",
+      "kind": "audit",
+      "summary": "Verify Archive profile and cache authority corrections",
+      "consumes": [
+        "p1-unit-draft",
+        "p1-unit-review",
+        "p1-unit-amendment",
+        "baseline"
+      ],
+      "produces": [
+        "p1-unit-recheck"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-recheck.md"
+      ],
+      "acceptance": "Exact composed minimal Unit contract has no blocking P1/P2"
+    },
+    {
+      "id": "p7-early-design",
+      "kind": "docs",
+      "summary": "Draft runtime assembly and coordination boundaries before receipt fan-in",
+      "consumes": [
+        "baseline",
+        "environment-evidence",
+        "p1-revised",
+        "p1-unit-draft",
+        "p3-revised",
+        "p4-revised",
+        "p6-revised",
+        "p5-revised"
+      ],
+      "produces": [
+        "p7-early-contract"
+      ],
+      "estimate": "M",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p7-runtime-contract-draft.md"
+      ],
+      "acceptance": "Consolidated Rust runtime contracts readiness recovery config and shared fence locks concrete; unresolved API Vector backend selections explicitly pending reconcile"
+    },
+    {
+      "id": "p4-freeze-architecture",
+      "kind": "decision",
+      "summary": "Record exact independent GO remote architecture freeze",
+      "consumes": [
+        "p4-revised",
+        "p4-arch-recheck"
+      ],
+      "produces": [
+        "p4-contract"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p4-remote-freeze.md"
+      ],
+      "acceptance": "Exact independent reviewed design hash frozen"
+    },
+    {
+      "id": "p4-amend-normative",
+      "kind": "docs",
+      "summary": "Make frozen remote authority and retention contracts normative",
+      "consumes": [
+        "p4-contract"
+      ],
+      "produces": [
+        "p4-normative"
+      ],
+      "uses": [
+        "normative-data-operations"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "spec/data/transaction-consistency-requirements-v0.md",
+        "spec/data/data-characteristics-v0.md",
+        "spec/operations/observability-audit-requirements-v0.md"
+      ],
+      "acceptance": "Clause diff matches frozen remote design with no existing semantics change"
+    },
+    {
+      "id": "p4-http-poc",
+      "kind": "spike",
+      "summary": "Measure guarded real TCP HTTP client and qualify exact dependency",
+      "consumes": [
+        "p4-contract"
+      ],
+      "produces": [
+        "p4-http-poc-code",
+        "p4-http-selection"
+      ],
+      "uses": [
+        "selection-catalog"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "experiments/search-http-client-poc",
+        "spec/selection/library-tool-selection-v0.md"
+      ],
+      "acceptance": "Pinned exact client real transport negative canaries and licenses advisory source qualification recorded; no root production dependency"
+    },
+    {
+      "id": "p4-http-review",
+      "kind": "audit",
+      "summary": "Audit isolated client evidence before production promotion",
+      "consumes": [
+        "p4-http-poc-code",
+        "p4-http-selection",
+        "p4-contract"
+      ],
+      "produces": [
+        "p4-http-poc-review"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p4-http-poc-review.md"
+      ],
+      "acceptance": "No transport or dependency qualification blocker remains before promotion"
+    },
+    {
+      "id": "p1-amend-absence",
+      "kind": "decision",
+      "summary": "Bind exact text negative proof independent of lexical candidate recall",
+      "consumes": [
+        "p1-revised",
+        "baseline"
+      ],
+      "produces": [
+        "p1-body-amendment"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-body-absence-amendment.md"
+      ],
+      "acceptance": "Lexical no-hit alone cannot emit Absent; bounded same-generation exact corpus scan/current authorized binding proof defined; P1 method naming aligned P4"
+    },
+    {
+      "id": "p1-review-absence",
+      "kind": "audit",
+      "summary": "Verify complete body design and exact absence proof before freeze",
+      "consumes": [
+        "p1-revised",
+        "p1-arch-recheck",
+        "p1-body-amendment",
+        "p1-unit-frozen",
+        "baseline"
+      ],
+      "produces": [
+        "p1-body-final-review"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-body-absence-review.md"
+      ],
+      "acceptance": "No remaining body semantics P1/P2 in composed exact design and minimal Unit contract"
+    },
+    {
+      "id": "p3-correct-cleanup-order",
+      "kind": "decision",
+      "summary": "Bind guard-first deletion before target under existing transaction locks",
+      "consumes": [
+        "p3-build-guard"
+      ],
+      "produces": [
+        "p3-cleanup-order"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p3-graph-cleanup-order-correction.md"
+      ],
+      "acceptance": "DELETE order respects RESTRICT FK and preserves atomic guard target disposal"
+    },
+    {
+      "id": "p4-impl-trust",
+      "kind": "impl",
+      "summary": "P4-02 sealed trusted actor and globally unique visible catalog",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-normative"
+      ],
+      "produces": [
+        "p4-trust-code"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/scoped.rs",
+        "crates/search-application/src/remote_registration.rs",
+        "crates/search-application/src/lib.rs",
+        "crates/search-application/tests/scoped_catalog_contract.rs"
+      ],
+      "acceptance": "P4-02 sealed trusted actor and globally unique visible catalog; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-visible",
+      "kind": "impl",
+      "summary": "P4-03 invisible required indistinguishable from missing",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-trust-code"
+      ],
+      "produces": [
+        "p4-visible-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/visible_routing.rs",
+        "crates/search-application/src/routing.rs",
+        "crates/search-application/tests/visible_routing_contract.rs"
+      ],
+      "acceptance": "P4-03 invisible required indistinguishable from missing; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-planner",
+      "kind": "impl",
+      "summary": "P4-04 four remote modes and bounded typed inputs",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-trust-code",
+        "p4-visible-code"
+      ],
+      "produces": [
+        "p4-planner-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/retrieval.rs",
+        "crates/search-application/src/routing.rs",
+        "crates/search-application/tests/remote_planner_contract.rs"
+      ],
+      "acceptance": "P4-04 four remote modes and bounded typed inputs; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-observation",
+      "kind": "impl",
+      "summary": "P4-05 trusted remote batch/proof port and verified absence",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-trust-code",
+        "p4-planner-code"
+      ],
+      "produces": [
+        "p4-observation-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/remote.rs",
+        "crates/search-application/src/remote_observation.rs",
+        "crates/search-application/src/ports.rs",
+        "crates/search-application/tests/remote_observation_contract.rs"
+      ],
+      "acceptance": "P4-05 trusted remote batch/proof port and verified absence; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-lease",
+      "kind": "impl",
+      "summary": "P4-07 owned leases fail closed before and after async read",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-trust-code",
+        "p4-observation-code"
+      ],
+      "produces": [
+        "p4-lease-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/remote_lease.rs",
+        "crates/search-application/tests/remote_lease_contract.rs"
+      ],
+      "acceptance": "P4-07 owned leases fail closed before and after async read; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-generation",
+      "kind": "impl",
+      "summary": "P4-06 stable identities and one immutable Source generation",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-trust-code",
+        "p4-observation-code",
+        "p4-lease-code"
+      ],
+      "produces": [
+        "p4-generation-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/remote_identity.rs",
+        "crates/search-application/src/remote_generation.rs",
+        "crates/search-application/tests/remote_generation_contract.rs"
+      ],
+      "acceptance": "P4-06 stable identities and one immutable Source generation; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-stores",
+      "kind": "impl",
+      "summary": "P4-08 bounded cache and session owner invalidation",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-lease-code",
+        "p4-trust-code"
+      ],
+      "produces": [
+        "p4-stores-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/remote_cache.rs",
+        "crates/search-application/src/remote_session.rs",
+        "crates/search-application/src/session.rs",
+        "crates/search-application/tests/remote_store_contract.rs"
+      ],
+      "acceptance": "P4-08 bounded cache and session owner invalidation; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-persistence",
+      "kind": "impl",
+      "summary": "P4-09 verified metadata-only durable field proof",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-lease-code",
+        "p4-trust-code"
+      ],
+      "produces": [
+        "p4-persistence-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/projection.rs",
+        "crates/search-application/tests/remote_persistence_contract.rs"
+      ],
+      "acceptance": "P4-09 verified metadata-only durable field proof; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-evidence",
+      "kind": "impl",
+      "summary": "P4-10 trusted evidence origin and canonical lineage",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-trust-code",
+        "p4-generation-code"
+      ],
+      "produces": [
+        "p4-evidence-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/remote_evidence.rs",
+        "crates/search-application/tests/remote_evidence_contract.rs"
+      ],
+      "acceptance": "P4-10 trusted evidence origin and canonical lineage; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-read-executor",
+      "kind": "impl",
+      "summary": "P4-11 explicit-key composite read and real remote executor",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-generation-code",
+        "p4-lease-code",
+        "p4-evidence-code",
+        "p4-planner-code",
+        "p4-observation-code"
+      ],
+      "produces": [
+        "p4-read-executor-code"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/remote_read_view.rs",
+        "crates/search-application/src/ports.rs",
+        "crates/search-application/src/retrieval_execution.rs",
+        "crates/search-application/tests/remote_read_view_contract.rs"
+      ],
+      "acceptance": "P4-11 explicit-key composite read and real remote executor; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-discovery",
+      "kind": "impl",
+      "summary": "P4-12 same evaluator and content_scope reconciliation",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-visible-code",
+        "p4-planner-code",
+        "p4-observation-code",
+        "p4-generation-code",
+        "p4-read-executor-code",
+        "p1-contract"
+      ],
+      "produces": [
+        "p4-discovery-code"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/discovery_service.rs",
+        "crates/search-application/tests/remote_discovery_contract.rs"
+      ],
+      "acceptance": "P4-12 same evaluator and content_scope reconciliation; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-disclosure",
+      "kind": "impl",
+      "summary": "P4-13 checked scoped result and NoRetention response lifetime",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-trust-code",
+        "p4-lease-code",
+        "p4-discovery-code",
+        "p4-stores-code"
+      ],
+      "produces": [
+        "p4-disclosure-code"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/remote_disclosure.rs",
+        "crates/search-application/src/scoped.rs",
+        "crates/search-application/src/discovery_service.rs",
+        "crates/search-application/tests/scoped_discovery_contract.rs"
+      ],
+      "acceptance": "P4-13 checked scoped result and NoRetention response lifetime; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-binding",
+      "kind": "impl",
+      "summary": "P4-14 current access and version/digest remote materialization pin",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-observation-code",
+        "p4-lease-code",
+        "p4-disclosure-code",
+        "p4-read-executor-code"
+      ],
+      "produces": [
+        "p4-binding-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/remote_binding.rs",
+        "crates/search-application/src/materialization.rs",
+        "crates/search-application/src/ports.rs",
+        "crates/search-application/tests/remote_binding_contract.rs"
+      ],
+      "acceptance": "P4-14 current access and version/digest remote materialization pin; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-transport",
+      "kind": "impl",
+      "summary": "P4-16 selected pinned dependency and guarded fixed-origin real transport",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-http-poc-review",
+        "p4-observation-code"
+      ],
+      "produces": [
+        "p4-transport-code"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-source-http/Cargo.toml",
+        "crates/search-source-http/src/lib.rs",
+        "crates/search-source-http/src/transport.rs",
+        "crates/search-source-http/tests/transport_policy.rs",
+        "Cargo.toml",
+        "Cargo.lock",
+        "spec/architecture/dependency-rules.toml"
+      ],
+      "acceptance": "P4-16 selected pinned dependency and guarded fixed-origin real transport; RED/GREEN focused transport contracts"
+    },
+    {
+      "id": "p4-impl-adapter",
+      "kind": "impl",
+      "summary": "P4-17 all four RemoteSourcePort operations and bounded untrusted protocol",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-transport-code",
+        "p4-observation-code",
+        "p4-evidence-code",
+        "p4-binding-code"
+      ],
+      "produces": [
+        "p4-adapter-code"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-source-http/src/protocol.rs",
+        "crates/search-source-http/src/adapter.rs"
+      ],
+      "acceptance": "P4-17 all four RemoteSourcePort operations and bounded untrusted protocol; RED/GREEN focused transport contracts"
+    }
+  ],
+  "gate_overrides": [
+    {
+      "gate": "split-or-spike",
+      "reason": "Initial capability implementation nodes are expanded into bounded verified tasks after their independent design freeze; none dispatch as a giant task"
+    }
+  ],
+  "resources": [
+    {
+      "id": "selection-catalog",
+      "path": "spec/selection/library-tool-selection-v0.md"
+    },
+    {
+      "id": "normative-data-operations",
+      "path": "spec/data/transaction-consistency-requirements-v0.md"
+    }
+  ]
+}

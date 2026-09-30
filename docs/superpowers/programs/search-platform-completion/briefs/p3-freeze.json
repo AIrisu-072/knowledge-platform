@@ -1,0 +1,22 @@
+# 仕事の手渡し: p3-freeze
+
+- 種類: decision / 役: Orchestrator / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Freeze reviewed graph contract and bounded implementation plan
+
+## 入力
+- `p3-revised` (docs/superpowers/programs/search-platform-completion/p3-graph-design-revision-1.md) — Revised design resolving independent architecture findings [`p3-repair-design` が作る (済み)]
+- `p3-build-guard` (docs/superpowers/programs/search-platform-completion/p3-graph-build-guard-amendment.md) — Bound source/base/target build leases prevent incremental-copy and GC races [`p3-fix-build-guard` が作る (済み)]
+- `p3-final-arch` (docs/superpowers/programs/search-platform-completion/p3-graph-build-guard-review.md) — Independent final single-finding architecture closure [`p3-review-build-guard` が作る (済み)]
+- `p3-cleanup-order` (docs/superpowers/programs/search-platform-completion/p3-graph-cleanup-order-correction.md) — Correct RESTRICT foreign key cleanup ordering atomically [`p3-correct-cleanup-order` が作る (済み)]
+
+## 出すもの
+- `p3-contract` (docs/superpowers/programs/search-platform-completion/p3-graph-freeze.md) — graph contract
+- `p3-plan` (docs/superpowers/programs/search-platform-completion/p3-graph-plan.md) — graph plan
+
+## 受入条件
+Independent findings resolved and exact contract digest recorded
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p3-graph-freeze.md` / `docs/superpowers/programs/search-platform-completion/p3-graph-plan.md` だけ。他は触らない。

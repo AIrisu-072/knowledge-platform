@@ -1,0 +1,19 @@
+# 仕事の手渡し: p1-repair-design
+
+- 種類: docs / 役: DomainDesigner / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Revise extraction design to resolve recorded independent architecture findings
+
+## 入力
+- `p1-draft` (docs/superpowers/programs/search-platform-completion/p1-extraction-design.md) — extraction draft [`p1-design` が作る (済み)]
+- `p1-arch` (docs/superpowers/programs/search-platform-completion/p1-extraction-architecture-review.md) — extraction arch [`p1-architecture` が作る (済み)]
+
+## 出すもの
+- `p1-revised` (docs/superpowers/programs/search-platform-completion/p1-extraction-design-revision-1.md) — Revised design resolving independent architecture findings
+
+## 受入条件
+Revised design explicitly addresses all architecture blockers without changing frozen Search semantics
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p1-extraction-design-revision-1.md` だけ。他は触らない。
