@@ -42,7 +42,9 @@
 - [ ] stacked PR #27 → #29 → #30 → #31 → #32 の順にbaseをmainへ繋ぎ直し、必要なexact-head checksを確認してmergeする。
 - [ ] main merge commitのStandard CI / Sandbox / DSI PoCを確認する。
 - [ ] Document HTTP/OpenAPI Transport v0 statusをCLOSED / MERGED / NOT DEPLOYEDとして記録する。
-- [ ] GUI Design PR #35をmainへretargetする。Frozen Design blobは変更しない。
+- [ ] GUI Design PR #35をmainへretargetし、Frozen Design / Design Approval / approved Production Plan / handoffだけのexact-head差分を確認する。
+- [ ] PR #35のStandard CI / Sandbox / DSI PoCがSUCCESSしたらmainへmergeし、merge commitのgateを確認する。Frozen Design blobは変更しない。
+- [ ] product implementation branchは、PR #35まで統合された最新mainから作る。
 
 **STOP:** predecessor merge conflictが設計意味変更を要求する、またはmain gate原因不明FAIL。
 
