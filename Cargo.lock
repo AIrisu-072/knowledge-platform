@@ -1136,6 +1136,7 @@ dependencies = [
  "document-application",
  "document-domain",
  "document-repository-postgres",
+ "document-semantic-inspection-core",
  "jsonschema",
  "serde",
  "serde_json",

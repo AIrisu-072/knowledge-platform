@@ -19,6 +19,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 document-repository-postgres = { version = "0.0.0", path = "../document-repository-postgres" }
+document-semantic-inspection-core = { version = "0.0.0", path = "../document-semantic-inspection-core" }
 sqlx.workspace = true
 testcontainers.workspace = true
 tower = "0.5"
