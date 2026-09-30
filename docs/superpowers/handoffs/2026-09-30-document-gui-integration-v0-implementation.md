@@ -27,14 +27,21 @@ Production Implementation Plan blobはapproval record記載値を必ず照合し
 
 ## 2. Mandatory approval gate
 
-以下のどれかが成立しない場合は**product implementationを開始しない**でください。
+このhandoffを含むユーザーの実装開始メッセージが、次の完全一致Plan blobを明示的に承認し、実装開始を指示している場合:
 
-- Design Approvalが存在し、Design blobが `f132910ca5d3e638502f0b38447d9a1ec4020f24` と一致
-- Production Implementation Plan Approvalが存在
-- Approvalのplan blobが実際のPlan blobと一致
-- Approval記録が実装開始を許可している
+`0830c306ebb38290e4c3dc277f6c97a0759cf912`
 
-不足時はGitHub current stateと不足approvalだけを報告して停止してください。
+そのユーザーメッセージ自体をProduction Implementation Planの明示承認・実装開始指示として扱ってください。
+
+開始時:
+
+1. Design Approvalが存在し、Design blobが `f132910ca5d3e638502f0b38447d9a1ec4020f24` と一致することを確認する。
+2. 実際のProduction Plan blobが `0830c306ebb38290e4c3dc277f6c97a0759cf912` と一致することを確認する。
+3. Plan Approval recordがまだ存在しなければ、**product codeへ触る前に**ユーザーの現在メッセージを根拠として `docs/superpowers/plans/2026-09-30-document-gui-integration-v0-production-implementation-approval.md` を作成・commit/pushする。
+4. Approval recordへplan blob、Frozen Design blob、実装開始指示、merge/deploy boundaryを記録する。
+5. Approval recordの存在・blob一致を再確認した後にG0へ進む。
+
+ユーザーの現在メッセージにPlan blobの明示承認または実装開始指示がない場合、あるいはblob不一致の場合はproduct implementationを開始せず、不足approvalだけを報告して停止してください。
 
 ## 3. Scope
 
