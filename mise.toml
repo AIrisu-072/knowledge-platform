@@ -321,6 +321,10 @@ depends = ["verify", "sbom"]
 [tasks."poc:search:test"]
 run = ["cargo test --locked --manifest-path experiments/search-discovery-poc/Cargo.toml"]
 
+[tasks."eval:search"]
+description = "Run synthetic Search Discovery stage and safety evaluation fixtures"
+run = ["cargo test --locked -p search-evaluation --test scenarios -- --test-threads=1 --nocapture"]
+
 [tasks."poc:search:deny"]
 run = ["cargo deny --manifest-path experiments/search-discovery-poc/Cargo.toml --config experiments/search-discovery-poc/deny.toml check"]
 
