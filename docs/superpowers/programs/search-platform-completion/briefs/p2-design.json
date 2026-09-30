@@ -1,0 +1,20 @@
+# 仕事の手渡し: p2-design
+
+- 種類: spike / 役: DomainDesigner / 大きさ: M / 危険度: high / 隔離: none
+
+## やること
+Inspect and design vector with evidence and explicit extension contracts
+
+## 入力
+- `p0-closure` (docs/superpowers/execution/search-discovery-platform-v0-acceptance.md) — live exact head qualification [`p0-close` が作る (済み)]
+- `baseline` (docs/superpowers/specs/2026-09-28-search-discovery-platform-v0-design.md) — existing approved Search semantics [既に在る]
+- `p1-unit-frozen` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md) — Frozen provider neutral input contract for Vector evaluation [`p1-freeze-unit` が作る (済み)]
+
+## 出すもの
+- `p2-draft` (docs/superpowers/programs/search-platform-completion/p2-vector-design.md) — vector draft
+
+## 受入条件
+Design enumerates repository contracts, options, security, qualification and scoped implementation artifacts
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p2-vector-design.md` だけ。他は触らない。

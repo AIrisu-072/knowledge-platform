@@ -275,7 +275,7 @@
     {
       "id": "p4-code",
       "kind": "code",
-      "path": "crates/search-remote",
+      "path": "crates/search-source-http",
       "purpose": "remote code"
     },
     {
@@ -664,6 +664,144 @@
       "kind": "doc",
       "path": "docs/superpowers/programs/search-platform-completion/p7-runtime-contract-draft.md",
       "purpose": "Early consolidated runtime composition and shared coordination contract, reconcile required"
+    },
+    {
+      "id": "p4-normative",
+      "kind": "contract",
+      "path": "spec/data/transaction-consistency-requirements-v0.md",
+      "purpose": "Frozen remote clauses in normative SSOT"
+    },
+    {
+      "id": "p4-http-poc-code",
+      "kind": "code",
+      "path": "experiments/search-http-client-poc",
+      "purpose": "Isolated real TCP transport qualification code"
+    },
+    {
+      "id": "p4-http-selection",
+      "kind": "evidence",
+      "path": "experiments/search-http-client-poc/report.md",
+      "purpose": "Measured exact HTTP client selection",
+      "supports": [
+        "P4"
+      ]
+    },
+    {
+      "id": "p4-http-poc-review",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p4-http-poc-review.md",
+      "purpose": "Independent qualification boundary review",
+      "supports": [
+        "P4"
+      ]
+    },
+    {
+      "id": "p1-body-amendment",
+      "kind": "contract",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-body-absence-amendment.md",
+      "purpose": "Exact text negative proof and shared discovery signature correction"
+    },
+    {
+      "id": "p1-body-final-review",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-body-absence-review.md",
+      "purpose": "Exact text negative proof and shared discovery signature correction"
+    },
+    {
+      "id": "p3-cleanup-order",
+      "kind": "contract",
+      "path": "docs/superpowers/programs/search-platform-completion/p3-graph-cleanup-order-correction.md",
+      "purpose": "Correct RESTRICT foreign key cleanup ordering atomically"
+    },
+    {
+      "id": "p4-trust-code",
+      "kind": "code",
+      "path": "crates/search-application/src/scoped.rs",
+      "purpose": "P4-02 sealed trusted actor and globally unique visible catalog"
+    },
+    {
+      "id": "p4-visible-code",
+      "kind": "code",
+      "path": "crates/search-application/src/visible_routing.rs",
+      "purpose": "P4-03 invisible required indistinguishable from missing"
+    },
+    {
+      "id": "p4-planner-code",
+      "kind": "code",
+      "path": "crates/search-application/src/retrieval.rs",
+      "purpose": "P4-04 four remote modes and bounded typed inputs"
+    },
+    {
+      "id": "p4-observation-code",
+      "kind": "code",
+      "path": "crates/search-application/src/remote.rs",
+      "purpose": "P4-05 trusted remote batch/proof port and verified absence"
+    },
+    {
+      "id": "p4-lease-code",
+      "kind": "code",
+      "path": "crates/search-application/src/remote_lease.rs",
+      "purpose": "P4-07 owned leases fail closed before and after async read"
+    },
+    {
+      "id": "p4-generation-code",
+      "kind": "code",
+      "path": "crates/search-application/src/remote_identity.rs",
+      "purpose": "P4-06 stable identities and one immutable Source generation"
+    },
+    {
+      "id": "p4-stores-code",
+      "kind": "code",
+      "path": "crates/search-application/src/remote_cache.rs",
+      "purpose": "P4-08 bounded cache and session owner invalidation"
+    },
+    {
+      "id": "p4-persistence-code",
+      "kind": "code",
+      "path": "crates/search-application/src/projection.rs",
+      "purpose": "P4-09 verified metadata-only durable field proof"
+    },
+    {
+      "id": "p4-evidence-code",
+      "kind": "code",
+      "path": "crates/search-application/src/remote_evidence.rs",
+      "purpose": "P4-10 trusted evidence origin and canonical lineage"
+    },
+    {
+      "id": "p4-read-executor-code",
+      "kind": "code",
+      "path": "crates/search-application/src/remote_read_view.rs",
+      "purpose": "P4-11 explicit-key composite read and real remote executor"
+    },
+    {
+      "id": "p4-discovery-code",
+      "kind": "code",
+      "path": "crates/search-application/src/discovery_service.rs",
+      "purpose": "P4-12 same evaluator and content_scope reconciliation"
+    },
+    {
+      "id": "p4-disclosure-code",
+      "kind": "code",
+      "path": "crates/search-application/src/remote_disclosure.rs",
+      "purpose": "P4-13 checked scoped result and NoRetention response lifetime"
+    },
+    {
+      "id": "p4-binding-code",
+      "kind": "code",
+      "path": "crates/search-application/src/remote_binding.rs",
+      "purpose": "P4-14 current access and version/digest remote materialization pin"
+    },
+    {
+      "id": "p4-transport-code",
+      "kind": "code",
+      "path": "crates/search-source-http/Cargo.toml",
+      "purpose": "P4-16 selected pinned dependency and guarded fixed-origin real transport"
+    },
+    {
+      "id": "p4-adapter-code",
+      "kind": "code",
+      "path": "crates/search-source-http/src/protocol.rs",
+      "purpose": "P4-17 all four RemoteSourcePort operations and bounded untrusted protocol"
     }
   ],
   "tasks": [
@@ -724,7 +862,9 @@
       "consumes": [
         "p1-revised",
         "p1-arch-recheck",
-        "p1-unit-frozen"
+        "p1-unit-frozen",
+        "p1-body-amendment",
+        "p1-body-final-review"
       ],
       "produces": [
         "p1-contract",
@@ -988,7 +1128,8 @@
       "consumes": [
         "p3-revised",
         "p3-build-guard",
-        "p3-final-arch"
+        "p3-final-arch",
+        "p3-cleanup-order"
       ],
       "produces": [
         "p3-contract",
@@ -1116,41 +1257,56 @@
     {
       "id": "p4-freeze",
       "kind": "decision",
-      "summary": "Freeze reviewed remote contract and bounded implementation plan",
+      "summary": "Prepare bounded plan from frozen remote architecture",
       "consumes": [
-        "p4-revised",
-        "p4-arch-recheck"
+        "p4-contract"
       ],
       "produces": [
-        "p4-contract",
         "p4-plan"
       ],
       "estimate": "S",
       "role": "orchestrator",
       "write_scope": [
-        "docs/superpowers/programs/search-platform-completion/p4-remote-freeze.md",
         "docs/superpowers/programs/search-platform-completion/p4-remote-plan.md"
       ],
       "acceptance": "Independent findings resolved and exact contract digest recorded"
     },
     {
       "id": "p4-implement",
-      "kind": "impl",
-      "summary": "Implement remote against frozen plan using focused RED GREEN",
+      "kind": "integrate",
+      "summary": "Integrate bounded remote production slices and serialized exports",
       "consumes": [
         "p4-contract",
-        "p4-plan"
+        "p4-plan",
+        "p4-normative",
+        "p4-http-poc-review",
+        "p4-trust-code",
+        "p4-visible-code",
+        "p4-planner-code",
+        "p4-observation-code",
+        "p4-lease-code",
+        "p4-generation-code",
+        "p4-stores-code",
+        "p4-persistence-code",
+        "p4-evidence-code",
+        "p4-read-executor-code",
+        "p4-discovery-code",
+        "p4-disclosure-code",
+        "p4-binding-code",
+        "p4-transport-code",
+        "p4-adapter-code"
       ],
       "produces": [
         "p4-code"
       ],
-      "estimate": "L",
+      "estimate": "S",
       "risk": "high",
       "role": "worker",
       "write_scope": [
-        "crates/search-remote"
+        "crates/search-application/src/lib.rs",
+        "crates/search-source-http/src/lib.rs"
       ],
-      "acceptance": "remote production path and meaningful contract regressions implemented"
+      "acceptance": "All scoped remote modules wired and focused package contracts pass; real TCP qualification remains next"
     },
     {
       "id": "p4-qualify",
@@ -1990,7 +2146,8 @@
       "consumes": [
         "p3-revised",
         "p3-build-guard",
-        "p3-arch-recheck"
+        "p3-arch-recheck",
+        "p3-cleanup-order"
       ],
       "produces": [
         "p3-final-arch"
@@ -2064,12 +2221,506 @@
         "docs/superpowers/programs/search-platform-completion/p7-runtime-contract-draft.md"
       ],
       "acceptance": "Consolidated Rust runtime contracts readiness recovery config and shared fence locks concrete; unresolved API Vector backend selections explicitly pending reconcile"
+    },
+    {
+      "id": "p4-freeze-architecture",
+      "kind": "decision",
+      "summary": "Record exact independent GO remote architecture freeze",
+      "consumes": [
+        "p4-revised",
+        "p4-arch-recheck"
+      ],
+      "produces": [
+        "p4-contract"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p4-remote-freeze.md"
+      ],
+      "acceptance": "Exact independent reviewed design hash frozen"
+    },
+    {
+      "id": "p4-amend-normative",
+      "kind": "docs",
+      "summary": "Make frozen remote authority and retention contracts normative",
+      "consumes": [
+        "p4-contract"
+      ],
+      "produces": [
+        "p4-normative"
+      ],
+      "uses": [
+        "normative-data-operations"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "spec/data/transaction-consistency-requirements-v0.md",
+        "spec/data/data-characteristics-v0.md",
+        "spec/operations/observability-audit-requirements-v0.md"
+      ],
+      "acceptance": "Clause diff matches frozen remote design with no existing semantics change"
+    },
+    {
+      "id": "p4-http-poc",
+      "kind": "spike",
+      "summary": "Measure guarded real TCP HTTP client and qualify exact dependency",
+      "consumes": [
+        "p4-contract"
+      ],
+      "produces": [
+        "p4-http-poc-code",
+        "p4-http-selection"
+      ],
+      "uses": [
+        "selection-catalog"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "experiments/search-http-client-poc",
+        "spec/selection/library-tool-selection-v0.md"
+      ],
+      "acceptance": "Pinned exact client real transport negative canaries and licenses advisory source qualification recorded; no root production dependency"
+    },
+    {
+      "id": "p4-http-review",
+      "kind": "audit",
+      "summary": "Audit isolated client evidence before production promotion",
+      "consumes": [
+        "p4-http-poc-code",
+        "p4-http-selection",
+        "p4-contract"
+      ],
+      "produces": [
+        "p4-http-poc-review"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p4-http-poc-review.md"
+      ],
+      "acceptance": "No transport or dependency qualification blocker remains before promotion"
+    },
+    {
+      "id": "p1-amend-absence",
+      "kind": "decision",
+      "summary": "Bind exact text negative proof independent of lexical candidate recall",
+      "consumes": [
+        "p1-revised",
+        "baseline"
+      ],
+      "produces": [
+        "p1-body-amendment"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-body-absence-amendment.md"
+      ],
+      "acceptance": "Lexical no-hit alone cannot emit Absent; bounded same-generation exact corpus scan/current authorized binding proof defined; P1 method naming aligned P4"
+    },
+    {
+      "id": "p1-review-absence",
+      "kind": "audit",
+      "summary": "Verify complete body design and exact absence proof before freeze",
+      "consumes": [
+        "p1-revised",
+        "p1-arch-recheck",
+        "p1-body-amendment",
+        "p1-unit-frozen",
+        "baseline"
+      ],
+      "produces": [
+        "p1-body-final-review"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-body-absence-review.md"
+      ],
+      "acceptance": "No remaining body semantics P1/P2 in composed exact design and minimal Unit contract"
+    },
+    {
+      "id": "p3-correct-cleanup-order",
+      "kind": "decision",
+      "summary": "Bind guard-first deletion before target under existing transaction locks",
+      "consumes": [
+        "p3-build-guard"
+      ],
+      "produces": [
+        "p3-cleanup-order"
+      ],
+      "estimate": "S",
+      "role": "orchestrator",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p3-graph-cleanup-order-correction.md"
+      ],
+      "acceptance": "DELETE order respects RESTRICT FK and preserves atomic guard target disposal"
+    },
+    {
+      "id": "p4-impl-trust",
+      "kind": "impl",
+      "summary": "P4-02 sealed trusted actor and globally unique visible catalog",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-normative"
+      ],
+      "produces": [
+        "p4-trust-code"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/scoped.rs",
+        "crates/search-application/src/remote_registration.rs",
+        "crates/search-application/src/lib.rs",
+        "crates/search-application/tests/scoped_catalog_contract.rs"
+      ],
+      "acceptance": "P4-02 sealed trusted actor and globally unique visible catalog; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-visible",
+      "kind": "impl",
+      "summary": "P4-03 invisible required indistinguishable from missing",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-trust-code"
+      ],
+      "produces": [
+        "p4-visible-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/visible_routing.rs",
+        "crates/search-application/src/routing.rs",
+        "crates/search-application/tests/visible_routing_contract.rs"
+      ],
+      "acceptance": "P4-03 invisible required indistinguishable from missing; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-planner",
+      "kind": "impl",
+      "summary": "P4-04 four remote modes and bounded typed inputs",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-trust-code",
+        "p4-visible-code"
+      ],
+      "produces": [
+        "p4-planner-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/retrieval.rs",
+        "crates/search-application/src/routing.rs",
+        "crates/search-application/tests/remote_planner_contract.rs"
+      ],
+      "acceptance": "P4-04 four remote modes and bounded typed inputs; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-observation",
+      "kind": "impl",
+      "summary": "P4-05 trusted remote batch/proof port and verified absence",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-trust-code",
+        "p4-planner-code"
+      ],
+      "produces": [
+        "p4-observation-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/remote.rs",
+        "crates/search-application/src/remote_observation.rs",
+        "crates/search-application/src/ports.rs",
+        "crates/search-application/tests/remote_observation_contract.rs"
+      ],
+      "acceptance": "P4-05 trusted remote batch/proof port and verified absence; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-lease",
+      "kind": "impl",
+      "summary": "P4-07 owned leases fail closed before and after async read",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-trust-code",
+        "p4-observation-code"
+      ],
+      "produces": [
+        "p4-lease-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/remote_lease.rs",
+        "crates/search-application/tests/remote_lease_contract.rs"
+      ],
+      "acceptance": "P4-07 owned leases fail closed before and after async read; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-generation",
+      "kind": "impl",
+      "summary": "P4-06 stable identities and one immutable Source generation",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-trust-code",
+        "p4-observation-code",
+        "p4-lease-code"
+      ],
+      "produces": [
+        "p4-generation-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/remote_identity.rs",
+        "crates/search-application/src/remote_generation.rs",
+        "crates/search-application/tests/remote_generation_contract.rs"
+      ],
+      "acceptance": "P4-06 stable identities and one immutable Source generation; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-stores",
+      "kind": "impl",
+      "summary": "P4-08 bounded cache and session owner invalidation",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-lease-code",
+        "p4-trust-code"
+      ],
+      "produces": [
+        "p4-stores-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/remote_cache.rs",
+        "crates/search-application/src/remote_session.rs",
+        "crates/search-application/src/session.rs",
+        "crates/search-application/tests/remote_store_contract.rs"
+      ],
+      "acceptance": "P4-08 bounded cache and session owner invalidation; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-persistence",
+      "kind": "impl",
+      "summary": "P4-09 verified metadata-only durable field proof",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-lease-code",
+        "p4-trust-code"
+      ],
+      "produces": [
+        "p4-persistence-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/projection.rs",
+        "crates/search-application/tests/remote_persistence_contract.rs"
+      ],
+      "acceptance": "P4-09 verified metadata-only durable field proof; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-evidence",
+      "kind": "impl",
+      "summary": "P4-10 trusted evidence origin and canonical lineage",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-trust-code",
+        "p4-generation-code"
+      ],
+      "produces": [
+        "p4-evidence-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/remote_evidence.rs",
+        "crates/search-application/tests/remote_evidence_contract.rs"
+      ],
+      "acceptance": "P4-10 trusted evidence origin and canonical lineage; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-read-executor",
+      "kind": "impl",
+      "summary": "P4-11 explicit-key composite read and real remote executor",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-generation-code",
+        "p4-lease-code",
+        "p4-evidence-code",
+        "p4-planner-code",
+        "p4-observation-code"
+      ],
+      "produces": [
+        "p4-read-executor-code"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/remote_read_view.rs",
+        "crates/search-application/src/ports.rs",
+        "crates/search-application/src/retrieval_execution.rs",
+        "crates/search-application/tests/remote_read_view_contract.rs"
+      ],
+      "acceptance": "P4-11 explicit-key composite read and real remote executor; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-discovery",
+      "kind": "impl",
+      "summary": "P4-12 same evaluator and content_scope reconciliation",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-visible-code",
+        "p4-planner-code",
+        "p4-observation-code",
+        "p4-generation-code",
+        "p4-read-executor-code",
+        "p1-contract"
+      ],
+      "produces": [
+        "p4-discovery-code"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/discovery_service.rs",
+        "crates/search-application/tests/remote_discovery_contract.rs"
+      ],
+      "acceptance": "P4-12 same evaluator and content_scope reconciliation; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-disclosure",
+      "kind": "impl",
+      "summary": "P4-13 checked scoped result and NoRetention response lifetime",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-trust-code",
+        "p4-lease-code",
+        "p4-discovery-code",
+        "p4-stores-code"
+      ],
+      "produces": [
+        "p4-disclosure-code"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/remote_disclosure.rs",
+        "crates/search-application/src/scoped.rs",
+        "crates/search-application/src/discovery_service.rs",
+        "crates/search-application/tests/scoped_discovery_contract.rs"
+      ],
+      "acceptance": "P4-13 checked scoped result and NoRetention response lifetime; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-binding",
+      "kind": "impl",
+      "summary": "P4-14 current access and version/digest remote materialization pin",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-observation-code",
+        "p4-lease-code",
+        "p4-disclosure-code",
+        "p4-read-executor-code"
+      ],
+      "produces": [
+        "p4-binding-code"
+      ],
+      "estimate": "S",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-application/src/remote_binding.rs",
+        "crates/search-application/src/materialization.rs",
+        "crates/search-application/src/ports.rs",
+        "crates/search-application/tests/remote_binding_contract.rs"
+      ],
+      "acceptance": "P4-14 current access and version/digest remote materialization pin; focused meaningful RED/GREEN recorded"
+    },
+    {
+      "id": "p4-impl-transport",
+      "kind": "impl",
+      "summary": "P4-16 selected pinned dependency and guarded fixed-origin real transport",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-http-poc-review",
+        "p4-observation-code"
+      ],
+      "produces": [
+        "p4-transport-code"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-source-http/Cargo.toml",
+        "crates/search-source-http/src/lib.rs",
+        "crates/search-source-http/src/transport.rs",
+        "crates/search-source-http/tests/transport_policy.rs",
+        "Cargo.toml",
+        "Cargo.lock",
+        "spec/architecture/dependency-rules.toml"
+      ],
+      "acceptance": "P4-16 selected pinned dependency and guarded fixed-origin real transport; RED/GREEN focused transport contracts"
+    },
+    {
+      "id": "p4-impl-adapter",
+      "kind": "impl",
+      "summary": "P4-17 all four RemoteSourcePort operations and bounded untrusted protocol",
+      "consumes": [
+        "p4-contract",
+        "p4-plan",
+        "p4-transport-code",
+        "p4-observation-code",
+        "p4-evidence-code",
+        "p4-binding-code"
+      ],
+      "produces": [
+        "p4-adapter-code"
+      ],
+      "estimate": "M",
+      "role": "worker",
+      "write_scope": [
+        "crates/search-source-http/src/protocol.rs",
+        "crates/search-source-http/src/adapter.rs"
+      ],
+      "acceptance": "P4-17 all four RemoteSourcePort operations and bounded untrusted protocol; RED/GREEN focused transport contracts"
     }
   ],
   "gate_overrides": [
     {
       "gate": "split-or-spike",
       "reason": "Initial capability implementation nodes are expanded into bounded verified tasks after their independent design freeze; none dispatch as a giant task"
+    }
+  ],
+  "resources": [
+    {
+      "id": "selection-catalog",
+      "path": "spec/selection/library-tool-selection-v0.md"
+    },
+    {
+      "id": "normative-data-operations",
+      "path": "spec/data/transaction-consistency-requirements-v0.md"
     }
   ]
 }

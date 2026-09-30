@@ -1070,3 +1070,31 @@ Relation更新時に影響segmentだけをincremental rebuild可能にしてよ�
 REMOTE_QUERY / QUERY_ONLY Sourceで検索結果に存在しないことをResource deletionとしてcommitしない。
 COMPLETE_ENUMERATIONやauthoritative DIRECT_LOOKUP等、Source contractがabsence evidenceを提供する場合のみCurrentDiscoveryStateへ反映する。
 Source outageはResource単位の大量delete/updateとして表現しない。
+
+# P4 Remote Source consistency amendment
+
+以下のSD-T8〜SD-T10は、既存のSD-T2/3/4/7をremote Sourceに適用する追加条件である。根拠は[P4設計改訂1](../../docs/superpowers/programs/search-platform-completion/p4-remote-design-revision-1.md)、実装責務は[P4実装計画](../../docs/superpowers/programs/search-platform-completion/p4-remote-plan.md)に従う。Source正本、S1のSource間順序、既存のDocument transaction境界は変更しない。
+
+## SD-T8: Trusted actor and visible Source binding
+
+対応: P4設計改訂1 §2、P4-02/03/13。
+
+Remote Discoveryはserver-issued `TrustedSearchScope`、`TrustedDiscoveryBinding`、`AuthorizedSourceScope`を一つの現行actor/Source bindingから構築する。tenant、principal、session、access handle/revision、evaluation ID、Source visibility/revisionをregistry、routing、pin、networkより前に検証し、全read/writeと開示直前にも再検証する。requestの`access_context`、HTTP header、provider応答からこれらの権限値を生成しない。binding不一致・期限切れ・revision変更はSourceに触れる前に同一の外部エラーへ閉じる。
+
+`SourceId`はserver-ownedで全tenant横断で一意とし、tenant間再利用、重複registration、provider指定を起動時とregistry更新時に拒否する。SourceIdの一意性だけを認可として扱わず、各accessでactor tenantとregistration tenant、SourceId、revisionを照合する。可視Sourceだけをroutingへ渡し、未知・別tenant・不可視のRequired SourceはIDを含まない同一の`required_source_unavailable` gapへ正規化する。不可視のPreferred Sourceは除外する。途中でSource visibilityを失った場合は、そのSource由来のcandidate、Claim、rank、gap、trace、Graph path、locatorを一括除去する。
+
+## SD-T9: One sealed generation per Source and evaluation
+
+対応: P4設計改訂1 §4、P4-05/06/09/11/12。
+
+一つのDiscovery evaluationで一Sourceに割り当てるgeneration keyは一つだけとする。複数remote actionは最初のfederation前にSource単位で集約し、同じ検証済みSource snapshot、認可scope/ACL revision、Resource version/digest、同名fieldのtyped value/provenanceの整合を確認した後に一回だけsealする。整合を証明できないbatchは混合せず失敗させる。同一Sourceでdurableとremoteのgenerationを混ぜない。seal後のaction追加・projection更新には新しいevaluationを要求する。
+
+Remote evaluation generationはowner付きRAMに限り、durable `ProjectionGenerationStore`や`PersistableGenerationManifest`へ渡さない。全hit、rank list、Claim/evidence read、probe bindingは同じsealed keyを参照する。keyのSource不一致・衝突はstructural errorとして閉じる。Required Sourceは計画済みだけではexecutedとせず、current accessを通った有効actionの完了で初めてexecutedとする。remote失敗はactionごとのgapとして残し、独立した可視Sourceの結果を妨げない。Source正本や既存durable Resource stateを失敗から更新しない。
+
+## SD-T10: Verified remote absence and immutable binding
+
+対応: P4設計改訂1 §§3–5、P4-05/06/14。
+
+`Presence::Absent`はadapterがtenant、Source、認可scope、snapshotまたはlookup token、対象のexact native ID、coverage、access revision、観測時点を検証した非公開`VerifiedAbsence` receiptからのみ生成する。既知IDの同一snapshot・scope/revisionで全pageがterminalに達したcomplete enumeration、または登録済みauthoritativeかつACL-unmaskedなdirect lookupだけがreceiptを発行できる。query miss、partial enumeration、通常の403/404、`LIVE_ONLY` miss、probe `NotFoundByProbe`、timeout、outage、page/cursor/snapshot/ACL不整合は`Unknown`またはgapとし、Resource deletionを起こさない。
+
+同じnative ID/versionの異なるdigestは`IntegrityConflict`とする。seal後のprobe/detail/materializationではcurrent actor/Source/item/field accessとpinned snapshot/version/digestを再検証し、内容が変われば古いcandidate・binding・projectionに結合せず、新しいDiscovery/qualificationを要求する。provider locatorはfetch先として使わない。

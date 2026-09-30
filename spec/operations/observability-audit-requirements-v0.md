@@ -1050,3 +1050,21 @@ Source ID、resource ID、query ID等をMetric labelへ入れない。
 Discoveryで取得したRemote content、InformationGapの具体値、Tool schema、Evidence本文をAuditへ無条件複製しない。
 Audit対象に指定する場合もstable identifier / reason code / source class / result stateを優先する。
 NO_RETENTION Source由来本文をTelemetry / Auditへ保存してRetention contractを迂回してはならない。
+
+# P4 Remote Source observability and audit amendment
+
+以下のSD-O1〜SD-O2はremote Sourceの開示・運用記録に対する追加条件である。根拠は[P4設計改訂1](../../docs/superpowers/programs/search-platform-completion/p4-remote-design-revision-1.md)、実装責務は[P4実装計画](../../docs/superpowers/programs/search-platform-completion/p4-remote-plan.md)に従う。
+
+## SD-O1: Visibility-safe gaps and traces
+
+対応: P4設計改訂1 §§2, 4、P4-03/12/13。
+
+remote Sourceのroute、retrieval、qualification、Claim、rank、Graph path、locator、count、gap、traceは、現行actorに可視なSourceと許可fieldに限定する。未知・別tenant・不可視のRequired Source IDは、同じID-free `required_source_unavailable`の出力形とfailure classで扱い、hidden Source IDをgap/trace/log/audit/metric labelへ載せない。不可視Preferred Sourceは出力に現れない。Source/item/fieldの認可が評価途中または開示直前に失われた場合は、そのSourceの派生出力を一括除去し、Requiredのgapだけを同じ汎用形で返す。raw provider snapshot token、provider JSONの自己申告provenance、provider locatorをtraceの権限根拠として出さない。
+
+## SD-O2: Retention-aware disclosure and recording
+
+対応: P4設計改訂1 §7、P4-07/13/17。
+
+`NO_RETENTION`のremote評価では、`discover`/materializationのsuccess、error、cancel、deadlineで`EvaluationLease`を閉じ、evaluation generation、projection、Graph、probe、receipt、raw responseとそのhandleを再読不能にする。返却を認めたfieldだけを`TransientDisclosure<T>`の別の短命leaseに移し、送出直前にもactor/Source/item/field accessを確認する。送出完了、body生成/送信error、client disconnect、cancel、deadlineでそのleaseを閉じ、未送出bufferを破棄する。送出中のbounded bufferはserver-side queue、retry spool、cursor/cache、background taskへ渡さない。後続呼出しは新しいevaluationとfresh provider readを要する。
+
+`NO_RETENTION`由来のprovider内容、query、candidate ID、locator、具体gap、body、digest、assertion/evidence、Graph/probe/receipt、response bytesをlog、audit、telemetry payload、fixture、temp file、dumpへ残さず、このmode由来のper-call payloadを作らない。合成試験dataは実行時に生成し、保存fixtureにしない。通常のDiscovery trace/metrics候補はretention契約に従う場合だけ記録できる。受入試験ではsuccess/error/disconnect/cancel/deadline後の全server-side storeと保持済みhandleから再読できないことを確認する。

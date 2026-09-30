@@ -1,0 +1,23 @@
+# 仕事の手渡し: p3-review-build-guard
+
+- 種類: audit / 役: QualityAuditor / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Verify single remaining incremental base and active staging GC blocker closes
+
+## 入力
+- `p3-revised` (docs/superpowers/programs/search-platform-completion/p3-graph-design-revision-1.md) — Revised design resolving independent architecture findings [`p3-repair-design` が作る (済み)]
+- `p3-build-guard` (docs/superpowers/programs/search-platform-completion/p3-graph-build-guard-amendment.md) — Bound source/base/target build leases prevent incremental-copy and GC races [`p3-fix-build-guard` が作る (済み)]
+- `p3-arch-recheck` (docs/superpowers/programs/search-platform-completion/p3-graph-architecture-recheck.md) — Independent revised exact design architecture gate [`p3-recheck-design` が作る (済み)]
+- `p3-cleanup-order` (docs/superpowers/programs/search-platform-completion/p3-graph-cleanup-order-correction.md) — Correct RESTRICT foreign key cleanup ordering atomically [`p3-correct-cleanup-order` が作る (済み)]
+
+## 出すもの
+- `p3-final-arch` (docs/superpowers/programs/search-platform-completion/p3-graph-build-guard-review.md) — Independent final single-finding architecture closure
+
+## 受入条件
+No P1/P2 remains in composed revised design and guard amendment
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p3-graph-build-guard-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

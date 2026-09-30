@@ -1,0 +1,19 @@
+# 仕事の手渡し: p4-amend-normative
+
+- 種類: docs / 役: Worker / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Make frozen remote authority and retention contracts normative
+
+## 入力
+- `p4-contract` (docs/superpowers/programs/search-platform-completion/p4-remote-freeze.md) — remote contract [`p4-freeze-architecture` が作る (済み)]
+
+## 出すもの
+- `p4-normative` (spec/data/transaction-consistency-requirements-v0.md) — Frozen remote clauses in normative SSOT
+
+## 受入条件
+Clause diff matches frozen remote design with no existing semantics change
+
+## 守ること
+- 書いてよいのは `spec/data/transaction-consistency-requirements-v0.md` / `spec/data/data-characteristics-v0.md` / `spec/operations/observability-audit-requirements-v0.md` だけ。他は触らない。
+- 使う資源: `normative-data-operations`。奪い合う相手が居る。

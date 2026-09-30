@@ -1,6 +1,6 @@
 # P4 Remote Source — Design Freeze
 
-- Status: FROZEN architecture contract; implementation plan is being prepared. No production/PoC/CI acceptance claim.
+- Status: FROZEN architecture contract; implementation plan fixed at SHA-256 `a713a6f0d2f5f1d0066576dada09f4987e54bccf5c7df2330fa89f565bb31da0`. No production/PoC/CI acceptance claim.
 - Requester authority: 2026-09-30 Completion Program prompt explicitly approves autonomous design/freeze/plan/selection/implementation.
 - Exact design: `p4-remote-design-revision-1.md`, SHA-256 `f4112c7aa0cf7cbf61dca19c4beebcfb14a6578432ac45861644ab8ea616f9e9`.
 - Independent GO: `p4-remote-architecture-recheck.md`, SHA-256 `698511291043276d86687c203ef1e319e09755f0f53064f38528f0760456a635`, reviewer `/root/completion_p4_architecture_recheck`. Original P1 2/P2 3 findings closed; no new related P1/P2.

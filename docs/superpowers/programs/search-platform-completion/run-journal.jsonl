@@ -48,3 +48,19 @@
 {"ts":"2026-09-30T15:16:31+09:00","event":"dispatched","task":"p1-recheck-design","detail":"/root/completion_p1_full_recheck; full body semantics independently reviewed, Unit freeze separate"}
 {"ts":"2026-09-30T15:16:31+09:00","event":"dispatched","task":"p6-freeze","detail":"/root/completion_p6_plan; architecture fixed, concrete plan pending"}
 {"ts":"2026-09-30T15:18:56+09:00","event":"dispatched","task":"p7-early-design","detail":"/root/completion_p7_early_contract; early composition only, final receipt reconcile required"}
+{"ts":"2026-09-30T15:22:42+09:00","event":"completed","task":"p4-freeze-architecture","detail":"Exact independent GO design SHA frozen; concrete plan separate task"}
+{"ts":"2026-09-30T15:25:36+09:00","event":"completed","task":"p3-fix-build-guard","detail":"Binding guard amendment delivered; independent review pending"}
+{"ts":"2026-09-30T15:25:36+09:00","event":"dispatched","task":"p3-review-build-guard","detail":"/root/completion_p3_guard_review; narrow composed guard architecture closure"}
+{"ts":"2026-09-30T15:25:36+09:00","event":"dispatched","task":"p4-http-poc","detail":"/root/completion_p4_http_poc; isolated real TCP dependency qualification only"}
+{"ts":"2026-09-30T15:25:36+09:00","event":"dispatched","task":"p4-amend-normative","detail":"/root/completion_p4_normative; additive spec clauses only"}
+{"ts":"2026-09-30T15:27:05+09:00","event":"completed","task":"p1-amend-unit","detail":"Exact two-finding binding amendment delivered; independent recheck pending"}
+{"ts":"2026-09-30T15:27:05+09:00","event":"dispatched","task":"p1-amend-absence","detail":"/root/completion_p1_absence_amend; complete exact text negative proof and shared method naming"}
+{"ts":"2026-09-30T15:30:09+09:00","event":"completed","task":"p3-correct-cleanup-order","detail":"Parent binding correction deletes guard before target under same row locks/transaction; independent reviewer still active"}
+{"ts":"2026-09-30T15:41:01+09:00","event":"completed","task":"p1-recheck-unit","detail":"Independent minimum Unit contract GO on exact original plus amendment; body integration separate"}
+{"ts":"2026-09-30T15:41:01+09:00","event":"completed","task":"p1-freeze-unit","detail":"Parent freezes exact composed minimum input contract to release P2"}
+{"ts":"2026-09-30T15:43:53+09:00","event":"completed","task":"p3-review-build-guard","detail":"Independent composed GO after exact FK-safe correction; DB/selection not yet run"}
+{"ts":"2026-09-30T15:43:53+09:00","event":"completed","task":"p4-freeze","detail":"Concrete 20-task stable plan fixed at a713a6f0 SHA; parent reviewed scoped prerequisites"}
+{"ts":"2026-09-30T15:43:53+09:00","event":"completed","task":"p4-amend-normative","detail":"Parent reviewed additive82lines clauses SD-T8-T10 SD-D1-D3 SD-O1-O2 against frozen design"}
+{"ts":"2026-09-30T15:43:53+09:00","event":"completed","task":"p7-early-design","detail":"Early composition contract stable; final receipt reconciliation still required"}
+{"ts":"2026-09-30T15:46:14+09:00","event":"dispatched","task":"p2-design","detail":"/root/completion_p2_design; starts from exact minimal Unit freeze independent fullbody gate"}
+{"ts":"2026-09-30T15:46:14+09:00","event":"dispatched","task":"p3-freeze","detail":"/root/completion_p3_plan; exact composed architecture fixed, plan pending"}
