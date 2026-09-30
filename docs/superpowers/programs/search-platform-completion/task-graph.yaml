@@ -646,6 +646,24 @@
         "P3"
       ],
       "purpose": "Independent final single-finding architecture closure"
+    },
+    {
+      "id": "p1-unit-amendment",
+      "kind": "contract",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-amendment.md",
+      "purpose": "Archive profile and Vector retention binding corrections"
+    },
+    {
+      "id": "p1-unit-recheck",
+      "kind": "evidence",
+      "path": "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-recheck.md",
+      "purpose": "Independent narrow closure of two minimal Unit findings"
+    },
+    {
+      "id": "p7-early-contract",
+      "kind": "doc",
+      "path": "docs/superpowers/programs/search-platform-completion/p7-runtime-contract-draft.md",
+      "purpose": "Early consolidated runtime composition and shared coordination contract, reconcile required"
     }
   ],
   "tasks": [
@@ -1470,7 +1488,8 @@
         "p4-receipt",
         "p5-receipt",
         "p6-receipt",
-        "environment-evidence"
+        "environment-evidence",
+        "p7-early-contract"
       ],
       "produces": [
         "p7-draft"
@@ -1804,7 +1823,8 @@
       "consumes": [
         "p1-revised",
         "p1-arch",
-        "baseline"
+        "baseline",
+        "p1-unit-draft"
       ],
       "produces": [
         "p1-arch-recheck"
@@ -1906,7 +1926,7 @@
       "write_scope": [
         "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-review.md"
       ],
-      "acceptance": "Unit identity locator provenance and validation are exact provider neutral and consistent with frozen Source semantics"
+      "acceptance": "Report records GO or concrete correction conditions for canonical Unit contract"
     },
     {
       "id": "p1-freeze-unit",
@@ -1914,7 +1934,8 @@
       "summary": "Freeze exact reviewed KnowledgeUnit contract for Vector harness input",
       "consumes": [
         "p1-unit-draft",
-        "p1-unit-review"
+        "p1-unit-amendment",
+        "p1-unit-recheck"
       ],
       "produces": [
         "p1-unit-frozen"
@@ -1980,6 +2001,69 @@
         "docs/superpowers/programs/search-platform-completion/p3-graph-build-guard-review.md"
       ],
       "acceptance": "No P1/P2 remains in composed revised design and guard amendment"
+    },
+    {
+      "id": "p1-amend-unit",
+      "kind": "decision",
+      "summary": "Correct Archive profile and Vector cache authority constraints",
+      "consumes": [
+        "p1-unit-draft",
+        "p1-unit-review",
+        "baseline"
+      ],
+      "produces": [
+        "p1-unit-amendment"
+      ],
+      "estimate": "S",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-amendment.md"
+      ],
+      "acceptance": "Both minimal Unit findings concretely corrected; original contract immutable"
+    },
+    {
+      "id": "p1-recheck-unit",
+      "kind": "audit",
+      "summary": "Verify Archive profile and cache authority corrections",
+      "consumes": [
+        "p1-unit-draft",
+        "p1-unit-review",
+        "p1-unit-amendment",
+        "baseline"
+      ],
+      "produces": [
+        "p1-unit-recheck"
+      ],
+      "estimate": "S",
+      "role": "quality-auditor",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-recheck.md"
+      ],
+      "acceptance": "Exact composed minimal Unit contract has no blocking P1/P2"
+    },
+    {
+      "id": "p7-early-design",
+      "kind": "docs",
+      "summary": "Draft runtime assembly and coordination boundaries before receipt fan-in",
+      "consumes": [
+        "baseline",
+        "environment-evidence",
+        "p1-revised",
+        "p1-unit-draft",
+        "p3-revised",
+        "p4-revised",
+        "p6-revised",
+        "p5-revised"
+      ],
+      "produces": [
+        "p7-early-contract"
+      ],
+      "estimate": "M",
+      "role": "domain-designer",
+      "write_scope": [
+        "docs/superpowers/programs/search-platform-completion/p7-runtime-contract-draft.md"
+      ],
+      "acceptance": "Consolidated Rust runtime contracts readiness recovery config and shared fence locks concrete; unresolved API Vector backend selections explicitly pending reconcile"
     }
   ],
   "gate_overrides": [

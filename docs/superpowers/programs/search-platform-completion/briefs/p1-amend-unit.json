@@ -1,0 +1,20 @@
+# 仕事の手渡し: p1-amend-unit
+
+- 種類: decision / 役: DomainDesigner / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Correct Archive profile and Vector cache authority constraints
+
+## 入力
+- `p1-unit-draft` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-contract.md) — Exact minimal KnowledgeUnit extraction contract independent of full body wiring [`p1-repair-unit-contract` が作る (済み)]
+- `p1-unit-review` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-review.md) — Independent minimal unit input contract review for P2 [`p1-review-unit` が作る (作業中)]
+- `baseline` (docs/superpowers/specs/2026-09-28-search-discovery-platform-v0-design.md) — existing approved Search semantics [既に在る]
+
+## 出すもの
+- `p1-unit-amendment` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-amendment.md) — Archive profile and Vector retention binding corrections
+
+## 受入条件
+Both minimal Unit findings concretely corrected; original contract immutable
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-amendment.md` だけ。他は触らない。

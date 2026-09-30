@@ -40,3 +40,11 @@
 {"ts":"2026-09-30T15:00:56+09:00","event":"dispatched","task":"p4-freeze","detail":"Parent fixed independent GO exact design digest; scoped plan writer prepares plan before node completion"}
 {"ts":"2026-09-30T15:02:45+09:00","event":"completed","task":"p3-recheck-design","detail":"Four prior findings closed; one remaining incremental base/staging GC race requires build guard amendment"}
 {"ts":"2026-09-30T15:02:45+09:00","event":"dispatched","task":"p3-fix-build-guard"}
+{"ts":"2026-09-30T15:14:54+09:00","event":"completed","task":"p1-repair-design","detail":"Revised P1 body pipeline design delivered; independent architecture gate pending"}
+{"ts":"2026-09-30T15:14:54+09:00","event":"completed","task":"p1-review-unit","detail":"NO-GO report delivered: two concrete Archive profile and Vector authority corrections; golden vectors match"}
+{"ts":"2026-09-30T15:14:54+09:00","event":"completed","task":"p5-recheck-design","detail":"Architecture and security semantics GO; full API freeze pending exact schema reconcile and Problem URI correction"}
+{"ts":"2026-09-30T15:14:54+09:00","event":"completed","task":"p6-recheck-design","detail":"Independent revised design GO; real DB implementation tests pending"}
+{"ts":"2026-09-30T15:16:31+09:00","event":"dispatched","task":"p1-amend-unit","detail":"/root/completion_p1_unit_amend; exact two-finding correction only"}
+{"ts":"2026-09-30T15:16:31+09:00","event":"dispatched","task":"p1-recheck-design","detail":"/root/completion_p1_full_recheck; full body semantics independently reviewed, Unit freeze separate"}
+{"ts":"2026-09-30T15:16:31+09:00","event":"dispatched","task":"p6-freeze","detail":"/root/completion_p6_plan; architecture fixed, concrete plan pending"}
+{"ts":"2026-09-30T15:18:56+09:00","event":"dispatched","task":"p7-early-design","detail":"/root/completion_p7_early_contract; early composition only, final receipt reconcile required"}

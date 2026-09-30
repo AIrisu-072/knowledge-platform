@@ -1,0 +1,25 @@
+# 仕事の手渡し: p7-early-design
+
+- 種類: docs / 役: DomainDesigner / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Draft runtime assembly and coordination boundaries before receipt fan-in
+
+## 入力
+- `baseline` (docs/superpowers/specs/2026-09-28-search-discovery-platform-v0-design.md) — existing approved Search semantics [既に在る]
+- `environment-evidence` (docs/superpowers/programs/search-platform-completion/environment.md) — current runtime toolchain container PDFium and capacity discovery without secret reads [`inspect-environment` が作る (済み)]
+- `p1-revised` (docs/superpowers/programs/search-platform-completion/p1-extraction-design-revision-1.md) — Revised design resolving independent architecture findings [`p1-repair-design` が作る (済み)]
+- `p1-unit-draft` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-contract.md) — Exact minimal KnowledgeUnit extraction contract independent of full body wiring [`p1-repair-unit-contract` が作る (済み)]
+- `p3-revised` (docs/superpowers/programs/search-platform-completion/p3-graph-design-revision-1.md) — Revised design resolving independent architecture findings [`p3-repair-design` が作る (済み)]
+- `p4-revised` (docs/superpowers/programs/search-platform-completion/p4-remote-design-revision-1.md) — Revised design resolving independent architecture findings [`p4-repair-design` が作る (済み)]
+- `p6-revised` (docs/superpowers/programs/search-platform-completion/p6-outbox-design-revision-1.md) — Revised design resolving independent architecture findings [`p6-repair-design` が作る (済み)]
+- `p5-revised` (docs/superpowers/programs/search-platform-completion/p5-api-design-revision-1.md) — Revised design resolving independent architecture findings [`p5-repair-design` が作る (済み)]
+
+## 出すもの
+- `p7-early-contract` (docs/superpowers/programs/search-platform-completion/p7-runtime-contract-draft.md) — Early consolidated runtime composition and shared coordination contract, reconcile required
+
+## 受入条件
+Consolidated Rust runtime contracts readiness recovery config and shared fence locks concrete; unresolved API Vector backend selections explicitly pending reconcile
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p7-runtime-contract-draft.md` だけ。他は触らない。
