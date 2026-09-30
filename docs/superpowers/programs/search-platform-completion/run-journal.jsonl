@@ -1,1 +1,6 @@
 {"ts":"2026-09-30T14:14:58+09:00","event":"completed","task":"p0-close"}
+{"ts":"2026-09-30T14:18:28+09:00","event":"dispatched","task":"p1-design"}
+{"ts":"2026-09-30T14:18:28+09:00","event":"dispatched","task":"p3-design"}
+{"ts":"2026-09-30T14:18:29+09:00","event":"dispatched","task":"p4-design"}
+{"ts":"2026-09-30T14:18:29+09:00","event":"dispatched","task":"p5-design"}
+{"ts":"2026-09-30T14:18:29+09:00","event":"dispatched","task":"p6-design"}
