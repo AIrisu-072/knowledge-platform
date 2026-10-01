@@ -160,6 +160,35 @@ jobs:
         run: mise install github:anchore/syft
       - run: mise run sbom
 
+  document-poc-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: "2"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Install pinned runtime and frontend dependencies
+        run: |
+          mise install rust
+          mise install node
+          mise install pnpm
+          pnpm install --frozen-lockfile --ignore-scripts
+      - name: Install pinned Chromium
+        run: pnpm --filter @knowledge-platform/document-web exec playwright install chromium
+      - name: Real composition-root acceptance
+        run: mise run document:poc:runtime
+      - name: Emit bounded runtime evidence
+        if: ${{ always() }}
+        run: node tools/document-poc-runtime/ci-summary.mjs
+
   required-check:
     if: ${{ always() }}
     needs:
@@ -170,6 +199,7 @@ jobs:
       - portability-macos
       - dsi-semantic-parity-macos
       - container-build
+      - document-poc-runtime
     runs-on: ubuntu-24.04
     steps:
       - name: Require every predecessor
@@ -181,8 +211,9 @@ jobs:
           PORTABILITY_MACOS: ${{ needs.portability-macos.result }}
           DSI_SEMANTIC_PARITY_MACOS: ${{ needs.dsi-semantic-parity-macos.result }}
           CONTAINER_BUILD: ${{ needs.container-build.result }}
+          DOCUMENT_POC_RUNTIME: ${{ needs.document-poc-runtime.result }}
         run: |
           set -eu
-          for result in "$POLICY" "$RUST_STATIC" "$RUST_TEST" "$SECURITY" "$PORTABILITY_MACOS" "$DSI_SEMANTIC_PARITY_MACOS" "$CONTAINER_BUILD"; do
+          for result in "$POLICY" "$RUST_STATIC" "$RUST_TEST" "$SECURITY" "$PORTABILITY_MACOS" "$DSI_SEMANTIC_PARITY_MACOS" "$CONTAINER_BUILD" "$DOCUMENT_POC_RUNTIME"; do
             test "$result" = success
           done

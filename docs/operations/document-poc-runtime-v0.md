@@ -141,3 +141,18 @@ Focused runtime tests require a disposable PostgreSQL instance through `TEST_DAT
 or start their own PostgreSQL18.6 testcontainer when that variable is absent. They never fall
 back to `KP_DATABASE_URL` and never skip a missing required dependency. Unit/transport fixtures
 are not evidence of the full GUI → production-composition journey.
+
+
+## Real composition-root acceptance entrypoint
+
+After installing the pinned browser (`pnpm --filter @knowledge-platform/document-web exec playwright install chromium`), run
+`mise run document:poc:runtime`. See [the acceptance harness](../../tools/document-poc-runtime/README.md)
+for the owned disposable database, process lifecycle, genuine in-flight/stalled-stream cases,
+exact-source provenance and safe summary contract. The default harness builds its own binaries;
+custom binary directories are permitted only in explicitly unqualified `--prebuilt` diagnostics.
+No mocked API route, development server or system-browser fallback can qualify this gate.
+
+The GitHub job emits `node tools/document-poc-runtime/ci-summary.mjs` output even after a failure.
+This bounded summary intentionally omits raw log messages, paths, URLs, credentials, manifests
+and working files. Screenshots/traces stay run-local; no additional upload action or durable
+visual-review evidence is claimed. Runtime failure remains a failing required predecessor.
