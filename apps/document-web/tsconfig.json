@@ -17,5 +17,5 @@
     "noUncheckedIndexedAccess": true,
     "types": ["jest", "node", "@testing-library/jest-dom"]
   },
-  "include": ["src", "test"]
+  "include": ["src", "test", "e2e", "playwright.config.ts"]
 }

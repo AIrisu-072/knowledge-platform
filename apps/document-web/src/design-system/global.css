@@ -36,6 +36,25 @@ textarea {
   font: inherit;
 }
 
+.notice {
+  margin-block: var(--space-3);
+  padding: var(--space-3);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-subtle);
+}
+
+.notice h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-section);
+}
+
+.notice-error {
+  border-color: var(--color-danger);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
 a {
   color: var(--color-accent);
 }

@@ -594,14 +594,70 @@ async fn postgres_filesystem_and_workers_complete_the_document_http_journey() {
     .await;
     assert_eq!(status, StatusCode::OK, "{initial_published}");
 
+    let metadata_operation = Uuid::now_v7();
+    let metadata_uri = format!("/v1/documents/{document_id}/metadata");
+    let metadata = json!({
+        "operationId": metadata_operation,
+        "expectedDocumentRevision": initial_published["resultingDocumentRevision"],
+        "set": {"owning_department": "quality"},
+        "unset": ["category"],
+        "reason": "Create a metadata minor revision"
+    });
+    let (status, metadata_result) =
+        send_json(api, Method::PATCH, &metadata_uri, Some(&metadata)).await;
+    assert_eq!(status, StatusCode::OK, "{metadata_result}");
+
+    let revisions_uri = format!("/v1/documents/{document_id}/revisions?pageSize=100");
+    let (status, first_revision_history) = send_json(api, Method::GET, &revisions_uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{first_revision_history}");
+    let first_revision_id = first_revision_history["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|revision| revision["major"] == 1 && revision["minor"] == 0)
+        .unwrap()["revisionId"]
+        .as_str()
+        .unwrap();
+    let metadata_revision_id = first_revision_history["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|revision| revision["major"] == 1 && revision["minor"] == 1)
+        .unwrap()["revisionId"]
+        .as_str()
+        .unwrap();
+    let revision_comparison_uri = format!("/v1/documents/{document_id}/revision-comparisons");
+    let metadata_comparison = json!({
+        "baseRevisionId": first_revision_id,
+        "targetRevisionId": metadata_revision_id,
+        "projection": "comparisonTable"
+    });
+    let (status, metadata_diff) = send_json(
+        api,
+        Method::POST,
+        &revision_comparison_uri,
+        Some(&metadata_comparison),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{metadata_diff}");
+    assert_eq!(
+        metadata_diff["contentComparisonStatus"],
+        "sameAuthoritativeVersion"
+    );
+    assert_eq!(metadata_diff["metadataComparisonStatus"], "different");
+    assert!(
+        !metadata_diff["metadataChanges"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
     let target_version_id = Uuid::now_v7();
     let create_version_operation = Uuid::now_v7();
     let create_version = version_request(
         create_version_operation,
         target_version_id,
-        initial_published["resultingDocumentRevision"]
-            .as_i64()
-            .unwrap(),
+        metadata_result["resultingRevision"].as_i64().unwrap(),
         Uuid::now_v7(),
         "Acceptance replacement",
     );
@@ -648,6 +704,36 @@ async fn postgres_filesystem_and_workers_complete_the_document_http_journey() {
     let (_, publish_replay) = send_json(api, Method::POST, &publish_uri, Some(&publish)).await;
     assert_eq!(publish_replay, published);
 
+    let (status, major_revision_history) = send_json(api, Method::GET, &revisions_uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{major_revision_history}");
+    let major_revision_id = major_revision_history["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|revision| revision["documentVersionId"] == target_version_id.to_string())
+        .unwrap()["revisionId"]
+        .as_str()
+        .unwrap();
+    let content_revision_comparison = json!({
+        "baseRevisionId": first_revision_id,
+        "targetRevisionId": major_revision_id,
+        "projection": "comparisonTable"
+    });
+    let (status, revision_diff) = send_json(
+        api,
+        Method::POST,
+        &revision_comparison_uri,
+        Some(&content_revision_comparison),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{revision_diff}");
+    assert_eq!(
+        revision_diff["contentComparisonStatus"],
+        "differentAuthoritativeVersions"
+    );
+    assert_eq!(revision_diff["verdict"], "different");
+    assert_eq!(revision_diff["coverage"], "full");
+
     let published_uri = format!("/v1/documents/{document_id}?view=published");
     let (status, published_read) = send_json(api, Method::GET, &published_uri, None).await;
     assert_eq!(status, StatusCode::OK, "{published_read}");
@@ -685,26 +771,11 @@ async fn postgres_filesystem_and_workers_complete_the_document_http_journey() {
     assert_eq!(read_replay["inserted"], false);
     assert_eq!(read_replay["firstReadAt"], read_state["firstReadAt"]);
 
-    let metadata_operation = Uuid::now_v7();
-    let metadata = json!({
-        "operationId": metadata_operation,
-        "expectedDocumentRevision": published["resultingDocumentRevision"],
-        "set": {"owning_department": "quality"},
-        "unset": ["category"],
-        "reason": "Qualify HTTP metadata"
-    });
-    let metadata_uri = format!("/v1/documents/{document_id}/metadata");
-    let (status, metadata_result) =
-        send_json(api, Method::PATCH, &metadata_uri, Some(&metadata)).await;
-    assert_eq!(status, StatusCode::OK, "{metadata_result}");
-    let (_, metadata_replay) = send_json(api, Method::PATCH, &metadata_uri, Some(&metadata)).await;
-    assert_eq!(metadata_replay, metadata_result);
-
     let move_request = json!({
         "operationId": Uuid::now_v7(),
         "fromFolderId": folder_id,
         "toFolderId": root_id,
-        "expectedDocumentRevision": metadata_result["resultingRevision"],
+        "expectedDocumentRevision": published["resultingDocumentRevision"],
         "reason": "Move qualified document"
     });
     let move_uri = format!("/v1/documents/{document_id}:move");
@@ -763,6 +834,39 @@ async fn postgres_filesystem_and_workers_complete_the_document_http_journey() {
     assert_eq!(diff["verdict"], "different");
     assert_eq!(diff["coverage"], "full");
 
+    let withdraw_uri = format!("{target_uri}:withdraw");
+    let withdraw = json!({
+        "operationId": Uuid::now_v7(),
+        "expectedRevision": moved["resultingRevision"],
+        "reason": "Restore the preceding published version"
+    });
+    let (status, withdrawn) = send_json(api, Method::POST, &withdraw_uri, Some(&withdraw)).await;
+    assert_eq!(status, StatusCode::OK, "{withdrawn}");
+    assert_eq!(
+        withdrawn["formerCurrentVersionId"],
+        target_version_id.to_string()
+    );
+    assert_eq!(withdrawn["resultingCurrentVersionId"], initial_version_id);
+
+    let (status, restored) = send_json(api, Method::GET, &published_uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{restored}");
+    assert_eq!(restored["documentVersionId"], initial_version_id);
+    let (status, final_revision_history) = send_json(api, Method::GET, &revisions_uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{final_revision_history}");
+    let final_revisions = final_revision_history["items"].as_array().unwrap();
+    let revision_numbers = final_revisions
+        .iter()
+        .map(|revision| {
+            (
+                revision["major"].as_i64().unwrap(),
+                revision["minor"].as_i64().unwrap(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(revision_numbers, vec![(3, 0), (2, 0), (1, 1), (1, 0)]);
+    assert_eq!(final_revisions[0]["sourceKind"], "withdrawFallback");
+    assert_eq!(final_revisions[0]["documentVersionId"], initial_version_id);
+
     let revoke = policy(
         Uuid::now_v7(),
         policy_result["resultingRevision"].as_i64().unwrap(),
@@ -773,8 +877,12 @@ async fn postgres_filesystem_and_workers_complete_the_document_http_journey() {
 
     for (method, uri, body) in [
         (Method::GET, published_uri.as_str(), None),
-        (Method::GET, download_uri.as_str(), None),
-        (Method::POST, comparison_uri.as_str(), Some(&comparison)),
+        (Method::GET, history_uri.as_str(), None),
+        (
+            Method::POST,
+            revision_comparison_uri.as_str(),
+            Some(&content_revision_comparison),
+        ),
     ] {
         let (status, problem) = send_json(api, method, uri, body).await;
         assert!(
