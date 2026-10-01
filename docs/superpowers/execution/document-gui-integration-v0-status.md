@@ -8,10 +8,11 @@
 - Schedule entryでroute transition後にmethodが初期値へ戻るREDをE2Eで確認。publication methodを親workspace状態へ持ち上げ、pending解除後にaction triggerへfocusを戻してGREEN化。PublishはAPI response後のみ成功表示し、JST入力をUTCへ送信。
 - Local G8 evidence: `npm test` **11 suites / 34 tests PASS**; `npm run typecheck` PASS; `npm run build` PASS; `npm run e2e` **6/6 PASS**; `node --test tools/api-contract/contract.test.mjs` **12/12 PASS**; `cargo fmt --all -- --check` PASS; `git diff --check` PASS. Mock 1〜7 screenshot baselinesを追加・視覚確認。
 - Build residual: Webpack main JS 553 KiB / entrypoint 566 KiB / detail chunk 41.9 KiB。production buildは3 performance advisoriesを出す。Approved designに数値T_usable/T_input上限はないためfinal E2Eで観測値を記録し、閾値は作らない。
+- Exact local frontend E2E on head `bb5da30c7a831a9d79a16cc422f00adc89b70c69`: **6/6 PASS**. Captured `T_usable=349.7 ms`, `T_input=16.5 ms`, `motionSpatial=180 ms`; the approved design defines no numeric cutoff.
 - Browser-level accessibility checklistを `docs/superpowers/execution/document-gui-integration-v0-accessibility-review.md` に記録。日本語document lang/landmarks/button names、7 contrast token pairs、reduced motion、1280/1440 overflow、keyboard/focus、Mock 1〜7 stateを検査。
 - G9 backend lifecycle testを `crates/document-api-http/tests/e2e.rs` で拡張: real PostgreSQL + FileSystemStorage + production DSI/Diff runnersを通るHTTP lifecycleにmetadata minor revision comparison、content major revision comparison、withdraw fallback、restored current Version、revision monotonicityを追加。HostにDocker socketがなくlocal PostgreSQL E2Eは未実行。file Audit 0-byte failure / fail-soft identity / stale capability raceの既存focused testsはStandard CIで再確認する。
 - Design/Plan境界: implementation branch pushとDraft PR作成は許可範囲。merge、deploy、production migration execution、本番AD/SSPI接続は禁止。
-- Blocker: hosted exact-head matrix pending。Next exact action: push implementation branch、create Draft PR、final exact-head frontend E2Eを走らせT_usable/T_input/motion値を保存し、Standard CI / DSI Sandbox Preflight / DSI PoCの同一PR head結果を記録する。
+- Blocker: hosted exact-head matrix pending。Next exact action: commit this evidence update、push implementation branch、create Draft PRし、Standard CI / DSI Sandbox Preflight / DSI PoCの同一PR head結果を記録する。
 
 ---
 
