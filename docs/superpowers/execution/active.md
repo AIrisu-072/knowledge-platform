@@ -1,5 +1,42 @@
 # Active Execution Pointer
 
+## Current checkpoint — Document GUI Integration v0 G7 toolchain amendment approved、2026-10-01 JST
+
+- Status: **G0〜G6 COMPLETE / G7 IN PROGRESS / G8〜G9 NOT STARTED**。依頼者はVite/Vitest置換を推奨方針で進めるよう指示し、current candidate graphにある列挙外licenseだけを個別承認した。一般license policyとFrozen Design semanticsは不変。
+- Design Amendment 01 / Approval / Plan Addendum 01を作成。Candidate lock SHA-256 `ee2e1430204112a91a31cbfa34a286ab1effca56ac35d918bb3f4df77d05ea16`。個別承認対象: ISC (34), BlueOak-1.0.0 (8), CC-BY-4.0, Python-2.0, MIT-0, Unlicense, CC0-1.0, 0BSD, `(MIT OR CC0-1.0)`。他licenseまたはlock graph変更には再qualificationが必要。
+- branch `feat/document-gui-integration-v0`、last code HEAD `82ca1337c71d7ef5b2c3179b59a8e08941411de0`、local `origin/main`より24 commits ahead。GitHub main `d71753d46590bb4406a1c0b74894ab90a27a6c88`。Remote implementation branchなし、PRなし、branch CIなし。PR #27/#29/#30/#31/#32/#35 merged。
+- Candidate prior evidence: Node 24.21.0 / pnpm 12.4.1 frozen install, peer check, audit pass; React Aria focused PoC 6/6. Current shell Node is 26.3.1 and pinned pnpm launcher fails; local `node_modules/.bin` tools are available. No product code has been written. Use focused local checks; defer hosted CI to G9.
+- G7 RED: after porting Vitest APIs to Jest without changing assertions, direct local Jest run reported 5 expected missing-foundation test failures, 8 tests passing, and 1 React Aria suite PASS. Failures are missing token/global CSS, motion module, app shell, and source tree for architecture scanning. Hosted CIは未実行。
+- Next exact action: implement `webpack.config.cjs`, design tokens/global CSS, motion duration contract, and accessible `AppShell`; rerun focused Jest, TypeScript, and build checks.
+
+---
+
+## Current checkpoint — Document GUI Integration v0 G7 license qualification STOP、2026-10-01 JST
+
+- Status: **G0〜G6 COMPLETE / G7 candidate qualification STOP / G8〜G9 NOT STARTED**。依頼者はVite置換と既存license policy維持を選択した。Architecture Contract §5は掲載外licenseを個別承認としている。
+- Implementation branch `feat/document-gui-integration-v0`、local HEAD `82ca1337c71d7ef5b2c3179b59a8e08941411de0`（`origin/main`より24 commits ahead）。GitHub main `d71753d46590bb4406a1c0b74894ab90a27a6c88`、CI `36718016267` SUCCESS。GitHub上にimplementation branch/PRはなく、branch exact-head CIも未実行。
+- Last GREEN code head `3b3d2b737942c0fd4eb27abb3777395507dcf0e2`（G6）。Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`、approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`、Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。
+- Local amendment candidate: Webpack `5.111.1` / webpack-cli `7.2.3` / webpack-dev-server `6.0.0`; Jest `30.5.2`; Babel `7.29.7`; Node `24.21.0`; TypeScript `6.0.3`; retain React/TanStack/Motion/Ajv/RTL/Playwright. Vite/Vitest/LightningCSS are absent from the clean resolved lock. Babel 8 was replaced with Babel 7 after peer check evidence; unplanned `eslint-plugin-jsx-a11y` and `identity-obj-proxy` were removed because they introduced MPL-2.0 and a dual MPL license respectively.
+- Focused qualification: exact pnpm `12.4.1` frozen install PASS; `pnpm peers check` PASS; `pnpm audit --audit-level=low` PASS, no known advisories. Isolated full app license inventory has no GPL/AGPL/LGPL/MPL/SSPL/BSL/source-available packages, but includes non-listed licenses that require individual approval under §5: ISC (34 packages), BlueOak-1.0.0 (8), CC-BY-4.0, Python-2.0, MIT-0, Unlicense, CC0-1.0, 0BSD, and `(MIT OR CC0-1.0)`. No exception has been approved.
+- G7 production UI source is not started. Candidate package manifest/lock and earlier contract/config tests remain local and uncommitted. No Design Amendment or dependency promotion has been recorded.
+- `toolbox-context status` has no matching pending managed run. Parent restore helper remains unavailable at `~/.local/bin/parent-context.py`.
+- 次のexact action: obtain a decision whether to record candidate-specific individual approvals for the listed non-allowlisted license IDs while leaving the general policy unchanged, or to require a graph containing only currently listed license IDs and evaluate another tool stack. Continue G7/G8/G9 only after this gate is resolved.
+
+---
+
+## Superseded checkpoint — Document GUI Integration v0 G7 STOP、2026-10-01 JST
+
+- Status: **G0〜G6 COMPLETE / G7 STOP / G8〜G9 NOT STARTED**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。Frozen Design差分・amendmentなし。
+- Implementation branch `feat/document-gui-integration-v0`、current local HEAD `82ca1337c71d7ef5b2c3179b59a8e08941411de0`（`origin/main`より24 commits ahead）。GitHub main `d71753d46590bb4406a1c0b74894ab90a27a6c88`、main CI `36718016267` SUCCESS。Product branch/PRはGitHubに未公開。
+- Last GREEN code head `3b3d2b737942c0fd4eb27abb3777395507dcf0e2`（G6）。Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`、approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`、Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。
+- G7 STOP: Vite 8.3.1 resolves `lightningcss` 1.33.0 (MPL-2.0), while `spec/architecture/architecture-contract-v0.md` LINT-02 excludes MPL-2.0. Attached request explicitly says to stop when a selected dependency violates license/security policy. No silent exception or stack substitution is authorized.
+- Focused evidence: React Aria qualification 6/6 PASS; `pnpm audit --audit-level=low` previously PASS/no known advisories. React Aria remains a local devDependency only and is not promoted. The pinned pnpm CLI is unavailable/broken, so `pnpm why` could not run; exact lock snapshot and registry metadata confirm the dependency/license edge.
+- Working tree holds local G7 package/config/qualification tests, lock/ignore edits, these checkpoint-document updates, and `.superpowers` scratch; no production GUI component or implementation PR has been created. Latest React Aria run passed; the design-system RED fails only because `src/design-system/tokens.css` is not implemented yet.
+- Required decision: (A) keep the license allowlist and approve a Design Amendment replacing Vite 8 with a compatible frontend build tool, then qualify its full dependency graph; or (B) amend the license policy to explicitly allow the MPL-2.0 transitive dependency and continue with Vite 8. G7/G8/G9 remain stopped until one path is approved.
+- 次のexact action: receive the user’s A/B policy/design decision, record the approved amendment, then resume G7 from the corresponding qualified dependency stack. Do not create/push a product PR or proceed to G8/G9 while this gate is unresolved.
+
+---
+
 ## Current checkpoint — Document GUI Integration v0 G6 COMPLETE / G7 NEXT、2026-10-01 JST
 
 - Status: **G0〜G6 COMPLETE / G7 Frontend foundation NEXT**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。

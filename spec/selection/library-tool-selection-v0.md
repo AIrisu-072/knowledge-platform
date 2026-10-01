@@ -394,6 +394,8 @@ PR毎の永続保存を必須にはせず、release artifactでは生成可能�
 pnpm coreはMITだが、同monorepoの`pnpr/`はPolyForm Shield source-available。
 本projectでは**pnpm package manager coreのみ**利用し、`pnpr`は利用しない。
 
+Document GUI Integration v0は、承認済みDesign Amendment 01に限りBuild toolをWebpack 5.111.1へ置き換える。その他のfeatureに対するVite 8の標準選定とlicense policyは変更しない。
+
 ## 8.2 TypeScript 7 PoC
 
 TypeScript 7.0は2026-07にstableになったnative Go portで大幅なtypecheck高速化を目的としているが、移行直後のため互換性PoCを行う。
@@ -505,6 +507,8 @@ WCAG適合のための独自patchが少ない方を採用する。
 | JSX static a11y | eslint-plugin-jsx-a11y | **SELECTED** | MIT | static checks |
 | Automated WCAG checker | IBM Equal Access `accessibility-checker` | **POC REQUIRED** | Apache-2.0 | WCAG 2.2 A/AA、Playwright integration |
 | axe-core / @axe-core/playwright | - | **REJECTED** | MPL-2.0 | project license policy不適合 |
+
+Document GUI Integration v0は承認済みDesign Amendment 01によりVitestをJest 30.5.2へ置き換える。この例外は当該featureの実装に限り、その他のfeatureに対するVitest 4.1の標準選定を変更しない。Optionalな`eslint-plugin-jsx-a11y`は同featureの候補graphにMPL-2.0を追加するため使用せず、accessibility contract testsとPlaywright checksで対象を検査する。
 
 ## IBM Equal Access PoC
 

@@ -1,6 +1,7 @@
 /target/
 /experiments/document-semantic-inspection/target/
 /node_modules/
+/apps/document-web/node_modules/
 /dist/
 /coverage/
 /tmp/
