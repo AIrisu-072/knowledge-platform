@@ -362,6 +362,7 @@ async fn send_json(
     uri: &str,
     body: Option<&Value>,
 ) -> (StatusCode, Value) {
+    let request_body = body.map(|value| value.to_string());
     let mut request = Request::builder().method(method.clone()).uri(uri);
     let body = if let Some(value) = body {
         request = request.header(header::CONTENT_TYPE, "application/json");
@@ -375,12 +376,13 @@ async fn send_json(
         .await
         .unwrap();
     let status = response.status();
+    let response_content_type = response.headers().get(header::CONTENT_TYPE).cloned();
     let bytes = to_bytes(response.into_body(), 16 * 1024 * 1024)
         .await
         .unwrap();
     let value = serde_json::from_slice(&bytes).unwrap_or_else(|error| {
         panic!(
-            "expected JSON response for {method} {uri}: {error}; body={}",
+            "expected JSON response for {method} {uri}: {error}; status={status}; content_type={response_content_type:?}; request_body={request_body:?}; body={}",
             String::from_utf8_lossy(&bytes)
         )
     });

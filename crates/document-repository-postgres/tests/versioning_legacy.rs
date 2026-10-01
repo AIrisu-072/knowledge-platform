@@ -13,6 +13,8 @@ use testcontainers::{
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+type LegacyRevisionRow = (i64, i64, Uuid, String, Option<Value>, String, Option<Uuid>);
+
 fn id(raw: u128) -> Uuid {
     Uuid::from_u128(raw)
 }
@@ -298,7 +300,7 @@ async fn document_revision_backfill_preserves_published_order_and_marks_unknown_
 
     migration(&pool, 9, "document_revisions_v0").await;
 
-    let rows: Vec<(i64, i64, Uuid, String, Option<Value>, String, Option<Uuid>)> =
+    let rows: Vec<LegacyRevisionRow> =
         sqlx::query_as("SELECT major_no,minor_no,document_version_id,metadata_snapshot_status,metadata_snapshot,source_kind,operation_id FROM document_revisions WHERE document_id = $1 ORDER BY major_no,minor_no")
             .bind(document_id).fetch_all(&pool).await.unwrap();
     assert_eq!(

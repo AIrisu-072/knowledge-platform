@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     access_control::guard_document_mutation,
-    document_revision::issue_withdraw_fallback_revision,
+    document_revision::{WithdrawFallbackRevisionInput, issue_withdraw_fallback_revision},
     error::{map_commit_error, map_statement_error},
     versioning_mutation,
 };
@@ -155,13 +155,15 @@ pub(crate) async fn withdraw(
         if is_current && let Some(fallback_id) = resulting_current {
             issue_withdraw_fallback_revision(
                 &mut tx,
-                command.document_id(),
-                DocumentVersionId::from_uuid(fallback_id),
-                &metadata,
-                command.operation_id().as_uuid(),
-                command.actor(),
-                command.reason(),
-                record.withdrawn_at,
+                WithdrawFallbackRevisionInput {
+                    document_id: command.document_id(),
+                    document_version_id: DocumentVersionId::from_uuid(fallback_id),
+                    metadata: &metadata,
+                    operation_id: command.operation_id().as_uuid(),
+                    actor: command.actor(),
+                    reason: command.reason(),
+                    created_at: record.withdrawn_at,
+                },
             )
             .await?;
         }

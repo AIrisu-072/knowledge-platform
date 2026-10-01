@@ -11,16 +11,49 @@ use uuid::Uuid;
 
 use crate::error::map_statement_error;
 
+pub(crate) struct PublicationRevisionInput<'a> {
+    pub(crate) document_id: DocumentId,
+    pub(crate) document_version_id: DocumentVersionId,
+    pub(crate) metadata: &'a Value,
+    pub(crate) operation_id: Uuid,
+    pub(crate) actor: &'a PrincipalRef,
+    pub(crate) created_at: OffsetDateTime,
+    pub(crate) is_initial_path: bool,
+}
+
+pub(crate) struct MetadataRevisionInput<'a> {
+    pub(crate) document_id: DocumentId,
+    pub(crate) current_document_version_id: Option<DocumentVersionId>,
+    pub(crate) metadata: &'a Value,
+    pub(crate) operation_id: Uuid,
+    pub(crate) actor: &'a PrincipalRef,
+    pub(crate) reason: &'a str,
+    pub(crate) created_at: OffsetDateTime,
+}
+
+pub(crate) struct WithdrawFallbackRevisionInput<'a> {
+    pub(crate) document_id: DocumentId,
+    pub(crate) document_version_id: DocumentVersionId,
+    pub(crate) metadata: &'a Value,
+    pub(crate) operation_id: Uuid,
+    pub(crate) actor: &'a PrincipalRef,
+    pub(crate) reason: &'a str,
+    pub(crate) created_at: OffsetDateTime,
+}
+
 pub(crate) async fn issue_publication_revision(
     tx: &mut Transaction<'_, Postgres>,
-    document_id: DocumentId,
-    document_version_id: DocumentVersionId,
-    metadata: &Value,
-    operation_id: Uuid,
-    actor: &PrincipalRef,
-    created_at: OffsetDateTime,
-    is_initial_path: bool,
+    input: PublicationRevisionInput<'_>,
 ) -> Result<(), RepositoryError> {
+    let PublicationRevisionInput {
+        document_id,
+        document_version_id,
+        metadata,
+        operation_id,
+        actor,
+        created_at,
+        is_initial_path,
+    } = input;
     let previous_major = max_major(tx, document_id).await?;
     let major = previous_major
         .checked_add(1)
@@ -47,14 +80,17 @@ pub(crate) async fn issue_publication_revision(
 
 pub(crate) async fn issue_metadata_revision(
     tx: &mut Transaction<'_, Postgres>,
-    document_id: DocumentId,
-    current_document_version_id: Option<DocumentVersionId>,
-    metadata: &Value,
-    operation_id: Uuid,
-    actor: &PrincipalRef,
-    reason: &str,
-    created_at: OffsetDateTime,
+    input: MetadataRevisionInput<'_>,
 ) -> Result<(), RepositoryError> {
+    let MetadataRevisionInput {
+        document_id,
+        current_document_version_id,
+        metadata,
+        operation_id,
+        actor,
+        reason,
+        created_at,
+    } = input;
     let latest: Option<(i64, i64, Uuid)> = sqlx::query_as(
         "SELECT major_no, minor_no, document_version_id FROM document_revisions \
          WHERE document_id = $1 ORDER BY major_no DESC, minor_no DESC LIMIT 1",
@@ -89,14 +125,17 @@ pub(crate) async fn issue_metadata_revision(
 
 pub(crate) async fn issue_withdraw_fallback_revision(
     tx: &mut Transaction<'_, Postgres>,
-    document_id: DocumentId,
-    document_version_id: DocumentVersionId,
-    metadata: &Value,
-    operation_id: Uuid,
-    actor: &PrincipalRef,
-    reason: &str,
-    created_at: OffsetDateTime,
+    input: WithdrawFallbackRevisionInput<'_>,
 ) -> Result<(), RepositoryError> {
+    let WithdrawFallbackRevisionInput {
+        document_id,
+        document_version_id,
+        metadata,
+        operation_id,
+        actor,
+        reason,
+        created_at,
+    } = input;
     let major = max_major(tx, document_id)
         .await?
         .checked_add(1)

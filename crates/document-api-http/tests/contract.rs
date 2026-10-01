@@ -122,6 +122,11 @@ async fn every_openapi_operation_is_dispatched_to_exactly_one_handler_family() {
             format!("/v1/documents/{id}/comparisons"),
             "diff",
         ),
+        (
+            Method::POST,
+            format!("/v1/documents/{id}/revision-comparisons"),
+            "diff",
+        ),
         (Method::GET, "/v1/folders/root".to_owned(), "read"),
         (Method::GET, format!("/v1/folders/{id}/children"), "read"),
         (Method::POST, "/v1/folders".to_owned(), "management"),
@@ -139,7 +144,7 @@ async fn every_openapi_operation_is_dispatched_to_exactly_one_handler_family() {
         ),
     ];
 
-    assert_eq!(cases.len(), 32);
+    assert_eq!(cases.len(), 33);
     for (method, uri, expected) in cases {
         let response = api
             .clone()

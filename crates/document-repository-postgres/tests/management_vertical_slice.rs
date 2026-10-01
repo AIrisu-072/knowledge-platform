@@ -17,6 +17,16 @@ use serde_json::json;
 use support::{context, fixture};
 use uuid::Uuid;
 
+type MetadataRevisionRow = (
+    i64,
+    i64,
+    String,
+    Option<Uuid>,
+    Option<String>,
+    Option<String>,
+    Option<serde_json::Value>,
+);
+
 fn operation_id() -> ManagementOperationId {
     ManagementOperationId::try_from_uuid(Uuid::now_v7()).unwrap()
 }
@@ -80,15 +90,7 @@ async fn management_changes_flow_into_published_list_read_state_and_history_then
         .await
         .unwrap();
     assert_eq!(updated.resulting_revision, 2);
-    let metadata_revision: (
-        i64,
-        i64,
-        String,
-        Option<Uuid>,
-        Option<String>,
-        Option<String>,
-        Option<serde_json::Value>,
-    ) = sqlx::query_as(
+    let metadata_revision: MetadataRevisionRow = sqlx::query_as(
         "SELECT major_no,minor_no,source_kind,operation_id,actor_identity_provider, \
                     actor_principal_id,metadata_snapshot \
              FROM document_revisions WHERE document_id = $1 \

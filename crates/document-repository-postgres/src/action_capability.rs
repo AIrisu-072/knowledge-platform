@@ -236,9 +236,7 @@ impl ActionCapabilityReadRepository for PostgresDocumentRepository {
                 write,
                 true,
                 is_human,
-                if !working {
-                    Some(CapabilityDisabledReason::Lifecycle)
-                } else if ended {
+                if !working || ended {
                     Some(CapabilityDisabledReason::Lifecycle)
                 } else {
                     pending_reason

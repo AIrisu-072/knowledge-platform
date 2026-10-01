@@ -11,7 +11,7 @@ use crate::{
     PostgresDocumentRepository,
     access_control::{AccessLockMode, authorize_in_tx, lock_access_state},
     access_policy::{decode_result, insert_operation, postgres_timestamp_now, row_resource},
-    document_revision::issue_metadata_revision,
+    document_revision::{MetadataRevisionInput, issue_metadata_revision},
     error::{map_commit_error, map_statement_error},
     targeted_events::insert_targeted_events,
 };
@@ -261,13 +261,16 @@ impl PostgresDocumentRepository {
             if changed {
                 issue_metadata_revision(
                     &mut tx,
-                    document_id,
-                    current_version_id.map(document_domain::DocumentVersionId::from_uuid),
-                    &updated,
-                    command.operation_id().as_uuid(),
-                    ctx.principal(),
-                    reason,
-                    now,
+                    MetadataRevisionInput {
+                        document_id,
+                        current_document_version_id: current_version_id
+                            .map(document_domain::DocumentVersionId::from_uuid),
+                        metadata: &updated,
+                        operation_id: command.operation_id().as_uuid(),
+                        actor: ctx.principal(),
+                        reason,
+                        created_at: now,
+                    },
                 )
                 .await?;
                 let mut keys: Vec<_> = set.keys().chain(unset.iter()).cloned().collect();

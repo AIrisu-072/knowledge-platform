@@ -9,7 +9,7 @@ use sqlx::{PgPool, Postgres, Transaction};
 
 use crate::{
     access_control::guard_document_mutation,
-    document_revision::issue_publication_revision,
+    document_revision::{PublicationRevisionInput, issue_publication_revision},
     error::{map_commit_error, map_statement_error},
     mapping::to_authoritative,
     publication_end,
@@ -384,13 +384,15 @@ pub(crate) async fn publish_initial_version(
         let metadata = Value::Object(document.metadata().as_map().clone());
         issue_publication_revision(
             &mut tx,
-            identity.document_id(),
-            identity.target_document_version_id(),
-            &metadata,
-            identity.publish_operation_id().as_uuid(),
-            identity.principal(),
-            proposed_result.published_at(),
-            true,
+            PublicationRevisionInput {
+                document_id: identity.document_id(),
+                document_version_id: identity.target_document_version_id(),
+                metadata: &metadata,
+                operation_id: identity.publish_operation_id().as_uuid(),
+                actor: identity.principal(),
+                created_at: proposed_result.published_at(),
+                is_initial_path: true,
+            },
         )
         .await?;
         if scheduled_due {
@@ -573,13 +575,15 @@ pub(crate) async fn publish_next_version(
         if document_update.rows_affected() != 1 { return Err(RepositoryError::Conflict); }
         issue_publication_revision(
             &mut tx,
-            identity.document_id(),
-            identity.target_document_version_id(),
-            &metadata,
-            identity.publish_operation_id().as_uuid(),
-            identity.principal(),
-            proposed_result.published_at(),
-            false,
+            PublicationRevisionInput {
+                document_id: identity.document_id(),
+                document_version_id: identity.target_document_version_id(),
+                metadata: &metadata,
+                operation_id: identity.publish_operation_id().as_uuid(),
+                actor: identity.principal(),
+                created_at: proposed_result.published_at(),
+                is_initial_path: false,
+            },
         )
         .await?;
         if scheduled_due {
