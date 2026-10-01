@@ -36,15 +36,15 @@ tooling_root = "tools"
 
 [workspace.boundaries.document_domain]
 crate_path = "crates/document-domain"
-forbidden_dependencies = ["sqlx", "axum", "tokio"]
+forbidden_dependencies = ["sqlx", "axum", "tokio", "document-server"]
 forbidden_source_patterns = ["std::fs", "std::path", "tokio::fs"]
 
 [workspace.boundaries.document_application]
 crate_path = "crates/document-application"
-forbidden_dependencies = ["sqlx", "axum"]
+forbidden_dependencies = ["sqlx", "axum", "document-server"]
 forbidden_source_patterns = ["std::fs", "std::path", "tokio::fs"]
 
 [workspace.boundaries.document_api_http]
 crate_path = "crates/document-api-http"
-forbidden_dependencies = ["sqlx", "document-repository-postgres", "document-storage-fs", "document-diff-runner", "document-semantic-inspection-runner"]
+forbidden_dependencies = ["document-server", "sqlx", "document-repository-postgres", "document-storage-fs", "document-diff-runner", "document-semantic-inspection-runner"]
 forbidden_source_patterns = ["document_repository_postgres", "document_storage_fs", "document_diff_runner", "document_semantic_inspection_runner", "SYSTEM_ROOT_FOLDER_ID", "AllowAllIdentityAdapter", "TestIdentityAdapter"]

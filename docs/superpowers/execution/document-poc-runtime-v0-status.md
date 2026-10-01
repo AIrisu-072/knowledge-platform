@@ -1,5 +1,21 @@
 # Document Platform PoC Runtime / Server Composition v0 — Capability Status
 
+## 2026-10-01 UTC — R2 fixed runtime implementation checkpoint
+
+- Status: **R1–R4 FIXED-SCOPE IMPLEMENTATION / FOCUSED LOCAL GREEN; R5 STOP; R6 REAL RUNTIME QUALIFICATION BLOCKED LOCALLY / HOSTED HARNESS IN PROGRESS**. C1 is not complete and no acceptance-green claim is made.
+- Product branch `feat/document-poc-runtime-v0-r2`, isolated from verified R1 Draft PR37 head `dc9eb9bde55777934c100ce79c8c2b43ca8430eb`. R1/A1 documentation PRs remain separate; no merge/deployment.
+- Implemented: reusable server composition; strict fixed profiles; explicit migrate/bootstrap; read-only migration set/checksum check; real repository/storage/DSI/Diff wiring; both runner PDFium paths; safe static GUI routing; health rechecks; safe trace sink; graceful drain without forced cutoff; synthetic Common API seed.
+- Focused local evidence: runtime 35/35 tests PASS with real disposable PostgreSQL18.6 and TCP stream drain; architecture 14/14 PASS and actual repository lint PASS; strict runtime/repository Clippy PASS; production server/workers and production GUI build PASS; fresh Rust advisories/bans/licenses/sources PASS. These are scoped checks, not the full aggregate/hosted/GUI journey.
+- Seed: 20/20 emitted generated-client/BinaryTransportBridge contract tests PASS; API client 6/6 and OpenAPI contract 12/12 PASS. Seed mock transport is explicitly not real-backend acceptance. No new npm third-party graph.
+- RED receipts: missing config/identity/schema/bootstrap/composition interfaces; architecture reverse dependency; stale identity renewal seam; graceful pending stream; encoded API SPA; independent-review alias-target drift, effective execution rights and unsafe extensionless aliases; missing tracing sink. Corresponding focused GREEN tests passed.
+- Independent review found four Important implementation issues. Canonical targets are now shared by adapters/readiness; effective execute permission uses the safe OS access API; rejected aliases do not become SPA navigation; the binary installs a target-allowlisted tracing subscriber. Regression tests establish local RED→GREEN. Actual-process correlated-observation acceptance still depends on a qualified running runtime.
+- Real binary smoke: explicit `migrate` and `bootstrap-poc` PASS, then startup FAILS CLOSED before listening because mandatory DSI preflight is unavailable. Existing runner baseline `each_inspection_gets_a_fresh_child_process` also fails with `ExtractorUnavailable { reason: "worker exited without a valid failure classification" }`. This observation does not prove a particular denied syscall. No enforcement bypass, fake executor or weakened sandbox was used.
+- Pinned Playwright Chromium install also failed: downloaded archives were empty/corrupt. A system Chromium binary is present but is not substituted as pinned acceptance evidence.
+- Toolchain for scoped checks: Rust1.98.1, Node24.21.0, pnpm12.4.1, PostgreSQL18.6 and cargo-deny0.20.2, publisher-checksum verified. PostgreSQL uses a uniquely owned disposable cluster, loopback TCP only, with no Unix socket. Production DB/customer data were not accessed.
+- Implementation ruling: initial document creation accepts no operation ID/client identity tuple. The seed persists a pending marker, and an unknown initial-create result fails closed without a second POST; explicit disposable recreation is documented instead of changing Common API semantics. All subsequent idempotent operations reuse saved IDs/payloads.
+- Next exact action: finish the real-runtime/browser/PDF/restart harness and ordinary hosted job, perform integration review, publish Draft R2, verify its exact remote tree/head and hosted CI/Sandbox/DSI PoC/real-runtime gate. Local runtime failure and scheduler STOP remain visible until resolved.
+- [Runbook](../../operations/document-poc-runtime-v0.md). Global active pointer intentionally preserved.
+
 ## 2026-10-01 UTC — R1 documentation publication checkpoint
 
 - Status: DESIGN / PLAN ONLY; C1 PRODUCT IMPLEMENTATION NOT STARTED; C1 ACCEPTANCE NOT RUN.

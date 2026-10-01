@@ -243,3 +243,25 @@ fn document_http_transport_cannot_import_root_or_runner_implementation() {
         }));
     }
 }
+
+#[test]
+fn composition_root_cannot_flow_into_core_or_http() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let config = Config::load(&root).unwrap();
+    for path in [
+        "crates/document-domain",
+        "crates/document-application",
+        "crates/document-api-http",
+    ] {
+        let fixture=Fixture::valid().with_file(&format!("{path}/Cargo.toml"),"[package]\nname=\"boundary-probe\"\nversion=\"0.0.0\"\n[dependencies]\ndocument-server=\"0.0.0\"\n");
+        let report = check_repository(fixture.root(), &config).unwrap();
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| finding.code == "ARCH_FORBIDDEN_CRATE_DEPENDENCY"
+                    && finding.message.contains("document-server")),
+            "reverse server dependency escaped in {path}"
+        );
+    }
+}

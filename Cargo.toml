@@ -3,6 +3,7 @@ members = [
   "crates/document-domain",
   "crates/document-application",
   "crates/document-api-http",
+  "crates/document-server",
   "crates/document-diff-core",
   "crates/document-diff-worker",
   "crates/document-diff-runner",
