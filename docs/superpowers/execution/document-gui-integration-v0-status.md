@@ -1,15 +1,16 @@
 # Document GUI Integration v0 — Capability Execution Status
 
-## 2026-10-01 JST — G7 approved toolchain amendment / implementation in progress
+## 2026-10-01 JST — G7 COMPLETE / G8 Mock 1–7 IN PROGRESS
 
-- 状態: **G0〜G6 COMPLETE / G7 IN PROGRESS / G8〜G9 NOT STARTED**。依頼者は推奨されたVite/Vitest置換を承認し、候補graphに含まれる列挙外licenseのみを個別承認した。一般license policyおよびFrozen DesignのUI/API semanticsは変更しない。
+- 状態: **G0〜G7 COMPLETE / G8 Mock 1–7 IN PROGRESS / G9 NOT STARTED**。G7 RED commit `182215f`; GREEN code head `a6e340f`。依頼者は推奨されたVite/Vitest置換を承認し、候補graphに含まれる列挙外licenseのみを個別承認した。一般license policyおよびFrozen DesignのUI/API semanticsは変更しない。
 - Design Amendment 01 / Approval / Plan Addendum 01を作成。Feature-scoped G7 selection: Webpack `5.111.1`, webpack-cli `7.2.3`, webpack-dev-server `6.0.0`, Jest/babel-jest `30.5.2`, Babel `7.29.7`, TypeScript `6.0.3`。
 - Candidate lock SHA-256 `ee2e1430204112a91a31cbfa34a286ab1effca56ac35d918bb3f4df77d05ea16`に固定した個別license approval: ISC (34), BlueOak-1.0.0 (8), CC-BY-4.0, Python-2.0, MIT-0, Unlicense, CC0-1.0, 0BSD, `(MIT OR CC0-1.0)`. 新license/graphは承認外。明示除外licenseはcandidate graphにない。
-- GitHub current state: main `d71753d46590bb4406a1c0b74894ab90a27a6c88`; local branch `feat/document-gui-integration-v0` at `82ca1337c71d7ef5b2c3179b59a8e08941411de0`, 24 commits ahead. Remote feature branch / product PR / exact-head CIはなし。main CI `36718016267` SUCCESS。PR #27/#29/#30/#31/#32/#35 MERGED。
-- Candidate qualification before implementation: Node 24.21.0 / pnpm 12.4.1 frozen install PASS; peer check PASS; low-threshold audit PASS; React Aria focused PoC 6/6 PASS。現在のshellはNode 26.3.1、pinned pnpm shimは起動失敗。アプリlocal binariesからのJest実行は可能。
-- G7 RED: testsをVitestからJestへassertion変更なしで移行。local exact working treeでdirect Jest run: 5 expected missing-foundation tests FAIL / 8 PASS、React Aria qualification suite PASS。期待したmissing tokens/global CSS、motion module、AppShell、source treeだけが未実装。Hosted CIはG9 exact-head final gateまで実行しない。
-- 現在のtreeにはcandidate app package/lock/test harness、approval/design/plan recordがlocal uncommitted。G7 production foundationは未実装。
-- 次のexact action: Webpack configuration、tokens/global CSS、motion duration helper、accessible AppShellを実装し、focused Jest/TypeScript/buildを通してG7 GREENにする。
+- GitHub current state: main `d71753d46590bb4406a1c0b74894ab90a27a6c88`; local branch `feat/document-gui-integration-v0` at `a6e340f`, 26 commits ahead before this status update. Remote feature branch / product PR / exact-head CIはなし。main CI `36718016267` SUCCESS。PR #27/#29/#30/#31/#32/#35 MERGED。
+- Candidate qualification before implementation: Node 24.21.0 / pnpm 12.4.1 frozen install PASS; peer check PASS; low-threshold audit PASS; React Aria focused PoC 6/6 PASS。現在のshellはNode 26.3.1、pinned pnpm shimは起動失敗。アプリlocal binariesは利用可能。
+- G7 RED commit `182215f`: 5 expected missing-foundation tests FAIL / 8 PASS; React Aria suite PASS.
+- G7 GREEN at `a6e340f`: Jest 14/14 PASS; TypeScript check PASS; Webpack production build PASS with performance warnings for a 292 KiB entrypoint (JS 289 KiB); dev server compile PASS and `/`, `/documents` served the app shell; diff check PASS. Hosted CI is deferred to G9.
+- Candidate package/lock, amendment records, and G7 foundation are committed. `.superpowers` SDD ledger remains local ignored context.
+- 次のexact action: inspect the approved Source Design screens and generated client operations; implement Mock 1–7 using the typed client / BinaryTransportBridge.
 
 ---
 

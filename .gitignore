@@ -2,6 +2,7 @@
 /experiments/document-semantic-inspection/target/
 /node_modules/
 /apps/document-web/node_modules/
+/apps/document-web/dist/
 /dist/
 /coverage/
 /tmp/

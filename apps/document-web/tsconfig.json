@@ -15,7 +15,7 @@
     "jsx": "react-jsx",
     "strict": true,
     "noUncheckedIndexedAccess": true,
-    "types": ["jest", "@testing-library/jest-dom"]
+    "types": ["jest", "node", "@testing-library/jest-dom"]
   },
   "include": ["src", "test"]
 }
