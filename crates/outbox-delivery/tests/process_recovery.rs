@@ -303,7 +303,7 @@ async fn four_processes_disjoint_claims_and_recover_expired() {
         assert_eq!(previous.get::<Uuid, _>("lease_owner"), owners[0]);
         assert_ne!(
             row.get::<Uuid, _>("lease_token"),
-            previous.get("lease_token")
+            previous.get::<Uuid, _>("lease_token")
         );
     }
     let untouched: i64 = sqlx::query_scalar(

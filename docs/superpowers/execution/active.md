@@ -1,5 +1,11 @@
 # Active Execution Pointer
 
+## Active checkpoint — Search narrow compile correction, 2026-10-01T21:45Z
+
+- **ACTIVE / WIP / incomplete.** Draft PR #40 retains the implementation safety hold and all P1–P7 acceptance gates. This update changes only the P6 process-recovery test's SQLx UUID type annotation, with a separately recorded focused compile RED→GREEN and independent static review.
+- Current detail: `search-platform-completion-program-status.md` → Latest compile-only checkpoint and its linked receipt. E0432 missing `outbox_delivery::observe`, unexecuted P6 tests, the security gate and yanked-dependency gate remain open. No Gitleaks suppression, broader implementation, new P3 workflow, merge or deployment.
+- **Exact next action:** verify the fast-forward Draft head and observe ordinary exact-head hosted CI. Earlier runtime/parser execution actions remain held; this bounded compile correction does not qualify P6 or the program.
+
 ## Active checkpoint — Search WIP Draft publication, 2026-10-01T21:08Z
 
 - **ACTIVE, incomplete, safety hold on implementation.** Latest truth: `search-platform-completion-program-status.md` → Latest publication checkpoint, and the linked Draft publication checkpoint. P1–P7 and whole-program acceptance remain open.

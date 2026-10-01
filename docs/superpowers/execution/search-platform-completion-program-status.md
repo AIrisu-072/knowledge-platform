@@ -1,5 +1,13 @@
 # Search Platform Completion Program — Status
 
+## Latest compile-only checkpoint — 2026-10-01T21:45Z
+
+- **ACTIVE / WIP / incomplete.** Draft PR #40 receives only `previous.get::<Uuid, _>("lease_token")` in the P6 process-recovery test and truthful checkpoint documentation, based on published head `99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a`.
+- [Compile-only correction receipt](../programs/search-platform-completion/p6-process-recovery-compile-correction-20261001.md) records exact source/patch/output hashes, the same focused cargo-check RED→GREEN, independent static review and verification limits. No test or DB scenario ran.
+- This addresses E0283 only. Original-head CI also failed for missing `outbox_delivery::observe` (E0432), the Gitleaks gate and yanked `yoke-derive 0.8.3`. SQLx was skipped. New-head hosted results are pending; earlier successes do not transfer automatically.
+- Gitleaks triage classifies 28 verified source digests and three synthetic local fixture matches, but no suppression is applied. P1 Office v2, P6 G07/G08, P7 pending tests and full acceptance remain incomplete. The broader implementation safety hold remains; excluded P3 hosted/generated artifacts stay uncommitted locally.
+- **Exact next action:** verify the fast-forward PR head and inspect ordinary new-head hosted CI read-only. No broader implementation, parser/P3 execution, merge or deployment is implied.
+
 ## Latest publication checkpoint — 2026-10-01T21:08Z
 
 - **ACTIVE / WIP / incomplete.** P1–P7 and whole-program acceptance remain open. This is a source-preservation Draft publication on `feat/search-platform-cloud-continuation-20261001`, stacked on PR #34 `feat/search-platform-completion-program@80a47960d025e4dfdea1eacade28b15d218725ff`; no merge/deploy or readiness claim.
