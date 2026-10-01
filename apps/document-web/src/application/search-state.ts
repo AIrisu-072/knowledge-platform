@@ -1,4 +1,4 @@
-import Ajv from 'ajv';
+import { validateList, validateDetail } from './search-validators.generated.js';
 
 export type DocumentView = 'published' | 'authoring' | 'history';
 export type DocumentDetailTab = 'overview' | 'versions' | 'compare' | 'history' | 'access';
@@ -23,39 +23,6 @@ export type DetailSearch = {
   returnTo?: string;
   workflow?: VersionWorkflow;
 };
-
-const ajv = new Ajv({ coerceTypes: true, useDefaults: true, removeAdditional: 'all' });
-const uuid = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
-
-const validateList = ajv.compile<ListSearch>({
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    view: { type: 'string', enum: ['published', 'authoring', 'history'], default: 'published' },
-    titleContains: { type: 'string', maxLength: 1024 },
-    folderId: { type: 'string', pattern: uuid },
-    includeDescendants: { type: 'boolean', default: false },
-    sort: { type: 'string', enum: ['created_at_desc', 'title_asc', 'published_at_desc'], default: 'created_at_desc' },
-    pageSize: { type: 'integer', minimum: 1, maximum: 200, default: 50 },
-    cursor: { type: 'string', minLength: 1, maxLength: 4096 },
-    selectedDocumentId: { type: 'string', pattern: uuid },
-    panel: { type: 'string', enum: ['open', 'closed'], default: 'open' },
-  },
-});
-
-const validateDetail = ajv.compile<DetailSearch>({
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    tab: { type: 'string', enum: ['overview', 'versions', 'compare', 'history', 'access'], default: 'overview' },
-    view: { type: 'string', enum: ['published', 'authoring'], default: 'published' },
-    versionId: { type: 'string', pattern: uuid },
-    baseRevisionId: { type: 'string', pattern: uuid },
-    targetRevisionId: { type: 'string', pattern: uuid },
-    returnTo: { type: 'string', maxLength: 2048, pattern: '^/documents(?:\\?.*)?$' },
-    workflow: { type: 'string', enum: ['newVersion', 'publication'] },
-  },
-});
 
 function sourceRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

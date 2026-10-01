@@ -1,5 +1,13 @@
 # Document Platform PoC Runtime / Server Composition v0 — Capability Status
 
+## 2026-10-01 UTC — CSP-compatible route-validator startup
+
+- Exact readiness head `4e42d54675ff48555b4a30ff614dca2a481bdc1c` has reviewed source tree `c025d134657c2088f730fc2e32ef490cd267db30`. Hosted runtime job110633145461 passed PostgreSQL18.6, migration/bootstrap, both production servers/native preflights and seed/replay. The first browser case failed at document-runtime.spec.ts:40:61 (`toBeVisible`, locator timeout); four subsequent browser cases and all later acceptance stages were NOT RUN. Dedicated DSI Sandbox/PoC passed; CI failed at runtime, security and required-check.
+- Investigation found eager Ajv compilation in route-module initialization incompatible with the existing `script-src 'self'` CSP: installed Ajv uses Function construction. A controlled import of the actual route module with Function disabled reproduced RED. This is a concrete startup incompatibility; a browser pageerror was not captured, so it is not asserted as the sole hosted cause.
+- The same exact schemas and coercion/default/pruning options now use the already-qualified Ajv standalone compiler at build preparation. Checked-in generated validators and type-only declarations remove runtime compilation. Build/test/typecheck fail on stale generated output. No CSP/header relaxation, new dependency, lock change or API/search-state semantic change.
+- RED→GREEN import regression and 46 schema/sample comparisons cover validity, mutated data and errors. Full GUI Jest12 suites/36 tests PASS; TypeScript and production Webpack build PASS (three existing size advisories; main451KiB). Independent review reran focused2/2, TypeScript/freshness and diff checks; a deliberate stale-output probe failed as expected and was restored. Actual composition-root GUI acceptance still requires the next hosted run.
+- Next exact action: publish this independently reviewed fix, verify exact remote tree/head, incorporate into the separate A2 Draft, and inspect actual GUI/MCP/restart/persistence gates. Scheduler identity and historical scanner qualification remain STOP; no acceptance-complete claim, merge or deploy.
+
 ## 2026-10-01 UTC — Diagnosed disposable-database readiness gap
 
 - Diagnostic head `9205362e8ba4477ed0951afce040be71c1759719`, tree `b1c108b3dd687f04d491ce0a3d67ec95b3ef9dde`, was published and verified. [Runtime job110626620880](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36939240757/job/110626620880) passed build/artifacts and Docker/container/binding/image/readiness operations, then failed at the real SQL version query with command exit 2. Server/browser and later stages were NOT RUN on this head; the earlier browser failure remains unresolved.
