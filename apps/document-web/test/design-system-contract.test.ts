@@ -1,7 +1,5 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { expect, test } from '@jest/globals';
-
 const tokensPath = resolve(process.cwd(), 'src/design-system/tokens.css');
 
 test('design tokens preserve the approved canvas, typography, density, and semantic colors', async () => {

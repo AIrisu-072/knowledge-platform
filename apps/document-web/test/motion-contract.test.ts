@@ -1,5 +1,3 @@
-import { expect, test } from '@jest/globals';
-
 test('motion durations match the design tokens and reduce to zero', async () => {
   const {
     MOTION_DURATIONS_MS,

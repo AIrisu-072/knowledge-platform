@@ -7,7 +7,7 @@
     "dev": "webpack serve --config webpack.config.cjs --mode development --host 127.0.0.1",
     "build": "tsc -p tsconfig.json && webpack --config webpack.config.cjs --mode production",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "jest --config jest.config.cjs",
+    "test": "jest --config jest.config.cjs --runInBand",
     "e2e": "playwright test"
   },
   "dependencies": {

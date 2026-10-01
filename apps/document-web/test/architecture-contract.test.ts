@@ -1,7 +1,5 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { expect, test } from '@jest/globals';
-
 async function sourceFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
   const nested = await Promise.all(entries.map(async (entry) => {
@@ -30,9 +28,9 @@ test('presentation components do not own transport or lifecycle authorization ru
 
   for (const path of files.filter((entry) => /\.(tsx|ts)$/.test(entry))) {
     const source = await readFile(path, 'utf8');
-    expect(source, path).not.toMatch(/\bfetch\s*\(/);
-    expect(source, path).not.toMatch(/['"`]\/v1\//);
-    expect(source, path).not.toMatch(/from\s+['"][^'"]*(document-api-client|\/api(?:\/|['"]))/);
-    expect(source, path).not.toMatch(/if\s*\([^)]*(?:lifecycleState|\.acl|\.permissions)[^)]*(?:===|!==|&&|\|\|)/);
+    expect(source).not.toMatch(/\bfetch\s*\(/);
+    expect(source).not.toMatch(/['"`]\/v1\//);
+    expect(source).not.toMatch(/from\s+['"][^'"]*(document-api-client|\/api(?:\/|['"]))/);
+    expect(source).not.toMatch(/if\s*\([^)]*(?:lifecycleState|\.acl|\.permissions)[^)]*(?:===|!==|&&|\|\|)/);
   }
 });

@@ -7,4 +7,5 @@ module.exports = {
   testMatch: ['**/*.test.ts', '**/*.test.tsx'],
   transform: { '^.+\\.[tj]sx?$': 'babel-jest' },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
+  moduleNameMapper: { '\\.module\\.css$': '<rootDir>/test/style-mock.cjs' },
 };

@@ -1,0 +1,71 @@
+:root {
+  color-scheme: light;
+  font-family: var(--font-sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+
+  --font-sans: "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.8125rem;
+  --font-size-body: 0.875rem;
+  --font-size-heading: 1rem;
+  --line-height-body: 1.5;
+
+  --color-focus: #0b6fc2;
+  --color-canvas: #f4f6f8;
+  --color-surface: #ffffff;
+  --color-text: #18232e;
+  --color-text-muted: #536474;
+  --color-accent: #1f5f99;
+  --color-success: #26724c;
+  --color-warning: #8a5a00;
+  --color-danger: #aa2f2f;
+  --color-border: #d6dde4;
+  --color-border-strong: #aebbc7;
+  --color-selected: #e7f1fa;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-control: 4px;
+  --radius-surface: 6px;
+  --border-width: 1px;
+  --shadow-popover: 0 6px 20px rgb(24 35 46 / 14%);
+
+  --header-height: 52px;
+  --nav-width: 240px;
+  --context-width: 340px;
+  --row-height: 48px;
+  --control-height: 34px;
+
+  --motion-instant: 0ms;
+  --motion-fast: 90ms;
+  --motion-standard: 140ms;
+  --motion-spatial: 180ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-instant: 0ms;
+    --motion-fast: 0ms;
+    --motion-standard: 0ms;
+    --motion-spatial: 0ms;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: var(--motion-instant) !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: var(--motion-instant) !important;
+  }
+}

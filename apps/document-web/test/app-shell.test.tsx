@@ -1,5 +1,4 @@
 import { render, screen, within } from '@testing-library/react';
-import { expect, test } from '@jest/globals';
 import { AppShell } from '../src/components/app-shell/AppShell';
 
 test('app shell exposes skip link, navigation, main workspace, and context panel', () => {

@@ -31,8 +31,6 @@ import {
 } from 'react-aria-components';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, jest, test } from '@jest/globals';
-
 test('Dialog and Popover compose with fields and restore focus after Escape', async () => {
   const user = userEvent.setup();
   render(

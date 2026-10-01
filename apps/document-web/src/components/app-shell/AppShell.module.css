@@ -1,0 +1,103 @@
+.shell {
+  display: grid;
+  min-height: 100vh;
+  grid-template-rows: var(--header-height) minmax(0, 1fr);
+  background: var(--color-canvas);
+}
+
+.skipLink {
+  position: fixed;
+  z-index: 10;
+  top: var(--space-2);
+  left: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  transform: translateY(calc(-100% - var(--space-2)));
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.skipLink:focus-visible {
+  transform: translateY(0);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: 0 var(--space-4);
+  border-bottom: var(--border-width) solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height);
+  color: var(--color-text);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.headerTitle {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.body {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: var(--nav-width) minmax(0, 1fr) var(--context-width);
+}
+
+.navigation {
+  padding: var(--space-4) var(--space-2);
+  border-right: var(--border-width) solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.navigationLink {
+  display: flex;
+  min-height: var(--row-height);
+  align-items: center;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.navigationLink[aria-current='page'] {
+  background: var(--color-selected);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.workspace {
+  min-width: 0;
+  padding: var(--space-6);
+}
+
+.contextPanel {
+  min-width: 0;
+  padding: var(--space-4);
+  border-left: var(--border-width) solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.contextEmpty {
+  margin: 0;
+}
+
+@media (max-width: 1040px) {
+  .body {
+    grid-template-columns: minmax(176px, 200px) minmax(0, 1fr);
+  }
+
+  .contextPanel {
+    display: none;
+  }
+}
