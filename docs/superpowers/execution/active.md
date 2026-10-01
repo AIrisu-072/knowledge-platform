@@ -1,6 +1,18 @@
 # Active Execution Pointer
 
-## Current checkpoint — Document GUI Integration v0 G7 COMPLETE / G8 NEXT、2026-10-01 JST
+## Current checkpoint — Document GUI Integration v0 G8 COMPLETE / G9 ACCEPTANCE IN PROGRESS、2026-10-01 JST
+
+- Status: **G0〜G8 COMPLETE / G9 final exact-head verification IN PROGRESS**。G8 commit/code head `d6dcda031e8101a9b46bd688ecc92b68468629ad` on `feat/document-gui-integration-v0`, 29 commits ahead of `origin/main`. Current GitHub main is `d71753d46590bb4406a1c0b74894ab90a27a6c88`; implementation branch and product PR have not yet been pushed/created.
+- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`; approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`; Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`. No UI/API semantic amendment beyond approved Design Amendment 01 / Plan Addendum 01.
+- G7 candidate-specific license decision remains limited to lock SHA-256 `ee2e1430204112a91a31cbfa34a286ab1effca56ac35d918bb3f4df77d05ea16`; no new dependency or license was added in G8.
+- G8 implements Mock 1–7 on the generated typed client/BinaryTransportBridge: list/context panel, detail, Version/Revision timeline, native upload workflow, publish/schedule, partial comparison/source handoff, and AccessPolicy effective/draft separation. Mock 4–7 visual states were reviewed. Schedule workflow preserves the selected method across route transition; publish success remains response-authoritative and focus returns after pending state clears.
+- Local verification on the G8 tree: Jest **11 suites / 34 tests PASS**; TypeScript check PASS; Playwright E2E **6/6 PASS**; OpenAPI/client contract **12/12 PASS**; `cargo fmt --all -- --check` PASS; `git diff --check` PASS. Mock 1–7 snapshots are stored under `apps/document-web/e2e/document-workspace.spec.ts-snapshots/`.
+- Production build PASS with Webpack advisory: main JS **553 KiB**, entrypoint **566 KiB**, detail chunk **41.9 KiB**. No numeric `T_usable`/`T_input` threshold exists in the approved design; exact measurements will be captured in the final E2E evidence. Reduced motion and no-overflow checks pass at 1280/1440.
+- Browser-level accessibility review is recorded in `docs/superpowers/execution/document-gui-integration-v0-accessibility-review.md`. Local PostgreSQL E2E could not run because this host has no Docker socket; the real PostgreSQL + filesystem + production worker lifecycle test remains a required hosted Standard CI gate.
+- Plan boundary: create/push implementation branch and Draft PR; do not merge, deploy, execute production migration, or connect production AD/SSPI.
+- Next exact action: update the local SDD checkpoint, push `feat/document-gui-integration-v0`, create the approved Draft PR, capture exact-head frontend E2E performance values, and wait for Standard CI + DSI Sandbox Preflight + DSI PoC on the PR head. Record run IDs and any failure in Active/Status.
+
+## Superseded checkpoint — Document GUI Integration v0 G7 COMPLETE / G8 NEXT、2026-10-01 JST
 
 - Status: **G0〜G7 COMPLETE / G8 Mock 1–7 IN PROGRESS / G9 NOT STARTED**。G7 RED commit `182215f`; GREEN code head `a6e340f`。依頼者はVite/Vitest置換を推奨方針で進めるよう指示し、current candidate graphにある列挙外licenseだけを個別承認した。一般license policyとFrozen Design semanticsは不変。
 - Design Amendment 01 / Approval / Plan Addendum 01を作成。Candidate lock SHA-256 `ee2e1430204112a91a31cbfa34a286ab1effca56ac35d918bb3f4df77d05ea16`。個別承認対象: ISC (34), BlueOak-1.0.0 (8), CC-BY-4.0, Python-2.0, MIT-0, Unlicense, CC0-1.0, 0BSD, `(MIT OR CC0-1.0)`。他licenseまたはlock graph変更には再qualificationが必要。

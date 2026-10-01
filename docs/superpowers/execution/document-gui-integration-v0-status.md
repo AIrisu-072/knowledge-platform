@@ -1,6 +1,21 @@
 # Document GUI Integration v0 — Capability Execution Status
 
-## 2026-10-01 JST — G7 COMPLETE / G8 Mock 1–7 IN PROGRESS
+## 2026-10-01 JST — G8 COMPLETE / G9 FINAL ACCEPTANCE IN PROGRESS
+
+- 状態: **G0〜G8 COMPLETE / G9 exact-head acceptance IN PROGRESS**。Implementation branch `feat/document-gui-integration-v0`、G8 code commit `d6dcda031e8101a9b46bd688ecc92b68468629ad`、`origin/main`より29 commits ahead。GitHub main `d71753d46590bb4406a1c0b74894ab90a27a6c88`。この記録時点でfeature branch push / product PR / hosted branch CIはなし。
+- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`、approved Production Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`、Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。Design Amendment 01 / approval / Plan Addendum 01のcandidate-specific toolchain/license scope以外にsemantics差分なし。
+- G8はMock 1〜7を完成。Document list/folder/context panel/detail、WORKING Versionと正式Revision timeline、新版native file picker/drop、公開/予約公開、Diff Partial/Unknownと原本誘導、AccessPolicyのeffective permissionsとeditable draftを実装。presentation層はtyped generated client/BinaryTransportBridgeを使用。
+- Schedule entryでroute transition後にmethodが初期値へ戻るREDをE2Eで確認。publication methodを親workspace状態へ持ち上げ、pending解除後にaction triggerへfocusを戻してGREEN化。PublishはAPI response後のみ成功表示し、JST入力をUTCへ送信。
+- Local G8 evidence: `npm test` **11 suites / 34 tests PASS**; `npm run typecheck` PASS; `npm run build` PASS; `npm run e2e` **6/6 PASS**; `node --test tools/api-contract/contract.test.mjs` **12/12 PASS**; `cargo fmt --all -- --check` PASS; `git diff --check` PASS. Mock 1〜7 screenshot baselinesを追加・視覚確認。
+- Build residual: Webpack main JS 553 KiB / entrypoint 566 KiB / detail chunk 41.9 KiB。production buildは3 performance advisoriesを出す。Approved designに数値T_usable/T_input上限はないためfinal E2Eで観測値を記録し、閾値は作らない。
+- Browser-level accessibility checklistを `docs/superpowers/execution/document-gui-integration-v0-accessibility-review.md` に記録。日本語document lang/landmarks/button names、7 contrast token pairs、reduced motion、1280/1440 overflow、keyboard/focus、Mock 1〜7 stateを検査。
+- G9 backend lifecycle testを `crates/document-api-http/tests/e2e.rs` で拡張: real PostgreSQL + FileSystemStorage + production DSI/Diff runnersを通るHTTP lifecycleにmetadata minor revision comparison、content major revision comparison、withdraw fallback、restored current Version、revision monotonicityを追加。HostにDocker socketがなくlocal PostgreSQL E2Eは未実行。file Audit 0-byte failure / fail-soft identity / stale capability raceの既存focused testsはStandard CIで再確認する。
+- Design/Plan境界: implementation branch pushとDraft PR作成は許可範囲。merge、deploy、production migration execution、本番AD/SSPI接続は禁止。
+- Blocker: hosted exact-head matrix pending。Next exact action: push implementation branch、create Draft PR、final exact-head frontend E2Eを走らせT_usable/T_input/motion値を保存し、Standard CI / DSI Sandbox Preflight / DSI PoCの同一PR head結果を記録する。
+
+---
+
+## Superseded checkpoint — 2026-10-01 JST — G7 COMPLETE / G8 Mock 1–7 IN PROGRESS
 
 - 状態: **G0〜G7 COMPLETE / G8 Mock 1–7 IN PROGRESS / G9 NOT STARTED**。G7 RED commit `182215f`; GREEN code head `a6e340f`。依頼者は推奨されたVite/Vitest置換を承認し、候補graphに含まれる列挙外licenseのみを個別承認した。一般license policyおよびFrozen DesignのUI/API semanticsは変更しない。
 - Design Amendment 01 / Approval / Plan Addendum 01を作成。Feature-scoped G7 selection: Webpack `5.111.1`, webpack-cli `7.2.3`, webpack-dev-server `6.0.0`, Jest/babel-jest `30.5.2`, Babel `7.29.7`, TypeScript `6.0.3`。
