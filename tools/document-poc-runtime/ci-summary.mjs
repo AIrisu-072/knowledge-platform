@@ -4,6 +4,8 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RUNTIME_STAGES } from './harness.mjs';
+import { sanitizeBrowserPhases } from './browser-diagnostics.mjs';
+import { sanitizeDatabaseDiagnostics } from './database-diagnostics.mjs';
 
 const statuses = new Set(['passed', 'failed', 'blocked', 'not-run', 'running']);
 const sha = (value, length = 64) => typeof value === 'string' && new RegExp(`^[a-f0-9]{${length}}$`).test(value) ? value : 'unverified';
@@ -40,6 +42,8 @@ export function summarize(report) {
     artifacts, webAssetHashes,
     profiles: ['poc-human', 'poc-agent'].filter(profile => Array.isArray(report.processes) && report.processes.some(item => item?.profile === profile)),
     stages,
+    browserDiagnostics: sanitizeBrowserPhases(report.browserDiagnostics),
+    databaseDiagnostics: sanitizeDatabaseDiagnostics(report.databaseDiagnostics),
   };
 }
 

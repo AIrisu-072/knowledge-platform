@@ -1,5 +1,15 @@
 # Document Platform PoC Runtime / Server Composition v0 — Capability Status
 
+## 2026-10-01 UTC — First hosted real-runtime result / bounded diagnostics follow-up
+
+- R6 published on Draft [PR41](https://github.com/AIrisu-072/knowledge-platform/pull/41) at exact head `8c702db1c15caeabef398ab8170bbaee18fe075f`, tree `b937184d4c56b493ba1193812463a5482db39f31`, verified equal to the reviewed local candidate. No merge/deploy.
+- [Runtime job110618406826](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36936662949/job/110618406826) reached PASS for exact toolchain/build/artifacts, actual disposable PostgreSQL18.6, explicit migrate/bootstrap, production DSI/Diff preflight in separate human/agent processes, correlated HTTP requests and generated-client seed/replay. This is new real composition-root evidence.
+- Browser journey FAILED. Later readiness recovery, real PDF journey completion, ordinary/stalled stream drain, shutdown diagnostics, restart and persistence are NOT RUN. C0/C1/C3 acceptance is incomplete. First summary did not retain the browser assertion location/category, so no UI or API cause is inferred.
+- All other ordinary code/native CI jobs on this head passed, as did [DSI Sandbox36936662922](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36936662922) and [DSI PoC36936663012](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36936663012). Security and required-check failed; the existing historical scanner issue remains separate and unsuppressed.
+- Follow-up diagnostic output remains a strict disclosure allowlist: source basenames/line numbers, fixed error categories, bounded status/count/exit numbers and explicit availability. Raw Playwright reports, selectors, messages, titles, bodies, URLs, paths and logs stay run-local. This does not add an artifact-upload action or claim visual-review completion.
+- Diagnostic follow-up focused verification: 33/33 helper/privacy/command tests PASS, runtime TypeScript and Node syntax PASS, `git diff --check` PASS. Independent review closed missing top-level browser errors; the follow-up does not guess or change runtime business behavior.
+- Next exact action: publish the reviewed diagnostic follow-up, inspect the new exact-head hosted runtime result, reproduce and fix only the identified authorized defect, and rerun through persistence. R5 scheduler identity remains STOP; its acceptance is not covered by any runtime stage.
+
 ## 2026-10-01 UTC — R2 published / R6 qualification harness checkpoint
 
 - Published Draft [PR41](https://github.com/AIrisu-072/knowledge-platform/pull/41), base R1 PR37. Initial remote head `7b80477601aaa317f2d49c17d98c10b7300efd19`, exact tree `3e75280a15d531c4656ba211da67e0fb880cdc8d`, equals the reviewed local fixed-slice tree. All uploaded blobs and the complete tree were verified. No merge/deploy.
