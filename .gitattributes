@@ -1,0 +1,2 @@
+# Preserve the exact shipped bytes of third-party legal notices, including upstream whitespace.
+apps/document-mcp/third-party-notices/** -text -whitespace

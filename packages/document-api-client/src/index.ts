@@ -10,3 +10,5 @@ export type {
   DownloadVersionFileInput,
   VersionUpload,
 } from './binary-transport';
+export { createClient, createConfig } from './generated/client';
+export type { Client } from './generated/client';

@@ -8,7 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { StringDecoder } from 'node:string_decoder';
 import { request as httpRequest } from 'node:http';
 
-export const RUNTIME_STAGES = ['toolchain', 'build', 'artifacts', 'database', 'migrate', 'bootstrap', 'human-start', 'agent-start', 'trace-request', 'seed', 'seed-replay', 'browser-journey', 'health-recovery', 'ordinary-request-sigterm', 'stalled-download-sigterm', 'shutdown', 'diagnostics', 'restart', 'browser-persistence', 'final-shutdown'];
+export const RUNTIME_STAGES = ['toolchain', 'build', 'artifacts', 'database', 'migrate', 'bootstrap', 'human-start', 'agent-start', 'trace-request', 'seed', 'seed-replay', 'browser-journey', 'agent-acceptance', 'health-recovery', 'ordinary-request-sigterm', 'stalled-download-sigterm', 'shutdown', 'agent-outage', 'diagnostics', 'restart', 'browser-persistence', 'final-shutdown'];
 
 export class Blocked extends Error {}
 

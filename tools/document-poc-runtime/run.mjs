@@ -47,6 +47,7 @@ try {
   } else await report.stage('build', async () => {
     await run('build-rust', 'cargo', ['build', '--locked', '-p', 'document-server', '-p', 'document-semantic-inspection-worker', '-p', 'document-diff-worker']);
     await run('build-web', 'pnpm', ['--filter', '@knowledge-platform/document-web', 'build']);
+    await run('build-mcp', 'pnpm', ['--filter', '@knowledge-platform/document-mcp', 'build']);
   });
   const binary = join(binaryDir, 'document-server');
   const storage = join(directory, 'storage');
@@ -67,7 +68,9 @@ try {
     await cp(join(root, 'apps/document-web/dist'), web, { recursive: true });
     await access(join(web, 'index.html'), constants.R_OK);
     report.data.artifacts = { server: await sha256File(binary), dsi: await sha256File(dsi), diff: await sha256File(diff),
-      pdfium: await sha256File(join(pdfium, 'libpdfium.so')), web: {} };
+      pdfium: await sha256File(join(pdfium, 'libpdfium.so')),
+      mcp: await sha256File(join(root, 'apps/document-mcp/dist/main.cjs')),
+      mcpRuntime: await sha256File(join(root, 'apps/document-mcp/dist/runtime.cjs')), web: {} };
     async function recordAssets(path, prefix = '') {
       for (const entry of await readdir(path, { withFileTypes: true })) {
         if (entry.isDirectory()) await recordAssets(join(path, entry.name), `${prefix}${entry.name}/`);
@@ -166,6 +169,8 @@ try {
     }
   }
   await report.stage('browser-journey', () => browser('journey'));
+  await report.stage('agent-acceptance', () => run('agent-acceptance', process.execPath,
+    [join(root, 'apps/document-mcp/dist/runtime.cjs')], { ...process.env, KP_POC_RUNTIME_CONTEXT: contextPath }));
   await report.stage('health-recovery', async () => {
     async function health(origin, readyStatus) {
       for (const [path, status, value] of [['live', 200, 'ok'], ['ready', readyStatus, readyStatus === 200 ? 'ok' : 'unavailable']]) {
@@ -237,6 +242,8 @@ try {
     } finally { download.cancel(); }
   });
   await report.stage('shutdown', async () => { await stopProcess(agentProcess); });
+  await report.stage('agent-outage', () => run('agent-outage', process.execPath,
+    [join(root, 'apps/document-mcp/test/outage.mjs')], { ...process.env, KP_POC_RUNTIME_CONTEXT: contextPath }));
   await report.stage('diagnostics', async () => {
     const forbidden = [database, password, directory, storage, dsi, diff, web, pdfium, binary];
     assertSafeDiagnostics(await readFile(log('poc-human-1'), 'utf8'), traceIds.human,

@@ -1,5 +1,16 @@
 # Active Execution Pointer
 
+## Current checkpoint — Document Agent Tool Adapter v0 A2 local GREEN / hosted acceptance pending, 2026-10-01 UTC
+
+- Status: **ACTIVE — C2 IMPLEMENTATION LOCALLY VERIFIED / REAL-RUNTIME ACCEPTANCE PENDING**. No merge or deployment. C1 scheduler identity remains STOP; C3 overall evaluation is not complete.
+- Active Capability Status: [Document Agent Tool Adapter v0](document-agent-tool-adapter-v0-status.md). Approved scope: [C2 Design](../specs/2026-10-01-document-agent-tool-adapter-v0-design.md), [Plan](../plans/2026-10-01-document-agent-tool-adapter-v0-implementation.md), [Authority](../specs/2026-10-01-document-agent-tool-adapter-v0-approval.md).
+- Stack: R1 Draft #37 → R2 Draft #41 at verified `8c702db1c15caeabef398ab8170bbaee18fe075f` → separate A2 implementation Draft to be published. A1 Design/Plan remains Draft #38; its four documents are incorporated in A2 without reverting C1. The reviewed R6 tree is `b937184d4c56b493ba1193812463a5482db39f31`.
+- Exact nine read-only generated-client tools, verified fixed-Agent session, bounded abort/redirect behavior, unchanged API semantics and actual stdio are implemented. Complete shipped license notices and the two-package ISC exception are recorded. No direct DB/Application access, Agent write tool, Search/RAG or production identity.
+- Local verification and independent review/fixes are recorded in Capability Status. Required CI now includes focused MCP verification and real shared-runtime Agent stages; missing/blocked real workers or browser leave acceptance non-green. No mocked HTTP result counts as real Document acceptance.
+- Next exact action: publish the reviewed A2 source as a separate Draft stacked on #41, verify remote head/tree, and observe required gates on that exact head. Diagnose failures without weakening sandbox, license, scanner or authorization policy. C0/C1/C3 closure remains tracked separately.
+
+---
+
 ## Current checkpoint — Document GUI Integration v0 G8 COMPLETE / G9 ACCEPTANCE IN PROGRESS、2026-10-01 JST
 
 - Status: **G0〜G8 COMPLETE / G9 final exact-head verification IN PROGRESS**。G8 commit/code head `d6dcda031e8101a9b46bd688ecc92b68468629ad` on `feat/document-gui-integration-v0`, 29 commits ahead of `origin/main`. Current GitHub main is `d71753d46590bb4406a1c0b74894ab90a27a6c88`; implementation branch and product PR have not yet been pushed/created.

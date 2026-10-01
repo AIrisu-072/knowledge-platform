@@ -1,0 +1,29 @@
+{
+  "name": "@knowledge-platform/document-mcp",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && webpack --config webpack.config.cjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "pnpm build && node --test test/*.test.mjs",
+    "start": "node dist/main.cjs"
+  },
+  "dependencies": {
+    "@knowledge-platform/document-api-client": "workspace:*",
+    "@modelcontextprotocol/server": "2.2.0",
+    "zod": "4.6.5",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.2.0",
+    "@types/node": "24.19.0",
+    "typescript": "6.0.3",
+    "webpack": "5.111.1",
+    "webpack-cli": "7.2.3",
+    "babel-loader": "10.1.1",
+    "@babel/core": "7.29.7",
+    "@babel/preset-typescript": "7.29.7"
+  }
+}

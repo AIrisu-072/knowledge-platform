@@ -22,11 +22,12 @@ export function summarize(report) {
     return stage ? [{ name, status: stage.status, ...(stage.status === 'passed' ? {} : { failureCode: code(name, stage.status) }) }] : [];
   });
   const gitHead = sha(report.gitHead, 40);
-  const artifacts = Object.fromEntries(['server', 'dsi', 'diff', 'pdfium'].map(name => [name, sha(report.artifacts?.[name])]));
+  const artifacts = Object.fromEntries(['server', 'dsi', 'diff', 'pdfium', 'mcp', 'mcpRuntime'].map(name => [name, sha(report.artifacts?.[name])]));
   const webAssetHashes = Object.values(report.artifacts?.web ?? {}).map(value => sha(value)).filter(value => value !== 'unverified').sort().slice(0, 32);
   return {
     status: statuses.has(report.status) ? report.status : 'not-available',
     acceptanceQualified: report.status === 'passed' && report.acceptanceQualified === true && gitHead !== 'unverified'
+      && artifacts.mcp !== 'unverified' && artifacts.mcpRuntime !== 'unverified'
       && report.gitDirty === false && stages.length === RUNTIME_STAGES.length && stages.every(stage => stage.status === 'passed'),
     gitHead, gitDirty: typeof report.gitDirty === 'boolean' ? report.gitDirty : 'unverified',
     platform: { os: ['linux', 'darwin', 'win32'].includes(report.platform?.os) ? report.platform.os : 'unverified',

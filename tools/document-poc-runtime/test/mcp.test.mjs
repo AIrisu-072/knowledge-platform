@@ -1,0 +1,8 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {RUNTIME_STAGES} from '../harness.mjs';
+import {summarize} from '../ci-summary.mjs';
+test('actual MCP acceptance and stopped-server check are mandatory ordered runtime stages',()=>{assert.ok(RUNTIME_STAGES.includes('agent-acceptance'));assert.ok(RUNTIME_STAGES.indexOf('agent-acceptance')>RUNTIME_STAGES.indexOf('browser-journey'));assert.ok(RUNTIME_STAGES.indexOf('agent-acceptance')<RUNTIME_STAGES.indexOf('health-recovery'));assert.ok(RUNTIME_STAGES.indexOf('agent-outage')>RUNTIME_STAGES.indexOf('shutdown'));assert.ok(RUNTIME_STAGES.indexOf('agent-outage')<RUNTIME_STAGES.indexOf('restart'));});
+test('bounded summary includes compiled MCP hashes and rejects missing provenance',()=>{const report={gitHead:'a'.repeat(40),gitDirty:false,status:'passed',acceptanceQualified:true,stages:RUNTIME_STAGES.map(name=>({name,status:'passed'})),artifacts:{mcp:'b'.repeat(64),mcpRuntime:'c'.repeat(64)}};assert.equal(summarize(report).artifacts.mcp,'b'.repeat(64));assert.equal(summarize(report).artifacts.mcpRuntime,'c'.repeat(64));assert.equal(summarize(report).acceptanceQualified,true);delete report.artifacts.mcp;assert.equal(summarize(report).acceptanceQualified,false);});
+test('MCP focused verification is an exact-head required-check predecessor',async()=>{const ci=await readFile(new URL('../../../.github/workflows/ci.yml',import.meta.url),'utf8');assert.match(ci,/  document-mcp:\n/);assert.match(ci,/      - document-mcp\n/);assert.match(ci,/DOCUMENT_MCP: \$\{\{ needs.document-mcp.result \}\}/);assert.match(ci,/"\$DOCUMENT_MCP"/);assert.match(ci,/mise run document:mcp:test/);assert.match(ci,/mise run document:poc:agent/);});
