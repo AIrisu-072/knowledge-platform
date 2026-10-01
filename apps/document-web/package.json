@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "webpack serve --config webpack.config.cjs --mode development --host 127.0.0.1",
-    "build": "tsc -p tsconfig.json && webpack --config webpack.config.cjs --mode production",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "jest --config jest.config.cjs --runInBand",
-    "e2e": "playwright test"
+    "build": "pnpm schemas:check && tsc -p tsconfig.json && webpack --config webpack.config.cjs --mode production",
+    "typecheck": "pnpm schemas:check && tsc -p tsconfig.json --noEmit",
+    "test": "pnpm schemas:check && jest --config jest.config.cjs --runInBand",
+    "e2e": "playwright test",
+    "schemas:generate": "node scripts/generate-search-validators.cjs",
+    "schemas:check": "node scripts/generate-search-validators.cjs --check"
   },
   "dependencies": {
     "@knowledge-platform/document-api-client": "workspace:*",
