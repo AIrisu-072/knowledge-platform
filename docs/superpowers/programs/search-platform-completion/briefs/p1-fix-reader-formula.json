@@ -1,0 +1,19 @@
+# 仕事の手渡し: p1-fix-reader-formula
+
+- 種類: impl / 役: Worker / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Q01 fail closed unverified formula cache and requalify XLSX Archive
+
+## 入力
+- `p1-reader-review` (docs/superpowers/programs/search-platform-completion/p1-reader-poc-review.md) — Independent actual reader qualification review [`p1-review-readers` が作る (済み)]
+- `p1-contract` (docs/superpowers/programs/search-platform-completion/p1-extraction-freeze.md) — extraction contract [`p1-freeze` が作る (済み)]
+
+## 出すもの
+- `p1-reader-formula-fix` (experiments/search-extraction-poc/formula-fix-receipt.md) — Q01 fail closed unverified formula cache and requalify XLSX Archive
+
+## 受入条件
+Meaningful RED then no unverified formula Unit positive; Partial known omission or Unsupported; independent raw oracle new fixture; all41 requalify; no broad corpus claim
+
+## 守ること
+- 書いてよいのは `experiments/search-extraction-poc` だけ。他は触らない。

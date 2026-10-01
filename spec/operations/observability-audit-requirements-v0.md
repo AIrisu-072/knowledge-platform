@@ -183,6 +183,8 @@ tracestate
 
 単一process構成でも将来のprocess分離を阻害しない。
 
+Domain Outboxでは、新規producerが`traceparent`と任意の`tracestate`を記録する場合に限り、W3C Trace Contextの形式と長さを検証してから記録する。consumerも保存値を再検証してから伝播し、不正値をspanへ結び付けない。旧行または未記録行は新しいspanと`outbox_event_id`で相関し、旧producerからのend-to-end traceがあると推定しない。trace contextは配送成功、業務認可、Audit Eventの証拠として扱わない。
+
 ---
 
 # 5. Baggage policy
@@ -425,9 +427,14 @@ error.code
 - extraction latency
 - outbox pending count
 - outbox oldest age
+- outbox in-flight / dead-letter / 上限到達・回復待ち count
+- outbox claim / ack / retry / lease-expired / stale-fence / exhausted-reap count
+- outbox handler duration / commit-to-ack lag / bounded error class
 - index update lag
 - failed indexing jobs
 - rebuild progress
+
+Domain Outboxの配送lagとSearchの現行generation、indexed version、可視化lagは別に観測する。outboxのackやevent発生時刻だけからSearchのfreshnessを証明しない。metric dimensionはroute、stage、status、error class等のbounded low-cardinality値に限る。
 
 ## 11.5 Cardinality rule
 
@@ -439,6 +446,7 @@ document_id
 document_version_id
 query_id
 trace_id
+outbox_event_id
 raw URI
 search query
 filename
@@ -585,6 +593,8 @@ Audit Storeへの配送自体はEventual Consistencyを許容する。
 - failed / dead-letter状態の観測
 
 Audit delivery失敗でbusiness event自体を「発生していなかったこと」にしない。
+
+P6のDomain Outbox deliveryとAudit Outboxの配送・ackとは独立する。Domain側の`delivered_at`、Search receipt、Audit側の`delivered_at`はそれぞれ別の完了証拠であり、Domain workerは必須Audit Eventの生成・配送・ackを代行しない。必須Audit Eventの同一transaction生成とsampling禁止は維持する。
 
 ---
 

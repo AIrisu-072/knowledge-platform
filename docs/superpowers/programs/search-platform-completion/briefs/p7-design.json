@@ -1,0 +1,29 @@
+# 仕事の手渡し: p7-design
+
+- 種類: docs / 役: DomainDesigner / 大きさ: M / 危険度: high / 隔離: none
+
+## やること
+Compose remaining runtime design from frozen lane contracts; final receipt reconciliation is final fanin
+
+## 入力
+- `p0-closure` (docs/superpowers/execution/search-discovery-platform-v0-acceptance.md) — live exact head qualification [`p0-close` が作る (済み)]
+- `baseline` (docs/superpowers/specs/2026-09-28-search-discovery-platform-v0-design.md) — existing approved Search semantics [既に在る]
+- `p1-contract` (docs/superpowers/programs/search-platform-completion/p1-extraction-freeze.md) — extraction contract [`p1-freeze` が作る (済み)]
+- `p2-contract` (docs/superpowers/programs/search-platform-completion/p2-vector-freeze.md) — vector contract [`p2-freeze` が作る (済み)]
+- `p3-contract` (docs/superpowers/programs/search-platform-completion/p3-graph-freeze.md) — graph contract [`p3-freeze-architecture` が作る (済み)]
+- `p4-contract` (docs/superpowers/programs/search-platform-completion/p4-remote-freeze.md) — remote contract [`p4-freeze-architecture` が作る (済み)]
+- `p5-contract` (docs/superpowers/programs/search-platform-completion/p5-api-freeze.md) — api contract [`p5-freeze` が作る (済み)]
+- `p6-contract` (docs/superpowers/programs/search-platform-completion/p6-outbox-freeze.md) — outbox contract [`p6-freeze` が作る (済み)]
+- `environment-evidence` (docs/superpowers/programs/search-platform-completion/environment.md) — current runtime toolchain container PDFium and capacity discovery without secret reads [`inspect-environment` が作る (済み)]
+- `p7-early-contract` (docs/superpowers/programs/search-platform-completion/p7-runtime-contract-draft.md) — Early consolidated runtime composition and shared coordination contract, reconcile required [`p7-early-design` が作る (済み)]
+- `p7-shared-contract` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-freeze.md) — p7-shared-contract [`p7-freeze-shared` が作る (済み)]
+- `p7-shared-plan` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-plan.md) — p7-shared-plan [`p7-plan-shared` が作る (済み)]
+
+## 出すもの
+- `p7-draft` (docs/superpowers/programs/search-platform-completion/p7-runtime-design-completion.md) — runtime draft
+
+## 受入条件
+Design and boundedplan proposal consumes acceptedcontracts without finalreceiptcycle; no frozen code readiness or deployment claim
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p7-runtime-design-completion.md` / `docs/superpowers/programs/search-platform-completion/p7-runtime-plan-proposal.md` だけ。他は触らない。

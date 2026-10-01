@@ -98,6 +98,7 @@ fn record(
         document_revision: 2,
         access_revision: 1,
         dsi_state: DsiReadState::UnknownMissing,
+        authoritative_items: Vec::new(),
     }
 }
 
@@ -1735,6 +1736,41 @@ async fn failed_indexing_leaves_committed_document_and_generic_outbox_untouched(
     .execute(&pool)
     .await
     .unwrap();
+    let file_id = Uuid::now_v7();
+    let item_id = Uuid::now_v7();
+    let representation_id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO file_objects (file_id,content_hash,media_type,size_bytes,storage_locator,created_at) \
+         VALUES ($1,$2,'text/plain',8,$3,now())",
+    )
+    .bind(file_id)
+    .bind(vec![7_u8; 32])
+    .bind(format!("objects/{file_id}"))
+    .execute(&pool)
+    .await
+    .unwrap();
+    let mut item_tx = pool.begin().await.unwrap();
+    sqlx::query(
+        "INSERT INTO content_items (content_item_id,document_version_id,logical_path,ordinal,authoritative_representation_id) \
+         VALUES ($1,$2,'primary',0,$3)",
+    )
+    .bind(item_id)
+    .bind(version_id)
+    .bind(representation_id)
+    .execute(&mut *item_tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO content_representations (content_representation_id,content_item_id,file_id,role,original_filename) \
+         VALUES ($1,$2,$3,'AUTHORITATIVE','source.txt')",
+    )
+    .bind(representation_id)
+    .bind(item_id)
+    .bind(file_id)
+    .execute(&mut *item_tx)
+    .await
+    .unwrap();
+    item_tx.commit().await.unwrap();
     let reader = PostgresDocumentSnapshotReader::new(pool.clone());
     let before = reader.enumerate_outbox_snapshot().await.unwrap();
     assert!(before.live.is_empty());

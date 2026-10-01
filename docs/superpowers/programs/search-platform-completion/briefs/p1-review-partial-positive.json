@@ -1,0 +1,24 @@
+# 仕事の手渡し: p1-review-partial-positive
+
+- 種類: audit / 役: QualityAuditor / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Verify last Partial-positive predicate correction only
+
+## 入力
+- `p1-revised` (docs/superpowers/programs/search-platform-completion/p1-extraction-design-revision-1.md) — Revised design resolving independent architecture findings [`p1-repair-design` が作る (済み)]
+- `p1-body-amendment` (docs/superpowers/programs/search-platform-completion/p1-body-absence-amendment.md) — Exact text negative proof and shared discovery signature correction [`p1-amend-absence` が作る (済み)]
+- `p1-body-final-review` (docs/superpowers/programs/search-platform-completion/p1-body-absence-review.md) — Exact text negative proof and shared discovery signature correction [`p1-review-absence` が作る (済み)]
+- `p1-partial-positive` (docs/superpowers/programs/search-platform-completion/p1-partial-positive-correction.md) — Close precise Partial-positive exact text predicate contradiction [`p1-correct-partial-positive` が作る (済み)]
+- `p1-unit-frozen` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md) — Frozen provider neutral input contract for Vector evaluation [`p1-freeze-unit` が作る (済み)]
+
+## 出すもの
+- `p1-partial-review` (docs/superpowers/programs/search-platform-completion/p1-partial-positive-review.md) — Close precise Partial-positive exact text predicate contradiction
+
+## 受入条件
+Last precise predicate contradiction closed on exact composed contract
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p1-partial-positive-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

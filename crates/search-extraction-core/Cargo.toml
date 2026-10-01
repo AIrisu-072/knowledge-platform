@@ -1,0 +1,11 @@
+[package]
+name = "search-extraction-core"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+search-core = { path = "../search-core" }
+serde.workspace = true
+thiserror.workspace = true

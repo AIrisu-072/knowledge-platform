@@ -1,0 +1,21 @@
+# 仕事の手渡し: p4-review-source-neutral
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independent source-neutral trusted scope and namespace ledger gate
+
+## 入力
+- `p4-source-neutral-code` (docs/superpowers/programs/search-platform-completion/p4-source-neutral-code-receipt.md) — P4 source-neutral actor visibility and full namespace ledger contract [`p4-impl-source-neutral` が作る (済み)]
+- `p4-source-neutral-plan` (docs/superpowers/programs/search-platform-completion/p4-source-neutral-implementation-amendment.md) — Freeze P4 implementation amendment for accepted Document Remote source-neutral contract [`p4-amend-source-neutral` が作る (済み)]
+
+## 出すもの
+- `p4-source-neutral-review` (docs/superpowers/programs/search-platform-completion/p4-source-neutral-code-review.md) — Independent source-neutral trusted scope and namespace ledger gate
+
+## 受入条件
+Fresh focusedtests actual sharedpath exactsourcehash; no secondmint no unrelated namespace tombstone oldscope revival no alltenantpartialdesired
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p4-source-neutral-code-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

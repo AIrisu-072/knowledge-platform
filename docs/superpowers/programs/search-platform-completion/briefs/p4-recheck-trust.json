@@ -1,0 +1,22 @@
+# 仕事の手渡し: p4-recheck-trust
+
+- 種類: audit / 役: QualityAuditor / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Independently confirm trust repair closes exact three findings
+
+## 入力
+- `p4-trust-repaired-code` (crates/search-application/tests/scoped_catalog_contract.rs) — Trust registry ownership current registration and denialrace repair [`p4-fix-trust` が作る (未着手)]
+- `p4-trust-review` (docs/superpowers/programs/search-platform-completion/p4-trust-code-review.md) — Independent trust implementation scope mint visibility catalog gate [`p4-review-trust` が作る (未着手)]
+- `p4-contract` (docs/superpowers/programs/search-platform-completion/p4-remote-freeze.md) — remote contract [`p4-freeze-architecture` が作る (済み)]
+
+## 出すもの
+- `p4-trust-recheck` (docs/superpowers/programs/search-platform-completion/p4-trust-code-recheck.md) — Independentexact repaired trust gate
+
+## 受入条件
+No blocking P1 P2; typed durable ownership boundary explicitlyawaitsP7 realstorage
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p4-trust-code-recheck.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

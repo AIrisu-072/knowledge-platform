@@ -101,6 +101,7 @@ React / UI Primitive / Motion
 | Async runtime | Tokio 1.x | **SELECTED** | MIT | Rust async runtime |
 | HTTP API | axum 0.8.x | **SELECTED** | MIT | Rust HTTP API |
 | HTTP middleware | tower-http 0.7.x | **SELECTED** | MIT | CORS/trace/compression等、必要featureのみ |
+| Search Remote Source HTTP client | `reqwest = "=0.13.5"` (`default-features = false`, `rustls`, `gzip`) | **SELECTED** | MIT OR Apache-2.0 | P4-15の実TCP・TLS・SSRF・制限PoCと依存gateを通過。P4-16の`search-source-http` adapterに限って昇格可 |
 | DB access | SQLx 0.9.x | **SELECTED** | MIT OR Apache-2.0 | PostgreSQL access / migrations |
 | Serialization | serde / serde_json | **SELECTED** | MIT OR Apache-2.0 | transport / persisted JSON |
 | Typed errors | thiserror 2.x | **SELECTED** | MIT OR Apache-2.0 | Domain/Application error型 |
@@ -124,6 +125,11 @@ migrate
 `uuid` / date-time / json等はDomain modelが必要とするものだけ追加する。
 
 DB migrationはSQLx migrationsを第一候補とし、別migration frameworkを初期導入しない。
+
+### Search Remote Source HTTP client (P4-15)
+
+選定証拠は [隔離PoCの計測報告](../../experiments/search-http-client-poc/report.md)。
+`reqwest 0.13.5` の公式 [ClientBuilder API](https://docs.rs/reqwest/0.13.5/reqwest/struct.ClientBuilder.html) と [retry::never](https://docs.rs/reqwest/0.13.5/reqwest/retry/fn.never.html) を確認した。固定HTTPS endpoint、全A/AAAA検査後の接続先pin、元hostnameのTLS検証、ambient proxy・redirectの遮断、decoded byteとdeadlineの上限をlocal TCPで検証し、自動retry禁止設定と切断時の1回送信を確認した。PoCの`cargo deny`はadvisories/licenses/sourcesがPASS（`syn`二重versionのwarningのみ）。本番adapterの接続・権限・retention・service E2E受入はP4-16/17で別途行う。root Cargoへの依存追加はこの選定記録だけでは実施しない。
 
 ## 3.2 REJECTED / DEFERRED
 

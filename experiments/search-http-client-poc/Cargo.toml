@@ -1,0 +1,24 @@
+[workspace]
+members = ["."]
+resolver = "3"
+
+[package]
+name = "search-http-client-poc"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98"
+publish = false
+
+[features]
+# Test only: exercises no_proxy() even if another crate unifies system-proxy.
+ambient-proxy-canary = ["reqwest/system-proxy"]
+
+[dependencies]
+reqwest = { version = "=0.13.5", default-features = false, features = ["rustls", "gzip"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util", "time", "sync"] }
+
+[dev-dependencies]
+flate2 = "1"
+rcgen = "=0.14.10"
+tokio = { version = "1", features = ["process"] }
+tokio-rustls = "0.26"

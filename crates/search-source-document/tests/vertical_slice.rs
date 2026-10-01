@@ -643,6 +643,41 @@ async fn shared_folder_placements_inherit_only_their_own_documents_read_policy()
     .execute(&fixture.pool)
     .await
     .unwrap();
+    let second_file = Uuid::now_v7();
+    let second_item = Uuid::now_v7();
+    let second_representation = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO file_objects (file_id,content_hash,media_type,size_bytes,storage_locator,created_at) \
+         VALUES ($1,$2,'text/plain',8,$3,now())",
+    )
+    .bind(second_file)
+    .bind(vec![7_u8; 32])
+    .bind(format!("objects/{second_file}"))
+    .execute(&fixture.pool)
+    .await
+    .unwrap();
+    let mut item_tx = fixture.pool.begin().await.unwrap();
+    sqlx::query(
+        "INSERT INTO content_items (content_item_id,document_version_id,logical_path,ordinal,authoritative_representation_id) \
+         VALUES ($1,$2,'primary',0,$3)",
+    )
+    .bind(second_item)
+    .bind(second_version.as_uuid())
+    .bind(second_representation)
+    .execute(&mut *item_tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO content_representations (content_representation_id,content_item_id,file_id,role,original_filename) \
+         VALUES ($1,$2,$3,'AUTHORITATIVE','source.txt')",
+    )
+    .bind(second_representation)
+    .bind(second_item)
+    .bind(second_file)
+    .execute(&mut *item_tx)
+    .await
+    .unwrap();
+    item_tx.commit().await.unwrap();
     sqlx::query("UPDATE documents SET current_version_id = $1 WHERE document_id = $2")
         .bind(second_version.as_uuid())
         .bind(second_document.as_uuid())

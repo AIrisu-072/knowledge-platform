@@ -1,4 +1,7 @@
-use document_domain::{DocumentId, DocumentVersionId, FolderId, LifecycleState, Title};
+use document_domain::{
+    DocumentId, DocumentVersionId, FileId, FolderId, LifecycleState, StorageKey, Title,
+};
+use search_core::knowledge_unit::{ContentPartRef, RawBinding};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -26,6 +29,17 @@ pub struct PublicationEndRecord {
 pub struct DsiEvidenceRefs {
     pub capability_refs: Vec<String>,
     pub evidence_refs: Vec<String>,
+}
+
+/// One ContentItem's Source-owned authoritative representation and raw FileObject.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthoritativeItemBinding {
+    pub content_item_id: Uuid,
+    pub part: ContentPartRef,
+    pub representation_id: Uuid,
+    pub file_id: FileId,
+    pub raw: RawBinding,
+    pub storage_key: StorageKey,
 }
 
 /// One DocumentVersion read from one authoritative Document Source snapshot.

@@ -1,0 +1,16 @@
+[package]
+name = "search-extraction-worker"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+search-extraction-core = { path = "../search-extraction-core" }
+document-sandbox-runner = { path = "../document-sandbox-runner" }
+search-core = { path = "../search-core" }
+sha2.workspace = true
+
+[[bin]]
+name = "search-extraction-worker"
+path = "src/main.rs"

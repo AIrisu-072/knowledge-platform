@@ -1,0 +1,22 @@
+# 仕事の手渡し: p3-review-refined-correctness
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independently qualify actual native nary incidence and Source oracle parity
+
+## 入力
+- `p3-poc-refined` (experiments/search-graph-poc/refinement-report.md) — Actual participant-incidence and multi-hop Source-scoped access correctness refinement [`p3-refine-poc` が作る (済み)]
+- `p3-contract` (docs/superpowers/programs/search-platform-completion/p3-graph-freeze.md) — graph contract [`p3-freeze-architecture` が作る (済み)]
+- `p3-plan` (docs/superpowers/programs/search-platform-completion/p3-graph-plan.md) — graph plan [`p3-freeze` が作る (済み)]
+
+## 出すもの
+- `p3-refined-correctness-review` (docs/superpowers/programs/search-platform-completion/p3-refined-correctness-review.md) — Independently qualify actual native nary incidence and Source oracle parity
+
+## 受入条件
+Independently qualify actual native nary incidence and Source oracle parity; exactinputs and meaningfulfocusedfresh gate; no fullproduction claim
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p3-refined-correctness-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

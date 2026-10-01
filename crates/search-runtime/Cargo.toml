@@ -1,0 +1,19 @@
+[package]
+name = "search-runtime"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+outbox-delivery = { version = "0.0.0", path = "../outbox-delivery" }
+search-application = { version = "0.0.0", path = "../search-application" }
+search-source-document = { version = "0.0.0", path = "../search-source-document" }
+sqlx.workspace = true
+time.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+testcontainers.workspace = true
+document-repository-postgres = { version = "0.0.0", path = "../document-repository-postgres" }

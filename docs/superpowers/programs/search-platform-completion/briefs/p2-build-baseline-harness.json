@@ -1,0 +1,22 @@
+# 仕事の手渡し: p2-build-baseline-harness
+
+- 種類: spike / 役: Worker / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Build real weight-free Lexical Graph baseline and metric security harness
+
+## 入力
+- `p2-harness-contract` (docs/superpowers/programs/search-platform-completion/p2-harness-first-contract.md) — Stable harness protocol before models [`p2-fix-harness-contract` が作る (済み)]
+- `p1-unit-frozen` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md) — Frozen provider neutral input contract for Vector evaluation [`p1-freeze-unit` が作る (済み)]
+- `baseline` (docs/superpowers/specs/2026-09-28-search-discovery-platform-v0-design.md) — existing approved Search semantics [既に在る]
+- `environment-evidence` (docs/superpowers/programs/search-platform-completion/environment.md) — current runtime toolchain container PDFium and capacity discovery without secret reads [`inspect-environment` が作る (済み)]
+
+## 出すもの
+- `p2-harness-code` (experiments/search-vector-poc) — Actual existing Lexical and Graph baseline harness
+- `p2-baseline-evidence` (experiments/search-vector-poc/report.md) — Measured weight-free L and LG baseline and security contract tests
+
+## 受入条件
+Actual L LG baseline multiple eligible graph-only corpus metrics and authority tests reproducible; dense explicitly unrun
+
+## 守ること
+- 書いてよいのは `experiments/search-vector-poc` だけ。他は触らない。

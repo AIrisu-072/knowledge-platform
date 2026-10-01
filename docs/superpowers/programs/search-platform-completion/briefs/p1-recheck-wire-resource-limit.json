@@ -1,0 +1,21 @@
+# 仕事の手渡し: p1-recheck-wire-resource-limit
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independently recheck hard budget zero Unit pure contract
+
+## 入力
+- `p1-wire-fixed-code` (docs/superpowers/programs/search-platform-completion/p1-fix-wire-resource-limit-receipt.md) — Reject hard ResourceLimit in Partial and preserve zero Unit abort [`p1-fix-wire-resource-limit` が作る (済み)]
+- `p1-wire-review` (docs/superpowers/programs/search-platform-completion/p1-wire-code-review.md) — Independent P1-I01 pure wire coverage profile budget validation [`p1-review-wire` が作る (済み)]
+
+## 出すもの
+- `p1-wire-fixed-review` (docs/superpowers/programs/search-platform-completion/p1-wire-resource-limit-recheck.md) — Independently recheck hard budget zero Unit pure contract
+
+## 受入条件
+Independently recheck hard budget zero Unit pure contract; exactinputs and meaningfulfocusedfresh gate; no fullproduction claim
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p1-wire-resource-limit-recheck.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

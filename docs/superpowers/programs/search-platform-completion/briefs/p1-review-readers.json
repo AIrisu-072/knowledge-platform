@@ -1,0 +1,22 @@
+# 仕事の手渡し: p1-review-readers
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independently audit measured reader candidates and fidelity limits
+
+## 入力
+- `p1-reader-poc` (experiments/search-extraction-poc) — Actual modern format reader corpus oracle and measured qualification [`p1-qualify-readers` が作る (作業中)]
+- `p1-reader-selection` (experiments/search-extraction-poc/qualification.md) — Formatwise actual fidelity resources and license/security adoption gate [`p1-qualify-readers` が作る (作業中)]
+- `p1-contract` (docs/superpowers/programs/search-platform-completion/p1-extraction-freeze.md) — extraction contract [`p1-freeze` が作る (済み)]
+
+## 出すもの
+- `p1-reader-review` (docs/superpowers/programs/search-platform-completion/p1-reader-poc-review.md) — Independent actual reader qualification review
+
+## 受入条件
+Independently audit measured reader candidates and fidelity limits with exact composed freeze input and no false full-capability claim
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p1-reader-poc-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

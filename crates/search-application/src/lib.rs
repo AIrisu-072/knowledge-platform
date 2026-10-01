@@ -14,10 +14,13 @@ pub mod materialization;
 pub mod ports;
 pub mod projection;
 pub mod qualification;
+pub mod remote_registration;
 pub mod retrieval;
 pub mod retrieval_execution;
 pub mod routing;
+pub mod scoped;
 pub mod session;
+pub mod source_registration;
 pub mod source_registry;
 
 pub use error::SearchError;

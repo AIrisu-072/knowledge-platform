@@ -1,0 +1,23 @@
+# 仕事の手渡し: p7-review-ownership
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independent physical owner immutable tenant kind tombstone activation revision and legacy atomic refusal
+
+## 入力
+- `p7-ownership-code` (docs/superpowers/programs/search-platform-completion/p7-impl-ownership-receipt.md) — P7-01 global immutable Source ownership and legacy migration guard [`p7-impl-ownership` が作る (作業中)]
+- `p7-shared-contract` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-freeze.md) — p7-shared-contract [`p7-freeze-shared` が作る (済み)]
+- `p7-shared-plan` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-plan.md) — p7-shared-plan [`p7-plan-shared` が作る (済み)]
+- `p4-source-neutral-fixed-review` (docs/superpowers/programs/search-platform-completion/p4-source-neutral-code-recheck.md) — Fresh independent fixed shared Source catalog gate [`p4-recheck-source-neutral` が作る (済み)]
+
+## 出すもの
+- `p7-ownership-review` (docs/superpowers/programs/search-platform-completion/p7-ownership-code-review.md) — Independent immutable global Source owner namespace tombstone epoch migration gate
+
+## 受入条件
+Exact SQL source test SHA beforeafter; fresh actual PG focused tests currentbinary or rebuild with exclusive slot; adversarial crossrow epoch revision immutability/tombstone and legacy rollback refuse; no P7hostledger READY proof
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p7-ownership-code-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

@@ -1,0 +1,35 @@
+# P3-G01 issuer interface 独立監査
+
+**判定: NO-GO — 現行の issuer interface 提案を G01 実装入力として確定しない。** 対象は pre-code の G01 公開型・port・focused TDD だけである。P3 backend 選定、P7 登録/READY、実 PostgreSQL role、Graph storage、資格判定には結論を拡張しない。
+
+## Findings
+
+1. **Blocker — public host trait と issuer の生成境界が両立していない。** `TrustedGraphRegistrationHostPort` は公開で任意 crate が実装できる (`p3-g01-issuer-refinement.md:14-21`)。`GraphRegistrationIssuer<P>` は private `host` field を持つが、提案に constructor/factory がない (`:23-29`)。このままでは外部 crate の P7 runtime が issuer を作れず、public `new(P)` を足すと synthetic host が `CommittedFullGraphTarget` を返して full/incremental handle を発行できる。「trusted composition root のみが実装」と「arbitrary Rust implementation は code-level host trust」は API の制約ではない (`:5`)。private handle field だけでは issuer 経由の偽造を防げない。P7 の private handle/DB 行再読原則 (`p7-shared-durable-plan.md:95`; `p7-shared-durable-revision-1.md:68-70`) に対して、**どの crate が factory を呼べるか**、public fake host が発行した値を storage が必ず拒む根拠、builder port の到達範囲を具体化する必要がある。cross-crate seam で型だけの sealing ができないなら、handle は識別子に限定し、同一 target/guard 行と DB role が唯一の権限であると明記する。
+2. **Blocker — committed receipt と三つの発行経路が型として未確定。** `CommittedFullGraphTarget` / `CommittedIncrementalGraphTarget` の field・visibility・生成元・失効時の扱いが定義されず、`GraphReadLeaseIssuer<P>` の trait/signature は prose のみ (`p3-g01-issuer-refinement.md:5,9,14-39`)。full では nil SourceId と generation、Source/key/snapshot/manifest/Graph schema、保存 retention、owner/kind/activation、FULL origin と target/Graph BUILDING、guard token/fence/DB expiry の binding をどの層が検査するかを明示する。`schema digest` (`:5`) は P7/P3 の `graph_schema_version` と区別する (`p7-shared-durable-plan.md:129,167-178`)。incremental では同一 Source の base/target、保存 base READY receipt、target snapshot、base/target guard と token/fence、expiry、cursor の再検査を port contract に落とす (`p3-graph-plan.md:97-104,148-151`; `p7-shared-durable-plan.md:95,156`)。read lease は key/evaluation/lease tuple を保存 scope の代用品にせず、G07 verifier が保存 row、DB clock、actor/Source current gate を read 前・return 前に照合する contract を示す (`p7-shared-durable-plan.md:190-194`)。現在の P4 `AuthorizedSourceScope` は tenant、Source、registration/visibility revision と activation を private field で結ぶ (`crates/search-application/src/scoped.rs:175-203`)。G01 に別 Source/actor mint を作らない。
+3. **Blocker — focused tests が具体的な false pass を見逃す。** 提案の正例は synthetic host の DTO を「committed」と仮定するだけで、public fake host→issuer→handle の経路を検出しない (`p3-g01-test-proposal.md:5-10`)。`issue_full` は storage port を呼ばない形なので「before any storage-port call」の assertion はこの test だけでは空虚である。`SessionOnly`/`NoRetention`/`CacheWithExpiry` の期待値を `InvalidRequest` と固定している (`:7`) が、**trusted host が返した不整合・失効・照合不能**は request 入力ミスではない。`SearchError::OperationFailed` / `FenceLost` 等の fail-closed 分類と元の host error 伝播を区別する (`crates/search-application/src/error.rs:3-14`; P4 の内部構造不一致は `OperationFailed`, `p4-source-neutral-code-recheck.md:9`)。少なくとも外部 crate からの raw handle/issuer construction と偽 host の扱い、nil SourceId、wrong activation/token/fence/snapshot、host error、`issue_incremental` の base/target 相違、read lease 発行、retention 正例 (`PersistentResource` と許された metadata のみ)、旧 autonomous `stage_full`/READY 経路の不在を named negative/compile contract に入れる。`PersistentDiscoveryMetadata` は本文 Unit/embedding の保存許可ではない (`p7-shared-durable-plan.md:20`)。任意追加扱いの Source mapping/temporal/n-ary/closure cases (`p3-g01-test-proposal.md:15`) は、G01 constructor がそれらを検査すると約束するなら必須 assertion にする。
+4. **Warning — Source mapping receipt と non-READY report の contract が曖昧。** `validate_authoritative(manifest, records)` は caller の expected digest を消す方向でよいが、public validator 実装の返す値を Source 正本と呼ぶだけでは authority を証明できない (`p3-g01-issuer-refinement.md:7`)。receipt は Source/key/snapshot/mapping digest を持ち、G03/G04/G08 が登録済み Source validator と保存物理行から再計算・照合する条件を定義する (`p3-graph-plan.md:135-142`; `p3-graph-design-revision-1.md:91-95`)。`GraphStage` の constructor/field 可視性、`validate_staged` の戻り値、`recover_ready` の read-only signature、incremental stage/lease verifier の公開 signature も未記載で、旧 `validate_ready` が単独 READY へ昇格しないことを型で確認できない (`p3-g01-issuer-refinement.md:31-39`; `p3-graph-plan.md:101-104`)。
+
+## 確認できた整合点と修正条件
+
+- full stage を `stage_full_registered(handle, resources, relations)` の子 batch 専用に狭め、manifest/retention/mapping digest と parent INSERT を呼出側に渡さない方向は P7 改訂と整合する (`p3-g01-issuer-refinement.md:7,31-34`; `p7-shared-durable-revision-1.md:66-72`)。ただし G03/P7-07 は毎 batch の P7 target・Graph parent・full guard・DB clock expiry・token/fence・activation・role を保存 DB から照合し、P7-08 だけが同一接続で Graph/P7 READY を確定する。G01 の private handle や mapping receipt は READY 証明ではない。
+- `BoxFuture<'a,T>` は既存 App 型で `Result<T,SearchError>` を内包する (`crates/search-application/src/ports.rs:32`)。現在の `search-application/Cargo.toml:8-17` に SQLx dependency はない。pure in-test adapter の compile は有用だが、まだ実行されていない。G01 interface の compile gate は全公開 trait/signature を使い、SQLx/PgPool/PgConnection を App exports に出さないことを確認する。G03/P7 の SQLx と実 role/trigger/別接続試験は後続 gate として維持する (`p3-graph-plan.md:19-22,97-104`; `p7-shared-durable-plan.md:163-179`)。
+- G01 の修正後は、issuer factory/constructor の可視性と trust boundary、full/incremental/read lease の正確な DTO・method、error 分類、上記 negative tests を同じ提案に固定してから RED→GREEN に進める。public trait を維持するなら、偽 host の handle が DB 保存 binding に一致しない限り child DML へ進まないことを production seam と後続実 DB test で示す。現在の正例・型チェックだけを登録/READY/資格の証拠にしない。
+
+## 入力・実行境界
+
+Task graph `p3-review-g01-issuer` (`task-graph.yaml:6453-6474`) が指定した 8 入力の SHA-256 は監査開始時と終了時で一致した。
+
+| named input | SHA-256 (開始 = 終了) |
+| --- | --- |
+| `p3-g01-issuer-proposal` | `fe103c724cc853cc1c67cbd4abcde9b690011784878198fcee824fcbde7a2a79` |
+| `p3-g01-test-proposal` | `2eb0e65ba7097dd98d1b2505c7db125d02d2f46feef1dbe6ee2f21c3426b7207` |
+| `p3-contract` | `773be941a35a2984495614ea41db74f70d325f4c034fe576d4d106b4af0e6ca3` |
+| `p3-plan` | `cc6a6ddee5004c1da419f3d95965a98f71a4b8ea2e081a5d9a36267203e9c86f` |
+| `p7-shared-contract` | `20b5b64ac6c8e6209a3618e1c8f4577f1f48333991df0cffe9af96e2cbd5e110` |
+| `p7-shared-plan` | `97c122bf4447dd63caeac24930503247c11d52e533e1825d913f737162812517` |
+| `p4-source-neutral-fixed-code` | `7295deb04113581562a386893b07c76c63aa183119b9479cf344660a99e80ef5` |
+| `p4-source-neutral-fixed-review` | `6daaec0c018bb7776525fb0292848f1d51f7917639af114b722b07486f033665` |
+
+P4 現行型の補助参照 `source_registration.rs` / `scoped.rs` / `ports.rs` も開始・終了ともそれぞれ `60975ee86938f3a3f59b18d0945ca10385eb5374419bd5c0d51cbd88963cc17f` / `5b5ae37f9eb39c51caa460ba235ee4d2b3c43d50a9475bc227fcd27a6102d581` / `51abc463b9b8d1c53cd39ea158347ae33ce907cb8daadafdcb4fcd43328f2c57`。worktree は `feat/search-platform-completion-core@80a47960d025e4dfdea1eacade28b15d218725ff`、dirty。空き容量 1.3 GiB のため Cargo/build、`py_compile`、fixture、生成 test output は実行していない。`graph_generation.rs` と `graph_generation_port.rs` は存在せず、実装/RED/GREEN は未観測。worker route の health-gate receipt はこの named input 群に含まれず、本監査から実行時 model/effort 到達性は検証できない。
+
+**残余リスク:** 修正後も G01 型と synthetic unit test だけでは DB の role/trigger、同一接続登録、batch 時の expiry race、READY non-promotion、pin の別 actor/Source 移転拒否を証明できない。P7-07/08/10 と G03/G04/G07 の named 実 DB gate、backend 資格、exact-head 統合証拠は別に必要である。

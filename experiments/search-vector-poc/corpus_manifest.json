@@ -1,0 +1,12 @@
+{
+  "schema": "search-vector-poc-corpus-v1",
+  "seed": 20260930,
+  "scales": [32, 256, 1024],
+  "source": "synthetic-trusted-source",
+  "generation": "00000000-0000-0000-0000-000000000002",
+  "profile": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "normalization": "nfc-lf-v1",
+  "resource_layout_per_query": ["lexical_canonical_gold", "lexical_alias_gold", "graph_only_gold", "graph_only_gold", "graph_seed", "graph_context", "denied_lexical", "related_ineligible_graph", "unknown_read_lexical", "expired_lexical"],
+  "extra_strata": ["resource_0_second_part_same_version", "qpart_second_part_only", "qaccess_denied_or_unknown_only", "qfalse_visible_nonrelevant_parent_31"],
+  "notes": "All records are generated deterministically by Corpus::synthetic. Text is a bounded trusted synthetic Source projection, not P1 parser qualification or production body evidence."
+}

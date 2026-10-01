@@ -1,0 +1,280 @@
+=== focused_tests: cargo test --manifest-path /Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform/experiments/search-vector-poc/Cargo.toml --offline --locked --tests ===
+   Compiling syn v3.0.6
+   Compiling serde v1.0.229
+   Compiling jobserver v0.1.35
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.14
+   Compiling cc v1.5.1
+   Compiling serde_derive v1.0.229
+   Compiling pkg-config v0.3.34
+   Compiling zstd-sys v2.1.0+zstd.1.5.7
+   Compiling time v0.3.55
+   Compiling crossbeam-utils v0.8.23
+   Compiling crunchy v0.2.4
+   Compiling strsim v0.11.1
+   Compiling zstd-safe v7.3.0
+   Compiling regex-syntax v0.8.11
+   Compiling ident_case v1.0.1
+   Compiling stable_deref_trait v1.2.1
+   Compiling crossbeam-epoch v0.9.21
+   Compiling ownedbytes v0.9.0
+   Compiling darling_core v0.24.1
+   Compiling num-traits v0.2.19
+   Compiling async-trait v0.1.92
+   Compiling rustix v1.1.5
+   Compiling crossbeam-deque v0.8.8
+   Compiling typeid v1.0.3
+   Compiling prettyplease v0.3.0
+   Compiling tantivy-common v0.11.0
+   Compiling bitpacking v0.9.3
+   Compiling darling_macro v0.24.1
+   Compiling uuid v1.26.1
+   Compiling thiserror-impl v2.0.21
+   Compiling futures-macro v0.3.34
+   Compiling errno v0.3.14
+   Compiling bitflags v2.13.2
+   Compiling erased-serde v0.4.10
+   Compiling rayon-core v1.13.0
+   Compiling futures-core v0.3.34
+   Compiling utf8-ranges v1.0.5
+   Compiling futures-task v0.3.34
+   Compiling slab v0.4.12
+   Compiling tantivy-fst v0.5.0
+   Compiling futures-util v0.3.34
+   Compiling thiserror v2.0.21
+   Compiling darling v0.24.1
+   Compiling tantivy-bitpacker v0.10.0
+   Compiling zstd v0.13.3
+   Compiling itertools v0.14.0
+   Compiling typetag v0.2.23
+   Compiling murmurhash32 v0.3.1
+   Compiling foldhash v0.2.0
+   Compiling allocator-api2 v0.2.21
+   Compiling minimal-lexical v0.2.1
+   Compiling tantivy-sstable v0.7.0
+   Compiling nom v7.1.3
+   Compiling hashbrown v0.17.1
+   Compiling tantivy-stacker v0.7.0
+   Compiling bon-macros v3.10.1
+   Compiling ordered-float v5.5.0
+   Compiling search-core v0.0.0 (/Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform/crates/search-core)
+   Compiling regex-automata v0.4.18
+   Compiling typetag-impl v0.2.23
+   Compiling downcast-rs v2.0.2
+   Compiling fastrand v2.5.0
+   Compiling fnv v1.0.7
+   Compiling fastdivide v0.4.2
+   Compiling inventory v0.3.24
+   Compiling tantivy-columnar v0.7.0
+   Compiling measure_time v0.9.0
+   Compiling tantivy-query-grammar v0.26.0
+   Compiling search-application v0.0.0 (/Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform/crates/search-application)
+   Compiling tempfile v3.27.0
+   Compiling regex v1.13.1
+   Compiling arc-swap v1.9.2
+   Compiling bon v3.10.1
+   Compiling rayon v1.12.0
+   Compiling lru v0.18.2
+   Compiling fs4 v0.13.1
+   Compiling crossbeam-channel v0.5.17
+   Compiling aho-corasick v1.1.5
+   Compiling sketches-ddsketch v0.4.1
+   Compiling tantivy-tokenizer-api v0.7.0
+   Compiling rust-stemmers v1.2.0
+   Compiling memmap2 v0.9.11
+   Compiling rustc-hash v2.1.3
+   Compiling htmlescape v0.3.1
+   Compiling base64 v0.22.1
+   Compiling census v0.4.2
+   Compiling levenshtein_automata v0.2.1
+   Compiling datasketches v0.2.0
+   Compiling lz4_flex v0.13.1
+   Compiling oneshot v0.1.13
+   Compiling tokio-macros v2.7.2
+   Compiling tantivy v0.26.2 (/Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform/third_party/search/tantivy-0.26.2)
+   Compiling tokio v1.53.1
+   Compiling search-graph-memory v0.0.0 (/Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform/crates/search-graph-memory)
+   Compiling search-tantivy v0.0.0 (/Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform/crates/search-tantivy)
+   Compiling search-vector-poc v0.0.0 (/Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform/experiments/search-vector-poc)
+    Finished `test` profile [unoptimized] target(s) in 1m 23s
+     Running unittests src/lib.rs (target/debug/deps/search_vector_poc-a1fc3f1f627e2a7f)
+
+running 1 test
+test run::tests::restricted_only_query_reaches_tantivy_but_not_authorized_trace ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running unittests src/main.rs (target/debug/deps/search_vector_poc-389f37a97cc20876)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/frozen_unit_codec.rs (target/debug/deps/frozen_unit_codec-29e2f94a2c33eac4)
+
+running 4 tests
+test frozen_nine_field_vectors_and_text_digest_match_spec ... ok
+test source_binding_cannot_be_rewritten_even_with_recomputed_unit_id ... ok
+test text_digest_and_raw_binding_tamper_are_rejected ... ok
+test distinct_parts_of_one_version_require_source_owned_bindings ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/relevance.rs (target/debug/deps/relevance-7844e204f978530a)
+
+running 4 tests
+test no_positive_access_stratum_counts_disclosure_separately_from_visible_false_positive ... ok
+test no_positive_query_is_separate_and_never_labeled_perfect ... ok
+test independent_multi_positive_metric_fixture_uses_graded_idcg_and_all_gold_denominators ... ok
+test duplicate_parent_rank_or_qrel_is_rejected ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/security.rs (target/debug/deps/security-1d9bc8b73db1f970)
+
+running 4 tests
+test mock_vector_port_rejects_dimension_nan_stale_binding_and_retention ... ok
+test mismatched_generation_pin_and_actor_never_run ... ok
+test current_read_and_live_version_revocation_fail_closed ... ok
+test actual_lexical_graph_federation_preserves_s1_and_graph_only_gold ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+=== baseline: cargo run --manifest-path /Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform/experiments/search-vector-poc/Cargo.toml --offline --locked --quiet ===
+seed=20260930; process_rss_method=ps -o rss= -p PID; index_store=in-memory; query_samples=7 per arm/scale; cold=first query after build, warm=remaining six
+scale=32 arm=L scored=4 no_positive=["qnone", "qaccess", "qfalse"] visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0} recall@1=0.4375 recall@5=0.6250 recall@10=0.6250 recall@20=0.6250 mrr@10=1.0000 ndcg@10=0.7497
+trace scale=32 arm=L query=q0 ranks=[0, 1] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0, 9, 1], eligible_gold_misses: [2, 3] }]
+trace scale=32 arm=L query=q1 ranks=[10, 11] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [10, 19, 11], eligible_gold_misses: [12, 13] }]
+trace scale=32 arm=L query=q2 ranks=[20, 21] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [20, 29, 21], eligible_gold_misses: [22, 23] }]
+trace scale=32 arm=L query=qpart ranks=[0] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0], eligible_gold_misses: [] }]
+trace scale=32 arm=L query=qnone ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=32 arm=L query=qaccess ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=32 arm=L query=qfalse ranks=[31] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [31], eligible_gold_misses: [] }]
+scale=32 arm=LG scored=4 no_positive=["qnone", "qaccess", "qfalse"] visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0} recall@1=0.4375 recall@5=1.0000 recall@10=1.0000 recall@20=1.0000 mrr@10=1.0000 ndcg@10=0.9706
+trace scale=32 arm=LG query=q0 ranks=[0, 1, 2, 3] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0, 9, 1], eligible_gold_misses: [2, 3] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [0, 2, 3], eligible_gold_misses: [1] }]
+trace scale=32 arm=LG query=q1 ranks=[10, 11, 12, 13] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [10, 19, 11], eligible_gold_misses: [12, 13] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [10, 12, 13], eligible_gold_misses: [11] }]
+trace scale=32 arm=LG query=q2 ranks=[20, 21, 22, 23] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [20, 29, 21], eligible_gold_misses: [22, 23] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [20, 22, 23], eligible_gold_misses: [21] }]
+trace scale=32 arm=LG query=qpart ranks=[0] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0], eligible_gold_misses: [] }]
+trace scale=32 arm=LG query=qnone ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=32 arm=LG query=qaccess ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=32 arm=LG query=qfalse ranks=[31] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [31], eligible_gold_misses: [] }]
+measure scale=32 arm=L build_lexical_ms=27.394 build_graph_ms=0.287 update_lexical_ms=29.046 update_graph_ms=0.142 update_n=1 query_n=7 query_p50_ms=6.424 query_p95_ms=8.232 query_p99_ms=8.232 cold_query_ms=8.232 warm_n=6 warm_p50_ms=6.354 warm_p95_ms=7.130 warm_p99_ms=7.130 fusion_n=7 fusion_p50_ms=0.150 fusion_p95_ms=0.275 fusion_p99_ms=0.275 rss_kib=22928 index_disk_bytes=0
+measure scale=32 arm=LG build_lexical_ms=27.394 build_graph_ms=0.287 update_lexical_ms=29.046 update_graph_ms=0.142 update_n=1 query_n=7 query_p50_ms=7.153 query_p95_ms=8.449 query_p99_ms=8.449 cold_query_ms=8.449 warm_n=6 warm_p50_ms=6.932 warm_p95_ms=8.012 warm_p99_ms=8.012 fusion_n=7 fusion_p50_ms=0.168 fusion_p95_ms=0.404 fusion_p99_ms=0.404 rss_kib=23056 index_disk_bytes=0
+scale=256 arm=L scored=4 no_positive=["qnone", "qaccess", "qfalse"] visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0} recall@1=0.4375 recall@5=0.6250 recall@10=0.6250 recall@20=0.6250 mrr@10=1.0000 ndcg@10=0.7497
+trace scale=256 arm=L query=q0 ranks=[0, 1] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0, 9, 1], eligible_gold_misses: [2, 3] }]
+trace scale=256 arm=L query=q1 ranks=[10, 11] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [10, 19, 11], eligible_gold_misses: [12, 13] }]
+trace scale=256 arm=L query=q2 ranks=[20, 21] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [20, 29, 21], eligible_gold_misses: [22, 23] }]
+trace scale=256 arm=L query=qpart ranks=[0] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0], eligible_gold_misses: [] }]
+trace scale=256 arm=L query=qnone ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=256 arm=L query=qaccess ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=256 arm=L query=qfalse ranks=[31] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [31], eligible_gold_misses: [] }]
+scale=256 arm=LG scored=4 no_positive=["qnone", "qaccess", "qfalse"] visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0} recall@1=0.4375 recall@5=1.0000 recall@10=1.0000 recall@20=1.0000 mrr@10=1.0000 ndcg@10=0.9706
+trace scale=256 arm=LG query=q0 ranks=[0, 1, 2, 3] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0, 9, 1], eligible_gold_misses: [2, 3] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [0, 2, 3], eligible_gold_misses: [1] }]
+trace scale=256 arm=LG query=q1 ranks=[10, 11, 12, 13] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [10, 19, 11], eligible_gold_misses: [12, 13] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [10, 12, 13], eligible_gold_misses: [11] }]
+trace scale=256 arm=LG query=q2 ranks=[20, 21, 22, 23] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [20, 29, 21], eligible_gold_misses: [22, 23] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [20, 22, 23], eligible_gold_misses: [21] }]
+trace scale=256 arm=LG query=qpart ranks=[0] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0], eligible_gold_misses: [] }]
+trace scale=256 arm=LG query=qnone ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=256 arm=LG query=qaccess ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=256 arm=LG query=qfalse ranks=[31] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [31], eligible_gold_misses: [] }]
+measure scale=256 arm=L build_lexical_ms=43.244 build_graph_ms=0.629 update_lexical_ms=45.562 update_graph_ms=0.514 update_n=1 query_n=7 query_p50_ms=6.312 query_p95_ms=8.137 query_p99_ms=8.137 cold_query_ms=8.137 warm_n=6 warm_p50_ms=6.202 warm_p95_ms=8.114 warm_p99_ms=8.114 fusion_n=7 fusion_p50_ms=0.142 fusion_p95_ms=0.251 fusion_p99_ms=0.251 rss_kib=26048 index_disk_bytes=0
+measure scale=256 arm=LG build_lexical_ms=43.244 build_graph_ms=0.629 update_lexical_ms=45.562 update_graph_ms=0.514 update_n=1 query_n=7 query_p50_ms=6.437 query_p95_ms=7.192 query_p99_ms=7.192 cold_query_ms=7.192 warm_n=6 warm_p50_ms=6.166 warm_p95_ms=7.105 warm_p99_ms=7.105 fusion_n=7 fusion_p50_ms=0.123 fusion_p95_ms=0.342 fusion_p99_ms=0.342 rss_kib=26064 index_disk_bytes=0
+scale=1024 arm=L scored=4 no_positive=["qnone", "qaccess", "qfalse"] visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0} recall@1=0.4375 recall@5=0.6250 recall@10=0.6250 recall@20=0.6250 mrr@10=1.0000 ndcg@10=0.7497
+trace scale=1024 arm=L query=q0 ranks=[0, 1] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0, 9, 1], eligible_gold_misses: [2, 3] }]
+trace scale=1024 arm=L query=q1 ranks=[10, 11] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [10, 19, 11], eligible_gold_misses: [12, 13] }]
+trace scale=1024 arm=L query=q2 ranks=[20, 21] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [20, 29, 21], eligible_gold_misses: [22, 23] }]
+trace scale=1024 arm=L query=qpart ranks=[0] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0], eligible_gold_misses: [] }]
+trace scale=1024 arm=L query=qnone ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=1024 arm=L query=qaccess ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=1024 arm=L query=qfalse ranks=[31] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [31], eligible_gold_misses: [] }]
+scale=1024 arm=LG scored=4 no_positive=["qnone", "qaccess", "qfalse"] visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0} recall@1=0.4375 recall@5=1.0000 recall@10=1.0000 recall@20=1.0000 mrr@10=1.0000 ndcg@10=0.9706
+trace scale=1024 arm=LG query=q0 ranks=[0, 1, 2, 3] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0, 9, 1], eligible_gold_misses: [2, 3] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [0, 2, 3], eligible_gold_misses: [1] }]
+trace scale=1024 arm=LG query=q1 ranks=[10, 11, 12, 13] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [10, 19, 11], eligible_gold_misses: [12, 13] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [10, 12, 13], eligible_gold_misses: [11] }]
+trace scale=1024 arm=LG query=q2 ranks=[20, 21, 22, 23] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [20, 29, 21], eligible_gold_misses: [22, 23] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [20, 22, 23], eligible_gold_misses: [21] }]
+trace scale=1024 arm=LG query=qpart ranks=[0] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0], eligible_gold_misses: [] }]
+trace scale=1024 arm=LG query=qnone ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=1024 arm=LG query=qaccess ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=1024 arm=LG query=qfalse ranks=[31] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [31], eligible_gold_misses: [] }]
+measure scale=1024 arm=L build_lexical_ms=128.551 build_graph_ms=2.184 update_lexical_ms=120.643 update_graph_ms=2.041 update_n=1 query_n=7 query_p50_ms=6.918 query_p95_ms=7.792 query_p99_ms=7.792 cold_query_ms=7.792 warm_n=6 warm_p50_ms=6.419 warm_p95_ms=7.335 warm_p99_ms=7.335 fusion_n=7 fusion_p50_ms=0.142 fusion_p95_ms=0.206 fusion_p99_ms=0.206 rss_kib=32816 index_disk_bytes=0
+measure scale=1024 arm=LG build_lexical_ms=128.551 build_graph_ms=2.184 update_lexical_ms=120.643 update_graph_ms=2.041 update_n=1 query_n=7 query_p50_ms=6.571 query_p95_ms=7.139 query_p99_ms=7.139 cold_query_ms=7.139 warm_n=6 warm_p50_ms=6.266 warm_p95_ms=6.746 warm_p99_ms=6.746 fusion_n=7 fusion_p50_ms=0.142 fusion_p95_ms=0.338 fusion_p99_ms=0.338 rss_kib=32832 index_disk_bytes=0
+dense_arms=UNRUN; vector_mock=security_contract_only; full_P1_body_qualification=UNRUN
+=== focused_clippy: cargo clippy --manifest-path /Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform/experiments/search-vector-poc/Cargo.toml --offline --locked -p search-vector-poc --tests -- -D warnings ===
+    Checking serde v1.0.229
+    Checking time v0.3.55
+    Checking crossbeam-utils v0.8.23
+    Checking getrandom v0.4.3
+    Checking stable_deref_trait v1.2.1
+    Checking regex-syntax v0.8.11
+    Checking ownedbytes v0.9.0
+    Checking crunchy v0.2.4
+    Checking zstd-sys v2.1.0+zstd.1.5.7
+    Checking tantivy-common v0.11.0
+    Checking zstd-safe v7.3.0
+    Checking bitpacking v0.9.3
+    Checking crossbeam-epoch v0.9.21
+    Checking uuid v1.26.1
+    Checking errno v0.3.14
+    Checking futures-task v0.3.34
+    Checking utf8-ranges v1.0.5
+    Checking futures-core v0.3.34
+    Checking bitflags v2.13.2
+    Checking slab v0.4.12
+    Checking rustix v1.1.5
+    Checking futures-util v0.3.34
+    Checking tantivy-fst v0.5.0
+    Checking thiserror v2.0.21
+    Checking crossbeam-deque v0.8.8
+    Checking num-traits v0.2.19
+    Checking tantivy-bitpacker v0.10.0
+    Checking zstd v0.13.3
+    Checking typeid v1.0.3
+    Checking itertools v0.14.0
+    Checking allocator-api2 v0.2.21
+    Checking murmurhash32 v0.3.1
+    Checking foldhash v0.2.0
+    Checking minimal-lexical v0.2.1
+    Checking nom v7.1.3
+    Checking tantivy-sstable v0.7.0
+    Checking hashbrown v0.17.1
+    Checking tantivy-stacker v0.7.0
+    Checking ordered-float v5.5.0
+    Checking erased-serde v0.4.10
+    Checking rayon-core v1.13.0
+    Checking search-core v0.0.0 (/Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform/crates/search-core)
+    Checking regex-automata v0.4.18
+    Checking inventory v0.3.24
+    Checking downcast-rs v2.0.2
+    Checking fnv v1.0.7
+    Checking fastrand v2.5.0
+    Checking fastdivide v0.4.2
+    Checking measure_time v0.9.0
+    Checking tantivy-columnar v0.7.0
+    Checking tempfile v3.27.0
+    Checking tantivy-query-grammar v0.26.0
+    Checking search-application v0.0.0 (/Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform/crates/search-application)
+    Checking typetag v0.2.23
+    Checking regex v1.13.1
+    Checking arc-swap v1.9.2
+    Checking rayon v1.12.0
+    Checking bon v3.10.1
+    Checking lru v0.18.2
+    Checking fs4 v0.13.1
+    Checking crossbeam-channel v0.5.17
+    Checking aho-corasick v1.1.5
+    Checking tantivy-tokenizer-api v0.7.0
+    Checking rust-stemmers v1.2.0
+    Checking sketches-ddsketch v0.4.1
+    Checking memmap2 v0.9.11
+    Checking census v0.4.2
+    Checking datasketches v0.2.0
+    Checking oneshot v0.1.13
+    Checking levenshtein_automata v0.2.1
+    Checking htmlescape v0.3.1
+    Checking lz4_flex v0.13.1
+    Checking base64 v0.22.1
+    Checking rustc-hash v2.1.3
+    Checking tokio v1.53.1
+    Checking tantivy v0.26.2 (/Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform/third_party/search/tantivy-0.26.2)
+    Checking search-graph-memory v0.0.0 (/Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform/crates/search-graph-memory)
+    Checking search-tantivy v0.0.0 (/Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform/crates/search-tantivy)
+    Checking search-vector-poc v0.0.0 (/Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform/experiments/search-vector-poc)
+    Finished `dev` profile [unoptimized] target(s) in 20.38s

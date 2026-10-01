@@ -1,0 +1,1743 @@
+{
+  "docx-main.docx": [
+    {
+      "kind": "Heading",
+      "text": "東京",
+      "locator": {
+        "Docx": {
+          "steps": [
+            {
+              "BodyBlock": 0
+            }
+          ]
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Paragraph",
+      "text": "ＡＢＣが、同文。",
+      "locator": {
+        "Docx": {
+          "steps": [
+            {
+              "BodyBlock": 1
+            }
+          ]
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "TableCell",
+      "text": "表一",
+      "locator": {
+        "Docx": {
+          "steps": [
+            {
+              "BodyBlock": 2
+            },
+            {
+              "Row": 0
+            },
+            {
+              "Cell": 0
+            },
+            {
+              "CellBlock": 0
+            }
+          ]
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "TableCell",
+      "text": "内側",
+      "locator": {
+        "Docx": {
+          "steps": [
+            {
+              "BodyBlock": 2
+            },
+            {
+              "Row": 0
+            },
+            {
+              "Cell": 0
+            },
+            {
+              "CellBlock": 1
+            },
+            {
+              "Row": 0
+            },
+            {
+              "Cell": 0
+            },
+            {
+              "CellBlock": 0
+            }
+          ]
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "docx-header-omitted.docx": [
+    {
+      "kind": "Heading",
+      "text": "東京",
+      "locator": {
+        "Docx": {
+          "steps": [
+            {
+              "BodyBlock": 0
+            }
+          ]
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Paragraph",
+      "text": "ＡＢＣが、同文。",
+      "locator": {
+        "Docx": {
+          "steps": [
+            {
+              "BodyBlock": 1
+            }
+          ]
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "TableCell",
+      "text": "表一",
+      "locator": {
+        "Docx": {
+          "steps": [
+            {
+              "BodyBlock": 2
+            },
+            {
+              "Row": 0
+            },
+            {
+              "Cell": 0
+            },
+            {
+              "CellBlock": 0
+            }
+          ]
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "TableCell",
+      "text": "内側",
+      "locator": {
+        "Docx": {
+          "steps": [
+            {
+              "BodyBlock": 2
+            },
+            {
+              "Row": 0
+            },
+            {
+              "Cell": 0
+            },
+            {
+              "CellBlock": 1
+            },
+            {
+              "Row": 0
+            },
+            {
+              "Cell": 0
+            },
+            {
+              "CellBlock": 0
+            }
+          ]
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "docx-spoof-content-type.docx": [],
+  "docx-xml-depth.docx": [],
+  "docx-unknown-block.docx": [],
+  "xlsx-cache-gap.xlsx": [
+    {
+      "kind": "Cell",
+      "text": "東京",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 0,
+          "row": 1,
+          "col": 1
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "ＡＢＣ",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 0,
+          "row": 1,
+          "col": 3
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "同文。",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 1,
+          "row": 6,
+          "col": 4
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "xlsx-cache-complete.xlsx": [
+    {
+      "kind": "Cell",
+      "text": "東京",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 0,
+          "row": 1,
+          "col": 1
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "ＡＢＣ",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 0,
+          "row": 1,
+          "col": 3
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "同文。",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 1,
+          "row": 6,
+          "col": 4
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "xlsx-cache-freshness-unknown.xlsx": [
+    {
+      "kind": "Cell",
+      "text": "東京",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 0,
+          "row": 1,
+          "col": 1
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "ＡＢＣ",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 0,
+          "row": 1,
+          "col": 3
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "同文。",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 1,
+          "row": 6,
+          "col": 4
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "xlsx-formula-only.xlsx": [],
+  "xlsx-hidden-sheet.xlsx": [
+    {
+      "kind": "Cell",
+      "text": "東京",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 0,
+          "row": 1,
+          "col": 1
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "ＡＢＣ",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 0,
+          "row": 1,
+          "col": 3
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "xlsx-shared-string-rich.xlsx": [
+    {
+      "kind": "Cell",
+      "text": "東京",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 0,
+          "row": 1,
+          "col": 1
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "ＡＢＣ",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 0,
+          "row": 1,
+          "col": 3
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "同文。",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 1,
+          "row": 6,
+          "col": 4
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "xlsx-shared-string-rich-formula-free.xlsx": [
+    {
+      "kind": "Cell",
+      "text": "東京",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 0,
+          "row": 1,
+          "col": 1
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "ＡＢＣ",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 0,
+          "row": 1,
+          "col": 3
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "10",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 0,
+          "row": 3,
+          "col": 2
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "同文。",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 1,
+          "row": 6,
+          "col": 4
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "xlsx-shared-index-bad.xlsx": [],
+  "xlsm-macro-cache-gap.xlsm": [
+    {
+      "kind": "Cell",
+      "text": "東京",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 0,
+          "row": 1,
+          "col": 1
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "ＡＢＣ",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 0,
+          "row": 1,
+          "col": 3
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "同文。",
+      "locator": {
+        "Spreadsheet": {
+          "sheet_ordinal": 1,
+          "row": 6,
+          "col": 4
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "pptx-group-table.pptx": [
+    {
+      "kind": "ShapeText",
+      "text": "東京",
+      "locator": {
+        "Pptx": {
+          "slide_ordinal": 0,
+          "shape_path": [
+            0
+          ],
+          "text_slot": {
+            "ShapeParagraph": {
+              "paragraph": 0
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "ShapeText",
+      "text": "群の文",
+      "locator": {
+        "Pptx": {
+          "slide_ordinal": 0,
+          "shape_path": [
+            1,
+            0
+          ],
+          "text_slot": {
+            "ShapeParagraph": {
+              "paragraph": 0
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "TableCell",
+      "text": "表セル",
+      "locator": {
+        "Pptx": {
+          "slide_ordinal": 0,
+          "shape_path": [
+            2
+          ],
+          "text_slot": {
+            "TableCellParagraph": {
+              "row": 0,
+              "col": 0,
+              "paragraph": 0
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "ShapeText",
+      "text": "同文。",
+      "locator": {
+        "Pptx": {
+          "slide_ordinal": 1,
+          "shape_path": [
+            0
+          ],
+          "text_slot": {
+            "ShapeParagraph": {
+              "paragraph": 0
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "pptx-notes-omitted.pptx": [
+    {
+      "kind": "ShapeText",
+      "text": "東京",
+      "locator": {
+        "Pptx": {
+          "slide_ordinal": 0,
+          "shape_path": [
+            0
+          ],
+          "text_slot": {
+            "ShapeParagraph": {
+              "paragraph": 0
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "ShapeText",
+      "text": "群の文",
+      "locator": {
+        "Pptx": {
+          "slide_ordinal": 0,
+          "shape_path": [
+            1,
+            0
+          ],
+          "text_slot": {
+            "ShapeParagraph": {
+              "paragraph": 0
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "TableCell",
+      "text": "表セル",
+      "locator": {
+        "Pptx": {
+          "slide_ordinal": 0,
+          "shape_path": [
+            2
+          ],
+          "text_slot": {
+            "TableCellParagraph": {
+              "row": 0,
+              "col": 0,
+              "paragraph": 0
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "ShapeText",
+      "text": "同文。",
+      "locator": {
+        "Pptx": {
+          "slide_ordinal": 1,
+          "shape_path": [
+            0
+          ],
+          "text_slot": {
+            "ShapeParagraph": {
+              "paragraph": 0
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "pdf-single-page.pdf": [
+    {
+      "kind": "PageText",
+      "text": "東京",
+      "locator": {
+        "Pdf": {
+          "page_index": 0,
+          "char_start": 0,
+          "char_end": 2
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "pdf-two-page-vertical.pdf": [],
+  "pdf-image-only.pdf": [],
+  "pdf-invisible-text.pdf": [],
+  "pdf-corrupt.pdf": [],
+  "text-bom.text": [
+    {
+      "kind": "Line",
+      "text": "東京",
+      "locator": {
+        "Text": {
+          "line_start": 0,
+          "line_end": 1
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Line",
+      "text": "ＡＢＣが、",
+      "locator": {
+        "Text": {
+          "line_start": 1,
+          "line_end": 2
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "text-cp932.text": [
+    {
+      "kind": "Line",
+      "text": "大阪",
+      "locator": {
+        "Text": {
+          "line_start": 0,
+          "line_end": 1
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Line",
+      "text": "同文。",
+      "locator": {
+        "Text": {
+          "line_start": 1,
+          "line_end": 2
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "text-invalid.text": [],
+  "csv-quoted-newline.csv": [
+    {
+      "kind": "Field",
+      "text": "見出し",
+      "locator": {
+        "Csv": {
+          "record": 0,
+          "field": 0
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Field",
+      "text": "値",
+      "locator": {
+        "Csv": {
+          "record": 0,
+          "field": 1
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Field",
+      "text": "東京",
+      "locator": {
+        "Csv": {
+          "record": 1,
+          "field": 0
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Field",
+      "text": "大阪\n京都",
+      "locator": {
+        "Csv": {
+          "record": 1,
+          "field": 1
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "csv-ambiguous.csv": [],
+  "csv-big-field.csv": [],
+  "html-hidden-script.html": [],
+  "html-deep.html": [],
+  "html-simple.html": [
+    {
+      "kind": "Heading",
+      "text": "大阪",
+      "locator": {
+        "Html": {
+          "text_node_path": [
+            0,
+            0
+          ]
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Text",
+      "text": "同文。",
+      "locator": {
+        "Html": {
+          "text_node_path": [
+            1,
+            0
+          ]
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "zip-nested.zip": [
+    {
+      "kind": "Line",
+      "text": "東京",
+      "locator": {
+        "Archive": {
+          "members": [
+            "inner.zip",
+            "a.txt"
+          ],
+          "inner": {
+            "Text": {
+              "line_start": 0,
+              "line_end": 1
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Field",
+      "text": "見出し",
+      "locator": {
+        "Archive": {
+          "members": [
+            "inner.zip",
+            "b.csv"
+          ],
+          "inner": {
+            "Csv": {
+              "record": 0,
+              "field": 0
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Field",
+      "text": "大阪",
+      "locator": {
+        "Archive": {
+          "members": [
+            "inner.zip",
+            "b.csv"
+          ],
+          "inner": {
+            "Csv": {
+              "record": 0,
+              "field": 1
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "zip-modern-leaves.zip": [
+    {
+      "kind": "Heading",
+      "text": "東京",
+      "locator": {
+        "Archive": {
+          "members": [
+            "a.docx"
+          ],
+          "inner": {
+            "Docx": {
+              "steps": [
+                {
+                  "BodyBlock": 0
+                }
+              ]
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Paragraph",
+      "text": "ＡＢＣが、同文。",
+      "locator": {
+        "Archive": {
+          "members": [
+            "a.docx"
+          ],
+          "inner": {
+            "Docx": {
+              "steps": [
+                {
+                  "BodyBlock": 1
+                }
+              ]
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "TableCell",
+      "text": "表一",
+      "locator": {
+        "Archive": {
+          "members": [
+            "a.docx"
+          ],
+          "inner": {
+            "Docx": {
+              "steps": [
+                {
+                  "BodyBlock": 2
+                },
+                {
+                  "Row": 0
+                },
+                {
+                  "Cell": 0
+                },
+                {
+                  "CellBlock": 0
+                }
+              ]
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "TableCell",
+      "text": "内側",
+      "locator": {
+        "Archive": {
+          "members": [
+            "a.docx"
+          ],
+          "inner": {
+            "Docx": {
+              "steps": [
+                {
+                  "BodyBlock": 2
+                },
+                {
+                  "Row": 0
+                },
+                {
+                  "Cell": 0
+                },
+                {
+                  "CellBlock": 1
+                },
+                {
+                  "Row": 0
+                },
+                {
+                  "Cell": 0
+                },
+                {
+                  "CellBlock": 0
+                }
+              ]
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "東京",
+      "locator": {
+        "Archive": {
+          "members": [
+            "b.xlsx"
+          ],
+          "inner": {
+            "Spreadsheet": {
+              "sheet_ordinal": 0,
+              "row": 1,
+              "col": 1
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "ＡＢＣ",
+      "locator": {
+        "Archive": {
+          "members": [
+            "b.xlsx"
+          ],
+          "inner": {
+            "Spreadsheet": {
+              "sheet_ordinal": 0,
+              "row": 1,
+              "col": 3
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "同文。",
+      "locator": {
+        "Archive": {
+          "members": [
+            "b.xlsx"
+          ],
+          "inner": {
+            "Spreadsheet": {
+              "sheet_ordinal": 1,
+              "row": 6,
+              "col": 4
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "ShapeText",
+      "text": "東京",
+      "locator": {
+        "Archive": {
+          "members": [
+            "c.pptx"
+          ],
+          "inner": {
+            "Pptx": {
+              "slide_ordinal": 0,
+              "shape_path": [
+                0
+              ],
+              "text_slot": {
+                "ShapeParagraph": {
+                  "paragraph": 0
+                }
+              }
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "ShapeText",
+      "text": "群の文",
+      "locator": {
+        "Archive": {
+          "members": [
+            "c.pptx"
+          ],
+          "inner": {
+            "Pptx": {
+              "slide_ordinal": 0,
+              "shape_path": [
+                1,
+                0
+              ],
+              "text_slot": {
+                "ShapeParagraph": {
+                  "paragraph": 0
+                }
+              }
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "TableCell",
+      "text": "表セル",
+      "locator": {
+        "Archive": {
+          "members": [
+            "c.pptx"
+          ],
+          "inner": {
+            "Pptx": {
+              "slide_ordinal": 0,
+              "shape_path": [
+                2
+              ],
+              "text_slot": {
+                "TableCellParagraph": {
+                  "row": 0,
+                  "col": 0,
+                  "paragraph": 0
+                }
+              }
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "ShapeText",
+      "text": "同文。",
+      "locator": {
+        "Archive": {
+          "members": [
+            "c.pptx"
+          ],
+          "inner": {
+            "Pptx": {
+              "slide_ordinal": 1,
+              "shape_path": [
+                0
+              ],
+              "text_slot": {
+                "ShapeParagraph": {
+                  "paragraph": 0
+                }
+              }
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "PageText",
+      "text": "東京",
+      "locator": {
+        "Archive": {
+          "members": [
+            "d.pdf"
+          ],
+          "inner": {
+            "Pdf": {
+              "page_index": 0,
+              "char_start": 0,
+              "char_end": 2
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Heading",
+      "text": "大阪",
+      "locator": {
+        "Archive": {
+          "members": [
+            "e.html"
+          ],
+          "inner": {
+            "Html": {
+              "text_node_path": [
+                0,
+                0
+              ]
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Text",
+      "text": "同文。",
+      "locator": {
+        "Archive": {
+          "members": [
+            "e.html"
+          ],
+          "inner": {
+            "Html": {
+              "text_node_path": [
+                1,
+                0
+              ]
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Line",
+      "text": "東京",
+      "locator": {
+        "Archive": {
+          "members": [
+            "f.txt"
+          ],
+          "inner": {
+            "Text": {
+              "line_start": 0,
+              "line_end": 1
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Field",
+      "text": "見出し",
+      "locator": {
+        "Archive": {
+          "members": [
+            "g.csv"
+          ],
+          "inner": {
+            "Csv": {
+              "record": 0,
+              "field": 0
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Field",
+      "text": "大阪",
+      "locator": {
+        "Archive": {
+          "members": [
+            "g.csv"
+          ],
+          "inner": {
+            "Csv": {
+              "record": 0,
+              "field": 1
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "zip-partial-xlsm.zip": [
+    {
+      "kind": "Heading",
+      "text": "東京",
+      "locator": {
+        "Archive": {
+          "members": [
+            "a.docx"
+          ],
+          "inner": {
+            "Docx": {
+              "steps": [
+                {
+                  "BodyBlock": 0
+                }
+              ]
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Paragraph",
+      "text": "ＡＢＣが、同文。",
+      "locator": {
+        "Archive": {
+          "members": [
+            "a.docx"
+          ],
+          "inner": {
+            "Docx": {
+              "steps": [
+                {
+                  "BodyBlock": 1
+                }
+              ]
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "TableCell",
+      "text": "表一",
+      "locator": {
+        "Archive": {
+          "members": [
+            "a.docx"
+          ],
+          "inner": {
+            "Docx": {
+              "steps": [
+                {
+                  "BodyBlock": 2
+                },
+                {
+                  "Row": 0
+                },
+                {
+                  "Cell": 0
+                },
+                {
+                  "CellBlock": 0
+                }
+              ]
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "TableCell",
+      "text": "内側",
+      "locator": {
+        "Archive": {
+          "members": [
+            "a.docx"
+          ],
+          "inner": {
+            "Docx": {
+              "steps": [
+                {
+                  "BodyBlock": 2
+                },
+                {
+                  "Row": 0
+                },
+                {
+                  "Cell": 0
+                },
+                {
+                  "CellBlock": 1
+                },
+                {
+                  "Row": 0
+                },
+                {
+                  "Cell": 0
+                },
+                {
+                  "CellBlock": 0
+                }
+              ]
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "東京",
+      "locator": {
+        "Archive": {
+          "members": [
+            "b.xlsx"
+          ],
+          "inner": {
+            "Spreadsheet": {
+              "sheet_ordinal": 0,
+              "row": 1,
+              "col": 1
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "ＡＢＣ",
+      "locator": {
+        "Archive": {
+          "members": [
+            "b.xlsx"
+          ],
+          "inner": {
+            "Spreadsheet": {
+              "sheet_ordinal": 0,
+              "row": 1,
+              "col": 3
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "同文。",
+      "locator": {
+        "Archive": {
+          "members": [
+            "b.xlsx"
+          ],
+          "inner": {
+            "Spreadsheet": {
+              "sheet_ordinal": 1,
+              "row": 6,
+              "col": 4
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "ShapeText",
+      "text": "東京",
+      "locator": {
+        "Archive": {
+          "members": [
+            "c.pptx"
+          ],
+          "inner": {
+            "Pptx": {
+              "slide_ordinal": 0,
+              "shape_path": [
+                0
+              ],
+              "text_slot": {
+                "ShapeParagraph": {
+                  "paragraph": 0
+                }
+              }
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "ShapeText",
+      "text": "群の文",
+      "locator": {
+        "Archive": {
+          "members": [
+            "c.pptx"
+          ],
+          "inner": {
+            "Pptx": {
+              "slide_ordinal": 0,
+              "shape_path": [
+                1,
+                0
+              ],
+              "text_slot": {
+                "ShapeParagraph": {
+                  "paragraph": 0
+                }
+              }
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "TableCell",
+      "text": "表セル",
+      "locator": {
+        "Archive": {
+          "members": [
+            "c.pptx"
+          ],
+          "inner": {
+            "Pptx": {
+              "slide_ordinal": 0,
+              "shape_path": [
+                2
+              ],
+              "text_slot": {
+                "TableCellParagraph": {
+                  "row": 0,
+                  "col": 0,
+                  "paragraph": 0
+                }
+              }
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "ShapeText",
+      "text": "同文。",
+      "locator": {
+        "Archive": {
+          "members": [
+            "c.pptx"
+          ],
+          "inner": {
+            "Pptx": {
+              "slide_ordinal": 1,
+              "shape_path": [
+                0
+              ],
+              "text_slot": {
+                "ShapeParagraph": {
+                  "paragraph": 0
+                }
+              }
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "PageText",
+      "text": "東京",
+      "locator": {
+        "Archive": {
+          "members": [
+            "d.pdf"
+          ],
+          "inner": {
+            "Pdf": {
+              "page_index": 0,
+              "char_start": 0,
+              "char_end": 2
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Heading",
+      "text": "大阪",
+      "locator": {
+        "Archive": {
+          "members": [
+            "e.html"
+          ],
+          "inner": {
+            "Html": {
+              "text_node_path": [
+                0,
+                0
+              ]
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Text",
+      "text": "同文。",
+      "locator": {
+        "Archive": {
+          "members": [
+            "e.html"
+          ],
+          "inner": {
+            "Html": {
+              "text_node_path": [
+                1,
+                0
+              ]
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Line",
+      "text": "東京",
+      "locator": {
+        "Archive": {
+          "members": [
+            "f.txt"
+          ],
+          "inner": {
+            "Text": {
+              "line_start": 0,
+              "line_end": 1
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Field",
+      "text": "見出し",
+      "locator": {
+        "Archive": {
+          "members": [
+            "g.csv"
+          ],
+          "inner": {
+            "Csv": {
+              "record": 0,
+              "field": 0
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Field",
+      "text": "大阪",
+      "locator": {
+        "Archive": {
+          "members": [
+            "g.csv"
+          ],
+          "inner": {
+            "Csv": {
+              "record": 0,
+              "field": 1
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "東京",
+      "locator": {
+        "Archive": {
+          "members": [
+            "h.xlsm"
+          ],
+          "inner": {
+            "Spreadsheet": {
+              "sheet_ordinal": 0,
+              "row": 1,
+              "col": 1
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "ＡＢＣ",
+      "locator": {
+        "Archive": {
+          "members": [
+            "h.xlsm"
+          ],
+          "inner": {
+            "Spreadsheet": {
+              "sheet_ordinal": 0,
+              "row": 1,
+              "col": 3
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "同文。",
+      "locator": {
+        "Archive": {
+          "members": [
+            "h.xlsm"
+          ],
+          "inner": {
+            "Spreadsheet": {
+              "sheet_ordinal": 1,
+              "row": 6,
+              "col": 4
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "zip-nested-pdf.zip": [
+    {
+      "kind": "PageText",
+      "text": "東京",
+      "locator": {
+        "Archive": {
+          "members": [
+            "inner.zip",
+            "a.pdf"
+          ],
+          "inner": {
+            "Pdf": {
+              "page_index": 0,
+              "char_start": 0,
+              "char_end": 2
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "zip-nested-formula.zip": [
+    {
+      "kind": "Line",
+      "text": "plain",
+      "locator": {
+        "Archive": {
+          "members": [
+            "inner.zip",
+            "a.txt"
+          ],
+          "inner": {
+            "Text": {
+              "line_start": 0,
+              "line_end": 1
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "東京",
+      "locator": {
+        "Archive": {
+          "members": [
+            "inner.zip",
+            "b.xlsx"
+          ],
+          "inner": {
+            "Spreadsheet": {
+              "sheet_ordinal": 0,
+              "row": 1,
+              "col": 1
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "ＡＢＣ",
+      "locator": {
+        "Archive": {
+          "members": [
+            "inner.zip",
+            "b.xlsx"
+          ],
+          "inner": {
+            "Spreadsheet": {
+              "sheet_ordinal": 0,
+              "row": 1,
+              "col": 3
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    },
+    {
+      "kind": "Cell",
+      "text": "同文。",
+      "locator": {
+        "Archive": {
+          "members": [
+            "inner.zip",
+            "b.xlsx"
+          ],
+          "inner": {
+            "Spreadsheet": {
+              "sheet_ordinal": 1,
+              "row": 6,
+              "col": 4
+            }
+          }
+        }
+      },
+      "part_ordinal": 0
+    }
+  ],
+  "zip-bad-inner.zip": [],
+  "zip-path.zip": [],
+  "zip-duplicate.zip": [],
+  "zip-nfc-collision.zip": [],
+  "zip-symlink.zip": [],
+  "zip-bomb.zip": [],
+  "zip-encrypted.zip": [],
+  "legacy-magic.doc": [],
+  "legacy-magic.xls": [],
+  "legacy-magic.ppt": []
+}

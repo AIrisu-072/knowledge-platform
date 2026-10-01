@@ -1,0 +1,22 @@
+# 仕事の手渡し: p4-http-review
+
+- 種類: audit / 役: QualityAuditor / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Audit isolated client evidence before production promotion
+
+## 入力
+- `p4-http-poc-code` (experiments/search-http-client-poc) — Isolated real TCP transport qualification code [`p4-http-poc` が作る (作業中)]
+- `p4-http-selection` (experiments/search-http-client-poc/report.md) — Measured exact HTTP client selection [`p4-http-poc` が作る (作業中)]
+- `p4-contract` (docs/superpowers/programs/search-platform-completion/p4-remote-freeze.md) — remote contract [`p4-freeze-architecture` が作る (済み)]
+
+## 出すもの
+- `p4-http-poc-review` (docs/superpowers/programs/search-platform-completion/p4-http-poc-review.md) — Independent qualification boundary review
+
+## 受入条件
+No transport or dependency qualification blocker remains before promotion
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p4-http-poc-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

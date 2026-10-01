@@ -1,0 +1,20 @@
+# 仕事の手渡し: p6-recheck-domain
+
+- 種類: audit / 役: QualityAuditor / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Independent bounded policy and additive preservation gate
+
+## 入力
+- `p6-fix-policy-bounds-artifact` (docs/superpowers/programs/search-platform-completion/p6-policy-bounds-fix-receipt.md) — Constrain v0 DB policy to explicit finite operational bounds [`p6-fix-policy-bounds` が作る (作業中)]
+
+## 出すもの
+- `p6-recheck-domain-artifact` (docs/superpowers/programs/search-platform-completion/p6-domain-migration-recheck.md) — Independent bounded policy and additive preservation gate
+
+## 受入条件
+Exact hashes and named regressions; no broadened production claim
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p6-domain-migration-recheck.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

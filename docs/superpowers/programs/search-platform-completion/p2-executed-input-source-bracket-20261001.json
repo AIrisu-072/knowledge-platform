@@ -1,0 +1,50 @@
+{
+  "schema": "p2-current-source-bracket-v1",
+  "before": "b1bf2944f6fd243a841851fd6f6e1e87ac6596fd30909e8361e731d049a3632f",
+  "after": "b1bf2944f6fd243a841851fd6f6e1e87ac6596fd30909e8361e731d049a3632f",
+  "phases": [
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "experiments/search-vector-poc/Cargo.toml",
+        "--offline",
+        "--locked",
+        "--tests"
+      ],
+      "exit": 0
+    },
+    {
+      "command": [
+        "cargo",
+        "run",
+        "--manifest-path",
+        "experiments/search-vector-poc/Cargo.toml",
+        "--offline",
+        "--locked",
+        "--quiet"
+      ],
+      "exit": 0
+    },
+    {
+      "command": [
+        "cargo",
+        "clippy",
+        "--manifest-path",
+        "experiments/search-vector-poc/Cargo.toml",
+        "--offline",
+        "--locked",
+        "-p",
+        "search-vector-poc",
+        "--tests",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit": 0
+    }
+  ],
+  "binary_sha256": "b68b5ffed65e87ff30b7292330d434636d52a2900cc12032f606c4f9dc73bb6b",
+  "log_sha256": "0b45cb4a9cc64816591b816692d55c51630cc6765d86aadfaa2b02194a05c741"
+}

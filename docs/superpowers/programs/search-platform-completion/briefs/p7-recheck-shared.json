@@ -1,0 +1,21 @@
+# 仕事の手渡し: p7-recheck-shared
+
+- 種類: audit / 役: QualityAuditor / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Independent corrected shared durable design gate
+
+## 入力
+- `p7-repair-shared-artifact` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-revision-1.md) — Close event guard pin and global ownership shared durable findings [`p7-repair-shared` が作る (作業中)]
+- `p7-shared-review` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-review.md) — p7-shared-review [`p7-review-shared` が作る (済み)]
+
+## 出すもの
+- `p7-recheck-shared-artifact` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-recheck.md) — Independent corrected shared durable design gate
+
+## 受入条件
+Exact named finding closure and scoped fresh evidence; no unverified qualification claim
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p7-shared-durable-recheck.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。
