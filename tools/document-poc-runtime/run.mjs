@@ -12,6 +12,7 @@ import { Blocked, EvidenceReport, RUNTIME_STAGES, STARTUP_OBSERVATION_MS, assert
 
 import { readBrowserDiagnostics, sanitizeBrowserPhases } from './browser-diagnostics.mjs';
 import { DatabaseDiagnostics } from './database-diagnostics.mjs';
+import { postgresReadyArgs, postgresVersionArgs, parsePostgresReadyStatus, waitForPostgresTcp } from './postgres-readiness.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const args = process.argv.slice(2);
@@ -32,7 +33,7 @@ const processes = [];
 let cid, database, password, proxy;
 const log = name => join(directory, `${name}.log`);
 const options = (name, env = process.env) => ({ cwd: root, env, log: log(name), secrets: [database, password] });
-const run = (name, executable, args, env) => command(executable, args, options(name, env));
+const run = (name, executable, args, env, timeoutMs) => command(executable, args, { ...options(name, env), ...(timeoutMs === undefined ? {} : { timeoutMs }) });
 let failed = false;
 let interrupted = false;
 const onSignal = () => { interrupted = true; for (const owned of processes) if (owned.child.exitCode === null) owned.child.kill('SIGTERM'); };
@@ -105,15 +106,13 @@ try {
     const digestResult = await databaseDiagnostics.step('repo-digest-query', () => run('postgres-image', 'docker', ['image', 'inspect', '--format', '{{json .RepoDigests}}', imageId]));
     const repoDigests = await databaseDiagnostics.step('repo-digest-parse', async () => JSON.parse(digestResult));
     report.data.database = { ownership: 'harness-owned', image: 'postgres:18.6-bookworm', imageId, repoDigests };
-    await databaseDiagnostics.step('readiness', async () => {
-      let ready = false, lastError;
-      for (let attempt = 0; attempt < 60; attempt++) {
-        try { await run('postgres-ready', 'docker', ['exec', cid, 'pg_isready', '-U', 'postgres', '-d', 'kp_document_poc']); ready = true; break; }
-        catch (error) { lastError = error; await delay(500); }
-      }
-      if (!ready) throw new Blocked('Owned PostgreSQL did not become ready', { cause: lastError });
-    });
-    report.data.database.version = await databaseDiagnostics.step('sql-version-query', () => run('postgres-version', 'docker', ['exec', '--env', 'PGUSER=postgres', '--env', 'PGDATABASE=kp_document_poc', cid, 'psql', '-X', '-t', '-A', '-c', 'SHOW server_version']));
+    await databaseDiagnostics.step('readiness', () => waitForPostgresTcp(
+      async budget => parsePostgresReadyStatus(await run('postgres-ready', 'docker', postgresReadyArgs(cid), process.env, budget)),
+    ));
+    // pg_isready alone does not prove this database/credential tuple exists.
+    // Do not retry psql exit 2 (connection/auth/config) or exit 3 (SQL error).
+    report.data.database.version = await databaseDiagnostics.step('sql-version-query', () =>
+      run('postgres-version', 'docker', postgresVersionArgs(cid), { ...process.env, PGPASSWORD: password }, 10_000));
   });
   proxy = await databaseDiagnostics.step('proxy-start', () => databaseProxy(database));
   database = proxy.url;

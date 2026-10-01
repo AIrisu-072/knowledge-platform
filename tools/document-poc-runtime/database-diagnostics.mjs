@@ -1,7 +1,7 @@
 // Fixed operation/category evidence only. Error objects and their causes stay private.
 const operations = new Set(['external-validation', 'docker-run', 'cid-read', 'cid-validation', 'port-query', 'port-validation',
   'image-inspect', 'repo-digest-query', 'repo-digest-parse', 'readiness', 'sql-version-query', 'proxy-start']);
-const categories = new Set(['ok', 'command-unavailable', 'command-exit', 'command-signal', 'filesystem-unavailable',
+const categories = new Set(['ok', 'command-unavailable', 'command-exit', 'command-signal', 'command-timeout', 'filesystem-unavailable',
   'invalid-container-id', 'invalid-port-binding', 'invalid-json', 'external-database-rejected', 'readiness-exhausted', 'proxy-unavailable', 'operation-failed']);
 const statuses = new Set(['running', 'passed', 'failed']);
 const defaults = { 'external-validation': 'external-database-rejected', 'cid-read': 'filesystem-unavailable',
@@ -14,7 +14,7 @@ function commandFailure(error) {
   for (let depth = 0; error && typeof error === 'object' && depth < 4 && !seen.has(error); depth++, error = error.cause) {
     seen.add(error);
     const failure = error.commandFailure;
-    if (failure && ['command-unavailable', 'command-exit', 'command-signal'].includes(failure.category)) return failure;
+    if (failure && ['command-unavailable', 'command-exit', 'command-signal', 'command-timeout'].includes(failure.category)) return failure;
   }
 }
 

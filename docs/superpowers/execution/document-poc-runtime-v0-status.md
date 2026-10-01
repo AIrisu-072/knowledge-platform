@@ -1,5 +1,14 @@
 # Document Platform PoC Runtime / Server Composition v0 — Capability Status
 
+## 2026-10-01 UTC — Diagnosed disposable-database readiness gap
+
+- Diagnostic head `9205362e8ba4477ed0951afce040be71c1759719`, tree `b1c108b3dd687f04d491ce0a3d67ec95b3ef9dde`, was published and verified. [Runtime job110626620880](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36939240757/job/110626620880) passed build/artifacts and Docker/container/binding/image/readiness operations, then failed at the real SQL version query with command exit 2. Server/browser and later stages were NOT RUN on this head; the earlier browser failure remains unresolved.
+- A controlled real PostgreSQL18.6 TCP-only fixture reproduced `pg_isready` exit 0 for a nonexistent database followed by same-endpoint `psql SHOW server_version` exit 2. This demonstrates that server availability alone does not establish the required usable database. No local Unix socket or Docker workaround was attempted.
+- Primary sources: [PostgreSQL18 pg_isready](https://www.postgresql.org/docs/18/app-pg-isready.html) documents that valid database/credentials are unnecessary for its status; [psql exit status](https://www.postgresql.org/docs/18/app-psql.html) distinguishes connection and SQL failures; the [official image entrypoint](https://github.com/docker-library/postgres/blob/master/docker-entrypoint.sh) starts a socket-only initialization server, stops it and then starts the final server. The precise hosted subcause is not visible and is not asserted from exit code alone.
+- The narrow fix now uses an explicit final-TCP pg_isready probe, a fixed marker emitted by a successful Docker wrapper, and exactly one credentialed same-endpoint SQL version query. Only explicit pg_isready1/2 startup states retry within30s; Docker/tool/timeout errors and SQL/auth/config failures do not retry. Owned read-only clients have host-side deadlines; no server process or sandbox enforcement is weakened.
+- Fresh RED→GREEN readiness regressions PASS5/5; complete harness PASS38/38; scoped TypeScript, Node syntax, actionlint and diff-check PASS. Independent root review confirmed the final parser/wrapper/deadline snapshot and independently reran5/5. The prior controlled PostgreSQL18.6 result is retained separately; these checks do not prove the hosted database subcause or fix the unresolved GUI journey.
+- Next exact action: publish this reviewed narrow fix on PR41, verify its exact remote source tree/head, and inspect the new hosted runtime journey. Scheduler STOP and historical scanner qualification remain separate.
+
 ## 2026-10-01 UTC — First hosted real-runtime result / bounded diagnostics follow-up
 
 - R6 published on Draft [PR41](https://github.com/AIrisu-072/knowledge-platform/pull/41) at exact head `8c702db1c15caeabef398ab8170bbaee18fe075f`, tree `b937184d4c56b493ba1193812463a5482db39f31`, verified equal to the reviewed local candidate. No merge/deploy.

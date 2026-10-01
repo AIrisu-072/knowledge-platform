@@ -124,7 +124,17 @@ export function startProcess(command, args, { cwd, env, log, secrets = [] }) {
 
 export async function command(command, args, options) {
   const process = startProcess(command, args, options);
-  const result = await process.done;
+  let timedOut = false;
+  const timer = options.timeoutMs === undefined ? undefined : setTimeout(() => {
+    timedOut = true;
+    // Only this owned read-only probe client is stopped; never the database/server.
+    process.child.kill('SIGKILL');
+  }, options.timeoutMs);
+  const result = await process.done.finally(() => clearTimeout(timer));
+  if (timedOut) {
+    const error = new Error('Owned probe client exceeded its observation deadline', { cause: { signal: result.signal } });
+    error.commandFailure = { category: 'command-timeout', available: true }; throw error;
+  }
   if (process.child.spawnFailure) {
     const error = new Blocked(`Required command unavailable: ${command.split('/').at(-1)}`, { cause: process.child.spawnError });
     error.commandFailure = { category: 'command-unavailable', available: false }; throw error;
