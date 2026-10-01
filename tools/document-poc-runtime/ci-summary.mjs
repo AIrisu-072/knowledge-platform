@@ -3,7 +3,10 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { summarizeAgent } from './agent-summary.mjs';
 import { RUNTIME_STAGES } from './harness.mjs';
+import { sanitizeBrowserPhases } from './browser-diagnostics.mjs';
+import { sanitizeDatabaseDiagnostics } from './database-diagnostics.mjs';
 
 const statuses = new Set(['passed', 'failed', 'blocked', 'not-run', 'running']);
 const sha = (value, length = 64) => typeof value === 'string' && new RegExp(`^[a-f0-9]{${length}}$`).test(value) ? value : 'unverified';
@@ -21,13 +24,21 @@ export function summarize(report) {
     const stage = inputStages.find(item => item && item.name === name && statuses.has(item.status));
     return stage ? [{ name, status: stage.status, ...(stage.status === 'passed' ? {} : { failureCode: code(name, stage.status) }) }] : [];
   });
+  const agent = summarizeAgent(report.agentAcceptance);
   const gitHead = sha(report.gitHead, 40);
   const artifacts = Object.fromEntries(['server', 'dsi', 'diff', 'pdfium', 'mcp', 'mcpRuntime'].map(name => [name, sha(report.artifacts?.[name])]));
+  const proof = report.agentAcceptance;
+  const workspaceLock = sha(report.sourceLocks?.pnpm);
+  agent.provenanceVerified = typeof report.runId === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(report.runId)
+    && proof?.runId === report.runId && gitHead !== 'unverified' && proof?.sourceHead === gitHead
+    && artifacts.mcp !== 'unverified' && proof?.mainSha256 === artifacts.mcp
+    && artifacts.mcpRuntime !== 'unverified' && proof?.runtimeSha256 === artifacts.mcpRuntime
+    && workspaceLock !== 'unverified' && proof?.workspaceLockSha256 === workspaceLock;
   const webAssetHashes = Object.values(report.artifacts?.web ?? {}).map(value => sha(value)).filter(value => value !== 'unverified').sort().slice(0, 32);
   return {
     status: statuses.has(report.status) ? report.status : 'not-available',
     acceptanceQualified: report.status === 'passed' && report.acceptanceQualified === true && gitHead !== 'unverified'
-      && artifacts.mcp !== 'unverified' && artifacts.mcpRuntime !== 'unverified'
+      && agent.status === 'passed' && agent.provenanceVerified && artifacts.mcp !== 'unverified' && artifacts.mcpRuntime !== 'unverified'
       && report.gitDirty === false && stages.length === RUNTIME_STAGES.length && stages.every(stage => stage.status === 'passed'),
     gitHead, gitDirty: typeof report.gitDirty === 'boolean' ? report.gitDirty : 'unverified',
     platform: { os: ['linux', 'darwin', 'win32'].includes(report.platform?.os) ? report.platform.os : 'unverified',
@@ -38,9 +49,11 @@ export function summarize(report) {
     postgresVersion: report.database?.ownership === 'caller-asserted-disposable' ? 'unverified-external'
       : typeof report.database?.version === 'string' ? report.database.version.match(/^(\d+\.\d+(?:\.\d+)?)(?:$|[ (])/u)?.[1] ?? 'unverified' : 'unverified',
     sourceLocks: { cargo: sha(report.sourceLocks?.cargo), pnpm: sha(report.sourceLocks?.pnpm) },
-    artifacts, webAssetHashes,
+    artifacts, webAssetHashes, agent,
     profiles: ['poc-human', 'poc-agent'].filter(profile => Array.isArray(report.processes) && report.processes.some(item => item?.profile === profile)),
     stages,
+    browserDiagnostics: sanitizeBrowserPhases(report.browserDiagnostics),
+    databaseDiagnostics: sanitizeDatabaseDiagnostics(report.databaseDiagnostics),
   };
 }
 

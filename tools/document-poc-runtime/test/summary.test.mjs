@@ -24,3 +24,17 @@ test('missing or malformed provenance is bounded unavailable evidence, never pas
   assert.equal(result.acceptanceQualified, false); assert.equal(result.gitHead, 'unverified');
   assert.ok(JSON.stringify(summarize({ stages: Array(10000).fill({ name: 'browser-journey', status: 'failed' }) })).length < 8000);
 });
+
+test('browser diagnostics are sanitized again before the CI summary is printed', () => {
+  const secret = 'postgres://private:credential@host/database';
+  const summary = summarize({ status: 'failed', browserDiagnostics: {
+    journey: { availability: 'available', counts: { passed: 0, failed: 1, skipped: 4 }, truncated: false,
+      tests: [{ source: 'document-runtime.spec.ts', line: 44, column: 5, status: 'failed', errorCategory: 'strict-locator',
+        matcher: 'toBeVisible', message: secret, title: secret, selector: secret, url: secret, stack: secret }], raw: secret },
+    persistence: { availability: 'unavailable', tests: [{ title: secret }] }, [secret]: secret,
+  } });
+  assert.equal(summary.browserDiagnostics.journey.tests[0].line, 44);
+  assert.equal(summary.browserDiagnostics.journey.tests[0].errorCategory, 'strict-locator');
+  assert.ok(!JSON.stringify(summary).includes('credential'));
+  assert.deepEqual(Object.keys(summary.browserDiagnostics), ['journey', 'persistence']);
+});

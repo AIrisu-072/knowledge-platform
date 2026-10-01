@@ -58,3 +58,24 @@ export function assertComparisons(revision: unknown, version: unknown, humanRevi
   assert.deepEqual(semantics(r), semantics(humanRevision));
   assert.deepEqual(semantics(v), semantics(humanVersion));
 }
+export function assertMetadataUpdate(before: unknown, after: unknown, revisions: unknown, history: unknown, runId: string, operationId: string): void {
+  const prior = object(before), current = object(after), page = object(revisions), events = object(history);
+  assert.equal(object(current.metadata).pocAgentObservation, runId);
+  assert.ok(Number(current.revision) > Number(prior.revision));
+  assert.equal(current.currentVersionId, prior.currentVersionId);
+  const oldRevision = object(prior.displayRevision), revision = object(current.displayRevision);
+  assert.notEqual(revision.revisionId, oldRevision.revisionId);
+  assert.equal(revision.sourceKind, 'metadataRevision');
+  assert.equal(revision.major, oldRevision.major);
+  assert.equal(revision.minor, Number(oldRevision.minor) + 1);
+  assert.equal(page.nextCursor, null);
+  assert.ok(objects(page.items).some(item => item.revisionId === revision.revisionId && item.sourceKind === 'metadataRevision'));
+  assert.equal(events.nextCursor, null);
+  const entry = objects(events.items).find(item => item.sourceKey === `management:${operationId}`);
+  assert.ok(entry);
+  assert.equal(entry.actionCode, 'document.metadata.changed');
+  assert.equal(entry.provenanceQuality, 'operationLedger');
+  assert.equal(object(entry.actor).principalId, 'poc-human');
+  assert.equal(object(entry.details).changed, true);
+  assert.equal(object(entry.details).resulting_revision, current.revision);
+}

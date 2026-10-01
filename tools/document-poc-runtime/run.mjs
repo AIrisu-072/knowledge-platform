@@ -10,6 +10,10 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Blocked, EvidenceReport, RUNTIME_STAGES, STARTUP_OBSERVATION_MS, assertSafeDiagnostics, binaryDirectory, command, databaseProxy, delayedJsonRequest, pausedDownload, externalDatabase, freePort, postgresArguments, serverEnvironment, sha256File, startProcess, startupBlocked, stopProcess, waitForDrain, waitForListenerRefusal, waitReady } from './harness.mjs';
 
+import { readBrowserDiagnostics, sanitizeBrowserPhases } from './browser-diagnostics.mjs';
+import { DatabaseDiagnostics } from './database-diagnostics.mjs';
+import { postgresReadyArgs, postgresVersionArgs, parsePostgresReadyStatus, waitForPostgresTcp } from './postgres-readiness.mjs';
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const args = process.argv.slice(2);
 if (args.some(arg => arg !== '--prebuilt')) throw Error('Usage: node tools/document-poc-runtime/run.mjs [--prebuilt]');
@@ -19,6 +23,7 @@ const directory = await mkdtemp(join(base, 'run-'));
 const runId = randomUUID();
 const stages = RUNTIME_STAGES;
 const report = new EvidenceReport(directory, stages);
+const databaseDiagnostics = new DatabaseDiagnostics(report, Boolean(process.env.TEST_DATABASE_URL));
 report.data.runId = runId;
 report.data.platform = { os: process.platform, arch: process.arch, node: process.version };
 report.data.buildMode = args.includes('--prebuilt') ? 'prebuilt-unverified-source-correspondence' : 'built-in-this-run';
@@ -28,7 +33,7 @@ const processes = [];
 let cid, database, password, proxy;
 const log = name => join(directory, `${name}.log`);
 const options = (name, env = process.env) => ({ cwd: root, env, log: log(name), secrets: [database, password] });
-const run = (name, executable, args, env) => command(executable, args, options(name, env));
+const run = (name, executable, args, env, timeoutMs) => command(executable, args, { ...options(name, env), ...(timeoutMs === undefined ? {} : { timeoutMs }) });
 let failed = false;
 let interrupted = false;
 const onSignal = () => { interrupted = true; for (const owned of processes) if (owned.child.exitCode === null) owned.child.kill('SIGTERM'); };
@@ -81,33 +86,38 @@ try {
     await recordAssets(web);
   });
   await report.stage('database', async () => {
-    database = externalDatabase(process.env);
-    if (database) { password = decodeURIComponent(new URL(database).password) || undefined; report.data.database = { ownership: 'caller-asserted-disposable', cleanup: 'caller-owned; never dropped by harness' }; return; }
+    database = await databaseDiagnostics.step('external-validation', async () => {
+      const value = externalDatabase(process.env);
+      if (value) password = decodeURIComponent(new URL(value).password) || undefined;
+      return value;
+    });
+    if (database) { report.data.database = { ownership: 'caller-asserted-disposable', cleanup: 'caller-owned; never dropped by harness' }; return; }
     password = randomBytes(24).toString('hex');
     const cidfile = join(directory, 'postgres.cid');
     try {
-      await run('postgres-start', 'docker', postgresArguments(runId, cidfile), { ...process.env, POSTGRES_PASSWORD: password });
+      await databaseDiagnostics.step('docker-run', () => run('postgres-start', 'docker', postgresArguments(runId, cidfile), { ...process.env, POSTGRES_PASSWORD: password }));
     } catch (error) {
       try { cid = (await readFile(cidfile, 'utf8')).trim(); } catch { /* Docker might not have created the owned container. */ }
-      throw new Blocked(`Disposable Docker PostgreSQL could not start: ${error.message}`);
+      throw new Blocked(`Disposable Docker PostgreSQL could not start: ${error.message}`, { cause: error });
     }
-    cid = (await readFile(cidfile, 'utf8')).trim();
-    assert.match(cid, /^[a-f0-9]{64}$/);
-    const binding = await run('postgres-port', 'docker', ['port', cid, '5432/tcp']);
-    assert.match(binding, /^127\.0\.0\.1:\d+$/);
+    cid = await databaseDiagnostics.step('cid-read', async () => (await readFile(cidfile, 'utf8')).trim());
+    await databaseDiagnostics.step('cid-validation', async () => assert.match(cid, /^[a-f0-9]{64}$/));
+    const binding = await databaseDiagnostics.step('port-query', () => run('postgres-port', 'docker', ['port', cid, '5432/tcp']));
+    await databaseDiagnostics.step('port-validation', async () => assert.match(binding, /^127\.0\.0\.1:\d+$/));
     database = `postgres://postgres:${password}@${binding}/kp_document_poc`;
-    const imageId = await run('postgres-image', 'docker', ['inspect', '--format', '{{.Image}}', cid]);
-    const repoDigests = JSON.parse(await run('postgres-image', 'docker', ['image', 'inspect', '--format', '{{json .RepoDigests}}', imageId]));
+    const imageId = await databaseDiagnostics.step('image-inspect', () => run('postgres-image', 'docker', ['inspect', '--format', '{{.Image}}', cid]));
+    const digestResult = await databaseDiagnostics.step('repo-digest-query', () => run('postgres-image', 'docker', ['image', 'inspect', '--format', '{{json .RepoDigests}}', imageId]));
+    const repoDigests = await databaseDiagnostics.step('repo-digest-parse', async () => JSON.parse(digestResult));
     report.data.database = { ownership: 'harness-owned', image: 'postgres:18.6-bookworm', imageId, repoDigests };
-    let ready = false;
-    for (let attempt = 0; attempt < 60; attempt++) {
-      try { await run('postgres-ready', 'docker', ['exec', cid, 'pg_isready', '-U', 'postgres', '-d', 'kp_document_poc']); ready = true; break; }
-      catch { await delay(500); }
-    }
-    if (!ready) throw new Blocked('Owned PostgreSQL did not become ready');
-    report.data.database.version = await run('postgres-version', 'docker', ['exec', '--env', 'PGUSER=postgres', '--env', 'PGDATABASE=kp_document_poc', cid, 'psql', '-X', '-t', '-A', '-c', 'SHOW server_version']);
+    await databaseDiagnostics.step('readiness', () => waitForPostgresTcp(
+      async budget => parsePostgresReadyStatus(await run('postgres-ready', 'docker', postgresReadyArgs(cid), process.env, budget)),
+    ));
+    // pg_isready alone does not prove this database/credential tuple exists.
+    // Do not retry psql exit 2 (connection/auth/config) or exit 3 (SQL error).
+    report.data.database.version = await databaseDiagnostics.step('sql-version-query', () =>
+      run('postgres-version', 'docker', postgresVersionArgs(cid), { ...process.env, PGPASSWORD: password }, 10_000));
   });
-  proxy = await databaseProxy(database);
+  proxy = await databaseDiagnostics.step('proxy-start', () => databaseProxy(database));
   database = proxy.url;
   report.data.database.transport = 'owned transparent loopback TCP proxy for outage/recovery';
   const humanPort = await freePort();
@@ -166,11 +176,28 @@ try {
         throw new Blocked('Pinned Playwright browser prerequisite unavailable; inspect browser log and do not substitute a browser or silently install packages');
       }
       throw error;
+    } finally {
+      report.data.browserDiagnostics = sanitizeBrowserPhases({ ...report.data.browserDiagnostics,
+        [phase]: await readBrowserDiagnostics(directory, phase) });
+      await report.save();
     }
   }
   await report.stage('browser-journey', () => browser('journey'));
-  await report.stage('agent-acceptance', () => run('agent-acceptance', process.execPath,
-    [join(root, 'apps/document-mcp/dist/runtime.cjs')], { ...process.env, KP_POC_RUNTIME_CONTEXT: contextPath }));
+  await report.stage('agent-acceptance', async () => {
+    try { await run('agent-acceptance', process.execPath,
+      [join(root, 'apps/document-mcp/dist/runtime.cjs')], { ...process.env, KP_POC_RUNTIME_CONTEXT: contextPath }); }
+    finally {
+      try { report.data.agentAcceptance = JSON.parse(await readFile(join(directory, 'agent-acceptance.json'), 'utf8')); }
+      catch { report.data.agentAcceptance = { status: 'UNAVAILABLE' }; }
+    }
+    assert.equal(report.data.agentAcceptance.status, 'PASS');
+    assert.equal(report.data.agentAcceptance.phase, 'complete');
+    assert.equal(report.data.agentAcceptance.runId, runId);
+    assert.equal(report.data.agentAcceptance.sourceHead, report.data.gitHead);
+    assert.equal(report.data.agentAcceptance.mainSha256, report.data.artifacts.mcp);
+    assert.equal(report.data.agentAcceptance.runtimeSha256, report.data.artifacts.mcpRuntime);
+    assert.equal(report.data.agentAcceptance.workspaceLockSha256, report.data.sourceLocks.pnpm);
+  });
   await report.stage('health-recovery', async () => {
     async function health(origin, readyStatus) {
       for (const [path, status, value] of [['live', 200, 'ok'], ['ready', readyStatus, readyStatus === 200 ? 'ok' : 'unavailable']]) {

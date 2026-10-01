@@ -143,6 +143,15 @@ or logs. Owned PostgreSQL version is observed with the fixed read-only
 unverified. Startup observation is 60 seconds, exceeding DB acquire 5 seconds +
 DSI preflight 10 seconds + Diff preflight 30 seconds; it is not a production SLO.
 
+The summary also exposes bounded diagnostics for setup/browser failures. Database
+steps disclose only a fixed operation/category, availability booleans and bounded
+command exit codes. Playwright test and top-level collection errors disclose only
+known source basenames with line/column, fixed error categories/matchers, bounded
+HTTP statuses and allowlisted Problem codes. Browser records share a 20-record
+budget; missing/malformed reports remain unavailable. Both diagnostic families
+are sanitized again at the summary boundary. Raw error values, titles, selectors,
+stack traces, SQL, responses and attachment content are never printed.
+
 Browser screenshots, videos, traces and detailed logs remain **run-local only**.
 They are generated for diagnosis but are not durable hosted artifact evidence
 under the current CI publication scope. Record this retention/review gap rather

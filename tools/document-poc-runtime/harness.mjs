@@ -113,7 +113,7 @@ export function startProcess(command, args, { cwd, env, log, secrets = [] }) {
   // output() is also redacted; raw process output is never persisted or reported.
   child.stdout.on('data', data => { rawOutput += stdoutDecoder.write(data); });
   child.stderr.on('data', data => { rawOutput += stderrDecoder.write(data); });
-  child.on('error', () => { child.spawnFailure = true; });
+  child.on('error', error => { child.spawnFailure = true; child.spawnError = error; });
   const done = new Promise(resolve => child.once('close', (code, signal) => {
     rawOutput += stdoutDecoder.end() + stderrDecoder.end();
     const output = redact();
@@ -124,9 +124,27 @@ export function startProcess(command, args, { cwd, env, log, secrets = [] }) {
 
 export async function command(command, args, options) {
   const process = startProcess(command, args, options);
-  const result = await process.done;
-  if (process.child.spawnFailure) throw new Blocked(`Required command unavailable: ${command.split('/').at(-1)}`);
-  if (result.code !== 0) throw Error(`${command.split('/').at(-1)} exited ${result.code ?? result.signal}; see stage log`);
+  let timedOut = false;
+  const timer = options.timeoutMs === undefined ? undefined : setTimeout(() => {
+    timedOut = true;
+    // Only this owned read-only probe client is stopped; never the database/server.
+    process.child.kill('SIGKILL');
+  }, options.timeoutMs);
+  const result = await process.done.finally(() => clearTimeout(timer));
+  if (timedOut) {
+    const error = new Error('Owned probe client exceeded its observation deadline', { cause: { signal: result.signal } });
+    error.commandFailure = { category: 'command-timeout', available: true }; throw error;
+  }
+  if (process.child.spawnFailure) {
+    const error = new Blocked(`Required command unavailable: ${command.split('/').at(-1)}`, { cause: process.child.spawnError });
+    error.commandFailure = { category: 'command-unavailable', available: false }; throw error;
+  }
+  if (result.code !== 0) {
+    const error = new Error(`${command.split('/').at(-1)} exited ${result.code ?? result.signal}; see stage log`,
+      { cause: { exitCode: result.code, signal: result.signal } });
+    error.commandFailure = { category: result.code === null ? 'command-signal' : 'command-exit', available: true, exitCode: result.code };
+    throw error;
+  }
   return result.output.trim();
 }
 
