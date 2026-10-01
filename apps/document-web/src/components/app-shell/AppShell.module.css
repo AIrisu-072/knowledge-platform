@@ -70,7 +70,7 @@
 }
 
 .navigationLink[aria-current='page'] {
-  background: var(--color-selected);
+  background: var(--color-surface-selected);
   color: var(--color-accent);
   font-weight: 600;
 }

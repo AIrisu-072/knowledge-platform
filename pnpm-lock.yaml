@@ -181,6 +181,9 @@ importers:
 
   apps/document-web:
     dependencies:
+      '@knowledge-platform/document-api-client':
+        specifier: workspace:*
+        version: link:../../packages/document-api-client
       '@tanstack/react-query':
         specifier: 5.104.0
         version: 5.104.0(react@19.3.0)

@@ -14,4 +14,4 @@ G7 order:
 3. Run focused Jest, TypeScript, Webpack production-build, and local dev-server smoke checks. G7 is complete only when its contracts pass and the frontend foundation builds.
 4. Proceed to G8 Mock 1–7 only after G7 is locally green. Per requester direction, defer hosted CI to the final exact-head G9 gate; do not run CI between G7/G8 tasks.
 
-License approval is limited to the exact resolved candidate lock recorded in Design Amendment 01. Do not add packages or change lock resolution without re-running the dependency inventory and obtaining any newly required individual approval. Do not merge or deploy the product implementation PR.
+License approval is limited to the third-party package/license inventory recorded in Design Amendment 01. A first-party workspace link is permitted only if it introduces no third-party package and the dependency license inventory remains unchanged. Any new third-party package or license identifier requires stopping for inventory and any newly required individual approval. Do not merge or deploy the product implementation PR.

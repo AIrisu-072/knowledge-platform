@@ -384,7 +384,7 @@ PR毎の永続保存を必須にはせず、release artifactでは生成可能�
 | General client state | TanStack Store | **POC REQUIRED** | MIT | framework-agnostic state boundary |
 | Workflow machine | XState | **DEFERRED** | MIT | complex workflow Featureのみ |
 | UI primitive | Base UI | **POC REQUIRED** | MIT | React Ariaと比較 |
-| UI primitive | React Aria Components | **POC REQUIRED** | Apache-2.0 | Base UIと比較 |
+| UI primitive | React Aria Components 1.21.1 | **SELECTED for Document GUI v0** | Apache-2.0 | focused qualification 6/6 PASS |
 | Form library | - | **DEFERRED** | - | Feature要件が出てから |
 | SSR/full-stack JS framework | Next.js / TanStack Start等 | **REJECTED v0** | varies | Rust Backendを唯一のserverとする |
 | Styling framework | Tailwind等 | **DEFERRED** | - | v0で必須にしない |

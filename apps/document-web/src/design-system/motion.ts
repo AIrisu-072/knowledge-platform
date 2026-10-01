@@ -12,9 +12,8 @@ export function resolveMotionDurationMs(duration: MotionDuration, reducedMotion:
 }
 
 export function contextPanelTransition(reducedMotion: boolean) {
-  const duration = resolveMotionDurationMs('spatial', reducedMotion) / 1000;
   return {
-    layout: { duration },
-    opacity: { duration },
+    layout: { duration: resolveMotionDurationMs('spatial', reducedMotion) / 1000 },
+    opacity: { duration: resolveMotionDurationMs('standard', reducedMotion) / 1000 },
   };
 }

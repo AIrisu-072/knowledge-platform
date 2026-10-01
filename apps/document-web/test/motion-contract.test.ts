@@ -11,7 +11,7 @@ test('motion durations match the design tokens and reduce to zero', async () => 
 
   const transition = contextPanelTransition(false);
   expect(transition.layout.duration).toBe(0.18);
-  expect(transition.opacity.duration).toBe(0.18);
+  expect(transition.opacity.duration).toBe(0.14);
   expect(contextPanelTransition(true).layout.duration).toBe(0);
   expect(contextPanelTransition(true).opacity.duration).toBe(0);
 });
