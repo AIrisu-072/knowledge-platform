@@ -207,6 +207,30 @@ jobs:
           pnpm install --frozen-lockfile --ignore-scripts
       - run: mise run document:mcp:test
 
+  document-scheduler:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: "2"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Install pinned Rust toolchain
+        run: mise install rust
+      - name: Install pinned PDFium for scheduler worker
+        run: |
+          pdfium_lib_dir="$(bash experiments/document-semantic-inspection/scripts/install-pdfium.sh)"
+          printf 'PDFIUM_DYNAMIC_LIB_PATH=%s\n' "${pdfium_lib_dir}" >> "${GITHUB_ENV}"
+      - name: Real separate-process scheduler acceptance
+        run: mise run document:scheduler:acceptance
+
   required-check:
     if: ${{ always() }}
     needs:
@@ -219,6 +243,7 @@ jobs:
       - container-build
       - document-poc-runtime
       - document-mcp
+      - document-scheduler
     runs-on: ubuntu-24.04
     steps:
       - name: Require every predecessor
@@ -232,8 +257,9 @@ jobs:
           CONTAINER_BUILD: ${{ needs.container-build.result }}
           DOCUMENT_POC_RUNTIME: ${{ needs.document-poc-runtime.result }}
           DOCUMENT_MCP: ${{ needs.document-mcp.result }}
+          DOCUMENT_SCHEDULER: ${{ needs.document-scheduler.result }}
         run: |
           set -eu
-          for result in "$POLICY" "$RUST_STATIC" "$RUST_TEST" "$SECURITY" "$PORTABILITY_MACOS" "$DSI_SEMANTIC_PARITY_MACOS" "$CONTAINER_BUILD" "$DOCUMENT_POC_RUNTIME" "$DOCUMENT_MCP"; do
+          for result in "$POLICY" "$RUST_STATIC" "$RUST_TEST" "$SECURITY" "$PORTABILITY_MACOS" "$DSI_SEMANTIC_PARITY_MACOS" "$CONTAINER_BUILD" "$DOCUMENT_POC_RUNTIME" "$DOCUMENT_MCP" "$DOCUMENT_SCHEDULER"; do
             test "$result" = success
           done

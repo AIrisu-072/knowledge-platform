@@ -53,7 +53,7 @@ export class EvidenceReport {
   constructor(directory, stages) {
     this.path = join(directory, 'report.json');
     this.data = { schemaVersion: 1, status: 'running', acceptanceQualified: false, startedAt: new Date().toISOString(),
-      scope: 'C1 R6 composition-root acceptance; scheduler R5 excluded and remains STOP',
+      scope: 'C1 R6 composition-root acceptance; scheduler R5 excluded; separate acceptance gate required',
       stages: stages.map(name => ({ name, status: 'not-run' })) };
   }
   async save() { await writeFile(this.path, JSON.stringify(this.data, null, 2) + '\n', { mode: 0o600 }); }

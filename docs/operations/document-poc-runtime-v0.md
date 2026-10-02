@@ -120,10 +120,39 @@ cleanup or deletion command.
 
 ## Scheduler and other boundaries
 
-The existing publication scheduler remains a separate process. Its PoC service-executor identity
-has not been approved, so scheduler startup wiring and scheduled-publication acceptance remain
-STOP. Do not select a scheduler identity, reuse an HTTP principal or add ACL authority by hand.
-Immediate human publication remains within the existing API.
+The existing `document-publication-scheduler` runs as a separate process. Its fixed executor
+attribution is provider `service`, principal `scheduler`. This is an audit label only: no
+credentials, authentication-provider implementation, groups, ACL grants, login or HTTP profile.
+Original `poc-human` / `poc-agent` requesters are re-resolved and current ACL is checked again.
+The static requester resolver is available only with explicit `KP_RUNTIME_MODE=poc`.
+
+After explicit migrate/bootstrap and with the same disposable DB and FileSystemStorage:
+
+```sh
+KP_RUNTIME_MODE=poc \
+DOCUMENT_DATABASE_URL="$KP_DATABASE_URL" \
+DOCUMENT_STORAGE_ROOT="$KP_STORAGE_ROOT" \
+DSI_WORKER_EXECUTABLE="$KP_DSI_WORKER" \
+DSI_PDFIUM_RUNTIME_DIR="$KP_DSI_PDFIUM_RUNTIME_DIR" \
+DOCUMENT_PUBLICATION_POLL_SECONDS=5 \
+cargo run --locked -p document-publication-scheduler
+```
+
+The scheduler retains its existing environment variable names and 1–60-second polling bounds.
+It does not migrate/bootstrap or acquire the executor's permissions. SIGINT/SIGTERM stops
+polling after the current attempt; the next process resumes persisted pending reservations.
+A revoked/unresolvable requester cannot publish. Unknown/production runtime modes fail closed.
+
+Run `mise run document:scheduler:acceptance` on a qualified Linux host. It builds the production
+DSI worker and starts real scheduler subprocesses against isolated PostgreSQL18.6 (Docker by
+default; an explicit `TEST_DATABASE_URL` may select an owned disposable cluster). The canary
+covers future publication, stop/restart, revocation, unknown and Agent requesters, separate
+success/terminal audit identity, and concurrent/restarted single execution. The exact-head hosted `document-scheduler` job runs this command and is a required-check dependency.
+This is separate from `document:poc:runtime`; both gates are required for C1/C3. A missing sandbox is a failed
+qualification prerequisite, never a skipped/pass result or permission to weaken worker isolation.
+
+Local focused identity/real-DB checks are separate from full real-process qualification; see
+[capability status](../superpowers/execution/document-poc-runtime-v0-status.md) for current evidence.
 
 No production AD/WIA/Kerberos/Entra/biometric identity, TLS/DNS/HA/backup/deployment, Agent write
 tools, raw-text/RAG endpoint, Search integration, merge or deployment is included.

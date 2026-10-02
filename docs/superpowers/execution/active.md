@@ -1,5 +1,34 @@
 # Active Execution Pointer
 
+## Current checkpoint — Final R2 GUI/scheduler repairs integrated into A2, 2026-10-02 UTC
+
+- Status: **ACTIVE — AFFECTED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-r5-integrated` combines preserved A2 `6665c17e6fed2129c60f739faaa8bc0fb3089dc3` with reviewed R2 `5b8e967badd9303fe1d7b446504be57b99b1c42c`; no C3 implementation is included.
+- Active [C2 Status](document-agent-tool-adapter-v0-status.md), approved [Design](../specs/2026-10-01-document-agent-tool-adapter-v0-design.md), [Plan](../plans/2026-10-01-document-agent-tool-adapter-v0-implementation.md), [Authority](../specs/2026-10-01-document-agent-tool-adapter-v0-approval.md), and [C1 runtime evidence](document-poc-runtime-v0-status.md) remain authoritative for their bounded scopes.
+- Exact R2 GUI/diagnostic source is retained alongside the scheduler stack repair. A2 MCP/runtime provenance, both required-check dependencies and exact scanner exclusions remain intact. Fresh A2 Node51/GUI41/types/schema/actionlint/diff checks pass; no unchanged Rust test was repeated.
+- Next exact action: parent publishes final R2/A2 once, verifies exact trees/heads, then inspects all required actual hosted gates. Prior GUI timeout and scheduler failure are not yet superseded by real acceptance GREEN; do not claim C1/C2/C3 completion, merge to main or deployment.
+
+---
+
+## Current checkpoint — Reviewed A2 + R5 stack repair ready for hosted verification, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED INTEGRATION VERIFIED / REAL ACCEPTANCE PENDING**. Isolated `feat/document-a2-r5-integrated` preserves A2 integration `2083801f258ef4fd222bac848d4f9f753134632b` and adds reviewed R2 test-only repair `7f39c5589fcf64500c30b37c7bdf31b42595ff22`. No C3 implementation is included.
+- Active Capability Status: [Document Agent Tool Adapter v0](document-agent-tool-adapter-v0-status.md), with existing approved C2 [Design](../specs/2026-10-01-document-agent-tool-adapter-v0-design.md), [Plan](../plans/2026-10-01-document-agent-tool-adapter-v0-implementation.md) and [Authority](../specs/2026-10-01-document-agent-tool-adapter-v0-approval.md). [C1 Status](document-poc-runtime-v0-status.md) records the separate bounded scheduler decision and stack-repair evidence.
+- The nested test-only reservation future is heap-boxed; fixed stderr labels survive process abort. Combined Node50/canary-helper5/actionlint/diff checks pass. MCP/runtime provenance, exact-head MCP and scheduler required gates, browser diagnostics and scanner exclusions are preserved. Earlier broader scoped checks remain recorded for unchanged source.
+- The old hosted scheduler head failed; corrected full local acceptance still stops at mandatory SandboxUnavailable. No full scheduler/shared-runtime/C2/C3 completion is claimed. No sandbox, stack limit, timeout or production-semantic change was made.
+- Next exact action: parent publishes the reviewed R2 repair and combined A2 candidate, verifies exact remote trees/heads and observes all required hosted gates. No merge to main or deployment. The investigation-hold checkpoints below are retained as historical evidence.
+
+---
+
+## Current checkpoint — A2 integrates reviewed R5 + GUI transport; scheduler canary diagnosis, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE VERIFICATION PASS / HOSTED ACCEPTANCE INCOMPLETE**. Isolated branch `feat/document-a2-r5-integrated` combines A2 `3a28576395fdc04928a7f19ea387f1a8a4b17dca` and R2 `53f9cbbb877e18a85685c3ea95308cd55e513998`; no C3 implementation is included.
+- Active Capability Status: [Document Agent Tool Adapter v0](document-agent-tool-adapter-v0-status.md). Approved [C2 Design](../specs/2026-10-01-document-agent-tool-adapter-v0-design.md), [Plan](../plans/2026-10-01-document-agent-tool-adapter-v0-implementation.md), [Authority](../specs/2026-10-01-document-agent-tool-adapter-v0-approval.md). R5 bounded identity decision and implementation evidence remain in [C1 Status](document-poc-runtime-v0-status.md).
+- Independent integration review preserved exact A2 MCP/runtime/provenance, R2 scheduler/sort, scanner exclusions and browser diagnostics. Both MCP and scheduler jobs remain required-check dependencies. Fresh scoped Node 50, MCP 29, GUI 38, client 6, API 12 and Rust 13 tests pass, with types/schema/API lint/build/fmt/architecture/actionlint checks; see Capability Status for limits.
+- R5 naming is resolved as audit-only `service` / `scheduler`; no identity privilege was added. Hosted R2 scheduler job `110660162596` at remote `556449f0245ff9e767b4a83cdd04ccb1160c2489` failed with a test-thread stack overflow after compilation. R5 acceptance is not green; the nested failing stage is still under diagnosis. Prior scheduler-selection STOP entries below are historical.
+- Next exact action: retain this A2 candidate while the separate R2-based canary repair is diagnosed, tested and reviewed without any guard weakening; integrate the approved correction, then parent publishes and verifies exact-head CI. No merge to main or deployment. C0/C1/C2/C3 completion is not claimed.
+
+---
+
 ## Current checkpoint — Document Agent Tool Adapter v0 A2 local GREEN / hosted acceptance pending, 2026-10-01 UTC
 
 - Status: **ACTIVE — C2 IMPLEMENTATION LOCALLY VERIFIED / REAL-RUNTIME ACCEPTANCE PENDING**. No merge or deployment. C1 scheduler identity remains STOP; C3 overall evaluation is not complete.

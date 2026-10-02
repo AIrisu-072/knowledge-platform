@@ -157,3 +157,24 @@ test('startup attachment emits only bounded fixed categories and numbers and is 
   const oversized={...attachment,body:'A'.repeat(9000)};
   assert.equal(browserDiagnostics(report([{status:'failed',attachments:[oversized]}])).tests[0].startup,undefined);
 });
+
+test('action snapshots distinguish unavailable DOM and disclose only fixed counts and API route families', () => {
+  const secret = 'https://credential@private.example/path';
+  const startup = { domObservation: 'unavailable', apiEvents: [
+    { route: 'folder-children', status: 200, url: secret }, { route: secret, status: 999 }],
+    uiSnapshots: [{ stage: 'before-folder-click', availability: 'available', viewportWidth: 1280,
+      viewportHeight: 720, rootChildren: 1, folderRegionCount: 1, sharedFolderButtonCount: 1, tableCount: 1,
+      alertCount: 0, inViewportCount: 0, receivesPointerCount: 0, disabledCount: 0, hiddenAncestorCount: 0,
+      secret }, { stage: 'test-end', availability: 'unavailable', rootChildren: 999, secret },
+      { stage: secret, availability: 'available' }] };
+  const attachment = { name: 'runtime-startup.json', contentType: 'application/json', body: Buffer.from(JSON.stringify(startup)).toString('base64') };
+  const result = browserDiagnostics(report([{ status: 'timedOut', attachments: [attachment] }]));
+  const evidence = result.tests[0].startup;
+  assert.equal(evidence.domObservation, 'unavailable');
+  assert.deepEqual(evidence.apiEvents, [{ route: 'folder-children', status: 200 }, { route: 'other', status: 0 }]);
+  assert.equal(evidence.uiSnapshots.length, 2);
+  assert.equal(evidence.uiSnapshots[0].sharedFolderButtonCount, 1);
+  assert.deepEqual(evidence.uiSnapshots[1], { stage: 'test-end', availability: 'unavailable' });
+  assert.ok(!JSON.stringify(result).includes('private'));
+  assert.deepEqual(sanitizeBrowserDiagnostics(result), result);
+});
