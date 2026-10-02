@@ -46,6 +46,15 @@ async function payload<T>(request: Promise<{ data: T }>): Promise<T> {
   return (await request).data;
 }
 
+function apiSort(sort: string | undefined): string | undefined {
+  switch (sort) {
+    case 'published_at_desc': return 'publishedAtDesc';
+    case 'created_at_desc': return 'createdAtDesc';
+    case 'title_asc': return 'titleAsc';
+    default: return sort;
+  }
+}
+
 export const documentApi = {
   getSession(): Promise<ModelsSession> {
     return payload(getSession(data));
@@ -61,7 +70,7 @@ export const documentApi = {
     }));
   },
   listDocuments(query: Parameters<typeof listDocuments>[0]['query']): Promise<DocumentList> {
-    return payload(listDocuments({ ...data, query }));
+    return payload(listDocuments({ ...data, query: { ...query, sort: apiSort(query.sort) } }));
   },
   getDocument(documentId: string, view: Exclude<View, 'history'> = 'published'): Promise<DocumentDetail> {
     return payload(getDocument({ ...data, path: { documentId }, query: { view } }));

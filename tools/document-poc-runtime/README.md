@@ -173,8 +173,9 @@ prerequisites; the full GUI/PDF/shared-state/restart journey has **not run local
 Do not retry denied sandbox controls or present fake/fixture evidence as GREEN.
 The hosted normal Linux job must establish the actual result.
 
-Scheduler Task R5 remains explicitly STOP pending its separate identity decision.
-This harness does not start or change the scheduler, add Search, introduce
+Scheduler Task R5 uses fixed `service` / `scheduler` audit attribution and has the separate
+`mise run document:scheduler:acceptance` gate in the required `document-scheduler` CI job. This R6 harness does not qualify or start the scheduler.
+It does not add Search, introduce
 production identity, deploy, or create persistent access. The actual-process in-flight and
 stalled-stream cases above must pass before this harness qualifies R6. They observe
 drain while clients stall and completion after release, preserving the approved

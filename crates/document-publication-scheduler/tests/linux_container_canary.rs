@@ -1,29 +1,28 @@
 #![cfg(target_os = "linux")]
 
-use std::{io::Cursor, path::PathBuf, sync::Arc};
+#[path = "support/database.rs"]
+mod database;
 
+use database::TestDatabase;
 use document_application::{
-    BootstrapRootPolicy, Clock, CreateDocumentCommand, DocumentService, DocumentVersionService,
-    IdGenerator, IdentityContextResolver, IdentityResolutionError, InvocationKind,
-    PublicationScheduleRepository, PublishOperationId, SchedulePublishCommand,
-    VerifiedActorContext,
+    AccessPolicyService, BootstrapRootPolicy, Clock, CreateDocumentCommand, DocumentService,
+    DocumentVersionService, IdGenerator, IdentityContextResolver, ManagementCommand,
+    ManagementOperationId, PublicationScheduleRepository, PublishOperationId,
+    SchedulePublishCommand,
 };
 use document_domain::{
-    Action, FolderId, MediaType, Metadata, PolicyGrant, PolicySubject, PolicySubjectKind,
-    PrincipalRef,
+    Action, DocumentId, DocumentVersionId, FolderId, MediaType, Metadata, PolicyGrant, PolicyMode,
+    PolicySubject, PolicySubjectKind, PolicyTarget, PrincipalRef,
 };
-use document_publication_scheduler::DueScheduler;
+use document_publication_scheduler::{StaticRequesterResolver, probe_mandatory_sandbox};
 use document_repository_postgres::{PostgresDocumentRepository, SYSTEM_ROOT_FOLDER_ID, migrate};
 use document_semantic_inspection_runner::{RunnerConfig, RunnerInspectionExecutor};
 use document_storage_fs::FileSystemStorage;
-use sqlx::postgres::PgPoolOptions;
-use tempfile::TempDir;
-use testcontainers::{
-    GenericImage, ImageExt,
-    core::{IntoContainerPort, WaitFor},
-    runners::AsyncRunner,
-};
+use sqlx::{ConnectOptions, PgPool, postgres::PgConnectOptions};
+use std::str::FromStr;
+use std::{io::Cursor, path::PathBuf, process::Stdio, sync::Arc, time::Duration};
 use time::OffsetDateTime;
+use tokio::process::{Child, Command};
 use uuid::Uuid;
 
 struct SystemClock;
@@ -38,158 +37,388 @@ impl IdGenerator for UuidV7Ids {
         Uuid::now_v7()
     }
 }
-
-struct CanaryResolver;
-impl IdentityContextResolver for CanaryResolver {
-    async fn resolve(
-        &self,
-        principal: &PrincipalRef,
-    ) -> Result<VerifiedActorContext, IdentityResolutionError> {
-        let subject = PolicySubject::new(
-            PolicySubjectKind::Principal,
-            principal.identity_provider(),
-            principal.principal_id(),
-        )
-        .map_err(|_| IdentityResolutionError::InvalidIdentity)?;
-        VerifiedActorContext::from_trusted_adapter(
-            principal.clone(),
-            vec![subject],
-            OffsetDateTime::now_utc() + time::Duration::hours(1),
-            InvocationKind::HumanInteractive,
-            None,
-        )
-        .map_err(|_| IdentityResolutionError::InvalidIdentity)
-    }
-}
-
-#[tokio::test]
-#[ignore = "explicit Linux container canary with Docker and DSI_WORKER_BIN"]
-async fn scheduled_initial_publication_runs_with_postgres_file_storage_and_sandbox() {
-    let worker =
-        PathBuf::from(std::env::var_os("DSI_WORKER_BIN").expect("DSI_WORKER_BIN is required"));
-    let postgres = GenericImage::new("postgres", "18.6-bookworm")
-        .with_exposed_port(5432.tcp())
-        .with_wait_for(WaitFor::message_on_stderr(
-            "database system is ready to accept connections",
-        ))
-        .with_env_var("POSTGRES_USER", "postgres")
-        .with_env_var("POSTGRES_PASSWORD", "postgres")
-        .with_env_var("POSTGRES_DB", "scheduler_canary")
-        .start()
-        .await
-        .unwrap();
-    let host =
-        std::env::var("TESTCONTAINERS_HOST_OVERRIDE").unwrap_or_else(|_| "127.0.0.1".to_owned());
-    let port = postgres.get_host_port_ipv4(5432.tcp()).await.unwrap();
-    let url = format!("postgres://postgres:postgres@{host}:{port}/scheduler_canary");
-    let pool = PgPoolOptions::new()
-        .max_connections(8)
-        .connect(&url)
-        .await
-        .unwrap();
-    migrate(&pool).await.unwrap();
-    let root = TempDir::new().unwrap();
-    let storage = Arc::new(FileSystemStorage::new(root.path()));
-    let repository = Arc::new(PostgresDocumentRepository::new(pool.clone()));
-    let executor = Arc::new(RunnerInspectionExecutor::new(RunnerConfig::new(&worker)).unwrap());
-    let ids = Arc::new(UuidV7Ids);
-    let clock = Arc::new(SystemClock);
-    let actor = PrincipalRef::new("test", "scheduler-canary").unwrap();
-    let actor_context = CanaryResolver.resolve(&actor).await.unwrap();
-    let grants = vec![
+fn grants(actions: impl IntoIterator<Item = Action>) -> Vec<PolicyGrant> {
+    vec![
         PolicyGrant::new(
-            PolicySubject::new(PolicySubjectKind::Principal, "test", "scheduler-canary").unwrap(),
-            [
-                Action::Read,
-                Action::Write,
-                Action::Publish,
-                Action::Administer,
-            ],
+            PolicySubject::new(PolicySubjectKind::Group, "poc", "poc-users").unwrap(),
+            actions,
         )
         .unwrap(),
-    ];
-    PostgresDocumentRepository::new_with_bootstrap_actor(pool.clone(), actor.clone())
-        .initialize_root_policy(&actor_context, grants)
-        .await
-        .unwrap();
-    let document_service = DocumentService::new(
-        ids.clone(),
-        clock.clone(),
-        storage.clone(),
-        repository.clone(),
-    );
-    let created = document_service
+    ]
+}
+
+#[derive(Clone, Copy)]
+struct Reservation {
+    document: DocumentId,
+    version: DocumentVersionId,
+    operation: PublishOperationId,
+}
+
+type Versions = DocumentVersionService<
+    UuidV7Ids,
+    SystemClock,
+    FileSystemStorage,
+    RunnerInspectionExecutor,
+    PostgresDocumentRepository,
+>;
+type Documents =
+    DocumentService<UuidV7Ids, SystemClock, FileSystemStorage, PostgresDocumentRepository>;
+
+async fn reserve(documents: &Documents, versions: &Versions, title: &str) -> Reservation {
+    let human = PrincipalRef::new("poc", "poc-human").unwrap();
+    let created = documents
         .create_document(CreateDocumentCommand {
             folder_id: FolderId::from_uuid(SYSTEM_ROOT_FOLDER_ID),
-            title: "Scheduler canary".to_owned(),
+            title: title.into(),
             document_metadata: Metadata::default(),
             version_metadata: Metadata::default(),
-            principal: actor.clone(),
-            original_filename: "canary.txt".to_owned(),
+            principal: human.clone(),
+            original_filename: "synthetic.txt".into(),
             media_type: MediaType::new("text/plain").unwrap(),
-            content: Box::pin(Cursor::new(
-                b"Scheduled initial publication canary.\n".to_vec(),
-            )),
+            content: Box::pin(Cursor::new(b"Synthetic scheduled publication.\n".to_vec())),
         })
         .await
         .unwrap();
-    let service = DocumentVersionService::new(ids, clock, storage, executor, repository.clone());
-    let publish_id = PublishOperationId::try_from_uuid(Uuid::now_v7()).unwrap();
-    service
+    let operation = PublishOperationId::try_from_uuid(Uuid::now_v7()).unwrap();
+    versions
         .schedule_publish(
             SchedulePublishCommand::new(
-                publish_id,
+                operation,
                 created.document_id(),
                 created.document_version_id(),
                 0,
-                actor,
+                human,
                 OffsetDateTime::now_utc() + time::Duration::hours(1),
             )
             .unwrap(),
         )
         .await
         .unwrap();
-    let due: OffsetDateTime = sqlx::query_scalar("SELECT now() - INTERVAL '1 second'")
-        .fetch_one(&pool)
+    Reservation {
+        document: created.document_id(),
+        version: created.document_version_id(),
+        operation,
+    }
+}
+
+// Test-only clock advancement in the owned disposable DB. Business publication
+// still runs only through the production scheduler/Application/Repository path.
+async fn make_due(pool: &PgPool, reservation: Reservation) {
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("UPDATE document_publish_schedules SET scheduled_publish_at = now() - INTERVAL '1 second' WHERE publish_operation_id = $1")
+        .bind(reservation.operation.as_uuid()).execute(&mut *tx).await.unwrap();
+    sqlx::query("UPDATE document_versions SET scheduled_publish_at = now() - INTERVAL '1 second' WHERE document_version_id = $1")
+        .bind(reservation.version.as_uuid()).execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
+}
+
+fn scheduler_database_url(options: &PgConnectOptions, application: &str) -> String {
+    // SQLx 0.9's lossy serializer omits application_name; preserve the test's
+    // process tag explicitly in the URL passed across the executable boundary.
+    let mut url = options.to_url_lossy();
+    url.query_pairs_mut()
+        .append_pair("application_name", application);
+    url.to_string()
+}
+
+#[test]
+fn subprocess_connection_preserves_distinct_application_names() {
+    let options = PgConnectOptions::new()
+        .host("127.0.0.1")
+        .username("synthetic")
+        .database("synthetic");
+    for application in ["r5-first", "r5-second"] {
+        let parsed =
+            PgConnectOptions::from_str(&scheduler_database_url(&options, application)).unwrap();
+        assert_eq!(parsed.get_application_name(), Some(application));
+    }
+}
+
+fn start(
+    pool: &PgPool,
+    storage: &std::path::Path,
+    worker: &std::path::Path,
+    application: &str,
+) -> Child {
+    Command::new(env!("CARGO_BIN_EXE_document-publication-scheduler"))
+        .env_clear()
+        .env("KP_RUNTIME_MODE", "poc")
+        .env(
+            "DOCUMENT_DATABASE_URL",
+            scheduler_database_url(pool.connect_options().as_ref(), application),
+        )
+        .env("DOCUMENT_STORAGE_ROOT", storage)
+        .env("DSI_WORKER_EXECUTABLE", worker)
+        .env("DOCUMENT_PUBLICATION_POLL_SECONDS", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap()
+}
+
+async fn stop(child: &mut Child) {
+    let id = child.id().expect("owned scheduler must be running");
+    assert!(
+        Command::new("kill")
+            .arg("-TERM")
+            .arg(id.to_string())
+            .status()
+            .await
+            .unwrap()
+            .success()
+    );
+    let status = tokio::time::timeout(Duration::from_secs(15), child.wait())
         .await
+        .expect("scheduler did not drain in the test observation window")
         .unwrap();
-    sqlx::query("UPDATE document_publish_schedules SET scheduled_publish_at = $1 WHERE publish_operation_id = $2")
-        .bind(due).bind(publish_id.as_uuid()).execute(&pool).await.unwrap();
-    sqlx::query(
-        "UPDATE document_versions SET scheduled_publish_at = $1 WHERE document_version_id = $2",
-    )
-    .bind(due)
-    .bind(created.document_version_id().as_uuid())
-    .execute(&pool)
-    .await
-    .unwrap();
-    let scheduler = DueScheduler::connect_with_resolver(
-        &url,
-        root.path(),
-        &worker,
-        None,
-        Arc::new(CanaryResolver),
-        PrincipalRef::new("service", "publication-scheduler").unwrap(),
-    )
-    .await
-    .unwrap();
-    assert_eq!(scheduler.poll_once().await.unwrap(), 1);
-    assert_eq!(scheduler.poll_once().await.unwrap(), 0);
-    let status = repository.get_schedule(publish_id).await.unwrap().unwrap();
-    assert_eq!(status.status, "PUBLISHED");
-    let current: Option<Uuid> =
-        sqlx::query_scalar("SELECT current_version_id FROM documents WHERE document_id = $1")
-            .bind(created.document_id().as_uuid())
-            .fetch_one(&pool)
+    assert!(
+        status.success(),
+        "scheduler did not exit successfully on SIGTERM"
+    );
+}
+
+async fn await_status(
+    pool: &PgPool,
+    reservation: Reservation,
+    expected: &str,
+    children: &mut [&mut Child],
+) {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            for child in &mut *children {
+                assert!(
+                    child.try_wait().unwrap().is_none(),
+                    "scheduler exited before the expected schedule status"
+                );
+            }
+            let status: String = sqlx::query_scalar(
+                "SELECT status FROM document_publish_schedules WHERE publish_operation_id = $1",
+            )
+            .bind(reservation.operation.as_uuid())
+            .fetch_one(pool)
             .await
             .unwrap();
-    assert_eq!(current, Some(created.document_version_id().as_uuid()));
-    let ledger: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM document_publish_operations WHERE publish_operation_id = $1",
-    )
-    .bind(publish_id.as_uuid())
-    .fetch_one(&pool)
+            if status == expected {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
     .await
-    .unwrap();
-    assert_eq!(ledger, 1);
+    .expect("schedule did not reach expected status within the observation window");
+}
+
+async fn publication_counts(pool: &PgPool, reservation: Reservation) -> (i64, i64, i64) {
+    sqlx::query_as("SELECT (SELECT count(*) FROM document_publish_operations WHERE publish_operation_id = $1), (SELECT count(*) FROM audit_outbox_events WHERE resource_id = $2 AND event_type = 'document.version.published'), (SELECT count(*) FROM document_revisions WHERE document_id = $2)")
+        .bind(reservation.operation.as_uuid()).bind(reservation.document.as_uuid()).fetch_one(pool).await.unwrap()
+}
+
+#[tokio::test]
+#[ignore = "explicit real PostgreSQL, production DSI sandbox and separate scheduler process acceptance"]
+async fn future_stop_restart_revocation_and_concurrent_processes_preserve_single_publication() {
+    canary().await;
+}
+
+async fn canary() {
+    // Keep the large test-only scenario state on the heap. Do not expand the
+    // test/production stack limit or change any worker isolation setting.
+    Box::pin(run_process_canary()).await;
+}
+
+#[test]
+fn process_canary_future_has_a_small_test_stack_frame() {
+    fn frame_size<F>(_constructor: impl FnOnce() -> F) -> usize {
+        std::mem::size_of::<F>()
+    }
+    let size = frame_size(canary);
+    assert!(
+        size < 64 * 1024,
+        "canary future frame is {size} bytes; keep below one thirty-second of the default 2MiB test stack"
+    );
+}
+
+async fn run_process_canary() {
+    let worker =
+        PathBuf::from(std::env::var_os("DSI_WORKER_BIN").expect("DSI_WORKER_BIN is required"));
+    let database = TestDatabase::new().await;
+    let pool = &database.pool;
+    migrate(pool).await.unwrap();
+    let storage_root = tempfile::tempdir().unwrap();
+    let storage = Arc::new(FileSystemStorage::new(storage_root.path()));
+    let repository = Arc::new(PostgresDocumentRepository::new(pool.clone()));
+    let executor = Arc::new(RunnerInspectionExecutor::new(RunnerConfig::new(&worker)).unwrap());
+    probe_mandatory_sandbox(&executor).await.expect(
+        "mandatory production sandbox must pass; no fake/skip/fallback qualifies acceptance",
+    );
+    let resolver = StaticRequesterResolver::for_runtime_mode("poc").unwrap();
+    let human = PrincipalRef::new("poc", "poc-human").unwrap();
+    let human_context = resolver.resolve(&human).await.unwrap();
+    let mut root_grants = grants([
+        Action::Read,
+        Action::ReadHistory,
+        Action::Write,
+        Action::Publish,
+        Action::Administer,
+    ]);
+    root_grants.push(
+        PolicyGrant::new(
+            PolicySubject::new(PolicySubjectKind::Group, "poc", "poc-agents").unwrap(),
+            [Action::Read, Action::ReadHistory],
+        )
+        .unwrap(),
+    );
+    PostgresDocumentRepository::new_with_bootstrap_actor(pool.clone(), human)
+        .initialize_root_policy(&human_context, root_grants)
+        .await
+        .unwrap();
+    let ids = Arc::new(UuidV7Ids);
+    let clock = Arc::new(SystemClock);
+    let documents = DocumentService::new(
+        ids.clone(),
+        clock.clone(),
+        storage.clone(),
+        repository.clone(),
+    );
+    let versions = DocumentVersionService::new(ids, clock, storage, executor, repository.clone());
+    let warmup = reserve(&documents, &versions, "Synthetic ready proof").await;
+    let future = reserve(&documents, &versions, "Synthetic future publication").await;
+    let revoked = reserve(&documents, &versions, "Synthetic revoked publication").await;
+    let unknown = reserve(&documents, &versions, "Synthetic unresolvable requester").await;
+    let agent = reserve(&documents, &versions, "Synthetic agent requester denial").await;
+    AccessPolicyService::new(repository.clone())
+        .set_access_policy(
+            &human_context,
+            ManagementCommand::SetAccessPolicy {
+                operation_id: ManagementOperationId::try_from_uuid(Uuid::now_v7()).unwrap(),
+                target: PolicyTarget::Document(revoked.document),
+                expected_policy_revision: 0,
+                mode: PolicyMode::Explicit(grants([Action::Read])),
+                reason: "Synthetic revoke before due".into(),
+            },
+        )
+        .await
+        .unwrap();
+    // Fault injection only: an original requester no longer resolvable by this runtime.
+    sqlx::query("UPDATE document_publish_schedules SET actor_principal_id = 'missing-requester' WHERE publish_operation_id = $1")
+        .bind(unknown.operation.as_uuid()).execute(pool).await.unwrap();
+    sqlx::query("UPDATE document_publish_schedules SET actor_principal_id = 'poc-agent' WHERE publish_operation_id = $1")
+        .bind(agent.operation.as_uuid()).execute(pool).await.unwrap();
+    make_due(pool, warmup).await;
+    let mut first = start(pool, storage_root.path(), &worker, "r5-first");
+    // A committed warmup proves the real main passed preflight and polled. A
+    // fixed sleep or merely alive PID would not prove process startup.
+    await_status(pool, warmup, "PUBLISHED", &mut [&mut first]).await;
+    assert_eq!(
+        repository
+            .get_schedule(future.operation)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        "PENDING"
+    );
+    assert_eq!(publication_counts(pool, future).await, (0, 0, 0));
+    stop(&mut first).await;
+    for reservation in [future, revoked, unknown, agent] {
+        make_due(pool, reservation).await;
+    }
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    assert_eq!(publication_counts(pool, future).await, (0, 0, 0));
+    assert_eq!(
+        repository
+            .get_schedule(future.operation)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        "PENDING"
+    );
+    // Hold exactly the due document's mutation lock. Both owned child sessions
+    // must reach blocked DB work before release, proving real contenders rather
+    // than treating two alive/startup PIDs as concurrency evidence.
+    let mut barrier = pool.begin().await.unwrap();
+    sqlx::query("SELECT document_id FROM documents WHERE document_id = $1 FOR UPDATE")
+        .bind(future.document.as_uuid())
+        .fetch_one(&mut *barrier)
+        .await
+        .unwrap();
+    let mut first = start(pool, storage_root.path(), &worker, "r5-first");
+    let mut second = start(pool, storage_root.path(), &worker, "r5-second");
+    tokio::time::timeout(Duration::from_secs(30), async {
+    loop {
+        assert!(first.try_wait().unwrap().is_none() && second.try_wait().unwrap().is_none(), "a contender exited during startup");
+        let waiting: i64 = sqlx::query_scalar("SELECT count(DISTINCT application_name) FROM pg_stat_activity WHERE datname = current_database() AND application_name IN ('r5-first', 'r5-second') AND wait_event_type = 'Lock'")
+            .fetch_one(pool).await.unwrap();
+        if waiting == 2 { break; }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    }).await.expect("both scheduler processes must contend before the row-lock barrier is released");
+    barrier.commit().await.unwrap();
+    await_status(pool, future, "PUBLISHED", &mut [&mut first, &mut second]).await;
+    await_status(pool, revoked, "TERMINAL", &mut [&mut first, &mut second]).await;
+    await_status(pool, unknown, "TERMINAL", &mut [&mut first, &mut second]).await;
+    await_status(pool, agent, "TERMINAL", &mut [&mut first, &mut second]).await;
+    assert_eq!(publication_counts(pool, agent).await, (0, 0, 0));
+    assert_eq!(publication_counts(pool, future).await, (1, 1, 1));
+    assert_eq!(publication_counts(pool, revoked).await, (0, 0, 0));
+    assert_eq!(publication_counts(pool, unknown).await, (0, 0, 0));
+    let identity: (String, String, String, String) = sqlx::query_as("SELECT actor_identity_provider, actor_principal_id, data->'serviceExecutor'->>'identityProvider', data->'serviceExecutor'->>'principalId' FROM audit_outbox_events WHERE resource_id = $1 AND event_type = 'document.version.published'")
+        .bind(future.document.as_uuid()).fetch_one(pool).await.unwrap();
+    assert_eq!(
+        identity,
+        (
+            "poc".into(),
+            "poc-human".into(),
+            "service".into(),
+            "scheduler".into()
+        )
+    );
+    let reasons: Vec<String> = sqlx::query_scalar("SELECT terminal_reason FROM document_publish_schedules WHERE publish_operation_id IN ($1, $2) ORDER BY terminal_reason")
+        .bind(revoked.operation.as_uuid()).bind(unknown.operation.as_uuid()).fetch_all(pool).await.unwrap();
+    assert_eq!(reasons, ["authorization_revoked", "identity_invalid"]);
+    for (reservation, requester, reason) in [
+        (revoked, "poc-human", "authorization_revoked"),
+        (unknown, "missing-requester", "identity_invalid"),
+        (agent, "poc-agent", "authorization_revoked"),
+    ] {
+        let terminal: (String, String, String, String, String) = sqlx::query_as("SELECT actor_identity_provider, actor_principal_id, data->'serviceExecutor'->>'identityProvider', data->'serviceExecutor'->>'principalId', data->>'terminalReason' FROM audit_outbox_events WHERE resource_id = $1 AND event_type = 'document.version.publication.terminal'")
+            .bind(reservation.document.as_uuid()).fetch_one(pool).await.unwrap();
+        assert_eq!(
+            terminal,
+            (
+                "poc".into(),
+                requester.into(),
+                "service".into(),
+                "scheduler".into(),
+                reason.into()
+            )
+        );
+        let current: Option<Uuid> =
+            sqlx::query_scalar("SELECT current_version_id FROM documents WHERE document_id = $1")
+                .bind(reservation.document.as_uuid())
+                .fetch_one(pool)
+                .await
+                .unwrap();
+        assert_eq!(current, None);
+    }
+
+    let current: Option<Uuid> =
+        sqlx::query_scalar("SELECT current_version_id FROM documents WHERE document_id = $1")
+            .bind(future.document.as_uuid())
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    assert_eq!(current, Some(future.version.as_uuid()));
+    stop(&mut first).await;
+    stop(&mut second).await;
+    let mut restarted = start(pool, storage_root.path(), &worker, "r5-restarted");
+    // Fresh work proves the restarted process actually polls before checking replay.
+    let after_restart = reserve(&documents, &versions, "Synthetic second restart proof").await;
+    make_due(pool, after_restart).await;
+    await_status(pool, after_restart, "PUBLISHED", &mut [&mut restarted]).await;
+    assert_eq!(publication_counts(pool, future).await, (1, 1, 1));
+    stop(&mut restarted).await;
+    database.close().await;
 }

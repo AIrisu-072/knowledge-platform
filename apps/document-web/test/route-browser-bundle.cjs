@@ -13,11 +13,12 @@ const config = configure({}, { mode: 'production' });
 config.entry = {
   RouteState: resolve(__dirname, '../src/application/search-state.ts'),
   ApiClient: resolve(__dirname, '../../../packages/document-api-client/src/index.ts'),
+  GuiApi: resolve(__dirname, '../src/api/document-api.ts'),
 };
 config.output = { ...config.output, path: directory, filename: '[name].js', library: { name: '[name]', type: 'var' } };
 const compiler = webpack(config);
 compiler.run((error, stats) => {
-  compiler.close(closeError => {
+  compiler.close(async closeError => {
     try {
       if (error || closeError) throw error || closeError;
       assert.ok(stats && !stats.hasErrors(), stats?.toString({ all: false, errors: true }));
@@ -37,6 +38,24 @@ compiler.run((error, stats) => {
       vm.runInContext(readFileSync(join(directory, 'ApiClient.js'), 'utf8'), context, { timeout: 5000 });
       assert.equal(vm.runInContext('typeof ApiClient.getSession', context), 'function');
       assert.equal(vm.runInContext('typeof ApiClient.BinaryTransportBridge', context), 'function');
+      const requests = [];
+      // A browser Request resolves relative URLs against the document origin.
+      // Capture real generated-client requests without making network calls.
+      context.Request = class extends Request {
+        constructor(input, init) { super(typeof input === 'string' ? new URL(input, 'http://example.invalid') : input, init); }
+      };
+      context.fetch = async request => {
+        requests.push(request);
+        return new Response(JSON.stringify({ view: 'published', items: [], nextCursor: null }), { headers: { 'content-type': 'application/json' } });
+      };
+      vm.runInContext(readFileSync(join(directory, 'GuiApi.js'), 'utf8'), context, { timeout: 5000 });
+      for (const [guiSort, apiSort] of [['published_at_desc', 'publishedAtDesc'], ['created_at_desc', 'createdAtDesc'], ['title_asc', 'titleAsc']]) {
+        await vm.runInContext(`GuiApi.documentApi.listDocuments({ view: 'published', sort: ${JSON.stringify(guiSort)}, pageSize: 50 })`, context);
+        const url = new URL(requests.at(-1).url);
+        assert.equal(url.pathname, '/v1/documents');
+        assert.equal(url.searchParams.get('sort'), apiSort);
+        assert.equal(url.searchParams.get('pageSize'), '50');
+      }
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

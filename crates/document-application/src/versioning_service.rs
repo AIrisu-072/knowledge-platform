@@ -348,7 +348,7 @@ where
         let Some(schedule) = self.repository.get_schedule(publish_operation_id).await? else {
             return Ok(DueExecutionOutcome::Inactive);
         };
-        self.execute_due_from_schedule(publish_operation_id, schedule, None)
+        self.execute_due_from_schedule(publish_operation_id, schedule, None, true)
             .await
     }
 
@@ -366,12 +366,12 @@ where
         };
         if schedule.status != "PENDING" {
             return self
-                .execute_due_from_schedule(publish_operation_id, schedule, None)
+                .execute_due_from_schedule(publish_operation_id, schedule, None, false)
                 .await;
         }
         if !self.repository.is_due(publish_operation_id).await? {
             return self
-                .execute_due_from_schedule(publish_operation_id, schedule, None)
+                .execute_due_from_schedule(publish_operation_id, schedule, None, false)
                 .await;
         }
         let requester = schedule.command.actor();
@@ -419,7 +419,7 @@ where
             Arc::new(self.repository.with_verified_actor(ctx.clone())),
         );
         match scoped
-            .execute_due_from_schedule(publish_operation_id, schedule, Some(&ctx))
+            .execute_due_from_schedule(publish_operation_id, schedule, Some(&ctx), true)
             .await
         {
             Err(ApplicationError::Forbidden) => {
@@ -441,6 +441,7 @@ where
         publish_operation_id: PublishOperationId,
         schedule: ScheduleOperationRecord,
         ctx: Option<&VerifiedActorContext>,
+        allow_execution: bool,
     ) -> Result<DueExecutionOutcome, ApplicationError>
     where
         R: DocumentPublishRepository + PublicationScheduleRepository,
@@ -467,7 +468,9 @@ where
         if schedule.status != "PENDING" {
             return Ok(DueExecutionOutcome::Inactive);
         }
-        if !self.repository.is_due(publish_operation_id).await? {
+        // An unscoped authorized call may only replay. A retry deadline can
+        // expire between due checks, but cannot grant permission to execute.
+        if !allow_execution || !self.repository.is_due(publish_operation_id).await? {
             if let Some(stored) = self
                 .repository
                 .get_publish_operation(publish_operation_id)

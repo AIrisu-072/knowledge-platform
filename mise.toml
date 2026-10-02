@@ -368,3 +368,12 @@ if [ -z "${KP_DSI_PDFIUM_RUNTIME_DIR:-}" ]; then
 fi
 node tools/document-poc-runtime/run.mjs
 '''
+
+[tasks."document:scheduler:acceptance"]
+description = "Qualify separate scheduler processes, current authorization and single publication"
+run = '''
+set -eu
+cargo build --locked -p document-semantic-inspection-worker --bin document-semantic-inspection-worker
+export DSI_WORKER_BIN="$(realpath "${CARGO_TARGET_DIR:-target}/debug/document-semantic-inspection-worker")"
+cargo test --locked -p document-publication-scheduler --test linux_container_canary -- --ignored --test-threads=1
+'''

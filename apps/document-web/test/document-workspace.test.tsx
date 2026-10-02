@@ -77,6 +77,16 @@ function renderAt(entry: string) {
   return { ...result, router, client };
 }
 
+test('folder navigation remains visible when the document list request fails', async () => {
+  const api = mockApi();
+  api.listDocuments.mockRejectedValue({ type: 'about:blank', title: 'Invalid query', status: 400,
+    code: 'VALIDATION_FAILED', traceId: 'synthetic', retryable: false });
+  api.listFolderChildren.mockResolvedValue({ items: [{ folderId: reviewFolderId, name: 'PoC Shared', revision: 1, parentFolderId: folderId }], nextCursor: null, capabilities: {} });
+  renderAt('/documents?view=published');
+  expect(await screen.findByRole('button', { name: 'PoC Shared' })).toBeVisible();
+  expect(await screen.findByRole('alert')).toHaveTextContent('入力内容を確認してください');
+});
+
 test('list filters stay in the URL and the detail return restores the selected list context', async () => {
   const api = mockApi();
   api.listDocuments.mockResolvedValue({ view: 'authoring', items: [listItem('authoring')], nextCursor: null });
