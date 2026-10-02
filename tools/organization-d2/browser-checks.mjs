@@ -20,7 +20,11 @@ export const KEYBOARD_STAGES = Object.freeze([
   'keyboard-repeat-enter', 'keyboard-cancel-click', 'keyboard-draft-preserved',
   'keyboard-scenario-preserved',
 ]);
-export const safeFailure = category => `Organization D2 qualification failed: ${['environment', 'source', 'gate', 'prerequisites', 'browser', 'network', 'geometry', 'keyboard', 'font', 'pixels', 'export', 'cleanup', ...KEYBOARD_STAGES].includes(category) ? category : 'internal'}`;
+const FOCUS_CATEGORIES = Object.freeze(['none', 'body', 'root', 'dialog', 'inside', 'outside']
+  .flatMap(active => [`${active}-document-focused`, `${active}-document-unfocused`]));
+const CONTAINMENT_STAGES = Object.freeze([1, 2, 3, 4, 5]
+  .flatMap(tab => FOCUS_CATEGORIES.map(focus => `keyboard-dialog-tab-${tab}-active-${focus}`)));
+export const safeFailure = category => `Organization D2 qualification failed: ${['environment', 'source', 'gate', 'prerequisites', 'browser', 'network', 'geometry', 'keyboard', 'font', 'pixels', 'export', 'cleanup', ...KEYBOARD_STAGES, ...CONTAINMENT_STAGES].includes(category) ? category : 'internal'}`;
 export async function assertFonts(page, archetype) {
   const client = await page.context().newCDPSession(page);
   try {
@@ -76,7 +80,7 @@ export async function assertGeometry(page, origin, width) {
 }
 export async function assertKeyboard(page, onStage = () => {}) {
   // Fixed stage diagnostics only: original keys, assertions, order and timings
-  // are unchanged. No DOM text, locator, error, stack or observed value is reported.
+  // are unchanged. Only allowlisted focus categories may describe a failed Tab.
   onStage('keyboard-skip-tab');
   await page.keyboard.press('Tab');
   onStage('keyboard-skip-focus');
@@ -98,7 +102,22 @@ export async function assertKeyboard(page, onStage = () => {}) {
   for (let i = 0; i < 5; i++) {
     onStage(`keyboard-dialog-tab-${i + 1}`);
     await page.keyboard.press('Tab');
-    assert.equal(await page.locator('#action-dialog').evaluate(node => node.contains(document.activeElement)), true, 'keyboard');
+    const contained = await page.locator('#action-dialog').evaluate(node => node.contains(document.activeElement));
+    if (contained !== true) {
+      // One post-failure snapshot, never a retry or substitute for containment.
+      // Unknown values/errors retain the original fixed stage; no payload escapes.
+      try {
+        const focus = await page.locator('#action-dialog').evaluate(node => {
+          const active = document.activeElement;
+          const category = !active ? 'none' : active === document.body ? 'body'
+            : active === document.documentElement ? 'root' : active === node ? 'dialog'
+              : node.contains(active) ? 'inside' : 'outside';
+          return `${category}-document-${document.hasFocus() ? 'focused' : 'unfocused'}`;
+        });
+        if (FOCUS_CATEGORIES.includes(focus)) onStage(`keyboard-dialog-tab-${i + 1}-active-${focus}`);
+      } catch { /* The original assertion below must still fail. */ }
+    }
+    assert.equal(contained, true, 'keyboard');
   }
   onStage('keyboard-dialog-escape');
   await page.keyboard.press('Escape');

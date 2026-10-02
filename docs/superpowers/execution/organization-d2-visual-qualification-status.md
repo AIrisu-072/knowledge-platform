@@ -1,5 +1,48 @@
 # Organization D2 visual qualification status
 
+## 2026-10-02 14:52 UTC — second Tab failure / bounded focus diagnostic
+
+Published head `2132284dd5afe9ec3fd0583f276555fa2a2dd209`, tree
+`490d40132257fec7be88af7648a5fcf7a97d2a75`, failed
+[normal D2 run37022846726](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37022846726),
+job110889993838 at14:52:15UTC with `keyboard-dialog-tab-2`. Earlier stages in
+that keyboard sequence passed. The actual native focus destination remains
+unknown: this stage covers the second key press and containment evaluation.
+There was no capture or upload and no source/UI repair is established.
+
+This diagnostic-only delta observes once, only after a false containment result.
+It reports one allowlisted combination of Tab1–5, active-element category
+`none`/`body`/`root`/`dialog`/`inside`/`outside`, and document `focused`/`unfocused`.
+No raw tag, ID, selector, text, value, DOM, exception, stack or path is emitted.
+Unknown categories or observation errors retain the original fixed Tab stage.
+The original false result still fails the same assertion even if this later
+snapshot reports `inside` or `dialog`; it is never a retry. Successful operation
+order and all assertions remain unchanged, with no waits or timing relaxation.
+
+The frozen-source Phase3 contracts (§8–9 of
+`docs/superpowers/specs/2026-10-02-organization-client-v0-ui-design.md` on PR48)
+require modal Tab containment and Escape/cancel draft preservation and focus
+restoration to the available trigger or Work heading. Phase3 acceptance itself
+is still pending. The [W3C modal dialog pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/)
+describes contained Tab/Shift+Tab navigation, Escape dismissal and return focus
+on close. These expectations are preserved. A later `body` observation does not
+prove browser-chrome focus, background access or an OS destination; the finite
+`document.hasFocus()` category also cannot identify any external destination.
+
+Focused fault tests produced60 expected REDs, then99/99 GREEN, including all60
+allowed combinations through the actual classification callback, unchanged
+success sequencing, retained false containment and rejected unknown categories.
+Full217/217 harness tests and static checks pass. This proves only diagnostic
+behavior, not browser behavior. Actual hosted execution of this new diagnostic
+and the root cause remain **NOT RUN / UNRESOLVED**.
+
+Next exact action: parent integrates the small delta over `3ca10780`, obtains
+independent privacy/semantic review, then publishes a new ordinary non-recording
+qualification head. Inspect only the fixed category before any source fix. No
+capture activation is justified while the normal keyboard gate is failing.
+
+---
+
 Status: **NORMAL HOSTED FAILED; DIAGNOSTIC CANDIDATE UNDER REVIEW; CAPTURE CLOSED**.
 
 ## 2026-10-02 14:38 UTC — normal hosted keyboard failure / diagnostic-only candidate
