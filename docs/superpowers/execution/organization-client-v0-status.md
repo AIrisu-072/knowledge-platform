@@ -1,5 +1,15 @@
 # Organization Client v0 — Capability Execution Status
 
+## 2026-10-02 16:04 UTC — Actual pixels failed; bounded source correction prepared
+
+- Captured remote bd1f57f4/treec5ec2da6, run37028764386/job110910009723/artifact11236900877 is **visual NO-GO** despite successful hosted harness. [Exact20-image receipt](organization-d2-visual-review-v1.md) preserves all hashes, dimensions, expiry and two Important findings; other16 had no mandatory visual finding.
+- New isolated `fix/organization-d2-state-affordances` starts from equivalent clean local826e3186. [Source-review amendment](organization-client-v0-ui-review.md) derives completed/next-ready summary and rail, preserves pinned membership, and adds adjacent blocked reason plus clear disabled primary/hover/focus styling. Same shared projection repair labels outgoing return historically without inventing a named downstream ready step.
+- Independent review of6963e834 found blocked→Return retained disabled Submit styling/reason on the read-only instruction action. A narrow completed-action precedence fix is prepared; new RED2 regressions cover both archetypes and provider-denial preservation. Re-review remains pending.
+- Fresh combined Node source/DOM/harness verification:328/328 PASS, zero skips; the initial presentation RED had11 expected failures and hosted-helper RED had2. Source snapshot, syntax, unchanged keyboard/gates/frozen boundaries and whitespace are checked locally. These are not corrected browser/pixel evidence.
+- Next exact action: independent review of the clean candidate, parent publication and new exact-head normal hosted proof, then only a separately authorized corrected capture and independent20-image pixel review. Actual pixel gate remains NO-GO/pending correction; Phase3 not frozen, Phase4–6 not started. No local browser/build/capture/upload/publication or change to capture scope/gates/retention/locks/Document/Search/Audit.
+
+---
+
 ## 2026-10-02 15:12 UTC — Dialog boundary repair prepared; normal hosted still failing
 
 - Latest parent-verified normal D2 run37024289977/job110894867737 failed at15:04:13UTC with `keyboard-dialog-tab-2-active-body-document-unfocused`. No native external destination is identified; no capture/upload occurred.

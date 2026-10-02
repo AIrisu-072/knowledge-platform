@@ -10,3 +10,27 @@ test('hosted-only entrypoint fails sanitized before any local browser import or 
   const result = spawnSync(process.execPath, ['tools/organization-d2/run.mjs', 'normal'], { encoding: 'utf8', env: { PATH: process.env.PATH } });
   assert.equal(result.status, 1); assert.equal(result.stdout, ''); assert.equal(result.stderr, 'Organization D2 qualification failed: environment\n');
 });
+test('normal qualification must run terminal transition and disabled visual assertions before capture', async () => {
+  const checks = await import('../browser-checks.mjs');
+  assert.equal(typeof checks.assertHandoffPresentation, 'function');
+  assert.equal(typeof checks.assertDisabledPrimary, 'function');
+  assert.equal(typeof checks.assertStateTransitions, 'function');
+  const { readFileSync } = await import('node:fs');
+  const runner = readFileSync(new URL('../run.mjs', import.meta.url), 'utf8');
+  assert.match(runner, /await assertStateTransitions\(page\)/);
+  assert.ok(runner.indexOf('await assertStateTransitions(page)') < runner.indexOf('for (const state of STATES)'));
+  const source = readFileSync(new URL('../browser-checks.mjs', import.meta.url), 'utf8');
+  assert.match(source, /state === 'handed_off'.*assertHandoffPresentation\(page\)/);
+  assert.match(source, /state === 'blocked'/);
+});
+test('handoff and disabled style assertions fail closed with fixed categories', async () => {
+  const checks = await import('../browser-checks.mjs');
+  assert.equal(typeof checks.assertHandoffPresentation, 'function');
+  assert.equal(typeof checks.assertDisabledPrimary, 'function');
+  await assert.rejects(() => checks.assertHandoffPresentation({ evaluate: async () => false }), /^AssertionError.*source|^source/);
+  for (const failAt of [0, 1, 2]) {
+    let calls = 0;
+    const button = { evaluate: async () => calls++ !== failAt, hover: async () => {}, focus: async () => {} };
+    await assert.rejects(() => checks.assertDisabledPrimary({ locator: () => button }, '#submit-action'), /^AssertionError.*source|^source/);
+  }
+});

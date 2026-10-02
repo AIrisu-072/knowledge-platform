@@ -7,7 +7,7 @@ import { appendFile, mkdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { snapshotSource, startSourceServer, STATES, MODULES, regularDirectory } from './source-server.mjs';
 import { REVIEW, currentReviewSubject, readGitHubInput, reviewGate, requireHostedPrerequisites, requireLiveReview } from './review-gate.mjs';
-import { assertFonts, selectScenario, assertGeometry, assertKeyboard, assertReducedMotion, requestAllowed, screenshotOptions, safeFailure } from './browser-checks.mjs';
+import { assertFonts, selectScenario, assertGeometry, assertKeyboard, assertReducedMotion, assertStateTransitions, requestAllowed, screenshotOptions, safeFailure } from './browser-checks.mjs';
 import { validatePng, exportPixels } from './pixels.mjs';
 
 let category = 'environment', server, browser, privateRoot;
@@ -77,6 +77,7 @@ try {
     for (const archetype of ['sales', 'office']) for (const width of [1280, 1440]) await withPage(archetype, width, async page => {
       category = 'keyboard'; await assertKeyboard(page, stage => { category = stage; });
       category = 'geometry'; await assertReducedMotion(page);
+      category = 'source'; await assertStateTransitions(page);
       for (const state of STATES) {
         category = 'source'; await selectScenario(page, state, scenarios);
         category = 'font'; await assertFonts(page, archetype);

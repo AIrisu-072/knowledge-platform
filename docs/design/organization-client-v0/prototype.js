@@ -84,23 +84,40 @@
     if (handed && !submission) submission = Object.freeze({ seeded: true, draft: '合成の既存提出：確認資料を照合済み', evidenceCount: 2, decision: Object.freeze({ kind: '採用', text: '合成Fixtureとして事前に記録された人間の判断' }) });
     const emptyQueue = eligibilityOnly && currentRows.length === 0;
     const blocked = scenario.id === 'blocked';
+    const completed = handed || outgoingReturn;
     $('responsibility').textContent = context ? '営業担当として作業' : '融資審査担当として作業';
     $('principal').textContent = context ? 'sales-01' : 'review-01';
     const label = selectedLabel();
     $('breadcrumb').textContent = eligibilityOnly ? '担当可能なタスク / 内容は未開示' : `タスク / ${label} / ${context ? '担当文脈' : '担当済み'}`;
-    $('work-title').textContent = eligibilityOnly ? (emptyQueue ? '担当可能なタスクはありません' : `${label}を担当する`) : context ? `${label}の次の対応` : `提出資料の${label}`;
+    $('work-title').textContent = eligibilityOnly ? (emptyQueue ? '担当可能なタスクはありません' : `${label}を担当する`) : handed ? `${label}の提出済み内容` : outgoingReturn ? `${label}の差戻指示（完了）` : context ? `${label}の次の対応` : `提出資料の${label}`;
     $('work-kind').textContent = eligibilityOnly ? 'Queue projection · 非公開内容なし' : context ? 'Case · WorkItem 内容確認' : `RoutineRun · WorkType ${workType}`;
     $('attention-label').textContent = eligibilityOnly ? (emptyQueue ? '0件 · 現在の権限で取得済み' : '担当可能 ≠ 担当中') : outgoingReturn ? '差戻指示済み · 現在の試行は完了' : scenario.attention;
     $('attention-label').className = `status ${handed ? 'success' : blocked || scenario.id === 'returned' || scenario.id === 'due_soon' ? 'warning' : ''}`;
     $('state-description').textContent = eligibilityOnly ? '担当を確定するまで、下書き・資料・Evidenceは取得しません。' : outgoingReturn ? '差戻先の新しい非公開下書きは表示しません。現在の提出・指示を保持します。' : scenario.work;
     $('submit-action').textContent = eligibilityOnly ? '担当する' : outgoingReturn ? '差戻指示を確認' : handed ? '提出内容を確認' : '提出';
-    $('submit-action').disabled = emptyQueue || (blocked && !eligibilityOnly);
-    for (const id of ['hold-action', 'return-action', 'assignment-action']) $(id).disabled = eligibilityOnly || handed || outgoingReturn;
+    // Block mutation while active; terminal labels route only to read-only review.
+    const submitBlocked = blocked && !eligibilityOnly && !completed;
+    $('submit-action').disabled = emptyQueue || submitBlocked;
+    const unavailable = $('submit-unavailable');
+    unavailable.textContent = emptyQueue ? '担当不可：現在、担当可能なタスクはありません。' : submitBlocked ? `提出不可：${scenario.submitUnavailableReason}` : '';
+    unavailable.hidden = !$('submit-action').disabled;
+    if (unavailable.hidden) $('submit-action').removeAttribute('aria-describedby');
+    else $('submit-action').setAttribute('aria-describedby', unavailable.id);
+    for (const id of ['hold-action', 'return-action', 'assignment-action']) $(id).disabled = eligibilityOnly || completed;
+    // Context progress is distinct from the selected historical WorkItem.
+    // Outbound return does not guess which named downstream step is ready.
+    $('progress-steps').hidden = eligibilityOnly;
+    $('progress-steps').innerHTML = eligibilityOnly ? '' : outgoingReturn
+      ? '<li>内容確認 · 完了</li><li class="current" aria-current="step">差戻先 · ready（新しい試行）</li>'
+      : `<li>受付</li><li${handed ? '' : ' class="current" aria-current="step"'}>内容確認${handed ? ' · 完了' : ''}</li><li class="${handed ? 'current' : 'future'}"${handed ? ' aria-current="step"' : ''}>審査${handed ? ' · ready' : ''}</li><li class="future">承認</li>`;
     if (eligibilityOnly) {
       $('work-body').innerHTML = '<section class="section"><h2>内容は担当確定後</h2><p>閲覧できる業務種別と担当可能状態だけを表示しています。</p><p class="subtle">競合した場合は担当未確定を示し、別のタスクへ自動で切り替えません。</p></section>';
       return;
     }
-    const summary = context
+    const completedSummary = handed
+      ? `<h2>${context ? 'この文脈の進み具合' : '提出済みの確認内容'}</h2><dl class="definition"><dt>${context ? '現在' : '確認対象'}</dt><dd>${context ? '審査 · ready（次工程）' : '提出スナップショット #1（固定）'}</dd><dt>選択中のタスク</dt><dd>内容確認 · 完了（提出済み）</dd><dt>自分の対応</dt><dd>提出内容・履歴を確認（読み取り専用）</dd><dt>文脈の進捗</dt><dd>審査 · ready。次担当の非公開作業は表示しません</dd></dl>`
+      : `<h2>${context ? 'この文脈の進み具合' : '完了した確認と差戻指示'}</h2><dl class="definition"><dt>${context ? '現在' : '確認対象'}</dt><dd>差戻指示済み。過去提出と指示を保持</dd><dt>選択中のタスク</dt><dd>内容確認 · 完了（差戻指示済み）</dd><dt>自分の対応</dt><dd>差戻指示・過去提出を確認（読み取り専用）</dd><dt>差戻先</dt><dd>新しい試行 · ready。受け手の非公開作業は表示しません</dd></dl>`;
+    const summary = completed ? completedSummary : context
       ? '<h2>この文脈の進み具合</h2><dl class="definition"><dt>現在</dt><dd>内容確認。次は審査担当へ提出</dd><dt>自分の対応</dt><dd>確認事項と説明資料をまとめる</dd><dt>次工程</dt><dd>審査 → 承認。進捗のみ閲覧可能</dd></dl>'
       : '<h2>今回確認すること</h2><dl class="definition"><dt>確認対象</dt><dd>提出スナップショット #1</dd><dt>作業</dt><dd>資料の整合性と不足事項の確認</dd><dt>Profile</dt><dd>事務型 · Evidence／文書を優先</dd></dl>';
     const returnStrip = scenario.id === 'returned' ? '<div class="warning-panel"><strong>前回提出 #1 は変更しません</strong><p>新しい試行2の下書きです。差戻理由は右のContext Surfaceから確認できます。</p></div>' : '';

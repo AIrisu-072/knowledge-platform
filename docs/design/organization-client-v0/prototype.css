@@ -16,6 +16,9 @@ button:hover { background:#f2f6f9 }
 button[disabled] { cursor:not-allowed; color:#5f7080; background:#f4f6f8 }
 button.primary { color:#fff; background:var(--accent); border-color:var(--accent) }
 button.primary:hover { background:#174c7b }
+button.primary:disabled,
+button.primary:disabled:hover,
+button.primary:disabled:focus-visible { color:#5f7080; background:#f4f6f8; border-color:#8a99a7; border-style:dashed; cursor:not-allowed }
 a { color:var(--accent); text-underline-offset:3px }
 :focus-visible { outline:3px solid var(--focus); outline-offset:3px }
 .skip { position:absolute; top:-80px; left:12px; padding:12px; background:var(--surface); z-index:20 }
@@ -83,6 +86,7 @@ textarea { resize:vertical; min-height:116px }
 .artifact-row strong { display:block }
 .actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:16px 0; border-top:1px solid var(--border); background:var(--surface) }
 .actions .primary { margin-left:auto }
+.action-unavailable { width:100%; color:var(--warning); font-size:12px; font-weight:600 }
 .action-note { width:100%; color:var(--muted); font-size:11px }
 .context { border-left:1px solid var(--border); background:#f8fafb; min-width:0 }
 .module-switch { display:flex; flex-wrap:wrap; gap:5px; padding:14px 14px 12px; border-bottom:1px solid var(--border); background:var(--surface) }

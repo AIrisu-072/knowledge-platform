@@ -54,6 +54,60 @@ export async function assertFonts(page, archetype) {
     }
   } finally { await client.detach(); }
 }
+// Read current rendered state. Only booleans cross these assertion boundaries;
+// no DOM/body/style payload is added to public receipts or failure categories.
+export async function assertHandoffPresentation(page) {
+  assert.equal(await page.evaluate(() => {
+    const summary = document.querySelector('#work-body > section:first-child')?.textContent ?? '';
+    const steps = [...document.querySelectorAll('.steps li')];
+    return /提出済み/.test(document.querySelector('#work-title')?.textContent ?? '')
+      && /選択中のタスク.*完了/.test(summary) && /審査.*ready/.test(summary)
+      && /提出内容・履歴を確認.*読み取り専用/.test(summary)
+      && !/次は審査担当へ提出|確認事項と説明資料をまとめる|今回確認すること/.test(summary)
+      && steps.length === 4 && /内容確認.*完了/.test(steps[1].textContent)
+      && !steps[1].classList.contains('current') && /審査.*ready/.test(steps[2].textContent)
+      && steps[2].getAttribute('aria-current') === 'step' && steps[3].classList.contains('future')
+      && !document.querySelector('#draft')
+      && document.querySelector('#submit-action')?.textContent === '提出内容を確認'
+      && ['hold-action', 'return-action', 'assignment-action'].every(id => document.getElementById(id)?.disabled);
+  }), true, 'source');
+}
+export async function assertDisabledPrimary(page, selector) {
+  const button = page.locator(selector);
+  const disabledStyle = node => {
+    const style = getComputedStyle(node);
+    return node.disabled && style.backgroundColor === 'rgb(244, 246, 248)'
+      && style.color === 'rgb(95, 112, 128)' && style.borderTopStyle === 'dashed'
+      && style.borderTopColor === 'rgb(138, 153, 167)' && style.cursor === 'not-allowed';
+  };
+  assert.equal(await button.evaluate(disabledStyle), true, 'source');
+  await button.hover();
+  assert.equal(await button.evaluate(disabledStyle), true, 'source');
+  await button.focus();
+  assert.equal(await button.evaluate(node => node.disabled && node !== document.activeElement), true, 'source');
+}
+export async function assertStateTransitions(page) {
+  // Runs on each normal non-recording archetype/width after the unchanged keyboard
+  // assertions. No new screenshots, retry, wait or state-machine semantics.
+  await page.locator('[data-module="resources"]').click();
+  await page.locator('[data-action="create-workspace"]').click();
+  await assertDisabledPrimary(page, '#dialog-confirm');
+  await page.locator('#dialog-cancel').click();
+  await page.locator('#submit-action').click();
+  await page.locator('#dialog-confirm').click();
+  await assertHandoffPresentation(page);
+  const membership = await page.locator('#work-body > section:last-child').textContent();
+  await page.locator('[data-module="document"]').click();
+  await page.locator('[data-action="compare"]').click();
+  await assertHandoffPresentation(page);
+  await page.locator('[data-module="evidence"]').click();
+  await assertHandoffPresentation(page);
+  await page.locator('[data-action="close-compare"]').click();
+  await assertHandoffPresentation(page);
+  assert.equal(await page.locator('#work-body > section:last-child').textContent() === membership, true, 'source');
+  await page.locator('#scenario').selectOption('normal');
+  assert.equal(await page.locator('#draft').count(), 1, 'source');
+}
 export async function selectScenario(page, state, scenarios) {
   assert.ok(STATES.includes(state), 'source');
   await page.locator('#scenario').selectOption(state);
@@ -67,6 +121,19 @@ export async function selectScenario(page, state, scenarios) {
   const url = new URL(page.url()); assert.equal(url.searchParams.get('scenario'), state, 'source'); assert.equal(url.searchParams.get('module'), expected.module, 'source');
   assert.equal(await page.locator('.global-nav a').count(), 3, 'source');
   assert.equal(await page.locator('#action-dialog').evaluate(node => node.open), false, 'source');
+  if (state === 'handed_off') await assertHandoffPresentation(page);
+  if (state === 'blocked') {
+    assert.equal(await page.evaluate(() => {
+      const button = document.getElementById('submit-action'), reason = button.nextElementSibling;
+      return button.disabled && reason.id === 'submit-unavailable' && !reason.hidden
+        && button.getAttribute('aria-describedby') === reason.id
+        && /提出不可.*原本の現在権限を確認できません/.test(reason.textContent)
+        && reason.getClientRects().length > 0;
+    }), true, 'source');
+    await assertDisabledPrimary(page, '#submit-action');
+    await page.locator('#work-title').hover();
+    assert.equal(await page.locator('#action-dialog').evaluate(node => node.open), false, 'source');
+  }
 }
 export async function assertGeometry(page, origin, width) {
   assert.equal(new URL(page.url()).origin, origin, 'network');

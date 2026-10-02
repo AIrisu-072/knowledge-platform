@@ -39,3 +39,13 @@ test('source keeps explicit focus, motion and bounded layout rules', () => {
   assert.match(css, /minmax\(0,\s*1fr\)/);
   assert.match(css, /--motion-spatial:\s*180ms/);
 });
+
+test('disabled primary specificity covers default hover and focus without relying on color alone', () => {
+  const css = read('prototype.css');
+  const rule = css.match(/button\.primary:disabled,\s*button\.primary:disabled:hover,\s*button\.primary:disabled:focus-visible\s*\{([^}]+)\}/);
+  assert.ok(rule, 'Explicit disabled primary states must override enabled appearance');
+  assert.match(rule[1], /border-style:\s*dashed/);
+  assert.match(rule[1], /cursor:\s*not-allowed/);
+  assert.ok(css.indexOf(rule[0]) > css.indexOf('button.primary:hover'));
+  for (const file of ['sales.html', 'office.html']) assert.match(read(file), /id="submit-action"[^>]*>[^<]+<\/button><span[^>]*id="submit-unavailable"[^>]*hidden/);
+});

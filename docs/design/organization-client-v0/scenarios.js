@@ -49,6 +49,7 @@ window.ORG_SCENARIOS = {
     {
       "id": "blocked",
       "label": "Blocked",
+      "submitUnavailableReason": "原本の現在権限を確認できません。再確認が必要です。入力内容は保持されます。",
       "attention": "保留 · 原本の現在権限を確認できません",
       "work": "取得失敗を0件や確認完了とは扱いません。入力内容は保持されます",
       "module": "document"

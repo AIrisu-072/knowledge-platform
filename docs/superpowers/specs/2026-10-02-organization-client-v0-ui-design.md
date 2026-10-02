@@ -226,3 +226,37 @@ extra screenshot or source/private file is uploaded. Actual readability and
 interaction/layout findings must be reviewed after receipt, not inferred from
 green DOM tests. Phase3 remains pending until the source/interaction and actual
 visual gate are complete; Phase4 Tauri qualification remains after that boundary.
+
+## 11. Actual-pixel correction amendment — 2026-10-02
+
+The [first actual20-image review](../execution/organization-d2-visual-review-v1.md)
+is NO-GO on captured bd1f57f4, with Important stale-handoff presentation and
+misleading blocked Submit in both archetypes. This amendment clarifies already
+frozen Product/UX§4 and Domain§4/7 semantics under original owner§50; no new
+workflow, downstream permission or backend authority is added.
+
+A selected completed WorkItem is historical/read-only even when its WorkContext
+has a next-ready step. Handoff headings, own-next-work and summary must say
+submitted/completed and offer submitted-content/history review; the rail must
+show the submitted 内容確認 complete, current 審査 ready and 承認 still future.
+Office's section must use completed rather than prospective framing. This is
+the existing synthetic forward path, not a general derivation of arbitrary
+workflow steps. Comparison and module/selection round-trips preserve both this
+projection and exact immutable membership. Outgoing return uses completed own
+work plus only the generic new ready return attempt already defined in Domain§4;
+it does not invent a named recipient step or expose its private draft.
+
+Blocked Submit stays disabled. Its immediately adjacent visible reason starts
+「提出不可」, identifies the current blocking condition, and is associated by
+`aria-describedby`; a normal state removes the stale reason/association. Disabled
+primary controls, including Workspace Confirm, remain neutral and dashed-border
+under hover/focus styling, without changing native disabled keyboard behavior.
+Text plus shape/state association prevents color-only communication.
+
+Normal hosted qualification must assert actual DOM state and disabled computed
+styles/hover/focus, retaining all prior keyboard/font/geometry checks. These are
+necessary source-design gates, not a replacement for authorized corrected
+pixels and independent actual visual review. The original20-file capture
+allowlist,1440-full-page limits, non-recording1280/1440 geometry, one-day
+retention, owner/head/time/prerequisite/export guards and dependency locks stay
+unchanged. Phase3 is not frozen and Phase4–6 remain unstarted.

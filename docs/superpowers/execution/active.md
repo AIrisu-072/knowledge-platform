@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## Current checkpoint — Organization D2 actual pixels NO-GO; source correction pending review, 2026-10-02 UTC
+
+- Status: **ACTIVE — TWO IMPORTANT PIXEL FINDINGS; SOURCE/DOM CORRECTION PREPARED; CORRECTED PIXELS PENDING**. [Organization status](organization-client-v0-status.md), [source review](organization-client-v0-ui-review.md), and the [immutable20-image visual receipt](organization-d2-visual-review-v1.md) distinguish captured bd1f57f4's successful harness from its failed visual review.
+- Isolated `fix/organization-d2-state-affordances` corrects terminal summary/current-progress/own-next-work and blocked Submit's adjacent reason/disabled appearance without changing workflow authority or submitted membership. Existing keyboard repair and guards remain unchanged; source/DOM tests do not establish visual repair.
+- Independent source review of6963e834 found blocked→Return disabled its read-only instruction action. The narrow precedence correction passes328/328 local tests after RED2; provider denial and the failed pixel receipt are unchanged.
+- Next exact action: independently re-review the clean candidate, parent publish and qualify a new exact normal head, then obtain only separately authorized corrected pixels/review. Original capture remains failed; Phase3 freeze and Phase4–6 remain pending. Twenty-image/one-day/head/time/owner/prerequisite/export gates and frozen Phase1/2, Document/Search/Audit and production boundaries remain.
+
+---
+
 ## Current checkpoint — Organization D2 dialog-edge repair awaiting review, 2026-10-02 UTC
 
 - Status: **ACTIVE — NORMAL HOSTED KEYBOARD FAIL; LOCAL SOURCE REPAIR / NEW HOSTED PROOF PENDING**. [Organization status](organization-client-v0-status.md), [source-review amendment](organization-client-v0-ui-review.md) and [qualification status](organization-d2-visual-qualification-status.md) preserve the observed second-Tab body/unfocused failure and exact base.

@@ -7,8 +7,8 @@ import { pathToFileURL } from 'node:url';
 const read = name => readFileSync(new URL(name, import.meta.url), 'utf8');
 const modulePath = process.env.ORG_DESIGN_JSDOM;
 const JSDOM = modulePath ? (await import(pathToFileURL(modulePath).href)).JSDOM : null;
-function fixture(archetype) {
-  const dom = new JSDOM(read(`${archetype}.html`), { url: `http://source-design.invalid/${archetype}.html`, runScripts: 'outside-only' });
+function fixture(archetype, scenario = 'normal') {
+  const dom = new JSDOM(read(`${archetype}.html`), { url: `http://source-design.invalid/${archetype}.html?scenario=${scenario}`, runScripts: 'outside-only' });
   const w = dom.window;
   // jsdom does not implement native dialog rendering/focus trapping; tests only
   // exercise our preview handlers and explicit return-focus branch.
@@ -292,3 +292,135 @@ for (const archetype of ['sales', 'office']) {
     dom.window.close();
   });
 }
+
+// These are presentation regressions, not renderer or backend acceptance.
+for (const archetype of ['sales', 'office']) {
+  function completedProjection(d) {
+    assert.match(d.getElementById('work-title').textContent, /提出済み/);
+    const summary = d.querySelector('#work-body > section:first-child');
+    assert.match(summary.textContent, /選択中のタスク.*完了/);
+    assert.match(summary.textContent, /審査.*ready/);
+    assert.match(summary.textContent, /提出内容・履歴を確認.*読み取り専用/);
+    assert.doesNotMatch(summary.textContent, /次は審査担当へ提出|確認事項と説明資料をまとめる|今回確認すること/);
+    const steps = [...d.querySelectorAll('.steps li')];
+    assert.match(steps[1].textContent, /内容確認.*完了/);
+    assert.equal(steps[1].classList.contains('current'), false);
+    assert.match(steps[2].textContent, /審査.*ready/);
+    assert.equal(steps[2].getAttribute('aria-current'), 'step');
+    assert.equal(steps[3].classList.contains('future'), true);
+    assert.equal(d.getElementById('draft'), null);
+    assert.equal(d.getElementById('submit-action').textContent, '提出内容を確認');
+    for (const id of ['hold-action', 'return-action', 'assignment-action']) assert.equal(d.getElementById(id).disabled, true);
+  }
+  for (const origin of ['fixture', 'confirmed-preview']) test(`${archetype}: ${origin} handoff projects completed selection and next-ready context through navigation`, options, () => {
+    const { dom, d } = fixture(archetype, origin === 'fixture' ? 'handed_off' : 'normal');
+    if (origin === 'confirmed-preview') { d.getElementById('submit-action').click(); d.getElementById('dialog-confirm').click(); }
+    completedProjection(d);
+    const submitted = d.querySelector('#work-body > section:last-child').textContent;
+    for (const module of ['evidence', 'document']) { d.querySelector(`[data-module="${module}"]`).click(); completedProjection(d); }
+    d.querySelector('[data-action="compare"]').click(); completedProjection(d);
+    d.querySelector('[data-action="close-compare"]').click(); completedProjection(d);
+    const selected = d.querySelector('[data-item][aria-pressed="true"]').dataset.item;
+    d.querySelectorAll('[data-item]')[1].click(); assert.ok(d.getElementById('draft'));
+    d.querySelector(`[data-item="${selected}"]`).click(); completedProjection(d);
+    assert.equal(d.querySelector('#work-body > section:last-child').textContent, submitted);
+    dom.window.close();
+  });
+  test(`${archetype}: outgoing return uses completed historical summary without inventing a forward-ready step`, options, () => {
+    const { dom, d } = fixture(archetype);
+    d.getElementById('return-action').click(); d.getElementById('dialog-confirm').click();
+    for (const module of ['return', 'document']) {
+      d.querySelector(`[data-module="${module}"]`).click();
+      const summary = d.querySelector('#work-body > section:first-child').textContent;
+      assert.match(summary, /選択中のタスク.*完了/); assert.match(summary, /差戻指示・過去提出を確認.*読み取り専用/);
+      assert.doesNotMatch(summary, /次は審査担当へ提出|確認事項と説明資料をまとめる|今回確認すること|審査.*ready/);
+      assert.match(d.querySelector('.steps').textContent, /内容確認.*完了/);
+      assert.match(d.querySelector('.steps .current').textContent, /差戻先.*ready.*新しい試行/);
+      assert.equal(d.querySelector('.steps .current').getAttribute('aria-current'), 'step');
+    }
+    d.querySelector('[data-action="compare"]').click();
+    assert.equal(d.getElementById('draft'), null);
+    dom.window.close();
+  });
+  test(`${archetype}: normal and received-return keep editable current projection`, options, () => {
+    for (const scenario of ['normal', 'returned']) {
+      const { dom, d } = fixture(archetype, scenario);
+      assert.equal(d.querySelector('.steps .current').textContent, '内容確認');
+      assert.equal(d.getElementById('submit-action').disabled, false);
+      assert.ok(d.getElementById('draft'));
+      assert.match(d.querySelector('#work-body > section:first-child').textContent, archetype === 'sales' ? /確認事項と説明資料をまとめる/ : /今回確認すること/);
+      dom.window.close();
+    }
+  });
+  test(`${archetype}: blocked submit has an adjacent associated current reason and remains natively inhibited`, options, () => {
+    const { dom, w, d } = fixture(archetype, 'blocked');
+    const button = d.getElementById('submit-action'), reason = button.nextElementSibling;
+    assert.equal(button.disabled, true);
+    assert.equal(reason.id, 'submit-unavailable');
+    assert.equal(button.getAttribute('aria-describedby'), reason.id);
+    assert.equal(reason.hidden, false);
+    assert.match(reason.textContent, /提出不可.*原本の現在権限を確認できません/);
+    const input = d.getElementById('draft'); input.focus(); const draft = input.value;
+    button.focus(); button.click();
+    assert.equal(d.activeElement, input); assert.equal(d.getElementById('action-dialog').open, false); assert.equal(input.value, draft);
+    const selector = d.getElementById('scenario'); selector.value = 'normal'; selector.dispatchEvent(new w.Event('change'));
+    assert.equal(button.disabled, false); assert.equal(reason.hidden, true); assert.equal(button.hasAttribute('aria-describedby'), false);
+    dom.window.close();
+  });
+  test(`${archetype}: disabled primary Submit and Workspace Confirm use neutral text background and dashed border`, options, () => {
+    const { dom, w, d } = fixture(archetype, 'blocked');
+    const style = d.createElement('style'); style.textContent = read('prototype.css'); d.head.append(style);
+    const check = button => { const css = w.getComputedStyle(button); assert.equal(css.backgroundColor, 'rgb(244, 246, 248)'); assert.equal(css.color, 'rgb(95, 112, 128)'); assert.equal(css.borderTopStyle, 'dashed'); assert.equal(css.cursor, 'not-allowed'); };
+    check(d.getElementById('submit-action'));
+    d.querySelector('[data-module="resources"]').click(); d.querySelector('[data-action="create-workspace"]').click(); check(d.getElementById('dialog-confirm'));
+    dom.window.close();
+  });
+}
+
+for (const archetype of ['sales', 'office']) test(`${archetype}: real hosted handoff callback rejects a stale current rail or advice`, options, async () => {
+  const { assertHandoffPresentation } = await import('../../../tools/organization-d2/browser-checks.mjs');
+  const { dom, w, d } = fixture(archetype, 'handed_off');
+  const page = { evaluate: async callback => w.eval(`(${callback.toString()})()`) };
+  await assertHandoffPresentation(page);
+  const current = d.querySelector('.steps [aria-current]'); current.removeAttribute('aria-current');
+  await assert.rejects(() => assertHandoffPresentation(page)); current.setAttribute('aria-current', 'step');
+  d.querySelector('#work-body > section:first-child').append('確認事項と説明資料をまとめる');
+  await assert.rejects(() => assertHandoffPresentation(page));
+  dom.window.close();
+});
+
+for (const archetype of ['sales', 'office']) test(`${archetype}: blocked then confirmed Return enables only its read-only instruction action`, options, () => {
+  const { dom, w, d } = fixture(archetype, 'blocked');
+  const button = d.getElementById('submit-action'), unavailable = d.getElementById('submit-unavailable');
+  const selected = d.querySelector('[data-item][aria-pressed="true"]').dataset.item;
+  const draft = d.getElementById('draft'); draft.value = 'Retained private draft before Return'; draft.dispatchEvent(new w.Event('input'));
+  assert.equal(button.disabled, true); button.click();
+  assert.equal(d.getElementById('action-dialog').open, false);
+  assert.equal(d.getElementById('draft').value, draft.value);
+  assert.match(unavailable.textContent, /提出不可.*原本の現在権限を確認できません/);
+  d.getElementById('return-action').click(); d.getElementById('return-reason').value = '原本の現在権限を再確認してください'; d.getElementById('dialog-confirm').click();
+  const check = () => {
+    assert.equal(button.textContent, '差戻指示を確認');
+    assert.equal(button.disabled, false, 'Completed read-only inspection is not blocked submission');
+    assert.equal(unavailable.hidden, true); assert.equal(unavailable.textContent, '');
+    assert.equal(button.hasAttribute('aria-describedby'), false);
+    assert.equal(d.getElementById('draft'), null);
+    assert.doesNotMatch(d.getElementById('work-body').textContent, /Retained private draft before Return/);
+    assert.match(d.getElementById('state-description').textContent, /差戻先の新しい非公開下書きは表示しません/);
+    for (const id of ['hold-action', 'return-action', 'assignment-action']) assert.equal(d.getElementById(id).disabled, true);
+    assert.equal(d.getElementById('scenario').value, 'blocked');
+    assert.equal(d.getElementById('action-dialog').open, false);
+  };
+  check();
+  for (const module of ['evidence', 'history', 'document']) { d.querySelector(`[data-module="${module}"]`).click(); check(); }
+  assert.match(d.getElementById('context-body').textContent, /providerの現在認可が不明/);
+  assert.equal(d.querySelector('[data-action="open-original"]'), null);
+  assert.equal(d.querySelector('[data-action="compare"]'), null);
+  button.click(); check();
+  assert.equal(d.querySelector('[data-module="return"]').getAttribute('aria-pressed'), 'true');
+  assert.match(d.getElementById('context-body').textContent, /原本の現在権限を再確認してください/);
+  assert.equal(d.querySelector('[data-action="preview-returned"]'), null);
+  d.querySelectorAll('[data-item]')[1].click(); assert.ok(d.getElementById('draft'));
+  d.querySelector(`[data-item="${selected}"]`).click(); check();
+  dom.window.close();
+});

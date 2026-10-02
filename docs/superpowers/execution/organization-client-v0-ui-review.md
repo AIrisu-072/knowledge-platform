@@ -1,5 +1,87 @@
 # Organization Client v0 — D2 source / interaction review
 
+## 2026-10-02 16:13 UTC — Independent review: blocked-to-return action precedence
+
+Independent review of `6963e834727141be3b18d87584918ae0f274c629` / tree
+`ac6a387e875b2e9260c5d340f536c479c3da5a4c` found an Important dynamic
+counterexample: confirm Return from Blocked, then the completed read-only action
+「差戻指示を確認」 stayed disabled and retained an obsolete 「提出不可」 reason.
+The underlying blocked provider fixture intentionally persists; the presentation
+mistake was applying its mutating-Submit condition to terminal read-only review.
+
+Two archetype regressions failed first on that disabled read-only action. The
+narrow correction gives completed actions their existing read-only precedence;
+only active mutating Submit consumes the blocked condition/reason. It does not
+enable Submit, change Return authority or clear provider denial. Tests retain
+active-blocked input/inhibition before Return, then confirm no draft is reopened,
+no private draft body is shown, the instruction action works, and module/selection
+round-trips retain completion. Original/provider comparison actions remain absent
+while current provider authorization is unknown.
+
+Fresh pinned Node source/DOM59 + harness269 = **328/328 PASS**, zero skips.
+Syntax, bounded source snapshot, whitespace and unchanged hosted helpers/gates,
+keyboard repair and failed20-image receipt pass local checks. This supersedes
+the326-test source candidate proof, not the immutable failed pixel subject.
+Independent re-review and all corrected hosted/browser/pixel gates remain pending;
+no browser, capture, upload, installation, build or publication occurred.
+
+---
+
+## 2026-10-02 16:04 UTC — Actual-pixel NO-GO; state/affordance source correction
+
+The [immutable20-image review receipt](organization-d2-visual-review-v1.md) records
+captured remote `bd1f57f49d0a2cee69965302d77c90e791f060d9` / tree
+`c5ec2da69cbe6073e35735f0d45dcb3b5b9765da`, run37028764386,
+job110910009723, artifact11236900877 and all image hashes/expiry. Its successful
+harness is compatible with the independent **NO-GO**: both handed-off images had
+stale pre-submit summary/rail (office also a prospective heading); both blocked
+images had enabled-looking primary Submit with no adjacent disabled reason.
+The remaining16 images had no mandatory pixel finding. This captured subject
+is never relabeled visually fixed by source/DOM tests.
+
+The new isolated `fix/organization-d2-state-affordances` starts at exact equivalent
+local `826e3186870bc57e3ced87fba458934e8e54523c`. The bounded source design follows
+frozen Product/UX§4 and Domain§4/7; original owner§50 authorizes faithful approved
+semantics without another routine approval. No new business decision is made.
+
+- Handoff headings/summary identify the selected completed historical task,
+  current context 審査 ready, and read-only submitted-content/history review.
+  The rail marks 内容確認 complete, 審査 current/ready and 承認 still future.
+  Submitted membership remains the exact pinned fixture or confirmed-preview
+  content; no next-assignee private body or identity is projected.
+- The same shared terminal-projection defect affected outbound return. Its
+  own task is complete; only generic 差戻先/new-attempt ready is shown, as
+  already declared by frozen Domain§4. No named downstream step or recipient
+  content is invented. Received-return attempt2 and ordinary working states
+  remain editable under their existing preview controls.
+- Blocked Submit stays natively disabled and gains an immediately adjacent
+  `aria-describedby` reason beginning 「提出不可」 from the current blocked
+  fixture. Normal state removes that association/reason. Disabled primary,
+  hover and focus-visible selectors share neutral high-legibility styling,
+  not-allowed cursor and dashed border; Workspace Confirm inherits it too.
+- Normal hosted qualification now checks actual terminal projection after a
+  confirmed submit and comparison/module round-trip, plus actual disabled
+  primary computed styles before/after real hover and native focus inhibition.
+  Fixture selection checks handoff/blocked states in both archetypes at both
+  existing widths. Only fixed categories/booleans are added, no raw output.
+
+RED-first source/DOM regressions produced11 expected failures; initial GREEN
+was55/55. Two missing-hosted-helper tests were RED before implementation.
+The final source/DOM suite includes both actual helper-callback counterexamples;
+combined verification and exact counts are recorded in the status update below.
+jsdom validates handlers/DOM/CSS declarations, not browser rendering. The
+original dialog keyboard handler and every existing keyboard helper/assertion
+remain byte-identical. No waits, retries or acceptance relaxation are introduced.
+
+Actual corrected browser rendering, hover/native focus execution, geometry and
+pixels are **NOT RUN** here. Independent source review and parent-owned new
+exact-head normal hosted gates remain required; a later separately authorized
+corrected capture/review must close the visual gate before Phase3 freeze.
+No local browser/renderer/download/install/build/capture/upload/publication,
+workflow/gate/export/lock edit, or Document/Search/Audit change occurred.
+
+---
+
 ## 2026-10-02 15:12 UTC — Dialog-edge source repair / hosted proof pending
 
 Parent-verified normal [run37024289977](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37024289977),
