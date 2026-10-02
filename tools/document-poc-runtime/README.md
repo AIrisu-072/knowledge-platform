@@ -181,3 +181,83 @@ stalled-stream cases above must pass before this harness qualifies R6. They obse
 drain while clients stall and completion after release, preserving the approved
 unbounded-drain limitation. A cleanup SIGKILL after a failed observation never
 counts as successful graceful shutdown or a production force-close policy.
+
+## C3 ordered consistency candidate
+
+The journey now also discovers `human-agent-consistency.spec.ts`. Its isolated
+synthetic document follows initial GUI publication (1.0), Human API metadata
+change (1.1), metadata no-op (identical state), GUI-created/published content
+(2.0), and Human API withdrawal with current-version fallback (3.0). Metadata
+editing and withdrawal are explicitly API-driven because the approved GUI has
+no controls for those mutations. Every checkpoint reloads the actual GUI,
+checks its observed API projection and visible revision/metadata, and launches
+an actual SDK stdio client against the Agent adapter. It compares document,
+current content version, OCC and human revision IDs, complete revision rows,
+metadata, current-version summary and file metadata for every issued version.
+It excludes only actor-local read acknowledgements and capability presentation.
+
+A test-only loopback proxy forwards exactly one real metadata request, consumes
+the upstream response, then closes its downstream without delivering any
+response. No fabricated business result is served. Recovery resends the exact
+saved operation ID/payload (including its original expected OCC revision), then
+replays it again. The oracle requires the saved result, unchanged committed state,
+and exactly one corresponding Human operation-history entry. This is an actual
+response-loss scenario when run against the composition root; the helper's unit
+server only verifies fault-control mechanics and is not acceptance evidence.
+
+A separate GUI case loads an available create capability, removes Human Write
+while retaining Read/ReadHistory/Administer through the synthetic document's
+policy, submits the stale form, and requires authoritative FORBIDDEN with no
+created version/success message. It verifies the selected file remains available
+and recovers after restoring the original effective grants. The original stale
+OCC case and the existing complete Agent denied-ID/revocation matrix are reused.
+
+The final consistency snapshot joins the existing regulation/PDF restart oracle.
+The compiled `consistency.cjs` test-helper hash is included in artifact provenance
+and the bounded summary refuses missing provenance. Synthetic checkpoint and
+stdio transcripts stay run-local; they are not automatically uploaded. Discovery,
+compilation or mock helper tests do not establish real-runtime PASS. Native DSI/
+Diff failure-recovery and reviewed visual usability evidence remain separate E0
+requirements, as does scheduler acceptance owned by R5.
+
+Local API/MCP contract commands invoke the already-qualified Redocly CLI. Use its
+supported `REDOCLY_TELEMETRY=off` environment setting during validation to disable
+anonymous telemetry; no external telemetry transmission is authorized here.
+
+## C3 real worker launch failure/recovery candidate
+
+`worker-failure.spec.ts` adds two API-only cases to the owned Playwright journey.
+They use the actual Human composition root and generated client; they do not
+claim to be GUI interactions or replace a worker with a fake implementation.
+
+- DSI: create/publish a fresh synthetic base, remove execute permission from the
+  run's copied DSI executable, then attempt a fresh Version upload. The frozen
+  `ExtractorUnavailable` mapping requires503 `DEPENDENCY_UNAVAILABLE` with a
+  secret-free problem and no Version/Revision/current-publication change. Restore
+  the copy and resubmit the same operation/version/file IDs, expected OCC and
+  bytes; replay must return the saved result. Only then publish and verify both
+  originals. Preflight can leave a prepared immutable FileObject after failure;
+  this test proves no false business Version/Revision/publication, not zero DB
+  or storage writes of any kind.
+- Diff: prepare a new published changed-content pair that has never been compared,
+  then remove execute permission from the run's copied Diff executable. The
+  existing unavailable-executor path requires500 `INTERNAL`; it is not an
+  Unknown/Partial response. Require no result/fragment disclosure and unchanged
+  authoritative state. After restoration, the identical pair must produce full,
+  confirmed differences with the actual expected original/changed text fragments
+  and source Version IDs. An earlier cache hit cannot mask the outage.
+
+Both require the actual HTTP status and `application/problem+json` media type, the exact request path and fixed safe typed Problem shape; a matching body on the wrong transport status or nested fragment in a permitted field fails. They also check live/ready responses during the fault and recovery. Runtime context
+carries only the already-recorded DSI/Diff artifact hashes, not arbitrary worker
+paths. The control resolves the fixed basename within the private owned run
+folder, opens without following a symlink, rejects shared hardlinks, checks700
+permissions and the exact built hash, changes only that descriptor to600, and
+restores/checks700 plus the same hash in `finally`. The original build binaries
+are never chmodded. The existing worker-readiness test uses this same guard.
+Recovery snapshots join the existing same-DB/storage restart oracle.
+
+The unavailable-launch case is deliberately bounded; it does not claim coverage
+of every worker crash, resource exhaustion or parser failure. The full production
+runtime still must execute these cases on an exact head. Local permission-control
+fixtures are never executed as workers and count only as harness tests. No new
+sandbox bypass, worker fallback, business mapping, dependency or upload is added.

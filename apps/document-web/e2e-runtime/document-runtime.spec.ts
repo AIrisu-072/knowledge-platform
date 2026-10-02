@@ -1,3 +1,5 @@
+import { assertApplicationJapaneseFonts } from './japanese-font';
+import { visualCheckpoint } from './visual-capture';
 import { startDiagnostics, finishDiagnostics, captureUiDiagnostics } from './startup-diagnostics';
 import { test, expect } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -11,7 +13,7 @@ import {
 import { hash, options, persistedSnapshot, runtime, saveSnapshot, uuidV7 } from './support';
 
 test.describe.configure({ mode: 'serial' });
-test.beforeEach(async ({ page }) => { await startDiagnostics(page); });
+test.beforeEach(async ({ page }) => { await page.setViewportSize({ width: 1440, height: 900 }); await startDiagnostics(page); });
 test.afterEach(async ({ page }, info) => { await info.attach('runtime-startup.json', { body: Buffer.from(JSON.stringify(await finishDiagnostics(page))), contentType: 'application/json' }); });
 const completed = (stage: string) => test.info().annotations.push({ type: 'runtime-completed', description: stage });
 
@@ -50,6 +52,8 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await page.goto('/documents?view=published');
   await expect(page.getByRole('region', { name: 'フォルダー' })).toBeVisible();
   completed('gui-loaded');
+  await assertApplicationJapaneseFonts(page);
+  test.info().annotations.push({ type: 'runtime-font', description: 'kosugi-regular-japanese-heading-body' });
   await captureUiDiagnostics(page, 'before-folder-wait');
   const sharedFolder = page.getByRole('button', { name: 'PoC Shared', exact: true });
   await expect(sharedFolder).toBeVisible();
@@ -62,9 +66,11 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   const row = page.getByRole('button', { name: /規程サンプル/ });
   await row.focus(); await page.keyboard.press('Enter');
   await expect(page.getByRole('complementary', { name: '選択中の文書' })).toContainText('規程サンプル');
+  await visualCheckpoint(page, '01-list-context-1440.png');
   completed('document-selected');
   await page.getByRole('button', { name: '詳細を開く' }).press('Enter');
   await expect(page.getByRole('heading', { name: '規程サンプル', level: 1 })).toBeVisible();
+  await visualCheckpoint(page, '03-detail-overview-1440.png');
   completed('detail-opened');
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('complementary', { name: '原本と版' }).getByRole('button', { name: '現行ファイルを取得' }).click();
@@ -81,6 +87,7 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await expect(page.getByRole('tab', { name: '版・改訂' })).toBeFocused();
   await expect(page.getByRole('heading', { name: '正式改訂', exact: true })).toBeVisible();
   expect(before.revisions).toHaveLength(2);
+  await visualCheckpoint(page, '04-revision-version-1440.png');
   await page.getByRole('tab', { name: '履歴', exact: true }).click();
   await expect(page.getByRole('heading', { name: '変更履歴' })).toBeVisible();
   await expect(page.getByText('document.version.published', { exact: true }).first()).toBeVisible();
@@ -92,12 +99,16 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   const agentComparison = (await compareDocumentRevisions({ ...agentOptions, path: { documentId }, body: compareBody })).data;
   expect(humanComparison.coverage).toBe('full'); expect(humanComparison.displayItems.length).toBeGreaterThan(0);
   expect(agentComparison.resultDigest).toBe(humanComparison.resultDigest);
+  await visualCheckpoint(page, '05-comparison-1440.png');
   completed('comparison-verified');
   await page.goto(`/documents/${documentId}?view=authoring&tab=access`);
   await expect(page.getByRole('heading', { name: '現在有効なアクセス権' })).toBeVisible();
   await expect(page.getByRole('rowheader', { name: /poc-agents/ })).toBeVisible();
   await page.getByRole('radio', { name: 'この文書だけに個別設定' }).check();
   await page.getByLabel('変更理由').fill('Synthetic runtime acceptance: preserve read-only agent grant');
+  await expect(page.getByRole('radio', { name: 'この文書だけに個別設定' })).toBeChecked();
+  await expect(page.getByLabel('変更理由')).toHaveValue('Synthetic runtime acceptance: preserve read-only agent grant');
+  await visualCheckpoint(page, '10-access-policy-effective-draft-1440.png');
   const policyResponse = page.waitForResponse(response => response.url().endsWith(`/documents/${documentId}/access-policy`) && response.request().method() === 'PUT');
   await page.getByRole('button', { name: 'アクセス設定を保存', exact: true }).click();
   expect((await policyResponse).status()).toBe(200);
@@ -122,6 +133,8 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
     expect(files.items[0]).toMatchObject({ logicalPath: 'primary', ordinal: 0, mediaType: 'text/plain' });
   }
   await page.getByLabel('原本ファイル').setInputFiles({ name: 'primary', mimeType: 'text/plain', buffer: changedContent });
+  await expect(page.getByLabel('原本ファイル')).toHaveValue(/(?:^|[\\/])primary$/);
+  await visualCheckpoint(page, '06-version-file-selected-1440.png');
   const createResponse = page.waitForResponse(response => response.url().endsWith(`/documents/${documentId}/versions`) && response.request().method() === 'POST');
   await page.getByRole('button', { name: '新しい版を作成', exact: true }).click();
   const createdResponse = await createResponse; expect(createdResponse.status()).toBe(201);
@@ -138,10 +151,13 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await expect(publishButton).toBeDisabled();
   completed('publication-form-opened');
   await page.getByRole('checkbox', { name: '公開対象の版とファイルを確認しました。' }).check();
+  await expect(publishButton).toBeEnabled();
+  await visualCheckpoint(page, '07-publication-ready-1440.png');
   await publishButton.click();
   const dialog = page.getByRole('dialog', { name: '公開を確認' });
   await dialog.getByRole('button', { name: 'キャンセル' }).focus(); await page.keyboard.press('Tab');
   await expect(dialog.getByRole('button', { name: '確定する' })).toBeFocused();
+  await visualCheckpoint(page, '08-publication-confirm-focus-1440.png');
   const publishResponse = page.waitForResponse(response => response.url().endsWith(':publish') && response.request().method() === 'POST');
   await page.keyboard.press('Enter'); expect((await publishResponse).status()).toBe(200);
   completed('publication-response-accepted');
@@ -150,6 +166,7 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   const returnToVersions = page.getByRole('button', { name: '版の一覧へ戻る', exact: true });
   await expect(page.locator('section[aria-busy]').filter({ has: publishButton })).toHaveAttribute('aria-busy', 'false');
   await expect(await publishButton.isEnabled() ? publishButton : returnToVersions).toBeFocused();
+  await visualCheckpoint(page, '09-publication-success-1440.png');
   completed('publication-confirmed');
   const after = await persistedSnapshot(human, documentId);
   expect(after.currentVersionId).toBe(created.targetVersionId); expect(after.revisions).toHaveLength(3);
@@ -274,6 +291,7 @@ test('a real stale GUI version upload reports OCC conflict without duplicate cre
   await expect(page.getByRole('status').filter({ hasText: '新しい版を作成しました' })).toHaveCount(0);
   const versions = (await listDocumentVersions({ ...common, path: { documentId }, query: { purpose: 'history', pageSize: 100 } })).data;
   expect(versions.items).toHaveLength(2);
+  await visualCheckpoint(page, '11-occ-conflict-1440.png');
 });
 
 test('real backend not-found and invalid API routes, keyboard return, reduced-motion and layout', async ({ page, request }) => {
@@ -286,12 +304,13 @@ test('real backend not-found and invalid API routes, keyboard return, reduced-mo
     await expect(page.getByRole('table', { name: '文書一覧' })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--motion-spatial').trim())).toBe('0ms');
+    await page.getByRole('button', { name: /規程サンプル/ }).press('Enter');
+    await page.getByRole('button', { name: '詳細を開く' }).press('Enter');
+    await expect(page).toHaveURL(new RegExp(documentId));
+    await page.getByRole('button', { name: /一覧へ戻る/ }).press('Enter');
+    await expect(page.getByRole('button', { name: /規程サンプル/ })).toBeFocused();
+    if (width === 1280) await visualCheckpoint(page, '02-list-focus-return-1280.png');
   }
-  await page.getByRole('button', { name: /規程サンプル/ }).press('Enter');
-  await page.getByRole('button', { name: '詳細を開く' }).press('Enter');
-  await expect(page).toHaveURL(new RegExp(documentId));
-  await page.getByRole('button', { name: /一覧へ戻る/ }).press('Enter');
-  await expect(page.getByRole('button', { name: /規程サンプル/ })).toBeFocused();
   await page.goto(`/documents/${uuidV7()}?view=published`);
   await expect(page.getByRole('alert')).toContainText('文書が見つからないか、閲覧できません。');
   for (const path of ['/v1/not-a-real-route', '/health/not-a-real-route', '/missing.js', '/.env']) {

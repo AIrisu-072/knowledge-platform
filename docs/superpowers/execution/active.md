@@ -1,5 +1,157 @@
 # Active Execution Pointer
 
+## Current checkpoint — Browser-only timestamp geometry proof prepared, 2026-10-02 UTC
+
+- Status: **ACTIVE — LOCAL ORACLE/WIRING CHECKS PASS / INDEPENDENT REVIEW AND ACTUAL CHROMIUM LAYOUT PENDING**. Isolated `fix/document-timestamp-browser-geometry` starts at reviewed combined `4cda0e9814cebed38260497ced96af75804cccde` / tree `97bd0446fe95e9bb35b91283f9e67a4756ec010a`. [C3 Status](document-poc-acceptance-v0-status.md) records the approved display-only proof and its limits.
+- A dedicated non-recording runtime test uses actual built-app DOM, unchanged CSS, the actual product formatter in Chromium, long `America/North_Dakota/New_Salem` and both New York fold instants at1280/1440. Timestamp substitution occurs only in an inert cloned root in separate read-only contexts. Range fragments must fit the padded cell, exposed internal scrollport,48px virtual slot and neighboring rows/cells. This is browser layout evidence, not backend equality or persistence evidence.
+- Fresh Node129/GUI57, runtime/application types, schema freshness, actionlint and diff checks pass. Collection-only Playwright lists11 journey tests with the prior10 preserved; it does not execute Chromium. Only a passed new test may emit bounded `timestampLayout: long-iana-both-folds-1280-1440`. The original journey/font/capture hooks,13 upload names, product source and workflows are unchanged.
+- Next exact action: independent review of the clean candidate, then parent publication and normal exact-head hosted proof before any separately authorized capture. Actual Chromium layout remains **NOT RUN**; no local browser download, Rust, capture, upload or publication occurred.
+
+---
+
+## Current checkpoint — Reviewed visual-remediation slices integrated, 2026-10-02 UTC
+
+- Status: **ACTIVE — MERGED LOCAL CHECKS PASS / NORMAL HOSTED FONT AND VISUAL QUALIFICATION PENDING**. `fix/document-visual-remediation-integrated` preserves the three independently reviewed framing/font/timestamp slices; [C3 Status](document-poc-acceptance-v0-status.md) records exact parents and26-path preservation.
+- Fresh Node125/GUI57, runtime/application types, schema freshness, production build, actionlint and range checks pass. Three existing bundle advisories remain. Every implementation/test/notice blob matches its reviewed slice; only Active and C3 status combine histories. Product font-family, time conversions, API/Rust/locks/identity/security, uploader and permissions remain unchanged; timestamp-column width/wrapping is the explicitly reviewed presentation change.
+- The frozen H capture remains visual FAIL, and the preliminary report is a separate subject. Actual Chromium selection/typography, bounded page framing and timestamp visibility require fresh normal hosted proof and actual corrected pixels before owner acceptance. Next exact action: finish narrow integration review and return the exact clean tree for parent publication; no local browser download, Rust, label, capture, upload or Organization Client work.
+
+---
+
+
+## Current checkpoint — Timestamp zone/offset labels prepared, 2026-10-02 UTC
+
+- Status: **ACTIVE — LOCAL TIMESTAMP CHECKS PASS / INDEPENDENT REVIEW AND HOSTED PIXELS PENDING**. Isolated `fix/document-timestamp-display-zones` starts at frozen `31b75d81941027f3c00be0617fb26cd0f6a9e18c`; [C3 Status](document-poc-acceptance-v0-status.md) records the approved ambiguity-only correction and evidence limits.
+- Home preserves browser-local conversion and Detail preserves Tokyo conversion; visible actual-zone and instant-specific UTC-offset labels distinguish repeated DST hours. The timestamp-only minimum column width/wrapping uses the existing internal scroller and preserves48px virtualization, keyboard behavior, input/instant attributes, scheduling payload and product fonts.
+- Final GUI15 suites/57, focused New York13/Tokyo13, TypeScript, schema freshness, production build and diff checks pass. Supporting long-IANA font metrics do not establish browser/pixel acceptance. Next exact action: return the clean immutable candidate for parent-owned independent review/integration and exact-head hosted checks; no local Rust, browser capture/upload or publication, and E3/C3 remain incomplete.
+
+---
+
+## Current checkpoint — Japanese test-runner font candidate prepared, 2026-10-02 UTC
+
+- Status: **ACTIVE — LOCAL UNIT/STATIC CHECKS PASS / INDEPENDENT REVIEW AND HOSTED FONT SELECTION PENDING**. `fix/document-japanese-runner-font` is isolated from frozen H `31b75d81941027f3c00be0617fb26cd0f6a9e18c`. [C3 Status](document-poc-acceptance-v0-status.md) and [source/risk record](../../research/document-japanese-runner-font.md) bound the approved runner-only remedy.
+- Exact Kosugi4.002 font/notice pins and existing Apache-2.0 allowlist are retained. Private Fontconfig setup adds no aliases or product assets. The normal actual-app Chromium journey must prove Kosugi-Regular selected for Japanese heading/body glyphs before any capture checkpoint; a fixed privacy-bounded receipt preserves that result.
+- Independent review identified and corrected job-wide XDG/toolchain relocation: only FONTCONFIG_FILE is now exported. Fresh Node119/runtime TypeScript/actionlint/syntax/diff and static private-installation/cmap checks pass. No local browser installation/rendering, Rust/build, actual C3 capture/upload or publication occurred. Static coverage/regular-weight and incomplete advisory-coverage limits remain explicit.
+- Next exact action: parent independently reviews the clean candidate, integrates approved test-only slices, and obtains exact-head normal NON-CAPTURE hosted qualification before any separately authorized capture. E3/C3 and actual pixel review remain open.
+
+---
+
+## Current checkpoint — Visual framing correction prepared, 2026-10-02 UTC
+
+- Status: **ACTIVE — LOCAL FRAME/SETTLEMENT CHECKS PASS / HOSTED AND VISUAL QUALIFICATION PENDING**. Isolated `fix/document-visual-framing` is based on frozen H `31b75d81941027f3c00be0617fb26cd0f6a9e18c`; [C3 Status](document-poc-acceptance-v0-status.md) records the bounded helper-only correction and the failed first capture.
+- Same13 names:01–05 fixed900px,06–13 explicit full-page900–4096px at1440px width,8MiB/strict PNG/private-file/export guards unchanged. Ordinary runs check pending/finite-transition settlement and page geometry; capture additionally preserves focus and rejects renewed pending state. No product CSS, font, timezone, business, workflow, permission or uploader change.
+- Full Node115/runtime TypeScript/actionlint/syntax/diff checks PASS. Actual hosted bounds and pixel usability remain NOT RUN. Next exact action: finish independent review and combine only separately reviewed font/timestamp slices; parent qualifies a distinct normal head before deliberate capture. No capture activation, upload, Rust or Organization Client work here.
+
+---
+
+
+## Current checkpoint — Bounded owned-runtime E3 identity receipt prepared, 2026-10-02 UTC
+
+- Status: **ACTIVE — LOCAL EVIDENCE-CORRECTION CHECKS AND INDEPENDENT REVIEW PASS / NEW-HEAD ACCEPTANCE PENDING**. `fix/document-e3-bounded-runtime-provenance` is isolated from published `706786970de25f74cb6f96d6a53c042d3da580dc`; [C3 Status](document-poc-acceptance-v0-status.md) records the approved report/sanitizer-only scope and prior receipt's nonrecoverable evidence gap.
+- The bounded receipt adds validated actual ports, existing run UUID, actual seed fixture hash and run/head-bound database/container and storage device/inode hashes. Owned observations must agree across restart; existing exact same-state and Agent proofs stay mandatory. External database identity remains explicitly unverified; visual policy and uploads are unchanged.
+- Node109/runtime TypeScript/actionlint/syntax/diff checks pass after focused RED→GREEN and the independently reviewed probe-deadline correction. No Rust workload, actual composition run, capture/upload or publication. Next exact action: return the clean exact candidate, then parent publishes a distinct head and obtains new exact-head hosted evidence before its first capture. E3/C3 remain incomplete.
+
+---
+
+## Current checkpoint — Single-line MCP comparison fixture integrated into C3, 2026-10-02 UTC
+
+- Status: **ACTIVE — REVIEWED FIXTURE MERGED / COMBINED LOCAL CHECKS PASS**. `feat/document-c3-single-line-integrated` combines reviewed A2 `d89fc8fc` / published `143ce4d5` with preserved C3 `2eed4b2c`. [C3 Status](document-poc-acceptance-v0-status.md) and [C2 Status](document-agent-tool-adapter-v0-status.md) record exact identities, source preservation and comparator-only RED/GREEN.
+- Incoming content changes only line3 against both seeded regulation Versions. All primary/MIME assertions and capture hooks remain; production semantics and strict comparison/state/auth/privacy oracles are unchanged. Node99/GUI44/MCP44/seed22, runtime/MCP/GUI types, schema freshness, actionlint and range checks pass.
+- Next exact action: complete verification and independent preservation review, then return clean exact head/tree to parent for publication and required hosted gates before its once-only visual activation. No local Rust build, actual capture/upload, activation, Organization Client work, merge or deployment.
+
+---
+
+## Current checkpoint — Reviewed MCP fixtures integrated with C3 visual candidate, 2026-10-02 UTC
+
+- Status: **ACTIVE — MERGED LOCAL CHECKS AND INDEPENDENT REVIEW PASS / EXACT-HEAD ACCEPTANCE AND VISUAL EVIDENCE PENDING**. Isolated `feat/document-c3-mcp-visual-integrated` combines reviewed visual candidate `ea224768877886cdc857072e4c0bc51a443c41f6` with reviewed A2 fixture repair `9ccde0dd021baa1ef3b2eceb7264f2c639590899`. Active [C3 Status](document-poc-acceptance-v0-status.md), [C2 Status](document-agent-tool-adapter-v0-status.md) and the approved E0/visual boundaries remain in effect.
+- The synthetic GUI upload retains the existing `primary` content anchor with explicit `text/plain`, exact authoritative pre/post file assertions and its selected-file capture hook. Protected fixtures now provide two real published Versions; Human proof precedes exact hidden404/no-disclosure and unchanged-state assertions. Different/Full expectations and production semantics are unchanged.
+- Three-way resolution preserves C3 ordered/recovery oracle additions and tests alongside the new denial helpers/tests, both complete status histories, all capture hooks and the GUI response-loss/hidden404 retry cases. Visual gate/action/retention, owned export guards, product/Rust code, locks, permissions and scanner records remain unchanged.
+- Fresh Node98, GUI44, MCP44, seed22, runtime/MCP/GUI TypeScript, schema freshness, MCP build, actionlint and range diff checks PASS. Actual hosted acceptance, artifact receipt/expiry and pixel review remain separate required results.
+- Next exact action: return the independently reviewed exact clean tree for parent publication, then require exact-head policy/security results before the parent applies the head-specific review label once. No local Rust, label, capture, upload, Organization Client work, merge to main or deployment occurs here.
+
+---
+
+## Current checkpoint — PR43 visual capture and bounded event gate prepared, 2026-10-02 UTC
+
+- Status: **ACTIVE — LOCAL CAPTURE/GATE CHECKS AND INDEPENDENT REVIEW PASS / ACTUAL VISUAL EVIDENCE PENDING**. Isolated `feat/document-c3-visual-adoption` starts at reviewed C3 PDF-display integration `9956db89f37a636ff8c4e9d0635298c0bd3638dc`. Active [C3 Status](document-poc-acceptance-v0-status.md), [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md), [bounded ADR](../../decisions/2026-10-02-document-visual-upload-bounded-adoption.md) and [capture procedure](../../operations/document-c3-visual-evidence.md) define the current scope.
+- The preserved fixed 13-PNG capture/export candidate is rebased with current PDF assertions, hidden-create404, worker hashes, focus return and diagnostics retained. Capture still requires a fresh owned synthetic database, actual production composition and final clean exact-head acceptance/cleanup; no mock or partial export is allowed.
+- A default-off PR43 labeled-event gate binds repository, non-fork branch, head-specific label, clean local checkout, first attempt and a fixed activation window. Both capture and upload consume its one result. Ordinary CI, label presence, malformed values, expiry and reruns do not enable uploads. Parent applies the label once after checking the exact head and absence of accepted capture; no automatic remove/re-add.
+- Fresh Node96/runtime TypeScript/actionlint/diff checks PASS after recorded gate/configuration REDs. These qualify harness behavior only. The exact official action pin, narrow license/risk decision, 13 literal paths, one-day retention and unchanged permissions remain subject to final review and actual execution; administration settings remain unknown.
+- Next exact action: return the independently reviewed clean candidate to the parent for exact-head publication and one controlled label activation, then verify runtime/security gates, actual artifact expiry and all actual pixels. No local Rust, actual capture, remote activation/upload, Organization Client work, merge or deployment is claimed.
+
+---
+
+## Current checkpoint — Bounded visual uploader adoption recorded, 2026-10-02 UTC
+
+- Status: **ACTIVE — BOUNDED ADOPTION APPROVED / ACTIVATION AND FINAL QUALIFICATION PENDING**. Documentation-only branch `docs/document-uploader-bounded-adoption` starts at C3 `34667b891963add0ffebd8be64269137f97ee163`. Active [C3 Status](document-poc-acceptance-v0-status.md) and [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md) retain the remaining acceptance work.
+- The [uploader ADR](../../decisions/2026-10-02-document-visual-upload-bounded-adoption.md) records only official v7.0.1 pin `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`, exact 13 ISC / 5 BlueOak graph exceptions, recovered exact-source buffers MIT/Expat evidence, and the disclosed residual high XML-response DoS risk. Current PR #43 only, exactly 13 synthetic PNGs, one-day expiry, no new permissions/secrets, no future ordinary CI activation and actual pixel inspection remain explicit.
+- No workflow, source, manifest, general allowlist or administrative setting is changed. Actions allowlist state remains unknown. The pending PDF-display repair, integrated capture/export and reviewed default-off activation gate, exact-head required CI/runtime/security results, actual artifact receipt and pixel review are not completed by this decision.
+- Fresh static checks pass for exact graph/notices, 78 advisory rows, upstream/evidence hashes, byte-identical buffers archives/source/bundle inclusion, recovered notice, 13 filenames and document links/privacy. This supplies no runtime or pixel acceptance result.
+- Next exact action: parent integrates the reviewed PDF-display repair and documentation, reviews the final current-review gate, then verifies the exact final gates and visual evidence. No installation, Rust, action execution, upload or publication occurs in this documentation worktree.
+
+---
+
+## Current checkpoint — C3 retains reviewed PDF capability repair and exact fixtures, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-c3-pdf-integrated` merges A2 `ee127460ef10ea4ae64c65427fc0e118b9c6904c` into C3 `afba7b61fad17cded3d4261b384554bde89f9ee6`, retaining final R2 `f51ff6788e73a1e7975f4b7bf6c295bd5cdd1a29`. Active [C3 Status](document-poc-acceptance-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain the repair contracts and remaining evidence.
+- Production/fixture/test blobs exactly match reviewed R2; C3 hidden-create, ordered/replay, worker and persistence coverage is unchanged. Both PDF binaries retain exact hashes and coexist with A2 legal-notice attributes. Fresh Node69/runtime+MCP TypeScript/MCP build/actionlint/parent-range diff checks and discovery10+1 pass with telemetry disabled.
+- Next exact action: return exact preservation proofs for parent publication and verify new hosted PDF, MCP, shutdown and persistence outcomes. No local Rust or actual-runtime run. Uploader adoption remains separately unqualified; no successor capability, merge or deployment.
+
+---
+
+## Current checkpoint — C3 hidden-denial fix and PDF diagnostics integrated, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-c3-denial-integrated` combines reviewed C3 denial repair `552101557a50ad3f7ed2c3dcdfbe41dde0f52d98` with A2 diagnostic integration `d9651320d0a7dcb219fe7f13795f2faf3087914f`, preserving R2 `639b31e85dc5ff7ed0a11fef4296ce88d46ed6cc`. Active [C3 Status](document-poc-acceptance-v0-status.md) retains the exact evidence and remaining gates.
+- Fresh A2 Node53 and C3 Node69/runtime TypeScript/actionlint/diff checks pass; exact C3 GUI source retains the freshly verified GUI43 result. The sanitizer keeps all C3 source names and adds exactly the fixed PDF milestones. Ordered/MCP/worker/persistence coverage, locks, scanner31 and required gates remain unchanged.
+- Next exact action: finish merge-preservation review and return clean trees for parent publication and exact-head verification. PDF diagnostics remain diagnostic only. Visual capture/upload source is excluded from this candidate; action adoption remains a separate policy qualification. No Rust, actual runtime run, successor capability, merge or deployment.
+
+---
+
+## Current checkpoint — C3 fresh-create denial oracle corrected, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED REGRESSION PASS / HOSTED RECHECK PENDING**. Isolated `fix/document-c3-hidden-create-denial` starts at `ac36ea9b89bf46eb363a4ed49b0ae5b77741ea35`. Active [C3 Status](document-poc-acceptance-v0-status.md) and [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md) retain the bounded acceptance scope.
+- Exact PR43 head `0aeba47f9e639705b9cc99def92b188d4a31f642` now passes the first real GUI journey, ordered Human/MCP consistency and both worker failure/recovery scenarios. The stale-capability case observes404 while its old oracle expects403; the separate PDF integrity failure remains under R2 diagnosis. Overall acceptance is incomplete.
+- The fresh create path hides its Internal snapshot unless Read plus Write-or-Publish is present; it therefore returns exact404/DOCUMENT_NOT_FOUND before the mutation guard. Replay after revocation and revocation after a snapshot was loaded retain their existing403 contracts. The fixture now asserts the precise phase, hidden-document UI and unchanged authoritative state, retaining input and restored retry.
+- Source-guard RED→GREEN and GUI retained-input/retry coverage pass; full Node68, GUI43, application/runtime TypeScript and diff checks pass. No Rust or new actual-runtime run. Next exact action: finish independent review, propagate current R2 PDF diagnostics, publish only through the parent and recheck the exact hosted outcomes. Successor work and visual activation remain gated; no merge or deployment.
+
+---
+
+## Current checkpoint — R2/A2/C3 fixture corrections integrated / hosted recheck pending, 2026-10-02 UTC
+
+- Status: **ACTIVE — MERGED FIXTURE CHECKS PASS / ACTUAL ACCEPTANCE PENDING**. Isolated `feat/document-c3-fixture-integrated` merges A2 `5f1963f261ebf02582535df94e3221bd5128a733` into C3 repair `cb1c8332d5cf07650e4c6e1a6876ee8e38deb178`. The stack retains reviewed R2 `808fd4ed8c95ef1184f9b59546159a0d77f9a99c` and independent A2 repair `fcb1cd8d53742d013ec18a242e543cb5c7c19b45`. Active [C3 Status](document-poc-acceptance-v0-status.md) and [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md) govern remaining acceptance.
+- All three real metadata mutations now use the existing extensions contract with matching projections. The C3 test conflict retains the complete A2 nested-marker tests and all ordered/replay/no-op/fallback tests. All five persistence snapshots, required CI gates, scanner31 records, locks, owned-worker controls and visual exclusion remain intact.
+- Fresh merged Node68/MCP39, runtime/MCP TypeScript, MCP build, actionlint/diff and discovery9+1 PASS with telemetry disabled. A2 merged Node52/types and the reviewed source workers' scoped checks remain separately recorded. No Rust or actual-runtime acceptance was run by this integration.
+- Next exact action: complete final propagation review, return the three clean source trees for parent publication, then observe exact-head runtime gates through persistence. Prior hosted failures remain unsuperseded by these local checks; predecessor acceptance still blocks Organization Client. No merge to main or deployment.
+
+---
+
+## Current checkpoint — C3 fixture contracts corrected / actual acceptance pending, 2026-10-02 UTC
+
+- Status: **ACTIVE — C3 FIXTURE RED→GREEN / HOSTED REVERIFICATION PENDING**. Isolated `fix/document-c3-response-recovery` starts at `2c50884a3344482aa8b5efa78e8f6839dac9282f`. Active [C3 Status](document-poc-acceptance-v0-status.md) and [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md) remain authoritative; no new capability or business decision.
+- The ordered metadata fixture now uses the existing `extensions` object at creation, mutation and every exact expected projection. Response loss still requires HTTP200; saved operation/payload replay and revision/no-op/fallback assertions remain strict. After Write revocation, the capability check uses readable published detail while the actual stale GUI create request still requires403/FORBIDDEN.
+- Two source/fixture contract regressions reproduce the invalid top-level marker and hidden authoring-read mistakes, then pass. Fresh Node68, runtime/MCP TypeScript, MCP build, discovery9 and diff checks pass. These are harness checks; no Rust or actual-runtime acceptance was run here.
+- Next exact action: complete independent review, combine the separately reviewed R2 denial/drain and A2 metadata fixtures without changing production contracts, return exact candidate trees for parent publication and recheck hosted gates. Organization Client and other successor work remain blocked on predecessor acceptance; human visual review and remaining C3 evidence are open.
+
+---
+
+## Current checkpoint — C3 receives reviewed focus/readiness repairs through A2, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED STACK CHECKS PASS / ACTUAL ACCEPTANCE PENDING**. Isolated `feat/document-c3-followup-integrated` merges A2 `7ae8f746b86795343eacf729b85d4f4fa42d7bcb` into C3 `c4ac377bb3d375e31ccc9b17c2476daa588cc18a`. Active [C3 Status](document-poc-acceptance-v0-status.md) and [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md) retain the acceptance scope; [C1](document-poc-runtime-v0-status.md) records both reviewed repair contracts and limits.
+- The exact GUI focus/fixture readiness repairs are retained beside all C3 ordered/replay/worker/persistence coverage. The sanitizer adds only the two fixed publication milestones to the prior C3 blob. Both mandatory MCP/scheduler CI gates, scanner31 records and locks remain unchanged. Visual capture/export/upload proposals are excluded.
+- Fresh merged Node66, runtime TypeScript, actionlint, syntax/diff checks and discovery9+1 pass with telemetry disabled. Identical GUI source retains the new combined R2 GUI42/types/schema/build evidence. No Rust or actual-runtime acceptance was run by this integration; unchanged MCP suites were not repeated.
+- Next exact action: finish independent stack review, return clean per-tree proofs for parent publication, then verify the new exact-head actual hosted gates. Prior publication-focus and scheduler startup failures are not superseded by local checks. C0/C1/C2/C3 completion and human visual review remain open; no merge to main or deployment.
+
+---
+
+## Current checkpoint — C3 integrates final reviewed A2 / local merge checks pass, 2026-10-02 UTC
+
+- Status: **ACTIVE — C3 HARNESS INTEGRATED / ACTUAL ACCEPTANCE PENDING**. Isolated `feat/document-c3-a2-final` merges C3 worker-failure `645aca8026b4f3ae45c6b0f496a1898d42dc9ac8` with reviewed A2 `ae844ee9e5ec51b8d1977a145be26ccf8ab43079` (tree `667f6cd96ea60b0f36f295471a24e698363d0d0a`). This is a local candidate; no remote publication, merge to main or deployment.
+- Active [C3 Status](document-poc-acceptance-v0-status.md) and approved [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md) govern the acceptance work. Existing [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain their scoped source and evidence records.
+- C3 ordered GUI/API/MCP equality, interrupted-response recovery, stale-capability race, owned worker failure/recovery and five restart snapshots are preserved. A2 GUI sort/stable pending data, complete pre-click diagnostics, R5 stack repair and both mandatory MCP/scheduler CI gates are retained exactly. The 31 scanner fingerprints and exception record are unchanged. Visual capture/export/upload proposals are excluded.
+- Fresh merged Node65/MCP35/GUI41/client6/API12 tests, types, schema/API lint, web/MCP builds, architecture, actionlint, syntax and diff checks pass with Redocly telemetry disabled. Discovery finds nine journey cases and one persistence case. Independent review found no Critical/Important integration defect. No Rust or actual-runtime acceptance was run here; the prior GUI timeout and scheduler failure remain unsuperseded by this evidence.
+- Next exact action: parent reviews the complete candidate tree and preservation proof, integrates it into the separately preserved E1 publication history, verifies the exact remote head/tree and runs all required actual hosted gates. C0/C1/C2/C3 completion and human visual review remain open.
+
+---
+
 ## Current checkpoint — Source-bound MCP acceptance fixture repair, 2026-10-02 UTC
 
 - Status: **ACTIVE — FOCUSED RED/GREEN / EXACT-HEAD REAL ACCEPTANCE PENDING**. Isolated `fix/document-mcp-runtime-acceptance` starts from A2 `41e2d190` / remote `8485a3f4`. [C2 Status](document-agent-tool-adapter-v0-status.md) records both exact hosted failures, the primary-path/content-only fixture correction and fixed privacy-safe MCP checkpoints.

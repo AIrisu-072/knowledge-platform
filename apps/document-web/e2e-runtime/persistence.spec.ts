@@ -6,7 +6,7 @@ import { hash, options, persistedSnapshot, runtime, type PersistedState } from '
 test('both restarted composition roots retain document/revision/operation IDs and storage hashes', async ({ page, request }) => {
   const context = await runtime();
   const state = JSON.parse(await readFile(context.statePath, 'utf8')) as PersistedState;
-  expect(state.documents.map(item => item.key).sort()).toEqual(['pdf', 'regulation']);
+  expect(state.documents.map(item => item.key).sort()).toEqual(['c3-consistency', 'c3-diff-recovery', 'c3-dsi-recovery', 'pdf', 'regulation']);
   expect((await getSession(options(context.human))).data.principal.principalId).toBe('poc-human');
   expect((await getSession(options(context.agent))).data.principal.principalId).toBe('poc-agent');
   for (const { snapshot } of state.documents) {

@@ -284,3 +284,6 @@ export function assertSafeDiagnostics(log, traceId, categories, forbiddenValues)
     throw Error('Actual-process diagnostics leaked a private value');
   }
 }
+
+export { interruptMutationResponse } from "./response-loss.mjs";
+export { withUnavailableWorker, assertWorkerFailure, assertRecoveredWorkerDiff } from './worker-controls.mjs';

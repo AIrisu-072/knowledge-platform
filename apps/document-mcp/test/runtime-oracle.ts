@@ -94,6 +94,64 @@ export function assertMetadataUpdate(before: unknown, after: unknown, revisions:
   assert.equal(object(entry.details).resulting_revision, current.revision);
 }
 
+// Projection shared by the two authorized profiles. Read acknowledgement and
+// capability presentation are actor-local and deliberately excluded.
+export function sharedDetail(value: unknown): Record<string, unknown> {
+  const detail = object(value);
+  return Object.fromEntries(['documentId', 'documentVersionId', 'title', 'metadata', 'revision', 'currentVersionId', 'displayVersion', 'displayRevision']
+    .map(key => [key, detail[key]]));
+}
+export function assertSharedState(human: unknown, agent: unknown): void {
+  const expected = object(human), actual = object(agent);
+  assert.equal(object(expected.revisions).nextCursor, null, 'Synthetic history must be complete');
+  assert.equal(object(actual.revisions).nextCursor, null, 'Agent history must be complete');
+  assert.deepEqual(actual, expected, 'Actual MCP must match the current Human state at this checkpoint');
+}
+export function assertRevisionTransition(before: unknown | undefined, after: unknown, expected: {
+  sourceKind: string; versionId: string; major: number; minor: number; resultingRevision: number; metadata: Record<string, unknown>;
+}): void {
+  const state = object(after), detail = object(state.detail), revisions = object(state.revisions);
+  const items = objects(revisions.items), issued = object(detail.displayRevision);
+  assert.equal(revisions.nextCursor, null);
+  assert.equal(detail.currentVersionId, expected.versionId);
+  assert.equal(detail.documentVersionId, expected.versionId);
+  assert.equal(detail.revision, expected.resultingRevision);
+  assert.deepEqual(detail.metadata, expected.metadata, 'metadata must equal the requested fixture value');
+  assert.equal(issued.documentVersionId, expected.versionId);
+  assert.equal(issued.sourceKind, expected.sourceKind);
+  assert.equal(issued.major, expected.major); assert.equal(issued.minor, expected.minor);
+  assert.equal(issued.label, `${expected.major}.${expected.minor}`);
+  assert.deepEqual(items[0], issued);
+  const old = before === undefined ? [] : objects(object(object(before).revisions).items);
+  assert.equal(items.length, old.length + 1);
+  assert.deepEqual(items.slice(1), old, 'Every previously issued Revision must remain identical');
+  assert.equal(new Set(items.map(item => item.revisionId)).size, items.length, 'No reused Revision ID');
+  if (before !== undefined) assert.equal(detail.documentId, object(object(before).detail).documentId);
+}
+export function assertNoopState(before: unknown, after: unknown, result: unknown): void {
+  const mutation = object(result);
+  assert.equal(mutation.changed, false);
+  assert.equal(mutation.resultingRevision, object(object(before).detail).revision);
+  assertSharedState(before, after);
+}
+export function assertMutationReplay(committed: unknown, after: unknown, firstRecovery: unknown, replay: unknown, history: unknown): void {
+  const recovered = object(firstRecovery), state = object(object(committed).detail);
+  assert.equal(recovered.changed, true);
+  assert.equal(recovered.resourceId, state.documentId);
+  assert.equal(recovered.resultingRevision, state.revision);
+  assert.deepEqual(replay, firstRecovery, 'The exact operation ID and payload must return the saved result');
+  assertSharedState(committed, after);
+  const page = object(history); assert.equal(page.nextCursor, null);
+  const entries = objects(page.items).filter(item => item.sourceKey === `management:${recovered.operationId}`);
+  assert.equal(entries.length, 1, 'Recovery must not duplicate operation history');
+  const entry = entries[0]!;
+  assert.equal(entry.actionCode, 'document.metadata.changed');
+  assert.equal(entry.provenanceQuality, 'operationLedger');
+  assert.equal(object(entry.actor).principalId, 'poc-human');
+  assert.equal(object(entry.details).changed, true);
+  assert.equal(object(entry.details).resulting_revision, state.revision);
+}
+
 /** Inputs are selected only from an authorized, complete revision page. */
 export function comparisonBodies(page: ModelsDocumentRevisionPage) {
   assert.equal(page.nextCursor, null);

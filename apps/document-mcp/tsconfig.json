@@ -19,6 +19,7 @@
   "include": [
     "src/**/*.ts",
     "test/runtime.ts",
-    "test/runtime-oracle.ts"
+    "test/runtime-oracle.ts",
+    "test/consistency.ts"
   ]
 }

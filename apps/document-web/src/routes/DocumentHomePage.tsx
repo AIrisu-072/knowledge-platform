@@ -9,6 +9,7 @@ import { AppShell } from '../components/app-shell/AppShell';
 import { OriginalVersionDownload } from '../components/shared/OriginalVersionDownload';
 import type { ListSearch } from '../application/search-state';
 import { documentListStatusLabel } from '../view-model/document-status';
+import { formatDateTime as formatDate } from '../view-model/date-time';
 import styles from './DocumentWorkspace.module.css';
 
 type DocumentRow = DocumentList['items'][number];
@@ -280,7 +281,7 @@ export function DocumentHomePage() {
                       if (!row) return null;
                       return (
                         <div className={styles.tableRow} role="row" aria-selected={row.original.documentId === selected?.documentId} key={row.id} style={{ transform: `translateY(${virtualRow.start}px)` }}>
-                          {row.getVisibleCells().map((cell) => <div role="cell" key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</div>)}
+                          {row.getVisibleCells().map((cell) => <div role="cell" key={cell.id} className={cell.column.id === 'timestamp' ? styles.timestampCell : undefined}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</div>)}
                         </div>
                       );
                     })}
@@ -343,11 +344,6 @@ function CapabilitySummary({ document }: { document: Awaited<ReturnType<typeof d
     capabilities.manageAccess.status === 'available' && 'アクセス設定を管理できます',
   ].filter(Boolean);
   return available.length > 0 ? <p className={styles.capabilityHint}>{available.join(' · ')}</p> : null;
-}
-
-function formatDate(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 
 function viewLabel(view: ListSearch['view']): string {

@@ -6,7 +6,7 @@ import {
 } from '@knowledge-platform/document-api-client';
 import type { Manifest } from '../../../tools/document-poc-seed/src/seed';
 
-export type RuntimeContext = { runId: string; human: string; agent: string; manifestPath: string; drainFixturePath: string; statePath: string };
+export type RuntimeContext = { runId: string; human: string; agent: string; manifestPath: string; drainFixturePath: string; statePath: string; workerHashes: { dsi: string; diff: string }; visualCapture?: { directory: string; ownership: 'synthetic-owned-runtime'; database: 'harness-owned-disposable-loopback' } };
 export async function runtime() {
   const context = JSON.parse(await readFile(process.env.KP_POC_RUNTIME_CONTEXT!, 'utf8')) as RuntimeContext;
   const manifest = JSON.parse(await readFile(context.manifestPath, 'utf8')) as Manifest;

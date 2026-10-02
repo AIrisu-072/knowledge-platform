@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches:
       - main
@@ -181,13 +182,52 @@ jobs:
           mise install node
           mise install pnpm
           pnpm install --frozen-lockfile --ignore-scripts
+      - name: Install verified Japanese runner font
+        run: node tools/document-poc-runtime/runner-font.mjs
       - name: Install pinned Chromium
         run: pnpm --filter @knowledge-platform/document-web exec playwright install chromium
+      - name: Check current PR43 visual review event
+        id: visual-review-gate
+        run: node tools/document-poc-runtime/visual-review-gate.mjs
       - name: Real composition-root acceptance
-        run: mise run document:poc:agent
+        env:
+          KP_POC_VISUAL_REVIEW_ENABLED: ${{ steps.visual-review-gate.outputs.enabled }}
+        run: |
+          unset KP_POC_CAPTURE_VISUAL
+          if [[ "$KP_POC_VISUAL_REVIEW_ENABLED" == "true" ]]; then
+            export KP_POC_CAPTURE_VISUAL=true
+          fi
+          mise run document:poc:agent
       - name: Emit bounded runtime evidence
         if: ${{ always() }}
         run: node tools/document-poc-runtime/ci-summary.mjs
+      - name: Upload approved synthetic PR43 review pixels
+        id: visual-review-upload
+        if: ${{ success() && steps.visual-review-gate.outputs.enabled == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1; pin-specific ADR
+        with:
+          name: document-c3-review43-${{ steps.visual-review-gate.outputs.head }}-${{ github.run_id }}
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: false
+          compression-level: 0
+          # The private .state ancestor requires this; only the 13 literal regular
+          # PNGs from successful owned-runtime validation are selected.
+          include-hidden-files: true
+          path: |
+            tools/document-poc-runtime/.state/visual-export/01-list-context-1440.png
+            tools/document-poc-runtime/.state/visual-export/02-list-focus-return-1280.png
+            tools/document-poc-runtime/.state/visual-export/03-detail-overview-1440.png
+            tools/document-poc-runtime/.state/visual-export/04-revision-version-1440.png
+            tools/document-poc-runtime/.state/visual-export/05-comparison-1440.png
+            tools/document-poc-runtime/.state/visual-export/06-version-file-selected-1440.png
+            tools/document-poc-runtime/.state/visual-export/07-publication-ready-1440.png
+            tools/document-poc-runtime/.state/visual-export/08-publication-confirm-focus-1440.png
+            tools/document-poc-runtime/.state/visual-export/09-publication-success-1440.png
+            tools/document-poc-runtime/.state/visual-export/10-access-policy-effective-draft-1440.png
+            tools/document-poc-runtime/.state/visual-export/11-occ-conflict-1440.png
+            tools/document-poc-runtime/.state/visual-export/12-permission-denied-file-retained-1440.png
+            tools/document-poc-runtime/.state/visual-export/13-permission-restored-retry-success-1440.png
 
   document-mcp:
     runs-on: ubuntu-24.04
