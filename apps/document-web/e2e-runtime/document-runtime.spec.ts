@@ -111,7 +111,9 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await page.getByRole('button', { name: '新しい版を作成', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: '新しい版を作成', level: 1 })).toBeVisible();
   completed('version-form-opened');
-  const changedContent = Buffer.from('【合成データ】規程サンプル\n第1条 実Runtime GUIで作成した第三版です。\n');
+  // Keep a supported single-line edit against both seeded Versions; replacing
+  // multiple lines together is intentionally ambiguous in document-diff-v0.
+  const changedContent = Buffer.from('【合成データ】規程サンプル\n第1条 この文書はPoC検証専用です。\n第2条 実Runtime GUIで作成した第三版の更新履歴を確認します。\n');
   // The GUI maps upload name to logicalPath. Preserve the synthetic primary
   // anchor so this tests a content edit, not the intentionally unresolved move+edit case.
   for (const version of before.versions) {
