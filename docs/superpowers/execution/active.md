@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## Current checkpoint — Source-bound MCP acceptance fixture repair, 2026-10-02 UTC
+
+- Status: **ACTIVE — FOCUSED RED/GREEN / EXACT-HEAD REAL ACCEPTANCE PENDING**. Isolated `fix/document-mcp-runtime-acceptance` starts from A2 `41e2d190` / remote `8485a3f4`. [C2 Status](document-agent-tool-adapter-v0-status.md) records both exact hosted failures, the primary-path/content-only fixture correction and fixed privacy-safe MCP checkpoints.
+- Production GUI/Diff/authorization/profile/state contracts are unchanged. Different/Full remains mandatory; ambiguous move+edit remains incomplete. Primary slice Node55/GUI43/MCP34 and runtime/MCP types pass. The separate protected-pair slice now adds two published synthetic Versions, Human-proved distinct comparison pairs, exact hidden404/no-disclosure and unchanged-state checks; Node55/seed22/API12/client6/MCP38/types pass. Local controlled HTTP/stdio evidence is not native acceptance.
+- Next exact action: finish combined package verification, return clean head/tree to independent review, then parent-owned A2 publication and C3 visual-aware integration. No Audit Infrastructure, Organization Client, new dependency, Rust build, merge or deployment work.
+
+---
+
 ## Current checkpoint — A2 retains reviewed PDF capability repair and fixtures, 2026-10-02 UTC
 
 - Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-pdf-integrated` merges R2 `f51ff6788e73a1e7975f4b7bf6c295bd5cdd1a29` into A2 `d9651320d0a7dcb219fe7f13795f2faf3087914f`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain the reviewed repair and qualification evidence.

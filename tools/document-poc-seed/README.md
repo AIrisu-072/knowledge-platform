@@ -34,8 +34,13 @@ The CLI prints fixture document/folder IDs and a fixture-definition SHA-256, not
 All content is synthetic Japanese UTF-8 plain text:
 
 - PoC Shared: 規程サンプル (two published versions/revisions), マニュアルサンプル, 通達サンプル
-- Agent Sandbox: Agent検証用文書
-- Human Only: Human専用検証文書
+- Agent Sandbox: Agent検証用文書 (two published versions/revisions)
+- Human Only: Human専用検証文書 (two published versions/revisions)
+
+The sandbox and human-only pairs provide distinct existing inputs for authorization probes.
+Acceptance first proves the same pairs succeed through the Human API; identical or invented
+IDs cannot qualify denial. Changing this fixture definition changes its hash, so older manifests
+are rejected and only the owned disposable run is recreated.
 
 Each folder receives an explicit policy before documents are created. The human group has
 read/readHistory/write/publish/administer. Shared and sandbox policies grant the agent group
