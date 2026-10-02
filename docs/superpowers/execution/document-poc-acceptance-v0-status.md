@@ -1,5 +1,14 @@
 # Document Platform PoC Acceptance / Evaluation v0 — Capability Status
 
+## 2026-10-02 UTC — Reviewed production PDF validation and publication fixtures propagated
+
+- Isolated `feat/document-c3-pdf-integrated` merges A2 `ee127460ef10ea4ae64c65427fc0e118b9c6904c` into preserved C3 `afba7b61fad17cded3d4261b384554bde89f9ee6`. The exact reviewed R2 chain is `639b31e8` → `c18a0f5c` capability validation → `2742debb` positive/negative fixtures → `f51ff6788e73a1e7975f4b7bf6c295bd5cdd1a29` exact PDF attributes. No new semantic decision is introduced by integration.
+- Every R2 production, native test and fixture blob is identical to the reviewed source. The sole newly accepted capability combination is Present/non-significant/no-fingerprint; significant Present without evidence and non-Present with evidence remain rejected. Original annotated PDF now has a dedicated exact422 publication-quality negative case; the clean positive pair retains actual publication, full Diff, raw download hashes and shared-state requirements. No sandbox or quality rule is relaxed.
+- Exact-path PDF binary attributes preserve both684-byte fixtures and their recorded hashes, while A2 legal-notice attributes remain intact. The parent-range check covers the committed PDFs; its earlier text/xref-whitespace issue and correction are recorded in C1 Status. Only Active text conflicted in C3 and both complete prefixes were preserved.
+- Fresh merged verification with telemetry disabled: A2 Node53/runtime TypeScript; C3 Node69/69, runtime/MCP TypeScript, MCP build, actionlint, complete parent-range diff checks and discovery10 journey +1 persistence PASS. Existing R2 core/worker/Diff checks and independent reviews are retained; no Rust workload or actual runtime was repeated by this integration. Prior C3 GUI43/ordered/worker evidence is not relabeled as a new-head acceptance result.
+- C3 metadata/replay/no-op/fallback and exact hidden-create/retry corrections, both required CI gates, all five restart snapshots, locks, scanner31 records and fault controls remain unchanged. No visual capture/upload source is included; its policy qualification proceeds independently.
+- Next exact action: parent verifies the exact combined trees, publishes A2/C3 and observes all required hosted stages through process shutdown/restart/persistence. Acceptance and visual review remain pending until those results exist. No successor Organization Client work, publication, merge to main or deployment occurs in this worktree.
+
 ## 2026-10-02 UTC — Hidden-create correction combined with bounded PDF diagnostics
 
 - Isolated `feat/document-c3-denial-integrated` merges A2 `d9651320d0a7dcb219fe7f13795f2faf3087914f` into independently reviewed C3 `552101557a50ad3f7ed2c3dcdfbe41dde0f52d98`. A2 retains exact R2 PDF diagnostic commit `639b31e85dc5ff7ed0a11fef4296ce88d46ed6cc`. Source worktrees remain clean. Only Active text conflicted; both complete prefixes and prior records are retained.

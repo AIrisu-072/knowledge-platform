@@ -1,5 +1,11 @@
 # Document Agent Tool Adapter v0 — Capability Status
 
+## 2026-10-02 UTC — Reviewed PDF capability/fixture repair propagated from R2
+
+- Isolated `feat/document-a2-pdf-integrated` merges final R2 `f51ff6788e73a1e7975f4b7bf6c295bd5cdd1a29` into A2 `d9651320d0a7dcb219fe7f13795f2faf3087914f`. Every production/fixture/test blob is identical to reviewed R2 `c18a0f5c`/`2742debb`; the final attributes follow-up preserves both PDF hashes. The only conflict combines the two explicit PDF binary paths with unchanged A2 third-party-notice attributes.
+- Fresh merged Node53/53, runtime TypeScript and complete parent-range diff checks PASS with telemetry disabled. The original Rust, worker and Diff qualification remains recorded in C1 Status; unchanged native tests were not repeated. The PDF negative case retains422 publication-quality rejection, while the positive pair retains full Diff/publication/download evidence requirements.
+- MCP source/provenance, mandatory MCP/scheduler gates, locks and scanner31 records are unchanged. Next exact action: finish C3 propagation and parent publication, then verify the new exact-head actual outcomes. No new runtime acceptance, visual uploader adoption, Rust run, successor work, merge or deployment occurs here.
+
 ## 2026-10-02 UTC — Bounded PDF-stage diagnostics propagated from R2
 
 - Isolated `feat/document-a2-pdf-diagnostics` merges R2 `639b31e85dc5ff7ed0a11fef4296ce88d46ed6cc` into A2 `5f1963f261ebf02582535df94e3221bd5128a733`. All four source/evidence files retain exact R2 blobs; only Active/C2 integration checkpoints are additional. The allowlisted fixed PDF milestones preserve the prior privacy boundary and leave input files, worker behavior and success criteria unchanged.

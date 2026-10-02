@@ -318,6 +318,101 @@ async fn duplicate_capability_and_blank_provenance_fail_before_insert() {
 }
 
 #[tokio::test]
+async fn present_editorial_capability_without_equivalence_digest_is_persisted_and_cached() {
+    let fixture = fixture();
+    fixture
+        .executor
+        .response
+        .lock()
+        .unwrap()
+        .semantic_capabilities = vec![CapabilityEvidence {
+        capability_id: "annotations".into(),
+        presence: CapabilityState::Present,
+        version_significant: false,
+        equivalence_fingerprint: None,
+    }];
+    let first = fixture
+        .service
+        .ensure(file_id(), InspectionProfileVersion::DsiV0)
+        .await
+        .expect("editorial-only capability does not require semantic equivalence evidence");
+    assert_eq!(
+        first.response().semantic_capabilities[0].equivalence_fingerprint,
+        None
+    );
+    assert!(fixture.repository.cached.lock().unwrap().is_some());
+    fixture.events.lock().unwrap().clear();
+    assert_eq!(
+        fixture
+            .service
+            .ensure(file_id(), InspectionProfileVersion::DsiV0)
+            .await
+            .unwrap(),
+        first
+    );
+    assert_eq!(*fixture.events.lock().unwrap(), ["file", "cache"]);
+}
+
+#[tokio::test]
+async fn significant_present_or_nonpresent_capability_inconsistent_digests_are_rejected() {
+    for (presence, version_significant, fingerprint) in [
+        (CapabilityState::Present, true, None),
+        (
+            CapabilityState::Absent,
+            true,
+            Some(response().semantic_fingerprint),
+        ),
+        (
+            CapabilityState::Absent,
+            false,
+            Some(response().semantic_fingerprint),
+        ),
+        (
+            CapabilityState::NotRepresentable,
+            true,
+            Some(response().semantic_fingerprint),
+        ),
+        (
+            CapabilityState::NotRepresentable,
+            false,
+            Some(response().semantic_fingerprint),
+        ),
+        (
+            CapabilityState::NotVerifiable,
+            true,
+            Some(response().semantic_fingerprint),
+        ),
+        (
+            CapabilityState::NotVerifiable,
+            false,
+            Some(response().semantic_fingerprint),
+        ),
+    ] {
+        let fixture = fixture();
+        fixture
+            .executor
+            .response
+            .lock()
+            .unwrap()
+            .semantic_capabilities = vec![CapabilityEvidence {
+            capability_id: "reader_content".into(),
+            presence,
+            version_significant,
+            equivalence_fingerprint: fingerprint,
+        }];
+        assert_eq!(
+            fixture
+                .service
+                .ensure(file_id(), InspectionProfileVersion::DsiV0)
+                .await
+                .unwrap_err(),
+            ApplicationError::InvalidWorkerResult
+        );
+        assert!(fixture.repository.cached.lock().unwrap().is_none());
+    }
+}
+
+#[tokio::test]
 async fn oversized_diagnostics_fail_before_insert() {
     let fixture = fixture();
     fixture.executor.response.lock().unwrap().diagnostics.push(

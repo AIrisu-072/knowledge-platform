@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## Current checkpoint — C3 retains reviewed PDF capability repair and exact fixtures, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-c3-pdf-integrated` merges A2 `ee127460ef10ea4ae64c65427fc0e118b9c6904c` into C3 `afba7b61fad17cded3d4261b384554bde89f9ee6`, retaining final R2 `f51ff6788e73a1e7975f4b7bf6c295bd5cdd1a29`. Active [C3 Status](document-poc-acceptance-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain the repair contracts and remaining evidence.
+- Production/fixture/test blobs exactly match reviewed R2; C3 hidden-create, ordered/replay, worker and persistence coverage is unchanged. Both PDF binaries retain exact hashes and coexist with A2 legal-notice attributes. Fresh Node69/runtime+MCP TypeScript/MCP build/actionlint/parent-range diff checks and discovery10+1 pass with telemetry disabled.
+- Next exact action: return exact preservation proofs for parent publication and verify new hosted PDF, MCP, shutdown and persistence outcomes. No local Rust or actual-runtime run. Uploader adoption remains separately unqualified; no successor capability, merge or deployment.
+
+---
+
 ## Current checkpoint — C3 hidden-denial fix and PDF diagnostics integrated, 2026-10-02 UTC
 
 - Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-c3-denial-integrated` combines reviewed C3 denial repair `552101557a50ad3f7ed2c3dcdfbe41dde0f52d98` with A2 diagnostic integration `d9651320d0a7dcb219fe7f13795f2faf3087914f`, preserving R2 `639b31e85dc5ff7ed0a11fef4296ce88d46ed6cc`. Active [C3 Status](document-poc-acceptance-v0-status.md) retains the exact evidence and remaining gates.
@@ -51,6 +59,14 @@
 - C3 ordered GUI/API/MCP equality, interrupted-response recovery, stale-capability race, owned worker failure/recovery and five restart snapshots are preserved. A2 GUI sort/stable pending data, complete pre-click diagnostics, R5 stack repair and both mandatory MCP/scheduler CI gates are retained exactly. The 31 scanner fingerprints and exception record are unchanged. Visual capture/export/upload proposals are excluded.
 - Fresh merged Node65/MCP35/GUI41/client6/API12 tests, types, schema/API lint, web/MCP builds, architecture, actionlint, syntax and diff checks pass with Redocly telemetry disabled. Discovery finds nine journey cases and one persistence case. Independent review found no Critical/Important integration defect. No Rust or actual-runtime acceptance was run here; the prior GUI timeout and scheduler failure remain unsuperseded by this evidence.
 - Next exact action: parent reviews the complete candidate tree and preservation proof, integrates it into the separately preserved E1 publication history, verifies the exact remote head/tree and runs all required actual hosted gates. C0/C1/C2/C3 completion and human visual review remain open.
+
+---
+
+## Current checkpoint — A2 retains reviewed PDF capability repair and fixtures, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-pdf-integrated` merges R2 `f51ff6788e73a1e7975f4b7bf6c295bd5cdd1a29` into A2 `d9651320d0a7dcb219fe7f13795f2faf3087914f`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain the reviewed repair and qualification evidence.
+- The production capability predicate and synthetic positive/negative PDF cases match reviewed R2 exactly. PDF bytes/hashes are preserved; exact-path binary attributes coexist with A2 legal-notice preservation. Fresh Node53/runtime TypeScript and parent-range diff checks pass. No repeated Rust workload or new actual-runtime evidence.
+- Next exact action: complete C3 propagation/proof, then parent publishes and checks the exact new runtime through PDF, MCP and persistence. Uploader qualification remains separate and inactive; no successor capability, merge or deployment.
 
 ---
 

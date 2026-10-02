@@ -213,3 +213,18 @@ fn serialize_pdf(objects: Vec<(u32, Vec<u8>)>) -> Vec<u8> {
     bytes
 }
 use std::io::Write as _;
+
+#[test]
+fn runtime_publication_fixtures_produce_full_native_text_diff() {
+    let result = compare(
+        include_bytes!("../../../apps/document-web/e2e-runtime/fixtures/pdf/base.pdf"),
+        include_bytes!("../../../apps/document-web/e2e-runtime/fixtures/pdf/text-change.pdf"),
+    );
+    assert_eq!(result.coverage, DiffCoverage::Full);
+    assert!(
+        result
+            .changes
+            .iter()
+            .any(|change| change.facet == "pdf_text")
+    );
+}

@@ -160,11 +160,35 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await test.info().attach('shared-state.json', { body: Buffer.from(JSON.stringify(after, null, 2)), contentType: 'application/json' });
 });
 
+test('real PDF editorial inspection reaches the unchanged publication quality gate', async ({ request }) => {
+  const context = await runtime();
+  const common = options(context.human);
+  const bytes = await readFile(fileURLToPath(new URL('../../../experiments/document-semantic-inspection/fixtures/pdf/base.pdf', import.meta.url)));
+  const created = await new BinaryTransportBridge({ baseUrl: context.human }).createDocument({
+    request: { folderId: context.manifest.folders.shared.folderId, title: 'Synthetic annotated PDF rejection', documentMetadata: {}, versionMetadata: {} },
+    file: new Blob([bytes]), originalFilename: 'synthetic-annotated.pdf', mediaType: 'application/pdf',
+  });
+  const path = { documentId: created.documentId };
+  const before = (await getDocument({ ...common, path, query: { view: 'authoring' } })).data;
+  const rejected = await request.post(`${context.human}/v1/documents/${created.documentId}/versions/${created.documentVersionId}:publish`,
+    { data: { operationId: uuidV7(), expectedRevision: before.revision } });
+  expect(rejected.status()).toBe(422);
+  expect((await rejected.json()).code).toBe('PUBLISH_QUALITY_REJECTED');
+  const after = (await getDocument({ ...common, path, query: { view: 'authoring' } })).data;
+  expect(after.revision).toBe(before.revision);
+  expect(after.currentVersionId).toBeNull();
+  const versions = (await listDocumentVersions({ ...common, path, query: { purpose: 'authoring', pageSize: 100 } })).data;
+  expect(versions.items).toHaveLength(1);
+  expect(versions.items[0]!.lifecycleState).toBe('WORKING');
+  const history = (await getDocumentHistory({ ...common, path, query: { pageSize: 100 } })).data;
+  expect(history.items.filter(item => item.actionCode === 'document.version.published')).toHaveLength(0);
+});
+
 test('real PDFium inspection and production PDF Diff display preserve both original files', async ({ page }) => {
   const context = await runtime();
   completed('pdf-context-read');
   const common = options(context.human), bridge = new BinaryTransportBridge({ baseUrl: context.human });
-  const fixture = (name: string) => fileURLToPath(new URL(`../../../experiments/document-semantic-inspection/fixtures/pdf/${name}`, import.meta.url));
+  const fixture = (name: string) => fileURLToPath(new URL(`./fixtures/pdf/${name}`, import.meta.url));
   const base = await readFile(fixture('base.pdf')), target = await readFile(fixture('text-change.pdf'));
   completed('pdf-fixtures-read');
   const created = await bridge.createDocument({ request: { folderId: context.manifest.folders.shared.folderId, title: 'Synthetic PDF runtime acceptance', documentMetadata: {}, versionMetadata: {} },
