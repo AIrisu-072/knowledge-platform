@@ -1,5 +1,12 @@
 # Document Agent Tool Adapter v0 — Capability Status
 
+## 2026-10-02 UTC — A2 propagation of publication-focus and scheduler readiness repairs
+
+- Isolated `feat/document-a2-followup-integrated` merges reviewed combined R2 `51bd948710beb098f88a4af18fe7bcb251933df7` into A2 `ae844ee9e5ec51b8d1977a145be26ccf8ab43079`. Every non-status repair file matches R2 exactly. The sole conflict was Active pointer text; all prior checkpoints and the new R2 checkpoint are retained below the current A2 header.
+- MCP implementation, actual-stdio fixtures, dependency locks, runtime/provenance wiring, both required MCP/scheduler CI gates and exact31 scanner exclusions remain byte-for-byte unchanged from the A2 baseline. No C3 or visual capture/upload source is introduced at this layer.
+- Fresh merged verification with telemetry disabled: Node52/52; runtime TypeScript; actionlint; diff check PASS. GUI application/test source is identical to the freshly verified R2 repair: GUI42/42, app types/schema/build PASS with three existing Webpack advisories. Unchanged full MCP/native suites were not repeated; the source repair evidence and pending actual-runtime limits remain in C1 Status.
+- Next exact action: finish independent stack review, propagate to C3, then parent publishes the reviewed tree and verifies exact-head hosted MCP/runtime/scheduler gates. No publication, Rust workload, actual-runtime acceptance, merge to main or deployment occurs in this candidate. Local regression success does not supersede prior hosted failures.
+
 ## 2026-10-02 UTC — A2 final GUI-diagnostics and scheduler-stack integration
 
 - Preserved A2 `6665c17e6fed2129c60f739faaa8bc0fb3089dc3` now incorporates reviewed combined R2 `5b8e967badd9303fe1d7b446504be57b99b1c42c` (tree `62540b843baae30e2bc10262b7f401f4b9b9643d`). All eight incoming files retain exact R2 bytes; there were no conflicts. Existing MCP/runtime/provenance, both required jobs and exact 31 scanner exclusions remain unchanged. No C3 implementation is included.

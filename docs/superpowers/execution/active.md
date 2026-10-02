@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## Current checkpoint — C3 receives reviewed focus/readiness repairs through A2, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED STACK CHECKS PASS / ACTUAL ACCEPTANCE PENDING**. Isolated `feat/document-c3-followup-integrated` merges A2 `7ae8f746b86795343eacf729b85d4f4fa42d7bcb` into C3 `c4ac377bb3d375e31ccc9b17c2476daa588cc18a`. Active [C3 Status](document-poc-acceptance-v0-status.md) and [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md) retain the acceptance scope; [C1](document-poc-runtime-v0-status.md) records both reviewed repair contracts and limits.
+- The exact GUI focus/fixture readiness repairs are retained beside all C3 ordered/replay/worker/persistence coverage. The sanitizer adds only the two fixed publication milestones to the prior C3 blob. Both mandatory MCP/scheduler CI gates, scanner31 records and locks remain unchanged. Visual capture/export/upload proposals are excluded.
+- Fresh merged Node66, runtime TypeScript, actionlint, syntax/diff checks and discovery9+1 pass with telemetry disabled. Identical GUI source retains the new combined R2 GUI42/types/schema/build evidence. No Rust or actual-runtime acceptance was run by this integration; unchanged MCP suites were not repeated.
+- Next exact action: finish independent stack review, return clean per-tree proofs for parent publication, then verify the new exact-head actual hosted gates. Prior publication-focus and scheduler startup failures are not superseded by local checks. C0/C1/C2/C3 completion and human visual review remain open; no merge to main or deployment.
+
+---
+
 ## Current checkpoint — C3 integrates final reviewed A2 / local merge checks pass, 2026-10-02 UTC
 
 - Status: **ACTIVE — C3 HARNESS INTEGRATED / ACTUAL ACCEPTANCE PENDING**. Isolated `feat/document-c3-a2-final` merges C3 worker-failure `645aca8026b4f3ae45c6b0f496a1898d42dc9ac8` with reviewed A2 `ae844ee9e5ec51b8d1977a145be26ccf8ab43079` (tree `667f6cd96ea60b0f36f295471a24e698363d0d0a`). This is a local candidate; no remote publication, merge to main or deployment.
@@ -7,6 +16,14 @@
 - C3 ordered GUI/API/MCP equality, interrupted-response recovery, stale-capability race, owned worker failure/recovery and five restart snapshots are preserved. A2 GUI sort/stable pending data, complete pre-click diagnostics, R5 stack repair and both mandatory MCP/scheduler CI gates are retained exactly. The 31 scanner fingerprints and exception record are unchanged. Visual capture/export/upload proposals are excluded.
 - Fresh merged Node65/MCP35/GUI41/client6/API12 tests, types, schema/API lint, web/MCP builds, architecture, actionlint, syntax and diff checks pass with Redocly telemetry disabled. Discovery finds nine journey cases and one persistence case. Independent review found no Critical/Important integration defect. No Rust or actual-runtime acceptance was run here; the prior GUI timeout and scheduler failure remain unsuperseded by this evidence.
 - Next exact action: parent reviews the complete candidate tree and preservation proof, integrates it into the separately preserved E1 publication history, verifies the exact remote head/tree and runs all required actual hosted gates. C0/C1/C2/C3 completion and human visual review remain open.
+
+---
+
+## Current checkpoint — A2 retains reviewed publication-focus and scheduler readiness repairs, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-followup-integrated` merges R2 `51bd948710beb098f88a4af18fe7bcb251933df7` into A2 `ae844ee9e5ec51b8d1977a145be26ccf8ab43079`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain the approved scopes and both source repair evidence sections.
+- Every non-status repair blob matches reviewed R2. MCP source/runtime provenance, both required CI gates, scanner31 records and locks are unchanged from A2. Fresh merged Node52, runtime TypeScript, actionlint and diff checks pass with telemetry disabled; the identical GUI source retains the new R2 GUI42/types/schema/build verification.
+- Next exact action: complete independent stack review and C3 propagation, then parent publishes and checks exact-head hosted gates. No Rust workload, actual runtime acceptance, visual capture/upload, merge to main or deployment occurred here. Existing hosted focus/startup failures remain unresolved until qualified reruns.
 
 ---
 
@@ -47,6 +64,15 @@
 - Exact nine read-only generated-client tools, verified fixed-Agent session, bounded abort/redirect behavior, unchanged API semantics and actual stdio are implemented. Complete shipped license notices and the two-package ISC exception are recorded. No direct DB/Application access, Agent write tool, Search/RAG or production identity.
 - Local verification and independent review/fixes are recorded in Capability Status. Required CI now includes focused MCP verification and real shared-runtime Agent stages; missing/blocked real workers or browser leave acceptance non-green. No mocked HTTP result counts as real Document acceptance.
 - Next exact action: publish the reviewed A2 source as a separate Draft stacked on #41, verify remote head/tree, and observe required gates on that exact head. Diagnose failures without weakening sandbox, license, scanner or authorization policy. C0/C1/C3 closure remains tracked separately.
+
+---
+
+## Current checkpoint — R2 publication-focus and PostgreSQL readiness repairs integrated, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-r2-followup-integrated` combines reviewed GUI `cac1d729ddab7aaef2d618b1dbd7d58f51836d8a` and scheduler test readiness `ee30aba86c903777d361be58424fb741c450ea3e`, both based on `5b8e967badd9303fe1d7b446504be57b99b1c42c`.
+- Active [C1 Status](document-poc-runtime-v0-status.md), approved [Runtime Design](../specs/2026-10-01-document-poc-runtime-v0-design.md), [Plan](../plans/2026-10-01-document-poc-runtime-v0-implementation.md) and [Authority](../specs/2026-10-01-document-poc-runtime-v0-approval.md) retain the bounded scope. Both complete repair evidence sections are preserved; only status text required conflict resolution.
+- Fresh merged Node45/GUI42, application/runtime TypeScript, validator freshness, production build, actionlint and diff checks pass with telemetry disabled. The source workers' focused verification remains separately recorded. No Rust workload or actual container/runtime acceptance was repeated by this integration.
+- Next exact action: finish independent integration review, propagate the exact repair delta through separate A2/C3 candidates, then parent publishes and checks exact-head hosted gates. The prior post-publication focus and scheduler startup failures remain the last actual results. No full acceptance, visual review, merge to main or deployment claim.
 
 ---
 
