@@ -162,36 +162,51 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
 
 test('real PDFium inspection and production PDF Diff display preserve both original files', async ({ page }) => {
   const context = await runtime();
+  completed('pdf-context-read');
   const common = options(context.human), bridge = new BinaryTransportBridge({ baseUrl: context.human });
   const fixture = (name: string) => fileURLToPath(new URL(`../../../experiments/document-semantic-inspection/fixtures/pdf/${name}`, import.meta.url));
   const base = await readFile(fixture('base.pdf')), target = await readFile(fixture('text-change.pdf'));
+  completed('pdf-fixtures-read');
   const created = await bridge.createDocument({ request: { folderId: context.manifest.folders.shared.folderId, title: 'Synthetic PDF runtime acceptance', documentMetadata: {}, versionMetadata: {} },
     file: new Blob([base]), originalFilename: 'synthetic-base.pdf', mediaType: 'application/pdf' });
+  completed('pdf-base-created');
   const documentId = created.documentId;
   let detail = (await getDocument({ ...common, path: { documentId }, query: { view: 'authoring' } })).data;
+  completed('pdf-base-detail-read');
   await publishVersion({ ...common, path: { documentId, versionId: created.documentVersionId }, body: { operationId: uuidV7(), expectedRevision: detail.revision } });
+  completed('pdf-base-published');
   detail = (await getDocument({ ...common, path: { documentId }, query: { view: 'authoring' } })).data;
+  completed('pdf-published-detail-read');
   const versionId = uuidV7();
   await bridge.createVersion(documentId, { request: { operationId: uuidV7(), targetVersionId: versionId, expectedRevision: detail.revision, title: detail.title,
     items: [{ logicalPath: 'primary', ordinal: 0, fileId: uuidV7(), partId: 'primary', mediaType: 'application/pdf', originalFilename: 'synthetic-change.pdf' }] }, files: new Map([['primary', new Blob([target], { type: 'application/pdf' })]]) });
+  completed('pdf-target-created');
   detail = (await getDocument({ ...common, path: { documentId }, query: { view: 'authoring' } })).data;
+  completed('pdf-target-detail-read');
   await publishVersion({ ...common, path: { documentId, versionId }, body: { operationId: uuidV7(), expectedRevision: detail.revision } });
+  completed('pdf-target-published');
   const comparison = (await compareDocumentVersions({ ...common, path: { documentId }, body: { baseVersionId: created.documentVersionId, targetVersionId: versionId, profile: 'document-diff-v0', projection: 'display' } })).data;
+  completed('pdf-comparison-read');
   expect(comparison.projection).toBe('display'); expect(comparison.coverage).toBe('full');
   if (comparison.projection !== 'display') throw Error('PDF display projection required');
   expect(comparison.items.some(item => item.facet === 'pdf_text')).toBe(true);
   expect(comparison.items.some(item => item.base?.kind === 'text' || item.target?.kind === 'text')).toBe(true);
   for (const [id, bytes] of [[created.documentVersionId, base], [versionId, target]] as const) {
     const files = (await listVersionFiles({ ...common, path: { documentId, versionId: id }, query: { purpose: 'history' } })).data;
+    completed(id === created.documentVersionId ? 'pdf-base-files-read' : 'pdf-target-files-read');
     const file = files.items[0]!; expect(file.mediaType).toBe('application/pdf');
     const downloaded = await bridge.downloadVersionFileBlob({ documentId, versionId: id, contentItemId: file.contentItemId, representationId: file.representationId, purpose: 'history' });
     expect(hash(new Uint8Array(await downloaded.arrayBuffer()))).toBe(hash(bytes));
+    completed(id === created.documentVersionId ? 'pdf-base-download-verified' : 'pdf-target-download-verified');
   }
   await page.goto(`/documents/${documentId}?view=published&tab=compare`);
   await expect(page.getByRole('heading', { name: '本文の変更' })).toBeVisible();
   await expect(page.getByRole('heading', { name: /pdf_text/ }).first()).toBeVisible();
+  completed('pdf-gui-verified');
   expect(await persistedSnapshot(context.agent, documentId)).toEqual(await persistedSnapshot(context.human, documentId));
+  completed('pdf-shared-state-verified');
   await saveSnapshot(context, 'pdf', documentId);
+  completed('pdf-snapshot-saved');
   await test.info().attach('pdf-display.json', { body: Buffer.from(JSON.stringify(comparison, null, 2)), contentType: 'application/json' });
 });
 

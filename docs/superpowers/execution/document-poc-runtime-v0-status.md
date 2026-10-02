@@ -1,5 +1,13 @@
 # Document Platform PoC Runtime / Server Composition v0 — Capability Status
 
+## 2026-10-02 UTC — Bounded PDF operation diagnostics
+
+- Exact R2 `76608ee893733914211aa22a015170f028732314` [runtime job110683483876](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36957450006/job/110683483876) passes the complete first GUI journey through `snapshot-saved`. The PDF case fails before browser navigation with `INTEGRITY_VIOLATION`; R2/A2 each report1 passed/1 failed/3 skipped. C3 separately reports4 passed/2 failed/3 skipped, including its own stale-capability denial assertion owned by the C3 worker.
+- That public code combines invalid worker results, parser disagreement, response/cache integrity and storage/repository failures; the failed API operation is still unknown. Added17 fixed completion labels around existing PDF context/fixture reads, create/detail/publish/version/compare calls, downloads, GUI and shared-state checks. No raw payload, URL, filename, content, error or dynamic field is emitted. The40-annotation cap and both exact sanitizer allowlists remain enforced.
+- RED: new privacy regression lacked `pdf-context-read`. GREEN: all46 runtime/helper/CI Node tests pass, including every new label through both privacy filters with allowed `INTEGRITY_VIOLATION` and rejected private annotation/body. Runtime TypeScript and diff-check PASS. A pinned Playwright no-browser synthetic failure retained the fixed PDF milestone and non-Error Problem code in JSON; both sanitizers removed private payload. This is reporter verification, not PDF backend acceptance. Production GUI/source/build and Rust are unchanged; no Rust workload was started.
+- Read-only ahead-inspection found both existing PDFs contain Text annotations emitted as editorial comments, which frozen publication quality separately rejects as422 `PUBLISH_QUALITY_REJECTED`. This does not explain the current integrity error. Keep the original fixtures for the diagnostic run; any later dedicated comment-free pair requires separate production PDF/quality qualification.
+- Next exact action: independent review, scoped diagnostic commit and parent publication/integration; read the exact hosted last PDF stage without weakening integrity or quality checks. Full journey, restart and acceptance remain pending.
+
 
 ## 2026-10-02 UTC — Read-only publication denial and drain fixture correction
 

@@ -29,6 +29,24 @@ test('journey progress emits only the last completed fixed milestone and is resa
   assert.equal(browserDiagnostics(input).tests[0].lastCompletedStage, undefined);
 });
 
+test('PDF operation milestones survive both privacy filters beside an allowlisted integrity code', () => {
+  const stages = ['pdf-context-read', 'pdf-fixtures-read', 'pdf-base-created', 'pdf-base-detail-read',
+    'pdf-base-published', 'pdf-published-detail-read', 'pdf-target-created', 'pdf-target-detail-read',
+    'pdf-target-published', 'pdf-comparison-read', 'pdf-base-files-read', 'pdf-base-download-verified',
+    'pdf-target-files-read', 'pdf-target-download-verified', 'pdf-gui-verified', 'pdf-shared-state-verified', 'pdf-snapshot-saved'];
+  for (const stage of stages) {
+    const input = report([{ status: 'failed', error: { value: { code: 'INTEGRITY_VIOLATION', detail: 'PRIVATE_BODY' } } }]);
+    input.suites[0].specs[0].tests[0].annotations = [
+      { type: 'runtime-completed', description: stage },
+      { type: 'runtime-completed', description: 'pdf-PRIVATE_BODY' },
+    ];
+    const actual = sanitizeBrowserDiagnostics(browserDiagnostics(input));
+    assert.equal(actual.tests[0].lastCompletedStage, stage);
+    assert.equal(actual.tests[0].problemCode, 'INTEGRITY_VIOLATION');
+    assert.ok(!JSON.stringify(actual).includes('PRIVATE_BODY'));
+  }
+});
+
 test('classifies strict-locator and emits only allowlisted failure location/matcher', () => {
   const result = browserDiagnostics(report([{ status: 'failed', error: {
     message: 'Error: expect(locator).toBeVisible() failed: strict mode violation: PRIVATE_SELECTOR',

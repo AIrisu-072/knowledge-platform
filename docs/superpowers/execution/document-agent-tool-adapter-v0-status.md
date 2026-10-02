@@ -1,5 +1,11 @@
 # Document Agent Tool Adapter v0 — Capability Status
 
+## 2026-10-02 UTC — Bounded PDF-stage diagnostics propagated from R2
+
+- Isolated `feat/document-a2-pdf-diagnostics` merges R2 `639b31e85dc5ff7ed0a11fef4296ce88d46ed6cc` into A2 `5f1963f261ebf02582535df94e3221bd5128a733`. All four source/evidence files retain exact R2 blobs; only Active/C2 integration checkpoints are additional. The allowlisted fixed PDF milestones preserve the prior privacy boundary and leave input files, worker behavior and success criteria unchanged.
+- Fresh merged Node53/53, runtime TypeScript and diff checks PASS with telemetry disabled. MCP source/provenance, required MCP/scheduler CI gates, dependency locks and scanner31 records remain unchanged. No Rust, hosted execution or new acceptance claim.
+- Next exact action: independent propagation review and C3 integration, followed by parent publication and exact-head hosted diagnosis. PDF integrity failure and full acceptance remain unresolved; no visual activation, successor Organization Client work, merge or deployment occurs here.
+
 ## 2026-10-02 UTC — Reviewed denial/drain and metadata fixture repairs combined
 
 - Isolated `feat/document-a2-fixture-integrated` merges R2 `808fd4ed8c95ef1184f9b59546159a0d77f9a99c` into independently reviewed A2 fixture repair `fcb1cd8d53742d013ec18a242e543cb5c7c19b45`, based on preserved A2 `7ae8f746b86795343eacf729b85d4f4fa42d7bcb`. The merge is conflict-free; every source blob exactly matches its reviewed repair. Only this record and Active receive integration checkpoints.

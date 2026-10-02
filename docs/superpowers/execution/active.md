@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## Current checkpoint — A2 retains bounded PDF diagnostics, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / PDF ACCEPTANCE UNDER DIAGNOSIS**. Isolated `feat/document-a2-pdf-diagnostics` merges reviewed R2 `639b31e85dc5ff7ed0a11fef4296ce88d46ed6cc` into A2 `5f1963f261ebf02582535df94e3221bd5128a733`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain the exact evidence and scope.
+- The four R2 diagnostic files match the reviewed source; PDF inputs and criteria are unchanged. Fresh Node53/runtime TypeScript/diff checks pass. MCP, both required gates, locks and scanner records are unchanged. No Rust or new actual-runtime execution.
+- Next exact action: complete propagation review through C3, then parent publishes and observes exact-head gates. Diagnostics do not repair or qualify the PDF integrity failure; no successor capability, visual activation, merge or deployment.
+
+---
+
 ## Current checkpoint — A2 denial/metadata fixture corrections integrated, 2026-10-02 UTC
 
 - Status: **ACTIVE — REVIEWED FIXTURES INTEGRATED / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-fixture-integrated` combines A2 metadata repair `fcb1cd8d53742d013ec18a242e543cb5c7c19b45` with R2 denial/drain repair `808fd4ed8c95ef1184f9b59546159a0d77f9a99c`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) preserve both approved contracts and independent review records.
