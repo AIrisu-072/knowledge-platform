@@ -1,5 +1,16 @@
 # Organization Client v0 — D2 source / interaction review
 
+## 2026-10-02 16:56 UTC — Corrected source, all20 pixels and final CI GO; Phase3 frozen
+
+- Captured PR48 source `e6bf24d8afa76a4aa7c66546bd963e4e1a90ffc8` / tree `204a412ba40211ca052d81cdf79f2b8701c148bc` remains unchanged. Local `ef7f610f07b2bad4f37e42a9716d7988855770df` is tree-equivalent. This separate `design/organization-client-v0-ui-freeze` packet contains documentation only; its PR is not yet assigned.
+- Independent source/control GO closed the dynamic blocked→Return counterexample;328/328 checks and16 independent nearby cases passed. Both actual-pixel reviewers individually inspected all20 corrected originals and report **GO**, with the handoff/current-progress and blocked-submit findings visibly closed. [Final review and hashes](organization-d2-visual-review-v2.md) retain the [first NO-GO](organization-d2-visual-review-v1.md).
+- Normal CI37033125852, D2 normal37033125861, DSI37033125942, Sandbox37033125851 and capture37035368125 are SUCCESS. Capture-triggered CI37035368187 is **SUCCESS**, verified16:56UTC. The exact captured source now satisfies the final Phase3 freeze qualification. Publication/qualification of this separate evidence packet remains pending before Phase4 starts.
+- [Phase3 authority/qualification](../specs/2026-10-02-organization-client-v0-ui-approval.md) uses original§50, preserves the exact UI semantic snapshot and all frozen Phase1/2/Document/Search/Audit/production boundaries. No new owner routine approval is invented.
+- Evidence is20 temporary synthetic PNGs at1440 full-page924–1293px;1280 geometry and native interaction/font checks are separate. Search body, decision outcomes, open dialogs and dynamic blocked→Return are not pictured. No Tauri, production React or live business/security/persistence acceptance is claimed.
+- Next exact action: independently review this documentation-only packet, then publish/qualify its clean evidence tree through the parent. After that, start Phase4's current-official research and bounded design/plan under original approval; no new dependencies/runtime build yet.
+
+---
+
 ## 2026-10-02 16:13 UTC — Independent review: blocked-to-return action precedence
 
 Independent review of `6963e834727141be3b18d87584918ae0f274c629` / tree

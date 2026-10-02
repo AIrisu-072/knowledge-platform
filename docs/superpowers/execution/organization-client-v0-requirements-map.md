@@ -8,7 +8,10 @@ predecessor cleared by the [exact acceptance receipt](https://github.com/AIrisu-
 
 P0 is [reconstruction](organization-client-v0-phase0-reconstruction.md).
 P1 is [Product/UX](../specs/2026-10-02-organization-client-v0-product-ux-design.md).
-P2/P3/P4/P5/P6 refer to later ordered phase deliverables, not completed work.
+P2 is the [frozen Domain/API/Auth record](../specs/2026-10-02-organization-client-v0-domain-api-approval.md).
+P3 is the [exact source/visual qualification record](../specs/2026-10-02-organization-client-v0-ui-approval.md),
+now qualified with final capture-triggered CI and actual20-original review. P4/P5/P6 remain later ordered work,
+not completion claims. The phase records, not this original index, carry status.
 
 | Original § | Requirement | Owning design / proof |
 |---|---|---|
