@@ -1,0 +1,44 @@
+# Bounded Japanese font qualification for the Document PoC runner
+
+Date: 2026-10-02 UTC. Scope: approved test-runner-only Kosugi remedy, based on frozen source `31b75d81941027f3c00be0617fb26cd0f6a9e18c`. Local unit/static qualification is separate from hosted Chromium selection and later pixel review. C3 acceptance is not established by this document.
+
+## Source and license
+
+The exact source is official [`googlefonts/kosugi` commit `75171a2738135ab888549e76a9037e826094f0ce`](https://github.com/googlefonts/kosugi/tree/75171a2738135ab888549e76a9037e826094f0ce). The repository was archived on 2026-04-19. The pinned tree identifies `fonts/ttf/Kosugi-Regular.ttf` as blob `56242e88aaf4aa912f28a93143f277824e356215`.
+
+| Unmodified upstream artifact | Bytes | SHA256 |
+|---|---:|---|
+| `fonts/ttf/Kosugi-Regular.ttf` | 2,288,848 | `f5e81d6a6b865d9b88c54d2d3c16bcaa3b239dfcefaf2a62976ac9dc7574bab7` |
+| `LICENSE.txt` | 11,358 | `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30` |
+| `AUTHORS.txt` | 258 | `0805abc728c869f4a4a9936062b24d4ed08773e3ef4321cde14d02dc33612ca2` |
+| `CONTRIBUTORS.txt` | 483 | `57984e9cd756b2e131a3b1a536d7eca92088f4a96ae982088886ea30d685bc8f` |
+
+Downloaded bytes were independently hash checked. Static name-table inspection establishes family Kosugi, style Regular, Version 4.002, weight class 400, and embedded attribution “Copyright 2010 The Kosugi Project Authors”. The embedded metadata and [upstream license](https://github.com/googlefonts/kosugi/blob/75171a2738135ab888549e76a9037e826094f0ce/LICENSE.txt) identify Apache-2.0, already permitted by `spec/selection/library-tool-selection-v0.md` §2.1 and `deny.toml`. No license exception or general allowlist change is required. [Authors](https://github.com/googlefonts/kosugi/blob/75171a2738135ab888549e76a9037e826094f0ce/AUTHORS.txt) and [contributors](https://github.com/googlefonts/kosugi/blob/75171a2738135ab888549e76a9037e826094f0ce/CONTRIBUTORS.txt) identify Motoya Font. Preserve these three notices with the font; the pinned tree contains no NOTICE file. Exact notice copies are under `tools/document-poc-runtime/fonts/`.
+
+Only the existing pinned Chromium/Fontconfig consumer reads this unmodified TTF. No upstream build, install, Python, Makefile, or workflow script is executed. There is no Cargo/npm package addition or product font asset. Rebuilding upstream and its tool dependencies is outside this remedy.
+
+## Bounded security assessment
+
+The [upstream security page](https://github.com/googlefonts/kosugi/security) reports no detected SECURITY.md and no published repository advisories. Targeted public searches found no Kosugi-specific advisory. Direct filtered NVD, OSV, and global GitHub Advisory pages were not retrievable during this assessment; database coverage is incomplete. Absence of a policy or published advisory is not a clean security scan, vulnerability-free claim, or maintenance commitment. The archived state limits expectations of future upstream response.
+
+The font has 7,576 glyphs and 7,526 best-cmap mappings, no variable `fvar` table, and a seven-byte TrueType `prep` program. It must not be described as containing no executable instructions. Font parser/interpreter vulnerabilities remain a residual risk in the existing consumers. SHA256 pins establish byte identity, not malware absence, reproducible-build provenance, or cryptographic publisher authentication. Download uses only immutable HTTPS raw paths, forbids redirects, bounds body size and duration, and rejects any altered font or notice before installing any file.
+
+## Runner boundary
+
+`node tools/document-poc-runtime/runner-font.mjs` is invoked in the existing Linux `document-poc-runtime` job before Chromium/runtime acceptance. It creates a unique mode0700 directory under `RUNNER_TEMP`, writes only the verified font and notices, and places its font configuration and first cache directory inside that directory. Fontconfig's first cache directory is private; existing `/etc/fonts/fonts.conf` is included read-only to preserve installed Latin/symbol fonts and system rules. It creates no family alias, does not change product CSS or its font-family list, and does not write system/user font directories. Before exporting its environment, `fc-list` must resolve the Kosugi family to exactly the verified private file; an absent or duplicate same-named face fails closed. No elevated privileges, package installation, settings change, production build, or browser installation was performed by the local implementation task.
+
+The normal hosted acceptance job inherits only `FONTCONFIG_FILE` through `GITHUB_ENV`; no XDG, HOME, PATH, mise, pnpm or Playwright environment value is changed. Absolute font/cache directories in the generated configuration make XDG overrides unnecessary, including for `fc-cache` and `fc-list`. The pinned [mise action](https://github.com/jdx/mise-action/blob/c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4/src/index.ts) sets up its tool/shim roots before this step, and [mise directory defaults](https://mise.jdx.dev/directories.html) depend on XDG. Changing global XDG afterward could relocate installed tools. The environment regression checks both unset and custom XDG configurations plus exact emitted Actions environment content; the runner's disposable lifetime bounds these files. Existing capture event gate, exact upload action pin, thirteen PNG paths, one-day retention, permissions and native/Rust code remain unchanged. This setup does not activate capture or upload. Ordinary hosted CI is the first renderer qualification; independent review and exact-head hosted gates must pass before any separately approved capture.
+
+## Static coverage and installation evidence
+
+At frozen source H, a read-only scan of70 tracked `.ts`, `.tsx`, `.mjs`, `.css` and `.json` files beneath `apps/document-web/src`, `apps/document-web/e2e-runtime`, `tools/document-poc-seed` and `tools/document-poc-runtime` finds353 unique U+3000–30FF, U+3400–9FFF, U+F900–FAFF and U+FF00–FFEF codepoints. Every one plus printable ASCII U+0020–007E maps in the exact TTF cmap. This bounds current source/runtime/seed strings, not arbitrary future documents or all Japanese: U+20BB7 (𠮷), for example, is absent. Symbols `· — ▯ ▸ ▾ ✎` are absent and still require system fallback.
+
+Local private-directory installation with the exact four downloaded payloads, hash revalidation, permissions, a single installed font, notice preservation, `fc-cache`, and `fc-scan` passed. The explicit installed-face match returns Kosugi-Regular. Local generic sans-serif matching continues to prefer preexisting OpenAI Sans for unconstrained text and Noto Sans CJK JP for a Japanese charset query. That is evidence that this configuration preserves existing fallback rules, not evidence that Chromium selected Kosugi. No local Chromium rendering, screenshot, visual capture or upload occurred; no browser was installed. The 1.5GiB free-disk floor is retained.
+
+## Actual application selection oracle and remaining gates
+
+The ordinary, non-capture real GUI journey now invokes a separate helper immediately after the existing folder region is visible. Using the pinned Playwright1.63.0 protocol's `CSS.getPlatformFontsForNode`, it reads the real application's Japanese-only folder heading `フォルダー` and checkbox label `配下も含める`. It requires exactly one platform face, family Kosugi, PostScript name Kosugi-Regular, `isCustomFont=false`, and exact rendered-glyph counts5 and6. It also checks the unchanged actual text, visibility, requested CSS weights700/400 and computed `font-synthesis:none`. The protocol type fields were checked against the declared Playwright1.63.0 dependency. It inserts no DOM probe, styles or synthetic glyphs and does not use `document.fonts.check` as selection evidence. `document.fonts.ready` only waits for layout/font readiness.
+
+A successful assertion adds only the fixed `kosugi-regular-japanese-heading-body` receipt to the existing bounded browser summary; arbitrary font names, paths, DOM text and CDP payloads are never exported. Unit tests exercise wrong face, wrong PostScript name, custom/downloaded font, missing/extra glyphs, fallback mixtures, non-Japanese probes and receipt sanitization. Installer tests reject tampered, unknown, oversized and failed downloads; source guards require unconditional normal-journey execution before any visual checkpoint.
+
+Hosted CDP selection is **NOT RUN** here. A failure, including another system Japanese font winning the match, fails the journey and must be diagnosed rather than treated as qualification. Even a passing regular-face selection at requested700 with synthesis disabled does not establish a distinct bold face or adequate visual hierarchy. Symbol fallback, punctuation/full-width shaping, requested-bold hierarchy, density, clipping and overall legibility still need actual approved pixels. Static coverage and unit tests cannot close those gates or C3.

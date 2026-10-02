@@ -196,3 +196,41 @@ test('action snapshots distinguish unavailable DOM and disclose only fixed count
   assert.ok(!JSON.stringify(result).includes('private'));
   assert.deepEqual(sanitizeBrowserDiagnostics(result), result);
 });
+
+test('actual Japanese font assertion emits only its fixed selection receipt and is resanitized', () => {
+  const input = report([{ status: 'passed' }]);
+  input.suites[0].specs[0].tests[0].annotations = [
+    { type: 'runtime-font', description: 'kosugi-regular-japanese-heading-body' },
+    { type: 'runtime-font', description: 'PRIVATE_FONT_PATH' },
+  ];
+  const actual = browserDiagnostics(input);
+  assert.equal(actual.tests[0].fontSelection, 'kosugi-regular-japanese-heading-body');
+  assert.equal(sanitizeBrowserDiagnostics(actual).tests[0].fontSelection, 'kosugi-regular-japanese-heading-body');
+  assert.ok(!JSON.stringify(actual).includes('PRIVATE'));
+  assert.equal(sanitizeBrowserDiagnostics({ ...actual, tests: [{ ...actual.tests[0], fontSelection: 'PRIVATE' }] }).tests[0].fontSelection, undefined);
+  input.suites[0].specs[0].tests[0].annotations = [{ type: 'other', description: 'kosugi-regular-japanese-heading-body' }];
+  assert.equal(browserDiagnostics(input).tests[0].fontSelection, undefined);
+});
+
+test('timestamp layout receipt requires a passed test and stays fixed through both privacy boundaries', () => {
+  const input = report([{ status: 'passed' }]);
+  input.suites[0].specs[0].file = '/private/source/timestamp-layout.spec.ts';
+  input.suites[0].specs[0].tests[0].annotations = [
+    { type: 'runtime-timestamp-layout', description: 'long-iana-both-folds-1280-1440' },
+    { type: 'runtime-timestamp-layout', description: 'PRIVATE_DOM_TEXT' },
+  ];
+  const actual = browserDiagnostics(input);
+  assert.equal(actual.tests[0].source, 'timestamp-layout.spec.ts');
+  assert.equal(actual.tests[0].timestampLayout, 'long-iana-both-folds-1280-1440');
+  assert.deepEqual(sanitizeBrowserDiagnostics(actual), actual);
+  assert.ok(!JSON.stringify(actual).includes('PRIVATE'));
+  for (const status of ['failed', 'skipped', 'timedOut', 'unavailable']) {
+    assert.equal(sanitizeBrowserDiagnostics({ ...actual, tests: [{ ...actual.tests[0], status }] }).tests[0].timestampLayout, undefined);
+    input.suites[0].specs[0].tests[0].results[0].status = status;
+    assert.equal(browserDiagnostics(input).tests[0].timestampLayout, undefined);
+  }
+  assert.equal(sanitizeBrowserDiagnostics({ ...actual, tests: [{ ...actual.tests[0], timestampLayout: 'PRIVATE' }] }).tests[0].timestampLayout, undefined);
+  input.suites[0].specs[0].tests[0].results[0].status = 'passed';
+  input.suites[0].specs[0].tests[0].annotations = [{ type: 'other', description: 'long-iana-both-folds-1280-1440' }];
+  assert.equal(browserDiagnostics(input).tests[0].timestampLayout, undefined);
+});

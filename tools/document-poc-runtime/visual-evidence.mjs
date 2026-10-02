@@ -12,13 +12,15 @@ export function assertOwnedVisualDatabaseInput(env) {
 }
 
 export const MAX_PNG_BYTES = 8 * 1024 * 1024;
+export const MAX_FULL_PAGE_HEIGHT = 4096;
 export const VISUAL_CHECKPOINTS = Object.freeze([
   '01-list-context-1440.png', '02-list-focus-return-1280.png', '03-detail-overview-1440.png',
   '04-revision-version-1440.png', '05-comparison-1440.png', '06-version-file-selected-1440.png',
   '07-publication-ready-1440.png', '08-publication-confirm-focus-1440.png', '09-publication-success-1440.png',
   '10-access-policy-effective-draft-1440.png', '11-occ-conflict-1440.png',
   '12-permission-denied-file-retained-1440.png', '13-permission-restored-retry-success-1440.png',
-].map(name => Object.freeze({ name, width: name.includes('1280') ? 1280 : 1440, height: 900 })));
+].map((name, index) => Object.freeze({ name, width: name.includes('1280') ? 1280 : 1440, height: 900,
+  fullPage: index >= 5, maxHeight: index >= 5 ? MAX_FULL_PAGE_HEIGHT : 900 })));
 function checkpoint(name) {
   const item = VISUAL_CHECKPOINTS.find(item => item.name === name);
   assert.ok(item, 'Unknown visual checkpoint'); return item;
@@ -41,7 +43,7 @@ export function validatePng(bytes, name) {
     if (type === 'IHDR') {
       assert.ok(!header && count === 0 && size === 13, 'PNG header invalid');
       header = { width: data.readUInt32BE(0), height: data.readUInt32BE(4), channels: data[9] === 2 ? 3 : 4 };
-      assert.ok(header.width === expected.width && header.height === expected.height, 'PNG dimensions invalid');
+      assert.ok(header.width === expected.width && header.height >= expected.height && header.height <= expected.maxHeight, 'PNG dimensions invalid');
       assert.ok(data[8] === 8 && [2, 6].includes(data[9]) && data[10] === 0 && data[11] === 0 && data[12] === 0, 'PNG encoding invalid');
     } else if (type === 'IDAT') {
       assert.ok(header && !ended && size > 0, 'PNG image data invalid'); compressed.push(data);
@@ -107,12 +109,35 @@ async function readPng(directory, name) {
   } finally { await handle.close(); }
 }
 
+// Evaluated in Chromium without changing scroll, focus, animations or product CSS.
+// Infinite decorative animations are outside the finite-transition settlement rule.
+export function visualStateSettled() {
+  return !document.querySelector('[aria-busy="true"]') && !document.getAnimations().some(animation =>
+    (animation.playState === 'running' || animation.pending) && Number.isFinite(animation.effect?.getComputedTiming().endTime));
+}
+
+// Also exercised by ordinary non-capture runtime runs, before any upload is enabled.
+export async function assertVisualReadiness({ page, name, humanOrigin }) {
+  const expected = checkpoint(name); loopback(humanOrigin);
+  assert.equal(new URL(page.url()).origin, humanOrigin, 'Visual page must belong to owned Human runtime');
+  assert.deepEqual(page.viewportSize(), { width: expected.width, height: expected.height }, 'Visual viewport must be explicit');
+  await page.waitForFunction(visualStateSettled, undefined, { timeout: 15_000 });
+  const size = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight }));
+  assert.ok(Number.isInteger(size.width) && size.width > 0 && size.width <= expected.width, 'Visual horizontal overflow');
+  if (expected.fullPage) assert.ok(Number.isInteger(size.height) && size.height >= expected.height && size.height <= expected.maxHeight, 'Visual full-page height outside bound');
+}
+
 export async function captureVisualCheckpoint({ runDirectory, context, phase, page, name }) {
   assert.equal(phase, 'journey', 'Visual capture requires successful journey checkpoints');
   const expected = checkpoint(name), directory = await captureDirectory(runDirectory, context);
-  assert.equal(new URL(page.url()).origin, context.human, 'Visual page must belong to owned Human runtime');
-  assert.deepEqual(page.viewportSize(), { width: expected.width, height: expected.height }, 'Visual viewport must be explicit');
-  const bytes = await page.screenshot({ type: 'png', fullPage: false, scale: 'css' });
+  await assertVisualReadiness({ page, name, humanOrigin: context.human });
+  const focus = await page.evaluateHandle(() => document.activeElement);
+  let bytes;
+  try {
+    bytes = await page.screenshot({ type: 'png', fullPage: expected.fullPage, scale: 'css' });
+    assert.equal(await focus.evaluate(element => element === document.activeElement), true, 'Visual capture must preserve settled focus');
+    assert.equal(await page.evaluate(visualStateSettled), true, 'Visual capture must remain settled');
+  } finally { await focus.dispose(); }
   validatePng(bytes, name);
   await writeFile(join(directory, name), bytes, { flag: 'wx', mode: 0o600 });
 }

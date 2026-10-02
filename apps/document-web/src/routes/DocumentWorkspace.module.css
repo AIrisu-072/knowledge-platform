@@ -201,7 +201,7 @@
 
 .tableRow {
   display: grid;
-  grid-template-columns: minmax(8rem, 2fr) minmax(5rem, .9fr) minmax(6rem, 1fr) minmax(2.8rem, .35fr) minmax(7rem, 1.2fr) minmax(3.4rem, .5fr);
+  grid-template-columns: minmax(8rem, 2fr) minmax(5rem, .9fr) minmax(6rem, 1fr) minmax(2.8rem, .35fr) minmax(24rem, 1.2fr) minmax(3.4rem, .5fr);
   min-height: var(--row-height);
   align-items: center;
 }
@@ -212,6 +212,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tableRow > .timestampCell {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .tableHeader {
@@ -465,7 +471,7 @@
 
 @media (max-width: 1160px) {
   .tableRow {
-    grid-template-columns: minmax(7rem, 1.6fr) minmax(4.5rem, .9fr) minmax(5rem, 1fr) minmax(2.6rem, .35fr) minmax(6rem, 1.1fr) minmax(3rem, .45fr);
+    grid-template-columns: minmax(7rem, 1.6fr) minmax(4.5rem, .9fr) minmax(5rem, 1fr) minmax(2.6rem, .35fr) minmax(24rem, 1.1fr) minmax(3rem, .45fr);
   }
 }
 

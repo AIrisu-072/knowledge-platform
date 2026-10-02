@@ -58,3 +58,17 @@ test('global styles keep a visible keyboard focus ring', async () => {
   expect(css).toContain('outline: 2px solid var(--color-focus)');
   expect(css).toContain('outline-offset: 2px');
 });
+
+test('timestamp labels can wrap without ellipsis in both list column layouts', async () => {
+  const css = await readFile(resolve(process.cwd(), 'src/routes/DocumentWorkspace.module.css'), 'utf8');
+  const timestampRule = css.match(/\.tableRow > \.timestampCell\s*\{([^}]+)\}/)?.[1] ?? '';
+  expect(timestampRule).toMatch(/white-space:\s*normal/);
+  expect(timestampRule).toMatch(/overflow:\s*visible/);
+  expect(timestampRule).toMatch(/overflow-wrap:\s*anywhere/);
+  // Keep enough width for a two-line labelled time within the existing 48px virtual row.
+  const layouts = [...css.matchAll(/grid-template-columns: ([^;]+);/g)]
+    .map(match => match[1]).filter(value => value!.includes('minmax(2.'));
+  expect(layouts).toHaveLength(2);
+  expect(layouts.every(value => value!.includes('minmax(24rem, '))).toBe(true);
+  expect(css).toMatch(/\.tableScroller\s*\{[^}]*overflow:\s*auto/);
+});

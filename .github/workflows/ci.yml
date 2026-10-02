@@ -182,6 +182,8 @@ jobs:
           mise install node
           mise install pnpm
           pnpm install --frozen-lockfile --ignore-scripts
+      - name: Install verified Japanese runner font
+        run: node tools/document-poc-runtime/runner-font.mjs
       - name: Install pinned Chromium
         run: pnpm --filter @knowledge-platform/document-web exec playwright install chromium
       - name: Check current PR43 visual review event

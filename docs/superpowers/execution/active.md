@@ -1,5 +1,57 @@
 # Active Execution Pointer
 
+## Current checkpoint — Corrected H2/V2 evidence reviewed; final report gates pending
+
+- Status: **ACTIVE — ACTUAL RUNTIME PASS / SCOPED VISUAL GO / REPORT GATES PENDING / OWNER ACCEPTANCE PENDING**. Frozen H2 `6103e4d4e3bb0d45ba03e1d2935492de7f11394a` has all three normal workflows successful. [C3 Status](document-poc-acceptance-v0-status.md) and the [acceptance report](document-poc-acceptance-v0-report.md) identify each source/run/report separately.
+- N2 and corrected V2 independently passed22 runtime stages,11 browser cases, persistence, Agent/owned restart provenance and actual font/geometry markers. All13 V2 originals were reviewed with explicit loading/full-page/completion/spacing limits; no flawless or all13-settled claim. Artifact11218564738 expires2026-10-03T09:29:52Z. Historical V1 remains visual FAIL; local review-copy cleanup is pending within the approved period.
+- Independent five-doc factual/privacy review is GO. Next exact action: publish report R2 through the parent while preserving PR46 ancestry, then verify its exact applicable CI/DSI/Sandbox gates. Keep H2 frozen and owner acceptance pending. C0's own G9 remains separate; Organization Client has not started. All PRs remain Draft, unmerged and undeployed.
+
+---
+
+## Current checkpoint — Browser-only timestamp geometry proof prepared, 2026-10-02 UTC
+
+- Status: **ACTIVE — LOCAL ORACLE/WIRING CHECKS PASS / INDEPENDENT REVIEW AND ACTUAL CHROMIUM LAYOUT PENDING**. Isolated `fix/document-timestamp-browser-geometry` starts at reviewed combined `4cda0e9814cebed38260497ced96af75804cccde` / tree `97bd0446fe95e9bb35b91283f9e67a4756ec010a`. [C3 Status](document-poc-acceptance-v0-status.md) records the approved display-only proof and its limits.
+- A dedicated non-recording runtime test uses actual built-app DOM, unchanged CSS, the actual product formatter in Chromium, long `America/North_Dakota/New_Salem` and both New York fold instants at1280/1440. Timestamp substitution occurs only in an inert cloned root in separate read-only contexts. Range fragments must fit the padded cell, exposed internal scrollport,48px virtual slot and neighboring rows/cells. This is browser layout evidence, not backend equality or persistence evidence.
+- Fresh Node129/GUI57, runtime/application types, schema freshness, actionlint and diff checks pass. Collection-only Playwright lists11 journey tests with the prior10 preserved; it does not execute Chromium. Only a passed new test may emit bounded `timestampLayout: long-iana-both-folds-1280-1440`. The original journey/font/capture hooks,13 upload names, product source and workflows are unchanged.
+- Next exact action: independent review of the clean candidate, then parent publication and normal exact-head hosted proof before any separately authorized capture. Actual Chromium layout remains **NOT RUN**; no local browser download, Rust, capture, upload or publication occurred.
+
+---
+
+## Current checkpoint — Reviewed visual-remediation slices integrated, 2026-10-02 UTC
+
+- Status: **ACTIVE — MERGED LOCAL CHECKS PASS / NORMAL HOSTED FONT AND VISUAL QUALIFICATION PENDING**. `fix/document-visual-remediation-integrated` preserves the three independently reviewed framing/font/timestamp slices; [C3 Status](document-poc-acceptance-v0-status.md) records exact parents and26-path preservation.
+- Fresh Node125/GUI57, runtime/application types, schema freshness, production build, actionlint and range checks pass. Three existing bundle advisories remain. Every implementation/test/notice blob matches its reviewed slice; only Active and C3 status combine histories. Product font-family, time conversions, API/Rust/locks/identity/security, uploader and permissions remain unchanged; timestamp-column width/wrapping is the explicitly reviewed presentation change.
+- The frozen H capture remains visual FAIL, and the preliminary report is a separate subject. Actual Chromium selection/typography, bounded page framing and timestamp visibility require fresh normal hosted proof and actual corrected pixels before owner acceptance. Next exact action: finish narrow integration review and return the exact clean tree for parent publication; no local browser download, Rust, label, capture, upload or Organization Client work.
+
+---
+
+
+## Current checkpoint — Timestamp zone/offset labels prepared, 2026-10-02 UTC
+
+- Status: **ACTIVE — LOCAL TIMESTAMP CHECKS PASS / INDEPENDENT REVIEW AND HOSTED PIXELS PENDING**. Isolated `fix/document-timestamp-display-zones` starts at frozen `31b75d81941027f3c00be0617fb26cd0f6a9e18c`; [C3 Status](document-poc-acceptance-v0-status.md) records the approved ambiguity-only correction and evidence limits.
+- Home preserves browser-local conversion and Detail preserves Tokyo conversion; visible actual-zone and instant-specific UTC-offset labels distinguish repeated DST hours. The timestamp-only minimum column width/wrapping uses the existing internal scroller and preserves48px virtualization, keyboard behavior, input/instant attributes, scheduling payload and product fonts.
+- Final GUI15 suites/57, focused New York13/Tokyo13, TypeScript, schema freshness, production build and diff checks pass. Supporting long-IANA font metrics do not establish browser/pixel acceptance. Next exact action: return the clean immutable candidate for parent-owned independent review/integration and exact-head hosted checks; no local Rust, browser capture/upload or publication, and E3/C3 remain incomplete.
+
+---
+
+## Current checkpoint — Japanese test-runner font candidate prepared, 2026-10-02 UTC
+
+- Status: **ACTIVE — LOCAL UNIT/STATIC CHECKS PASS / INDEPENDENT REVIEW AND HOSTED FONT SELECTION PENDING**. `fix/document-japanese-runner-font` is isolated from frozen H `31b75d81941027f3c00be0617fb26cd0f6a9e18c`. [C3 Status](document-poc-acceptance-v0-status.md) and [source/risk record](../../research/document-japanese-runner-font.md) bound the approved runner-only remedy.
+- Exact Kosugi4.002 font/notice pins and existing Apache-2.0 allowlist are retained. Private Fontconfig setup adds no aliases or product assets. The normal actual-app Chromium journey must prove Kosugi-Regular selected for Japanese heading/body glyphs before any capture checkpoint; a fixed privacy-bounded receipt preserves that result.
+- Independent review identified and corrected job-wide XDG/toolchain relocation: only FONTCONFIG_FILE is now exported. Fresh Node119/runtime TypeScript/actionlint/syntax/diff and static private-installation/cmap checks pass. No local browser installation/rendering, Rust/build, actual C3 capture/upload or publication occurred. Static coverage/regular-weight and incomplete advisory-coverage limits remain explicit.
+- Next exact action: parent independently reviews the clean candidate, integrates approved test-only slices, and obtains exact-head normal NON-CAPTURE hosted qualification before any separately authorized capture. E3/C3 and actual pixel review remain open.
+
+---
+
+## Current checkpoint — Visual framing correction prepared, 2026-10-02 UTC
+
+- Status: **ACTIVE — LOCAL FRAME/SETTLEMENT CHECKS PASS / HOSTED AND VISUAL QUALIFICATION PENDING**. Isolated `fix/document-visual-framing` is based on frozen H `31b75d81941027f3c00be0617fb26cd0f6a9e18c`; [C3 Status](document-poc-acceptance-v0-status.md) records the bounded helper-only correction and the failed first capture.
+- Same13 names:01–05 fixed900px,06–13 explicit full-page900–4096px at1440px width,8MiB/strict PNG/private-file/export guards unchanged. Ordinary runs check pending/finite-transition settlement and page geometry; capture additionally preserves focus and rejects renewed pending state. No product CSS, font, timezone, business, workflow, permission or uploader change.
+- Full Node115/runtime TypeScript/actionlint/syntax/diff checks PASS. Actual hosted bounds and pixel usability remain NOT RUN. Next exact action: finish independent review and combine only separately reviewed font/timestamp slices; parent qualifies a distinct normal head before deliberate capture. No capture activation, upload, Rust or Organization Client work here.
+
+---
+
+
 ## Current checkpoint — Bounded owned-runtime E3 identity receipt prepared, 2026-10-02 UTC
 
 - Status: **ACTIVE — LOCAL EVIDENCE-CORRECTION CHECKS AND INDEPENDENT REVIEW PASS / NEW-HEAD ACCEPTANCE PENDING**. `fix/document-e3-bounded-runtime-provenance` is isolated from published `706786970de25f74cb6f96d6a53c042d3da580dc`; [C3 Status](document-poc-acceptance-v0-status.md) records the approved report/sanitizer-only scope and prior receipt's nonrecoverable evidence gap.
