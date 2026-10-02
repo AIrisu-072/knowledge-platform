@@ -8,7 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
-import { Blocked, EvidenceReport, RUNTIME_STAGES, STARTUP_OBSERVATION_MS, assertSafeDiagnostics, binaryDirectory, command, databaseProxy, delayedJsonRequest, pausedDownload, externalDatabase, freePort, postgresArguments, serverEnvironment, sha256File, startProcess, startupBlocked, stopProcess, waitForDrain, waitForListenerRefusal, waitReady } from './harness.mjs';
+import { Blocked, EvidenceReport, RUNTIME_STAGES, STARTUP_OBSERVATION_MS, assertSafeDiagnostics, binaryDirectory, command, databaseProxy, delayedJsonRequest, pausedDownload, externalDatabase, freePort, postgresArguments, serverEnvironment, sha256File, startProcess, startupBlocked, stopProcess, waitForDrain, waitForListenerRefusal, waitReady, withUnavailableWorker } from './harness.mjs';
 
 import { readBrowserDiagnostics, sanitizeBrowserPhases } from './browser-diagnostics.mjs';
 import { DatabaseDiagnostics } from './database-diagnostics.mjs';
@@ -75,6 +75,7 @@ try {
     report.data.artifacts = { server: await sha256File(binary), dsi: await sha256File(dsi), diff: await sha256File(diff),
       pdfium: await sha256File(join(pdfium, 'libpdfium.so')),
       mcp: await sha256File(join(root, 'apps/document-mcp/dist/main.cjs')),
+      mcpConsistency: await sha256File(join(root, 'apps/document-mcp/dist/consistency.cjs')),
       mcpRuntime: await sha256File(join(root, 'apps/document-mcp/dist/runtime.cjs')), web: {} };
     async function recordAssets(path, prefix = '') {
       for (const entry of await readdir(path, { withFileTypes: true })) {
@@ -161,7 +162,7 @@ try {
   await report.stage('seed-replay', () => seed('seed-replay'));
   const contextPath = join(directory, 'runtime-context.json');
   const drainFixturePath = join(directory, 'drain-fixture.json');
-  await writeFile(contextPath, JSON.stringify({ runId, human, agent, manifestPath, drainFixturePath, statePath: join(directory, 'persisted-state.json') }), { mode: 0o600 });
+  await writeFile(contextPath, JSON.stringify({ runId, human, agent, manifestPath, drainFixturePath, statePath: join(directory, 'persisted-state.json'), workerHashes: { dsi: report.data.artifacts.dsi, diff: report.data.artifacts.diff } }), { mode: 0o600 });
   async function browser(phase) {
     const require = createRequire(join(root, 'apps/document-web/package.json'));
     const playwright = require('@playwright/test');
@@ -211,10 +212,10 @@ try {
     await waitReady(human, humanProcess.child); await waitReady(agent, agentProcess.child);
     await health(human, 200); await health(agent, 200);
     // Mutate only copies owned by this run; restore each before proceeding.
-    for (const path of [dsi, diff]) {
-      await chmod(path, 0o600);
-      try { await health(human, 503); await health(agent, 503); }
-      finally { await chmod(path, 0o700); }
+    for (const worker of ['dsi', 'diff']) {
+      await withUnavailableWorker(directory, worker, report.data.artifacts[worker], async () => {
+        await health(human, 503); await health(agent, 503);
+      });
       await health(human, 200); await health(agent, 200);
     }
     for (const path of [storage, join(web, 'index.html')]) {

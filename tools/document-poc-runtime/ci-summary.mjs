@@ -26,7 +26,7 @@ export function summarize(report) {
   });
   const agent = summarizeAgent(report.agentAcceptance);
   const gitHead = sha(report.gitHead, 40);
-  const artifacts = Object.fromEntries(['server', 'dsi', 'diff', 'pdfium', 'mcp', 'mcpRuntime'].map(name => [name, sha(report.artifacts?.[name])]));
+  const artifacts = Object.fromEntries(['server', 'dsi', 'diff', 'pdfium', 'mcp', 'mcpRuntime', 'mcpConsistency'].map(name => [name, sha(report.artifacts?.[name])]));
   const proof = report.agentAcceptance;
   const workspaceLock = sha(report.sourceLocks?.pnpm);
   agent.provenanceVerified = typeof report.runId === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(report.runId)
@@ -39,6 +39,7 @@ export function summarize(report) {
     status: statuses.has(report.status) ? report.status : 'not-available',
     acceptanceQualified: report.status === 'passed' && report.acceptanceQualified === true && gitHead !== 'unverified'
       && agent.status === 'passed' && agent.provenanceVerified && artifacts.mcp !== 'unverified' && artifacts.mcpRuntime !== 'unverified'
+      && artifacts.mcpConsistency !== 'unverified'
       && report.gitDirty === false && stages.length === RUNTIME_STAGES.length && stages.every(stage => stage.status === 'passed'),
     gitHead, gitDirty: typeof report.gitDirty === 'boolean' ? report.gitDirty : 'unverified',
     platform: { os: ['linux', 'darwin', 'win32'].includes(report.platform?.os) ? report.platform.os : 'unverified',
