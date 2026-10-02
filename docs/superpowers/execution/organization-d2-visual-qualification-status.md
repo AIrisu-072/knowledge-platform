@@ -1,5 +1,41 @@
 # Organization D2 visual qualification status
 
+Status: **NORMAL HOSTED FAILED; DIAGNOSTIC CANDIDATE UNDER REVIEW; CAPTURE CLOSED**.
+
+## 2026-10-02 14:38 UTC — normal hosted keyboard failure / diagnostic-only candidate
+
+Published source `348fb053c1ba2999828b27cb7bffea805c146628`, tree
+`35c24f788467a38f1ac14f918464819f255c9175` (local integrated15da7aaf), failed
+[normal D2 run37021216999](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37021216999),
+job110884489649 at14:38:24UTC with the fixed category `keyboard`. Setup and
+harness units passed. The source-unit checks, browser launch and page load precede
+that category. The privacy-bounded log cannot identify which keyboard operation
+or assertion failed, nor prove a particular page/width reached completion. No
+capture, upload or visual acceptance occurred.
+
+Read-only inspection confirmed the unchanged skip link, focus-visible rule,
+focusable main, native modal controls and close-event return target. Native Tab
+containment and Escape/close focus timing are hypotheses, not established root
+causes. No local browser, alternate renderer, bypass, assertion relaxation,
+wait/retry addition or source/UI change is justified by this evidence.
+
+The bounded diagnostic candidate adds21 fixed keyboard-stage names, a stage
+callback and the same fail-closed sanitizer. Every original key, focus operation,
+assertion, order and timing is retained. No DOM/observed value, selector, raw
+exception, stack, private path, screenshot or artifact is added to output.
+Unknown/dynamic values still reduce to `internal`. Fake-page fault injection
+first produced30 expected REDs, then31/31 GREEN diagnostic tests; the full149
+harness tests pass. This verifies stage attribution/privacy and retained checks,
+not actual native focus behavior or a resolved keyboard defect.
+
+Next exact action: parent integrates this diagnostic-only delta onto the current
+reviewed source and obtains independent privacy/semantic review before publishing
+a new head for ordinary non-capture hosted qualification. Use its fixed failing
+stage as evidence before choosing a behavioral repair. No label/capture until a
+later exact head passes all applicable normal gates and review requirements.
+
+---
+
 ## 2026-10-02 14:26 UTC — Integrated source/workflow/privacy GO; hosted qualification next
 
 - Independent integrated review **GO**, no remaining Critical/Important findings, at local `55253877842d9792f491a752e40b447084132065`, tree `68dd921273c98bbf470e2e1b424df5f18a6f6049`. This is local source/control qualification, not a hosted, artifact or pixel result.

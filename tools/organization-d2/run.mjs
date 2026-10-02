@@ -75,7 +75,7 @@ try {
   }
   async function qualifyAll() {
     for (const archetype of ['sales', 'office']) for (const width of [1280, 1440]) await withPage(archetype, width, async page => {
-      category = 'keyboard'; await assertKeyboard(page);
+      category = 'keyboard'; await assertKeyboard(page, stage => { category = stage; });
       category = 'geometry'; await assertReducedMotion(page);
       for (const state of STATES) {
         category = 'source'; await selectScenario(page, state, scenarios);

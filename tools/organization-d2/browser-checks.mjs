@@ -10,7 +10,17 @@ export function assertPlatformFont(fonts, text) {
     && fonts[0].isCustomFont === false && fonts[0].glyphCount === [...text].length, 'font');
 }
 export const screenshotOptions = () => ({ type: 'png', fullPage: true, scale: 'css' });
-export const safeFailure = category => `Organization D2 qualification failed: ${['environment', 'source', 'gate', 'prerequisites', 'browser', 'network', 'geometry', 'keyboard', 'font', 'pixels', 'export', 'cleanup'].includes(category) ? category : 'internal'}`;
+export const KEYBOARD_STAGES = Object.freeze([
+  'keyboard-skip-tab', 'keyboard-skip-focus', 'keyboard-skip-visible',
+  'keyboard-skip-enter', 'keyboard-work-focus', 'keyboard-submit-focus',
+  'keyboard-submit-enter', 'keyboard-dialog-open',
+  'keyboard-dialog-tab-1', 'keyboard-dialog-tab-2', 'keyboard-dialog-tab-3',
+  'keyboard-dialog-tab-4', 'keyboard-dialog-tab-5', 'keyboard-dialog-escape',
+  'keyboard-dialog-closed', 'keyboard-return-focus', 'keyboard-draft-read',
+  'keyboard-repeat-enter', 'keyboard-cancel-click', 'keyboard-draft-preserved',
+  'keyboard-scenario-preserved',
+]);
+export const safeFailure = category => `Organization D2 qualification failed: ${['environment', 'source', 'gate', 'prerequisites', 'browser', 'network', 'geometry', 'keyboard', 'font', 'pixels', 'export', 'cleanup', ...KEYBOARD_STAGES].includes(category) ? category : 'internal'}`;
 export async function assertFonts(page, archetype) {
   const client = await page.context().newCDPSession(page);
   try {
@@ -64,25 +74,51 @@ export async function assertGeometry(page, origin, width) {
   for (let i = 1; i < geometry.regions.length; i++) assert.ok(geometry.regions[i - 1].right <= geometry.regions[i].left + 1 && geometry.regions[i].width > 0, 'geometry');
   return geometry.height;
 }
-export async function assertKeyboard(page) {
-  // Actual browser dialog semantics, keyboard focus trapping, Escape and return.
+export async function assertKeyboard(page, onStage = () => {}) {
+  // Fixed stage diagnostics only: original keys, assertions, order and timings
+  // are unchanged. No DOM text, locator, error, stack or observed value is reported.
+  onStage('keyboard-skip-tab');
   await page.keyboard.press('Tab');
+  onStage('keyboard-skip-focus');
   assert.equal(await page.locator('.skip').evaluate(node => node === document.activeElement), true, 'keyboard');
+  onStage('keyboard-skip-visible');
   const focus = await page.locator('.skip').evaluate(node => ({ style: getComputedStyle(node).outlineStyle, width: getComputedStyle(node).outlineWidth, y: node.getBoundingClientRect().y }));
   assert.ok(focus.style !== 'none' && parseFloat(focus.width) >= 2 && focus.y >= 0, 'keyboard');
-  await page.keyboard.press('Enter'); assert.equal(await page.locator('#work-surface').evaluate(node => node === document.activeElement), true, 'keyboard');
-  const submit = page.locator('#submit-action'); await submit.focus(); await page.keyboard.press('Enter');
+  onStage('keyboard-skip-enter');
+  await page.keyboard.press('Enter');
+  onStage('keyboard-work-focus');
+  assert.equal(await page.locator('#work-surface').evaluate(node => node === document.activeElement), true, 'keyboard');
+  const submit = page.locator('#submit-action');
+  onStage('keyboard-submit-focus');
+  await submit.focus();
+  onStage('keyboard-submit-enter');
+  await page.keyboard.press('Enter');
+  onStage('keyboard-dialog-open');
   assert.equal(await page.locator('#action-dialog').evaluate(node => node.open), true, 'keyboard');
-  for (let i = 0; i < 5; i++) { await page.keyboard.press('Tab'); assert.equal(await page.locator('#action-dialog').evaluate(node => node.contains(document.activeElement)), true, 'keyboard'); }
+  for (let i = 0; i < 5; i++) {
+    onStage(`keyboard-dialog-tab-${i + 1}`);
+    await page.keyboard.press('Tab');
+    assert.equal(await page.locator('#action-dialog').evaluate(node => node.contains(document.activeElement)), true, 'keyboard');
+  }
+  onStage('keyboard-dialog-escape');
   await page.keyboard.press('Escape');
+  onStage('keyboard-dialog-closed');
   assert.equal(await page.locator('#action-dialog').evaluate(node => node.open), false, 'keyboard');
+  onStage('keyboard-return-focus');
   assert.equal(await submit.evaluate(node => node === document.activeElement), true, 'keyboard');
   // Repeat/cancel must preserve the private input and scenario rather than commit.
+  onStage('keyboard-draft-read');
   const before = await page.locator('#draft').inputValue();
-  await page.keyboard.press('Enter'); await page.locator('#dialog-cancel').click();
+  onStage('keyboard-repeat-enter');
+  await page.keyboard.press('Enter');
+  onStage('keyboard-cancel-click');
+  await page.locator('#dialog-cancel').click();
+  onStage('keyboard-draft-preserved');
   assert.equal(await page.locator('#draft').inputValue(), before, 'keyboard');
+  onStage('keyboard-scenario-preserved');
   assert.equal(await page.locator('#scenario').inputValue(), 'normal', 'keyboard');
 }
+
 export async function assertReducedMotion(page) {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   assert.equal(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches), true, 'geometry');
