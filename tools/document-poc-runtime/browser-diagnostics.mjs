@@ -21,6 +21,34 @@ const httpCode = value => Number.isInteger(value) && value >= 200 && value <= 59
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const unavailable = () => ({ availability: 'unavailable', counts: { passed: 0, failed: 0, skipped: 0 }, tests: [], truncated: false });
 
+const startupErrors = new Set(['eval-blocked', 'require-undefined', 'exports-undefined', 'process-undefined', 'reference-error', 'type-error', 'syntax-error', 'chunk-load', 'other']);
+const journeyStages = new Set(['context-read', 'sessions-verified', 'api-preflight-complete', 'gui-loaded', 'folder-selected',
+  'document-selected', 'detail-opened', 'download-requested', 'download-received', 'download-saved', 'snapshot-read',
+  'history-opened', 'comparison-verified', 'policy-saved', 'version-form-opened', 'version-created',
+  'publication-form-opened', 'publication-confirmed', 'state-verified', 'snapshot-saved']);
+function lastCompletedStage(test) {
+  let stage;
+  for (const annotation of (Array.isArray(test?.annotations) ? test.annotations.slice(0, 40) : [])) {
+    if (annotation?.type === 'runtime-completed' && journeyStages.has(annotation.description)) stage = annotation.description;
+  }
+  return stage;
+}
+function sanitizeStartup(value) {
+  if (!object(value)) return undefined;
+  const count = v => Number.isInteger(v) && v >= 0 && v <= 1000 ? v : 0;
+  return { rootChildren: count(value.rootChildren), documentStatus: httpCode(value.documentStatus) ? value.documentStatus : 0,
+    scriptResponses: count(value.scriptResponses), scriptFailures: count(value.scriptFailures),
+    apiResponses: count(value.apiResponses), apiFailures: count(value.apiFailures),
+    cspViolations: count(value.cspViolations), consoleErrors: count(value.consoleErrors),
+    pageErrors: (Array.isArray(value.pageErrors) ? value.pageErrors.slice(0, 10) : []).map(v => startupErrors.has(v) ? v : 'other') };
+}
+function startupAttachment(result) {
+  const attachment = (Array.isArray(result?.attachments) ? result.attachments.slice(0, 20) : []).find(item =>
+    item?.name === 'runtime-startup.json' && item.contentType === 'application/json');
+  if (typeof attachment?.body !== 'string' || attachment.body.length > 8192) return undefined;
+  try { return sanitizeStartup(JSON.parse(Buffer.from(attachment.body, 'base64').toString('utf8'))); } catch { return undefined; }
+}
+
 function location(value) {
   if (!object(value) || typeof value.file !== 'string' || value.file.length > MAX_TEXT) return undefined;
   const source = value.file.split(/[\\/]/u).at(-1);
@@ -98,7 +126,7 @@ export function browserDiagnostics(report) {
         if (output.tests.length === MAX_RECORDS) { output.truncated = true; continue; }
         const error = object(result?.error) ? result.error : Array.isArray(result?.errors) ? result.errors.slice(0, 4).find(object) : undefined;
         const source = location(error?.location) ?? location(result?.errorLocation) ?? stackLocation(error?.stack) ?? location(spec) ?? location(suite);
-        output.tests.push({ ...source, status, ...(['passed', 'skipped'].includes(status) ? {} : describeError(error, status)) });
+        output.tests.push({ ...source, status, ...(lastCompletedStage(test) ? { lastCompletedStage: lastCompletedStage(test) } : {}), ...(startupAttachment(result) ? { startup: startupAttachment(result) } : {}), ...(['passed', 'skipped'].includes(status) ? {} : describeError(error, status)) });
       }
       if (visited > MAX_NODES) break;
     }
@@ -117,7 +145,9 @@ export function browserDiagnostics(report) {
 export function sanitizeBrowserDiagnostics(value) {
   if (!object(value) || value.availability !== 'available') return unavailable();
   const tests = (Array.isArray(value.tests) ? value.tests.slice(0, MAX_RECORDS) : []).filter(object).map(record => ({
+    ...(journeyStages.has(record.lastCompletedStage) ? { lastCompletedStage: record.lastCompletedStage } : {}),
     ...(record.scope === 'global' ? { scope: 'global' } : {}),
+    ...(sanitizeStartup(record.startup) ? { startup: sanitizeStartup(record.startup) } : {}),
     ...(sources.has(record.source) ? { source: record.source, ...(integer(record.line) ? { line: record.line } : {}),
       ...(integer(record.column) ? { column: record.column } : {}) } : {}),
     status: statuses.has(record.status) ? record.status : 'unavailable',

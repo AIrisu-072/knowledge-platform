@@ -1,3 +1,4 @@
+import { startDiagnostics, finishDiagnostics } from './startup-diagnostics';
 import { test, expect } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -10,9 +11,13 @@ import {
 import { hash, options, persistedSnapshot, runtime, saveSnapshot, uuidV7 } from './support';
 
 test.describe.configure({ mode: 'serial' });
+test.beforeEach(async ({ page }) => { await startDiagnostics(page); });
+test.afterEach(async ({ page }, info) => { await info.attach('runtime-startup.json', { body: Buffer.from(JSON.stringify(await finishDiagnostics(page))), contentType: 'application/json' }); });
+const completed = (stage: string) => test.info().annotations.push({ type: 'runtime-completed', description: stage });
 
 test('real same-origin GUI folder → list → detail → revisions/history/diff/files → policy → version → publish shares state with agent', async ({ page, request }) => {
   const context = await runtime();
+  completed('context-read');
   const { human, agent, manifest } = context;
   const documentId = manifest.documents.regulation!.create!.result!.documentId;
   const deniedId = manifest.documents.humanOnly!.create!.result!.documentId;
@@ -21,6 +26,7 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   const agentSession = (await getSession(agentOptions)).data;
   expect(humanSession.principal.principalId).toBe('poc-human'); expect(humanSession.invocationKind).toBe('human_interactive');
   expect(agentSession.principal.principalId).toBe('poc-agent'); expect(agentSession.invocationKind).toBe('agent');
+  completed('sessions-verified');
   const forged = await request.get(`${agent}/v1/session?principal=poc-human&group=poc-users`, { headers: { 'x-identity-profile': 'poc-human', 'x-principal-id': 'poc-human', cookie: 'principal=poc-human' } });
   expect(forged.status()).toBe(200); expect((await forged.json()).principal.principalId).toBe('poc-agent');
   expect((await getRootFolder(agentOptions)).data.folderId).toBe(manifest.rootFolderId);
@@ -33,25 +39,34 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   const denied = await request.get(`${agent}/v1/documents/${deniedId}?view=published`);
   expect(denied.status()).toBe(404); expect((await denied.json()).code).toBe('DOCUMENT_NOT_FOUND');
   expect((await request.get(`${agent}/`)).status()).toBe(404);
+  completed('api-preflight-complete');
 
   const apiOrigins = new Set<string>();
   page.on('request', req => { const url = new URL(req.url()); if (url.pathname.startsWith('/v1/')) apiOrigins.add(url.origin); });
   await page.goto('/documents?view=published');
   await expect(page.getByRole('region', { name: 'フォルダー' })).toBeVisible();
+  completed('gui-loaded');
   await page.getByRole('button', { name: 'PoC Shared', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`folderId=${manifest.folders.shared.folderId}`));
   await expect(page.getByRole('table', { name: '文書一覧' })).toBeVisible();
+  completed('folder-selected');
   const row = page.getByRole('button', { name: /規程サンプル/ });
   await row.focus(); await page.keyboard.press('Enter');
   await expect(page.getByRole('complementary', { name: '選択中の文書' })).toContainText('規程サンプル');
+  completed('document-selected');
   await page.getByRole('button', { name: '詳細を開く' }).press('Enter');
   await expect(page.getByRole('heading', { name: '規程サンプル', level: 1 })).toBeVisible();
+  completed('detail-opened');
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('complementary', { name: '原本と版' }).getByRole('button', { name: '現行ファイルを取得' }).click();
+  completed('download-requested');
   const download = await downloadPromise;
+  completed('download-received');
   const downloaded = await readFile((await download.path())!);
+  completed('download-saved');
   const before = await persistedSnapshot(human, documentId);
   expect(hash(downloaded)).toBe(before.versions.find(version => version.versionId === before.currentVersionId)!.files[0]!.hash);
+  completed('snapshot-read');
   await page.getByRole('tab', { name: '概要', exact: true }).focus();
   await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('tab', { name: '版・改訂' })).toBeFocused();
@@ -60,6 +75,7 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await page.getByRole('tab', { name: '履歴', exact: true }).click();
   await expect(page.getByRole('heading', { name: '変更履歴' })).toBeVisible();
   await expect(page.getByText('document.version.published', { exact: true }).first()).toBeVisible();
+  completed('history-opened');
   await page.getByRole('tab', { name: '新旧比較', exact: true }).click();
   await expect(page.getByRole('heading', { name: '本文の変更' })).toBeVisible();
   const compareBody = { baseRevisionId: before.revisions[1]!.revisionId, targetRevisionId: before.revisions[0]!.revisionId, projection: 'display' as const };
@@ -67,6 +83,7 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   const agentComparison = (await compareDocumentRevisions({ ...agentOptions, path: { documentId }, body: compareBody })).data;
   expect(humanComparison.coverage).toBe('full'); expect(humanComparison.displayItems.length).toBeGreaterThan(0);
   expect(agentComparison.resultDigest).toBe(humanComparison.resultDigest);
+  completed('comparison-verified');
   await page.goto(`/documents/${documentId}?view=authoring&tab=access`);
   await expect(page.getByRole('heading', { name: '現在有効なアクセス権' })).toBeVisible();
   await expect(page.getByRole('rowheader', { name: /poc-agents/ })).toBeVisible();
@@ -79,10 +96,12 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   const policy = (await getDocumentAccessPolicy({ ...humanOptions, path: { documentId } })).data;
   expect(policy.bindingMode).toBe('explicit');
   expect(policy.effectiveGrants.find(grant => grant.subjectId === 'poc-agents')!.actions.sort()).toEqual(['read', 'readHistory']);
+  completed('policy-saved');
 
   await page.goto(`/documents/${documentId}?view=authoring&tab=versions`);
   await page.getByRole('button', { name: '新しい版を作成', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: '新しい版を作成', level: 1 })).toBeVisible();
+  completed('version-form-opened');
   const changedContent = Buffer.from('【合成データ】規程サンプル\n第1条 実Runtime GUIで作成した第三版です。\n');
   await page.getByLabel('原本ファイル').setInputFiles({ name: 'regulation-runtime.txt', mimeType: 'text/plain', buffer: changedContent });
   const createResponse = page.waitForResponse(response => response.url().endsWith(`/documents/${documentId}/versions`) && response.request().method() === 'POST');
@@ -90,11 +109,13 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   const createdResponse = await createResponse; expect(createdResponse.status()).toBe(201);
   const created = await createdResponse.json() as VersionMutationResult;
   await expect(page.getByRole('status')).toContainText('新しい版を作成しました');
+  completed('version-created');
   await page.getByRole('button', { name: '版の一覧へ戻る', exact: true }).click();
   await page.getByRole('button', { name: /WORKING · 版 3/ }).click();
   await page.getByRole('button', { name: '公開する', exact: true }).click();
   const publishButton = page.getByRole('button', { name: '公開する', exact: true });
   await expect(publishButton).toBeDisabled();
+  completed('publication-form-opened');
   await page.getByRole('checkbox', { name: '公開対象の版とファイルを確認しました。' }).check();
   await publishButton.click();
   const dialog = page.getByRole('dialog', { name: '公開を確認' });
@@ -104,6 +125,7 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await page.keyboard.press('Enter'); expect((await publishResponse).status()).toBe(200);
   await expect(page.getByRole('status')).toContainText('公開しました');
   await expect(publishButton).toBeFocused();
+  completed('publication-confirmed');
   const after = await persistedSnapshot(human, documentId);
   expect(after.currentVersionId).toBe(created.targetVersionId); expect(after.revisions).toHaveLength(3);
   expect(after.versions.find(version => version.versionId === after.currentVersionId)!.files[0]!.hash).toBe(hash(changedContent));
@@ -113,7 +135,9 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   const agentWrite = await request.post(`${agent}/v1/documents/${documentId}/versions/${after.currentVersionId}:publish`, { data: { operationId: uuidV7(), expectedRevision: after.revision } });
   expect(agentWrite.status()).toBe(403); expect((await agentWrite.json()).code).toBe('FORBIDDEN');
   expect(apiOrigins).toEqual(new Set([human]));
+  completed('state-verified');
   await saveSnapshot(context, 'regulation', documentId);
+  completed('snapshot-saved');
   await test.info().attach('shared-state.json', { body: Buffer.from(JSON.stringify(after, null, 2)), contentType: 'application/json' });
 });
 
