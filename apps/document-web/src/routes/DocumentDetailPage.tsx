@@ -360,6 +360,7 @@ function VersionsTab({
   const [actionError, setActionError] = useState<unknown>(null);
   const [actionMessage, setActionMessage] = useState('');
   const actionTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const actionReturnRef = useRef<HTMLButtonElement | null>(null);
   const documentId = document.documentId;
   const queryClient = useQueryClient();
   const revisionsPair = chooseRevisionPair(revisions, undefined, undefined);
@@ -367,9 +368,12 @@ function VersionsTab({
   useEffect(() => {
     if (action || actionPending) return;
     const trigger = actionTriggerRef.current;
-    if (trigger) window.requestAnimationFrame(() => {
-      if (trigger.isConnected) trigger.focus();
+    if (!trigger) return;
+    const frame = window.requestAnimationFrame(() => {
+      const target = trigger.isConnected && !trigger.disabled ? trigger : actionReturnRef.current;
+      if (target?.isConnected && !target.disabled) target.focus();
     });
+    return () => window.cancelAnimationFrame(frame);
   }, [action, actionPending]);
 
   async function submitUpload(event?: React.FormEvent<HTMLFormElement>) {
@@ -560,7 +564,7 @@ function VersionsTab({
           {actionMessage && <p className={styles.noticeSuccess} role="status">{actionMessage}</p>}
           {versionDetail?.capabilities.publish.status === 'disabled' && versionDetail.capabilities.schedulePublication.status === 'disabled' && <p className={styles.muted}>公開できません: {availabilityReason(versionDetail.capabilities.publish.reason)}</p>}
           <div className={styles.workflowFooter}>
-            <button type="button" onClick={() => updateSearch({ workflow: undefined })}>版の一覧へ戻る</button>
+            <button ref={actionReturnRef} type="button" onClick={() => updateSearch({ workflow: undefined })}>版の一覧へ戻る</button>
             <button className={workspaceStyles.primaryButton} type="button" disabled={!publicationConfirmed || actionPending || (publicationMethod === 'now' ? versionDetail?.capabilities.publish.status !== 'available' : versionDetail?.capabilities.schedulePublication.status !== 'available' || !jstDateTimeLocalToUtc(scheduledAt))} onClick={requestPublicationConfirmation}>
               {publicationMethod === 'now' ? '公開する' : '公開を予約する'}
             </button>

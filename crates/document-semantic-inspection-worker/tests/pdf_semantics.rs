@@ -205,3 +205,20 @@ fn pdf_worker_response_records_pdfium_build_identity_and_binary_hash() {
     };
     assert_eq!(observed_hash, expected_hash);
 }
+
+#[test]
+fn runtime_publication_fixtures_are_editorial_free_and_semantically_distinct() {
+    let base = worker_response(include_bytes!(
+        "../../../apps/document-web/e2e-runtime/fixtures/pdf/base.pdf"
+    ));
+    let target = worker_response(include_bytes!(
+        "../../../apps/document-web/e2e-runtime/fixtures/pdf/text-change.pdf"
+    ));
+    for result in [&base, &target] {
+        assert!(result.editorial_provenance.comments.is_empty());
+        assert!(result.editorial_provenance.tracked_changes.is_empty());
+        assert!(result.digital_signature_evidence.is_empty());
+        assert!(result.external_dependencies.is_empty());
+    }
+    assert_ne!(base.semantic_fingerprint, target.semantic_fingerprint);
+}

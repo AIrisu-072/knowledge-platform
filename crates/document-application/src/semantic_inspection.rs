@@ -180,8 +180,9 @@ fn validate_worker_result(
         return Err(ApplicationError::InvalidWorkerResult);
     }
     for capability in &response.semantic_capabilities {
-        if (capability.presence == CapabilityState::Present)
-            != capability.equivalence_fingerprint.is_some()
+        let present = capability.presence == CapabilityState::Present;
+        let fingerprint = capability.equivalence_fingerprint.is_some();
+        if (present && capability.version_significant && !fingerprint) || (!present && fingerprint)
         {
             return Err(ApplicationError::InvalidWorkerResult);
         }

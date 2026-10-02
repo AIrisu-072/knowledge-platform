@@ -45,9 +45,17 @@ fn execute() -> Result<(), WorkerError> {
         .read_to_end(&mut request_bytes)
         .map_err(|_| WorkerError::InvalidRequest)?;
     if operation == "display" {
-        decode_display_request_bounded(&request_bytes)?;
+        let request = decode_display_request_bounded(&request_bytes)?;
         if std::env::var("DIFF_SANDBOX_REQUIRED").as_deref() != Ok("1") {
             return Err(WorkerError::UnreadableInput);
+        }
+        if request.format == FormatId::Pdf
+            && matches!(
+                request.locator,
+                document_diff_core::SourceLocator::PdfPage { region: None, .. }
+            )
+        {
+            PdfAdapter::warm_up_native_runtime().map_err(|_| WorkerError::UnreadableInput)?;
         }
         #[cfg(target_os = "linux")]
         {
