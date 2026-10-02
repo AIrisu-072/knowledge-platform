@@ -41,7 +41,7 @@ export function DocumentHomePage() {
     }),
   });
   const rootQuery = useQuery({ queryKey: ['folder-tree', 'root'], queryFn: documentApi.getRootFolder });
-  const items = listQuery.data?.items ?? [];
+  const items = useMemo(() => listQuery.data?.items ?? [], [listQuery.data?.items]);
   const panelOpen = search.panel === 'open' && search.view !== 'history';
   const selected = items.find((item) => item.documentId === search.selectedDocumentId) ?? (panelOpen ? items[0] : undefined);
   const detailView = search.view === 'authoring' ? 'authoring' : 'published';

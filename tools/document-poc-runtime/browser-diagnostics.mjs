@@ -22,6 +22,18 @@ const object = value => value && typeof value === 'object' && !Array.isArray(val
 const unavailable = () => ({ availability: 'unavailable', counts: { passed: 0, failed: 0, skipped: 0 }, tests: [], truncated: false });
 
 const startupErrors = new Set(['eval-blocked', 'require-undefined', 'exports-undefined', 'process-undefined', 'reference-error', 'type-error', 'syntax-error', 'chunk-load', 'other']);
+const uiStages = new Set(['before-folder-wait', 'before-folder-click', 'after-folder-click', 'test-end']);
+const apiRoutes = new Set(['folder-root', 'folder-children', 'document-list', 'document-detail', 'session', 'other']);
+function sanitizeUi(value) {
+  if (!object(value) || !uiStages.has(value.stage)) return undefined;
+  if (value.availability !== 'available') return { stage: value.stage, availability: 'unavailable' };
+  const counts = {};
+  for (const key of ['viewportWidth', 'viewportHeight', 'rootChildren', 'folderRegionCount', 'sharedFolderButtonCount',
+    'tableCount', 'alertCount', 'inViewportCount', 'receivesPointerCount', 'disabledCount', 'hiddenAncestorCount']) {
+    counts[key] = Number.isInteger(value[key]) && value[key] >= 0 && value[key] <= (key.startsWith('viewport') ? 10000 : 1000) ? value[key] : 0;
+  }
+  return { stage: value.stage, availability: 'available', ...counts };
+}
 const journeyStages = new Set(['context-read', 'sessions-verified', 'api-preflight-complete', 'gui-loaded', 'folder-selected',
   'document-selected', 'detail-opened', 'download-requested', 'download-received', 'download-saved', 'snapshot-read',
   'history-opened', 'comparison-verified', 'policy-saved', 'version-form-opened', 'version-created',
@@ -37,6 +49,10 @@ function sanitizeStartup(value) {
   if (!object(value)) return undefined;
   const count = v => Number.isInteger(v) && v >= 0 && v <= 1000 ? v : 0;
   return { rootChildren: count(value.rootChildren), documentStatus: httpCode(value.documentStatus) ? value.documentStatus : 0,
+    domObservation: value.domObservation === 'available' ? 'available' : 'unavailable',
+    apiEvents: (Array.isArray(value.apiEvents) ? value.apiEvents.slice(0, 12) : []).filter(object).map(event => ({
+      route: apiRoutes.has(event.route) ? event.route : 'other', status: httpCode(event.status) ? event.status : 0 })),
+    uiSnapshots: (Array.isArray(value.uiSnapshots) ? value.uiSnapshots.slice(0, 4) : []).map(sanitizeUi).filter(Boolean),
     scriptResponses: count(value.scriptResponses), scriptFailures: count(value.scriptFailures),
     apiResponses: count(value.apiResponses), apiFailures: count(value.apiFailures),
     cspViolations: count(value.cspViolations), consoleErrors: count(value.consoleErrors),

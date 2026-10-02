@@ -1,10 +1,10 @@
 # Document Platform PoC Runtime v0 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans task-by-task. This PR is documentation only. Follow the bounded authority record; scheduler Task R5 remains STOP until its separate decision.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans task-by-task. This PR is documentation only. Follow the bounded authority record; scheduler Task R5 uses the bounded 2026-10-02 attribution decision.
 
 **Goal:** Launch two fixed-identity Document servers on real shared state and exercise the Human GUI through the actual composition root.
 
-**Architecture:** A pure Rust composition root assembles existing services/adapters/routers. Migration and bootstrap are explicit commands. Publication scheduling remains a separate process and its unresolved executor identity is isolated as STOP.
+**Architecture:** A pure Rust composition root assembles existing services/adapters/routers. Migration and bootstrap are explicit commands. Publication scheduling remains a separate process and its fixed executor attribution is isolated from requester authorization.
 
 **Tech Stack:** Existing Rust/Axum/Tokio/SQLx/PostgreSQL/FileSystemStorage/DSI/Diff; approved Webpack React GUI and generated TS client.
 
@@ -14,7 +14,7 @@
 
 - Verified publication baseline: PR36 head `b578a9b49338066d0e4ee5495ea1280f991c122b`; C0 closure is pending. Reconcile any later C0 head and exact-head evidence before dependent acceptance.
 - No business logic in server; no infrastructure dependencies into Domain/Application/HTTP.
-- Only `poc-human` and `poc-agent`, fixed at startup; production fails closed; default loopback.
+- Only HTTP profiles `poc-human` and `poc-agent`, fixed at startup; production fails closed; default loopback.
 - `serve` never migrates/seeds. Explicit migration targets disposable PoC DB only.
 - Preserve OpenAPI 3.2.1, authorization/audit/OCC/Revision/Diff semantics and qualified worker sandboxing.
 - Coordinate resource-intensive builds with concurrent work; keep changes in an isolated worktree. Review each slice before commit/push.
@@ -82,15 +82,15 @@ Files: server `src/bootstrap.rs`, `tests/bootstrap.rs`; new `tools/document-poc-
 - [ ] GREEN tests through real HTTP verify exact twice-run IDs/version/revision/policy and no duplicates. Document safe disposable recreation separately.
 - [ ] Commit reviewed slice.
 
-## Task R5: Separate scheduler qualification — STOP pending identity decision
+## Task R5: Separate scheduler qualification — attribution decision recorded
 
-Files after approval: existing scheduler `src/main.rs`, adapter wiring file/tests; runbook. Do not implement a business loop in document-server.
+Files: existing scheduler `src/main.rs`, adapter wiring file/tests; runbook. Do not implement a business loop in document-server.
 
-- [ ] Find an existing approved source for executor attribution; otherwise request only the fixed PoC scheduler executor decision recorded in design/status.
-- [ ] After approval, RED missing/unknown requester and revoked policy; assert executor is recorded separately and contributes no policy subjects. Agent requests do not gain HumanInteractive permission.
+- [x] Record the requester-delegated short reusable executor attribution: provider `service`, principal `scheduler`, no authorization/login identity. See bounded authority record dated 2026-10-02.
+- [ ] RED missing/unknown requester and revoked policy; assert executor is recorded separately and contributes no policy subjects. Agent requests do not gain HumanInteractive permission.
 - [ ] Wire `connect_with_resolver`, preserving existing due-claim/idempotency/transaction semantics. Resolve only explicitly approved PoC identities; no generic production resolver.
 - [ ] Run `cargo test -p document-application --test scheduled_authorization_contract` and `cargo test -p document-publication-scheduler --test due_publication --test linux_container_canary`, plus real separate-process schedule→due→publish, stopped/restarted scheduler and revoked-before-due tests. Record actual target names after discovery.
-- [ ] Commit only after all focused checks. Unresolved decision keeps R5/C1 complete status blocked, not R1–R4 preparation.
+- [ ] Commit only after all focused checks. Missing real-process evidence keeps R5/C1 completion blocked; scoped tests are not acceptance.
 
 ## Task R6: Composition-root Human journey and exact-head gates
 
@@ -106,6 +106,6 @@ Files: `apps/document-web/playwright.runtime.config.ts`, `apps/document-web/e2e-
 
 ## Delivery stack and completion
 
-R1 C1 Design+Plan+bounded authority record is a separate Draft based on the current PR36 head; PR36 closure is pending. R2 C1 implementation is a later separate PR based on R1. A1 C2 Design+Plan can be reviewed as a docs-only stack on R1; A2 implementation must incorporate verified R2 runtime and A1. A separate C3 plan-only Draft precedes E1 acceptance evidence. No implementation or acceptance evidence is delivered by these design PRs. The bounded authority record identifies exact design/plan blobs and excludes scheduler STOP. Preserve the existing global active pointer; maintain this capability-specific status and coordinate any future pointer change.
+R1 C1 Design+Plan+bounded authority record is a separate Draft based on the current PR36 head; PR36 closure is pending. R2 C1 implementation is a later separate PR based on R1. A1 C2 Design+Plan can be reviewed as a docs-only stack on R1; A2 implementation must incorporate verified R2 runtime and A1. A separate C3 plan-only Draft precedes E1 acceptance evidence. No implementation or acceptance evidence is delivered by these design PRs. The bounded authority record identifies design/plan blobs and the narrow scheduler-attribution decision. Preserve the existing global active pointer; maintain this capability-specific status and coordinate any future pointer change.
 
 C1 completion requires all R1–R6 evidence including separate scheduler qualification. Report what passed, failed, blocked or not run, with head/platform/process provenance. Leave all product PRs unmerged and not deployed.

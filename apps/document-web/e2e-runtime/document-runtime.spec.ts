@@ -1,4 +1,4 @@
-import { startDiagnostics, finishDiagnostics } from './startup-diagnostics';
+import { startDiagnostics, finishDiagnostics, captureUiDiagnostics } from './startup-diagnostics';
 import { test, expect } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +33,10 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   const folders = (await listFolderChildren({ ...agentOptions, path: { folderId: manifest.rootFolderId! }, query: { pageSize: 100 } })).data;
   expect(folders.items.map(folder => folder.folderId)).toContain(manifest.folders.shared.folderId);
   expect(folders.items.map(folder => folder.folderId)).not.toContain(manifest.folders.humanOnly.folderId);
+  const humanRoot = (await getRootFolder(humanOptions)).data;
+  expect(humanRoot.folderId).toBe(manifest.rootFolderId);
+  const humanFolders = (await listFolderChildren({ ...humanOptions, path: { folderId: humanRoot.folderId }, query: { pageSize: 200 } })).data;
+  expect(humanFolders.items).toEqual(expect.arrayContaining([expect.objectContaining({ folderId: manifest.folders.shared.folderId, name: 'PoC Shared' })]));
   const agentList = (await listDocuments({ ...agentOptions, query: { view: 'published', folderId: manifest.folders.shared.folderId, pageSize: 100 } })).data;
   expect(agentList.items.map(document => document.documentId)).toContain(documentId);
   expect((await getDocument({ ...humanOptions, path: { documentId: deniedId }, query: { view: 'published' } })).data.documentId).toBe(deniedId);
@@ -46,7 +50,12 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await page.goto('/documents?view=published');
   await expect(page.getByRole('region', { name: 'フォルダー' })).toBeVisible();
   completed('gui-loaded');
-  await page.getByRole('button', { name: 'PoC Shared', exact: true }).click();
+  await captureUiDiagnostics(page, 'before-folder-wait');
+  const sharedFolder = page.getByRole('button', { name: 'PoC Shared', exact: true });
+  await expect(sharedFolder).toBeVisible();
+  await captureUiDiagnostics(page, 'before-folder-click');
+  await sharedFolder.click({ timeout: 15_000 });
+  await captureUiDiagnostics(page, 'after-folder-click');
   await expect(page).toHaveURL(new RegExp(`folderId=${manifest.folders.shared.folderId}`));
   await expect(page.getByRole('table', { name: '文書一覧' })).toBeVisible();
   completed('folder-selected');
