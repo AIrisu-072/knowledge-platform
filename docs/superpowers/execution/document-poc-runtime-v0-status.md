@@ -1,5 +1,11 @@
 # Document Platform PoC Runtime / Server Composition v0 — Capability Status
 
+## 2026-10-02 UTC — Typed lifecycle oracle correction
+
+- Exact R2 `8e33a9be` [runtime job110697949135](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36962108148/job/110697949135) passes the first GUI journey and the annotated PDF's exact422 `PUBLISH_QUALITY_REJECTED`, unchanged revision/current pointer and one-version assertions. It then fails the new uppercase `WORKING` assertion. Generated HTTP `ModelsVersion.lifecycleState` and `version_summary_dto` use lowercase; the separate GUI summary type uses uppercase.
+- Corrected only this expected value to `working` with `satisfies ModelsVersion['lifecycleState']`. TypeScript RED rejects the prior uppercase value with TS1360; GREEN accepts the exact wire value. All quality/no-mutation/history assertions remain strict. Audited runtime session, policy, action, provenance, projection, coverage and display-side kind literals against generated types; GUI button labels intentionally render uppercase text, and C3's version assertion already uses lowercase `withdrawn`.
+- Fresh runtime TypeScript, runtime/helper Node46/46 and parent-range diff-check from `639b31e8` PASS. Confirmed both exact PDF binary attributes remain set and bytes are untouched. No Rust or production changes. Next exact action: independent review, scoped commit, parent propagation through R2/A2/C3 and exact-head hosted verification; positive PDF and later runtime cases still await execution after serial fail-fast.
+
 ## 2026-10-02 UTC — Exact-path PDF byte preservation
 
 - Follow-up to reviewed `2742debbe097bfb5a3aa65d4a6501af7f2ccb263`: the two new PDF fixture paths are declared binary in `.gitattributes`. Their bytes and recorded SHA-256 values are unchanged; no directory-wide or unrelated whitespace exception is added.
