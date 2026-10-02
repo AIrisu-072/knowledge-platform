@@ -48,3 +48,8 @@ forbidden_source_patterns = ["std::fs", "std::path", "tokio::fs"]
 crate_path = "crates/document-api-http"
 forbidden_dependencies = ["sqlx", "document-repository-postgres", "document-storage-fs", "document-diff-runner", "document-semantic-inspection-runner"]
 forbidden_source_patterns = ["document_repository_postgres", "document_storage_fs", "document_diff_runner", "document_semantic_inspection_runner", "SYSTEM_ROOT_FOLDER_ID", "AllowAllIdentityAdapter", "TestIdentityAdapter"]
+
+[workspace.boundaries.audit_core]
+crate_path = "crates/audit-core"
+forbidden_dependencies = ["sqlx", "axum", "tokio", "document-domain", "document-application", "document-repository-postgres"]
+forbidden_source_patterns = ["std::fs", "std::path", "tokio::fs"]

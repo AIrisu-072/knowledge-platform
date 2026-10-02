@@ -1,0 +1,2412 @@
+[
+  {
+    "name": "document.created",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": true
+  },
+  {
+    "name": "document.version.created",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "versionNo": 1,
+        "baseDocumentVersionId": "0198aa00-0000-7000-8000-000000000003",
+        "resultingDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": true
+  },
+  {
+    "name": "document.version.updated",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.updated",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "versionNo": 1,
+        "baseDocumentVersionId": "0198aa00-0000-7000-8000-000000000003",
+        "resultingDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": true
+  },
+  {
+    "name": "document.version.rebased",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.rebased",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "versionNo": 1,
+        "baseDocumentVersionId": "0198aa00-0000-7000-8000-000000000003",
+        "resultingDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": true
+  },
+  {
+    "name": "document.version.published",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.published",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "expectedDocumentRevision": 1,
+        "resultingDocumentRevision": 1,
+        "result": "success",
+        "publishedAt": [
+          2026,
+          275,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "serviceExecutor": {
+          "identityProvider": "synthetic-service-idp",
+          "principalId": "synthetic-scheduler"
+        }
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": true
+  },
+  {
+    "name": "document.version.publication.scheduled",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.publication.scheduled",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "scheduledPublishAt": [
+          2026,
+          275,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "acceptedDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": true
+  },
+  {
+    "name": "document.version.publication.cancelled",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.publication.cancelled",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "resultingDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": true
+  },
+  {
+    "name": "document.version.publication.terminal",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.publication.terminal",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "failure",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "terminalReason": "publish_quality_rejected",
+        "resultingDocumentRevision": 1,
+        "serviceExecutor": {
+          "identityProvider": "synthetic-service-idp",
+          "principalId": "synthetic-scheduler"
+        }
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": true
+  },
+  {
+    "name": "document.version.withdrawn",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.withdrawn",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "reason": "synthetic original evidence must remain in source"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.publication.ended",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.publication.ended",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "reason": "synthetic original evidence must remain in source"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.metadata.changed",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.metadata.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "reason": "synthetic original evidence must remain in source"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.moved",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.moved",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "reason": "synthetic original evidence must remain in source"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "folder.created",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "folder.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "folder/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Folder",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "reason": "synthetic original evidence must remain in source"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "folder.renamed",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "folder.renamed",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "folder/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Folder",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "reason": "synthetic original evidence must remain in source"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "folder.moved",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "folder.moved",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "folder/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Folder",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "reason": "synthetic original evidence must remain in source"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "access_policy.changed",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "access_policy.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "folder/00000000-0000-7000-8000-000000000001",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Folder",
+      "resource_id": "00000000-0000-7000-8000-000000000001",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "operation_id": "0198aa00-0000-7000-8000-000000000005",
+        "target_type": "Folder",
+        "target_id": "00000000-0000-7000-8000-000000000001",
+        "policy_id": "0198aa00-0000-7000-8000-000000000005",
+        "policy_revision": 1,
+        "access_revision": 1,
+        "bootstrap": true
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": true
+  },
+  {
+    "name": "document.version.read_confirmed",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.read_confirmed",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "document_version_id": "0198aa00-0000-7000-8000-000000000004"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": true
+  },
+  {
+    "name": "document.file.access_granted",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.file.access_granted",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "content_item_id": "0198aa00-0000-7000-8000-000000000005",
+        "representation_id": "0198aa00-0000-7000-8000-000000000005",
+        "purpose": "published"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": true
+  },
+  {
+    "name": "document.diff.result_access_granted",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.diff.result_access_granted",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "base_version_id": "0198aa00-0000-7000-8000-000000000003",
+        "target_version_id": "0198aa00-0000-7000-8000-000000000004",
+        "base_snapshot_digest": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "target_snapshot_digest": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "comparison_profile": "document-diff-v0",
+        "resource_profile": "diff-resource-v0",
+        "result_digest": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "verdict": "same",
+        "coverage": "full",
+        "cache_hit": true
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": true
+  },
+  {
+    "name": "authorization.denied",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "authorization.denied",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "authorization/denied",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "AccessPolicy",
+      "resource_id": "00000000-0000-0000-0000-000000000000",
+      "resource_version_id": null,
+      "result": "denied",
+      "trace_id": null,
+      "data": {
+        "action_code": "update_document_metadata",
+        "reason_code": "forbidden"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": true
+  },
+  {
+    "name": "document.created unknown metadata",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "raw_query": "synthetic forbidden"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.created invalid result",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": null,
+      "result": "invented",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.created invalid source",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.created",
+      "source": "urn:unqualified",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.created unknown metadata",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "versionNo": 1,
+        "baseDocumentVersionId": "0198aa00-0000-7000-8000-000000000003",
+        "resultingDocumentRevision": 1,
+        "raw_query": "synthetic forbidden"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.created invalid result",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "invented",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "versionNo": 1,
+        "baseDocumentVersionId": "0198aa00-0000-7000-8000-000000000003",
+        "resultingDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.created invalid source",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.created",
+      "source": "urn:unqualified",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "versionNo": 1,
+        "baseDocumentVersionId": "0198aa00-0000-7000-8000-000000000003",
+        "resultingDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.updated unknown metadata",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.updated",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "versionNo": 1,
+        "baseDocumentVersionId": "0198aa00-0000-7000-8000-000000000003",
+        "resultingDocumentRevision": 1,
+        "raw_query": "synthetic forbidden"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.updated invalid result",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.updated",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "invented",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "versionNo": 1,
+        "baseDocumentVersionId": "0198aa00-0000-7000-8000-000000000003",
+        "resultingDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.updated invalid source",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.updated",
+      "source": "urn:unqualified",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "versionNo": 1,
+        "baseDocumentVersionId": "0198aa00-0000-7000-8000-000000000003",
+        "resultingDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.rebased unknown metadata",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.rebased",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "versionNo": 1,
+        "baseDocumentVersionId": "0198aa00-0000-7000-8000-000000000003",
+        "resultingDocumentRevision": 1,
+        "raw_query": "synthetic forbidden"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.rebased invalid result",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.rebased",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "invented",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "versionNo": 1,
+        "baseDocumentVersionId": "0198aa00-0000-7000-8000-000000000003",
+        "resultingDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.rebased invalid source",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.rebased",
+      "source": "urn:unqualified",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "versionNo": 1,
+        "baseDocumentVersionId": "0198aa00-0000-7000-8000-000000000003",
+        "resultingDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.published unknown metadata",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.published",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "expectedDocumentRevision": 1,
+        "resultingDocumentRevision": 1,
+        "result": "success",
+        "publishedAt": [
+          2026,
+          275,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "serviceExecutor": {
+          "identityProvider": "synthetic-service-idp",
+          "principalId": "synthetic-scheduler"
+        },
+        "raw_query": "synthetic forbidden"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.published invalid result",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.published",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "invented",
+      "trace_id": null,
+      "data": {
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "expectedDocumentRevision": 1,
+        "resultingDocumentRevision": 1,
+        "result": "success",
+        "publishedAt": [
+          2026,
+          275,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "serviceExecutor": {
+          "identityProvider": "synthetic-service-idp",
+          "principalId": "synthetic-scheduler"
+        }
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.published invalid source",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.published",
+      "source": "urn:unqualified",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "expectedDocumentRevision": 1,
+        "resultingDocumentRevision": 1,
+        "result": "success",
+        "publishedAt": [
+          2026,
+          275,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "serviceExecutor": {
+          "identityProvider": "synthetic-service-idp",
+          "principalId": "synthetic-scheduler"
+        }
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.publication.scheduled unknown metadata",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.publication.scheduled",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "scheduledPublishAt": [
+          2026,
+          275,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "acceptedDocumentRevision": 1,
+        "raw_query": "synthetic forbidden"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.publication.scheduled invalid result",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.publication.scheduled",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "invented",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "scheduledPublishAt": [
+          2026,
+          275,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "acceptedDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.publication.scheduled invalid source",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.publication.scheduled",
+      "source": "urn:unqualified",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "scheduledPublishAt": [
+          2026,
+          275,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "acceptedDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.publication.cancelled unknown metadata",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.publication.cancelled",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "resultingDocumentRevision": 1,
+        "raw_query": "synthetic forbidden"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.publication.cancelled invalid result",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.publication.cancelled",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "invented",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "resultingDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.publication.cancelled invalid source",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.publication.cancelled",
+      "source": "urn:unqualified",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "resultingDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.publication.terminal unknown metadata",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.publication.terminal",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "failure",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "terminalReason": "publish_quality_rejected",
+        "resultingDocumentRevision": 1,
+        "serviceExecutor": {
+          "identityProvider": "synthetic-service-idp",
+          "principalId": "synthetic-scheduler"
+        },
+        "raw_query": "synthetic forbidden"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.publication.terminal invalid result",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.publication.terminal",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "invented",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "terminalReason": "publish_quality_rejected",
+        "resultingDocumentRevision": 1,
+        "serviceExecutor": {
+          "identityProvider": "synthetic-service-idp",
+          "principalId": "synthetic-scheduler"
+        }
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.publication.terminal invalid source",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.publication.terminal",
+      "source": "urn:unqualified",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "failure",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "terminalReason": "publish_quality_rejected",
+        "resultingDocumentRevision": 1,
+        "serviceExecutor": {
+          "identityProvider": "synthetic-service-idp",
+          "principalId": "synthetic-scheduler"
+        }
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "access_policy.changed unknown metadata",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "access_policy.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "folder/00000000-0000-7000-8000-000000000001",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Folder",
+      "resource_id": "00000000-0000-7000-8000-000000000001",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "operation_id": "0198aa00-0000-7000-8000-000000000005",
+        "target_type": "Folder",
+        "target_id": "00000000-0000-7000-8000-000000000001",
+        "policy_id": "0198aa00-0000-7000-8000-000000000005",
+        "policy_revision": 1,
+        "access_revision": 1,
+        "bootstrap": true,
+        "raw_query": "synthetic forbidden"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "access_policy.changed invalid result",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "access_policy.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "folder/00000000-0000-7000-8000-000000000001",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Folder",
+      "resource_id": "00000000-0000-7000-8000-000000000001",
+      "resource_version_id": null,
+      "result": "invented",
+      "trace_id": null,
+      "data": {
+        "operation_id": "0198aa00-0000-7000-8000-000000000005",
+        "target_type": "Folder",
+        "target_id": "00000000-0000-7000-8000-000000000001",
+        "policy_id": "0198aa00-0000-7000-8000-000000000005",
+        "policy_revision": 1,
+        "access_revision": 1,
+        "bootstrap": true
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "access_policy.changed invalid source",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "access_policy.changed",
+      "source": "urn:unqualified",
+      "subject": "folder/00000000-0000-7000-8000-000000000001",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Folder",
+      "resource_id": "00000000-0000-7000-8000-000000000001",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "operation_id": "0198aa00-0000-7000-8000-000000000005",
+        "target_type": "Folder",
+        "target_id": "00000000-0000-7000-8000-000000000001",
+        "policy_id": "0198aa00-0000-7000-8000-000000000005",
+        "policy_revision": 1,
+        "access_revision": 1,
+        "bootstrap": true
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.read_confirmed unknown metadata",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.read_confirmed",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "document_version_id": "0198aa00-0000-7000-8000-000000000004",
+        "raw_query": "synthetic forbidden"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.read_confirmed invalid result",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.read_confirmed",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "invented",
+      "trace_id": null,
+      "data": {
+        "document_version_id": "0198aa00-0000-7000-8000-000000000004"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.read_confirmed invalid source",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.read_confirmed",
+      "source": "urn:unqualified",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "document_version_id": "0198aa00-0000-7000-8000-000000000004"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.file.access_granted unknown metadata",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.file.access_granted",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "content_item_id": "0198aa00-0000-7000-8000-000000000005",
+        "representation_id": "0198aa00-0000-7000-8000-000000000005",
+        "purpose": "published",
+        "raw_query": "synthetic forbidden"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.file.access_granted invalid result",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.file.access_granted",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "invented",
+      "trace_id": null,
+      "data": {
+        "content_item_id": "0198aa00-0000-7000-8000-000000000005",
+        "representation_id": "0198aa00-0000-7000-8000-000000000005",
+        "purpose": "published"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.file.access_granted invalid source",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.file.access_granted",
+      "source": "urn:unqualified",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "content_item_id": "0198aa00-0000-7000-8000-000000000005",
+        "representation_id": "0198aa00-0000-7000-8000-000000000005",
+        "purpose": "published"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.diff.result_access_granted unknown metadata",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.diff.result_access_granted",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "base_version_id": "0198aa00-0000-7000-8000-000000000003",
+        "target_version_id": "0198aa00-0000-7000-8000-000000000004",
+        "base_snapshot_digest": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "target_snapshot_digest": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "comparison_profile": "document-diff-v0",
+        "resource_profile": "diff-resource-v0",
+        "result_digest": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "verdict": "same",
+        "coverage": "full",
+        "cache_hit": true,
+        "raw_query": "synthetic forbidden"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.diff.result_access_granted invalid result",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.diff.result_access_granted",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "invented",
+      "trace_id": null,
+      "data": {
+        "base_version_id": "0198aa00-0000-7000-8000-000000000003",
+        "target_version_id": "0198aa00-0000-7000-8000-000000000004",
+        "base_snapshot_digest": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "target_snapshot_digest": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "comparison_profile": "document-diff-v0",
+        "resource_profile": "diff-resource-v0",
+        "result_digest": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "verdict": "same",
+        "coverage": "full",
+        "cache_hit": true
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.diff.result_access_granted invalid source",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.diff.result_access_granted",
+      "source": "urn:unqualified",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "base_version_id": "0198aa00-0000-7000-8000-000000000003",
+        "target_version_id": "0198aa00-0000-7000-8000-000000000004",
+        "base_snapshot_digest": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "target_snapshot_digest": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "comparison_profile": "document-diff-v0",
+        "resource_profile": "diff-resource-v0",
+        "result_digest": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "verdict": "same",
+        "coverage": "full",
+        "cache_hit": true
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "authorization.denied unknown metadata",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "authorization.denied",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "authorization/denied",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "AccessPolicy",
+      "resource_id": "00000000-0000-0000-0000-000000000000",
+      "resource_version_id": null,
+      "result": "denied",
+      "trace_id": null,
+      "data": {
+        "action_code": "update_document_metadata",
+        "reason_code": "forbidden",
+        "raw_query": "synthetic forbidden"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "authorization.denied invalid result",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "authorization.denied",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "authorization/denied",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "AccessPolicy",
+      "resource_id": "00000000-0000-0000-0000-000000000000",
+      "resource_version_id": null,
+      "result": "invented",
+      "trace_id": null,
+      "data": {
+        "action_code": "update_document_metadata",
+        "reason_code": "forbidden"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "authorization.denied invalid source",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "authorization.denied",
+      "source": "urn:unqualified",
+      "subject": "authorization/denied",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "AccessPolicy",
+      "resource_id": "00000000-0000-0000-0000-000000000000",
+      "resource_version_id": null,
+      "result": "denied",
+      "trace_id": null,
+      "data": {
+        "action_code": "update_document_metadata",
+        "reason_code": "forbidden"
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.created i64 max",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "versionNo": 9223372036854775807,
+        "baseDocumentVersionId": "0198aa00-0000-7000-8000-000000000003",
+        "resultingDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": true
+  },
+  {
+    "name": "document.version.created i64 overflow",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "versionNo": 9223372036854775808,
+        "baseDocumentVersionId": "0198aa00-0000-7000-8000-000000000003",
+        "resultingDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.created negative",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "versionNo": -1,
+        "baseDocumentVersionId": "0198aa00-0000-7000-8000-000000000003",
+        "resultingDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.created fractional",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "documentId": "0198aa00-0000-7000-8000-000000000002",
+        "documentVersionId": "0198aa00-0000-7000-8000-000000000004",
+        "versionNo": 1.5,
+        "baseDocumentVersionId": "0198aa00-0000-7000-8000-000000000003",
+        "resultingDocumentRevision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.published i64 max",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.published",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "expectedDocumentRevision": 1,
+        "resultingDocumentRevision": 9223372036854775807,
+        "result": "success",
+        "publishedAt": [
+          2026,
+          275,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "serviceExecutor": {
+          "identityProvider": "synthetic-service-idp",
+          "principalId": "synthetic-scheduler"
+        }
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": true
+  },
+  {
+    "name": "document.version.published i64 overflow",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.published",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "expectedDocumentRevision": 1,
+        "resultingDocumentRevision": 9223372036854775808,
+        "result": "success",
+        "publishedAt": [
+          2026,
+          275,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "serviceExecutor": {
+          "identityProvider": "synthetic-service-idp",
+          "principalId": "synthetic-scheduler"
+        }
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.published negative",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.published",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "expectedDocumentRevision": 1,
+        "resultingDocumentRevision": -1,
+        "result": "success",
+        "publishedAt": [
+          2026,
+          275,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "serviceExecutor": {
+          "identityProvider": "synthetic-service-idp",
+          "principalId": "synthetic-scheduler"
+        }
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "document.version.published fractional",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "document.version.published",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": "0198aa00-0000-7000-8000-000000000004",
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "publishOperationId": "0198aa00-0000-7000-8000-000000000005",
+        "expectedDocumentRevision": 1,
+        "resultingDocumentRevision": 1.5,
+        "result": "success",
+        "publishedAt": [
+          2026,
+          275,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "serviceExecutor": {
+          "identityProvider": "synthetic-service-idp",
+          "principalId": "synthetic-scheduler"
+        }
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "normal Document ACL reason missing",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "access_policy.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "operation_id": "0198aa00-0000-7000-8000-000000000005",
+        "target_type": "Document",
+        "target_id": "0198aa00-0000-7000-8000-000000000002",
+        "policy_id": "0198aa00-0000-7000-8000-000000000005",
+        "policy_revision": 1,
+        "access_revision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "normal Folder ACL reason missing",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "access_policy.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "folder/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Folder",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "operation_id": "0198aa00-0000-7000-8000-000000000005",
+        "target_type": "Folder",
+        "target_id": "0198aa00-0000-7000-8000-000000000002",
+        "policy_id": "0198aa00-0000-7000-8000-000000000005",
+        "policy_revision": 1,
+        "access_revision": 1
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "bootstrap invalid bootstrap",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "access_policy.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "folder/00000000-0000-7000-8000-000000000001",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Folder",
+      "resource_id": "00000000-0000-7000-8000-000000000001",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "operation_id": "0198aa00-0000-7000-8000-000000000005",
+        "target_type": "Folder",
+        "target_id": "00000000-0000-7000-8000-000000000001",
+        "policy_id": "0198aa00-0000-7000-8000-000000000005",
+        "policy_revision": 1,
+        "access_revision": 1,
+        "bootstrap": false
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "bootstrap invalid policy_id",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "access_policy.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "folder/00000000-0000-7000-8000-000000000001",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Folder",
+      "resource_id": "00000000-0000-7000-8000-000000000001",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "operation_id": "0198aa00-0000-7000-8000-000000000005",
+        "target_type": "Folder",
+        "target_id": "00000000-0000-7000-8000-000000000001",
+        "policy_id": null,
+        "policy_revision": 1,
+        "access_revision": 1,
+        "bootstrap": true
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "bootstrap invalid policy_revision",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "access_policy.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "folder/00000000-0000-7000-8000-000000000001",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Folder",
+      "resource_id": "00000000-0000-7000-8000-000000000001",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "operation_id": "0198aa00-0000-7000-8000-000000000005",
+        "target_type": "Folder",
+        "target_id": "00000000-0000-7000-8000-000000000001",
+        "policy_id": "0198aa00-0000-7000-8000-000000000005",
+        "policy_revision": 2,
+        "access_revision": 1,
+        "bootstrap": true
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "bootstrap invalid access_revision",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "access_policy.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "folder/00000000-0000-7000-8000-000000000001",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Folder",
+      "resource_id": "00000000-0000-7000-8000-000000000001",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "operation_id": "0198aa00-0000-7000-8000-000000000005",
+        "target_type": "Folder",
+        "target_id": "00000000-0000-7000-8000-000000000001",
+        "policy_id": "0198aa00-0000-7000-8000-000000000005",
+        "policy_revision": 1,
+        "access_revision": 0,
+        "bootstrap": true
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "non-root Document bootstrap claim",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "access_policy.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "document/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Document",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "operation_id": "0198aa00-0000-7000-8000-000000000005",
+        "target_type": "Document",
+        "target_id": "0198aa00-0000-7000-8000-000000000002",
+        "policy_id": "0198aa00-0000-7000-8000-000000000005",
+        "policy_revision": 1,
+        "access_revision": 1,
+        "bootstrap": true
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "non-root Folder bootstrap claim",
+    "legacy": {
+      "event_id": "0198aa00-0000-7000-8000-000000000001",
+      "event_type": "access_policy.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "subject": "folder/0198aa00-0000-7000-8000-000000000002",
+      "actor_identity_provider": "synthetic-idp",
+      "actor_principal_id": "synthetic-author",
+      "resource_type": "Folder",
+      "resource_id": "0198aa00-0000-7000-8000-000000000002",
+      "resource_version_id": null,
+      "result": "success",
+      "trace_id": null,
+      "data": {
+        "operation_id": "0198aa00-0000-7000-8000-000000000005",
+        "target_type": "Folder",
+        "target_id": "0198aa00-0000-7000-8000-000000000002",
+        "policy_id": "0198aa00-0000-7000-8000-000000000005",
+        "policy_revision": 1,
+        "access_revision": 1,
+        "bootstrap": true
+      },
+      "occurred_at": "2026-10-02T03:00:00Z"
+    },
+    "valid": false
+  }
+]

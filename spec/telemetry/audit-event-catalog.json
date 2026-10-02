@@ -1,0 +1,585 @@
+{
+  "version": 1,
+  "events": [
+    {
+      "type": "document.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "CONTENT_LIFECYCLE",
+      "resources": [
+        "Document"
+      ],
+      "result": "success",
+      "requires_version": false,
+      "deferred": false,
+      "fields": {
+        "documentId": {
+          "kind": "uuid"
+        }
+      },
+      "required": [
+        "documentId"
+      ]
+    },
+    {
+      "type": "document.version.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "CONTENT_LIFECYCLE",
+      "resources": [
+        "Document"
+      ],
+      "result": "success",
+      "requires_version": true,
+      "deferred": false,
+      "fields": {
+        "documentId": {
+          "kind": "uuid"
+        },
+        "documentVersionId": {
+          "kind": "uuid"
+        },
+        "versionNo": {
+          "kind": "counter"
+        },
+        "baseDocumentVersionId": {
+          "kind": "uuid"
+        },
+        "resultingDocumentRevision": {
+          "kind": "counter"
+        }
+      },
+      "required": [
+        "documentId",
+        "documentVersionId"
+      ]
+    },
+    {
+      "type": "document.version.updated",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "CONTENT_LIFECYCLE",
+      "resources": [
+        "Document"
+      ],
+      "result": "success",
+      "requires_version": true,
+      "deferred": false,
+      "fields": {
+        "documentId": {
+          "kind": "uuid"
+        },
+        "documentVersionId": {
+          "kind": "uuid"
+        },
+        "versionNo": {
+          "kind": "counter"
+        },
+        "baseDocumentVersionId": {
+          "kind": "uuid"
+        },
+        "resultingDocumentRevision": {
+          "kind": "counter"
+        }
+      },
+      "required": [
+        "documentId",
+        "documentVersionId",
+        "versionNo",
+        "baseDocumentVersionId",
+        "resultingDocumentRevision"
+      ]
+    },
+    {
+      "type": "document.version.rebased",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "CONTENT_LIFECYCLE",
+      "resources": [
+        "Document"
+      ],
+      "result": "success",
+      "requires_version": true,
+      "deferred": false,
+      "fields": {
+        "documentId": {
+          "kind": "uuid"
+        },
+        "documentVersionId": {
+          "kind": "uuid"
+        },
+        "versionNo": {
+          "kind": "counter"
+        },
+        "baseDocumentVersionId": {
+          "kind": "uuid"
+        },
+        "resultingDocumentRevision": {
+          "kind": "counter"
+        }
+      },
+      "required": [
+        "documentId",
+        "documentVersionId",
+        "versionNo",
+        "baseDocumentVersionId",
+        "resultingDocumentRevision"
+      ]
+    },
+    {
+      "type": "document.version.published",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "CONTENT_LIFECYCLE",
+      "resources": [
+        "Document"
+      ],
+      "result": "success",
+      "requires_version": true,
+      "deferred": false,
+      "fields": {
+        "publishOperationId": {
+          "kind": "uuid"
+        },
+        "expectedDocumentRevision": {
+          "kind": "counter"
+        },
+        "resultingDocumentRevision": {
+          "kind": "counter"
+        },
+        "result": {
+          "kind": "enum",
+          "values": [
+            "success"
+          ]
+        },
+        "publishedAt": {
+          "kind": "legacy_time"
+        },
+        "serviceExecutor": {
+          "kind": "principal"
+        }
+      },
+      "required": [
+        "publishOperationId",
+        "expectedDocumentRevision",
+        "resultingDocumentRevision",
+        "result",
+        "publishedAt"
+      ]
+    },
+    {
+      "type": "document.version.publication.scheduled",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "CONTENT_LIFECYCLE",
+      "resources": [
+        "Document"
+      ],
+      "result": "success",
+      "requires_version": true,
+      "deferred": false,
+      "fields": {
+        "documentId": {
+          "kind": "uuid"
+        },
+        "documentVersionId": {
+          "kind": "uuid"
+        },
+        "publishOperationId": {
+          "kind": "uuid"
+        },
+        "scheduledPublishAt": {
+          "kind": "legacy_time"
+        },
+        "acceptedDocumentRevision": {
+          "kind": "counter"
+        }
+      },
+      "required": [
+        "documentId",
+        "documentVersionId",
+        "publishOperationId",
+        "scheduledPublishAt",
+        "acceptedDocumentRevision"
+      ]
+    },
+    {
+      "type": "document.version.publication.cancelled",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "CONTENT_LIFECYCLE",
+      "resources": [
+        "Document"
+      ],
+      "result": "success",
+      "requires_version": true,
+      "deferred": false,
+      "fields": {
+        "documentId": {
+          "kind": "uuid"
+        },
+        "documentVersionId": {
+          "kind": "uuid"
+        },
+        "publishOperationId": {
+          "kind": "uuid"
+        },
+        "resultingDocumentRevision": {
+          "kind": "counter"
+        }
+      },
+      "required": [
+        "documentId",
+        "documentVersionId",
+        "publishOperationId",
+        "resultingDocumentRevision"
+      ]
+    },
+    {
+      "type": "document.version.publication.terminal",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "CONTENT_LIFECYCLE",
+      "resources": [
+        "Document"
+      ],
+      "result": "failure",
+      "requires_version": true,
+      "deferred": false,
+      "fields": {
+        "documentId": {
+          "kind": "uuid"
+        },
+        "documentVersionId": {
+          "kind": "uuid"
+        },
+        "publishOperationId": {
+          "kind": "uuid"
+        },
+        "terminalReason": {
+          "kind": "enum",
+          "values": [
+            "publish_quality_rejected",
+            "stale_publication_intent",
+            "publication_business_rule",
+            "publication_integrity_failure",
+            "semantic_inspection_rejected",
+            "publication_preflight_rejected",
+            "authorization_revoked",
+            "identity_invalid"
+          ]
+        },
+        "resultingDocumentRevision": {
+          "kind": "counter"
+        },
+        "serviceExecutor": {
+          "kind": "principal"
+        }
+      },
+      "required": [
+        "documentId",
+        "documentVersionId",
+        "publishOperationId",
+        "terminalReason",
+        "resultingDocumentRevision"
+      ]
+    },
+    {
+      "type": "document.version.withdrawn",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "CONTENT_LIFECYCLE",
+      "resources": [
+        "Document"
+      ],
+      "result": "success",
+      "requires_version": true,
+      "deferred": true,
+      "fields": {},
+      "required": []
+    },
+    {
+      "type": "document.publication.ended",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "CONTENT_LIFECYCLE",
+      "resources": [
+        "Document"
+      ],
+      "result": "success",
+      "requires_version": true,
+      "deferred": true,
+      "fields": {},
+      "required": []
+    },
+    {
+      "type": "document.metadata.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "CONTENT_LIFECYCLE",
+      "resources": [
+        "Document"
+      ],
+      "result": "success",
+      "requires_version": false,
+      "deferred": true,
+      "fields": {},
+      "required": []
+    },
+    {
+      "type": "document.moved",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "CONTENT_LIFECYCLE",
+      "resources": [
+        "Document"
+      ],
+      "result": "success",
+      "requires_version": false,
+      "deferred": true,
+      "fields": {},
+      "required": []
+    },
+    {
+      "type": "folder.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "CONTENT_LIFECYCLE",
+      "resources": [
+        "Folder"
+      ],
+      "result": "success",
+      "requires_version": false,
+      "deferred": true,
+      "fields": {},
+      "required": []
+    },
+    {
+      "type": "folder.renamed",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "CONTENT_LIFECYCLE",
+      "resources": [
+        "Folder"
+      ],
+      "result": "success",
+      "requires_version": false,
+      "deferred": true,
+      "fields": {},
+      "required": []
+    },
+    {
+      "type": "folder.moved",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "CONTENT_LIFECYCLE",
+      "resources": [
+        "Folder"
+      ],
+      "result": "success",
+      "requires_version": false,
+      "deferred": true,
+      "fields": {},
+      "required": []
+    },
+    {
+      "type": "access_policy.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "ACCESS_POLICY",
+      "resources": [
+        "Folder"
+      ],
+      "result": "success",
+      "requires_version": false,
+      "deferred": false,
+      "fields": {
+        "operation_id": {
+          "kind": "uuid"
+        },
+        "target_type": {
+          "kind": "enum",
+          "values": [
+            "Folder"
+          ]
+        },
+        "target_id": {
+          "kind": "enum",
+          "values": [
+            "00000000-0000-7000-8000-000000000001"
+          ]
+        },
+        "policy_id": {
+          "kind": "uuid"
+        },
+        "policy_revision": {
+          "kind": "enum",
+          "values": [
+            1
+          ]
+        },
+        "access_revision": {
+          "kind": "positive_counter"
+        },
+        "bootstrap": {
+          "kind": "enum",
+          "values": [
+            true
+          ]
+        }
+      },
+      "required": [
+        "operation_id",
+        "target_type",
+        "target_id",
+        "policy_id",
+        "policy_revision",
+        "access_revision",
+        "bootstrap"
+      ]
+    },
+    {
+      "type": "document.version.read_confirmed",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "DATA_ACCESS",
+      "resources": [
+        "Document"
+      ],
+      "result": "success",
+      "requires_version": true,
+      "deferred": false,
+      "fields": {
+        "document_version_id": {
+          "kind": "uuid"
+        }
+      },
+      "required": [
+        "document_version_id"
+      ]
+    },
+    {
+      "type": "document.file.access_granted",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "DATA_ACCESS",
+      "resources": [
+        "Document"
+      ],
+      "result": "success",
+      "requires_version": true,
+      "deferred": false,
+      "fields": {
+        "content_item_id": {
+          "kind": "uuid"
+        },
+        "representation_id": {
+          "kind": "uuid"
+        },
+        "purpose": {
+          "kind": "enum",
+          "values": [
+            "published",
+            "authoring",
+            "history"
+          ]
+        }
+      },
+      "required": [
+        "content_item_id",
+        "representation_id",
+        "purpose"
+      ]
+    },
+    {
+      "type": "document.diff.result_access_granted",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "DATA_ACCESS",
+      "resources": [
+        "Document"
+      ],
+      "result": "success",
+      "requires_version": true,
+      "deferred": false,
+      "fields": {
+        "base_version_id": {
+          "kind": "uuid"
+        },
+        "target_version_id": {
+          "kind": "uuid"
+        },
+        "base_snapshot_digest": {
+          "kind": "digest"
+        },
+        "target_snapshot_digest": {
+          "kind": "digest"
+        },
+        "comparison_profile": {
+          "kind": "enum",
+          "values": [
+            "document-diff-v0"
+          ]
+        },
+        "resource_profile": {
+          "kind": "enum",
+          "values": [
+            "diff-resource-v0"
+          ]
+        },
+        "result_digest": {
+          "kind": "digest"
+        },
+        "verdict": {
+          "kind": "enum",
+          "values": [
+            "same",
+            "different",
+            "unknown"
+          ]
+        },
+        "coverage": {
+          "kind": "enum",
+          "values": [
+            "full",
+            "partial",
+            "none"
+          ]
+        },
+        "cache_hit": {
+          "kind": "boolean"
+        }
+      },
+      "required": [
+        "base_version_id",
+        "target_version_id",
+        "base_snapshot_digest",
+        "target_snapshot_digest",
+        "comparison_profile",
+        "resource_profile",
+        "result_digest",
+        "verdict",
+        "coverage",
+        "cache_hit"
+      ]
+    },
+    {
+      "type": "authorization.denied",
+      "source": "urn:knowledge-platform:document-platform",
+      "category": "SECURITY",
+      "resources": [
+        "AccessPolicy"
+      ],
+      "result": "denied",
+      "requires_version": false,
+      "deferred": false,
+      "fields": {
+        "action_code": {
+          "kind": "enum",
+          "values": [
+            "update_document_metadata",
+            "move_document",
+            "create_folder",
+            "rename_folder",
+            "move_folder",
+            "set_access_policy",
+            "lookup_management_operation",
+            "mark_version_read"
+          ]
+        },
+        "reason_code": {
+          "kind": "enum",
+          "values": [
+            "forbidden"
+          ]
+        }
+      },
+      "required": [
+        "action_code",
+        "reason_code"
+      ]
+    }
+  ]
+}

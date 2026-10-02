@@ -39,6 +39,7 @@ jobs:
       - run: mise run arch:negative-smoke
       - run: mise run repo:policy
       - run: mise run api:check
+      - run: mise run audit:check
       - run: mise run assure:scan
       - run: mise run assure:plan
       - run: mise run assure:run
