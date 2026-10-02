@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## Current checkpoint — Organization Phase3 frozen source and corrected pixels GO, 2026-10-02 16:56 UTC
+
+- Status: **ACTIVE — PHASE3 EXACT SOURCE FROZEN; EVIDENCE PACKET REVIEW/PUBLICATION PENDING**. [Organization status](organization-client-v0-status.md), [final evidence](organization-d2-visual-review-v2.md) and [Phase3 authority](../specs/2026-10-02-organization-client-v0-ui-approval.md) are the operative preparation pointers; older pending/NO-GO narratives below are historical.
+- Captured source remains remote `e6bf24d8afa76a4aa7c66546bd963e4e1a90ffc8`, tree `204a412ba40211ca052d81cdf79f2b8701c148bc`. Independent corrected20-image review closes both Important findings, preserving failed evidence, exact source identities and visual limits.
+- Four normal exact-head gates and corrective capture37035368125 passed. Capture-triggered CI37035368187 is SUCCESS, verified16:56UTC. Exact-source Phase3 freeze qualification is complete; Phase4 starts after this separate evidence packet is independently reviewed, published and qualified. This new branch is documentation-only; PR48 source and its gates are unchanged.
+- Next exact action: independent documentation review, parent-only evidence publication/qualification, then ordered Phase4 official Tauri qualification research/design/plan. No new image sharing, runtime install/build, product implementation, merge, deploy or production operation is authorized here.
+
+---
+
 ## Current checkpoint — Organization D2 actual pixels NO-GO; source correction pending review, 2026-10-02 UTC
 
 - Status: **ACTIVE — TWO IMPORTANT PIXEL FINDINGS; SOURCE/DOM CORRECTION PREPARED; CORRECTED PIXELS PENDING**. [Organization status](organization-client-v0-status.md), [source review](organization-client-v0-ui-review.md), and the [immutable20-image visual receipt](organization-d2-visual-review-v1.md) distinguish captured bd1f57f4's successful harness from its failed visual review.
