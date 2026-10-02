@@ -1,5 +1,11 @@
 # Document Platform PoC Runtime / Server Composition v0 — Capability Status
 
+## 2026-10-02 UTC — Exact-path PDF byte preservation
+
+- Follow-up to reviewed `2742debbe097bfb5a3aa65d4a6501af7f2ccb263`: the two new PDF fixture paths are declared binary in `.gitattributes`. Their bytes and recorded SHA-256 values are unchanged; no directory-wide or unrelated whitespace exception is added.
+- The prior clean-working-tree diff check did not cover the committed PDFs. Integration's parent-range check exposed their valid fixed-width xref trailing spaces; trimming those bytes would corrupt the fixture offsets. Exact-path binary attributes preserve the file format and avoid text normalization/diff interpretation.
+- `git check-attr` confirms binary set and diff/merge/text unset for both paths; PDF blob/hash equality and full parent-range diff checks pass. No Rust or fixture behavior changed. Next exact action: parent publishes this bounded follow-up and retains it alongside the A2 legal-notice attributes during propagation.
+
 ## 2026-10-02 UTC — Separate positive and negative PDF publication fixtures
 
 - The successful PDF journey now uses dedicated synthetic native-text PDFs built from the existing `minimal_text_pdf` recipe: same producer and only Page A → Page X text differs. Original semantic-inspection fixtures remain unchanged. Fixture provenance and SHA-256 values are recorded beside the two684-byte files.
