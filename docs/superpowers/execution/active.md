@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-02 17:46 UTC — Phase4 read-only preflight STOP at host MPL dependency policy
+
+- Qualified Phase3 evidence [PR49](https://github.com/AIrisu-072/knowledge-platform/pull/49) is remote0860e34e/treea1695e32: CI37038588206, DSI37038588091 and Sandbox37038588073 SUCCESS; branch-specific D2 skipped as intended. Captured PR48 e6bf24d8/tree204a412b and its actual20 GO remain immutable.
+- [Read-only Phase4 decision packet](organization-client-tauri-v2-phase4-preflight.md) establishes a required current Tauri2.12.1 host build/proc-macro MPL path. The known pinned minimum is cssparser0.37.0, selectors0.38.0 and cssparser-macros0.7.0. It is not a complete project graph or proof of app-runtime linkage.
+- Existing policy requires explicit ADR approval. The owner question sent17:46UTC is **PENDING**; no exception, dependency resolution/install/build, Windows-policy mutation or runtime implementation is authorized. Original§49 STOP controls; §50 does not waive it.
+- Next exact action: await the bounded three-version host exception decision, retain its exact scope, then separately review any ADR and qualification design/plan. No broad MPL/Tauri adoption, app distribution, production change or new image sharing is inferred. Actual Tauri runtime proof and Phase5/6 remain unstarted.
+
+---
+
 ## Current checkpoint — Organization Phase3 frozen source and corrected pixels GO, 2026-10-02 16:56 UTC
 
 - Status: **ACTIVE — PHASE3 EXACT SOURCE FROZEN; EVIDENCE PACKET REVIEW/PUBLICATION PENDING**. [Organization status](organization-client-v0-status.md), [final evidence](organization-d2-visual-review-v2.md) and [Phase3 authority](../specs/2026-10-02-organization-client-v0-ui-approval.md) are the operative preparation pointers; older pending/NO-GO narratives below are historical.
