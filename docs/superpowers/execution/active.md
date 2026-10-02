@@ -1,11 +1,28 @@
 # Active Execution Pointer
 
-## Current checkpoint — Organization Client D1 frozen / Phase3 next, 2026-10-02 UTC
+## Current checkpoint — Organization D2 actual pixels NO-GO; source correction pending review, 2026-10-02 UTC
 
-- Status: **ACTIVE — PHASE0 COMPLETE; PHASE1/2 FROZEN; PHASE3 NEXT**. [Organization status](organization-client-v0-status.md) is the current capability pointer; [Phase0](organization-client-v0-phase0-reconstruction.md) preserves source/reuse evidence.
-- Accepted baseline remains PR43 `6103e4d4e3bb0d45ba03e1d2935492de7f11394a`, tree `f2e13eee0d7e1bfa71952c1da52a72cecb65fc9e`; [owner acceptance](https://github.com/AIrisu-072/knowledge-platform/pull/43#issuecomment-5952167525). Existing Document PRs/source remain frozen/open/Draft/unmerged; PR46R2 is separate evidence.
-- [Phase1](../specs/2026-10-02-organization-client-v0-product-ux-approval.md) and [Phase2](../specs/2026-10-02-organization-client-v0-domain-api-approval.md) exact-blob independent GO/authority records apply original§50. Initial Phase2 findings are preserved and resolved in [review receipts](organization-client-v0-design-review.md). No new major semantics or product changes.
-- Next exact action: parent publishes reviewed D1 docs at an exact tree/head; author proceeds to Phase3 two-archetype concrete source and independent review. Phase4 Tauri qualification and Phase5/6 remain unstarted. C0 ownG9, SearchWIP and independent Audit limits are not promoted. No broad installs/heavyCargo, merge/close/deploy/production operations.
+- Status: **ACTIVE — TWO IMPORTANT PIXEL FINDINGS; SOURCE/DOM CORRECTION PREPARED; CORRECTED PIXELS PENDING**. [Organization status](organization-client-v0-status.md), [source review](organization-client-v0-ui-review.md), and the [immutable20-image visual receipt](organization-d2-visual-review-v1.md) distinguish captured bd1f57f4's successful harness from its failed visual review.
+- Isolated `fix/organization-d2-state-affordances` corrects terminal summary/current-progress/own-next-work and blocked Submit's adjacent reason/disabled appearance without changing workflow authority or submitted membership. Existing keyboard repair and guards remain unchanged; source/DOM tests do not establish visual repair.
+- Independent source review of6963e834 found blocked→Return disabled its read-only instruction action. The narrow precedence correction passes328/328 local tests after RED2; provider denial and the failed pixel receipt are unchanged.
+- Next exact action: independently re-review the clean candidate, parent publish and qualify a new exact normal head, then obtain only separately authorized corrected pixels/review. Original capture remains failed; Phase3 freeze and Phase4–6 remain pending. Twenty-image/one-day/head/time/owner/prerequisite/export gates and frozen Phase1/2, Document/Search/Audit and production boundaries remain.
+
+---
+
+## Current checkpoint — Organization D2 dialog-edge repair awaiting review, 2026-10-02 UTC
+
+- Status: **ACTIVE — NORMAL HOSTED KEYBOARD FAIL; LOCAL SOURCE REPAIR / NEW HOSTED PROOF PENDING**. [Organization status](organization-client-v0-status.md), [source-review amendment](organization-client-v0-ui-review.md) and [qualification status](organization-d2-visual-qualification-status.md) preserve the observed second-Tab body/unfocused failure and exact base.
+- Bounded open-dialog-only Tab/Shift+Tab edge wrapping implements approved containment; native modal/Escape/close, initial Cancel, ordinary order, drafts, modifiers and focus return are preserved. Local source/DOM42 and diagnostic149 pass; these are not actual browser proof.
+- Next exact action: independent review of the clean candidate, parent publication and a new normal exact-head hosted pass. Capture remains closed; Phase3 freeze and Phase4–6 have not started. Twenty-image/one-day limits, gates, frozen Phase1/2, PR43, Document/Search/Audit and production boundaries remain unchanged.
+
+---
+
+## Current checkpoint — Organization Client D2 source reviewed / visual gate pending, 2026-10-02 UTC
+
+- Status: **ACTIVE — PHASE1/2 FROZEN; PHASE3 SOURCE/INTERACTION GO; ACTUAL VISUAL QUALIFICATION PENDING**. [Organization status](organization-client-v0-status.md) and [D2 review](organization-client-v0-ui-review.md) identify exact source/approval/review subjects.
+- Accepted H2 remains frozen. D1PR47remote13c1292c is fully hosted GREEN. Source-only [PR48](https://github.com/AIrisu-072/knowledge-platform/pull/48) remote0dcaeea6/treea7517c35 matches reviewed locald37bb7ab, exactly10 additive source/design paths and no capture workflow. Phase1/2 frozen blobs are unchanged.
+- D2 source4/4 and DOM24/24 plus independent counterexamples pass; no browser/pixel inference. Local cloud-browser preview was blocked without bypass. The owner separately authorized this D2 review's20syntheticPNG/1day public artifact and exact existing uploader exception only.
+- Next exact action: parent publishes the integrated source/workflow/privacy-reviewed candidate (GO at55253877), verifies all four applicable normal exact-head workflows, then may activate the one-shot PR48-bound capture. [Qualification status](organization-d2-visual-qualification-status.md) preserves strict PR/base/replay and export boundaries. Actual pixels and Phase3 freeze remain pending; Phase4–6 unstarted. C0/Search/Audit limits and no merge/close/deploy/production boundaries remain.
 
 ---
 
