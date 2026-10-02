@@ -48,12 +48,32 @@ test('ordered metadata fixture obeys the existing patch contract and pins every 
   assert.deepEqual(transitions.map(call => literal(property(call.arguments[2], 'metadata'))), [initial, updated, updated, updated]);
 });
 
-test('revoked-write observation uses readable published detail without weakening the mutation denial', () => {
+test('fresh revoked create is hidden before mutation while replay and late revocation retain403', async () => {
+  // This source guard distinguishes request phases; it is not a Rust/HTTP execution test.
+  const [service, repository, rows, transactions] = await Promise.all([
+    'crates/document-application/src/versioning_service.rs',
+    'crates/document-repository-postgres/src/repository.rs',
+    'crates/document-repository-postgres/src/versioning_rows.rs',
+    'crates/document-repository-postgres/tests/authorized_document_transaction.rs',
+  ].map(path => readFile(new URL(`../../../${path}`, import.meta.url), 'utf8')));
+  const create = service.slice(service.indexOf('pub async fn create_version('), service.indexOf('pub async fn update_working('));
+  assert.ok(create.indexOf('self.replay(') < create.indexOf('.load_current('));
+  assert.ok(create.indexOf('.load_current(') < create.indexOf('self.repository.create_version('));
+  assert.match(service, /get_authoritative_document\(document_id\)[\s\S]*?ok_or\(ApplicationError::DocumentNotFound\)/);
+  assert.match(repository, /async fn get_authoritative_document[\s\S]*?load_current_scoped/);
+  assert.match(rows, /load_current_scoped[\s\S]*?ReadSelection::Internal, Some\(ctx\)/);
+  // Internal=0 requires Read AND (Write OR Publish), beyond the general Read vector.
+  assert.match(rows, /Internal = 0/);
+  assert.match(rows, /\$2 <> 0 OR dmb_allows_document\(d\.document_id, \$3, ARRAY\['write'\]::text\[\]\)/);
+  assert.match(rows, /OR dmb_allows_document\(d\.document_id, \$3, ARRAY\['publish'\]::text\[\]\)/);
+  const replay = transactions.slice(transactions.indexOf('async fn old_version_operation_cannot_be_replayed_after_write_permission_is_revoked'), transactions.indexOf('async fn permission_revoked_during_inspection_blocks_version_commit'));
+  assert.match(replay, /Err\(ApplicationError::Forbidden\)/);
+  assert.match(transactions, /permission_revoked_during_inspection_blocks_version_commit[\s\S]*?assert_eq!\(task\.await\.unwrap\(\), Err\(ApplicationError::Forbidden\)\)/);
   // Published visibility requires Read; authoring visibility additionally
   // requires Write. This fixture intentionally keeps Read after revocation.
   const revoked = source.slice(source.indexOf('revoked = true;'), source.indexOf('const responsePromise', source.indexOf('revoked = true;')));
   assert.match(revoked, /getDocument\([\s\S]*?view: 'published'/);
-  assert.doesNotMatch(revoked, /view: 'authoring'/);
   assert.match(revoked, /createVersion\.status\)\.toBe\('disabled'\)/);
-  assert.match(source, /expect\(response\.status\(\)\)\.toBe\(403\); expect\(\(await response\.json\(\)\)\.code\)\.toBe\('FORBIDDEN'\)/);
+  assert.ok(/expect\(response\.status\(\)\)\.toBe\(404\); expect\(\(await response\.json\(\)\)\.code\)\.toBe\('DOCUMENT_NOT_FOUND'\)/.test(source), 'Fresh revoked create must assert exactly404/DOCUMENT_NOT_FOUND');
+  assert.ok(/文書が見つからないか、閲覧できません/.test(source), 'The exact hidden-document UI message must be asserted');
 });

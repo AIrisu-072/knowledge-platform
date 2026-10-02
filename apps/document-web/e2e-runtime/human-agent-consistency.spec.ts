@@ -167,11 +167,15 @@ test('stale GUI create capability is reauthorized after Human write revocation, 
     const current = (await getDocument({ ...common, path, query: { view: 'published' } })).data;
     expect(current.capabilities.createVersion.status).toBe('disabled');
     expect(current.revision).toBe(before.revision); // policy changes cannot masquerade as OCC conflicts
+    const hiddenAuthoring = await getDocument({ ...common, throwOnError: false, path, query: { view: 'authoring' } });
+    expect(hiddenAuthoring.response?.status).toBe(404); expect(hiddenAuthoring.error?.code).toBe('DOCUMENT_NOT_FOUND');
     const responsePromise = page.waitForResponse(response => new URL(response.url()).pathname === `/v1/documents/${documentId}/versions` && response.request().method() === 'POST');
     await page.getByRole('button', { name: '新しい版を作成', exact: true }).click();
     const response = await responsePromise;
-    expect(response.status()).toBe(403); expect((await response.json()).code).toBe('FORBIDDEN');
-    await expect(page.getByRole('alert')).toContainText('この操作を行う権限がありません');
+    // A fresh operation loses its Internal snapshot before mutation. Replayed
+    // operations or revocation after loading that snapshot instead reach403.
+    expect(response.status()).toBe(404); expect((await response.json()).code).toBe('DOCUMENT_NOT_FOUND');
+    await expect(page.getByRole('alert')).toContainText('文書が見つからないか、閲覧できません');
     await expect(page.getByRole('status').filter({ hasText: '新しい版を作成しました' })).toHaveCount(0);
     await expect(page.getByLabel('原本ファイル')).toHaveValue(/race-denied\.txt$/);
     expect(await persistedSnapshot(context.human, documentId)).toEqual(before);

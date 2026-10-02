@@ -182,12 +182,16 @@ test('versions keep WORKING content separate from numbered revisions', async () 
   expect(api.getDocumentVersion).toHaveBeenLastCalledWith(documentId, baseVersionId, 'authoring');
 });
 
-test('new version retries preserve operation and target IDs with the same file payload', async () => {
+test.each([
+  { failure: 'lost response', error: new Error('connection lost'), message: '文書サービスに接続できません' },
+  { failure: 'hidden mutation snapshot', error: { type: 'about:blank', title: 'Document not found', status: 404,
+    code: 'DOCUMENT_NOT_FOUND', traceId: 'synthetic', retryable: false }, message: '文書が見つからないか、閲覧できません' },
+])('new version retries preserve operation and target IDs with the same file payload after $failure', async ({ error, message }) => {
   const api = mockApi();
   api.getDocument.mockResolvedValue(documentDetail('authoring'));
   api.listDocumentVersions.mockResolvedValue({ items: [version({ lifecycleState: 'working', versionNo: 3, isCurrent: false })], nextCursor: null });
   api.getDocumentVersion.mockResolvedValue(versionDetail({ publish: operationDenied, schedulePublication: operationDenied }));
-  api.createVersion.mockRejectedValueOnce(new Error('connection lost')).mockResolvedValueOnce({ operationId: 'ok', documentId, targetVersionId: versionId, versionNo: 4, baseVersionId: versionId, resultingRevision: 8 });
+  api.createVersion.mockRejectedValueOnce(error).mockResolvedValueOnce({ operationId: 'ok', documentId, targetVersionId: versionId, versionNo: 4, baseVersionId: versionId, resultingRevision: 8 });
   const user = userEvent.setup();
   renderAt(`/documents/${documentId}?view=authoring&tab=versions`);
 
@@ -204,7 +208,8 @@ test('new version retries preserve operation and target IDs with the same file p
   // jsdom does not treat its FileList as satisfying the native required-file constraint.
   fireEvent.submit(fileInput.form!);
   await waitFor(() => expect(api.createVersion).toHaveBeenCalled());
-  await screen.findByRole('alert');
+  expect(await screen.findByRole('alert')).toHaveTextContent(message);
+  expect(fileInput.files?.[0]).toBe(file);
   await user.click(screen.getByRole('button', { name: '再読み込み' }));
   await screen.findByText('新しい版を作成しました。');
 
@@ -222,6 +227,8 @@ test('new version retries preserve operation and target IDs with the same file p
   expect(second[1].targetVersionId).toBe(first[1].targetVersionId);
   expect(second[1].items).toEqual(first[1].items);
   expect([...second[2].values()]).toEqual([...first[2].values()]);
+  expect(first[2].get(first[1].items[0].partId)).toBe(file);
+  expect(second[2].get(second[1].items[0].partId)).toBe(file);
 });
 
 test('publish workspace requires review, then confirmation is keyboard dismissible and restores focus', async () => {
