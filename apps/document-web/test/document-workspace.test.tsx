@@ -87,6 +87,35 @@ test('folder navigation remains visible when the document list request fails', a
   expect(await screen.findByRole('alert')).toHaveTextContent('入力内容を確認してください');
 });
 
+test('pending folder query keeps the table empty-data reference stable across rerenders', async () => {
+  const api = mockApi();
+  api.listDocuments.mockImplementation((query) => query.folderId ? new Promise(() => {})
+    : Promise.resolve({ view: 'published', items: [listItem('published')], nextCursor: null }));
+  api.listFolderChildren.mockResolvedValue({ items: [{ folderId: reviewFolderId, name: 'PoC Shared', revision: 1, parentFolderId: folderId }], nextCursor: null, capabilities: {} });
+  const table = require('@tanstack/react-table') as typeof import('@tanstack/react-table');
+  const original = table.useReactTable;
+  const pendingData: unknown[][] = [];
+  let navigating = false;
+  jest.spyOn(table, 'useReactTable').mockImplementation(options => {
+    if (navigating && options.data.length === 0) {
+      pendingData.push(options.data);
+      // Fail promptly rather than letting an unstable-reference reset loop starve the test runner.
+      if (pendingData.length > 20) throw new Error('Pending table data caused excessive rerenders');
+    }
+    return original(options);
+  });
+  const user = userEvent.setup();
+  const view = renderAt('/documents?view=published');
+  await screen.findByRole('button', { name: /受入手順/ });
+  const folder = await screen.findByRole('button', { name: 'PoC Shared' });
+  navigating = true;
+  await user.click(folder);
+  await waitFor(() => expect(api.listDocuments).toHaveBeenCalledWith(expect.objectContaining({ folderId: reviewFolderId })));
+  view.client.setQueryData(['folder-tree', 'root'], { folderId, name: 'ルート更新', revision: 2, parentFolderId: null, capabilities: {} });
+  await waitFor(() => expect(pendingData.length).toBeGreaterThan(1));
+  expect(new Set(pendingData).size).toBe(1);
+});
+
 test('list filters stay in the URL and the detail return restores the selected list context', async () => {
   const api = mockApi();
   api.listDocuments.mockResolvedValue({ view: 'authoring', items: [listItem('authoring')], nextCursor: null });

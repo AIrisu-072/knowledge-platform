@@ -25,6 +25,44 @@ use time::OffsetDateTime;
 use tokio::process::{Child, Command};
 use uuid::Uuid;
 
+// Fixed labels only: no document identifiers, paths, URLs or worker output.
+// Bypass libtest's print capture and flush so SIGABRT cannot hide progress.
+#[derive(Debug)]
+enum CanaryStage {
+    Started,
+    DatabaseReady,
+    SchemaMigrated,
+    SandboxStarted,
+    SandboxVerified,
+    RootPolicyInitialized,
+    ReservationStarted,
+    DocumentCreated,
+    ReservationStored,
+    FixturesReserved,
+    RevocationsPrepared,
+    FirstProcessStarted,
+    WarmupPublished,
+    FirstProcessStopped,
+    StoppedStateVerified,
+    ContendersStarted,
+    ContendersBlocked,
+    ContendersCompleted,
+    AttributionVerified,
+    ContendersStopped,
+    Restarted,
+    RestartPublished,
+    Complete,
+}
+
+impl CanaryStage {
+    fn report(self) {
+        use std::io::Write;
+        let mut stderr = std::io::stderr().lock();
+        writeln!(stderr, "scheduler-canary:{self:?}").unwrap();
+        stderr.flush().unwrap();
+    }
+}
+
 struct SystemClock;
 impl Clock for SystemClock {
     fn now(&self) -> OffsetDateTime {
@@ -65,6 +103,14 @@ type Documents =
     DocumentService<UuidV7Ids, SystemClock, FileSystemStorage, PostgresDocumentRepository>;
 
 async fn reserve(documents: &Documents, versions: &Versions, title: &str) -> Reservation {
+    // Each scenario call site must carry only the small wrapper future.
+    // Boxing only the scenario leaves repeated large reservation temporaries in
+    // its debug poll stack, which overflows the unchanged default test stack.
+    Box::pin(run_reservation(documents, versions, title)).await
+}
+
+async fn run_reservation(documents: &Documents, versions: &Versions, title: &str) -> Reservation {
+    CanaryStage::ReservationStarted.report();
     let human = PrincipalRef::new("poc", "poc-human").unwrap();
     let created = documents
         .create_document(CreateDocumentCommand {
@@ -79,6 +125,7 @@ async fn reserve(documents: &Documents, versions: &Versions, title: &str) -> Res
         })
         .await
         .unwrap();
+    CanaryStage::DocumentCreated.report();
     let operation = PublishOperationId::try_from_uuid(Uuid::now_v7()).unwrap();
     versions
         .schedule_publish(
@@ -94,6 +141,7 @@ async fn reserve(documents: &Documents, versions: &Versions, title: &str) -> Res
         )
         .await
         .unwrap();
+    CanaryStage::ReservationStored.report();
     Reservation {
         document: created.document_id(),
         version: created.document_version_id(),
@@ -222,6 +270,7 @@ async fn future_stop_restart_revocation_and_concurrent_processes_preserve_single
 }
 
 async fn canary() {
+    CanaryStage::Started.report();
     // Keep the large test-only scenario state on the heap. Do not expand the
     // test/production stack limit or change any worker isolation setting.
     Box::pin(run_process_canary()).await;
@@ -239,19 +288,67 @@ fn process_canary_future_has_a_small_test_stack_frame() {
     );
 }
 
+#[test]
+fn process_canary_scenario_has_a_small_test_stack_frame() {
+    fn frame_size<F>(_constructor: impl FnOnce() -> F) -> usize {
+        std::mem::size_of::<F>()
+    }
+    let size = frame_size(run_process_canary);
+    assert!(
+        size < 64 * 1024,
+        "scenario future frame is {size} bytes; nested fixture futures must not inflate the scenario poll stack"
+    );
+}
+
+#[test]
+fn reservation_wrapper_has_a_small_test_stack_frame() {
+    fn frame_size<F>(
+        _constructor: impl FnOnce(&'static Documents, &'static Versions, &'static str) -> F,
+    ) -> usize {
+        std::mem::size_of::<F>()
+    }
+    let size = frame_size(reserve);
+    assert!(
+        size < 1024,
+        "reservation wrapper future is {size} bytes; heap-box the fixture body before embedding it in each scenario call site"
+    );
+}
+
+#[test]
+fn stage_report_survives_libtest_capture_and_process_abort() {
+    const PROBE: &str = "DOCUMENT_SCHEDULER_STAGE_ABORT_PROBE";
+    if std::env::var_os(PROBE).is_some() {
+        CanaryStage::ReservationStarted.report();
+        std::process::abort();
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("--exact")
+        .arg("stage_report_survives_libtest_capture_and_process_abort")
+        .env(PROBE, "1")
+        .output()
+        .unwrap();
+    use std::os::unix::process::ExitStatusExt;
+    assert_eq!(output.status.signal(), Some(6));
+    assert_eq!(output.stderr, b"scheduler-canary:ReservationStarted\n");
+}
+
 async fn run_process_canary() {
     let worker =
         PathBuf::from(std::env::var_os("DSI_WORKER_BIN").expect("DSI_WORKER_BIN is required"));
     let database = TestDatabase::new().await;
+    CanaryStage::DatabaseReady.report();
     let pool = &database.pool;
     migrate(pool).await.unwrap();
+    CanaryStage::SchemaMigrated.report();
     let storage_root = tempfile::tempdir().unwrap();
     let storage = Arc::new(FileSystemStorage::new(storage_root.path()));
     let repository = Arc::new(PostgresDocumentRepository::new(pool.clone()));
     let executor = Arc::new(RunnerInspectionExecutor::new(RunnerConfig::new(&worker)).unwrap());
+    CanaryStage::SandboxStarted.report();
     probe_mandatory_sandbox(&executor).await.expect(
         "mandatory production sandbox must pass; no fake/skip/fallback qualifies acceptance",
     );
+    CanaryStage::SandboxVerified.report();
     let resolver = StaticRequesterResolver::for_runtime_mode("poc").unwrap();
     let human = PrincipalRef::new("poc", "poc-human").unwrap();
     let human_context = resolver.resolve(&human).await.unwrap();
@@ -273,6 +370,7 @@ async fn run_process_canary() {
         .initialize_root_policy(&human_context, root_grants)
         .await
         .unwrap();
+    CanaryStage::RootPolicyInitialized.report();
     let ids = Arc::new(UuidV7Ids);
     let clock = Arc::new(SystemClock);
     let documents = DocumentService::new(
@@ -287,6 +385,7 @@ async fn run_process_canary() {
     let revoked = reserve(&documents, &versions, "Synthetic revoked publication").await;
     let unknown = reserve(&documents, &versions, "Synthetic unresolvable requester").await;
     let agent = reserve(&documents, &versions, "Synthetic agent requester denial").await;
+    CanaryStage::FixturesReserved.report();
     AccessPolicyService::new(repository.clone())
         .set_access_policy(
             &human_context,
@@ -305,11 +404,14 @@ async fn run_process_canary() {
         .bind(unknown.operation.as_uuid()).execute(pool).await.unwrap();
     sqlx::query("UPDATE document_publish_schedules SET actor_principal_id = 'poc-agent' WHERE publish_operation_id = $1")
         .bind(agent.operation.as_uuid()).execute(pool).await.unwrap();
+    CanaryStage::RevocationsPrepared.report();
     make_due(pool, warmup).await;
     let mut first = start(pool, storage_root.path(), &worker, "r5-first");
+    CanaryStage::FirstProcessStarted.report();
     // A committed warmup proves the real main passed preflight and polled. A
     // fixed sleep or merely alive PID would not prove process startup.
     await_status(pool, warmup, "PUBLISHED", &mut [&mut first]).await;
+    CanaryStage::WarmupPublished.report();
     assert_eq!(
         repository
             .get_schedule(future.operation)
@@ -321,6 +423,7 @@ async fn run_process_canary() {
     );
     assert_eq!(publication_counts(pool, future).await, (0, 0, 0));
     stop(&mut first).await;
+    CanaryStage::FirstProcessStopped.report();
     for reservation in [future, revoked, unknown, agent] {
         make_due(pool, reservation).await;
     }
@@ -335,6 +438,7 @@ async fn run_process_canary() {
             .status,
         "PENDING"
     );
+    CanaryStage::StoppedStateVerified.report();
     // Hold exactly the due document's mutation lock. Both owned child sessions
     // must reach blocked DB work before release, proving real contenders rather
     // than treating two alive/startup PIDs as concurrency evidence.
@@ -346,6 +450,7 @@ async fn run_process_canary() {
         .unwrap();
     let mut first = start(pool, storage_root.path(), &worker, "r5-first");
     let mut second = start(pool, storage_root.path(), &worker, "r5-second");
+    CanaryStage::ContendersStarted.report();
     tokio::time::timeout(Duration::from_secs(30), async {
     loop {
         assert!(first.try_wait().unwrap().is_none() && second.try_wait().unwrap().is_none(), "a contender exited during startup");
@@ -355,11 +460,13 @@ async fn run_process_canary() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     }).await.expect("both scheduler processes must contend before the row-lock barrier is released");
+    CanaryStage::ContendersBlocked.report();
     barrier.commit().await.unwrap();
     await_status(pool, future, "PUBLISHED", &mut [&mut first, &mut second]).await;
     await_status(pool, revoked, "TERMINAL", &mut [&mut first, &mut second]).await;
     await_status(pool, unknown, "TERMINAL", &mut [&mut first, &mut second]).await;
     await_status(pool, agent, "TERMINAL", &mut [&mut first, &mut second]).await;
+    CanaryStage::ContendersCompleted.report();
     assert_eq!(publication_counts(pool, agent).await, (0, 0, 0));
     assert_eq!(publication_counts(pool, future).await, (1, 1, 1));
     assert_eq!(publication_counts(pool, revoked).await, (0, 0, 0));
@@ -411,14 +518,19 @@ async fn run_process_canary() {
             .await
             .unwrap();
     assert_eq!(current, Some(future.version.as_uuid()));
+    CanaryStage::AttributionVerified.report();
     stop(&mut first).await;
     stop(&mut second).await;
+    CanaryStage::ContendersStopped.report();
     let mut restarted = start(pool, storage_root.path(), &worker, "r5-restarted");
+    CanaryStage::Restarted.report();
     // Fresh work proves the restarted process actually polls before checking replay.
     let after_restart = reserve(&documents, &versions, "Synthetic second restart proof").await;
     make_due(pool, after_restart).await;
     await_status(pool, after_restart, "PUBLISHED", &mut [&mut restarted]).await;
+    CanaryStage::RestartPublished.report();
     assert_eq!(publication_counts(pool, future).await, (1, 1, 1));
     stop(&mut restarted).await;
     database.close().await;
+    CanaryStage::Complete.report();
 }
