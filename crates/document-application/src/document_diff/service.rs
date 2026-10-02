@@ -817,6 +817,7 @@ fn display_locator_supported(format: FormatId, locator: &SourceLocator) -> bool 
         (FormatId::Txt, SourceLocator::TextSpan { .. })
             | (FormatId::Csv, SourceLocator::CsvCell { .. })
             | (FormatId::Html, SourceLocator::HtmlNode { .. })
+            | (FormatId::Pdf, SourceLocator::PdfPage { region: None, .. })
     )
 }
 
@@ -864,6 +865,28 @@ fn bound_display_item(item: &mut DiffDisplayItem) -> Result<(), ApplicationError
 #[cfg(test)]
 mod display_bound_tests {
     use super::*;
+
+    #[test]
+    fn native_pdf_page_locator_is_sent_to_the_authorized_display_executor() {
+        assert!(display_locator_supported(
+            FormatId::Pdf,
+            &SourceLocator::PdfPage {
+                page: 1,
+                region: None
+            }
+        ));
+        assert!(!display_locator_supported(
+            FormatId::Pdf,
+            &SourceLocator::PdfPage {
+                page: 1,
+                region: Some([0, 0, 1, 1])
+            }
+        ));
+        assert!(!display_locator_supported(
+            FormatId::Pdf,
+            &SourceLocator::ContentItem
+        ));
+    }
 
     const ITEM_LIMIT: usize = 32 * 1024;
 

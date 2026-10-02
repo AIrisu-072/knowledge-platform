@@ -4,6 +4,7 @@ use document_diff_core::{
 };
 
 use crate::WorkerError;
+use document_semantic_inspection_worker::{AdapterProfile, PdfAdapter, WorkerFailureCode};
 
 pub(crate) fn extract(
     request: &WorkerDisplayRequest,
@@ -15,6 +16,9 @@ pub(crate) fn extract(
             csv_display_cell(raw, *row, *column)
         }
         (FormatId::Html, SourceLocator::HtmlNode { path }) => html_display_node(raw, path),
+        (FormatId::Pdf, SourceLocator::PdfPage { page, region: None }) => {
+            pdf_page(raw, *page, &request.locator)
+        }
         (_, SourceLocator::ContentItem) => Ok(unavailable(Reason::Unverified)),
         (FormatId::Docx | FormatId::Xlsx | FormatId::Xlsm | FormatId::Pptx | FormatId::Pdf, _) => {
             Ok(unavailable(Reason::NonTextual))
@@ -26,6 +30,30 @@ pub(crate) fn extract(
         fragment,
         request.max_fragment_bytes as usize,
     ))
+}
+
+fn pdf_page(raw: &[u8], page: u32, locator: &SourceLocator) -> Result<DisplayFragment, Reason> {
+    let (_, projection) = PdfAdapter
+        .inspect_with_projection(raw, &AdapterProfile::default())
+        .map_err(|error| match error.code() {
+            WorkerFailureCode::InspectionResourceLimitExceeded => Reason::ResourceLimit,
+            _ => Reason::Unverified,
+        })?;
+    let index = page.checked_sub(1).ok_or(Reason::Unverified)? as usize;
+    let text = projection
+        .get("pages")
+        .and_then(|pages| pages.get(index))
+        .and_then(|page| page.get("text"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or(Reason::Unverified)?;
+    if text.trim().is_empty() {
+        return Ok(unavailable(Reason::NonTextual));
+    }
+    Ok(DisplayFragment::Text {
+        text: text.to_owned(),
+        truncated: false,
+        locator: locator.clone(),
+    })
 }
 
 fn text_span(request: &WorkerDisplayRequest, raw: &[u8]) -> Result<DisplayFragment, Reason> {
