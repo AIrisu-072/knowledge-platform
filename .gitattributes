@@ -1,2 +1,6 @@
 # Preserve the exact shipped bytes of third-party legal notices, including upstream whitespace.
 apps/document-mcp/third-party-notices/** -text -whitespace
+
+# Preserve PDF bytes, including required fixed-width xref whitespace.
+apps/document-web/e2e-runtime/fixtures/pdf/base.pdf binary
+apps/document-web/e2e-runtime/fixtures/pdf/text-change.pdf binary

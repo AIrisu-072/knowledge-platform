@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## Current checkpoint — A2 retains reviewed PDF capability repair and fixtures, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-pdf-integrated` merges R2 `f51ff6788e73a1e7975f4b7bf6c295bd5cdd1a29` into A2 `d9651320d0a7dcb219fe7f13795f2faf3087914f`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain the reviewed repair and qualification evidence.
+- The production capability predicate and synthetic positive/negative PDF cases match reviewed R2 exactly. PDF bytes/hashes are preserved; exact-path binary attributes coexist with A2 legal-notice preservation. Fresh Node53/runtime TypeScript and parent-range diff checks pass. No repeated Rust workload or new actual-runtime evidence.
+- Next exact action: complete C3 propagation/proof, then parent publishes and checks the exact new runtime through PDF, MCP and persistence. Uploader qualification remains separate and inactive; no successor capability, merge or deployment.
+
+---
+
 ## Current checkpoint — A2 retains bounded PDF diagnostics, 2026-10-02 UTC
 
 - Status: **ACTIVE — SCOPED MERGE CHECKS PASS / PDF ACCEPTANCE UNDER DIAGNOSIS**. Isolated `feat/document-a2-pdf-diagnostics` merges reviewed R2 `639b31e85dc5ff7ed0a11fef4296ce88d46ed6cc` into A2 `5f1963f261ebf02582535df94e3221bd5128a733`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain the exact evidence and scope.
