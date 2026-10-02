@@ -19,6 +19,16 @@ export const KEYBOARD_STAGES = Object.freeze([
   'keyboard-dialog-closed', 'keyboard-return-focus', 'keyboard-draft-read',
   'keyboard-repeat-enter', 'keyboard-cancel-click', 'keyboard-draft-preserved',
   'keyboard-scenario-preserved',
+  'keyboard-reverse-open', 'keyboard-reverse-initial', 'keyboard-reverse-wrap',
+  'keyboard-forward-wrap', 'keyboard-reverse-cancel', 'keyboard-required-open',
+  'keyboard-required-initial', 'keyboard-required-next', 'keyboard-required-forward',
+  'keyboard-required-reverse', 'keyboard-required-empty', 'keyboard-required-validate',
+  'keyboard-required-draft', 'keyboard-required-preserved', 'keyboard-required-escape',
+  'keyboard-required-closed', 'keyboard-required-return', 'keyboard-workspace-module',
+  'keyboard-workspace-open', 'keyboard-workspace-disabled', 'keyboard-workspace-initial',
+  'keyboard-workspace-forward', 'keyboard-workspace-reverse', 'keyboard-workspace-escape',
+  'keyboard-workspace-closed', 'keyboard-workspace-return', 'keyboard-module-restore',
+  'keyboard-final-draft', 'keyboard-final-scenario', 'keyboard-final-closed',
 ]);
 const FOCUS_CATEGORIES = Object.freeze(['none', 'body', 'root', 'dialog', 'inside', 'outside']
   .flatMap(active => [`${active}-document-focused`, `${active}-document-unfocused`]));
@@ -79,8 +89,8 @@ export async function assertGeometry(page, origin, width) {
   return geometry.height;
 }
 export async function assertKeyboard(page, onStage = () => {}) {
-  // Fixed stage diagnostics only: original keys, assertions, order and timings
-  // are unchanged. Only allowlisted focus categories may describe a failed Tab.
+  // Preserve the original sequence before the appended edge/field checks.
+  // Only allowlisted focus categories may describe a failed original Tab.
   onStage('keyboard-skip-tab');
   await page.keyboard.press('Tab');
   onStage('keyboard-skip-focus');
@@ -136,6 +146,79 @@ export async function assertKeyboard(page, onStage = () => {}) {
   assert.equal(await page.locator('#draft').inputValue(), before, 'keyboard');
   onStage('keyboard-scenario-preserved');
   assert.equal(await page.locator('#scenario').inputValue(), 'normal', 'keyboard');
+  // New checks use real native key presses, never a synthetic Tab implementation.
+  onStage('keyboard-reverse-open');
+  await page.keyboard.press('Enter');
+  onStage('keyboard-reverse-initial');
+  assert.equal(await page.locator('#dialog-cancel').evaluate(node => node === document.activeElement), true, 'keyboard');
+  onStage('keyboard-reverse-wrap');
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await page.locator('#dialog-confirm').evaluate(node => node === document.activeElement), true, 'keyboard');
+  onStage('keyboard-forward-wrap');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.locator('#dialog-cancel').evaluate(node => node === document.activeElement), true, 'keyboard');
+  onStage('keyboard-reverse-cancel');
+  await page.locator('#dialog-cancel').click();
+
+  onStage('keyboard-required-open');
+  await page.locator('#return-action').click();
+  onStage('keyboard-required-initial');
+  assert.equal(await page.locator('#dialog-cancel').evaluate(node => node === document.activeElement), true, 'keyboard');
+  onStage('keyboard-required-next');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.locator('#dialog-confirm').evaluate(node => node === document.activeElement), true, 'keyboard');
+  onStage('keyboard-required-forward');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.locator('#return-reason').evaluate(node => node === document.activeElement), true, 'keyboard');
+  onStage('keyboard-required-reverse');
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await page.locator('#dialog-confirm').evaluate(node => node === document.activeElement), true, 'keyboard');
+  onStage('keyboard-required-empty');
+  await page.locator('#return-reason').fill('');
+  onStage('keyboard-required-validate');
+  await page.locator('#dialog-confirm').click();
+  assert.equal(await page.locator('#return-reason').evaluate(node => node === document.activeElement && node.getAttribute('aria-invalid') === 'true' && node.closest('dialog').open), true, 'keyboard');
+  onStage('keyboard-required-draft');
+  await page.locator('#return-reason').fill('Synthetic uncommitted reason');
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  onStage('keyboard-required-preserved');
+  assert.equal(await page.locator('#return-reason').inputValue(), 'Synthetic uncommitted reason', 'keyboard');
+  onStage('keyboard-required-escape');
+  await page.keyboard.press('Escape');
+  onStage('keyboard-required-closed');
+  assert.equal(await page.locator('#action-dialog').evaluate(node => node.open), false, 'keyboard');
+  onStage('keyboard-required-return');
+  assert.equal(await page.locator('#return-action').evaluate(node => node === document.activeElement), true, 'keyboard');
+
+  onStage('keyboard-workspace-module');
+  await page.locator('[data-module="resources"]').click();
+  onStage('keyboard-workspace-open');
+  await page.locator('[data-action="create-workspace"]').click();
+  onStage('keyboard-workspace-disabled');
+  assert.equal(await page.locator('#dialog-confirm').evaluate(node => node.disabled), true, 'keyboard');
+  onStage('keyboard-workspace-initial');
+  assert.equal(await page.locator('#dialog-cancel').evaluate(node => node === document.activeElement), true, 'keyboard');
+  onStage('keyboard-workspace-forward');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.locator('#workspace-name').evaluate(node => node === document.activeElement), true, 'keyboard');
+  onStage('keyboard-workspace-reverse');
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await page.locator('#dialog-cancel').evaluate(node => node === document.activeElement), true, 'keyboard');
+  onStage('keyboard-workspace-escape');
+  await page.keyboard.press('Escape');
+  onStage('keyboard-workspace-closed');
+  assert.equal(await page.locator('#action-dialog').evaluate(node => node.open), false, 'keyboard');
+  onStage('keyboard-workspace-return');
+  assert.equal(await page.locator('[data-action="create-workspace"]').evaluate(node => node === document.activeElement), true, 'keyboard');
+  onStage('keyboard-module-restore');
+  await page.locator('[data-module="evidence"]').click();
+  onStage('keyboard-final-draft');
+  assert.equal(await page.locator('#draft').inputValue(), before, 'keyboard');
+  onStage('keyboard-final-scenario');
+  assert.equal(await page.locator('#scenario').inputValue(), 'normal', 'keyboard');
+  onStage('keyboard-final-closed');
+  assert.equal(await page.locator('#action-dialog').evaluate(node => node.open), false, 'keyboard');
 }
 
 export async function assertReducedMotion(page) {

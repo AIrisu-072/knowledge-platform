@@ -12,6 +12,14 @@ function fixture(archetype) {
   const w = dom.window;
   // jsdom does not implement native dialog rendering/focus trapping; tests only
   // exercise our preview handlers and explicit return-focus branch.
+  // Geometry is absent too: this narrow shim marks display/hidden controls as
+  // unrendered solely to test the edge handler. Hosted Chromium owns real layout.
+  w.HTMLElement.prototype.getClientRects = function () {
+    for (let node = this; node; node = node.parentElement) {
+      if (node.hidden || w.getComputedStyle(node).display === 'none') return [];
+    }
+    return this.matches('input[type="hidden"]') ? [] : [{}];
+  };
   w.HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
   w.HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); this.dispatchEvent(new w.Event('close')); };
   w.eval(read('scenarios.js'));
@@ -21,6 +29,113 @@ function fixture(archetype) {
 const options = { skip: !JSDOM && 'Set ORG_DESIGN_JSDOM to an existing qualified jsdom api.js; no browser qualification inferred' };
 
 for (const archetype of ['sales', 'office']) {
+  function key(w, target, key = 'Tab', modifiers = {}) {
+    const event = new w.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...modifiers });
+    target.dispatchEvent(event); return event;
+  }
+  test(`${archetype}: dialog wraps forward and reverse only at the two-button edges`, options, () => {
+    const { dom, w, d } = fixture(archetype);
+    d.getElementById('submit-action').click();
+    const cancel = d.getElementById('dialog-cancel'), confirm = d.getElementById('dialog-confirm');
+    assert.equal(d.activeElement, cancel, 'High-impact initial focus stays on Cancel');
+    assert.equal(key(w, cancel).defaultPrevented, false, 'Ordinary forward order remains native');
+    confirm.focus();
+    assert.equal(key(w, confirm).defaultPrevented, true, 'Last Tab must wrap');
+    assert.equal(d.activeElement, cancel);
+    assert.equal(key(w, cancel, 'Tab', { shiftKey: true }).defaultPrevented, true, 'First Shift+Tab must wrap');
+    assert.equal(d.activeElement, confirm);
+    assert.equal(key(w, confirm, 'Tab', { shiftKey: true }).defaultPrevented, false);
+    dom.window.close();
+  });
+  for (const [trigger, fieldId] of [['#return-action', 'return-reason'], ['[data-decision="修正"]', 'adopted-claim']]) {
+    test(`${archetype}: ${fieldId} is the first boundary and validation retains input`, options, () => {
+      const { dom, w, d } = fixture(archetype);
+      d.querySelector(trigger).click();
+      const field = d.getElementById(fieldId), cancel = d.getElementById('dialog-cancel'), confirm = d.getElementById('dialog-confirm');
+      assert.equal(d.activeElement, cancel);
+      assert.equal(key(w, cancel, 'Tab', { shiftKey: true }).defaultPrevented, false, 'Middle reverse order stays native');
+      field.focus(); field.value = '  ';
+      assert.equal(key(w, field, 'Tab', { shiftKey: true }).defaultPrevented, true);
+      assert.equal(d.activeElement, confirm);
+      assert.equal(key(w, confirm).defaultPrevented, true);
+      assert.equal(d.activeElement, field);
+      assert.equal(key(w, field).defaultPrevented, false);
+      confirm.click();
+      assert.equal(d.getElementById('action-dialog').open, true);
+      assert.equal(d.activeElement, field);
+      assert.equal(field.value, '  ');
+      assert.equal(field.getAttribute('aria-invalid'), 'true');
+      dom.window.close();
+    });
+  }
+  test(`${archetype}: Workspace input wraps past disabled Confirm and one eligible control self-wraps`, options, () => {
+    const { dom, w, d } = fixture(archetype);
+    d.querySelector('[data-module="resources"]').click();
+    d.querySelector('[data-action="create-workspace"]').click();
+    const field = d.getElementById('workspace-name'), cancel = d.getElementById('dialog-cancel');
+    assert.equal(d.getElementById('dialog-confirm').disabled, true);
+    assert.equal(key(w, cancel).defaultPrevented, true);
+    assert.equal(d.activeElement, field);
+    assert.equal(key(w, field, 'Tab', { shiftKey: true }).defaultPrevented, true);
+    assert.equal(d.activeElement, cancel);
+    field.hidden = true;
+    for (const shiftKey of [false, true]) {
+      assert.equal(key(w, cancel, 'Tab', { shiftKey }).defaultPrevented, true);
+      assert.equal(d.activeElement, cancel);
+    }
+    dom.window.close();
+  });
+  test(`${archetype}: dialog boundaries exclude hidden inert disabled and negative-tabindex controls`, options, () => {
+    const { dom, w, d } = fixture(archetype);
+    d.getElementById('submit-action').click();
+    const dialog = d.getElementById('action-dialog'), cancel = d.getElementById('dialog-cancel'), confirm = d.getElementById('dialog-confirm');
+    const excluded = '<button hidden>Hidden</button><div style="display:none"><input></div><input type="hidden"><button style="visibility:hidden">Invisible</button><button style="visibility:collapse">Collapsed</button><div inert><button>Inert</button></div><fieldset disabled><input></fieldset><button tabindex="-1">Programmatic</button>';
+    dialog.insertAdjacentHTML('afterbegin', excluded); dialog.insertAdjacentHTML('beforeend', excluded);
+    confirm.focus(); assert.equal(key(w, confirm).defaultPrevented, true); assert.equal(d.activeElement, cancel);
+    assert.equal(key(w, cancel, 'Tab', { shiftKey: true }).defaultPrevented, true); assert.equal(d.activeElement, confirm);
+    dom.window.close();
+  });
+  test(`${archetype}: dialog leaves modified keys non-Tab closed and outside events untouched`, options, () => {
+    const { dom, w, d } = fixture(archetype);
+    d.getElementById('submit-action').click();
+    const confirm = d.getElementById('dialog-confirm'); confirm.focus();
+    for (const modifier of ['ctrlKey', 'altKey', 'metaKey']) for (const shiftKey of [false, true]) {
+      assert.equal(key(w, confirm, 'Tab', { [modifier]: true, shiftKey }).defaultPrevented, false);
+      assert.equal(d.activeElement, confirm);
+    }
+    for (const other of ['Enter', 'Escape', 'ArrowRight', ' ']) assert.equal(key(w, confirm, other).defaultPrevented, false);
+    const prevented = new w.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    prevented.preventDefault(); confirm.dispatchEvent(prevented); assert.equal(d.activeElement, confirm);
+    const outside = d.getElementById('submit-action'); outside.focus();
+    assert.equal(key(w, outside).defaultPrevented, false); assert.equal(d.activeElement, outside);
+    d.getElementById('dialog-cancel').click(); confirm.focus();
+    assert.equal(key(w, confirm).defaultPrevented, false); assert.equal(d.activeElement, confirm);
+    dom.window.close();
+  });
+  test(`${archetype}: native Escape cancellation and Cancel preserve draft scenario and return focus`, options, () => {
+    const { dom, w, d } = fixture(archetype);
+    const draft = d.getElementById('draft'); draft.value = 'Synthetic preserved private memo'; draft.dispatchEvent(new w.Event('input'));
+    const trigger = d.getElementById('submit-action'), dialog = d.getElementById('action-dialog');
+    for (const dismissal of ['escape', 'cancel', 'disabled-trigger', 'removed-trigger']) {
+      trigger.click();
+      if (dismissal === 'escape') {
+        assert.equal(key(w, d.activeElement, 'Escape').defaultPrevented, false);
+        const event = new w.Event('cancel', { cancelable: true }); dialog.dispatchEvent(event);
+        assert.equal(event.defaultPrevented, false, 'Native Escape cancellation is not suppressed');
+        dialog.close(); // Emulate native default; jsdom has no keyboard default action.
+      } else {
+        if (dismissal === 'disabled-trigger') trigger.disabled = true;
+        if (dismissal === 'removed-trigger') trigger.remove();
+        d.getElementById('dialog-cancel').click();
+      }
+      assert.equal(dialog.open, false);
+      assert.equal(d.activeElement, ['disabled-trigger', 'removed-trigger'].includes(dismissal) ? d.getElementById('work-surface') : trigger);
+      assert.equal(draft.value, 'Synthetic preserved private memo');
+      assert.equal(d.getElementById('scenario').value, 'normal');
+      trigger.disabled = false;
+    }
+    dom.window.close();
+  });
   test(`${archetype}: all ten scenario states render the same semantic surfaces`, options, () => {
     const { dom, w, d } = fixture(archetype);
     const control = d.getElementById('scenario');

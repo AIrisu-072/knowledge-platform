@@ -173,6 +173,20 @@
     $('action-dialog').showModal();
     $('dialog-cancel').focus();
   }
+  // Native modality and dismissal remain in charge; only sequential Tab edges
+  // wrap explicitly. This design uses ordinary DOM-order controls (no positive tabindex).
+  $('action-dialog').addEventListener('keydown', event => {
+    const dialog = event.currentTarget;
+    if (!dialog.open || event.defaultPrevented || event.key !== 'Tab' || event.ctrlKey || event.altKey || event.metaKey) return;
+    const controls = [...dialog.querySelectorAll('button, input, textarea, select, a[href], [tabindex]')].filter(node => {
+      const visibility = getComputedStyle(node).visibility;
+      return node.tabIndex >= 0 && !node.matches(':disabled') && !node.closest('[inert]')
+        && node.getClientRects().length > 0 && visibility !== 'hidden' && visibility !== 'collapse';
+    });
+    const first = controls[0], last = controls[controls.length - 1];
+    const destination = event.shiftKey ? document.activeElement === first && last : document.activeElement === last && first;
+    if (destination) { event.preventDefault(); destination.focus(); }
+  });
   function closeDialog() { $('action-dialog').close(); }
   $('action-dialog').addEventListener('close', () => {
     focusReplacement(returnFocus).focus();

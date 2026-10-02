@@ -1,5 +1,14 @@
 # Organization D2 visual qualification status
 
+## 2026-10-02 15:12 UTC — Dialog boundary repair prepared; normal hosted still failing
+
+- Latest parent-verified normal D2 run37024289977/job110894867737 failed at15:04:13UTC with `keyboard-dialog-tab-2-active-body-document-unfocused`. No native external destination is identified; no capture/upload occurred.
+- Isolated `fix/organization-d2-dialog-keyboard` is based exactly on localf9402b43/tree063483f5 (remote dd493ea1 tree-equivalent). The [source-review amendment](organization-client-v0-ui-review.md) records the approved-semantics-only edge handler, focused RED/GREEN and limits. Native modal/Escape/close/return semantics stay intact.
+- Source/DOM42/42 and fixed-stage keyboard149/149 pass locally. Hosted checks append reverse/required/disabled cases after the unchanged original checks; no waits/retries or screenshot/export/gate expansion.
+- Next exact action: independent review, parent publication, then new exact-head normal hosted qualification. Browser repair and actual pixels remain unproved; capture is closed, Phase3 not frozen, Phase4–6 not started. All inherited Document/Search/Audit, production and sharing boundaries remain.
+
+---
+
 ## 2026-10-02 14:52 UTC — second Tab failure / bounded focus diagnostic
 
 Published head `2132284dd5afe9ec3fd0583f276555fa2a2dd209`, tree

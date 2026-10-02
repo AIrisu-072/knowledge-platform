@@ -1,5 +1,59 @@
 # Organization Client v0 — D2 source / interaction review
 
+## 2026-10-02 15:12 UTC — Dialog-edge source repair / hosted proof pending
+
+Parent-verified normal [run37024289977](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37024289977),
+job110894867737, failed at15:04:13UTC on remote head
+`dd493ea1cc57fd8e64d13204be6b3d9f469e8792`, tree-equivalent to local
+`f9402b43f3b977ea646b56c5df71f218ebcf78d6` / tree
+`063483f5199023b848ee740f72e134f03fce673a`. The fixed category was
+`keyboard-dialog-tab-2-active-body-document-unfocused`: original containment
+failed after the second Tab; its immediate diagnostic observed body/unfocused.
+This supports focus leaving the two-button dialog at its edge. It does not
+identify browser chrome, an OS destination or a background interaction.
+
+The isolated `fix/organization-d2-dialog-keyboard` amendment realizes the already
+approved Phase3§8–9 contained modal cycle, consistent with the
+[W3C APG modal pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/).
+`prototype.js` adds only an open-dialog-local keydown boundary handler: last→first
+on Tab and first→last on Shift+Tab. Eligible controls are recomputed per key;
+disabled/negative-tabindex/inert/nonrendered/hidden-visibility controls are excluded.
+Initial Cancel, ordinary interior DOM order, native showModal/Escape/close and
+existing return-focus/draft semantics remain intact. Ctrl/Alt/Meta, other keys,
+previously prevented events and closed dialogs are untouched. No global handler
+or new business/authorization semantics are added; original owner§50 applies.
+
+Focused DOM RED had10 expected missing-wrap failures; GREEN is38/38 DOM plus
+4/4 source, zero skips. Both archetypes cover forward/reverse edges, required
+return/adopted fields, Workspace input/disabled Confirm, a single eligible
+control, excluded controls, modifiers/closed/outside events, Escape/cancel draft
+preservation and trigger/Work fallback. jsdom's explicit visibility/close shims
+only exercise handler branches; they do not establish rendering or native keys.
+
+The hosted helper retains every original key/assertion in order and appends
+reverse Submit edges, Return textarea order/required validation/input preservation,
+and Workspace input/disabled-Confirm edges. It cancels these previews, restores
+Evidence, and verifies unchanged normal scenario/draft plus closed dialog before
+the ten-state loop. Fixed-stage fault tests had51 expected REDs, then149/149 GREEN.
+No waits/retries, screenshots, output payloads or acceptance relaxation were added.
+The original five-Tab diagnostic categories and mandatory failed containment stay.
+
+Fresh combined source/DOM/harness verification passes309/309 with zero skips;
+all changed JavaScript syntax, safe eight-file source snapshot, documentation
+links, exact nine-path scope and whitespace checks pass. The original hosted
+keyboard sequence is byte-identical through its last scenario assertion.
+Project-wide mise gates were not run: they include the prohibited Rust/build
+work; no such full-project result is claimed. No dependencies were installed.
+
+Independent review and a new normal exact-head hosted pass remain **PENDING**.
+Actual browser repair, capture/pixels and Phase3 freeze are not claimed; Phase4
+has not started. All20 image names,1440 image scope, non-recorded1280/1440 geometry,
+workflow/auth/prerequisite/export gates, locks, Phase1/2 and PR43 remain unchanged.
+Next exact action: parent reviews this clean immutable amendment, publishes only
+a reviewed tree, and obtains new normal hosted proof before considering capture.
+
+---
+
 ## Scope and current subject
 
 Independent source/interaction **GO** at local

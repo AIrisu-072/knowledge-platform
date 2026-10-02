@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## Current checkpoint — Organization D2 dialog-edge repair awaiting review, 2026-10-02 UTC
+
+- Status: **ACTIVE — NORMAL HOSTED KEYBOARD FAIL; LOCAL SOURCE REPAIR / NEW HOSTED PROOF PENDING**. [Organization status](organization-client-v0-status.md), [source-review amendment](organization-client-v0-ui-review.md) and [qualification status](organization-d2-visual-qualification-status.md) preserve the observed second-Tab body/unfocused failure and exact base.
+- Bounded open-dialog-only Tab/Shift+Tab edge wrapping implements approved containment; native modal/Escape/close, initial Cancel, ordinary order, drafts, modifiers and focus return are preserved. Local source/DOM42 and diagnostic149 pass; these are not actual browser proof.
+- Next exact action: independent review of the clean candidate, parent publication and a new normal exact-head hosted pass. Capture remains closed; Phase3 freeze and Phase4–6 have not started. Twenty-image/one-day limits, gates, frozen Phase1/2, PR43, Document/Search/Audit and production boundaries remain unchanged.
+
+---
+
 ## Current checkpoint — Organization Client D2 source reviewed / visual gate pending, 2026-10-02 UTC
 
 - Status: **ACTIVE — PHASE1/2 FROZEN; PHASE3 SOURCE/INTERACTION GO; ACTUAL VISUAL QUALIFICATION PENDING**. [Organization status](organization-client-v0-status.md) and [D2 review](organization-client-v0-ui-review.md) identify exact source/approval/review subjects.

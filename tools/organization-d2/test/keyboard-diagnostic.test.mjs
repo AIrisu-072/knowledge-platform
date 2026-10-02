@@ -20,6 +20,46 @@ const sequence = [
   ['keyboard-cancel-click', 'click:#dialog-cancel'],
   ['keyboard-draft-preserved', 'inputValue:#draft', 'Synthetic private draft'],
   ['keyboard-scenario-preserved', 'inputValue:#scenario', 'normal'],
+  ['keyboard-reverse-open', 'press:Enter'],
+  ['keyboard-reverse-initial', 'evaluate:#dialog-cancel', true],
+  ['keyboard-reverse-wrap', 'press:Shift+Tab'],
+  ['keyboard-reverse-wrap', 'evaluate:#dialog-confirm', true],
+  ['keyboard-forward-wrap', 'press:Tab'],
+  ['keyboard-forward-wrap', 'evaluate:#dialog-cancel', true],
+  ['keyboard-reverse-cancel', 'click:#dialog-cancel'],
+  ['keyboard-required-open', 'click:#return-action'],
+  ['keyboard-required-initial', 'evaluate:#dialog-cancel', true],
+  ['keyboard-required-next', 'press:Tab'],
+  ['keyboard-required-next', 'evaluate:#dialog-confirm', true],
+  ['keyboard-required-forward', 'press:Tab'],
+  ['keyboard-required-forward', 'evaluate:#return-reason', true],
+  ['keyboard-required-reverse', 'press:Shift+Tab'],
+  ['keyboard-required-reverse', 'evaluate:#dialog-confirm', true],
+  ['keyboard-required-empty', 'fill:#return-reason:'],
+  ['keyboard-required-validate', 'click:#dialog-confirm'],
+  ['keyboard-required-validate', 'evaluate:#return-reason', true],
+  ['keyboard-required-draft', 'fill:#return-reason:Synthetic uncommitted reason'],
+  ['keyboard-required-draft', 'press:Shift+Tab'],
+  ['keyboard-required-draft', 'press:Tab'],
+  ['keyboard-required-preserved', 'inputValue:#return-reason', 'Synthetic uncommitted reason'],
+  ['keyboard-required-escape', 'press:Escape'],
+  ['keyboard-required-closed', 'evaluate:#action-dialog', false],
+  ['keyboard-required-return', 'evaluate:#return-action', true],
+  ['keyboard-workspace-module', 'click:[data-module="resources"]'],
+  ['keyboard-workspace-open', 'click:[data-action="create-workspace"]'],
+  ['keyboard-workspace-disabled', 'evaluate:#dialog-confirm', true],
+  ['keyboard-workspace-initial', 'evaluate:#dialog-cancel', true],
+  ['keyboard-workspace-forward', 'press:Tab'],
+  ['keyboard-workspace-forward', 'evaluate:#workspace-name', true],
+  ['keyboard-workspace-reverse', 'press:Shift+Tab'],
+  ['keyboard-workspace-reverse', 'evaluate:#dialog-cancel', true],
+  ['keyboard-workspace-escape', 'press:Escape'],
+  ['keyboard-workspace-closed', 'evaluate:#action-dialog', false],
+  ['keyboard-workspace-return', 'evaluate:[data-action="create-workspace"]', true],
+  ['keyboard-module-restore', 'click:[data-module="evidence"]'],
+  ['keyboard-final-draft', 'inputValue:#draft', 'Synthetic private draft'],
+  ['keyboard-final-scenario', 'inputValue:#scenario', 'normal'],
+  ['keyboard-final-closed', 'evaluate:#action-dialog', false],
 ];
 const stages = [...new Set(sequence.map(step => step[0]))];
 function fakePage({ failAt = -1, wrongAt = -1, diagnostic } = {}) {
@@ -43,9 +83,10 @@ function fakePage({ failAt = -1, wrongAt = -1, diagnostic } = {}) {
   return { actual, page: { keyboard: { press: key => step(`press:${key}`) }, locator: selector => ({
     evaluate: callback => step(`evaluate:${selector}`, callback), focus: () => step(`focus:${selector}`),
     inputValue: () => step(`inputValue:${selector}`), click: () => step(`click:${selector}`),
+    fill: value => step(`fill:${selector}:${value}`),
   }) } };
 }
-test('keyboard diagnostics preserve every operation and assertion in the original sequence', async () => {
+test('keyboard diagnostics retain the original sequence before the added boundary checks', async () => {
   const { page, actual } = fakePage(), reported = [];
   await assertKeyboard(page, stage => reported.push(stage));
   assert.deepEqual(actual, sequence.map(step => step[1])); assert.deepEqual(reported, stages);
@@ -57,6 +98,14 @@ for (const stage of stages) test(`keyboard fault reports fixed stage ${stage}`, 
   assert.equal(safeFailure(category), `Organization D2 qualification failed: ${stage}`);
 });
 for (const stage of ['keyboard-skip-focus', 'keyboard-work-focus', 'keyboard-dialog-open', 'keyboard-dialog-tab-1', 'keyboard-dialog-closed', 'keyboard-return-focus', 'keyboard-draft-preserved', 'keyboard-scenario-preserved']) test(`keyboard assertion still fails at ${stage}`, async () => {
+  const wrongAt = sequence.findIndex(step => step[0] === stage && (step[1].startsWith('evaluate:') || step[1].startsWith('inputValue:')));
+  const { page } = fakePage({ wrongAt }); let category = 'keyboard';
+  await assert.rejects(assertKeyboard(page, value => { category = value; }));
+  assert.equal(safeFailure(category), `Organization D2 qualification failed: ${stage}`);
+});
+const edgeSequence = sequence.slice(sequence.findIndex(step => step[0] === 'keyboard-reverse-open'));
+const edgeAssertionStages = [...new Set(edgeSequence.filter(step => /^(evaluate|inputValue):/.test(step[1])).map(step => step[0]))];
+for (const stage of edgeAssertionStages) test(`added keyboard assertion still fails at ${stage}`, async () => {
   const wrongAt = sequence.findIndex(step => step[0] === stage && (step[1].startsWith('evaluate:') || step[1].startsWith('inputValue:')));
   const { page } = fakePage({ wrongAt }); let category = 'keyboard';
   await assert.rejects(assertKeyboard(page, value => { category = value; }));

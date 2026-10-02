@@ -175,8 +175,9 @@ in Phase2; local DOM preview cannot qualify it.
 - Disabled/unavailable: explain current state vs lack of capability vs missing
   permission. Browser native folder/managed root cannot pretend to succeed.
 - Dialog cancel/Escape: no request sent; preserve draft and return focus to the
-  connected enabled trigger, otherwise Work heading. Focus remains trapped by
-  native dialog behavior in an actual browser, which still needs real proof.
+  connected enabled trigger, otherwise Work heading. Native modal behavior is
+  retained, with dialog-local Tab/Shift+Tab boundary wrapping; actual browser
+  containment still requires hosted proof.
 - Task/role switch: cancel/fence obsolete requests, clear old private outputs;
   no old Agent result attaches to the new task. Module switch alone preserves
   draft and current selection.
@@ -189,8 +190,13 @@ visible/announced. Enter/Space activates the focused row; no custom OS shortcut
 override. Module buttons support ordinary native keyboard behavior with
 aria-pressed. Form labels and errors stay near the fields.
 
-Dialog opens on Cancel for high-impact previews, native modal traps focus,
-Escape/cancel restores it, and action success/state changes are announced once
+Dialog opens on Cancel for high-impact previews. Native modality/Escape/close
+remain intact; while open, an unmodified Tab at the last eligible control wraps
+to the first, and Shift+Tab at the first wraps to the last. Ordinary in-dialog
+DOM order is native; disabled, nonrendered, hidden-visibility, inert and negative-
+tabindex controls are excluded. The current dialogs contain no positive tabindex.
+Ctrl/Alt/Meta shortcuts, other keys and closed-dialog events are untouched.
+Escape/cancel restores focus, and action success/state changes are announced once
 through polite status. Confirmation lists target/current attempt and outcome;
 color alone never distinguishes private/handoff/blocked. Long timezone/offset
 labels wrap. Reduced motion preserves semantic content. Actual browser tests

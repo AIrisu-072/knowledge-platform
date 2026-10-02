@@ -1,5 +1,14 @@
 # Organization Client v0 — Capability Execution Status
 
+## 2026-10-02 15:12 UTC — Dialog boundary repair prepared; normal hosted still failing
+
+- Latest parent-verified normal D2 run37024289977/job110894867737 failed at15:04:13UTC with `keyboard-dialog-tab-2-active-body-document-unfocused`. No native external destination is identified; no capture/upload occurred.
+- Isolated `fix/organization-d2-dialog-keyboard` is based exactly on localf9402b43/tree063483f5 (remote dd493ea1 tree-equivalent). The [source-review amendment](organization-client-v0-ui-review.md) records the approved-semantics-only edge handler, focused RED/GREEN and limits. Native modal/Escape/close/return semantics stay intact.
+- Source/DOM42/42 and fixed-stage keyboard149/149 pass locally. Hosted checks append reverse/required/disabled cases after the unchanged original checks; no waits/retries or screenshot/export/gate expansion.
+- Next exact action: independent review, parent publication, then new exact-head normal hosted qualification. Browser repair and actual pixels remain unproved; capture is closed, Phase3 not frozen, Phase4–6 not started. All inherited Document/Search/Audit, production and sharing boundaries remain.
+
+---
+
 ## 2026-10-02 14:26 UTC — D2 integrated harness review GO / normal hosted next
 
 - Independent integrated source/workflow/privacy GO at `55253877842d9792f491a752e40b447084132065` / tree `68dd921273c98bbf470e2e1b424df5f18a6f6049`; no remaining Critical/Important findings. [Qualification status](organization-d2-visual-qualification-status.md) preserves the prerequisite-subject NO-GO and exact repair/review receipt.
