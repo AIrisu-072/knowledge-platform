@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## Current checkpoint — Corrected H2/V2 evidence reviewed; final report gates pending
+
+- Status: **ACTIVE — ACTUAL RUNTIME PASS / SCOPED VISUAL GO / REPORT GATES PENDING / OWNER ACCEPTANCE PENDING**. Frozen H2 `6103e4d4e3bb0d45ba03e1d2935492de7f11394a` has all three normal workflows successful. [C3 Status](document-poc-acceptance-v0-status.md) and the [acceptance report](document-poc-acceptance-v0-report.md) identify each source/run/report separately.
+- N2 and corrected V2 independently passed22 runtime stages,11 browser cases, persistence, Agent/owned restart provenance and actual font/geometry markers. All13 V2 originals were reviewed with explicit loading/full-page/completion/spacing limits; no flawless or all13-settled claim. Artifact11218564738 expires2026-10-03T09:29:52Z. Historical V1 remains visual FAIL; local review-copy cleanup is pending within the approved period.
+- Independent five-doc factual/privacy review is GO. Next exact action: publish report R2 through the parent while preserving PR46 ancestry, then verify its exact applicable CI/DSI/Sandbox gates. Keep H2 frozen and owner acceptance pending. C0's own G9 remains separate; Organization Client has not started. All PRs remain Draft, unmerged and undeployed.
+
+---
+
 ## Current checkpoint — Browser-only timestamp geometry proof prepared, 2026-10-02 UTC
 
 - Status: **ACTIVE — LOCAL ORACLE/WIRING CHECKS PASS / INDEPENDENT REVIEW AND ACTUAL CHROMIUM LAYOUT PENDING**. Isolated `fix/document-timestamp-browser-geometry` starts at reviewed combined `4cda0e9814cebed38260497ced96af75804cccde` / tree `97bd0446fe95e9bb35b91283f9e67a4756ec010a`. [C3 Status](document-poc-acceptance-v0-status.md) records the approved display-only proof and its limits.

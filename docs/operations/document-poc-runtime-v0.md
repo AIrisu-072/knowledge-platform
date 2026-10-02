@@ -183,5 +183,9 @@ No mocked API route, development server or system-browser fallback can qualify t
 
 The GitHub job emits `node tools/document-poc-runtime/ci-summary.mjs` output even after a failure.
 This bounded summary intentionally omits raw log messages, paths, URLs, credentials, manifests
-and working files. Screenshots/traces stay run-local; no additional upload action or durable
-visual-review evidence is claimed. Runtime failure remains a failing required predecessor.
+and working files. Ordinary non-capture runs do not upload screenshots or traces.
+The explicitly authorized PR43 visual-review flow exports only the fixed13 synthetic
+PNGs with one-day retention under the [visual procedure](document-c3-visual-evidence.md).
+Exact source/run receipts and observed outcomes are recorded in the
+[acceptance report](../superpowers/execution/document-poc-acceptance-v0-report.md).
+Runtime failure remains a failing required predecessor.

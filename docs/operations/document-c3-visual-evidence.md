@@ -1,6 +1,8 @@
 # C3 synthetic visual evidence candidate
 
-Status: **BOUNDED ADOPTION APPROVED / GATED CANDIDATE / ACTUAL CAPTURE AND VISUAL REVIEW NOT RUN**.
+Status: **BOUNDED ADOPTION APPROVED / CAPTURE PROCEDURE**. Actual per-source
+capture, artifact, pixel-review and cleanup outcomes are recorded in the
+[acceptance report](../superpowers/execution/document-poc-acceptance-v0-report.md).
 This extends E0 Task E3. A generated file, parser unit test, browser discovery or
 old mocked snapshot is not actual runtime or human visual-review evidence.
 
@@ -162,7 +164,9 @@ Do not commit generated PNGs, mirror them into Library, or retain local review
 copies beyond the approved period. Real composition still uses the same exact
 head/database/storage/run for Browser/API/stdio evidence; no mocked substitute.
 
-Current source/security/workflow review is GO. Remaining gates:
-exact-head hosted runtime acceptance, actual artifact receipt/expiry inspection,
-and actual pixel/usability review. No remote activation or upload was performed
-while preparing this candidate.
+The source/security/workflow reviews and actual runtime, artifact and pixel
+results belong to their separately named exact heads/runs in the acceptance
+report. Preparation-time source review is not an actual capture or pixel result.
+For each artifact, record its actual creation/expiry and temporary local-copy
+cleanup separately. Delete local review copies no later than that artifact's
+approved expiry and record verified completion; do not claim cleanup in advance.
