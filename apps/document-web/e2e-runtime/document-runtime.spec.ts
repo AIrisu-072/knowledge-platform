@@ -6,7 +6,7 @@ import {
   BinaryTransportBridge, compareDocumentRevisions, compareDocumentVersions, getDocument,
   getDocumentAccessPolicy, getDocumentHistory, getRootFolder, getSession, listDocumentRevisions,
   listDocuments, listDocumentVersions, listFolderChildren, listVersionFiles, publishVersion,
-  type VersionMutationResult, type CommandsMetadataPatch, type ModelsVersion,
+  type VersionMutationResult, type CommandsMetadataPatch, type ModelsVersion, type ModelsDisplayFragment,
 } from '@knowledge-platform/document-api-client';
 import { hash, options, persistedSnapshot, runtime, saveSnapshot, uuidV7 } from './support';
 
@@ -214,7 +214,12 @@ test('real PDFium inspection and production PDF Diff display preserve both origi
   expect(comparison.projection).toBe('display'); expect(comparison.coverage).toBe('full');
   if (comparison.projection !== 'display') throw Error('PDF display projection required');
   expect(comparison.items.some(item => item.facet === 'pdf_text')).toBe(true);
-  expect(comparison.items.some(item => item.base?.kind === 'text' || item.target?.kind === 'text')).toBe(true);
+  const pdfText = comparison.items.find(item => item.facet === 'pdf_text');
+  expect(pdfText?.base?.kind).toBe('text' satisfies ModelsDisplayFragment['kind']);
+  expect(pdfText?.target?.kind).toBe('text' satisfies ModelsDisplayFragment['kind']);
+  if (pdfText?.base?.kind !== 'text' || pdfText.target?.kind !== 'text') throw Error('Both authoritative PDF page fragments are required');
+  expect(pdfText.base.text.trim()).toBe('Page A');
+  expect(pdfText.target.text.trim()).toBe('Page X');
   for (const [id, bytes] of [[created.documentVersionId, base], [versionId, target]] as const) {
     const files = (await listVersionFiles({ ...common, path: { documentId, versionId: id }, query: { purpose: 'history' } })).data;
     completed(id === created.documentVersionId ? 'pdf-base-files-read' : 'pdf-target-files-read');

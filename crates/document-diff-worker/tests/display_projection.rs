@@ -189,3 +189,152 @@ fn one_side_fragment_accepts_exact_limit_and_rejects_one_byte_over() {
         Err(document_diff_core::DiffCoreError::ResourceLimit(_))
     ));
 }
+
+#[test]
+fn native_pdf_display_reads_the_requested_authoritative_page_text() {
+    for (source, expected) in [
+        (
+            include_bytes!("../../../apps/document-web/e2e-runtime/fixtures/pdf/base.pdf")
+                .as_slice(),
+            "Page A",
+        ),
+        (
+            include_bytes!("../../../apps/document-web/e2e-runtime/fixtures/pdf/text-change.pdf")
+                .as_slice(),
+            "Page X",
+        ),
+    ] {
+        let locator = SourceLocator::PdfPage {
+            page: 1,
+            region: None,
+        };
+        let fragment = extract(
+            source,
+            request(FormatId::Pdf, source, locator.clone(), 16 * 1024),
+        )
+        .unwrap();
+        assert!(
+            matches!(fragment, DisplayFragment::Text { ref text, truncated: false, locator: ref actual } if text.trim() == expected && actual == &locator)
+        );
+    }
+    let source =
+        include_bytes!("../../../experiments/document-semantic-inspection/fixtures/pdf/base.pdf");
+    let fragment = extract(
+        source,
+        request(
+            FormatId::Pdf,
+            source,
+            SourceLocator::PdfPage {
+                page: 2,
+                region: None,
+            },
+            16 * 1024,
+        ),
+    )
+    .unwrap();
+    assert!(
+        matches!(fragment, DisplayFragment::Text { ref text, .. } if text.contains("Page B") && !text.contains("Page A"))
+    );
+}
+
+#[test]
+fn pdf_display_preserves_raw_binding_limits_and_unavailable_boundaries() {
+    let source = include_bytes!("../../../apps/document-web/e2e-runtime/fixtures/pdf/base.pdf");
+    let locator = SourceLocator::PdfPage {
+        page: 1,
+        region: None,
+    };
+    let full = extract(
+        source,
+        request(FormatId::Pdf, source, locator.clone(), 16 * 1024),
+    )
+    .unwrap();
+    let limit = serialized_fragment_bytes(&full) - 1;
+    let bounded = extract(
+        source,
+        request(FormatId::Pdf, source, locator.clone(), limit),
+    )
+    .unwrap();
+    assert!(matches!(
+        bounded,
+        DisplayFragment::Text {
+            truncated: true,
+            ..
+        }
+    ));
+    assert!(serialized_fragment_bytes(&bounded) <= limit);
+    let mut invalid = request(FormatId::Pdf, source, locator, 16 * 1024);
+    invalid.raw_sha256 = [0; 32];
+    assert_eq!(
+        extract(source, invalid),
+        Err(WorkerError::RawBindingMismatch)
+    );
+    for locator in [
+        SourceLocator::PdfPage {
+            page: 2,
+            region: None,
+        },
+        SourceLocator::PdfPage {
+            page: 1,
+            region: Some([0, 0, 1, 1]),
+        },
+    ] {
+        assert!(matches!(
+            extract(source, request(FormatId::Pdf, source, locator, 16 * 1024)).unwrap(),
+            DisplayFragment::Unavailable { .. }
+        ));
+    }
+    let corrupt = b"%PDF-1.7\nnot a valid PDF";
+    assert!(matches!(
+        extract(
+            corrupt,
+            request(
+                FormatId::Pdf,
+                corrupt,
+                SourceLocator::PdfPage {
+                    page: 1,
+                    region: None
+                },
+                16 * 1024
+            )
+        )
+        .unwrap(),
+        DisplayFragment::Unavailable { .. }
+    ));
+}
+
+#[test]
+fn image_only_pdf_display_remains_unavailable_without_ocr() {
+    let source = include_bytes!(
+        "../../../experiments/document-semantic-inspection/fixtures/pdf/scan-only.pdf"
+    );
+    let result = extract(
+        source,
+        request(
+            FormatId::Pdf,
+            source,
+            SourceLocator::PdfPage {
+                page: 1,
+                region: None,
+            },
+            16 * 1024,
+        ),
+    )
+    .unwrap();
+    assert!(matches!(result, DisplayFragment::Unavailable { .. }));
+    assert!(
+        extract(
+            source,
+            request(
+                FormatId::Pdf,
+                source,
+                SourceLocator::PdfPage {
+                    page: 0,
+                    region: None
+                },
+                16 * 1024
+            )
+        )
+        .is_err()
+    );
+}
