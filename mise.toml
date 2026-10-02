@@ -137,6 +137,10 @@ cargo sqlx prepare --check --workspace -- --all-targets
 description = "Validate the OpenAPI contract"
 run = ["pnpm api:lint", "pnpm api:contract"]
 
+[tasks."audit:check"]
+description = "Verify generated Audit schema, taxonomy and contract tooling"
+run = ["node tools/audit-contract/generate-schema.mjs --check", "node --test tools/audit-contract/*.test.mjs"]
+
 [tasks."arch:check"]
 description = "Run machine-enforced architecture policy"
 run = ["cargo run --quiet --locked -p architecture-lint -- check"]
@@ -309,7 +313,7 @@ run = [
 
 [tasks."verify:fast"]
 description = "Fast local feedback gate"
-depends = ["fmt", "check:rust", "arch:check", "api:check", "test:rust"]
+depends = ["fmt", "check:rust", "arch:check", "api:check", "audit:check", "test:rust"]
 
 [tasks.verify]
 description = "Standard pre-PR verification gate"
