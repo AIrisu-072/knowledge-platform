@@ -249,6 +249,28 @@ test('publish workspace requires review, then confirmation is keyboard dismissib
   expect(api.publishVersion).not.toHaveBeenCalled();
 });
 
+test('successful publication restores focus to the return control when refreshed capabilities disable its trigger', async () => {
+  const api = mockApi();
+  api.getDocument.mockResolvedValue(documentDetail('authoring'));
+  api.publishVersion.mockImplementation(async () => {
+    api.getDocumentVersion.mockResolvedValue(versionDetail({ publish: operationDenied, schedulePublication: operationDenied }));
+    return { publishOperationId: 'pub', documentId, documentVersionId: versionId,
+      resultingDocumentRevision: 8, publishedAt: '2026-10-01T02:00:00Z' };
+  });
+  const user = userEvent.setup();
+  renderAt(`/documents/${documentId}?view=authoring&tab=versions`);
+  await user.click(await screen.findByRole('button', { name: '公開する' }));
+  await user.click(screen.getByRole('checkbox', { name: '公開対象の版とファイルを確認しました。' }));
+  const trigger = screen.getByRole('button', { name: '公開する' });
+  await user.click(trigger);
+  const dialog = await screen.findByRole('dialog', { name: '公開を確認' });
+  await user.click(within(dialog).getByRole('button', { name: '確定する' }));
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('公開しました'));
+  await waitFor(() => expect(trigger).toBeDisabled());
+  await waitFor(() => expect(screen.getByRole('button', { name: '版の一覧へ戻る' })).toHaveFocus());
+  expect(api.publishVersion).toHaveBeenCalledTimes(1);
+});
+
 test('scheduled publication converts JST to UTC after explicit review and confirmation', async () => {
   const api = mockApi();
   api.getDocument.mockResolvedValue(documentDetail('authoring'));

@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## Current checkpoint — R2 publication-focus and PostgreSQL readiness repairs integrated, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-r2-followup-integrated` combines reviewed GUI `cac1d729ddab7aaef2d618b1dbd7d58f51836d8a` and scheduler test readiness `ee30aba86c903777d361be58424fb741c450ea3e`, both based on `5b8e967badd9303fe1d7b446504be57b99b1c42c`.
+- Active [C1 Status](document-poc-runtime-v0-status.md), approved [Runtime Design](../specs/2026-10-01-document-poc-runtime-v0-design.md), [Plan](../plans/2026-10-01-document-poc-runtime-v0-implementation.md) and [Authority](../specs/2026-10-01-document-poc-runtime-v0-approval.md) retain the bounded scope. Both complete repair evidence sections are preserved; only status text required conflict resolution.
+- Fresh merged Node45/GUI42, application/runtime TypeScript, validator freshness, production build, actionlint and diff checks pass with telemetry disabled. The source workers' focused verification remains separately recorded. No Rust workload or actual container/runtime acceptance was repeated by this integration.
+- Next exact action: finish independent integration review, propagate the exact repair delta through separate A2/C3 candidates, then parent publishes and checks exact-head hosted gates. The prior post-publication focus and scheduler startup failures remain the last actual results. No full acceptance, visual review, merge to main or deployment claim.
+
+---
+
 ## Current checkpoint — Document GUI Integration v0 G8 COMPLETE / G9 ACCEPTANCE IN PROGRESS、2026-10-01 JST
 
 - Status: **G0〜G8 COMPLETE / G9 final exact-head verification IN PROGRESS**。G8 commit/code head `d6dcda031e8101a9b46bd688ecc92b68468629ad` on `feat/document-gui-integration-v0`, 29 commits ahead of `origin/main`. Current GitHub main is `d71753d46590bb4406a1c0b74894ab90a27a6c88`; implementation branch and product PR have not yet been pushed/created.

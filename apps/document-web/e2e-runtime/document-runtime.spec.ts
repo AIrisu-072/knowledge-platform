@@ -132,8 +132,12 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await expect(dialog.getByRole('button', { name: '確定する' })).toBeFocused();
   const publishResponse = page.waitForResponse(response => response.url().endsWith(':publish') && response.request().method() === 'POST');
   await page.keyboard.press('Enter'); expect((await publishResponse).status()).toBe(200);
+  completed('publication-response-accepted');
   await expect(page.getByRole('status')).toContainText('公開しました');
-  await expect(publishButton).toBeFocused();
+  completed('publication-success-visible');
+  const returnToVersions = page.getByRole('button', { name: '版の一覧へ戻る', exact: true });
+  await expect(page.locator('section[aria-busy]').filter({ has: publishButton })).toHaveAttribute('aria-busy', 'false');
+  await expect(await publishButton.isEnabled() ? publishButton : returnToVersions).toBeFocused();
   completed('publication-confirmed');
   const after = await persistedSnapshot(human, documentId);
   expect(after.currentVersionId).toBe(created.targetVersionId); expect(after.revisions).toHaveLength(3);
