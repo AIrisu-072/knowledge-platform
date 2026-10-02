@@ -145,8 +145,14 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   expect(after.publications).toHaveLength(3);
   expect(after.publications.every(item => item.actor === 'poc-human' && item.provenanceQuality === 'operationLedger')).toBe(true);
   expect(await persistedSnapshot(agent, documentId)).toEqual(after);
+  const agentAuthoring = await request.get(`${agent}/v1/documents/${documentId}?view=authoring`);
+  expect(agentAuthoring.status()).toBe(404); expect((await agentAuthoring.json()).code).toBe('DOCUMENT_NOT_FOUND');
+  // The existing publication HTTP contract hides mutation snapshots from read-only actors.
+  // Published/history visibility above does not grant authoring or publication access.
   const agentWrite = await request.post(`${agent}/v1/documents/${documentId}/versions/${after.currentVersionId}:publish`, { data: { operationId: uuidV7(), expectedRevision: after.revision } });
-  expect(agentWrite.status()).toBe(403); expect((await agentWrite.json()).code).toBe('FORBIDDEN');
+  expect(agentWrite.status()).toBe(404); expect((await agentWrite.json()).code).toBe('DOCUMENT_VERSION_NOT_FOUND');
+  expect(await persistedSnapshot(human, documentId)).toEqual(after);
+  expect(await persistedSnapshot(agent, documentId)).toEqual(after);
   expect(apiOrigins).toEqual(new Set([human]));
   completed('state-verified');
   await saveSnapshot(context, 'regulation', documentId);
@@ -255,7 +261,7 @@ test('prepare an API-created synthetic WORKING original for actual process drain
   expect(file.sizeBytes).toBe(bytes.length);
   const detail = (await getDocument({ ...options(context.human), path: { documentId: created.documentId }, query: { view: 'authoring' } })).data;
   const mutation: CommandsMetadataPatch = { operationId: uuidV7(), expectedDocumentRevision: detail.revision,
-    set: { runtimeDrainObservation: 'synthetic-in-flight-completed' }, unset: [], reason: 'Synthetic actual-process in-flight drain acceptance' };
+    set: { extensions: { runtimeDrainObservation: 'synthetic-in-flight-completed' } }, unset: [], reason: 'Synthetic actual-process in-flight drain acceptance' };
   await writeFile(context.drainFixturePath, JSON.stringify({ ...path, contentItemId: file.contentItemId, representationId: file.representationId,
     sizeBytes: bytes.length, sha256: hash(bytes), mutation }, null, 2), { mode: 0o600 });
 });

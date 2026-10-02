@@ -18,7 +18,7 @@ test('both restarted composition roots retain document/revision/operation IDs an
   }
   const drain = JSON.parse(await readFile(context.drainFixturePath, 'utf8')) as { documentId: string; versionId: string; contentItemId: string; representationId: string; sizeBytes: number; sha256: string };
   const drained = (await getDocument({ ...options(context.human), path: { documentId: drain.documentId }, query: { view: 'authoring' } })).data;
-  expect(drained.metadata?.runtimeDrainObservation).toBe('synthetic-in-flight-completed');
+  expect(drained.metadata).toMatchObject({ extensions: { runtimeDrainObservation: 'synthetic-in-flight-completed' } });
   const original = await new BinaryTransportBridge({ baseUrl: context.human }).downloadVersionFileBlob({ ...drain, purpose: 'authoring' });
   expect(original.size).toBe(drain.sizeBytes); expect(hash(new Uint8Array(await original.arrayBuffer()))).toBe(drain.sha256);
   const deniedId = context.manifest.documents.humanOnly!.create!.result!.documentId;
