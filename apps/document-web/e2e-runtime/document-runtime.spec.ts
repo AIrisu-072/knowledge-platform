@@ -6,7 +6,7 @@ import {
   BinaryTransportBridge, compareDocumentRevisions, compareDocumentVersions, getDocument,
   getDocumentAccessPolicy, getDocumentHistory, getRootFolder, getSession, listDocumentRevisions,
   listDocuments, listDocumentVersions, listFolderChildren, listVersionFiles, publishVersion,
-  type VersionMutationResult, type CommandsMetadataPatch,
+  type VersionMutationResult, type CommandsMetadataPatch, type ModelsVersion,
 } from '@knowledge-platform/document-api-client';
 import { hash, options, persistedSnapshot, runtime, saveSnapshot, uuidV7 } from './support';
 
@@ -179,7 +179,7 @@ test('real PDF editorial inspection reaches the unchanged publication quality ga
   expect(after.currentVersionId).toBeNull();
   const versions = (await listDocumentVersions({ ...common, path, query: { purpose: 'authoring', pageSize: 100 } })).data;
   expect(versions.items).toHaveLength(1);
-  expect(versions.items[0]!.lifecycleState).toBe('WORKING');
+  expect(versions.items[0]!.lifecycleState).toBe('working' satisfies ModelsVersion['lifecycleState']);
   const history = (await getDocumentHistory({ ...common, path, query: { pageSize: 100 } })).data;
   expect(history.items.filter(item => item.actionCode === 'document.version.published')).toHaveLength(0);
 });
