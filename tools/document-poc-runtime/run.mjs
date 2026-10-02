@@ -13,6 +13,7 @@ import { Blocked, EvidenceReport, RUNTIME_STAGES, STARTUP_OBSERVATION_MS, assert
 import { readBrowserDiagnostics, sanitizeBrowserPhases } from './browser-diagnostics.mjs';
 import { assertOwnedVisualDatabaseInput, exportVisualEvidence } from './visual-evidence.mjs';
 import { DatabaseDiagnostics } from './database-diagnostics.mjs';
+import { assertSameRuntime, observeOwnedRuntime, privateProvenanceProbe } from './runtime-provenance.mjs';
 import { postgresReadyArgs, postgresVersionArgs, parsePostgresReadyStatus, waitForPostgresTcp } from './postgres-readiness.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -124,6 +125,7 @@ try {
     report.data.database.version = await databaseDiagnostics.step('sql-version-query', () =>
       run('postgres-version', 'docker', postgresVersionArgs(cid), { ...process.env, PGPASSWORD: password }, 10_000));
   });
+  const upstreamDatabase = database;
   proxy = await databaseDiagnostics.step('proxy-start', () => databaseProxy(database));
   database = proxy.url;
   report.data.database.transport = 'owned transparent loopback TCP proxy for outage/recovery';
@@ -165,7 +167,25 @@ try {
   const seedEnv = { ...process.env, KP_RUNTIME_MODE: 'poc', KP_DOCUMENT_API_BASE_URL: human, KP_POC_SEED_MANIFEST: manifestPath };
   const seed = stage => run(stage, 'pnpm', ['--dir', 'tools/document-poc-seed', 'seed'], seedEnv);
   await report.stage('seed', () => seed('seed'));
-  await report.stage('seed-replay', () => seed('seed-replay'));
+  async function recordRuntime(checkpoint) {
+    // External disposable databases retain their nonvisual diagnostic path, but
+    // cannot establish harness-owned identity and are explicitly unverified.
+    if (report.data.database.ownership !== 'harness-owned') return;
+    const sourceHead = await run('provenance-head', 'git', ['rev-parse', 'HEAD']);
+    assert.equal(sourceHead, report.data.gitHead, 'Owned runtime provenance source changed');
+    assert.equal(await run('provenance-dirty', 'git', ['status', '--porcelain']), '', 'Owned runtime provenance source is dirty');
+    const container = await privateProvenanceProbe('docker', ['inspect', '--format', '{{.Id}} {{index .Config.Labels "kp.document-poc.run"}}', cid], process.env);
+    const binding = await privateProvenanceProbe('docker', ['port', cid, '5432/tcp'], process.env);
+    const query = postgresVersionArgs(cid);
+    query[query.length - 1] = "SELECT current_database() || ':' || oid::text FROM pg_database WHERE datname = current_database()";
+    const databaseIdentity = await privateProvenanceProbe('docker', query, { ...process.env, PGPASSWORD: password });
+    const observed = await observeOwnedRuntime({ runId, sourceHead, human, agent,
+      database: upstreamDatabase, proxy: proxy.url, storage, manifestPath, cid, container, binding, databaseIdentity });
+    if (checkpoint !== 'initial') assertSameRuntime(report.data.runtimeProvenance.initial, observed);
+    report.data.runtimeProvenance ??= {};
+    report.data.runtimeProvenance[checkpoint] = observed;
+  }
+  await report.stage('seed-replay', async () => { await seed('seed-replay'); await recordRuntime('initial'); });
   const contextPath = join(directory, 'runtime-context.json');
   const drainFixturePath = join(directory, 'drain-fixture.json');
   visualContext = { runId, human, agent, manifestPath, drainFixturePath, statePath: join(directory, 'persisted-state.json'), workerHashes: { dsi: report.data.artifacts.dsi, diff: report.data.artifacts.diff } };
@@ -291,8 +311,11 @@ try {
     assertSafeDiagnostics(await readFile(log('poc-agent-1'), 'utf8'), traceIds.agent,
       ['Database', 'DsiWorker', 'DiffWorker', 'Storage'], forbidden);
   });
-  await report.stage('restart', async () => { humanProcess = await start('poc-human', 3); agentProcess = await start('poc-agent', 2); });
-  await report.stage('browser-persistence', () => browser('persistence'));
+  await report.stage('restart', async () => {
+    await recordRuntime('beforeRestart');
+    humanProcess = await start('poc-human', 3); agentProcess = await start('poc-agent', 2);
+  });
+  await report.stage('browser-persistence', async () => { await browser('persistence'); await recordRuntime('afterRestart'); });
   await report.stage('final-shutdown', async () => { await stopProcess(humanProcess); await stopProcess(agentProcess); });
 } catch (error) {
   failed = true;

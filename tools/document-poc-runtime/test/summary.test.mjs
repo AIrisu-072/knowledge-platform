@@ -38,3 +38,15 @@ test('browser diagnostics are sanitized again before the CI summary is printed',
   assert.ok(!JSON.stringify(summary).includes('credential'));
   assert.deepEqual(Object.keys(summary.browserDiagnostics), ['journey', 'persistence']);
 });
+
+test('E3 summary exposes bounded owned run identity, ports and actual manifest fixture hash', () => {
+  const runId = '12345678-1234-4abc-8abc-123456789abc', sourceHead = 'a'.repeat(40);
+  const receipt = { runId, sourceHead, ports: { human: 41001, agent: 41002, postgres: 41003, proxy: 41004 },
+    databaseIdentitySha256: 'b'.repeat(64), storageIdentitySha256: 'c'.repeat(64), fixtureHash: 'd'.repeat(64) };
+  const result = summarize({ runId, gitHead: sourceHead, database: { ownership: 'harness-owned' },
+    runtimeProvenance: { initial: receipt, beforeRestart: receipt, afterRestart: receipt },
+    stages: ['seed-replay', 'restart', 'browser-persistence'].map(name => ({ name, status: 'passed' })) });
+  assert.deepEqual(result.runtime, { ownership: 'harness-owned', runId, ports: receipt.ports,
+    databaseIdentitySha256: receipt.databaseIdentitySha256, storageIdentitySha256: receipt.storageIdentitySha256,
+    fixtureHash: receipt.fixtureHash, restartIdentityVerified: true });
+});

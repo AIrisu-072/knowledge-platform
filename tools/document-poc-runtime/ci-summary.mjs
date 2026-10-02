@@ -7,6 +7,7 @@ import { summarizeAgent } from './agent-summary.mjs';
 import { RUNTIME_STAGES } from './harness.mjs';
 import { sanitizeBrowserPhases } from './browser-diagnostics.mjs';
 import { sanitizeDatabaseDiagnostics } from './database-diagnostics.mjs';
+import { summarizeRuntimeProvenance } from './runtime-provenance.mjs';
 
 const statuses = new Set(['passed', 'failed', 'blocked', 'not-run', 'running']);
 const sha = (value, length = 64) => typeof value === 'string' && new RegExp(`^[a-f0-9]{${length}}$`).test(value) ? value : 'unverified';
@@ -25,6 +26,7 @@ export function summarize(report) {
     return stage ? [{ name, status: stage.status, ...(stage.status === 'passed' ? {} : { failureCode: code(name, stage.status) }) }] : [];
   });
   const agent = summarizeAgent(report.agentAcceptance);
+  const runtime = summarizeRuntimeProvenance(report);
   const gitHead = sha(report.gitHead, 40);
   const artifacts = Object.fromEntries(['server', 'dsi', 'diff', 'pdfium', 'mcp', 'mcpRuntime', 'mcpConsistency'].map(name => [name, sha(report.artifacts?.[name])]));
   const proof = report.agentAcceptance;
@@ -40,6 +42,7 @@ export function summarize(report) {
     acceptanceQualified: report.status === 'passed' && report.acceptanceQualified === true && gitHead !== 'unverified'
       && agent.status === 'passed' && agent.provenanceVerified && artifacts.mcp !== 'unverified' && artifacts.mcpRuntime !== 'unverified'
       && artifacts.mcpConsistency !== 'unverified'
+      && (report.database?.ownership === 'caller-asserted-disposable' || runtime.restartIdentityVerified)
       && report.gitDirty === false && stages.length === RUNTIME_STAGES.length && stages.every(stage => stage.status === 'passed'),
     gitHead, gitDirty: typeof report.gitDirty === 'boolean' ? report.gitDirty : 'unverified',
     platform: { os: ['linux', 'darwin', 'win32'].includes(report.platform?.os) ? report.platform.os : 'unverified',
@@ -50,7 +53,7 @@ export function summarize(report) {
     postgresVersion: report.database?.ownership === 'caller-asserted-disposable' ? 'unverified-external'
       : typeof report.database?.version === 'string' ? report.database.version.match(/^(\d+\.\d+(?:\.\d+)?)(?:$|[ (])/u)?.[1] ?? 'unverified' : 'unverified',
     sourceLocks: { cargo: sha(report.sourceLocks?.cargo), pnpm: sha(report.sourceLocks?.pnpm) },
-    artifacts, webAssetHashes, agent,
+    artifacts, webAssetHashes, agent, runtime,
     profiles: ['poc-human', 'poc-agent'].filter(profile => Array.isArray(report.processes) && report.processes.some(item => item?.profile === profile)),
     stages,
     browserDiagnostics: sanitizeBrowserPhases(report.browserDiagnostics),

@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## Current checkpoint — Bounded owned-runtime E3 identity receipt prepared, 2026-10-02 UTC
+
+- Status: **ACTIVE — LOCAL EVIDENCE-CORRECTION CHECKS AND INDEPENDENT REVIEW PASS / NEW-HEAD ACCEPTANCE PENDING**. `fix/document-e3-bounded-runtime-provenance` is isolated from published `706786970de25f74cb6f96d6a53c042d3da580dc`; [C3 Status](document-poc-acceptance-v0-status.md) records the approved report/sanitizer-only scope and prior receipt's nonrecoverable evidence gap.
+- The bounded receipt adds validated actual ports, existing run UUID, actual seed fixture hash and run/head-bound database/container and storage device/inode hashes. Owned observations must agree across restart; existing exact same-state and Agent proofs stay mandatory. External database identity remains explicitly unverified; visual policy and uploads are unchanged.
+- Node109/runtime TypeScript/actionlint/syntax/diff checks pass after focused RED→GREEN and the independently reviewed probe-deadline correction. No Rust workload, actual composition run, capture/upload or publication. Next exact action: return the clean exact candidate, then parent publishes a distinct head and obtains new exact-head hosted evidence before its first capture. E3/C3 remain incomplete.
+
+---
+
 ## Current checkpoint — Single-line MCP comparison fixture integrated into C3, 2026-10-02 UTC
 
 - Status: **ACTIVE — REVIEWED FIXTURE MERGED / COMBINED LOCAL CHECKS PASS**. `feat/document-c3-single-line-integrated` combines reviewed A2 `d89fc8fc` / published `143ce4d5` with preserved C3 `2eed4b2c`. [C3 Status](document-poc-acceptance-v0-status.md) and [C2 Status](document-agent-tool-adapter-v0-status.md) record exact identities, source preservation and comparator-only RED/GREEN.
