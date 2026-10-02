@@ -111,13 +111,25 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await page.getByRole('button', { name: '新しい版を作成', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: '新しい版を作成', level: 1 })).toBeVisible();
   completed('version-form-opened');
-  const changedContent = Buffer.from('【合成データ】規程サンプル\n第1条 実Runtime GUIで作成した第三版です。\n');
-  await page.getByLabel('原本ファイル').setInputFiles({ name: 'regulation-runtime.txt', mimeType: 'text/plain', buffer: changedContent });
+  // Keep a supported single-line edit against both seeded Versions; replacing
+  // multiple lines together is intentionally ambiguous in document-diff-v0.
+  const changedContent = Buffer.from('【合成データ】規程サンプル\n第1条 この文書はPoC検証専用です。\n第2条 実Runtime GUIで作成した第三版の更新履歴を確認します。\n');
+  // The GUI maps upload name to logicalPath. Preserve the synthetic primary
+  // anchor so this tests a content edit, not the intentionally unresolved move+edit case.
+  for (const version of before.versions) {
+    const files = (await listVersionFiles({ ...humanOptions, path: { documentId, versionId: version.versionId }, query: { purpose: 'history' } })).data;
+    expect(files.items).toHaveLength(1);
+    expect(files.items[0]).toMatchObject({ logicalPath: 'primary', ordinal: 0, mediaType: 'text/plain' });
+  }
+  await page.getByLabel('原本ファイル').setInputFiles({ name: 'primary', mimeType: 'text/plain', buffer: changedContent });
   const createResponse = page.waitForResponse(response => response.url().endsWith(`/documents/${documentId}/versions`) && response.request().method() === 'POST');
   await page.getByRole('button', { name: '新しい版を作成', exact: true }).click();
   const createdResponse = await createResponse; expect(createdResponse.status()).toBe(201);
   const created = await createdResponse.json() as VersionMutationResult;
   await expect(page.getByRole('status')).toContainText('新しい版を作成しました');
+  const createdFiles = (await listVersionFiles({ ...humanOptions, path: { documentId, versionId: created.targetVersionId }, query: { purpose: 'authoring' } })).data;
+  expect(createdFiles.items).toHaveLength(1);
+  expect(createdFiles.items[0]).toMatchObject({ logicalPath: 'primary', ordinal: 0, mediaType: 'text/plain', displayName: 'primary' });
   completed('version-created');
   await page.getByRole('button', { name: '版の一覧へ戻る', exact: true }).click();
   await page.getByRole('button', { name: /WORKING · 版 3/ }).click();

@@ -20,7 +20,7 @@ test('generated client and binary bridge seed twice without repeating any mutati
   const auditCount = api.operations.size;
   assert.equal(api.documents.size, 5);
   assert.equal(api.folders.size, 4);
-  assert.equal([...api.documents.values()].flatMap(d => d.versions).length, 6);
+  assert.equal([...api.documents.values()].flatMap(d => d.versions).length, 8);
   assert.deepEqual(api.policies.get(first.folders.shared.folderId).effectiveGrants, grants);
   assert.deepEqual(api.policies.get(first.folders.sandbox.folderId).effectiveGrants, grants);
   assert.deepEqual(api.policies.get(first.folders.humanOnly.folderId).effectiveGrants, [grants[0]]);
@@ -99,8 +99,8 @@ for (const suffix of ['/access-policy', ':publish', '/versions']) {
     await assert.rejects(seed());
     await seed();
     assert.equal(api.documents.size, 5);
-    assert.equal([...api.documents.values()].flatMap(d => d.versions).length, 6);
-    assert.equal(api.operations.size, 13); // 3 folder creates + 3 ACLs + 6 publishes + 1 version.
+    assert.equal([...api.documents.values()].flatMap(d => d.versions).length, 8);
+    assert.equal(api.operations.size, 17); // 3 folder creates + 3 ACLs + 8 publishes + 3 versions.
   });
 }
 test('an unexpected explicit document ACL with identical grants is rejected before publication', async (t) => {
@@ -116,4 +116,20 @@ test('an unexpected explicit document ACL with identical grants is rejected befo
   };
   await assert.rejects(runSeed({ ...options, fetch: wrappedFetch }), /conflict/i);
   assert.equal(api.requests.filter(r => r.path.endsWith(':publish')).length, 0);
+});
+
+for (const key of ['humanOnly', 'sandbox']) test(`${key} supplies two real distinct published comparison inputs`, async t => {
+  const { api, seed } = await fixture(t);
+  const manifest = await seed();
+  const state = manifest.documents[key];
+  assert.equal(state.snapshot.versions.length, 2);
+  assert.equal(state.snapshot.revisions.length, 2);
+  assert.notEqual(state.snapshot.revisions[0].revisionId, state.snapshot.revisions[1].revisionId);
+  assert.notEqual(state.snapshot.revisions[0].documentVersionId, state.snapshot.revisions[1].documentVersionId);
+  assert.notEqual(state.snapshot.versions[0].hash, state.snapshot.versions[1].hash);
+  const document = api.documents.get(state.create.result.documentId);
+  assert.ok(document.versions.every(version => version.lifecycleState === 'published'));
+  const mutations = api.mutations().length;
+  assert.deepEqual(await seed(), manifest);
+  assert.equal(api.mutations().length, mutations);
 });

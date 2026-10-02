@@ -1,5 +1,86 @@
 # Active Execution Pointer
 
+## Current checkpoint — Source-bound MCP acceptance fixture repair, 2026-10-02 UTC
+
+- Status: **ACTIVE — FOCUSED RED/GREEN / EXACT-HEAD REAL ACCEPTANCE PENDING**. Isolated `fix/document-mcp-runtime-acceptance` starts from A2 `41e2d190` / remote `8485a3f4`. [C2 Status](document-agent-tool-adapter-v0-status.md) records both exact hosted failures, the primary-path/content-only fixture correction and fixed privacy-safe MCP checkpoints.
+- Production GUI/Diff/authorization/profile/state contracts are unchanged. Different/Full remains mandatory; ambiguous move+edit remains incomplete. Primary slice Node55/GUI43/MCP34 and runtime/MCP types pass. The separate protected-pair slice now adds two published synthetic Versions, Human-proved distinct comparison pairs, exact hidden404/no-disclosure and unchanged-state checks; Node55/seed22/API12/client6/MCP38/types pass. Local controlled HTTP/stdio evidence is not native acceptance.
+- Next exact action: finish combined package verification, return clean head/tree to independent review, then parent-owned A2 publication and C3 visual-aware integration. No Audit Infrastructure, Organization Client, new dependency, Rust build, merge or deployment work.
+
+---
+
+## Current checkpoint — A2 retains reviewed PDF capability repair and fixtures, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-pdf-integrated` merges R2 `f51ff6788e73a1e7975f4b7bf6c295bd5cdd1a29` into A2 `d9651320d0a7dcb219fe7f13795f2faf3087914f`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain the reviewed repair and qualification evidence.
+- The production capability predicate and synthetic positive/negative PDF cases match reviewed R2 exactly. PDF bytes/hashes are preserved; exact-path binary attributes coexist with A2 legal-notice preservation. Fresh Node53/runtime TypeScript and parent-range diff checks pass. No repeated Rust workload or new actual-runtime evidence.
+- Next exact action: complete C3 propagation/proof, then parent publishes and checks the exact new runtime through PDF, MCP and persistence. Uploader qualification remains separate and inactive; no successor capability, merge or deployment.
+
+---
+
+## Current checkpoint — A2 retains bounded PDF diagnostics, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / PDF ACCEPTANCE UNDER DIAGNOSIS**. Isolated `feat/document-a2-pdf-diagnostics` merges reviewed R2 `639b31e85dc5ff7ed0a11fef4296ce88d46ed6cc` into A2 `5f1963f261ebf02582535df94e3221bd5128a733`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain the exact evidence and scope.
+- The four R2 diagnostic files match the reviewed source; PDF inputs and criteria are unchanged. Fresh Node53/runtime TypeScript/diff checks pass. MCP, both required gates, locks and scanner records are unchanged. No Rust or new actual-runtime execution.
+- Next exact action: complete propagation review through C3, then parent publishes and observes exact-head gates. Diagnostics do not repair or qualify the PDF integrity failure; no successor capability, visual activation, merge or deployment.
+
+---
+
+## Current checkpoint — A2 denial/metadata fixture corrections integrated, 2026-10-02 UTC
+
+- Status: **ACTIVE — REVIEWED FIXTURES INTEGRATED / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-fixture-integrated` combines A2 metadata repair `fcb1cd8d53742d013ec18a242e543cb5c7c19b45` with R2 denial/drain repair `808fd4ed8c95ef1184f9b59546159a0d77f9a99c`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) preserve both approved contracts and independent review records.
+- Every source change is byte-identical to its reviewed repair. The MCP fixture uses nested extensions with full metadata preservation; R2 uses the existing hidden publication/authoring denial and nested drain marker. No product/API/security semantics or C3-only code enter this A2 layer. Both required CI gates, locks and scanner31 records remain unchanged.
+- Fresh merged Node52 and runtime/MCP TypeScript pass; unchanged source retains the repair workers' focused/MCP33/API12/GUI42 verification. Actual runtime and restart acceptance still require hosted execution; no Rust workload was repeated.
+- Next exact action: review propagation into C3, return exact clean trees for parent publication and inspect new exact-head gates. No remote publication, successor Organization Client work, visual capture/upload, merge to main or deployment occurs here.
+
+---
+
+## Current checkpoint — A2 retains reviewed publication-focus and scheduler readiness repairs, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-followup-integrated` merges R2 `51bd948710beb098f88a4af18fe7bcb251933df7` into A2 `ae844ee9e5ec51b8d1977a145be26ccf8ab43079`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain the approved scopes and both source repair evidence sections.
+- Every non-status repair blob matches reviewed R2. MCP source/runtime provenance, both required CI gates, scanner31 records and locks are unchanged from A2. Fresh merged Node52, runtime TypeScript, actionlint and diff checks pass with telemetry disabled; the identical GUI source retains the new R2 GUI42/types/schema/build verification.
+- Next exact action: complete independent stack review and C3 propagation, then parent publishes and checks exact-head hosted gates. No Rust workload, actual runtime acceptance, visual capture/upload, merge to main or deployment occurred here. Existing hosted focus/startup failures remain unresolved until qualified reruns.
+
+---
+
+## Current checkpoint — Final R2 GUI/scheduler repairs integrated into A2, 2026-10-02 UTC
+
+- Status: **ACTIVE — AFFECTED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-r5-integrated` combines preserved A2 `6665c17e6fed2129c60f739faaa8bc0fb3089dc3` with reviewed R2 `5b8e967badd9303fe1d7b446504be57b99b1c42c`; no C3 implementation is included.
+- Active [C2 Status](document-agent-tool-adapter-v0-status.md), approved [Design](../specs/2026-10-01-document-agent-tool-adapter-v0-design.md), [Plan](../plans/2026-10-01-document-agent-tool-adapter-v0-implementation.md), [Authority](../specs/2026-10-01-document-agent-tool-adapter-v0-approval.md), and [C1 runtime evidence](document-poc-runtime-v0-status.md) remain authoritative for their bounded scopes.
+- Exact R2 GUI/diagnostic source is retained alongside the scheduler stack repair. A2 MCP/runtime provenance, both required-check dependencies and exact scanner exclusions remain intact. Fresh A2 Node51/GUI41/types/schema/actionlint/diff checks pass; no unchanged Rust test was repeated.
+- Next exact action: parent publishes final R2/A2 once, verifies exact trees/heads, then inspects all required actual hosted gates. Prior GUI timeout and scheduler failure are not yet superseded by real acceptance GREEN; do not claim C1/C2/C3 completion, merge to main or deployment.
+
+---
+
+## Current checkpoint — Reviewed A2 + R5 stack repair ready for hosted verification, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED INTEGRATION VERIFIED / REAL ACCEPTANCE PENDING**. Isolated `feat/document-a2-r5-integrated` preserves A2 integration `2083801f258ef4fd222bac848d4f9f753134632b` and adds reviewed R2 test-only repair `7f39c5589fcf64500c30b37c7bdf31b42595ff22`. No C3 implementation is included.
+- Active Capability Status: [Document Agent Tool Adapter v0](document-agent-tool-adapter-v0-status.md), with existing approved C2 [Design](../specs/2026-10-01-document-agent-tool-adapter-v0-design.md), [Plan](../plans/2026-10-01-document-agent-tool-adapter-v0-implementation.md) and [Authority](../specs/2026-10-01-document-agent-tool-adapter-v0-approval.md). [C1 Status](document-poc-runtime-v0-status.md) records the separate bounded scheduler decision and stack-repair evidence.
+- The nested test-only reservation future is heap-boxed; fixed stderr labels survive process abort. Combined Node50/canary-helper5/actionlint/diff checks pass. MCP/runtime provenance, exact-head MCP and scheduler required gates, browser diagnostics and scanner exclusions are preserved. Earlier broader scoped checks remain recorded for unchanged source.
+- The old hosted scheduler head failed; corrected full local acceptance still stops at mandatory SandboxUnavailable. No full scheduler/shared-runtime/C2/C3 completion is claimed. No sandbox, stack limit, timeout or production-semantic change was made.
+- Next exact action: parent publishes the reviewed R2 repair and combined A2 candidate, verifies exact remote trees/heads and observes all required hosted gates. No merge to main or deployment. The investigation-hold checkpoints below are retained as historical evidence.
+
+---
+
+## Current checkpoint — A2 integrates reviewed R5 + GUI transport; scheduler canary diagnosis, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE VERIFICATION PASS / HOSTED ACCEPTANCE INCOMPLETE**. Isolated branch `feat/document-a2-r5-integrated` combines A2 `3a28576395fdc04928a7f19ea387f1a8a4b17dca` and R2 `53f9cbbb877e18a85685c3ea95308cd55e513998`; no C3 implementation is included.
+- Active Capability Status: [Document Agent Tool Adapter v0](document-agent-tool-adapter-v0-status.md). Approved [C2 Design](../specs/2026-10-01-document-agent-tool-adapter-v0-design.md), [Plan](../plans/2026-10-01-document-agent-tool-adapter-v0-implementation.md), [Authority](../specs/2026-10-01-document-agent-tool-adapter-v0-approval.md). R5 bounded identity decision and implementation evidence remain in [C1 Status](document-poc-runtime-v0-status.md).
+- Independent integration review preserved exact A2 MCP/runtime/provenance, R2 scheduler/sort, scanner exclusions and browser diagnostics. Both MCP and scheduler jobs remain required-check dependencies. Fresh scoped Node 50, MCP 29, GUI 38, client 6, API 12 and Rust 13 tests pass, with types/schema/API lint/build/fmt/architecture/actionlint checks; see Capability Status for limits.
+- R5 naming is resolved as audit-only `service` / `scheduler`; no identity privilege was added. Hosted R2 scheduler job `110660162596` at remote `556449f0245ff9e767b4a83cdd04ccb1160c2489` failed with a test-thread stack overflow after compilation. R5 acceptance is not green; the nested failing stage is still under diagnosis. Prior scheduler-selection STOP entries below are historical.
+- Next exact action: retain this A2 candidate while the separate R2-based canary repair is diagnosed, tested and reviewed without any guard weakening; integrate the approved correction, then parent publishes and verifies exact-head CI. No merge to main or deployment. C0/C1/C2/C3 completion is not claimed.
+
+---
+
+## Current checkpoint — Document Agent Tool Adapter v0 A2 local GREEN / hosted acceptance pending, 2026-10-01 UTC
+
+- Status: **ACTIVE — C2 IMPLEMENTATION LOCALLY VERIFIED / REAL-RUNTIME ACCEPTANCE PENDING**. No merge or deployment. C1 scheduler identity remains STOP; C3 overall evaluation is not complete.
+- Active Capability Status: [Document Agent Tool Adapter v0](document-agent-tool-adapter-v0-status.md). Approved scope: [C2 Design](../specs/2026-10-01-document-agent-tool-adapter-v0-design.md), [Plan](../plans/2026-10-01-document-agent-tool-adapter-v0-implementation.md), [Authority](../specs/2026-10-01-document-agent-tool-adapter-v0-approval.md).
+- Stack: R1 Draft #37 → R2 Draft #41 at verified `8c702db1c15caeabef398ab8170bbaee18fe075f` → separate A2 implementation Draft to be published. A1 Design/Plan remains Draft #38; its four documents are incorporated in A2 without reverting C1. The reviewed R6 tree is `b937184d4c56b493ba1193812463a5482db39f31`.
+- Exact nine read-only generated-client tools, verified fixed-Agent session, bounded abort/redirect behavior, unchanged API semantics and actual stdio are implemented. Complete shipped license notices and the two-package ISC exception are recorded. No direct DB/Application access, Agent write tool, Search/RAG or production identity.
+- Local verification and independent review/fixes are recorded in Capability Status. Required CI now includes focused MCP verification and real shared-runtime Agent stages; missing/blocked real workers or browser leave acceptance non-green. No mocked HTTP result counts as real Document acceptance.
+- Next exact action: publish the reviewed A2 source as a separate Draft stacked on #41, verify remote head/tree, and observe required gates on that exact head. Diagnose failures without weakening sandbox, license, scanner or authorization policy. C0/C1/C3 closure remains tracked separately.
+
+---
+
 ## Current checkpoint — R2 publication-focus and PostgreSQL readiness repairs integrated, 2026-10-02 UTC
 
 - Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-r2-followup-integrated` combines reviewed GUI `cac1d729ddab7aaef2d618b1dbd7d58f51836d8a` and scheduler test readiness `ee30aba86c903777d361be58424fb741c450ea3e`, both based on `5b8e967badd9303fe1d7b446504be57b99b1c42c`.

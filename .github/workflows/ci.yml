@@ -184,10 +184,28 @@ jobs:
       - name: Install pinned Chromium
         run: pnpm --filter @knowledge-platform/document-web exec playwright install chromium
       - name: Real composition-root acceptance
-        run: mise run document:poc:runtime
+        run: mise run document:poc:agent
       - name: Emit bounded runtime evidence
         if: ${{ always() }}
         run: node tools/document-poc-runtime/ci-summary.mjs
+
+  document-mcp:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Install pinned Node and workspace dependencies
+        run: |
+          mise install node
+          mise install pnpm
+          pnpm install --frozen-lockfile --ignore-scripts
+      - run: mise run document:mcp:test
 
   document-scheduler:
     runs-on: ubuntu-24.04
@@ -224,6 +242,7 @@ jobs:
       - dsi-semantic-parity-macos
       - container-build
       - document-poc-runtime
+      - document-mcp
       - document-scheduler
     runs-on: ubuntu-24.04
     steps:
@@ -237,9 +256,10 @@ jobs:
           DSI_SEMANTIC_PARITY_MACOS: ${{ needs.dsi-semantic-parity-macos.result }}
           CONTAINER_BUILD: ${{ needs.container-build.result }}
           DOCUMENT_POC_RUNTIME: ${{ needs.document-poc-runtime.result }}
+          DOCUMENT_MCP: ${{ needs.document-mcp.result }}
           DOCUMENT_SCHEDULER: ${{ needs.document-scheduler.result }}
         run: |
           set -eu
-          for result in "$POLICY" "$RUST_STATIC" "$RUST_TEST" "$SECURITY" "$PORTABILITY_MACOS" "$DSI_SEMANTIC_PARITY_MACOS" "$CONTAINER_BUILD" "$DOCUMENT_POC_RUNTIME" "$DOCUMENT_SCHEDULER"; do
+          for result in "$POLICY" "$RUST_STATIC" "$RUST_TEST" "$SECURITY" "$PORTABILITY_MACOS" "$DSI_SEMANTIC_PARITY_MACOS" "$CONTAINER_BUILD" "$DOCUMENT_POC_RUNTIME" "$DOCUMENT_MCP" "$DOCUMENT_SCHEDULER"; do
             test "$result" = success
           done
