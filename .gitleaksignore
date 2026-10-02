@@ -1,0 +1,35 @@
+# Exact findings in immutable WIP checkpoint 99c7aca only.
+# Reason/evidence: 28 values are verified SHA-256 digests of vendored Tantivy files;
+# 3 values configure/document disposable loopback-only Neo4j synthetic fixtures.
+# No whole-commit/path/rule ignore. Any new finding remains subject to review.
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:docs/superpowers/programs/search-platform-completion/p2-executed-input-source-inventory-20261001.json:generic-api-key:179
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:docs/superpowers/programs/search-platform-completion/p2-executed-input-source-inventory-20261001.json:generic-api-key:193
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:docs/superpowers/programs/search-platform-completion/p2-executed-input-source-inventory-20261001.json:generic-api-key:250
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:docs/superpowers/programs/search-platform-completion/p2-executed-input-source-inventory-20261001.json:generic-api-key:251
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:docs/superpowers/programs/search-platform-completion/p2-executed-input-source-inventory-20261001.json:generic-api-key:450
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:docs/superpowers/programs/search-platform-completion/p2-executed-input-source-inventory-20261001.json:generic-api-key:451
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:docs/superpowers/programs/search-platform-completion/p2-executed-input-source-inventory-20261001.json:generic-api-key:454
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:docs/superpowers/programs/search-platform-completion/p2-executed-input-source-inventory-20261001.json:generic-api-key:455
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:docs/superpowers/programs/search-platform-completion/p2-executed-input-source-inventory-20261001.json:generic-api-key:456
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:docs/superpowers/programs/search-platform-completion/p2-executed-input-source-inventory-20261001.json:generic-api-key:458
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:docs/superpowers/programs/search-platform-completion/p2-executed-input-source-inventory-20261001.json:generic-api-key:464
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:docs/superpowers/programs/search-platform-completion/p2-executed-input-source-inventory-20261001.json:generic-api-key:465
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:docs/superpowers/programs/search-platform-completion/p2-executed-input-source-inventory-20261001.json:generic-api-key:466
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:docs/superpowers/programs/search-platform-completion/p2-executed-input-source-inventory-20261001.json:generic-api-key:467
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-graph-poc/qualification_recovery.py:generic-api-key:358
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-graph-poc/qualification_runtime.py:generic-api-key:175
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-graph-poc/report.md:generic-api-key:60
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:184
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:198
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:255
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:256
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:455
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:456
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:459
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:460
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:461
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:463
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:469
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:470
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:471
+99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:472

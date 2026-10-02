@@ -22,6 +22,12 @@ module.exports = (_environment, argv) => {
     module: {
       rules: [
         {
+          // Ajv standalone ESM also imports its qualified runtime helpers with
+          // require(). Parse both forms so these calls are bundled for browsers.
+          include: path.resolve(__dirname, 'src/application/search-validators.generated.js'),
+          type: 'javascript/auto',
+        },
+        {
           test: /\.[jt]sx?$/,
           exclude: /node_modules/,
           use: 'babel-loader',
