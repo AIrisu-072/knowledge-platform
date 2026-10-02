@@ -1,5 +1,23 @@
 # Active Execution Pointer
 
+## Current checkpoint — R2/A2/C3 fixture corrections integrated / hosted recheck pending, 2026-10-02 UTC
+
+- Status: **ACTIVE — MERGED FIXTURE CHECKS PASS / ACTUAL ACCEPTANCE PENDING**. Isolated `feat/document-c3-fixture-integrated` merges A2 `5f1963f261ebf02582535df94e3221bd5128a733` into C3 repair `cb1c8332d5cf07650e4c6e1a6876ee8e38deb178`. The stack retains reviewed R2 `808fd4ed8c95ef1184f9b59546159a0d77f9a99c` and independent A2 repair `fcb1cd8d53742d013ec18a242e543cb5c7c19b45`. Active [C3 Status](document-poc-acceptance-v0-status.md) and [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md) govern remaining acceptance.
+- All three real metadata mutations now use the existing extensions contract with matching projections. The C3 test conflict retains the complete A2 nested-marker tests and all ordered/replay/no-op/fallback tests. All five persistence snapshots, required CI gates, scanner31 records, locks, owned-worker controls and visual exclusion remain intact.
+- Fresh merged Node68/MCP39, runtime/MCP TypeScript, MCP build, actionlint/diff and discovery9+1 PASS with telemetry disabled. A2 merged Node52/types and the reviewed source workers' scoped checks remain separately recorded. No Rust or actual-runtime acceptance was run by this integration.
+- Next exact action: complete final propagation review, return the three clean source trees for parent publication, then observe exact-head runtime gates through persistence. Prior hosted failures remain unsuperseded by these local checks; predecessor acceptance still blocks Organization Client. No merge to main or deployment.
+
+---
+
+## Current checkpoint — C3 fixture contracts corrected / actual acceptance pending, 2026-10-02 UTC
+
+- Status: **ACTIVE — C3 FIXTURE RED→GREEN / HOSTED REVERIFICATION PENDING**. Isolated `fix/document-c3-response-recovery` starts at `2c50884a3344482aa8b5efa78e8f6839dac9282f`. Active [C3 Status](document-poc-acceptance-v0-status.md) and [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md) remain authoritative; no new capability or business decision.
+- The ordered metadata fixture now uses the existing `extensions` object at creation, mutation and every exact expected projection. Response loss still requires HTTP200; saved operation/payload replay and revision/no-op/fallback assertions remain strict. After Write revocation, the capability check uses readable published detail while the actual stale GUI create request still requires403/FORBIDDEN.
+- Two source/fixture contract regressions reproduce the invalid top-level marker and hidden authoring-read mistakes, then pass. Fresh Node68, runtime/MCP TypeScript, MCP build, discovery9 and diff checks pass. These are harness checks; no Rust or actual-runtime acceptance was run here.
+- Next exact action: complete independent review, combine the separately reviewed R2 denial/drain and A2 metadata fixtures without changing production contracts, return exact candidate trees for parent publication and recheck hosted gates. Organization Client and other successor work remain blocked on predecessor acceptance; human visual review and remaining C3 evidence are open.
+
+---
+
 ## Current checkpoint — C3 receives reviewed focus/readiness repairs through A2, 2026-10-02 UTC
 
 - Status: **ACTIVE — SCOPED STACK CHECKS PASS / ACTUAL ACCEPTANCE PENDING**. Isolated `feat/document-c3-followup-integrated` merges A2 `7ae8f746b86795343eacf729b85d4f4fa42d7bcb` into C3 `c4ac377bb3d375e31ccc9b17c2476daa588cc18a`. Active [C3 Status](document-poc-acceptance-v0-status.md) and [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md) retain the acceptance scope; [C1](document-poc-runtime-v0-status.md) records both reviewed repair contracts and limits.
@@ -16,6 +34,15 @@
 - C3 ordered GUI/API/MCP equality, interrupted-response recovery, stale-capability race, owned worker failure/recovery and five restart snapshots are preserved. A2 GUI sort/stable pending data, complete pre-click diagnostics, R5 stack repair and both mandatory MCP/scheduler CI gates are retained exactly. The 31 scanner fingerprints and exception record are unchanged. Visual capture/export/upload proposals are excluded.
 - Fresh merged Node65/MCP35/GUI41/client6/API12 tests, types, schema/API lint, web/MCP builds, architecture, actionlint, syntax and diff checks pass with Redocly telemetry disabled. Discovery finds nine journey cases and one persistence case. Independent review found no Critical/Important integration defect. No Rust or actual-runtime acceptance was run here; the prior GUI timeout and scheduler failure remain unsuperseded by this evidence.
 - Next exact action: parent reviews the complete candidate tree and preservation proof, integrates it into the separately preserved E1 publication history, verifies the exact remote head/tree and runs all required actual hosted gates. C0/C1/C2/C3 completion and human visual review remain open.
+
+---
+
+## Current checkpoint — A2 denial/metadata fixture corrections integrated, 2026-10-02 UTC
+
+- Status: **ACTIVE — REVIEWED FIXTURES INTEGRATED / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-fixture-integrated` combines A2 metadata repair `fcb1cd8d53742d013ec18a242e543cb5c7c19b45` with R2 denial/drain repair `808fd4ed8c95ef1184f9b59546159a0d77f9a99c`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) preserve both approved contracts and independent review records.
+- Every source change is byte-identical to its reviewed repair. The MCP fixture uses nested extensions with full metadata preservation; R2 uses the existing hidden publication/authoring denial and nested drain marker. No product/API/security semantics or C3-only code enter this A2 layer. Both required CI gates, locks and scanner31 records remain unchanged.
+- Fresh merged Node52 and runtime/MCP TypeScript pass; unchanged source retains the repair workers' focused/MCP33/API12/GUI42 verification. Actual runtime and restart acceptance still require hosted execution; no Rust workload was repeated.
+- Next exact action: review propagation into C3, return exact clean trees for parent publication and inspect new exact-head gates. No remote publication, successor Organization Client work, visual capture/upload, merge to main or deployment occurs here.
 
 ---
 

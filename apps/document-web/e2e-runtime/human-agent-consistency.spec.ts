@@ -46,7 +46,7 @@ async function checkpoint(page: Page, context: Awaited<ReturnType<typeof runtime
   const revision = human.revisions.items[0]!;
   await expect(page.getByText(revision.label, { exact: true }).first()).toBeVisible();
   await page.getByRole('tab', { name: '概要', exact: true }).click();
-  await expect(page.getByText(String((human.detail.metadata as Record<string, unknown>).c3Stage), { exact: true })).toBeVisible();
+  await expect(page.getByText(JSON.stringify((human.detail.metadata as Record<string, unknown>).extensions), { exact: true })).toBeVisible();
   const agent = await readMcpSharedState(context.agent, documentId);
   assertSharedState(human, agent.state);
   // Same run/DB/storage; protocol shapes and synthetic response values remain run-local.
@@ -65,7 +65,7 @@ test('ordered Human GUI/API → actual MCP equality covers publication, interrup
   const initialBytes = Buffer.from('Synthetic ordered acceptance original.\n');
   const nextBytes = Buffer.from('Synthetic ordered acceptance changed content.\n');
   const created = await new BinaryTransportBridge({ baseUrl: context.human }).createDocument({
-    request: { folderId: context.manifest.folders.shared.folderId, title: 'Synthetic ordered Human Agent acceptance', documentMetadata: { c3Stage: 'C3 initial metadata' }, versionMetadata: {} },
+    request: { folderId: context.manifest.folders.shared.folderId, title: 'Synthetic ordered Human Agent acceptance', documentMetadata: { extensions: { c3Stage: 'C3 initial metadata' } }, versionMetadata: {} },
     file: new Blob([initialBytes]), originalFilename: 'c3-initial.txt', mediaType: 'text/plain',
   });
   const documentId = created.documentId, path = { documentId };
@@ -74,10 +74,10 @@ test('ordered Human GUI/API → actual MCP equality covers publication, interrup
   const initial = await checkpoint(page, context, documentId, 'initial-publication');
   expect(initial.detail.documentId).toBe(documentId);
   expect(initial.detail.title).toBe('Synthetic ordered Human Agent acceptance');
-  assertRevisionTransition(undefined, initial, { sourceKind: 'initialPublication', versionId: created.documentVersionId, major: 1, minor: 0, resultingRevision: published.resultingDocumentRevision, metadata: { c3Stage: 'C3 initial metadata' } });
+  assertRevisionTransition(undefined, initial, { sourceKind: 'initialPublication', versionId: created.documentVersionId, major: 1, minor: 0, resultingRevision: published.resultingDocumentRevision, metadata: { extensions: { c3Stage: 'C3 initial metadata' } } });
 
   const mutation: CommandsMetadataPatch = { operationId: uuidV7(), expectedDocumentRevision: Number(initial.detail.revision),
-    set: { c3Stage: 'C3 changed metadata' }, unset: [], reason: 'Synthetic interrupted-response recovery acceptance' };
+    set: { extensions: { c3Stage: 'C3 changed metadata' } }, unset: [], reason: 'Synthetic interrupted-response recovery acceptance' };
   const interrupted = await interruptMutationResponse(context.human, `/v1/documents/${documentId}/metadata`, mutation);
   expect(interrupted.upstreamStatus).toBe(200); expect(interrupted.responseLost).toBe(true);
   expect(interrupted.payloadSha256).toBe(hash(Buffer.from(JSON.stringify(mutation))));
@@ -85,12 +85,12 @@ test('ordered Human GUI/API → actual MCP equality covers publication, interrup
   // with the exact saved operation ID + payload, including the old expected OCC.
   const committed = await readHumanSharedState(context.human, documentId);
   expect(committed.detail.revision).toBe(Number(initial.detail.revision) + 1);
-  expect(committed.detail.metadata).toEqual({ c3Stage: 'C3 changed metadata' });
+  expect(committed.detail.metadata).toEqual({ extensions: { c3Stage: 'C3 changed metadata' } });
   const recovered = (await patchDocumentMetadata({ ...common, path, body: mutation })).data;
   expect(recovered.operationId).toBe(mutation.operationId);
   const replay = (await patchDocumentMetadata({ ...common, path, body: mutation })).data;
   const minor = await checkpoint(page, context, documentId, 'metadata-minor-and-response-recovery');
-  assertRevisionTransition(initial, minor, { sourceKind: 'metadataRevision', versionId: created.documentVersionId, major: 1, minor: 1, resultingRevision: recovered.resultingRevision, metadata: { c3Stage: 'C3 changed metadata' } });
+  assertRevisionTransition(initial, minor, { sourceKind: 'metadataRevision', versionId: created.documentVersionId, major: 1, minor: 1, resultingRevision: recovered.resultingRevision, metadata: { extensions: { c3Stage: 'C3 changed metadata' } } });
   expect(minor.files).toEqual(initial.files);
   assertMutationReplay(committed, minor, recovered, replay, (await getDocumentHistory({ ...common, path, query: { pageSize: 200 } })).data);
   await test.info().attach('interrupted-response-recovery.json', { contentType: 'application/json', body: Buffer.from(JSON.stringify({ runId: context.runId,
@@ -112,7 +112,7 @@ test('ordered Human GUI/API → actual MCP equality covers publication, interrup
   await expect(page.getByRole('status')).toContainText('新しい版を作成しました');
   const contentPublication = await publishInGui(page, documentId, 2);
   const major = await checkpoint(page, context, documentId, 'new-major');
-  assertRevisionTransition(unchanged, major, { sourceKind: 'contentPublication', versionId: version.targetVersionId, major: 2, minor: 0, resultingRevision: contentPublication.resultingDocumentRevision, metadata: { c3Stage: 'C3 changed metadata' } });
+  assertRevisionTransition(unchanged, major, { sourceKind: 'contentPublication', versionId: version.targetVersionId, major: 2, minor: 0, resultingRevision: contentPublication.resultingDocumentRevision, metadata: { extensions: { c3Stage: 'C3 changed metadata' } } });
   expect(contentPublication.resultingDocumentRevision).toBe(version.resultingRevision + 1);
   expect(major.files.find(item => item.versionId === created.documentVersionId)).toEqual(initial.files[0]);
   expect(major.files).toHaveLength(2);
@@ -126,7 +126,7 @@ test('ordered Human GUI/API → actual MCP equality covers publication, interrup
   expect(withdrawn.restorationWithheldReason).toBeNull();
   expect(withdrawn.resultingRevision).toBe(contentPublication.resultingDocumentRevision + 1);
   const fallback = await checkpoint(page, context, documentId, 'withdrawal-fallback');
-  assertRevisionTransition(major, fallback, { sourceKind: 'withdrawFallback', versionId: created.documentVersionId, major: 3, minor: 0, resultingRevision: withdrawn.resultingRevision, metadata: { c3Stage: 'C3 changed metadata' } });
+  assertRevisionTransition(major, fallback, { sourceKind: 'withdrawFallback', versionId: created.documentVersionId, major: 3, minor: 0, resultingRevision: withdrawn.resultingRevision, metadata: { extensions: { c3Stage: 'C3 changed metadata' } } });
   expect(fallback.detail.metadata).toEqual(major.detail.metadata); expect(fallback.files).toEqual(major.files);
   const final = await persistedSnapshot(context.human, documentId);
   expect(final.versions.find(item => item.versionId === created.documentVersionId)!.files[0]!.hash).toBe(hash(initialBytes));
@@ -163,7 +163,8 @@ test('stale GUI create capability is reauthorized after Human write revocation, 
       grants: [{ subjectKind: 'group', identityProvider: 'poc', subjectId: 'poc-users', actions: ['read', 'readHistory', 'administer'] },
         { subjectKind: 'group', identityProvider: 'poc', subjectId: 'poc-agents', actions: ['read', 'readHistory'] }] };
     await setDocumentAccessPolicy({ ...common, path, body: body as unknown as CommandsSetAccessPolicy }); revoked = true;
-    const current = (await getDocument({ ...common, path, query: { view: 'authoring' } })).data;
+    // Write revocation hides authoring detail; retained Read still exposes the published capability projection.
+    const current = (await getDocument({ ...common, path, query: { view: 'published' } })).data;
     expect(current.capabilities.createVersion.status).toBe('disabled');
     expect(current.revision).toBe(before.revision); // policy changes cannot masquerade as OCC conflicts
     const responsePromise = page.waitForResponse(response => new URL(response.url()).pathname === `/v1/documents/${documentId}/versions` && response.request().method() === 'POST');
