@@ -231,6 +231,26 @@ test.each([
   expect(second[2].get(second[1].items[0].partId)).toBe(file);
 });
 
+test('an explicit-MIME synthetic upload preserves the primary manifest anchor without an extension', async () => {
+  const api = mockApi();
+  api.getDocument.mockResolvedValue(documentDetail('authoring'));
+  const user = userEvent.setup();
+  renderAt(`/documents/${documentId}?view=authoring&tab=versions`);
+  const panel = await screen.findByRole('tabpanel', { name: '版・改訂' });
+  await user.click(within(panel).getByRole('button', { name: '新しい版を作成' }));
+  const file = new File(['Synthetic changed content'], 'primary', { type: 'text/plain' });
+  const input = screen.getByLabelText('原本ファイル') as HTMLInputElement;
+  await user.upload(input, file);
+  fireEvent.submit(input.form!);
+  await screen.findByText('新しい版を作成しました。');
+  expect(api.createVersion).toHaveBeenCalledTimes(1);
+  const [id, body, files] = api.createVersion.mock.calls[0];
+  expect(id).toBe(documentId);
+  expect(body.items).toEqual([expect.objectContaining({ logicalPath: 'primary', ordinal: 0,
+    mediaType: 'text/plain', originalFilename: 'primary' })]);
+  expect(files.get(body.items[0].partId)).toBe(file);
+});
+
 test('publish workspace requires review, then confirmation is keyboard dismissible and restores focus', async () => {
   const api = mockApi();
   api.getDocument.mockResolvedValue(documentDetail('authoring'));

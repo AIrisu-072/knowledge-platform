@@ -116,3 +116,28 @@ test('ordered transition rejects unchanged or wrong metadata even when all chann
   const correct = structuredClone(falseChange); correct.detail.metadata = expected.metadata;
   assertRevisionTransition(before, correct, expected);
 });
+
+test('denial inputs use two distinct existing published Version and Revision IDs', () => {
+  const { comparisonBodies } = createRequire(import.meta.url)('../dist/oracle.cjs');
+  const revisions={items:[{revisionId:'r2',documentVersionId:'v2'},{revisionId:'r1',documentVersionId:'v1'}],nextCursor:null};
+  assert.equal(typeof comparisonBodies,'function');
+  assert.deepEqual(comparisonBodies(revisions), {
+    revision:{baseRevisionId:'r1',targetRevisionId:'r2',projection:'diff'},
+    version:{baseVersionId:'v1',targetVersionId:'v2',profile:'document-diff-v0',projection:'display',pageSize:100},
+  });
+  for(const page of [{items:[],nextCursor:null},{items:[revisions.items[0]],nextCursor:null},
+    {items:[revisions.items[0],revisions.items[0]],nextCursor:null},
+    {items:[{revisionId:'r3',documentVersionId:'v2'},revisions.items[0]],nextCursor:null},
+    {...revisions,nextCursor:'more'}]) assert.throws(()=>comparisonBodies(page));
+});
+test('authorization denial oracle rejects validation, wrong errors, success and document disclosure', () => {
+  const { assertDocumentHidden } = createRequire(import.meta.url)('../dist/oracle.cjs');
+  assert.equal(typeof assertDocumentHidden,'function');
+  const result=problem=>({isError:true,structuredContent:problem,content:[{type:'text',text:JSON.stringify(problem)}]});
+  const hidden={status:404,code:'DOCUMENT_NOT_FOUND',traceId:'trace',retryable:false};
+  assertDocumentHidden(result(hidden));
+  for(const problem of [{...hidden,status:400,code:'VALIDATION_ERROR'}, {...hidden,status:403},
+    {...hidden,code:'DOCUMENT_VERSION_NOT_FOUND'}, {...hidden,documentId:'private'}]) assert.throws(()=>assertDocumentHidden(result(problem)));
+  assert.throws(()=>assertDocumentHidden({...result(hidden),isError:false}));
+  assert.throws(()=>assertDocumentHidden({...result(hidden),content:[{type:'text',text:JSON.stringify({...hidden,documentId:'private'})}]}));
+});

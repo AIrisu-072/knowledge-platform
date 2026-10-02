@@ -18,8 +18,8 @@ export const FIXTURES = [
   { key: 'regulation', folder: 'shared', title: '規程サンプル', filename: 'regulation.txt', content: '【合成データ】規程サンプル\n第1条 この文書はPoC検証専用です。\n第2条 共有文書の更新履歴を確認します。\n', nextContent: '【合成データ】規程サンプル\n第1条 この文書はPoC検証専用です。\n第2条 共有文書の更新履歴と新旧対照表を確認します。\n' },
   { key: 'manual', folder: 'shared', title: 'マニュアルサンプル', filename: 'manual.txt', content: '【合成データ】マニュアルサンプル\n1. 文書一覧を開きます。\n2. 本文ファイルと版を確認します。\n' },
   { key: 'notice', folder: 'shared', title: '通達サンプル', filename: 'notice.txt', content: '【合成データ】通達サンプル\nPoC検証では実在する顧客情報を使用しません。\n' },
-  { key: 'sandbox', folder: 'sandbox', title: 'Agent検証用文書', filename: 'agent-sandbox.txt', content: '【合成データ】Agent検証用文書\nAgentは文書の読取りと履歴確認のみを実施します。\n' },
-  { key: 'humanOnly', folder: 'humanOnly', title: 'Human専用検証文書', filename: 'human-only.txt', content: '【合成データ】Human専用検証文書\nAgentからの参照拒否を確認するための合成文書です。\n' },
+  { key: 'sandbox', folder: 'sandbox', title: 'Agent検証用文書', filename: 'agent-sandbox.txt', content: '【合成データ】Agent検証用文書\nAgentは文書の読取りと履歴確認のみを実施します。\n', nextContent: '【合成データ】Agent検証用文書\n第二版で参照後の権限取消と比較拒否を確認します。\n' },
+  { key: 'humanOnly', folder: 'humanOnly', title: 'Human専用検証文書', filename: 'human-only.txt', content: '【合成データ】Human専用検証文書\nAgentからの参照拒否を確認するための合成文書です。\n', nextContent: '【合成データ】Human専用検証文書\n第二版で既存の異なる版同士の比較拒否を確認します。\n' },
 ] as const;
 export const FOLDERS = { shared: 'PoC Shared', sandbox: 'Agent Sandbox', humanOnly: 'Human Only' } as const;
 export const HUMAN_GRANT = { subjectKind: 'group', identityProvider: 'poc', subjectId: 'poc-users', actions: ['read', 'readHistory', 'write', 'publish', 'administer'] } as const;

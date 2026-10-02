@@ -8,7 +8,7 @@ const output = process.env.KP_POC_BROWSER_OUTPUT;
 if (!contextPath || !output || !['journey', 'persistence'].includes(phase ?? '')) {
   throw new Error('Run the owned composition-root harness; runtime context, phase, and output directory are required');
 }
-const context = JSON.parse(readFileSync(contextPath, 'utf8')) as { human: string; agent: string };
+const context = JSON.parse(readFileSync(contextPath, 'utf8')) as { human: string; agent: string; visualCapture?: unknown };
 for (const origin of [context.human, context.agent]) {
   const url = new URL(origin);
   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
@@ -31,11 +31,11 @@ export default defineConfig({
     baseURL: context.human,
     locale: 'ja-JP',
     viewport: { width: 1440, height: 900 },
-    trace: 'retain-on-failure',
-    screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    trace: context.visualCapture ? 'off' : 'retain-on-failure',
+    screenshot: context.visualCapture ? 'off' : 'only-on-failure',
+    video: context.visualCapture ? 'off' : 'retain-on-failure',
     serviceWorkers: 'block',
   },
   // Intentionally no webServer, channel or executablePath: use the pinned Playwright Chromium.
-  projects: [{ name: 'production-composition-chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [{ name: 'production-composition-chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 } }],
 });

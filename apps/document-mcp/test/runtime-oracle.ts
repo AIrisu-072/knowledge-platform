@@ -1,6 +1,6 @@
 /** Fixtures and assertions for owned synthetic acceptance; never imported by product entrypoints. */
 import assert from 'node:assert/strict';
-import type { CommandsMetadataPatch, PublishedDocumentDetail } from '@knowledge-platform/document-api-client';
+import type { CommandsMetadataPatch, PublishedDocumentDetail, ModelsDocumentRevisionPage } from '@knowledge-platform/document-api-client';
 function object(value: unknown): Record<string, unknown> {
   assert.ok(value !== null && typeof value === 'object' && !Array.isArray(value));
   return value as Record<string, unknown>;
@@ -150,4 +150,33 @@ export function assertMutationReplay(committed: unknown, after: unknown, firstRe
   assert.equal(object(entry.actor).principalId, 'poc-human');
   assert.equal(object(entry.details).changed, true);
   assert.equal(object(entry.details).resulting_revision, state.revision);
+}
+
+/** Inputs are selected only from an authorized, complete revision page. */
+export function comparisonBodies(page: ModelsDocumentRevisionPage) {
+  assert.equal(page.nextCursor, null);
+  assert.ok(page.items.length >= 2);
+  const base = page.items.at(-1)!;
+  const target = page.items[0]!;
+  assert.notEqual(base.revisionId, target.revisionId);
+  assert.notEqual(base.documentVersionId, target.documentVersionId);
+  return {
+    revision: { baseRevisionId: base.revisionId, targetRevisionId: target.revisionId, projection: 'diff' as const },
+    version: { baseVersionId: base.documentVersionId, targetVersionId: target.documentVersionId,
+      profile: 'document-diff-v0' as const, projection: 'display' as const, pageSize: 100 },
+  };
+}
+export function assertDocumentHidden(value: unknown): void {
+  const result = object(value);
+  assert.equal(result.isError, true);
+  const content = objects(result.content);
+  assert.equal(content.length, 1);
+  assert.equal(content[0]!.type, 'text');
+  assert.equal(typeof content[0]!.text, 'string');
+  const problem = object(result.structuredContent);
+  assert.deepEqual(JSON.parse(content[0]!.text as string), problem);
+  assert.equal(problem.status, 404);
+  assert.equal(problem.code, 'DOCUMENT_NOT_FOUND');
+  assert.ok(Object.keys(problem).every(key => ['status', 'code', 'traceId', 'retryable'].includes(key)));
+  assert.ok(Object.keys(result).every(key => ['isError', 'structuredContent', 'content'].includes(key)));
 }

@@ -1,3 +1,4 @@
+import { visualCheckpoint } from './visual-capture';
 import { test, expect, type Page } from '@playwright/test';
 import { createRequire } from 'node:module';
 import {
@@ -17,6 +18,7 @@ const { interruptMutationResponse } = require('../../../tools/document-poc-runti
 };
 
 test.describe.configure({ mode: 'serial' });
+test.beforeEach(async ({ page }) => { await page.setViewportSize({ width: 1440, height: 900 }); });
 
 async function publishInGui(page: Page, documentId: string, versionNo: number): Promise<PublishResult> {
   await page.goto(`/documents/${documentId}?view=authoring&tab=versions`);
@@ -181,6 +183,7 @@ test('stale GUI create capability is reauthorized after Human write revocation, 
     expect(await persistedSnapshot(context.human, documentId)).toEqual(before);
     const versions = (await listDocumentVersions({ ...common, path, query: { purpose: 'history', pageSize: 100 } })).data;
     expect(versions.items).toHaveLength(1);
+    await visualCheckpoint(page, '12-permission-denied-file-retained-1440.png');
     await restore();
     const retryResponse = page.waitForResponse(result => new URL(result.url()).pathname === `/v1/documents/${documentId}/versions` && result.request().method() === 'POST');
     await page.getByRole('alert').getByRole('button', { name: '再読み込み', exact: true }).click();
@@ -188,5 +191,6 @@ test('stale GUI create capability is reauthorized after Human write revocation, 
     await expect(page.getByRole('status')).toContainText('新しい版を作成しました');
     const after = (await listDocumentVersions({ ...common, path, query: { purpose: 'history', pageSize: 100 } })).data;
     expect(after.items).toHaveLength(2);
+    await visualCheckpoint(page, '13-permission-restored-retry-success-1440.png');
   } finally { if (revoked) await restore(); }
 });

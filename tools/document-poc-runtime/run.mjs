@@ -11,12 +11,17 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { Blocked, EvidenceReport, RUNTIME_STAGES, STARTUP_OBSERVATION_MS, assertSafeDiagnostics, binaryDirectory, command, databaseProxy, delayedJsonRequest, pausedDownload, externalDatabase, freePort, postgresArguments, serverEnvironment, sha256File, startProcess, startupBlocked, stopProcess, waitForDrain, waitForListenerRefusal, waitReady, withUnavailableWorker } from './harness.mjs';
 
 import { readBrowserDiagnostics, sanitizeBrowserPhases } from './browser-diagnostics.mjs';
+import { assertOwnedVisualDatabaseInput, exportVisualEvidence } from './visual-evidence.mjs';
 import { DatabaseDiagnostics } from './database-diagnostics.mjs';
 import { postgresReadyArgs, postgresVersionArgs, parsePostgresReadyStatus, waitForPostgresTcp } from './postgres-readiness.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const args = process.argv.slice(2);
 if (args.some(arg => arg !== '--prebuilt')) throw Error('Usage: node tools/document-poc-runtime/run.mjs [--prebuilt]');
+const visualEnabled = process.env.KP_POC_CAPTURE_VISUAL === 'true';
+if (process.env.KP_POC_CAPTURE_VISUAL !== undefined && !visualEnabled) throw Error('KP_POC_CAPTURE_VISUAL must be absent or true');
+if (visualEnabled && args.includes('--prebuilt')) throw Error('Visual evidence requires built-in-this-run source provenance');
+if (visualEnabled) assertOwnedVisualDatabaseInput(process.env);
 const base = resolve(process.env.KP_POC_EVIDENCE_DIR ?? join(root, 'tools/document-poc-runtime/.state'));
 await mkdir(base, { recursive: true, mode: 0o700 });
 const directory = await mkdtemp(join(base, 'run-'));
@@ -34,6 +39,7 @@ let cid, database, password, proxy;
 const log = name => join(directory, `${name}.log`);
 const options = (name, env = process.env) => ({ cwd: root, env, log: log(name), secrets: [database, password] });
 const run = (name, executable, args, env, timeoutMs) => command(executable, args, { ...options(name, env), ...(timeoutMs === undefined ? {} : { timeoutMs }) });
+let visualContext;
 let failed = false;
 let interrupted = false;
 const onSignal = () => { interrupted = true; for (const owned of processes) if (owned.child.exitCode === null) owned.child.kill('SIGTERM'); };
@@ -162,7 +168,13 @@ try {
   await report.stage('seed-replay', () => seed('seed-replay'));
   const contextPath = join(directory, 'runtime-context.json');
   const drainFixturePath = join(directory, 'drain-fixture.json');
-  await writeFile(contextPath, JSON.stringify({ runId, human, agent, manifestPath, drainFixturePath, statePath: join(directory, 'persisted-state.json'), workerHashes: { dsi: report.data.artifacts.dsi, diff: report.data.artifacts.diff } }), { mode: 0o600 });
+  visualContext = { runId, human, agent, manifestPath, drainFixturePath, statePath: join(directory, 'persisted-state.json'), workerHashes: { dsi: report.data.artifacts.dsi, diff: report.data.artifacts.diff } };
+  if (visualEnabled) {
+    const capture = join(directory, 'visual-checkpoints');
+    await mkdir(capture, { mode: 0o700 });
+    visualContext.visualCapture = { directory: capture, ownership: 'synthetic-owned-runtime', database: 'harness-owned-disposable-loopback' };
+  }
+  await writeFile(contextPath, JSON.stringify(visualContext), { mode: 0o600 });
   async function browser(phase) {
     const require = createRequire(join(root, 'apps/document-web/package.json'));
     const playwright = require('@playwright/test');
@@ -312,6 +324,18 @@ try {
   // finish must not override cleanup failures with passing acceptance.
   if (failed && report.data.stages.every(stage => stage.status === 'passed')) report.data.stages.push({ name: 'cleanup', status: 'failed' });
   await report.finish();
+  if (visualEnabled && report.data.acceptanceQualified) {
+    try {
+      const currentSource = { gitHead: await run('visual-git-head', 'git', ['rev-parse', 'HEAD']),
+        gitDirty: Boolean(await run('visual-git-dirty', 'git', ['status', '--porcelain'])) };
+      await exportVisualEvidence({ runDirectory: directory, report: report.data, context: visualContext, currentSource });
+      report.data.visualEvidence = { status: 'validated-local-export', count: 13, visualReview: 'NOT RUN' };
+    } catch {
+      report.data.visualEvidence = { status: 'validation-failed', visualReview: 'NOT RUN' };
+      report.data.acceptanceQualified = false; report.data.status = 'failed';
+    }
+    await report.save();
+  }
   console.log(`Document runtime evidence ${report.data.status}; use the bounded CI summary command`);
   process.exitCode = report.data.acceptanceQualified ? 0 : 1;
 }
