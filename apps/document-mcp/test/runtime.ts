@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { Client as McpClient } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { createClient, createConfig, getDocument, listDocumentRevisions, listVersionFiles, getDocumentHistory, compareDocumentRevisions, compareDocumentVersions, patchDocumentMetadata, getDocumentAccessPolicy, setDocumentAccessPolicy, type CommandsSetAccessPolicy, type CommandsPolicyExplicit, type ModelsDocumentRevisionPage, type PublishedDocumentDetail, type ModelsFileList } from '@knowledge-platform/document-api-client';
-import { guiOracle, assertSnapshotMatches, assertHistoryMatches, assertComparisons, assertMetadataUpdate } from './runtime-oracle';
+import { guiOracle, assertSnapshotMatches, assertHistoryMatches, assertComparisons, metadataObservationPatch, assertMetadataUpdate } from './runtime-oracle';
 function uuidV7(): string { const b=randomBytes(16); b.writeUIntBE(Date.now(),0,6);b[6]=(b[6]!&15)|112;b[8]=(b[8]!&63)|128;const x=b.toString('hex');return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`; }
 async function run(): Promise<void> {
   const contextPath=process.env.KP_POC_RUNTIME_CONTEXT;
@@ -77,8 +77,9 @@ async function run(): Promise<void> {
     const sandbox=manifest.documents.sandbox.create.result.documentId;
     const before=await call<PublishedDocumentDetail>('document_get',{documentId:sandbox,view:'published'});
     const metadataOperationId=uuidV7();
-    await patchDocumentMetadata({...http,path:{documentId:sandbox},body:{operationId:metadataOperationId,expectedDocumentRevision:before.revision,set:{pocAgentObservation:context.runId},unset:[],reason:'Synthetic Human to Agent consistency acceptance'}});
-    const after=await call<PublishedDocumentDetail>('document_get',{documentId:sandbox,view:'published'});assert.equal(after.metadata?.pocAgentObservation,context.runId);assert.ok(after.revision>before.revision);assert.notEqual(after.displayRevision?.revisionId,before.displayRevision?.revisionId);checks.push('human metadata update immediately visible through Agent');
+    const metadataPatch=metadataObservationPatch(before,context.runId,metadataOperationId);
+    await patchDocumentMetadata({...http,path:{documentId:sandbox},body:metadataPatch});
+    const after=await call<PublishedDocumentDetail>('document_get',{documentId:sandbox,view:'published'});assert.deepEqual(after.metadata,{...before.metadata,...metadataPatch.set});assert.ok(after.revision>before.revision);assert.notEqual(after.displayRevision?.revisionId,before.displayRevision?.revisionId);checks.push('human metadata update immediately visible through Agent');
     const sandboxRevisions=await call<ModelsDocumentRevisionPage>('document_list_revisions',{documentId:sandbox});
     const sandboxHistory=await call('document_get_history',{documentId:sandbox});
     assertMetadataUpdate(before,after,sandboxRevisions,sandboxHistory,context.runId,metadataOperationId);

@@ -1,5 +1,6 @@
-/** Assertions for the owned synthetic acceptance artifacts; never imported by product entrypoints. */
+/** Fixtures and assertions for owned synthetic acceptance; never imported by product entrypoints. */
 import assert from 'node:assert/strict';
+import type { CommandsMetadataPatch, PublishedDocumentDetail } from '@knowledge-platform/document-api-client';
 function object(value: unknown): Record<string, unknown> {
   assert.ok(value !== null && typeof value === 'object' && !Array.isArray(value));
   return value as Record<string, unknown>;
@@ -58,9 +59,22 @@ export function assertComparisons(revision: unknown, version: unknown, humanRevi
   assert.deepEqual(semantics(r), semantics(humanRevision));
   assert.deepEqual(semantics(v), semantics(humanVersion));
 }
+export function metadataObservationPatch(before: Pick<PublishedDocumentDetail, 'revision' | 'metadata'>, runId: string, operationId: string): CommandsMetadataPatch {
+  const metadata = object(before.metadata ?? {});
+  // Management v0 permits extensions and replaces that entire object, so retain its keys.
+  const extensions = metadata.extensions === undefined ? {} : object(metadata.extensions);
+  return {
+    operationId, expectedDocumentRevision: before.revision,
+    set: { extensions: { ...extensions, pocAgentObservation: runId } },
+    unset: [], reason: 'Synthetic Human to Agent consistency acceptance',
+  };
+}
 export function assertMetadataUpdate(before: unknown, after: unknown, revisions: unknown, history: unknown, runId: string, operationId: string): void {
   const prior = object(before), current = object(after), page = object(revisions), events = object(history);
-  assert.equal(object(current.metadata).pocAgentObservation, runId);
+  const priorMetadata = object(prior.metadata ?? {}), currentMetadata = object(current.metadata);
+  const extensions = priorMetadata.extensions === undefined ? {} : object(priorMetadata.extensions);
+  assert.equal(object(currentMetadata.extensions).pocAgentObservation, runId);
+  assert.deepEqual(currentMetadata, { ...priorMetadata, extensions: { ...extensions, pocAgentObservation: runId } });
   assert.ok(Number(current.revision) > Number(prior.revision));
   assert.equal(current.currentVersionId, prior.currentVersionId);
   const oldRevision = object(prior.displayRevision), revision = object(current.displayRevision);

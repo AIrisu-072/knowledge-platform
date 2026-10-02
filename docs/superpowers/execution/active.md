@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## Current checkpoint — A2 denial/metadata fixture corrections integrated, 2026-10-02 UTC
+
+- Status: **ACTIVE — REVIEWED FIXTURES INTEGRATED / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-fixture-integrated` combines A2 metadata repair `fcb1cd8d53742d013ec18a242e543cb5c7c19b45` with R2 denial/drain repair `808fd4ed8c95ef1184f9b59546159a0d77f9a99c`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) preserve both approved contracts and independent review records.
+- Every source change is byte-identical to its reviewed repair. The MCP fixture uses nested extensions with full metadata preservation; R2 uses the existing hidden publication/authoring denial and nested drain marker. No product/API/security semantics or C3-only code enter this A2 layer. Both required CI gates, locks and scanner31 records remain unchanged.
+- Fresh merged Node52 and runtime/MCP TypeScript pass; unchanged source retains the repair workers' focused/MCP33/API12/GUI42 verification. Actual runtime and restart acceptance still require hosted execution; no Rust workload was repeated.
+- Next exact action: review propagation into C3, return exact clean trees for parent publication and inspect new exact-head gates. No remote publication, successor Organization Client work, visual capture/upload, merge to main or deployment occurs here.
+
+---
+
 ## Current checkpoint — A2 retains reviewed publication-focus and scheduler readiness repairs, 2026-10-02 UTC
 
 - Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-followup-integrated` merges R2 `51bd948710beb098f88a4af18fe7bcb251933df7` into A2 `ae844ee9e5ec51b8d1977a145be26ccf8ab43079`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain the approved scopes and both source repair evidence sections.
