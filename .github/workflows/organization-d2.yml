@@ -1,0 +1,104 @@
+name: Organization D2 Source Qualification
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: organization-d2-${{ github.event.pull_request.number }}-${{ github.event.action }}
+  cancel-in-progress: false
+
+env:
+  MISE_AUTO_INSTALL: "0"
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+
+jobs:
+  qualify-source:
+    if: ${{ github.event.action != 'labeled' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'design/organization-client-v0-ui' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Install existing pinned tools and verified runner font
+        run: |
+          if ! {
+            mise install node &&
+            mise install pnpm &&
+            pnpm install --frozen-lockfile --ignore-scripts &&
+            node tools/document-poc-runtime/runner-font.mjs &&
+            pnpm --filter @knowledge-platform/document-web exec playwright install chromium
+          } > "$RUNNER_TEMP/organization-d2-setup.log" 2>&1; then
+            printf '%s\n' 'Organization D2 qualification failed: setup'
+            exit 1
+          fi
+      - name: Qualify normal subject
+        id: qualification
+        run: mise run organization:d2:normal
+
+  capture-review:
+    if: ${{ github.event.action == 'labeled' && startsWith(github.event.label.name, 'd2-visual-') && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'design/organization-client-v0-ui' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Install existing pinned tools and verified runner font
+        run: |
+          if ! {
+            mise install node &&
+            mise install pnpm &&
+            pnpm install --frozen-lockfile --ignore-scripts &&
+            node tools/document-poc-runtime/runner-font.mjs &&
+            pnpm --filter @knowledge-platform/document-web exec playwright install chromium
+          } > "$RUNNER_TEMP/organization-d2-setup.log" 2>&1; then
+            printf '%s\n' 'Organization D2 qualification failed: setup'
+            exit 1
+          fi
+      - name: Qualify capture subject
+        id: qualification
+        run: mise run organization:d2:capture
+      - name: Upload only approved D2 synthetic review pixels
+        if: ${{ success() && steps.qualification.outputs.exported == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1; D2-only bounded ADR
+        with:
+          name: organization-d2-review-${{ steps.qualification.outputs.head }}-${{ github.run_id }}
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: false
+          compression-level: 0
+          include-hidden-files: false
+          path: |
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/sales-normal.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/sales-newly_assigned.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/sales-returned.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/sales-working_draft.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/sales-handed_off.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/sales-due_soon.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/sales-blocked.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/sales-agent_active.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/sales-evidence_review.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/sales-document_compare.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/office-normal.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/office-newly_assigned.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/office-returned.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/office-working_draft.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/office-handed_off.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/office-due_soon.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/office-blocked.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/office-agent_active.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/office-evidence_review.png
+            ${{ runner.temp }}/organization-d2-${{ github.run_id }}-${{ github.run_attempt }}/visual-export/office-document_compare.png

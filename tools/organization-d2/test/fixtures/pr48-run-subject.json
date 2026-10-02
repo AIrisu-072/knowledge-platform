@@ -1,0 +1,43 @@
+{
+  "id": 37016358837,
+  "head_branch": "design/organization-client-v0-ui",
+  "head_sha": "0dcaeea6d1dce37f3833f5c8ec972ebf9368bac1",
+  "path": ".github/workflows/ci.yml",
+  "pull_requests": [
+    {
+      "url": "https://api.github.com/repos/AIrisu-072/knowledge-platform/pulls/48",
+      "id": 4717301798,
+      "number": 48,
+      "head": {
+        "ref": "design/organization-client-v0-ui",
+        "sha": "0dcaeea6d1dce37f3833f5c8ec972ebf9368bac1",
+        "repo": {
+          "id": 1369120817,
+          "url": "https://api.github.com/repos/AIrisu-072/knowledge-platform",
+          "name": "knowledge-platform"
+        }
+      },
+      "base": {
+        "ref": "design/organization-client-v0",
+        "sha": "13c1292c806c9179be0a444ef2b4be8234e00bf4",
+        "repo": {
+          "id": 1369120817,
+          "url": "https://api.github.com/repos/AIrisu-072/knowledge-platform",
+          "name": "knowledge-platform"
+        }
+      }
+    }
+  ],
+  "repository": {
+    "id": 1369120817,
+    "full_name": "AIrisu-072/knowledge-platform",
+    "url": "https://api.github.com/repos/AIrisu-072/knowledge-platform",
+    "fork": false
+  },
+  "head_repository": {
+    "id": 1369120817,
+    "full_name": "AIrisu-072/knowledge-platform",
+    "url": "https://api.github.com/repos/AIrisu-072/knowledge-platform",
+    "fork": false
+  }
+}

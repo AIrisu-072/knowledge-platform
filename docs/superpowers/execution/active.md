@@ -1,11 +1,11 @@
 # Active Execution Pointer
 
-## Current checkpoint — Organization Client D1 frozen / Phase3 next, 2026-10-02 UTC
+## Current checkpoint — Organization Client D2 source reviewed / visual gate pending, 2026-10-02 UTC
 
-- Status: **ACTIVE — PHASE0 COMPLETE; PHASE1/2 FROZEN; PHASE3 NEXT**. [Organization status](organization-client-v0-status.md) is the current capability pointer; [Phase0](organization-client-v0-phase0-reconstruction.md) preserves source/reuse evidence.
-- Accepted baseline remains PR43 `6103e4d4e3bb0d45ba03e1d2935492de7f11394a`, tree `f2e13eee0d7e1bfa71952c1da52a72cecb65fc9e`; [owner acceptance](https://github.com/AIrisu-072/knowledge-platform/pull/43#issuecomment-5952167525). Existing Document PRs/source remain frozen/open/Draft/unmerged; PR46R2 is separate evidence.
-- [Phase1](../specs/2026-10-02-organization-client-v0-product-ux-approval.md) and [Phase2](../specs/2026-10-02-organization-client-v0-domain-api-approval.md) exact-blob independent GO/authority records apply original§50. Initial Phase2 findings are preserved and resolved in [review receipts](organization-client-v0-design-review.md). No new major semantics or product changes.
-- Next exact action: parent publishes reviewed D1 docs at an exact tree/head; author proceeds to Phase3 two-archetype concrete source and independent review. Phase4 Tauri qualification and Phase5/6 remain unstarted. C0 ownG9, SearchWIP and independent Audit limits are not promoted. No broad installs/heavyCargo, merge/close/deploy/production operations.
+- Status: **ACTIVE — PHASE1/2 FROZEN; PHASE3 SOURCE/INTERACTION GO; ACTUAL VISUAL QUALIFICATION PENDING**. [Organization status](organization-client-v0-status.md) and [D2 review](organization-client-v0-ui-review.md) identify exact source/approval/review subjects.
+- Accepted H2 remains frozen. D1PR47remote13c1292c is fully hosted GREEN. Source-only [PR48](https://github.com/AIrisu-072/knowledge-platform/pull/48) remote0dcaeea6/treea7517c35 matches reviewed locald37bb7ab, exactly10 additive source/design paths and no capture workflow. Phase1/2 frozen blobs are unchanged.
+- D2 source4/4 and DOM24/24 plus independent counterexamples pass; no browser/pixel inference. Local cloud-browser preview was blocked without bypass. The owner separately authorized this D2 review's20syntheticPNG/1day public artifact and exact existing uploader exception only.
+- Next exact action: parent publishes the integrated source/workflow/privacy-reviewed candidate (GO at55253877), verifies all four applicable normal exact-head workflows, then may activate the one-shot PR48-bound capture. [Qualification status](organization-d2-visual-qualification-status.md) preserves strict PR/base/replay and export boundaries. Actual pixels and Phase3 freeze remain pending; Phase4–6 unstarted. C0/Search/Audit limits and no merge/close/deploy/production boundaries remain.
 
 ---
 

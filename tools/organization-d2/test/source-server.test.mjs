@@ -1,0 +1,15 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, writeFile, symlink, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import http from 'node:http';
+import { SOURCE_FILES, SERVED_FILES, STATES, snapshotSource, startSourceServer } from '../source-server.mjs';
+async function fixture(t) { const root = await mkdtemp(join(tmpdir(), 'org-source-')); t.after(() => rm(root, { recursive: true, force: true })); for (const name of SOURCE_FILES) await writeFile(join(root, name), `synthetic ${name}`); return root; }
+const request = (origin, path, method = 'GET', host) => new Promise((resolve, reject) => { const req = http.request(origin, { path, method, headers: host ? { Host: host } : {} }, res => { const chunks = []; res.on('data', c => chunks.push(c)); res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString() })); }); req.on('error', reject); req.end(); });
+test('snapshot serves only six immutable allowed assets, hashes all eight review inputs', async t => { const root = await fixture(t); const snapshot = await snapshotSource(root); assert.equal(snapshot.identity.length, 8); assert.equal(STATES.length, 10); const server = await startSourceServer(snapshot); t.after(server.close); await writeFile(join(root, 'sales.html'), 'changed after snapshot'); for (const name of SERVED_FILES) { const response = await request(server.origin, `/${name}`); assert.equal(response.status, 200); assert.equal(response.body, `synthetic ${name}`); assert.match(response.headers['content-security-policy'], /connect-src 'none'/); } });
+test('server rejects nonallowlist, traversal, encoded path, wrong method and hostile host', async t => { const server = await startSourceServer(await snapshotSource(await fixture(t))); t.after(server.close); for (const path of ['/', '/.git/config', '/../sales.html', '/%73ales.html', '/sales.html/extra', '/interaction.test.mjs', '/source-design.test.mjs', '/../../.env']) assert.equal((await request(server.origin, path)).status, 404); assert.equal((await request(server.origin, '/sales.html', 'POST')).status, 405); assert.equal((await request(server.origin, '/sales.html', 'GET', 'evil.invalid')).status, 421); });
+test('source symlink, nonregular file and oversized source fail closed', async t => { const root = await fixture(t); await rm(join(root, 'sales.html')); await symlink(join(root, 'office.html'), join(root, 'sales.html')); await assert.rejects(snapshotSource(root)); await rm(join(root, 'sales.html')); await mkdir(join(root, 'sales.html')); await assert.rejects(snapshotSource(root)); await rm(join(root, 'sales.html'), { recursive: true }); await writeFile(join(root, 'sales.html'), Buffer.alloc(128 * 1024 + 1)); await assert.rejects(snapshotSource(root)); });
+test('source parent symlink is rejected instead of serving outside the packet', async t => {
+  const root = await fixture(t), alias = `${root}-alias`; await symlink(root, alias); t.after(() => rm(alias)); await assert.rejects(snapshotSource(alias));
+});

@@ -385,3 +385,11 @@ cargo build --locked -p document-semantic-inspection-worker --bin document-seman
 export DSI_WORKER_BIN="$(realpath "${CARGO_TARGET_DIR:-target}/debug/document-semantic-inspection-worker")"
 cargo test --locked -p document-publication-scheduler --test linux_container_canary -- --ignored --test-threads=1
 '''
+
+[tasks."organization:d2:normal"]
+description = "Qualify the bounded synthetic Organization D2 source without captures"
+run = ["node tools/organization-d2/unit-check.mjs", "node tools/organization-d2/run.mjs normal"]
+
+[tasks."organization:d2:capture"]
+description = "Qualify and export the explicitly activated current D2 twenty-PNG review"
+run = ["node tools/organization-d2/unit-check.mjs", "node tools/organization-d2/run.mjs capture"]
