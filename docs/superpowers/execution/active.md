@@ -1,5 +1,15 @@
 # Active Execution Pointer
 
+## Current checkpoint — Organization Client D1 frozen / Phase3 next, 2026-10-02 UTC
+
+- Status: **ACTIVE — PHASE0 COMPLETE; PHASE1/2 FROZEN; PHASE3 NEXT**. [Organization status](organization-client-v0-status.md) is the current capability pointer; [Phase0](organization-client-v0-phase0-reconstruction.md) preserves source/reuse evidence.
+- Accepted baseline remains PR43 `6103e4d4e3bb0d45ba03e1d2935492de7f11394a`, tree `f2e13eee0d7e1bfa71952c1da52a72cecb65fc9e`; [owner acceptance](https://github.com/AIrisu-072/knowledge-platform/pull/43#issuecomment-5952167525). Existing Document PRs/source remain frozen/open/Draft/unmerged; PR46R2 is separate evidence.
+- [Phase1](../specs/2026-10-02-organization-client-v0-product-ux-approval.md) and [Phase2](../specs/2026-10-02-organization-client-v0-domain-api-approval.md) exact-blob independent GO/authority records apply original§50. Initial Phase2 findings are preserved and resolved in [review receipts](organization-client-v0-design-review.md). No new major semantics or product changes.
+- Next exact action: parent publishes reviewed D1 docs at an exact tree/head; author proceeds to Phase3 two-archetype concrete source and independent review. Phase4 Tauri qualification and Phase5/6 remain unstarted. C0 ownG9, SearchWIP and independent Audit limits are not promoted. No broad installs/heavyCargo, merge/close/deploy/production operations.
+
+---
+
+
 ## Current checkpoint — Browser-only timestamp geometry proof prepared, 2026-10-02 UTC
 
 - Status: **ACTIVE — LOCAL ORACLE/WIRING CHECKS PASS / INDEPENDENT REVIEW AND ACTUAL CHROMIUM LAYOUT PENDING**. Isolated `fix/document-timestamp-browser-geometry` starts at reviewed combined `4cda0e9814cebed38260497ced96af75804cccde` / tree `97bd0446fe95e9bb35b91283f9e67a4756ec010a`. [C3 Status](document-poc-acceptance-v0-status.md) records the approved display-only proof and its limits.
