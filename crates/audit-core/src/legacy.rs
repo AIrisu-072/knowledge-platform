@@ -38,7 +38,11 @@ impl AuditEnvelope {
     pub fn from_legacy(row: LegacyAuditRow) -> Result<Self, ValidationError> {
         let row = row.0;
         let rule = catalog::rule(&row.event_type)?;
-        if rule.deferred || row.data.get("reason").is_some() {
+        if rule.deferred
+            || row.data.get("reason").is_some()
+            || (row.event_type == "access_policy.changed"
+                && row.data.get("bootstrap") != Some(&Value::Bool(true)))
+        {
             return Err(ValidationError::LegacyReasonContractUnqualified);
         }
         let at = OffsetDateTime::parse(&row.occurred_at, &Rfc3339)

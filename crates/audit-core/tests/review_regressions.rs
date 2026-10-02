@@ -16,52 +16,54 @@ fn adapt(row: &Value) -> AuditEnvelope {
 }
 
 #[test]
-fn access_policy_target_must_match_the_document_or_folder_resource() {
+fn access_policy_bootstrap_target_must_match_the_actual_root_folder_resource() {
     let original = legacy("access_policy.changed");
+    let envelope = adapt(&original);
     let mut rejected = Vec::new();
-    for resource_type in ["Document", "Folder"] {
-        let mut valid = original.clone();
-        valid["resource_type"] = json!(resource_type);
-        valid["subject"] = json!(format!(
+    for (key, bad) in [
+        ("target_id", json!("0198aa00-0000-7000-8000-000000000099")),
+        ("target_type", json!("Document")),
+    ] {
+        let mut raw = original.clone();
+        raw["data"][key] = bad.clone();
+        rejected.push(
+            AuditEnvelope::from_legacy(
+                LegacyAuditRow::from_json(&serde_json::to_vec(&raw).unwrap()).unwrap(),
+            )
+            .is_err(),
+        );
+        let mut event = envelope.as_value().clone();
+        event["data"]["metadata"][key] = bad;
+        rejected.push(AuditEnvelope::from_json(&serde_json::to_vec(&event).unwrap()).is_err());
+    }
+    for resource_type in ["Document", "AccessPolicy"] {
+        let mut raw = original.clone();
+        raw["resource_type"] = json!(resource_type);
+        raw["data"]["target_type"] = json!(resource_type);
+        raw["subject"] = json!(format!(
             "{}/{}",
             resource_type.to_ascii_lowercase(),
-            valid["resource_id"].as_str().unwrap()
+            raw["resource_id"].as_str().unwrap()
         ));
-        valid["data"]["target_type"] = json!(resource_type);
-        let envelope = adapt(&valid);
-        for (key, bad) in [
-            ("target_id", json!("0198aa00-0000-7000-8000-000000000099")),
-            (
-                "target_type",
-                json!(if resource_type == "Document" {
-                    "Folder"
-                } else {
-                    "Document"
-                }),
-            ),
-        ] {
-            let mut raw = valid.clone();
-            raw["data"][key] = bad.clone();
-            rejected.push(
-                AuditEnvelope::from_legacy(
-                    LegacyAuditRow::from_json(&serde_json::to_vec(&raw).unwrap()).unwrap(),
-                )
-                .is_err(),
-            );
-            let mut event = envelope.as_value().clone();
-            event["data"]["metadata"][key] = bad;
-            rejected.push(AuditEnvelope::from_json(&serde_json::to_vec(&event).unwrap()).is_err());
-        }
+        rejected.push(
+            AuditEnvelope::from_legacy(
+                LegacyAuditRow::from_json(&serde_json::to_vec(&raw).unwrap()).unwrap(),
+            )
+            .is_err(),
+        );
+        let mut event = envelope.as_value().clone();
+        event["data"]["resource"]["type"] = json!(resource_type);
+        event["data"]["metadata"]["target_type"] = json!(resource_type);
+        event["subject"] = raw["subject"].clone();
+        rejected.push(AuditEnvelope::from_json(&serde_json::to_vec(&event).unwrap()).is_err());
     }
-    let mut impossible = original;
-    impossible["resource_type"] = json!("AccessPolicy");
-    impossible["subject"] = json!(format!(
-        "accesspolicy/{}",
-        impossible["resource_id"].as_str().unwrap()
-    ));
+    let mut other = original;
+    other["resource_id"] = json!("0198aa00-0000-7000-8000-000000000099");
+    other["data"]["target_id"] = other["resource_id"].clone();
+    other["subject"] = json!(format!("folder/{}", other["resource_id"].as_str().unwrap()));
     rejected.push(
         AuditEnvelope::from_legacy(
-            LegacyAuditRow::from_json(&serde_json::to_vec(&impossible).unwrap()).unwrap(),
+            LegacyAuditRow::from_json(&serde_json::to_vec(&other).unwrap()).unwrap(),
         )
         .is_err(),
     );

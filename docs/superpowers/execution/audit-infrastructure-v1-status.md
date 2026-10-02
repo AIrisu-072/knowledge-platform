@@ -1,5 +1,14 @@
 # Audit Infrastructure v1 — capability status
 
+## 2026-10-02 UTC — A2 Management compatibility qualification reopened
+
+- Prior Draft PR45 exact-head CI/Sandbox/DSI remain successful, but producer cross-check found a real normal-ACL reason-preservation gap. Normal SetAccessPolicy takes a required reason; neither its outbox payload nor the common Management ledger retains it. The prior synthetic bootstrap-as-Document fixture was not source-backed.
+- Correction branch `fix/audit-schema-legacy-management-compat`, base `a34bfae6ad6f25a66875184e282e9b62b7d8bee1`. Bounded amendment: `../specs/2026-10-02-audit-infrastructure-v1-management-compatibility-amendment.md`. Two regression tests observed RED, then local24/24 Rust and Node4/4 plus strict Clippy/generation checks passed; fresh correction review is pending. No full producer compatibility claim.
+- All six T5–T8 reason-required commands were cross-checked: five changed-event types retain source reason and are already deferred; normal ACL omits it. All share the missing ledger reason, including no-op outcomes. No historical reconstruction/backfill or Document branch edit is authorized by this correction.
+- Next exact action: independently review the immutable amendment/schema/fixture packet, then parent may update PR45 and verify new exact-head hosted gates. Genuine bootstrap must match the actual Root Folder-only producer; source/store Task3 work stays separate.
+
+The following is the previous review checkpoint; the newly found conditional-variant gap supersedes its completeness claim.
+
 ## 2026-10-02 UTC — A2 code re-review GO; exact-head hosted qualification next
 
 - A0 complete; A1 frozen and independently approved. A2 review1 on `c177ca0c` found two Important/P2: contradictory ACL target/resource evidence and last-wins duplicate JSON admission. Both have genuine RED→GREEN repairs; current audit-core21/21 tests (67 catalog vectors), strict Clippy, Node4/4, schema regeneration and workspace fmt pass. Independent re-review GO at `dd17021ec0938fe77430769d3ee5a2c1d2b6d97a` confirmed both repairs and seven parser edge probes with no remaining Critical/Important finding. Exact-head A-AUD1 hosted gates are pending. A3–A6 NOT STARTED.

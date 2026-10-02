@@ -11,7 +11,7 @@ const object=(properties,required=Object.keys(properties))=>({type:'object',prop
 const principal=object({identityProvider:text,principalId:text});
 const counter={type:'integer',minimum:0,maximum:JSON.rawJSON("9223372036854775807")};
 function field(f){switch(f.kind){
-case'uuid':return uuid;case'nullable_uuid':return {anyOf:[uuid,{type:'null'}]};case'counter':return counter;case'boolean':return{type:'boolean'};
+case'uuid':return uuid;case'nullable_uuid':return {anyOf:[uuid,{type:'null'}]};case'counter':return counter;case'positive_counter':return{...counter,minimum:1};case'boolean':return{type:'boolean'};
 case'enum':return{enum:f.values};case'principal':return principal;
 case'digest':return{type:'array',minItems:32,maxItems:32,items:{type:'integer',minimum:0,maximum:255}};
 case'legacy_time':return {type:'array',minItems:9,maxItems:9,prefixItems:[{type:'integer',minimum:-9999,maximum:9999},{type:'integer',minimum:1,maximum:366},...Array.from({length:3},()=>({type:'integer',minimum:0,maximum:59})),{type:'integer',minimum:0,maximum:999999999},...Array.from({length:3},()=>({type:'integer',minimum:-59,maximum:59}))],items:false,auditLegacyTime:true};

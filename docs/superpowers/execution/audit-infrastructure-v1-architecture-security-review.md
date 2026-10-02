@@ -49,3 +49,10 @@ Reviewed `c177ca0c3dcc3f5fdbf9265a3e5af0392f12a2ef`, tree `549ba13f74fb0f187437f
 Reviewed repaired head `dd17021ec0938fe77430769d3ee5a2c1d2b6d97a`, tree `c8d79ecdfbced36da931d4a88da5884db68188a9`. Both original P2 probes now reject. Mixed-sign legacy tuples reject in runtime/schema while valid signed offsets retain their values. Independent Rust21/21, Node4/4, generation and diff checks passed, plus seven direct parser edge probes (nested array/Unicode-escaped/null duplicate members, recursion bound, trailing data and duplicate root ID). No remaining Critical/Important finding. Candidate stayed clean/unchanged during review.
 
 GO covers A2 code/schema review only. Exact-head hosted/full aggregate and A3 backend/source SQL/failure/recovery qualification remain separate. Deferred reason-bearing delivery and source cleanup remain deferred; no producer/backend claim follows from this receipt.
+
+
+## Management producer cross-check — A2 conditional-variant gate reopened
+
+Parent and implementation worker independently confirmed Management design §6 line136 requires durable reason, while the common ledger helper stores only digest/result. Normal SetAccessPolicy also omits reason from its Audit/Domain payload. The previous synthetic Document bootstrap did not match the actual Root Folder-only producer. This is a real qualification correction, not a note or a license to fabricate missing evidence. The new bounded amendment audits all six commands, defers normal ACL even when the reason key is absent, and models actual bootstrap only.
+
+Observed RED: eight normal ACL legacy/envelope paths were accepted; seven unsupported bootstrap schema variants were accepted. Local repair passes24/24 Rust,75 vectors, Node4/4 and strict Clippy, with the actual bootstrap canonical digest unchanged. Fresh independent semantics review is PENDING. No source row, Document producer/ledger, frozen design/plan, or backend branch is changed by this packet.

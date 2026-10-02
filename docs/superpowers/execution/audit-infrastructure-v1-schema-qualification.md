@@ -1,5 +1,13 @@
 # Audit Infrastructure v1 — A2 schema qualification
 
+## Management compatibility correction — local GREEN, fresh review pending
+
+The prior A2 exact-head hosted gates passed, but the normal ACL reason-omission gap reopens semantic qualification for that variant. The bounded amendment cross-checks all six T5–T8 commands against the approved ledger requirement. Five changed-event types retain source reason and were already deferred; normal ACL does not retain it. All six share the missing ledger field. Historical missing reasons are not reconstructed.
+
+Two genuine regressions were observed: eight normal ACL adapter/envelope paths were accepted despite missing reason evidence, and seven unsupported bootstrap schema variants were accepted. Both now reject/defer. Actual bootstrap is Root Folder-only with an explicit true flag, non-null policy ID, policy_revision1 and positive access_revision. Its pre-correction canonical digest is asserted unchanged using a byte-array vector. Existing resource cross-binding negatives were retained with the corrected Root fixture; Document bootstrap is now a negative.
+
+Fresh local24/24 Rust tests,75 synthetic conformance vectors (15 accepted/60 rejected), strict all-target Clippy, Node4/4 and schema regeneration pass. Original design/plan and earlier bounded Diff/correlation addendum are unchanged. No Cargo dependency, producer, ledger or source/store change is in this correction. Fresh independent semantics review and new exact-head hosted gates are still required before closing the correction. Earlier receipts below are historical and do not override this finding.
+
 Status: INDEPENDENT CODE RE-REVIEW GO at `dd17021ec0938fe77430769d3ee5a2c1d2b6d97a`; exact-head hosted qualification is pending. Backend/source SQL admission/delivery/access/retention/recovery remain unimplemented. This is not whole-track qualification.
 
 ## Scope

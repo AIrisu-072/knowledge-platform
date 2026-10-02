@@ -102,6 +102,13 @@ impl AuditEnvelope {
         {
             return Err(fail);
         }
+        // Normal T8 reason evidence is missing from the legacy payload/ledger.
+        // Only an explicit, source-backed bootstrap variant can be qualified.
+        if kind == "access_policy.changed"
+            && data["metadata"].get("bootstrap") != Some(&Value::Bool(true))
+        {
+            return Err(ValidationError::LegacyReasonContractUnqualified);
+        }
         let actor = closed(
             &data["actor"],
             &["identity_provider", "principal_id", "kind"],
@@ -315,6 +322,7 @@ fn field_valid(value: &Value, rule: &FieldRule) -> bool {
         "uuid" => uuid(value, false),
         "nullable_uuid" => value.is_null() || uuid(value, false),
         "counter" => value.as_i64().is_some_and(|n| n >= 0),
+        "positive_counter" => value.as_i64().is_some_and(|n| n > 0),
         "boolean" => value.is_boolean(),
         "enum" => rule.values.contains(value),
         "digest" => value.as_array().is_some_and(|a| {

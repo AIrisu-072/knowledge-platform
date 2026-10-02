@@ -373,7 +373,6 @@
       "source": "urn:knowledge-platform:document-platform",
       "category": "ACCESS_POLICY",
       "resources": [
-        "Document",
         "Folder"
       ],
       "result": "success",
@@ -386,24 +385,32 @@
         "target_type": {
           "kind": "enum",
           "values": [
-            "Document",
             "Folder"
           ]
         },
         "target_id": {
-          "kind": "uuid"
+          "kind": "enum",
+          "values": [
+            "00000000-0000-7000-8000-000000000001"
+          ]
         },
         "policy_id": {
-          "kind": "nullable_uuid"
+          "kind": "uuid"
         },
         "policy_revision": {
-          "kind": "counter"
+          "kind": "enum",
+          "values": [
+            1
+          ]
         },
         "access_revision": {
-          "kind": "counter"
+          "kind": "positive_counter"
         },
         "bootstrap": {
-          "kind": "boolean"
+          "kind": "enum",
+          "values": [
+            true
+          ]
         }
       },
       "required": [
@@ -412,7 +419,8 @@
         "target_id",
         "policy_id",
         "policy_revision",
-        "access_revision"
+        "access_revision",
+        "bootstrap"
       ]
     },
     {
