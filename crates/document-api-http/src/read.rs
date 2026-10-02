@@ -1,3 +1,5 @@
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
 use axum::extract::rejection::QueryRejection;
@@ -5,14 +7,19 @@ use axum::extract::{Path, Query, State};
 use axum::routing::get;
 use axum::{Extension, Json, Router};
 use document_application::{
-    AccessPolicyReadRepository, AccessPolicyReadService, ApplicationError,
-    AuthoringDocumentSummary, AuthoringQuery, DocumentDetailPurpose, DocumentDetailRead,
-    DocumentDetailReadService, DocumentHistoryEntry, DocumentHistoryRepository,
-    DocumentHistoryService, DocumentListFilter, DocumentQueryRepository, DocumentQueryService,
-    DocumentSort, FolderPageQuery, HistoryDocumentSummary, HistoryPageQuery, HistoryQuery, Page,
+    AccessPolicyReadRepository, AccessPolicyReadService, ActionCapabilityReadRepository,
+    ActionCapabilityReadService, ApplicationError, AuthoringDocumentSummary, AuthoringQuery,
+    DisplayTimestampKind, DocumentDetailPurpose, DocumentDetailRead, DocumentDetailReadService,
+    DocumentHistoryEntry, DocumentHistoryRepository, DocumentHistoryService, DocumentListFilter,
+    DocumentQueryRepository, DocumentQueryService, DocumentRevisionDetail,
+    DocumentRevisionDetailQuery, DocumentRevisionPageQuery, DocumentRevisionReadRepository,
+    DocumentRevisionReadService, DocumentRevisionSummary, DocumentSort, FolderActionCapabilities,
+    FolderPageQuery, GuiDocumentReadModel, GuiVersionFileSummary, GuiVersionSummary,
+    HistoryDocumentSummary, HistoryPageQuery, HistoryQuery, IdentityPresentation,
+    IdentityPresentationResolver, IdentityPresentationService, IdentityRef, Page,
     PolicyBindingMode, ProvenanceQuality, PublishedDocumentSummary, PublishedQuery,
-    RootFolderSummary, VerifiedActorContext, VersionDetail, VersionFileSummary, VersionPageQuery,
-    VersionPurpose, VersionRequest, VersionSummary,
+    VerifiedActorContext, VersionActionCapabilities, VersionDetail, VersionFileSummary,
+    VersionPageQuery, VersionPurpose, VersionRequest, VersionSummary,
 };
 use document_domain::{
     Action, DocumentId, DocumentVersionId, PolicyGrant, PolicySubjectKind, PolicyTarget,
@@ -33,6 +40,8 @@ use crate::trace::TraceContext;
 pub trait AuthorizedReadRepository:
     DocumentQueryRepository
     + DocumentHistoryRepository
+    + DocumentRevisionReadRepository
+    + ActionCapabilityReadRepository
     + AccessPolicyReadRepository
     + Send
     + Sync
@@ -43,6 +52,8 @@ pub trait AuthorizedReadRepository:
 impl<T> AuthorizedReadRepository for T where
     T: DocumentQueryRepository
         + DocumentHistoryRepository
+        + DocumentRevisionReadRepository
+        + ActionCapabilityReadRepository
         + AccessPolicyReadRepository
         + Send
         + Sync
@@ -52,20 +63,43 @@ impl<T> AuthorizedReadRepository for T where
 
 struct ReadState<R> {
     repository: Arc<R>,
+    identity_presentations: Arc<dyn IdentityPresentationResolver>,
 }
 
 impl<R> Clone for ReadState<R> {
     fn clone(&self) -> Self {
         Self {
             repository: self.repository.clone(),
+            identity_presentations: self.identity_presentations.clone(),
         }
     }
 }
 
+#[derive(Clone)]
+struct SessionState {
+    identity_presentations: Arc<dyn IdentityPresentationResolver>,
+}
+
+/// Builds read routes with subject-ID fallback when no presentation source is configured.
+/// Hosts with an Identity presentation source should use
+/// [`read_router_with_identity_presentation`] to enable display-name enrichment.
 pub fn read_router<R: AuthorizedReadRepository>(
     repository: Arc<R>,
     identity_adapter: Arc<dyn IdentityAdapter>,
 ) -> Result<Router, StartupError> {
+    read_router_with_identity_presentation(
+        repository,
+        identity_adapter,
+        Arc::new(UnavailableIdentityPresentationResolver),
+    )
+}
+
+pub fn read_router_with_identity_presentation<R: AuthorizedReadRepository>(
+    repository: Arc<R>,
+    identity_adapter: Arc<dyn IdentityAdapter>,
+    identity_presentations: Arc<dyn IdentityPresentationResolver>,
+) -> Result<Router, StartupError> {
+    let session_routes = session_routes(identity_presentations.clone());
     let routes = Router::new()
         .route("/v1/documents", get(list_documents::<R>))
         .route("/v1/documents/{document_id}", get(get_document::<R>))
@@ -76,6 +110,14 @@ pub fn read_router<R: AuthorizedReadRepository>(
         .route(
             "/v1/documents/{document_id}/versions/{version_id}",
             get(get_version::<R>),
+        )
+        .route(
+            "/v1/documents/{document_id}/revisions",
+            get(list_revisions::<R>),
+        )
+        .route(
+            "/v1/documents/{document_id}/revisions/{revision_id}",
+            get(get_revision::<R>),
         )
         .route(
             "/v1/documents/{document_id}/history",
@@ -98,11 +140,59 @@ pub fn read_router<R: AuthorizedReadRepository>(
             "/v1/folders/{folder_id}/access-policy",
             get(get_folder_policy::<R>),
         )
-        .with_state(ReadState { repository });
+        .with_state(ReadState {
+            repository,
+            identity_presentations,
+        })
+        .merge(session_routes);
     protect_routes(
         with_operation_timeout(routes, ORDINARY_OPERATION_TIMEOUT),
         Some(identity_adapter),
     )
+}
+
+pub fn session_router(
+    identity_adapter: Arc<dyn IdentityAdapter>,
+    identity_presentations: Arc<dyn IdentityPresentationResolver>,
+) -> Result<Router, StartupError> {
+    protect_routes(
+        with_operation_timeout(
+            session_routes(identity_presentations),
+            ORDINARY_OPERATION_TIMEOUT,
+        ),
+        Some(identity_adapter),
+    )
+}
+
+fn session_routes(identity_presentations: Arc<dyn IdentityPresentationResolver>) -> Router {
+    Router::new()
+        .route("/v1/session", get(get_session))
+        .with_state(SessionState {
+            identity_presentations,
+        })
+}
+
+struct UnavailableIdentityPresentationResolver;
+
+impl IdentityPresentationResolver for UnavailableIdentityPresentationResolver {
+    fn resolve_batch<'a>(
+        &'a self,
+        _refs: &'a [IdentityRef],
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<
+                        Vec<IdentityPresentation>,
+                        document_application::IdentityPresentationResolutionError,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async {
+            Err(document_application::IdentityPresentationResolutionError::Unavailable)
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -166,6 +256,8 @@ struct PublishedDocumentDto {
     published_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     first_read_at: Option<String>,
+    #[serde(flatten)]
+    gui: GuiDocumentFieldsDto,
 }
 
 #[derive(Debug, Serialize)]
@@ -181,6 +273,8 @@ struct AuthoringDocumentDto {
     current_version_id: Option<Uuid>,
     metadata: Value,
     created_at: String,
+    #[serde(flatten)]
+    gui: GuiDocumentFieldsDto,
 }
 
 #[derive(Debug, Serialize)]
@@ -196,6 +290,93 @@ struct HistoryDocumentDto {
     revision: i64,
     metadata: Value,
     created_at: String,
+    #[serde(flatten)]
+    gui: GuiDocumentFieldsDto,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GuiDocumentFieldsDto {
+    display_version: GuiVersionSummaryDto,
+    display_revision: Option<DocumentRevisionSummaryDto>,
+    read_state: GuiReadStateDto,
+    display_timestamp: GuiDisplayTimestampDto,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GuiVersionSummaryDto {
+    version_id: Uuid,
+    version_no: i64,
+    base_version_id: Option<Uuid>,
+    lifecycle_state: String,
+    is_current: bool,
+    approved_at: Option<String>,
+    scheduled_publish_at: Option<String>,
+    published_at: Option<String>,
+    withdrawn_at: Option<String>,
+    updated_at: String,
+    file_summary: GuiVersionFileSummaryDto,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GuiVersionFileSummaryDto {
+    authoritative_item_count: i64,
+    total_size_bytes: i64,
+    primary: Option<GuiPrimaryFileSummaryDto>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GuiPrimaryFileSummaryDto {
+    display_name: String,
+    media_type: String,
+    size_bytes: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GuiReadStateDto {
+    is_read: bool,
+    first_read_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GuiDisplayTimestampDto {
+    kind: &'static str,
+    value: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DocumentRevisionSummaryDto {
+    revision_id: Uuid,
+    document_version_id: Uuid,
+    major: i64,
+    minor: i64,
+    label: String,
+    created_at: String,
+    source_kind: String,
+    metadata_snapshot_status: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RevisionActorDto {
+    identity_provider: String,
+    principal_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DocumentRevisionDetailDto {
+    #[serde(flatten)]
+    summary: DocumentRevisionSummaryDto,
+    metadata_snapshot: Option<Value>,
+    actor: Option<RevisionActorDto>,
+    reason: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -224,11 +405,16 @@ enum DocumentListDto {
 struct VersionDto {
     version_id: Uuid,
     version_no: i64,
+    base_version_id: Option<Uuid>,
     lifecycle_state: String,
     is_current: bool,
     created_at: String,
+    approved_at: Option<String>,
+    scheduled_publish_at: Option<String>,
     published_at: Option<String>,
     withdrawn_at: Option<String>,
+    updated_at: String,
+    file_summary: GuiVersionFileSummaryDto,
     first_read_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<String>,
@@ -238,9 +424,51 @@ struct VersionDto {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct VersionDetailDto {
+    #[serde(flatten)]
+    version: VersionDto,
+    capabilities: VersionActionCapabilities,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct PageDto<T> {
     items: Vec<T>,
     next_cursor: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionDto {
+    principal: PrincipalDto,
+    presentation: IdentityPresentationDto,
+    invocation_kind: &'static str,
+    expires_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PrincipalDto {
+    identity_provider: String,
+    principal_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IdentityPresentationDto {
+    #[serde(rename = "ref")]
+    reference: IdentityRefDto,
+    display_name: Option<String>,
+    secondary_text: Option<String>,
+    resolution: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IdentityRefDto {
+    provider: String,
+    kind: &'static str,
+    subject_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -260,6 +488,7 @@ struct HistoryEntryDto {
 struct ActorDto {
     identity_provider: String,
     principal_id: String,
+    presentation: IdentityPresentationDto,
 }
 
 #[derive(Debug, Serialize)]
@@ -292,6 +521,24 @@ struct FolderDto {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct FolderDetailDto {
+    folder_id: Uuid,
+    parent_folder_id: Option<Uuid>,
+    name: String,
+    revision: i64,
+    capabilities: FolderActionCapabilities,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FolderChildrenDto {
+    items: Vec<FolderDto>,
+    next_cursor: Option<String>,
+    capabilities: FolderActionCapabilities,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct PolicyTargetDto {
     kind: &'static str,
     id: Uuid,
@@ -304,6 +551,7 @@ struct PolicyGrantDto {
     identity_provider: String,
     subject_id: String,
     actions: Vec<&'static str>,
+    presentation: IdentityPresentationDto,
 }
 
 #[derive(Debug, Serialize)]
@@ -316,6 +564,37 @@ struct AccessPolicyDto {
     effective_policy_id: Uuid,
     effective_source: PolicyTargetDto,
     effective_grants: Vec<PolicyGrantDto>,
+}
+
+async fn get_session(
+    State(state): State<SessionState>,
+    Extension(ctx): Extension<VerifiedActorContext>,
+    Extension(trace): Extension<TraceContext>,
+) -> Result<Json<SessionDto>, ApiError> {
+    let path = "/v1/session";
+    ctx.ensure_current()
+        .map_err(|error| problem(error, path, &trace))?;
+    let reference = IdentityRef::from_principal(ctx.principal());
+    let presentation = IdentityPresentationService::resolve_batch(
+        state.identity_presentations.as_ref(),
+        std::slice::from_ref(&reference),
+    )
+    .await
+    .into_iter()
+    .next()
+    .unwrap_or_else(|| IdentityPresentation::unavailable(reference));
+    ctx.ensure_current()
+        .map_err(|error| problem(error, path, &trace))?;
+
+    Ok(Json(SessionDto {
+        principal: PrincipalDto {
+            identity_provider: ctx.principal().identity_provider().to_owned(),
+            principal_id: ctx.principal().principal_id().to_owned(),
+        },
+        presentation: identity_presentation_dto(presentation),
+        invocation_kind: ctx.invocation_kind().as_str(),
+        expires_at: timestamp(ctx.valid_until()).map_err(|error| problem(error, path, &trace))?,
+    }))
 }
 
 async fn list_documents<R: AuthorizedReadRepository>(
@@ -429,11 +708,11 @@ async fn get_document<R: AuthorizedReadRepository>(
         _ => return Err(problem(validation("invalid view"), &path, &trace)),
     };
     let id = document_id_value(&document_id).map_err(|error| problem(error, &path, &trace))?;
-    let detail = DocumentDetailReadService::new(state.repository)
+    let detail = DocumentDetailReadService::new(state.repository.clone())
         .read(&ctx, id, purpose)
         .await
         .map_err(|error| problem(error, &path, &trace))?;
-    let value = match detail {
+    let mut value = match detail {
         DocumentDetailRead::Published(summary) => serde_json::to_value(
             published_dto(summary).map_err(|error| problem(error, &path, &trace))?,
         ),
@@ -448,6 +727,11 @@ async fn get_document<R: AuthorizedReadRepository>(
             &trace,
         )
     })?;
+    let capabilities = ActionCapabilityReadService::new(state.repository)
+        .read_document(&ctx, id)
+        .await
+        .map_err(|error| problem(error, &path, &trace))?;
+    insert_capabilities(&mut value, capabilities).map_err(|error| problem(error, &path, &trace))?;
     Ok(Json(value))
 }
 
@@ -486,20 +770,23 @@ async fn get_version<R: AuthorizedReadRepository>(
     Extension(trace): Extension<TraceContext>,
     Path((document_id, version_id)): Path<(String, String)>,
     query: Result<Query<PurposeParams>, QueryRejection>,
-) -> Result<Json<VersionDto>, ApiError> {
+) -> Result<Json<VersionDetailDto>, ApiError> {
     let path = format!("/v1/documents/{document_id}/versions/{version_id}");
     let params = query_params(query, &path, &trace)?;
-    let detail = DocumentHistoryService::new(state.repository)
-        .get_document_version(
-            &ctx,
-            version_request(&document_id, &version_id, params.purpose.as_deref())
-                .map_err(|error| problem(error, &path, &trace))?,
-        )
+    let request = version_request(&document_id, &version_id, params.purpose.as_deref())
+        .map_err(|error| problem(error, &path, &trace))?;
+    let detail = DocumentHistoryService::new(state.repository.clone())
+        .get_document_version(&ctx, request)
         .await
         .map_err(|error| problem(error, &path, &trace))?;
-    Ok(Json(
-        version_detail_dto(detail).map_err(|error| problem(error, &path, &trace))?,
-    ))
+    let capabilities = ActionCapabilityReadService::new(state.repository)
+        .read_version(&ctx, request)
+        .await
+        .map_err(|error| problem(error, &path, &trace))?;
+    Ok(Json(VersionDetailDto {
+        version: version_detail_dto(detail).map_err(|error| problem(error, &path, &trace))?,
+        capabilities,
+    }))
 }
 
 async fn list_history<R: AuthorizedReadRepository>(
@@ -511,7 +798,7 @@ async fn list_history<R: AuthorizedReadRepository>(
 ) -> Result<Json<PageDto<HistoryEntryDto>>, ApiError> {
     let path = format!("/v1/documents/{document_id}/history");
     let params = query_params(query, &path, &trace)?;
-    let page = DocumentHistoryService::new(state.repository)
+    let page = DocumentHistoryService::new(state.repository.clone())
         .list_document_history(
             &ctx,
             HistoryPageQuery {
@@ -523,16 +810,94 @@ async fn list_history<R: AuthorizedReadRepository>(
         )
         .await
         .map_err(|error| problem(error, &path, &trace))?;
+    let actor_refs = page
+        .items
+        .iter()
+        .filter_map(|entry| entry.actor.as_ref())
+        .map(IdentityRef::from_principal)
+        .collect::<Vec<_>>();
+    let actor_presentations = IdentityPresentationService::resolve_batch(
+        state.identity_presentations.as_ref(),
+        &actor_refs,
+    )
+    .await;
+    let mut actor_presentations = actor_presentations.into_iter();
     let items = page
         .items
         .into_iter()
-        .map(history_entry_dto)
+        .map(|entry| {
+            let presentation = entry.actor.as_ref().map(|actor| {
+                actor_presentations.next().unwrap_or_else(|| {
+                    IdentityPresentation::unavailable(IdentityRef::from_principal(actor))
+                })
+            });
+            history_entry_dto(entry, presentation)
+        })
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| problem(error, &path, &trace))?;
     Ok(Json(PageDto {
         items,
         next_cursor: page.next_cursor,
     }))
+}
+
+async fn list_revisions<R: AuthorizedReadRepository>(
+    State(state): State<ReadState<R>>,
+    Extension(ctx): Extension<VerifiedActorContext>,
+    Extension(trace): Extension<TraceContext>,
+    Path(document_id): Path<String>,
+    query: Result<Query<PageParams>, QueryRejection>,
+) -> Result<Json<PageDto<DocumentRevisionSummaryDto>>, ApiError> {
+    let path = format!("/v1/documents/{document_id}/revisions");
+    let params = query_params(query, &path, &trace)?;
+    let page = DocumentRevisionReadService::new(state.repository)
+        .list_document_revisions(
+            &ctx,
+            DocumentRevisionPageQuery {
+                document_id: document_id_value(&document_id)
+                    .map_err(|error| problem(error, &path, &trace))?,
+                page_size: params.page_size,
+                cursor: params.cursor,
+            },
+        )
+        .await
+        .map_err(|error| problem(error, &path, &trace))?;
+    let items = page
+        .items
+        .into_iter()
+        .map(revision_summary_dto)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| problem(error, &path, &trace))?;
+    Ok(Json(PageDto {
+        items,
+        next_cursor: page.next_cursor,
+    }))
+}
+
+async fn get_revision<R: AuthorizedReadRepository>(
+    State(state): State<ReadState<R>>,
+    Extension(ctx): Extension<VerifiedActorContext>,
+    Extension(trace): Extension<TraceContext>,
+    Path((document_id, revision_id)): Path<(String, String)>,
+) -> Result<Json<DocumentRevisionDetailDto>, ApiError> {
+    let path = format!("/v1/documents/{document_id}/revisions/{revision_id}");
+    let document_id =
+        document_id_value(&document_id).map_err(|error| problem(error, &path, &trace))?;
+    let revision_id = Uuid::parse_str(&revision_id)
+        .map_err(|_| problem(validation("invalid revision id"), &path, &trace))?;
+    let detail = DocumentRevisionReadService::new(state.repository)
+        .get_document_revision(
+            &ctx,
+            DocumentRevisionDetailQuery {
+                document_id,
+                revision_id,
+            },
+        )
+        .await
+        .map_err(|error| problem(error, &path, &trace))?;
+    Ok(Json(
+        document_revision_detail_dto(detail).map_err(|error| problem(error, &path, &trace))?,
+    ))
 }
 
 async fn list_files<R: AuthorizedReadRepository>(
@@ -561,12 +926,22 @@ async fn get_root<R: AuthorizedReadRepository>(
     State(state): State<ReadState<R>>,
     Extension(ctx): Extension<VerifiedActorContext>,
     Extension(trace): Extension<TraceContext>,
-) -> Result<Json<FolderDto>, ApiError> {
-    let root = DocumentQueryService::new(state.repository)
+) -> Result<Json<FolderDetailDto>, ApiError> {
+    let root = DocumentQueryService::new(state.repository.clone())
         .get_root_folder(&ctx)
         .await
         .map_err(|error| problem(error, "/v1/folders/root", &trace))?;
-    Ok(Json(root_folder_dto(root)))
+    let capabilities = ActionCapabilityReadService::new(state.repository)
+        .read_folder(&ctx, root.folder_id)
+        .await
+        .map_err(|error| problem(error, "/v1/folders/root", &trace))?;
+    Ok(Json(FolderDetailDto {
+        folder_id: root.folder_id.as_uuid(),
+        parent_folder_id: None,
+        name: root.name,
+        revision: root.revision,
+        capabilities,
+    }))
 }
 
 async fn list_folder_children<R: AuthorizedReadRepository>(
@@ -575,22 +950,27 @@ async fn list_folder_children<R: AuthorizedReadRepository>(
     Extension(trace): Extension<TraceContext>,
     Path(folder_id): Path<String>,
     query: Result<Query<PageParams>, QueryRejection>,
-) -> Result<Json<PageDto<FolderDto>>, ApiError> {
+) -> Result<Json<FolderChildrenDto>, ApiError> {
     let path = format!("/v1/folders/{folder_id}/children");
     let params = query_params(query, &path, &trace)?;
-    let page = DocumentQueryService::new(state.repository)
+    let parent_folder_id =
+        folder_id_value(&folder_id).map_err(|error| problem(error, &path, &trace))?;
+    let page = DocumentQueryService::new(state.repository.clone())
         .list_child_folders(
             &ctx,
             FolderPageQuery {
-                parent_folder_id: folder_id_value(&folder_id)
-                    .map_err(|error| problem(error, &path, &trace))?,
+                parent_folder_id,
                 page_size: params.page_size,
                 cursor: params.cursor,
             },
         )
         .await
         .map_err(|error| problem(error, &path, &trace))?;
-    Ok(Json(PageDto {
+    let capabilities = ActionCapabilityReadService::new(state.repository)
+        .read_folder(&ctx, parent_folder_id)
+        .await
+        .map_err(|error| problem(error, &path, &trace))?;
+    Ok(Json(FolderChildrenDto {
         items: page
             .items
             .into_iter()
@@ -602,6 +982,7 @@ async fn list_folder_children<R: AuthorizedReadRepository>(
             })
             .collect(),
         next_cursor: page.next_cursor,
+        capabilities,
     }))
 }
 
@@ -650,10 +1031,26 @@ async fn policy_response<R: AuthorizedReadRepository>(
     path: &str,
     trace: &TraceContext,
 ) -> Result<Json<AccessPolicyDto>, ApiError> {
-    let policy = AccessPolicyReadService::new(state.repository)
+    let policy = AccessPolicyReadService::new(state.repository.clone())
         .read(&ctx, target)
         .await
         .map_err(|error| problem(error, path, trace))?;
+    let identity_refs = policy
+        .effective_grants
+        .iter()
+        .map(|grant| IdentityRef::from_policy_subject(grant.subject()))
+        .collect::<Vec<_>>();
+    let presentations = IdentityPresentationService::resolve_batch(
+        state.identity_presentations.as_ref(),
+        &identity_refs,
+    )
+    .await;
+    let effective_grants = policy
+        .effective_grants
+        .into_iter()
+        .zip(presentations)
+        .map(|(grant, presentation)| policy_grant_dto(grant, presentation))
+        .collect();
     Ok(Json(AccessPolicyDto {
         target: policy_target_dto(policy.target),
         binding_mode: match policy.binding_mode {
@@ -664,11 +1061,7 @@ async fn policy_response<R: AuthorizedReadRepository>(
         policy_revision: policy.policy_revision,
         effective_policy_id: policy.effective_policy_id.as_uuid(),
         effective_source: policy_target_dto(policy.effective_source),
-        effective_grants: policy
-            .effective_grants
-            .into_iter()
-            .map(policy_grant_dto)
-            .collect(),
+        effective_grants,
     }))
 }
 
@@ -790,6 +1183,107 @@ fn optional_timestamp(value: Option<OffsetDateTime>) -> Result<Option<String>, A
     value.map(timestamp).transpose()
 }
 
+fn gui_fields_dto(value: GuiDocumentReadModel) -> Result<GuiDocumentFieldsDto, ApplicationError> {
+    let first_read_at = optional_timestamp(value.first_read_at)?;
+    let display_timestamp = GuiDisplayTimestampDto {
+        kind: match value.display_timestamp.kind {
+            DisplayTimestampKind::RevisionCreatedAt => "revisionCreatedAt",
+            DisplayTimestampKind::WorkingUpdatedAt => "workingUpdatedAt",
+        },
+        value: timestamp(value.display_timestamp.value)?,
+    };
+    Ok(GuiDocumentFieldsDto {
+        display_version: gui_version_summary_dto(value.display_version)?,
+        display_revision: value
+            .display_revision
+            .map(revision_summary_dto)
+            .transpose()?,
+        read_state: GuiReadStateDto {
+            is_read: first_read_at.is_some(),
+            first_read_at,
+        },
+        display_timestamp,
+    })
+}
+
+fn insert_capabilities<T: Serialize>(
+    value: &mut Value,
+    capabilities: T,
+) -> Result<(), ApplicationError> {
+    let encoded =
+        serde_json::to_value(capabilities).map_err(|_| ApplicationError::IntegrityViolation)?;
+    value
+        .as_object_mut()
+        .ok_or(ApplicationError::IntegrityViolation)?
+        .insert("capabilities".into(), encoded);
+    Ok(())
+}
+
+fn gui_version_summary_dto(
+    value: GuiVersionSummary,
+) -> Result<GuiVersionSummaryDto, ApplicationError> {
+    Ok(GuiVersionSummaryDto {
+        version_id: value.document_version_id.as_uuid(),
+        version_no: value.version_no,
+        base_version_id: value.base_document_version_id.map(|id| id.as_uuid()),
+        lifecycle_state: value.lifecycle_state,
+        is_current: value.is_current,
+        approved_at: optional_timestamp(value.approved_at)?,
+        scheduled_publish_at: optional_timestamp(value.scheduled_publish_at)?,
+        published_at: optional_timestamp(value.published_at)?,
+        withdrawn_at: optional_timestamp(value.withdrawn_at)?,
+        updated_at: timestamp(value.updated_at)?,
+        file_summary: gui_file_summary_dto(value.file_summary),
+    })
+}
+
+fn gui_file_summary_dto(value: GuiVersionFileSummary) -> GuiVersionFileSummaryDto {
+    GuiVersionFileSummaryDto {
+        authoritative_item_count: value.authoritative_item_count,
+        total_size_bytes: value.total_size_bytes,
+        primary: value.primary.map(|primary| GuiPrimaryFileSummaryDto {
+            display_name: primary.display_name,
+            media_type: primary.media_type,
+            size_bytes: primary.size_bytes,
+        }),
+    }
+}
+
+fn revision_summary_dto(
+    value: DocumentRevisionSummary,
+) -> Result<DocumentRevisionSummaryDto, ApplicationError> {
+    let metadata_snapshot_status = match value.metadata_snapshot_status.as_str() {
+        "complete" => "complete",
+        "unavailable_legacy" => "unavailableLegacy",
+        _ => return Err(ApplicationError::IntegrityViolation),
+    };
+    Ok(DocumentRevisionSummaryDto {
+        revision_id: value.revision_id,
+        document_version_id: value.document_version_id.as_uuid(),
+        major: value.major_no,
+        minor: value.minor_no,
+        label: format!("{}.{}", value.major_no, value.minor_no),
+        created_at: timestamp(value.created_at)?,
+        source_kind: value.source_kind,
+        metadata_snapshot_status: metadata_snapshot_status.to_owned(),
+    })
+}
+
+fn document_revision_detail_dto(
+    value: DocumentRevisionDetail,
+) -> Result<DocumentRevisionDetailDto, ApplicationError> {
+    let actor = value.actor.map(|principal| RevisionActorDto {
+        identity_provider: principal.identity_provider().to_owned(),
+        principal_id: principal.principal_id().to_owned(),
+    });
+    Ok(DocumentRevisionDetailDto {
+        summary: revision_summary_dto(value.summary)?,
+        metadata_snapshot: value.metadata_snapshot,
+        actor,
+        reason: value.reason,
+    })
+}
+
 fn published_dto(
     value: PublishedDocumentSummary,
 ) -> Result<PublishedDocumentDto, ApplicationError> {
@@ -806,6 +1300,7 @@ fn published_dto(
         created_at: timestamp(value.created_at)?,
         published_at: timestamp(value.published_at)?,
         first_read_at: optional_timestamp(value.first_read_at)?,
+        gui: gui_fields_dto(value.gui)?,
     })
 }
 
@@ -823,6 +1318,7 @@ fn authoring_dto(
         current_version_id: value.current_version_id.map(|id| id.as_uuid()),
         metadata: value.document_metadata,
         created_at: timestamp(value.created_at)?,
+        gui: gui_fields_dto(value.gui)?,
     })
 }
 
@@ -840,6 +1336,7 @@ fn history_document_dto(
         revision: value.document_revision,
         metadata: value.document_metadata,
         created_at: timestamp(value.created_at)?,
+        gui: gui_fields_dto(value.gui)?,
     })
 }
 
@@ -858,11 +1355,16 @@ fn version_summary_dto(value: VersionSummary) -> Result<VersionDto, ApplicationE
     Ok(VersionDto {
         version_id: value.document_version_id.as_uuid(),
         version_no: value.version_no,
+        base_version_id: value.base_document_version_id.map(|id| id.as_uuid()),
         lifecycle_state: value.lifecycle_state.to_ascii_lowercase(),
         is_current: value.is_current,
         created_at: timestamp(value.created_at)?,
+        approved_at: optional_timestamp(value.approved_at)?,
+        scheduled_publish_at: optional_timestamp(value.scheduled_publish_at)?,
         published_at: optional_timestamp(value.published_at)?,
         withdrawn_at: optional_timestamp(value.withdrawn_at)?,
+        updated_at: timestamp(value.updated_at)?,
+        file_summary: gui_file_summary_dto(value.file_summary),
         first_read_at: optional_timestamp(value.first_read_at)?,
         title: None,
         metadata: None,
@@ -876,14 +1378,23 @@ fn version_detail_dto(value: VersionDetail) -> Result<VersionDto, ApplicationErr
     Ok(dto)
 }
 
-fn history_entry_dto(value: DocumentHistoryEntry) -> Result<HistoryEntryDto, ApplicationError> {
+fn history_entry_dto(
+    value: DocumentHistoryEntry,
+    presentation: Option<IdentityPresentation>,
+) -> Result<HistoryEntryDto, ApplicationError> {
     Ok(HistoryEntryDto {
         source_kind: value.source_kind,
         source_key: value.source_key,
         occurred_at: optional_timestamp(value.occurred_at)?,
-        actor: value.actor.map(|actor| ActorDto {
-            identity_provider: actor.identity_provider().to_owned(),
-            principal_id: actor.principal_id().to_owned(),
+        actor: value.actor.map(|actor| {
+            let reference = IdentityRef::from_principal(&actor);
+            let presentation =
+                presentation.unwrap_or_else(|| IdentityPresentation::unavailable(reference));
+            ActorDto {
+                identity_provider: actor.identity_provider().to_owned(),
+                principal_id: actor.principal_id().to_owned(),
+                presentation: identity_presentation_dto(presentation),
+            }
         }),
         action_code: value.action_code,
         details: value.details,
@@ -893,6 +1404,19 @@ fn history_entry_dto(value: DocumentHistoryEntry) -> Result<HistoryEntryDto, App
             ProvenanceQuality::LegacyUnknown => "legacyUnknown",
         },
     })
+}
+
+fn identity_presentation_dto(value: IdentityPresentation) -> IdentityPresentationDto {
+    IdentityPresentationDto {
+        reference: IdentityRefDto {
+            provider: value.reference.provider,
+            kind: value.reference.kind.as_str(),
+            subject_id: value.reference.subject_id,
+        },
+        display_name: value.display_name,
+        secondary_text: value.secondary_text,
+        resolution: value.resolution.as_str(),
+    }
 }
 
 fn file_dto(value: VersionFileSummary) -> FileDto {
@@ -905,15 +1429,6 @@ fn file_dto(value: VersionFileSummary) -> FileDto {
         display_name: value.safe_display_name,
         media_type: value.media_type,
         size_bytes: value.size_bytes,
-    }
-}
-
-fn root_folder_dto(value: RootFolderSummary) -> FolderDto {
-    FolderDto {
-        folder_id: value.folder_id.as_uuid(),
-        parent_folder_id: None,
-        name: value.name,
-        revision: value.revision,
     }
 }
 
@@ -930,7 +1445,7 @@ fn policy_target_dto(value: PolicyTarget) -> PolicyTargetDto {
     }
 }
 
-fn policy_grant_dto(value: PolicyGrant) -> PolicyGrantDto {
+fn policy_grant_dto(value: PolicyGrant, presentation: IdentityPresentation) -> PolicyGrantDto {
     let subject = value.subject();
     PolicyGrantDto {
         subject_kind: match subject.kind() {
@@ -951,5 +1466,6 @@ fn policy_grant_dto(value: PolicyGrant) -> PolicyGrantDto {
                 Action::Administer => "administer",
             })
             .collect(),
+        presentation: identity_presentation_dto(presentation),
     }
 }

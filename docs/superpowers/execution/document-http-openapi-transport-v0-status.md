@@ -4,9 +4,9 @@
 
 - 状態: **HAPI-01〜12 COMPLETE / CLOSED / MERGED / NOT DEPLOYED**。Frozen Design blob 88f7046a5d14a77f4091df0c92691f6634dd57d7、承認済みProduction Plan blob 111914181143672d3fec901dae75fc2af0256b15。production Identity接続・deployはしていない。
 - G0 merge commits: PR #27 95f60f02fbc4205bfc38b6097d419fadee9682a1、#29 2ebfbd46f80c65590950d35d7ef9534377a72035、#30 2a49a2ddc28a77fba286d5d70d17464fcf4949a1、#31 6240ebbebb0db45a7360efbf568d63a2a6101db3、#32 5a81fd856d81b557e4936f663aa8b0ab3fcaa5e2。
-- PR #32 exact head 04ccb84a6d9a99f63eca8d7512888225393058fa: Standard CI 36713044816、Sandbox 36713044612、DSI PoC 36713044474はSUCCESS。PR headとmain merge commit 5a81fd856d81b557e4936f663aa8b0ab3fcaa5e2のtreeはbd2b7df1717503ff3ef937ede581e0b235f20e87で一致する。main push Standard CI 36714907650はこの記録時点で実行中。Sandbox/PoC workflowはpull_request時のみ動くため、同一treeのPR head evidenceを参照する。
+- PR #32 exact head 04ccb84a6d9a99f63eca8d7512888225393058fa: Standard CI 36713044816、Sandbox 36713044612、DSI PoC 36713044474はSUCCESS。PR headとmain merge commit 5a81fd856d81b557e4936f663aa8b0ab3fcaa5e2のtreeはbd2b7df1717503ff3ef937ede581e0b235f20e87で一致する。main push Standard CI 36714907650もSUCCESS。Sandbox/PoC workflowはpull_request時のみ動くため、同一treeのPR head evidenceを参照する。
 - HAPI-01〜12の実装・横断受入は完了。codegen candidateはproductionへpromoteせず、本番Identity adapter、server/deploy、identity-provider接続は含めていない。
-- 次のexact action: approved PR #35のexact-head gatesを確認してmainへmergeし、そのmain push CIを確認する。production deployはしない。
+- 次のexact action: HAPI-01〜12とG0 predecessor closureは完了。GUI Integration v0 G1〜G9を最新mainから継続する。production deploy、本番Identity接続、production DB migration実行はしない。
 
 
 以下は旧checkpoint。現在の工程ではない。

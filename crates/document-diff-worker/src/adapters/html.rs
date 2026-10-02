@@ -106,6 +106,27 @@ fn parse_semantic_nodes(input: &[u8]) -> Result<ParsedHtml, UnverifiedReason> {
     Ok(ParsedHtml { nodes })
 }
 
+pub(super) fn display_summary(
+    input: &[u8],
+    path: &str,
+) -> Result<Option<String>, UnverifiedReason> {
+    let parsed = parse_semantic_nodes(input)?;
+    let Some(node) = parsed.nodes.iter().find(|node| node.path == path) else {
+        return Ok(None);
+    };
+    let mut summary = format!("<{}> {}", node.tag, node.text);
+    if let Some(href) = &node.href {
+        summary.push_str(&format!("; link: {href}"));
+    }
+    if let Some(src) = &node.src {
+        summary.push_str(&format!("; image: {src}"));
+    }
+    if let Some(alt) = &node.alt {
+        summary.push_str(&format!("; alt: {alt}"));
+    }
+    Ok(Some(summary))
+}
+
 fn walk(
     handle: &Handle,
     path: &str,

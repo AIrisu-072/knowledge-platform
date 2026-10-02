@@ -1,6 +1,8 @@
 use document_application::{
-    AuthoringDocumentSummary, AuthoringQuery, CursorBinding, CursorPosition, DocumentListFilter,
-    DocumentQueryRepository, DocumentSort, FolderPageQuery, FolderSummary, HistoryDocumentSummary,
+    AuthoringDocumentSummary, AuthoringQuery, CursorBinding, CursorPosition, DisplayTimestampKind,
+    DocumentListFilter, DocumentQueryRepository, DocumentRevisionSummary, DocumentSort,
+    FolderPageQuery, FolderSummary, GuiDisplayTimestamp, GuiDocumentReadModel,
+    GuiPrimaryFileSummary, GuiVersionFileSummary, GuiVersionSummary, HistoryDocumentSummary,
     HistoryQuery, Page, PublishedDocumentSummary, PublishedQuery, QueryKind, RepositoryError,
     RootFolderSummary, VerifiedActorContext, decode_cursor, encode_cursor, fingerprint_json,
     principal_fingerprint,
@@ -28,7 +30,20 @@ WITH RECURSIVE selected_folders(folder_id, depth) AS (
     SELECT d.document_id, d.folder_id, d.current_version_id, d.revision,
            d.metadata, d.created_at, v.document_version_id, v.lifecycle_state,
            v.title, normalize(v.title, NFC) COLLATE "C" AS title_key,
-           v.published_at, rs.first_read_at,
+           v.version_no, v.base_document_version_id, v.approved_at,
+           v.scheduled_publish_at, v.published_at, v.withdrawn_at, v.updated_at,
+           rs.first_read_at,
+           file_summary.authoritative_item_count, file_summary.total_size_bytes,
+           primary_file.original_filename AS primary_original_filename,
+           primary_file.media_type AS primary_media_type,
+           primary_file.size_bytes AS primary_size_bytes,
+           revision.revision_id AS latest_revision_id,
+           revision.document_version_id AS latest_revision_version_id,
+           revision.major_no AS latest_revision_major_no,
+           revision.minor_no AS latest_revision_minor_no,
+           revision.metadata_snapshot_status AS latest_revision_snapshot_status,
+           revision.source_kind AS latest_revision_source_kind,
+           revision.created_at AS latest_revision_created_at,
            EXISTS (SELECT 1 FROM document_publication_end_operations ended
                    WHERE ended.document_id = d.document_id) AS ended,
            CASE WHEN dmb_allows_folder(d.folder_id, $2::jsonb, ARRAY['read']::text[])
@@ -60,6 +75,36 @@ WITH RECURSIVE selected_folders(folder_id, depth) AS (
     LEFT JOIN document_read_states rs
       ON rs.document_version_id = v.document_version_id
      AND rs.identity_provider = $17::text AND rs.principal_id = $18::text
+    LEFT JOIN LATERAL (
+        SELECT count(*)::bigint AS authoritative_item_count,
+               COALESCE(sum(file.size_bytes), 0)::bigint AS total_size_bytes
+        FROM content_items item
+        JOIN content_representations representation
+          ON representation.content_representation_id = item.authoritative_representation_id
+         AND representation.role = 'AUTHORITATIVE'
+        JOIN file_objects file ON file.file_id = representation.file_id
+        WHERE item.document_version_id = v.document_version_id
+    ) file_summary ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT representation.original_filename, file.media_type, file.size_bytes
+        FROM content_items item
+        JOIN content_representations representation
+          ON representation.content_representation_id = item.authoritative_representation_id
+         AND representation.role = 'AUTHORITATIVE'
+        JOIN file_objects file ON file.file_id = representation.file_id
+        WHERE item.document_version_id = v.document_version_id
+          AND item.logical_path = 'primary'
+        ORDER BY item.ordinal, item.content_item_id
+        LIMIT 1
+    ) primary_file ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT revision_id, document_version_id, major_no, minor_no,
+               metadata_snapshot_status, source_kind, created_at
+        FROM document_revisions
+        WHERE document_id = d.document_id
+        ORDER BY major_no DESC, minor_no DESC
+        LIMIT 1
+    ) revision ON TRUE
     WHERE dmb_allows_document(d.document_id, $2::jsonb, $3::text[])
       AND ($1::text = 'history' OR NOT EXISTS (
           SELECT 1 FROM document_publication_end_operations ended
@@ -119,27 +164,130 @@ struct QueryRow {
     first_read_at: Option<OffsetDateTime>,
     revision: i64,
     ended: bool,
+    gui: GuiDocumentReadModel,
 }
 
 impl QueryRow {
     fn decode(row: PgRow) -> Result<Self, RepositoryError> {
-        Ok(Self {
-            document_id: DocumentId::from_uuid(
-                row.try_get("document_id").map_err(map_statement_error)?,
-            ),
-            document_version_id: DocumentVersionId::from_uuid(
-                row.try_get("document_version_id")
+        let document_id =
+            DocumentId::from_uuid(row.try_get("document_id").map_err(map_statement_error)?);
+        let document_version_id = DocumentVersionId::from_uuid(
+            row.try_get("document_version_id")
+                .map_err(map_statement_error)?,
+        );
+        let current_version_id = row
+            .try_get::<Option<Uuid>, _>("current_version_id")
+            .map_err(map_statement_error)?
+            .map(DocumentVersionId::from_uuid);
+        let updated_at: OffsetDateTime = row.try_get("updated_at").map_err(map_statement_error)?;
+        let revision_id: Option<Uuid> = row
+            .try_get("latest_revision_id")
+            .map_err(map_statement_error)?;
+        let latest_revision = revision_id
+            .map(|revision_id| {
+                Ok(DocumentRevisionSummary {
+                    revision_id,
+                    document_version_id: DocumentVersionId::from_uuid(
+                        row.try_get("latest_revision_version_id")
+                            .map_err(map_statement_error)?,
+                    ),
+                    major_no: row
+                        .try_get("latest_revision_major_no")
+                        .map_err(map_statement_error)?,
+                    minor_no: row
+                        .try_get("latest_revision_minor_no")
+                        .map_err(map_statement_error)?,
+                    metadata_snapshot_status: row
+                        .try_get("latest_revision_snapshot_status")
+                        .map_err(map_statement_error)?,
+                    source_kind: row
+                        .try_get("latest_revision_source_kind")
+                        .map_err(map_statement_error)?,
+                    created_at: row
+                        .try_get("latest_revision_created_at")
+                        .map_err(map_statement_error)?,
+                })
+            })
+            .transpose()?;
+        let latest_revision_created_at =
+            latest_revision.as_ref().map(|revision| revision.created_at);
+        let primary_name: Option<String> = row
+            .try_get("primary_original_filename")
+            .map_err(map_statement_error)?;
+        let primary_media_type: Option<String> = row
+            .try_get("primary_media_type")
+            .map_err(map_statement_error)?;
+        let primary_size_bytes: Option<i64> = row
+            .try_get("primary_size_bytes")
+            .map_err(map_statement_error)?;
+        let primary = match (primary_name, primary_media_type, primary_size_bytes) {
+            (Some(display_name), Some(media_type), Some(size_bytes)) => {
+                Some(GuiPrimaryFileSummary {
+                    display_name: crate::document_history::safe_display_name(&display_name),
+                    media_type,
+                    size_bytes,
+                })
+            }
+            (None, None, None) => None,
+            _ => return Err(RepositoryError::IntegrityViolation),
+        };
+        let version_no = row.try_get("version_no").map_err(map_statement_error)?;
+        let lifecycle_state: String = row
+            .try_get("lifecycle_state")
+            .map_err(map_statement_error)?;
+        let first_read_at: Option<OffsetDateTime> =
+            row.try_get("first_read_at").map_err(map_statement_error)?;
+        let display_timestamp = match latest_revision_created_at {
+            Some(value) => GuiDisplayTimestamp {
+                kind: DisplayTimestampKind::RevisionCreatedAt,
+                value,
+            },
+            None => GuiDisplayTimestamp {
+                kind: DisplayTimestampKind::WorkingUpdatedAt,
+                value: updated_at,
+            },
+        };
+        let gui = GuiDocumentReadModel {
+            display_version: GuiVersionSummary {
+                document_version_id,
+                version_no,
+                base_document_version_id: row
+                    .try_get::<Option<Uuid>, _>("base_document_version_id")
+                    .map_err(map_statement_error)?
+                    .map(DocumentVersionId::from_uuid),
+                lifecycle_state: lifecycle_state.clone(),
+                is_current: current_version_id == Some(document_version_id),
+                approved_at: row.try_get("approved_at").map_err(map_statement_error)?,
+                scheduled_publish_at: row
+                    .try_get("scheduled_publish_at")
                     .map_err(map_statement_error)?,
-            ),
+                published_at: row.try_get("published_at").map_err(map_statement_error)?,
+                withdrawn_at: row.try_get("withdrawn_at").map_err(map_statement_error)?,
+                updated_at,
+                file_summary: GuiVersionFileSummary {
+                    authoritative_item_count: row
+                        .try_get("authoritative_item_count")
+                        .map_err(map_statement_error)?,
+                    total_size_bytes: row
+                        .try_get("total_size_bytes")
+                        .map_err(map_statement_error)?,
+                    primary,
+                },
+            },
+            display_revision: latest_revision,
+            first_read_at,
+            display_timestamp,
+        };
+
+        Ok(Self {
+            document_id,
+            document_version_id,
             title: row.try_get("title").map_err(map_statement_error)?,
             title_key: row.try_get("title_key").map_err(map_statement_error)?,
             lifecycle_state: row
                 .try_get("lifecycle_state")
                 .map_err(map_statement_error)?,
-            current_version_id: row
-                .try_get::<Option<Uuid>, _>("current_version_id")
-                .map_err(map_statement_error)?
-                .map(DocumentVersionId::from_uuid),
+            current_version_id,
             folder_id: row
                 .try_get::<Option<Uuid>, _>("visible_folder_id")
                 .map_err(map_statement_error)?
@@ -150,9 +298,10 @@ impl QueryRow {
             metadata: row.try_get("metadata").map_err(map_statement_error)?,
             created_at: row.try_get("created_at").map_err(map_statement_error)?,
             published_at: row.try_get("published_at").map_err(map_statement_error)?,
-            first_read_at: row.try_get("first_read_at").map_err(map_statement_error)?,
+            first_read_at,
             revision: row.try_get("revision").map_err(map_statement_error)?,
             ended: row.try_get("ended").map_err(map_statement_error)?,
+            gui,
         })
     }
 
@@ -167,11 +316,13 @@ impl QueryRow {
                 None,
             ),
             DocumentSort::TitleAsc => (None, Some(self.title_key.clone())),
+            DocumentSort::RevisionNumberDesc => return Err(RepositoryError::InvalidCursor),
         };
         Ok(CursorPosition {
             document_id: self.document_id.as_uuid(),
             sort_time_micros,
             sort_title,
+            sort_revision_key: None,
         })
     }
 }
@@ -438,6 +589,7 @@ impl DocumentQueryRepository for PostgresDocumentRepository {
                         .ok_or(RepositoryError::IntegrityViolation)?,
                     first_read_at: row.first_read_at,
                     document_revision: row.revision,
+                    gui: row.gui,
                 })
             })
             .collect::<Result<Vec<_>, RepositoryError>>()?;
@@ -480,6 +632,7 @@ impl DocumentQueryRepository for PostgresDocumentRepository {
                     document_metadata: row.metadata,
                     created_at: row.created_at,
                     document_revision: row.revision,
+                    gui: row.gui,
                 })
                 .collect(),
             next_cursor: page.next_cursor,
@@ -519,6 +672,7 @@ impl DocumentQueryRepository for PostgresDocumentRepository {
                     document_metadata: row.metadata,
                     created_at: row.created_at,
                     document_revision: row.revision,
+                    gui: row.gui,
                 })
                 .collect(),
             next_cursor: page.next_cursor,
@@ -592,6 +746,7 @@ impl DocumentQueryRepository for PostgresDocumentRepository {
                         document_id: last.folder_id.as_uuid(),
                         sort_time_micros: None,
                         sort_title: Some(last.name.clone()),
+                        sort_revision_key: None,
                     },
                 )
                 .map_err(cursor_error)?,

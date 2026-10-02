@@ -1,0 +1,85 @@
+:root {
+  color-scheme: light;
+  font-family: var(--font-sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+
+  --font-sans: "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+  --font-size-xs: 0.6875rem;
+  --font-size-sm: 0.75rem;
+  --font-size-body: 13px;
+  --font-size-section: 16px;
+  --font-size-title: 20px;
+  --font-size-page: 22px;
+  --line-height-body: 1.5;
+
+  --color-focus: #0b6fc2;
+  --color-canvas: #f4f6f8;
+  --color-surface: #ffffff;
+  --color-text: #18232e;
+  --color-text-muted: #536474;
+  --color-accent: #1f5f99;
+  --color-success: #26724c;
+  --color-warning: #8a5a00;
+  --color-danger: #aa2f2f;
+  --color-surface-subtle: #f8fafb;
+  --color-surface-selected: #edf5fc;
+  --color-surface-hover: #f2f6f9;
+  --color-text-faint: #5f7080;
+  --color-border: #d8e0e7;
+  --color-border-strong: #c3ced8;
+  --color-accent-strong: #174c7b;
+  --color-accent-soft: #e4f0fa;
+  --color-warning-soft: #fff4d6;
+  --color-danger-soft: #fff0ef;
+  --color-unread: #165f9d;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-control: 6px;
+  --radius-panel: 8px;
+  --border-width: 1px;
+  --shadow-panel: -8px 0 24px rgb(31 54 73 / 8%);
+
+  --header-height: 52px;
+  --nav-width: 240px;
+  --context-width: 340px;
+  --row-height: 48px;
+  --control-height: 34px;
+
+  --motion-instant: 0ms;
+  --motion-fast: 90ms;
+  --motion-standard: 140ms;
+  --motion-spatial: 180ms;
+  --ease-out: cubic-bezier(.215, .61, .355, 1);
+  --ease-standard: cubic-bezier(.4, 0, .2, 1);
+  --motion-panel: var(--motion-spatial) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-instant: 0ms;
+    --motion-fast: 0ms;
+    --motion-standard: 0ms;
+    --motion-spatial: 0ms;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: var(--motion-instant) !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: var(--motion-instant) !important;
+  }
+}

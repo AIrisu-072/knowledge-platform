@@ -4,7 +4,9 @@ use document_application::{
     ContentReader,
     document_diff::{DiffExecutionError, DiffExecutor},
 };
-use document_diff_core::{WorkerDiffRequest, WorkerDiffResponse};
+use document_diff_core::{
+    WorkerDiffRequest, WorkerDiffResponse, WorkerDisplayRequest, WorkerDisplayResponse,
+};
 use tokio::io::AsyncReadExt;
 
 use crate::{LinuxSandboxRunner, MAX_SOURCE_BYTES, RunnerConfig, RunnerError};
@@ -32,6 +34,19 @@ impl DiffExecutor for RunnerDiffExecutor {
         let target = read_bounded(target).await?;
         let runner = self.runner.clone();
         tokio::task::spawn_blocking(move || runner.compare(request, &base, &target))
+            .await
+            .map_err(|_| DiffExecutionError::Unavailable)?
+            .map_err(map_error)
+    }
+
+    async fn extract_display(
+        &self,
+        request: WorkerDisplayRequest,
+        source: ContentReader,
+    ) -> Result<WorkerDisplayResponse, DiffExecutionError> {
+        let source = read_bounded(source).await?;
+        let runner = self.runner.clone();
+        tokio::task::spawn_blocking(move || runner.extract_display(request, &source))
             .await
             .map_err(|_| DiffExecutionError::Unavailable)?
             .map_err(map_error)

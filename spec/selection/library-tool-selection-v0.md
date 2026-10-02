@@ -384,7 +384,7 @@ PR毎の永続保存を必須にはせず、release artifactでは生成可能�
 | General client state | TanStack Store | **POC REQUIRED** | MIT | framework-agnostic state boundary |
 | Workflow machine | XState | **DEFERRED** | MIT | complex workflow Featureのみ |
 | UI primitive | Base UI | **POC REQUIRED** | MIT | React Ariaと比較 |
-| UI primitive | React Aria Components | **POC REQUIRED** | Apache-2.0 | Base UIと比較 |
+| UI primitive | React Aria Components 1.21.1 | **SELECTED for Document GUI v0** | Apache-2.0 | focused qualification 6/6 PASS |
 | Form library | - | **DEFERRED** | - | Feature要件が出てから |
 | SSR/full-stack JS framework | Next.js / TanStack Start等 | **REJECTED v0** | varies | Rust Backendを唯一のserverとする |
 | Styling framework | Tailwind等 | **DEFERRED** | - | v0で必須にしない |
@@ -393,6 +393,8 @@ PR毎の永続保存を必須にはせず、release artifactでは生成可能�
 
 pnpm coreはMITだが、同monorepoの`pnpr/`はPolyForm Shield source-available。
 本projectでは**pnpm package manager coreのみ**利用し、`pnpr`は利用しない。
+
+Document GUI Integration v0は、承認済みDesign Amendment 01に限りBuild toolをWebpack 5.111.1へ置き換える。その他のfeatureに対するVite 8の標準選定とlicense policyは変更しない。
 
 ## 8.2 TypeScript 7 PoC
 
@@ -505,6 +507,8 @@ WCAG適合のための独自patchが少ない方を採用する。
 | JSX static a11y | eslint-plugin-jsx-a11y | **SELECTED** | MIT | static checks |
 | Automated WCAG checker | IBM Equal Access `accessibility-checker` | **POC REQUIRED** | Apache-2.0 | WCAG 2.2 A/AA、Playwright integration |
 | axe-core / @axe-core/playwright | - | **REJECTED** | MPL-2.0 | project license policy不適合 |
+
+Document GUI Integration v0は承認済みDesign Amendment 01によりVitestをJest 30.5.2へ置き換える。この例外は当該featureの実装に限り、その他のfeatureに対するVitest 4.1の標準選定を変更しない。Optionalな`eslint-plugin-jsx-a11y`は同featureの候補graphにMPL-2.0を追加するため使用せず、accessibility contract testsとPlaywright checksで対象を検査する。
 
 ## IBM Equal Access PoC
 

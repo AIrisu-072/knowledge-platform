@@ -2,7 +2,9 @@
 
 use std::{path::PathBuf, time::Duration};
 
-use document_diff_core::{WorkerDiffRequest, WorkerDiffResponse};
+use document_diff_core::{
+    WorkerDiffRequest, WorkerDiffResponse, WorkerDisplayRequest, WorkerDisplayResponse,
+};
 use thiserror::Error;
 
 mod executor;
@@ -92,6 +94,22 @@ impl LinuxSandboxRunner {
         #[cfg(target_os = "linux")]
         {
             linux::compare(&self.config, request, base, target)
+        }
+    }
+
+    pub fn extract_display(
+        &self,
+        request: WorkerDisplayRequest,
+        source: &[u8],
+    ) -> Result<WorkerDisplayResponse, RunnerError> {
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (self, request, source);
+            Err(RunnerError::Unavailable("Linux sandbox is required"))
+        }
+        #[cfg(target_os = "linux")]
+        {
+            linux::extract_display(&self.config, request, source)
         }
     }
 }

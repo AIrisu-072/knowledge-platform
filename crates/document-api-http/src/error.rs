@@ -12,6 +12,7 @@ pub enum ErrorCode {
     Forbidden,
     DocumentNotFound,
     DocumentVersionNotFound,
+    RevisionNotFound,
     FolderNotFound,
     RevisionConflict,
     OperationConflict,
@@ -33,12 +34,13 @@ pub enum ErrorCode {
 }
 
 impl ErrorCode {
-    pub const ALL: [Self; 23] = [
+    pub const ALL: [Self; 24] = [
         Self::ValidationFailed,
         Self::AuthenticationRequired,
         Self::Forbidden,
         Self::DocumentNotFound,
         Self::DocumentVersionNotFound,
+        Self::RevisionNotFound,
         Self::FolderNotFound,
         Self::RevisionConflict,
         Self::OperationConflict,
@@ -66,6 +68,7 @@ impl ErrorCode {
             Self::Forbidden => "FORBIDDEN",
             Self::DocumentNotFound => "DOCUMENT_NOT_FOUND",
             Self::DocumentVersionNotFound => "DOCUMENT_VERSION_NOT_FOUND",
+            Self::RevisionNotFound => "REVISION_NOT_FOUND",
             Self::FolderNotFound => "FOLDER_NOT_FOUND",
             Self::RevisionConflict => "REVISION_CONFLICT",
             Self::OperationConflict => "OPERATION_CONFLICT",
@@ -91,7 +94,10 @@ impl ErrorCode {
         match self {
             Self::AuthenticationRequired => 401,
             Self::Forbidden => 403,
-            Self::DocumentNotFound | Self::DocumentVersionNotFound | Self::FolderNotFound => 404,
+            Self::DocumentNotFound
+            | Self::DocumentVersionNotFound
+            | Self::RevisionNotFound
+            | Self::FolderNotFound => 404,
             Self::RevisionConflict
             | Self::OperationConflict
             | Self::CursorStale
@@ -119,6 +125,7 @@ impl ErrorCode {
             Self::Forbidden => "Forbidden",
             Self::DocumentNotFound => "Document not found",
             Self::DocumentVersionNotFound => "Document version not found",
+            Self::RevisionNotFound => "Document revision not found",
             Self::FolderNotFound => "Folder not found",
             Self::RevisionConflict => "Revision conflict",
             Self::OperationConflict => "Operation conflict",
@@ -225,6 +232,7 @@ impl ApiProblem {
             ApplicationError::DocumentVersionNotFound | ApplicationError::FileObjectNotFound => {
                 ErrorCode::DocumentVersionNotFound
             }
+            ApplicationError::DocumentRevisionNotFound => ErrorCode::RevisionNotFound,
             ApplicationError::StaleVersion => ErrorCode::StaleVersion,
             ApplicationError::CursorStale => ErrorCode::CursorStale,
             ApplicationError::StaleComparisonInput => ErrorCode::StaleComparisonInput,

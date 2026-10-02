@@ -4,6 +4,7 @@
 
 mod access_control;
 mod access_policy;
+mod action_capability;
 mod authorized_repository;
 mod create_outcome;
 mod document_diff_access;
@@ -12,6 +13,8 @@ mod document_diff_snapshot;
 mod document_history;
 mod document_management;
 mod document_query;
+mod document_revision;
+mod document_revision_read;
 mod error;
 mod file_access;
 mod folder_management;

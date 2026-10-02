@@ -11,6 +11,7 @@ mod ids;
 mod metadata;
 mod principal;
 mod resource_ref;
+mod revision;
 mod versioning;
 
 pub use access_policy::{
@@ -28,10 +29,17 @@ pub use file::{
     VersionFile,
 };
 pub use folder::normalize_folder_name;
-pub use ids::{AuditEventId, DocumentId, DocumentVersionId, EventId, FileId, FolderId, PolicyId};
+pub use ids::{
+    AuditEventId, DocumentId, DocumentRevisionId, DocumentVersionId, EventId, FileId, FolderId,
+    PolicyId,
+};
 pub use metadata::Metadata;
 pub use principal::PrincipalRef;
 pub use resource_ref::{PolicyTarget, ResourceRef};
+pub use revision::{
+    DocumentMetadataSnapshot, DocumentRevision, DocumentRevisionMetadataStatus,
+    DocumentRevisionNumber, DocumentRevisionSourceKind,
+};
 pub use versioning::{LogicalPath, SemanticContentItem, VersionManifest};
 
 #[cfg(test)]
@@ -45,6 +53,7 @@ mod tests {
     fn typed_ids_round_trip_without_exposing_infrastructure() {
         let raw = Uuid::from_u128(0x1234);
         assert_eq!(DocumentId::from_uuid(raw).as_uuid(), raw);
+        assert_eq!(DocumentRevisionId::from_uuid(raw).as_uuid(), raw);
         assert_eq!(DocumentVersionId::from_uuid(raw).as_uuid(), raw);
         assert_eq!(FileId::from_uuid(raw).as_uuid(), raw);
         assert_eq!(FolderId::from_uuid(raw).as_uuid(), raw);
@@ -194,5 +203,89 @@ mod tests {
         });
 
         assert_eq!(result.unwrap_err(), DomainError::BlankOriginalFilename);
+    }
+
+    #[test]
+    fn document_revision_number_is_positive_and_independent_from_other_revisions() {
+        let number = DocumentRevisionNumber::new(7, 2).unwrap();
+        assert_eq!(number.major_no(), 7);
+        assert_eq!(number.minor_no(), 2);
+        assert!(DocumentRevisionNumber::new(0, 0).is_err());
+        assert!(DocumentRevisionNumber::new(7, -1).is_err());
+    }
+
+    #[test]
+    fn document_revision_enforces_snapshot_and_provenance_status() {
+        let id = Uuid::from_u128(1);
+        let number = DocumentRevisionNumber::new(1, 0).unwrap();
+        let actor = PrincipalRef::new("test-idp", "policy-admin").unwrap();
+        let snapshot = DocumentMetadataSnapshot::from_metadata(&Metadata::default()).unwrap();
+        let revision = DocumentRevision::new(
+            DocumentRevisionId::from_uuid(id),
+            DocumentId::from_uuid(Uuid::from_u128(2)),
+            DocumentVersionId::from_uuid(Uuid::from_u128(3)),
+            number,
+            Some(snapshot),
+            DocumentRevisionMetadataStatus::Complete,
+            DocumentRevisionSourceKind::InitialPublication,
+            Some(Uuid::from_u128(4)),
+            OffsetDateTime::UNIX_EPOCH,
+            Some(actor),
+            None,
+        )
+        .unwrap();
+        assert_eq!(revision.number(), number);
+        assert_eq!(
+            revision.source_kind(),
+            DocumentRevisionSourceKind::InitialPublication
+        );
+
+        assert_eq!(
+            DocumentRevision::new(
+                DocumentRevisionId::from_uuid(Uuid::from_u128(5)),
+                DocumentId::from_uuid(Uuid::from_u128(2)),
+                DocumentVersionId::from_uuid(Uuid::from_u128(3)),
+                number,
+                None,
+                DocumentRevisionMetadataStatus::UnavailableLegacy,
+                DocumentRevisionSourceKind::ContentPublication,
+                None,
+                OffsetDateTime::UNIX_EPOCH,
+                None,
+                None,
+            ),
+            Err(DomainError::InvalidDocumentMetadataSnapshot)
+        );
+    }
+
+    #[test]
+    fn document_metadata_snapshot_contains_only_t5_fields_and_explicit_absence() {
+        let metadata = Metadata::from_map(Map::from_iter([
+            ("document_type".into(), Value::String("policy".into())),
+            ("owning_department".into(), Value::String("legal".into())),
+            ("other".into(), Value::String("preserved elsewhere".into())),
+        ]));
+        let snapshot = DocumentMetadataSnapshot::from_metadata(&metadata).unwrap();
+        assert_eq!(
+            snapshot.as_json(),
+            serde_json::json!({
+                "document_type": "policy",
+                "owning_department": "legal",
+                "category": null,
+                "extensions": null
+            })
+        );
+    }
+
+    #[test]
+    fn document_metadata_snapshot_rejects_invalid_t5_values() {
+        let metadata = Metadata::from_map(Map::from_iter([(
+            "document_type".into(),
+            Value::Bool(true),
+        )]));
+        assert_eq!(
+            DocumentMetadataSnapshot::from_metadata(&metadata),
+            Err(DomainError::InvalidDocumentMetadataSnapshot)
+        );
     }
 }

@@ -3,13 +3,17 @@ use std::fs;
 use document_application::DocumentRepository;
 use document_domain::{DocumentId, LifecycleState};
 use document_repository_postgres::{PostgresDocumentRepository, SYSTEM_ROOT_FOLDER_ID};
+use serde_json::Value;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use testcontainers::{
     GenericImage, ImageExt,
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
 };
+use time::OffsetDateTime;
 use uuid::Uuid;
+
+type LegacyRevisionRow = (i64, i64, Uuid, String, Option<Value>, String, Option<Uuid>);
 
 fn id(raw: u128) -> Uuid {
     Uuid::from_u128(raw)
@@ -191,4 +195,164 @@ async fn versioning_migration_backfills_simple_primary_and_marks_ambiguous_legac
     assert_eq!(current.file().file_id().as_uuid(), id(24));
     assert!(!current.requires_content_classification());
     assert_eq!(current.content_items().len(), 1);
+}
+
+#[tokio::test]
+async fn document_revision_backfill_preserves_published_order_and_marks_unknown_metadata() {
+    let (_container, pool) = postgres().await;
+    for (number, name) in [
+        (1, "document_authoritative_core"),
+        (2, "document_publish_v0"),
+        (3, "document_semantic_inspection_v0"),
+        (4, "document_versioning_v0"),
+        (5, "document_publication_end_v0"),
+        (6, "document_management_access_v0"),
+        (7, "document_folder_names_v0"),
+        (8, "document_read_state_v0"),
+    ] {
+        migration(&pool, number, name).await;
+    }
+
+    let document_id = id(70);
+    let working_document_id = id(71);
+    let earlier_version_id = id(72);
+    let later_withdrawn_version_id = id(73);
+    let working_version_id = id(74);
+    let current_metadata = serde_json::json!({
+        "document_type": "policy",
+        "owning_department": "legal",
+        "category": "internal",
+        "extensions": {"retention": "seven-years"}
+    });
+    sqlx::query("INSERT INTO documents (document_id,folder_id,current_version_id,revision,metadata,created_at) VALUES ($1,$2,NULL,3,$3,to_timestamp(0))")
+        .bind(document_id).bind(SYSTEM_ROOT_FOLDER_ID).bind(&current_metadata)
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO documents (document_id,folder_id,current_version_id,revision,metadata,created_at) VALUES ($1,$2,NULL,0,'{}',to_timestamp(0))")
+        .bind(working_document_id).bind(SYSTEM_ROOT_FOLDER_ID)
+        .execute(&pool).await.unwrap();
+
+    let earlier_published_at = OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap();
+    let later_published_at = OffsetDateTime::from_unix_timestamp(1_700_000_100).unwrap();
+    for (version_id, owner, version_no, state, published_at, withdrawn_at) in [
+        (
+            earlier_version_id,
+            document_id,
+            1_i64,
+            "PUBLISHED",
+            Some(earlier_published_at),
+            None,
+        ),
+        (
+            later_withdrawn_version_id,
+            document_id,
+            2_i64,
+            "WITHDRAWN",
+            Some(later_published_at),
+            Some(later_published_at),
+        ),
+        (
+            working_version_id,
+            working_document_id,
+            1_i64,
+            "WORKING",
+            None,
+            None,
+        ),
+    ] {
+        sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,lifecycle_state,title,published_at,withdrawn_at,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,$3,$4,'Legacy', $5,$6,'legacy-idp','legacy-actor','{}',to_timestamp(0))")
+            .bind(version_id).bind(owner).bind(version_no).bind(state).bind(published_at).bind(withdrawn_at)
+            .execute(&pool).await.unwrap();
+    }
+    sqlx::query("UPDATE documents SET current_version_id = $1 WHERE document_id = $2")
+        .bind(earlier_version_id)
+        .bind(document_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let migration_sql = fs::read_to_string(format!(
+        "{}/migrations/0009_document_revisions_v0.sql",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
+    let mut rolled_back = pool.begin().await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(migration_sql.as_str()))
+        .execute(&mut *rolled_back)
+        .await
+        .unwrap();
+    let transactional_backfill: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM document_revisions WHERE document_id = $1")
+            .bind(document_id)
+            .fetch_one(&mut *rolled_back)
+            .await
+            .unwrap();
+    assert_eq!(transactional_backfill, 2);
+    rolled_back.rollback().await.unwrap();
+    let rolled_back_table_exists: bool =
+        sqlx::query_scalar("SELECT to_regclass('public.document_revisions') IS NOT NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(
+        !rolled_back_table_exists,
+        "migration DDL and backfill are rollbackable"
+    );
+
+    migration(&pool, 9, "document_revisions_v0").await;
+
+    let rows: Vec<LegacyRevisionRow> =
+        sqlx::query_as("SELECT major_no,minor_no,document_version_id,metadata_snapshot_status,metadata_snapshot,source_kind,operation_id FROM document_revisions WHERE document_id = $1 ORDER BY major_no,minor_no")
+            .bind(document_id).fetch_all(&pool).await.unwrap();
+    assert_eq!(
+        rows.len(),
+        2,
+        "each previously published Version gets one legacy revision"
+    );
+    assert_eq!(
+        rows[0],
+        (
+            1,
+            0,
+            earlier_version_id,
+            "complete".into(),
+            Some(current_metadata),
+            "legacyBackfill".into(),
+            None
+        )
+    );
+    assert_eq!(
+        rows[1],
+        (
+            2,
+            0,
+            later_withdrawn_version_id,
+            "unavailable_legacy".into(),
+            None,
+            "legacyBackfill".into(),
+            None
+        )
+    );
+
+    let working_revisions: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM document_revisions WHERE document_id = $1")
+            .bind(working_document_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        working_revisions, 0,
+        "WORKING-only documents have no issued revisions"
+    );
+
+    migration(&pool, 9, "document_revisions_v0").await;
+    let rerun_revisions: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM document_revisions WHERE document_id = $1")
+            .bind(document_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        rerun_revisions, 2,
+        "rerunning the backfill does not duplicate rows"
+    );
 }

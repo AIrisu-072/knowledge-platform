@@ -1,6 +1,6 @@
 use document_application::{
-    ApplicationError, CursorBinding, CursorPosition, DocumentSort, QueryKind, decode_cursor,
-    encode_cursor, validate_page_size,
+    ApplicationError, CursorBinding, CursorPosition, DocumentSort, QueryKind, RevisionSortKey,
+    decode_cursor, encode_cursor, validate_page_size,
 };
 use uuid::Uuid;
 
@@ -35,6 +35,7 @@ fn cursor_binds_scope_sort_filter_principal_and_access_revision() {
         document_id: Uuid::now_v7(),
         sort_time_micros: Some(1_000_000),
         sort_title: None,
+        sort_revision_key: None,
     };
     let token = encode_cursor(&binding, &position).unwrap();
     assert_eq!(decode_cursor(&token, &binding).unwrap(), position);
@@ -65,6 +66,34 @@ fn cursor_binds_scope_sort_filter_principal_and_access_revision() {
             Err(ApplicationError::CursorStale)
         );
     }
+}
+
+#[test]
+fn revision_cursor_requires_and_round_trips_its_keyset_tiebreaker() {
+    let binding = CursorBinding {
+        kind: QueryKind::DocumentRevisions,
+        sort: DocumentSort::RevisionNumberDesc,
+        filter_fingerprint: "one-document".into(),
+        principal_fingerprint: "issuer-bound-principal".into(),
+        access_revision: 7,
+    };
+    let position = CursorPosition {
+        document_id: Uuid::now_v7(),
+        sort_time_micros: None,
+        sort_title: None,
+        sort_revision_key: Some(RevisionSortKey { major: 4, minor: 1 }),
+    };
+    let token = encode_cursor(&binding, &position).unwrap();
+    assert_eq!(decode_cursor(&token, &binding).unwrap(), position);
+
+    let invalid = CursorPosition {
+        sort_revision_key: None,
+        ..position
+    };
+    assert!(matches!(
+        encode_cursor(&binding, &invalid),
+        Err(ApplicationError::Validation(_))
+    ));
 }
 
 #[test]

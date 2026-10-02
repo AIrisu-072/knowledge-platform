@@ -2,7 +2,7 @@ $defs:
   PublishedDocument:
     type: object
     additionalProperties: false
-    required: [documentId, documentVersionId, title, folderId, currentVersionId, revision]
+    required: [documentId, documentVersionId, title, folderId, currentVersionId, revision, displayVersion, displayRevision, readState, displayTimestamp]
     properties:
       documentId: {type: string, format: uuid}
       documentVersionId: {type: string, format: uuid}
@@ -16,10 +16,14 @@ $defs:
       createdAt: {type: string, format: date-time}
       publishedAt: {type: string, format: date-time}
       firstReadAt: {type: [string, 'null'], format: date-time}
+      displayVersion: {$ref: '#/$defs/GuiVersionSummary'}
+      displayRevision: {oneOf: [{$ref: '#/$defs/DocumentRevisionSummary'}, {type: 'null'}]}
+      readState: {$ref: '#/$defs/GuiReadState'}
+      displayTimestamp: {$ref: '#/$defs/GuiDisplayTimestamp'}
   AuthoringDocument:
     type: object
     additionalProperties: false
-    required: [documentId, documentVersionId, title, lifecycleState, folderId, revision, currentVersionId]
+    required: [documentId, documentVersionId, title, lifecycleState, folderId, revision, currentVersionId, displayVersion, displayRevision, readState, displayTimestamp]
     properties:
       documentId: {type: string, format: uuid}
       documentVersionId: {type: string, format: uuid}
@@ -31,10 +35,14 @@ $defs:
       currentVersionId: {type: [string, 'null'], format: uuid}
       metadata: {type: object}
       createdAt: {type: string, format: date-time}
+      displayVersion: {$ref: '#/$defs/GuiVersionSummary'}
+      displayRevision: {oneOf: [{$ref: '#/$defs/DocumentRevisionSummary'}, {type: 'null'}]}
+      readState: {$ref: '#/$defs/GuiReadState'}
+      displayTimestamp: {$ref: '#/$defs/GuiDisplayTimestamp'}
   HistoryDocument:
     type: object
     additionalProperties: false
-    required: [documentId, documentVersionId, title, lifecycleState, ended, folderId, revision]
+    required: [documentId, documentVersionId, title, lifecycleState, ended, folderId, revision, displayVersion, displayRevision, readState, displayTimestamp]
     properties:
       documentId: {type: string, format: uuid}
       documentVersionId: {type: string, format: uuid}
@@ -46,6 +54,10 @@ $defs:
       revision: {type: integer, minimum: 0}
       metadata: {type: object}
       createdAt: {type: string, format: date-time}
+      displayVersion: {$ref: '#/$defs/GuiVersionSummary'}
+      displayRevision: {oneOf: [{$ref: '#/$defs/DocumentRevisionSummary'}, {type: 'null'}]}
+      readState: {$ref: '#/$defs/GuiReadState'}
+      displayTimestamp: {$ref: '#/$defs/GuiDisplayTimestamp'}
   DocumentList:
     oneOf:
       - type: object
@@ -71,20 +83,208 @@ $defs:
           nextCursor: {type: [string, 'null']}
   DocumentDetail:
     oneOf:
-      - $ref: '#/$defs/PublishedDocument'
-      - $ref: '#/$defs/AuthoringDocument'
-  Version:
+    - $ref: '#/$defs/PublishedDocumentDetail'
+    - $ref: '#/$defs/AuthoringDocumentDetail'
+  PublishedDocumentDetail:
     type: object
     additionalProperties: false
-    required: [versionId, versionNo, lifecycleState, isCurrent, createdAt]
+    required: [documentId, documentVersionId, title, folderId, currentVersionId, revision, displayVersion, displayRevision, readState, displayTimestamp, capabilities]
+    properties:
+      documentId: {type: string, format: uuid}
+      documentVersionId: {type: string, format: uuid}
+      title: {type: string}
+      folderId: {type: [string, 'null'], format: uuid}
+      folderName: {type: [string, 'null']}
+      currentVersionId: {type: string, format: uuid}
+      revision: {type: integer, minimum: 0}
+      unread: {type: boolean}
+      metadata: {type: object}
+      createdAt: {type: string, format: date-time}
+      publishedAt: {type: string, format: date-time}
+      firstReadAt: {type: [string, 'null'], format: date-time}
+      displayVersion: {$ref: '#/$defs/GuiVersionSummary'}
+      displayRevision: {oneOf: [{$ref: '#/$defs/DocumentRevisionSummary'}, {type: 'null'}]}
+      readState: {$ref: '#/$defs/GuiReadState'}
+      displayTimestamp: {$ref: '#/$defs/GuiDisplayTimestamp'}
+      capabilities: {$ref: '#/$defs/DocumentCapabilities'}
+  AuthoringDocumentDetail:
+    type: object
+    additionalProperties: false
+    required: [documentId, documentVersionId, title, lifecycleState, folderId, revision, currentVersionId, displayVersion, displayRevision, readState, displayTimestamp, capabilities]
+    properties:
+      documentId: {type: string, format: uuid}
+      documentVersionId: {type: string, format: uuid}
+      title: {type: string}
+      lifecycleState: {type: string, enum: [working, published, withdrawn]}
+      folderId: {type: [string, 'null'], format: uuid}
+      folderName: {type: [string, 'null']}
+      revision: {type: integer, minimum: 0}
+      currentVersionId: {type: [string, 'null'], format: uuid}
+      metadata: {type: object}
+      createdAt: {type: string, format: date-time}
+      displayVersion: {$ref: '#/$defs/GuiVersionSummary'}
+      displayRevision: {oneOf: [{$ref: '#/$defs/DocumentRevisionSummary'}, {type: 'null'}]}
+      readState: {$ref: '#/$defs/GuiReadState'}
+      displayTimestamp: {$ref: '#/$defs/GuiDisplayTimestamp'}
+      capabilities: {$ref: '#/$defs/DocumentCapabilities'}
+  ActionAvailability:
+    oneOf:
+    - type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: {const: available}
+    - type: object
+      additionalProperties: false
+      required: [status, reason]
+      properties:
+        status: {const: disabled}
+        reason: {type: string, enum: [permission, lifecycle, pendingSchedule, staleBase, notCurrent, notHumanInteractive, unsupported]}
+    description: >-
+      UI presentation hint based on the current verified actor and authoritative state.
+      A mutation endpoint must reauthorize the request. An available result does not
+      promise mutation success; publication quality and DSI preflight run when the
+      corresponding mutation is requested.
+  DocumentCapabilities:
+    type: object
+    additionalProperties: false
+    required: [createVersion, updateMetadata, moveDocument, endPublication, manageAccess, compareVersions]
+    properties:
+      createVersion: {$ref: '#/$defs/ActionAvailability'}
+      updateMetadata: {$ref: '#/$defs/ActionAvailability'}
+      moveDocument: {$ref: '#/$defs/ActionAvailability'}
+      endPublication: {$ref: '#/$defs/ActionAvailability'}
+      manageAccess: {$ref: '#/$defs/ActionAvailability'}
+      compareVersions: {$ref: '#/$defs/ActionAvailability'}
+  VersionCapabilities:
+    type: object
+    additionalProperties: false
+    required: [edit, rebase, publish, withdraw, schedulePublication, cancelPublicationSchedule, download]
+    properties:
+      edit: {$ref: '#/$defs/ActionAvailability'}
+      rebase: {$ref: '#/$defs/ActionAvailability'}
+      publish: {$ref: '#/$defs/ActionAvailability'}
+      withdraw: {$ref: '#/$defs/ActionAvailability'}
+      schedulePublication: {$ref: '#/$defs/ActionAvailability'}
+      cancelPublicationSchedule: {$ref: '#/$defs/ActionAvailability'}
+      download: {$ref: '#/$defs/ActionAvailability'}
+  FolderCapabilities:
+    type: object
+    additionalProperties: false
+    required: [createDocument, createFolder, renameFolder, moveFolder, manageAccess]
+    properties:
+      createDocument: {$ref: '#/$defs/ActionAvailability'}
+      createFolder: {$ref: '#/$defs/ActionAvailability'}
+      renameFolder: {$ref: '#/$defs/ActionAvailability'}
+      moveFolder: {$ref: '#/$defs/ActionAvailability'}
+      manageAccess: {$ref: '#/$defs/ActionAvailability'}
+  GuiVersionSummary:
+    type: object
+    additionalProperties: false
+    required: [versionId, versionNo, baseVersionId, lifecycleState, isCurrent, approvedAt, scheduledPublishAt, publishedAt, withdrawnAt, updatedAt, fileSummary]
     properties:
       versionId: {type: string, format: uuid}
       versionNo: {type: integer, minimum: 1}
+      baseVersionId: {type: [string, 'null'], format: uuid}
+      lifecycleState: {type: string, enum: [WORKING, PUBLISHED, WITHDRAWN]}
+      isCurrent: {type: boolean}
+      approvedAt: {type: [string, 'null'], format: date-time}
+      scheduledPublishAt: {type: [string, 'null'], format: date-time}
+      publishedAt: {type: [string, 'null'], format: date-time}
+      withdrawnAt: {type: [string, 'null'], format: date-time}
+      updatedAt: {type: string, format: date-time}
+      fileSummary: {$ref: '#/$defs/VersionFileSummary'}
+  VersionFileSummary:
+    type: object
+    additionalProperties: false
+    required: [authoritativeItemCount, totalSizeBytes, primary]
+    properties:
+      authoritativeItemCount: {type: integer, minimum: 0}
+      totalSizeBytes: {type: integer, minimum: 0}
+      primary: {oneOf: [{$ref: '#/$defs/PrimaryFileSummary'}, {type: 'null'}]}
+  PrimaryFileSummary:
+    type: object
+    additionalProperties: false
+    required: [displayName, mediaType, sizeBytes]
+    properties:
+      displayName: {type: string}
+      mediaType: {type: string}
+      sizeBytes: {type: integer, minimum: 0}
+  GuiReadState:
+    type: object
+    additionalProperties: false
+    required: [isRead, firstReadAt]
+    properties:
+      isRead: {type: boolean}
+      firstReadAt: {type: [string, 'null'], format: date-time}
+  GuiDisplayTimestamp:
+    type: object
+    additionalProperties: false
+    required: [kind, value]
+    properties:
+      kind: {type: string, enum: [revisionCreatedAt, workingUpdatedAt]}
+      value: {type: string, format: date-time}
+  DocumentRevisionSummary:
+    type: object
+    additionalProperties: false
+    required: [revisionId, documentVersionId, major, minor, label, createdAt, sourceKind, metadataSnapshotStatus]
+    properties:
+      revisionId: {type: string, format: uuid}
+      documentVersionId: {type: string, format: uuid}
+      major: {type: integer, minimum: 1}
+      minor: {type: integer, minimum: 0}
+      label: {type: string}
+      createdAt: {type: string, format: date-time}
+      sourceKind: {type: string, enum: [initialPublication, contentPublication, metadataRevision, withdrawFallback, legacyBackfill]}
+      metadataSnapshotStatus: {type: string, enum: [complete, unavailableLegacy]}
+  DocumentRevisionPage:
+    type: object
+    additionalProperties: false
+    required: [items, nextCursor]
+    properties:
+      items: {type: array, items: {$ref: '#/$defs/DocumentRevisionSummary'}}
+      nextCursor: {type: [string, 'null']}
+  DocumentRevisionDetail:
+    type: object
+    additionalProperties: false
+    required: [revisionId, documentVersionId, major, minor, label, createdAt, sourceKind, metadataSnapshotStatus, metadataSnapshot, actor, reason]
+    properties:
+      revisionId: {type: string, format: uuid}
+      documentVersionId: {type: string, format: uuid}
+      major: {type: integer, minimum: 1}
+      minor: {type: integer, minimum: 0}
+      label: {type: string}
+      createdAt: {type: string, format: date-time}
+      sourceKind: {type: string, enum: [initialPublication, contentPublication, metadataRevision, withdrawFallback, legacyBackfill]}
+      metadataSnapshotStatus: {type: string, enum: [complete, unavailableLegacy]}
+      metadataSnapshot: {type: [object, 'null']}
+      actor:
+        oneOf:
+        - type: object
+          additionalProperties: false
+          required: [identityProvider, principalId]
+          properties:
+            identityProvider: {type: string, minLength: 1}
+            principalId: {type: string, minLength: 1}
+        - type: 'null'
+      reason: {type: [string, 'null']}
+  Version:
+    type: object
+    additionalProperties: false
+    required: [versionId, versionNo, baseVersionId, lifecycleState, isCurrent, createdAt, approvedAt, scheduledPublishAt, publishedAt, withdrawnAt, updatedAt, fileSummary, firstReadAt]
+    properties:
+      versionId: {type: string, format: uuid}
+      versionNo: {type: integer, minimum: 1}
+      baseVersionId: {type: [string, 'null'], format: uuid}
       lifecycleState: {type: string, enum: [working, published, withdrawn]}
       isCurrent: {type: boolean}
       createdAt: {type: string, format: date-time}
+      approvedAt: {type: [string, 'null'], format: date-time}
+      scheduledPublishAt: {type: [string, 'null'], format: date-time}
       publishedAt: {type: [string, 'null'], format: date-time}
       withdrawnAt: {type: [string, 'null'], format: date-time}
+      updatedAt: {type: string, format: date-time}
+      fileSummary: {$ref: '#/$defs/VersionFileSummary'}
       firstReadAt: {type: [string, 'null'], format: date-time}
       title: {type: string}
       metadata: {type: object}
@@ -95,6 +295,27 @@ $defs:
     properties:
       items: {type: array, items: {$ref: '#/$defs/Version'}}
       nextCursor: {type: [string, 'null']}
+  VersionDetail:
+    type: object
+    additionalProperties: false
+    required: [versionId, versionNo, baseVersionId, lifecycleState, isCurrent, createdAt, approvedAt, scheduledPublishAt, publishedAt, withdrawnAt, updatedAt, fileSummary, firstReadAt, title, metadata, capabilities]
+    properties:
+      versionId: {type: string, format: uuid}
+      versionNo: {type: integer, minimum: 1}
+      baseVersionId: {type: [string, 'null'], format: uuid}
+      lifecycleState: {type: string, enum: [working, published, withdrawn]}
+      isCurrent: {type: boolean}
+      createdAt: {type: string, format: date-time}
+      approvedAt: {type: [string, 'null'], format: date-time}
+      scheduledPublishAt: {type: [string, 'null'], format: date-time}
+      publishedAt: {type: [string, 'null'], format: date-time}
+      withdrawnAt: {type: [string, 'null'], format: date-time}
+      updatedAt: {type: string, format: date-time}
+      fileSummary: {$ref: '#/$defs/VersionFileSummary'}
+      firstReadAt: {type: [string, 'null'], format: date-time}
+      title: {type: string}
+      metadata: {type: object}
+      capabilities: {$ref: '#/$defs/VersionCapabilities'}
   History:
     type: object
     additionalProperties: false
@@ -116,9 +337,12 @@ $defs:
             provenanceQuality: {type: string, enum: [operationLedger, versionFallback, legacyUnknown]}
             actor:
               type: [object, 'null']
+              additionalProperties: false
+              required: [identityProvider, principalId, presentation]
               properties:
-                identityProvider: {type: string}
-                principalId: {type: string}
+                identityProvider: {type: string, minLength: 1}
+                principalId: {type: string, minLength: 1}
+                presentation: {$ref: '#/$defs/IdentityPresentation'}
   FileList:
     type: object
     additionalProperties: false
@@ -148,13 +372,24 @@ $defs:
       name: {type: string}
       revision: {type: integer, minimum: 0}
       parentFolderId: {type: [string, 'null'], format: uuid}
+  FolderDetail:
+    type: object
+    additionalProperties: false
+    required: [folderId, name, revision, parentFolderId, capabilities]
+    properties:
+      folderId: {type: string, format: uuid}
+      name: {type: string}
+      revision: {type: integer, minimum: 0}
+      parentFolderId: {type: [string, 'null'], format: uuid}
+      capabilities: {$ref: '#/$defs/FolderCapabilities'}
   FolderChildren:
     type: object
     additionalProperties: false
-    required: [items, nextCursor]
+    required: [items, nextCursor, capabilities]
     properties:
       items: {type: array, items: {$ref: '#/$defs/Folder'}}
       nextCursor: {type: [string, 'null']}
+      capabilities: {$ref: '#/$defs/FolderCapabilities'}
   PolicyTarget:
     type: object
     additionalProperties: false
@@ -179,7 +414,7 @@ $defs:
   PolicyGrant:
     type: object
     additionalProperties: false
-    required: [subjectKind, identityProvider, subjectId, actions]
+    required: [subjectKind, identityProvider, subjectId, actions, presentation]
     properties:
       subjectKind: {type: string, enum: [principal, group, role]}
       identityProvider: {type: string, minLength: 1}
@@ -189,6 +424,52 @@ $defs:
         uniqueItems: true
         minItems: 1
         items: {type: string, enum: [read, readHistory, write, publish, administer]}
+      presentation: {$ref: '#/$defs/IdentityPresentation'}
+  PolicyGrantInput:
+    type: object
+    additionalProperties: false
+    required: [subjectKind, identityProvider, subjectId, actions]
+    properties:
+      subjectKind: {type: string, enum: [principal, group, role]}
+      identityProvider: {type: string, minLength: 1}
+      subjectId: {type: string, minLength: 1}
+      actions:
+        type: array
+        uniqueItems: true
+        minItems: 1
+        items: {type: string, enum: [read, readHistory, write, publish, administer]}
+  IdentityRef:
+    type: object
+    additionalProperties: false
+    required: [provider, kind, subjectId]
+    properties:
+      provider: {type: string, minLength: 1}
+      kind: {type: string, enum: [principal, group, role]}
+      subjectId: {type: string, minLength: 1}
+  IdentityPresentation:
+    type: object
+    additionalProperties: false
+    required: [ref, displayName, secondaryText, resolution]
+    properties:
+      ref: {$ref: '#/$defs/IdentityRef'}
+      displayName: {type: [string, 'null']}
+      secondaryText: {type: [string, 'null']}
+      resolution: {type: string, enum: [resolved, notFound, unavailable]}
+  Session:
+    type: object
+    additionalProperties: false
+    required: [principal, presentation, invocationKind, expiresAt]
+    properties:
+      principal:
+        type: object
+        additionalProperties: false
+        required: [identityProvider, principalId]
+        properties:
+          identityProvider: {type: string, minLength: 1}
+          principalId: {type: string, minLength: 1}
+      presentation: {$ref: '#/$defs/IdentityPresentation'}
+      invocationKind: {type: string, enum: [human_interactive, agent, service]}
+      expiresAt: {type: string, format: date-time}
   CreateDocumentResult:
     type: object
     additionalProperties: false
@@ -438,3 +719,137 @@ $defs:
     oneOf:
       - $ref: '#/$defs/DiffProjection'
       - $ref: '#/$defs/ComparisonTableProjection'
+      - $ref: '#/$defs/DiffDisplayProjection'
+  DiffDisplayItem:
+    type: object
+    additionalProperties: false
+    required: [changeIndex, operation, relocation, facet, baseLocator, targetLocator, base, target]
+    properties:
+      changeIndex: {type: integer, minimum: 0}
+      operation: {type: [string, 'null'], enum: [added, removed, modified, null]}
+      relocation: {type: [string, 'null'], enum: [moved, reordered, renamed, null]}
+      facet: {type: string}
+      baseLocator: {oneOf: [{$ref: '#/$defs/SourceLocator'}, {type: 'null'}]}
+      targetLocator: {oneOf: [{$ref: '#/$defs/SourceLocator'}, {type: 'null'}]}
+      base: {oneOf: [{$ref: '#/$defs/DisplayFragment'}, {type: 'null'}]}
+      target: {oneOf: [{$ref: '#/$defs/DisplayFragment'}, {type: 'null'}]}
+  DisplayCell:
+    type: object
+    additionalProperties: false
+    required: [row, column, label, value]
+    properties:
+      row: {type: [integer, 'null'], minimum: 0}
+      column: {type: [integer, 'null'], minimum: 0}
+      label: {type: [string, 'null']}
+      value: {type: string}
+  DisplayFragment:
+    oneOf:
+      - type: object
+        additionalProperties: false
+        required: [kind, text, truncated, locator]
+        properties:
+          kind: {const: text}
+          text: {type: string}
+          truncated: {type: boolean}
+          locator: {$ref: '#/$defs/SourceLocator'}
+      - type: object
+        additionalProperties: false
+        required: [kind, cells, truncated, locator]
+        properties:
+          kind: {const: table}
+          cells: {type: array, items: {$ref: '#/$defs/DisplayCell'}}
+          truncated: {type: boolean}
+          locator: {$ref: '#/$defs/SourceLocator'}
+      - type: object
+        additionalProperties: false
+        required: [kind, summary, locator]
+        properties:
+          kind: {const: structural}
+          summary: {type: string}
+          locator: {$ref: '#/$defs/SourceLocator'}
+      - type: object
+        additionalProperties: false
+        required: [kind, reason]
+        properties:
+          kind: {const: unavailable}
+          reason: {type: string, enum: [nonTextual, unverified, resourceLimit, unsupported]}
+  DiffDisplayProjection:
+    type: object
+    additionalProperties: false
+    required: [projection, verdict, coverage, resultDigest, items, unverifiedRegions, pageSize, nextCursor, auditEventId, resultAuditEventId]
+    properties:
+      projection: {const: display}
+      verdict: {type: string, enum: [same, different, unknown]}
+      coverage: {type: string, enum: [full, partial, none]}
+      resultDigest: {type: string, pattern: '^[0-9a-f]{64}$'}
+      items: {type: array, items: {$ref: '#/$defs/DiffDisplayItem'}}
+      unverifiedRegions: {type: array, items: {$ref: '#/$defs/UnverifiedRegion'}}
+      pageSize: {type: integer, minimum: 1, maximum: 100}
+      nextCursor: {type: [string, 'null']}
+      auditEventId: {type: string, format: uuid}
+      resultAuditEventId: {type: string, format: uuid}
+  RevisionSummary:
+    type: object
+    additionalProperties: false
+    required: [revisionId, documentVersionId, major, minor, createdAt]
+    properties:
+      revisionId: {type: string, format: uuid}
+      documentVersionId: {type: string, format: uuid}
+      major: {type: integer, minimum: 1}
+      minor: {type: integer, minimum: 0}
+      createdAt: {type: string, format: date-time}
+  MetadataChange:
+    type: object
+    additionalProperties: false
+    required: [path, baseValue, targetValue]
+    properties:
+      path: {type: string}
+      baseValue: {}
+      targetValue: {}
+  RevisionComparisonResponse:
+    type: object
+    additionalProperties: false
+    required:
+      - projection
+      - baseRevision
+      - targetRevision
+      - contentComparisonStatus
+      - changes
+      - rows
+      - unverifiedRegions
+      - ancillaryChanges
+      - metadataComparisonStatus
+      - metadataChanges
+      - baseMetadataSnapshotDigest
+      - targetMetadataSnapshotDigest
+      - auditEventId
+      - displayItems
+      - pageSize
+      - nextCursor
+    properties:
+      projection: {type: string, enum: [diff, comparisonTable, display]}
+      baseRevision: {$ref: '#/$defs/RevisionSummary'}
+      targetRevision: {$ref: '#/$defs/RevisionSummary'}
+      contentComparisonStatus:
+        type: string
+        enum: [sameAuthoritativeVersion, differentAuthoritativeVersions]
+      verdict: {type: string, enum: [same, different, unknown]}
+      coverage: {type: string, enum: [full, partial, none]}
+      resultDigest: {type: string, pattern: '^[0-9a-f]{64}$'}
+      changes: {type: array, items: {$ref: '#/$defs/DiffChange'}}
+      rows: {type: array, items: {$ref: '#/$defs/ComparisonRow'}}
+      unverifiedRegions: {type: array, items: {$ref: '#/$defs/UnverifiedRegion'}}
+      ancillaryChanges: {type: array, items: {$ref: '#/$defs/AncillaryChange'}}
+      metadataComparisonStatus:
+        type: string
+        enum: [same, different, unavailableLegacy]
+      metadataChanges: {type: array, items: {$ref: '#/$defs/MetadataChange'}}
+      baseMetadataSnapshotDigest: {type: [string, 'null'], pattern: '^[0-9a-f]{64}$'}
+      targetMetadataSnapshotDigest: {type: [string, 'null'], pattern: '^[0-9a-f]{64}$'}
+      auditEventId: {type: string, format: uuid}
+      contentAuditEventId: {type: string, format: uuid}
+      displayItems: {type: array, items: {$ref: '#/$defs/DiffDisplayItem'}}
+      pageSize: {type: [integer, 'null'], minimum: 1, maximum: 100}
+      nextCursor: {type: [string, 'null']}
+      displayAuditEventId: {type: string, format: uuid}
+      displayResultAuditEventId: {type: string, format: uuid}

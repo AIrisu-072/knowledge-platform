@@ -20,6 +20,7 @@ macro_rules! typed_id {
 
 typed_id!(DocumentId);
 typed_id!(DocumentVersionId);
+typed_id!(DocumentRevisionId);
 typed_id!(FileId);
 typed_id!(FolderId);
 typed_id!(EventId);

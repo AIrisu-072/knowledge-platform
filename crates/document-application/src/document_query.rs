@@ -7,8 +7,58 @@ use time::OffsetDateTime;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::{
-    ApplicationError, DocumentSort, RepositoryError, VerifiedActorContext, validate_page_size,
+    ApplicationError, DocumentRevisionSummary, DocumentSort, RepositoryError, VerifiedActorContext,
+    validate_page_size,
 };
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GuiPrimaryFileSummary {
+    pub display_name: String,
+    pub media_type: String,
+    pub size_bytes: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GuiVersionFileSummary {
+    pub authoritative_item_count: i64,
+    pub total_size_bytes: i64,
+    pub primary: Option<GuiPrimaryFileSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GuiVersionSummary {
+    pub document_version_id: DocumentVersionId,
+    pub version_no: i64,
+    pub base_document_version_id: Option<DocumentVersionId>,
+    pub lifecycle_state: String,
+    pub is_current: bool,
+    pub approved_at: Option<OffsetDateTime>,
+    pub scheduled_publish_at: Option<OffsetDateTime>,
+    pub published_at: Option<OffsetDateTime>,
+    pub withdrawn_at: Option<OffsetDateTime>,
+    pub updated_at: OffsetDateTime,
+    pub file_summary: GuiVersionFileSummary,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DisplayTimestampKind {
+    RevisionCreatedAt,
+    WorkingUpdatedAt,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GuiDisplayTimestamp {
+    pub kind: DisplayTimestampKind,
+    pub value: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GuiDocumentReadModel {
+    pub display_version: GuiVersionSummary,
+    pub display_revision: Option<DocumentRevisionSummary>,
+    pub first_read_at: Option<OffsetDateTime>,
+    pub display_timestamp: GuiDisplayTimestamp,
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DocumentListFilter {
@@ -154,6 +204,7 @@ pub struct PublishedDocumentSummary {
     pub published_at: OffsetDateTime,
     pub first_read_at: Option<OffsetDateTime>,
     pub document_revision: i64,
+    pub gui: GuiDocumentReadModel,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -168,6 +219,7 @@ pub struct AuthoringDocumentSummary {
     pub document_metadata: Value,
     pub created_at: OffsetDateTime,
     pub document_revision: i64,
+    pub gui: GuiDocumentReadModel,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -182,6 +234,7 @@ pub struct HistoryDocumentSummary {
     pub document_metadata: Value,
     pub created_at: OffsetDateTime,
     pub document_revision: i64,
+    pub gui: GuiDocumentReadModel,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

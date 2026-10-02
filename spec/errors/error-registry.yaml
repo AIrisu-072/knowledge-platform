@@ -5,6 +5,7 @@ errors:
   FORBIDDEN: {status: 403, retryable: false, title: Forbidden}
   DOCUMENT_NOT_FOUND: {status: 404, retryable: false, title: Document not found}
   DOCUMENT_VERSION_NOT_FOUND: {status: 404, retryable: false, title: Document version not found}
+  REVISION_NOT_FOUND: {status: 404, retryable: false, title: Document revision not found}
   FOLDER_NOT_FOUND: {status: 404, retryable: false, title: Folder not found}
   REVISION_CONFLICT: {status: 409, retryable: false, title: Revision conflict}
   OPERATION_CONFLICT: {status: 409, retryable: false, title: Operation conflict}

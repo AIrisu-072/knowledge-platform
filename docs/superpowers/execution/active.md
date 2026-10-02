@@ -1,8 +1,108 @@
 # Active Execution Pointer
 
-## Active checkpoint — Document GUI Integration v0 G0 predecessor integration complete / PR #35 finalization in progress、2026-09-30 JST
+## Current checkpoint — Document GUI Integration v0 hosted gates GREEN / integrated frontend evidence pending、2026-10-02 UTC
 
-- Status: **G0 predecessor #27/#29/#30/#31/#32 MERGED; PR #35 retargeted to main; PR #35 docs reconciliation and exact-head gates pending**. G1 has not started. Details: docs/superpowers/execution/document-gui-integration-v0-status.md.
+- Status: **G0〜G8 COMPLETE / IMPLEMENTATION COMPLETE / G9 FINAL ACCEPTANCE PENDING / NOT MERGED / NOT DEPLOYED**. The earlier branch-unpublished / PR-not-created checkpoint is superseded. Unqualified **G0〜G9 COMPLETE / ACCEPTANCE GREEN / REVIEW READY** is withheld until the approved Plan's same-head frontend E2E and integrated browser/backend journey requirements are evidenced.
+- Verified GitHub state (2026-10-02 00:15 UTC / 09:15 JST): [Draft PR #36](https://github.com/AIrisu-072/knowledge-platform/pull/36), branch `feat/document-gui-integration-v0`, exact head `b578a9b49338066d0e4ee5495ea1280f991c122b`, base `main` at `d71753d46590bb4406a1c0b74894ab90a27a6c88`; OPEN / Draft / NOT MERGED. Review submissions: 0; inline review threads: 0 (unresolved: 0). Review-ready acceptance is not a GitHub review approval.
+- Observed exact-head hosted gates: [Standard CI 36860705179](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36860705179) **SUCCESS**, [DSI Sandbox Preflight 36860705023](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36860705023) **SUCCESS**, [DSI PoC 36860705167](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36860705167) **SUCCESS**. Standard CI required-check and all nine jobs succeeded. DSI PoC qualification succeeded; its optional qualification-macos job was skipped, not passed. Standard CI separately passed DSI semantic parity on macOS ARM and Intel.
+- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24` and approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912` match the committed files. Source Design ZIP SHA-256 remains the approval-recorded `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`; the ZIP was not reread in this docs-only pass. Design Amendment 01 / Approval and Plan Addendum 01 are the only approved toolchain/license exception. Current pnpm lock SHA-256 `bb74081c198fcb1c9c8038933c434f0a00b50a2aa7a436c3def15156881d6847` matches the amendment's first-party workspace-link inventory record; general license policy and UI/API semantics are unchanged.
+- Hosted Rust test log records **741 passed / 6 skipped**, including the real PostgreSQL + FileSystemStorage + production DSI/Diff HTTP lifecycle, revision comparison, fail-soft identity, stale capability mutation rejection, and file-audit no-byte-disclosure tests. Detailed evidence and provenance are in `docs/superpowers/execution/document-gui-integration-v0-status.md`.
+- Frontend evidence is source-recorded local verification, not a cloud rerun: Playwright **6/6 PASS** at `bb5da30c7a831a9d79a16cc422f00adc89b70c69`; Mock 1–7 snapshots and accessibility review are committed. The app/client/config/lock input paths are unchanged at `b578a9b`, but this is tree-equivalence evidence, not an exact-head E2E execution receipt. All six committed Playwright tests mock `/v1/**`; they do not demonstrate browser-to-real-backend integration. Hosted Standard CI has no Playwright step.
+- Blockers: final same-head frontend E2E receipt and a real-backend browser journey receipt are not available in the repository. This docs-only refresh did not run product builds or tests and does not claim fresh local build/test completion. No product code or dependency changes are part of C0.
+- Downstream runtime evidence remains separate: Draft [R2 PR #41](https://github.com/AIrisu-072/knowledge-platform/pull/41) at `bf5ec20d0f27f6e40f53b50ab3b1827c75f3f8ad` has [CI 36943094817](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36943094817) FAILURE; Draft [A2 PR #42](https://github.com/AIrisu-072/knowledge-platform/pull/42) at `e500144f5bafe3bb80ae12314fef7d0c9ca7e170` has [CI 36943178284](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36943178284) FAILURE. Their separate Sandbox/DSI PoC workflows succeeded, but real-runtime acceptance is not green. These later heads do not supply a PR36 exact-head frontend receipt. C1/C2/C3 are not accepted by this C0 record; the scheduler identity decision and historical security-scan qualification remain unresolved.
+- Next exact action: obtain a verifiable same-head frontend E2E receipt and real-backend browser journey evidence. If absent, close those verification gaps in a separately scoped implementation/verification task before marking G9 acceptance/review readiness. A rerun of the existing mocked suite alone cannot close the integrated journey requirement. Before any authorized docs-only push, recheck PR head and concurrent work. After push, observe Standard CI / Sandbox / DSI PoC on the new exact head; do not transfer old-head results to the new head. Keep PR #36 Draft; no merge, deploy, production migration execution, or production AD/SSPI connection.
+
+---
+
+## Superseded checkpoint — Document GUI Integration v0 G8 COMPLETE / G9 ACCEPTANCE IN PROGRESS、2026-10-01 JST
+
+- Status: **G0〜G8 COMPLETE / G9 final exact-head verification IN PROGRESS**。G8 commit/code head `d6dcda031e8101a9b46bd688ecc92b68468629ad` on `feat/document-gui-integration-v0`, 29 commits ahead of `origin/main`. Current GitHub main is `d71753d46590bb4406a1c0b74894ab90a27a6c88`; implementation branch and product PR have not yet been pushed/created.
+- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`; approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`; Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`. No UI/API semantic amendment beyond approved Design Amendment 01 / Plan Addendum 01.
+- G7 candidate-specific license decision remains limited to lock SHA-256 `ee2e1430204112a91a31cbfa34a286ab1effca56ac35d918bb3f4df77d05ea16`; no new dependency or license was added in G8.
+- G8 implements Mock 1–7 on the generated typed client/BinaryTransportBridge: list/context panel, detail, Version/Revision timeline, native upload workflow, publish/schedule, partial comparison/source handoff, and AccessPolicy effective/draft separation. Mock 4–7 visual states were reviewed. Schedule workflow preserves the selected method across route transition; publish success remains response-authoritative and focus returns after pending state clears.
+- Local verification on the G8 tree: Jest **11 suites / 34 tests PASS**; TypeScript check PASS; Playwright E2E **6/6 PASS**; OpenAPI/client contract **12/12 PASS**; `cargo fmt --all -- --check` PASS; `git diff --check` PASS. Mock 1–7 snapshots are stored under `apps/document-web/e2e/document-workspace.spec.ts-snapshots/`.
+- Production build PASS with Webpack advisory: main JS **553 KiB**, entrypoint **566 KiB**, detail chunk **41.9 KiB**. No numeric `T_usable`/`T_input` threshold exists in the approved design; measured values are recorded below. Reduced motion and no-overflow checks pass at 1280/1440.
+- Exact local frontend E2E at head `bb5da30` passed **6/6**. Captured GUI performance: `T_usable=349.7 ms`, `T_input=16.5 ms`, `motionSpatial=180 ms`; no approved numeric limit applies.
+- Browser-level accessibility review is recorded in `docs/superpowers/execution/document-gui-integration-v0-accessibility-review.md`. Local PostgreSQL E2E could not run because this host has no Docker socket; the real PostgreSQL + filesystem + production worker lifecycle test remains a required hosted Standard CI gate.
+- Plan boundary: create/push implementation branch and Draft PR; do not merge, deploy, execute production migration, or connect production AD/SSPI.
+- Next exact action: commit this evidence update, push `feat/document-gui-integration-v0`, create the approved Draft PR, then wait for Standard CI + DSI Sandbox Preflight + DSI PoC on the PR head. Record run IDs and any failure in Active/Status.
+
+## Superseded checkpoint — Document GUI Integration v0 G7 COMPLETE / G8 NEXT、2026-10-01 JST
+
+- Status: **G0〜G7 COMPLETE / G8 Mock 1–7 IN PROGRESS / G9 NOT STARTED**。G7 RED commit `182215f`; GREEN code head `a6e340f`。依頼者はVite/Vitest置換を推奨方針で進めるよう指示し、current candidate graphにある列挙外licenseだけを個別承認した。一般license policyとFrozen Design semanticsは不変。
+- Design Amendment 01 / Approval / Plan Addendum 01を作成。Candidate lock SHA-256 `ee2e1430204112a91a31cbfa34a286ab1effca56ac35d918bb3f4df77d05ea16`。個別承認対象: ISC (34), BlueOak-1.0.0 (8), CC-BY-4.0, Python-2.0, MIT-0, Unlicense, CC0-1.0, 0BSD, `(MIT OR CC0-1.0)`。他licenseまたはlock graph変更には再qualificationが必要。
+- branch `feat/document-gui-integration-v0`、G7 GREEN code head `a6e340f`（`origin/main`より26 commits ahead）。GitHub main `d71753d46590bb4406a1c0b74894ab90a27a6c88`。Remote implementation branch / product PR / hosted branch CIなし。PR #27/#29/#30/#31/#32/#35 merged。
+- G7 RED commit `182215f`: 5 expected missing-foundation tests FAIL / 8 PASS; React Aria suite PASS. GREEN evidence at `a6e340f`: Jest 14/14 PASS (React Aria 6/6); TypeScript check PASS; Webpack production build PASS; dev server compiled and served `/` + `/documents`; `git diff --check` PASS. Production entrypoint is 292 KiB (JS 289 KiB), producing related Webpack performance warnings to assess at G9. Hosted CI is deferred to G9.
+- Candidate prior qualification: Node 24.21.0 / pnpm 12.4.1 frozen install, peer check, audit pass. Current shell Node is 26.3.1 and pinned pnpm launcher fails; local `node_modules/.bin` tools are available.
+- Next exact action: inspect the approved Source Design screens and G6 generated client operations, then implement G8 Mock 1–7 through the typed client/BinaryTransportBridge without presentation-level raw fetch or duplicated business rules.
+
+---
+
+## Superseded checkpoint — Document GUI Integration v0 G7 license qualification STOP、2026-10-01 JST
+
+- Status: **G0〜G6 COMPLETE / G7 candidate qualification STOP / G8〜G9 NOT STARTED**。依頼者はVite置換と既存license policy維持を選択した。Architecture Contract §5は掲載外licenseを個別承認としている。
+- Implementation branch `feat/document-gui-integration-v0`、local HEAD `82ca1337c71d7ef5b2c3179b59a8e08941411de0`（`origin/main`より24 commits ahead）。GitHub main `d71753d46590bb4406a1c0b74894ab90a27a6c88`、CI `36718016267` SUCCESS。GitHub上にimplementation branch/PRはなく、branch exact-head CIも未実行。
+- Last GREEN code head `3b3d2b737942c0fd4eb27abb3777395507dcf0e2`（G6）。Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`、approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`、Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。
+- Local amendment candidate: Webpack `5.111.1` / webpack-cli `7.2.3` / webpack-dev-server `6.0.0`; Jest `30.5.2`; Babel `7.29.7`; Node `24.21.0`; TypeScript `6.0.3`; retain React/TanStack/Motion/Ajv/RTL/Playwright. Vite/Vitest/LightningCSS are absent from the clean resolved lock. Babel 8 was replaced with Babel 7 after peer check evidence; unplanned `eslint-plugin-jsx-a11y` and `identity-obj-proxy` were removed because they introduced MPL-2.0 and a dual MPL license respectively.
+- Focused qualification: exact pnpm `12.4.1` frozen install PASS; `pnpm peers check` PASS; `pnpm audit --audit-level=low` PASS, no known advisories. Isolated full app license inventory has no GPL/AGPL/LGPL/MPL/SSPL/BSL/source-available packages, but includes non-listed licenses that require individual approval under §5: ISC (34 packages), BlueOak-1.0.0 (8), CC-BY-4.0, Python-2.0, MIT-0, Unlicense, CC0-1.0, 0BSD, and `(MIT OR CC0-1.0)`. No exception has been approved.
+- G7 production UI source is not started. Candidate package manifest/lock and earlier contract/config tests remain local and uncommitted. No Design Amendment or dependency promotion has been recorded.
+- `toolbox-context status` has no matching pending managed run. Parent restore helper remains unavailable at `~/.local/bin/parent-context.py`.
+- 次のexact action: obtain a decision whether to record candidate-specific individual approvals for the listed non-allowlisted license IDs while leaving the general policy unchanged, or to require a graph containing only currently listed license IDs and evaluate another tool stack. Continue G7/G8/G9 only after this gate is resolved.
+
+---
+
+## Superseded checkpoint — Document GUI Integration v0 G7 STOP、2026-10-01 JST
+
+- Status: **G0〜G6 COMPLETE / G7 STOP / G8〜G9 NOT STARTED**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。Frozen Design差分・amendmentなし。
+- Implementation branch `feat/document-gui-integration-v0`、current local HEAD `82ca1337c71d7ef5b2c3179b59a8e08941411de0`（`origin/main`より24 commits ahead）。GitHub main `d71753d46590bb4406a1c0b74894ab90a27a6c88`、main CI `36718016267` SUCCESS。Product branch/PRはGitHubに未公開。
+- Last GREEN code head `3b3d2b737942c0fd4eb27abb3777395507dcf0e2`（G6）。Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`、approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`、Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。
+- G7 STOP: Vite 8.3.1 resolves `lightningcss` 1.33.0 (MPL-2.0), while `spec/architecture/architecture-contract-v0.md` LINT-02 excludes MPL-2.0. Attached request explicitly says to stop when a selected dependency violates license/security policy. No silent exception or stack substitution is authorized.
+- Focused evidence: React Aria qualification 6/6 PASS; `pnpm audit --audit-level=low` previously PASS/no known advisories. React Aria remains a local devDependency only and is not promoted. The pinned pnpm CLI is unavailable/broken, so `pnpm why` could not run; exact lock snapshot and registry metadata confirm the dependency/license edge.
+- Working tree holds local G7 package/config/qualification tests, lock/ignore edits, these checkpoint-document updates, and `.superpowers` scratch; no production GUI component or implementation PR has been created. Latest React Aria run passed; the design-system RED fails only because `src/design-system/tokens.css` is not implemented yet.
+- Required decision: (A) keep the license allowlist and approve a Design Amendment replacing Vite 8 with a compatible frontend build tool, then qualify its full dependency graph; or (B) amend the license policy to explicitly allow the MPL-2.0 transitive dependency and continue with Vite 8. G7/G8/G9 remain stopped until one path is approved.
+- 次のexact action: receive the user’s A/B policy/design decision, record the approved amendment, then resume G7 from the corresponding qualified dependency stack. Do not create/push a product PR or proceed to G8/G9 while this gate is unresolved.
+
+---
+
+## Current checkpoint — Document GUI Integration v0 G6 COMPLETE / G7 NEXT、2026-10-01 JST
+
+- Status: **G0〜G6 COMPLETE / G7 Frontend foundation NEXT**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。
+- Implementation branch `feat/document-gui-integration-v0`、G6 GREEN commit/head `3b3d2b737942c0fd4eb27abb3777395507dcf0e2`。G6 contract RED `405ac30ac379423cbd9c055168c0a35232a5357a`、Binary Bridge RED `5c4324076ce2abb6285ce4cfefc8d966da7c756f`。Product branchはlocal only、Draft product PR未作成。
+- GitHub main `d71753d46590bb4406a1c0b74894ab90a27a6c88`、PR #27/#29/#30/#31/#32/#35はMERGED。Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`、approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`、Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。Design amendmentなし。
+- G6: OpenAPI 3.2.1へG1〜G5 contract/examplesを反映し、`@hey-api/openapi-ts` 0.99.0をexact-pin。TS 7はgenerator startup incompatibilityが出たため、Design所定のTypeScript 6 fallback 6.0.3を採用。34 operationを全生成し、union/nullabilityをtype contractで固定。手書き`BinaryTransportBridge`はcreate/version multipart、manifest part ID to Blob/File mapping、Blob/ReadableStream download、RFC 9457 errorを担当し、JSON DTOは生成型を再利用。
+- G6 local verification: OpenAPI contract 12/12、Redocly 2.52.1 lint / example schema validation PASS、client typecheck PASS、client + generation coverage 6/6、34 operationId = generated operation set、再生成前後の全4生成ファイルSHA-256一致、pnpm auditで既知脆弱性0件。`js-yaml 4.3.2` workspace overrideを適用。generator dependency license inventoryはPoC時にpermissive-onlyで確認済み。Hosted CIは依頼者方針どおりG9に集約。
+- Disk空きは直近で約855 MiB。G9前に確認し、Postgres suitesはserialで実行する。Blockerなし。Product PR merge / deploy / production migration execution / AD-SSPI接続なし。
+- 次のexact action: G7で承認済みfrontend stackの現行版を公式資料とpackage registryで確認し、React Aria Components focused PoCとCSS/motion/architecture foundationを実装する。ライブラリ資格失敗ならBase UI比較のSTOP gateに従う。
+
+---
+
+## Superseded checkpoint — Document GUI Integration v0 G2 COMPLETE / G3 NEXT、2026-10-01 JST
+
+- Status: **G0〜G2 COMPLETE / G3 Action Capability Projection NEXT**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。
+- Implementation branch `feat/document-gui-integration-v0`。G2 GREEN code head `6d58cef3a119424d005018cb412bad183da624d2`。Draft product PRはまだ未作成、main未merge。
+- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`、approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`、Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。差分提案なし。
+- G2 RED: GUI list/revision test commit `bb0a26352cf03cee3196de6799c3de5fa65a2273` は`displayVersion.versionNo`欠落とrevision route 404を検出。Version projection追加RED `aaf94d2e5720af95fabdc3be50011499ae033c91` は`updatedAt`欠落を検出。GREEN implementation head `6d58cef3a119424d005018cb412bad183da624d2`。
+- G2 focused verification: `read_http` 7/7、`query_cursor_contract` 4/4、HTTP dispatch contract 1/1、problem registry 1/1、Node API contract 10/10、Redocly 2.52.1 OpenAPI lint PASS、`cargo fmt --all -- --check` / `git diff --check` PASS。`document_version_updated_at` PostgreSQL focused testもPASS済み。
+- `mise run api:check`はworkspace `mise.toml` untrustedで起動できなかったため、定義された2コマンドを直接実行。pnpmのpinned 12.4.1 shimも欠落していたためRedocly 2.52.1を一時的にnpm installして検証した。これは実装blockerではない。
+- Blocker: なし。中間hosted CIは実行していない。G9で同一headのfinal gatesを実行する。
+- 次のexact action: G3のFrozen Design / Plan記述と既存Document/Version/Folder detail routesを読み、`available | disabled(reason)` capability matrixのfocused RED testsを追加して、current authorizationとmutation時再評価を維持する。
+
+---
+
+## Current checkpoint — Document GUI Integration v0 G1 COMPLETE / G2 NEXT、2026-09-30 JST
+
+- G0 COMPLETE: PR #27/#29/#30/#31/#32/#35 merged. Product branch base is main `d71753d46590bb4406a1c0b74894ab90a27a6c88`.
+- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`, approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`; attached Source Design ZIP SHA `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`. No amendment proposed.
+- G1 COMPLETE on `feat/document-gui-integration-v0` at `069fcf23ee19c9592e15499aea1d2ddda6448512`. Test-only commits: schema RED `1fd1b14dce6f4674f7757861972e9a042a652252`; issuance contracts `a48f4c2566568d1eb9fc02baf034dbabf864dc09`; GREEN implementation commit is the current head.
+- G1 changed files add migration 0009/backfill, typed append-only DocumentRevision domain contract and atomic issuance in publish, metadata mutation, and eligible withdrawal fallback transactions. OCC revision, DocumentVersion.version_no, and human major.minor remain independent. Replay/no-op/non-revision operations do not create extra rows; unavailable legacy metadata stays null.
+- RED observed before transaction integration: absent initial-publication row, absent content-publication and withdrawal-fallback rows, and metadata mutation returning only the seeded legacy row. Schema tests first failed only because `document_revisions` did not exist. Migration/backfill focused checks subsequently passed, including rollback and rerun.
+- Local GREEN: `cargo fmt --all -- --check`; `cargo test -p document-domain --lib` (24/24); focused Postgres targets `versioning_schema`, `versioning_legacy`, `publish_transaction`, `publish_next_transaction`, `withdrawal_transaction`, `management_vertical_slice`, `publication_end_vertical_slice`, and `publish_concurrency` (28/28). No hosted CI was run for this intermediate task; final same-head hosted gates remain for G9, matching the request to avoid CI on every task.
+- Product PR has not been created yet. No blocker. Keep implementation PR Draft/unmerged; no deployment, production migration execution, or AD/SSPI connection.
+- Next exact action: begin G2 RED by inspecting the existing GUI document-list/history query and HTTP route composition, then add focused contracts for `document_versions.updated_at`, bounded file summaries, GUI displayVersion/displayRevision projections, and revision list/detail endpoints. Preserve current authorization, cursor binding, and T10 history semantics.
+
+## Superseded checkpoint — Document GUI Integration v0 G0 predecessor integration complete / PR #35 finalization in progress、2026-09-30 JST
+
+- Status: **G0 COMPLETE**。PR #27/#29/#30/#31/#32とDesign/Plan PR #35はMERGED。G1着手済みで、現在はtest-only schema contract RED。詳細: `docs/superpowers/execution/document-gui-integration-v0-status.md`。
 - Frozen Design blob f132910ca5d3e638502f0b38447d9a1ec4020f24; approved Production Plan blob 0830c306ebb38290e4c3dc277f6c97a0759cf912; Plan Approval record is present. No Design amendment proposed.
 - G0 merge commits: #27 95f60f02fbc4205bfc38b6097d419fadee9682a1; #29 2ebfbd46f80c65590950d35d7ef9534377a72035; #30 2a49a2ddc28a77fba286d5d70d17464fcf4949a1; #31 6240ebbebb0db45a7360efbf568d63a2a6101db3; #32 5a81fd856d81b557e4936f663aa8b0ab3fcaa5e2.
 - PR #32 exact head 04ccb84a6d9a99f63eca8d7512888225393058fa: Standard CI 36713044816, Sandbox 36713044612, and DSI PoC 36713044474 all SUCCESS. Main merge commit 5a81fd856d81b557e4936f663aa8b0ab3fcaa5e2 has the same tree bd2b7df1717503ff3ef937ede581e0b235f20e87; push CI 36714907650 is still in progress. Sandbox and DSI PoC workflows are pull-request-triggered only.
