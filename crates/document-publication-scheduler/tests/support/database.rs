@@ -3,7 +3,7 @@ use std::str::FromStr;
 use sqlx::{PgPool, postgres::PgConnectOptions, postgres::PgPoolOptions};
 use testcontainers::{
     GenericImage, ImageExt,
-    core::{IntoContainerPort, WaitFor, wait::LogWaitStrategy},
+    core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
 };
 use uuid::Uuid;
@@ -29,12 +29,11 @@ impl TestDatabase {
             Err(std::env::VarError::NotPresent) => {
                 let container = GenericImage::new("postgres", "18.6-bookworm")
                     .with_exposed_port(5432.tcp())
-                    // The pinned empty official image first starts a socket-only
-                    // initialization server, then the final TCP server. Wait for
-                    // both readiness messages before opening the mapped TCP port.
-                    .with_wait_for(WaitFor::log(
-                        LogWaitStrategy::stderr("database system is ready to accept connections")
-                            .with_times(2),
+                    // pg_ctl redirects the socket-only initialization server's
+                    // stderr to stdout. The final directly executed TCP server
+                    // emits one readiness message on stderr, not two.
+                    .with_wait_for(WaitFor::message_on_stderr(
+                        "database system is ready to accept connections",
                     ))
                     .with_env_var("POSTGRES_USER", "postgres")
                     .with_env_var("POSTGRES_PASSWORD", "postgres")

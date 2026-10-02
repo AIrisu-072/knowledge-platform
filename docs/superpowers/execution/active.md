@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## Current checkpoint — A2 retains reviewed publication-focus and scheduler readiness repairs, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-followup-integrated` merges R2 `51bd948710beb098f88a4af18fe7bcb251933df7` into A2 `ae844ee9e5ec51b8d1977a145be26ccf8ab43079`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain the approved scopes and both source repair evidence sections.
+- Every non-status repair blob matches reviewed R2. MCP source/runtime provenance, both required CI gates, scanner31 records and locks are unchanged from A2. Fresh merged Node52, runtime TypeScript, actionlint and diff checks pass with telemetry disabled; the identical GUI source retains the new R2 GUI42/types/schema/build verification.
+- Next exact action: complete independent stack review and C3 propagation, then parent publishes and checks exact-head hosted gates. No Rust workload, actual runtime acceptance, visual capture/upload, merge to main or deployment occurred here. Existing hosted focus/startup failures remain unresolved until qualified reruns.
+
+---
+
 ## Current checkpoint — Final R2 GUI/scheduler repairs integrated into A2, 2026-10-02 UTC
 
 - Status: **ACTIVE — AFFECTED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-r5-integrated` combines preserved A2 `6665c17e6fed2129c60f739faaa8bc0fb3089dc3` with reviewed R2 `5b8e967badd9303fe1d7b446504be57b99b1c42c`; no C3 implementation is included.
@@ -37,6 +45,15 @@
 - Exact nine read-only generated-client tools, verified fixed-Agent session, bounded abort/redirect behavior, unchanged API semantics and actual stdio are implemented. Complete shipped license notices and the two-package ISC exception are recorded. No direct DB/Application access, Agent write tool, Search/RAG or production identity.
 - Local verification and independent review/fixes are recorded in Capability Status. Required CI now includes focused MCP verification and real shared-runtime Agent stages; missing/blocked real workers or browser leave acceptance non-green. No mocked HTTP result counts as real Document acceptance.
 - Next exact action: publish the reviewed A2 source as a separate Draft stacked on #41, verify remote head/tree, and observe required gates on that exact head. Diagnose failures without weakening sandbox, license, scanner or authorization policy. C0/C1/C3 closure remains tracked separately.
+
+---
+
+## Current checkpoint — R2 publication-focus and PostgreSQL readiness repairs integrated, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-r2-followup-integrated` combines reviewed GUI `cac1d729ddab7aaef2d618b1dbd7d58f51836d8a` and scheduler test readiness `ee30aba86c903777d361be58424fb741c450ea3e`, both based on `5b8e967badd9303fe1d7b446504be57b99b1c42c`.
+- Active [C1 Status](document-poc-runtime-v0-status.md), approved [Runtime Design](../specs/2026-10-01-document-poc-runtime-v0-design.md), [Plan](../plans/2026-10-01-document-poc-runtime-v0-implementation.md) and [Authority](../specs/2026-10-01-document-poc-runtime-v0-approval.md) retain the bounded scope. Both complete repair evidence sections are preserved; only status text required conflict resolution.
+- Fresh merged Node45/GUI42, application/runtime TypeScript, validator freshness, production build, actionlint and diff checks pass with telemetry disabled. The source workers' focused verification remains separately recorded. No Rust workload or actual container/runtime acceptance was repeated by this integration.
+- Next exact action: finish independent integration review, propagate the exact repair delta through separate A2/C3 candidates, then parent publishes and checks exact-head hosted gates. The prior post-publication focus and scheduler startup failures remain the last actual results. No full acceptance, visual review, merge to main or deployment claim.
 
 ---
 

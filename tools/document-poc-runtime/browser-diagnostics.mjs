@@ -37,7 +37,7 @@ function sanitizeUi(value) {
 const journeyStages = new Set(['context-read', 'sessions-verified', 'api-preflight-complete', 'gui-loaded', 'folder-selected',
   'document-selected', 'detail-opened', 'download-requested', 'download-received', 'download-saved', 'snapshot-read',
   'history-opened', 'comparison-verified', 'policy-saved', 'version-form-opened', 'version-created',
-  'publication-form-opened', 'publication-confirmed', 'state-verified', 'snapshot-saved']);
+  'publication-form-opened', 'publication-response-accepted', 'publication-success-visible', 'publication-confirmed', 'state-verified', 'snapshot-saved']);
 function lastCompletedStage(test) {
   let stage;
   for (const annotation of (Array.isArray(test?.annotations) ? test.annotations.slice(0, 40) : [])) {
