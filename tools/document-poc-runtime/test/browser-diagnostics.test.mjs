@@ -11,6 +11,24 @@ const report = (results, overrides = {}) => ({ suites: [{ title: 'never copied',
   tests: [{ results: [result] }], ...overrides,
 })) }] });
 
+test('journey progress emits only the last completed fixed milestone and is resanitized', () => {
+  const input = report([{ status: 'timedOut', error: { message: 'Test timeout of 120000ms exceeded.' } }]);
+  input.suites[0].specs[0].tests[0].annotations = [
+    { type: 'runtime-completed', description: 'gui-loaded' },
+    { type: 'runtime-completed', description: 'folder-selected' },
+    { type: 'runtime-completed', description: 'https://credential@private.example/secret' },
+    { type: 'other', description: 'download-received' },
+  ];
+  const actual = browserDiagnostics(input);
+  assert.equal(actual.tests[0].lastCompletedStage, 'folder-selected');
+  assert.equal(actual.tests[0].errorCategory, 'test-timeout');
+  assert.ok(!JSON.stringify(actual).includes('private'));
+  assert.equal(sanitizeBrowserDiagnostics({ ...actual, tests: [{ ...actual.tests[0], lastCompletedStage: 'secret' }] }).tests[0].lastCompletedStage, undefined);
+  input.suites[0].specs[0].tests[0].annotations = Array.from({ length: 100 }, () => ({ type: 'other' }));
+  input.suites[0].specs[0].tests[0].annotations.push({ type: 'runtime-completed', description: 'state-verified' });
+  assert.equal(browserDiagnostics(input).tests[0].lastCompletedStage, undefined);
+});
+
 test('classifies strict-locator and emits only allowlisted failure location/matcher', () => {
   const result = browserDiagnostics(report([{ status: 'failed', error: {
     message: 'Error: expect(locator).toBeVisible() failed: strict mode violation: PRIVATE_SELECTOR',
@@ -121,4 +139,21 @@ test('known util.inspect serialization exposes only the real top-level allowlist
     const result = browserDiagnostics(report([{ status: 'failed', error: { value } }]));
     assert.equal(result.tests[0].problemCode, undefined); assert.ok(!JSON.stringify(result).includes('credential'));
   }
+});
+
+test('startup attachment emits only bounded fixed categories and numbers and is resanitized', () => {
+  const secret='https://credential@secret.example/private';
+  const startup={rootChildren:1,documentStatus:200,scriptResponses:2,scriptFailures:1,apiResponses:3,apiFailures:0,
+    pageErrors:['require-undefined',secret],cspViolations:2,consoleErrors:1,details:secret};
+  const attachment={name:'runtime-startup.json',contentType:'application/json',body:Buffer.from(JSON.stringify(startup)).toString('base64')};
+  const result=browserDiagnostics(report([{status:'failed',attachments:[attachment]}]));
+  assert.equal(result.tests[0].startup.documentStatus,200);
+  assert.deepEqual(result.tests[0].startup.pageErrors,['require-undefined','other']);
+  assert.ok(!JSON.stringify(result).includes('secret'));
+  const sanitized=sanitizeBrowserDiagnostics({...result,tests:[{...result.tests[0],startup:{...startup,rootChildren:-1,documentStatus:999}}]});
+  assert.equal(sanitized.tests[0].startup.rootChildren,0);
+  assert.equal(sanitized.tests[0].startup.documentStatus,0);
+  assert.ok(!JSON.stringify(sanitized).includes('secret'));
+  const oversized={...attachment,body:'A'.repeat(9000)};
+  assert.equal(browserDiagnostics(report([{status:'failed',attachments:[oversized]}])).tests[0].startup,undefined);
 });
