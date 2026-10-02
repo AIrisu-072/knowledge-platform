@@ -111,7 +111,7 @@ test('capture writes actual supplied screenshot bytes exclusively with fixed vie
   await rm(join(capture, names[0]));
   let options;
   const bytes = png();
-  const page = { url: () => context.human + '/documents', viewportSize: () => ({ width: 1440, height: 900 }), screenshot: async input => { options = input; return bytes; } };
+  const page = capturePage(context, bytes, { screenshot: async input => { options = input; return bytes; } });
   await api.captureVisualCheckpoint({ runDirectory: run, context, phase: 'journey', page, name: names[0] });
   assert.deepEqual(options, { type: 'png', fullPage: false, scale: 'css' });
   assert.deepEqual(await readFile(join(capture, names[0])), bytes);
@@ -165,3 +165,74 @@ test('early external-database rejection never echoes connection strings or crede
     return true;
   });
 });
+
+test('only named workflow screenshots admit explicit full-page heights within the approved bound', () => {
+  for (const name of names.slice(5)) {
+    assert.deepEqual(api.validatePng(png(1440, 1200), name), { width: 1440, height: 1200 });
+    assert.deepEqual(api.validatePng(png(1440, 4096), name), { width: 1440, height: 4096 });
+    for (const height of [899, 4097]) assert.throws(() => api.validatePng(png(1440, height), name), /dimensions/);
+  }
+  for (const name of names.slice(0, 5)) assert.throws(() => api.validatePng(png(name.includes('1280') ? 1280 : 1440, 1200), name), /dimensions/);
+});
+
+test('visual readiness has a normal-run entry point and checks bounded actual page geometry', async () => {
+  assert.equal(typeof api.assertVisualReadiness, 'function');
+  let waited = false;
+  const page = { url: () => 'http://127.0.0.1:1234/documents', viewportSize: () => ({ width: 1440, height: 900 }),
+    waitForFunction: async (_predicate, _arg, options) => { assert.equal(options.timeout, 15000); waited = true; },
+    evaluate: async () => ({ width: 1440, height: 1400 }) };
+  await api.assertVisualReadiness({ page, name: names[6], humanOrigin: 'http://127.0.0.1:1234' });
+  assert.equal(waited, true);
+  for (const geometry of [{ width: 1441, height: 1400 }, { width: 1440, height: 4097 }, { width: 1440, height: 899 }]) {
+    await assert.rejects(api.assertVisualReadiness({ page: { ...page, evaluate: async () => geometry }, name: names[6], humanOrigin: 'http://127.0.0.1:1234' }), /Visual/);
+  }
+});
+
+test('settling predicate rejects busy UI and running finite transitions without mutating focus or animation state', () => {
+  assert.equal(typeof api.visualStateSettled, 'function');
+  const prior = globalThis.document;
+  let busy = false, animations = [];
+  globalThis.document = { querySelector: selector => { assert.equal(selector, '[aria-busy="true"]'); return busy ? {} : null; }, getAnimations: () => animations };
+  try {
+    assert.equal(api.visualStateSettled(), true);
+    busy = true; assert.equal(api.visualStateSettled(), false); busy = false;
+    animations = [{ playState: 'running', pending: false, effect: { getComputedTiming: () => ({ endTime: 200 }) } }];
+    assert.equal(api.visualStateSettled(), false);
+    animations[0].playState = 'finished'; assert.equal(api.visualStateSettled(), true);
+    animations[0].pending = true; assert.equal(api.visualStateSettled(), false);
+    animations[0].effect.getComputedTiming = () => ({ endTime: Infinity }); assert.equal(api.visualStateSettled(), true);
+  } finally { if (prior === undefined) delete globalThis.document; else globalThis.document = prior; }
+});
+
+function capturePage(context, bytes, overrides = {}) {
+  return { url: () => context.human + '/documents', viewportSize: () => ({ width: 1440, height: 900 }),
+    waitForFunction: async () => {}, evaluate: async predicate => predicate === api.visualStateSettled ? true : { width: 1440, height: bytes.readUInt32BE(20) },
+    evaluateHandle: async () => ({ evaluate: async () => true, dispose: async () => {} }),
+    screenshot: async () => bytes, ...overrides };
+}
+test('full-page capture preserves focus and never exports after unsettled state or focus change', () => fixture(async ({ run, capture, context }) => {
+  await rm(join(capture, names[6]));
+  let options, disposed = false;
+  const bytes = png(1440, 1400);
+  const page = capturePage(context, bytes, { screenshot: async input => { options = input; return bytes; },
+    evaluateHandle: async () => ({ evaluate: async () => false, dispose: async () => { disposed = true; } }) });
+  await assert.rejects(api.captureVisualCheckpoint({ runDirectory: run, context, phase: 'journey', page, name: names[6] }), /focus/);
+  assert.equal(disposed, true);
+  assert.deepEqual(options, { type: 'png', fullPage: true, scale: 'css' });
+  await assert.rejects(lstat(join(capture, names[6])), { code: 'ENOENT' });
+  let captured = false;
+  await assert.rejects(api.captureVisualCheckpoint({ runDirectory: run, context, phase: 'journey',
+    page: capturePage(context, bytes, { waitForFunction: async () => { throw Error('unsettled'); }, screenshot: async () => { captured = true; return bytes; } }), name: names[6] }), /unsettled/);
+  assert.equal(captured, false);
+  await assert.rejects(lstat(join(capture, names[6])), { code: 'ENOENT' });
+  await api.captureVisualCheckpoint({ runDirectory: run, context, phase: 'journey', page: capturePage(context, bytes), name: names[6] });
+  assert.deepEqual(await readFile(join(capture, names[6])), bytes);
+}));
+
+test('capture refuses UI that becomes unsettled while screenshot is collected', () => fixture(async ({ run, capture, context }) => {
+  await rm(join(capture, names[6]));
+  const bytes = png(1440, 1200);
+  const page = capturePage(context, bytes, { evaluate: async predicate => predicate === api.visualStateSettled ? false : { width: 1440, height: 1200 } });
+  await assert.rejects(api.captureVisualCheckpoint({ runDirectory: run, context, phase: 'journey', page, name: names[6] }), /settled/);
+  await assert.rejects(lstat(join(capture, names[6])), { code: 'ENOENT' });
+}));

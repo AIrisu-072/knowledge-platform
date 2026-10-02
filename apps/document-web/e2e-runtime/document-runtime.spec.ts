@@ -1,3 +1,4 @@
+import { assertApplicationJapaneseFonts } from './japanese-font';
 import { visualCheckpoint } from './visual-capture';
 import { startDiagnostics, finishDiagnostics, captureUiDiagnostics } from './startup-diagnostics';
 import { test, expect } from '@playwright/test';
@@ -51,6 +52,8 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await page.goto('/documents?view=published');
   await expect(page.getByRole('region', { name: 'フォルダー' })).toBeVisible();
   completed('gui-loaded');
+  await assertApplicationJapaneseFonts(page);
+  test.info().annotations.push({ type: 'runtime-font', description: 'kosugi-regular-japanese-heading-body' });
   await captureUiDiagnostics(page, 'before-folder-wait');
   const sharedFolder = page.getByRole('button', { name: 'PoC Shared', exact: true });
   await expect(sharedFolder).toBeVisible();

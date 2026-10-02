@@ -66,3 +66,11 @@ test('actual runner rejects visual external DB before creating evidence or launc
     await assert.rejects(lstat(evidence), { code: 'ENOENT' });
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('normal runtime checkpoints qualify readiness before the optional capture gate', async () => {
+  const source = await read('../../../apps/document-web/e2e-runtime/visual-capture.ts');
+  const ready = source.indexOf('await assertVisualReadiness({ page, name, humanOrigin: context.human });');
+  const gate = source.indexOf('if (!context.visualCapture) return;');
+  const capture = source.indexOf('await captureVisualCheckpoint(');
+  assert.ok(ready > 0 && gate > ready && capture > gate, 'Ordinary runs must check settlement and page bounds without taking screenshots');
+});

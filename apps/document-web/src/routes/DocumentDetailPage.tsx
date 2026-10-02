@@ -24,6 +24,7 @@ import { AppShell } from '../components/app-shell/AppShell';
 import { createOperationId } from '../application/operation-id';
 import { documentStatusLabel, versionStatusLabel } from '../view-model/document-status';
 import { jstDateTimeLocalToUtc } from '../application/schedule-time';
+import { formatDateTime } from '../view-model/date-time';
 import { validateListSearch, type DetailSearch, type DocumentDetailTab, type VersionWorkflow } from '../application/search-state';
 import styles from './DocumentDetail.module.css';
 import workspaceStyles from './DocumentWorkspace.module.css';
@@ -1129,8 +1130,7 @@ function locatorLabel(locator: SourceLocator): string {
 }
 
 function formatDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Tokyo' }).format(date);
+  return formatDateTime(value, 'Asia/Tokyo');
 }
 
 function formatJstDateTime(value: string) {

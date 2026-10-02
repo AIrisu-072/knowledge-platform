@@ -8,6 +8,8 @@ import { DocumentDetailPage } from '../src/routes/DocumentDetailPage';
 import { DocumentHomePage } from '../src/routes/DocumentHomePage';
 import { validateDetailSearch, validateListSearch } from '../src/application/search-state';
 
+jest.mock('../src/routes/DocumentWorkspace.module.css', () => ({ timestampCell: 'timestamp-cell' }));
+
 jest.mock('../src/application/document-workspace', () => ({
   documentApi: {
     getSession: jest.fn(),
@@ -76,6 +78,51 @@ function renderAt(entry: string) {
   const result = render(<QueryClientProvider client={client}><RouterProvider router={router as never} /></QueryClientProvider>);
   return { ...result, router, client };
 }
+
+test('Home timestamp labels its actual local zone and preserves the machine-readable instant', async () => {
+  mockApi();
+  const { container } = renderAt('/documents?view=published');
+  await screen.findByRole('button', { name: /受入手順/ });
+  const instant = '2026-10-01T01:00:00Z';
+  const time = container.querySelector(`time[datetime="${instant}"]`);
+  const local = new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium', timeStyle: 'short' });
+  const minutes = -new Date(instant).getTimezoneOffset();
+  const offset = `${minutes < 0 ? '-' : '+'}${String(Math.floor(Math.abs(minutes) / 60)).padStart(2, '0')}:${String(Math.abs(minutes) % 60).padStart(2, '0')}`;
+  expect(time).toHaveTextContent(`${local.format(new Date(instant))} (${local.resolvedOptions().timeZone}, UTC${offset})`);
+  expect(time).toHaveAttribute('datetime', instant);
+  expect(time!.closest('[role="cell"]')).toHaveClass('timestamp-cell');
+  expect(within(screen.getByRole('complementary', { name: '選択中の文書' })).getByText(time!.textContent!)).toBeVisible();
+});
+
+test('Detail timestamp visibly retains Tokyo time with its zone and offset', async () => {
+  mockApi();
+  renderAt(`/documents/${documentId}?view=published&tab=overview`);
+  const timestamps = await screen.findAllByText('2026/10/01 10:00 (Asia/Tokyo, UTC+09:00)');
+  expect(timestamps).toHaveLength(2);
+  timestamps.forEach(timestamp => expect(timestamp).toBeVisible());
+});
+
+test('Home keeps distinct fall-back instants and labels their respective local offsets', async () => {
+  const api = mockApi();
+  const instants = ['2026-11-01T05:30:00Z', '2026-11-01T06:30:00Z'];
+  api.listDocuments.mockResolvedValue({ view: 'published', nextCursor: null, items: instants.map((value, index) => ({
+    ...listItem('published'), documentId: `fold-${index}`, title: `秋の公開 ${index + 1}`,
+    displayTimestamp: { kind: 'revisionCreatedAt', value },
+  })) });
+  const { container } = renderAt('/documents?view=published&panel=closed');
+  await screen.findByRole('button', { name: '秋の公開 1' });
+  const times = instants.map(instant => container.querySelector(`time[datetime="${instant}"]`)!);
+  const local = new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium', timeStyle: 'short' });
+  for (const [index, instant] of instants.entries()) {
+    expect(times[index]).toHaveAttribute('datetime', instant);
+    expect(times[index]).toHaveTextContent(local.format(new Date(instant)));
+    expect(times[index]).toHaveTextContent(`${local.resolvedOptions().timeZone}, UTC`);
+  }
+  if (local.resolvedOptions().timeZone === 'America/New_York') {
+    expect(times[0]).toHaveTextContent('2026/11/01 1:30 (America/New_York, UTC-04:00)');
+    expect(times[1]).toHaveTextContent('2026/11/01 1:30 (America/New_York, UTC-05:00)');
+  }
+});
 
 test('folder navigation remains visible when the document list request fails', async () => {
   const api = mockApi();

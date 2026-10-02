@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 
 export const MAX_BROWSER_REPORT_BYTES = 8 * 1024 * 1024;
 const MAX_RECORDS = 20, MAX_NODES = 1000, MAX_DEPTH = 8, MAX_TEXT = 16 * 1024;
-const sources = new Set(['document-runtime.spec.ts', 'human-agent-consistency.spec.ts', 'worker-failure.spec.ts', 'persistence.spec.ts', 'support.ts']);
+const sources = new Set(['document-runtime.spec.ts', 'human-agent-consistency.spec.ts', 'worker-failure.spec.ts', 'persistence.spec.ts', 'timestamp-layout.spec.ts', 'support.ts', 'japanese-font.ts']);
 const statuses = new Set(['passed', 'failed', 'timedOut', 'skipped', 'interrupted', 'unavailable']);
 const categories = new Set(['strict-locator', 'locator-timeout', 'test-timeout', 'HTTP-status-assertion', 'assertion', 'unavailable']);
 const matchers = new Set(['toBe', 'toEqual', 'toStrictEqual', 'toBeVisible', 'toBeHidden', 'toHaveCount', 'toHaveText', 'toContainText',
@@ -42,6 +42,16 @@ const journeyStages = new Set(['context-read', 'sessions-verified', 'api-preflig
   'pdf-published-detail-read', 'pdf-target-created', 'pdf-target-detail-read', 'pdf-target-published', 'pdf-comparison-read',
   'pdf-base-files-read', 'pdf-base-download-verified', 'pdf-target-files-read', 'pdf-target-download-verified',
   'pdf-gui-verified', 'pdf-shared-state-verified', 'pdf-snapshot-saved']);
+const fontSelection = 'kosugi-regular-japanese-heading-body';
+const timestampLayout = 'long-iana-both-folds-1280-1440';
+function timestampReceipt(test, status) {
+  return status === 'passed' && (Array.isArray(test?.annotations) ? test.annotations.slice(0, 40) : []).some(annotation =>
+    annotation?.type === 'runtime-timestamp-layout' && annotation.description === timestampLayout) ? { timestampLayout } : {};
+}
+function fontReceipt(test) {
+  return (Array.isArray(test?.annotations) ? test.annotations.slice(0, 40) : []).some(annotation =>
+    annotation?.type === 'runtime-font' && annotation.description === fontSelection) ? { fontSelection } : {};
+}
 function lastCompletedStage(test) {
   let stage;
   for (const annotation of (Array.isArray(test?.annotations) ? test.annotations.slice(0, 40) : [])) {
@@ -76,7 +86,7 @@ function location(value) {
   return { source, ...(integer(value.line) ? { line: value.line } : {}), ...(integer(value.column) ? { column: value.column } : {}) };
 }
 function stackLocation(value) {
-  const match = text(value).match(/(?:^|[\\/\s(])((?:document-runtime|human-agent-consistency|worker-failure|persistence)\.spec\.ts|support\.ts):(\d{1,7}):(\d{1,7})(?:\D|$)/u);
+  const match = text(value).match(/(?:^|[\\/\s(])((?:document-runtime|human-agent-consistency|worker-failure|persistence|timestamp-layout)\.spec\.ts|support\.ts):(\d{1,7}):(\d{1,7})(?:\D|$)/u);
   return match ? location({ file: match[1], line: Number(match[2]), column: Number(match[3]) }) : undefined;
 }
 // Node util.inspect uses unquoted property names and quoted string values. Accept
@@ -146,7 +156,7 @@ export function browserDiagnostics(report) {
         if (output.tests.length === MAX_RECORDS) { output.truncated = true; continue; }
         const error = object(result?.error) ? result.error : Array.isArray(result?.errors) ? result.errors.slice(0, 4).find(object) : undefined;
         const source = location(error?.location) ?? location(result?.errorLocation) ?? stackLocation(error?.stack) ?? location(spec) ?? location(suite);
-        output.tests.push({ ...source, status, ...(lastCompletedStage(test) ? { lastCompletedStage: lastCompletedStage(test) } : {}), ...(startupAttachment(result) ? { startup: startupAttachment(result) } : {}), ...(['passed', 'skipped'].includes(status) ? {} : describeError(error, status)) });
+        output.tests.push({ ...source, status, ...fontReceipt(test), ...timestampReceipt(test, status), ...(lastCompletedStage(test) ? { lastCompletedStage: lastCompletedStage(test) } : {}), ...(startupAttachment(result) ? { startup: startupAttachment(result) } : {}), ...(['passed', 'skipped'].includes(status) ? {} : describeError(error, status)) });
       }
       if (visited > MAX_NODES) break;
     }
@@ -167,6 +177,8 @@ export function sanitizeBrowserDiagnostics(value) {
   const tests = (Array.isArray(value.tests) ? value.tests.slice(0, MAX_RECORDS) : []).filter(object).map(record => ({
     ...(journeyStages.has(record.lastCompletedStage) ? { lastCompletedStage: record.lastCompletedStage } : {}),
     ...(record.scope === 'global' ? { scope: 'global' } : {}),
+    ...(record.fontSelection === fontSelection ? { fontSelection } : {}),
+    ...(record.status === 'passed' && record.timestampLayout === timestampLayout ? { timestampLayout } : {}),
     ...(sanitizeStartup(record.startup) ? { startup: sanitizeStartup(record.startup) } : {}),
     ...(sources.has(record.source) ? { source: record.source, ...(integer(record.line) ? { line: record.line } : {}),
       ...(integer(record.column) ? { column: record.column } : {}) } : {}),

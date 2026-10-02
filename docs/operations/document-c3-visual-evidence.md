@@ -28,9 +28,29 @@ Desktop Chrome's device preset previously overrode the top-level viewport. The
 project now explicitly sets 1440×900 and device scale factor 1 after that preset;
 journey cases explicitly set their starting viewport as well. The focus-return
 checkpoint explicitly uses 1280×900. Capture verifies the actual page origin and
-viewport before requesting viewport-only CSS-scale PNG bytes.
+viewport before requesting checkpoint-specific CSS-scale PNG bytes.
 
-Exactly these checkpoints are eligible (all heights 900):
+Before each checkpoint, including ordinary non-capture runtime runs, the helper
+waits up to the existing15-second UI assertion budget for no `aria-busy=true` and
+no running/pending finite Web Animations transitions. It observes actual page
+geometry, rejects horizontal overflow and bounds the full-page height. It does
+not change scroll, focus, product CSS, animation timing or business state. During
+capture, the settled active element must remain identical and UI must still be
+settled after screenshot collection. The byte parser independently checks the
+resulting PNG dimensions. A timeout, oversized page, renewed pending state or
+focus change fails the checkpoint before any export. These are harness checks;
+actual hosted layout and pixels remain qualification evidence.
+
+The first H `31b75d81941027f3c00be0617fb26cd0f6a9e18c` capture exported valid files
+but failed Japanese readability. Images07/09–13 lost context through viewport-only
+framing;06 showed a partially collapsed context pane consistent with its transition, and13 could
+precede upload invalidation settlement. This correction addresses capture
+settlement/framing only; it does not claim to repair fonts or product timezone
+ambiguity, or retroactively qualify the failed artifact. The same13 filenames,
+synthetic owned-run guard, fixed uploader/retention and deliberate activation gate
+remain in force. No ordinary run uploads images and no old event is retriggered.
+
+Exactly these checkpoints are eligible. Viewports remain1440×900 (02 uses1280×900). Images01–05 are fixed-height viewport captures;06–13 explicitly capture the full page, with height900–4096px, to retain document/header and action/error context together:
 
 | Filename | Passed assertion immediately before capture |
 |---|---|
@@ -59,7 +79,7 @@ built-in-this-run provenance (HEAD and porcelain are rechecked immediately befor
 export and must match the clean run start), the runner validates the entire fixed 13 set. It
 rejects missing/extra basenames; symlinks in the directory ancestry or files;
 hardlinks; nonregular, executable, nonprivate or nonowned files; files over 8 MiB;
-wrong 1440×900/1280×900 dimensions; wrong signatures/chunks/CRCs; text/EXIF/other
+wrong width or height (01–05 exactly900px;06–13 between900 and4096px); wrong signatures/chunks/CRCs; text/EXIF/other
 ancillary metadata; malformed/truncated or trailing data; and oversized inflation.
 Supported pixels are Chromium's 8-bit noninterlaced RGB/RGBA PNG form.
 
