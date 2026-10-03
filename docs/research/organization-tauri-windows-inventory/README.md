@@ -1,6 +1,6 @@
 # Fresh Windows candidate inventory receipt
 
-Date: 2026-10-03 UTC. Status: **COMBINED SHARDED PUBLICATION GO; REMOTE PUBLICATION PENDING; BUILD/RUNTIME HELD**.
+Date: 2026-10-03 UTC. Status: **CAPTURE VERIFIED; PUBLIC PR52; INACTIVE-ADVISORY POLICY STOP; BUILD/RUNTIME HELD**.
 
 This is new reproducible evidence above actual PR51, not recovery of unpublished
 b4a bytes. The [exact approval amendment](../../decisions/2026-10-03-organization-tauri-windows-mpl-amendment.md)
@@ -10,11 +10,29 @@ validation code permit reproduction without publishing third-party binaries/sour
 or raw logs. [Reproduction instructions](../../../tools/organization-tauri-qualification/README.md)
 use official pinned tools and explicit inert manifest paths.
 
-The three reviewed local packets have no confirmed remote publication. This combined
-checkpoint preserves their evidence and STOPs; the [repack record](../../superpowers/execution/organization-tauri-sharded-publication-review.md)
+Historical publication note: the three original local packets were superseded
+without individual remote publication. Public PR52 now preserves their combined
+evidence and STOPs; the [repack record](../../superpowers/execution/organization-tauri-sharded-publication-review.md)
 records exact superseded local identities and the new lossless storage verification.
 The historical active pointer remains byte-identical; its earlier publication steps
 are superseded by this single combined publication, not by new runtime authority.
+
+## Advisory coverage correction, 2026-10-03 UTC
+
+Public PR52 now includes the exact owner-approved four checksum fingerprints.
+Hosted full-history Gitleaks and root cargo-deny pass, but recursive OSV2.5.1
+reports glib0.18.5 RUSTSEC-2024-0429 and proc-macro-error1.0.4 RUSTSEC-2024-0370
+in the inert lock. Both are inactive in the recorded Windows projection; neither
+is thereby globally safe or approved for Linux/native execution. No advisory
+exception is applied. See the [pending decision packet](../organization-tauri-inactive-advisory-decision.md).
+
+The original all-target cargo-deny result below remains unchanged. Its target
+coverage was broad, but its default informational-unsound scope was only direct
+workspace dependencies; glib is transitive. Unmaintained defaults to all. Thus
+“all-target” was not exhaustive transitive-unsound coverage, and zero diagnostics
+under the scoped policy were not proof that no other advisories existed. The
+original scan receipts/logs and package coverage stay intact; this correction
+records the previously unstated reporting limit rather than rewriting evidence.
 
 ## Fresh results
 

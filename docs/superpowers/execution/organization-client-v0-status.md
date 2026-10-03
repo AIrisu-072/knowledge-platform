@@ -1,5 +1,14 @@
 # Organization Client v0 — Capability Execution Status
 
+## 2026-10-03 UTC — Checksum gate passes; inactive-advisory decision STOP
+
+- Public DraftPR52 is remotefdaf9a04f4251414a94ddfad89e6b81a6406c83f/tree53fbaef9898f21881de1c3dc39debd49e0baafb6, matching independently reviewed local5bf06ec. Exactly four checksum fingerprints were approved/applied; prior31 remain unchanged. Hosted full-history Gitleaks/self-test and root cargo-deny now pass.
+- CI37124138433 fails recursive OSV on glib0.18.5 unsoundness and proc-macro-error1.0.4 unmaintained status in the inert lock; aggregate required-check also fails. All remaining CI jobs and DSI37124138415/Sandbox37124138370 pass, D2 skipped. Both packages have zero selected occurrences in the recorded Linux-host→Windows-target projection, which is not native-Windows or runtime proof.
+- The [decision packet](../../research/organization-tauri-inactive-advisory-decision.md) corrects the prior all-target advisory-coverage implication: cargo-deny0.20.2 defaults transitive-unsound reporting out, while unmaintained defaults to all. Original receipts remain unchanged. Official compatible GTK/GLib constraints do not offer a patched update within current stable Tauri2.12.1.
+- Native OSV configuration cannot directly combine advisory ID with exact package/version/role bounds. A guarded, expiring qualification-data profile is proposed for independent review/owner judgment only; no policy, lock, workflow or H1 edit is made. Current branch docs/organization-tauri-advisory-decision. Next exact action: independent decision-packet review and owner choice; preserve raw full-lock findings. H1 implementation/activation, RuntimeEULA/native use, Linux use and production/distribution remain held.
+
+---
+
 ## 2026-10-03 12:14 UTC — Exact checksum exceptions approved; requalification pending
 
 - Combined metadata/Runtime-STOP/design checkpoint is public Draft [PR52](https://github.com/AIrisu-072/knowledge-platform/pull/52), remote0802fe6de30c9491c0fe459c57b2c56641f027d9/tree17f35a26b3aea994af6860eccc296cc7ce3f88e3, matching reviewed local996b68a. Earlier remote-publication-pending entries are historical. Existing predecessor heads/Drafts and capturedPR48 remain unchanged.
