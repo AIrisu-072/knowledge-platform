@@ -1,5 +1,13 @@
 # Search Platform Completion Program — Status
 
+## Latest isolated-lock checkpoint — 2026-10-03
+
+- **ACTIVE / WIP / incomplete.** Root metadata recovery was published at Draft #40 `401b31047a64ed76c470477c6db15fc7e8221d2d` with exact tree `2df2784e8017f1433a2fb96d8054e4aca3478299`. Hosted CI `37099916947` is terminal failure: security passes, Rust static/test fail before test execution on missing `outbox_delivery::observe`. Sandbox `37099916942` passes; DSI PoC `37099916959` fails on isolated `yoke-derive 0.8.3`.
+- [Three-lock recovery receipt](../programs/search-platform-completion/poc-lock-metadata-recovery-20261003.md) records the isolated DSI, Search HTTP-client and Search discovery lock updates. Exact byte/parsed comparisons change only the intended package version/checksum, preserving all 337/200/376 package entries and unchanged manifests/policies. Separate dependency scans each report baseline exit 1 → candidate exit 0, with unchanged warnings. Independent 13-file metadata/receipt/log publication review GO; original raw-normalization hashes, process statuses and metadata execution are producer-recorded, while committed diagnostics and lock/hash claims were independently checked.
+- This closes the three named local dependency findings only. No experiment behavior, hosted new-head pass, missing observe implementation, P1–P7 or whole-program acceptance is claimed. The current synthetic P6 G05/G06 work is separate: initial 5/5 and 4/4 results do not close the G06 pending-operation timeout defects found by independent review.
+- No PoC/runtime, database, parser, model, process-recovery or security-probe execution occurred in this checkpoint. The unidentified historical stopped operation was not retried or cleared.
+- **Exact next action:** publish the separately reviewed lock checkpoint, verify its remote tree and inspect ordinary exact-head CI. Complete synthetic G06 RED/correction/re-review before any later runtime gate; no merge or deployment.
+
 ## Latest bounded dependency checkpoint — 2026-10-03
 
 - **ACTIVE / WIP / incomplete.** Live Search Draft #40 at `a945fbd32145a3109e35cb9cb056cea052698138` is the reconstruction baseline; original restored sources are preserved. Other Document/Organization/Audit work is not imported.

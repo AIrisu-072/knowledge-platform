@@ -1,5 +1,12 @@
 # Active Execution Pointer
 
+## Active checkpoint — Search isolated PoC dependency locks, 2026-10-03
+
+- **ACTIVE / WIP / incomplete.** Root dependency checkpoint is durably published in Draft PR #40 at `401b31047a64ed76c470477c6db15fc7e8221d2d`, tree `2df2784e8017f1433a2fb96d8054e4aca3478299`. Its hosted security job `111137273878` passes; Rust static/test still fail on missing `outbox_delivery::observe`, and DSI PoC fails on its separate yanked dependency.
+- The three previously open isolated locks now receive only `yoke-derive 0.8.3 → 0.8.4` version/checksum changes. Each separate same-command cargo-deny scan reports exit 1 → 0 and all four dependency gates OK, with unchanged warnings; no PoC or other runtime was executed. Independent bounded metadata publication review GO. See [receipt](../programs/search-platform-completion/poc-lock-metadata-recovery-20261003.md).
+- P6 G05/G06 synthetic verification is a separate workstream; G06 review has identified pending-operation deadline gaps despite its initial four-test PASS. No lifecycle correction or acceptance is claimed by this lock-only checkpoint. P1–P7, G07/G08, final acceptance and the unidentified historical safety-stop remain open.
+- **Exact next action:** publish this metadata checkpoint and inspect ordinary exact-head CI; finish separately reviewed synthetic G06 regression/correction before advancing the frozen P6 runtime sequence. No blanket runtime authorization, merge or deployment.
+
 ## Active checkpoint — Search root dependency metadata recovery, 2026-10-03
 
 - **ACTIVE / WIP / incomplete.** Fresh requester-directed Search continuation starts from Draft PR #40 `a945fbd32145a3109e35cb9cb056cea052698138`, without overwriting the older restored worktree or mixing other capability branches.
