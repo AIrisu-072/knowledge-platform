@@ -1,59 +1,33 @@
-# Organization Client v0 — Phase 2 authority and freeze
+# Organization Client v0：Phase2の権限と凍結
 
-Date: 2026-10-02 UTC. Status: **PHASE2 FROZEN / PHASE3 AUTHORIZED WITHIN SCOPE**.
+日付：2026-10-02 UTC。状態：**PHASE2凍結済み / PHASE3は範囲内で承認済み**。
 
-## Authority and fixed inputs
+## 権限と固定入力
 
-The original owner request §§0–51, particularly §§21,42,44,45,49–51, authorizes
-faithful formalization and the minimal non-destructive attempt-model evaluation.
-The [Phase1 authority record](2026-10-02-organization-client-v0-product-ux-approval.md)
-quotes §50 and binds accepted PR43 H2. Its frozen design blob
-`a2901ccb866fc85b18301db27dd66aa629791201` remains unchanged.
+依頼者の元の要求§§0〜51、特に§§21,42,44,45,49〜51は、忠実な形式化と、最小限で非破壊のattempt model評価を許可しています。[Phase1権限記録](2026-10-02-organization-client-v0-product-ux-approval.md)は§50を引用し、受入済みPR43 H2に結び付けています。その凍結設計blob `a2901ccb866fc85b18301db27dd66aa629791201`は不変です。
 
-This records bounded prior authority plus independent technical review. It does
-not claim a new owner review of a previously nonexistent artifact or waive the
-original STOP conditions. No new routine approval is needed to continue Phase3.
+これは、範囲限定の既存権限と独立技術レビューの記録です。それ以前には存在しなかったartifactを依頼者が新たにレビューしたと主張したり、元のSTOP条件を免除したりするものではありません。Phase3を続けるための新たな通常承認は不要です。
 
-## Frozen subject
+## 凍結対象
 
-- Design: [Domain/API/Authorization](2026-10-02-organization-client-v0-domain-api-design.md).
-- Exact blob: `9f68bf19eb9986eb1c78082704a5d38ff35e35af`.
-- Final reviewed commit: `245b17ddf39a7ef88a29ce698d57340d79bb7ad6`.
-- Final reviewed tree: `d056e70a8be34c56d062f6f43138d70f8390d392`.
-- Independent final verdict at12:59UTC: **GO**, no Critical/Important finding.
+- 設計：[Domain/API/Authorization](2026-10-02-organization-client-v0-domain-api-design.md)
+- 正確なblob：`9f68bf19eb9986eb1c78082704a5d38ff35e35af`
+- 最終レビューcommit：`245b17ddf39a7ef88a29ce698d57340d79bb7ad6`
+- 最終レビューtree：`d056e70a8be34c56d062f6f43138d70f8390d392`
+- 12:59UTCの独立最終判定：**GO**、Critical/Important指摘なし
 
-The initial review's four Important findings and proposed/final repairs are
-preserved in [review receipts](../execution/organization-client-v0-design-review.md).
-Final full re-review verified private artifact isolation/direct-provider bypass,
-closed context/progress visibility, generation-bound native reads, and explicit
-requester/executor/provider authority. Final narrow review verified inherited MCP
-startup preflight is not falsely described as new per-use verification.
+初回レビューのImportant指摘4件と、提案/最終修正は[レビュー記録](../execution/organization-client-v0-design-review.md)に保持しています。最終の全体再レビューでは、非公開artifact隔離/provider直接回避、context/progressの限定された可視性、generationに結び付いたnative read、明示的なrequester/executor/provider権限を検証しました。最後の限定レビューでは、引き継いだMCP起動preflightを、新しい利用ごとの検証として誤記していないことを確認しました。
 
-The design's review-pending header is historical preparation state; this later
-exact-blob record is operative. The reviewer did not qualify implementation or
-the subsequent status/approval bookkeeping as product behavior.
+設計のレビュー待ち見出しは過去の準備状態で、後のこのexact-blob記録が有効です。レビュー担当は実装や、その後のstatus/approval記録作業を、製品動作として検証してはいません。
 
-## Selected minimum and preserved limits
+## 選んだ最小構成と維持する制限
 
-- Stable WorkItem plus immutable completed WorkAttempt, new causal attempts on
-  return, atomic immutable handoff membership and next-ready state.
-- Current role/assignment/delegation/provider checks, separate queue/context/
-  private-detail visibility and explicit operation/OCC recovery.
-- New private draft bytes stay Work-owned behind authorized generation storage;
-  shared Document references remain inputs. No Work label changes Document ACLs.
-  Work's bounded artifact-provider implementation still needs its own qualification.
-- Evidence/Finding/HumanDecision are distinct; Agent has attributable scoped
-  assistance and structured results, never Human judgment impersonation.
-- Full minimum API design, shared Human/Agent business contracts, logical
-  Workspace and bounded broker/read handles with later OS-specific proof.
+- 安定したWorkItemと不変の完了済みWorkAttempt、return時に因果関係を持つ新attempt、atomicで不変のhandoff membershipとnext-ready状態
+- 現在のrole/assignment/delegation/provider検査、queue/context/private-detailの可視性分離、明示的operation/OCC回復
+- 新しい非公開draft bytesは、認可されたgeneration storageの背後でWork所有を維持。共有Document参照は入力のまま。Work labelはDocument ACLを変えない。範囲限定のWork artifact-provider実装には独自の適格性確認がなお必要
+- Evidence/Finding/HumanDecisionを分離。Agentは帰属を明示した範囲限定支援と構造化結果を持ち、Human判断をなりすまさない
+- 最小要件を満たす全API設計、Human/Agent共通業務contract、論理Workspace、範囲限定broker/read handle。OS固有の証明は後続で実施
 
-Phase3 now completes exactly two source designs and their state/interaction/
-keyboard/accessibility mappings. Tauri/current dependency qualification remains
-Phase4; product code remains Phase5; real synthetic acceptance remains Phase6.
-No merge/close/deploy, production migrations/identity/data/credentials, Search WIP
-mutation or unqualified Audit-store dependency is authorized.
+Phase3で、正確に2つのsource設計と、その状態/interaction/keyboard/accessibility対応を完了します。Tauri/現在の依存関係の適格性確認はPhase4、製品codeはPhase5、実合成受入はPhase6です。merge/close/deploy、本番migration/identity/data/認証情報、Search WIP変更、未検証Audit-storeへの依存は許可しません。
 
-Fresh checks:51 unique method/path and operationId designs; all52 original
-requirement rows; new relative links and placeholder scan; exact objects,
-whitespace, unchanged Phase1 and inherited product/lock/workflow scope. No new
-runtime or hosted CI pass is claimed by these documentation checks.
+新たな検査：一意な51method/pathとoperationId設計、元の要求全52行、新しい相対リンクとplaceholder scan、正確なobject、空白、不変Phase1と引き継いだproduct/lock/workflow範囲。これらの文書検査では、新runtimeやhosted CIのPASSを主張しません。
