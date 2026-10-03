@@ -1,58 +1,30 @@
-# Organization Client v0 — Phase 1 authority and freeze
+# Organization Client v0：Phase1の権限と凍結
 
-Date: 2026-10-02 UTC. Status: **PHASE1 FROZEN / PHASE2 AUTHORIZED WITHIN SCOPE**.
+日付：2026-10-02 UTC。状態：**PHASE1凍結済み / PHASE2は範囲内で承認済み**。
 
-## Owner authority
+## 依頼者による権限
 
-The owner's original Organization Client request §§0–51 explicitly fixes the
-product, UX, resource, authority and runtime boundaries. §50 states:
+依頼者の元のOrganization Client要求§§0〜51は、product、UX、resource、authority、runtimeの境界を明示的に定めています。§50は次のとおりです。
 
 > この内容を正式化するだけで、新しい重大semantic decisionを追加しない場合、この依頼文をapproval evidenceとしてDesign Approvalを作成し、そのまま次Phaseへ進んでよい。
 
-The [PR43 owner acceptance receipt](https://github.com/AIrisu-072/knowledge-platform/pull/43#issuecomment-5952167525)
-cleared the §0 predecessor at2026-10-02 12:16UTC, exact source
-`6103e4d4e3bb0d45ba03e1d2935492de7f11394a`, tree
-`f2e13eee0d7e1bfa71952c1da52a72cecb65fc9e`. Full original sections0–51 were
-received and read verbatim, not inferred from a prior summary. The
-[coverage map](../execution/organization-client-v0-requirements-map.md) traces all52 numbered sections.
+[PR43の依頼者受入記録](https://github.com/AIrisu-072/knowledge-platform/pull/43#issuecomment-5952167525)により、2026-10-02 12:16UTCに§0の前提が満たされました。正確なsourceは`6103e4d4e3bb0d45ba03e1d2935492de7f11394a`、treeは`f2e13eee0d7e1bfa71952c1da52a72cecb65fc9e`です。元の0〜51全節を原文で受け取り、過去の要約から推測せずに読みました。[要求対応表](../execution/organization-client-v0-requirements-map.md)で番号付き全52節を追跡できます。
 
-This records existing bounded authority, not a claim that the owner separately
-reviewed a newly created Git blob. No additional routine approval is required
-to proceed faithfully. New major semantics and the original STOP conditions
-remain outside this permission.
+これは既存の限定権限の記録であり、依頼者が新しく作られたGit blobを別途レビューしたという主張ではありません。忠実に進めるための追加の通常承認は不要です。新しい重大な意味変更と元のSTOP条件は、この許可の範囲外です。
 
-## Frozen subject and independent review
+## 凍結対象と独立レビュー
 
-- Phase1 design: [Product/UX](2026-10-02-organization-client-v0-product-ux-design.md).
-- Exact design blob: `a2901ccb866fc85b18301db27dd66aa629791201`.
-- Initial independent review: GO, no Critical/Important findings at candidate
-  `83bcd53fea57e1843ab04488154731ada56121ff`, tree
-  `9298269a6810fd2e075e9a63391fd8ee953d47f5`.
-- Two editorial corrections made OrganizationalUnit and Tauri v2 terminology
-  explicit and listed the already-requested future Phase4 qualification items.
-- Exact-blob re-review: GO for the frozen blob above at12:41UTC, no new semantics
-  or Critical/Important findings. Requirements map, status and additive Active
-  pointer also reviewed; all52 rows and relative links checked.
-- The design's original review-pending header records its preparation state;
-  this later exact-blob record is the operative freeze authority. Do not rewrite
-  the frozen design to manufacture a retrospective approval.
+- Phase1設計：[Product/UX](2026-10-02-organization-client-v0-product-ux-design.md)
+- 正確な設計blob：`a2901ccb866fc85b18301db27dd66aa629791201`
+- 最初の独立レビュー：候補`83bcd53fea57e1843ab04488154731ada56121ff`、tree `9298269a6810fd2e075e9a63391fd8ee953d47f5`でGO。Critical/Important指摘なし
+- 編集上の修正2件で、OrganizationalUnitとTauri v2の用語を明示し、既に要求された後続Phase4の適格性確認項目を列挙
+- 正確なblobの再レビュー：12:41UTCに上記凍結blobへGO。新しい意味変更やCritical/Important指摘なし。要求対応表、status、追加Active pointerもレビューし、全52行と相対リンクを確認
+- 設計に元からあるレビュー待ち見出しは準備時の状態です。後のこのexact-blob記録が有効な凍結権限です。過去の承認を作ったことにするために凍結設計を書き換えてはいけません
 
-## Scope and next boundary
+## 範囲と次の境界
 
-Exactly two archetypes and one work authority; task landing and three primary
-entries; separate Evidence/Finding/HumanDecision; cross-cutting contextual Agent
-without transcript authority; role-based responsibility and private work;
-immutable handoff/return; logical Workspace with local/shared separation;
-unchanged Document and Search boundaries; same-React desktop-primary runtime,
-single-window/no-sidecar; synthetic identity and production identity deferral.
+正確に2archetypeと1つの作業権限、Tasksを初期画面とする3つの主navigation、Evidence/Finding/HumanDecisionの分離、transcriptに権限を持たせない横断的なcontextual Agent、roleに基づく責任と非公開作業、不変handoff/return、local/sharedを分離する論理Workspace、DocumentとSearchの不変境界、同じReactを使うdesktop優先runtime、単一window/sidecarなし、合成identityと本番identityの延期を対象とします。
 
-Phase2 may now formalize Domain/API/Authorization, including the expressly
-delegated minimal rework model evaluation. Phase3 concrete source design follows
-its independent freeze. This approval does not qualify Tauri/dependencies,
-authorize implementation ahead of Phase4, change Linux/backend policy, qualify
-Search/Audit WIP, merge/close PRs, or authorize production operations/credentials.
+Phase2は、明示的に委任された最小rework modelの評価を含め、Domain/API/Authorizationを形式化できます。その独立凍結後にPhase3の具体source設計を行います。この承認はTauri/依存関係を検証せず、Phase4より前の実装を許可せず、Linux/backend policyを変えず、Search/Audit WIPを検証せず、PRのmerge/closeや本番操作/認証情報利用を許可しません。
 
-Fresh verification is documentation-only: exact source/report identities and
-ancestry, scope, all52 requirement rows, relative links, placeholder scan and
-whitespace. The fresh-worktree API test remains environment-BLOCKED before
-assertions; no new full-runtime or hosted qualification is claimed.
+新たな検証は文書のみです。正確なsource/report識別子と履歴、範囲、要求全52行、相対リンク、placeholder scan、空白を確認しています。新worktreeのAPIテストはassertion前に環境BLOCKEDのままで、新たな全runtime/hosted検証の成功は主張しません。
