@@ -1,5 +1,12 @@
 # Search Platform Completion Program — Status
 
+## Latest G07 pure guard checkpoint, 2026-10-03
+
+- **ACTIVE / WIP / incomplete.** Two-file pure fixture checkpoint `fda5ff8a77cb7e237d55665c532134392267a651` / tree `14c66619732559e3403eaea096cb297afc142c9d` has fresh six-test Rust pure GREEN, Python 53/53, selected strict Clippy, two-file fmt and diff pass. See [bounded receipt](../programs/search-platform-completion/p6-g07-pure-guards-20261003.md). Actual G07 child/DB path remains unwired/unexecuted.
+- The only legacy fixture edit boxes the existing container field/construction after a recorded pre-existing Clippy size warning; no Docker behavior was runtime-tested. New supplemental Python DB-name/archive tests show 25 intended REDs and nine controls; their correction and all effectful fixture/launcher gates remain open.
+- Last verified remote Draft #40 is `401b31047a64ed76c470477c6db15fc7e8221d2d`; later PoC locks, G06 and this checkpoint remain local under the separate public-sharing hold. Whole Search/P1–P7 acceptance and the unidentified historical stop remain unresolved.
+- **Exact next action:** complete supplemental pure correction/review, then implement and independently review the exact owned launcher/fixture command manifest before any setup or real-process execution. No broader probe, merge or deployment.
+
 ## Latest G05/G06 local checkpoint — 2026-10-03
 
 - **ACTIVE / WIP / incomplete.** [Bounded correction receipt](../programs/search-platform-completion/p6-g06-runner-correction-20261003.md) and [machine evidence](../programs/search-platform-completion/p6-g06-evidence-20261003.json) identify the exact source and retained RED/GREEN diagnostics. Fresh final confirmation: admission 5/5, lifecycle 35/35, selected strict Clippy, two-file rustfmt and source diff check pass. Independent read-only source/contract review GO; no separate reviewer Cargo run.

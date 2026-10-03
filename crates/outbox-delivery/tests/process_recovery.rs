@@ -320,3 +320,709 @@ async fn four_processes_disjoint_claims_and_recover_expired() {
         worker.kill_and_wait();
     }
 }
+
+// Pure G07 preparation only. None of these contracts reads ambient state,
+// touches a socket/database/file, or spawns/signals/waits for a real process.
+// The child entrypoint above intentionally remains unwired for later G07 RED.
+use postgres_fixture::g07_owned::{
+    DatabaseIdentity, DatabaseResolution, DdlOperation, DdlResponse, FixtureError, OwnedScopeFacts,
+    PathFact, PathKind, ProcessIdentity, checked_drop_statement, classify_ddl_response,
+    validate_owned_scope,
+};
+use std::{
+    collections::BTreeMap,
+    ffi::{OsStr, OsString},
+    path::PathBuf,
+};
+
+const G07_STREAM_CAP: usize = 64 * 1024;
+const G07_CHILD_LIFETIME: Duration = Duration::from_secs(45);
+const G07_BARRIER_PHASE: Duration = Duration::from_secs(15);
+const G07_CLEANUP_PHASE: Duration = Duration::from_secs(15);
+const G07_COHORT_REAP: Duration = Duration::from_secs(10);
+
+fn synthetic_scope() -> (Value, OwnedScopeFacts) {
+    let root = "/workspace/scratch/13897606dfde/p6pg.Test0007";
+    let paths = [
+        ("run_root", root.to_string()),
+        ("data_dir", format!("{root}/data")),
+        ("socket_dir", format!("{root}/socket")),
+        ("home_dir", format!("{root}/home")),
+        ("tmp_dir", format!("{root}/tmp")),
+        ("config_file", format!("{root}/data/postgresql.conf")),
+        ("hba_file", format!("{root}/data/pg_hba.conf")),
+        (
+            "postgres_executable",
+            format!("{root}/install/bin/postgres"),
+        ),
+    ];
+    let executable_sha256 = "a".repeat(64);
+    let server = ProcessIdentity {
+        pid: 41,
+        start_ticks: 500,
+        uid: 1000,
+        executable: PathBuf::from(&paths[7].1),
+        executable_sha256: executable_sha256.clone(),
+        executable_dev: 7,
+        executable_inode: 80,
+    };
+    let mut manifest = json!({
+        "schema_version": 1,
+        "run_id": "00000000-0000-0000-0000-000000000007",
+        "postgres_executable_sha256": executable_sha256,
+        "server_pid": server.pid,
+        "server_start_ticks": server.start_ticks,
+        "server_uid": server.uid,
+        "server_executable_dev": server.executable_dev,
+        "server_executable_inode": server.executable_inode,
+        "os_user": "agent",
+        "database_user": "agent",
+        "admin_database": "postgres",
+        "port": 5432,
+        "server_version_num": 180006,
+        "offline_system_identifier": "7500000000000000007",
+        "listen_addresses": ""
+    });
+    for (field, path) in &paths {
+        manifest[*field] = json!(path);
+    }
+    let facts = OwnedScopeFacts {
+        expected_run_root: PathBuf::from(root),
+        current_uid: 1000,
+        current_os_user: "agent".to_string(),
+        paths: paths
+            .iter()
+            .map(|(field, path)| PathFact {
+                field,
+                canonical: PathBuf::from(path),
+                has_symlink_component: false,
+                uid: 1000,
+                mode: match *field {
+                    "config_file" | "hba_file" => 0o600,
+                    "postgres_executable" => 0o755,
+                    _ => 0o700,
+                },
+                kind: if matches!(*field, "config_file" | "hba_file" | "postgres_executable") {
+                    PathKind::RegularFile
+                } else {
+                    PathKind::Directory
+                },
+            })
+            .collect(),
+        server,
+        offline_system_identifier: "7500000000000000007".to_string(),
+    };
+    (manifest, facts)
+}
+
+#[test]
+fn g07_fixture_configuration_fails_closed() {
+    let (valid, facts) = synthetic_scope();
+    let path = OsStr::new("/workspace/scratch/13897606dfde/p6pg.Test0007/scope.json");
+    let encoded = valid.to_string();
+    assert_eq!(
+        validate_owned_scope(None, &encoded, &facts, &[]),
+        Err(FixtureError::ConfigurationRejected)
+    );
+    assert_eq!(
+        validate_owned_scope(
+            Some(OsStr::new("/outside/scope.json")),
+            &encoded,
+            &facts,
+            &[]
+        ),
+        Err(FixtureError::ConfigurationRejected)
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStringExt;
+        let non_unicode = OsString::from_vec(vec![0xff]);
+        assert_eq!(
+            validate_owned_scope(Some(&non_unicode), &encoded, &facts, &[]),
+            Err(FixtureError::ConfigurationRejected)
+        );
+    }
+    for malformed in ["", "not-json", "[]", "{\"schema_version\":1}"] {
+        assert_eq!(
+            validate_owned_scope(Some(path), malformed, &facts, &[]),
+            Err(FixtureError::ConfigurationRejected),
+            "malformed manifest: {malformed}"
+        );
+    }
+    // URLs/host lists/credentials have no permitted encoding in the structured
+    // scope. Reject the field itself, including otherwise valid JSON.
+    for (field, value) in [
+        ("admin_url", json!("postgres://agent@127.0.0.1/postgres")),
+        (
+            "hosts",
+            json!(["/synthetic/g07-run/socket", "remote.example"]),
+        ),
+        ("host", json!("localhost")),
+        ("password", json!("synthetic-forbidden")),
+        ("passfile", json!("/synthetic/g07-run/home/.pgpass")),
+        ("service", json!("ambient")),
+        ("options", json!("-c search_path=public")),
+        ("sslcert", json!("/synthetic/g07-run/client.crt")),
+        ("deadline_ms", json!(0)),
+    ] {
+        let mut hostile = valid.clone();
+        hostile[field] = value;
+        assert_eq!(
+            validate_owned_scope(Some(path), &hostile.to_string(), &facts, &[]),
+            Err(FixtureError::ConfigurationRejected),
+            "unlisted field {field}"
+        );
+    }
+    for (field, value) in [
+        ("run_root", json!("/synthetic/other-run")),
+        ("socket_dir", json!("/outside/socket")),
+        ("listen_addresses", json!("127.0.0.1")),
+        ("database_user", json!("postgres")),
+        ("server_pid", json!(42)),
+        ("server_start_ticks", json!(501)),
+        ("server_uid", json!(1001)),
+        ("server_executable_dev", json!(8)),
+        ("server_executable_inode", json!(81)),
+        ("postgres_executable_sha256", json!("b".repeat(64))),
+        ("offline_system_identifier", json!("7500000000000000008")),
+        ("server_version_num", json!(180005)),
+        ("port", json!(5433)),
+    ] {
+        let mut hostile = valid.clone();
+        hostile[field] = value;
+        assert_eq!(
+            validate_owned_scope(Some(path), &hostile.to_string(), &facts, &[]),
+            Err(FixtureError::ConfigurationRejected),
+            "mismatched {field}"
+        );
+    }
+    let mut symlink = facts.clone();
+    symlink.paths[2].has_symlink_component = true;
+    assert_eq!(
+        validate_owned_scope(Some(path), &encoded, &symlink, &[]),
+        Err(FixtureError::ConfigurationRejected)
+    );
+    let mut outside = facts.clone();
+    outside.paths[2].canonical = PathBuf::from("/outside/socket");
+    assert_eq!(
+        validate_owned_scope(Some(path), &encoded, &outside, &[]),
+        Err(FixtureError::ConfigurationRejected)
+    );
+    let mut wrong_owner = facts.clone();
+    wrong_owner.paths[2].uid = 1001;
+    assert_eq!(
+        validate_owned_scope(Some(path), &encoded, &wrong_owner, &[]),
+        Err(FixtureError::ConfigurationRejected)
+    );
+    let mut public_socket = facts.clone();
+    public_socket.paths[2].mode = 0o755;
+    assert_eq!(
+        validate_owned_scope(Some(path), &encoded, &public_socket, &[]),
+        Err(FixtureError::ConfigurationRejected)
+    );
+    let mut public_root = facts.clone();
+    public_root.paths[0].mode = 0o755;
+    assert_eq!(
+        validate_owned_scope(Some(path), &encoded, &public_root, &[]),
+        Err(FixtureError::ConfigurationRejected)
+    );
+    let mut root_file = facts.clone();
+    root_file.paths[0].kind = PathKind::RegularFile;
+    assert_eq!(
+        validate_owned_scope(Some(path), &encoded, &root_file, &[]),
+        Err(FixtureError::ConfigurationRejected)
+    );
+    let mut executable_directory = facts.clone();
+    executable_directory.paths[7].kind = PathKind::Directory;
+    assert_eq!(
+        validate_owned_scope(Some(path), &encoded, &executable_directory, &[]),
+        Err(FixtureError::ConfigurationRejected)
+    );
+    let mut missing_path = facts.clone();
+    missing_path.paths.pop();
+    assert_eq!(
+        validate_owned_scope(Some(path), &encoded, &missing_path, &[]),
+        Err(FixtureError::ConfigurationRejected)
+    );
+    let mut duplicate_path = facts.clone();
+    duplicate_path.paths.push(duplicate_path.paths[0].clone());
+    assert_eq!(
+        validate_owned_scope(Some(path), &encoded, &duplicate_path, &[]),
+        Err(FixtureError::ConfigurationRejected)
+    );
+    // SQLx constructors can consume PG* even without pgpass. The eventual
+    // connection adapter must reject ambient PG* before constructing options.
+    for variable in [
+        "PGHOST",
+        "PGHOSTADDR",
+        "PGPASSWORD",
+        "PGPASSFILE",
+        "PGSERVICE",
+        "PGOPTIONS",
+        "PGSSLKEY",
+        "PGUNRECOGNIZED",
+    ] {
+        let ambient = [(OsString::from(variable), OsString::from("hostile"))];
+        assert_eq!(
+            validate_owned_scope(Some(path), &encoded, &facts, &ambient),
+            Err(FixtureError::ConfigurationRejected),
+            "ambient {variable}"
+        );
+    }
+    assert!(
+        validate_owned_scope(Some(path), &encoded, &facts, &[]).is_ok(),
+        "exact owned configuration must be accepted"
+    );
+    // No capability is present in this reducer: rejected input cannot connect,
+    // perform DDL or invoke Docker. Runtime ordering still needs source review.
+}
+
+fn synthetic_database_identity() -> DatabaseIdentity {
+    DatabaseIdentity {
+        cluster_system_identifier: "7500000000000000007".to_string(),
+        name: "p6_g07_0000000000000000_00000000000000000000000000000007".to_string(),
+        oid: 16_401,
+        owner: "agent".to_string(),
+    }
+}
+
+#[test]
+fn g07_cleanup_requires_exact_owned_identity() {
+    let expected = synthetic_database_identity();
+    let mut mismatches = Vec::new();
+    let mut wrong = expected.clone();
+    wrong.cluster_system_identifier.push('8');
+    mismatches.push(wrong);
+    let mut wrong = expected.clone();
+    wrong.oid += 1;
+    mismatches.push(wrong);
+    let mut wrong = expected.clone();
+    wrong.owner = "postgres".to_string();
+    mismatches.push(wrong);
+    let mut wrong = expected.clone();
+    wrong.name.push('8');
+    mismatches.push(wrong);
+    for observed in mismatches {
+        assert_eq!(
+            checked_drop_statement(&expected, &observed),
+            Err(FixtureError::IdentityMismatch),
+            "no DROP for {observed:?}"
+        );
+    }
+    for name in ["postgres", "bad; DROP DATABASE postgres", "p6_g07_*"] {
+        let mut invalid = expected.clone();
+        invalid.name = name.to_string();
+        assert_eq!(
+            checked_drop_statement(&invalid, &invalid),
+            Err(FixtureError::IdentityMismatch)
+        );
+    }
+    let sql = checked_drop_statement(&expected, &expected)
+        .expect("exact owned identity must produce one DROP");
+    assert_eq!(sql, format!("DROP DATABASE {}", expected.name));
+    assert!(!sql.contains("FORCE"));
+    assert!(!sql.contains("IF EXISTS"));
+    assert!(!sql.contains("pg_terminate_backend"));
+}
+
+#[test]
+fn g07_unknown_database_outcome_is_not_success() {
+    let identity = synthetic_database_identity();
+    for operation in [DdlOperation::Create, DdlOperation::Drop] {
+        for recorded in [None, Some(&identity)] {
+            let decision = classify_ddl_response(operation, DdlResponse::Unknown, recorded);
+            assert_eq!(
+                decision.resolution,
+                DatabaseResolution::Unknown,
+                "lost {operation:?} response is Unknown"
+            );
+            assert!(!decision.retry, "uncertainty does not permit repeated DDL");
+            assert_eq!(
+                decision.cleanup_target, None,
+                "uncertainty never authorizes DROP"
+            );
+        }
+    }
+    let created = classify_ddl_response(
+        DdlOperation::Create,
+        DdlResponse::Confirmed,
+        Some(&identity),
+    );
+    assert_eq!(
+        created.resolution,
+        DatabaseResolution::Ready(identity.clone())
+    );
+    assert!(!created.retry);
+    assert_eq!(created.cleanup_target, Some(identity.clone()));
+    let no_identity = classify_ddl_response(DdlOperation::Create, DdlResponse::Confirmed, None);
+    assert_eq!(
+        no_identity.resolution,
+        DatabaseResolution::Unknown,
+        "generated name is not ownership evidence"
+    );
+    assert_eq!(no_identity.cleanup_target, None);
+    let dropped =
+        classify_ddl_response(DdlOperation::Drop, DdlResponse::Confirmed, Some(&identity));
+    assert_eq!(dropped.resolution, DatabaseResolution::Dropped);
+    assert!(!dropped.retry);
+    assert_eq!(dropped.cleanup_target, None);
+    let unverified_drop = classify_ddl_response(DdlOperation::Drop, DdlResponse::Confirmed, None);
+    assert_eq!(unverified_drop.resolution, DatabaseResolution::Unknown);
+    assert_eq!(unverified_drop.cleanup_target, None);
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Deadline(Duration);
+
+impl Deadline {
+    fn phase(parent: Self, now: Duration, allowance: Duration) -> Self {
+        Self(now.checked_add(allowance).unwrap_or(now).min(parent.0))
+    }
+
+    fn remaining(self, now: Duration, local: Duration) -> Option<Duration> {
+        let remaining = self.0.checked_sub(now)?.min(local);
+        (!remaining.is_zero()).then_some(remaining)
+    }
+}
+
+#[test]
+fn g07_deadlines_do_not_restart_between_phases() {
+    let case = Deadline(Duration::from_secs(90));
+    let child = Deadline::phase(case, Duration::ZERO, G07_CHILD_LIFETIME);
+    let barrier = Deadline::phase(child, Duration::ZERO, G07_BARRIER_PHASE);
+    for operation in ["accept", "read", "write"] {
+        assert_eq!(
+            barrier.remaining(Duration::from_millis(14_750), Duration::from_secs(2)),
+            Some(Duration::from_millis(250)),
+            "{operation} shares one cohort barrier deadline"
+        );
+        assert_eq!(
+            barrier.remaining(Duration::from_secs(15), Duration::from_secs(2)),
+            None,
+            "{operation} cannot restart expired barrier"
+        );
+    }
+    let expired_phase = Deadline::phase(child, Duration::from_secs(45), G07_BARRIER_PHASE);
+    assert_eq!(
+        expired_phase.remaining(Duration::from_secs(45), Duration::from_secs(2)),
+        None
+    );
+    assert_eq!(
+        child.remaining(Duration::from_secs(44), Duration::from_secs(3)),
+        Some(Duration::from_secs(1)),
+        "wait cannot outlive child lifetime"
+    );
+    let cleanup = Deadline::phase(case, Duration::from_secs(82), G07_CLEANUP_PHASE);
+    let cohort = Deadline::phase(cleanup, Duration::from_secs(83), G07_COHORT_REAP);
+    for operation in ["kill/wait", "output", "pool-close", "drop"] {
+        assert_eq!(
+            cohort.remaining(Duration::from_secs(89), Duration::from_secs(3)),
+            Some(Duration::from_secs(1)),
+            "{operation} shares remaining cleanup/case budget"
+        );
+        assert_eq!(
+            cohort.remaining(Duration::from_secs(90), Duration::from_secs(3)),
+            None
+        );
+    }
+    let overflow = Deadline::phase(case, Duration::MAX, Duration::from_secs(1));
+    assert_eq!(
+        overflow.remaining(Duration::MAX, Duration::from_secs(1)),
+        None,
+        "clock overflow fails closed"
+    );
+}
+
+struct ChildConfiguration {
+    scope_path: PathBuf,
+    database: String,
+    database_oid: u32,
+    database_owner: String,
+    mode: &'static str,
+    owner: Uuid,
+    limit: u32,
+    handshake: Uuid,
+    test_launch_id: Uuid,
+    barrier: Option<String>,
+    home: PathBuf,
+    tmp: PathBuf,
+}
+
+struct ChildEnvironment {
+    clear_inherited: bool,
+    entries: BTreeMap<OsString, OsString>,
+}
+
+fn child_environment(
+    config: &ChildConfiguration,
+    _ambient: &[(OsString, OsString)],
+) -> ChildEnvironment {
+    let mut entries = [
+        (
+            "P6_G07_SCOPE_PATH",
+            config.scope_path.as_os_str().to_owned(),
+        ),
+        ("P6_G07_DATABASE_NAME", OsString::from(&config.database)),
+        (
+            "P6_G07_DATABASE_OID",
+            OsString::from(config.database_oid.to_string()),
+        ),
+        (
+            "P6_G07_DATABASE_OWNER",
+            OsString::from(&config.database_owner),
+        ),
+        ("P6_G07_MODE", OsString::from(config.mode)),
+        ("P6_G07_OWNER", OsString::from(config.owner.to_string())),
+        ("P6_G07_LIMIT", OsString::from(config.limit.to_string())),
+        (
+            "P6_G07_CHILD_HANDSHAKE",
+            OsString::from(config.handshake.to_string()),
+        ),
+        (
+            "P6_G07_TEST_LAUNCH_ID",
+            OsString::from(config.test_launch_id.to_string()),
+        ),
+        ("HOME", config.home.as_os_str().to_owned()),
+        ("TMPDIR", config.tmp.as_os_str().to_owned()),
+        ("LC_ALL", OsString::from("C")),
+        ("TZ", OsString::from("UTC")),
+        ("RUST_BACKTRACE", OsString::from("0")),
+    ]
+    .into_iter()
+    .map(|(name, value)| (OsString::from(name), value))
+    .collect::<BTreeMap<_, _>>();
+    if let Some(barrier) = &config.barrier {
+        entries.insert(
+            OsString::from("P6_G07_CHILD_BARRIER"),
+            OsString::from(barrier),
+        );
+    }
+    ChildEnvironment {
+        clear_inherited: true,
+        entries,
+    }
+}
+
+#[test]
+fn g07_child_environment_is_allowlisted() {
+    let mut config = ChildConfiguration {
+        scope_path: PathBuf::from("/workspace/scratch/13897606dfde/p6pg.Test0007/scope.json"),
+        database: synthetic_database_identity().name,
+        database_oid: 16_401,
+        database_owner: "agent".to_string(),
+        mode: "claim",
+        owner: Uuid::from_u128(500),
+        limit: 2,
+        handshake: Uuid::from_u128(900),
+        test_launch_id: Uuid::from_u128(901),
+        barrier: None,
+        home: PathBuf::from("/workspace/scratch/13897606dfde/p6pg.Test0007/home"),
+        tmp: PathBuf::from("/workspace/scratch/13897606dfde/p6pg.Test0007/tmp"),
+    };
+    let ambient = [
+        "DATABASE_URL",
+        "PGHOST",
+        "PGPASSWORD",
+        "DOCKER_HOST",
+        "AWS_ACCESS_KEY_ID",
+        "CARGO_REGISTRY_TOKEN",
+        "P6_CHILD_URL",
+        "P6_CHILD_BARRIER",
+        "P6_G07_CHILD_BARRIER",
+        "PATH",
+        "LD_PRELOAD",
+    ]
+    .map(|name| (OsString::from(name), OsString::from("stale-hostile")));
+    let environment = child_environment(&config, &ambient);
+    assert!(
+        environment.clear_inherited,
+        "Command must clear inherited environment"
+    );
+    let expected = [
+        (
+            "P6_G07_SCOPE_PATH",
+            config.scope_path.to_str().unwrap().to_string(),
+        ),
+        ("P6_G07_DATABASE_NAME", config.database.clone()),
+        ("P6_G07_DATABASE_OID", config.database_oid.to_string()),
+        ("P6_G07_DATABASE_OWNER", config.database_owner.clone()),
+        ("P6_G07_MODE", config.mode.to_string()),
+        ("P6_G07_OWNER", config.owner.to_string()),
+        ("P6_G07_LIMIT", config.limit.to_string()),
+        ("P6_G07_CHILD_HANDSHAKE", config.handshake.to_string()),
+        ("P6_G07_TEST_LAUNCH_ID", config.test_launch_id.to_string()),
+        ("HOME", config.home.to_str().unwrap().to_string()),
+        ("TMPDIR", config.tmp.to_str().unwrap().to_string()),
+        ("LC_ALL", "C".to_string()),
+        ("TZ", "UTC".to_string()),
+        ("RUST_BACKTRACE", "0".to_string()),
+    ]
+    .into_iter()
+    .map(|(name, value)| (OsString::from(name), OsString::from(value)))
+    .collect::<BTreeMap<_, _>>();
+    assert_eq!(
+        environment.entries, expected,
+        "only explicit owned values may reach child"
+    );
+    config.barrier = Some("127.0.0.1:34123".to_string());
+    let barrier_environment = child_environment(&config, &ambient);
+    let mut barrier_expected = expected;
+    barrier_expected.insert(
+        OsString::from("P6_G07_CHILD_BARRIER"),
+        OsString::from("127.0.0.1:34123"),
+    );
+    assert!(barrier_environment.clear_inherited);
+    assert_eq!(
+        barrier_environment.entries, barrier_expected,
+        "only supplied barrier/token can appear"
+    );
+}
+
+#[derive(Default)]
+struct CapturedStream {
+    bytes: Vec<u8>,
+    overflow: bool,
+}
+
+impl CapturedStream {
+    fn retain(&mut self, chunk: &[u8]) {
+        let available = G07_STREAM_CAP.saturating_sub(self.bytes.len());
+        let retain = chunk.len().min(available);
+        self.bytes.extend_from_slice(&chunk[..retain]);
+        self.overflow |= retain < chunk.len();
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct OwnedChildHandle(u64);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KillObservation {
+    Sent,
+    Failed,
+    Unknown,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReapObservation {
+    Reaped,
+    Running,
+    Unknown,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChildCleanup {
+    Reaped,
+    Failed,
+    Unknown,
+}
+
+trait OwnedChildControl {
+    fn kill(&mut self, handle: OwnedChildHandle) -> KillObservation;
+    fn try_reap(&mut self, handle: OwnedChildHandle) -> ReapObservation;
+}
+
+fn finish_owned_child(
+    control: &mut impl OwnedChildControl,
+    handle: OwnedChildHandle,
+) -> ChildCleanup {
+    let kill = control.kill(handle);
+    let reap = control.try_reap(handle);
+    match (kill, reap) {
+        (KillObservation::Failed, _) => ChildCleanup::Failed,
+        (KillObservation::Sent, ReapObservation::Reaped) => ChildCleanup::Reaped,
+        _ => ChildCleanup::Unknown,
+    }
+}
+
+struct ControlProbe {
+    kill_result: KillObservation,
+    reap_result: ReapObservation,
+    calls: Vec<(&'static str, OwnedChildHandle)>,
+}
+
+impl OwnedChildControl for ControlProbe {
+    fn kill(&mut self, handle: OwnedChildHandle) -> KillObservation {
+        self.calls.push(("kill", handle));
+        self.kill_result
+    }
+    fn try_reap(&mut self, handle: OwnedChildHandle) -> ReapObservation {
+        self.calls.push(("try_reap", handle));
+        self.reap_result
+    }
+}
+
+#[test]
+fn g07_child_output_is_bounded_and_kill_targets_owned_handle() {
+    let mut failures = Vec::new();
+    let mut stdout = CapturedStream::default();
+    let mut stderr = CapturedStream::default();
+    stdout.retain(&vec![b'o'; G07_STREAM_CAP]);
+    assert!(!stdout.overflow, "exact cap is allowed");
+    stdout.retain(b"discard while continuing to drain");
+    if stdout.bytes.len() != G07_STREAM_CAP {
+        failures.push("stdout retention exceeds cap".to_string());
+    }
+    if !stdout.overflow {
+        failures.push("stdout overflow did not mark failure".to_string());
+    }
+    stdout.retain(b"more bytes after overflow");
+    if stdout.bytes != vec![b'o'; G07_STREAM_CAP] {
+        failures.push("post-overflow bytes were retained".to_string());
+    }
+    stderr.retain(&vec![b'e'; G07_STREAM_CAP + 1]);
+    if stderr.bytes != vec![b'e'; G07_STREAM_CAP] {
+        failures.push("stderr retention exceeds cap".to_string());
+    }
+    if !stderr.overflow {
+        failures.push("stderr overflow did not mark failure".to_string());
+    }
+    let owned = OwnedChildHandle(7);
+    for (kill, reap, expected) in [
+        (
+            KillObservation::Sent,
+            ReapObservation::Reaped,
+            ChildCleanup::Reaped,
+        ),
+        (
+            KillObservation::Failed,
+            ReapObservation::Reaped,
+            ChildCleanup::Failed,
+        ),
+        (
+            KillObservation::Unknown,
+            ReapObservation::Reaped,
+            ChildCleanup::Unknown,
+        ),
+        (
+            KillObservation::Sent,
+            ReapObservation::Running,
+            ChildCleanup::Unknown,
+        ),
+        (
+            KillObservation::Sent,
+            ReapObservation::Unknown,
+            ChildCleanup::Unknown,
+        ),
+    ] {
+        let mut probe = ControlProbe {
+            kill_result: kill,
+            reap_result: reap,
+            calls: Vec::new(),
+        };
+        let observed = finish_owned_child(&mut probe, owned);
+        if observed != expected {
+            failures.push(format!(
+                "kill={kill:?}, reap={reap:?}: expected {expected:?}, observed {observed:?}"
+            ));
+        }
+        if probe.calls != [("kill", owned), ("try_reap", owned)] {
+            failures.push(format!(
+                "owned-handle calls missing/wrong: {:?}",
+                probe.calls
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "bounded output / owned-handle contract: {failures:?}"
+    );
+}
