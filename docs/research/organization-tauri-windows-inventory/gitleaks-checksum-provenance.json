@@ -1,0 +1,57 @@
+{
+  "subject": "0802fe6de30c9491c0fe459c57b2c56641f027d9",
+  "gitleaks_version": "8.30.1",
+  "findings": 5,
+  "unique_git_fingerprints": 4,
+  "all_five_are_recomputed_data_checksums": true,
+  "checks": [
+    {
+      "category": "official public Runtime agreement response SHA256",
+      "kind": "evergreen",
+      "url": "https://developer.microsoft.com/microsoft-edge/api/eula/webview2?locale=en-us",
+      "captured_bytes_match": true,
+      "fresh_official_readback_matches": true,
+      "is_credential": false
+    },
+    {
+      "category": "official public Runtime agreement response SHA256",
+      "kind": "fixed",
+      "url": "https://developer.microsoft.com/microsoft-edge/api/eula/webview2?locale=en-us&fixed=true",
+      "captured_bytes_match": true,
+      "fresh_official_readback_matches": true,
+      "is_credential": false
+    },
+    {
+      "category": "official public Runtime agreement response SHA256",
+      "kind": "consumer",
+      "url": "https://developer.microsoft.com/microsoft-edge/api/eula/webview2?locale=en-us&consumer=true",
+      "captured_bytes_match": true,
+      "fresh_official_readback_matches": true,
+      "is_credential": false
+    },
+    {
+      "category": "official locked crate member SHA256",
+      "package": "winapi-i686-pc-windows-gnu@0.4.0",
+      "member": "lib/libwinapi_oemlicense.a",
+      "registry_url": "https://static.crates.io/crates/winapi-i686-pc-windows-gnu/winapi-i686-pc-windows-gnu-0.4.0.crate",
+      "archive_matches_lock": true,
+      "member_hash_matches": true,
+      "is_credential": false,
+      "classification_limit": "Existing notice_hashes key is filename-heuristic inventory; this member is an inactive GNU import library, not proof of license-notice text. No package/native code executed."
+    },
+    {
+      "category": "official locked crate member SHA256",
+      "package": "winapi-x86_64-pc-windows-gnu@0.4.0",
+      "member": "lib/libwinapi_oemlicense.a",
+      "registry_url": "https://static.crates.io/crates/winapi-x86_64-pc-windows-gnu/winapi-x86_64-pc-windows-gnu-0.4.0.crate",
+      "archive_matches_lock": true,
+      "member_hash_matches": true,
+      "is_credential": false,
+      "classification_limit": "Existing notice_hashes key is filename-heuristic inventory; this member is an inactive GNU import library, not proof of license-notice text. No package/native code executed."
+    }
+  ],
+  "policy_changed": "only the subsequently approved four .gitleaksignore entries; no .gitleaks.toml/rule/workflow/source/lock change",
+  "H1_held": true,
+  "approval_status": "exact four fingerprints approved at2026-10-03T12:14UTC; no broader scope",
+  "independent_provenance_review": "GO2026-10-03T10:16UTC, no credential among these five findings"
+}

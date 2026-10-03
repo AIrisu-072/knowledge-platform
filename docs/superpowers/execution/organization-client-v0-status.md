@@ -1,5 +1,70 @@
 # Organization Client v0 — Capability Execution Status
 
+## 2026-10-03 UTC — Checksum gate passes; inactive-advisory decision STOP
+
+- Public DraftPR52 is remotefdaf9a04f4251414a94ddfad89e6b81a6406c83f/tree53fbaef9898f21881de1c3dc39debd49e0baafb6, matching independently reviewed local5bf06ec. Exactly four checksum fingerprints were approved/applied; prior31 remain unchanged. Hosted full-history Gitleaks/self-test and root cargo-deny now pass.
+- CI37124138433 fails recursive OSV on glib0.18.5 unsoundness and proc-macro-error1.0.4 unmaintained status in the inert lock; aggregate required-check also fails. All remaining CI jobs and DSI37124138415/Sandbox37124138370 pass, D2 skipped. Both packages have zero selected occurrences in the recorded Linux-host→Windows-target projection, which is not native-Windows or runtime proof.
+- The [decision packet](../../research/organization-tauri-inactive-advisory-decision.md) corrects the prior all-target advisory-coverage implication: cargo-deny0.20.2 defaults transitive-unsound reporting out, while unmaintained defaults to all. Original receipts remain unchanged. Official compatible GTK/GLib constraints do not offer a patched update within current stable Tauri2.12.1.
+- Native OSV configuration cannot directly combine advisory ID with exact package/version/role bounds. A guarded, expiring qualification-data profile is proposed for independent review/owner judgment only; no policy, lock, workflow or H1 edit is made. Current branch docs/organization-tauri-advisory-decision. Next exact action: independent decision-packet review and owner choice; preserve raw full-lock findings. H1 implementation/activation, RuntimeEULA/native use, Linux use and production/distribution remain held.
+
+---
+
+## 2026-10-03 12:14 UTC — Exact checksum exceptions approved; requalification pending
+
+- Combined metadata/Runtime-STOP/design checkpoint is public Draft [PR52](https://github.com/AIrisu-072/knowledge-platform/pull/52), remote0802fe6de30c9491c0fe459c57b2c56641f027d9/tree17f35a26b3aea994af6860eccc296cc7ce3f88e3, matching reviewed local996b68a. Earlier remote-publication-pending entries are historical. Existing predecessor heads/Drafts and capturedPR48 remain unchanged.
+- DSI37114872993 and Sandbox37114873016 SUCCESS; D2 skipped. CI37114872963 failed only security and aggregate required-check, with all other jobs passing. Five Gitleaks findings independently recompute as public-data SHA256 values at four immutable fingerprints; downstream security/CI-lint steps were not reached.
+- [Exact owner approval](../../decisions/2026-10-03-organization-tauri-checksum-findings.md) permits only those four entries; prior31 and all rules/locks/workflows remain unchanged. Local branch fix/organization-tauri-checksum-findings prepares the narrow patch, source-provenance receipt and redacted regression controls. No broad suppression or historical rewrite.
+- Next exact action: complete fresh regression evidence and independent patch review, publish to the same DraftPR52, verify new remote/tree/exact-head CI. H1 inventory-only implementation may proceed only after gates qualify and Cargo ownership is coordinated; initial workflow remains disabled and activation still needs separate review/authority. RuntimeEULA and native-use STOPs remain; no Tauri build/runtime or Phase5/6 work.
+
+---
+
+## 2026-10-03 05:39 UTC — Combined lossless publication GO; runtime held
+
+- [Combined publication record](organization-tauri-sharded-publication-review.md) supersedes three unpublished local transport packets while preserving their branches, bytes and identities. Parent publication has not succeeded; actual PR51 remains the verified remote base. active.md remains byte-identical by explicit publication-packaging instruction; its older three-publication next steps are historical.
+- Independent GO binds locala4bdb739/tree55169b84, no Critical/Important findings. All407 records reconstruct exactly from20 bounded shards plus index;27 helper tests,31 independent corruption cases and full406-archive capture replay pass. No data loss, dependency archive/source/SDK/raw-log publication or CI execution-root change.
+- Current branch docs/organization-tauri-qualification-sharded; all original five-version role scopes, inactive prohibited Linux/advisory entries and proprietary Runtime STOP remain. Windows inventory is design-only; no H1 code/policy/job/activation is added, and Server2022 does not qualify Windows10Pro/ESU.
+- Next exact action: parent publishes the single independently reviewed combined checkpoint over actualPR51, verifies its remote tree and exact-head gates, then binds H0 predecessor identities and confirms any next implementation boundary. Phase4 runtime remains incomplete; H1–H4/activation and Phase5/6 stay held.
+
+---
+
+## 2026-10-03 UTC — Windows host inventory design GO; implementation held
+
+- [Minimal host-inventory design](../specs/2026-10-03-organization-windows-host-inventory-design.md) and [conditional plan](../plans/2026-10-03-organization-windows-host-inventory.md) describe one disabled, head-bound hosted Windows metadata job. No workflow, linter, policy flag, collector or activation is implemented by this documentation change.
+- Canonical block-YAML exact-template validation avoids a new parser and preserves existing unrelated-Windows rejection. All global Linux/backend/native-Windows/self-hosted/mise/permissions values remain; the proposed single OS-metadata-only mise/native-job exception must pass independent review before implementation.
+- Verified official windows-2022 catalog gives a concrete Server2022 candidate, but Runtime is not listed. Actual allocated image/registry/tool observations and entitlement remain unknown. No Runtime/loader/browser/compiler/project-tool invocation, install/download/build, screenshot/artifact upload or terms acceptance is proposed in the collector.
+- Deliberate label activation is conditional on reviewed exact source/gates and specific authority; it also reruns existing Linux CI, which is disclosed rather than suppressed. No Draft-open Windows execution. The prior Runtime custom-license STOP and actual Windows10Pro/ESU requirement remain.
+- Independent documentation-design GO binds40c91eb/treed11acb71, no Critical/Important findings. Next exact action: parent durably publishes/verifies metadata4164683 and Runtime STOP60834e1, binds actual predecessor identities and confirms the next implementation boundary. H1–H4 source/policy/job implementation and activation remain held; this design GO grants no proprietary Runtime use.
+
+---
+
+## 2026-10-03 UTC — Metadata publication GO; Runtime custom-license STOP
+
+- Independent final publication GO binds local4164683/tree9d364531 above PR51:18 tests, exact406-archive/source/role/scanner/native receipts and CI isolation verified, no Critical/Important findings. This is metadata/source publication only; parent remote identity/hosted gates remain separately verified.
+- [Current official Runtime agreements](../../research/organization-tauri-windows-runtime-gates.md) now establish a distinct proprietary/custom license and use-based acceptance. Existing five-package MPL approval and BSD-form SDK loader evidence do not authorize Runtime use, new installation, telemetry/security changes or distribution. No such action occurred.
+- [Terms receipt](../../research/organization-tauri-windows-inventory/runtime-terms-receipt.json) distinguishes raw API JSON and decoded HTML fingerprints, Evergreen/Fixed/consumer variants and current-source versus actual-host entitlement limits.
+- Next exact action: preserve/durably publish the reviewed metadata checkpoint, independently review this narrow terms STOP, then design/review a strictly read-only GitHub Windows installed-environment preflight with a narrow policy amendment. No Windows job/runtime/compiler/loader execution or installation is authorized here; concrete host evidence precedes any environment-specific acceptance request. Global backend Windows flags, capturedPR48 and Phase5/6 remain unchanged.
+
+---
+
+## 2026-10-03 UTC — Fresh Windows candidate inventory passes; runtime gates remain
+
+- [Exact five-version approval](../../decisions/2026-10-03-organization-tauri-windows-mpl-amendment.md) is recorded; independent first-slice design GO binds b33c0f2/tree265bcb29. New evidence is recreated above actual PR51, never relabelled recovered b4a evidence.
+- [Fresh bounded inventory](../../research/organization-tauri-windows-inventory/README.md):406 locked archives/22,054 regular files verified;216 selected registry packages in actual Linux-host→Windows-target projection,179 host/125 normal-target with overlap. Independent normal/no-proc set and scanner coverage agree. Original host trio+dtoa-short are host-only; option-ext is both.
+- Root Windows scan truthfully fails the five approved MPL entries; exact scoped Windows scan passes with no advisory/license/source errors and retained warnings. Conservative all-target scan retains unapproved inactive target-lexicon/proc-macro-error failures. No global policy/security exception.
+- Exact loader provenance matches nine webview2-com-sys0.39.1 files to Microsoft SDK1.0.3800.47 and its BSD-form license. Notice omission, signature/native vulnerability/output limits and broader runtime/compiler/driver terms remain explicit. [Windows gates](../../research/organization-tauri-windows-runtime-gates.md) preserve unavailable actual Windows10Pro/ESU host and native picker interaction limits.
+- Eighteen stdlib tests and original-capture verification pass. No package build/native runtime, root/source/workflow/policy changes or new image sharing. Next exact action: independent final byte/evidence/CI-routing review, parent durable Draft publication and current-head checks; then separately reviewed Windows-host/terms/policy/picker/transport readiness. Phase4 remains incomplete; Phase5/6 unstarted.
+
+---
+
+## 2026-10-03 02:15 UTC — Additional exact MPL scope approved; new inventory review pending
+
+- Owner reply Sentinel_59ca27ae4d9c8191a8fdfe8801327b91 approves the exact pending dtoa-short0.3.5 host-only and option-ext0.2.0 host/Windows-target qualification. The [ADR amendment](../../decisions/2026-10-03-organization-tauri-windows-mpl-amendment.md) preserves both question and reply; original host trio remains exact. No Linux, security, production or distribution expansion.
+- Actual PR51 remote629822a4/treea85096b2 and CI37085364978/DSI37085364940/Sandbox37085364996 SUCCESS were freshly verified02:16UTC; D2 skipped. Current local branch docs/organization-tauri-windows-inventory starts at the actual remote head. Earlier pending checkpoints below are historical.
+- The full old inventory is still unavailable. [New metadata-only design](../specs/2026-10-03-organization-tauri-windows-inventory-design.md) and [ordered plan](../plans/2026-10-03-organization-tauri-windows-inventory.md) require independent first-slice review before tool restoration or resolution. Existing Rust/Cargo tools are absent; free disk27725MiB, floor1536MiB.
+- Next exact action: independent first-slice review, then only approved metadata/source/advisory reconstruction. Actual build/runtime remains gated on fresh qualified inventory, Windows-native host/terms/platform policy and picker/transport/security subdesigns. All frozen source, existing Draft heads, no new image sharing and Phase5/6 boundaries remain.
+
+---
+
 ## 2026-10-03 UTC — Documentation recovery; additional Tauri decision pending
 
 - Existing three-package host-only permission is recorded in the [reconstructed ADR](../../decisions/2026-10-03-organization-tauri-host-mpl-qualification.md). Parent question Sentinel_59383b2800ac8191a2fe76e8e0e22d0a sent00:56UTC for dtoa-short0.3.5 host-only and option-ext0.2.0 host+normal-target scope is **PENDING**. No expanded permission is inferred.

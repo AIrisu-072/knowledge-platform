@@ -1,0 +1,77 @@
+{
+  "schema": "organization-tauri-inventory-lossless-repack-v1",
+  "observed_utc": "2026-10-03T05:30:00Z",
+  "base_remote": "629822a49657bf447da9061c568dc72558265ce7",
+  "base_tree": "a85096b2753002943acfafd34091760b692b63a6",
+  "superseded_unpublished_local_packets": [
+    {
+      "commit": "4164683be5109195d9f5d22588888845be0b2ac3",
+      "tree": "9d364531c2788ee1f8c16b086b90181f66437cef"
+    },
+    {
+      "commit": "60834e1b738848e9e441631814c035bc7abba578",
+      "tree": "01406bb2bbb6334c50239fcee91cbf81c36494e9"
+    },
+    {
+      "commit": "0a36613513ec0c517b3397093829795df0a0dcfa",
+      "tree": "4a35ed2ea7165fa3986207462a7cacd2db6fe652"
+    }
+  ],
+  "original_inventory": {
+    "bytes": 543017,
+    "sha256": "24df20bea49d6b7b13e958b22ead62f67b98015864f31abff49d42cf61d986fa",
+    "git_blob_sha1": "7d8efdc3663d0ece0f7f1bf2d75ea45453762d18",
+    "package_count": 407
+  },
+  "storage": {
+    "shard_count": 20,
+    "file_count_including_index": 21,
+    "maximum_file_bytes": 32733,
+    "total_bytes": 547833,
+    "strict_file_limit_bytes": 40960,
+    "index_sha256": "f156f7a4c2b5db65d846760e55467f877c12a97e5a542355270c56c2c754f7a8",
+    "registry_role_counts": {
+      "host_and_target": 88,
+      "host_only": 91,
+      "inactive_or_other_target": 190,
+      "normal_target_only": 37
+    },
+    "fixture_count": 1
+  },
+  "checks": {
+    "original_git_blob_byte_equality": "PASS",
+    "deterministic_rerender_exact_file_equality": "PASS",
+    "full_stdlib_suite": {
+      "tests": 27,
+      "status": "PASS",
+      "initial_stub_red_assertion_failures": 8,
+      "additional_regressions_claimed_red": false
+    },
+    "original_capture_verification": {
+      "verified_registry_archives": 406,
+      "verified_regular_files": 22054,
+      "selected_registry_packages": 216,
+      "selected_regular_files": 8552,
+      "metadata_source_role_scanner_capture_integrity": "PASS",
+      "package_code_executed": false
+    },
+    "unchanged_large_files": {
+      "docs/superpowers/execution/active.md": {
+        "bytes": 179995,
+        "sha256": "36feb9bdcdb98cd40e907c38b4a29dbd069be52c466a2b97e89c455420fd8c45"
+      },
+      "tools/organization-tauri-qualification/Cargo.lock": {
+        "bytes": 103963,
+        "sha256": "d47b06511f830c3bd1ef4f0ce828db9162c1807a6d3563887c4f3c8d2073bcef"
+      }
+    }
+  },
+  "local_unpublished_verification_log_hashes": {
+    "sharding-red.txt": "d0f3f024d6ba3cefc234800e33d26736e3732e2173014218ad8b31e573052eca",
+    "sharding-green.txt": "0bc6acd8c2345a7f13e56bef9f9fb50b659db69f04c0fbdf33504024de517d98",
+    "sharding-final-tests.txt": "4e2361c7b7070c0a659e009f59edd8cafd40e6771d0ee505f1edce902d91e3f5",
+    "sharded-capture-verification.txt": "59fb11d557ebbbccbe6100e90f77fcb16f80aa550a703dcedd7b9fed42843340"
+  },
+  "no_new_resolution_build_runtime_or_windows_workflow": true,
+  "remaining_stop": "No H1 implementation or activation; proprietary Runtime use and actual Windows/native/picker/transport/driver/output qualification remain held."
+}

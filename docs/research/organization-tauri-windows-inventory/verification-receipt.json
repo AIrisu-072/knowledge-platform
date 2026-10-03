@@ -1,0 +1,105 @@
+{
+  "evidence_kind": "fresh reconstructed metadata-only evidence, not recovered historical b4a bytes",
+  "observed_utc": "2026-10-03T02:42:00Z",
+  "base_remote": "629822a49657bf447da9061c568dc72558265ce7",
+  "base_tree": "a85096b2753002943acfafd34091760b692b63a6",
+  "approved_design_commit": "b33c0f2f88135d1e67b0b96b655e383d36f7b2af",
+  "approved_design_tree": "265bcb295c330cba1cd102febfb6d8423f84cd0e",
+  "final_lock_sha256": "d47b06511f830c3bd1ef4f0ce828db9162c1807a6d3563887c4f3c8d2073bcef",
+  "initial_lock_sha256": "1bb00cc40af7d83f815366da55cf58c931e5ff911d454a301d12bdf39a1c855a",
+  "lock_correction": {
+    "only_package": "cssparser-macros",
+    "from": "0.7.1",
+    "to": "0.7.0",
+    "old_checksum": "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a",
+    "new_checksum": "10a2a99df6e410a8ff4245aa2006499ea662245f967cc7c0a38c83ef8eb44dbf",
+    "dependency_edge": [
+      "syn 3.0.6",
+      "syn 2.0.119"
+    ]
+  },
+  "raw_inputs": {
+    "Cargo.initial.lock": {
+      "sha256": "1bb00cc40af7d83f815366da55cf58c931e5ff911d454a301d12bdf39a1c855a",
+      "bytes": 103961,
+      "published": false
+    },
+    "metadata-all.json": {
+      "sha256": "3849c6d597cb6eb8108432cc156320d4b2efb59a0ba120b324db4341f14d42cc",
+      "bytes": 2279621,
+      "published": false
+    },
+    "metadata-windows.json": {
+      "sha256": "890138475965a6fa4ed49b0f79c5e8a5bc9f5d7cdda896d8096e2cf80cce40bd",
+      "bytes": 1276140,
+      "published": false
+    },
+    "tree-windows.txt": {
+      "sha256": "1eecd062aa05622b6a69053e90a21dbcb218fdd6dfe10c27f7030ec98cdd1fc8",
+      "bytes": 9819409,
+      "published": false
+    },
+    "tree-normal-no-proc.txt": {
+      "sha256": "fc5728e0b8c9425c81c11beb41394d04532d4a48d1f64bbe629f5636572c82b1",
+      "bytes": 266354,
+      "published": false
+    },
+    "archive-member-hashes.json": {
+      "sha256": "07a31f1d669613c970b34ade8d430bf49222c1d8b14b7a804f6871c08ec739ae",
+      "bytes": 2307076,
+      "published": false
+    },
+    "scanner-windows-packages.json": {
+      "sha256": "b521b0bf49bf1cd1f7428c6b8665bb74d05b92ba06eda98aa2884771b8934ce8",
+      "bytes": 23462,
+      "published": false
+    },
+    "scanner-all-packages.json": {
+      "sha256": "421dbe8cc41e1f8bb895f672c62df27af41eb22d456e24d486600b71472c3dba",
+      "bytes": 40191,
+      "published": false
+    },
+    "scan-windows-raw.jsonl": {
+      "sha256": "6ab755988418694831a090e03b3db4be0ed0136d80ced33f3e07b6b44a366bd4",
+      "bytes": 41034,
+      "published": false
+    },
+    "scan-all-raw.jsonl": {
+      "sha256": "4f6fc59505c3b4c7086c9b5c3f7d23c5e554498e8abc8291cf01bae164248112",
+      "bytes": 214774,
+      "published": false
+    },
+    "scan-windows-scoped.jsonl": {
+      "sha256": "aadfb174832ff87d5e35a8a23159a253feb89234803b6a7e6e638cea377139bb",
+      "bytes": 33424,
+      "published": false
+    }
+  },
+  "stdlib_tests": {
+    "initial_archive_red_failures": 16,
+    "role_red_failures": 9,
+    "target_scope_red_failures": 2,
+    "coverage_red_failures": 2,
+    "observed_version_name_regression_red_failures": 1,
+    "final_tests_passed": 18,
+    "directory_positive_case_already_passed_before_change": true,
+    "capture_integrity_red_failures": 2
+  },
+  "resource_observations": {
+    "workspace_min_free_bytes": 26926755840,
+    "tmp_min_free_bytes": 5225590784,
+    "observed_combined_bytes_max": 2059978903,
+    "floor_bytes": 1610612736,
+    "budget_bytes": 4294967296
+  },
+  "prohibitions_preserved": {
+    "dependency_build_or_runtime": false,
+    "windows_native_execution": false,
+    "linux_native_execution": false,
+    "root_policy_changed": false,
+    "workflow_changed": false,
+    "screenshot_or_upload": false,
+    "production_or_distribution": false
+  },
+  "native_artifact_gate": "separate bounded loader receipt; emitted app outputs and runtime still unqualified"
+}

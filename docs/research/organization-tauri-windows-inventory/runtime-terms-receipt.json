@@ -1,0 +1,56 @@
+{
+  "observed_utc": "2026-10-03T02:55:34.653252+00:00",
+  "status": "CUSTOM_LICENSE_RUNTIME_EXECUTION_STOP",
+  "official_download_page": "https://developer.microsoft.com/en-us/microsoft-edge/webview2/",
+  "agreements": [
+    {
+      "kind": "evergreen",
+      "url": "https://developer.microsoft.com/microsoft-edge/api/eula/webview2?locale=en-us",
+      "read_only": true,
+      "raw_api_response_sha256": "e15b53f476b66f8335c18436998256dc9862b210242a8e4c7f7e14d2de53591d",
+      "raw_api_response_bytes": 24429,
+      "decoded_html_field": "evergreenHtml",
+      "decoded_html_utf8_sha256": "ce6fa83e57c338256e5cabe9e1eea83076c271b0fdb253408213eeb08859d7b6",
+      "decoded_html_utf8_bytes": 21639,
+      "html_normalization": "none; UTF-8 encode decoded JSON field"
+    },
+    {
+      "kind": "fixed",
+      "url": "https://developer.microsoft.com/microsoft-edge/api/eula/webview2?locale=en-us&fixed=true",
+      "read_only": true,
+      "raw_api_response_sha256": "a5747bb22a9e76875abdc7c01b2f271999330f86ec878515bdbdd40dbfc1bee8",
+      "raw_api_response_bytes": 25671,
+      "decoded_html_field": "fixedHtml",
+      "decoded_html_utf8_sha256": "13abe52770be9206cd86a6f4564c2923813d4fbaef8913d6a8704e4ec5c51b03",
+      "decoded_html_utf8_bytes": 24412,
+      "html_normalization": "none; UTF-8 encode decoded JSON field"
+    },
+    {
+      "kind": "consumer",
+      "url": "https://developer.microsoft.com/microsoft-edge/api/eula/webview2?locale=en-us&consumer=true",
+      "read_only": true,
+      "raw_api_response_sha256": "afbdf3f7281f675fde202b5e58f2883889fdf9bd586c54eaa5aa5e0deff4819a",
+      "raw_api_response_bytes": 19689,
+      "decoded_html_field": "consumerHtml",
+      "decoded_html_utf8_sha256": "0f094b4a9bd140fef99fa8cba17e76984b98453bb2cad126587b8a5172b47d7c",
+      "decoded_html_utf8_bytes": 17391,
+      "html_normalization": "none; UTF-8 encode decoded JSON field"
+    }
+  ],
+  "no_explicit_effective_revision_or_runtime_build_in_current_documents": true,
+  "acceptance_or_runtime_download_install_use": false,
+  "bounded_next_decision": "qualification-only custom-license ADR for one specified Windows environment and verified existing Runtime; no production/redistribution; a new install separately requires linked terms/download/install permission",
+  "not_covered_by_five_mpl_approvals": true,
+  "known_conditions": [
+    "development/testing grant",
+    "use constitutes acceptance",
+    "required diagnostics and optional-data/privacy conditions",
+    "SmartScreen notice obligations",
+    "automatic updates",
+    "custom use restrictions/warranty/liability provisions"
+  ],
+  "installed_runtime_limit": "Detecting an adequate existing Runtime avoids fresh installer acceptance step, not license entitlement/provenance proof; Edge Stable alone is not supported backing Runtime",
+  "distribution_limit": "No distribution proposed; download-link restriction versus deployment guidance requires separate resolution if later proposed",
+  "worker_evergreen_html_sha256": "ce6fa83e57c338256e5cabe9e1eea83076c271b0fdb253408213eeb08859d7b6",
+  "worker_coordinator_raw_and_decoded_equality_verified": true
+}
