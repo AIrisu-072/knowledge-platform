@@ -1,5 +1,14 @@
 # Organization Client v0 — Capability Execution Status
 
+## 2026-10-03 12:14 UTC — Exact checksum exceptions approved; requalification pending
+
+- Combined metadata/Runtime-STOP/design checkpoint is public Draft [PR52](https://github.com/AIrisu-072/knowledge-platform/pull/52), remote0802fe6de30c9491c0fe459c57b2c56641f027d9/tree17f35a26b3aea994af6860eccc296cc7ce3f88e3, matching reviewed local996b68a. Earlier remote-publication-pending entries are historical. Existing predecessor heads/Drafts and capturedPR48 remain unchanged.
+- DSI37114872993 and Sandbox37114873016 SUCCESS; D2 skipped. CI37114872963 failed only security and aggregate required-check, with all other jobs passing. Five Gitleaks findings independently recompute as public-data SHA256 values at four immutable fingerprints; downstream security/CI-lint steps were not reached.
+- [Exact owner approval](../../decisions/2026-10-03-organization-tauri-checksum-findings.md) permits only those four entries; prior31 and all rules/locks/workflows remain unchanged. Local branch fix/organization-tauri-checksum-findings prepares the narrow patch, source-provenance receipt and redacted regression controls. No broad suppression or historical rewrite.
+- Next exact action: complete fresh regression evidence and independent patch review, publish to the same DraftPR52, verify new remote/tree/exact-head CI. H1 inventory-only implementation may proceed only after gates qualify and Cargo ownership is coordinated; initial workflow remains disabled and activation still needs separate review/authority. RuntimeEULA and native-use STOPs remain; no Tauri build/runtime or Phase5/6 work.
+
+---
+
 ## 2026-10-03 05:39 UTC — Combined lossless publication GO; runtime held
 
 - [Combined publication record](organization-tauri-sharded-publication-review.md) supersedes three unpublished local transport packets while preserving their branches, bytes and identities. Parent publication has not succeeded; actual PR51 remains the verified remote base. active.md remains byte-identical by explicit publication-packaging instruction; its older three-publication next steps are historical.
