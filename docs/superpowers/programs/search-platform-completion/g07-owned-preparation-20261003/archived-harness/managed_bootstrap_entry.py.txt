@@ -1,0 +1,62 @@
+"""Exact same-tool-invocation managed transport handoff; no network operations.
+
+Invocation and this file's SHA require independent review. The platform-provided
+HTTPS_PROXY is read once, validated without exposing an invalid value, and only
+its dedicated validated value reaches the otherwise-empty launcher environment.
+"""
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import sys
+
+BASE = Path('/workspace/scratch/13897606dfde')
+D = BASE / 'search-g07-launcher'
+APPROVAL = D / 'approval-bootstrap.json'
+PYTHON = '/usr/bin/python3.13'
+
+
+def digest(path):
+    with path.open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def main():
+    args = sys.argv[1:]
+    if (len(args) != 4 or args[0] != '--approval' or args[1] != str(APPROVAL)
+            or args[2] != '--approval-sha256' or re.fullmatch(r'[0-9a-f]{64}', args[3]) is None):
+        raise RuntimeError('Only the fixed reviewed bootstrap approval is accepted')
+    fd = os.open(APPROVAL, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    with os.fdopen(fd, 'rb') as stream:
+        facts = os.fstat(stream.fileno())
+        if (not stat.S_ISREG(facts.st_mode) or facts.st_uid != 1000
+                or stat.S_IMODE(facts.st_mode) != 0o600):
+            raise RuntimeError('Fixed approval owner/type/mode mismatch')
+        raw = stream.read(65537)
+    if len(raw) > 65536 or hashlib.sha256(raw).hexdigest() != args[3]:
+        raise RuntimeError('Externally reviewed approval bytes mismatch')
+    approval = json.loads(raw)
+    if (digest(D/'commands.final.json') != approval.get('manifest_sha256')
+            or digest(D/'launcher.py') != approval.get('launcher_sha256')):
+        raise RuntimeError('Reviewed launcher/manifest bytes changed')
+    # The exact reviewed source is import-effect-free; do not invoke its main.
+    spec = importlib.util.spec_from_file_location('reviewed_g07_managed_entry', D/'launcher.py')
+    launcher = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(launcher)
+    approval = launcher.read_approval_for_reviewed_stage(str(APPROVAL), args[3], 'bootstrap')
+    launcher._verify_final_input_inventory(approval)
+    proxy = launcher._managed_https_proxy(os.environ.get('HTTPS_PROXY'))
+    if proxy is None:
+        raise RuntimeError('Current invocation managed HTTPS transport is absent or invalid; no fallback')
+    environment = {'HOME':str(D), 'LC_ALL':'C', 'TZ':'UTC', 'G07_MANAGED_HTTPS_PROXY':proxy}
+    print('G07_MANAGED_HTTPS_TRANSPORT_BOUND '+proxy, flush=True)
+    # exec preserves the same retained PTY/tool invocation and its proxy lifetime.
+    os.execve(PYTHON, [PYTHON, '-I', '-B', str(D/'launcher.py'), 'bootstrap',
+                      '--approval', str(APPROVAL), '--approval-sha256', args[3]], environment)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,21 @@
+{
+  "actual_exit_code": 0,
+  "argv": [
+    "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin/pg_controldata",
+    "-D",
+    "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/data"
+  ],
+  "data_dir": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/data",
+  "executable": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin/pg_controldata",
+  "executable_dev": 27,
+  "executable_inode": 1465846,
+  "executable_sha256": "b1f00b95f277696969c4dad5df0e764096bcfeb23dbaf410011486839c5fc427",
+  "observed_before_server_spawn": true,
+  "offline_system_identifier": "7692443830282047653",
+  "owner_uid": 1000,
+  "run_id": "a53a280c-c335-4226-b37a-b24533fe77a6",
+  "run_root": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL",
+  "schema_version": 1,
+  "stdout_path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/offline-control.stdout.log",
+  "stdout_sha256": "163a1c29a6580b74569bafe3fe604d092d2e44e981a0649cd16a6af04a46e180"
+}

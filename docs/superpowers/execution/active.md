@@ -1,5 +1,17 @@
 # Active Execution Pointer
 
+## 最新のG07専用環境の準備と実行停止の記録：2026-10-03
+
+- **ACTIVE / WIP / 実行時検証は停止中。** 対象を固定した専用フィクスチャは、新たな対象限定コンパイル、Rustの純粋テスト9件、Pythonの純粋テスト243件に成功しています。公式PostgreSQLの非公開領域でのビルド・インストール、初期化、オフラインの識別証明は完了しました。[記録と対象を限定した証拠](../programs/search-platform-completion/g07-owned-preparation-20261003/README.md)を参照してください。
+- その後、サーバーは専用Unixソケットの作成時に**Operation not permitted**となり、終了コード1で停止しました。管理下プロセスの終了・回収と出力全文の回収は確認済みです。復旧用の子プロセス、ケース固有のテストデータベース、意味的なRED、GREENのケースはいずれも実行されていません。子プロセスのclaim/reap（処理権の取得と期限切れ処理の回収）は意図的に未接続のままです。再試行、通信方式・場所・実行環境を変える回避策、権限変更は行っていません。Cargoの占有は解放済みです。
+- G07の実行時2ケース、その後のコンパイル・品質確認・完了確認、G08は未実行です。タスクグラフは引き続き`p6-impl-observe`より先に`p6-process-test`を要求しており、G08はその依存により保留です。凍結済みの順序や意味は変更していません。継続できるのは、文書化、静的な照合、Draft公開に向けたレビューです。
+- 14:36 UTCの読み取り専用GitHubメタデータ確認では、Draft #40のheadは`da5e7155db616c1df9a688a7043fc3b4730bb1a3`、treeは`a6146b0bf3bbb241d918e3b579155e7c6d3dc98f`です。以前のPoCロック修正、G06、G07純粋テストの記録は公開済みです。最後に確認した当該headのDSI・Sandboxは成功していますが、Rust CIは`outbox_delivery::observe`の欠落で失敗しています。新headの適合やCI成功を推定してはいけません。
+- 公開用の証拠は必要最小限に絞り、認証関連のPostgreSQL制御出力1行だけを除外しています。非公開原本と公開コピーのハッシュ・サイズを区別し、非公開原本とクラスタは変更せず保持しています。秘密情報の破棄・無効化は主張しません。拒否された内容の再送や、実行時処理の再試行は行っていません。`archived-harness/`と`receipts/`は、元の証拠バイトとハッシュの照合可能性を保つため翻訳せず、日本語の説明を添えています。
+- 元の公開GOは撤回され、英語の最小化候補だけが別途レビューでGOとなりました。日本語化前の英語版候補はローカルHEAD `4ff7075692503d875f256d23a94b6f89f64c9f33`、tree `b8353b9f4e935d45da38b724b7b79e76afc93c2b`で、53ファイルに限定されています。2つのRustソースは固定です。53個のblobと正確な最小化treeはremoteに作成済みですが、15:27 UTCの`create_commit`は`user cancelled MCP tool call`で停止し、refは`da5e7155db616c1df9a688a7043fc3b4730bb1a3`のままです。commit SHAは返されず、commitオブジェクトの作成成否は未確定です。15:27:40 UTCの読み取り専用照合では、refは旧head `da5e7155db616c1df9a688a7043fc3b4730bb1a3`のままでした。新headは公開されていません。
+- **次に行う具体的な作業：** 日本語版の意味保存レビューを行い、公開可否を再判断します。将来の公開ではリモートの親commitを再確認し、Draftを維持して正確なtreeを検証します。実行時ゲートは停止状態を維持し、G08へ進めません。保存したコマンドや過去のGOを再試行の許可として扱わないでください。以前の内容未特定の停止事象は、今回とは別の未解決事項です。マージ・デプロイは行いません。
+
+以下の過去の記録は履歴であり、現在の実行指示ではありません。
+
 ## Active checkpoint — Search G07 pure guard preparation, 2026-10-03
 
 - **ACTIVE / WIP / incomplete.** Two-file pure fixture checkpoint `fda5ff8a77cb7e237d55665c532134392267a651` / tree `14c66619732559e3403eaea096cb297afc142c9d` has fresh six-test Rust pure GREEN, Python 53/53, selected strict Clippy, two-file fmt and diff pass. See [bounded receipt](../programs/search-platform-completion/p6-g07-pure-guards-20261003.md). Actual G07 child/DB path remains unwired/unexecuted.

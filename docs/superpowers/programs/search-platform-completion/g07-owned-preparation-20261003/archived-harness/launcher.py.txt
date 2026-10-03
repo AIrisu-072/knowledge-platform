@@ -1,0 +1,2871 @@
+"""G07 owned launcher preparation. NOT EXECUTABLE OR ADMITTED.
+
+The eight pure decisions below follow the parent's recorded exact assertion
+RED and await independently reviewed GREEN. The wrappers are source preparation,
+never proof of actual OS behavior. No network, filesystem mutation, subprocess,
+database or signal operation occurs at import. The CLI refuses execution.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import pwd
+import re
+import secrets
+import selectors
+import signal
+import stat
+import subprocess
+import sys
+import tarfile
+import time
+import uuid
+
+BASE = Path("/workspace/scratch/13897606dfde")
+LAUNCHER = BASE / "search-g07-launcher"
+REPOSITORY = BASE / "search-g07-owned-recovery"
+TARGET = BASE / "search-g07-target"
+EVIDENCE = BASE / "search-recovery-evidence"
+RUST = BASE / "organization-tauri-toolchain/rust/bin"
+CACHE = BASE / "organization-tauri-toolchain/cargo-home"
+OWNER = 1000
+FLOOR = 1610612736
+GROWTH = 8589934592
+STREAM_CAP = 65536
+ELF_REPORT_CAP = 262144
+JSON_CAP = 65536
+CONTROL_KEYS = frozenset((
+    "schema_version", "run_id", "run_root", "data_dir",
+    "offline_system_identifier", "owner_uid", "observed_before_server_spawn",
+    "executable", "executable_sha256", "executable_dev", "executable_inode",
+    "argv", "actual_exit_code", "stdout_path", "stdout_sha256",
+))
+PURE_NAMES = (
+    "g07_fixture_configuration_fails_closed",
+    "g07_cleanup_requires_exact_owned_identity",
+    "g07_unknown_database_outcome_is_not_success",
+    "g07_deadlines_do_not_restart_between_phases",
+    "g07_child_environment_is_allowlisted",
+    "g07_child_output_is_bounded_and_kill_targets_owned_handle",
+    "g07_linux_process_identity_parses_final_parenthesis",
+    "g07_terminal_receipt_requires_exact_owned_cleanup",
+    "g07_green_terminal_receipt_requires_exact_inventory",
+)
+REQUESTS = (
+    ("00-runtime-red.json", "runtime-red"),
+    ("01-compile-runtime-green.json", "compile-runtime-green"),
+    ("02-runtime-green-last.json", "runtime-green-last"),
+    ("03-runtime-green-four.json", "runtime-green-four"),
+    ("04-quality.json", "quality"),
+    ("05-finish.json", "finish"),
+)
+
+
+class PreparationStop(RuntimeError):
+    """A missing fact, review, outcome or ownership proof stops all next work."""
+
+
+def _hash_field(value):
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def _uuid_field(value):
+    return isinstance(value, str) and re.fullmatch(
+        r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", value,
+    ) is not None
+
+
+def _test_executable_field(value):
+    return isinstance(value, str) and re.fullmatch(
+        re.escape(str(TARGET)) + r"/debug/deps/process_recovery-[0-9a-f]+", value,
+    ) is not None
+
+
+def _managed_https_proxy(value):
+    """Accept only the same-invocation canonical credential-free loopback URL."""
+    if not isinstance(value, str):
+        return None
+    match = re.fullmatch(r"http://127\.0\.0\.1:([1-9][0-9]{0,4})", value)
+    return value if match is not None and int(match.group(1)) <= 65535 else None
+
+
+def validate_approval(document, phase, approved_sha256, observed_sha256):
+    """Strict approval shape bound to the controller's independent CLI digest."""
+    keys = {
+        "schema_version", "scope", "phase", "outcome", "run_id", "run_root",
+        "source_sha256", "fixture_sha256", "launcher_sha256", "policy_sha256",
+        "manifest_sha256", "test_executable",
+    }
+    if not isinstance(document, dict) or set(document) != keys:
+        return False
+    if (type(document["schema_version"]) is not int or document["schema_version"] != 1
+            or document["scope"] != "G07 owned launcher" or document["outcome"] != "GO"
+            or phase not in ("bootstrap", "bootstrap-resume", "supervise") or document["phase"] != phase
+            or not _uuid_field(document["run_id"])):
+        return False
+    if (not _hash_field(approved_sha256) or not _hash_field(observed_sha256)
+            or approved_sha256 != observed_sha256):
+        return False
+    if any(not _hash_field(document[key]) for key in (
+        "source_sha256", "fixture_sha256", "launcher_sha256", "policy_sha256", "manifest_sha256",
+    )):
+        return False
+    if phase == "bootstrap":
+        return document["run_root"] is None and document["test_executable"] is None
+    root, executable = document["run_root"], document["test_executable"]
+    if phase == "bootstrap-resume":
+        return (isinstance(root, str)
+                and re.fullmatch(re.escape(str(BASE)) + r"/p6pg\.[A-Za-z0-9]{8}", root) is not None
+                and executable is None)
+    return (
+        isinstance(root, str)
+        and re.fullmatch(re.escape(str(BASE)) + r"/p6pg\.[A-Za-z0-9]{8}", root) is not None
+        and isinstance(executable, dict) and set(executable) == {"path", "sha256"}
+        and _test_executable_field(executable["path"]) and _hash_field(executable["sha256"])
+    )
+
+
+def validate_request(document, run_id, stage, observed_hashes):
+    """Strict once-only stage request; exact review hashes, no command input."""
+    hash_keys = {"source_sha256", "fixture_sha256", "launcher_sha256",
+                 "manifest_sha256", "test_executable_sha256"}
+    keys = hash_keys | {"schema_version", "outcome", "run_id", "stage", "cargo_window_statement_id"}
+    if (not isinstance(document, dict) or set(document) != keys
+            or not isinstance(observed_hashes, dict) or set(observed_hashes) != hash_keys):
+        return False
+    if (type(document["schema_version"]) is not int or document["schema_version"] != 1
+            or document["outcome"] != "GO" or not _uuid_field(run_id)
+            or document["run_id"] != run_id or document["stage"] != stage
+            or stage not in tuple(item[1] for item in REQUESTS)):
+        return False
+    for key in hash_keys:
+        value = document[key]
+        if value != observed_hashes[key]:
+            return False
+        if stage == "compile-runtime-green" and key == "test_executable_sha256":
+            if value is not None:
+                return False
+        elif not _hash_field(value):
+            return False
+    statement = document["cargo_window_statement_id"]
+    if stage in ("compile-runtime-green", "quality"):
+        return _uuid_field(statement)
+    return statement is None
+
+
+def parse_control_identifier(stdout_bytes):
+    """Exactly one positive decimal offline cluster identifier under LC_ALL=C."""
+    if not isinstance(stdout_bytes, bytes) or len(stdout_bytes) > STREAM_CAP:
+        return "REJECT"
+    try:
+        text = stdout_bytes.decode("ascii", "strict")
+    except UnicodeDecodeError:
+        return "REJECT"
+    lines = [line for line in text.splitlines() if line.startswith("Database system identifier:")]
+    if len(lines) != 1:
+        return "REJECT"
+    match = re.fullmatch(r"Database system identifier:[ \t]+([1-9][0-9]*)[ \t]*", lines[0])
+    return match.group(1) if match is not None else "REJECT"
+
+
+def validate_test_receipt(receipt, expected, observed_returncode, registry_summary):
+    """Bind strict fixture receipt to independent observations and actual exit."""
+    receipt_keys = {
+        "schema_version", "run_id", "test_launch_id", "case", "outcome", "cause",
+        "expected_exit_code", "unknowns", "timeouts", "output_overflow",
+        "registered_children", "observed_children", "owned_children_reaped",
+        "database_cleanup_confirmed", "database", "children", "forced_expiry_labels",
+    }
+    expected_keys = {"stage", "run_id", "test_launch_id", "case", "database", "children"}
+    registry_keys = {"complete", "registered_children", "observed_children",
+                     "owned_children_reaped", "database_cleanup_confirmed", "max_concurrent_children"}
+    database_keys = {"cluster_system_identifier", "name", "oid", "owner"}
+    child_identity_keys = {"pid", "start_ticks", "uid", "executable", "executable_sha256",
+                           "executable_dev", "executable_inode", "mode", "owner", "handshake"}
+    child_keys = child_identity_keys | {
+        "registered", "reaped_by_parent", "status", "exit_code", "exit_signal",
+        "output_complete", "stdout_overflow", "stderr_overflow",
+    }
+    if (not isinstance(receipt, dict) or set(receipt) != receipt_keys
+            or not isinstance(expected, dict) or set(expected) != expected_keys
+            or not isinstance(registry_summary, dict) or set(registry_summary) != registry_keys):
+        return False
+    stages = {
+        "runtime-red": ("last_claim_kill9_restart_reaps_unknown_once", 1, 1, ["claim"], [(101, None)]),
+        "runtime-green-last": ("last_claim_kill9_restart_reaps_unknown_once", 3, 2,
+                               ["claim", "reap", "reap"], [(None, 9), (0, None), (0, None)]),
+        "runtime-green-four": ("four_processes_disjoint_claims_and_recover_expired", 5, 4,
+                               ["claim"] * 5, [(None, 9)] * 5),
+    }
+    stage = expected["stage"]
+    if not isinstance(stage, str) or stage not in stages:
+        return False
+    case, count, concurrent_limit, modes, exits = stages[stage]
+    if (type(receipt["schema_version"]) is not int or receipt["schema_version"] != 1
+            or not _uuid_field(expected["run_id"]) or not _uuid_field(expected["test_launch_id"])
+            or expected["case"] != case or receipt["case"] != case
+            or receipt["run_id"] != expected["run_id"]
+            or receipt["test_launch_id"] != expected["test_launch_id"]):
+        return False
+    is_red = stage == "runtime-red"
+    exit_code = 101 if is_red else 0
+    if (type(observed_returncode) is not int or observed_returncode != exit_code
+            or type(receipt["expected_exit_code"]) is not int or receipt["expected_exit_code"] != exit_code
+            or receipt["outcome"] != ("expected_red" if is_red else "green")
+            or receipt["cause"] != ("G07 child process path not wired" if is_red else None)
+            or receipt["forced_expiry_labels"] != ([] if is_red else ["FORCED_BY_TEST_SQL"])
+            or not isinstance(receipt["forced_expiry_labels"], list)):
+        return False
+    if any(not isinstance(receipt[key], list) or receipt[key] for key in ("unknowns", "timeouts")):
+        return False
+    if receipt["output_overflow"] is not False:
+        return False
+    for key in ("owned_children_reaped", "database_cleanup_confirmed"):
+        if receipt[key] is not True or registry_summary[key] is not True:
+            return False
+    if registry_summary["complete"] is not True:
+        return False
+    for value in (receipt, registry_summary):
+        if any(type(value[key]) is not int or value[key] != count
+               for key in ("registered_children", "observed_children")):
+            return False
+    concurrency = registry_summary["max_concurrent_children"]
+    if type(concurrency) is not int or not 0 < concurrency <= concurrent_limit:
+        return False
+    database, database_receipt = expected["database"], receipt["database"]
+    if (not isinstance(database, dict) or set(database) != database_keys
+            or not isinstance(database_receipt, dict) or set(database_receipt) != database_keys | {"create", "cleanup"}):
+        return False
+    prefix = expected["run_id"].replace("-", "")[:16]
+    if (not isinstance(database["name"], str)
+            or re.fullmatch("p6_g07_" + prefix + r"_[0-9a-f]{32}", database["name"]) is None
+            or not isinstance(database["cluster_system_identifier"], str)
+            or re.fullmatch(r"[1-9][0-9]*", database["cluster_system_identifier"]) is None
+            or type(database["oid"]) is not int or not 0 < database["oid"] <= 4294967295
+            or database["owner"] != "agent"):
+        return False
+    if (any(database_receipt[key] != database[key] for key in database_keys)
+            or type(database_receipt["oid"]) is not int
+            or database_receipt["create"] != "confirmed" or database_receipt["cleanup"] != "confirmed"):
+        return False
+    identities, children = expected["children"], receipt["children"]
+    if (not isinstance(identities, list) or not isinstance(children, list)
+            or len(identities) != count or len(children) != count):
+        return False
+    seen_pairs, seen_owners, seen_handshakes = set(), set(), set()
+    for index, (identity, child) in enumerate(zip(identities, children)):
+        if (not isinstance(identity, dict) or set(identity) != child_identity_keys
+                or not isinstance(child, dict) or set(child) != child_keys):
+            return False
+        numeric_keys = ("pid", "start_ticks", "uid", "executable_dev", "executable_inode")
+        if any(type(identity[key]) is not int or identity[key] <= 0
+               or type(child[key]) is not int for key in numeric_keys):
+            return False
+        if (identity["uid"] != OWNER or identity["mode"] != modes[index]
+                or not _test_executable_field(identity["executable"])
+                or not _hash_field(identity["executable_sha256"])
+                or not _uuid_field(identity["owner"]) or not _uuid_field(identity["handshake"])
+                or any(child[key] != identity[key] for key in child_identity_keys)):
+            return False
+        pair = identity["pid"], identity["start_ticks"]
+        if (pair in seen_pairs or identity["owner"] in seen_owners
+                or identity["handshake"] in seen_handshakes):
+            return False
+        seen_pairs.add(pair)
+        seen_owners.add(identity["owner"])
+        seen_handshakes.add(identity["handshake"])
+        if (any(child[key] is not True for key in ("registered", "reaped_by_parent", "output_complete"))
+                or any(child[key] is not False for key in ("stdout_overflow", "stderr_overflow"))
+                or child["status"] != "confirmed"):
+            return False
+        code, sig = child["exit_code"], child["exit_signal"]
+        if ((code is not None and (type(code) is not int or code < 0))
+                or (sig is not None and (type(sig) is not int or sig <= 0))
+                or (code, sig) != exits[index]):
+            return False
+    return True
+
+
+def cargo_artifact_from_line(line, target):
+    """Select only the process_recovery/test compiler artifact, or SKIP/REJECT."""
+    if target != str(TARGET) or not isinstance(line, (bytes, str)):
+        return "REJECT"
+    try:
+        raw = line if isinstance(line, bytes) else line.encode("utf-8", "strict")
+        if len(raw) > JSON_CAP:
+            return "REJECT"
+        item = json.loads(raw.decode("utf-8", "strict"))
+    except (UnicodeError, ValueError):
+        return "REJECT"
+    if not isinstance(item, dict) or not isinstance(item.get("reason"), str):
+        return "REJECT"
+    if item["reason"] != "compiler-artifact":
+        return "SKIP"
+    artifact_target = item.get("target")
+    if not isinstance(artifact_target, dict) or not isinstance(artifact_target.get("name"), str):
+        return "REJECT"
+    if artifact_target["name"] != "process_recovery":
+        return "SKIP"
+    kind, profile, executable = artifact_target.get("kind"), item.get("profile"), item.get("executable")
+    if (not isinstance(kind, list) or "test" not in kind or not isinstance(profile, dict)
+            or profile.get("test") is not True or not _test_executable_field(executable)):
+        return "REJECT"
+    return {"path": executable, "sha256": None}
+
+
+def verify_release_packages_entry(release_bytes, bytes_count, sha256):
+    """Bind one SHA256 Release entry to the exact amd64 Packages.xz snapshot."""
+    if (not isinstance(release_bytes, bytes) or len(release_bytes) > 262144
+            or type(bytes_count) is not int or bytes_count <= 0 or not _hash_field(sha256)):
+        return False
+    try:
+        text = release_bytes.decode("ascii", "strict")
+    except UnicodeDecodeError:
+        return False
+    section, sections, entries = None, 0, []
+    for line in text.splitlines():
+        if line and not line[0].isspace():
+            section = line if re.fullmatch(r"[A-Za-z0-9-]+:", line) else None
+            if section == "SHA256:":
+                sections += 1
+            continue
+        if section != "SHA256:" or not line.strip():
+            continue
+        fields = line.split()
+        if len(fields) != 3:
+            return False
+        if fields[2] == "main/binary-amd64/Packages.xz":
+            entries.append(fields)
+    return sections == 1 and entries == [[sha256, str(bytes_count), "main/binary-amd64/Packages.xz"]]
+
+
+def verify_package_paragraphs(index_bytes, pins):
+    """Select exactly three pinned package paragraphs including dependencies."""
+    keys = {"package", "version", "architecture", "filename", "bytes", "sha256", "depends", "pre_depends"}
+    fields = {"package": "Package", "version": "Version", "architecture": "Architecture",
+              "filename": "Filename", "bytes": "Size", "sha256": "SHA256",
+              "depends": "Depends", "pre_depends": "Pre-Depends"}
+    if (not isinstance(index_bytes, bytes) or len(index_bytes) > 134217728
+            or not isinstance(pins, list) or len(pins) != 3):
+        return False
+    for name, pin in zip(("m4", "bison", "flex"), pins):
+        if (not isinstance(pin, dict) or set(pin) != keys or pin["package"] != name
+                or type(pin["bytes"]) is not int or pin["bytes"] <= 0
+                or not _hash_field(pin["sha256"])):
+            return False
+        for key in ("version", "architecture", "filename", "depends", "pre_depends"):
+            value = pin[key]
+            if key == "pre_depends" and value is None:
+                continue
+            if not isinstance(value, str) or not value or not value.isascii():
+                return False
+    try:
+        text = index_bytes.decode("utf-8", "strict")
+    except UnicodeDecodeError:
+        return False
+    selected = {pin["package"]: [] for pin in pins}
+    protected = set(fields.values())
+    for paragraph in text.split("\n\n"):
+        observed, duplicates, continuations = {}, set(), set()
+        previous = None
+        for line in paragraph.splitlines():
+            if not line:
+                continue
+            if line[0].isspace():
+                if previous in protected:
+                    continuations.add(previous)
+                continue
+            key, separator, value = line.partition(":")
+            if not separator:
+                return False
+            if key in observed:
+                duplicates.add(key)
+            observed[key] = value.lstrip(" ")
+            previous = key
+        name = observed.get("Package")
+        if name in selected:
+            if duplicates & protected or continuations:
+                return False
+            selected[name].append(observed)
+    for pin in pins:
+        paragraphs = selected[pin["package"]]
+        if len(paragraphs) != 1:
+            return False
+        paragraph = paragraphs[0]
+        for key, field in fields.items():
+            value = pin[key]
+            if value is None:
+                if field in paragraph:
+                    return False
+            elif paragraph.get(field) != str(value):
+                return False
+    return True
+
+
+def inspect_elf_text(stdout_bytes, admitted_closure, owned_install_lib=None):
+    """Reject unknown machine/interpreter/NEEDED/version closure before exec."""
+    closure_keys = {"interpreter", "needed", "version_needs"}
+    if owned_install_lib is not None:
+        if (not isinstance(owned_install_lib, str)
+                or re.fullmatch(re.escape(str(BASE)) + r"/p6pg\.[A-Za-z0-9]{8}/install/lib", owned_install_lib) is None):
+            return "REJECT"
+        closure_keys.add("library_search")
+    if (not isinstance(stdout_bytes, bytes) or len(stdout_bytes) > ELF_REPORT_CAP
+            or not isinstance(admitted_closure, dict)
+            or set(admitted_closure) != closure_keys):
+        return "REJECT"
+    library_search = admitted_closure.get("library_search")
+    if owned_install_lib is not None:
+        if (not isinstance(library_search, dict) or set(library_search) != {"tag", "path"}
+                or library_search["tag"] not in ("RPATH", "RUNPATH")
+                or library_search["path"] != owned_install_lib):
+            return "REJECT"
+    try:
+        text = stdout_bytes.decode("ascii", "strict")
+    except UnicodeDecodeError:
+        return "REJECT"
+    interpreter = admitted_closure["interpreter"]
+    if interpreter not in (None, "/lib64/ld-linux-x86-64.so.2"):
+        return "REJECT"
+    for key in ("needed", "version_needs"):
+        values = admitted_closure[key]
+        if (not isinstance(values, list)
+                or any(not isinstance(value, str) or not value or not value.isascii() for value in values)
+                or len(set(values)) != len(values)):
+            return "REJECT"
+    for version in admitted_closure["version_needs"]:
+        provider, separator, name = version.partition(":")
+        if (not separator or provider not in admitted_closure["needed"]
+                or re.fullmatch(r"[A-Za-z0-9_.+-]+", name) is None):
+            return "REJECT"
+    headers = {
+        "Class": "ELF64", "Data": "2's complement, little endian",
+        "Machine": "Advanced Micro Devices X86-64",
+    }
+    for key, value in headers.items():
+        observed = re.findall(r"^\s*" + key + r":\s*(.*?)\s*$", text, re.MULTILINE)
+        if observed != [value]:
+            return "REJECT"
+    if re.search(r"\bTEXTREL\b", text):
+        return "REJECT"
+    search_tags = re.findall(r"\b(?:RPATH|RUNPATH)\b", text)
+    if owned_install_lib is None:
+        if search_tags:
+            return "REJECT"
+    else:
+        if search_tags != [library_search["tag"]]:
+            return "REJECT"
+        search_lines = [line for line in text.splitlines() if re.search(r"\((?:RPATH|RUNPATH)\)", line)]
+        if len(search_lines) != 1:
+            return "REJECT"
+        match = re.fullmatch(r"\s*0x[0-9a-fA-F]+\s+\((RPATH|RUNPATH)\)\s+Library (rpath|runpath): \[([^\]\n]*)\]\s*", search_lines[0])
+        if (match is None or match.group(1) != library_search["tag"]
+                or match.group(2) != library_search["tag"].lower()
+                or match.group(3) != owned_install_lib):
+            return "REJECT"
+    interpreters = re.findall(r"\[Requesting program interpreter: ([^\]\n]+)\]", text)
+    if interpreters != ([] if interpreter is None else [interpreter]):
+        return "REJECT"
+    if interpreter is None and re.findall(r"^\s*Type:\s*(.*?)\s*$", text, re.MULTILINE) != ["DYN (Shared object file)"]:
+        return "REJECT"
+    needed = []
+    for line in text.splitlines():
+        if "(NEEDED)" in line:
+            match = re.fullmatch(r"\s*0x[0-9a-fA-F]+\s+\(NEEDED\)\s+Shared library: \[([A-Za-z0-9_.+-]+)\]\s*", line)
+            if match is None:
+                return "REJECT"
+            needed.append(match.group(1))
+    if len(set(needed)) != len(needed) or set(needed) != set(admitted_closure["needed"]):
+        return "REJECT"
+    versions, provider, declared_count, observed_count = [], None, 0, 0
+    section = False
+    section_count = 0
+    for line in text.splitlines():
+        if line.startswith("Version needs section "):
+            section = True
+            section_count += 1
+            continue
+        if line.startswith("Version ") and " section " in line:
+            if provider is not None and observed_count != declared_count:
+                return "REJECT"
+            section, provider = False, None
+        if not section:
+            continue
+        if "File:" in line:
+            if provider is not None and observed_count != declared_count:
+                return "REJECT"
+            match = re.search(r"\bFile:\s*([A-Za-z0-9_.+-]+)\s+Cnt:\s*([1-9][0-9]*)\s*$", line)
+            if match is None or match.group(1) not in needed:
+                return "REJECT"
+            provider, declared_count, observed_count = match.group(1), int(match.group(2)), 0
+        elif "Name:" in line:
+            match = re.search(r"\bName:\s*([A-Za-z0-9_.+-]+)\s+Flags:\s*\S+\s+Version:\s*[0-9]+\s*$", line)
+            if provider is None or match is None:
+                return "REJECT"
+            versions.append(provider + ":" + match.group(1))
+            observed_count += 1
+    if (section_count > 1 or (provider is not None and observed_count != declared_count)
+            or len(set(versions)) != len(versions)
+            or set(versions) != set(admitted_closure["version_needs"])):
+        return "REJECT"
+    result = {"interpreter": interpreter, "needed": list(admitted_closure["needed"]),
+              "version_needs": list(admitted_closure["version_needs"])}
+    if owned_install_lib is not None:
+        result["library_search"] = {"tag": library_search["tag"], "path": owned_install_lib}
+    return result
+
+
+def _require_true(value, reason):
+    # Never interpret nonempty strings, None or arbitrary truthy objects as GO.
+    if value is not True:
+        raise PreparationStop(reason)
+
+
+def _read_fd(fd, cap):
+    data = bytearray()
+    while True:
+        chunk = os.read(fd, min(65536, cap + 1 - len(data)))
+        if not chunk:
+            return bytes(data)
+        data.extend(chunk)
+        if len(data) > cap:
+            raise PreparationStop("bounded file input overflow")
+
+
+def _digest_fd(fd):
+    value = hashlib.sha256()
+    while chunk := os.read(fd, 65536):
+        value.update(chunk)
+    return value.hexdigest()
+
+
+def _regular_open(path, *, owner=None, mode=None):
+    """Open a fixed path without accepting a final symlink; caller owns ancestry."""
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        observed = os.fstat(fd)
+        if not stat.S_ISREG(observed.st_mode):
+            raise PreparationStop("regular file required: " + str(path))
+        if owner is not None and observed.st_uid != owner:
+            raise PreparationStop("file owner mismatch: " + str(path))
+        if mode is not None and stat.S_IMODE(observed.st_mode) != mode:
+            raise PreparationStop("file mode mismatch: " + str(path))
+        return fd, observed
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _fixed_digest(path):
+    fd, _ = _regular_open(path)
+    try:
+        return _digest_fd(fd)
+    finally:
+        os.close(fd)
+
+
+def _proc_stat(pid):
+    """Reference-supervisor parser: comm may contain spaces and parentheses."""
+    fd, _ = _regular_open(Path("/proc") / str(pid) / "stat")
+    try:
+        raw = _read_fd(fd, 4096).decode("ascii", "strict")
+    finally:
+        os.close(fd)
+    end = raw.rfind(")")
+    fields = raw[end + 2:].split()
+    if end < 0 or len(fields) < 20:
+        raise PreparationStop("invalid process stat")
+    return {"pid": pid, "state": fields[0], "pgrp": int(fields[2]),
+            "session": int(fields[3]), "start_ticks": int(fields[19])}
+
+
+def _proc_observation(pid):
+    facts = _proc_stat(pid)
+    proc = Path("/proc") / str(pid)
+    uid = proc.stat().st_uid
+    executable = os.readlink(proc / "exe")
+    if executable.endswith(" (deleted)") or not executable.startswith("/"):
+        raise PreparationStop("process executable observation unknown")
+    # /proc/<owned-pid>/exe is intentionally a kernel symlink. Resolve only this
+    # positively owned PID's executable, then verify the canonical file itself.
+    fd, observed = _regular_open(executable)
+    try:
+        kernel = os.stat(proc / "exe")
+        if (kernel.st_dev, kernel.st_ino) != (observed.st_dev, observed.st_ino):
+            raise PreparationStop("kernel/path executable identity mismatch")
+        digest = _digest_fd(fd)
+    finally:
+        os.close(fd)
+    current = _proc_stat(pid)
+    if (current["start_ticks"] != facts["start_ticks"]
+            or os.readlink(proc / "exe") != executable):
+        raise PreparationStop("process identity raced observation")
+    return {"pid": pid, "start_ticks": facts["start_ticks"], "uid": uid,
+            "executable": executable, "executable_sha256": digest,
+            "executable_dev": observed.st_dev, "executable_inode": observed.st_ino,
+            "state": "gone" if facts["state"] in ("Z", "X") else "running"}
+
+
+class OwnedRoot:
+    """Directory handles, exclusive writes, and verified owner-rooted ancestry."""
+
+    SUBDIRECTORIES = (
+        "downloads", "tools", "source", "build", "install", "home", "tmp",
+        "data", "socket", "logs", "receipts", "requests",
+    )
+
+    def __init__(self, path, run_id, *, create=False):
+        self.path = Path(path)
+        self.run_id = run_id
+        if (str(self.path.parent) != str(BASE)
+                or re.fullmatch(r"p6pg\.[A-Za-z0-9]{8}", self.path.name) is None):
+            raise PreparationStop("run root outside exact owned pattern")
+        parent = os.open(BASE, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            if create:
+                os.mkdir(self.path.name, 0o700, dir_fd=parent)
+            self.fd = os.open(self.path.name, os.O_RDONLY | os.O_DIRECTORY
+                              | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
+        finally:
+            os.close(parent)
+        self.identity = os.fstat(self.fd)
+        if self.identity.st_uid != OWNER or stat.S_IMODE(self.identity.st_mode) != 0o700:
+            os.close(self.fd)
+            raise PreparationStop("run root owner/mode mismatch")
+        if create:
+            for name in self.SUBDIRECTORIES:
+                os.mkdir(name, 0o700, dir_fd=self.fd)
+
+    @classmethod
+    def create(cls, run_id):
+        alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        suffix = "".join(secrets.choice(alphabet) for _ in range(8))
+        # Exactly one exclusive attempt. A collision is retained failure, never
+        # a reason to reuse a directory or silently create another run.
+        return cls(BASE / ("p6pg." + suffix), run_id, create=True)
+
+    def parent_fd(self, relative):
+        parts = relative.split("/")
+        if (not parts or any(not p or p in (".", "..") for p in parts)
+                or relative.startswith("/") or "\x00" in relative):
+            raise PreparationStop("noncanonical root-relative path")
+        fd = os.dup(self.fd)
+        try:
+            for part in parts[:-1]:
+                child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                dir_fd=fd)
+                os.close(fd)
+                fd = child
+                if os.fstat(fd).st_uid != OWNER:
+                    raise PreparationStop("rooted directory owner mismatch")
+            return fd, parts[-1]
+        except BaseException:
+            os.close(fd)
+            raise
+
+    def read(self, relative, cap=JSON_CAP):
+        parent, name = self.parent_fd(relative)
+        try:
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent)
+        finally:
+            os.close(parent)
+        try:
+            facts = os.fstat(fd)
+            if (not stat.S_ISREG(facts.st_mode) or facts.st_uid != OWNER
+                    or stat.S_IMODE(facts.st_mode) != 0o600):
+                raise PreparationStop("owned input file owner/type/mode mismatch")
+            return _read_fd(fd, cap)
+        finally:
+            os.close(fd)
+
+    def create_file(self, relative, mode=0o600):
+        parent, name = self.parent_fd(relative)
+        try:
+            return os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                           | os.O_NOFOLLOW | os.O_CLOEXEC, mode, dir_fd=parent)
+        finally:
+            os.close(parent)
+
+    def save_new(self, relative, document):
+        raw = (json.dumps(document, sort_keys=True, indent=2, allow_nan=False)
+               + "\n").encode("utf-8")
+        if len(raw) > JSON_CAP:
+            raise PreparationStop("receipt exceeds finite JSON cap")
+        fd = self.create_file(relative)
+        try:
+            view = memoryview(raw)
+            while view:
+                written = os.write(fd, view)
+                if written <= 0:
+                    raise PreparationStop("receipt write unknown")
+                view = view[written:]
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+    def verify(self):
+        current = self.path.lstat()
+        opened = os.fstat(self.fd)
+        for facts in (current, opened):
+            if (not stat.S_ISDIR(facts.st_mode) or facts.st_uid != OWNER
+                    or stat.S_IMODE(facts.st_mode) != 0o700
+                    or facts.st_dev != self.identity.st_dev
+                    or facts.st_ino != self.identity.st_ino):
+                raise PreparationStop("owned root identity changed")
+
+
+class DiskWatch:
+    """Conservative whole-root accounting; no deletion to meet the budget."""
+
+    def __init__(self, root, policy):
+        self.root = root
+        self.policy = policy
+        self.next_poll = 0.0
+        self.minimum_free = None
+        self.maximum_owned = 0
+
+    def tree_bytes(self, path, deadline):
+        missing_path = None
+        for attempt in range(2):
+            value = 0
+            stack = [Path(path)]
+            current = Path(path)
+            try:
+                while stack:
+                    if time.monotonic() > deadline:
+                        raise PreparationStop("incomplete disk measurement: original poll deadline exhausted; last_missing_path=" + json.dumps(missing_path))
+                    current = stack.pop()
+                    facts = current.lstat()
+                    value += max(facts.st_size, facts.st_blocks * 512)
+                    if stat.S_ISDIR(facts.st_mode):
+                        with os.scandir(current) as listing:
+                            for entry in listing:
+                                if time.monotonic() > deadline:
+                                    raise PreparationStop("incomplete disk measurement: original poll deadline exhausted; last_missing_path=" + json.dumps(missing_path))
+                                stack.append(Path(entry.path))
+                    elif not (stat.S_ISREG(facts.st_mode) or stat.S_ISLNK(facts.st_mode)):
+                        # Only the known Unix-socket directory may contain sockets.
+                        if not (stat.S_ISSOCK(facts.st_mode) and current.parent == self.root.path / "socket"):
+                            diagnostic = json.dumps({"path": str(current), "kind": stat.filemode(facts.st_mode)[0],
+                                                     "type_bits": stat.S_IFMT(facts.st_mode), "uid": facts.st_uid,
+                                                     "inode": facts.st_ino}, sort_keys=True, separators=(",", ":"))
+                            raise PreparationStop("unexpected measured inode kind: " + diagnostic)
+            except FileNotFoundError as error:
+                missing_path = str(error.filename) if isinstance(error.filename, str) else str(current)
+                if attempt == 1:
+                    raise PreparationStop("incomplete disk measurement: repeated missing entry " + json.dumps(missing_path))
+                # Discard the complete partial sum/stack; no deadline reset.
+                continue
+            return value
+
+    def check(self, *, force=False):
+        now = time.monotonic()
+        if not force and now < self.next_poll:
+            return
+        self.root.verify()
+        deadline = now + 1.0
+        free = os.statvfs(BASE)
+        free_bytes = free.f_bavail * free.f_frsize
+        if free_bytes < FLOOR:
+            raise PreparationStop("free-space floor violation before growth measurement")
+        run_bytes = self.tree_bytes(self.root.path, deadline)
+        run_bytes += self.tree_bytes(LAUNCHER, deadline)
+        for entry in EVIDENCE.iterdir():
+            if entry.name.startswith("g07-"):
+                run_bytes += self.tree_bytes(entry, deadline)
+        target_bytes = self.tree_bytes(TARGET, deadline)
+        if time.monotonic() > deadline:
+            raise PreparationStop("disk measurement exceeded poll interval")
+        _require_true(self.policy.disk_budget_ok(free_bytes, run_bytes, target_bytes, 0),
+                      "owned growth/free-space budget violation")
+        self.minimum_free = free_bytes if self.minimum_free is None else min(self.minimum_free, free_bytes)
+        self.maximum_owned = max(self.maximum_owned, run_bytes + target_bytes)
+        self.next_poll = now + 1.0
+
+
+class OwnedStage:
+    """One direct Popen handle, bounded selector draining and owned signalling.
+
+    Setup groups are original-session trusted-tool supervision, not protection
+    against a hostile tool daemonizing. Runtime tests are direct-handle only;
+    this class never signals a registry-derived worker or discovered group.
+    """
+
+    def __init__(self, root, disk, policy, label, argv, cwd, environment, cap,
+                 *, group=True, structured_stdout_cap=None, output_cap=STREAM_CAP,
+                 structured_relative=None, watch=None):
+        self.root, self.disk, self.policy = root, disk, policy
+        self.label, self.argv, self.cwd = label, tuple(argv), str(cwd)
+        self.environment, self.cap = dict(environment), cap
+        self.group = group
+        # 4 MiB diagnostics is a proposed review refinement only for official
+        # configure/make/install and compiler stages. Runtime remains 64 KiB.
+        if (output_cap not in (STREAM_CAP, ELF_REPORT_CAP, 4 * 1024**2)
+                or (not group and output_cap != STREAM_CAP)
+                or (output_cap == ELF_REPORT_CAP and (self.argv[0] != "/usr/bin/x86_64-linux-gnu-readelf"
+                    or self.argv[1:5] != ("--file-header", "--program-headers", "--dynamic", "--version-info")))):
+            raise PreparationStop("unreviewed stream cap")
+        self.output_cap = output_cap
+        self.watch = watch
+        self.structured_relative = structured_relative
+        self.started = time.monotonic()
+        self.deadline = self.started + cap
+        self.work_deadline = self.deadline - min(10, cap * 0.75)
+        self.selector = selectors.DefaultSelector()
+        self.output = {}
+        self.logs = {}
+        self.structured_stdout_cap = structured_stdout_cap
+        self.structured_path = None
+        self.structured_fd = None
+        self.failure = None
+        self.handle = None
+        self.identity = None
+
+    def spawn(self):
+        if self.watch is not None:
+            self.watch()
+        self.disk.check(force=True)
+        if time.monotonic() >= self.work_deadline:
+            raise PreparationStop("no stage budget before spawn")
+        for stream in ("stdout", "stderr"):
+            relative = "logs/" + self.label + "." + stream + ".log"
+            self.logs[stream] = self.root.create_file(relative)
+            self.output[stream] = {"seen": 0, "retained": 0, "overflow": False,
+                                   "path": str(self.root.path / relative)}
+        if self.structured_stdout_cap is not None:
+            self.structured_path = self.structured_relative or ("downloads/" + self.label + ".stream")
+            self.structured_fd = self.root.create_file(self.structured_path)
+        self.handle = subprocess.Popen(
+            self.argv, cwd=self.cwd, env=self.environment, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
+        )
+        self.identity = _proc_stat(self.handle.pid)
+        if self.identity["pgrp"] != self.handle.pid or self.identity["session"] != self.handle.pid:
+            raise PreparationStop("fresh original session not observed")
+        for stream, pipe in (("stdout", self.handle.stdout), ("stderr", self.handle.stderr)):
+            os.set_blocking(pipe.fileno(), False)
+            self.selector.register(pipe, selectors.EVENT_READ, stream)
+        self.root.save_new("receipts/" + self.label + ".spawn.json", {
+            "schema_version": 1, "run_id": self.root.run_id, "stage": self.label,
+            "pid": self.handle.pid, "leader_identity": self.identity,
+            "argv": list(self.argv), "cwd": self.cwd,
+            "environment": self.environment, "cap_seconds": self.cap,
+        })
+
+    def same_leader(self):
+        observed = _proc_stat(self.handle.pid)
+        if any(observed[key] != self.identity[key]
+               for key in ("pid", "start_ticks", "pgrp", "session")):
+            raise PreparationStop("owned unreaped leader identity mismatch")
+        return observed
+
+    def exited(self):
+        return os.waitid(os.P_PID, self.handle.pid,
+                         os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None
+
+    def original_session_running(self):
+        result = []
+        for entry in Path("/proc").iterdir():
+            if not entry.name.isdigit():
+                continue
+            try:
+                facts = _proc_stat(int(entry.name))
+            except FileNotFoundError:
+                continue
+            if facts["session"] == self.identity["pid"]:
+                if (facts["pgrp"] != self.identity["pid"]
+                        or facts["start_ticks"] < self.identity["start_ticks"]):
+                    raise PreparationStop("original session ownership unknown")
+                if facts["state"] not in ("Z", "X"):
+                    result.append(facts)
+        return result
+
+    def drain(self, timeout=0.1):
+        for key, _ in self.selector.select(timeout):
+            stream = key.data
+            try:
+                chunk = os.read(key.fileobj.fileno(), 65536)
+            except BlockingIOError:
+                continue
+            if not chunk:
+                self.selector.unregister(key.fileobj)
+                key.fileobj.close()
+                continue
+            output = self.output[stream]
+            output["seen"] += len(chunk)
+            keep = min(len(chunk), self.output_cap - output["retained"])
+            if keep:
+                view = memoryview(chunk)[:keep]
+                while view:
+                    count = os.write(self.logs[stream], view)
+                    if count <= 0:
+                        raise PreparationStop("log write unknown")
+                    view = view[count:]
+                output["retained"] += keep
+            if stream == "stdout" and self.structured_fd is not None:
+                if output["seen"] > self.structured_stdout_cap:
+                    output["overflow"] = True
+                elif not output["overflow"]:
+                    view = memoryview(chunk)
+                    while view:
+                        count = os.write(self.structured_fd, view)
+                        if count <= 0:
+                            raise PreparationStop("structured stream write unknown")
+                        view = view[count:]
+            elif keep < len(chunk):
+                output["overflow"] = True
+
+    def stop_owned(self):
+        # WNOWAIT keeps the leader identity reserved before any signal. No
+        # poll()/wait() reaps it until all permitted original-session signals end.
+        for sig, delay in ((signal.SIGTERM, 5), (signal.SIGKILL, 5)):
+            self.same_leader()
+            running = self.original_session_running() if self.group else not self.exited()
+            if not running:
+                break
+            if self.group:
+                os.killpg(self.handle.pid, sig)
+            else:
+                self.handle.send_signal(sig)
+            until = min(self.deadline, time.monotonic() + delay)
+            while time.monotonic() < until:
+                self.drain(0.1)
+                self.same_leader()
+                try:
+                    self.disk.check()
+                    if self.watch is not None:
+                        self.watch()
+                except PreparationStop as error:
+                    # Disk failure stops further workload but must not prevent
+                    # the already owned handle from reaching its next signal.
+                    self.failure = (self.failure or "") + "; cleanup disk " + str(error)
+                running = self.original_session_running() if self.group else not self.exited()
+                if not running:
+                    break
+        if (self.original_session_running() if self.group else not self.exited()):
+            raise PreparationStop("owned process exit remains Unknown")
+        if not self.exited():
+            raise PreparationStop("owned direct handle exit remains Unknown")
+
+    def run(self):
+        try:
+            self.spawn()
+            while True:
+                self.same_leader()
+                self.drain(0.1)
+                self.disk.check()
+                if self.watch is not None:
+                    self.watch()
+                if any(facts["overflow"] for facts in self.output.values()):
+                    raise PreparationStop("stage output/input overflow")
+                done = self.exited()
+                if self.group:
+                    done = done and not self.original_session_running()
+                if done and not self.selector.get_map():
+                    break
+                if time.monotonic() >= self.work_deadline:
+                    raise PreparationStop("stage work deadline")
+        except BaseException as error:
+            self.failure = type(error).__name__ + ": " + str(error)
+        finally:
+            if self.handle is not None:
+                try:
+                    if self.identity is None:
+                        self.identity = _proc_stat(self.handle.pid)
+                    self.stop_owned()
+                    while self.selector.get_map() and time.monotonic() < self.deadline:
+                        self.drain(0.05)
+                    if self.selector.get_map():
+                        raise PreparationStop("retained pipe EOF remains Unknown")
+                    self.handle.wait(timeout=max(0.001, self.deadline - time.monotonic()))
+                except BaseException as cleanup_error:
+                    self.failure = (self.failure or "") + "; cleanup " + type(cleanup_error).__name__ + ": " + str(cleanup_error)
+            for fd in self.logs.values():
+                os.close(fd)
+            if self.structured_fd is not None:
+                os.close(self.structured_fd)
+            self.selector.close()
+        receipt = {"schema_version": 1, "run_id": self.root.run_id,
+                   "stage": self.label, "actual_returncode": self.handle.returncode if self.handle else None,
+                   "failure": self.failure, "elapsed_seconds": time.monotonic() - self.started,
+                   "stdout": self.output.get("stdout"), "stderr": self.output.get("stderr"),
+                   "minimum_free_bytes": self.disk.minimum_free,
+                   "maximum_owned_bytes": self.disk.maximum_owned}
+        for stream in self.output.values():
+            stream["sha256"] = _fixed_digest(stream["path"])
+        self.root.save_new("receipts/" + self.label + ".terminal.json", receipt)
+        if self.failure:
+            raise PreparationStop(self.failure)
+        return receipt
+
+
+def read_approval_for_reviewed_stage(approval_path, approval_sha256, phase):
+    """Future fixed entry boundary; strict seam validates before any mutation.
+
+    The immutable approval digest must be supplied by the reviewed controller
+    tool call as --approval-sha256. A JSON GO word or a local file alone does not
+    establish authority. This function is not called by the current refused CLI.
+    """
+    if (os.getuid(), os.geteuid(), os.getgid(), os.getegid()) != (OWNER,) * 4:
+        raise PreparationStop("unexpected real/effective OS identity")
+    if pwd.getpwuid(OWNER).pw_name != "agent":
+        raise PreparationStop("unexpected OS owner name")
+    path = Path(approval_path)
+    if not path.is_absolute() or path.parent != LAUNCHER:
+        raise PreparationStop("approval path is not the fixed launcher directory")
+    fd, _ = _regular_open(path, owner=OWNER, mode=0o600)
+    try:
+        raw = _read_fd(fd, JSON_CAP)
+    finally:
+        os.close(fd)
+
+    def strict_pairs(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise PreparationStop("duplicate JSON key in reviewed input")
+            value[key] = item
+        return value
+
+    document = json.loads(raw.decode("utf-8", "strict"), object_pairs_hook=strict_pairs)
+    observed_sha256 = hashlib.sha256(raw).hexdigest()
+    _require_true(validate_approval(document, phase, approval_sha256, observed_sha256),
+                  "strict independently hash-bound approval rejected")
+    expected = {
+        "launcher_sha256": LAUNCHER / "launcher.py",
+        "policy_sha256": LAUNCHER / "launcher_policy.py",
+        "source_sha256": REPOSITORY / "crates/outbox-delivery/tests/process_recovery.rs",
+        "fixture_sha256": REPOSITORY / "crates/outbox-delivery/tests/support/postgres.rs",
+        "manifest_sha256": LAUNCHER / "commands.final.json",
+    }
+    for key, fixed_path in expected.items():
+        if _fixed_digest(fixed_path) != document[key]:
+            raise PreparationStop("reviewed source/input hash changed: " + key)
+    # Complete fixed bootstrap/runtime dispatch is intentionally held until
+    # observed minimum GREEN and final executable-manifest review.
+    return document
+
+
+# Fixed provenance and commands. No command is taken from request JSON.
+OFFICIAL_ARTIFACTS = (
+    ("publisher-checksum", "https://ftp.postgresql.org/pub/source/v18.6/postgresql-18.6.tar.bz2.sha256",
+     "postgresql-18.6.tar.bz2.sha256", 4096, None),
+    ("release", "https://deb.debian.org/debian/dists/trixie/Release", "Release", 138612,
+     "ed56aac47e7911e65ee63aae8d67e29f20e023f840e49f8ed037043a33de138a"),
+    ("release-signature", "https://deb.debian.org/debian/dists/trixie/Release.gpg", "Release.gpg", 1760,
+     "9f80d5c8e4f9fd918a8b4fedd35c00ecc6c1a3ca9eddbc981c83823d4a4b8dc4"),
+    ("packages-index", "https://deb.debian.org/debian/dists/trixie/main/binary-amd64/Packages.xz", "Packages.xz", 9678380,
+     "7778d3e3f303b7ddb8ce0fe7c8d57473a076c6bf2e8f241f75421d2396352498"),
+    ("m4", "https://deb.debian.org/debian/pool/main/m/m4/m4_1.4.19-8_amd64.deb", "m4_1.4.19-8_amd64.deb", 293956,
+     "221b3e224708c1da2a1a88b6824380593579b2254ae7d914afa14cbd5d343334"),
+    ("bison", "https://deb.debian.org/debian/pool/main/b/bison/bison_3.8.2+dfsg-1+b2_amd64.deb", "bison_3.8.2+dfsg-1+b2_amd64.deb", 1169636,
+     "ce6eb1f7aad18850e32d223a68f54bcbe756d74f138c8ec5460ad9d220f4d335"),
+    ("flex", "https://deb.debian.org/debian/pool/main/f/flex/flex_2.6.4-8.2+b4_amd64.deb", "flex_2.6.4-8.2+b4_amd64.deb", 423136,
+     "75f963765232c356d0a2fb70e780dfa9de2425aca036ec60eefb7fc98a2c905b"),
+    ("postgresql", "https://ftp.postgresql.org/pub/source/v18.6/postgresql-18.6.tar.bz2", "postgresql-18.6.tar.bz2", 22632314,
+     "555610c24d53e4316da5b7d3fc25c279d96856d5e0e23ee308c328c5fa881d9f"),
+)
+PACKAGE_PINS = (
+    {"package": "m4", "version": "1.4.19-8", "architecture": "amd64", "filename": "pool/main/m/m4/m4_1.4.19-8_amd64.deb",
+     "bytes": 293956, "sha256": OFFICIAL_ARTIFACTS[4][4], "depends": "libc6 (>= 2.38)", "pre_depends": None},
+    {"package": "bison", "version": "2:3.8.2+dfsg-1+b2", "architecture": "amd64", "filename": "pool/main/b/bison/bison_3.8.2+dfsg-1+b2_amd64.deb",
+     "bytes": 1169636, "sha256": OFFICIAL_ARTIFACTS[5][4], "depends": "m4, libc6 (>= 2.38)", "pre_depends": None},
+    {"package": "flex", "version": "2.6.4-8.2+b4", "architecture": "amd64", "filename": "pool/main/f/flex/flex_2.6.4-8.2+b4_amd64.deb",
+     "bytes": 423136, "sha256": OFFICIAL_ARTIFACTS[6][4], "depends": "libc6 (>= 2.38), m4", "pre_depends": "debconf | debconf-2.0"},
+)
+KEYRINGS = (
+    ("automatic", "/usr/share/keyrings/debian-archive-trixie-automatic.pgp",
+     "8dbd0029697f8c9b009eeb9a153c6536b62ca031fa0a5b4cec74e8d718fccef6",
+     "04B54C3CDCA79751B16BC6B5225629DF75B188BD"),
+    ("stable", "/usr/share/keyrings/debian-archive-trixie-stable.pgp",
+     "abced156a22aa8683b228299ac35c1ea51515eef900cec0e562f56716dfe3915",
+     "41587F7DB8C774BCCF131416762F67A0B2C39DE4"),
+)
+FIXED_TOOLS = tuple(Path(path) for path in (
+    "/usr/bin/python3.13", "/usr/bin/curl", "/usr/bin/sqv", "/usr/bin/xz", "/usr/bin/dpkg-deb",
+    "/usr/bin/x86_64-linux-gnu-readelf", "/usr/bin/x86_64-linux-gnu-gcc-14", "/usr/bin/make",
+    "/usr/bin/perl", "/usr/bin/git",
+)) + tuple(RUST / name for name in ("cargo", "rustc", "rustdoc", "rustfmt", "cargo-clippy", "clippy-driver"))
+BASE_HEAD = "56ac5fd50140fb9e098a378da46579e6d22bc645"
+BASE_TREE = "a6146b0bf3bbb241d918e3b579155e7c6d3dc98f"
+SOURCE_FILE = REPOSITORY / "crates/outbox-delivery/tests/process_recovery.rs"
+FIXTURE_FILE = REPOSITORY / "crates/outbox-delivery/tests/support/postgres.rs"
+IDENTITY_SQL = (
+    "SELECT json_build_object('server_version_num',current_setting('server_version_num')::int,"
+    "'data_directory',current_setting('data_directory'),'config_file',current_setting('config_file'),"
+    "'hba_file',current_setting('hba_file'),'listen_addresses',current_setting('listen_addresses'),"
+    "'unix_socket_directories',current_setting('unix_socket_directories'),'port',current_setting('port')::int,"
+    "'current_user',current_user,'current_database',current_database(),'system_identifier',"
+    "(SELECT system_identifier::text FROM pg_control_system()),'fsync',current_setting('fsync'),"
+    "'full_page_writes',current_setting('full_page_writes'),'max_connections',current_setting('max_connections')::int,"
+    "'shared_buffers',current_setting('shared_buffers'),'work_mem',current_setting('work_mem'));"
+)
+
+
+def _strict_document(raw):
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise PreparationStop("duplicate JSON observation key")
+            result[key] = value
+        return result
+    return json.loads(raw.decode("utf-8", "strict"), object_pairs_hook=pairs)
+
+
+def _load_policy(expected_sha256):
+    path = LAUNCHER / "launcher_policy.py"
+    if _fixed_digest(path) != expected_sha256:
+        raise PreparationStop("reviewed policy hash changed")
+    spec = importlib.util.spec_from_file_location("g07_owned_policy", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class Controller:
+    """Eight fixed review digests maximum, from retained tool-session stdin."""
+
+    def __init__(self, count=0):
+        self.fd = sys.stdin.fileno()
+        facts = os.fstat(self.fd)
+        if not (stat.S_ISFIFO(facts.st_mode) or os.isatty(self.fd)):
+            raise PreparationStop("retained controller stdin unavailable before effects")
+        os.set_blocking(self.fd, False)
+        self.buffer = bytearray()
+        self.count = count
+        try:
+            first = os.read(self.fd, 1)
+        except BlockingIOError:
+            first = None
+        if first == b"":
+            raise PreparationStop("controller stdin already EOF before startup")
+        if first is not None:
+            self.buffer.extend(first)
+
+    def packet(self, stage, deadline, tick):
+        while time.monotonic() < deadline:
+            tick()
+            try:
+                chunk = os.read(self.fd, 257)
+            except BlockingIOError:
+                time.sleep(0.05)
+                continue
+            if not chunk:
+                raise PreparationStop("controller EOF; no further stage authority")
+            self.buffer.extend(chunk)
+            if len(self.buffer) > 256:
+                raise PreparationStop("controller packet overflow")
+            if b"\n" not in self.buffer:
+                continue
+            line, rest = bytes(self.buffer).split(b"\n", 1)
+            if rest:
+                raise PreparationStop("more than one controller packet at a time")
+            self.buffer.clear()
+            value = _strict_document(line)
+            if (not isinstance(value, dict) or set(value) != {"stage", "sha256"}
+                    or value["stage"] != stage or not _hash_field(value["sha256"])
+                    or json.dumps(value, sort_keys=True, separators=(",", ":")).encode("ascii") != line):
+                raise PreparationStop("controller stage/digest packet not canonical")
+            self.count += 1
+            if self.count > 8:
+                raise PreparationStop("fixed controller packet inventory exceeded")
+            return value["sha256"]
+        raise PreparationStop("controller review wait expired")
+
+
+class FixedRun:
+    """Concrete G07 stages only; requests cannot provide commands or URLs."""
+
+    def __init__(self, approval, phase, policy):
+        self.approval, self.phase, self.policy = approval, phase, policy
+        self.managed_https_proxy = None
+        if phase == "bootstrap":
+            self.managed_https_proxy = _managed_https_proxy(os.environ.get("G07_MANAGED_HTTPS_PROXY"))
+            if self.managed_https_proxy is None:
+                raise PreparationStop("same-invocation canonical managed HTTPS proxy absent or rejected")
+        fd, _ = _regular_open(LAUNCHER / "commands.final.json", owner=OWNER, mode=0o600)
+        try:
+            self.manifest = _strict_document(_read_fd(fd, JSON_CAP))
+        finally:
+            os.close(fd)
+        if (self.manifest.get("status") != "REVIEWED_EXECUTABLE"
+                or self.manifest.get("base_head") != BASE_HEAD or self.manifest.get("base_tree") != BASE_TREE):
+            raise PreparationStop("final exact executable manifest is not admitted")
+        pins = self.manifest.get("tool_sha256")
+        if (not isinstance(pins, dict) or set(pins) != {str(path) for path in FIXED_TOOLS}
+                or any(not _hash_field(value) for value in pins.values())):
+            raise PreparationStop("exact existing tool hash inventory missing")
+        self.tools = pins
+        boundary = self.manifest.get("bootstrap_resume_boundary", "tools-review")
+        if phase == "bootstrap-resume" and boundary not in ("tools-review", "configured-build", "installed"):
+            raise PreparationStop("unlisted fixed bootstrap resume boundary")
+        self.installed_resume = phase == "bootstrap-resume" and boundary == "installed"
+        self.configured_build_resume = phase == "bootstrap-resume" and boundary == "configured-build"
+        continuation = self.manifest.get("bootstrap_resume_continuation")
+        if phase == "bootstrap-resume" and continuation is not None and (
+                not self.configured_build_resume or continuation != "make-race-stop"):
+            raise PreparationStop("unlisted fixed configured-build continuation")
+        self.make_race_resume = self.configured_build_resume and continuation == "make-race-stop"
+        self.controller = Controller(2 if phase == "supervise" else 1 if self.configured_build_resume or self.installed_resume else 0)
+        for path in FIXED_TOOLS:
+            if _fixed_digest(path) != pins[str(path)]:
+                raise PreparationStop("existing reviewed tool changed before root creation")
+        self.root = OwnedRoot.create(approval["run_id"]) if phase == "bootstrap" else OwnedRoot(approval["run_root"], approval["run_id"])
+        print("G07_OWNED_ROOT " + str(self.root.path), flush=True)
+        self.disk = DiskWatch(self.root, policy)
+        self.server = None
+        self.server_identity = None
+        self.active_stage = None
+        self.active_launch = None
+        self.cluster_deadline = None
+        self.terminal_mode = False
+        self.case_seconds_used = 0.0
+        self.history = ["compile-helper-red", "pure-rust-red-confirmed", "compile-helper-green", "pure-rust-green-confirmed"]
+        self.current_source = approval["source_sha256"]
+        self.current_fixture = approval["fixture_sha256"]
+        self.binary = None
+        self.binary_sha256 = None
+        self.elf = {}
+        self.providers = {}
+        self.next_server_observation = 0.0
+        self.next_label = 0
+        self.registered = []
+        self.owned_stages = []
+        self.registry_snapshots = b""
+        self.root.verify()
+        self.verify_target()
+        self.disk.check(force=True)
+        if phase == "bootstrap":
+            facts = self.root.identity
+            self.root.save_new("receipts/root-owner.json", {
+                "schema_version": 1, "run_id": self.root.run_id, "run_root": str(self.root.path),
+                "uid": OWNER, "gid": OWNER, "mode": 0o700, "dev": facts.st_dev, "inode": facts.st_ino,
+            })
+            self.root.save_new("receipts/managed-https-proxy.json", {
+                "schema_version": 1, "run_id": self.root.run_id, "run_root": str(self.root.path),
+                "source": "controller same-invocation managed_bootstrap_entry.py",
+                "input_environment_key": "G07_MANAGED_HTTPS_PROXY", "download_environment_key": "HTTPS_PROXY",
+                "value": self.managed_https_proxy,
+            })
+        else:
+            owner = _strict_document(self.root.read("receipts/root-owner.json"))
+            if (owner.get("run_id") != self.root.run_id or owner.get("run_root") != str(self.root.path)
+                    or owner.get("dev") != self.root.identity.st_dev or owner.get("inode") != self.root.identity.st_ino):
+                raise PreparationStop("bootstrap-created root identity proof mismatch")
+            if phase == "bootstrap-resume":
+                self.adopt_bootstrap_resume()
+                self.next_label = 19 if self.installed_resume else 15 if self.make_race_resume else 11 if self.configured_build_resume else 4
+                return
+            bootstrap = self.root.read("receipts/bootstrap-terminal.json")
+            if hashlib.sha256(bootstrap).hexdigest() != self.manifest.get("bootstrap_terminal_sha256"):
+                raise PreparationStop("independently pinned bootstrap terminal mismatch")
+            boot = _strict_document(bootstrap)
+            if boot.get("status") != "bootstrap-confirmed" or boot.get("run_id") != self.root.run_id:
+                raise PreparationStop("bootstrap did not finish cleanly")
+            self.elf = boot["approved_elf"]
+            self.providers = boot["approved_providers"]
+            self.binary = Path(approval["test_executable"]["path"])
+            self.binary_sha256 = approval["test_executable"]["sha256"]
+            if (str(self.binary) != boot["test_executable"] or self.binary_sha256 != boot["test_executable_sha256"]
+                    or _fixed_digest(self.binary) != self.binary_sha256):
+                raise PreparationStop("runtime binary is not the single confirmed bootstrap artifact")
+
+    def verify_target(self):
+        receipt_path = EVIDENCE / "g07-target-ownership.json"
+        if _fixed_digest(receipt_path) != "84b1fe4a9b4895a8a9bcb13bb25a566bba91d200a56ba8bf1785e3c4bf4bbccb":
+            raise PreparationStop("target ownership receipt changed")
+        facts = TARGET.lstat()
+        receipt = _strict_document(receipt_path.read_bytes())
+        if (not stat.S_ISDIR(facts.st_mode) or facts.st_uid != OWNER or stat.S_IMODE(facts.st_mode) != 0o700
+                or (facts.st_dev, facts.st_ino) != (27, 1454531)
+                or (receipt.get("dev"), receipt.get("inode"), receipt.get("uid"), receipt.get("mode")) != (27, 1454531, OWNER, 0o700)):
+            raise PreparationStop("already-created target identity mismatch")
+        terminal = Path(receipt["initial_terminal_receipt"])
+        if (terminal != EVIDENCE / "g07-pure-4vvz8tnj/terminal.json"
+                or _fixed_digest(terminal) != receipt["initial_terminal_sha256"]
+                or _strict_document(terminal.read_bytes()).get("new_target") != str(TARGET)):
+            raise PreparationStop("target creation proof mismatch")
+
+    def adopt_bootstrap_resume(self):
+        """Verify one of the two fixed retained boundaries before any new write."""
+        started = time.monotonic()
+        expected_root = str(BASE / "p6pg.7W3PeNcL")
+        expected_run = "a53a280c-c335-4226-b37a-b24533fe77a6"
+        if str(self.root.path) != expected_root or self.root.run_id != expected_run:
+            raise PreparationStop("resume is limited to the exact retained acquisition root/run")
+
+        def checkpoint():
+            self.root.verify()
+            self.disk.check()
+            if time.monotonic() >= started + 120:
+                raise PreparationStop("fixed resume adoption verification deadline")
+
+        def external(reference, expected_name, cap):
+            if (not isinstance(reference, dict) or set(reference) != {"path", "sha256"}
+                    or reference["path"] != str(EVIDENCE / expected_name) or not _hash_field(reference["sha256"])):
+                raise PreparationStop("resume external evidence reference differs from fixed path/hash")
+            parent = os.open(EVIDENCE, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                fd = os.open(expected_name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
+            finally:
+                os.close(parent)
+            try:
+                facts = os.fstat(fd)
+                if not stat.S_ISREG(facts.st_mode) or facts.st_uid != OWNER or stat.S_IMODE(facts.st_mode) != 0o600:
+                    raise PreparationStop("resume external evidence owner/type/mode mismatch")
+                raw = _read_fd(fd, cap)
+            finally:
+                os.close(fd)
+            checkpoint()
+            if hashlib.sha256(raw).hexdigest() != reference["sha256"]:
+                raise PreparationStop("resume external evidence pinned bytes changed")
+            return raw
+
+        reference = self.manifest.get("bootstrap_resume")
+        installed = self.installed_resume
+        configured = self.configured_build_resume or installed
+        race_resume = self.make_race_resume or installed
+        evidence_prefix = "g07-installed" if installed else "g07-make-race" if race_resume else "g07-configured-build" if configured else "g07-retained"
+        descriptor = _strict_document(external(reference, evidence_prefix + "-adoption.json", JSON_CAP))
+        keys = {"schema_version", "run_id", "run_root", "inventory", "root_owner_sha256", "eof_error_sha256",
+                "authenticated_tree_comparison", "required_empty_dirs", "tools_elf_observations_sha256"}
+        if configured:
+            keys |= {"boundary", "configured_stop_sha256", "prior_adoption_sha256", "tools_review_sha256"}
+        if race_resume:
+            keys |= {"race_stop_sha256", "configured_adoption_sha256"}
+        if installed:
+            keys |= {"race_adoption_sha256", "installed_stop_sha256"}
+        if (not isinstance(descriptor, dict) or set(descriptor) != keys or type(descriptor["schema_version"]) is not int
+                or descriptor["schema_version"] != 1 or descriptor["run_id"] != expected_run
+                or descriptor["run_root"] != expected_root
+                or descriptor["required_empty_dirs"] != (["data", "socket", "home", "tmp"] if installed else
+                                                         ["install", "data", "socket", "home", "tmp"] if configured else
+                                                         ["build", "install", "data", "socket", "home", "tmp"])
+                or any(not _hash_field(descriptor[key]) for key in (
+                    "root_owner_sha256", "eof_error_sha256", "tools_elf_observations_sha256"))):
+            raise PreparationStop("fixed compact adoption descriptor rejected")
+        if configured and (descriptor["boundary"] != ("installed-before-postgres-elf-approval" if installed else
+                                                      "configured-build-after-owned-make-race-stop" if race_resume else
+                                                      "configured-build-after-owned-make-stop")
+                           or any(not _hash_field(descriptor[key]) for key in (
+                               "configured_stop_sha256", "prior_adoption_sha256", "tools_review_sha256"))):
+            raise PreparationStop("configured-build history descriptor rejected")
+        if race_resume and any(not _hash_field(descriptor[key]) for key in ("race_stop_sha256", "configured_adoption_sha256")):
+            raise PreparationStop("fixed make-race history descriptor rejected")
+        if installed and any(not _hash_field(descriptor[key]) for key in ("race_adoption_sha256", "installed_stop_sha256")):
+            raise PreparationStop("fixed installed history descriptor rejected")
+        inventory = descriptor["inventory"]
+        if (not isinstance(inventory, dict) or set(inventory) != {"path", "sha256", "max_entries", "max_bytes", "max_regular_bytes"}
+                or any(type(inventory[key]) is not int for key in ("max_entries", "max_bytes", "max_regular_bytes"))
+                or (inventory["max_entries"], inventory["max_bytes"], inventory["max_regular_bytes"]) != (16000 if installed else 12000, 8388608, 1073741824)):
+            raise PreparationStop("resume inventory caps differ from fixed contract")
+        payload = external({key: inventory[key] for key in ("path", "sha256")},
+                           evidence_prefix + "-root-inventory.jsonl", inventory["max_bytes"])
+        proof = _strict_document(external(descriptor["authenticated_tree_comparison"],
+                                         evidence_prefix + "-authenticated-tree-comparison.json", JSON_CAP))
+        if (proof.get("schema_version") != 1 or proof.get("run_id") != expected_run or proof.get("run_root") != expected_root
+                or proof.get("status") != "all-retained-extracted-bytes-match-authenticated-canonical-archives"):
+            raise PreparationStop("independently pinned authenticated comparison is not confirmed for this root")
+        rows = {}
+        regular_bytes = 0
+        if not payload.endswith(b"\n"):
+            raise PreparationStop("resume inventory JSONL framing incomplete")
+        for line in payload.splitlines():
+            if len(line) > 4096:
+                raise PreparationStop("resume inventory line overflow")
+            row = _strict_document(line)
+            base = {"relative", "kind", "dev", "inode", "uid", "gid", "mode"}
+            kind = row.get("kind")
+            expected_keys = base | ({"size", "sha256"} if kind == "file" else {"target"} if kind == "symlink" else set())
+            relative = row.get("relative")
+            if (kind not in ("file", "directory", "symlink") or set(row) != expected_keys
+                    or not isinstance(relative, str) or not relative or relative.startswith("/") or "\x00" in relative
+                    or any(part in ("", ".", "..") for part in relative.split("/")) or relative in rows
+                    or any(type(row[key]) is not int or row[key] < 0 for key in ("dev", "inode", "uid", "gid", "mode"))
+                    or row["uid"] != OWNER or row["gid"] != OWNER or row["mode"] > 0o777):
+                raise PreparationStop("resume inventory path/kind/exact metadata rejected")
+            if kind == "file":
+                if type(row["size"]) is not int or row["size"] < 0 or not _hash_field(row["sha256"]):
+                    raise PreparationStop("resume regular byte proof rejected")
+                regular_bytes += row["size"]
+            elif kind == "symlink" and (not isinstance(row["target"], str) or not row["target"] or "\x00" in row["target"]):
+                raise PreparationStop("resume symlink proof rejected")
+            rows[relative] = row
+            if len(rows) > inventory["max_entries"] or regular_bytes > 1073741824:
+                raise PreparationStop("resume complete inventory exceeds fixed caps")
+        seen = set()
+
+        def visit(directory, prefix):
+            with os.scandir(directory) as listing:
+                for entry in listing:
+                    checkpoint()
+                    relative = prefix + entry.name
+                    row = rows.get(relative)
+                    if row is None or relative in seen:
+                        raise PreparationStop("resume root contains extra/duplicate node")
+                    facts = os.stat(entry.name, dir_fd=directory, follow_symlinks=False)
+                    if (facts.st_dev, facts.st_ino, facts.st_uid, facts.st_gid, stat.S_IMODE(facts.st_mode)) != tuple(
+                            row[key] for key in ("dev", "inode", "uid", "gid", "mode")):
+                        raise PreparationStop("resume node metadata/inode changed")
+                    seen.add(relative)
+                    if row["kind"] == "directory" and stat.S_ISDIR(facts.st_mode):
+                        fd = os.open(entry.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+                        try:
+                            opened = os.fstat(fd)
+                            if (opened.st_dev, opened.st_ino, opened.st_uid, opened.st_gid, stat.S_IMODE(opened.st_mode)) != tuple(
+                                    row[key] for key in ("dev", "inode", "uid", "gid", "mode")):
+                                raise PreparationStop("resume opened directory identity changed")
+                            visit(fd, relative + "/")
+                        finally:
+                            os.close(fd)
+                    elif row["kind"] == "file" and stat.S_ISREG(facts.st_mode):
+                        fd = os.open(entry.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory)
+                        try:
+                            opened = os.fstat(fd)
+                            if (opened.st_dev, opened.st_ino, opened.st_size) != (row["dev"], row["inode"], row["size"]) or _digest_fd(fd) != row["sha256"]:
+                                raise PreparationStop("resume regular inode/size/hash changed")
+                        finally:
+                            os.close(fd)
+                    elif row["kind"] == "symlink" and stat.S_ISLNK(facts.st_mode):
+                        if os.readlink(entry.name, dir_fd=directory) != row["target"]:
+                            raise PreparationStop("resume internal symlink target changed")
+                    else:
+                        raise PreparationStop("resume special or mismatched file kind")
+        visit(self.root.fd, "")
+        if seen != set(rows):
+            raise PreparationStop("resume inventory has missing nodes")
+        for name in descriptor["required_empty_dirs"]:
+            fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=self.root.fd)
+            try:
+                with os.scandir(fd) as listing:
+                    if next(listing, None) is not None:
+                        raise PreparationStop("required resume directory is not empty")
+            finally:
+                os.close(fd)
+        for relative, key in (("receipts/root-owner.json", "root_owner_sha256"),
+                              ("receipts/launcher-error.json", "eof_error_sha256"),
+                              ("receipts/tools-elf-review-observations.json", "tools_elf_observations_sha256")):
+            if hashlib.sha256(self.root.read(relative)).hexdigest() != descriptor[key]:
+                raise PreparationStop("resume ownership/stop/ELF receipt binding changed")
+        owner = _strict_document(self.root.read("receipts/root-owner.json"))
+        facts = os.fstat(self.root.fd)
+        if (facts.st_dev, facts.st_ino, facts.st_uid, facts.st_gid, stat.S_IMODE(facts.st_mode)) != tuple(
+                owner.get(key) for key in ("dev", "inode", "uid", "gid", "mode")):
+            raise PreparationStop("resume root metadata differs from independently pinned owner receipt")
+        stopped = _strict_document(self.root.read("receipts/launcher-error.json"))
+        if (stopped.get("run_id") != expected_run or stopped.get("root") != expected_root
+                or stopped.get("error") != "PreparationStop: controller EOF; no further stage authority"
+                or stopped.get("no_further_launch") is not True):
+            raise PreparationStop("resume is not the exact stopped pre-execution boundary")
+        stages = ["git-closure-" + str(i) for i in range(1, 5)]
+        stages += ["download-" + artifact[0] for artifact in OFFICIAL_ARTIFACTS]
+        stages += ["signature-automatic", "signature-stable", "packages-decompress"]
+        stages += [prefix + name for prefix in ("deb-control-", "deb-data-") for name in ("m4", "bison", "flex")]
+        stages += [prefix + name for prefix in ("inventory-", "extract-") for name in ("m4", "bison", "flex", "postgresql")]
+        stages += ["tools-elf-review-inspect-" + str(i) for i in range(3)]
+        if len(stages) != 32:
+            raise PreparationStop("fixed resume stage inventory programming mismatch")
+        if configured:
+            stages += ["git-closure-" + str(i) for i in range(5, 9)]
+            stages += ["provider-inspect-" + str(i) for i in range(9, 12)]
+            stages += ["m4-version", "bison-version", "flex-version", "bison-data-directory", "configure", "make"]
+        if race_resume:
+            stages += ["git-closure-" + str(i) for i in range(12, 16)] + ["make-pipe"]
+        if installed:
+            stages += ["git-closure-" + str(i) for i in range(16, 20)] + ["make-rescan", "install", "postgres-elf-review-inspect-0"]
+        terminals = {}
+        spooled_stdout = {"download-" + artifact[0]: "downloads/" + artifact[2] for artifact in OFFICIAL_ARTIFACTS}
+        spooled_stdout["packages-decompress"] = "downloads/Packages.txt"
+        spooled_stdout.update({"deb-data-" + name: "downloads/data-" + name + ".tar" for name in ("m4", "bison", "flex")})
+        for stage in stages:
+            checkpoint()
+            terminal = _strict_document(self.root.read("receipts/" + stage + ".terminal.json"))
+            failed_make = configured and stage in ("make", "make-pipe")
+            failed_pg_inspection = installed and stage == "postgres-elf-review-inspect-0"
+            expected_failure = None
+            if failed_pg_inspection:
+                expected_failure = "PreparationStop: stage output/input overflow"
+            elif failed_make:
+                expected_failure = ("PreparationStop: disk observation raced missing entry" if stage == "make-pipe" else
+                                    "PreparationStop: unexpected measured inode kind")
+            if (terminal.get("schema_version") != 1 or terminal.get("run_id") != expected_run or terminal.get("stage") != stage
+                    or type(terminal.get("actual_returncode")) is not int
+                    or terminal["actual_returncode"] != (-15 if failed_make or failed_pg_inspection else 0)
+                    or terminal.get("failure") != expected_failure):
+                raise PreparationStop("resume stage was not a positively successful owned exit")
+            if failed_make and (type(terminal.get("elapsed_seconds")) not in (int, float)
+                                or not 0 < terminal["elapsed_seconds"] <= (98 if stage == "make-pipe" else 2)):
+                raise PreparationStop("retained make spent more than its conservative fixed debit")
+            log_cap = 131072 if stage.startswith("provider-inspect-") or failed_pg_inspection else 4194304 if stage in ("configure", "make", "make-pipe", "make-rescan", "install") else STREAM_CAP
+            for stream in ("stdout", "stderr"):
+                observed = terminal[stream]
+                relative = "logs/" + stage + "." + stream + ".log"
+                raw = self.root.read(relative, log_cap)
+                seen_bytes = observed.get("seen")
+                historical_pg_overflow = failed_pg_inspection and stream == "stdout"
+                expected_seen = 200704 if historical_pg_overflow else rows[spooled_stdout[stage]]["size"] if stream == "stdout" and stage in spooled_stdout else len(raw)
+                if (observed.get("path") != str(self.root.path / relative) or observed.get("overflow") is not historical_pg_overflow
+                        or type(seen_bytes) is not int or seen_bytes != expected_seen or len(raw) != min(seen_bytes, log_cap)
+                        or observed.get("retained") != len(raw) or observed.get("sha256") != hashlib.sha256(raw).hexdigest()):
+                    raise PreparationStop("resume successful stage stream identity/hash/completeness rejected")
+            terminals[stage] = terminal
+        for artifact_id, url, name, size, expected_hash in OFFICIAL_ARTIFACTS:
+            checkpoint()
+            raw = self.root.read("downloads/" + name, size)
+            digest = hashlib.sha256(raw).hexdigest()
+            receipt = _strict_document(self.root.read("receipts/artifact-" + artifact_id + ".json"))
+            if (receipt.get("run_id") != expected_run or receipt.get("artifact_id") != artifact_id or receipt.get("url") != url
+                    or receipt.get("path") != str(self.root.path / "downloads" / name)
+                    or receipt.get("bytes") != len(raw) or receipt.get("sha256") != digest
+                    or (expected_hash is not None and (len(raw) != size or digest != expected_hash))):
+                raise PreparationStop("resume exact official artifact byte/receipt pin mismatch")
+        checksum = self.root.read("downloads/postgresql-18.6.tar.bz2.sha256", 4096).decode("ascii", "strict")
+        if not re.fullmatch(re.escape(OFFICIAL_ARTIFACTS[-1][4]) + r"[ \t]+\*?postgresql-18\.6\.tar\.bz2\s*", checksum):
+            raise PreparationStop("resume publisher checksum declaration differs")
+        observation = _strict_document(self.root.read("receipts/tools-elf-review-observations.json"))
+        if (observation.get("schema_version") != 1 or observation.get("run_id") != expected_run
+                or observation.get("stage") != "tools-elf-review" or not isinstance(observation.get("elf"), list)
+                or len(observation["elf"]) != 3):
+            raise PreparationStop("retained tools ELF observations incomplete")
+        for index, (name, observed) in enumerate(zip(("m4", "bison", "flex"), observation["elf"])):
+            file = self.root.path / "tools/usr/bin" / name
+            fd, facts = _regular_open(file, owner=OWNER)
+            os.close(fd)
+            if (observed.get("path") != str(file) or (observed.get("dev"), observed.get("inode")) != (facts.st_dev, facts.st_ino)
+                    or observed.get("sha256") != _fixed_digest(file)
+                    or observed.get("readelf_stdout") != terminals["tools-elf-review-inspect-" + str(index)]["stdout"]):
+                raise PreparationStop("retained tools ELF inode/hash/log context changed")
+        self.resumed_tools_elf = observation["elf"]
+        if configured:
+            for relative, key in (("receipts/launcher-resume-error.json", "configured_stop_sha256"),
+                                  ("receipts/resume-adoption.json", "prior_adoption_sha256"),
+                                  ("requests/tools-elf-review.json", "tools_review_sha256")):
+                if hashlib.sha256(self.root.read(relative)).hexdigest() != descriptor[key]:
+                    raise PreparationStop("configured-build retained context digest changed")
+            prior = _strict_document(self.root.read("receipts/resume-adoption.json"))
+            stop = _strict_document(self.root.read("receipts/launcher-resume-error.json"))
+            if (prior.get("run_id") != expected_run or prior.get("run_root") != expected_root
+                    or prior.get("descriptor_sha256") != "5b9a369ac068b6a09068820af5adc8cfb314991a05d7b27363ad7c9d5624b49f"
+                    or prior.get("boundary") != "tools-elf-review-before-any-staged-execution"
+                    or prior.get("verified_stage_count") != 32 or prior.get("verified_artifact_count") != 8
+                    or stop.get("run_id") != expected_run or stop.get("root") != expected_root
+                    or stop.get("error") != "PreparationStop: PreparationStop: unexpected measured inode kind"
+                    or stop.get("no_further_launch") is not True):
+                raise PreparationStop("configured-build adoption/owned-stop history differs")
+            if race_resume:
+                for relative, key in (("receipts/launcher-build-resume-error.json", "race_stop_sha256"),
+                                      ("receipts/configured-build-adoption.json", "configured_adoption_sha256")):
+                    if hashlib.sha256(self.root.read(relative)).hexdigest() != descriptor[key]:
+                        raise PreparationStop("make-race retained stop/adoption digest changed")
+                previous = _strict_document(self.root.read("receipts/configured-build-adoption.json"))
+                race_stop = _strict_document(self.root.read("receipts/launcher-build-resume-error.json"))
+                if (previous.get("run_id") != expected_run or previous.get("run_root") != expected_root
+                        or previous.get("descriptor_sha256") != "992c1a2fa2765eed971fa2c3b05a287e4c4a4d1e78a7dc9c8e792ddd9b8d628d"
+                        or previous.get("boundary") != "configured-build-after-owned-make-stop"
+                        or previous.get("verified_stage_count") != 44 or previous.get("verified_failed_make") is not True
+                        or race_stop.get("run_id") != expected_run or race_stop.get("root") != expected_root
+                        or race_stop.get("error") != "PreparationStop: PreparationStop: disk observation raced missing entry"
+                        or race_stop.get("no_further_launch") is not True):
+                    raise PreparationStop("fixed make-race prior adoption/owned-stop history differs")
+                pipe_spawn = _strict_document(self.root.read("receipts/make-pipe.spawn.json"))
+                if (pipe_spawn.get("run_id") != expected_run or pipe_spawn.get("stage") != "make-pipe"
+                        or pipe_spawn.get("argv") != ["/usr/bin/make", "-j2", "--jobserver-style=pipe"]
+                        or pipe_spawn.get("cwd") != str(self.root.path / "build") or pipe_spawn.get("cap_seconds") != 1798
+                        or pipe_spawn.get("environment") != self.environment("build")):
+                    raise PreparationStop("retained make-pipe invocation differs from fixed reviewed continuation")
+            if installed:
+                for relative, key in (("receipts/make-race-adoption.json", "race_adoption_sha256"),
+                                      ("receipts/launcher-make-race-resume-error.json", "installed_stop_sha256")):
+                    if hashlib.sha256(self.root.read(relative)).hexdigest() != descriptor[key]:
+                        raise PreparationStop("installed retained adoption/stop digest changed")
+                previous = _strict_document(self.root.read("receipts/make-race-adoption.json"))
+                installed_stop = _strict_document(self.root.read("receipts/launcher-make-race-resume-error.json"))
+                if (previous.get("run_id") != expected_run or previous.get("run_root") != expected_root
+                        or previous.get("descriptor_sha256") != "f82cb2fbd4363e11242590c42e74f3d191ad3eb40f732831c4ebfd6e39157f06"
+                        or previous.get("boundary") != "configured-build-after-owned-make-race-stop"
+                        or previous.get("verified_stage_count") != 48 or previous.get("verified_make_pipe_failure") is not True
+                        or installed_stop.get("run_id") != expected_run or installed_stop.get("root") != expected_root
+                        or installed_stop.get("error") != "PreparationStop: PreparationStop: stage output/input overflow"
+                        or installed_stop.get("no_further_launch") is not True):
+                    raise PreparationStop("fixed installed prior adoption/inspection-stop history differs")
+                for stage, argv, cap in (("make-rescan", ["/usr/bin/make", "-j2", "--jobserver-style=pipe"], 1700),
+                                         ("install", ["/usr/bin/make", "install"], 180)):
+                    spawn = _strict_document(self.root.read("receipts/" + stage + ".spawn.json"))
+                    if (spawn.get("run_id") != expected_run or spawn.get("stage") != stage or spawn.get("argv") != argv
+                            or spawn.get("cwd") != str(self.root.path / "build") or spawn.get("cap_seconds") != cap
+                            or spawn.get("environment") != self.environment("build")):
+                        raise PreparationStop("retained completed build/install invocation differs")
+            for name, version in (("m4", "1.4.19"), ("bison", "3.8.2"), ("flex", "2.6.4")):
+                if version not in self.stdout(terminals[name + "-version"]).decode("ascii", "strict"):
+                    raise PreparationStop("retained tool version is not the admitted pin")
+            if self.stdout(terminals["bison-data-directory"]).decode("ascii", "strict").strip() != str(self.root.path / "tools/usr/share/bison"):
+                raise PreparationStop("retained Bison data directory differs from private root")
+            configure_spawn = _strict_document(self.root.read("receipts/configure.spawn.json"))
+            make_spawn = _strict_document(self.root.read("receipts/make.spawn.json"))
+            expected_configure = [str(self.root.path / "source/postgresql-18.6/configure"),
+                                  "--prefix=" + str(self.root.path / "install"), "--without-readline", "--without-zlib", "--without-icu"]
+            for spawn, stage, argv, cap in ((configure_spawn, "configure", expected_configure, 180),
+                                           (make_spawn, "make", ["/usr/bin/make", "-j2"], 1800)):
+                if (spawn.get("run_id") != expected_run or spawn.get("stage") != stage or spawn.get("argv") != argv
+                        or spawn.get("cwd") != str(self.root.path / "build") or spawn.get("cap_seconds") != cap
+                        or spawn.get("environment") != self.environment("build")):
+                    raise PreparationStop("retained configure/make invocation differs from exact reviewed build")
+            self.retained_provider_terminals = terminals
+            self.inspect_and_review_elf_closure("tools-elf-review", [
+                self.root.path / "tools/usr/bin" / name for name in ("m4", "bison", "flex")])
+        checkpoint()
+        receipt_relative = ("receipts/installed-adoption.json" if installed else "receipts/make-race-adoption.json" if race_resume else
+                            "receipts/configured-build-adoption.json" if configured else "receipts/resume-adoption.json")
+        self.root.save_new(receipt_relative, {"schema_version": 1, "run_id": expected_run,
+                           "run_root": expected_root, "descriptor_sha256": reference["sha256"],
+                           "inventory_sha256": inventory["sha256"], "authenticated_tree_comparison": descriptor["authenticated_tree_comparison"],
+                           "verified_entries": len(seen), "verified_regular_bytes": regular_bytes,
+                           "verified_stage_count": 54 if installed else 48 if race_resume else 44 if configured else 32, "verified_artifact_count": 8,
+                           "verified_failed_make": configured,
+                           "verified_make_pipe_failure": race_resume,
+                           "verified_failed_pg_inspection": installed,
+                           "boundary": ("installed-before-postgres-elf-approval" if installed else "configured-build-after-owned-make-race-stop" if race_resume else
+                                        "configured-build-after-owned-make-stop" if configured else "tools-elf-review-before-any-staged-execution"),
+                           "elapsed_seconds": time.monotonic() - started})
+
+    def environment(self, kind, launch_id=None):
+        b = self.root.path
+        value = {"HOME": str(b / "home"), "TMPDIR": str(b / "tmp"), "LC_ALL": "C", "TZ": "UTC"}
+        if kind in ("pure", "runtime", "cargo"):
+            value["RUST_BACKTRACE"] = "0"
+        if kind in ("tool", "download", "build", "bison-data"):
+            value["PATH"] = str(b / "tools/usr/bin") + ":/usr/bin:/bin"
+        if kind == "download":
+            if self.phase != "bootstrap" or self.managed_https_proxy is None:
+                raise PreparationStop("download-only managed transport unavailable")
+            value["HTTPS_PROXY"] = self.managed_https_proxy
+        if kind == "build":
+            value.update(M4=str(b / "tools/usr/bin/m4"), BISON=str(b / "tools/usr/bin/bison"),
+                         FLEX=str(b / "tools/usr/bin/flex"), BISON_PKGDATADIR=str(b / "tools/usr/share/bison"),
+                         CC="/usr/bin/x86_64-linux-gnu-gcc-14")
+        if kind == "bison-data":
+            value["BISON_PKGDATADIR"] = str(b / "tools/usr/share/bison")
+        if kind in ("postgres", "psql"):
+            value["PATH"] = str(b / "install/bin") + ":/usr/bin:/bin"
+        if kind == "psql":
+            value["PGCONNECT_TIMEOUT"] = "3"
+        if kind == "cargo":
+            value.update(PATH=str(RUST) + ":/usr/bin:/bin", CARGO_HOME=str(CACHE), CARGO_TARGET_DIR=str(TARGET),
+                         RUSTC=str(RUST / "rustc"), RUSTDOC=str(RUST / "rustdoc"), CARGO_NET_OFFLINE="true",
+                         SQLX_OFFLINE="true", CARGO_PROFILE_DEV_DEBUG="0", CARGO_PROFILE_TEST_DEBUG="0",
+                         CARGO_INCREMENTAL="0", CARGO_TERM_COLOR="never")
+        if kind == "runtime":
+            if not _uuid_field(launch_id):
+                raise PreparationStop("owned launch UUID missing")
+            value.update(P6_G07_SCOPE_PATH=str(b / "scope.json"), P6_G07_TEST_LAUNCH_ID=launch_id)
+        return value
+
+    def tick(self):
+        self.disk.check()
+        if self.server is not None and self.server.handle is not None and self.server_identity is not None:
+            self.server.drain(0)
+            if any(stream["overflow"] for stream in self.server.output.values()):
+                raise PreparationStop("server output overflow")
+            if self.server.exited():
+                raise PreparationStop("owned server exited unexpectedly")
+            now = time.monotonic()
+            if now >= self.next_server_observation:
+                _require_true(self.policy.process_identity_matches(self.server_identity, _proc_observation(self.server.handle.pid)),
+                              "live owned server identity changed")
+                self.next_server_observation = now + 1
+            if not self.terminal_mode and time.monotonic() >= self.cluster_deadline:
+                raise PreparationStop("single server lifetime exhausted")
+            if getattr(self, "active_launch", None) is not None and self.active_stage is not None and self.active_stage.identity is not None:
+                self.consume_child_registry()
+
+    def cap(self, seconds, deadline=None):
+        now = time.monotonic()
+        remaining = float(seconds)
+        if self.cluster_deadline is not None and not self.terminal_mode:
+            remaining = self.policy.phase_remaining(self.server.started, now, 1800, now, remaining)
+        if deadline is not None:
+            remaining = self.policy.phase_remaining(0, now, deadline, now, remaining)
+        if type(remaining) not in (int, float) or remaining <= 0:
+            raise PreparationStop("shared deadline exhausted before stage")
+        return remaining
+
+    def run(self, name, argv, kind, seconds, *, cwd=None, group=True, build_output=False,
+            elf_output=False, structured_cap=None, structured_relative=None, deadline=None, launch_id=None, expect_zero=True):
+        self.tick()
+        if (_fixed_digest(LAUNCHER / "launcher.py") != self.approval["launcher_sha256"]
+                or _fixed_digest(LAUNCHER / "launcher_policy.py") != self.approval["policy_sha256"]
+                or _fixed_digest(LAUNCHER / "commands.final.json") != self.approval["manifest_sha256"]):
+            raise PreparationStop("immutable launcher/policy/manifest changed before stage")
+        executable = Path(argv[0])
+        if executable in FIXED_TOOLS:
+            if _fixed_digest(executable) != self.tools[str(executable)]:
+                raise PreparationStop("pinned tool changed before stage")
+        elif str(executable) in self.elf:
+            self.verify_approved_elf(str(executable))
+        elif executable == self.binary:
+            if _fixed_digest(executable) != self.binary_sha256:
+                raise PreparationStop("approved test executable changed")
+        elif executable != self.root.path / "source/postgresql-18.6/configure":
+            raise PreparationStop("unlisted executable for fixed stage")
+        stage = OwnedStage(self.root, self.disk, self.policy, name, argv, cwd or self.root.path,
+                           self.environment(kind, launch_id), self.cap(seconds, deadline), group=group,
+                           output_cap=ELF_REPORT_CAP if elf_output else 4194304 if build_output else STREAM_CAP,
+                           structured_stdout_cap=structured_cap, structured_relative=structured_relative, watch=self.tick)
+        self.owned_stages.append(stage)
+        result = stage.run()
+        if expect_zero and result["actual_returncode"] != 0:
+            raise PreparationStop("fixed stage nonzero: " + name)
+        return result
+
+    def stdout(self, result):
+        relative = str(Path(result["stdout"]["path"]).relative_to(self.root.path))
+        return self.root.read(relative, 4194304)
+
+    def verify_source(self, deadline=None):
+        if (_fixed_digest(SOURCE_FILE) != self.current_source or _fixed_digest(FIXTURE_FILE) != self.current_fixture
+                or _fixed_digest(LAUNCHER / "launcher.py") != self.approval["launcher_sha256"]
+                or _fixed_digest(LAUNCHER / "commands.final.json") != self.approval["manifest_sha256"]):
+            raise PreparationStop("reviewed input changed during owned run")
+        git = ["/usr/bin/git", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false"]
+        values = []
+        for args in (("rev-parse", "HEAD"), ("rev-parse", "HEAD^{tree}"),
+                     ("diff", "--no-ext-diff", "--no-textconv", "--name-only", "HEAD", "--"),
+                     ("ls-files", "--others", "--exclude-standard")):
+            self.next_label += 1
+            result = self.run(("runtime-git-closure-" if self.phase == "supervise" else "git-closure-") + str(self.next_label), git + list(args), "pure", 15,
+                              cwd=REPOSITORY, deadline=deadline)
+            values.append(self.stdout(result).decode("utf-8", "strict").strip())
+        if (values[0] != BASE_HEAD or values[1] != BASE_TREE or values[3]
+                or set(values[2].splitlines()) - {str(SOURCE_FILE.relative_to(REPOSITORY)), str(FIXTURE_FILE.relative_to(REPOSITORY))}):
+            raise PreparationStop("source closure exceeds exact two-file scope")
+
+    def review(self, stage, relative, seconds):
+        allowed = {("tools-elf-review", "requests/tools-elf-review.json"),
+                   ("postgres-elf-review", "requests/postgres-elf-review.json")} | {
+                       (name, "requests/" + filename) for filename, name in REQUESTS}
+        if (stage, relative) not in allowed:
+            raise PreparationStop("unlisted fixed review notification")
+        notice = ("G07_REVIEW_READY " + stage + " " + relative + "\n").encode("ascii")
+        if len(notice) > 256 or os.write(sys.stdout.fileno(), notice) != len(notice):
+            raise PreparationStop("bounded review-ready notification could not be retained")
+        digest = self.controller.packet(stage, time.monotonic() + self.cap(seconds), self.tick)
+        raw = self.root.read(relative)
+        if hashlib.sha256(raw).hexdigest() != digest:
+            raise PreparationStop("controller-bound request bytes changed")
+        return _strict_document(raw)
+
+    def cargo_assignment(self, statement, stage):
+        if (not isinstance(statement, dict) or set(statement) != {"controller_statement_id", "stage", "assignment"}
+                or not _uuid_field(statement["controller_statement_id"]) or statement["stage"] != stage
+                or statement["assignment"] != "root-agent exclusive Search Cargo"):
+            raise PreparationStop("real root-agent Cargo acknowledgment missing")
+        for path in (CACHE, CACHE.parent):
+            if path.is_symlink():
+                raise PreparationStop("Cargo cache ancestry symlink")
+        if any(name in {"config", "config.toml", "credentials", "credentials.toml"} for name in os.listdir(CACHE)):
+            raise PreparationStop("unexpected Cargo config/credentials names; contents not read")
+        for ancestor in (REPOSITORY, BASE, BASE.parent, BASE.parent.parent):
+            for name in ("config", "config.toml", "credentials", "credentials.toml"):
+                path = ancestor / ".cargo" / name
+                if path.exists() or path.is_symlink():
+                    raise PreparationStop("unexpected ancestor Cargo configuration name; contents not read")
+        self.verify_target()
+        self.root.save_new("receipts/cargo-assignment-" + stage + ".json", statement)
+
+    def download_verified_artifacts(self):
+        started = time.monotonic()
+        for artifact_id, url, name, size, expected_hash in OFFICIAL_ARTIFACTS:
+            relative = "downloads/" + name
+            self.run("download-" + artifact_id, [
+                "/usr/bin/curl", "--fail", "--silent", "--show-error", "--proto", "=https",
+                "--connect-timeout", "30", "--max-time", "60", "--max-redirs", "0", "--max-filesize", str(size),
+                "--output", "-", url,
+            ], "download", 60, structured_cap=size, structured_relative=relative, deadline=started + 300)
+            raw = self.root.read(relative, size)
+            digest = hashlib.sha256(raw).hexdigest()
+            if expected_hash is not None and (len(raw) != size or digest != expected_hash):
+                raise PreparationStop("exact official artifact size/hash mismatch")
+            self.root.save_new("receipts/artifact-" + artifact_id + ".json", {
+                "schema_version": 1, "run_id": self.root.run_id, "artifact_id": artifact_id,
+                "url": url, "path": str(self.root.path / relative), "bytes": len(raw), "sha256": digest,
+            })
+        checksum = self.root.read("downloads/postgresql-18.6.tar.bz2.sha256", 4096).decode("ascii", "strict")
+        if not re.fullmatch(re.escape(OFFICIAL_ARTIFACTS[-1][4]) + r"[ \t]+\*?postgresql-18\.6\.tar\.bz2\s*", checksum):
+            raise PreparationStop("publisher checksum declaration mismatch")
+
+    def verify_signed_metadata_and_controls(self):
+        b = self.root.path
+        for name, path, digest, fingerprint in KEYRINGS:
+            if _fixed_digest(path) != digest:
+                raise PreparationStop("existing pinned trust anchor changed")
+            result = self.run("signature-" + name, ["/usr/bin/sqv", "--keyring", path,
+                              str(b / "downloads/Release.gpg"), str(b / "downloads/Release")], "tool", 30)
+            evidence = self.stdout(result) + self.root.read("logs/signature-" + name + ".stderr.log")
+            if fingerprint not in evidence.decode("ascii", "strict").upper().replace(" ", ""):
+                raise PreparationStop("expected verified signing fingerprint absent")
+        _require_true(verify_release_packages_entry(self.root.read("downloads/Release", 262144),
+                      OFFICIAL_ARTIFACTS[3][3], OFFICIAL_ARTIFACTS[3][4]), "signed index binding mismatch")
+        self.run("packages-decompress", ["/usr/bin/xz", "--decompress", "--stdout", str(b / "downloads/Packages.xz")],
+                 "tool", 30, structured_cap=134217728, structured_relative="downloads/Packages.txt")
+        _require_true(verify_package_paragraphs(self.root.read("downloads/Packages.txt", 134217728), list(PACKAGE_PINS)),
+                      "actual signed package paragraph mismatch")
+        for pin, artifact in zip(PACKAGE_PINS, OFFICIAL_ARTIFACTS[4:7]):
+            name = pin["package"]
+            result = self.run("deb-control-" + name, ["/usr/bin/dpkg-deb", "--field", str(b / "downloads" / artifact[2])], "tool", 30)
+            fields = {}
+            for line in self.stdout(result).decode("utf-8", "strict").splitlines():
+                if not line or line[0].isspace():
+                    continue
+                key, separator, value = line.partition(":")
+                if not separator or key in fields:
+                    raise PreparationStop("ambiguous deb control field")
+                fields[key] = value.lstrip()
+            for field, value in (("Package", pin["package"]), ("Version", pin["version"]),
+                                 ("Architecture", pin["architecture"]), ("Depends", pin["depends"]),
+                                 ("Pre-Depends", pin["pre_depends"])):
+                if fields.get(field) != value:
+                    raise PreparationStop("actual deb control closure mismatch")
+            self.run("deb-data-" + name, ["/usr/bin/dpkg-deb", "--fsys-tarfile", str(b / "downloads" / artifact[2])],
+                     "tool", 30, structured_cap=134217728, structured_relative="downloads/data-" + name + ".tar")
+
+    def inventory_and_extract_fixed_artifacts(self):
+        b = self.root.path
+        previous = []
+        plans = {}
+        for name in ("m4", "bison", "flex", "postgresql"):
+            archive = "downloads/postgresql-18.6.tar.bz2" if name == "postgresql" else "downloads/data-" + name + ".tar"
+            plan = {
+                "schema_version": 1, "run_id": self.root.run_id, "run_root": str(b), "artifact_id": name,
+                "archive_relative": archive, "archive_sha256": _fixed_digest(b / archive),
+                "extraction_subdirectory": "source" if name == "postgresql" else "tools",
+                "prior_inventories": [] if name == "postgresql" else list(previous),
+                "policy_sha256": self.approval["policy_sha256"],
+            }
+            path = "requests/inventory-plan-" + name + ".json"
+            self.root.save_new(path, plan)
+            digest = _fixed_digest(b / path)
+            argv = ["/usr/bin/python3.13", "-I", "-B", str(LAUNCHER / "launcher.py"), "internal-inventory",
+                    "--owned-root", str(b), "--artifact-id", name, "--plan-sha256", digest]
+            self.run("inventory-" + name, argv, "tool", 30)
+            summary = _strict_document(self.root.read("receipts/inventory-" + name + ".summary.json"))
+            if summary.get("status") != "inventory-confirmed" or summary.get("artifact_id") != name:
+                raise PreparationStop("canonical inventory not confirmed")
+            plans[name] = (plan, summary)
+            if name != "postgresql":
+                previous.append({"id": name, "sha256": summary["inventory_sha256"]})
+        for name in ("m4", "bison", "flex", "postgresql"):
+            plan, summary = plans[name]
+            extraction = {**plan, "inventory_sha256": summary["inventory_sha256"], "members": summary["members"],
+                          "expanded_bytes": summary["expanded_bytes"]}
+            relative = "requests/extract-plan-" + name + ".json"
+            self.root.save_new(relative, extraction)
+            self.run("extract-" + name, ["/usr/bin/python3.13", "-I", "-B", str(LAUNCHER / "launcher.py"),
+                     "internal-extract", "--owned-root", str(b), "--artifact-id", name,
+                     "--plan-sha256", _fixed_digest(b / relative)], "tool", 60)
+            status = _strict_document(self.root.read("receipts/extract-" + name + ".summary.json"))
+            if status.get("status") != "extraction-confirmed" or status.get("members") != summary["members"]:
+                raise PreparationStop("canonical extraction not confirmed")
+
+    def inspect_and_review_elf_closure(self, stage, files):
+        retained_tools = (self.configured_build_resume or self.installed_resume) and stage == "tools-elf-review"
+        evidence = self.resumed_tools_elf if self.phase == "bootstrap-resume" and stage == "tools-elf-review" else []
+        for index, file in enumerate([] if evidence else files):
+            fd, facts = _regular_open(file, owner=OWNER)
+            try:
+                if os.read(fd, 4) != b"\x7fELF":
+                    raise PreparationStop("required staged binary is not ELF")
+            finally:
+                os.close(fd)
+            digest = _fixed_digest(file)
+            inspection_name = stage + ("-installed-inspect-" if self.installed_resume and stage == "postgres-elf-review" else "-inspect-") + str(index)
+            result = self.run(inspection_name, ["/usr/bin/x86_64-linux-gnu-readelf",
+                              "--file-header", "--program-headers", "--dynamic", "--version-info", str(file)], "tool", 30, elf_output=True)
+            evidence.append({"path": str(file), "sha256": digest, "dev": facts.st_dev, "inode": facts.st_ino,
+                             "readelf_stdout": result["stdout"]})
+        if not (self.phase == "bootstrap-resume" and stage == "tools-elf-review"):
+            self.root.save_new("receipts/" + stage + "-observations.json", {"schema_version": 1,
+                               "run_id": self.root.run_id, "stage": stage, "elf": evidence})
+        approval = (_strict_document(self.root.read("requests/tools-elf-review.json")) if retained_tools else
+                    self.review(stage, "requests/" + stage + ".json", 300))
+        if (not isinstance(approval, dict) or set(approval) != {"schema_version", "outcome", "run_id", "stage", "elf", "providers"}
+                or type(approval["schema_version"]) is not int or approval["schema_version"] != 1
+                or approval["outcome"] != "GO" or approval["run_id"] != self.root.run_id or approval["stage"] != stage
+                or not isinstance(approval["elf"], list) or len(approval["elf"]) != len(evidence)
+                or not isinstance(approval["providers"], dict)):
+            raise PreparationStop("exact independently bound ELF review absent")
+        providers = approval["providers"]
+        provider_closures = {}
+        for provider_index, (soname, provider) in enumerate(providers.items()):
+            if (not isinstance(soname, str) or re.fullmatch(r"[A-Za-z0-9_.+-]+", soname) is None
+                    or not isinstance(provider, dict) or set(provider) != {"path", "sha256", "dev", "inode", "version_definitions", "readelf_stdout_sha256", "closure"}
+                    or not isinstance(provider["version_definitions"], list)
+                    or any(not isinstance(v, str) or not v or not v.isascii() for v in provider["version_definitions"])
+                    or not _hash_field(provider["sha256"])):
+                raise PreparationStop("provider proof is incomplete")
+            path = Path(provider["path"])
+            if (path.parent != Path("/usr/lib/x86_64-linux-gnu")
+                    and not (stage == "postgres-elf-review" and path.parent == self.root.path / "install/lib")):
+                raise PreparationStop("unreviewed library dependency location")
+            fd, facts = _regular_open(path, owner=OWNER if path.parent == self.root.path / "install/lib" else None)
+            os.close(fd)
+            if (facts.st_dev != provider["dev"] or facts.st_ino != provider["inode"] or _fixed_digest(path) != provider["sha256"]):
+                raise PreparationStop("actual library provider identity changed")
+            if retained_tools:
+                result = self.retained_provider_terminals["provider-inspect-" + str(9 + provider_index)]
+            else:
+                self.next_label += 1
+                result = self.run("provider-inspect-" + str(self.next_label), ["/usr/bin/x86_64-linux-gnu-readelf",
+                                  "--file-header", "--program-headers", "--dynamic", "--version-info", str(path)], "tool", 30, elf_output=True)
+            if result["stdout"]["sha256"] != provider["readelf_stdout_sha256"]:
+                raise PreparationStop("reviewed actual provider/version observation changed")
+            private = str(self.root.path / "install/lib") if "library_search" in provider["closure"] and stage == "postgres-elf-review" else None
+            parsed = inspect_elf_text(self.stdout(result), provider["closure"], private)
+            if not isinstance(parsed, dict):
+                raise PreparationStop("actual provider ELF dependency closure rejected")
+            provider_closures[soname] = parsed
+        for parsed in provider_closures.values():
+            if any(name not in providers for name in parsed["needed"]):
+                raise PreparationStop("provider has unknown transitive dependency")
+            for requirement in parsed["version_needs"]:
+                soname, version = requirement.split(":", 1)
+                if version not in providers[soname]["version_definitions"]:
+                    raise PreparationStop("transitive provider lacks required symbol version")
+        for observed, reviewed in zip(evidence, approval["elf"]):
+            if (not isinstance(reviewed, dict) or set(reviewed) != {"path", "sha256", "dev", "inode", "closure"}
+                    or any(reviewed[key] != observed[key] for key in ("path", "sha256", "dev", "inode"))):
+                raise PreparationStop("ELF approval does not bind actual inspected inode")
+            text = self.root.read(str(Path(observed["readelf_stdout"]["path"]).relative_to(self.root.path)), ELF_REPORT_CAP)
+            private = str(self.root.path / "install/lib") if "library_search" in reviewed["closure"] and stage == "postgres-elf-review" else None
+            parsed = inspect_elf_text(text, reviewed["closure"], private)
+            if not isinstance(parsed, dict):
+                raise PreparationStop("ELF requirement reducer rejected exact closure")
+            if any(name not in providers for name in parsed["needed"]):
+                raise PreparationStop("unknown NEEDED dependency")
+            for requirement in parsed["version_needs"]:
+                soname, version = requirement.split(":", 1)
+                if version not in providers[soname]["version_definitions"]:
+                    raise PreparationStop("provider lacks reviewed required symbol version")
+            self.elf[reviewed["path"]] = reviewed
+        self.providers.update(providers)
+
+    def verify_approved_elf(self, path):
+        approved = self.elf[path]
+        fd, facts = _regular_open(path, owner=OWNER)
+        os.close(fd)
+        if (stat.S_IMODE(facts.st_mode) & 0o7000 or (facts.st_dev, facts.st_ino) != (approved["dev"], approved["inode"])
+                or _fixed_digest(path) != approved["sha256"]):
+            raise PreparationStop("reviewed private ELF changed before execution")
+        if "library_search" in approved["closure"]:
+            parent, _ = self.root.parent_fd("install/lib/__owned_probe")
+            try:
+                directory = os.fstat(parent)
+                if directory.st_uid != OWNER or stat.S_IMODE(directory.st_mode) & 0o7000:
+                    raise PreparationStop("owned private library directory changed")
+            finally:
+                os.close(parent)
+        pending = list(approved["closure"]["needed"])
+        seen = set()
+        while pending:
+            soname = pending.pop()
+            if soname in seen:
+                continue
+            seen.add(soname)
+            provider = self.providers[soname]
+            pending.extend(provider["closure"]["needed"])
+            fd, facts = _regular_open(provider["path"])
+            os.close(fd)
+            if ((facts.st_dev, facts.st_ino) != (provider["dev"], provider["inode"])
+                    or _fixed_digest(provider["path"]) != provider["sha256"]):
+                raise PreparationStop("approved dynamic provider changed before execution")
+            if Path(provider["path"]).parent == self.root.path / "install/lib":
+                alias = self.root.path / "install/lib" / soname
+                alias_facts = alias.lstat()
+                if stat.S_ISLNK(alias_facts.st_mode):
+                    if alias_facts.st_uid != OWNER or os.readlink(alias) != Path(provider["path"]).name:
+                        raise PreparationStop("private SONAME alias escapes the exact approved provider")
+                elif str(alias) != provider["path"]:
+                    raise PreparationStop("private SONAME provider binding differs")
+                linked = alias.stat()
+                if (linked.st_dev, linked.st_ino) != (provider["dev"], provider["inode"]):
+                    raise PreparationStop("private SONAME alias inode changed")
+
+    def compile_exact_fixture(self, stage, statement):
+        self.cargo_assignment(statement, stage)
+        self.verify_source()
+        if stage in ("compile-helper-green", "compile-runtime-green"):
+            refreshed = []
+            for path, expected_sha in ((SOURCE_FILE, self.current_source), (FIXTURE_FILE, self.current_fixture)):
+                fd, before = _regular_open(path, owner=OWNER)
+                try:
+                    if _digest_fd(fd) != expected_sha:
+                        raise PreparationStop("exact source changed before admitted freshness refresh")
+                    os.utime(fd, ns=(before.st_atime_ns, max(time.time_ns(), before.st_mtime_ns + 1)))
+                    after = os.fstat(fd)
+                finally:
+                    os.close(fd)
+                if ((after.st_dev, after.st_ino) != (before.st_dev, before.st_ino) or _fixed_digest(path) != expected_sha):
+                    raise PreparationStop("source identity/bytes changed during freshness refresh")
+                refreshed.append({"path": str(path), "dev": before.st_dev, "inode": before.st_ino,
+                                  "before_mtime_ns": before.st_mtime_ns, "after_mtime_ns": after.st_mtime_ns,
+                                  "source_bytes_unchanged": True})
+            self.root.save_new("receipts/" + stage + "-source-freshness.json", {"schema_version": 1,
+                               "run_id": self.root.run_id, "source_mtime_refresh": refreshed})
+        argv = [str(RUST / "cargo"), "test", "--locked", "--offline", "-j", "2", "-p", "outbox-delivery",
+                "--test", "process_recovery", "--no-run", "--message-format=json"]
+        result = self.run(stage, argv, "cargo", 600, cwd=REPOSITORY, build_output=True)
+        artifacts = []
+        for line in self.stdout(result).splitlines():
+            value = cargo_artifact_from_line(line, str(TARGET))
+            if value == "REJECT":
+                raise PreparationStop("bounded Cargo artifact stream invalid")
+            if isinstance(value, dict):
+                full = _strict_document(line)
+                if (full.get("fresh") is not False or full.get("profile", {}).get("test") is not True
+                        or full.get("target", {}).get("src_path") != str(SOURCE_FILE)):
+                    raise PreparationStop("exact source-bound target must report an actual fresh compile")
+                artifacts.append((value, full))
+        if len(artifacts) != 1:
+            raise PreparationStop("expected exactly one integration test artifact")
+        self.binary = Path(artifacts[0][0]["path"])
+        self.binary_sha256 = _fixed_digest(self.binary)
+        fd, facts = _regular_open(self.binary, owner=OWNER)
+        os.close(fd)
+        self.root.save_new("receipts/" + stage + "-artifact.json", {"schema_version": 1, "run_id": self.root.run_id,
+                           "path": str(self.binary), "sha256": self.binary_sha256, "dev": facts.st_dev, "inode": facts.st_ino,
+                           "compiler_artifact": artifacts[0][1]})
+
+    def run_named_pure_pass(self, tag):
+        deadline = time.monotonic() + 180
+        for index, name in enumerate(PURE_NAMES):
+            self.verify_source(deadline)
+            result = self.run(tag + "-pure-" + str(index), [str(self.binary), name, "--exact", "--nocapture", "--test-threads=1"],
+                              "pure", 30, cwd=REPOSITORY, deadline=deadline)
+            log = self.stdout(result).decode("utf-8", "strict")
+            if "running 1 test" not in log or "test result: ok. 1 passed; 0 failed;" not in log:
+                raise PreparationStop("exact one-name pure GREEN not observed")
+
+    def initialize_cluster_and_control(self):
+        b = self.root.path
+        self.run("initdb", [str(b / "install/bin/initdb"), "-D", str(b / "data"), "--encoding=UTF8",
+                 "--locale-provider=libc", "--locale=C", "--auth-local=peer", "--auth-host=reject", "--username=agent"], "postgres", 60)
+        self.verify_hba()
+        result = self.run("offline-control", [str(b / "install/bin/pg_controldata"), "-D", str(b / "data")], "postgres", 15)
+        identifier = parse_control_identifier(self.stdout(result))
+        if identifier == "REJECT":
+            raise PreparationStop("offline cluster identifier absent")
+        executable = str(b / "install/bin/pg_controldata")
+        facts = self.elf[executable]
+        proof = {"schema_version": 1, "run_id": self.root.run_id, "run_root": str(b), "data_dir": str(b / "data"),
+                 "offline_system_identifier": identifier, "owner_uid": OWNER, "observed_before_server_spawn": True,
+                 "executable": executable, "executable_sha256": facts["sha256"], "executable_dev": facts["dev"],
+                 "executable_inode": facts["inode"], "argv": [executable, "-D", str(b / "data")], "actual_exit_code": 0,
+                 "stdout_path": result["stdout"]["path"], "stdout_sha256": result["stdout"]["sha256"]}
+        if set(proof) != CONTROL_KEYS:
+            raise PreparationStop("offline control proof schema mismatch")
+        self.root.save_new("receipts/cluster-control.json", proof)
+
+    def verify_hba(self):
+        raw = self.root.read("data/pg_hba.conf").decode("utf-8", "strict")
+        records = [line.split() for line in raw.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+        expected = [
+            ["local", "all", "all", "peer"], ["host", "all", "all", "127.0.0.1/32", "reject"],
+            ["host", "all", "all", "::1/128", "reject"], ["local", "replication", "all", "peer"],
+            ["host", "replication", "all", "127.0.0.1/32", "reject"], ["host", "replication", "all", "::1/128", "reject"],
+        ]
+        if records != expected:
+            raise PreparationStop("actual initdb peer/reject HBA differs")
+
+    def bootstrap(self):
+        self.verify_source()
+        if self.phase == "bootstrap":
+            self.download_verified_artifacts()
+            self.verify_signed_metadata_and_controls()
+            self.inventory_and_extract_fixed_artifacts()
+        b = self.root.path
+        if not self.configured_build_resume and not self.installed_resume:
+            self.inspect_and_review_elf_closure("tools-elf-review", [b / "tools/usr/bin" / name for name in ("m4", "bison", "flex")])
+            for name, version in (("m4", "1.4.19"), ("bison", "3.8.2"), ("flex", "2.6.4")):
+                result = self.run(name + "-version", [str(b / "tools/usr/bin" / name), "--version"], "tool", 15)
+                if version not in self.stdout(result).decode("ascii", "strict"):
+                    raise PreparationStop("official staged tool version mismatch")
+            result = self.run("bison-data-directory", [str(b / "tools/usr/bin/bison"), "--print-datadir"], "bison-data", 15)
+            if self.stdout(result).decode("ascii", "strict").strip() != str(b / "tools/usr/share/bison"):
+                raise PreparationStop("Bison data directory is not private")
+            self.run("configure", [str(b / "source/postgresql-18.6/configure"), "--prefix=" + str(b / "install"),
+                     "--without-readline", "--without-zlib", "--without-icu"], "build", 180, cwd=b / "build", build_output=True)
+        if not self.installed_resume:
+            self.run("make-rescan" if self.make_race_resume else "make-pipe" if self.configured_build_resume else "make",
+                     ["/usr/bin/make", "-j2", "--jobserver-style=pipe"],
+                     "build", 1700 if self.make_race_resume else 1798 if self.configured_build_resume else 1800,
+                     cwd=b / "build", build_output=True)
+            self.run("install", ["/usr/bin/make", "install"], "build", 180, cwd=b / "build", build_output=True)
+        self.inspect_and_review_elf_closure("postgres-elf-review", [b / "install/bin" / name for name in ("postgres", "initdb", "pg_controldata", "psql")])
+        for name in ("postgres", "initdb"):
+            result = self.run(name + "-version", [str(b / "install/bin" / name), "--version"], "postgres", 15)
+            if "18.6" not in self.stdout(result).decode("ascii", "strict"):
+                raise PreparationStop("private PG version is not 18.6")
+        self.compile_exact_fixture("compile-helper-green", self.manifest["bootstrap_cargo_assignment"])
+        self.run_named_pure_pass("bootstrap")
+        self.initialize_cluster_and_control()
+        self.root.save_new("receipts/bootstrap-terminal.json", {"schema_version": 1, "run_id": self.root.run_id,
+                           "run_root": str(b), "status": "bootstrap-confirmed", "approved_elf": self.elf,
+                           "approved_providers": self.providers,
+                           "test_executable": str(self.binary), "test_executable_sha256": self.binary_sha256,
+                           "controller_packets": self.controller.count, "minimum_free_bytes": self.disk.minimum_free,
+                           "maximum_owned_bytes": self.disk.maximum_owned})
+
+    def psql(self, label, sql, deadline=None):
+        b = self.root.path
+        return self.run(label, [str(b / "install/bin/psql"), "--no-psqlrc", "--no-password", "--set", "ON_ERROR_STOP=1",
+                        "--tuples-only", "--no-align", "--host", str(b / "socket"), "--port", "5432", "--username", "agent",
+                        "--dbname", "postgres", "--command", sql], "psql", 5, deadline=deadline)
+
+    def offline_proof(self):
+        b = self.root.path
+        proof = _strict_document(self.root.read("receipts/cluster-control.json"))
+        if (not isinstance(proof, dict) or set(proof) != CONTROL_KEYS
+                or type(proof["schema_version"]) is not int or proof["schema_version"] != 1
+                or proof["run_id"] != self.root.run_id or proof["run_root"] != str(b) or proof["data_dir"] != str(b / "data")
+                or proof["owner_uid"] != OWNER or proof["observed_before_server_spawn"] is not True
+                or type(proof["actual_exit_code"]) is not int or proof["actual_exit_code"] != 0
+                or proof["executable"] != str(b / "install/bin/pg_controldata")
+                or proof["argv"] != [str(b / "install/bin/pg_controldata"), "-D", str(b / "data")]
+                or proof["stdout_path"] != str(b / "logs/offline-control.stdout.log")):
+            raise PreparationStop("independent pre-spawn control proof mismatch")
+        exe = self.elf[proof["executable"]]
+        if (proof["executable_sha256"], proof["executable_dev"], proof["executable_inode"]) != (exe["sha256"], exe["dev"], exe["inode"]):
+            raise PreparationStop("offline proof executable identity differs")
+        raw = self.root.read("logs/offline-control.stdout.log")
+        if (hashlib.sha256(raw).hexdigest() != proof["stdout_sha256"]
+                or parse_control_identifier(raw) != proof["offline_system_identifier"]):
+            raise PreparationStop("retained offline control output/identifier mismatch")
+        return proof
+
+    def observe_owned_cluster(self, label, deadline=None):
+        self.tick()
+        self.verify_hba()
+        b = self.root.path
+        for name in ("data", "socket", "home", "tmp"):
+            parent, leaf = self.root.parent_fd(name)
+            try:
+                facts = os.stat(leaf, dir_fd=parent, follow_symlinks=False)
+                if not stat.S_ISDIR(facts.st_mode) or facts.st_uid != OWNER or stat.S_IMODE(facts.st_mode) != 0o700:
+                    raise PreparationStop("owned cluster directory identity/mode changed")
+            finally:
+                os.close(parent)
+        pidfile = self.root.read("data/postmaster.pid", 4096).decode("ascii", "strict").splitlines()
+        if (len(pidfile) < 8 or pidfile[0] != str(self.server.handle.pid) or pidfile[1] != str(b / "data")
+                or pidfile[3] != "5432" or pidfile[4] != str(b / "socket") or pidfile[7].strip() != "ready"):
+            raise PreparationStop("postmaster.pid does not identify the owned live server")
+        result = self.psql(label, IDENTITY_SQL, deadline)
+        observed = _strict_document(self.stdout(result).strip())
+        expected = {
+            "server_version_num": 180006, "data_directory": str(b / "data"), "config_file": str(b / "data/postgresql.conf"),
+            "hba_file": str(b / "data/pg_hba.conf"), "listen_addresses": "", "unix_socket_directories": str(b / "socket"),
+            "port": 5432, "current_user": "agent", "current_database": "postgres", "system_identifier": self.offline_proof()["offline_system_identifier"],
+            "fsync": "on", "full_page_writes": "on", "max_connections": 16, "shared_buffers": "32MB", "work_mem": "4MB",
+        }
+        if observed != expected or any(type(observed[key]) is not int for key in ("server_version_num", "port", "max_connections")):
+            raise PreparationStop("live cluster identity/defaults mismatch; no DDL authority")
+
+    def start_owned_server(self):
+        b = self.root.path
+        self.root.save_new("receipts/supervisor-once.json", {"schema_version": 1, "run_id": self.root.run_id,
+                           "supervisor_pid": os.getpid(), "server_count": 1})
+        proof = self.offline_proof()
+        self.verify_approved_elf(str(b / "install/bin/postgres"))
+        argv = [str(b / "install/bin/postgres"), "-D", str(b / "data"), "-c", "listen_addresses=",
+                "-c", "unix_socket_directories=" + str(b / "socket"), "-c", "unix_socket_permissions=0700",
+                "-c", "port=5432", "-c", "max_connections=16", "-c", "shared_buffers=32MB", "-c", "work_mem=4MB"]
+        stage = OwnedStage(self.root, self.disk, self.policy, "server", argv, b, self.environment("postgres"), 1800, group=False)
+        self.server = stage
+        stage.spawn()
+        self.server_identity = _proc_observation(stage.handle.pid)
+        if (self.server_identity["executable"] != str(b / "install/bin/postgres") or self.server_identity["uid"] != OWNER
+                or self.server_identity["executable_sha256"] != self.elf[str(b / "install/bin/postgres")]["sha256"]):
+            raise PreparationStop("fresh owned server executable identity mismatch")
+        self.cluster_deadline = stage.started + 1800
+        startup = stage.started + 15
+        while time.monotonic() < startup:
+            self.tick()
+            try:
+                lines = self.root.read("data/postmaster.pid", 4096).decode("ascii", "strict").splitlines()
+            except FileNotFoundError:
+                lines = []
+            if len(lines) >= 8 and lines[7].strip() == "ready":
+                break
+            time.sleep(0.05)
+        else:
+            raise PreparationStop("owned server startup deadline")
+        self.observe_owned_cluster("initial-server-identity", startup)
+        identity = self.server_identity
+        self.root.save_new("scope.json", {
+            "schema_version": 1, "run_id": self.root.run_id, "run_root": str(b), "data_dir": str(b / "data"),
+            "socket_dir": str(b / "socket"), "home_dir": str(b / "home"), "tmp_dir": str(b / "tmp"),
+            "config_file": str(b / "data/postgresql.conf"), "hba_file": str(b / "data/pg_hba.conf"),
+            "postgres_executable": identity["executable"], "postgres_executable_sha256": identity["executable_sha256"],
+            "server_pid": identity["pid"], "server_start_ticks": identity["start_ticks"], "server_uid": OWNER,
+            "server_executable_dev": identity["executable_dev"], "server_executable_inode": identity["executable_inode"],
+            "os_user": "agent", "database_user": "agent", "admin_database": "postgres", "port": 5432,
+            "server_version_num": 180006, "offline_system_identifier": proof["offline_system_identifier"], "listen_addresses": "",
+        })
+        fd = self.root.create_file("receipts/children.jsonl")
+        os.close(fd)
+        facts = (b / "receipts/children.jsonl").lstat()
+        self.registry_inode = (facts.st_dev, facts.st_ino)
+        self.spawn_records, self.exit_records = {}, {}
+        self.active_launch = None
+        self.active_stage = None
+
+    def worker_observation(self, registration):
+        try:
+            observed = _proc_stat(registration["pid"])
+        except FileNotFoundError:
+            return {"pid": registration["pid"], "start_ticks": registration["start_ticks"], "state": "gone"}
+        if observed["start_ticks"] != registration["start_ticks"] or observed["state"] in ("Z", "X"):
+            return {"pid": registration["pid"], "start_ticks": registration["start_ticks"], "state": "gone"}
+        _require_true(self.policy.process_identity_matches({key: registration[key] for key in (
+            "pid", "start_ticks", "uid", "executable", "executable_sha256", "executable_dev", "executable_inode",
+        )} | {"state": "running"}, _proc_observation(registration["pid"])), "registered worker identity unreadable/mismatched")
+        return {"pid": registration["pid"], "start_ticks": registration["start_ticks"], "state": "running"}
+
+    def consume_child_registry(self):
+        facts = (self.root.path / "receipts/children.jsonl").lstat()
+        if (facts.st_dev, facts.st_ino) != self.registry_inode:
+            raise PreparationStop("append-only registry inode changed")
+        raw = self.root.read("receipts/children.jsonl")
+        if not raw.startswith(self.registry_snapshots) or (raw and not raw.endswith(b"\n")):
+            raise PreparationStop("append-only registry truncation/partial write")
+        new = raw[len(self.registry_snapshots):]
+        base = {"schema_version", "run_id", "test_launch_id", "event", "pid", "start_ticks", "uid", "executable", "executable_sha256",
+                "executable_dev", "executable_inode", "mode", "owner", "handshake", "limit", "parent_pid", "parent_start_ticks", "observed_monotonic_ns"}
+        for line in new.splitlines():
+            if len(line) + 1 > 4096 or self.active_launch is None or self.active_stage is None or self.active_stage.identity is None:
+                raise PreparationStop("unowned/oversized child registration")
+            record = _strict_document(line)
+            if not isinstance(record, dict) or record.get("event") not in ("spawn", "exit"):
+                raise PreparationStop("unknown child registry event")
+            keys = base if record["event"] == "spawn" else base | {"exit_code", "exit_signal", "reaped_by_parent", "status"}
+            if set(record) != keys:
+                raise PreparationStop("strict child registry schema mismatch")
+            for key in ("schema_version", "pid", "start_ticks", "uid", "executable_dev", "executable_inode", "limit", "parent_pid", "parent_start_ticks", "observed_monotonic_ns"):
+                if type(record[key]) is not int or record[key] <= 0:
+                    raise PreparationStop("invalid child registry numeric identity")
+            fd, exe = _regular_open(self.binary, owner=OWNER)
+            os.close(fd)
+            if (record["schema_version"] != 1 or record["run_id"] != self.root.run_id or record["test_launch_id"] != self.active_launch["id"]
+                    or record["uid"] != OWNER or record["executable"] != str(self.binary) or record["executable_sha256"] != self.binary_sha256
+                    or (record["executable_dev"], record["executable_inode"]) != (exe.st_dev, exe.st_ino)
+                    or record["parent_pid"] != self.active_stage.handle.pid or record["parent_start_ticks"] != self.active_stage.identity["start_ticks"]
+                    or not _uuid_field(record["owner"]) or not _uuid_field(record["handshake"])
+                    or record["observed_monotonic_ns"] > time.clock_gettime_ns(time.CLOCK_BOOTTIME)):
+                raise PreparationStop("child registry is not bound to owned parent/run/binary")
+            pair = record["pid"], record["start_ticks"]
+            if record["event"] == "spawn":
+                children = self.active_launch["children"]
+                index = len(children)
+                modes = {"runtime-red": ["claim"], "runtime-green-last": ["claim", "reap", "reap"], "runtime-green-four": ["claim"] * 5}[self.active_launch["stage"]]
+                limit = 2 if self.active_launch["stage"] == "runtime-green-four" else 1
+                if (index >= len(modes) or record["mode"] != modes[index] or record["limit"] != limit or pair in self.spawn_records
+                        or any(child["owner"] == record["owner"] or child["handshake"] == record["handshake"] for child in children)):
+                    raise PreparationStop("exact child launch/mode/limit inventory exceeded")
+                self.spawn_records[pair] = record
+                children.append(record)
+                live = sum((child["pid"], child["start_ticks"]) not in self.exit_records for child in children)
+                self.active_launch["concurrency"] = max(self.active_launch["concurrency"], live)
+                cap = {"runtime-red": 1, "runtime-green-last": 2, "runtime-green-four": 4}[self.active_launch["stage"]]
+                if live > cap:
+                    raise PreparationStop("child concurrency inventory exceeded")
+                self.worker_observation(record)
+            else:
+                spawn = self.spawn_records.get(pair)
+                if (spawn is None or pair in self.exit_records or record["reaped_by_parent"] is not True or record["status"] != "confirmed"
+                        or any(record[key] != spawn[key] for key in base - {"event", "observed_monotonic_ns"})
+                        or self.worker_observation(spawn)["state"] != "gone"):
+                    raise PreparationStop("registered owned-child exit/reap remains Unknown")
+                code, sig = record["exit_code"], record["exit_signal"]
+                if not ((type(code) is int and code >= 0 and sig is None) or (code is None and type(sig) is int and sig > 0)):
+                    raise PreparationStop("child exit alternatives are not confirmed")
+                self.exit_records[pair] = record
+        self.registry_snapshots = raw
+
+    def run_exact_recovery_case(self, stage, request):
+        started = time.monotonic()
+        deadline = started + self.cap(min(120, 360 - self.case_seconds_used))
+        self.observe_owned_cluster(stage + "-server-identity", deadline)
+        self.verify_source(deadline)
+        reviews = {"outcome": "GO"}
+        for prefix, approved, observed in (
+            ("source", request["source_sha256"], _fixed_digest(SOURCE_FILE)),
+            ("fixture", request["fixture_sha256"], _fixed_digest(FIXTURE_FILE)),
+            ("launcher", request["launcher_sha256"], _fixed_digest(LAUNCHER / "launcher.py")),
+            ("test_executable", request["test_executable_sha256"], _fixed_digest(self.binary)),
+        ):
+            reviews[prefix + "_approved"], reviews[prefix + "_observed"] = approved, observed
+        _require_true(self.policy.admit_stage(self.history, stage, reviews, True), "chronological runtime stage not admitted")
+        argv = self.policy.test_command(stage, str(self.binary))
+        if not isinstance(argv, tuple):
+            raise PreparationStop("fixed exact runtime command rejected")
+        launch_id = str(uuid.uuid4())
+        self.active_launch = {"id": launch_id, "stage": stage, "children": [], "concurrency": 0}
+        self.active_stage = OwnedStage(self.root, self.disk, self.policy, stage, argv, REPOSITORY,
+                                     self.environment("runtime", launch_id), self.cap(120, deadline), group=False, watch=self.tick)
+        self.owned_stages.append(self.active_stage)
+        confirmed = False
+        try:
+            result = self.active_stage.run()
+            self.consume_child_registry()
+            receipt = _strict_document(self.root.read("receipts/test-" + launch_id + ".json"))
+            context = _strict_document(self.root.read("receipts/observations-" + launch_id + ".json"))
+            case = argv[1]
+            if (not isinstance(context, dict) or set(context) != {"schema_version", "run_id", "test_launch_id", "case", "database", "create"}
+                    or type(context["schema_version"]) is not int or context["schema_version"] != 1 or context["create"] != "confirmed"
+                    or context["run_id"] != self.root.run_id or context["test_launch_id"] != launch_id or context["case"] != case):
+                raise PreparationStop("independent immutable CREATE context missing")
+            database = context["database"]
+            if (not isinstance(database, dict) or set(database) != {"cluster_system_identifier", "name", "oid", "owner"}
+                    or database["cluster_system_identifier"] != self.offline_proof()["offline_system_identifier"]
+                    or not isinstance(database["name"], str)
+                    or re.fullmatch("p6_g07_" + self.root.run_id.replace("-", "")[:16] + r"_[0-9a-f]{32}", database["name"]) is None
+                    or type(database["oid"]) is not int or not 0 < database["oid"] <= 4294967295 or database["owner"] != "agent"):
+                raise PreparationStop("CREATE context is not exact owned synthetic DB identity")
+            children = self.active_launch["children"]
+            observations = [self.worker_observation(child) for child in children]
+            gone = self.policy.children_gone_is_confirmed(children, observations)
+            reaped = all((child["pid"], child["start_ticks"]) in self.exit_records for child in children)
+            if receipt.get("database_cleanup_confirmed") is not True or not gone or not reaped:
+                raise PreparationStop("fixture children/database cleanup not confirmed")
+            self.observe_owned_cluster(stage + "-cleanup-server-identity", deadline)
+            query = "SELECT count(*)::text FROM pg_database WHERE datname = '" + database["name"] + "' OR oid = " + str(database["oid"]) + ";"
+            absence = self.psql(stage + "-catalog-absence", query, deadline)
+            cleanup_confirmed = self.stdout(absence).decode("ascii", "strict").strip() == "0"
+            identity_keys = ("pid", "start_ticks", "uid", "executable", "executable_sha256", "executable_dev", "executable_inode", "mode", "owner", "handshake")
+            expected = {"stage": stage, "run_id": self.root.run_id, "test_launch_id": launch_id, "case": case,
+                        "database": database, "children": [{key: child[key] for key in identity_keys} for child in children]}
+            summary = {"complete": True, "registered_children": len(children), "observed_children": len(observations),
+                       "owned_children_reaped": reaped, "database_cleanup_confirmed": cleanup_confirmed,
+                       "max_concurrent_children": self.active_launch["concurrency"]}
+            _require_true(validate_test_receipt(receipt, expected, result["actual_returncode"], summary),
+                          "actual OS/registry/CREATE/context/cleanup receipt binding rejected")
+            self.root.save_new("receipts/launcher-test-" + launch_id + ".json", {"schema_version": 1, "run_id": self.root.run_id,
+                               "stage": stage, "test_launch_id": launch_id, "actual_returncode": result["actual_returncode"],
+                               "expected": expected, "registry_summary": summary, "observations": observations,
+                               "forced_expiry_labels": receipt["forced_expiry_labels"], "outcome": receipt["outcome"]})
+            self.history.append(stage + "-confirmed")
+            confirmed = True
+        finally:
+            self.case_seconds_used += time.monotonic() - started
+            if confirmed:
+                self.active_launch = None
+                self.active_stage = None
+
+    def terminal_owned_cleanup(self, failure):
+        started = time.monotonic()
+        self.terminal_mode = True
+        unknowns = []
+        unreaped_direct = []
+        for stage in self.owned_stages:
+            if stage.handle is not None and stage.handle.returncode is None:
+                try:
+                    if stage.exited():
+                        stage.handle.wait(timeout=0.01)
+                    else:
+                        unreaped_direct.append({"pid": stage.handle.pid, "identity": stage.identity, "stage": stage.label})
+                except BaseException:
+                    unreaped_direct.append({"pid": stage.handle.pid, "identity": stage.identity, "stage": stage.label})
+        initial_unreaped_direct = list(unreaped_direct)
+        initial_unknowns = (["owned direct test/setup handle exit/reap initially Unknown"]
+                            if initial_unreaped_direct else [])
+        registrations = list(getattr(self, "spawn_records", {}).values())
+        observations = []
+        parent_exit_observed_monotonic_ns = None
+        parent_exit_unknown = bool(unreaped_direct)
+        if not parent_exit_unknown:
+            parent_exit_observed_monotonic_ns = time.monotonic_ns()
+        parent_exit_observed_before_worker_loop = parent_exit_observed_monotonic_ns is not None
+        worker_observation_started_monotonic_ns = time.monotonic_ns()
+        until = started + 50
+        while time.monotonic() < until:
+            try:
+                self.disk.check()
+                if self.active_stage is not None and self.active_stage.handle is not None:
+                    if self.active_stage.handle.returncode is None and self.active_stage.exited():
+                        self.active_stage.handle.wait(timeout=0.01)
+                    if self.active_stage.handle.returncode is not None and parent_exit_observed_monotonic_ns is None:
+                        parent_exit_observed_monotonic_ns = time.monotonic_ns()
+                    if self.active_launch is not None:
+                        self.consume_child_registry()
+                        registrations = list(self.spawn_records.values())
+                observations = [self.worker_observation(record) for record in registrations]
+                if parent_exit_observed_monotonic_ns is not None and (not registrations or self.policy.children_gone_is_confirmed(registrations, observations) is True):
+                    break
+            except BaseException as error:
+                unknowns.append("worker/disk observation: " + type(error).__name__)
+                break
+            time.sleep(0.1)
+        worker_observation_finished_monotonic_ns = time.monotonic_ns()
+        if registrations and self.policy.children_gone_is_confirmed(registrations, observations) is not True:
+            unknowns.append("registered workers remain Unknown")
+        server_result = "not-spawned"
+        shutdown_signals = []
+        server_receipt = None
+        if self.server is not None and self.server.handle is not None:
+            try:
+                if self.server_identity is None and not self.server.exited():
+                    self.server_identity = _proc_observation(self.server.handle.pid)
+                stop_deadline = min(started + 75, time.monotonic() + 25)
+                for sig, delay in ((signal.SIGTERM, 10), (signal.SIGINT, 10), (signal.SIGQUIT, 5)):
+                    if self.server.exited():
+                        break
+                    _require_true(self.policy.process_identity_matches(self.server_identity, _proc_observation(self.server.handle.pid)),
+                                  "server no longer matches owned handle before signal")
+                    shutdown_signals.append({"signal": int(sig), "observed_monotonic_ns": time.monotonic_ns(),
+                                             "owned_identity_matched": True, "purpose": "cleanup-only"})
+                    self.server.handle.send_signal(sig)
+                    until = min(stop_deadline, time.monotonic() + delay)
+                    while time.monotonic() < until and not self.server.exited():
+                        self.server.drain(0.1)
+                        try:
+                            self.disk.check()
+                        except PreparationStop:
+                            unknowns.append("disk violation during server cleanup")
+                if not self.server.exited():
+                    raise PreparationStop("owned server exit Unknown after25 seconds")
+                while self.server.selector.get_map() and time.monotonic() < stop_deadline:
+                    self.server.drain(0.05)
+                if self.server.selector.get_map():
+                    raise PreparationStop("server output EOF Unknown")
+                if any(stream["overflow"] for stream in self.server.output.values()):
+                    raise PreparationStop("final server output overflow")
+                self.server.handle.wait(timeout=max(0.001, stop_deadline - time.monotonic()))
+                server_result = "confirmed-exit"
+            except BaseException as error:
+                unknowns.append("server cleanup: " + type(error).__name__ + ": " + str(error))
+                server_result = "unknown-retained-handle"
+            finally:
+                for fd in self.server.logs.values():
+                    os.close(fd)
+                self.server.selector.close()
+                streams = {}
+                for name, stream in self.server.output.items():
+                    streams[name] = dict(stream)
+                    streams[name]["sha256"] = _fixed_digest(stream["path"])
+                    streams[name]["complete"] = server_result == "confirmed-exit"
+                server_receipt = {"schema_version": 1, "run_id": self.root.run_id, "stage": "server",
+                                  "argv": list(self.server.argv), "cwd": self.server.cwd, "environment": self.server.environment,
+                                  "server_identity": self.server_identity, "spawn_attempt_monotonic": self.server.started,
+                                  "exit_observed_monotonic_ns": time.monotonic_ns() if self.server.handle.returncode is not None else None,
+                                  "actual_returncode": self.server.handle.returncode, "shutdown_signals": shutdown_signals,
+                                  "stdout": streams.get("stdout"), "stderr": streams.get("stderr"),
+                                  "exit_and_output": server_result, "cleanup_only": True, "server_recovery_proof": False}
+                self.root.save_new("receipts/server.terminal.json", server_receipt)
+        direct_handle_terminal_observations = []
+        unreaped_direct = []
+        for stage in self.owned_stages:
+            if stage.handle is None:
+                continue
+            exit_observed = stage.handle.returncode is not None
+            observation_error = None
+            try:
+                if not exit_observed:
+                    exit_observed = stage.exited()
+                    if exit_observed:
+                        stage.handle.wait(timeout=0.01)
+            except BaseException as error:
+                observation_error = type(error).__name__
+            reaped = stage.handle.returncode is not None
+            direct_handle_terminal_observations.append({
+                "stage": stage.label, "pid": stage.handle.pid, "identity": stage.identity,
+                "exit_observed": exit_observed, "reaped": reaped,
+                "actual_returncode": stage.handle.returncode, "observation_error": observation_error,
+            })
+            if not reaped:
+                unreaped_direct.append({"pid": stage.handle.pid, "identity": stage.identity, "stage": stage.label})
+            elif stage is self.active_stage and parent_exit_observed_monotonic_ns is None:
+                parent_exit_observed_monotonic_ns = time.monotonic_ns()
+        if unreaped_direct:
+            unknowns.append("owned direct test/setup handle exit/reap remains Unknown")
+        post_parent_exit_observation_seconds = (
+            max(0, worker_observation_finished_monotonic_ns - max(
+                worker_observation_started_monotonic_ns, parent_exit_observed_monotonic_ns)) / 1_000_000_000
+            if parent_exit_observed_monotonic_ns is not None else None)
+        self.root.save_new("receipts/runtime-terminal.json", {
+            "schema_version": 1, "run_id": self.root.run_id, "status": "runtime-confirmed" if failure is None and not unknowns else "stopped-Unknown-retained",
+            "failure": failure, "unknowns": unknowns, "server_stop": server_result, "worker_observations": observations,
+            "unreaped_owned_direct_handles": unreaped_direct,
+            "initial_unreaped_owned_direct_handles": initial_unreaped_direct,
+            "initial_unknowns": initial_unknowns,
+            "direct_handle_terminal_observations": direct_handle_terminal_observations,
+            "outer_parent_exit_observed_monotonic_ns": parent_exit_observed_monotonic_ns,
+            "outer_parent_exit_observation": ("observed-before-worker-loop" if parent_exit_observed_before_worker_loop else
+                                               "observed-later-during-cleanup" if parent_exit_observed_monotonic_ns is not None else "Unknown"),
+            "worker_observation_anchor": "confirmed parent exit; actual remaining interval recorded" if parent_exit_observed_monotonic_ns is not None else "parent exit Unknown; bounded observation only",
+            "worker_observation_started_monotonic_ns": worker_observation_started_monotonic_ns,
+            "worker_observation_finished_monotonic_ns": worker_observation_finished_monotonic_ns,
+            "post_parent_exit_observation_seconds": post_parent_exit_observation_seconds,
+            "full50_seconds_post_parent_exit_observed": (post_parent_exit_observation_seconds is not None
+                                                        and post_parent_exit_observation_seconds >= 50),
+            "server_terminal_receipt": "receipts/server.terminal.json" if server_receipt is not None else None,
+            "nonparent_claims_reaping": False, "case_seconds_used": self.case_seconds_used,
+            "retained_root": str(self.root.path), "elapsed_cleanup_seconds": time.monotonic() - started,
+        })
+        if time.monotonic() > started + 80:
+            raise PreparationStop("terminal receipt phase exceeded fixed80 seconds")
+        self.server = None if server_result == "confirmed-exit" else self.server
+        if failure is not None or unknowns:
+            raise PreparationStop("runtime failed; Unknown evidence retained")
+
+    def supervise(self):
+        failure = None
+        try:
+            self.verify_source()
+            self.start_owned_server()
+            for relative, stage in REQUESTS[:4]:
+                request = self.review(stage, "requests/" + relative, 1800)
+                observed = {"source_sha256": _fixed_digest(SOURCE_FILE), "fixture_sha256": _fixed_digest(FIXTURE_FILE),
+                            "launcher_sha256": _fixed_digest(LAUNCHER / "launcher.py"), "manifest_sha256": _fixed_digest(LAUNCHER / "commands.final.json"),
+                            "test_executable_sha256": None if stage == "compile-runtime-green" else _fixed_digest(self.binary)}
+                _require_true(validate_request(request, self.root.run_id, stage, observed), "exact fixed runtime review request rejected")
+                if stage == "compile-runtime-green":
+                    self.current_source, self.current_fixture = request["source_sha256"], request["fixture_sha256"]
+                    self.compile_exact_fixture(stage, {"controller_statement_id": request["cargo_window_statement_id"], "stage": stage,
+                                                       "assignment": "root-agent exclusive Search Cargo"})
+                    self.history.append("compile-runtime-green")
+                    self.run_named_pure_pass("final")
+                    self.history.append("pure-rust-final-green-confirmed")
+                else:
+                    self.run_exact_recovery_case(stage, request)
+        except BaseException as error:
+            failure = type(error).__name__ + ": " + str(error)
+        self.terminal_owned_cleanup(failure)
+        # Cluster exit/cleanup is COMPLETE before either quality or finish wait.
+        for relative, stage in REQUESTS[4:]:
+            request = self.review(stage, "requests/" + relative, 300)
+            observed = {"source_sha256": _fixed_digest(SOURCE_FILE), "fixture_sha256": _fixed_digest(FIXTURE_FILE),
+                        "launcher_sha256": _fixed_digest(LAUNCHER / "launcher.py"), "manifest_sha256": _fixed_digest(LAUNCHER / "commands.final.json"),
+                        "test_executable_sha256": _fixed_digest(self.binary)}
+            _require_true(validate_request(request, self.root.run_id, stage, observed), "post-cluster exact review rejected")
+            if stage == "quality":
+                self.cargo_assignment({"controller_statement_id": request["cargo_window_statement_id"], "stage": stage,
+                                       "assignment": "root-agent exclusive Search Cargo"}, stage)
+                self.verify_source()
+                self.run("selected-clippy", [str(RUST / "cargo"), "clippy", "--locked", "--offline", "-j", "2", "-p", "outbox-delivery",
+                         "--test", "process_recovery", "--", "-D", "warnings"], "cargo", 600, cwd=REPOSITORY, build_output=True)
+                self.run("two-file-format", [str(RUST / "rustfmt"), "--edition", "2024", "--check", str(SOURCE_FILE.relative_to(REPOSITORY)),
+                         str(FIXTURE_FILE.relative_to(REPOSITORY))], "cargo", 30, cwd=REPOSITORY)
+                self.run("source-diff-check", ["/usr/bin/git", "-c", "core.fsmonitor=false", "diff", "--no-ext-diff", "--no-textconv", "--check"],
+                         "pure", 15, cwd=REPOSITORY)
+            else:
+                self.root.save_new("receipts/final-qualification.json", {"schema_version": 1, "run_id": self.root.run_id,
+                                   "status": "named-G07-evidence-ready-for-independent-review", "history": self.history,
+                                   "server_restart_count": 0, "broader_qualification": False, "root": str(self.root.path)})
+
+
+def _tar_member_observation(member):
+    types = {tarfile.REGTYPE: "file", tarfile.AREGTYPE: "file", tarfile.DIRTYPE: "directory",
+             tarfile.SYMTYPE: "symlink", tarfile.LNKTYPE: "hardlink"}
+    if member.type not in types or member.sparse is not None:
+        raise PreparationStop("unsupported archive inode/sparse kind")
+    return {"name": member.name, "kind": types[member.type], "mode": member.mode,
+            "link": member.linkname if member.type in (tarfile.SYMTYPE, tarfile.LNKTYPE) else None,
+            "size": member.size}
+
+
+def _owned_inventory_lines(root, name, expected_sha256):
+    relative = "receipts/inventory-" + name + ".jsonl"
+    fd, facts = _regular_open(root.path / relative, owner=OWNER, mode=0o600)
+    try:
+        if facts.st_size > 134217728 or _digest_fd(fd) != expected_sha256:
+            raise PreparationStop("retained canonical inventory digest/cap mismatch")
+        os.lseek(fd, 0, os.SEEK_SET)
+        with os.fdopen(os.dup(fd), "rb") as stream:
+            for line in stream:
+                if len(line) > 4096 or not line.endswith(b"\n"):
+                    raise PreparationStop("canonical inventory line overflow/truncation")
+                yield _strict_document(line)
+    finally:
+        os.close(fd)
+
+
+def _archive_helper(action, root_path, artifact_id, plan_sha256):
+    """Only canonical inventory/extraction of four fixed verified artifact IDs."""
+    if action not in ("internal-inventory", "internal-extract") or artifact_id not in ("m4", "bison", "flex", "postgresql"):
+        raise PreparationStop("unknown fixed archive helper")
+    if (os.getuid(), os.geteuid(), os.getgid(), os.getegid()) != (OWNER,) * 4 or pwd.getpwuid(OWNER).pw_name != "agent":
+        raise PreparationStop("archive helper refuses privileged/unexpected caller identity")
+    path = Path(root_path)
+    if not isinstance(root_path, str) or str(path) != root_path or re.fullmatch(re.escape(str(BASE)) + r"/p6pg\.[A-Za-z0-9]{8}", root_path) is None:
+        raise PreparationStop("archive helper root argument is not canonical owned pattern")
+    suffix = "inventory" if action == "internal-inventory" else "extract"
+    relative = "requests/" + suffix + "-plan-" + artifact_id + ".json"
+    root = OwnedRoot(path, None)
+    raw = root.read(relative)
+    if not _hash_field(plan_sha256) or hashlib.sha256(raw).hexdigest() != plan_sha256:
+        raise PreparationStop("independently supplied fixed helper-plan digest mismatch")
+    plan = _strict_document(raw)
+    keys = {"schema_version", "run_id", "run_root", "artifact_id", "archive_relative", "archive_sha256",
+            "extraction_subdirectory", "prior_inventories", "policy_sha256"}
+    if action == "internal-extract":
+        keys |= {"inventory_sha256", "members", "expanded_bytes"}
+    if (not isinstance(plan, dict) or set(plan) != keys or type(plan["schema_version"]) is not int
+            or plan["schema_version"] != 1 or plan["artifact_id"] != artifact_id or plan["run_root"] != str(path)
+            or not _uuid_field(plan["run_id"]) or not _hash_field(plan["archive_sha256"])
+            or not isinstance(plan["prior_inventories"], list)):
+        raise PreparationStop("fixed owned archive plan schema mismatch")
+    expected_prior_ids = {"m4": [], "bison": ["m4"], "flex": ["m4", "bison"], "postgresql": []}[artifact_id]
+    if [entry.get("id") if isinstance(entry, dict) else None for entry in plan["prior_inventories"]] != expected_prior_ids:
+        raise PreparationStop("cumulative archive inventory sequence differs")
+    os.umask(0o077)
+    os.set_blocking(sys.stdout.fileno(), False)
+    root.run_id = plan["run_id"]
+    owner = _strict_document(root.read("receipts/root-owner.json"))
+    if (owner.get("run_id") != root.run_id or owner.get("dev") != root.identity.st_dev
+            or owner.get("inode") != root.identity.st_ino):
+        raise PreparationStop("archive helper lacks exact fresh-root ownership proof")
+    expected_archive = "downloads/postgresql-18.6.tar.bz2" if artifact_id == "postgresql" else "downloads/data-" + artifact_id + ".tar"
+    subdirectory = "source" if artifact_id == "postgresql" else "tools"
+    if plan["archive_relative"] != expected_archive or plan["extraction_subdirectory"] != subdirectory:
+        raise PreparationStop("archive helper cannot select another input/destination")
+    if artifact_id == "postgresql" and plan["archive_sha256"] != OFFICIAL_ARTIFACTS[-1][4]:
+        raise PreparationStop("official PostgreSQL archive pin changed")
+    policy = _load_policy(plan["policy_sha256"])
+    disk = DiskWatch(root, policy)
+    deadline = time.monotonic() + (30 if action == "internal-inventory" else 60)
+
+    def checkpoint():
+        if time.monotonic() >= deadline:
+            raise PreparationStop("owned archive helper deadline")
+        disk.check()
+
+    checkpoint()
+    prior = {}
+    for entry in plan["prior_inventories"]:
+        if (not isinstance(entry, dict) or set(entry) != {"id", "sha256"}
+                or entry["id"] not in ("m4", "bison") or not _hash_field(entry["sha256"])):
+            raise PreparationStop("invalid fixed prior inventory")
+        for record in _owned_inventory_lines(root, entry["id"], entry["sha256"]):
+            checkpoint()
+            canonical = record["normalized"]
+            prior[canonical["name"]] = canonical
+    archive_fd, archive_facts = _regular_open(root.path / expected_archive, owner=OWNER, mode=0o600)
+    try:
+        if _digest_fd(archive_fd) != plan["archive_sha256"]:
+            raise PreparationStop("owned archive input changed")
+        os.lseek(archive_fd, 0, os.SEEK_SET)
+        archive_stream = os.fdopen(os.dup(archive_fd), "rb")
+        archive = tarfile.open(fileobj=archive_stream, mode="r:bz2" if artifact_id == "postgresql" else "r:")
+        count, expanded, inventory_bytes = 0, 0, 0
+        inventory_fd = root.create_file("receipts/inventory-" + artifact_id + ".jsonl") if action == "internal-inventory" else None
+        records = iter(_owned_inventory_lines(root, artifact_id, plan["inventory_sha256"])) if action == "internal-extract" else None
+        try:
+            for member in archive:
+                checkpoint()
+                observed = _tar_member_observation(member)
+                count += 1
+                expanded += observed["size"] if observed["kind"] == "file" else 0
+                if count > 100000 or expanded > 2147483648:
+                    raise PreparationStop("archive member/expanded-byte inventory exceeded")
+                if action == "internal-inventory":
+                    canonical = policy.normalize_archive_member({key: observed[key] for key in ("name", "kind", "mode", "link")}, prior)
+                    if not isinstance(canonical, dict):
+                        raise PreparationStop("single canonical archive reducer rejected member")
+                    if artifact_id == "postgresql" and canonical["name"] != "." and canonical["name"].split("/", 1)[0] != "postgresql-18.6":
+                        raise PreparationStop("PostgreSQL archive top-level mismatch")
+                    record = {"ordinal": count, "raw": observed, "normalized": canonical}
+                    line = (json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+                    inventory_bytes += len(line)
+                    if len(line) > 4096 or inventory_bytes > 134217728:
+                        raise PreparationStop("finite canonical inventory retention exceeded")
+                    view = memoryview(line)
+                    while view:
+                        written = os.write(inventory_fd, view)
+                        if written <= 0:
+                            raise PreparationStop("canonical inventory write Unknown")
+                        view = view[written:]
+                    prior[canonical["name"]] = canonical
+                    continue
+                try:
+                    record = next(records)
+                except StopIteration:
+                    raise PreparationStop("archive has unapproved additional member") from None
+                if (set(record) != {"ordinal", "raw", "normalized"} or record["ordinal"] != count
+                        or record["raw"] != observed):
+                    raise PreparationStop("archive changed after canonical inventory")
+                # Consume the SAME retained canonical result. No second naming,
+                # link resolution or normalization algorithm is introduced.
+                canonical = record["normalized"]
+                name, kind = canonical["name"], canonical["kind"]
+                if name == ".":
+                    if kind != "directory":
+                        raise PreparationStop("only an ordinary archive-root directory is allowed")
+                    continue  # preserve the enclosing tools/source mode0700
+                parent, leaf = root.parent_fd(subdirectory + "/" + name)
+                try:
+                    if kind == "directory":
+                        try:
+                            os.mkdir(leaf, canonical["mode"], dir_fd=parent)
+                        except FileExistsError:
+                            facts = os.stat(leaf, dir_fd=parent, follow_symlinks=False)
+                            if not stat.S_ISDIR(facts.st_mode) or facts.st_uid != OWNER:
+                                raise PreparationStop("shared archive directory is not ordinary owned directory")
+                    elif kind == "file":
+                        target = os.open(leaf, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent)
+                        try:
+                            stream = archive.extractfile(member)
+                            if stream is None:
+                                raise PreparationStop("approved archive file stream absent")
+                            left = observed["size"]
+                            while left:
+                                checkpoint()
+                                chunk = stream.read(min(65536, left))
+                                if not chunk:
+                                    raise PreparationStop("archive member truncated")
+                                left -= len(chunk)
+                                view = memoryview(chunk)
+                                while view:
+                                    written = os.write(target, view)
+                                    if written <= 0:
+                                        raise PreparationStop("archive file write Unknown")
+                                    view = view[written:]
+                            if stream.read(1):
+                                raise PreparationStop("archive member exceeded declared bytes")
+                            stream.close()
+                            os.fchmod(target, canonical["mode"])
+                        finally:
+                            os.close(target)
+                    elif kind in ("symlink", "hardlink"):
+                        if canonical["target"] == "." and kind == "symlink":
+                            source_parent = os.open(subdirectory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root.fd)
+                            source_leaf = "."
+                        else:
+                            source_parent, source_leaf = root.parent_fd(subdirectory + "/" + canonical["target"])
+                        try:
+                            facts = os.stat(source_leaf, dir_fd=source_parent, follow_symlinks=False)
+                            if facts.st_uid != OWNER or not (stat.S_ISREG(facts.st_mode) or (kind == "symlink" and stat.S_ISDIR(facts.st_mode))):
+                                raise PreparationStop("canonical link target changed from ordinary owned inode")
+                            if kind == "symlink":
+                                os.symlink(canonical["link"], leaf, dir_fd=parent)
+                            else:
+                                os.link(source_leaf, leaf, src_dir_fd=source_parent, dst_dir_fd=parent, follow_symlinks=False)
+                        finally:
+                            os.close(source_parent)
+                    else:
+                        raise PreparationStop("unapproved canonical extractor kind")
+                finally:
+                    os.close(parent)
+            if action == "internal-extract":
+                if next(records, None) is not None or count != plan["members"] or expanded != plan["expanded_bytes"]:
+                    raise PreparationStop("complete retained inventory not consumed exactly")
+        finally:
+            archive.close()
+            archive_stream.close()
+            if inventory_fd is not None:
+                os.close(inventory_fd)
+        checkpoint()
+        summary = {"schema_version": 1, "run_id": root.run_id, "artifact_id": artifact_id,
+                   "members": count, "expanded_bytes": expanded,
+                   "status": "inventory-confirmed" if action == "internal-inventory" else "extraction-confirmed"}
+        if action == "internal-inventory":
+            summary["inventory_sha256"] = _fixed_digest(root.path / ("receipts/inventory-" + artifact_id + ".jsonl"))
+        root.save_new("receipts/" + suffix + "-" + artifact_id + ".summary.json", summary)
+    finally:
+        os.close(archive_fd)
+
+
+def _verify_final_input_inventory(approval):
+    fd, _ = _regular_open(LAUNCHER / "commands.final.json", owner=OWNER, mode=0o600)
+    try:
+        manifest = _strict_document(_read_fd(fd, JSON_CAP))
+    finally:
+        os.close(fd)
+    required = (LAUNCHER / "launcher.py", LAUNCHER / "launcher_policy.py", SOURCE_FILE, FIXTURE_FILE,
+                REPOSITORY / "Cargo.toml", REPOSITORY / "Cargo.lock", LAUNCHER / "scope.schema.json",
+                LAUNCHER / "approval.schema.draft.json", LAUNCHER / "request.schema.draft.json",
+                LAUNCHER / "cluster-control.schema.draft.json", LAUNCHER / "observations.schema.draft.json",
+                LAUNCHER / "test-receipt.schema.draft.json", LAUNCHER / "execution-seams.contract.json",
+                LAUNCHER / "test_launcher_policy.py", LAUNCHER / "test_launcher_integration.py",
+                LAUNCHER / "test_launcher_execution.py", LAUNCHER / "test_launcher_utf8.py", LAUNCHER / "test_launcher_pg_library.py",
+                LAUNCHER / "managed_bootstrap_entry.py", LAUNCHER / "test_launcher_proxy.py",
+                LAUNCHER / "bootstrap-resume.schema.draft.json")
+    pins = manifest.get("input_sha256")
+    if (manifest.get("status") != "REVIEWED_EXECUTABLE" or not isinstance(pins, dict)
+            or set(pins) != {str(path) for path in required} or any(not _hash_field(value) for value in pins.values())):
+        raise PreparationStop("exact independently reviewed input inventory absent")
+    for path in required:
+        if _fixed_digest(path) != pins[str(path)]:
+            raise PreparationStop("final reviewed source/schema/test input changed: " + str(path))
+    if (pins[str(SOURCE_FILE)] != approval["source_sha256"] or pins[str(FIXTURE_FILE)] != approval["fixture_sha256"]
+            or pins[str(LAUNCHER / "launcher.py")] != approval["launcher_sha256"]
+            or pins[str(LAUNCHER / "launcher_policy.py")] != approval["policy_sha256"]):
+        raise PreparationStop("approval and final input manifest disagree")
+    prior = manifest.get("prior_pure_evidence")
+    if not isinstance(prior, list) or not prior:
+        raise PreparationStop("chronological pure RED/GREEN evidence is not pinned")
+    for observation in prior:
+        if (not isinstance(observation, dict) or set(observation) != {"path", "sha256"}
+                or not _hash_field(observation["sha256"])):
+            raise PreparationStop("prior pure evidence schema mismatch")
+        path = Path(observation["path"])
+        if (path.name != "terminal.json" or path.parent.parent != EVIDENCE
+                or not path.parent.name.startswith("g07-") or path.parent.is_symlink()
+                or _fixed_digest(path) != observation["sha256"]):
+            raise PreparationStop("prior actual pure evidence binding mismatch")
+    metadata = manifest.get("metadata_observation")
+    if (not isinstance(metadata, dict) or set(metadata) != {"path", "sha256"} or not _hash_field(metadata["sha256"])):
+        raise PreparationStop("actual signed dependency observation not pinned")
+    path = Path(metadata["path"])
+    if (path.parent != EVIDENCE or not path.name.startswith("g07-") or path.suffix != ".json"
+            or _fixed_digest(path) != metadata["sha256"]):
+        raise PreparationStop("metadata-only provenance observation mismatch")
+
+
+def main(arguments=None):
+    """Guarded fixed dispatch, drafted for review; invoking remains unadmitted."""
+    args = list(sys.argv[1:] if arguments is None else arguments)
+    if (len(args) == 7 and args[0] in ("internal-inventory", "internal-extract")
+            and args[1] == "--owned-root" and args[3] == "--artifact-id" and args[5] == "--plan-sha256"):
+        # Parent-owned helper plan SHA is an immutable argv value, not its JSON.
+        # Helper performs every hash/owner/plan check before any retained write.
+        _archive_helper(args[0], args[2], args[4], args[6])
+        return 0
+    if (len(args) != 5 or args[0] not in ("bootstrap", "bootstrap-resume", "supervise")
+            or args[1] != "--approval" or args[3] != "--approval-sha256"):
+        raise PreparationStop("only fixed reviewed bootstrap/supervise/helper argv is accepted")
+    approval = read_approval_for_reviewed_stage(args[2], args[4], args[0])
+    _verify_final_input_inventory(approval)
+    # No filesystem mutation or process spawn precedes independently supplied
+    # approval hash + strict GO + exact observed input/tool/provenance review.
+    os.umask(0o077)
+    os.set_blocking(sys.stdout.fileno(), False)
+    policy = _load_policy(approval["policy_sha256"])
+    run = FixedRun(approval, args[0], policy)
+    try:
+        if args[0] in ("bootstrap", "bootstrap-resume"):
+            run.bootstrap()
+        else:
+            run.supervise()
+        return 0
+    except BaseException as error:
+        try:
+            error_relative = ("receipts/launcher-installed-resume-error.json" if run.installed_resume else
+                              "receipts/launcher-make-race-resume-error.json" if run.make_race_resume else
+                              "receipts/launcher-build-resume-error.json" if run.configured_build_resume else
+                              "receipts/launcher-resume-error.json" if args[0] == "bootstrap-resume" else "receipts/launcher-error.json")
+            run.root.save_new(error_relative, {"schema_version": 1, "run_id": run.root.run_id,
+                              "status": "stopped-retained", "error": type(error).__name__ + ": " + str(error),
+                              "owned_stage_returncodes": [{"stage": stage.label,
+                                  "actual_returncode": stage.handle.returncode if stage.handle is not None else None}
+                                  for stage in run.owned_stages],
+                              "root": str(run.root.path), "no_further_launch": True})
+        except BaseException:
+            print("G07_FINAL_RECEIPT_UNKNOWN", file=sys.stderr, flush=True)
+        raise
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

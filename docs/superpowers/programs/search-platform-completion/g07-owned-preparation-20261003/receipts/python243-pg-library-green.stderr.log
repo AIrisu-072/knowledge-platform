@@ -1,0 +1,21 @@
+test_actual_search_path_must_match_approval_and_independent_path (__main__.PgPrivateLibrarySearchTests.test_actual_search_path_must_match_approval_and_independent_path) ... ok
+test_actual_search_tag_must_match_approved_tag (__main__.PgPrivateLibrarySearchTests.test_actual_search_tag_must_match_approved_tag) ... ok
+test_approved_search_path_must_match_actual_and_independent_path (__main__.PgPrivateLibrarySearchTests.test_approved_search_path_must_match_actual_and_independent_path) ... ok
+test_approved_search_without_independent_owned_path_is_rejected (__main__.PgPrivateLibrarySearchTests.test_approved_search_without_independent_owned_path_is_rejected) ... ok
+test_default_debian_two_argument_mode_rejects_both_search_tags (__main__.PgPrivateLibrarySearchTests.test_default_debian_two_argument_mode_rejects_both_search_tags) ... ok
+test_duplicate_search_tag_is_rejected (__main__.PgPrivateLibrarySearchTests.test_duplicate_search_tag_is_rejected) ... ok
+test_exact_owned_rpath_is_accepted_and_preserved_in_result (__main__.PgPrivateLibrarySearchTests.test_exact_owned_rpath_is_accepted_and_preserved_in_result) ... ok
+test_exact_owned_runpath_is_accepted_and_preserved_in_result (__main__.PgPrivateLibrarySearchTests.test_exact_owned_runpath_is_accepted_and_preserved_in_result) ... ok
+test_independent_owned_path_must_match_actual_and_approved_path (__main__.PgPrivateLibrarySearchTests.test_independent_owned_path_must_match_actual_and_approved_path) ... ok
+test_independent_owned_path_requires_explicit_fourth_closure_key (__main__.PgPrivateLibrarySearchTests.test_independent_owned_path_requires_explicit_fourth_closure_key) ... ok
+test_library_search_object_must_have_exact_tag_and_path_keys (__main__.PgPrivateLibrarySearchTests.test_library_search_object_must_have_exact_tag_and_path_keys) ... ok
+test_matching_other_run_root_cannot_override_independent_owned_root (__main__.PgPrivateLibrarySearchTests.test_matching_other_run_root_cannot_override_independent_owned_root) ... ok
+test_owned_search_permission_does_not_allow_textrel (__main__.PgPrivateLibrarySearchTests.test_owned_search_permission_does_not_allow_textrel) ... ok
+test_owned_search_permission_preserves_exact_needed_and_version_checks (__main__.PgPrivateLibrarySearchTests.test_owned_search_permission_preserves_exact_needed_and_version_checks) ... ok
+test_simultaneous_rpath_and_runpath_are_rejected (__main__.PgPrivateLibrarySearchTests.test_simultaneous_rpath_and_runpath_are_rejected) ... ok
+test_unsafe_search_paths_are_rejected_even_when_all_inputs_match (__main__.PgPrivateLibrarySearchTests.test_unsafe_search_paths_are_rejected_even_when_all_inputs_match) ... ok
+
+----------------------------------------------------------------------
+Ran 16 tests in 0.003s
+
+OK

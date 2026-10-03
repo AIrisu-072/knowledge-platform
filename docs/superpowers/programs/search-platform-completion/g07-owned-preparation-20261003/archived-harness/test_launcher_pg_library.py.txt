@@ -1,0 +1,140 @@
+"""TEST-ONLY owned PostgreSQL private-library search compatibility.
+
+PostgreSQL's default build marks executables with its installation library
+directory; --disable-rpath removes that marking and needs another search route:
+https://www.postgresql.org/docs/18/install-make.html
+This narrow reducer contract allows one exact RPATH or RUNPATH only when the
+approved closure and independent owned-install argument bind the same canonical
+B/install/lib. Default Debian two-argument behavior remains fail closed.
+Fixtures are synthetic readelf text, with unchanged exact NEEDED/version checks.
+No files, archives, metadata acquisition, processes, network, DB or ELF execution
+are performed by these fixtures. Preparation did not import or execute this file.
+"""
+
+from copy import deepcopy
+import importlib.util
+from pathlib import Path
+import unittest
+
+_source = Path(__file__).with_name("launcher.py")
+_spec = importlib.util.spec_from_file_location("g07_pg_library_launcher", _source)
+launcher = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(launcher)
+
+ROOT = "/workspace/scratch/13897606dfde/p6pg.ABCDEFGH"
+OWNED_LIB = ROOT + "/install/lib"
+OTHER_LIB = "/workspace/scratch/13897606dfde/p6pg.HGFEDCBA/install/lib"
+BASE_CLOSURE = {
+    "interpreter": "/lib64/ld-linux-x86-64.so.2", "needed": ["libc.so.6"],
+    "version_needs": ["libc.so.6:GLIBC_2.2.5", "libc.so.6:GLIBC_2.34"],
+}
+ELF_HEADER = b"""ELF Header:
+  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00
+  Class:                             ELF64
+  Data:                              2's complement, little endian
+  Type:                              DYN (Position-Independent Executable file)
+  Machine:                           Advanced Micro Devices X86-64
+      [Requesting program interpreter: /lib64/ld-linux-x86-64.so.2]
+"""
+ELF_DYNAMIC_PREFIX = b"""Dynamic section at offset 0x100 contains 3 entries:
+  Tag        Type                         Name/Value
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+"""
+ELF_DYNAMIC_NULL = b" 0x0000000000000000 (NULL)               0x0\n"
+ELF_VERSIONS = b"""Version needs section '.gnu.version_r' contains 1 entry:
+ Addr: 0x0000000000000400  Offset: 0x00000400  Link: 7 (.dynstr)
+  000000: Version: 1  File: libc.so.6  Cnt: 2
+  0x0010:   Name: GLIBC_2.2.5  Flags: none  Version: 2
+  0x0020:   Name: GLIBC_2.34  Flags: none  Version: 3
+"""
+
+
+def search_line(tag="RUNPATH", path=OWNED_LIB):
+    code, label = {"RUNPATH": ("001d", "runpath"), "RPATH": ("000f", "rpath")}[tag]
+    return f" 0x000000000000{code} ({tag}) Library {label}: [{path}]\n".encode("ascii")
+
+
+def elf_text(tag="RUNPATH", path=OWNED_LIB, extra_line=b""):
+    return ELF_HEADER + ELF_DYNAMIC_PREFIX + search_line(tag, path) + extra_line + ELF_DYNAMIC_NULL + ELF_VERSIONS
+
+
+def pg_closure(tag="RUNPATH", path=OWNED_LIB):
+    return {**deepcopy(BASE_CLOSURE), "library_search": {"tag": tag, "path": path}}
+
+
+class PgPrivateLibrarySearchTests(unittest.TestCase):
+    def test_exact_owned_runpath_is_accepted_and_preserved_in_result(self):
+        expected = pg_closure()
+        self.assertEqual(launcher.inspect_elf_text(elf_text(), deepcopy(expected), OWNED_LIB), expected)
+
+    def test_exact_owned_rpath_is_accepted_and_preserved_in_result(self):
+        expected = pg_closure("RPATH")
+        self.assertEqual(launcher.inspect_elf_text(elf_text("RPATH"), deepcopy(expected), OWNED_LIB), expected)
+
+    def test_default_debian_two_argument_mode_rejects_both_search_tags(self):
+        for tag in ("RUNPATH", "RPATH"):
+            with self.subTest(tag=tag):
+                self.assertEqual(launcher.inspect_elf_text(elf_text(tag), deepcopy(BASE_CLOSURE)), "REJECT")
+
+    def test_approved_search_without_independent_owned_path_is_rejected(self):
+        self.assertEqual(launcher.inspect_elf_text(elf_text(), pg_closure()), "REJECT")
+
+    def test_independent_owned_path_requires_explicit_fourth_closure_key(self):
+        self.assertEqual(launcher.inspect_elf_text(elf_text(), deepcopy(BASE_CLOSURE), OWNED_LIB), "REJECT")
+
+    def test_actual_search_path_must_match_approval_and_independent_path(self):
+        for actual in (OTHER_LIB, "/usr/lib"):
+            with self.subTest(actual=actual):
+                self.assertEqual(launcher.inspect_elf_text(elf_text(path=actual), pg_closure(), OWNED_LIB), "REJECT")
+
+    def test_approved_search_path_must_match_actual_and_independent_path(self):
+        for approved in (OTHER_LIB, "/usr/lib"):
+            with self.subTest(approved=approved):
+                self.assertEqual(launcher.inspect_elf_text(elf_text(), pg_closure(path=approved), OWNED_LIB), "REJECT")
+
+    def test_independent_owned_path_must_match_actual_and_approved_path(self):
+        for independent in (OTHER_LIB, "/usr/lib"):
+            with self.subTest(independent=independent):
+                self.assertEqual(launcher.inspect_elf_text(elf_text(), pg_closure(), independent), "REJECT")
+
+    def test_matching_other_run_root_cannot_override_independent_owned_root(self):
+        self.assertEqual(launcher.inspect_elf_text(elf_text(path=OTHER_LIB), pg_closure(path=OTHER_LIB), OWNED_LIB), "REJECT")
+
+    def test_actual_search_tag_must_match_approved_tag(self):
+        self.assertEqual(launcher.inspect_elf_text(elf_text("RPATH"), pg_closure("RUNPATH"), OWNED_LIB), "REJECT")
+
+    def test_duplicate_search_tag_is_rejected(self):
+        for tag in ("RUNPATH", "RPATH"):
+            with self.subTest(tag=tag):
+                self.assertEqual(launcher.inspect_elf_text(elf_text(tag, extra_line=search_line(tag)), pg_closure(tag), OWNED_LIB), "REJECT")
+
+    def test_simultaneous_rpath_and_runpath_are_rejected(self):
+        self.assertEqual(launcher.inspect_elf_text(elf_text(extra_line=search_line("RPATH")), pg_closure(), OWNED_LIB), "REJECT")
+
+    def test_unsafe_search_paths_are_rejected_even_when_all_inputs_match(self):
+        paths = (OWNED_LIB + ":/usr/lib", "$ORIGIN/../lib", "install/lib",
+                 ROOT + "/install/../install/lib", "", "/usr/lib", ROOT + "/tools/lib")
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertEqual(launcher.inspect_elf_text(elf_text(path=path), pg_closure(path=path), path), "REJECT")
+
+    def test_library_search_object_must_have_exact_tag_and_path_keys(self):
+        for search in ({"tag": "RUNPATH"}, {"path": OWNED_LIB},
+                       {"tag": "RUNPATH", "path": OWNED_LIB, "extra": True}):
+            approved = {**deepcopy(BASE_CLOSURE), "library_search": search}
+            with self.subTest(search=search):
+                self.assertEqual(launcher.inspect_elf_text(elf_text(), approved, OWNED_LIB), "REJECT")
+
+    def test_owned_search_permission_does_not_allow_textrel(self):
+        value = elf_text(extra_line=b" 0x0000000000000016 (TEXTREL) 0x0\n")
+        self.assertEqual(launcher.inspect_elf_text(value, pg_closure(), OWNED_LIB), "REJECT")
+
+    def test_owned_search_permission_preserves_exact_needed_and_version_checks(self):
+        for value in (elf_text().replace(b"Shared library: [libc.so.6]", b"Shared library: [libunknown.so.1]"),
+                      elf_text().replace(b"Name: GLIBC_2.34", b"Name: GLIBC_99.0")):
+            with self.subTest(value=value):
+                self.assertEqual(launcher.inspect_elf_text(value, pg_closure(), OWNED_LIB), "REJECT")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

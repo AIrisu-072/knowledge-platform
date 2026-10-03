@@ -1,0 +1,5 @@
+2026-10-03 14:27:04.786 UTC [12] LOG:  starting PostgreSQL 18.6 on x86_64-pc-linux-gnu, compiled by x86_64-linux-gnu-gcc-14 (Debian 14.2.0-19) 14.2.0, 64-bit
+2026-10-03 14:27:04.786 UTC [12] LOG:  could not create Unix socket for address "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/socket/.s.PGSQL.5432": Operation not permitted
+2026-10-03 14:27:04.786 UTC [12] WARNING:  could not create Unix-domain socket in directory "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/socket"
+2026-10-03 14:27:04.786 UTC [12] FATAL:  could not create any Unix-domain sockets
+2026-10-03 14:27:04.786 UTC [12] LOG:  database system is shut down

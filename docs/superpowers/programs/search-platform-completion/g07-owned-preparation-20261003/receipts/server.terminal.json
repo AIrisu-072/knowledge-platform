@@ -1,0 +1,56 @@
+{
+  "actual_returncode": 1,
+  "argv": [
+    "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin/postgres",
+    "-D",
+    "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/data",
+    "-c",
+    "listen_addresses=",
+    "-c",
+    "unix_socket_directories=/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/socket",
+    "-c",
+    "unix_socket_permissions=0700",
+    "-c",
+    "port=5432",
+    "-c",
+    "max_connections=16",
+    "-c",
+    "shared_buffers=32MB",
+    "-c",
+    "work_mem=4MB"
+  ],
+  "cleanup_only": true,
+  "cwd": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL",
+  "environment": {
+    "HOME": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/home",
+    "LC_ALL": "C",
+    "PATH": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin:/usr/bin:/bin",
+    "TMPDIR": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/tmp",
+    "TZ": "UTC"
+  },
+  "exit_and_output": "confirmed-exit",
+  "exit_observed_monotonic_ns": 49450921131181,
+  "run_id": "a53a280c-c335-4226-b37a-b24533fe77a6",
+  "schema_version": 1,
+  "server_identity": null,
+  "server_recovery_proof": false,
+  "shutdown_signals": [],
+  "spawn_attempt_monotonic": 49450.737815541,
+  "stage": "server",
+  "stderr": {
+    "complete": true,
+    "overflow": false,
+    "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/server.stderr.log",
+    "retained": 629,
+    "seen": 629,
+    "sha256": "724b5dbca60d160c0a8696f17de33a0eb8a4f90b0a40d246db6bda80895650d6"
+  },
+  "stdout": {
+    "complete": true,
+    "overflow": false,
+    "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/server.stdout.log",
+    "retained": 0,
+    "seen": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

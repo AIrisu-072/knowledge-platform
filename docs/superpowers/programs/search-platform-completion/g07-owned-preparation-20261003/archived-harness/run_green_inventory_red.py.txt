@@ -1,0 +1,405 @@
+"""Fixed G07 Python integration GREEN and eight Rust controls and one GREEN-inventory assertion RED; no bootstrap, database or recovery child execution.
+
+Not run until independent review of this file and its exact admission manifest.
+The preinstalled compiler may execute the existing locked build-script closure.
+"""
+from __future__ import annotations
+import ast
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import signal
+import subprocess
+import tempfile
+import threading
+import time
+
+BASE = Path('/workspace/scratch/13897606dfde')
+DRAFT = BASE / 'search-g07-launcher'
+REPO = BASE / 'search-g07-owned-recovery'
+TARGET = BASE / 'search-g07-target'
+CACHE = BASE / 'organization-tauri-toolchain/cargo-home'
+RUST = BASE / 'organization-tauri-toolchain/rust/bin'
+ADMISSION = DRAFT / 'green-inventory-admission.json'
+OWNERSHIP = BASE / 'search-recovery-evidence/g07-target-ownership.json'
+PRIOR = BASE / 'search-recovery-evidence/g07-pure-4vvz8tnj'
+RED_SNAPSHOT = BASE / 'search-recovery-evidence/g07-pure-red-input-snapshot'
+HEAD = '56ac5fd50140fb9e098a378da46579e6d22bc645'
+TREE = 'a6146b0bf3bbb241d918e3b579155e7c6d3dc98f'
+FLOOR, GROWTH = 1610612736, 8 * 1024**3
+ALLOWED_DIRTY = {'crates/outbox-delivery/tests/process_recovery.rs', 'crates/outbox-delivery/tests/support/postgres.rs'}
+TESTS = ('g07_fixture_configuration_fails_closed', 'g07_cleanup_requires_exact_owned_identity',
+         'g07_unknown_database_outcome_is_not_success', 'g07_deadlines_do_not_restart_between_phases',
+         'g07_child_environment_is_allowlisted', 'g07_child_output_is_bounded_and_kill_targets_owned_handle')
+INPUTS = tuple(REPO / p for p in sorted(ALLOWED_DIRTY)) + (REPO / 'Cargo.toml', REPO / 'Cargo.lock',
+    DRAFT / 'launcher_policy.py', DRAFT / 'test_launcher_policy.py', DRAFT / 'test_launcher_integration.py', Path(__file__).resolve(), OWNERSHIP, PRIOR / 'terminal.json')
+TOOLS = (RUST / 'cargo', RUST / 'rustc', Path('/usr/bin/python3.13'), Path('/usr/bin/git'), RUST / 'cargo-clippy', RUST / 'clippy-driver', RUST / 'rustfmt')
+UNCERTAIN = []  # retain unreaped leaders until exit; never signal them later
+
+
+def digest(path):
+    with path.open('rb') as f:
+        return hashlib.file_digest(f, 'sha256').hexdigest()
+
+
+def save(path, data):
+    path.write_text(json.dumps(data, indent=2) + '\n')
+
+
+def tree_size(path):
+    if not path.exists():
+        return 0
+    total = 0
+    for root, dirs, files in os.walk(path, followlinks=False):
+        if any(Path(root, n).is_symlink() for n in dirs + files):
+            raise RuntimeError('symlink in owned measured tree')
+        for name in files:
+            try:
+                total += Path(root, name).stat().st_size
+            except FileNotFoundError:
+                continue  # atomic Cargo replacement; next sample counts it
+    return total
+
+
+def owned_growth():
+    # Conservative accounting covers all retained G07 planning/source/receipt
+    # files under the existing evidence root, including earlier failed runs.
+    evidence = BASE / 'search-recovery-evidence'
+    total = tree_size(DRAFT) + tree_size(TARGET)
+    for path in evidence.iterdir():
+        if path.name.startswith('g07-'):
+            if path.is_symlink():
+                raise RuntimeError('unexpected G07 evidence symlink')
+            total += tree_size(path) if path.is_dir() else path.stat().st_size
+    return total
+
+
+def proc_stat(pid):
+    text = Path('/proc', str(pid), 'stat').read_text()
+    end = text.rfind(')')
+    fields = text[end + 2:].split()
+    if end < 0 or len(fields) < 20:
+        raise RuntimeError('invalid process stat')
+    return {'pid': pid, 'state': fields[0], 'pgrp': int(fields[2]),
+            'session': int(fields[3]), 'start_ticks': int(fields[19])}
+
+
+def session_members(identity):
+    # Read only stat identity metadata, never argv/environ/credentials.
+    # This observes the original session only. The trusted compiler closure
+    # must not daemonize; this is not hostile/detached-process containment.
+    members = []
+    for item in Path('/proc').iterdir():
+        if not item.name.isdigit():
+            continue
+        try:
+            s = proc_stat(int(item.name))
+        except FileNotFoundError:
+            continue
+        except PermissionError:
+            raise RuntimeError('process membership unreadable')
+        if s['session'] == identity['pid']:
+            if s['start_ticks'] < identity['start_ticks'] or s['pgrp'] != identity['pid']:
+                raise RuntimeError('unexpected owned-session membership')
+            if s['state'] not in ('Z', 'X'):
+                members.append(s)
+    return members
+
+
+def peek_exit(p):
+    return os.waitid(os.P_PID, p.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+
+
+def same_leader(identity):
+    now = proc_stat(identity['pid'])
+    if any(now[k] != identity[k] for k in ('pid', 'start_ticks', 'pgrp', 'session')):
+        raise RuntimeError('owned leader identity changed')
+
+
+def stop_group(p, identity, deadline):
+    # WNOWAIT retains the leader (even a zombie) until the owned group is done,
+    # preventing PID/PGID reuse before any signal. Descendants are only observed
+    # non-running; this parent never claims it reaped grandchildren.
+    for sig, seconds in ((signal.SIGTERM, 3), (signal.SIGKILL, 3)):
+        same_leader(identity)
+        if not session_members(identity):
+            break
+        os.killpg(p.pid, sig)
+        until = min(deadline, time.monotonic() + seconds)
+        while time.monotonic() < until:
+            if not session_members(identity):
+                break
+            time.sleep(.1)
+    if session_members(identity):
+        UNCERTAIN.append(p)
+        return 'owned-group-exit-unknown'
+    if peek_exit(p) is None:
+        UNCERTAIN.append(p)
+        return 'leader-exit-unknown'
+    p.wait(timeout=max(.001, min(1, deadline - time.monotonic())))
+    return None
+
+
+def run_step(label, argv, cwd, env, cap, directory):
+    started = time.monotonic()
+    deadline = started + cap
+    work_deadline = deadline - min(12, cap * .8)
+    output_cap = 4 * 1024**2 if label == 'rust-compile' else 64 * 1024
+    result = {'label': label, 'argv': list(map(str, argv)), 'cwd': str(cwd), 'deadline_seconds': cap,
+              'returncode': None, 'abnormal_reason': None, 'logs': {}, 'environment_keys': sorted(env), 'output_cap_per_stream': output_cap}
+    save(directory / (label + '.initial.json'), result)
+    paths = {k: directory / (label + '.' + k + '.log') for k in ('stdout', 'stderr')}
+    p, identity, threads, errors = None, None, [], []
+    overflow = threading.Event()
+    minimum_free = shutil.disk_usage(BASE).free
+    def drain(pipe, path):
+        retained = 0
+        try:
+            with path.open('xb') as f:
+                while chunk := pipe.read(65536):
+                    take = min(len(chunk), output_cap - retained)
+                    if take:
+                        f.write(chunk[:take]); retained += take
+                    if take < len(chunk):
+                        overflow.set()
+        except Exception as e:
+            errors.append(type(e).__name__ + ': ' + str(e))
+        finally:
+            pipe.close()
+    try:
+        if minimum_free < FLOOR or owned_growth() > GROWTH:
+            raise RuntimeError('disk budget before command')
+        p = subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+        identity = proc_stat(p.pid)
+        if identity['pgrp'] != p.pid or identity['session'] != p.pid:
+            raise RuntimeError('new owned session missing')
+        result['leader_identity'] = identity
+        save(directory / (label + '.spawn.json'), result)
+        for name, pipe in (('stdout', p.stdout), ('stderr', p.stderr)):
+            t = threading.Thread(target=drain, args=(pipe, paths[name]), daemon=True)
+            t.start(); threads.append(t)
+        next_disk = started
+        while True:
+            now = time.monotonic()
+            same_leader(identity)
+            exited = peek_exit(p) is not None
+            if exited and not session_members(identity):
+                break
+            if now >= next_disk:
+                free = shutil.disk_usage(BASE).free; minimum_free = min(minimum_free, free)
+                if free < FLOOR or owned_growth() > GROWTH:
+                    raise RuntimeError('disk budget')
+                next_disk = now + 1
+            if now >= work_deadline:
+                raise RuntimeError('timeout')
+            if overflow.is_set() or errors:
+                raise RuntimeError('output-overflow-or-drainer-error')
+            time.sleep(.1)
+    except BaseException as e:
+        result['abnormal_reason'] = type(e).__name__ + ': ' + str(e)
+    finally:
+        if p is not None:
+            try:
+                if identity is None:
+                    # The handle still owns this unreaped child; retrieve only
+                    # that identity before any group signal. Failure is Unknown.
+                    identity = proc_stat(p.pid)
+                same_leader(identity)
+                if session_members(identity):
+                    cleanup_error = stop_group(p, identity, deadline - 3)
+                    if cleanup_error:
+                        raise RuntimeError(cleanup_error)
+                elif peek_exit(p) is not None:
+                    p.wait(timeout=max(.001, min(1, deadline - time.monotonic())))
+                else:
+                    raise RuntimeError('leader-exit-unknown')
+            except BaseException as e:
+                UNCERTAIN.append(p)
+                result['abnormal_reason'] = (result['abnormal_reason'] or '') + '; cleanup: ' + type(e).__name__ + ': ' + str(e)
+            drain_deadline = min(deadline, time.monotonic() + 3)
+            for t in threads:
+                t.join(max(0, drain_deadline - time.monotonic()))
+            if any(t.is_alive() for t in threads) or errors or overflow.is_set():
+                result['abnormal_reason'] = (result['abnormal_reason'] or '') + '; output incomplete/overflow: ' + repr(errors)
+            result['returncode'] = p.returncode
+        result['elapsed_seconds'] = round(time.monotonic() - started, 3)
+        result['minimum_free_bytes'] = minimum_free
+        try:
+            for name, path in paths.items():
+                if path.exists():
+                    result['logs'][name] = {'path': str(path), 'sha256': digest(path), 'bytes': path.stat().st_size}
+            save(directory / (label + '.terminal.json'), result)
+        except BaseException as e:
+            print('TERMINAL_RECEIPT_WRITE_UNKNOWN', label, type(e).__name__, flush=True)
+            raise
+    if result['abnormal_reason']:
+        raise RuntimeError('command failed: ' + result['abnormal_reason'])
+    return result
+
+
+def combined(result):
+    return '\n'.join(Path(v['path']).read_text(errors='replace') for v in result['logs'].values())
+
+
+def verify_inputs(admission, directory, aggregate_deadline=None):
+    if admission.get('scope') != 'G07 pure GREEN inventory RED only' or admission.get('schema_version') != 1:
+        raise RuntimeError('wrong admission scope')
+    expected = {str(p) for p in INPUTS + TOOLS}
+    if set(admission.get('sha256', {})) != expected:
+        raise RuntimeError('admission must pin exactly fixed inputs/tools')
+    for p in INPUTS + TOOLS:
+        if digest(p) != admission['sha256'][str(p)]:
+            raise RuntimeError('reviewed input mismatch: ' + str(p))
+    # Fixed read-only Git commands validate the entire tracked closure against
+    # the pinned base, allowing only the two separately hash-pinned test edits.
+    env = {'HOME': str(directory / 'home'), 'LC_ALL': 'C', 'TZ': 'UTC', 'PATH': '/usr/bin:/bin'}
+    git = [str(TOOLS[3]), '-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false']
+    queries = [('head', ['rev-parse', 'HEAD']), ('tree', ['rev-parse', 'HEAD^{tree}']),
+               ('dirty', ['diff', '--no-ext-diff', '--no-textconv', '--name-only', 'HEAD', '--']),
+               ('untracked', ['ls-files', '--others', '--exclude-standard'])]
+    values = {}
+    tag = str(time.monotonic_ns())
+    for name, args in queries:
+        cap = 15 if aggregate_deadline is None else min(15, aggregate_deadline - time.monotonic())
+        if cap <= 0:
+            raise RuntimeError('pure aggregate deadline before source-closure command')
+        r = run_step('git-' + tag + '-' + name, git + args, REPO, env, cap, directory)
+        if r['returncode'] != 0:
+            raise RuntimeError('read-only source closure check failed')
+        values[name] = Path(r['logs']['stdout']['path']).read_text().strip()
+    if values['head'] != HEAD or values['tree'] != TREE:
+        raise RuntimeError('base HEAD/tree changed')
+    if set(values['dirty'].splitlines()) - ALLOWED_DIRTY or values['untracked']:
+        raise RuntimeError('source closure exceeds two-file scope')
+
+
+def main():
+    os.umask(0o077)
+    directory = Path(tempfile.mkdtemp(prefix='g07-green-inventory-red-', dir=BASE / 'search-recovery-evidence'))
+    record = {'scope': 'G07 pure GREEN inventory RED only', 'status': 'starting', 'results': []}
+    save(directory / 'initial.json', record)
+    try:
+        for p in (DRAFT, REPO, TARGET, CACHE, BASE / 'search-recovery-evidence'):
+            if p.is_symlink():
+                raise RuntimeError('unexpected root symlink')
+        # Reuse only the exact directory created by the approved RED gate.
+        # No cleanup, recreation, or other preexisting target is permitted.
+        ownership = json.loads(OWNERSHIP.read_text())
+        st = TARGET.lstat()
+        import stat
+        if (not stat.S_ISDIR(st.st_mode) or str(TARGET) != ownership['path']
+                or st.st_dev != ownership['dev'] or st.st_ino != ownership['inode']
+                or st.st_uid != ownership['uid'] or st.st_uid != os.getuid()
+                or stat.S_IMODE(st.st_mode) != 0o700 or ownership['mode'] != 0o700
+                or digest(PRIOR / 'terminal.json') != ownership['initial_terminal_sha256']
+                or json.loads((PRIOR / 'terminal.json').read_text())['new_target'] != str(TARGET)):
+            raise RuntimeError('target ownership/reuse evidence mismatch')
+        record['verified_reused_target'] = ownership
+        home = directory / 'home'; home.mkdir(); tmp = directory / 'tmp'; tmp.mkdir()
+        admission = json.loads(ADMISSION.read_text()); record['admission'] = admission
+        verify_inputs(admission, directory)
+        env = {'HOME': str(home), 'TMPDIR': str(tmp), 'LC_ALL': 'C', 'TZ': 'UTC',
+               'PATH': str(RUST) + ':/usr/bin:/bin', 'CARGO_HOME': str(CACHE),
+               'CARGO_TARGET_DIR': str(TARGET), 'RUSTC': str(RUST / 'rustc'),
+               'CARGO_NET_OFFLINE': 'true', 'SQLX_OFFLINE': 'true',
+               'CARGO_PROFILE_DEV_DEBUG': '0', 'CARGO_PROFILE_TEST_DEBUG': '0',
+               'CARGO_INCREMENTAL': '0', 'CARGO_TERM_COLOR': 'never', 'RUST_BACKTRACE': '0'}
+        minimal = {k: env[k] for k in ('HOME', 'TMPDIR', 'LC_ALL', 'TZ', 'RUST_BACKTRACE')}
+        r = run_step('python-green', [str(TOOLS[2]), '-I', '-B', str(DRAFT / 'test_launcher_policy.py')], DRAFT, minimal, 30, directory)
+        record['results'].append(r); log = combined(r)
+        syntax = ast.parse((DRAFT / 'test_launcher_policy.py').read_text())
+        expected = sum(isinstance(n, ast.FunctionDef) and n.name.startswith('test_') for n in ast.walk(syntax))
+        if (r['returncode'] != 0 or expected == 0 or not re.search(r'Ran ' + str(expected) + r' tests? in ', log)
+                or not re.search(r'^OK$', log, re.M) or 'FAILED (' in log or re.search(r'^ERROR:', log, re.M)):
+            raise RuntimeError('Python result is not exact GREEN')
+        verify_inputs(admission, directory)
+        r = run_step('python-integration-green', [str(TOOLS[2]), '-I', '-B', str(DRAFT / 'test_launcher_integration.py')], DRAFT, minimal, 30, directory)
+        record['results'].append(r); log = combined(r)
+        if (r['returncode'] != 0 or not re.search(r'Ran 34 tests? in ', log)
+                or not re.search(r'^OK$', log, re.M) or 'FAILED (' in log or re.search(r'^ERROR:', log, re.M)):
+            raise RuntimeError('supplemental result is not34 GREEN')
+        verify_inputs(admission, directory)
+        cmd = [str(RUST / 'cargo'), 'test', '--locked', '--offline', '-j', '2', '-p', 'outbox-delivery',
+               '--test', 'process_recovery', '--no-run', '--message-format=json-render-diagnostics']
+        r = run_step('rust-compile', cmd, REPO, env, 600, directory); record['results'].append(r)
+        if r['returncode'] != 0:
+            raise RuntimeError('compile error')
+        artifacts = []
+        for line in Path(r['logs']['stdout']['path']).read_text().splitlines():
+            item = json.loads(line)
+            if (item.get('reason') == 'compiler-artifact' and item.get('target', {}).get('name') == 'process_recovery'
+                    and item.get('executable') and 'test' in item.get('target', {}).get('kind', [])):
+                artifacts.append(Path(item['executable']))
+        if len(artifacts) != 1:
+            raise RuntimeError('expected one exact test artifact')
+        executable = artifacts[0]
+        if (executable.is_symlink() or executable.parent != TARGET / 'debug/deps'
+                or not re.fullmatch(r'process_recovery-[0-9a-f]+', executable.name)):
+            raise RuntimeError('unexpected test artifact path')
+        binary_hash = digest(executable); record['test_executable'] = {'path': str(executable), 'sha256': binary_hash}
+        pure_started = time.monotonic()
+        for name in TESTS:
+            if time.monotonic() >= pure_started + 180:
+                raise RuntimeError('pure aggregate deadline before source verification')
+            verify_inputs(admission, directory, pure_started + 180)
+            if digest(executable) != binary_hash:
+                raise RuntimeError('test artifact changed')
+            cap = min(30, 180 - (time.monotonic() - pure_started))
+            if cap <= 0:
+                raise RuntimeError('pure aggregate deadline')
+            r = run_step(name, [str(executable), name, '--exact', '--test-threads=1'], REPO, minimal, cap, directory)
+            record['results'].append(r); log = combined(r)
+            if (r['returncode'] != 0 or 'running 1 test' not in log
+                    or ('test ' + name + ' ... ok') not in log
+                    or 'test result: ok. 1 passed; 0 failed;' not in log):
+                raise RuntimeError('not exact named pure GREEN')
+        for name in ('g07_linux_process_identity_parses_final_parenthesis', 'g07_terminal_receipt_requires_exact_owned_cleanup'):
+            if time.monotonic() >= pure_started + 180:
+                raise RuntimeError('pure aggregate deadline before new seam')
+            verify_inputs(admission, directory, pure_started + 180)
+            if digest(executable) != binary_hash:
+                raise RuntimeError('test artifact changed')
+            cap = min(30, 180 - (time.monotonic() - pure_started))
+            if cap <= 0:
+                raise RuntimeError('pure aggregate deadline')
+            r = run_step(name, [str(executable), name, '--exact', '--test-threads=1'], REPO, minimal, cap, directory)
+            record['results'].append(r); log = combined(r)
+            if (r['returncode'] != 0 or 'running 1 test' not in log
+                    or ('test ' + name + ' ... ok') not in log
+                    or 'test result: ok. 1 passed; 0 failed;' not in log):
+                raise RuntimeError('new seam not exact expected GREEN')
+        name = 'g07_green_terminal_receipt_requires_exact_inventory'
+        if time.monotonic() >= pure_started + 180:
+            raise RuntimeError('pure aggregate deadline')
+        verify_inputs(admission, directory, pure_started + 180)
+        if digest(executable) != binary_hash:
+            raise RuntimeError('test artifact changed')
+        cap = min(30, 180 - (time.monotonic() - pure_started))
+        if cap <= 0:
+            raise RuntimeError('pure aggregate deadline')
+        r = run_step(name, [str(executable), name, '--exact', '--test-threads=1'], REPO, minimal, cap, directory)
+        record['results'].append(r); log = combined(r)
+        if (r['returncode'] != 101 or 'running 1 test' not in log
+                or ('test ' + name + ' ... FAILED') not in log
+                or 'test result: FAILED. 0 passed; 1 failed;' not in log
+                or 'exact frozen GREEN inventory must be admitted: last_claim_kill9_restart_reaps_unknown_once' not in log):
+            raise RuntimeError('not exact intended GREEN inventory assertion RED')
+        record['status'] = 'python87-rust8-green-new-green-inventory-red-observed'
+        record['broader_runtime_admitted'] = False
+    except BaseException as e:
+        record['status'] = 'stopped'; record['error'] = type(e).__name__ + ': ' + str(e)
+        raise
+    finally:
+        try:
+            save(directory / 'terminal.json', record)
+        except BaseException:
+            print('FINAL_RECEIPT_WRITE_UNKNOWN', flush=True)
+        print(directory, flush=True)
+
+
+if __name__ == '__main__':
+    main()

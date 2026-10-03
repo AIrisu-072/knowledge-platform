@@ -1,0 +1,185 @@
+"""Supplemental TEST-ONLY pure RED assertions for pre-runtime integration gaps.
+
+Imports only the reviewed pure policy. No files are written; no process,
+network, archive acquisition/extraction or database operation is performed.
+The missing normalization API returns None through a test-only adapter so its
+absence produces ordinary assertion failures rather than AttributeError.
+Current policy and the original 53 tests must remain frozen until recorded RED.
+"""
+
+import importlib.util
+from pathlib import Path
+import unittest
+
+_source = Path(__file__).with_name("launcher_policy.py")
+_spec = importlib.util.spec_from_file_location("g07_launcher_policy", _source)
+policy = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(policy)
+
+ROOT = "/workspace/scratch/13897606dfde/p6pg.ABCDEFGH"
+OWNER = "11111111-1111-4111-8111-111111111111"
+HANDSHAKE = "22222222-2222-4222-8222-222222222222"
+LAUNCH_ID = "33333333-3333-4333-8333-333333333333"
+CANONICAL_DB_NAME = "p6_g07_1111111111114111_11111111111141118111111111111111"
+OBSOLETE_DB_NAME = "p6_g07_11111111111141118111111111111111"
+
+
+def normalized_fixture(name, kind="directory", mode=0o755, link=None, target=None):
+    return {"name": name, "kind": kind, "mode": mode, "link": link, "target": target}
+
+
+PRIOR = {
+    ".": normalized_fixture("."),
+    "usr": normalized_fixture("usr"),
+    "usr/bin": normalized_fixture("usr/bin"),
+    "usr/share": normalized_fixture("usr/share"),
+    "usr/bin/bison": normalized_fixture("usr/bin/bison", "file"),
+}
+
+
+def member(name, kind="file", mode=0o755, link=None):
+    return {"name": name, "kind": kind, "mode": mode, "link": link}
+
+
+def normalization_result(value, prior):
+    function = getattr(policy, "normalize_archive_member", None)
+    return function(value, prior) if callable(function) else None
+
+
+def child_environment_for_name(name):
+    database = {"name": name, "oid": 16384, "owner": "agent"}
+    return policy.child_environment(
+        ROOT + "/scope.json", ROOT + "/home", ROOT + "/tmp",
+        "claim", OWNER, 1, database, HANDSHAKE, LAUNCH_ID, None,
+    )
+
+
+class DatabaseNameIntegrationTests(unittest.TestCase):
+    def test_canonical_run_prefix_and_database_uuid_are_accepted(self):
+        self.assertEqual(child_environment_for_name(CANONICAL_DB_NAME), {
+            "HOME": ROOT + "/home", "TMPDIR": ROOT + "/tmp", "LC_ALL": "C", "TZ": "UTC", "RUST_BACKTRACE": "0",
+            "P6_G07_SCOPE_PATH": ROOT + "/scope.json", "P6_G07_MODE": "claim",
+            "P6_G07_OWNER": OWNER, "P6_G07_LIMIT": "1", "P6_G07_DATABASE_NAME": CANONICAL_DB_NAME,
+            "P6_G07_DATABASE_OID": "16384", "P6_G07_DATABASE_OWNER": "agent",
+            "P6_G07_CHILD_HANDSHAKE": HANDSHAKE, "P6_G07_TEST_LAUNCH_ID": LAUNCH_ID,
+        })
+
+    def test_obsolete_database_uuid_without_run_prefix_is_rejected(self):
+        self.assertEqual(child_environment_for_name(OBSOLETE_DB_NAME), "REJECT")
+
+    def test_non_lowercase_database_name_is_rejected(self):
+        self.assertEqual(child_environment_for_name(CANONICAL_DB_NAME.upper()), "REJECT")
+
+
+class ArchiveReducerIntegrationTests(unittest.TestCase):
+    def test_ordinary_file_with_validated_directory_ancestors_is_accepted(self):
+        self.assertIs(policy.archive_member_is_safe(member("usr/bin/m4"), PRIOR), True)
+
+    def test_existing_ordinary_directory_can_be_shared(self):
+        self.assertIs(policy.archive_member_is_safe(member("usr/bin", "directory"), PRIOR), True)
+
+    def test_tar_dot_root_directory_is_accepted(self):
+        self.assertIs(policy.archive_member_is_safe(member(".", "directory"), PRIOR), True)
+
+    def test_tar_dot_slash_root_directory_is_accepted(self):
+        self.assertIs(policy.archive_member_is_safe(member("./", "directory"), PRIOR), True)
+
+    def test_tar_dot_root_file_is_rejected(self):
+        self.assertIs(policy.archive_member_is_safe(member("."), PRIOR), False)
+
+    def test_leading_dot_slash_regular_file_is_accepted(self):
+        self.assertIs(policy.archive_member_is_safe(member("./usr/bin/m4"), PRIOR), True)
+
+    def test_missing_directory_ancestor_is_rejected(self):
+        self.assertIs(policy.archive_member_is_safe(member("usr/lib/m4"), PRIOR), False)
+
+    def test_normalized_duplicate_file_is_rejected(self):
+        self.assertIs(policy.archive_member_is_safe(member("./usr/bin/bison"), PRIOR), False)
+
+    def test_safe_internal_existing_file_symlink_is_accepted(self):
+        self.assertIs(policy.archive_member_is_safe(member("usr/bin/yacc", "symlink", 0o777, "bison"), PRIOR), True)
+
+    def test_safe_internal_existing_file_hardlink_is_accepted(self):
+        self.assertIs(policy.archive_member_is_safe(member("usr/bin/yacc", "hardlink", 0o755, "usr/bin/bison"), PRIOR), True)
+
+    def test_escaping_link_is_rejected(self):
+        self.assertIs(policy.archive_member_is_safe(member("usr/bin/yacc", "symlink", 0o777, "../../../outside"), PRIOR), False)
+
+    def test_absolute_link_is_rejected(self):
+        self.assertIs(policy.archive_member_is_safe(member("usr/bin/yacc", "symlink", 0o777, "/usr/bin/bison"), PRIOR), False)
+
+    def test_unknown_link_target_is_rejected(self):
+        self.assertIs(policy.archive_member_is_safe(member("usr/bin/yacc", "symlink", 0o777, "not-yet-extracted"), PRIOR), False)
+
+    def test_member_cannot_traverse_prior_symlink_directory(self):
+        prior = {**PRIOR, "usr/share": normalized_fixture("usr/share", "symlink", 0o777, "bin", "usr/bin")}
+        self.assertIs(policy.archive_member_is_safe(member("usr/share/m4"), prior), False)
+
+
+class ArchiveNormalizationIntegrationTests(unittest.TestCase):
+    def test_normalizer_returns_canonical_ordinary_file(self):
+        self.assertEqual(normalization_result(member("usr/bin/m4"), PRIOR), normalized_fixture("usr/bin/m4", "file"))
+
+    def test_normalizer_canonicalizes_dot_root_directory(self):
+        self.assertEqual(normalization_result(member(".", "directory"), PRIOR), normalized_fixture("."))
+
+    def test_normalizer_canonicalizes_dot_slash_root_directory(self):
+        self.assertEqual(normalization_result(member("./", "directory"), PRIOR), normalized_fixture("."))
+
+    def test_normalizer_rejects_dot_root_file(self):
+        self.assertEqual(normalization_result(member("."), PRIOR), "REJECT")
+
+    def test_normalizer_removes_leading_dot_slash(self):
+        self.assertEqual(normalization_result(member("./usr/bin/m4"), PRIOR), normalized_fixture("usr/bin/m4", "file"))
+
+    def test_normalizer_rejects_alias_duplicate_file(self):
+        self.assertEqual(normalization_result(member("./usr/bin/bison"), PRIOR), "REJECT")
+
+    def test_normalizer_rejects_missing_ancestor(self):
+        self.assertEqual(normalization_result(member("usr/lib/m4"), PRIOR), "REJECT")
+
+    def test_normalizer_returns_internal_symlink_target_and_relative_link(self):
+        self.assertEqual(
+            normalization_result(member("./usr/bin/yacc", "symlink", 0o777, "./bison"), PRIOR),
+            normalized_fixture("usr/bin/yacc", "symlink", 0o777, "bison", "usr/bin/bison"),
+        )
+
+    def test_normalizer_returns_internal_hardlink_target_in_archive_namespace(self):
+        self.assertEqual(
+            normalization_result(member("./usr/bin/yacc", "hardlink", 0o755, "./usr/bin/bison"), PRIOR),
+            normalized_fixture("usr/bin/yacc", "hardlink", 0o755, "usr/bin/bison", "usr/bin/bison"),
+        )
+
+    def test_normalizer_rejects_escaping_symlink_target(self):
+        self.assertEqual(normalization_result(member("usr/bin/yacc", "symlink", 0o777, "../../../outside"), PRIOR), "REJECT")
+
+    def test_normalizer_rejects_absolute_hardlink_target(self):
+        self.assertEqual(normalization_result(member("usr/bin/yacc", "hardlink", 0o755, "/usr/bin/bison"), PRIOR), "REJECT")
+
+    def test_normalizer_rejects_unknown_target(self):
+        self.assertEqual(normalization_result(member("usr/bin/yacc", "symlink", 0o777, "not-yet-extracted"), PRIOR), "REJECT")
+
+    def test_normalizer_rejects_cyclic_existing_target(self):
+        prior = {
+            **PRIOR,
+            "usr/bin/a": normalized_fixture("usr/bin/a", "symlink", 0o777, "b", "usr/bin/b"),
+            "usr/bin/b": normalized_fixture("usr/bin/b", "symlink", 0o777, "a", "usr/bin/a"),
+        }
+        self.assertEqual(normalization_result(member("usr/bin/yacc", "symlink", 0o777, "a"), prior), "REJECT")
+
+    def test_normalizer_rejects_self_link(self):
+        self.assertEqual(normalization_result(member("usr/bin/yacc", "symlink", 0o777, "yacc"), PRIOR), "REJECT")
+
+    def test_normalizer_rejects_target_path_through_prior_link(self):
+        prior = {**PRIOR, "usr/share": normalized_fixture("usr/share", "symlink", 0o777, "bin", "usr/bin")}
+        self.assertEqual(normalization_result(member("usr/bin/yacc", "hardlink", 0o755, "usr/share/bison"), prior), "REJECT")
+
+    def test_normalizer_rejects_hardlink_to_directory(self):
+        self.assertEqual(normalization_result(member("usr/bin/yacc", "hardlink", 0o755, "usr/share"), PRIOR), "REJECT")
+
+    def test_normalizer_rejects_member_parent_traversal_before_normalization(self):
+        self.assertEqual(normalization_result(member("usr/bin/../m4"), PRIOR), "REJECT")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

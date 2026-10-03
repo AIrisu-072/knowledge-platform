@@ -1,0 +1,1355 @@
+{
+  "schema_version": 1,
+  "status": "REVIEWED_EXECUTABLE",
+  "scope": "G07 one owned PG18.6 cluster, one unwired RED and two named GREEN cases only",
+  "base_head": "56ac5fd50140fb9e098a378da46579e6d22bc645",
+  "base_tree": "a6146b0bf3bbb241d918e3b579155e7c6d3dc98f",
+  "repository": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+  "launcher": "/workspace/scratch/13897606dfde/search-g07-launcher/launcher.py",
+  "final_manifest": "/workspace/scratch/13897606dfde/search-g07-launcher/commands.final.json",
+  "run_parent": "/workspace/scratch/13897606dfde",
+  "run_root_pattern": "p6pg.[A-Za-z0-9]{8}",
+  "owner": {
+    "uid": 1000,
+    "gid": 1000,
+    "name": "agent",
+    "umask": 63
+  },
+  "target": "/workspace/scratch/13897606dfde/search-g07-target",
+  "target_contract": {
+    "dev": 27,
+    "inode": 1454531,
+    "uid": 1000,
+    "mode": 448,
+    "growth_baseline": 0,
+    "delete_or_recreate": false,
+    "ownership_receipt": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-target-ownership.json",
+    "ownership_receipt_sha256": "84b1fe4a9b4895a8a9bcb13bb25a566bba91d200a56ba8bf1785e3c4bf4bbccb",
+    "creation_terminal_sha256": "fc11b55856326ef5377f82079a238e2445292997528ce0914e66b4375419198b"
+  },
+  "rust_bin": "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin",
+  "cargo_home": "/workspace/scratch/13897606dfde/organization-tauri-toolchain/cargo-home",
+  "cargo_authority": "Root-agent exclusive Search Cargo assignment acknowledged and recorded before EACH Cargo stage; local lock is not cross-agent proof",
+  "required_final_bindings": [
+    "actual launcher/source/fixture/schema/contract hashes plus managed_bootstrap_entry.py, test_launcher_proxy.py and bootstrap-resume.schema.draft.json as21 total inputs",
+    "actual fixed manifest and approval hashes",
+    "metadata-only signed dependency observation receipt",
+    "source-specific pure RED/GREEN evidence",
+    "all existing tool/interpreter/compiler closure hashes",
+    "per-stage root-agent Cargo statement",
+    "actual compiled test binary and ELF closure review approvals"
+  ],
+  "entrypoints": {
+    "bootstrap": [
+      "/usr/bin/python3.13",
+      "-I",
+      "-B",
+      "/workspace/scratch/13897606dfde/search-g07-launcher/launcher.py",
+      "bootstrap",
+      "--approval",
+      "{FIXED_BOOTSTRAP_APPROVAL}",
+      "--approval-sha256",
+      "{CONTROLLER_PINNED_APPROVAL_SHA256}"
+    ],
+    "bootstrap-resume": [
+      "/usr/bin/python3.13",
+      "-I",
+      "-B",
+      "/workspace/scratch/13897606dfde/search-g07-launcher/launcher.py",
+      "bootstrap-resume",
+      "--approval",
+      "/workspace/scratch/13897606dfde/search-g07-launcher/approval-bootstrap-resume.json",
+      "--approval-sha256",
+      "{CONTROLLER_PINNED_APPROVAL_SHA256}"
+    ],
+    "supervise": [
+      "/usr/bin/python3.13",
+      "-I",
+      "-B",
+      "/workspace/scratch/13897606dfde/search-g07-launcher/launcher.py",
+      "supervise",
+      "--approval",
+      "/workspace/scratch/13897606dfde/search-g07-launcher/approval-supervise.json",
+      "--approval-sha256",
+      "{CONTROLLER_PINNED_APPROVAL_SHA256}"
+    ],
+    "environment": {
+      "HOME": "/workspace/scratch/13897606dfde/search-g07-launcher",
+      "LC_ALL": "C",
+      "TZ": "UTC"
+    },
+    "bootstrap_controller_wrapper": "/workspace/scratch/13897606dfde/search-g07-launcher/managed_bootstrap_entry.py",
+    "bootstrap_dedicated_environment": {
+      "G07_MANAGED_HTTPS_PROXY": "{VALIDATED_SAME_TOOL_INVOCATION_MANAGED_HTTPS_PROXY}"
+    },
+    "environment_base": "empty",
+    "activation": "Complete guarded dispatch is in the frozen review source; no invocation is admitted before independently bound exact GO/inputs/tools/provenance review"
+  },
+  "bootstrap_resume": {
+    "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-installed-adoption.json",
+    "sha256": "a01af8543070fc619d178ff5951a65083f2d3f904f4a5c14edf34a733467fadd"
+  },
+  "configured_build_resume": {
+    "manifest_selector": "bootstrap_resume_boundary='configured-build'; only other supported boundary is original tools-review",
+    "manifest_binding": "bootstrap_resume={path:/workspace/scratch/13897606dfde/search-recovery-evidence/g07-configured-build-adoption.json,sha256:992c1a2fa2765eed971fa2c3b05a287e4c4a4d1e78a7dc9c8e792ddd9b8d628d}",
+    "descriptor": "original compact9 fields plus boundary='configured-build-after-owned-make-stop', configured_stop_sha256, prior_adoption_sha256 and tools_review_sha256; exactly13 keys; same fixed root/run and limits",
+    "inventory": "g07-configured-build-root-inventory.jsonl SHA d1bf4db0e487bdf80548382ff49410363243e14f171e0443bff072e858d5af11;9770nodes/2135968JSONLbytes/248402447regularbytes",
+    "provenance": "g07-configured-build-authenticated-tree-comparison.json SHA 2c37ebf148291b5d79b2cdbed74ff3ffd76d41987419fb50f25e57ed45f94bdb; original source/tools remain authenticated archive-identical, current generated build nodes are fully pinned",
+    "verification": "same full no-follow root/tree/owner/artifact/original32 checks; twelve later successful Git5..8/provider9..11/versions3/data-dir/configure records and original cap-preserving logs; independently bound tools packet and current provider inode/hash/retained readelf closure; failed make actual-15 with exact guard failure and positive owned cleanup separately, elapsed\u22642s",
+    "additional_stage_caps": {
+      "providers": 131072,
+      "configure_and_failed_make": 4194304,
+      "other_stages": 65536
+    },
+    "empty_subdirectories": [
+      "install",
+      "data",
+      "socket",
+      "home",
+      "tmp"
+    ],
+    "tail": "No proxy/acquisition/extraction/tools/version/configure rerun; restore bound tools/providers without executing inspectors; Controller count1, next_label11 for new Git12..15; only make-pipe1798s then unchanged install/PG review/compile/nine pure/initdb/control",
+    "exclusive_receipts": [
+      "receipts/configured-build-adoption.json",
+      "receipts/make-pipe.spawn.json",
+      "receipts/make-pipe.terminal.json",
+      "receipts/launcher-build-resume-error.json"
+    ],
+    "hypothesis": "GNU Make4.4.1 default FIFO jobserver is a plausible unproven cause of the unrecorded transient special inode. --jobserver-style=pipe is the supported anonymous-FD alternative; no inode-kind guard relaxation or generic retries",
+    "future_guard_diagnostic": "retain unexpected inode path, native kind/type bits,uid,inode in the bounded stop error; preserve all old stop/log files"
+  },
+  "make_race_resume": {
+    "manifest_selector": "bootstrap_resume_boundary='configured-build' and bootstrap_resume_continuation='make-race-stop'; no other continuation value is accepted",
+    "manifest_binding": "bootstrap_resume={path:/workspace/scratch/13897606dfde/search-recovery-evidence/g07-make-race-adoption.json,sha256:f82cb2fbd4363e11242590c42e74f3d191ad3eb40f732831c4ebfd6e39157f06}",
+    "descriptor": "configured13 fields plus race_stop_sha256 and configured_adoption_sha256; exactly15 keys; boundary='configured-build-after-owned-make-race-stop'; same exact root/run,12000/8MiB/1GiB caps and five empty later dirs",
+    "inventory": "g07-make-race-root-inventory.jsonl SHA 130ae4068fe6f1db983dc92e383d78a257aa4cadc33deda45b71b61bcfc08ebd;10905nodes/2379749JSONLbytes/289080018regularbytes",
+    "provenance": "g07-make-race-authenticated-tree-comparison.json SHA b004cffa3946b05090a5d154371b35a8b3cd7cfe52c9d218a05256fe11a6585a;source/tools retain authenticated archive bytes; current build tree is independently pinned",
+    "verification": "all existing configured checks plus Git12..15 success and make-pipe actual-15/exact missing-entry failure/\u226498s/positive owned cleanup;50 exact terminals48success+2 known failed builds; bind both prior stops and adoptions; verify original cap-preserving logs and make-pipe argv/env/cap1798",
+    "tail": "No completed stage replay, acquisition, extraction, inspector/version/configure rerun; original provider9..11 reports reused; Controller count1,next_label15 for new Git16..19; only make-rescan1700s then unchanged install onward tail",
+    "exclusive_receipts": [
+      "receipts/make-race-adoption.json",
+      "receipts/make-rescan.spawn.json",
+      "receipts/make-rescan.terminal.json",
+      "receipts/launcher-make-race-resume-error.json"
+    ],
+    "budget": "conservative2 +98 +1700 seconds\u2264original1800-second make budget; no deadline reset or automatic build retry"
+  },
+  "installed_resume": {
+    "manifest_selector": "bootstrap_resume_boundary='installed'; no continuation value or proxy",
+    "manifest_binding": "bootstrap_resume={path:/workspace/scratch/13897606dfde/search-recovery-evidence/g07-installed-adoption.json,sha256:a01af8543070fc619d178ff5951a65083f2d3f904f4a5c14edf34a733467fadd}",
+    "descriptor": "existing15 history fields plus race_adoption_sha256 and installed_stop_sha256; exactly17 keys; boundary='installed-before-postgres-elf-approval'; same exact owned root/run",
+    "inventory": "g07-installed-root-inventory.jsonl SHA 919d32a6f67996ad9add8d3ff4734aaef8d3899e0ea9adf30d0151649b8e888a;13107nodes/2866770JSONLbytes/348066352regularbytes",
+    "limits": {
+      "max_entries": 16000,
+      "max_bytes": 8388608,
+      "max_regular_bytes": 1073741824,
+      "verification_seconds": 120
+    },
+    "provenance": "g07-installed-authenticated-tree-comparison.json SHA de28c76f28c8415bec88b0f5ca7f19808e537565646e70e45b4edf0d8e7e67e6; original source/tools still match authenticated archives; generated build/install nodes are fully pinned",
+    "verification": "all inherited owner/tree/archive/artifact/stop/adoption/approved-tools checks;57 fixed terminals54success+3 known stops including make-rescan/install success and firstPG-inspector actual-15/output overflow; original logs retain their actual caps",
+    "historical_failed_report": "postgres-elf-review-inspect-0 stdout overflow=true,seen200704,retained131072 and exact retained prefix hash verified only as failed observation; never complete closure proof",
+    "empty_subdirectories": [
+      "data",
+      "socket",
+      "home",
+      "tmp"
+    ],
+    "tail": "Skip all acquisition/extraction/tool/version/configure/make/install; restore retained tools/providers without running inspectors; Controller count1,next_label19 for new Git20..23; four new postgres-elf-review-installed-inspect-0..3 reports at262144 then the SAME postgres-elf-review packet/observations and existing compile/nine pure/initdb/control tail",
+    "exclusive_receipts": [
+      "receipts/installed-adoption.json",
+      "receipts/postgres-elf-review-installed-inspect-0.spawn.json",
+      "receipts/postgres-elf-review-installed-inspect-1.spawn.json",
+      "receipts/postgres-elf-review-installed-inspect-2.spawn.json",
+      "receipts/postgres-elf-review-installed-inspect-3.spawn.json",
+      "receipts/launcher-installed-resume-error.json"
+    ],
+    "cap_basis": "independently observed full postgres report234448 bytes, other three\u226410419; all existing readelf observations exit0, no installed PG executable ran;262144 cap applies only to fixed readelf/parser"
+  },
+  "managed_download_transport": {
+    "derivation": "The controller-owned hash-pinned managed_bootstrap_entry.py validates HTTPS_PROXY from the SAME retained tool invocation, then os.execve's the fixed bootstrap CLI with an otherwise empty ordinary entrypoint environment plus G07_MANAGED_HTTPS_PROXY; no subprocess/network probe or alternate route",
+    "launcher_read": "bootstrap alone reads only G07_MANAGED_HTTPS_PROXY, validates before owned-root mutation, retains it on FixedRun and records it once in B/receipts/managed-https-proxy.json; supervise reads no proxy and performs no downloads",
+    "canonical_value": "exact ASCII http://127.0.0.1:<decimal1..65535>, no leading zero, credentials, path, query, fragment, whitespace or fallback",
+    "exposure": "validated value becomes HTTPS_PROXY solely for the eight fixed official HTTPS curl subprocesses; no ambient proxy/auth inheritance, ALL_PROXY or NO_PROXY",
+    "retry_authority": "Historical acquisition only; current installed-state continuation has no proxy/acquisition/extraction path."
+  },
+  "substitutions": {
+    "B": "One exclusive launcher-created canonical root, then verified by retained creation receipt/dev/inode/owner before supervise adoption",
+    "TEST_EXE": "Single parsed process_recovery/test Cargo artifact under exact target/debug/deps, canonical hex basename, actual hash/dev/inode plus independently bound stage review",
+    "PURE_NAME": "One of the exact nine names below",
+    "ELF": "Previously inventoried owned regular ELF only, observed no-follow SHA/dev/inode; never arbitrary requested path",
+    "DB_NAME": "p6_g07_<first16 run UUID hex>_<32 database UUID hex>, validated lowercase restricted alphabet",
+    "DB_OID": "Independently recorded confirmed positive uint32 catalog identity, never supplied arbitrary SQL",
+    "ARTIFACT": "Exactly one of eight literal artifacts below",
+    "OWNER_ROOT": "Directory handles from B only, not a caller-selected extraction destination"
+  },
+  "environments": {
+    "tool": {
+      "HOME": "{B}/home",
+      "TMPDIR": "{B}/tmp",
+      "LC_ALL": "C",
+      "TZ": "UTC",
+      "PATH": "{B}/tools/usr/bin:/usr/bin:/bin"
+    },
+    "download": {
+      "HOME": "{B}/home",
+      "TMPDIR": "{B}/tmp",
+      "LC_ALL": "C",
+      "TZ": "UTC",
+      "PATH": "{B}/tools/usr/bin:/usr/bin:/bin",
+      "HTTPS_PROXY": "{VALIDATED_SAME_TOOL_INVOCATION_MANAGED_HTTPS_PROXY}"
+    },
+    "build": {
+      "HOME": "{B}/home",
+      "TMPDIR": "{B}/tmp",
+      "LC_ALL": "C",
+      "TZ": "UTC",
+      "PATH": "{B}/tools/usr/bin:/usr/bin:/bin",
+      "M4": "{B}/tools/usr/bin/m4",
+      "BISON": "{B}/tools/usr/bin/bison",
+      "FLEX": "{B}/tools/usr/bin/flex",
+      "BISON_PKGDATADIR": "{B}/tools/usr/share/bison",
+      "CC": "/usr/bin/x86_64-linux-gnu-gcc-14"
+    },
+    "bison_data": {
+      "HOME": "{B}/home",
+      "TMPDIR": "{B}/tmp",
+      "LC_ALL": "C",
+      "TZ": "UTC",
+      "PATH": "{B}/tools/usr/bin:/usr/bin:/bin",
+      "BISON_PKGDATADIR": "{B}/tools/usr/share/bison"
+    },
+    "cargo": {
+      "HOME": "{B}/home",
+      "TMPDIR": "{B}/tmp",
+      "LC_ALL": "C",
+      "TZ": "UTC",
+      "PATH": "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin:/usr/bin:/bin",
+      "CARGO_HOME": "/workspace/scratch/13897606dfde/organization-tauri-toolchain/cargo-home",
+      "CARGO_TARGET_DIR": "/workspace/scratch/13897606dfde/search-g07-target",
+      "RUSTC": "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin/rustc",
+      "RUSTDOC": "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin/rustdoc",
+      "RUST_BACKTRACE": "0",
+      "CARGO_NET_OFFLINE": "true",
+      "SQLX_OFFLINE": "true",
+      "CARGO_PROFILE_DEV_DEBUG": "0",
+      "CARGO_PROFILE_TEST_DEBUG": "0",
+      "CARGO_INCREMENTAL": "0",
+      "CARGO_TERM_COLOR": "never"
+    },
+    "pure": {
+      "HOME": "{B}/home",
+      "TMPDIR": "{B}/tmp",
+      "LC_ALL": "C",
+      "TZ": "UTC",
+      "RUST_BACKTRACE": "0"
+    },
+    "postgres": {
+      "HOME": "{B}/home",
+      "TMPDIR": "{B}/tmp",
+      "LC_ALL": "C",
+      "TZ": "UTC",
+      "PATH": "{B}/install/bin:/usr/bin:/bin"
+    },
+    "psql": {
+      "HOME": "{B}/home",
+      "TMPDIR": "{B}/tmp",
+      "LC_ALL": "C",
+      "TZ": "UTC",
+      "PATH": "{B}/install/bin:/usr/bin:/bin",
+      "PGCONNECT_TIMEOUT": "3"
+    },
+    "runtime_test": {
+      "HOME": "{B}/home",
+      "TMPDIR": "{B}/tmp",
+      "LC_ALL": "C",
+      "TZ": "UTC",
+      "RUST_BACKTRACE": "0",
+      "P6_G07_SCOPE_PATH": "{B}/scope.json",
+      "P6_G07_TEST_LAUNCH_ID": "{NEW_LAUNCH_UUID}"
+    }
+  },
+  "budgets": {
+    "floor_bytes": 1610612736,
+    "growth_bytes": 8589934592,
+    "disk_poll_seconds": 1,
+    "growth_scope": "B + WHOLE target fromzero + launcher + all current/earlier g07-* evidence, max(logical,allocated) for every inode, links never followed outside owned roots",
+    "download_connect_seconds": 30,
+    "download_each_seconds": 60,
+    "download_total_seconds": 300,
+    "inspection_seconds": 30,
+    "inventory_each_seconds": 30,
+    "extract_each_seconds": 60,
+    "elf_review_wait_each_seconds": 300,
+    "elf_review_wait_count": 2,
+    "configure_seconds": 180,
+    "make_seconds": 1800,
+    "configured_resume_make_seconds": 1798,
+    "make_race_resume_seconds": 1700,
+    "install_seconds": 180,
+    "compile_seconds": 600,
+    "pure_each_seconds": 30,
+    "pure_pass_total_seconds": 180,
+    "initdb_seconds": 60,
+    "version_control_seconds": 15,
+    "identity_query_seconds": 5,
+    "server_start_seconds": 15,
+    "server_lifetime_seconds": 1800,
+    "case_seconds": 120,
+    "case_total_seconds": 360,
+    "terminal_seconds": 80,
+    "watchdog_observation_seconds": 50,
+    "server_stop_seconds": 25,
+    "terminal_receipt_seconds": 5,
+    "stage_TERM_grace_seconds": 5,
+    "stage_KILL_no_later_seconds": 10,
+    "runtime_stream_bytes": 65536,
+    "ordinary_inspection_stream_bytes": 65536,
+    "fixed_readelf_stream_and_parser_bytes": 262144,
+    "official_build_compiler_stream_bytes": 4194304,
+    "cargo_json_total_bytes": 4194304,
+    "cargo_json_line_bytes": 65536,
+    "metadata_decompressed_bytes": 134217728,
+    "deb_data_tar_bytes": 134217728,
+    "archive_members_each": 100000,
+    "archive_expanded_bytes_each": 2147483648,
+    "ordinary_json_bytes": 65536,
+    "registry_bytes": 65536,
+    "registry_line_bytes": 4096,
+    "controller_packet_bytes": 256,
+    "controller_packet_count_max": 8,
+    "post_cluster_review_wait_seconds": 300,
+    "cap_semantics": "All writing/executable stages include owned cleanup/drain; in-process observations are cooperative and late/incomplete measurement stops. No hard kernel IO preemption or hostile detached-daemon claim",
+    "growth_measurement_rescan": "FileNotFoundError alone permits ONE complete same-tree rescan after discarding partial count/stack, within the original shared1s deadline; second race/late/permissions/unexpected kind STOP; record last missing path. Free floor checked before growth scanning. Incomplete count never becomes accepted growth evidence",
+    "stop_dimensions": "outer status stopped-retained with actual owned-stage returncode facts; incomplete measurement cause is separate from known owned-stop/reap stage evidence"
+  },
+  "artifacts": [
+    {
+      "id": "publisher-checksum",
+      "url": "https://ftp.postgresql.org/pub/source/v18.6/postgresql-18.6.tar.bz2.sha256",
+      "relative_destination": "downloads/postgresql-18.6.tar.bz2.sha256",
+      "max_bytes": 4096,
+      "record_actual_sha256": true,
+      "declared_archive_sha256": "555610c24d53e4316da5b7d3fc25c279d96856d5e0e23ee308c328c5fa881d9f"
+    },
+    {
+      "id": "release",
+      "url": "https://deb.debian.org/debian/dists/trixie/Release",
+      "relative_destination": "downloads/Release",
+      "bytes": 138612,
+      "sha256": "ed56aac47e7911e65ee63aae8d67e29f20e023f840e49f8ed037043a33de138a"
+    },
+    {
+      "id": "release-signature",
+      "url": "https://deb.debian.org/debian/dists/trixie/Release.gpg",
+      "relative_destination": "downloads/Release.gpg",
+      "bytes": 1760,
+      "sha256": "9f80d5c8e4f9fd918a8b4fedd35c00ecc6c1a3ca9eddbc981c83823d4a4b8dc4"
+    },
+    {
+      "id": "packages-index",
+      "url": "https://deb.debian.org/debian/dists/trixie/main/binary-amd64/Packages.xz",
+      "relative_destination": "downloads/Packages.xz",
+      "bytes": 9678380,
+      "sha256": "7778d3e3f303b7ddb8ce0fe7c8d57473a076c6bf2e8f241f75421d2396352498"
+    },
+    {
+      "id": "m4",
+      "url": "https://deb.debian.org/debian/pool/main/m/m4/m4_1.4.19-8_amd64.deb",
+      "relative_destination": "downloads/m4_1.4.19-8_amd64.deb",
+      "bytes": 293956,
+      "sha256": "221b3e224708c1da2a1a88b6824380593579b2254ae7d914afa14cbd5d343334"
+    },
+    {
+      "id": "bison",
+      "url": "https://deb.debian.org/debian/pool/main/b/bison/bison_3.8.2+dfsg-1+b2_amd64.deb",
+      "relative_destination": "downloads/bison_3.8.2+dfsg-1+b2_amd64.deb",
+      "bytes": 1169636,
+      "sha256": "ce6eb1f7aad18850e32d223a68f54bcbe756d74f138c8ec5460ad9d220f4d335"
+    },
+    {
+      "id": "flex",
+      "url": "https://deb.debian.org/debian/pool/main/f/flex/flex_2.6.4-8.2+b4_amd64.deb",
+      "relative_destination": "downloads/flex_2.6.4-8.2+b4_amd64.deb",
+      "bytes": 423136,
+      "sha256": "75f963765232c356d0a2fb70e780dfa9de2425aca036ec60eefb7fc98a2c905b"
+    },
+    {
+      "id": "postgresql",
+      "url": "https://ftp.postgresql.org/pub/source/v18.6/postgresql-18.6.tar.bz2",
+      "relative_destination": "downloads/postgresql-18.6.tar.bz2",
+      "bytes": 22632314,
+      "sha256": "555610c24d53e4316da5b7d3fc25c279d96856d5e0e23ee308c328c5fa881d9f"
+    }
+  ],
+  "package_pins": [
+    {
+      "package": "m4",
+      "version": "1.4.19-8",
+      "architecture": "amd64",
+      "filename": "pool/main/m/m4/m4_1.4.19-8_amd64.deb",
+      "bytes": 293956,
+      "sha256": "221b3e224708c1da2a1a88b6824380593579b2254ae7d914afa14cbd5d343334",
+      "depends": "libc6 (>= 2.38)",
+      "pre_depends": null
+    },
+    {
+      "package": "bison",
+      "version": "2:3.8.2+dfsg-1+b2",
+      "architecture": "amd64",
+      "filename": "pool/main/b/bison/bison_3.8.2+dfsg-1+b2_amd64.deb",
+      "bytes": 1169636,
+      "sha256": "ce6eb1f7aad18850e32d223a68f54bcbe756d74f138c8ec5460ad9d220f4d335",
+      "depends": "m4, libc6 (>= 2.38)",
+      "pre_depends": null
+    },
+    {
+      "package": "flex",
+      "version": "2.6.4-8.2+b4",
+      "architecture": "amd64",
+      "filename": "pool/main/f/flex/flex_2.6.4-8.2+b4_amd64.deb",
+      "bytes": 423136,
+      "sha256": "75f963765232c356d0a2fb70e780dfa9de2425aca036ec60eefb7fc98a2c905b",
+      "depends": "libc6 (>= 2.38), m4",
+      "pre_depends": "debconf | debconf-2.0"
+    }
+  ],
+  "keyrings": {
+    "/usr/share/keyrings/debian-archive-trixie-automatic.pgp": {
+      "sha256": "8dbd0029697f8c9b009eeb9a153c6536b62ca031fa0a5b4cec74e8d718fccef6",
+      "fingerprint": "04B54C3CDCA79751B16BC6B5225629DF75B188BD"
+    },
+    "/usr/share/keyrings/debian-archive-trixie-stable.pgp": {
+      "sha256": "abced156a22aa8683b228299ac35c1ea51515eef900cec0e562f56716dfe3915",
+      "fingerprint": "41587F7DB8C774BCCF131416762F67A0B2C39DE4"
+    }
+  },
+  "commands": [
+    {
+      "id": "download",
+      "repeat": "exact8 artifact IDs only",
+      "argv": [
+        "/usr/bin/curl",
+        "--fail",
+        "--silent",
+        "--show-error",
+        "--proto",
+        "=https",
+        "--connect-timeout",
+        "30",
+        "--max-time",
+        "60",
+        "--max-redirs",
+        "0",
+        "--max-filesize",
+        "{EXACT_ARTIFACT_MAX_BYTES}",
+        "--output",
+        "-",
+        "{EXACT_ARTIFACT_URL}"
+      ],
+      "stdout": "bounded binary stream to O_NOFOLLOW/O_EXCL owned artifact FD; full artifact retained, diagnostic log bounded",
+      "cwd": "{B}",
+      "environment": "download",
+      "seconds": 60
+    },
+    {
+      "id": "verify-automatic-signature",
+      "argv": [
+        "/usr/bin/sqv",
+        "--keyring",
+        "/usr/share/keyrings/debian-archive-trixie-automatic.pgp",
+        "{B}/downloads/Release.gpg",
+        "{B}/downloads/Release"
+      ],
+      "cwd": "{B}",
+      "environment": "tool",
+      "seconds": 30
+    },
+    {
+      "id": "verify-stable-signature",
+      "argv": [
+        "/usr/bin/sqv",
+        "--keyring",
+        "/usr/share/keyrings/debian-archive-trixie-stable.pgp",
+        "{B}/downloads/Release.gpg",
+        "{B}/downloads/Release"
+      ],
+      "cwd": "{B}",
+      "environment": "tool",
+      "seconds": 30
+    },
+    {
+      "id": "decompress-index",
+      "argv": [
+        "/usr/bin/xz",
+        "--decompress",
+        "--stdout",
+        "{B}/downloads/Packages.xz"
+      ],
+      "cwd": "{B}",
+      "environment": "tool",
+      "seconds": 30,
+      "structured_stdout_cap": 134217728
+    },
+    {
+      "id": "deb-control",
+      "repeat": "m4,bison,flex only",
+      "argv": [
+        "/usr/bin/dpkg-deb",
+        "--field",
+        "{EXACT_DEB_PATH}"
+      ],
+      "cwd": "{B}",
+      "environment": "tool",
+      "seconds": 30
+    },
+    {
+      "id": "deb-data-tar",
+      "repeat": "m4,bison,flex only",
+      "argv": [
+        "/usr/bin/dpkg-deb",
+        "--fsys-tarfile",
+        "{EXACT_DEB_PATH}"
+      ],
+      "cwd": "{B}",
+      "environment": "tool",
+      "seconds": 30,
+      "structured_stdout_cap": 134217728
+    },
+    {
+      "id": "internal-inventory",
+      "repeat": "exact4 artifact IDs only",
+      "argv": [
+        "/usr/bin/python3.13",
+        "-I",
+        "-B",
+        "/workspace/scratch/13897606dfde/search-g07-launcher/launcher.py",
+        "internal-inventory",
+        "--owned-root",
+        "{B}",
+        "--artifact-id",
+        "{EXACT_ARCHIVE_ID}",
+        "--plan-sha256",
+        "{IMMUTABLE_PARENT_PLAN_SHA256}"
+      ],
+      "cwd": "{B}",
+      "environment": "tool",
+      "seconds": 30,
+      "authority": "fixed owned parent-created inventory plan; exact archive SHA plus rooted directory identity; no arbitrary destination/command"
+    },
+    {
+      "id": "internal-extract",
+      "repeat": "exact4 artifact IDs only after cumulative approved inventory",
+      "argv": [
+        "/usr/bin/python3.13",
+        "-I",
+        "-B",
+        "/workspace/scratch/13897606dfde/search-g07-launcher/launcher.py",
+        "internal-extract",
+        "--owned-root",
+        "{B}",
+        "--artifact-id",
+        "{EXACT_ARCHIVE_ID}",
+        "--plan-sha256",
+        "{IMMUTABLE_PARENT_PLAN_SHA256}"
+      ],
+      "cwd": "{B}",
+      "environment": "tool",
+      "seconds": 60,
+      "authority": "canonical normalized decisions retained by inventory, exact archive/content/plan hashes and owner handles; no raw dpkg/tar extraction"
+    },
+    {
+      "id": "elf-inspection",
+      "repeat": "every staged executable ELF and required generated PG binary/provider",
+      "argv": [
+        "/usr/bin/x86_64-linux-gnu-readelf",
+        "--file-header",
+        "--program-headers",
+        "--dynamic",
+        "--version-info",
+        "{EXACT_OWNED_ELF}"
+      ],
+      "cwd": "{B}",
+      "environment": "tool",
+      "seconds": 30,
+      "stream_cap": 262144
+    },
+    {
+      "id": "existing-provider-inspection",
+      "argv": [
+        "/usr/bin/x86_64-linux-gnu-readelf",
+        "--file-header",
+        "--program-headers",
+        "--dynamic",
+        "--version-info",
+        "{EXACT_CANONICAL_REVIEWED_PROVIDER}"
+      ],
+      "cwd": "{B}",
+      "environment": "tool",
+      "seconds": 30,
+      "stream_cap": 262144,
+      "authority": "existing library only, fixed reviewed path/hash/dev/inode and retained exported-version observation; unknown dependency stops"
+    },
+    {
+      "id": "tools-elf-review",
+      "effect": "no subprocess; bounded controller closure-approval wait before any staged executable",
+      "seconds": 300
+    },
+    {
+      "id": "m4-version",
+      "argv": [
+        "{B}/tools/usr/bin/m4",
+        "--version"
+      ],
+      "cwd": "{B}",
+      "environment": "tool",
+      "seconds": 15
+    },
+    {
+      "id": "bison-version",
+      "argv": [
+        "{B}/tools/usr/bin/bison",
+        "--version"
+      ],
+      "cwd": "{B}",
+      "environment": "tool",
+      "seconds": 15
+    },
+    {
+      "id": "flex-version",
+      "argv": [
+        "{B}/tools/usr/bin/flex",
+        "--version"
+      ],
+      "cwd": "{B}",
+      "environment": "tool",
+      "seconds": 15
+    },
+    {
+      "id": "bison-data-directory",
+      "argv": [
+        "{B}/tools/usr/bin/bison",
+        "--print-datadir"
+      ],
+      "cwd": "{B}",
+      "environment": "bison_data",
+      "seconds": 15
+    },
+    {
+      "id": "configure",
+      "argv": [
+        "{B}/source/postgresql-18.6/configure",
+        "--prefix={B}/install",
+        "--without-readline",
+        "--without-zlib",
+        "--without-icu"
+      ],
+      "cwd": "{B}/build",
+      "environment": "build",
+      "seconds": 180,
+      "ordinary_stream_cap": 4194304
+    },
+    {
+      "id": "make",
+      "argv": [
+        "/usr/bin/make",
+        "-j2",
+        "--jobserver-style=pipe"
+      ],
+      "cwd": "{B}/build",
+      "environment": "build",
+      "seconds": 1800,
+      "ordinary_stream_cap": 4194304
+    },
+    {
+      "id": "make-pipe",
+      "argv": [
+        "/usr/bin/make",
+        "-j2",
+        "--jobserver-style=pipe"
+      ],
+      "cwd": "{B}/build",
+      "environment": "build",
+      "seconds": 1798,
+      "ordinary_stream_cap": 4194304,
+      "requires": "only fixed configured-build adoption; no rerun configure or earlier stages; prior1.294s conservatively debited2s"
+    },
+    {
+      "id": "make-rescan",
+      "argv": [
+        "/usr/bin/make",
+        "-j2",
+        "--jobserver-style=pipe"
+      ],
+      "cwd": "{B}/build",
+      "environment": "build",
+      "seconds": 1700,
+      "ordinary_stream_cap": 4194304,
+      "requires": "only fixed make-race adoption; no completed-step replay; prior2+98s conservatively debited"
+    },
+    {
+      "id": "install",
+      "argv": [
+        "/usr/bin/make",
+        "install"
+      ],
+      "cwd": "{B}/build",
+      "environment": "build",
+      "seconds": 180,
+      "ordinary_stream_cap": 4194304
+    },
+    {
+      "id": "postgres-elf-review",
+      "effect": "no subprocess; bounded exact controller approval of generated binary/private-provider closure before version/initdb/control/psql/server",
+      "seconds": 300,
+      "library_search": "proposal: PG-only exactB/install/lib, one approved RPATH or RUNPATH tag; default Debian remains no search tags; no LD_*"
+    },
+    {
+      "id": "postgres-version",
+      "argv": [
+        "{B}/install/bin/postgres",
+        "--version"
+      ],
+      "cwd": "{B}",
+      "environment": "postgres",
+      "seconds": 15
+    },
+    {
+      "id": "initdb-version",
+      "argv": [
+        "{B}/install/bin/initdb",
+        "--version"
+      ],
+      "cwd": "{B}",
+      "environment": "postgres",
+      "seconds": 15
+    },
+    {
+      "id": "compile-helper-green",
+      "argv": [
+        "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin/cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "-j",
+        "2",
+        "-p",
+        "outbox-delivery",
+        "--test",
+        "process_recovery",
+        "--no-run",
+        "--message-format=json"
+      ],
+      "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+      "environment": "cargo",
+      "seconds": 600,
+      "ordinary_stream_cap": 4194304,
+      "artifact": "exactly one process_recovery/test profile.test=true executable"
+    },
+    {
+      "id": "pure-rust",
+      "argv": [
+        "{APPROVED_TEST_EXE}",
+        "{EXACT_PURE_NAME}",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+      "environment": "pure",
+      "seconds": 30,
+      "pass_aggregate_seconds": 180
+    },
+    {
+      "id": "initdb",
+      "argv": [
+        "{B}/install/bin/initdb",
+        "-D",
+        "{B}/data",
+        "--encoding=UTF8",
+        "--locale-provider=libc",
+        "--locale=C",
+        "--auth-local=peer",
+        "--auth-host=reject",
+        "--username=agent"
+      ],
+      "cwd": "{B}",
+      "environment": "postgres",
+      "seconds": 60,
+      "count": 1
+    },
+    {
+      "id": "offline-control",
+      "argv": [
+        "{B}/install/bin/pg_controldata",
+        "-D",
+        "{B}/data"
+      ],
+      "cwd": "{B}",
+      "environment": "postgres",
+      "seconds": 15,
+      "proof": "B/receipts/cluster-control.json strict observed pre-spawn proof and retained stdout"
+    },
+    {
+      "id": "server",
+      "argv": [
+        "{B}/install/bin/postgres",
+        "-D",
+        "{B}/data",
+        "-c",
+        "listen_addresses=",
+        "-c",
+        "unix_socket_directories={B}/socket",
+        "-c",
+        "unix_socket_permissions=0700",
+        "-c",
+        "port=5432",
+        "-c",
+        "max_connections=16",
+        "-c",
+        "shared_buffers=32MB",
+        "-c",
+        "work_mem=4MB"
+      ],
+      "cwd": "{B}",
+      "environment": "postgres",
+      "seconds": 1800,
+      "startup_seconds": 15,
+      "count": 1,
+      "retention": "direct owned Popen handle held by foreground supervise command; no daemon/restart"
+    },
+    {
+      "id": "server-identity-query",
+      "argv": [
+        "{B}/install/bin/psql",
+        "--no-psqlrc",
+        "--no-password",
+        "--set",
+        "ON_ERROR_STOP=1",
+        "--tuples-only",
+        "--no-align",
+        "--host",
+        "{B}/socket",
+        "--port",
+        "5432",
+        "--username",
+        "agent",
+        "--dbname",
+        "postgres",
+        "--command",
+        "SELECT json_build_object('server_version_num',current_setting('server_version_num')::int,'data_directory',current_setting('data_directory'),'config_file',current_setting('config_file'),'hba_file',current_setting('hba_file'),'listen_addresses',current_setting('listen_addresses'),'unix_socket_directories',current_setting('unix_socket_directories'),'port',current_setting('port')::int,'current_user',current_user,'current_database',current_database(),'system_identifier',(SELECT system_identifier::text FROM pg_control_system()),'fsync',current_setting('fsync'),'full_page_writes',current_setting('full_page_writes'),'max_connections',current_setting('max_connections')::int,'shared_buffers',current_setting('shared_buffers'),'work_mem',current_setting('work_mem'));"
+      ],
+      "cwd": "{B}",
+      "environment": "psql",
+      "seconds": 5
+    },
+    {
+      "id": "runtime-red",
+      "argv": [
+        "{APPROVED_TEST_EXE}",
+        "last_claim_kill9_restart_reaps_unknown_once",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+      "environment": "runtime_test",
+      "seconds": 120,
+      "children": 1,
+      "concurrency": 1,
+      "expected_exit": 101,
+      "expected_cause": "G07 child process path not wired"
+    },
+    {
+      "id": "compile-runtime-green",
+      "same_argv_as": "compile-helper-green",
+      "environment": "cargo",
+      "seconds": 600,
+      "ordinary_stream_cap": 4194304,
+      "requires": "exact new source/fixture review plus root-agent Cargo statement while original server remains supervised"
+    },
+    {
+      "id": "runtime-green-last",
+      "argv": [
+        "{APPROVED_TEST_EXE}",
+        "last_claim_kill9_restart_reaps_unknown_once",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+      "environment": "runtime_test",
+      "seconds": 120,
+      "children": 3,
+      "concurrency": 2
+    },
+    {
+      "id": "runtime-green-four",
+      "argv": [
+        "{APPROVED_TEST_EXE}",
+        "four_processes_disjoint_claims_and_recover_expired",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+      "environment": "runtime_test",
+      "seconds": 120,
+      "children": 5,
+      "concurrency": 4
+    },
+    {
+      "id": "exact-post-cleanup-catalog-absence",
+      "repeat": "one per confirmed-cleanup named launch only",
+      "argv": [
+        "{B}/install/bin/psql",
+        "--no-psqlrc",
+        "--no-password",
+        "--set",
+        "ON_ERROR_STOP=1",
+        "--tuples-only",
+        "--no-align",
+        "--host",
+        "{B}/socket",
+        "--port",
+        "5432",
+        "--username",
+        "agent",
+        "--dbname",
+        "postgres",
+        "--command",
+        "SELECT count(*)::text FROM pg_database WHERE datname = '{EXACT_RESTRICTED_DB_NAME}' OR oid = {EXACT_POSITIVE_UINT32_DB_OID};"
+      ],
+      "cwd": "{B}",
+      "environment": "psql",
+      "seconds": 5,
+      "expected_stdout": "0",
+      "case_deadline": "included inside the same120-second launch cap",
+      "forbidden": "no during-test watcher, mutation, retry DDL, FORCE or backend termination"
+    },
+    {
+      "id": "terminal-cleanup",
+      "effect": "workers observed <=50; own still-matching server handle TERM10/INT10/QUIT5; receipt5",
+      "seconds": 80
+    },
+    {
+      "id": "clippy",
+      "argv": [
+        "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin/cargo",
+        "clippy",
+        "--locked",
+        "--offline",
+        "-j",
+        "2",
+        "-p",
+        "outbox-delivery",
+        "--test",
+        "process_recovery",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+      "environment": "cargo",
+      "seconds": 600,
+      "ordinary_stream_cap": 4194304,
+      "requires": "after owned server exit; separate exact review/root-agent Cargo statement"
+    },
+    {
+      "id": "rustfmt-check",
+      "argv": [
+        "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin/rustfmt",
+        "--edition",
+        "2024",
+        "--check",
+        "crates/outbox-delivery/tests/process_recovery.rs",
+        "crates/outbox-delivery/tests/support/postgres.rs"
+      ],
+      "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+      "environment": "cargo",
+      "seconds": 30
+    },
+    {
+      "id": "git-closure",
+      "argv_prefix": [
+        "/usr/bin/git",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.untrackedCache=false"
+      ],
+      "exact_readonly_queries": [
+        [
+          "rev-parse",
+          "HEAD"
+        ],
+        [
+          "rev-parse",
+          "HEAD^{tree}"
+        ],
+        [
+          "diff",
+          "--no-ext-diff",
+          "--no-textconv",
+          "--name-only",
+          "HEAD",
+          "--"
+        ],
+        [
+          "ls-files",
+          "--others",
+          "--exclude-standard"
+        ],
+        [
+          "diff",
+          "--no-ext-diff",
+          "--no-textconv",
+          "--check"
+        ]
+      ],
+      "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+      "environment": "pure",
+      "seconds_each": 15,
+      "tracked_changes_allowed": [
+        "crates/outbox-delivery/tests/process_recovery.rs",
+        "crates/outbox-delivery/tests/support/postgres.rs"
+      ]
+    }
+  ],
+  "pure_rust_exact_names": [
+    "g07_fixture_configuration_fails_closed",
+    "g07_cleanup_requires_exact_owned_identity",
+    "g07_unknown_database_outcome_is_not_success",
+    "g07_deadlines_do_not_restart_between_phases",
+    "g07_child_environment_is_allowlisted",
+    "g07_child_output_is_bounded_and_kill_targets_owned_handle",
+    "g07_linux_process_identity_parses_final_parenthesis",
+    "g07_terminal_receipt_requires_exact_owned_cleanup",
+    "g07_green_terminal_receipt_requires_exact_inventory"
+  ],
+  "controller_protocol": {
+    "transport": "retained foreground tool-session stdin; no ambient approval or arbitrary command",
+    "packet_exact_keys": [
+      "sha256",
+      "stage"
+    ],
+    "encoding": "canonical ASCII JSON, sorted keys, compact separators, one newline, <=256bytes",
+    "bootstrap_order": [
+      "tools-elf-review",
+      "postgres-elf-review"
+    ],
+    "runtime_order": [
+      "runtime-red",
+      "compile-runtime-green",
+      "runtime-green-last",
+      "runtime-green-four",
+      "quality",
+      "finish"
+    ],
+    "quality_boundary": "terminal cleanup and positively observed server exit finish before quality; quality and finish review waits are separately capped300seconds each, with no live cluster or DB capability",
+    "runtime_request_files": [
+      "00-runtime-red.json",
+      "01-compile-runtime-green.json",
+      "02-runtime-green-last.json",
+      "03-runtime-green-four.json",
+      "04-quality.json",
+      "05-finish.json"
+    ],
+    "failure": "EOF, wrong/repeated stage, excess bytes, digest mismatch or missing GO stops dependent stage; no restart/retry or widening",
+    "Cargo_statement": "Only compile-runtime-green/quality carry root-agent statement UUID; bootstrap compile has independently bound bootstrap Cargo statement"
+  },
+  "forbidden": [
+    "arbitrary command/URL/executable/environment",
+    "shell=True/eval",
+    "sudo/system install/apt/dpkg -i",
+    "maintainer scripts/triggers/services",
+    "credentials or ambient PG/Docker/cloud/auth",
+    "LD_LIBRARY_PATH/LD_PRELOAD/global linker config",
+    "unrelated cleanup/delete/recreate",
+    "server restart or second cluster",
+    "registry-derived worker signals",
+    "DDL retries/FORCE/backend terminate",
+    "G08/suites/P3/P7/Audit/Toolbox probes",
+    "publication/merge/deploy"
+  ],
+  "evidence_meaning": "Named generic real-worker process death/replacement and SQL-forced expiry only; no server-crash/power-loss/natural-expiry/production/Search publication/P6/P7 completion or historical-stop clearance",
+  "admission_note": "Prepared exact executable candidate only. This schema tag and local files do not grant permission. Do not invoke until independent exact-manifest GO; current parent scope/resource confirmation is recorded separately.",
+  "input_sha256": {
+    "/workspace/scratch/13897606dfde/search-g07-launcher/launcher.py": "07c4bb91b67f199f217b74d690667e82b5b027718be90811ae8b1a4a4c58c598",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/launcher_policy.py": "5e73e089616cfd8e6838129f5abe739cd59586639b2eb246bd2ffe6a1a69a724",
+    "/workspace/scratch/13897606dfde/search-g07-owned-recovery/crates/outbox-delivery/tests/process_recovery.rs": "211c19d6949d907a8da299e4405ca19cb49c61b89a58dce04e082266a103f42e",
+    "/workspace/scratch/13897606dfde/search-g07-owned-recovery/crates/outbox-delivery/tests/support/postgres.rs": "87cb1dc2edf8ba7f0dd471f12363d4832c46be1f07a8bf18c5f236d2795de4c0",
+    "/workspace/scratch/13897606dfde/search-g07-owned-recovery/Cargo.toml": "6bd7d132cfb539579c54e03d1b48ab1a456a547fd77ad7782bb59ec9aa3df1e1",
+    "/workspace/scratch/13897606dfde/search-g07-owned-recovery/Cargo.lock": "368e5b43a7a13976eb0c4b2b0bb5c604fda42a38d86f4b707e73b4511c8a6b95",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/scope.schema.json": "62c3850c7de5bf606fe47bc90def670ef83f36b5a2bc6a2401a6cae5462b2369",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/approval.schema.draft.json": "e5bac0a30701ab336408ba9a6468c00e3b1cd7e6784a09a79e11afeef574cedc",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/request.schema.draft.json": "b40b54b9de25d6e0e28baffc3d93f8d9995829a2b4d0c2d6cf4b8743f86d0415",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/cluster-control.schema.draft.json": "d2f5b97031b1784c6dd3b3f16e75333c4aa1fca5314f70a95d3ed2288b71b216",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/observations.schema.draft.json": "07fb27ccf8f159ba31d23ddc5472d4dbb553e52a872faf9ea3e413c65b6682cb",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/test-receipt.schema.draft.json": "cd5078e3caba67fe94c68e66e5ca836c501432ccccde76c144b20dc41211f1a3",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/execution-seams.contract.json": "adc154ff9ae7382ffa82a27a16c3e6d08dbac88a99f04cc733c21d7e7f56c45b",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_policy.py": "910334847887b763014f14c2453350f74f7c9384b75ab239e41d6159f883299c",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_integration.py": "f0644f46310d27adf93741b7d310debce7d11ee562a096bf42a6cf347d4145db",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_execution.py": "b285cf59979071f61430504ca519d8592fc947dfec72bd653f0fa19a01163fd2",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_utf8.py": "33cd9f97ac3f9fdcfc9f0f4dd87e241ce60df9898ad445dba10b4e0d366801b2",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_pg_library.py": "f0fb569df42347ac4d5c26aefbb31e7e317e04cc9853a1df4b5646d9153939bf",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/managed_bootstrap_entry.py": "6b4499755e91c67c1bf4e60ffb209a357ec95bc6cd233b138aa572e8f9c912e8",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_proxy.py": "fc51d97dd3352683f1d2af517ecc12b6dfde9d4915e19b8d8fceb5feb6f07da9",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/bootstrap-resume.schema.draft.json": "d5f00b13cec951b5e8480ccf33c2388246f9f4edf1671489c4c2f9d1ea33de7f"
+  },
+  "tool_sha256": {
+    "/usr/bin/python3.13": "889c603f0d17cb54060951bcf4c4f9b8c9ebd9e52b392c70209bbb9755d797d9",
+    "/usr/bin/curl": "a353e3e5ca53a2b856257e7cf6e33f46ec0e6ced903846d69864d354d557cb15",
+    "/usr/bin/sqv": "48c720d78ad921e2f6d948ee4bf6d2e4bf5e2249e52a67a07f501c5a8b599815",
+    "/usr/bin/xz": "133d08171b67ba0216b26bfd523b91442a91a1a9a253ba016849b85b6f70d088",
+    "/usr/bin/dpkg-deb": "5346e5fdfdc81d58bbc9d2a3de20ff3738dc479cdb04cc52b91503cbb13440eb",
+    "/usr/bin/x86_64-linux-gnu-readelf": "4a387d80a70e6e97ef940a666fab59d5c38e7cf19ff907192fa983cb8505a7de",
+    "/usr/bin/x86_64-linux-gnu-gcc-14": "a23ecab8ff08f09ad8c80602c2c5df7f49e09c25905cb8975902e101bf72635f",
+    "/usr/bin/make": "8a229baf64671988cfb5af43ba3070c6ce7214cf32bcf96155115559d1466fa7",
+    "/usr/bin/perl": "b85210f03baeb859ee20b1324e59497f27f319eda9e2d3d1ecd163a79d884a7d",
+    "/usr/bin/git": "356db14e102d68a1a37d8a1ac577dfd678d45d46e92f468bef8b7154e7bfdc60",
+    "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin/cargo": "da77c8b33849312255ccde3179198ada4c8deb370488d050286146b1d1b27e14",
+    "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin/rustc": "859254978c0a0402c32f949f6de0d99aee73be8d15f45aac00ae1448aac51e74",
+    "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin/rustdoc": "3ff7fed6d1064d8d75d24ae8beff9fe1d68031d3d819966481d22c3c9002b709",
+    "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin/rustfmt": "99e625e0640b50d773a0f54b93a7e66a0e89afd5351a4de9a17abe7087c11ac4",
+    "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin/cargo-clippy": "56478e37c2bc0a09b7442cb975bad0f00cd16a9c80463daca022756a12ef1b93",
+    "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin/clippy-driver": "ac4a71be2cb2df0f3947419e757a76dabb6110ce4196e1b0bde43296f702287b"
+  },
+  "prior_pure_evidence": [
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-4vvz8tnj/terminal.json",
+      "sha256": "fc11b55856326ef5377f82079a238e2445292997528ce0914e66b4375419198b"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-green-i_d0ojyr/terminal.json",
+      "sha256": "ec5877ba7c386bd731d2e72a25f9d6618b0b8e7db01a10be404283d6007470fe"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/terminal.json",
+      "sha256": "30e41bfcfe408fa85da53687cec31d3c04750833f0181f3bdcb24c47ad98652a"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-seams-cedligzi/terminal.json",
+      "sha256": "601052740f78a09b44f27c8f98649aeb96e02830bf5652343dfdea192e3c9461"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-receipt-path-red-1i5jkk3j/terminal.json",
+      "sha256": "1a64f74c933c0b3a86b5d0d295e599e06acbc4fbbfc5370df9369ff307b3cf60"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-green-inventory-red-ql_7yycf/terminal.json",
+      "sha256": "b493972f9fe1b1ff1b52fb9c6482db4e432610d97cdbccdfaf9265ff20c2c951"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-green-inventory-green-ewnnz85o/terminal.json",
+      "sha256": "1d45e07d162f307c492dfe345357806642225712f387e751a65d69aa5767696b"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-launcher-contract-red-xmh8unes/terminal.json",
+      "sha256": "c4e7aab4e4c138168341955fd5903511f29752ebbe6444ad60c76eb7ce13e962"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-launcher-utf8-red-mjtaojek/terminal.json",
+      "sha256": "d71b690b0bd2ff88af2a23c483afd79340184e4085f88701733a3bd995a62234"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-launcher-all-green-2we58tef/terminal.json",
+      "sha256": "f4da5b07b83d2a65a4ede1aae70235d1c872b2106c09af9ac24ea98ec9d8e148"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-launcher-pg-library-red-lti_6j03/terminal.json",
+      "sha256": "1dbadc63689e4dc90f1d66b03c6b9c435a74bfe48109c9a6c1da3fb3eafea502"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-launcher-pg-library-green-pxvhqsty/terminal.json",
+      "sha256": "cddfad87b6764aaee2bdb62db3ef1f30ca8e6b1d78e42735c32180f4c893f099"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-owned-fixture-pure-qxyo40xp/terminal.json",
+      "sha256": "70df23deb157d9bac621be3ce47b79fff7c1d1d7b8ed33f5bc170f7e3057aa4f"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-owned-fixture-deadline-red-y_86brrw/terminal.json",
+      "sha256": "a2ef34f5538a6b8bf99b6ade66a07e6fc7ae37af819ff149512081551367c2bd"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-owned-fixture-green-0k6a16ob/terminal.json",
+      "sha256": "ccbe2257794eb3fb4f3572efe37d9073c9cdff28a340c53f8a81da091e771d8e"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-owned-fixture-framing-red-93nudkdu/terminal.json",
+      "sha256": "e8f2cc20ddd74b51949d0b05bdf03f22e383a3d83b56edfcce6990e5fe26b7e5"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-owned-fixture-framing-green-1vvbclvc/terminal.json",
+      "sha256": "1af0895b483f70e0c519060b92abe33ebd34a92943433d9228f00d36f59f85ad"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-final-launcher-pure-dp546ve6/terminal.json",
+      "sha256": "77b533f75426202dd45bb77086e9532f6850a1a9089f7ab36e049af573f053a3"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-proxy-value-red-_83u74y3/terminal.json",
+      "sha256": "3554974a8d6d065a18db1542f14b98bc2ad4cdeba21bbc0475d8bc5098d5427c"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-final-proxy-pure-rtgc61zk/terminal.json",
+      "sha256": "bc67e5b08af9aada28c543875f6302e7420eaae39cd96765e9e3c7b67573e1cd"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-cap-resume-red-6zh3ir6b/terminal.json",
+      "sha256": "a459eb99b0685c79a02311bd30fd369c021e746e8b7aeac77f32341de27af139"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-final-resume-pure-m1hqxivf/terminal.json",
+      "sha256": "a88a844ae8ff3e5a2189638249bc170598937346321c1d90de60affe24179afa"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-final-resume-pure-airua8vs/terminal.json",
+      "sha256": "74cad007bda8d914fcff8db6593163fad8eca4456fa861ba3d08daf547dea408"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-final-resume-pure-_t80q7w5/terminal.json",
+      "sha256": "2b5835d0639027ea67d7a5b82191ce168b37e90cdc1e37c1716cd013ba0f8dde"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-disk-race-red-mpw5w5om/terminal.json",
+      "sha256": "3364bb72d809a1f079447afac7110d0312baa1e69e3cc9b57f07b8c2696ac06a"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-final-race-pure-n0yk040z/terminal.json",
+      "sha256": "1cc34c2a101629704eb9e5b331240fe1e110dc0d9b814f5b2a3be08571c46e52"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-installed-elf-cap-red-mepnal9x/terminal.json",
+      "sha256": "1fac1899461b3b9a0883715ecacdc08da55c598556b8c39f371940bcef8e63a9"
+    },
+    {
+      "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-final-installed-pure-btjru3gd/terminal.json",
+      "sha256": "e8f421aa247b1f9553710334e70ff3b279b380d402a245f7c8290e946e13cc43"
+    }
+  ],
+  "metadata_observation": {
+    "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-readonly-package-dependencies-20261003.json",
+    "sha256": "7ce8aa0c95e24f3e92c25341b5426e6c9929def699c72841e0171bdd8e3ad1e1"
+  },
+  "bootstrap_cargo_assignment": {
+    "controller_statement_id": "1a05c8cd-a766-4628-bf6b-890465edc748",
+    "stage": "compile-helper-green",
+    "assignment": "root-agent exclusive Search Cargo"
+  },
+  "bootstrap_terminal_sha256": "136b975f414859117ea66a52ee0884f36ba1e3f4cb809f10bb4dd1934ea86995",
+  "entry_transport": "Retained exec_command PTY: exec env -i HOME=/workspace/scratch/13897606dfde/search-g07-launcher LC_ALL=C TZ=UTC /usr/bin/python3.13 -I -B /workspace/scratch/13897606dfde/search-g07-launcher/launcher.py supervise --approval /workspace/scratch/13897606dfde/search-g07-launcher/approval-supervise.json --approval-sha256 {CONTROLLER_PINNED_APPROVAL_SHA256}; fixed canonical stage+SHA stdin packets only after exact review.",
+  "bootstrap_stopping_point": "Bootstrap only: exact official acquisition, controlled extraction/build/ELF gates, selected source compile/pure and initdb/offline control proof. Initdb may invoke its own privately built PostgreSQL bootstrap subprocesses under owned stage supervision. No retained/listening server or recovery test child starts here; supervise requires separately bound actual bootstrap terminal/root and exact phase approval after review.",
+  "tool_pin_scope": "The16 hashes bind the listed entry tools/compiler drivers only. They do not individually pin every transitive shell/compiler/helper binary invoked by trusted existing configure/make/Cargo build closure. No new system software or configuration is installed.",
+  "clock_domain_note": "Fixture registry observed_monotonic_ns uses namespace-adjusted Linux CLOCK_BOOTTIME truncated to centiseconds from /proc/uptime, compared against CLOCK_BOOTTIME in the inherited namespace. Deadline/duration clocks remain CLOCK_MONOTONIC; do not subtract values across these domains.",
+  "proxy_red_review": {
+    "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-proxy-value-red-evidence-review.md",
+    "sha256": "3132c7aaf6e9e2c95328c8fc54de14ccdddc74f075b59af571ccf4fe0fe0c427"
+  },
+  "same_route_timing_evidence": {
+    "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-same-route-readonly-head-yfnpmw66/terminal.json",
+    "sha256": "fdc6ecceb42b7fceb83403f6e3873efd8f10c6088b1ef570f32433a4f9fa1bb5",
+    "finding": "HTTP200 with TLS9.945388s and firstbyte10.183498s supports wider bounded handshake margin; prior timeout cause remains unproven; HEAD is not body/provenance qualification."
+  },
+  "prior_failed_attempts": [
+    {
+      "run_id": "039d4245-1223-43bb-9573-447e2fe45816",
+      "root": "/workspace/scratch/13897606dfde/p6pg.mM58DKtp",
+      "stage": "download-publisher-checksum",
+      "actual_returncode": 6,
+      "acquired_bytes": 0,
+      "review_path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-bootstrap-first-download-failure-review.md",
+      "review_sha256": "a730caf6aded295da10f16f8e58ede2954e616d6c5bccbee0f58838c7cafe96a",
+      "root_owner_sha256": "06074443292dafc83d4003ff10832bcb7d580d1a082637d036d3a9b349a16d1a",
+      "stage_terminal_sha256": "2147fcafb583e3321f6783b455ce0c85d07f669ba727c929badc3fb5abad939e",
+      "launcher_error_sha256": "1e6a3327cdb07fe991de794a26b8ad0e53fd531d6fe3e296418199bd4c8753db",
+      "retention": "Retain unchanged. No reuse/deletion or additional invocation under that consumed approval."
+    },
+    {
+      "run_id": "29fc5d70-eaef-4843-bb77-dcfe3ec929bc",
+      "root": "/workspace/scratch/13897606dfde/p6pg.HIdnLVBX",
+      "stage": "download-publisher-checksum",
+      "actual_returncode": 28,
+      "acquired_bytes": 0,
+      "review_path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-managed-bootstrap-timeout-review.md",
+      "review_sha256": "2f1b40477cd3ab3f5aa54c0cfba6bd85ee2a78e8194876b8595de3bc202fc049",
+      "stage_terminal_sha256": "05b848f9df919cec5a136dea571e5ba366b74476bac4e7b13f0428ef096102a4",
+      "retention": "Keep unchanged, all owned processes reaped; no later stage ran."
+    }
+  ],
+  "timeout_delta_validation": "Historical setup corrections are retained in immutable snapshots. Current delta is an ELF-only256KiB report cap based on measured234448-byte output, installed-only16000-node inventory bound based on13107 observed nodes, and fixed installed-state continuation. Ordinary/runtime64KiB caps and independent disk floor remain.",
+  "bootstrap_resume_scope": {
+    "manifest_binding": "commands.final bootstrap_resume={path:/workspace/scratch/13897606dfde/search-recovery-evidence/g07-retained-adoption.json,sha256:5b9a369ac068b6a09068820af5adc8cfb314991a05d7b27363ad7c9d5624b49f}; independent approval binds the current source/manifest and null test_executable",
+    "run_id": "a53a280c-c335-4226-b37a-b24533fe77a6",
+    "run_root": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL",
+    "boundary": "tools-elf-review-before-any-staged-execution",
+    "environment": "ordinary empty entrypoint environment only; no proxy read, managed wrapper, acquisition, re-download, metadata tool execution or extraction",
+    "verification": "Before any root write/subprocess: bound owner/EOF/descriptor hashes; exact no-follow full-root JSONL set, kind/dev/inode/uid/gid/mode and regular size/hash or symlink target; independently pinned authenticated archive/tree comparison; exact32 successful terminals/full spools/log hashes; exact8 artifacts/publisher pins; six empty later directories; three original tools ELF identities and retained output hashes",
+    "fixed_inventory_limits": {
+      "entries": 12000,
+      "jsonl_bytes": 8388608,
+      "regular_bytes": 1073741824,
+      "verification_seconds": 120
+    },
+    "observed_inventory": {
+      "entries": 8650,
+      "jsonl_bytes": 1946839,
+      "regular_bytes": 245236293
+    },
+    "proof_sha256": "f26f0a92268196d5cfcac0b119ce3805efbf6910e6f054b65d21bd88a8ff7a6a",
+    "mutation": "Only after complete adoption verification create exclusive receipts/resume-adoption.json. Retain all earlier files; start next_label=4 so fresh Git labels5..8; re-use original tools observations and same tools-elf-review packet; exclusive launcher-resume-error.json on later failure",
+    "tail": "Existing bootstrap body from tools closure review onwards, unchanged staged-tool versions/build/PG closure/compile/nine pure/initdb/control; no generic retry/cache/resume mechanism"
+  },
+  "admitted_phase": "Prospective supervise only after independent exact review: one owned private-UDS server, first named unwired runtime RED; subsequent child wiring/compile/two GREEN cases/quality each require their fixed separately hashed stage request. No broader G08/P3/P7/security-probe/production qualification.",
+  "retained_acquisition_stop": {
+    "root": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL",
+    "run_id": "a53a280c-c335-4226-b37a-b24533fe77a6",
+    "stop": "controller EOF before tools ELF approval/staged execution",
+    "review_path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-tools-elf-controller-stop-review.md",
+    "review_sha256": "e99d0363252c1f333e31dee2851ad3b84eaf8a25189f13927a5d100a8de05e0b",
+    "retention": "All32successfulstages,8artifacts,canonical inventories/extraction andoldstop unchanged. Exactinventory checked before one exclusive resume adoption receipt."
+  },
+  "bootstrap_resume_boundary": "installed",
+  "configured_stop_review": {
+    "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-make-inode-guard-failure-review.md",
+    "sha256": "a9b42a9be04d5bdb5b089334ff0bbd4c73b06384aca4b9899a2e4bda19c7b577",
+    "cause": "Unproven transientinode; anonymous-pipe jobserver is supported bounded hypothesis correction, not arbitraryinode allowance."
+  },
+  "configured_adoption_review": {
+    "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-configured-build-adoption-evidence-review.md",
+    "sha256": "67713ac85854a89f68f44004314af3c03343b5430c34de473f0d8b74b2408dd7"
+  },
+  "make_race_stop_review": {
+    "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-make-pipe-scan-race-review.md",
+    "sha256": "7750903c68c8bbbb8ea4aa8526f8dd44ff77fc2b7be9ea96c4739eb59b3205c0",
+    "finding": "Incomplete growth observation; owned make exit-15, stop/reap/EOF positively recorded. Separate from earlier unproven FIFO hypothesis."
+  },
+  "make_race_adoption_review": {
+    "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-make-race-adoption-evidence-review.md",
+    "sha256": "aeab618fc6bea789e69e937449578c3adfc12fa16e44655f7075b155699d7365"
+  },
+  "installed_stop_review": {
+    "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-build-install-and-elf-overflow-review.md",
+    "sha256": "1e7d09a69460c649e403ca915d3478619de161f9e93454f7bb837985b87e793f"
+  },
+  "installed_adoption_review": {
+    "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-installed-adoption-evidence-review.md",
+    "sha256": "ba04ef1b6d3e13616f4a8cd61bf63bfb2121f291e689896f623b4bba2570215e"
+  },
+  "complete_elf_observation": {
+    "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-readonly-installed-elf-p0_mpuxa/terminal.json",
+    "sha256": "5cc091125db94721f45f08a3adba04ebf06eb6e61ff96fa525271e56f8ece56e",
+    "qualification": "Read-only complete reports, no installed PostgreSQL executable run; actual guarded fresh inspection and closure approval still required."
+  },
+  "runtime_bootstrap_review": {
+    "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-bootstrap-actual-completion-review.md",
+    "sha256": "0b4a77344cdff4d047ea2ec0d09119b41b67e0c188b1ce06c332805596ec62a7"
+  },
+  "runtime_control_proof": {
+    "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/receipts/cluster-control.json",
+    "sha256": "a22cbf8ae02b71fa294e88326fab88d1f3c1cd35b05e74ce3ada3b8b4c1dd80d",
+    "offline_system_identifier": "7692443830282047653",
+    "current_observation": "shut down before retained server; actual live settings/identity must be verified by supervisor before cases"
+  },
+  "runtime_namespace_correction": "Only supervise Git receipts use runtime-git-closure-N, preventing collisions with retained bootstrap Git receipts. Counter, commands, deadlines and test inventory are unchanged."
+}
