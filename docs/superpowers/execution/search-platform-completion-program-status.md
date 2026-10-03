@@ -1,5 +1,13 @@
 # Search Platform Completion Program — Status
 
+## Latest G05/G06 local checkpoint — 2026-10-03
+
+- **ACTIVE / WIP / incomplete.** [Bounded correction receipt](../programs/search-platform-completion/p6-g06-runner-correction-20261003.md) and [machine evidence](../programs/search-platform-completion/p6-g06-evidence-20261003.json) identify the exact source and retained RED/GREEN diagnostics. Fresh final confirmation: admission 5/5, lifecycle 35/35, selected strict Clippy, two-file rustfmt and source diff check pass. Independent read-only source/contract review GO; no separate reviewer Cargo run.
+- Four chronological regression rounds expose pending-operation deadlines, uncertain dependency outcomes at shutdown, and cancellation boundaries. Corrected runner uses total processing and sticky drain deadlines, bounded dependency rounds and cancellation/I/O tracking without changing public API, config, schema or frozen semantics. The final exact lifecycle suite additionally fails 30 cases against the original runner in a post-fix negative control; that control is not chronological TDD RED.
+- This qualifies the named synthetic G05/G06 scope only. G07 process crash/restart and G08 observe/security tests remain unimplemented or unexecuted; no real DB, Docker, child process, parser, model, P3/P7 runtime or security probe ran here. Full hosted Rust static/test still fail on missing `outbox_delivery::observe`. Whole P6/P1–P7/final acceptance remains open; the unidentified historical stop is neither retried nor cleared.
+- Last verified remote Draft #40 is `401b31047a64ed76c470477c6db15fc7e8221d2d`. Local base `3955eb5eeedebebc1a77afe3df44d0569953ad47` contains the separately reviewed three-PoC-lock repair, tree `d22b3b3e784839dade91734d725f1e3384740aa0`; that metadata and this G06 correction are not yet public. Public-sharing permission remains pending.
+- **Exact next action:** preserve the clean local checkpoint and independently review a G07 official-tool/bootstrap/synthetic-test plan before installing/running it. Resolve publication permission before remote writes; verify exact resulting trees and ordinary CI. No merge/deployment.
+
 ## Latest isolated-lock checkpoint — 2026-10-03
 
 - **ACTIVE / WIP / incomplete.** Root metadata recovery was published at Draft #40 `401b31047a64ed76c470477c6db15fc7e8221d2d` with exact tree `2df2784e8017f1433a2fb96d8054e4aca3478299`. Hosted CI `37099916947` is terminal failure: security passes, Rust static/test fail before test execution on missing `outbox_delivery::observe`. Sandbox `37099916942` passes; DSI PoC `37099916959` fails on isolated `yoke-derive 0.8.3`.

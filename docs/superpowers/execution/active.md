@@ -1,5 +1,12 @@
 # Active Execution Pointer
 
+## Active checkpoint — Search G05/G06 synthetic runner correction, 2026-10-03
+
+- **ACTIVE / WIP / incomplete.** Exact corrected source passes 5 admission + 35 lifecycle tests, targeted strict Clippy and two-file rustfmt. Independent bounded source/contract review GO. The final tests also produce 5 pass / 30 fail against the original runner in an explicitly labeled post-fix negative control. See [receipt](../programs/search-platform-completion/p6-g06-runner-correction-20261003.md).
+- Corrections bound preparation, total processing, heartbeat, settlement and shutdown cleanup; pending dependency outcomes remain Unknown and cancellation stops subsequent work. G07/G08, real DB/process recovery, P1–P7 and final acceptance remain open. This does not retry or clear the unidentified historical stopped operation.
+- Last verified remote Draft #40 remains `401b31047a64ed76c470477c6db15fc7e8221d2d`. The separate three-PoC-lock metadata checkpoint and this source checkpoint are local only; public-sharing authorization is pending. Current hosted Rust failure on missing `outbox_delivery::observe` remains. No merge/deploy.
+- **Exact next action:** preserve the clean reviewed local checkpoint; prepare and independently review G07's exact official-tool/bootstrap/synthetic-process scope before any setup or execution. Publish only after the pending public-sharing authorization is resolved, with exact-tree verification.
+
 ## Active checkpoint — Search isolated PoC dependency locks, 2026-10-03
 
 - **ACTIVE / WIP / incomplete.** Root dependency checkpoint is durably published in Draft PR #40 at `401b31047a64ed76c470477c6db15fc7e8221d2d`, tree `2df2784e8017f1433a2fb96d8054e4aca3478299`. Its hosted security job `111137273878` passes; Rust static/test still fail on missing `outbox_delivery::observe`, and DSI PoC fails on its separate yanked dependency.

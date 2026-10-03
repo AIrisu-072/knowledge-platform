@@ -1,7 +1,8 @@
 //! Bounded, generic dispatch of fenced outbox claims.
 
+use std::future::Future;
 use std::sync::{
-    Arc,
+    Arc, OnceLock,
     atomic::{AtomicBool, Ordering},
 };
 use std::time::Duration;
@@ -143,20 +144,36 @@ where
     }
 
     pub async fn run_cycle(&self) -> Result<CycleSummary, DeliveryError> {
-        self.run_cycle_inner(None).await
+        self.run_cycle_inner(None, &OnceLock::new()).await
     }
 
     async fn run_cycle_inner(
         &self,
         mut shutdown: Option<&mut watch::Receiver<bool>>,
+        drain: &OnceLock<Instant>,
     ) -> Result<CycleSummary, DeliveryError> {
-        self.store.verify_policy().await?;
-        let reaped = self.store.reap_exhausted(self.config.reap_batch).await?;
+        if shutdown_requested(shutdown.as_deref(), drain, self.config) {
+            return Ok(CycleSummary::default());
+        }
+        prepare_operation(
+            self.store.verify_policy(),
+            &mut shutdown,
+            drain,
+            self.config,
+        )
+        .await?;
+        let reaped = prepare_operation(
+            self.store.reap_exhausted(self.config.reap_batch),
+            &mut shutdown,
+            drain,
+            self.config,
+        )
+        .await?;
         let mut summary = CycleSummary {
             reaped,
             ..CycleSummary::default()
         };
-        if shutdown.as_ref().is_some_and(|receiver| *receiver.borrow()) {
+        if shutdown_requested(shutdown.as_deref(), drain, self.config) {
             return Ok(summary);
         }
 
@@ -179,55 +196,88 @@ where
         if slots.is_empty() {
             return Ok(summary);
         }
-        let Some(permit) = self.admission.acquire().await? else {
+        let Some(permit) =
+            prepare_operation(self.admission.acquire(), &mut shutdown, drain, self.config).await?
+        else {
             return Ok(summary);
         };
-        if shutdown.as_ref().is_some_and(|receiver| *receiver.borrow()) {
-            let _ = permit.release().await;
+        if shutdown_requested(shutdown.as_deref(), drain, self.config) {
+            cleanup_operation(permit.release(), drain, self.config).await?;
             return Ok(summary);
         }
-        let claimed = match self
-            .store
-            .claim(self.owner, slots.len() as u32, self.config.lease_duration)
-            .await
+        let claimed = match prepare_operation(
+            self.store
+                .claim(self.owner, slots.len() as u32, self.config.lease_duration),
+            &mut shutdown,
+            drain,
+            self.config,
+        )
+        .await
         {
             Ok(claimed) => claimed,
             Err(err) => {
-                let _ = permit.release().await;
+                // An abandoned claim can already have committed. Release only
+                // the admission token we actually obtained, never infer rollback.
+                let _ = cleanup_operation(permit.release(), drain, self.config).await;
                 return Err(err);
             }
         };
         if claimed.len() > slots.len() {
-            let _ = permit.release().await;
+            let _ = cleanup_operation(permit.release(), drain, self.config).await;
             return Err(DeliveryError::StoreUnknown);
         }
         summary.claimed = claimed.len() as u32;
+        if shutdown_requested(shutdown.as_deref(), drain, self.config) {
+            cleanup_operation(permit.release(), drain, self.config).await?;
+            // Returned claims are known, but none has completed. Do not dispatch
+            // them after shutdown or imply that cancellation refunded attempts.
+            return if claimed.is_empty() {
+                Ok(summary)
+            } else {
+                Err(DeliveryError::StoreUnknown)
+            };
+        }
         let mut tasks = JoinSet::new();
         let mut cancellations = Vec::new();
+        let processing_deadline = Instant::now() + self.config.max_processing;
         for (event, slot) in claimed.into_iter().zip(slots) {
             let cancel = Arc::new(AtomicBool::new(false));
-            cancellations.push(cancel.clone());
-            tasks.spawn(process_claim(
+            let incomplete_io = Arc::new(AtomicBool::new(false));
+            cancellations.push((
+                CancellationGuard::new(cancel.clone()),
+                incomplete_io.clone(),
+            ));
+            let work = process_claim(
                 self.store.clone(),
                 self.handler.clone(),
                 permit.clone(),
                 event,
-                self.config,
-                cancel,
+                ClaimExecution {
+                    config: self.config,
+                    cancel,
+                    deadline: processing_deadline,
+                    incomplete_io: incomplete_io.clone(),
+                },
                 slot,
-            ));
+            );
+            tasks.spawn(async move { (incomplete_io, work.await) });
         }
         let mut first_error = None;
-        let mut drain_deadline = None;
         while !tasks.is_empty() {
-            let joined = if let Some(deadline) = drain_deadline {
+            let joined = if let Some(deadline) = drain.get().copied() {
                 match tokio::time::timeout_at(deadline, tasks.join_next()).await {
                     Ok(joined) => joined,
                     Err(_) => {
                         // The handler may ignore cooperative cancellation. Its
                         // outbox token remains unacknowledged for expiry/reap.
-                        for cancel in &cancellations {
-                            cancel.store(true, Ordering::SeqCst);
+                        for (cancel, incomplete_io) in &cancellations {
+                            cancel.signal.store(true, Ordering::SeqCst);
+                            if incomplete_io.load(Ordering::SeqCst) {
+                                // A cancelled renewal or settlement can already
+                                // have committed. Do not erase that uncertainty
+                                // by classifying every aborted task as Lost.
+                                first_error.get_or_insert(DeliveryError::StoreUnknown);
+                            }
                         }
                         summary.lost += tasks.len() as u32;
                         tasks.abort_all();
@@ -239,7 +289,7 @@ where
                     joined = tasks.join_next() => joined,
                     changed = receiver.changed() => {
                         if changed.is_err() || *receiver.borrow() {
-                            drain_deadline = Some(Instant::now() + self.config.drain_timeout);
+                            start_drain(drain, self.config);
                         }
                         continue;
                     }
@@ -252,7 +302,10 @@ where
             }
         }
         drop(tasks); // Abort stragglers before releasing the admission fence.
-        if let Err(err) = permit.release().await {
+        for (cancel, _) in &mut cancellations {
+            cancel.disarm();
+        }
+        if let Err(err) = cleanup_operation(permit.release(), drain, self.config).await {
             first_error.get_or_insert(err);
         }
         match first_error {
@@ -265,10 +318,33 @@ where
         &self,
         mut shutdown: watch::Receiver<bool>,
     ) -> Result<RunSummary, DeliveryError> {
+        let drain = OnceLock::new();
+        let worker = self.run_until_shutdown_inner(shutdown.clone(), &drain);
+        tokio::pin!(worker);
+        // This observer remains live while any nested operation is pending,
+        // including cleanup. All stages share its one absolute drain budget.
+        tokio::select! {
+            biased;
+            _ = wait_for_shutdown(&mut shutdown) => {
+                let deadline = start_drain(&drain, self.config);
+                tokio::time::timeout_at(deadline, &mut worker)
+                    .await
+                    .map_err(|_| DeliveryError::StoreUnknown)?
+            }
+            result = &mut worker => result,
+        }
+    }
+
+    async fn run_until_shutdown_inner(
+        &self,
+        mut shutdown: watch::Receiver<bool>,
+        drain: &OnceLock<Instant>,
+    ) -> Result<RunSummary, DeliveryError> {
         let mut summary = RunSummary::default();
         let mut backoff = self.config.poll_interval.max(Duration::from_millis(100));
-        while !*shutdown.borrow() {
-            match self.run_cycle_inner(Some(&mut shutdown)).await {
+        let mut shutdown_error = None;
+        while !shutdown_requested(Some(&shutdown), drain, self.config) {
+            match self.run_cycle_inner(Some(&mut shutdown), drain).await {
                 Ok(cycle) => {
                     summary.cycles += 1;
                     summary.claimed += u64::from(cycle.claimed);
@@ -280,43 +356,178 @@ where
                 Err(DeliveryError::StoreUnknown) => {
                     summary.outages += 1;
                     backoff = backoff.saturating_mul(2).min(Duration::from_secs(5));
+                    if shutdown_requested(Some(&shutdown), drain, self.config) {
+                        shutdown_error = Some(DeliveryError::StoreUnknown);
+                    }
                 }
                 Err(err) => return Err(err),
             }
-            if *shutdown.borrow() {
+            if shutdown_requested(Some(&shutdown), drain, self.config) {
                 break;
             }
             tokio::select! {
-                _ = tokio::time::sleep(backoff) => {},
-                changed = shutdown.changed() => {
-                    if changed.is_err() || *shutdown.borrow() {
-                        break;
-                    }
+                biased;
+                _ = wait_for_shutdown(&mut shutdown) => {
+                    start_drain(drain, self.config);
+                    break;
                 }
+                _ = tokio::time::sleep(backoff) => {},
             }
         }
         // Reaper is one last independent, policy-fenced DB operation. Never
         // claim it succeeded if the DB is still unavailable at shutdown.
-        summary.reaped += self.store.reap_exhausted(self.config.reap_batch).await?;
-        Ok(summary)
+        summary.reaped += cleanup_operation(
+            self.store.reap_exhausted(self.config.reap_batch),
+            drain,
+            self.config,
+        )
+        .await?;
+        match shutdown_error {
+            Some(err) => Err(err),
+            None => Ok(summary),
+        }
+    }
+}
+
+fn start_drain(drain: &OnceLock<Instant>, config: DeliveryConfig) -> Instant {
+    *drain.get_or_init(|| Instant::now() + config.drain_timeout)
+}
+
+fn shutdown_requested(
+    shutdown: Option<&watch::Receiver<bool>>,
+    drain: &OnceLock<Instant>,
+    config: DeliveryConfig,
+) -> bool {
+    let requested = drain.get().is_some()
+        || shutdown.is_some_and(|receiver| *receiver.borrow() || receiver.has_changed().is_err());
+    if requested {
+        start_drain(drain, config);
+    }
+    requested
+}
+
+async fn wait_for_shutdown(receiver: &mut watch::Receiver<bool>) {
+    loop {
+        let requested = *receiver.borrow_and_update();
+        if requested || receiver.changed().await.is_err() {
+            return;
+        }
+    }
+}
+
+// A renewal interval is strictly below one third of the lease. Bounding a
+// dependency round by one third leaves room for the other fence and avoids
+// relying on a lease throughout an unresolved 15-minute processing budget.
+fn dependency_deadline(config: DeliveryConfig) -> Instant {
+    Instant::now() + config.lease_duration / 3
+}
+
+async fn bounded_operation<T>(
+    future: impl Future<Output = Result<T, DeliveryError>>,
+    deadline: Instant,
+) -> Result<T, DeliveryError> {
+    tokio::time::timeout_at(deadline, future)
+        .await
+        .map_err(|_| DeliveryError::StoreUnknown)?
+}
+
+async fn prepare_operation<T>(
+    future: impl Future<Output = Result<T, DeliveryError>>,
+    shutdown: &mut Option<&mut watch::Receiver<bool>>,
+    drain: &OnceLock<Instant>,
+    config: DeliveryConfig,
+) -> Result<T, DeliveryError> {
+    if shutdown_requested(shutdown.as_deref(), drain, config) {
+        return Err(DeliveryError::StoreUnknown);
+    }
+    let bounded = bounded_operation(future, dependency_deadline(config));
+    if let Some(receiver) = shutdown.as_deref_mut() {
+        tokio::select! {
+            // Capture an actually returned permit/claim if both become ready.
+            biased;
+            result = bounded => result,
+            _ = wait_for_shutdown(receiver) => {
+                start_drain(drain, config);
+                Err(DeliveryError::StoreUnknown)
+            }
+        }
+    } else {
+        bounded.await
+    }
+}
+
+async fn cleanup_operation<T>(
+    future: impl Future<Output = Result<T, DeliveryError>>,
+    drain: &OnceLock<Instant>,
+    config: DeliveryConfig,
+) -> Result<T, DeliveryError> {
+    let deadline = drain
+        .get()
+        .copied()
+        .unwrap_or_else(|| Instant::now() + config.drain_timeout)
+        .min(dependency_deadline(config));
+    // An immediately completed conditional cleanup can still be observed at
+    // the bound. A pending cleanup gets no fresh drain window and is Unknown.
+    bounded_operation(future, deadline).await
+}
+
+struct CancellationGuard {
+    signal: Arc<AtomicBool>,
+    armed: bool,
+}
+
+impl CancellationGuard {
+    fn new(signal: Arc<AtomicBool>) -> Self {
+        Self {
+            signal,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for CancellationGuard {
+    fn drop(&mut self) {
+        if self.armed {
+            self.signal.store(true, Ordering::SeqCst);
+        }
     }
 }
 
 fn fold_join(
     summary: &mut CycleSummary,
     first_error: &mut Option<DeliveryError>,
-    joined: Result<Result<ClaimOutcome, DeliveryError>, tokio::task::JoinError>,
+    joined: Result<ClaimResult, tokio::task::JoinError>,
 ) {
-    match joined {
-        Ok(Ok(ClaimOutcome::Settled)) => summary.settled += 1,
-        Ok(Ok(ClaimOutcome::Lost)) => summary.lost += 1,
-        Ok(Err(err)) => {
+    let outcome = match joined {
+        Ok((incomplete_io, outcome)) => {
+            // Clear only once the parent has observed the task's result; a
+            // completed but unobserved settlement is still conservatively
+            // unknown if the parent abandons it at the shutdown deadline.
+            incomplete_io.store(false, Ordering::SeqCst);
+            outcome
+        }
+        Err(_) => Err(DeliveryError::StoreUnknown),
+    };
+    match outcome {
+        Ok(ClaimOutcome::Settled) => summary.settled += 1,
+        Ok(ClaimOutcome::Lost) => summary.lost += 1,
+        Err(err) => {
             first_error.get_or_insert(err);
         }
-        Err(_) => {
-            first_error.get_or_insert(DeliveryError::StoreUnknown);
-        }
     }
+}
+
+type ClaimResult = (Arc<AtomicBool>, Result<ClaimOutcome, DeliveryError>);
+
+struct ClaimExecution {
+    config: DeliveryConfig,
+    cancel: Arc<AtomicBool>,
+    deadline: Instant,
+    incomplete_io: Arc<AtomicBool>,
 }
 
 enum ClaimOutcome {
@@ -330,16 +541,23 @@ async fn check_preflight<S: OutboxStore, P: ClaimPermit>(
     outbox_token: Uuid,
     permit: &P,
     lease: std::time::Duration,
+    cancel: &AtomicBool,
 ) -> Result<bool, DeliveryError> {
-    if store.renew(event_id, outbox_token, lease).await? != FenceResult::Updated {
+    if cancel.load(Ordering::SeqCst) {
+        return Ok(false);
+    }
+    let outbox = store.renew(event_id, outbox_token, lease).await?;
+    if outbox != FenceResult::Updated || cancel.load(Ordering::SeqCst) {
         return Ok(false);
     }
     // A read-only preflight can succeed just before Source expiry. Renewal is
     // explicit; adapters must not need to smuggle it into `preflight`.
-    if permit.renew().await? != FenceResult::Updated {
+    let source = permit.renew().await?;
+    if source != FenceResult::Updated || cancel.load(Ordering::SeqCst) {
         return Ok(false);
     }
-    Ok(permit.preflight().await? == FenceResult::Updated)
+    let current = permit.preflight().await?;
+    Ok(current == FenceResult::Updated && !cancel.load(Ordering::SeqCst))
 }
 
 async fn process_claim<S, H, P>(
@@ -347,8 +565,7 @@ async fn process_claim<S, H, P>(
     handler: Arc<H>,
     permit: P,
     event: crate::ClaimedEvent,
-    config: DeliveryConfig,
-    cancel: Arc<AtomicBool>,
+    execution: ClaimExecution,
     _slot: OwnedSemaphorePermit,
 ) -> Result<ClaimOutcome, DeliveryError>
 where
@@ -356,12 +573,63 @@ where
     P: ClaimPermit,
     H: DeliveryHandler<P>,
 {
+    let mut cancellation = CancellationGuard::new(execution.cancel.clone());
+    let work = process_claim_inner(store, handler, permit, event, &execution);
+    let result = tokio::time::timeout_at(execution.deadline, work)
+        .await
+        .map_err(|_| DeliveryError::StoreUnknown)?;
+    if matches!(result, Ok(ClaimOutcome::Settled)) {
+        cancellation.disarm();
+    }
+    result
+}
+
+async fn process_claim_inner<S, H, P>(
+    store: Arc<S>,
+    handler: Arc<H>,
+    permit: P,
+    event: crate::ClaimedEvent,
+    execution: &ClaimExecution,
+) -> Result<ClaimOutcome, DeliveryError>
+where
+    S: OutboxStore,
+    P: ClaimPermit,
+    H: DeliveryHandler<P>,
+{
+    let config = execution.config;
+    let cancel = &execution.cancel;
+    let processing_deadline = execution.deadline;
+    if Instant::now() >= processing_deadline {
+        return Err(DeliveryError::StoreUnknown);
+    }
     let id = event.envelope.event_id;
     let token = event.lease_token;
+    execution.incomplete_io.store(true, Ordering::SeqCst);
+    // Publish the I/O phase before reading cancellation. With the parent's
+    // cancel-then-read ordering, it either observes uncertain I/O or this
+    // task observes cancellation and starts no dependency operation.
+    if cancel.load(Ordering::SeqCst) {
+        return Ok(ClaimOutcome::Lost);
+    }
     // This first conditional renewal verifies the committed claim before any
     // handler code runs. DB uncertainty never becomes permission to dispatch.
-    if !check_preflight(store.as_ref(), id, token, &permit, config.lease_duration).await? {
+    if !bounded_operation(
+        check_preflight(
+            store.as_ref(),
+            id,
+            token,
+            &permit,
+            config.lease_duration,
+            cancel,
+        ),
+        dependency_deadline(config).min(processing_deadline),
+    )
+    .await?
+    {
         return Ok(ClaimOutcome::Lost);
+    }
+    if Instant::now() >= processing_deadline {
+        return Err(DeliveryError::StoreUnknown);
     }
     let context = DeliveryContext {
         attempt: event.attempt,
@@ -369,6 +637,10 @@ where
         outbox_deadline: event.lease_expires_at,
         cancel: cancel.clone(),
     };
+    execution.incomplete_io.store(false, Ordering::SeqCst);
+    if cancel.load(Ordering::SeqCst) {
+        return Ok(ClaimOutcome::Lost);
+    }
     let handler_future = handler.deliver(event.envelope, context, permit.clone());
     tokio::pin!(handler_future);
     let mut heartbeat = tokio::time::interval_at(
@@ -376,53 +648,96 @@ where
         config.renew_interval,
     );
     heartbeat.set_missed_tick_behavior(MissedTickBehavior::Delay);
-    let deadline = tokio::time::sleep(config.max_processing);
+    let deadline = tokio::time::sleep_until(processing_deadline);
     tokio::pin!(deadline);
     let decision = loop {
         tokio::select! {
-            decision = &mut handler_future => break decision,
-            _ = heartbeat.tick() => {
-                let outbox = store.renew(id, token, config.lease_duration).await;
-                let source = match outbox {
-                    Ok(FenceResult::Updated) => permit.renew().await,
-                    Ok(FenceResult::Lost) => Ok(FenceResult::Lost),
-                    Err(err) => Err(err),
-                };
-                if source != Ok(FenceResult::Updated) {
-                    cancel.store(true, Ordering::SeqCst);
-                    return match source {
-                        Ok(FenceResult::Lost) => Ok(ClaimOutcome::Lost),
-                        Err(err) => Err(err),
-                        _ => unreachable!(),
-                    };
-                }
-            }
+            biased;
             _ = &mut deadline => {
                 cancel.store(true, Ordering::SeqCst);
                 return Ok(ClaimOutcome::Lost);
             }
+            decision = &mut handler_future => break decision,
+            _ = heartbeat.tick() => {
+                execution.incomplete_io.store(true, Ordering::SeqCst);
+                if cancel.load(Ordering::SeqCst) {
+                    return Ok(ClaimOutcome::Lost);
+                }
+                let renewal = async {
+                    let outbox = store.renew(id, token, config.lease_duration).await?;
+                    if outbox != FenceResult::Updated || cancel.load(Ordering::SeqCst) {
+                        return Ok(false);
+                    }
+                    let source = permit.renew().await?;
+                    Ok(source == FenceResult::Updated && !cancel.load(Ordering::SeqCst))
+                };
+                let source = bounded_operation(
+                    renewal,
+                    dependency_deadline(config).min(processing_deadline),
+                ).await;
+                if source != Ok(true) {
+                    cancel.store(true, Ordering::SeqCst);
+                    return match source {
+                        Ok(false) => Ok(ClaimOutcome::Lost),
+                        Err(err) => Err(err),
+                        _ => unreachable!(),
+                    };
+                }
+                execution.incomplete_io.store(false, Ordering::SeqCst);
+                if cancel.load(Ordering::SeqCst) {
+                    return Ok(ClaimOutcome::Lost);
+                }
+            }
         }
     };
+    if Instant::now() >= processing_deadline {
+        return Err(DeliveryError::StoreUnknown);
+    }
+    execution.incomplete_io.store(true, Ordering::SeqCst);
     if cancel.load(Ordering::SeqCst)
-        || !check_preflight(store.as_ref(), id, token, &permit, config.lease_duration).await?
+        || !bounded_operation(
+            check_preflight(
+                store.as_ref(),
+                id,
+                token,
+                &permit,
+                config.lease_duration,
+                cancel,
+            ),
+            dependency_deadline(config).min(processing_deadline),
+        )
+        .await?
     {
         return Ok(ClaimOutcome::Lost);
     }
-    let settled = match decision {
-        DeliveryDecision::Applied | DeliveryDecision::KnownNoop => {
-            store.settle_success(id, token).await?
-        }
-        DeliveryDecision::Retryable(code) => {
-            store
-                .settle_failure(id, token, code, false, retry_delay(id, event.attempt))
-                .await?
-        }
-        DeliveryDecision::Terminal(code) => {
-            store
-                .settle_failure(id, token, code, true, retry_delay(id, event.attempt))
-                .await?
+    if Instant::now() >= processing_deadline {
+        return Err(DeliveryError::StoreUnknown);
+    }
+    if cancel.load(Ordering::SeqCst) {
+        return Ok(ClaimOutcome::Lost);
+    }
+    let settlement = async {
+        match decision {
+            DeliveryDecision::Applied | DeliveryDecision::KnownNoop => {
+                store.settle_success(id, token).await
+            }
+            DeliveryDecision::Retryable(code) => {
+                store
+                    .settle_failure(id, token, code, false, retry_delay(id, event.attempt))
+                    .await
+            }
+            DeliveryDecision::Terminal(code) => {
+                store
+                    .settle_failure(id, token, code, true, retry_delay(id, event.attempt))
+                    .await
+            }
         }
     };
+    let settled = bounded_operation(
+        settlement,
+        dependency_deadline(config).min(processing_deadline),
+    )
+    .await?;
     Ok(match settled {
         FenceResult::Updated => ClaimOutcome::Settled,
         FenceResult::Lost => ClaimOutcome::Lost,

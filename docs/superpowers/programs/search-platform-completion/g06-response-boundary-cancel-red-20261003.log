@@ -1,0 +1,90 @@
+   Compiling outbox-delivery v0.0.0 (/workspace/scratch/13897606dfde/search-dependency-recovery/crates/outbox-delivery)
+    Finished `test` profile [unoptimized] target(s) in 1.52s
+     Running tests/runner_lifecycle.rs (/workspace/scratch/13897606dfde/search-recovery-target/debug/deps/runner_lifecycle-1a767a2951f858ed)
+
+running 35 tests
+test cancellation_before_heartbeat_prevents_new_renewal_attempts ... ok
+test cancellation_during_final_outbox_response_stops_source_fences ... FAILED
+test cancellation_during_final_source_preflight_stops_settlement ... FAILED
+test cancellation_during_final_source_renewal_stops_source_preflight ... FAILED
+test cancellation_during_heartbeat_outbox_response_stops_source_renewal ... FAILED
+test cancellation_during_heartbeat_source_response_stops_handler_polling ... FAILED
+test initial_preflight_time_counts_toward_total_processing_deadline ... ok
+test outage_does_not_spin_or_ack_unknown ... ok
+test pending_heartbeat_becomes_unknown_before_lease_expiry ... ok
+test renew_lost_cancels_and_never_settles ... ok
+test returned_store_unknown_is_preserved_when_final_preflight_also_cancels ... ok
+test shutdown_bounds_pending_final_reaper_without_confirming_reap ... ok
+test shutdown_bounds_pending_source_release_after_drain ... ok
+test shutdown_drains_completed_and_leaves_unfinished ... ok
+test shutdown_interrupts_pending_admission_without_claiming ... ok
+test shutdown_interrupts_pending_claim_without_dispatching ... ok
+test shutdown_interrupts_pending_cycle_reaper ... ok
+test shutdown_interrupts_pending_policy_verification ... ok
+test shutdown_pending_failure_settlement_remains_unknown ... ok
+test shutdown_pending_initial_outbox_preflight_remains_unknown ... ok
+test shutdown_pending_initial_source_preflight_remains_unknown ... ok
+test shutdown_pending_outbox_heartbeat_remains_unknown ... ok
+test shutdown_pending_source_heartbeat_remains_unknown ... ok
+test shutdown_pending_success_settlement_remains_unknown ... ok
+test shutdown_releases_still_owned_source_permit_after_timeout ... ok
+test total_deadline_bounds_pending_failure_settlement_without_confirming_retry ... ok
+test total_deadline_bounds_pending_initial_outbox_preflight ... ok
+test total_deadline_bounds_pending_initial_source_preflight ... ok
+test total_deadline_bounds_pending_initial_source_renewal ... ok
+test total_deadline_bounds_pending_outbox_heartbeat ... ok
+test total_deadline_bounds_pending_post_handler_outbox_preflight ... ok
+test total_deadline_bounds_pending_post_handler_source_preflight ... ok
+test total_deadline_bounds_pending_post_handler_source_renewal ... ok
+test total_deadline_bounds_pending_source_heartbeat ... ok
+test total_deadline_bounds_pending_success_settlement_without_confirming_ack ... ok
+
+failures:
+
+---- cancellation_during_final_outbox_response_stops_source_fences stdout ----
+
+thread 'cancellation_during_final_outbox_response_stops_source_fences' (55) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:1435:5:
+assertion `left == right` failed: cancellation during final outbox renewal must stop both following Source fences
+  left: (2, 2)
+ right: (1, 1)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- cancellation_during_final_source_preflight_stops_settlement stdout ----
+
+thread 'cancellation_during_final_source_preflight_stops_settlement' (56) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:1474:5:
+assertion `left == right` failed: cancellation during the final Source preflight must stop settlement
+  left: 1
+ right: 0
+
+---- cancellation_during_final_source_renewal_stops_source_preflight stdout ----
+
+thread 'cancellation_during_final_source_renewal_stops_source_preflight' (57) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:1456:5:
+assertion `left == right` failed: cancellation during final Source renewal must stop the following preflight
+  left: 2
+ right: 1
+
+---- cancellation_during_heartbeat_outbox_response_stops_source_renewal stdout ----
+
+thread 'cancellation_during_heartbeat_outbox_response_stops_source_renewal' (58) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:1492:5:
+assertion `left == right` failed: cancellation during an outbox heartbeat must stop the following Source renewal
+  left: 2
+ right: 1
+
+---- cancellation_during_heartbeat_source_response_stops_handler_polling stdout ----
+
+thread 'cancellation_during_heartbeat_source_response_stops_handler_polling' (59) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:1514:5:
+assertion `left == right` failed: a cancelled Source heartbeat must not resume handler work
+  left: 1
+ right: 0
+
+
+failures:
+    cancellation_during_final_outbox_response_stops_source_fences
+    cancellation_during_final_source_preflight_stops_settlement
+    cancellation_during_final_source_renewal_stops_source_preflight
+    cancellation_during_heartbeat_outbox_response_stops_source_renewal
+    cancellation_during_heartbeat_source_response_stops_handler_polling
+
+test result: FAILED. 30 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.73s
+
+error: test failed, to rerun pass `-p outbox-delivery --test runner_lifecycle`
