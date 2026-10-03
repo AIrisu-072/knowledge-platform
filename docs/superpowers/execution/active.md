@@ -1,5 +1,43 @@
 # Active Execution Pointer
 
+## 2026-10-03 UTC — Windows host inventory design GO; implementation held
+
+- [Minimal host-inventory design](../specs/2026-10-03-organization-windows-host-inventory-design.md) and [conditional plan](../plans/2026-10-03-organization-windows-host-inventory.md) describe one disabled, head-bound hosted Windows metadata job. No workflow, linter, policy flag, collector or activation is implemented by this documentation change.
+- Canonical block-YAML exact-template validation avoids a new parser and preserves existing unrelated-Windows rejection. All global Linux/backend/native-Windows/self-hosted/mise/permissions values remain; the proposed single OS-metadata-only mise/native-job exception must pass independent review before implementation.
+- Verified official windows-2022 catalog gives a concrete Server2022 candidate, but Runtime is not listed. Actual allocated image/registry/tool observations and entitlement remain unknown. No Runtime/loader/browser/compiler/project-tool invocation, install/download/build, screenshot/artifact upload or terms acceptance is proposed in the collector.
+- Deliberate label activation is conditional on reviewed exact source/gates and specific authority; it also reruns existing Linux CI, which is disclosed rather than suppressed. No Draft-open Windows execution. The prior Runtime custom-license STOP and actual Windows10Pro/ESU requirement remain.
+- Independent documentation-design GO binds40c91eb/treed11acb71, no Critical/Important findings. Next exact action: parent durably publishes/verifies metadata4164683 and Runtime STOP60834e1, binds actual predecessor identities and confirms the next implementation boundary. H1–H4 source/policy/job implementation and activation remain held; this design GO grants no proprietary Runtime use.
+
+---
+
+## 2026-10-03 UTC — Metadata publication GO; Runtime custom-license STOP
+
+- Independent final publication GO binds local4164683/tree9d364531 above PR51:18 tests, exact406-archive/source/role/scanner/native receipts and CI isolation verified, no Critical/Important findings. This is metadata/source publication only; parent remote identity/hosted gates remain separately verified.
+- [Current official Runtime agreements](../../research/organization-tauri-windows-runtime-gates.md) now establish a distinct proprietary/custom license and use-based acceptance. Existing five-package MPL approval and BSD-form SDK loader evidence do not authorize Runtime use, new installation, telemetry/security changes or distribution. No such action occurred.
+- [Terms receipt](../../research/organization-tauri-windows-inventory/runtime-terms-receipt.json) distinguishes raw API JSON and decoded HTML fingerprints, Evergreen/Fixed/consumer variants and current-source versus actual-host entitlement limits.
+- Next exact action: preserve/durably publish the reviewed metadata checkpoint, independently review this narrow terms STOP, then design/review a strictly read-only GitHub Windows installed-environment preflight with a narrow policy amendment. No Windows job/runtime/compiler/loader execution or installation is authorized here; concrete host evidence precedes any environment-specific acceptance request. Global backend Windows flags, capturedPR48 and Phase5/6 remain unchanged.
+
+---
+
+## 2026-10-03 UTC — Fresh Windows candidate inventory passes; runtime gates remain
+
+- [Exact five-version approval](../../decisions/2026-10-03-organization-tauri-windows-mpl-amendment.md) is recorded; independent first-slice design GO binds b33c0f2/tree265bcb29. New evidence is recreated above actual PR51, never relabelled recovered b4a evidence.
+- [Fresh bounded inventory](../../research/organization-tauri-windows-inventory/README.md):406 locked archives/22,054 regular files verified;216 selected registry packages in actual Linux-host→Windows-target projection,179 host/125 normal-target with overlap. Independent normal/no-proc set and scanner coverage agree. Original host trio+dtoa-short are host-only; option-ext is both.
+- Root Windows scan truthfully fails the five approved MPL entries; exact scoped Windows scan passes with no advisory/license/source errors and retained warnings. Conservative all-target scan retains unapproved inactive target-lexicon/proc-macro-error failures. No global policy/security exception.
+- Exact loader provenance matches nine webview2-com-sys0.39.1 files to Microsoft SDK1.0.3800.47 and its BSD-form license. Notice omission, signature/native vulnerability/output limits and broader runtime/compiler/driver terms remain explicit. [Windows gates](../../research/organization-tauri-windows-runtime-gates.md) preserve unavailable actual Windows10Pro/ESU host and native picker interaction limits.
+- Eighteen stdlib tests and original-capture verification pass. No package build/native runtime, root/source/workflow/policy changes or new image sharing. Next exact action: independent final byte/evidence/CI-routing review, parent durable Draft publication and current-head checks; then separately reviewed Windows-host/terms/policy/picker/transport readiness. Phase4 remains incomplete; Phase5/6 unstarted.
+
+---
+
+## 2026-10-03 02:15 UTC — Additional exact MPL scope approved; new inventory review pending
+
+- Owner reply Sentinel_59ca27ae4d9c8191a8fdfe8801327b91 approves the exact pending dtoa-short0.3.5 host-only and option-ext0.2.0 host/Windows-target qualification. The [ADR amendment](../../decisions/2026-10-03-organization-tauri-windows-mpl-amendment.md) preserves both question and reply; original host trio remains exact. No Linux, security, production or distribution expansion.
+- Actual PR51 remote629822a4/treea85096b2 and CI37085364978/DSI37085364940/Sandbox37085364996 SUCCESS were freshly verified02:16UTC; D2 skipped. Current local branch docs/organization-tauri-windows-inventory starts at the actual remote head. Earlier pending checkpoints below are historical.
+- The full old inventory is still unavailable. [New metadata-only design](../specs/2026-10-03-organization-tauri-windows-inventory-design.md) and [ordered plan](../plans/2026-10-03-organization-tauri-windows-inventory.md) require independent first-slice review before tool restoration or resolution. Existing Rust/Cargo tools are absent; free disk27725MiB, floor1536MiB.
+- Next exact action: independent first-slice review, then only approved metadata/source/advisory reconstruction. Actual build/runtime remains gated on fresh qualified inventory, Windows-native host/terms/platform policy and picker/transport/security subdesigns. All frozen source, existing Draft heads, no new image sharing and Phase5/6 boundaries remain.
+
+---
+
 ## 2026-10-03 UTC — Documentation recovery; additional Tauri decision pending
 
 - Existing three-package host-only permission is recorded in the [reconstructed ADR](../../decisions/2026-10-03-organization-tauri-host-mpl-qualification.md). Parent question Sentinel_59383b2800ac8191a2fe76e8e0e22d0a sent00:56UTC for dtoa-short0.3.5 host-only and option-ext0.2.0 host+normal-target scope is **PENDING**. No expanded permission is inferred.

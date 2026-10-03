@@ -1,0 +1,13 @@
+{
+  "actual_host": "x86_64-unknown-linux-gnu",
+  "target": "x86_64-pc-windows-msvc",
+  "metadata_packages_all": 407,
+  "metadata_packages_windows": 243,
+  "selected_packages_including_fixture": 217,
+  "host_count": 179,
+  "target_count_including_fixture": 126,
+  "independent_normal_projection_equal": true,
+  "all_selected_metadata_present": true,
+  "exact_exception_role_violations": [],
+  "native_windows_host_qualified": false
+}

@@ -1,0 +1,156 @@
+{
+  "status": "PROVENANCE_AND_PACKAGE_LICENSE_EVIDENCE_MATCHED; EXECUTION_AND_DISTRIBUTION_NOT_AUTHORIZED",
+  "checked_utc": "2026-10-03T02:40:00Z",
+  "scope": "Data-only inspection of pinned crate, pinned upstream updater, official NuGet archive; no Cargo, build scripts, native binaries, installer or agreement acceptance executed.",
+  "crate": {
+    "name": "webview2-com-sys",
+    "version": "0.39.1",
+    "sha256": "b3a07132775117d6065853d9d1178157b8c90e228de47129d6bce2c7edebedfb",
+    "revision": "edc2caf886175ccaebe86078c9cfe1ae2a187328",
+    "repository": "https://github.com/wravery/webview2-rs",
+    "path_in_vcs": "crates/bindings",
+    "license_notice_members": []
+  },
+  "upstream_pin": {
+    "package": "Microsoft.Web.WebView2",
+    "version": "1.0.3800.47",
+    "updater_url": "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/crates/update-bindings/src/main.rs",
+    "pin_lines": [
+      78,
+      79
+    ],
+    "native_copy_lines": [
+      165,
+      190
+    ]
+  },
+  "official_package": {
+    "url": "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/1.0.3800.47",
+    "resolved_url": "https://globalcdn.nuget.org/packages/microsoft.web.webview2.1.0.3800.47.nupkg?packageVersion=1.0.3800.47",
+    "bytes": 8973762,
+    "sha256": "56c9f26bdd07916a2d1949fb58a5c7e434dfa1173577dca879206050c4e718db",
+    "sha512": "10048ce88c166b7f29a563fcdb9487d71bac5723777cd0a98b5c5a0e71cff344551a0bc27410b0cb0f8482a9ecdec7454a45ad0d2a7ae998fc347ead15598889",
+    "sha512_matches_official_CDN_header": true,
+    "md5_matches_official_CDN_header": true,
+    "downloaded_utc": "2026-10-03T02:39:17Z",
+    "nuspec_author": "Microsoft",
+    "requireLicenseAcceptance": false,
+    "license_type": "file",
+    "license_path": "LICENSE.txt",
+    "package_signature_present": true,
+    "package_signature_cryptographically_validated": false
+  },
+  "native_payloads": [
+    {
+      "nuget_path": "build/native/arm64/WebView2Loader.dll",
+      "crate_path": "webview2-com-sys-0.39.1/arm64/WebView2Loader.dll",
+      "bytes": 146536,
+      "sha256": "a0de1844933a10c898f833771a85f0ab9a0e3c745d4715f63d2d9730f9416025",
+      "byte_identical": true
+    },
+    {
+      "nuget_path": "build/native/arm64/WebView2Loader.dll.lib",
+      "crate_path": "webview2-com-sys-0.39.1/arm64/WebView2Loader.dll.lib",
+      "bytes": 2916,
+      "sha256": "d70271daa44507865ca0696cd1c1ede5e58e694eec74cb2d06e17dbbe205e9a2",
+      "byte_identical": true
+    },
+    {
+      "nuget_path": "build/native/arm64/WebView2LoaderStatic.lib",
+      "crate_path": "webview2-com-sys-0.39.1/arm64/WebView2LoaderStatic.lib",
+      "bytes": 10505262,
+      "sha256": "4a1ca4b518337c508aa0d778b220c6e59558fce21f4fd0d79a6ea944dd9d5208",
+      "byte_identical": true
+    },
+    {
+      "nuget_path": "build/native/x64/WebView2Loader.dll",
+      "crate_path": "webview2-com-sys-0.39.1/x64/WebView2Loader.dll",
+      "bytes": 160880,
+      "sha256": "86545b66cdb0603bc26b626fb9ad610cb6e71f28d468f5ea66df23b03dda96d5",
+      "byte_identical": true
+    },
+    {
+      "nuget_path": "build/native/x64/WebView2Loader.dll.lib",
+      "crate_path": "webview2-com-sys-0.39.1/x64/WebView2Loader.dll.lib",
+      "bytes": 2916,
+      "sha256": "bfc8ccaaa056be95243a5b66a827e5849d2bb39676fca4dcc2053796d8e15c6d",
+      "byte_identical": true
+    },
+    {
+      "nuget_path": "build/native/x64/WebView2LoaderStatic.lib",
+      "crate_path": "webview2-com-sys-0.39.1/x64/WebView2LoaderStatic.lib",
+      "bytes": 10500472,
+      "sha256": "89c6b872783b8f6c3cedbff618adb42082d455c615453ae10cfc753f1e8f25d8",
+      "byte_identical": true
+    },
+    {
+      "nuget_path": "build/native/x86/WebView2Loader.dll",
+      "crate_path": "webview2-com-sys-0.39.1/x86/WebView2Loader.dll",
+      "bytes": 121448,
+      "sha256": "161dc6673084a31f64670ace8e61cb0e1b55af815b6c7c8217a0cdd8503454e2",
+      "byte_identical": true
+    },
+    {
+      "nuget_path": "build/native/x86/WebView2Loader.dll.lib",
+      "crate_path": "webview2-com-sys-0.39.1/x86/WebView2Loader.dll.lib",
+      "bytes": 2998,
+      "sha256": "a3ec0ee539d58fe72391f2e89cb814f96fab721c6d8d30953d152ea95dffad49",
+      "byte_identical": true
+    },
+    {
+      "nuget_path": "build/native/x86/WebView2LoaderStatic.lib",
+      "crate_path": "webview2-com-sys-0.39.1/x86/WebView2LoaderStatic.lib",
+      "bytes": 10465074,
+      "sha256": "0513f7e61304321f2d91e1851475be07e091042aa3640597e660608f72521e6c",
+      "byte_identical": true
+    }
+  ],
+  "license_and_notice_evidence": [
+    {
+      "name": "LICENSE.txt",
+      "bytes": 1487,
+      "sha256": "0af8f1b807512aae39c2ac1aa4d0cae65cabecb6fd554b8439a5162a0d6eca55"
+    },
+    {
+      "name": "Microsoft.Web.WebView2.nuspec",
+      "bytes": 1367,
+      "sha256": "31e49576d10d4a5abf4318850e6d3fde457800e6228610a5854a4251af56b5ff"
+    },
+    {
+      "name": "NOTICE.txt",
+      "bytes": 3894,
+      "sha256": "106423785c5b7eba0a8e61d1837f2132e9c828e20ad530f565d981c1df60dd90"
+    }
+  ],
+  "license_finding": "The exact package nuspec designates LICENSE.txt. The package license is Microsoft-copyright BSD-3-Clause-form text, not wrapper MIT. Source redistribution retains copyright/conditions/disclaimer; binary redistribution reproduces them in accompanying materials; endorsement using Microsoft/contributor names requires permission. No new acceptance was performed.",
+  "notice_finding": "Package NOTICE.txt carries Antlr3.Runtime 3.5.2-rc1 and StringTemplate4 4.0.9-rc1 BSD-3-Clause notices plus Microsoft third-party-source and LGPL-debugging boilerplate. Same package includes tools/wv2winrt/Antlr3.Runtime.dll and Antlr4.StringTemplate.dll. Notice alone does not prove these components are linked into the nine loader files. No file-specific notice applicability conclusion is asserted; preserve whole official notice conservatively pending policy review.",
+  "linking_finding": "Crate build.rs copies all nine files before target directory selection. src/lib.rs selects WebView2LoaderStatic with kind static for target_env msvc and WebView2Loader.dll otherwise. Static linkage does not eliminate the native payload from qualification.",
+  "unresolved_gates": [
+    "Native provenance/notice evidence must be incorporated and reviewed under repository dependency policy; the crate archive itself omits LICENSE/NOTICE.",
+    "Package signature, certificate-chain trust, Authenticode and publisher reproducible-build attestations were not validated. Official HTTPS origin and same-CDN published content hashes plus exact byte comparisons are the evidence obtained.",
+    "Full third-party attribution applicability per loader is not supplied by package NOTICE.txt; retaining official full LICENSE.txt and NOTICE.txt is the conservative evidentiary baseline.",
+    "WebView2 Runtime, Windows SDK, MSVC/linker and other native host dependencies are distinct, unqualified artifacts with their own terms and setup/security gates.",
+    "No security/vulnerability assurance, native installation, build, execution, packaging, production adoption or distribution authorization is conferred by this investigation or prior MPL scope approvals."
+  ],
+  "sources": [
+    "https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.3800.47",
+    "https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.3800.47/License",
+    "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/1.0.3800.47",
+    "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/crates/update-bindings/src/main.rs",
+    "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE",
+    "https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#files-to-ship-with-the-app"
+  ],
+  "bounded_advisory_index_query": {
+    "source": "https://api.osv.dev/v1/query",
+    "query": {
+      "package": {
+        "name": "Microsoft.Web.WebView2",
+        "ecosystem": "NuGet"
+      },
+      "version": "1.0.3800.47"
+    },
+    "response": {},
+    "meaning": "Index query only; not a complete native security assurance or Runtime check",
+    "observed_utc": "2026-10-03T02:49:11.359479+00:00"
+  }
+}

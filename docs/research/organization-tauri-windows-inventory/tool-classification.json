@@ -1,0 +1,16 @@
+{
+  "kind": "restored repository-selected metadata/scanner tools",
+  "rust_version": "1.98.1",
+  "cargo_version": "1.98.1",
+  "cargo_commit": "797e8a9bca276c1c9f9f738d2a20f484fa4eea9d",
+  "cargo_deny_version": "0.20.2",
+  "actual_host": "x86_64-unknown-linux-gnu",
+  "selected_target_projection": "x86_64-pc-windows-msvc",
+  "package_code_compiled_or_run": false,
+  "native_windows_host_qualified": false,
+  "executables": {
+    "rust/bin/rustc": "859254978c0a0402c32f949f6de0d99aee73be8d15f45aac00ae1448aac51e74",
+    "rust/bin/cargo": "da77c8b33849312255ccde3179198ada4c8deb370488d050286146b1d1b27e14",
+    "deny/cargo-deny-0.20.2-x86_64-unknown-linux-musl/cargo-deny": "b329e25933d01c36dd7c47d84ea5716694f9b7caf53a5003d45674703a8ed54a"
+  }
+}

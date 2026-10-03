@@ -1,0 +1,13 @@
+{
+  "unpacked/rustc-1.98.1-x86_64-unknown-linux-gnu/LICENSE-MIT": "b71bd43a069ca0641a9ecfe585ca7b3c53b5cc1608f8b68321168698e28b5ea1",
+  "unpacked/rustc-1.98.1-x86_64-unknown-linux-gnu/COPYRIGHT": "172020dbfd5b53a226dfde77616190a48dcff519b0bc0e6deb91a8450782c4af",
+  "unpacked/rustc-1.98.1-x86_64-unknown-linux-gnu/LICENSE-APACHE": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+  "unpacked/cargo-1.98.1-x86_64-unknown-linux-gnu/LICENSE-THIRD-PARTY": "cbc759b1f17a2ac38fe3eb9e9563b1a08ba0f900611c49faaf68b46907b6d898",
+  "unpacked/cargo-1.98.1-x86_64-unknown-linux-gnu/LICENSE-MIT": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+  "unpacked/cargo-1.98.1-x86_64-unknown-linux-gnu/LICENSE-APACHE": "8ada45cd9f843acf64e4722ae262c622a2b3b3007c7310ef36ac1061a30f6adb",
+  "unpacked/rust-std-1.98.1-x86_64-unknown-linux-gnu/LICENSE-MIT": "b71bd43a069ca0641a9ecfe585ca7b3c53b5cc1608f8b68321168698e28b5ea1",
+  "unpacked/rust-std-1.98.1-x86_64-unknown-linux-gnu/COPYRIGHT": "172020dbfd5b53a226dfde77616190a48dcff519b0bc0e6deb91a8450782c4af",
+  "unpacked/rust-std-1.98.1-x86_64-unknown-linux-gnu/LICENSE-APACHE": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+  "deny/cargo-deny-0.20.2-x86_64-unknown-linux-musl/LICENSE-MIT": "090a294a492ab2f41388252312a65cf2f0e423330b721a68c6665ac64766753b",
+  "deny/cargo-deny-0.20.2-x86_64-unknown-linux-musl/LICENSE-APACHE": "8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90"
+}
