@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "record_type": "historical_report_only_not_recovered_inventory",
+  "recorded_date_utc": "2026-10-03",
+  "current_execution_state": "STOP_PENDING_OWNER_DECISION",
+  "recovered_remote_baseline": {
+    "commit": "8927886bbbcb02bfa2098f38155572028b31bd07",
+    "tree": "2d0ed10254fcb505ab8f1580088e36b36d32409c"
+  },
+  "lost_unpublished_packet": {
+    "commit": "b4a64a0a73e80875fa92de89eacf6bb5a7e51590",
+    "tree": "9d078b9779cac7a7c8b2e7ec147d58e3c47fdb7f",
+    "substantive_review_commit": "3950c57edef0952e715cd984054a8b10757610a7",
+    "availability": "absent from current filesystem and checked local objects; not published",
+    "original_bytes_recovered": false
+  },
+  "historically_reported_only": {
+    "registry_entries": 406,
+    "active_packages_union": 273,
+    "source_regular_files_checked": 11435,
+    "mismatches": 0,
+    "linux_scanner_exit": 5,
+    "windows_scanner_exit": 4,
+    "linux_license_errors": 6,
+    "linux_advisory_errors": 1,
+    "windows_license_errors": 5,
+    "windows_advisory_errors": 0,
+    "source_errors": 0,
+    "rustsec_revision": "f8dee89e1b2f2f1eaf548312df7655fe5202a302",
+    "lock_sha256": "139adfc8c9ccc17b1a5ab4c64f30cbcd0b722ea6f5d3728c50e9753b79d42d8f",
+    "initial_lock_sha256": "df8f1468326e63c789daa13ffd32fa1450f0c260ea7b11be32b5a6bd08d1ac0c",
+    "evidence_status": "worker and independent-review reports survive; original lock/inventory/archives/logs unavailable; no fresh recreation or verification claimed"
+  },
+  "pending_question": {
+    "message_id": "Sentinel_59383b2800ac8191a2fe76e8e0e22d0a",
+    "sent_utc": "2026-10-03T00:56:00Z",
+    "status": "pending_no_reply",
+    "scope": [
+      "dtoa-short0.3.5 host-only MPL qualification",
+      "option-ext0.2.0 host and normal target MPL qualification",
+      "recommended Windows-first direct Cargo route"
+    ],
+    "excluded": [
+      "Linux exceptions",
+      "production adoption",
+      "distribution"
+    ]
+  },
+  "new_packet_scope": "documentation-only reconstruction; no Cargo/package/workflow/policy/source changes"
+}

@@ -1,5 +1,15 @@
 # Organization Client v0 — Capability Execution Status
 
+## 2026-10-03 UTC — Documentation recovery; additional Tauri decision pending
+
+- Existing three-package host-only permission is recorded in the [reconstructed ADR](../../decisions/2026-10-03-organization-tauri-host-mpl-qualification.md). Parent question Sentinel_59383b2800ac8191a2fe76e8e0e22d0a sent00:56UTC for dtoa-short0.3.5 host-only and option-ext0.2.0 host+normal-target scope is **PENDING**. No expanded permission is inferred.
+- The prior unpublished b4a64a0a/tree9d078b97 packet and its full lock/inventory/archive/log artifacts are unavailable after filesystem reversion. Historical counts/scans are [explicitly historical](../../research/organization-tauri-qualification-history.json), not recovered proof. Actual remotePR50 8927886b/tree2d0ed102 was freshly fetched; this new packet is independently reviewable reconstructed documentation only.
+- [Recovery/STOP and CI-scope record](../../research/organization-tauri-qualification-recovery.md), [recovery design](../specs/2026-10-03-organization-tauri-qualification-design.md), [ordered plan](../plans/2026-10-03-organization-tauri-qualification.md) and [review status](organization-tauri-qualification-review.md) are current. No new Cargo/package/runtime/capability/workflow/policy files are added. Static CI routing found no new Tauri execution path; CI success is not promised.
+- Recommend Windows-first/direct Cargo after relevant decisions, avoiding Linux-specific exceptions and optional CLI/installer scope. Mandatory new MPL paths remain; Windows policy/host/WebView2/native terms, restored exact inventory and all actual runtime gates remain unqualified. No Linux/security exception, production/distribution, denied probe retry or new image sharing is authorized.
+- Fresh independent recovery review GO at local7b25836e/tree28bc762d, no Critical/Important findings; execution remains STOP. Next exact action: parent durably publish/verify the actual final bytes/tree and current-head gates, then await the specific owner reply. Do not publish absent b4a bytes, fabricate the old inventory, resume builds or progress Phase5/6. Frozen Phase1/2/3, capturedPR48, root locks/source/policies and Draft/unmerged boundaries remain unchanged.
+
+---
+
 ## 2026-10-02 17:46 UTC — Phase4 read-only preflight STOP at host MPL dependency policy
 
 - Qualified Phase3 evidence [PR49](https://github.com/AIrisu-072/knowledge-platform/pull/49) is remote0860e34e/treea1695e32: CI37038588206, DSI37038588091 and Sandbox37038588073 SUCCESS; branch-specific D2 skipped as intended. Captured PR48 e6bf24d8/tree204a412b and its actual20 GO remain immutable.
