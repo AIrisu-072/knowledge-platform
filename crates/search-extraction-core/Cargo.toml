@@ -6,6 +6,6 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-search-core = { path = "../search-core" }
+search-core = { version = "0.0.0", path = "../search-core" }
 serde.workspace = true
 thiserror.workspace = true

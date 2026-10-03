@@ -6,7 +6,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-document-sandbox-runner = { path = "../document-sandbox-runner" }
+document-sandbox-runner = { version = "0.0.0", path = "../document-sandbox-runner" }
 document-application = { version = "0.0.0", path = "../document-application" }
 document-semantic-inspection-core = { version = "0.0.0", path = "../document-semantic-inspection-core" }
 libc.workspace = true

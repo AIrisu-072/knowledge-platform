@@ -1,5 +1,13 @@
 # Search Platform Completion Program — Status
 
+## Latest bounded dependency checkpoint — 2026-10-03
+
+- **ACTIVE / WIP / incomplete.** Live Search Draft #40 at `a945fbd32145a3109e35cb9cb056cea052698138` is the reconstruction baseline; original restored sources are preserved. Other Document/Organization/Audit work is not imported.
+- [Root dependency metadata receipt](../programs/search-platform-completion/dependency-metadata-recovery-20261003.md): eight existing local path declarations receive matching `0.0.0` versions; only root `yoke-derive` version/checksum changes from `0.8.3` to `0.8.4`. Same pinned cargo-deny command gives baseline exit 3 with eight wildcards plus yanked version, candidate exit 0 with advisories/bans/licenses/sources PASS. Existing 29 warnings remain. Independent five-file source review GO; static lock comparison and metadata/diff checks PASS.
+- This is a dependency-metadata gate, not source/runtime qualification. Three independent experiment lockfiles still contain `yoke-derive 0.8.3`; DSI PoC is not cleared. Missing observe implementation, G05/G06 fresh verification, G07/G08, P1 Office v2, P7 pending registration and every final acceptance gate remain open.
+- No project build/test or parser/DB/process/model/security-probe/P3 execution ran. The unidentified historical stopped action was not retried or declared cleared.
+- **Exact next action:** publish this scoped reviewed checkpoint, verify the actual Draft tree and inspect fresh ordinary CI. Independently review the next named P6 gate in frozen G05 → G06 → G07 → G08 order before execution; do not infer broader permission from this dependency receipt. No merge/deploy.
+
 ## Latest compile-only checkpoint — 2026-10-01T21:45Z
 
 - **ACTIVE / WIP / incomplete.** Draft PR #40 receives only `previous.get::<Uuid, _>("lease_token")` in the P6 process-recovery test and truthful checkpoint documentation, based on published head `99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a`.

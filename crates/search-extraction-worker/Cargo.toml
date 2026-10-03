@@ -6,9 +6,9 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-search-extraction-core = { path = "../search-extraction-core" }
-document-sandbox-runner = { path = "../document-sandbox-runner" }
-search-core = { path = "../search-core" }
+search-extraction-core = { version = "0.0.0", path = "../search-extraction-core" }
+document-sandbox-runner = { version = "0.0.0", path = "../document-sandbox-runner" }
+search-core = { version = "0.0.0", path = "../search-core" }
 sha2.workspace = true
 
 [[bin]]

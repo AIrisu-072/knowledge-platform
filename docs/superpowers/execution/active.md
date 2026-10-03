@@ -1,5 +1,12 @@
 # Active Execution Pointer
 
+## Active checkpoint — Search root dependency metadata recovery, 2026-10-03
+
+- **ACTIVE / WIP / incomplete.** Fresh requester-directed Search continuation starts from Draft PR #40 `a945fbd32145a3109e35cb9cb056cea052698138`, without overwriting the older restored worktree or mixing other capability branches.
+- Bounded five-file dependency repair: eight existing local paths gain their matching `0.0.0` package version; root lock changes only `yoke-derive 0.8.3 → 0.8.4` and checksum. Fresh same-command cargo-deny baseline exit 3 → candidate exit 0; advisories/bans/licenses/sources PASS with existing warnings. Independent source review GO. See [receipt](../programs/search-platform-completion/dependency-metadata-recovery-20261003.md).
+- Three separate experiment locks still contain the yanked version. Missing `outbox_delivery::observe`, P6 G05–G08 fresh execution, all P1–P7/final acceptance and the unidentified historical safety-stop remain open. No project build/test, parser/DB/process/model/security-probe/P3 execution occurred in this checkpoint.
+- **Exact next action:** publish this bounded reviewed checkpoint and inspect ordinary exact-head CI; independently scope the next named P6 gate in frozen order before execution. No blanket implementation-hold clearance, merge or deployment.
+
 ## Active checkpoint — Search narrow compile correction, 2026-10-01T21:45Z
 
 - **ACTIVE / WIP / incomplete.** Draft PR #40 retains the implementation safety hold and all P1–P7 acceptance gates. This update changes only the P6 process-recovery test's SQLx UUID type annotation, with a separately recorded focused compile RED→GREEN and independent static review.
