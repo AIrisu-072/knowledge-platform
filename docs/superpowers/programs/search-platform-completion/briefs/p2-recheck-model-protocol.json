@@ -1,0 +1,21 @@
+# 仕事の手渡し: p2-recheck-model-protocol
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independent premeasurement pin and postrun receipt binding exact model protocol gate
+
+## 入力
+- `p2-model-protocol-fixed` (experiments/search-vector-model-poc/protocol-fix-receipt.md) — Noncircular premeasure frozen RunPin fully seals all semantic inputs [`p2-fix-model-protocol` が作る (作業中)]
+- `p2-model-protocol-review` (docs/superpowers/programs/search-platform-completion/p2-model-protocol-review.md) — Independent exact two-model offline corpus and license protocol gate [`p2-review-model-protocol` が作る (済み)]
+
+## 出すもの
+- `p2-model-protocol-fixed-review` (docs/superpowers/programs/search-platform-completion/p2-model-protocol-recheck.md) — Independent complete noncircular frozen paired run protocol gate
+
+## 受入条件
+Freshofflineadversarial tests exact allsemantic seals/no postrun prerequisites, Rustscaffoldnextorganizationalonly notweakeningcontract, no model selection
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p2-model-protocol-recheck.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

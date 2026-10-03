@@ -1,0 +1,21 @@
+# 仕事の手渡し: p3-refine-poc
+
+- 種類: spike / 役: Worker / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Refine three-backend persisted-incidence traversal Source authority and bounded semantic gates
+
+## 入力
+- `p3-poc-code` (experiments/search-graph-poc) — Executable three backend typed nary oracle comparison [`p3-measure-backends` が作る (済み)]
+- `p3-poc-review` (docs/superpowers/programs/search-platform-completion/p3-graph-poc-review.md) — Independent comparison and promotion boundary review [`p3-review-poc` が作る (未着手)]
+- `p3-plan` (docs/superpowers/programs/search-platform-completion/p3-graph-plan.md) — graph plan [`p3-freeze` が作る (済み)]
+- `p3-contract` (docs/superpowers/programs/search-platform-completion/p3-graph-freeze.md) — graph contract [`p3-freeze-architecture` が作る (済み)]
+
+## 出すもの
+- `p3-poc-refined` (experiments/search-graph-poc/refinement-report.md) — Actual participant-incidence and multi-hop Source-scoped access correctness refinement
+
+## 受入条件
+Source-scoped current access owner retention temporal and allincidence integrity parity including multi-hop/hidden-degree with meaningfulnegativeproofs; further200sample faultmatrix selection gate separate
+
+## 守ること
+- 書いてよいのは `experiments/search-graph-poc` だけ。他は触らない。

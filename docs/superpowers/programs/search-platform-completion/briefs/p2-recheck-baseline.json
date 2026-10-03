@@ -1,0 +1,22 @@
+# 仕事の手渡し: p2-recheck-baseline
+
+- 種類: audit / 役: QualityAuditor / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Independently verify repaired paired model comparison baseline
+
+## 入力
+- `p2-baseline-repaired` (experiments/search-vector-poc/baseline-refinement-report.md) — Pinned actualcode paired L LG multiUnit negative access measurement baseline [`p2-fix-baseline` が作る (作業中)]
+- `p2-arch` (docs/superpowers/programs/search-platform-completion/p2-vector-architecture-review.md) — vector arch [`p2-architecture` が作る (未着手)]
+- `p1-unit-code` (crates/search-core/src/knowledge_unit.rs) — Canonical provider-neutral Unit and locator codec [`p1-impl-unit-code` が作る (済み)]
+
+## 出すもの
+- `p2-baseline-recheck` (docs/superpowers/programs/search-platform-completion/p2-baseline-recheck.md) — Independent exact repaired baseline measurement gate
+
+## 受入条件
+No blockingF1 F2 F3; dense arm itself stillunmeasured
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p2-baseline-recheck.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

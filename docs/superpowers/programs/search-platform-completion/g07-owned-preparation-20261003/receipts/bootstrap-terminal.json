@@ -1,0 +1,374 @@
+{
+  "approved_elf": {
+    "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin/initdb": {
+      "closure": {
+        "interpreter": "/lib64/ld-linux-x86-64.so.2",
+        "library_search": {
+          "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/lib",
+          "tag": "RUNPATH"
+        },
+        "needed": [
+          "libpq.so.5",
+          "libm.so.6",
+          "libc.so.6"
+        ],
+        "version_needs": [
+          "libm.so.6:GLIBC_2.29",
+          "libm.so.6:GLIBC_2.2.5",
+          "libc.so.6:GLIBC_2.6",
+          "libc.so.6:GLIBC_2.33",
+          "libc.so.6:GLIBC_2.38",
+          "libc.so.6:GLIBC_2.14",
+          "libc.so.6:GLIBC_2.10",
+          "libc.so.6:GLIBC_2.3",
+          "libc.so.6:GLIBC_2.2.5",
+          "libc.so.6:GLIBC_2.34"
+        ]
+      },
+      "dev": 27,
+      "inode": 1465836,
+      "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin/initdb",
+      "sha256": "5f87645c4e5ca39f584082455f9a2f4ffe08a47cae7386723770765e67db96d9"
+    },
+    "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin/pg_controldata": {
+      "closure": {
+        "interpreter": "/lib64/ld-linux-x86-64.so.2",
+        "library_search": {
+          "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/lib",
+          "tag": "RUNPATH"
+        },
+        "needed": [
+          "libc.so.6"
+        ],
+        "version_needs": [
+          "libc.so.6:GLIBC_2.38",
+          "libc.so.6:GLIBC_2.14",
+          "libc.so.6:GLIBC_2.3",
+          "libc.so.6:GLIBC_2.33",
+          "libc.so.6:GLIBC_2.34",
+          "libc.so.6:GLIBC_2.2.5"
+        ]
+      },
+      "dev": 27,
+      "inode": 1465846,
+      "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin/pg_controldata",
+      "sha256": "b1f00b95f277696969c4dad5df0e764096bcfeb23dbaf410011486839c5fc427"
+    },
+    "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin/postgres": {
+      "closure": {
+        "interpreter": "/lib64/ld-linux-x86-64.so.2",
+        "library_search": {
+          "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/lib",
+          "tag": "RUNPATH"
+        },
+        "needed": [
+          "libm.so.6",
+          "libc.so.6"
+        ],
+        "version_needs": [
+          "libc.so.6:GLIBC_2.6",
+          "libc.so.6:GLIBC_2.14",
+          "libc.so.6:GLIBC_2.25",
+          "libc.so.6:GLIBC_2.3.2",
+          "libc.so.6:GLIBC_2.9",
+          "libc.so.6:GLIBC_2.10",
+          "libc.so.6:GLIBC_2.27",
+          "libc.so.6:GLIBC_2.38",
+          "libc.so.6:GLIBC_2.33",
+          "libc.so.6:GLIBC_2.17",
+          "libc.so.6:GLIBC_2.7",
+          "libc.so.6:GLIBC_2.3",
+          "libc.so.6:GLIBC_2.2.5",
+          "libc.so.6:GLIBC_2.34",
+          "libm.so.6:GLIBC_2.38",
+          "libm.so.6:GLIBC_2.23",
+          "libm.so.6:GLIBC_2.29",
+          "libm.so.6:GLIBC_2.2.5"
+        ]
+      },
+      "dev": 27,
+      "inode": 1464787,
+      "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin/postgres",
+      "sha256": "924ff7eb26f7e57a315f2e4d02ae38ba3bedf1c90ffd7efe2534000a6ec3bb1d"
+    },
+    "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin/psql": {
+      "closure": {
+        "interpreter": "/lib64/ld-linux-x86-64.so.2",
+        "library_search": {
+          "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/lib",
+          "tag": "RUNPATH"
+        },
+        "needed": [
+          "libpq.so.5",
+          "libm.so.6",
+          "libc.so.6"
+        ],
+        "version_needs": [
+          "libc.so.6:GLIBC_2.14",
+          "libc.so.6:GLIBC_2.34",
+          "libc.so.6:GLIBC_2.38",
+          "libc.so.6:GLIBC_2.3",
+          "libc.so.6:GLIBC_2.33",
+          "libc.so.6:GLIBC_2.17",
+          "libc.so.6:GLIBC_2.2.5",
+          "libm.so.6:GLIBC_2.2.5"
+        ]
+      },
+      "dev": 27,
+      "inode": 1465860,
+      "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin/psql",
+      "sha256": "a5d2e113222dc4e7df0b9e1c07ab3e307bd35f3c24b2b4a65da60b04e7857572"
+    },
+    "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/tools/usr/bin/bison": {
+      "closure": {
+        "interpreter": "/lib64/ld-linux-x86-64.so.2",
+        "needed": [
+          "libc.so.6"
+        ],
+        "version_needs": [
+          "libc.so.6:GLIBC_2.3",
+          "libc.so.6:GLIBC_2.29",
+          "libc.so.6:GLIBC_2.15",
+          "libc.so.6:GLIBC_2.38",
+          "libc.so.6:GLIBC_2.14",
+          "libc.so.6:GLIBC_2.33",
+          "libc.so.6:GLIBC_2.32",
+          "libc.so.6:GLIBC_2.8",
+          "libc.so.6:GLIBC_2.17",
+          "libc.so.6:GLIBC_2.4",
+          "libc.so.6:GLIBC_2.26",
+          "libc.so.6:GLIBC_2.34",
+          "libc.so.6:GLIBC_2.3.4",
+          "libc.so.6:GLIBC_2.2.5"
+        ]
+      },
+      "dev": 27,
+      "inode": 1344027,
+      "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/tools/usr/bin/bison",
+      "sha256": "39fc36c38e29481dc3be2d08652e0564b9ea9aa297e38ed21ff0da0ff36967e8"
+    },
+    "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/tools/usr/bin/flex": {
+      "closure": {
+        "interpreter": "/lib64/ld-linux-x86-64.so.2",
+        "needed": [
+          "libm.so.6",
+          "libc.so.6"
+        ],
+        "version_needs": [
+          "libm.so.6:GLIBC_2.2.5",
+          "libc.so.6:GLIBC_2.11",
+          "libc.so.6:GLIBC_2.14",
+          "libc.so.6:GLIBC_2.33",
+          "libc.so.6:GLIBC_2.4",
+          "libc.so.6:GLIBC_2.26",
+          "libc.so.6:GLIBC_2.34",
+          "libc.so.6:GLIBC_2.3.4",
+          "libc.so.6:GLIBC_2.38",
+          "libc.so.6:GLIBC_2.2.5",
+          "libc.so.6:GLIBC_2.3"
+        ]
+      },
+      "dev": 27,
+      "inode": 1344307,
+      "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/tools/usr/bin/flex",
+      "sha256": "2f756d9099e5e926d938e916b342b36f11e209a413e2bbedee059fa4a87560bf"
+    },
+    "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/tools/usr/bin/m4": {
+      "closure": {
+        "interpreter": "/lib64/ld-linux-x86-64.so.2",
+        "needed": [
+          "libc.so.6"
+        ],
+        "version_needs": [
+          "libc.so.6:GLIBC_2.29",
+          "libc.so.6:GLIBC_2.25",
+          "libc.so.6:GLIBC_2.15",
+          "libc.so.6:GLIBC_2.38",
+          "libc.so.6:GLIBC_2.14",
+          "libc.so.6:GLIBC_2.33",
+          "libc.so.6:GLIBC_2.4",
+          "libc.so.6:GLIBC_2.26",
+          "libc.so.6:GLIBC_2.17",
+          "libc.so.6:GLIBC_2.34",
+          "libc.so.6:GLIBC_2.3.4",
+          "libc.so.6:GLIBC_2.2.5",
+          "libc.so.6:GLIBC_2.3"
+        ]
+      },
+      "dev": 27,
+      "inode": 1343876,
+      "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/tools/usr/bin/m4",
+      "sha256": "24066e3ebc4b7a0eeb33b3d50e108afcfd384f1f01dd1797fa0423d5494cce16"
+    }
+  },
+  "approved_providers": {
+    "ld-linux-x86-64.so.2": {
+      "closure": {
+        "interpreter": null,
+        "needed": [],
+        "version_needs": []
+      },
+      "dev": 27,
+      "inode": 9223372036855329908,
+      "path": "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+      "readelf_stdout_sha256": "f45f1442fb484e427f633262846f8e29b994dec58b36540863db108428e28b01",
+      "sha256": "c8438e4fde1934e61c88311633f00949ff645d5c04cdb8671fa3d78164d2f307",
+      "version_definitions": [
+        "ld-linux-x86-64.so.2",
+        "GLIBC_2.2.5",
+        "GLIBC_2.3",
+        "GLIBC_2.4",
+        "GLIBC_2.34",
+        "GLIBC_2.35",
+        "GLIBC_PRIVATE"
+      ]
+    },
+    "libc.so.6": {
+      "closure": {
+        "interpreter": "/lib64/ld-linux-x86-64.so.2",
+        "needed": [
+          "ld-linux-x86-64.so.2"
+        ],
+        "version_needs": [
+          "ld-linux-x86-64.so.2:GLIBC_2.2.5",
+          "ld-linux-x86-64.so.2:GLIBC_2.3",
+          "ld-linux-x86-64.so.2:GLIBC_2.35",
+          "ld-linux-x86-64.so.2:GLIBC_PRIVATE"
+        ]
+      },
+      "dev": 27,
+      "inode": 9223372036855331434,
+      "path": "/usr/lib/x86_64-linux-gnu/libc.so.6",
+      "readelf_stdout_sha256": "9a51299ecf8ccadc4da5e3bbd966ec98ccfef0b9bade0bf2a07ed9c6f6c10c7f",
+      "sha256": "9792e3cbb541c8f44c7acf5f14f4022ea62998ecc787d326bed4d8b6547dfd92",
+      "version_definitions": [
+        "libc.so.6",
+        "GLIBC_2.2.5",
+        "GLIBC_2.2.6",
+        "GLIBC_2.3",
+        "GLIBC_2.3.2",
+        "GLIBC_2.3.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.4",
+        "GLIBC_2.5",
+        "GLIBC_2.6",
+        "GLIBC_2.7",
+        "GLIBC_2.8",
+        "GLIBC_2.9",
+        "GLIBC_2.10",
+        "GLIBC_2.11",
+        "GLIBC_2.12",
+        "GLIBC_2.13",
+        "GLIBC_2.14",
+        "GLIBC_2.15",
+        "GLIBC_2.16",
+        "GLIBC_2.17",
+        "GLIBC_2.18",
+        "GLIBC_2.22",
+        "GLIBC_2.23",
+        "GLIBC_2.24",
+        "GLIBC_2.25",
+        "GLIBC_2.26",
+        "GLIBC_2.27",
+        "GLIBC_2.28",
+        "GLIBC_2.29",
+        "GLIBC_2.30",
+        "GLIBC_2.31",
+        "GLIBC_2.32",
+        "GLIBC_2.33",
+        "GLIBC_2.34",
+        "GLIBC_2.35",
+        "GLIBC_2.36",
+        "GLIBC_2.38",
+        "GLIBC_2.39",
+        "GLIBC_2.41",
+        "GLIBC_ABI_DT_RELR",
+        "GLIBC_ABI_DT_X86_64_PLT",
+        "GLIBC_ABI_GNU2_TLS",
+        "GLIBC_PRIVATE"
+      ]
+    },
+    "libm.so.6": {
+      "closure": {
+        "interpreter": null,
+        "needed": [
+          "libc.so.6",
+          "ld-linux-x86-64.so.2"
+        ],
+        "version_needs": [
+          "ld-linux-x86-64.so.2:GLIBC_PRIVATE",
+          "libc.so.6:GLIBC_2.36",
+          "libc.so.6:GLIBC_ABI_DT_RELR",
+          "libc.so.6:GLIBC_2.4",
+          "libc.so.6:GLIBC_2.2.5",
+          "libc.so.6:GLIBC_PRIVATE"
+        ]
+      },
+      "dev": 27,
+      "inode": 9223372036855332908,
+      "path": "/usr/lib/x86_64-linux-gnu/libm.so.6",
+      "readelf_stdout_sha256": "d88c80f9d3ae735b65dd8c26e1009ab0120c4afe091907f5aa3a76bed2b2a93e",
+      "sha256": "6d567d53e895273ca14a1f9dc164fc6c8d39aed2f60aa46a733c2784228915f3",
+      "version_definitions": [
+        "libm.so.6",
+        "GLIBC_2.2.5",
+        "GLIBC_2.4",
+        "GLIBC_2.15",
+        "GLIBC_2.18",
+        "GLIBC_2.23",
+        "GLIBC_2.24",
+        "GLIBC_2.25",
+        "GLIBC_2.26",
+        "GLIBC_2.27",
+        "GLIBC_2.28",
+        "GLIBC_2.29",
+        "GLIBC_2.31",
+        "GLIBC_2.32",
+        "GLIBC_2.35",
+        "GLIBC_2.38",
+        "GLIBC_2.39",
+        "GLIBC_2.40",
+        "GLIBC_2.41"
+      ]
+    },
+    "libpq.so.5": {
+      "closure": {
+        "interpreter": null,
+        "library_search": {
+          "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/lib",
+          "tag": "RUNPATH"
+        },
+        "needed": [
+          "libm.so.6",
+          "libc.so.6"
+        ],
+        "version_needs": [
+          "libm.so.6:GLIBC_2.29",
+          "libm.so.6:GLIBC_2.2.5",
+          "libc.so.6:GLIBC_2.25",
+          "libc.so.6:GLIBC_2.32",
+          "libc.so.6:GLIBC_2.14",
+          "libc.so.6:GLIBC_2.33",
+          "libc.so.6:GLIBC_2.38",
+          "libc.so.6:GLIBC_2.2.5",
+          "libc.so.6:GLIBC_2.3"
+        ]
+      },
+      "dev": 27,
+      "inode": 1465785,
+      "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/lib/libpq.so.5.18",
+      "readelf_stdout_sha256": "38ed19f0255ab27052ee23074cf7618a419c7e7eb9ac8883cd94c9212226f147",
+      "sha256": "3dd3a5a37fb679f8baf20e8a5ba2a6f2720b50b5fbe6974448d7e6e8e8897167",
+      "version_definitions": []
+    }
+  },
+  "controller_packets": 2,
+  "maximum_owned_bytes": 1447932710,
+  "minimum_free_bytes": 23702814720,
+  "run_id": "a53a280c-c335-4226-b37a-b24533fe77a6",
+  "run_root": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL",
+  "schema_version": 1,
+  "status": "bootstrap-confirmed",
+  "test_executable": "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+  "test_executable_sha256": "c5190bb11072bcb972ad14b716ab60345f78491a058ff535f7221026e4d9864d"
+}

@@ -1,0 +1,8 @@
+{
+  "error": "PreparationStop: controller EOF; no further stage authority",
+  "no_further_launch": true,
+  "root": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL",
+  "run_id": "a53a280c-c335-4226-b37a-b24533fe77a6",
+  "schema_version": 1,
+  "status": "stopped-Unknown-retained"
+}

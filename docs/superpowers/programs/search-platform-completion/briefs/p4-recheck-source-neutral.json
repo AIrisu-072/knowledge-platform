@@ -1,0 +1,21 @@
+# 仕事の手渡し: p4-recheck-source-neutral
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independently check no Vec bypass and generic dependency error mapping
+
+## 入力
+- `p4-source-neutral-fixed-code` (docs/superpowers/programs/search-platform-completion/p4-source-neutral-code-fix.md) — Remove normal-build Vec catalog facade and classify internal scope mismatch as dependency [`p4-fix-source-neutral` が作る (作業中)]
+- `p4-source-neutral-review` (docs/superpowers/programs/search-platform-completion/p4-source-neutral-code-review.md) — Independent source-neutral trusted scope and namespace ledger gate [`p4-review-source-neutral` が作る (済み)]
+
+## 出すもの
+- `p4-source-neutral-fixed-review` (docs/superpowers/programs/search-platform-completion/p4-source-neutral-code-recheck.md) — Fresh independent fixed shared Source catalog gate
+
+## 受入条件
+Exact files freshly executed targeted tests, full desired namespace only factory and ID-free dependency mismatch, no P7 physical durability claim
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p4-source-neutral-code-recheck.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

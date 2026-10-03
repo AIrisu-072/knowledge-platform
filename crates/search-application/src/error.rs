@@ -8,4 +8,8 @@ pub enum SearchError {
     SourceUnavailable(String),
     #[error("search operation failed: {0}")]
     OperationFailed(String),
+    #[error("search delivery fence lost")]
+    FenceLost,
+    #[error("search completion outcome unknown")]
+    CompletionUnknown,
 }

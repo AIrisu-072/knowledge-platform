@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "G07 exact controller approval, DRAFT and externally hash-bound",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scope", "phase", "outcome", "run_id", "run_root", "source_sha256", "fixture_sha256", "launcher_sha256", "policy_sha256", "manifest_sha256", "test_executable"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "scope": {"const": "G07 owned launcher"},
+    "phase": {"enum": ["bootstrap", "bootstrap-resume", "supervise"]},
+    "outcome": {"const": "GO"},
+    "run_id": {"$ref": "#/$defs/uuid"},
+    "run_root": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^/workspace/scratch/13897606dfde/p6pg\\.[A-Za-z0-9]{8}$"}]},
+    "source_sha256": {"$ref": "#/$defs/sha256"},
+    "fixture_sha256": {"$ref": "#/$defs/sha256"},
+    "launcher_sha256": {"$ref": "#/$defs/sha256"},
+    "policy_sha256": {"$ref": "#/$defs/sha256"},
+    "manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "test_executable": {"oneOf": [{"type": "null"}, {"type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": {"path": {"type": "string", "pattern": "^/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-[0-9a-f]+$"}, "sha256": {"$ref": "#/$defs/sha256"}}}]}
+  },
+  "allOf": [
+    {"if": {"properties": {"phase": {"const": "bootstrap"}}}, "then": {"properties": {"run_root": {"type": "null"}, "test_executable": {"type": "null"}}}},
+    {"if": {"properties": {"phase": {"const": "bootstrap-resume"}}}, "then": {"properties": {"run_root": {"type": "string"}, "test_executable": {"type": "null"}}}},
+    {"if": {"properties": {"phase": {"const": "supervise"}}}, "then": {"properties": {"run_root": {"type": "string"}, "test_executable": {"type": "object"}}}}
+  ],
+  "$defs": {
+    "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

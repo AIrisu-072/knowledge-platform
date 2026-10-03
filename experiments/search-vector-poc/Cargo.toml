@@ -1,0 +1,26 @@
+[package]
+name = "search-vector-poc"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98"
+publish = false
+
+[workspace]
+resolver = "3"
+
+[dependencies]
+search-core = { path = "../../crates/search-core" }
+search-application = { path = "../../crates/search-application" }
+search-graph-memory = { path = "../../crates/search-graph-memory" }
+search-tantivy = { path = "../../crates/search-tantivy" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+unicode-normalization = "=0.1.25"
+uuid = { version = "1", features = ["v7", "serde"] }
+time = { version = "0.3", features = ["serde"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[patch.crates-io]
+# Match the qualified Search lexical adapter's reviewed 0.26.2 source.
+tantivy = { path = "../../third_party/search/tantivy-0.26.2" }

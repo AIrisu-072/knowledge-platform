@@ -1,0 +1,19 @@
+# 仕事の手渡し: p5-normative
+
+- 種類: docs / 役: Worker / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+P5-01 Search error registry and four operation normative OpenAPI
+
+## 入力
+- `p5-contract` (docs/superpowers/programs/search-platform-completion/p5-api-freeze.md) — api contract [`p5-freeze` が作る (済み)]
+- `p5-plan` (docs/superpowers/programs/search-platform-completion/p5-api-plan.md) — api plan [`p5-plan-implementation` が作る (済み)]
+
+## 出すもの
+- `p5-normative-code` (docs/superpowers/programs/search-platform-completion/p5-normative-receipt.md) — P5-01 Search error registry and four operation normative OpenAPI
+
+## 受入条件
+P5-01 Search error registry and four operation normative OpenAPI; exact composed freeze/plan named focused RED GREEN and real boundaries; no production completion claim before qualification
+
+## 守ること
+- 書いてよいのは `spec/operations/error-handling-resilience-requirements-v0.md` / `spec/data/logical-data-model-v0.md` / `spec/errors/search-api-error-registry.yaml` / `spec/api/openapi.yaml` だけ。他は触らない。

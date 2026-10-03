@@ -1,0 +1,41 @@
+{
+  "argv": [
+    "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin/postgres",
+    "-D",
+    "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/data",
+    "-c",
+    "listen_addresses=",
+    "-c",
+    "unix_socket_directories=/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/socket",
+    "-c",
+    "unix_socket_permissions=0700",
+    "-c",
+    "port=5432",
+    "-c",
+    "max_connections=16",
+    "-c",
+    "shared_buffers=32MB",
+    "-c",
+    "work_mem=4MB"
+  ],
+  "cap_seconds": 1800,
+  "cwd": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL",
+  "environment": {
+    "HOME": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/home",
+    "LC_ALL": "C",
+    "PATH": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin:/usr/bin:/bin",
+    "TMPDIR": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/tmp",
+    "TZ": "UTC"
+  },
+  "leader_identity": {
+    "pgrp": 12,
+    "pid": 12,
+    "session": 12,
+    "start_ticks": 4945091,
+    "state": "R"
+  },
+  "pid": 12,
+  "run_id": "a53a280c-c335-4226-b37a-b24533fe77a6",
+  "schema_version": 1,
+  "stage": "server"
+}

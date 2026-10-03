@@ -15,8 +15,8 @@ pub use coverage::{DocumentCoveragePreflight, DocumentCoverageRequirement};
 pub use evidence::{DocumentEvidenceCatalog, DocumentEvidenceField};
 pub use history::DocumentHistoricalLookup;
 pub use model::{
-    DocumentAccessProjectionInput, DocumentSourceSnapshot, DsiEvidenceRefs,
-    PermittedDocumentMetadata, PublicationEndRecord,
+    AuthoritativeItemBinding, DocumentAccessProjectionInput, DocumentSourceSnapshot,
+    DsiEvidenceRefs, PermittedDocumentMetadata, PublicationEndRecord,
 };
 pub use outbox::{
     DocumentGraphAccessReader, DocumentGraphReader, DocumentIndexRuntime, DocumentIndexingConfig,

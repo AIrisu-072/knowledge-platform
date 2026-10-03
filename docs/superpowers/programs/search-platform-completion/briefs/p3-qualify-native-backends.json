@@ -1,0 +1,21 @@
+# 仕事の手渡し: p3-qualify-native-backends
+
+- 種類: spike / 役: Worker / 大きさ: L / 危険度: (未記入) / 隔離: none
+
+## やること
+Actual PG redb Neo4j native query 200sample concurrency writer recovery and publication gate
+
+## 入力
+- `p3-poc-refined` (experiments/search-graph-poc/refinement-report.md) — Actual participant-incidence and multi-hop Source-scoped access correctness refinement [`p3-refine-poc` が作る (済み)]
+- `p3-plan` (docs/superpowers/programs/search-platform-completion/p3-graph-plan.md) — graph plan [`p3-freeze` が作る (済み)]
+- `p3-contract` (docs/superpowers/programs/search-platform-completion/p3-graph-freeze.md) — graph contract [`p3-freeze-architecture` が作る (済み)]
+- `p3-refined-correctness-review` (docs/superpowers/programs/search-platform-completion/p3-refined-correctness-review.md) — Independently qualify actual native nary incidence and Source oracle parity [`p3-review-refined-correctness` が作る (済み)]
+
+## 出すもの
+- `p3-native-qualification` (experiments/search-graph-poc/native-qualification-report.md) — Actual independent-runtime backend capacity concurrency recovery publication probe and license gate
+
+## 受入条件
+Native typednary actualSource gate everybackend; ≥200 coldwarm sampleperclass 1/2/4/8 readerswriter at100/1000/3000groups seeded314159; rawmachines buildqueryincrementalRSSdisk restartbackupGC faults andPGsharedfence probe, licensesoffline, independentselectionnext
+
+## 守ること
+- 書いてよいのは `experiments/search-graph-poc` だけ。他は触らない。

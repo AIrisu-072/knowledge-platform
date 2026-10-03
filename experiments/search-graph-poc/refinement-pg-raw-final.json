@@ -1,0 +1,577 @@
+{
+  "adapter_binary_sha256": null,
+  "backend": "postgresql-18.6",
+  "base_fixture_sha256": "489a780c5c1152b9d530c7c1134a25577a1a035c1194eb221149f03041f4ac3b",
+  "fixture_sha256": "d870c538f762e0fdaf30b8f901a48b3b8411504eac1da4bbe36766ee10fc0cf3",
+  "image_id": "sha256:3725f4e2499eef5134592b3b4ab79a543ed7f8e533b05b5b637af926630f6650",
+  "oracle_binary_sha256": null,
+  "persisted_state": "READY generation marker",
+  "phase": "p3-refinement-correctness",
+  "result": {
+    "audits": {
+      "baseline": {
+        "all_participants_checked": true,
+        "logical_digest": "bf8d78d2c92f41b119f1ae50ceb2ab80cf2622edcf5811def8539b843dab51fd",
+        "raw_incidence_count": 1047,
+        "relation_count": 230,
+        "resource_count": 403
+      },
+      "cross-source": {
+        "all_participants_checked": true,
+        "logical_digest": "dd13890f67aceab6d1234c381cca93feb20e3f2b2a9eba3a53a023f4d0cbc65d",
+        "raw_incidence_count": 4,
+        "relation_count": 1,
+        "resource_count": 4
+      },
+      "updated-incremental": {
+        "all_participants_checked": true,
+        "logical_digest": "7e8c32b82f616f33a18c837fabc43d34744fa702494a8d4942cf063fd0fdf50e",
+        "raw_incidence_count": 1047,
+        "relation_count": 230,
+        "resource_count": 403
+      },
+      "updated-independent-full": {
+        "all_participants_checked": true,
+        "logical_digest": "7e8c32b82f616f33a18c837fabc43d34744fa702494a8d4942cf063fd0fdf50e",
+        "raw_incidence_count": 1047,
+        "relation_count": 230,
+        "resource_count": 403
+      }
+    },
+    "cases": [
+      {
+        "case": "nary-repeated-role",
+        "current_access_calls": [
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002710",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002711",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002712",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002713",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-00000000272b",
+            "1"
+          ]
+        ],
+        "duration_ns": 3210971708,
+        "generation_id": "00000000-0000-0000-0000-000000000064",
+        "outcome": "PASS",
+        "path_hits": 2,
+        "revision": "1",
+        "source_id": "00000000-0000-0000-0000-000000000001"
+      },
+      {
+        "case": "false-composite",
+        "current_access_calls": [
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002710",
+            "1"
+          ]
+        ],
+        "duration_ns": 1789563792,
+        "generation_id": "00000000-0000-0000-0000-000000000064",
+        "outcome": "PASS",
+        "path_hits": 0,
+        "revision": "1",
+        "source_id": "00000000-0000-0000-0000-000000000001"
+      },
+      {
+        "case": "two-hop",
+        "current_access_calls": [
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002710",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002711",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002712",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002713",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002725",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002726",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002727",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-00000000272b",
+            "1"
+          ]
+        ],
+        "duration_ns": 719884625,
+        "generation_id": "00000000-0000-0000-0000-000000000064",
+        "outcome": "PASS",
+        "path_hits": 2,
+        "revision": "1",
+        "source_id": "00000000-0000-0000-0000-000000000001"
+      },
+      {
+        "case": "hidden-degree-visible-budget",
+        "current_access_calls": [
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002710",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002711",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002712",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002713",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-00000000272b",
+            "1"
+          ]
+        ],
+        "duration_ns": 626802458,
+        "generation_id": "00000000-0000-0000-0000-000000000064",
+        "outcome": "PASS",
+        "path_hits": 2,
+        "revision": "1",
+        "source_id": "00000000-0000-0000-0000-000000000001"
+      },
+      {
+        "case": "negative-offset-nanosecond",
+        "current_access_calls": [
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002720",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002721",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002722",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002723",
+            "1"
+          ]
+        ],
+        "duration_ns": 3913250,
+        "generation_id": "00000000-0000-0000-0000-000000000064",
+        "outcome": "PASS",
+        "path_hits": 2,
+        "revision": "1",
+        "source_id": "00000000-0000-0000-0000-000000000001"
+      },
+      {
+        "case": "positive-offset",
+        "current_access_calls": [
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002718",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002719",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-00000000271a",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-00000000271b",
+            "1"
+          ]
+        ],
+        "duration_ns": 4036625,
+        "generation_id": "00000000-0000-0000-0000-000000000064",
+        "outcome": "PASS",
+        "path_hits": 2,
+        "revision": "1",
+        "source_id": "00000000-0000-0000-0000-000000000001"
+      },
+      {
+        "case": "half-open-boundary",
+        "current_access_calls": [
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-00000000271c",
+            "1"
+          ]
+        ],
+        "duration_ns": 3000375,
+        "generation_id": "00000000-0000-0000-0000-000000000064",
+        "outcome": "PASS",
+        "path_hits": 0,
+        "revision": "1",
+        "source_id": "00000000-0000-0000-0000-000000000001"
+      },
+      {
+        "case": "source-one-before-revocation",
+        "current_access_calls": [
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002710",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002711",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002712",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002713",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-00000000272b",
+            "1"
+          ]
+        ],
+        "duration_ns": 511282250,
+        "generation_id": "00000000-0000-0000-0000-000000000064",
+        "outcome": "PASS",
+        "path_hits": 2,
+        "revision": "1",
+        "source_id": "00000000-0000-0000-0000-000000000001"
+      },
+      {
+        "case": "source-one-revoked",
+        "current_access_calls": [
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002710",
+            "2"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002711",
+            "2"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002712",
+            "2"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002713",
+            "2"
+          ]
+        ],
+        "duration_ns": 2809777208,
+        "generation_id": "00000000-0000-0000-0000-000000000064",
+        "outcome": "PASS",
+        "path_hits": 0,
+        "revision": "2",
+        "source_id": "00000000-0000-0000-0000-000000000001"
+      },
+      {
+        "case": "source-one-unknown",
+        "current_access_calls": [
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002710",
+            "3"
+          ]
+        ],
+        "duration_ns": 268250,
+        "generation_id": "00000000-0000-0000-0000-000000000064",
+        "outcome": "PASS",
+        "path_hits": 0,
+        "revision": "3",
+        "source_id": "00000000-0000-0000-0000-000000000001"
+      },
+      {
+        "case": "source-one-error",
+        "current_access_calls": [
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002710",
+            "4"
+          ]
+        ],
+        "duration_ns": 268833,
+        "generation_id": "00000000-0000-0000-0000-000000000064",
+        "outcome": "PASS",
+        "path_hits": 0,
+        "revision": "4",
+        "source_id": "00000000-0000-0000-0000-000000000001"
+      },
+      {
+        "case": "source-two-same-bare-id-denied",
+        "current_access_calls": [
+          [
+            "00000000-0000-0000-0000-000000000002",
+            "00000000-0000-0000-0000-000000002710",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000002",
+            "00000000-0000-0000-0000-000000002711",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000002",
+            "00000000-0000-0000-0000-000000002712",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000002",
+            "00000000-0000-0000-0000-000000002713",
+            "1"
+          ]
+        ],
+        "duration_ns": 8044584,
+        "generation_id": "00000000-0000-0000-0000-000000000064",
+        "outcome": "PASS",
+        "path_hits": 0,
+        "revision": "1",
+        "source_id": "00000000-0000-0000-0000-000000000002"
+      },
+      {
+        "case": "structural-document-folder-version",
+        "current_access_calls": [
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000015f93",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "3f00f686-4998-edf3-328d-3ece96d4ce06",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "afaaa766-4ce3-edc6-123c-4d9223c044b0",
+            "1"
+          ]
+        ],
+        "duration_ns": 8382542,
+        "generation_id": "00000000-0000-0000-0000-000000000064",
+        "outcome": "PASS",
+        "path_hits": 1,
+        "revision": "1",
+        "source_id": "00000000-0000-0000-0000-000000000001"
+      },
+      {
+        "case": "same-id-participant-qualifier-update",
+        "current_access_calls": [
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002710",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002711",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002712",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002713",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002721",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-00000000272b",
+            "1"
+          ]
+        ],
+        "duration_ns": 1094074042,
+        "generation_id": "00000000-0000-0000-0000-000000000065",
+        "outcome": "PASS",
+        "path_hits": 2,
+        "revision": "1",
+        "source_id": "00000000-0000-0000-0000-000000000001"
+      },
+      {
+        "case": "relation-only-add",
+        "current_access_calls": [
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002710",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002719",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-00000000271a",
+            "1"
+          ],
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-00000000271b",
+            "1"
+          ]
+        ],
+        "duration_ns": 3354145417,
+        "generation_id": "00000000-0000-0000-0000-000000000065",
+        "outcome": "PASS",
+        "path_hits": 2,
+        "revision": "1",
+        "source_id": "00000000-0000-0000-0000-000000000001"
+      },
+      {
+        "case": "relation-only-delete",
+        "current_access_calls": [
+          [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000002714",
+            "1"
+          ]
+        ],
+        "duration_ns": 534250,
+        "generation_id": "00000000-0000-0000-0000-000000000065",
+        "outcome": "PASS",
+        "path_hits": 0,
+        "revision": "1",
+        "source_id": "00000000-0000-0000-0000-000000000001"
+      }
+    ],
+    "negative_proofs": [
+      {
+        "case": "owner-mapping-spoof-before-write",
+        "duration_ns": 5667,
+        "error": "Source owner mapping mismatch",
+        "error_class": "IntegrityFailure",
+        "outcome": "RED"
+      },
+      {
+        "case": "session-only-before-write",
+        "duration_ns": 3834,
+        "error": "retention forbids durable stage",
+        "error_class": "IntegrityFailure",
+        "outcome": "RED"
+      },
+      {
+        "case": "no-retention-before-write",
+        "duration_ns": 2291,
+        "error": "retention forbids durable stage",
+        "error_class": "IntegrityFailure",
+        "outcome": "RED"
+      },
+      {
+        "case": "corrupt-participant-persisted",
+        "duration_ns": 794208,
+        "error": "persisted participants disagree with payload",
+        "error_class": "IntegrityFailure",
+        "outcome": "RED"
+      },
+      {
+        "case": "corrupt-reverse-incidence-persisted",
+        "duration_ns": 706584,
+        "error": "participant ordinal mismatch",
+        "error_class": "IntegrityFailure",
+        "outcome": "RED"
+      },
+      {
+        "case": "corrupt-temporal-persisted",
+        "duration_ns": 7678167,
+        "error": "PostgreSQL temporal column/payload mismatch",
+        "error_class": "IntegrityFailure",
+        "outcome": "RED"
+      },
+      {
+        "case": "corrupt-source-mapping-query",
+        "duration_ns": 472625,
+        "error": "persisted mapping no longer matches Source",
+        "error_class": "IntegrityFailure",
+        "outcome": "RED"
+      }
+    ],
+    "remaining_gates": [
+      "200 samples per query class with cold/warm 1/2/4/8 readers and writer",
+      "predeclared crash/restart/restore/fault schedule for each backend",
+      "PostgreSQL shared publication/pin/GC/build-guard disposable probe",
+      "independent candidate selection review"
+    ],
+    "selection": "Blocked"
+  },
+  "source_sha256": {
+    "Cargo.lock": "137ba89840e1e5704414463a2d99dcc542bea6d70d6c0efb5e08c19795301c8b",
+    "bench.py": "e86837e5f9b244c5d781c1c71471691d0897143ca1d9651293b155680ed31a71",
+    "make_refinement_fixture.py": "b34613406fe82bab7518dbdfd45071f9b9188ff78f3c307bdc3feeddd0a102ee",
+    "refinement.py": "78f2b647282e3b8f0b58cde1c070e6ce079f2339ddb5d2c080cf2cd7d11d1d26",
+    "refinement_backends.py": "b2bf3d8f58bebd9e34b3804bf0606e958af96abfbc081d3e7dedf6005d8fd2ce",
+    "run_refinement.py": "2b427c4419c0424ae2fa143310c9cb9735f55dc5394ecdd79cfe1f30f54caec1",
+    "src/bin/refinement_redb.rs": "0f2a699c67595f49709931b65a948c7d0d01673911b0df32d830cfe8822a8631",
+    "src/main.rs": "5e069740e2dd4cd570f5ca4e3c1e0ec793d2ada12379e32c202d86e3274ab80f",
+    "src/refinement_oracle.rs": "3e390cd489872011007510e38c2362836e6dcd1961b8d6ed2fe07fdf3ead21c0"
+  },
+  "transaction_shape": "one committed transaction per staged generation",
+  "transcript_sha256": "d14ba689bf32452b8a4ac5e990b36bf6ae7226b3aed0e42d5af4104e87342ed8",
+  "transport": "psycopg/PostgreSQL protocol"
+}

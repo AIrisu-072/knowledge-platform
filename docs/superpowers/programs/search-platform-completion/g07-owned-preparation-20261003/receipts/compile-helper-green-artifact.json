@@ -1,0 +1,40 @@
+{
+  "compiler_artifact": {
+    "executable": "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+    "features": [],
+    "filenames": [
+      "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076"
+    ],
+    "fresh": false,
+    "manifest_path": "/workspace/scratch/13897606dfde/search-g07-owned-recovery/crates/outbox-delivery/Cargo.toml",
+    "package_id": "path+file:///workspace/scratch/13897606dfde/search-g07-owned-recovery/crates/outbox-delivery#0.0.0",
+    "profile": {
+      "debug_assertions": true,
+      "debuginfo": 0,
+      "opt_level": "0",
+      "overflow_checks": true,
+      "test": true
+    },
+    "reason": "compiler-artifact",
+    "target": {
+      "crate_types": [
+        "bin"
+      ],
+      "doc": false,
+      "doctest": false,
+      "edition": "2024",
+      "kind": [
+        "test"
+      ],
+      "name": "process_recovery",
+      "src_path": "/workspace/scratch/13897606dfde/search-g07-owned-recovery/crates/outbox-delivery/tests/process_recovery.rs",
+      "test": true
+    }
+  },
+  "dev": 27,
+  "inode": 1465980,
+  "path": "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+  "run_id": "a53a280c-c335-4226-b37a-b24533fe77a6",
+  "schema_version": 1,
+  "sha256": "c5190bb11072bcb972ad14b716ab60345f78491a058ff535f7221026e4d9864d"
+}

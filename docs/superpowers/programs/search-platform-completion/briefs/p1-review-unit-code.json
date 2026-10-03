@@ -1,0 +1,22 @@
+# 仕事の手渡し: p1-review-unit-code
+
+- 種類: audit / 役: QualityAuditor / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Independently verify minimal Unit core implementation
+
+## 入力
+- `p1-unit-code` (crates/search-core/src/knowledge_unit.rs) — Canonical provider-neutral Unit and locator codec [`p1-impl-unit-code` が作る (作業中)]
+- `p1-unit-frozen` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md) — Frozen provider neutral input contract for Vector evaluation [`p1-freeze-unit` が作る (済み)]
+- `p1-unit-code-plan` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-implementation-plan.md) — Bounded minimal Unit core implementation independent of fullbody pipeline [`p1-plan-unit-code` が作る (済み)]
+
+## 出すもの
+- `p1-unit-code-review` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-code-review.md) — Independent minimal core typed identity codec review
+
+## 受入条件
+No P1 P2 codec or provenance/locator validation blocker
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-code-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

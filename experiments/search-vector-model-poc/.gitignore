@@ -1,0 +1,7 @@
+assets/
+target/
+__pycache__/
+*.pyc
+*.tmp
+*.partial
+

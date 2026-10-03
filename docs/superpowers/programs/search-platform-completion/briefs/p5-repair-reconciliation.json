@@ -1,0 +1,19 @@
+# 仕事の手渡し: p5-repair-reconciliation
+
+- 種類: docs / 役: Worker / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Exact local and Remote registry plus standards-correct auth and deadline wire
+
+## 入力
+- `p5-reconciliation` (docs/superpowers/programs/search-platform-completion/p5-api-contract-reconciliation.md) — Exact P1-P4 type/lease and valid Problem wire closure [`p5-reconcile-contract` が作る (未着手)]
+- `p5-reconcile-review` (docs/superpowers/programs/search-platform-completion/p5-api-contract-review.md) — FullAPI freeze independent exact reconciliation gate [`p5-review-reconciliation` が作る (未着手)]
+
+## 出すもの
+- `p5-repair-reconciliation-artifact` (docs/superpowers/programs/search-platform-completion/p5-api-contract-revision-2.md) — Exact local and Remote registry plus standards-correct auth and deadline wire
+
+## 受入条件
+Exact named finding closure and scoped fresh evidence; no unverified qualification claim
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p5-api-contract-revision-2.md` だけ。他は触らない。

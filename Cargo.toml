@@ -1,6 +1,12 @@
 [workspace]
 members = [
+  "crates/outbox-delivery",
+  "crates/document-sandbox-runner",
+  "crates/search-runtime",
   "crates/search-core",
+  "crates/search-extraction-core",
+  "crates/search-extraction-runner",
+  "crates/search-extraction-worker",
   "crates/search-application",
   "crates/search-projection-memory",
   "crates/search-tantivy",
@@ -31,7 +37,7 @@ thiserror = "=2.0.21"
 libc = "=0.2.189"
 landlock = "=0.4.7"
 seccompiler = "=0.5.0"
-tokio = { version = "1", features = ["fs", "io-util", "macros", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1", features = ["fs", "io-util", "macros", "rt-multi-thread", "signal", "sync", "time"] }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "migrate", "macros", "uuid", "json", "time"] }
 uuid = { version = "1", features = ["v7", "serde"] }
 sha2 = "0.11"

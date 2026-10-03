@@ -1,0 +1,5 @@
+# P6 PostgreSQL policy row lock role ruling
+
+PostgreSQL SELECT locking clauses require UPDATE privilege on at least one column of each locked table. G02 retains the frozen `FOR SHARE` policy lock. The delivery role receives SELECT on policy plus column-only `UPDATE(policy_id)`; policy_id is NOT NULL/PRIMARY KEY with CHECK(policy_id=1), so this permits only a no-op value assignment and cannot change revision, attempts, lease or backoff policy. INSERT, DELETE, TRUNCATE and all other policy-column UPDATE remain denied. No trigger on policy may create an additional effect for this no-op privilege without a new qualification. G08/I04 must prove real-role lock success, every policy value mutation denial, key2/null CHECK rejection, and no INSERT/DELETE. Startup/claim/reap expected-policy equality remains unchanged. This is a technical least-privilege realization of the existing semantics, not authority to edit policy settings.
+
+Primary source: https://www.postgresql.org/docs/current/sql-select.html locking clause privilege rule; pinned PostgreSQL18 fixture is authoritative for the real-role regression.

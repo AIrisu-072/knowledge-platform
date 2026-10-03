@@ -1,0 +1,23 @@
+# 仕事の手渡し: p2-architecture
+
+- 種類: audit / 役: QualityAuditor / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Independently review vector design against frozen architecture
+
+## 入力
+- `p2-draft` (docs/superpowers/programs/search-platform-completion/p2-vector-design.md) — vector draft [`p2-design` が作る (作業中)]
+- `baseline` (docs/superpowers/specs/2026-09-28-search-discovery-platform-v0-design.md) — existing approved Search semantics [既に在る]
+- `p2-harness-code` (experiments/search-vector-poc) — Actual existing Lexical and Graph baseline harness [`p2-build-baseline-harness` が作る (未着手)]
+- `p2-baseline-evidence` (experiments/search-vector-poc/report.md) — Measured weight-free L and LG baseline and security contract tests [`p2-build-baseline-harness` が作る (未着手)]
+
+## 出すもの
+- `p2-arch` (docs/superpowers/programs/search-platform-completion/p2-vector-architecture-review.md) — vector arch
+
+## 受入条件
+No blocking architecture P1/P2
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p2-vector-architecture-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

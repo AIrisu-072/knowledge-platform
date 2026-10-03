@@ -1,0 +1,21 @@
+# 仕事の手渡し: p2-recheck-neutral-core
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independently recheck F1 F2 fixed manifest correspondence and parent binding
+
+## 入力
+- `p2-neutral-fixed-code` (docs/superpowers/programs/search-platform-completion/p2-neutral-core-fix.md) — Correct F1 whole Unit seal and F2 exact storage retention prohibition correspondence [`p2-fix-neutral-core` が作る (作業中)]
+- `p2-neutral-core-review` (docs/superpowers/programs/search-platform-completion/p2-neutral-core-review.md) — p2-neutral-core-review [`p2-review-neutral-core` が作る (済み)]
+
+## 出すもの
+- `p2-neutral-fixed-review` (docs/superpowers/programs/search-platform-completion/p2-neutral-core-recheck.md) — Independent fixed neutral Core pure contract gate
+
+## 受入条件
+Exact inputs and focused actual tests reject parent/scope/storage retention tamper, pure consistency scope only
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p2-neutral-core-recheck.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

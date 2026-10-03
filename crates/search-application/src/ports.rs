@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use search_core::assertion::Assertion;
 use search_core::binding::RepresentationBinding;
@@ -19,14 +20,99 @@ use search_core::projection::{
 use search_core::resource::ResourceKind;
 use search_core::source::DiscoverableSource;
 use search_core::source::RetentionMode;
+use uuid::Uuid;
 
 use crate::error::SearchError;
+use crate::indexing_service::{DocumentSourceEvent, IndexingOutcome};
 use crate::materialization::{
     MaterializationBudget, ProbeCapability, ProbeRequest, ProbeResult, ResourceCostEstimate,
 };
 use crate::projection::{PersistableGenerationManifest, PersistableResourceProjection};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, SearchError>> + Send + 'a>>;
+
+/// Source lease identity. It must be checked against the live database row for
+/// every renew and completion; possession of this value grants no authority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SourceFence {
+    pub source_id: SourceId,
+    pub owner_token: Uuid,
+    pub epoch: i64,
+}
+
+pub trait SearchSourceLease: Send + Sync {
+    fn fence(&self) -> SourceFence;
+}
+
+/// Both leases must still be live in the database when completion commits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SearchDeliveryFence {
+    pub event_id: Uuid,
+    pub outbox_token: Uuid,
+    pub source: SourceFence,
+}
+
+/// The complete expected pointer, including the composite READY bundle.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CurrentGenerationSnapshot {
+    pub key: Option<ProjectionGenerationKey>,
+    pub manifest_digest: Option<String>,
+    pub bundle_digest: Option<String>,
+    pub pointer_revision: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompletionMode {
+    PublishCandidate,
+    ReuseCurrent,
+}
+
+/// Inputs to one atomic pointer/receipt completion. The adapter must check the
+/// live outbox fence, Source fence, expected pointer and durable READY bundle
+/// inside its transaction; these caller-supplied fields are not proof.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompleteEventRequest {
+    pub fence: SearchDeliveryFence,
+    pub expected_current: CurrentGenerationSnapshot,
+    pub candidate: ProjectionGenerationKey,
+    pub manifest_digest: String,
+    pub bundle_digest: String,
+    pub mode: CompletionMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchCompletionOutcome {
+    Published(ProjectionGenerationKey),
+    Unchanged(ProjectionGenerationKey),
+    Duplicate(ProjectionGenerationKey),
+    Retry,
+    Lost,
+}
+
+/// Only the durable adapter may assert success. It does not ack the generic
+/// Domain outbox row; that belongs to the delivery worker after commit.
+pub trait SearchEventCompletionPort: Send + Sync {
+    fn current_snapshot<'a>(
+        &'a self,
+        source_id: SourceId,
+    ) -> BoxFuture<'a, CurrentGenerationSnapshot>;
+
+    fn complete_event_if_current<'a>(
+        &'a self,
+        request: CompleteEventRequest,
+    ) -> BoxFuture<'a, SearchCompletionOutcome>;
+}
+
+/// The Document adapter re-reads the Source and checks cancellation and live
+/// fences throughout staging before invoking atomic completion.
+pub trait FencedDocumentIndexingPort: Send + Sync {
+    fn refresh_fenced<'a>(
+        &'a self,
+        event: DocumentSourceEvent,
+        fence: SearchDeliveryFence,
+        cancel: Arc<AtomicBool>,
+    ) -> BoxFuture<'a, IndexingOutcome>;
+}
 
 #[path = "evidence_resolution.rs"]
 mod evidence_resolution;

@@ -1,0 +1,22 @@
+# 仕事の手渡し: p3-impl-g01
+
+- 種類: impl / 役: (既定) / 大きさ: (未記入) / 危険度: (未記入) / 隔離: none
+
+## やること
+P3-G01 SQLx-free Graph records and ports
+
+## 入力
+- `p3-contract` (docs/superpowers/programs/search-platform-completion/p3-graph-freeze.md) — graph contract [`p3-freeze-architecture` が作る (済み)]
+- `p3-plan` (docs/superpowers/programs/search-platform-completion/p3-graph-plan.md) — graph plan [`p3-freeze` が作る (済み)]
+- `p7-shared-contract` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-freeze.md) — p7-shared-contract [`p7-freeze-shared` が作る (済み)]
+- `p7-shared-plan` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-plan.md) — p7-shared-plan [`p7-plan-shared` が作る (済み)]
+- `p6-search-port-code` (crates/search-application/src/ports.rs) — p6-search-port-code [`p6-impl-search-ports` が作る (未着手)]
+
+## 出すもの
+- `p3-g01-ports` (docs/superpowers/programs/search-platform-completion/p3-g01-ports-receipt.md) — P3-G01 SQLx-free ports and revised registered-full signature
+
+## 受入条件
+Named graph_generation_port RED then GREEN. Public exports contain no SQLx types. Production full staging requires an opaque RegisteredFullBuildHandle and cannot insert its own parent; incremental handle and read lease are never authority without DB verification. Ephemeral retention and unscoped keys fail before storage.
+
+## 守ること
+- 書いてよいのは `crates/search-application/src/graph_generation.rs` / `crates/search-application/src/ports.rs` / `crates/search-application/src/lib.rs` / `crates/search-application/tests/graph_generation_port.rs` だけ。他は触らない。

@@ -1,0 +1,64 @@
+"""Fixed all243 pure GREEN; no bootstrap/runtime."""
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import re
+import tempfile
+import time
+
+D = Path('/workspace/scratch/13897606dfde/search-g07-launcher')
+
+
+def main():
+    os.umask(0o077)
+    out = Path(tempfile.mkdtemp(prefix='g07-supervise-entry-pure-', dir=D.parent/'search-recovery-evidence'))
+    result = {'scope': 'G07 all243 Python pure GREEN only', 'status': 'starting', 'results': []}
+    (out/'initial.json').write_text(json.dumps(result, indent=2)+'\n')
+    try:
+        manifest = json.loads((D/'supervise-entry-pure-manifest.json').read_text())
+        def verify():
+            for name, expected in manifest['sha256'].items():
+                with Path(name).open('rb') as f:
+                    actual = hashlib.file_digest(f, 'sha256').hexdigest()
+                if actual != expected:
+                    raise RuntimeError('reviewed input mismatch: '+name)
+        verify()
+        spec = importlib.util.spec_from_file_location('reviewed_g07_supervision', D/'run_green_inventory_red.py')
+        g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
+        home = out/'home'; home.mkdir(); tmp=out/'tmp'; tmp.mkdir()
+        env = {'HOME':str(home),'TMPDIR':str(tmp),'LC_ALL':'C','TZ':'UTC','RUST_BACKTRACE':'0'}
+        end = time.monotonic() + 180
+        for label, filename, count in (
+            ('policy-green','test_launcher_policy.py',53),
+            ('integration-green','test_launcher_integration.py',34),
+            ('execution-green','test_launcher_execution.py',136),
+            ('utf8-green','test_launcher_utf8.py',3),
+            ('pg-library-green','test_launcher_pg_library.py',16),
+            ('proxy-value-green','test_launcher_proxy.py',1),
+        ):
+            verify()
+            cap = min(30, end-time.monotonic())
+            if cap <= 0:
+                raise RuntimeError('aggregate deadline')
+            stage = g.run_step(label, ['/usr/bin/python3.13','-I','-B',str(D/filename)], D, env, cap, out)
+            result['results'].append(stage)
+            logs = '\n'.join(Path(v['path']).read_text(errors='replace') for v in stage['logs'].values())
+            if stage['abnormal_reason'] is not None or not re.search(r'Ran '+str(count)+r' tests? in ',logs) or re.search(r'^ERROR:',logs,re.M):
+                raise RuntimeError('not exact normal pure result: '+label)
+            if stage['returncode'] != 0 or not re.search(r'^OK$',logs,re.M) or 'FAILED (' in logs:
+                raise RuntimeError('control is not exact GREEN: '+label)
+        verify()
+        result['status']='python243-green-observed'
+        result['broader_runtime_admitted']=False
+    except BaseException as e:
+        result['status']='stopped';result['error']=type(e).__name__+': '+str(e)
+        raise
+    finally:
+        (out/'terminal.json').write_text(json.dumps(result,indent=2)+'\n')
+        print(out,flush=True)
+
+
+if __name__=='__main__':
+    main()

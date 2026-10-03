@@ -56,6 +56,7 @@ fn record(version: u128) -> VersionSnapshotRecord {
         document_revision: 4,
         access_revision: 2,
         dsi_state: DsiReadState::UnknownMissing,
+        authoritative_items: Vec::new(),
     }
 }
 

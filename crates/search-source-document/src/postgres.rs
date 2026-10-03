@@ -1,10 +1,12 @@
 //! Read-side Document snapshots. Every snapshot read stays in one PostgreSQL
 //! REPEATABLE READ, READ ONLY transaction; policy checks remain in Document.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 
 use document_application::{ApplicationError, DocumentAccessCheckService, VerifiedActorContext};
-use document_domain::{Action, DocumentId, DocumentVersionId, FolderId, LifecycleState, Title};
+use document_domain::{
+    Action, DocumentId, DocumentVersionId, FileId, FolderId, LifecycleState, StorageKey, Title,
+};
 use document_repository_postgres::PostgresDocumentRepository;
 use document_semantic_inspection_core::{CapabilityEvidence, CapabilityState};
 use search_application::ports::{
@@ -12,14 +14,15 @@ use search_application::ports::{
 };
 use search_core::discovery::{CandidateIdentityClass, FederatedCandidate};
 use search_core::id::{ResourceId, SourceId};
+use search_core::knowledge_unit::{ContentPartRef, RawBinding, validate_logical_path};
 use serde_json::Value;
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::model::{
-    DocumentAccessProjectionInput, DocumentSourceSnapshot, DsiEvidenceRefs,
-    PermittedDocumentMetadata, PublicationEndRecord,
+    AuthoritativeItemBinding, DocumentAccessProjectionInput, DocumentSourceSnapshot,
+    DsiEvidenceRefs, PermittedDocumentMetadata, PublicationEndRecord,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +38,7 @@ pub struct VersionSnapshotRecord {
     pub document_revision: i64,
     pub access_revision: i64,
     pub dsi_state: DsiReadState,
+    pub authoritative_items: Vec<AuthoritativeItemBinding>,
 }
 
 /// One authoritative enumeration for the Search Live generation. Both tiers
@@ -122,8 +126,19 @@ impl PostgresDocumentSnapshotReader {
 
         let mut records = Vec::with_capacity(rows.len());
         for row in rows {
+            let require_items = row.lifecycle_state == "PUBLISHED"
+                && row.current_version_id == Some(row.document_version_id)
+                && row.publication_end_operation_id.is_none();
+            let authoritative_items =
+                read_authoritative_items(&mut tx, row.document_version_id, require_items).await?;
             let (dsi_state, dsi) = read_dsi(&mut tx, row.document_version_id).await?;
-            records.push(row.restore(&source_snapshot, access_revision, dsi_state, dsi)?);
+            records.push(row.restore(
+                &source_snapshot,
+                access_revision,
+                dsi_state,
+                dsi,
+                authoritative_items,
+            )?);
         }
         tx.rollback().await?;
         Ok((source_snapshot, records))
@@ -195,6 +210,7 @@ impl DocumentVersionRow {
         access_revision: i64,
         dsi_state: DsiReadState,
         dsi: Option<DsiEvidenceRefs>,
+        authoritative_items: Vec<AuthoritativeItemBinding>,
     ) -> Result<VersionSnapshotRecord, SnapshotReadError> {
         let publication_end = match (self.publication_end_operation_id, self.publication_ended_at) {
             (Some(operation_id), Some(ended_at)) => {
@@ -269,8 +285,144 @@ impl DocumentVersionRow {
             document_revision: self.document_revision,
             access_revision,
             dsi_state,
+            authoritative_items,
         })
     }
+}
+
+#[derive(FromRow)]
+struct AuthoritativeItemRow {
+    content_item_id: Uuid,
+    logical_path: String,
+    ordinal: i32,
+    authoritative_representation_id: Uuid,
+    content_representation_id: Option<Uuid>,
+    file_id: Option<Uuid>,
+    content_hash: Option<Vec<u8>>,
+    media_type: Option<String>,
+    size_bytes: Option<i64>,
+    storage_locator: Option<String>,
+}
+
+async fn read_authoritative_items(
+    tx: &mut Transaction<'_, Postgres>,
+    version_id: Uuid,
+    require_items: bool,
+) -> Result<Vec<AuthoritativeItemBinding>, SnapshotReadError> {
+    // Join all AUTHORITATIVE rows for each item, rather than only the pointer:
+    // this also detects duplicates if the database's partial unique index is broken.
+    let rows: Vec<AuthoritativeItemRow> = sqlx::query_as(
+        "SELECT ci.content_item_id, ci.logical_path, ci.ordinal, \
+                ci.authoritative_representation_id, cr.content_representation_id, \
+                cr.file_id, f.content_hash, f.media_type, f.size_bytes, f.storage_locator \
+         FROM content_items ci \
+         LEFT JOIN content_representations cr \
+           ON cr.content_item_id = ci.content_item_id AND cr.role = 'AUTHORITATIVE' \
+         LEFT JOIN file_objects f ON f.file_id = cr.file_id \
+         WHERE ci.document_version_id = $1 \
+         ORDER BY ci.ordinal, ci.logical_path, ci.content_item_id",
+    )
+    .bind(version_id)
+    .fetch_all(&mut **tx)
+    .await?;
+    if require_items && rows.is_empty() {
+        return Err(SnapshotReadError::Integrity(
+            "published current version has no authoritative items",
+        ));
+    }
+    let mut seen_items = HashSet::with_capacity(rows.len());
+    let mut seen_manifest_keys = HashSet::with_capacity(rows.len());
+    let mut items = Vec::with_capacity(rows.len());
+    for row in rows {
+        if row.content_item_id == Uuid::nil()
+            || row.authoritative_representation_id == Uuid::nil()
+            || !seen_items.insert(row.content_item_id)
+            || !seen_manifest_keys.insert((row.ordinal, row.logical_path.clone()))
+        {
+            return Err(SnapshotReadError::Integrity(
+                "duplicate or invalid authoritative item identity",
+            ));
+        }
+        validate_logical_path(&row.logical_path)
+            .map_err(|_| SnapshotReadError::Integrity("invalid authoritative logical path"))?;
+        let ordinal = u32::try_from(row.ordinal)
+            .map_err(|_| SnapshotReadError::Integrity("invalid authoritative ordinal"))?;
+        let representation_id =
+            row.content_representation_id
+                .ok_or(SnapshotReadError::Integrity(
+                    "missing authoritative representation",
+                ))?;
+        if representation_id == Uuid::nil()
+            || representation_id != row.authoritative_representation_id
+        {
+            return Err(SnapshotReadError::Integrity(
+                "authoritative representation pointer mismatch",
+            ));
+        }
+        let file_id = row
+            .file_id
+            .filter(|id| *id != Uuid::nil())
+            .ok_or(SnapshotReadError::Integrity("missing authoritative file"))?;
+        let sha256: [u8; 32] = row
+            .content_hash
+            .ok_or(SnapshotReadError::Integrity("missing authoritative hash"))?
+            .try_into()
+            .map_err(|_| SnapshotReadError::Integrity("invalid authoritative hash"))?;
+        let size_bytes = row
+            .size_bytes
+            .and_then(|size| u64::try_from(size).ok())
+            .ok_or(SnapshotReadError::Integrity("invalid authoritative size"))?;
+        let media_type = canonical_mime_essence(
+            row.media_type
+                .as_deref()
+                .ok_or(SnapshotReadError::Integrity("missing authoritative MIME"))?,
+        )?;
+        let storage_key = StorageKey::new(row.storage_locator.ok_or(
+            SnapshotReadError::Integrity("missing authoritative storage key"),
+        )?)
+        .map_err(|_| SnapshotReadError::Integrity("invalid authoritative storage key"))?;
+        items.push(AuthoritativeItemBinding {
+            content_item_id: row.content_item_id,
+            part: ContentPartRef {
+                source_native_part_id: row.content_item_id.to_string(),
+                logical_path: row.logical_path,
+                ordinal,
+            },
+            representation_id,
+            file_id: FileId::from_uuid(file_id),
+            raw: RawBinding {
+                sha256,
+                size_bytes,
+                media_type,
+            },
+            storage_key,
+        });
+    }
+    Ok(items)
+}
+
+fn canonical_mime_essence(value: &str) -> Result<String, SnapshotReadError> {
+    let essence = value
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    let Some((kind, subtype)) = essence.split_once('/') else {
+        return Err(SnapshotReadError::Integrity("invalid authoritative MIME"));
+    };
+    let valid_token = |token: &str| {
+        !token.is_empty()
+            && token.bytes().all(|byte| {
+                byte.is_ascii_lowercase()
+                    || byte.is_ascii_digit()
+                    || b"!#$%&'*+-.^_`|~".contains(&byte)
+            })
+    };
+    if !valid_token(kind) || !valid_token(subtype) {
+        return Err(SnapshotReadError::Integrity("invalid authoritative MIME"));
+    }
+    Ok(essence)
 }
 
 #[derive(FromRow)]

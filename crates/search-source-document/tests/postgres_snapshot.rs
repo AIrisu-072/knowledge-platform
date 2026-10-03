@@ -83,6 +83,41 @@ impl Fixture {
                 .await
                 .unwrap();
         }
+        let file_id = Uuid::now_v7();
+        let item_id = Uuid::now_v7();
+        let representation_id = Uuid::now_v7();
+        sqlx::query(
+            "INSERT INTO file_objects (file_id, content_hash, media_type, size_bytes, storage_locator, created_at) \
+             VALUES ($1, $2, 'text/plain', 8, $3, now())",
+        )
+        .bind(file_id)
+        .bind(vec![7_u8; 32])
+        .bind(format!("test/{file_id}"))
+        .execute(&self.pool)
+        .await
+        .unwrap();
+        let mut tx = self.pool.begin().await.unwrap();
+        sqlx::query(
+            "INSERT INTO content_items (content_item_id, document_version_id, logical_path, ordinal, authoritative_representation_id) \
+             VALUES ($1, $2, 'primary', 0, $3)",
+        )
+        .bind(item_id)
+        .bind(version_id.as_uuid())
+        .bind(representation_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO content_representations (content_representation_id, content_item_id, file_id, role, original_filename) \
+             VALUES ($1, $2, $3, 'AUTHORITATIVE', 'source.txt')",
+        )
+        .bind(representation_id)
+        .bind(item_id)
+        .bind(file_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
         (document_id, version_id)
     }
 
@@ -111,43 +146,26 @@ impl Fixture {
     }
 
     async fn authoritative_dsi(&self, version_id: DocumentVersionId) -> Uuid {
-        let file_id = Uuid::now_v7();
-        let item_id = Uuid::now_v7();
-        let representation_id = Uuid::now_v7();
-        sqlx::query(
-            "INSERT INTO file_objects (file_id, content_hash, media_type, size_bytes, storage_locator, created_at) \
-             VALUES ($1, $2, 'text/plain', 8, $3, now())",
+        let (file_id, representation_id): (Uuid, Uuid) = sqlx::query_as(
+            "SELECT cr.file_id, cr.content_representation_id \
+             FROM content_items ci JOIN content_representations cr \
+               ON cr.content_representation_id = ci.authoritative_representation_id \
+             WHERE ci.document_version_id = $1 AND ci.logical_path = 'primary'",
         )
-        .bind(file_id)
-        .bind(vec![7_u8; 32])
-        .bind(format!("test/{file_id}"))
+        .bind(version_id.as_uuid())
+        .fetch_one(&self.pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE content_representations SET detected_format = 'txt', \
+             inspection_profile_version = 'dsi-v0', semantic_fingerprint = $2 \
+             WHERE content_representation_id = $1",
+        )
+        .bind(representation_id)
+        .bind(vec![3_u8; 32])
         .execute(&self.pool)
         .await
         .unwrap();
-        let mut tx = self.pool.begin().await.unwrap();
-        sqlx::query(
-            "INSERT INTO content_items (content_item_id, document_version_id, logical_path, ordinal, authoritative_representation_id) \
-             VALUES ($1, $2, 'primary', 0, $3)",
-        )
-        .bind(item_id)
-        .bind(version_id.as_uuid())
-        .bind(representation_id)
-        .execute(&mut *tx)
-        .await
-        .unwrap();
-        sqlx::query(
-            "INSERT INTO content_representations (content_representation_id, content_item_id, file_id, role, original_filename, \
-             detected_format, inspection_profile_version, semantic_fingerprint) \
-             VALUES ($1, $2, $3, 'AUTHORITATIVE', 'source.txt', 'txt', 'dsi-v0', $4)",
-        )
-        .bind(representation_id)
-        .bind(item_id)
-        .bind(file_id)
-        .bind(vec![3_u8; 32])
-        .execute(&mut *tx)
-        .await
-        .unwrap();
-        tx.commit().await.unwrap();
         sqlx::query(
             "INSERT INTO document_semantic_inspections \
              (file_id, inspection_profile_version, worker_protocol_version, observed_raw_content_hash, observed_size_bytes, \

@@ -1,0 +1,21 @@
+# 仕事の手渡し: p1-review-sandbox
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independently check sealed process runner DSI delegation fail closed failure matrix and Linux-only scope
+
+## 入力
+- `p1-sandbox-code` (docs/superpowers/programs/search-platform-completion/p1-sandbox-code.md) — p1-sandbox-code [`p1-impl-sandbox` が作る (作業中)]
+- `p1-contract` (docs/superpowers/programs/search-platform-completion/p1-extraction-freeze.md) — extraction contract [`p1-freeze` が作る (済み)]
+
+## 出すもの
+- `p1-sandbox-review` (docs/superpowers/programs/search-platform-completion/p1-sandbox-code-review.md) — Independent process seal typed failure map exactmac gate; hosted Linux remains requirement
+
+## 受入条件
+Source/test hashes exact; fresh current mac tests cached/test binary provenance plus code review of host/worker seal processgroup FD environment CPU/AS/file/output/deadline exact native pin DSI existing regression; report Linux not qualified until exact head hosted enforcement PASS
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p1-sandbox-code-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "G07 launcher-created owned PostgreSQL scope, draft interface only",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "run_root", "data_dir", "socket_dir", "home_dir", "tmp_dir", "config_file", "hba_file", "postgres_executable", "postgres_executable_sha256", "server_pid", "server_start_ticks", "server_uid", "server_executable_dev", "server_executable_inode", "os_user", "database_user", "admin_database", "port", "server_version_num", "offline_system_identifier", "listen_addresses"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_id": {"type": "string", "format": "uuid"},
+    "run_root": {"type": "string", "pattern": "^/workspace/scratch/13897606dfde/p6pg\\.[A-Za-z0-9]{8}$"},
+    "data_dir": {"type": "string", "pattern": "^/"},
+    "socket_dir": {"type": "string", "pattern": "^/"},
+    "home_dir": {"type": "string", "pattern": "^/"},
+    "tmp_dir": {"type": "string", "pattern": "^/"},
+    "config_file": {"type": "string", "pattern": "^/"},
+    "hba_file": {"type": "string", "pattern": "^/"},
+    "postgres_executable": {"type": "string", "pattern": "^/"},
+    "postgres_executable_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "server_pid": {"type": "integer", "minimum": 1},
+    "server_start_ticks": {"type": "integer", "minimum": 1},
+    "server_uid": {"type": "integer", "minimum": 1},
+    "server_executable_dev": {"type": "integer", "minimum": 1},
+    "server_executable_inode": {"type": "integer", "minimum": 1},
+    "os_user": {"const": "agent"},
+    "database_user": {"const": "agent"},
+    "admin_database": {"const": "postgres"},
+    "port": {"const": 5432},
+    "server_version_num": {"const": 180006},
+    "offline_system_identifier": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "listen_addresses": {"const": ""}
+  }
+}

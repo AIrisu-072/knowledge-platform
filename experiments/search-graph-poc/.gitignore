@@ -1,0 +1,8 @@
+/target/
+/.venv/
+/data/
+/fixture-*.json
+/*.db
+/*.db.*/
+/measurements-*.json
+__pycache__/

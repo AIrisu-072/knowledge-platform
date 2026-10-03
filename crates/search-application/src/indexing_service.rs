@@ -1,11 +1,14 @@
 //! Transport-neutral Document invalidation handling. The Source remains authoritative.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use search_core::projection::ProjectionGenerationKey;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::SearchError;
-use crate::ports::BoxFuture;
+use crate::ports::{BoxFuture, FencedDocumentIndexingPort, SearchDeliveryFence};
 
 /// The generic outbox delivery worker owns its delivery state. This value only
 /// asks Search to reconcile its derived index with the current Document Source.
@@ -35,11 +38,13 @@ pub struct DocumentIndexingService<P> {
     indexer: P,
 }
 
-impl<P: DocumentIndexingPort> DocumentIndexingService<P> {
+impl<P> DocumentIndexingService<P> {
     pub fn new(indexer: P) -> Self {
         Self { indexer }
     }
+}
 
+impl<P: DocumentIndexingPort> DocumentIndexingService<P> {
     pub async fn handle(&self, event: DocumentSourceEvent) -> Result<IndexingOutcome, SearchError> {
         if !relevant_event_type(&event.event_type) {
             if event.event_type.starts_with("Document")
@@ -62,7 +67,60 @@ impl<P: DocumentIndexingPort> DocumentIndexingService<P> {
     }
 }
 
+impl<P: FencedDocumentIndexingPort> DocumentIndexingService<P> {
+    /// The bridge validates the actual aggregate type before constructing the
+    /// event; this service validates the event kind and dispatch identity.
+    pub async fn handle_delivery(
+        &self,
+        event: DocumentSourceEvent,
+        fence: SearchDeliveryFence,
+        cancel: Arc<AtomicBool>,
+    ) -> Result<IndexingOutcome, SearchError> {
+        if !relevant_event_type(&event.event_type) {
+            return Err(SearchError::InvalidRequest(
+                "unsupported Document domain event type".into(),
+            ));
+        }
+        if event.event_id != fence.event_id {
+            return Err(SearchError::InvalidRequest(
+                "Document delivery event and fence IDs differ".into(),
+            ));
+        }
+        if cancel.load(Ordering::Acquire) {
+            return Err(SearchError::FenceLost);
+        }
+        self.indexer.refresh_fenced(event, fence, cancel).await
+    }
+}
+
+/// Validate the envelope route before the bridge constructs a Source event.
+/// Payload is never used as the indexing Source.
+pub fn validate_document_event_route(
+    event_type: &str,
+    aggregate_type: &str,
+) -> Result<(), SearchError> {
+    let valid = match event_type {
+        "AccessPolicyChanged" => matches!(aggregate_type, "Document" | "Folder" | "AccessPolicy"),
+        _ if is_document_event_type(event_type) => aggregate_type == "Document",
+        _ if is_folder_event_type(event_type) => aggregate_type == "Folder",
+        _ => false,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(SearchError::InvalidRequest(
+            "invalid Document outbox event route".into(),
+        ))
+    }
+}
+
 fn relevant_event_type(event_type: &str) -> bool {
+    is_document_event_type(event_type)
+        || is_folder_event_type(event_type)
+        || event_type == "AccessPolicyChanged"
+}
+
+fn is_document_event_type(event_type: &str) -> bool {
     matches!(
         event_type,
         "DocumentCreated"
@@ -77,9 +135,12 @@ fn relevant_event_type(event_type: &str) -> bool {
             | "DocumentPublicationEnded"
             | "DocumentMetadataChanged"
             | "DocumentMoved"
-            | "FolderCreated"
-            | "FolderRenamed"
-            | "FolderMoved"
-            | "AccessPolicyChanged"
+    )
+}
+
+fn is_folder_event_type(event_type: &str) -> bool {
+    matches!(
+        event_type,
+        "FolderCreated" | "FolderRenamed" | "FolderMoved"
     )
 }

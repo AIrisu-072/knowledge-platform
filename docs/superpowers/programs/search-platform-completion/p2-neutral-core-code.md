@@ -1,0 +1,3 @@
+# Implementation receipt
+
+P2-05 pureprovider-neutral Core: named7RED E0432→GREEN7; Core72/72; strictClippy andownedfmt PASS. Sourcevector dbf58e427cbe11013d9d547af5ee4af4178a3ebf418ce6e8312e80dc1a993014; lib07e1e100569b316afb160056ea03f846e0238cdc6fc01b05c606416590ab2c15; test7dc4deceff474d85e25c51f875cae949d9e365f829120b5499f62f898b231133. DefaultDisabled. Noactualmodel/index/SourcecurrentRead/retentionproof, independentreviewrequired.

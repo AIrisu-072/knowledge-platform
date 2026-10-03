@@ -1,0 +1,20 @@
+# 仕事の手渡し: p2-fix-model-protocol
+
+- 種類: impl / 役: Worker / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Fix circular model protocol prefreeze and full immutable RunPin input seal
+
+## 入力
+- `p2-model-protocol` (experiments/search-vector-model-poc/protocol-receipt.md) — P2-01 two actual model pinned assets runtime and measurement protocol [`p2-pin-model-protocol` が作る (作業中)]
+- `p2-model-protocol-review` (docs/superpowers/programs/search-platform-completion/p2-model-protocol-review.md) — Independent exact two-model offline corpus and license protocol gate [`p2-review-model-protocol` が作る (済み)]
+- `p2-contract` (docs/superpowers/programs/search-platform-completion/p2-vector-freeze.md) — vector contract [`p2-freeze` が作る (済み)]
+
+## 出すもの
+- `p2-model-protocol-fixed` (experiments/search-vector-model-poc/protocol-fix-receipt.md) — Noncircular premeasure frozen RunPin fully seals all semantic inputs
+
+## 受入条件
+HistoricalunmeasuredDarmsnotprerequisitebeforepin; actualsamecodeL/LGbaselinegate; all semanticconfig/policy/budgets hashchange orinvalidreject meaningfulRED→GREEN independentgolden, no modelinferenceclaim
+
+## 守ること
+- 書いてよいのは `experiments/search-vector-model-poc/asset_contract.py` / `experiments/search-vector-model-poc/tests` / `experiments/search-vector-model-poc/run-manifest.json` / `experiments/search-vector-model-poc/protocol-receipt.md` / `experiments/search-vector-model-poc/protocol-fix-receipt.md` だけ。他は触らない。

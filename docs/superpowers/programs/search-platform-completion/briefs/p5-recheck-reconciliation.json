@@ -1,0 +1,20 @@
+# 仕事の手渡し: p5-recheck-reconciliation
+
+- 種類: audit / 役: QualityAuditor / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Independent exact source-neutral and HTTP error contract gate
+
+## 入力
+- `p5-repair-reconciliation-artifact` (docs/superpowers/programs/search-platform-completion/p5-api-contract-revision-2.md) — Exact local and Remote registry plus standards-correct auth and deadline wire [`p5-repair-reconciliation` が作る (済み)]
+
+## 出すもの
+- `p5-recheck-reconciliation-artifact` (docs/superpowers/programs/search-platform-completion/p5-api-contract-recheck.md) — Independent exact source-neutral and HTTP error contract gate
+
+## 受入条件
+Exact named finding closure and scoped fresh evidence; no unverified qualification claim
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p5-api-contract-recheck.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

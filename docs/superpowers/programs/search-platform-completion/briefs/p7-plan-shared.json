@@ -1,0 +1,20 @@
+# 仕事の手渡し: p7-plan-shared
+
+- 種類: docs / 役: DomainDesigner / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Bounded actual PostgreSQL shared durable schema ownership READY pin guard GC recovery plan
+
+## 入力
+- `p7-shared-contract` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-freeze.md) — p7-shared-contract [`p7-freeze-shared` が作る (済み)]
+- `p7-recheck-shared-artifact` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-recheck.md) — Independent corrected shared durable design gate [`p7-recheck-shared` が作る (済み)]
+- `p5-contract` (docs/superpowers/programs/search-platform-completion/p5-api-freeze.md) — api contract [`p5-freeze` が作る (済み)]
+
+## 出すもの
+- `p7-shared-plan` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-plan.md) — p7-shared-plan
+
+## 受入条件
+Exact types SQL/roles/currentactors globaldesiredset andfullbundle restoration with meaningful REDGREEN scopedwriters sharedlocks andGraphconditionalgate
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p7-shared-durable-plan.md` だけ。他は触らない。

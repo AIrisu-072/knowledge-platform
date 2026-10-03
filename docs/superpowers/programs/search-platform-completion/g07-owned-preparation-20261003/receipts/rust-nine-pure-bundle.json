@@ -1,0 +1,137 @@
+[
+  {
+    "name": "bootstrap-pure-0",
+    "terminal_sha256": "b6d420314c9a884a562793ca0b160b8c80427817d0b0805855b119f276ab61fb",
+    "terminal_utf8": "{\n  \"actual_returncode\": 0,\n  \"elapsed_seconds\": 0.16697346800356172,\n  \"failure\": null,\n  \"maximum_owned_bytes\": 1407370022,\n  \"minimum_free_bytes\": 23743377408,\n  \"run_id\": \"a53a280c-c335-4226-b37a-b24533fe77a6\",\n  \"schema_version\": 1,\n  \"stage\": \"bootstrap-pure-0\",\n  \"stderr\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-0.stderr.log\",\n    \"retained\": 0,\n    \"seen\": 0,\n    \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n  },\n  \"stdout\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-0.stdout.log\",\n    \"retained\": 164,\n    \"seen\": 164,\n    \"sha256\": \"209578eaa7143b4939dfc67f4f46d6c0cfe97e82e3ed66df671f0eb5cdc26fba\"\n  }\n}\n",
+    "streams": {
+      "stdout": {
+        "sha256": "209578eaa7143b4939dfc67f4f46d6c0cfe97e82e3ed66df671f0eb5cdc26fba",
+        "utf8": "\nrunning 1 test\ntest g07_fixture_configuration_fails_closed ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s\n\n"
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "utf8": ""
+      }
+    }
+  },
+  {
+    "name": "bootstrap-pure-1",
+    "terminal_sha256": "c0b8bdb7b716c4a5ff95b94a62762838f284687e1ead7d45fd7827557c8bd62e",
+    "terminal_utf8": "{\n  \"actual_returncode\": 0,\n  \"elapsed_seconds\": 0.1631895250029629,\n  \"failure\": null,\n  \"maximum_owned_bytes\": 1407427366,\n  \"minimum_free_bytes\": 23743320064,\n  \"run_id\": \"a53a280c-c335-4226-b37a-b24533fe77a6\",\n  \"schema_version\": 1,\n  \"stage\": \"bootstrap-pure-1\",\n  \"stderr\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-1.stderr.log\",\n    \"retained\": 0,\n    \"seen\": 0,\n    \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n  },\n  \"stdout\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-1.stdout.log\",\n    \"retained\": 167,\n    \"seen\": 167,\n    \"sha256\": \"701b35f24d198c1a670e048c62c68a4b91638966ac2e1aaabd3e97374ab7def4\"\n  }\n}\n",
+    "streams": {
+      "stdout": {
+        "sha256": "701b35f24d198c1a670e048c62c68a4b91638966ac2e1aaabd3e97374ab7def4",
+        "utf8": "\nrunning 1 test\ntest g07_cleanup_requires_exact_owned_identity ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s\n\n"
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "utf8": ""
+      }
+    }
+  },
+  {
+    "name": "bootstrap-pure-2",
+    "terminal_sha256": "0f55feea5882720e750a957b8fc526784d28914870e2dc527a6666e67f89bd40",
+    "terminal_utf8": "{\n  \"actual_returncode\": 0,\n  \"elapsed_seconds\": 0.17236189899995225,\n  \"failure\": null,\n  \"maximum_owned_bytes\": 1407484710,\n  \"minimum_free_bytes\": 23743262720,\n  \"run_id\": \"a53a280c-c335-4226-b37a-b24533fe77a6\",\n  \"schema_version\": 1,\n  \"stage\": \"bootstrap-pure-2\",\n  \"stderr\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-2.stderr.log\",\n    \"retained\": 0,\n    \"seen\": 0,\n    \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n  },\n  \"stdout\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-2.stdout.log\",\n    \"retained\": 169,\n    \"seen\": 169,\n    \"sha256\": \"4a4c3f3e08f9b9d0af4a07e11efb7cee42f1c6bceaf96a97be3994c3352f5d4b\"\n  }\n}\n",
+    "streams": {
+      "stdout": {
+        "sha256": "4a4c3f3e08f9b9d0af4a07e11efb7cee42f1c6bceaf96a97be3994c3352f5d4b",
+        "utf8": "\nrunning 1 test\ntest g07_unknown_database_outcome_is_not_success ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s\n\n"
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "utf8": ""
+      }
+    }
+  },
+  {
+    "name": "bootstrap-pure-3",
+    "terminal_sha256": "3fa7d0e10f7002d3dca39cf44fc8e537f57cda8932fd153f091fae3b0c915f8b",
+    "terminal_utf8": "{\n  \"actual_returncode\": 0,\n  \"elapsed_seconds\": 0.1573770710019744,\n  \"failure\": null,\n  \"maximum_owned_bytes\": 1407542054,\n  \"minimum_free_bytes\": 23743205376,\n  \"run_id\": \"a53a280c-c335-4226-b37a-b24533fe77a6\",\n  \"schema_version\": 1,\n  \"stage\": \"bootstrap-pure-3\",\n  \"stderr\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-3.stderr.log\",\n    \"retained\": 0,\n    \"seen\": 0,\n    \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n  },\n  \"stdout\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-3.stdout.log\",\n    \"retained\": 169,\n    \"seen\": 169,\n    \"sha256\": \"7cd8287f2fd399ca5d693a24590baff4c7446421f4b9884e62a84f9492f97267\"\n  }\n}\n",
+    "streams": {
+      "stdout": {
+        "sha256": "7cd8287f2fd399ca5d693a24590baff4c7446421f4b9884e62a84f9492f97267",
+        "utf8": "\nrunning 1 test\ntest g07_deadlines_do_not_restart_between_phases ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s\n\n"
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "utf8": ""
+      }
+    }
+  },
+  {
+    "name": "bootstrap-pure-4",
+    "terminal_sha256": "c992f0266ec74f30aec637548f77e48f46601efb4057ac6ecb481f4c2276a17e",
+    "terminal_utf8": "{\n  \"actual_returncode\": 0,\n  \"elapsed_seconds\": 0.17044124099629698,\n  \"failure\": null,\n  \"maximum_owned_bytes\": 1407599398,\n  \"minimum_free_bytes\": 23743148032,\n  \"run_id\": \"a53a280c-c335-4226-b37a-b24533fe77a6\",\n  \"schema_version\": 1,\n  \"stage\": \"bootstrap-pure-4\",\n  \"stderr\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-4.stderr.log\",\n    \"retained\": 0,\n    \"seen\": 0,\n    \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n  },\n  \"stdout\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-4.stdout.log\",\n    \"retained\": 162,\n    \"seen\": 162,\n    \"sha256\": \"055ef18a7c93a3a9b0ab32e71b53168b93cf73c32ba8d4a82c54f765a737283f\"\n  }\n}\n",
+    "streams": {
+      "stdout": {
+        "sha256": "055ef18a7c93a3a9b0ab32e71b53168b93cf73c32ba8d4a82c54f765a737283f",
+        "utf8": "\nrunning 1 test\ntest g07_child_environment_is_allowlisted ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s\n\n"
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "utf8": ""
+      }
+    }
+  },
+  {
+    "name": "bootstrap-pure-5",
+    "terminal_sha256": "a069a77558d55b1c00738a4d20730d6702517485d3f04bf9548042f51c486021",
+    "terminal_utf8": "{\n  \"actual_returncode\": 0,\n  \"elapsed_seconds\": 0.17992275500000687,\n  \"failure\": null,\n  \"maximum_owned_bytes\": 1407656742,\n  \"minimum_free_bytes\": 23743090688,\n  \"run_id\": \"a53a280c-c335-4226-b37a-b24533fe77a6\",\n  \"schema_version\": 1,\n  \"stage\": \"bootstrap-pure-5\",\n  \"stderr\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-5.stderr.log\",\n    \"retained\": 0,\n    \"seen\": 0,\n    \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n  },\n  \"stdout\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-5.stdout.log\",\n    \"retained\": 183,\n    \"seen\": 183,\n    \"sha256\": \"57bf1dd5f77ce35b7421c47feb859415e46265152960f97562033ac58fa0a206\"\n  }\n}\n",
+    "streams": {
+      "stdout": {
+        "sha256": "57bf1dd5f77ce35b7421c47feb859415e46265152960f97562033ac58fa0a206",
+        "utf8": "\nrunning 1 test\ntest g07_child_output_is_bounded_and_kill_targets_owned_handle ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s\n\n"
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "utf8": ""
+      }
+    }
+  },
+  {
+    "name": "bootstrap-pure-6",
+    "terminal_sha256": "f0f67523a007b4af46186f44f85a20f5552301747603cabd20f848f26b44ff29",
+    "terminal_utf8": "{\n  \"actual_returncode\": 0,\n  \"elapsed_seconds\": 0.15844859100616304,\n  \"failure\": null,\n  \"maximum_owned_bytes\": 1407718182,\n  \"minimum_free_bytes\": 23743029248,\n  \"run_id\": \"a53a280c-c335-4226-b37a-b24533fe77a6\",\n  \"schema_version\": 1,\n  \"stage\": \"bootstrap-pure-6\",\n  \"stderr\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-6.stderr.log\",\n    \"retained\": 0,\n    \"seen\": 0,\n    \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n  },\n  \"stdout\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-6.stdout.log\",\n    \"retained\": 177,\n    \"seen\": 177,\n    \"sha256\": \"c08d4764c23e27b09b9ea7fdecb82d2220f716b25cbefb3f40127af6e52eae97\"\n  }\n}\n",
+    "streams": {
+      "stdout": {
+        "sha256": "c08d4764c23e27b09b9ea7fdecb82d2220f716b25cbefb3f40127af6e52eae97",
+        "utf8": "\nrunning 1 test\ntest g07_linux_process_identity_parses_final_parenthesis ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s\n\n"
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "utf8": ""
+      }
+    }
+  },
+  {
+    "name": "bootstrap-pure-7",
+    "terminal_sha256": "497d227535868b974f723b612a21ba6edc4ffb569724538283aaad859961ef0e",
+    "terminal_utf8": "{\n  \"actual_returncode\": 0,\n  \"elapsed_seconds\": 0.15923955399921397,\n  \"failure\": null,\n  \"maximum_owned_bytes\": 1407779622,\n  \"minimum_free_bytes\": 23742967808,\n  \"run_id\": \"a53a280c-c335-4226-b37a-b24533fe77a6\",\n  \"schema_version\": 1,\n  \"stage\": \"bootstrap-pure-7\",\n  \"stderr\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-7.stderr.log\",\n    \"retained\": 0,\n    \"seen\": 0,\n    \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n  },\n  \"stdout\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-7.stdout.log\",\n    \"retained\": 175,\n    \"seen\": 175,\n    \"sha256\": \"d123de3b69fd1d96b5c48841532905886b6cace5eba8f7cfd2f20fb9a5e5dd0f\"\n  }\n}\n",
+    "streams": {
+      "stdout": {
+        "sha256": "d123de3b69fd1d96b5c48841532905886b6cace5eba8f7cfd2f20fb9a5e5dd0f",
+        "utf8": "\nrunning 1 test\ntest g07_terminal_receipt_requires_exact_owned_cleanup ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s\n\n"
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "utf8": ""
+      }
+    }
+  },
+  {
+    "name": "bootstrap-pure-8",
+    "terminal_sha256": "7412403d33f98bbc856f3bdcd16211bed9e5c094d480faf09bd8f0d40360c12d",
+    "terminal_utf8": "{\n  \"actual_returncode\": 0,\n  \"elapsed_seconds\": 0.16310445899580372,\n  \"failure\": null,\n  \"maximum_owned_bytes\": 1407841062,\n  \"minimum_free_bytes\": 23742906368,\n  \"run_id\": \"a53a280c-c335-4226-b37a-b24533fe77a6\",\n  \"schema_version\": 1,\n  \"stage\": \"bootstrap-pure-8\",\n  \"stderr\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-8.stderr.log\",\n    \"retained\": 0,\n    \"seen\": 0,\n    \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n  },\n  \"stdout\": {\n    \"overflow\": false,\n    \"path\": \"/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/bootstrap-pure-8.stdout.log\",\n    \"retained\": 177,\n    \"seen\": 177,\n    \"sha256\": \"34ae407ad42d95b3ad7f427e6580afb5ccb6a362d274f8ae68b8be819229a2f5\"\n  }\n}\n",
+    "streams": {
+      "stdout": {
+        "sha256": "34ae407ad42d95b3ad7f427e6580afb5ccb6a362d274f8ae68b8be819229a2f5",
+        "utf8": "\nrunning 1 test\ntest g07_green_terminal_receipt_requires_exact_inventory ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s\n\n"
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "utf8": ""
+      }
+    }
+  }
+]
