@@ -697,6 +697,476 @@
           }
         ]
       }
+    },
+    "/v1/organization/tasks/{id}/evidence": {
+      "get": {
+        "operationId": "listEvidence",
+        "summary": "listEvidence",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidencePage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 16,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Narrow Browser PoC complete-collection profile, not the full Frozen keyset API. Complete visible current+received Evidence/Finding lists and visible decisions per Finding have at most16 records. Omitted limit defaults50; only16–100 accepted, rejected before repository/provider otherwise. Cursor is unsupported (CURSOR_STALE); no truncation or automatic traversal. Every mutation, including claim/resubmit, checks actual serialized visible collections below1MiB with envelope reserve; a create cannot make an existing collection unretrievable."
+      },
+      "post": {
+        "operationId": "registerEvidence",
+        "summary": "registerEvidence",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/evidence/{id}": {
+      "get": {
+        "operationId": "getEvidence",
+        "summary": "getEvidence",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceRecord"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/tasks/{id}/findings": {
+      "get": {
+        "operationId": "listFindings",
+        "summary": "listFindings",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 16,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Narrow Browser PoC complete-collection profile, not the full Frozen keyset API. Complete visible current+received Evidence/Finding lists and visible decisions per Finding have at most16 records. Omitted limit defaults50; only16–100 accepted, rejected before repository/provider otherwise. Cursor is unsupported (CURSOR_STALE); no truncation or automatic traversal. Every mutation, including claim/resubmit, checks actual serialized visible collections below1MiB with envelope reserve; a create cannot make an existing collection unretrievable."
+      },
+      "post": {
+        "operationId": "registerFinding",
+        "summary": "registerFinding",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindingCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/findings/{id}": {
+      "get": {
+        "operationId": "getFinding",
+        "summary": "getFinding",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Finding"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/findings/{id}/decisions": {
+      "get": {
+        "operationId": "listHumanDecisions",
+        "summary": "listHumanDecisions",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 16,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Narrow Browser PoC complete-collection profile, not the full Frozen keyset API. Complete visible current+received Evidence/Finding lists and visible decisions per Finding have at most16 records. Omitted limit defaults50; only16–100 accepted, rejected before repository/provider otherwise. Cursor is unsupported (CURSOR_STALE); no truncation or automatic traversal. Every mutation, including claim/resubmit, checks actual serialized visible collections below1MiB with envelope reserve; a create cannot make an existing collection unretrievable."
+      },
+      "post": {
+        "operationId": "recordHumanDecision",
+        "summary": "recordHumanDecision",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionCommand"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -840,6 +1310,15 @@
                 "type": "null"
               }
             ]
+          },
+          "canRegisterEvidence": {
+            "type": "boolean"
+          },
+          "canRegisterFinding": {
+            "type": "boolean"
+          },
+          "canRecordDecision": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -857,7 +1336,10 @@
           "attemptNumber",
           "canReturn",
           "returnInstructionId",
-          "returnTransition"
+          "returnTransition",
+          "canRegisterEvidence",
+          "canRegisterFinding",
+          "canRecordDecision"
         ]
       },
       "WorkingArtifact": {
@@ -1038,6 +1520,15 @@
                 "type": "null"
               }
             ]
+          },
+          "canRegisterEvidence": {
+            "type": "boolean"
+          },
+          "canRegisterFinding": {
+            "type": "boolean"
+          },
+          "canRecordDecision": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1058,7 +1549,10 @@
           "attemptNumber",
           "canReturn",
           "returnInstructionId",
-          "returnTransition"
+          "returnTransition",
+          "canRegisterEvidence",
+          "canRegisterFinding",
+          "canRecordDecision"
         ]
       },
       "TaskPage": {
@@ -1170,6 +1664,27 @@
           "returnInstructionId": {
             "type": "string",
             "format": "uuid"
+          },
+          "evidenceRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100
+          },
+          "findingRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100
+          },
+          "decisionRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100
           }
         },
         "required": [
@@ -1183,7 +1698,10 @@
           "contextId",
           "submissionNumber",
           "submittedBy",
-          "actingAssignmentId"
+          "actingAssignmentId",
+          "evidenceRevisionRefs",
+          "findingRevisionRefs",
+          "decisionRevisionRefs"
         ]
       },
       "WorkCommand": {
@@ -1277,6 +1795,31 @@
               ]
             },
             "maxItems": 16
+          },
+          "evidenceRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100
+          },
+          "findingRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100
+          },
+          "decisionRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
           }
         },
         "required": [
@@ -1284,7 +1827,8 @@
           "expectedRevision",
           "actingAssignmentId",
           "artifacts"
-        ]
+        ],
+        "description": "Explicit immutable selection only. Missing added selection arrays mean empty for legacy commands. Combined record references <=100, without duplicates. Selected findings require all their evidence; selected decisions require their finding and all support. No records are automatically included."
       },
       "DraftSaved": {
         "type": "object",
@@ -1362,6 +1906,15 @@
           },
           {
             "$ref": "#/components/schemas/Returned"
+          },
+          {
+            "$ref": "#/components/schemas/EvidenceRegistered"
+          },
+          {
+            "$ref": "#/components/schemas/FindingRegistered"
+          },
+          {
+            "$ref": "#/components/schemas/DecisionRecorded"
           }
         ]
       },
@@ -1392,7 +1945,9 @@
               "DEPENDENCY_UNAVAILABLE",
               "COMMIT_OUTCOME_UNKNOWN",
               "INTEGRITY_VIOLATION",
-              "CURSOR_STALE"
+              "CURSOR_STALE",
+              "EVIDENCE_NOT_FOUND",
+              "FINDING_NOT_FOUND"
             ]
           },
           "traceId": {
@@ -1602,6 +2157,703 @@
           "task",
           "returnInstruction",
           "nextTask"
+        ]
+      },
+      "RevisionRef": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "const": 1
+          }
+        },
+        "required": [
+          "id",
+          "revision"
+        ]
+      },
+      "SourceRef": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "providerId": {
+            "type": "string",
+            "const": "document"
+          },
+          "resourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revisionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "versionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "providerId",
+          "resourceId",
+          "revisionId",
+          "versionId"
+        ]
+      },
+      "AuthoritativeLocator": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "contentItem"
+          },
+          "contentItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "representationId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "kind",
+          "contentItemId",
+          "representationId"
+        ]
+      },
+      "EvidenceRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "const": 1
+          },
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "visibility": {
+            "type": "string",
+            "const": "work_item_private"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string",
+            "const": "human"
+          },
+          "sourceRef": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "authoritativeLocator": {
+            "$ref": "#/components/schemas/AuthoritativeLocator"
+          },
+          "relevantLocation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          },
+          "relevantLocationVerified": {
+            "type": "boolean",
+            "const": false
+          },
+          "fragmentOmissionReason": {
+            "type": "string",
+            "const": "not_retained"
+          },
+          "coverage": {
+            "type": "string",
+            "const": "unknown"
+          },
+          "uncertainty": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 0
+          },
+          "conflictReferences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 0
+          },
+          "policyDisposition": {
+            "type": "string",
+            "const": "reference_only"
+          },
+          "retrievedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "providerCheckedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "contextId",
+          "taskId",
+          "attemptId",
+          "actingAssignmentId",
+          "visibility",
+          "createdBy",
+          "origin",
+          "sourceRef",
+          "authoritativeLocator",
+          "relevantLocation",
+          "relevantLocationVerified",
+          "fragmentOmissionReason",
+          "coverage",
+          "uncertainty",
+          "conflictReferences",
+          "policyDisposition",
+          "retrievedAt",
+          "recordedAt",
+          "providerCheckedAt"
+        ],
+        "description": "Immutable reference-only source pointer. relevantLocation is human text and is not verified source content. Fragment is not retained; coverage is unknown. providerCheckedAt/retrievedAt describe completion of the server Document preflight, recordedAt is Work registration time. No cross-provider atomicity or retained source proof is asserted."
+      },
+      "Finding": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "const": 1
+          },
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "visibility": {
+            "type": "string",
+            "const": "work_item_private"
+          },
+          "author": {
+            "type": "string"
+          },
+          "claim": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          },
+          "evidenceRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100,
+            "minItems": 1
+          },
+          "supersedesFindingId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "uncertainty": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 0
+          },
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 0
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "contextId",
+          "taskId",
+          "attemptId",
+          "actingAssignmentId",
+          "visibility",
+          "author",
+          "claim",
+          "evidenceRevisionRefs",
+          "supersedesFindingId",
+          "uncertainty",
+          "conflicts",
+          "createdAt"
+        ]
+      },
+      "HumanDecision": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "const": 1
+          },
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "visibility": {
+            "type": "string",
+            "const": "work_item_private"
+          },
+          "findingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "findingRevision": {
+            "type": "integer",
+            "const": 1
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "modified",
+              "rejected"
+            ]
+          },
+          "adoptedClaim": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          },
+          "evidenceRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100
+          },
+          "humanPrincipal": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "supersedesDecisionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "contextId",
+          "taskId",
+          "attemptId",
+          "actingAssignmentId",
+          "visibility",
+          "findingId",
+          "findingRevision",
+          "decision",
+          "adoptedClaim",
+          "reason",
+          "evidenceRevisionRefs",
+          "humanPrincipal",
+          "createdAt",
+          "supersedesDecisionId"
+        ]
+      },
+      "EvidenceCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceRef": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "authoritativeLocator": {
+            "$ref": "#/components/schemas/AuthoritativeLocator"
+          },
+          "relevantLocation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedAttemptId",
+          "sourceRef",
+          "authoritativeLocator",
+          "relevantLocation"
+        ]
+      },
+      "FindingCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "claim": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          },
+          "evidenceRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100,
+            "minItems": 1
+          },
+          "supersedesFindingId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedAttemptId",
+          "claim",
+          "evidenceRevisionRefs"
+        ]
+      },
+      "DecisionCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "findingRevision": {
+            "type": "integer",
+            "const": 1
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "modified",
+              "rejected"
+            ]
+          },
+          "adoptedClaim": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          },
+          "evidenceRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100
+          },
+          "supersedesDecisionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedAttemptId",
+          "taskId",
+          "findingRevision",
+          "decision",
+          "evidenceRevisionRefs"
+        ],
+        "description": "HumanInteractive only. taskId and expectedAttemptId name the current judging task/attempt, including office judging a received sales Finding. modified requires a nonblank adoptedClaim; accepted/rejected omit it."
+      },
+      "EvidenceRegistered": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "evidence_registered"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/EvidenceRecord"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "evidence"
+        ]
+      },
+      "FindingRegistered": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "finding_registered"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "finding": {
+            "$ref": "#/components/schemas/Finding"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "finding"
+        ]
+      },
+      "DecisionRecorded": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "decision_recorded"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/HumanDecision"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "decision"
+        ]
+      },
+      "EvidencePage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRecord"
+            },
+            "maxItems": 16
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "FindingPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            },
+            "maxItems": 16
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "DecisionPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HumanDecision"
+            },
+            "maxItems": 16
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
         ]
       }
     }

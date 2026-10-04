@@ -1,8 +1,46 @@
 //! Explicit opt-in test: requires a disposable *_work_poc_test PostgreSQL database.
 //! This test is never replaced with a fake database or an alternate socket.
 use sqlx::postgres::PgPoolOptions;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+};
 use uuid::Uuid;
-use work_application::WorkRepository;
+use work_application::{EvidenceSourcePort, EvidenceSourcePurpose, WorkFuture, WorkRepository};
+const EVIDENCE_DOCUMENT: Uuid = Uuid::from_u128(0x01900000000070008000000000000071);
+struct TestEvidenceSource {
+    pool: sqlx::PgPool,
+    allowed: AtomicBool,
+    reject_next_read: AtomicBool,
+    calls: AtomicUsize,
+}
+impl EvidenceSourcePort for TestEvidenceSource {
+    fn authorize(
+        &self,
+        _actor: VerifiedActor,
+        source: EvidenceSource,
+        purpose: EvidenceSourcePurpose,
+    ) -> WorkFuture<'_, ()> {
+        Box::pin(async move {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            // A provider invocation must never occur while the caller owns the Work row lock.
+            sqlx::query("SELECT id FROM work.workflow_instances WHERE id=$1 FOR UPDATE NOWAIT")
+                .bind(WORKFLOW_ID)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|_| WorkError::IntegrityViolation)?;
+            if !self.allowed.load(Ordering::SeqCst)
+                || source.source_ref.resource_id != EVIDENCE_DOCUMENT
+                || (purpose == EvidenceSourcePurpose::ReadHistory
+                    && self.reject_next_read.swap(false, Ordering::SeqCst))
+            {
+                return Err(WorkError::EvidenceNotFound);
+            }
+            Ok(())
+        })
+    }
+}
+
 use work_domain::*;
 use work_repository_postgres::{PostgresWorkRepository, migrate, seed_synthetic};
 fn ctx(actor: VerifiedActor, revision: i64) -> CommandContext {
@@ -37,7 +75,7 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(migrations_before.len(), 2);
+    assert_eq!(migrations_before.len(), 3);
     migrate(&pool).await.unwrap();
     let migrations_after: Vec<(i64, Vec<u8>, time::OffsetDateTime)> = sqlx::query_as(
         "SELECT version, checksum, applied_at FROM work.schema_migrations ORDER BY version",
@@ -46,7 +84,9 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
     .await
     .unwrap();
     assert_eq!(migrations_after, migrations_before);
-    seed_synthetic(&pool, None).await.unwrap();
+    seed_synthetic(&pool, Some(EVIDENCE_DOCUMENT))
+        .await
+        .unwrap();
     let repository = PostgresWorkRepository::new(pool.clone());
     let command = Command::SaveDraft {
         task_id: SALES_TASK_ID,
@@ -92,6 +132,10 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
         Err(WorkError::WorkArtifactNotFound)
     );
     let command = Command::Submit {
+        expected_attempt_id: None,
+        evidence_revision_refs: vec![],
+        finding_revision_refs: vec![],
+        decision_revision_refs: vec![],
         task_id: SALES_TASK_ID,
         context: ctx(VerifiedActor::Sales01, 1),
         artifacts: vec![ArtifactSelection {
@@ -405,6 +449,10 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
         .contains("差戻後の新しい非公開文案")
     );
     let resubmit = Command::Submit {
+        expected_attempt_id: None,
+        evidence_revision_refs: vec![],
+        finding_revision_refs: vec![],
+        decision_revision_refs: vec![],
         task_id: SALES_TASK_ID,
         context: ctx(VerifiedActor::Sales01, 5),
         artifacts: vec![ArtifactSelection {
@@ -516,4 +564,245 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
             .await
             .unwrap();
     assert!(!payload.to_string().contains("提出内容の再確認"));
+    // Continue the same disposable transaction fixture: evidence uses the same
+    // staging/ledger/OCC boundaries, never a second runner or local database.
+    let source = Arc::new(TestEvidenceSource {
+        pool: pool.clone(),
+        allowed: AtomicBool::new(true),
+        reject_next_read: AtomicBool::new(false),
+        calls: AtomicUsize::new(0),
+    });
+    let evidence_repository =
+        PostgresWorkRepository::with_evidence_source(pool.clone(), source.clone());
+    let current = evidence_repository
+        .task(VerifiedActor::Office01, OFFICE_TASK_ID)
+        .await
+        .unwrap();
+    let registration = Command::RegisterEvidence {
+        task_id: OFFICE_TASK_ID,
+        context: ctx(VerifiedActor::Office01, current.task.revision),
+        expected_attempt_id: current.task.attempt_id,
+        source: EvidenceSource {
+            source_ref: SourceRef {
+                provider_id: "document".into(),
+                resource_id: EVIDENCE_DOCUMENT,
+                revision_id: Uuid::from_u128(72),
+                version_id: Uuid::from_u128(73),
+            },
+            authoritative_locator: AuthoritativeLocator {
+                kind: "contentItem".into(),
+                content_item_id: Uuid::from_u128(74),
+                representation_id: Uuid::from_u128(75),
+            },
+        },
+        relevant_location: "人間が選択した該当箇所".into(),
+    };
+    assert_eq!(
+        repository
+            .execute(VerifiedActor::Office01, registration.clone())
+            .await,
+        Err(WorkError::DependencyUnavailable),
+        "missing provider must fail closed before committing"
+    );
+    let before: (serde_json::Value, i64, i64, i64, i64) = sqlx::query_as(rollback_state_sql)
+        .bind(WORKFLOW_ID)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::raw_sql("CREATE FUNCTION work.reject_staging() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test staging failure'; END $$; CREATE TRIGGER reject_staging BEFORE INSERT ON work.event_staging FOR EACH ROW EXECUTE FUNCTION work.reject_staging();").execute(&pool).await.unwrap();
+    assert_eq!(
+        evidence_repository
+            .execute(VerifiedActor::Office01, registration.clone())
+            .await,
+        Err(WorkError::DependencyUnavailable)
+    );
+    let after: (serde_json::Value, i64, i64, i64, i64) = sqlx::query_as(rollback_state_sql)
+        .bind(WORKFLOW_ID)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        before, after,
+        "evidence row, ledger and staging roll back together"
+    );
+    sqlx::raw_sql(
+        "DROP TRIGGER reject_staging ON work.event_staging; DROP FUNCTION work.reject_staging();",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    source.reject_next_read.store(true, Ordering::SeqCst);
+    assert_eq!(
+        evidence_repository
+            .execute(VerifiedActor::Office01, registration.clone())
+            .await,
+        Err(WorkError::CommitOutcomeUnknown),
+        "post-commit provider denial cannot disclose stale result"
+    );
+    let saved = evidence_repository
+        .recover(VerifiedActor::Office01, registration.context().operation_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        evidence_repository
+            .execute(VerifiedActor::Office01, registration.clone())
+            .await
+            .unwrap(),
+        saved
+    );
+    let ev = match &saved {
+        MutationResult::EvidenceRegistered { evidence, .. } => evidence.clone(),
+        _ => panic!(),
+    };
+    assert_eq!(ev.revision, 1);
+    assert_eq!(ev.origin, "human");
+    assert_eq!(ev.fragment_omission_reason, "not_retained");
+    let mut changed = registration.clone();
+    if let Command::RegisterEvidence {
+        relevant_location, ..
+    } = &mut changed
+    {
+        *relevant_location = "different request".into();
+    }
+    assert_eq!(
+        evidence_repository
+            .execute(VerifiedActor::Office01, changed)
+            .await,
+        Err(WorkError::OperationConflict)
+    );
+    let calls = source.calls.load(Ordering::SeqCst);
+    assert_eq!(
+        evidence_repository
+            .evidence(VerifiedActor::Sales01, ev.id)
+            .await,
+        Err(WorkError::EvidenceNotFound)
+    );
+    assert_eq!(
+        source.calls.load(Ordering::SeqCst),
+        calls,
+        "Work scope denies before provider fanout"
+    );
+    let current = evidence_repository
+        .task(VerifiedActor::Office01, OFFICE_TASK_ID)
+        .await
+        .unwrap();
+    let finding_command = Command::RegisterFinding {
+        task_id: OFFICE_TASK_ID,
+        context: ctx(VerifiedActor::Office01, current.task.revision),
+        expected_attempt_id: current.task.attempt_id,
+        claim: "根拠を分けて保存する候補".into(),
+        evidence_revision_refs: vec![RevisionRef {
+            id: ev.id,
+            revision: 1,
+        }],
+        supersedes_finding_id: None,
+    };
+    let f = match evidence_repository
+        .execute(VerifiedActor::Office01, finding_command.clone())
+        .await
+        .unwrap()
+    {
+        MutationResult::FindingRegistered { finding, .. } => finding,
+        _ => panic!(),
+    };
+    let current = evidence_repository
+        .task(VerifiedActor::Office01, OFFICE_TASK_ID)
+        .await
+        .unwrap();
+    let decision_command = Command::RecordDecision {
+        task_id: OFFICE_TASK_ID,
+        context: ctx(VerifiedActor::Office01, current.task.revision),
+        expected_attempt_id: current.task.attempt_id,
+        finding_id: f.id,
+        finding_revision: 1,
+        decision: DecisionKind::Modified,
+        adopted_claim: Some("人間が修正して採用した文".into()),
+        reason: Some("照合結果".into()),
+        evidence_revision_refs: vec![RevisionRef {
+            id: ev.id,
+            revision: 1,
+        }],
+        supersedes_decision_id: None,
+    };
+    let decision = evidence_repository
+        .execute(VerifiedActor::Office01, decision_command.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        evidence_repository
+            .execute(VerifiedActor::Office01, decision_command.clone())
+            .await
+            .unwrap(),
+        decision
+    );
+    let f_after = evidence_repository
+        .finding(VerifiedActor::Office01, f.id)
+        .await
+        .unwrap();
+    assert_eq!(f_after, f, "human decision cannot rewrite the candidate");
+    let persisted: sqlx::types::Json<Workflow> =
+        sqlx::query_scalar("SELECT body FROM work.workflow_instances WHERE id=$1")
+            .bind(WORKFLOW_ID)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        persisted.validate_selection(
+            VerifiedActor::Office01,
+            OFFICE_TASK_ID,
+            &[],
+            &[RevisionRef {
+                id: f.id,
+                revision: 1
+            }],
+            &[]
+        ),
+        Err(WorkError::HandoffNotReady)
+    );
+    source.allowed.store(false, Ordering::SeqCst);
+    assert_eq!(
+        evidence_repository
+            .list_evidence(VerifiedActor::Office01, OFFICE_TASK_ID)
+            .await,
+        Err(WorkError::EvidenceNotFound)
+    );
+    assert_eq!(
+        evidence_repository
+            .finding(VerifiedActor::Office01, f.id)
+            .await,
+        Err(WorkError::EvidenceNotFound)
+    );
+    assert_eq!(
+        evidence_repository
+            .list_decisions(VerifiedActor::Office01, f.id)
+            .await,
+        Err(WorkError::EvidenceNotFound)
+    );
+    assert_eq!(
+        evidence_repository
+            .recover(
+                VerifiedActor::Office01,
+                decision_command.context().operation_id
+            )
+            .await,
+        Err(WorkError::CommitOutcomeUnknown)
+    );
+    source.allowed.store(true, Ordering::SeqCst);
+    let reconnected = PostgresWorkRepository::with_evidence_source(pool.clone(), source.clone());
+    assert_eq!(
+        reconnected
+            .recover(
+                VerifiedActor::Office01,
+                decision_command.context().operation_id
+            )
+            .await
+            .unwrap(),
+        decision
+    );
+    let counts:(i64,i64,i64)=sqlx::query_as("SELECT (SELECT count(*) FROM work.operation_ledger WHERE operation_id=$1),(SELECT count(*) FROM work.event_staging WHERE operation_id=$1),(SELECT count(*) FROM work.workflow_history WHERE operation_id=$1)").bind(decision_command.context().operation_id).fetch_one(&pool).await.unwrap();
+    assert_eq!(
+        counts,
+        (1, 1, 0),
+        "one ledger/staging record, no fake workflow transition"
+    );
 }

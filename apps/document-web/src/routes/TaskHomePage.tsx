@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useRouterState, useSearch } from '@tanstack/react-router';
 import { Dialog, Heading, Modal } from 'react-aria-components';
 import { AppShell } from '../components/app-shell/AppShell';
-import { useOrganizationContext, useTaskTransient } from '../application/organization-context';
+import { useOrganizationContext, useTaskTransient, useClearTaskTransients, emptySelection } from '../application/organization-context';
+import { EvidenceContextModule, decisionLabel } from '../components/evidence/EvidenceContextModule';
+import { useEvidenceRecords, evidenceRecordsKey } from '../application/use-evidence-records';
+import { selectedHandoffIsClosed, toggleReference } from '../application/evidence-workspace';
 import { createOperationId } from '../application/operation-id';
 import { validateDetailSearch } from '../application/search-state';
 import { workApi, executeWorkOperation, isOperationNotFound, validateTaskSearch, workErrorMessage, isDisclosureDenied, isUnknownOutcome, taskStateLabel, type TaskSearch, type TaskSummary, type TaskDetail, type WorkSession, type WorkResult, type WorkCommand, type WorkOperation, type HandoffSnapshot, type ReturnInstruction } from '../application/work-workspace';
@@ -21,12 +24,19 @@ export function TaskHomePage() {
   const navigate = useNavigate({ from: '/tasks' });
   const currentHref = useRouterState({ select: (state) => state.location.href });
   const organization = useOrganizationContext();
+  const clearTransients = useClearTaskTransients();
   const client = useQueryClient();
   const [blockedId, setBlockedId] = useState<string | null>(null);
   const session = useQuery({ queryKey: sessionKey, queryFn: workApi.getSession, staleTime: 0, gcTime: 0, retry: false });
   const sessionData = session.isSuccess ? session.data : undefined;
   useEffect(() => { if (sessionData && (currentHref === '/tasks' || currentHref.startsWith('/tasks?'))) organization.setContext(sessionData, currentHref); }, [sessionData, currentHref, organization.setContext]);
   const tasks = useQuery({ queryKey: [...(sessionData ? actorKey(sessionData) : ['organization-unavailable']), 'tasks', search.view], queryFn: () => workApi.listTasks(search.view), enabled: Boolean(sessionData), placeholderData: (previous, query) => query?.queryKey[1] === sessionData?.principalId && query?.queryKey[2] === sessionData?.actingAssignmentId ? previous : undefined, staleTime: 0, gcTime: 0, retry: false });
+  useEffect(() => {
+    if (isDisclosureDenied(session.error) || isDisclosureDenied(tasks.error)) {
+      clearTransients('');
+      client.removeQueries({ queryKey: ['organization'], predicate: (query) => query.queryKey[3] !== 'tasks' });
+    }
+  }, [session.error, tasks.error, clearTransients, client]);
   const selected = tasks.isSuccess ? tasks.data.items.find((item) => item.id === search.taskId) : undefined;
   const detail = useQuery({ queryKey: sessionData && selected ? taskKey(sessionData, selected) : ['organization-no-task'], queryFn: () => workApi.getTask(selected!.id), enabled: Boolean(sessionData && selected && !selected.canClaim), staleTime: 0, gcTime: 0, retry: false });
   const detailData = sessionData && selected && blockedId !== attemptKey(selected) && detail.isSuccess && matchesCurrent(selected, detail.data) && !selected.canClaim ? detail.data : undefined;
@@ -34,21 +44,26 @@ export function TaskHomePage() {
   const instruction = useQuery({ queryKey: [...(sessionData ? actorKey(sessionData) : ['organization-unavailable']), 'return-instruction', detailData?.returnInstructionId], queryFn: () => workApi.getReturnInstruction(detailData!.returnInstructionId!), enabled: Boolean(detailData?.returnInstructionId), staleTime: 0, gcTime: 0, retry: false });
   const priorSnapshotId = instruction.isSuccess && detailData?.returnInstructionId === instruction.data.id ? instruction.data.previousSubmissionId : undefined;
   const priorSnapshot = useQuery({ queryKey: [...(sessionData ? actorKey(sessionData) : ['organization-unavailable']), 'snapshot', priorSnapshotId], queryFn: () => workApi.getSnapshot(priorSnapshotId!), enabled: Boolean(priorSnapshotId && priorSnapshotId !== detailData?.handoffSnapshotId), staleTime: 0, gcTime: 0, retry: false });
+  useEffect(() => { if (sessionData && selected) clearTransients(`${sessionData.principalId}:${sessionData.actingAssignmentId}:${selected.id}:`, `${sessionData.principalId}:${sessionData.actingAssignmentId}:${selected.id}:${selected.attemptId}`); }, [sessionData?.principalId, sessionData?.actingAssignmentId, selected?.id, selected?.attemptId, clearTransients]);
   const [module, setModule] = useState('document');
   useEffect(() => { setModule('document'); setBlockedId(null); }, [search.taskId, sessionData?.principalId]);
   const updateSearch = (patch: Partial<TaskSearch>) => { void navigate({ search: (previous) => ({ ...previous, ...patch }) }); };
-  const refresh = async () => { await tasks.refetch(); if (selected && !selected.canClaim) await detail.refetch(); if (detailData?.handoffSnapshotId) await snapshot.refetch(); if (detailData?.returnInstructionId) await instruction.refetch(); if (priorSnapshotId && priorSnapshotId !== detailData?.handoffSnapshotId) await priorSnapshot.refetch(); };
+  const refresh = async () => { if (sessionData && selected) await client.invalidateQueries({ queryKey: evidenceRecordsKey(sessionData, selected) }); await tasks.refetch(); if (selected && !selected.canClaim) await detail.refetch(); if (detailData?.handoffSnapshotId) await snapshot.refetch(); if (detailData?.returnInstructionId) await instruction.refetch(); if (priorSnapshotId && priorSnapshotId !== detailData?.handoffSnapshotId) await priorSnapshot.refetch(); };
   function denyDisclosure() {
     if (!selected || !sessionData) return;
     setBlockedId(attemptKey(selected));
+    clearTransients(`${sessionData.principalId}:${sessionData.actingAssignmentId}:${selected.id}:`);
+    client.removeQueries({ queryKey: [...actorKey(sessionData), 'evidence-context', selected.id] });
     client.removeQueries({ queryKey: taskKey(sessionData, selected) });
     client.removeQueries({ queryKey: [...actorKey(sessionData), 'snapshot'] });
     client.removeQueries({ queryKey: [...actorKey(sessionData), 'return-instruction'] });
   }
+  useEffect(() => { if (isDisclosureDenied(detail.error) || isDisclosureDenied(snapshot.error) || isDisclosureDenied(instruction.error) || isDisclosureDenied(priorSnapshot.error)) denyDisclosure(); }, [detail.error, snapshot.error, instruction.error, priorSnapshot.error]);
   function applyResult(result: WorkResult) {
-    if (!sessionData || result.task.id !== selected?.id) return;
+    if (!sessionData || result.task.id !== selected?.id || result.task.attemptId !== selected.attemptId || result.task.revision < selected.revision || blockedId === attemptKey(selected)) return;
     client.setQueriesData<{ items: TaskSummary[]; nextCursor: null }>({ queryKey: [...actorKey(sessionData), 'tasks'] }, (previous) => previous ? { ...previous, items: previous.items.map((item) => matchesCurrent(item, result.task) ? result.task : item) } : previous);
     if (result.kind !== 'claimed') client.setQueryData<TaskDetail>(taskKey(sessionData, result.task), (previous) => previous && matchesCurrent(previous, result.task) ? { ...previous, ...result.task, workingArtifacts: result.kind === 'draft_saved' ? [result.artifact] : previous.workingArtifacts } : previous);
+    if (['evidence_registered', 'finding_registered', 'decision_recorded'].includes(result.kind)) void client.invalidateQueries({ queryKey: evidenceRecordsKey(sessionData, result.task) });
     if (result.kind === 'returned') client.setQueryData([...actorKey(sessionData), 'return-instruction', result.returnInstruction.id], result.returnInstruction);
     if (result.kind === 'submitted') client.setQueryData([...actorKey(sessionData), 'snapshot', result.snapshot.id], result.snapshot);
   }
@@ -74,7 +89,7 @@ export function TaskHomePage() {
       <h2>共有の入力文書</h2><p className={styles.muted}>文書側の現在の権限で開きます。作業文案とは別の共有資料です。</p>
       {detailData.inputResources.length === 0 ? <p>入力文書はありません</p> : <ul>{detailData.inputResources.map((input) => <li key={input.documentId}><Link to="/documents/$documentId" params={{ documentId: input.documentId }} search={validateDetailSearch({ view: 'published' })}>{input.label}</Link></li>)}</ul>}
       <p className={styles.muted}>版・改訂・比較は既存の文書画面で確認できます。戻ると選択したタスクに戻ります。</p>
-    </> : module === 'history' ? <><h2>業務履歴</h2>{detailData.history.length ? <ul>{detailData.history.map((entry, index) => <li key={`${entry.occurredAt}-${index}`}>{historyLabel(entry.kind)}<br /><time dateTime={entry.occurredAt}>{formatDateTime(entry.occurredAt)}</time></li>)}</ul> : <p>記録された履歴はありません</p>}<p className={styles.muted}>この履歴は監査基盤の資格取得を示すものではありません。</p></> : module === 'return' ? <><h2>差戻</h2><p>{detailData.returnInstructionId ? '確定した差戻指示と過去の提出内容を主作業に表示します。差戻理由は変更できません。' : detailData.canReturn ? '受領内容と差戻理由を確認して、主作業から差戻してください。' : 'この試行に差戻の記録はありません。'}</p></> : <><h2>{module === 'agent' ? 'Agent' : module === 'search' ? '検索' : module === 'evidence' ? '根拠・判断' : 'Workspace'}</h2><p>このブラウザーPoCでは未実装です</p></>}
+    </> : module === 'evidence' ? <EvidenceContextModule key={`${sessionData!.principalId}:${sessionData!.actingAssignmentId}:${detailData.id}:${detailData.attemptId}`} session={sessionData!} task={detailData} applyResult={applyResult} onDenied={denyDisclosure} /> : module === 'history' ? <><h2>業務履歴</h2>{detailData.history.length ? <ul>{detailData.history.map((entry, index) => <li key={`${entry.occurredAt}-${index}`}>{historyLabel(entry.kind)}<br /><time dateTime={entry.occurredAt}>{formatDateTime(entry.occurredAt)}</time></li>)}</ul> : <p>記録された履歴はありません</p>}<p className={styles.muted}>この履歴は監査基盤の資格取得を示すものではありません。</p></> : module === 'return' ? <><h2>差戻</h2><p>{detailData.returnInstructionId ? '確定した差戻指示と過去の提出内容を主作業に表示します。差戻理由は変更できません。' : detailData.canReturn ? '受領内容と差戻理由を確認して、主作業から差戻してください。' : 'この試行に差戻の記録はありません。'}</p></> : <><h2>{module === 'agent' ? 'Agent' : module === 'search' ? '検索' : module === 'evidence' ? '根拠・判断' : 'Workspace'}</h2><p>このブラウザーPoCでは未実装です</p></>}
     <div className={styles.notice}><strong>ブラウザーPoC</strong><p>ブラウザーではネイティブWorkspaceを利用できません</p><p>Search / Agent / ファイル添付は未実装です</p></div>
   </>;
   return <AppShell activeNavigation="tasks" mainLabel="タスクワークスペース" headerContext={<span className={styles.identity}>{sessionData ? <><strong>{sessionData.displayName}</strong> · {sessionData.principalId}<br />担当: {sessionData.actingAssignmentId} · 起動時固定の模擬ユーザー</> : 'タスク'} </span>} contextPanel={contextPanel}>
@@ -102,6 +117,9 @@ export function TaskHomePage() {
 
 function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onDenied }: { session: WorkSession; task: TaskSummary; detail?: TaskDetail; snapshot?: HandoffSnapshot; applyResult: (result: WorkResult) => void; refresh: () => Promise<void>; onDenied: () => void }) {
   const artifact = detail?.workingArtifacts[0];
+  const evidenceRecords = useEvidenceRecords(session, task, Boolean(detail));
+  const mounted = useRef(true); useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => { if (isDisclosureDenied(evidenceRecords.error)) onDenied(); }, [evidenceRecords.error]);
   const [transient, setTransient] = useTaskTransient(`${session.principalId}:${session.actingAssignmentId}:${task.id}:${task.attemptId}`);
   const { draft, reason, notice, operation, unknown, error } = transient;
   const setDraft = (value: string | null) => setTransient((previous) => ({ ...previous, draft: value }));
@@ -114,14 +132,18 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
   const mutation = useMutation({
     mutationFn: async (input: { execute: () => Promise<WorkResult>; recovery?: boolean }) => input.execute(),
     onSuccess: (result) => {
+      if (!mounted.current) return;
       if (result.task.id !== task.id || result.task.attemptId !== task.attemptId || (operation && operation.kind !== result.kind)) { setTransient((previous) => ({ ...previous, unknown: true })); setNotice('応答と操作が一致しません。同じ操作IDで結果を確認してください。'); return; }
       applyResult(result); setTransient((previous) => ({ ...previous, unknown: false, operation: null, error: null })); setConfirmation(null);
       if (result.kind === 'draft_saved') { setDraft(null); setNotice('文案を保存しました'); }
       if (result.kind === 'returned') { setTransient((previous) => ({ ...previous, reason: null, notice: '差戻が確定しました' })); }
+      if (result.kind === 'evidence_registered') setNotice('根拠を登録しました');
+      if (result.kind === 'finding_registered') setNotice('候補を登録しました');
+      if (result.kind === 'decision_recorded') setNotice('人間判断を記録しました');
       if (result.kind === 'claimed') setNotice('担当が確定しました');
       if (result.kind === 'submitted') setNotice(`提出が確定しました`);
     },
-    onError: (error, input) => { const unresolved = Boolean(input.recovery) || isUnknownOutcome(error); setTransient((previous) => ({ ...previous, unknown: unresolved, operation: unresolved ? previous.operation : null, error })); if (isDisclosureDenied(error) && !(input.recovery && isOperationNotFound(error))) { setDenied(true); setTransient({ draft: null, reason: null, operation: null, unknown: false, notice: '', error }); onDenied(); } setConfirmation(null); },
+    onError: (error, input) => { if (!mounted.current) return; const unresolved = Boolean(input.recovery) || isUnknownOutcome(error); setTransient((previous) => ({ ...previous, unknown: unresolved, operation: unresolved ? previous.operation : null, error })); if (isDisclosureDenied(error) && !(input.recovery && isOperationNotFound(error))) { setDenied(true); setTransient({ draft: null, reason: null, operation: null, unknown: false, notice: '', error }); onDenied(); } setConfirmation(null); },
     retry: false,
   });
   function command(): WorkCommand {
@@ -136,6 +158,9 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
   const returnTarget = task.canReturn ? task.returnTransition : null;
   const canConfirmReturn = Boolean(returnTarget && snapshot?.id === returnTarget.previousSubmissionId && returnReason.trim() && !returnOversized);
   const busy = mutation.isPending || unknown;
+  const selection = transient.sharing ?? emptySelection;
+  const closure = evidenceRecords.isSuccess && selectedHandoffIsClosed(selection, evidenceRecords.data.evidence, evidenceRecords.data.findings, evidenceRecords.data.decisions);
+  const selectRef = (kind: keyof typeof selection, ref: { id: string; revision: 1 }, selected: boolean) => setTransient((previous) => ({ ...previous, sharing: { ...(previous.sharing ?? emptySelection), [kind]: toggleReference((previous.sharing ?? emptySelection)[kind], ref, selected) } }));
   if (denied) return <p role="alert">このタスクを現在の担当では利用できません。内容を非表示にしました。</p>;
   return <>
     {notice && <p role="status" className={styles.notice}>{notice}</p>}
@@ -160,7 +185,14 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
     {confirmation === 'submit' && artifact && <Modal className={styles.dialogScrim} isOpen isDismissable={false} isKeyboardDismissDisabled={mutation.isPending} onOpenChange={(open) => { if (!open && !mutation.isPending) setConfirmation(null); }}><Dialog className={styles.dialog} aria-labelledby="submit-title"><Heading slot="title" id="submit-title">提出の確認</Heading>
       <p>{task.title} · タスク {task.id}</p><p className={styles.muted}>試行 {task.attemptId} · タスク版 {task.revision} · 文案版 {artifact.revision}</p>
       <p>保存済みの次の内容を固定し、ワークフローで定義された次担当へ渡します。</p><div className={styles.snapshot}><p className={styles.text}>{artifact.value.text}</p></div>
-      <div className={styles.actions}><button type="button" autoFocus disabled={mutation.isPending} onClick={() => setConfirmation(null)}>キャンセル</button><button type="button" className={styles.primary} disabled={mutation.isPending} onClick={() => { startOperation({ kind: 'submitted', taskId: task.id, input: { ...command(), artifacts: [{ artifactId: artifact.id, revision: artifact.revision }] } }); }}>提出を確定</button></div>
+      <fieldset disabled={busy}><legend>共有する根拠・候補・判断を選択</legend><p>選択した版だけを固定します。未選択の記録は非公開のままです。何も共有しない提出もできます。</p>
+        {evidenceRecords.isPending && <p role="status">共有候補を確認中…</p>}{evidenceRecords.isError && <p role="alert">共有候補を取得できません。再読込してください。</p>}
+        {(evidenceRecords.isSuccess ? evidenceRecords.data.evidence : []).map((record) => <label className={styles.shareChoice} key={record.id}><input type="checkbox" aria-label={`共有する根拠 ${record.id}`} checked={selection.evidenceRevisionRefs.some((ref) => ref.id === record.id)} onChange={(event) => selectRef('evidenceRevisionRefs', record, event.target.checked)} />根拠 {record.id} · 版 {record.revision}<br />{record.relevantLocation}</label>)}
+        {(evidenceRecords.isSuccess ? evidenceRecords.data.findings : []).map((record) => <label className={styles.shareChoice} key={record.id}><input type="checkbox" aria-label={`共有する候補 ${record.id}`} checked={selection.findingRevisionRefs.some((ref) => ref.id === record.id)} onChange={(event) => selectRef('findingRevisionRefs', record, event.target.checked)} />候補 {record.id} · 版 {record.revision}<br />{record.claim}<br />必要な根拠：{record.evidenceRevisionRefs.map((ref) => `${ref.id}（版 ${ref.revision}）`).join('、')}</label>)}
+        {(evidenceRecords.isSuccess ? evidenceRecords.data.decisions : []).map((record) => <label className={styles.shareChoice} key={record.id}><input type="checkbox" aria-label={`共有する判断 ${record.id}`} checked={selection.decisionRevisionRefs.some((ref) => ref.id === record.id)} onChange={(event) => selectRef('decisionRevisionRefs', record, event.target.checked)} />判断 {record.id} · 版 {record.revision} · {decisionLabel(record.decision)}<br />{record.adoptedClaim ?? record.reason}<br />必要な候補：{record.findingId}（版 {record.findingRevision}）<br />必要な根拠：{record.evidenceRevisionRefs.map((ref) => `${ref.id}（版 ${ref.revision}）`).join('、')}</label>)}
+        {!closure && evidenceRecords.isSuccess && <p role="alert">選択した候補・判断が参照する根拠と候補の同じ版も選択してください。合計100件以内です。</p>}
+      </fieldset>
+      <div className={styles.actions}><button type="button" autoFocus disabled={mutation.isPending} onClick={() => setConfirmation(null)}>キャンセル</button><button type="button" className={styles.primary} disabled={mutation.isPending || !closure} onClick={() => { startOperation({ kind: 'submitted', taskId: task.id, input: { ...command(), expectedAttemptId: task.attemptId, ...selection, artifacts: [{ artifactId: artifact.id, revision: artifact.revision }] } }); }}>提出を確定</button></div>
     </Dialog></Modal>}
     {confirmation === 'return' && returnTarget && snapshot && <Modal className={styles.dialogScrim} isOpen isDismissable={false} isKeyboardDismissDisabled={mutation.isPending} onOpenChange={(open) => { if (!open && !mutation.isPending) setConfirmation(null); }}><Dialog className={styles.dialog} aria-labelledby="return-title"><Heading slot="title" id="return-title">差戻の確認</Heading>
       <p>{task.title} · 試行 {task.attemptNumber}（{task.attemptId}） · タスク版 {task.revision}</p><p>差戻先タスク {returnTarget.targetTaskId} · 元の提出 {returnTarget.previousSubmissionId}</p>
@@ -174,7 +206,7 @@ function ReturnInstructionView({ instruction }: { instruction: ReturnInstruction
   return <section className={styles.snapshot} aria-label="確定した差戻指示"><h2>確定した差戻指示</h2><p className={styles.text}>{instruction.reason}</p><p className={styles.muted}>読み取り専用 · {instruction.id}<br />元の提出 {instruction.previousSubmissionId}<br />差戻元の試行 {instruction.sourceAttemptId} → 新しい試行 {instruction.targetAttemptId}<br /><time dateTime={instruction.createdAt}>{formatDateTime(instruction.createdAt)}</time></p></section>;
 }
 function Snapshot({ snapshot, received, prior = false }: { snapshot: HandoffSnapshot; received: boolean; prior?: boolean }) {
-  return <section className={styles.snapshot} aria-label={prior ? '差戻前のスナップショット' : received ? '受領したスナップショット' : '提出済みスナップショット'}><h2>{prior ? '差戻前のスナップショット' : received ? '受領したスナップショット' : '提出済みスナップショット'}</h2><p className={styles.muted}>固定された提出内容 · {snapshot.id}<br /><time dateTime={snapshot.createdAt}>{formatDateTime(snapshot.createdAt)}</time></p>{snapshot.artifacts.map((artifact) => <div key={artifact.artifactId}><p className={styles.muted}>文案版 {artifact.revision}</p><p className={styles.text}>{artifact.value.text}</p></div>)}</section>;
+  return <section className={styles.snapshot} aria-label={prior ? '差戻前のスナップショット' : received ? '受領したスナップショット' : '提出済みスナップショット'}><h2>{prior ? '差戻前のスナップショット' : received ? '受領したスナップショット' : '提出済みスナップショット'}</h2><p className={styles.muted}>固定された提出内容 · {snapshot.id}<br /><time dateTime={snapshot.createdAt}>{formatDateTime(snapshot.createdAt)}</time></p>{snapshot.artifacts.map((artifact) => <div key={artifact.artifactId}><p className={styles.muted}>文案版 {artifact.revision}</p><p className={styles.text}>{artifact.value.text}</p></div>)}{(['evidenceRevisionRefs', 'findingRevisionRefs', 'decisionRevisionRefs'] as const).map((kind) => <p key={kind} className={styles.muted}>{({ evidenceRevisionRefs: '共有された根拠', findingRevisionRefs: '共有された候補', decisionRevisionRefs: '共有された判断' })[kind]}：{snapshot[kind]?.length ? snapshot[kind].map((ref) => `${ref.id}（版 ${ref.revision}）`).join('、') : 'なし'}</p>)}</section>;
 }
-function historyLabel(kind: string): string { return ({ claimed: '担当を引受', draft_saved: '文案を保存', submitted: '提出', returned: '差戻', seeded: 'タスクを作成' })[kind] ?? '業務状態を更新'; }
+function historyLabel(kind: string): string { return ({ claimed: '担当を引受', draft_saved: '文案を保存', evidence_registered: '根拠を登録', finding_registered: '候補を登録', decision_recorded: '人間判断を記録', submitted: '提出', returned: '差戻', seeded: 'タスクを作成' })[kind] ?? '業務状態を更新'; }
 export function OrganizationSearchPage() { const organization = useOrganizationContext(); const search = validateTaskSearch(Object.fromEntries(new URLSearchParams(organization.taskHref.split('?')[1] ?? ''))); return <AppShell activeNavigation="search" mainLabel="検索ワークスペース" showContextPanel={false}><section className={styles.work}><h1>検索</h1><p>Search PlatformはこのブラウザーPoCでは未実装です</p><Link to="/tasks" search={search}>タスクへ戻る</Link></section></AppShell>; }

@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 2026-10-04 08:34 UTC — Organization根拠・候補・人間判断sliceを継続
+
+- 受入[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d9b2467afd7225fa4f92f1d7a801d4002` は差戻・再提出の実DB/2名操作/復元/cleanupと全CI成功済み
+- 所有者の継続指示とFrozen設計に従い、別branchでHuman起点のEvidence/Finding/HumanDecisionを実装。[最新状況](organization-evidence-slice-status.md)、[短い計画](../plans/2026-10-04-organization-evidence-slice.md)
+- 固定2名、同じ一時DB/Chromium、画像非公開。既存Document現在認可とWork transactionを再利用し、Agent/model外部実行・新認可方式は追加しない。以下は各時点の履歴
+
+---
+
 ## 2026-10-04 07:33 UTC — Organization差戻・再提出sliceを継続
 
 - 受入PR54 exact `44e1b412` の最小Browser PoCは実DB/2名操作/復元/cleanupと全CI成功済み

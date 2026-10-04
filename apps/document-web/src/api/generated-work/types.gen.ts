@@ -40,6 +40,9 @@ export type TaskSummary = {
     canReturn: boolean;
     returnInstructionId: string | null;
     returnTransition: ReturnTransition | null;
+    canRegisterEvidence: boolean;
+    canRegisterFinding: boolean;
+    canRecordDecision: boolean;
 };
 
 export type WorkingArtifact = {
@@ -82,6 +85,9 @@ export type TaskDetail = {
     canReturn: boolean;
     returnInstructionId: string | null;
     returnTransition: ReturnTransition | null;
+    canRegisterEvidence: boolean;
+    canRegisterFinding: boolean;
+    canRecordDecision: boolean;
 };
 
 export type TaskPage = {
@@ -110,6 +116,9 @@ export type HandoffSnapshot = {
     submissionNumber: number;
     previousSubmissionId?: string;
     returnInstructionId?: string;
+    evidenceRevisionRefs: Array<RevisionRef>;
+    findingRevisionRefs: Array<RevisionRef>;
+    decisionRevisionRefs: Array<RevisionRef>;
 };
 
 export type WorkCommand = {
@@ -125,6 +134,9 @@ export type DraftCommand = {
     value: TextValue;
 };
 
+/**
+ * Explicit immutable selection only. Missing added selection arrays mean empty for legacy commands. Combined record references <=100, without duplicates. Selected findings require all their evidence; selected decisions require their finding and all support. No records are automatically included.
+ */
 export type SubmitCommand = {
     operationId: string;
     expectedRevision: number;
@@ -133,6 +145,10 @@ export type SubmitCommand = {
         artifactId: string;
         revision: number;
     }>;
+    evidenceRevisionRefs?: Array<RevisionRef>;
+    findingRevisionRefs?: Array<RevisionRef>;
+    decisionRevisionRefs?: Array<RevisionRef>;
+    expectedAttemptId?: string;
 };
 
 export type DraftSaved = {
@@ -153,13 +169,13 @@ export type Submitted = {
     nextTask: TaskSummary;
 };
 
-export type WorkResult = DraftSaved | Claimed | Submitted | Returned;
+export type WorkResult = DraftSaved | Claimed | Submitted | Returned | EvidenceRegistered | FindingRegistered | DecisionRecorded;
 
 export type Problem = {
     type: string;
     title: string;
     status: number;
-    code: 'VALIDATION_FAILED' | 'FORBIDDEN' | 'WORK_ITEM_NOT_FOUND' | 'WORK_ARTIFACT_NOT_FOUND' | 'REVISION_CONFLICT' | 'OPERATION_CONFLICT' | 'WORK_ASSIGNMENT_CONFLICT' | 'HANDOFF_NOT_READY' | 'DEPENDENCY_UNAVAILABLE' | 'COMMIT_OUTCOME_UNKNOWN' | 'INTEGRITY_VIOLATION' | 'CURSOR_STALE';
+    code: 'VALIDATION_FAILED' | 'FORBIDDEN' | 'WORK_ITEM_NOT_FOUND' | 'WORK_ARTIFACT_NOT_FOUND' | 'REVISION_CONFLICT' | 'OPERATION_CONFLICT' | 'WORK_ASSIGNMENT_CONFLICT' | 'HANDOFF_NOT_READY' | 'DEPENDENCY_UNAVAILABLE' | 'COMMIT_OUTCOME_UNKNOWN' | 'INTEGRITY_VIOLATION' | 'CURSOR_STALE' | 'EVIDENCE_NOT_FOUND' | 'FINDING_NOT_FOUND';
     traceId: string;
 };
 
@@ -212,6 +228,181 @@ export type Returned = {
     task: TaskSummary;
     returnInstruction: ReturnInstruction;
     nextTask: TaskSummary;
+};
+
+export type RevisionRef = {
+    id: string;
+    revision: 1;
+};
+
+export type SourceRef = {
+    providerId: 'document';
+    resourceId: string;
+    revisionId: string;
+    versionId: string;
+};
+
+export type AuthoritativeLocator = {
+    kind: 'contentItem';
+    contentItemId: string;
+    representationId: string;
+};
+
+/**
+ * Immutable reference-only source pointer. relevantLocation is human text and is not verified source content. Fragment is not retained; coverage is unknown. providerCheckedAt/retrievedAt describe completion of the server Document preflight, recordedAt is Work registration time. No cross-provider atomicity or retained source proof is asserted.
+ */
+export type EvidenceRecord = {
+    id: string;
+    revision: 1;
+    contextId: string;
+    taskId: string;
+    attemptId: string;
+    actingAssignmentId: string;
+    visibility: 'work_item_private';
+    createdBy: string;
+    origin: 'human';
+    sourceRef: SourceRef;
+    authoritativeLocator: AuthoritativeLocator;
+    /**
+     * UTF-8 encoded length is limited to 8192 bytes by the server.
+     */
+    relevantLocation: string;
+    relevantLocationVerified: false;
+    fragmentOmissionReason: 'not_retained';
+    coverage: 'unknown';
+    uncertainty: Array<string>;
+    conflictReferences: Array<RevisionRef>;
+    policyDisposition: 'reference_only';
+    retrievedAt: string;
+    recordedAt: string;
+    providerCheckedAt: string;
+};
+
+export type Finding = {
+    id: string;
+    revision: 1;
+    contextId: string;
+    taskId: string;
+    attemptId: string;
+    actingAssignmentId: string;
+    visibility: 'work_item_private';
+    author: string;
+    /**
+     * UTF-8 encoded length is limited to 8192 bytes by the server.
+     */
+    claim: string;
+    evidenceRevisionRefs: Array<RevisionRef>;
+    supersedesFindingId: string | null;
+    uncertainty: Array<string>;
+    conflicts: Array<RevisionRef>;
+    createdAt: string;
+};
+
+export type HumanDecision = {
+    id: string;
+    revision: 1;
+    contextId: string;
+    taskId: string;
+    attemptId: string;
+    actingAssignmentId: string;
+    visibility: 'work_item_private';
+    findingId: string;
+    findingRevision: 1;
+    decision: 'accepted' | 'modified' | 'rejected';
+    /**
+     * UTF-8 encoded length is limited to 8192 bytes by the server.
+     */
+    adoptedClaim: string | null;
+    /**
+     * UTF-8 encoded length is limited to 8192 bytes by the server.
+     */
+    reason: string | null;
+    evidenceRevisionRefs: Array<RevisionRef>;
+    humanPrincipal: string;
+    createdAt: string;
+    supersedesDecisionId: string | null;
+};
+
+export type EvidenceCommand = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    expectedAttemptId: string;
+    sourceRef: SourceRef;
+    authoritativeLocator: AuthoritativeLocator;
+    /**
+     * UTF-8 encoded length is limited to 8192 bytes by the server.
+     */
+    relevantLocation: string;
+};
+
+export type FindingCommand = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    expectedAttemptId: string;
+    /**
+     * UTF-8 encoded length is limited to 8192 bytes by the server.
+     */
+    claim: string;
+    evidenceRevisionRefs: Array<RevisionRef>;
+    supersedesFindingId?: string | null;
+};
+
+/**
+ * HumanInteractive only. taskId and expectedAttemptId name the current judging task/attempt, including office judging a received sales Finding. modified requires a nonblank adoptedClaim; accepted/rejected omit it.
+ */
+export type DecisionCommand = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    expectedAttemptId: string;
+    taskId: string;
+    findingRevision: 1;
+    decision: 'accepted' | 'modified' | 'rejected';
+    /**
+     * UTF-8 encoded length is limited to 8192 bytes by the server.
+     */
+    adoptedClaim?: string | null;
+    /**
+     * UTF-8 encoded length is limited to 8192 bytes by the server.
+     */
+    reason?: string | null;
+    evidenceRevisionRefs: Array<RevisionRef>;
+    supersedesDecisionId?: string | null;
+};
+
+export type EvidenceRegistered = {
+    kind: 'evidence_registered';
+    task: TaskSummary;
+    evidence: EvidenceRecord;
+};
+
+export type FindingRegistered = {
+    kind: 'finding_registered';
+    task: TaskSummary;
+    finding: Finding;
+};
+
+export type DecisionRecorded = {
+    kind: 'decision_recorded';
+    task: TaskSummary;
+    decision: HumanDecision;
+};
+
+export type EvidencePage = {
+    items: Array<EvidenceRecord>;
+    nextCursor: string | null;
+};
+
+export type FindingPage = {
+    items: Array<Finding>;
+    nextCursor: string | null;
+};
+
+export type DecisionPage = {
+    items: Array<HumanDecision>;
+    nextCursor: string | null;
 };
 
 export type GetOrganizationSessionData = {
@@ -619,3 +810,260 @@ export type GetOrganizationReturnInstructionResponses = {
 };
 
 export type GetOrganizationReturnInstructionResponse = GetOrganizationReturnInstructionResponses[keyof GetOrganizationReturnInstructionResponses];
+
+export type ListEvidenceData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: {
+        limit?: number;
+        cursor?: string;
+    };
+    url: '/v1/organization/tasks/{id}/evidence';
+};
+
+export type ListEvidenceErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ListEvidenceError = ListEvidenceErrors[keyof ListEvidenceErrors];
+
+export type ListEvidenceResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: EvidencePage;
+};
+
+export type ListEvidenceResponse = ListEvidenceResponses[keyof ListEvidenceResponses];
+
+export type RegisterEvidenceData = {
+    body: EvidenceCommand;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/tasks/{id}/evidence';
+};
+
+export type RegisterEvidenceErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type RegisterEvidenceError = RegisterEvidenceErrors[keyof RegisterEvidenceErrors];
+
+export type RegisterEvidenceResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type RegisterEvidenceResponse = RegisterEvidenceResponses[keyof RegisterEvidenceResponses];
+
+export type GetEvidenceData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/evidence/{id}';
+};
+
+export type GetEvidenceErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type GetEvidenceError = GetEvidenceErrors[keyof GetEvidenceErrors];
+
+export type GetEvidenceResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: EvidenceRecord;
+};
+
+export type GetEvidenceResponse = GetEvidenceResponses[keyof GetEvidenceResponses];
+
+export type ListFindingsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: {
+        limit?: number;
+        cursor?: string;
+    };
+    url: '/v1/organization/tasks/{id}/findings';
+};
+
+export type ListFindingsErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ListFindingsError = ListFindingsErrors[keyof ListFindingsErrors];
+
+export type ListFindingsResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: FindingPage;
+};
+
+export type ListFindingsResponse = ListFindingsResponses[keyof ListFindingsResponses];
+
+export type RegisterFindingData = {
+    body: FindingCommand;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/tasks/{id}/findings';
+};
+
+export type RegisterFindingErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type RegisterFindingError = RegisterFindingErrors[keyof RegisterFindingErrors];
+
+export type RegisterFindingResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type RegisterFindingResponse = RegisterFindingResponses[keyof RegisterFindingResponses];
+
+export type GetFindingData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/findings/{id}';
+};
+
+export type GetFindingErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type GetFindingError = GetFindingErrors[keyof GetFindingErrors];
+
+export type GetFindingResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: Finding;
+};
+
+export type GetFindingResponse = GetFindingResponses[keyof GetFindingResponses];
+
+export type ListHumanDecisionsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: {
+        limit?: number;
+        cursor?: string;
+    };
+    url: '/v1/organization/findings/{id}/decisions';
+};
+
+export type ListHumanDecisionsErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ListHumanDecisionsError = ListHumanDecisionsErrors[keyof ListHumanDecisionsErrors];
+
+export type ListHumanDecisionsResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: DecisionPage;
+};
+
+export type ListHumanDecisionsResponse = ListHumanDecisionsResponses[keyof ListHumanDecisionsResponses];
+
+export type RecordHumanDecisionData = {
+    body: DecisionCommand;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/findings/{id}/decisions';
+};
+
+export type RecordHumanDecisionErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type RecordHumanDecisionError = RecordHumanDecisionErrors[keyof RecordHumanDecisionErrors];
+
+export type RecordHumanDecisionResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type RecordHumanDecisionResponse = RecordHumanDecisionResponses[keyof RecordHumanDecisionResponses];

@@ -29,3 +29,5 @@
 .dialog { background: var(--color-surface); border-radius: 8px; padding: 24px; width: min(620px, 100%); max-height: 90vh; overflow: auto; box-shadow: 0 12px 48px rgb(0 0 0 / 22%); }
 @media (max-width: 1320px) { .layout { grid-template-columns: 204px minmax(0, 1fr); } }
 @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } .collection { border-bottom: 1px solid var(--color-border); } .work { padding: 16px; } }
+
+.shareChoice { display: block; padding: 10px 0; overflow-wrap: anywhere; line-height: 1.6; }

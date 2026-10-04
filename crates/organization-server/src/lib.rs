@@ -8,3 +8,5 @@ mod composition;
 pub use composition::compose_routes;
 mod bootstrap;
 pub use bootstrap::{bootstrap_document_policy, organization_root_grants, verify_shared_document};
+mod document_evidence;
+pub use document_evidence::DocumentEvidenceSource;

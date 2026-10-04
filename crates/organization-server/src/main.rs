@@ -3,8 +3,8 @@ use document_server::{
     config::{Command, ConfigSource, ProcessEnvironment},
 };
 use organization_server::{
-    OrganizationConfig, OrganizationProfile, SyntheticIdentityAdapter, bootstrap_document_policy,
-    compose_routes, verify_shared_document,
+    DocumentEvidenceSource, OrganizationConfig, OrganizationProfile, SyntheticIdentityAdapter,
+    bootstrap_document_policy, compose_routes, verify_shared_document,
 };
 use std::{process::ExitCode, sync::Arc};
 use uuid::Uuid;
@@ -83,8 +83,16 @@ async fn run() -> Result<(), String> {
             )
             .await
             .map_err(|error| error.to_string())?;
-            let work =
-                work_api_http::router(Arc::new(PostgresWorkRepository::new(pool.clone())), actor);
+            let evidence_source = Arc::new(DocumentEvidenceSource::new(Arc::new(
+                document_repository_postgres::PostgresDocumentRepository::new(pool.clone()),
+            )));
+            let work = work_api_http::router(
+                Arc::new(PostgresWorkRepository::with_evidence_source(
+                    pool.clone(),
+                    evidence_source,
+                )),
+                actor,
+            );
             let joined = compose_routes(work, runtime.router());
             let bind = config
                 .document()

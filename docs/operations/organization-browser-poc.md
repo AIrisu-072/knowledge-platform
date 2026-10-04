@@ -2,7 +2,7 @@
 
 ## 現在の範囲
 
-2名の起動時固定の模擬ユーザーを使い、タスク一覧・詳細、privateな文案の保存、共有Document参照、提出、事務担当の引受けと提出内容の閲覧、理由付き差戻と新試行での再提出を行う。PostgreSQLを状態の正本とし、ページ再読込でも保存済み状態を取得する。未保存の入力と結果不明操作はタブ内メモリーに保持する。
+2名の起動時固定の模擬ユーザーを使い、タスク一覧・詳細、privateな文案の保存、共有Document参照、提出、事務担当の引受けと提出内容の閲覧、理由付き差戻と新試行での再提出、Documentを参照する根拠・候補・人間判断の保存を行う。PostgreSQLを状態の正本とし、ページ再読込でも保存済み状態を取得する。未保存の入力と結果不明操作はタブ内メモリーに保持する。
 
 これは認証システムではない。各loopbackポートへ接続できる利用者はその固定profileとして扱われる。顧客情報・秘密情報・production DBを使用しない。外部公開・production deploy・Tauri実行を含まない。
 
@@ -76,12 +76,27 @@ export KP_ORGANIZATION_DOCUMENT_ID='<上で公開したdocumentId>'
 4. 再提出すると新しいsnapshotと、同じ事務タスクの新しいready試行ができる。事務で改めて引き受けると新提出を閲覧できる。旧snapshot/理由は不変である
 5. 通信結果が不明なら元のoperation IDで確認・再送する。同じtask IDでも古い試行の結果で現在の試行へ巻き戻さない
 
+## 根拠・候補・人間判断を残す
+
+1. 担当中のタスクでContext Surfaceの「根拠」を選ぶ。営業型・事務型のどちらでも同じ操作を使う
+2. タスクに結び付いた共有Documentの現在の公開改訂と原本を選び、人間が確認した該当箇所を記載して登録する。本文は複製せず、改訂・版・原本の固定参照を保存する。人間の箇所説明は原本から検証済みの抽出結果ではなく、coverageはunknownと表示する
+3. 1件以上の根拠を選び、候補の主張を登録する。候補と原本の事実は別の記録である
+4. 正確な候補revisionへ「採用」「修正」「却下」の判断を残す。修正時は採用する主張を入力する。元候補・根拠・以前の判断は書き換えず、判断だけで提出や差戻は実行しない
+5. 営業から提出する場合は、共有する根拠・候補・判断を明示的に選び、提出確認で参照集合を確認する。候補の根拠、判断の候補と根拠も選択集合へ含める。未選択recordは提出されない
+6. 事務が引受けた後は、受領した選択recordを読み、自分の現在の試行で別の判断を残せる。事務の判断を過去の営業snapshotへ書き戻さない。新しい差戻試行のprivate記録は以前の提出と混ぜない
+
+このPoCでは、現在の試行と受領内容を合わせた根拠・候補、および各候補の可視判断はそれぞれ16件まで。上限では新規登録を拒否し、既存記録を一覧から切り捨てない。collection APIは完全集合1page、limit省略時50・指定は16–100、cursorは未対応。
+
+新規登録は現在公開版のAUTHORITATIVE原本だけが対象。保存後に新しい版が公開されても、過去の根拠は元の改訂・版・原本を指す。原本を開く時やWorkから返す時はDocumentの現在の権限を再確認し、別の版/ファイルへ自動置換しない。閲覧できなくなった場合は古い表示を残さず、権限/利用可否を表示する。Workの提出はDocument権限を変更しない。
+
+入力と結果不明操作は同じ利用者・担当・タスク・試行のタブ内状態として扱う。通信結果不明時は元operation IDで確認・再送し、新しいIDで重複作成しない。タブを閉じると未保存入力は失われる。
+
 ## 未対応と検証限界
 
-- Tauri/実Windows/WebView2/native Workspace、ファイル添付、Agent/Evidence/HumanDecision、検索の接続、role管理・委任は今回の最小slice外
+- Tauri/実Windows/WebView2/native Workspace、ファイル添付、Agent/model実行、検索の接続、role管理・委任は今回の最小slice外
 - Work fixtureは2stepの1workflow。物理DBでは1aggregateをrow lockし、privateなschema-bound textを保存する。一般workflow designerや大規模運用を意味しない
 - AuditはWork transaction内のstagingまで。別Audit pipeline配送の資格取得は主張しない
-- この作業環境では実PostgreSQL・listener・browser統合を実行していない。既知拒否を再試行していない。純粋テスト/HTTP oneshot/型検査/buildの成功で実runtime合格としない
+- 実PostgreSQLとbrowserの確認は、明示承認されたGitHub Actionsの使い捨て環境で行う。ローカルの既知DB/browser拒否を再試行しない。以前、純粋試験と誤認したDocument Node試験が合成loopback listenerを起動した事実は報告・終了確認済みで、実DB資格や追加実行許可を意味しない。純粋テスト/HTTP oneshot/型検査/buildの成功で実runtime合格としない
 
 ## 最小開発確認
 
@@ -99,4 +114,4 @@ PostgreSQL transaction試験は既定で明示ignoreされる。実行してい�
 
 `mise run organization:poc:runtime` は既存Document CI後段向けの単発確認である。外部DBを受け付けず、既存と同じ公式PostgreSQL一時containerを別途所有し、独立したtransaction試験用DBとbrowser用DB・storageを作る。既存固定Chromiumでsales/officeの操作を行い、2processを停止・再起動して保存状態を確認した後、所有containerを削除する。
 
-通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。初回PoCの実証は[PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54)のsource `44e1b412` で完了している。今回の差戻追加経路は[差戻slice状況](../superpowers/execution/organization-return-slice-status.md)の新しいexact-head結果で別途確認する。画像・trace・videoはoff、実行ログ・標準runnerの失敗時文脈は一時workspace内だけに保持し、公開artifactは追加しない。
+通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。初回PoCの実証は[PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54)のsource `44e1b412` で完了している。差戻追加経路は[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d` で全CIと実DB/2名browser/両HTTP server再起動後復元/cleanupが成功した。今回の根拠・候補・判断は[最新状況](../superpowers/execution/organization-evidence-slice-status.md)の新しいexact-head結果で別途確認する。PostgreSQL processそのものの再起動は確認対象に含めていない。画像・trace・videoはoff、実行ログ・標準runnerの失敗時文脈は一時workspace内だけに保持し、公開artifactは追加しない。

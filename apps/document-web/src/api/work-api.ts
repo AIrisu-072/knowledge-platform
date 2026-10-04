@@ -4,12 +4,22 @@ export type WorkSession = Generated.WorkSession;
 export type TaskSummary = Generated.TaskSummary;
 export type WorkingArtifact = Generated.WorkingArtifact;
 export type TaskDetail = Generated.TaskDetail;
-// This view intentionally projects only the snapshot fields rendered by the first slice.
-export type HandoffSnapshot = Pick<Generated.HandoffSnapshot, 'id' | 'sourceTaskId' | 'sourceAttemptId' | 'targetTaskId' | 'createdAt' | 'artifacts'>;
+export type HandoffSnapshot = Pick<Generated.HandoffSnapshot, 'id' | 'sourceTaskId' | 'sourceAttemptId' | 'targetTaskId' | 'createdAt' | 'artifacts' | 'evidenceRevisionRefs' | 'findingRevisionRefs' | 'decisionRevisionRefs'>;
 export type WorkCommand = Generated.WorkCommand;
 export type ReturnCommand = Generated.ReturnCommand;
 export type ReturnInstruction = Generated.ReturnInstruction;
-export type WorkResult = Generated.Returned | Generated.DraftSaved | Generated.Claimed | (Omit<Generated.Submitted, 'snapshot'> & { snapshot: HandoffSnapshot });
+export type RevisionRef = Generated.RevisionRef;
+export type SelectedHandoff = Pick<HandoffSnapshot, 'evidenceRevisionRefs' | 'findingRevisionRefs' | 'decisionRevisionRefs'>;
+export type EvidenceSource = Pick<Generated.EvidenceRecord, 'sourceRef' | 'authoritativeLocator'>;
+type RecordScope = Pick<Generated.EvidenceRecord, 'id' | 'revision' | 'contextId' | 'taskId' | 'attemptId' | 'actingAssignmentId' | 'visibility'>;
+export type EvidenceRecord = Generated.EvidenceRecord;
+export type Finding = Generated.Finding;
+export type HumanDecision = Generated.HumanDecision;
+export type EvidenceCommand = Generated.EvidenceCommand;
+export type FindingCommand = Generated.FindingCommand;
+export type DecisionCommand = Generated.DecisionCommand;
+export type SubmitCommand = Generated.SubmitCommand;
+export type WorkResult = Generated.EvidenceRegistered | Generated.FindingRegistered | Generated.DecisionRecorded | Generated.Returned | Generated.DraftSaved | Generated.Claimed | (Omit<Generated.Submitted, 'snapshot'> & { snapshot: HandoffSnapshot });
 export class WorkApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, public readonly outcomeUnknown = false) { super(code); this.name = 'WorkApiError'; }
 }
@@ -26,7 +36,7 @@ function task(value: unknown): TaskSummary {
   const item = object(value);
   if (revision(item.attemptNumber) < 1) throw new Error('invalid_attempt');
   if (!['ready', 'active', 'held', 'completed'].includes(string(item.state))) throw new Error('invalid_state');
-  return { id: string(item.id), contextId: string(item.contextId), attemptId: string(item.attemptId), attemptNumber: revision(item.attemptNumber), revision: revision(item.revision), title: string(item.title), stepLabel: string(item.stepLabel), state: item.state as TaskSummary['state'], canClaim: bool(item.canClaim), canEdit: bool(item.canEdit), canSubmit: bool(item.canSubmit), canReturn: bool(item.canReturn), returnTransition: returnTransition(item.returnTransition), returnInstructionId: item.returnInstructionId === null ? null : string(item.returnInstructionId), handoffSnapshotId: item.handoffSnapshotId === null ? null : string(item.handoffSnapshotId) };
+  return { id: string(item.id), contextId: string(item.contextId), attemptId: string(item.attemptId), attemptNumber: revision(item.attemptNumber), revision: revision(item.revision), title: string(item.title), stepLabel: string(item.stepLabel), state: item.state as TaskSummary['state'], canClaim: bool(item.canClaim), canEdit: bool(item.canEdit), canSubmit: bool(item.canSubmit), canReturn: bool(item.canReturn), canRegisterEvidence: bool(item.canRegisterEvidence), canRegisterFinding: bool(item.canRegisterFinding), canRecordDecision: bool(item.canRecordDecision), returnTransition: returnTransition(item.returnTransition), returnInstructionId: item.returnInstructionId === null ? null : string(item.returnInstructionId), handoffSnapshotId: item.handoffSnapshotId === null ? null : string(item.handoffSnapshotId) };
 }
 function returnTransition(value: unknown): TaskSummary['returnTransition'] {
   if (value === null) return null;
@@ -43,12 +53,37 @@ function artifact(value: unknown): WorkingArtifact {
   if (item.visibility !== 'work_item_private') throw new Error('invalid_visibility');
   return { id: string(item.id), taskId: string(item.taskId), attemptId: string(item.attemptId), revision: revision(item.revision), schemaId: schema(item.schemaId), value: textValue(item.value), visibility: item.visibility };
 }
+function reference(value: unknown): RevisionRef { const item = object(value); if (item.revision !== 1) throw new Error('invalid_record_revision'); return { id: string(item.id), revision: item.revision }; }
+function scope(value: unknown): RecordScope {
+  const item = object(value);
+  if (item.visibility !== 'work_item_private' || item.revision !== 1) throw new Error('invalid_record');
+  return { ...reference(item), contextId: string(item.contextId), taskId: string(item.taskId), attemptId: string(item.attemptId), actingAssignmentId: string(item.actingAssignmentId), visibility: item.visibility };
+}
+const nullableString = (value: unknown) => value === null ? null : string(value);
+function evidence(value: unknown): EvidenceRecord {
+  const item = object(value), source = object(item.sourceRef), locator = object(item.authoritativeLocator);
+  if (source.providerId !== 'document' || locator.kind !== 'contentItem' || item.origin !== 'human' || item.fragmentOmissionReason !== 'not_retained' || item.coverage !== 'unknown' || item.relevantLocationVerified !== false || item.policyDisposition !== 'reference_only') throw new Error('unsupported_evidence');
+  return { ...scope(item), relevantLocationVerified: false, policyDisposition: 'reference_only', uncertainty: array(item.uncertainty, string), conflictReferences: array(item.conflictReferences, reference), sourceRef: { providerId: source.providerId, resourceId: string(source.resourceId), revisionId: string(source.revisionId), versionId: string(source.versionId) }, authoritativeLocator: { kind: locator.kind, contentItemId: string(locator.contentItemId), representationId: string(locator.representationId) }, relevantLocation: string(item.relevantLocation), createdBy: string(item.createdBy), origin: item.origin, fragmentOmissionReason: item.fragmentOmissionReason, coverage: item.coverage, retrievedAt: string(item.retrievedAt), recordedAt: string(item.recordedAt), providerCheckedAt: string(item.providerCheckedAt) };
+}
+function finding(value: unknown): Finding { const item = object(value); const refs = array(item.evidenceRevisionRefs, reference); if (!refs.length) throw new Error('unsupported_finding'); return { ...scope(item), uncertainty: array(item.uncertainty, string), conflicts: array(item.conflicts, reference), claim: string(item.claim), evidenceRevisionRefs: refs, author: string(item.author), supersedesFindingId: nullableString(item.supersedesFindingId), createdAt: string(item.createdAt) }; }
+function decision(value: unknown): HumanDecision {
+  const item = object(value);
+  if (item.findingRevision !== 1 || !['accepted', 'modified', 'rejected'].includes(string(item.decision)) || (item.decision === 'modified' && !string(item.adoptedClaim).trim())) throw new Error('invalid_decision');
+  return { ...scope(item), findingId: string(item.findingId), findingRevision: 1, decision: item.decision as HumanDecision['decision'], adoptedClaim: nullableString(item.adoptedClaim), reason: nullableString(item.reason), evidenceRevisionRefs: array(item.evidenceRevisionRefs, reference), humanPrincipal: string(item.humanPrincipal), createdAt: string(item.createdAt), supersedesDecisionId: nullableString(item.supersedesDecisionId) };
+}
+function page<T>(value: unknown, decode: (value: unknown) => T): { items: T[]; nextCursor: null } { const item = object(value); if (item.nextCursor !== null) throw new Error('unsupported_pagination'); return { items: array(item.items, decode), nextCursor: null }; }
+function exact<T extends { id: string }>(value: unknown, id: string, decode: (value: unknown) => T): T { const record = decode(value); if (record.id !== id) throw new Error('response_target_mismatch'); return record; }
 function snapshot(value: unknown): HandoffSnapshot {
   const item = object(value);
-  return { id: string(item.id), sourceTaskId: string(item.sourceTaskId), sourceAttemptId: string(item.sourceAttemptId), targetTaskId: string(item.targetTaskId), createdAt: string(item.createdAt), artifacts: array(item.artifacts, (entry) => { const a = object(entry); return { artifactId: string(a.artifactId), revision: revision(a.revision), schemaId: schema(a.schemaId), value: textValue(a.value) }; }) };
+  return { evidenceRevisionRefs: array(item.evidenceRevisionRefs, reference), findingRevisionRefs: array(item.findingRevisionRefs, reference), decisionRevisionRefs: array(item.decisionRevisionRefs, reference), id: string(item.id), sourceTaskId: string(item.sourceTaskId), sourceAttemptId: string(item.sourceAttemptId), targetTaskId: string(item.targetTaskId), createdAt: string(item.createdAt), artifacts: array(item.artifacts, (entry) => { const a = object(entry); return { artifactId: string(a.artifactId), revision: revision(a.revision), schemaId: schema(a.schemaId), value: textValue(a.value) }; }) };
 }
 function result(value: unknown): WorkResult {
   const item = object(value);
+  if (item.kind === 'evidence_registered' || item.kind === 'finding_registered' || item.kind === 'decision_recorded') {
+    const summary = task(item.task); const record = item.kind === 'evidence_registered' ? evidence(item.evidence) : item.kind === 'finding_registered' ? finding(item.finding) : decision(item.decision);
+    if (record.taskId !== summary.id || record.attemptId !== summary.attemptId || record.contextId !== summary.contextId) throw new Error('response_target_mismatch');
+    return item.kind === 'evidence_registered' ? { kind: item.kind, task: summary, evidence: record as EvidenceRecord } : item.kind === 'finding_registered' ? { kind: item.kind, task: summary, finding: record as Finding } : { kind: item.kind, task: summary, decision: record as HumanDecision };
+  }
   if (item.kind === 'claimed') return { kind: item.kind, task: task(item.task) };
   if (item.kind === 'draft_saved') {
     const summary = task(item.task); const saved = artifact(item.artifact);
@@ -83,7 +118,15 @@ export const workApi = {
   getReturnInstruction: (id: string) => request(`/return-instructions/${segment(id)}`, (value) => { const instruction = returnInstruction(value); if (instruction.id !== id) throw new Error('response_target_mismatch'); return instruction; }),
   returnTask: (id: string, command: ReturnCommand) => request(`/tasks/${segment(id)}/return`, result, 'POST', command),
   claim: (id: string, command: WorkCommand) => request(`/tasks/${segment(id)}/claim`, result, 'POST', command),
-  submit: (id: string, command: WorkCommand & { artifacts: { artifactId: string; revision: number }[] }) => request(`/tasks/${segment(id)}/submit`, result, 'POST', command),
+  submit: (id: string, command: SubmitCommand) => request(`/tasks/${segment(id)}/submit`, result, 'POST', command),
   saveDraft: ({ taskId, artifactId, ...command }: WorkCommand & { taskId: string; artifactId?: string; value: { text: string } }) => request(artifactId ? `/working-artifacts/${segment(artifactId)}` : `/tasks/${segment(taskId)}/working-artifacts`, result, artifactId ? 'PUT' : 'POST', command),
+  listEvidence: (id: string) => request(`/tasks/${segment(id)}/evidence?limit=100`, (value) => page(value, evidence)),
+  getEvidence: (id: string) => request(`/evidence/${segment(id)}`, (value) => exact(value, id, evidence)),
+  registerEvidence: (id: string, command: EvidenceCommand) => request(`/tasks/${segment(id)}/evidence`, result, 'POST', command),
+  listFindings: (id: string) => request(`/tasks/${segment(id)}/findings?limit=100`, (value) => page(value, finding)),
+  getFinding: (id: string) => request(`/findings/${segment(id)}`, (value) => exact(value, id, finding)),
+  registerFinding: (id: string, command: FindingCommand) => request(`/tasks/${segment(id)}/findings`, result, 'POST', command),
+  listDecisions: (id: string) => request(`/findings/${segment(id)}/decisions?limit=100`, (value) => { const records = page(value, decision); if (records.items.some((item) => item.findingId !== id)) throw new Error('response_target_mismatch'); return records; }),
+  recordDecision: (id: string, command: DecisionCommand) => request(`/findings/${segment(id)}/decisions`, result, 'POST', command),
   getOperation: (id: string) => request(`/operations/${segment(id)}`, result),
 };

@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 //! Work HTTP transport. The composition root injects a process-fixed verified actor.
+mod evidence;
 use axum::{
     Json, Router,
     extract::{
@@ -11,6 +12,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use evidence::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -36,6 +38,20 @@ pub fn router(repository: Arc<dyn WorkRepository>, actor: VerifiedActor) -> Rout
         .route(
             "/v1/organization/working-artifacts/{id}",
             get(artifact).put(update_artifact),
+        )
+        .route(
+            "/v1/organization/tasks/{id}/evidence",
+            get(list_evidence).post(register_evidence),
+        )
+        .route("/v1/organization/evidence/{id}", get(evidence))
+        .route(
+            "/v1/organization/tasks/{id}/findings",
+            get(list_findings).post(register_finding),
+        )
+        .route("/v1/organization/findings/{id}", get(finding))
+        .route(
+            "/v1/organization/findings/{id}/decisions",
+            get(list_decisions).post(record_decision),
         )
         .route("/v1/organization/tasks/{id}/claim", post(claim))
         .route("/v1/organization/tasks/{id}/submit", post(submit))
@@ -69,15 +85,26 @@ async fn transport_boundary(request: Request, next: Next) -> Response {
         .map(|(name, value)| name.as_str().len() + value.as_bytes().len())
         .sum();
     let has_query = request.uri().query().is_some_and(|query| !query.is_empty());
-    let mut response = if header_bytes > 16 * 1024
+    let path = request.uri().path();
+    let collection_query = request.method() == axum::http::Method::GET
+        && (path == "/v1/organization/tasks"
+            || (path.starts_with("/v1/organization/tasks/")
+                && (path.ends_with("/evidence") || path.ends_with("/findings")))
+            || (path.starts_with("/v1/organization/findings/") && path.ends_with("/decisions")));
+    let response = if header_bytes > 16 * 1024
         || forbidden
             .iter()
             .any(|name| request.headers().contains_key(*name))
-        || (has_query && request.uri().path() != "/v1/organization/tasks")
+        || (has_query && !collection_query)
     {
         Problem(WorkError::ValidationFailed).into_response()
     } else {
         next.run(request).await
+    };
+    let (parts, body) = response.into_parts();
+    let mut response = match axum::body::to_bytes(body, MAX_JSON_BYTES).await {
+        Ok(bytes) => Response::from_parts(parts, axum::body::Body::from(bytes)),
+        Err(_) => Problem(WorkError::DependencyUnavailable).into_response(),
     };
     response
         .headers_mut()
@@ -232,6 +259,14 @@ impl DraftBody {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SubmitBody {
+    #[serde(default)]
+    expected_attempt_id: Option<Uuid>,
+    #[serde(default)]
+    evidence_revision_refs: Vec<RevisionRef>,
+    #[serde(default)]
+    finding_revision_refs: Vec<RevisionRef>,
+    #[serde(default)]
+    decision_revision_refs: Vec<RevisionRef>,
     operation_id: Uuid,
     expected_revision: i64,
     acting_assignment_id: Uuid,
@@ -285,6 +320,10 @@ async fn submit(
             acting_assignment_id: body.acting_assignment_id,
         },
         artifacts: body.artifacts,
+        expected_attempt_id: body.expected_attempt_id,
+        evidence_revision_refs: body.evidence_revision_refs,
+        finding_revision_refs: body.finding_revision_refs,
+        decision_revision_refs: body.decision_revision_refs,
     };
     Ok(Json(state.repository.execute(state.actor, command).await?))
 }
@@ -332,7 +371,10 @@ impl IntoResponse for Problem {
         let status = match self.0 {
             WorkError::ValidationFailed => StatusCode::UNPROCESSABLE_ENTITY,
             WorkError::Forbidden => StatusCode::FORBIDDEN,
-            WorkError::WorkItemNotFound | WorkError::WorkArtifactNotFound => StatusCode::NOT_FOUND,
+            WorkError::EvidenceNotFound
+            | WorkError::FindingNotFound
+            | WorkError::WorkItemNotFound
+            | WorkError::WorkArtifactNotFound => StatusCode::NOT_FOUND,
             WorkError::RevisionConflict
             | WorkError::OperationConflict
             | WorkError::WorkAssignmentConflict

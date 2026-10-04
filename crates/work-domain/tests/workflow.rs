@@ -27,6 +27,10 @@ fn save(workflow: &mut Workflow) -> WorkingArtifact {
 }
 fn submit(workflow: &mut Workflow, artifact: &WorkingArtifact) -> HandoffSnapshot {
     let command = Command::Submit {
+        expected_attempt_id: None,
+        evidence_revision_refs: vec![],
+        finding_revision_refs: vec![],
+        decision_revision_refs: vec![],
         task_id: SALES_TASK_ID,
         context: context(VerifiedActor::Sales01, 1),
         artifacts: vec![ArtifactSelection {
@@ -140,6 +144,10 @@ fn stale_update_and_invalid_submission_leave_the_entire_workflow_unchanged() {
         Err(WorkError::RevisionConflict)
     );
     let bad = Command::Submit {
+        expected_attempt_id: None,
+        evidence_revision_refs: vec![],
+        finding_revision_refs: vec![],
+        decision_revision_refs: vec![],
         task_id: SALES_TASK_ID,
         context: context(VerifiedActor::Sales01, 1),
         artifacts: vec![ArtifactSelection {
@@ -474,6 +482,10 @@ fn rework_drafts_remain_current_attempt_private_and_resubmit_archives_office() {
         .apply(
             VerifiedActor::Sales01,
             &Command::Submit {
+                expected_attempt_id: None,
+                evidence_revision_refs: vec![],
+                finding_revision_refs: vec![],
+                decision_revision_refs: vec![],
                 task_id: SALES_TASK_ID,
                 context: context(VerifiedActor::Sales01, 5),
                 artifacts: vec![ArtifactSelection {
@@ -557,6 +569,10 @@ fn old_ledger_results_decode_missing_additive_summary_fields() {
         .apply(
             VerifiedActor::Sales01,
             &Command::Submit {
+                expected_attempt_id: None,
+                evidence_revision_refs: vec![],
+                finding_revision_refs: vec![],
+                decision_revision_refs: vec![],
                 task_id: SALES_TASK_ID,
                 context: context(VerifiedActor::Sales01, 1),
                 artifacts: vec![ArtifactSelection {
@@ -652,6 +668,10 @@ fn draft_limit_is_per_attempt_and_prior_artifacts_cannot_be_selected_again() {
         .apply(
             VerifiedActor::Sales01,
             &Command::Submit {
+                expected_attempt_id: None,
+                evidence_revision_refs: vec![],
+                finding_revision_refs: vec![],
+                decision_revision_refs: vec![],
                 task_id: SALES_TASK_ID,
                 context: context(VerifiedActor::Sales01, MAX_ARTIFACTS as i64),
                 artifacts: artifacts
@@ -702,6 +722,10 @@ fn draft_limit_is_per_attempt_and_prior_artifacts_cannot_be_selected_again() {
         workflow.apply(
             VerifiedActor::Sales01,
             &Command::Submit {
+                expected_attempt_id: None,
+                evidence_revision_refs: vec![],
+                finding_revision_refs: vec![],
+                decision_revision_refs: vec![],
                 task_id: SALES_TASK_ID,
                 context: context(VerifiedActor::Sales01, revision),
                 artifacts: vec![ArtifactSelection {

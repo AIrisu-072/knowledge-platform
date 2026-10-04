@@ -2,8 +2,9 @@ import { TextEncoder } from "node:util";
 Object.assign(globalThis, { TextEncoder });
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { documentApi } from '../src/application/document-workspace';
 import { workApi, WorkApiError } from '../src/api/work-api';
 import { OrganizationProvider } from '../src/application/organization-context';
 import { validateTaskSearch } from '../src/application/work-workspace';
@@ -11,17 +12,22 @@ import { AppShell } from '../src/components/app-shell/AppShell';
 import { validateDetailSearch } from '../src/application/search-state';
 import { TaskHomePage } from '../src/routes/TaskHomePage';
 
+jest.mock('../src/application/document-workspace', () => ({ documentApi: { getDocument: jest.fn(), listVersionFiles: jest.fn(), downloadVersionFile: jest.fn() } }));
+
 const session = { principalId: 'sales-01', displayName: '営業担当（模擬）', actingAssignmentId: 'assignment-sales', capabilities: { nativeWorkspace: false, agent: false, search: false, fileUpload: false, return: false } };
-const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canReturn: false, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null };
+const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null };
 const artifact = { id: 'draft-1', taskId: task.id, attemptId: task.attemptId, revision: 1, schemaId: 'organization.text-draft.v1', value: { text: '保存済みの文案' }, visibility: 'work_item_private' };
 const detail = { ...task, inputResources: [{ kind: 'document', documentId: '00000000-0000-4000-8000-000000000010', label: '共有の入力文書' }], workingArtifacts: [artifact], history: [] };
 const nextTask = { ...task, id: 'task-2', attemptId: 'attempt-2', title: '事務確認', stepLabel: '事務確認', state: 'ready', canClaim: true, canEdit: false, canSubmit: false };
-const snapshot = { id: 'snapshot-1', sourceTaskId: task.id, sourceAttemptId: task.attemptId, targetTaskId: nextTask.id, createdAt: '2026-10-04T05:00:00Z', artifacts: [{ artifactId: artifact.id, revision: 2, schemaId: artifact.schemaId, value: { text: '提出する文案' } }] };
+const snapshot = { id: 'snapshot-1', sourceTaskId: task.id, sourceAttemptId: task.attemptId, targetTaskId: nextTask.id, createdAt: '2026-10-04T05:00:00Z', evidenceRevisionRefs: [], findingRevisionRefs: [], decisionRevisionRefs: [], artifacts: [{ artifactId: artifact.id, revision: 2, schemaId: artifact.schemaId, value: { text: '提出する文案' } }] };
 
 function setup(entry = '/tasks?view=context&taskId=task-1') {
   jest.spyOn(workApi, 'getSession').mockResolvedValue(session as never);
   jest.spyOn(workApi, 'listTasks').mockResolvedValue({ items: [task], nextCursor: null } as never);
   jest.spyOn(workApi, 'getTask').mockResolvedValue(detail as never);
+  jest.spyOn(workApi, 'listEvidence').mockResolvedValue({ items: [], nextCursor: null });
+  jest.spyOn(workApi, 'listFindings').mockResolvedValue({ items: [], nextCursor: null });
+  jest.spyOn(workApi, 'listDecisions').mockResolvedValue({ items: [], nextCursor: null });
   jest.spyOn(workApi, 'getSnapshot').mockResolvedValue(snapshot as never);
   const root = createRootRoute({ component: Outlet });
   const tasks = createRoute({ getParentRoute: () => root, path: '/tasks', validateSearch: validateTaskSearch, component: TaskHomePage });
@@ -231,7 +237,7 @@ test('late old-attempt operation recovery cannot roll a current ready attempt ba
 const officeTask = { ...nextTask, attemptId: 'office-attempt-1', state: 'active', canClaim: false, canReturn: true, handoffSnapshotId: snapshot.id, returnTransition: { transitionId: 'office-return', targetTaskId: task.id, previousSubmissionId: snapshot.id } };
 const reason = '数量を追記して再提出してください';
 const instruction = { id: 'return-1', workflowId: 'workflow-1', contextId: task.contextId, sourceTaskId: officeTask.id, sourceAttemptId: officeTask.attemptId, targetTaskId: task.id, targetAttemptId: 'sales-attempt-2', previousSubmissionId: snapshot.id, transitionId: 'office-return', reason, returnedBy: 'office-01', actingAssignmentId: 'assignment-office', createdAt: '2026-10-04T07:00:00Z' };
-const returned = { kind: 'returned', task: { ...officeTask, revision: 2, state: 'completed', canReturn: false, returnTransition: null, returnInstructionId: instruction.id }, returnInstruction: instruction, nextTask: { ...task, attemptId: instruction.targetAttemptId, attemptNumber: 2, revision: 4, state: 'ready', canClaim: true, canEdit: false, canSubmit: false, returnInstructionId: instruction.id, handoffSnapshotId: snapshot.id } };
+const returned = { kind: 'returned', task: { ...officeTask, revision: 2, state: 'completed', canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, returnTransition: null, returnInstructionId: instruction.id }, returnInstruction: instruction, nextTask: { ...task, attemptId: instruction.targetAttemptId, attemptNumber: 2, revision: 4, state: 'ready', canClaim: true, canEdit: false, canSubmit: false, returnInstructionId: instruction.id, handoffSnapshotId: snapshot.id } };
 function setupOffice() {
   const context = setup('/tasks?view=queue&taskId=task-2');
   jest.mocked(workApi.getSession).mockResolvedValue({ ...session, principalId: 'office-01', displayName: '事務担当（模擬）', actingAssignmentId: 'assignment-office' } as never);
@@ -338,9 +344,264 @@ test('returned sales attempt shows the fixed reason and old submission with a fr
 test('a task without a current return hint never offers a return even if the session supports it', async () => {
   setupOffice();
   jest.mocked(workApi.getSession).mockResolvedValue({ ...session, capabilities: { ...session.capabilities, return: true } } as never);
-  const current = { ...officeTask, canReturn: false, returnTransition: null };
+  const current = { ...officeTask, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, returnTransition: null };
   jest.mocked(workApi.listTasks).mockResolvedValue({ items: [current], nextCursor: null } as never);
   jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, ...current, workingArtifacts: [] } as never);
   await screen.findByRole('region', { name: '受領したスナップショット' });
   expect(screen.queryByLabelText('差戻理由')).not.toBeInTheDocument();
+});
+
+const evidenceRecord = { id: 'evidence-1', revision: 1, contextId: task.contextId, taskId: task.id, attemptId: task.attemptId, sourceRef: { providerId: 'document', resourceId: detail.inputResources[0]!.documentId, revisionId: 'revision-1', versionId: 'version-1' }, authoritativeLocator: { kind: 'contentItem', contentItemId: 'content-1', representationId: 'representation-1' }, relevantLocation: '第1節', origin: 'human', fragmentOmissionReason: 'not_retained', coverage: 'unknown', relevantLocationVerified: false, policyDisposition: 'reference_only', uncertainty: [], conflictReferences: [], createdBy: 'sales-01', actingAssignmentId: 'assignment-sales', recordedAt: '2026-10-04T08:00:00Z', retrievedAt: '2026-10-04T08:00:00Z', providerCheckedAt: '2026-10-04T08:00:00Z', visibility: 'work_item_private' };
+const findingRecord = { id: 'finding-1', revision: 1, contextId: task.contextId, taskId: task.id, attemptId: task.attemptId, claim: '検討中の候補', evidenceRevisionRefs: [{ id: evidenceRecord.id, revision: 1 }], author: 'sales-01', actingAssignmentId: 'assignment-sales', createdAt: '2026-10-04T08:00:00Z', visibility: 'work_item_private', uncertainty: [], conflicts: [], supersedesFindingId: null };
+const sourceDocument = { documentId: detail.inputResources[0]!.documentId, documentVersionId: 'version-1', displayRevision: { revisionId: 'revision-1', documentVersionId: 'version-1', label: '1.0' } };
+const sourceFile = { contentItemId: 'content-1', representationId: 'representation-1', role: 'AUTHORITATIVE', displayName: '原本.txt' };
+async function openEvidence() { await screen.findByLabelText('作業中の文案'); await userEvent.click(screen.getByRole('button', { name: '根拠' })); }
+function mockRecords() { jest.mocked(workApi.listEvidence).mockResolvedValue({ items: [evidenceRecord], nextCursor: null } as never); jest.mocked(workApi.listFindings).mockResolvedValue({ items: [findingRecord], nextCursor: null } as never); }
+
+test('actual source selection registers only exact published revision and authoritative file references', async () => {
+  setup();
+  jest.spyOn(documentApi, 'getDocument').mockResolvedValue(sourceDocument as never);
+  jest.spyOn(documentApi, 'listVersionFiles').mockResolvedValue({ items: [sourceFile] } as never);
+  const register = jest.spyOn(workApi, 'registerEvidence').mockResolvedValue({ kind: 'evidence_registered', task: { ...task, revision: 2 }, evidence: evidenceRecord } as never);
+  await openEvidence();
+  await userEvent.selectOptions(screen.getByLabelText('根拠にする入力文書'), sourceDocument.documentId);
+  await userEvent.selectOptions(await screen.findByLabelText('原本ファイル'), 'content-1:representation-1');
+  fireEvent.change(screen.getByLabelText('該当箇所（人間の記載・未検証）'), { target: { value: '第1節' } });
+  expect(screen.getByText(/原本本文は保持しません/)).toBeVisible();
+  expect(screen.getByText('根拠・候補・各候補の判断はこのPoCでは可視16件までです')).toBeVisible();
+  await userEvent.click(screen.getByRole('button', { name: '根拠を登録' }));
+  await waitFor(() => expect(register).toHaveBeenCalledTimes(1));
+  expect(register.mock.calls[0]).toEqual([task.id, expect.objectContaining({ expectedAttemptId: task.attemptId, sourceRef: evidenceRecord.sourceRef, authoritativeLocator: evidenceRecord.authoritativeLocator, relevantLocation: '第1節' })]);
+  expect(JSON.stringify(register.mock.calls[0])).not.toContain('原本.txt');
+});
+test('human judgment has separate candidate/support, modified validation, cancel focus and no workflow action', async () => {
+  setup(); mockRecords();
+  const record = jest.spyOn(workApi, 'recordDecision').mockResolvedValue({ kind: 'decision_recorded', task: { ...task, revision: 2 }, decision: { id: 'decision-1', taskId: task.id, attemptId: task.attemptId } } as never);
+  const submit = jest.spyOn(workApi, 'submit'); const returning = jest.spyOn(workApi, 'returnTask');
+  await openEvidence();
+  const candidate = await screen.findByRole('region', { name: '候補 finding-1' });
+  expect(candidate).toHaveTextContent('検討中の候補'); expect(candidate).toHaveTextContent('evidence-1');
+  await userEvent.selectOptions(within(candidate).getByLabelText('候補の判断 finding-1'), 'modified');
+  expect(within(candidate).getByRole('button', { name: '判断内容を確認' })).toBeDisabled();
+  fireEvent.change(within(candidate).getByLabelText('採用文'), { target: { value: '修正した採用文' } });
+  await userEvent.click(within(candidate).getByRole('button', { name: '判断内容を確認' }));
+  const dialog = screen.getByRole('dialog', { name: '人間判断の確認' });
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: 'キャンセル' })).toHaveFocus());
+  await userEvent.keyboard('{Escape}');
+  expect(record).not.toHaveBeenCalled();
+  expect(within(candidate).getByLabelText('採用文')).toHaveValue('修正した採用文');
+  await userEvent.click(within(candidate).getByRole('button', { name: '判断内容を確認' }));
+  await userEvent.click(screen.getByRole('button', { name: '判断を確定' }));
+  await waitFor(() => expect(record).toHaveBeenCalledTimes(1));
+  expect(record.mock.calls[0]).toEqual([findingRecord.id, expect.objectContaining({ taskId: task.id, expectedAttemptId: task.attemptId, findingRevision: 1, decision: 'modified', adoptedClaim: '修正した採用文', evidenceRevisionRefs: findingRecord.evidenceRevisionRefs })]);
+  expect(submit).not.toHaveBeenCalled(); expect(returning).not.toHaveBeenCalled();
+});
+test('submission exposes explicit selection, preserves unselected privacy and requires support closure', async () => {
+  setup(); mockRecords();
+  const submit = jest.spyOn(workApi, 'submit').mockResolvedValue({ kind: 'submitted', task: { ...task, revision: 2, state: 'completed', canEdit: false, canSubmit: false }, snapshot, nextTask } as never);
+  await screen.findByLabelText('作業中の文案');
+  await userEvent.click(screen.getByRole('button', { name: '提出内容を確認' }));
+  const dialog = screen.getByRole('dialog', { name: '提出の確認' });
+  const candidate = await within(dialog).findByLabelText('共有する候補 finding-1');
+  expect(candidate).not.toBeChecked(); expect(within(dialog).getByLabelText('共有する根拠 evidence-1')).not.toBeChecked();
+  await userEvent.click(candidate);
+  expect(within(dialog).getByRole('button', { name: '提出を確定' })).toBeDisabled();
+  await userEvent.click(within(dialog).getByLabelText('共有する根拠 evidence-1'));
+  await userEvent.click(within(dialog).getByRole('button', { name: '提出を確定' }));
+  await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+  expect(submit.mock.calls[0]?.[1]).toMatchObject({ evidenceRevisionRefs: [{ id: 'evidence-1', revision: 1 }], findingRevisionRefs: [{ id: 'finding-1', revision: 1 }], decisionRevisionRefs: [] });
+});
+
+test('office can record an independent judgment on received candidate without draft editing authority', async () => {
+  setup('/tasks?view=queue&taskId=task-1'); mockRecords();
+  const officeTask = { ...task, canEdit: false, canSubmit: false, canRecordDecision: true, attemptId: 'office-attempt', handoffSnapshotId: snapshot.id };
+  jest.mocked(workApi.getSnapshot).mockResolvedValue({ ...snapshot, evidenceRevisionRefs: [{ id: evidenceRecord.id, revision: 1 }], findingRevisionRefs: [{ id: findingRecord.id, revision: 1 }] } as never);
+  jest.mocked(workApi.getSession).mockResolvedValue({ ...session, principalId: 'office-01', actingAssignmentId: 'assignment-office' } as never);
+  jest.mocked(workApi.listTasks).mockResolvedValue({ items: [officeTask], nextCursor: null } as never);
+  jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, ...officeTask, workingArtifacts: [] } as never);
+  const record = jest.spyOn(workApi, 'recordDecision').mockResolvedValue({ kind: 'decision_recorded', task: { ...officeTask, revision: 2 }, decision: { id: 'office-decision', taskId: task.id, attemptId: 'office-attempt' } } as never);
+  await screen.findByText(/現在のタスクは読み取り専用/);
+  await userEvent.click(screen.getByRole('button', { name: '根拠' }));
+  const candidate = await screen.findByRole('region', { name: '候補 finding-1' });
+  expect(screen.queryByLabelText('作業中の文案')).not.toBeInTheDocument();
+  await userEvent.click(within(candidate).getByRole('button', { name: '判断内容を確認' }));
+  await userEvent.click(screen.getByRole('button', { name: '判断を確定' }));
+  await waitFor(() => expect(record).toHaveBeenCalledTimes(1));
+  expect(record.mock.calls[0]?.[1]).toMatchObject({ taskId: task.id, expectedAttemptId: 'office-attempt', actingAssignmentId: 'assignment-office', decision: 'accepted', findingRevision: 1 });
+});
+test('unknown evidence operation keeps the original payload and recovers without duplicate registration', async () => {
+  setup(); mockRecords();
+  const register = jest.spyOn(workApi, 'registerFinding').mockRejectedValue(new WorkApiError(0, 'network_unavailable', true));
+  const recover = jest.spyOn(workApi, 'getOperation').mockResolvedValue({ kind: 'finding_registered', task: { ...task, revision: 2 }, finding: findingRecord } as never);
+  await openEvidence();
+  fireEvent.change(screen.getByLabelText('候補の主張'), { target: { value: '未確定の候補' } });
+  await userEvent.click(await screen.findByLabelText('候補の根拠 evidence-1'));
+  await userEvent.click(screen.getByRole('button', { name: '候補を登録' }));
+  await screen.findByText(/結果は未確認です/);
+  expect(screen.getByRole('button', { name: '候補を登録' })).toBeDisabled();
+  await userEvent.click(screen.getByRole('button', { name: '文書・比較' }));
+  await userEvent.click(screen.getByRole('button', { name: '根拠' }));
+  expect(screen.getByLabelText('候補の主張')).toHaveValue('未確定の候補');
+  await userEvent.click(screen.getByRole('button', { name: '同じ操作の結果を確認' }));
+  await screen.findByText('候補を登録しました');
+  expect(register).toHaveBeenCalledTimes(1);
+  expect(recover).toHaveBeenCalledWith(register.mock.calls[0]?.[1].operationId);
+});
+test('source denial clears source metadata, candidate inputs, selections and registered context', async () => {
+  setup(); mockRecords();
+  jest.spyOn(documentApi, 'getDocument').mockRejectedValue({ status: 403, code: 'DOCUMENT_FORBIDDEN' });
+  await openEvidence();
+  fireEvent.change(screen.getByLabelText('候補の主張'), { target: { value: '失効した候補' } });
+  await userEvent.selectOptions(screen.getByLabelText('根拠にする入力文書'), sourceDocument.documentId);
+  await screen.findByText(/内容を非表示にしました/);
+  expect(screen.queryByLabelText('候補の主張')).not.toBeInTheDocument();
+  expect(screen.queryByText('検討中の候補')).not.toBeInTheDocument();
+  expect(screen.queryByText('失効した候補')).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: '根拠 evidence-1' })).not.toBeInTheDocument();
+});
+test('stale attempt conflict retains the candidate and never changes its target to a new operation', async () => {
+  setup(); mockRecords();
+  const register = jest.spyOn(workApi, 'registerFinding').mockRejectedValue(new WorkApiError(409, 'REVISION_CONFLICT'));
+  await openEvidence();
+  fireEvent.change(screen.getByLabelText('候補の主張'), { target: { value: '競合した候補' } });
+  await userEvent.click(await screen.findByLabelText('候補の根拠 evidence-1'));
+  await userEvent.click(screen.getByRole('button', { name: '候補を登録' }));
+  await screen.findByText(/競合が発生しました/);
+  expect(screen.getByLabelText('候補の主張')).toHaveValue('競合した候補');
+  expect(register.mock.calls[0]?.[1]).toMatchObject({ expectedAttemptId: task.attemptId });
+  expect(screen.queryByText('候補を登録しました')).not.toBeInTheDocument();
+});
+test('source selection and candidate text survive module and Document navigation in the same attempt', async () => {
+  setup(); mockRecords();
+  jest.spyOn(documentApi, 'getDocument').mockResolvedValue(sourceDocument as never);
+  jest.spyOn(documentApi, 'listVersionFiles').mockResolvedValue({ items: [sourceFile] } as never);
+  await openEvidence();
+  await userEvent.selectOptions(screen.getByLabelText('根拠にする入力文書'), sourceDocument.documentId);
+  await userEvent.selectOptions(await screen.findByLabelText('原本ファイル'), 'content-1:representation-1');
+  fireEvent.change(screen.getByLabelText('候補の主張'), { target: { value: '戻った時の候補' } });
+  await userEvent.click(screen.getAllByRole('link', { name: '版・改訂を確認' })[0]!);
+  await screen.findByRole('heading', { name: '入力文書' });
+  await userEvent.click(screen.getByRole('link', { name: 'タスク' }));
+  await screen.findByLabelText('作業中の文案');
+  await userEvent.click(screen.getByRole('button', { name: '根拠' }));
+  expect(await screen.findByLabelText('候補の主張')).toHaveValue('戻った時の候補');
+  expect(screen.getByLabelText('根拠にする入力文書')).toHaveValue(sourceDocument.documentId);
+  expect(await screen.findByLabelText('原本ファイル')).toHaveValue('content-1:representation-1');
+});
+test('the exact evidence original action requests its recorded version and file, never the first current file', async () => {
+  setup(); mockRecords();
+  jest.spyOn(workApi, 'getEvidence').mockResolvedValue(evidenceRecord as never);
+  const download = jest.spyOn(documentApi, 'downloadVersionFile').mockRejectedValue({ status: 503 });
+  await openEvidence();
+  const evidence = await screen.findByRole('region', { name: '根拠 evidence-1' });
+  await userEvent.click(within(evidence).getByRole('button', { name: 'この根拠の原本を取得' }));
+  expect(download).toHaveBeenCalledWith({ documentId: evidenceRecord.sourceRef.resourceId, versionId: 'version-1', contentItemId: 'content-1', representationId: 'representation-1', purpose: 'history' });
+  expect(documentApi.listVersionFiles).not.toHaveBeenCalled();
+});
+
+test('candidate support and UTF-8 limits prevent unsupported or oversized registration', async () => {
+  setup(); mockRecords();
+  const register = jest.spyOn(workApi, 'registerFinding');
+  await openEvidence();
+  fireEvent.change(screen.getByLabelText('候補の主張'), { target: { value: '候補' } });
+  expect(screen.getByRole('button', { name: '候補を登録' })).toBeDisabled();
+  await userEvent.click(await screen.findByLabelText('候補の根拠 evidence-1'));
+  fireEvent.change(screen.getByLabelText('候補の主張'), { target: { value: 'あ'.repeat(2731) } });
+  expect(screen.getByRole('button', { name: '候補を登録' })).toBeDisabled();
+  expect(register).not.toHaveBeenCalled();
+});
+test('a late response from a replaced attempt cannot roll back the current task or restore private inputs', async () => {
+  const { client } = setup(); mockRecords();
+  let resolve!: (value: never) => void;
+  jest.spyOn(workApi, 'registerFinding').mockImplementation(() => new Promise((done) => { resolve = done; }));
+  await openEvidence();
+  fireEvent.change(screen.getByLabelText('候補の主張'), { target: { value: '古い試行の候補' } });
+  await userEvent.click(await screen.findByLabelText('候補の根拠 evidence-1'));
+  await userEvent.click(screen.getByRole('button', { name: '候補を登録' }));
+  const replacement = { ...task, attemptId: 'attempt-new', attemptNumber: 2, revision: 4 };
+  jest.mocked(workApi.listTasks).mockResolvedValue({ items: [replacement], nextCursor: null } as never);
+  jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, ...replacement, workingArtifacts: [] } as never);
+  jest.mocked(workApi.listEvidence).mockResolvedValue({ items: [], nextCursor: null });
+  jest.mocked(workApi.listFindings).mockResolvedValue({ items: [], nextCursor: null });
+  await userEvent.click(screen.getByRole('button', { name: '再読込' }));
+  await screen.findByText(/試行 2（attempt-new）/);
+  resolve({ kind: 'finding_registered', task: { ...task, revision: 2 }, finding: findingRecord } as never);
+  await waitFor(() => expect(screen.queryByText('古い試行の候補')).not.toBeInTheDocument());
+  expect(screen.queryByText('検討中の候補')).not.toBeInTheDocument();
+  expect(client.getQueryData(['organization', session.principalId, session.actingAssignmentId, 'task', task.id, 'attempt-new'])).toMatchObject({ attemptId: 'attempt-new', revision: 4 });
+  expect(screen.getByLabelText('候補の主張')).toHaveValue('');
+});
+
+test('loss of authenticated session discards private evidence inputs before the same actor signs in again', async () => {
+  const { client } = setup(); mockRecords();
+  await openEvidence();
+  fireEvent.change(screen.getByLabelText('候補の主張'), { target: { value: '失効時に消す候補' } });
+  jest.mocked(workApi.getSession).mockRejectedValue(new WorkApiError(401, 'UNAUTHENTICATED'));
+  await act(async () => { await client.refetchQueries({ queryKey: ['organization-session'] }); });
+  await screen.findByRole('heading', { name: 'タスクを開けません' });
+  jest.mocked(workApi.getSession).mockResolvedValue(session as never);
+  await act(async () => { await client.refetchQueries({ queryKey: ['organization-session'] }); });
+  await screen.findByLabelText('作業中の文案');
+  await userEvent.click(screen.getByRole('button', { name: '根拠' }));
+  expect(await screen.findByLabelText('候補の主張')).toHaveValue('');
+});
+
+test('source-specific denial during outcome recovery clears evidence instead of treating it as an absent operation', async () => {
+  setup(); mockRecords();
+  jest.spyOn(workApi, 'registerFinding').mockRejectedValue(new WorkApiError(0, 'network_unavailable', true));
+  jest.spyOn(workApi, 'getOperation').mockRejectedValue(new WorkApiError(404, 'EVIDENCE_NOT_FOUND'));
+  await openEvidence();
+  fireEvent.change(screen.getByLabelText('候補の主張'), { target: { value: '回復時に消す候補' } });
+  await userEvent.click(await screen.findByLabelText('候補の根拠 evidence-1'));
+  await userEvent.click(screen.getByRole('button', { name: '候補を登録' }));
+  await screen.findByText(/結果は未確認です/);
+  await userEvent.click(screen.getByRole('button', { name: '同じ操作の結果を確認' }));
+  await screen.findByText(/内容を非表示にしました/);
+  expect(screen.queryByLabelText('候補の主張')).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: '根拠 evidence-1' })).not.toBeInTheDocument();
+});
+
+test('exact original download rechecks Work visibility before requesting the provider bytes', async () => {
+  setup(); mockRecords();
+  jest.spyOn(workApi, 'getEvidence').mockRejectedValue(new WorkApiError(404, 'EVIDENCE_NOT_FOUND'));
+  const download = jest.spyOn(documentApi, 'downloadVersionFile').mockRejectedValue({ status: 503 });
+  await openEvidence();
+  const evidence = await screen.findByRole('region', { name: '根拠 evidence-1' });
+  await userEvent.click(within(evidence).getByRole('button', { name: 'この根拠の原本を取得' }));
+  await screen.findByText(/内容を非表示にしました/);
+  expect(download).not.toHaveBeenCalled();
+});
+
+test('immutable handoff rendering exposes the selected evidence candidate and judgment revisions', async () => {
+  setup();
+  const completed = { ...task, state: 'completed', canEdit: false, canSubmit: false, canRegisterEvidence: false, canRegisterFinding: false, canRecordDecision: false, handoffSnapshotId: snapshot.id };
+  jest.mocked(workApi.listTasks).mockResolvedValue({ items: [completed], nextCursor: null } as never);
+  jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, ...completed } as never);
+  jest.mocked(workApi.getSnapshot).mockResolvedValue({ ...snapshot, evidenceRevisionRefs: [{ id: 'evidence-shared', revision: 1 }], findingRevisionRefs: [{ id: 'finding-shared', revision: 1 }], decisionRevisionRefs: [{ id: 'decision-shared', revision: 1 }] } as never);
+  const receipt = await screen.findByRole('region', { name: '提出済みスナップショット' });
+  expect(receipt).toHaveTextContent('共有された根拠：evidence-shared（版 1）');
+  expect(receipt).toHaveTextContent('共有された候補：finding-shared（版 1）');
+  expect(receipt).toHaveTextContent('共有された判断：decision-shared（版 1）');
+});
+
+test('reload retries unavailable evidence collections without requiring a changed task revision', async () => {
+  setup();
+  jest.mocked(workApi.listEvidence).mockRejectedValue(new WorkApiError(503, 'SOURCE_UNAVAILABLE'));
+  await openEvidence();
+  await screen.findByText(/サーバーから結果を取得できませんでした/);
+  mockRecords();
+  await userEvent.click(screen.getByRole('button', { name: '再読込' }));
+  expect(await screen.findByRole('region', { name: '根拠 evidence-1' })).toHaveTextContent('第1節');
+  expect(await screen.findByRole('region', { name: '候補 finding-1' })).toHaveTextContent('検討中の候補');
+});
+test('reload retries unavailable Document source files for the same revision', async () => {
+  setup();
+  jest.spyOn(documentApi, 'getDocument').mockResolvedValue(sourceDocument as never);
+  jest.spyOn(documentApi, 'listVersionFiles').mockRejectedValue({ status: 503 });
+  await openEvidence();
+  await userEvent.selectOptions(screen.getByLabelText('根拠にする入力文書'), sourceDocument.documentId);
+  await screen.findByText('原本情報を取得できません。再読込して確認してください。');
+  jest.mocked(documentApi.listVersionFiles).mockResolvedValue({ items: [sourceFile] } as never);
+  await userEvent.click(screen.getByRole('button', { name: '再読込' }));
+  expect(await screen.findByLabelText('原本ファイル')).toBeVisible();
 });

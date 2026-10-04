@@ -1,13 +1,13 @@
 import { expect, test } from '@playwright/test';
 import type { Claimed, DraftCommand, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, SubmitCommand, Submitted, TaskDetail, TaskPage, WorkCommand, WorkingArtifact } from '../src/api/generated-work/types.gen';
-import { assertHidden, assertSessions, captureFinal, get, readRuntimeContext, saveState } from './support';
+import { assertHidden, assertSessions, assertEvidenceState, captureFinal, get, publishedEvidenceSource, readRuntimeContext, recordDecision, registerEvidence, registerFinding, revisionRef, saveState } from './support';
 
 const returnReason = '【合成データ】対象数量を追記して再提出してください。';
 const revisedText = '【合成データ】対象数量は10件です。営業で参照資料と照合して追記しました。';
 
 const text = '【合成データ】営業で参照資料を確認しました。事務担当は提出内容と共有文書を照合してください。';
 
-test('実営業UIの文書往復・非公開提出・事務の差戻から同一タスクの再提出と再受領まで', async ({ page, browser, request }) => {
+test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差戻後の新試行を非公開で再提出する', async ({ page, browser, request }) => {
   const context = readRuntimeContext();
   const sessions = await assertSessions(request, context);
   const salesList = await get<TaskPage>(request, context.sales, '/v1/organization/tasks?view=context');
@@ -60,16 +60,63 @@ test('実営業UIの文書往復・非公開提出・事務の差戻から同一
     await assertHidden(request, context.office, `/v1/organization/tasks/${source.id}`, 'WORK_ITEM_NOT_FOUND', text);
     await assertHidden(request, context.office, `/v1/organization/working-artifacts/${saved.artifact.id}`, 'WORK_ARTIFACT_NOT_FOUND', text);
 
+    // Select real published source identities rather than inventing locator or revision IDs.
+    const evidenceSource = await publishedEvidenceSource(request, context.sales, context.documentId);
+    await page.getByRole('button', { name: '根拠', exact: true }).click();
+    const selectedEvidence = await registerEvidence(page, source.id, evidenceSource, '【合成データ】共有候補の該当箇所。人間による記載で未検証。');
+    const privateEvidence = await registerEvidence(page, source.id, evidenceSource, '【合成データ】未選択の根拠。事務への共有対象外。');
+    const sharedFinding = await registerFinding(page, source.id, selectedEvidence.result.evidence, '【合成データ】共有する候補の主張。原本の事実と区別する。');
+    const privateFinding = await registerFinding(page, source.id, privateEvidence.result.evidence, '【合成データ】未選択の候補。提出しても事務には見せない。');
+    const modified = await recordDecision(page, source.id, sharedFinding.result.finding, selectedEvidence.result.evidence, 'modified', '【合成データ】営業が候補の表現を修正した。', '【合成データ】営業が修正した採用文。', true);
+    const accepted = await recordDecision(page, source.id, sharedFinding.result.finding, selectedEvidence.result.evidence, 'accepted', '【合成データ】営業が候補を採用した。');
+    const rejected = await recordDecision(page, source.id, sharedFinding.result.finding, selectedEvidence.result.evidence, 'rejected', '【合成データ】営業が候補を却下した。元候補は保持する。');
+    const privateDecision = await recordDecision(page, source.id, sharedFinding.result.finding, selectedEvidence.result.evidence, 'accepted', '【合成データ】共有候補に対する未選択の判断。判断の共有対象外。');
+    const sharedDecisions = [modified, accepted, rejected];
+    expect(new Set(sharedDecisions.map((receipt) => receipt.result.decision.id)).size).toBe(3);
+    for (const receipt of [...sharedDecisions, privateDecision]) expect(receipt.result.decision).toMatchObject({ humanPrincipal: 'sales-01', actingAssignmentId: sessions.sales.actingAssignmentId, attemptId: source.attemptId });
+    expect(await get(request, context.sales, `/v1/organization/evidence/${selectedEvidence.result.evidence.id}`)).toEqual(selectedEvidence.result.evidence);
+    expect(await get(request, context.sales, `/v1/organization/findings/${sharedFinding.result.finding.id}`)).toEqual(sharedFinding.result.finding);
+    expect(await get(request, context.sales, `/v1/organization/findings/${sharedFinding.result.finding.id}/decisions`)).toEqual({ items: [...sharedDecisions.map((receipt) => receipt.result.decision), privateDecision.result.decision], nextCursor: null });
+    expect(await get(request, context.sales, `/v1/organization/tasks/${source.id}/evidence`)).toEqual({ items: [selectedEvidence.result.evidence, privateEvidence.result.evidence], nextCursor: null });
+    expect(await get(request, context.sales, `/v1/organization/tasks/${source.id}/findings`)).toEqual({ items: [sharedFinding.result.finding, privateFinding.result.finding], nextCursor: null });
+    for (const collection of ['evidence', 'findings']) await assertHidden(request, context.office, `/v1/organization/tasks/${source.id}/${collection}`, 'WORK_ITEM_NOT_FOUND');
+    for (const receipt of [selectedEvidence, privateEvidence]) await assertHidden(request, context.office, `/v1/organization/evidence/${receipt.result.evidence.id}`, 'EVIDENCE_NOT_FOUND', receipt.result.evidence.relevantLocation);
+    for (const receipt of [sharedFinding, privateFinding]) {
+      await assertHidden(request, context.office, `/v1/organization/findings/${receipt.result.finding.id}`, 'FINDING_NOT_FOUND', receipt.result.finding.claim);
+      await assertHidden(request, context.office, `/v1/organization/findings/${receipt.result.finding.id}/decisions`, 'FINDING_NOT_FOUND');
+    }
+    for (const receipt of [selectedEvidence, privateEvidence, sharedFinding, privateFinding, ...sharedDecisions, privateDecision]) {
+      expect(await get(request, context.sales, `/v1/organization/operations/${receipt.operationId}`)).toEqual(receipt.result);
+      await assertHidden(request, context.office, `/v1/organization/operations/${receipt.operationId}`, 'WORK_ITEM_NOT_FOUND');
+    }
+    // A judgment remains a separate record and must never automatically submit or return.
+    expect((await get<TaskDetail>(request, context.sales, `/v1/organization/tasks/${source.id}`)).state).toBe('active');
+    expect(await get(request, context.office, '/v1/organization/tasks?view=queue')).toEqual({ items: [], nextCursor: null });
+
     await page.getByRole('button', { name: '提出内容を確認', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '提出の確認', exact: true });
     await expect(dialog).toContainText(text);
     await expect(dialog.getByRole('button', { name: 'キャンセル', exact: true })).toBeFocused();
     await dialog.getByRole('button', { name: 'キャンセル', exact: true }).click();
     await expect(dialog).not.toBeVisible();
-    expect((await get<TaskDetail>(request, context.sales, `/v1/organization/tasks/${source.id}`)).revision).toBe(saved.task.revision);
+    expect((await get<TaskDetail>(request, context.sales, `/v1/organization/tasks/${source.id}`)).revision).toBe(privateDecision.result.task.revision);
     expect(await get(request, context.office, '/v1/organization/tasks?view=queue')).toEqual({ items: [], nextCursor: null });
 
     await page.getByRole('button', { name: '提出内容を確認', exact: true }).click();
+    const submitDialog = page.getByRole('dialog', { name: '提出の確認', exact: true });
+    for (const kind of ['根拠', '候補', '判断']) {
+      for (const checkbox of await submitDialog.getByRole('checkbox', { name: new RegExp(`^共有する${kind} `) }).all()) await expect(checkbox).not.toBeChecked();
+    }
+    await submitDialog.getByLabel(`共有する判断 ${modified.result.decision.id}`, { exact: true }).check();
+    await expect(submitDialog.getByRole('button', { name: '提出を確定', exact: true })).toBeDisabled();
+    await submitDialog.getByLabel(`共有する候補 ${sharedFinding.result.finding.id}`, { exact: true }).check();
+    await expect(submitDialog.getByRole('button', { name: '提出を確定', exact: true })).toBeDisabled();
+    await submitDialog.getByLabel(`共有する根拠 ${selectedEvidence.result.evidence.id}`, { exact: true }).check();
+    for (const receipt of [accepted, rejected]) await submitDialog.getByLabel(`共有する判断 ${receipt.result.decision.id}`, { exact: true }).check();
+    await expect(submitDialog.getByLabel(`共有する根拠 ${privateEvidence.result.evidence.id}`, { exact: true })).not.toBeChecked();
+    await expect(submitDialog.getByLabel(`共有する候補 ${privateFinding.result.finding.id}`, { exact: true })).not.toBeChecked();
+    await expect(submitDialog.getByLabel(`共有する判断 ${privateDecision.result.decision.id}`, { exact: true })).not.toBeChecked();
+    await expect(submitDialog.getByRole('button', { name: '提出を確定', exact: true })).toBeEnabled();
     const submitResponse = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${source.id}/submit` && response.request().method() === 'POST');
     await page.getByRole('dialog', { name: '提出の確認', exact: true }).getByRole('button', { name: '提出を確定', exact: true }).click();
     const submittedResponse = await submitResponse;
@@ -77,7 +124,8 @@ test('実営業UIの文書往復・非公開提出・事務の差戻から同一
     const submitted = await submittedResponse.json() as Submitted;
     const submitCommand = submittedResponse.request().postDataJSON() as SubmitCommand;
     expect(submitted.kind).toBe('submitted');
-    expect(submitCommand).toMatchObject({ expectedRevision: saved.task.revision, actingAssignmentId: sessions.sales.actingAssignmentId, artifacts: [{ artifactId: saved.artifact.id, revision: saved.artifact.revision }] });
+    expect(submitCommand).toMatchObject({ expectedRevision: privateDecision.result.task.revision, expectedAttemptId: source.attemptId, actingAssignmentId: sessions.sales.actingAssignmentId, evidenceRevisionRefs: [revisionRef(selectedEvidence.result.evidence)], findingRevisionRefs: [revisionRef(sharedFinding.result.finding)], decisionRevisionRefs: sharedDecisions.map((receipt) => revisionRef(receipt.result.decision)), artifacts: [{ artifactId: saved.artifact.id, revision: saved.artifact.revision }] });
+    expect(submitted.snapshot).toMatchObject({ evidenceRevisionRefs: submitCommand.evidenceRevisionRefs, findingRevisionRefs: submitCommand.findingRevisionRefs, decisionRevisionRefs: submitCommand.decisionRevisionRefs });
     expect(submitted.task.state).toBe('completed');
     expect(submitted.nextTask.state).toBe('ready');
     expect(submitted.snapshot).toMatchObject({ sourceTaskId: source.id, sourceAttemptId: source.attemptId, targetTaskId: submitted.nextTask.id, submittedBy: 'sales-01', actingAssignmentId: sessions.sales.actingAssignmentId, artifacts: [{ artifactId: saved.artifact.id, revision: saved.artifact.revision, schemaId: saved.artifact.schemaId, value: { text } }] });
@@ -91,6 +139,9 @@ test('実営業UIの文書往復・非公開提出・事務の差戻から同一
     await expect(office.getByRole('region', { name: '受領したスナップショット', exact: true })).toHaveCount(0);
     await assertHidden(request, context.office, `/v1/organization/tasks/${submitted.nextTask.id}`, 'WORK_ITEM_NOT_FOUND', text);
     await assertHidden(request, context.office, `/v1/organization/handoff-snapshots/${submitted.snapshot.id}`, 'WORK_ARTIFACT_NOT_FOUND', text);
+    await assertHidden(request, context.office, `/v1/organization/evidence/${selectedEvidence.result.evidence.id}`, 'EVIDENCE_NOT_FOUND');
+    await assertHidden(request, context.office, `/v1/organization/findings/${sharedFinding.result.finding.id}`, 'FINDING_NOT_FOUND');
+    await assertHidden(request, context.office, `/v1/organization/findings/${sharedFinding.result.finding.id}/decisions`, 'FINDING_NOT_FOUND');
     const officeReady = await get<TaskPage>(request, context.office, '/v1/organization/tasks?view=queue');
     expect(officeReady.items).toHaveLength(1);
     expect(officeReady.items[0]).toMatchObject({ id: submitted.nextTask.id, state: 'ready', canClaim: true });
@@ -110,6 +161,25 @@ test('実営業UIの文書往復・非公開提出・事務の差戻から同一
     await assertHidden(request, context.office, `/v1/organization/working-artifacts/${saved.artifact.id}`, 'WORK_ARTIFACT_NOT_FOUND', text);
     await assertHidden(request, context.sales, `/v1/organization/tasks/${submitted.nextTask.id}`, 'WORK_ITEM_NOT_FOUND', text);
     for (const operationId of [saveCommand.operationId, submitCommand.operationId, claimCommand.operationId]) expect(operationId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    await office.getByRole('button', { name: '根拠', exact: true }).click();
+    await expect(office.getByRole('region', { name: `候補 ${sharedFinding.result.finding.id}`, exact: true })).toContainText(sharedFinding.result.finding.claim);
+    await expect(office.getByText(privateFinding.result.finding.claim, { exact: true })).toHaveCount(0);
+    await expect(office.getByText(privateDecision.result.decision.reason!, { exact: false })).toHaveCount(0);
+    expect(await get(request, context.office, `/v1/organization/tasks/${claimed.task.id}/evidence`)).toEqual({ items: [selectedEvidence.result.evidence], nextCursor: null });
+    expect(await get(request, context.office, `/v1/organization/tasks/${claimed.task.id}/findings`)).toEqual({ items: [sharedFinding.result.finding], nextCursor: null });
+    expect(await get(request, context.office, `/v1/organization/evidence/${selectedEvidence.result.evidence.id}`)).toEqual(selectedEvidence.result.evidence);
+    expect(await get(request, context.office, `/v1/organization/findings/${sharedFinding.result.finding.id}`)).toEqual(sharedFinding.result.finding);
+    expect(await get(request, context.office, `/v1/organization/findings/${sharedFinding.result.finding.id}/decisions`)).toEqual({ items: sharedDecisions.map((receipt) => receipt.result.decision), nextCursor: null });
+    await assertHidden(request, context.office, `/v1/organization/evidence/${privateEvidence.result.evidence.id}`, 'EVIDENCE_NOT_FOUND');
+    await assertHidden(request, context.office, `/v1/organization/findings/${privateFinding.result.finding.id}`, 'FINDING_NOT_FOUND');
+    await assertHidden(request, context.office, `/v1/organization/findings/${privateFinding.result.finding.id}/decisions`, 'FINDING_NOT_FOUND');
+    const officeDecision = await recordDecision(office, claimed.task.id, sharedFinding.result.finding, selectedEvidence.result.evidence, 'modified', '【合成データ】事務が独立して判断した。営業の判断は変更しない。', '【合成データ】事務が修正した採用文。');
+    expect(officeDecision.result.decision).toMatchObject({ humanPrincipal: 'office-01', actingAssignmentId: sessions.office.actingAssignmentId, attemptId: claimed.task.attemptId });
+    expect(officeDecision.command.expectedAttemptId).not.toBe(sharedFinding.result.finding.attemptId);
+    expect(await get(request, context.office, `/v1/organization/findings/${sharedFinding.result.finding.id}/decisions`)).toEqual({ items: [...sharedDecisions.map((receipt) => receipt.result.decision), officeDecision.result.decision], nextCursor: null });
+    expect(await get(request, context.sales, `/v1/organization/findings/${sharedFinding.result.finding.id}/decisions`)).toEqual({ items: [...sharedDecisions.map((receipt) => receipt.result.decision), privateDecision.result.decision], nextCursor: null });
+    await assertHidden(request, context.sales, `/v1/organization/operations/${officeDecision.operationId}`, 'WORK_ITEM_NOT_FOUND');
+    expect(await get(request, context.office, `/v1/organization/handoff-snapshots/${submitted.snapshot.id}`)).toEqual(submitted.snapshot);
     // Extend this same real two-principal journey with one return/re-submit cycle.
     // No route interception, fixture response, screenshots, or second harness.
     const returnInput = office.getByLabel('差戻理由', { exact: true });
@@ -129,7 +199,7 @@ test('実営業UIの文書往復・非公開提出・事務の差戻から同一
     await expect(returnDialog).not.toBeVisible();
     await expect(returnInput).toHaveValue(returnReason);
     expect(returnPosts).toBe(0);
-    expect((await get<TaskDetail>(request, context.office, `/v1/organization/tasks/${claimed.task.id}`)).revision).toBe(claimed.task.revision);
+    expect((await get<TaskDetail>(request, context.office, `/v1/organization/tasks/${claimed.task.id}`)).revision).toBe(officeDecision.result.task.revision);
 
     await office.getByRole('button', { name: '差戻内容を確認', exact: true }).click();
     const returnResponse = office.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${claimed.task.id}/return` && response.request().method() === 'POST');
@@ -139,7 +209,7 @@ test('実営業UIの文書往復・非公開提出・事務の差戻から同一
     const returned = await returnedResponse.json() as Returned;
     const returnCommand = returnedResponse.request().postDataJSON() as ReturnCommand;
     expect(returnPosts).toBe(1);
-    expect(returnCommand).toMatchObject({ expectedRevision: claimed.task.revision, expectedAttemptId: claimed.task.attemptId, actingAssignmentId: sessions.office.actingAssignmentId, ...claimed.task.returnTransition!, reason: returnReason });
+    expect(returnCommand).toMatchObject({ expectedRevision: officeDecision.result.task.revision, expectedAttemptId: claimed.task.attemptId, actingAssignmentId: sessions.office.actingAssignmentId, ...claimed.task.returnTransition!, reason: returnReason });
     expect(returned.task).toMatchObject({ id: claimed.task.id, attemptId: claimed.task.attemptId, state: 'completed', canEdit: false, canReturn: false });
     expect(returned.nextTask).toMatchObject({ id: source.id, attemptNumber: 2, state: 'ready', canClaim: false, canEdit: false, canSubmit: false });
     expect(returned.nextTask.attemptId).not.toBe(source.attemptId);
@@ -153,6 +223,8 @@ test('実営業UIの文書往復・非公開提出・事務の差戻から同一
     const replay = await request.post(`${context.office}/v1/organization/tasks/${claimed.task.id}/return`, { data: returnCommand });
     expect(replay.status()).toBe(200);
     expect(await replay.json()).toEqual(returned);
+    expect(await get(request, context.office, `/v1/organization/operations/${officeDecision.operationId}`)).toEqual(officeDecision.result);
+    expect(await get(request, context.office, `/v1/organization/findings/${sharedFinding.result.finding.id}/decisions`)).toEqual({ items: [...sharedDecisions.map((receipt) => receipt.result.decision), officeDecision.result.decision], nextCursor: null });
     const salesReady = await get<TaskPage>(request, context.sales, '/v1/organization/tasks?view=queue');
     expect(salesReady.items).toHaveLength(1);
     expect(salesReady.items[0]).toMatchObject({ id: source.id, attemptId: returned.nextTask.attemptId, attemptNumber: 2, state: 'ready', canClaim: true });
@@ -174,6 +246,24 @@ test('実営業UIの文書往復・非公開提出・事務の差戻から同一
     expect((await get<TaskDetail>(request, context.sales, `/v1/organization/tasks/${source.id}`)).workingArtifacts).toEqual([]);
     await assertHidden(request, context.sales, `/v1/organization/working-artifacts/${saved.artifact.id}`, 'WORK_ARTIFACT_NOT_FOUND', text);
     await assertHidden(request, context.sales, `/v1/organization/operations/${saveCommand.operationId}`, 'WORK_ARTIFACT_NOT_FOUND', text);
+    await page.getByRole('button', { name: '根拠', exact: true }).click();
+    expect(await get(request, context.sales, `/v1/organization/tasks/${source.id}/evidence`)).toEqual({ items: [selectedEvidence.result.evidence], nextCursor: null });
+    expect(await get(request, context.sales, `/v1/organization/tasks/${source.id}/findings`)).toEqual({ items: [sharedFinding.result.finding], nextCursor: null });
+    await assertHidden(request, context.sales, `/v1/organization/evidence/${privateEvidence.result.evidence.id}`, 'EVIDENCE_NOT_FOUND');
+    await assertHidden(request, context.sales, `/v1/organization/findings/${privateFinding.result.finding.id}`, 'FINDING_NOT_FOUND');
+    const reworkEvidence = await registerEvidence(page, source.id, evidenceSource, '【合成データ】試行2の非公開根拠。以前の共有根拠を変更しない。');
+    const reworkFinding = await registerFinding(page, source.id, reworkEvidence.result.evidence, '【合成データ】試行2の非公開候補。事務に共有しない。');
+    const reworkDecision = await recordDecision(page, source.id, reworkFinding.result.finding, reworkEvidence.result.evidence, 'accepted', '【合成データ】試行2の非公開判断。');
+    expect(reworkEvidence.result.evidence.attemptId).toBe(returned.nextTask.attemptId);
+    expect(reworkEvidence.result.evidence.id).not.toBe(selectedEvidence.result.evidence.id);
+    expect(reworkFinding.result.finding.attemptId).toBe(returned.nextTask.attemptId);
+    expect(reworkDecision.result.decision.attemptId).toBe(returned.nextTask.attemptId);
+    await assertHidden(request, context.office, `/v1/organization/evidence/${reworkEvidence.result.evidence.id}`, 'EVIDENCE_NOT_FOUND');
+    await assertHidden(request, context.office, `/v1/organization/findings/${reworkFinding.result.finding.id}`, 'FINDING_NOT_FOUND');
+    await assertHidden(request, context.office, `/v1/organization/findings/${reworkFinding.result.finding.id}/decisions`, 'FINDING_NOT_FOUND');
+    for (const receipt of [reworkEvidence, reworkFinding, reworkDecision]) await assertHidden(request, context.office, `/v1/organization/operations/${receipt.operationId}`, 'WORK_ITEM_NOT_FOUND');
+    expect(await get(request, context.office, `/v1/organization/evidence/${selectedEvidence.result.evidence.id}`)).toEqual(selectedEvidence.result.evidence);
+    expect(await get(request, context.office, `/v1/organization/findings/${sharedFinding.result.finding.id}`)).toEqual(sharedFinding.result.finding);
     await page.getByLabel('作業中の文案', { exact: true }).fill(revisedText);
     const resaveResponse = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${source.id}/working-artifacts` && response.request().method() === 'POST');
     await page.getByRole('button', { name: '文案を保存', exact: true }).click();
@@ -199,12 +289,24 @@ test('実営業UIの文書往復・非公開提出・事務の差戻から同一
 
     await page.getByRole('button', { name: '提出内容を確認', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '提出の確認', exact: true })).toContainText(revisedText);
+    for (const checkbox of await page.getByRole('dialog', { name: '提出の確認', exact: true }).getByRole('checkbox', { name: /^共有する/ }).all()) await expect(checkbox).not.toBeChecked();
+    const resubmitDialog = page.getByRole('dialog', { name: '提出の確認', exact: true });
+    // Zero evidence selection is allowed, but only explicit checks share these old revisions again.
+    await expect(resubmitDialog.getByRole('button', { name: '提出を確定', exact: true })).toBeEnabled();
+    await resubmitDialog.getByLabel(`共有する根拠 ${selectedEvidence.result.evidence.id}`, { exact: true }).check();
+    await resubmitDialog.getByLabel(`共有する候補 ${sharedFinding.result.finding.id}`, { exact: true }).check();
+    for (const receipt of sharedDecisions) await resubmitDialog.getByLabel(`共有する判断 ${receipt.result.decision.id}`, { exact: true }).check();
+    await expect(resubmitDialog.getByLabel(`共有する根拠 ${reworkEvidence.result.evidence.id}`, { exact: true })).not.toBeChecked();
+    await expect(resubmitDialog.getByLabel(`共有する候補 ${reworkFinding.result.finding.id}`, { exact: true })).not.toBeChecked();
+    await expect(resubmitDialog.getByLabel(`共有する判断 ${reworkDecision.result.decision.id}`, { exact: true })).not.toBeChecked();
     const resubmitResponse = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${source.id}/submit` && response.request().method() === 'POST');
     await page.getByRole('button', { name: '提出を確定', exact: true }).click();
     const resubmittedResponse = await resubmitResponse;
     expect(resubmittedResponse.status()).toBe(200);
     const resubmitted = await resubmittedResponse.json() as Submitted;
     const resubmitCommand = resubmittedResponse.request().postDataJSON() as SubmitCommand;
+    expect(resubmitCommand).toMatchObject({ expectedRevision: resaved.task.revision, expectedAttemptId: returned.nextTask.attemptId, evidenceRevisionRefs: submitCommand.evidenceRevisionRefs, findingRevisionRefs: submitCommand.findingRevisionRefs, decisionRevisionRefs: submitCommand.decisionRevisionRefs });
+    expect(resubmitted.snapshot).toMatchObject({ evidenceRevisionRefs: submitCommand.evidenceRevisionRefs, findingRevisionRefs: submitCommand.findingRevisionRefs, decisionRevisionRefs: submitCommand.decisionRevisionRefs });
     expect(resubmitted.task).toMatchObject({ id: source.id, attemptNumber: 2, state: 'completed' });
     expect(resubmitted.nextTask).toMatchObject({ id: claimed.task.id, attemptNumber: 2, state: 'ready', canClaim: false });
     expect(resubmitted.nextTask.attemptId).not.toBe(claimed.task.attemptId);
@@ -228,13 +330,19 @@ test('実営業UIの文書往復・非公開提出・事務の差戻から同一
     await expect(office.getByLabel('作業中の文案', { exact: true })).toHaveCount(0);
     expect(await get(request, context.office, `/v1/organization/handoff-snapshots/${submitted.snapshot.id}`)).toEqual(submitted.snapshot);
     expect(await get(request, context.office, `/v1/organization/return-instructions/${returned.returnInstruction.id}`)).toEqual(returned.returnInstruction);
+    await office.getByRole('button', { name: '根拠', exact: true }).click();
+    const officeReworkDecision = await recordDecision(office, officeReclaimed.task.id, sharedFinding.result.finding, selectedEvidence.result.evidence, 'accepted', '【合成データ】事務が試行2で受領候補を独立して採用した。');
+    expect(officeReworkDecision.result.decision).toMatchObject({ humanPrincipal: 'office-01', actingAssignmentId: sessions.office.actingAssignmentId, attemptId: officeReclaimed.task.attemptId });
+    expect(officeReworkDecision.result.decision.id).not.toBe(officeDecision.result.decision.id);
+    const evidence = { selected: selectedEvidence, unselected: privateEvidence, finding: sharedFinding, privateFinding, decisions: sharedDecisions, privateDecision, officeDecision, officeReworkDecision, rework: { evidence: reworkEvidence, finding: reworkFinding, decision: reworkDecision } };
+    await assertEvidenceState(request, context, source.id, claimed.task.id, evidence);
     const final = await captureFinal(request, context, source.id, submitted.nextTask.id, resubmitted.snapshot.id, submitted.snapshot.id, returned.returnInstruction.id);
     expect(final.snapshot).toEqual(resubmitted.snapshot);
     expect(final.priorSnapshot).toEqual(submitted.snapshot);
     expect(final.returnInstruction).toEqual(returned.returnInstruction);
     expect(final.salesTask).toMatchObject({ state: 'completed', attemptNumber: 2 });
     expect(final.officeTask).toMatchObject({ state: 'active', attemptNumber: 2, workingArtifacts: [] });
-    await saveState(context, { schemaVersion: 2, documentId: context.documentId, salesTaskId: source.id, officeTaskId: submitted.nextTask.id, artifactId: saved.artifact.id, snapshotId: submitted.snapshot.id, text, save: { operationId: saveCommand.operationId, result: saved }, submit: { operationId: submitCommand.operationId, result: submitted }, claim: { operationId: claimCommand.operationId, result: claimed }, rework: { text: revisedText, returned: { operationId: returnCommand.operationId, command: returnCommand, result: returned }, salesClaim: { operationId: salesClaimCommand.operationId, result: salesClaimed }, save: { operationId: resaveCommand.operationId, result: resaved }, submit: { operationId: resubmitCommand.operationId, result: resubmitted }, officeClaim: { operationId: officeReclaimCommand.operationId, result: officeReclaimed } }, final });
+    await saveState(context, { schemaVersion: 3, documentId: context.documentId, salesTaskId: source.id, officeTaskId: submitted.nextTask.id, artifactId: saved.artifact.id, snapshotId: submitted.snapshot.id, text, save: { operationId: saveCommand.operationId, result: saved }, submit: { operationId: submitCommand.operationId, result: submitted }, claim: { operationId: claimCommand.operationId, result: claimed }, rework: { text: revisedText, returned: { operationId: returnCommand.operationId, command: returnCommand, result: returned }, salesClaim: { operationId: salesClaimCommand.operationId, result: salesClaimed }, save: { operationId: resaveCommand.operationId, result: resaved }, submit: { operationId: resubmitCommand.operationId, result: resubmitted }, officeClaim: { operationId: officeReclaimCommand.operationId, result: officeReclaimed } }, evidence, final });
   } finally {
     await officeContext.close();
   }

@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
 import type { HandoffSnapshot, ReturnInstruction, WorkingArtifact } from '../src/api/generated-work/types.gen';
-import { assertHidden, assertSessions, captureFinal, get, loadState, readRuntimeContext } from './support';
+import { assertEvidenceState, assertHidden, assertSessions, captureFinal, get, loadState, readRuntimeContext } from './support';
 
-test('両process再起動後も差戻前後の固定内容・試行2・操作結果・private非開示を保持する', async ({ page, browser, request }) => {
+test('両process再起動後も根拠・候補・人間判断・固定提出・試行2・操作結果とprivate非開示を保持する', async ({ page, browser, request }) => {
   // The owning harness stops and restarts both processes before invoking this phase.
   // This test deliberately neither spawns a process nor prepares/reseeds a database.
   const context = readRuntimeContext();
@@ -25,6 +25,12 @@ test('両process再起動後も差戻前後の固定内容・試行2・操作結
   expect(await get<WorkingArtifact>(request, context.sales, `/v1/organization/working-artifacts/${state.rework.save.result.artifact.id}`)).toEqual(state.rework.save.result.artifact);
   for (const receipt of [state.submit, state.rework.salesClaim, state.rework.save, state.rework.submit]) expect(await get(request, context.sales, `/v1/organization/operations/${receipt.operationId}`)).toEqual(receipt.result);
   for (const receipt of [state.claim, state.rework.returned, state.rework.officeClaim]) expect(await get(request, context.office, `/v1/organization/operations/${receipt.operationId}`)).toEqual(receipt.result);
+  await assertEvidenceState(request, context, state.salesTaskId, state.officeTaskId, state.evidence);
+  const decisionReplay = await request.post(`${context.office}/v1/organization/findings/${state.evidence.finding.result.finding.id}/decisions`, { data: state.evidence.officeReworkDecision.command });
+  expect(decisionReplay.status()).toBe(200);
+  expect(await decisionReplay.json()).toEqual(state.evidence.officeReworkDecision.result);
+  // Replaying the exact operation must not append another immutable decision or task revision.
+  await assertEvidenceState(request, context, state.salesTaskId, state.officeTaskId, state.evidence);
   const replay = await request.post(`${context.office}/v1/organization/tasks/${state.officeTaskId}/return`, { data: state.rework.returned.command });
   expect(replay.status()).toBe(200);
   expect(await replay.json()).toEqual(state.rework.returned.result);
@@ -42,6 +48,16 @@ test('両process再起動後も差戻前後の固定内容・試行2・操作結
   await expect(page.getByRole('region', { name: '差戻前のスナップショット', exact: true })).toContainText(state.text);
   await expect(page.getByRole('region', { name: '確定した差戻指示', exact: true })).toContainText(state.final.returnInstruction.reason);
   await expect(page.getByLabel('作業中の文案', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '根拠', exact: true }).click();
+  const salesFinding = page.getByRole('region', { name: `候補 ${state.evidence.finding.result.finding.id}`, exact: true });
+  await expect(salesFinding).toContainText(state.evidence.finding.result.finding.claim);
+  for (const receipt of state.evidence.decisions) {
+    await expect(salesFinding).toContainText(receipt.result.decision.reason!);
+    if (receipt.result.decision.adoptedClaim) await expect(salesFinding).toContainText(receipt.result.decision.adoptedClaim);
+  }
+  await expect(page.getByRole('region', { name: `候補 ${state.evidence.rework.finding.result.finding.id}`, exact: true })).toContainText(state.evidence.rework.finding.result.finding.claim);
+  await expect(page.getByText(state.evidence.privateFinding.result.finding.claim, { exact: true })).toHaveCount(0);
+  await expect(page.getByText(state.evidence.officeReworkDecision.result.decision.reason!, { exact: false })).toHaveCount(0);
   const officeContext = await browser.newContext({ locale: 'ja-JP', viewport: { width: 1440, height: 900 }, serviceWorkers: 'block', acceptDownloads: false });
   const office = await officeContext.newPage();
   try {
@@ -51,11 +67,23 @@ test('両process再起動後も差戻前後の固定内容・試行2・操作結
     await expect(office.getByRole('region', { name: '確定した差戻指示', exact: true })).toContainText(state.final.returnInstruction.reason);
     await expect(office.getByRole('button', { name: '担当を引き受ける', exact: true })).toHaveCount(0);
     await expect(office.getByLabel('作業中の文案', { exact: true })).toHaveCount(0);
+    await office.getByRole('button', { name: '根拠', exact: true }).click();
+    const officeFinding = office.getByRole('region', { name: `候補 ${state.evidence.finding.result.finding.id}`, exact: true });
+    await expect(officeFinding).toContainText(state.evidence.finding.result.finding.claim);
+    for (const receipt of [...state.evidence.decisions, state.evidence.officeReworkDecision]) await expect(officeFinding).toContainText(receipt.result.decision.reason!);
+    await expect(office.getByText(state.evidence.officeDecision.result.decision.reason!, { exact: false })).toHaveCount(0);
+    for (const finding of [state.evidence.privateFinding.result.finding, state.evidence.rework.finding.result.finding]) await expect(office.getByText(finding.claim, { exact: true })).toHaveCount(0);
+    for (const evidence of [state.evidence.unselected.result.evidence, state.evidence.rework.evidence.result.evidence]) {
+      await expect(office.getByRole('region', { name: `根拠 ${evidence.id}`, exact: true })).toHaveCount(0);
+      await expect(office.getByText(evidence.relevantLocation, { exact: false })).toHaveCount(0);
+    }
+    await office.getByRole('button', { name: '文書・比較', exact: true }).click();
     const input = office.getByRole('link', { name: '共有入力文書', exact: true });
     await expect(input).toHaveAttribute('href', new RegExp(`/documents/${state.documentId}`));
   } finally {
     await officeContext.close();
   }
+  await assertEvidenceState(request, context, state.salesTaskId, state.officeTaskId, state.evidence);
   // Merely reading both UIs must not create another handoff, task revision or history entry.
   expect(await captureFinal(request, context, state.salesTaskId, state.officeTaskId, resubmissionId, state.snapshotId, instructionId)).toEqual(state.final);
 });

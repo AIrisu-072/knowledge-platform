@@ -1,0 +1,10 @@
+.module { min-width: 0; overflow-wrap: anywhere; }
+.module h3 { font-size: 15px; margin-top: 24px; }
+.module h4, .module h5 { font-size: 14px; margin: 8px 0; }
+.module fieldset { display: grid; gap: 10px; min-width: 0; margin: 18px 0; border: 1px solid var(--color-border); border-radius: 6px; padding: 12px; }
+.module label { display: grid; gap: 5px; font-size: 13px; }
+.module label:has(input[type='checkbox']) { display: flex; align-items: flex-start; }
+.module textarea, .module select { max-width: 100%; width: 100%; min-width: 0; padding: 7px; }
+.module textarea { min-height: 90px; resize: vertical; }
+.module button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--color-border-strong); border-radius: 6px; background: var(--color-surface); color: var(--color-text); cursor: pointer; }
+.module button:disabled { cursor: not-allowed; color: var(--color-text-muted); background: var(--color-canvas); }

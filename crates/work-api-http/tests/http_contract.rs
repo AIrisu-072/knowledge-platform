@@ -277,6 +277,10 @@ async fn return_http_closes_current_attempt_and_hides_rework_drafts_on_every_rea
         .execute(
             VerifiedActor::Sales01,
             Command::Submit {
+                expected_attempt_id: None,
+                evidence_revision_refs: vec![],
+                finding_revision_refs: vec![],
+                decision_revision_refs: vec![],
                 task_id: SALES_TASK_ID,
                 context: context(VerifiedActor::Sales01, 1),
                 artifacts: vec![ArtifactSelection {
@@ -447,4 +451,124 @@ async fn return_http_closes_current_attempt_and_hides_rework_drafts_on_every_rea
         assert_eq!(status, StatusCode::OK);
         assert!(!body.to_string().contains("NEW PRIVATE REWORK"));
     }
+}
+#[tokio::test]
+async fn evidence_and_finding_routes_are_closed_and_decision_requires_current_task_scope() {
+    let common = serde_json::json!({"operationId":Uuid::now_v7(),"expectedRevision":0,"actingAssignmentId":SALES_ASSIGNMENT_ID,"expectedAttemptId":SALES_ATTEMPT_ID});
+    let inputs = [
+        (
+            "evidence",
+            serde_json::json!({"sourceRef":{"providerId":"document","resourceId":Uuid::now_v7(),"revisionId":Uuid::now_v7(),"versionId":Uuid::now_v7()},"authoritativeLocator":{"kind":"contentItem","contentItemId":Uuid::now_v7(),"representationId":Uuid::now_v7()},"relevantLocation":"原本"}),
+        ),
+        (
+            "findings",
+            serde_json::json!({"claim":"候補","evidenceRevisionRefs":[{"id":Uuid::now_v7(),"revision":1}]}),
+        ),
+    ];
+    for (path, extra) in inputs {
+        let mut body = common.clone();
+        body.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        let uri = format!("/v1/organization/tasks/{SALES_TASK_ID}/{path}");
+        for method in ["GET", "POST"] {
+            let response = app()
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri(&uri)
+                        .header("content-type", "application/json")
+                        .body(Body::from(body.to_string()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::SERVICE_UNAVAILABLE,
+                "{method} {path}"
+            );
+        }
+        body["createdBy"] = serde_json::json!("forged");
+        let response = app()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(uri)
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+    let uri = format!("/v1/organization/findings/{}/decisions", Uuid::now_v7());
+    let mut body = common;
+    body.as_object_mut().unwrap().extend(serde_json::json!({"taskId":OFFICE_TASK_ID,"findingRevision":1,"decision":"accepted","evidenceRevisionRefs":[]}).as_object().unwrap().clone());
+    let response = app()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(&uri)
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    body.as_object_mut().unwrap().remove("taskId");
+    let response = app()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(&uri)
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+#[tokio::test]
+async fn evidence_query_admission_precedes_repository_and_response_bytes_are_bounded() {
+    for path in [
+        format!("/v1/organization/tasks/{SALES_TASK_ID}/evidence?limit=15"),
+        format!("/v1/organization/tasks/{SALES_TASK_ID}/findings?principalId=office-01"),
+        format!(
+            "/v1/organization/findings/{}/decisions?limit=101",
+            Uuid::now_v7()
+        ),
+    ] {
+        let response = app()
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "invalid query must not reach unavailable provider"
+        );
+    }
+    let mut workflow = Workflow::synthetic(Some(Uuid::now_v7()));
+    workflow.input_resources[0].label = "PRIVATE-OVERSIZE".repeat(80_000);
+    let repository = Arc::new(DomainFixture {
+        workflow: std::sync::Mutex::new(workflow),
+        outcomes: std::sync::Mutex::new(vec![]),
+    });
+    let response = work_api_http::router(repository, VerifiedActor::Sales01)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/organization/tasks/{SALES_TASK_ID}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, body) = response_json(response).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(body["code"], "DEPENDENCY_UNAVAILABLE");
+    assert!(!body.to_string().contains("PRIVATE-OVERSIZE"));
 }

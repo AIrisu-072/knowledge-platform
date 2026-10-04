@@ -1,12 +1,14 @@
-import { expect, type APIRequestContext } from '@playwright/test';
+import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
-import type { Claimed, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, Submitted, TaskDetail, TaskPage, WorkSession } from '../src/api/generated-work/types.gen';
+import type { DecisionCommand, DecisionRecorded, EvidenceCommand, EvidenceRegistered, FindingCommand, FindingRegistered, RevisionRef, Claimed, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, Submitted, TaskDetail, TaskPage, WorkSession } from '../src/api/generated-work/types.gen';
+
+import type { DocumentRevisionPage, FileList, PublishedDocumentDetail } from '@knowledge-platform/document-api-client';
 
 export type RuntimeContext = { sales: string; office: string; documentId: string; statePath: string };
 export type PersistedState = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   documentId: string;
   salesTaskId: string;
   officeTaskId: string;
@@ -24,6 +26,7 @@ export type PersistedState = {
     submit: { operationId: string; result: Submitted };
     officeClaim: { operationId: string; result: Claimed };
   };
+  evidence: EvidenceState;
   final: {
     salesContext: TaskPage;
     salesQueue: TaskPage;
@@ -99,7 +102,157 @@ export async function saveState(context: RuntimeContext, state: PersistedState) 
 }
 export async function loadState(context: RuntimeContext): Promise<PersistedState> {
   const state = JSON.parse(await readFile(context.statePath, 'utf8')) as PersistedState;
-  expect(state.schemaVersion).toBe(2);
+  expect(state.schemaVersion).toBe(3);
   expect(state.documentId).toBe(context.documentId);
   return state;
+}
+
+
+export type EvidenceReceipt = { operationId: string; command: EvidenceCommand; result: EvidenceRegistered };
+export type FindingReceipt = { operationId: string; command: FindingCommand; result: FindingRegistered };
+export type DecisionReceipt = { operationId: string; command: DecisionCommand; result: DecisionRecorded };
+export type EvidenceState = {
+  selected: EvidenceReceipt;
+  unselected: EvidenceReceipt;
+  finding: FindingReceipt;
+  privateFinding: FindingReceipt;
+  decisions: DecisionReceipt[];
+  privateDecision: DecisionReceipt;
+  officeDecision: DecisionReceipt;
+  officeReworkDecision: DecisionReceipt;
+  rework: { evidence: EvidenceReceipt; finding: FindingReceipt; decision: DecisionReceipt };
+};
+export function revisionRef(record: RevisionRef): RevisionRef {
+  return { id: record.id, revision: record.revision };
+}
+export async function publishedEvidenceSource(request: APIRequestContext, origin: string, documentId: string) {
+  const document = await get<PublishedDocumentDetail>(request, origin, `/v1/documents/${documentId}?view=published`);
+  const revisions = await get<DocumentRevisionPage>(request, origin, `/v1/documents/${documentId}/revisions?pageSize=100`);
+  expect(document.displayRevision).not.toBeNull();
+  const revision = document.displayRevision!;
+  expect(revisions.items).toContainEqual(revision);
+  expect(revision.documentVersionId).toBe(document.currentVersionId);
+  const files = await get<FileList>(request, origin, `/v1/documents/${documentId}/versions/${document.currentVersionId}/files?purpose=published`);
+  const authoritative = files.items.filter((file) => file.role === 'AUTHORITATIVE');
+  expect(authoritative.length).toBeGreaterThan(0);
+  const file = authoritative[0]!;
+  return {
+    sourceRef: { providerId: 'document' as const, resourceId: documentId, revisionId: revision.revisionId, versionId: document.currentVersionId },
+    authoritativeLocator: { kind: 'contentItem' as const, contentItemId: file.contentItemId, representationId: file.representationId },
+  };
+}
+export async function registerEvidence(page: Page, taskId: string, source: Awaited<ReturnType<typeof publishedEvidenceSource>>, relevantLocation: string): Promise<EvidenceReceipt> {
+  await page.getByLabel('根拠にする入力文書', { exact: true }).selectOption(source.sourceRef.resourceId);
+  await page.getByLabel('原本ファイル', { exact: true }).selectOption(`${source.authoritativeLocator.contentItemId}:${source.authoritativeLocator.representationId}`);
+  await page.getByLabel('該当箇所（人間の記載・未検証）', { exact: true }).fill(relevantLocation);
+  const responsePromise = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${taskId}/evidence` && response.request().method() === 'POST');
+  await page.getByRole('button', { name: '根拠を登録', exact: true }).click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(200);
+  const result = await response.json() as EvidenceRegistered;
+  const command = response.request().postDataJSON() as EvidenceCommand;
+  expect(command).toMatchObject({ ...source, relevantLocation, expectedAttemptId: result.task.attemptId });
+  expect(command.expectedRevision).toBe(result.task.revision - 1);
+  expect(result.kind).toBe('evidence_registered');
+  expect(result.evidence).toMatchObject({ ...source, relevantLocation, taskId, attemptId: result.task.attemptId, revision: 1, contextId: result.task.contextId, createdBy: 'sales-01', actingAssignmentId: command.actingAssignmentId, origin: 'human', coverage: 'unknown', fragmentOmissionReason: 'not_retained', relevantLocationVerified: false, policyDisposition: 'reference_only', visibility: 'work_item_private' });
+  expect(result.evidence).not.toHaveProperty('fragment');
+  expect(result.task.state).toBe('active');
+  await expect(page.getByLabel(`候補の根拠 ${result.evidence.id}`, { exact: true })).toBeVisible();
+  const saved = page.getByRole('region', { name: `根拠 ${result.evidence.id}`, exact: true });
+  for (const value of [source.sourceRef.resourceId, source.sourceRef.revisionId, source.sourceRef.versionId, source.authoritativeLocator.contentItemId, source.authoritativeLocator.representationId, relevantLocation, 'unknown', 'not_retained']) await expect(saved).toContainText(value);
+  return { operationId: command.operationId, command, result };
+}
+export async function registerFinding(page: Page, taskId: string, evidence: EvidenceRegistered['evidence'], claim: string): Promise<FindingReceipt> {
+  await page.getByLabel('候補の主張', { exact: true }).fill(claim);
+  const selected = page.getByRole('checkbox', { name: /^候補の根拠 / });
+  for (const checkbox of await selected.all()) await checkbox.uncheck();
+  await expect(page.getByRole('button', { name: '候補を登録', exact: true })).toBeDisabled();
+  await page.getByLabel(`候補の根拠 ${evidence.id}`, { exact: true }).check();
+  const responsePromise = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${taskId}/findings` && response.request().method() === 'POST');
+  await page.getByRole('button', { name: '候補を登録', exact: true }).click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(200);
+  const result = await response.json() as FindingRegistered;
+  const command = response.request().postDataJSON() as FindingCommand;
+  expect(command).toMatchObject({ claim, evidenceRevisionRefs: [revisionRef(evidence)], expectedAttemptId: result.task.attemptId });
+  expect(command.expectedRevision).toBe(result.task.revision - 1);
+  expect(result).toMatchObject({ kind: 'finding_registered', finding: { taskId, attemptId: result.task.attemptId, revision: 1, contextId: result.task.contextId, author: 'sales-01', actingAssignmentId: command.actingAssignmentId, claim, evidenceRevisionRefs: [revisionRef(evidence)], visibility: 'work_item_private' } });
+  await expect(page.getByRole('region', { name: `候補 ${result.finding.id}`, exact: true })).toContainText(claim);
+  return { operationId: command.operationId, command, result };
+}
+export async function recordDecision(page: Page, taskId: string, finding: FindingRegistered['finding'], evidence: EvidenceRegistered['evidence'], decision: DecisionCommand['decision'], reason: string, adoptedClaim?: string, cancelFirst = false): Promise<DecisionReceipt> {
+  const region = page.getByRole('region', { name: `候補 ${finding.id}`, exact: true });
+  await region.getByLabel(`候補の判断 ${finding.id}`, { exact: true }).selectOption(decision);
+  if (decision === 'modified') {
+    await region.getByLabel('採用文', { exact: true }).fill('');
+    await expect(region.getByRole('button', { name: '判断内容を確認', exact: true })).toBeDisabled();
+    await region.getByLabel('採用文', { exact: true }).fill(adoptedClaim!);
+  }
+  await region.getByLabel('判断理由', { exact: true }).fill(reason);
+  const dialog = page.getByRole('dialog', { name: '人間判断の確認', exact: true });
+  if (cancelFirst) {
+    let posts = 0;
+    const count = (outgoing: import('@playwright/test').Request) => { if (new URL(outgoing.url()).pathname === `/v1/organization/findings/${finding.id}/decisions` && outgoing.method() === 'POST') posts += 1; };
+    page.on('request', count);
+    await region.getByRole('button', { name: '判断内容を確認', exact: true }).click();
+    await expect(dialog).toContainText(finding.claim);
+    await expect(dialog.getByRole('button', { name: 'キャンセル', exact: true })).toBeFocused();
+    await dialog.getByRole('button', { name: 'キャンセル', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    await expect(region.getByLabel('判断理由', { exact: true })).toHaveValue(reason);
+    if (adoptedClaim) await expect(region.getByLabel('採用文', { exact: true })).toHaveValue(adoptedClaim);
+    expect(posts).toBe(0);
+    page.off('request', count);
+  }
+  await region.getByRole('button', { name: '判断内容を確認', exact: true }).click();
+  const responsePromise = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/findings/${finding.id}/decisions` && response.request().method() === 'POST');
+  await dialog.getByRole('button', { name: '判断を確定', exact: true }).click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(200);
+  const result = await response.json() as DecisionRecorded;
+  const command = response.request().postDataJSON() as DecisionCommand;
+  expect(command).toMatchObject({ taskId, expectedAttemptId: result.task.attemptId, findingRevision: finding.revision, decision, reason, evidenceRevisionRefs: [revisionRef(evidence)], ...(adoptedClaim ? { adoptedClaim } : {}) });
+  expect(command.expectedRevision).toBe(result.task.revision - 1);
+  if (decision !== 'modified') expect(command).not.toHaveProperty('adoptedClaim');
+  expect(result).toMatchObject({ kind: 'decision_recorded', decision: { taskId, attemptId: result.task.attemptId, findingId: finding.id, findingRevision: finding.revision, revision: 1, decision, reason, evidenceRevisionRefs: [revisionRef(evidence)], ...(adoptedClaim ? { adoptedClaim } : {}) } });
+  expect(result.task.state).toBe('active');
+  await expect(dialog).not.toBeVisible();
+  await expect(region).toContainText(reason);
+  return { operationId: command.operationId, command, result };
+}
+
+export async function assertEvidenceState(request: APIRequestContext, context: RuntimeContext, salesTaskId: string, officeTaskId: string, state: EvidenceState) {
+  const sharedEvidence = state.selected.result.evidence;
+  const sharedFinding = state.finding.result.finding;
+  const privateEvidence = state.rework.evidence.result.evidence;
+  const privateFinding = state.rework.finding.result.finding;
+  const sharedDecisions = state.decisions.map((receipt) => receipt.result.decision);
+  expect(await get(request, context.sales, `/v1/organization/tasks/${salesTaskId}/evidence`)).toEqual({ items: [sharedEvidence, privateEvidence], nextCursor: null });
+  expect(await get(request, context.sales, `/v1/organization/tasks/${salesTaskId}/findings`)).toEqual({ items: [sharedFinding, privateFinding], nextCursor: null });
+  expect(await get(request, context.office, `/v1/organization/tasks/${officeTaskId}/evidence`)).toEqual({ items: [sharedEvidence], nextCursor: null });
+  expect(await get(request, context.office, `/v1/organization/tasks/${officeTaskId}/findings`)).toEqual({ items: [sharedFinding], nextCursor: null });
+  for (const origin of [context.sales, context.office]) {
+    expect(await get(request, origin, `/v1/organization/evidence/${sharedEvidence.id}`)).toEqual(sharedEvidence);
+    expect(await get(request, origin, `/v1/organization/findings/${sharedFinding.id}`)).toEqual(sharedFinding);
+    await assertHidden(request, origin, `/v1/organization/evidence/${state.unselected.result.evidence.id}`, 'EVIDENCE_NOT_FOUND', state.unselected.result.evidence.relevantLocation);
+    await assertHidden(request, origin, `/v1/organization/findings/${state.privateFinding.result.finding.id}`, 'FINDING_NOT_FOUND', state.privateFinding.result.finding.claim);
+    await assertHidden(request, origin, `/v1/organization/findings/${state.privateFinding.result.finding.id}/decisions`, 'FINDING_NOT_FOUND');
+  }
+  expect(await get(request, context.sales, `/v1/organization/findings/${sharedFinding.id}/decisions`)).toEqual({ items: sharedDecisions, nextCursor: null });
+  expect(await get(request, context.office, `/v1/organization/findings/${sharedFinding.id}/decisions`)).toEqual({ items: [...sharedDecisions, state.officeReworkDecision.result.decision], nextCursor: null });
+  expect(await get(request, context.sales, `/v1/organization/evidence/${privateEvidence.id}`)).toEqual(privateEvidence);
+  expect(await get(request, context.sales, `/v1/organization/findings/${privateFinding.id}`)).toEqual(privateFinding);
+  expect(await get(request, context.sales, `/v1/organization/findings/${privateFinding.id}/decisions`)).toEqual({ items: [state.rework.decision.result.decision], nextCursor: null });
+  await assertHidden(request, context.office, `/v1/organization/evidence/${privateEvidence.id}`, 'EVIDENCE_NOT_FOUND', privateEvidence.relevantLocation);
+  await assertHidden(request, context.office, `/v1/organization/findings/${privateFinding.id}`, 'FINDING_NOT_FOUND', privateFinding.claim);
+  await assertHidden(request, context.office, `/v1/organization/findings/${privateFinding.id}/decisions`, 'FINDING_NOT_FOUND');
+  for (const receipt of [state.selected, state.finding, ...state.decisions, state.rework.evidence, state.rework.finding, state.rework.decision]) {
+    expect(await get(request, context.sales, `/v1/organization/operations/${receipt.operationId}`)).toEqual(receipt.result);
+    await assertHidden(request, context.office, `/v1/organization/operations/${receipt.operationId}`, 'WORK_ITEM_NOT_FOUND');
+  }
+  await assertHidden(request, context.sales, `/v1/organization/operations/${state.unselected.operationId}`, 'EVIDENCE_NOT_FOUND');
+  for (const receipt of [state.privateFinding, state.privateDecision]) await assertHidden(request, context.sales, `/v1/organization/operations/${receipt.operationId}`, 'FINDING_NOT_FOUND');
+  await assertHidden(request, context.office, `/v1/organization/operations/${state.officeDecision.operationId}`, 'FINDING_NOT_FOUND');
+  expect(await get(request, context.office, `/v1/organization/operations/${state.officeReworkDecision.operationId}`)).toEqual(state.officeReworkDecision.result);
+  await assertHidden(request, context.sales, `/v1/organization/operations/${state.officeReworkDecision.operationId}`, 'WORK_ITEM_NOT_FOUND');
 }

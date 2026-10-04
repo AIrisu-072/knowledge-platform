@@ -2,6 +2,8 @@
 //! Work-owned synthetic workflow values. No Document authority or infrastructure.
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+mod evidence;
+pub use evidence::*;
 
 pub const WORKFLOW_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000000001);
 pub const CONTEXT_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000000002);
@@ -62,6 +64,10 @@ pub enum WorkError {
     WorkItemNotFound,
     #[error("WORK_ARTIFACT_NOT_FOUND")]
     WorkArtifactNotFound,
+    #[error("EVIDENCE_NOT_FOUND")]
+    EvidenceNotFound,
+    #[error("FINDING_NOT_FOUND")]
+    FindingNotFound,
     #[error("REVISION_CONFLICT")]
     RevisionConflict,
     #[error("OPERATION_CONFLICT")]
@@ -119,6 +125,12 @@ pub struct PinnedArtifact {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HandoffSnapshot {
+    #[serde(default)]
+    pub evidence_revision_refs: Vec<RevisionRef>,
+    #[serde(default)]
+    pub finding_revision_refs: Vec<RevisionRef>,
+    #[serde(default)]
+    pub decision_revision_refs: Vec<RevisionRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_submission_id: Option<Uuid>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -165,6 +177,12 @@ fn first_attempt() -> u32 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskSummary {
+    #[serde(default)]
+    pub can_register_evidence: bool,
+    #[serde(default)]
+    pub can_register_finding: bool,
+    #[serde(default)]
+    pub can_record_decision: bool,
     #[serde(default = "first_attempt")]
     pub attempt_number: u32,
     #[serde(default)]
@@ -231,6 +249,12 @@ pub struct WorkItem {
 #[serde(rename_all = "camelCase")]
 pub struct Workflow {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<EvidenceRecord>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub findings: Vec<Finding>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decisions: Vec<HumanDecision>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completed_attempts: Vec<WorkItem>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub return_instructions: Vec<ReturnInstruction>,
@@ -274,6 +298,37 @@ pub struct ArtifactSelection {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Command {
+    RegisterEvidence {
+        task_id: Uuid,
+        context: CommandContext,
+        expected_attempt_id: Uuid,
+        source: EvidenceSource,
+        relevant_location: String,
+    },
+    RegisterFinding {
+        task_id: Uuid,
+        context: CommandContext,
+        expected_attempt_id: Uuid,
+        claim: String,
+        evidence_revision_refs: Vec<RevisionRef>,
+        #[serde(default)]
+        supersedes_finding_id: Option<Uuid>,
+    },
+    RecordDecision {
+        task_id: Uuid,
+        context: CommandContext,
+        expected_attempt_id: Uuid,
+        finding_id: Uuid,
+        finding_revision: i64,
+        decision: DecisionKind,
+        #[serde(default)]
+        adopted_claim: Option<String>,
+        #[serde(default)]
+        reason: Option<String>,
+        evidence_revision_refs: Vec<RevisionRef>,
+        #[serde(default)]
+        supersedes_decision_id: Option<Uuid>,
+    },
     Return {
         task_id: Uuid,
         context: CommandContext,
@@ -297,12 +352,23 @@ pub enum Command {
         task_id: Uuid,
         context: CommandContext,
         artifacts: Vec<ArtifactSelection>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expected_attempt_id: Option<Uuid>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        evidence_revision_refs: Vec<RevisionRef>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        finding_revision_refs: Vec<RevisionRef>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        decision_revision_refs: Vec<RevisionRef>,
     },
 }
 impl Command {
     pub fn context(&self) -> &CommandContext {
         match self {
-            Self::SaveDraft { context, .. }
+            Self::RegisterEvidence { context, .. }
+            | Self::RegisterFinding { context, .. }
+            | Self::RecordDecision { context, .. }
+            | Self::SaveDraft { context, .. }
             | Self::Claim { context, .. }
             | Self::Submit { context, .. }
             | Self::Return { context, .. } => context,
@@ -310,7 +376,10 @@ impl Command {
     }
     pub fn task_id(&self) -> Uuid {
         match self {
-            Self::SaveDraft { task_id, .. }
+            Self::RegisterEvidence { task_id, .. }
+            | Self::RegisterFinding { task_id, .. }
+            | Self::RecordDecision { task_id, .. }
+            | Self::SaveDraft { task_id, .. }
             | Self::Claim { task_id, .. }
             | Self::Submit { task_id, .. }
             | Self::Return { task_id, .. } => *task_id,
@@ -320,6 +389,18 @@ impl Command {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum MutationResult {
+    EvidenceRegistered {
+        task: TaskSummary,
+        evidence: EvidenceRecord,
+    },
+    FindingRegistered {
+        task: TaskSummary,
+        finding: Finding,
+    },
+    DecisionRecorded {
+        task: TaskSummary,
+        decision: HumanDecision,
+    },
     Returned {
         task: TaskSummary,
         #[serde(rename = "returnInstruction")]
@@ -344,6 +425,9 @@ pub enum MutationResult {
 impl Workflow {
     pub fn synthetic(document_id: Option<Uuid>) -> Self {
         Self {
+            evidence: vec![],
+            findings: vec![],
+            decisions: vec![],
             id: WORKFLOW_ID,
             definition_version_id: RETURN_DEFINITION_VERSION_ID,
             completed_attempts: vec![],
@@ -433,6 +517,9 @@ impl Workflow {
         };
         let return_transition = self.return_transition(actor, item);
         TaskSummary {
+            can_register_evidence: self.can_read(actor, item) && item.state == TaskState::Active,
+            can_register_finding: self.can_read(actor, item) && item.state == TaskState::Active,
+            can_record_decision: self.can_read(actor, item) && item.state == TaskState::Active,
             attempt_number: item.attempt_number,
             can_return: return_transition.is_some(),
             return_instruction_id: item.return_instruction_id,
@@ -612,7 +699,11 @@ impl Workflow {
                     }
                 }
             }
-            Command::Submit { .. } | Command::Return { .. } => {
+            Command::RegisterEvidence { .. }
+            | Command::RegisterFinding { .. }
+            | Command::RecordDecision { .. }
+            | Command::Submit { .. }
+            | Command::Return { .. } => {
                 if !self.can_read(actor, item) {
                     return Err(WorkError::WorkItemNotFound);
                 }
@@ -626,6 +717,15 @@ impl Workflow {
         result: &MutationResult,
     ) -> Result<(), WorkError> {
         match result {
+            MutationResult::EvidenceRegistered { evidence, .. } => {
+                self.evidence_record(actor, evidence.id)?;
+            }
+            MutationResult::FindingRegistered { finding, .. } => {
+                self.finding(actor, finding.id)?;
+            }
+            MutationResult::DecisionRecorded { decision, .. } => {
+                self.decision(actor, decision.id)?;
+            }
             MutationResult::Returned {
                 return_instruction, ..
             } => {
@@ -673,6 +773,9 @@ impl Workflow {
         now: &str,
     ) -> Result<MutationResult, WorkError> {
         match command {
+            Command::RegisterEvidence { .. }
+            | Command::RegisterFinding { .. }
+            | Command::RecordDecision { .. } => self.apply_evidence(actor, command, now),
             Command::Return {
                 expected_attempt_id,
                 previous_submission_id,
@@ -841,8 +944,24 @@ impl Workflow {
                 Ok(MutationResult::Claimed { task })
             }
             Command::Submit {
-                task_id, artifacts, ..
+                task_id,
+                artifacts,
+                expected_attempt_id,
+                evidence_revision_refs,
+                finding_revision_refs,
+                decision_revision_refs,
+                ..
             } => {
+                if expected_attempt_id.is_some_and(|id| id != self.source.attempt_id) {
+                    return Err(WorkError::RevisionConflict);
+                }
+                self.validate_selection(
+                    actor,
+                    *task_id,
+                    evidence_revision_refs,
+                    finding_revision_refs,
+                    decision_revision_refs,
+                )?;
                 if *task_id != self.source.id
                     || self.source.state != TaskState::Active
                     || self
@@ -881,6 +1000,9 @@ impl Workflow {
                     });
                 }
                 let snapshot = HandoffSnapshot {
+                    evidence_revision_refs: evidence_revision_refs.clone(),
+                    finding_revision_refs: finding_revision_refs.clone(),
+                    decision_revision_refs: decision_revision_refs.clone(),
                     previous_submission_id: self
                         .source
                         .return_instruction_id
