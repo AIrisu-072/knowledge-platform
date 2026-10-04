@@ -1088,6 +1088,27 @@ test('completion sends the exact server action and becomes read-only while prese
   expect(await screen.findByLabelText('Agentへの依頼目的')).toBeDisabled();
 });
 
+test('real Playwright exact text finds the completed history label independently of its timestamp', async () => {
+  const matches = require('./playwright-text-matcher.cjs')() as (element: Element, text: string) => boolean;
+  setupCompletion();
+  jest.spyOn(workApi, 'completeTask').mockImplementation(async () => completionReply());
+  await confirmCompletion();
+  await screen.findByText('タスクの完了が確定しました');
+  await userEvent.click(screen.getByRole('button', { name: '履歴' }));
+  const entry = (await screen.findByText('タスクを完了')).closest('li')!;
+  const time = entry.querySelector('time')!;
+  expect(time).toBeVisible();
+  expect(time).toHaveAttribute('datetime', '2026-10-04T17:00:00Z');
+  expect(time.textContent).not.toBe('');
+  // Exact text must identify one visible label, not the combined label/time
+  // entry or a substring. This is the same matcher used by the hosted journey.
+  expect(matches(entry, 'タスクを完了')).toBe(false);
+  const labels = Array.from(entry.querySelectorAll('*')).filter((element) => matches(element, 'タスクを完了'));
+  expect(labels).toHaveLength(1);
+  expect(labels[0]).toBeVisible();
+  expect(matches(labels[0]!, '完了')).toBe(false);
+});
+
 test('completion Cancel and Escape never execute a write', async () => {
   setupCompletion();
   const complete = jest.spyOn(workApi, 'completeTask');

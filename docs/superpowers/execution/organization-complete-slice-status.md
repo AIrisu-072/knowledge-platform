@@ -1,5 +1,19 @@
 # Organization Browser PoC — 最終事務タスク完了の状況
 
+## 2026-10-04 21:28 UTC — 完了保存成功、履歴ラベル照合の限定修正
+
+- 公開[PR63](https://github.com/AIrisu-072/knowledge-platform/pull/63) `20b59e30236a820aa0dd9b0f4a2cc22251ac44dc` の[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37235066854)は、Organization journeyの履歴ラベル待ちで失敗した。実DB/transaction/initialize、完了API200と状態/OCC、readonly表示までは成功。restart/persistence/shutdownは未実行、cleanupは `owned-container-removed`
+- 他の通常CI job、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37235066885)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37235066978)は成功。Rust886件PASS/7skip、GUI176件/19 suites、既存mock browser6件を確認した
+- 固定Playwright1.63.0の実text matcherを純粋DOMで使い、履歴のlabelと子要素timeが同じli全文として比較され、exact label一致が0件になることをRED再現。Testing Libraryは直接textだけを見るため、既存pure試験では見逃した
+- 履歴labelを独立したspanに分ける表示修正だけを行った。原本履歴・時刻・backend・API・E2Eのexact期待値とtimeoutは変更しない。新しい汎用runnerや診断基盤は追加しない
+
+- 新回帰1件RED→GREEN、全GUI177件/19 suites、純粋runner17件、application/runtime型、schema freshness、production build、collection-only各1件、差分確認PASS。既存Webpack advisory3件。公式固定Node/pnpmとfrozen lockを復元して確認した
+
+次のexact action: 最終exact treeレビュー後にPR63へ公開し、同じhosted条件で履歴表示から再起動/cleanupまで再確認する。**新修正の実browser結果は未取得**。以下は各時点の記録。
+
+---
+
+
 ## 2026-10-04 17:19 UTC — 最小縦断実装と純粋確認完了、hosted未受入
 
 - 最終事務のserver-defined complete確認→closed API→atomic完了→現在権限のreadonly履歴を実装。旧definition/旧migration/過去submission・attemptを維持し、同operation replay・rollback・遅いAgent出力の拒否を検証する
