@@ -620,3 +620,20 @@ test('real Playwright exact label matching identifies source file and judgment s
   expect(matches(judgment, '候補の判断')).toBe(false);
   expect(matches(source, '共有の入力文書')).toBe(false);
 });
+
+test('real Playwright exact textarea labels remain stable after controlled input', async () => {
+  const matches = require('./playwright-label-matcher.cjs')() as (element: Element, name: string) => boolean;
+  setup(); mockRecords();
+  await openEvidence();
+  await userEvent.selectOptions(screen.getByLabelText('候補の判断 finding-1'), 'modified');
+  const labels = ['該当箇所（人間の記載・未検証）', '候補の主張', '判断理由', '採用文'];
+  const fields = labels.map((label) => screen.getByLabelText(label) as HTMLTextAreaElement);
+  expect(fields.map((field, index) => matches(field, labels[index]!))).toEqual([true, true, true, true]);
+  for (const field of fields) await userEvent.type(field, 'synthetic probe');
+  for (const field of fields) {
+    expect(field.value).toBe('synthetic probe');
+    expect(field.defaultValue).toBe('synthetic probe');
+    expect(field.textContent).toBe('synthetic probe');
+  }
+  expect(fields.map((field, index) => matches(field, labels[index]!))).toEqual([true, true, true, true]);
+});

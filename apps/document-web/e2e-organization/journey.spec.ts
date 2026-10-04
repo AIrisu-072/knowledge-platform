@@ -1,3 +1,4 @@
+import { currentAction } from './support';
 import { expect, test } from '@playwright/test';
 import type { Claimed, DraftCommand, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, SubmitCommand, Submitted, TaskDetail, TaskPage, WorkCommand, WorkingArtifact } from '../src/api/generated-work/types.gen';
 import { assertHidden, assertSessions, assertEvidenceState, captureFinal, get, publishedEvidenceSource, readRuntimeContext, recordDecision, registerEvidence, registerFinding, revisionRef, saveState } from './support';
@@ -9,6 +10,7 @@ const text = '【合成データ】営業で参照資料を確認しました。
 
 test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差戻後の新試行を非公開で再提出する', async ({ page, browser, request }) => {
   const context = readRuntimeContext();
+  currentAction('journey-setup');
   const sessions = await assertSessions(request, context);
   const salesList = await get<TaskPage>(request, context.sales, '/v1/organization/tasks?view=context');
   expect(salesList.nextCursor).toBeNull();
@@ -24,8 +26,10 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
   const officeContext = await browser.newContext({ locale: 'ja-JP', viewport: { width: 1440, height: 900 }, serviceWorkers: 'block', acceptDownloads: false });
   const office = await officeContext.newPage();
   try {
+    currentAction('office-navigation');
     await office.goto(`${context.office}/tasks?view=queue`);
     await expect(office.getByText('閲覧できるタスクはありません', { exact: true })).toBeVisible();
+    currentAction('sales-navigation');
     await page.goto('/tasks?view=context');
     await page.getByRole('complementary', { name: 'タスク一覧' }).getByRole('button', { name: new RegExp(source.title) }).click();
     await expect(page).toHaveURL((url) => url.pathname === '/tasks' && url.searchParams.get('taskId') === source.id);
@@ -35,14 +39,17 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     await expect(page.getByRole('button', { name: '提出内容を確認', exact: true })).toBeDisabled();
     const input = page.getByRole('link', { name: '共有入力文書', exact: true });
     await expect(input).toHaveAttribute('href', new RegExp(`/documents/${context.documentId}`));
+    currentAction('document-navigation');
     await input.click();
     await expect(page).toHaveURL((url) => url.pathname === `/documents/${context.documentId}`);
     await expect(page.getByRole('heading', { name: document.title, level: 1 })).toBeVisible();
+    currentAction('task-navigation');
     await page.getByRole('navigation', { name: 'メインナビゲーション' }).getByRole('link', { name: 'タスク', exact: true }).click();
     await expect(page).toHaveURL((url) => url.pathname === '/tasks' && url.searchParams.get('taskId') === source.id && url.searchParams.get('view') === 'context');
     await expect(page.getByLabel('作業中の文案', { exact: true })).toHaveValue(text);
 
     const saveResponse = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${source.id}/working-artifacts` && response.request().method() === 'POST');
+    currentAction('draft-save');
     await page.getByRole('button', { name: '文案を保存', exact: true }).click();
     const savedResponse = await saveResponse;
     expect(savedResponse.status()).toBe(200);
@@ -61,7 +68,9 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     await assertHidden(request, context.office, `/v1/organization/working-artifacts/${saved.artifact.id}`, 'WORK_ARTIFACT_NOT_FOUND', text);
 
     // Select real published source identities rather than inventing locator or revision IDs.
+    currentAction('source-read');
     const evidenceSource = await publishedEvidenceSource(request, context.sales, context.documentId);
+    currentAction('evidence-module');
     await page.getByRole('button', { name: '根拠', exact: true }).click();
     const selectedEvidence = await registerEvidence(page, source.id, evidenceSource, '【合成データ】共有候補の該当箇所。人間による記載で未検証。');
     const privateEvidence = await registerEvidence(page, source.id, evidenceSource, '【合成データ】未選択の根拠。事務への共有対象外。');
@@ -93,6 +102,7 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     expect((await get<TaskDetail>(request, context.sales, `/v1/organization/tasks/${source.id}`)).state).toBe('active');
     expect(await get(request, context.office, '/v1/organization/tasks?view=queue')).toEqual({ items: [], nextCursor: null });
 
+    currentAction('submit-preview');
     await page.getByRole('button', { name: '提出内容を確認', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '提出の確認', exact: true });
     await expect(dialog).toContainText(text);
@@ -102,8 +112,10 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     expect((await get<TaskDetail>(request, context.sales, `/v1/organization/tasks/${source.id}`)).revision).toBe(privateDecision.result.task.revision);
     expect(await get(request, context.office, '/v1/organization/tasks?view=queue')).toEqual({ items: [], nextCursor: null });
 
+    currentAction('submit-preview');
     await page.getByRole('button', { name: '提出内容を確認', exact: true }).click();
     const submitDialog = page.getByRole('dialog', { name: '提出の確認', exact: true });
+    currentAction('submit-selection');
     for (const kind of ['根拠', '候補', '判断']) {
       for (const checkbox of await submitDialog.getByRole('checkbox', { name: new RegExp(`^共有する${kind} `) }).all()) await expect(checkbox).not.toBeChecked();
     }
@@ -118,6 +130,7 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     await expect(submitDialog.getByLabel(`共有する判断 ${privateDecision.result.decision.id}`, { exact: true })).not.toBeChecked();
     await expect(submitDialog.getByRole('button', { name: '提出を確定', exact: true })).toBeEnabled();
     const submitResponse = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${source.id}/submit` && response.request().method() === 'POST');
+    currentAction('submit-confirm');
     await page.getByRole('dialog', { name: '提出の確認', exact: true }).getByRole('button', { name: '提出を確定', exact: true }).click();
     const submittedResponse = await submitResponse;
     expect(submittedResponse.status()).toBe(200);
@@ -147,6 +160,7 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     expect(officeReady.items[0]).toMatchObject({ id: submitted.nextTask.id, state: 'ready', canClaim: true });
 
     const claimResponse = office.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${submitted.nextTask.id}/claim` && response.request().method() === 'POST');
+    currentAction('office-claim');
     await office.getByRole('button', { name: '担当を引き受ける', exact: true }).click();
     const claimedResponse = await claimResponse;
     expect(claimedResponse.status()).toBe(200);
@@ -161,6 +175,7 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     await assertHidden(request, context.office, `/v1/organization/working-artifacts/${saved.artifact.id}`, 'WORK_ARTIFACT_NOT_FOUND', text);
     await assertHidden(request, context.sales, `/v1/organization/tasks/${submitted.nextTask.id}`, 'WORK_ITEM_NOT_FOUND', text);
     for (const operationId of [saveCommand.operationId, submitCommand.operationId, claimCommand.operationId]) expect(operationId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    currentAction('evidence-module');
     await office.getByRole('button', { name: '根拠', exact: true }).click();
     await expect(office.getByRole('region', { name: `候補 ${sharedFinding.result.finding.id}`, exact: true })).toContainText(sharedFinding.result.finding.claim);
     await expect(office.getByText(privateFinding.result.finding.claim, { exact: true })).toHaveCount(0);
@@ -187,6 +202,7 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     await returnInput.fill(returnReason);
     let returnPosts = 0;
     office.on('request', (outgoing) => { if (new URL(outgoing.url()).pathname === `/v1/organization/tasks/${claimed.task.id}/return` && outgoing.method() === 'POST') returnPosts += 1; });
+    currentAction('return-preview');
     await office.getByRole('button', { name: '差戻内容を確認', exact: true }).click();
     const returnDialog = office.getByRole('dialog', { name: '差戻の確認', exact: true });
     await expect(returnDialog).toContainText(returnReason);
@@ -194,6 +210,7 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     await expect(returnDialog.getByRole('button', { name: 'キャンセル', exact: true })).toBeFocused();
     await returnDialog.getByRole('button', { name: 'キャンセル', exact: true }).click();
     await expect(returnInput).toHaveValue(returnReason);
+    currentAction('return-preview');
     await office.getByRole('button', { name: '差戻内容を確認', exact: true }).click();
     await office.keyboard.press('Escape');
     await expect(returnDialog).not.toBeVisible();
@@ -201,8 +218,10 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     expect(returnPosts).toBe(0);
     expect((await get<TaskDetail>(request, context.office, `/v1/organization/tasks/${claimed.task.id}`)).revision).toBe(officeDecision.result.task.revision);
 
+    currentAction('return-preview');
     await office.getByRole('button', { name: '差戻内容を確認', exact: true }).click();
     const returnResponse = office.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${claimed.task.id}/return` && response.request().method() === 'POST');
+    currentAction('return-confirm');
     await returnDialog.getByRole('button', { name: '差戻を確定', exact: true }).click();
     const returnedResponse = await returnResponse;
     expect(returnedResponse.status()).toBe(200);
@@ -234,6 +253,7 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     await expect(page.getByRole('button', { name: '担当を引き受ける', exact: true })).toBeVisible();
     await expect(page.getByLabel('作業中の文案', { exact: true })).toHaveCount(0);
     const salesClaimResponse = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${source.id}/claim` && response.request().method() === 'POST');
+    currentAction('sales-reclaim');
     await page.getByRole('button', { name: '担当を引き受ける', exact: true }).click();
     const salesClaimedResponse = await salesClaimResponse;
     expect(salesClaimedResponse.status()).toBe(200);
@@ -246,6 +266,7 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     expect((await get<TaskDetail>(request, context.sales, `/v1/organization/tasks/${source.id}`)).workingArtifacts).toEqual([]);
     await assertHidden(request, context.sales, `/v1/organization/working-artifacts/${saved.artifact.id}`, 'WORK_ARTIFACT_NOT_FOUND', text);
     await assertHidden(request, context.sales, `/v1/organization/operations/${saveCommand.operationId}`, 'WORK_ARTIFACT_NOT_FOUND', text);
+    currentAction('evidence-module');
     await page.getByRole('button', { name: '根拠', exact: true }).click();
     expect(await get(request, context.sales, `/v1/organization/tasks/${source.id}/evidence`)).toEqual({ items: [selectedEvidence.result.evidence], nextCursor: null });
     expect(await get(request, context.sales, `/v1/organization/tasks/${source.id}/findings`)).toEqual({ items: [sharedFinding.result.finding], nextCursor: null });
@@ -266,6 +287,7 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     expect(await get(request, context.office, `/v1/organization/findings/${sharedFinding.result.finding.id}`)).toEqual(sharedFinding.result.finding);
     await page.getByLabel('作業中の文案', { exact: true }).fill(revisedText);
     const resaveResponse = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${source.id}/working-artifacts` && response.request().method() === 'POST');
+    currentAction('draft-save');
     await page.getByRole('button', { name: '文案を保存', exact: true }).click();
     const resavedResponse = await resaveResponse;
     expect(resavedResponse.status()).toBe(200);
@@ -287,12 +309,14 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     expect(await get(request, context.office, `/v1/organization/handoff-snapshots/${submitted.snapshot.id}`)).toEqual(submitted.snapshot);
     expect(await get<ReturnInstruction>(request, context.office, `/v1/organization/return-instructions/${returned.returnInstruction.id}`)).toEqual(returned.returnInstruction);
 
+    currentAction('submit-preview');
     await page.getByRole('button', { name: '提出内容を確認', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '提出の確認', exact: true })).toContainText(revisedText);
     for (const checkbox of await page.getByRole('dialog', { name: '提出の確認', exact: true }).getByRole('checkbox', { name: /^共有する/ }).all()) await expect(checkbox).not.toBeChecked();
     const resubmitDialog = page.getByRole('dialog', { name: '提出の確認', exact: true });
     // Zero evidence selection is allowed, but only explicit checks share these old revisions again.
     await expect(resubmitDialog.getByRole('button', { name: '提出を確定', exact: true })).toBeEnabled();
+    currentAction('submit-selection');
     await resubmitDialog.getByLabel(`共有する根拠 ${selectedEvidence.result.evidence.id}`, { exact: true }).check();
     await resubmitDialog.getByLabel(`共有する候補 ${sharedFinding.result.finding.id}`, { exact: true }).check();
     for (const receipt of sharedDecisions) await resubmitDialog.getByLabel(`共有する判断 ${receipt.result.decision.id}`, { exact: true }).check();
@@ -300,6 +324,7 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     await expect(resubmitDialog.getByLabel(`共有する候補 ${reworkFinding.result.finding.id}`, { exact: true })).not.toBeChecked();
     await expect(resubmitDialog.getByLabel(`共有する判断 ${reworkDecision.result.decision.id}`, { exact: true })).not.toBeChecked();
     const resubmitResponse = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${source.id}/submit` && response.request().method() === 'POST');
+    currentAction('resubmit');
     await page.getByRole('button', { name: '提出を確定', exact: true }).click();
     const resubmittedResponse = await resubmitResponse;
     expect(resubmittedResponse.status()).toBe(200);
@@ -320,6 +345,7 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     await expect(office.getByRole('region', { name: '受領したスナップショット', exact: true })).toHaveCount(0);
     await assertHidden(request, context.office, `/v1/organization/handoff-snapshots/${resubmitted.snapshot.id}`, 'WORK_ARTIFACT_NOT_FOUND', revisedText);
     const officeReclaimResponse = office.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${claimed.task.id}/claim` && response.request().method() === 'POST');
+    currentAction('office-reclaim');
     await office.getByRole('button', { name: '担当を引き受ける', exact: true }).click();
     const officeReclaimedResponse = await officeReclaimResponse;
     expect(officeReclaimedResponse.status()).toBe(200);
@@ -330,18 +356,22 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     await expect(office.getByLabel('作業中の文案', { exact: true })).toHaveCount(0);
     expect(await get(request, context.office, `/v1/organization/handoff-snapshots/${submitted.snapshot.id}`)).toEqual(submitted.snapshot);
     expect(await get(request, context.office, `/v1/organization/return-instructions/${returned.returnInstruction.id}`)).toEqual(returned.returnInstruction);
+    currentAction('evidence-module');
     await office.getByRole('button', { name: '根拠', exact: true }).click();
     const officeReworkDecision = await recordDecision(office, officeReclaimed.task.id, sharedFinding.result.finding, selectedEvidence.result.evidence, 'accepted', '【合成データ】事務が試行2で受領候補を独立して採用した。');
     expect(officeReworkDecision.result.decision).toMatchObject({ humanPrincipal: 'office-01', actingAssignmentId: sessions.office.actingAssignmentId, attemptId: officeReclaimed.task.attemptId });
     expect(officeReworkDecision.result.decision.id).not.toBe(officeDecision.result.decision.id);
     const evidence = { selected: selectedEvidence, unselected: privateEvidence, finding: sharedFinding, privateFinding, decisions: sharedDecisions, privateDecision, officeDecision, officeReworkDecision, rework: { evidence: reworkEvidence, finding: reworkFinding, decision: reworkDecision } };
+    currentAction('final-verify');
     await assertEvidenceState(request, context, source.id, claimed.task.id, evidence);
+    currentAction('final-verify');
     const final = await captureFinal(request, context, source.id, submitted.nextTask.id, resubmitted.snapshot.id, submitted.snapshot.id, returned.returnInstruction.id);
     expect(final.snapshot).toEqual(resubmitted.snapshot);
     expect(final.priorSnapshot).toEqual(submitted.snapshot);
     expect(final.returnInstruction).toEqual(returned.returnInstruction);
     expect(final.salesTask).toMatchObject({ state: 'completed', attemptNumber: 2 });
     expect(final.officeTask).toMatchObject({ state: 'active', attemptNumber: 2, workingArtifacts: [] });
+    currentAction('final-verify');
     await saveState(context, { schemaVersion: 3, documentId: context.documentId, salesTaskId: source.id, officeTaskId: submitted.nextTask.id, artifactId: saved.artifact.id, snapshotId: submitted.snapshot.id, text, save: { operationId: saveCommand.operationId, result: saved }, submit: { operationId: submitCommand.operationId, result: submitted }, claim: { operationId: claimCommand.operationId, result: claimed }, rework: { text: revisedText, returned: { operationId: returnCommand.operationId, command: returnCommand, result: returned }, salesClaim: { operationId: salesClaimCommand.operationId, result: salesClaimed }, save: { operationId: resaveCommand.operationId, result: resaved }, submit: { operationId: resubmitCommand.operationId, result: resubmitted }, officeClaim: { operationId: officeReclaimCommand.operationId, result: officeReclaimed } }, evidence, final });
   } finally {
     await officeContext.close();

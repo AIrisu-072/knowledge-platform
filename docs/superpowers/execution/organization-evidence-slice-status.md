@@ -1,5 +1,22 @@
 # Organization Browser PoC — 根拠・候補・人間判断の状況
 
+## 2026-10-04 13:17 UTC — 入力後のラベルを修正し、公開基点から候補を復元
+
+[PR57](https://github.com/AIrisu-072/knowledge-platform/pull/57) source `24a11b285afce1226a7e635d0aa32765a2cceb16` の[第2回通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37193959943)はOrganization journeyのtest timeoutで失敗した。build・実PostgreSQL接続・transaction・初期化は成功し、再起動/persistence/正常shutdownは未到達。cleanupは`owned-container-removed`を確認した。Document実runtime、GUI128件、既存mock browser6件、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37193959945)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37193959941)は成功した。timeoutの停止行は標準reportから特定できず、新しい実操作成功とは扱わない。
+
+Reactのcontrolled textareaは入力後にdefaultValue/textContentも更新する。親labelに本文が混ざり、lock済Playwrightのexact label照合が不一致になる欠陥を前回純粋DOMで再現した。今回も同じ実matcher回帰をRED→GREENで再現し、4個の明示aria-labelを公開基点から復元した。表示ラベル、入力値、保存処理、認可、E2Eの期待条件やtimeoutは変えない。このsource欠陥と、第2回hostedの実際の停止位置を特定したという主張は区別する。
+
+失敗診断は、既存Playwright標準resultの`organization-stage` annotationから閉じた30種類の操作名だけを取り出す。`currentAction`は最後に入った操作であり、完了や待機中の証明ではない。原文・値・URL・資格情報・画像・traceは追加公開しない。既存操作/assertion/awaitを保ったまま、直前に1個のannotationを置き換えるだけである。
+
+再開時に以前の未公開worktree/packetが現在のworkspaceに存在しなかったため、GitHubの上記公開commit/tree `0e4263def79fb02d401b0e2b4e1e9a78025f834f` から独立worktreeを復元した。保持された差分と最小checkpointを再構成する**新候補**であり、以前の未公開treeと同一とは主張しない。依存lockと通常CI・runtime実行先を維持し、ローカルDB/listener/browserは実行しない。
+
+固定Node24.21.0/pnpm12.4.1を公式配布元から再取得し、以前と同じbinary SHA256を確認した。frozen install（scripts無効）、純粋Organization runner14件、GUI129件/19 suites、application/runtime型、schema freshness、production buildは新候補でPASS（既存Webpack advisory3件）。E2E3fileは追加診断を除くと基点とbyte-for-byte一致し、操作/assertion/await数も不変。標準Playwright1.63.0のworker→runner→JSON結果にannotationが残ることを現在bytesで確認した。
+
+次は限定独立レビューを経てPR57をfast-forward更新し、同じ承認済hosted条件で2名の登録→判断→選択提出→非開示→両HTTP server再起動後復元→cleanupと全CIを確認する。
+
+---
+
+
 ## 2026-10-04 09:55 UTC — 初回実DB成功・browser失敗の局所修正
 
 [PR57](https://github.com/AIrisu-072/knowledge-platform/pull/57) source `5d65b3b1a2cb8a2e660757b4c0b540ea95ff2b9c` の[初回通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37192481161)はOrganization browser journeyで失敗した。build・実PostgreSQL接続・拡張transaction試験・初期化は成功、再起動/persistence/正常shutdown段階は未到達。失敗後cleanupは実装上finallyで試みるが、このrunの公開logにはその結果が無く、確認済みとしない。Document実runtime回帰、DSI、Sandboxと他の通常jobは成功（Rust856 PASS/7 skip、GUI127件、既存mock browser6件）。

@@ -1,3 +1,4 @@
+import { test } from '@playwright/test';
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -74,6 +75,7 @@ export async function assertSessions(request: APIRequestContext, context: Runtim
   return { sales, office };
 }
 export async function assertHidden(request: APIRequestContext, origin: string, path: string, code: string, privateText?: string) {
+  currentAction('visibility-verify');
   const response = await request.get(`${new URL(origin).origin}${path}`);
   expect(response.status()).toBe(404);
   expect(response.headers()['cache-control']).toBe('no-store');
@@ -126,12 +128,15 @@ export function revisionRef(record: RevisionRef): RevisionRef {
   return { id: record.id, revision: record.revision };
 }
 export async function publishedEvidenceSource(request: APIRequestContext, origin: string, documentId: string) {
+  currentAction('source-read');
   const document = await get<PublishedDocumentDetail>(request, origin, `/v1/documents/${documentId}?view=published`);
+  currentAction('source-read');
   const revisions = await get<DocumentRevisionPage>(request, origin, `/v1/documents/${documentId}/revisions?pageSize=100`);
   expect(document.displayRevision).not.toBeNull();
   const revision = document.displayRevision!;
   expect(revisions.items).toContainEqual(revision);
   expect(revision.documentVersionId).toBe(document.currentVersionId);
+  currentAction('source-read');
   const files = await get<FileList>(request, origin, `/v1/documents/${documentId}/versions/${document.currentVersionId}/files?purpose=published`);
   const authoritative = files.items.filter((file) => file.role === 'AUTHORITATIVE');
   expect(authoritative.length).toBeGreaterThan(0);
@@ -142,10 +147,14 @@ export async function publishedEvidenceSource(request: APIRequestContext, origin
   };
 }
 export async function registerEvidence(page: Page, taskId: string, source: Awaited<ReturnType<typeof publishedEvidenceSource>>, relevantLocation: string): Promise<EvidenceReceipt> {
+  currentAction('source-document-select');
   await page.getByLabel('根拠にする入力文書', { exact: true }).selectOption(source.sourceRef.resourceId);
+  currentAction('source-file-select');
   await page.getByLabel('原本ファイル', { exact: true }).selectOption(`${source.authoritativeLocator.contentItemId}:${source.authoritativeLocator.representationId}`);
+  currentAction('evidence-input');
   await page.getByLabel('該当箇所（人間の記載・未検証）', { exact: true }).fill(relevantLocation);
   const responsePromise = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${taskId}/evidence` && response.request().method() === 'POST');
+  currentAction('evidence-submit');
   await page.getByRole('button', { name: '根拠を登録', exact: true }).click();
   const response = await responsePromise;
   expect(response.status()).toBe(200);
@@ -163,12 +172,14 @@ export async function registerEvidence(page: Page, taskId: string, source: Await
   return { operationId: command.operationId, command, result };
 }
 export async function registerFinding(page: Page, taskId: string, evidence: EvidenceRegistered['evidence'], claim: string): Promise<FindingReceipt> {
+  currentAction('finding-input');
   await page.getByLabel('候補の主張', { exact: true }).fill(claim);
   const selected = page.getByRole('checkbox', { name: /^候補の根拠 / });
   for (const checkbox of await selected.all()) await checkbox.uncheck();
   await expect(page.getByRole('button', { name: '候補を登録', exact: true })).toBeDisabled();
   await page.getByLabel(`候補の根拠 ${evidence.id}`, { exact: true }).check();
   const responsePromise = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${taskId}/findings` && response.request().method() === 'POST');
+  currentAction('finding-submit');
   await page.getByRole('button', { name: '候補を登録', exact: true }).click();
   const response = await responsePromise;
   expect(response.status()).toBe(200);
@@ -182,18 +193,23 @@ export async function registerFinding(page: Page, taskId: string, evidence: Evid
 }
 export async function recordDecision(page: Page, taskId: string, finding: FindingRegistered['finding'], evidence: EvidenceRegistered['evidence'], decision: DecisionCommand['decision'], reason: string, adoptedClaim?: string, cancelFirst = false): Promise<DecisionReceipt> {
   const region = page.getByRole('region', { name: `候補 ${finding.id}`, exact: true });
+  currentAction('decision-select');
   await region.getByLabel(`候補の判断 ${finding.id}`, { exact: true }).selectOption(decision);
   if (decision === 'modified') {
+    currentAction('decision-input');
     await region.getByLabel('採用文', { exact: true }).fill('');
     await expect(region.getByRole('button', { name: '判断内容を確認', exact: true })).toBeDisabled();
+    currentAction('decision-input');
     await region.getByLabel('採用文', { exact: true }).fill(adoptedClaim!);
   }
+  currentAction('decision-input');
   await region.getByLabel('判断理由', { exact: true }).fill(reason);
   const dialog = page.getByRole('dialog', { name: '人間判断の確認', exact: true });
   if (cancelFirst) {
     let posts = 0;
     const count = (outgoing: import('@playwright/test').Request) => { if (new URL(outgoing.url()).pathname === `/v1/organization/findings/${finding.id}/decisions` && outgoing.method() === 'POST') posts += 1; };
     page.on('request', count);
+    currentAction('decision-preview');
     await region.getByRole('button', { name: '判断内容を確認', exact: true }).click();
     await expect(dialog).toContainText(finding.claim);
     await expect(dialog.getByRole('button', { name: 'キャンセル', exact: true })).toBeFocused();
@@ -204,8 +220,10 @@ export async function recordDecision(page: Page, taskId: string, finding: Findin
     expect(posts).toBe(0);
     page.off('request', count);
   }
+  currentAction('decision-preview');
   await region.getByRole('button', { name: '判断内容を確認', exact: true }).click();
   const responsePromise = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/findings/${finding.id}/decisions` && response.request().method() === 'POST');
+  currentAction('decision-confirm');
   await dialog.getByRole('button', { name: '判断を確定', exact: true }).click();
   const response = await responsePromise;
   expect(response.status()).toBe(200);
@@ -255,4 +273,20 @@ export async function assertEvidenceState(request: APIRequestContext, context: R
   await assertHidden(request, context.office, `/v1/organization/operations/${state.officeDecision.operationId}`, 'FINDING_NOT_FOUND');
   expect(await get(request, context.office, `/v1/organization/operations/${state.officeReworkDecision.operationId}`)).toEqual(state.officeReworkDecision.result);
   await assertHidden(request, context.sales, `/v1/organization/operations/${state.officeReworkDecision.operationId}`, 'WORK_ITEM_NOT_FOUND');
+}
+
+// The last action entered, not proof that it completed or that the test is waiting there.
+type OrganizationAction =
+  | 'journey-setup' | 'office-navigation' | 'sales-navigation' | 'document-navigation' | 'task-navigation'
+  | 'draft-save' | 'source-read' | 'evidence-module' | 'source-document-select' | 'source-file-select'
+  | 'evidence-input' | 'evidence-submit' | 'finding-input' | 'finding-submit' | 'decision-select'
+  | 'decision-input' | 'decision-preview' | 'decision-confirm' | 'visibility-verify' | 'submit-preview'
+  | 'submit-selection' | 'submit-confirm' | 'office-claim' | 'return-preview' | 'return-confirm'
+  | 'sales-reclaim' | 'resubmit' | 'office-reclaim' | 'final-verify' | 'persistence-verify';
+export function currentAction(action: OrganizationAction): void {
+  const annotations = test.info().annotations;
+  for (let index = annotations.length - 1; index >= 0; index--) {
+    if (annotations[index]?.type === 'organization-stage') annotations.splice(index, 1);
+  }
+  annotations.push({ type: 'organization-stage', description: action });
 }

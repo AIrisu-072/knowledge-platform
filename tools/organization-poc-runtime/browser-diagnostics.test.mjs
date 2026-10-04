@@ -13,6 +13,42 @@ const report = (result, phase = 'journey', spec = {}) => JSON.stringify({ suites
   title: titles[phase], file: `${phase}.spec.ts`, line: 10, column: 1, ...spec, tests: [{ results: [result] }],
 }] }] });
 
+test('standard JSON timeout retains only the current result action annotation without inferring completion', () => {
+  const raw = JSON.parse(report({ status: 'timedOut', error: { message: 'Test timeout of 120000ms exceeded.' },
+    annotations: [{ type: 'organization-stage', description: 'source-file-select', detail: 'PRIVATE' }] }));
+  raw.suites[0].specs[0].tests[0].annotations = [{ type: 'organization-stage', description: 'journey-setup' }];
+  assert.deepEqual(browserFailureDiagnostics(JSON.stringify(raw), 'journey'), { phase: 'journey', availability: 'available', failure: {
+    test: 'journey', status: 'timedOut', errorCategory: 'test-timeout', currentAction: 'source-file-select',
+  } });
+});
+
+test('all thirty fixed action names survive the closed projection', () => {
+  const stages = ['journey-setup', 'office-navigation', 'sales-navigation', 'document-navigation', 'task-navigation',
+    'draft-save', 'source-read', 'evidence-module', 'source-document-select', 'source-file-select', 'evidence-input',
+    'evidence-submit', 'finding-input', 'finding-submit', 'decision-select', 'decision-input', 'decision-preview',
+    'decision-confirm', 'visibility-verify', 'submit-preview', 'submit-selection', 'submit-confirm', 'office-claim',
+    'return-preview', 'return-confirm', 'sales-reclaim', 'resubmit', 'office-reclaim', 'final-verify', 'persistence-verify'];
+  assert.equal(stages.length, 30);
+  for (const description of stages) {
+    const raw = report({ status: 'timedOut', annotations: [{ type: 'organization-stage', description }] });
+    assert.equal(browserFailureDiagnostics(raw, 'journey').failure.currentAction, description);
+  }
+});
+
+test('unknown, malformed, excessive and stale test-level annotations cannot disclose or invent a current action', () => {
+  const secret = 'https://PRIVATE:credential@private.example/body';
+  const known = { type: 'organization-stage', description: 'source-read' };
+  for (const annotations of [undefined, secret, [null], [{ type: secret, description: 'source-read' }],
+    [{ type: 'organization-stage', description: secret }], [known, { type: 'organization-stage', description: secret }],
+    Array(33).fill(known)]) {
+    const raw = JSON.parse(report({ status: 'timedOut', annotations }));
+    raw.suites[0].specs[0].tests[0].annotations = [known];
+    const actual = browserFailureDiagnostics(JSON.stringify(raw), 'journey');
+    assert.equal(actual.failure.currentAction, undefined);
+    assert.ok(!JSON.stringify(actual).includes('PRIVATE'));
+  }
+});
+
 test('failed assertion reports exact known failure location rather than test declaration', () => {
   const actual = browserFailureDiagnostics(report({ status: 'failed', error: {
     message: 'Error: expect(locator).toBeVisible() failed: strict mode violation: PRIVATE_LOCATOR',

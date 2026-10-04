@@ -11,6 +11,11 @@ const tests = new Map([
   ['実2名UIで根拠・候補・3種の人間判断を選択提出し、差戻後の新試行を非公開で再提出する', 'journey'],
   ['両process再起動後も根拠・候補・人間判断・固定提出・試行2・操作結果とprivate非開示を保持する', 'persistence'],
 ]);
+const actions = new Set(['journey-setup', 'office-navigation', 'sales-navigation', 'document-navigation', 'task-navigation',
+  'draft-save', 'source-read', 'evidence-module', 'source-document-select', 'source-file-select', 'evidence-input',
+  'evidence-submit', 'finding-input', 'finding-submit', 'decision-select', 'decision-input', 'decision-preview',
+  'decision-confirm', 'visibility-verify', 'submit-preview', 'submit-selection', 'submit-confirm', 'office-claim',
+  'return-preview', 'return-confirm', 'sales-reclaim', 'resubmit', 'office-reclaim', 'final-verify', 'persistence-verify']);
 const matchers = new Set(['toBe', 'toEqual', 'toStrictEqual', 'toMatchObject', 'toMatch', 'toContain', 'toContainEqual',
   'toBeNull', 'toBeVisible', 'toBeHidden', 'toBeFocused', 'toBeEnabled', 'toBeDisabled', 'toBeChecked',
   'toHaveCount', 'toHaveText', 'toContainText', 'toHaveURL', 'toHaveAttribute', 'toHaveLength', 'toHaveValue',
@@ -32,6 +37,10 @@ function stackLocation(value) {
 }
 function failure(result, title) {
   const error = result.error, message = text(error?.message);
+  // Pinned standard JSON retains test.info().annotations on this exact result, including timeout.
+  // This is only the last action entered, not evidence that it is waiting or completed.
+  const stage = Array.isArray(result.annotations) && result.annotations.length <= 32
+    ? result.annotations.findLast(annotation => annotation?.type === 'organization-stage')?.description : undefined;
   const name = error?.matcherResult?.name ?? message.match(/\b(to[A-Z][A-Za-z]+)\s*\(/u)?.[1];
   const matcher = matchers.has(name) ? name : undefined;
   let errorCategory = 'unavailable';
@@ -41,7 +50,8 @@ function failure(result, title) {
   else if (matcher || /assertion(?:error| failed)|expect\(/iu.test(message)) errorCategory = 'assertion';
   return { ...(tests.has(title) ? { test: tests.get(title) } : {}),
     ...(location(error?.location) ?? location(result.errorLocation) ?? stackLocation(error?.stack)),
-    status: result.status, errorCategory, ...(matcher ? { matcher } : {}) };
+    status: result.status, errorCategory, ...(matcher ? { matcher } : {}),
+    ...(actions.has(stage) ? { currentAction: stage } : {}) };
 }
 
 export function browserFailureDiagnostics(raw, phase) {
