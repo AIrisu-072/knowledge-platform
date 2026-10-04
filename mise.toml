@@ -355,10 +355,19 @@ description = "Run Document Semantic Inspection Task 1 sandbox preflight"
 depends = ["poc:dsi:sandbox-test", "poc:dsi:sandbox-deny"]
 
 
+[tasks."document:preview:qualify"]
+description = "Qualify the production-build preview and unchanged mock GUI contracts"
+run = [
+  "pnpm --filter @knowledge-platform/document-web test:preview",
+  "pnpm --filter @knowledge-platform/document-web test",
+  "pnpm --filter @knowledge-platform/document-web e2e",
+]
+
 [tasks."document:poc:runtime"]
 description = "Qualify the real two-process Document PoC runtime and same-origin GUI"
 run = '''
 set -eu
+mise run document:preview:qualify
 node --test tools/document-poc-runtime/test/*.test.mjs
 pnpm --dir tools/document-poc-seed test
 pnpm --filter @knowledge-platform/document-web exec tsc -p ../../tools/document-poc-runtime/tsconfig.json

@@ -33,3 +33,11 @@
 99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:470
 99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:471
 99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:472
+# Exact public-data SHA-256 findings in immutable Tauri PR52 commit0802fe6 only.
+# Owner-approved four fingerprints, covering three public agreement-response digests
+# and two inactive locked WinAPI member digests on one line. Prior31 unchanged.
+# Evidence: docs/decisions/2026-10-03-organization-tauri-checksum-findings.md
+0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json:generic-api-key:10
+0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json:generic-api-key:21
+0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json:generic-api-key:32
+0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/inventory/inactive_or_other_target-007.json:generic-api-key:1

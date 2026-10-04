@@ -64,12 +64,5 @@ module.exports = (_environment, argv) => {
       ...(production ? [new MiniCssExtractPlugin({ filename: 'assets/[name].[contenthash:8].css' })] : []),
     ],
     devtool: production ? 'source-map' : 'eval-source-map',
-    devServer: {
-      host: '127.0.0.1',
-      port: 8080,
-      hot: true,
-      historyApiFallback: true,
-      client: { overlay: { errors: true, warnings: false } },
-    },
   };
 };

@@ -2936,6 +2936,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "organization-server"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "document-api-http",
+ "document-application",
+ "document-domain",
+ "document-repository-postgres",
+ "document-server",
+ "serde_json",
+ "sqlx",
+ "time",
+ "tokio",
+ "tower",
+ "uuid",
+ "work-api-http",
+ "work-application",
+ "work-domain",
+ "work-repository-postgres",
+]
+
+[[package]]
 name = "outref"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5376,6 +5398,55 @@ dependencies = [
  "group",
  "hybrid-array",
  "primefield",
+]
+
+[[package]]
+name = "work-api-http"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "uuid",
+ "work-application",
+ "work-domain",
+]
+
+[[package]]
+name = "work-application"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "uuid",
+ "work-domain",
+]
+
+[[package]]
+name = "work-domain"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "work-repository-postgres"
+version = "0.0.0"
+dependencies = [
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "time",
+ "tokio",
+ "uuid",
+ "work-application",
+ "work-domain",
 ]
 
 [[package]]

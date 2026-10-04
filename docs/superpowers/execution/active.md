@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-04 UTC — 承認済みBrowser PoC先行sliceを実装
+
+- 所有者が05:20:11 UTCにTauri実機検証より先のBrowser PoC実装を明示承認。Phase1–3凍結を保持し、2名のtask/private文案/Document参照/submit/handoffを実装した
+- [最小slice状況](organization-browser-poc-slice-status.md) が今回の再開先。Rust21、既存Document5、新composition1、GUI74のlocal検証と限定独立レビューGO。実DB1件は未実行、browser/listener/実組合せも未実行
+- 次はexact commit/treeを親へ引き渡す。Draft以外の公開、merge/deploy/production接続、Tauri資格取得、既知socket/browser拒否の迂回は行わない。以下の旧順序・未着手記録は当時の履歴であり、限定先行承認だけを上書きする
+
+---
+
+
 ## Current checkpoint — Organization Phase3 frozen source and corrected pixels GO, 2026-10-02 16:56 UTC
 
 - Status: **ACTIVE — PHASE3 EXACT SOURCE FROZEN; EVIDENCE PACKET REVIEW/PUBLICATION PENDING**. [Organization status](organization-client-v0-status.md), [final evidence](organization-d2-visual-review-v2.md) and [Phase3 authority](../specs/2026-10-02-organization-client-v0-ui-approval.md) are the operative preparation pointers; older pending/NO-GO narratives below are historical.

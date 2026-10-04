@@ -396,6 +396,8 @@ pnpm coreはMITだが、同monorepoの`pnpr/`はPolyForm Shield source-available
 
 Document GUI Integration v0は、承認済みDesign Amendment 01に限りBuild toolをWebpack 5.111.1へ置き換える。その他のfeatureに対するVite 8の標準選定とlicense policyは変更しない。
 
+Document GUIに限り、[ツール変更02](../../docs/superpowers/specs/2026-10-03-document-preview-tooling-amendment-02.md)と[承認記録](../../docs/decisions/2026-10-03-document-preview-tooling-amendment-02.md)に基づき、webpack-dev-serverの依存枝を除去し、同じ本番Webpack buildをNode組込み機能によるloopback・固定dist previewで表示する。開発時のHMR・自動更新・コンパイルerror overlayは手動の再ビルド・再起動へ置き換える。アプリのError/Conflict/Partial表示、React・Document API・本番CSP・mock/実runtime受入条件は変えない。これは開発/test用asset serverの変更であり、JavaScriptのbusiness backendを追加しない。既存darwin限定visual gateの未達を保持し、他featureのHMR/build選定には適用しない。
+
 ## 8.2 TypeScript 7 PoC
 
 TypeScript 7.0は2026-07にstableになったnative Go portで大幅なtypecheck高速化を目的としているが、移行直後のため互換性PoCを行う。

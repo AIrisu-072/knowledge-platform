@@ -4,13 +4,15 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "webpack serve --config webpack.config.cjs --mode development --host 127.0.0.1",
+    "dev": "pnpm build && node scripts/preview.mjs",
     "build": "pnpm schemas:check && tsc -p tsconfig.json && webpack --config webpack.config.cjs --mode production",
     "typecheck": "pnpm schemas:check && tsc -p tsconfig.json --noEmit",
     "test": "pnpm schemas:check && jest --config jest.config.cjs --runInBand",
-    "e2e": "playwright test",
+    "e2e": "pnpm build && playwright test",
     "schemas:generate": "node scripts/generate-search-validators.cjs",
-    "schemas:check": "node scripts/generate-search-validators.cjs --check"
+    "schemas:check": "node scripts/generate-search-validators.cjs --check",
+    "preview": "node scripts/preview.mjs",
+    "test:preview": "node --test scripts/preview*.test.mjs"
   },
   "dependencies": {
     "@knowledge-platform/document-api-client": "workspace:*",
@@ -51,7 +53,6 @@
     "style-loader": "4.0.0",
     "typescript": "6.0.3",
     "webpack": "5.111.1",
-    "webpack-cli": "7.2.3",
-    "webpack-dev-server": "6.0.0"
+    "webpack-cli": "7.2.3"
   }
 }

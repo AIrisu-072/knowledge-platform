@@ -63,6 +63,12 @@ pub struct Runtime {
     health: Arc<RuntimeHealth>,
 }
 impl Runtime {
+    /// An outer composition can join separately owned routes while retaining the
+    /// same health, pool lifetime and graceful-drain implementation.
+    pub fn with_router(mut self, router: Router) -> Self {
+        self.router = router;
+        self
+    }
     pub fn router(&self) -> Router {
         self.router.clone()
     }
@@ -112,10 +118,22 @@ pub async fn compose_runtime(config: &RuntimeConfig) -> Result<Runtime, StartupE
     if config.command() != Command::Serve {
         return Err(StartupError::Configuration);
     }
-    let serve = config.serve().ok_or(StartupError::Configuration)?;
     let identity: Arc<dyn IdentityAdapter> = Arc::new(StaticPoCIdentityAdapter::new(
         config.profile().ok_or(StartupError::Identity)?,
     ));
+    compose_runtime_with_identity(config, identity).await
+}
+
+/// Reuse the exact Document runtime with an identity supplied by a trusted
+/// composition root. This does not add a request-selected identity profile.
+pub async fn compose_runtime_with_identity(
+    config: &RuntimeConfig,
+    identity: Arc<dyn IdentityAdapter>,
+) -> Result<Runtime, StartupError> {
+    if config.command() != Command::Serve {
+        return Err(StartupError::Configuration);
+    }
+    let serve = config.serve().ok_or(StartupError::Configuration)?;
     let pool = connect_database(config).await?;
     check_schema_compatibility(&pool)
         .await
@@ -408,5 +426,38 @@ mod shutdown_tests {
             .unwrap()
             .unwrap()
             .unwrap();
+    }
+}
+
+#[cfg(test)]
+mod composition_extension_tests {
+    use super::*;
+    use axum::{body::to_bytes, http::Request, routing::get};
+
+    #[tokio::test]
+    async fn outer_composition_preserves_runtime_health_and_replaces_only_router() {
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://127.0.0.1/synthetic")
+            .unwrap();
+        let health = Arc::new(RuntimeHealth::for_drain_test(pool.clone()));
+        let runtime = Runtime {
+            pool,
+            router: Router::new(),
+            health: health.clone(),
+        };
+        let runtime =
+            runtime.with_router(Router::new().route("/joined", get(|| async { "joined" })));
+        assert!(Arc::ptr_eq(&health, &runtime.health()));
+        let response = runtime
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/joined")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(to_bytes(response.into_body(), 100).await.unwrap(), "joined");
     }
 }

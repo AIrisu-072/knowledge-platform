@@ -1,5 +1,14 @@
 # Organization Client v0 — Capability Execution Status
 
+## 2026-10-04 UTC — 承認済みBrowser PoC先行sliceを実装
+
+- 所有者が05:20:11 UTCにTauri実機検証より先のBrowser PoC実装を明示承認。Phase1–3凍結を保持し、2名のtask/private文案/Document参照/submit/handoffを実装した
+- [最小slice状況](organization-browser-poc-slice-status.md) が今回の再開先。Rust21、既存Document5、新composition1、GUI74のlocal検証と限定独立レビューGO。実DB1件は未実行、browser/listener/実組合せも未実行
+- 次はexact commit/treeを親へ引き渡す。Draft以外の公開、merge/deploy/production接続、Tauri資格取得、既知socket/browser拒否の迂回は行わない。以下の旧順序・未着手記録は当時の履歴であり、限定先行承認だけを上書きする
+
+---
+
+
 ## 2026-10-02 16:56 UTC — Corrected source, all20 pixels and final CI GO; Phase3 frozen
 
 - Captured PR48 source `e6bf24d8afa76a4aa7c66546bd963e4e1a90ffc8` / tree `204a412ba40211ca052d81cdf79f2b8701c148bc` remains unchanged. Local `ef7f610f07b2bad4f37e42a9716d7988855770df` is tree-equivalent. This separate `design/organization-client-v0-ui-freeze` packet contains documentation only; its PR is not yet assigned.

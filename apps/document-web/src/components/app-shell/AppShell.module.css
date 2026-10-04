@@ -168,3 +168,12 @@
     display: none;
   }
 }
+
+.shell[data-organization='true'] { --nav-width: 126px; --context-width: 364px; }
+.shell[data-organization='true'] .brand { width: auto; flex-basis: auto; border-right: none; }
+.shell[data-organization='true'] .workspace { padding: 0; }
+@media (max-width: 1320px) { .shell[data-organization='true'] { --nav-width: 106px; --context-width: 332px; } }
+@media (max-width: 1080px) {
+  .shell[data-organization='true'] .body { grid-template-columns: var(--nav-width) minmax(0, 1fr); }
+  .shell[data-organization='true'] .contextPanel { grid-column: 2; border-top: 1px solid var(--color-border); }
+}

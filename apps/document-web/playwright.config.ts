@@ -16,9 +16,9 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: 'node_modules/.bin/webpack serve --config webpack.config.cjs --mode development --host 127.0.0.1',
-    url: 'http://127.0.0.1:8080/documents',
-    reuseExistingServer: !process.env.CI,
+    command: 'node scripts/preview.mjs',
+    url: 'http://127.0.0.1:8080/index.html',
+    reuseExistingServer: false,
     timeout: 60_000,
   },
 });

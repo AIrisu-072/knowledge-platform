@@ -2,10 +2,14 @@ import { createRootRoute, createRoute, createRouter, Outlet, redirect, RouterPro
 import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { OrganizationProvider } from './application/organization-context';
+import { validateTaskSearch } from './application/work-workspace';
 import { DocumentHomePage } from './routes/DocumentHomePage';
 import { validateDetailSearch, validateListSearch } from './application/search-state';
 import './design-system/global.css';
 
+const LazyTaskHomePage = lazy(() => import('./routes/TaskHomePage').then(({ TaskHomePage }) => ({ default: TaskHomePage })));
+const LazyOrganizationSearchPage = lazy(() => import('./routes/TaskHomePage').then(({ OrganizationSearchPage }) => ({ default: OrganizationSearchPage })));
 const LazyDocumentDetailPage = lazy(() => import('./routes/DocumentDetailPage').then(({ DocumentDetailPage }) => ({ default: DocumentDetailPage })));
 
 const rootElement = document.getElementById('root');
@@ -38,7 +42,9 @@ const documentDetailRoute = createRoute({
     </Suspense>
   ),
 });
-const routeTree = rootRoute.addChildren([indexRoute, documentsRoute, documentDetailRoute]);
+const tasksRoute = createRoute({ getParentRoute: () => rootRoute, path: '/tasks', validateSearch: validateTaskSearch, component: () => <Suspense fallback={<p role="status">タスクを読み込み中…</p>}><LazyTaskHomePage /></Suspense> });
+const searchRoute = createRoute({ getParentRoute: () => rootRoute, path: '/search', component: () => <Suspense fallback={<p role="status">検索画面を読み込み中…</p>}><LazyOrganizationSearchPage /></Suspense> });
+const routeTree = rootRoute.addChildren([indexRoute, documentsRoute, documentDetailRoute, tasksRoute, searchRoute]);
 const router = createRouter({ routeTree });
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -58,8 +64,8 @@ declare module '@tanstack/react-router' {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
+    <OrganizationProvider><QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
-    </QueryClientProvider>
+    </QueryClientProvider></OrganizationProvider>
   </StrictMode>,
 );
