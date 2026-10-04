@@ -1,0 +1,140 @@
+   Compiling outbox-delivery v0.0.0 (/workspace/scratch/13897606dfde/search-dependency-recovery/crates/outbox-delivery)
+    Finished `test` profile [unoptimized] target(s) in 1.14s
+     Running tests/runner_lifecycle.rs (/workspace/scratch/13897606dfde/search-recovery-target/debug/deps/runner_lifecycle-1a767a2951f858ed)
+
+running 21 tests
+test initial_preflight_time_counts_toward_total_processing_deadline ... FAILED
+test outage_does_not_spin_or_ack_unknown ... ok
+test renew_lost_cancels_and_never_settles ... ok
+test shutdown_bounds_pending_final_reaper_without_confirming_reap ... FAILED
+test shutdown_bounds_pending_source_release_after_drain ... FAILED
+test shutdown_drains_completed_and_leaves_unfinished ... ok
+test shutdown_interrupts_pending_admission_without_claiming ... FAILED
+test shutdown_interrupts_pending_claim_without_dispatching ... FAILED
+test shutdown_interrupts_pending_cycle_reaper ... FAILED
+test shutdown_interrupts_pending_policy_verification ... FAILED
+test shutdown_releases_still_owned_source_permit_after_timeout ... ok
+test total_deadline_bounds_pending_failure_settlement_without_confirming_retry ... FAILED
+test total_deadline_bounds_pending_initial_outbox_preflight ... FAILED
+test total_deadline_bounds_pending_initial_source_preflight ... FAILED
+test total_deadline_bounds_pending_initial_source_renewal ... FAILED
+test total_deadline_bounds_pending_outbox_heartbeat ... FAILED
+test total_deadline_bounds_pending_post_handler_outbox_preflight ... FAILED
+test total_deadline_bounds_pending_post_handler_source_preflight ... FAILED
+test total_deadline_bounds_pending_post_handler_source_renewal ... FAILED
+test total_deadline_bounds_pending_source_heartbeat ... FAILED
+test total_deadline_bounds_pending_success_settlement_without_confirming_ack ... FAILED
+
+failures:
+
+---- initial_preflight_time_counts_toward_total_processing_deadline stdout ----
+
+thread 'initial_preflight_time_counts_toward_total_processing_deadline' (46) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:786:5:
+assertion `left == right` failed: preflight must not reset the claim's processing deadline
+  left: 1
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- shutdown_bounds_pending_final_reaper_without_confirming_reap stdout ----
+
+thread 'shutdown_bounds_pending_final_reaper_without_confirming_reap' (49) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:671:13:
+shutdown drain_timeout: runner exceeded its configured budget and watchdog slack
+
+---- shutdown_bounds_pending_source_release_after_drain stdout ----
+
+thread 'shutdown_bounds_pending_source_release_after_drain' (50) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:671:13:
+shutdown drain_timeout: runner exceeded its configured budget and watchdog slack
+
+---- shutdown_interrupts_pending_admission_without_claiming stdout ----
+
+thread 'shutdown_interrupts_pending_admission_without_claiming' (52) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:671:13:
+shutdown drain_timeout: runner exceeded its configured budget and watchdog slack
+
+---- shutdown_interrupts_pending_claim_without_dispatching stdout ----
+
+thread 'shutdown_interrupts_pending_claim_without_dispatching' (53) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:671:13:
+shutdown drain_timeout: runner exceeded its configured budget and watchdog slack
+
+---- shutdown_interrupts_pending_cycle_reaper stdout ----
+
+thread 'shutdown_interrupts_pending_cycle_reaper' (54) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:671:13:
+shutdown drain_timeout: runner exceeded its configured budget and watchdog slack
+
+---- shutdown_interrupts_pending_policy_verification stdout ----
+
+thread 'shutdown_interrupts_pending_policy_verification' (55) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:671:13:
+shutdown drain_timeout: runner exceeded its configured budget and watchdog slack
+
+---- total_deadline_bounds_pending_failure_settlement_without_confirming_retry stdout ----
+
+thread 'total_deadline_bounds_pending_failure_settlement_without_confirming_retry' (57) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:671:13:
+max_processing: runner exceeded its configured budget and watchdog slack
+
+---- total_deadline_bounds_pending_initial_outbox_preflight stdout ----
+
+thread 'total_deadline_bounds_pending_initial_outbox_preflight' (58) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:671:13:
+max_processing: runner exceeded its configured budget and watchdog slack
+
+---- total_deadline_bounds_pending_initial_source_preflight stdout ----
+
+thread 'total_deadline_bounds_pending_initial_source_preflight' (59) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:671:13:
+max_processing: runner exceeded its configured budget and watchdog slack
+
+---- total_deadline_bounds_pending_initial_source_renewal stdout ----
+
+thread 'total_deadline_bounds_pending_initial_source_renewal' (60) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:671:13:
+max_processing: runner exceeded its configured budget and watchdog slack
+
+---- total_deadline_bounds_pending_outbox_heartbeat stdout ----
+
+thread 'total_deadline_bounds_pending_outbox_heartbeat' (61) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:671:13:
+max_processing: runner exceeded its configured budget and watchdog slack
+
+---- total_deadline_bounds_pending_post_handler_outbox_preflight stdout ----
+
+thread 'total_deadline_bounds_pending_post_handler_outbox_preflight' (62) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:671:13:
+max_processing: runner exceeded its configured budget and watchdog slack
+
+---- total_deadline_bounds_pending_post_handler_source_preflight stdout ----
+
+thread 'total_deadline_bounds_pending_post_handler_source_preflight' (63) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:671:13:
+max_processing: runner exceeded its configured budget and watchdog slack
+
+---- total_deadline_bounds_pending_post_handler_source_renewal stdout ----
+
+thread 'total_deadline_bounds_pending_post_handler_source_renewal' (64) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:671:13:
+max_processing: runner exceeded its configured budget and watchdog slack
+
+---- total_deadline_bounds_pending_source_heartbeat stdout ----
+
+thread 'total_deadline_bounds_pending_source_heartbeat' (65) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:671:13:
+max_processing: runner exceeded its configured budget and watchdog slack
+
+---- total_deadline_bounds_pending_success_settlement_without_confirming_ack stdout ----
+
+thread 'total_deadline_bounds_pending_success_settlement_without_confirming_ack' (66) panicked at crates/outbox-delivery/tests/runner_lifecycle.rs:671:13:
+max_processing: runner exceeded its configured budget and watchdog slack
+
+
+failures:
+    initial_preflight_time_counts_toward_total_processing_deadline
+    shutdown_bounds_pending_final_reaper_without_confirming_reap
+    shutdown_bounds_pending_source_release_after_drain
+    shutdown_interrupts_pending_admission_without_claiming
+    shutdown_interrupts_pending_claim_without_dispatching
+    shutdown_interrupts_pending_cycle_reaper
+    shutdown_interrupts_pending_policy_verification
+    total_deadline_bounds_pending_failure_settlement_without_confirming_retry
+    total_deadline_bounds_pending_initial_outbox_preflight
+    total_deadline_bounds_pending_initial_source_preflight
+    total_deadline_bounds_pending_initial_source_renewal
+    total_deadline_bounds_pending_outbox_heartbeat
+    total_deadline_bounds_pending_post_handler_outbox_preflight
+    total_deadline_bounds_pending_post_handler_source_preflight
+    total_deadline_bounds_pending_post_handler_source_renewal
+    total_deadline_bounds_pending_source_heartbeat
+    total_deadline_bounds_pending_success_settlement_without_confirming_ack
+
+test result: FAILED. 4 passed; 17 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.89s
+
+error: test failed, to rerun pass `-p outbox-delivery --test runner_lifecycle`

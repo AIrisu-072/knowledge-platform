@@ -1,0 +1,22 @@
+# 仕事の手渡し: p7-review-shared
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independent shared durable substrate design gate
+
+## 入力
+- `p7-shared-draft` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-design.md) — p7-shared-draft [`p7-design-shared` が作る (作業中)]
+- `p3-contract` (docs/superpowers/programs/search-platform-completion/p3-graph-freeze.md) — graph contract [`p3-freeze-architecture` が作る (済み)]
+- `p6-contract` (docs/superpowers/programs/search-platform-completion/p6-outbox-freeze.md) — outbox contract [`p6-freeze` が作る (済み)]
+
+## 出すもの
+- `p7-shared-review` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-review.md) — p7-shared-review
+
+## 受入条件
+Independent shared durable substrate design gate; focused named RED GREEN and no changed frozen semantics
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p7-shared-durable-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

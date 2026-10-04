@@ -1,0 +1,147 @@
+{
+  "schema_version": "proposal-v1",
+  "status": "PROPOSAL_ONLY_NOT_APPLIED_TO_TASK_GRAPH",
+  "base_head": "80a47960d025e4dfdea1eacade28b15d218725ff",
+  "source_contracts": [
+    "p3-graph-freeze.md",
+    "p3-graph-plan.md",
+    "p3-refined-correctness-review.md",
+    "p7-shared-durable-freeze.md",
+    "p7-shared-durable-revision-1.md",
+    "p7-shared-durable-plan.md",
+    "p1-extraction-freeze.md",
+    "p1-unit-archive-binding-ruling.md"
+  ],
+  "release_conditions": {
+    "g01": "May start after P6-S01 port writer; SQLx-free and backend-neutral; no P3-P04 selection assumed.",
+    "g02": "Pure canonical code may start before selection in an exclusive root Cargo window; no backend dependency or DDL.",
+    "g03_and_later_pg": "Require P3-P04 Selected(PostgreSQL) in the complete native qualification and independent p3-native-review. A Blocked or NO-GO report does not satisfy this gate. A different selected backend requires a reviewed atomic publication/pin/guard/GC amendment before production storage code.",
+    "ready": "P7-08 needs G04 typed validation and independent P1 staged-input/P3 content raw-byte golden vectors, plus P7-07 one-connection registration. Graph READY and P7 READY remain closed until all pass."
+  },
+  "artifacts": [
+    {"id":"p3-g01-ports","kind":"code","path":"docs/superpowers/programs/search-platform-completion/p3-g01-ports-receipt.md","purpose":"P3-G01 SQLx-free ports and revised registered-full signature"},
+    {"id":"p3-g02-canonical","kind":"code","path":"docs/superpowers/programs/search-platform-completion/p3-g02-canonical-receipt.md","purpose":"P3-G02 typed canonical bytes and temporal round trip"},
+    {"id":"p3-g03-storage","kind":"code","path":"docs/superpowers/programs/search-platform-completion/p3-g03-storage-receipt.md","purpose":"P3-G03 selected PG schema roles triggers and repository"},
+    {"id":"p3-g04-typed-validation","kind":"code","path":"docs/superpowers/programs/search-platform-completion/p3-g04-typed-validation-receipt.md","purpose":"P3-G04 registered child staging and typed Graph validation seam; no autonomous production READY"},
+    {"id":"p3-dual-graph-golden","kind":"evidence","path":"docs/superpowers/programs/search-platform-completion/p3-dual-graph-mapping-golden.md","purpose":"Separate P1 Source-owned staged-input and P3 Core content raw bytes and golden digests"},
+    {"id":"p3-g05-mapping","kind":"code","path":"docs/superpowers/programs/search-platform-completion/p3-g05-mapping-receipt.md","purpose":"P3-G05 Source-owned mapping and current Document access"},
+    {"id":"p3-g06-incremental","kind":"code","path":"docs/superpowers/programs/search-platform-completion/p3-g06-incremental-receipt.md","purpose":"P3-G06 guarded copy and complete relation closure"},
+    {"id":"p3-g07-reader","kind":"code","path":"docs/superpowers/programs/search-platform-completion/p3-g07-reader-receipt.md","purpose":"P3-G07 P7-pin-gated read and full n-ary access parity"},
+    {"id":"p3-g08-recovery","kind":"code","path":"docs/superpowers/programs/search-platform-completion/p3-g08-recovery-receipt.md","purpose":"P3-G08 Graph row and mapping recovery validation"},
+    {"id":"p3-c01-alias","kind":"evidence","path":"docs/superpowers/programs/search-platform-completion/p3-c01-p7-registration-alias.md","purpose":"P3-C01 acceptance mapped to P6 Search0001 and P7-03/06/07 physical writers"},
+    {"id":"p3-c02-alias","kind":"evidence","path":"docs/superpowers/programs/search-platform-completion/p3-c02-p7-publication-gc-alias.md","purpose":"P3-C02 acceptance mapped to P7-09/11 CAS and guarded GC"},
+    {"id":"p3-c03-alias","kind":"evidence","path":"docs/superpowers/programs/search-platform-completion/p3-c03-p7-fk-cleanup-alias.md","purpose":"P3-C03 FK order and rollback acceptance mapped to P7-11"},
+    {"id":"p3-c04-alias","kind":"evidence","path":"docs/superpowers/programs/search-platform-completion/p3-c04-p7-pin-alias.md","purpose":"P3-C04 pin/read acceptance mapped to P7-10 and Graph recovery; full P7-12 restore remains downstream"},
+    {"id":"p3-d01-document","kind":"code","path":"docs/superpowers/programs/search-platform-completion/p3-d01-document-receipt.md","purpose":"P3-D01 durable Document staging integrated after P1/P6 outbox writers"},
+    {"id":"p3-d02-handoff","kind":"evidence","path":"docs/superpowers/programs/search-platform-completion/p3-d02-handoff-receipt.md","purpose":"P3-D02 focused oracle parity and production handoff"}
+  ],
+  "tasks": [
+    {
+      "id":"p3-impl-g01","kind":"impl","summary":"P3-G01 SQLx-free Graph records and ports",
+      "consumes":["p3-contract","p3-plan","p7-shared-contract","p7-shared-plan","p6-search-port-code"],
+      "produces":["p3-g01-ports"],
+      "write_scope":["crates/search-application/src/graph_generation.rs","crates/search-application/src/ports.rs","crates/search-application/src/lib.rs","crates/search-application/tests/graph_generation_port.rs"],
+      "acceptance":"Named graph_generation_port RED then GREEN. Public exports contain no SQLx types. Production full staging requires an opaque RegisteredFullBuildHandle and cannot insert its own parent; incremental handle and read lease are never authority without DB verification. Ephemeral retention and unscoped keys fail before storage."
+    },
+    {
+      "id":"p3-impl-g02","kind":"impl","summary":"P3-G02 backend-neutral canonical Graph encoder",
+      "consumes":["p3-contract","p3-plan","p3-g01-ports"],
+      "produces":["p3-g02-canonical"],
+      "write_scope":["crates/search-graph/Cargo.toml","crates/search-graph/src/lib.rs","crates/search-graph/src/canonical.rs","crates/search-graph/tests/canonical.rs","Cargo.toml","Cargo.lock"],
+      "acceptance":"Named canonical RED then GREEN; versioned length framing, n-ary participants, sorted sets and maps but ordered TypedValue::List, distinct None/empty, signed nanoseconds and offset round trip. Root Cargo/lock changes occur in one exclusive parent-assigned writer window; no selected backend dependency or DDL is added here."
+    },
+    {
+      "id":"p3-impl-g03","kind":"impl","summary":"P3-G03 selected PostgreSQL Graph schema and real role fence",
+      "consumes":["p3-contract","p3-plan","p3-native-review","p7-generation-schema","p3-g01-ports","p3-g02-canonical"],
+      "produces":["p3-g03-storage"],
+      "write_scope":["crates/search-graph/migrations/0001_search_graph_v1.sql","crates/search-graph/sql/roles.sql","crates/search-graph/src/migrate.rs","crates/search-graph/src/repository.rs","crates/search-graph/tests/migration.rs","crates/search-graph/tests/db_fence.rs"],
+      "acceptance":"Only after independently selected PG: additive Graph ledger/schema, P7 target composite FK, immutable parent binding, actual builder/reader/coordinator role tests and child mutation trigger. No second Source pointer, Search0001 writer or Document migration. RED then GREEN on disposable PG18.6."
+    },
+    {
+      "id":"p3-impl-g05","kind":"impl","summary":"P3-G05 Source-owned mapping and current Document access",
+      "consumes":["p3-contract","p3-plan","p3-g01-ports","p1-snapshot-code","p1-body-negative-code"],
+      "produces":["p3-g05-mapping"],
+      "write_scope":["crates/search-source-document/src/graph_mapping.rs","crates/search-source-document/src/postgres.rs","crates/search-source-document/src/lib.rs","crates/search-source-document/tests/durable_graph_document.rs"],
+      "acceptance":"Snapshot-bound Document/FolderPlacement/Version mapping digest and registered-source validator; same bare IDs across Sources cannot borrow ownership. Current Version/Part/raw/Read/publication and every n-ary participant are rechecked; missing or spoofed mapping fails. Focused real-Document-PG RED then GREEN."
+    },
+    {
+      "id":"p3-impl-g04","kind":"impl","summary":"P3-G04 registered child stage, typed validation and dual Graph golden",
+      "consumes":["p3-contract","p3-plan","p3-g01-ports","p3-g02-canonical","p3-g03-storage","p3-g05-mapping","p1-bundle-runtime-code","p7-generation-schema"],
+      "produces":["p3-g04-typed-validation","p3-dual-graph-golden"],
+      "write_scope":["crates/search-graph/src/stage.rs","crates/search-graph/tests/full_stage.rs","crates/search-graph/tests/dual_graph_digest.rs","docs/superpowers/programs/search-platform-completion/p3-dual-graph-mapping-golden.md"],
+      "acceptance":"Stage only children of a registered BUILDING parent; before P7-07, an isolated coordinator-role fixture registers parent/target/guard in one test transaction and cannot publish. Every batch checks P7 target/Graph parent/full guard/token/fence/DB expiry. Typed validator rereads all rows, attachments, owner mapping, counts and digest but final READY transition belongs to P7-08. Independently compute P1 Source-owned canonical_graph_staged_input_v1 and P3 Core canonical_graph_digest from the same typed records; save distinct raw-byte/golden vectors, reject copied digest, preserve local role, temporal List order and privacy. RED then GREEN under actual PG roles."
+    },
+    {
+      "id":"p3-alias-c01","kind":"audit","summary":"P3-C01 acceptance alias for one Source row and registered guards",
+      "consumes":["p6-coordination-review","p7-generation-schema","p7-full-guard-code","p7-graph-registration-code","p3-g03-storage","p3-g04-typed-validation"],
+      "produces":["p3-c01-alias"],
+      "write_scope":["docs/superpowers/programs/search-platform-completion/p3-c01-p7-registration-alias.md"],
+      "acceptance":"Cite real-PG P7-06/07 RED/GREEN for same Search0001 Source pointer and build_fence_seq, one-connection parent/target/guard registration, overflow and expiry rejection, guard before first copy. Audit only; no runtime row, guard port or DDL writer."
+    },
+    {
+      "id":"p3-impl-g06","kind":"impl","summary":"P3-G06 guarded incremental copy and complete relation closure",
+      "consumes":["p3-contract","p3-plan","p3-g02-canonical","p3-g03-storage","p3-g04-typed-validation","p3-g05-mapping","p3-c01-alias"],
+      "produces":["p3-g06-incremental"],
+      "write_scope":["crates/search-graph/src/incremental.rs","crates/search-graph/tests/incremental.rs"],
+      "acceptance":"No copy before P7-registered base/target guard. Each batch locks sorted generations then guard, checks token/fence/DB expiry/base receipt/committed cursor before commit; whole target digest is verified before delta. Relation-only same-ID replacement removes old incidence and complete closure matches full digest/path/evidence; unprovable closure requires full rebuild. RED then GREEN."
+    },
+    {
+      "id":"p3-impl-g08","kind":"impl","summary":"P3-G08 read-only recovery and corruption rejection",
+      "consumes":["p3-contract","p3-plan","p3-g02-canonical","p3-g04-typed-validation","p3-g05-mapping","p3-g06-incremental","p7-ready-code"],
+      "produces":["p3-g08-recovery"],
+      "write_scope":["crates/search-graph/src/recovery.rs","crates/search-graph/tests/recovery.rs"],
+      "acceptance":"Reopen READY with the same key, all rows/indexes, mapping and Graph digest; missing/corrupt data fails closed and rebuild uses a new key. Separate disposable PG dump/restore database preserves receipt and query. Graph-only recovery does not claim P7 lexical or whole-runtime restore. RED then GREEN."
+    },
+    {
+      "id":"p3-impl-g07","kind":"impl","summary":"P3-G07 P7-pin-gated n-ary reader and public-value nonleakage",
+      "consumes":["p3-contract","p3-plan","p3-g03-storage","p3-g05-mapping","p3-g04-typed-validation","p7-pin-code"],
+      "produces":["p3-g07-reader"],
+      "write_scope":["crates/search-graph/src/reader.rs","crates/search-graph/tests/retrieval.rs","crates/search-graph/tests/access_nonleak.rs"],
+      "acceptance":"Only P7-issued lease checked before snapshot and in fresh DB-clock transaction before return; every relation participant receives current Source Read before visible budget. Ordered hit/path/evidence matches memory oracle; hidden branches and missing/Denied/Unknown/Error do not leak public count/status/body. RED then GREEN and residual timing risk recorded."
+    },
+    {
+      "id":"p3-alias-c02","kind":"audit","summary":"P3-C02 acceptance alias for P7 atomic publish and guarded GC",
+      "consumes":["p7-publication-code","p7-gc-code","p3-g06-incremental"],
+      "produces":["p3-c02-alias"],
+      "write_scope":["docs/superpowers/programs/search-platform-completion/p3-c02-p7-publication-gc-alias.md"],
+      "acceptance":"Cite P7-09/11 real-PG CAS-loss guard retention, pointer+Search receipt+guard DELETE one commit, current/pin/base/target guard exclusion, expired cleanup rollback and copy/GC barrier. No P3 public publish or retirement implementation."
+    },
+    {
+      "id":"p3-alias-c03","kind":"audit","summary":"P3-C03 acceptance alias for P7 FK-safe cleanup",
+      "consumes":["p7-gc-code","p3-g03-storage","p3-c02-alias"],
+      "produces":["p3-c03-alias"],
+      "write_scope":["docs/superpowers/programs/search-platform-completion/p3-c03-p7-fk-cleanup-alias.md"],
+      "acceptance":"Cite actual RESTRICT-FK cleanup order: DELETING, matching guard DELETE, expired lease DELETE, Graph participant/relation/resource, P7 children, Graph/P7 parents in one transaction. Success has no 23503; injected child failure restores guard and target, stale copy/GC cannot observe an unguarded target. No second cleanup code."
+    },
+    {
+      "id":"p3-alias-c04","kind":"audit","summary":"P3-C04 acceptance alias for scoped pin and Graph read/recovery",
+      "consumes":["p7-pin-code","p7-publication-code","p3-g07-reader","p3-g08-recovery"],
+      "produces":["p3-c04-alias"],
+      "write_scope":["docs/superpowers/programs/search-platform-completion/p3-c04-p7-pin-alias.md"],
+      "acceptance":"Cite P7-10 real-PG actor/tenant/Source scoped pin, renew/return/release, two-process publish/pin and expiry during read, plus G08 Graph restart/restore. P7-12 full pointer/guard/lease/lexical restore remains a downstream qualification, not a second P3 pin writer."
+    },
+    {
+      "id":"p3-impl-d01","kind":"impl","summary":"P3-D01 durable Document staging after shared outbox writers",
+      "consumes":["p3-contract","p3-plan","p3-g04-typed-validation","p3-g05-mapping","p3-g06-incremental","p3-g07-reader","p7-publication-code","p1-reconcile-code","p6-indexer-code"],
+      "produces":["p3-d01-document"],
+      "write_scope":["crates/search-source-document/src/durable_graph.rs","crates/search-source-document/src/outbox.rs","crates/search-source-document/src/lib.rs","crates/search-source-document/tests/durable_graph_document.rs"],
+      "acceptance":"Serialized P1-B03/P6-S04 outbox integration; same authoritative snapshot/key for Projection, Unit, lexical and Graph. Full/incremental Document path uses Source-owned mapping/current access and P7 coordinator; no RAM GraphOwnership authority or generic delivered_at write. Real Document+Search PG RED then GREEN."
+    },
+    {
+      "id":"p3-impl-d02","kind":"verify","summary":"P3-D02 focused durable parity and integration handoff",
+      "consumes":["p3-contract","p3-plan","p3-g02-canonical","p3-g07-reader","p3-g08-recovery","p3-d01-document","p3-c01-alias","p3-c02-alias","p3-c03-alias","p3-c04-alias"],
+      "produces":["p3-d02-handoff"],
+      "write_scope":["crates/search-graph/tests/oracle_parity.rs","crates/search-source-document/tests/generation_races.rs","docs/superpowers/programs/search-platform-completion/p3-d02-handoff-receipt.md"],
+      "acceptance":"Durable-only RED then GREEN for identical Source snapshot full/incremental and memory-oracle hit/path/evidence/digest parity; focused graph/source/runtime suites, roles, barrier, fixture/migration hashes and independent review recorded. P7-12 whole-runtime restore and hosted exact-head remain separate gates."
+    }
+  ],
+  "existing_graph_rewrites_for_parent": [
+    {"task":"p7-impl-graph-registration","remove_consumes":["p3-code"],"add_consumes":["p3-g03-storage","p3-g04-typed-validation","p3-dual-graph-golden"],"reason":"P7-07 needs only selected Graph repository/registered child-stage seam; aggregate p3-code would cycle through P7 C aliases."},
+    {"task":"p7-impl-ready","add_consumes":["p3-g04-typed-validation","p3-dual-graph-golden","p1-bundle-runtime-code"],"reason":"P7-08 is the only final READY commit after two independently computed digest vectors."},
+    {"task":"p7-impl-gc","add_consumes":["p3-g06-incremental","p3-g03-storage"],"reason":"P7-11 needs Graph child/FK deletion and base/target copy guard semantics before physical GC."},
+    {"task":"p3-implement","replace_consumes":["p3-contract","p3-plan","p3-native-review","p3-d02-handoff"],"replace_write_scope":[],"replace_kind":"verify","reason":"Make legacy p3-code an aggregate completion gate only; physical code comes from bounded G/D tasks and P7 C owners."},
+    {"task":"p3-qualify","add_consumes":["p3-d02-handoff","p3-c04-alias"],"reason":"Focused qualification must trace the decomposed receipts."},
+    {"task":"p3-review-code","add_consumes":["p3-d02-handoff","p3-c01-alias","p3-c02-alias","p3-c03-alias","p3-c04-alias"],"reason":"Independent review examines actual P7 aliases and Graph/Document code without claiming P7 final E2E."}
+  ],
+  "validation": "Parent alone applies graph edits, then validates task-graph schema, missing artifact IDs, unique producers and topological order. This proposal has not run graph validation or any build/test/measurement."
+}

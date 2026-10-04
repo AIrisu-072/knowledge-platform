@@ -1,0 +1,22 @@
+# 仕事の手渡し: p4-review-trust
+
+- 種類: audit / 役: QualityAuditor / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Independently verify sealed trust mint and globally unique visible registry
+
+## 入力
+- `p4-trust-code` (crates/search-application/src/scoped.rs) — P4-02 sealed trusted actor and globally unique visible catalog [`p4-impl-trust` が作る (作業中)]
+- `p4-contract` (docs/superpowers/programs/search-platform-completion/p4-remote-freeze.md) — remote contract [`p4-freeze-architecture` が作る (済み)]
+- `p4-plan` (docs/superpowers/programs/search-platform-completion/p4-remote-plan.md) — remote plan [`p4-freeze` が作る (済み)]
+
+## 出すもの
+- `p4-trust-review` (docs/superpowers/programs/search-platform-completion/p4-trust-code-review.md) — Independent trust implementation scope mint visibility catalog gate
+
+## 受入条件
+No blocking P1 P2; private mint nonforgeable and production host trusted verifier usable; focused7tests evidence
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p4-trust-code-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

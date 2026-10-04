@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "G07 strict fixture terminal receipt, DRAFT; actual outer OS status is external",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "run_id", "test_launch_id", "case", "outcome", "cause", "expected_exit_code", "unknowns", "timeouts", "output_overflow", "registered_children", "observed_children", "owned_children_reaped", "database_cleanup_confirmed", "database", "children", "forced_expiry_labels"],
+  "properties": {
+    "schema_version": {"const": 1}, "run_id": {"$ref": "#/$defs/uuid"}, "test_launch_id": {"$ref": "#/$defs/uuid"},
+    "case": {"enum": ["last_claim_kill9_restart_reaps_unknown_once", "four_processes_disjoint_claims_and_recover_expired"]},
+    "outcome": {"enum": ["expected_red", "green"]},
+    "cause": {"enum": [null, "G07 child process path not wired"]}, "expected_exit_code": {"enum": [0, 101]},
+    "unknowns": {"type": "array", "maxItems": 0}, "timeouts": {"type": "array", "maxItems": 0}, "output_overflow": {"const": false},
+    "registered_children": {"enum": [1, 3, 5]}, "observed_children": {"enum": [1, 3, 5]},
+    "owned_children_reaped": {"const": true}, "database_cleanup_confirmed": {"const": true},
+    "database": {"type": "object", "additionalProperties": false, "required": ["cluster_system_identifier", "name", "oid", "owner", "create", "cleanup"], "properties": {"cluster_system_identifier": {"type": "string", "pattern": "^[1-9][0-9]*$"}, "name": {"type": "string", "pattern": "^p6_g07_[0-9a-f]{16}_[0-9a-f]{32}$"}, "oid": {"type": "integer", "minimum": 1, "maximum": 4294967295}, "owner": {"const": "agent"}, "create": {"const": "confirmed"}, "cleanup": {"const": "confirmed"}}},
+    "children": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"$ref": "#/$defs/child"}},
+    "forced_expiry_labels": {"oneOf": [{"type": "array", "maxItems": 0}, {"type": "array", "minItems": 1, "maxItems": 1, "items": {"const": "FORCED_BY_TEST_SQL"}}]}
+  },
+  "allOf": [
+    {"if": {"properties": {"outcome": {"const": "expected_red"}}}, "then": {"properties": {"case": {"const": "last_claim_kill9_restart_reaps_unknown_once"}, "cause": {"const": "G07 child process path not wired"}, "expected_exit_code": {"const": 101}, "registered_children": {"const": 1}, "observed_children": {"const": 1}, "children": {"minItems": 1, "maxItems": 1, "items": {"properties": {"mode": {"const": "claim"}, "exit_code": {"const": 101}, "exit_signal": {"type": "null"}}}}, "forced_expiry_labels": {"maxItems": 0}}}, "else": {"properties": {"cause": {"type": "null"}, "expected_exit_code": {"const": 0}, "forced_expiry_labels": {"minItems": 1}}}},
+    {"if": {"properties": {"outcome": {"const": "green"}, "case": {"const": "last_claim_kill9_restart_reaps_unknown_once"}}}, "then": {"properties": {"registered_children": {"const": 3}, "observed_children": {"const": 3}, "children": {"minItems": 3, "maxItems": 3}}}},
+    {"if": {"properties": {"case": {"const": "four_processes_disjoint_claims_and_recover_expired"}}}, "then": {"properties": {"outcome": {"const": "green"}, "registered_children": {"const": 5}, "observed_children": {"const": 5}, "children": {"minItems": 5, "maxItems": 5}}}}
+  ],
+  "$defs": {
+    "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "child": {"type": "object", "additionalProperties": false, "required": ["pid", "start_ticks", "uid", "executable", "executable_sha256", "executable_dev", "executable_inode", "mode", "owner", "handshake", "registered", "reaped_by_parent", "status", "exit_code", "exit_signal", "output_complete", "stdout_overflow", "stderr_overflow"], "properties": {"pid": {"type": "integer", "minimum": 1}, "start_ticks": {"type": "integer", "minimum": 1}, "uid": {"const": 1000}, "executable": {"type": "string", "pattern": "^/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-[0-9a-f]+$"}, "executable_sha256": {"$ref": "#/$defs/sha256"}, "executable_dev": {"type": "integer", "minimum": 1}, "executable_inode": {"type": "integer", "minimum": 1}, "mode": {"enum": ["claim", "reap"]}, "owner": {"$ref": "#/$defs/uuid"}, "handshake": {"$ref": "#/$defs/uuid"}, "registered": {"const": true}, "reaped_by_parent": {"const": true}, "status": {"const": "confirmed"}, "exit_code": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]}, "exit_signal": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]}, "output_complete": {"const": true}, "stdout_overflow": {"const": false}, "stderr_overflow": {"const": false}}, "oneOf": [{"properties": {"exit_code": {"type": "integer"}, "exit_signal": {"type": "null"}}}, {"properties": {"exit_code": {"type": "null"}, "exit_signal": {"type": "integer"}}}]}
+  },
+  "$comment": "Semantic validator also binds externally observed OS returncode and complete independent run/launch/case/database/child context, canonical DB runprefix, exact budget/concurrency and no missing children. This success schema cannot convert Unknown/failure receipts into success"
+}

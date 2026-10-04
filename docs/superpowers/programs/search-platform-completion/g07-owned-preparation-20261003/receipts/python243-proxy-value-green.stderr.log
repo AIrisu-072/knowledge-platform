@@ -1,0 +1,6 @@
+test_managed_proxy_value_requires_exact_loopback_http_integer_port (__main__.ManagedHttpsProxyTests.test_managed_proxy_value_requires_exact_loopback_http_integer_port) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+OK

@@ -1,0 +1,20 @@
+# 仕事の手渡し: p2-fix-neutral-core
+
+- 種類: impl / 役: Worker / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Fix whole immutable Unit seal parent relation and source retention missing-unit prohibition
+
+## 入力
+- `p2-neutral-core` (docs/superpowers/programs/search-platform-completion/p2-neutral-core.md) — p2-neutral-core [`p2-impl-neutral-core` が作る (済み)]
+- `p2-neutral-core-review` (docs/superpowers/programs/search-platform-completion/p2-neutral-core-review.md) — p2-neutral-core-review [`p2-review-neutral-core` が作る (済み)]
+- `p2-contract` (docs/superpowers/programs/search-platform-completion/p2-vector-freeze.md) — vector contract [`p2-freeze` が作る (済み)]
+
+## 出すもの
+- `p2-neutral-fixed-code` (docs/superpowers/programs/search-platform-completion/p2-neutral-core-fix.md) — Correct F1 whole Unit seal and F2 exact storage retention prohibition correspondence
+
+## 受入条件
+Meaningful old false READY RED wrongparent alteredkind/provenance and allowedUnit exclusion then focused GREEN with exact hash; no current Source authority minted
+
+## 守ること
+- 書いてよいのは `crates/search-core/src/vector.rs` / `crates/search-core/tests/vector_contract.rs` / `docs/superpowers/programs/search-platform-completion/p2-neutral-core-fix.md` だけ。他は触らない。

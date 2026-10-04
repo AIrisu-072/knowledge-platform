@@ -1,0 +1,20 @@
+# 仕事の手渡し: p4-http-poc
+
+- 種類: spike / 役: Worker / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Measure guarded real TCP HTTP client and qualify exact dependency
+
+## 入力
+- `p4-contract` (docs/superpowers/programs/search-platform-completion/p4-remote-freeze.md) — remote contract [`p4-freeze-architecture` が作る (済み)]
+
+## 出すもの
+- `p4-http-poc-code` (experiments/search-http-client-poc) — Isolated real TCP transport qualification code
+- `p4-http-selection` (experiments/search-http-client-poc/report.md) — Measured exact HTTP client selection
+
+## 受入条件
+Pinned exact client real transport negative canaries and licenses advisory source qualification recorded; no root production dependency
+
+## 守ること
+- 書いてよいのは `experiments/search-http-client-poc` / `spec/selection/library-tool-selection-v0.md` だけ。他は触らない。
+- 使う資源: `selection-catalog`。奪い合う相手が居る。

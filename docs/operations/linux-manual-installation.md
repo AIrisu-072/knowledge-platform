@@ -296,6 +296,7 @@ chmod 600 "$KP_HOME/config/restore.env"
 現在の統合注意点:
 
 - Document/Orgには `0009_document_revisions_v0.sql` と `0010_document_version_updated_at.sql`、Search PR40には同じmigration列の `0009_outbox_delivery_v0.sql` がある。単純統合ではversion 9が重複する。適用済み台帳を調べ、互換方針と統合試験を確定するまで同一DBへ適用しない
+- 2026年10月4日の別統合候補ではDocument9/10を保持し、OutboxのSQL本文を変えず11へ配置する。[判断記録](../decisions/2026-10-04-search-main-migration-integration.md)と[旧Search9・不明履歴のSTOP条件](search-main-migration-stop.md)を参照。本書の固定releaseに候補SHAだけを差し替える許可ではなく、実環境に旧Search9がないことも未証明
 - 新Agent sliceは別branchで進行中。本書の基点はWork 0001〜0003のみ。TODO：受入済みAgent commit、Work 0004の内容・互換性・新設定・停止/回復経路を確認してから手順を更新する。外部モデルが動くと推測しない
 
 ## 11 本番利用開始までの未達項目

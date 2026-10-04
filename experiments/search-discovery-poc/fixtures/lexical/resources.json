@@ -1,0 +1,14 @@
+[
+  {"id":"loan-corp","title":"法人向け融資の申込手順","aliases":["法人融資申込","事業性融資手続","融資"],"kind":"workflow","audience":"corporate","summary":"法人の事業性融資を申し込むための手順。"},
+  {"id":"loan-personal","title":"個人向け融資の申込手順","aliases":["個人融資申込","融資"],"kind":"workflow","audience":"personal","summary":"個人の融資申込手順。"},
+  {"id":"deposit-corp","title":"法人向け預金口座の管理手順","aliases":["法人預金","預金"],"kind":"workflow","audience":"corporate","summary":"法人の預金口座を管理する手順。"},
+  {"id":"deposit-personal","title":"個人向け預金口座の管理手順","aliases":["個人預金","預金"],"kind":"workflow","audience":"personal","summary":"個人の預金口座を管理する手順。"},
+  {"id":"address-corp","title":"法人の所在地変更手順","aliases":["法人住所変更"],"kind":"workflow","audience":"corporate","summary":"法人の住所と所在地を変更する手順。"},
+  {"id":"address-personal","title":"個人の住所変更手順","aliases":["個人住所変更"],"kind":"workflow","audience":"personal","summary":"個人の住所変更を届け出る手順。"},
+  {"id":"credit-policy","title":"融資審査規程","aliases":["融資審査規程"],"kind":"policy","audience":"any","summary":"融資審査の規程。"},
+  {"id":"credit-procedure","title":"融資審査手順","aliases":["融資審査手順"],"kind":"workflow","audience":"any","summary":"融資審査の作業手順。"},
+  {"id":"credit-manual","title":"融資マニュアル","aliases":["融資マニュアル"],"kind":"knowledge","audience":"any","summary":"融資業務の参照マニュアル。"},
+  {"id":"api-manual","title":"API 2026-04 融資連携マニュアル","aliases":["API 2026-04 融資連携マニュアル"],"kind":"knowledge","audience":"any","summary":"API版番号と日付を含む連携仕様のマニュアル。"},
+  {"id":"katakana-guide","title":"コーポレート表記ガイド","aliases":["カタカナ表記"],"kind":"knowledge","audience":"corporate","summary":"カタカナとASCIIを混ぜた表記のガイド。"},
+  {"id":"deposit-manual","title":"預金窓口マニュアル","aliases":["預金マニュアル"],"kind":"knowledge","audience":"any","summary":"預金窓口で使う参照マニュアル。"}
+]

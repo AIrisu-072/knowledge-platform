@@ -1,5 +1,18 @@
 [workspace]
 members = [
+  "crates/outbox-delivery",
+  "crates/document-sandbox-runner",
+  "crates/search-runtime",
+  "crates/search-core",
+  "crates/search-extraction-core",
+  "crates/search-extraction-runner",
+  "crates/search-extraction-worker",
+  "crates/search-application",
+  "crates/search-projection-memory",
+  "crates/search-tantivy",
+  "crates/search-graph-memory",
+  "crates/search-source-document",
+  "crates/search-evaluation",
   "crates/document-domain",
   "crates/document-application",
   "crates/document-api-http",
@@ -34,7 +47,7 @@ thiserror = "=2.0.21"
 libc = "=0.2.189"
 landlock = "=0.4.7"
 seccompiler = "=0.5.0"
-tokio = { version = "1", features = ["fs", "io-util", "macros", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1", features = ["fs", "io-util", "macros", "rt-multi-thread", "signal", "sync", "time"] }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "migrate", "macros", "uuid", "json", "time"] }
 uuid = { version = "1", features = ["v7", "serde"] }
 sha2 = "0.11"
@@ -63,8 +76,11 @@ xml-sec = "=0.1.16"
 cms = { version = "=0.2.3", features = ["std", "sha2", "signature"] }
 x509-cert = "=0.2.5"
 openssl = { version = "=0.10.81", features = ["vendored"] }
+tantivy = "=0.26.2"
 
 [patch.crates-io]
 # Task 6: exact ovba 0.7.1 source with bounded decode and strict dir consumption.
 # Source provenance and the scoped hardening diff are recorded under third_party.
 ovba = { path = "third_party/document-semantic-inspection/ovba-0.7.1" }
+# Reviewed 0.26.2 archive with lru pinned to fixed 0.18.2.
+tantivy = { path = "third_party/search/tantivy-0.26.2" }

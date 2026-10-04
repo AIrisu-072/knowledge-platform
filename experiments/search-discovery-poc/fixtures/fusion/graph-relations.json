@@ -1,0 +1,4 @@
+[
+  {"id":"fusion-loan-workflow","namespace":"discovery","relation_type":"workflow_for_product","participants":[{"role":"source","resource_id":"company-a"},{"role":"product","resource_id":"product-b"},{"role":"workflow","resource_id":"loan-corp"}]},
+  {"id":"fusion-deposit-workflow","namespace":"discovery","relation_type":"workflow_for_product","participants":[{"role":"source","resource_id":"company-a"},{"role":"product","resource_id":"deposit-product"},{"role":"workflow","resource_id":"deposit-corp"}]}
+]

@@ -1,0 +1,19 @@
+# 仕事の手渡し: p6-fix-policy-bounds
+
+- 種類: impl / 役: Worker / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Constrain v0 DB policy to explicit finite operational bounds
+
+## 入力
+- `p6-domain-schema` (crates/document-repository-postgres/migrations/0009_outbox_delivery_v0.sql) — p6-domain-schema [`p6-migrate-domain` が作る (未着手)]
+- `p6-review-domain-artifact` (docs/superpowers/programs/search-platform-completion/p6-domain-migration-review.md) — Independent Domain additive migration constraints and preservation review [`p6-review-domain` が作る (済み)]
+
+## 出すもの
+- `p6-fix-policy-bounds-artifact` (docs/superpowers/programs/search-platform-completion/p6-policy-bounds-fix-receipt.md) — Constrain v0 DB policy to explicit finite operational bounds
+
+## 受入条件
+Exact named finding closure and scoped fresh evidence; no unverified qualification claim
+
+## 守ること
+- 書いてよいのは `crates/document-repository-postgres/migrations/0009_outbox_delivery_v0.sql` / `crates/document-repository-postgres/tests/outbox_delivery_migration.rs` だけ。他は触らない。

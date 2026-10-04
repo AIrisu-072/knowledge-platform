@@ -1,0 +1,127 @@
+{
+  "base_commit": "0610b49327cd3c1c37e385281f087423c27b5638",
+  "source_files": [
+    {
+      "path": "Cargo.lock",
+      "sha256": "ac73951d91f1e49919257b441dbe52509aa4c5296197c49cea21945f6d1869ee"
+    },
+    {
+      "path": "crates/search-application/src/source_registration.rs",
+      "sha256": "30c0d6c8e658a344fec73a8776903e024c309a1a4a1ac6e07e015b1a33e336ca"
+    },
+    {
+      "path": "crates/search-application/tests/source_neutral_catalog_contract.rs",
+      "sha256": "3c5c264b48c4641d502755e8d4c2ac3d7279b7420058df3d59410df68c6350e5"
+    },
+    {
+      "path": "crates/search-runtime/Cargo.toml",
+      "sha256": "af5a8a1217de68655a3c7c14f901dae588e91cbd17cca4208c2e3cb7716cc103"
+    },
+    {
+      "path": "crates/search-runtime/src/lib.rs",
+      "sha256": "a59f79891a678da7bff6b771fe6a066e69fe6ce54e0d73f5a990343af079cadc"
+    },
+    {
+      "path": "crates/search-runtime/src/source_registration.rs",
+      "sha256": "db671d29458406b0e81b7db3186925036da026fb1e3e832021d75f0a18b646c1"
+    },
+    {
+      "path": "crates/search-runtime/src/source_lease.rs",
+      "sha256": "61b227f6e78b34d0cbc867c63ccf2e057c0f83e5d64dba4038dbb264f3bd6606"
+    },
+    {
+      "path": "crates/search-runtime/tests/source_registration.rs",
+      "sha256": "e75a11981136aeafded12ad7d310ff354250b9b762bf82609b9b90945220b4e4"
+    },
+    {
+      "path": "crates/search-runtime/tests/source_lease.rs",
+      "sha256": "e3f5951175111855f2bc01a3660bf54fdf07802600c4c46b5839bbc790b787b1"
+    },
+    {
+      "path": "crates/search-runtime/tests/support/registration.rs",
+      "sha256": "a7214359b79da708c3f3010728d3433fdc888ded4acc7a42b3bcbdf4d774c525"
+    },
+    {
+      "path": "crates/search-runtime/migrations/0001_search_source_coordination_v0.sql",
+      "sha256": "a9904c78307c5ae39099021569639f28ea08c99f7f65a9f60a51bf89bd1cc5a4"
+    },
+    {
+      "path": "crates/search-runtime/migrations/0002_search_source_ownership_v1.sql",
+      "sha256": "a2abe81f2233267ff909af629f6571f68c1af36e52fd08670cf1f75daf8ff1ca"
+    },
+    {
+      "path": "crates/search-runtime/migrations/0003_search_generation_v1.sql",
+      "sha256": "7b9adab03614e7533b880025e3efdf9248b2947be2d6695a2949cf269ccdb84b"
+    }
+  ],
+  "verification_logs": [
+    {
+      "file": "search-p7-negative-control-20261004.log",
+      "sha256": "06475cf9ed91dde825baab4ecec0c27973c9778acf74a41631df231b621c11d5",
+      "exit_code": 101
+    },
+    {
+      "file": "search-p7-pure-final-20261004.log",
+      "sha256": "c00b4a9251cba7c4d4a31478ad30678fad963533b43fa89c5098a50de9070b8d",
+      "exit_code": 0
+    },
+    {
+      "file": "search-p7-lease-pure1-20261004.log",
+      "sha256": "811d429953ddc37588b805eee03f614e491c13a4a975c23e13b023c862fb3aba",
+      "exit_code": 0
+    },
+    {
+      "file": "search-p7-lease-pure2-20261004.log",
+      "sha256": "23b59b87f669ec5c152503118843215ca967da1832784251dc30c538fb4f0101",
+      "exit_code": 0
+    },
+    {
+      "file": "search-p7-app-20261004.log",
+      "sha256": "4538ece6f83a6b09655b8ace0a06b479037b25b8e7e0b60b65dd18b4f4722dce",
+      "exit_code": 0
+    },
+    {
+      "file": "search-p7-app-doc-20261004.log",
+      "sha256": "34d0b23e443cefaccb1b7f2b583a4897ead6fa578613109cb9acc7c1c1d69d18",
+      "exit_code": 0
+    },
+    {
+      "file": "search-p7-compile-final-20261004.log",
+      "sha256": "e1f68b4180e1b0613e332ca2ea1499797aa647eec2050861c365a0d8484e66f7",
+      "exit_code": 0
+    },
+    {
+      "file": "search-p7-clippy-final-20261004.log",
+      "sha256": "842876ca91539651ed51860f53a2bee690ddd9f4cea86a384edce89c890f25a8",
+      "exit_code": 0
+    },
+    {
+      "file": "search-p7-fmt-final-20261004.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exit_code": 0
+    },
+    {
+      "file": "search-p7-fmt-red-20261004.log",
+      "sha256": "3f31859191d9854e4d55e6a41094d333ea6bb6acfb262df00a6d8d024bb76ea1",
+      "exit_code": 1
+    }
+  ],
+  "results": {
+    "runtime_pure": 6,
+    "lease_without_io": 2,
+    "application_source_neutral": 22,
+    "application_scoped": 13,
+    "application_ports": 4,
+    "application_compile_fail": 3,
+    "runtime_registration_db_not_run": 18,
+    "runtime_lease_db_not_run": 6
+  },
+  "limits": [
+    "実DB・Docker・socket・listenerを実行していない",
+    "mutation負の対照は実装前のREDを意味しない",
+    "Source registryの本番ホスト完全性と起動許可はR01P/R02/P7-12の未完了ゲート",
+    "初回compileの未使用警告2件は修正済み、最終strict Clippy成功",
+    "commit errorのDBケースは通信中の応答喪失を実証しない",
+    "最終compile後に登録testのimport改行だけをrustfmtで修正した。単独fmt checkは1→0、意味を変えるRust変更なし"
+  ]
+}

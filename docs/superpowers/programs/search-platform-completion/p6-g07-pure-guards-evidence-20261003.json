@@ -1,0 +1,1407 @@
+{
+  "schema_version": 1,
+  "scope": "G07 pure fixture/launcher guard preparation only; real process cases remain unwired",
+  "source_commit": "fda5ff8a77cb7e237d55665c532134392267a651",
+  "source_tree": "14c66619732559e3403eaea096cb297afc142c9d",
+  "source_sha256": {
+    "crates/outbox-delivery/tests/process_recovery.rs": "56ace805d42c7b7474f0ff9e162803ac1c76191f2bdd25e6a8635b202ce46658",
+    "crates/outbox-delivery/tests/support/postgres.rs": "43a2d78441a5b1744003d360a745c053495a0a796e0a7cfec7d78829482b6137"
+  },
+  "pure_policy_before_supplemental_correction": "78787641a4967531bc850fe510bd5ec150f2c59207ab6dab3e2db9373870c0dc",
+  "original_python_tests_sha256": "2985730bfa0945b022860a6f5a12d0eff138a74bbf5226942238cc4ae0644b6f",
+  "supplemental_python_tests_sha256": "f0644f46310d27adf93741b7d310debce7d11ee562a096bf42a6cf347d4145db",
+  "runs": [
+    {
+      "local_evidence_directory": "g07-pure-4vvz8tnj",
+      "terminal_sha256": "fc11b55856326ef5377f82079a238e2445292997528ce0914e66b4375419198b",
+      "scope": "G07 pure RED only",
+      "status": "expected-red-observed",
+      "error": null,
+      "test_executable": {
+        "path": "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+        "sha256": "d9c556ba71e562700a58eba0311e2318f52320ede949015ad9896b3e43449471"
+      },
+      "results": [
+        {
+          "label": "python-red",
+          "argv": [
+            "/usr/bin/python3.13",
+            "-I",
+            "-B",
+            "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_policy.py"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-launcher",
+          "deadline_seconds": 30,
+          "returncode": 1,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-4vvz8tnj/python-red.stdout.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-4vvz8tnj/python-red.stderr.log",
+              "sha256": "552a84cbe6d52cf3b9f0f3553a8ace947f8a9c613c6e8bad32759896d70a5ed5",
+              "bytes": 45477
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 22,
+            "state": "R",
+            "pgrp": 22,
+            "session": 22,
+            "start_ticks": 2472698
+          },
+          "elapsed_seconds": 0.104,
+          "minimum_free_bytes": 25222705152
+        },
+        {
+          "label": "rust-compile",
+          "argv": [
+            "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin/cargo",
+            "test",
+            "--locked",
+            "--offline",
+            "-j",
+            "2",
+            "-p",
+            "outbox-delivery",
+            "--test",
+            "process_recovery",
+            "--no-run",
+            "--message-format=json-render-diagnostics"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 600,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-4vvz8tnj/rust-compile.stdout.log",
+              "sha256": "11a1519c7c3aba3f511f22a01742bf7b6d56c09bee5fe308940584b4c442c1ca",
+              "bytes": 282633
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-4vvz8tnj/rust-compile.stderr.log",
+              "sha256": "3e3004ae8ebe452160750146750ee21cc72d07a5702f7d108cae136fc2273b1a",
+              "bytes": 9104
+            }
+          },
+          "environment_keys": [
+            "CARGO_HOME",
+            "CARGO_INCREMENTAL",
+            "CARGO_NET_OFFLINE",
+            "CARGO_PROFILE_DEV_DEBUG",
+            "CARGO_PROFILE_TEST_DEBUG",
+            "CARGO_TARGET_DIR",
+            "CARGO_TERM_COLOR",
+            "HOME",
+            "LC_ALL",
+            "PATH",
+            "RUSTC",
+            "RUST_BACKTRACE",
+            "SQLX_OFFLINE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 4194304,
+          "leader_identity": {
+            "pid": 40,
+            "state": "R",
+            "pgrp": 40,
+            "session": 40,
+            "start_ticks": 2472754
+          },
+          "elapsed_seconds": 68.522,
+          "minimum_free_bytes": 24397221888
+        },
+        {
+          "label": "g07_fixture_configuration_fails_closed",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_fixture_configuration_fails_closed",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 101,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-4vvz8tnj/g07_fixture_configuration_fails_closed.stdout.log",
+              "sha256": "d3508831958771ee1e9b21d09123c385f706cd21acdb10ff6420a3e417604097",
+              "bytes": 585
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-4vvz8tnj/g07_fixture_configuration_fails_closed.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 3886,
+            "state": "R",
+            "pgrp": 3886,
+            "session": 3886,
+            "start_ticks": 2479689
+          },
+          "elapsed_seconds": 0.173,
+          "minimum_free_bytes": 24371863552
+        },
+        {
+          "label": "g07_cleanup_requires_exact_owned_identity",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_cleanup_requires_exact_owned_identity",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 101,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-4vvz8tnj/g07_cleanup_requires_exact_owned_identity.stdout.log",
+              "sha256": "0278aff7bbd8be9a3f80514a587449ccff6094204bb6b010bc67b29cf79fe8d4",
+              "bytes": 770
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-4vvz8tnj/g07_cleanup_requires_exact_owned_identity.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 3905,
+            "state": "R",
+            "pgrp": 3905,
+            "session": 3905,
+            "start_ticks": 2479783
+          },
+          "elapsed_seconds": 0.173,
+          "minimum_free_bytes": 24371777536
+        },
+        {
+          "label": "g07_unknown_database_outcome_is_not_success",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_unknown_database_outcome_is_not_success",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 101,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-4vvz8tnj/g07_unknown_database_outcome_is_not_success.stdout.log",
+              "sha256": "80faf3328e664b6834700b7cbac6a7d0f0cbf4b2914c26d8e2e8d11cbaf936eb",
+              "bytes": 615
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-4vvz8tnj/g07_unknown_database_outcome_is_not_success.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 3924,
+            "state": "R",
+            "pgrp": 3924,
+            "session": 3924,
+            "start_ticks": 2479877
+          },
+          "elapsed_seconds": 0.171,
+          "minimum_free_bytes": 24371699712
+        },
+        {
+          "label": "g07_deadlines_do_not_restart_between_phases",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_deadlines_do_not_restart_between_phases",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 101,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-4vvz8tnj/g07_deadlines_do_not_restart_between_phases.stdout.log",
+              "sha256": "55781baffaedcba135ecb79e3ff2e7495ddedd1881d14360fc5804d1b38ab5e1",
+              "bytes": 625
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-4vvz8tnj/g07_deadlines_do_not_restart_between_phases.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 3943,
+            "state": "R",
+            "pgrp": 3943,
+            "session": 3943,
+            "start_ticks": 2479970
+          },
+          "elapsed_seconds": 0.173,
+          "minimum_free_bytes": 24371621888
+        },
+        {
+          "label": "g07_child_environment_is_allowlisted",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_child_environment_is_allowlisted",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 101,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-4vvz8tnj/g07_child_environment_is_allowlisted.stdout.log",
+              "sha256": "a15905fc25ba252a4ec31d48cf9859fe2c9858d477dbb45756adf9437d6a2796",
+              "bytes": 529
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-4vvz8tnj/g07_child_environment_is_allowlisted.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 3962,
+            "state": "R",
+            "pgrp": 3962,
+            "session": 3962,
+            "start_ticks": 2480066
+          },
+          "elapsed_seconds": 0.173,
+          "minimum_free_bytes": 24371535872
+        },
+        {
+          "label": "g07_child_output_is_bounded_and_kill_targets_owned_handle",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_child_output_is_bounded_and_kill_targets_owned_handle",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 101,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-4vvz8tnj/g07_child_output_is_bounded_and_kill_targets_owned_handle.stdout.log",
+              "sha256": "79bdb6ccb654cee3db31bf341bb51db9e5d49e03f13cff1df510e50fe7a9e89f",
+              "bytes": 1309
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-4vvz8tnj/g07_child_output_is_bounded_and_kill_targets_owned_handle.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 3981,
+            "state": "R",
+            "pgrp": 3981,
+            "session": 3981,
+            "start_ticks": 2480162
+          },
+          "elapsed_seconds": 0.18,
+          "minimum_free_bytes": 24371458048
+        }
+      ]
+    },
+    {
+      "local_evidence_directory": "g07-pure-green-i_d0ojyr",
+      "terminal_sha256": "ec5877ba7c386bd731d2e72a25f9d6618b0b8e7db01a10be404283d6007470fe",
+      "scope": "G07 pure GREEN only",
+      "status": "pure-green-observed",
+      "error": null,
+      "test_executable": {
+        "path": "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+        "sha256": "50bce4a7d94ad18408daef0b28437f81d3f6ea5884ee5a6ba1a73396f30d0c16"
+      },
+      "results": [
+        {
+          "label": "python-green",
+          "argv": [
+            "/usr/bin/python3.13",
+            "-I",
+            "-B",
+            "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_policy.py"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-launcher",
+          "deadline_seconds": 30,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-green-i_d0ojyr/python-green.stdout.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-green-i_d0ojyr/python-green.stderr.log",
+              "sha256": "2ecae1a8072ed37dc9d223093f700f6f17588f93b66b1d69e911fb8763ecb1c1",
+              "bytes": 7188
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 22,
+            "state": "R",
+            "pgrp": 22,
+            "session": 22,
+            "start_ticks": 2542583
+          },
+          "elapsed_seconds": 0.184,
+          "minimum_free_bytes": 24370999296
+        },
+        {
+          "label": "rust-compile",
+          "argv": [
+            "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin/cargo",
+            "test",
+            "--locked",
+            "--offline",
+            "-j",
+            "2",
+            "-p",
+            "outbox-delivery",
+            "--test",
+            "process_recovery",
+            "--no-run",
+            "--message-format=json-render-diagnostics"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 600,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-green-i_d0ojyr/rust-compile.stdout.log",
+              "sha256": "e85d680871101ba99b4f43bf958a558c8c356a216433977239c8694b256c3014",
+              "bytes": 282339
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-green-i_d0ojyr/rust-compile.stderr.log",
+              "sha256": "f950c29d0ae60d1e49ac45924c61d0b131f90f04f3010d1d9af5353b06962e2a",
+              "bytes": 180
+            }
+          },
+          "environment_keys": [
+            "CARGO_HOME",
+            "CARGO_INCREMENTAL",
+            "CARGO_NET_OFFLINE",
+            "CARGO_PROFILE_DEV_DEBUG",
+            "CARGO_PROFILE_TEST_DEBUG",
+            "CARGO_TARGET_DIR",
+            "CARGO_TERM_COLOR",
+            "HOME",
+            "LC_ALL",
+            "PATH",
+            "RUSTC",
+            "RUST_BACKTRACE",
+            "SQLX_OFFLINE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 4194304,
+          "leader_identity": {
+            "pid": 40,
+            "state": "R",
+            "pgrp": 40,
+            "session": 40,
+            "start_ticks": 2542677
+          },
+          "elapsed_seconds": 2.691,
+          "minimum_free_bytes": 24357310464
+        },
+        {
+          "label": "g07_fixture_configuration_fails_closed",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_fixture_configuration_fails_closed",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-green-i_d0ojyr/g07_fixture_configuration_fails_closed.stdout.log",
+              "sha256": "8d61b8ab6ad03be5094ff59fde714d136311b512f20a7ed3ae059e3e247a2a9b",
+              "bytes": 163
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-green-i_d0ojyr/g07_fixture_configuration_fails_closed.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 96,
+            "state": "R",
+            "pgrp": 96,
+            "session": 96,
+            "start_ticks": 2543025
+          },
+          "elapsed_seconds": 0.177,
+          "minimum_free_bytes": 24370475008
+        },
+        {
+          "label": "g07_cleanup_requires_exact_owned_identity",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_cleanup_requires_exact_owned_identity",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-green-i_d0ojyr/g07_cleanup_requires_exact_owned_identity.stdout.log",
+              "sha256": "060def666719876354120a255d3580b38c4bcc5fbf1dbe598c424a7428dd5afb",
+              "bytes": 166
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-green-i_d0ojyr/g07_cleanup_requires_exact_owned_identity.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 115,
+            "state": "R",
+            "pgrp": 115,
+            "session": 115,
+            "start_ticks": 2543122
+          },
+          "elapsed_seconds": 0.185,
+          "minimum_free_bytes": 24370388992
+        },
+        {
+          "label": "g07_unknown_database_outcome_is_not_success",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_unknown_database_outcome_is_not_success",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-green-i_d0ojyr/g07_unknown_database_outcome_is_not_success.stdout.log",
+              "sha256": "ec6301af2e0c14d6d839944b3e0d3b5681185a78516261e78db080e2992640e0",
+              "bytes": 168
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-green-i_d0ojyr/g07_unknown_database_outcome_is_not_success.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 134,
+            "state": "R",
+            "pgrp": 134,
+            "session": 134,
+            "start_ticks": 2543218
+          },
+          "elapsed_seconds": 0.181,
+          "minimum_free_bytes": 24370311168
+        },
+        {
+          "label": "g07_deadlines_do_not_restart_between_phases",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_deadlines_do_not_restart_between_phases",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-green-i_d0ojyr/g07_deadlines_do_not_restart_between_phases.stdout.log",
+              "sha256": "6ab6afdbb74ed3040afb5e2633d5163f000047c9b8af96402169d5ea8ff0bca9",
+              "bytes": 168
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-green-i_d0ojyr/g07_deadlines_do_not_restart_between_phases.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 153,
+            "state": "R",
+            "pgrp": 153,
+            "session": 153,
+            "start_ticks": 2543314
+          },
+          "elapsed_seconds": 0.179,
+          "minimum_free_bytes": 24370233344
+        },
+        {
+          "label": "g07_child_environment_is_allowlisted",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_child_environment_is_allowlisted",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-green-i_d0ojyr/g07_child_environment_is_allowlisted.stdout.log",
+              "sha256": "50bbda28528844a8104334b0e59aed561e6bed7a48add455ec90cfc696331583",
+              "bytes": 161
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-green-i_d0ojyr/g07_child_environment_is_allowlisted.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 172,
+            "state": "R",
+            "pgrp": 172,
+            "session": 172,
+            "start_ticks": 2543410
+          },
+          "elapsed_seconds": 0.18,
+          "minimum_free_bytes": 24370151424
+        },
+        {
+          "label": "g07_child_output_is_bounded_and_kill_targets_owned_handle",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_child_output_is_bounded_and_kill_targets_owned_handle",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-green-i_d0ojyr/g07_child_output_is_bounded_and_kill_targets_owned_handle.stdout.log",
+              "sha256": "27127c6d112317a850fc7ea8cec0fabccbf2e833d785234866883934104ef5c0",
+              "bytes": 182
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-green-i_d0ojyr/g07_child_output_is_bounded_and_kill_targets_owned_handle.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 191,
+            "state": "R",
+            "pgrp": 191,
+            "session": 191,
+            "start_ticks": 2543506
+          },
+          "elapsed_seconds": 0.185,
+          "minimum_free_bytes": 24370069504
+        }
+      ]
+    },
+    {
+      "local_evidence_directory": "g07-pure-quality-h0995wvk",
+      "terminal_sha256": "9bd5ee41c09b960a7bf476234abc0cea0c8967877d6baf75c4a85b90eb508561",
+      "scope": "G07 targeted compile/format/diff only",
+      "status": "stopped",
+      "error": "RuntimeError: quality check failed: selected-clippy",
+      "test_executable": null,
+      "results": [
+        {
+          "label": "selected-clippy",
+          "argv": [
+            "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin/cargo",
+            "clippy",
+            "--locked",
+            "--offline",
+            "-j",
+            "2",
+            "-p",
+            "outbox-delivery",
+            "--test",
+            "process_recovery",
+            "--",
+            "-D",
+            "warnings"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 600,
+          "returncode": 101,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-quality-h0995wvk/selected-clippy.stdout.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-quality-h0995wvk/selected-clippy.stderr.log",
+              "sha256": "c79c777d765a2fca73d4a23d141696f4a72e929fe6cca4b98bcf12e04651f1c8",
+              "bytes": 7682
+            }
+          },
+          "environment_keys": [
+            "CARGO_HOME",
+            "CARGO_INCREMENTAL",
+            "CARGO_NET_OFFLINE",
+            "CARGO_PROFILE_DEV_DEBUG",
+            "CARGO_PROFILE_TEST_DEBUG",
+            "CARGO_TARGET_DIR",
+            "CARGO_TERM_COLOR",
+            "HOME",
+            "LC_ALL",
+            "PATH",
+            "RUSTC",
+            "RUST_BACKTRACE",
+            "SQLX_OFFLINE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 37,
+            "state": "R",
+            "pgrp": 37,
+            "session": 37,
+            "start_ticks": 2581917
+          },
+          "elapsed_seconds": 30.515,
+          "minimum_free_bytes": 24231530496
+        }
+      ]
+    },
+    {
+      "local_evidence_directory": "g07-pure-checkpoint-q461sv3u",
+      "terminal_sha256": "30e41bfcfe408fa85da53687cec31d3c04750833f0181f3bdcb24c47ad98652a",
+      "scope": "G07 pure checkpoint only",
+      "status": "pure-regression-quality-green-and-supplemental-red-observed",
+      "error": null,
+      "test_executable": {
+        "path": "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+        "sha256": "110da64de4356eb22a9b191f4a446ededab104e14e9a630ea723f817f1278498"
+      },
+      "results": [
+        {
+          "label": "python-green",
+          "argv": [
+            "/usr/bin/python3.13",
+            "-I",
+            "-B",
+            "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_policy.py"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-launcher",
+          "deadline_seconds": 30,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/python-green.stdout.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/python-green.stderr.log",
+              "sha256": "2ecae1a8072ed37dc9d223093f700f6f17588f93b66b1d69e911fb8763ecb1c1",
+              "bytes": 7188
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 22,
+            "state": "R",
+            "pgrp": 22,
+            "session": 22,
+            "start_ticks": 2640083
+          },
+          "elapsed_seconds": 0.231,
+          "minimum_free_bytes": 24225349632
+        },
+        {
+          "label": "python-integration-red",
+          "argv": [
+            "/usr/bin/python3.13",
+            "-I",
+            "-B",
+            "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_integration.py"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-launcher",
+          "deadline_seconds": 30,
+          "returncode": 1,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/python-integration-red.stdout.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/python-integration-red.stderr.log",
+              "sha256": "a0db90f7a7d7b18003db47ab4bb8073c02aa44b241ef302f5660a1efe65ce121",
+              "bytes": 24424
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 40,
+            "state": "R",
+            "pgrp": 40,
+            "session": 40,
+            "start_ticks": 2640188
+          },
+          "elapsed_seconds": 0.227,
+          "minimum_free_bytes": 24225267712
+        },
+        {
+          "label": "rust-compile",
+          "argv": [
+            "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin/cargo",
+            "test",
+            "--locked",
+            "--offline",
+            "-j",
+            "2",
+            "-p",
+            "outbox-delivery",
+            "--test",
+            "process_recovery",
+            "--no-run",
+            "--message-format=json-render-diagnostics"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 600,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/rust-compile.stdout.log",
+              "sha256": "20774cf6ed7d838fd212e71320bfb08214ee6ba89e4278514587b482c132f816",
+              "bytes": 282339
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/rust-compile.stderr.log",
+              "sha256": "4fd65a01b08756a21546e3b045b6d660328111edd90d555220c4c32ac850f0d0",
+              "bytes": 180
+            }
+          },
+          "environment_keys": [
+            "CARGO_HOME",
+            "CARGO_INCREMENTAL",
+            "CARGO_NET_OFFLINE",
+            "CARGO_PROFILE_DEV_DEBUG",
+            "CARGO_PROFILE_TEST_DEBUG",
+            "CARGO_TARGET_DIR",
+            "CARGO_TERM_COLOR",
+            "HOME",
+            "LC_ALL",
+            "PATH",
+            "RUSTC",
+            "RUST_BACKTRACE",
+            "SQLX_OFFLINE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 4194304,
+          "leader_identity": {
+            "pid": 58,
+            "state": "R",
+            "pgrp": 58,
+            "session": 58,
+            "start_ticks": 2640302
+          },
+          "elapsed_seconds": 2.339,
+          "minimum_free_bytes": 24209920000
+        },
+        {
+          "label": "g07_fixture_configuration_fails_closed",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_fixture_configuration_fails_closed",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/g07_fixture_configuration_fails_closed.stdout.log",
+              "sha256": "8d61b8ab6ad03be5094ff59fde714d136311b512f20a7ed3ae059e3e247a2a9b",
+              "bytes": 163
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/g07_fixture_configuration_fails_closed.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 122,
+            "state": "R",
+            "pgrp": 122,
+            "session": 122,
+            "start_ticks": 2640634
+          },
+          "elapsed_seconds": 0.218,
+          "minimum_free_bytes": 24224796672
+        },
+        {
+          "label": "g07_cleanup_requires_exact_owned_identity",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_cleanup_requires_exact_owned_identity",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/g07_cleanup_requires_exact_owned_identity.stdout.log",
+              "sha256": "060def666719876354120a255d3580b38c4bcc5fbf1dbe598c424a7428dd5afb",
+              "bytes": 166
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/g07_cleanup_requires_exact_owned_identity.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 141,
+            "state": "R",
+            "pgrp": 141,
+            "session": 141,
+            "start_ticks": 2640752
+          },
+          "elapsed_seconds": 0.229,
+          "minimum_free_bytes": 24224718848
+        },
+        {
+          "label": "g07_unknown_database_outcome_is_not_success",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_unknown_database_outcome_is_not_success",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/g07_unknown_database_outcome_is_not_success.stdout.log",
+              "sha256": "ec6301af2e0c14d6d839944b3e0d3b5681185a78516261e78db080e2992640e0",
+              "bytes": 168
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/g07_unknown_database_outcome_is_not_success.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 160,
+            "state": "R",
+            "pgrp": 160,
+            "session": 160,
+            "start_ticks": 2640872
+          },
+          "elapsed_seconds": 0.22,
+          "minimum_free_bytes": 24224641024
+        },
+        {
+          "label": "g07_deadlines_do_not_restart_between_phases",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_deadlines_do_not_restart_between_phases",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/g07_deadlines_do_not_restart_between_phases.stdout.log",
+              "sha256": "6ab6afdbb74ed3040afb5e2633d5163f000047c9b8af96402169d5ea8ff0bca9",
+              "bytes": 168
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/g07_deadlines_do_not_restart_between_phases.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 179,
+            "state": "R",
+            "pgrp": 179,
+            "session": 179,
+            "start_ticks": 2640990
+          },
+          "elapsed_seconds": 0.221,
+          "minimum_free_bytes": 24224559104
+        },
+        {
+          "label": "g07_child_environment_is_allowlisted",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_child_environment_is_allowlisted",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/g07_child_environment_is_allowlisted.stdout.log",
+              "sha256": "50bbda28528844a8104334b0e59aed561e6bed7a48add455ec90cfc696331583",
+              "bytes": 161
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/g07_child_environment_is_allowlisted.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 198,
+            "state": "R",
+            "pgrp": 198,
+            "session": 198,
+            "start_ticks": 2641109
+          },
+          "elapsed_seconds": 0.225,
+          "minimum_free_bytes": 24224477184
+        },
+        {
+          "label": "g07_child_output_is_bounded_and_kill_targets_owned_handle",
+          "argv": [
+            "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+            "g07_child_output_is_bounded_and_kill_targets_owned_handle",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/g07_child_output_is_bounded_and_kill_targets_owned_handle.stdout.log",
+              "sha256": "27127c6d112317a850fc7ea8cec0fabccbf2e833d785234866883934104ef5c0",
+              "bytes": 182
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/g07_child_output_is_bounded_and_kill_targets_owned_handle.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "HOME",
+            "LC_ALL",
+            "RUST_BACKTRACE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 217,
+            "state": "R",
+            "pgrp": 217,
+            "session": 217,
+            "start_ticks": 2641228
+          },
+          "elapsed_seconds": 0.224,
+          "minimum_free_bytes": 24224399360
+        },
+        {
+          "label": "selected-clippy",
+          "argv": [
+            "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin/cargo",
+            "clippy",
+            "--locked",
+            "--offline",
+            "-j",
+            "2",
+            "-p",
+            "outbox-delivery",
+            "--test",
+            "process_recovery",
+            "--",
+            "-D",
+            "warnings"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 600,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/selected-clippy.stdout.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/selected-clippy.stderr.log",
+              "sha256": "1571434467849238e4033a4e7f71d9ce910317d0576a1d8ef3ac6c6b47b096e1",
+              "bytes": 179
+            }
+          },
+          "environment_keys": [
+            "CARGO_HOME",
+            "CARGO_INCREMENTAL",
+            "CARGO_NET_OFFLINE",
+            "CARGO_PROFILE_DEV_DEBUG",
+            "CARGO_PROFILE_TEST_DEBUG",
+            "CARGO_TARGET_DIR",
+            "CARGO_TERM_COLOR",
+            "HOME",
+            "LC_ALL",
+            "PATH",
+            "RUSTC",
+            "RUST_BACKTRACE",
+            "SQLX_OFFLINE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 236,
+            "state": "R",
+            "pgrp": 236,
+            "session": 236,
+            "start_ticks": 2641343
+          },
+          "elapsed_seconds": 0.621,
+          "minimum_free_bytes": 24224321536
+        },
+        {
+          "label": "two-file-format",
+          "argv": [
+            "/workspace/scratch/13897606dfde/organization-tauri-toolchain/rust/bin/rustfmt",
+            "--edition",
+            "2024",
+            "--check",
+            "crates/outbox-delivery/tests/process_recovery.rs",
+            "crates/outbox-delivery/tests/support/postgres.rs"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 30,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/two-file-format.stdout.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/two-file-format.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "CARGO_HOME",
+            "CARGO_INCREMENTAL",
+            "CARGO_NET_OFFLINE",
+            "CARGO_PROFILE_DEV_DEBUG",
+            "CARGO_PROFILE_TEST_DEBUG",
+            "CARGO_TARGET_DIR",
+            "CARGO_TERM_COLOR",
+            "HOME",
+            "LC_ALL",
+            "PATH",
+            "RUSTC",
+            "RUST_BACKTRACE",
+            "SQLX_OFFLINE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 266,
+            "state": "R",
+            "pgrp": 266,
+            "session": 266,
+            "start_ticks": 2641505
+          },
+          "elapsed_seconds": 0.227,
+          "minimum_free_bytes": 24224239616
+        },
+        {
+          "label": "source-diff",
+          "argv": [
+            "/usr/bin/git",
+            "-c",
+            "core.fsmonitor=false",
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--check"
+          ],
+          "cwd": "/workspace/scratch/13897606dfde/search-g07-owned-recovery",
+          "deadline_seconds": 15,
+          "returncode": 0,
+          "abnormal_reason": null,
+          "logs": {
+            "stdout": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/source-diff.stdout.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            "stderr": {
+              "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-pure-checkpoint-q461sv3u/source-diff.stderr.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "environment_keys": [
+            "CARGO_HOME",
+            "CARGO_INCREMENTAL",
+            "CARGO_NET_OFFLINE",
+            "CARGO_PROFILE_DEV_DEBUG",
+            "CARGO_PROFILE_TEST_DEBUG",
+            "CARGO_TARGET_DIR",
+            "CARGO_TERM_COLOR",
+            "HOME",
+            "LC_ALL",
+            "PATH",
+            "RUSTC",
+            "RUST_BACKTRACE",
+            "SQLX_OFFLINE",
+            "TMPDIR",
+            "TZ"
+          ],
+          "output_cap_per_stream": 65536,
+          "leader_identity": {
+            "pid": 284,
+            "state": "R",
+            "pgrp": 284,
+            "session": 284,
+            "start_ticks": 2641623
+          },
+          "elapsed_seconds": 0.227,
+          "minimum_free_bytes": 24224165888
+        }
+      ]
+    }
+  ],
+  "raw_evidence_retention": "Raw bounded streams, initial/terminal command receipts, manifests and source snapshots retained locally, not all copied into this repository checkpoint; recorded hashes independently checked",
+  "limitations": [
+    "No DB/server/Docker/recovery-child runtime",
+    "Legacy fixture boxing has compile/lint and pure regression evidence, not runtime equivalence evidence",
+    "Python DB-name/archive correction still needs GREEN and effectful wiring/review",
+    "No G07/P6/P7 or whole-program qualification",
+    "Public sharing remains separately held; no prior denied operation retried or cleared"
+  ]
+}

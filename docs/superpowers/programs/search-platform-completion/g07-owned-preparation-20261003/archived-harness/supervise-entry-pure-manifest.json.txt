@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "scope": "All243 existing pure methods at the runtime receipt-namespace-only correction; no server/case/adoption execution",
+  "status": "DRAFT awaiting independent source/executable review",
+  "sha256": {
+    "/workspace/scratch/13897606dfde/search-g07-launcher/launcher.py": "07c4bb91b67f199f217b74d690667e82b5b027718be90811ae8b1a4a4c58c598",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/launcher_policy.py": "5e73e089616cfd8e6838129f5abe739cd59586639b2eb246bd2ffe6a1a69a724",
+    "/workspace/scratch/13897606dfde/search-g07-owned-recovery/crates/outbox-delivery/tests/process_recovery.rs": "211c19d6949d907a8da299e4405ca19cb49c61b89a58dce04e082266a103f42e",
+    "/workspace/scratch/13897606dfde/search-g07-owned-recovery/crates/outbox-delivery/tests/support/postgres.rs": "87cb1dc2edf8ba7f0dd471f12363d4832c46be1f07a8bf18c5f236d2795de4c0",
+    "/workspace/scratch/13897606dfde/search-g07-owned-recovery/Cargo.toml": "6bd7d132cfb539579c54e03d1b48ab1a456a547fd77ad7782bb59ec9aa3df1e1",
+    "/workspace/scratch/13897606dfde/search-g07-owned-recovery/Cargo.lock": "368e5b43a7a13976eb0c4b2b0bb5c604fda42a38d86f4b707e73b4511c8a6b95",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/scope.schema.json": "62c3850c7de5bf606fe47bc90def670ef83f36b5a2bc6a2401a6cae5462b2369",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/approval.schema.draft.json": "e5bac0a30701ab336408ba9a6468c00e3b1cd7e6784a09a79e11afeef574cedc",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/request.schema.draft.json": "b40b54b9de25d6e0e28baffc3d93f8d9995829a2b4d0c2d6cf4b8743f86d0415",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/cluster-control.schema.draft.json": "d2f5b97031b1784c6dd3b3f16e75333c4aa1fca5314f70a95d3ed2288b71b216",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/observations.schema.draft.json": "07fb27ccf8f159ba31d23ddc5472d4dbb553e52a872faf9ea3e413c65b6682cb",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/test-receipt.schema.draft.json": "cd5078e3caba67fe94c68e66e5ca836c501432ccccde76c144b20dc41211f1a3",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/execution-seams.contract.json": "adc154ff9ae7382ffa82a27a16c3e6d08dbac88a99f04cc733c21d7e7f56c45b",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_policy.py": "910334847887b763014f14c2453350f74f7c9384b75ab239e41d6159f883299c",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_integration.py": "f0644f46310d27adf93741b7d310debce7d11ee562a096bf42a6cf347d4145db",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_execution.py": "b285cf59979071f61430504ca519d8592fc947dfec72bd653f0fa19a01163fd2",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_utf8.py": "33cd9f97ac3f9fdcfc9f0f4dd87e241ce60df9898ad445dba10b4e0d366801b2",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_pg_library.py": "f0fb569df42347ac4d5c26aefbb31e7e317e04cc9853a1df4b5646d9153939bf",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/managed_bootstrap_entry.py": "6b4499755e91c67c1bf4e60ffb209a357ec95bc6cd233b138aa572e8f9c912e8",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_proxy.py": "fc51d97dd3352683f1d2af517ecc12b6dfde9d4915e19b8d8fceb5feb6f07da9",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/bootstrap-resume.schema.draft.json": "d5f00b13cec951b5e8480ccf33c2388246f9f4edf1671489c4c2f9d1ea33de7f",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/commands.final.json": "353d7d99e650835c5d07a9fd1edb28e5e3f40ac8483fc8c2a4ac7e466ec394ab",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/run_green_inventory_red.py": "34e62fe171574f4e8133817eb5eba0463e3dfe1800291e0b9b80bc58d6cfbfc2",
+    "/usr/bin/python3.13": "889c603f0d17cb54060951bcf4c4f9b8c9ebd9e52b392c70209bbb9755d797d9",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/run_supervise_entry_pure.py": "dfed3aedf0dbd105f08840cf5af496acc4d0d7b67e60d1f74eef13ae3ee47d60",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/approval-supervise.json": "6205591836155f240b8f791f21f4d109138e2c8821ba100da01d9d83439b9a4b"
+  },
+  "entry_command": [
+    "/usr/bin/python3.13",
+    "-I",
+    "-B",
+    "/workspace/scratch/13897606dfde/search-g07-launcher/run_supervise_entry_pure.py"
+  ],
+  "entry_env_base": "empty",
+  "entry_environment": {
+    "HOME": "/workspace/scratch/13897606dfde/search-g07-launcher",
+    "LC_ALL": "C",
+    "TZ": "UTC"
+  },
+  "effects": "Only six sequential isolated existing Python children and bounded evidence/home/tmp files. Test imports execute only module definitions and call existing pure decisions on synthetic memory fixtures; guarded CLI is not invoked. No tool acquisition, bootstrap, Rust/Cargo, DB/recovery-child or signal probe.",
+  "supervision": "Exact reviewed run_green_inventory_red.run_step helper only, no module main. Each30 seconds incl bounded cleanup, aggregate180;64KiB/stream, floor1536MiB/growth8GiB all G07 target/launcher/evidence. Inputs rehashed before each child and after final.",
+  "expected": "53+34+136+3+16+1=243 methods, six successful children, no error/abnormal. Does not execute actual adoption/build/runtime.",
+  "qualification_limit": "This is regression of final launcher pure seams/import only, not real OS/provenance/cleanup qualification; actual bootstrap needs its separate exact manifest GO."
+}

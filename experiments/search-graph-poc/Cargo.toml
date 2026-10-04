@@ -1,0 +1,27 @@
+[package]
+name = "search-graph-backend-poc"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+resolver = "3"
+
+[dependencies]
+redb = "=4.3.0"
+search-application = { path = "../../crates/search-application" }
+search-core = { path = "../../crates/search-core" }
+search-graph-memory = { path = "../../crates/search-graph-memory" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+time = { version = "0.3", features = ["serde"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+uuid = { version = "1", features = ["serde"] }
+
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.test]
+debug = 0
+incremental = false

@@ -1,0 +1,1067 @@
+"""TEST-ONLY G07 launcher decision assertions; NOT EXECUTION ADMISSION.
+
+Fixtures are synthetic in-memory dictionaries, JSON lines and inspection text.
+Disk accounting uses mocked lstat/scandir/time observations, never real probes.
+The only local import is the separately reviewed effect-free launcher source.
+No fixture file, archive, process, network, database or CLI entrypoint is used.
+Expected shapes come from execution-seams.contract.json and the strict receipt
+schema. Metadata reducers consume already verified observations; these tests
+do not establish signature, artifact, process or creation-context authenticity.
+Preparation of this file did not import or execute it. A future RED needs its
+own exact hash-pinned, independently admitted, bounded -I -B command.
+"""
+
+from copy import deepcopy
+import importlib.util
+import json
+from pathlib import Path
+import stat
+from types import SimpleNamespace
+import unittest
+from unittest import mock
+
+_source = Path(__file__).with_name("launcher.py")
+_spec = importlib.util.spec_from_file_location("g07_execution_launcher", _source)
+launcher = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(launcher)
+
+ROOT = "/workspace/scratch/13897606dfde/p6pg.ABCDEFGH"
+TARGET = "/workspace/scratch/13897606dfde/search-g07-target"
+TEST_EXE = TARGET + "/debug/deps/process_recovery-a1b2c3d4"
+RUN_ID = "11111111-1111-4111-8111-111111111111"
+LAUNCH_ID = "22222222-2222-4222-8222-222222222222"
+CARGO_WINDOW = "33333333-3333-4333-8333-333333333333"
+SYSTEM_ID = "7612345678901234567"
+DATABASE_NAME = "p6_g07_1111111111114111_44444444444444448444444444444444"
+APPROVAL_DIGEST = "9" * 64
+HASHES = {
+    "source_sha256": "a" * 64,
+    "fixture_sha256": "b" * 64,
+    "launcher_sha256": "c" * 64,
+    "manifest_sha256": "d" * 64,
+    "test_executable_sha256": "e" * 64,
+}
+APPROVAL = {
+    "schema_version": 1, "scope": "G07 owned launcher", "phase": "bootstrap",
+    "outcome": "GO", "run_id": RUN_ID, "run_root": None,
+    "source_sha256": HASHES["source_sha256"],
+    "fixture_sha256": HASHES["fixture_sha256"],
+    "launcher_sha256": HASHES["launcher_sha256"],
+    "policy_sha256": "f" * 64,
+    "manifest_sha256": HASHES["manifest_sha256"], "test_executable": None,
+}
+
+
+def approval(phase="bootstrap"):
+    value = deepcopy(APPROVAL)
+    if phase == "supervise":
+        value.update(phase=phase, run_root=ROOT, test_executable={
+            "path": TEST_EXE, "sha256": HASHES["test_executable_sha256"],
+        })
+    elif phase == "bootstrap-resume":
+        value.update(phase=phase, run_root=ROOT)
+    return value
+
+
+def request(stage="runtime-red"):
+    value = {"schema_version": 1, "outcome": "GO", "run_id": RUN_ID,
+             "stage": stage, **HASHES, "cargo_window_statement_id": None}
+    if stage == "compile-runtime-green":
+        value["test_executable_sha256"] = None
+    if stage in ("compile-runtime-green", "quality"):
+        value["cargo_window_statement_id"] = CARGO_WINDOW
+    observed = {key: value[key] for key in HASHES}
+    return value, observed
+
+
+class ApprovalDecisionTests(unittest.TestCase):
+    def check(self, document, phase="bootstrap", approved=APPROVAL_DIGEST,
+              observed=APPROVAL_DIGEST):
+        return launcher.validate_approval(document, phase, approved, observed)
+
+    def test_bootstrap_bound_to_independent_approval_digest_is_accepted(self):
+        self.assertIs(self.check(approval()), True)
+
+    def test_supervise_with_exact_owned_root_and_executable_is_accepted(self):
+        self.assertIs(self.check(approval("supervise"), "supervise"), True)
+
+    def test_bootstrap_resume_with_exact_owned_root_and_null_test_is_accepted(self):
+        self.assertIs(self.check(approval("bootstrap-resume"), "bootstrap-resume"), True)
+
+    def test_bootstrap_resume_requires_canonical_owned_root(self):
+        for root in (None, ROOT + "/../other", "/tmp/p6pg.ABCDEFGH"):
+            value = {**approval("bootstrap-resume"), "run_root": root}
+            with self.subTest(root=root):
+                self.assertIs(self.check(value, "bootstrap-resume"), False)
+
+    def test_bootstrap_resume_rejects_nonnull_test_executable(self):
+        value = {**approval("bootstrap-resume"), "test_executable": {
+            "path": TEST_EXE, "sha256": HASHES["test_executable_sha256"],
+        }}
+        self.assertIs(self.check(value, "bootstrap-resume"), False)
+
+    def test_self_asserted_approval_digest_field_is_rejected(self):
+        self.assertIs(self.check({**approval(), "approval_sha256": APPROVAL_DIGEST}), False)
+
+    def test_arbitrary_command_and_url_fields_are_rejected(self):
+        for key in ("argv", "url"):
+            with self.subTest(key=key):
+                self.assertIs(self.check({**approval(), key: "synthetic-unapproved"}), False)
+
+    def test_missing_approval_field_is_rejected(self):
+        for key in APPROVAL:
+            value = approval()
+            del value[key]
+            with self.subTest(key=key):
+                self.assertIs(self.check(value), False)
+
+    def test_boolean_schema_version_is_rejected(self):
+        self.assertIs(self.check({**approval(), "schema_version": True}), False)
+
+    def test_wrong_approval_outcome_or_scope_is_rejected(self):
+        for key, value in (("outcome", "NO-GO"), ("scope", "another scope")):
+            with self.subTest(key=key):
+                self.assertIs(self.check({**approval(), key: value}), False)
+
+    def test_independent_phase_mismatch_is_rejected(self):
+        self.assertIs(self.check(approval(), "supervise"), False)
+
+    def test_unrecognized_phase_is_rejected(self):
+        self.assertIs(self.check({**approval(), "phase": "quality"}, "quality"), False)
+
+    def test_independent_approval_digest_mismatch_is_rejected(self):
+        self.assertIs(self.check(approval(), observed="8" * 64), False)
+
+    def test_malformed_independent_approval_digest_is_rejected(self):
+        for value in (None, "A" * 64, "9" * 63, "g" * 64):
+            with self.subTest(value=value):
+                self.assertIs(self.check(approval(), approved=value, observed=value), False)
+
+    def test_malformed_reviewed_hash_is_rejected(self):
+        for key in ("source_sha256", "fixture_sha256", "launcher_sha256", "policy_sha256", "manifest_sha256"):
+            with self.subTest(key=key):
+                self.assertIs(self.check({**approval(), key: "G" * 64}), False)
+
+    def test_noncanonical_approval_run_id_is_rejected(self):
+        for value in (RUN_ID.replace("-", ""), "not-a-uuid", None):
+            with self.subTest(value=value):
+                self.assertIs(self.check({**approval(), "run_id": value}), False)
+
+    def test_bootstrap_cannot_claim_existing_root_or_executable(self):
+        for key, value in (("run_root", ROOT), ("test_executable", {"path": TEST_EXE, "sha256": "e" * 64})):
+            with self.subTest(key=key):
+                self.assertIs(self.check({**approval(), key: value}), False)
+
+    def test_supervise_requires_root_and_executable(self):
+        for key in ("run_root", "test_executable"):
+            with self.subTest(key=key):
+                self.assertIs(self.check({**approval("supervise"), key: None}, "supervise"), False)
+
+    def test_supervise_rejects_noncanonical_or_foreign_root(self):
+        for value in (ROOT + "x", ROOT + "/../other", "/tmp/p6pg.ABCDEFGH", ROOT.replace("p6pg.", "p6pg/")):
+            with self.subTest(value=value):
+                self.assertIs(self.check({**approval("supervise"), "run_root": value}, "supervise"), False)
+
+    def test_supervise_rejects_unapproved_executable_or_extra_identity_key(self):
+        for value in ({"path": "/usr/bin/python3.13", "sha256": "e" * 64},
+                      {"path": TEST_EXE, "sha256": "E" * 64},
+                      {"path": TEST_EXE, "sha256": "e" * 64, "argv": []}):
+            with self.subTest(value=value):
+                self.assertIs(self.check({**approval("supervise"), "test_executable": value}, "supervise"), False)
+
+    def test_nonobject_approval_is_rejected(self):
+        self.assertIs(self.check(None), False)
+
+
+class RequestDecisionTests(unittest.TestCase):
+    def check(self, document, observed, stage="runtime-red", run_id=RUN_ID):
+        return launcher.validate_request(document, run_id, stage, observed)
+
+    def test_runtime_red_with_exact_independent_hashes_is_accepted(self):
+        value, observed = request()
+        self.assertIs(self.check(value, observed), True)
+
+    def test_each_noncompile_stage_with_exact_bindings_is_accepted(self):
+        for stage in ("runtime-green-last", "runtime-green-four", "quality", "finish"):
+            value, observed = request(stage)
+            with self.subTest(stage=stage):
+                self.assertIs(self.check(value, observed, stage), True)
+
+    def test_compile_stage_requires_null_artifact_and_cargo_statement(self):
+        value, observed = request("compile-runtime-green")
+        self.assertIs(self.check(value, observed, "compile-runtime-green"), True)
+
+    def test_request_extra_or_missing_field_is_rejected(self):
+        value, observed = request()
+        self.assertIs(self.check({**value, "argv": []}, observed), False)
+        for key in value:
+            altered = dict(value)
+            del altered[key]
+            with self.subTest(key=key):
+                self.assertIs(self.check(altered, observed), False)
+
+    def test_request_boolean_schema_version_is_rejected(self):
+        value, observed = request()
+        self.assertIs(self.check({**value, "schema_version": True}, observed), False)
+
+    def test_request_wrong_outcome_is_rejected(self):
+        value, observed = request()
+        self.assertIs(self.check({**value, "outcome": "NO-GO"}, observed), False)
+
+    def test_request_unknown_stage_is_rejected(self):
+        value, observed = request("child_worker_fixture")
+        self.assertIs(self.check(value, observed, "child_worker_fixture"), False)
+
+    def test_request_run_and_stage_mismatch_are_rejected(self):
+        value, observed = request()
+        self.assertIs(self.check(value, observed, run_id=LAUNCH_ID), False)
+        self.assertIs(self.check(value, observed, stage="runtime-green-last"), False)
+
+    def test_matching_noncanonical_request_run_id_is_rejected(self):
+        value, observed = request()
+        for run_id in (RUN_ID.replace("-", ""), "not-a-uuid", None):
+            with self.subTest(run_id=run_id):
+                self.assertIs(self.check({**value, "run_id": run_id}, observed, run_id=run_id), False)
+
+    def test_request_independent_hash_mismatch_is_rejected(self):
+        value, observed = request()
+        for key in HASHES:
+            with self.subTest(key=key):
+                self.assertIs(self.check(value, {**observed, key: "0" * 64}), False)
+
+    def test_request_malformed_matching_hash_is_rejected(self):
+        value, observed = request()
+        for key in HASHES:
+            with self.subTest(key=key):
+                self.assertIs(self.check({**value, key: "A" * 64}, {**observed, key: "A" * 64}), False)
+
+    def test_request_independent_hash_inventory_must_be_exact(self):
+        value, observed = request()
+        self.assertIs(self.check(value, {**observed, "policy_sha256": "f" * 64}), False)
+        self.assertIs(self.check(value, {key: val for key, val in observed.items() if key != "source_sha256"}), False)
+
+    def test_runtime_request_cannot_omit_executable_hash(self):
+        value, observed = request()
+        self.assertIs(self.check({**value, "test_executable_sha256": None}, {**observed, "test_executable_sha256": None}), False)
+
+    def test_compile_request_cannot_supply_executable_hash(self):
+        value, observed = request("compile-runtime-green")
+        self.assertIs(self.check({**value, "test_executable_sha256": "e" * 64},
+                                 {**observed, "test_executable_sha256": "e" * 64}, "compile-runtime-green"), False)
+
+    def test_cargo_stage_without_statement_is_rejected(self):
+        for stage in ("compile-runtime-green", "quality"):
+            value, observed = request(stage)
+            with self.subTest(stage=stage):
+                self.assertIs(self.check({**value, "cargo_window_statement_id": None}, observed, stage), False)
+
+    def test_noncargo_stage_with_statement_is_rejected(self):
+        value, observed = request()
+        self.assertIs(self.check({**value, "cargo_window_statement_id": CARGO_WINDOW}, observed), False)
+
+    def test_malformed_cargo_statement_is_rejected(self):
+        value, observed = request("quality")
+        self.assertIs(self.check({**value, "cargo_window_statement_id": "local-lock-file"}, observed, "quality"), False)
+
+    def test_nonobject_request_and_hash_observations_are_rejected(self):
+        value, observed = request()
+        self.assertIs(self.check(None, observed), False)
+        self.assertIs(self.check(value, None), False)
+
+
+CONTROL_LINE = b"Database system identifier:            7612345678901234567\n"
+
+
+class OfflineControlDecisionTests(unittest.TestCase):
+    def test_single_offline_identifier_is_reduced_to_decimal_string(self):
+        self.assertEqual(launcher.parse_control_identifier(CONTROL_LINE), SYSTEM_ID)
+
+    def test_identifier_among_other_control_lines_is_accepted(self):
+        value = b"pg_control version number:            1800\n" + CONTROL_LINE + b"Database cluster state:               shut down\n"
+        self.assertEqual(launcher.parse_control_identifier(value), SYSTEM_ID)
+
+    def test_control_output_exact_64k_boundary_is_accepted(self):
+        value = CONTROL_LINE + b"x" * (65536 - len(CONTROL_LINE) - 1) + b"\n"
+        self.assertEqual(launcher.parse_control_identifier(value), SYSTEM_ID)
+
+    def test_missing_identifier_is_rejected(self):
+        self.assertEqual(launcher.parse_control_identifier(b"Database cluster state: shut down\n"), "REJECT")
+
+    def test_duplicate_identifier_is_rejected(self):
+        self.assertEqual(launcher.parse_control_identifier(CONTROL_LINE + CONTROL_LINE), "REJECT")
+
+    def test_zero_negative_and_nondecimal_identifier_are_rejected(self):
+        for value in (b"0", b"-1", b"01", b"12a"):
+            with self.subTest(value=value):
+                self.assertEqual(launcher.parse_control_identifier(b"Database system identifier: " + value + b"\n"), "REJECT")
+
+    def test_extra_identifier_tokens_are_rejected(self):
+        self.assertEqual(launcher.parse_control_identifier(CONTROL_LINE.rstrip() + b" extra\n"), "REJECT")
+
+    def test_non_ascii_control_output_is_rejected(self):
+        self.assertEqual(launcher.parse_control_identifier(CONTROL_LINE + b"\xff"), "REJECT")
+
+    def test_nonbytes_control_output_is_rejected(self):
+        self.assertEqual(launcher.parse_control_identifier(CONTROL_LINE.decode("ascii")), "REJECT")
+
+    def test_oversized_control_output_is_rejected(self):
+        self.assertEqual(launcher.parse_control_identifier(b"x" * 65537), "REJECT")
+
+
+LAST_CASE = "last_claim_kill9_restart_reaps_unknown_once"
+FOUR_CASE = "four_processes_disjoint_claims_and_recover_expired"
+DB_OBSERVATION = {
+    "cluster_system_identifier": SYSTEM_ID, "name": DATABASE_NAME,
+    "oid": 16384, "owner": "agent",
+}
+
+
+def observed_children(count):
+    """Synthetic independent registry observations, not receipt-derived facts."""
+    return [{
+        "pid": 20000 + index, "start_ticks": 30000 + index, "uid": 1000,
+        "executable": TEST_EXE, "executable_sha256": HASHES["test_executable_sha256"],
+        "executable_dev": 9, "executable_inode": 40000,
+        "mode": "reap" if count == 3 and index > 0 else "claim",
+        "owner": f"{index + 1:08x}-5555-4555-8555-555555555555",
+        "handshake": f"{index + 1:08x}-6666-4666-8666-666666666666",
+    } for index in range(count)]
+
+
+def receipt_fixture(stage="runtime-red"):
+    """Build expected context first; terminal receipt cannot define authority."""
+    count, concurrency = {
+        "runtime-red": (1, 1), "runtime-green-last": (3, 2),
+        "runtime-green-four": (5, 4),
+    }[stage]
+    is_red = stage == "runtime-red"
+    case = FOUR_CASE if stage == "runtime-green-four" else LAST_CASE
+    expected = {
+        "stage": stage, "run_id": RUN_ID, "test_launch_id": LAUNCH_ID,
+        "case": case, "database": deepcopy(DB_OBSERVATION),
+        "children": observed_children(count),
+    }
+    children = [{
+        **deepcopy(identity), "registered": True, "reaped_by_parent": True,
+        "status": "confirmed", "exit_code": 101 if is_red else 0,
+        "exit_signal": None, "output_complete": True,
+        "stdout_overflow": False, "stderr_overflow": False,
+    } for identity in expected["children"]]
+    if not is_red:
+        for child in children:
+            if child["mode"] == "claim":
+                child.update(exit_code=None, exit_signal=9)
+    receipt = {
+        "schema_version": 1, "run_id": RUN_ID, "test_launch_id": LAUNCH_ID,
+        "case": case, "outcome": "expected_red" if is_red else "green",
+        "cause": "G07 child process path not wired" if is_red else None,
+        "expected_exit_code": 101 if is_red else 0, "unknowns": [],
+        "timeouts": [], "output_overflow": False,
+        "registered_children": count, "observed_children": count,
+        "owned_children_reaped": True, "database_cleanup_confirmed": True,
+        "database": {**deepcopy(DB_OBSERVATION), "create": "confirmed", "cleanup": "confirmed"},
+        "children": children,
+        "forced_expiry_labels": [] if is_red else ["FORCED_BY_TEST_SQL"],
+    }
+    registry = {
+        "complete": True, "registered_children": count, "observed_children": count,
+        "owned_children_reaped": True, "database_cleanup_confirmed": True,
+        "max_concurrent_children": concurrency,
+    }
+    return receipt, expected, 101 if is_red else 0, registry
+
+
+class TestReceiptDecisionTests(unittest.TestCase):
+    def test_expected_red_with_independent_os_status_and_cleanup_is_accepted(self):
+        self.assertIs(launcher.validate_test_receipt(*receipt_fixture()), True)
+
+    def test_green_last_with_three_exact_children_is_accepted(self):
+        self.assertIs(launcher.validate_test_receipt(*receipt_fixture("runtime-green-last")), True)
+
+    def test_green_four_with_five_exact_children_is_accepted(self):
+        self.assertIs(launcher.validate_test_receipt(*receipt_fixture("runtime-green-four")), True)
+
+    def test_distinct_child_identity_pairs_may_share_start_ticks(self):
+        receipt, expected, actual, registry = receipt_fixture("runtime-green-last")
+        receipt["children"][1]["start_ticks"] = receipt["children"][0]["start_ticks"]
+        expected["children"][1]["start_ticks"] = expected["children"][0]["start_ticks"]
+        self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, registry), True)
+
+    def test_actual_os_returncode_mismatch_cannot_be_hidden_by_receipt(self):
+        for stage, actual in (("runtime-red", 0), ("runtime-green-last", 101), ("runtime-green-four", -9)):
+            receipt, expected, _, registry = receipt_fixture(stage)
+            with self.subTest(stage=stage):
+                self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, registry), False)
+
+    def test_receipt_cannot_claim_an_outer_returncode_field(self):
+        receipt, expected, actual, registry = receipt_fixture()
+        self.assertIs(launcher.validate_test_receipt({**receipt, "returncode": actual}, expected, actual, registry), False)
+
+    def test_receipt_missing_top_level_field_is_rejected(self):
+        receipt, expected, actual, registry = receipt_fixture()
+        for key in receipt:
+            altered = deepcopy(receipt)
+            del altered[key]
+            with self.subTest(key=key):
+                self.assertIs(launcher.validate_test_receipt(altered, expected, actual, registry), False)
+
+    def test_expected_context_and_registry_keys_must_be_exact(self):
+        receipt, expected, actual, registry = receipt_fixture()
+        for key in expected:
+            altered = deepcopy(expected)
+            del altered[key]
+            with self.subTest(context_missing=key):
+                self.assertIs(launcher.validate_test_receipt(receipt, altered, actual, registry), False)
+        self.assertIs(launcher.validate_test_receipt(receipt, {**expected, "outcome": "expected_red"}, actual, registry), False)
+        for key in registry:
+            altered = dict(registry)
+            del altered[key]
+            with self.subTest(registry_missing=key):
+                self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, altered), False)
+        self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, {**registry, "receipt_claimed": True}), False)
+
+    def test_nested_database_and_child_keys_must_be_exact(self):
+        receipt, expected, actual, registry = receipt_fixture()
+        for container_name, original in (("receipt", receipt), ("expected", expected)):
+            for field in ("database", "children"):
+                nested = original[field] if field == "database" else original[field][0]
+                for key in nested:
+                    altered = deepcopy(original)
+                    target = altered[field] if field == "database" else altered[field][0]
+                    del target[key]
+                    args = (altered, expected, actual, registry) if container_name == "receipt" else (receipt, altered, actual, registry)
+                    with self.subTest(container=container_name, field=field, missing=key):
+                        self.assertIs(launcher.validate_test_receipt(*args), False)
+                altered = deepcopy(original)
+                target = altered[field] if field == "database" else altered[field][0]
+                target["unexpected"] = True
+                args = (altered, expected, actual, registry) if container_name == "receipt" else (receipt, altered, actual, registry)
+                with self.subTest(container=container_name, field=field, extra=True):
+                    self.assertIs(launcher.validate_test_receipt(*args), False)
+
+    def test_boolean_schema_exit_status_and_counts_are_rejected(self):
+        receipt, expected, actual, registry = receipt_fixture()
+        for key in ("schema_version", "expected_exit_code", "registered_children", "observed_children"):
+            with self.subTest(key=key):
+                self.assertIs(launcher.validate_test_receipt({**receipt, key: True}, expected, actual, registry), False)
+        self.assertIs(launcher.validate_test_receipt(receipt, expected, True, registry), False)
+
+    def test_run_launch_and_case_mismatch_are_rejected(self):
+        receipt, expected, actual, registry = receipt_fixture()
+        for key, value in (("run_id", LAUNCH_ID), ("test_launch_id", RUN_ID), ("case", FOUR_CASE)):
+            with self.subTest(key=key):
+                self.assertIs(launcher.validate_test_receipt({**receipt, key: value}, expected, actual, registry), False)
+
+    def test_unadmitted_expected_stage_is_rejected(self):
+        receipt, expected, actual, registry = receipt_fixture()
+        self.assertIs(launcher.validate_test_receipt(receipt, {**expected, "stage": "quality"}, actual, registry), False)
+
+    def test_expected_exit_code_cannot_replace_actual_os_status(self):
+        receipt, expected, actual, registry = receipt_fixture()
+        self.assertIs(launcher.validate_test_receipt({**receipt, "expected_exit_code": 0}, expected, actual, registry), False)
+
+    def test_independent_database_identity_mismatch_is_rejected(self):
+        receipt, expected, actual, registry = receipt_fixture()
+        for key, value in (("cluster_system_identifier", "7612345678901234568"),
+                           ("name", DATABASE_NAME[:-1] + "5"), ("oid", 16385), ("owner", "other")):
+            altered = deepcopy(receipt)
+            altered["database"][key] = value
+            with self.subTest(key=key):
+                self.assertIs(launcher.validate_test_receipt(altered, expected, actual, registry), False)
+
+    def test_obsolete_database_shape_and_wrong_run_prefix_are_rejected(self):
+        for name in ("p6_g07_44444444444444448444444444444444", DATABASE_NAME.replace("1111111111114111", "2222222222224222")):
+            receipt, expected, actual, registry = receipt_fixture()
+            receipt["database"]["name"] = name
+            expected["database"]["name"] = name
+            with self.subTest(name=name):
+                self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, registry), False)
+
+    def test_invalid_database_oid_owner_and_system_id_are_rejected(self):
+        for key, value in (("oid", True), ("oid", 0), ("oid", 4294967296), ("owner", "postgres"), ("cluster_system_identifier", "0")):
+            receipt, expected, actual, registry = receipt_fixture()
+            receipt["database"][key] = value
+            expected["database"][key] = value
+            with self.subTest(key=key, value=value):
+                self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, registry), False)
+
+    def test_database_create_or_cleanup_unknown_is_rejected(self):
+        for key in ("create", "cleanup"):
+            receipt, expected, actual, registry = receipt_fixture()
+            receipt["database"][key] = "unknown"
+            with self.subTest(key=key):
+                self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, registry), False)
+
+    def test_unknown_timeout_or_output_overflow_is_never_success(self):
+        receipt, expected, actual, registry = receipt_fixture()
+        for key, value in (("unknowns", ["unreadable child identity"]), ("timeouts", ["outer deadline"]), ("output_overflow", True)):
+            with self.subTest(key=key):
+                self.assertIs(launcher.validate_test_receipt({**receipt, key: value}, expected, actual, registry), False)
+
+    def test_receipt_reap_and_database_cleanup_must_be_boolean_true(self):
+        receipt, expected, actual, registry = receipt_fixture()
+        for key in ("owned_children_reaped", "database_cleanup_confirmed"):
+            for value in (False, 1, "confirmed"):
+                with self.subTest(key=key, value=value):
+                    self.assertIs(launcher.validate_test_receipt({**receipt, key: value}, expected, actual, registry), False)
+
+    def test_registry_completion_and_cleanup_must_be_boolean_true(self):
+        receipt, expected, actual, registry = receipt_fixture()
+        for key in ("complete", "owned_children_reaped", "database_cleanup_confirmed"):
+            for value in (False, 1):
+                with self.subTest(key=key, value=value):
+                    self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, {**registry, key: value}), False)
+
+    def test_observed_registry_counts_must_match_receipt_and_case(self):
+        receipt, expected, actual, registry = receipt_fixture()
+        for key in ("registered_children", "observed_children"):
+            for value in (0, 2, True):
+                with self.subTest(key=key, value=value):
+                    self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, {**registry, key: value}), False)
+
+    def test_case_launch_budget_cannot_be_widened_by_matching_counts(self):
+        receipt, expected, actual, registry = receipt_fixture("runtime-green-last")
+        expected["children"] = observed_children(5)
+        receipt["children"] = receipt_fixture("runtime-green-four")[0]["children"]
+        for value in (receipt, registry):
+            value.update(registered_children=5, observed_children=5)
+        self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, registry), False)
+
+    def test_case_concurrency_overflow_is_rejected(self):
+        for stage, limit in (("runtime-red", 1), ("runtime-green-last", 2), ("runtime-green-four", 4)):
+            receipt, expected, actual, registry = receipt_fixture(stage)
+            with self.subTest(stage=stage):
+                self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, {**registry, "max_concurrent_children": limit + 1}), False)
+
+    def test_missing_extra_and_duplicate_children_are_rejected(self):
+        receipt, expected, actual, registry = receipt_fixture("runtime-green-last")
+        for children in (receipt["children"][:-1], receipt["children"] + [receipt["children"][0]], [receipt["children"][0]] * 3):
+            with self.subTest(children=children):
+                self.assertIs(launcher.validate_test_receipt({**receipt, "children": deepcopy(children)}, expected, actual, registry), False)
+
+    def test_independent_child_identity_mode_owner_handshake_mismatch_is_rejected(self):
+        receipt, expected, actual, registry = receipt_fixture()
+        for key in expected["children"][0]:
+            altered = deepcopy(receipt)
+            old = altered["children"][0][key]
+            altered["children"][0][key] = old + 1 if type(old) is int else "different"
+            with self.subTest(key=key):
+                self.assertIs(launcher.validate_test_receipt(altered, expected, actual, registry), False)
+
+    def test_matching_malformed_child_identity_is_rejected(self):
+        for key, value in (("pid", True), ("start_ticks", 0), ("uid", 999),
+                           ("executable", "/usr/bin/python3.13"), ("executable_sha256", "E" * 64),
+                           ("executable_dev", 0), ("executable_inode", -1),
+                           ("mode", "other"), ("owner", "not-a-uuid"), ("handshake", "not-a-uuid")):
+            receipt, expected, actual, registry = receipt_fixture()
+            receipt["children"][0][key] = value
+            expected["children"][0][key] = value
+            with self.subTest(key=key, value=value):
+                self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, registry), False)
+
+    def test_matching_wrong_stage_mode_inventory_is_rejected(self):
+        for stage, index, mode in (("runtime-red", 0, "reap"),
+                                   ("runtime-green-last", 1, "claim"),
+                                   ("runtime-green-four", 4, "reap")):
+            receipt, expected, actual, registry = receipt_fixture(stage)
+            receipt["children"][index]["mode"] = mode
+            expected["children"][index]["mode"] = mode
+            with self.subTest(stage=stage):
+                self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, registry), False)
+
+    def test_duplicate_independently_reported_child_identity_is_rejected(self):
+        receipt, expected, actual, registry = receipt_fixture("runtime-green-last")
+        expected["children"][1] = deepcopy(expected["children"][0])
+        receipt["children"][1] = deepcopy(receipt["children"][0])
+        self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, registry), False)
+
+    def test_duplicate_child_owner_or_handshake_is_rejected(self):
+        for key in ("owner", "handshake"):
+            receipt, expected, actual, registry = receipt_fixture("runtime-green-last")
+            receipt["children"][1][key] = receipt["children"][0][key]
+            expected["children"][1][key] = expected["children"][0][key]
+            with self.subTest(key=key):
+                self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, registry), False)
+
+    def test_unregistered_unreaped_or_unknown_child_is_rejected(self):
+        for key, value in (("registered", False), ("registered", 1), ("reaped_by_parent", False), ("status", "unknown")):
+            receipt, expected, actual, registry = receipt_fixture()
+            receipt["children"][0][key] = value
+            with self.subTest(key=key, value=value):
+                self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, registry), False)
+
+    def test_incomplete_or_overflowing_child_output_is_rejected(self):
+        for key, value in (("output_complete", False), ("stdout_overflow", True), ("stderr_overflow", True)):
+            receipt, expected, actual, registry = receipt_fixture()
+            receipt["children"][0][key] = value
+            with self.subTest(key=key):
+                self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, registry), False)
+
+    def test_child_exit_code_and_signal_require_one_confirmed_alternative(self):
+        for code, signal in ((None, None), (0, 9), (-1, None), (None, 0), (True, None), (None, True)):
+            receipt, expected, actual, registry = receipt_fixture("runtime-green-last")
+            receipt["children"][0].update(exit_code=code, exit_signal=signal)
+            with self.subTest(code=code, signal=signal):
+                self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, registry), False)
+
+    def test_wrong_stage_child_exit_pattern_is_rejected(self):
+        for stage, index, code, sig in (("runtime-green-last", 0, 0, None),
+                                        ("runtime-green-last", 1, None, 9),
+                                        ("runtime-green-four", 4, 0, None),
+                                        ("runtime-green-four", 0, None, 15)):
+            receipt, expected, actual, registry = receipt_fixture(stage)
+            receipt["children"][index].update(exit_code=code, exit_signal=sig)
+            with self.subTest(stage=stage, index=index, code=code, signal=sig):
+                self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, registry), False)
+
+    def test_forced_expiry_labels_are_exact_for_red_and_green(self):
+        for stage, labels in (("runtime-red", ["FORCED_BY_TEST_SQL"]), ("runtime-green-last", []),
+                              ("runtime-green-four", ["different"]), ("runtime-green-four", ["FORCED_BY_TEST_SQL"] * 2)):
+            receipt, expected, actual, registry = receipt_fixture(stage)
+            with self.subTest(stage=stage, labels=labels):
+                self.assertIs(launcher.validate_test_receipt({**receipt, "forced_expiry_labels": labels}, expected, actual, registry), False)
+
+    def test_red_outcome_cause_child_mode_and_status_are_exact(self):
+        receipt, expected, actual, registry = receipt_fixture()
+        for key, value in (("outcome", "green"), ("cause", "different failure"), ("cause", None)):
+            with self.subTest(key=key, value=value):
+                self.assertIs(launcher.validate_test_receipt({**receipt, key: value}, expected, actual, registry), False)
+        for changes in ({"exit_code": 0}, {"exit_code": None, "exit_signal": 9}, {"mode": "reap"}):
+            altered = deepcopy(receipt)
+            altered["children"][0].update(changes)
+            with self.subTest(changes=changes):
+                self.assertIs(launcher.validate_test_receipt(altered, expected, actual, registry), False)
+
+    def test_nonobject_receipt_context_or_registry_is_rejected(self):
+        receipt, expected, actual, registry = receipt_fixture()
+        self.assertIs(launcher.validate_test_receipt(None, expected, actual, registry), False)
+        self.assertIs(launcher.validate_test_receipt(receipt, None, actual, registry), False)
+        self.assertIs(launcher.validate_test_receipt(receipt, expected, actual, None), False)
+
+
+ARTIFACT = {
+    "reason": "compiler-artifact", "package_id": "synthetic-outbox-delivery",
+    "target": {"name": "process_recovery", "kind": ["test"], "crate_types": ["bin"]},
+    "profile": {"test": True}, "executable": TEST_EXE, "filenames": [TEST_EXE],
+    "fresh": False,
+}
+
+
+def artifact_line(value=ARTIFACT):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+
+class CargoArtifactDecisionTests(unittest.TestCase):
+    def test_matching_test_artifact_returns_path_without_claiming_hash(self):
+        self.assertEqual(launcher.cargo_artifact_from_line(artifact_line(), TARGET), {"path": TEST_EXE, "sha256": None})
+
+    def test_matching_utf8_bytes_artifact_is_accepted(self):
+        self.assertEqual(launcher.cargo_artifact_from_line(artifact_line().encode("utf-8"), TARGET), {"path": TEST_EXE, "sha256": None})
+
+    def test_unrelated_cargo_json_is_skipped(self):
+        for value in ({"reason": "build-finished", "success": True},
+                      {"reason": "compiler-message", "message": {"rendered": "synthetic warning"}},
+                      {**ARTIFACT, "target": {"name": "another_test", "kind": ["test"]}}):
+            with self.subTest(value=value):
+                self.assertEqual(launcher.cargo_artifact_from_line(artifact_line(value), TARGET), "SKIP")
+
+    def test_malformed_and_nonobject_cargo_json_are_rejected(self):
+        for line in ("{", "null", "[]", b"\xff"):
+            with self.subTest(line=line):
+                self.assertEqual(launcher.cargo_artifact_from_line(line, TARGET), "REJECT")
+
+    def test_nontext_cargo_input_is_rejected(self):
+        self.assertEqual(launcher.cargo_artifact_from_line(None, TARGET), "REJECT")
+
+    def test_foreign_target_root_is_rejected(self):
+        self.assertEqual(launcher.cargo_artifact_from_line(artifact_line(), "/tmp/search-g07-target"), "REJECT")
+
+    def test_matching_target_without_test_kind_is_rejected(self):
+        value = deepcopy(ARTIFACT)
+        value["target"]["kind"] = ["bin"]
+        self.assertEqual(launcher.cargo_artifact_from_line(artifact_line(value), TARGET), "REJECT")
+
+    def test_matching_profile_test_must_be_boolean_true(self):
+        for test in (False, 1, None):
+            value = deepcopy(ARTIFACT)
+            value["profile"]["test"] = test
+            with self.subTest(test=test):
+                self.assertEqual(launcher.cargo_artifact_from_line(artifact_line(value), TARGET), "REJECT")
+
+    def test_artifact_escape_and_prefix_lookalike_are_rejected(self):
+        for path in (TARGET + "/debug/deps/../process_recovery-abcd", TARGET + "-other/debug/deps/process_recovery-abcd", TARGET + "/debug/deps/subdir/process_recovery-abcd", "debug/deps/process_recovery-abcd"):
+            with self.subTest(path=path):
+                self.assertEqual(launcher.cargo_artifact_from_line(artifact_line({**ARTIFACT, "executable": path}), TARGET), "REJECT")
+
+    def test_unsafe_artifact_basename_and_missing_executable_are_rejected(self):
+        for path in (TARGET + "/debug/deps/process_recovery-nothex", TARGET + "/debug/deps/other-abcd", None):
+            with self.subTest(path=path):
+                self.assertEqual(launcher.cargo_artifact_from_line(artifact_line({**ARTIFACT, "executable": path}), TARGET), "REJECT")
+
+    def test_oversized_cargo_line_is_rejected(self):
+        self.assertEqual(launcher.cargo_artifact_from_line(" " * 65537, TARGET), "REJECT")
+
+
+INDEX_BYTES = 9678380
+INDEX_SHA256 = "7778d3e3f303b7ddb8ce0fe7c8d57473a076c6bf2e8f241f75421d2396352498"
+INDEX_PATH = "main/binary-amd64/Packages.xz"
+RELEASE_ENTRY = f" {INDEX_SHA256} {INDEX_BYTES} {INDEX_PATH}\n".encode("ascii")
+RELEASE = b"Origin: Debian\nSuite: stable\nSHA256:\n" + RELEASE_ENTRY
+
+
+class ReleaseMetadataDecisionTests(unittest.TestCase):
+    def test_exact_signed_snapshot_packages_entry_is_accepted(self):
+        self.assertIs(launcher.verify_release_packages_entry(RELEASE, INDEX_BYTES, INDEX_SHA256), True)
+
+    def test_unrelated_entries_and_sections_are_allowed(self):
+        value = RELEASE + b" " + b"0" * 64 + b" 10 main/binary-arm64/Packages.xz\nSHA512:\n " + b"0" * 128 + b" 10 main/binary-amd64/Packages.xz\n"
+        self.assertIs(launcher.verify_release_packages_entry(value, INDEX_BYTES, INDEX_SHA256), True)
+
+    def test_missing_or_wrong_path_release_entry_is_rejected(self):
+        for value in (b"SHA256:\n", RELEASE.replace(b"binary-amd64", b"binary-arm64")):
+            with self.subTest(value=value):
+                self.assertIs(launcher.verify_release_packages_entry(value, INDEX_BYTES, INDEX_SHA256), False)
+
+    def test_duplicate_release_entry_or_section_is_rejected(self):
+        for value in (RELEASE + RELEASE_ENTRY, RELEASE + b"SHA256:\n" + RELEASE_ENTRY):
+            with self.subTest(value=value):
+                self.assertIs(launcher.verify_release_packages_entry(value, INDEX_BYTES, INDEX_SHA256), False)
+
+    def test_release_entry_under_wrong_hash_section_is_rejected(self):
+        self.assertIs(launcher.verify_release_packages_entry(RELEASE.replace(b"SHA256:", b"SHA512:"), INDEX_BYTES, INDEX_SHA256), False)
+
+    def test_release_entry_hash_and_size_mismatch_are_rejected(self):
+        self.assertIs(launcher.verify_release_packages_entry(RELEASE, INDEX_BYTES + 1, INDEX_SHA256), False)
+        self.assertIs(launcher.verify_release_packages_entry(RELEASE, INDEX_BYTES, "0" * 64), False)
+
+    def test_malformed_release_hash_and_size_are_rejected(self):
+        for value in (RELEASE.replace(INDEX_SHA256.encode(), b"G" * 64), RELEASE.replace(str(INDEX_BYTES).encode(), b"9x")):
+            with self.subTest(value=value):
+                self.assertIs(launcher.verify_release_packages_entry(value, INDEX_BYTES, INDEX_SHA256), False)
+        for count in (True, 0, -1, str(INDEX_BYTES)):
+            with self.subTest(count=count):
+                self.assertIs(launcher.verify_release_packages_entry(RELEASE, count, INDEX_SHA256), False)
+
+    def test_nonbytes_and_non_ascii_release_are_rejected(self):
+        self.assertIs(launcher.verify_release_packages_entry(RELEASE.decode(), INDEX_BYTES, INDEX_SHA256), False)
+        self.assertIs(launcher.verify_release_packages_entry(RELEASE + b"\xff", INDEX_BYTES, INDEX_SHA256), False)
+
+    def test_oversized_release_is_rejected(self):
+        self.assertIs(launcher.verify_release_packages_entry(b"x" * 262145, INDEX_BYTES, INDEX_SHA256), False)
+
+
+# Exact archive pins are copied from commands.draft.json. Dependency strings
+# are synthetic matching fixtures, not assertions about downloaded metadata.
+PACKAGE_PINS = [
+    {"package": "m4", "version": "1.4.19-8", "architecture": "amd64",
+     "filename": "pool/main/m/m4/m4_1.4.19-8_amd64.deb", "bytes": 293956,
+     "sha256": "221b3e224708c1da2a1a88b6824380593579b2254ae7d914afa14cbd5d343334",
+     "depends": "synthetic-libc (>= 2.34)", "pre_depends": None},
+    {"package": "bison", "version": "2:3.8.2+dfsg-1+b2", "architecture": "amd64",
+     "filename": "pool/main/b/bison/bison_3.8.2+dfsg-1+b2_amd64.deb", "bytes": 1169636,
+     "sha256": "ce6eb1f7aad18850e32d223a68f54bcbe756d74f138c8ec5460ad9d220f4d335",
+     "depends": "synthetic-libc (>= 2.34), synthetic-m4", "pre_depends": None},
+    {"package": "flex", "version": "2.6.4-8.2+b4", "architecture": "amd64",
+     "filename": "pool/main/f/flex/flex_2.6.4-8.2+b4_amd64.deb", "bytes": 423136,
+     "sha256": "75f963765232c356d0a2fb70e780dfa9de2425aca036ec60eefb7fc98a2c905b",
+     "depends": "synthetic-libc (>= 2.34), synthetic-m4", "pre_depends": None},
+]
+PACKAGE_FIELDS = {
+    "package": "Package", "version": "Version", "architecture": "Architecture",
+    "filename": "Filename", "bytes": "Size", "sha256": "SHA256",
+    "depends": "Depends", "pre_depends": "Pre-Depends",
+}
+
+
+def package_paragraph(pin):
+    return "\n".join(f"{field}: {pin[key]}" for key, field in PACKAGE_FIELDS.items()
+                     if pin[key] is not None) + "\n"
+
+
+def package_index(pins=PACKAGE_PINS):
+    return "\n".join(package_paragraph(pin) for pin in pins).encode("ascii")
+
+
+class PackageMetadataDecisionTests(unittest.TestCase):
+    def test_three_exact_package_paragraphs_are_accepted(self):
+        self.assertIs(launcher.verify_package_paragraphs(package_index(), deepcopy(PACKAGE_PINS)), True)
+
+    def test_unrelated_package_paragraph_is_permitted(self):
+        value = package_index() + b"\nPackage: unrelated\nVersion: 1\nArchitecture: amd64\nDescription: synthetic\n"
+        self.assertIs(launcher.verify_package_paragraphs(value, deepcopy(PACKAGE_PINS)), True)
+
+    def test_exact_nonnull_predependency_is_accepted(self):
+        pins = deepcopy(PACKAGE_PINS)
+        pins[0]["pre_depends"] = "synthetic-predependency (>= 1)"
+        self.assertIs(launcher.verify_package_paragraphs(package_index(pins), pins), True)
+
+    def test_each_protected_package_field_mismatch_is_rejected(self):
+        for key in PACKAGE_FIELDS:
+            if key in ("package", "pre_depends"):
+                continue
+            altered = deepcopy(PACKAGE_PINS)
+            altered[0][key] = altered[0][key] + 1 if key == "bytes" else "wrong"
+            with self.subTest(key=key):
+                self.assertIs(launcher.verify_package_paragraphs(package_index(altered), deepcopy(PACKAGE_PINS)), False)
+
+    def test_missing_or_duplicate_selected_paragraph_is_rejected(self):
+        self.assertIs(launcher.verify_package_paragraphs(package_index(PACKAGE_PINS[1:]), deepcopy(PACKAGE_PINS)), False)
+        self.assertIs(launcher.verify_package_paragraphs(package_index() + b"\n" + package_paragraph(PACKAGE_PINS[0]).encode(), deepcopy(PACKAGE_PINS)), False)
+
+    def test_duplicate_selected_field_is_rejected(self):
+        value = package_index().replace(b"Package: m4\n", b"Package: m4\nVersion: 1.4.19-8\n", 1)
+        self.assertIs(launcher.verify_package_paragraphs(value, deepcopy(PACKAGE_PINS)), False)
+
+    def test_missing_selected_field_is_rejected(self):
+        value = package_index().replace(b"Depends: synthetic-libc (>= 2.34)\n", b"", 1)
+        self.assertIs(launcher.verify_package_paragraphs(value, deepcopy(PACKAGE_PINS)), False)
+
+    def test_unexpected_predependency_is_rejected(self):
+        value = package_index().replace(b"Package: m4\n", b"Package: m4\nPre-Depends: unexpected\n", 1)
+        self.assertIs(launcher.verify_package_paragraphs(value, deepcopy(PACKAGE_PINS)), False)
+
+    def test_pin_package_order_and_count_must_be_exact(self):
+        for pins in (list(reversed(PACKAGE_PINS)), PACKAGE_PINS[:2], PACKAGE_PINS + [PACKAGE_PINS[0]]):
+            with self.subTest(pins=pins):
+                self.assertIs(launcher.verify_package_paragraphs(package_index(), deepcopy(pins)), False)
+
+    def test_pin_unknown_or_missing_key_is_rejected(self):
+        pins = deepcopy(PACKAGE_PINS)
+        pins[0]["url"] = "synthetic-unapproved"
+        self.assertIs(launcher.verify_package_paragraphs(package_index(), pins), False)
+        del pins[0]["url"]
+        del pins[0]["depends"]
+        self.assertIs(launcher.verify_package_paragraphs(package_index(), pins), False)
+
+    def test_selected_protected_field_continuation_is_rejected(self):
+        value = package_index().replace(b"Version: 1.4.19-8\n", b"Version: 1.4.19-8\n invalid-continuation\n", 1)
+        self.assertIs(launcher.verify_package_paragraphs(value, deepcopy(PACKAGE_PINS)), False)
+
+    def test_nonbytes_or_non_ascii_package_index_is_rejected(self):
+        self.assertIs(launcher.verify_package_paragraphs(package_index().decode(), deepcopy(PACKAGE_PINS)), False)
+        self.assertIs(launcher.verify_package_paragraphs(package_index() + b"\xff", deepcopy(PACKAGE_PINS)), False)
+
+    def test_oversized_package_index_is_rejected(self):
+        self.assertIs(launcher.verify_package_paragraphs(b"x" * 134217729, deepcopy(PACKAGE_PINS)), False)
+
+
+ELF_HEADER = b"""ELF Header:
+  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00
+  Class:                             ELF64
+  Data:                              2's complement, little endian
+  Type:                              DYN (Position-Independent Executable file)
+  Machine:                           Advanced Micro Devices X86-64
+"""
+ELF_INTERPRETER = b"      [Requesting program interpreter: /lib64/ld-linux-x86-64.so.2]\n"
+ELF_DYNAMIC = b"""Dynamic section at offset 0x100 contains 2 entries:
+  Tag        Type                         Name/Value
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+ 0x0000000000000000 (NULL)               0x0
+"""
+ELF_VERSIONS = b"""Version needs section '.gnu.version_r' contains 1 entry:
+ Addr: 0x0000000000000400  Offset: 0x00000400  Link: 7 (.dynstr)
+  000000: Version: 1  File: libc.so.6  Cnt: 2
+  0x0010:   Name: GLIBC_2.2.5  Flags: none  Version: 2
+  0x0020:   Name: GLIBC_2.34  Flags: none  Version: 3
+"""
+ELF_TEXT = ELF_HEADER + ELF_INTERPRETER + ELF_DYNAMIC + ELF_VERSIONS
+ELF_CLOSURE = {
+    "interpreter": "/lib64/ld-linux-x86-64.so.2",
+    "needed": ["libc.so.6"], "version_needs": ["libc.so.6:GLIBC_2.2.5", "libc.so.6:GLIBC_2.34"],
+}
+
+
+class ElfInspectionDecisionTests(unittest.TestCase):
+    def test_exact_executable_elf_closure_is_reduced_without_execution(self):
+        self.assertEqual(launcher.inspect_elf_text(ELF_TEXT, deepcopy(ELF_CLOSURE)), ELF_CLOSURE)
+
+    def test_shared_library_without_interpreter_is_accepted(self):
+        closure = {**deepcopy(ELF_CLOSURE), "interpreter": None}
+        value = ELF_TEXT.replace(ELF_INTERPRETER, b"").replace(b"DYN (Position-Independent Executable file)", b"DYN (Shared object file)")
+        self.assertEqual(launcher.inspect_elf_text(value, closure), closure)
+
+    def test_same_version_name_from_two_exact_providers_is_accepted(self):
+        value = ELF_TEXT.replace(b"contains 2 entries:", b"contains 3 entries:")
+        value = value.replace(b" 0x0000000000000000 (NULL)               0x0\n",
+                              b" 0x0000000000000001 (NEEDED)             Shared library: [libm.so.6]\n 0x0000000000000000 (NULL)               0x0\n")
+        value = value.replace(b"section '.gnu.version_r' contains 1 entry:",
+                              b"section '.gnu.version_r' contains 2 entries:")
+        value += b"  0x0030: Version: 1  File: libm.so.6  Cnt: 1\n"
+        value += b"  0x0040:   Name: GLIBC_2.2.5  Flags: none  Version: 4\n"
+        closure = {
+            "interpreter": ELF_CLOSURE["interpreter"], "needed": ["libc.so.6", "libm.so.6"],
+            "version_needs": ["libc.so.6:GLIBC_2.2.5", "libc.so.6:GLIBC_2.34", "libm.so.6:GLIBC_2.2.5"],
+        }
+        self.assertEqual(launcher.inspect_elf_text(value, closure), closure)
+
+    def test_wrong_elf_class_endianness_and_machine_are_rejected(self):
+        for old, new in ((b"ELF64", b"ELF32"), (b"little endian", b"big endian"), (b"Advanced Micro Devices X86-64", b"AArch64")):
+            with self.subTest(old=old):
+                self.assertEqual(launcher.inspect_elf_text(ELF_TEXT.replace(old, new), deepcopy(ELF_CLOSURE)), "REJECT")
+
+    def test_unknown_or_duplicate_interpreter_is_rejected(self):
+        for value in (ELF_TEXT.replace(b"/lib64/ld-linux-x86-64.so.2", b"/tmp/alternate-loader"), ELF_TEXT + ELF_INTERPRETER):
+            with self.subTest(value=value):
+                self.assertEqual(launcher.inspect_elf_text(value, deepcopy(ELF_CLOSURE)), "REJECT")
+
+    def test_extra_missing_and_duplicate_needed_entries_are_rejected(self):
+        needed = b" 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]\n"
+        for value in (ELF_TEXT + needed.replace(b"libc.so.6", b"libunknown.so.1"), ELF_TEXT.replace(needed, b""), ELF_TEXT + needed):
+            with self.subTest(value=value):
+                self.assertEqual(launcher.inspect_elf_text(value, deepcopy(ELF_CLOSURE)), "REJECT")
+
+    def test_unapproved_or_missing_version_need_is_rejected(self):
+        for value in (ELF_TEXT.replace(b"GLIBC_2.34", b"GLIBC_99.0"), ELF_TEXT.replace(b"  0x0020:   Name: GLIBC_2.34  Flags: none  Version: 3\n", b"")):
+            with self.subTest(value=value):
+                self.assertEqual(launcher.inspect_elf_text(value, deepcopy(ELF_CLOSURE)), "REJECT")
+
+    def test_version_need_cannot_be_attributed_to_wrong_library(self):
+        value = ELF_TEXT.replace(b"File: libc.so.6", b"File: libunknown.so.1")
+        self.assertEqual(launcher.inspect_elf_text(value, deepcopy(ELF_CLOSURE)), "REJECT")
+
+    def test_rpath_runpath_and_textrel_are_rejected(self):
+        for tag in (b"RPATH", b"RUNPATH", b"TEXTREL"):
+            with self.subTest(tag=tag):
+                value = ELF_TEXT + b" 0x000000000000001d (" + tag + b") Library runpath: [/tmp]\n"
+                self.assertEqual(launcher.inspect_elf_text(value, deepcopy(ELF_CLOSURE)), "REJECT")
+
+    def test_closure_unknown_or_missing_key_is_rejected(self):
+        self.assertEqual(launcher.inspect_elf_text(ELF_TEXT, {**deepcopy(ELF_CLOSURE), "rpath": []}), "REJECT")
+        self.assertEqual(launcher.inspect_elf_text(ELF_TEXT, {key: value for key, value in ELF_CLOSURE.items() if key != "version_needs"}), "REJECT")
+
+    def test_closure_duplicate_or_empty_requirement_is_rejected(self):
+        for key, value in (("needed", ["libc.so.6", "libc.so.6"]), ("needed", [""]), ("version_needs", ["libc.so.6:GLIBC_2.2.5", "libc.so.6:GLIBC_2.2.5"])):
+            with self.subTest(key=key, value=value):
+                self.assertEqual(launcher.inspect_elf_text(ELF_TEXT, {**deepcopy(ELF_CLOSURE), key: value}), "REJECT")
+
+    def test_malformed_or_empty_elf_text_is_rejected(self):
+        for value in (b"", b"synthetic ordinary text\n", ELF_TEXT.replace(b"Shared library: [libc.so.6]", b"Shared library: [libc.so.6")):
+            with self.subTest(value=value):
+                self.assertEqual(launcher.inspect_elf_text(value, deepcopy(ELF_CLOSURE)), "REJECT")
+
+    def test_nonbytes_or_non_ascii_elf_text_is_rejected(self):
+        self.assertEqual(launcher.inspect_elf_text(ELF_TEXT.decode(), deepcopy(ELF_CLOSURE)), "REJECT")
+        self.assertEqual(launcher.inspect_elf_text(ELF_TEXT + b"\xff", deepcopy(ELF_CLOSURE)), "REJECT")
+
+    def test_oversized_elf_text_is_rejected(self):
+        self.assertEqual(launcher.inspect_elf_text(b"x" * 65537, deepcopy(ELF_CLOSURE)), "REJECT")
+        # Only ELF inspection gains the 256-KiB cap; retain the malformed-input
+        # rejection above and exercise valid text across the old/new boundaries.
+        for size in (65537, 131072, 234448, 262144):
+            padded = ELF_TEXT + b"\n" + b" " * (size - len(ELF_TEXT) - 2) + b"\n"
+            with self.subTest(valid_elf_bytes=size):
+                self.assertEqual(launcher.inspect_elf_text(padded, deepcopy(ELF_CLOSURE)), ELF_CLOSURE)
+        oversized = ELF_TEXT + b"\n" + b" " * (262145 - len(ELF_TEXT) - 2) + b"\n"
+        self.assertEqual(launcher.inspect_elf_text(oversized, deepcopy(ELF_CLOSURE)), "REJECT")
+
+
+def synthetic_listing(*paths):
+    listing = mock.MagicMock()
+    listing.__enter__.return_value = [SimpleNamespace(path=path) for path in paths]
+    listing.__exit__.return_value = False
+    return listing
+
+
+class DiskTreeRetryTests(unittest.TestCase):
+    def test_one_missing_entry_retries_complete_tree_and_discards_partial_count(self):
+        root = Path(ROOT)
+        partial, vanished, stable = root / "partial", root / "vanished", root / "stable"
+        directory = SimpleNamespace(st_mode=stat.S_IFDIR, st_size=1024, st_blocks=0)
+        large_file = SimpleNamespace(st_mode=stat.S_IFREG, st_size=65536, st_blocks=0)
+        stable_file = SimpleNamespace(st_mode=stat.S_IFREG, st_size=4096, st_blocks=0)
+
+        def observed_lstat(path):
+            if path == root:
+                return directory
+            if path == partial:
+                return large_file
+            if path == vanished:
+                raise FileNotFoundError("synthetic entry vanished")
+            if path == stable:
+                return stable_file
+            self.fail("unexpected synthetic traversal: " + str(path))
+
+        watch = launcher.DiskWatch(SimpleNamespace(path=root), None)
+        # Traversal is LIFO: the first scan counts partial before missing-entry
+        # failure. The second complete scan has only root+stable = 5120 bytes.
+        with mock.patch.object(launcher.Path, "lstat", autospec=True, side_effect=observed_lstat) as lstat_mock, \
+                mock.patch.object(launcher.os, "scandir", side_effect=[
+                    synthetic_listing(str(vanished), str(partial)), synthetic_listing(str(stable)),
+                ]) as scan_mock, \
+                mock.patch.object(launcher.time, "monotonic", return_value=9.0):
+            try:
+                measured = watch.tree_bytes(root, 10.0)
+            except launcher.PreparationStop as error:
+                self.fail("first missing-entry race needs one complete retry: " + str(error))
+            self.assertEqual(measured, 5120)
+            self.assertEqual(scan_mock.call_count, 2)
+            self.assertEqual(sum(call.args[0] == root for call in lstat_mock.call_args_list), 2)
+
+    def test_second_missing_entry_stops_after_one_complete_tree_retry(self):
+        root, vanished = Path(ROOT), Path(ROOT) / "vanished"
+        directory = SimpleNamespace(st_mode=stat.S_IFDIR, st_size=1024, st_blocks=0)
+
+        def observed_lstat(path):
+            if path == root:
+                return directory
+            raise FileNotFoundError("synthetic entry vanished again")
+
+        watch = launcher.DiskWatch(SimpleNamespace(path=root), None)
+        with mock.patch.object(launcher.Path, "lstat", autospec=True, side_effect=observed_lstat) as lstat_mock, \
+                mock.patch.object(launcher.os, "scandir", side_effect=[
+                    synthetic_listing(str(vanished)), synthetic_listing(str(vanished)),
+                ]) as scan_mock, \
+                mock.patch.object(launcher.time, "monotonic", return_value=9.0):
+            with self.assertRaises(launcher.PreparationStop):
+                watch.tree_bytes(root, 10.0)
+            self.assertEqual(scan_mock.call_count, 2)
+            self.assertEqual(sum(call.args[0] == root for call in lstat_mock.call_args_list), 2)
+
+    def test_retry_cannot_restart_original_deadline_before_second_scan(self):
+        root, vanished, stable = Path(ROOT), Path(ROOT) / "vanished", Path(ROOT) / "stable"
+        directory = SimpleNamespace(st_mode=stat.S_IFDIR, st_size=1024, st_blocks=0)
+        regular = SimpleNamespace(st_mode=stat.S_IFREG, st_size=4096, st_blocks=0)
+        elapsed = [False]
+        observed_times = []
+
+        def observed_lstat(path):
+            if path == root:
+                return directory
+            if path == vanished:
+                elapsed[0] = True
+                raise FileNotFoundError("synthetic race at original deadline")
+            return regular
+
+        def observed_time():
+            value = 10.001 if elapsed[0] else 9.0
+            observed_times.append(value)
+            return value
+
+        watch = launcher.DiskWatch(SimpleNamespace(path=root), None)
+        with mock.patch.object(launcher.Path, "lstat", autospec=True, side_effect=observed_lstat) as lstat_mock, \
+                mock.patch.object(launcher.os, "scandir", side_effect=[
+                    synthetic_listing(str(vanished)), synthetic_listing(str(stable)),
+                ]) as scan_mock, \
+                mock.patch.object(launcher.time, "monotonic", side_effect=observed_time):
+            with self.assertRaises(launcher.PreparationStop):
+                watch.tree_bytes(root, 10.0)
+            self.assertIn(10.001, observed_times)
+            self.assertEqual(scan_mock.call_count, 1)
+            self.assertEqual(sum(call.args[0] == root for call in lstat_mock.call_args_list), 1)
+
+    def test_free_space_floor_is_checked_before_incomplete_growth_snapshot(self):
+        root = SimpleNamespace(path=Path(ROOT), verify=mock.Mock())
+        policy = SimpleNamespace(disk_budget_ok=lambda free, run, target, baseline: free >= launcher.FLOOR)
+        watch = launcher.DiskWatch(root, policy)
+        free = SimpleNamespace(f_bavail=launcher.FLOOR - 1, f_frsize=1)
+        with mock.patch.object(launcher.time, "monotonic", return_value=9.0), \
+                mock.patch.object(launcher.os, "statvfs", return_value=free), \
+                mock.patch.object(watch, "tree_bytes", side_effect=launcher.PreparationStop("synthetic incomplete growth snapshot")) as tree_mock, \
+                mock.patch.object(launcher.Path, "iterdir", side_effect=AssertionError("unexpected extra traversal")):
+            with self.assertRaises(launcher.PreparationStop):
+                watch.check(force=True)
+            tree_mock.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

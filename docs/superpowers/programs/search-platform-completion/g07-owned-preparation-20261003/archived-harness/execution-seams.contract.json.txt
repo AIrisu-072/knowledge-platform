@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "status": "TEST_CONTRACT_ONLY_NOT_EXECUTABLE_NOT_ADMITTED",
+  "module": "launcher.py",
+  "import_effects": "None: no filesystem writes, process/network/database/signal operations or policy import at module load",
+  "approval_digest_authority": "Immutable --approval-sha256 CLI value in the independently reviewed controller tool call; never a self-asserted JSON field or ambient environment value",
+  "functions": {
+    "validate_approval": {
+      "arguments": ["document", "phase", "approved_sha256", "observed_sha256"],
+      "result": "bool",
+      "exact_document_keys": ["schema_version", "scope", "phase", "outcome", "run_id", "run_root", "source_sha256", "fixture_sha256", "launcher_sha256", "policy_sha256", "manifest_sha256", "test_executable"],
+      "constants": {"schema_version": 1, "scope": "G07 owned launcher", "outcome": "GO"},
+      "phase": "bootstrap or supervise; exact equality to independently supplied phase",
+      "run_id": "lowercase canonical UUID",
+      "run_root": "null for bootstrap; canonical /workspace/scratch/13897606dfde/p6pg.<8 alphanumeric> for supervise",
+      "hashes": "Every *_sha256 and both independent hash arguments are exactly 64 lowercase hexadecimal characters; approved_sha256 equals observed_sha256",
+      "test_executable": "null for bootstrap; supervise exact object {path,sha256} with path admitted by existing policy.test_command('runtime-red',path) and valid lowercase hash",
+      "positive": "Strict valid bootstrap or supervise document with matching independently supplied approval bytes digest",
+      "negative_controls": ["extra/missing keys", "bool schema_version", "wrong outcome or scope", "phase mismatch", "digest mismatch or malformed digest", "noncanonical UUID/root", "non-null bootstrap root/test executable", "null supervise root/test executable", "unexpected executable path", "malformed source/fixture/launcher/policy/manifest hash"]
+    },
+    "validate_request": {
+      "arguments": ["document", "run_id", "stage", "observed_hashes"],
+      "result": "bool",
+      "exact_document_keys": ["schema_version", "outcome", "run_id", "stage", "source_sha256", "fixture_sha256", "launcher_sha256", "manifest_sha256", "test_executable_sha256", "cargo_window_statement_id"],
+      "constants": {"schema_version": 1, "outcome": "GO"},
+      "stages": ["runtime-red", "compile-runtime-green", "runtime-green-last", "runtime-green-four", "quality", "finish"],
+      "bindings": "run_id and independently supplied run_id are both canonical lowercase UUIDs and exactly equal; stage equals independent argument; observed_hashes has exactly source_sha256,fixture_sha256,launcher_sha256,manifest_sha256,test_executable_sha256 and every value exactly equals document; hashes valid lowercase64hex",
+      "compile_special_case": "test_executable_sha256 must be null only for compile-runtime-green, in both document and observed_hashes; non-null valid hash for all other stages",
+      "cargo_coordination": "cargo_window_statement_id is a canonical lowercase UUID only for compile-runtime-green and quality; null for other stages. It is a controller-recorded root-agent exclusive Cargo assignment, NOT a filesystem-lock claim. Effectful wrapper independently verifies controller evidence before Cargo",
+      "negative_controls": ["extra/missing keys", "unknown stage", "bool schema_version", "run or stage mismatch", "hash mismatch", "invalid hashes", "null runtime executable hash", "non-null compile executable hash", "unneeded or missing Cargo-window statement"]
+    },
+    "parse_control_identifier": {
+      "arguments": ["stdout_bytes"],
+      "result": "positive decimal string or REJECT",
+      "input": "bytes only, <=65536; strict ASCII; exact one line matching Database system identifier: followed by whitespace and [1-9][0-9]*, trailing whitespace allowed",
+      "positive": "Database system identifier:            7612345678901234567\n returns 7612345678901234567",
+      "negative_controls": ["missing or duplicate identifier lines", "0/negative/nondecimal value", "extra tokens", "non-ASCII", "non-bytes", "oversized output"]
+    },
+    "validate_test_receipt": {
+      "arguments": ["receipt", "expected", "observed_returncode", "registry_summary"],
+      "result": "bool",
+      "receipt_schema": "test-receipt.schema.draft.json",
+      "expected_exact_keys": ["stage", "run_id", "test_launch_id", "case", "database", "children"],
+      "expected_database_exact_keys": ["cluster_system_identifier", "name", "oid", "owner"],
+      "expected_child_exact_keys": ["pid", "start_ticks", "uid", "executable", "executable_sha256", "executable_dev", "executable_inode", "mode", "owner", "handshake"],
+      "registry_summary_exact_keys": ["complete", "registered_children", "observed_children", "owned_children_reaped", "database_cleanup_confirmed", "max_concurrent_children"],
+      "independent_observations": "expected database comes from create-new observations-<launch>.json bound to run/scope/SID/case, emitted after confirmed CREATE/catalog identity and before migration/children; expected children come from complete append-only registry and actual observed process identities. registry_summary uses externally observed disappearance/nonrunning plus parent reap exit records and one bounded exact read-only catalog absence query after confirmed cleanup, with no during-test watcher. Never construct expected from terminal receipt",
+      "runtime_red": "stage runtime-red; exact case last_claim_kill9_restart_reaps_unknown_once; outcome expected_red; exact unwired cause; expected_exit_code=101 and observed_returncode=101; exactly1 child, max concurrent1; forced_expiry_labels=[]; child exit101 and no signal",
+      "runtime_green_last": "stage runtime-green-last; exact last-claim case; outcome green; cause=null; expected_exit_code=0 and observed_returncode=0; exactly3 children in registry/receipt spawn order with modes [claim,reap,reap], exits [signal9,code0,code0]; max concurrent<=2; forced_expiry_labels=['FORCED_BY_TEST_SQL']",
+      "runtime_green_four": "stage runtime-green-four; exact four-process case; outcome green; cause=null; expected_exit_code=0 and observed_returncode=0; exactly5 children in registry/receipt spawn order, modes all claim and exits all signal9; max concurrent<=4; forced_expiry_labels=['FORCED_BY_TEST_SQL']",
+      "all_outcomes": "strict exact keys at every level; independent run/launch/case/DB/child identities agree; registered/observed counts agree; unknowns/timeouts empty, no output overflow; create/cleanup confirmed; all registered/reaped/status/output-complete child booleans exactly true and overflow booleans false; child exit code XOR signal confirmed, positive signal or nonnegative code; synthetic DB matches first16 run UUID hex +32 database UUID hex; OID positive uint32, owner agent, uid1000, canonical exact test executable and hash; distinct (pid,start_ticks) pairs, independently unique owners and handshakes; distinct workers may share a start tick",
+      "negative_controls": ["actual OS returncode mismatch despite receipt claim", "extra outer returncode key", "run/launch/case mismatch", "independent DB name/OID/owner/SID mismatch", "obsolete DB shape or wrong run prefix", "missing/duplicate/extra children", "child identity/mode/owner/handshake mismatch", "unknown/timeout/overflow", "unconfirmed DB cleanup", "incomplete registry or observed count mismatch", "unreaped or incomplete-output child", "launch/concurrency overflow", "wrong forced-expiry labels"]
+    },
+    "cargo_artifact_from_line": {
+      "arguments": ["line", "target"],
+      "result": "object {path,sha256:null} for one matching artifact; SKIP for valid unrelated Cargo JSON; REJECT for malformed JSON or unsafe matching artifact",
+      "input": "UTF8 bytes or str, <=65536; target exact /workspace/scratch/13897606dfde/search-g07-target",
+      "matching": "reason compiler-artifact, target.name process_recovery, target.kind includes test, profile.test exactly true, executable canonical direct child of target/debug/deps with basename process_recovery-[0-9a-f]+; wrapper separately establishes exactly one emitted artifact and its actual SHA/dev/inode",
+      "negative_controls": ["invalid JSON", "wrong target root", "escape/symlink lexical path", "non-test matching target", "non-test profile", "unsafe basename", "oversized line"]
+    },
+    "verify_release_packages_entry": {
+      "arguments": ["release_bytes", "bytes_count", "sha256"],
+      "result": "bool",
+      "positive": "Exactly one SHA256 section line binds sha256 and positive bytes_count to main/binary-amd64/Packages.xz; bytes only <=262144 and ASCII",
+      "negative_controls": ["missing or duplicate entry/section", "wrong pathname", "wrong hash/size", "malformed size/hash", "wrong section", "oversized/non-ASCII/non-bytes"]
+    },
+    "verify_package_paragraphs": {
+      "arguments": ["index_bytes", "pins"],
+      "result": "bool",
+      "pins": "exactly3 package objects ordered m4,bison,flex; each exact keys package,version,architecture,filename,bytes,sha256,depends,pre_depends; nonempty exact dependency strings from independently verified signed metadata; pre_depends null when absent",
+      "positive": "One selected paragraph per each named package with exact Package/Version/Architecture/Filename/Size/SHA256/Depends/Pre-Depends; bounded bytes input <=134217728, ASCII; reject duplicate selected fields/paragraphs; unrelated package paragraphs permitted",
+      "negative_controls": ["wrong version/arch/hash/size/filename/dependency", "missing or duplicate selected paragraph/field", "unexpected Pre-Depends", "wrong package order/count", "non-ASCII/non-bytes/oversize", "malformed continuation for selected protected fields"]
+    },
+    "inspect_elf_text": {
+      "arguments": ["stdout_bytes", "admitted_closure"],
+      "result": "object {interpreter,needed,version_needs} or REJECT",
+      "admitted_closure_exact_keys": ["interpreter", "needed", "version_needs"],
+      "closure": "interpreter null for an ordinary shared library or exactly /lib64/ld-linux-x86-64.so.2; needed/version_needs arrays of unique nonempty ASCII strings; each version_needs entry is provider-qualified e.g. libc.so.6:GLIBC_2.34, from the readelf File section and Name field; every provider must occur in NEEDED; every parsed requirement exactly equals approved set; wrapper separately verifies retained system-library hashes/dev/inodes and each corresponding provider's exported version sets before execution",
+      "positive": "Bounded ASCII bytes <=65536 containing ELF64, little-endian, Machine Advanced Micro Devices X86-64; exact interpreter/NEEDED/version-needs; no RPATH/RUNPATH/TEXTREL or alternate loader; unique interpreter and needed entries",
+      "negative_controls": ["wrong ELF class/endian/machine", "unknown interpreter", "extra/missing/duplicate NEEDED", "unapproved version need", "RPATH/RUNPATH/TEXTREL", "malformed/oversized/non-ASCII/non-bytes", "unknown closure keys"]
+    }
+  },
+  "verification_boundary": "Pure RED/GREEN verifies decisions only. No effectful OS containment, extraction, cluster lifecycle, actual DDL/cleanup or fixture behavior is proven"
+}

@@ -1,0 +1,19 @@
+# 仕事の手渡し: p3-fix-build-guard
+
+- 種類: docs / 役: DomainDesigner / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Specify durable base and target build guard for remaining incremental GC race
+
+## 入力
+- `p3-revised` (docs/superpowers/programs/search-platform-completion/p3-graph-design-revision-1.md) — Revised design resolving independent architecture findings [`p3-repair-design` が作る (済み)]
+- `p3-arch-recheck` (docs/superpowers/programs/search-platform-completion/p3-graph-architecture-recheck.md) — Independent revised exact design architecture gate [`p3-recheck-design` が作る (済み)]
+
+## 出すもの
+- `p3-build-guard` (docs/superpowers/programs/search-platform-completion/p3-graph-build-guard-amendment.md) — Bound source/base/target build leases prevent incremental-copy and GC races
+
+## 受入条件
+Active base/target builders protected and each copy batch validates locks digest and unexpired guard fencing
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p3-graph-build-guard-amendment.md` だけ。他は触らない。

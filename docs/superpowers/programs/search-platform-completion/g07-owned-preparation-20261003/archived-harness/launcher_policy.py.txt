@@ -1,0 +1,339 @@
+"""Pure G07 decisions after recorded assertion RED; no runtime effects.
+
+Inputs are observations supplied by a separately reviewed effectful supervisor.
+This module does not observe files/processes, issue a scope, connect, spawn,
+signal, download, extract or write. Missing/ambiguous facts fail closed.
+"""
+
+import math
+from pathlib import PurePosixPath
+import posixpath
+import re
+
+
+def _canonical_absolute(value):
+    return (
+        isinstance(value, str)
+        and value.startswith("/")
+        and "\x00" not in value
+        and not any(part in (".", "..") for part in value.split("/"))
+        and str(PurePosixPath(value)) == value
+    )
+
+
+def _positive_integer(value):
+    return type(value) is int and value > 0
+
+
+def _sha256(value):
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def owned_path_is_safe(root, path, observations, owner_uid):
+    if not _canonical_absolute(root) or not _canonical_absolute(path):
+        return False
+    if not _positive_integer(owner_uid) or not isinstance(observations, dict):
+        return False
+    if path != root and not path.startswith(root + "/"):
+        return False
+    root_fact = observations.get(root)
+    if not isinstance(root_fact, dict) or root_fact != {
+        "kind": "directory", "uid": owner_uid, "mode": 0o700
+    }:
+        return False
+    relative = PurePosixPath(path).relative_to(root)
+    current = root
+    for index, part in enumerate(relative.parts):
+        current += "/" + part
+        fact = observations.get(current)
+        if not isinstance(fact, dict) or fact.get("uid") != owner_uid:
+            return False
+        if fact.get("kind") not in ("file", "directory"):
+            return False
+        if index < len(relative.parts) - 1 and fact["kind"] != "directory":
+            return False
+        mode = fact.get("mode")
+        if type(mode) is not int or mode < 0 or mode & 0o7000:
+            return False
+    return True
+
+
+def process_identity_matches(expected, observed):
+    if not isinstance(expected, dict) or not isinstance(observed, dict):
+        return False
+    numeric = ("pid", "start_ticks", "uid", "executable_dev", "executable_inode")
+    for key in numeric:
+        if not _positive_integer(expected.get(key)):
+            return False
+        if type(observed.get(key)) is not int or expected[key] != observed[key]:
+            return False
+    if not _canonical_absolute(expected.get("executable")):
+        return False
+    if not _sha256(expected.get("executable_sha256")):
+        return False
+    return (
+        expected.get("state") == "running"
+        and observed.get("state") == "running"
+        and expected["executable"] == observed.get("executable")
+        and expected["executable_sha256"] == observed.get("executable_sha256")
+    )
+
+
+def phase_remaining(total_started, now, total_cap, phase_started, phase_cap):
+    values = (total_started, now, total_cap, phase_started, phase_cap)
+    if any(type(value) not in (int, float) or not math.isfinite(value) for value in values):
+        return "REJECT"
+    if total_started < 0 or total_cap <= 0 or phase_cap <= 0:
+        return "REJECT"
+    if not total_started <= phase_started <= now:
+        return "REJECT"
+    return max(0.0, min(total_cap - (now - total_started), phase_cap - (now - phase_started)))
+
+
+def disk_budget_ok(free_bytes, run_bytes, target_bytes, target_baseline):
+    values = (free_bytes, run_bytes, target_bytes, target_baseline)
+    if any(type(value) is not int or value < 0 for value in values):
+        return False
+    return (
+        free_bytes >= 1610612736
+        and target_bytes >= target_baseline
+        and run_bytes + (target_bytes - target_baseline) <= 8589934592
+    )
+
+
+def test_command(stage, executable):
+    names = {
+        "runtime-red": "last_claim_kill9_restart_reaps_unknown_once",
+        "runtime-green-last": "last_claim_kill9_restart_reaps_unknown_once",
+        "runtime-green-four": "four_processes_disjoint_claims_and_recover_expired",
+    }
+    if stage not in names or not _canonical_absolute(executable):
+        return "REJECT"
+    prefix = "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/"
+    if not executable.startswith(prefix):
+        return "REJECT"
+    if re.fullmatch(r"process_recovery-[A-Za-z0-9_-]+", executable[len(prefix):]) is None:
+        return "REJECT"
+    return (executable, names[stage], "--exact", "--nocapture", "--test-threads=1")
+
+
+def admit_stage(history, requested, reviews, cluster_alive):
+    helper_green = ["compile-helper-red", "pure-rust-red-confirmed", "compile-helper-green", "pure-rust-green-confirmed"]
+    first_green = helper_green + ["runtime-red-confirmed", "compile-runtime-green", "pure-rust-final-green-confirmed"]
+    preceding = {
+        "runtime-red": helper_green,
+        "runtime-green-last": first_green,
+        "runtime-green-four": first_green + ["runtime-green-last-confirmed"],
+    }
+    if cluster_alive is not True or requested not in preceding or history != preceding[requested]:
+        return False
+    if not isinstance(reviews, dict) or reviews.get("outcome") != "GO":
+        return False
+    prefixes = ("source", "fixture", "launcher", "test_executable")
+    expected_keys = {"outcome"}
+    for prefix in prefixes:
+        approved, observed = prefix + "_approved", prefix + "_observed"
+        expected_keys.update((approved, observed))
+        if not _sha256(reviews.get(approved)) or reviews.get(approved) != reviews.get(observed):
+            return False
+    return set(reviews) == expected_keys
+
+
+def child_environment(scope_path, home, tmp, mode, owner, limit, database, handshake, launch_id, barrier):
+    """Format validated synthetic fields; scope-layout authority is separate."""
+    if not all(_canonical_absolute(value) for value in (scope_path, home, tmp)):
+        return "REJECT"
+    if mode not in ("claim", "reap") or type(limit) is not int or limit not in (1, 2):
+        return "REJECT"
+    uuid_pattern = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    if any(not isinstance(value, str) or re.fullmatch(uuid_pattern, value) is None for value in (owner, handshake, launch_id)):
+        return "REJECT"
+    if not isinstance(database, dict) or set(database) != {"name", "oid", "owner"}:
+        return "REJECT"
+    if not isinstance(database["name"], str) or re.fullmatch(r"p6_g07_[0-9a-f]{16}_[0-9a-f]{32}", database["name"]) is None:
+        return "REJECT"
+    if not _positive_integer(database["oid"]) or database["oid"] > 4294967295 or database["owner"] != "agent":
+        return "REJECT"
+    if barrier is not None:
+        if not isinstance(barrier, str) or re.fullmatch(r"127\.0\.0\.1:[1-9][0-9]{0,4}", barrier) is None:
+            return "REJECT"
+        if int(barrier.rsplit(":", 1)[1]) > 65535:
+            return "REJECT"
+    environment = {
+        "HOME": home, "TMPDIR": tmp, "LC_ALL": "C", "TZ": "UTC", "RUST_BACKTRACE": "0",
+        "P6_G07_SCOPE_PATH": scope_path, "P6_G07_MODE": mode,
+        "P6_G07_OWNER": owner, "P6_G07_LIMIT": str(limit),
+        "P6_G07_DATABASE_NAME": database["name"], "P6_G07_DATABASE_OID": str(database["oid"]),
+        "P6_G07_DATABASE_OWNER": database["owner"], "P6_G07_CHILD_HANDSHAKE": handshake,
+        "P6_G07_TEST_LAUNCH_ID": launch_id,
+    }
+    if barrier is not None:
+        environment["P6_G07_CHILD_BARRIER"] = barrier
+    return environment
+
+
+def _archive_name(value, allow_root=False):
+    """Canonical archive-relative name; never erase member parent traversal."""
+    if not isinstance(value, str) or not value or value.startswith("/"):
+        return None
+    if "\x00" in value or "\\" in value:
+        return None
+    original = value
+    while value.startswith("./"):
+        value = value[2:]
+    if value in ("", "."):
+        return "." if allow_root and original in (".", "./") else None
+    if any(part in ("", ".", "..") for part in value.split("/")):
+        return None
+    return value
+
+
+def _ordinary_prior_entry(entry, name, kind):
+    if not isinstance(entry, dict) or entry.get("kind") != kind:
+        return False
+    if entry.get("name", name) != name or entry.get("link") is not None or entry.get("target") is not None:
+        return False
+    if "mode" in entry:
+        mode = entry["mode"]
+        if type(mode) is not int or not 0 <= mode <= 0o777:
+            return False
+    return True
+
+
+def _archive_ancestors_exist(name, prior):
+    if "." in prior and not _ordinary_prior_entry(prior["."], ".", "directory"):
+        return False
+    if name == ".":
+        return True
+    parts = name.split("/")
+    return all(
+        _ordinary_prior_entry(prior.get("/".join(parts[:index])), "/".join(parts[:index]), "directory")
+        for index in range(1, len(parts))
+    )
+
+
+def _archive_symlink_target(parent, link, prior):
+    """Resolve each raw component without lexically hiding a prior link."""
+    parts = [] if parent == "." else parent.split("/")
+    components = link.split("/")
+    for index, component in enumerate(components):
+        if component == ".":
+            continue
+        if not component:
+            return None
+        if component == "..":
+            if not parts:
+                return None
+            current = "/".join(parts)
+            if not _ordinary_prior_entry(prior.get(current), current, "directory"):
+                return None
+            parts.pop()
+        else:
+            parts.append(component)
+            if index < len(components) - 1:
+                current = "/".join(parts)
+                if not _ordinary_prior_entry(prior.get(current), current, "directory"):
+                    return None
+    return "/".join(parts) if parts else "."
+
+
+def normalize_archive_member(member, prior):
+    """One canonical decision consumed by reducer and future extraction gate.
+
+    Prior keys must be canonical names of already validated inventory entries.
+    The effectful issuer/extractor must establish those filesystem facts itself.
+    Links may target only an existing ordinary file/directory, never a link.
+    No input or inventory is mutated; no filesystem observation occurs here.
+    """
+    if not isinstance(member, dict) or not isinstance(prior, dict):
+        return "REJECT"
+    kind, mode = member.get("kind"), member.get("mode")
+    if kind not in ("file", "directory", "symlink", "hardlink"):
+        return "REJECT"
+    if type(mode) is not int or not 0 <= mode <= 0o777:
+        return "REJECT"
+    name = _archive_name(member.get("name"), allow_root=kind == "directory")
+    if name is None or not _archive_ancestors_exist(name, prior):
+        return "REJECT"
+    if name in prior and not (kind == "directory" and _ordinary_prior_entry(prior[name], name, "directory")):
+        return "REJECT"
+    link = member.get("link")
+    target = None
+    if kind in ("file", "directory"):
+        if link is not None:
+            return "REJECT"
+    else:
+        if not isinstance(link, str) or not link or link.startswith("/") or "\x00" in link or "\\" in link:
+            return "REJECT"
+        if kind == "hardlink":
+            target = _archive_name(link)
+        else:
+            parent = posixpath.dirname(name) or "."
+            target = _archive_symlink_target(parent, link, prior)
+        if target is None or target == name or not _archive_ancestors_exist(target, prior):
+            return "REJECT"
+        target_entry = prior.get(target)
+        allowed_target_kinds = ("file",) if kind == "hardlink" else ("file", "directory")
+        if not any(_ordinary_prior_entry(target_entry, target, target_kind) for target_kind in allowed_target_kinds):
+            return "REJECT"
+        link = target if kind == "hardlink" else posixpath.relpath(target, posixpath.dirname(name) or ".")
+    if "target" in member and member["target"] != target:
+        return "REJECT"
+    return {"name": name, "kind": kind, "mode": mode, "link": link, "target": target}
+
+
+def archive_member_is_safe(member, prior):
+    return isinstance(normalize_archive_member(member, prior), dict)
+
+
+def expected_red_is_confirmed(receipt):
+    if not isinstance(receipt, dict) or type(receipt.get("returncode")) is not int:
+        return False
+    if receipt["returncode"] <= 0 or receipt.get("cause") != "G07 child process path not wired":
+        return False
+    for key in ("outer_timeout", "unknown", "disk_violation", "output_overflow"):
+        if receipt.get(key) is not False:
+            return False
+    for key in ("owned_children_reaped", "database_cleanup_confirmed"):
+        if receipt.get(key) is not True:
+            return False
+    return (
+        type(receipt.get("registered_children")) is int
+        and type(receipt.get("observed_children")) is int
+        and receipt["registered_children"] == receipt["observed_children"] == 1
+    )
+
+
+def children_gone_is_confirmed(registrations, observations):
+    if not isinstance(registrations, list) or not isinstance(observations, list):
+        return False
+    if not registrations or len(registrations) != len(observations):
+        return False
+    expected = set()
+    for registration in registrations:
+        if not isinstance(registration, dict) or not _positive_integer(registration.get("pid")) or not _positive_integer(registration.get("start_ticks")):
+            return False
+        identity = (registration["pid"], registration["start_ticks"])
+        if identity in expected:
+            return False
+        expected.add(identity)
+    seen = set()
+    for observation in observations:
+        if not isinstance(observation, dict) or observation.get("state") != "gone":
+            return False
+        if not _positive_integer(observation.get("pid")) or not _positive_integer(observation.get("start_ticks")):
+            return False
+        identity = (observation["pid"], observation["start_ticks"])
+        if identity not in expected or identity in seen:
+            return False
+        seen.add(identity)
+    return seen == expected
+
+
+def bounded_output(chunk_sizes, byte_cap):
+    if not _positive_integer(byte_cap) or byte_cap > 65536:
+        return "REJECT"
+    if not isinstance(chunk_sizes, (list, tuple)) or any(type(size) is not int or size < 0 for size in chunk_sizes):
+        return "REJECT"
+    total = sum(chunk_sizes)
+    return {"retained_bytes": min(total, byte_cap), "overflow": total > byte_cap, "drain_remaining": True}

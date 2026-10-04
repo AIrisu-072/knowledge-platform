@@ -1,0 +1,22 @@
+# 仕事の手渡し: p6-recheck-design
+
+- 種類: audit / 役: QualityAuditor / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Independently verify revised outbox architecture closes blockers
+
+## 入力
+- `p6-revised` (docs/superpowers/programs/search-platform-completion/p6-outbox-design-revision-1.md) — Revised design resolving independent architecture findings [`p6-repair-design` が作る (済み)]
+- `p6-arch` (docs/superpowers/programs/search-platform-completion/p6-outbox-architecture-review.md) — outbox arch [`p6-architecture` が作る (済み)]
+- `baseline` (docs/superpowers/specs/2026-09-28-search-discovery-platform-v0-design.md) — existing approved Search semantics [既に在る]
+
+## 出すもの
+- `p6-arch-recheck` (docs/superpowers/programs/search-platform-completion/p6-outbox-architecture-recheck.md) — Independent revised exact design architecture gate
+
+## 受入条件
+No blocking P1/P2 remains on exact revised design
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p6-outbox-architecture-recheck.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

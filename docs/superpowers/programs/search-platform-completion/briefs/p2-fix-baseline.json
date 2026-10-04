@@ -1,0 +1,21 @@
+# 仕事の手渡し: p2-fix-baseline
+
+- 種類: spike / 役: Worker / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Fix code snapshot multiUnit parent aggregation and zero-positive disclosure metrics
+
+## 入力
+- `p2-arch` (docs/superpowers/programs/search-platform-completion/p2-vector-architecture-review.md) — vector arch [`p2-architecture` が作る (未着手)]
+- `p2-harness-code` (experiments/search-vector-poc) — Actual existing Lexical and Graph baseline harness [`p2-build-baseline-harness` が作る (済み)]
+- `p2-baseline-evidence` (experiments/search-vector-poc/report.md) — Measured weight-free L and LG baseline and security contract tests [`p2-build-baseline-harness` が作る (済み)]
+- `p1-unit-code` (crates/search-core/src/knowledge_unit.rs) — Canonical provider-neutral Unit and locator codec [`p1-impl-unit-code` が作る (済み)]
+
+## 出すもの
+- `p2-baseline-repaired` (experiments/search-vector-poc/baseline-refinement-report.md) — Pinned actualcode paired L LG multiUnit negative access measurement baseline
+
+## 受入条件
+F1 F2 F3 meaningfulREDGREEN and actualpinned baseline replay; actualminimalcorebindings usedwhenavailable
+
+## 守ること
+- 書いてよいのは `experiments/search-vector-poc` だけ。他は触らない。

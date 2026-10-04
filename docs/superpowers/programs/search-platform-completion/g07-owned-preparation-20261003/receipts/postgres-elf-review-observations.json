@@ -1,0 +1,59 @@
+{
+  "elf": [
+    {
+      "dev": 27,
+      "inode": 1464787,
+      "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin/postgres",
+      "readelf_stdout": {
+        "overflow": false,
+        "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/postgres-elf-review-installed-inspect-0.stdout.log",
+        "retained": 234448,
+        "seen": 234448,
+        "sha256": "8145b3764c91b186ec4e04a55da46e20284b3ab5fce3dd6b8daa8b68a8e63cb0"
+      },
+      "sha256": "924ff7eb26f7e57a315f2e4d02ae38ba3bedf1c90ffd7efe2534000a6ec3bb1d"
+    },
+    {
+      "dev": 27,
+      "inode": 1465836,
+      "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin/initdb",
+      "readelf_stdout": {
+        "overflow": false,
+        "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/postgres-elf-review-installed-inspect-1.stdout.log",
+        "retained": 8849,
+        "seen": 8849,
+        "sha256": "fc385d23b6231c933f08bb052389309787b08d9948b0352592b013d3e6c7ba5f"
+      },
+      "sha256": "5f87645c4e5ca39f584082455f9a2f4ffe08a47cae7386723770765e67db96d9"
+    },
+    {
+      "dev": 27,
+      "inode": 1465846,
+      "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin/pg_controldata",
+      "readelf_stdout": {
+        "overflow": false,
+        "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/postgres-elf-review-installed-inspect-2.stdout.log",
+        "retained": 7174,
+        "seen": 7174,
+        "sha256": "c5bae8c6f13c2c6997faf8a918d7a9cdd85562b1b39f870e29f373cd5c9fbe91"
+      },
+      "sha256": "b1f00b95f277696969c4dad5df0e764096bcfeb23dbaf410011486839c5fc427"
+    },
+    {
+      "dev": 27,
+      "inode": 1465860,
+      "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/install/bin/psql",
+      "readelf_stdout": {
+        "overflow": false,
+        "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/postgres-elf-review-installed-inspect-3.stdout.log",
+        "retained": 10419,
+        "seen": 10419,
+        "sha256": "8420a08b01cad928ef7209e597680e92712581c924b0c427f4d2b707c63442ee"
+      },
+      "sha256": "a5d2e113222dc4e7df0b9e1c07ab3e307bd35f3c24b2b4a65da60b04e7857572"
+    }
+  ],
+  "run_id": "a53a280c-c335-4226-b37a-b24533fe77a6",
+  "schema_version": 1,
+  "stage": "postgres-elf-review"
+}

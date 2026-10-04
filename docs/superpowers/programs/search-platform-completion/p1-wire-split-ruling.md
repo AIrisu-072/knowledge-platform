@@ -1,0 +1,3 @@
+# P1 pure protocol critical-path split
+
+Parent autonomous implementation-plan refinement: split P1-I01 into pure protocol/budget/coverage validators and crate registration using only existing qualified internal/serde dependencies, then reader dependency registration after P1-Q01 independent GO. Pure wire types do not depend on or qualify an extraction library, so this portion can proceed after the full P1 freeze and normative clauses. P1-I03–I05 and production reader dependencies still consume exact qualified PoC receipts. Shared Linux process mechanics remain distinct from format fidelity and require actual hosted enforcement before receipt. Original full plan remains preserved; no extraction behavior or business meaning changes.

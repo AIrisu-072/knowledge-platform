@@ -1,0 +1,22 @@
+# 仕事の手渡し: p3-review-poc
+
+- 種類: audit / 役: QualityAuditor / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Audit measured backend comparison before production promotion
+
+## 入力
+- `p3-poc-code` (experiments/search-graph-poc) — Executable three backend typed nary oracle comparison [`p3-measure-backends` が作る (未着手)]
+- `p3-selection` (experiments/search-graph-poc/report.md) — Actual measured backend selection [`p3-measure-backends` が作る (未着手)]
+- `p3-contract` (docs/superpowers/programs/search-platform-completion/p3-graph-freeze.md) — graph contract [`p3-freeze-architecture` が作る (済み)]
+
+## 出すもの
+- `p3-poc-review` (docs/superpowers/programs/search-platform-completion/p3-graph-poc-review.md) — Independent comparison and promotion boundary review
+
+## 受入条件
+Measured comparison reproducible no material semantic or qualification gap before selected backend promotion
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p3-graph-poc-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

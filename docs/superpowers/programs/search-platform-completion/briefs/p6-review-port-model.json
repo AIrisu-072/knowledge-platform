@@ -1,0 +1,23 @@
+# 仕事の手渡し: p6-review-port-model
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independently audit generic and Search typed delivery interface contract
+
+## 入力
+- `p6-model-code` (crates/outbox-delivery/src/model.rs) — p6-model-code [`p6-impl-model` が作る (未着手)]
+- `p6-search-port-code` (crates/search-application/src/ports.rs) — p6-search-port-code [`p6-impl-search-ports` が作る (未着手)]
+- `p6-contract` (docs/superpowers/programs/search-platform-completion/p6-outbox-freeze.md) — outbox contract [`p6-freeze` が作る (済み)]
+- `p6-plan` (docs/superpowers/programs/search-platform-completion/p6-outbox-plan.md) — outbox plan [`p6-freeze` が作る (済み)]
+
+## 出すもの
+- `p6-port-model-review` (docs/superpowers/programs/search-platform-completion/p6-delivery-port-model-review.md) — Independent pure generic and Search delivery port API contract audit
+
+## 受入条件
+Independently audit generic and Search typed delivery interface contract exact bindings and named tests; no premature integrated receipt
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p6-delivery-port-model-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

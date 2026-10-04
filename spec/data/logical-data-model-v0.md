@@ -44,7 +44,7 @@ Search Platform が保持する。
 - Vector representation / index
 - Metadata / structured index
 - Temporal representation
-- Graph representation（将来）
+- Typed HyperEdge graph representation
 
 ## 1.3 Operational Data
 
@@ -441,9 +441,9 @@ Embedding は検索アルゴリズムの一表現であり、正本ではない�
 
 単一 `timestamp` へ統合しない。
 
-### GraphRepresentation（将来）
+### HyperGraphRepresentation
 
-必要になった場合のみ追加。
+Search / Discovery Platform v0ではfirst-classな派生Projectionとして扱う。物理Graph backendは別途選定する。
 
 ---
 
@@ -683,3 +683,187 @@ Document DB と同じ製品にする必要はない。
 Document Diff v0 の `DiffResult` と新旧対照表は、二つの `DocumentVersion` snapshot と原本 `FileObject` から要求時に再生成する派生結果である。Document、DocumentVersion、ContentItem、authoritative ContentRepresentation、FileObject、DSI の正本関係を変更しない。Search Index や検索用 chunk を比較の正本にしない。
 
 cache key は方向付きの両 snapshot digest と比較・資源 profile を結合する。cache entry は主体別権限を保存せず、読み出し時に結果 digest と source binding を検証する。cache hit と新旧対照表の取得でも現在権限・入力鮮度の再確認と必須 Audit を省略しない。未比較範囲と原本参照は投影後も保持する。
+
+
+---
+
+# Search / Discovery Platform v0 logical model amendment
+
+既存KnowledgeResourceSnapshot / KnowledgeUnitはKnowledgeResource系の一部として維持し、Search canonical modelを以下へ拡張する。
+
+## DiscoverableSource
+
+```text
+DiscoverableSource
+- source_id
+- source_type
+- resource_types[]
+- business_domains[]
+- concept_refs[]
+- discovery_modes[]
+- discovery_capabilities[]
+- enumeration_semantics
+- authority_scope
+- provenance
+- access_model
+- retention_mode
+- freshness_policy
+```
+
+## DiscoverableResource
+
+```text
+DiscoverableResource
+├─ ResourceIdentity
+├─ typed ResourceBody
+├─ UsageProfile[]
+├─ DiscoveryProfile
+├─ TemporalDiscoveryProfile
+└─ ResourceRelations[]
+```
+
+Resource family:
+
+- KnowledgeResource
+- SemanticResource
+- CapabilityResource
+- AgentSkillResource
+- WorkflowResource
+- PolicyResource
+
+KnowledgeResourceへ他Resource型を無理に畳み込まない。
+
+## Assertion
+
+```text
+Assertion
+- assertion_id
+- subject_ref
+- predicate
+- value
+- source_ref
+- origin
+- authority_scope
+- evidence_refs[]
+- observed_at
+- effective_from?
+- effective_to?
+- derived_by?
+```
+
+複数Assertionを保持し、Authority Resolution後のDiscovery Projectionから元Assertionへ追跡可能にする。
+
+## Logical resource identity
+
+```text
+LogicalResource
+    ↓
+ResourceRepresentation[]
+    ↓
+ResourceVersion[]
+    ↓
+DiscoveryProjection[]
+```
+
+SimilarityだけでLogical identityを確定しない。RESOLVED / PROVISIONAL / UNRESOLVED / CONFLICTを区別する。
+
+## UsageProfile / DiscoveryProfile
+
+UsageProfileはapplicable_when / not_applicable_whenを含み、1 Resourceに複数用途を許可する。
+DiscoveryProfileはcanonical_name / aliases / concept_refs / intents / high_signal_facets / confusable_with / distinguished_by等を持てる。
+
+## TypedRelationInstance
+
+Canonical Graph relation:
+
+```text
+TypedRelationInstance
+- relation_id
+- relation_type
+- participants[] { role, resource_ref }
+- qualifiers
+- temporal_scope
+- authority
+- provenance
+- evidence_refs[]
+```
+
+二項関係も同じn-ary modelで表現する。Canonical relationをlossy binary edgeへ変換しない。
+将来のbinary shortcutはderived acceleration artifactに限り、元RelationInstanceへ逆参照可能にする。
+
+## Discovery execution types
+
+最低限以下の型をDomain / Core側で表現可能にする。
+
+- IntentSignature
+- ApplicabilityResult
+- InformationGap
+- QualifiedResource
+- FederatedCandidate
+- EvidenceRequirement
+- Claim
+- EvidenceSet / EvidenceSufficiency
+- DiscoveryResult
+- LogicalResourceBinding
+- RepresentationBinding
+
+具体的なIndex / Graph / Vector backend型をこのlogical modelへ露出させない。
+
+## Search KnowledgeUnit v1 — P1→P2 最小入力契約（追補）
+
+この節は §4.4 の Search 向け具体化である。規範入力は `docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md` が固定した `p1-knowledgeunit-contract.md`（SHA-256 `b38cb20b858a9e467908ce33d46ea8d2a1d52c29bccf28ef586c61c6394a6bfe`）と `p1-knowledgeunit-amendment.md`（SHA-256 `0d44f5dfed72360bafc56f19c2bf72b1d8b9f278c7ea3247261e1af040a06a00`）であり、Archive provenance / profile と Vector cache / hit は後者を優先する。これは provider-neutral な入力型の規範であり、parser、本文索引、exact evidence、Source 権限判定の完成を意味しない。
+
+- `ResourceVersionRef` は `SourceId`、**Version の** `ResourceId`、Source native Version ID、`ContentPartRef` は Source native Part ID、NFC・case-sensitive・相対 `/` 区切りの `logical_path`、part ordinalを保持する。`RawBinding` は immutable authoritative bytes の SHA-256、size、lowercase `type/subtype` MIME essenceを保持する。`UnitProvenance` は Source snapshot、authoritative representation ID、raw binding、outer `FormatId`、profile ID、parser build IDを保持し、Archive だけ leaf formatを別 fieldに保持する。同一 FileObjectでも別 Partの Unit は別IDになる。
+- `NativeLocator` は frozen contract §2 の tag 1–8（Docx、Spreadsheet、Pptx、Pdf、Text、Csv、Html、Archive）と物理/native座標を使う。codecは `native-locator:v1\0`、tag、固定幅BE整数、u32-count列、u32長の `frame` を用い、unknown tag、trailing bytes、非NFC文字列、曖昧path、空の必須path、Archive再帰を拒否する。Archive member は厳密decode後のNFC相対pathであり、ZIP raw名との一対一、衝突、symlink、暗号化の検査は trusted hostが担う。locatorは同一raw/profileの再解析で唯一のnative要素に戻り、textを再構成できなければ受理しない。
+- 正規化 `nfc-lf-v1` は厳密decode後に CRLF→LF、CR→LF、NFCの順で行い、case・幅・かな・空白・句読点を変えない。`text_sha256` はその UTF-8 bytes の SHA-256。`TextSpan` は正規化textのUTF-8 byte境界の非空半開区間であり、PDF native character indexとは別である。
+- `ExtractionProfileId` は固定順binary定義の SHA-256 を `sha256:` + 64小文字hexで表す。非Archiveは `extraction-profile:v1\0` と frozen contract §3 の format、parser artifact/native pin、revision、effective settings、全15 budget keyを符号化する。Archive itemは追補の `extraction-profile:archive:v2\0` と reader node chain全体の composite IDを**item内の全Unit**に使う。inner charset/dialect、nested decoder、parser build、PDFium pin、budgetの変更は別IDを要する。未登録・不完全・曖昧なreader planは Supported としない。
+- `UnitId` は `knowledge-unit:v1\0` の後に Source UUID bytes、Version Resource UUID bytes、native Version、native Part、logical path、part ordinal、profile ID、locator bytes、Unit ordinalの**9 fieldを個別にframe**した SHA-256であり、外部表記は `ku1:` + 64小文字hex。generation、raw/text hash、parent IDはID入力ではない。hostは同一Part内の0始まり連続ordinal、重複なしlocator、同一Partの前出Unitへの親参照、kind/format/locator、text digest/ID、raw/native round-tripを検証する。
+- P2 embedding cache のkeyは `(embedding_model_id, UnitId, text_sha256, ExtractionProfileId, SourceId, authority_scope_key, retention_lease_id, lifetime_scope_id)` を含む。entry/hitは元Version/Part/raw/representationとgenerationを保持し、Sourceの現在 Read・Live Version/T10・retention許可・lease・scope・pin済みmanifestを候補化前と公開直前に照合する。`SESSION_ONLY` と `NO_RETENTION` の永続embedding/index/backup/queueは禁止する。cache/similarityはexact evidence、lexical `BodyRequired`、absenceの証明にならない。
+
+## Search 本文 P1 — 正本、Unit、coverage、lexical の規範
+
+本節は上の最小 Unit 型を、`p1-extraction-freeze.md`（SHA-256 `205c5a5ff68843e073da8d87b825a55078dbdb66bd985f22d2044eb888fd406d`）の合成契約に従って本文へ接続する。`p1-body-absence-amendment.md` の否定証明には `p1-partial-positive-correction.md` の肯定側訂正を適用する。Archive の同一 Part に異種 leaf がある場合は `p1-unit-archive-binding-ruling.md` の leaf ごとの照合を適用する。詳細な型、canonical encoding、上限と検証ケースは凍結契約に従い、§4.4 の一般的な `KnowledgeUnit` 説明を本文の正本・完全性証明として扱わない。
+
+### P1-L1: Source-owned authoritative body binding
+
+- 本文の Source 正本は、通常検索では T10 未終了の現行 `PUBLISHED` DocumentVersion の全 `ContentItem` と、各 item の唯一の `AUTHORITATIVE` `ContentRepresentation` が参照する immutable `FileObject` である。単一の `REPEATABLE READ, READ ONLY` snapshot で Version/T10、document/access revision、item、representation、FileObject を結び、item の欠落・重複・不正な path/ordinal/参照を拒否する。`version_files`、rendition、DSI fingerprint/result、macro 実行、外部 HTML/JS、History を Live 本文の代用にしない。History は明示 ID の `Read` + `ReadHistory` 経路に留める。
+- trusted host は `FileStorage` から上限付きで開いた raw bytes を FileObject の SHA-256・size・MIME と束縛し、worker 前と応答後に hash/size を再照合する。worker へ Source/actor/StorageKey/FileObject ID を渡さない。host は返却 Unit の Version Resource、Part、representation、raw、profile、ordinal、kind、native locator、正規化 text/`text_sha256`、再解析 round-trip と UnitId を検証する。同一 bytes・同一 text でも親 Part が違えば Unit を混同しない。不一致は integrity incident とし、新 generation を公開しない。
+- format reader は固定した合成・公開 corpus で本文範囲、locator、資源、license/security を形式別に資格判定し、登録済み parser/native pin・effective settings と全15 budget key を `ExtractionProfileId` に固定する。DOCX/XLSX/XLSM/PPTX/PDF/Text/CSV/HTML/明示許可 Archive の対象範囲を形式別に定義し、未資格・曖昧・対象外の形式を `Supported` としない。Archive は item 共通 composite profile を使い、各 Unit の member chain、実際の leaf reader/format、inner locator、outer raw/profile と reader-use 全 node を照合する。同一 Archive Part 内に Text と CSV 等の異種 leaf を許し、Part 全体を単一 leaf format と仮定しない。新 reader 依存は隔離 PoC の GO 前に production へ入れない。
+
+### P1-L2: Item coverage と検索可能 Unit doc の seal
+
+- `BodyUnitManifest` と `BodyCoverageArtifact` は同じ現行 Live snapshot の全 AUTHORITATIVE item をそれぞれちょうど一度記録し、Version/Part/representation/raw/profile/operation/coverage/Unit count を一致させる。`Completed + Supported` は登録 profile の reader-visible scope を最後まで列挙し全対象 text と locator を検証した場合だけ許す。対象 text が真に空なら Unit 0 を許す。`Completed + Partial` は traversal 完了、既知の省略範囲・非空理由、少なくとも1件の locator 検証済み Unit が必要で、その Unit は検索可能にするが blocking coverage gap と不完全性を保持する。`Completed + Unsupported` と `FailedPermanent` は Unit 0、`Retryable` は公開 manifest に含めない。途中 kill/panic/output 切断、hard budget 中断、不明な欠落を Partial/Supported に変換しない。body coverage と Source enumeration coverage は別である。
+- Resource doc と Unit doc を分け、Unit doc の body field には検証済み `KnowledgeUnit.text` だけを索引する。`Completed + Supported/Partial` の全 Unit と、**構築後に実際に検索可能な** lexical Unit doc を、同一 generation・Source・親 Version Resource・Part・representation・raw・UnitId・ordinal・kind・locator・profile・`text_sha256`・正規化本文の全 bytes で双方向一対一照合する。`Unsupported/FailedPermanent` の doc は0件とする。欠落・余分・重複・本文差替えは個別 receipt の digest が正しくても seal を拒否する。tokenizer の候補化だけで literal substring の完全性は証明しない。
+- 既存 `ProjectionGenerationManifest.digest` / `generation_digest()` は projection-only v1、`resource_count` は Resource 数、同 manifest の `coverage` は Source enumeration のまま維持する。Unit manifest、body coverage、実 lexical doc、Graph、profile set、schema version は別の同一 `ProjectionGenerationKey` の immutable `GenerationBundleReceipt` に runtime 再計算 digest/count と composite digest を持たせる。full/incremental は同じ Source binding・順序・profile・正規化から同じ論理 digest を得る。本文だけが変われば composite digest が変わる。Projection digest を本文 digest に置き換えない。
+
+### P1-L3: 本文検索と限定 exact-text claim
+
+- `BodyRequired` は trusted adapter が request ごとに非空 `BodyOnly` query と claim/selector binding を渡す。P1 の `discover_with_content_scope`、P4 の `discover_scoped` と既存 `discover` は同一の内部評価 loop に接続する。Unit doc の body tier だけを本文候補とし、title/alias/metadata、Graph、Vector、probe や DSI を本文充足の代わりにしない。通常 Discovery の S1 `PriorityConcat` は維持する。検索・evidence・coverage は同じ pinned bundle を使用し、Unit hit の親 Version Resource/Part/raw/profile/locator/span を保持する。
+- `document.body.contains_exact` の肯定は、同一の現行 Live 親 Version の `Completed + Supported` **または** `Completed + Partial` の検証済み Unit 一つの中に、非空の期待文字列が `nfc-lf-v1` 後の連続 UTF-8 literal substring としてある場合だけ作る。case・幅・かな・空白・句読点は変えず、Unit/item 間を連結しない。Partial 肯定の `Extracted` claim と blocking coverage gap は共存させる。trusted query・selector・required ClaimId/subject/predicate/value、実 span、pinned Unit、Source-owned 現行 Version/T10・`Read`・Part/raw、同一 raw の再読取と locator 再構成を照合し、公開直前にも再確認する。一般の本文 hit や Vector similarity は別の事実 claim の primary evidence に昇格しない。
+- 同述語の `Absent` は lexical no-hit の意味ではなく、指定した一つの現行 Live 親 Version の可視 AUTHORITATIVE item がすべて `Completed + Supported` で、Source-owned な有限の全 Unit literal scan と最終 authority 照合を終えた時だけの限定証明である。`Partial` の検証済み Unit は肯定に使えても否定には使えない。完全な否定証明・非開示 gap と公開制御は本書の規範と `transaction-consistency-requirements-v0.md` の P1 consistency 追補をともに満たす。
+
+## Search Full API P5 — 公開 DTO と Source 正本の境界
+
+四 operation と wire schema は [`spec/api/search-openapi.yaml`](../api/search-openapi.yaml)、Search 専用 error は [`spec/errors/search-api-error-registry.yaml`](../errors/search-api-error-registry.yaml) を正本とする。本節は P5 composed freeze（revision 2 > reconciliation > revised design）および P1 composed/Archive ruling、P3 typed n-ary Graph、P4 remote freeze を Search 論理モデルへ写像する。P4 source-neutral catalog、P1 full body、P3/P7 durable/current、二段 disclosure lease と実 HTTP の実装・資格を完了済みとは扱わない。
+
+### P5-D1: 同一 trusted actor と完全可視 catalog
+
+v0 transport の Bearer credential は server 設定の `SearchCredentialVerifierPort` が検証し、opaque session handle だけを `VerifiedActorResolverPort` に渡す。四 operation は P4 の一つの `TrustedSearchScope`、`AuthorizedSourceScope`、`ScopedSourceRegistryPort` と `VisibleCatalogSnapshot` を共有する。request の principal/tenant/role/group/subjects/access context、provider URL、native locator、Source grant を認証・可視性の入力にしない。Document と Remote の登録を一つの union catalog に持ち、各 Source の owner、registration/visibility revision、activation、現在の Source 存在許可を検査する。Source 個別 `Denied` / `Unknown`・revision race はその Source だけを除外し、他の可視 Source を保つ。actor/registry/ledger/visibility error、列挙不完全、重複 ID、構造的不一致は完全 snapshot 不成立として四 operation を generic 503 に閉じる。空集合も完全な列挙時だけ正常結果である。production factory は二 namespace の全 tenant 完全集合 reconcile、durable SourceId owner/current ledger、identity verifier/challenge と可視性 port がない場合、四 route を起動しない。
+
+四 route は `trusted identity/operation authorization → 完全な可視 Source snapshot → 可視 selector/locator → routing/pin/Source I/O → actor/Source/item/field/Graph participant final gate → private safe DTO` の順を守る。`sourceIds` は可視集合との intersection のみで、未知・他 tenant・不可視 ID の数や理由を出さない。Resource locator は可視 Source scope 内の Source-owned current locator だけを使い、裸 ID の global lookup、ephemeral/native ID、旧版/history fallback を禁じる。対象の存在を開示できる前の失敗と、未知・不可視・T10 終了・重複 locator は同じ 404 である。
+
+### P5-D2: 閉じた request / response projection
+
+`SearchQuery` は `query,resourceTypes?,sourceIds?,coverage,pageSize?,cursor?`、`DiscoveryInput` は `need.{purpose,requiredResourceTypes,requiredClaimIds,temporalTarget?,businessTimezone?},query?,coverage` だけである。`GET /v1/sources` は `pageSize?,cursor?`、Resource GET は canonical `resourceId` だけを受ける。未知 JSON field を拒否する。公開 `temporalTarget` は履歴 Read 権限を発行しない。上限と不正入力の typed outcome は operations §15 と OpenAPI に固定する。
+
+HTTP は Core 型を直接 serialize しない。`SearchPage` は許可済み `items,nextCursor,partial,coverage,gaps,traceId` だけを持ち、item は `resourceId,sourceId,resourceType,resourceVersionId?,title?,rank,matchedFields,snippet?,provenance` のみ。`DiscoveryEvaluation` は `needId,discoveryEvaluationId,qualifiedResources,evidenceSufficiency,evidence,gaps,rejectedCandidates,evaluationCompleteness,completenessReasonCodes,trace,traceId` に閉じる。`ResourceDetail` は current durable Resource の `resourceId,sourceId,resourceType,resourceVersionId?,title?,snippet?,coverage,provenance,traceId`、`SourcePage` は完全可視集合の `items,nextCursor,traceId` のみで partial field を持たない。Source item は `sourceId,sourceType,resourceTypes,discoveryModes,enumerationSemantics,coverage,availabilityCode?` の安全な接続済み能力だけである。Source endpoint、authority/access model、retention、credential、provider trace/native URL、Graph path、raw score、query/body、private actor はいずれの DTO にも出さない。
+
+public `resourceType` は `knowledge,document,folderPlacement,semantic,capability,agentSkill,workflow,policy`、request coverage は `titleAndPermittedMetadata,bodyRequired`、Source/search response capability は `titleAndPermittedMetadata,bodySearchWithPerItemCoverage` の閉じた enum。`bodySearchWithPerItemCoverage` は実接続済み body search 能力であり、全 item の完全性ではない。`ResourceDetail.coverage` は item ごとの `titleAndPermittedMetadata,bodySupported,bodyPartial,bodyUnsupported,bodyUnknown` で、後四者は P1 の現在の item coverage による。`bodyPartial` は ResourceDetail という DTO の部分成功ではなく、本文 coverage の不完全性を示す。snippet は現在の field grant のある plain text 最大 320 Unicode code points と `title,metadata,body` の field/coverage code のみ。`provenance` は可視 Source/Version の公開 canonical ID だけ、citation は許可済み resource と field だけ。`value` と condition/evidence/rejection code は Source が現在許可した field と server 登録済みの非データ由来 code に限る。free-form qualification/source/retrieval trace、selector/expected value、Unit locator/Part/raw、internal citation chain、native provider role/origin は遮断する。rank/count/trace は final gate 後の可視項目から再計算し、S1 `PriorityConcat` の順序を守る。
+
+Discover の `requiredClaimIds` は UUID 形式と 1〜16 個だけを公開 validation し、Source-owned claim catalog が**同じ** actor/Source scope と pinned generation で subject/field/selector を照合する。未知・他 tenant・不可視・失効 Claim は `unresolved` と blocking `REQUIRED_CLAIM_UNRESOLVED` に統一し、残りの Claim だけで `sufficient` にしない。P1 `bodyRequired` は `BodyOnly` と同じ pinned Unit/doc seal、親 Version/Part/raw、現行 `Read` に束縛する。`Completed + Partial` Unit の exact positive は blocking coverage gap と共存し、negative `Absent` は全可視 authoritative item の `Completed + Supported` と Source-owned finite exact scan proof に限る。P3 typed n-ary relation は全 participant と metadata の同一 Source/generation/current grant が必要で、一人でも不可視なら派生 item/evidence/rank/count/trace を一体除去する。Graph path を citation/Primary/trace にしない。
+
+### P5-D3: cursor、retention、開示寿命
+
+公開 cursor は CSPRNG の衝突検査付き UUID v4 RAM handle だけで、actor/tenant/session、request digest、可視集合 stamp、Source generation/snapshot、retention、S1 last key、期限に束縛する。raw query/body、provider cursor、credential、個人情報を handle/保存 state/log に入れない。別 session、可視集合変化、取消、失効、restart、generation/retention/request 変更は同一 `409 CURSOR_STALE`。`NO_RETENTION` や完全性に必要な非継続 Source があれば Search は cursor なし・partial と `PAGINATION_UNAVAILABLE` gap。SourcePage は stable visibility stamp/keyset がある場合だけ cursor を発行し、stamp 不在で全可視 Source が一 page に収まらなければ 503 とし、切捨て 200 を返さない。
+
+P4 の `PERSISTENT_RESOURCE`、`PERSISTENT_DISCOVERY_METADATA`、`CACHE_WITH_EXPIRY`、`SESSION_ONLY`、`NO_RETENTION` の制約を継承する。`NO_RETENTION` の provider response/evaluation は `EvaluationLease` が終了時に閉じ、許可された field だけを `TransientDisclosureLease` に渡す。全 final gate 後、bounded JSON を private buffer に確定し、socket 送信完了・error・disconnect・cancel・deadline 時に disclosure と buffer を閉じる。handler return や body EOF だけを socket 完了と見なさない。header 前には body を streaming しない。`NO_RETENTION` の content/candidate/provider cursor/trace を cursor、Projection、Graph、cache、Audit、telemetry、test fixture に再保持しない。

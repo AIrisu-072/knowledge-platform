@@ -1,0 +1,17 @@
+{"container": "p3-refinement-20260930-pg-raw", "container_inspect_exit": 1, "container_rw_bytes": null, "disk_free_bytes": 3305693184, "event": "pg-before-start", "utc": "2026-09-30T10:37:52.426707+00:00"}
+{"container": "p3-refinement-20260930-pg-raw", "container_inspect_exit": 0, "container_rw_bytes": 8192, "disk_free_bytes": 3304890368, "event": "pg-started", "utc": "2026-09-30T10:37:53.551676+00:00"}
+{"container": "p3-refinement-20260930-pg-raw", "container_inspect_exit": 0, "container_rw_bytes": 12288, "disk_free_bytes": 3138273280, "event": "pg-post-stage", "utc": "2026-09-30T10:38:31.067333+00:00"}
+{"container": "p3-refinement-20260930-pg-raw", "container_inspect_exit": 0, "container_rw_bytes": 12288, "disk_free_bytes": 3132194816, "event": "pg-complete", "utc": "2026-09-30T10:39:02.944367+00:00"}
+{"container": "p3-refinement-20260930-pg-raw", "container_inspect_exit": 1, "container_rw_bytes": null, "disk_free_bytes": 3122757632, "event": "pg-removed", "utc": "2026-09-30T10:39:04.141979+00:00"}
+{"container": "p3-refinement-20260930-neo-raw", "container_inspect_exit": 1, "container_rw_bytes": null, "disk_free_bytes": 3180797952, "event": "neo-before-start", "utc": "2026-09-30T10:39:36.476656+00:00"}
+{"container": "p3-refinement-20260930-neo-raw", "container_inspect_exit": 0, "container_rw_bytes": 299986944, "disk_free_bytes": 3180122112, "event": "neo-started", "utc": "2026-09-30T10:39:37.419932+00:00"}
+{"container": "p3-refinement-20260930-neo-raw", "container_inspect_exit": 0, "container_rw_bytes": 410562560, "disk_free_bytes": 3249467392, "event": "neo-pre-stage", "utc": "2026-09-30T10:40:05.184927+00:00"}
+{"container": "p3-refinement-20260930-neo-raw", "container_inspect_exit": 0, "container_rw_bytes": 410562560, "disk_free_bytes": 3166748672, "event": "neo-post-stage", "utc": "2026-09-30T10:40:38.169657+00:00"}
+{"container": "p3-refinement-20260930-neo-raw", "container_inspect_exit": 0, "container_rw_bytes": 410562560, "disk_free_bytes": 3165863936, "event": "neo-auditing", "utc": "2026-09-30T10:40:56.509210+00:00"}
+{"container": "p3-refinement-20260930-neo-raw", "container_inspect_exit": 0, "container_rw_bytes": 410562560, "disk_free_bytes": 3059200000, "event": "neo-progress", "utc": "2026-09-30T10:41:20.462495+00:00"}
+{"container": "p3-refinement-20260930-neo-raw", "container_inspect_exit": 0, "container_rw_bytes": 410562560, "disk_free_bytes": 3126521856, "event": "neo-progress2", "utc": "2026-09-30T10:41:42.545222+00:00"}
+{"container": "p3-refinement-20260930-neo-raw", "container_inspect_exit": 0, "container_rw_bytes": 410562560, "disk_free_bytes": 3126042624, "event": "neo-progress3", "utc": "2026-09-30T10:42:03.020562+00:00"}
+{"container": "p3-refinement-20260930-neo-raw", "container_inspect_exit": 0, "container_rw_bytes": 410562560, "disk_free_bytes": 3175546880, "event": "neo-progress4", "utc": "2026-09-30T10:42:24.565481+00:00"}
+{"container": "p3-refinement-20260930-neo-raw", "container_inspect_exit": 0, "container_rw_bytes": 410562560, "disk_free_bytes": 3107426304, "event": "neo-progress5", "utc": "2026-09-30T10:42:44.580363+00:00"}
+{"container": "p3-refinement-20260930-neo-raw", "container_inspect_exit": 0, "container_rw_bytes": 410562560, "disk_free_bytes": 3158126592, "event": "neo-complete", "utc": "2026-09-30T10:43:00.727816+00:00"}
+{"container": "p3-refinement-20260930-neo-raw", "container_inspect_exit": 1, "container_rw_bytes": null, "disk_free_bytes": 2808438784, "event": "neo-removed", "utc": "2026-09-30T10:43:12.322267+00:00"}

@@ -1,0 +1,20 @@
+# 仕事の手渡し: p3-measure-backends
+
+- 種類: spike / 役: Worker / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Measure PG incidence redb adjacency and dedicated graph DB against memory oracle
+
+## 入力
+- `p3-contract` (docs/superpowers/programs/search-platform-completion/p3-graph-freeze.md) — graph contract [`p3-freeze-architecture` が作る (済み)]
+- `environment-evidence` (docs/superpowers/programs/search-platform-completion/environment.md) — current runtime toolchain container PDFium and capacity discovery without secret reads [`inspect-environment` が作る (済み)]
+
+## 出すもの
+- `p3-poc-code` (experiments/search-graph-poc) — Executable three backend typed nary oracle comparison
+- `p3-selection` (experiments/search-graph-poc/report.md) — Actual measured backend selection
+
+## 受入条件
+All three actual backends run identical typed nary fixture/oracle query update restart space latency tests; measured decision and limits recorded; production deps unchanged
+
+## 守ること
+- 書いてよいのは `experiments/search-graph-poc` だけ。他は触らない。

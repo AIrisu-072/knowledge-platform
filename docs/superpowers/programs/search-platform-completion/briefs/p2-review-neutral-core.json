@@ -1,0 +1,21 @@
+# 仕事の手渡し: p2-review-neutral-core
+
+- 種類: audit / 役: Worker / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independent neutral vector contract exact input and malformed vector audit
+
+## 入力
+- `p2-neutral-core` (docs/superpowers/programs/search-platform-completion/p2-neutral-core.md) — p2-neutral-core [`p2-impl-neutral-core` が作る (済み)]
+- `p2-contract` (docs/superpowers/programs/search-platform-completion/p2-vector-freeze.md) — vector contract [`p2-freeze` が作る (済み)]
+
+## 出すもの
+- `p2-neutral-core-review` (docs/superpowers/programs/search-platform-completion/p2-neutral-core-review.md) — p2-neutral-core-review
+
+## 受入条件
+Frozen focused named RED/GREEN and exact artifact evidence, independent review downstream; no unqualified library adoption
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p2-neutral-core-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

@@ -1,0 +1,20 @@
+# 仕事の手渡し: p2-plan-implementation
+
+- 種類: docs / 役: DomainDesigner / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Plan approved neutral Vector contracts real models runtime and engine qualification
+
+## 入力
+- `p2-draft` (docs/superpowers/programs/search-platform-completion/p2-vector-design.md) — vector draft [`p2-design` が作る (作業中)]
+- `p2-arch` (docs/superpowers/programs/search-platform-completion/p2-vector-architecture-review.md) — vector arch [`p2-architecture` が作る (未着手)]
+- `p1-unit-frozen` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md) — Frozen provider neutral input contract for Vector evaluation [`p1-freeze-unit` が作る (済み)]
+
+## 出すもの
+- `p2-plan` (docs/superpowers/programs/search-platform-completion/p2-vector-plan.md) — vector plan
+
+## 受入条件
+BoundedPoC actualmodel/runtime/engine measurementbeforeproductionpromotion plusneutralVector contractcompleteevenoptionaldisabled
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p2-vector-plan.md` だけ。他は触らない。

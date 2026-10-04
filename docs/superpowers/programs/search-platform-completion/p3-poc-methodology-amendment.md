@@ -1,0 +1,8 @@
+# P3 additional PoC methodology — autonomous controller decision
+
+2026-09-30. Preserve original plan and report. The completed subset is not Selected/P3-P04 acceptance. Independent p3-graph-poc-review.md supplies the blocking evidence gaps.
+
+- Reuse the actually executed deterministic seed314159 and100/1000/3000 group fixture baseline, append named source-isolation/access/ownership/retention, temporal negative-offset/null/empty, multi-hop/high-degree/visible-budget and corrupted-incidence cases. Original synthetic counts/seed carry no business meaning; new fixture hashes and actual coverage are mandatory.
+- Neo4j comparison may use the official Query API HTTP path already measured. Mark its transport phase explicitly; do not describe it as Bolt/neo4rs or engine-only latency. No new Rust Neo4j dependency is needed for this candidate comparison.
+- Selection remains blocked until actual persisted participant/incidence reconstruction and full logical digest/parity, current Source/access/owner/retention, bounded200-sample query classes/readers+writer and predeclared recovery/fault probes are evidenced in machine-readable records and independently accepted. PG shared publication/fence disposable probe is required before selection; production DB roles/READY/lease/GC remain additional implementation gates.
+- Keep new correctness refinement, measurement/fault report, selection and later production qualification as distinct artifacts. Retain exact source/image/fixture hashes, raw samples and transcripts; unmeasured is never zero/PASS. No frozen Search semantics, Source authority, n-ary relation or S1 changes.

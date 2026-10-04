@@ -183,6 +183,8 @@ tracestate
 
 単一process構成でも将来のprocess分離を阻害しない。
 
+Domain Outboxでは、新規producerが`traceparent`と任意の`tracestate`を記録する場合に限り、W3C Trace Contextの形式と長さを検証してから記録する。consumerも保存値を再検証してから伝播し、不正値をspanへ結び付けない。旧行または未記録行は新しいspanと`outbox_event_id`で相関し、旧producerからのend-to-end traceがあると推定しない。trace contextは配送成功、業務認可、Audit Eventの証拠として扱わない。
+
 ---
 
 # 5. Baggage policy
@@ -425,9 +427,14 @@ error.code
 - extraction latency
 - outbox pending count
 - outbox oldest age
+- outbox in-flight / dead-letter / 上限到達・回復待ち count
+- outbox claim / ack / retry / lease-expired / stale-fence / exhausted-reap count
+- outbox handler duration / commit-to-ack lag / bounded error class
 - index update lag
 - failed indexing jobs
 - rebuild progress
+
+Domain Outboxの配送lagとSearchの現行generation、indexed version、可視化lagは別に観測する。outboxのackやevent発生時刻だけからSearchのfreshnessを証明しない。metric dimensionはroute、stage、status、error class等のbounded low-cardinality値に限る。
 
 ## 11.5 Cardinality rule
 
@@ -439,6 +446,7 @@ document_id
 document_version_id
 query_id
 trace_id
+outbox_event_id
 raw URI
 search query
 filename
@@ -585,6 +593,8 @@ Audit Storeへの配送自体はEventual Consistencyを許容する。
 - failed / dead-letter状態の観測
 
 Audit delivery失敗でbusiness event自体を「発生していなかったこと」にしない。
+
+P6のDomain Outbox deliveryとAudit Outboxの配送・ackとは独立する。Domain側の`delivered_at`、Search receipt、Audit側の`delivered_at`はそれぞれ別の完了証拠であり、Domain workerは必須Audit Eventの生成・配送・ackを代行しない。必須Audit Eventの同一transaction生成とsampling禁止は維持する。
 
 ---
 
@@ -963,3 +973,116 @@ actor、Document と両 Version ID、両 snapshot digest、比較/profile/resour
   - https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html
 - NIST SP 800-92
   - https://csrc.nist.gov/pubs/sp/800/92/final
+
+
+---
+
+# Search / Discovery Platform v0 observability amendment
+
+## Discovery trace
+
+Search Requestに加え、Discovery Requestでは最低限以下のstageを相関可能にする。
+
+```text
+Discovery Request
+├─ Intent / Need resolution
+├─ Source routing
+├─ Directory / structured filtering
+├─ Lexical retrieval
+├─ Vector retrieval (if used)
+├─ HyperGraph seed / traversal
+├─ Candidate federation / logical grouping
+├─ Applicability / contrast
+├─ Probe / materialization
+├─ Evidence update / sufficiency
+└─ Completion / unresolved gaps
+```
+
+候補属性:
+
+```text
+discovery_evaluation_id
+need_id
+source_route_count
+source_role
+projection_generation_id
+retriever.type
+candidate_count
+filtered_count
+graph.seed_count
+graph.nodes_expanded
+graph.relations_expanded
+probe.count
+materialization.level
+evidence.sufficiency
+gap.type
+completion.state
+fallback_used
+duration
+error.code
+```
+
+Resource本文、query全文、全candidate ID、全Graph pathを通常Traceへ大量記録しない。
+詳細はEvaluation Artifactへ分離する。
+
+## Discovery metrics
+
+最低限候補:
+
+- discovery request count / latency
+- source route count distribution
+- required source miss（evaluation環境）
+- directory candidate count
+- structured filtered count
+- lexical/vector candidate count
+- graph nodes / relations expanded distribution
+- probe count / bytes
+- full materialization count / bytes
+- remote call count / latency
+- evidence sufficiency state count
+- unresolved gap count by bounded low-cardinality class
+- no-progress termination count
+- context tokens（Agent integration時）
+
+Source ID、resource ID、query ID等をMetric labelへ入れない。
+
+## Evaluation separation
+
+以下は通常Telemetryの常時MetricではなくEvaluation Artifactで管理する。
+
+- Required Source Recall
+- LogicalResource Recall
+- MRR / nDCG / Recall@K
+- HyperEdge participant role accuracy
+- False Composite Relation Rate
+- Hard Discriminator False Accept / Reject
+- False Exclusion from Missing Fact
+- Evidence Attribution Accuracy
+- False Corroboration Rate
+- Sufficiency Precision / Recall
+- SOURCE_KNOWLEDGE_ABSENT attribution
+- Context quality vs token reduction
+
+## Search / Discovery audit privacy
+
+Discoveryで取得したRemote content、InformationGapの具体値、Tool schema、Evidence本文をAuditへ無条件複製しない。
+Audit対象に指定する場合もstable identifier / reason code / source class / result stateを優先する。
+NO_RETENTION Source由来本文をTelemetry / Auditへ保存してRetention contractを迂回してはならない。
+
+# P4 Remote Source observability and audit amendment
+
+以下のSD-O1〜SD-O2はremote Sourceの開示・運用記録に対する追加条件である。根拠は[P4設計改訂1](../../docs/superpowers/programs/search-platform-completion/p4-remote-design-revision-1.md)、実装責務は[P4実装計画](../../docs/superpowers/programs/search-platform-completion/p4-remote-plan.md)に従う。
+
+## SD-O1: Visibility-safe gaps and traces
+
+対応: P4設計改訂1 §§2, 4、P4-03/12/13。
+
+remote Sourceのroute、retrieval、qualification、Claim、rank、Graph path、locator、count、gap、traceは、現行actorに可視なSourceと許可fieldに限定する。未知・別tenant・不可視のRequired Source IDは、同じID-free `required_source_unavailable`の出力形とfailure classで扱い、hidden Source IDをgap/trace/log/audit/metric labelへ載せない。不可視Preferred Sourceは出力に現れない。Source/item/fieldの認可が評価途中または開示直前に失われた場合は、そのSourceの派生出力を一括除去し、Requiredのgapだけを同じ汎用形で返す。raw provider snapshot token、provider JSONの自己申告provenance、provider locatorをtraceの権限根拠として出さない。
+
+## SD-O2: Retention-aware disclosure and recording
+
+対応: P4設計改訂1 §7、P4-07/13/17。
+
+`NO_RETENTION`のremote評価では、`discover`/materializationのsuccess、error、cancel、deadlineで`EvaluationLease`を閉じ、evaluation generation、projection、Graph、probe、receipt、raw responseとそのhandleを再読不能にする。返却を認めたfieldだけを`TransientDisclosure<T>`の別の短命leaseに移し、送出直前にもactor/Source/item/field accessを確認する。送出完了、body生成/送信error、client disconnect、cancel、deadlineでそのleaseを閉じ、未送出bufferを破棄する。送出中のbounded bufferはserver-side queue、retry spool、cursor/cache、background taskへ渡さない。後続呼出しは新しいevaluationとfresh provider readを要する。
+
+`NO_RETENTION`由来のprovider内容、query、candidate ID、locator、具体gap、body、digest、assertion/evidence、Graph/probe/receipt、response bytesをlog、audit、telemetry payload、fixture、temp file、dumpへ残さず、このmode由来のper-call payloadを作らない。合成試験dataは実行時に生成し、保存fixtureにしない。通常のDiscovery trace/metrics候補はretention契約に従う場合だけ記録できる。受入試験ではsuccess/error/disconnect/cancel/deadline後の全server-side storeと保持済みhandleから再読できないことを確認する。
