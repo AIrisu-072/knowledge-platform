@@ -1,6 +1,14 @@
 <a id="search-platform-completion-program--status"></a>
 # Searchプラットフォーム完成プログラム — 状態
 
+## Source登録・リースの実DB実証と次の候補：2026-10-04
+
+**ACTIVE / WIP。** 公開head `93a5781c733da7ede634e34c592579e034bc38ef` / tree `bc000c09db10c2ff8245651b7f3daea9c25e8cee` で、P7登録18件・leaseの実DB6件・既存schema24件、通信なし8件が成功しました。通常CI全10ジョブ・DSI PoC・Sandboxも終端SUCCESSです。[正確なcheckoutと検証範囲](../programs/search-platform-completion/p7-registration-hosted-result-20261004.md)を参照してください。
+
+次はP7-06のEVENT/MANUAL世代登録と完全構築guardを、同じ登録ゲートと既存SQLの上へ接続します。Source現在状態・所有者・配送lease・DB時計を再確認してBUILDINGだけを作り、READY/Graph/公開の証明は発行しません。新候補の対象限定コンパイル・純粋試験と独立レビューを経て、公開後の合成GitHub PostgreSQLで実DBケースを検証します。P4の可視Sourceルーティングと4種類のRemote検索計画は並行する別の差分です。
+
+上記CI成功は後続候補の合格ではありません。本番inventoryと起動許可、本文抽出・索引、世代公開/pin/GC、検索APIと最終縦断は未完了です。Domain migration番号9の統合衝突と以前のローカルDB/socket停止は維持し、以下の過去本文は変更していません。
+
 ## 現在のSearch継続作業：2026-10-04
 
 **ACTIVE / WIP。** 公開head `0610b49327cd3c1c37e385281f087423c27b5638` / tree `0fe596fde7d9d2fe6e5f174bf4be0f189ed55830` で、通常CI全10ジョブ・DSI PoC・Sandboxが成功しました。合成GitHub PostgreSQLでG07復旧2件、G08の監視・配送ロールの実DB2件、トレース純粋1件、その他の純粋回帰56件が成功しています。[正確なcheckoutと検証範囲](../programs/search-platform-completion/p6-g08-hosted-result-20261004.md)を現在の結果として参照してください。

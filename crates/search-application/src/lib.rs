@@ -22,6 +22,7 @@ pub mod scoped;
 pub mod session;
 pub mod source_registration;
 pub mod source_registry;
+pub mod visible_routing;
 
 pub use error::SearchError;
 pub use search_core;

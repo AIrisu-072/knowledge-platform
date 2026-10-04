@@ -91,3 +91,15 @@ GRANT EXECUTE ON FUNCTION search_is_sha256_digest(TEXT),
     search_valid_actor_scope_ref(TEXT)
     TO search_registration, search_builder, search_coordinator,
        search_reader, search_gc;
+
+-- P6の固定方針: Searchはoutboxをロックして読むだけ。配送完了列を更新しない。
+-- Searchだけのスキーマ検査DBにはDomain表がないため、この付与を保留する。
+-- EVENTを構成するDBではDomain移行後に本スクリプトを適用する。
+DO $search_outbox_lock_role$
+BEGIN
+    IF to_regclass('public.outbox_events') IS NOT NULL THEN
+        GRANT SELECT ON public.outbox_events TO search_coordinator;
+        GRANT UPDATE (lease_token) ON public.outbox_events TO search_coordinator;
+    END IF;
+END;
+$search_outbox_lock_role$;

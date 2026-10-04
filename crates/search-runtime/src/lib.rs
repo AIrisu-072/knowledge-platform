@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+pub mod full_guard;
+pub mod generation_registration;
 pub mod source_lease;
 pub mod source_registration;
 

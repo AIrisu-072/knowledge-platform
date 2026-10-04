@@ -165,6 +165,23 @@ impl PgSourceRegistrationLedger {
         PostgresSourceAdmission::new(self.pool.clone(), source, ttl, self.gate.clone())
     }
 
+    /// 世代の登録/guard更新にも、Source登録と同じ否定ゲートを必ず適用する。
+    pub fn generation_registrar(
+        &self,
+        registration: SourceRegistration,
+        activation: RegistrationActivation,
+    ) -> Result<
+        crate::generation_registration::PgGenerationRegistrar,
+        crate::generation_registration::GenerationError,
+    > {
+        crate::generation_registration::PgGenerationRegistrar::new(
+            self.pool.clone(),
+            registration,
+            activation,
+            self.gate.clone(),
+        )
+    }
+
     async fn matches_host(
         &self,
         desired: &CompleteDesiredRegistrations,

@@ -335,12 +335,14 @@ fn capability_matched_actions_expose_only_planned_initial_order_to_s1() {
             lexical: true,
             hypergraph: false,
             vector: false,
+            ..RetrieverSupport::default()
         },
         &RetrievalInputs {
             lexical_query: Some("policy".into()),
             graph_plans: BTreeMap::new(),
             vector_query_available: false,
             max_initial_retrievers_per_source: 2,
+            ..RetrievalInputs::default()
         },
     );
 
@@ -402,12 +404,14 @@ fn exploratory_starts_supported_actions_in_profile_order_without_a_vector_adapte
             lexical: true,
             hypergraph: true,
             vector: false,
+            ..RetrieverSupport::default()
         },
         &RetrievalInputs {
             lexical_query: Some("policy".into()),
             graph_plans: BTreeMap::from([(source_id(1), valid_graph_plan())]),
             vector_query_available: false,
             max_initial_retrievers_per_source: 4,
+            ..RetrievalInputs::default()
         },
     );
 
@@ -468,12 +472,14 @@ fn exploratory_prioritizes_supported_vector_before_hypergraph() {
             lexical: true,
             hypergraph: true,
             vector: true,
+            ..RetrieverSupport::default()
         },
         &RetrievalInputs {
             lexical_query: Some("policy".into()),
             graph_plans: BTreeMap::from([(source_id(1), valid_graph_plan())]),
             vector_query_available: true,
             max_initial_retrievers_per_source: 3,
+            ..RetrievalInputs::default()
         },
     );
     assert_eq!(

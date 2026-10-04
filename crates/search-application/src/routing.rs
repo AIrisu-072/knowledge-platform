@@ -29,7 +29,7 @@ pub enum RouteIssue {
     RuntimePortUnavailable,
 }
 
-/// `Planned` says the registry advertises a local route, not that retrieval ran.
+/// `Planned` says a registered mode has runtime support, not that retrieval ran.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RouteState {
     Planned,
@@ -77,6 +77,26 @@ impl SourceRouter {
         need: &DiscoveryNeed,
         registry_sources: &[DiscoverableSource],
         constraints: &RoutingConstraints,
+    ) -> SourceRoutePlan {
+        Self::plan_with_runtime_modes(
+            need,
+            registry_sources,
+            constraints,
+            &[
+                DiscoveryMode::LocalDirectory,
+                DiscoveryMode::LocalContentSearch,
+            ],
+        )
+    }
+
+    /// Explicit wiring for this evaluation. Remote callers first obtain both
+    /// sources and constraints from `VisibleRouting::prepare`; advertised modes
+    /// alone do not establish a runtime port or current visibility.
+    pub fn plan_with_runtime_modes(
+        need: &DiscoveryNeed,
+        registry_sources: &[DiscoverableSource],
+        constraints: &RoutingConstraints,
+        runtime_modes: &[DiscoveryMode],
     ) -> SourceRoutePlan {
         let mut sources: BTreeMap<SourceId, Option<&DiscoverableSource>> = BTreeMap::new();
         for source in registry_sources {
@@ -152,12 +172,10 @@ impl SourceRouter {
                 RouteState::Unresolved(RouteIssue::ResourceTypesUnknown)
             } else if discovery_mode.is_none() {
                 RouteState::Unresolved(RouteIssue::NoDiscoveryMode)
-            } else if !discovery_modes.iter().any(|mode| {
-                matches!(
-                    mode,
-                    DiscoveryMode::LocalDirectory | DiscoveryMode::LocalContentSearch
-                )
-            }) {
+            } else if !discovery_modes
+                .iter()
+                .any(|mode| runtime_modes.contains(mode))
+            {
                 RouteState::Unsupported(RouteIssue::RuntimePortUnavailable)
             } else {
                 RouteState::Planned
