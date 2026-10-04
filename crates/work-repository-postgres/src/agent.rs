@@ -274,7 +274,12 @@ impl PostgresWorkRepository {
     }
     pub(super) async fn interrupt_agents(&self, actor: VerifiedActor) -> Result<usize, WorkError> {
         let mut tx = self.pool.begin().await.map_err(database_error)?;
-        let mut w = locked(&mut tx).await?;
+        // Bootstrap starts the servers before the explicit seed-work command.
+        // Only this interruption sweep treats an absent fixture as no work to stop.
+        let Some(mut w) = locked_optional(&mut tx).await? else {
+            tx.rollback().await.map_err(database_error)?;
+            return Ok(0);
+        };
         let ids: Vec<_> = w
             .agent_executions
             .iter()
@@ -305,15 +310,24 @@ fn timestamp() -> Result<String, WorkError> {
         .map_err(|_| WorkError::IntegrityViolation)
 }
 async fn locked(tx: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Workflow, WorkError> {
-    let Json(w): Json<Workflow> =
+    locked_optional(tx)
+        .await?
+        .ok_or(WorkError::DependencyUnavailable)
+}
+async fn locked_optional(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<Option<Workflow>, WorkError> {
+    let row: Option<Json<Workflow>> =
         sqlx::query_scalar("SELECT body FROM work.workflow_instances WHERE id=$1 FOR UPDATE")
             .bind(WORKFLOW_ID)
             .fetch_optional(&mut **tx)
             .await
-            .map_err(database_error)?
-            .ok_or(WorkError::DependencyUnavailable)?;
-    w.validate_integrity()?;
-    Ok(w)
+            .map_err(database_error)?;
+    row.map(|Json(w)| {
+        w.validate_integrity()?;
+        Ok(w)
+    })
+    .transpose()
 }
 async fn persist(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,

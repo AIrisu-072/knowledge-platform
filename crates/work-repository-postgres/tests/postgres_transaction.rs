@@ -122,6 +122,25 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
     .await
     .unwrap();
     assert_eq!(migrations_after, migrations_before);
+    // The two HTTP profiles start before seed-work creates the fixture.
+    // Startup/shutdown interruption alone accepts a genuinely empty Work schema.
+    let unseeded = PostgresWorkRepository::new(pool.clone());
+    let empty_counts = "SELECT (SELECT count(*) FROM work.workflow_instances), (SELECT count(*) FROM work.operation_ledger), (SELECT count(*) FROM work.event_staging)";
+    let before: (i64, i64, i64) = sqlx::query_as(empty_counts).fetch_one(&pool).await.unwrap();
+    assert_eq!(before, (0, 0, 0));
+    for actor in [VerifiedActor::Sales01, VerifiedActor::Office01] {
+        assert_eq!(unseeded.interrupt_agent_executions(actor).await.unwrap(), 0);
+    }
+    let after: (i64, i64, i64) = sqlx::query_as(empty_counts).fetch_one(&pool).await.unwrap();
+    assert_eq!(
+        after, before,
+        "empty interruption must not seed or stage anything"
+    );
+    assert_eq!(
+        unseeded.task(VerifiedActor::Sales01, SALES_TASK_ID).await,
+        Err(WorkError::DependencyUnavailable),
+        "ordinary reads still require the fixture"
+    );
     seed_synthetic(&pool, Some(EVIDENCE_DOCUMENT))
         .await
         .unwrap();

@@ -1,5 +1,16 @@
 # Organization Browser PoC — 合成Agentの状況
 
+## 2026-10-04 15:42 UTC — PR60初回initialize失敗の限定修正、再資格未確認
+
+- PR60の公開source `385a57fe` は実DB準備と拡張transaction試験が成功したが、`initialize` で失敗した。browser journey/persistenceは未実行、owned process/DB/storageのcleanupは確認済み
+- 原因は明示的な `seed-work` より先に起動するserverのAgent中断確認が、未作成のWork workflowを必須としていたこと。起動/終了の中断確認だけ、実在しないworkflowを副作用なしの0件として扱う。DB/query/schema異常と既存workflowの破損は従来どおり失敗させ、通常操作の必須row・明示seed・bootstrap順序を維持する
+- 既存ignored PostgreSQL試験のseed前へ、固定2名の中断確認が0件でworkflow/ledger/stagingを作らない回帰確認を追加。Rust5package純粋73件PASS、拡張DB試験1件はcompile済み・ignored。対象strict Clippy/fmt/差分確認PASS。ローカルDB/listener/browserは実行していない
+
+次のexact action: 限定差分レビュー後に修正候補を親へ返し、別exact headのhostedでinitializeから再確認する。**この修正はまだhostedで資格未確認**。旧migration/checksum/依存lockと公開diagnosticsは不変
+
+---
+
+
 ## 2026-10-04 14:31 UTC — 最小縦断実装とローカル確認完了、hosted未受入
 
 - 凍結4API、durable受付/単発dispatch/取消/result、実Documentの両主体認可、immutable Finding、共通Agent UIと既存HumanDecision/提出への合流を実装した。実executorは合成、本文分析や実LLM/MCP通信は行わない
