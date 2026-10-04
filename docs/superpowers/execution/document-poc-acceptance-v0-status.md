@@ -1,5 +1,20 @@
 # Document Platform PoC Acceptance / Evaluation v0 — Capability Status
 
+## 2026年10月4日 統合時の受入状態
+
+PR43 exact `6103e4d4e3bb0d45ba03e1d2935492de7f11394a` と報告R2 `88628331f32e141c71944e9f7f093deb348f51ac` は、2026年10月2日12:16 UTCに[所有者の最終受入](https://github.com/AIrisu-072/knowledge-platform/pull/43#issuecomment-5952167525)が記録されている。下記のowner acceptance pendingはその前の履歴である。画像の制限・期限・元sourceを変更せず、現在の統合候補の検証は[統合状況](document-organization-integration-status.md)で別に確認する。
+
+---
+
+## 2026-10-02 UTC — Corrected H2/V2 runtime and scoped visual review complete
+
+- **ACTIVE / ACTUAL RUNTIME PASS / VISUAL GO WITH DISCLOSED LIMITS / REPORT GATES PENDING / OWNER ACCEPTANCE PENDING**. Frozen H2 is `6103e4d4e3bb0d45ba03e1d2935492de7f11394a`, tree `f2e13eee0d7e1bfa71952c1da52a72cecb65fc9e`. Normal CI36987407999, DSI36987408029 and Sandbox36987408087 succeeded; required-check110780804804 passed before corrected capture activation.
+- N2 runtime job110775471680 and V2 runtime job110782297061 independently passed all22 stages, journey11/11, persistence1/1, nine Agent groups/provenance and owned restart identity. Both emit passed actual Chromium font selection and six long-zone/DST-fold geometry proofs. Their UUIDs, ports and database/storage digests remain distinct in the [report](document-poc-acceptance-v0-report.md); deterministic fixture/build equality is not dataset identity.
+- V2 capture CI36989549579 followed one deliberate exact-head activation. Artifact11218564738 contains only13 validated original synthetic PNGs. Actual created2026-10-02T09:29:53Z / expires2026-10-03T09:29:52Z preserves one-day retention. All13 were inspected independently: Japanese, target/action/error/file-retention context and success feedback are readable; prior V1 failures remain historical FAIL.
+- Scoped visual GO retains explicit limits:01 is an honestly labeled detail-loading context, while02 separately shows ready context;08's full-page image includes a viewport-fixed scrim;09's authoring target fallback follows WORKING-only selection after publication;11/12 have cramped trace/reload spacing. No all13-settled, flawless UI, WCAG certification or unscripted user-study claim. Temporary copies remain bounded by actual expiry; cleanup is not yet performed.
+- This evidence-only report preserves PR46 history with exact parents report R1 `f49866f0fef88d2735db062b83c3ad686e9097b6` then H2, with only five documentation paths differing from H2. Independent factual/privacy report review is GO with no unresolved Important finding; publication and its own applicable CI+DSI+Sandbox gates remain pending. The complete V2 capture CI also succeeded at H2, all12 jobs including required-check110787558098, verified09:41 UTC; these are separate from future report-R2 gates.
+- Next exact action: return clean exact report commit/tree for parent publication, then verify its fresh applicable hosted gates. Present READY FOR OWNER REVIEW only afterward; explicit owner confirmation remains final acceptance. C0 own-head G9 and scoped Search/Audit limitations remain separate. No Organization Client, merge or deployment.
+
 ## 2026-10-02 UTC — Browser-only timestamp geometry proof / local checks pass
 
 - Isolated `fix/document-timestamp-browser-geometry` starts from reviewed combined `4cda0e9814cebed38260497ced96af75804cccde` / tree `97bd0446fe95e9bb35b91283f9e67a4756ec010a`. The approved addition is a NON-CAPTURE browser layout assertion; no product timestamp policy, input, API, CSS or existing assertion is changed. It introduces no mutation API call or authoritative Document timestamp change; ordinary GET read/cache/audit effects remain possible.

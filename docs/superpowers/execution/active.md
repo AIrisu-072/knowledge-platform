@@ -1,5 +1,16 @@
 # Active Execution Pointer
 
+## 2026年10月4日 DocumentとOrganizationのmain統合候補
+
+- 状態：**ACTIVE／既存受入sourceと文書側枝を統合、候補の独立レビュー・exact CI待ち**。[統合状況](document-organization-integration-status.md)と[計画](../plans/2026-10-04-document-organization-integration.md)が今回の再開先
+- 製品基点は受入済みPR57 `d383bacc`。PR43の明示的最終受入とPR54/56/57の実証を保持し、文書側枝36/38/39/46/55/58を保全する。過去SHAの検証結果を新候補やPR36旧headへ付け替えない
+- mainは `d71753d4`。全既存branchを保持し、進行中Agent、Search、Audit、未資格Tauriを追加しない。Source/lock/migration/workflow/security設定はPR57のbytesを維持する
+- 次は候補の限定検証・独立レビュー・Draft公開・全適用CI。その後、main merge前に親担当へexact headと副作用を返す。実サーバー導入は所有者が[日本語手順](../../operations/linux-manual-installation.md)に従って手動実施する。現runtimeは合成PoCで、本番認証は未実装
+
+以下は各時点の履歴。過去の未承認・未実行・失敗・保留を現在の指示へ読み替えない。
+
+---
+
 ## 2026-10-04 08:34 UTC — Organization根拠・候補・人間判断sliceを継続
 
 - 受入[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d9b2467afd7225fa4f92f1d7a801d4002` は差戻・再提出の実DB/2名操作/復元/cleanupと全CI成功済み
@@ -13,6 +24,14 @@
 - 受入PR54 exact `44e1b412` の最小Browser PoCは実DB/2名操作/復元/cleanupと全CI成功済み
 - 所有者の「続けてください」に基づき、Frozen設計の差戻→新attempt private文案→再提出を別branchで実装。[最新状況](organization-return-slice-status.md)、[短い計画](../plans/2026-10-04-organization-return-slice.md)
 - accepted source、固定2名、同じ使い捨てDB/Chromium、画像非公開、ローカル拒否境界を維持。新しい検証監督frameworkは作らない
+
+---
+
+## 2026-10-04 07:17 UTC — Organization最小Browser PoC実証完了
+
+- [最新完了記録](organization-browser-poc-slice-status.md): PR54 exact `44e1b412` で実PostgreSQL・2名実browser・提出/引継ぎ・2server再起動後復元・cleanupと全通常CIがPASS
+- 所有者06:56 UTCの個別hosted実行許可に基づく。既知ローカル制限を変更していない。下記の未実行/待機記録は履歴
+- 最小Browser PoCは完了。Draftを保持、merge/deployなし。Tauri/native・全Phase5/6・productionは別scope。次は親へ結果を報告し、この日本語完了記録を保存する
 
 ---
 
@@ -60,6 +79,14 @@
 
 ---
 
+
+## Current checkpoint — Corrected H2/V2 evidence reviewed; final report gates pending
+
+- Status: **ACTIVE — ACTUAL RUNTIME PASS / SCOPED VISUAL GO / REPORT GATES PENDING / OWNER ACCEPTANCE PENDING**. Frozen H2 `6103e4d4e3bb0d45ba03e1d2935492de7f11394a` has all three normal workflows successful. [C3 Status](document-poc-acceptance-v0-status.md) and the [acceptance report](document-poc-acceptance-v0-report.md) identify each source/run/report separately.
+- N2 and corrected V2 independently passed22 runtime stages,11 browser cases, persistence, Agent/owned restart provenance and actual font/geometry markers. All13 V2 originals were reviewed with explicit loading/full-page/completion/spacing limits; no flawless or all13-settled claim. Artifact11218564738 expires2026-10-03T09:29:52Z. Historical V1 remains visual FAIL; local review-copy cleanup is pending within the approved period.
+- Independent five-doc factual/privacy review is GO. Next exact action: publish report R2 through the parent while preserving PR46 ancestry, then verify its exact applicable CI/DSI/Sandbox gates. Keep H2 frozen and owner acceptance pending. C0's own G9 remains separate; Organization Client has not started. All PRs remain Draft, unmerged and undeployed.
+
+---
 
 ## Current checkpoint — Browser-only timestamp geometry proof prepared, 2026-10-02 UTC
 
@@ -303,7 +330,21 @@
 
 ---
 
-## Current checkpoint — Document GUI Integration v0 G8 COMPLETE / G9 ACCEPTANCE IN PROGRESS、2026-10-01 JST
+## Current checkpoint — Document GUI Integration v0 hosted gates GREEN / integrated frontend evidence pending、2026-10-02 UTC
+
+- Status: **G0〜G8 COMPLETE / IMPLEMENTATION COMPLETE / G9 FINAL ACCEPTANCE PENDING / NOT MERGED / NOT DEPLOYED**. The earlier branch-unpublished / PR-not-created checkpoint is superseded. Unqualified **G0〜G9 COMPLETE / ACCEPTANCE GREEN / REVIEW READY** is withheld until the approved Plan's same-head frontend E2E and integrated browser/backend journey requirements are evidenced.
+- Verified GitHub state (2026-10-02 00:15 UTC / 09:15 JST): [Draft PR #36](https://github.com/AIrisu-072/knowledge-platform/pull/36), branch `feat/document-gui-integration-v0`, exact head `b578a9b49338066d0e4ee5495ea1280f991c122b`, base `main` at `d71753d46590bb4406a1c0b74894ab90a27a6c88`; OPEN / Draft / NOT MERGED. Review submissions: 0; inline review threads: 0 (unresolved: 0). Review-ready acceptance is not a GitHub review approval.
+- Observed exact-head hosted gates: [Standard CI 36860705179](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36860705179) **SUCCESS**, [DSI Sandbox Preflight 36860705023](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36860705023) **SUCCESS**, [DSI PoC 36860705167](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36860705167) **SUCCESS**. Standard CI required-check and all nine jobs succeeded. DSI PoC qualification succeeded; its optional qualification-macos job was skipped, not passed. Standard CI separately passed DSI semantic parity on macOS ARM and Intel.
+- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24` and approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912` match the committed files. Source Design ZIP SHA-256 remains the approval-recorded `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`; the ZIP was not reread in this docs-only pass. Design Amendment 01 / Approval and Plan Addendum 01 are the only approved toolchain/license exception. Current pnpm lock SHA-256 `bb74081c198fcb1c9c8038933c434f0a00b50a2aa7a436c3def15156881d6847` matches the amendment's first-party workspace-link inventory record; general license policy and UI/API semantics are unchanged.
+- Hosted Rust test log records **741 passed / 6 skipped**, including the real PostgreSQL + FileSystemStorage + production DSI/Diff HTTP lifecycle, revision comparison, fail-soft identity, stale capability mutation rejection, and file-audit no-byte-disclosure tests. Detailed evidence and provenance are in `docs/superpowers/execution/document-gui-integration-v0-status.md`.
+- Frontend evidence is source-recorded local verification, not a cloud rerun: Playwright **6/6 PASS** at `bb5da30c7a831a9d79a16cc422f00adc89b70c69`; Mock 1–7 snapshots and accessibility review are committed. The app/client/config/lock input paths are unchanged at `b578a9b`, but this is tree-equivalence evidence, not an exact-head E2E execution receipt. All six committed Playwright tests mock `/v1/**`; they do not demonstrate browser-to-real-backend integration. Hosted Standard CI has no Playwright step.
+- Blockers: final same-head frontend E2E receipt and a real-backend browser journey receipt are not available in the repository. This docs-only refresh did not run product builds or tests and does not claim fresh local build/test completion. No product code or dependency changes are part of C0.
+- Downstream runtime evidence remains separate: Draft [R2 PR #41](https://github.com/AIrisu-072/knowledge-platform/pull/41) at `bf5ec20d0f27f6e40f53b50ab3b1827c75f3f8ad` has [CI 36943094817](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36943094817) FAILURE; Draft [A2 PR #42](https://github.com/AIrisu-072/knowledge-platform/pull/42) at `e500144f5bafe3bb80ae12314fef7d0c9ca7e170` has [CI 36943178284](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36943178284) FAILURE. Their separate Sandbox/DSI PoC workflows succeeded, but real-runtime acceptance is not green. These later heads do not supply a PR36 exact-head frontend receipt. C1/C2/C3 are not accepted by this C0 record; the scheduler identity decision and historical security-scan qualification remain unresolved.
+- Next exact action: obtain a verifiable same-head frontend E2E receipt and real-backend browser journey evidence. If absent, close those verification gaps in a separately scoped implementation/verification task before marking G9 acceptance/review readiness. A rerun of the existing mocked suite alone cannot close the integrated journey requirement. Before any authorized docs-only push, recheck PR head and concurrent work. After push, observe Standard CI / Sandbox / DSI PoC on the new exact head; do not transfer old-head results to the new head. Keep PR #36 Draft; no merge, deploy, production migration execution, or production AD/SSPI connection.
+
+---
+
+## Superseded checkpoint — Document GUI Integration v0 G8 COMPLETE / G9 ACCEPTANCE IN PROGRESS、2026-10-01 JST
 
 - Status: **G0〜G8 COMPLETE / G9 final exact-head verification IN PROGRESS**。G8 commit/code head `d6dcda031e8101a9b46bd688ecc92b68468629ad` on `feat/document-gui-integration-v0`, 29 commits ahead of `origin/main`. Current GitHub main is `d71753d46590bb4406a1c0b74894ab90a27a6c88`; implementation branch and product PR have not yet been pushed/created.
 - Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`; approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`; Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`. No UI/API semantic amendment beyond approved Design Amendment 01 / Plan Addendum 01.

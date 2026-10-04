@@ -1,5 +1,21 @@
 # Organization Browser PoC 最小slice — 実行状況
 
+## 2026-10-04 07:17 UTC — 最小Browser PoCの実動作検証完了
+
+状態: **実DB・2名実browser・再起動後復元・cleanupと、exact-head通常CIがPASS**。以下の未実行・許可待ち記録は各時点の履歴として保持する。
+
+所有者は06:56:07 UTC、GitHub ActionsのUbuntuで一時PostgreSQL・模擬2名を使い保存/提出/引継ぎ/再起動後復元を試し、画像を公開せず一時DBを削除する質問に「実行して」と回答した（質問 `Sentinel_220853533a048191b3550a8c06b873bc`、回答 `Sentinel_03cf97bd75ec8191a10be526fd032e5c`）。ローカル拒否を再試行する許可ではない。
+
+検証済みsourceは [PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54) のremote `44e1b41219a77809f82fe22045cb4fceaf0c1ed8` / tree `daafe0ad864d883f3a72db99f491b43085bfdae9`（local `357e1e2a04c42640ea7fb17319f205432c31a80b` と同内容）。
+
+- [実runtime job111383088007](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37184350050/job/111383088007): 07:05:09 UTCにOrganizationのbuild/database/transaction/initialize/journey/restart/persistence/shutdownがすべてpassed
+- 実PostgreSQLでmigration再適用、private非開示、staging失敗時のaggregate/ledger/history/event rollback、operation再送/reconnect、claim競合を確認。通常suiteでignoredの1件を別使い捨てDBへ明示実行した
+- 実React/Chromiumで営業のDocument往復・未保存保持・private保存・提出確認/cancel/確定、事務の引受け・固定snapshot閲覧を確認。2つのHTTP serverを停止/再起動し、同じDBから状態/operation/snapshotが復元され、private非開示が続くことを確認した
+- 所有processのgraceful終了と、所有label照合後の一時container削除を完了。cleanup失敗は最終passedを拒否する実装で、最終passed・job成功を確認。画像upload stepはskipped
+- [CI37184350050](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37184350050)、[DSI37184350057](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37184350057)、[Sandbox37184350046](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37184350046) はすべてSUCCESS。D2は対象branch外でskipped。Rust825件PASS/7件skip、GUI88件/18 suites、既存mock browser6件、既存Document実runtime回帰もPASS
+
+これは承認済み最小Browser PoCの完了であり、PostgreSQL process再起動、Tauri/Windows/WebView2、Phase5/6全範囲、production資格は含まない。PR54はDraft、merge/deployなし。次のexact actionは親によるこの実証結果の報告と日本語記録の保存。追加機能・native資格は別scopeとして扱う。
+
 2026-10-04 05:55 UTC 初回実装時点。状態: **実装・限定独立レビューGO、local最小検証PASS／実DB・browser統合は未実行**。
 
 ## 2026-10-04 06:18 UTC — 実DB・browser確認の追加sourceを準備
