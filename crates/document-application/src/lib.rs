@@ -5,6 +5,7 @@
 mod access_context;
 mod access_policy_read;
 mod access_policy_service;
+mod action_capability;
 mod authorized_document;
 mod command;
 mod create_outcome;
@@ -13,10 +14,12 @@ pub mod document_diff;
 mod document_history;
 mod document_management;
 mod document_query;
+mod document_revision_read;
 mod error;
 mod events;
 mod file_access;
 mod folder_service;
+mod identity_presentation;
 mod management_command;
 mod management_digest;
 mod management_ports;
@@ -26,6 +29,7 @@ mod publish_quality;
 mod query_cursor;
 mod read_state;
 mod reconciliation;
+mod revision_comparison;
 mod schedule;
 mod scheduled_authorization;
 mod semantic_inspection;
@@ -39,6 +43,11 @@ pub use access_policy_read::{
     AccessPolicyRead, AccessPolicyReadRepository, AccessPolicyReadService, PolicyBindingMode,
 };
 pub use access_policy_service::AccessPolicyService;
+pub use action_capability::{
+    ActionAvailability, ActionCapabilityReadRepository, ActionCapabilityReadService,
+    CapabilityDisabledReason, DocumentActionCapabilities, FolderActionCapabilities,
+    VersionActionCapabilities,
+};
 pub use authorized_document::{AuthorizationScope, AuthorizedDocumentService};
 pub use command::{
     CreateDocumentCommand, CreateDocumentResult, PublishDocumentCommand, PublishDocumentResult,
@@ -55,9 +64,16 @@ pub use document_history::{
 };
 pub use document_management::DocumentManagementService;
 pub use document_query::{
-    AuthoringDocumentSummary, AuthoringQuery, DocumentListFilter, DocumentQueryRepository,
-    DocumentQueryService, FolderPageQuery, FolderSummary, HistoryDocumentSummary, HistoryQuery,
-    Page, PublishedDocumentSummary, PublishedQuery, RootFolderSummary,
+    AuthoringDocumentSummary, AuthoringQuery, DisplayTimestampKind, DocumentListFilter,
+    DocumentQueryRepository, DocumentQueryService, FolderPageQuery, FolderSummary,
+    GuiDisplayTimestamp, GuiDocumentReadModel, GuiPrimaryFileSummary, GuiVersionFileSummary,
+    GuiVersionSummary, HistoryDocumentSummary, HistoryQuery, Page, PublishedDocumentSummary,
+    PublishedQuery, RootFolderSummary,
+};
+pub use document_revision_read::{
+    DocumentRevisionDetail, DocumentRevisionDetailQuery, DocumentRevisionPageQuery,
+    DocumentRevisionReadRepository, DocumentRevisionReadService, DocumentRevisionSummary,
+    RevisionComparisonAuditRequest,
 };
 pub use error::{ApplicationError, InspectionExecutionError, RepositoryError, StorageError};
 pub use events::{
@@ -74,6 +90,11 @@ pub use file_access::{
     AuditedFileGrant, OpenedVersionFile, VersionFileAccessRepository, VersionFileAccessService,
 };
 pub use folder_service::FolderService;
+pub use identity_presentation::{
+    IdentityKind, IdentityPresentation, IdentityPresentationResolution,
+    IdentityPresentationResolutionError, IdentityPresentationResolver, IdentityPresentationService,
+    IdentityRef,
+};
 pub use management_command::{
     ManagementCommand, ManagementErrorCode, ManagementMoveDetails, ManagementMutationResult,
     ManagementOperationId, ManagementResult,
@@ -97,11 +118,16 @@ pub use publication_end::{
     PublicationEndOperationId,
 };
 pub use query_cursor::{
-    CursorBinding, CursorPosition, DocumentSort, QueryKind, decode_cursor, encode_cursor,
-    fingerprint_json, principal_fingerprint, validate_page_size,
+    CursorBinding, CursorPosition, DocumentSort, QueryKind, RevisionSortKey, decode_cursor,
+    encode_cursor, fingerprint_json, principal_fingerprint, validate_page_size,
 };
 pub use read_state::{MarkVersionRead, ReadStateRepository, ReadStateResult, ReadStateService};
 pub use reconciliation::{ReconciliationClassification, ReconciliationFinding, classify};
+pub use revision_comparison::{
+    MetadataChange, MetadataComparison, MetadataComparisonStatus, RevisionComparison,
+    RevisionComparisonService, RevisionContentComparator, RevisionContentComparison,
+    compare_revision_metadata, document_version_pair,
+};
 pub use schedule::{
     CancelOperationRecord, CancelScheduleCommand, CancelScheduleRecord, CancelScheduleResult,
     DueExecutionOutcome, DueTerminalRecord, ScheduleOperationRecord, SchedulePublishCommand,

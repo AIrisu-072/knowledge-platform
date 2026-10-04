@@ -4,6 +4,7 @@
 
 mod access_control;
 mod access_policy;
+mod action_capability;
 mod authorized_repository;
 mod create_outcome;
 mod document_diff_access;
@@ -12,6 +13,8 @@ mod document_diff_snapshot;
 mod document_history;
 mod document_management;
 mod document_query;
+mod document_revision;
+mod document_revision_read;
 mod error;
 mod file_access;
 mod folder_management;
@@ -24,6 +27,7 @@ mod read_state;
 mod repository;
 mod rows;
 mod schedule;
+mod schema_compatibility;
 mod semantic_inspection;
 mod semantic_inspection_rows;
 mod targeted_events;
@@ -32,15 +36,23 @@ mod versioning_mutation;
 mod versioning_rows;
 mod withdrawal;
 
-use sqlx::{PgPool, migrate::MigrateError};
+use sqlx::{
+    PgPool,
+    migrate::{MigrateError, Migrator},
+};
 use uuid::Uuid;
 
 pub use folder_preflight::{
     FolderPreflightCategory, FolderPreflightFinding, FolderPreflightReport, preflight_folder_names,
 };
 pub use repository::PostgresDocumentRepository;
+pub use schema_compatibility::{SchemaCompatibilityError, check_schema_compatibility};
 
 pub const SYSTEM_ROOT_FOLDER_ID: Uuid = Uuid::from_u128(0x00000000000070008000000000000001);
+
+// The explicit migration command and read-only runtime compatibility check must
+// always use the same packaged migration identities and checksums.
+static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 pub async fn migrate(pool: &PgPool) -> Result<(), MigrateError> {
     let folders_exist: bool =
@@ -62,5 +74,5 @@ pub async fn migrate(pool: &PgPool) -> Result<(), MigrateError> {
             ))));
         }
     }
-    sqlx::migrate!("./migrations").run(pool).await
+    MIGRATOR.run(pool).await
 }

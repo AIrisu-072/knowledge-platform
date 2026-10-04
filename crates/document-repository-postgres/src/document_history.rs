@@ -1,8 +1,9 @@
 use document_application::{
     CursorBinding, CursorPosition, DocumentHistoryEntry, DocumentHistoryRepository, DocumentSort,
-    HistoryPageQuery, Page, ProvenanceQuality, QueryKind, RepositoryError, VerifiedActorContext,
-    VersionDetail, VersionFileSummary, VersionPageQuery, VersionPurpose, VersionRequest,
-    VersionSummary, decode_cursor, encode_cursor, fingerprint_json, principal_fingerprint,
+    GuiPrimaryFileSummary, GuiVersionFileSummary, HistoryPageQuery, Page, ProvenanceQuality,
+    QueryKind, RepositoryError, VerifiedActorContext, VersionDetail, VersionFileSummary,
+    VersionPageQuery, VersionPurpose, VersionRequest, VersionSummary, decode_cursor, encode_cursor,
+    fingerprint_json, principal_fingerprint,
 };
 use document_domain::{Action, DocumentId, DocumentVersionId, PrincipalRef, ResourceRef};
 use serde_json::json;
@@ -129,7 +130,7 @@ pub(crate) async fn begin_snapshot(
     Ok(tx)
 }
 
-async fn authorize_history(
+pub(crate) async fn authorize_history(
     tx: &mut Transaction<'_, Postgres>,
     ctx: &VerifiedActorContext,
     document_id: DocumentId,
@@ -270,12 +271,23 @@ fn next_cursor(
             document_id: document_id.as_uuid(),
             sort_time_micros: Some(next_offset),
             sort_title: None,
+            sort_revision_key: None,
         },
     )
     .map_err(|_| RepositoryError::InvalidCursor)
 }
 
 fn decode_version(row: &PgRow) -> Result<VersionSummary, RepositoryError> {
+    let file_summary = decode_file_summary(row)?;
+    let first_read_at = row.try_get("first_read_at").map_err(map_statement_error)?;
+    decode_version_with_projection(row, file_summary, first_read_at)
+}
+
+fn decode_version_with_projection(
+    row: &PgRow,
+    file_summary: GuiVersionFileSummary,
+    first_read_at: Option<OffsetDateTime>,
+) -> Result<VersionSummary, RepositoryError> {
     let id: Uuid = row
         .try_get("document_version_id")
         .map_err(map_statement_error)?;
@@ -285,15 +297,100 @@ fn decode_version(row: &PgRow) -> Result<VersionSummary, RepositoryError> {
     Ok(VersionSummary {
         document_version_id: DocumentVersionId::from_uuid(id),
         version_no: row.try_get("version_no").map_err(map_statement_error)?,
+        base_document_version_id: row
+            .try_get::<Option<Uuid>, _>("base_document_version_id")
+            .map_err(map_statement_error)?
+            .map(DocumentVersionId::from_uuid),
         lifecycle_state: row
             .try_get("lifecycle_state")
             .map_err(map_statement_error)?,
         is_current: current == Some(id),
         created_at: row.try_get("created_at").map_err(map_statement_error)?,
+        approved_at: row.try_get("approved_at").map_err(map_statement_error)?,
+        scheduled_publish_at: row
+            .try_get("scheduled_publish_at")
+            .map_err(map_statement_error)?,
         published_at: row.try_get("published_at").map_err(map_statement_error)?,
         withdrawn_at: row.try_get("withdrawn_at").map_err(map_statement_error)?,
-        first_read_at: row.try_get("first_read_at").map_err(map_statement_error)?,
+        updated_at: row.try_get("updated_at").map_err(map_statement_error)?,
+        file_summary,
+        first_read_at,
     })
+}
+
+fn decode_file_summary(row: &PgRow) -> Result<GuiVersionFileSummary, RepositoryError> {
+    let name: Option<String> = row
+        .try_get("primary_original_filename")
+        .map_err(map_statement_error)?;
+    let media_type: Option<String> = row
+        .try_get("primary_media_type")
+        .map_err(map_statement_error)?;
+    let size_bytes: Option<i64> = row
+        .try_get("primary_size_bytes")
+        .map_err(map_statement_error)?;
+    let primary = match (name, media_type, size_bytes) {
+        (Some(display_name), Some(media_type), Some(size_bytes)) => Some(GuiPrimaryFileSummary {
+            display_name: safe_display_name(&display_name),
+            media_type,
+            size_bytes,
+        }),
+        (None, None, None) => None,
+        _ => return Err(RepositoryError::IntegrityViolation),
+    };
+    Ok(GuiVersionFileSummary {
+        authoritative_item_count: row
+            .try_get("authoritative_item_count")
+            .map_err(map_statement_error)?,
+        total_size_bytes: row
+            .try_get("total_size_bytes")
+            .map_err(map_statement_error)?,
+        primary,
+    })
+}
+
+async fn version_projection(
+    tx: &mut Transaction<'_, Postgres>,
+    ctx: &VerifiedActorContext,
+    version_id: Uuid,
+) -> Result<(GuiVersionFileSummary, Option<OffsetDateTime>), RepositoryError> {
+    let row = sqlx::query(
+        "SELECT file_summary.authoritative_item_count, file_summary.total_size_bytes, \
+                primary_file.original_filename AS primary_original_filename, \
+                primary_file.media_type AS primary_media_type, \
+                primary_file.size_bytes AS primary_size_bytes, rs.first_read_at \
+         FROM LATERAL ( \
+             SELECT count(*)::bigint AS authoritative_item_count, \
+                    COALESCE(sum(file.size_bytes), 0)::bigint AS total_size_bytes \
+             FROM content_items item \
+             JOIN content_representations representation \
+               ON representation.content_representation_id = item.authoritative_representation_id \
+              AND representation.role = 'AUTHORITATIVE' \
+             JOIN file_objects file ON file.file_id = representation.file_id \
+             WHERE item.document_version_id = $1 \
+         ) file_summary \
+         LEFT JOIN LATERAL ( \
+             SELECT representation.original_filename, file.media_type, file.size_bytes \
+             FROM content_items item \
+             JOIN content_representations representation \
+               ON representation.content_representation_id = item.authoritative_representation_id \
+              AND representation.role = 'AUTHORITATIVE' \
+             JOIN file_objects file ON file.file_id = representation.file_id \
+             WHERE item.document_version_id = $1 AND item.logical_path = 'primary' \
+             ORDER BY item.ordinal, item.content_item_id LIMIT 1 \
+         ) primary_file ON TRUE \
+         LEFT JOIN document_read_states rs \
+           ON rs.document_version_id = $1 AND rs.identity_provider = $2 AND rs.principal_id = $3",
+    )
+    .bind(version_id)
+    .bind(ctx.principal().identity_provider())
+    .bind(ctx.principal().principal_id())
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(map_statement_error)?;
+    Ok((
+        decode_file_summary(&row)?,
+        row.try_get("first_read_at").map_err(map_statement_error)?,
+    ))
 }
 
 pub(crate) fn safe_display_name(name: &str) -> String {
@@ -355,9 +452,33 @@ impl DocumentHistoryRepository for PostgresDocumentRepository {
         let offset = page_offset(query.cursor.as_deref(), &binding, query.document_id)?;
         let size = i64::from(query.page_size.unwrap_or(50));
         let rows = sqlx::query(
-            "SELECT v.document_version_id,v.version_no,v.lifecycle_state,v.created_at, \
-                    v.published_at,v.withdrawn_at,d.current_version_id,rs.first_read_at \
+            "SELECT v.*, d.current_version_id, rs.first_read_at, \
+                    file_summary.authoritative_item_count, file_summary.total_size_bytes, \
+                    primary_file.original_filename AS primary_original_filename, \
+                    primary_file.media_type AS primary_media_type, \
+                    primary_file.size_bytes AS primary_size_bytes \
              FROM documents d JOIN document_versions v ON v.document_id = d.document_id \
+             LEFT JOIN LATERAL ( \
+                 SELECT count(*)::bigint AS authoritative_item_count, \
+                        COALESCE(sum(file.size_bytes), 0)::bigint AS total_size_bytes \
+                 FROM content_items item \
+                 JOIN content_representations representation \
+                   ON representation.content_representation_id = item.authoritative_representation_id \
+                  AND representation.role = 'AUTHORITATIVE' \
+                 JOIN file_objects file ON file.file_id = representation.file_id \
+                 WHERE item.document_version_id = v.document_version_id \
+             ) file_summary ON TRUE \
+             LEFT JOIN LATERAL ( \
+                 SELECT representation.original_filename, file.media_type, file.size_bytes \
+                 FROM content_items item \
+                 JOIN content_representations representation \
+                   ON representation.content_representation_id = item.authoritative_representation_id \
+                  AND representation.role = 'AUTHORITATIVE' \
+                 JOIN file_objects file ON file.file_id = representation.file_id \
+                 WHERE item.document_version_id = v.document_version_id \
+                   AND item.logical_path = 'primary' \
+                 ORDER BY item.ordinal, item.content_item_id LIMIT 1 \
+             ) primary_file ON TRUE \
              LEFT JOIN document_read_states rs \
                ON rs.document_version_id = v.document_version_id \
               AND rs.identity_provider = $3 AND rs.principal_id = $4 \
@@ -489,35 +610,10 @@ impl DocumentHistoryRepository for PostgresDocumentRepository {
         let mut tx = begin_snapshot(&self.pool).await?;
         lock_access_state(&mut tx, AccessLockMode::Shared).await?;
         let row = authorize_version_in_tx(&mut tx, ctx, request).await?;
-        let first_read_at: Option<OffsetDateTime> = sqlx::query_scalar(
-            "SELECT first_read_at FROM document_read_states WHERE identity_provider = $1 \
-             AND principal_id = $2 AND document_version_id = $3",
-        )
-        .bind(ctx.principal().identity_provider())
-        .bind(ctx.principal().principal_id())
-        .bind(request.document_version_id.as_uuid())
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(map_statement_error)?;
-        let version_id: Uuid = row
-            .try_get("document_version_id")
-            .map_err(map_statement_error)?;
-        let current: Option<Uuid> = row
-            .try_get("current_version_id")
-            .map_err(map_statement_error)?;
+        let (file_summary, first_read_at) =
+            version_projection(&mut tx, ctx, request.document_version_id.as_uuid()).await?;
         let detail = VersionDetail {
-            summary: VersionSummary {
-                document_version_id: DocumentVersionId::from_uuid(version_id),
-                version_no: row.try_get("version_no").map_err(map_statement_error)?,
-                lifecycle_state: row
-                    .try_get("lifecycle_state")
-                    .map_err(map_statement_error)?,
-                is_current: current == Some(version_id),
-                created_at: row.try_get("created_at").map_err(map_statement_error)?,
-                published_at: row.try_get("published_at").map_err(map_statement_error)?,
-                withdrawn_at: row.try_get("withdrawn_at").map_err(map_statement_error)?,
-                first_read_at,
-            },
+            summary: decode_version_with_projection(&row, file_summary, first_read_at)?,
             title: row.try_get("title").map_err(map_statement_error)?,
             metadata: row.try_get("metadata").map_err(map_statement_error)?,
         };

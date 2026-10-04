@@ -9,6 +9,7 @@ use sqlx::{PgPool, Postgres, Transaction};
 
 use crate::{
     access_control::guard_document_mutation,
+    document_revision::{PublicationRevisionInput, issue_publication_revision},
     error::{map_commit_error, map_statement_error},
     mapping::to_authoritative,
     publication_end,
@@ -380,6 +381,20 @@ pub(crate) async fn publish_initial_version(
         if document_update.rows_affected() != 1 {
             return Err(RepositoryError::Conflict);
         }
+        let metadata = Value::Object(document.metadata().as_map().clone());
+        issue_publication_revision(
+            &mut tx,
+            PublicationRevisionInput {
+                document_id: identity.document_id(),
+                document_version_id: identity.target_document_version_id(),
+                metadata: &metadata,
+                operation_id: identity.publish_operation_id().as_uuid(),
+                actor: identity.principal(),
+                created_at: proposed_result.published_at(),
+                is_initial_path: true,
+            },
+        )
+        .await?;
         if scheduled_due {
             complete_due_schedule(&mut tx, &identity, proposed_result.published_at()).await?;
         }
@@ -461,12 +476,12 @@ pub(crate) async fn publish_next_version(
     let mut tx = pool.begin().await.map_err(map_statement_error)?;
     let outcome: Result<PublishDocumentResult, RepositoryError> = async {
         guard_document_mutation(&mut tx, ctx, identity.document_id(), &[Action::Read, Action::Publish], identity.principal()).await?;
-        let state: Option<(Option<uuid::Uuid>, i64)> = sqlx::query_as(
-            "SELECT current_version_id, revision FROM documents WHERE document_id = $1 FOR UPDATE",
+        let state: Option<(Option<uuid::Uuid>, i64, Value)> = sqlx::query_as(
+            "SELECT current_version_id, revision, metadata FROM documents WHERE document_id = $1 FOR UPDATE",
         )
         .bind(identity.document_id().as_uuid())
         .fetch_optional(&mut *tx).await.map_err(map_statement_error)?;
-        let Some((current_id, revision)) = state else { return Err(RepositoryError::DocumentNotFound); };
+        let Some((current_id, revision, metadata)) = state else { return Err(RepositoryError::DocumentNotFound); };
         if let Some(stored) = get_publish_operation_in_tx(&mut tx, identity.publish_operation_id()).await? {
             return replay_or_conflict(stored, &identity);
         }
@@ -558,6 +573,19 @@ pub(crate) async fn publish_next_version(
         .bind(identity.document_id().as_uuid()).bind(revision).bind(base_id.as_uuid())
         .execute(&mut *tx).await.map_err(map_statement_error)?;
         if document_update.rows_affected() != 1 { return Err(RepositoryError::Conflict); }
+        issue_publication_revision(
+            &mut tx,
+            PublicationRevisionInput {
+                document_id: identity.document_id(),
+                document_version_id: identity.target_document_version_id(),
+                metadata: &metadata,
+                operation_id: identity.publish_operation_id().as_uuid(),
+                actor: identity.principal(),
+                created_at: proposed_result.published_at(),
+                is_initial_path: false,
+            },
+        )
+        .await?;
         if scheduled_due {
             complete_due_schedule(&mut tx, &identity, proposed_result.published_at()).await?;
         }

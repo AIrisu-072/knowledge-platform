@@ -244,6 +244,21 @@ pub(super) async fn fixture() -> Fixture {
         .execute(&pool)
         .await
         .unwrap();
+    sqlx::query(
+        "INSERT INTO document_revisions \
+         (document_id,document_version_id,major_no,minor_no,metadata_snapshot, \
+          metadata_snapshot_status,source_kind,operation_id,created_at, \
+          actor_identity_provider,actor_principal_id,reason) \
+         VALUES ($1,$2,1,0, \
+                 jsonb_build_object('document_type',NULL,'owning_department',NULL, \
+                                    'category',NULL,'extensions',NULL), \
+                 'complete','legacyBackfill',NULL,to_timestamp(0),NULL,NULL,NULL)",
+    )
+    .bind(document_id.as_uuid())
+    .bind(base_id.as_uuid())
+    .execute(&pool)
+    .await
+    .unwrap();
     let storage = Arc::new(TestStorage::default());
     storage.insert("objects/base", vec![1; 3]);
     Fixture {

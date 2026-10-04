@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": true,
+    "rootDir": "../..",
+    "outDir": ".build",
+    "typeRoots": ["../../apps/document-web/node_modules/@types"],
+    "types": ["node"],
+    "paths": {
+      "@knowledge-platform/document-api-client": ["../../packages/document-api-client/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

@@ -35,6 +35,8 @@ pub enum RepositoryError {
     DocumentNotFound,
     #[error("document version not found")]
     DocumentVersionNotFound,
+    #[error("document revision not found")]
+    DocumentRevisionNotFound,
     #[error("file object not found")]
     FileObjectNotFound,
     #[error("target version is no longer the current published version")]
@@ -103,6 +105,8 @@ pub enum ApplicationError {
     DocumentNotFound,
     #[error("document version not found")]
     DocumentVersionNotFound,
+    #[error("document revision not found")]
+    DocumentRevisionNotFound,
     #[error("target version is no longer the current published version")]
     StaleVersion,
     #[error("query cursor no longer matches the current access or query context")]
@@ -209,6 +213,7 @@ impl From<RepositoryError> for ApplicationError {
             RepositoryError::FolderNotFound => Self::FolderNotFound,
             RepositoryError::DocumentNotFound => Self::DocumentNotFound,
             RepositoryError::DocumentVersionNotFound => Self::DocumentVersionNotFound,
+            RepositoryError::DocumentRevisionNotFound => Self::DocumentRevisionNotFound,
             RepositoryError::FileObjectNotFound => Self::FileObjectNotFound,
             RepositoryError::StaleVersion => Self::StaleVersion,
             RepositoryError::CursorStale => Self::CursorStale,

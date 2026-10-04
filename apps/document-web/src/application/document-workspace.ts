@@ -1,0 +1,22 @@
+export { documentApi } from '../api/document-api';
+export type {
+  AccessPolicyRead,
+  CommandsPolicyExplicit,
+  CommandsPolicyInherit,
+  DocumentDetail,
+  DocumentList,
+  DocumentRevisionPage,
+  DocumentRevisionSummary,
+  DisplayFragment,
+  FileList,
+  Folder,
+  FolderChildren,
+  FolderDetail,
+  History,
+  PolicyGrantInput,
+  RevisionComparisonResponse,
+  SourceLocator,
+  Version,
+  VersionDetail,
+  VersionList,
+} from '@knowledge-platform/document-api-client';

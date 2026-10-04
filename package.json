@@ -2,11 +2,18 @@
   "name": "knowledge-platform-tooling",
   "private": true,
   "packageManager": "pnpm@12.4.1",
-  "devDependencies": {
-    "@redocly/cli": "2.52.1"
-  },
   "scripts": {
     "api:lint": "redocly lint spec/api/openapi.yaml",
-    "api:contract": "node --test tools/api-contract/contract.test.mjs"
+    "api:contract": "node --test tools/api-contract/contract.test.mjs",
+    "api:generate": "openapi-ts -i spec/api/openapi.yaml -o packages/document-api-client/src/generated",
+    "api:client:typecheck": "tsc -p packages/document-api-client/tsconfig.json",
+    "api:client:test": "tsc -p packages/document-api-client/tsconfig.json --noEmit false --outDir packages/document-api-client/.test-build && node --test packages/document-api-client/test/*.test.mjs",
+    "organization:api:generate": "openapi-ts -i spec/api/organization-poc.openapi.json -o apps/document-web/src/api/generated-work -p @hey-api/typescript --no-log-file",
+    "organization:api:lint": "redocly lint spec/api/organization-poc.openapi.json"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "0.99.0",
+    "@redocly/cli": "2.52.1",
+    "typescript": "6.0.3"
   }
 }

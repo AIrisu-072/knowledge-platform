@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     access_control::guard_document_mutation,
+    document_revision::{WithdrawFallbackRevisionInput, issue_withdraw_fallback_revision},
     error::{map_commit_error, map_statement_error},
     versioning_mutation,
 };
@@ -93,7 +94,7 @@ pub(crate) async fn withdraw(
     let mut tx = pool.begin().await.map_err(map_statement_error)?;
     let outcome: Result<WithdrawVersionResult, RepositoryError> = async {
         guard_document_mutation(&mut tx, ctx, command.document_id(), &[Action::Read, Action::Publish], command.actor()).await?;
-        let state = sqlx::query("SELECT current_version_id, revision FROM documents WHERE document_id = $1 FOR UPDATE")
+        let state = sqlx::query("SELECT current_version_id, revision, metadata FROM documents WHERE document_id = $1 FOR UPDATE")
             .bind(command.document_id().as_uuid()).fetch_optional(&mut *tx).await.map_err(map_statement_error)?
             .ok_or(RepositoryError::DocumentNotFound)?;
         if let Some(stored) = get_operation_in_tx(&mut tx, command.operation_id()).await? {
@@ -101,6 +102,7 @@ pub(crate) async fn withdraw(
         }
         let current: Option<Uuid> = state.get("current_version_id");
         let revision: i64 = state.get("revision");
+        let metadata: Value = state.get("metadata");
         if revision != command.expected_revision() { return Err(RepositoryError::Conflict); }
         let target = sqlx::query(
             "SELECT document_id, base_document_version_id, lifecycle_state \
@@ -150,6 +152,21 @@ pub(crate) async fn withdraw(
         sqlx::query("UPDATE documents SET current_version_id = $1, revision = $2 WHERE document_id = $3")
             .bind(resulting_current).bind(next_revision).bind(command.document_id().as_uuid())
             .execute(&mut *tx).await.map_err(map_statement_error)?;
+        if is_current && let Some(fallback_id) = resulting_current {
+            issue_withdraw_fallback_revision(
+                &mut tx,
+                WithdrawFallbackRevisionInput {
+                    document_id: command.document_id(),
+                    document_version_id: DocumentVersionId::from_uuid(fallback_id),
+                    metadata: &metadata,
+                    operation_id: command.operation_id().as_uuid(),
+                    actor: command.actor(),
+                    reason: command.reason(),
+                    created_at: record.withdrawn_at,
+                },
+            )
+            .await?;
+        }
         let invalidated: Vec<Uuid> = sqlx::query_scalar(
             "UPDATE document_publish_schedules SET status = 'TERMINAL', terminal_reason = 'withdrawal invalidated intent', terminal_at = $3, terminal_executor_identity_provider = $4, terminal_executor_principal_id = $5 \
              WHERE document_id = $1 AND status = 'PENDING' \

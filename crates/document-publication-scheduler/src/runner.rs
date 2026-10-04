@@ -32,6 +32,8 @@ impl Clock for SystemClock {
 
 #[derive(Debug, thiserror::Error)]
 pub enum SchedulerError {
+    #[error("publication scheduler requires KP_RUNTIME_MODE=poc")]
+    UnsupportedRuntimeMode,
     #[error("publication scheduler requires Linux")]
     LinuxRequired,
     #[error("mandatory inspection sandbox is unavailable")]

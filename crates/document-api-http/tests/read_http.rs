@@ -3,15 +3,18 @@ mod support;
 
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use document_api_http::identity::{IdentityAdapter, IdentityRequestContext};
-use document_api_http::read::read_router;
+use document_api_http::read::{read_router, read_router_with_identity_presentation};
 use document_api_http::validation::SchemaRegistry;
 use document_application::{
-    BootstrapRootPolicy, IdentityResolutionError, InvocationKind, VerifiedActorContext,
+    BootstrapRootPolicy, IdentityPresentation, IdentityPresentationResolution,
+    IdentityPresentationResolutionError, IdentityPresentationResolver, IdentityRef,
+    IdentityResolutionError, InvocationKind, VerifiedActorContext,
 };
 use document_domain::{Action, PolicyGrant, PolicySubject, PolicySubjectKind, PrincipalRef};
 use serde_json::{Value, json};
@@ -33,6 +36,62 @@ impl IdentityAdapter for FixedIdentity {
     }
 }
 
+#[derive(Clone)]
+struct TestPresentationResolver {
+    calls: Arc<AtomicUsize>,
+    requested: Arc<Mutex<Vec<Vec<IdentityRef>>>>,
+    unavailable: bool,
+}
+
+impl TestPresentationResolver {
+    fn new(unavailable: bool) -> Self {
+        Self {
+            calls: Arc::new(AtomicUsize::new(0)),
+            requested: Arc::new(Mutex::new(Vec::new())),
+            unavailable,
+        }
+    }
+}
+
+impl IdentityPresentationResolver for TestPresentationResolver {
+    fn resolve_batch<'a>(
+        &'a self,
+        refs: &'a [IdentityRef],
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<Vec<IdentityPresentation>, IdentityPresentationResolutionError>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        self.requested.lock().unwrap().push(refs.to_vec());
+        let unavailable = self.unavailable;
+        let presentations = refs
+            .iter()
+            .cloned()
+            .map(|reference| IdentityPresentation {
+                display_name: Some(format!(
+                    "{} {}",
+                    reference.kind.as_str(),
+                    reference.subject_id
+                )),
+                secondary_text: Some(reference.provider.clone()),
+                reference,
+                resolution: IdentityPresentationResolution::Resolved,
+            })
+            .collect();
+        Box::pin(async move {
+            if unavailable {
+                Err(IdentityPresentationResolutionError::Unavailable)
+            } else {
+                Ok(presentations)
+            }
+        })
+    }
+}
+
 async fn get(router: axum::Router, uri: &str) -> (StatusCode, Value) {
     let response = router
         .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
@@ -40,7 +99,93 @@ async fn get(router: axum::Router, uri: &str) -> (StatusCode, Value) {
         .unwrap();
     let status = response.status();
     let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
-    (status, serde_json::from_slice(&bytes).unwrap())
+    let body = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).unwrap()
+    };
+    (status, body)
+}
+
+async fn seed_gui_document(f: &support::Fixture) -> (uuid::Uuid, uuid::Uuid) {
+    let version_id = uuid::Uuid::now_v7();
+    let primary_file_id = uuid::Uuid::now_v7();
+    let content_item_id = uuid::Uuid::now_v7();
+    let representation_id = uuid::Uuid::now_v7();
+    let initial_operation_id = uuid::Uuid::now_v7();
+    let metadata_operation_id = uuid::Uuid::now_v7();
+    let initial_revision_id = uuid::Uuid::now_v7();
+    let latest_revision_id = uuid::Uuid::now_v7();
+    let now = OffsetDateTime::now_utc();
+    let older = now - Duration::hours(2);
+    let newer = now - Duration::hours(1);
+
+    sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,lifecycle_state,title,published_at,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,1,'PUBLISHED','Operations policy',$3,'test-idp','policy-admin','{}',$3)")
+        .bind(version_id)
+        .bind(f.document_id.as_uuid())
+        .bind(older)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE documents SET current_version_id = $1 WHERE document_id = $2")
+        .bind(version_id)
+        .bind(f.document_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO file_objects (file_id,content_hash,media_type,size_bytes,storage_locator,created_at) VALUES ($1,$2,'application/pdf',7,$3,$4)")
+        .bind(primary_file_id)
+        .bind(vec![9_u8; 32])
+        .bind(format!("objects/{primary_file_id}"))
+        .bind(older)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    let mut tx = f.pool.begin().await.unwrap();
+    sqlx::query("INSERT INTO content_items (content_item_id,document_version_id,logical_path,ordinal,authoritative_representation_id) VALUES ($1,$2,'primary',0,$3)")
+        .bind(content_item_id)
+        .bind(version_id)
+        .bind(representation_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO content_representations (content_representation_id,content_item_id,file_id,role,original_filename) VALUES ($1,$2,$3,'AUTHORITATIVE','../../Policy.pdf')")
+        .bind(representation_id)
+        .bind(content_item_id)
+        .bind(primary_file_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    let complete_snapshot = json!({
+        "document_type": "policy",
+        "owning_department": null,
+        "category": "operations",
+        "extensions": null
+    });
+    sqlx::query("INSERT INTO document_revisions (revision_id,document_id,document_version_id,major_no,minor_no,metadata_snapshot,metadata_snapshot_status,source_kind,operation_id,created_at,actor_identity_provider,actor_principal_id,reason) VALUES ($1,$2,$3,1,0,$4,'complete','initialPublication',$5,$6,'test-idp','policy-admin',NULL)")
+        .bind(initial_revision_id)
+        .bind(f.document_id.as_uuid())
+        .bind(version_id)
+        .bind(&complete_snapshot)
+        .bind(initial_operation_id)
+        .bind(older)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO document_revisions (revision_id,document_id,document_version_id,major_no,minor_no,metadata_snapshot,metadata_snapshot_status,source_kind,operation_id,created_at,actor_identity_provider,actor_principal_id,reason) VALUES ($1,$2,$3,1,1,$4,'complete','metadataRevision',$5,$6,'test-idp','policy-admin','classify')")
+        .bind(latest_revision_id)
+        .bind(f.document_id.as_uuid())
+        .bind(version_id)
+        .bind(complete_snapshot)
+        .bind(metadata_operation_id)
+        .bind(newer)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+
+    (version_id, latest_revision_id)
 }
 
 fn context_for(principal_id: &str) -> VerifiedActorContext {
@@ -50,6 +195,18 @@ fn context_for(principal_id: &str) -> VerifiedActorContext {
         vec![PolicySubject::new(PolicySubjectKind::Principal, "test-idp", principal_id).unwrap()],
         OffsetDateTime::now_utc() + Duration::hours(1),
         InvocationKind::HumanInteractive,
+        None,
+    )
+    .unwrap()
+}
+
+fn context_for_kind(principal_id: &str, invocation_kind: InvocationKind) -> VerifiedActorContext {
+    let principal = PrincipalRef::new("test-idp", principal_id).unwrap();
+    VerifiedActorContext::from_trusted_adapter(
+        principal,
+        vec![PolicySubject::new(PolicySubjectKind::Principal, "test-idp", principal_id).unwrap()],
+        OffsetDateTime::now_utc() + Duration::hours(1),
+        invocation_kind,
         None,
     )
     .unwrap()
@@ -68,12 +225,13 @@ fn assert_schema(definition: &str, value: &Value) {
         "Folder" => json!({
             "type": "object",
             "additionalProperties": false,
-            "required": ["folderId", "name", "revision"],
+            "required": ["folderId", "name", "revision", "capabilities"],
             "properties": {
                 "folderId": {"type": "string", "format": "uuid"},
                 "parentFolderId": {"type": ["string", "null"], "format": "uuid"},
                 "name": {"type": "string"},
-                "revision": {"type": "integer", "minimum": 0}
+                "revision": {"type": "integer", "minimum": 0},
+                "capabilities": {"type": "object"}
             }
         }),
         "VersionList" => json!({
@@ -84,19 +242,65 @@ fn assert_schema(definition: &str, value: &Value) {
                 "items": {"type": "array", "items": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["versionId", "versionNo", "lifecycleState", "isCurrent", "createdAt"],
+                    "required": ["versionId", "versionNo", "baseVersionId", "lifecycleState", "isCurrent", "createdAt", "approvedAt", "scheduledPublishAt", "publishedAt", "withdrawnAt", "updatedAt", "fileSummary", "firstReadAt"],
                     "properties": {
                         "versionId": {"type": "string", "format": "uuid"},
                         "versionNo": {"type": "integer", "minimum": 1},
+                        "baseVersionId": {"type": ["string", "null"], "format": "uuid"},
                         "lifecycleState": {"enum": ["working", "published", "withdrawn"]},
                         "isCurrent": {"type": "boolean"},
                         "createdAt": {"type": "string", "format": "date-time"},
+                        "approvedAt": {"type": ["string", "null"], "format": "date-time"},
+                        "scheduledPublishAt": {"type": ["string", "null"], "format": "date-time"},
                         "publishedAt": {"type": ["string", "null"], "format": "date-time"},
                         "withdrawnAt": {"type": ["string", "null"], "format": "date-time"},
+                        "updatedAt": {"type": "string", "format": "date-time"},
+                        "fileSummary": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["authoritativeItemCount", "totalSizeBytes", "primary"],
+                            "properties": {
+                                "authoritativeItemCount": {"type": "integer", "minimum": 0},
+                                "totalSizeBytes": {"type": "integer", "minimum": 0},
+                                "primary": {"type": ["object", "null"]}
+                            }
+                        },
                         "firstReadAt": {"type": ["string", "null"], "format": "date-time"}
                     }
                 }},
                 "nextCursor": {"type": ["string", "null"]}
+            }
+        }),
+        "Version" => json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["versionId", "versionNo", "baseVersionId", "lifecycleState", "isCurrent", "createdAt", "approvedAt", "scheduledPublishAt", "publishedAt", "withdrawnAt", "updatedAt", "fileSummary", "firstReadAt", "title", "metadata", "capabilities"],
+            "properties": {
+                "versionId": {"type": "string", "format": "uuid"},
+                "versionNo": {"type": "integer", "minimum": 1},
+                "baseVersionId": {"type": ["string", "null"], "format": "uuid"},
+                "lifecycleState": {"enum": ["working", "published", "withdrawn"]},
+                "isCurrent": {"type": "boolean"},
+                "createdAt": {"type": "string", "format": "date-time"},
+                "approvedAt": {"type": ["string", "null"], "format": "date-time"},
+                "scheduledPublishAt": {"type": ["string", "null"], "format": "date-time"},
+                "publishedAt": {"type": ["string", "null"], "format": "date-time"},
+                "withdrawnAt": {"type": ["string", "null"], "format": "date-time"},
+                "updatedAt": {"type": "string", "format": "date-time"},
+                "fileSummary": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["authoritativeItemCount", "totalSizeBytes", "primary"],
+                    "properties": {
+                        "authoritativeItemCount": {"type": "integer", "minimum": 0},
+                        "totalSizeBytes": {"type": "integer", "minimum": 0},
+                        "primary": {"type": ["object", "null"]}
+                    }
+                },
+                "firstReadAt": {"type": ["string", "null"], "format": "date-time"},
+                "title": {"type": "string"},
+                "metadata": {"type": "object"},
+                "capabilities": {"type": "object"}
             }
         }),
         _ => panic!("unknown schema fixture"),
@@ -105,6 +309,322 @@ fn assert_schema(definition: &str, value: &Value) {
         .unwrap()
         .validate_response("response", value)
         .unwrap();
+}
+
+#[tokio::test]
+async fn gui_document_list_projects_version_revision_read_state_and_file_summary() {
+    let f = fixture().await;
+    let (_, latest_revision_id) = seed_gui_document(&f).await;
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![grant_for(
+                "policy-admin",
+                [Action::Read, Action::ReadHistory, Action::Write],
+            )],
+        )
+        .await
+        .unwrap();
+    let router = read_router(f.repository.clone(), Arc::new(FixedIdentity(context()))).unwrap();
+
+    let (status, body) = get(router, "/v1/documents?view=published").await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let item = &body["items"][0];
+    assert_eq!(item["documentId"], f.document_id.as_uuid().to_string());
+    assert_eq!(item["displayVersion"]["versionNo"], 1);
+    assert_eq!(item["displayVersion"]["baseVersionId"], Value::Null);
+    assert_eq!(item["displayVersion"]["lifecycleState"], "PUBLISHED");
+    assert_eq!(item["displayVersion"]["isCurrent"], true);
+    assert!(item["displayVersion"]["updatedAt"].as_str().is_some());
+    assert_eq!(
+        item["displayVersion"]["fileSummary"]["authoritativeItemCount"],
+        1
+    );
+    assert_eq!(item["displayVersion"]["fileSummary"]["totalSizeBytes"], 7);
+    assert_eq!(
+        item["displayVersion"]["fileSummary"]["primary"]["displayName"],
+        "Policy.pdf"
+    );
+    assert_eq!(
+        item["displayVersion"]["fileSummary"]["primary"]["sizeBytes"],
+        7
+    );
+    assert_eq!(
+        item["displayRevision"]["revisionId"],
+        latest_revision_id.to_string()
+    );
+    assert_eq!(item["displayRevision"]["major"], 1);
+    assert_eq!(item["displayRevision"]["minor"], 1);
+    assert_eq!(item["readState"]["isRead"], false);
+    assert_eq!(item["readState"]["firstReadAt"], Value::Null);
+    assert_eq!(item["displayTimestamp"]["kind"], "revisionCreatedAt");
+    assert_eq!(
+        item["displayTimestamp"]["value"],
+        item["displayRevision"]["createdAt"]
+    );
+}
+
+#[tokio::test]
+async fn revision_history_is_keyset_paginated_authorized_and_has_detail_snapshot() {
+    let f = fixture().await;
+    let (_, latest_revision_id) = seed_gui_document(&f).await;
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![
+                grant_for("policy-admin", [Action::Read, Action::ReadHistory]),
+                grant_for("reader-two", [Action::Read]),
+            ],
+        )
+        .await
+        .unwrap();
+    let path = format!("/v1/documents/{}/revisions", f.document_id.as_uuid());
+    let unauthorized = read_router(
+        f.repository.clone(),
+        Arc::new(FixedIdentity(context_for("reader-two"))),
+    )
+    .unwrap();
+    let (status, body) = get(unauthorized, &path).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
+    let router = read_router(f.repository.clone(), Arc::new(FixedIdentity(context()))).unwrap();
+    let (status, first) = get(router.clone(), &format!("{path}?pageSize=1")).await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    assert_eq!(first["items"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        first["items"][0]["revisionId"],
+        latest_revision_id.to_string()
+    );
+    assert_eq!(first["items"][0]["major"], 1);
+    assert_eq!(first["items"][0]["minor"], 1);
+    let cursor = first["nextCursor"]
+        .as_str()
+        .expect("two revisions have a next page");
+
+    let (status, second) = get(
+        router.clone(),
+        &format!("{path}?pageSize=1&cursor={cursor}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{second}");
+    assert_eq!(second["items"].as_array().unwrap().len(), 1);
+    assert_eq!(second["items"][0]["major"], 1);
+    assert_eq!(second["items"][0]["minor"], 0);
+    assert_eq!(second["nextCursor"], Value::Null);
+
+    let (status, detail) = get(router, &format!("{path}/{latest_revision_id}")).await;
+    assert_eq!(status, StatusCode::OK, "{detail}");
+    assert_eq!(detail["revisionId"], latest_revision_id.to_string());
+    assert_eq!(detail["sourceKind"], "metadataRevision");
+    assert_eq!(detail["reason"], "classify");
+    assert_eq!(detail["metadataSnapshot"]["document_type"], "policy");
+    assert_eq!(detail["metadataSnapshotStatus"], "complete");
+}
+
+#[tokio::test]
+async fn detail_capabilities_reflect_permission_lifecycle_and_human_context() {
+    let f = fixture().await;
+    let (published, _) = seed_gui_document(&f).await;
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![
+                grant_for(
+                    "policy-admin",
+                    [
+                        Action::Read,
+                        Action::ReadHistory,
+                        Action::Write,
+                        Action::Publish,
+                        Action::Administer,
+                    ],
+                ),
+                grant_for("reader-two", [Action::Read]),
+                grant_for(
+                    "service-actor",
+                    [
+                        Action::Read,
+                        Action::ReadHistory,
+                        Action::Write,
+                        Action::Publish,
+                        Action::Administer,
+                    ],
+                ),
+            ],
+        )
+        .await
+        .unwrap();
+    let document_path = format!("/v1/documents/{}?view=published", f.document_id.as_uuid());
+    let version_path = format!(
+        "/v1/documents/{}/versions/{}?purpose=published",
+        f.document_id.as_uuid(),
+        published
+    );
+
+    let admin = read_router(f.repository.clone(), Arc::new(FixedIdentity(context()))).unwrap();
+    let (status, document) = get(admin.clone(), &document_path).await;
+    assert_eq!(status, StatusCode::OK, "{document}");
+    assert_eq!(
+        document["capabilities"]["createVersion"]["status"],
+        "available"
+    );
+    assert_eq!(
+        document["capabilities"]["manageAccess"]["status"],
+        "available"
+    );
+
+    let (status, version) = get(admin.clone(), &version_path).await;
+    assert_eq!(status, StatusCode::OK, "{version}");
+    assert_eq!(version["capabilities"]["withdraw"]["status"], "available");
+    assert_eq!(version["capabilities"]["download"]["status"], "available");
+    assert_eq!(
+        version["capabilities"]["edit"],
+        json!({"status": "disabled", "reason": "lifecycle"})
+    );
+
+    let (status, root) = get(admin.clone(), "/v1/folders/root").await;
+    assert_eq!(status, StatusCode::OK, "{root}");
+    assert_eq!(
+        root["capabilities"]["createDocument"]["status"],
+        "available"
+    );
+    assert_eq!(root["capabilities"]["manageAccess"]["status"], "available");
+
+    let children_path = format!("/v1/folders/{}/children", f.root_id.as_uuid());
+    let (status, children) = get(admin, &children_path).await;
+    assert_eq!(status, StatusCode::OK, "{children}");
+    assert_eq!(
+        children["capabilities"]["createFolder"]["status"],
+        "available"
+    );
+
+    let reader = read_router(
+        f.repository.clone(),
+        Arc::new(FixedIdentity(context_for("reader-two"))),
+    )
+    .unwrap();
+    let (status, document) = get(reader, &document_path).await;
+    assert_eq!(status, StatusCode::OK, "{document}");
+    assert_eq!(
+        document["capabilities"]["createVersion"],
+        json!({"status": "disabled", "reason": "permission"})
+    );
+
+    let service = read_router(
+        f.repository.clone(),
+        Arc::new(FixedIdentity(context_for_kind(
+            "service-actor",
+            InvocationKind::Service,
+        ))),
+    )
+    .unwrap();
+    let (status, document) = get(service, &document_path).await;
+    assert_eq!(status, StatusCode::OK, "{document}");
+    assert_eq!(
+        document["capabilities"]["createVersion"],
+        json!({"status": "disabled", "reason": "notHumanInteractive"})
+    );
+}
+
+#[tokio::test]
+async fn working_version_capabilities_disable_publish_and_enable_rebase_for_stale_base() {
+    let f = fixture().await;
+    let (base_version_id, _) = seed_gui_document(&f).await;
+    let newer_current_id = uuid::Uuid::now_v7();
+    let stale_working_id = uuid::Uuid::now_v7();
+    sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,base_document_version_id,lifecycle_state,title,published_at,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,2,$3,'PUBLISHED','New current',now(),'test-idp','policy-admin','{}',now())")
+        .bind(newer_current_id)
+        .bind(f.document_id.as_uuid())
+        .bind(base_version_id)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,base_document_version_id,lifecycle_state,title,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,3,$3,'WORKING','Stale working','test-idp','policy-admin','{}',now())")
+        .bind(stale_working_id)
+        .bind(f.document_id.as_uuid())
+        .bind(base_version_id)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE documents SET current_version_id = $1 WHERE document_id = $2")
+        .bind(newer_current_id)
+        .bind(f.document_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![grant_for(
+                "policy-admin",
+                [
+                    Action::Read,
+                    Action::ReadHistory,
+                    Action::Write,
+                    Action::Publish,
+                ],
+            )],
+        )
+        .await
+        .unwrap();
+    let router = read_router(f.repository.clone(), Arc::new(FixedIdentity(context()))).unwrap();
+    let path = format!(
+        "/v1/documents/{}/versions/{}?purpose=authoring",
+        f.document_id.as_uuid(),
+        stale_working_id
+    );
+    let (status, version) = get(router, &path).await;
+    assert_eq!(status, StatusCode::OK, "{version}");
+    assert_eq!(version["capabilities"]["rebase"]["status"], "available");
+    assert_eq!(
+        version["capabilities"]["publish"],
+        json!({"status": "disabled", "reason": "staleBase"})
+    );
+}
+
+#[tokio::test]
+async fn document_capabilities_distinguish_missing_current_from_ended_publication() {
+    let f = fixture().await;
+    let (published_id, _) = seed_gui_document(&f).await;
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![grant_for(
+                "policy-admin",
+                [
+                    Action::Read,
+                    Action::ReadHistory,
+                    Action::Write,
+                    Action::Publish,
+                    Action::Administer,
+                ],
+            )],
+        )
+        .await
+        .unwrap();
+    let working_id = uuid::Uuid::now_v7();
+    sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,base_document_version_id,lifecycle_state,title,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,2,$3,'WORKING','Working after withdrawal','test-idp','policy-admin','{}',now())")
+        .bind(working_id)
+        .bind(f.document_id.as_uuid())
+        .bind(published_id)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE documents SET current_version_id = NULL WHERE document_id = $1")
+        .bind(f.document_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+
+    let router = read_router(f.repository.clone(), Arc::new(FixedIdentity(context()))).unwrap();
+    let path = format!("/v1/documents/{}?view=authoring", f.document_id.as_uuid());
+    let (status, document) = get(router, &path).await;
+    assert_eq!(status, StatusCode::OK, "{document}");
+    assert_eq!(
+        document["capabilities"]["endPublication"],
+        json!({"status": "disabled", "reason": "notCurrent"})
+    );
 }
 
 #[tokio::test]
@@ -197,7 +717,31 @@ async fn version_list_requires_and_honors_the_authorization_purpose() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["items"].as_array().unwrap().len(), 1);
     assert_eq!(body["items"][0]["versionId"], published.to_string());
+    assert_eq!(body["items"][0]["versionNo"], 1);
+    assert_eq!(body["items"][0]["baseVersionId"], serde_json::Value::Null);
+    assert!(body["items"][0]["updatedAt"].as_str().is_some());
+    assert_eq!(body["items"][0]["fileSummary"]["authoritativeItemCount"], 0);
+    assert_eq!(body["items"][0]["fileSummary"]["totalSizeBytes"], 0);
+    assert_eq!(
+        body["items"][0]["fileSummary"]["primary"],
+        serde_json::Value::Null
+    );
     assert_schema("VersionList", &body);
+
+    let (status, detail) = get(
+        router.clone(),
+        &format!(
+            "/v1/documents/{}/versions/{}?purpose=published",
+            f.document_id.as_uuid(),
+            published
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{detail}");
+    assert_eq!(detail["baseVersionId"], serde_json::Value::Null);
+    assert!(detail["updatedAt"].as_str().is_some());
+    assert_eq!(detail["fileSummary"]["authoritativeItemCount"], 0);
+    assert_schema("Version", &detail);
 
     let (status, body) = get(router, &format!("{base}?purpose=authoring")).await;
     assert_eq!(status, StatusCode::OK);
@@ -369,4 +913,144 @@ async fn policy_read_requires_administer_permission() {
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(body["code"], "FORBIDDEN");
+}
+
+#[tokio::test]
+async fn history_and_policy_resolve_identity_presentations_once_per_response() {
+    let f = fixture().await;
+    seed_gui_document(&f).await;
+    let group = PolicyGrant::new(
+        PolicySubject::new(PolicySubjectKind::Group, "directory", "reviewers").unwrap(),
+        [Action::Read],
+    )
+    .unwrap();
+    let role = PolicyGrant::new(
+        PolicySubject::new(PolicySubjectKind::Role, "directory", "auditor").unwrap(),
+        [Action::Read],
+    )
+    .unwrap();
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![
+                grant_for(
+                    "policy-admin",
+                    [Action::Read, Action::ReadHistory, Action::Administer],
+                ),
+                group,
+                role,
+            ],
+        )
+        .await
+        .unwrap();
+    let resolver = TestPresentationResolver::new(false);
+    let router = read_router_with_identity_presentation(
+        f.repository.clone(),
+        Arc::new(FixedIdentity(context())),
+        Arc::new(resolver.clone()),
+    )
+    .unwrap();
+
+    let (status, history) = get(
+        router.clone(),
+        &format!("/v1/documents/{}/history", f.document_id.as_uuid()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{history}");
+    let history_actor = history["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find_map(|item| item.get("actor").filter(|actor| !actor.is_null()))
+        .expect("version history includes an actor");
+    assert_eq!(
+        history_actor["presentation"]["ref"]["subjectId"],
+        "policy-admin"
+    );
+    assert_eq!(
+        history_actor["presentation"]["displayName"],
+        "principal policy-admin"
+    );
+
+    let (status, policy) = get(
+        router,
+        &format!("/v1/folders/{}/access-policy", f.root_id.as_uuid()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{policy}");
+    let grants = policy["effectiveGrants"].as_array().unwrap();
+    assert_eq!(grants.len(), 3);
+    assert!(grants.iter().all(|grant| {
+        grant["presentation"]["resolution"] == "resolved"
+            && grant["presentation"]["ref"]["subjectId"] == grant["subjectId"]
+    }));
+    let requested = resolver.requested.lock().unwrap();
+    assert_eq!(resolver.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(requested.len(), 2);
+    assert_eq!(
+        requested[0].len(),
+        1,
+        "repeated history actors are deduplicated"
+    );
+    assert_eq!(
+        requested[1].len(),
+        3,
+        "policy subjects resolve in one batch"
+    );
+}
+
+#[tokio::test]
+async fn unavailable_identity_presentation_does_not_fail_history_or_policy_reads() {
+    let f = fixture().await;
+    seed_gui_document(&f).await;
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![grant_for(
+                "policy-admin",
+                [Action::Read, Action::ReadHistory, Action::Administer],
+            )],
+        )
+        .await
+        .unwrap();
+    let router = read_router_with_identity_presentation(
+        f.repository.clone(),
+        Arc::new(FixedIdentity(context())),
+        Arc::new(TestPresentationResolver::new(true)),
+    )
+    .unwrap();
+
+    let (status, history) = get(
+        router.clone(),
+        &format!("/v1/documents/{}/history", f.document_id.as_uuid()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{history}");
+    let history_actor = history["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find_map(|item| item.get("actor").filter(|actor| !actor.is_null()))
+        .expect("version history includes an actor");
+    assert_eq!(history_actor["presentation"]["resolution"], "unavailable");
+    assert_eq!(history_actor["presentation"]["displayName"], Value::Null);
+    assert_eq!(
+        history_actor["presentation"]["ref"]["subjectId"],
+        "policy-admin"
+    );
+
+    let (status, policy) = get(
+        router,
+        &format!("/v1/folders/{}/access-policy", f.root_id.as_uuid()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{policy}");
+    assert_eq!(
+        policy["effectiveGrants"][0]["presentation"]["resolution"],
+        "unavailable"
+    );
+    assert_eq!(
+        policy["effectiveGrants"][0]["presentation"]["ref"]["subjectId"],
+        "policy-admin"
+    );
 }

@@ -1,0 +1,2866 @@
+{
+  "openapi": "3.2.1",
+  "info": {
+    "title": "Organization Browser PoC API",
+    "version": "0.1.0",
+    "description": "凍結済みOrganization APIの最小実装subset。起動時固定synthetic identity専用。production認証ではない。"
+  },
+  "paths": {
+    "/v1/organization/session": {
+      "get": {
+        "operationId": "getOrganizationSession",
+        "summary": "getOrganizationSession",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkSession"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/tasks": {
+      "get": {
+        "operationId": "listWorkItems",
+        "summary": "listWorkItems",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "view",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "context",
+                "queue"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "description": "この固定2step PoCはcursor非対応。指定するとCURSOR_STALE。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/tasks/{id}": {
+      "get": {
+        "operationId": "getWorkItem",
+        "summary": "getWorkItem",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDetail"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/tasks/{id}/working-artifacts": {
+      "get": {
+        "operationId": "listWorkingArtifacts",
+        "summary": "listWorkingArtifacts",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createWorkingArtifact",
+        "summary": "createWorkingArtifact",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/working-artifacts/{id}": {
+      "get": {
+        "operationId": "getWorkingArtifact",
+        "summary": "getWorkingArtifact",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkingArtifact"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "updateWorkingArtifact",
+        "summary": "updateWorkingArtifact",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/tasks/{id}/claim": {
+      "post": {
+        "operationId": "claimWorkItem",
+        "summary": "claimWorkItem",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/tasks/{id}/submit": {
+      "post": {
+        "operationId": "submitWorkItem",
+        "summary": "submitWorkItem",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/handoff-snapshots/{id}": {
+      "get": {
+        "operationId": "getHandoffSnapshot",
+        "summary": "getHandoffSnapshot",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandoffSnapshot"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/operations/{id}": {
+      "get": {
+        "operationId": "recoverOrganizationOperation",
+        "summary": "recoverOrganizationOperation",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/tasks/{id}/return": {
+      "post": {
+        "operationId": "returnOrganizationTask",
+        "summary": "returnOrganizationTask",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/return-instructions/{id}": {
+      "get": {
+        "operationId": "getOrganizationReturnInstruction",
+        "summary": "getOrganizationReturnInstruction",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnInstruction"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/tasks/{id}/evidence": {
+      "get": {
+        "operationId": "listEvidence",
+        "summary": "listEvidence",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidencePage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 16,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Narrow Browser PoC complete-collection profile, not the full Frozen keyset API. Complete visible current+received Evidence/Finding lists and visible decisions per Finding have at most16 records. Omitted limit defaults50; only16–100 accepted, rejected before repository/provider otherwise. Cursor is unsupported (CURSOR_STALE); no truncation or automatic traversal. Every mutation, including claim/resubmit, checks actual serialized visible collections below1MiB with envelope reserve; a create cannot make an existing collection unretrievable."
+      },
+      "post": {
+        "operationId": "registerEvidence",
+        "summary": "registerEvidence",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/evidence/{id}": {
+      "get": {
+        "operationId": "getEvidence",
+        "summary": "getEvidence",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceRecord"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/tasks/{id}/findings": {
+      "get": {
+        "operationId": "listFindings",
+        "summary": "listFindings",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 16,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Narrow Browser PoC complete-collection profile, not the full Frozen keyset API. Complete visible current+received Evidence/Finding lists and visible decisions per Finding have at most16 records. Omitted limit defaults50; only16–100 accepted, rejected before repository/provider otherwise. Cursor is unsupported (CURSOR_STALE); no truncation or automatic traversal. Every mutation, including claim/resubmit, checks actual serialized visible collections below1MiB with envelope reserve; a create cannot make an existing collection unretrievable."
+      },
+      "post": {
+        "operationId": "registerFinding",
+        "summary": "registerFinding",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindingCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/findings/{id}": {
+      "get": {
+        "operationId": "getFinding",
+        "summary": "getFinding",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Finding"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/findings/{id}/decisions": {
+      "get": {
+        "operationId": "listHumanDecisions",
+        "summary": "listHumanDecisions",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 16,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Narrow Browser PoC complete-collection profile, not the full Frozen keyset API. Complete visible current+received Evidence/Finding lists and visible decisions per Finding have at most16 records. Omitted limit defaults50; only16–100 accepted, rejected before repository/provider otherwise. Cursor is unsupported (CURSOR_STALE); no truncation or automatic traversal. Every mutation, including claim/resubmit, checks actual serialized visible collections below1MiB with envelope reserve; a create cannot make an existing collection unretrievable."
+      },
+      "post": {
+        "operationId": "recordHumanDecision",
+        "summary": "recordHumanDecision",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionCommand"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "TextValue": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 8192,
+            "description": "最大8192 UTF-8 bytes。サーバー側でbyte長も検証する。"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "WorkSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "principalId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "nativeWorkspace": {
+                "type": "boolean"
+              },
+              "agent": {
+                "type": "boolean"
+              },
+              "search": {
+                "type": "boolean"
+              },
+              "fileUpload": {
+                "type": "boolean"
+              },
+              "return": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "nativeWorkspace",
+              "agent",
+              "search",
+              "fileUpload",
+              "return"
+            ]
+          }
+        },
+        "required": [
+          "principalId",
+          "displayName",
+          "actingAssignmentId",
+          "capabilities"
+        ]
+      },
+      "TaskSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string"
+          },
+          "stepLabel": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "active",
+              "held",
+              "completed"
+            ]
+          },
+          "canClaim": {
+            "type": "boolean"
+          },
+          "canEdit": {
+            "type": "boolean"
+          },
+          "canSubmit": {
+            "type": "boolean"
+          },
+          "handoffSnapshotId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "attemptNumber": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "canReturn": {
+            "type": "boolean"
+          },
+          "returnInstructionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "returnTransition": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ReturnTransition"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canRegisterEvidence": {
+            "type": "boolean"
+          },
+          "canRegisterFinding": {
+            "type": "boolean"
+          },
+          "canRecordDecision": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "contextId",
+          "attemptId",
+          "revision",
+          "title",
+          "stepLabel",
+          "state",
+          "canClaim",
+          "canEdit",
+          "canSubmit",
+          "handoffSnapshotId",
+          "attemptNumber",
+          "canReturn",
+          "returnInstructionId",
+          "returnTransition",
+          "canRegisterEvidence",
+          "canRegisterFinding",
+          "canRecordDecision"
+        ]
+      },
+      "WorkingArtifact": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "schemaId": {
+            "const": "organization.text-draft.v1",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/TextValue"
+          },
+          "visibility": {
+            "const": "work_item_private",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "taskId",
+          "attemptId",
+          "revision",
+          "schemaId",
+          "value",
+          "visibility"
+        ]
+      },
+      "InputResource": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "document"
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "documentId",
+          "label"
+        ]
+      },
+      "HistoryEntry": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "kind",
+          "occurredAt"
+        ]
+      },
+      "TaskDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string"
+          },
+          "stepLabel": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "active",
+              "held",
+              "completed"
+            ]
+          },
+          "canClaim": {
+            "type": "boolean"
+          },
+          "canEdit": {
+            "type": "boolean"
+          },
+          "canSubmit": {
+            "type": "boolean"
+          },
+          "handoffSnapshotId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "inputResources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InputResource"
+            },
+            "maxItems": 100
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoryEntry"
+            },
+            "maxItems": 100
+          },
+          "workingArtifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkingArtifact"
+            },
+            "maxItems": 16
+          },
+          "attemptNumber": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "canReturn": {
+            "type": "boolean"
+          },
+          "returnInstructionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "returnTransition": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ReturnTransition"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canRegisterEvidence": {
+            "type": "boolean"
+          },
+          "canRegisterFinding": {
+            "type": "boolean"
+          },
+          "canRecordDecision": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "contextId",
+          "attemptId",
+          "revision",
+          "title",
+          "stepLabel",
+          "state",
+          "canClaim",
+          "canEdit",
+          "canSubmit",
+          "handoffSnapshotId",
+          "inputResources",
+          "history",
+          "workingArtifacts",
+          "attemptNumber",
+          "canReturn",
+          "returnInstructionId",
+          "returnTransition",
+          "canRegisterEvidence",
+          "canRegisterFinding",
+          "canRecordDecision"
+        ]
+      },
+      "TaskPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskSummary"
+            },
+            "maxItems": 100
+          },
+          "nextCursor": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "PinnedArtifact": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "artifactId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "schemaId": {
+            "const": "organization.text-draft.v1",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/TextValue"
+          }
+        },
+        "required": [
+          "artifactId",
+          "revision",
+          "schemaId",
+          "value"
+        ]
+      },
+      "HandoffSnapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceTaskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetTaskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PinnedArtifact"
+            },
+            "maxItems": 16
+          },
+          "workflowId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "submittedBy": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01"
+            ]
+          },
+          "submissionNumber": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "previousSubmissionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "returnInstructionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "evidenceRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100
+          },
+          "findingRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100
+          },
+          "decisionRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "id",
+          "sourceTaskId",
+          "sourceAttemptId",
+          "targetTaskId",
+          "createdAt",
+          "artifacts",
+          "workflowId",
+          "contextId",
+          "submissionNumber",
+          "submittedBy",
+          "actingAssignmentId",
+          "evidenceRevisionRefs",
+          "findingRevisionRefs",
+          "decisionRevisionRefs"
+        ]
+      },
+      "WorkCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId"
+        ]
+      },
+      "DraftCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "value": {
+            "$ref": "#/components/schemas/TextValue"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "value"
+        ]
+      },
+      "SubmitCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "artifactId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "revision": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "artifactId",
+                "revision"
+              ]
+            },
+            "maxItems": 16
+          },
+          "evidenceRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100
+          },
+          "findingRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100
+          },
+          "decisionRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "artifacts"
+        ],
+        "description": "Explicit immutable selection only. Missing added selection arrays mean empty for legacy commands. Combined record references <=100, without duplicates. Selected findings require all their evidence; selected decisions require their finding and all support. No records are automatically included."
+      },
+      "DraftSaved": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "draft_saved",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "artifact": {
+            "$ref": "#/components/schemas/WorkingArtifact"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "artifact"
+        ]
+      },
+      "Claimed": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "claimed",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          }
+        },
+        "required": [
+          "kind",
+          "task"
+        ]
+      },
+      "Submitted": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "submitted",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/HandoffSnapshot"
+          },
+          "nextTask": {
+            "$ref": "#/components/schemas/TaskSummary"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "snapshot",
+          "nextTask"
+        ]
+      },
+      "WorkResult": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/DraftSaved"
+          },
+          {
+            "$ref": "#/components/schemas/Claimed"
+          },
+          {
+            "$ref": "#/components/schemas/Submitted"
+          },
+          {
+            "$ref": "#/components/schemas/Returned"
+          },
+          {
+            "$ref": "#/components/schemas/EvidenceRegistered"
+          },
+          {
+            "$ref": "#/components/schemas/FindingRegistered"
+          },
+          {
+            "$ref": "#/components/schemas/DecisionRecorded"
+          }
+        ]
+      },
+      "Problem": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "VALIDATION_FAILED",
+              "FORBIDDEN",
+              "WORK_ITEM_NOT_FOUND",
+              "WORK_ARTIFACT_NOT_FOUND",
+              "REVISION_CONFLICT",
+              "OPERATION_CONFLICT",
+              "WORK_ASSIGNMENT_CONFLICT",
+              "HANDOFF_NOT_READY",
+              "DEPENDENCY_UNAVAILABLE",
+              "COMMIT_OUTCOME_UNKNOWN",
+              "INTEGRITY_VIOLATION",
+              "CURSOR_STALE",
+              "EVIDENCE_NOT_FOUND",
+              "FINDING_NOT_FOUND"
+            ]
+          },
+          "traceId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code",
+          "traceId"
+        ]
+      },
+      "ArtifactPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkingArtifact"
+            },
+            "maxItems": 16
+          },
+          "nextCursor": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "ReturnTransition": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "transitionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetTaskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "previousSubmissionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "transitionId",
+          "targetTaskId",
+          "previousSubmissionId"
+        ]
+      },
+      "ReturnInstruction": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflowId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceTaskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetTaskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "previousSubmissionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "transitionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "空白のみ不可、最大8192 UTF-8 bytes。"
+          },
+          "returnedBy": {
+            "type": "string",
+            "enum": [
+              "office-01"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "workflowId",
+          "contextId",
+          "sourceTaskId",
+          "sourceAttemptId",
+          "targetTaskId",
+          "targetAttemptId",
+          "previousSubmissionId",
+          "transitionId",
+          "actingAssignmentId",
+          "reason",
+          "returnedBy",
+          "createdAt"
+        ]
+      },
+      "ReturnCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "previousSubmissionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetTaskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "transitionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "空白のみ不可、最大8192 UTF-8 bytes。"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedAttemptId",
+          "previousSubmissionId",
+          "targetTaskId",
+          "transitionId",
+          "reason"
+        ]
+      },
+      "Returned": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "returned",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "returnInstruction": {
+            "$ref": "#/components/schemas/ReturnInstruction"
+          },
+          "nextTask": {
+            "$ref": "#/components/schemas/TaskSummary"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "returnInstruction",
+          "nextTask"
+        ]
+      },
+      "RevisionRef": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "const": 1
+          }
+        },
+        "required": [
+          "id",
+          "revision"
+        ]
+      },
+      "SourceRef": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "providerId": {
+            "type": "string",
+            "const": "document"
+          },
+          "resourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revisionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "versionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "providerId",
+          "resourceId",
+          "revisionId",
+          "versionId"
+        ]
+      },
+      "AuthoritativeLocator": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "contentItem"
+          },
+          "contentItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "representationId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "kind",
+          "contentItemId",
+          "representationId"
+        ]
+      },
+      "EvidenceRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "const": 1
+          },
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "visibility": {
+            "type": "string",
+            "const": "work_item_private"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string",
+            "const": "human"
+          },
+          "sourceRef": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "authoritativeLocator": {
+            "$ref": "#/components/schemas/AuthoritativeLocator"
+          },
+          "relevantLocation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          },
+          "relevantLocationVerified": {
+            "type": "boolean",
+            "const": false
+          },
+          "fragmentOmissionReason": {
+            "type": "string",
+            "const": "not_retained"
+          },
+          "coverage": {
+            "type": "string",
+            "const": "unknown"
+          },
+          "uncertainty": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 0
+          },
+          "conflictReferences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 0
+          },
+          "policyDisposition": {
+            "type": "string",
+            "const": "reference_only"
+          },
+          "retrievedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "providerCheckedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "contextId",
+          "taskId",
+          "attemptId",
+          "actingAssignmentId",
+          "visibility",
+          "createdBy",
+          "origin",
+          "sourceRef",
+          "authoritativeLocator",
+          "relevantLocation",
+          "relevantLocationVerified",
+          "fragmentOmissionReason",
+          "coverage",
+          "uncertainty",
+          "conflictReferences",
+          "policyDisposition",
+          "retrievedAt",
+          "recordedAt",
+          "providerCheckedAt"
+        ],
+        "description": "Immutable reference-only source pointer. relevantLocation is human text and is not verified source content. Fragment is not retained; coverage is unknown. providerCheckedAt/retrievedAt describe completion of the server Document preflight, recordedAt is Work registration time. No cross-provider atomicity or retained source proof is asserted."
+      },
+      "Finding": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "const": 1
+          },
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "visibility": {
+            "type": "string",
+            "const": "work_item_private"
+          },
+          "author": {
+            "type": "string"
+          },
+          "claim": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          },
+          "evidenceRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100,
+            "minItems": 1
+          },
+          "supersedesFindingId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "uncertainty": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 0
+          },
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 0
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "contextId",
+          "taskId",
+          "attemptId",
+          "actingAssignmentId",
+          "visibility",
+          "author",
+          "claim",
+          "evidenceRevisionRefs",
+          "supersedesFindingId",
+          "uncertainty",
+          "conflicts",
+          "createdAt"
+        ]
+      },
+      "HumanDecision": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "const": 1
+          },
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "visibility": {
+            "type": "string",
+            "const": "work_item_private"
+          },
+          "findingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "findingRevision": {
+            "type": "integer",
+            "const": 1
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "modified",
+              "rejected"
+            ]
+          },
+          "adoptedClaim": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          },
+          "evidenceRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100
+          },
+          "humanPrincipal": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "supersedesDecisionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "contextId",
+          "taskId",
+          "attemptId",
+          "actingAssignmentId",
+          "visibility",
+          "findingId",
+          "findingRevision",
+          "decision",
+          "adoptedClaim",
+          "reason",
+          "evidenceRevisionRefs",
+          "humanPrincipal",
+          "createdAt",
+          "supersedesDecisionId"
+        ]
+      },
+      "EvidenceCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceRef": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "authoritativeLocator": {
+            "$ref": "#/components/schemas/AuthoritativeLocator"
+          },
+          "relevantLocation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedAttemptId",
+          "sourceRef",
+          "authoritativeLocator",
+          "relevantLocation"
+        ]
+      },
+      "FindingCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "claim": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          },
+          "evidenceRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100,
+            "minItems": 1
+          },
+          "supersedesFindingId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedAttemptId",
+          "claim",
+          "evidenceRevisionRefs"
+        ]
+      },
+      "DecisionCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "findingRevision": {
+            "type": "integer",
+            "const": 1
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "modified",
+              "rejected"
+            ]
+          },
+          "adoptedClaim": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          },
+          "evidenceRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "maxItems": 100
+          },
+          "supersedesDecisionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedAttemptId",
+          "taskId",
+          "findingRevision",
+          "decision",
+          "evidenceRevisionRefs"
+        ],
+        "description": "HumanInteractive only. taskId and expectedAttemptId name the current judging task/attempt, including office judging a received sales Finding. modified requires a nonblank adoptedClaim; accepted/rejected omit it."
+      },
+      "EvidenceRegistered": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "evidence_registered"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/EvidenceRecord"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "evidence"
+        ]
+      },
+      "FindingRegistered": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "finding_registered"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "finding": {
+            "$ref": "#/components/schemas/Finding"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "finding"
+        ]
+      },
+      "DecisionRecorded": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "decision_recorded"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/HumanDecision"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "decision"
+        ]
+      },
+      "EvidencePage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRecord"
+            },
+            "maxItems": 16
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "FindingPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            },
+            "maxItems": 16
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "DecisionPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HumanDecision"
+            },
+            "maxItems": 16
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ]
+}

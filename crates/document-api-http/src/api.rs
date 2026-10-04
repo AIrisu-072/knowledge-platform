@@ -63,7 +63,9 @@ impl DocumentApiRouters {
             };
         }
         if path.starts_with("/v1/documents/") {
-            if method == Method::POST && path.ends_with("/comparisons") {
+            if method == Method::POST
+                && (path.ends_with("/comparisons") || path.ends_with("/revision-comparisons"))
+            {
                 return &self.diff;
             }
             if method == Method::GET && path.contains("/files/") {

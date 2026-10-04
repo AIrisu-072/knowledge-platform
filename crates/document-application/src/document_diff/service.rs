@@ -2,29 +2,36 @@ use std::sync::Arc;
 
 use document_diff_core::{
     AlignmentBudget, AlignmentKind, ChangeOperation, ContentVerdict, DiffCoverage,
-    DiffProfileVersion, ItemAnchor, RelocationKind, ResourceProfileVersion, SourceLocator,
-    UnverifiedReason, WorkerDiffRequest, WorkerProtocolVersion, align_items,
+    DiffProfileVersion, DisplayFragment, DisplayUnavailableReason, FormatId, ItemAnchor,
+    MAX_DISPLAY_FRAGMENT_BYTES_V0, MAX_DISPLAY_PAGE_BYTES_V0, RelocationKind,
+    ResourceProfileVersion, SourceLocator, UnverifiedReason, WorkerDiffRequest,
+    WorkerDisplayRequest, WorkerProtocolVersion, align_items,
 };
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::{
-    ApplicationError, FileStorage, VerifiedActorContext, VersionFileAccessRepository,
-    VersionFileAccessService, VersionFileRequest, VersionRequest,
+    ApplicationError, CursorBinding, CursorPosition, DocumentSort, FileStorage, QueryKind,
+    VerifiedActorContext, VersionFileAccessRepository, VersionFileAccessService,
+    VersionFileRequest, VersionRequest, decode_cursor, encode_cursor, fingerprint_json,
+    principal_fingerprint,
 };
 
 use super::ports::{DiffExecutionError, DiffExecutor};
 use super::snapshot::normalize_title;
 use super::{
-    AncillaryChange, AuthorizedComparisonTable, Change, DiffCache, DiffCacheKey,
-    DiffInspectionEvidence, DiffPairSnapshot, DiffRequest, DiffResult, DocumentDiffRepository,
-    LocatorGranularity, SnapshotItem, SourceEvidence, UnverifiedRegion, VersionSnapshot,
-    capture_pair_with_evidence, project_comparison_table,
+    AncillaryChange, AuthorizedComparisonTable, AuthorizedDiffDisplay, Change, DiffCache,
+    DiffCacheKey, DiffDisplayItem, DiffInspectionEvidence, DiffPairSnapshot, DiffRequest,
+    DiffResult, DocumentDiffRepository, LocatorGranularity, SnapshotItem, SourceEvidence,
+    UnverifiedRegion, VersionSnapshot, capture_pair_with_evidence, project_comparison_table,
 };
 
 pub struct AuthorizedDiff {
     pub result: DiffResult,
     pub result_digest: [u8; 32],
     pub audit_event_id: Uuid,
+    pub pair: super::DiffPairSnapshot,
+    pub cache_hit: bool,
 }
 
 pub struct DocumentDiffService<R, F, E, I> {
@@ -88,6 +95,8 @@ where
                     result: cached,
                     result_digest,
                     audit_event_id,
+                    pair,
+                    cache_hit: true,
                 });
             }
             Ok(None) | Err(crate::RepositoryError::Unavailable) => {}
@@ -116,6 +125,8 @@ where
             result,
             result_digest,
             audit_event_id,
+            pair,
+            cache_hit: false,
         })
     }
 
@@ -133,6 +144,270 @@ where
             result_digest: authorized.result_digest,
             audit_event_id: authorized.audit_event_id,
         })
+    }
+
+    pub async fn compare_display(
+        &self,
+        actor: &VerifiedActorContext,
+        request: DiffRequest,
+        page_size: Option<u16>,
+        cursor: Option<String>,
+        display_binding: Value,
+    ) -> Result<AuthorizedDiffDisplay, ApplicationError> {
+        let page_size = page_size.unwrap_or(50);
+        if !(1..=100).contains(&page_size) {
+            return Err(ApplicationError::Validation(
+                "display page size must be within 1..=100".into(),
+            ));
+        }
+        let authorized = self.compare(actor, request).await?;
+        let binding = CursorBinding {
+            kind: QueryKind::DiffDisplay,
+            sort: DocumentSort::CreatedAtDesc,
+            filter_fingerprint: fingerprint_json(&json!({
+                "documentId": request.document_id.as_uuid(),
+                "baseVersionId": request.base_version_id.as_uuid(),
+                "targetVersionId": request.target_version_id.as_uuid(),
+                "profile": request.profile.as_str(),
+                "resultDigest": authorized.result_digest,
+                "displayBinding": display_binding,
+            }))?,
+            principal_fingerprint: principal_fingerprint(actor)?,
+            access_revision: 0,
+        };
+        let start = cursor
+            .as_deref()
+            .map(|token| decode_cursor(token, &binding))
+            .transpose()?
+            .map(|position| {
+                if position.document_id != request.document_id.as_uuid() {
+                    return Err(ApplicationError::CursorStale);
+                }
+                position
+                    .sort_time_micros
+                    .and_then(|value| usize::try_from(value).ok())
+                    .ok_or(ApplicationError::CursorStale)
+            })
+            .transpose()?
+            .unwrap_or(0);
+        let change_count = authorized.result.changes.len();
+        let total = change_count
+            .checked_add(authorized.result.unverified_regions.len())
+            .ok_or(ApplicationError::IntegrityViolation)?;
+        if start >= total && (total > 0 || cursor.is_some()) {
+            return Err(ApplicationError::CursorStale);
+        }
+        let end = start.saturating_add(page_size as usize).min(total);
+        let mut items = Vec::with_capacity(end.saturating_sub(start));
+        let mut unverified_regions = Vec::new();
+        let mut page_bytes = 2_usize;
+        for position in start..end {
+            if position >= change_count {
+                let region = &authorized.result.unverified_regions[position - change_count];
+                let item_bytes = serde_json::to_vec(region)
+                    .map_err(|_| ApplicationError::InvalidWorkerResult)?
+                    .len();
+                if page_bytes.saturating_add(item_bytes).saturating_add(1)
+                    > MAX_DISPLAY_PAGE_BYTES_V0 - 4096
+                {
+                    if items.is_empty() && unverified_regions.is_empty() {
+                        return Err(ApplicationError::InvalidWorkerResult);
+                    }
+                    break;
+                }
+                page_bytes = page_bytes.saturating_add(item_bytes).saturating_add(1);
+                unverified_regions.push(region.clone());
+                continue;
+            }
+            let change = &authorized.result.changes[position];
+            let base = match &change.base {
+                Some(source) => Some(
+                    self.extract_display_source(actor, &authorized, source)
+                        .await?,
+                ),
+                None => None,
+            };
+            let target = match &change.target {
+                Some(source) => Some(
+                    self.extract_display_source(actor, &authorized, source)
+                        .await?,
+                ),
+                None => None,
+            };
+            let mut item = DiffDisplayItem {
+                change_index: u32::try_from(position)
+                    .map_err(|_| ApplicationError::IntegrityViolation)?,
+                operation: change.operation,
+                relocation: change.relocation,
+                facet: change.facet.clone(),
+                base_locator: change.base.as_ref().map(|source| source.locator.clone()),
+                target_locator: change.target.as_ref().map(|source| source.locator.clone()),
+                base,
+                target,
+            };
+            bound_display_item(&mut item)?;
+            let item_bytes = serde_json::to_vec(&item)
+                .map_err(|_| ApplicationError::InvalidWorkerResult)?
+                .len();
+            if page_bytes.saturating_add(item_bytes).saturating_add(1)
+                > MAX_DISPLAY_PAGE_BYTES_V0 - 4096
+            {
+                if items.is_empty() && unverified_regions.is_empty() {
+                    return Err(ApplicationError::InvalidWorkerResult);
+                }
+                break;
+            }
+            page_bytes = page_bytes.saturating_add(item_bytes).saturating_add(1);
+            items.push(item);
+        }
+        let next_offset = start.saturating_add(items.len() + unverified_regions.len());
+        let next_cursor = if next_offset < total {
+            Some(encode_cursor(
+                &binding,
+                &CursorPosition {
+                    document_id: request.document_id.as_uuid(),
+                    sort_time_micros: Some(
+                        i64::try_from(next_offset)
+                            .map_err(|_| ApplicationError::IntegrityViolation)?,
+                    ),
+                    sort_title: None,
+                    sort_revision_key: None,
+                },
+            )?)
+        } else {
+            None
+        };
+        let correlation_id = authorized.audit_event_id.to_string();
+        let display_audit_event_id = self
+            .repository
+            .authorize_and_audit_result(
+                actor,
+                &authorized.pair,
+                &authorized.result,
+                authorized.cache_hit,
+                Some(&correlation_id),
+            )
+            .await?;
+        Ok(AuthorizedDiffDisplay {
+            result: authorized.result,
+            result_digest: authorized.result_digest,
+            result_audit_event_id: authorized.audit_event_id,
+            display_audit_event_id,
+            items,
+            unverified_regions,
+            page_size,
+            next_cursor,
+        })
+    }
+
+    async fn extract_display_source(
+        &self,
+        actor: &VerifiedActorContext,
+        authorized: &AuthorizedDiff,
+        source: &SourceEvidence,
+    ) -> Result<DisplayFragment, ApplicationError> {
+        source
+            .locator
+            .validate()
+            .map_err(|_| ApplicationError::IntegrityViolation)?;
+        let snapshot = if source.version_id == authorized.pair.base.version_id {
+            &authorized.pair.base
+        } else if source.version_id == authorized.pair.target.version_id {
+            &authorized.pair.target
+        } else {
+            return Err(ApplicationError::IntegrityViolation);
+        };
+        if source.document_id != authorized.pair.document_id {
+            return Err(ApplicationError::IntegrityViolation);
+        }
+        let item = snapshot
+            .items
+            .iter()
+            .find(|item| item.content_item_id == source.content_item_id)
+            .ok_or(ApplicationError::IntegrityViolation)?;
+        if item.file_id != source.file_id
+            || item.authoritative_representation_id != source.authoritative_representation_id
+            || item.raw_sha256 != source.raw_sha256
+        {
+            return Err(ApplicationError::IntegrityViolation);
+        }
+        let Some(format) = item.format else {
+            return Ok(DisplayFragment::Unavailable {
+                reason: DisplayUnavailableReason::Unsupported,
+            });
+        };
+        if !display_locator_supported(format, &source.locator) {
+            return Ok(DisplayFragment::Unavailable {
+                reason: match format {
+                    FormatId::Docx
+                    | FormatId::Xlsx
+                    | FormatId::Xlsm
+                    | FormatId::Pptx
+                    | FormatId::Pdf => DisplayUnavailableReason::NonTextual,
+                    _ => DisplayUnavailableReason::Unsupported,
+                },
+            });
+        }
+        let correlation_id = authorized.audit_event_id;
+        let opened = VersionFileAccessService::new(self.repository.clone(), self.storage.clone())
+            .open_version_file(
+                actor,
+                VersionFileRequest {
+                    version: VersionRequest {
+                        document_id: snapshot.document_id,
+                        document_version_id: snapshot.version_id,
+                        purpose: snapshot.reference_purpose,
+                    },
+                    content_item_id: item.content_item_id,
+                    representation_id: item.authoritative_representation_id,
+                    correlation_id: Some(correlation_id),
+                },
+            )
+            .await?;
+        let response = self
+            .executor
+            .extract_display(
+                WorkerDisplayRequest {
+                    protocol_version: WorkerProtocolVersion::V0,
+                    format,
+                    raw_sha256: item.raw_sha256,
+                    size_bytes: item.size_bytes,
+                    locator: source.locator.clone(),
+                    max_fragment_bytes: MAX_DISPLAY_FRAGMENT_BYTES_V0 as u32,
+                },
+                opened.content,
+            )
+            .await;
+        let response = match response {
+            Ok(response) => response,
+            Err(DiffExecutionError::Timeout | DiffExecutionError::ResourceLimit) => {
+                return Ok(DisplayFragment::Unavailable {
+                    reason: DisplayUnavailableReason::ResourceLimit,
+                });
+            }
+            Err(DiffExecutionError::RawBindingMismatch) => {
+                return Err(ApplicationError::IntegrityViolation);
+            }
+            Err(DiffExecutionError::InvalidWorkerResult) => {
+                return Err(ApplicationError::InvalidWorkerResult);
+            }
+            Err(DiffExecutionError::Unavailable) => {
+                return Err(ApplicationError::Internal(
+                    "diff display worker unavailable".into(),
+                ));
+            }
+        };
+        response
+            .validate_against(&WorkerDisplayRequest {
+                protocol_version: WorkerProtocolVersion::V0,
+                format,
+                raw_sha256: item.raw_sha256,
+                size_bytes: item.size_bytes,
+                locator: source.locator.clone(),
+                max_fragment_bytes: MAX_DISPLAY_FRAGMENT_BYTES_V0 as u32,
+            })
+            .map_err(|_| ApplicationError::InvalidWorkerResult)?;
+        Ok(response.fragment)
     }
 
     async fn compose(
@@ -474,6 +749,7 @@ fn file_request(version: &VersionSnapshot, item: &SnapshotItem) -> VersionFileRe
         },
         content_item_id: item.content_item_id,
         representation_id: item.authoritative_representation_id,
+        correlation_id: None,
     }
 }
 
@@ -533,4 +809,158 @@ fn missing_evidence(
         reason: UnverifiedReason::MissingInspectionEvidence,
         navigation_hint: Some("検査証拠がないため両原本を確認してください".into()),
     });
+}
+
+fn display_locator_supported(format: FormatId, locator: &SourceLocator) -> bool {
+    matches!(
+        (format, locator),
+        (FormatId::Txt, SourceLocator::TextSpan { .. })
+            | (FormatId::Csv, SourceLocator::CsvCell { .. })
+            | (FormatId::Html, SourceLocator::HtmlNode { .. })
+            | (FormatId::Pdf, SourceLocator::PdfPage { region: None, .. })
+    )
+}
+
+fn bound_display_item(item: &mut DiffDisplayItem) -> Result<(), ApplicationError> {
+    let cap_fragment = |fragment: &mut Option<DisplayFragment>| {
+        if fragment.as_ref().is_some_and(|fragment| {
+            document_diff_core::serialized_fragment_bytes(fragment) > MAX_DISPLAY_FRAGMENT_BYTES_V0
+        }) {
+            *fragment = Some(DisplayFragment::Unavailable {
+                reason: DisplayUnavailableReason::ResourceLimit,
+            });
+        }
+    };
+    cap_fragment(&mut item.base);
+    cap_fragment(&mut item.target);
+    loop {
+        let bytes = serde_json::to_vec(item).map_err(|_| ApplicationError::InvalidWorkerResult)?;
+        if bytes.len() <= 32 * 1024 {
+            return Ok(());
+        }
+        let base_size = item
+            .base
+            .as_ref()
+            .map(document_diff_core::serialized_fragment_bytes)
+            .unwrap_or(0);
+        let target_size = item
+            .target
+            .as_ref()
+            .map(document_diff_core::serialized_fragment_bytes)
+            .unwrap_or(0);
+        if base_size == 0 && target_size == 0 {
+            return Err(ApplicationError::InvalidWorkerResult);
+        }
+        let replace = if base_size >= target_size {
+            &mut item.base
+        } else {
+            &mut item.target
+        };
+        *replace = Some(DisplayFragment::Unavailable {
+            reason: DisplayUnavailableReason::ResourceLimit,
+        });
+    }
+}
+
+#[cfg(test)]
+mod display_bound_tests {
+    use super::*;
+
+    #[test]
+    fn native_pdf_page_locator_is_sent_to_the_authorized_display_executor() {
+        assert!(display_locator_supported(
+            FormatId::Pdf,
+            &SourceLocator::PdfPage {
+                page: 1,
+                region: None
+            }
+        ));
+        assert!(!display_locator_supported(
+            FormatId::Pdf,
+            &SourceLocator::PdfPage {
+                page: 1,
+                region: Some([0, 0, 1, 1])
+            }
+        ));
+        assert!(!display_locator_supported(
+            FormatId::Pdf,
+            &SourceLocator::ContentItem
+        ));
+    }
+
+    const ITEM_LIMIT: usize = 32 * 1024;
+
+    fn empty_item() -> DiffDisplayItem {
+        let locator = SourceLocator::TextSpan {
+            line: 1,
+            byte_start: 0,
+            byte_end: 1,
+        };
+        let base = DisplayFragment::Text {
+            text: String::new(),
+            truncated: false,
+            locator: locator.clone(),
+        };
+        let target = DisplayFragment::Text {
+            text: String::new(),
+            truncated: false,
+            locator: locator.clone(),
+        };
+        DiffDisplayItem {
+            change_index: 0,
+            operation: Some(ChangeOperation::Modified),
+            relocation: None,
+            facet: "visible_text".into(),
+            base_locator: Some(locator.clone()),
+            target_locator: Some(locator),
+            base: Some(base),
+            target: Some(target),
+        }
+    }
+
+    fn item_with_size(size: usize) -> DiffDisplayItem {
+        let mut item = empty_item();
+        let empty_size = serde_json::to_vec(&item).unwrap().len();
+        let content_size = size - empty_size;
+        let base_size = content_size / 2;
+        let target_size = content_size - base_size;
+        if let Some(DisplayFragment::Text { text, .. }) = item.base.as_mut() {
+            *text = "x".repeat(base_size);
+        }
+        if let Some(DisplayFragment::Text { text, .. }) = item.target.as_mut() {
+            *text = "x".repeat(target_size);
+        }
+        assert_eq!(serde_json::to_vec(&item).unwrap().len(), size);
+        assert!(item.base.as_ref().is_some_and(|fragment| {
+            document_diff_core::serialized_fragment_bytes(fragment) <= MAX_DISPLAY_FRAGMENT_BYTES_V0
+        }));
+        assert!(item.target.as_ref().is_some_and(|fragment| {
+            document_diff_core::serialized_fragment_bytes(fragment) <= MAX_DISPLAY_FRAGMENT_BYTES_V0
+        }));
+        item
+    }
+
+    #[test]
+    fn display_item_accepts_exact_32_kib_and_bounds_one_byte_over() {
+        let mut exact = item_with_size(ITEM_LIMIT);
+        bound_display_item(&mut exact).unwrap();
+        assert_eq!(serde_json::to_vec(&exact).unwrap().len(), ITEM_LIMIT);
+
+        let mut over = item_with_size(ITEM_LIMIT + 1);
+        bound_display_item(&mut over).unwrap();
+        assert!(serde_json::to_vec(&over).unwrap().len() <= ITEM_LIMIT);
+        assert!(
+            matches!(
+                over.base,
+                Some(DisplayFragment::Unavailable {
+                    reason: DisplayUnavailableReason::ResourceLimit
+                })
+            ) || matches!(
+                over.target,
+                Some(DisplayFragment::Unavailable {
+                    reason: DisplayUnavailableReason::ResourceLimit
+                })
+            )
+        );
+    }
 }

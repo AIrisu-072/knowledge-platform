@@ -1,6 +1,10 @@
 /target/
 /experiments/document-semantic-inspection/target/
 /node_modules/
+/apps/document-web/node_modules/
+/apps/document-web/dist/
+/apps/document-web/test-results/
+/apps/document-web/playwright-report/
 /dist/
 /coverage/
 /tmp/
@@ -16,3 +20,7 @@
 *.p12
 *.pfx
 target/assurance/
+
+/apps/document-mcp/node_modules/
+/apps/document-mcp/dist/
+/.superpowers/

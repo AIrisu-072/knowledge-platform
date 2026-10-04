@@ -353,3 +353,65 @@ run = ["cargo deny --manifest-path experiments/document-semantic-inspection-sand
 [tasks."poc:dsi:sandbox-verify"]
 description = "Run Document Semantic Inspection Task 1 sandbox preflight"
 depends = ["poc:dsi:sandbox-test", "poc:dsi:sandbox-deny"]
+
+
+[tasks."document:preview:qualify"]
+description = "Qualify the production-build preview and unchanged mock GUI contracts"
+run = [
+  "pnpm --filter @knowledge-platform/document-web test:preview",
+  "pnpm --filter @knowledge-platform/document-web test",
+  "pnpm --filter @knowledge-platform/document-web e2e",
+]
+
+[tasks."document:poc:runtime"]
+description = "Qualify the real two-process Document PoC runtime and same-origin GUI"
+run = '''
+set -eu
+mise run document:preview:qualify
+node --test tools/document-poc-runtime/test/*.test.mjs
+pnpm --dir tools/document-poc-seed test
+pnpm --filter @knowledge-platform/document-web exec tsc -p ../../tools/document-poc-runtime/tsconfig.json
+if [ -z "${KP_DSI_PDFIUM_RUNTIME_DIR:-}" ]; then
+  KP_DSI_PDFIUM_RUNTIME_DIR="$(bash experiments/document-semantic-inspection/scripts/install-pdfium.sh)"
+  export KP_DSI_PDFIUM_RUNTIME_DIR
+fi
+node tools/document-poc-runtime/run.mjs
+'''
+
+[tasks."document:mcp:test"]
+description = "Build and verify the exact read-only MCP tool adapter and actual stdio boundary"
+run = ["pnpm --filter @knowledge-platform/document-mcp test"]
+
+[tasks."document:poc:agent"]
+description = "Qualify real Human GUI plus Agent MCP on the shared owned Document runtime"
+depends = ["document:poc:runtime"]
+
+[tasks."organization:poc:runtime"]
+description = "Qualify the synthetic Organization database transaction and two-principal browser journey"
+run = '''
+set -eu
+node --test tools/organization-poc-runtime/*.test.mjs
+pnpm --filter @knowledge-platform/document-web exec tsc -p tsconfig.organization-runtime.json
+if [ -z "${KP_DSI_PDFIUM_RUNTIME_DIR:-}" ]; then
+  KP_DSI_PDFIUM_RUNTIME_DIR="$(bash experiments/document-semantic-inspection/scripts/install-pdfium.sh)"
+  export KP_DSI_PDFIUM_RUNTIME_DIR
+fi
+node tools/organization-poc-runtime/run.mjs
+'''
+
+[tasks."document:scheduler:acceptance"]
+description = "Qualify separate scheduler processes, current authorization and single publication"
+run = '''
+set -eu
+cargo build --locked -p document-semantic-inspection-worker --bin document-semantic-inspection-worker
+export DSI_WORKER_BIN="$(realpath "${CARGO_TARGET_DIR:-target}/debug/document-semantic-inspection-worker")"
+cargo test --locked -p document-publication-scheduler --test linux_container_canary -- --ignored --test-threads=1
+'''
+
+[tasks."organization:d2:normal"]
+description = "Qualify the bounded synthetic Organization D2 source without captures"
+run = ["node tools/organization-d2/unit-check.mjs", "node tools/organization-d2/run.mjs normal"]
+
+[tasks."organization:d2:capture"]
+description = "Qualify and export the explicitly activated current D2 twenty-PNG review"
+run = ["node tools/organization-d2/unit-check.mjs", "node tools/organization-d2/run.mjs capture"]

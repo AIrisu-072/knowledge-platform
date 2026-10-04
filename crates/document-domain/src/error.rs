@@ -4,6 +4,10 @@ use thiserror::Error;
 pub enum DomainError {
     #[error("version number must be positive")]
     InvalidVersionNo,
+    #[error("document revision number must have a positive major and non-negative minor")]
+    InvalidDocumentRevisionNumber,
+    #[error("document metadata cannot be represented as a complete T5 snapshot")]
+    InvalidDocumentMetadataSnapshot,
     #[error("content hash must be exactly 32 bytes")]
     InvalidContentHash,
     #[error("file size cannot be negative")]

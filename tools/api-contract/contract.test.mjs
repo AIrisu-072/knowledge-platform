@@ -28,6 +28,8 @@ const operations = [
   ['get', '/v1/documents/{documentId}/versions'],
   ['post', '/v1/documents/{documentId}/versions'],
   ['get', '/v1/documents/{documentId}/versions/{versionId}'],
+  ['get', '/v1/documents/{documentId}/revisions'],
+  ['get', '/v1/documents/{documentId}/revisions/{revisionId}'],
   ['put', '/v1/documents/{documentId}/versions/{versionId}'],
   ['post', '/v1/documents/{documentId}/versions/{versionId}:rebase'],
   ['post', '/v1/documents/{documentId}/versions/{versionId}:publish'],
@@ -44,6 +46,7 @@ const operations = [
   ['get', '/v1/documents/{documentId}/versions/{versionId}/files'],
   ['get', '/v1/documents/{documentId}/versions/{versionId}/files/{contentItemId}/{representationId}'],
   ['post', '/v1/documents/{documentId}/comparisons'],
+  ['post', '/v1/documents/{documentId}/revision-comparisons'],
   ['get', '/v1/folders/root'],
   ['get', '/v1/folders/{folderId}/children'],
   ['post', '/v1/folders'],
@@ -61,6 +64,8 @@ const acceptanceEvidence = [
   ['listDocumentVersions', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['createDocumentVersion', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['getDocumentVersion', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['listDocumentRevisions', 'crates/document-api-http/tests/read_http.rs', 'revision_history_is_keyset_paginated_authorized_and_has_detail_snapshot'],
+  ['getDocumentRevision', 'crates/document-api-http/tests/read_http.rs', 'revision_history_is_keyset_paginated_authorized_and_has_detail_snapshot'],
   ['updateWorkingVersion', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['rebaseWorkingVersion', 'crates/document-api-http/tests/versioning_http.rs', 'create_update_replay_and_rebase_preserve_manifest_binding'],
   ['publishVersion', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
@@ -77,6 +82,7 @@ const acceptanceEvidence = [
   ['listVersionFiles', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['downloadVersionFile', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['compareDocumentVersions', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['compareDocumentRevisions', 'crates/document-api-http/tests/diff_http.rs', 'revision_comparison_keeps_content_and_metadata_projections_separate'],
   ['getRootFolder', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['listFolderChildren', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['createFolder', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
@@ -164,7 +170,7 @@ test('machine error registry and RFC 9457 extension are present', () => {
     'STALE_COMPARISON_INPUT', 'BUSINESS_RULE_REJECTED', 'RESERVED_DOCUMENT',
     'FOLDER_CYCLE', 'ROOT_PROTECTED', 'IDENTITY_UNAVAILABLE', 'PUBLISH_QUALITY_REJECTED',
     'UNSUPPORTED_MEDIA_TYPE', 'DEPENDENCY_UNAVAILABLE', 'TIMEOUT',
-    'COMMIT_OUTCOME_UNKNOWN', 'INTEGRITY_VIOLATION', 'INTERNAL',
+    'COMMIT_OUTCOME_UNKNOWN', 'INTEGRITY_VIOLATION', 'REVISION_NOT_FOUND', 'INTERNAL',
   ]) {
     assert.match(registry, new RegExp(`\\b${code}\\b`));
   }
@@ -184,6 +190,43 @@ test('comparison coverage, cursor, examples and nullable policy binding survive 
   assert.ok(list?.parameters?.some((parameter) => resolved(parameter)?.name === 'cursor'));
   assert.ok(resolved(list?.responses?.['200'])?.content?.['application/json']?.example);
   assert.ok(resolved(contract.components?.schemas?.AccessPolicyRead)?.properties?.policyId?.type?.includes('null'));
+});
+
+test('revision and display comparisons describe bounded paging and fragment unions', () => {
+  const versionRequest = resolved(contract.components?.schemas?.ComparisonRequest);
+  const revisionRequest = resolved(contract.components?.schemas?.RevisionComparisonRequest);
+  for (const request of [versionRequest, revisionRequest]) {
+    assert.ok(request.required.includes('projection'));
+    assert.deepEqual(request.properties.projection.enum, ['diff', 'comparisonTable', 'display']);
+    assert.equal(request.properties.pageSize.minimum, 1);
+    assert.equal(request.properties.pageSize.maximum, 100);
+    assert.equal(request.properties.cursor.type, 'string');
+  }
+
+  const versionResponse = resolved(contract.components?.schemas?.ComparisonResponse);
+  assert.equal(versionResponse.oneOf.length, 3);
+  assert.ok(versionResponse.oneOf.some((variant) => variant.$ref.endsWith('/DiffDisplayProjection')));
+  const display = resolved(contract.components?.schemas?.DiffDisplayProjection);
+  assert.deepEqual(display.required, [
+    'projection', 'verdict', 'coverage', 'resultDigest', 'items', 'unverifiedRegions',
+    'pageSize', 'nextCursor', 'auditEventId', 'resultAuditEventId',
+  ]);
+  assert.ok(resolved(display.properties.items.items).properties?.changeIndex);
+  assert.ok(resolved(display.properties.items.items).properties?.baseLocator);
+
+  const fragment = resolved(contract.components?.schemas?.DisplayFragment);
+  assert.deepEqual(fragment.oneOf.map((variant) => resolved(variant).properties.kind.const), [
+    'text', 'table', 'structural', 'unavailable',
+  ]);
+  const table = resolved(fragment.oneOf[1]);
+  assert.equal(resolved(table.properties.cells.items).properties.row.type[1], 'null');
+  assert.equal(resolved(table.properties.cells.items).properties.column.type[1], 'null');
+
+  const revisionResponse = resolved(contract.components?.schemas?.RevisionComparisonResponse);
+  for (const name of ['displayItems', 'pageSize', 'nextCursor', 'displayAuditEventId', 'displayResultAuditEventId']) {
+    assert.ok(revisionResponse.properties[name], `revision comparison is missing ${name}`);
+  }
+  assert.deepEqual(revisionResponse.properties.projection.enum, ['diff', 'comparisonTable', 'display']);
 });
 
 test('write contracts bind replay IDs and do not accept actor self assertions', () => {
@@ -297,4 +340,31 @@ test('read projections preserve authorized Application fields and pagination', (
     assert.ok(parameters.includes('pageSize'), `${path} missing pageSize`);
     assert.ok(parameters.includes('cursor'), `${path} missing cursor`);
   }
+});
+
+test('action capabilities are detail-scoped hints with typed reasons', () => {
+  const documentDetail = resolved(contract.components.schemas.DocumentDetail);
+  assert.ok(documentDetail.oneOf);
+  const versionDetail = resolved(contract.components.schemas.VersionDetail);
+  assert.ok(versionDetail.required.includes('capabilities'));
+  const folderDetail = resolved(contract.components.schemas.FolderDetail);
+  assert.ok(folderDetail.required.includes('capabilities'));
+  const folderChildren = resolved(contract.components.schemas.FolderChildren);
+  assert.ok(folderChildren.required.includes('capabilities'));
+  const availability = resolved(contract.components.schemas.ActionAvailability);
+  assert.match(availability.description, /UI (?:presentation )?hint/i);
+  assert.match(availability.description, /reauthori[sz]/i);
+  assert.match(availability.description, /preflight/i);
+  assert.deepEqual(availability.oneOf[1].properties.reason.enum, [
+    'permission', 'lifecycle', 'pendingSchedule', 'staleBase', 'notCurrent',
+    'notHumanInteractive', 'unsupported',
+  ]);
+  assert.equal(resolved(contract.components.schemas.PublishedDocument).properties.capabilities, undefined);
+  const versionListItem = resolved(
+    resolved(contract.components.schemas.VersionList).properties.items.items,
+  );
+  assert.equal(
+    versionListItem.properties.capabilities,
+    undefined,
+  );
 });

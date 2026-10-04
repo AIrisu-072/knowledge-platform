@@ -10,13 +10,30 @@ servers:
   description: Same-origin deployment; no production endpoint is fixed.
 x-error-registry: ../errors/error-registry.yaml
 paths:
+  /v1/session:
+    get:
+      tags:
+      - Session
+      summary: Read the verified current session
+      operationId: getSession
+      description: >-
+        Returns the actor verified by the trusted identity adapter. Request headers
+        and query parameters cannot replace the verified principal. Identity
+        presentation is resolved separately and falls back to the stable subject ID.
+      responses:
+        '200':
+          $ref: '#/components/responses/Session'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/documents:
     get:
       tags:
       - Documents
       summary: List documents by authorized view
       operationId: listDocuments
-      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
+      description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application. projection=display adds bounded source-located fragments and pageSize/cursor without changing semantic verdict or coverage.
       responses:
         '200':
           $ref: '#/components/responses/DocumentList'
@@ -169,6 +186,50 @@ paths:
           $ref: '#/components/responses/Problem'
       requestBody:
         $ref: '#/components/requestBodies/VersionMultipart'
+  /v1/documents/{documentId}/revisions:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    get:
+      tags:
+      - History
+      summary: List human-facing document revisions
+      operationId: listDocumentRevisions
+      description: Newest-first keyset pagination. Current Read and ReadHistory authorization is checked on every request.
+      parameters:
+      - $ref: '#/components/parameters/pageSize'
+      - $ref: '#/components/parameters/cursor'
+      responses:
+        '200':
+          $ref: '#/components/responses/DocumentRevisionPage'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/documents/{documentId}/revisions/{revisionId}:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    - $ref: '#/components/parameters/revisionId'
+    get:
+      tags:
+      - History
+      summary: Read a human-facing document revision
+      operationId: getDocumentRevision
+      description: Current Read and ReadHistory authorization is checked for each detail request.
+      responses:
+        '200':
+          $ref: '#/components/responses/DocumentRevision'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/documents/{documentId}/versions/{versionId}:rebase:
     parameters:
     - $ref: '#/components/parameters/documentId'
@@ -445,6 +506,24 @@ paths:
           $ref: '#/components/responses/Problem'
       requestBody:
         $ref: '#/components/requestBodies/ComparisonRequest'
+  /v1/documents/{documentId}/revision-comparisons:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    post:
+      tags:
+      - Comparisons
+      summary: Compare authorized formal revision pair
+      operationId: compareDocumentRevisions
+      description: Compares revision metadata snapshots and reuses Document Diff only when their authoritative DocumentVersions differ. projection=display adds bounded source-located fragments and pageSize/cursor without changing semantic verdict or coverage.
+      responses:
+        '200':
+          $ref: '#/components/responses/RevisionComparison'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        $ref: '#/components/requestBodies/RevisionComparisonRequest'
   /v1/folders/root:
     get:
       tags:
@@ -567,6 +646,12 @@ components:
       $ref: ./schemas/common/identifiers.yaml#/$defs/Uuid
     Cursor:
       $ref: ./schemas/common/identifiers.yaml#/$defs/Cursor
+    IdentityRef:
+      $ref: ./schemas/document/models.yaml#/$defs/IdentityRef
+    IdentityPresentation:
+      $ref: ./schemas/document/models.yaml#/$defs/IdentityPresentation
+    Session:
+      $ref: ./schemas/document/models.yaml#/$defs/Session
     FieldError:
       $ref: ./schemas/errors/field-error.yaml
     Problem:
@@ -636,10 +721,28 @@ components:
       $ref: ./schemas/document/models.yaml#/$defs/HistoryDocument
     DocumentList:
       $ref: ./schemas/document/models.yaml#/$defs/DocumentList
+    GuiVersionSummary:
+      $ref: ./schemas/document/models.yaml#/$defs/GuiVersionSummary
+    DocumentRevisionSummary:
+      $ref: ./schemas/document/models.yaml#/$defs/DocumentRevisionSummary
+    DocumentRevisionPage:
+      $ref: ./schemas/document/models.yaml#/$defs/DocumentRevisionPage
+    DocumentRevisionDetail:
+      $ref: ./schemas/document/models.yaml#/$defs/DocumentRevisionDetail
     DocumentDetail:
       $ref: ./schemas/document/models.yaml#/$defs/DocumentDetail
+    ActionAvailability:
+      $ref: ./schemas/document/models.yaml#/$defs/ActionAvailability
+    DocumentCapabilities:
+      $ref: ./schemas/document/models.yaml#/$defs/DocumentCapabilities
+    VersionCapabilities:
+      $ref: ./schemas/document/models.yaml#/$defs/VersionCapabilities
+    FolderCapabilities:
+      $ref: ./schemas/document/models.yaml#/$defs/FolderCapabilities
     Version:
       $ref: ./schemas/document/models.yaml#/$defs/Version
+    VersionDetail:
+      $ref: ./schemas/document/models.yaml#/$defs/VersionDetail
     VersionList:
       $ref: ./schemas/document/models.yaml#/$defs/VersionList
     History:
@@ -648,6 +751,8 @@ components:
       $ref: ./schemas/document/models.yaml#/$defs/FileList
     Folder:
       $ref: ./schemas/document/models.yaml#/$defs/Folder
+    FolderDetail:
+      $ref: ./schemas/document/models.yaml#/$defs/FolderDetail
     FolderChildren:
       $ref: ./schemas/document/models.yaml#/$defs/FolderChildren
     AccessPolicyRead:
@@ -690,8 +795,16 @@ components:
       $ref: ./schemas/document/models.yaml#/$defs/DiffProjection
     ComparisonTableProjection:
       $ref: ./schemas/document/models.yaml#/$defs/ComparisonTableProjection
+    DiffDisplayProjection:
+      $ref: ./schemas/document/models.yaml#/$defs/DiffDisplayProjection
+    DiffDisplayItem:
+      $ref: ./schemas/document/models.yaml#/$defs/DiffDisplayItem
+    DisplayFragment:
+      $ref: ./schemas/document/models.yaml#/$defs/DisplayFragment
     ComparisonResponse:
       $ref: ./schemas/document/models.yaml#/$defs/ComparisonResponse
+    RevisionComparisonResponse:
+      $ref: ./schemas/document/models.yaml#/$defs/RevisionComparisonResponse
     CreateDocument:
       $ref: ./schemas/document/commands.yaml#/$defs/CreateDocument
     VersionContentItem:
@@ -730,6 +843,8 @@ components:
       $ref: ./schemas/document/commands.yaml#/$defs/SetAccessPolicy
     ComparisonRequest:
       $ref: ./schemas/document/commands.yaml#/$defs/ComparisonRequest
+    RevisionComparisonRequest:
+      $ref: ./schemas/document/commands.yaml#/$defs/RevisionComparisonRequest
   parameters:
     documentId:
       name: documentId
@@ -743,6 +858,13 @@ components:
       in: path
       required: true
       description: Version identifier.
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    revisionId:
+      name: revisionId
+      in: path
+      required: true
+      description: Human-facing document revision identifier.
       schema:
         $ref: '#/components/schemas/Uuid'
     folderId:
@@ -1032,11 +1154,49 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ComparisonRequest'
-          example:
-            baseVersionId: 00000000-0000-4000-8000-000000000021
-            targetVersionId: 00000000-0000-4000-8000-000000000022
-            profile: document-diff-v0
-            projection: comparisonTable
+          examples:
+            diff:
+              summary: Semantic comparison
+              value:
+                baseVersionId: 00000000-0000-4000-8000-000000000021
+                targetVersionId: 00000000-0000-4000-8000-000000000022
+                profile: document-diff-v0
+                projection: diff
+            comparisonTable:
+              summary: Tabular comparison
+              value:
+                baseVersionId: 00000000-0000-4000-8000-000000000021
+                targetVersionId: 00000000-0000-4000-8000-000000000022
+                profile: document-diff-v0
+                projection: comparisonTable
+            display:
+              summary: Bounded source-located display fragments
+              value:
+                baseVersionId: 00000000-0000-4000-8000-000000000021
+                targetVersionId: 00000000-0000-4000-8000-000000000022
+                profile: document-diff-v0
+                projection: display
+                pageSize: 50
+    RevisionComparisonRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RevisionComparisonRequest'
+          examples:
+            diff:
+              summary: Formal revision comparison
+              value:
+                baseRevisionId: 00000000-0000-4000-8000-000000000031
+                targetRevisionId: 00000000-0000-4000-8000-000000000032
+                projection: diff
+            display:
+              summary: Bounded formal revision display
+              value:
+                baseRevisionId: 00000000-0000-4000-8000-000000000031
+                targetRevisionId: 00000000-0000-4000-8000-000000000032
+                projection: display
+                pageSize: 50
     CreateDocumentMultipart:
       required: true
       content:
@@ -1113,6 +1273,32 @@ components:
                   schema:
                     type: string
   responses:
+    Session:
+      description: Verified current session
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Session'
+          example:
+            principal:
+              identityProvider: directory
+              principalId: user-123
+            presentation:
+              ref:
+                provider: directory
+                kind: principal
+                subjectId: user-123
+              displayName: Aki Tanaka
+              secondaryText: Quality Assurance
+              resolution: resolved
+            invocationKind: human_interactive
+            expiresAt: '2029-01-03T12:30:00Z'
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
     DocumentList:
       description: DocumentList
       content:
@@ -1148,6 +1334,46 @@ components:
             createdAt: '2029-01-01T00:00:00Z'
             publishedAt: '2029-01-02T00:00:00Z'
             firstReadAt: null
+            displayVersion:
+              versionId: 00000000-0000-4000-8000-000000000002
+              versionNo: 2
+              baseVersionId: 00000000-0000-4000-8000-000000000001
+              lifecycleState: PUBLISHED
+              isCurrent: true
+              approvedAt: '2029-01-01T12:00:00Z'
+              scheduledPublishAt: null
+              publishedAt: '2029-01-02T00:00:00Z'
+              withdrawnAt: null
+              updatedAt: '2029-01-02T00:00:00Z'
+              fileSummary:
+                authoritativeItemCount: 1
+                totalSizeBytes: 4096
+                primary:
+                  displayName: published-policy.pdf
+                  mediaType: application/pdf
+                  sizeBytes: 4096
+            displayRevision:
+              revisionId: 00000000-0000-4000-8000-000000000011
+              documentVersionId: 00000000-0000-4000-8000-000000000002
+              major: 2
+              minor: 0
+              label: '2.0'
+              createdAt: '2029-01-02T00:00:00Z'
+              sourceKind: initialPublication
+              metadataSnapshotStatus: complete
+            readState:
+              isRead: false
+              firstReadAt: null
+            displayTimestamp:
+              kind: revisionCreatedAt
+              value: '2029-01-02T00:00:00Z'
+            capabilities:
+              createVersion: {status: available}
+              updateMetadata: {status: available}
+              moveDocument: {status: available}
+              endPublication: {status: available}
+              manageAccess: {status: available}
+              compareVersions: {status: available}
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1159,18 +1385,37 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Version'
+            $ref: '#/components/schemas/VersionDetail'
           example:
             versionId: 00000000-0000-4000-8000-000000000002
             versionNo: 2
+            baseVersionId: 00000000-0000-4000-8000-000000000001
             lifecycleState: published
             isCurrent: true
             createdAt: '2029-01-01T00:00:00Z'
+            approvedAt: '2029-01-01T12:00:00Z'
+            scheduledPublishAt: null
             publishedAt: '2029-01-02T00:00:00Z'
             withdrawnAt: null
+            updatedAt: '2029-01-02T00:00:00Z'
+            fileSummary:
+              authoritativeItemCount: 1
+              totalSizeBytes: 4096
+              primary:
+                displayName: published-policy.pdf
+                mediaType: application/pdf
+                sizeBytes: 4096
             firstReadAt: null
             title: Published policy
             metadata: {}
+            capabilities:
+              edit: {status: disabled, reason: lifecycle}
+              rebase: {status: disabled, reason: lifecycle}
+              publish: {status: disabled, reason: lifecycle}
+              withdraw: {status: available}
+              schedulePublication: {status: disabled, reason: lifecycle}
+              cancelPublicationSchedule: {status: disabled, reason: lifecycle}
+              download: {status: available}
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1186,6 +1431,59 @@ components:
           example:
             items: []
             nextCursor: null
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    DocumentRevisionPage:
+      description: DocumentRevisionPage
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DocumentRevisionPage'
+          example:
+            items:
+            - revisionId: 00000000-0000-4000-8000-000000000011
+              documentVersionId: 00000000-0000-4000-8000-000000000002
+              major: 3
+              minor: 1
+              label: '3.1'
+              createdAt: '2029-01-03T12:00:00Z'
+              sourceKind: metadataRevision
+              metadataSnapshotStatus: complete
+            nextCursor: null
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    DocumentRevision:
+      description: DocumentRevision
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DocumentRevisionDetail'
+          example:
+            revisionId: 00000000-0000-4000-8000-000000000011
+            documentVersionId: 00000000-0000-4000-8000-000000000002
+            major: 3
+            minor: 1
+            label: '3.1'
+            createdAt: '2029-01-03T12:00:00Z'
+            sourceKind: metadataRevision
+            metadataSnapshotStatus: complete
+            metadataSnapshot:
+              document_type: policy
+              owning_department: null
+              category: operations
+              extensions: null
+            actor:
+              identityProvider: example-idp
+              principalId: policy-admin
+            reason: annual-review
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1234,12 +1532,18 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Folder'
+            $ref: '#/components/schemas/FolderDetail'
           example:
             folderId: 00000000-0000-4000-8000-000000000030
             parentFolderId: null
             name: Root
             revision: 1
+            capabilities:
+              createDocument: {status: available}
+              createFolder: {status: available}
+              renameFolder: {status: disabled, reason: unsupported}
+              moveFolder: {status: disabled, reason: unsupported}
+              manageAccess: {status: available}
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1255,6 +1559,12 @@ components:
           example:
             items: []
             nextCursor: null
+            capabilities:
+              createDocument: {status: available}
+              createFolder: {status: available}
+              renameFolder: {status: disabled, reason: unsupported}
+              moveFolder: {status: disabled, reason: unsupported}
+              manageAccess: {status: available}
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1284,6 +1594,14 @@ components:
               subjectId: reviewer
               actions:
               - read
+              presentation:
+                ref:
+                  provider: directory
+                  kind: role
+                  subjectId: reviewer
+                displayName: Reviewer
+                secondaryText: null
+                resolution: resolved
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
@@ -1445,30 +1763,163 @@ components:
             type: string
             const: private, no-store
     ComparisonResponse:
-      description: ComparisonResponse
+      description: Semantic Diff, comparison table, or bounded human-readable display; display does not alter verdict or coverage.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ComparisonResponse'
-          example:
-            projection: diff
-            verdict: different
-            coverage: partial
-            resultDigest: '0000000000000000000000000000000000000000000000000000000000000000'
-            changes:
-            - operation: modified
-              relocation: null
-              facet: text
-              base: null
-              target: null
-              reasonCode: textChanged
-            unverifiedRegions:
-            - reason: unsupportedSemanticConstruct
-              base: null
-              target: null
-              navigationHint: Inspect the marked range in the original documents.
-            ancillaryChanges: []
-            auditEventId: 00000000-0000-4000-8000-000000000004
+          examples:
+            diff:
+              summary: Semantic comparison with a partially verified change
+              value:
+                projection: diff
+                verdict: different
+                coverage: partial
+                resultDigest: '0000000000000000000000000000000000000000000000000000000000000000'
+                changes:
+                - operation: modified
+                  relocation: null
+                  facet: text
+                  base: null
+                  target: null
+                  reasonCode: textChanged
+                unverifiedRegions:
+                - reason: unsupportedSemanticConstruct
+                  base: null
+                  target: null
+                  navigationHint: Inspect the marked range in the original documents.
+                ancillaryChanges: []
+                auditEventId: 00000000-0000-4000-8000-000000000004
+            comparisonTable:
+              summary: Table projection of an unchanged pair
+              value:
+                projection: comparisonTable
+                verdict: same
+                coverage: full
+                resultDigest: '0000000000000000000000000000000000000000000000000000000000000000'
+                rows: []
+                unverifiedRegions: []
+                auditEventId: 00000000-0000-4000-8000-000000000004
+            display:
+              summary: Bounded source-located text fragments
+              value:
+                projection: display
+                verdict: different
+                coverage: full
+                resultDigest: '0000000000000000000000000000000000000000000000000000000000000000'
+                items:
+                - changeIndex: 0
+                  operation: modified
+                  relocation: null
+                  facet: text
+                  baseLocator: {kind: textSpan, line: 1, byteStart: 0, byteEnd: 3}
+                  targetLocator: {kind: textSpan, line: 1, byteStart: 0, byteEnd: 3}
+                  base:
+                    kind: text
+                    text: old
+                    truncated: false
+                    locator: {kind: textSpan, line: 1, byteStart: 0, byteEnd: 3}
+                  target:
+                    kind: text
+                    text: new
+                    truncated: false
+                    locator: {kind: textSpan, line: 1, byteStart: 0, byteEnd: 3}
+                unverifiedRegions: []
+                pageSize: 50
+                nextCursor: null
+                auditEventId: 00000000-0000-4000-8000-000000000004
+                resultAuditEventId: 00000000-0000-4000-8000-000000000005
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
+    RevisionComparison:
+      description: Authorized comparison of two formal revisions with separate content and metadata results.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RevisionComparisonResponse'
+          examples:
+            sameVersionMetadataOnly:
+              summary: Same authoritative content with unavailable legacy metadata
+              value:
+                projection: diff
+                baseRevision: {revisionId: 00000000-0000-4000-8000-000000000031, documentVersionId: 00000000-0000-4000-8000-000000000021, major: 1, minor: 0, createdAt: '2029-01-01T00:00:00Z'}
+                targetRevision: {revisionId: 00000000-0000-4000-8000-000000000032, documentVersionId: 00000000-0000-4000-8000-000000000021, major: 1, minor: 1, createdAt: '2029-01-02T00:00:00Z'}
+                contentComparisonStatus: sameAuthoritativeVersion
+                changes: []
+                rows: []
+                unverifiedRegions: []
+                ancillaryChanges: []
+                metadataComparisonStatus: unavailableLegacy
+                metadataChanges: []
+                baseMetadataSnapshotDigest: null
+                targetMetadataSnapshotDigest: null
+                auditEventId: 00000000-0000-4000-8000-000000000041
+                displayItems: []
+                pageSize: null
+                nextCursor: null
+            differentVersions:
+              summary: Separate content and metadata comparison results
+              value:
+                projection: diff
+                baseRevision: {revisionId: 00000000-0000-4000-8000-000000000031, documentVersionId: 00000000-0000-4000-8000-000000000021, major: 1, minor: 0, createdAt: '2029-01-01T00:00:00Z'}
+                targetRevision: {revisionId: 00000000-0000-4000-8000-000000000032, documentVersionId: 00000000-0000-4000-8000-000000000022, major: 2, minor: 0, createdAt: '2029-02-01T00:00:00Z'}
+                contentComparisonStatus: differentAuthoritativeVersions
+                verdict: unknown
+                coverage: none
+                resultDigest: '0000000000000000000000000000000000000000000000000000000000000000'
+                changes: []
+                rows: []
+                unverifiedRegions: []
+                ancillaryChanges: []
+                metadataComparisonStatus: different
+                metadataChanges:
+                - path: /category
+                  baseValue: policy
+                  targetValue: guideline
+                baseMetadataSnapshotDigest: '0000000000000000000000000000000000000000000000000000000000000000'
+                targetMetadataSnapshotDigest: '1111111111111111111111111111111111111111111111111111111111111111'
+                auditEventId: 00000000-0000-4000-8000-000000000041
+                contentAuditEventId: 00000000-0000-4000-8000-000000000042
+                displayItems: []
+                pageSize: null
+                nextCursor: null
+            display:
+              summary: Revision display with separately identified audit evidence
+              value:
+                projection: display
+                baseRevision: {revisionId: 00000000-0000-4000-8000-000000000031, documentVersionId: 00000000-0000-4000-8000-000000000021, major: 1, minor: 0, createdAt: '2029-01-01T00:00:00Z'}
+                targetRevision: {revisionId: 00000000-0000-4000-8000-000000000032, documentVersionId: 00000000-0000-4000-8000-000000000022, major: 2, minor: 0, createdAt: '2029-02-01T00:00:00Z'}
+                contentComparisonStatus: differentAuthoritativeVersions
+                verdict: different
+                coverage: full
+                resultDigest: '0000000000000000000000000000000000000000000000000000000000000000'
+                changes: []
+                rows: []
+                unverifiedRegions: []
+                ancillaryChanges: []
+                metadataComparisonStatus: different
+                metadataChanges: []
+                baseMetadataSnapshotDigest: '0000000000000000000000000000000000000000000000000000000000000000'
+                targetMetadataSnapshotDigest: '1111111111111111111111111111111111111111111111111111111111111111'
+                auditEventId: 00000000-0000-4000-8000-000000000041
+                contentAuditEventId: 00000000-0000-4000-8000-000000000042
+                displayItems:
+                - changeIndex: 0
+                  operation: modified
+                  relocation: null
+                  facet: text
+                  baseLocator: {kind: textSpan, line: 1, byteStart: 0, byteEnd: 3}
+                  targetLocator: {kind: textSpan, line: 1, byteStart: 0, byteEnd: 3}
+                  base: {kind: text, text: old, truncated: false, locator: {kind: textSpan, line: 1, byteStart: 0, byteEnd: 3}}
+                  target: {kind: text, text: new, truncated: false, locator: {kind: textSpan, line: 1, byteStart: 0, byteEnd: 3}}
+                pageSize: 50
+                nextCursor: null
+                displayAuditEventId: 00000000-0000-4000-8000-000000000043
+                displayResultAuditEventId: 00000000-0000-4000-8000-000000000042
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.

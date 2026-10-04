@@ -1009,3 +1009,9 @@ Explorationの自由度を維持し、Violation / Gap / Counterexampleをfeedbac
 
 v0 Code GraphはLevel 0-1を対象とし、Symbol/Semantic Graphは将来拡張とする。
 
+
+## Organization Browser PoC の Work 境界（2026-10-04）
+
+凍結済みOrganization Phase2設計に従い、WorkContext・WorkItem・WorkAttempt・private draft・HandoffSnapshot・Work operation/history/event stagingはWork authorityが所有する。Document内容・Version/Revision・ACL・Documentのmigration ledgerは従来どおりDocument Platformが所有する。
+
+最小PoCの境界は `work-domain` → `work-application` ← `work-repository-postgres` / `work-api-http` とし、`organization-server` が合成identityと既存Document routerを構成する。Domain/ApplicationにはDB・HTTP・filesystemを持ち込まない。PostgreSQLの `work` schemaと独立migration ledgerを使い、提出・snapshot・次attempt・operation・必須イベントは同じtransactionで保存する。production起動、自動migration、Tauri資格取得を意味しない。

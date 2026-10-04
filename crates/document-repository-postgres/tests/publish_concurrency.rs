@@ -221,6 +221,16 @@ async fn assert_final_publish_state(
     assert_eq!(state.1, 1);
     assert_eq!(state.2, "PUBLISHED");
 
+    let revisions: Vec<(i64, i64, String)> = sqlx::query_as(
+        "SELECT major_no, minor_no, source_kind FROM document_revisions \
+         WHERE document_id = $1 ORDER BY major_no, minor_no",
+    )
+    .bind(document_id.as_uuid())
+    .fetch_all(pool)
+    .await
+    .expect("document revisions should query");
+    assert_eq!(revisions, vec![(1, 0, "initialPublication".to_owned())]);
+
     let operations: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM document_publish_operations WHERE document_id = $1",
     )

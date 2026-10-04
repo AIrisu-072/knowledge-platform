@@ -55,6 +55,18 @@ async fn publication_history_schedule_and_end_are_one_real_database_path() {
         .publish_document(initial_publish.clone())
         .await
         .unwrap();
+    let first_revision: (i64, i64, Uuid) = sqlx::query_as(
+        "SELECT major_no,minor_no,document_version_id FROM document_revisions \
+         WHERE document_id = $1 ORDER BY major_no DESC,minor_no DESC LIMIT 1",
+    )
+    .bind(created.document_id().as_uuid())
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        first_revision,
+        (1, 0, created.document_version_id().as_uuid())
+    );
 
     let versioning = f.service();
     let successor = DocumentVersionId::from_uuid(Uuid::now_v7());
@@ -85,6 +97,18 @@ async fn publication_history_schedule_and_end_are_one_real_database_path() {
         )
         .await
         .unwrap();
+    let second_revision: (i64, i64, Uuid, String) = sqlx::query_as(
+        "SELECT major_no,minor_no,document_version_id,source_kind FROM document_revisions \
+         WHERE document_id = $1 ORDER BY major_no DESC,minor_no DESC LIMIT 1",
+    )
+    .bind(created.document_id().as_uuid())
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        second_revision,
+        (2, 0, successor.as_uuid(), "contentPublication".to_owned())
+    );
     let scheduled = DocumentVersionId::from_uuid(Uuid::now_v7());
     versioning
         .create_version(
@@ -114,6 +138,16 @@ async fn publication_history_schedule_and_end_are_one_real_database_path() {
         )
         .await
         .unwrap();
+    let revisions_after_schedule: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM document_revisions WHERE document_id = $1")
+            .bind(created.document_id().as_uuid())
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        revisions_after_schedule, 2,
+        "schedule acceptance is not a revision"
+    );
 
     let end = DocumentPublicationEndService::new(
         Arc::new(TestIds),
@@ -192,4 +226,14 @@ async fn publication_history_schedule_and_end_are_one_real_database_path() {
     let audit_count: i64 = sqlx::query_scalar("SELECT count(*) FROM audit_outbox_events WHERE resource_id = $1 AND event_type = 'document.publication.ended'")
         .bind(created.document_id().as_uuid()).fetch_one(&f.pool).await.unwrap();
     assert_eq!((domain_count, audit_count), (1, 1));
+    let revisions_after_end: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM document_revisions WHERE document_id = $1")
+            .bind(created.document_id().as_uuid())
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        revisions_after_end, 2,
+        "publication end alone is not a revision"
+    );
 }

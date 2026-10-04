@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches:
       - main
@@ -160,6 +161,118 @@ jobs:
         run: mise install github:anchore/syft
       - run: mise run sbom
 
+  document-poc-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: "2"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Install pinned runtime and frontend dependencies
+        run: |
+          mise install rust
+          mise install node
+          mise install pnpm
+          pnpm install --frozen-lockfile --ignore-scripts
+      - name: Install verified Japanese runner font
+        run: node tools/document-poc-runtime/runner-font.mjs
+      - name: Install pinned Chromium
+        run: pnpm --filter @knowledge-platform/document-web exec playwright install chromium
+      - name: Check current PR43 visual review event
+        id: visual-review-gate
+        run: node tools/document-poc-runtime/visual-review-gate.mjs
+      - name: Real composition-root acceptance
+        env:
+          KP_POC_VISUAL_REVIEW_ENABLED: ${{ steps.visual-review-gate.outputs.enabled }}
+        run: |
+          unset KP_POC_CAPTURE_VISUAL
+          if [[ "$KP_POC_VISUAL_REVIEW_ENABLED" == "true" ]]; then
+            export KP_POC_CAPTURE_VISUAL=true
+          fi
+          mise run document:poc:agent
+      - name: Real Organization two-principal acceptance
+        run: mise run organization:poc:runtime
+      - name: Emit bounded runtime evidence
+        if: ${{ always() }}
+        run: node tools/document-poc-runtime/ci-summary.mjs
+      - name: Upload approved synthetic PR43 review pixels
+        id: visual-review-upload
+        if: ${{ success() && steps.visual-review-gate.outputs.enabled == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1; pin-specific ADR
+        with:
+          name: document-c3-review43-${{ steps.visual-review-gate.outputs.head }}-${{ github.run_id }}
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: false
+          compression-level: 0
+          # The private .state ancestor requires this; only the 13 literal regular
+          # PNGs from successful owned-runtime validation are selected.
+          include-hidden-files: true
+          path: |
+            tools/document-poc-runtime/.state/visual-export/01-list-context-1440.png
+            tools/document-poc-runtime/.state/visual-export/02-list-focus-return-1280.png
+            tools/document-poc-runtime/.state/visual-export/03-detail-overview-1440.png
+            tools/document-poc-runtime/.state/visual-export/04-revision-version-1440.png
+            tools/document-poc-runtime/.state/visual-export/05-comparison-1440.png
+            tools/document-poc-runtime/.state/visual-export/06-version-file-selected-1440.png
+            tools/document-poc-runtime/.state/visual-export/07-publication-ready-1440.png
+            tools/document-poc-runtime/.state/visual-export/08-publication-confirm-focus-1440.png
+            tools/document-poc-runtime/.state/visual-export/09-publication-success-1440.png
+            tools/document-poc-runtime/.state/visual-export/10-access-policy-effective-draft-1440.png
+            tools/document-poc-runtime/.state/visual-export/11-occ-conflict-1440.png
+            tools/document-poc-runtime/.state/visual-export/12-permission-denied-file-retained-1440.png
+            tools/document-poc-runtime/.state/visual-export/13-permission-restored-retry-success-1440.png
+
+  document-mcp:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Install pinned Node and workspace dependencies
+        run: |
+          mise install node
+          mise install pnpm
+          pnpm install --frozen-lockfile --ignore-scripts
+      - run: mise run document:mcp:test
+
+  document-scheduler:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: "2"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Install pinned Rust toolchain
+        run: mise install rust
+      - name: Install pinned PDFium for scheduler worker
+        run: |
+          pdfium_lib_dir="$(bash experiments/document-semantic-inspection/scripts/install-pdfium.sh)"
+          printf 'PDFIUM_DYNAMIC_LIB_PATH=%s\n' "${pdfium_lib_dir}" >> "${GITHUB_ENV}"
+      - name: Real separate-process scheduler acceptance
+        run: mise run document:scheduler:acceptance
+
   required-check:
     if: ${{ always() }}
     needs:
@@ -170,6 +283,9 @@ jobs:
       - portability-macos
       - dsi-semantic-parity-macos
       - container-build
+      - document-poc-runtime
+      - document-mcp
+      - document-scheduler
     runs-on: ubuntu-24.04
     steps:
       - name: Require every predecessor
@@ -181,8 +297,11 @@ jobs:
           PORTABILITY_MACOS: ${{ needs.portability-macos.result }}
           DSI_SEMANTIC_PARITY_MACOS: ${{ needs.dsi-semantic-parity-macos.result }}
           CONTAINER_BUILD: ${{ needs.container-build.result }}
+          DOCUMENT_POC_RUNTIME: ${{ needs.document-poc-runtime.result }}
+          DOCUMENT_MCP: ${{ needs.document-mcp.result }}
+          DOCUMENT_SCHEDULER: ${{ needs.document-scheduler.result }}
         run: |
           set -eu
-          for result in "$POLICY" "$RUST_STATIC" "$RUST_TEST" "$SECURITY" "$PORTABILITY_MACOS" "$DSI_SEMANTIC_PARITY_MACOS" "$CONTAINER_BUILD"; do
+          for result in "$POLICY" "$RUST_STATIC" "$RUST_TEST" "$SECURITY" "$PORTABILITY_MACOS" "$DSI_SEMANTIC_PARITY_MACOS" "$CONTAINER_BUILD" "$DOCUMENT_POC_RUNTIME" "$DOCUMENT_MCP" "$DOCUMENT_SCHEDULER"; do
             test "$result" = success
           done

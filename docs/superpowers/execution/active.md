@@ -1,8 +1,438 @@
 # Active Execution Pointer
 
-## Active checkpoint — Document GUI Integration v0 G0 predecessor integration complete / PR #35 finalization in progress、2026-09-30 JST
+## 2026年10月4日 DocumentとOrganizationのmain統合候補
 
-- Status: **G0 predecessor #27/#29/#30/#31/#32 MERGED; PR #35 retargeted to main; PR #35 docs reconciliation and exact-head gates pending**. G1 has not started. Details: docs/superpowers/execution/document-gui-integration-v0-status.md.
+- 状態：**ACTIVE／既存受入sourceと文書側枝を統合、候補の独立レビュー・exact CI待ち**。[統合状況](document-organization-integration-status.md)と[計画](../plans/2026-10-04-document-organization-integration.md)が今回の再開先
+- 製品基点は受入済みPR57 `d383bacc`。PR43の明示的最終受入とPR54/56/57の実証を保持し、文書側枝36/38/39/46/55/58を保全する。過去SHAの検証結果を新候補やPR36旧headへ付け替えない
+- mainは `d71753d4`。全既存branchを保持し、進行中Agent、Search、Audit、未資格Tauriを追加しない。Source/lock/migration/workflow/security設定はPR57のbytesを維持する
+- 次は候補の限定検証・独立レビュー・Draft公開・全適用CI。その後、main merge前に親担当へexact headと副作用を返す。実サーバー導入は所有者が[日本語手順](../../operations/linux-manual-installation.md)に従って手動実施する。現runtimeは合成PoCで、本番認証は未実装
+
+以下は各時点の履歴。過去の未承認・未実行・失敗・保留を現在の指示へ読み替えない。
+
+---
+
+## 2026-10-04 08:34 UTC — Organization根拠・候補・人間判断sliceを継続
+
+- 受入[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d9b2467afd7225fa4f92f1d7a801d4002` は差戻・再提出の実DB/2名操作/復元/cleanupと全CI成功済み
+- 所有者の継続指示とFrozen設計に従い、別branchでHuman起点のEvidence/Finding/HumanDecisionを実装。[最新状況](organization-evidence-slice-status.md)、[短い計画](../plans/2026-10-04-organization-evidence-slice.md)
+- 固定2名、同じ一時DB/Chromium、画像非公開。既存Document現在認可とWork transactionを再利用し、Agent/model外部実行・新認可方式は追加しない。以下は各時点の履歴
+
+---
+
+## 2026-10-04 07:33 UTC — Organization差戻・再提出sliceを継続
+
+- 受入PR54 exact `44e1b412` の最小Browser PoCは実DB/2名操作/復元/cleanupと全CI成功済み
+- 所有者の「続けてください」に基づき、Frozen設計の差戻→新attempt private文案→再提出を別branchで実装。[最新状況](organization-return-slice-status.md)、[短い計画](../plans/2026-10-04-organization-return-slice.md)
+- accepted source、固定2名、同じ使い捨てDB/Chromium、画像非公開、ローカル拒否境界を維持。新しい検証監督frameworkは作らない
+
+---
+
+## 2026-10-04 07:17 UTC — Organization最小Browser PoC実証完了
+
+- [最新完了記録](organization-browser-poc-slice-status.md): PR54 exact `44e1b412` で実PostgreSQL・2名実browser・提出/引継ぎ・2server再起動後復元・cleanupと全通常CIがPASS
+- 所有者06:56 UTCの個別hosted実行許可に基づく。既知ローカル制限を変更していない。下記の未実行/待機記録は履歴
+- 最小Browser PoCは完了。Draftを保持、merge/deployなし。Tauri/native・全Phase5/6・productionは別scope。次は親へ結果を報告し、この日本語完了記録を保存する
+
+---
+
+## 2026-10-04 UTC — 承認済みBrowser PoC先行sliceを実装
+
+- 所有者が05:20:11 UTCにTauri実機検証より先のBrowser PoC実装を明示承認。Phase1–3凍結を保持し、2名のtask/private文案/Document参照/submit/handoffを実装した
+- [最小slice状況](organization-browser-poc-slice-status.md) が今回の再開先。Rust21、既存Document5、新composition1、GUI74のlocal検証と限定独立レビューGO。実DB1件は未実行、browser/listener/実組合せも未実行
+- 次はexact commit/treeを親へ引き渡す。Draft以外の公開、merge/deploy/production接続、Tauri資格取得、既知socket/browser拒否の迂回は行わない。以下の旧順序・未着手記録は当時の履歴であり、限定先行承認だけを上書きする
+
+---
+
+
+## Current checkpoint — Organization Phase3 frozen source and corrected pixels GO, 2026-10-02 16:56 UTC
+
+- Status: **ACTIVE — PHASE3 EXACT SOURCE FROZEN; EVIDENCE PACKET REVIEW/PUBLICATION PENDING**. [Organization status](organization-client-v0-status.md), [final evidence](organization-d2-visual-review-v2.md) and [Phase3 authority](../specs/2026-10-02-organization-client-v0-ui-approval.md) are the operative preparation pointers; older pending/NO-GO narratives below are historical.
+- Captured source remains remote `e6bf24d8afa76a4aa7c66546bd963e4e1a90ffc8`, tree `204a412ba40211ca052d81cdf79f2b8701c148bc`. Independent corrected20-image review closes both Important findings, preserving failed evidence, exact source identities and visual limits.
+- Four normal exact-head gates and corrective capture37035368125 passed. Capture-triggered CI37035368187 is SUCCESS, verified16:56UTC. Exact-source Phase3 freeze qualification is complete; Phase4 starts after this separate evidence packet is independently reviewed, published and qualified. This new branch is documentation-only; PR48 source and its gates are unchanged.
+- Next exact action: independent documentation review, parent-only evidence publication/qualification, then ordered Phase4 official Tauri qualification research/design/plan. No new image sharing, runtime install/build, product implementation, merge, deploy or production operation is authorized here.
+
+---
+
+## Current checkpoint — Organization D2 actual pixels NO-GO; source correction pending review, 2026-10-02 UTC
+
+- Status: **ACTIVE — TWO IMPORTANT PIXEL FINDINGS; SOURCE/DOM CORRECTION PREPARED; CORRECTED PIXELS PENDING**. [Organization status](organization-client-v0-status.md), [source review](organization-client-v0-ui-review.md), and the [immutable20-image visual receipt](organization-d2-visual-review-v1.md) distinguish captured bd1f57f4's successful harness from its failed visual review.
+- Isolated `fix/organization-d2-state-affordances` corrects terminal summary/current-progress/own-next-work and blocked Submit's adjacent reason/disabled appearance without changing workflow authority or submitted membership. Existing keyboard repair and guards remain unchanged; source/DOM tests do not establish visual repair.
+- Independent source review of6963e834 found blocked→Return disabled its read-only instruction action. The narrow precedence correction passes328/328 local tests after RED2; provider denial and the failed pixel receipt are unchanged.
+- Next exact action: independently re-review the clean candidate, parent publish and qualify a new exact normal head, then obtain only separately authorized corrected pixels/review. Original capture remains failed; Phase3 freeze and Phase4–6 remain pending. Twenty-image/one-day/head/time/owner/prerequisite/export gates and frozen Phase1/2, Document/Search/Audit and production boundaries remain.
+
+---
+
+## Current checkpoint — Organization D2 dialog-edge repair awaiting review, 2026-10-02 UTC
+
+- Status: **ACTIVE — NORMAL HOSTED KEYBOARD FAIL; LOCAL SOURCE REPAIR / NEW HOSTED PROOF PENDING**. [Organization status](organization-client-v0-status.md), [source-review amendment](organization-client-v0-ui-review.md) and [qualification status](organization-d2-visual-qualification-status.md) preserve the observed second-Tab body/unfocused failure and exact base.
+- Bounded open-dialog-only Tab/Shift+Tab edge wrapping implements approved containment; native modal/Escape/close, initial Cancel, ordinary order, drafts, modifiers and focus return are preserved. Local source/DOM42 and diagnostic149 pass; these are not actual browser proof.
+- Next exact action: independent review of the clean candidate, parent publication and a new normal exact-head hosted pass. Capture remains closed; Phase3 freeze and Phase4–6 have not started. Twenty-image/one-day limits, gates, frozen Phase1/2, PR43, Document/Search/Audit and production boundaries remain unchanged.
+
+---
+
+## Current checkpoint — Organization Client D2 source reviewed / visual gate pending, 2026-10-02 UTC
+
+- Status: **ACTIVE — PHASE1/2 FROZEN; PHASE3 SOURCE/INTERACTION GO; ACTUAL VISUAL QUALIFICATION PENDING**. [Organization status](organization-client-v0-status.md) and [D2 review](organization-client-v0-ui-review.md) identify exact source/approval/review subjects.
+- Accepted H2 remains frozen. D1PR47remote13c1292c is fully hosted GREEN. Source-only [PR48](https://github.com/AIrisu-072/knowledge-platform/pull/48) remote0dcaeea6/treea7517c35 matches reviewed locald37bb7ab, exactly10 additive source/design paths and no capture workflow. Phase1/2 frozen blobs are unchanged.
+- D2 source4/4 and DOM24/24 plus independent counterexamples pass; no browser/pixel inference. Local cloud-browser preview was blocked without bypass. The owner separately authorized this D2 review's20syntheticPNG/1day public artifact and exact existing uploader exception only.
+- Next exact action: parent publishes the integrated source/workflow/privacy-reviewed candidate (GO at55253877), verifies all four applicable normal exact-head workflows, then may activate the one-shot PR48-bound capture. [Qualification status](organization-d2-visual-qualification-status.md) preserves strict PR/base/replay and export boundaries. Actual pixels and Phase3 freeze remain pending; Phase4–6 unstarted. C0/Search/Audit limits and no merge/close/deploy/production boundaries remain.
+
+---
+
+
+## Current checkpoint — Corrected H2/V2 evidence reviewed; final report gates pending
+
+- Status: **ACTIVE — ACTUAL RUNTIME PASS / SCOPED VISUAL GO / REPORT GATES PENDING / OWNER ACCEPTANCE PENDING**. Frozen H2 `6103e4d4e3bb0d45ba03e1d2935492de7f11394a` has all three normal workflows successful. [C3 Status](document-poc-acceptance-v0-status.md) and the [acceptance report](document-poc-acceptance-v0-report.md) identify each source/run/report separately.
+- N2 and corrected V2 independently passed22 runtime stages,11 browser cases, persistence, Agent/owned restart provenance and actual font/geometry markers. All13 V2 originals were reviewed with explicit loading/full-page/completion/spacing limits; no flawless or all13-settled claim. Artifact11218564738 expires2026-10-03T09:29:52Z. Historical V1 remains visual FAIL; local review-copy cleanup is pending within the approved period.
+- Independent five-doc factual/privacy review is GO. Next exact action: publish report R2 through the parent while preserving PR46 ancestry, then verify its exact applicable CI/DSI/Sandbox gates. Keep H2 frozen and owner acceptance pending. C0's own G9 remains separate; Organization Client has not started. All PRs remain Draft, unmerged and undeployed.
+
+---
+
+## Current checkpoint — Browser-only timestamp geometry proof prepared, 2026-10-02 UTC
+
+- Status: **ACTIVE — LOCAL ORACLE/WIRING CHECKS PASS / INDEPENDENT REVIEW AND ACTUAL CHROMIUM LAYOUT PENDING**. Isolated `fix/document-timestamp-browser-geometry` starts at reviewed combined `4cda0e9814cebed38260497ced96af75804cccde` / tree `97bd0446fe95e9bb35b91283f9e67a4756ec010a`. [C3 Status](document-poc-acceptance-v0-status.md) records the approved display-only proof and its limits.
+- A dedicated non-recording runtime test uses actual built-app DOM, unchanged CSS, the actual product formatter in Chromium, long `America/North_Dakota/New_Salem` and both New York fold instants at1280/1440. Timestamp substitution occurs only in an inert cloned root in separate read-only contexts. Range fragments must fit the padded cell, exposed internal scrollport,48px virtual slot and neighboring rows/cells. This is browser layout evidence, not backend equality or persistence evidence.
+- Fresh Node129/GUI57, runtime/application types, schema freshness, actionlint and diff checks pass. Collection-only Playwright lists11 journey tests with the prior10 preserved; it does not execute Chromium. Only a passed new test may emit bounded `timestampLayout: long-iana-both-folds-1280-1440`. The original journey/font/capture hooks,13 upload names, product source and workflows are unchanged.
+- Next exact action: independent review of the clean candidate, then parent publication and normal exact-head hosted proof before any separately authorized capture. Actual Chromium layout remains **NOT RUN**; no local browser download, Rust, capture, upload or publication occurred.
+
+---
+
+## Current checkpoint — Reviewed visual-remediation slices integrated, 2026-10-02 UTC
+
+- Status: **ACTIVE — MERGED LOCAL CHECKS PASS / NORMAL HOSTED FONT AND VISUAL QUALIFICATION PENDING**. `fix/document-visual-remediation-integrated` preserves the three independently reviewed framing/font/timestamp slices; [C3 Status](document-poc-acceptance-v0-status.md) records exact parents and26-path preservation.
+- Fresh Node125/GUI57, runtime/application types, schema freshness, production build, actionlint and range checks pass. Three existing bundle advisories remain. Every implementation/test/notice blob matches its reviewed slice; only Active and C3 status combine histories. Product font-family, time conversions, API/Rust/locks/identity/security, uploader and permissions remain unchanged; timestamp-column width/wrapping is the explicitly reviewed presentation change.
+- The frozen H capture remains visual FAIL, and the preliminary report is a separate subject. Actual Chromium selection/typography, bounded page framing and timestamp visibility require fresh normal hosted proof and actual corrected pixels before owner acceptance. Next exact action: finish narrow integration review and return the exact clean tree for parent publication; no local browser download, Rust, label, capture, upload or Organization Client work.
+
+---
+
+
+## Current checkpoint — Timestamp zone/offset labels prepared, 2026-10-02 UTC
+
+- Status: **ACTIVE — LOCAL TIMESTAMP CHECKS PASS / INDEPENDENT REVIEW AND HOSTED PIXELS PENDING**. Isolated `fix/document-timestamp-display-zones` starts at frozen `31b75d81941027f3c00be0617fb26cd0f6a9e18c`; [C3 Status](document-poc-acceptance-v0-status.md) records the approved ambiguity-only correction and evidence limits.
+- Home preserves browser-local conversion and Detail preserves Tokyo conversion; visible actual-zone and instant-specific UTC-offset labels distinguish repeated DST hours. The timestamp-only minimum column width/wrapping uses the existing internal scroller and preserves48px virtualization, keyboard behavior, input/instant attributes, scheduling payload and product fonts.
+- Final GUI15 suites/57, focused New York13/Tokyo13, TypeScript, schema freshness, production build and diff checks pass. Supporting long-IANA font metrics do not establish browser/pixel acceptance. Next exact action: return the clean immutable candidate for parent-owned independent review/integration and exact-head hosted checks; no local Rust, browser capture/upload or publication, and E3/C3 remain incomplete.
+
+---
+
+## Current checkpoint — Japanese test-runner font candidate prepared, 2026-10-02 UTC
+
+- Status: **ACTIVE — LOCAL UNIT/STATIC CHECKS PASS / INDEPENDENT REVIEW AND HOSTED FONT SELECTION PENDING**. `fix/document-japanese-runner-font` is isolated from frozen H `31b75d81941027f3c00be0617fb26cd0f6a9e18c`. [C3 Status](document-poc-acceptance-v0-status.md) and [source/risk record](../../research/document-japanese-runner-font.md) bound the approved runner-only remedy.
+- Exact Kosugi4.002 font/notice pins and existing Apache-2.0 allowlist are retained. Private Fontconfig setup adds no aliases or product assets. The normal actual-app Chromium journey must prove Kosugi-Regular selected for Japanese heading/body glyphs before any capture checkpoint; a fixed privacy-bounded receipt preserves that result.
+- Independent review identified and corrected job-wide XDG/toolchain relocation: only FONTCONFIG_FILE is now exported. Fresh Node119/runtime TypeScript/actionlint/syntax/diff and static private-installation/cmap checks pass. No local browser installation/rendering, Rust/build, actual C3 capture/upload or publication occurred. Static coverage/regular-weight and incomplete advisory-coverage limits remain explicit.
+- Next exact action: parent independently reviews the clean candidate, integrates approved test-only slices, and obtains exact-head normal NON-CAPTURE hosted qualification before any separately authorized capture. E3/C3 and actual pixel review remain open.
+
+---
+
+## Current checkpoint — Visual framing correction prepared, 2026-10-02 UTC
+
+- Status: **ACTIVE — LOCAL FRAME/SETTLEMENT CHECKS PASS / HOSTED AND VISUAL QUALIFICATION PENDING**. Isolated `fix/document-visual-framing` is based on frozen H `31b75d81941027f3c00be0617fb26cd0f6a9e18c`; [C3 Status](document-poc-acceptance-v0-status.md) records the bounded helper-only correction and the failed first capture.
+- Same13 names:01–05 fixed900px,06–13 explicit full-page900–4096px at1440px width,8MiB/strict PNG/private-file/export guards unchanged. Ordinary runs check pending/finite-transition settlement and page geometry; capture additionally preserves focus and rejects renewed pending state. No product CSS, font, timezone, business, workflow, permission or uploader change.
+- Full Node115/runtime TypeScript/actionlint/syntax/diff checks PASS. Actual hosted bounds and pixel usability remain NOT RUN. Next exact action: finish independent review and combine only separately reviewed font/timestamp slices; parent qualifies a distinct normal head before deliberate capture. No capture activation, upload, Rust or Organization Client work here.
+
+---
+
+
+## Current checkpoint — Bounded owned-runtime E3 identity receipt prepared, 2026-10-02 UTC
+
+- Status: **ACTIVE — LOCAL EVIDENCE-CORRECTION CHECKS AND INDEPENDENT REVIEW PASS / NEW-HEAD ACCEPTANCE PENDING**. `fix/document-e3-bounded-runtime-provenance` is isolated from published `706786970de25f74cb6f96d6a53c042d3da580dc`; [C3 Status](document-poc-acceptance-v0-status.md) records the approved report/sanitizer-only scope and prior receipt's nonrecoverable evidence gap.
+- The bounded receipt adds validated actual ports, existing run UUID, actual seed fixture hash and run/head-bound database/container and storage device/inode hashes. Owned observations must agree across restart; existing exact same-state and Agent proofs stay mandatory. External database identity remains explicitly unverified; visual policy and uploads are unchanged.
+- Node109/runtime TypeScript/actionlint/syntax/diff checks pass after focused RED→GREEN and the independently reviewed probe-deadline correction. No Rust workload, actual composition run, capture/upload or publication. Next exact action: return the clean exact candidate, then parent publishes a distinct head and obtains new exact-head hosted evidence before its first capture. E3/C3 remain incomplete.
+
+---
+
+## Current checkpoint — Single-line MCP comparison fixture integrated into C3, 2026-10-02 UTC
+
+- Status: **ACTIVE — REVIEWED FIXTURE MERGED / COMBINED LOCAL CHECKS PASS**. `feat/document-c3-single-line-integrated` combines reviewed A2 `d89fc8fc` / published `143ce4d5` with preserved C3 `2eed4b2c`. [C3 Status](document-poc-acceptance-v0-status.md) and [C2 Status](document-agent-tool-adapter-v0-status.md) record exact identities, source preservation and comparator-only RED/GREEN.
+- Incoming content changes only line3 against both seeded regulation Versions. All primary/MIME assertions and capture hooks remain; production semantics and strict comparison/state/auth/privacy oracles are unchanged. Node99/GUI44/MCP44/seed22, runtime/MCP/GUI types, schema freshness, actionlint and range checks pass.
+- Next exact action: complete verification and independent preservation review, then return clean exact head/tree to parent for publication and required hosted gates before its once-only visual activation. No local Rust build, actual capture/upload, activation, Organization Client work, merge or deployment.
+
+---
+
+## Current checkpoint — Reviewed MCP fixtures integrated with C3 visual candidate, 2026-10-02 UTC
+
+- Status: **ACTIVE — MERGED LOCAL CHECKS AND INDEPENDENT REVIEW PASS / EXACT-HEAD ACCEPTANCE AND VISUAL EVIDENCE PENDING**. Isolated `feat/document-c3-mcp-visual-integrated` combines reviewed visual candidate `ea224768877886cdc857072e4c0bc51a443c41f6` with reviewed A2 fixture repair `9ccde0dd021baa1ef3b2eceb7264f2c639590899`. Active [C3 Status](document-poc-acceptance-v0-status.md), [C2 Status](document-agent-tool-adapter-v0-status.md) and the approved E0/visual boundaries remain in effect.
+- The synthetic GUI upload retains the existing `primary` content anchor with explicit `text/plain`, exact authoritative pre/post file assertions and its selected-file capture hook. Protected fixtures now provide two real published Versions; Human proof precedes exact hidden404/no-disclosure and unchanged-state assertions. Different/Full expectations and production semantics are unchanged.
+- Three-way resolution preserves C3 ordered/recovery oracle additions and tests alongside the new denial helpers/tests, both complete status histories, all capture hooks and the GUI response-loss/hidden404 retry cases. Visual gate/action/retention, owned export guards, product/Rust code, locks, permissions and scanner records remain unchanged.
+- Fresh Node98, GUI44, MCP44, seed22, runtime/MCP/GUI TypeScript, schema freshness, MCP build, actionlint and range diff checks PASS. Actual hosted acceptance, artifact receipt/expiry and pixel review remain separate required results.
+- Next exact action: return the independently reviewed exact clean tree for parent publication, then require exact-head policy/security results before the parent applies the head-specific review label once. No local Rust, label, capture, upload, Organization Client work, merge to main or deployment occurs here.
+
+---
+
+## Current checkpoint — PR43 visual capture and bounded event gate prepared, 2026-10-02 UTC
+
+- Status: **ACTIVE — LOCAL CAPTURE/GATE CHECKS AND INDEPENDENT REVIEW PASS / ACTUAL VISUAL EVIDENCE PENDING**. Isolated `feat/document-c3-visual-adoption` starts at reviewed C3 PDF-display integration `9956db89f37a636ff8c4e9d0635298c0bd3638dc`. Active [C3 Status](document-poc-acceptance-v0-status.md), [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md), [bounded ADR](../../decisions/2026-10-02-document-visual-upload-bounded-adoption.md) and [capture procedure](../../operations/document-c3-visual-evidence.md) define the current scope.
+- The preserved fixed 13-PNG capture/export candidate is rebased with current PDF assertions, hidden-create404, worker hashes, focus return and diagnostics retained. Capture still requires a fresh owned synthetic database, actual production composition and final clean exact-head acceptance/cleanup; no mock or partial export is allowed.
+- A default-off PR43 labeled-event gate binds repository, non-fork branch, head-specific label, clean local checkout, first attempt and a fixed activation window. Both capture and upload consume its one result. Ordinary CI, label presence, malformed values, expiry and reruns do not enable uploads. Parent applies the label once after checking the exact head and absence of accepted capture; no automatic remove/re-add.
+- Fresh Node96/runtime TypeScript/actionlint/diff checks PASS after recorded gate/configuration REDs. These qualify harness behavior only. The exact official action pin, narrow license/risk decision, 13 literal paths, one-day retention and unchanged permissions remain subject to final review and actual execution; administration settings remain unknown.
+- Next exact action: return the independently reviewed clean candidate to the parent for exact-head publication and one controlled label activation, then verify runtime/security gates, actual artifact expiry and all actual pixels. No local Rust, actual capture, remote activation/upload, Organization Client work, merge or deployment is claimed.
+
+---
+
+## Current checkpoint — Bounded visual uploader adoption recorded, 2026-10-02 UTC
+
+- Status: **ACTIVE — BOUNDED ADOPTION APPROVED / ACTIVATION AND FINAL QUALIFICATION PENDING**. Documentation-only branch `docs/document-uploader-bounded-adoption` starts at C3 `34667b891963add0ffebd8be64269137f97ee163`. Active [C3 Status](document-poc-acceptance-v0-status.md) and [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md) retain the remaining acceptance work.
+- The [uploader ADR](../../decisions/2026-10-02-document-visual-upload-bounded-adoption.md) records only official v7.0.1 pin `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`, exact 13 ISC / 5 BlueOak graph exceptions, recovered exact-source buffers MIT/Expat evidence, and the disclosed residual high XML-response DoS risk. Current PR #43 only, exactly 13 synthetic PNGs, one-day expiry, no new permissions/secrets, no future ordinary CI activation and actual pixel inspection remain explicit.
+- No workflow, source, manifest, general allowlist or administrative setting is changed. Actions allowlist state remains unknown. The pending PDF-display repair, integrated capture/export and reviewed default-off activation gate, exact-head required CI/runtime/security results, actual artifact receipt and pixel review are not completed by this decision.
+- Fresh static checks pass for exact graph/notices, 78 advisory rows, upstream/evidence hashes, byte-identical buffers archives/source/bundle inclusion, recovered notice, 13 filenames and document links/privacy. This supplies no runtime or pixel acceptance result.
+- Next exact action: parent integrates the reviewed PDF-display repair and documentation, reviews the final current-review gate, then verifies the exact final gates and visual evidence. No installation, Rust, action execution, upload or publication occurs in this documentation worktree.
+
+---
+
+## Current checkpoint — C3 retains reviewed PDF capability repair and exact fixtures, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-c3-pdf-integrated` merges A2 `ee127460ef10ea4ae64c65427fc0e118b9c6904c` into C3 `afba7b61fad17cded3d4261b384554bde89f9ee6`, retaining final R2 `f51ff6788e73a1e7975f4b7bf6c295bd5cdd1a29`. Active [C3 Status](document-poc-acceptance-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain the repair contracts and remaining evidence.
+- Production/fixture/test blobs exactly match reviewed R2; C3 hidden-create, ordered/replay, worker and persistence coverage is unchanged. Both PDF binaries retain exact hashes and coexist with A2 legal-notice attributes. Fresh Node69/runtime+MCP TypeScript/MCP build/actionlint/parent-range diff checks and discovery10+1 pass with telemetry disabled.
+- Next exact action: return exact preservation proofs for parent publication and verify new hosted PDF, MCP, shutdown and persistence outcomes. No local Rust or actual-runtime run. Uploader adoption remains separately unqualified; no successor capability, merge or deployment.
+
+---
+
+## Current checkpoint — C3 hidden-denial fix and PDF diagnostics integrated, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-c3-denial-integrated` combines reviewed C3 denial repair `552101557a50ad3f7ed2c3dcdfbe41dde0f52d98` with A2 diagnostic integration `d9651320d0a7dcb219fe7f13795f2faf3087914f`, preserving R2 `639b31e85dc5ff7ed0a11fef4296ce88d46ed6cc`. Active [C3 Status](document-poc-acceptance-v0-status.md) retains the exact evidence and remaining gates.
+- Fresh A2 Node53 and C3 Node69/runtime TypeScript/actionlint/diff checks pass; exact C3 GUI source retains the freshly verified GUI43 result. The sanitizer keeps all C3 source names and adds exactly the fixed PDF milestones. Ordered/MCP/worker/persistence coverage, locks, scanner31 and required gates remain unchanged.
+- Next exact action: finish merge-preservation review and return clean trees for parent publication and exact-head verification. PDF diagnostics remain diagnostic only. Visual capture/upload source is excluded from this candidate; action adoption remains a separate policy qualification. No Rust, actual runtime run, successor capability, merge or deployment.
+
+---
+
+## Current checkpoint — C3 fresh-create denial oracle corrected, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED REGRESSION PASS / HOSTED RECHECK PENDING**. Isolated `fix/document-c3-hidden-create-denial` starts at `ac36ea9b89bf46eb363a4ed49b0ae5b77741ea35`. Active [C3 Status](document-poc-acceptance-v0-status.md) and [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md) retain the bounded acceptance scope.
+- Exact PR43 head `0aeba47f9e639705b9cc99def92b188d4a31f642` now passes the first real GUI journey, ordered Human/MCP consistency and both worker failure/recovery scenarios. The stale-capability case observes404 while its old oracle expects403; the separate PDF integrity failure remains under R2 diagnosis. Overall acceptance is incomplete.
+- The fresh create path hides its Internal snapshot unless Read plus Write-or-Publish is present; it therefore returns exact404/DOCUMENT_NOT_FOUND before the mutation guard. Replay after revocation and revocation after a snapshot was loaded retain their existing403 contracts. The fixture now asserts the precise phase, hidden-document UI and unchanged authoritative state, retaining input and restored retry.
+- Source-guard RED→GREEN and GUI retained-input/retry coverage pass; full Node68, GUI43, application/runtime TypeScript and diff checks pass. No Rust or new actual-runtime run. Next exact action: finish independent review, propagate current R2 PDF diagnostics, publish only through the parent and recheck the exact hosted outcomes. Successor work and visual activation remain gated; no merge or deployment.
+
+---
+
+## Current checkpoint — R2/A2/C3 fixture corrections integrated / hosted recheck pending, 2026-10-02 UTC
+
+- Status: **ACTIVE — MERGED FIXTURE CHECKS PASS / ACTUAL ACCEPTANCE PENDING**. Isolated `feat/document-c3-fixture-integrated` merges A2 `5f1963f261ebf02582535df94e3221bd5128a733` into C3 repair `cb1c8332d5cf07650e4c6e1a6876ee8e38deb178`. The stack retains reviewed R2 `808fd4ed8c95ef1184f9b59546159a0d77f9a99c` and independent A2 repair `fcb1cd8d53742d013ec18a242e543cb5c7c19b45`. Active [C3 Status](document-poc-acceptance-v0-status.md) and [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md) govern remaining acceptance.
+- All three real metadata mutations now use the existing extensions contract with matching projections. The C3 test conflict retains the complete A2 nested-marker tests and all ordered/replay/no-op/fallback tests. All five persistence snapshots, required CI gates, scanner31 records, locks, owned-worker controls and visual exclusion remain intact.
+- Fresh merged Node68/MCP39, runtime/MCP TypeScript, MCP build, actionlint/diff and discovery9+1 PASS with telemetry disabled. A2 merged Node52/types and the reviewed source workers' scoped checks remain separately recorded. No Rust or actual-runtime acceptance was run by this integration.
+- Next exact action: complete final propagation review, return the three clean source trees for parent publication, then observe exact-head runtime gates through persistence. Prior hosted failures remain unsuperseded by these local checks; predecessor acceptance still blocks Organization Client. No merge to main or deployment.
+
+---
+
+## Current checkpoint — C3 fixture contracts corrected / actual acceptance pending, 2026-10-02 UTC
+
+- Status: **ACTIVE — C3 FIXTURE RED→GREEN / HOSTED REVERIFICATION PENDING**. Isolated `fix/document-c3-response-recovery` starts at `2c50884a3344482aa8b5efa78e8f6839dac9282f`. Active [C3 Status](document-poc-acceptance-v0-status.md) and [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md) remain authoritative; no new capability or business decision.
+- The ordered metadata fixture now uses the existing `extensions` object at creation, mutation and every exact expected projection. Response loss still requires HTTP200; saved operation/payload replay and revision/no-op/fallback assertions remain strict. After Write revocation, the capability check uses readable published detail while the actual stale GUI create request still requires403/FORBIDDEN.
+- Two source/fixture contract regressions reproduce the invalid top-level marker and hidden authoring-read mistakes, then pass. Fresh Node68, runtime/MCP TypeScript, MCP build, discovery9 and diff checks pass. These are harness checks; no Rust or actual-runtime acceptance was run here.
+- Next exact action: complete independent review, combine the separately reviewed R2 denial/drain and A2 metadata fixtures without changing production contracts, return exact candidate trees for parent publication and recheck hosted gates. Organization Client and other successor work remain blocked on predecessor acceptance; human visual review and remaining C3 evidence are open.
+
+---
+
+## Current checkpoint — C3 receives reviewed focus/readiness repairs through A2, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED STACK CHECKS PASS / ACTUAL ACCEPTANCE PENDING**. Isolated `feat/document-c3-followup-integrated` merges A2 `7ae8f746b86795343eacf729b85d4f4fa42d7bcb` into C3 `c4ac377bb3d375e31ccc9b17c2476daa588cc18a`. Active [C3 Status](document-poc-acceptance-v0-status.md) and [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md) retain the acceptance scope; [C1](document-poc-runtime-v0-status.md) records both reviewed repair contracts and limits.
+- The exact GUI focus/fixture readiness repairs are retained beside all C3 ordered/replay/worker/persistence coverage. The sanitizer adds only the two fixed publication milestones to the prior C3 blob. Both mandatory MCP/scheduler CI gates, scanner31 records and locks remain unchanged. Visual capture/export/upload proposals are excluded.
+- Fresh merged Node66, runtime TypeScript, actionlint, syntax/diff checks and discovery9+1 pass with telemetry disabled. Identical GUI source retains the new combined R2 GUI42/types/schema/build evidence. No Rust or actual-runtime acceptance was run by this integration; unchanged MCP suites were not repeated.
+- Next exact action: finish independent stack review, return clean per-tree proofs for parent publication, then verify the new exact-head actual hosted gates. Prior publication-focus and scheduler startup failures are not superseded by local checks. C0/C1/C2/C3 completion and human visual review remain open; no merge to main or deployment.
+
+---
+
+## Current checkpoint — C3 integrates final reviewed A2 / local merge checks pass, 2026-10-02 UTC
+
+- Status: **ACTIVE — C3 HARNESS INTEGRATED / ACTUAL ACCEPTANCE PENDING**. Isolated `feat/document-c3-a2-final` merges C3 worker-failure `645aca8026b4f3ae45c6b0f496a1898d42dc9ac8` with reviewed A2 `ae844ee9e5ec51b8d1977a145be26ccf8ab43079` (tree `667f6cd96ea60b0f36f295471a24e698363d0d0a`). This is a local candidate; no remote publication, merge to main or deployment.
+- Active [C3 Status](document-poc-acceptance-v0-status.md) and approved [E0 Plan](../plans/2026-10-01-document-poc-acceptance-v0.md) govern the acceptance work. Existing [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain their scoped source and evidence records.
+- C3 ordered GUI/API/MCP equality, interrupted-response recovery, stale-capability race, owned worker failure/recovery and five restart snapshots are preserved. A2 GUI sort/stable pending data, complete pre-click diagnostics, R5 stack repair and both mandatory MCP/scheduler CI gates are retained exactly. The 31 scanner fingerprints and exception record are unchanged. Visual capture/export/upload proposals are excluded.
+- Fresh merged Node65/MCP35/GUI41/client6/API12 tests, types, schema/API lint, web/MCP builds, architecture, actionlint, syntax and diff checks pass with Redocly telemetry disabled. Discovery finds nine journey cases and one persistence case. Independent review found no Critical/Important integration defect. No Rust or actual-runtime acceptance was run here; the prior GUI timeout and scheduler failure remain unsuperseded by this evidence.
+- Next exact action: parent reviews the complete candidate tree and preservation proof, integrates it into the separately preserved E1 publication history, verifies the exact remote head/tree and runs all required actual hosted gates. C0/C1/C2/C3 completion and human visual review remain open.
+
+---
+
+## Current checkpoint — Source-bound MCP acceptance fixture repair, 2026-10-02 UTC
+
+- Status: **ACTIVE — FOCUSED RED/GREEN / EXACT-HEAD REAL ACCEPTANCE PENDING**. Isolated `fix/document-mcp-runtime-acceptance` starts from A2 `41e2d190` / remote `8485a3f4`. [C2 Status](document-agent-tool-adapter-v0-status.md) records both exact hosted failures, the primary-path/content-only fixture correction and fixed privacy-safe MCP checkpoints.
+- Production GUI/Diff/authorization/profile/state contracts are unchanged. Different/Full remains mandatory; ambiguous move+edit remains incomplete. Primary slice Node55/GUI43/MCP34 and runtime/MCP types pass. The separate protected-pair slice now adds two published synthetic Versions, Human-proved distinct comparison pairs, exact hidden404/no-disclosure and unchanged-state checks; Node55/seed22/API12/client6/MCP38/types pass. Local controlled HTTP/stdio evidence is not native acceptance.
+- Next exact action: finish combined package verification, return clean head/tree to independent review, then parent-owned A2 publication and C3 visual-aware integration. No Audit Infrastructure, Organization Client, new dependency, Rust build, merge or deployment work.
+
+---
+
+## Current checkpoint — A2 retains reviewed PDF capability repair and fixtures, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-pdf-integrated` merges R2 `f51ff6788e73a1e7975f4b7bf6c295bd5cdd1a29` into A2 `d9651320d0a7dcb219fe7f13795f2faf3087914f`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain the reviewed repair and qualification evidence.
+- The production capability predicate and synthetic positive/negative PDF cases match reviewed R2 exactly. PDF bytes/hashes are preserved; exact-path binary attributes coexist with A2 legal-notice preservation. Fresh Node53/runtime TypeScript and parent-range diff checks pass. No repeated Rust workload or new actual-runtime evidence.
+- Next exact action: complete C3 propagation/proof, then parent publishes and checks the exact new runtime through PDF, MCP and persistence. Uploader qualification remains separate and inactive; no successor capability, merge or deployment.
+
+---
+
+## Current checkpoint — A2 retains bounded PDF diagnostics, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / PDF ACCEPTANCE UNDER DIAGNOSIS**. Isolated `feat/document-a2-pdf-diagnostics` merges reviewed R2 `639b31e85dc5ff7ed0a11fef4296ce88d46ed6cc` into A2 `5f1963f261ebf02582535df94e3221bd5128a733`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain the exact evidence and scope.
+- The four R2 diagnostic files match the reviewed source; PDF inputs and criteria are unchanged. Fresh Node53/runtime TypeScript/diff checks pass. MCP, both required gates, locks and scanner records are unchanged. No Rust or new actual-runtime execution.
+- Next exact action: complete propagation review through C3, then parent publishes and observes exact-head gates. Diagnostics do not repair or qualify the PDF integrity failure; no successor capability, visual activation, merge or deployment.
+
+---
+
+## Current checkpoint — A2 denial/metadata fixture corrections integrated, 2026-10-02 UTC
+
+- Status: **ACTIVE — REVIEWED FIXTURES INTEGRATED / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-fixture-integrated` combines A2 metadata repair `fcb1cd8d53742d013ec18a242e543cb5c7c19b45` with R2 denial/drain repair `808fd4ed8c95ef1184f9b59546159a0d77f9a99c`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) preserve both approved contracts and independent review records.
+- Every source change is byte-identical to its reviewed repair. The MCP fixture uses nested extensions with full metadata preservation; R2 uses the existing hidden publication/authoring denial and nested drain marker. No product/API/security semantics or C3-only code enter this A2 layer. Both required CI gates, locks and scanner31 records remain unchanged.
+- Fresh merged Node52 and runtime/MCP TypeScript pass; unchanged source retains the repair workers' focused/MCP33/API12/GUI42 verification. Actual runtime and restart acceptance still require hosted execution; no Rust workload was repeated.
+- Next exact action: review propagation into C3, return exact clean trees for parent publication and inspect new exact-head gates. No remote publication, successor Organization Client work, visual capture/upload, merge to main or deployment occurs here.
+
+---
+
+## Current checkpoint — A2 retains reviewed publication-focus and scheduler readiness repairs, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-followup-integrated` merges R2 `51bd948710beb098f88a4af18fe7bcb251933df7` into A2 `ae844ee9e5ec51b8d1977a145be26ccf8ab43079`. Active [C2 Status](document-agent-tool-adapter-v0-status.md) and [C1 Status](document-poc-runtime-v0-status.md) retain the approved scopes and both source repair evidence sections.
+- Every non-status repair blob matches reviewed R2. MCP source/runtime provenance, both required CI gates, scanner31 records and locks are unchanged from A2. Fresh merged Node52, runtime TypeScript, actionlint and diff checks pass with telemetry disabled; the identical GUI source retains the new R2 GUI42/types/schema/build verification.
+- Next exact action: complete independent stack review and C3 propagation, then parent publishes and checks exact-head hosted gates. No Rust workload, actual runtime acceptance, visual capture/upload, merge to main or deployment occurred here. Existing hosted focus/startup failures remain unresolved until qualified reruns.
+
+---
+
+## Current checkpoint — Final R2 GUI/scheduler repairs integrated into A2, 2026-10-02 UTC
+
+- Status: **ACTIVE — AFFECTED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-a2-r5-integrated` combines preserved A2 `6665c17e6fed2129c60f739faaa8bc0fb3089dc3` with reviewed R2 `5b8e967badd9303fe1d7b446504be57b99b1c42c`; no C3 implementation is included.
+- Active [C2 Status](document-agent-tool-adapter-v0-status.md), approved [Design](../specs/2026-10-01-document-agent-tool-adapter-v0-design.md), [Plan](../plans/2026-10-01-document-agent-tool-adapter-v0-implementation.md), [Authority](../specs/2026-10-01-document-agent-tool-adapter-v0-approval.md), and [C1 runtime evidence](document-poc-runtime-v0-status.md) remain authoritative for their bounded scopes.
+- Exact R2 GUI/diagnostic source is retained alongside the scheduler stack repair. A2 MCP/runtime provenance, both required-check dependencies and exact scanner exclusions remain intact. Fresh A2 Node51/GUI41/types/schema/actionlint/diff checks pass; no unchanged Rust test was repeated.
+- Next exact action: parent publishes final R2/A2 once, verifies exact trees/heads, then inspects all required actual hosted gates. Prior GUI timeout and scheduler failure are not yet superseded by real acceptance GREEN; do not claim C1/C2/C3 completion, merge to main or deployment.
+
+---
+
+## Current checkpoint — Reviewed A2 + R5 stack repair ready for hosted verification, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED INTEGRATION VERIFIED / REAL ACCEPTANCE PENDING**. Isolated `feat/document-a2-r5-integrated` preserves A2 integration `2083801f258ef4fd222bac848d4f9f753134632b` and adds reviewed R2 test-only repair `7f39c5589fcf64500c30b37c7bdf31b42595ff22`. No C3 implementation is included.
+- Active Capability Status: [Document Agent Tool Adapter v0](document-agent-tool-adapter-v0-status.md), with existing approved C2 [Design](../specs/2026-10-01-document-agent-tool-adapter-v0-design.md), [Plan](../plans/2026-10-01-document-agent-tool-adapter-v0-implementation.md) and [Authority](../specs/2026-10-01-document-agent-tool-adapter-v0-approval.md). [C1 Status](document-poc-runtime-v0-status.md) records the separate bounded scheduler decision and stack-repair evidence.
+- The nested test-only reservation future is heap-boxed; fixed stderr labels survive process abort. Combined Node50/canary-helper5/actionlint/diff checks pass. MCP/runtime provenance, exact-head MCP and scheduler required gates, browser diagnostics and scanner exclusions are preserved. Earlier broader scoped checks remain recorded for unchanged source.
+- The old hosted scheduler head failed; corrected full local acceptance still stops at mandatory SandboxUnavailable. No full scheduler/shared-runtime/C2/C3 completion is claimed. No sandbox, stack limit, timeout or production-semantic change was made.
+- Next exact action: parent publishes the reviewed R2 repair and combined A2 candidate, verifies exact remote trees/heads and observes all required hosted gates. No merge to main or deployment. The investigation-hold checkpoints below are retained as historical evidence.
+
+---
+
+## Current checkpoint — A2 integrates reviewed R5 + GUI transport; scheduler canary diagnosis, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE VERIFICATION PASS / HOSTED ACCEPTANCE INCOMPLETE**. Isolated branch `feat/document-a2-r5-integrated` combines A2 `3a28576395fdc04928a7f19ea387f1a8a4b17dca` and R2 `53f9cbbb877e18a85685c3ea95308cd55e513998`; no C3 implementation is included.
+- Active Capability Status: [Document Agent Tool Adapter v0](document-agent-tool-adapter-v0-status.md). Approved [C2 Design](../specs/2026-10-01-document-agent-tool-adapter-v0-design.md), [Plan](../plans/2026-10-01-document-agent-tool-adapter-v0-implementation.md), [Authority](../specs/2026-10-01-document-agent-tool-adapter-v0-approval.md). R5 bounded identity decision and implementation evidence remain in [C1 Status](document-poc-runtime-v0-status.md).
+- Independent integration review preserved exact A2 MCP/runtime/provenance, R2 scheduler/sort, scanner exclusions and browser diagnostics. Both MCP and scheduler jobs remain required-check dependencies. Fresh scoped Node 50, MCP 29, GUI 38, client 6, API 12 and Rust 13 tests pass, with types/schema/API lint/build/fmt/architecture/actionlint checks; see Capability Status for limits.
+- R5 naming is resolved as audit-only `service` / `scheduler`; no identity privilege was added. Hosted R2 scheduler job `110660162596` at remote `556449f0245ff9e767b4a83cdd04ccb1160c2489` failed with a test-thread stack overflow after compilation. R5 acceptance is not green; the nested failing stage is still under diagnosis. Prior scheduler-selection STOP entries below are historical.
+- Next exact action: retain this A2 candidate while the separate R2-based canary repair is diagnosed, tested and reviewed without any guard weakening; integrate the approved correction, then parent publishes and verifies exact-head CI. No merge to main or deployment. C0/C1/C2/C3 completion is not claimed.
+
+---
+
+## Current checkpoint — Document Agent Tool Adapter v0 A2 local GREEN / hosted acceptance pending, 2026-10-01 UTC
+
+- Status: **ACTIVE — C2 IMPLEMENTATION LOCALLY VERIFIED / REAL-RUNTIME ACCEPTANCE PENDING**. No merge or deployment. C1 scheduler identity remains STOP; C3 overall evaluation is not complete.
+- Active Capability Status: [Document Agent Tool Adapter v0](document-agent-tool-adapter-v0-status.md). Approved scope: [C2 Design](../specs/2026-10-01-document-agent-tool-adapter-v0-design.md), [Plan](../plans/2026-10-01-document-agent-tool-adapter-v0-implementation.md), [Authority](../specs/2026-10-01-document-agent-tool-adapter-v0-approval.md).
+- Stack: R1 Draft #37 → R2 Draft #41 at verified `8c702db1c15caeabef398ab8170bbaee18fe075f` → separate A2 implementation Draft to be published. A1 Design/Plan remains Draft #38; its four documents are incorporated in A2 without reverting C1. The reviewed R6 tree is `b937184d4c56b493ba1193812463a5482db39f31`.
+- Exact nine read-only generated-client tools, verified fixed-Agent session, bounded abort/redirect behavior, unchanged API semantics and actual stdio are implemented. Complete shipped license notices and the two-package ISC exception are recorded. No direct DB/Application access, Agent write tool, Search/RAG or production identity.
+- Local verification and independent review/fixes are recorded in Capability Status. Required CI now includes focused MCP verification and real shared-runtime Agent stages; missing/blocked real workers or browser leave acceptance non-green. No mocked HTTP result counts as real Document acceptance.
+- Next exact action: publish the reviewed A2 source as a separate Draft stacked on #41, verify remote head/tree, and observe required gates on that exact head. Diagnose failures without weakening sandbox, license, scanner or authorization policy. C0/C1/C3 closure remains tracked separately.
+
+---
+
+## Current checkpoint — R2 publication-focus and PostgreSQL readiness repairs integrated, 2026-10-02 UTC
+
+- Status: **ACTIVE — SCOPED MERGE CHECKS PASS / HOSTED ACCEPTANCE PENDING**. Isolated `feat/document-r2-followup-integrated` combines reviewed GUI `cac1d729ddab7aaef2d618b1dbd7d58f51836d8a` and scheduler test readiness `ee30aba86c903777d361be58424fb741c450ea3e`, both based on `5b8e967badd9303fe1d7b446504be57b99b1c42c`.
+- Active [C1 Status](document-poc-runtime-v0-status.md), approved [Runtime Design](../specs/2026-10-01-document-poc-runtime-v0-design.md), [Plan](../plans/2026-10-01-document-poc-runtime-v0-implementation.md) and [Authority](../specs/2026-10-01-document-poc-runtime-v0-approval.md) retain the bounded scope. Both complete repair evidence sections are preserved; only status text required conflict resolution.
+- Fresh merged Node45/GUI42, application/runtime TypeScript, validator freshness, production build, actionlint and diff checks pass with telemetry disabled. The source workers' focused verification remains separately recorded. No Rust workload or actual container/runtime acceptance was repeated by this integration.
+- Next exact action: finish independent integration review, propagate the exact repair delta through separate A2/C3 candidates, then parent publishes and checks exact-head hosted gates. The prior post-publication focus and scheduler startup failures remain the last actual results. No full acceptance, visual review, merge to main or deployment claim.
+
+---
+
+## Current checkpoint — Document GUI Integration v0 hosted gates GREEN / integrated frontend evidence pending、2026-10-02 UTC
+
+- Status: **G0〜G8 COMPLETE / IMPLEMENTATION COMPLETE / G9 FINAL ACCEPTANCE PENDING / NOT MERGED / NOT DEPLOYED**. The earlier branch-unpublished / PR-not-created checkpoint is superseded. Unqualified **G0〜G9 COMPLETE / ACCEPTANCE GREEN / REVIEW READY** is withheld until the approved Plan's same-head frontend E2E and integrated browser/backend journey requirements are evidenced.
+- Verified GitHub state (2026-10-02 00:15 UTC / 09:15 JST): [Draft PR #36](https://github.com/AIrisu-072/knowledge-platform/pull/36), branch `feat/document-gui-integration-v0`, exact head `b578a9b49338066d0e4ee5495ea1280f991c122b`, base `main` at `d71753d46590bb4406a1c0b74894ab90a27a6c88`; OPEN / Draft / NOT MERGED. Review submissions: 0; inline review threads: 0 (unresolved: 0). Review-ready acceptance is not a GitHub review approval.
+- Observed exact-head hosted gates: [Standard CI 36860705179](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36860705179) **SUCCESS**, [DSI Sandbox Preflight 36860705023](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36860705023) **SUCCESS**, [DSI PoC 36860705167](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36860705167) **SUCCESS**. Standard CI required-check and all nine jobs succeeded. DSI PoC qualification succeeded; its optional qualification-macos job was skipped, not passed. Standard CI separately passed DSI semantic parity on macOS ARM and Intel.
+- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24` and approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912` match the committed files. Source Design ZIP SHA-256 remains the approval-recorded `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`; the ZIP was not reread in this docs-only pass. Design Amendment 01 / Approval and Plan Addendum 01 are the only approved toolchain/license exception. Current pnpm lock SHA-256 `bb74081c198fcb1c9c8038933c434f0a00b50a2aa7a436c3def15156881d6847` matches the amendment's first-party workspace-link inventory record; general license policy and UI/API semantics are unchanged.
+- Hosted Rust test log records **741 passed / 6 skipped**, including the real PostgreSQL + FileSystemStorage + production DSI/Diff HTTP lifecycle, revision comparison, fail-soft identity, stale capability mutation rejection, and file-audit no-byte-disclosure tests. Detailed evidence and provenance are in `docs/superpowers/execution/document-gui-integration-v0-status.md`.
+- Frontend evidence is source-recorded local verification, not a cloud rerun: Playwright **6/6 PASS** at `bb5da30c7a831a9d79a16cc422f00adc89b70c69`; Mock 1–7 snapshots and accessibility review are committed. The app/client/config/lock input paths are unchanged at `b578a9b`, but this is tree-equivalence evidence, not an exact-head E2E execution receipt. All six committed Playwright tests mock `/v1/**`; they do not demonstrate browser-to-real-backend integration. Hosted Standard CI has no Playwright step.
+- Blockers: final same-head frontend E2E receipt and a real-backend browser journey receipt are not available in the repository. This docs-only refresh did not run product builds or tests and does not claim fresh local build/test completion. No product code or dependency changes are part of C0.
+- Downstream runtime evidence remains separate: Draft [R2 PR #41](https://github.com/AIrisu-072/knowledge-platform/pull/41) at `bf5ec20d0f27f6e40f53b50ab3b1827c75f3f8ad` has [CI 36943094817](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36943094817) FAILURE; Draft [A2 PR #42](https://github.com/AIrisu-072/knowledge-platform/pull/42) at `e500144f5bafe3bb80ae12314fef7d0c9ca7e170` has [CI 36943178284](https://github.com/AIrisu-072/knowledge-platform/actions/runs/36943178284) FAILURE. Their separate Sandbox/DSI PoC workflows succeeded, but real-runtime acceptance is not green. These later heads do not supply a PR36 exact-head frontend receipt. C1/C2/C3 are not accepted by this C0 record; the scheduler identity decision and historical security-scan qualification remain unresolved.
+- Next exact action: obtain a verifiable same-head frontend E2E receipt and real-backend browser journey evidence. If absent, close those verification gaps in a separately scoped implementation/verification task before marking G9 acceptance/review readiness. A rerun of the existing mocked suite alone cannot close the integrated journey requirement. Before any authorized docs-only push, recheck PR head and concurrent work. After push, observe Standard CI / Sandbox / DSI PoC on the new exact head; do not transfer old-head results to the new head. Keep PR #36 Draft; no merge, deploy, production migration execution, or production AD/SSPI connection.
+
+---
+
+## Superseded checkpoint — Document GUI Integration v0 G8 COMPLETE / G9 ACCEPTANCE IN PROGRESS、2026-10-01 JST
+
+- Status: **G0〜G8 COMPLETE / G9 final exact-head verification IN PROGRESS**。G8 commit/code head `d6dcda031e8101a9b46bd688ecc92b68468629ad` on `feat/document-gui-integration-v0`, 29 commits ahead of `origin/main`. Current GitHub main is `d71753d46590bb4406a1c0b74894ab90a27a6c88`; implementation branch and product PR have not yet been pushed/created.
+- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`; approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`; Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`. No UI/API semantic amendment beyond approved Design Amendment 01 / Plan Addendum 01.
+- G7 candidate-specific license decision remains limited to lock SHA-256 `ee2e1430204112a91a31cbfa34a286ab1effca56ac35d918bb3f4df77d05ea16`; no new dependency or license was added in G8.
+- G8 implements Mock 1–7 on the generated typed client/BinaryTransportBridge: list/context panel, detail, Version/Revision timeline, native upload workflow, publish/schedule, partial comparison/source handoff, and AccessPolicy effective/draft separation. Mock 4–7 visual states were reviewed. Schedule workflow preserves the selected method across route transition; publish success remains response-authoritative and focus returns after pending state clears.
+- Local verification on the G8 tree: Jest **11 suites / 34 tests PASS**; TypeScript check PASS; Playwright E2E **6/6 PASS**; OpenAPI/client contract **12/12 PASS**; `cargo fmt --all -- --check` PASS; `git diff --check` PASS. Mock 1–7 snapshots are stored under `apps/document-web/e2e/document-workspace.spec.ts-snapshots/`.
+- Production build PASS with Webpack advisory: main JS **553 KiB**, entrypoint **566 KiB**, detail chunk **41.9 KiB**. No numeric `T_usable`/`T_input` threshold exists in the approved design; measured values are recorded below. Reduced motion and no-overflow checks pass at 1280/1440.
+- Exact local frontend E2E at head `bb5da30` passed **6/6**. Captured GUI performance: `T_usable=349.7 ms`, `T_input=16.5 ms`, `motionSpatial=180 ms`; no approved numeric limit applies.
+- Browser-level accessibility review is recorded in `docs/superpowers/execution/document-gui-integration-v0-accessibility-review.md`. Local PostgreSQL E2E could not run because this host has no Docker socket; the real PostgreSQL + filesystem + production worker lifecycle test remains a required hosted Standard CI gate.
+- Plan boundary: create/push implementation branch and Draft PR; do not merge, deploy, execute production migration, or connect production AD/SSPI.
+- Next exact action: commit this evidence update, push `feat/document-gui-integration-v0`, create the approved Draft PR, then wait for Standard CI + DSI Sandbox Preflight + DSI PoC on the PR head. Record run IDs and any failure in Active/Status.
+
+## Superseded checkpoint — Document GUI Integration v0 G7 COMPLETE / G8 NEXT、2026-10-01 JST
+
+- Status: **G0〜G7 COMPLETE / G8 Mock 1–7 IN PROGRESS / G9 NOT STARTED**。G7 RED commit `182215f`; GREEN code head `a6e340f`。依頼者はVite/Vitest置換を推奨方針で進めるよう指示し、current candidate graphにある列挙外licenseだけを個別承認した。一般license policyとFrozen Design semanticsは不変。
+- Design Amendment 01 / Approval / Plan Addendum 01を作成。Candidate lock SHA-256 `ee2e1430204112a91a31cbfa34a286ab1effca56ac35d918bb3f4df77d05ea16`。個別承認対象: ISC (34), BlueOak-1.0.0 (8), CC-BY-4.0, Python-2.0, MIT-0, Unlicense, CC0-1.0, 0BSD, `(MIT OR CC0-1.0)`。他licenseまたはlock graph変更には再qualificationが必要。
+- branch `feat/document-gui-integration-v0`、G7 GREEN code head `a6e340f`（`origin/main`より26 commits ahead）。GitHub main `d71753d46590bb4406a1c0b74894ab90a27a6c88`。Remote implementation branch / product PR / hosted branch CIなし。PR #27/#29/#30/#31/#32/#35 merged。
+- G7 RED commit `182215f`: 5 expected missing-foundation tests FAIL / 8 PASS; React Aria suite PASS. GREEN evidence at `a6e340f`: Jest 14/14 PASS (React Aria 6/6); TypeScript check PASS; Webpack production build PASS; dev server compiled and served `/` + `/documents`; `git diff --check` PASS. Production entrypoint is 292 KiB (JS 289 KiB), producing related Webpack performance warnings to assess at G9. Hosted CI is deferred to G9.
+- Candidate prior qualification: Node 24.21.0 / pnpm 12.4.1 frozen install, peer check, audit pass. Current shell Node is 26.3.1 and pinned pnpm launcher fails; local `node_modules/.bin` tools are available.
+- Next exact action: inspect the approved Source Design screens and G6 generated client operations, then implement G8 Mock 1–7 through the typed client/BinaryTransportBridge without presentation-level raw fetch or duplicated business rules.
+
+---
+
+## Superseded checkpoint — Document GUI Integration v0 G7 license qualification STOP、2026-10-01 JST
+
+- Status: **G0〜G6 COMPLETE / G7 candidate qualification STOP / G8〜G9 NOT STARTED**。依頼者はVite置換と既存license policy維持を選択した。Architecture Contract §5は掲載外licenseを個別承認としている。
+- Implementation branch `feat/document-gui-integration-v0`、local HEAD `82ca1337c71d7ef5b2c3179b59a8e08941411de0`（`origin/main`より24 commits ahead）。GitHub main `d71753d46590bb4406a1c0b74894ab90a27a6c88`、CI `36718016267` SUCCESS。GitHub上にimplementation branch/PRはなく、branch exact-head CIも未実行。
+- Last GREEN code head `3b3d2b737942c0fd4eb27abb3777395507dcf0e2`（G6）。Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`、approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`、Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。
+- Local amendment candidate: Webpack `5.111.1` / webpack-cli `7.2.3` / webpack-dev-server `6.0.0`; Jest `30.5.2`; Babel `7.29.7`; Node `24.21.0`; TypeScript `6.0.3`; retain React/TanStack/Motion/Ajv/RTL/Playwright. Vite/Vitest/LightningCSS are absent from the clean resolved lock. Babel 8 was replaced with Babel 7 after peer check evidence; unplanned `eslint-plugin-jsx-a11y` and `identity-obj-proxy` were removed because they introduced MPL-2.0 and a dual MPL license respectively.
+- Focused qualification: exact pnpm `12.4.1` frozen install PASS; `pnpm peers check` PASS; `pnpm audit --audit-level=low` PASS, no known advisories. Isolated full app license inventory has no GPL/AGPL/LGPL/MPL/SSPL/BSL/source-available packages, but includes non-listed licenses that require individual approval under §5: ISC (34 packages), BlueOak-1.0.0 (8), CC-BY-4.0, Python-2.0, MIT-0, Unlicense, CC0-1.0, 0BSD, and `(MIT OR CC0-1.0)`. No exception has been approved.
+- G7 production UI source is not started. Candidate package manifest/lock and earlier contract/config tests remain local and uncommitted. No Design Amendment or dependency promotion has been recorded.
+- `toolbox-context status` has no matching pending managed run. Parent restore helper remains unavailable at `~/.local/bin/parent-context.py`.
+- 次のexact action: obtain a decision whether to record candidate-specific individual approvals for the listed non-allowlisted license IDs while leaving the general policy unchanged, or to require a graph containing only currently listed license IDs and evaluate another tool stack. Continue G7/G8/G9 only after this gate is resolved.
+
+---
+
+## Superseded checkpoint — Document GUI Integration v0 G7 STOP、2026-10-01 JST
+
+- Status: **G0〜G6 COMPLETE / G7 STOP / G8〜G9 NOT STARTED**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。Frozen Design差分・amendmentなし。
+- Implementation branch `feat/document-gui-integration-v0`、current local HEAD `82ca1337c71d7ef5b2c3179b59a8e08941411de0`（`origin/main`より24 commits ahead）。GitHub main `d71753d46590bb4406a1c0b74894ab90a27a6c88`、main CI `36718016267` SUCCESS。Product branch/PRはGitHubに未公開。
+- Last GREEN code head `3b3d2b737942c0fd4eb27abb3777395507dcf0e2`（G6）。Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`、approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`、Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。
+- G7 STOP: Vite 8.3.1 resolves `lightningcss` 1.33.0 (MPL-2.0), while `spec/architecture/architecture-contract-v0.md` LINT-02 excludes MPL-2.0. Attached request explicitly says to stop when a selected dependency violates license/security policy. No silent exception or stack substitution is authorized.
+- Focused evidence: React Aria qualification 6/6 PASS; `pnpm audit --audit-level=low` previously PASS/no known advisories. React Aria remains a local devDependency only and is not promoted. The pinned pnpm CLI is unavailable/broken, so `pnpm why` could not run; exact lock snapshot and registry metadata confirm the dependency/license edge.
+- Working tree holds local G7 package/config/qualification tests, lock/ignore edits, these checkpoint-document updates, and `.superpowers` scratch; no production GUI component or implementation PR has been created. Latest React Aria run passed; the design-system RED fails only because `src/design-system/tokens.css` is not implemented yet.
+- Required decision: (A) keep the license allowlist and approve a Design Amendment replacing Vite 8 with a compatible frontend build tool, then qualify its full dependency graph; or (B) amend the license policy to explicitly allow the MPL-2.0 transitive dependency and continue with Vite 8. G7/G8/G9 remain stopped until one path is approved.
+- 次のexact action: receive the user’s A/B policy/design decision, record the approved amendment, then resume G7 from the corresponding qualified dependency stack. Do not create/push a product PR or proceed to G8/G9 while this gate is unresolved.
+
+---
+
+## Current checkpoint — Document GUI Integration v0 G6 COMPLETE / G7 NEXT、2026-10-01 JST
+
+- Status: **G0〜G6 COMPLETE / G7 Frontend foundation NEXT**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。
+- Implementation branch `feat/document-gui-integration-v0`、G6 GREEN commit/head `3b3d2b737942c0fd4eb27abb3777395507dcf0e2`。G6 contract RED `405ac30ac379423cbd9c055168c0a35232a5357a`、Binary Bridge RED `5c4324076ce2abb6285ce4cfefc8d966da7c756f`。Product branchはlocal only、Draft product PR未作成。
+- GitHub main `d71753d46590bb4406a1c0b74894ab90a27a6c88`、PR #27/#29/#30/#31/#32/#35はMERGED。Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`、approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`、Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。Design amendmentなし。
+- G6: OpenAPI 3.2.1へG1〜G5 contract/examplesを反映し、`@hey-api/openapi-ts` 0.99.0をexact-pin。TS 7はgenerator startup incompatibilityが出たため、Design所定のTypeScript 6 fallback 6.0.3を採用。34 operationを全生成し、union/nullabilityをtype contractで固定。手書き`BinaryTransportBridge`はcreate/version multipart、manifest part ID to Blob/File mapping、Blob/ReadableStream download、RFC 9457 errorを担当し、JSON DTOは生成型を再利用。
+- G6 local verification: OpenAPI contract 12/12、Redocly 2.52.1 lint / example schema validation PASS、client typecheck PASS、client + generation coverage 6/6、34 operationId = generated operation set、再生成前後の全4生成ファイルSHA-256一致、pnpm auditで既知脆弱性0件。`js-yaml 4.3.2` workspace overrideを適用。generator dependency license inventoryはPoC時にpermissive-onlyで確認済み。Hosted CIは依頼者方針どおりG9に集約。
+- Disk空きは直近で約855 MiB。G9前に確認し、Postgres suitesはserialで実行する。Blockerなし。Product PR merge / deploy / production migration execution / AD-SSPI接続なし。
+- 次のexact action: G7で承認済みfrontend stackの現行版を公式資料とpackage registryで確認し、React Aria Components focused PoCとCSS/motion/architecture foundationを実装する。ライブラリ資格失敗ならBase UI比較のSTOP gateに従う。
+
+---
+
+## Superseded checkpoint — Document GUI Integration v0 G2 COMPLETE / G3 NEXT、2026-10-01 JST
+
+- Status: **G0〜G2 COMPLETE / G3 Action Capability Projection NEXT**。詳細は `docs/superpowers/execution/document-gui-integration-v0-status.md`。
+- Implementation branch `feat/document-gui-integration-v0`。G2 GREEN code head `6d58cef3a119424d005018cb412bad183da624d2`。Draft product PRはまだ未作成、main未merge。
+- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`、approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`、Source Design ZIP SHA-256 `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`。差分提案なし。
+- G2 RED: GUI list/revision test commit `bb0a26352cf03cee3196de6799c3de5fa65a2273` は`displayVersion.versionNo`欠落とrevision route 404を検出。Version projection追加RED `aaf94d2e5720af95fabdc3be50011499ae033c91` は`updatedAt`欠落を検出。GREEN implementation head `6d58cef3a119424d005018cb412bad183da624d2`。
+- G2 focused verification: `read_http` 7/7、`query_cursor_contract` 4/4、HTTP dispatch contract 1/1、problem registry 1/1、Node API contract 10/10、Redocly 2.52.1 OpenAPI lint PASS、`cargo fmt --all -- --check` / `git diff --check` PASS。`document_version_updated_at` PostgreSQL focused testもPASS済み。
+- `mise run api:check`はworkspace `mise.toml` untrustedで起動できなかったため、定義された2コマンドを直接実行。pnpmのpinned 12.4.1 shimも欠落していたためRedocly 2.52.1を一時的にnpm installして検証した。これは実装blockerではない。
+- Blocker: なし。中間hosted CIは実行していない。G9で同一headのfinal gatesを実行する。
+- 次のexact action: G3のFrozen Design / Plan記述と既存Document/Version/Folder detail routesを読み、`available | disabled(reason)` capability matrixのfocused RED testsを追加して、current authorizationとmutation時再評価を維持する。
+
+---
+
+## Current checkpoint — Document GUI Integration v0 G1 COMPLETE / G2 NEXT、2026-09-30 JST
+
+- G0 COMPLETE: PR #27/#29/#30/#31/#32/#35 merged. Product branch base is main `d71753d46590bb4406a1c0b74894ab90a27a6c88`.
+- Frozen Design blob `f132910ca5d3e638502f0b38447d9a1ec4020f24`, approved Plan blob `0830c306ebb38290e4c3dc277f6c97a0759cf912`; attached Source Design ZIP SHA `ba3c1bba8056f299ac0e91a89f6279a4002b91ffb54d683d9560cad1a8115c86`. No amendment proposed.
+- G1 COMPLETE on `feat/document-gui-integration-v0` at `069fcf23ee19c9592e15499aea1d2ddda6448512`. Test-only commits: schema RED `1fd1b14dce6f4674f7757861972e9a042a652252`; issuance contracts `a48f4c2566568d1eb9fc02baf034dbabf864dc09`; GREEN implementation commit is the current head.
+- G1 changed files add migration 0009/backfill, typed append-only DocumentRevision domain contract and atomic issuance in publish, metadata mutation, and eligible withdrawal fallback transactions. OCC revision, DocumentVersion.version_no, and human major.minor remain independent. Replay/no-op/non-revision operations do not create extra rows; unavailable legacy metadata stays null.
+- RED observed before transaction integration: absent initial-publication row, absent content-publication and withdrawal-fallback rows, and metadata mutation returning only the seeded legacy row. Schema tests first failed only because `document_revisions` did not exist. Migration/backfill focused checks subsequently passed, including rollback and rerun.
+- Local GREEN: `cargo fmt --all -- --check`; `cargo test -p document-domain --lib` (24/24); focused Postgres targets `versioning_schema`, `versioning_legacy`, `publish_transaction`, `publish_next_transaction`, `withdrawal_transaction`, `management_vertical_slice`, `publication_end_vertical_slice`, and `publish_concurrency` (28/28). No hosted CI was run for this intermediate task; final same-head hosted gates remain for G9, matching the request to avoid CI on every task.
+- Product PR has not been created yet. No blocker. Keep implementation PR Draft/unmerged; no deployment, production migration execution, or AD/SSPI connection.
+- Next exact action: begin G2 RED by inspecting the existing GUI document-list/history query and HTTP route composition, then add focused contracts for `document_versions.updated_at`, bounded file summaries, GUI displayVersion/displayRevision projections, and revision list/detail endpoints. Preserve current authorization, cursor binding, and T10 history semantics.
+
+## Superseded checkpoint — Document GUI Integration v0 G0 predecessor integration complete / PR #35 finalization in progress、2026-09-30 JST
+
+- Status: **G0 COMPLETE**。PR #27/#29/#30/#31/#32とDesign/Plan PR #35はMERGED。G1着手済みで、現在はtest-only schema contract RED。詳細: `docs/superpowers/execution/document-gui-integration-v0-status.md`。
 - Frozen Design blob f132910ca5d3e638502f0b38447d9a1ec4020f24; approved Production Plan blob 0830c306ebb38290e4c3dc277f6c97a0759cf912; Plan Approval record is present. No Design amendment proposed.
 - G0 merge commits: #27 95f60f02fbc4205bfc38b6097d419fadee9682a1; #29 2ebfbd46f80c65590950d35d7ef9534377a72035; #30 2a49a2ddc28a77fba286d5d70d17464fcf4949a1; #31 6240ebbebb0db45a7360efbf568d63a2a6101db3; #32 5a81fd856d81b557e4936f663aa8b0ab3fcaa5e2.
 - PR #32 exact head 04ccb84a6d9a99f63eca8d7512888225393058fa: Standard CI 36713044816, Sandbox 36713044612, and DSI PoC 36713044474 all SUCCESS. Main merge commit 5a81fd856d81b557e4936f663aa8b0ab3fcaa5e2 has the same tree bd2b7df1717503ff3ef937ede581e0b235f20e87; push CI 36714907650 is still in progress. Sandbox and DSI PoC workflows are pull-request-triggered only.

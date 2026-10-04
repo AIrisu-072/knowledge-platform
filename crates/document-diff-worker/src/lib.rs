@@ -12,8 +12,8 @@ pub use adapters::pptx::PptxComparator;
 pub use adapters::spreadsheet::SpreadsheetComparator;
 pub use adapters::text::TextComparator;
 pub use shell::{
-    MAX_REQUEST_BYTES, MAX_RESULT_BYTES, MAX_SOURCE_BYTES, decode_request_bounded,
-    guard_worker_execution, run_worker_shell,
+    MAX_REQUEST_BYTES, MAX_RESULT_BYTES, MAX_SOURCE_BYTES, decode_display_request_bounded,
+    decode_request_bounded, guard_worker_execution, run_display_worker_shell, run_worker_shell,
 };
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]

@@ -1,0 +1,206 @@
+# Organization D2 visual qualification status
+
+## 2026-10-02 16:56 UTC — Corrected source, all20 pixels and final CI GO; Phase3 frozen
+
+- Captured PR48 source `e6bf24d8afa76a4aa7c66546bd963e4e1a90ffc8` / tree `204a412ba40211ca052d81cdf79f2b8701c148bc` remains unchanged. Local `ef7f610f07b2bad4f37e42a9716d7988855770df` is tree-equivalent. This separate `design/organization-client-v0-ui-freeze` packet contains documentation only; its PR is not yet assigned.
+- Independent source/control GO closed the dynamic blocked→Return counterexample;328/328 checks and16 independent nearby cases passed. Both actual-pixel reviewers individually inspected all20 corrected originals and report **GO**, with the handoff/current-progress and blocked-submit findings visibly closed. [Final review and hashes](organization-d2-visual-review-v2.md) retain the [first NO-GO](organization-d2-visual-review-v1.md).
+- Normal CI37033125852, D2 normal37033125861, DSI37033125942, Sandbox37033125851 and capture37035368125 are SUCCESS. Capture-triggered CI37035368187 is **SUCCESS**, verified16:56UTC. The exact captured source now satisfies the final Phase3 freeze qualification. Publication/qualification of this separate evidence packet remains pending before Phase4 starts.
+- [Phase3 authority/qualification](../specs/2026-10-02-organization-client-v0-ui-approval.md) uses original§50, preserves the exact UI semantic snapshot and all frozen Phase1/2/Document/Search/Audit/production boundaries. No new owner routine approval is invented.
+- Evidence is20 temporary synthetic PNGs at1440 full-page924–1293px;1280 geometry and native interaction/font checks are separate. Search body, decision outcomes, open dialogs and dynamic blocked→Return are not pictured. No Tauri, production React or live business/security/persistence acceptance is claimed.
+- Next exact action: independently review this documentation-only packet, then publish/qualify its clean evidence tree through the parent. After that, start Phase4's current-official research and bounded design/plan under original approval; no new dependencies/runtime build yet.
+
+---
+
+## 2026-10-02 16:04 UTC — Actual pixels failed; bounded source correction prepared
+
+- Captured remote bd1f57f4/treec5ec2da6, run37028764386/job110910009723/artifact11236900877 is **visual NO-GO** despite successful hosted harness. [Exact20-image receipt](organization-d2-visual-review-v1.md) preserves all hashes, dimensions, expiry and two Important findings; other16 had no mandatory visual finding.
+- New isolated `fix/organization-d2-state-affordances` starts from equivalent clean local826e3186. [Source-review amendment](organization-client-v0-ui-review.md) derives completed/next-ready summary and rail, preserves pinned membership, and adds adjacent blocked reason plus clear disabled primary/hover/focus styling. Same shared projection repair labels outgoing return historically without inventing a named downstream ready step.
+- Independent review of6963e834 found blocked→Return retained disabled Submit styling/reason on the read-only instruction action. A narrow completed-action precedence fix is prepared; new RED2 regressions cover both archetypes and provider-denial preservation. Re-review remains pending.
+- Fresh combined Node source/DOM/harness verification:328/328 PASS, zero skips; the initial presentation RED had11 expected failures and hosted-helper RED had2. Source snapshot, syntax, unchanged keyboard/gates/frozen boundaries and whitespace are checked locally. These are not corrected browser/pixel evidence.
+- Next exact action: independent review of the clean candidate, parent publication and new exact-head normal hosted proof, then only a separately authorized corrected capture and independent20-image pixel review. Actual pixel gate remains NO-GO/pending correction; Phase3 not frozen, Phase4–6 not started. No local browser/build/capture/upload/publication or change to capture scope/gates/retention/locks/Document/Search/Audit.
+
+---
+
+## 2026-10-02 15:12 UTC — Dialog boundary repair prepared; normal hosted still failing
+
+- Latest parent-verified normal D2 run37024289977/job110894867737 failed at15:04:13UTC with `keyboard-dialog-tab-2-active-body-document-unfocused`. No native external destination is identified; no capture/upload occurred.
+- Isolated `fix/organization-d2-dialog-keyboard` is based exactly on localf9402b43/tree063483f5 (remote dd493ea1 tree-equivalent). The [source-review amendment](organization-client-v0-ui-review.md) records the approved-semantics-only edge handler, focused RED/GREEN and limits. Native modal/Escape/close/return semantics stay intact.
+- Source/DOM42/42 and fixed-stage keyboard149/149 pass locally. Hosted checks append reverse/required/disabled cases after the unchanged original checks; no waits/retries or screenshot/export/gate expansion.
+- Next exact action: independent review, parent publication, then new exact-head normal hosted qualification. Browser repair and actual pixels remain unproved; capture is closed, Phase3 not frozen, Phase4–6 not started. All inherited Document/Search/Audit, production and sharing boundaries remain.
+
+---
+
+## 2026-10-02 14:52 UTC — second Tab failure / bounded focus diagnostic
+
+Published head `2132284dd5afe9ec3fd0583f276555fa2a2dd209`, tree
+`490d40132257fec7be88af7648a5fcf7a97d2a75`, failed
+[normal D2 run37022846726](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37022846726),
+job110889993838 at14:52:15UTC with `keyboard-dialog-tab-2`. Earlier stages in
+that keyboard sequence passed. The actual native focus destination remains
+unknown: this stage covers the second key press and containment evaluation.
+There was no capture or upload and no source/UI repair is established.
+
+This diagnostic-only delta observes once, only after a false containment result.
+It reports one allowlisted combination of Tab1–5, active-element category
+`none`/`body`/`root`/`dialog`/`inside`/`outside`, and document `focused`/`unfocused`.
+No raw tag, ID, selector, text, value, DOM, exception, stack or path is emitted.
+Unknown categories or observation errors retain the original fixed Tab stage.
+The original false result still fails the same assertion even if this later
+snapshot reports `inside` or `dialog`; it is never a retry. Successful operation
+order and all assertions remain unchanged, with no waits or timing relaxation.
+
+The frozen-source Phase3 contracts (§8–9 of
+`docs/superpowers/specs/2026-10-02-organization-client-v0-ui-design.md` on PR48)
+require modal Tab containment and Escape/cancel draft preservation and focus
+restoration to the available trigger or Work heading. Phase3 acceptance itself
+is still pending. The [W3C modal dialog pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/)
+describes contained Tab/Shift+Tab navigation, Escape dismissal and return focus
+on close. These expectations are preserved. A later `body` observation does not
+prove browser-chrome focus, background access or an OS destination; the finite
+`document.hasFocus()` category also cannot identify any external destination.
+
+Focused fault tests produced60 expected REDs, then99/99 GREEN, including all60
+allowed combinations through the actual classification callback, unchanged
+success sequencing, retained false containment and rejected unknown categories.
+Full217/217 harness tests and static checks pass. This proves only diagnostic
+behavior, not browser behavior. Actual hosted execution of this new diagnostic
+and the root cause remain **NOT RUN / UNRESOLVED**.
+
+Next exact action: parent integrates the small delta over `3ca10780`, obtains
+independent privacy/semantic review, then publishes a new ordinary non-recording
+qualification head. Inspect only the fixed category before any source fix. No
+capture activation is justified while the normal keyboard gate is failing.
+
+---
+
+Status: **NORMAL HOSTED FAILED; DIAGNOSTIC CANDIDATE UNDER REVIEW; CAPTURE CLOSED**.
+
+## 2026-10-02 14:38 UTC — normal hosted keyboard failure / diagnostic-only candidate
+
+Published source `348fb053c1ba2999828b27cb7bffea805c146628`, tree
+`35c24f788467a38f1ac14f918464819f255c9175` (local integrated15da7aaf), failed
+[normal D2 run37021216999](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37021216999),
+job110884489649 at14:38:24UTC with the fixed category `keyboard`. Setup and
+harness units passed. The source-unit checks, browser launch and page load precede
+that category. The privacy-bounded log cannot identify which keyboard operation
+or assertion failed, nor prove a particular page/width reached completion. No
+capture, upload or visual acceptance occurred.
+
+Read-only inspection confirmed the unchanged skip link, focus-visible rule,
+focusable main, native modal controls and close-event return target. Native Tab
+containment and Escape/close focus timing are hypotheses, not established root
+causes. No local browser, alternate renderer, bypass, assertion relaxation,
+wait/retry addition or source/UI change is justified by this evidence.
+
+The bounded diagnostic candidate adds21 fixed keyboard-stage names, a stage
+callback and the same fail-closed sanitizer. Every original key, focus operation,
+assertion, order and timing is retained. No DOM/observed value, selector, raw
+exception, stack, private path, screenshot or artifact is added to output.
+Unknown/dynamic values still reduce to `internal`. Fake-page fault injection
+first produced30 expected REDs, then31/31 GREEN diagnostic tests; the full149
+harness tests pass. This verifies stage attribution/privacy and retained checks,
+not actual native focus behavior or a resolved keyboard defect.
+
+Next exact action: parent integrates this diagnostic-only delta onto the current
+reviewed source and obtains independent privacy/semantic review before publishing
+a new head for ordinary non-capture hosted qualification. Use its fixed failing
+stage as evidence before choosing a behavioral repair. No label/capture until a
+later exact head passes all applicable normal gates and review requirements.
+
+---
+
+## 2026-10-02 14:26 UTC — Integrated source/workflow/privacy GO; hosted qualification next
+
+- Independent integrated review **GO**, no remaining Critical/Important findings, at local `55253877842d9792f491a752e40b447084132065`, tree `68dd921273c98bbf470e2e1b424df5f18a6f6049`. This is local source/control qualification, not a hosted, artifact or pixel result.
+- Initial integrated `fb13c3ce` was NO-GO: prerequisite runs could belong to another PR/base. Writer repair0575ced9 and integrated re-review bind every CI/D2/DSI prerequisite to the actual PR48/head/repository/branch and frozen D1 base13c1292c using GitHub's verified minimal nested repo shape. Retarget/missing/ambiguous association is denied; source replay count precedes association filtering. Complete response checks reject unseen pages.
+- This integrated delta changes Active/mise, so CI, DSI PoC, DSI Sandbox and normal D2 source qualification are applicable. Mandatory jobs must succeed; optional Draft macOS DSI jobs may skip. Source-only0dca CI37016358837 SUCCESS is historical and cannot qualify this changed head.
+- Fresh pinned Node24.21.0 harness118/118 and source/DOM28/28, syntax/actionlint/whitespace/preservation checks PASS; reviewer independently rejected10 extra malformed subjects and accepted the exact valid subject. Writer's preserved runtime129/129 remains scoped helper proof. No browser/source file or old PR43/lock/frozen design change.
+- Actual source packet is byte-identical to independently reviewed d37bb7ab / remote source-onlyPR48head0dcaeea6. New changes are the guarded harness and its review/status documents. All20 image captures remain NOT RUN.
+- Next exact action: parent publishes the exact clean integrated tree to PR48, verifies its new remote head and all four applicable normal workflows, then may apply its `d2-visual-<exact40head>` label once within the current review window. No automatic activation/relabel/rerun is authorized by this status. The capture repeats source/font/geometry/keyboard assertions, exports only20 approvedPNG and then requires actual artifact/provenance/pixel review before Phase3 freeze.
+- A later documentation receipt records this result without changing reviewed browser/gate/export bytes. The containing publication head/tree and actual run IDs belong in the parent PR receipt; this document cannot contain its own hash or future success.
+
+---
+
+
+Date: 2026-10-02 UTC. Status: **LOCAL PR48-BOUND CANDIDATE; CAPTURE DEFAULT-OFF; INDEPENDENT REVIEW / HOSTED BROWSER / ACTUAL PIXELS NOT RUN**.
+
+## Subject and preserved boundaries
+
+- Worktree branch `feat/organization-d2-visual-harness`, based on local D1
+  `ac76156ecba5a139a1df9ead5e00616aa08aa5af` (remote DraftPR47
+  `13c1292c806c9179be0a444ef2b4be8234e00bf4`, same tree).
+- UI source is independently authored/reviewed on `design/organization-client-v0-ui`.
+  Its eight files are read-only references here, never copied or changed by this
+  commit. Parent allocated [DraftPR48](https://github.com/AIrisu-072/knowledge-platform/pull/48)
+  at source-only remote head `0dcaeea6d1dce37f3833f5c8ec972ebf9368bac1`, tree
+  `a7517c356b1809dda8da7faccf9894c73ea2563f`, matching the reviewed local source.
+  The guard now binds exactly48. Parent still owns integration, publication and
+  deliberate exact-head activation; no label or capture was performed here.
+- D1 frozen Phase1/2, accepted PR43 H2, its existing13-image gate/workflow,
+  dependencies/locks, product code and production/OS/security boundaries remain
+  unchanged. Only two additive mise tasks, dedicated D2 workflow, harness/tests
+  and bounded D2 documentation are introduced.
+- [D2 authority ADR](../../decisions/2026-10-02-organization-d2-visual-upload.md)
+  records the13:19UTC owner approval, exact prior action graph and one-day scope.
+
+## 2026-10-02 14:11 UTC — independent prerequisite-subject finding repaired locally
+
+The independent integrated review of `fb13c3ce` / tree`e993ae71` was **NO-GO**
+with one Important finding: successful runs for another PR or base could satisfy
+the old prerequisite gate. This repair is not self-approval; the combined exact
+head still needs independent re-review.
+
+Fresh live API reads verified PR48's base and actual CI37016358837 association
+schema. The guard now pins repository1369120817, base branch
+`design/organization-client-v0` and base SHA
+`13c1292c806c9179be0a444ef2b4be8234e00bf4`; every selected CI/source/DSI run must
+have exactly one matching current-PR/head/base association. Event and live PR
+retargets deny execution/export. Source-run replay counting remains ahead of
+association checks. Counterexample REDs covered wrong/missing/ambiguous PR,
+head/repository/base mismatches, replay preservation and DSI failure/missing/
+pending/wrong subject, followed by GREEN.
+
+Both DSI workflows apply to the integrated delta's retained Active change; DSI
+PoC also matches mise. The mandatory qualification/preflight jobs are now required
+alongside normal CI and normal D2. Optional Draft macOS jobs are not promoted to
+mandatory. Source-only0dcaeea6's CI-only result remains a distinct historical
+subject with inapplicable DSI filters.
+
+## Local verification and limits
+
+Initial REDs were observed for missing accepted gate/prerequisites, allowlisted
+snapshot/server behavior, PNG/export behavior, browser pure-contract helpers and
+workflow wiring. GREEN follows for each. Supplemental replay RED proved another
+prior same-head D2 workflow run must block activation. Fresh pinned Node24.21.0 harness118 tests, preserved Document runtime129 tests,
+all new JavaScript syntax checks, actionlint1.7.12, prebuilt architecture-lint and
+whitespace checks PASS. The initial preserved suite was blocked in two files by
+missing TypeScript resolution; reuse of an existing qualified dependency tree
+(no install, temporary symlink removed) produced129/129. The suite result does
+not imply actual backend/Chromium execution. Immutable commit/tree/file manifests
+are delivered to the parent separately.
+
+Final read-only source-reference check at clean UI head
+`d37bb7ab787bb6f9e311f4c8aea16562714af831`, tree
+`a7517c356b1809dda8da7faccf9894c73ea2563f`, passes28/28 (24 DOM and4 source).
+All eight source files pass the safe snapshot reader. The prior four transient
+comparison/outbound-return RED assertions belonged to the author's correction
+cycle and are now green. This remains unit evidence, not an independent source
+GO or hosted qualification. GitHub's documented `path@ref` metadata is covered
+by a supplemental RED/GREEN without weakening exact source/run binding.
+
+No local browser download, renderer, production build, Cargo, capture, upload,
+PR creation, label, merge or deployment was performed. The cloud browser's
+`ERR_BLOCKED_BY_CLIENT` remains a boundary, not a reason to bypass it. Only
+actual newly authorized GitHub Ubuntu execution may establish the new renderer
+proof. Helper/static/jsdom checks are not rendered-pixel evidence.
+
+## Next exact action
+
+The allocated PR48 binding has a focused RED/GREEN and preserves all owner,
+branch, time, exact-head, first-attempt, normal-CI and20-PNG/one-day guards.
+Parent now integrates the reviewed source and this candidate, then obtains
+independent source/privacy/workflow review for that complete exact head. Then publish it and wait for normal exact-
+head CI, DSI PoC, DSI Sandbox and D2 browser qualification. Only after those pass may the parent apply
+its one exact-head label within the finite window. Capture, artifact receipt,
+expiry and actual review of20 images remain separate required outcomes. Follow
+[the procedure](../../operations/organization-d2-visual-qualification.md).

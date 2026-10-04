@@ -58,10 +58,10 @@ impl VersionFileAccessRepository for PostgresDocumentRepository {
         sqlx::query(
             "INSERT INTO audit_outbox_events \
              (event_id,event_type,source,subject,actor_identity_provider,actor_principal_id, \
-              resource_type,resource_id,resource_version_id,result,data,occurred_at) \
+              resource_type,resource_id,resource_version_id,result,trace_id,data,occurred_at) \
              VALUES ($1,'document.file.access_granted', \
                      'urn:knowledge-platform:document-platform',$2,$3,$4, \
-                     'Document',$5,$6,'success',$7,now())",
+                     'Document',$5,$6,'success',$7,$8,now())",
         )
         .bind(audit_event_id)
         .bind(format!(
@@ -74,6 +74,7 @@ impl VersionFileAccessRepository for PostgresDocumentRepository {
         .bind(ctx.principal().principal_id())
         .bind(request.version.document_id.as_uuid())
         .bind(request.version.document_version_id.as_uuid())
+        .bind(request.correlation_id.map(|id| id.to_string()))
         .bind(json!({
             "content_item_id": request.content_item_id,
             "representation_id": request.representation_id,

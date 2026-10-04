@@ -12,7 +12,8 @@ use std::{
 };
 
 use document_diff_core::{
-    FormatId, WorkerDiffRequest, WorkerDiffResponse, decode_worker_response_bounded,
+    FormatId, WorkerDiffRequest, WorkerDiffResponse, WorkerDisplayRequest, WorkerDisplayResponse,
+    decode_worker_response_bounded,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -81,6 +82,7 @@ pub(super) fn compare(
         &base_file,
         &target_file,
         request_bytes,
+        "compare",
     )?;
     if !status.success() {
         return Err(map_worker_failure(status, &stderr));
@@ -90,6 +92,57 @@ pub(super) fn compare(
     response
         .validate_against(&request)
         .map_err(|_| RunnerError::InvalidResult("worker response binding"))?;
+    Ok(response)
+}
+
+pub(super) fn extract_display(
+    config: &RunnerConfig,
+    request: WorkerDisplayRequest,
+    source: &[u8],
+) -> Result<WorkerDisplayResponse, RunnerError> {
+    request
+        .validate()
+        .map_err(|_| resource("display request bounds"))?;
+    check_raw(source, request.size_bytes, request.raw_sha256)?;
+    let request_bytes = serde_json::to_vec(&request)
+        .map_err(|_| RunnerError::InvalidResult("display request serialization"))?;
+    if request_bytes.len() > 64 * 1024 {
+        return Err(resource("display request bytes"));
+    }
+    let private_root = tempfile::Builder::new()
+        .prefix("diff-display-")
+        .tempdir()
+        .map_err(|_| unavailable("private workspace"))?;
+    let staging = private_root.path().join("staging");
+    let scratch = private_root.path().join("scratch");
+    fs::create_dir(&staging).map_err(|_| unavailable("private staging"))?;
+    fs::create_dir(&scratch).map_err(|_| unavailable("private scratch"))?;
+    fs::set_permissions(&staging, fs::Permissions::from_mode(0o700))
+        .map_err(|_| unavailable("staging permissions"))?;
+    fs::set_permissions(&scratch, fs::Permissions::from_mode(0o700))
+        .map_err(|_| unavailable("scratch permissions"))?;
+    let source_file = stage_read_only(&staging.join("source"), source)?;
+    let empty_target = stage_read_only(&staging.join("unused-target"), b"")?;
+    let (status, stdout, stderr) = run_child(
+        config,
+        private_root.path(),
+        &scratch,
+        &source_file,
+        &empty_target,
+        request_bytes,
+        "display",
+    )?;
+    if !status.success() {
+        return Err(map_worker_failure(status, &stderr));
+    }
+    if stdout.len() > MAX_RESULT_BYTES {
+        return Err(resource("display response bytes"));
+    }
+    let response: WorkerDisplayResponse = serde_json::from_slice(&stdout)
+        .map_err(|_| RunnerError::InvalidResult("display response decoding"))?;
+    response
+        .validate_against(&request)
+        .map_err(|_| RunnerError::InvalidResult("display response binding"))?;
     Ok(response)
 }
 
@@ -123,6 +176,7 @@ fn run_child(
     base_file: &File,
     target_file: &File,
     request_bytes: Vec<u8>,
+    operation: &'static str,
 ) -> Result<(ExitStatus, Vec<u8>, Vec<u8>), RunnerError> {
     let base_dup = duplicate_for_child(base_file)?;
     let target_dup = duplicate_for_child(target_file)?;
@@ -131,6 +185,7 @@ fn run_child(
     let mut command = Command::new(&config.worker_executable);
     command
         .env_clear()
+        .env("DIFF_OPERATION", operation)
         .env("DIFF_SANDBOX_REQUIRED", "1")
         .env("DSI_SANDBOX_REQUIRED", "1")
         .env("DIFF_BASE_FD", "3")
