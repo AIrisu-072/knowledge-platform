@@ -113,7 +113,7 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(migrations_before.len(), 4);
+    assert_eq!(migrations_before.len(), 5);
     migrate(&pool).await.unwrap();
     let migrations_after: Vec<(i64, Vec<u8>, time::OffsetDateTime)> = sqlx::query_as(
         "SELECT version, checksum, applied_at FROM work.schema_migrations ORDER BY version",
@@ -1255,4 +1255,185 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
         .await
         .unwrap();
     assert!(!replay.dispatch);
+    // A final Human completion uses the same transaction and operation ledger.
+    // Pending Agent output is fenced by the same atomic close, without editing
+    // submitted membership or archived attempts.
+    let current = agents
+        .task(VerifiedActor::Office01, OFFICE_TASK_ID)
+        .await
+        .unwrap();
+    let pending_command = Command::RequestAgentExecution {
+        task_id: OFFICE_TASK_ID,
+        context: ctx(VerifiedActor::Office01, current.task.revision),
+        expected_attempt_id: current.task.attempt_id,
+        purpose: "完了後の遅い結果を拒否".into(),
+        evidence_revision_refs: vec![RevisionRef {
+            id: ev.id,
+            revision: 1,
+        }],
+    };
+    let pending = agents
+        .request_agent_execution(VerifiedActor::Office01, pending_command)
+        .await
+        .unwrap();
+    let pending_id = match pending.outcome {
+        MutationResult::AgentExecutionRequested { execution, .. } => execution.id,
+        _ => panic!(),
+    };
+    let late_context = agents
+        .start_agent_execution(VerifiedActor::Office01, pending_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let current = agents
+        .task(VerifiedActor::Office01, OFFICE_TASK_ID)
+        .await
+        .unwrap();
+    assert!(current.task.can_complete);
+    let complete = Command::Complete {
+        task_id: OFFICE_TASK_ID,
+        context: ctx(VerifiedActor::Office01, current.task.revision),
+        expected_attempt_id: current.task.attempt_id,
+        definition_action_id: current.task.completion_action_id.unwrap(),
+    };
+    let before: (serde_json::Value, i64, i64, i64, i64) = sqlx::query_as(rollback_state_sql)
+        .bind(WORKFLOW_ID)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::raw_sql("CREATE FUNCTION work.reject_staging() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test staging failure'; END $$; CREATE TRIGGER reject_staging BEFORE INSERT ON work.event_staging FOR EACH ROW EXECUTE FUNCTION work.reject_staging();").execute(&pool).await.unwrap();
+    assert!(
+        agents
+            .execute(VerifiedActor::Office01, complete.clone())
+            .await
+            .is_err()
+    );
+    let after: (serde_json::Value, i64, i64, i64, i64) = sqlx::query_as(rollback_state_sql)
+        .bind(WORKFLOW_ID)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        after, before,
+        "completion, running Agent invalidation, ledger and staging roll back together"
+    );
+    sqlx::raw_sql(
+        "DROP TRIGGER reject_staging ON work.event_staging; DROP FUNCTION work.reject_staging();",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let completed = agents
+        .execute(VerifiedActor::Office01, complete.clone())
+        .await
+        .unwrap();
+    let serialized = serde_json::to_value(&completed).unwrap();
+    assert_eq!(serialized["kind"], "completed");
+    assert_eq!(serialized["task"]["state"], "completed");
+    assert_eq!(serialized["task"]["canComplete"], false);
+    assert_eq!(
+        agents
+            .execute(VerifiedActor::Office01, complete.clone())
+            .await
+            .unwrap(),
+        completed
+    );
+    let restored =
+        PostgresWorkRepository::with_agent_source(pool.clone(), source.clone(), provider.clone());
+    assert_eq!(
+        restored
+            .recover(VerifiedActor::Office01, complete.context().operation_id)
+            .await
+            .unwrap(),
+        completed
+    );
+    assert_eq!(
+        restored
+            .task(VerifiedActor::Office01, OFFICE_TASK_ID)
+            .await
+            .unwrap()
+            .task
+            .state,
+        TaskState::Completed
+    );
+    assert_eq!(
+        restored
+            .recover(VerifiedActor::Sales01, complete.context().operation_id)
+            .await,
+        Err(WorkError::WorkItemNotFound)
+    );
+    let after: (serde_json::Value, i64, i64, i64, i64) = sqlx::query_as(rollback_state_sql)
+        .bind(WORKFLOW_ID)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    for key in [
+        "source",
+        "snapshots",
+        "completedAttempts",
+        "returnInstructions",
+        "artifacts",
+        "evidence",
+        "findings",
+        "decisions",
+    ] {
+        assert_eq!(before.0[key], after.0[key], "completion preserves {key}");
+    }
+    let counts: (i64,i64,i64) = sqlx::query_as("SELECT (SELECT count(*) FROM work.operation_ledger WHERE operation_id=$1), (SELECT count(*) FROM work.workflow_history WHERE operation_id=$1 AND kind='completed'), (SELECT count(*) FROM work.event_staging WHERE operation_id=$1 AND action='completed')").bind(complete.context().operation_id).fetch_one(&pool).await.unwrap();
+    assert_eq!(counts, (1, 1, 1));
+    assert_eq!(
+        restored
+            .agent_execution(VerifiedActor::Office01, pending_id)
+            .await
+            .unwrap()
+            .status,
+        AgentExecutionStatus::Failed
+    );
+    assert_eq!(
+        restored
+            .finish_agent_execution(
+                late_context,
+                AgentFindingOutput {
+                    summary: "合成実行".into(),
+                    claim: "遅い候補".into(),
+                    uncertainty: vec!["本文分析なし".into()]
+                }
+            )
+            .await,
+        Err(WorkError::WorkContextStale)
+    );
+    let mut changed = complete.clone();
+    if let Command::Complete {
+        definition_action_id,
+        ..
+    } = &mut changed
+    {
+        *definition_action_id = RETURN_TRANSITION_ID;
+    }
+    assert_eq!(
+        restored.execute(VerifiedActor::Office01, changed).await,
+        Err(WorkError::OperationConflict)
+    );
+    let current = restored
+        .task(VerifiedActor::Office01, OFFICE_TASK_ID)
+        .await
+        .unwrap();
+    let new_operation = Command::Complete {
+        task_id: OFFICE_TASK_ID,
+        context: ctx(VerifiedActor::Office01, current.task.revision),
+        expected_attempt_id: current.task.attempt_id,
+        definition_action_id: COMPLETE_ACTION_ID,
+    };
+    assert_eq!(
+        restored
+            .execute(VerifiedActor::Office01, new_operation)
+            .await,
+        Err(WorkError::HandoffNotReady)
+    );
+    source.allowed.store(false, Ordering::SeqCst);
+    assert_eq!(
+        restored.evidence(VerifiedActor::Office01, ev.id).await,
+        Err(WorkError::EvidenceNotFound)
+    );
+    source.allowed.store(true, Ordering::SeqCst);
 }

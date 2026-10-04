@@ -72,6 +72,7 @@ export function TaskHomePage() {
     client.setQueriesData<{ items: TaskSummary[]; nextCursor: null }>({ queryKey: [...actorKey(sessionData), 'tasks'] }, (previous) => previous ? { ...previous, items: previous.items.map((item) => matchesCurrent(item, result.task) ? result.task : item) } : previous);
     if (result.kind !== 'claimed') client.setQueryData<TaskDetail>(taskKey(sessionData, result.task), (previous) => previous && matchesCurrent(previous, result.task) ? { ...previous, ...result.task, workingArtifacts: result.kind === 'draft_saved' ? [result.artifact] : previous.workingArtifacts, ...((result.kind === 'agent_execution_requested' || result.kind === 'agent_execution_cancelled') ? { agentExecutionIds: Array.from(new Set([...previous.agentExecutionIds, result.execution.id])) } : {}) } : previous);
     if (['evidence_registered', 'finding_registered', 'decision_recorded'].includes(result.kind)) void client.invalidateQueries({ queryKey: evidenceRecordsKey(sessionData, result.task) });
+    if (result.kind === 'completed') void client.invalidateQueries({ queryKey: taskKey(sessionData, result.task) });
     if (result.kind === 'returned') client.setQueryData([...actorKey(sessionData), 'return-instruction', result.returnInstruction.id], result.returnInstruction);
     if (result.kind === 'submitted') client.setQueryData([...actorKey(sessionData), 'snapshot', result.snapshot.id], result.snapshot);
   }
@@ -132,7 +133,7 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
   const { draft, reason, notice, operation, unknown, error } = transient;
   const setDraft = (value: string | null) => setTransient((previous) => ({ ...previous, draft: value }));
   const setNotice = (value: string) => setTransient((previous) => ({ ...previous, notice: value }));
-  const [confirmation, setConfirmation] = useState<'submit' | 'return' | null>(null);
+  const [confirmation, setConfirmation] = useState<'submit' | 'return' | 'complete' | null>(null);
   const [denied, setDenied] = useState(false);
   const text = draft ?? artifact?.value.text ?? '';
   const dirty = text !== (artifact?.value.text ?? '');
@@ -155,6 +156,7 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
       if (result.kind === 'evidence_registered') setNotice('根拠を登録しました');
       if (result.kind === 'finding_registered') setNotice('候補を登録しました');
       if (result.kind === 'decision_recorded') setNotice('人間判断を記録しました');
+      if (result.kind === 'completed') setTransient((previous) => ({ ...previous, draft: null, reason: null, notice: 'タスクの完了が確定しました' }));
       if (result.kind === 'claimed') setNotice('担当が確定しました');
       if (result.kind === 'submitted') setNotice(`提出が確定しました`);
     },
@@ -170,6 +172,7 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
   }
   const returnReason = reason ?? '';
   const returnOversized = new TextEncoder().encode(returnReason).length > 8192;
+  const completionActionId = task.canComplete ? task.completionActionId : null;
   const returnTarget = task.canReturn ? task.returnTransition : null;
   const canConfirmReturn = Boolean(returnTarget && snapshot?.id === returnTarget.previousSubmissionId && returnReason.trim() && !returnOversized);
   const busy = mutation.isPending || unknown;
@@ -191,11 +194,12 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
       {!task.canSubmit && <p className={styles.muted}>この段階では提出できません。現在の担当で文案の確認・保存を行えます。</p>}
       {detail.workingArtifacts.length > 1 && <p role="alert">複数の成果物の編集・提出はこのPoCでは対応していません</p>}
     </div>}
+    {detail && completionActionId && <section className={styles.editor} aria-label="タスクの完了"><h2>タスクの完了</h2><p>現在のタスクを完了し、保存済みの内容を読み取り専用で残します。</p><div className={styles.actions}><button type="button" className={styles.primary} disabled={busy} onClick={() => setConfirmation('complete')}>完了内容を確認</button></div></section>}
     {detail && returnTarget && <div className={styles.editor}><h2>営業への差戻</h2><p className={styles.muted}>受領した提出内容は固定のまま残し、差戻先に新しい試行を作成します。</p><label htmlFor="return-reason">差戻理由</label><p id="return-reason-help" className={styles.muted}>必須 · 空白のみ不可、UTF-8で8192バイト以内</p><textarea id="return-reason" required aria-describedby="return-reason-help" value={returnReason} disabled={busy} onChange={(event) => { setTransient((previous) => ({ ...previous, reason: event.target.value, notice: '' })); }} />
       {returnOversized && <p role="alert">差戻理由はUTF-8で8192バイト以内にしてください</p>}
       <div className={styles.actions}><button type="button" disabled={busy || !canConfirmReturn} onClick={() => setConfirmation('return')}>差戻内容を確認</button></div>
     </div>}
-    {detail && !task.canEdit && <p className={styles.notice}>{returnTarget ? '受領した提出内容は読み取り専用です。' : '現在のタスクは読み取り専用です。提出済み内容は変更されません。'}</p>}
+    {detail && !task.canEdit && !completionActionId && <p className={styles.notice}>{returnTarget ? '受領した提出内容は読み取り専用です。' : '現在のタスクは読み取り専用です。提出済み内容は変更されません。'}</p>}
     {mutation.data?.kind === 'submitted' && <p>次のタスク：{mutation.data.nextTask.stepLabel}（{taskStateLabel(mutation.data.nextTask.state)}）</p>}
     {confirmation === 'submit' && artifact && <Modal className={styles.dialogScrim} isOpen isDismissable={false} isKeyboardDismissDisabled={mutation.isPending} onOpenChange={(open) => { if (!open && !mutation.isPending) setConfirmation(null); }}><Dialog className={styles.dialog} aria-labelledby="submit-title"><Heading slot="title" id="submit-title">提出の確認</Heading>
       <p>{task.title} · タスク {task.id}</p><p className={styles.muted}>試行 {task.attemptId} · タスク版 {task.revision} · 文案版 {artifact.revision}</p>
@@ -208,6 +212,13 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
         {!closure && evidenceRecords.isSuccess && <p role="alert">選択した候補・判断が参照する根拠と候補の同じ版も選択してください。合計100件以内です。</p>}
       </fieldset>
       <div className={styles.actions}><button type="button" autoFocus disabled={mutation.isPending} onClick={() => setConfirmation(null)}>キャンセル</button><button type="button" className={styles.primary} disabled={mutation.isPending || !closure} onClick={() => { startOperation({ kind: 'submitted', taskId: task.id, input: { ...command(), expectedAttemptId: task.attemptId, ...selection, artifacts: [{ artifactId: artifact.id, revision: artifact.revision }] } }); }}>提出を確定</button></div>
+    </Dialog></Modal>}
+    {confirmation === 'complete' && completionActionId && <Modal className={styles.dialogScrim} isOpen isDismissable={false} isKeyboardDismissDisabled={mutation.isPending} onOpenChange={(open) => { if (!open && !mutation.isPending) setConfirmation(null); }}><Dialog className={styles.dialog} aria-labelledby="complete-title"><Heading slot="title" id="complete-title">タスク完了の確認</Heading>
+      <p>{task.title} · タスク {task.id}</p><p>試行 {task.attemptNumber}（{task.attemptId}） · タスク版 {task.revision}</p>
+      <p>実行する担当 {session.principalId} · {session.actingAssignmentId}</p>
+      <p>現在の試行を完了します。完了後は読み取り専用になり、保存済みの提出内容・根拠・人間判断・Agent結果を現在の権限で確認できます。</p>
+      <p>新しい担当や提出スナップショットは作成せず、過去の記録は変更しません。</p>
+      <div className={styles.actions}><button type="button" autoFocus disabled={mutation.isPending} onClick={() => setConfirmation(null)}>キャンセル</button><button type="button" className={styles.primary} disabled={busy} onClick={() => startOperation({ kind: 'completed', taskId: task.id, input: { ...command(), expectedAttemptId: task.attemptId, action: 'complete', definitionActionId: completionActionId } })}>完了を確定</button></div>
     </Dialog></Modal>}
     {confirmation === 'return' && returnTarget && snapshot && <Modal className={styles.dialogScrim} isOpen isDismissable={false} isKeyboardDismissDisabled={mutation.isPending} onOpenChange={(open) => { if (!open && !mutation.isPending) setConfirmation(null); }}><Dialog className={styles.dialog} aria-labelledby="return-title"><Heading slot="title" id="return-title">差戻の確認</Heading>
       <p>{task.title} · 試行 {task.attemptNumber}（{task.attemptId}） · タスク版 {task.revision}</p><p>差戻先タスク {returnTarget.targetTaskId} · 元の提出 {returnTarget.previousSubmissionId}</p>
@@ -223,5 +234,5 @@ function ReturnInstructionView({ instruction }: { instruction: ReturnInstruction
 function Snapshot({ snapshot, received, prior = false }: { snapshot: HandoffSnapshot; received: boolean; prior?: boolean }) {
   return <section className={styles.snapshot} aria-label={prior ? '差戻前のスナップショット' : received ? '受領したスナップショット' : '提出済みスナップショット'}><h2>{prior ? '差戻前のスナップショット' : received ? '受領したスナップショット' : '提出済みスナップショット'}</h2><p className={styles.muted}>固定された提出内容 · {snapshot.id}<br /><time dateTime={snapshot.createdAt}>{formatDateTime(snapshot.createdAt)}</time></p>{snapshot.artifacts.map((artifact) => <div key={artifact.artifactId}><p className={styles.muted}>文案版 {artifact.revision}</p><p className={styles.text}>{artifact.value.text}</p></div>)}{(['evidenceRevisionRefs', 'findingRevisionRefs', 'decisionRevisionRefs'] as const).map((kind) => <p key={kind} className={styles.muted}>{({ evidenceRevisionRefs: '共有された根拠', findingRevisionRefs: '共有された候補', decisionRevisionRefs: '共有された判断' })[kind]}：{snapshot[kind]?.length ? snapshot[kind].map((ref) => `${ref.id}（版 ${ref.revision}）`).join('、') : 'なし'}</p>)}</section>;
 }
-function historyLabel(kind: string): string { return ({ claimed: '担当を引受', draft_saved: '文案を保存', evidence_registered: '根拠を登録', finding_registered: '候補を登録', decision_recorded: '人間判断を記録', submitted: '提出', returned: '差戻', seeded: 'タスクを作成' })[kind] ?? '業務状態を更新'; }
+function historyLabel(kind: string): string { return ({ claimed: '担当を引受', draft_saved: '文案を保存', evidence_registered: '根拠を登録', finding_registered: '候補を登録', decision_recorded: '人間判断を記録', submitted: '提出', completed: 'タスクを完了', returned: '差戻', seeded: 'タスクを作成' })[kind] ?? '業務状態を更新'; }
 export function OrganizationSearchPage() { const organization = useOrganizationContext(); const search = validateTaskSearch(Object.fromEntries(new URLSearchParams(organization.taskHref.split('?')[1] ?? ''))); return <AppShell activeNavigation="search" mainLabel="検索ワークスペース" showContextPanel={false}><section className={styles.work}><h1>検索</h1><p>Search PlatformはこのブラウザーPoCでは未実装です</p><Link to="/tasks" search={search}>タスクへ戻る</Link></section></AppShell>; }

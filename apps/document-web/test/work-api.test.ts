@@ -1,6 +1,6 @@
 import { workApi, WorkApiError } from '../src/api/work-api';
 
-const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, canRequestAgent: true, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null };
+const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canComplete: false, completionActionId: null, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, canRequestAgent: true, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null };
 const artifact = { id: 'draft-1', taskId: task.id, attemptId: task.attemptId, revision: 1, schemaId: 'organization.text-draft.v1', value: { text: '文案' }, visibility: 'work_item_private' };
 const response = (body: unknown, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body } as Response);
 let fetchMock: jest.Mock;
@@ -172,4 +172,26 @@ test('commit-unknown execution remains a typed unknown outcome on current read a
   const receipt = { kind: 'agent_execution_requested', task, execution: unknown };
   fetchMock.mockResolvedValue(response(receipt));
   await expect(workApi.getOperation('request-op')).resolves.toEqual(receipt);
+});
+
+
+test('completion capability and its definition action survive task decoding independently of editing', async () => {
+  const current = { ...task, canEdit: false, canSubmit: false, canComplete: true, completionActionId: 'complete-definition-action', inputResources: [], history: [], workingArtifacts: [], agentExecutionIds: [] };
+  fetchMock.mockResolvedValue(response(current));
+  await expect(workApi.getTask(task.id)).resolves.toEqual(current);
+});
+
+test('completion sends only the frozen action and OCC, then recovers the same completed receipt', async () => {
+  const command = { operationId: 'complete-op', expectedRevision: 2, actingAssignmentId: 'assignment-office', expectedAttemptId: task.attemptId, action: 'complete' as const, definitionActionId: 'definition-action' };
+  const receipt = { kind: 'completed', task: { ...task, revision: 3, state: 'completed', canEdit: false, canSubmit: false, canComplete: false, completionActionId: null } };
+  fetchMock.mockResolvedValue(response(receipt));
+  await expect(workApi.completeTask(task.id, command)).resolves.toEqual(receipt);
+  expect(fetchMock.mock.calls[0]).toEqual(['/v1/organization/tasks/task-1/actions', expect.objectContaining({ method: 'POST', credentials: 'same-origin', cache: 'no-store', body: JSON.stringify(command) })]);
+  expect(fetchMock.mock.calls[0]?.[1].headers).not.toHaveProperty('Authorization');
+  await expect(workApi.getOperation(command.operationId)).resolves.toEqual(receipt);
+});
+
+test.each([{ id: 'other-task' }, { attemptId: 'other-attempt' }, { state: 'active' }])('completion rejects a mismatched receipt as unknown: %j', async (patch) => {
+  fetchMock.mockResolvedValue(response({ kind: 'completed', task: { ...task, state: 'completed', ...patch } }));
+  await expect(workApi.completeTask(task.id, { operationId: 'complete-op', expectedRevision: 1, actingAssignmentId: 'assignment-office', expectedAttemptId: task.attemptId, action: 'complete', definitionActionId: 'definition-action' })).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: true });
 });

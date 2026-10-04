@@ -1,7 +1,7 @@
 import { currentAction } from './support';
 import { expect, test } from '@playwright/test';
-import type { Claimed, DraftCommand, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, SubmitCommand, Submitted, TaskDetail, TaskPage, WorkCommand, WorkingArtifact } from '../src/api/generated-work/types.gen';
-import { assertHidden, assertSessions, assertEvidenceState, assertAgentState, requestSyntheticFinding, captureFinal, get, publishedEvidenceSource, readRuntimeContext, recordDecision, registerEvidence, registerFinding, revisionRef, saveState } from './support';
+import type { WorkflowActionCommand, Completed, Claimed, DraftCommand, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, SubmitCommand, Submitted, TaskDetail, TaskPage, WorkCommand, WorkingArtifact } from '../src/api/generated-work/types.gen';
+import { assertCompletionState, assertHidden, assertSessions, assertEvidenceState, assertAgentState, requestSyntheticFinding, captureFinal, get, publishedEvidenceSource, readRuntimeContext, recordDecision, registerEvidence, registerFinding, revisionRef, saveState } from './support';
 
 const returnReason = '【合成データ】対象数量を追記して再提出してください。';
 const revisedText = '【合成データ】対象数量は10件です。営業で参照資料と照合して追記しました。';
@@ -379,14 +379,55 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     currentAction('final-verify');
     await assertEvidenceState(request, context, source.id, claimed.task.id, evidence, agents);
     currentAction('final-verify');
+    const beforeCompletion = await captureFinal(request, context, source.id, submitted.nextTask.id, resubmitted.snapshot.id, submitted.snapshot.id, returned.returnInstruction.id);
+    expect(beforeCompletion.officeTask).toMatchObject({ state: 'active', canComplete: true });
+    expect(beforeCompletion.officeTask.completionActionId).not.toBeNull();
+    currentAction('complete-preview');
+    await office.getByRole('button', { name: '完了内容を確認', exact: true }).click();
+    const completionDialog = office.getByRole('dialog', { name: 'タスク完了の確認', exact: true });
+    await expect(completionDialog).toContainText(officeReclaimed.task.attemptId);
+    await expect(completionDialog).toContainText(sessions.office.actingAssignmentId);
+    await expect(completionDialog).toContainText('完了後は読み取り専用');
+    await expect(completionDialog.getByRole('button', { name: 'キャンセル', exact: true })).toBeFocused();
+    await completionDialog.getByRole('button', { name: 'キャンセル', exact: true }).click();
+    expect(await get(request, context.office, `/v1/organization/tasks/${officeReclaimed.task.id}`)).toEqual(beforeCompletion.officeTask);
+    await office.getByRole('button', { name: '完了内容を確認', exact: true }).click();
+    const completionResponse = office.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${officeReclaimed.task.id}/actions` && response.request().method() === 'POST');
+    currentAction('complete-confirm');
+    await office.getByRole('button', { name: '完了を確定', exact: true }).click();
+    const completedResponse = await completionResponse;
+    expect(completedResponse.status()).toBe(200);
+    const completed = await completedResponse.json() as Completed;
+    const completeCommand = completedResponse.request().postDataJSON() as WorkflowActionCommand;
+    expect(completeCommand).toEqual({ operationId: expect.any(String), expectedRevision: beforeCompletion.officeTask.revision, actingAssignmentId: sessions.office.actingAssignmentId, expectedAttemptId: beforeCompletion.officeTask.attemptId, action: 'complete', definitionActionId: beforeCompletion.officeTask.completionActionId });
+    expect(completed).toMatchObject({ kind: 'completed', task: { id: officeReclaimed.task.id, state: 'completed', attemptId: officeReclaimed.task.attemptId, revision: beforeCompletion.officeTask.revision + 1 } });
+    await expect(office.getByText('タスクの完了が確定しました', { exact: true })).toBeVisible();
+    await expect(office.getByRole('button', { name: '完了内容を確認', exact: true })).toHaveCount(0);
+    await expect(office.getByLabel('差戻理由', { exact: true })).toHaveCount(0);
+    await expect(office.getByRole('region', { name: '受領したスナップショット', exact: true })).toContainText(revisedText);
+    await office.getByRole('button', { name: '履歴', exact: true }).click();
+    await expect(office.getByText('タスクを完了', { exact: true })).toBeVisible();
+    const completion = { operationId: completeCommand.operationId, command: completeCommand, result: completed };
+    await assertCompletionState(request, context, completion);
+    await assertEvidenceState(request, context, source.id, claimed.task.id, evidence, agents);
+    await assertAgentState(request, context, agents);
+    currentAction('final-verify');
     const final = await captureFinal(request, context, source.id, submitted.nextTask.id, resubmitted.snapshot.id, submitted.snapshot.id, returned.returnInstruction.id);
+    const completionEvent = final.officeTask.history.at(-1);
+    expect(completionEvent).toEqual({ kind: 'completed', occurredAt: expect.any(String) });
+    expect(final.officeTask).toEqual({ ...beforeCompletion.officeTask, ...completed.task, history: [...beforeCompletion.officeTask.history, completionEvent] });
+    // History is the shared workflow progress projection; source task content and revision stay unchanged.
+    expect(final.salesTask).toEqual({ ...beforeCompletion.salesTask, history: [...beforeCompletion.salesTask.history, completionEvent] });
+    expect(final.salesContext).toEqual({ ...beforeCompletion.salesContext, items: beforeCompletion.salesContext.items.map((item) => item.id === completed.task.id ? { ...item, state: 'completed', revision: completed.task.revision } : item) });
+    expect(final.salesQueue).toEqual(beforeCompletion.salesQueue);
+    for (const view of ['officeContext', 'officeQueue'] as const) expect(final[view]).toEqual({ ...beforeCompletion[view], items: beforeCompletion[view].items.map((item) => item.id === completed.task.id ? completed.task : item) });
     expect(final.snapshot).toEqual(resubmitted.snapshot);
     expect(final.priorSnapshot).toEqual(submitted.snapshot);
     expect(final.returnInstruction).toEqual(returned.returnInstruction);
     expect(final.salesTask).toMatchObject({ state: 'completed', attemptNumber: 2 });
-    expect(final.officeTask).toMatchObject({ state: 'active', attemptNumber: 2, workingArtifacts: [] });
+    expect(final.officeTask).toMatchObject({ state: 'completed', attemptNumber: 2, workingArtifacts: [] });
     currentAction('final-verify');
-    await saveState(context, { schemaVersion: 4, documentId: context.documentId, salesTaskId: source.id, officeTaskId: submitted.nextTask.id, artifactId: saved.artifact.id, snapshotId: submitted.snapshot.id, text, save: { operationId: saveCommand.operationId, result: saved }, submit: { operationId: submitCommand.operationId, result: submitted }, claim: { operationId: claimCommand.operationId, result: claimed }, rework: { text: revisedText, returned: { operationId: returnCommand.operationId, command: returnCommand, result: returned }, salesClaim: { operationId: salesClaimCommand.operationId, result: salesClaimed }, save: { operationId: resaveCommand.operationId, result: resaved }, submit: { operationId: resubmitCommand.operationId, result: resubmitted }, officeClaim: { operationId: officeReclaimCommand.operationId, result: officeReclaimed } }, evidence, agents, final });
+    await saveState(context, { schemaVersion: 5, documentId: context.documentId, salesTaskId: source.id, officeTaskId: submitted.nextTask.id, artifactId: saved.artifact.id, snapshotId: submitted.snapshot.id, text, save: { operationId: saveCommand.operationId, result: saved }, submit: { operationId: submitCommand.operationId, result: submitted }, claim: { operationId: claimCommand.operationId, result: claimed }, rework: { text: revisedText, returned: { operationId: returnCommand.operationId, command: returnCommand, result: returned }, salesClaim: { operationId: salesClaimCommand.operationId, result: salesClaimed }, save: { operationId: resaveCommand.operationId, result: resaved }, submit: { operationId: resubmitCommand.operationId, result: resubmitted }, officeClaim: { operationId: officeReclaimCommand.operationId, result: officeReclaimed } }, evidence, agents, completion, final });
   } finally {
     await officeContext.close();
   }

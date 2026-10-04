@@ -766,3 +766,214 @@ async fn agent_http_is_closed_private_replay_safe_and_never_dispatches_from_read
     assert_eq!(status, StatusCode::OK);
     assert_eq!(result["execution"]["status"], "cancelled");
 }
+
+#[tokio::test]
+async fn completion_transport_accepts_only_closed_complete_action() {
+    let valid = serde_json::json!({"operationId":Uuid::now_v7(),"expectedRevision":1,
+        "actingAssignmentId":OFFICE_ASSIGNMENT_ID,"expectedAttemptId":OFFICE_ATTEMPT_ID,
+        "action":"complete","definitionActionId":"01900000-0000-7000-8000-000000000012"});
+    let request = |body: serde_json::Value| {
+        Request::builder()
+            .method("POST")
+            .uri(format!("/v1/organization/tasks/{OFFICE_TASK_ID}/actions"))
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap()
+    };
+    assert_eq!(
+        app()
+            .oneshot(request(valid.clone()))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    for action in ["hold", "resume", "submit", "COMPLETE"] {
+        let mut invalid = valid.clone();
+        invalid["action"] = serde_json::json!(action);
+        let (status, body) = response_json(app().oneshot(request(invalid)).await.unwrap()).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body["code"], "VALIDATION_FAILED");
+    }
+    for field in ["principalId", "unexpected"] {
+        let mut invalid = valid.clone();
+        invalid[field] = serde_json::json!("office-01");
+        assert_eq!(
+            app().oneshot(request(invalid)).await.unwrap().status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+    }
+    for field in ["expectedAttemptId", "definitionActionId", "action"] {
+        let mut invalid = valid.clone();
+        invalid.as_object_mut().unwrap().remove(field);
+        assert_eq!(
+            app().oneshot(request(invalid)).await.unwrap().status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+    }
+}
+
+#[tokio::test]
+async fn completion_http_validates_actor_occ_and_action_then_recovers_readonly_outcome() {
+    let mut workflow = Workflow::synthetic(None);
+    let saved = workflow
+        .apply(
+            VerifiedActor::Sales01,
+            &Command::SaveDraft {
+                task_id: SALES_TASK_ID,
+                artifact_id: None,
+                context: context(VerifiedActor::Sales01, 0),
+                value: TextValue {
+                    text: "提出本文".into(),
+                },
+            },
+            "2026-10-04T00:00:00Z",
+        )
+        .unwrap();
+    let artifact = match saved {
+        MutationResult::DraftSaved { artifact, .. } => artifact,
+        _ => panic!(),
+    };
+    workflow
+        .apply(
+            VerifiedActor::Sales01,
+            &Command::Submit {
+                task_id: SALES_TASK_ID,
+                context: context(VerifiedActor::Sales01, 1),
+                expected_attempt_id: Some(SALES_ATTEMPT_ID),
+                artifacts: vec![ArtifactSelection {
+                    artifact_id: artifact.id,
+                    revision: 0,
+                }],
+                evidence_revision_refs: vec![],
+                finding_revision_refs: vec![],
+                decision_revision_refs: vec![],
+            },
+            "2026-10-04T00:00:00Z",
+        )
+        .unwrap();
+    workflow
+        .apply(
+            VerifiedActor::Office01,
+            &Command::Claim {
+                task_id: OFFICE_TASK_ID,
+                context: context(VerifiedActor::Office01, 0),
+            },
+            "2026-10-04T00:00:00Z",
+        )
+        .unwrap();
+    let before = workflow.clone();
+    let fixture = Arc::new(DomainFixture {
+        workflow: std::sync::Mutex::new(workflow),
+        outcomes: std::sync::Mutex::new(vec![]),
+    });
+    let office = work_api_http::router(fixture.clone(), VerifiedActor::Office01);
+    let sales = work_api_http::router(fixture.clone(), VerifiedActor::Sales01);
+    let operation = Uuid::now_v7();
+    let valid = serde_json::json!({"operationId":operation,"expectedRevision":1,"actingAssignmentId":OFFICE_ASSIGNMENT_ID,"expectedAttemptId":OFFICE_ATTEMPT_ID,"definitionActionId":COMPLETE_ACTION_ID,"action":"complete"});
+    let request = |body: serde_json::Value| {
+        Request::builder()
+            .method("POST")
+            .uri(format!("/v1/organization/tasks/{OFFICE_TASK_ID}/actions"))
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap()
+    };
+    for (field, value, code) in [
+        (
+            "expectedRevision",
+            serde_json::json!(0),
+            "REVISION_CONFLICT",
+        ),
+        (
+            "expectedAttemptId",
+            serde_json::json!(Uuid::now_v7()),
+            "REVISION_CONFLICT",
+        ),
+        (
+            "definitionActionId",
+            serde_json::json!(RETURN_TRANSITION_ID),
+            "HANDOFF_NOT_READY",
+        ),
+    ] {
+        let mut bad = valid.clone();
+        bad[field] = value;
+        let (status, body) =
+            response_json(office.clone().oneshot(request(bad)).await.unwrap()).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body["code"], code);
+        assert_eq!(*fixture.workflow.lock().unwrap(), before);
+    }
+    let mut other = valid.clone();
+    other["actingAssignmentId"] = serde_json::json!(SALES_ASSIGNMENT_ID);
+    assert_eq!(
+        sales
+            .clone()
+            .oneshot(request(other))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    let (status, outcome) = response_json(
+        office
+            .clone()
+            .oneshot(request(valid.clone()))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(outcome["kind"], "completed");
+    let (status, restored) = response_json(
+        office
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/v1/organization/operations/{operation}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(restored, outcome);
+    assert_eq!(
+        sales
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/v1/organization/operations/{operation}"))
+                    .body(Body::empty())
+                    .unwrap()
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    let (status, detail) = response_json(
+        office
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/v1/organization/tasks/{OFFICE_TASK_ID}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(detail["state"], "completed");
+    assert_eq!(detail["canComplete"], false);
+    let mut terminal = valid;
+    terminal["operationId"] = serde_json::json!(Uuid::now_v7());
+    terminal["expectedRevision"] = detail["revision"].clone();
+    let (status, body) = response_json(office.oneshot(request(terminal)).await.unwrap()).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["code"], "HANDOFF_NOT_READY");
+    assert_eq!(fixture.workflow.lock().unwrap().snapshots, before.snapshots);
+}

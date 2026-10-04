@@ -15,7 +15,7 @@ import { TaskHomePage } from '../src/routes/TaskHomePage';
 jest.mock('../src/application/document-workspace', () => ({ documentApi: { getDocument: jest.fn(), listVersionFiles: jest.fn(), downloadVersionFile: jest.fn() } }));
 
 const session = { principalId: 'sales-01', displayName: '営業担当（模擬）', actingAssignmentId: 'assignment-sales', capabilities: { nativeWorkspace: false, agent: true, search: false, fileUpload: false, return: false } };
-const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, canRequestAgent: true, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null };
+const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canComplete: false, completionActionId: null, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, canRequestAgent: true, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null };
 const artifact = { id: 'draft-1', taskId: task.id, attemptId: task.attemptId, revision: 1, schemaId: 'organization.text-draft.v1', value: { text: '保存済みの文案' }, visibility: 'work_item_private' };
 const detail = { ...task, inputResources: [{ kind: 'document', documentId: '00000000-0000-4000-8000-000000000010', label: '共有の入力文書' }], workingArtifacts: [artifact], history: [], agentExecutionIds: [] };
 const nextTask = { ...task, id: 'task-2', attemptId: 'attempt-2', title: '事務確認', stepLabel: '事務確認', state: 'ready', canClaim: true, canEdit: false, canSubmit: false };
@@ -1030,4 +1030,143 @@ test('a pending read-only retry cannot reveal an old execution after task contex
   expect(screen.queryByText(syntheticResult.summary)).not.toBeInTheDocument();
   expect(readResult).not.toHaveBeenCalled();
   expect(client.getQueryCache().findAll({ queryKey: ['organization', session.principalId, session.actingAssignmentId, 'agent-context', task.id] })).toHaveLength(0);
+});
+
+
+const completableOffice = { ...officeTask, canComplete: true, completionActionId: 'office-complete-action' };
+const completedOffice = { ...completableOffice, revision: 2, state: 'completed', canComplete: false, completionActionId: null, canReturn: false, returnTransition: null, canRegisterEvidence: false, canRegisterFinding: false, canRecordDecision: false, canRequestAgent: false };
+function setupCompletion() {
+  const rendered = setupOffice();
+  jest.mocked(workApi.listTasks).mockResolvedValue({ items: [completableOffice], nextCursor: null } as never);
+  jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, ...completableOffice, workingArtifacts: [] } as never);
+  return rendered;
+}
+
+test('office completion requires a cancellable confirmation with current task, attempt and responsibility', async () => {
+  setupCompletion();
+  const trigger = await screen.findByRole('button', { name: '完了内容を確認' });
+  await userEvent.click(trigger);
+  const dialog = screen.getByRole('dialog', { name: 'タスク完了の確認' });
+  expect(dialog).toHaveTextContent(completableOffice.id);
+  expect(dialog).toHaveTextContent(completableOffice.attemptId);
+  expect(dialog).toHaveTextContent('assignment-office');
+  expect(dialog).toHaveTextContent('完了後は読み取り専用');
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: 'キャンセル' })).toHaveFocus());
+  await userEvent.click(within(dialog).getByRole('button', { name: 'キャンセル' }));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  await userEvent.click(trigger);
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+});
+
+function completionReply() {
+  const result = { kind: 'completed', task: completedOffice };
+  jest.mocked(workApi.listTasks).mockResolvedValue({ items: [completedOffice], nextCursor: null } as never);
+  jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, ...completedOffice, workingArtifacts: [], history: [{ kind: 'completed', occurredAt: '2026-10-04T17:00:00Z' }] } as never);
+  return result as never;
+}
+async function confirmCompletion() {
+  await userEvent.click(await screen.findByRole('button', { name: '完了内容を確認' }));
+  await userEvent.click(screen.getByRole('button', { name: '完了を確定' }));
+}
+
+test('completion sends the exact server action and becomes read-only while preserving received content and current history', async () => {
+  const { router } = setupCompletion();
+  const complete = jest.spyOn(workApi, 'completeTask').mockImplementation(async () => completionReply());
+  await confirmCompletion();
+  await screen.findByText('タスクの完了が確定しました');
+  expect(complete).toHaveBeenCalledTimes(1);
+  expect(complete.mock.calls[0]).toEqual([completableOffice.id, { operationId: expect.any(String), expectedRevision: completableOffice.revision, actingAssignmentId: 'assignment-office', expectedAttemptId: completableOffice.attemptId, action: 'complete', definitionActionId: completableOffice.completionActionId }]);
+  expect(router.state.location.search).toMatchObject({ taskId: completableOffice.id });
+  expect(screen.queryByRole('button', { name: '完了内容を確認' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '差戻内容を確認' })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('作業中の文案')).not.toBeInTheDocument();
+  expect(screen.getByRole('region', { name: '受領したスナップショット' })).toHaveTextContent('提出する文案');
+  await userEvent.click(screen.getByRole('button', { name: '履歴' }));
+  expect(await screen.findByText('タスクを完了')).toBeVisible();
+  await userEvent.click(screen.getByRole('button', { name: 'Agent' }));
+  expect(await screen.findByLabelText('Agentへの依頼目的')).toBeDisabled();
+});
+
+test('completion Cancel and Escape never execute a write', async () => {
+  setupCompletion();
+  const complete = jest.spyOn(workApi, 'completeTask');
+  for (const escape of [false, true]) {
+    await userEvent.click(await screen.findByRole('button', { name: '完了内容を確認' }));
+    if (escape) await userEvent.keyboard('{Escape}');
+    else await userEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  }
+  expect(complete).not.toHaveBeenCalled();
+});
+
+test.each([{ canComplete: false, completionActionId: 'office-complete-action' }, { canComplete: true, completionActionId: null }])('completion requires both server capability and action ID: %j', async (capability) => {
+  setupCompletion();
+  jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, ...completableOffice, ...capability, workingArtifacts: [] } as never);
+  await screen.findByLabelText('差戻理由');
+  expect(screen.queryByRole('button', { name: '完了内容を確認' })).not.toBeInTheDocument();
+});
+
+test('unknown completion recovers the original operation without a second completion', async () => {
+  setupCompletion();
+  const complete = jest.spyOn(workApi, 'completeTask').mockRejectedValue(new WorkApiError(0, 'network_unavailable', true));
+  const recovery = jest.spyOn(workApi, 'getOperation').mockImplementation(async () => completionReply());
+  await confirmCompletion();
+  await screen.findByText(/結果は未確認です/);
+  expect(screen.getByRole('button', { name: '完了内容を確認' })).toBeDisabled();
+  expect(screen.queryByText('タスクの完了が確定しました')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: '同じ操作の結果を確認' }));
+  await screen.findByText('タスクの完了が確定しました');
+  expect(recovery).toHaveBeenCalledWith(complete.mock.calls[0]?.[1].operationId);
+  expect(complete).toHaveBeenCalledTimes(1);
+});
+
+test('unreceived completion retries the exact original operation after an inconclusive lookup', async () => {
+  setupCompletion();
+  const complete = jest.spyOn(workApi, 'completeTask').mockRejectedValueOnce(new WorkApiError(0, 'network_unavailable', true)).mockImplementationOnce(async () => completionReply());
+  jest.spyOn(workApi, 'getOperation').mockRejectedValue(new WorkApiError(404, 'WORK_ITEM_NOT_FOUND'));
+  await confirmCompletion();
+  await screen.findByText(/結果は未確認です/);
+  await userEvent.click(screen.getByRole('button', { name: '同じ操作の結果を確認' }));
+  await userEvent.click(await screen.findByRole('button', { name: '同じ操作を再送' }));
+  await screen.findByText('タスクの完了が確定しました');
+  expect(complete.mock.calls[1]).toEqual(complete.mock.calls[0]);
+});
+
+test('completion conflict refreshes current authority without falsely claiming completion', async () => {
+  setupCompletion();
+  jest.spyOn(workApi, 'completeTask').mockRejectedValue(new WorkApiError(409, 'REVISION_CONFLICT'));
+  await confirmCompletion();
+  expect(await screen.findByRole('alert')).toHaveTextContent('競合が発生しました');
+  expect(screen.queryByText('タスクの完了が確定しました')).not.toBeInTheDocument();
+  jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, ...completableOffice, revision: 3, canComplete: false, completionActionId: null, workingArtifacts: [] } as never);
+  await userEvent.click(screen.getByRole('button', { name: '現在の状態を再読込' }));
+  await waitFor(() => expect(screen.queryByRole('button', { name: '完了内容を確認' })).not.toBeInTheDocument());
+});
+
+test.each([401, 403, 404])('completion denial %i clears private content and confirmation', async (status) => {
+  setupCompletion();
+  jest.spyOn(workApi, 'completeTask').mockRejectedValue(new WorkApiError(status, 'WORK_ITEM_NOT_FOUND'));
+  await confirmCompletion();
+  await screen.findByText(/内容を非表示にしました/);
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: '受領したスナップショット' })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('差戻理由')).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: '共有の入力文書' })).not.toBeInTheDocument();
+});
+
+test('an unresolved completion remains scoped to its original task across navigation', async () => {
+  setupCompletion();
+  jest.mocked(workApi.listTasks).mockResolvedValue({ items: [completableOffice, task], nextCursor: null } as never);
+  jest.mocked(workApi.getTask).mockImplementation(async (id) => (id === task.id ? detail : { ...detail, ...completableOffice, workingArtifacts: [] }) as never);
+  const complete = jest.spyOn(workApi, 'completeTask').mockRejectedValue(new WorkApiError(0, 'network_unavailable', true));
+  await confirmCompletion();
+  await screen.findByText(/結果は未確認です/);
+  await userEvent.click(screen.getByRole('button', { name: /内容確認 作業中/ }));
+  await screen.findByLabelText('作業中の文案');
+  expect(screen.queryByText(/結果は未確認です/)).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: /事務確認 作業中/ }));
+  await screen.findByRole('button', { name: '同じ操作の結果を確認' });
+  expect(screen.getByRole('button', { name: '完了内容を確認' })).toBeDisabled();
+  expect(complete).toHaveBeenCalledTimes(1);
 });

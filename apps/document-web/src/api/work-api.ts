@@ -7,6 +7,7 @@ export type TaskDetail = Generated.TaskDetail;
 export type HandoffSnapshot = Pick<Generated.HandoffSnapshot, 'id' | 'sourceTaskId' | 'sourceAttemptId' | 'targetTaskId' | 'createdAt' | 'artifacts' | 'evidenceRevisionRefs' | 'findingRevisionRefs' | 'decisionRevisionRefs'>;
 export type WorkCommand = Generated.WorkCommand;
 export type ReturnCommand = Generated.ReturnCommand;
+export type WorkflowActionCommand = Generated.WorkflowActionCommand;
 export type ReturnInstruction = Generated.ReturnInstruction;
 export type RevisionRef = Generated.RevisionRef;
 export type SelectedHandoff = Pick<HandoffSnapshot, 'evidenceRevisionRefs' | 'findingRevisionRefs' | 'decisionRevisionRefs'>;
@@ -23,7 +24,7 @@ export type AgentExecution = Generated.AgentExecution;
 export type AgentResult = Generated.AgentResult;
 export type AgentExecutionRequest = Generated.AgentExecutionRequest;
 export type CancelAgentExecution = Generated.CancelAgentExecution;
-export type WorkResult = Generated.AgentExecutionRequested | Generated.AgentExecutionCancelled | Generated.EvidenceRegistered | Generated.FindingRegistered | Generated.DecisionRecorded | Generated.Returned | Generated.DraftSaved | Generated.Claimed | (Omit<Generated.Submitted, 'snapshot'> & { snapshot: HandoffSnapshot });
+export type WorkResult = Generated.Completed | Generated.AgentExecutionRequested | Generated.AgentExecutionCancelled | Generated.EvidenceRegistered | Generated.FindingRegistered | Generated.DecisionRecorded | Generated.Returned | Generated.DraftSaved | Generated.Claimed | (Omit<Generated.Submitted, 'snapshot'> & { snapshot: HandoffSnapshot });
 export class WorkApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, public readonly outcomeUnknown = false) { super(code); this.name = 'WorkApiError'; }
 }
@@ -40,7 +41,7 @@ function task(value: unknown): TaskSummary {
   const item = object(value);
   if (revision(item.attemptNumber) < 1) throw new Error('invalid_attempt');
   if (!['ready', 'active', 'held', 'completed'].includes(string(item.state))) throw new Error('invalid_state');
-  return { id: string(item.id), contextId: string(item.contextId), attemptId: string(item.attemptId), attemptNumber: revision(item.attemptNumber), revision: revision(item.revision), title: string(item.title), stepLabel: string(item.stepLabel), state: item.state as TaskSummary['state'], canClaim: bool(item.canClaim), canEdit: bool(item.canEdit), canSubmit: bool(item.canSubmit), canReturn: bool(item.canReturn), canRegisterEvidence: bool(item.canRegisterEvidence), canRegisterFinding: bool(item.canRegisterFinding), canRecordDecision: bool(item.canRecordDecision), canRequestAgent: bool(item.canRequestAgent), returnTransition: returnTransition(item.returnTransition), returnInstructionId: item.returnInstructionId === null ? null : string(item.returnInstructionId), handoffSnapshotId: item.handoffSnapshotId === null ? null : string(item.handoffSnapshotId) };
+  return { id: string(item.id), contextId: string(item.contextId), attemptId: string(item.attemptId), attemptNumber: revision(item.attemptNumber), revision: revision(item.revision), title: string(item.title), stepLabel: string(item.stepLabel), state: item.state as TaskSummary['state'], canClaim: bool(item.canClaim), canEdit: bool(item.canEdit), canSubmit: bool(item.canSubmit), canComplete: bool(item.canComplete), completionActionId: item.completionActionId === null ? null : string(item.completionActionId), canReturn: bool(item.canReturn), canRegisterEvidence: bool(item.canRegisterEvidence), canRegisterFinding: bool(item.canRegisterFinding), canRecordDecision: bool(item.canRecordDecision), canRequestAgent: bool(item.canRequestAgent), returnTransition: returnTransition(item.returnTransition), returnInstructionId: item.returnInstructionId === null ? null : string(item.returnInstructionId), handoffSnapshotId: item.handoffSnapshotId === null ? null : string(item.handoffSnapshotId) };
 }
 function returnTransition(value: unknown): TaskSummary['returnTransition'] {
   if (value === null) return null;
@@ -113,6 +114,7 @@ function result(value: unknown): WorkResult {
     if (record.taskId !== summary.id || record.attemptId !== summary.attemptId || record.contextId !== summary.contextId) throw new Error('response_target_mismatch');
     return item.kind === 'evidence_registered' ? { kind: item.kind, task: summary, evidence: record as EvidenceRecord } : item.kind === 'finding_registered' ? { kind: item.kind, task: summary, finding: record as Finding } : { kind: item.kind, task: summary, decision: record as HumanDecision };
   }
+  if (item.kind === 'completed') { const summary = task(item.task); if (summary.state !== 'completed') throw new Error('invalid_completion'); return { kind: item.kind, task: summary }; }
   if (item.kind === 'claimed') return { kind: item.kind, task: task(item.task) };
   if (item.kind === 'draft_saved') {
     const summary = task(item.task); const saved = artifact(item.artifact);
@@ -145,6 +147,7 @@ export const workApi = {
   getTask: (id: string) => request(`/tasks/${segment(id)}`, (value): TaskDetail => { const item = object(value); const summary = task(item); const artifacts = array(item.workingArtifacts, artifact); if (summary.id !== id || artifacts.some((entry) => entry.taskId !== id || entry.attemptId !== summary.attemptId)) throw new Error('response_target_mismatch'); return { ...summary, agentExecutionIds: array(item.agentExecutionIds, string), inputResources: array(item.inputResources, (entry) => { const resource = object(entry); if (resource.kind !== 'document') throw new Error('unsupported_resource'); return { kind: 'document', documentId: string(resource.documentId), label: string(resource.label) }; }), history: array(item.history, (entry) => { const event = object(entry); return { kind: string(event.kind), occurredAt: string(event.occurredAt) }; }), workingArtifacts: artifacts }; }),
   getSnapshot: (id: string) => request(`/handoff-snapshots/${segment(id)}`, (value) => { const receipt = snapshot(value); if (receipt.id !== id) throw new Error('response_target_mismatch'); return receipt; }),
   getReturnInstruction: (id: string) => request(`/return-instructions/${segment(id)}`, (value) => { const instruction = returnInstruction(value); if (instruction.id !== id) throw new Error('response_target_mismatch'); return instruction; }),
+  completeTask: (id: string, command: WorkflowActionCommand) => request(`/tasks/${segment(id)}/actions`, (value) => { const receipt = result(value); if (receipt.kind !== 'completed' || receipt.task.id !== id || receipt.task.attemptId !== command.expectedAttemptId) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),
   returnTask: (id: string, command: ReturnCommand) => request(`/tasks/${segment(id)}/return`, result, 'POST', command),
   claim: (id: string, command: WorkCommand) => request(`/tasks/${segment(id)}/claim`, result, 'POST', command),
   submit: (id: string, command: SubmitCommand) => request(`/tasks/${segment(id)}/submit`, result, 'POST', command),

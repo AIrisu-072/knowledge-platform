@@ -122,6 +122,47 @@ mod tests {
     use super::*;
     use work_domain::{CommandContext, SALES_TASK_ID};
     #[test]
+    fn completion_digest_binds_attempt_definition_action_and_current_responsibility() {
+        let original = serde_json::json!({
+            "kind":"complete", "task_id":work_domain::OFFICE_TASK_ID,
+            "context":{"operationId":Uuid::now_v7(),"expectedRevision":1,"actingAssignmentId":work_domain::OFFICE_ASSIGNMENT_ID},
+            "expected_attempt_id":work_domain::OFFICE_ATTEMPT_ID,
+            "definition_action_id":work_domain::COMPLETE_ACTION_ID
+        });
+        let command: Command = serde_json::from_value(original.clone()).unwrap();
+        let digest = command_digest(VerifiedActor::Office01, &command).unwrap();
+        assert_eq!(
+            digest,
+            command_digest(VerifiedActor::Office01, &command.clone()).unwrap()
+        );
+        assert_ne!(
+            digest,
+            command_digest(VerifiedActor::Sales01, &command).unwrap()
+        );
+        for field in ["expected_attempt_id", "definition_action_id", "task_id"] {
+            let mut changed = original.clone();
+            changed[field] = serde_json::json!(Uuid::now_v7());
+            assert_ne!(
+                digest,
+                command_digest(
+                    VerifiedActor::Office01,
+                    &serde_json::from_value(changed).unwrap()
+                )
+                .unwrap()
+            );
+        }
+        let mut changed = original;
+        changed["context"]["expectedRevision"] = serde_json::json!(2);
+        assert_ne!(
+            digest,
+            command_digest(
+                VerifiedActor::Office01,
+                &serde_json::from_value(changed).unwrap()
+            )
+            .unwrap()
+        );
+    }
+    #[test]
     fn legacy_submit_serialization_preserves_existing_operation_digest() {
         let legacy = serde_json::json!({"kind":"submit","task_id":SALES_TASK_ID,"context":{"operationId":Uuid::now_v7(),"expectedRevision":1,"actingAssignmentId":work_domain::SALES_ASSIGNMENT_ID},"artifacts":[{"artifactId":Uuid::now_v7(),"revision":0}]});
         let command: Command = serde_json::from_value(legacy.clone()).unwrap();

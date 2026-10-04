@@ -1383,6 +1383,65 @@
           }
         ]
       }
+    },
+    "/v1/organization/tasks/{id}/actions": {
+      "post": {
+        "operationId": "executeOrganizationWorkflowAction",
+        "summary": "executeOrganizationWorkflowAction",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowActionCommand"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1538,6 +1597,20 @@
           },
           "canRequestAgent": {
             "type": "boolean"
+          },
+          "canComplete": {
+            "type": "boolean"
+          },
+          "completionActionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1559,7 +1632,9 @@
           "canRegisterEvidence",
           "canRegisterFinding",
           "canRecordDecision",
-          "canRequestAgent"
+          "canRequestAgent",
+          "canComplete",
+          "completionActionId"
         ]
       },
       "WorkingArtifact": {
@@ -1760,6 +1835,20 @@
               "format": "uuid"
             },
             "maxItems": 16
+          },
+          "canComplete": {
+            "type": "boolean"
+          },
+          "completionActionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1785,7 +1874,9 @@
           "canRegisterFinding",
           "canRecordDecision",
           "canRequestAgent",
-          "agentExecutionIds"
+          "agentExecutionIds",
+          "canComplete",
+          "completionActionId"
         ]
       },
       "TaskPage": {
@@ -2154,6 +2245,9 @@
           },
           {
             "$ref": "#/components/schemas/AgentExecutionCancelled"
+          },
+          {
+            "$ref": "#/components/schemas/Completed"
           }
         ]
       },
@@ -3448,6 +3542,63 @@
           "kind",
           "task",
           "execution"
+        ]
+      },
+      "WorkflowActionCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "action": {
+            "type": "string",
+            "const": "complete"
+          },
+          "definitionActionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedAttemptId",
+          "action",
+          "definitionActionId"
+        ],
+        "description": "Closed terminal completion only. Definition action and current attempt are server-issued and revalidated; hold/resume are outside this slice."
+      },
+      "Completed": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "completed",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          }
+        },
+        "required": [
+          "kind",
+          "task"
         ]
       }
     }

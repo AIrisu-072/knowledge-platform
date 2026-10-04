@@ -89,6 +89,7 @@ fn build_router(
         .route("/v1/organization/tasks/{id}/claim", post(claim))
         .route("/v1/organization/tasks/{id}/submit", post(submit))
         .route("/v1/organization/tasks/{id}/return", post(return_task))
+        .route("/v1/organization/tasks/{id}/actions", post(workflow_action))
         .route(
             "/v1/organization/return-instructions/{id}",
             get(return_instruction),
@@ -394,6 +395,42 @@ async fn return_task(
         target_task_id: body.target_task_id,
         transition_id: body.transition_id,
         reason: body.reason,
+    };
+    Ok(Json(state.repository.execute(state.actor, command).await?))
+}
+#[derive(Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+enum WorkflowActionBody {
+    #[serde(rename_all = "camelCase")]
+    Complete {
+        operation_id: Uuid,
+        expected_revision: i64,
+        acting_assignment_id: Uuid,
+        expected_attempt_id: Uuid,
+        definition_action_id: Uuid,
+    },
+}
+async fn workflow_action(
+    State(state): State<ApiState>,
+    path: Result<Path<Uuid>, PathRejection>,
+    body: Result<Json<WorkflowActionBody>, JsonRejection>,
+) -> Result<Json<MutationResult>, Problem> {
+    let WorkflowActionBody::Complete {
+        operation_id,
+        expected_revision,
+        acting_assignment_id,
+        expected_attempt_id,
+        definition_action_id,
+    } = json_body(body)?;
+    let command = Command::Complete {
+        task_id: path_id(path)?,
+        context: CommandContext {
+            operation_id,
+            expected_revision,
+            acting_assignment_id,
+        },
+        expected_attempt_id,
+        definition_action_id,
     };
     Ok(Json(state.repository.execute(state.actor, command).await?))
 }

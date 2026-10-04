@@ -1,15 +1,16 @@
+import { createOperationId } from '../src/application/operation-id';
 import { test } from '@playwright/test';
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
-import type { AgentExecutionRequest, AgentExecutionRequested, AgentExecution, AgentResult, Finding, DecisionCommand, DecisionRecorded, EvidenceCommand, EvidenceRegistered, FindingCommand, FindingRegistered, RevisionRef, Claimed, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, Submitted, TaskDetail, TaskPage, WorkSession } from '../src/api/generated-work/types.gen';
+import type { WorkflowActionCommand, Completed, AgentExecutionRequest, AgentExecutionRequested, AgentExecution, AgentResult, Finding, DecisionCommand, DecisionRecorded, EvidenceCommand, EvidenceRegistered, FindingCommand, FindingRegistered, RevisionRef, Claimed, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, Submitted, TaskDetail, TaskPage, WorkSession } from '../src/api/generated-work/types.gen';
 
 import type { DocumentRevisionPage, FileList, PublishedDocumentDetail } from '@knowledge-platform/document-api-client';
 
 export type RuntimeContext = { sales: string; office: string; documentId: string; statePath: string };
 export type PersistedState = {
-  schemaVersion: 4;
+  schemaVersion: 5;
   documentId: string;
   salesTaskId: string;
   officeTaskId: string;
@@ -29,6 +30,7 @@ export type PersistedState = {
   };
   evidence: EvidenceState;
   agents: AgentState;
+  completion: { operationId: string; command: WorkflowActionCommand; result: Completed };
   final: {
     salesContext: TaskPage;
     salesQueue: TaskPage;
@@ -105,7 +107,7 @@ export async function saveState(context: RuntimeContext, state: PersistedState) 
 }
 export async function loadState(context: RuntimeContext): Promise<PersistedState> {
   const state = JSON.parse(await readFile(context.statePath, 'utf8')) as PersistedState;
-  expect(state.schemaVersion).toBe(4);
+  expect(state.schemaVersion).toBe(5);
   expect(state.documentId).toBe(context.documentId);
   return state;
 }
@@ -284,7 +286,8 @@ type OrganizationAction =
   | 'decision-input' | 'decision-preview' | 'decision-confirm' | 'visibility-verify' | 'submit-preview'
   | 'submit-selection' | 'submit-confirm' | 'office-claim' | 'return-preview' | 'return-confirm'
   | 'sales-reclaim' | 'resubmit' | 'office-reclaim' | 'final-verify' | 'persistence-verify'
-  | 'agent-module' | 'agent-input' | 'agent-request' | 'agent-result' | 'agent-replay';
+  | 'agent-module' | 'agent-input' | 'agent-request' | 'agent-result' | 'agent-replay'
+  | 'complete-preview' | 'complete-confirm' | 'complete-replay';
 export function currentAction(action: OrganizationAction): void {
   const annotations = test.info().annotations;
   for (let index = annotations.length - 1; index >= 0; index--) {
@@ -386,4 +389,22 @@ export async function assertAgentState(request: APIRequestContext, context: Runt
   expect(await get(request, context.office, `/v1/organization/findings/${agents.sales.finding.id}/decisions`)).toEqual({ items: [agents.sales.decision.result.decision], nextCursor: null });
   await assertHidden(request, context.sales, `/v1/organization/findings/${agents.office.finding.id}`, 'FINDING_NOT_FOUND', agents.office.finding.claim);
   await assertHidden(request, context.sales, `/v1/organization/findings/${agents.office.finding.id}/decisions`, 'FINDING_NOT_FOUND');
+}
+
+
+export async function assertCompletionState(request: APIRequestContext, context: RuntimeContext, completion: PersistedState['completion']) {
+  const taskId = completion.result.task.id;
+  const before = await get<TaskDetail>(request, context.office, `/v1/organization/tasks/${taskId}`);
+  expect(before).toMatchObject({ ...completion.result.task, state: 'completed', canClaim: false, canEdit: false, canSubmit: false, canReturn: false, canComplete: false, completionActionId: null, canRegisterEvidence: false, canRegisterFinding: false, canRecordDecision: false, canRequestAgent: false });
+  expect(before.history.filter((entry) => entry.kind === 'completed')).toHaveLength(1);
+  expect(await get(request, context.office, `/v1/organization/operations/${completion.operationId}`)).toEqual(completion.result);
+  await assertHidden(request, context.sales, `/v1/organization/operations/${completion.operationId}`, 'WORK_ITEM_NOT_FOUND');
+  currentAction('complete-replay');
+  const replay = await request.post(`${context.office}/v1/organization/tasks/${taskId}/actions`, { data: completion.command });
+  expect(replay.status()).toBe(200);
+  expect(await replay.json()).toEqual(completion.result);
+  const denied = await request.post(`${context.office}/v1/organization/tasks/${taskId}/actions`, { data: { ...completion.command, operationId: createOperationId(), expectedRevision: before.revision } });
+  expect(denied.status()).toBe(409);
+  expect(await denied.json()).toMatchObject({ code: 'HANDOFF_NOT_READY' });
+  expect(await get(request, context.office, `/v1/organization/tasks/${taskId}`)).toEqual(before);
 }

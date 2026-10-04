@@ -17,6 +17,9 @@ pub const SALES_ASSIGNMENT_ID: Uuid = Uuid::from_u128(0x019000000000700080000000
 pub const OFFICE_ASSIGNMENT_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000000008);
 pub const DEFINITION_VERSION_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000000009);
 pub const RETURN_DEFINITION_VERSION_ID: Uuid = Uuid::from_u128(0x0190000000007000800000000000000f);
+pub const COMPLETE_DEFINITION_VERSION_ID: Uuid =
+    Uuid::from_u128(0x01900000000070008000000000000011);
+pub const COMPLETE_ACTION_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000000012);
 pub const RETURN_TRANSITION_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000000010);
 pub const SALES_STEP_ID: Uuid = Uuid::from_u128(0x0190000000007000800000000000000a);
 pub const OFFICE_STEP_ID: Uuid = Uuid::from_u128(0x0190000000007000800000000000000b);
@@ -184,6 +187,10 @@ fn first_attempt() -> u32 {
 #[serde(rename_all = "camelCase")]
 pub struct TaskSummary {
     #[serde(default)]
+    pub can_complete: bool,
+    #[serde(default)]
+    pub completion_action_id: Option<Uuid>,
+    #[serde(default)]
     pub can_request_agent: bool,
     #[serde(default)]
     pub can_register_evidence: bool,
@@ -310,6 +317,12 @@ pub struct ArtifactSelection {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Command {
+    Complete {
+        task_id: Uuid,
+        context: CommandContext,
+        expected_attempt_id: Uuid,
+        definition_action_id: Uuid,
+    },
     RequestAgentExecution {
         task_id: Uuid,
         context: CommandContext,
@@ -390,7 +403,8 @@ pub enum Command {
 impl Command {
     pub fn context(&self) -> &CommandContext {
         match self {
-            Self::RequestAgentExecution { context, .. }
+            Self::Complete { context, .. }
+            | Self::RequestAgentExecution { context, .. }
             | Self::CancelAgentExecution { context, .. }
             | Self::RegisterEvidence { context, .. }
             | Self::RegisterFinding { context, .. }
@@ -403,7 +417,8 @@ impl Command {
     }
     pub fn task_id(&self) -> Uuid {
         match self {
-            Self::RequestAgentExecution { task_id, .. }
+            Self::Complete { task_id, .. }
+            | Self::RequestAgentExecution { task_id, .. }
             | Self::CancelAgentExecution { task_id, .. }
             | Self::RegisterEvidence { task_id, .. }
             | Self::RegisterFinding { task_id, .. }
@@ -418,6 +433,9 @@ impl Command {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum MutationResult {
+    Completed {
+        task: TaskSummary,
+    },
     AgentExecutionRequested {
         task: TaskSummary,
         execution: AgentExecution,
@@ -467,7 +485,7 @@ impl Workflow {
             findings: vec![],
             decisions: vec![],
             id: WORKFLOW_ID,
-            definition_version_id: RETURN_DEFINITION_VERSION_ID,
+            definition_version_id: COMPLETE_DEFINITION_VERSION_ID,
             completed_attempts: vec![],
             return_instructions: vec![],
             context_id: CONTEXT_ID,
@@ -524,8 +542,10 @@ impl Workflow {
         self.has_responsibility(actor, item.id) && item.assignee == Some(actor)
     }
     fn return_transition(&self, actor: VerifiedActor, item: &WorkItem) -> Option<ReturnTransition> {
-        if self.definition_version_id != RETURN_DEFINITION_VERSION_ID
-            || item.id != OFFICE_TASK_ID
+        if !matches!(
+            self.definition_version_id,
+            RETURN_DEFINITION_VERSION_ID | COMPLETE_DEFINITION_VERSION_ID
+        ) || item.id != OFFICE_TASK_ID
             || !self.can_read(actor, item)
             || item.state != TaskState::Active
             || self.source.state != TaskState::Completed
@@ -545,6 +565,14 @@ impl Workflow {
             previous_submission_id: snapshot.id,
         })
     }
+    fn completion_action(&self, actor: VerifiedActor, item: &WorkItem) -> Option<Uuid> {
+        (self.definition_version_id == COMPLETE_DEFINITION_VERSION_ID
+            && item.id == OFFICE_TASK_ID
+            && item.step_id == OFFICE_STEP_ID
+            && self.can_read(actor, item)
+            && item.state == TaskState::Active)
+            .then_some(COMPLETE_ACTION_ID)
+    }
     fn summary(&self, actor: VerifiedActor, item: &WorkItem) -> TaskSummary {
         let source = item.id == self.source.id;
         let editable = source && self.can_read(actor, item) && item.state == TaskState::Active;
@@ -554,7 +582,10 @@ impl Workflow {
             "事務内容確認"
         };
         let return_transition = self.return_transition(actor, item);
+        let completion_action_id = self.completion_action(actor, item);
         TaskSummary {
+            can_complete: completion_action_id.is_some(),
+            completion_action_id,
             can_request_agent: self.can_read(actor, item)
                 && item.state == TaskState::Active
                 && self
@@ -697,7 +728,9 @@ impl Workflow {
             || self.source.id != SALES_TASK_ID
             || !matches!(
                 self.definition_version_id,
-                DEFINITION_VERSION_ID | RETURN_DEFINITION_VERSION_ID
+                DEFINITION_VERSION_ID
+                    | RETURN_DEFINITION_VERSION_ID
+                    | COMPLETE_DEFINITION_VERSION_ID
             )
             || self
                 .next
@@ -760,7 +793,8 @@ impl Workflow {
                     }
                 }
             }
-            Command::RequestAgentExecution { .. }
+            Command::Complete { .. }
+            | Command::RequestAgentExecution { .. }
             | Command::CancelAgentExecution { .. }
             | Command::RegisterEvidence { .. }
             | Command::RegisterFinding { .. }
@@ -801,7 +835,7 @@ impl Workflow {
             MutationResult::DraftSaved { artifact, .. } => {
                 self.artifact(actor, artifact.id)?;
             }
-            MutationResult::Claimed { task } => {
+            MutationResult::Claimed { task } | MutationResult::Completed { task } => {
                 self.detail(actor, task.id)?;
             }
             MutationResult::Submitted { snapshot, .. } => {
@@ -841,6 +875,34 @@ impl Workflow {
         now: &str,
     ) -> Result<MutationResult, WorkError> {
         match command {
+            Command::Complete {
+                task_id,
+                expected_attempt_id,
+                definition_action_id,
+                ..
+            } => {
+                let item = self.item(*task_id)?;
+                if item.attempt_id != *expected_attempt_id {
+                    return Err(WorkError::RevisionConflict);
+                }
+                if self.completion_action(actor, item) != Some(*definition_action_id) {
+                    return Err(WorkError::HandoffNotReady);
+                }
+                let item = self.next.as_mut().ok_or(WorkError::IntegrityViolation)?;
+                item.state = TaskState::Completed;
+                item.completed_at = Some(now.into());
+                item.revision = item
+                    .revision
+                    .checked_add(1)
+                    .ok_or(WorkError::IntegrityViolation)?;
+                self.history.push(HistoryEntry {
+                    kind: "completed".into(),
+                    occurred_at: now.into(),
+                });
+                Ok(MutationResult::Completed {
+                    task: self.summary(actor, self.item(*task_id)?),
+                })
+            }
             Command::RequestAgentExecution { .. } | Command::CancelAgentExecution { .. } => {
                 self.apply_agent(actor, command, now)
             }
@@ -1040,7 +1102,10 @@ impl Workflow {
                         .as_ref()
                         .is_some_and(|item| item.state != TaskState::Completed)
                     || (self.next.is_some()
-                        && self.definition_version_id != RETURN_DEFINITION_VERSION_ID)
+                        && !matches!(
+                            self.definition_version_id,
+                            RETURN_DEFINITION_VERSION_ID | COMPLETE_DEFINITION_VERSION_ID
+                        ))
                 {
                     return Err(WorkError::HandoffNotReady);
                 }

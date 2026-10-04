@@ -44,6 +44,8 @@ export type TaskSummary = {
     canRegisterFinding: boolean;
     canRecordDecision: boolean;
     canRequestAgent: boolean;
+    canComplete: boolean;
+    completionActionId: string | null;
 };
 
 export type WorkingArtifact = {
@@ -91,6 +93,8 @@ export type TaskDetail = {
     canRecordDecision: boolean;
     canRequestAgent: boolean;
     agentExecutionIds: Array<string>;
+    canComplete: boolean;
+    completionActionId: string | null;
 };
 
 export type TaskPage = {
@@ -172,7 +176,7 @@ export type Submitted = {
     nextTask: TaskSummary;
 };
 
-export type WorkResult = DraftSaved | Claimed | Submitted | Returned | EvidenceRegistered | FindingRegistered | DecisionRecorded | AgentExecutionRequested | AgentExecutionCancelled;
+export type WorkResult = DraftSaved | Claimed | Submitted | Returned | EvidenceRegistered | FindingRegistered | DecisionRecorded | AgentExecutionRequested | AgentExecutionCancelled | Completed;
 
 export type Problem = {
     type: string;
@@ -487,6 +491,23 @@ export type AgentExecutionCancelled = {
     kind: 'agent_execution_cancelled';
     task: TaskSummary;
     execution: AgentExecution;
+};
+
+/**
+ * Closed terminal completion only. Definition action and current attempt are server-issued and revalidated; hold/resume are outside this slice.
+ */
+export type WorkflowActionCommand = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    expectedAttemptId: string;
+    action: 'complete';
+    definitionActionId: string;
+};
+
+export type Completed = {
+    kind: 'completed';
+    task: TaskSummary;
 };
 
 export type GetOrganizationSessionData = {
@@ -1275,3 +1296,34 @@ export type GetAgentResultResponses = {
 };
 
 export type GetAgentResultResponse = GetAgentResultResponses[keyof GetAgentResultResponses];
+
+export type ExecuteOrganizationWorkflowActionData = {
+    body: WorkflowActionCommand;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/tasks/{id}/actions';
+};
+
+export type ExecuteOrganizationWorkflowActionErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ExecuteOrganizationWorkflowActionError = ExecuteOrganizationWorkflowActionErrors[keyof ExecuteOrganizationWorkflowActionErrors];
+
+export type ExecuteOrganizationWorkflowActionResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type ExecuteOrganizationWorkflowActionResponse = ExecuteOrganizationWorkflowActionResponses[keyof ExecuteOrganizationWorkflowActionResponses];
