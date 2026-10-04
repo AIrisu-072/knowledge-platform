@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { tokenContrastRatio } from './token-contrast';
 
 const documentId = '00000000-0000-4000-8000-000000000010';
 const versionId = '00000000-0000-4000-8000-000000000011';
@@ -389,11 +390,6 @@ test('reduced motion, key landmarks, token contrast, and 1280/1440 layouts meet 
     const audit = await page.evaluate(() => {
       const root = getComputedStyle(document.documentElement);
       const readColor = (token: string) => root.getPropertyValue(token).trim();
-      const parse = (value: string) => value.match(/[\da-f]{2}/gi)?.map((part) => Number.parseInt(part, 16) / 255) ?? [];
-      const luminance = (value: string) => {
-        const channels = parse(value).map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
-        return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
-      };
       const pairs = [
         ['--color-text', '--color-surface'],
         ['--color-text-muted', '--color-surface'],
@@ -403,10 +399,7 @@ test('reduced motion, key landmarks, token contrast, and 1280/1440 layouts meet 
         ['--color-warning', '--color-warning-soft'],
         ['--color-danger', '--color-danger-soft'],
       ] as const;
-      const contrastRatios = pairs.map(([foreground, background]) => {
-        const values = [luminance(readColor(foreground)), luminance(readColor(background))].sort((a, b) => b - a);
-        return (values[0]! + 0.05) / (values[1]! + 0.05);
-      });
+      const contrastColors = pairs.map(([foreground, background]) => [readColor(foreground), readColor(background)] as const);
       const unnamedButtons = Array.from(document.querySelectorAll('button')).filter((button) =>
         !button.getAttribute('aria-label') && !button.textContent?.trim(),
       ).length;
@@ -416,7 +409,7 @@ test('reduced motion, key landmarks, token contrast, and 1280/1440 layouts meet 
         language: document.documentElement.lang,
         headingCount: document.querySelectorAll('h1').length,
         unnamedButtons,
-        contrastRatios,
+        contrastColors,
         spatialMotion: readColor('--motion-spatial'),
       };
     });
@@ -424,7 +417,8 @@ test('reduced motion, key landmarks, token contrast, and 1280/1440 layouts meet 
     expect(audit.language).toBe('ja');
     expect(audit.headingCount).toBe(1);
     expect(audit.unnamedButtons).toBe(0);
-    expect(audit.contrastRatios.every((ratio) => ratio >= 4.5)).toBe(true);
+    const contrastRatios = audit.contrastColors.map(([foreground, background]) => tokenContrastRatio(foreground, background));
+    expect(contrastRatios.every((ratio) => ratio >= 4.5)).toBe(true);
     expect(audit.spatialMotion).toBe('0ms');
   }
 });

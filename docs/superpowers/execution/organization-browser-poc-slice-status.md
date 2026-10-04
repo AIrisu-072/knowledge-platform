@@ -44,3 +44,15 @@
 実PostgreSQLのrollback/競合/restart、listener起動、browser実操作、実Document組合せは**未実行**。既知のsocket/browser拒否を再試行したり、別経路へ迂回したりしていない。実DB試験は使い捨てDBでの実行権限が整ってから行う。local純粋テストだけで「画面から一連の操作を実証済み」とはしない。
 
 次のexact actionは、親がこの差分のexact commit/treeとローカル検証限界を確認し、許可されたDraft公開範囲で引き渡すこと。その後、許可された実行環境の条件を満たした時に運用手順の2名実操作と実DB試験を実施する。Tauri Phase4の資格取得やPhase5/6全体の完了を宣言しない。
+
+## 2026-10-04 06:29 UTC — PR54通常CIのproduction CSS検査を修正
+
+親が日本語Draft [PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54) を公開した。remote `92584f5ade09ecee3c13d153069acd2d4edc0d74` / tree `1026ff75263de0b602ec71233d862581d018af49` は初回local実装 `44fbd7d900aa56c5260efd9bd3933d91a3c32d0a` と同じ内容。
+
+既存Document CI job `111378164718` はJest74件とproduction buildが成功し、既存mock browser6件中1件のcontrast検査で失敗した。productionのcssnanoが `#ffffff` を等価な `#fff` に短縮する一方、既存試験parserが2桁ずつしか読まず、1channelからNaNを算出していた。生成CSSと試験の純粋な再計算で原因を確認した。正しい3桁展開では7組すべて4.5以上であり、製品のpalette・閾値・minify設定は変更しない。
+
+この修正は試験の色解析のみ。承認待ちのOrganization専用実DB/browser CI追加とは別commit・別worktreeで準備した。新しい実DB/browser実行結果はまだなく、Document jobもmock preview検証の時点で停止して実compositionまで進んでいない。次は限定レビュー・純粋回帰を通ったexact sourceを親がPR54へ反映し、新headの通常CIを確認する。
+
+修正後のlistener-free検証は、旧parser反例14件RED→新helper14件GREEN、GUI18 suites/88件、schema freshness、型検査、production build、既存Playwright6件の収集、差分検査がPASS。生成CSS実bytesを同じhelperで計算した7組は5.0486〜15.9247。実browser再実行は次のhosted headを待つ。pnpm実行時にregistry metadataの再検証と既存modules metadata時刻更新があったが、package download/addはなく、lock・supply-chain設定は不変。以後は固定Nodeから既存toolを直接実行した。
+
+コード3ファイルの限定独立レビューはGO。短縮/長形式等価、黒白21、同色1、低contrast、不正入力の両引数拒否を別の純粋実行でも確認した。Critical/Importantの追加指摘なし。
