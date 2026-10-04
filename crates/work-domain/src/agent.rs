@@ -53,6 +53,10 @@ pub struct AgentExecution {
     pub context_id: Uuid,
     pub work_item_id: Uuid,
     pub attempt_id: Uuid,
+    #[serde(
+        serialize_with = "serialize_requester_principal",
+        deserialize_with = "deserialize_requester_principal"
+    )]
     pub requested_by: VerifiedActor,
     pub requester_responsibility: Uuid,
     pub executed_by: String,
@@ -68,6 +72,29 @@ pub struct AgentExecution {
     pub result: Option<AgentResult>,
     pub failure_code: Option<AgentFailureCode>,
 }
+// Agent records use public principal IDs. The shared VerifiedActor encoding is
+// intentionally unchanged because existing operation digests include that enum.
+fn serialize_requester_principal<S: serde::Serializer>(
+    actor: &VerifiedActor,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(actor.principal_id())
+}
+fn deserialize_requester_principal<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<VerifiedActor, D::Error> {
+    let principal = String::deserialize(deserializer)?;
+    match principal.as_str() {
+        // Only this stored Agent field accepts the previous serde spellings.
+        "sales-01" | "sales01" => Ok(VerifiedActor::Sales01),
+        "office-01" | "office01" => Ok(VerifiedActor::Office01),
+        _ => Err(serde::de::Error::unknown_variant(
+            &principal,
+            &["sales-01", "office-01"],
+        )),
+    }
+}
+
 /// Trusted application-only input/output, deliberately not an HTTP request DTO.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentDispatchContext {

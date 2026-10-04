@@ -1,5 +1,17 @@
 # Organization Browser PoC — 合成Agentの状況
 
+## 2026-10-04 16:02 UTC — Agent受付の主体表記を限定修正、journey再資格未確認
+
+- PR60の公開source `724590b1` は実DB/拡張transaction/initializeが成功し、journeyでAgent受付HTTP202まで到達した。その応答の `requestedBy` が公開契約の `sales-01` と一致せず失敗。restart/persistenceには未到達、cleanupは `owned-container-removed` を確認済み
+- 実serdeとRust HTTP contractのfocused試験が、`sales01` 対 `sales-01` の不一致だけでRED。`AgentExecution.requested_by` 限定で公開principal IDを出力し、既存Agent保存値の `sales01` / `office01` だけ読取り互換を残す。一般 `VerifiedActor` のserde・旧operation digest・認可方式・公開requestのclosed入力は変えない
+
+- focused serde/HTTP各1件がGREEN。両主体のcanonical/legacy往復、旧ledger読取り、一般actor表記と旧digest一致を確認。Rust5package純粋74件PASS、DB1件compile済み・ignored、strict Clippy/fmt/差分確認PASS
+
+次のexact action: 限定差分レビュー後に親へ返し、別exact headの同じhosted検証でjourney以降を再確認する。**この修正はまだhostedで未確認**。ローカルDB/listener/browser、commit/公開は行わない
+
+---
+
+
 ## 2026-10-04 15:42 UTC — PR60初回initialize失敗の限定修正、再資格未確認
 
 - PR60の公開source `385a57fe` は実DB準備と拡張transaction試験が成功したが、`initialize` で失敗した。browser journey/persistenceは未実行、owned process/DB/storageのcleanupは確認済み

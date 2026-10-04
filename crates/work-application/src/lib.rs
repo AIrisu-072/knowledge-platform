@@ -197,4 +197,60 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn agent_requester_json_is_canonical_while_legacy_actor_and_digest_stay_unchanged() {
+        use sha2::{Digest, Sha256};
+        let id = Uuid::now_v7();
+        let legacy = serde_json::json!({"id":id,"contextId":work_domain::CONTEXT_ID,"workItemId":SALES_TASK_ID,"attemptId":work_domain::SALES_ATTEMPT_ID,"requestedBy":"sales01","requesterResponsibility":work_domain::SALES_ASSIGNMENT_ID,"executedBy":"organization-synthetic/agent-01","executorInvocationKind":"agent","providerPrincipalBindings":[{"providerId":"document","principalId":"poc/poc-agent","invocationKind":"agent"}],"effectiveContextRevision":2,"taskRevision":2,"purpose":"synthetic request","evidenceRevisionRefs":[{"id":Uuid::now_v7(),"revision":1}],"status":"queued","startedAt":"2026-10-04T00:00:00Z","endedAt":null,"result":null,"failureCode":null});
+        let mut execution: AgentExecution = serde_json::from_value(legacy.clone()).unwrap();
+        let task = work_domain::Workflow::synthetic(None)
+            .detail(VerifiedActor::Sales01, SALES_TASK_ID)
+            .unwrap()
+            .task;
+        let stored_receipt: MutationResult = serde_json::from_value(
+            serde_json::json!({"kind":"agent_execution_requested","task":task,"execution":legacy}),
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(stored_receipt).unwrap()["execution"]["requestedBy"],
+            "sales-01"
+        );
+        for (actor, canonical, old) in [
+            (VerifiedActor::Sales01, "sales-01", "sales01"),
+            (VerifiedActor::Office01, "office-01", "office01"),
+        ] {
+            execution.requested_by = actor;
+            let canonical_json = serde_json::to_value(&execution).unwrap();
+            assert_eq!(canonical_json["requestedBy"], canonical);
+            assert_eq!(
+                serde_json::from_value::<AgentExecution>(canonical_json.clone()).unwrap(),
+                execution
+            );
+            let mut old_json = canonical_json;
+            old_json["requestedBy"] = serde_json::json!(old);
+            assert_eq!(
+                serde_json::from_value::<AgentExecution>(old_json.clone()).unwrap(),
+                execution
+            );
+            old_json["requestedBy"] = serde_json::json!("poc-agent");
+            assert!(serde_json::from_value::<AgentExecution>(old_json).is_err());
+            // Canonical Agent DTO output must not rename the shared legacy enum.
+            assert_eq!(serde_json::to_value(actor).unwrap(), serde_json::json!(old));
+            assert!(serde_json::from_value::<VerifiedActor>(serde_json::json!(canonical)).is_err());
+            let command = Command::Claim {
+                task_id: SALES_TASK_ID,
+                context: CommandContext {
+                    operation_id: id,
+                    expected_revision: 0,
+                    acting_assignment_id: actor.assignment_id(),
+                },
+            };
+            // Serialize the same tuple layout as the original command digest, including key order.
+            let original_bytes = serde_json::to_vec(&(old, &command)).unwrap();
+            assert_eq!(
+                command_digest(actor, &command).unwrap(),
+                Sha256::digest(original_bytes).to_vec()
+            );
+        }
+    }
 }

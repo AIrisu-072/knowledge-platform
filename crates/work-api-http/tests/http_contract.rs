@@ -708,6 +708,7 @@ async fn agent_http_is_closed_private_replay_safe_and_never_dispatches_from_read
         let (status, result) = response_json(response).await;
         assert_eq!(status, StatusCode::ACCEPTED);
         assert_eq!(result["execution"]["status"], "queued");
+        assert_eq!(result["execution"]["requestedBy"], "sales-01");
     }
     assert_eq!(dispatch.calls.load(std::sync::atomic::Ordering::SeqCst), 1);
     for (path, expected) in [
