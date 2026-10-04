@@ -31,6 +31,21 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
         "only a disposable work test database is permitted"
     );
     migrate(&pool).await.unwrap();
+    let migrations_before: Vec<(i64, Vec<u8>, time::OffsetDateTime)> = sqlx::query_as(
+        "SELECT version, checksum, applied_at FROM work.schema_migrations ORDER BY version",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(migrations_before.len(), 1);
+    migrate(&pool).await.unwrap();
+    let migrations_after: Vec<(i64, Vec<u8>, time::OffsetDateTime)> = sqlx::query_as(
+        "SELECT version, checksum, applied_at FROM work.schema_migrations ORDER BY version",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(migrations_after, migrations_before);
     seed_synthetic(&pool, None).await.unwrap();
     let repository = PostgresWorkRepository::new(pool.clone());
     let command = Command::SaveDraft {
@@ -84,13 +99,32 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
             revision: artifact.revision,
         }],
     };
+    // Observe the complete aggregate (including snapshots), its OCC column and every
+    // independently staged record family in one statement before and after rejection.
+    let rollback_state_sql = "SELECT body, revision, \
+        (SELECT count(*) FROM work.operation_ledger), \
+        (SELECT count(*) FROM work.workflow_history), \
+        (SELECT count(*) FROM work.event_staging) \
+        FROM work.workflow_instances WHERE id = $1";
+    let before_failure: (serde_json::Value, i64, i64, i64, i64) =
+        sqlx::query_as(rollback_state_sql)
+            .bind(WORKFLOW_ID)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     sqlx::raw_sql("CREATE FUNCTION work.reject_staging() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test staging failure'; END $$; CREATE TRIGGER reject_staging BEFORE INSERT ON work.event_staging FOR EACH ROW EXECUTE FUNCTION work.reject_staging();").execute(&pool).await.unwrap();
-    assert!(
+    assert_eq!(
         repository
             .execute(VerifiedActor::Sales01, command.clone())
-            .await
-            .is_err()
+            .await,
+        Err(WorkError::DependencyUnavailable)
     );
+    let after_failure: (serde_json::Value, i64, i64, i64, i64) = sqlx::query_as(rollback_state_sql)
+        .bind(WORKFLOW_ID)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(after_failure, before_failure);
     assert_eq!(
         repository
             .task(VerifiedActor::Sales01, SALES_TASK_ID)
@@ -190,12 +224,15 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
                     .unwrap(),
                 result
             ),
-            Err(_) => assert_eq!(
-                repository
-                    .recover(VerifiedActor::Office01, operation_id)
-                    .await,
-                Err(WorkError::WorkItemNotFound)
-            ),
+            Err(error) => {
+                assert_eq!(error, WorkError::RevisionConflict);
+                assert_eq!(
+                    repository
+                        .recover(VerifiedActor::Office01, operation_id)
+                        .await,
+                    Err(WorkError::WorkItemNotFound)
+                );
+            }
         }
     }
     assert_eq!(

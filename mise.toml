@@ -386,6 +386,19 @@ run = ["pnpm --filter @knowledge-platform/document-mcp test"]
 description = "Qualify real Human GUI plus Agent MCP on the shared owned Document runtime"
 depends = ["document:poc:runtime"]
 
+[tasks."organization:poc:runtime"]
+description = "Qualify the synthetic Organization database transaction and two-principal browser journey"
+run = '''
+set -eu
+node --test tools/organization-poc-runtime/*.test.mjs
+pnpm --filter @knowledge-platform/document-web exec tsc -p tsconfig.organization-runtime.json
+if [ -z "${KP_DSI_PDFIUM_RUNTIME_DIR:-}" ]; then
+  KP_DSI_PDFIUM_RUNTIME_DIR="$(bash experiments/document-semantic-inspection/scripts/install-pdfium.sh)"
+  export KP_DSI_PDFIUM_RUNTIME_DIR
+fi
+node tools/organization-poc-runtime/run.mjs
+'''
+
 [tasks."document:scheduler:acceptance"]
 description = "Qualify separate scheduler processes, current authorization and single publication"
 run = '''

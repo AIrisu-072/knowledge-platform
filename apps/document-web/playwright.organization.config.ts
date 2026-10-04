@@ -1,0 +1,37 @@
+import { defineConfig, devices } from '@playwright/test';
+import { join } from 'node:path';
+import { readRuntimeContext } from './e2e-organization/support';
+
+const context = readRuntimeContext();
+const phase = process.env.KP_ORGANIZATION_RUNTIME_PHASE;
+const output = process.env.KP_ORGANIZATION_BROWSER_OUTPUT;
+if (!output || !['journey', 'persistence'].includes(phase ?? '')) {
+  throw new Error('Organization harness must supply its output directory and journey/persistence phase');
+}
+// Standard runner failure context may be temporary; no custom attachments or exports.
+export default defineConfig({
+  testDir: './e2e-organization',
+  testMatch: phase === 'journey' ? 'journey.spec.ts' : 'persistence.spec.ts',
+  fullyParallel: false,
+  workers: 1,
+  retries: 0,
+  timeout: 120_000,
+  expect: { timeout: 15_000 },
+  outputDir: join(output, 'artifacts'),
+  preserveOutput: 'never',
+  reporter: 'list',
+  captureGitInfo: { commit: false, diff: false },
+  use: {
+    baseURL: context.sales,
+    browserName: 'chromium',
+    locale: 'ja-JP',
+    viewport: { width: 1440, height: 900 },
+    trace: 'off',
+    screenshot: 'off',
+    video: 'off',
+    acceptDownloads: false,
+    serviceWorkers: 'block',
+  },
+  // No webServer, channel or executablePath: only the pinned bundled Chromium.
+  projects: [{ name: 'organization-two-principal-chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 } }],
+});

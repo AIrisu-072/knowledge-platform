@@ -31,3 +31,9 @@ Phase1–3の凍結設計を維持する。基点はPR49 `0860e34ebd2c2353f65284
 - 既存Document GUI回帰、型検査、production build
 
 実PostgreSQL/HTTP/browser実行が環境拒否で止まる場合は、その証拠を報告して停止する。他socket・別環境へ迂回しない。純粋テストだけで実runtime合格とはしない。
+
+## 最小実runtime確認の追加準備
+
+初回commitの後に、既存Document CI jobの後段でOrganization専用の短いrunnerを実行するsourceを準備する。Document runner本体や資格条件は変更せず、既存harnessのprocess/readiness/cleanup関数を再利用する。別owned PostgreSQL containerと2つの合成DBを用い、既存ignored transaction試験、実Reactの2名journey、同じDB/storageでのserver再起動後確認だけを追加する。画像・trace・videoのcapture/uploadは追加しない。
+
+個別のhosted実行許可が確認されるまではsource準備と純粋/静的検査だけを行う。既知ローカル拒否の再試行も、自動runtimeを起動するpushも行わない。

@@ -106,6 +106,9 @@ async fn run() -> Result<(), String> {
         _ => unreachable!(),
     }
     pool.close().await;
+    if action == "serve" {
+        eprintln!("organization-server: graceful drain complete");
+    }
     Ok(())
 }
 async fn shutdown_signal() {

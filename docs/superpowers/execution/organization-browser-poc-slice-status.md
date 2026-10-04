@@ -1,6 +1,27 @@
 # Organization Browser PoC 最小slice — 実行状況
 
-2026-10-04 05:55 UTC。状態: **実装・限定独立レビューGO、local最小検証PASS／実DB・browser統合は未実行**。
+2026-10-04 05:55 UTC 初回実装時点。状態: **実装・限定独立レビューGO、local最小検証PASS／実DB・browser統合は未実行**。
+
+## 2026-10-04 06:18 UTC — 実DB・browser確認の追加sourceを準備
+
+所有者は06:10 UTCに「解決して続けて、完了までしてください。何かできたら都度報告してください。」と指示した。初回実装commit `44fbd7d900aa56c5260efd9bd3933d91a3c32d0a` の次commitとして、既存Document CIの後段に最小Organization検証を追加する。
+
+既存Documentのprocess・PostgreSQL readiness・停止処理を再利用し、別の一時container内にbrowser用DBとtransaction試験用DBを分離する。2名の実UI操作と同DB/storageでの2process再起動、private非開示、固定snapshot、staging失敗時rollbackを確認する。依存追加・画像/trace/video公開・Document資格条件の変更はない。
+
+source準備のみ承認済み。hosted Organization実行の個別許可は質問中で、このcommitをpushして自動起動する操作も保留。実DB/browser結果はまだ **NOT RUN**。
+
+追加sourceの静的確認: Organization runtime型検査PASS、Playwrightはjourney/persistence各1件の収集のみPASS、listener-free設定/終了契約3件PASS、既存GUI17 suites/74件PASS、対象Clippy・fmt・構文・差分・追加差分Gitleaks PASS。実DB試験はcompile成功、0 passed / 1 ignoredのまま。独立レビューで停止確認logの欠落を検出し、OrganizationのRuntimeとWork poolが終了した後だけ既存harnessと同じdrain確認を出す最小修正を加えた。追加13コード/設定ファイルの限定独立再レビューはGO、追加blockingなし。
+
+### ローカル検証範囲の逸脱と停止
+
+06:18–06:19 UTC、既存Document Node試験を純粋suiteと誤認し、`node --test tools/document-poc-runtime/test/*.test.mjs` を実行した。129件が10.612秒で成功してexit0で終了したが、そのうち次の6試験は合成HTTP/TCPのloopback listenerを実際に起動した。実行前のsource確認が不足していた。
+
+- `harness.test.mjs`: HTTP readiness、合成TCP echoを使うdatabase proxy、paused download、100-continue JSON request
+- `response-loss.test.mjs`: 合成HTTP upstreamの応答喪失、no-dispatch/stalled-upstreamの終了確認
+
+いずれも試験専用の合成listenerであり、実PostgreSQL、Organization server、Chromium、本番接続は起動していない。試験sourceのfinally/afterでcloseを待機し、応答喪失のchildではTCPServerWrapが0であることも確認している。親runnerのexit0と、その後の該当試験process検索で残存なしを確認した。全system socketの不存在までは主張しない。
+
+この事実は直ちに親へ報告して追加runtimeを停止した。129件の成功はPostgreSQL EPERMの解消証拠でも、別経路を使う許可でもない。以後は内容確認済みのlistener-free純粋試験・型/構文検査のみ実行する。保存した試験出力13396 bytesのSHA256は `6c878e854aeab0f846c4105d1898a33aaae3c49d9ba12bf8d689d32798488340`。
 
 ## 承認と基点
 

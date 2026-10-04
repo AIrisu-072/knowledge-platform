@@ -198,6 +198,8 @@ jobs:
             export KP_POC_CAPTURE_VISUAL=true
           fi
           mise run document:poc:agent
+      - name: Real Organization two-principal acceptance
+        run: mise run organization:poc:runtime
       - name: Emit bounded runtime evidence
         if: ${{ always() }}
         run: node tools/document-poc-runtime/ci-summary.mjs
