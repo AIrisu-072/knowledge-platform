@@ -1,5 +1,17 @@
 # Organization Browser PoC — 根拠・候補・人間判断の状況
 
+## 2026-10-04 09:55 UTC — 初回実DB成功・browser失敗の局所修正
+
+[PR57](https://github.com/AIrisu-072/knowledge-platform/pull/57) source `5d65b3b1a2cb8a2e660757b4c0b540ea95ff2b9c` の[初回通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37192481161)はOrganization browser journeyで失敗した。build・実PostgreSQL接続・拡張transaction試験・初期化は成功、再起動/persistence/正常shutdown段階は未到達。失敗後cleanupは実装上finallyで試みるが、このrunの公開logにはその結果が無く、確認済みとしない。Document実runtime回帰、DSI、Sandboxと他の通常jobは成功（Rust856 PASS/7 skip、GUI127件、既存mock browser6件）。
+
+初回の詳細な失敗行は一時workspaceだけに残り、公開artifactは無い。source調査では、selectを内包する3labelに選択肢文字列が混ざり、実Playwrightのexact label照合で全3件が不一致になる欠陥を純粋DOMで再現した。表示labelと同じ明示aria-labelを3属性だけ追加し、lock済Playwright1.63.0の実getElementLabels/createTextMatcherによる恒久試験をRED→GREENにした。E2E条件は緩めていない。この再現欠陥と、初回hostedの実際の停止行を確認したという主張は区別する。
+
+標準Playwright JSONは同じprivate run directoryにだけ保存し、失敗時は有限phase/test/source名・座標・status/category/matcherだけをstdoutへ出す。本文・実値・URL・資格情報・raw message/stack・画像/trace/添付は出さず、診断不能でも元の失敗を維持する。既存cleanupの有限結果だけも最終stdoutへ出す。新workflow/依存・権限・実行先は追加していない。
+
+局所修正のGUI128件/19 suites、純粋Organization runner11件、application/runtime型、schema/build、差分確認PASS（既存Webpack advisory3件）。sourceレビューでCritical/Important所見なし、exact sourceの最終照合後に同じhosted条件で再確認する。ローカルDB/listener/browserは実行していない。
+
+---
+
 2026-10-04 09:05 UTC。状態: **最小実装・ローカル確認PASS・限定独立レビューGO／新hosted実証待ち**。
 
 - 基点: [PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) remote `cf28175d9b2467afd7225fa4f92f1d7a801d4002`、tree `59a1d299c45d6ffedf2692355c2ebf3f50d4cedf`。独立branch `feat/organization-evidence-slice` で作業し、受入headは保持する

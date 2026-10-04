@@ -605,3 +605,18 @@ test('reload retries unavailable Document source files for the same revision', a
   await userEvent.click(screen.getByRole('button', { name: '再読込' }));
   expect(await screen.findByLabelText('原本ファイル')).toBeVisible();
 });
+
+test('real Playwright exact label matching identifies source file and judgment selects without option text', async () => {
+  const matches = require('./playwright-label-matcher.cjs')() as (element: Element, name: string) => boolean;
+  setup(); mockRecords();
+  jest.spyOn(documentApi, 'getDocument').mockResolvedValue(sourceDocument as never);
+  jest.spyOn(documentApi, 'listVersionFiles').mockResolvedValue({ items: [sourceFile] } as never);
+  await openEvidence();
+  const source = screen.getByLabelText('根拠にする入力文書');
+  await userEvent.selectOptions(source, sourceDocument.documentId);
+  const file = await screen.findByLabelText('原本ファイル');
+  const judgment = screen.getByLabelText('候補の判断 finding-1');
+  expect([matches(source, '根拠にする入力文書'), matches(file, '原本ファイル'), matches(judgment, '候補の判断 finding-1')]).toEqual([true, true, true]);
+  expect(matches(judgment, '候補の判断')).toBe(false);
+  expect(matches(source, '共有の入力文書')).toBe(false);
+});

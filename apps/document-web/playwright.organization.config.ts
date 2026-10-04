@@ -8,7 +8,7 @@ const output = process.env.KP_ORGANIZATION_BROWSER_OUTPUT;
 if (!output || !['journey', 'persistence'].includes(phase ?? '')) {
   throw new Error('Organization harness must supply its output directory and journey/persistence phase');
 }
-// Standard runner failure context may be temporary; no custom attachments or exports.
+// Raw standard JSON stays in the private harness directory; only a closed failure projection is logged.
 export default defineConfig({
   testDir: './e2e-organization',
   testMatch: phase === 'journey' ? 'journey.spec.ts' : 'persistence.spec.ts',
@@ -19,7 +19,7 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   outputDir: join(output, 'artifacts'),
   preserveOutput: 'never',
-  reporter: 'list',
+  reporter: [['list'], ['json', { outputFile: join(output, 'results.json') }]],
   captureGitInfo: { commit: false, diff: false },
   use: {
     baseURL: context.sales,

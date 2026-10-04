@@ -10,6 +10,7 @@ import { createRequire } from 'node:module';
 import { Blocked, EvidenceReport, binaryDirectory, command, freePort, postgresArguments, startProcess, stopProcess, waitReady } from '../document-poc-runtime/harness.mjs';
 import { postgresReadyArgs, postgresVersionArgs, parsePostgresReadyStatus, waitForPostgresTcp } from '../document-poc-runtime/postgres-readiness.mjs';
 import { organizationEnvironment } from './settings.mjs';
+import { readBrowserFailureDiagnostics } from './browser-diagnostics.mjs';
 
 if (process.argv.length !== 2) throw Error('Organization runtime accepts no alternate or prebuilt mode');
 if (process.env.TEST_DATABASE_URL || process.env.WORK_POC_TEST_DATABASE_URL) throw Error('Organization acceptance creates its own disposable databases');
@@ -107,7 +108,12 @@ try {
   const require = createRequire(join(root, 'apps/document-web/package.json'));
   await access(require('@playwright/test').chromium.executablePath(), constants.X_OK);
   async function browser(phase) {
-    await run(`browser-${phase}`, 'pnpm', ['--filter', '@knowledge-platform/document-web', 'exec', 'playwright', 'test', '--config', 'playwright.organization.config.ts'], { ...process.env, KP_ORGANIZATION_RUNTIME_CONTEXT: contextPath, KP_ORGANIZATION_RUNTIME_PHASE: phase, KP_ORGANIZATION_BROWSER_OUTPUT: join(directory, `browser-${phase}`) });
+    try {
+      await run(`browser-${phase}`, 'pnpm', ['--filter', '@knowledge-platform/document-web', 'exec', 'playwright', 'test', '--config', 'playwright.organization.config.ts'], { ...process.env, KP_ORGANIZATION_RUNTIME_CONTEXT: contextPath, KP_ORGANIZATION_RUNTIME_PHASE: phase, KP_ORGANIZATION_BROWSER_OUTPUT: join(directory, `browser-${phase}`), PLAYWRIGHT_JSON_OUTPUT_FILE: join(directory, `browser-${phase}`, 'results.json') });
+    } catch (error) {
+      console.error(`Organization browser failure: ${JSON.stringify(await readBrowserFailureDiagnostics(directory, phase))}`);
+      throw error;
+    }
   }
   await report.stage('journey', () => browser('journey'));
   await report.stage('restart', async () => {
@@ -136,7 +142,8 @@ try {
   if (interrupted) failed = true;
   if (failed && report.data.stages.every(stage => stage.status === 'passed')) report.data.stages.push({ name: 'cleanup', status: 'failed' });
   await report.finish();
-  const summary = `Organization Browser PoC: ${report.data.status}\n${report.data.stages.map(stage => `${stage.name}: ${stage.status}`).join('\n')}\n`;
+  const cleanup = ['owned-container-removed', 'unconfirmed'].includes(report.data.cleanup) ? `cleanup: ${report.data.cleanup}\n` : '';
+  const summary = `Organization Browser PoC: ${report.data.status}\n${report.data.stages.map(stage => `${stage.name}: ${stage.status}`).join('\n')}\n${cleanup}`;
   console.log(summary);
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `## Organization Browser PoC\n\nSource: ${report.data.gitHead ?? 'unknown'}\n\n${report.data.stages.map(stage => `- ${stage.name}: ${stage.status}`).join('\n')}\n\nSynthetic data only; no screenshots, traces, videos or runtime files uploaded.\n`);
   process.exitCode = report.data.acceptanceQualified ? 0 : 1;
