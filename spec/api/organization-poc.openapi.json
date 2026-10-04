@@ -589,6 +589,114 @@
           }
         ]
       }
+    },
+    "/v1/organization/tasks/{id}/return": {
+      "post": {
+        "operationId": "returnOrganizationTask",
+        "summary": "returnOrganizationTask",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/return-instructions/{id}": {
+      "get": {
+        "operationId": "getOrganizationReturnInstruction",
+        "summary": "getOrganizationReturnInstruction",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnInstruction"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -708,6 +816,30 @@
               "null"
             ],
             "format": "uuid"
+          },
+          "attemptNumber": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "canReturn": {
+            "type": "boolean"
+          },
+          "returnInstructionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "returnTransition": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ReturnTransition"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -721,7 +853,11 @@
           "canClaim",
           "canEdit",
           "canSubmit",
-          "handoffSnapshotId"
+          "handoffSnapshotId",
+          "attemptNumber",
+          "canReturn",
+          "returnInstructionId",
+          "returnTransition"
         ]
       },
       "WorkingArtifact": {
@@ -878,6 +1014,30 @@
               "$ref": "#/components/schemas/WorkingArtifact"
             },
             "maxItems": 16
+          },
+          "attemptNumber": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "canReturn": {
+            "type": "boolean"
+          },
+          "returnInstructionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "returnTransition": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ReturnTransition"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -894,7 +1054,11 @@
           "handoffSnapshotId",
           "inputResources",
           "history",
-          "workingArtifacts"
+          "workingArtifacts",
+          "attemptNumber",
+          "canReturn",
+          "returnInstructionId",
+          "returnTransition"
         ]
       },
       "TaskPage": {
@@ -998,6 +1162,14 @@
           "submissionNumber": {
             "type": "integer",
             "minimum": 1
+          },
+          "previousSubmissionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "returnInstructionId": {
+            "type": "string",
+            "format": "uuid"
           }
         },
         "required": [
@@ -1187,6 +1359,9 @@
           },
           {
             "$ref": "#/components/schemas/Submitted"
+          },
+          {
+            "$ref": "#/components/schemas/Returned"
           }
         ]
       },
@@ -1251,6 +1426,182 @@
         "required": [
           "items",
           "nextCursor"
+        ]
+      },
+      "ReturnTransition": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "transitionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetTaskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "previousSubmissionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "transitionId",
+          "targetTaskId",
+          "previousSubmissionId"
+        ]
+      },
+      "ReturnInstruction": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflowId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceTaskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetTaskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "previousSubmissionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "transitionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "空白のみ不可、最大8192 UTF-8 bytes。"
+          },
+          "returnedBy": {
+            "type": "string",
+            "enum": [
+              "office-01"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "workflowId",
+          "contextId",
+          "sourceTaskId",
+          "sourceAttemptId",
+          "targetTaskId",
+          "targetAttemptId",
+          "previousSubmissionId",
+          "transitionId",
+          "actingAssignmentId",
+          "reason",
+          "returnedBy",
+          "createdAt"
+        ]
+      },
+      "ReturnCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "previousSubmissionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetTaskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "transitionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "空白のみ不可、最大8192 UTF-8 bytes。"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedAttemptId",
+          "previousSubmissionId",
+          "targetTaskId",
+          "transitionId",
+          "reason"
+        ]
+      },
+      "Returned": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "returned",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "returnInstruction": {
+            "$ref": "#/components/schemas/ReturnInstruction"
+          },
+          "nextTask": {
+            "$ref": "#/components/schemas/TaskSummary"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "returnInstruction",
+          "nextTask"
         ]
       }
     }

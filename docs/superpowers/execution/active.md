@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 2026-10-04 07:33 UTC — Organization差戻・再提出sliceを継続
+
+- 受入PR54 exact `44e1b412` の最小Browser PoCは実DB/2名操作/復元/cleanupと全CI成功済み
+- 所有者の「続けてください」に基づき、Frozen設計の差戻→新attempt private文案→再提出を別branchで実装。[最新状況](organization-return-slice-status.md)、[短い計画](../plans/2026-10-04-organization-return-slice.md)
+- accepted source、固定2名、同じ使い捨てDB/Chromium、画像非公開、ローカル拒否境界を維持。新しい検証監督frameworkは作らない
+
+---
+
 ## 2026-10-04 UTC — 承認済みBrowser PoC先行sliceを実装
 
 - 所有者が05:20:11 UTCにTauri実機検証より先のBrowser PoC実装を明示承認。Phase1–3凍結を保持し、2名のtask/private文案/Document参照/submit/handoffを実装した

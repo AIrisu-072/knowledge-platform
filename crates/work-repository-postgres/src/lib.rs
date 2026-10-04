@@ -7,7 +7,10 @@ use uuid::Uuid;
 use work_application::{WorkFuture, WorkRepository, command_digest};
 use work_domain::*;
 
-const MIGRATION: &str = include_str!("../migrations/0001_work.sql");
+const MIGRATIONS: &[(i64, &str)] = &[
+    (1, include_str!("../migrations/0001_work.sql")),
+    (2, include_str!("../migrations/0002_return.sql")),
+];
 const MIGRATION_LOCK: i64 = 0x574F524B504F4301;
 #[derive(Clone)]
 pub struct PostgresWorkRepository {
@@ -25,6 +28,7 @@ impl PostgresWorkRepository {
                 .await
                 .map_err(database_error)?
                 .ok_or(WorkError::DependencyUnavailable)?;
+        workflow.validate_integrity()?;
         Ok(workflow)
     }
     async fn execute_command(
@@ -43,7 +47,11 @@ impl PostgresWorkRepository {
                 .await
                 .map_err(database_error)?
                 .ok_or(WorkError::DependencyUnavailable)?;
-        workflow.authorize_command(actor, &command)?;
+        workflow.validate_integrity()?;
+        // A committed operation replays under current result-disclosure authority.
+        // A new attempt may be ready/unassigned, which must not invalidate an old
+        // immutable submission/return outcome. New commands are authorized by apply.
+        command.context().authorize(actor)?;
         let operation_id = command.context().operation_id;
         let previous = sqlx::query("SELECT principal_id, command_digest, outcome FROM work.operation_ledger WHERE operation_id=$1")
             .bind(operation_id).fetch_optional(&mut *tx).await.map_err(database_error)?;
@@ -59,6 +67,7 @@ impl PostgresWorkRepository {
             }
             let Json(outcome): Json<MutationResult> =
                 previous.try_get("outcome").map_err(database_error)?;
+            workflow.validate_integrity()?;
             workflow.authorize_recovery(actor, &outcome)?;
             return Ok(outcome);
         }
@@ -71,6 +80,7 @@ impl PostgresWorkRepository {
             MutationResult::DraftSaved { .. } => "draft_saved",
             MutationResult::Claimed { .. } => "claimed",
             MutationResult::Submitted { .. } => "submitted",
+            MutationResult::Returned { .. } => "returned",
         };
         sqlx::query("UPDATE work.workflow_instances SET revision=$2, body=$3 WHERE id=$1")
             .bind(WORKFLOW_ID)
@@ -101,6 +111,17 @@ impl PostgresWorkRepository {
 fn database_error(_: sqlx::Error) -> WorkError {
     WorkError::DependencyUnavailable
 }
+fn validate_migration_records(records: &[(i64, Vec<u8>)], complete: bool) -> Result<(), WorkError> {
+    if records.len() > MIGRATIONS.len() || (complete && records.len() != MIGRATIONS.len()) {
+        return Err(WorkError::IntegrityViolation);
+    }
+    for ((version, checksum), (expected, migration)) in records.iter().zip(MIGRATIONS) {
+        if version != expected || checksum != &Sha256::digest(migration.as_bytes()).to_vec() {
+            return Err(WorkError::IntegrityViolation);
+        }
+    }
+    Ok(())
+}
 /// Explicit administrative command only; never called by router or ordinary startup.
 pub async fn migrate(pool: &PgPool) -> Result<(), WorkError> {
     let mut tx = pool.begin().await.map_err(database_error)?;
@@ -116,21 +137,18 @@ pub async fn migrate(pool: &PgPool) -> Result<(), WorkError> {
             .fetch_all(&mut *tx)
             .await
             .map_err(database_error)?;
-    let checksum = Sha256::digest(MIGRATION.as_bytes()).to_vec();
-    match records.as_slice() {
-        [] => {
-            sqlx::raw_sql(MIGRATION)
-                .execute(&mut *tx)
-                .await
-                .map_err(database_error)?;
-            sqlx::query("INSERT INTO work.schema_migrations(version,checksum) VALUES(1,$1)")
-                .bind(&checksum)
-                .execute(&mut *tx)
-                .await
-                .map_err(database_error)?;
-        }
-        [(1, stored)] if stored == &checksum => (),
-        _ => return Err(WorkError::IntegrityViolation),
+    validate_migration_records(&records, false)?;
+    for (version, migration) in MIGRATIONS.iter().skip(records.len()) {
+        sqlx::raw_sql(*migration)
+            .execute(&mut *tx)
+            .await
+            .map_err(database_error)?;
+        sqlx::query("INSERT INTO work.schema_migrations(version,checksum) VALUES($1,$2)")
+            .bind(version)
+            .bind(Sha256::digest(migration.as_bytes()).to_vec())
+            .execute(&mut *tx)
+            .await
+            .map_err(database_error)?;
     }
     tx.commit()
         .await
@@ -143,10 +161,7 @@ pub async fn check_schema_compatibility(pool: &PgPool) -> Result<(), WorkError> 
             .fetch_all(pool)
             .await
             .map_err(database_error)?;
-    let checksum = Sha256::digest(MIGRATION.as_bytes()).to_vec();
-    if records.as_slice() != [(1, checksum)] {
-        return Err(WorkError::IntegrityViolation);
-    }
+    validate_migration_records(&records, true)?;
     let ready: bool = sqlx::query_scalar("SELECT to_regclass('work.workflow_instances') IS NOT NULL AND to_regclass('work.operation_ledger') IS NOT NULL AND to_regclass('work.workflow_history') IS NOT NULL AND to_regclass('work.event_staging') IS NOT NULL")
         .fetch_one(pool).await.map_err(database_error)?;
     if !ready {
@@ -176,6 +191,13 @@ impl WorkRepository for PostgresWorkRepository {
     fn snapshot(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, HandoffSnapshot> {
         Box::pin(async move { self.load().await?.snapshot(actor, id) })
     }
+    fn return_instruction(
+        &self,
+        actor: VerifiedActor,
+        id: Uuid,
+    ) -> WorkFuture<'_, ReturnInstruction> {
+        Box::pin(async move { self.load().await?.return_instruction(actor, id) })
+    }
     fn execute(&self, actor: VerifiedActor, command: Command) -> WorkFuture<'_, MutationResult> {
         Box::pin(async move { self.execute_command(actor, command).await })
     }
@@ -196,8 +218,44 @@ impl WorkRepository for PostgresWorkRepository {
             .await
             .map_err(database_error)?;
             let (Json(workflow), Json(outcome)) = row.ok_or(WorkError::WorkItemNotFound)?;
+            workflow.validate_integrity()?;
             workflow.authorize_recovery(actor, &outcome)?;
             Ok(outcome)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn migration_upgrade_accepts_only_unchanged_prefix_and_startup_requires_both() {
+        let records: Vec<_> = MIGRATIONS
+            .iter()
+            .map(|(version, sql)| (*version, Sha256::digest(sql.as_bytes()).to_vec()))
+            .collect();
+        assert_eq!(validate_migration_records(&[], false), Ok(()));
+        assert_eq!(validate_migration_records(&records[..1], false), Ok(()));
+        assert_eq!(
+            validate_migration_records(&records[..1], true),
+            Err(WorkError::IntegrityViolation)
+        );
+        assert_eq!(validate_migration_records(&records, true), Ok(()));
+        assert_eq!(
+            validate_migration_records(&records[1..], false),
+            Err(WorkError::IntegrityViolation)
+        );
+        let mut changed = records.clone();
+        changed[0].1[0] ^= 1;
+        assert_eq!(
+            validate_migration_records(&changed, false),
+            Err(WorkError::IntegrityViolation)
+        );
+        let mut future = records;
+        future.push((3, vec![0; 32]));
+        assert_eq!(
+            validate_migration_records(&future, false),
+            Err(WorkError::IntegrityViolation)
+        );
     }
 }

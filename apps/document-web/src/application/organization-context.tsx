@@ -1,13 +1,13 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode, type SetStateAction } from 'react';
 import type { WorkSession, WorkOperation } from './work-workspace';
 type OrganizationContextValue = { session: WorkSession | null; taskHref: string; setContext: (session: WorkSession, taskHref: string) => void };
-type TaskTransient = { draft: string | null; operation: WorkOperation | null; unknown: boolean; notice: string; error: unknown };
-const emptyTransient: TaskTransient = { draft: null, operation: null, unknown: false, notice: '', error: null };
+type TaskTransient = { draft: string | null; reason: string | null; operation: WorkOperation | null; unknown: boolean; notice: string; error: unknown };
+const emptyTransient: TaskTransient = { draft: null, reason: null, operation: null, unknown: false, notice: '', error: null };
 const TransientContext = createContext<{ items: Record<string, TaskTransient>; update: (key: string, value: SetStateAction<TaskTransient>) => void }>({ items: {}, update: () => undefined });
 const OrganizationContext = createContext<OrganizationContextValue>({ session: null, taskHref: '/tasks', setContext: () => undefined });
 export function OrganizationProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<Record<string, TaskTransient>>({});
-  const hasUnsavedWork = Object.values(items).some((item) => item.draft !== null || item.unknown);
+  const hasUnsavedWork = Object.values(items).some((item) => item.draft !== null || item.reason !== null || item.unknown);
   useEffect(() => {
     if (!hasUnsavedWork) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };

@@ -21,6 +21,9 @@ impl WorkRepository for Unavailable {
     fn snapshot(&self, _: VerifiedActor, _: Uuid) -> WorkFuture<'_, HandoffSnapshot> {
         Box::pin(async { Err(WorkError::DependencyUnavailable) })
     }
+    fn return_instruction(&self, _: VerifiedActor, _: Uuid) -> WorkFuture<'_, ReturnInstruction> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
     fn execute(&self, _: VerifiedActor, _: Command) -> WorkFuture<'_, MutationResult> {
         Box::pin(async { Err(WorkError::DependencyUnavailable) })
     }
@@ -124,4 +127,324 @@ async fn oversized_body_and_unknown_routes_use_closed_errors() {
         response.headers().get("content-type").unwrap(),
         "application/problem+json"
     );
+}
+
+#[tokio::test]
+async fn return_transport_accepts_only_closed_command_and_has_instruction_read_route() {
+    let valid = serde_json::json!({
+        "operationId":Uuid::now_v7(),"expectedRevision":1,"actingAssignmentId":OFFICE_ASSIGNMENT_ID,
+        "expectedAttemptId":OFFICE_ATTEMPT_ID,"previousSubmissionId":Uuid::now_v7(),
+        "targetTaskId":SALES_TASK_ID,"transitionId":RETURN_TRANSITION_ID,"reason":"確認してください"
+    });
+    let response = app()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/organization/tasks/{OFFICE_TASK_ID}/return"))
+                .header("content-type", "application/json")
+                .body(Body::from(valid.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    for field in ["principalId", "unexpected"] {
+        let mut invalid = valid.clone();
+        invalid[field] = serde_json::json!("office-01");
+        let response = app()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/organization/tasks/{OFFICE_TASK_ID}/return"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(invalid.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+    let response = app()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/v1/organization/return-instructions/{}",
+                    Uuid::now_v7()
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+// Real domain state behind the transport, without a socket or a database. SQL
+// atomicity and operation replay remain the separate opt-in PostgreSQL trial.
+struct DomainFixture {
+    workflow: std::sync::Mutex<Workflow>,
+    outcomes: std::sync::Mutex<Vec<(Uuid, VerifiedActor, MutationResult)>>,
+}
+impl WorkRepository for DomainFixture {
+    fn list_tasks(&self, actor: VerifiedActor, view: TaskView) -> WorkFuture<'_, Vec<TaskSummary>> {
+        Box::pin(async move { Ok(self.workflow.lock().unwrap().list_tasks(actor, view)) })
+    }
+    fn task(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, TaskDetail> {
+        Box::pin(async move { self.workflow.lock().unwrap().detail(actor, id) })
+    }
+    fn artifact(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, WorkingArtifact> {
+        Box::pin(async move { self.workflow.lock().unwrap().artifact(actor, id) })
+    }
+    fn snapshot(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, HandoffSnapshot> {
+        Box::pin(async move { self.workflow.lock().unwrap().snapshot(actor, id) })
+    }
+    fn return_instruction(
+        &self,
+        actor: VerifiedActor,
+        id: Uuid,
+    ) -> WorkFuture<'_, ReturnInstruction> {
+        Box::pin(async move { self.workflow.lock().unwrap().return_instruction(actor, id) })
+    }
+    fn execute(&self, actor: VerifiedActor, command: Command) -> WorkFuture<'_, MutationResult> {
+        Box::pin(async move {
+            let result =
+                self.workflow
+                    .lock()
+                    .unwrap()
+                    .apply(actor, &command, "2026-10-04T00:00:00Z")?;
+            self.outcomes.lock().unwrap().push((
+                command.context().operation_id,
+                actor,
+                result.clone(),
+            ));
+            Ok(result)
+        })
+    }
+    fn recover(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, MutationResult> {
+        Box::pin(async move {
+            let outcomes = self.outcomes.lock().unwrap();
+            let (_, _, result) = outcomes
+                .iter()
+                .find(|(operation, owner, _)| *operation == id && *owner == actor)
+                .ok_or(WorkError::WorkItemNotFound)?;
+            self.workflow
+                .lock()
+                .unwrap()
+                .authorize_recovery(actor, result)?;
+            Ok(result.clone())
+        })
+    }
+}
+fn context(actor: VerifiedActor, revision: i64) -> CommandContext {
+    CommandContext {
+        operation_id: Uuid::now_v7(),
+        expected_revision: revision,
+        acting_assignment_id: actor.assignment_id(),
+    }
+}
+async fn response_json(response: axum::response::Response) -> (StatusCode, serde_json::Value) {
+    assert_eq!(response.headers()["cache-control"], "no-store");
+    let status = response.status();
+    let body =
+        serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+    (status, body)
+}
+#[tokio::test]
+async fn return_http_closes_current_attempt_and_hides_rework_drafts_on_every_read_surface() {
+    let fixture = Arc::new(DomainFixture {
+        workflow: std::sync::Mutex::new(Workflow::synthetic(None)),
+        outcomes: std::sync::Mutex::new(vec![]),
+    });
+    let first = fixture
+        .execute(
+            VerifiedActor::Sales01,
+            Command::SaveDraft {
+                task_id: SALES_TASK_ID,
+                artifact_id: None,
+                context: context(VerifiedActor::Sales01, 0),
+                value: TextValue {
+                    text: "OLD SUBMITTED TEXT".into(),
+                },
+            },
+        )
+        .await
+        .unwrap();
+    let artifact = match first {
+        MutationResult::DraftSaved { artifact, .. } => artifact,
+        _ => panic!(),
+    };
+    let submitted = fixture
+        .execute(
+            VerifiedActor::Sales01,
+            Command::Submit {
+                task_id: SALES_TASK_ID,
+                context: context(VerifiedActor::Sales01, 1),
+                artifacts: vec![ArtifactSelection {
+                    artifact_id: artifact.id,
+                    revision: 0,
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    let snapshot = match submitted {
+        MutationResult::Submitted { snapshot, .. } => snapshot,
+        _ => panic!(),
+    };
+    fixture
+        .execute(
+            VerifiedActor::Office01,
+            Command::Claim {
+                task_id: OFFICE_TASK_ID,
+                context: context(VerifiedActor::Office01, 0),
+            },
+        )
+        .await
+        .unwrap();
+    let office = work_api_http::router(fixture.clone(), VerifiedActor::Office01);
+    let command = serde_json::json!({"operationId":Uuid::now_v7(), "expectedRevision":1,
+        "actingAssignmentId":OFFICE_ASSIGNMENT_ID,"expectedAttemptId":OFFICE_ATTEMPT_ID,
+        "previousSubmissionId":snapshot.id,"targetTaskId":SALES_TASK_ID,
+        "transitionId":RETURN_TRANSITION_ID,"reason":"確認してください"});
+    for (field, value, status) in [
+        (
+            "reason",
+            serde_json::json!(" \t\n"),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            "reason",
+            serde_json::json!("あ".repeat(2731)),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            "expectedAttemptId",
+            serde_json::json!(Uuid::now_v7()),
+            StatusCode::CONFLICT,
+        ),
+        (
+            "targetTaskId",
+            serde_json::json!(Uuid::now_v7()),
+            StatusCode::CONFLICT,
+        ),
+    ] {
+        let before = fixture.workflow.lock().unwrap().clone();
+        let mut invalid = command.clone();
+        invalid[field] = value;
+        let response = office
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/organization/tasks/{OFFICE_TASK_ID}/return"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(invalid.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let (actual, body) = response_json(response).await;
+        assert_eq!(actual, status);
+        assert!(!body.to_string().contains("確認してください"));
+        assert_eq!(*fixture.workflow.lock().unwrap(), before);
+    }
+    let response = office
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/organization/tasks/{OFFICE_TASK_ID}/return"))
+                .header("content-type", "application/json")
+                .body(Body::from(command.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, returned) = response_json(response).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(returned["kind"], "returned");
+    assert_eq!(returned["nextTask"]["attemptNumber"], 2);
+    let instruction = returned["returnInstruction"]["id"].as_str().unwrap();
+    let sales = work_api_http::router(fixture.clone(), VerifiedActor::Sales01);
+    let (status, read) = response_json(
+        sales
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/v1/organization/return-instructions/{instruction}"
+                    ))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(read, returned["returnInstruction"]);
+    fixture
+        .execute(
+            VerifiedActor::Sales01,
+            Command::Claim {
+                task_id: SALES_TASK_ID,
+                context: context(VerifiedActor::Sales01, 3),
+            },
+        )
+        .await
+        .unwrap();
+    let save_context = context(VerifiedActor::Sales01, 4);
+    let new_result = fixture
+        .execute(
+            VerifiedActor::Sales01,
+            Command::SaveDraft {
+                task_id: SALES_TASK_ID,
+                artifact_id: None,
+                context: save_context.clone(),
+                value: TextValue {
+                    text: "NEW PRIVATE REWORK".into(),
+                },
+            },
+        )
+        .await
+        .unwrap();
+    let artifact = match new_result {
+        MutationResult::DraftSaved { artifact, .. } => artifact,
+        _ => panic!(),
+    };
+    for path in [
+        format!("/v1/organization/tasks/{SALES_TASK_ID}"),
+        format!("/v1/organization/tasks/{SALES_TASK_ID}/working-artifacts"),
+        format!("/v1/organization/working-artifacts/{}", artifact.id),
+        format!("/v1/organization/operations/{}", save_context.operation_id),
+    ] {
+        let (status, body) = response_json(
+            office
+                .clone()
+                .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert!(!body.to_string().contains("NEW PRIVATE REWORK"));
+    }
+    for path in [
+        "/v1/organization/tasks?view=context".to_string(),
+        format!("/v1/organization/tasks/{OFFICE_TASK_ID}"),
+        format!(
+            "/v1/organization/operations/{}",
+            command["operationId"].as_str().unwrap()
+        ),
+    ] {
+        let (status, body) = response_json(
+            office
+                .clone()
+                .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(!body.to_string().contains("NEW PRIVATE REWORK"));
+    }
 }

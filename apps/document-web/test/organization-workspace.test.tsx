@@ -12,7 +12,7 @@ import { validateDetailSearch } from '../src/application/search-state';
 import { TaskHomePage } from '../src/routes/TaskHomePage';
 
 const session = { principalId: 'sales-01', displayName: '営業担当（模擬）', actingAssignmentId: 'assignment-sales', capabilities: { nativeWorkspace: false, agent: false, search: false, fileUpload: false, return: false } };
-const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, handoffSnapshotId: null };
+const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canReturn: false, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null };
 const artifact = { id: 'draft-1', taskId: task.id, attemptId: task.attemptId, revision: 1, schemaId: 'organization.text-draft.v1', value: { text: '保存済みの文案' }, visibility: 'work_item_private' };
 const detail = { ...task, inputResources: [{ kind: 'document', documentId: '00000000-0000-4000-8000-000000000010', label: '共有の入力文書' }], workingArtifacts: [artifact], history: [] };
 const nextTask = { ...task, id: 'task-2', attemptId: 'attempt-2', title: '事務確認', stepLabel: '事務確認', state: 'ready', canClaim: true, canEdit: false, canSubmit: false };
@@ -194,4 +194,153 @@ test('an unreceived draft write remains unknown after operation 404 and retries 
   await screen.findByText('文案を保存しました');
   expect(save).toHaveBeenCalledTimes(2);
   expect(save.mock.calls[1]![0]).toEqual(originalCommand);
+});
+
+test('a cached old-attempt detail is never rendered under the same task current attempt', async () => {
+  const { client } = setup();
+  await screen.findByLabelText('作業中の文案');
+  const current = { ...task, attemptId: 'sales-attempt-2', attemptNumber: 2, revision: 7 };
+  jest.mocked(workApi.getTask).mockReturnValue(new Promise(() => {}));
+  client.setQueryData(['organization', session.principalId, session.actingAssignmentId, 'tasks', 'context'], { items: [current], nextCursor: null });
+  await screen.findByText(/sales-attempt-2/);
+  expect(screen.queryByDisplayValue('保存済みの文案')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('作業中の文案')).not.toBeInTheDocument();
+});
+
+test('late old-attempt operation recovery cannot roll a current ready attempt backward', async () => {
+  const { client } = setup();
+  let resolveRecovery!: (value: unknown) => void;
+  jest.spyOn(workApi, 'submit').mockRejectedValue(new WorkApiError(0, 'network_unavailable', true));
+  jest.spyOn(workApi, 'getOperation').mockImplementation(() => new Promise((resolve) => { resolveRecovery = resolve; }) as never);
+  await screen.findByLabelText('作業中の文案');
+  await userEvent.click(screen.getByRole('button', { name: '提出内容を確認' }));
+  await userEvent.click(screen.getByRole('button', { name: '提出を確定' }));
+  await screen.findByText(/結果は未確認です/);
+  await userEvent.click(screen.getByRole('button', { name: '同じ操作の結果を確認' }));
+  const current = { ...task, attemptId: 'sales-attempt-2', attemptNumber: 2, revision: 7, state: 'ready', canClaim: true, canEdit: false, canSubmit: false };
+  client.setQueryData(['organization', session.principalId, session.actingAssignmentId, 'tasks', 'context'], { items: [current], nextCursor: null });
+  await screen.findByRole('button', { name: '担当を引き受ける' });
+  resolveRecovery({ kind: 'submitted', task: { ...task, revision: 3, state: 'completed', canEdit: false, canSubmit: false, handoffSnapshotId: snapshot.id }, snapshot, nextTask });
+  await waitFor(() => expect(screen.queryByText('処理中です。サーバーの確定を待っています…')).not.toBeInTheDocument());
+  await waitFor(() => expect(client.getQueryData(['organization', session.principalId, session.actingAssignmentId, 'tasks', 'context'])).toEqual({ items: [current], nextCursor: null }));
+  expect(screen.getByRole('button', { name: '担当を引き受ける' })).toBeVisible();
+  expect(screen.getByText(/sales-attempt-2/)).toBeVisible();
+  expect(screen.queryByLabelText('作業中の文案')).not.toBeInTheDocument();
+});
+
+const officeTask = { ...nextTask, attemptId: 'office-attempt-1', state: 'active', canClaim: false, canReturn: true, handoffSnapshotId: snapshot.id, returnTransition: { transitionId: 'office-return', targetTaskId: task.id, previousSubmissionId: snapshot.id } };
+const reason = '数量を追記して再提出してください';
+const instruction = { id: 'return-1', workflowId: 'workflow-1', contextId: task.contextId, sourceTaskId: officeTask.id, sourceAttemptId: officeTask.attemptId, targetTaskId: task.id, targetAttemptId: 'sales-attempt-2', previousSubmissionId: snapshot.id, transitionId: 'office-return', reason, returnedBy: 'office-01', actingAssignmentId: 'assignment-office', createdAt: '2026-10-04T07:00:00Z' };
+const returned = { kind: 'returned', task: { ...officeTask, revision: 2, state: 'completed', canReturn: false, returnTransition: null, returnInstructionId: instruction.id }, returnInstruction: instruction, nextTask: { ...task, attemptId: instruction.targetAttemptId, attemptNumber: 2, revision: 4, state: 'ready', canClaim: true, canEdit: false, canSubmit: false, returnInstructionId: instruction.id, handoffSnapshotId: snapshot.id } };
+function setupOffice() {
+  const context = setup('/tasks?view=queue&taskId=task-2');
+  jest.mocked(workApi.getSession).mockResolvedValue({ ...session, principalId: 'office-01', displayName: '事務担当（模擬）', actingAssignmentId: 'assignment-office' } as never);
+  jest.mocked(workApi.listTasks).mockResolvedValue({ items: [officeTask], nextCursor: null } as never);
+  jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, ...officeTask, workingArtifacts: [] } as never);
+  return context;
+}
+
+test('return confirmation preserves the bounded required reason on Cancel and Escape', async () => {
+  setupOffice();
+  const returnTask = jest.spyOn(workApi, 'returnTask');
+  const input = await screen.findByLabelText('差戻理由');
+  const trigger = screen.getByRole('button', { name: '差戻内容を確認' });
+  expect(trigger).toBeDisabled();
+  fireEvent.change(input, { target: { value: ' \n\t' } });
+  expect(trigger).toBeDisabled();
+  fireEvent.change(input, { target: { value: 'あ'.repeat(2730) + 'ab' } });
+  await waitFor(() => expect(trigger).toBeEnabled());
+  fireEvent.change(input, { target: { value: 'あ'.repeat(2731) } });
+  expect(trigger).toBeDisabled();
+  expect(screen.getByRole('alert')).toHaveTextContent('8192バイト');
+  fireEvent.change(input, { target: { value: reason } });
+  await userEvent.click(trigger);
+  const dialog = screen.getByRole('dialog', { name: '差戻の確認' });
+  expect(within(dialog).getByText(reason)).toBeVisible();
+  expect(within(dialog).getByText(/snapshot-1/)).toBeVisible();
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: 'キャンセル' })).toHaveFocus());
+  await userEvent.click(within(dialog).getByRole('button', { name: 'キャンセル' }));
+  expect(input).toHaveValue(reason);
+  await userEvent.click(trigger);
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(input).toHaveValue(reason);
+  await waitFor(() => expect(trigger).toHaveFocus());
+  expect(returnTask).not.toHaveBeenCalled();
+});
+
+test('return commits the server transition and leaves office on its own completed read-only task', async () => {
+  const { router } = setupOffice();
+  jest.spyOn(workApi, 'getReturnInstruction').mockResolvedValue(instruction as never);
+  const returnTask = jest.spyOn(workApi, 'returnTask').mockResolvedValue(returned as never);
+  fireEvent.change(await screen.findByLabelText('差戻理由'), { target: { value: reason } });
+  await waitFor(() => expect(screen.getByRole('button', { name: '差戻内容を確認' })).toBeEnabled());
+  await userEvent.click(screen.getByRole('button', { name: '差戻内容を確認' }));
+  await userEvent.click(screen.getByRole('button', { name: '差戻を確定' }));
+  await screen.findByText('差戻が確定しました');
+  expect(returnTask).toHaveBeenCalledTimes(1);
+  expect(returnTask.mock.calls[0]).toEqual([officeTask.id, expect.objectContaining({ expectedRevision: officeTask.revision, expectedAttemptId: officeTask.attemptId, actingAssignmentId: 'assignment-office', ...officeTask.returnTransition, reason })]);
+  expect(router.state.location.search).toMatchObject({ taskId: officeTask.id });
+  expect(screen.getByRole('region', { name: '確定した差戻指示' })).toHaveTextContent(reason);
+  expect(screen.getByRole('region', { name: '受領したスナップショット' })).toHaveTextContent('提出する文案');
+  expect(screen.queryByLabelText('差戻理由')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('作業中の文案')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '担当を引き受ける' })).not.toBeInTheDocument();
+});
+
+test('unknown return keeps its reason and replays exactly the original operation after missing recovery', async () => {
+  setupOffice();
+  jest.spyOn(workApi, 'getReturnInstruction').mockResolvedValue(instruction as never);
+  const returnTask = jest.spyOn(workApi, 'returnTask').mockRejectedValueOnce(new WorkApiError(0, 'network_unavailable', true)).mockResolvedValueOnce(returned as never);
+  const recovery = jest.spyOn(workApi, 'getOperation').mockRejectedValue(new WorkApiError(404, 'WORK_ITEM_NOT_FOUND'));
+  fireEvent.change(await screen.findByLabelText('差戻理由'), { target: { value: reason } });
+  await waitFor(() => expect(screen.getByRole('button', { name: '差戻内容を確認' })).toBeEnabled());
+  await userEvent.click(screen.getByRole('button', { name: '差戻内容を確認' }));
+  await userEvent.click(screen.getByRole('button', { name: '差戻を確定' }));
+  await screen.findByText(/結果は未確認です/);
+  expect(screen.queryByText('差戻が確定しました')).not.toBeInTheDocument();
+  expect(screen.getByLabelText('差戻理由')).toHaveValue(reason);
+  expect(screen.getByLabelText('差戻理由')).toBeDisabled();
+  const command = returnTask.mock.calls[0]![1];
+  await userEvent.click(screen.getByRole('button', { name: '同じ操作の結果を確認' }));
+  await screen.findByText(/操作の確定記録はまだ見つかりません/);
+  expect(recovery).toHaveBeenCalledWith(command.operationId);
+  await userEvent.click(screen.getByRole('button', { name: '同じ操作を再送' }));
+  await screen.findByText('差戻が確定しました');
+  expect(returnTask.mock.calls[1]).toEqual(returnTask.mock.calls[0]);
+});
+
+test('return conflict preserves the reason and never claims completion', async () => {
+  setupOffice();
+  jest.spyOn(workApi, 'returnTask').mockRejectedValue(new WorkApiError(409, 'REVISION_CONFLICT'));
+  fireEvent.change(await screen.findByLabelText('差戻理由'), { target: { value: reason } });
+  await waitFor(() => expect(screen.getByRole('button', { name: '差戻内容を確認' })).toBeEnabled());
+  await userEvent.click(screen.getByRole('button', { name: '差戻内容を確認' }));
+  await userEvent.click(screen.getByRole('button', { name: '差戻を確定' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('競合が発生しました');
+  expect(screen.getByLabelText('差戻理由')).toHaveValue(reason);
+  expect(screen.queryByText('差戻が確定しました')).not.toBeInTheDocument();
+});
+
+test('returned sales attempt shows the fixed reason and old submission with a fresh empty private editor', async () => {
+  setup();
+  const current = { ...returned.nextTask, state: 'active', canClaim: false, canEdit: true, canSubmit: true };
+  jest.mocked(workApi.listTasks).mockResolvedValue({ items: [current], nextCursor: null } as never);
+  jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, ...current, workingArtifacts: [] } as never);
+  jest.spyOn(workApi, 'getReturnInstruction').mockResolvedValue(instruction as never);
+  expect(await screen.findByLabelText('作業中の文案')).toHaveValue('');
+  expect(await screen.findByRole('region', { name: '確定した差戻指示' })).toHaveTextContent(reason);
+  expect(await screen.findByRole('region', { name: '提出済みスナップショット' })).toHaveTextContent('提出する文案');
+  expect(screen.queryByLabelText('差戻理由')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '提出内容を確認' })).toBeDisabled();
+});
+
+test('a task without a current return hint never offers a return even if the session supports it', async () => {
+  setupOffice();
+  jest.mocked(workApi.getSession).mockResolvedValue({ ...session, capabilities: { ...session.capabilities, return: true } } as never);
+  const current = { ...officeTask, canReturn: false, returnTransition: null };
+  jest.mocked(workApi.listTasks).mockResolvedValue({ items: [current], nextCursor: null } as never);
+  jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, ...current, workingArtifacts: [] } as never);
+  await screen.findByRole('region', { name: '受領したスナップショット' });
+  expect(screen.queryByLabelText('差戻理由')).not.toBeInTheDocument();
 });

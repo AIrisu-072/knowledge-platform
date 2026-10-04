@@ -36,6 +36,10 @@ export type TaskSummary = {
     canEdit: boolean;
     canSubmit: boolean;
     handoffSnapshotId: string | null;
+    attemptNumber: number;
+    canReturn: boolean;
+    returnInstructionId: string | null;
+    returnTransition: ReturnTransition | null;
 };
 
 export type WorkingArtifact = {
@@ -74,6 +78,10 @@ export type TaskDetail = {
     inputResources: Array<InputResource>;
     history: Array<HistoryEntry>;
     workingArtifacts: Array<WorkingArtifact>;
+    attemptNumber: number;
+    canReturn: boolean;
+    returnInstructionId: string | null;
+    returnTransition: ReturnTransition | null;
 };
 
 export type TaskPage = {
@@ -100,6 +108,8 @@ export type HandoffSnapshot = {
     actingAssignmentId: string;
     submittedBy: 'sales-01' | 'office-01';
     submissionNumber: number;
+    previousSubmissionId?: string;
+    returnInstructionId?: string;
 };
 
 export type WorkCommand = {
@@ -143,7 +153,7 @@ export type Submitted = {
     nextTask: TaskSummary;
 };
 
-export type WorkResult = DraftSaved | Claimed | Submitted;
+export type WorkResult = DraftSaved | Claimed | Submitted | Returned;
 
 export type Problem = {
     type: string;
@@ -156,6 +166,52 @@ export type Problem = {
 export type ArtifactPage = {
     items: Array<WorkingArtifact>;
     nextCursor: null;
+};
+
+export type ReturnTransition = {
+    transitionId: string;
+    targetTaskId: string;
+    previousSubmissionId: string;
+};
+
+export type ReturnInstruction = {
+    id: string;
+    workflowId: string;
+    contextId: string;
+    sourceTaskId: string;
+    sourceAttemptId: string;
+    targetTaskId: string;
+    targetAttemptId: string;
+    previousSubmissionId: string;
+    transitionId: string;
+    actingAssignmentId: string;
+    /**
+     * 空白のみ不可、最大8192 UTF-8 bytes。
+     */
+    reason: string;
+    returnedBy: 'office-01';
+    createdAt: string;
+};
+
+export type ReturnCommand = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    expectedAttemptId: string;
+    previousSubmissionId: string;
+    targetTaskId: string;
+    transitionId: string;
+    /**
+     * 空白のみ不可、最大8192 UTF-8 bytes。
+     */
+    reason: string;
+};
+
+export type Returned = {
+    kind: 'returned';
+    task: TaskSummary;
+    returnInstruction: ReturnInstruction;
+    nextTask: TaskSummary;
 };
 
 export type GetOrganizationSessionData = {
@@ -501,3 +557,65 @@ export type RecoverOrganizationOperationResponses = {
 };
 
 export type RecoverOrganizationOperationResponse = RecoverOrganizationOperationResponses[keyof RecoverOrganizationOperationResponses];
+
+export type ReturnOrganizationTaskData = {
+    body: ReturnCommand;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/tasks/{id}/return';
+};
+
+export type ReturnOrganizationTaskErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ReturnOrganizationTaskError = ReturnOrganizationTaskErrors[keyof ReturnOrganizationTaskErrors];
+
+export type ReturnOrganizationTaskResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type ReturnOrganizationTaskResponse = ReturnOrganizationTaskResponses[keyof ReturnOrganizationTaskResponses];
+
+export type GetOrganizationReturnInstructionData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/return-instructions/{id}';
+};
+
+export type GetOrganizationReturnInstructionErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type GetOrganizationReturnInstructionError = GetOrganizationReturnInstructionErrors[keyof GetOrganizationReturnInstructionErrors];
+
+export type GetOrganizationReturnInstructionResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: ReturnInstruction;
+};
+
+export type GetOrganizationReturnInstructionResponse = GetOrganizationReturnInstructionResponses[keyof GetOrganizationReturnInstructionResponses];

@@ -238,3 +238,530 @@ fn persisted_records_keep_attempt_assignment_and_submission_attribution_distinct
     let completed = serde_json::to_value(&workflow).unwrap();
     assert_eq!(completed["source"]["completedAt"], NOW);
 }
+
+fn received_workflow() -> (Workflow, HandoffSnapshot) {
+    let mut workflow = Workflow::synthetic(None);
+    let artifact = save(&mut workflow);
+    let snapshot = submit(&mut workflow, &artifact);
+    workflow
+        .apply(
+            VerifiedActor::Office01,
+            &Command::Claim {
+                task_id: OFFICE_TASK_ID,
+                context: context(VerifiedActor::Office01, 0),
+            },
+            NOW,
+        )
+        .unwrap();
+    (workflow, snapshot)
+}
+fn return_command(workflow: &Workflow, snapshot: &HandoffSnapshot) -> Command {
+    serde_json::from_value(serde_json::json!({
+        "kind":"return", "task_id":OFFICE_TASK_ID,
+        "context":context(VerifiedActor::Office01, workflow.next.as_ref().unwrap().revision),
+        "expected_attempt_id":workflow.next.as_ref().unwrap().attempt_id,
+        "previous_submission_id":snapshot.id, "target_task_id":SALES_TASK_ID,
+        "transition_id":"01900000-0000-7000-8000-000000000010", "reason":"記載の確認をお願いします"
+    }))
+    .expect("fixed return command must be supported")
+}
+#[test]
+fn return_creates_ready_sales_attempt_without_reopening_completed_history() {
+    let (mut workflow, snapshot) = received_workflow();
+    let old_source = serde_json::to_value(&workflow.source).unwrap();
+    let old_snapshot = serde_json::to_value(&snapshot).unwrap();
+    let command = return_command(&workflow, &snapshot);
+    let result = workflow
+        .apply(VerifiedActor::Office01, &command, NOW)
+        .unwrap();
+    let result = serde_json::to_value(result).unwrap();
+    assert_eq!(result["kind"], "returned");
+    assert_eq!(result["nextTask"]["id"], SALES_TASK_ID.to_string());
+    assert_eq!(result["nextTask"]["attemptNumber"], 2);
+    assert_eq!(workflow.source.state, TaskState::Ready);
+    assert_eq!(workflow.source.revision, 3);
+    assert_ne!(workflow.source.attempt_id, SALES_ATTEMPT_ID);
+    assert_eq!(workflow.next.as_ref().unwrap().state, TaskState::Completed);
+    let stored = serde_json::to_value(&workflow).unwrap();
+    assert_eq!(stored["completedAttempts"][0], old_source);
+    assert_eq!(
+        serde_json::to_value(&workflow.snapshots[0]).unwrap(),
+        old_snapshot
+    );
+    assert_eq!(
+        result["returnInstruction"]["previousSubmissionId"],
+        snapshot.id.to_string()
+    );
+    assert_eq!(
+        result["returnInstruction"]["sourceAttemptId"],
+        OFFICE_ATTEMPT_ID.to_string()
+    );
+    assert_eq!(
+        result["returnInstruction"]["targetAttemptId"],
+        workflow.source.attempt_id.to_string()
+    );
+    assert_eq!(result["returnInstruction"]["returnedBy"], "office-01");
+    assert!(!result.to_string().contains("営業の非公開メモ"));
+}
+#[test]
+fn rejected_return_preserves_every_record_for_bad_causality_and_reason() {
+    let (workflow, snapshot) = received_workflow();
+    let original = return_command(&workflow, &snapshot);
+    for (field, value, expected) in [
+        (
+            "expected_attempt_id",
+            serde_json::json!(Uuid::now_v7()),
+            WorkError::RevisionConflict,
+        ),
+        (
+            "previous_submission_id",
+            serde_json::json!(Uuid::now_v7()),
+            WorkError::HandoffNotReady,
+        ),
+        (
+            "target_task_id",
+            serde_json::json!(Uuid::now_v7()),
+            WorkError::HandoffNotReady,
+        ),
+        (
+            "transition_id",
+            serde_json::json!(Uuid::now_v7()),
+            WorkError::HandoffNotReady,
+        ),
+        (
+            "reason",
+            serde_json::json!(" \n\t"),
+            WorkError::ValidationFailed,
+        ),
+        (
+            "reason",
+            serde_json::json!("あ".repeat(2731)),
+            WorkError::ValidationFailed,
+        ),
+    ] {
+        let mut command = serde_json::to_value(&original).unwrap();
+        command[field] = value;
+        let command = serde_json::from_value(command).unwrap();
+        let mut candidate = workflow.clone();
+        assert_eq!(
+            candidate.apply(VerifiedActor::Office01, &command, NOW),
+            Err(expected),
+            "{field}"
+        );
+        assert_eq!(candidate, workflow, "{field}");
+    }
+    let mut stale = serde_json::to_value(&original).unwrap();
+    stale["context"]["expectedRevision"] = serde_json::json!(0);
+    let mut candidate = workflow.clone();
+    assert_eq!(
+        candidate.apply(
+            VerifiedActor::Office01,
+            &serde_json::from_value(stale).unwrap(),
+            NOW
+        ),
+        Err(WorkError::RevisionConflict)
+    );
+    assert_eq!(candidate, workflow);
+}
+#[test]
+fn legacy_definition_remains_forward_only_and_old_json_roundtrips() {
+    let (mut workflow, snapshot) = received_workflow();
+    workflow.definition_version_id = DEFINITION_VERSION_ID;
+    let mut legacy = serde_json::to_value(&workflow).unwrap();
+    legacy.as_object_mut().unwrap().remove("completedAttempts");
+    legacy.as_object_mut().unwrap().remove("returnInstructions");
+    let decoded: Workflow = serde_json::from_value(legacy).unwrap();
+    assert_eq!(decoded.definition_version_id, DEFINITION_VERSION_ID);
+    let command = return_command(&decoded, &snapshot);
+    let mut candidate = decoded.clone();
+    assert_eq!(
+        candidate.apply(VerifiedActor::Office01, &command, NOW),
+        Err(WorkError::HandoffNotReady)
+    );
+    assert_eq!(candidate, decoded);
+}
+
+#[test]
+fn rework_drafts_remain_current_attempt_private_and_resubmit_archives_office() {
+    let (mut workflow, first_snapshot) = received_workflow();
+    let original_snapshot_bytes = serde_json::to_vec(&first_snapshot).unwrap();
+    let original_return = return_command(&workflow, &first_snapshot);
+    let return_context = original_return.context().clone();
+    let returned_result = workflow
+        .apply(VerifiedActor::Office01, &original_return, NOW)
+        .unwrap();
+    let returned = serde_json::to_value(&returned_result).unwrap();
+    let instruction_id =
+        serde_json::from_value(returned["returnInstruction"]["id"].clone()).unwrap();
+    let office_completed = workflow.next.clone().unwrap();
+    assert!(workflow.list_tasks(VerifiedActor::Sales01, TaskView::Queue)[0].can_claim);
+    assert_eq!(
+        workflow.detail(VerifiedActor::Sales01, SALES_TASK_ID),
+        Err(WorkError::WorkItemNotFound)
+    );
+    assert_eq!(
+        workflow.artifact(
+            VerifiedActor::Sales01,
+            first_snapshot.artifacts[0].artifact_id
+        ),
+        Err(WorkError::WorkArtifactNotFound)
+    );
+    workflow
+        .apply(
+            VerifiedActor::Sales01,
+            &Command::Claim {
+                task_id: SALES_TASK_ID,
+                context: context(VerifiedActor::Sales01, 3),
+            },
+            NOW,
+        )
+        .unwrap();
+    let detail = workflow
+        .detail(VerifiedActor::Sales01, SALES_TASK_ID)
+        .unwrap();
+    assert_eq!(detail.task.return_instruction_id, Some(instruction_id));
+    assert!(!detail.task.can_submit);
+    assert!(detail.working_artifacts.is_empty());
+    assert_eq!(
+        workflow
+            .return_instruction(VerifiedActor::Sales01, instruction_id)
+            .unwrap()
+            .reason,
+        "記載の確認をお願いします"
+    );
+    let save_command = Command::SaveDraft {
+        task_id: SALES_TASK_ID,
+        artifact_id: None,
+        context: context(VerifiedActor::Sales01, 4),
+        value: TextValue {
+            text: "NEW PRIVATE REWORK".into(),
+        },
+    };
+    let saved = workflow
+        .apply(VerifiedActor::Sales01, &save_command, NOW)
+        .unwrap();
+    let artifact = match &saved {
+        MutationResult::DraftSaved { artifact, .. } => artifact.clone(),
+        _ => panic!(),
+    };
+    assert_eq!(
+        workflow.artifact(VerifiedActor::Office01, artifact.id),
+        Err(WorkError::WorkArtifactNotFound)
+    );
+    assert_eq!(
+        workflow.authorize_recovery(VerifiedActor::Office01, &saved),
+        Err(WorkError::WorkArtifactNotFound)
+    );
+    assert_eq!(
+        workflow.detail(VerifiedActor::Office01, SALES_TASK_ID),
+        Err(WorkError::WorkItemNotFound)
+    );
+    assert!(
+        !serde_json::to_string(&workflow.list_tasks(VerifiedActor::Office01, TaskView::Context))
+            .unwrap()
+            .contains("NEW PRIVATE REWORK")
+    );
+    assert!(
+        !serde_json::to_string(
+            &workflow
+                .detail(VerifiedActor::Office01, OFFICE_TASK_ID)
+                .unwrap()
+        )
+        .unwrap()
+        .contains("NEW PRIVATE REWORK")
+    );
+    let snapshot = match workflow
+        .apply(
+            VerifiedActor::Sales01,
+            &Command::Submit {
+                task_id: SALES_TASK_ID,
+                context: context(VerifiedActor::Sales01, 5),
+                artifacts: vec![ArtifactSelection {
+                    artifact_id: artifact.id,
+                    revision: 0,
+                }],
+            },
+            NOW,
+        )
+        .unwrap()
+    {
+        MutationResult::Submitted { snapshot, .. } => snapshot,
+        _ => panic!(),
+    };
+    assert_eq!(snapshot.submission_number, 2);
+    assert_ne!(snapshot.id, first_snapshot.id);
+    assert_eq!(snapshot.source_attempt_id, workflow.source.attempt_id);
+    assert_eq!(workflow.next.as_ref().unwrap().attempt_number, 2);
+    assert_eq!(workflow.next.as_ref().unwrap().revision, 3);
+    assert_eq!(workflow.completed_attempts[1], office_completed);
+    // Current private-read authorization and immutable result replay are distinct.
+    assert_eq!(
+        workflow.authorize_command(VerifiedActor::Office01, &original_return),
+        Err(WorkError::WorkItemNotFound)
+    );
+    assert_eq!(return_context.authorize(VerifiedActor::Office01), Ok(()));
+    assert_eq!(
+        workflow.authorize_recovery(VerifiedActor::Office01, &returned_result),
+        Ok(())
+    );
+
+    assert_eq!(
+        serde_json::to_vec(&workflow.snapshots[0]).unwrap(),
+        original_snapshot_bytes
+    );
+    assert_eq!(
+        workflow.snapshot(VerifiedActor::Office01, snapshot.id),
+        Err(WorkError::WorkArtifactNotFound)
+    );
+    assert_eq!(
+        workflow
+            .snapshot(VerifiedActor::Office01, first_snapshot.id)
+            .unwrap(),
+        first_snapshot
+    );
+    workflow
+        .apply(
+            VerifiedActor::Office01,
+            &Command::Claim {
+                task_id: OFFICE_TASK_ID,
+                context: context(VerifiedActor::Office01, 3),
+            },
+            NOW,
+        )
+        .unwrap();
+    assert_eq!(
+        workflow
+            .snapshot(VerifiedActor::Office01, snapshot.id)
+            .unwrap(),
+        snapshot
+    );
+    assert_eq!(
+        serde_json::to_value(&snapshot).unwrap()["previousSubmissionId"],
+        first_snapshot.id.to_string()
+    );
+    assert_eq!(
+        serde_json::to_value(&snapshot).unwrap()["returnInstructionId"],
+        instruction_id.to_string()
+    );
+    assert_eq!(
+        workflow.artifact(VerifiedActor::Office01, artifact.id),
+        Err(WorkError::WorkArtifactNotFound)
+    );
+    workflow.validate_integrity().unwrap();
+}
+#[test]
+fn old_ledger_results_decode_missing_additive_summary_fields() {
+    let mut workflow = Workflow::synthetic(None);
+    let artifact = save(&mut workflow);
+    let result = workflow
+        .apply(
+            VerifiedActor::Sales01,
+            &Command::Submit {
+                task_id: SALES_TASK_ID,
+                context: context(VerifiedActor::Sales01, 1),
+                artifacts: vec![ArtifactSelection {
+                    artifact_id: artifact.id,
+                    revision: artifact.revision,
+                }],
+            },
+            NOW,
+        )
+        .unwrap();
+    let mut legacy = serde_json::to_value(&result).unwrap();
+    for field in ["task", "nextTask"] {
+        for added in [
+            "attemptNumber",
+            "canReturn",
+            "returnInstructionId",
+            "returnTransition",
+        ] {
+            legacy[field].as_object_mut().unwrap().remove(added);
+        }
+    }
+    let snapshot_bytes = serde_json::to_vec(&legacy["snapshot"]).unwrap();
+    let decoded: MutationResult = serde_json::from_value(legacy).unwrap();
+    match decoded {
+        MutationResult::Submitted {
+            task,
+            snapshot,
+            next_task,
+        } => {
+            assert_eq!(task.attempt_number, 1);
+            assert_eq!(next_task.attempt_number, 1);
+            assert!(!task.can_return);
+            assert_eq!(task.return_instruction_id, None);
+            assert_eq!(
+                serde_json::to_vec(&serde_json::to_value(snapshot).unwrap()).unwrap(),
+                snapshot_bytes
+            );
+        }
+        _ => panic!(),
+    }
+}
+#[test]
+fn corrupt_attempt_number_or_current_pointer_cannot_commit() {
+    let (mut workflow, snapshot) = received_workflow();
+    workflow
+        .apply(
+            VerifiedActor::Office01,
+            &return_command(&workflow, &snapshot),
+            NOW,
+        )
+        .unwrap();
+    workflow.source.attempt_id = SALES_ATTEMPT_ID;
+    let before = workflow.clone();
+    assert_eq!(
+        workflow.apply(
+            VerifiedActor::Sales01,
+            &Command::Claim {
+                task_id: SALES_TASK_ID,
+                context: context(VerifiedActor::Sales01, 3)
+            },
+            NOW
+        ),
+        Err(WorkError::IntegrityViolation)
+    );
+    assert_eq!(workflow, before);
+}
+
+#[test]
+fn draft_limit_is_per_attempt_and_prior_artifacts_cannot_be_selected_again() {
+    let mut workflow = Workflow::synthetic(None);
+    let mut artifacts = vec![];
+    for revision in 0..MAX_ARTIFACTS {
+        match workflow
+            .apply(
+                VerifiedActor::Sales01,
+                &Command::SaveDraft {
+                    task_id: SALES_TASK_ID,
+                    artifact_id: None,
+                    context: context(VerifiedActor::Sales01, revision as i64),
+                    value: TextValue {
+                        text: "submitted".into(),
+                    },
+                },
+                NOW,
+            )
+            .unwrap()
+        {
+            MutationResult::DraftSaved { artifact, .. } => artifacts.push(artifact),
+            _ => panic!(),
+        }
+    }
+    let snapshot = match workflow
+        .apply(
+            VerifiedActor::Sales01,
+            &Command::Submit {
+                task_id: SALES_TASK_ID,
+                context: context(VerifiedActor::Sales01, MAX_ARTIFACTS as i64),
+                artifacts: artifacts
+                    .iter()
+                    .map(|artifact| ArtifactSelection {
+                        artifact_id: artifact.id,
+                        revision: 0,
+                    })
+                    .collect(),
+            },
+            NOW,
+        )
+        .unwrap()
+    {
+        MutationResult::Submitted { snapshot, .. } => snapshot,
+        _ => panic!(),
+    };
+    workflow
+        .apply(
+            VerifiedActor::Office01,
+            &Command::Claim {
+                task_id: OFFICE_TASK_ID,
+                context: context(VerifiedActor::Office01, 0),
+            },
+            NOW,
+        )
+        .unwrap();
+    workflow
+        .apply(
+            VerifiedActor::Office01,
+            &return_command(&workflow, &snapshot),
+            NOW,
+        )
+        .unwrap();
+    workflow
+        .apply(
+            VerifiedActor::Sales01,
+            &Command::Claim {
+                task_id: SALES_TASK_ID,
+                context: context(VerifiedActor::Sales01, MAX_ARTIFACTS as i64 + 2),
+            },
+            NOW,
+        )
+        .unwrap();
+    let revision = workflow.source.revision;
+    let before = workflow.clone();
+    assert_eq!(
+        workflow.apply(
+            VerifiedActor::Sales01,
+            &Command::Submit {
+                task_id: SALES_TASK_ID,
+                context: context(VerifiedActor::Sales01, revision),
+                artifacts: vec![ArtifactSelection {
+                    artifact_id: artifacts[0].id,
+                    revision: 0
+                }]
+            },
+            NOW
+        ),
+        Err(WorkError::WorkArtifactNotFound)
+    );
+    assert_eq!(workflow, before);
+    assert!(
+        !workflow
+            .detail(VerifiedActor::Sales01, SALES_TASK_ID)
+            .unwrap()
+            .task
+            .can_submit
+    );
+    workflow
+        .apply(
+            VerifiedActor::Sales01,
+            &Command::SaveDraft {
+                task_id: SALES_TASK_ID,
+                artifact_id: None,
+                context: context(VerifiedActor::Sales01, revision),
+                value: TextValue {
+                    text: "new attempt draft".into(),
+                },
+            },
+            NOW,
+        )
+        .unwrap();
+    assert!(
+        workflow
+            .detail(VerifiedActor::Sales01, SALES_TASK_ID)
+            .unwrap()
+            .task
+            .can_submit
+    );
+}
+
+#[test]
+fn operation_context_requires_valid_identity_revision_and_current_responsibility() {
+    let valid = context(VerifiedActor::Office01, 1);
+    assert_eq!(valid.authorize(VerifiedActor::Office01), Ok(()));
+    assert_eq!(
+        valid.authorize(VerifiedActor::Sales01),
+        Err(WorkError::Forbidden)
+    );
+    let mut invalid = valid.clone();
+    invalid.operation_id = Uuid::nil();
+    assert_eq!(
+        invalid.authorize(VerifiedActor::Office01),
+        Err(WorkError::ValidationFailed)
+    );
+    invalid = valid;
+    invalid.expected_revision = -1;
+    assert_eq!(
+        invalid.authorize(VerifiedActor::Office01),
+        Err(WorkError::ValidationFailed)
+    );
+}

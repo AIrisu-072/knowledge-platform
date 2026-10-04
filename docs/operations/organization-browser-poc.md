@@ -2,7 +2,7 @@
 
 ## 現在の範囲
 
-2名の起動時固定の模擬ユーザーを使い、タスク一覧・詳細、privateな文案の保存、共有Document参照、提出、事務担当の引受けと提出内容の閲覧を行う。PostgreSQLを状態の正本とし、ページ再読込でも保存済み状態を取得する。未保存の入力と結果不明操作はタブ内メモリーに保持する。
+2名の起動時固定の模擬ユーザーを使い、タスク一覧・詳細、privateな文案の保存、共有Document参照、提出、事務担当の引受けと提出内容の閲覧、理由付き差戻と新試行での再提出を行う。PostgreSQLを状態の正本とし、ページ再読込でも保存済み状態を取得する。未保存の入力と結果不明操作はタブ内メモリーに保持する。
 
 これは認証システムではない。各loopbackポートへ接続できる利用者はその固定profileとして扱われる。顧客情報・秘密情報・production DBを使用しない。外部公開・production deploy・Tauri実行を含まない。
 
@@ -55,7 +55,7 @@ export KP_ORGANIZATION_DOCUMENT_ID='<上で公開したdocumentId>'
 ./target/debug/organization-server seed-work
 ```
 
-このコマンドは既存Document read serviceで2profileの現在のPublishedアクセスを確かめてからWork fixtureを作る。既存Workの進捗はリセットしない。入力文書を変えるには新しい使い捨てDBを用意する。
+このコマンドは既存Document read serviceで2profileの現在のPublishedアクセスを確かめてからWork fixtureを作る。既存Workの進捗はリセットしない。入力文書を変えるには新しい使い捨てDBを用意する。差戻対応のfixtureは新しいdefinition versionを使う。以前のforward-only定義のDBは0002 migration後も元の定義を保ち、差戻対応へ自動付替えしない。新しい差戻PoCには新しい使い捨てDBを用いる。
 
 ## 2名で一連の操作をする
 
@@ -68,9 +68,17 @@ export KP_ORGANIZATION_DOCUMENT_ID='<上で公開したdocumentId>'
 4. 事務で再読込すると担当待ちタスクが出る。「担当を引き受ける」後、提出時点で固定された本文を読める。元のprivate artifactへの直接アクセスは許可しない
 5. ページ再読込で保存済み状態を確認する。履歴・snapshot・次task・operation・必須event stagingは同一Work transactionで保存する
 
+## 差戻して再提出する
+
+1. 引受け済みの事務タスクで差戻理由を入力する。空白だけ・UTF-8で8KiB超の理由は使えない。確認画面のキャンセル/Escapeは送信せず、理由を保持する
+2. 差戻を確定すると、事務の試行1は完了したままになる。事務画面には確定した指示を表示し、営業の新private文案へ切り替えない
+3. 営業で同じタスクを再読込し、readyの試行2を引き受ける。確定理由と旧提出を読んで、新しいprivate文案を保存する。旧提出本文を上書きしない
+4. 再提出すると新しいsnapshotと、同じ事務タスクの新しいready試行ができる。事務で改めて引き受けると新提出を閲覧できる。旧snapshot/理由は不変である
+5. 通信結果が不明なら元のoperation IDで確認・再送する。同じtask IDでも古い試行の結果で現在の試行へ巻き戻さない
+
 ## 未対応と検証限界
 
-- Tauri/実Windows/WebView2/native Workspace、ファイル添付、差戻、Agent/Evidence/HumanDecision、検索の接続、role管理・委任は今回の最小slice外
+- Tauri/実Windows/WebView2/native Workspace、ファイル添付、Agent/Evidence/HumanDecision、検索の接続、role管理・委任は今回の最小slice外
 - Work fixtureは2stepの1workflow。物理DBでは1aggregateをrow lockし、privateなschema-bound textを保存する。一般workflow designerや大規模運用を意味しない
 - AuditはWork transaction内のstagingまで。別Audit pipeline配送の資格取得は主張しない
 - この作業環境では実PostgreSQL・listener・browser統合を実行していない。既知拒否を再試行していない。純粋テスト/HTTP oneshot/型検査/buildの成功で実runtime合格としない
@@ -87,8 +95,8 @@ pnpm organization:api:lint
 
 PostgreSQL transaction試験は既定で明示ignoreされる。実行していない試験を合格件数へ加算しない。適切な実行権限を持つ使い捨て `*_work_poc_test` DBが用意できた場合に限り、`WORK_POC_TEST_DATABASE_URL` を指定して `cargo test -p work-repository-postgres --test postgres_transaction -- --ignored` を実行する。
 
-## Hostedでの最小実操作確認（追加source・未実行）
+## Hostedでの最小実操作確認
 
 `mise run organization:poc:runtime` は既存Document CI後段向けの単発確認である。外部DBを受け付けず、既存と同じ公式PostgreSQL一時containerを別途所有し、独立したtransaction試験用DBとbrowser用DB・storageを作る。既存固定Chromiumでsales/officeの操作を行い、2processを停止・再起動して保存状態を確認した後、所有containerを削除する。
 
-通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。現時点はsource準備のみで実行許可の確認待ち。画像・trace・videoはoff、実行ログ・標準runnerの失敗時文脈は一時workspace内だけに保持し、公開artifactは追加しない。
+通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。初回PoCの実証は[PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54)のsource `44e1b412` で完了している。今回の差戻追加経路は[差戻slice状況](../superpowers/execution/organization-return-slice-status.md)の新しいexact-head結果で別途確認する。画像・trace・videoはoff、実行ログ・標準runnerの失敗時文脈は一時workspace内だけに保持し、公開artifactは追加しない。

@@ -12,6 +12,8 @@ pub const OFFICE_ATTEMPT_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000
 pub const SALES_ASSIGNMENT_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000000007);
 pub const OFFICE_ASSIGNMENT_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000000008);
 pub const DEFINITION_VERSION_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000000009);
+pub const RETURN_DEFINITION_VERSION_ID: Uuid = Uuid::from_u128(0x0190000000007000800000000000000f);
+pub const RETURN_TRANSITION_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000000010);
 pub const SALES_STEP_ID: Uuid = Uuid::from_u128(0x0190000000007000800000000000000a);
 pub const OFFICE_STEP_ID: Uuid = Uuid::from_u128(0x0190000000007000800000000000000b);
 pub const SALES_WORK_TYPE_ID: Uuid = Uuid::from_u128(0x0190000000007000800000000000000c);
@@ -117,6 +119,10 @@ pub struct PinnedArtifact {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HandoffSnapshot {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_submission_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub return_instruction_id: Option<Uuid>,
     pub id: Uuid,
     pub workflow_id: Uuid,
     pub context_id: Uuid,
@@ -131,7 +137,42 @@ pub struct HandoffSnapshot {
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ReturnTransition {
+    pub transition_id: Uuid,
+    pub target_task_id: Uuid,
+    pub previous_submission_id: Uuid,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReturnInstruction {
+    pub id: Uuid,
+    pub workflow_id: Uuid,
+    pub context_id: Uuid,
+    pub source_task_id: Uuid,
+    pub source_attempt_id: Uuid,
+    pub target_task_id: Uuid,
+    pub target_attempt_id: Uuid,
+    pub previous_submission_id: Uuid,
+    pub transition_id: Uuid,
+    pub reason: String,
+    pub returned_by: String,
+    pub acting_assignment_id: Uuid,
+    pub created_at: String,
+}
+fn first_attempt() -> u32 {
+    1
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TaskSummary {
+    #[serde(default = "first_attempt")]
+    pub attempt_number: u32,
+    #[serde(default)]
+    pub can_return: bool,
+    #[serde(default)]
+    pub return_instruction_id: Option<Uuid>,
+    #[serde(default)]
+    pub return_transition: Option<ReturnTransition>,
     pub id: Uuid,
     pub context_id: Uuid,
     pub attempt_id: Uuid,
@@ -169,6 +210,8 @@ pub struct TaskDetail {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkItem {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub return_instruction_id: Option<Uuid>,
     pub id: Uuid,
     pub workflow_instance_id: Uuid,
     pub step_id: Uuid,
@@ -187,6 +230,10 @@ pub struct WorkItem {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Workflow {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub completed_attempts: Vec<WorkItem>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub return_instructions: Vec<ReturnInstruction>,
     pub id: Uuid,
     pub definition_version_id: Uuid,
     pub context_id: Uuid,
@@ -205,6 +252,19 @@ pub struct CommandContext {
     pub expected_revision: i64,
     pub acting_assignment_id: Uuid,
 }
+impl CommandContext {
+    /// Validate operation identity and current fixed responsibility independently
+    /// of current attempt-private access, which does not govern immutable replay.
+    pub fn authorize(&self, actor: VerifiedActor) -> Result<(), WorkError> {
+        if self.operation_id.get_version_num() != 7 || self.expected_revision < 0 {
+            return Err(WorkError::ValidationFailed);
+        }
+        if self.acting_assignment_id != actor.assignment_id() {
+            return Err(WorkError::Forbidden);
+        }
+        Ok(())
+    }
+}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ArtifactSelection {
@@ -214,6 +274,15 @@ pub struct ArtifactSelection {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Command {
+    Return {
+        task_id: Uuid,
+        context: CommandContext,
+        expected_attempt_id: Uuid,
+        previous_submission_id: Uuid,
+        target_task_id: Uuid,
+        transition_id: Uuid,
+        reason: String,
+    },
     SaveDraft {
         task_id: Uuid,
         artifact_id: Option<Uuid>,
@@ -235,20 +304,29 @@ impl Command {
         match self {
             Self::SaveDraft { context, .. }
             | Self::Claim { context, .. }
-            | Self::Submit { context, .. } => context,
+            | Self::Submit { context, .. }
+            | Self::Return { context, .. } => context,
         }
     }
     pub fn task_id(&self) -> Uuid {
         match self {
             Self::SaveDraft { task_id, .. }
             | Self::Claim { task_id, .. }
-            | Self::Submit { task_id, .. } => *task_id,
+            | Self::Submit { task_id, .. }
+            | Self::Return { task_id, .. } => *task_id,
         }
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum MutationResult {
+    Returned {
+        task: TaskSummary,
+        #[serde(rename = "returnInstruction")]
+        return_instruction: ReturnInstruction,
+        #[serde(rename = "nextTask")]
+        next_task: TaskSummary,
+    },
     DraftSaved {
         task: TaskSummary,
         artifact: WorkingArtifact,
@@ -267,10 +345,13 @@ impl Workflow {
     pub fn synthetic(document_id: Option<Uuid>) -> Self {
         Self {
             id: WORKFLOW_ID,
-            definition_version_id: DEFINITION_VERSION_ID,
+            definition_version_id: RETURN_DEFINITION_VERSION_ID,
+            completed_attempts: vec![],
+            return_instructions: vec![],
             context_id: CONTEXT_ID,
             revision: 0,
             source: WorkItem {
+                return_instruction_id: None,
                 id: SALES_TASK_ID,
                 workflow_instance_id: WORKFLOW_ID,
                 step_id: SALES_STEP_ID,
@@ -309,8 +390,38 @@ impl Workflow {
             .filter(|item| item.id == id)
             .ok_or(WorkError::WorkItemNotFound)
     }
+    // This fixture has two fixed, currently valid responsibilities. Historical
+    // participation is never used as an authority to read an attempt-private draft.
+    fn has_responsibility(&self, actor: VerifiedActor, task_id: Uuid) -> bool {
+        matches!(
+            (actor, task_id),
+            (VerifiedActor::Sales01, SALES_TASK_ID) | (VerifiedActor::Office01, OFFICE_TASK_ID)
+        )
+    }
     fn can_read(&self, actor: VerifiedActor, item: &WorkItem) -> bool {
-        item.assignee == Some(actor)
+        self.has_responsibility(actor, item.id) && item.assignee == Some(actor)
+    }
+    fn return_transition(&self, actor: VerifiedActor, item: &WorkItem) -> Option<ReturnTransition> {
+        if self.definition_version_id != RETURN_DEFINITION_VERSION_ID
+            || item.id != OFFICE_TASK_ID
+            || !self.can_read(actor, item)
+            || item.state != TaskState::Active
+            || self.source.state != TaskState::Completed
+        {
+            return None;
+        }
+        let snapshot = self.snapshots.iter().find(|snapshot| {
+            Some(snapshot.id) == item.handoff_snapshot_id
+                && Some(snapshot.id) == self.source.handoff_snapshot_id
+                && snapshot.source_task_id == self.source.id
+                && snapshot.source_attempt_id == self.source.attempt_id
+                && snapshot.target_task_id == item.id
+        })?;
+        Some(ReturnTransition {
+            transition_id: RETURN_TRANSITION_ID,
+            target_task_id: self.source.id,
+            previous_submission_id: snapshot.id,
+        })
     }
     fn summary(&self, actor: VerifiedActor, item: &WorkItem) -> TaskSummary {
         let source = item.id == self.source.id;
@@ -320,7 +431,12 @@ impl Workflow {
         } else {
             "事務内容確認"
         };
+        let return_transition = self.return_transition(actor, item);
         TaskSummary {
+            attempt_number: item.attempt_number,
+            can_return: return_transition.is_some(),
+            return_instruction_id: item.return_instruction_id,
+            return_transition,
             id: item.id,
             context_id: self.context_id,
             attempt_id: item.attempt_id,
@@ -328,11 +444,15 @@ impl Workflow {
             title: label.into(),
             step_label: label.into(),
             state: item.state,
-            can_claim: !source
-                && actor == VerifiedActor::Office01
-                && item.state == TaskState::Ready,
+            can_claim: self.has_responsibility(actor, item.id)
+                && item.state == TaskState::Ready
+                && item.assignee.is_none(),
             can_edit: editable,
-            can_submit: editable && !self.artifacts.is_empty(),
+            can_submit: editable
+                && self
+                    .artifacts
+                    .iter()
+                    .any(|artifact| artifact.attempt_id == item.attempt_id),
             handoff_snapshot_id: item.handoff_snapshot_id,
         }
     }
@@ -386,31 +506,98 @@ impl Workflow {
             .iter()
             .find(|snapshot| snapshot.id == id)
             .ok_or(WorkError::WorkArtifactNotFound)?;
-        let source_readable = self.source.assignee == Some(actor);
-        let target_readable = self.next.as_ref().is_some_and(|next| {
-            next.assignee == Some(actor) && next.handoff_snapshot_id == Some(id)
-        });
+        let source_readable = self.has_responsibility(actor, snapshot.source_task_id)
+            && snapshot.submitted_by == actor.principal_id();
+        // Immutable submitted membership may remain readable under a currently
+        // valid fixed responsibility, even after the receiving attempt closes.
+        let target_readable = self.has_responsibility(actor, snapshot.target_task_id)
+            && self
+                .next
+                .iter()
+                .chain(self.completed_attempts.iter())
+                .any(|item| {
+                    item.id == snapshot.target_task_id
+                        && self.can_read(actor, item)
+                        && item.handoff_snapshot_id == Some(id)
+                });
         if !source_readable && !target_readable {
             return Err(WorkError::WorkArtifactNotFound);
         }
         Ok(snapshot.clone())
+    }
+    pub fn return_instruction(
+        &self,
+        actor: VerifiedActor,
+        id: Uuid,
+    ) -> Result<ReturnInstruction, WorkError> {
+        let instruction = self
+            .return_instructions
+            .iter()
+            .find(|value| value.id == id)
+            .ok_or(WorkError::WorkArtifactNotFound)?;
+        self.snapshot(actor, instruction.previous_submission_id)?;
+        if !self.has_responsibility(actor, instruction.source_task_id)
+            && !self.has_responsibility(actor, instruction.target_task_id)
+        {
+            return Err(WorkError::WorkArtifactNotFound);
+        }
+        Ok(instruction.clone())
+    }
+    /// One current pointer per stable task, unique attempt identities/numbers,
+    /// and completed-only archives, checked before and after every transition.
+    pub fn validate_integrity(&self) -> Result<(), WorkError> {
+        if self.id != WORKFLOW_ID
+            || self.source.id != SALES_TASK_ID
+            || !matches!(
+                self.definition_version_id,
+                DEFINITION_VERSION_ID | RETURN_DEFINITION_VERSION_ID
+            )
+            || self
+                .next
+                .as_ref()
+                .is_some_and(|item| item.id != OFFICE_TASK_ID)
+        {
+            return Err(WorkError::IntegrityViolation);
+        }
+        let mut ids = std::collections::BTreeSet::new();
+        let mut numbers = std::collections::BTreeSet::new();
+        for item in std::iter::once(&self.source)
+            .chain(self.next.iter())
+            .chain(self.completed_attempts.iter())
+        {
+            if item.workflow_instance_id != self.id
+                || item.attempt_number == 0
+                || item.revision < 0
+                || !ids.insert(item.attempt_id)
+                || !numbers.insert((item.id, item.attempt_number))
+            {
+                return Err(WorkError::IntegrityViolation);
+            }
+        }
+        for archived in &self.completed_attempts {
+            let current = self
+                .item(archived.id)
+                .map_err(|_| WorkError::IntegrityViolation)?;
+            if archived.state != TaskState::Completed
+                || archived.completed_at.is_none()
+                || archived.attempt_number >= current.attempt_number
+                || archived.revision >= current.revision
+            {
+                return Err(WorkError::IntegrityViolation);
+            }
+        }
+        Ok(())
     }
     pub fn authorize_command(
         &self,
         actor: VerifiedActor,
         command: &Command,
     ) -> Result<(), WorkError> {
-        let context = command.context();
-        if context.operation_id.get_version_num() != 7 || context.expected_revision < 0 {
-            return Err(WorkError::ValidationFailed);
-        }
-        if context.acting_assignment_id != actor.assignment_id() {
-            return Err(WorkError::Forbidden);
-        }
+        command.context().authorize(actor)?;
         let item = self.item(command.task_id())?;
         match command {
             Command::Claim { .. } => {
-                if item.id != OFFICE_TASK_ID || actor != VerifiedActor::Office01 {
+                if !self.has_responsibility(actor, item.id) {
                     return Err(WorkError::WorkItemNotFound);
                 }
             }
@@ -425,7 +612,7 @@ impl Workflow {
                     }
                 }
             }
-            Command::Submit { .. } => {
+            Command::Submit { .. } | Command::Return { .. } => {
                 if !self.can_read(actor, item) {
                     return Err(WorkError::WorkItemNotFound);
                 }
@@ -439,6 +626,11 @@ impl Workflow {
         result: &MutationResult,
     ) -> Result<(), WorkError> {
         match result {
+            MutationResult::Returned {
+                return_instruction, ..
+            } => {
+                self.return_instruction(actor, return_instruction.id)?;
+            }
             MutationResult::DraftSaved { artifact, .. } => {
                 self.artifact(actor, artifact.id)?;
             }
@@ -457,6 +649,7 @@ impl Workflow {
         command: &Command,
         now: &str,
     ) -> Result<MutationResult, WorkError> {
+        self.validate_integrity()?;
         self.authorize_command(actor, command)?;
         let item = self.item(command.task_id())?;
         if item.revision != command.context().expected_revision {
@@ -469,6 +662,7 @@ impl Workflow {
             .revision
             .checked_add(1)
             .ok_or(WorkError::IntegrityViolation)?;
+        next.validate_integrity()?;
         *self = next;
         Ok(result)
     }
@@ -479,6 +673,93 @@ impl Workflow {
         now: &str,
     ) -> Result<MutationResult, WorkError> {
         match command {
+            Command::Return {
+                expected_attempt_id,
+                previous_submission_id,
+                target_task_id,
+                transition_id,
+                reason,
+                task_id,
+                ..
+            } => {
+                let item = self.item(*task_id)?;
+                if item.attempt_id != *expected_attempt_id {
+                    return Err(WorkError::RevisionConflict);
+                }
+                if reason.trim().is_empty() || reason.len() > MAX_TEXT_BYTES {
+                    return Err(WorkError::ValidationFailed);
+                }
+                let permitted = self
+                    .return_transition(actor, item)
+                    .ok_or(WorkError::HandoffNotReady)?;
+                if permitted.transition_id != *transition_id
+                    || permitted.target_task_id != *target_task_id
+                    || permitted.previous_submission_id != *previous_submission_id
+                {
+                    return Err(WorkError::HandoffNotReady);
+                }
+                let target_attempt_id = Uuid::now_v7();
+                let instruction = ReturnInstruction {
+                    id: Uuid::now_v7(),
+                    workflow_id: self.id,
+                    context_id: self.context_id,
+                    source_task_id: *task_id,
+                    source_attempt_id: item.attempt_id,
+                    target_task_id: *target_task_id,
+                    target_attempt_id,
+                    previous_submission_id: *previous_submission_id,
+                    transition_id: *transition_id,
+                    reason: reason.clone(),
+                    returned_by: actor.principal_id().into(),
+                    acting_assignment_id: actor.assignment_id(),
+                    created_at: now.into(),
+                };
+                self.completed_attempts.push(self.source.clone());
+                self.source = WorkItem {
+                    return_instruction_id: Some(instruction.id),
+                    id: self.source.id,
+                    workflow_instance_id: self.id,
+                    step_id: self.source.step_id,
+                    work_type_id: self.source.work_type_id,
+                    attempt_number: self
+                        .source
+                        .attempt_number
+                        .checked_add(1)
+                        .ok_or(WorkError::IntegrityViolation)?,
+                    revision: self
+                        .source
+                        .revision
+                        .checked_add(1)
+                        .ok_or(WorkError::IntegrityViolation)?,
+                    attempt_id: target_attempt_id,
+                    state: TaskState::Ready,
+                    assignee: None,
+                    work_assignment_id: None,
+                    acting_assignment_id: None,
+                    created_at: now.into(),
+                    completed_at: None,
+                    handoff_snapshot_id: Some(*previous_submission_id),
+                };
+                let office = self.next.as_mut().ok_or(WorkError::IntegrityViolation)?;
+                office.state = TaskState::Completed;
+                office.completed_at = Some(now.into());
+                office.revision = office
+                    .revision
+                    .checked_add(1)
+                    .ok_or(WorkError::IntegrityViolation)?;
+                office.return_instruction_id = Some(instruction.id);
+                self.return_instructions.push(instruction.clone());
+                self.history.push(HistoryEntry {
+                    kind: "returned".into(),
+                    occurred_at: now.into(),
+                });
+                Ok(MutationResult::Returned {
+                    task: self.summary(actor, self.item(*task_id)?),
+                    return_instruction: instruction,
+                    next_task: self.summary(actor, &self.source),
+                })
+            }
+
             Command::SaveDraft {
                 task_id,
                 artifact_id,
@@ -504,7 +785,13 @@ impl Workflow {
                     artifact.value = value.clone();
                     artifact.clone()
                 } else {
-                    if self.artifacts.len() >= MAX_ARTIFACTS {
+                    if self
+                        .artifacts
+                        .iter()
+                        .filter(|artifact| artifact.attempt_id == self.source.attempt_id)
+                        .count()
+                        >= MAX_ARTIFACTS
+                    {
                         return Err(WorkError::ValidationFailed);
                     }
                     let artifact = WorkingArtifact {
@@ -529,8 +816,12 @@ impl Workflow {
                     artifact,
                 })
             }
-            Command::Claim { .. } => {
-                let next = self.next.as_mut().ok_or(WorkError::WorkItemNotFound)?;
+            Command::Claim { task_id, .. } => {
+                let next = if *task_id == self.source.id {
+                    &mut self.source
+                } else {
+                    self.next.as_mut().ok_or(WorkError::WorkItemNotFound)?
+                };
                 if next.state != TaskState::Ready || next.assignee.is_some() {
                     return Err(WorkError::WorkAssignmentConflict);
                 }
@@ -542,10 +833,7 @@ impl Workflow {
                     .revision
                     .checked_add(1)
                     .ok_or(WorkError::IntegrityViolation)?;
-                let task = self.summary(
-                    actor,
-                    self.next.as_ref().ok_or(WorkError::IntegrityViolation)?,
-                );
+                let task = self.summary(actor, self.item(*task_id)?);
                 self.history.push(HistoryEntry {
                     kind: "claimed".into(),
                     occurred_at: now.into(),
@@ -557,7 +845,12 @@ impl Workflow {
             } => {
                 if *task_id != self.source.id
                     || self.source.state != TaskState::Active
-                    || self.next.is_some()
+                    || self
+                        .next
+                        .as_ref()
+                        .is_some_and(|item| item.state != TaskState::Completed)
+                    || (self.next.is_some()
+                        && self.definition_version_id != RETURN_DEFINITION_VERSION_ID)
                 {
                     return Err(WorkError::HandoffNotReady);
                 }
@@ -588,10 +881,18 @@ impl Workflow {
                     });
                 }
                 let snapshot = HandoffSnapshot {
+                    previous_submission_id: self
+                        .source
+                        .return_instruction_id
+                        .and(self.source.handoff_snapshot_id),
+                    return_instruction_id: self.source.return_instruction_id,
                     id: Uuid::now_v7(),
                     workflow_id: self.id,
                     context_id: self.context_id,
-                    submission_number: 1,
+                    submission_number: u32::try_from(self.snapshots.len())
+                        .map_err(|_| WorkError::IntegrityViolation)?
+                        .checked_add(1)
+                        .ok_or(WorkError::IntegrityViolation)?,
                     submitted_by: actor.principal_id().into(),
                     acting_assignment_id: actor.assignment_id(),
                     source_task_id: self.source.id,
@@ -608,18 +909,35 @@ impl Workflow {
                     .checked_add(1)
                     .ok_or(WorkError::IntegrityViolation)?;
                 self.source.handoff_snapshot_id = Some(snapshot.id);
+                let (attempt_number, revision, attempt_id) = if let Some(previous) = &self.next {
+                    self.completed_attempts.push(previous.clone());
+                    (
+                        previous
+                            .attempt_number
+                            .checked_add(1)
+                            .ok_or(WorkError::IntegrityViolation)?,
+                        previous
+                            .revision
+                            .checked_add(1)
+                            .ok_or(WorkError::IntegrityViolation)?,
+                        Uuid::now_v7(),
+                    )
+                } else {
+                    (1, 0, OFFICE_ATTEMPT_ID)
+                };
                 let next = WorkItem {
+                    return_instruction_id: self.source.return_instruction_id,
                     id: OFFICE_TASK_ID,
                     workflow_instance_id: WORKFLOW_ID,
                     step_id: OFFICE_STEP_ID,
                     work_type_id: OFFICE_WORK_TYPE_ID,
-                    attempt_number: 1,
+                    attempt_number,
                     work_assignment_id: None,
                     acting_assignment_id: None,
                     created_at: now.into(),
                     completed_at: None,
-                    attempt_id: OFFICE_ATTEMPT_ID,
-                    revision: 0,
+                    attempt_id,
+                    revision,
                     state: TaskState::Ready,
                     assignee: None,
                     handoff_snapshot_id: Some(snapshot.id),

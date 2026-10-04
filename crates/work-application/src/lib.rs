@@ -3,8 +3,8 @@
 use std::{future::Future, pin::Pin};
 use uuid::Uuid;
 use work_domain::{
-    Command, HandoffSnapshot, MutationResult, TaskDetail, TaskSummary, TaskView, VerifiedActor,
-    WorkError, WorkingArtifact,
+    Command, HandoffSnapshot, MutationResult, ReturnInstruction, TaskDetail, TaskSummary, TaskView,
+    VerifiedActor, WorkError, WorkingArtifact,
 };
 
 pub type WorkFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, WorkError>> + Send + 'a>>;
@@ -13,6 +13,11 @@ pub trait WorkRepository: Send + Sync {
     fn task(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, TaskDetail>;
     fn artifact(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, WorkingArtifact>;
     fn snapshot(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, HandoffSnapshot>;
+    fn return_instruction(
+        &self,
+        actor: VerifiedActor,
+        id: Uuid,
+    ) -> WorkFuture<'_, ReturnInstruction>;
     fn execute(&self, actor: VerifiedActor, command: Command) -> WorkFuture<'_, MutationResult>;
     fn recover(&self, actor: VerifiedActor, operation_id: Uuid) -> WorkFuture<'_, MutationResult>;
 }

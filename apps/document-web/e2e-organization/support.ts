@@ -2,11 +2,11 @@ import { expect, type APIRequestContext } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
-import type { Claimed, DraftSaved, HandoffSnapshot, Submitted, TaskDetail, TaskPage, WorkSession } from '../src/api/generated-work/types.gen';
+import type { Claimed, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, Submitted, TaskDetail, TaskPage, WorkSession } from '../src/api/generated-work/types.gen';
 
 export type RuntimeContext = { sales: string; office: string; documentId: string; statePath: string };
 export type PersistedState = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   documentId: string;
   salesTaskId: string;
   officeTaskId: string;
@@ -16,6 +16,14 @@ export type PersistedState = {
   save: { operationId: string; result: DraftSaved };
   submit: { operationId: string; result: Submitted };
   claim: { operationId: string; result: Claimed };
+  rework: {
+    text: string;
+    returned: { operationId: string; command: ReturnCommand; result: Returned };
+    salesClaim: { operationId: string; result: Claimed };
+    save: { operationId: string; result: DraftSaved };
+    submit: { operationId: string; result: Submitted };
+    officeClaim: { operationId: string; result: Claimed };
+  };
   final: {
     salesContext: TaskPage;
     salesQueue: TaskPage;
@@ -24,6 +32,8 @@ export type PersistedState = {
     salesTask: TaskDetail;
     officeTask: TaskDetail;
     snapshot: HandoffSnapshot;
+    priorSnapshot: HandoffSnapshot;
+    returnInstruction: ReturnInstruction;
   };
 };
 
@@ -57,7 +67,7 @@ export async function assertSessions(request: APIRequestContext, context: Runtim
   expect(sales.principalId).toBe('sales-01');
   expect(office.principalId).toBe('office-01');
   expect(sales.actingAssignmentId).not.toBe(office.actingAssignmentId);
-  for (const session of [sales, office]) expect(session.capabilities).toEqual({ nativeWorkspace: false, agent: false, search: false, fileUpload: false, return: false });
+  for (const session of [sales, office]) expect(session.capabilities).toEqual({ nativeWorkspace: false, agent: false, search: false, fileUpload: false, return: true });
   return { sales, office };
 }
 export async function assertHidden(request: APIRequestContext, origin: string, path: string, code: string, privateText?: string) {
@@ -69,7 +79,7 @@ export async function assertHidden(request: APIRequestContext, origin: string, p
   expect(body).toMatchObject({ status: 404, code });
   if (privateText) expect(JSON.stringify(body)).not.toContain(privateText);
 }
-export async function captureFinal(request: APIRequestContext, context: RuntimeContext, salesTaskId: string, officeTaskId: string, snapshotId: string): Promise<PersistedState['final']> {
+export async function captureFinal(request: APIRequestContext, context: RuntimeContext, salesTaskId: string, officeTaskId: string, snapshotId: string, priorSnapshotId: string, returnInstructionId: string): Promise<PersistedState['final']> {
   return {
     salesContext: await get(request, context.sales, '/v1/organization/tasks?view=context'),
     salesQueue: await get(request, context.sales, '/v1/organization/tasks?view=queue'),
@@ -78,6 +88,8 @@ export async function captureFinal(request: APIRequestContext, context: RuntimeC
     salesTask: await get(request, context.sales, `/v1/organization/tasks/${salesTaskId}`),
     officeTask: await get(request, context.office, `/v1/organization/tasks/${officeTaskId}`),
     snapshot: await get(request, context.sales, `/v1/organization/handoff-snapshots/${snapshotId}`),
+    priorSnapshot: await get(request, context.sales, `/v1/organization/handoff-snapshots/${priorSnapshotId}`),
+    returnInstruction: await get(request, context.sales, `/v1/organization/return-instructions/${returnInstructionId}`),
   };
 }
 export async function saveState(context: RuntimeContext, state: PersistedState) {
@@ -87,7 +99,7 @@ export async function saveState(context: RuntimeContext, state: PersistedState) 
 }
 export async function loadState(context: RuntimeContext): Promise<PersistedState> {
   const state = JSON.parse(await readFile(context.statePath, 'utf8')) as PersistedState;
-  expect(state.schemaVersion).toBe(1);
+  expect(state.schemaVersion).toBe(2);
   expect(state.documentId).toBe(context.documentId);
   return state;
 }

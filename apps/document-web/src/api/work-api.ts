@@ -7,7 +7,9 @@ export type TaskDetail = Generated.TaskDetail;
 // This view intentionally projects only the snapshot fields rendered by the first slice.
 export type HandoffSnapshot = Pick<Generated.HandoffSnapshot, 'id' | 'sourceTaskId' | 'sourceAttemptId' | 'targetTaskId' | 'createdAt' | 'artifacts'>;
 export type WorkCommand = Generated.WorkCommand;
-export type WorkResult = Generated.DraftSaved | Generated.Claimed | (Omit<Generated.Submitted, 'snapshot'> & { snapshot: HandoffSnapshot });
+export type ReturnCommand = Generated.ReturnCommand;
+export type ReturnInstruction = Generated.ReturnInstruction;
+export type WorkResult = Generated.Returned | Generated.DraftSaved | Generated.Claimed | (Omit<Generated.Submitted, 'snapshot'> & { snapshot: HandoffSnapshot });
 export class WorkApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, public readonly outcomeUnknown = false) { super(code); this.name = 'WorkApiError'; }
 }
@@ -22,8 +24,19 @@ function textValue(value: unknown): { text: string } { return { text: string(obj
 function schema(value: unknown): 'organization.text-draft.v1' { if (value !== 'organization.text-draft.v1') throw new Error('unsupported_schema'); return value; }
 function task(value: unknown): TaskSummary {
   const item = object(value);
+  if (revision(item.attemptNumber) < 1) throw new Error('invalid_attempt');
   if (!['ready', 'active', 'held', 'completed'].includes(string(item.state))) throw new Error('invalid_state');
-  return { id: string(item.id), contextId: string(item.contextId), attemptId: string(item.attemptId), revision: revision(item.revision), title: string(item.title), stepLabel: string(item.stepLabel), state: item.state as TaskSummary['state'], canClaim: bool(item.canClaim), canEdit: bool(item.canEdit), canSubmit: bool(item.canSubmit), handoffSnapshotId: item.handoffSnapshotId === null ? null : string(item.handoffSnapshotId) };
+  return { id: string(item.id), contextId: string(item.contextId), attemptId: string(item.attemptId), attemptNumber: revision(item.attemptNumber), revision: revision(item.revision), title: string(item.title), stepLabel: string(item.stepLabel), state: item.state as TaskSummary['state'], canClaim: bool(item.canClaim), canEdit: bool(item.canEdit), canSubmit: bool(item.canSubmit), canReturn: bool(item.canReturn), returnTransition: returnTransition(item.returnTransition), returnInstructionId: item.returnInstructionId === null ? null : string(item.returnInstructionId), handoffSnapshotId: item.handoffSnapshotId === null ? null : string(item.handoffSnapshotId) };
+}
+function returnTransition(value: unknown): TaskSummary['returnTransition'] {
+  if (value === null) return null;
+  const item = object(value);
+  return { transitionId: string(item.transitionId), targetTaskId: string(item.targetTaskId), previousSubmissionId: string(item.previousSubmissionId) };
+}
+function returnInstruction(value: unknown): ReturnInstruction {
+  const item = object(value);
+  if (!['sales-01', 'office-01'].includes(string(item.returnedBy))) throw new Error('invalid_actor');
+  return { id: string(item.id), workflowId: string(item.workflowId), contextId: string(item.contextId), sourceTaskId: string(item.sourceTaskId), sourceAttemptId: string(item.sourceAttemptId), targetTaskId: string(item.targetTaskId), targetAttemptId: string(item.targetAttemptId), previousSubmissionId: string(item.previousSubmissionId), transitionId: string(item.transitionId), reason: string(item.reason), returnedBy: item.returnedBy as ReturnInstruction['returnedBy'], actingAssignmentId: string(item.actingAssignmentId), createdAt: string(item.createdAt) };
 }
 function artifact(value: unknown): WorkingArtifact {
   const item = object(value);
@@ -37,8 +50,17 @@ function snapshot(value: unknown): HandoffSnapshot {
 function result(value: unknown): WorkResult {
   const item = object(value);
   if (item.kind === 'claimed') return { kind: item.kind, task: task(item.task) };
-  if (item.kind === 'draft_saved') return { kind: item.kind, task: task(item.task), artifact: artifact(item.artifact) };
+  if (item.kind === 'draft_saved') {
+    const summary = task(item.task); const saved = artifact(item.artifact);
+    if (saved.taskId !== summary.id || saved.attemptId !== summary.attemptId) throw new Error('response_target_mismatch');
+    return { kind: item.kind, task: summary, artifact: saved };
+  }
   if (item.kind === 'submitted') return { kind: item.kind, task: task(item.task), snapshot: snapshot(item.snapshot), nextTask: task(item.nextTask) };
+  if (item.kind === 'returned') {
+    const source = task(item.task); const instruction = returnInstruction(item.returnInstruction); const nextTask = task(item.nextTask);
+    if (source.id !== instruction.sourceTaskId || source.attemptId !== instruction.sourceAttemptId || source.returnInstructionId !== instruction.id || nextTask.id !== instruction.targetTaskId || nextTask.attemptId !== instruction.targetAttemptId) throw new Error('response_target_mismatch');
+    return { kind: item.kind, task: source, returnInstruction: instruction, nextTask };
+  }
   throw new Error('invalid_result');
 }
 async function request<T>(path: string, decode: (value: unknown) => T, method = 'GET', body?: unknown): Promise<T> {
@@ -58,6 +80,8 @@ export const workApi = {
   listTasks: (view: 'context' | 'queue') => request(`/tasks?view=${view}`, (value) => { const item = object(value); if (item.nextCursor !== null) throw new Error('unsupported_pagination'); return { items: array(item.items, task), nextCursor: null }; }),
   getTask: (id: string) => request(`/tasks/${segment(id)}`, (value): TaskDetail => { const item = object(value); const summary = task(item); const artifacts = array(item.workingArtifacts, artifact); if (summary.id !== id || artifacts.some((entry) => entry.taskId !== id || entry.attemptId !== summary.attemptId)) throw new Error('response_target_mismatch'); return { ...summary, inputResources: array(item.inputResources, (entry) => { const resource = object(entry); if (resource.kind !== 'document') throw new Error('unsupported_resource'); return { kind: 'document', documentId: string(resource.documentId), label: string(resource.label) }; }), history: array(item.history, (entry) => { const event = object(entry); return { kind: string(event.kind), occurredAt: string(event.occurredAt) }; }), workingArtifacts: artifacts }; }),
   getSnapshot: (id: string) => request(`/handoff-snapshots/${segment(id)}`, (value) => { const receipt = snapshot(value); if (receipt.id !== id) throw new Error('response_target_mismatch'); return receipt; }),
+  getReturnInstruction: (id: string) => request(`/return-instructions/${segment(id)}`, (value) => { const instruction = returnInstruction(value); if (instruction.id !== id) throw new Error('response_target_mismatch'); return instruction; }),
+  returnTask: (id: string, command: ReturnCommand) => request(`/tasks/${segment(id)}/return`, result, 'POST', command),
   claim: (id: string, command: WorkCommand) => request(`/tasks/${segment(id)}/claim`, result, 'POST', command),
   submit: (id: string, command: WorkCommand & { artifacts: { artifactId: string; revision: number }[] }) => request(`/tasks/${segment(id)}/submit`, result, 'POST', command),
   saveDraft: ({ taskId, artifactId, ...command }: WorkCommand & { taskId: string; artifactId?: string; value: { text: string } }) => request(artifactId ? `/working-artifacts/${segment(artifactId)}` : `/tasks/${segment(taskId)}/working-artifacts`, result, artifactId ? 'PUT' : 'POST', command),

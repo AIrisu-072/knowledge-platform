@@ -39,6 +39,11 @@ pub fn router(repository: Arc<dyn WorkRepository>, actor: VerifiedActor) -> Rout
         )
         .route("/v1/organization/tasks/{id}/claim", post(claim))
         .route("/v1/organization/tasks/{id}/submit", post(submit))
+        .route("/v1/organization/tasks/{id}/return", post(return_task))
+        .route(
+            "/v1/organization/return-instructions/{id}",
+            get(return_instruction),
+        )
         .route("/v1/organization/handoff-snapshots/{id}", get(snapshot))
         .route("/v1/organization/operations/{id}", get(recover))
         .fallback(|| async { Problem(WorkError::WorkItemNotFound) })
@@ -101,7 +106,7 @@ async fn session(State(state): State<ApiState>) -> Json<serde_json::Value> {
         "principalId":state.actor.principal_id(),
         "displayName":match state.actor { VerifiedActor::Sales01 => "営業担当（模擬）", VerifiedActor::Office01 => "事務担当（模擬）" },
         "actingAssignmentId":state.actor.assignment_id(),
-        "capabilities":{"nativeWorkspace":false,"agent":false,"search":false,"fileUpload":false,"return":false}
+        "capabilities":{"nativeWorkspace":false,"agent":false,"search":false,"fileUpload":false,"return":true}
     }))
 }
 async fn list_tasks(
@@ -177,6 +182,17 @@ async fn snapshot(
         state
             .repository
             .snapshot(state.actor, path_id(path)?)
+            .await?,
+    ))
+}
+async fn return_instruction(
+    State(state): State<ApiState>,
+    path: Result<Path<Uuid>, PathRejection>,
+) -> Result<Json<ReturnInstruction>, Problem> {
+    Ok(Json(
+        state
+            .repository
+            .return_instruction(state.actor, path_id(path)?)
             .await?,
     ))
 }
@@ -269,6 +285,39 @@ async fn submit(
             acting_assignment_id: body.acting_assignment_id,
         },
         artifacts: body.artifacts,
+    };
+    Ok(Json(state.repository.execute(state.actor, command).await?))
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReturnBody {
+    operation_id: Uuid,
+    expected_revision: i64,
+    acting_assignment_id: Uuid,
+    expected_attempt_id: Uuid,
+    previous_submission_id: Uuid,
+    target_task_id: Uuid,
+    transition_id: Uuid,
+    reason: String,
+}
+async fn return_task(
+    State(state): State<ApiState>,
+    path: Result<Path<Uuid>, PathRejection>,
+    body: Result<Json<ReturnBody>, JsonRejection>,
+) -> Result<Json<MutationResult>, Problem> {
+    let body = json_body(body)?;
+    let command = Command::Return {
+        task_id: path_id(path)?,
+        context: CommandContext {
+            operation_id: body.operation_id,
+            expected_revision: body.expected_revision,
+            acting_assignment_id: body.acting_assignment_id,
+        },
+        expected_attempt_id: body.expected_attempt_id,
+        previous_submission_id: body.previous_submission_id,
+        target_task_id: body.target_task_id,
+        transition_id: body.transition_id,
+        reason: body.reason,
     };
     Ok(Json(state.repository.execute(state.actor, command).await?))
 }

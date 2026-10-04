@@ -1,6 +1,6 @@
 export { workApi, WorkApiError } from '../api/work-api';
-export type { WorkSession, TaskSummary, TaskDetail, WorkingArtifact, HandoffSnapshot, WorkCommand, WorkResult } from '../api/work-api';
-import { WorkApiError, workApi, type WorkCommand, type WorkResult } from '../api/work-api';
+export type { WorkSession, TaskSummary, TaskDetail, WorkingArtifact, HandoffSnapshot, WorkCommand, WorkResult, ReturnCommand, ReturnInstruction } from '../api/work-api';
+import { WorkApiError, workApi, type WorkCommand, type ReturnCommand, type WorkResult } from '../api/work-api';
 export type TaskSearch = { view: 'context' | 'queue'; taskId?: string };
 export function validateTaskSearch(value: Record<string, unknown>): TaskSearch {
   return { view: value.view === 'queue' ? 'queue' : 'context', ...(typeof value.taskId === 'string' && /^[a-zA-Z0-9-]{1,128}$/.test(value.taskId) ? { taskId: value.taskId } : {}) };
@@ -19,11 +19,13 @@ export function taskStateLabel(state: string): string { return ({ ready: '担当
 
 /** Closed, replayable commands retain the original OCC and payload under one operation ID. */
 export type WorkOperation =
+  | { kind: 'returned'; taskId: string; input: ReturnCommand }
   | { kind: 'claimed'; taskId: string; input: WorkCommand }
   | { kind: 'draft_saved'; taskId: string; input: WorkCommand & { artifactId?: string; value: { text: string } } }
   | { kind: 'submitted'; taskId: string; input: WorkCommand & { artifacts: { artifactId: string; revision: number }[] } };
 export function executeWorkOperation(operation: WorkOperation): Promise<WorkResult> {
   switch (operation.kind) {
+    case 'returned': return workApi.returnTask(operation.taskId, operation.input);
     case 'claimed': return workApi.claim(operation.taskId, operation.input);
     case 'draft_saved': return workApi.saveDraft({ ...operation.input, taskId: operation.taskId });
     case 'submitted': return workApi.submit(operation.taskId, operation.input);
