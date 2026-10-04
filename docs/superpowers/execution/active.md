@@ -1,5 +1,23 @@
 # Active Execution Pointer
 
+## 2026-10-04 17:08 UTC — 合成Agentをmainへ統合する候補
+
+- 状況：受入済みPR60 exact `48ae1bfd` とmain `9c90f383` の祖先を保持した統合候補。[統合状況](organization-agent-main-integration-status.md)が再開先
+- 製品source/lock/migration/workflowはAgent受入treeと一致。競合はこの文書の先頭追記だけで、両方の履歴を保持する
+- 次は限定独立レビュー、新しいmain-base Draftのexact通常CI。main mergeは親担当が直列調整し、実サーバーへの導入は所有者が手動実施する。以下の未受入記録は各時点の履歴
+
+---
+
+
+## 2026-10-04 13:45 UTC — Organization合成Agent slice
+
+- 受入PR57 exact `d383baccddd5081687b500f064f6fce195a24816` はEvidence/判断/提出の実DB・2名操作・復元・cleanupと全CI成功済み
+- 別branchでFrozenのAgentExecutionを最小実装。[状況](organization-synthetic-agent-slice-status.md)、[計画](../plans/2026-10-04-organization-synthetic-agent-slice.md)
+- 実Document現在認可＋合成executor。本文分析・実LLM・外部MCP通信を主張せず、同2名/一時DB/Chromium/画像無しを維持する
+
+---
+
+
 ## 2026年10月4日 DocumentとOrganizationのmain統合候補
 
 - 状態：**ACTIVE／既存受入sourceと文書側枝を統合、候補の独立レビュー・exact CI待ち**。[統合状況](document-organization-integration-status.md)と[計画](../plans/2026-10-04-document-organization-integration.md)が今回の再開先

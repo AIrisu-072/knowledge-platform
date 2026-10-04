@@ -7,6 +7,8 @@ const MAX_BYTES = 8 * 1024 * 1024, MAX_NODES = 1000, MAX_DEPTH = 8, MAX_TEXT = 1
 const phases = new Set(['journey', 'persistence']);
 const sources = new Set(['journey.spec.ts', 'persistence.spec.ts', 'support.ts']);
 const statuses = new Set(['failed', 'timedOut', 'interrupted']);
+const executionStatuses = new Set(['queued', 'running', 'succeeded', 'failed', 'cancelled', 'outcome_unknown']);
+const executionFailureCodes = new Set(['none', 'provider_denied', 'context_stale', 'invalid_output', 'dependency_unavailable', 'interrupted', 'commit_outcome_unknown']);
 const tests = new Map([
   ['実2名UIで根拠・候補・3種の人間判断を選択提出し、差戻後の新試行を非公開で再提出する', 'journey'],
   ['両process再起動後も根拠・候補・人間判断・固定提出・試行2・操作結果とprivate非開示を保持する', 'persistence'],
@@ -15,7 +17,7 @@ const actions = new Set(['journey-setup', 'office-navigation', 'sales-navigation
   'draft-save', 'source-read', 'evidence-module', 'source-document-select', 'source-file-select', 'evidence-input',
   'evidence-submit', 'finding-input', 'finding-submit', 'decision-select', 'decision-input', 'decision-preview',
   'decision-confirm', 'visibility-verify', 'submit-preview', 'submit-selection', 'submit-confirm', 'office-claim',
-  'return-preview', 'return-confirm', 'sales-reclaim', 'resubmit', 'office-reclaim', 'final-verify', 'persistence-verify']);
+  'return-preview', 'return-confirm', 'sales-reclaim', 'resubmit', 'office-reclaim', 'final-verify', 'persistence-verify', 'agent-module', 'agent-input', 'agent-request', 'agent-result', 'agent-replay']);
 const matchers = new Set(['toBe', 'toEqual', 'toStrictEqual', 'toMatchObject', 'toMatch', 'toContain', 'toContainEqual',
   'toBeNull', 'toBeVisible', 'toBeHidden', 'toBeFocused', 'toBeEnabled', 'toBeDisabled', 'toBeChecked',
   'toHaveCount', 'toHaveText', 'toContainText', 'toHaveURL', 'toHaveAttribute', 'toHaveLength', 'toHaveValue',
@@ -39,8 +41,11 @@ function failure(result, title) {
   const error = result.error, message = text(error?.message);
   // Pinned standard JSON retains test.info().annotations on this exact result, including timeout.
   // This is only the last action entered, not evidence that it is waiting or completed.
-  const stage = Array.isArray(result.annotations) && result.annotations.length <= 32
-    ? result.annotations.findLast(annotation => annotation?.type === 'organization-stage')?.description : undefined;
+  const annotations = Array.isArray(result.annotations) && result.annotations.length <= 32 ? result.annotations : [];
+  const stage = annotations.findLast(annotation => annotation?.type === 'organization-stage')?.description;
+  const executionStatus = annotations.findLast(annotation => annotation?.type === 'organization-agent-status')?.description;
+  const executionFailureCode = annotations.findLast(annotation => annotation?.type === 'organization-agent-failure-code')?.description;
+  const observedExecution = tests.get(title) === 'journey' && stage === 'agent-result' && executionStatuses.has(executionStatus) && executionFailureCodes.has(executionFailureCode);
   const name = error?.matcherResult?.name ?? message.match(/\b(to[A-Z][A-Za-z]+)\s*\(/u)?.[1];
   const matcher = matchers.has(name) ? name : undefined;
   let errorCategory = 'unavailable';
@@ -51,7 +56,8 @@ function failure(result, title) {
   return { ...(tests.has(title) ? { test: tests.get(title) } : {}),
     ...(location(error?.location) ?? location(result.errorLocation) ?? stackLocation(error?.stack)),
     status: result.status, errorCategory, ...(matcher ? { matcher } : {}),
-    ...(actions.has(stage) ? { currentAction: stage } : {}) };
+    ...(actions.has(stage) ? { currentAction: stage } : {}),
+    ...(observedExecution ? { executionStatus, executionFailureCode: executionFailureCode === 'none' ? null : executionFailureCode } : {}) };
 }
 
 export function browserFailureDiagnostics(raw, phase) {

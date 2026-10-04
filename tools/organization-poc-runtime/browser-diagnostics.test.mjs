@@ -22,13 +22,13 @@ test('standard JSON timeout retains only the current result action annotation wi
   } });
 });
 
-test('all thirty fixed action names survive the closed projection', () => {
+test('all thirty-five fixed action names survive the closed projection', () => {
   const stages = ['journey-setup', 'office-navigation', 'sales-navigation', 'document-navigation', 'task-navigation',
     'draft-save', 'source-read', 'evidence-module', 'source-document-select', 'source-file-select', 'evidence-input',
     'evidence-submit', 'finding-input', 'finding-submit', 'decision-select', 'decision-input', 'decision-preview',
     'decision-confirm', 'visibility-verify', 'submit-preview', 'submit-selection', 'submit-confirm', 'office-claim',
-    'return-preview', 'return-confirm', 'sales-reclaim', 'resubmit', 'office-reclaim', 'final-verify', 'persistence-verify'];
-  assert.equal(stages.length, 30);
+    'return-preview', 'return-confirm', 'sales-reclaim', 'resubmit', 'office-reclaim', 'final-verify', 'persistence-verify', 'agent-module', 'agent-input', 'agent-request', 'agent-result', 'agent-replay'];
+  assert.equal(stages.length, 35);
   for (const description of stages) {
     const raw = report({ status: 'timedOut', annotations: [{ type: 'organization-stage', description }] });
     assert.equal(browserFailureDiagnostics(raw, 'journey').failure.currentAction, description);
@@ -134,4 +134,53 @@ test('runner pins the JSON environment override, rethrows failure and keeps capt
   assert.match(runner, /catch \(error\) \{\s*console\.error\(`Organization browser failure: \$\{JSON\.stringify\(await readBrowserFailureDiagnostics\(directory, phase\)\)\}`\);\s*throw error;/u);
   assert.match(config, /\['json', \{ outputFile: join\(output, 'results\.json'\) \}\]/u);
   for (const setting of ["preserveOutput: 'never'", "trace: 'off'", "screenshot: 'off'", "video: 'off'"]) assert.ok(config.includes(setting));
+});
+
+test('Agent result failures retain only the closed observed execution status and failure code', () => {
+  const executionStatuses = ['queued', 'running', 'succeeded', 'failed', 'cancelled', 'outcome_unknown'];
+  const failureCodes = ['none', 'provider_denied', 'context_stale', 'invalid_output', 'dependency_unavailable', 'interrupted', 'commit_outcome_unknown'];
+  for (const executionStatus of executionStatuses) for (const failureCode of failureCodes) {
+    const raw = report({ status: 'failed', error: { message: 'expect(locator).toContainText() timeout PRIVATE' }, annotations: [
+      { type: 'organization-stage', description: 'agent-result' },
+      { type: 'organization-agent-status', description: executionStatus, body: 'PRIVATE', id: 'PRIVATE' },
+      { type: 'organization-agent-failure-code', description: failureCode, purpose: 'PRIVATE' },
+    ] });
+    const actual = browserFailureDiagnostics(raw, 'journey').failure;
+    assert.equal(actual.executionStatus, executionStatus);
+    assert.equal(actual.executionFailureCode, failureCode === 'none' ? null : failureCode);
+    assert.ok(!JSON.stringify(actual).includes('PRIVATE'));
+  }
+});
+
+test('invalid, excessive, incomplete or unrelated Agent observations disclose no execution fields', () => {
+  const valid = [
+    { type: 'organization-stage', description: 'agent-result' },
+    { type: 'organization-agent-status', description: 'failed' },
+    { type: 'organization-agent-failure-code', description: 'context_stale' },
+  ];
+  for (const annotations of [
+    undefined, 'PRIVATE', [null], valid.slice(0, 2),
+    [...valid, { type: 'organization-agent-status', description: 'PRIVATE' }],
+    [...valid, { type: 'organization-agent-failure-code', description: 'PRIVATE' }],
+    [...valid, { type: 'organization-stage', description: 'draft-save' }],
+    [...valid, ...Array(30).fill({ type: 'PRIVATE', description: 'PRIVATE' })],
+  ]) {
+    const raw = JSON.parse(report({ status: 'failed', annotations }));
+    raw.suites[0].specs[0].tests[0].annotations = valid;
+    const actual = browserFailureDiagnostics(JSON.stringify(raw), 'journey').failure;
+    assert.equal(actual.executionStatus, undefined);
+    assert.equal(actual.executionFailureCode, undefined);
+    assert.ok(!JSON.stringify(actual).includes('PRIVATE'));
+  }
+  const unrelated = browserFailureDiagnostics(report({ status: 'failed', annotations: valid }, 'persistence'), 'persistence').failure;
+  assert.equal(unrelated.executionStatus, undefined);
+  assert.equal(unrelated.executionFailureCode, undefined);
+});
+
+test('Agent observation follows only the unchanged failed UI assertion and rethrows its original error', async () => {
+  const support = await readFile(new URL('../../apps/document-web/e2e-organization/support.ts', import.meta.url), 'utf8');
+  assert.match(support, /try \{\s*await expect\(executionRegion\)\.toContainText\('実行状態：成功'\);\s*\} catch \(error\) \{/u);
+  assert.match(support, /request\.get\(`\$\{origin\}\/v1\/organization\/agent-executions\/\$\{result\.execution\.id\}`, \{ timeout: 2000, maxRetries: 0, maxRedirects: 0 \}\)/u);
+  assert.match(support, /\} catch \{ \/\* Preserve the original UI failure[^\n]*\n\s*throw error;/u);
+  assert.match(support, /annotations\.push\(\{ type: 'organization-agent-status', description: status \}, \{ type: 'organization-agent-failure-code', description: failureCode \?\? 'none' \}\)/u);
 });

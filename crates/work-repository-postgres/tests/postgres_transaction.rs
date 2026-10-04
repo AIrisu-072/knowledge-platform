@@ -41,6 +41,44 @@ impl EvidenceSourcePort for TestEvidenceSource {
     }
 }
 
+struct TestAgentSource {
+    pool: sqlx::PgPool,
+    requester_allowed: AtomicBool,
+    provider_allowed: AtomicBool,
+    deny_call: AtomicUsize,
+    calls: AtomicUsize,
+}
+impl work_application::AgentSourcePort for TestAgentSource {
+    fn authorize(
+        &self,
+        context: AgentDispatchContext,
+        reference: RevisionRef,
+        remaining: std::time::Duration,
+    ) -> WorkFuture<'_, ()> {
+        Box::pin(async move {
+            context.validate_scope()?;
+            assert!(remaining <= std::time::Duration::from_secs(5));
+            let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+            sqlx::query("SELECT id FROM work.workflow_instances WHERE id=$1 FOR UPDATE NOWAIT")
+                .bind(WORKFLOW_ID)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|_| WorkError::IntegrityViolation)?;
+            if self.deny_call.load(Ordering::SeqCst) == call
+                || !self.requester_allowed.load(Ordering::SeqCst)
+                || !self.provider_allowed.load(Ordering::SeqCst)
+                || !context
+                    .execution
+                    .evidence_revision_refs
+                    .contains(&reference)
+            {
+                return Err(WorkError::EvidenceNotFound);
+            }
+            Ok(())
+        })
+    }
+}
+
 use work_domain::*;
 use work_repository_postgres::{PostgresWorkRepository, migrate, seed_synthetic};
 fn ctx(actor: VerifiedActor, revision: i64) -> CommandContext {
@@ -75,7 +113,7 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(migrations_before.len(), 3);
+    assert_eq!(migrations_before.len(), 4);
     migrate(&pool).await.unwrap();
     let migrations_after: Vec<(i64, Vec<u8>, time::OffsetDateTime)> = sqlx::query_as(
         "SELECT version, checksum, applied_at FROM work.schema_migrations ORDER BY version",
@@ -84,6 +122,25 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
     .await
     .unwrap();
     assert_eq!(migrations_after, migrations_before);
+    // The two HTTP profiles start before seed-work creates the fixture.
+    // Startup/shutdown interruption alone accepts a genuinely empty Work schema.
+    let unseeded = PostgresWorkRepository::new(pool.clone());
+    let empty_counts = "SELECT (SELECT count(*) FROM work.workflow_instances), (SELECT count(*) FROM work.operation_ledger), (SELECT count(*) FROM work.event_staging)";
+    let before: (i64, i64, i64) = sqlx::query_as(empty_counts).fetch_one(&pool).await.unwrap();
+    assert_eq!(before, (0, 0, 0));
+    for actor in [VerifiedActor::Sales01, VerifiedActor::Office01] {
+        assert_eq!(unseeded.interrupt_agent_executions(actor).await.unwrap(), 0);
+    }
+    let after: (i64, i64, i64) = sqlx::query_as(empty_counts).fetch_one(&pool).await.unwrap();
+    assert_eq!(
+        after, before,
+        "empty interruption must not seed or stage anything"
+    );
+    assert_eq!(
+        unseeded.task(VerifiedActor::Sales01, SALES_TASK_ID).await,
+        Err(WorkError::DependencyUnavailable),
+        "ordinary reads still require the fixture"
+    );
     seed_synthetic(&pool, Some(EVIDENCE_DOCUMENT))
         .await
         .unwrap();
@@ -805,4 +862,397 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
         (1, 1, 0),
         "one ledger/staging record, no fake workflow transition"
     );
+    // Same opt-in real transaction trial: no new database, runner or listener.
+    let provider = Arc::new(TestAgentSource {
+        pool: pool.clone(),
+        requester_allowed: AtomicBool::new(true),
+        provider_allowed: AtomicBool::new(true),
+        deny_call: AtomicUsize::new(0),
+        calls: AtomicUsize::new(0),
+    });
+    let agents =
+        PostgresWorkRepository::with_agent_source(pool.clone(), source.clone(), provider.clone());
+    let current = agents
+        .task(VerifiedActor::Office01, OFFICE_TASK_ID)
+        .await
+        .unwrap();
+    let command = Command::RequestAgentExecution {
+        task_id: OFFICE_TASK_ID,
+        context: ctx(VerifiedActor::Office01, current.task.revision),
+        expected_attempt_id: current.task.attempt_id,
+        purpose: "合成・本文分析なし".into(),
+        evidence_revision_refs: vec![RevisionRef {
+            id: ev.id,
+            revision: 1,
+        }],
+    };
+    let before: (serde_json::Value, i64, i64, i64, i64) = sqlx::query_as(rollback_state_sql)
+        .bind(WORKFLOW_ID)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    for requester_side in [true, false] {
+        let flag = if requester_side {
+            &provider.requester_allowed
+        } else {
+            &provider.provider_allowed
+        };
+        flag.store(false, Ordering::SeqCst);
+        assert_eq!(
+            agents
+                .request_agent_execution(VerifiedActor::Office01, command.clone())
+                .await,
+            Err(WorkError::EvidenceNotFound)
+        );
+        flag.store(true, Ordering::SeqCst);
+        let after: (serde_json::Value, i64, i64, i64, i64) = sqlx::query_as(rollback_state_sql)
+            .bind(WORKFLOW_ID)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(before, after);
+    }
+    let accepted = agents
+        .request_agent_execution(VerifiedActor::Office01, command.clone())
+        .await
+        .unwrap();
+    assert!(accepted.dispatch);
+    let replay = agents
+        .request_agent_execution(VerifiedActor::Office01, command.clone())
+        .await
+        .unwrap();
+    assert!(!replay.dispatch);
+    assert_eq!(replay.outcome, accepted.outcome);
+    let mut changed = command.clone();
+    if let Command::RequestAgentExecution { purpose, .. } = &mut changed {
+        *purpose = "別の目的".into();
+    }
+    assert_eq!(
+        agents
+            .request_agent_execution(VerifiedActor::Office01, changed)
+            .await,
+        Err(WorkError::OperationConflict)
+    );
+    let execution = match &accepted.outcome {
+        MutationResult::AgentExecutionRequested { execution, .. } => execution.clone(),
+        _ => panic!(),
+    };
+    let calls = provider.calls.load(Ordering::SeqCst);
+    assert_eq!(
+        agents
+            .agent_execution(VerifiedActor::Sales01, execution.id)
+            .await,
+        Err(WorkError::WorkItemNotFound)
+    );
+    assert_eq!(provider.calls.load(Ordering::SeqCst), calls);
+    let dispatch = agents
+        .start_agent_execution(VerifiedActor::Office01, execution.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        agents
+            .start_agent_execution(VerifiedActor::Office01, execution.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let output = AgentFindingOutput {
+        summary: "合成実行・本文分析なし".into(),
+        claim: "人間が原本を確認してください".into(),
+        uncertainty: vec!["実LLM/MCP通信なし".into()],
+    };
+    let before: (serde_json::Value, i64, i64, i64, i64) = sqlx::query_as(rollback_state_sql)
+        .bind(WORKFLOW_ID)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::raw_sql("CREATE FUNCTION work.reject_staging() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test staging failure'; END $$; CREATE TRIGGER reject_staging BEFORE INSERT ON work.event_staging FOR EACH ROW EXECUTE FUNCTION work.reject_staging();").execute(&pool).await.unwrap();
+    assert_eq!(
+        agents
+            .finish_agent_execution(dispatch.clone(), output.clone())
+            .await,
+        Err(WorkError::DependencyUnavailable)
+    );
+    let after: (serde_json::Value, i64, i64, i64, i64) = sqlx::query_as(rollback_state_sql)
+        .bind(WORKFLOW_ID)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        before, after,
+        "Finding, terminal result and staging rollback together"
+    );
+    sqlx::raw_sql(
+        "DROP TRIGGER reject_staging ON work.event_staging; DROP FUNCTION work.reject_staging();",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let done = agents
+        .finish_agent_execution(dispatch, output.clone())
+        .await
+        .unwrap();
+    assert_eq!(done.status, AgentExecutionStatus::Succeeded);
+    let result = agents
+        .agent_result(VerifiedActor::Office01, execution.id)
+        .await
+        .unwrap();
+    assert_eq!(result.finding_revision_refs.len(), 1);
+    assert!(result.simulated);
+    assert!(!result.body_analyzed);
+    let finding = agents
+        .finding(VerifiedActor::Office01, result.finding_revision_refs[0].id)
+        .await
+        .unwrap();
+    assert_eq!(finding.author, SYNTHETIC_EXECUTOR);
+    assert_eq!(finding.origin_execution_id, Some(execution.id));
+    assert!(
+        agents
+            .list_decisions(VerifiedActor::Office01, finding.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let current = agents
+        .task(VerifiedActor::Office01, OFFICE_TASK_ID)
+        .await
+        .unwrap();
+    agents
+        .execute(
+            VerifiedActor::Office01,
+            Command::RecordDecision {
+                task_id: OFFICE_TASK_ID,
+                context: ctx(VerifiedActor::Office01, current.task.revision),
+                expected_attempt_id: current.task.attempt_id,
+                finding_id: finding.id,
+                finding_revision: 1,
+                decision: DecisionKind::Accepted,
+                adopted_claim: None,
+                reason: None,
+                evidence_revision_refs: finding.evidence_revision_refs.clone(),
+                supersedes_decision_id: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        agents
+            .agent_result(VerifiedActor::Office01, execution.id)
+            .await
+            .unwrap(),
+        result,
+        "same-attempt Human decision does not erase terminal result"
+    );
+
+    for requester_side in [true, false] {
+        let flag = if requester_side {
+            &provider.requester_allowed
+        } else {
+            &provider.provider_allowed
+        };
+        flag.store(false, Ordering::SeqCst);
+        assert_eq!(
+            agents
+                .agent_result(VerifiedActor::Office01, execution.id)
+                .await,
+            Err(WorkError::EvidenceNotFound)
+        );
+        assert_eq!(
+            agents.finding(VerifiedActor::Office01, finding.id).await,
+            Err(WorkError::EvidenceNotFound)
+        );
+        assert_eq!(
+            agents
+                .recover(VerifiedActor::Office01, command.context().operation_id)
+                .await,
+            Err(WorkError::CommitOutcomeUnknown)
+        );
+        flag.store(true, Ordering::SeqCst);
+    }
+    let current = agents
+        .task(VerifiedActor::Office01, OFFICE_TASK_ID)
+        .await
+        .unwrap();
+    agents
+        .execute(
+            VerifiedActor::Office01,
+            Command::CancelAgentExecution {
+                task_id: OFFICE_TASK_ID,
+                context: ctx(VerifiedActor::Office01, current.task.revision),
+                expected_attempt_id: current.task.attempt_id,
+                execution_id: execution.id,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        agents
+            .agent_execution(VerifiedActor::Office01, execution.id)
+            .await
+            .unwrap()
+            .status,
+        AgentExecutionStatus::Succeeded
+    );
+    let reconnected =
+        PostgresWorkRepository::with_agent_source(pool.clone(), source.clone(), provider.clone());
+    assert_eq!(
+        reconnected
+            .agent_result(VerifiedActor::Office01, execution.id)
+            .await
+            .unwrap(),
+        result
+    );
+    assert_eq!(
+        reconnected
+            .recover(VerifiedActor::Office01, command.context().operation_id)
+            .await
+            .unwrap(),
+        accepted.outcome
+    );
+    let current = agents
+        .task(VerifiedActor::Office01, OFFICE_TASK_ID)
+        .await
+        .unwrap();
+    let second = Command::RequestAgentExecution {
+        task_id: OFFICE_TASK_ID,
+        context: ctx(VerifiedActor::Office01, current.task.revision),
+        expected_attempt_id: current.task.attempt_id,
+        purpose: "取消対象".into(),
+        evidence_revision_refs: vec![RevisionRef {
+            id: ev.id,
+            revision: 1,
+        }],
+    };
+    let accepted = agents
+        .request_agent_execution(VerifiedActor::Office01, second)
+        .await
+        .unwrap();
+    let execution = match accepted.outcome {
+        MutationResult::AgentExecutionRequested { execution, .. } => execution,
+        _ => panic!(),
+    };
+    let running = agents
+        .start_agent_execution(VerifiedActor::Office01, execution.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let current = agents
+        .task(VerifiedActor::Office01, OFFICE_TASK_ID)
+        .await
+        .unwrap();
+    provider.provider_allowed.store(false, Ordering::SeqCst);
+    assert_eq!(
+        agents
+            .execute(
+                VerifiedActor::Office01,
+                Command::CancelAgentExecution {
+                    task_id: OFFICE_TASK_ID,
+                    context: ctx(VerifiedActor::Office01, current.task.revision),
+                    expected_attempt_id: current.task.attempt_id,
+                    execution_id: execution.id,
+                },
+            )
+            .await,
+        Err(WorkError::CommitOutcomeUnknown)
+    );
+    provider.provider_allowed.store(true, Ordering::SeqCst);
+    assert_eq!(
+        agents.finish_agent_execution(running, output).await,
+        Err(WorkError::WorkContextStale)
+    );
+    assert_eq!(
+        agents
+            .agent_result(VerifiedActor::Office01, execution.id)
+            .await,
+        Err(WorkError::AgentResultNotReady)
+    );
+    let current = agents
+        .task(VerifiedActor::Office01, OFFICE_TASK_ID)
+        .await
+        .unwrap();
+    let third = Command::RequestAgentExecution {
+        task_id: OFFICE_TASK_ID,
+        context: ctx(VerifiedActor::Office01, current.task.revision),
+        expected_attempt_id: current.task.attempt_id,
+        purpose: "再起動対象".into(),
+        evidence_revision_refs: vec![RevisionRef {
+            id: ev.id,
+            revision: 1,
+        }],
+    };
+    let accepted = agents
+        .request_agent_execution(VerifiedActor::Office01, third)
+        .await
+        .unwrap();
+    let execution = match accepted.outcome {
+        MutationResult::AgentExecutionRequested { execution, .. } => execution,
+        _ => panic!(),
+    };
+    assert_eq!(
+        agents
+            .interrupt_agent_executions(VerifiedActor::Sales01)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        agents
+            .interrupt_agent_executions(VerifiedActor::Office01)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        agents
+            .agent_execution(VerifiedActor::Office01, execution.id)
+            .await
+            .unwrap()
+            .status,
+        AgentExecutionStatus::OutcomeUnknown
+    );
+    assert!(
+        agents
+            .start_agent_execution(VerifiedActor::Office01, execution.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let current = agents
+        .task(VerifiedActor::Office01, OFFICE_TASK_ID)
+        .await
+        .unwrap();
+    let undisclosed = Command::RequestAgentExecution {
+        task_id: OFFICE_TASK_ID,
+        context: ctx(VerifiedActor::Office01, current.task.revision),
+        expected_attempt_id: current.task.attempt_id,
+        purpose: "受付応答前の認可喪失".into(),
+        evidence_revision_refs: vec![RevisionRef {
+            id: ev.id,
+            revision: 1,
+        }],
+    };
+    provider
+        .deny_call
+        .store(provider.calls.load(Ordering::SeqCst) + 2, Ordering::SeqCst);
+    assert_eq!(
+        agents
+            .request_agent_execution(VerifiedActor::Office01, undisclosed.clone())
+            .await,
+        Err(WorkError::CommitOutcomeUnknown)
+    );
+    let current = agents
+        .agent_execution(VerifiedActor::Office01, undisclosed.context().operation_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        current.status,
+        AgentExecutionStatus::Failed,
+        "known committed but undispatched request cannot remain an active queue"
+    );
+    let replay = agents
+        .request_agent_execution(VerifiedActor::Office01, undisclosed)
+        .await
+        .unwrap();
+    assert!(!replay.dispatch);
 }

@@ -1167,6 +1167,222 @@
           }
         }
       }
+    },
+    "/v1/organization/tasks/{id}/agent-executions": {
+      "post": {
+        "operationId": "requestAgentExecution",
+        "summary": "requestAgentExecution",
+        "responses": {
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentExecutionRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/agent-executions/{id}": {
+      "get": {
+        "operationId": "getAgentExecution",
+        "summary": "getAgentExecution",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentExecution"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/agent-executions/{id}/cancel": {
+      "post": {
+        "operationId": "cancelAgentExecution",
+        "summary": "cancelAgentExecution",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelAgentExecution"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/agent-executions/{id}/result": {
+      "get": {
+        "operationId": "getAgentResult",
+        "summary": "getAgentResult",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1319,6 +1535,9 @@
           },
           "canRecordDecision": {
             "type": "boolean"
+          },
+          "canRequestAgent": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1339,7 +1558,8 @@
           "returnTransition",
           "canRegisterEvidence",
           "canRegisterFinding",
-          "canRecordDecision"
+          "canRecordDecision",
+          "canRequestAgent"
         ]
       },
       "WorkingArtifact": {
@@ -1529,6 +1749,17 @@
           },
           "canRecordDecision": {
             "type": "boolean"
+          },
+          "canRequestAgent": {
+            "type": "boolean"
+          },
+          "agentExecutionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 16
           }
         },
         "required": [
@@ -1552,7 +1783,9 @@
           "returnTransition",
           "canRegisterEvidence",
           "canRegisterFinding",
-          "canRecordDecision"
+          "canRecordDecision",
+          "canRequestAgent",
+          "agentExecutionIds"
         ]
       },
       "TaskPage": {
@@ -1915,6 +2148,12 @@
           },
           {
             "$ref": "#/components/schemas/DecisionRecorded"
+          },
+          {
+            "$ref": "#/components/schemas/AgentExecutionRequested"
+          },
+          {
+            "$ref": "#/components/schemas/AgentExecutionCancelled"
           }
         ]
       },
@@ -1947,7 +2186,9 @@
               "INTEGRITY_VIOLATION",
               "CURSOR_STALE",
               "EVIDENCE_NOT_FOUND",
-              "FINDING_NOT_FOUND"
+              "FINDING_NOT_FOUND",
+              "AGENT_RESULT_NOT_READY",
+              "WORK_CONTEXT_STALE"
             ]
           },
           "traceId": {
@@ -2420,6 +2661,10 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "originExecutionId": {
+            "type": "string",
+            "format": "uuid"
           }
         },
         "required": [
@@ -2854,6 +3099,355 @@
         "required": [
           "items",
           "nextCursor"
+        ]
+      },
+      "ProviderPrincipalBinding": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "providerId": {
+            "type": "string",
+            "const": "document"
+          },
+          "principalId": {
+            "type": "string",
+            "const": "poc/poc-agent"
+          },
+          "invocationKind": {
+            "type": "string",
+            "const": "agent"
+          }
+        },
+        "required": [
+          "providerId",
+          "principalId",
+          "invocationKind"
+        ]
+      },
+      "AgentResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          },
+          "findingRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "minItems": 1,
+            "maxItems": 1
+          },
+          "evidenceRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "minItems": 1,
+            "maxItems": 16
+          },
+          "uncertainty": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8192,
+              "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+            },
+            "minItems": 1,
+            "maxItems": 4
+          },
+          "simulated": {
+            "type": "boolean",
+            "const": true
+          },
+          "bodyAnalyzed": {
+            "type": "boolean",
+            "const": false
+          },
+          "liveLlm": {
+            "type": "boolean",
+            "const": false
+          },
+          "mcpWireExecuted": {
+            "type": "boolean",
+            "const": false
+          }
+        },
+        "required": [
+          "summary",
+          "findingRevisionRefs",
+          "evidenceRevisionRefs",
+          "uncertainty",
+          "simulated",
+          "bodyAnalyzed",
+          "liveLlm",
+          "mcpWireExecuted"
+        ]
+      },
+      "AgentExecution": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requestedBy": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01"
+            ]
+          },
+          "requesterResponsibility": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "executedBy": {
+            "type": "string",
+            "const": "organization-synthetic/agent-01"
+          },
+          "executorInvocationKind": {
+            "type": "string",
+            "const": "agent"
+          },
+          "providerPrincipalBindings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderPrincipalBinding"
+            },
+            "minItems": 1,
+            "maxItems": 1
+          },
+          "effectiveContextRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "taskRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "purpose": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          },
+          "evidenceRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "minItems": 1,
+            "maxItems": 16
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "outcome_unknown"
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AgentResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "failureCode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "provider_denied",
+              "context_stale",
+              "invalid_output",
+              "dependency_unavailable",
+              "interrupted",
+              "commit_outcome_unknown",
+              null
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "contextId",
+          "workItemId",
+          "attemptId",
+          "requestedBy",
+          "requesterResponsibility",
+          "executedBy",
+          "executorInvocationKind",
+          "providerPrincipalBindings",
+          "effectiveContextRevision",
+          "taskRevision",
+          "purpose",
+          "evidenceRevisionRefs",
+          "status",
+          "startedAt",
+          "endedAt",
+          "result",
+          "failureCode"
+        ]
+      },
+      "AgentExecutionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "purpose": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+          },
+          "evidenceRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "minItems": 1,
+            "maxItems": 16
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedAttemptId",
+          "purpose",
+          "evidenceRevisionRefs"
+        ]
+      },
+      "CancelAgentExecution": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedAttemptId",
+          "taskId"
+        ]
+      },
+      "AgentExecutionRequested": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "agent_execution_requested"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "execution": {
+            "$ref": "#/components/schemas/AgentExecution"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "execution"
+        ]
+      },
+      "AgentExecutionCancelled": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "agent_execution_cancelled"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "execution": {
+            "$ref": "#/components/schemas/AgentExecution"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "execution"
         ]
       }
     }

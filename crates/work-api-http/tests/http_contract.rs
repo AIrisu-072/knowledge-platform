@@ -186,6 +186,47 @@ struct DomainFixture {
     outcomes: std::sync::Mutex<Vec<(Uuid, VerifiedActor, MutationResult)>>,
 }
 impl WorkRepository for DomainFixture {
+    fn request_agent_execution(
+        &self,
+        actor: VerifiedActor,
+        command: Command,
+    ) -> WorkFuture<'_, work_application::AgentExecutionAcceptance> {
+        Box::pin(async move {
+            if let Ok(outcome) = self.recover(actor, command.context().operation_id).await {
+                return Ok(work_application::AgentExecutionAcceptance {
+                    outcome,
+                    dispatch: false,
+                });
+            }
+            let outcome = self.execute(actor, command).await?;
+            Ok(work_application::AgentExecutionAcceptance {
+                outcome,
+                dispatch: true,
+            })
+        })
+    }
+    fn agent_execution(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, AgentExecution> {
+        Box::pin(async move { self.workflow.lock().unwrap().agent_execution(actor, id) })
+    }
+    fn agent_result(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, AgentResult> {
+        Box::pin(async move { self.workflow.lock().unwrap().agent_result(actor, id) })
+    }
+    fn fail_agent_execution(
+        &self,
+        actor: VerifiedActor,
+        id: Uuid,
+        code: AgentFailureCode,
+    ) -> WorkFuture<'_, AgentExecution> {
+        Box::pin(async move {
+            self.workflow.lock().unwrap().fail_agent_execution(
+                actor,
+                id,
+                code,
+                "2026-10-04T00:00:00Z",
+            )
+        })
+    }
+
     fn list_tasks(&self, actor: VerifiedActor, view: TaskView) -> WorkFuture<'_, Vec<TaskSummary>> {
         Box::pin(async move { Ok(self.workflow.lock().unwrap().list_tasks(actor, view)) })
     }
@@ -571,4 +612,157 @@ async fn evidence_query_admission_precedes_repository_and_response_bytes_are_bou
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(body["code"], "DEPENDENCY_UNAVAILABLE");
     assert!(!body.to_string().contains("PRIVATE-OVERSIZE"));
+}
+
+struct RecordingDispatch {
+    calls: std::sync::atomic::AtomicUsize,
+    reject: bool,
+}
+impl work_application::AgentDispatchPort for RecordingDispatch {
+    fn dispatch(&self, _actor: VerifiedActor, _id: Uuid) -> Result<(), WorkError> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if self.reject {
+            Err(WorkError::DependencyUnavailable)
+        } else {
+            Ok(())
+        }
+    }
+}
+#[tokio::test]
+async fn agent_http_is_closed_private_replay_safe_and_never_dispatches_from_reads() {
+    let document = Uuid::from_u128(71);
+    let mut workflow = Workflow::synthetic(Some(document));
+    let evidence = Command::RegisterEvidence {
+        task_id: SALES_TASK_ID,
+        context: context(VerifiedActor::Sales01, 0),
+        expected_attempt_id: SALES_ATTEMPT_ID,
+        source: EvidenceSource {
+            source_ref: SourceRef {
+                provider_id: "document".into(),
+                resource_id: document,
+                revision_id: Uuid::from_u128(72),
+                version_id: Uuid::from_u128(73),
+            },
+            authoritative_locator: AuthoritativeLocator {
+                kind: "contentItem".into(),
+                content_item_id: Uuid::from_u128(74),
+                representation_id: Uuid::from_u128(75),
+            },
+        },
+        relevant_location: "根拠".into(),
+    };
+    workflow
+        .apply(VerifiedActor::Sales01, &evidence, "2026-10-04T00:00:00Z")
+        .unwrap();
+    let operation = Uuid::now_v7();
+    let body = serde_json::json!({"operationId":operation,"expectedRevision":1,"actingAssignmentId":SALES_ASSIGNMENT_ID,"expectedAttemptId":SALES_ATTEMPT_ID,"purpose":"合成確認","evidenceRevisionRefs":[{"id":workflow.evidence[0].id,"revision":1}]});
+    let fixture = Arc::new(DomainFixture {
+        workflow: std::sync::Mutex::new(workflow),
+        outcomes: std::sync::Mutex::new(vec![]),
+    });
+    let dispatch = Arc::new(RecordingDispatch {
+        calls: std::sync::atomic::AtomicUsize::new(0),
+        reject: false,
+    });
+    let app =
+        work_api_http::router_with_agent(fixture.clone(), VerifiedActor::Sales01, dispatch.clone());
+    let uri = format!("/v1/organization/tasks/{SALES_TASK_ID}/agent-executions");
+    for field in [
+        "requestedBy",
+        "executedBy",
+        "providerPrincipalBindings",
+        "originExecutionId",
+        "decision",
+        "allowedTools",
+    ] {
+        let mut invalid = body.clone();
+        invalid[field] = serde_json::json!("forged");
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&uri)
+                    .header("content-type", "application/json")
+                    .body(Body::from(invalid.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+    assert_eq!(dispatch.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    for _ in 0..2 {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&uri)
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let (status, result) = response_json(response).await;
+        assert_eq!(status, StatusCode::ACCEPTED);
+        assert_eq!(result["execution"]["status"], "queued");
+        assert_eq!(result["execution"]["requestedBy"], "sales-01");
+    }
+    assert_eq!(dispatch.calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    for (path, expected) in [
+        (
+            format!("/v1/organization/agent-executions/{operation}"),
+            StatusCode::OK,
+        ),
+        (
+            format!("/v1/organization/agent-executions/{operation}/result"),
+            StatusCode::CONFLICT,
+        ),
+        (
+            format!("/v1/organization/operations/{operation}"),
+            StatusCode::OK,
+        ),
+    ] {
+        let (status, result) = response_json(
+            app.clone()
+                .oneshot(Request::builder().uri(&path).body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, expected);
+        if expected == StatusCode::CONFLICT {
+            assert_eq!(result["code"], "AGENT_RESULT_NOT_READY");
+        }
+        let office = work_api_http::router_with_agent(
+            fixture.clone(),
+            VerifiedActor::Office01,
+            dispatch.clone(),
+        );
+        let response = office
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+    assert_eq!(dispatch.calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    let cancel = serde_json::json!({"operationId":Uuid::now_v7(),"expectedRevision":2,"actingAssignmentId":SALES_ASSIGNMENT_ID,"expectedAttemptId":SALES_ATTEMPT_ID,"taskId":SALES_TASK_ID});
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/v1/organization/agent-executions/{operation}/cancel"
+                ))
+                .header("content-type", "application/json")
+                .body(Body::from(cancel.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, result) = response_json(response).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(result["execution"]["status"], "cancelled");
 }
