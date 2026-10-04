@@ -1,5 +1,9 @@
 # Organization Browser PoC の起動と確認
 
+## 検証済みの最小経路
+
+2026-10-04、[PR54のsource44e1b412](https://github.com/AIrisu-072/knowledge-platform/commit/44e1b41219a77809f82fe22045cb4fceaf0c1ed8) をGitHub Actionsの使い捨てPostgreSQLと実Chromiumで検証した。2名の保存・文書参照・提出・引受け・snapshot、2つのHTTP server再起動後の復元、private非開示、transaction rollback/競合、cleanupがPASS。通常CIと既存Document回帰もPASS。詳細は[完了記録](../superpowers/execution/organization-browser-poc-slice-status.md)を参照。
+
 ## 現在の範囲
 
 2名の起動時固定の模擬ユーザーを使い、タスク一覧・詳細、privateな文案の保存、共有Document参照、提出、事務担当の引受けと提出内容の閲覧を行う。PostgreSQLを状態の正本とし、ページ再読込でも保存済み状態を取得する。未保存の入力と結果不明操作はタブ内メモリーに保持する。
@@ -73,7 +77,7 @@ export KP_ORGANIZATION_DOCUMENT_ID='<上で公開したdocumentId>'
 - Tauri/実Windows/WebView2/native Workspace、ファイル添付、差戻、Agent/Evidence/HumanDecision、検索の接続、role管理・委任は今回の最小slice外
 - Work fixtureは2stepの1workflow。物理DBでは1aggregateをrow lockし、privateなschema-bound textを保存する。一般workflow designerや大規模運用を意味しない
 - AuditはWork transaction内のstagingまで。別Audit pipeline配送の資格取得は主張しない
-- この作業環境では実PostgreSQL・listener・browser統合を実行していない。既知拒否を再試行していない。純粋テスト/HTTP oneshot/型検査/buildの成功で実runtime合格としない
+- このローカル作業環境ではOrganization server・実PostgreSQL・Chromiumの統合実行は行っていない。合成listener試験を誤って実行した逸脱と終了確認は[実行状況](../superpowers/execution/organization-browser-poc-slice-status.md)に記録した。既知PostgreSQL拒否は再試行していない。実runtime資格は上記の明示承認済みHosted検証に基づく
 
 ## 最小開発確認
 
@@ -87,8 +91,8 @@ pnpm organization:api:lint
 
 PostgreSQL transaction試験は既定で明示ignoreされる。実行していない試験を合格件数へ加算しない。適切な実行権限を持つ使い捨て `*_work_poc_test` DBが用意できた場合に限り、`WORK_POC_TEST_DATABASE_URL` を指定して `cargo test -p work-repository-postgres --test postgres_transaction -- --ignored` を実行する。
 
-## Hostedでの最小実操作確認（追加source・未実行）
+## Hostedでの最小実操作確認
 
 `mise run organization:poc:runtime` は既存Document CI後段向けの単発確認である。外部DBを受け付けず、既存と同じ公式PostgreSQL一時containerを別途所有し、独立したtransaction試験用DBとbrowser用DB・storageを作る。既存固定Chromiumでsales/officeの操作を行い、2processを停止・再起動して保存状態を確認した後、所有containerを削除する。
 
-通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。現時点はsource準備のみで実行許可の確認待ち。画像・trace・videoはoff、実行ログ・標準runnerの失敗時文脈は一時workspace内だけに保持し、公開artifactは追加しない。
+通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。06:56 UTCの個別許可後、上記exact sourceでこの専用stepも成功した。画像・trace・videoはoff、実行ログ・標準runnerの失敗時文脈は一時workspace内だけに保持し、公開artifactは追加しない。
