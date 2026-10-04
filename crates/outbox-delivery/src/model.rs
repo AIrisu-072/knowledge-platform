@@ -115,6 +115,19 @@ pub type HandlerFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 /// Store operations return `Lost` only for a confirmed zero-row fence. Any
 /// database failure, including an unknown commit result, returns `StoreUnknown`.
 pub trait OutboxStore: Send + Sync {
+    /// 実測値がない実装は None とし、ゼロとして公開しない。
+    fn queue_snapshot(&self) -> DeliveryFuture<'_, Option<crate::observe::QueueSnapshot>> {
+        Box::pin(async { Ok(None) })
+    }
+    /// 保存された親文脈だけを返す。旧行や未対応ストアは None。
+    fn trace_context(
+        &self,
+        _event_id: Uuid,
+        _lease_token: Uuid,
+    ) -> DeliveryFuture<'_, Option<crate::observe::ValidatedTrace>> {
+        Box::pin(async { Ok(None) })
+    }
+
     fn verify_policy(&self) -> DeliveryFuture<'_, ()>;
     fn claim(
         &self,

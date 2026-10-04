@@ -1,5 +1,11 @@
 # Active Execution Pointer
 
+## Search G07の実証とG08着手：2026-10-04
+
+G07の復旧2ケースは、公開head `3d3bfcb2a6881d1a61d724a2d8d15c8d4cd843a3` に対するGitHub Ubuntu・公式PostgreSQL・架空データのCIで成功しました。[実結果と検証範囲](../programs/search-platform-completion/p6-g07-hosted-result-20261004.md)を現在の結果として参照してください。過去の実DB REDや元の全資格試験の完了は主張しません。以前のローカルソケット拒否は保持します。
+
+公開headは、その後のCI引用1行修正により `6441f7d4f0a244a952f72f7855e7201d5601f722`、treeは `1b76634675a4fd0917a245470ab7c44487a2e96d` です。G08は、既存observe欠落を埋める有限ラベルの監視・W3Cトレース検証・配送列限定のSQL権限を実装中です。ローカルでは対象限定コンパイルと純粋テスト、実DB/権限ケースは承認された合成GitHub環境で検証します。新しいsourceの資格、P6/P7・Search全体の受入、マージ・デプロイは未完了です。以下の過去記録を現在の停止条件や完了状態へ読み替えないでください。
+
 ## Searchの公開後の状態照合：2026-10-03 18:12 UTC
 
 Draft #40の公開headは `0ecf486719e3c9d71242e289a7564ad6d1032b3c`、treeは `72f1f578c46ff605cc96f22508f54623118d1928` です。DSI・Sandboxは成功、全体CIはRustの既存 `outbox_delivery::observe` 欠落と、由来を直接確定できていない履歴検査5件により未完了です。[新しい状態照合記録](search-current-state-20261003.md)で限定再現とホスト結果を区別しています。G07実行停止、G08の依存待ち、新規公開のOSV送信確認待ちを維持します。以下はそれぞれの時点の履歴であり、現在の実行指示ではありません。

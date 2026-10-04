@@ -82,7 +82,7 @@ jobs:
       - run: mise run test:rust
 
   search-process-recovery:
-    name: Search G07 実プロセス復旧（2ケース）
+    name: Search Outbox 復旧・監視・権限境界
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -109,6 +109,8 @@ jobs:
         run: cargo test --locked -p outbox-delivery --test process_recovery last_claim_kill9_restart_reaps_unknown_once -- --exact --nocapture
       - name: 4プロセスの非重複と停止分の再取得
         run: cargo test --locked -p outbox-delivery --test process_recovery four_processes_disjoint_claims_and_recover_expired -- --exact --nocapture
+      - name: G08の観測・トレース・配送ロールと既存Runnerを確認
+        run: cargo test --locked -p outbox-delivery --lib --test runner_admission --test runner_lifecycle --test runner_observation --test observability_security -- --test-threads=1 --nocapture
 
   security:
     runs-on: ubuntu-24.04

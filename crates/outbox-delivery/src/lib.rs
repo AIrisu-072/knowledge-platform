@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod model;
+pub mod observe;
 pub mod policy;
 pub mod postgres;
 pub mod runner;

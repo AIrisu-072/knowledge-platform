@@ -17,7 +17,12 @@ use uuid::Uuid;
 
 use crate::{
     DeliveryConfig, DeliveryDecision, DeliveryEnvelope, DeliveryError, DeliveryFuture, FenceResult,
-    HandlerFuture, OutboxStore, retry_delay,
+    HandlerFuture, OutboxStore,
+    observe::{
+        DeliveryMetricKind as Metric, DeliveryObserver, DeliveryOutcome as Outcome, DeliveryRoute,
+        DeliverySpan, HandlerTiming, Observation, SpanTiming, ValidatedTrace,
+    },
+    retry_delay,
 };
 
 /// A separate admission fence, such as a distributed Source lease.
@@ -76,6 +81,8 @@ pub struct DeliveryContext {
     pub outbox_token: Uuid,
     pub outbox_deadline: OffsetDateTime,
     pub cancel: Arc<AtomicBool>,
+    /// 観測を有効にした配送の新しいスパン文脈。旧行も新規ルートを持つ。
+    pub trace: Option<ValidatedTrace>,
 }
 
 pub trait DeliveryHandler<P: ClaimPermit>: Send + Sync {
@@ -117,6 +124,7 @@ where
     config: DeliveryConfig,
     owner: Uuid,
     slots: Arc<Semaphore>,
+    observation: Observation,
 }
 
 impl<S, H, A> DeliveryRunner<S, H, A>
@@ -140,7 +148,23 @@ where
             config,
             owner: Uuid::now_v7(),
             slots: Arc::new(Semaphore::new(config.max_in_flight as usize)),
+            observation: Observation {
+                observer: None,
+                route: DeliveryRoute::Generic,
+            },
         })
+    }
+
+    pub fn with_observer(
+        mut self,
+        observer: Arc<dyn DeliveryObserver>,
+        route: DeliveryRoute,
+    ) -> Self {
+        self.observation = Observation {
+            observer: Some(observer),
+            route,
+        };
+        self
     }
 
     pub async fn run_cycle(&self) -> Result<CycleSummary, DeliveryError> {
@@ -148,6 +172,19 @@ where
     }
 
     async fn run_cycle_inner(
+        &self,
+        shutdown: Option<&mut watch::Receiver<bool>>,
+        drain: &OnceLock<Instant>,
+    ) -> Result<CycleSummary, DeliveryError> {
+        let result = self.run_cycle_work(shutdown, drain).await;
+        // 失敗したサイクルを一度だけ数える。Unknown を成功や stale に置換しない。
+        if let Err(error) = &result {
+            self.observation.error(error);
+        }
+        result
+    }
+
+    async fn run_cycle_work(
         &self,
         mut shutdown: Option<&mut watch::Receiver<bool>>,
         drain: &OnceLock<Instant>,
@@ -162,6 +199,20 @@ where
             self.config,
         )
         .await?;
+        if self.observation.observer.is_some() {
+            match prepare_operation(
+                self.store.queue_snapshot(),
+                &mut shutdown,
+                drain,
+                self.config,
+            )
+            .await
+            {
+                Ok(Some(snapshot)) => self.observation.snapshot(snapshot),
+                Ok(None) => {}
+                Err(error) => self.observation.error(&error),
+            }
+        }
         let reaped = prepare_operation(
             self.store.reap_exhausted(self.config.reap_batch),
             &mut shutdown,
@@ -169,6 +220,12 @@ where
             self.config,
         )
         .await?;
+        self.observation.record(
+            Metric::Reaped,
+            reaped as f64,
+            Outcome::Exhausted,
+            Some(crate::ErrorCode::DeliveryUnknownAtLimit),
+        );
         let mut summary = CycleSummary {
             reaped,
             ..CycleSummary::default()
@@ -227,6 +284,12 @@ where
             return Err(DeliveryError::StoreUnknown);
         }
         summary.claimed = claimed.len() as u32;
+        self.observation.record(
+            Metric::Claimed,
+            f64::from(summary.claimed),
+            Outcome::Observed,
+            None,
+        );
         if shutdown_requested(shutdown.as_deref(), drain, self.config) {
             cleanup_operation(permit.release(), drain, self.config).await?;
             // Returned claims are known, but none has completed. Do not dispatch
@@ -257,6 +320,7 @@ where
                     cancel,
                     deadline: processing_deadline,
                     incomplete_io: incomplete_io.clone(),
+                    observation: self.observation.clone(),
                 },
                 slot,
             );
@@ -376,12 +440,20 @@ where
         }
         // Reaper is one last independent, policy-fenced DB operation. Never
         // claim it succeeded if the DB is still unavailable at shutdown.
-        summary.reaped += cleanup_operation(
+        let reaped = cleanup_operation(
             self.store.reap_exhausted(self.config.reap_batch),
             drain,
             self.config,
         )
-        .await?;
+        .await
+        .inspect_err(|error| self.observation.error(error))?;
+        summary.reaped += reaped;
+        self.observation.record(
+            Metric::Reaped,
+            reaped as f64,
+            Outcome::Exhausted,
+            Some(crate::ErrorCode::DeliveryUnknownAtLimit),
+        );
         match shutdown_error {
             Some(err) => Err(err),
             None => Ok(summary),
@@ -528,11 +600,19 @@ struct ClaimExecution {
     cancel: Arc<AtomicBool>,
     deadline: Instant,
     incomplete_io: Arc<AtomicBool>,
+    observation: Observation,
 }
 
 enum ClaimOutcome {
     Settled,
     Lost,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum FenceCheck {
+    Current,
+    Lost,
+    Cancelled,
 }
 
 async fn check_preflight<S: OutboxStore, P: ClaimPermit>(
@@ -542,22 +622,38 @@ async fn check_preflight<S: OutboxStore, P: ClaimPermit>(
     permit: &P,
     lease: std::time::Duration,
     cancel: &AtomicBool,
-) -> Result<bool, DeliveryError> {
+    observation: &Observation,
+) -> Result<FenceCheck, DeliveryError> {
     if cancel.load(Ordering::SeqCst) {
-        return Ok(false);
+        return Ok(FenceCheck::Cancelled);
     }
     let outbox = store.renew(event_id, outbox_token, lease).await?;
-    if outbox != FenceResult::Updated || cancel.load(Ordering::SeqCst) {
-        return Ok(false);
+    if outbox == FenceResult::Lost {
+        observation.stale();
+        return Ok(FenceCheck::Lost);
     }
-    // A read-only preflight can succeed just before Source expiry. Renewal is
-    // explicit; adapters must not need to smuggle it into `preflight`.
+    if cancel.load(Ordering::SeqCst) {
+        return Ok(FenceCheck::Cancelled);
+    }
+    // 読取だけの preflight に依存せず、Source の期限も明示的に延長する。
     let source = permit.renew().await?;
-    if source != FenceResult::Updated || cancel.load(Ordering::SeqCst) {
-        return Ok(false);
+    if source == FenceResult::Lost {
+        observation.stale();
+        return Ok(FenceCheck::Lost);
+    }
+    if cancel.load(Ordering::SeqCst) {
+        return Ok(FenceCheck::Cancelled);
     }
     let current = permit.preflight().await?;
-    Ok(current == FenceResult::Updated && !cancel.load(Ordering::SeqCst))
+    if current == FenceResult::Lost {
+        observation.stale();
+        return Ok(FenceCheck::Lost);
+    }
+    Ok(if cancel.load(Ordering::SeqCst) {
+        FenceCheck::Cancelled
+    } else {
+        FenceCheck::Current
+    })
 }
 
 async fn process_claim<S, H, P>(
@@ -604,6 +700,26 @@ where
     }
     let id = event.envelope.event_id;
     let token = event.lease_token;
+    let observation = &execution.observation;
+    if cancel.load(Ordering::SeqCst) {
+        return Ok(ClaimOutcome::Lost);
+    }
+    let parent = if observation.observer.is_some() {
+        match bounded_operation(
+            store.trace_context(id, token),
+            dependency_deadline(config).min(processing_deadline),
+        )
+        .await
+        {
+            Ok(parent) => parent,
+            Err(error) => {
+                observation.error(&error);
+                None
+            }
+        }
+    } else {
+        None
+    };
     execution.incomplete_io.store(true, Ordering::SeqCst);
     // Publish the I/O phase before reading cancellation. With the parent's
     // cancel-then-read ordering, it either observes uncertain I/O or this
@@ -613,7 +729,7 @@ where
     }
     // This first conditional renewal verifies the committed claim before any
     // handler code runs. DB uncertainty never becomes permission to dispatch.
-    if !bounded_operation(
+    if bounded_operation(
         check_preflight(
             store.as_ref(),
             id,
@@ -621,26 +737,36 @@ where
             &permit,
             config.lease_duration,
             cancel,
+            observation,
         ),
         dependency_deadline(config).min(processing_deadline),
     )
     .await?
+        != FenceCheck::Current
     {
         return Ok(ClaimOutcome::Lost);
     }
     if Instant::now() >= processing_deadline {
         return Err(DeliveryError::StoreUnknown);
     }
+    let mut span = observation.observer.as_ref().map(|_| {
+        SpanTiming::new(
+            observation.clone(),
+            DeliverySpan::new(id, event.attempt, parent),
+        )
+    });
     let context = DeliveryContext {
         attempt: event.attempt,
         outbox_token: token,
         outbox_deadline: event.lease_expires_at,
         cancel: cancel.clone(),
+        trace: span.as_ref().map(|span| span.span.context().clone()),
     };
     execution.incomplete_io.store(false, Ordering::SeqCst);
     if cancel.load(Ordering::SeqCst) {
         return Ok(ClaimOutcome::Lost);
     }
+    let handler_timing = HandlerTiming::new(observation.clone());
     let handler_future = handler.deliver(event.envelope, context, permit.clone());
     tokio::pin!(handler_future);
     let mut heartbeat = tokio::time::interval_at(
@@ -665,22 +791,26 @@ where
                 }
                 let renewal = async {
                     let outbox = store.renew(id, token, config.lease_duration).await?;
-                    if outbox != FenceResult::Updated || cancel.load(Ordering::SeqCst) {
-                        return Ok(false);
-                    }
+                    if outbox == FenceResult::Lost { observation.stale(); return Ok(FenceCheck::Lost); }
+                    if cancel.load(Ordering::SeqCst) { return Ok(FenceCheck::Cancelled); }
                     let source = permit.renew().await?;
-                    Ok(source == FenceResult::Updated && !cancel.load(Ordering::SeqCst))
+                    if source == FenceResult::Lost { observation.stale(); return Ok(FenceCheck::Lost); }
+                    Ok(if cancel.load(Ordering::SeqCst) { FenceCheck::Cancelled } else { FenceCheck::Current })
                 };
                 let source = bounded_operation(
                     renewal,
                     dependency_deadline(config).min(processing_deadline),
                 ).await;
-                if source != Ok(true) {
+                if source != Ok(FenceCheck::Current) {
                     cancel.store(true, Ordering::SeqCst);
                     return match source {
-                        Ok(false) => Ok(ClaimOutcome::Lost),
+                        Ok(check) => {
+                            if check == FenceCheck::Lost && let Some(span) = &mut span {
+                                span.outcome = Outcome::Lost;
+                            }
+                            Ok(ClaimOutcome::Lost)
+                        },
                         Err(err) => Err(err),
-                        _ => unreachable!(),
                     };
                 }
                 execution.incomplete_io.store(false, Ordering::SeqCst);
@@ -690,24 +820,33 @@ where
             }
         }
     };
+    handler_timing.complete(decision);
     if Instant::now() >= processing_deadline {
         return Err(DeliveryError::StoreUnknown);
     }
     execution.incomplete_io.store(true, Ordering::SeqCst);
-    if cancel.load(Ordering::SeqCst)
-        || !bounded_operation(
-            check_preflight(
-                store.as_ref(),
-                id,
-                token,
-                &permit,
-                config.lease_duration,
-                cancel,
-            ),
-            dependency_deadline(config).min(processing_deadline),
-        )
-        .await?
-    {
+    if cancel.load(Ordering::SeqCst) {
+        return Ok(ClaimOutcome::Lost);
+    }
+    let final_check = bounded_operation(
+        check_preflight(
+            store.as_ref(),
+            id,
+            token,
+            &permit,
+            config.lease_duration,
+            cancel,
+            observation,
+        ),
+        dependency_deadline(config).min(processing_deadline),
+    )
+    .await?;
+    if final_check != FenceCheck::Current {
+        if final_check == FenceCheck::Lost
+            && let Some(span) = &mut span
+        {
+            span.outcome = Outcome::Lost;
+        }
         return Ok(ClaimOutcome::Lost);
     }
     if Instant::now() >= processing_deadline {
@@ -739,7 +878,36 @@ where
     )
     .await?;
     Ok(match settled {
-        FenceResult::Updated => ClaimOutcome::Settled,
-        FenceResult::Lost => ClaimOutcome::Lost,
+        FenceResult::Updated => {
+            let outcome = match decision {
+                DeliveryDecision::Applied => Outcome::Applied,
+                DeliveryDecision::KnownNoop => Outcome::KnownNoop,
+                DeliveryDecision::Retryable(_) if event.attempt < event.attempt_limit => {
+                    Outcome::Retryable
+                }
+                DeliveryDecision::Retryable(_) => Outcome::Exhausted,
+                DeliveryDecision::Terminal(_) => Outcome::Terminal,
+            };
+            match decision {
+                DeliveryDecision::Applied | DeliveryDecision::KnownNoop => {
+                    observation.record(Metric::Acknowledged, 1.0, outcome, None)
+                }
+                DeliveryDecision::Retryable(code) if event.attempt < event.attempt_limit => {
+                    observation.record(Metric::Retried, 1.0, outcome, Some(code))
+                }
+                _ => {}
+            }
+            if let Some(span) = &mut span {
+                span.outcome = outcome;
+            }
+            ClaimOutcome::Settled
+        }
+        FenceResult::Lost => {
+            observation.stale();
+            if let Some(span) = &mut span {
+                span.outcome = Outcome::Lost;
+            }
+            ClaimOutcome::Lost
+        }
     })
 }

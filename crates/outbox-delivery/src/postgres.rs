@@ -10,6 +10,7 @@ use crate::model::{
     ClaimedEvent, DeliveryEnvelope, DeliveryError, DeliveryFuture, ErrorCode, FenceResult,
     OutboxStore,
 };
+use crate::observe::{QueueSnapshot, ValidatedTrace, validate_trace_context};
 use crate::policy::DeliveryPolicy;
 
 pub struct PostgresOutboxStore {
@@ -151,6 +152,76 @@ fn map_claimed(row: PgRow) -> Result<ClaimedEvent, DeliveryError> {
 }
 
 impl OutboxStore for PostgresOutboxStore {
+    fn queue_snapshot(&self) -> DeliveryFuture<'_, Option<QueueSnapshot>> {
+        Box::pin(async move {
+            // 同じ DB 時計と MVCC スナップショットで状態を導出する。
+            let row = sqlx::query(
+                "WITH tick AS MATERIALIZED (SELECT clock_timestamp() AS t) \
+                 SELECT count(*) FILTER (WHERE delivered_at IS NULL AND dead_lettered_at IS NULL \
+                     AND (lease_expires_at IS NULL OR lease_expires_at <= tick.t)) AS pending, \
+                   count(*) FILTER (WHERE delivered_at IS NULL AND dead_lettered_at IS NULL \
+                     AND lease_expires_at > tick.t) AS in_flight, \
+                   count(*) FILTER (WHERE dead_lettered_at IS NOT NULL) AS dead_letter, \
+                   count(*) FILTER (WHERE delivered_at IS NULL AND dead_lettered_at IS NULL \
+                     AND lease_expires_at <= tick.t) AS expired, \
+                   count(*) FILTER (WHERE delivered_at IS NULL AND dead_lettered_at IS NULL \
+                     AND (lease_expires_at IS NULL OR lease_expires_at <= tick.t) \
+                     AND attempt_limit IS NOT NULL AND attempt_count >= attempt_limit) AS exhausted, \
+                   extract(epoch FROM (max(tick.t) - min(occurred_at) FILTER \
+                     (WHERE delivered_at IS NULL AND dead_lettered_at IS NULL)))::double precision AS oldest_age \
+                 FROM outbox_events CROSS JOIN tick",
+            ).fetch_one(&self.pool).await.map_err(|_| DeliveryError::StoreUnknown)?;
+            let count = |column| -> Result<u64, DeliveryError> {
+                let value: i64 = row
+                    .try_get(column)
+                    .map_err(|_| DeliveryError::StoreUnknown)?;
+                u64::try_from(value).map_err(|_| DeliveryError::StoreUnknown)
+            };
+            let oldest: Option<f64> = row
+                .try_get("oldest_age")
+                .map_err(|_| DeliveryError::StoreUnknown)?;
+            let oldest_age = oldest
+                .map(|seconds| {
+                    Duration::try_from_secs_f64(seconds.max(0.0))
+                        .map_err(|_| DeliveryError::StoreUnknown)
+                })
+                .transpose()?;
+            Ok(Some(QueueSnapshot {
+                pending: count("pending")?,
+                in_flight: count("in_flight")?,
+                dead_letter: count("dead_letter")?,
+                expired: count("expired")?,
+                exhausted: count("exhausted")?,
+                oldest_age,
+            }))
+        })
+    }
+
+    fn trace_context(
+        &self,
+        event_id: Uuid,
+        lease_token: Uuid,
+    ) -> DeliveryFuture<'_, Option<ValidatedTrace>> {
+        Box::pin(async move {
+            // 巨大な保存値もアプリへ転送する前に落とす。所有権の判定は既存 renew が担う。
+            let row = sqlx::query(
+                "SELECT CASE WHEN octet_length(traceparent)<=512 THEN traceparent END AS traceparent, \
+                        CASE WHEN octet_length(tracestate)<=512 THEN tracestate END AS tracestate \
+                 FROM outbox_events WHERE event_id=$1 AND lease_token=$2",
+            ).bind(event_id).bind(lease_token).fetch_optional(&self.pool).await.map_err(|_| DeliveryError::StoreUnknown)?;
+            let Some(row) = row else {
+                return Ok(None);
+            };
+            let parent: Option<String> = row
+                .try_get("traceparent")
+                .map_err(|_| DeliveryError::StoreUnknown)?;
+            let state: Option<String> = row
+                .try_get("tracestate")
+                .map_err(|_| DeliveryError::StoreUnknown)?;
+            Ok(validate_trace_context(parent.as_deref(), state.as_deref()))
+        })
+    }
+
     fn verify_policy(&self) -> DeliveryFuture<'_, ()> {
         Box::pin(async move {
             self.validate_expected()?;
