@@ -23,7 +23,9 @@ export function AgentContextModule({ session, task, applyResult, onDenied, refre
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   const executionId = draft.executionId ?? task.agentExecutionIds.at(-1);
   const key = agentContextKey(session, task);
-  const current = useQuery({ queryKey: [...key, executionId, task.revision], enabled: Boolean(executionId), staleTime: 0, gcTime: 0, retry: false,
+  const current = useQuery({ queryKey: [...key, executionId, task.revision], enabled: Boolean(executionId), staleTime: 0, gcTime: 0,
+    // A lifecycle transition can invalidate a read's authorization snapshot. Re-read only that bounded race; never retry writes or denials.
+    retry: (failureCount, error) => failureCount < 2 && error instanceof WorkApiError && error.status === 409 && error.code === 'WORK_CONTEXT_STALE', retryDelay: 250,
     refetchInterval: (query) => query.state.status === 'success' && query.state.data && activeStatus(query.state.data.status) ? 500 : false,
     queryFn: async () => {
       const execution = await workApi.getAgentExecution(executionId!);
@@ -72,6 +74,7 @@ export function AgentContextModule({ session, task, applyResult, onDenied, refre
     <p className={shared.notice}>固定規則の模擬処理です。原本本文を分析しません。実LLM・MCP通信は使用しません。</p>
     <p>認可済みの根拠を選んで依頼すると、候補をサーバーに記録します。人間判断と提出は別の操作です。依頼目的と実行履歴は自動共有されません。</p>
     {Boolean(error) && <p role="alert">{workErrorMessage(error)}</p>}
+    {current.isError && !isDisclosureDenied(current.error) && <button type="button" disabled={current.isFetching} onClick={() => void current.refetch()}>実行状態を再読込</button>}
     {records.isPending && <p role="status">現在の根拠を確認中…</p>}
     <fieldset disabled={!task.canRequestAgent || busy || !records.isSuccess || Boolean(execution && activeStatus(execution.status))}><legend>現在のタスクへの依頼</legend>
       <label>Agentへの依頼目的<textarea aria-label="Agentへの依頼目的" value={draft.purpose} onChange={(event) => setTransient((previous) => ({ ...previous, agent: { ...(previous.agent ?? emptyAgentDraft), purpose: event.target.value } }))} /></label>

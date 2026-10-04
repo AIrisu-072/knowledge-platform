@@ -319,7 +319,24 @@ export async function requestSyntheticFinding(page: Page, request: APIRequestCon
   expect(result).toMatchObject({ kind: 'agent_execution_requested', task: { id: taskId, state: 'active', canRequestAgent: false }, execution: { workItemId: taskId, attemptId: result.task.attemptId, contextId: result.task.contextId, requestedBy: principal, requesterResponsibility: command.actingAssignmentId, executedBy: 'organization-synthetic/agent-01', executorInvocationKind: 'agent', status: 'queued', result: null, purpose, evidenceRevisionRefs: [revisionRef(evidence)], providerPrincipalBindings: [{ providerId: 'document', principalId: 'poc/poc-agent', invocationKind: 'agent' }] } });
   currentAction('agent-result');
   const executionRegion = page.getByRole('region', { name: `Agent実行 ${result.execution.id}`, exact: true });
-  await expect(executionRegion).toContainText('実行状態：成功');
+  try {
+    await expect(executionRegion).toContainText('実行状態：成功');
+  } catch (error) {
+    // Failure-only observation of this same authorized execution. Never log its body, identifiers or purpose.
+    try {
+      const observed = await request.get(`${origin}/v1/organization/agent-executions/${result.execution.id}`, { timeout: 2000, maxRetries: 0, maxRedirects: 0 });
+      if (observed.status() === 200) {
+        const value: unknown = await observed.json();
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          const { status, failureCode } = value as Record<string, unknown>;
+          if (typeof status === 'string' && ['queued', 'running', 'succeeded', 'failed', 'cancelled', 'outcome_unknown'].includes(status) && (failureCode === null || typeof failureCode === 'string' && ['provider_denied', 'context_stale', 'invalid_output', 'dependency_unavailable', 'interrupted', 'commit_outcome_unknown'].includes(failureCode))) {
+            test.info().annotations.push({ type: 'organization-agent-status', description: status }, { type: 'organization-agent-failure-code', description: failureCode ?? 'none' });
+          }
+        }
+      }
+    } catch { /* Preserve the original UI failure even when the bounded diagnostic read is unavailable. */ }
+    throw error;
+  }
   const openCandidate = executionRegion.getByRole('button', { name: '候補を根拠モジュールで確認', exact: true });
   await expect(openCandidate).toBeEnabled();
   const execution = await get<AgentExecution>(request, origin, `/v1/organization/agent-executions/${result.execution.id}`);

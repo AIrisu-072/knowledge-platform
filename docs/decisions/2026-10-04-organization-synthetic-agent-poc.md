@@ -30,4 +30,10 @@ Work transactionでqueuedとoperation receiptを確定してIDを返す。既存
 
 正常shutdownは所有taskを停止・joinし、HTTP drain後もactor自身の非終端を冪等に再確認してからWork poolを閉じる。drain直前の遅い受付を成功扱いせず、terminal recordや履歴を重複更新しない。
 
+## 5. 読取り競合の回復と失敗時の最小観測
+
+Agentのqueued/running/succeeded更新により、状態GETの認可snapshotが409/WORK_CONTEXT_STALEになる場合がある。最初の競合で画面pollingが永久停止する不具合を純粋試験で再現したため、このcode/statusの組合せだけ250ms間隔・追加2回まで読取りを再試行する。上限後は手動再読込とし、mutation・認可拒否を再試行しない。現在の認可fenceやtask/context切替時の応答破棄は緩和しない。
+
+公開18abf350のjourneyは成功表示待ちで失敗したが、当時のbackend結果は未確定である。次の実検証で同じassertionが失敗した場合だけ、同じ認可済みexecutionを最大2秒・retry/redirect無しで1回観測する。既存の閉じた診断へstatus/failureCodeのみを追加し、本文・ID・目的・根拠・画像は公開しない。元のassertion/errorを保持し、後からの観測を過去時点や成功の証拠としない。
+
 関連: [計画](../superpowers/plans/2026-10-04-organization-synthetic-agent-slice.md)、[状況](../superpowers/execution/organization-synthetic-agent-slice-status.md)。本番identity/data、外部送信、Tauri/native、merge/deployはこの変更に含めない。

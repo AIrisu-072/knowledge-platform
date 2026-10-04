@@ -1,5 +1,17 @@
 # Organization Browser PoC — 合成Agentの状況
 
+## 2026-10-04 16:45 UTC — 状態読取り競合の限定修正、hosted再資格待ち
+
+- PR60の公開source `18abf350eab5a730a0f60c7996b419ef4e07684a` の[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37215827092)は失敗。実DB/transaction/initializeとAgent受付HTTP202・公開主体契約は成功したが、journeyのAgent成功表示待ちでtimeout。restart/persistence/shutdownは未実行、cleanupは `owned-container-removed`。他の通常CI jobとDSI/Sandboxは成功した
+- 純粋GUI試験で、状態GETが最初に `409/WORK_CONTEXT_STALE` を返すとpollingが停止する不具合を再現した。この正常なlifecycle更新との読取り競合だけ、250ms間隔で追加2回まで再読取りする。401/403/404とmutationは再試行せず、denial時の消去とtask/context切替時の旧応答隔離を維持する。上限後は明示的な状態再読込を提供する
+- **この再現は当該hosted失敗時のbackend状態を確定しない**。次回同じUI待ちが失敗した時だけ、同じexecutionを2秒以内・retry/redirect無しで1回GETし、閉じたstatus/failureCodeだけを既存診断へ残す。原文・ID・目的・根拠は公開せず、元の失敗をそのまま再throwする。後からの観測を過去時点の状態や成功証明に使わない
+- GUI159件/19 suites、純粋runner17件、application/runtime型、schema freshness、production build、既存journey/persistence各1件のcollection-only、差分確認PASS。既存Webpack advisory3件を維持。Rust/backend・認可・API期待値・実操作assertionとtimeout・依存lock・workflowは変更しない。ローカルDB/listener/browserは実行していない
+
+次のexact action: 最終treeの限定独立レビュー後、PR60へ公開し、同じ一時DB/固定2Human/Chromium/画像無しのexact-head実journey・復元・cleanupと全CIを確認する。**新修正のhosted結果は未取得**。以下は各時点の記録。
+
+---
+
+
 ## 2026-10-04 16:02 UTC — Agent受付の主体表記を限定修正、journey再資格未確認
 
 - PR60の公開source `724590b1` は実DB/拡張transaction/initializeが成功し、journeyでAgent受付HTTP202まで到達した。その応答の `requestedBy` が公開契約の `sales-01` と一致せず失敗。restart/persistenceには未到達、cleanupは `owned-container-removed` を確認済み

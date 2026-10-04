@@ -959,3 +959,75 @@ test('a fresh terminal read resolves recovered request uncertainty without inter
   expect(workApi.requestAgentExecution).toHaveBeenCalledTimes(1);
   expect(result).not.toHaveBeenCalled();
 });
+
+test('accepted execution survives a transient current-read context race without another mutation', async () => {
+  setup(); mockRecords();
+  const request = jest.spyOn(workApi, 'requestAgentExecution').mockImplementation(async () => {
+    jest.mocked(workApi.listTasks).mockResolvedValue({ items: [{ ...task, revision: 3 }], nextCursor: null } as never);
+    jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, revision: 3, agentExecutionIds: [syntheticExecution.id] } as never);
+    return { kind: 'agent_execution_requested', task: { ...task, revision: 2, canRequestAgent: false }, execution: syntheticExecution } as never;
+  });
+  const read = jest.spyOn(workApi, 'getAgentExecution').mockRejectedValueOnce(new WorkApiError(409, 'WORK_CONTEXT_STALE')).mockResolvedValue({ ...syntheticExecution, status: 'succeeded', taskRevision: 3, result: syntheticResult } as never);
+  jest.spyOn(workApi, 'getAgentResult').mockResolvedValue(syntheticResult as never);
+  const cancel = jest.spyOn(workApi, 'cancelAgentExecution');
+  const recover = jest.spyOn(workApi, 'getOperation');
+  await fillAgent();
+  await userEvent.click(screen.getByRole('button', { name: '合成Agentに依頼' }));
+  await waitFor(() => expect(read).toHaveBeenCalled());
+  expect(screen.queryByText(syntheticResult.summary)).not.toBeInTheDocument();
+  expect(await screen.findByText(syntheticResult.summary)).toBeVisible();
+  expect(screen.getByRole('region', { name: 'Agent実行 execution-1' })).toHaveTextContent('実行状態：成功');
+  expect(request).toHaveBeenCalledTimes(1);
+  expect(cancel).not.toHaveBeenCalled(); expect(recover).not.toHaveBeenCalled();
+});
+
+test('current execution context-race retries stop after two additional reads', async () => {
+  setup(); mockRecords();
+  jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, agentExecutionIds: [syntheticExecution.id] } as never);
+  const read = jest.spyOn(workApi, 'getAgentExecution').mockRejectedValue(new WorkApiError(409, 'WORK_CONTEXT_STALE'));
+  const request = jest.spyOn(workApi, 'requestAgentExecution');
+  await openAgent();
+  await screen.findByText(/競合が発生しました/);
+  expect(read).toHaveBeenCalledTimes(3);
+  expect(screen.queryByRole('region', { name: 'Agent実行 execution-1' })).not.toBeInTheDocument();
+  read.mockResolvedValue({ ...syntheticExecution, status: 'cancelled' } as never);
+  await userEvent.click(screen.getByRole('button', { name: '実行状態を再読込' }));
+  await waitFor(() => expect(screen.getByRole('region', { name: 'Agent実行 execution-1' })).toHaveTextContent('取消済み'));
+  expect(read).toHaveBeenCalledTimes(4);
+  expect(request).not.toHaveBeenCalled();
+});
+
+test.each([401, 403, 404])('current execution denial %s is never retried and clears private context', async (status) => {
+  setup(); mockRecords();
+  jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, agentExecutionIds: [syntheticExecution.id] } as never);
+  const read = jest.spyOn(workApi, 'getAgentExecution').mockRejectedValue(new WorkApiError(status, 'WORK_ITEM_NOT_FOUND'));
+  await screen.findByRole('heading', { name: '内容確認' });
+  await userEvent.click(screen.getByRole('button', { name: 'Agent' }));
+  await screen.findByText(/内容を非表示にしました/);
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(screen.queryByLabelText('Agentへの依頼目的')).not.toBeInTheDocument();
+  expect(screen.queryByText(syntheticResult.summary)).not.toBeInTheDocument();
+});
+
+test('a pending read-only retry cannot reveal an old execution after task context changes', async () => {
+  const { router, client } = setup(); mockRecords();
+  const other = { ...task, id: 'task-other', attemptId: 'attempt-other' };
+  jest.mocked(workApi.listTasks).mockResolvedValue({ items: [task, other], nextCursor: null } as never);
+  jest.mocked(workApi.getTask).mockImplementation(async (id) => ({ ...detail, ...(id === task.id ? task : other), workingArtifacts: id === task.id ? [artifact] : [], agentExecutionIds: id === task.id ? [syntheticExecution.id] : [] }) as never);
+  let resolve!: (value: never) => void;
+  const read = jest.spyOn(workApi, 'getAgentExecution').mockRejectedValueOnce(new WorkApiError(409, 'WORK_CONTEXT_STALE')).mockImplementation(() => new Promise((done) => { resolve = done; }));
+  const readResult = jest.spyOn(workApi, 'getAgentResult');
+  await openAgent();
+  await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+  jest.mocked(workApi.listEvidence).mockResolvedValue({ items: [], nextCursor: null });
+  jest.mocked(workApi.listFindings).mockResolvedValue({ items: [], nextCursor: null });
+  await act(async () => { await router.navigate({ to: '/tasks', search: { view: 'context', taskId: other.id } } as never); });
+  await screen.findByText(/タスク task-other/);
+  await act(async () => { resolve({ ...syntheticExecution, status: 'succeeded', result: syntheticResult } as never); });
+  await userEvent.click(screen.getByRole('button', { name: 'Agent' }));
+  expect(await screen.findByLabelText('Agentへの依頼目的')).toHaveValue('');
+  expect(screen.queryByRole('region', { name: 'Agent実行 execution-1' })).not.toBeInTheDocument();
+  expect(screen.queryByText(syntheticResult.summary)).not.toBeInTheDocument();
+  expect(readResult).not.toHaveBeenCalled();
+  expect(client.getQueryCache().findAll({ queryKey: ['organization', session.principalId, session.actingAssignmentId, 'agent-context', task.id] })).toHaveLength(0);
+});
