@@ -81,6 +81,35 @@ jobs:
           printf 'PDFIUM_DYNAMIC_LIB_PATH=%s\n' "${pdfium_lib_dir}" >> "${GITHUB_ENV}"
       - run: mise run test:rust
 
+  search-process-recovery:
+    name: Search G07 実プロセス復旧（2ケース）
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_BUILD_JOBS: "2"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      SQLX_OFFLINE: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: 固定Rustと公式PostgreSQLを準備
+        run: |
+          mise install rust
+          docker pull postgres:18.6-bookworm
+          docker image inspect postgres:18.6-bookworm --format '{{index .RepoDigests 0}}'
+          git rev-parse HEAD HEAD^{tree}
+          rustc --version
+      - name: 最終試行の異常終了を一度だけ回収
+        run: cargo test --locked -p outbox-delivery --test process_recovery last_claim_kill9_restart_reaps_unknown_once -- --exact --nocapture
+      - name: 4プロセスの非重複と停止分の再取得
+        run: cargo test --locked -p outbox-delivery --test process_recovery four_processes_disjoint_claims_and_recover_expired -- --exact --nocapture
+
   security:
     runs-on: ubuntu-24.04
     steps:
@@ -166,6 +195,7 @@ jobs:
       - policy
       - rust-static
       - rust-test
+      - search-process-recovery
       - security
       - portability-macos
       - dsi-semantic-parity-macos
@@ -177,12 +207,13 @@ jobs:
           POLICY: ${{ needs.policy.result }}
           RUST_STATIC: ${{ needs.rust-static.result }}
           RUST_TEST: ${{ needs.rust-test.result }}
+          SEARCH_PROCESS_RECOVERY: ${{ needs.search-process-recovery.result }}
           SECURITY: ${{ needs.security.result }}
           PORTABILITY_MACOS: ${{ needs.portability-macos.result }}
           DSI_SEMANTIC_PARITY_MACOS: ${{ needs.dsi-semantic-parity-macos.result }}
           CONTAINER_BUILD: ${{ needs.container-build.result }}
         run: |
           set -eu
-          for result in "$POLICY" "$RUST_STATIC" "$RUST_TEST" "$SECURITY" "$PORTABILITY_MACOS" "$DSI_SEMANTIC_PARITY_MACOS" "$CONTAINER_BUILD"; do
+          for result in "$POLICY" "$RUST_STATIC" "$RUST_TEST" "$SEARCH_PROCESS_RECOVERY" "$SECURITY" "$PORTABILITY_MACOS" "$DSI_SEMANTIC_PARITY_MACOS" "$CONTAINER_BUILD"; do
             test "$result" = success
           done

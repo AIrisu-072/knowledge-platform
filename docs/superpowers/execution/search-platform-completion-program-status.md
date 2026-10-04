@@ -1,5 +1,9 @@
-# Search Platform Completion Program — Status
+<a id="search-platform-completion-program--status"></a>
+# Searchプラットフォーム完成プログラム — 状態
 
+この文書は[公開原文（固定版）](https://github.com/AIrisu-072/knowledge-platform/blob/0ecf486719e3c9d71242e289a7564ad6d1032b3c/docs/superpowers/execution/search-platform-completion-program-status.md)の意味保存訳です。原設計の再承認や資格の追加ではありません。既存のハッシュは当時の原文・証拠のものであり、訳文のハッシュではありません。以下の状態と「次の作業」は当時の記録であり、現在の実行指示ではありません。
+
+<a id="最新のg07専用環境の準備と実行停止の記録2026-10-03"></a>
 ## 最新のG07専用環境の準備と実行停止の記録：2026-10-03
 
 - **ACTIVE / WIP / 実行時検証は停止中。** 対象を固定した専用フィクスチャは、新たな対象限定コンパイル、Rustの純粋テスト9件、Pythonの純粋テスト243件に成功しています。公式PostgreSQLの非公開領域でのビルド・インストール、初期化、オフラインの識別証明は完了しました。[記録と対象を限定した証拠](../programs/search-platform-completion/g07-owned-preparation-20261003/README.md)を参照してください。
@@ -12,263 +16,288 @@
 
 以下の過去の記録は履歴であり、現在の実行指示ではありません。
 
-## Latest G07 pure guard checkpoint, 2026-10-03
+<a id="latest-g07-pure-guard-checkpoint-2026-10-03"></a>
+## 最新のG07純粋ガード確認時点、2026-10-03
 
-- **ACTIVE / WIP / incomplete.** Two-file pure fixture checkpoint `fda5ff8a77cb7e237d55665c532134392267a651` / tree `14c66619732559e3403eaea096cb297afc142c9d` has fresh six-test Rust pure GREEN, Python 53/53, selected strict Clippy, two-file fmt and diff pass. See [bounded receipt](../programs/search-platform-completion/p6-g07-pure-guards-20261003.md). Actual G07 child/DB path remains unwired/unexecuted.
-- The only legacy fixture edit boxes the existing container field/construction after a recorded pre-existing Clippy size warning; no Docker behavior was runtime-tested. New supplemental Python DB-name/archive tests show 25 intended REDs and nine controls; their correction and all effectful fixture/launcher gates remain open.
-- Last verified remote Draft #40 is `401b31047a64ed76c470477c6db15fc7e8221d2d`; later PoC locks, G06 and this checkpoint remain local under the separate public-sharing hold. Whole Search/P1–P7 acceptance and the unidentified historical stop remain unresolved.
-- **Exact next action:** complete supplemental pure correction/review, then implement and independently review the exact owned launcher/fixture command manifest before any setup or real-process execution. No broader probe, merge or deployment.
+- **ACTIVE / WIP / 未完了。** 2ファイルの純粋フィクスチャ確認時点 `fda5ff8a77cb7e237d55665c532134392267a651` / tree `14c66619732559e3403eaea096cb297afc142c9d` では、新たにRustの純粋テスト6件がGREEN、Python 53/53、対象を限定したstrict Clippy、2ファイルのfmtとdiffが成功しました。[対象を限定した証拠記録](../programs/search-platform-completion/p6-g07-pure-guards-20261003.md)を参照してください。実際のG07子プロセス/DB経路は引き続き未接続・未実行です。
+- 既存フィクスチャの変更は、既存のClippyサイズ警告を記録したうえで、従来のコンテナフィールドと生成処理をBox化したことだけです。Dockerの動作は実行時に検証していません。追加のPython DB名/アーカイブテストでは、意図したREDが25件、対照ケースが9件確認されました。その修正と、副作用を伴うすべてのフィクスチャ/ランチャーのゲートは未完了です。
+- 最後に確認したリモートのDraft #40は `401b31047a64ed76c470477c6db15fc7e8221d2d` です。その後のPoCロック、G06、この確認時点の内容は、別途の公開共有停止によりローカルに留まっています。Search全体/P1–P7の受入と、内容が特定されていない過去の停止事象は未解決です。
+- **次に行う具体的な作業：** 追加の純粋処理の修正/レビューを完了し、セットアップや実プロセス実行の前に、所有範囲を限定したランチャー/フィクスチャの正確なコマンドマニフェストを実装して独立レビューを行います。より広範な調査実行、マージ、デプロイは行いません。
 
-## Latest G05/G06 local checkpoint — 2026-10-03
+<a id="latest-g05g06-local-checkpoint--2026-10-03"></a>
+## 最新のG05/G06ローカル確認時点 — 2026-10-03
 
-- **ACTIVE / WIP / incomplete.** [Bounded correction receipt](../programs/search-platform-completion/p6-g06-runner-correction-20261003.md) and [machine evidence](../programs/search-platform-completion/p6-g06-evidence-20261003.json) identify the exact source and retained RED/GREEN diagnostics. Fresh final confirmation: admission 5/5, lifecycle 35/35, selected strict Clippy, two-file rustfmt and source diff check pass. Independent read-only source/contract review GO; no separate reviewer Cargo run.
-- Four chronological regression rounds expose pending-operation deadlines, uncertain dependency outcomes at shutdown, and cancellation boundaries. Corrected runner uses total processing and sticky drain deadlines, bounded dependency rounds and cancellation/I/O tracking without changing public API, config, schema or frozen semantics. The final exact lifecycle suite additionally fails 30 cases against the original runner in a post-fix negative control; that control is not chronological TDD RED.
-- This qualifies the named synthetic G05/G06 scope only. G07 process crash/restart and G08 observe/security tests remain unimplemented or unexecuted; no real DB, Docker, child process, parser, model, P3/P7 runtime or security probe ran here. Full hosted Rust static/test still fail on missing `outbox_delivery::observe`. Whole P6/P1–P7/final acceptance remains open; the unidentified historical stop is neither retried nor cleared.
-- Last verified remote Draft #40 is `401b31047a64ed76c470477c6db15fc7e8221d2d`. Local base `3955eb5eeedebebc1a77afe3df44d0569953ad47` contains the separately reviewed three-PoC-lock repair, tree `d22b3b3e784839dade91734d725f1e3384740aa0`; that metadata and this G06 correction are not yet public. Public-sharing permission remains pending.
-- **Exact next action:** preserve the clean local checkpoint and independently review a G07 official-tool/bootstrap/synthetic-test plan before installing/running it. Resolve publication permission before remote writes; verify exact resulting trees and ordinary CI. No merge/deployment.
+- **ACTIVE / WIP / 未完了。** [対象を限定した修正記録](../programs/search-platform-completion/p6-g06-runner-correction-20261003.md)と[機械可読の証拠](../programs/search-platform-completion/p6-g06-evidence-20261003.json)で、正確なソースと保持したRED/GREEN診断を特定しています。最新の最終確認は、実行許可判定5/5、ライフサイクル35/35、対象を限定したstrict Clippy、2ファイルのrustfmt、ソース差分確認が成功です。独立した読み取り専用のソース/契約レビューはGOであり、レビュアーによる別のCargo実行はありません。
+- 時系列で4回行った回帰確認により、保留中操作の期限、シャットダウン時に結果が不確実な依存操作、キャンセル境界が明らかになりました。修正したランナーは、公開API、設定、スキーマ、凍結済みの意味を変えず、総処理期限と一度設定したら延長しない排出期限、回数を制限した依存処理、キャンセル/I/O追跡を使用します。さらに、最終的な正確なライフサイクルスイートは、修正後に元のランナーに対して行った陰性対照で30ケースが失敗しました。この対照は時系列のTDD REDではありません。
+- これが適合を確認するのは、名前を明示した合成G05/G06の範囲だけです。G07のプロセスクラッシュ/再起動、G08の観測/セキュリティテストは未実装または未実行です。実DB、Docker、子プロセス、パーサー、モデル、P3/P7の実行時処理、セキュリティ調査実行はいずれもここでは実行していません。ホスト環境のRust全体の静的確認/テストは、引き続き `outbox_delivery::observe` の欠落で失敗しています。P6全体/P1–P7/最終受入は未完了です。内容が特定されていない過去の停止事象は再試行も解消確認もしていません。
+- 最後に確認したリモートのDraft #40は `401b31047a64ed76c470477c6db15fc7e8221d2d` です。ローカルのベース `3955eb5eeedebebc1a77afe3df44d0569953ad47` には、別途レビュー済みの3件のPoCロック修正が含まれ、treeは `d22b3b3e784839dade91734d725f1e3384740aa0` です。そのメタデータと今回のG06修正はまだ公開されていません。公開共有の許可は引き続き保留です。
+- **次に行う具体的な作業：** クリーンなローカル確認時点を保持し、G07の公式ツール/初期構築/合成テスト計画をインストール・実行する前に独立レビューを行います。リモートへの書き込み前に公開許可を解決し、生成される正確なtreeと通常のCIを確認します。マージ/デプロイは行いません。
 
-## Latest isolated-lock checkpoint — 2026-10-03
+<a id="latest-isolated-lock-checkpoint--2026-10-03"></a>
+## 最新の分離ロック確認時点 — 2026-10-03
 
-- **ACTIVE / WIP / incomplete.** Root metadata recovery was published at Draft #40 `401b31047a64ed76c470477c6db15fc7e8221d2d` with exact tree `2df2784e8017f1433a2fb96d8054e4aca3478299`. Hosted CI `37099916947` is terminal failure: security passes, Rust static/test fail before test execution on missing `outbox_delivery::observe`. Sandbox `37099916942` passes; DSI PoC `37099916959` fails on isolated `yoke-derive 0.8.3`.
-- [Three-lock recovery receipt](../programs/search-platform-completion/poc-lock-metadata-recovery-20261003.md) records the isolated DSI, Search HTTP-client and Search discovery lock updates. Exact byte/parsed comparisons change only the intended package version/checksum, preserving all 337/200/376 package entries and unchanged manifests/policies. Separate dependency scans each report baseline exit 1 → candidate exit 0, with unchanged warnings. Independent 13-file metadata/receipt/log publication review GO; original raw-normalization hashes, process statuses and metadata execution are producer-recorded, while committed diagnostics and lock/hash claims were independently checked.
-- This closes the three named local dependency findings only. No experiment behavior, hosted new-head pass, missing observe implementation, P1–P7 or whole-program acceptance is claimed. The current synthetic P6 G05/G06 work is separate: initial 5/5 and 4/4 results do not close the G06 pending-operation timeout defects found by independent review.
-- No PoC/runtime, database, parser, model, process-recovery or security-probe execution occurred in this checkpoint. The unidentified historical stopped operation was not retried or cleared.
-- **Exact next action:** publish the separately reviewed lock checkpoint, verify its remote tree and inspect ordinary exact-head CI. Complete synthetic G06 RED/correction/re-review before any later runtime gate; no merge or deployment.
+- **ACTIVE / WIP / 未完了。** ルートのメタデータ復旧はDraft #40 `401b31047a64ed76c470477c6db15fc7e8221d2d`、正確なtree `2df2784e8017f1433a2fb96d8054e4aca3478299` として公開されました。ホスト環境のCI `37099916947` は失敗で終了しています。セキュリティは成功、Rust静的確認/テストはテスト実行前に `outbox_delivery::observe` の欠落で失敗しました。Sandbox `37099916942` は成功、DSI PoC `37099916959` は分離された `yoke-derive 0.8.3` により失敗しています。
+- [3件のロック復旧記録](../programs/search-platform-completion/poc-lock-metadata-recovery-20261003.md)には、分離されたDSI、Search HTTPクライアント、Search discoveryのロック更新を記録しています。正確なバイト比較と解析後の比較では、意図したパッケージのバージョン/チェックサムだけが変更され、337/200/376件すべてのパッケージエントリと、未変更のマニフェスト/ポリシーが保持されています。個別の依存関係スキャンはそれぞれベースラインの終了コード1 → 候補の終了コード0を報告し、警告は変わっていません。独立した13ファイルのメタデータ/証拠記録/ログの公開レビューはGOです。元の生データ正規化ハッシュ、プロセス状態、メタデータ実行は実施者による記録であり、コミット済み診断とロック/ハッシュに関する主張は独立に照合されました。
+- これで解消するのは、名前を明示したローカル依存関係の3件の指摘だけです。実験動作、新headのホスト環境での成功、欠落しているobserve実装、P1–P7またはプログラム全体の受入は主張しません。進行中の合成P6 G05/G06作業は別件です。初期の5/5と4/4の結果では、独立レビューで見つかったG06の保留中操作のタイムアウト欠陥は解消しません。
+- この確認時点では、PoC/実行時処理、データベース、パーサー、モデル、プロセス復旧、セキュリティ調査実行はいずれも行っていません。内容が特定されていない過去の停止操作は再試行も解消確認もしていません。
+- **次に行う具体的な作業：** 別途レビュー済みのロック確認時点を公開し、リモートのtreeを確認して、正確なheadに対する通常のCIを調べます。その後の実行時ゲートに進む前に、合成G06のRED/修正/再レビューを完了します。マージやデプロイは行いません。
 
-## Latest bounded dependency checkpoint — 2026-10-03
+<a id="latest-bounded-dependency-checkpoint--2026-10-03"></a>
+## 最新の対象限定依存関係確認時点 — 2026-10-03
 
-- **ACTIVE / WIP / incomplete.** Live Search Draft #40 at `a945fbd32145a3109e35cb9cb056cea052698138` is the reconstruction baseline; original restored sources are preserved. Other Document/Organization/Audit work is not imported.
-- [Root dependency metadata receipt](../programs/search-platform-completion/dependency-metadata-recovery-20261003.md): eight existing local path declarations receive matching `0.0.0` versions; only root `yoke-derive` version/checksum changes from `0.8.3` to `0.8.4`. Same pinned cargo-deny command gives baseline exit 3 with eight wildcards plus yanked version, candidate exit 0 with advisories/bans/licenses/sources PASS. Existing 29 warnings remain. Independent five-file source review GO; static lock comparison and metadata/diff checks PASS.
-- This is a dependency-metadata gate, not source/runtime qualification. Three independent experiment lockfiles still contain `yoke-derive 0.8.3`; DSI PoC is not cleared. Missing observe implementation, G05/G06 fresh verification, G07/G08, P1 Office v2, P7 pending registration and every final acceptance gate remain open.
-- No project build/test or parser/DB/process/model/security-probe/P3 execution ran. The unidentified historical stopped action was not retried or declared cleared.
-- **Exact next action:** publish this scoped reviewed checkpoint, verify the actual Draft tree and inspect fresh ordinary CI. Independently review the next named P6 gate in frozen G05 → G06 → G07 → G08 order before execution; do not infer broader permission from this dependency receipt. No merge/deploy.
+- **ACTIVE / WIP / 未完了。** 実際のSearch Draft #40の `a945fbd32145a3109e35cb9cb056cea052698138` が再構築のベースラインです。復元された元のソースは保持しています。別のDocument/Organization/Audit作業は取り込んでいません。
+- [ルート依存関係メタデータ記録](../programs/search-platform-completion/dependency-metadata-recovery-20261003.md)：既存のローカルパス宣言8件に、一致する `0.0.0` のバージョンを追加しました。ルートの `yoke-derive` のバージョン/チェックサムだけが `0.8.3` から `0.8.4` に変更されています。同じ固定済みcargo-denyコマンドで、ベースラインは8件のワイルドカードと取り下げられたバージョンにより終了コード3、候補は終了コード0でadvisories/bans/licenses/sourcesがPASSでした。既存の警告29件は残っています。独立した5ファイルのソースレビューはGOであり、ロックの静的比較とメタデータ/差分確認はPASSです。
+- これは依存関係メタデータのゲートであり、ソース/実行時の適合確認ではありません。独立した実験用ロックファイル3件には、引き続き `yoke-derive 0.8.3` が含まれています。DSI PoCは解消済みではありません。欠落しているobserve実装、G05/G06の新たな検証、G07/G08、P1 Office v2、P7の保留中の登録、すべての最終受入ゲートは未完了です。
+- プロジェクトのビルド/テストや、パーサー/DB/プロセス/モデル/セキュリティ調査/P3の実行は行っていません。内容が特定されていない過去の停止操作は、再試行も解消済みとの宣言もしていません。
+- **次に行う具体的な作業：** この範囲限定のレビュー済み確認時点を公開し、実際のDraftのtreeを確認して、新しい通常のCIを調べます。凍結済みのG05 → G06 → G07 → G08の順序で、次の名前付きP6ゲートを実行前に独立レビューします。この依存関係記録から、より広範な許可を推定してはいけません。マージ/デプロイは行いません。
 
-## Latest compile-only checkpoint — 2026-10-01T21:45Z
+<a id="latest-compile-only-checkpoint--2026-10-01t2145z"></a>
+## 最新のコンパイル限定確認時点 — 2026-10-01T21:45Z
 
-- **ACTIVE / WIP / incomplete.** Draft PR #40 receives only `previous.get::<Uuid, _>("lease_token")` in the P6 process-recovery test and truthful checkpoint documentation, based on published head `99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a`.
-- [Compile-only correction receipt](../programs/search-platform-completion/p6-process-recovery-compile-correction-20261001.md) records exact source/patch/output hashes, the same focused cargo-check RED→GREEN, independent static review and verification limits. No test or DB scenario ran.
-- This addresses E0283 only. Original-head CI also failed for missing `outbox_delivery::observe` (E0432), the Gitleaks gate and yanked `yoke-derive 0.8.3`. SQLx was skipped. New-head hosted results are pending; earlier successes do not transfer automatically.
-- Gitleaks triage classifies 28 verified source digests and three synthetic local fixture matches, but no suppression is applied. P1 Office v2, P6 G07/G08, P7 pending tests and full acceptance remain incomplete. The broader implementation safety hold remains; excluded P3 hosted/generated artifacts stay uncommitted locally.
-- **Exact next action:** verify the fast-forward PR head and inspect ordinary new-head hosted CI read-only. No broader implementation, parser/P3 execution, merge or deployment is implied.
+- **ACTIVE / WIP / 未完了。** Draft PR #40に加えるのは、公開済みhead `99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a` をベースにした、P6プロセス復旧テストの `previous.get::<Uuid, _>("lease_token")` と事実に即した確認時点の文書だけです。
+- [コンパイル限定修正記録](../programs/search-platform-completion/p6-process-recovery-compile-correction-20261001.md)には、正確なソース/パッチ/出力ハッシュ、同じ対象限定cargo-checkのRED→GREEN、独立した静的レビュー、検証の限界を記録しています。テストやDBシナリオは実行していません。
+- これが対処するのはE0283だけです。元のheadのCIは、`outbox_delivery::observe` の欠落（E0432）、Gitleaksゲート、取り下げられた `yoke-derive 0.8.3` でも失敗しました。SQLxはスキップされました。新headのホスト環境での結果は保留中であり、以前の成功が自動的に引き継がれることはありません。
+- Gitleaksの切り分けでは、検証済みのソースダイジェスト28件と合成ローカルフィクスチャ一致3件を分類していますが、抑制設定は適用していません。P1 Office v2、P6 G07/G08、P7の保留中テスト、全体の受入は未完了です。より広範な実装に対する安全上の停止は継続しています。対象外としたP3のホスト環境用/生成済み成果物は、ローカルで未コミットのままです。
+- **次に行う具体的な作業：** fast-forwardしたPRのheadを確認し、通常の新headのホスト環境CIを読み取り専用で調べます。より広範な実装、パーサー/P3実行、マージ、デプロイを意味するものではありません。
 
-## Latest publication checkpoint — 2026-10-01T21:08Z
+<a id="latest-publication-checkpoint--2026-10-01t2108z"></a>
+## 最新の公開確認時点 — 2026-10-01T21:08Z
 
-- **ACTIVE / WIP / incomplete.** P1–P7 and whole-program acceptance remain open. This is a source-preservation Draft publication on `feat/search-platform-cloud-continuation-20261001`, stacked on PR #34 `feat/search-platform-completion-program@80a47960d025e4dfdea1eacade28b15d218725ff`; no merge/deploy or readiness claim.
-- Current truth and per-capability gates: [Draft publication checkpoint](../programs/search-platform-completion/draft-publication-checkpoint-20261001.md). Included changed-source hashes and retained-local exclusions are in `draft-source-manifest-20261001.json` beside that checkpoint.
-- Prior source-scoped P1/P2/P7 passes do not qualify this snapshot. P1 Office relationship v2 is unbuilt/unqualified; P6 G07/G08 test drafts and P7 `source_registration.rs.pending` remain unfinished. Incomplete code is preserved.
-- Implementation is on a safety hold: the exact stopped operation is not established; publication does not retry it. The new P3 workflow/helper/test/proposal is excluded pending independent review. No new qualification workflow is dispatched.
-- Publication verification is limited to source/artifact/secret-pattern inventory, hashes, diff and static document checks. Gitleaks/mise and installed local hooks are absent; no hooks were disabled. Full build/test/security/aggregate gates remain unrun here.
-- **Exact next action:** verify the Draft's remote head/base and inspect ordinary hosted CI read-only. Before any implementation resumes, independently identify/review the precise stopped operation and allowed scope. Earlier execution next-actions below are historical and do not override this hold. Preserve the frozen semantics and all P1–P7/final gates.
+- **ACTIVE / WIP / 未完了。** P1–P7とプログラム全体の受入は未完了です。これは、PR #34 `feat/search-platform-completion-program@80a47960d025e4dfdea1eacade28b15d218725ff` の上に積んだ `feat/search-platform-cloud-continuation-20261001` 上のソース保存用Draft公開です。マージ/デプロイや準備完了の主張はありません。
+- 当時の事実と機能ごとのゲート：[Draft公開確認時点](../programs/search-platform-completion/draft-publication-checkpoint-20261001.md)。含めた変更ソースのハッシュとローカルに保持した対象外項目は、その確認時点文書の隣にある `draft-source-manifest-20261001.json` に記録しています。
+- 過去のソース範囲限定のP1/P2/P7成功は、このスナップショットの適合を証明しません。P1 Office relationship v2は未ビルド/未適合確認です。P6 G07/G08のテスト草案とP7 `source_registration.rs.pending` は未完了です。未完成のコードを保存しています。
+- 実装は安全上の停止状態です。停止した正確な操作は確定しておらず、公開で再試行することはありません。新しいP3ワークフロー/ヘルパー/テスト/提案は、独立レビュー待ちのため除外しています。新たな適合確認ワークフローは起動しません。
+- 公開検証は、ソース/成果物/秘密情報パターンの一覧、ハッシュ、差分、静的な文書確認に限定しています。Gitleaks/miseとインストール済みローカルフックは存在せず、フックを無効にした事実もありません。ビルド全体/テスト/セキュリティ/総合ゲートは、ここでは未実行です。
+- **次に行う具体的な作業：** Draftのリモートhead/baseを確認し、通常のホスト環境CIを読み取り専用で調べます。実装の再開前に、停止した正確な操作と許される範囲を独立に特定/レビューします。以下にある以前の実行用の次の作業は過去の記録であり、この停止に優先しません。凍結済みの意味と、P1–P7/最終ゲートをすべて保持します。
 
-## Historical cloud checkpoints (superseded for current execution)
+<a id="historical-cloud-checkpoints-superseded-for-current-execution"></a>
+## 過去のクラウド確認時点（現在の実行については後続記録に置き換え済み）
 
-## Latest cloud checkpoint — 2026-10-01T15:50Z
+<a id="latest-cloud-checkpoint--2026-10-01t1550z"></a>
+## 最新のクラウド確認時点 — 2026-10-01T15:50Z
 
-- **ACTIVE, incomplete:** P1–P7 and whole-program acceptance remain open. Main continuation is `feat/search-platform-cloud-continuation-20261001` on baseline `80a47960d025e4dfdea1eacade28b15d218725ff`; all new code remains uncommitted. No merge, deploy or remote push occurred.
-- P2 canonical executed-input seam received fresh independent bounded GO: actual binary comparison 31/31, Rust PoC 14/14, locked current L/LG run and strict Clippy. Exact hashes/evidence are in `p2-executed-input-export-20261001.md` and independent review. No actual model, RunPin, dense/ANN or production Vector qualification is claimed.
-- P1 fresh Linux PoC reached 14/14 binary-backed tests and 45/45 fixed cases, and an actual pinned cargo-deny scan passed. Invalid unlocated Partial cases now fail closed; the reader no longer fabricates an external scan PASS. Independent reviewer then reproduced missing/malformed/wrong-MIME hidden worksheet omission defects with current binary and recomputed raw hashes. That review remains NO-GO until the current PoC-only repair receives fresh GREEN/recheck. Reader production dependencies are not promoted; sandbox/host and full P1 remain open.
-- P7 Search0003/roles originally passed 20/20 real PostgreSQL tests, but independent review found JSON `dto_version:null` CHECK-UNKNOWN acceptance and GC state privilege escalation. Both reproduced as four real-DB RED cases and were corrected. Fresh full package is 24/24, strict Clippy/fmt PASS; independent recheck remains pending. SQLx failed-migration session advisory locks are explicitly released by closing/reconnecting negative-test pools; R03/W2 still needs failed-session lifecycle discipline. This is schema/role coverage, not publisher/pin/GC or complete bootstrap.
-- P6 generic G05 runner has bounded initial GREEN, but the coordinator identified Source permit TTL renewal missing before dispatch. A named short-remaining-permit RED test plus G06/G07 tests are prepared, not yet run. P6 awaits the next serialized Cargo slot.
-- P3 local noncontainer measurement remains BLOCKED: no Docker/cgroup equivalent for the original hard caps. The approved preparation route is a single standard public GitHub Ubuntu runner, using exact official PG/Neo image manifest pins and the original container caps. An isolated local pilot branch `feat/search-platform-p3-hosted-pilot-20261001` contains an explicit 157-file prerequisite input closure (89 changed/untracked paths against baseline), no P1 worker/P6 runner/P7 schema/runtime. New helper safety tests 8/8 and actionlint 1.7.12 pass; actual locked P3 fixture generation/build and full Python suite remain pending, as do independent workflow review and any push. A 100-group pilot will not select a backend or waive larger profiles, accepted-P7 publication, licensing or independent comparative gates.
-- Environment: pinned Rust/Cargo1.98.1, Node24.21.0, pnpm12.4.1, cargo-deny0.20.2, actionlint1.7.12, repository-pinned Linux PDFium7881 verified; official PG18.6 source archive publisher hash verified and real functional DB available. Every DB test starts its server and consumer in the same command environment; explicit external-DB fixtures create isolated UTF8 databases and retain hosted Docker defaults. Approximately25GiB remains. Source-built PG functional results are not P3 performance evidence.
-- Exact next action: finish P1 integrity recheck; build/verify the P3 isolated pilot closure and deterministic fixtures, then send exact candidate tree/manifest and review package before any Draft push; give P6 its RED/GREEN slot. Receive P7 recheck and continue Graph-independent registration/Audit work without claiming missing production authority. All shared Cargo/schema/lock writes and timed windows remain serialized.
+- **ACTIVE、未完了：** P1–P7とプログラム全体の受入は未完了です。主な継続作業は、ベースライン `80a47960d025e4dfdea1eacade28b15d218725ff` 上の `feat/search-platform-cloud-continuation-20261001` です。新しいコードはすべて未コミットです。マージ、デプロイ、リモートへのpushは行っていません。
+- P2の正規化された実行入力の接続境界は、新たな独立した範囲限定のGOを受けました。実バイナリ比較31/31、Rust PoC 14/14、ロック済みの当該L/LG実行、strict Clippyです。正確なハッシュ/証拠は `p2-executed-input-export-20261001.md` と独立レビューにあります。実モデル、RunPin、dense/ANN、本番Vectorの適合確認は主張しません。
+- P1の新たなLinux PoCは、バイナリを使ったテスト14/14と固定ケース45/45に達し、固定済みcargo-denyによる実際のスキャンも成功しました。不正な位置不明のPartialケースは、現在は安全側に閉じて失敗します。リーダーが外部スキャンのPASSを捏造することはなくなりました。その後、独立レビュアーは現行バイナリで、欠落/不正形式/MIME不一致による非表示ワークシートの欠落を再現し、生データのハッシュを再計算しました。このレビューは、現在のPoC限定修正が新たなGREEN/再確認を受けるまでNO-GOです。リーダーの依存関係は本番採用されていません。sandbox/ホストとP1全体は未完了です。
+- P7 Search0003/ロールは当初、実PostgreSQLテスト20/20に成功しましたが、独立レビューでJSON `dto_version:null` のCHECK-UNKNOWNによる受理と、GC状態の権限昇格が見つかりました。両方を実DBのREDケース4件として再現し、修正しました。新しい全パッケージは24/24、strict Clippy/fmtはPASSです。独立した再確認は保留中です。SQLxのマイグレーション失敗セッションのアドバイザリロックは、陰性テスト用プールの切断/再接続によって明示的に解放します。R03/W2には、引き続き失敗セッションのライフサイクル管理が必要です。これはスキーマ/ロールの検証範囲であり、publisher/pin/GCや完全な初期構築ではありません。
+- P6の汎用G05ランナーは、範囲限定の初期GREENに達していますが、調整担当がディスパッチ前のSource許可TTL更新の欠落を特定しました。残存許可時間が短い名前付きREDテストとG06/G07テストは準備済みですが、未実行です。P6は次の直列化されたCargo実行枠を待っています。
+- P3のローカル非コンテナ計測は引き続きBLOCKEDです。元の厳格な上限に相当するDocker/cgroupがありません。承認された準備経路は、公式PG/Neoイメージの正確なマニフェスト固定値と元のコンテナ上限を使う、標準の公開GitHub Ubuntuランナー1台です。分離されたローカル試行ブランチ `feat/search-platform-p3-hosted-pilot-20261001` には、前提入力を漏れなく含む明示的な157ファイル（ベースラインに対し変更/未追跡の89パス）があり、P1ワーカー/P6ランナー/P7スキーマ/実行時処理は含まれません。新しいヘルパー安全性テスト8/8とactionlint 1.7.12は成功しました。実際のロック済みP3フィクスチャ生成/ビルドとPython全スイート、独立したワークフローレビュー、すべてのpushは保留中です。100グループの試行では、バックエンドを選定したり、より大規模なプロファイル、受入済みP7の公開、ライセンス、独立した比較ゲートを免除したりしません。
+- 環境：固定済みRust/Cargo1.98.1、Node24.21.0、pnpm12.4.1、cargo-deny0.20.2、actionlint1.7.12、リポジトリで固定されたLinux PDFium7881を確認済みです。公式PG18.6ソースアーカイブの配布者ハッシュを確認し、実機能DBが利用可能です。各DBテストは同じコマンド環境内でサーバーとコンシューマーを起動します。明示的な外部DBフィクスチャは分離されたUTF8データベースを作成し、ホスト環境のDocker既定値を保持します。残容量は約25GiBです。ソースからビルドしたPGの機能確認結果は、P3の性能証拠ではありません。
+- 次に行う具体的な作業：P1の整合性再確認を完了します。P3の分離試行の入力一式と決定論的フィクスチャをビルド/検証し、Draftをpushする前に正確な候補tree/マニフェストとレビュー一式を送ります。P6にRED/GREEN枠を割り当てます。P7の再確認を受け取り、存在しない本番権限を主張せず、Graphに依存しない登録/Audit作業を継続します。共有Cargo/スキーマ/ロックの書き込みと計時枠はすべて直列化したままにします。
 
-## Historical pre-cloud header (superseded by the checkpoint above)
+<a id="historical-pre-cloud-header-superseded-by-the-checkpoint-above"></a>
+## クラウド移行前の過去の冒頭記録（上記確認時点に置き換え済み）
 
-- Status: ACTIVE — P0 Phase-D closure complete; P1–P7 implementation/qualification and whole-program acceptance remain incomplete. No merge, deployment, or enumerated Hard Stop.
-- Requester authorization: Completion Program attachment authorizes design/freeze/plan/PoC/selection/implementation/review/qualification without intermediate approval. All new workers use `gpt-6-sol / max`.
-- Workspace: `/Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform`; local branch `feat/search-platform-completion-core` at `80a47960d025e4dfdea1eacade28b15d218725ff`, with uncommitted production changes. Live main rechecked at `d71753d46590bb4406a1c0b74894ab90a27a6c88`. PR #34 is OPEN/Draft at baseline `80a47960d025e4dfdea1eacade28b15d218725ff` on `feat/search-platform-completion-program`; its 9 hosted checks are green, but it does not qualify dirty worktree changes.
-- Live Search stack: #20→21→22→25→26→28→33 OPEN/Draft; PR #34 is based on #33. PR #33 exact head `4892ba5d2736b35bf95de25f834f016609d2e0d4` has standard CI `36665497017`, PoC `36665497015`, and Sandbox `36665497041` SUCCESS. P0 closure remains in first commit `9a802be`.
-- Task graph authority: `docs/superpowers/programs/search-platform-completion/task-graph.yaml`; `taskgraph validate --gate --json` PASS at 258 tasks / 271 artifacts / 11 claims. Events are append-only through `taskgraph journal` in adjacent `run-journal.jsonl`.
-- Current gates: P1 sandbox review NO-GO (ZIP ResourceLimit, worker exit 79, relative path); 3 regression cases added and rustfmt-checked, compile/RED pending. P2 pinned L/LG baseline is recorded and independently GO only for its historical synthetic input hash; the current dirty `search-application` tree differs, so it cannot qualify current code or Vector selection. Protocol hardening 28/28 offline PASS; no RunPin, model execution, or asset download; adversarial review is held for ≥2 GiB test admission. P3 G01 issuer revision review is GO for pre-code interface only; refined fixture correctness review is bounded GO (7/7 lightweight unit tests) while P3-P04 backend selection is Blocked on measurement/recovery/shared publication and separate independent selection gates. P7 revision-2 independent review is PASS/GO and the design/plan Freeze is recorded; implementation gates W1 (`document.version.read_confirmed` producer/class rollback case) and W2 (fresh-DB migration/checksum/role order) remain explicit. Runtime/production qualification, P4/P5/P6 integration and final gates remain incomplete.
-- Active scoped native worker: none. The P3 and P7 revision-2 independent reviewers and the P7 Freeze writer completed in their bounded scopes. P7 Freeze outputs are `p7-runtime-freeze.md` and `p7-runtime-plan.md` with hashes `f1c31466…f3b3c29` and `591c69c6…e2bebe7`.
-- Capacity: about 0.76 GiB free at the latest check; Cargo STOP floor 1.5 GiB, P2/P3 targeted-test admission 2 GiB. No Cargo/rustc/Docker/model/benchmark/fixture/cache-cleanup operation is running or admitted by this work. `git diff --check` and task graph validation passed; no Rust code tests ran in this continuation.
-- Managed run `search-completion-p2p7-r2-20260930` remains `inspect-before-resume`; read-only state showed no child, receipt, or runtime report, so its uncertain split is not replayed. Native workers are an explicit fallback and carry no managed receipts. Parent state is saved through the repository script; the `toolbox-context parent` symlink path points `runpy` at missing `~/.local/bin/parent-context.py`.
-- Design Freeze: no normative freeze changed. P3 issuer revision and P7 revision 2 remain proposals until their independent review gates pass.
-- Exact next action: remeasure storage without cleanup. At ≥1.5 GiB with exclusive Cargo ownership, run the P1 named RED cases, fix only confirmed classifications, then request fresh independent review. Admit P2 adversarial review and P3 qualification only at ≥2 GiB. Keep P3-P04 selection closed until its pinned measurement/recovery and shared publication gates pass; keep PRs Draft and do not merge or deploy.
+- 状態：ACTIVE。P0 Phase-Dの完了処理は済んでいますが、P1–P7の実装/適合確認とプログラム全体の受入は未完了です。マージ、デプロイ、列挙されたHard Stopはありません。
+- 依頼者の許可：Completion Programの添付資料は、途中承認なしでの設計/凍結/計画/PoC/選定/実装/レビュー/適合確認を許可しています。新しいワーカーはすべて `gpt-6-sol / max` を使用します。
+- ワークスペース：`/Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform`。ローカルブランチ `feat/search-platform-completion-core` は `80a47960d025e4dfdea1eacade28b15d218725ff` にあり、未コミットの本番変更があります。実際のmainは `d71753d46590bb4406a1c0b74894ab90a27a6c88` で再確認済みです。PR #34は `feat/search-platform-completion-program` 上のベースライン `80a47960d025e4dfdea1eacade28b15d218725ff` でOPEN/Draftです。ホスト環境の確認9件はgreenですが、未コミットのworktree変更の適合を証明しません。
+- 実際のSearchの積み重ね：#20→21→22→25→26→28→33はOPEN/Draftです。PR #34は#33をベースにしています。PR #33の正確なhead `4892ba5d2736b35bf95de25f834f016609d2e0d4` は、標準CI `36665497017`、PoC `36665497015`、Sandbox `36665497041` がSUCCESSです。P0の完了記録は最初のコミット `9a802be` に残っています。
+- タスクグラフの正本：`docs/superpowers/programs/search-platform-completion/task-graph.yaml`。`taskgraph validate --gate --json` は258タスク / 271成果物 / 11主張でPASSです。イベントは、隣接する `run-journal.jsonl` に `taskgraph journal` を通じて追記専用で記録します。
+- 当時のゲート：P1 sandboxレビューはNO-GO（ZIP ResourceLimit、ワーカー終了コード79、相対パス）です。回帰ケース3件を追加しrustfmtで確認しましたが、コンパイル/REDは保留中です。P2の固定済みL/LGベースラインは記録され、過去の合成入力ハッシュに限って独立したGOを得ています。当該の未コミットの `search-application` treeは異なるため、現行コードやVector選定の適合を証明できません。プロトコル強化はオフラインで28/28 PASSです。RunPin、モデル実行、アセットダウンロードはありません。敵対的レビューはテスト実行許可条件≥2 GiBを待って保留しています。P3 G01発行者改訂レビューのGOはコード着手前のインターフェースだけが対象です。改良したフィクスチャの正しさレビューは範囲限定のGO（軽量単体テスト7/7）ですが、P3-P04バックエンド選定は計測/復旧/共有公開と、別の独立した選定ゲートによりBlockedです。P7改訂2の独立レビューはPASS/GOで、設計/計画の凍結を記録しています。実装ゲートW1（`document.version.read_confirmed` の生成側/クラスのロールバックケース）とW2（新規DBのマイグレーション/チェックサム/ロール順序）は引き続き明示されています。実行時/本番の適合確認、P4/P5/P6統合、最終ゲートは未完了です。
+- 稼働中の範囲限定ネイティブワーカー：なし。P3とP7改訂2の独立レビュアーおよびP7凍結文書担当は、限定された範囲で作業を完了しました。P7凍結の出力は `p7-runtime-freeze.md` と `p7-runtime-plan.md` で、ハッシュは `f1c31466…f3b3c29` と `591c69c6…e2bebe7` です。
+- 容量：最新の確認で空きは約0.76 GiBです。CargoのSTOP下限は1.5 GiB、P2/P3の対象限定テストの実行許可条件は2 GiBです。この作業ではCargo/rustc/Docker/モデル/ベンチマーク/フィクスチャ/キャッシュ削除の操作は実行中でも実行許可済みでもありません。`git diff --check` とタスクグラフ検証は成功しました。この継続作業ではRustコードのテストは実行していません。
+- 管理下実行 `search-completion-p2p7-r2-20260930` は引き続き `inspect-before-resume` です。読み取り専用の状態確認で子処理、証拠記録、実行時レポートがなかったため、不確実な分割操作は再実行しません。ネイティブワーカーは明示的な代替手段であり、管理下実行の証拠記録は伴いません。親の状態はリポジトリスクリプトで保存しています。`toolbox-context parent` のシンボリックリンクのパスは、`runpy` に存在しない `~/.local/bin/parent-context.py` を参照させています。
+- 設計凍結：規範的な凍結内容に変更はありません。P3発行者改訂とP7改訂2は、それぞれの独立レビューゲートに合格するまで提案のままです。
+- 次に行う具体的な作業：削除せずにストレージを再計測します。≥1.5 GiBでCargoを専有できる場合に、P1の名前付きREDケースを実行し、確認済みの分類だけを修正して、新たな独立レビューを依頼します。P2の敵対的レビューとP3の適合確認は≥2 GiBの場合だけ許可します。固定済みの計測/復旧と共有公開のゲートに合格するまで、P3-P04選定は閉じたままにします。PRはDraftを維持し、マージやデプロイは行いません。
 
-## Cloud continuation admission — 2026-10-01T15:01Z
+<a id="cloud-continuation-admission--2026-10-01t1501z"></a>
+## クラウド継続作業の実行許可 — 2026-10-01T15:01Z
 
-- User-authorized continuation is now on the isolated dot-cloud branch `feat/search-platform-cloud-continuation-20261001`, baseline `80a47960d025e4dfdea1eacade28b15d218725ff`. The supplied tracked patch and untracked archive were restored without replacing the baseline or changing the separate Document worktree. Production work remains uncommitted; no remote push, merge, or deployment occurred.
-- The cloud is Linux x86_64 with approximately 30 GiB initially available. Official Rust 1.98.1 (rustfmt/Clippy) installed under writable workspace; locked crates.io dependency acquisition and P2 compilation work. Workspace-local source build of official PostgreSQL 18.6 is in progress for real functional DB tests. No Docker or Mac executor is used.
-- P2 current compiled exporter focused test passed 1/1 and actual binary-to-Python model-protocol tests passed 31/31, including repinned text/Part tamper rejection. Whole P2 and actual dense model inference remain unqualified; fresh independent review and exact evidence receipt follow.
-- P7-03 owns the generation schema and legacy migration tests; it is still test-only until actual DB RED. P6 G04 reaper is already present with prior bounded GO; the current generic runner task starts at G05, rather than reimplementing G04.
-- P3 fault-injection correction source hashes match the prior amendment. Fresh lightweight suite has 22/24 test methods passing; two methods are blocked by absent ignored deterministic fixtures. Original Mac temporary native outputs are absent, so no native recovery or timing is newly verified. Regeneration must match the original pinned fixture hashes. Cloud comparative performance cannot reuse Mac redb timings as same-host evidence.
-- P3 container-specific performance protocol remains binding. Any source/distribution-based measurement needs a prospective, separately reviewed environment-only amendment, preserved semantic/sample/recovery/physical-schema/licensing gates and new same-host measurements. Functional PostgreSQL tests are not selection evidence.
-- Exact next action: finish P2 current-source receipt and bounded independent audit; admit P7 real DB RED after local PostgreSQL is ready, then P6 runner RED/GREEN. Serialize Cargo and shared schema/lock writes; run no timed measurement during builds. Continue P1–P7 and final acceptance; no whole-program completion is claimed.
+- ユーザーが許可した継続作業は、現在、分離されたdotクラウドブランチ `feat/search-platform-cloud-continuation-20261001`、ベースライン `80a47960d025e4dfdea1eacade28b15d218725ff` 上にあります。提供された追跡済みパッチと未追跡アーカイブを、ベースラインを置き換えず、別のDocument worktreeを変更せずに復元しました。本番作業は未コミットです。リモートへのpush、マージ、デプロイは行っていません。
+- クラウドはLinux x86_64で、当初の空き容量は約30 GiBです。公式Rust 1.98.1（rustfmt/Clippy）を書き込み可能なワークスペース配下にインストールしました。ロック済みのcrates.io依存関係取得とP2コンパイルは動作しています。実機能DBテストに向け、公式PostgreSQL 18.6をワークスペース内でソースからビルド中です。DockerやMac実行環境は使用していません。
+- P2の現行コンパイル済みエクスポーターの対象限定テストは1/1、実バイナリからPythonへのモデルプロトコルテストは31/31に成功しました。再固定したテキスト/Partの改ざん拒否も含みます。P2全体と実denseモデル推論の適合は未確認です。新たな独立レビューと正確な証拠記録を続けて作成します。
+- P7-03がgenerationスキーマと既存のマイグレーションテストを担当しています。実DBのREDまではテストのみです。P6 G04 reaperはすでに存在し、過去の範囲限定GOがあります。今回の汎用ランナータスクはG04を再実装せず、G05から開始します。
+- P3障害注入修正のソースハッシュは、以前の補足文書と一致しています。新たな軽量スイートではテストメソッド22/24が成功しました。2メソッドは、ignore対象の決定論的フィクスチャがないため停止しています。元のMacの一時的なネイティブ出力はないため、ネイティブ復旧や計時を新たに検証したわけではありません。再生成時は、元の固定済みフィクスチャハッシュと一致させる必要があります。クラウドの比較性能で、Macのredb計時を同一ホストの証拠として再利用することはできません。
+- P3のコンテナ固有の性能プロトコルは引き続き拘束力を持ちます。ソース/ディストリビューションに基づく計測には、事前に別途レビューした環境限定の補足、意味/サンプル/復旧/物理スキーマ/ライセンスのゲート維持、新しい同一ホスト計測が必要です。PostgreSQLの機能テストは選定の証拠ではありません。
+- 次に行う具体的な作業：P2の現行ソース記録と範囲限定の独立監査を完了します。ローカルPostgreSQLの準備が整ったらP7の実DB REDを許可し、次にP6ランナーのRED/GREENを行います。Cargoと共有スキーマ/ロックの書き込みを直列化し、ビルド中は計時測定を行いません。P1–P7と最終受入を継続します。プログラム全体の完了は主張しません。
 
 
-## Runtime boundary and active workers — 2026-09-30
+<a id="runtime-boundary-and-active-workers--2026-09-30"></a>
+## 実行時境界と稼働中ワーカー — 2026-09-30
 
-New managed run `search-completion-runtime-inspect-20260930` failed with `uncertain tool operation; automatic replay refused`. It is `inspect-before-resume`; no replay, source change or false managed-completion claim. The parent disclosed this tool capability gap and continues with runtime-adapter scoped native `gpt-6-sol/max` workers. CLI authentication status: logged in using ChatGPT; binaries and runtime executable exist, native specified-model dispatch succeeds.
+新しい管理下実行 `search-completion-runtime-inspect-20260930` は `uncertain tool operation; automatic replay refused` で失敗しました。状態は `inspect-before-resume` で、再実行、ソース変更、管理下で完了したという虚偽の主張はありません。親はこのツール機能の不足を開示し、runtime-adapterに範囲を限定したネイティブの `gpt-6-sol/max` ワーカーで継続しています。CLI認証状態はChatGPTでログイン済みです。バイナリと実行時実行ファイルが存在し、指定モデルのネイティブ起動は成功しています。
 
-| Task | Worker | Write scope | State |
+| タスク | ワーカー | 書き込み範囲 | 状態 |
 | --- | --- | --- | --- |
-| P1 design | `/root/completion_p1_design` | `p1-extraction-design.md` | running |
-| P3 design/PoC plan | `/root/completion_p3_design` | `p3-graph-design.md` | running |
-| P4 design | `/root/completion_p4_design` | `p4-remote-design.md` | running |
-| P6 design | `/root/completion_p6_design` | `p6-outbox-design.md` | running |
-| P5 early design | `/root/completion_p5_design` | `p5-api-design.md` | running |
+| P1設計 | `/root/completion_p1_design` | `p1-extraction-design.md` | 実行中 |
+| P3設計/PoC計画 | `/root/completion_p3_design` | `p3-graph-design.md` | 実行中 |
+| P4設計 | `/root/completion_p4_design` | `p4-remote-design.md` | 実行中 |
+| P6設計 | `/root/completion_p6_design` | `p6-outbox-design.md` | 実行中 |
+| P5初期設計 | `/root/completion_p5_design` | `p5-api-design.md` | 実行中 |
 
-Graph validation PASS: 55 tasks / 63 artifacts / 11 claims. Team plan and one-hop briefs generated by tool. Exact next action: independent architecture review as each design arrives; freeze reviewed P1 contract and start P2 harness design; scope implementation nodes from accepted plans before dispatch.
+グラフ検証はPASSで、55タスク / 63成果物 / 11主張です。チーム計画と1ホップの要約はツールで生成しました。次に行う具体的な作業：各設計が届き次第、独立したアーキテクチャレビューを行います。レビュー済みP1契約を凍結してP2ハーネス設計を開始し、受入済み計画から実装ノードの範囲を定めてから割り当てます。
 
-Parent continuity repair: the launcher uses its symlink directory for the sibling helper. `/Users/airisu/project/tools/claude-code-personal-toolbox/scripts/parent-context.py` exists, and invoking the resolved launcher source restores successfully (no matching new-objective checkpoint yet). Use `python3 /Users/airisu/project/tools/claude-code-personal-toolbox/scripts/toolbox-context.py parent ...` for this session; no global launcher mutation. Foundation Draft PR #34 is attached, head `a877f447dcdc767be2a2e328886420fb4e7e8337`, base PR #33.
+親の継続性修正：ランチャーは隣接ヘルパーの探索にシンボリックリンク側のディレクトリを使用します。`/Users/airisu/project/tools/claude-code-personal-toolbox/scripts/parent-context.py` は存在し、解決後のランチャーソースを呼ぶと正常に復元できます（新しい目標に一致する確認時点はまだありません）。このセッションでは `python3 /Users/airisu/project/tools/claude-code-personal-toolbox/scripts/toolbox-context.py parent ...` を使用し、グローバルなランチャーは変更しません。基盤Draft PR #34は関連付け済みで、headは `a877f447dcdc767be2a2e328886420fb4e7e8337`、baseはPR #33です。
 
-## Design fan-in — 2026-09-30
+<a id="design-fan-in--2026-09-30"></a>
+## 設計の集約 — 2026-09-30
 
-P1/P3/P4/P5/P6 design drafts are complete as repository artifacts; no new production capability is qualified. Independent architecture workers `/root/completion_p1_architecture`, `/root/completion_p3_architecture`, `/root/completion_p4_architecture`, `/root/completion_p5_architecture`, `/root/completion_p6_architecture` are active with separate review-only scopes. P3 backend remains provisional until measured PG/redb/dedicated-DB comparison; P5 schema requires final P1–P4 reconciliation. P1 exposes provider-neutral ResourceVersionRef/ContentPartRef/KnowledgeUnit and preserves parent candidate identity and S1 ordering.
+P1/P3/P4/P5/P6設計草案はリポジトリ成果物として完成しています。新しい本番機能の適合を確認したものではありません。独立したアーキテクチャ担当 `/root/completion_p1_architecture`、`/root/completion_p3_architecture`、`/root/completion_p4_architecture`、`/root/completion_p5_architecture`、`/root/completion_p6_architecture` が、それぞれレビュー専用の範囲で稼働しています。P3バックエンドはPG/redb/専用DBの実測比較まで暫定です。P5スキーマには最終的なP1–P4整合確認が必要です。P1はプロバイダーに依存しないResourceVersionRef/ContentPartRef/KnowledgeUnitを公開し、親候補の同一性とS1の順序を維持します。
 
-Parent Work checkpoint: `parent-f44595738c9443daaa07124d8947b2bd`, generation 1, session `search-completion-program-20260930`. Restore/checkpoint uses the resolved Toolbox launcher source until its symlink helper lookup is fixed elsewhere.
+親作業の確認時点：`parent-f44595738c9443daaa07124d8947b2bd`、generation 1、セッション `search-completion-program-20260930`。シンボリックリンク経由のヘルパー探索が別の場所で修正されるまで、復元/確認時点の保存には解決済みのToolboxランチャーソースを使用します。
 
-Integration decision: keep the foundation branch/PR for program contracts and frozen designs. Capability code is developed with isolated write scopes and reviewable Draft branches; dependent Vector/API/Runtime consume frozen contracts and accepted capability commits. Shared Cargo/lock/architecture/API schema edits are serialized by the parent or a dedicated scoped task; no concurrent editing of them. Local integration may join accepted commits, but GitHub PRs remain unmerged Draft and no live deployment occurs. Keep Document HTTP and Document Diff status artifacts unchanged.
+統合判断：プログラム契約と凍結済み設計のために基盤ブランチ/PRを保持します。機能コードは分離された書き込み範囲と、レビュー可能なDraftブランチで開発します。依存するVector/API/Runtimeは、凍結済み契約と受入済み機能コミットを使用します。共有Cargo/ロック/アーキテクチャ/APIスキーマの編集は、親または範囲を限定した専任タスクが直列化し、並行編集しません。ローカル統合では受入済みコミットを結合できますが、GitHub PRは未マージのDraftを維持し、本番デプロイは行いません。Document HTTPとDocument Diffの状態成果物は変更しません。
 
-Exact next action: consume independent architecture findings, repair only findings, freeze reviewed contracts and concrete plans, then dispatch bounded implementation tasks. P2 waits only for P1 contract freeze.
+次に行う具体的な作業：独立したアーキテクチャ指摘を取り込み、指摘事項だけを修正し、レビュー済み契約と具体的な計画を凍結してから、範囲を限定した実装タスクを割り当てます。P2が待つのはP1契約の凍結だけです。
 
-## Architecture review repair — 2026-09-30
+<a id="architecture-review-repair--2026-09-30"></a>
+## アーキテクチャレビューへの修正対応 — 2026-09-30
 
-All five initial architecture reports are complete, verdict NO-GO; none is an accepted freeze or production receipt. Graph now models separate revision-1 designs and independent rechecks. The original reports remain immutable artifacts. Review task completion means the report was delivered, not that its verdict passed.
+初回のアーキテクチャレポート5件はすべて完成しており、判定はNO-GOです。いずれも受入済みの凍結記録や本番の証拠記録ではありません。グラフには、個別の改訂1設計と独立した再確認をモデル化しています。元のレポートは不変の成果物として保持します。レビュータスクの完了は、レポートを提出したことを意味し、判定に合格したことを意味しません。
 
-| Capability | Findings | Fresh repair worker | Key correction |
+| 機能 | 指摘 | 新たな修正担当ワーカー | 主な修正 |
 | --- | --- | --- | --- |
-| P1 | 4 P1, 1 P2 | `/root/completion_p1_design_repair` | BodyRequired scope/current access; additive unit bundle digest; canonical Unit/locator; verified Extracted evidence; failure matrix |
-| P3 | 5 P2 | `/root/completion_p3_design_repair` | READY/pointer/pin/GC locks; trusted owner; temporal serialization; relation-only incremental closure; enforceable disclosure threat model |
-| P4 | 2 P1, 3 P2 | `/root/completion_p4_design_repair` | one generation per Source; tenant/actor context; ephemeral identity; retention lifetime; evidence authority |
-| P5 | 2 P1 plus P2 | `/root/completion_p5_design_repair` | pre-routing Source visibility; confidential cursor/no retention; claim visibility; final access; HTTP deadline/partial semantics |
-| P6 | 4 P2 | `/root/completion_p6_design_repair` | dispatch-time lease/fence; final-attempt crash recovery; distributed Source serialization; stale receipt fencing |
+| P1 | P1が4件、P2が1件 | `/root/completion_p1_design_repair` | BodyRequiredの範囲/現在のアクセス、追加のunit bundleダイジェスト、正規化したUnit/locator、検証済みExtracted証拠、失敗マトリクス |
+| P3 | P2が5件 | `/root/completion_p3_design_repair` | READY/pointer/pin/GCのロック、信頼済み所有者、時間的な直列化、relationのみの差分閉包、強制可能な開示脅威モデル |
+| P4 | P1が2件、P2が3件 | `/root/completion_p4_design_repair` | Sourceごとに1つのgeneration、tenant/actorの文脈、一時的な同一性、保持期間、証拠の権威 |
+| P5 | P1が2件とP2 | `/root/completion_p5_design_repair` | ルーティング前のSource可視性、機密カーソル/保持なし、claimの可視性、最終アクセス、HTTP期限/部分結果の意味 |
+| P6 | P2が4件 | `/root/completion_p6_design_repair` | ディスパッチ時のlease/fence、最終試行のクラッシュ復旧、分散Source直列化、古いreceiptのフェンシング |
 
-Environment artifact complete: Rust1.98.1/macOS arm64, local PostgreSQL18.6 Docker image, pinned PDFium available in another managed worktree, 12GiB free. No new tests/builds ran. Use reduced debug and no incremental for focused code gates; actual pin paths and nextest resolution mismatch are in `environment.md`.
+環境成果物は完成しています。Rust1.98.1/macOS arm64、ローカルPostgreSQL18.6 Dockerイメージ、別の管理下worktreeで利用可能な固定済みPDFium、空き12GiBです。新しいテスト/ビルドは実行していません。対象限定のコードゲートではデバッグ情報を減らし、インクリメンタルを無効にします。実際の固定パスとnextestの解決不一致は `environment.md` にあります。
 
-Current foundation local head before this record: `2acbca2`; PR #34 remote head remains `a877f44` until the next batched push. New graph gate PASS: 66 tasks / 74 artifacts / 11 claims. Goal contract JSON schema PASS (manual trigger corrected).
+この記録の直前の基盤ローカルheadは `2acbca2` です。PR #34のリモートheadは次回のまとめたpushまで `a877f44` のままです。新しいグラフゲートは66タスク / 74成果物 / 11主張でPASSです。目標契約のJSONスキーマはPASS（手動トリガーを修正済み）です。
 
-Exact next action: receive revision-1 artifacts, independently recheck with new reviewer contexts, freeze exact reviewed minimal P1 contract to release P2, and prepare explicit scoped plans. No Hard Stop reached.
+次に行う具体的な作業：改訂1の成果物を受け取り、新しいレビュアーの文脈で独立に再確認し、レビュー済みの最小P1契約を正確に凍結してP2を解放し、明示的に範囲を限定した計画を準備します。Hard Stopには達していません。
 
-## Critical-path split and revision recheck — 2026-09-30
+<a id="critical-path-split-and-revision-recheck--2026-09-30"></a>
+## クリティカルパスの分割と改訂再確認 — 2026-09-30
 
-- P3 revised design is complete at `p3-graph-design-revision-1.md`; fresh reviewer `/root/completion_p3_architecture_recheck` is checking the five findings. No P3 freeze or backend adoption yet.
-- P1 repair scope additionally emits `p1-knowledgeunit-contract.md`. Graph now separates an independent minimal Unit-contract review/freeze from the complete body-generation/evidence integration recheck. P2 design waits for this reviewed core contract, avoiding unnecessary full-integration serialization. P1 production still requires the full P1 architecture GO and plan.
-- Cross-cap ruling: server-owned SourceId must be globally unique across the configured runtime; assigning an identical SourceId to different tenants is rejected at registry startup, because existing Projection/Graph keys are SourceId+generation. Every API/remote request still binds trusted tenant and actor to visible Sources before routing, gaps or traces. P4/P5 repair workers received this invariant; it preserves existing Source-local generation semantics.
-- Active workers: P1/P4/P5/P6 design repair, P3 architecture recheck. Environment worker is complete. No new production code.
-- Foundation PR #34 remote/source head `c156b32c3d11c0d03b20322ce4e32bce0834e88a` was verified live. Its CI `36674528354` is in progress; no Completion qualification claim.
-- Graph gate PASS after split: 68 tasks / 77 artifacts / 11 claims. Exact next action: finish stable revisions, dispatch scoped rechecks, freeze passing contracts/prepare concrete plans and measured P3 PoC; start P2 when Unit contract GO is recorded.
+- P3改訂設計は `p3-graph-design-revision-1.md` で完成しています。新たなレビュアー `/root/completion_p3_architecture_recheck` が5件の指摘を確認中です。P3の凍結やバックエンド採用はまだありません。
+- P1修正範囲では、追加で `p1-knowledgeunit-contract.md` を作成します。グラフでは現在、最小Unit契約の独立レビュー/凍結と、本文generation/証拠の完全な統合再確認を分離しています。P2設計はレビュー済みのこのコア契約を待ち、不要な完全統合の直列化を避けます。P1本番には引き続き、完全なP1アーキテクチャGOと計画が必要です。
+- 機能横断の判断：サーバーが所有するSourceIdは、設定された実行環境全体でグローバルに一意でなければなりません。既存のProjection/GraphキーがSourceId+generationであるため、異なるtenantに同じSourceIdを割り当てることはレジストリ起動時に拒否します。すべてのAPI/remoteリクエストは引き続き、ルーティング、gap、traceの前に、信頼済みtenantとactorを可視のSourceへ束縛します。P4/P5修正担当にこの不変条件を伝えました。既存のSourceローカルなgenerationの意味を維持するものです。
+- 稼働中ワーカー：P1/P4/P5/P6設計修正、P3アーキテクチャ再確認。環境担当は完了しています。新しい本番コードはありません。
+- 基盤PR #34のリモート/ソースhead `c156b32c3d11c0d03b20322ce4e32bce0834e88a` を実際に確認しました。CI `36674528354` は進行中です。Completionの適合確認は主張しません。
+- 分割後のグラフゲートは68タスク / 77成果物 / 11主張でPASSです。次に行う具体的な作業：安定した改訂を完成させ、範囲を限定した再確認を割り当て、合格した契約を凍結し、具体的な計画と実測P3 PoCを準備します。Unit契約のGOを記録したらP2を開始します。
 
-## Contract gates — 2026-09-30
+<a id="contract-gates--2026-09-30"></a>
+## 契約ゲート — 2026-09-30
 
-- P4 revised architecture recheck **GO** at design SHA-256 `f4112c7aa0cf7cbf61dca19c4beebcfb14a6578432ac45861644ab8ea616f9e9`; exact contract fixed in `p4-remote-freeze.md`. `/root/completion_p4_plan` is writing only the concrete plan. P4 production, HTTP-client PoC, E2E and CI remain unrun. Graph freeze node completes after its plan artifact is ready.
-- P1 minimal `p1-knowledgeunit-contract.md` is stable, 104 lines; `/root/completion_p1_unit_review` verifies exact codec/locator/golden vectors/cache/input boundary. P1 full revision still owned by `/root/completion_p1_design_repair`; do not duplicate either. Node split records the delivered minimal contract while full body-generation/evidence repair stays active.
-- P3 revision recheck closes four original findings but remains NO-GO for one incremental base/active BUILDING GC race. `/root/completion_p3_build_guard` writes only `p3-graph-build-guard-amendment.md`; separate fresh review follows, then composed design freeze/PoC plan.
-- P5 revision complete; `/root/completion_p5_architecture_recheck` checks security closure. Final schema/type reconciliation with P1-P4 remains required before freeze. Ruling: P5 uses exact P4 `TrustedSearchScope` / `AuthorizedSourceScope` / `ScopedSourceRegistryPort`, no separate trust minting path. Problem type namespace must use standards-valid existing registry convention or `about:blank` plus declared code extension.
-- P6 revision complete; `/root/completion_p6_architecture_recheck` checks lease/reaper/distributed Source fence/stale receipt closure.
-- Graph gate PASS: 71 tasks / 79 artifacts / 11 claims. Exact next action: consume these gates without redispatch, freeze reviewed Unit core for P2, dispatch plans/scoped implementations and measured candidate PoCs as their prerequisites pass. No Hard Stop reached.
+- P4改訂アーキテクチャの再確認は、設計SHA-256 `f4112c7aa0cf7cbf61dca19c4beebcfb14a6578432ac45861644ab8ea616f9e9` で **GO** です。正確な契約は `p4-remote-freeze.md` に固定しました。`/root/completion_p4_plan` は具体的な計画のみを書いています。P4本番、HTTPクライアントPoC、E2E、CIは未実行です。グラフの凍結ノードは計画成果物の準備後に完了します。
+- P1最小契約 `p1-knowledgeunit-contract.md` は104行で安定しています。`/root/completion_p1_unit_review` が正確なcodec/locator/ゴールデンベクトル/キャッシュ/入力境界を検証しています。P1全体改訂は引き続き `/root/completion_p1_design_repair` が担当し、どちらも重複実施しません。ノード分割で提出済みの最小契約を記録しつつ、本文generation/証拠全体の修正は進行中です。
+- P3改訂再確認では元の指摘4件を解消しましたが、差分のbase/稼働中BUILDINGに関するGC競合1件でNO-GOが続いています。`/root/completion_p3_build_guard` は `p3-graph-build-guard-amendment.md` のみを書きます。その後、別の新しいレビューを行い、合成設計の凍結/PoC計画へ進みます。
+- P5改訂は完了し、`/root/completion_p5_architecture_recheck` がセキュリティ上の解消を確認しています。凍結前にP1-P4との最終スキーマ/型の整合確認が引き続き必要です。判断：P5は正確なP4の `TrustedSearchScope` / `AuthorizedSourceScope` / `ScopedSourceRegistryPort` を使用し、別の信頼付与経路を設けません。Problem type名前空間は、標準に準拠した既存レジストリ規約、または `about:blank` と宣言済みcode拡張を使用しなければなりません。
+- P6改訂は完了し、`/root/completion_p6_architecture_recheck` がlease/reaper/分散Source fence/古いreceiptの解消を確認しています。
+- グラフゲートは71タスク / 79成果物 / 11主張でPASSです。次に行う具体的な作業：再割り当てせずにこれらのゲート結果を取り込み、レビュー済みUnitコアをP2向けに凍結し、前提条件が合格するごとに計画/範囲限定実装と候補の実測PoCを割り当てます。Hard Stopには達していません。
 
-## Revised gate fan-in and implementation preparation — 2026-09-30
+<a id="revised-gate-fan-in-and-implementation-preparation--2026-09-30"></a>
+## 改訂ゲートの集約と実装準備 — 2026-09-30
 
-- Foundation CI `36674528354` completed SUCCESS at exact `c156b32c3d11c0d03b20322ce4e32bce0834e88a`, verified live. It confirms the inherited workspace and documentation changes, not new capability production qualification.
-- P6 revised architecture **GO** at design SHA `c886a6b0933d6323b0fab7d41f0641e18332c6c74104025442a03609369d5366`; parent recorded `p6-outbox-freeze.md`. `/root/completion_p6_plan` owns only the concrete plan. Real PostgreSQL/fault qualification remains pending.
-- P1 minimal Unit review **NO-GO**: two corrections for all nested Archive reader settings/native pins and Vector retention/lease/current authority. Golden Unit vectors matched independently. `/root/completion_p1_unit_amend` owns a separate binding amendment; then a fresh narrow reviewer. Full P1 revision is delivered; `/root/completion_p1_full_recheck` independently verifies body-generation/evidence semantics. Full freeze requires both gates.
-- P5 revised architecture/security gate **GO**, full freeze pending P1–P4 exact schema/lease reconciliation and valid Problem type URI. Existing HTTP convention also has an unregistered URN; Search wire contract must concretely correct its own normative registry/OpenAPI/implementation together, without silently claiming unrelated transport correction.
-- P4 plan and P3 build-guard amendment workers remain active; no duplicate dispatch. Early P7 contract design is split from final receipt reconciliation; `/root/completion_p7_early_contract` can establish assembly/readiness/recovery/config and shared coordination boundaries now. Final P7 design/qualification still consumes all capability receipts.
-- Taskgraph gate PASS: 74 tasks / 82 artifacts / 11 claims. New implementation tasks will be expanded from stable concrete plans before code dispatch. No new production code/build has run, no Hard Stop reached.
-- Exact next action: consume stable P4 plan and expand scoped HTTP-client PoC/common trust/remote adapter tasks; consume P3 guard then fresh review; close minimal Unit gate and release P2; finish P6 plan and dispatch additive generic delivery tasks with real PostgreSQL acceptance.
+- 基盤CI `36674528354` は、正確な `c156b32c3d11c0d03b20322ce4e32bce0834e88a` に対しSUCCESSで完了したことを実際に確認しました。引き継いだワークスペースと文書変更を確認するもので、新しい機能の本番適合確認ではありません。
+- P6改訂アーキテクチャは設計SHA `c886a6b0933d6323b0fab7d41f0641e18332c6c74104025442a03609369d5366` で **GO** です。親が `p6-outbox-freeze.md` を記録しました。`/root/completion_p6_plan` は具体的な計画のみを担当します。実PostgreSQL/障害の適合確認は保留中です。
+- P1最小Unitレビューは **NO-GO** です。すべての入れ子Archiveのリーダー設定/ネイティブ固定値と、Vectorの保持/lease/現在の権威に対する2件の修正が必要です。Unitのゴールデンベクトルは独立に一致を確認しました。`/root/completion_p1_unit_amend` が別の拘束力を持つ補足を担当し、その後、新しい範囲限定レビュアーが確認します。P1全体改訂は提出済みで、`/root/completion_p1_full_recheck` が本文generation/証拠の意味を独立に検証しています。全体の凍結には両ゲートが必要です。
+- P5改訂アーキテクチャ/セキュリティゲートは **GO** です。完全な凍結はP1–P4の正確なスキーマ/lease整合確認と有効なProblem type URIを待っています。既存のHTTP規約にも未登録URNがあります。Searchの通信契約は、無関係なtransportを修正したと暗黙に主張することなく、自身の規範レジストリ/OpenAPI/実装を一体で具体的に修正しなければなりません。
+- P4計画担当とP3 build-guard補足担当は引き続き稼働中です。重複割り当てはしません。初期P7契約設計は最終的な証拠記録の整合確認から分離しました。`/root/completion_p7_early_contract` は、組立て/準備完了/復旧/設定と共有調整の境界を今から定められます。最終P7設計/適合確認は、引き続きすべての機能の証拠記録を使用します。
+- タスクグラフゲートは74タスク / 82成果物 / 11主張でPASSです。新しい実装タスクは、コード担当の割り当て前に、安定した具体的な計画から展開します。新しい本番コード/ビルドは実行しておらず、Hard Stopにも達していません。
+- 次に行う具体的な作業：安定したP4計画を取り込み、範囲を限定したHTTPクライアントPoC/共通信頼/remote adapterタスクへ展開します。P3ガードを取り込んで新たなレビューを行います。最小Unitゲートを完了してP2を解放します。P6計画を完成させ、実PostgreSQLの受入を伴う追加的な汎用配送タスクを割り当てます。
 
-## Minimal contracts released and first production slice — 2026-09-30
+<a id="minimal-contracts-released-and-first-production-slice--2026-09-30"></a>
+## 最小契約の解放と最初の本番実装部分 — 2026-09-30
 
-- P1 minimal Unit composed contract **GO**, frozen in `p1-knowledgeunit-freeze.md` (original b38cb20b + amendment 0d44f5df). P2 design/harness protocol worker `/root/completion_p2_design` is active. Full P1 recheck reports two P1 and one P2 remaining; `/root/completion_p1_absence_amend` corrects exact negative proof, index/manifest seal, selector parent binding and P1/P4 method naming.
-- P3 composed architecture **GO** after FK-safe cleanup correction; exact hashes in `p3-graph-freeze.md`. `/root/completion_p3_plan` writes measured three-backend PoC plus production plan. Backend adoption remains unmeasured.
-- P4 plan stable SHA `a713a6f0d2f5f1d0066576dada09f4987e54bccf5c7df2330fa89f565bb31da0`. P4 normative additions SD-T8–10 / SD-D1–3 / SD-O1–2 (+82 lines) reviewed by parent; no existing clauses changed. Graph replaces giant remote implementation with bounded trust/routing/planner/operation/lease/generation/store/provenance/read/execution/disclosure/binding/transport/adapter producers.
-- P7 early composition contract delivered, final receipt reconcile remains. P6 plan is still active. HTTP PoC is isolated and running; initial free disk was remeasured 9GiB, reduced debug/no incremental/jobs2 used.
-- Next production action: P4 trusted scopes/catalog RED→GREEN in existing search-application, selected model gpt-6-sol/max, separate read-only review. Shared lib/Cargo edits serialized. New code is not yet qualified.
-- Current graph gate PASS: 96 tasks / 104 artifacts / 11 claims; projections/briefs tool-generated. Parent checkpoint generation 5 remains most recent, update after dispatch.
+- P1最小Unitの合成契約は **GO** で、`p1-knowledgeunit-freeze.md` に凍結しました（原文b38cb20b + 補足0d44f5df）。P2設計/ハーネスプロトコル担当 `/root/completion_p2_design` が稼働しています。P1全体の再確認ではP1が2件、P2が1件残ると報告されています。`/root/completion_p1_absence_amend` が正確な否定証明、index/マニフェストの封印、selectorの親束縛、P1/P4のメソッド命名を修正します。
+- P3合成アーキテクチャは、FKを安全に扱う削除処理の修正後に **GO** です。正確なハッシュは `p3-graph-freeze.md` にあります。`/root/completion_p3_plan` が3バックエンドの実測PoCと本番計画を書いています。バックエンド採用の実測はまだありません。
+- P4計画の安定したSHAは `a713a6f0d2f5f1d0066576dada09f4987e54bccf5c7df2330fa89f565bb31da0` です。P4規範追加SD-T8–10 / SD-D1–3 / SD-O1–2（+82行）は親がレビュー済みで、既存条項は変更していません。グラフでは巨大なremote実装を、範囲を限定したtrust/routing/planner/operation/lease/generation/store/provenance/read/execution/disclosure/binding/transport/adapterの実装担当に置き換えます。
+- P7の初期合成契約は提出済みで、最終証拠記録の整合確認が残っています。P6計画は引き続き作成中です。HTTP PoCは分離して実行中です。当初の空きディスクを9GiBと再計測し、デバッグ情報削減/インクリメンタル無効/jobs2を使用しています。
+- 次の本番作業：既存のsearch-applicationでP4の信頼済みscope/カタログをRED→GREENにします。選択済みモデルはgpt-6-sol/maxで、別の読み取り専用レビューを行います。共有lib/Cargo編集は直列化します。新しいコードの適合はまだ確認されていません。
+- 当時のグラフゲートは96タスク / 104成果物 / 11主張でPASSです。投影/要約はツール生成です。親の確認時点はgeneration 5が最新で、割り当て後に更新します。
 
-## Core implementation and qualification dispatch — 2026-09-30
+<a id="core-implementation-and-qualification-dispatch--2026-09-30"></a>
+## コア実装と適合確認の割り当て — 2026-09-30
 
-- Branch: `feat/search-platform-completion-core` from `80a4796`; foundation Draft PR #34 at `80a4796` has been pushed. No new code commit, merge, deploy or production migration has occurred.
-- P1 minimum Unit plan SHA `7d9085466e63ff6608849b63f918dc0e7c050ee5960a83a784d656b63f0dcd47` and full body plan SHA `8a02c655199b974d8bb3dfe865bc91138908f09aba1f57961c058c1a5cab85ec` delivered. Core codec RED/GREEN worker active; full reader corpus/native-locator PoC starts independently. Full P1 coverage/publication is not qualified.
-- P3 plan SHA `cc6a6ddee5004c1da419f3d95965a98f71a4b8ea2e081a5d9a36267203e9c86f` delivered. Actual PG/redb/Neo4j oracle comparisons at 100/1000/3000 relation groups plus restart/restore are reported by the executing worker; selection report and independent audit are pending.
-- P4 trust implementation finished with seven focused tests before its final visibility projection restriction; fresh independent reviewer now checks the exact current code. HTTP client PoC selects reqwest 0.13.5 subject to independent promotion review; default harness 9/9 comprises seven real-TCP tests, one constructor-only test and one idle child entrypoint. It is not a P4 end-to-end receipt.
-- P6 21-task plan SHA `29638c077a29aebd007be4a4fd7c5fb7f7bfbf4a785ba0540782f98795811a80` frozen; graph expanded into generic delivery and Search integration tasks. Two workspace crate manifests/lock registration, outbox-delivery locked check and metadata pass with no new registry package. search-runtime check was interrupted for disk capacity; compile remains pending. Normative reconciliation, generic model/policy and SQLx-free Search completion ports are separate active writers.
-- P7 shared durable generation/pin/GC substrate has a separate design/review/freeze graph before final receipt fan-in, avoiding circular P3/P6 integration dependencies. P5 exact common types/disclosure leases and about:blank Problem wire reconciliation is a separate active design writer.
-- Task graph gate: 139 tasks / 150 artifacts / 11 claims, PASS after expansion. Parent checkpoint generation 6 restored/saved without operation replay. Disk fell to 1.3 GiB while compiling; removal of only owned completed PoC temporary targets/containers returned observed capacity to 5.6 GiB. This is environment capacity, not a production sizing conclusion.
-- Exact next actions: receive scope trust/HTTP independent review and fix findings; finish minimal Unit codec and independent review; finish real reader and vector baseline harnesses; consume P6 normative result, implement additive 0009 migration and generic claim/fence/reaper; freeze reviewed shared substrate then durable coordination; continue P0–P7 until final acceptance or enumerated Hard Stop.
+- ブランチ：`80a4796` からの `feat/search-platform-completion-core`。`80a4796` の基盤Draft PR #34はpush済みです。新しいコードのコミット、マージ、デプロイ、本番マイグレーションは行っていません。
+- P1最小Unit計画SHA `7d9085466e63ff6608849b63f918dc0e7c050ee5960a83a784d656b63f0dcd47` と本文全体計画SHA `8a02c655199b974d8bb3dfe865bc91138908f09aba1f57961c058c1a5cab85ec` は提出済みです。コアcodecのRED/GREEN担当が稼働し、全体のリーダーコーパス/ネイティブlocator PoCは独立に開始します。P1全体のcoverage/公開の適合は確認されていません。
+- P3計画SHA `cc6a6ddee5004c1da419f3d95965a98f71a4b8ea2e081a5d9a36267203e9c86f` は提出済みです。100/1000/3000 relationグループでの実PG/redb/Neo4jのオラクル比較と再起動/復元は、実行担当が報告しています。選定レポートと独立監査は保留中です。
+- P4のtrust実装は、最終的な可視性投影制限の前に対象限定テスト7件を終えました。新しい独立レビュアーが現在の正確なコードを確認しています。HTTPクライアントPoCは独立した昇格レビューを条件にreqwest 0.13.5を選びました。既定ハーネス9/9は、実TCPテスト7件、コンストラクターのみのテスト1件、待機する子エントリーポイント1件からなります。P4のエンドツーエンド証拠記録ではありません。
+- P6の21タスク計画SHA `29638c077a29aebd007be4a4fd7c5fb7f7bfbf4a785ba0540782f98795811a80` を凍結しました。グラフを汎用配送とSearch統合タスクへ展開しました。ワークスペースcrate 2件のマニフェスト/ロック登録、outbox-deliveryのロック済みcheck、メタデータ確認は、新しいレジストリパッケージなしで成功しました。search-runtimeのcheckはディスク容量で中断し、コンパイルは保留中です。規範整合確認、汎用モデル/ポリシー、SQLxを使わないSearch完了ポートは、それぞれ別の稼働中担当が書いています。
+- P7の共有・永続generation/pin/GC基盤には、最終証拠記録の集約前に別の設計/レビュー/凍結グラフがあり、P3/P6統合の循環依存を避けています。P5の正確な共通型/開示leaseとabout:blank Problem通信整合確認は、別の稼働中設計担当が作成しています。
+- タスクグラフゲートは展開後、139タスク / 150成果物 / 11主張でPASSです。親の確認時点generation 6を、操作の再実行なしに復元/保存しました。コンパイル中にディスク空きは1.3 GiBまで減少しました。所有する完了済みPoCの一時target/コンテナだけを削除し、観測容量は5.6 GiBに戻りました。これは環境容量であり、本番の容量設計の結論ではありません。
+- 次に行う具体的な作業：scope trust/HTTPの独立レビューを受け取り、指摘を修正します。最小Unit codecと独立レビュー、実リーダーとvectorベースラインのハーネスを完成させます。P6規範結果を取り込み、追加的な0009マイグレーションと汎用claim/fence/reaperを実装します。レビュー済み共有基盤を凍結し、その後に永続調整を実装します。最終受入または列挙されたHard StopまでP0–P7を継続します。
 
-## Focused core gates and environment recovery — 2026-09-30
+<a id="focused-core-gates-and-environment-recovery--2026-09-30"></a>
+## 対象限定コアゲートと環境復旧 — 2026-09-30
 
-P1 minimal KnowledgeUnit core independent GO: contract tests6/6, complete core65/65, strict Clippy; full raw/reader/current authority stays outside this DTO gate. P4 HTTP reqwest feature-selection independent GO, PoC test-only constructors must not enter production. P4 trust repaired earlier3 findings but revision-snapshot race found on recheck; new fix13/13/strictClippy GREEN at remote SHA806586bc and tests6f73cf92, independent final review active.
+P1最小KnowledgeUnitコアは独立したGOです。契約テスト6/6、コア全体65/65、strict Clippyです。生データ全体/リーダー/現在の権威は、このDTOゲートの対象外です。P4 HTTP reqwestのfeature選定は独立したGOで、PoCのテスト専用コンストラクターを本番に入れてはいけません。P4 trustは以前の指摘3件を修正しましたが、再確認でrevision-snapshot競合が見つかりました。新しい修正はリモートSHA806586bc、テスト6f73cf92で13/13/strictClippy GREENです。独立した最終レビューが進行中です。
 
-P6 model and mathematical full-SHA jitter4/4 GREEN; Search ports static GO with dynamic rerun pending. Domain0009 earlier3PG GREEN, independent fresh rerun failed before assertions when Docker stopped; review found missing policy bounds. Parent v0 bounds ruling fixes attempts1..32, lease1..120s, backoff1..300s without changing seed/history. Bounds regression writer active. No generic ack/claim/runtime qualification yet.
+P6モデルと数学的なfull-SHA jitterは4/4 GREENです。Searchポートは静的GOで、動的再実行は保留中です。Domain0009は以前の3PGがGREENでしたが、独立した新たな再実行はDocker停止によりアサーション前に失敗しました。レビューでポリシーの上限/下限がないことが判明しました。親のv0境界判断は、seed/履歴を変えずにattempts1..32、lease1..120s、backoff1..300sへ固定します。境界回帰の担当が稼働中です。汎用ack/claim/実行時の適合確認はまだありません。
 
-P2 actual synthetic baseline independent audit requires exact build inputs, multi-Part parent binding and no-positive/Denied cases; refinement tests12/12 plus manifest helper1/1 passed before final positive-control additions. Final rerun remains queued. P2 architecture and full8-task plan accepted for neutral core, production model/backend adoption still measured-gated. P3 three-backend exploratory report is NO-GO for promotion; native incidence/current-authority/temporal correctness and200-sample fault methodology are explicit refinements. P5 FullAPI NO-GO amended with exact local/Remote registry,401challenge and503internal/504upstream; fresh recheck active. P7 shared design NO-GO requires event-origin/fullguard/pin/globalownership closure; repair active.
+P2の実際の合成ベースラインの独立監査には、正確なビルド入力、複数Partの親束縛、陽性なし/Deniedケースが必要です。改良テスト12/12とマニフェストヘルパー1/1は、最終的な陽性対照の追加前に成功しました。最終再実行は待機列にあります。P2アーキテクチャと全8タスク計画は中立コアについて受入済みですが、本番モデル/バックエンド採用には引き続き実測ゲートがあります。P3の3バックエンド探索レポートは昇格についてNO-GOです。ネイティブincidence/現在の権威/時間的正しさと、200サンプルの障害手法が明示的な改良事項です。P5 FullAPIのNO-GOは、正確なlocal/Remoteレジストリ、401challenge、503internal/504upstreamで補足し、新たな再確認が進行中です。P7共有設計のNO-GOにはevent-origin/fullguard/pin/globalownershipの解消が必要で、修正中です。
 
-Disk fell to108MiB and caused ENOSPC; root target/debug had3.3GiB of regenerable cache. All cargo workers stopped; preserved PoC executables via hardlinks in /tmp/search-completion-preserved-poc-bin, removed only this worktree target/debug. Capacity returned4.9GiB. OrbStack was Stopped/socket absent; non-destructive orbctl start restored Docker and existing TerminusDB healthy. No unowned container/data deletion. Builds serialized for capacity. Parent checkpoint generation7 saved without operation replay.
+ディスク空きが108MiBまで減り、ENOSPCが発生しました。ルートtarget/debugには再生成可能なキャッシュ3.3GiBがありました。すべてのcargo担当を停止し、/tmp/search-completion-preserved-poc-binにハードリンクでPoC実行ファイルを保存して、このworktreeのtarget/debugだけを削除しました。容量は4.9GiBに戻りました。OrbStackはStoppedでソケットがありませんでした。非破壊のorbctl startでDockerと既存のTerminusDBを正常に復旧しました。所有していないコンテナ/データの削除はありません。容量のためビルドを直列化しました。親の確認時点generation7を、操作の再実行なしに保存しました。
 
-Next exact actions: P1reader sharedStrings and all modern ZIP leaf native qualification, P2 final stable snapshot baseline then actual two-model experiment, P6 boundsfix and SKIPLOCKED claim plus Search0001 independent ledger, P4 finaltrustreview and source-neutral amendment, P1 normative/pureprotocol/snapshot producers, P5/P7 corrected freeze and bounded implementation. Branch remainsfeat/search-platform-completion-core@80a4796; all new code uncommitted, Draft#34 foundation only. No HardStop reached; continue allP0–P7 and finalacceptance.
+次に行う具体的な作業：P1リーダーのsharedStringsとすべてのmodern ZIP末端要素のネイティブ適合確認、P2の最終的な安定スナップショットのベースラインとその後の実際の2モデル実験、P6の境界修正とSKIPLOCKED claimおよびSearch0001の独立台帳、P4の最終trustレビューとSource非依存の補足、P1の規範/純粋プロトコル/スナップショット生成側、P5/P7の修正後凍結と範囲限定実装です。ブランチはfeat/search-platform-completion-core@80a4796のままです。新しいコードはすべて未コミットで、Draft#34は基盤のみです。HardStopには達していません。P0–P7すべてと最終受入を継続します。
 
-## Independent gates and next production slices — 2026-09-30 continuation
+<a id="independent-gates-and-next-production-slices--2026-09-30-continuation"></a>
+## 独立ゲートと次の本番実装部分 — 2026-09-30 続き
 
-- Status: **ACTIVE**. Completion P0–P7 is not accepted; no enumerated Hard Stop has been reached. Production code is uncommitted on `feat/search-platform-completion-core@80a47960d025e4dfdea1eacade28b15d218725ff`. No merge or live deployment.
-- Foundation Draft #34 remains OPEN/Draft at exact `80a4796`; live `gh pr view` confirms all nine standard checks SUCCESS (CI `36680522098`). This does not qualify the dirty production slices.
-- P2 corrected synthetic L/LG baseline independently GO: accepted run manifest `605113e14ce8d69755014a784b056223939625288db31bea3ac1d1994cfd6d22`, local input snapshot `e491c50e915deca95756065f673b5c5ab875c724e391b00819840926c3a74de1`, independently run Rust 13/13 + Python 1/1. Dense/real P1 body remain unrun. Input freeze now released for new production code.
-- P6 Domain 0009 bounded policy independently GO: SQL `6059108aa478df2b5c9af5417e650ce9d661f74e77236fa0e2b8e02e626cf7bb`, actual PostgreSQL 18.6 4/4 cached test run. I03 separate Search migration ledger RED 3→GREEN 3 + strict Clippy; G02 real PG claim RED 3→GREEN 3 + strict Clippy. Independent audits of I03/G02 are active. G03 renew/settle and G04 reap remain explicit fail-closed placeholders.
-- P4 trust current-source revision race repaired and independently GO for typed seam: 13/13 cached tests. P5 source-neutral amendment is mandatory before API code; a fresh scoped plan writer is active. SQL-backed ledger/current-source durability is still pending P7.
-- P5 composed API design independently GO and nine-task implementation plan delivered. P7 composed durable-substrate design independently GO; bounded implementation plan is being finalized. These are design verdicts only.
-- P1 reader PoC replays 41/41 expected bytes/locators, but independent review found an actual false `Supported` formula cache (B2=東京, formula B2, cache 10). Current Q01 full Supported tally is not accepted. Fresh corrective worker must omit unverified formula cache from positive Units and requalify XLSX/ZIP; formula-free fixed subset is candidate GO only. Pure protocol worker has source/tests prepared, root Cargo registration and actual RED/GREEN wait the parent slot.
-- Capacity recovery: all builds stopped, selected current PoC/test executables hard-linked with SHA receipts to `/tmp/search-completion-preserved-poc-bin/checkpoint-20260930-core.json`; only this checkout's regenerable `target/debug` removed. Free disk recovered to 3.4 GiB, not a guaranteed future capacity. P3 owns the first small debug=0/incremental=0/jobs=2 compile window; final native redb 16/16 is GREEN and sequential final PG/Neo runs continue. Never prune shared Docker or delete source/measurement receipts.
-- Native `gpt-6-sol / max` scoped continuation remains the disclosed fallback for uncertain managed runtime inspection. Never replay old D1/new inspection operations. Parent checkpoint is generation 8.
-- Exact next actions: finish P3 final native correctness and then separate 200-sample/fault qualification; finish P1 formula fix/recheck and release pure-protocol Cargo slot; audit P6 claim/coord then implement fenced settle/reaper; implement/review source-neutral P4 union and actual durable namespace ledger; implement neutral P2 Core and pin actual two-model protocol; execute P5 normative/OAS and expanded nine-task graph; decompose P7 plan and implement ownership/generation/guard/pin/READY/GC/recovery under one writer per shared path. Continue all program qualification before final acceptance.
+- 状態：**ACTIVE**。Completion P0–P7は受入済みではなく、列挙されたHard Stopにも達していません。本番コードは `feat/search-platform-completion-core@80a47960d025e4dfdea1eacade28b15d218725ff` 上で未コミットです。マージや本番デプロイはありません。
+- 基盤Draft #34は正確な `80a4796` でOPEN/Draftのままです。実際の `gh pr view` で標準確認9件すべてがSUCCESS（CI `36680522098`）と確認しました。これは未コミットの本番実装部分の適合を証明しません。
+- P2の修正済み合成L/LGベースラインは独立したGOです。受入済み実行マニフェスト `605113e14ce8d69755014a784b056223939625288db31bea3ac1d1994cfd6d22`、ローカル入力スナップショット `e491c50e915deca95756065f673b5c5ab875c724e391b00819840926c3a74de1`、独立実行したRust 13/13 + Python 1/1です。Dense/実P1本文は未実行です。新しい本番コードに向け、入力凍結は解放しました。
+- P6 Domain 0009の範囲を定めたポリシーは独立したGOです。SQL `6059108aa478df2b5c9af5417e650ce9d661f74e77236fa0e2b8e02e626cf7bb`、実PostgreSQL 18.6のキャッシュ済みテスト実行4/4です。I03の独立Searchマイグレーション台帳はRED 3→GREEN 3 + strict Clippy、G02の実PG claimはRED 3→GREEN 3 + strict Clippyです。I03/G02の独立監査が進行中です。G03 renew/settleとG04 reapは、安全側に閉じて失敗する明示的な仮実装のままです。
+- P4 trustの現行ソースrevision競合を修正し、型付き接続境界について独立したGOを得ました。キャッシュ済みテスト13/13です。APIコードの前にP5のSource非依存の補足が必須です。新しい範囲限定の計画担当が稼働しています。SQLに裏付けられた台帳/現行ソースの永続性は、まだP7待ちです。
+- P5合成API設計は独立したGOで、9タスクの実装計画を提出しました。P7合成永続基盤設計も独立したGOで、範囲限定の実装計画を最終化しています。これらは設計判定のみです。
+- P1リーダーPoCは期待バイト/locatorを41/41で再現しましたが、独立レビューで実際に誤った `Supported` 数式キャッシュが見つかりました（B2=東京、数式B2、キャッシュ10）。当該Q01の全Supported集計は受入済みではありません。新しい修正担当は、未検証の数式キャッシュを陽性Unitから除外し、XLSX/ZIPを再適合確認する必要があります。数式を含まない固定部分集合はGO候補に留まります。純粋プロトコル担当はソース/テストを準備済みで、ルートCargo登録と実際のRED/GREENは親の枠を待っています。
+- 容量復旧：すべてのビルドを停止し、選択した現行PoC/テスト実行ファイルを、SHA記録を伴って `/tmp/search-completion-preserved-poc-bin/checkpoint-20260930-core.json` にハードリンクしました。このcheckoutの再生成可能な `target/debug` だけを削除しました。ディスク空きは3.4 GiBに回復しましたが、今後の容量を保証するものではありません。P3が最初の小規模debug=0/incremental=0/jobs=2のコンパイル枠を専有しています。最終ネイティブredb 16/16はGREENで、最終PG/Neo実行を順次継続しています。共有Dockerのpruneやソース/計測記録の削除は絶対に行いません。
+- ネイティブ `gpt-6-sol / max` による範囲限定継続は、不確実な管理下実行環境の調査に対して開示済みの代替手段です。古いD1/新しい調査操作を再実行してはいけません。親の確認時点はgeneration 8です。
+- 次に行う具体的な作業：P3の最終ネイティブ正しさ確認を完成させ、その後に別の200サンプル/障害適合確認を行います。P1数式修正/再確認を完了し、純粋プロトコルのCargo枠を解放します。P6 claim/coordを監査してから、フェンシングされたsettle/reaperを実装します。Source非依存P4 unionと実際の永続namespace台帳を実装/レビューします。中立P2 Coreを実装し、実際の2モデルプロトコルを固定します。P5規範/OASと展開済み9タスクのグラフを実行します。P7計画を分解し、共有パスごとに1人の書き込み担当のもとでownership/generation/guard/pin/READY/GC/recoveryを実装します。最終受入までプログラムのすべての適合確認を継続します。
 
-## Pure contracts, normative wire, and cache preservation — continuation
+<a id="pure-contracts-normative-wire-and-cache-preservation--continuation"></a>
+## 純粋契約、規範的な通信形式、キャッシュ保存 — 続き
 
-- P1 pure protocol: eight focused tests GREEN and four bootstrap crates strict Clippy. Independent review is **NO-GO for one real finding**: `Partial(ResourceLimit)` must be rejected because hard budget abort permits Unit 0 only. Fresh two-file fix worker is active; sandbox admission waits corrected independent GO. No production reader/native isolation implementation is claimed.
-- Corrected P1 formula corpus: 45/45 actual qualified; old 41's Supported 12→9; full 45 is Supported10/Partial13/Unsupported19/FailedPermanent3. Unverified formula cache Unit omitted, known sheet/cell omissions propagated through nested ZIP. Parser bundle `a6d30a4f...`, manifest `2ba1bc92...`, executable `ee685c67...`; focused Clippy/deny/Python PASS. Independent recheck active.
-- P2 neutral Core: seven contract tests RED missing module→GREEN7, full Core72/72, strict Clippy. Source `dbf58e427cbe11013d9d547af5ee4af4178a3ebf418ce6e8312e80dc1a993014`; no model/runtime dependency, default Disabled. Independent audit active. Two-model asset protocol completed separately without weights; real runtime/index measurement still pending.
-- P3 exact native correctness refined: actual PG/redb/Neo each16/16; four complete raw incidence audits counts1047/1047/1047/4, full/incremental digest parity, seven negative/corruption RED cases. Report `986df123...`, all three final same-source-hash receipts. Independent correctness audit active. Backend selection/production migration remains closed pending 200 samples, readers/writer, fault/recovery, PG shared publication probe and license/advisory gate. Fixed-fixture capacity ruling `f138462e...` changes environment reserve only; correctness timing during other work is not a performance measurement.
-- P5 normative four routes/closed DTO/Search error registry14codes delivered; api:check and schema positive/negative checks PASS. Independent RFC/OAS and exact composed semantic audit active; HTTP code and real send-lifetime qualification are pending.
-- P7 finalized shared plan SHA `97c122bf4447dd63caeac24930503247c11d52e533e1825d913f737162812517`. Earlier73b5 hash was an intermediate writer artifact; composed freeze/revision remain unchanged. Twelve tasks decomposed; ownership0002 writer prepares real PG RED.
-- Capacity recovery: verified no cargo/rustc process and no open dependency artifact in related HTTP Draft checkout. Its regenerable `.rlib`/`.rmeta` removed; **208 cached executables preserved byte-for-byte in gzip archives** with original hash/mode and restore paths at `/tmp/search-completion-cache-preservation/doc-http-d-deps/receipt.json`. Recovered3,777,535,182 bytes; observed free4.2GiB. No source, measurement receipt, dynamic native library or PDFium pin changed. This is a reversible build-cache operation, not a deploy or code change.
-- Cargo queue: P6G03 gets heavy SQLx RED/GREEN first; P4 source-neutral GREEN before App-dependent P1 snapshot/P7 runtime tests; small P1 budget fix then independent recheck. All root/shared writers remain serialized; no replay of uncertain managed operations. Program remains ACTIVE, all new production code uncommitted and no Hard Stop.
+- P1純粋プロトコル：対象限定テスト8件がGREENで、初期構築crate 4件のstrict Clippyも成功しました。独立レビューは **実際の指摘1件によりNO-GO** です。厳格な予算上限での中止はUnit 0だけを許すため、`Partial(ResourceLimit)` を拒否しなければなりません。新しい2ファイル修正担当が稼働しています。sandboxの実行許可は、修正後の独立GO待ちです。本番リーダー/ネイティブ隔離の実装は主張しません。
+- 修正済みP1数式コーパス：実際に45/45の適合を確認しました。旧41ケースのSupportedは12→9、全45ケースはSupported10/Partial13/Unsupported19/FailedPermanent3です。未検証の数式キャッシュUnitを除外し、既知のシート/セル欠落を入れ子ZIP経由で伝播させました。パーサーバンドル `a6d30a4f...`、マニフェスト `2ba1bc92...`、実行ファイル `ee685c67...`。対象限定Clippy/deny/PythonはPASSです。独立した再確認が進行中です。
+- P2中立Core：契約テスト7件はモジュール欠落のRED→GREEN7、Core全体72/72、strict Clippyです。ソースは `dbf58e427cbe11013d9d547af5ee4af4178a3ebf418ce6e8312e80dc1a993014`。モデル/実行時依存はなく、既定はDisabledです。独立監査が進行中です。2モデルのアセットプロトコルは重みなしで別途完成しています。実際の実行時/index計測はまだ保留中です。
+- P3の正確なネイティブ正しさ確認を改良しました。実PG/redb/Neoは各16/16、完全な生incidence監査4件の件数は1047/1047/1047/4、全体/差分のダイジェスト一致、陰性/破損REDケース7件です。レポート `986df123...` と、同じソースハッシュの最終証拠記録3件があります。独立した正しさ監査が進行中です。バックエンド選定/本番マイグレーションは、200サンプル、readers/writer、障害/復旧、PG共有公開の検証、ライセンス/アドバイザリのゲート待ちで閉じたままです。固定フィクスチャの容量判断 `f138462e...` は環境の予約容量だけを変えます。他の作業中の正しさ確認の計時は性能測定ではありません。
+- P5規範の4ルート/閉じたDTO/Searchエラーレジストリ14コードを提出しました。api:checkとスキーマの陽性/陰性確認はPASSです。独立したRFC/OAS監査と正確な合成意味監査が進行中です。HTTPコードと実際の送信存続期間の適合確認は保留中です。
+- P7共有計画の最終SHAは `97c122bf4447dd63caeac24930503247c11d52e533e1825d913f737162812517` です。以前の73b5ハッシュは作成途中の成果物であり、合成凍結/改訂は変わっていません。12タスクへ分解し、ownership0002担当が実PG REDを準備しています。
+- 容量復旧：関連するHTTP Draft checkoutにcargo/rustcプロセスも、開かれた依存成果物もないことを確認しました。再生成可能な `.rlib`/`.rmeta` を削除し、**キャッシュ済み実行ファイル208件はgzipアーカイブでバイト単位に保存**しました。元のハッシュ/モードと復元パスは `/tmp/search-completion-cache-preservation/doc-http-d-deps/receipt.json` にあります。3,777,535,182バイトを回復し、観測された空きは4.2GiBです。ソース、計測記録、動的ネイティブライブラリ、PDFium固定値は変更していません。これは可逆的なビルドキャッシュ操作であり、デプロイやコード変更ではありません。
+- Cargo待機列：最初にP6G03へ重いSQLx RED/GREENを割り当てます。Appに依存するP1スナップショット/P7実行時テストより前にP4のSource非依存GREENを行い、小規模なP1予算修正と独立再確認を続けます。ルート/共有の書き込み担当はすべて直列化したままです。不確実な管理下操作は再実行しません。プログラムはACTIVEのままで、新しい本番コードはすべて未コミット、Hard Stopはありません。
 
-## Independent gates and Core corrections — continuation
+<a id="independent-gates-and-core-corrections--continuation"></a>
+## 独立ゲートとCore修正 — 続き
 
-- P4 source-neutral union catalog and host-owned namespace seam: actual RED → new19/19 + legacy13/13 + port4/4 GREEN, strict App Clippy; independent review underway. Synthetic ledger does not prove P7 SQL durability.
-- P1 fixed formula reader subset: independent GO, 45 synthetic cases + Python6, unverified cached formula Units excluded. Production reader/Linux/body index qualification remains required. Pure wire hard-budget correction 11/11 GREEN; independent recheck underway.
-- P2 pure Core neutral vector review NO-GO: F1 complete immutable Unit/parent seal and F2 storage/retention exclusion correspondence; fresh scoped fix and independent recheck mandatory. No model/backend adopted.
-- P3 bounded native correctness independent GO (fresh redb oracle/raw audits; PG/Neo receipts audited). Full native 200 sample/concurrent writer/recovery/PG publication/license qualification started; selection Blocked.
-- P5 static normative/OpenAPI independent GO; UTF-8 byte bound and unresolved required Claim sufficiency must be enforced/tested by runtime.
-- P6 G03 actual PostgreSQL 4/4 GREEN plus claim3/3 regression and strict Clippy, including durable COMMIT with lost response → StoreUnknown. Independent audit underway; G04 reaper remains placeholder.
-- Cargo serialized: S01 authoritative snapshot RED/implementation/GREEN owns slot, then P7 ownership migration; Core edits/benchmark inference held. No merge/deploy/HardStop. Latest graph PASS216tasks224artifacts.
-- Reversible preservation of inactive HTTP Draft compiled cache: original executable hashes/modes/paths and gzip archives in /tmp/search-completion-cache-preservation/doc-http-d-deps/receipt.json, 3.78GB reclaimed. Sources, evidence and native assets preserved.
-- Exact next action: finish source snapshot GREEN and scoped independent audits, repair neutral Core then proceed sandbox, common Source ledger, native backend qualification, API and outbox runner stages.
+- P4のSource非依存unionカタログとホスト所有namespace接続境界：実際のRED → 新規19/19 + 既存13/13 + port4/4 GREEN、Appのstrict Clippyです。独立レビュー中です。合成台帳はP7 SQLの永続性を証明しません。
+- P1の修正済み数式リーダー部分集合：独立したGOで、合成ケース45件 + Python6、未検証のキャッシュ数式Unitは除外しています。本番リーダー/Linux/本文indexの適合確認は引き続き必要です。純粋通信形式の厳格な予算上限修正は11/11 GREENで、独立した再確認中です。
+- P2純粋Coreの中立vectorレビューはNO-GOです。F1は完全で不変なUnit/親の封印、F2はストレージ/保持除外の対応関係です。新しい範囲限定修正と独立再確認が必須です。モデル/バックエンドは採用していません。
+- P3の範囲限定ネイティブ正しさ確認は独立したGOです（新たなredbオラクル/生データ監査、PG/Neo記録は監査済み）。ネイティブ全体の200サンプル/並行writer/復旧/PG公開/ライセンスの適合確認を開始しました。選定はBlockedです。
+- P5の静的規範/OpenAPIは独立したGOです。UTF-8バイト上限と、未解決の必須Claimの十分性は、実行時に強制/テストしなければなりません。
+- P6 G03は実PostgreSQL 4/4 GREENとclaim3/3回帰、strict Clippyです。永続COMMIT後の応答喪失 → StoreUnknownも含みます。独立監査中です。G04 reaperは仮実装のままです。
+- Cargoは直列化しています。S01の権威あるスナップショットRED/実装/GREENが枠を専有し、その後がP7所有権マイグレーションです。Core編集/ベンチマーク推論は保留です。マージ/デプロイ/HardStopはありません。最新グラフは216タスク224成果物でPASSです。
+- 非稼働のHTTP Draftコンパイル済みキャッシュを可逆的に保存しました。元の実行ファイルのハッシュ/モード/パスとgzipアーカイブは /tmp/search-completion-cache-preservation/doc-http-d-deps/receipt.json にあり、3.78GBを回収しました。ソース、証拠、ネイティブアセットは保持しています。
+- 次に行う具体的な作業：SourceスナップショットのGREENと範囲限定の独立監査を完了します。中立Coreを修正してから、sandbox、共通Source台帳、ネイティブバックエンド適合確認、API、outboxランナーの段階へ進みます。
 
 
-## Current-source gates and execution continuation — 2026-09-30T12:55Z
+<a id="current-source-gates-and-execution-continuation--2026-09-30t1255z"></a>
+## 現行ソースのゲートと実行継続 — 2026-09-30T12:55Z
 
-- Status remains **ACTIVE**. User switched the main host model and authorized continuation. New worker specification stays `gpt-6-sol / max`. No merge, live deployment, or Hard Stop.
-- P1 authoritative snapshot independent bounded GO (six real PostgreSQL cached tests, exact eight source hashes); raw-byte extraction remains a separate gate. Pure wire ResourceLimit correction independent GO (11).
-- P2 neutral Core F1/F2 correction independently **NEUTRAL_CONTRACT_PASS** (Vector 11, Unit 6); trusted current Source/index application proof remains mandatory. Python pre-run/post-run protocol correction 20/20, independent recheck active; no actual model RunPin or runtime adoption.
-- P4 source-neutral corrected typed seam independently **GO from a fresh current-source rebuild**: 20 neutral, 13 legacy, four port, three compile-fail guards. Physical SQL ledger/factory and P5 wire remain separate. The former source/binary mtime gap is closed by this fresh build.
-- P6 G03 independently bounded GO: four real PostgreSQL tests, including durable ack with lost COMMIT response and StoreUnknown. G04 reaper preparation is test-only, awaiting Cargo.
-- Owned root compiled-cache cleanup has a recoverable receipt at `/tmp/search-completion-cache-preservation/search-core-checkpoint-20260930-2/receipt.json`: 133 executable archives verified against original SHA-256 and 920 regenerable rmeta removed. Source, lock, receipts, rlib/dylib, and native assets were preserved. Observed free space after cleanup was 3.26 GiB. Former cached executables must be restored from their receipt or rebuilt, never assumed present/current.
-- Exact current queue: P7-01 owns exclusive Cargo for the new activation-epoch counterexample RED→SQL trigger fix→six tests plus coordination and strict Clippy; then G04 reaper; I02 sandbox; P4 visibility wrapper. P4 visibility is test-only until actual RED slot. Model assets and P3 native performance are held pending capacity/CPU admission.
-- Independent P2 protocol recheck, P3 production task/physical-alias reconciliation, and P7 remaining runtime design/plan proposal run concurrently without Cargo. Task graph validates 227 tasks, 235 artifacts, 11 claims.
-- Branch remains `feat/search-platform-completion-core@80a4796` with uncommitted production work. Foundation Draft PR #34 was previously verified all nine hosted CI checks SUCCESS at exact `80a4796`; this does not cover the dirty implementation.
+- 状態は引き続き **ACTIVE** です。ユーザーは主ホストのモデルを切り替え、継続を許可しました。新しいワーカーの指定は `gpt-6-sol / max` のままです。マージ、本番デプロイ、Hard Stopはありません。
+- P1の権威あるスナップショットは、独立した範囲限定GOです（実PostgreSQLのキャッシュ済みテスト6件、正確なソースハッシュ8件）。生バイト抽出は引き続き別ゲートです。純粋通信形式のResourceLimit修正は独立したGO（11）です。
+- P2中立CoreのF1/F2修正は、独立した **NEUTRAL_CONTRACT_PASS**（Vector 11、Unit 6）です。信頼済みの現在のSource/indexのアプリケーション証明は引き続き必須です。Pythonの実行前/実行後プロトコル修正は20/20で、独立再確認が進行中です。実モデルのRunPinや実行時採用はありません。
+- P4のSource非依存の修正済み型付き接続境界は、独立した **現行ソースの新たな再ビルドによるGO** です。中立20件、既存13件、port4件、compile-failガード3件です。物理SQL台帳/ファクトリーとP5の通信形式は別です。以前のソース/バイナリのmtimeの隔たりは、この新しいビルドで解消しました。
+- P6 G03は独立した範囲限定GOです。実PostgreSQLテスト4件で、COMMIT応答喪失とStoreUnknownを伴う永続ackを含みます。G04 reaperの準備はテストのみで、Cargo待ちです。
+- 所有するルートのコンパイル済みキャッシュ削除には、復元可能な記録が `/tmp/search-completion-cache-preservation/search-core-checkpoint-20260930-2/receipt.json` にあります。実行ファイルアーカイブ133件を元のSHA-256と照合し、再生成可能なrmeta 920件を削除しました。ソース、ロック、証拠記録、rlib/dylib、ネイティブアセットは保持しました。削除後に観測した空きは3.26 GiBでした。以前のキャッシュ済み実行ファイルは記録から復元するか再ビルドし、存在する/現行であると決して仮定しません。
+- 当時の正確な待機列：P7-01が、新しいactivation-epoch反例のRED→SQLトリガー修正→テスト6件に調整機能とstrict Clippyを加えた作業で、Cargoを専有します。次にG04 reaper、I02 sandbox、P4可視性ラッパーです。P4可視性は実際のRED枠まではテストのみです。モデルアセットとP3ネイティブ性能は、容量/CPUの実行許可待ちで保留しています。
+- 独立したP2プロトコル再確認、P3本番タスク/物理alias整合確認、P7残余の実行時設計/計画提案は、Cargoなしで並行して進行しています。タスクグラフは227タスク、235成果物、11主張で検証済みです。
+- ブランチは `feat/search-platform-completion-core@80a4796` のままで、本番作業は未コミットです。基盤Draft PR #34は、正確な `80a4796` でホスト環境のCI確認9件すべてがSUCCESSであると以前に確認しました。未コミットの実装は対象外です。
 
-## Continuation after model switch — 2026-09-30T14:08Z
+<a id="continuation-after-model-switch--2026-09-30t1408z"></a>
+## モデル切替後の継続 — 2026-09-30T14:08Z
 
-- User directed continuation with the already-selected worker model `gpt-6-sol / max`; no new model substitution.
-- Fresh worktree identity remains `feat/search-platform-completion-core@80a47960d025e4dfdea1eacade28b15d218725ff`. Foundation Draft #34 is separate; no production commit, merge, or deployment occurred.
-- P3-G01 issuer and named TDD proposals are recorded in `p3-g01-issuer-refinement.md` and `p3-g01-test-proposal.md`. Graph now validates at 251 tasks / 262 artifacts / 11 claims. A distinct read-only pre-code audit is active; G01 App/Cargo implementation remains gated on its verdict and the storage/Cargo slot.
-- P1-I02 independent review, P2 protocol hardening, and P7 runtime plan revision remain active. P3 native qualification and P4 visibility implementation report no generated fixture/DB outputs and are paused.
-- Fresh `statvfs` reports 1.236 GiB free, below the 1.5 GiB hard STOP floor. No Cargo/rustc/Docker process was active at inspection. Cargo/build, container, performance, py_compile, generated fixture, and cache-cleanup work remain stopped until a safe storage admission is recorded.
-- Verification in this continuation: taskgraph graph validation PASS (251 / 262 / 11); `git diff --check` PASS for tracked changes. No production code test was run.
-- Exact next action: collect the active independent/rectification results; review findings and update graph receipts. Before the next build, record a fresh, byte-verified cache-preservation receipt and remeasure capacity; then resume one serialized Cargo owner at a time. No merge/deploy.
+- ユーザーは、すでに選択済みのワーカーモデル `gpt-6-sol / max` で継続するよう指示しました。新たなモデル置換はありません。
+- 新たに確認したworktreeの識別は `feat/search-platform-completion-core@80a47960d025e4dfdea1eacade28b15d218725ff` のままです。基盤Draft #34は別です。本番コミット、マージ、デプロイは行っていません。
+- P3-G01発行者と名前付きTDDの提案は、`p3-g01-issuer-refinement.md` と `p3-g01-test-proposal.md` に記録しています。グラフは251タスク / 262成果物 / 11主張で検証済みです。別の読み取り専用のコード着手前監査が進行中です。G01 App/Cargo実装は、その判定とストレージ/Cargo枠を引き続きゲートとします。
+- P1-I02の独立レビュー、P2プロトコル強化、P7実行時計画改訂は進行中です。P3ネイティブ適合確認とP4可視性実装は、生成フィクスチャ/DB出力はないと報告しており、一時停止中です。
+- 新しい `statvfs` は空き1.236 GiBを報告しており、厳格なSTOP下限1.5 GiB未満です。調査時にCargo/rustc/Dockerプロセスは稼働していませんでした。安全なストレージ実行許可を記録するまで、Cargo/ビルド、コンテナ、性能、py_compile、生成フィクスチャ、キャッシュ削除作業は停止を維持します。
+- この継続作業での検証：taskgraphのグラフ検証はPASS（251 / 262 / 11）、追跡済み変更の `git diff --check` はPASSです。本番コードのテストは実行していません。
+- 次に行う具体的な作業：稼働中の独立確認/修正結果を収集し、指摘をレビューしてグラフの証拠記録を更新します。次のビルド前に、新たにバイト照合済みのキャッシュ保存記録を作成し、容量を再計測します。その後、直列化されたCargo担当を1人ずつ再開します。マージ/デプロイは行いません。
 
-## Mac continuation — 2026-10-01, current source snapshot
+<a id="mac-continuation--2026-10-01-current-source-snapshot"></a>
+## Macでの継続 — 2026-10-01、当該ソースのスナップショット
 
-- ACTIVE on `feat/search-platform-completion-core@80a47960d025e4dfdea1eacade28b15d218725ff`; production changes remain uncommitted. Fresh GitHub inspection confirms #34 OPEN/Draft with 9 successful checks and #33 with 11 successful/1 skipped checks. These baseline checks do not qualify dirty sources. No merge/deploy.
-- Authorized unrelated Hibinoba cleanup removed only 16 inactive, ignored, untracked generated Next.js/Flutter directories. Receipt `/tmp/search-completion-resume-20261001/cleanup.json`: allocated 4,817,682,432 bytes; observed free 964,636,672→5,696,122,880 bytes. All financial repositories/worktrees, ResoSeed, corpora/evidence, shared dependencies, ambiguous assets, persistent Docker data and now toolbox continuation assets are protected. No Docker resources deleted. Latest observed free 4,636,467,200 bytes; remeasure before admission.
-- P1-I02 real Linux RED reproduced 3 classification defects; corrected constructor/worker exit/terminal Unsupported validation now Core12+matrix10+isolation5 PASS, DSI1+6 PASS, strict Clippy/fmt/diff PASS. Independent bounded GO and exact source/log hashes are in the two P1 failure-classification receipts. Actual readers/Source composition/whole P1 qualification remain open.
-- Existing real PostgreSQL read-state producer rollback tests 7/7 and Search0001/0002 migrations 9/9 PASS. Full P7 W1 decoder/sink and W2 complete ordered migration/checksum/role gates remain open; no renamed duplicate producer test was added. See `p7-current-db-regression-20261001.md`.
-- P2 protocol re-audit: 28/28 structural tests PASS but executed same-input verification NO-GO. Scoped canonical executed-input export repair has real RED and current 30 Python/1 Rust GREEN; final binary-to-Python comparison and independent review remain pending. Full model weights/ONNX are absent; no RunPin, dense execution or backend selection claimed.
-- P3 native current-binary redb100: 48 cells/9,600 successful samples, semantics/Source/retention/measurements PASS. Initial Source-drift recovery failed because the injected write was a no-op. Named regression RED→24 Python GREEN; corrected native restart/restore/faults PASS in a new report. Historical timed report hashes are unchanged. Independent fault-injection review, PG/Neo measurements, publication/pin/GC and selection remain open. Evidence is under `/tmp/search-completion-resume-20261001`; amendment receipt records hashes.
-- Execution ownership: P2 repair owns the serialized Cargo window through final comparison; P7-03 generation schema writer is preparing tests-only RED and cannot run Cargo/DB yet. Advisory lock `/tmp/search-completion-resume-20261001/cargo.lock` is nonblocking and used by build/recovery wrappers. No timed measurements overlap Cargo/model activity. Separate GUI/auth and Document PoC worktrees are excluded; parent coordinates shared resources. Toolbox heavy work remains held while Search Cargo/DB/performance needs the host.
-- P7-03 integration findings: existing coordination/source-ownership tests assert exactly two Search migrations; coordination also sets a current generation without a row. Mandatory Search0003 composite FK requires updating those tests after schema lands. Separate parent-owned updates are reserved; no weakening of the FK.
-- Exact next action: finish P2 exporter binary comparison, obtain independent bounded review, release Cargo to P7-03 real PostgreSQL RED→implementation→GREEN; update the two legacy migration tests for the new identity invariant. Then run admitted PG/Neo100 in exclusive measurement windows and continue frozen publication/pin/GC gates. Current evidence is source-snapshot evidence, not committed-head qualification. No Design Freeze deviation approved in this continuation.
+- `feat/search-platform-completion-core@80a47960d025e4dfdea1eacade28b15d218725ff` 上でACTIVEです。本番変更は未コミットのままです。新たなGitHub確認では、#34はOPEN/Draftで確認9件が成功、#33は確認11件が成功/1件がスキップです。これらのベースライン確認は、未コミットのソースの適合を証明しません。マージ/デプロイはありません。
+- 許可された無関係のHibinoba整理では、非稼働、ignore対象、未追跡の生成済みNext.js/Flutterディレクトリ16件だけを削除しました。記録 `/tmp/search-completion-resume-20261001/cleanup.json`：割当済み4,817,682,432バイト、観測空き964,636,672→5,696,122,880バイトです。すべての金融関連リポジトリ/worktree、ResoSeed、コーパス/証拠、共有依存関係、判断の曖昧なアセット、永続Dockerデータ、およびtoolbox継続用アセットを保護しています。Dockerリソースは削除していません。最後に観測した空きは4,636,467,200バイトです。実行許可前に再計測します。
+- P1-I02の実Linux REDで分類欠陥3件を再現しました。コンストラクター/ワーカー終了/終端Unsupported検証の修正後はCore12+matrix10+isolation5 PASS、DSI1+6 PASS、strict Clippy/fmt/diff PASSです。独立した範囲限定GOと正確なソース/ログハッシュは、P1失敗分類の証拠記録2件にあります。実リーダー/Source合成/P1全体の適合確認は未完了です。
+- 既存の実PostgreSQL read-state生成側ロールバックテストは7/7、Search0001/0002マイグレーションは9/9 PASSです。P7全体のW1 decoder/sinkとW2の完全な順序付きマイグレーション/チェックサム/ロールのゲートは未完了です。名前を変えただけの重複生成側テストは追加していません。`p7-current-db-regression-20261001.md` を参照してください。
+- P2プロトコル再監査：構造テスト28/28はPASSですが、実行された同一入力の検証はNO-GOです。範囲を限定した正規実行入力エクスポート修正には実際のREDがあり、当該結果はPython 30/Rust 1 GREENです。最終的なバイナリ対Python比較と独立レビューは保留中です。完全なモデル重み/ONNXは存在しません。RunPin、dense実行、バックエンド選定は主張しません。
+- P3ネイティブの当該バイナリによるredb100：48セル/9,600成功サンプルで、意味/Source/保持/計測はPASSです。初回のSource-drift復旧は、注入した書き込みが無操作だったため失敗しました。名前付き回帰はRED→Python 24 GREEN、修正後のネイティブ再起動/復元/障害は新しいレポートでPASSです。過去の計時レポートのハッシュは変更していません。独立した障害注入レビュー、PG/Neo計測、公開/pin/GC、選定は未完了です。証拠は `/tmp/search-completion-resume-20261001` 配下にあり、補足記録にハッシュを記載しています。
+- 実行担当：P2修正が最終比較まで直列Cargo枠を専有します。P7-03 generationスキーマ担当はテストのみのREDを準備しており、まだCargo/DBを実行できません。アドバイザリロック `/tmp/search-completion-resume-20261001/cargo.lock` は非ブロッキングで、ビルド/復旧ラッパーが使用します。計時測定とCargo/モデル作業は重ねません。別のGUI/認証とDocument PoC worktreeは除外し、親が共有リソースを調整します。SearchのCargo/DB/性能作業がホストを必要とする間、Toolboxの重い作業は保留します。
+- P7-03統合の指摘：既存のcoordination/source-ownershipテストは、Searchマイグレーションが正確に2件であることを検証しています。coordinationはさらに、行がない状態でcurrent generationを設定しています。必須のSearch0003複合FKのため、スキーマ反映後にこれらのテストを更新する必要があります。親が担当する別の更新枠を確保しており、FKは弱めません。
+- 次に行う具体的な作業：P2エクスポーターのバイナリ比較を完了し、独立した範囲限定レビューを得て、CargoをP7-03の実PostgreSQL RED→実装→GREENへ解放します。新しい同一性の不変条件に合わせ、既存マイグレーションテスト2件を更新します。その後、許可されたPG/Neo100を専有計測枠で実行し、凍結済み公開/pin/GCゲートを継続します。当時の証拠はソーススナップショットの証拠であり、コミット済みheadの適合確認ではありません。この継続作業で設計凍結からの逸脱は承認していません。

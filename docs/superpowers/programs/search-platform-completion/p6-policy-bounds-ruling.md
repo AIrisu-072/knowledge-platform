@@ -1,3 +1,10 @@
-# P6 v0 policy finite bounds ruling
+<a id="p6-v0-policy-finite-bounds-ruling"></a>
+# P6 v0 ポリシーの有限な上限・下限に関する判断
 
-Parent technical decision under autonomous Completion Program; no business semantic change. The existing default seed remains revision 1, attempts 8, lease 1–120 s and backoff 1–300 s. DB policy permits `max_attempts` 1..=32, lease min/max 1000..=120000 ms and backoff min/max 1000..=300000 ms, with max >= min and positive revision. These bounds match v0 lease/algorithm ceilings and bound retry work; values outside them require an explicit versioned implementation/qualification change. Policy revision equality and all-value equality remain mandatory at startup and within claim/reap. Existing row attempt_limit is never overwritten. No historical row is reset, backfilled or silently terminalized. Add upper/lower/inverted boundary SQL tests; runtime startup also validates expected policy before binding it. This narrows only operator configuration for new v0 policy, preserving existing Domain/Audit rows and the default recipe.
+[固定された公開原文](https://github.com/AIrisu-072/knowledge-platform/blob/0ecf486719e3c9d71242e289a7564ad6d1032b3c/docs/superpowers/programs/search-platform-completion/p6-policy-bounds-ruling.md)に対応する意味保存の日本語訳です。原設計の再承認、実装・資格の追加ではありません。既存ハッシュは当時の原文・証拠を指し、訳文のハッシュではありません。以下の状態・次の作業は当時の記録であり、現在の実行指示ではありません。[最新の実行状態](../../execution/search-platform-completion-program-status.md)を優先してください。
+
+完成プログラムの自律実行権限に基づく、統括担当の技術判断です。業務上の意味は変更しません。既存の初期設定は改訂1、試行回数8、リース1–120秒、バックオフ1–300秒のままです。DBのポリシーは `max_attempts` を1..=32、リースの最小・最大値を1000..=120000 ms、バックオフの最小・最大値を1000..=300000 msとし、最大値が最小値以上であることと、改訂番号が正であることを要求します。
+
+これらの範囲はv0のリースとアルゴリズムの上限に合致し、再試行の作業量を有限にします。範囲外の値を使うには、バージョンを明示した実装・適格性検証の変更が必要です。起動時およびclaim/reap（処理権の取得・期限切れ処理の回収）内では、ポリシーの改訂番号と全値の一致を引き続き必須とします。既存行のattempt_limitは上書きしません。過去の行をリセット、埋戻し、暗黙の終端化することもありません。
+
+当時の追加作業は、上限・下限・大小逆転の境界をSQLテストへ追加することです。実行時の起動処理も、期待するポリシーを適用する前に検証します。この判断は新しいv0ポリシーの運用設定範囲だけを狭め、既存のDomain/Audit行と既定の設定内容を維持します。

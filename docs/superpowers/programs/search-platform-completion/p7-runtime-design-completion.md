@@ -1,87 +1,100 @@
-# P7 Production Runtime / Deployment / SLO — completion 設計提案
+<a id="p7-production-runtime--deployment--slo--completion-設計提案"></a>
+# P7 本番ランタイム・配備・SLOの完成に向けた設計提案
 
-Status: **PROPOSAL / 独立 architecture・security review 前 / Freeze 前**（2026-09-30）。本書は runtime 組み立てと運用資格の設計案であり、production 実装、Graph/Vector 採用、SLO 保証、live deployment の証拠ではない。規範正本は `spec/`。独立 review の指摘を解消した後だけ runtime freeze と code task に進む。
+[翻訳元の固定公開原文（commit 0ecf486719e3c9d71242e289a7564ad6d1032b3c）](https://github.com/AIrisu-072/knowledge-platform/blob/0ecf486719e3c9d71242e289a7564ad6d1032b3c/docs/superpowers/programs/search-platform-completion/p7-runtime-design-completion.md)
 
+本書は意味保存の日本語訳であり、原設計の再承認や資格の追加ではありません。既存の承認ハッシュは当時の原文・証拠を指し、訳文のハッシュではありません。以下の状態・手順・次の作業は当時の記録であり、現在の実行許可ではありません。最新の状態は[実行状態の正本](../../execution/search-platform-completion-program-status.md)を参照してください。旧見出しアンカーは明示IDで維持しています。Searchイベント処理記録（Search receipt）はDB上のイベント処理記録を指し、工程の検証記録・証拠（receipt）とは区別します。
+
+状態：**PROPOSAL（提案）/ 独立したアーキテクチャ・セキュリティレビュー前 / 凍結前**（2026-09-30）。本書はランタイムの組み立てと運用の資格判定に向けた設計案であり、本番実装、Graph/Vectorの採用、SLO保証、本番へのデプロイの証拠ではない。規範の正本は `spec/`。独立レビューの指摘を解消した後だけ、ランタイムの凍結とコード作業に進む。
+
+<a id="1-固定入力と責務境界"></a>
 ## 1. 固定入力と責務境界
 
-- 依頼文 §§14–18,20、Search v0 承認設計 §§61–64、`spec/operations/error-handling-resilience-requirements-v0.md` §§11–15、`spec/operations/observability-audit-requirements-v0.md` §§22–26 と Search/P4 追補を守る。論理分離を維持し、初期は単一 Rust application に組み立てる。物理 microservice 分割は行わない。
-- [P7 早期契約](p7-runtime-contract-draft.md) §§1–7 の composition/config/health/retention と、独立 GO 後の [共有 durable freeze](p7-shared-durable-freeze.md)（[元設計](p7-shared-durable-design.md)＋[改訂 1](p7-shared-durable-revision-1.md)）を合成する。後者の P7-01〜12 が global Source ownership、同一 PostgreSQL Source/current、generation READY、event origin、guard、durable pin、GC、別 DB restore を所有する。本書は第二の pointer、ledger、actor mint、Graph READY や outbox ack を設計しない。
-- P1 の実 Document snapshot/reader/Unit/coverage/lexical seal、P2 の neutral core と測定選定、P3 の backend 選定/Graph content、P4 の source-neutral registry・Remote TCP/保持、P5 の四 route/実送出、P6 の generic delivery/Search bridge の **accepted code slice** を組み立てる。各 lane の Freeze/plan と独立 receipt を実装時に照合する。未完了 lane を mock で production-ready と呼ばない。
-- P2 は測定後 `Disabled` または `Selected` を明示する。`Disabled` でも P2 neutral contract、P1 lexical、P3 Graph、Source current/final access、retention は必須。`Selected` の時だけ P2-07 の採択済み adapter と versioned P7 vector receipt を要求し、v1 bundle を暗黙変更しない。P3 は P3-P04 の独立採択前に Graph production READY/publish を開かない。非 PostgreSQL Graph 採択なら共有 atomicity/fence の別設計・独立審査を先に要する。
+- 依頼文 §§14–18,20、Search v0承認設計 §§61–64、`spec/operations/error-handling-resilience-requirements-v0.md` §§11–15、`spec/operations/observability-audit-requirements-v0.md` §§22–26とSearch/P4追補を守る。論理的な分離を維持し、初期は単一のRustアプリケーションに組み立てる。物理的なマイクロサービス分割は行わない。
+- [P7早期契約](p7-runtime-contract-draft.md) §§1–7の構成・設定・稼働状態・保持条件と、独立したGO判定後の[共有永続化基盤の凍結記録](p7-shared-durable-freeze.md)（[元設計](p7-shared-durable-design.md)＋[改訂1](p7-shared-durable-revision-1.md)）を統合する。後者のP7-01〜12が、全体で一意なSourceの所有権、同一PostgreSQL上のSourceと現在の世代、世代のREADY状態、イベント起点、構築ガード、永続的な世代固定、GC、別DBへの復元を所有する。本書では、第二のポインター、台帳、利用主体情報の発行処理、Graph READY、outboxの確認応答を設計しない。
+- P1の実Documentスナップショット・リーダー・Unit・網羅性・字句索引の完全性照合、P2の中立なCoreと測定による選定、P3のバックエンド選定とGraph内容、P4のSource種別に依存しない登録情報とRemote TCP・保持、P5の四つのルートと実送出、P6の汎用配送とSearch接続処理の**受入済みコード範囲**を組み立てる。各作業系統の凍結内容・計画と独立した検証記録を、実装時に照合する。未完了の系統を模擬実装で本番稼働準備完了と呼ばない。
+- P2は測定後に `Disabled` または `Selected` を明示する。`Disabled` でも、P2の中立な契約、P1の字句索引、P3 Graph、Sourceの現在状態と最終アクセス確認、保持条件は必須。`Selected` の場合だけ、P2-07の採択済みアダプターと版管理されたP7 Vector検証情報を要求し、v1の成果物一式を暗黙に変更しない。P3はP3-P04の独立採択前に、本番GraphのREADYと公開を有効にしない。PostgreSQL以外のGraphを採択する場合は、共有の原子性・フェンスについて別設計と独立審査を先に必要とする。
 
-| 既存 producer | runtime が消費するもの | 重複しない責務 |
+| 既存の生成側処理 | ランタイムが利用するもの | 重複させない責務 |
 | --- | --- | --- |
-| P7-01〜11、P7-12 | complete desired ledger、Source/current、READY/pin/GC、復元検証 | SQL migration、CAS、guard、lease、Search receipt、低層 restore を作り直さない。 |
-| P5-01〜08 | Search API の四 route、trusted Bearer→scope、DTO、二 lease と socket 送出、四 route factory | P7 は同じ factory を host process に載せる。別 HTTP handler/可視 catalog/credential verifier を作らない。 |
-| P6-G/S と I04 | generic runner、Search bridge、worker wiring/role split、fenced ack | P7 は同じ delivery instance を lifecycle 管理する。`delivered_at` は generic role だけが更新する。 |
-| P1/P3/P4 | Source-owned current read、実索引/Graph、Remote RAM evaluation | 新しい正本・永続 Remote generation・第二 Discovery loop を作らない。 |
+| P7-01〜11、P7-12 | 完全な期待登録集合の台帳、Sourceと現在の世代、READY・世代固定・GC、復元検証 | SQL移行、CAS、ガード、リース、Searchイベント処理記録、下位層の復元を作り直さない。 |
+| P5-01〜08 | Search APIの四つのルート、信頼されたBearerからスコープへの変換、DTO、二つのリースとソケット送出、四ルートのファクトリー | P7は同じファクトリーをホストプロセスに載せる。別のHTTPハンドラー、可視性カタログ、認証情報の検証処理を作らない。 |
+| P6-G/SとI04 | 汎用ランナー、Search接続処理、ワーカーの接続とロール分離、フェンス付き確認応答 | P7は同じ配送インスタンスのライフサイクルを管理する。`delivered_at` は汎用配送ロールだけが更新する。 |
+| P1/P3/P4 | Sourceが所有する現在状態の読み取り、実索引とGraph、RemoteのRAM内評価 | 新しい正本、永続的なRemote世代、第二のDiscoveryループを作らない。 |
 
-## 2. Composition root と起動・停止
+<a id="2-composition-root-と起動停止"></a>
+## 2. 構成起点と起動・停止
 
-`search-runtime` の一つの `ProductionRuntimeFactory`（概念名）が host 注入 port、typed config snapshot、選定 receipt を入力し、`SearchRuntime` を一度だけ構築する。P5-08 の四 route factory と P6-I04 の worker wiring はこの factory に接続する既存 producer とする。同じ artifact は API と Search worker を同一 process で走らせられる。既存 P6 worker entrypoint を資格試験や worker-only 運転に使う場合も同じ factory/Source row を使用し、別 service 正本は設けない。Graph は内部 retriever から既存 federation/Discovery pipeline に戻す。
+`search-runtime` の一つの `ProductionRuntimeFactory`（概念名）が、ホストから注入されたポート、型付き設定スナップショット、選定の検証記録を入力とし、`SearchRuntime` を一度だけ構築する。P5-08の四ルートのファクトリーとP6-I04のワーカー接続処理は、このファクトリーに接続する既存の生成側処理とする。同じ成果物でAPIとSearchワーカーを同一プロセスで動かせる。既存P6のワーカー用エントリーポイントを資格試験やワーカー単独運転に使う場合も、同じファクトリーとSource行を使用し、別サービスの正本は設けない。Graphは内部検索器から既存の横断検索・Discovery処理経路に戻す。
 
-起動 admission は次の順で fail closed とする。各段階は診断 code と対象 component category のみを記録し、tenant/Source/credential 等を public health に載せない。
+起動の許可判定は、次の順で安全側に倒して拒否する。各段階では診断コードと対象構成要素の分類だけを記録し、テナント・Source・認証情報などを公開の稼働状態に載せない。
 
-1. host-supplied config を parse/validate し、配置・容量・期限階層・retention・logging/dump policy と必須 `SecretRef` を検証する。値を config snapshot/log に保持しない。
-2. privileged migration phase の完了を確認する。Domain `0009` → Search `0001` → P7 `0002+`、選定後の Graph ledger を checksum と順序で検証し、serve/claim 用実 DB role の grant、trigger、RLS/権限境界を別接続で確認する。migration 実行権と通常 API/worker 権を同じ接続 role に与えない。未証明の legacy Source backfill は拒否する。
-3. trusted host の Document/Remote **全 tenant・namespace ごと完全 desired snapshot**を同じ P7-02 ledger に reconcile し、global SourceId/tenant/kind/activation/current invariant を確認する。P4 `TrustedSearchScope`/`AuthorizedSourceScope`、P5 credential verifier/identity/current visibility と P7 host scope reference を一つの trusted chain に接続する。
-4. P7-12 の current bundle 検証を通す。実 lexical directory と P3 Graph、採択時 Vector の key/digestを再 open し、失われた Source は unavailable にして再構築待ちにする。Remote RAM generation、session/cursor は restart 後復元しない。
-5. Document Source/実 extraction runner、Projection/lexical、Graph、Remote adapter、P2 mode、Search/Discovery application、P5 API router、P6 generic+Search delivery、Audit、OTel を接続する。必須 port 未配線、test fake/MemoryDocumentIndexRuntime、未資格 Graph/Vector、identity なしでは API accept と claim を開かない。
-6. readiness が安全な応答を確認してから listener と claim poll を開く。shutdown は新規 HTTP/claim/Source lease を止め、進行 request と outbox/Source lease の bounded drain・cancel を行う。未確認 event を ack せず、pin/disclosure lease を閉じる。期限内に終わらなければ fence に回収を任せ、成功に変換しない。
+1. ホストから提供された設定を解析・検証し、配置、容量、期限の階層、保持条件、ログ・ダンプのポリシーと、必須の `SecretRef` を検証する。秘密値を設定スナップショットやログに保持しない。
+2. 特権を伴う移行段階の完了を確認する。Domain `0009` → Search `0001` → P7 `0002+`と、選定後のGraph台帳をチェックサムと順序で検証する。応答提供・処理権取得用の実DBロールの権限付与、トリガー、RLS・権限境界を別接続で確認する。移行実行権と通常のAPI・ワーカー権限を、同じ接続ロールに与えない。証明できない旧形式Sourceの遡及補完は拒否する。
+3. 信頼されたホストのDocument/Remoteについて、**全テナント・名前空間ごとの完全な期待登録スナップショット**を同じP7-02台帳に照合・同期し、全体で一意なSourceId、テナント、種別、有効化、現在状態の不変条件を確認する。P4の `TrustedSearchScope`/`AuthorizedSourceScope`、P5の認証情報検証・識別情報・現在の可視性、P7のホストスコープ参照を、一つの信頼の連鎖に接続する。
+4. P7-12の現在の成果物一式の検証を通す。実際の字句索引ディレクトリとP3 Graph、採択時のVectorを再オープンしてキーとダイジェストを確認し、失われたSourceは利用不可にして再構築待ちにする。RemoteのRAM世代、セッション、カーソルは再起動後に復元しない。
+5. Document Sourceと実抽出ランナー、Projectionと字句索引、Graph、Remoteアダプター、P2モード、Search/Discoveryアプリケーション、P5 APIルーター、P6の汎用配送とSearch配送、Audit、OTelを接続する。必須ポートの未接続、テスト用の代替物やMemoryDocumentIndexRuntime、未資格のGraph/Vector、識別情報の欠落があれば、API受け付けと処理権の取得を有効にしない。
+6. 準備完了判定で安全に応答できることを確認してから、リスナーと処理権取得のポーリングを有効にする。停止時は新規HTTP受け付け、処理権取得、Sourceリースを止め、進行中の要求とoutbox/Sourceリースについて、上限付きの処理完了待ちとキャンセルを行う。未確認イベントには確認応答せず、世代固定・開示リースを閉じる。期限内に終わらなければ、フェンスに回収を任せ、成功に変換しない。
 
-## 3. Typed config と secret・権限
+<a id="3-typed-config-と-secret権限"></a>
+## 3. 型付き設定、秘密情報、権限
 
-`RuntimeConfig` は config file の versioned schema に host environment の **参照値** override を適用した immutable snapshot とする。優先順位、override allowlist、設定 revision、unknown field 拒否を固定し、再読込は新 snapshot の validation→complete desired reconcile→段階的切替の transaction として扱う。provider/request から構成値を変更できない。具体秒数と production capacity は測定後に決める。
+`RuntimeConfig` は、設定ファイルの版管理されたスキーマに、ホスト環境からの**参照値**の上書きを適用した、変更不能なスナップショットとする。優先順位、上書きの許可リスト、設定の改訂番号、未知フィールドの拒否を固定する。再読込は、新スナップショットの検証 → 完全な期待登録集合の照合・同期 → 段階的切替というトランザクションとして扱う。プロバイダーや要求から構成値を変更できない。具体的な秒数と本番の処理容量は、測定後に決める。
 
-| typed 群 | 必須検証 |
+| 型付き設定の群 | 必須の検証 |
 | --- | --- |
-| `DeploymentMode`, `TenantMode`, `RuntimePaths` | trusted tenant 一致、data/index/staging root の所有/書込権、同 filesystem の atomic rename、空き容量と mount、外部向け bind/listener。production に暗黙 path/default を置かない。 |
-| `DatabaseRef`, `GraphStoreRef`, `SearchRoleRefs` | endpoint 参照、schema/ledger、migrator・registration・builder・coordinator・reader・GC・generic delivery の分離。P7-03 と P6-I04 の実 grant を検査。Graph backend は P3 receipt に従う。 |
-| `CompleteDesiredRegistrations`, `ProviderConfig` | Document/Remote 各 namespace 全 tenant snapshot revision/digest、固定 origin/許可 transport、rate/response/resource/deadline/retention、grant proof。host だけが発行し、Remote 失敗で登録正本を消さない。 |
-| `RuntimeLimits`, `DeadlinePolicy`, `WorkerPolicy` | P5 公開 hard limit と P1 parser/ZIP resource limit、P6 DB policy の範囲に収める。`client > operation > dependency` と残余 budget、bounded queue/in-flight/lease/drainを検証。初期安全上限を SLO と呼ばない。 |
-| `TelemetryConfig`, `AuditConfig`, `SecurityConfig` | exporter/collector 参照、別の保持・閲覧権限、bounded buffer/drop、request/body debug log 無効、core dump policy、NO_RETENTION の漏出防止。 |
+| `DeploymentMode`, `TenantMode`, `RuntimePaths` | 信頼されたテナントとの一致、データ・索引・準備領域のルートの所有権と書込権、同一ファイルシステム上の原子的な名前変更、空き容量とマウント、外部向けバインドとリスナー。本番に暗黙のパスや既定値を置かない。 |
+| `DatabaseRef`, `GraphStoreRef`, `SearchRoleRefs` | 接続先参照、スキーマと台帳、移行担当・登録担当・構築側・調整担当・読み取り側・GC・汎用配送の分離。P7-03とP6-I04の実際の権限付与を検査する。GraphバックエンドはP3の選定記録に従う。 |
+| `CompleteDesiredRegistrations`, `ProviderConfig` | Document/Remoteの各名前空間について、全テナントのスナップショット改訂番号とダイジェスト、固定の起点と許可通信方式、レート・応答・リソース・期限・保持条件、権限付与の証明。ホストだけが発行し、Remoteの失敗で登録正本を消さない。 |
+| `RuntimeLimits`, `DeadlinePolicy`, `WorkerPolicy` | P5の公開された厳格な上限、P1のパーサー/ZIP資源上限、P6のDBポリシーの範囲に収める。`client > operation > dependency` と残余予算、キュー・同時処理・リース・処理完了待ちの上限を検証する。初期の安全上限をSLOと呼ばない。 |
+| `TelemetryConfig`, `AuditConfig`, `SecurityConfig` | エクスポーターとコレクターの参照、それぞれの保持・閲覧権限、上限付きバッファーと破棄、要求・本文のデバッグログ無効化、コアダンプのポリシー、NO_RETENTIONの漏出防止。 |
 
-`SecretRef` は DB/provider/identity/Audit/OTel 用の不透明参照で、host `SecretResolverPort` が adapter 構築時だけ値を解決する。参照は config に置けるが、秘密値は serialized config、`Debug`、panic、trace、audit、manifest、CLI error に出さない。必須 secret が未解決なら該当 adapter を起動しない。権限不要の component に secret を渡さない。secret provider/credential 実値は本提案で選ばず読まない。
+`SecretRef` はDB・プロバイダー・識別情報・Audit・OTel用の不透明な参照で、ホストの `SecretResolverPort` がアダプター構築時だけ値を解決する。参照は設定に置けるが、秘密値は直列化された設定、`Debug`、panic、トレース、監査、マニフェスト、CLIエラーに出さない。必須の秘密情報が未解決なら、該当アダプターを起動しない。権限を必要としない構成要素には秘密情報を渡さない。秘密情報の提供元と認証情報の実値は、本提案で選定も読み取りも行わない。
 
-## 4. Health、degraded、診断
+<a id="4-healthdegraded診断"></a>
+## 4. 稼働状態、機能低下、診断
 
-| signal | 判定と公開境界 |
+| 信号 | 判定と公開境界 |
 | --- | --- |
-| liveness | event loop と停止受付の応答。DB/Remote 一時障害で無条件に再起動ループにしない。公開応答は固定 code のみ。 |
-| global readiness | trusted identity/credential/visibility、完全 registry、DB schema/grants、Source/current gate、選定済み Graph・P1 index・P5 API final gate、必須 Audit event 生成経路、P6 claim/fenceが安全に使えること。未配線/不一致なら listener は 503、claim 停止。 |
-| Source readiness | 管理用・認証済み診断で `ready/rebuilding/degraded/unavailable`、current key/pointer revision、P1 Unit/coverage/lexical、P3 Graph、選定時 Vector、Remote expiry、outbox backlog/oldest age/DLQ を別 signal として示す。 |
+| 生存確認 | イベントループと停止受け付けの応答。DB/Remoteの一時障害で無条件に再起動ループにしない。公開応答は固定コードだけとする。 |
+| 全体の準備完了状態 | 信頼された識別情報・認証情報・可視性、完全な登録情報、DBスキーマと権限付与、Sourceと現在状態の確認、選定済みGraph・P1索引・P5 APIの最終ゲート、必須Auditイベントの生成経路、P6の処理権取得とフェンスを安全に使えること。未接続や不一致があれば、リスナーは503を返し、処理権取得を停止する。 |
+| Sourceの準備完了状態 | 管理用の認証済み診断で、`ready/rebuilding/degraded/unavailable`、現在の世代キーとポインター改訂番号、P1のUnit・網羅性・字句索引、P3 Graph、選定時のVector、Remoteの有効期限、outboxの処理待ち件数・最古の処理待ち時間・DLQを、それぞれ別の信号として示す。 |
 
-一部 Remote outage だけなら、その Source を degraded にし、安全な他の actor-visible Source を P5 の partial/evidence 規則で扱う。Source に依存する Required evidence は sufficient にしない。registry/visibility 全体、current final gate、必須 local Source の安全性を失った場合は partial 200 を作らない。hidden Source の ID、存在、障害、count は public health/Problem/gap/trace に出さない。readiness は freshness 保証ではなく、commit-to-visible lag と Source snapshot 差分は別に測る。alert 閾値は実測後に設定する。
+一部のRemote停止障害だけであれば、そのSourceを機能低下状態とし、安全で利用主体から見える他のSourceを、P5の部分応答・証拠の規則で扱う。そのSourceに依存するRequired（必須）の証拠を、十分と判定しない。登録情報・可視性の全体、現在状態の最終ゲート、必須ローカルSourceの安全性を失った場合は、部分的な200応答を作らない。不可視SourceのID、存在、障害、件数は、公開の稼働状態・Problem・欠落情報・トレースに出さない。準備完了状態は鮮度の保証ではない。コミットから検索可能になるまでの遅延と、Sourceスナップショットの差分は別に測る。アラートの閾値は実測後に設定する。
 
-## 5. Recovery、backup、運用操作
+<a id="5-recoverybackup運用操作"></a>
+## 5. 復旧、バックアップ、運用操作
 
-P7-12 の key/receipt/file/Graph 検証と P6-S07 の二重 fence/outbox replay は**既存の資格**として再利用する。runtime はそれらを呼ぶ起動手順、operator command、runbook と HTTP/worker 再開判定を所有する。
+P7-12のキー・検証情報・ファイル・Graphの検証と、P6-S07の二重フェンス・outbox再実行は、**既存の資格**として再利用する。ランタイムは、それらを呼ぶ起動手順、運用者コマンド、運用手順書、HTTP・ワーカーの再開判定を所有する。
 
-- full index rebuild と Graph rebuild は Source 正本の current Version/Part/raw/retention を再読し、新しい `(SourceId,generation)` の BUILDING→READY→guarded CAS を使う。古い current/pin を上書きせず、未完了 outbox row を manual rebuild で ack しない。部分失敗・`Retryable`・外部 file 不足は公開しない。incremental cursor が証明不能なら別 key の full rebuild に戻す。
-- restart/kill/interrupted generation/stale generation/commit 応答不明では migration/role/registry と current 実体を再検査する。current、pin、guard を一つの DB clock/fence で管理し、remote evaluation/cursor/session RAM は stale にする。corrupt derived row/file を quarantine/unavailable とし、別 key へ暗黙切替えず再構築する。
-- backup は PostgreSQL、immutable lexical bytes、選定 Graph の必要 bytes/schema、artifact version と digest を一組の manifest にする。復元試験は disposable な**別 DB と別 index root**で実行し、同 key/receipt と実 query を検証してから accept する。DB のみ戻して file 不在の状態を ready としない。secret 値を backup に含めない。
-- runbook は safe stop、lease expiry/unknown commit、provider outage、DLQ、lag、stale/corrupt key、rebuild、backup/restore、role/schema 不一致、rollback（immutable artifact/旧 current 保護）を command と観測証拠つきで記す。不可逆 migration や live 切替は別の Hard Stop 判定に送る。
+- 索引全体とGraphの再構築は、Source正本の現在のVersion・Part・原データ・保持条件を再読し、新しい `(SourceId,generation)` のBUILDING → READY → ガード付きCASを使う。古い現在の世代や世代固定を上書きせず、未完了outbox行に手動再構築から確認応答しない。部分失敗、`Retryable`、外部ファイル不足の場合は公開しない。増分処理カーソルを証明できなければ、別キーでの完全再構築に戻す。
+- 再起動、強制終了、中断した世代、古い世代、コミット応答不明の場合は、移行・ロール・登録情報と、現在の世代の実体を再検査する。現在の世代、世代固定、ガードを一つのDB時計とフェンスで管理し、Remote評価・カーソル・セッションのRAM状態は無効な古い状態とする。破損した派生行やファイルを隔離・利用不可にし、別キーへ暗黙に切り替えず再構築する。
+- バックアップは、PostgreSQL、変更不能な字句索引のバイト列、選定済みGraphに必要なバイト列とスキーマ、成果物の版とダイジェストを、一組のマニフェストにする。復元試験は使い捨ての**別DBと別索引ルート**で実行し、同一のキー・検証情報と実際の検索を検証してから受け入れる。DBだけを戻し、ファイルがない状態を準備完了にしない。秘密値をバックアップに含めない。
+- 運用手順書には、安全な停止、リース失効・コミット結果不明、プロバイダー停止障害、DLQ、遅延、古いキー・破損キー、再構築、バックアップ・復元、ロール・スキーマ不一致、ロールバック（変更不能な成果物と旧現在世代の保護）を、コマンドと観測証拠付きで記す。不可逆な移行や本番切替は、別のHard Stop（強制停止条件）判定に送る。
 
+<a id="6-auditopentelemetry保持"></a>
 ## 6. Audit・OpenTelemetry・保持
 
-P5/P4 の final actor/Source/item/field/Graph participant gate 後だけ公開 DTO を送出する。`NO_RETENTION` は P4 evaluation RAM lease と P5 `TransientDisclosure<T>` の二段階寿命を同じ send completion/error/cancel/disconnect/deadline で閉じ、cache/cursor/disk/spool/dump/fixture/trace/audit に payload を残さない。復旧・benchmark の synthetic data もこの retention 契約を破らない。
+P5/P4で利用主体・Source・項目・フィールド・Graph参加者の最終ゲートを通した後だけ、公開DTOを送出する。`NO_RETENTION` は、P4の評価用RAMリースとP5の `TransientDisclosure<T>` の二段階の寿命を、同じ送出完了・エラー・キャンセル・切断・期限で閉じる。キャッシュ、カーソル、ディスク、スプール、ダンプ、フィクスチャ、トレース、監査にペイロードを残さない。復旧・ベンチマークの合成データも、この保持契約を破らない。
 
-trace は `discovery_evaluation_id`、`need_id`、`projection_generation`、route、candidate、Graph expansion、probe、materialization、evidence sufficiency、Remote call、outbox lag、extraction state を固定 stage/code/count/duration で相関する。ただし ID は適切な限定 trace/evaluation artifact に留め、metric label は stage/status/source category など低 cardinality の allowlist のみ。本文、query 全文、provider native locator、Graph path、秘密値は通常 log/trace/audit に複製しない。隠れた Source の count も外に出さない。
+トレースでは、`discovery_evaluation_id`、`need_id`、`projection_generation`、ルート、候補、Graph展開、調査、実体取得、証拠充足度、Remote呼び出し、outbox遅延、抽出状態を、固定された段階・コード・件数・所要時間で関連付ける。ただし、IDは適切に限定されたトレース・評価成果物に留める。メトリクスのラベルは、段階・状態・Source分類など、種類数の少ない許可リストだけとする。本文、検索要求の全文、プロバイダー固有の位置指定子、Graph経路、秘密値を、通常のログ・トレース・監査に複製しない。不可視Sourceの件数も外に出さない。
 
-必須 Audit event の transactional creation 失敗は対応する business transaction を commit しない。作成後の Audit Store 配送失敗は audit outbox の retry、OTel collector 停止は bounded buffer/drop とし、Audit と OTel の役割・retention・閲覧権を分ける。Search receipt、generic outbox ack、Audit outbox を混同しない。
+必須Auditイベントのトランザクション内での生成が失敗した場合は、対応する業務トランザクションをコミットしない。生成後のAudit Storeへの配送失敗は監査outboxからの再試行で扱い、OTelコレクター停止は上限付きのバッファーと破棄で扱う。AuditとOTelの役割、保持条件、閲覧権を分ける。Searchイベント処理記録、汎用outboxの確認応答、Audit outboxを混同しない。
 
-## 7. 容量・負荷・SLO と deployment-ready 判定
+<a id="7-容量負荷slo-と-deployment-ready-判定"></a>
+## 7. 容量・負荷・SLOと配備準備完了の判定
 
-load harness は実 runtime の synthetic/public corpus を小・中・大の**複数規模**で走らせる。件数・同時数・試行時間は host の空き disk/RAM、P1/P3 index bytes、P6 backlog と実行前 reserve を測り、実行可能な envelope を先に書いて決める。測定は indexing/extraction/outbox throughput、HTTP Search/Discover p50/p95/p99、Graph traversal、Remote fanout、memory/disk、full/Graph rebuild、restart recovery、Vector 選定時の index/query、Agent 連携時の context tokens を含む。選定外 Vector や Agent 不在は `N/A` と原因を記す。paired baseline、seed、code SHA、config/role、fixture hash、hardware、warm/cold、fault schedule、repeat と分布を保存し、quality stage 別 evaluation と接続する。
+負荷試験ハーネスは、実ランタイムで合成・公開コーパスを、小・中・大の**複数規模**で実行する。件数・同時数・試行時間は、ホストの空きディスク・RAM、P1/P3の索引バイト数、P6の処理待ち件数、実行前の予約資源を測り、実行可能範囲を先に記して決める。測定には、索引作成・抽出・outboxの処理量、HTTP Search/Discoverのp50/p95/p99、Graph探索、Remoteの呼び出し先数（fanout）、メモリー・ディスク、完全再構築・Graph再構築、再起動復旧、Vector選定時の索引・検索、Agent連携時のコンテキストトークン数を含める。選定外のVectorやAgent不在は `N/A` と理由を記す。対にしたベースライン、乱数シード、コードSHA、設定・ロール、フィクスチャのハッシュ、ハードウェア、warm/cold、障害投入予定、繰り返しと分布を保存し、品質の段階別評価に結び付ける。
 
-観測 capacity envelope、想定業務 traffic/concurrency と失敗許容を照合した**後**に `proposed operational SLO` を別文書で提案する。benchmark 観測値、運用提案値、対外保証値は別欄とし、対外保証はこの task で設定しない。閾値が決まらない場合は追加測定/業務前提収集の bounded task とし、数値を先に発明しない。
+観測した処理容量の範囲、想定業務のトラフィック・同時数、許容する失敗を照合した**後**に、`proposed operational SLO`（運用SLOの提案）を別文書で示す。ベンチマーク観測値、運用提案値、対外保証値は別欄とし、この作業では対外保証を設定しない。閾値が決まらない場合は、範囲を限定した追加測定や業務前提の収集を作業にし、数値を先に発明しない。
 
-deployment-ready artifact は既存 `Dockerfile`/`mise.toml` の拡張による reproducible Linux OCI/binary、必要 worker/parser pin、non-root filesystem/mount・health/signal、config schema/example（参照のみ）、one-shot migration/role check、runbook、artifact digest/SBOM と local disposable DB/Remote TCP の実 smoke で判定する。specific cloud/orchestrator や live production target はここで選ばない。資格試験用 fixture identity/provider は host real credential の代替証拠にしない。merge、live deploy、本番 migration は行わない。
+配備準備完了は、既存の `Dockerfile`/`mise.toml` の拡張による再現可能なLinux OCI・バイナリー、必要なワーカー・パーサーの版固定、非rootでのファイルシステム・マウントと稼働状態・信号処理、設定スキーマと例（参照のみ）、一回限りの移行・ロール確認、運用手順書、成果物ダイジェスト・SBOM、ローカルの使い捨てDBとRemote TCPによる実際の基本動作確認で判定する。特定のクラウド・オーケストレーターや本番配備先は、ここでは選ばない。資格試験用のフィクスチャ識別情報・プロバイダーを、ホストの実認証情報の代替証拠にしない。マージ、本番へのデプロイ、本番移行は行わない。
 
-## 8. 未解決の技術判定と review gate
+<a id="8-未解決の技術判定と-review-gate"></a>
+## 8. 未解決の技術判定とレビューゲート
 
-1. P3-P04 の Graph 採択と `GraphReceiptMappingV1` 二 encoder、P2 Disabled/Selected と採択時 vector receipt。これらは lane の実測・独立判定を消費する。非 PG Graph なら共有 publication protocol の再設計・独立 review が必要。
-2. P5/P4 の実 host identity/Source authority、P7 `HostScopeReferencePort` の restart 後再解決、provider secret resolver 実接続、P6/P7 実 DB role。port/fixture だけでは live authority を主張しない。
-3. request/dependency/lease/drain timeout、capacity reserve、alert、operational SLO は P5/P6 安全上限と実負荷・故障測定から決める。Audit policy・各 signal retention の数値も既存規範と運用要件に照合する。
+1. P3-P04のGraph採択と `GraphReceiptMappingV1` の二つのエンコーダー、P2のDisabled/Selected、採択時のVector検証情報。これらには、各作業系統の実測と独立判定を利用する。非PGのGraphなら、共有公開プロトコルの再設計と独立レビューが必要。
+2. P5/P4の実ホスト識別とSourceの正本、P7の `HostScopeReferencePort` の再起動後の再解決、プロバイダーの秘密情報解決処理の実接続、P6/P7の実DBロール。ポートやフィクスチャだけでは、実際の正本性を主張しない。
+3. 要求・依存先・リース・処理完了待ちのタイムアウト、処理容量の予約分、アラート、運用SLOは、P5/P6の安全上限と実負荷・故障測定から決める。Auditポリシーと各信号の保持数値も、既存規範と運用要件に照合する。
 
-独立 architecture/security review は、P1〜P6 freeze と P7 shared freeze の意味を再審議せず、組立て時の権限・保持・復旧・NO_RETENTION・役割/秘密・degraded/partial・循環依存・測定可能性を確認する。P1/P2 blocker は修正→別 reviewer 再審査を経てから Freeze とする。
+独立したアーキテクチャ・セキュリティレビューは、P1〜P6の凍結とP7共有基盤の凍結の意味を再審議せず、組み立て時の権限、保持、復旧、NO_RETENTION、役割と秘密情報、機能低下・部分応答、循環依存、測定可能性を確認する。P1/P2の阻害要因は、修正 → 別レビュアーによる再審査を経てから凍結とする。

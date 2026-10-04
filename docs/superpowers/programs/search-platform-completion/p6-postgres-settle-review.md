@@ -1,17 +1,21 @@
-# P6-G03 PostgreSQL fenced settle 独立レビュー
+<a id="p6-g03-postgresql-fenced-settle-独立レビュー"></a>
+# P6-G03 PostgreSQLのフェンス付き結果確定の独立レビュー
 
-- 判定: **G03 限定 GO**。対象は `PostgresOutboxStore::renew`、`settle_success`、`settle_failure` と `postgres_settle.rs` の実 PostgreSQL 試験。G04 reaper、runner、Search publish/receipt、実 role 権限、P6 全体、本番配備の GO ではない。
-- 確認: 2026-09-30 JST、`feat/search-platform-completion-core@80a47960d025e4dfdea1eacade28b15d218725ff` の未コミット作業木。`p6-outbox-freeze.md`、`p6-outbox-design-revision-1.md` §3、`p6-outbox-plan.md` G03、G02 review、policy bounds / policy lock role ruling と照合した。
+[固定された公開原文](https://github.com/AIrisu-072/knowledge-platform/blob/0ecf486719e3c9d71242e289a7564ad6d1032b3c/docs/superpowers/programs/search-platform-completion/p6-postgres-settle-review.md)に対応する意味保存の日本語訳です。原設計の再承認、実装・実行時の適格性検証の追加ではありません。既存ハッシュと実行結果は当時の原文・証拠を指し、訳文のハッシュや現在の検証結果ではありません。以下の状態と次の作業は当時の記録です。[最新の実行状態](../../execution/search-platform-completion-program-status.md)を優先してください。
+
+- 判定: **G03 限定 GO**。対象は `PostgresOutboxStore::renew`、`settle_success`、`settle_failure` と `postgres_settle.rs` の実 PostgreSQL 試験。G04 上限到達行の回収処理、ランナー、Searchの公開・イベント受領記録、実際のロール権限、P6 全体、本番配備の GO ではない。
+- 確認: 2026-09-30 JST、`feat/search-platform-completion-core@80a47960d025e4dfdea1eacade28b15d218725ff` の未コミット作業木。`p6-outbox-freeze.md`、`p6-outbox-design-revision-1.md` §3、`p6-outbox-plan.md` G03、G02 レビュー、ポリシーの上限・下限とロック用ロールの判断と照合した。
 
 ## G03 の照合
 
-- `crates/outbox-delivery/src/postgres.rs:224-260` の renew、`:263-291` の ack、`:294-347` の fail は、各 statement 内で materialized `clock_timestamp()` を一度採り、event ID・現 token・未 delivered/dead・`lease_expires_at > tick.t` を条件にする。0 行の確定結果だけを `Lost`、SQL/connection/commit error を `StoreUnknown` にする。期限切れまたは旧 token による mutation は試験で拒否されている。
-- ack は `delivered_at` と lease の消去だけを行う。fail は DB 行の `attempt_limit` を使い、terminal または上限到達なら `dead_lettered_at` を設定し、その他は DB tick から bounded backoff 後の `available_at` を設定する。両方とも lease を消す。`last_error_code` は `ErrorCode` の固定 allowlist から bind し、原 event/payload、Domain 業務行、Audit 行を更新しない。Search/P7 crate の import もない。
-- `postgres.rs:303-310` は整数ミリ秒の backoff を期待 policy の範囲内で検証してから DB に渡す。現行 v0 範囲は 1,000–300,000 ms。`renew` の lease は既存の `validate_claim` を使い、1,000–120,000 ms に限定する。policy の revision/全値一致は起動・claim・reap での条件であり、G03 の settle で policy 行を lock しない実装は Freeze と ruling に整合する。
-- `postgres_settle.rs:119-239` は旧 token・expiry ちょうど/超過で3操作が `Lost` かつ行不変、現 token での ack と renew の DB 時刻境界を確認する。`:241-398` は範囲外/端数 backoff の拒否、retry 時刻、terminal、行別 limit 1/8/32 の最終試行 DLQ、lease 消去、payload 保存を確認する。
-- `postgres_settle.rs:400-507` の TCP proxy は実 COMMIT を PostgreSQL に転送し、サーバーの committed `ReadyForQuery` を受けた後に client 側へ応答を返さず切断する。呼出側は `StoreUnknown`、別の直接接続による再読は `delivered_at` と lease 消去を確認し、旧 token の再 ack は `Lost`。`:509-551` は閉じた pool で3操作とも `StoreUnknown` と行不変を確認する。proxy 試験が示すのは ack の commit 応答喪失であり、Search publish transaction の未知 commit は後続 S07 の対象。
+- `crates/outbox-delivery/src/postgres.rs:224-260` のリース更新、`:263-291` の配送成功確定、`:294-347` の失敗結果の確定は、各 SQL文内で実体化した `clock_timestamp()` を一度採り、イベントID・現トークン・配送済み・デッドレター化済みのどちらでもない・`lease_expires_at > tick.t` を条件にする。0 行の確定結果だけを `Lost`、SQL/接続/コミットエラーを `StoreUnknown` にする。期限切れまたは旧トークンによる変更操作は試験で拒否されている。
+- 配送成功確定は `delivered_at` への記録とリースの消去だけを行う。失敗結果の確定は DB 行の `attempt_limit` を使い、終端状態または上限到達なら `dead_lettered_at` を設定し、その他は DBで取得した時刻から上限付き再試行待機後の `available_at` を設定する。両方ともリースを消す。`last_error_code` は `ErrorCode` の固定許可リストからバインドし、原イベント/ペイロード、Domain 業務行、Audit 行を更新しない。Search/P7 クレートのインポートもない。
+- `postgres.rs:303-310` は整数ミリ秒の再試行待機を期待ポリシーの範囲内で検証してから DB に渡す。現行 v0 範囲は 1,000–300,000 ms。`renew` のリースは既存の `validate_claim` を使い、1,000–120,000 ms に限定する。ポリシーの改訂番号/全値一致は起動・処理権取得・期限切れ処理の回収での条件であり、G03 の配送結果確定でポリシー行をロックしない実装は設計凍結と判断に整合する。
+- `postgres_settle.rs:119-239` は旧トークン・有効期限ちょうど/超過で3操作が `Lost` かつ行不変、現トークンでの配送成功確定とリース更新の DB 時刻境界を確認する。`:241-398` は範囲外/端数再試行待機の拒否、再試行時刻、終端状態、行別試行上限 1/8/32 の最終試行 DLQ、リース消去、ペイロード保存を確認する。
+- `postgres_settle.rs:400-507` の TCPプロキシは実 COMMIT を PostgreSQL に転送し、サーバーのコミット済みの `ReadyForQuery` を受けた後にクライアント側へ応答を返さず切断する。呼出側は `StoreUnknown`、別の直接接続による再読は `delivered_at` とリース消去を確認し、旧トークンの再配送成功確定は `Lost`。`:509-551` は閉じた接続プールで3操作とも `StoreUnknown` と行不変を確認する。プロキシ試験が示すのは配送成功確定のコミット応答喪失であり、Search公開トランザクションのコミット結果不明は後続 S07 の対象。
 
-## 入力と fresh verification
+<a id="入力と-fresh-verification"></a>
+## 入力と新たな検証
 
 | 対象 | SHA-256 |
 |---|---|
@@ -28,11 +32,12 @@
 | `p6-policy-bounds-ruling.md` | `e9903fc0ad254303c180e5086bf3fc58de09bfbc1fad311187400c8481b17dfa` |
 | `p6-policy-lock-role-ruling.md` | `6ad8420a5e2257c7dc5cfe6a744b496e03c793179ec706e5ce80ff282248ee7d` |
 
-- 主対象の `postgres.rs` / `postgres_settle.rs` と SQL、plan、Freeze、G02 review、二つの ruling、binary の hash は監査開始時と終了時に同一。補助入力の model / policy / design は終了時に上表の hash を確認した。Fresh 実行: `target/debug/deps/postgres_settle-b47b8b2e20c9128a --test-threads=1 --nocapture`、**4 passed / 0 failed / exit 0 / 49.52 s**。fixture は cached `postgres:18.6-bookworm`（image ID `sha256:3725f4e2499eef5134592b3b4ab79a543ed7f8e533b05b5b637af926630f6650`）。試験後に同 image の稼働 container はない。既存の停止済み container は操作していない。
-- Fresh `rustfmt --check --edition 2024 crates/outbox-delivery/src/postgres.rs crates/outbox-delivery/tests/postgres_settle.rs` は exit 0。今回 Cargo 再コンパイル・strict Clippy は実行していない。binary 更新時刻は対象 source/test/migration より後だが、時刻と hash だけでは現行ファイルの exact bytes から build された暗号学的証明にはならない。ここでの動的証拠は **記録した cached binary** の fresh 実 DB 実行である。
+- 主対象の `postgres.rs` / `postgres_settle.rs` と SQL、計画、設計凍結、G02 レビュー、二つの判断、バイナリのハッシュは監査開始時と終了時に同一。補助入力のモデル / ポリシー / 設計は終了時に上表のハッシュを確認した。新たな実行: `target/debug/deps/postgres_settle-b47b8b2e20c9128a --test-threads=1 --nocapture`、**4 passed / 0 failed / exit 0 / 49.52 s**。フィクスチャはキャッシュ済みの `postgres:18.6-bookworm`（イメージ ID `sha256:3725f4e2499eef5134592b3b4ab79a543ed7f8e533b05b5b637af926630f6650`）。試験後に同イメージの稼働コンテナはない。既存の停止済みコンテナは操作していない。
+- 新たな `rustfmt --check --edition 2024 crates/outbox-delivery/src/postgres.rs crates/outbox-delivery/tests/postgres_settle.rs` は exit 0。今回 Cargo 再コンパイル・厳格なClippy は実行していない。バイナリ更新時刻は対象ソース/テスト/マイグレーションより後だが、時刻とハッシュだけでは現行ファイルの正確なバイト列からビルドされた暗号学的証明にはならない。ここでの動的証拠は **記録したキャッシュ済みバイナリ** の新たな実DB 実行である。
 
-## 残る境界と次の action
+<a id="残る境界と次の-action"></a>
+## 残る境界と当時の次の作業
 
-- `postgres.rs:349-352` の G04 `reap_exhausted` は引き続き `StoreUnknown` placeholder。最終 claim 後 crash の DLQ 回収を G03 の即時 fail 試験から推定しない。次は G04 の実装と競合 reaper/expiry 試験。
-- この試験は管理者接続であり、delivery role の policy `FOR SHARE` と列限定 grant の実効性は G08/I04 で検証する。Search durable commit 後のみ ack する呼出順、Source/outbox 二重 fence、runner の renew/cancel、実 process recovery は G05 以降と S07 の責務。期限付近の row-lock wait 競合も今回の4試験には含まれない。
-- G03 の code review/実 DB 局所判定を親に渡す。統合判定では fresh build/strict Clippy、実 role、G04 と後続 runner/Search 回帰を別途確認する。
+- `postgres.rs:349-352` の G04 `reap_exhausted` は引き続き `StoreUnknown` 未実装の仮置き。最終処理権取得後クラッシュの DLQ 回収を G03 の即時の失敗結果確定試験から推定しない。次は G04 の実装と上限到達行の回収競合・有効期限試験。
+- この試験は管理者接続であり、配送用ロールのポリシー `FOR SHARE` と列限定権限付与の実効性は G08/I04 で検証する。Search 永続コミット後のみ配送成功確定する呼出順、Source/outbox 二重フェンス、ランナーのリース更新/キャンセル、実プロセス復旧は G05 以降と S07 の責務。期限付近の行ロック待機競合も今回の4試験には含まれない。
+- G03 のコードレビュー/実 DB 局所判定を親に渡す。統合判定では新たなビルド/厳格なClippy、実際のロール、G04 と後続ランナー/Search 回帰を別途確認する。

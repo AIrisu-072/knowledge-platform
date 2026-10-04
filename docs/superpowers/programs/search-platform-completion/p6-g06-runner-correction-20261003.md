@@ -1,60 +1,73 @@
-# P6 G05/G06 synthetic runner correction — 2026-10-03
+意味保存の日本語訳。承認・資格の追加ではない。記載の既存ハッシュは原文/原証拠を指す。
 
-## Result and exact boundary
+[固定原文](https://github.com/AIrisu-072/knowledge-platform/blob/0ecf486719e3c9d71242e289a7564ad6d1032b3c/docs/superpowers/programs/search-platform-completion/p6-g06-runner-correction-20261003.md)
 
-Scoped local correctness GO for the generic in-process admission/lifecycle gate. Fresh exact-source confirmation passes **runner_admission 5/5 and runner_lifecycle 35/35**, targeted strict Clippy, two-file rustfmt, and diff check. An independent read-only reviewer checked the final source, assertions, diagnostics, and frozen contract and found no remaining substantive defect in this scope. It did not independently rerun Cargo.
+<a id="p6-g05g06-synthetic-runner-correction--2026-10-03"></a>
+# P6 G05/G06の合成入力によるランナー修正記録 — 2026-10-03
 
-This is not full-package/workspace, real PostgreSQL, process-crash, Search bridge, P7, or whole-program qualification. Missing `outbox_delivery::observe` still prevents the current full hosted Rust gates. G07 and G08 remain open. The unidentified historical stopped operation was neither reconstructed nor retried; the newly reviewed synthetic scope does not clear other actions.
+> 以下の状態・次の作業は当時の記録であり、現在の実行指示ではありません。現行の停止条件・実行可否は[最新の実行状態](../../execution/search-platform-completion-program-status.md)を参照してください。
 
-Local base is `3955eb5eeedebebc1a77afe3df44d0569953ad47`, tree `d22b3b3e784839dade91734d725f1e3384740aa0`, which stacks the separately reviewed but unpublished three-PoC-lock checkpoint. Last verified remote Draft #40 is `401b31047a64ed76c470477c6db15fc7e8221d2d`, root-dependency tree `2df2784e8017f1433a2fb96d8054e4aca3478299`. Publication of further source/verification records remains held pending explicit permission for the public repository; no merge or deployment.
+<a id="result-and-exact-boundary"></a>
+## 結果と正確な適用範囲
 
-## Frozen requirements and correction
+汎用の同一プロセス内での受入・ライフサイクルゲートについて、ローカルの正しさを対象範囲内でGOと判断しました。最終ソースそのものに対する新たな確認では、**runner_admission 5/5とrunner_lifecycle 35/35**、対象限定の厳格なClippy、二ファイルのrustfmt、差分チェックが成功しました。独立した読み取り専用レビュアーは、最終ソース、アサーション、診断、凍結済み契約を確認し、この範囲で実質的な欠陥が残っていないと判断しました。レビュアーによるCargoの独立再実行は行っていません。
 
-Authority remains `p6-outbox-freeze.md`, revision-1 design, and G05/G06 in `p6-outbox-plan.md`; no design, public API/config, schema, policy, dependency or Search/P7 boundary changed.
+これは、パッケージ全体・ワークスペース全体、実PostgreSQL、プロセスクラッシュ、Search連携、P7、プログラム全体の資格試験ではありません。`outbox_delivery::observe`が欠けているため、その時点のホスト側Rustゲート全体は依然として通過できません。G07とG08は未達です。過去の内容未特定の停止操作は再構成も再試行もしておらず、新たにレビューした合成入力の範囲は、他の操作の保留を解消しません。
 
-- One total processing deadline begins before initial preflight and covers handler, heartbeat, final preflight and settlement. A private dependency-round budget is the smaller of remaining processing budget and one third of the configured lease duration. The latter is an implementation choice using existing bounds, not a new product SLO.
-- A sticky shutdown drain deadline stays observable during admission, claim, reaping and cleanup. Pending operations cannot restart a fresh drain window. Ready known permits/claims are captured before stopping; release/reaper outcomes are never invented.
-- Cancellation drop guards stop new work. Dependency I/O remains explicitly uncertain until the parent observes a result; unresolved preflight, heartbeat or settlement at deadline reports `StoreUnknown`, distinct from confirmed fence loss or handler-only incomplete work.
-- Cancellation is checked after dependency responses and before the next renewal/preflight/handler/settlement step. A returned dependency error retains precedence over cancellation. The I/O marker is published before checking cancellation, closing the reviewed race at heartbeat/initial-I/O entry.
-- G05 free-capacity-before-claim, Source cap 1, two-fence preflight and unchanged admission assertions remain covered. No event is acked/failed merely because a task is cancelled or an unresolved write was attempted.
+ローカルの基準は`3955eb5eeedebebc1a77afe3df44d0569953ad47`、treeは`d22b3b3e784839dade91734d725f1e3384740aa0`で、別途レビュー済み・未公開の三つのPoCロックのチェックポイントを積み重ねています。最後に確認したリモートのDraft #40は`401b31047a64ed76c470477c6db15fc7e8221d2d`で、ルート依存関係のtreeは`2df2784e8017f1433a2fb96d8054e4aca3478299`です。それ以降のソースと検証記録の公開は、公開リポジトリへの明示的な許可を待って保留しています。マージやデプロイは行いません。
 
-Rust async bounds are cooperative. These tests do not prove preemption of non-yielding code, all multicore interleavings, or database commit outcomes. The I/O-marker ordering was statically reviewed; no model-checking result is claimed.
+<a id="frozen-requirements-and-correction"></a>
+## 凍結済み要件と修正内容
 
-## RED / correction evidence
+正本は引き続き`p6-outbox-freeze.md`、revision-1設計、`p6-outbox-plan.md`のG05/G06です。設計、公開API・設定、スキーマ、ポリシー、依存関係、Search/P7との境界は変更していません。
 
-Each row records a real test-only RED before its associated production correction. Existing assertions were preserved; added fakes use only synthetic in-process futures and counters.
+- 一つの総処理期限を最初の事前確認より前に開始し、ハンドラー、ハートビート、最終事前確認、結果確定までを含めます。内部の依存先呼び出し一巡の時間予算は、残りの処理予算と設定されたリース期間の三分の一のうち、小さい方です。後者は既存の上限を使う実装上の選択であり、新しい製品SLOではありません。
+- 一度設定したシャットダウンの排出期限は、受入、claim、期限切れ処理の回収、後片付けの間も観測できる状態に保ちます。保留中の操作が新たな排出時間枠を開始することはできません。結果が確定して利用可能なpermit/claimは停止前に取得し、解放・回収の結果を捏造しません。
+- キャンセル時のdropガードは新たな作業を止めます。依存先I/Oは、親が結果を観測するまで明示的に不確定なままです。期限時点で事前確認、ハートビート、結果確定が未解決なら`StoreUnknown`を報告し、確認済みのフェンス喪失や、ハンドラーだけが未完了の状態と区別します。
+- キャンセルは、依存先の応答後と、次の更新・事前確認・ハンドラー・結果確定の前に確認します。依存先から返されたエラーは、キャンセルより優先します。キャンセル確認より前にI/Oマーカーを公開することで、レビューで指摘されたハートビート/初回I/O開始時の競合を塞ぎます。
+- G05のclaim前の空き容量確認、Source上限1、二つのフェンスの事前確認、変更していない受入アサーションは引き続き検証対象です。タスクがキャンセルされた、または結果未確定の書き込みを試みたというだけで、イベントをack済みや失敗にはしません。
 
-| Test stage | Observed RED | Subsequent defect addressed |
+Rustの非同期処理における上限は協調的なものです。これらのテストは、制御を譲らないコードの強制中断、すべてのマルチコア実行順序、データベースのコミット結果を証明しません。I/Oマーカーの順序は静的にレビューしましたが、モデル検査の結果は主張しません。
+
+<a id="red--correction-evidence"></a>
+## REDと修正の証拠
+
+各行は、対応する本番コード修正より前に、実際にテストのみの変更で確認したREDを記録しています。既存のアサーションは保持し、追加した代替実装は同一プロセス内の合成futureとカウンターだけを使っています。
+
+| テスト段階 | 観測したRED | その後に対処した欠陥 |
 | --- | --- | --- |
-| Pending operation/total budget | 4 pass, 17 fail, exit 101 | Total deadline and shutdown interrupts across preparation, heartbeat, settlement, cleanup |
-| Shutdown uncertainty | 22 pass, 6 fail, exit 101 | Pending dependency writes must remain Unknown at drain expiry |
-| Cancel before heartbeat | 28 pass, 1 fail, exit 101 | No new renewal after public cancellation flag |
-| Response-boundary cancellation | 30 pass, 5 fail, exit 101 | Stop subsequent dependency/handler/settlement work after cancellation |
+| 保留中の操作・総時間予算 | 4 pass, 17 fail, exit 101 | 準備、ハートビート、結果確定、後片付け全体の総期限とシャットダウン割込み |
+| シャットダウン時の不確定性 | 22 pass, 6 fail, exit 101 | 排出期限切れ時も、保留中の依存先書き込みはUnknownのままとする |
+| ハートビート前のキャンセル | 28 pass, 1 fail, exit 101 | 公開キャンセルフラグが立った後に新たな更新を始めない |
+| 応答境界でのキャンセル | 30 pass, 5 fail, exit 101 | キャンセル後の依存先・ハンドラー・結果確定の後続作業を止める |
 
-The final 35 tests comprise four original cases, 29 newly demonstrated RED regressions, and two positive controls (dependency timeout before lease expiry and returned-error precedence). The final confirmation runs the exact final 35 cases plus five unchanged admission cases.
+最終的な35テストの内訳は、元の四ケース、新たにREDを示した回帰テスト29件、二つの陽性対照（リース満了前の依存先タイムアウトと、返されたエラーの優先）です。最終確認では、この最終版35ケースそのものと、未変更の受入五ケースを実行しました。
 
-An additional **post-fix negative control** copies the final exact 35-test file into a detached local-base worktree with the original unmodified runner. It yields **5 pass / 30 fail, exit 101**. This is a counterfactual regression-sensitivity check performed after correction, not a claim that the final full suite existed before the first fix. The original runner is `e04313b441f9848bc8ff58eaa2a117fc8af2c839b06276972bd6f2cb43dc85de` (SHA-256).
+追加の**修正後の陰性対照**では、最終版35テストのファイルをそのまま、ローカル基準から切り離した作業ツリーへコピーし、未変更の元ランナーに対して実行しました。結果は**5 pass / 30 fail, exit 101**でした。これは修正後に実施した、元実装なら回帰を検出できるかの確認です。最初の修正前から最終テスト一式が存在していたという主張ではありません。元ランナーのSHA-256は`e04313b441f9848bc8ff58eaa2a117fc8af2c839b06276972bd6f2cb43dc85de`です。
 
-## Final verification and identity
+<a id="final-verification-and-identity"></a>
+## 最終検証と識別情報
 
-- Runner SHA-256: `fdb3c1164e6db4d092fe8745af0c952e5e33a122441cd6a4eaa4377867ea22cb`
-- Lifecycle tests SHA-256: `4e8b3fa50f7446ba3b7dd843c91d346b8b309fd9d685b16b7ba978dbf5799db2`
-- Unchanged admission tests SHA-256: `9fa72c22fa0cb555c0a293ca29e02644c6722e83f7008452ccb71cb407d82d20`
-- `cargo test --locked --offline -j 2 -p outbox-delivery --test runner_admission --test runner_lifecycle -- --test-threads=1`: exit 0, 5 + 35 pass
-- `cargo clippy --locked --offline -j 2 -p outbox-delivery --test runner_admission --test runner_lifecycle -- -D warnings`: exit 0
-- `rustfmt --edition 2024 --check crates/outbox-delivery/src/runner.rs crates/outbox-delivery/tests/runner_lifecycle.rs`: exit 0
-- `git diff --check`: exit 0 before documentation packaging; repeat on final staged checkpoint
+- ランナーのSHA-256：`fdb3c1164e6db4d092fe8745af0c952e5e33a122441cd6a4eaa4377867ea22cb`
+- ライフサイクルテストのSHA-256：`4e8b3fa50f7446ba3b7dd843c91d346b8b309fd9d685b16b7ba978dbf5799db2`
+- 未変更の受入テストのSHA-256：`9fa72c22fa0cb555c0a293ca29e02644c6722e83f7008452ccb71cb407d82d20`
+- `cargo test --locked --offline -j 2 -p outbox-delivery --test runner_admission --test runner_lifecycle -- --test-threads=1`：exit 0、5 + 35 pass
+- `cargo clippy --locked --offline -j 2 -p outbox-delivery --test runner_admission --test runner_lifecycle -- -D warnings`：exit 0
+- `rustfmt --edition 2024 --check crates/outbox-delivery/src/runner.rs crates/outbox-delivery/tests/runner_lifecycle.rs`：exit 0
+- `git diff --check`：文書の取りまとめ前にexit 0。最終ステージ済みチェックポイントで再確認する
 
-The pinned official Rust 1.98.1 toolchain uses an isolated Search target and offline existing dependency cache. Missing exact-version rustfmt/Clippy components were restored only after their publisher-manifest SHA-256 checks matched. Their official URLs/hashes are in the machine receipt. No new project dependency or system security setting was introduced. `DATABASE_URL` and `P6_TEST_DATABASE_URL` were unset; selected tests make no external calls. Existing trusted dependency build scripts/proc macros may run during compilation; compiled testcontainers support was not invoked.
+固定済みの公式Rust 1.98.1ツールチェーンは、分離したSearchターゲットと既存のオフライン依存関係キャッシュを使います。欠けていた正確なバージョンのrustfmt/Clippyコンポーネントは、配布元マニフェストのSHA-256との一致を確認してから復元しました。公式URLとハッシュは機械可読の記録にあります。新しいプロジェクト依存関係やシステムのセキュリティ設定は導入していません。`DATABASE_URL`と`P6_TEST_DATABASE_URL`は未設定で、選択したテストは外部呼び出しを行いません。コンパイル中に既存の信頼済み依存関係のビルドスクリプトや手続きマクロが動く可能性はありますが、コンパイルされたtestcontainersの機能は呼び出していません。
 
-The final confirmation wrapper retained actual commands, exit codes, elapsed times, log hashes and source hashes. It observed minimum free space 25,272,307,712 bytes versus the 1,610,612,736-byte floor. Raw logs and chronological wrappers were retained locally; committed copies only strip trailing line whitespace and trailing blank lines. [Machine receipt](p6-g06-evidence-20261003.json) records raw and committed hashes. The negative control's exit is directly captured, but unlike final confirmation it has no separate continuous-disk-sampler receipt; this limit is explicit.
+最終確認用ラッパーは、実際のコマンド、終了コード、経過時間、ログハッシュ、ソースハッシュを保持しました。観測した最小空き容量は25,272,307,712 bytesで、下限の1,610,612,736 bytesを上回っていました。生ログと時系列のラッパーはローカルに保存しました。コミットしたコピーで除去したのは、行末空白と末尾の空行だけです。[機械可読の記録](p6-g06-evidence-20261003.json)には、生データとコミット版のハッシュを記録しています。陰性対照の終了コードは直接取得しましたが、最終確認と異なり、独立した継続ディスク計測の記録はありません。この制約を明記します。
 
-## Counterfactual cache isolation check
+<a id="counterfactual-cache-isolation-check"></a>
+## 元実装との比較におけるキャッシュ分離の確認
 
-The first switch back from the negative-control worktree reused its lifecycle executable in the shared target: the lifecycle binary/depfile timestamp remained at that control build and the same 30 cases failed, despite the candidate source hashes being unchanged. Admission had rebuilt and passed. Touching only the two owned candidate source mtimes forced a rebuild; the same command then passed **5/5 + 35/35**, followed by targeted strict Clippy, rustfmt and diff check exit 0. No source bytes or assertions changed and no cache files were deleted. Both the stale-cache diagnostic and corrected fresh-build logs are retained with exact hashes. Future counterfactual worktrees must use separate Cargo targets. This failed cache-switch attempt is not omitted or represented as a successful verification.
+陰性対照の作業ツリーから最初に戻した際、共有ターゲット内のライフサイクル実行ファイルが再利用されました。ライフサイクルのバイナリと依存関係ファイルのタイムスタンプは対照側のビルド時点のままで、候補ソースのハッシュは変わっていないにもかかわらず、同じ30ケースが失敗しました。受入テストは再ビルドされて成功していました。管理対象の候補ソース二つのmtimeだけを更新して再ビルドを促したところ、同じコマンドで**5/5 + 35/35**が成功し、続く対象限定の厳格なClippy、rustfmt、差分チェックもexit 0でした。ソースのバイト列やアサーションは変更しておらず、キャッシュファイルも削除していません。古いキャッシュによる診断と、正しく再ビルドしたログの両方を正確なハッシュ付きで保持しています。今後、元実装との比較に使う作業ツリーでは、Cargoターゲットを分離する必要があります。この失敗したキャッシュ切替の試行は、省略も、検証成功としての表現もしていません。
 
-The first staged documentation check reported two trailing blank lines in copied logs. A follow-up documentation-only normalization removes them, updates the committed-log hashes, and passes the full checkpoint-range diff check. Runtime source and raw diagnostic bytes remain unchanged.
+最初のステージ済み文書チェックでは、コピーしたログの末尾に二つの空行を検出しました。その後、文書だけの正規化でこれらを除去し、コミット版ログのハッシュを更新したところ、チェックポイント範囲全体の差分チェックに成功しました。実行時ソースと生の診断バイト列は不変です。
 
-## Next exact action
+<a id="next-exact-action"></a>
+## 次に行う具体的な作業
 
-Preserve and review this local checkpoint. Await public-sharing authorization before publishing the separately stacked PoC metadata and G06 records. Prepare an independently reviewed G07 bootstrap/test scope with exact official tool hashes, a dedicated synthetic PostgreSQL cluster, bounded owned-child cleanup and explicit unknown outcomes before installing or executing G07. No P3/P7 or previously denied security probe is authorized by this result.
+このローカルチェックポイントを保存してレビューします。別途積み重ねたPoCメタデータとG06の記録は、公開共有の許可を待ってから公開します。G07のインストールや実行に先立ち、正確な公式ツールハッシュ、専用の合成PostgreSQLクラスタ、上限を設けた管理下子プロセスの後片付け、不確定な結果の明示を含む、G07の初期構築・テスト範囲を準備し、独立レビューを受けます。この結果はP3/P7や、以前に拒否されたセキュリティ検査を許可しません。

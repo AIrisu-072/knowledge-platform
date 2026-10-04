@@ -1,36 +1,47 @@
-# P6 G07 pure fixture guard checkpoint — 2026-10-03
+意味保存の日本語訳。承認・資格の追加ではない。記載の既存ハッシュは原文/原証拠を指す。
 
-## Bounded local result
+[固定原文](https://github.com/AIrisu-072/knowledge-platform/blob/0ecf486719e3c9d71242e289a7564ad6d1032b3c/docs/superpowers/programs/search-platform-completion/p6-g07-pure-guards-20261003.md)
 
-The two-file source checkpoint is `fda5ff8a77cb7e237d55665c532134392267a651`, tree `14c66619732559e3403eaea096cb297afc142c9d`. It adds pure configuration/identity/Unknown/deadline/environment/output-control helpers and six regression tests. The actual G07 child entrypoint remains deliberately unwired. No real PostgreSQL, Docker, recovery child, parser, P3/P7 or security-probe runtime occurred.
+<a id="p6-g07-pure-fixture-guard-checkpoint--2026-10-03"></a>
+# P6 G07の純粋フィクスチャガードのチェックポイント — 2026-10-03
 
-Fresh named pure verification passes: Python policy 53/53; the six exact Rust helper cases 6/6, with all other integration-test entries filtered; selected offline/locked compilation; strict Clippy for `process_recovery`; rustfmt for the two changed files; diff check. Independent read-only source review found no blocker in this bounded pure scope. This does not qualify G07 process recovery, P6 or the Search program.
+> 以下の状態・次の作業は当時の記録であり、現在の実行指示ではありません。現行の停止条件・実行可否は[最新の実行状態](../../execution/search-platform-completion-program-status.md)を参照してください。
 
-## Chronological evidence and corrections
+<a id="bounded-local-result"></a>
+## 範囲を限定したローカル結果
 
-1. Initial reviewed helper RED: Python 53 ordinary assertion failures against inert stubs (exit 1); selected Rust compile exit 0; six separately selected Rust tests each fail at the intended missing-helper assertion (exit 101). Neither test suite reaches DB/child paths.
-2. Minimum pure implementations then pass Python 53/53 and Rust 6/6 under the same named source/command boundary. The initial launcher/fixture scope-path drafts disagreed; the attempted `receipts/scope.json` drift was reverted before execution to the recorded `B/scope.json` contract. No executed result is attributed to that transient candidate.
-3. First selected strict Clippy fails on the existing shared test fixture's `large_enum_variant`: Docker's `ContainerAsync` occupies at least 848 bytes versus the external variant's 48. No other lint failure is shown. Format/diff stages were not reached in that stopped quality sequence.
-4. Explicitly scoped internal refactor boxes only the existing `ContainerAsync` field and its construction. Four call sites retain the guard opaquely; no production API or fixture control path changes. The same container retains its guard lifetime, with one heap allocation added. This is a source/layout review, not a claim that legacy Docker behavior ran.
-5. Fresh post-refactor checkpoint passes Python 53/53, Rust 6/6, selected strict Clippy, two-file rustfmt and diff check. Actual test artifact SHA-256 is `110da64de4356eb22a9b191f4a446ededab104e14e9a630ea723f817f1278498`.
-6. Independent interface review exposed two pre-runtime gaps: Python's draft DB name omitted the run prefix accepted by Rust, and archive-valid-input coverage was incomplete. A new 34-case pure supplemental suite reproduces **25 intended assertion failures with nine passing controls**. That RED is preserved; no policy fix or bootstrap success is claimed here. Its subsequent correction remains a separate step.
+二ファイルのソースチェックポイントは`fda5ff8a77cb7e237d55665c532134392267a651`、treeは`14c66619732559e3403eaea096cb297afc142c9d`です。設定・識別・Unknown・期限・環境・出力制御のための純粋な補助関数と、六つの回帰テストを追加しています。実際のG07子プロセスの入口は意図的に未接続です。実PostgreSQL、Docker、復旧用子プロセス、パーサー、P3/P7、セキュリティ検査の実行時処理は行っていません。
 
-## Source and supervision boundary
+対象を明示した新たな純粋処理の検証は成功しました。Pythonポリシーは53/53、正確に指定したRust補助関数の六ケースは6/6で、他の統合テスト項目はすべてフィルターで除外しました。選択した対象のオフライン・ロック固定コンパイル、`process_recovery`の厳格なClippy、変更した二ファイルのrustfmt、差分チェックも成功しました。独立した読み取り専用ソースレビューでは、この純粋処理に限定した範囲に阻害要因は見つかりませんでした。これはG07プロセス復旧、P6、Searchプログラムの適合を示すものではありません。
 
-Only `crates/outbox-delivery/tests/process_recovery.rs` and narrow additions plus the two-line box refactor in `tests/support/postgres.rs` change application source. Pure reducers are not wired into any effectful fixture yet; the existing child/DB paths remain unexecuted. Existing Domain migrations, production runner/store, API, dependency/policy files and frozen semantics remain unchanged.
+<a id="chronological-evidence-and-corrections"></a>
+## 時系列の証拠と修正
 
-Source SHA-256:
+1. レビュー済み補助関数の初回RED：何もしないスタブに対し、Pythonで通常のアサーション失敗53件（exit 1）。選択したRustコンパイルはexit 0。個別選択したRustテスト六つは、それぞれ意図した補助関数未実装のアサーションで失敗（exit 101）。どちらのテスト群もDB・子プロセス経路には到達していません。
+2. 最小限の純粋実装を加えた後、同じ指定ソース・コマンドの範囲でPython 53/53とRust 6/6が成功しました。初期の起動スクリプトとフィクスチャでは、対象範囲ファイルのパスの下書きが一致していませんでした。`receipts/scope.json`へ変更しようとした差分は、実行前に記録済み契約の`B/scope.json`へ戻しました。この一時的な候補に実行結果を帰属させていません。
+3. 最初の選択対象の厳格なClippyは、既存の共有テストフィクスチャの`large_enum_variant`で失敗しました。Dockerの`ContainerAsync`は少なくとも848 bytesを占めるのに対し、外部接続のバリアントは48です。他のlint失敗は示されていません。この品質確認の手順はそこで停止し、フォーマット・差分確認には到達していません。
+4. 明示的に範囲を限定した内部リファクタリングで、既存の`ContainerAsync`フィールドとその構築だけをBox化しました。四つの呼び出し箇所は、ガードの内部に立ち入らず保持する形を維持しています。本番APIやフィクスチャの制御経路は変えていません。同じコンテナのガードの生存期間を保ち、ヒープ割当てが一つ増えます。これはソース・メモリ配置のレビューであり、既存Docker動作を実行したという主張ではありません。
+5. リファクタリング後の新たなチェックポイントでは、Python 53/53、Rust 6/6、選択対象の厳格なClippy、二ファイルのrustfmt、差分チェックに成功しました。実際のテスト成果物のSHA-256は`110da64de4356eb22a9b191f4a446ededab104e14e9a630ea723f817f1278498`です。
+6. 独立したインターフェースレビューで、実行時処理へ進む前の欠落が二つ見つかりました。Pythonの下書きDB名に、Rust側が受け入れる実行プレフィックスがなく、アーカイブの有効入力に対する網羅性も不十分でした。新しい34ケースの純粋処理の補足テスト群は、**意図したアサーション失敗25件と、成功した対照九件**を再現しました。このREDは保存しており、ここではポリシー修正や初期構築の成功を主張しません。その後の修正は別の段階として残っています。
+
+<a id="source-and-supervision-boundary"></a>
+## ソースと実行監督の範囲
+
+アプリケーションソースの変更は、`crates/outbox-delivery/tests/process_recovery.rs`と、`tests/support/postgres.rs`への限定的な追加および二行のBox化リファクタリングだけです。純粋な状態縮約処理は、外部作用を伴うフィクスチャにはまだ接続していません。既存の子プロセス・DB経路は未実行です。既存のDomainマイグレーション、本番ランナー・ストア、API、依存関係・ポリシーファイル、凍結済みの意味は不変です。
+
+ソースのSHA-256：
 - process_recovery.rs: `56ace805d42c7b7474f0ff9e162803ac1c76191f2bdd25e6a8635b202ce46658`
 - support/postgres.rs: `43a2d78441a5b1744003d360a745c053495a0a796e0a7cfec7d78829482b6137`
 
-All commands used existing pinned Rust 1.98.1/Python and a newly owned Cargo target, locked/offline dependencies and empty-base environments. Compilation can execute the existing trusted build-script/proc-macro closure; compiled Docker support was not invoked. The selected compiler artifact was bound by exact path/hash before the six direct test invocations, whose environment carried no database/child configuration.
+すべてのコマンドは、既存の固定済みRust 1.98.1/Python、新たに管理対象としたCargoターゲット、ロック固定・オフライン依存関係、空の環境を基に構成した環境変数を使いました。コンパイルでは、既存の信頼済みビルドスクリプト・手続きマクロとその依存範囲が実行される可能性がありますが、コンパイル済みDocker機能は呼び出していません。六つの直接テスト呼び出しの前に、選択したコンパイラ成果物を正確なパスとハッシュで固定しました。これらの呼び出し環境には、データベース・子プロセスの設定を含めていません。
 
-The fixed supervisor retained actual exit status, bounded stdout/stderr, source/tool/binary hashes, disk observations and initial/terminal receipts. It checked the 1,536 MiB floor and 8 GiB owned-growth budget, reserved bounded termination/drain time, retained the direct leader's identity until its original process session was non-running, and never signaled by process name. This is trusted compiler/pure-test supervision, not containment of adversarial daemonizing software. Unknown supervision stops rather than inventing success. Every substantive stage in the successful checkpoint has null abnormal reason.
+固定した監督プログラムは、実際の終了状態、上限を設けた標準出力・標準エラー出力、ソース・ツール・バイナリのハッシュ、ディスク観測、開始時と終了時の記録を保持しました。1,536 MiBの下限と管理対象の増加予算8 GiBを確認し、終了・排出のための有限時間を確保しました。また、元のプロセスセッションが動作しなくなるまで直接起動したリーダーの識別情報を保持し、プロセス名によるシグナル送信は行っていません。これは信頼済みコンパイラ・純粋テストの実行監督であり、敵対的にデーモン化するソフトウェアの封じ込めではありません。監督状態がUnknownなら、成功を捏造せず停止します。成功したチェックポイントの実質的な全段階で、異常理由はnullです。
 
-[Machine evidence](p6-g07-pure-guards-evidence-20261003.json) preserves actual results and raw log hashes, including the failed lint and supplemental RED. Full raw streams, command manifests, source snapshots and independent evidence checks remain in the local task evidence directory; this small repository checkpoint does not claim every raw artifact is committed or externally durable.
+[機械可読の証拠](p6-g07-pure-guards-evidence-20261003.json)には、失敗したlintと補足REDを含め、実際の結果と生ログのハッシュを保存しています。生の出力ストリーム全文、コマンドマニフェスト、ソーススナップショット、独立した証拠照合は、ローカルの作業証拠ディレクトリに残しています。この小規模なリポジトリのチェックポイントは、すべての生の成果物がコミット済み、または外部に永続保存済みであるとは主張しません。
 
-## Remaining gates and exact next action
+<a id="remaining-gates-and-exact-next-action"></a>
+## 未達のゲートと次に行う具体的な作業
 
-Correct and re-review the supplemental pure DB-name/archive cases, then prepare actual owned fixture and launcher implementation. Their exact executable/source/command manifest must receive independent review before official tool acquisition, bootstrap or the two real-process cases. One dedicated peer-auth Unix-socket cluster, positive ownership proofs, finite budgets, child watchdogs, no Docker fallback and explicit Unknown outcomes remain required.
+補足の純粋処理であるDB名・アーカイブのケースを修正し、再レビューしてから、実際に管理するフィクスチャと起動スクリプトの実装を準備します。公式ツールの取得、初期構築、二つの実プロセスケースに進む前に、正確な実行ファイル・ソース・コマンドのマニフェストについて独立レビューを受ける必要があります。peer認証のUnixソケットを使う専用クラスタ一つ、明確な所有証明、有限の予算、子プロセスの監視、Dockerへの代替切替なし、Unknown結果の明示は引き続き必須です。
 
-Draft #40's last verified published head remains `401b31047a64ed76c470477c6db15fc7e8221d2d`; separate PoC-lock and G06/G07 checkpoints are local only pending public-sharing authorization. Missing `outbox_delivery::observe`, all broader G07/G08/P1–P7 and final acceptance gates remain open. The unidentified historical stop is not retried or declared cleared. No merge or deployment.
+Draft #40の最後に確認した公開headは、引き続き`401b31047a64ed76c470477c6db15fc7e8221d2d`です。別のPoCロックとG06/G07のチェックポイントは、公開共有の許可待ちでローカルだけにあります。`outbox_delivery::observe`の欠落、より広いG07/G08/P1–P7、最終受入ゲートはすべて未達です。過去の内容未特定の停止は再試行しておらず、解消したとも宣言していません。マージやデプロイは行いません。

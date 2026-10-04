@@ -33,3 +33,10 @@
 99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:470
 99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:471
 99c7aca2e7ae3f1f60fa3b948b419a2ae5fc749a:experiments/search-vector-poc/baseline-refinement-run-manifest.json:generic-api-key:472
+
+# 2026-10-03: 所有者が承認済みの公開Tauri checksum指紋だけを全branch走査へ反映
+# 根拠: docs/superpowers/execution/search-checksum-fingerprint-sync-20261003.md
+0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json:generic-api-key:10
+0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json:generic-api-key:21
+0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json:generic-api-key:32
+0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/inventory/inactive_or_other_target-007.json:generic-api-key:1

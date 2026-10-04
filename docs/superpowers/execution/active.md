@@ -1,5 +1,9 @@
 # Active Execution Pointer
 
+## Searchの公開後の状態照合：2026-10-03 18:12 UTC
+
+Draft #40の公開headは `0ecf486719e3c9d71242e289a7564ad6d1032b3c`、treeは `72f1f578c46ff605cc96f22508f54623118d1928` です。DSI・Sandboxは成功、全体CIはRustの既存 `outbox_delivery::observe` 欠落と、由来を直接確定できていない履歴検査5件により未完了です。[新しい状態照合記録](search-current-state-20261003.md)で限定再現とホスト結果を区別しています。G07実行停止、G08の依存待ち、新規公開のOSV送信確認待ちを維持します。以下はそれぞれの時点の履歴であり、現在の実行指示ではありません。
+
 ## 最新のG07専用環境の準備と実行停止の記録：2026-10-03
 
 - **ACTIVE / WIP / 実行時検証は停止中。** 対象を固定した専用フィクスチャは、新たな対象限定コンパイル、Rustの純粋テスト9件、Pythonの純粋テスト243件に成功しています。公式PostgreSQLの非公開領域でのビルド・インストール、初期化、オフラインの識別証明は完了しました。[記録と対象を限定した証拠](../programs/search-platform-completion/g07-owned-preparation-20261003/README.md)を参照してください。
@@ -12,33 +16,39 @@
 
 以下の過去の記録は履歴であり、現在の実行指示ではありません。
 
-## Active checkpoint — Search G07 pure guard preparation, 2026-10-03
+以下の4節は、[固定された公開原文のSearch依存修復・G06・G07節](https://github.com/AIrisu-072/knowledge-platform/blob/0ecf486719e3c9d71242e289a7564ad6d1032b3c/docs/superpowers/execution/active.md#L15-L42)の意味保存訳です。ここにある状態、公開保留、次の作業は記録当時のものであり、現在の実行指示ではありません。既存ハッシュは原文・当時の証拠を指し、訳文のハッシュではありません。最上部のG07実行停止と、[現在状態の記録](search-platform-completion-program-status.md)を優先してください。
 
-- **ACTIVE / WIP / incomplete.** Two-file pure fixture checkpoint `fda5ff8a77cb7e237d55665c532134392267a651` / tree `14c66619732559e3403eaea096cb297afc142c9d` has fresh six-test Rust pure GREEN, Python 53/53, selected strict Clippy, two-file fmt and diff pass. See [bounded receipt](../programs/search-platform-completion/p6-g07-pure-guards-20261003.md). Actual G07 child/DB path remains unwired/unexecuted.
-- The only legacy fixture edit boxes the existing container field/construction after a recorded pre-existing Clippy size warning; no Docker behavior was runtime-tested. New supplemental Python DB-name/archive tests show 25 intended REDs and nine controls; their correction and all effectful fixture/launcher gates remain open.
-- Last verified remote Draft #40 is `401b31047a64ed76c470477c6db15fc7e8221d2d`; later PoC locks, G06 and this checkpoint remain local under the separate public-sharing hold. Whole Search/P1–P7 acceptance and the unidentified historical stop remain unresolved.
-- **Exact next action:** complete supplemental pure correction/review, then implement and independently review the exact owned launcher/fixture command manifest before any setup or real-process execution. No broader probe, merge or deployment.
+<a id="active-checkpoint--search-g07-pure-guard-preparation-2026-10-03"></a>
+## Search G07の純粋ガード準備の記録：2026-10-03
 
-## Active checkpoint — Search G05/G06 synthetic runner correction, 2026-10-03
+- **ACTIVE / WIP / 未完了。** 2ファイルの純粋フィクスチャのチェックポイント `fda5ff8a77cb7e237d55665c532134392267a651` / tree `14c66619732559e3403eaea096cb297afc142c9d` は、新たなRust純粋テスト6件のGREEN、Python 53/53、対象限定の厳格なClippy、2ファイルのfmtと差分検査に成功しています。[範囲を限定した検証記録](../programs/search-platform-completion/p6-g07-pure-guards-20261003.md)を参照してください。G07の実際の子プロセス/DB経路は未接続・未実行です。
+- 既存フィクスチャの変更は、以前から存在したClippyのサイズ警告を記録した後、既存コンテナのフィールド・生成処理をBox化した箇所だけです。Dockerの動作は実行時に検証していません。追加したPythonのDB名/アーカイブのテストは、意図したRED 25件と対照9件を示しています。その修正と、実際の作用を伴うフィクスチャ/起動処理の全ゲートは未完了です。
+- 最後に確認したリモートDraft #40は `401b31047a64ed76c470477c6db15fc7e8221d2d`。その後のPoCロック、G06、このチェックポイントは、別途の公開共有保留のためローカルにだけ存在します。Search全体/P1〜P7の受入と、内容未特定の過去の停止は未解決です。
+- **当時の次の具体的な作業：** 追加の純粋テストに対する修正・レビューを完了し、セットアップや実プロセス実行の前に、管理下の起動処理/フィクスチャについて正確なコマンド一覧を実装し、独立レビューします。範囲を広げたプローブ、マージ、デプロイは行いません。
 
-- **ACTIVE / WIP / incomplete.** Exact corrected source passes 5 admission + 35 lifecycle tests, targeted strict Clippy and two-file rustfmt. Independent bounded source/contract review GO. The final tests also produce 5 pass / 30 fail against the original runner in an explicitly labeled post-fix negative control. See [receipt](../programs/search-platform-completion/p6-g06-runner-correction-20261003.md).
-- Corrections bound preparation, total processing, heartbeat, settlement and shutdown cleanup; pending dependency outcomes remain Unknown and cancellation stops subsequent work. G07/G08, real DB/process recovery, P1–P7 and final acceptance remain open. This does not retry or clear the unidentified historical stopped operation.
-- Last verified remote Draft #40 remains `401b31047a64ed76c470477c6db15fc7e8221d2d`. The separate three-PoC-lock metadata checkpoint and this source checkpoint are local only; public-sharing authorization is pending. Current hosted Rust failure on missing `outbox_delivery::observe` remains. No merge/deploy.
-- **Exact next action:** preserve the clean reviewed local checkpoint; prepare and independently review G07's exact official-tool/bootstrap/synthetic-process scope before any setup or execution. Publish only after the pending public-sharing authorization is resolved, with exact-tree verification.
+<a id="active-checkpoint--search-g05g06-synthetic-runner-correction-2026-10-03"></a>
+## Search G05/G06の合成入力によるランナー修正記録：2026-10-03
 
-## Active checkpoint — Search isolated PoC dependency locks, 2026-10-03
+- **ACTIVE / WIP / 未完了。** 正確に特定した修正ソースは、受入5件＋ライフサイクル35件のテスト、対象限定の厳格なClippy、2ファイルのrustfmtに成功しています。範囲を限定したソース・契約の独立レビューはGOです。最終テストを元ランナーへ適用する、修正後の負の対照実験も明示しており、5 pass / 30 failでした。[検証記録](../programs/search-platform-completion/p6-g06-runner-correction-20261003.md)を参照してください。
+- 修正は、準備、処理全体、ハートビート、結果確定、終了時の後始末に上限を設けます。未完了の依存処理の結果はUnknownのままとし、キャンセル後の作業を停止します。G07/G08、実DB/プロセス復旧、P1〜P7、最終受入は未完了です。内容未特定の過去の停止操作を再試行したり、停止を解除したりするものではありません。
+- 最後に確認したリモートDraft #40は引き続き `401b31047a64ed76c470477c6db15fc7e8221d2d`。別の三つのPoCロックのメタデータと、このソースのチェックポイントはローカルのみで、公開共有の承認待ちです。ホストRust CIの `outbox_delivery::observe` 欠落による失敗は残っています。マージ・デプロイは行いません。
+- **当時の次の具体的な作業：** レビュー済みの変更がないローカルチェックポイントを保全します。セットアップや実行の前に、G07の公式ツール/初期構築/合成プロセスの正確な範囲を準備して独立レビューします。公開は、保留中の共有承認が解決した後だけ行い、正確なtreeを照合します。
 
-- **ACTIVE / WIP / incomplete.** Root dependency checkpoint is durably published in Draft PR #40 at `401b31047a64ed76c470477c6db15fc7e8221d2d`, tree `2df2784e8017f1433a2fb96d8054e4aca3478299`. Its hosted security job `111137273878` passes; Rust static/test still fail on missing `outbox_delivery::observe`, and DSI PoC fails on its separate yanked dependency.
-- The three previously open isolated locks now receive only `yoke-derive 0.8.3 → 0.8.4` version/checksum changes. Each separate same-command cargo-deny scan reports exit 1 → 0 and all four dependency gates OK, with unchanged warnings; no PoC or other runtime was executed. Independent bounded metadata publication review GO. See [receipt](../programs/search-platform-completion/poc-lock-metadata-recovery-20261003.md).
-- P6 G05/G06 synthetic verification is a separate workstream; G06 review has identified pending-operation deadline gaps despite its initial four-test PASS. No lifecycle correction or acceptance is claimed by this lock-only checkpoint. P1–P7, G07/G08, final acceptance and the unidentified historical safety-stop remain open.
-- **Exact next action:** publish this metadata checkpoint and inspect ordinary exact-head CI; finish separately reviewed synthetic G06 regression/correction before advancing the frozen P6 runtime sequence. No blanket runtime authorization, merge or deployment.
+<a id="active-checkpoint--search-isolated-poc-dependency-locks-2026-10-03"></a>
+## Searchの独立したPoC依存ロックの記録：2026-10-03
 
-## Active checkpoint — Search root dependency metadata recovery, 2026-10-03
+- **ACTIVE / WIP / 未完了。** ルート依存関係のチェックポイントは、Draft PR #40の `401b31047a64ed76c470477c6db15fc7e8221d2d`、tree `2df2784e8017f1433a2fb96d8054e4aca3478299` としてリポジトリに保存・公開されています。ホストのセキュリティジョブ `111137273878` は成功しています。Rustの静的検査/テストは `outbox_delivery::observe` の欠落で引き続き失敗し、DSI PoCは別の取り下げ済み依存バージョンで失敗しています。
+- 未修復だった三つの独立ロックでは、`yoke-derive 0.8.3 → 0.8.4` のバージョンとチェックサムだけを変更します。それぞれ同じコマンドによるcargo-deny検査がexit 1 → 0となり、四つの依存関係ゲートがすべてOK、既存警告は不変でした。PoCその他のランタイムは実行していません。範囲を限定したメタデータ公開の独立レビューはGOです。[検証記録](../programs/search-platform-completion/poc-lock-metadata-recovery-20261003.md)を参照してください。
+- P6 G05/G06の合成入力による検証は別作業です。G06レビューでは、最初の4テストがPASSしていても、保留中操作の期限処理に欠落が見つかりました。このロックだけのチェックポイントは、ライフサイクル修正や受入を主張しません。P1〜P7、G07/G08、最終受入、内容未特定の過去の安全上の停止は未解決です。
+- **当時の次の具体的な作業：** このメタデータのチェックポイントを公開し、通常の対象headに固定したCIを確認します。凍結済みP6ランタイムの順序を先へ進める前に、別途レビューした合成G06の回帰・修正を完了します。ランタイム全般の実行許可、マージ、デプロイは含みません。
 
-- **ACTIVE / WIP / incomplete.** Fresh requester-directed Search continuation starts from Draft PR #40 `a945fbd32145a3109e35cb9cb056cea052698138`, without overwriting the older restored worktree or mixing other capability branches.
-- Bounded five-file dependency repair: eight existing local paths gain their matching `0.0.0` package version; root lock changes only `yoke-derive 0.8.3 → 0.8.4` and checksum. Fresh same-command cargo-deny baseline exit 3 → candidate exit 0; advisories/bans/licenses/sources PASS with existing warnings. Independent source review GO. See [receipt](../programs/search-platform-completion/dependency-metadata-recovery-20261003.md).
-- Three separate experiment locks still contain the yanked version. Missing `outbox_delivery::observe`, P6 G05–G08 fresh execution, all P1–P7/final acceptance and the unidentified historical safety-stop remain open. No project build/test, parser/DB/process/model/security-probe/P3 execution occurred in this checkpoint.
-- **Exact next action:** publish this bounded reviewed checkpoint and inspect ordinary exact-head CI; independently scope the next named P6 gate in frozen order before execution. No blanket implementation-hold clearance, merge or deployment.
+<a id="active-checkpoint--search-root-dependency-metadata-recovery-2026-10-03"></a>
+## Searchルート依存関係のメタデータ修復記録：2026-10-03
+
+- **ACTIVE / WIP / 未完了。** 依頼者の指示による新たなSearch継続作業は、Draft PR #40の `a945fbd32145a3109e35cb9cb056cea052698138` から始めます。復元された古い作業ツリーを上書きせず、他の機能ブランチも混在させません。
+- 5ファイルに限定した依存関係修復です。既存のローカルパス8件に、対応するパッケージ版 `0.0.0` を付けます。ルートのロックは、`yoke-derive 0.8.3 → 0.8.4` とチェックサムだけを変更します。同じコマンドによる新たなcargo-deny検査は、基準のexit 3 → 候補のexit 0で、advisories/bans/licenses/sourcesは既存警告を残してPASSでした。独立したソースレビューはGOです。[検証記録](../programs/search-platform-completion/dependency-metadata-recovery-20261003.md)を参照してください。
+- 三つの別々の実験用ロックには、取り下げ済みバージョンがまだ残っています。`outbox_delivery::observe` の欠落、P6 G05〜G08の新たな実行、P1〜P7/最終受入全体、内容未特定の過去の安全上の停止は未解決です。このチェックポイントでは、プロジェクトのビルド/テスト、パーサー/DB/プロセス/モデル/セキュリティプローブ/P3の実行はしていません。
+- **当時の次の具体的な作業：** この範囲限定・レビュー済みチェックポイントを公開し、通常の対象headに固定したCIを確認します。実行前に、凍結した順序の中で次に該当するP6ゲートの範囲を独立して確定します。実装停止全般の解除、マージ、デプロイは含みません。
 
 ## Active checkpoint — Search narrow compile correction, 2026-10-01T21:45Z
 

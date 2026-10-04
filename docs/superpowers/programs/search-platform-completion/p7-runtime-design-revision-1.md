@@ -1,75 +1,87 @@
-# P7 Production Runtime — design revision 1
+<a id="p7-production-runtime--design-revision-1"></a>
+# P7 本番ランタイムの設計改訂1
 
-Status: **REVISED PROPOSAL / independent re-review 待ち / Freeze 前**（2026-09-30）。[元設計](p7-runtime-design-completion.md) SHA-256 `df0f2ba4e91526a24567addfac3777a7d7219ae296d5a3dc4b0dcc0c51737f3e` に対する差分であり、[NO-GO review](p7-runtime-architecture-review.md) の5件だけを閉じる提案である。抵触箇所は本改訂を優先する。`spec/` が規範正本であり、本書の作成は設計GO、production code、最終受入、SLO保証、merge、live deployを意味しない。
+[翻訳元の固定公開原文（commit 0ecf486719e3c9d71242e289a7564ad6d1032b3c）](https://github.com/AIrisu-072/knowledge-platform/blob/0ecf486719e3c9d71242e289a7564ad6d1032b3c/docs/superpowers/programs/search-platform-completion/p7-runtime-design-revision-1.md)
 
+本書は意味保存の日本語訳であり、原設計の再承認や資格の追加ではありません。既存の承認ハッシュは当時の原文・証拠を指し、訳文のハッシュではありません。以下の状態・手順・次の作業は当時の記録であり、現在の実行許可ではありません。最新の状態は[実行状態の正本](../../execution/search-platform-completion-program-status.md)を参照してください。旧見出しアンカーは明示IDで維持しています。Searchイベント処理記録（Search receipt）はDB上のイベント処理記録を指し、工程の検証記録・証拠（receipt）とは区別します。
+
+状態：**REVISED PROPOSAL（改訂提案）/ 独立した再レビュー待ち / 凍結前**（2026-09-30）。[元設計](p7-runtime-design-completion.md) SHA-256 `df0f2ba4e91526a24567addfac3777a7d7219ae296d5a3dc4b0dcc0c51737f3e` に対する差分であり、[NO-GOレビュー](p7-runtime-architecture-review.md)の5件だけを解消する提案である。抵触箇所は本改訂を優先する。`spec/` が規範の正本であり、本書の作成は、設計GO、本番コード、最終受入、SLO保証、マージ、本番へのデプロイを意味しない。
+
+<a id="1-変更しない境界"></a>
 ## 1. 変更しない境界
 
-単一 Rust composition root、P7-01〜12 の同一 PostgreSQL Source/current/READY/pin/guard、P1 Document/Unit/lexical、採択済み P3 Graph、P4 Remote RAM evaluation、P2 neutral core、P5 四routeと二lease、P6 Search receiptとgeneric ackの分離を維持する。P7-Rxx はこれらの accepted producer を接続し、第二の Source pointer、actor mint、Search receipt、Domain outbox ack を作らない。P3-P04 が未採択なら Graph production READY/publish と P7 runtime READY は閉じ、非PG採択なら共有publication protocolの別設計・独立reviewを先に要する。Vector `Disabled` もP1 lexical/P3 Graph/current/final accessを省略しない。最終 P1〜P6 receipt は R09 にだけ fan-in する。
+単一のRust構成起点、P7-01〜12の同一PostgreSQL上のSource・現在の世代・READY・世代固定・ガード、P1のDocument・Unit・字句索引、採択済みP3 Graph、P4のRemote RAM評価、P2の中立なCore、P5の四ルートと二リース、P6のSearchイベント処理記録と汎用確認応答の分離を維持する。P7-Rxxは、これらの受入済み生成側処理を接続し、第二のSourceポインター、利用主体情報の発行処理、Searchイベント処理記録、Domain outboxの確認応答を作らない。P3-P04が未採択なら、本番GraphのREADY・公開とP7ランタイムのREADYを無効のままにする。非PGのGraphを採択する場合は、共有公開プロトコルの別設計と独立レビューを先に必要とする。Vectorが `Disabled` でも、P1字句索引・P3 Graph・現在状態・最終アクセス確認を省略しない。最終的なP1〜P6の検証記録は、R09にだけ集約する。
 
-## 2. Trusted host inventory → PostgreSQL ledger → listener
+<a id="2-trusted-host-inventory--postgresql-ledger--listener"></a>
+## 2. 信頼されたホストの登録情報一覧 → PostgreSQL台帳 → リスナー
 
-`HostRegistrationSnapshotPort` の production adapter は trusted host の**実際の登録正本**を読む。物理入力は、host登録writerが全tenant・両namespaceを一つのauthority revisionとしてatomic publishするversioned `HostRegistrationInventory` とし、R02のread-only adapterがhost設定のinventory referenceから読み取る。独立したtenant roster、登録0件のtenant、Document/Remote双方のnamespace、host deployment epoch、namespace別revision・canonical digest、各tenantの完全性証明、発行元とatomic publish証拠を含む。任意の手編集mapやSearch DB queryをこのmanifestに昇格しない。configの型名、`from_complete_host_inventory` というconstructor名、候補mapの存在やdigest自己一致だけを完全性証明としない。request/provider、Source自身、Search DBからhost authorityを逆算しない。hostの実writerがこの完全inventoryを発行できなければ起動拒否する。
+`HostRegistrationSnapshotPort` の本番アダプターは、信頼されたホストの**実際の登録正本**を読む。物理的な入力は、ホストの登録書き込み担当が、全テナント・両名前空間を一つの正本改訂番号として原子的に公開する、版管理された `HostRegistrationInventory` とする。R02の読み取り専用アダプターが、ホスト設定の登録情報一覧への参照から読み取る。この一覧には、登録集合とは独立したテナント一覧、登録0件のテナント、Document/Remote両方の名前空間、ホスト配備エポック、名前空間別の改訂番号・正規化ダイジェスト、各テナントの完全性証明、発行元、原子的な公開の証拠を含める。任意に手編集した対応表やSearch DBへの検索を、このマニフェストに昇格させない。設定の型名、`from_complete_host_inventory` というコンストラクター名、候補対応表の存在、ダイジェストの自己一致だけを完全性証明としない。要求・プロバイダー、Source自身、Search DBから、ホストの正本を逆算しない。ホストの実際の書き込み担当がこの完全な一覧を発行できなければ、起動を拒否する。
 
-R02 は host adapterから二namespaceを `CompleteDesiredRegistrations::capture(...).await` で取得し、hostの全tenant集合・epoch・revision/digestと照合する。P7-02 の唯一の `PgPool` backed `SourceRegistrationLedgerPort` を同一PG Source ledgerに構築し、両集合をそのportでreconcileした `SourceRegistrationCatalog::try_new(ledger, &document, &remote).await` を完了させる。commit直前/直後のhost revision・digest再読、DBのowner/kind/activation/currentとcatalogの照合を通してからだけ P5-08 の四route factory と P6-I04 claim pathを開く。async portを同期shimや `block_on` で包まない。
+R02は、ホストアダプターから二つの名前空間を `CompleteDesiredRegistrations::capture(...).await` で取得し、ホストの全テナント集合・エポック・改訂番号・ダイジェストと照合する。P7-02の `PgPool` に基づく唯一の台帳ポート `SourceRegistrationLedgerPort` を、同一PGのSource台帳に対して構築する。両集合をそのポートで照合・同期した `SourceRegistrationCatalog::try_new(ledger, &document, &remote).await` を完了させる。コミット直前・直後のホスト改訂番号・ダイジェストの再読と、DBの所有者・種別・有効化・現在状態とカタログの照合を通してからだけ、P5-08の四ルートのファクトリーとP6-I04の処理権取得経路を有効にする。非同期ポートを同期の接続層や `block_on` で包まない。
 
-二namespaceの片方が失敗しても、途中のDB更新をactor向けcatalogとして公開しない。部分tenant、片namespace、stale revision、同revision別digest、source collision、commit応答不明はAPI/listenerとclaimを閉じ、host正本とPGを別接続で再読して再reconcileする。restart時も同じ順序を繰り返す。reload時は新catalogを完全検証後に切り替え、旧catalogのcurrent gateを不確定状態で開放しない。P7-12の実index/current scanはこの後、listenerより前に置く。
+二つの名前空間の片方が失敗した場合も、途中のDB更新を利用主体向けカタログとして公開しない。一部テナントだけ、片方の名前空間だけ、古い改訂番号、同じ改訂番号で異なるダイジェスト、Sourceの衝突、コミット応答不明の場合は、API・リスナーと処理権取得を無効にする。ホスト正本とPGを別接続で再読し、再び照合・同期する。再起動時も同じ順序を繰り返す。再読み込み時は、新カタログの完全な検証後に切り替え、旧カタログの現在状態の確認ゲートを不確定な状態で開放しない。P7-12の実索引・現在状態の走査は、この後、リスナーを有効にする前に置く。
 
-| sole owner | 実装責務 | 受け渡し |
+| 唯一の所有者 | 実装責務 | 受け渡し |
 | --- | --- | --- |
-| P7-02 | `search-runtime` のSQL ledger adapter、Source ownership/activation/currentのatomic reconcileと実role | SQLx-free `SourceRegistrationLedgerPort` と実PG receiptをR02へ渡す |
-| P7-R02 | host authority adapter/全tenant証明、async capture、ledger/catalog組立て、起動admission | 検証済み単一catalog/portsをP5-08、P6-I04へ渡す |
-| P5-08 | 既存の四route factoryと実HTTP横断 | R02の検証済みcatalogを消費し、host inventory/第二ledgerを作らない |
+| P7-02 | `search-runtime` のSQL台帳アダプター、Sourceの所有権・有効化・現在状態の原子的な照合・同期、実ロール | SQLxに依存しない `SourceRegistrationLedgerPort` と実PGの検証記録をR02へ渡す |
+| P7-R02 | ホスト正本アダプターと全テナントの証明、非同期取得、台帳・カタログの組み立て、起動許可判定 | 検証済みの単一カタログとポート群をP5-08、P6-I04へ渡す |
+| P5-08 | 既存の四ルートのファクトリーと実HTTPの横断試験 | R02の検証済みカタログを利用し、ホスト登録情報一覧や第二の台帳を作らない |
 
-既存P5-08のstartup named testsはR02の実PG試験を再利用する。`search-runtime/src/api.rs` のroute factoryと `composition.rs` のhost admissionは共有root writer windowで直列化する。
+既存P5-08の名前を明示した起動テストは、R02の実PG試験を再利用する。`search-runtime/src/api.rs` のルートファクトリーと `composition.rs` のホスト起動許可判定は、共有構成起点の書き込み実行枠で直列化する。
 
-## 3. Audit production path はP6 generic配送と独立
+<a id="3-audit-production-path-はp6-generic配送と独立"></a>
+## 3. Auditの本番経路をP6の汎用配送から独立させる
 
-規範 `spec/operations/observability-audit-requirements-v0.md` §14–15の必須classをaudit policy表で列挙する。Document create/version/publish/withdraw、file access、policy/role変更等の**既存Document transaction producer**は `document-application` の `AuditEventRecord` と `document-repository-postgres` の同一transaction `audit_outbox_events` INSERTを消費する。実装済みかは各classの実DB試験で照合し、欠落はそのDocument operationのownerへ戻す。P7 runtimeが所有するprivileged Search管理、audit設定変更、integrity violation、destructive maintenance、重要な認証/認可拒否は、その操作のtransaction ownerが同じDB transaction（拒否は独立の拒否記録transaction）でtyped audit outbox rowを作り、INSERT失敗時はcommit/許可しない。Auditに決めたeventはsamplingしない。
+規範 `spec/operations/observability-audit-requirements-v0.md` §14–15の必須クラスを監査ポリシー表に列挙する。Document作成・版作成・公開・公開撤回、ファイルアクセス、ポリシー・ロール変更などの**既存Documentトランザクションの生成側処理**には、`document-application` の `AuditEventRecord` と、`document-repository-postgres` の同一トランザクション内の `audit_outbox_events` INSERTを利用する。実装済みかどうかは各クラスの実DB試験で照合し、欠落は該当Document操作の所有者へ戻す。P7ランタイムが所有する特権付きSearch管理、監査設定変更、整合性違反、破壊的保守操作、重要な認証・認可拒否は、その操作のトランザクション所有者が、同じDBトランザクション（拒否の場合は独立した拒否記録トランザクション）で型付き監査outbox行を作る。INSERT失敗時はコミット・許可しない。Audit対象と決めたイベントはサンプリングしない。
 
-| 規範§14.1の必須class | business/denial transaction writer | typed Audit INSERTの所有・判定 |
+| 規範§14.1の必須クラス | 業務処理・拒否記録トランザクションの書き込み担当 | 型付きAudit INSERTの所有・判定 |
 | --- | --- | --- |
-| 重要なauthentication/authorization failure | P5 identity/routeまたはDocument認可を実行したownerの独立拒否記録transaction | 対象存在を漏らさないreason enum。監査INSERT不能ならアクセス拒否を維持 |
-| privilege/role/access policy変更 | Document access-policy transactionまたはP7管理設定transactionのowner | 変更と同じtransaction。既存producerを実DB照合 |
-| document create/version create/publish/withdraw | 該当Document repository transactionのowner | 既存`AuditEventRecord`/`audit_outbox_events` producerを消費し、欠落classはそのownerへ返す |
-| document export/download | 原本byte開示前のDocument file-access transactionのowner | `document.file.access_granted`等の実producerを照合し、Audit失敗時に開示しない |
-| privileged management / audit configuration change | P7管理commandまたは該当Document管理transactionのowner | 管理変更と同一transaction。R04Aはtyped port/配送を提供 |
-| integrity violation / destructive maintenance | 検出componentの隔離記録transaction、またはR05管理command transactionのowner | 安全状態を維持したうえで必須Audit rowを作り、失敗を黙殺しない |
+| 重要な認証・認可失敗 | P5の識別・ルート処理またはDocument認可を実行した所有者の、独立した拒否記録トランザクション | 対象の存在を漏らさない理由の列挙型を使う。監査INSERTができなければアクセス拒否を維持する |
+| 権限・ロール・アクセスポリシー変更 | DocumentアクセスポリシーまたはP7管理設定のトランザクション所有者 | 変更と同じトランザクションにする。既存生成側処理を実DBで照合する |
+| 文書作成・版作成・公開・公開撤回 | 該当するDocumentリポジトリーのトランザクション所有者 | 既存の `AuditEventRecord`/`audit_outbox_events` 生成側処理を利用し、欠落クラスはその所有者へ返す |
+| 文書のエクスポート・ダウンロード | 原本バイト列を開示する前のDocumentファイルアクセストランザクションの所有者 | `document.file.access_granted` などの実生成側処理を照合し、Audit失敗時には開示しない |
+| 特権付き管理・監査設定変更 | P7管理コマンドまたは該当Document管理トランザクションの所有者 | 管理変更と同一トランザクションにする。R04Aは型付きポートと配送を提供する |
+| 整合性違反・破壊的保守操作 | 検出した構成要素の隔離記録トランザクション、またはR05管理コマンドトランザクションの所有者 | 安全な状態を維持したうえで必須Audit行を作り、失敗を黙殺しない |
 
-`document.read`、`search.execute`、`search.result.open` の高量event採否は規範writerとsecurity/product ownerが保持量・閲覧権とともに事前決定する。未決定classをOTel eventで代替したり、必須扱いを黙って省いたりしない。採用したclassは全件Audit、未採用はAudit対象外と明示する。retentionとfield許可は§4のtyped policyを適用する。
+大量に生じる `document.read`、`search.execute`、`search.result.open` の採否は、規範の書き込み担当とセキュリティ・プロダクトの所有者が、保持量・閲覧権とともに事前決定する。未決定クラスをOTelイベントで代替したり、必須の扱いを黙って省いたりしない。採用したクラスは全件をAuditに記録し、未採用のクラスはAudit対象外と明示する。保持条件とフィールドの許可には、§4の型付きポリシーを適用する。
 
-P7-R04A がAudit専用のadditive SQL migration、typed append-only `audit_outbox_events` source projection、独立Audit配送worker、Audit Store向け `AuditSinkPort` を所有する。既存sourceの`attempt_count`/`delivered_at`を維持し、`available_at`、`lease_token`、`lease_owner`、`lease_expires_at`、`dead_lettered_at`、閉じた`last_error_code`と試行上限をadditiveに持たせる。sourceのevent列は不変で、配送状態列だけをlease/fence付きで更新する。sinkは別のappend-only relational `audit_store_events` 行（`event_id` unique、schema version、typed event class/result/reason/time、origin component enum、retention上許されたstable actor/subject reference）として実DBで資格を取る。既存source `data JSONB`をsinkに丸ごと渡さず、versioned decoderとclass別allowlistから列へ投影する。sink roleはINSERT/重複照会のみ、UPDATE/DELETE不可。Audit配送roleはsourceのSELECTとAudit配送状態列の限定UPDATEのみで、Domain `outbox_events.delivered_at`、Search receipt、business rowには書けない。business writerはAudit INSERTのみ、Audit配送ack権を持たない。閲覧は別の監査reader roleと保持policyで制御する。
+P7-R04Aは、Audit専用の追加型SQL移行、型付き・追記専用の `audit_outbox_events` 生成元の射影、独立したAudit配送ワーカー、Audit Store向けの `AuditSinkPort` を所有する。既存生成元の `attempt_count`/`delivered_at` を維持し、`available_at`、`lease_token`、`lease_owner`、`lease_expires_at`、`dead_lettered_at`、値の集合を限定した `last_error_code` と試行上限を追加する。生成元のイベント列は変更不能とし、配送状態列だけをリース・フェンス付きで更新する。配送先は、別の追記専用リレーショナル表 `audit_store_events` の行として実DBで資格を得る。この行には、一意な `event_id`、スキーマ版、型付きイベントのクラス・結果・理由・時刻、発生元コンポーネントの列挙型、保持条件上許された安定した利用主体・対象参照を含める。既存生成元の `data JSONB` を配送先へ丸ごと渡さず、版管理されたデコーダーとクラス別許可リストから列へ投影する。配送先ロールはINSERTと重複照会だけを許可し、UPDATE・DELETEは不可。Audit配送ロールは生成元のSELECTとAudit配送状態列の限定UPDATEだけを許可し、Domainの `outbox_events.delivered_at`、Searchイベント処理記録、業務行には書けない。業務処理の書き込み担当はAudit INSERTだけを許可され、Audit配送の確認応答権限を持たない。閲覧は別の監査読み取りロールと保持ポリシーで制御する。
 
-配送はat-least-once、event_id冪等、duplicate detection、bounded retry/lease、failed/DLQ可視性を持つ。sink commit後にsource ackが不明ならsinkをevent_idで照会し、存在と内容一致を確認してからAudit側だけをsettleする。source claim/settleのcommit応答不明もDB再読とfenceで確定し、推測でackしない。Audit Store停止ではbusiness commit済みsource rowを保持し、別経路の再送で復旧する。P6のgeneric `audit_delivery` 非対象を変更せず、P6 Domain ackをAudit ackとみなさない。live Audit Store製品・credentialは別選定であり、ここではdisposableな別PG sinkでprotocolを証明する。
+配送は少なくとも一回とし、event_idによる冪等性、重複検出、再試行・リースの上限、失敗・DLQの可視性を備える。配送先コミット後に生成元への確認応答の結果が不明になった場合は、配送先をevent_idで照会し、存在と内容の一致を確認してからAudit側だけの結果を確定する。生成元の処理権取得・結果確定のコミット応答不明も、DBの再読とフェンスで確定し、推測で確認応答しない。Audit Store停止時は、業務コミット済みの生成元行を保持し、別経路の再送で復旧する。P6の汎用配送では `audit_delivery` が対象外であることを変更せず、P6 Domainの確認応答をAuditの確認応答とみなさない。実際のAudit Store製品・認証情報は別途選定し、ここでは使い捨ての別PG配送先でプロトコルを証明する。
 
-## 4. Retention-aware output policy と二lease
+<a id="4-retention-aware-output-policy-と二lease"></a>
+## 4. 保持条件に対応する出力ポリシーと二つのリース
 
-出力は生の任意key/valueではなく、`SinkKind × RetentionMode × VisibilityClass` で選ぶclosed typed allowlistから作る。未列挙fieldはdefault deny。全sinkでquery/content/raw provider response、provider native ID/locator、candidate ID、具体gap、Graph path/probe/receipt、digest、response bytes、SecretRefおよび秘密値、hidden SourceのID/存在/countを禁止する。秘密値はpanic/Debug/error/config dumpにも現れない。高cardinality IDをmetric labelにしない。actor-visible判定前のSource由来情報は内部sinkにも流さない。必要な運用相関IDはretention modeと権限ごとに下表の最小集合だけを使う。
+出力は、任意の未加工のキーと値ではなく、`SinkKind × RetentionMode × VisibilityClass` で選ぶ閉じた型付き許可リストから作る。列挙していないフィールドは既定で拒否する。全出力先で、検索要求・内容・未加工のプロバイダー応答、プロバイダー固有のID・位置指定子、候補ID、具体的な欠落情報、Graph経路・調査・検証情報、ダイジェスト、応答バイト列、SecretRefと秘密値、不可視SourceのID・存在・件数を禁止する。秘密値はpanic・Debug・エラー・設定ダンプにも出さない。種類数の多いIDをメトリクスラベルにしない。利用主体から見えると判定する前のSource由来情報は、内部の出力先にも流さない。必要な運用相関IDには、保持モードと権限ごとに下表の最小集合だけを使う。
 
-| sink | 許可する最小field | 禁止/追加条件 |
+| 出力先 | 許可する最小フィールド | 禁止・追加条件 |
 | --- | --- | --- |
-| public health / Problem | 固定status・reason code、全体readinessのみ | tenant/Source ID、可視・不可視別件数、具体gap、内部revisionなし |
-| authenticated admin diagnostics | 対象actorに可視なSourceのtyped status、許可されたcurrent keyの存在bit、集計lag bucket | 原始ID、digest、payload、hidden countなし。権限を再確認し、監査閲覧roleと分離 |
-| config / CLI / debug / panic | schema version、component category、validation code、参照の存在bit | `SecretRef`表現・secret値・endpoint credential・tenant/Source固有値なし |
-| structured logs | route enum、stage enum、status/error code enum、bounded duration/size bucket | freeform error文字列、per-call provider属性、raw IDsなし |
-| metrics | stage/status/route/source-kind enumとbounded count/duration/size bucket | IDラベル、hidden Source別count、query/payloadなし |
-| traces | stage/status/route enum、bounded duration/count/size bucket。持続保持モードでのみ権限制限付きopaque operation correlation ID | `NO_RETENTION`/`SessionOnly`のprovider由来per-call属性・IDなし。raw native IDなし |
-| Audit source/sink | §3でpolicy採用したtyped class/result/reason、必要なstable subject/actor referenceを監査roleに限定 | Remote内容/具体gap/provider IDなし。`NO_RETENTION`はprovider由来per-call payload/IDを一切生成しない |
-| exporter buffer / error / shutdown report | 上記telemetry typed envelopeとdrop/flush count・status enumのみ | retry spool/未送信buffer/error chainに禁止値なし。shutdown後のhandleは再読不能 |
+| 公開の稼働状態・Problem | 固定の状態・理由コードと全体の準備完了状態だけ | テナント・SourceのID、可視・不可視別件数、具体的な欠落情報、内部改訂番号は含めない |
+| 認証済みの管理診断 | 対象利用主体に見えるSourceの型付き状態、許可された現在の世代キーの存在ビット、集計した遅延の区分 | 元のID、ダイジェスト、ペイロード、不可視の件数は含めない。権限を再確認し、監査閲覧ロールと分離する |
+| 設定・CLI・デバッグ・panic | スキーマ版、構成要素の分類、検証コード、参照の存在ビット | `SecretRef` の表現、秘密値、接続先認証情報、テナント・Source固有値は含めない |
+| 構造化ログ | ルート・段階・状態・エラーコードの列挙型、上限付きの所要時間・サイズ区分 | 自由形式のエラー文字列、呼び出しごとのプロバイダー属性、未加工のIDは含めない |
+| メトリクス | 段階・状態・ルート・Source種別の列挙型と、上限付きの件数・所要時間・サイズ区分 | IDラベル、不可視Source別件数、検索要求、ペイロードは含めない |
+| トレース | 段階・状態・ルートの列挙型、上限付きの所要時間・件数・サイズ区分。持続保持モードでだけ、権限を制限した不透明な操作相関ID | `NO_RETENTION`/`SessionOnly` では、プロバイダー由来の呼び出しごとの属性・IDを含めない。未加工の固有IDも含めない |
+| Audit生成元・配送先 | §3でポリシーとして採用した型付きクラス・結果・理由。必要な安定した対象・利用主体参照は監査ロールに限定 | Remote内容、具体的な欠落情報、プロバイダーIDは含めない。`NO_RETENTION` では、プロバイダー由来の呼び出しごとのペイロード・IDを一切生成しない |
+| エクスポーターのバッファー・エラー・停止報告 | 上記テレメトリーの型付き外枠と、破棄・排出の件数および状態の列挙型だけ | 再試行スプール、未送信バッファー、エラー連鎖に禁止値を含めない。停止後のハンドルからは再読できない |
 
-`PersistentResource` と `PersistentDiscoveryMetadata` はそのSourceで保持が明示許可されたstable identifierだけを認証済みAudit/管理面に記録できる。後者は本文Unitやembeddingの許可ではない。`CacheWithExpiry` はTTLを越える相関IDを持たず、`SessionOnly` はsession終了後のper-call IDを持たない。`NoRetention` はper-call provider-derived attributeを生成せず、共通のstage/status/count/size bucketだけを許す。count bucketもhidden Source数を逆算できる場合は抑止する。これらは公開DTOの許可ではなくsink側の上限である。
+`PersistentResource` と `PersistentDiscoveryMetadata` は、そのSourceで保持が明示的に許可された安定した識別子だけを、認証済みのAudit・管理面に記録できる。後者は本文Unitや埋め込みの保持許可ではない。`CacheWithExpiry` はTTLを越える相関IDを持たず、`SessionOnly` はセッション終了後に呼び出しごとのIDを持たない。`NoRetention` は呼び出しごとのプロバイダー由来属性を生成せず、共通の段階・状態・件数・サイズ区分だけを許す。件数区分であっても、不可視Source数を逆算できる場合は抑止する。これらは公開DTOの許可ではなく、出力先側の上限である。
 
-P4 `EvaluationLease` をevaluation success/error/cancel/deadlineで閉じ、P5-07 の `TransientDisclosure<T>` を実socket送出完了、write error、disconnect、cancel、deadlineで閉じる。handler returnやbody EOFのみを送出完了と扱わない。R04Oのsentinel試験は全sink、exporter queue/flush/drop、error chain、buffer、保持handleとshutdown後を捕捉する。合成sentinelは実行時に作り、fixtureへ保存しない。
+P4の `EvaluationLease` は評価の成功・エラー・キャンセル・期限で閉じる。P5-07の `TransientDisclosure<T>` は、実ソケットでの送出完了、書き込みエラー、切断、キャンセル、期限で閉じる。ハンドラーの復帰や本文のEOFだけを送出完了と扱わない。R04Oの検出用標識試験は、全出力先、エクスポーターのキュー・排出・破棄、エラー連鎖、バッファー、保持ハンドル、停止後の状態を捕捉する。合成の検出用標識は実行時に作り、フィクスチャへ保存しない。
 
-## 5. OTLP transport は隔離PoCで選定
+<a id="5-otlp-transport-は隔離pocで選定"></a>
+## 5. OTLPの通信方式を隔離PoCで選定する
 
-`opentelemetry`/`opentelemetry_sdk`/`opentelemetry-otlp` の選定と、HTTP/protobuf対gRPCのtransport `POC REQUIRED` を分ける。P7-R04P はproduction workspace外の隔離PoCで双方の正確なcrate version・feature set・Cargo.lock dependency closureを固定し、公式API、license/advisory/source、macOS/Linux cross-compile、local Collector interop、trace context、停止信号下のbounded queue/flush/drop、必要性能を同一条件で比較する。独立review後、parent backend decision と規範writerのselection記録・version/feature pinが揃うまでR04Oにtransport dependencyを追加しない。選定前はportとlocal in-memory captureだけでprivacy契約を実装する。R06 imageは未資格transportを含めない。
+`opentelemetry`/`opentelemetry_sdk`/`opentelemetry-otlp` の選定と、HTTP/protobuf対gRPCの通信方式に関する `POC REQUIRED` を分ける。P7-R04Pは、本番ワークスペース外の隔離PoCで、双方の正確なcrate版・機能フラグ集合・Cargo.lockの依存関係全体を固定する。公式API、ライセンス・勧告・取得元、macOS/Linuxのクロスコンパイル、ローカルCollectorとの相互運用、トレースコンテキスト、停止信号下の上限付きキュー・排出・破棄、必要性能を同一条件で比較する。独立レビュー後、親担当のバックエンド決定、規範書き込み担当の採択記録、版と機能フラグの固定がすべて揃うまで、R04Oに通信方式の依存関係を追加しない。選定前はポートとローカルのメモリー内取得だけでプライバシー契約を実装する。R06イメージに未資格の通信方式を含めない。
 
-## 6. Capacity manifest、測定予算、SLO境界
+<a id="6-capacity-manifest測定予算slo境界"></a>
+## 6. 負荷定義、測定予算、SLOの境界
 
-R07のimmutable workload manifestは各runでtenant数、Document/Remote Source数とtenant別分布、Document/Version/Resource/Unit数と分布、Graph relation/participant/degree数と分布、synthetic request/provider payload bytes分布、Remote fanout、HTTP同時数、worker in-flight/backlog、cold/warm定義、固定seed・fixture/asset hash・candidate build hash、failure schedule、繰返しを宣言する。coldは新process・既存immutable indexを再openしてquery cacheを空にした最初の測定、warmは同一processで宣言済みwarmup後の測定とし、DB/OS cacheを消したという主張は別証拠がある場合だけ付ける。合成payload本文だけを生成し、顧客データを入れない。少なくとも複数tenant・両Source kind・Document→Unit→GraphとRemote fanout・HTTP/worker併走を含む代表shapeを依頼文§14のruntime要件に結び、P3-P04の100/1,000/3,000 relation group資格を縮小しない。
+R07の変更不能な負荷定義は、各実行について、テナント数、Document/RemoteのSource数とテナント別分布、Document/Version/Resource/Unitの数と分布、Graphの関係数・参加者数・次数とその分布、合成要求・プロバイダーペイロードのバイト数分布、Remoteの呼び出し先数（fanout）、HTTP同時数、ワーカー同時処理数・処理待ち件数、cold/warmの定義、固定乱数シード、フィクスチャ・アセットのハッシュ、候補構築物のハッシュ、障害投入予定、繰り返しを宣言する。coldは、新プロセスで既存の変更不能な索引を再オープンし、検索キャッシュを空にした最初の測定とする。warmは、同一プロセスで宣言済みのウォームアップを終えた後の測定とする。DB/OSキャッシュを消したという主張は、別の証拠がある場合だけ付ける。合成ペイロードの本文だけを生成し、顧客データを入れない。少なくとも複数テナント、両Source種別、Document→Unit→Graph、Remoteの呼び出し先展開（fanout）、HTTPとワーカーの並行動作を含む代表構成を、依頼文§14のランタイム要件に結び付ける。P3-P04の100/1,000/3,000関係グループの資格条件を縮小しない。
 
-先に小さなbounded pilotを行い、実測wallclock、peak RSS、DB/index/Graph disk増分、free-space reserve、backlog drainから**有効な最大run時間・資源予算**とpre-admission式を固定する。各runは空きdisk/reserve、available memory/予測peak、wallclock、low-space/memory hard stopを実行前に判定し、途中も監視して停止・checkpoint・安全なresumeを行う。100/1,000/3,000 envelopeは各段階がこの予算に収まる場合だけ進め、未実行は理由付き `NOT_ADMITTED` とする。欠測をPASSや外挿値にしない。raw/aggregateはp50/p95/p99、throughput、RSS peak、disk、fanout/payload実績、cold/warm、fault結果と測定不能理由を残す。R08はmanifestと想定業務量が一致する範囲だけproposed operational SLOを作り、観測値・提案値・対外保証値を区別する。
+先に小規模で上限付きの予備測定を行い、実時間、最大RSS、DB・索引・Graphのディスク増分、空き容量の予約分、処理待ちの解消を実測して、**有効な最大実行時間・資源予算**と実行前の許可判定式を固定する。各実行では、空きディスクと予約分、使用可能メモリーと予測最大使用量、実時間、空き容量・メモリー不足の強制停止条件を事前判定する。実行中も監視し、停止、確認時点の保存、安全な再開を行う。100/1,000/3,000の実行範囲は、各段階がこの予算に収まる場合だけ進める。未実行は理由付きの `NOT_ADMITTED` とし、欠測をPASSや外挿値にしない。生データと集計値には、p50/p95/p99、処理量、最大RSS、ディスク、呼び出し先数（fanout）・ペイロードの実績、cold/warm、障害試験の結果、測定不能の理由を残す。R08は、負荷定義と想定業務量が一致する範囲だけで運用SLOを提案し、観測値・提案値・対外保証値を区別する。
 
+<a id="7-再審査条件"></a>
 ## 7. 再審査条件
 
-本改訂と[改訂計画](p7-runtime-plan-revision-1.md)を旧2文書に合成して独立architecture/security reviewerが5件を再判定する。GO後にparentがexact hashのruntime freezeを別記録し、production taskを始める。P7-01〜12/P5/P6の既承認semanticsを本改訂だけで変更せず、P5実socket、P6 unknown COMMIT/fenced ack、P7-12別DB restoreの実receiptはR09で照合する。specific cloud、live credential、merge/deploy、本番migrationはこの設計資格に含めない。
+本改訂と[改訂計画](p7-runtime-plan-revision-1.md)を旧2文書に統合し、独立したアーキテクチャ・セキュリティレビュアーが5件を再判定する。GO後、親担当が正確なハッシュを指定したランタイム凍結を別記録し、本番作業を始める。P7-01〜12/P5/P6の既承認の意味を本改訂だけで変更しない。P5の実ソケット、P6のCOMMIT結果不明・フェンス付き確認応答、P7-12の別DB復元の実検証記録は、R09で照合する。特定のクラウド、実際の認証情報、マージ・デプロイ、本番移行は、この設計の資格判定に含めない。

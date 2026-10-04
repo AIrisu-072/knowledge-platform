@@ -1,50 +1,61 @@
-# Search root dependency metadata recovery — 2026-10-03
+意味保存の日本語訳。承認・資格の追加ではない。記載の既存ハッシュは原文/原証拠を指す。
 
-## Scope and source identity
+[固定原文](https://github.com/AIrisu-072/knowledge-platform/blob/0ecf486719e3c9d71242e289a7564ad6d1032b3c/docs/superpowers/programs/search-platform-completion/dependency-metadata-recovery-20261003.md)
 
-**Bounded dependency gate PASS; Search P1–P7 and whole-program acceptance remain incomplete.** The requester asked to continue Search on 2026-10-03. This independently reviewed recovery starts from live Draft PR #40 head `a945fbd32145a3109e35cb9cb056cea052698138`, tree `398edbe70174700aa55a2844dff8bd2033242582`, stacked on `80a47960d025e4dfdea1eacade28b15d218725ff`. The older restored worktree is preserved and is not the source of this patch.
+<a id="search-root-dependency-metadata-recovery--2026-10-03"></a>
+# Searchルート依存関係メタデータの修復記録 — 2026-10-03
 
-The five configuration/lock files change only:
+> 以下の状態・次の作業は当時の記録であり、現在の実行指示ではありません。現行の停止条件・実行可否は[最新の実行状態](../../execution/search-platform-completion-program-status.md)を参照してください。
 
-- Eight existing local path dependencies gain `version = "0.0.0"`, matching the referenced packages: one in `document-semantic-inspection-runner`, one in `search-extraction-core`, three in `search-extraction-runner`, and three in `search-extraction-worker`.
-- Root `Cargo.lock` updates only `yoke-derive 0.8.3` to `0.8.4`, including its published checksum. All 558 package entries are retained; every other package field, dependency requirement, path and feature is unchanged.
+<a id="scope-and-source-identity"></a>
+## 対象範囲とソースの識別情報
 
-No product source, test assertion, migration, runtime behavior, dependency policy, scanner exception, workflow or frozen semantic contract changes. The pre-existing exact31 scanner exceptions are unchanged.
+**対象を限定した依存関係ゲートはPASS。Search P1–P7とプログラム全体の受入は引き続き未完了です。** 依頼者は2026-10-03にSearchの継続を依頼しました。独立レビューを受けた今回の修復は、その時点のDraft PR #40のhead `a945fbd32145a3109e35cb9cb056cea052698138`、tree `398edbe70174700aa55a2844dff8bd2033242582`を起点とし、`80a47960d025e4dfdea1eacade28b15d218725ff`の上に積み重ねています。以前に復元した作業ツリーは保存しており、このパッチの元にはしていません。
 
-## Package provenance
+五つの設定・ロックファイルで変更するのは、次の内容だけです。
 
-Fresh official [crates.io-index metadata](https://github.com/rust-lang/crates.io-index/blob/master/yo/ke/yoke-derive), observed Git blob `17a2065c79a44a3d7d4f658e96e467706a957070`, identifies `0.8.3` as yanked and `0.8.4` as not yanked at this check. The two versions have identical declared dependency requirements. Existing `yoke 0.8.3` permits `yoke-derive ^0.8.2`. The replacement retains the allowed Unicode-3.0 license; its Rust 1.82 minimum fits the pinned Rust 1.98.1 toolchain.
+- 既存のローカルパス依存関係八つに、参照先パッケージと一致する`version = "0.0.0"`を追加します。内訳は`document-semantic-inspection-runner`に一つ、`search-extraction-core`に一つ、`search-extraction-runner`に三つ、`search-extraction-worker`に三つです。
+- ルートの`Cargo.lock`では、`yoke-derive 0.8.3`から`0.8.4`への更新と、その公開チェックサムの更新だけを行います。558件すべてのパッケージエントリを保持し、他のパッケージフィールド、依存要件、パス、機能は変更しません。
 
-The cached official `yoke-derive-0.8.4.crate` archive matches SHA-256 `ec8ebde2db3681e8c9980cc27822030e68752690ddfa9473e739aeb4dbde6d71`, the checksum in the new lockfile. This is a real patch-version source update, not a claim that the package bytes are unchanged.
+製品ソース、テストのアサーション、マイグレーション、実行時の動作、依存関係ポリシー、スキャナーの例外、ワークフロー、凍結済みの意味的契約は変更しません。既存のexact31スキャナー例外も変更しません。
 
-## Fresh verification
+<a id="package-provenance"></a>
+## パッケージの出所
 
-Tools: Rust 1.98.1, Cargo 1.98.1, cargo-deny 0.20.2, already-installed verified Linux toolchain. No project compilation or test executable was run in this checkpoint.
+新たに確認した公式の[crates.io-indexメタデータ](https://github.com/rust-lang/crates.io-index/blob/master/yo/ke/yoke-derive)のGit blobは`17a2065c79a44a3d7d4f658e96e467706a957070`で、この確認時点では`0.8.3`が取り下げ済み、`0.8.4`が未取り下げとされています。両バージョンで宣言されている依存要件は同一です。既存の`yoke 0.8.3`は`yoke-derive ^0.8.2`を許容します。置換後も許可済みのUnicode-3.0ライセンスを維持し、最低要件のRust 1.82は固定済みのRust 1.98.1ツールチェーンで満たせます。
 
-1. Baseline TOML inventory reproduced eight unversioned local path dependencies. The same inventory after the edit finds zero and validates the target package versions.
-2. Initial offline targeted resolution stopped before changing the lock because the restored cache lacked the `sqlx` index entry. Normal crates.io metadata acquisition then completed `cargo update -p yoke-derive@0.8.3 --precise 0.8.4`. Parsed old/new lock comparison confirms the sole changed package fields are the intended version and checksum.
-3. `cargo metadata --locked --no-deps --format-version 1` passes after repair. This is metadata validation, not a build or test.
-4. The same dependency-policy command ran against an isolated clean baseline worktree and the candidate, with the same toolchain and unchanged `deny.toml`:
+キャッシュ内の公式`yoke-derive-0.8.4.crate`アーカイブは、新しいロックファイルにあるSHA-256 `ec8ebde2db3681e8c9980cc27822030e68752690ddfa9473e739aeb4dbde6d71`と一致します。これは実際のパッチバージョンのソース更新であり、パッケージのバイト列が不変だと主張するものではありません。
+
+<a id="fresh-verification"></a>
+## 新たに実施した検証
+
+使用ツールはRust 1.98.1、Cargo 1.98.1、cargo-deny 0.20.2で、インストール済み・検証済みのLinuxツールチェーンを使いました。このチェックポイントでは、プロジェクトのコンパイルもテスト実行ファイルの起動も行っていません。
+
+1. 修正前のTOML一覧確認で、バージョン未指定のローカルパス依存関係八つを再現しました。編集後に同じ確認を行うと未指定はゼロとなり、参照先パッケージのバージョンも検証できました。
+2. 最初のオフラインでの対象限定解決は、復元したキャッシュに`sqlx`のインデックス項目がなかったため、ロックを変更する前に停止しました。その後、通常のcrates.ioメタデータ取得を行い、`cargo update -p yoke-derive@0.8.3 --precise 0.8.4`が完了しました。新旧ロックを解析して比較し、変更されたパッケージフィールドが意図したバージョンとチェックサムだけであることを確認しました。
+3. 修復後の`cargo metadata --locked --no-deps --format-version 1`は成功しました。これはメタデータの検証であり、ビルドやテストではありません。
+4. 分離したクリーンな基準作業ツリーと候補に対して、同じツールチェーンと変更していない`deny.toml`を使い、同じ依存関係ポリシーのコマンドを実行しました。
 
 ```sh
 cargo deny --locked check --hide-inclusion-graph
 ```
 
-- Baseline: exit **3**; eight wildcard dependencies across four diagnostics plus yanked `yoke-derive 0.8.3`; advisories/bans FAILED, licenses/sources OK.
-- Candidate: exit **0**; advisories, bans, licenses and sources **OK**.
-- Both retain 29 warnings: 26 duplicate-package warnings, two unused license allowances and one missing license-field warning for `ovba 0.7.1`. No warning or deny policy was suppressed.
+- 修正前：exit **3**。四つの診断にまたがる八つのワイルドカード依存関係と、取り下げ済みの`yoke-derive 0.8.3`を検出しました。advisories/bansはFAILED、licenses/sourcesはOKでした。
+- 候補：exit **0**。advisories、bans、licenses、sourcesはすべて**OK**でした。
+- 両方で29件の警告が残っています。内訳はパッケージ重複26件、未使用のライセンス許可二件、`ovba 0.7.1`のライセンスフィールド欠落一件です。警告やdenyポリシーの抑制は行っていません。
 
-Saved command outputs (only trailing spaces/tabs on individual lines are removed for repository whitespace policy; diagnostic text and ordering are unchanged):
+保存したコマンド出力は次のとおりです。リポジトリの空白ポリシーに合わせ、各行末のスペースとタブだけを除去しています。診断文と順序は変更していません。
 
-- [Baseline log](dependency-metadata-before-20261003.log): 18,346 bytes; SHA-256 `027766ab5cf96740f028be5d157ae4e45283cc2c475a8b36902ecd0a999ba37c`. The unnormalized output was 18,398 bytes, SHA-256 `25244ded24b97038ff623a8fffdd440776f3eccbfc738645e45ef060ac5a7c2b`.
-- [Candidate log](dependency-metadata-after-20261003.log): 15,286 bytes; SHA-256 `5fbe6264fbc595a91303aac2d2c9fadb6463b6cb6306bd82f2bf08d2d339e59c`. The unnormalized output was 15,338 bytes, SHA-256 `9a4a605e92a6cedb0023b5165cd03339ecefa58cbe1b611194bbad72045df221`.
+- [修正前のログ](dependency-metadata-before-20261003.log)：18,346 bytes、SHA-256 `027766ab5cf96740f028be5d157ae4e45283cc2c475a8b36902ecd0a999ba37c`。正規化前の出力は18,398 bytes、SHA-256 `25244ded24b97038ff623a8fffdd440776f3eccbfc738645e45ef060ac5a7c2b`です。
+- [候補のログ](dependency-metadata-after-20261003.log)：15,286 bytes、SHA-256 `5fbe6264fbc595a91303aac2d2c9fadb6463b6cb6306bd82f2bf08d2d339e59c`。正規化前の出力は15,338 bytes、SHA-256 `9a4a605e92a6cedb0023b5165cd03339ecefa58cbe1b611194bbad72045df221`です。
 
-The five-file diff received independent read-only GO for package identity, exact lock delta, official provenance, license/toolchain compatibility and unchanged policy. `git diff --check` passes. These dependency checks do not exercise package build scripts, proc macros or runtime behavior.
+五ファイルの差分は、パッケージの同一性、正確なロック差分、公式の出所、ライセンスとツールチェーンの互換性、ポリシー不変について、独立した読み取り専用レビューでGOを得ました。`git diff --check`も成功しました。これらの依存関係チェックでは、パッケージのビルドスクリプト、手続きマクロ、実行時の動作を動かしていません。
 
-## Remaining gates and next action
+<a id="remaining-gates-and-next-action"></a>
+## 未達のゲートと次の作業
 
-Three separate experiment lockfiles still pin `yoke-derive 0.8.3`: `experiments/document-semantic-inspection/Cargo.lock`, `experiments/search-http-client-poc/Cargo.lock`, and `experiments/search-discovery-poc/Cargo.lock`. This root gate does **not** clear their dependency gates or the hosted DSI PoC workflow.
+別管理の三つの実験用ロックファイルには、引き続き`yoke-derive 0.8.3`が固定されています。対象は`experiments/document-semantic-inspection/Cargo.lock`、`experiments/search-http-client-poc/Cargo.lock`、`experiments/search-discovery-poc/Cargo.lock`です。今回のルートのゲート通過は、これらの依存関係ゲートやホスト側のDSI PoCワークフローの合格を意味**しません**。
 
-The existing `outbox_delivery::observe` implementation is still missing; G05/G06 fresh runner verification, G07/G08 execution and all capability/final acceptance remain open. Historical P1/P2/P7 receipts do not qualify this current complete tree. The unidentified earlier safety-stopped operation was not retried, and this metadata recovery does not declare that historical hold resolved or authorize a parser, database, model, process-recovery, security-probe or P3 qualification operation.
+`outbox_delivery::observe`の実装は依然として欠けています。G05/G06の新たなランナー検証、G07/G08の実行、すべての機能受入と最終受入は未達です。過去のP1/P2/P7の記録で、現在のツリー全体が適合したことにはなりません。以前に安全上の理由で停止した内容未特定の操作は再試行していません。今回のメタデータ修復は、その過去の保留が解消したと宣言するものでも、パーサー、データベース、モデル、プロセス復旧、セキュリティ検査、P3資格試験の操作を許可するものでもありません。
 
-Next: publish only this independently reviewed bounded checkpoint through Draft PR #40 and inspect ordinary exact-head CI. Review the next explicitly bounded P6 gate against the frozen G05 → G06 → G07 → G08 sequence before execution; keep separate experiment lock repairs scoped and independently verified. No merge or deployment.
+次の作業は、独立レビュー済みのこの対象限定チェックポイントだけをDraft PR #40で公開し、正確なheadに対する通常のCIを確認することです。次の明示的に範囲を限定したP6ゲートは、実行前に凍結済みのG05 → G06 → G07 → G08の順序に照らしてレビューします。別管理の実験用ロックの修復も、範囲を限定して独立に検証します。マージやデプロイは行いません。
