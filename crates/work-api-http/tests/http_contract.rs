@@ -788,7 +788,7 @@ async fn completion_transport_accepts_only_closed_complete_action() {
             .status(),
         StatusCode::SERVICE_UNAVAILABLE
     );
-    for action in ["hold", "resume", "submit", "COMPLETE"] {
+    for action in ["submit", "COMPLETE", "restart"] {
         let mut invalid = valid.clone();
         invalid["action"] = serde_json::json!(action);
         let (status, body) = response_json(app().oneshot(request(invalid)).await.unwrap()).await;
@@ -976,4 +976,153 @@ async fn completion_http_validates_actor_occ_and_action_then_recovers_readonly_o
     assert_eq!(status, StatusCode::CONFLICT);
     assert_eq!(body["code"], "HANDOFF_NOT_READY");
     assert_eq!(fixture.workflow.lock().unwrap().snapshots, before.snapshots);
+}
+
+#[tokio::test]
+async fn hold_resume_transport_accepts_closed_actions_and_rejects_unknown_fields() {
+    for action in ["hold", "resume"] {
+        let valid = serde_json::json!({"operationId":Uuid::now_v7(),"expectedRevision":0,"actingAssignmentId":SALES_ASSIGNMENT_ID,"expectedAttemptId":SALES_ATTEMPT_ID,"definitionActionId":Uuid::from_u128(0x01900000000070008000000000000014),"action":action});
+        let request = |body: serde_json::Value| {
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/organization/tasks/{SALES_TASK_ID}/actions"))
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap()
+        };
+        assert_eq!(
+            app()
+                .oneshot(request(valid.clone()))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        for field in ["unexpected", "principalId", "reason"] {
+            let mut bad = valid.clone();
+            bad[field] = serde_json::json!("not allowed");
+            assert_eq!(
+                app().oneshot(request(bad)).await.unwrap().status(),
+                StatusCode::UNPROCESSABLE_ENTITY
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn hold_resume_http_preserves_private_reads_prior_receipt_and_never_dispatches_agent() {
+    let fixture = Arc::new(DomainFixture {
+        workflow: std::sync::Mutex::new(Workflow::synthetic(None)),
+        outcomes: std::sync::Mutex::new(vec![]),
+    });
+    let save_context = context(VerifiedActor::Sales01, 0);
+    let saved = fixture
+        .execute(
+            VerifiedActor::Sales01,
+            Command::SaveDraft {
+                task_id: SALES_TASK_ID,
+                artifact_id: None,
+                context: save_context.clone(),
+                value: TextValue {
+                    text: "保存済み非公開メモ".into(),
+                },
+            },
+        )
+        .await
+        .unwrap();
+    let dispatch = Arc::new(RecordingDispatch {
+        calls: std::sync::atomic::AtomicUsize::new(0),
+        reject: false,
+    });
+    let app =
+        work_api_http::router_with_agent(fixture.clone(), VerifiedActor::Sales01, dispatch.clone());
+    for (revision, (action, kind, state, id)) in (1..).zip([
+        ("hold", "held", "held", HOLD_ACTION_ID),
+        ("resume", "resumed", "active", RESUME_ACTION_ID),
+    ]) {
+        let operation = Uuid::now_v7();
+        let body = serde_json::json!({"operationId":operation,"expectedRevision":revision,"actingAssignmentId":SALES_ASSIGNMENT_ID,"expectedAttemptId":SALES_ATTEMPT_ID,"definitionActionId":id,"action":action});
+        let request = |body: serde_json::Value| {
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/organization/tasks/{SALES_TASK_ID}/actions"))
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap()
+        };
+        for (field, value, code) in [
+            (
+                "expectedRevision",
+                serde_json::json!(0),
+                "REVISION_CONFLICT",
+            ),
+            (
+                "expectedAttemptId",
+                serde_json::json!(Uuid::now_v7()),
+                "REVISION_CONFLICT",
+            ),
+            (
+                "definitionActionId",
+                serde_json::json!(COMPLETE_ACTION_ID),
+                "HANDOFF_NOT_READY",
+            ),
+        ] {
+            let mut bad = body.clone();
+            bad[field] = value;
+            let (status, error) =
+                response_json(app.clone().oneshot(request(bad)).await.unwrap()).await;
+            assert_eq!(status, StatusCode::CONFLICT);
+            assert_eq!(error["code"], code);
+        }
+        let (status, outcome) =
+            response_json(app.clone().oneshot(request(body)).await.unwrap()).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(outcome["kind"], kind);
+        assert_eq!(outcome["task"]["state"], state);
+        for (id, expected) in [
+            (operation, outcome),
+            (
+                save_context.operation_id,
+                serde_json::to_value(&saved).unwrap(),
+            ),
+        ] {
+            let (status, recovered) = response_json(
+                app.clone()
+                    .oneshot(
+                        Request::builder()
+                            .uri(format!("/v1/organization/operations/{id}"))
+                            .body(Body::empty())
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap(),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(recovered, expected);
+        }
+        let (status, detail) = response_json(
+            app.clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(format!("/v1/organization/tasks/{SALES_TASK_ID}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            detail["workingArtifacts"][0]["value"]["text"],
+            "保存済み非公開メモ"
+        );
+        assert_eq!(detail["attemptId"], serde_json::json!(SALES_ATTEMPT_ID));
+    }
+    assert_eq!(dispatch.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    assert_eq!(
+        fixture.workflow.lock().unwrap().source.work_assignment_id,
+        Some(SALES_WORK_ASSIGNMENT_ID)
+    );
 }

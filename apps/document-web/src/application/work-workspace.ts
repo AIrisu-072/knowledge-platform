@@ -24,7 +24,9 @@ export type WorkOperation =
   | { kind: 'evidence_registered'; taskId: string; input: EvidenceCommand }
   | { kind: 'finding_registered'; taskId: string; input: FindingCommand }
   | { kind: 'decision_recorded'; taskId: string; findingId: string; input: DecisionCommand }
-  | { kind: 'completed'; taskId: string; input: WorkflowActionCommand }
+  | { kind: 'completed'; taskId: string; input: WorkflowActionCommand & { action: 'complete' } }
+  | { kind: 'held'; taskId: string; input: WorkflowActionCommand & { action: 'hold' } }
+  | { kind: 'resumed'; taskId: string; input: WorkflowActionCommand & { action: 'resume' } }
   | { kind: 'returned'; taskId: string; input: ReturnCommand }
   | { kind: 'claimed'; taskId: string; input: WorkCommand }
   | { kind: 'draft_saved'; taskId: string; input: WorkCommand & { artifactId?: string; value: { text: string } } }
@@ -37,6 +39,8 @@ export function executeWorkOperation(operation: WorkOperation): Promise<WorkResu
     case 'finding_registered': return workApi.registerFinding(operation.taskId, operation.input);
     case 'decision_recorded': return workApi.recordDecision(operation.findingId, operation.input);
     case 'completed': return workApi.completeTask(operation.taskId, operation.input);
+    case 'held': return workApi.holdTask(operation.taskId, operation.input);
+    case 'resumed': return workApi.resumeTask(operation.taskId, operation.input);
     case 'returned': return workApi.returnTask(operation.taskId, operation.input);
     case 'claimed': return workApi.claim(operation.taskId, operation.input);
     case 'draft_saved': return workApi.saveDraft({ ...operation.input, taskId: operation.taskId });

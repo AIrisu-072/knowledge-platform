@@ -338,3 +338,38 @@ fn legacy_human_finding_json_has_no_new_origin_or_digest_field() {
             .is_none()
     );
 }
+
+#[test]
+fn hold_resume_fences_running_and_queued_agent_outputs_without_redispatch() {
+    for running in [false, true] {
+        let mut w = fixture();
+        let e = request(&mut w);
+        let dispatched = if running {
+            w.start_agent_execution(ACTOR, e.id, NOW).unwrap()
+        } else {
+            None
+        };
+        for (kind, id) in [
+            ("hold", 0x01900000000070008000000000000014u128),
+            ("resume", 0x01900000000070008000000000000015u128),
+        ] {
+            let command: Command=serde_json::from_value(serde_json::json!({"kind":kind,"task_id":SALES_TASK_ID,"context":context(&w),"expected_attempt_id":SALES_ATTEMPT_ID,"definition_action_id":Uuid::from_u128(id)})).expect("hold/resume commands exist");
+            w.apply(ACTOR, &command, NOW).unwrap();
+            assert_eq!(
+                w.agent_execution(ACTOR, e.id).unwrap().status,
+                AgentExecutionStatus::Failed
+            );
+            assert_eq!(w.agent_executions.len(), 1);
+            assert!(w.start_agent_execution(ACTOR, e.id, NOW).unwrap().is_none());
+            let before = w.clone();
+            if let Some(ctx) = &dispatched {
+                assert_eq!(
+                    w.finish_agent_execution(ctx, output(), NOW),
+                    Err(WorkError::WorkContextStale)
+                );
+            }
+            assert_eq!(w, before);
+            assert!(w.findings.is_empty());
+        }
+    }
+}

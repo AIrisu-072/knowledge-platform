@@ -399,38 +399,55 @@ async fn return_task(
     Ok(Json(state.repository.execute(state.actor, command).await?))
 }
 #[derive(Deserialize)]
-#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
-enum WorkflowActionBody {
-    #[serde(rename_all = "camelCase")]
-    Complete {
-        operation_id: Uuid,
-        expected_revision: i64,
-        acting_assignment_id: Uuid,
-        expected_attempt_id: Uuid,
-        definition_action_id: Uuid,
-    },
+#[serde(rename_all = "snake_case")]
+enum WorkflowAction {
+    Complete,
+    Hold,
+    Resume,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WorkflowActionBody {
+    action: WorkflowAction,
+    operation_id: Uuid,
+    expected_revision: i64,
+    acting_assignment_id: Uuid,
+    expected_attempt_id: Uuid,
+    definition_action_id: Uuid,
 }
 async fn workflow_action(
     State(state): State<ApiState>,
     path: Result<Path<Uuid>, PathRejection>,
     body: Result<Json<WorkflowActionBody>, JsonRejection>,
 ) -> Result<Json<MutationResult>, Problem> {
-    let WorkflowActionBody::Complete {
-        operation_id,
-        expected_revision,
-        acting_assignment_id,
-        expected_attempt_id,
-        definition_action_id,
-    } = json_body(body)?;
-    let command = Command::Complete {
-        task_id: path_id(path)?,
-        context: CommandContext {
-            operation_id,
-            expected_revision,
-            acting_assignment_id,
+    let body = json_body(body)?;
+    let task_id = path_id(path)?;
+    let context = CommandContext {
+        operation_id: body.operation_id,
+        expected_revision: body.expected_revision,
+        acting_assignment_id: body.acting_assignment_id,
+    };
+    let expected_attempt_id = body.expected_attempt_id;
+    let definition_action_id = body.definition_action_id;
+    let command = match body.action {
+        WorkflowAction::Complete => Command::Complete {
+            task_id,
+            context,
+            expected_attempt_id,
+            definition_action_id,
         },
-        expected_attempt_id,
-        definition_action_id,
+        WorkflowAction::Hold => Command::Hold {
+            task_id,
+            context,
+            expected_attempt_id,
+            definition_action_id,
+        },
+        WorkflowAction::Resume => Command::Resume {
+            task_id,
+            context,
+            expected_attempt_id,
+            definition_action_id,
+        },
     };
     Ok(Json(state.repository.execute(state.actor, command).await?))
 }

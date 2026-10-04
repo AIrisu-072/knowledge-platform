@@ -113,7 +113,7 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(migrations_before.len(), 5);
+    assert_eq!(migrations_before.len(), 6);
     migrate(&pool).await.unwrap();
     let migrations_after: Vec<(i64, Vec<u8>, time::OffsetDateTime)> = sqlx::query_as(
         "SELECT version, checksum, applied_at FROM work.schema_migrations ORDER BY version",
@@ -1255,6 +1255,219 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
         .await
         .unwrap();
     assert!(!replay.dispatch);
+    let current = agents
+        .task(VerifiedActor::Office01, OFFICE_TASK_ID)
+        .await
+        .unwrap();
+    let hold_pending = agents
+        .request_agent_execution(
+            VerifiedActor::Office01,
+            Command::RequestAgentExecution {
+                task_id: OFFICE_TASK_ID,
+                context: ctx(VerifiedActor::Office01, current.task.revision),
+                expected_attempt_id: current.task.attempt_id,
+                purpose: "保留と再開をまたぐ古い結果を拒否".into(),
+                evidence_revision_refs: vec![RevisionRef {
+                    id: ev.id,
+                    revision: 1,
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    assert!(hold_pending.dispatch);
+    let hold_pending_id = match hold_pending.outcome {
+        MutationResult::AgentExecutionRequested { execution, .. } => execution.id,
+        _ => panic!(),
+    };
+    let hold_context = agents
+        .start_agent_execution(VerifiedActor::Office01, hold_pending_id)
+        .await
+        .unwrap()
+        .unwrap();
+    // Hold/resume reuse one atomic operation ledger/history/staging boundary.
+    // Every failed staging insert leaves state and all private/immutable values untouched.
+    for (action, expected_state, action_id) in [
+        (
+            "hold",
+            "held",
+            Uuid::from_u128(0x01900000000070008000000000000014),
+        ),
+        (
+            "resume",
+            "active",
+            Uuid::from_u128(0x01900000000070008000000000000015),
+        ),
+    ] {
+        let current = agents
+            .task(VerifiedActor::Office01, OFFICE_TASK_ID)
+            .await
+            .unwrap();
+        let command: Command = serde_json::from_value(serde_json::json!({
+            "kind":action,"task_id":OFFICE_TASK_ID,
+            "context":ctx(VerifiedActor::Office01,current.task.revision),
+            "expected_attempt_id":current.task.attempt_id,"definition_action_id":action_id
+        }))
+        .unwrap();
+        let before: (serde_json::Value, i64, i64, i64, i64) = sqlx::query_as(rollback_state_sql)
+            .bind(WORKFLOW_ID)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql("CREATE FUNCTION work.reject_staging() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test staging failure'; END $$; CREATE TRIGGER reject_staging BEFORE INSERT ON work.event_staging FOR EACH ROW EXECUTE FUNCTION work.reject_staging();").execute(&pool).await.unwrap();
+        assert!(
+            agents
+                .execute(VerifiedActor::Office01, command.clone())
+                .await
+                .is_err()
+        );
+        let failed: (serde_json::Value, i64, i64, i64, i64) = sqlx::query_as(rollback_state_sql)
+            .bind(WORKFLOW_ID)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            failed, before,
+            "{action} state/ledger/history/staging rollback"
+        );
+        sqlx::raw_sql("DROP TRIGGER reject_staging ON work.event_staging; DROP FUNCTION work.reject_staging();").execute(&pool).await.unwrap();
+        let outcome = agents
+            .execute(VerifiedActor::Office01, command.clone())
+            .await
+            .unwrap();
+        let value = serde_json::to_value(&outcome).unwrap();
+        let kind = if action == "hold" { "held" } else { "resumed" };
+        assert_eq!(value["kind"], kind);
+        assert_eq!(value["task"]["state"], expected_state);
+        assert_eq!(
+            agents
+                .execute(VerifiedActor::Office01, command.clone())
+                .await
+                .unwrap(),
+            outcome
+        );
+        let restored = PostgresWorkRepository::with_agent_source(
+            pool.clone(),
+            source.clone(),
+            provider.clone(),
+        );
+        assert_eq!(
+            restored
+                .recover(VerifiedActor::Office01, command.context().operation_id)
+                .await
+                .unwrap(),
+            outcome
+        );
+        // A previous committed evidence command remains recoverable/replayable while held.
+        // This does not adopt its old task projection as current mutable state.
+        assert_eq!(
+            restored
+                .recover(VerifiedActor::Office01, registration.context().operation_id)
+                .await
+                .unwrap(),
+            saved
+        );
+        assert_eq!(
+            restored
+                .execute(VerifiedActor::Office01, registration.clone())
+                .await
+                .unwrap(),
+            saved
+        );
+
+        assert_eq!(
+            restored
+                .recover(VerifiedActor::Sales01, command.context().operation_id)
+                .await,
+            Err(WorkError::WorkItemNotFound)
+        );
+        let after: (serde_json::Value, i64, i64, i64, i64) = sqlx::query_as(rollback_state_sql)
+            .bind(WORKFLOW_ID)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        for key in [
+            "source",
+            "snapshots",
+            "completedAttempts",
+            "returnInstructions",
+            "artifacts",
+            "evidence",
+            "findings",
+            "decisions",
+        ] {
+            assert_eq!(before.0[key], after.0[key], "{action} preserves {key}");
+        }
+        assert_eq!(
+            restored
+                .agent_execution(VerifiedActor::Office01, hold_pending_id)
+                .await
+                .unwrap()
+                .status,
+            AgentExecutionStatus::Failed
+        );
+        assert!(
+            restored
+                .start_agent_execution(VerifiedActor::Office01, hold_pending_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            restored
+                .finish_agent_execution(
+                    hold_context.clone(),
+                    AgentFindingOutput {
+                        summary: "合成実行".into(),
+                        claim: "古い出力".into(),
+                        uncertainty: vec!["本文分析なし".into()],
+                    }
+                )
+                .await,
+            Err(WorkError::WorkContextStale)
+        );
+        if action == "resume" {
+            assert_eq!(before.0["agentExecutions"], after.0["agentExecutions"]);
+        }
+        for key in [
+            "attemptId",
+            "attemptNumber",
+            "workAssignmentId",
+            "actingAssignmentId",
+            "assignee",
+            "handoffSnapshotId",
+            "completedAt",
+        ] {
+            assert_eq!(
+                before.0["next"][key], after.0["next"][key],
+                "{action} preserves {key}"
+            );
+        }
+        let counts:(i64,i64,i64)=sqlx::query_as("SELECT (SELECT count(*) FROM work.operation_ledger WHERE operation_id=$1), (SELECT count(*) FROM work.workflow_history WHERE operation_id=$1 AND kind=$2), (SELECT count(*) FROM work.event_staging WHERE operation_id=$1 AND action=$2)").bind(command.context().operation_id).bind(kind).fetch_one(&pool).await.unwrap();
+        assert_eq!(counts, (1, 1, 1));
+        let mut changed = serde_json::to_value(&command).unwrap();
+        changed["definition_action_id"] = serde_json::json!(COMPLETE_ACTION_ID);
+        assert_eq!(
+            restored
+                .execute(
+                    VerifiedActor::Office01,
+                    serde_json::from_value(changed).unwrap()
+                )
+                .await,
+            Err(WorkError::OperationConflict)
+        );
+        let mut stale = serde_json::to_value(&command).unwrap();
+        stale["context"]["operationId"] = serde_json::json!(Uuid::now_v7());
+        assert_eq!(
+            restored
+                .execute(
+                    VerifiedActor::Office01,
+                    serde_json::from_value(stale).unwrap()
+                )
+                .await,
+            Err(WorkError::RevisionConflict)
+        );
+    }
     // A final Human completion uses the same transaction and operation ledger.
     // Pending Agent output is fenced by the same atomic close, without editing
     // submitted membership or archived attempts.

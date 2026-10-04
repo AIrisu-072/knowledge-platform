@@ -46,6 +46,10 @@ export type TaskSummary = {
     canRequestAgent: boolean;
     canComplete: boolean;
     completionActionId: string | null;
+    canHold: boolean;
+    holdActionId: string | null;
+    canResume: boolean;
+    resumeActionId: string | null;
 };
 
 export type WorkingArtifact = {
@@ -95,6 +99,10 @@ export type TaskDetail = {
     agentExecutionIds: Array<string>;
     canComplete: boolean;
     completionActionId: string | null;
+    canHold: boolean;
+    holdActionId: string | null;
+    canResume: boolean;
+    resumeActionId: string | null;
 };
 
 export type TaskPage = {
@@ -176,7 +184,7 @@ export type Submitted = {
     nextTask: TaskSummary;
 };
 
-export type WorkResult = DraftSaved | Claimed | Submitted | Returned | EvidenceRegistered | FindingRegistered | DecisionRecorded | AgentExecutionRequested | AgentExecutionCancelled | Completed;
+export type WorkResult = DraftSaved | Claimed | Submitted | Returned | EvidenceRegistered | FindingRegistered | DecisionRecorded | AgentExecutionRequested | AgentExecutionCancelled | Completed | Held | Resumed;
 
 export type Problem = {
     type: string;
@@ -494,19 +502,29 @@ export type AgentExecutionCancelled = {
 };
 
 /**
- * Closed terminal completion only. Definition action and current attempt are server-issued and revalidated; hold/resume are outside this slice.
+ * 定義済みの完了・保留・再開だけを受け付ける。現在担当・試行・revision・定義actionを再確認し、保留と再開では同じ試行・担当・保存内容を保持する。
  */
 export type WorkflowActionCommand = {
     operationId: string;
     expectedRevision: number;
     actingAssignmentId: string;
     expectedAttemptId: string;
-    action: 'complete';
+    action: 'complete' | 'hold' | 'resume';
     definitionActionId: string;
 };
 
 export type Completed = {
     kind: 'completed';
+    task: TaskSummary;
+};
+
+export type Held = {
+    kind: 'held';
+    task: TaskSummary;
+};
+
+export type Resumed = {
+    kind: 'resumed';
     task: TaskSummary;
 };
 

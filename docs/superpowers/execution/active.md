@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-04 21:54 UTC — 保留/再開の最小slice
+
+- PR63 exact `cc994b4e` は完了操作とreadonly履歴の実DB/2名操作/再起動/cleanup・全CI成功済み
+- Frozen active→held→activeだけを独立branchで実装する。[状況](organization-hold-resume-slice-status.md)、[計画](../plans/2026-10-04-organization-hold-resume-slice.md)
+- 同じ模擬2名・使い捨てDB・Chromium・画像無し。別のSearch/main統合変更は含めず、旧definition/過去snapshot/privateを保持する
+
+---
+
+
 ## 2026-10-04 17:04 UTC — 最終事務タスク完了
 
 - Agent基点PR60 `48ae1bfd` の実runtimeは成功。全CIの残りを監視しつつ、別branchでFrozen complete→readonlyの最小sliceを準備する

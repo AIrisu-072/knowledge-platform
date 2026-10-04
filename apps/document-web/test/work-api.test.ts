@@ -1,6 +1,6 @@
 import { workApi, WorkApiError } from '../src/api/work-api';
 
-const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canComplete: false, completionActionId: null, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, canRequestAgent: true, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null };
+const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canComplete: false, completionActionId: null, canHold: false, holdActionId: null, canResume: false, resumeActionId: null, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, canRequestAgent: true, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null };
 const artifact = { id: 'draft-1', taskId: task.id, attemptId: task.attemptId, revision: 1, schemaId: 'organization.text-draft.v1', value: { text: '文案' }, visibility: 'work_item_private' };
 const response = (body: unknown, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body } as Response);
 let fetchMock: jest.Mock;
@@ -194,4 +194,42 @@ test('completion sends only the frozen action and OCC, then recovers the same co
 test.each([{ id: 'other-task' }, { attemptId: 'other-attempt' }, { state: 'active' }])('completion rejects a mismatched receipt as unknown: %j', async (patch) => {
   fetchMock.mockResolvedValue(response({ kind: 'completed', task: { ...task, state: 'completed', ...patch } }));
   await expect(workApi.completeTask(task.id, { operationId: 'complete-op', expectedRevision: 1, actingAssignmentId: 'assignment-office', expectedAttemptId: task.attemptId, action: 'complete', definitionActionId: 'definition-action' })).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: true });
+});
+
+
+test.each([
+  { kind: 'held', state: 'held', canHold: false, holdActionId: null, canResume: true, resumeActionId: 'resume-action' },
+  { kind: 'resumed', state: 'active', canHold: true, holdActionId: 'hold-action', canResume: false, resumeActionId: null },
+])('hold/resume recovery preserves the same task and server action capabilities: $kind', async ({ kind, ...patch }) => {
+  const receipt = { kind, task: { ...task, ...patch, revision: 2 } };
+  fetchMock.mockResolvedValue(response(receipt));
+  await expect(workApi.getOperation('hold-resume-operation')).resolves.toEqual(receipt);
+});
+
+test('hold/resume task decoding requires explicit capability and action identity fields', async () => {
+  const current = { ...task, canHold: true, holdActionId: 'hold-action', inputResources: [], history: [], workingArtifacts: [], agentExecutionIds: [] };
+  fetchMock.mockResolvedValue(response(current));
+  await expect(workApi.getTask(task.id)).resolves.toEqual(current);
+  for (const field of ['canHold', 'holdActionId', 'canResume', 'resumeActionId']) {
+    const incomplete = { ...current } as Record<string, unknown>;
+    delete incomplete[field];
+    fetchMock.mockResolvedValue(response(incomplete));
+    await expect(workApi.getTask(task.id)).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: false });
+  }
+});
+
+test.each([
+  { action: 'hold' as const, kind: 'held', state: 'held' },
+  { action: 'resume' as const, kind: 'resumed', state: 'active' },
+])('$action transport binds the matching closed result kind and unchanged attempt', async ({ action, kind, state }) => {
+  const command = { operationId: 'same-operation', expectedRevision: 2, actingAssignmentId: 'assignment-sales', expectedAttemptId: task.attemptId, definitionActionId: 'definition-action', action };
+  const execute = () => action === 'hold' ? workApi.holdTask(task.id, { ...command, action }) : workApi.resumeTask(task.id, { ...command, action });
+  const receipt = { kind, task: { ...task, revision: 3, state } };
+  fetchMock.mockResolvedValue(response(receipt));
+  await expect(execute()).resolves.toEqual(receipt);
+  expect(fetchMock.mock.calls[0]).toEqual(['/v1/organization/tasks/task-1/actions', expect.objectContaining({ method: 'POST', credentials: 'same-origin', cache: 'no-store', body: JSON.stringify(command) })]);
+  for (const patch of [{ kind: 'claimed' }, { task: { ...receipt.task, id: 'another-task' } }, { task: { ...receipt.task, attemptId: 'another-attempt' } }, { task: { ...receipt.task, state: 'completed' } }]) {
+    fetchMock.mockResolvedValue(response({ ...receipt, ...patch }));
+    await expect(execute()).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: true });
+  }
 });

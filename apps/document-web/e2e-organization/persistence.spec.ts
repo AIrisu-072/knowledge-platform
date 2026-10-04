@@ -1,7 +1,7 @@
 import { currentAction } from './support';
 import { expect, test } from '@playwright/test';
 import type { HandoffSnapshot, ReturnInstruction, WorkingArtifact } from '../src/api/generated-work/types.gen';
-import { assertCompletionState, assertEvidenceState, assertAgentState, assertHidden, assertSessions, captureFinal, get, loadState, readRuntimeContext } from './support';
+import { assertHoldResumeState, assertCompletionState, assertEvidenceState, assertAgentState, assertHidden, assertSessions, captureFinal, get, loadState, readRuntimeContext } from './support';
 
 test('両process再起動後も根拠・候補・人間判断・固定提出・試行2・操作結果とprivate非開示を保持する', async ({ page, browser, request }) => {
   // The owning harness stops and restarts both processes before invoking this phase.
@@ -31,6 +31,7 @@ test('両process再起動後も根拠・候補・人間判断・固定提出・�
   await assertEvidenceState(request, context, state.salesTaskId, state.officeTaskId, state.evidence, state.agents);
   await assertAgentState(request, context, state.agents);
   await assertCompletionState(request, context, state.completion);
+  await assertHoldResumeState(request, context, state.holdResume);
   for (const [role, receipt] of Object.entries(state.agents) as ['sales' | 'office', typeof state.agents.sales][]) {
     const replay = await request.post(`${context[role]}/v1/organization/tasks/${receipt.execution.workItemId}/agent-executions`, { data: receipt.command });
     expect(replay.status()).toBe(202);

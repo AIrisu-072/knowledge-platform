@@ -1611,6 +1611,34 @@
                 "type": "null"
               }
             ]
+          },
+          "canHold": {
+            "type": "boolean"
+          },
+          "holdActionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canResume": {
+            "type": "boolean"
+          },
+          "resumeActionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1634,7 +1662,11 @@
           "canRecordDecision",
           "canRequestAgent",
           "canComplete",
-          "completionActionId"
+          "completionActionId",
+          "canHold",
+          "holdActionId",
+          "canResume",
+          "resumeActionId"
         ]
       },
       "WorkingArtifact": {
@@ -1849,6 +1881,34 @@
                 "type": "null"
               }
             ]
+          },
+          "canHold": {
+            "type": "boolean"
+          },
+          "holdActionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canResume": {
+            "type": "boolean"
+          },
+          "resumeActionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1876,7 +1936,11 @@
           "canRequestAgent",
           "agentExecutionIds",
           "canComplete",
-          "completionActionId"
+          "completionActionId",
+          "canHold",
+          "holdActionId",
+          "canResume",
+          "resumeActionId"
         ]
       },
       "TaskPage": {
@@ -2248,6 +2312,12 @@
           },
           {
             "$ref": "#/components/schemas/Completed"
+          },
+          {
+            "$ref": "#/components/schemas/Held"
+          },
+          {
+            "$ref": "#/components/schemas/Resumed"
           }
         ]
       },
@@ -3567,7 +3637,11 @@
           },
           "action": {
             "type": "string",
-            "const": "complete"
+            "enum": [
+              "complete",
+              "hold",
+              "resume"
+            ]
           },
           "definitionActionId": {
             "type": "string",
@@ -3582,7 +3656,7 @@
           "action",
           "definitionActionId"
         ],
-        "description": "Closed terminal completion only. Definition action and current attempt are server-issued and revalidated; hold/resume are outside this slice."
+        "description": "定義済みの完了・保留・再開だけを受け付ける。現在担当・試行・revision・定義actionを再確認し、保留と再開では同じ試行・担当・保存内容を保持する。"
       },
       "Completed": {
         "type": "object",
@@ -3590,6 +3664,40 @@
         "properties": {
           "kind": {
             "const": "completed",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          }
+        },
+        "required": [
+          "kind",
+          "task"
+        ]
+      },
+      "Held": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "held",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          }
+        },
+        "required": [
+          "kind",
+          "task"
+        ]
+      },
+      "Resumed": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "resumed",
             "type": "string"
           },
           "task": {

@@ -23,6 +23,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (3, include_str!("../migrations/0003_evidence.sql")),
     (4, include_str!("../migrations/0004_agent.sql")),
     (5, include_str!("../migrations/0005_complete.sql")),
+    (6, include_str!("../migrations/0006_hold_resume.sql")),
 ];
 const MIGRATION_LOCK: i64 = 0x574F524B504F4301;
 #[derive(Clone)]
@@ -274,6 +275,8 @@ impl PostgresWorkRepository {
             MutationResult::Submitted { .. } => "submitted",
             MutationResult::Returned { .. } => "returned",
             MutationResult::Completed { .. } => "completed",
+            MutationResult::Held { .. } => "held",
+            MutationResult::Resumed { .. } => "resumed",
         };
         sqlx::query("UPDATE work.workflow_instances SET revision=$2,body=$3 WHERE id=$1")
             .bind(WORKFLOW_ID)
@@ -285,7 +288,10 @@ impl PostgresWorkRepository {
         sqlx::query("INSERT INTO work.operation_ledger(operation_id,workflow_id,principal_id,acting_assignment_id,command_digest,outcome) VALUES($1,$2,$3,$4,$5,$6)")
             .bind(operation_id).bind(WORKFLOW_ID).bind(actor.principal_id()).bind(command.context().acting_assignment_id).bind(&digest).bind(Json(&result)).execute(&mut *tx).await.map_err(database_error)?;
         // Candidate/decision records are not workflow transitions.
-        if matches!(action, "submitted" | "claimed" | "returned" | "completed") {
+        if matches!(
+            action,
+            "submitted" | "claimed" | "returned" | "completed" | "held" | "resumed"
+        ) {
             sqlx::query("INSERT INTO work.workflow_history(id,workflow_id,operation_id,kind,occurred_at) VALUES($1,$2,$3,$4,$5)")
                 .bind(Uuid::now_v7()).bind(WORKFLOW_ID).bind(operation_id).bind(action).bind(now).execute(&mut *tx).await.map_err(database_error)?;
         }

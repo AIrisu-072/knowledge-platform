@@ -1,7 +1,7 @@
 import { currentAction } from './support';
 import { expect, test } from '@playwright/test';
 import type { WorkflowActionCommand, Completed, Claimed, DraftCommand, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, SubmitCommand, Submitted, TaskDetail, TaskPage, WorkCommand, WorkingArtifact } from '../src/api/generated-work/types.gen';
-import { assertCompletionState, assertHidden, assertSessions, assertEvidenceState, assertAgentState, requestSyntheticFinding, captureFinal, get, publishedEvidenceSource, readRuntimeContext, recordDecision, registerEvidence, registerFinding, revisionRef, saveState } from './support';
+import { holdAndResume, assertHoldResumeState, assertCompletionState, assertHidden, assertSessions, assertEvidenceState, assertAgentState, requestSyntheticFinding, captureFinal, get, publishedEvidenceSource, readRuntimeContext, recordDecision, registerEvidence, registerFinding, revisionRef, saveState } from './support';
 
 const returnReason = '【合成データ】対象数量を追記して再提出してください。';
 const revisedText = '【合成データ】対象数量は10件です。営業で参照資料と照合して追記しました。';
@@ -315,6 +315,9 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     expect(await privateList.text()).not.toContain(revisedText);
     expect(await get(request, context.office, `/v1/organization/handoff-snapshots/${submitted.snapshot.id}`)).toEqual(submitted.snapshot);
     expect(await get<ReturnInstruction>(request, context.office, `/v1/organization/return-instructions/${returned.returnInstruction.id}`)).toEqual(returned.returnInstruction);
+    const salesHoldResume = await holdAndResume(page, request, context.sales, context.office, source.id, sessions.sales, { label: '作業中の文案', text: '【合成データ】タブ内だけの未保存編集。保留は保存しない。' });
+    await expect(page.getByRole('button', { name: '提出内容を確認', exact: true })).toBeDisabled();
+    await page.getByLabel('作業中の文案', { exact: true }).fill(revisedText);
 
     currentAction('submit-preview');
     await page.getByRole('button', { name: '提出内容を確認', exact: true }).click();
@@ -339,7 +342,7 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     expect(resubmittedResponse.status()).toBe(200);
     const resubmitted = await resubmittedResponse.json() as Submitted;
     const resubmitCommand = resubmittedResponse.request().postDataJSON() as SubmitCommand;
-    expect(resubmitCommand).toMatchObject({ expectedRevision: resaved.task.revision, expectedAttemptId: returned.nextTask.attemptId, evidenceRevisionRefs: submitCommand.evidenceRevisionRefs, findingRevisionRefs: [...submitted.snapshot.findingRevisionRefs, revisionRef(salesAgent.finding)], decisionRevisionRefs: [...submitted.snapshot.decisionRevisionRefs, revisionRef(salesAgentDecision.result.decision)] });
+    expect(resubmitCommand).toMatchObject({ expectedRevision: salesHoldResume.resume.result.task.revision, expectedAttemptId: returned.nextTask.attemptId, evidenceRevisionRefs: submitCommand.evidenceRevisionRefs, findingRevisionRefs: [...submitted.snapshot.findingRevisionRefs, revisionRef(salesAgent.finding)], decisionRevisionRefs: [...submitted.snapshot.decisionRevisionRefs, revisionRef(salesAgentDecision.result.decision)] });
     expect(resubmitted.snapshot).toMatchObject({ evidenceRevisionRefs: submitCommand.evidenceRevisionRefs, findingRevisionRefs: [...submitted.snapshot.findingRevisionRefs, revisionRef(salesAgent.finding)], decisionRevisionRefs: [...submitted.snapshot.decisionRevisionRefs, revisionRef(salesAgentDecision.result.decision)] });
     expect(resubmitted.task).toMatchObject({ id: source.id, attemptNumber: 2, state: 'completed' });
     expect(resubmitted.nextTask).toMatchObject({ id: claimed.task.id, attemptNumber: 2, state: 'ready', canClaim: false });
@@ -379,6 +382,9 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     currentAction('final-verify');
     await assertEvidenceState(request, context, source.id, claimed.task.id, evidence, agents);
     currentAction('final-verify');
+    const officeHoldResume = await holdAndResume(office, request, context.office, context.sales, officeReclaimed.task.id, sessions.office, { label: '差戻理由', text: '【合成データ】未送信の差戻理由。保留は差戻を実行しない。' });
+    const holdResume = { sales: salesHoldResume, office: officeHoldResume };
+    await assertHoldResumeState(request, context, holdResume);
     const beforeCompletion = await captureFinal(request, context, source.id, submitted.nextTask.id, resubmitted.snapshot.id, submitted.snapshot.id, returned.returnInstruction.id);
     expect(beforeCompletion.officeTask).toMatchObject({ state: 'active', canComplete: true });
     expect(beforeCompletion.officeTask.completionActionId).not.toBeNull();
@@ -427,7 +433,7 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     expect(final.salesTask).toMatchObject({ state: 'completed', attemptNumber: 2 });
     expect(final.officeTask).toMatchObject({ state: 'completed', attemptNumber: 2, workingArtifacts: [] });
     currentAction('final-verify');
-    await saveState(context, { schemaVersion: 5, documentId: context.documentId, salesTaskId: source.id, officeTaskId: submitted.nextTask.id, artifactId: saved.artifact.id, snapshotId: submitted.snapshot.id, text, save: { operationId: saveCommand.operationId, result: saved }, submit: { operationId: submitCommand.operationId, result: submitted }, claim: { operationId: claimCommand.operationId, result: claimed }, rework: { text: revisedText, returned: { operationId: returnCommand.operationId, command: returnCommand, result: returned }, salesClaim: { operationId: salesClaimCommand.operationId, result: salesClaimed }, save: { operationId: resaveCommand.operationId, result: resaved }, submit: { operationId: resubmitCommand.operationId, result: resubmitted }, officeClaim: { operationId: officeReclaimCommand.operationId, result: officeReclaimed } }, evidence, agents, completion, final });
+    await saveState(context, { schemaVersion: 6, documentId: context.documentId, salesTaskId: source.id, officeTaskId: submitted.nextTask.id, artifactId: saved.artifact.id, snapshotId: submitted.snapshot.id, text, save: { operationId: saveCommand.operationId, result: saved }, submit: { operationId: submitCommand.operationId, result: submitted }, claim: { operationId: claimCommand.operationId, result: claimed }, rework: { text: revisedText, returned: { operationId: returnCommand.operationId, command: returnCommand, result: returned }, salesClaim: { operationId: salesClaimCommand.operationId, result: salesClaimed }, save: { operationId: resaveCommand.operationId, result: resaved }, submit: { operationId: resubmitCommand.operationId, result: resubmitted }, officeClaim: { operationId: officeReclaimCommand.operationId, result: officeReclaimed } }, evidence, agents, holdResume, completion, final });
   } finally {
     await officeContext.close();
   }
