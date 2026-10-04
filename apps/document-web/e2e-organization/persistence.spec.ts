@@ -1,7 +1,7 @@
 import { currentAction } from './support';
 import { expect, test } from '@playwright/test';
 import type { HandoffSnapshot, ReturnInstruction, WorkingArtifact } from '../src/api/generated-work/types.gen';
-import { assertEvidenceState, assertHidden, assertSessions, captureFinal, get, loadState, readRuntimeContext } from './support';
+import { assertEvidenceState, assertAgentState, assertHidden, assertSessions, captureFinal, get, loadState, readRuntimeContext } from './support';
 
 test('両process再起動後も根拠・候補・人間判断・固定提出・試行2・操作結果とprivate非開示を保持する', async ({ page, browser, request }) => {
   // The owning harness stops and restarts both processes before invoking this phase.
@@ -28,13 +28,20 @@ test('両process再起動後も根拠・候補・人間判断・固定提出・�
   for (const receipt of [state.submit, state.rework.salesClaim, state.rework.save, state.rework.submit]) expect(await get(request, context.sales, `/v1/organization/operations/${receipt.operationId}`)).toEqual(receipt.result);
   for (const receipt of [state.claim, state.rework.returned, state.rework.officeClaim]) expect(await get(request, context.office, `/v1/organization/operations/${receipt.operationId}`)).toEqual(receipt.result);
   currentAction('persistence-verify');
-  await assertEvidenceState(request, context, state.salesTaskId, state.officeTaskId, state.evidence);
+  await assertEvidenceState(request, context, state.salesTaskId, state.officeTaskId, state.evidence, state.agents);
+  await assertAgentState(request, context, state.agents);
+  for (const [role, receipt] of Object.entries(state.agents) as ['sales' | 'office', typeof state.agents.sales][]) {
+    const replay = await request.post(`${context[role]}/v1/organization/tasks/${receipt.execution.workItemId}/agent-executions`, { data: receipt.command });
+    expect(replay.status()).toBe(202);
+    expect(await replay.json()).toEqual(receipt.result);
+  }
+  await assertAgentState(request, context, state.agents);
   const decisionReplay = await request.post(`${context.office}/v1/organization/findings/${state.evidence.finding.result.finding.id}/decisions`, { data: state.evidence.officeReworkDecision.command });
   expect(decisionReplay.status()).toBe(200);
   expect(await decisionReplay.json()).toEqual(state.evidence.officeReworkDecision.result);
   // Replaying the exact operation must not append another immutable decision or task revision.
   currentAction('persistence-verify');
-  await assertEvidenceState(request, context, state.salesTaskId, state.officeTaskId, state.evidence);
+  await assertEvidenceState(request, context, state.salesTaskId, state.officeTaskId, state.evidence, state.agents);
   const replay = await request.post(`${context.office}/v1/organization/tasks/${state.officeTaskId}/return`, { data: state.rework.returned.command });
   expect(replay.status()).toBe(200);
   expect(await replay.json()).toEqual(state.rework.returned.result);
@@ -65,6 +72,15 @@ test('両process再起動後も根拠・候補・人間判断・固定提出・�
   await expect(page.getByRole('region', { name: `候補 ${state.evidence.rework.finding.result.finding.id}`, exact: true })).toContainText(state.evidence.rework.finding.result.finding.claim);
   await expect(page.getByText(state.evidence.privateFinding.result.finding.claim, { exact: true })).toHaveCount(0);
   await expect(page.getByText(state.evidence.officeReworkDecision.result.decision.reason!, { exact: false })).toHaveCount(0);
+  const salesGenerated = page.getByRole('region', { name: `候補 ${state.agents.sales.finding.id}`, exact: true });
+  await expect(salesGenerated).toContainText('organization-synthetic/agent-01');
+  await expect(salesGenerated).toContainText(`生成元の実行 ${state.agents.sales.execution.id}`);
+  await expect(salesGenerated).toContainText(state.agents.sales.decision.result.decision.adoptedClaim!);
+  currentAction('agent-module');
+  await page.getByRole('button', { name: 'Agent', exact: true }).click();
+  const persistedSalesExecution = page.getByRole('region', { name: `Agent実行 ${state.agents.sales.execution.id}`, exact: true });
+  await expect(persistedSalesExecution).toContainText('実行状態：成功');
+  await expect(persistedSalesExecution).toContainText(state.agents.sales.output.summary);
   const officeContext = await browser.newContext({ locale: 'ja-JP', viewport: { width: 1440, height: 900 }, serviceWorkers: 'block', acceptDownloads: false });
   const office = await officeContext.newPage();
   try {
@@ -86,6 +102,18 @@ test('両process再起動後も根拠・候補・人間判断・固定提出・�
       await expect(office.getByRole('region', { name: `根拠 ${evidence.id}`, exact: true })).toHaveCount(0);
       await expect(office.getByText(evidence.relevantLocation, { exact: false })).toHaveCount(0);
     }
+    const officeGenerated = office.getByRole('region', { name: `候補 ${state.agents.office.finding.id}`, exact: true });
+    await expect(officeGenerated).toContainText('organization-synthetic/agent-01');
+    await expect(officeGenerated).toContainText(`生成元の実行 ${state.agents.office.execution.id}`);
+    await expect(officeGenerated).toContainText(state.agents.office.decision.result.decision.reason!);
+    const sharedGenerated = office.getByRole('region', { name: `候補 ${state.agents.sales.finding.id}`, exact: true });
+    await expect(sharedGenerated).toContainText(state.agents.sales.decision.result.decision.adoptedClaim!);
+    currentAction('agent-module');
+    await office.getByRole('button', { name: 'Agent', exact: true }).click();
+    const persistedOfficeExecution = office.getByRole('region', { name: `Agent実行 ${state.agents.office.execution.id}`, exact: true });
+    await expect(persistedOfficeExecution).toContainText('実行状態：成功');
+    await expect(persistedOfficeExecution).toContainText(state.agents.office.output.summary);
+    await expect(office.getByRole('region', { name: `Agent実行 ${state.agents.sales.execution.id}`, exact: true })).toHaveCount(0);
     currentAction('document-navigation');
     await office.getByRole('button', { name: '文書・比較', exact: true }).click();
     const input = office.getByRole('link', { name: '共有入力文書', exact: true });
@@ -94,7 +122,8 @@ test('両process再起動後も根拠・候補・人間判断・固定提出・�
     await officeContext.close();
   }
   currentAction('persistence-verify');
-  await assertEvidenceState(request, context, state.salesTaskId, state.officeTaskId, state.evidence);
+  await assertEvidenceState(request, context, state.salesTaskId, state.officeTaskId, state.evidence, state.agents);
+  await assertAgentState(request, context, state.agents);
   // Merely reading both UIs must not create another handoff, task revision or history entry.
   currentAction('persistence-verify');
   expect(await captureFinal(request, context, state.salesTaskId, state.officeTaskId, resubmissionId, state.snapshotId, instructionId)).toEqual(state.final);

@@ -2,7 +2,10 @@
 //! Infrastructure-free Work application ports and canonical operation digest.
 use std::{future::Future, pin::Pin};
 use uuid::Uuid;
+mod agent;
+pub use agent::*;
 use work_domain::{
+    AgentDispatchContext, AgentExecution, AgentFailureCode, AgentFindingOutput, AgentResult,
     Command, EvidenceRecord, EvidenceSource, Finding, HandoffSnapshot, HumanDecision,
     MutationResult, ReturnInstruction, TaskDetail, TaskSummary, TaskView, VerifiedActor, WorkError,
     WorkingArtifact,
@@ -25,6 +28,52 @@ pub trait EvidenceSourcePort: Send + Sync {
     ) -> WorkFuture<'_, ()>;
 }
 pub trait WorkRepository: Send + Sync {
+    fn request_agent_execution(
+        &self,
+        _actor: VerifiedActor,
+        _command: Command,
+    ) -> WorkFuture<'_, AgentExecutionAcceptance> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    fn agent_execution(&self, _actor: VerifiedActor, _id: Uuid) -> WorkFuture<'_, AgentExecution> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    fn agent_result(&self, _actor: VerifiedActor, _id: Uuid) -> WorkFuture<'_, AgentResult> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    fn start_agent_execution(
+        &self,
+        _actor: VerifiedActor,
+        _id: Uuid,
+    ) -> WorkFuture<'_, Option<AgentDispatchContext>> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    fn build_agent_context(
+        &self,
+        _actor: VerifiedActor,
+        _id: Uuid,
+    ) -> WorkFuture<'_, AgentDispatchContext> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    fn finish_agent_execution(
+        &self,
+        _context: AgentDispatchContext,
+        _output: AgentFindingOutput,
+    ) -> WorkFuture<'_, AgentExecution> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    fn fail_agent_execution(
+        &self,
+        _actor: VerifiedActor,
+        _id: Uuid,
+        _code: AgentFailureCode,
+    ) -> WorkFuture<'_, AgentExecution> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    fn interrupt_agent_executions(&self, _actor: VerifiedActor) -> WorkFuture<'_, usize> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+
     fn list_evidence(
         &self,
         _actor: VerifiedActor,
@@ -112,5 +161,40 @@ mod tests {
             command_digest(VerifiedActor::Sales01, &command).unwrap(),
             command_digest(VerifiedActor::Sales01, &changed).unwrap()
         );
+    }
+    #[test]
+    fn agent_digest_binds_purpose_selection_attempt_and_assignment_without_new_legacy_fields() {
+        let original = Command::RequestAgentExecution {
+            task_id: SALES_TASK_ID,
+            context: CommandContext {
+                operation_id: Uuid::now_v7(),
+                expected_revision: 1,
+                acting_assignment_id: work_domain::SALES_ASSIGNMENT_ID,
+            },
+            expected_attempt_id: work_domain::SALES_ATTEMPT_ID,
+            purpose: "bounded purpose".into(),
+            evidence_revision_refs: vec![work_domain::RevisionRef {
+                id: Uuid::now_v7(),
+                revision: 1,
+            }],
+        };
+        let digest = command_digest(VerifiedActor::Sales01, &original).unwrap();
+        assert_eq!(
+            digest,
+            command_digest(VerifiedActor::Sales01, &original.clone()).unwrap()
+        );
+        for field in ["purpose", "expected_attempt_id", "evidence_revision_refs"] {
+            let mut value = serde_json::to_value(&original).unwrap();
+            value[field] = match field {
+                "purpose" => serde_json::json!("changed"),
+                "expected_attempt_id" => serde_json::json!(Uuid::now_v7()),
+                _ => serde_json::json!([{"id":Uuid::now_v7(),"revision":1}]),
+            };
+            let changed: Command = serde_json::from_value(value).unwrap();
+            assert_ne!(
+                digest,
+                command_digest(VerifiedActor::Sales01, &changed).unwrap()
+            );
+        }
     }
 }

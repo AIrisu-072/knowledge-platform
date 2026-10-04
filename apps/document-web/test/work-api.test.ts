@@ -1,6 +1,6 @@
 import { workApi, WorkApiError } from '../src/api/work-api';
 
-const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null };
+const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, canRequestAgent: true, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null };
 const artifact = { id: 'draft-1', taskId: task.id, attemptId: task.attemptId, revision: 1, schemaId: 'organization.text-draft.v1', value: { text: '文案' }, visibility: 'work_item_private' };
 const response = (body: unknown, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body } as Response);
 let fetchMock: jest.Mock;
@@ -104,4 +104,72 @@ test('reference-only provenance and uncertainty are preserved without upgrading 
   await expect(workApi.getEvidence(evidence.id)).resolves.toEqual(record);
   fetchMock.mockResolvedValue(response({ ...record, relevantLocationVerified: true }));
   await expect(workApi.getEvidence(evidence.id)).rejects.toMatchObject({ code: 'invalid_response' });
+});
+
+const agentResult = { summary: '固定規則で候補を作成しました。本文分析なし。', findingRevisionRefs: [{ id: 'synthetic-finding', revision: 1 }], evidenceRevisionRefs: [{ id: evidence.id, revision: 1 }], uncertainty: ['本文の検証は行っていません'], simulated: true, bodyAnalyzed: false, liveLlm: false, mcpWireExecuted: false };
+const execution = { id: 'execution-1', contextId: task.contextId, workItemId: task.id, attemptId: task.attemptId, requestedBy: 'sales-01', requesterResponsibility: 'assignment-sales', executedBy: 'organization-synthetic/agent-01', executorInvocationKind: 'agent', providerPrincipalBindings: [{ providerId: 'document', principalId: 'poc/poc-agent', invocationKind: 'agent' }], effectiveContextRevision: 2, taskRevision: 2, purpose: '参照の確認', evidenceRevisionRefs: [{ id: evidence.id, revision: 1 }], status: 'queued', startedAt: '2026-10-04T13:00:00Z', endedAt: null, result: null, failureCode: null };
+
+test('operation recovery preserves the historical synthetic request receipt and distinct executor provider identities', async () => {
+  const receipt = { kind: 'agent_execution_requested', task, execution };
+  fetchMock.mockResolvedValue(response(receipt));
+  await expect(workApi.getOperation('operation-agent')).resolves.toEqual(receipt);
+});
+
+test('synthetic provenance is retained by direct immutable Finding reads', async () => {
+  const generated = { ...finding, author: 'organization-synthetic/agent-01', originExecutionId: execution.id };
+  fetchMock.mockResolvedValue(response(generated));
+  await expect(workApi.getFinding(finding.id)).resolves.toEqual(generated);
+});
+
+test('task detail exposes only authorized persisted execution IDs for current-attempt reload', async () => {
+  const expected = { ...task, agentExecutionIds: [execution.id], inputResources: [], history: [], workingArtifacts: [] };
+  fetchMock.mockResolvedValue(response(expected));
+  await expect(workApi.getTask(task.id)).resolves.toEqual(expected);
+});
+
+test('Agent request and cancel use the four frozen endpoints and only the scoped command body', async () => {
+  const command = { operationId: 'request-op', expectedRevision: 1, actingAssignmentId: 'assignment-sales', expectedAttemptId: task.attemptId, purpose: '参照の確認', evidenceRevisionRefs: [{ id: evidence.id, revision: 1 as const }] };
+  fetchMock.mockResolvedValue(response({ kind: 'agent_execution_requested', task, execution }, 202));
+  await expect(workApi.requestAgentExecution(task.id, command)).resolves.toMatchObject({ kind: 'agent_execution_requested', execution });
+  expect(fetchMock.mock.calls[0]?.[0]).toBe('/v1/organization/tasks/task-1/agent-executions');
+  expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'POST', cache: 'no-store', credentials: 'same-origin', body: JSON.stringify(command) });
+  const cancelled = { ...execution, status: 'cancelled' };
+  const cancel = { operationId: 'cancel-op', expectedRevision: 2, actingAssignmentId: 'assignment-sales', expectedAttemptId: task.attemptId, taskId: task.id };
+  fetchMock.mockResolvedValue(response({ kind: 'agent_execution_cancelled', task, execution: cancelled }));
+  await expect(workApi.cancelAgentExecution(execution.id, cancel)).resolves.toMatchObject({ execution: cancelled });
+  expect(fetchMock.mock.calls[1]?.[0]).toBe('/v1/organization/agent-executions/execution-1/cancel');
+  expect(JSON.parse(fetchMock.mock.calls[1]?.[1].body)).toEqual(cancel);
+  fetchMock.mockResolvedValue(response(execution));
+  await expect(workApi.getAgentExecution(execution.id)).resolves.toEqual(execution);
+  expect(fetchMock.mock.calls[2]?.[0]).toBe('/v1/organization/agent-executions/execution-1');
+  fetchMock.mockResolvedValue(response(agentResult));
+  await expect(workApi.getAgentResult(execution.id)).resolves.toEqual(agentResult);
+  expect(fetchMock.mock.calls[3]?.[0]).toBe('/v1/organization/agent-executions/execution-1/result');
+});
+
+test('Agent execution decoding rejects swapped IDs and upgraded simulation or provider claims', async () => {
+  fetchMock.mockResolvedValue(response({ ...execution, id: 'other-execution' }));
+  await expect(workApi.getAgentExecution(execution.id)).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: false });
+  fetchMock.mockResolvedValue(response({ ...execution, executedBy: 'sales-01' }));
+  await expect(workApi.getAgentExecution(execution.id)).rejects.toMatchObject({ code: 'invalid_response' });
+  fetchMock.mockResolvedValue(response({ ...execution, providerPrincipalBindings: [{ providerId: 'document', principalId: 'poc/poc-human', invocationKind: 'human' }] }));
+  await expect(workApi.getAgentExecution(execution.id)).rejects.toMatchObject({ code: 'invalid_response' });
+  for (const changed of [{ liveLlm: true }, { bodyAnalyzed: true }, { mcpWireExecuted: true }, { simulated: false }, { findingRevisionRefs: [] }]) {
+    fetchMock.mockResolvedValue(response({ ...agentResult, ...changed }));
+    await expect(workApi.getAgentResult(execution.id)).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: false });
+  }
+});
+
+test('an Agent cancellation response cannot substitute another execution from the same task', async () => {
+  fetchMock.mockResolvedValue(response({ kind: 'agent_execution_cancelled', task, execution: { ...execution, id: 'other-execution', status: 'cancelled' } }));
+  await expect(workApi.cancelAgentExecution(execution.id, { operationId: 'cancel-op', expectedRevision: 2, actingAssignmentId: 'assignment-sales', expectedAttemptId: task.attemptId, taskId: task.id })).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: true });
+});
+
+test('commit-unknown execution remains a typed unknown outcome on current read and historical recovery', async () => {
+  const unknown = { ...execution, status: 'outcome_unknown', failureCode: 'commit_outcome_unknown', endedAt: '2026-10-04T13:01:00Z' };
+  fetchMock.mockResolvedValue(response(unknown));
+  await expect(workApi.getAgentExecution(execution.id)).resolves.toEqual(unknown);
+  const receipt = { kind: 'agent_execution_requested', task, execution: unknown };
+  fetchMock.mockResolvedValue(response(receipt));
+  await expect(workApi.getOperation('request-op')).resolves.toEqual(receipt);
 });

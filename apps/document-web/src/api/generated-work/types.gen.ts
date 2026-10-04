@@ -43,6 +43,7 @@ export type TaskSummary = {
     canRegisterEvidence: boolean;
     canRegisterFinding: boolean;
     canRecordDecision: boolean;
+    canRequestAgent: boolean;
 };
 
 export type WorkingArtifact = {
@@ -88,6 +89,8 @@ export type TaskDetail = {
     canRegisterEvidence: boolean;
     canRegisterFinding: boolean;
     canRecordDecision: boolean;
+    canRequestAgent: boolean;
+    agentExecutionIds: Array<string>;
 };
 
 export type TaskPage = {
@@ -169,13 +172,13 @@ export type Submitted = {
     nextTask: TaskSummary;
 };
 
-export type WorkResult = DraftSaved | Claimed | Submitted | Returned | EvidenceRegistered | FindingRegistered | DecisionRecorded;
+export type WorkResult = DraftSaved | Claimed | Submitted | Returned | EvidenceRegistered | FindingRegistered | DecisionRecorded | AgentExecutionRequested | AgentExecutionCancelled;
 
 export type Problem = {
     type: string;
     title: string;
     status: number;
-    code: 'VALIDATION_FAILED' | 'FORBIDDEN' | 'WORK_ITEM_NOT_FOUND' | 'WORK_ARTIFACT_NOT_FOUND' | 'REVISION_CONFLICT' | 'OPERATION_CONFLICT' | 'WORK_ASSIGNMENT_CONFLICT' | 'HANDOFF_NOT_READY' | 'DEPENDENCY_UNAVAILABLE' | 'COMMIT_OUTCOME_UNKNOWN' | 'INTEGRITY_VIOLATION' | 'CURSOR_STALE' | 'EVIDENCE_NOT_FOUND' | 'FINDING_NOT_FOUND';
+    code: 'VALIDATION_FAILED' | 'FORBIDDEN' | 'WORK_ITEM_NOT_FOUND' | 'WORK_ARTIFACT_NOT_FOUND' | 'REVISION_CONFLICT' | 'OPERATION_CONFLICT' | 'WORK_ASSIGNMENT_CONFLICT' | 'HANDOFF_NOT_READY' | 'DEPENDENCY_UNAVAILABLE' | 'COMMIT_OUTCOME_UNKNOWN' | 'INTEGRITY_VIOLATION' | 'CURSOR_STALE' | 'EVIDENCE_NOT_FOUND' | 'FINDING_NOT_FOUND' | 'AGENT_RESULT_NOT_READY' | 'WORK_CONTEXT_STALE';
     traceId: string;
 };
 
@@ -296,6 +299,7 @@ export type Finding = {
     uncertainty: Array<string>;
     conflicts: Array<RevisionRef>;
     createdAt: string;
+    originExecutionId?: string;
 };
 
 export type HumanDecision = {
@@ -403,6 +407,86 @@ export type FindingPage = {
 export type DecisionPage = {
     items: Array<HumanDecision>;
     nextCursor: string | null;
+};
+
+export type ProviderPrincipalBinding = {
+    providerId: 'document';
+    principalId: 'poc/poc-agent';
+    invocationKind: 'agent';
+};
+
+export type AgentResult = {
+    /**
+     * UTF-8 encoded length is limited to 8192 bytes by the server.
+     */
+    summary: string;
+    findingRevisionRefs: [
+        RevisionRef
+    ];
+    evidenceRevisionRefs: Array<RevisionRef>;
+    uncertainty: Array<string>;
+    simulated: true;
+    bodyAnalyzed: false;
+    liveLlm: false;
+    mcpWireExecuted: false;
+};
+
+export type AgentExecution = {
+    id: string;
+    contextId: string;
+    workItemId: string;
+    attemptId: string;
+    requestedBy: 'sales-01' | 'office-01';
+    requesterResponsibility: string;
+    executedBy: 'organization-synthetic/agent-01';
+    executorInvocationKind: 'agent';
+    providerPrincipalBindings: [
+        ProviderPrincipalBinding
+    ];
+    effectiveContextRevision: number;
+    taskRevision: number;
+    /**
+     * UTF-8 encoded length is limited to 8192 bytes by the server.
+     */
+    purpose: string;
+    evidenceRevisionRefs: Array<RevisionRef>;
+    status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'outcome_unknown';
+    startedAt: string;
+    endedAt: string | null;
+    result: AgentResult | null;
+    failureCode: 'provider_denied' | 'context_stale' | 'invalid_output' | 'dependency_unavailable' | 'interrupted' | 'commit_outcome_unknown' | null;
+};
+
+export type AgentExecutionRequest = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    expectedAttemptId: string;
+    /**
+     * UTF-8 encoded length is limited to 8192 bytes by the server.
+     */
+    purpose: string;
+    evidenceRevisionRefs: Array<RevisionRef>;
+};
+
+export type CancelAgentExecution = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    expectedAttemptId: string;
+    taskId: string;
+};
+
+export type AgentExecutionRequested = {
+    kind: 'agent_execution_requested';
+    task: TaskSummary;
+    execution: AgentExecution;
+};
+
+export type AgentExecutionCancelled = {
+    kind: 'agent_execution_cancelled';
+    task: TaskSummary;
+    execution: AgentExecution;
 };
 
 export type GetOrganizationSessionData = {
@@ -1067,3 +1151,127 @@ export type RecordHumanDecisionResponses = {
 };
 
 export type RecordHumanDecisionResponse = RecordHumanDecisionResponses[keyof RecordHumanDecisionResponses];
+
+export type RequestAgentExecutionData = {
+    body: AgentExecutionRequest;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/tasks/{id}/agent-executions';
+};
+
+export type RequestAgentExecutionErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type RequestAgentExecutionError = RequestAgentExecutionErrors[keyof RequestAgentExecutionErrors];
+
+export type RequestAgentExecutionResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    202: WorkResult;
+};
+
+export type RequestAgentExecutionResponse = RequestAgentExecutionResponses[keyof RequestAgentExecutionResponses];
+
+export type GetAgentExecutionData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/agent-executions/{id}';
+};
+
+export type GetAgentExecutionErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type GetAgentExecutionError = GetAgentExecutionErrors[keyof GetAgentExecutionErrors];
+
+export type GetAgentExecutionResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: AgentExecution;
+};
+
+export type GetAgentExecutionResponse = GetAgentExecutionResponses[keyof GetAgentExecutionResponses];
+
+export type CancelAgentExecutionData = {
+    body: CancelAgentExecution;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/agent-executions/{id}/cancel';
+};
+
+export type CancelAgentExecutionErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type CancelAgentExecutionError = CancelAgentExecutionErrors[keyof CancelAgentExecutionErrors];
+
+export type CancelAgentExecutionResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type CancelAgentExecutionResponse = CancelAgentExecutionResponses[keyof CancelAgentExecutionResponses];
+
+export type GetAgentResultData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/agent-executions/{id}/result';
+};
+
+export type GetAgentResultErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type GetAgentResultError = GetAgentResultErrors[keyof GetAgentResultErrors];
+
+export type GetAgentResultResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: AgentResult;
+};
+
+export type GetAgentResultResponse = GetAgentResultResponses[keyof GetAgentResultResponses];

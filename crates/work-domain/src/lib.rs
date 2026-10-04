@@ -2,7 +2,9 @@
 //! Work-owned synthetic workflow values. No Document authority or infrastructure.
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+mod agent;
 mod evidence;
+pub use agent::*;
 pub use evidence::*;
 
 pub const WORKFLOW_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000000001);
@@ -82,6 +84,10 @@ pub enum WorkError {
     CommitOutcomeUnknown,
     #[error("INTEGRITY_VIOLATION")]
     IntegrityViolation,
+    #[error("AGENT_RESULT_NOT_READY")]
+    AgentResultNotReady,
+    #[error("WORK_CONTEXT_STALE")]
+    WorkContextStale,
     #[error("CURSOR_STALE")]
     CursorStale,
 }
@@ -178,6 +184,8 @@ fn first_attempt() -> u32 {
 #[serde(rename_all = "camelCase")]
 pub struct TaskSummary {
     #[serde(default)]
+    pub can_request_agent: bool,
+    #[serde(default)]
     pub can_register_evidence: bool,
     #[serde(default)]
     pub can_register_finding: bool,
@@ -219,6 +227,8 @@ pub struct HistoryEntry {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskDetail {
+    #[serde(default)]
+    pub agent_execution_ids: Vec<Uuid>,
     #[serde(flatten)]
     pub task: TaskSummary,
     pub input_resources: Vec<InputResourceRef>,
@@ -248,6 +258,8 @@ pub struct WorkItem {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Workflow {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agent_executions: Vec<AgentExecution>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<EvidenceRecord>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -298,6 +310,19 @@ pub struct ArtifactSelection {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Command {
+    RequestAgentExecution {
+        task_id: Uuid,
+        context: CommandContext,
+        expected_attempt_id: Uuid,
+        purpose: String,
+        evidence_revision_refs: Vec<RevisionRef>,
+    },
+    CancelAgentExecution {
+        task_id: Uuid,
+        context: CommandContext,
+        expected_attempt_id: Uuid,
+        execution_id: Uuid,
+    },
     RegisterEvidence {
         task_id: Uuid,
         context: CommandContext,
@@ -365,7 +390,9 @@ pub enum Command {
 impl Command {
     pub fn context(&self) -> &CommandContext {
         match self {
-            Self::RegisterEvidence { context, .. }
+            Self::RequestAgentExecution { context, .. }
+            | Self::CancelAgentExecution { context, .. }
+            | Self::RegisterEvidence { context, .. }
             | Self::RegisterFinding { context, .. }
             | Self::RecordDecision { context, .. }
             | Self::SaveDraft { context, .. }
@@ -376,7 +403,9 @@ impl Command {
     }
     pub fn task_id(&self) -> Uuid {
         match self {
-            Self::RegisterEvidence { task_id, .. }
+            Self::RequestAgentExecution { task_id, .. }
+            | Self::CancelAgentExecution { task_id, .. }
+            | Self::RegisterEvidence { task_id, .. }
             | Self::RegisterFinding { task_id, .. }
             | Self::RecordDecision { task_id, .. }
             | Self::SaveDraft { task_id, .. }
@@ -389,6 +418,14 @@ impl Command {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum MutationResult {
+    AgentExecutionRequested {
+        task: TaskSummary,
+        execution: AgentExecution,
+    },
+    AgentExecutionCancelled {
+        task: TaskSummary,
+        execution: AgentExecution,
+    },
     EvidenceRegistered {
         task: TaskSummary,
         evidence: EvidenceRecord,
@@ -425,6 +462,7 @@ pub enum MutationResult {
 impl Workflow {
     pub fn synthetic(document_id: Option<Uuid>) -> Self {
         Self {
+            agent_executions: vec![],
             evidence: vec![],
             findings: vec![],
             decisions: vec![],
@@ -517,6 +555,18 @@ impl Workflow {
         };
         let return_transition = self.return_transition(actor, item);
         TaskSummary {
+            can_request_agent: self.can_read(actor, item)
+                && item.state == TaskState::Active
+                && self
+                    .agent_executions
+                    .iter()
+                    .filter(|e| e.work_item_id == item.id && e.attempt_id == item.attempt_id)
+                    .count()
+                    < MAX_AGENT_EXECUTIONS
+                && !self
+                    .agent_executions
+                    .iter()
+                    .any(|e| e.work_item_id == item.id && e.status.is_active()),
             can_register_evidence: self.can_read(actor, item) && item.state == TaskState::Active,
             can_register_finding: self.can_read(actor, item) && item.state == TaskState::Active,
             can_record_decision: self.can_read(actor, item) && item.state == TaskState::Active,
@@ -562,6 +612,16 @@ impl Workflow {
             return Err(WorkError::WorkItemNotFound);
         }
         Ok(TaskDetail {
+            agent_execution_ids: self
+                .agent_executions
+                .iter()
+                .filter(|e| {
+                    e.work_item_id == item.id
+                        && e.attempt_id == item.attempt_id
+                        && e.requested_by == actor
+                })
+                .map(|e| e.id)
+                .collect(),
             task: self.summary(actor, item),
             input_resources: self.input_resources.clone(),
             history: self.history.clone(),
@@ -673,6 +733,7 @@ impl Workflow {
                 return Err(WorkError::IntegrityViolation);
             }
         }
+        self.validate_agent_integrity()?;
         Ok(())
     }
     pub fn authorize_command(
@@ -699,7 +760,9 @@ impl Workflow {
                     }
                 }
             }
-            Command::RegisterEvidence { .. }
+            Command::RequestAgentExecution { .. }
+            | Command::CancelAgentExecution { .. }
+            | Command::RegisterEvidence { .. }
             | Command::RegisterFinding { .. }
             | Command::RecordDecision { .. }
             | Command::Submit { .. }
@@ -717,6 +780,10 @@ impl Workflow {
         result: &MutationResult,
     ) -> Result<(), WorkError> {
         match result {
+            MutationResult::AgentExecutionRequested { execution, .. }
+            | MutationResult::AgentExecutionCancelled { execution, .. } => {
+                self.agent_execution(actor, execution.id)?;
+            }
             MutationResult::EvidenceRegistered { evidence, .. } => {
                 self.evidence_record(actor, evidence.id)?;
             }
@@ -762,6 +829,7 @@ impl Workflow {
             .revision
             .checked_add(1)
             .ok_or(WorkError::IntegrityViolation)?;
+        next.invalidate_agent_contexts(now)?;
         next.validate_integrity()?;
         *self = next;
         Ok(result)
@@ -773,6 +841,9 @@ impl Workflow {
         now: &str,
     ) -> Result<MutationResult, WorkError> {
         match command {
+            Command::RequestAgentExecution { .. } | Command::CancelAgentExecution { .. } => {
+                self.apply_agent(actor, command, now)
+            }
             Command::RegisterEvidence { .. }
             | Command::RegisterFinding { .. }
             | Command::RecordDecision { .. } => self.apply_evidence(actor, command, now),

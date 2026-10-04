@@ -31,6 +31,14 @@ pub fn organization_root_grants() -> Vec<PolicyGrant> {
             ],
         )
         .expect("fixed fixture-author actions"),
+        // Explicit provider grant belongs only to a new disposable fixture.
+        // The Organization executor is distinct and receives no Document grant.
+        PolicyGrant::new(
+            PolicySubject::new(PolicySubjectKind::Principal, "poc", "poc-agent")
+                .expect("fixed Document provider principal"),
+            [Action::Read, Action::ReadHistory],
+        )
+        .expect("fixed read-only provider actions"),
     ]
 }
 

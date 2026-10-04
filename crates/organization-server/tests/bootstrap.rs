@@ -6,7 +6,7 @@ use organization_server::{
 #[test]
 fn fixture_policy_grants_office_read_only_and_keeps_provider_explicit() {
     let grants = organization_root_grants();
-    assert_eq!(grants.len(), 2);
+    assert_eq!(grants.len(), 3);
     let office = grants
         .iter()
         .find(|g| g.subject().subject_id() == "office-01")
@@ -19,6 +19,15 @@ fn fixture_policy_grants_office_read_only_and_keeps_provider_explicit() {
     assert_eq!(office.actions().len(), 2);
     assert!(office.actions().contains(&Action::Read));
     assert!(office.actions().contains(&Action::ReadHistory));
+    let provider = grants
+        .iter()
+        .find(|g| g.subject().subject_id() == "poc-agent")
+        .expect("the independent Document provider needs its own fixture grant");
+    assert_eq!(provider.subject().identity_provider(), "poc");
+    assert_eq!(provider.subject().kind(), PolicySubjectKind::Principal);
+    assert_eq!(provider.actions().len(), 2);
+    assert!(provider.actions().contains(&Action::Read));
+    assert!(provider.actions().contains(&Action::ReadHistory));
 }
 #[tokio::test]
 async fn office_cannot_bootstrap_before_any_database_access() {
