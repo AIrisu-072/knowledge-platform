@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+pub mod source_lease;
+pub mod source_registration;
+
 use sqlx::{PgPool, migrate::MigrateError};
 
 const SEARCH_MIGRATION_LEDGER: &str = "search_runtime_sqlx_migrations";

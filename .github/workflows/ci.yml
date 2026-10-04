@@ -82,7 +82,7 @@ jobs:
       - run: mise run test:rust
 
   search-process-recovery:
-    name: Search Outbox 復旧・監視・権限境界
+    name: Search 復旧・監視・Source登録
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -111,6 +111,8 @@ jobs:
         run: cargo test --locked -p outbox-delivery --test process_recovery four_processes_disjoint_claims_and_recover_expired -- --exact --nocapture
       - name: G08の観測・トレース・配送ロールと既存Runnerを確認
         run: cargo test --locked -p outbox-delivery --lib --test runner_admission --test runner_lifecycle --test runner_observation --test observability_security -- --test-threads=1 --nocapture
+      - name: P7のSource登録・leaseと既存スキーマを確認
+        run: cargo test --locked -p search-runtime --lib --test source_registration --test source_lease --test source_ownership_migration --test coordination_migration --test generation_schema -- --test-threads=1 --nocapture
 
   security:
     runs-on: ubuntu-24.04

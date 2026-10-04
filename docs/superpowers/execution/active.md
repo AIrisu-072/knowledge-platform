@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 現在のSearch継続作業：2026-10-04
+
+**ACTIVE / WIP。** 公開head `0610b49327cd3c1c37e385281f087423c27b5638` / tree `0fe596fde7d9d2fe6e5f174bf4be0f189ed55830` で、通常CI全10ジョブ・DSI PoC・Sandboxが成功しました。合成GitHub PostgreSQLでG07復旧2件、G08の監視・配送ロールの実DB2件、トレース純粋1件、その他の純粋回帰56件が成功しています。[正確なcheckoutと検証範囲](../programs/search-platform-completion/p6-g08-hosted-result-20261004.md)を現在の結果として参照してください。
+
+凍結済みP7-02のSource登録・leaseを単一のPostgreSQL台帳へ接続し、対象限定コンパイル・純粋試験・strict Clippyと、範囲を限定した独立ソースレビューが成功しました。次はこの候補を公開し、合成GitHub PostgreSQLで登録18件・lease6件の実DB試験を実行します。leaseの通信なし2件は既に成功しています。現時点の新P7候補に実DB合格はありません。並行して凍結P4-03の可視Sourceルーティングを、別の差分で準備しています。Source登録の根拠や検索時の許可をprovider入力から新たに生成しません。
+
+世代の永続化・公開・pin・GC、本文索引、検索APIと最終縦断の受入は未完了です。Document/OrganizationとのDomain migration番号9の衝突は、適用済み履歴を分類してから統合します。以前のローカルDB/socket拒否は維持し、過去の成功・停止・共有保留を現在の全体状態と混同しません。以下の履歴本文と原承認hashは変更していません。
+
 ## Search G07の実証とG08着手：2026-10-04
 
 G07の復旧2ケースは、公開head `3d3bfcb2a6881d1a61d724a2d8d15c8d4cd843a3` に対するGitHub Ubuntu・公式PostgreSQL・架空データのCIで成功しました。[実結果と検証範囲](../programs/search-platform-completion/p6-g07-hosted-result-20261004.md)を現在の結果として参照してください。過去の実DB REDや元の全資格試験の完了は主張しません。以前のローカルソケット拒否は保持します。

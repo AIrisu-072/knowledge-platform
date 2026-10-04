@@ -1,6 +1,14 @@
 <a id="search-platform-completion-program--status"></a>
 # Searchプラットフォーム完成プログラム — 状態
 
+## 現在のSearch継続作業：2026-10-04
+
+**ACTIVE / WIP。** 公開head `0610b49327cd3c1c37e385281f087423c27b5638` / tree `0fe596fde7d9d2fe6e5f174bf4be0f189ed55830` で、通常CI全10ジョブ・DSI PoC・Sandboxが成功しました。合成GitHub PostgreSQLでG07復旧2件、G08の監視・配送ロールの実DB2件、トレース純粋1件、その他の純粋回帰56件が成功しています。[正確なcheckoutと検証範囲](../programs/search-platform-completion/p6-g08-hosted-result-20261004.md)を現在の結果として参照してください。
+
+凍結済みP7-02のSource登録・leaseを単一のPostgreSQL台帳へ接続し、対象限定コンパイル・純粋試験・strict Clippyと、範囲を限定した独立ソースレビューが成功しました。次はこの候補を公開し、合成GitHub PostgreSQLで登録18件・lease6件の実DB試験を実行します。leaseの通信なし2件は既に成功しています。現時点の新P7候補に実DB合格はありません。並行して凍結P4-03の可視Sourceルーティングを、別の差分で準備しています。Source登録の根拠や検索時の許可をprovider入力から新たに生成しません。
+
+世代の永続化・公開・pin・GC、本文索引、検索APIと最終縦断の受入は未完了です。Document/OrganizationとのDomain migration番号9の衝突は、適用済み履歴を分類してから統合します。以前のローカルDB/socket拒否は維持し、過去の成功・停止・共有保留を現在の全体状態と混同しません。以下の履歴本文と原承認hashは変更していません。
+
 この文書は[公開原文（固定版）](https://github.com/AIrisu-072/knowledge-platform/blob/0ecf486719e3c9d71242e289a7564ad6d1032b3c/docs/superpowers/execution/search-platform-completion-program-status.md)の意味保存訳です。原設計の再承認や資格の追加ではありません。既存のハッシュは当時の原文・証拠のものであり、訳文のハッシュではありません。以下の状態と「次の作業」は当時の記録であり、現在の実行指示ではありません。
 
 <a id="最新のg07専用環境の準備と実行停止の記録2026-10-03"></a>

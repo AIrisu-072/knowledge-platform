@@ -335,6 +335,92 @@ impl SourceRegistration {
         }
     }
 
+    /// 検証済み登録からだけ作る永続化ビュー。JSONから登録の正本性は発行しない。
+    pub fn persistence_dto_v1(&self) -> Result<serde_json::Value, SearchError> {
+        // 正規スキーマの網羅的な分解を共有し、追加フィールドの見落としを検出する。
+        encode_registration(self)?;
+        let definition = match self {
+            Self::Document(value) => serde_json::json!({
+                "document_adapter_ref": value.document_adapter_ref().as_str(),
+                "allowed_resource_kinds": value.allowed_resource_kinds(),
+                "supported_modes": value.supported_modes(),
+                "enumeration_semantics": value.enumeration_semantics(),
+                "retention_mode": value.retention_mode(),
+            }),
+            Self::Remote(value) => {
+                let endpoint = value.endpoint();
+                let limits = value.limits();
+                serde_json::json!({
+                    "provider_kind": value.provider_kind(),
+                    "endpoint": {"scheme": endpoint.scheme(), "host": endpoint.host(),
+                        "port": endpoint.port(), "base_path": endpoint.base_path()},
+                    "supported_modes": value.supported_modes(),
+                    "enumeration_semantics": value.enumeration_semantics(),
+                    "authority_predicates": value.authority_predicates(),
+                    "allowed_resource_kinds": value.allowed_resource_kinds(),
+                    "current_access_contract": match value.current_access_contract() {
+                        CurrentAccessContract::PerItem => "PerItem",
+                        CurrentAccessContract::PublicReadWithFieldPolicy => "PublicReadWithFieldPolicy",
+                    },
+                    "retention_mode": value.retention_mode(),
+                    "freshness_policy": value.freshness_policy(),
+                    "canonical_upstream_lineage": value.canonical_upstream_lineage(),
+                    "limits": {
+                        "call_millis": limits.call_millis,
+                        "evaluation_millis": limits.evaluation_millis,
+                        "max_request_bytes": limits.max_request_bytes,
+                        "max_decoded_response_bytes": limits.max_decoded_response_bytes,
+                        "max_hits_per_page": limits.max_hits_per_page,
+                        "max_pages_or_requests": limits.max_pages_or_requests,
+                        "max_hits": limits.max_hits,
+                        "max_actions": limits.max_actions,
+                        "max_native_id_bytes": limits.max_native_id_bytes,
+                        "max_cursor_bytes": limits.max_cursor_bytes,
+                        "max_json_depth": limits.max_json_depth,
+                    },
+                })
+            }
+        };
+        Ok(serde_json::json!({
+            "dto_version": "v1",
+            "tenant_owner_key": self.tenant().as_str(),
+            "source_id": self.source_id().as_uuid().to_string(),
+            "source_kind": match self.kind() { SourceKind::Document => "DOCUMENT", SourceKind::Remote => "REMOTE" },
+            "registration_revision": self.registration_revision().get(),
+            "visibility_revision": self.visibility_revision().get(),
+            "definition": definition,
+        }))
+    }
+
+    /// 既存の名前空間別エンコーダーへ、単一Sourceの完全な集合を渡す。
+    pub fn persistence_digest_v1(&self) -> Result<RegistrationSetDigest, SearchError> {
+        canonical_digest(
+            match self.kind() {
+                SourceKind::Document => RegistrationNamespace::Document,
+                SourceKind::Remote => RegistrationNamespace::Remote,
+            },
+            &BTreeMap::from([(self.source_id(), self.clone())]),
+        )
+    }
+
+    /// 登録改訂を据え置けるのは、既存契約と同じく可視性だけの変更である。
+    /// 欠落・未知フィールドや版は、正規ビューとの完全比較で拒否する。
+    pub fn matches_persisted_definition_v1(
+        &self,
+        dto: &serde_json::Value,
+    ) -> Result<bool, SearchError> {
+        let Some(visibility) = dto
+            .get("visibility_revision")
+            .and_then(serde_json::Value::as_u64)
+            .filter(|value| *value > 0)
+        else {
+            return Ok(false);
+        };
+        let mut expected = self.persistence_dto_v1()?;
+        expected["visibility_revision"] = serde_json::json!(visibility);
+        Ok(expected == *dto)
+    }
+
     fn same_definition_ignoring_visibility(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Document(left), Self::Document(right)) => {

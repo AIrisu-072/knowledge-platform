@@ -210,6 +210,7 @@ async fn document_descriptor_and_safe_capability_are_derived() {
 async fn canonical_set_digest_covers_every_remote_and_document_field() {
     let id = source(4);
     let baseline = remote_config(id);
+    let expected_dto = remote(baseline.clone()).persistence_dto_v1().unwrap();
     let expected = digest(
         RegistrationNamespace::Remote,
         vec![remote(baseline.clone())],
@@ -302,6 +303,11 @@ async fn canonical_set_digest_covers_every_remote_and_document_field() {
     variants.push(value);
     for (field, variant) in variants.into_iter().enumerate() {
         assert_ne!(
+            expected_dto,
+            remote(variant.clone()).persistence_dto_v1().unwrap(),
+            "remote DTO field mutation {field}"
+        );
+        assert_ne!(
             expected,
             digest(RegistrationNamespace::Remote, vec![remote(variant)]).await,
             "remote field mutation {field}"
@@ -309,6 +315,10 @@ async fn canonical_set_digest_covers_every_remote_and_document_field() {
     }
 
     let baseline = document_config(source(6));
+    let expected_dto = document(baseline.clone())
+        .await
+        .persistence_dto_v1()
+        .unwrap();
     let expected = digest(
         RegistrationNamespace::Document,
         vec![document(baseline.clone()).await],
@@ -393,19 +403,26 @@ async fn canonical_set_digest_covers_every_remote_and_document_field() {
                 DocumentSourceRegistration::from_server_config(variant, &witness).unwrap(),
             );
             assert_ne!(
+                expected_dto,
+                changed.persistence_dto_v1().unwrap(),
+                "document DTO field mutation {field}"
+            );
+            assert_ne!(
                 expected,
                 digest(RegistrationNamespace::Document, vec![changed]).await,
                 "document field mutation {field}"
             );
             continue;
         }
+        let changed = document(variant).await;
+        assert_ne!(
+            expected_dto,
+            changed.persistence_dto_v1().unwrap(),
+            "document DTO field mutation {field}"
+        );
         assert_ne!(
             expected,
-            digest(
-                RegistrationNamespace::Document,
-                vec![document(variant).await]
-            )
-            .await,
+            digest(RegistrationNamespace::Document, vec![changed]).await,
             "document field mutation {field}"
         );
     }
@@ -1097,4 +1114,47 @@ async fn structural_mismatch_or_infrastructure_error_fails_whole_snapshot() {
         registry.visible_sources(&actor).await,
         Err(search_application::SearchError::OperationFailed(_))
     ));
+}
+
+#[test]
+fn durable_registration_view_keeps_all_remote_fields_and_exact_visibility() {
+    let value = remote(remote_config(source(9001)));
+    let dto = value.persistence_dto_v1().unwrap();
+    assert_eq!(dto["dto_version"], "v1");
+    assert_eq!(dto["source_kind"], "REMOTE");
+    assert_eq!(dto["tenant_owner_key"], "tenant-a");
+    assert_eq!(dto["registration_revision"], 1);
+    assert_eq!(dto["visibility_revision"], 1);
+    assert_eq!(dto["definition"].as_object().unwrap().len(), 11);
+    assert_eq!(dto["definition"]["limits"].as_object().unwrap().len(), 11);
+    let mut changed = dto.clone();
+    changed["visibility_revision"] = serde_json::json!(2);
+    assert!(value.matches_persisted_definition_v1(&changed).unwrap());
+    changed["definition"]["endpoint"]["host"] = serde_json::json!("different.test");
+    assert!(!value.matches_persisted_definition_v1(&changed).unwrap());
+    let mut unknown = dto.clone();
+    unknown["unexpected"] = serde_json::json!(true);
+    assert!(!value.matches_persisted_definition_v1(&unknown).unwrap());
+}
+
+#[tokio::test]
+async fn durable_registration_digest_reuses_canonical_single_source_set() {
+    let value = remote(remote_config(source(9002)));
+    let host = SyntheticHostRegistrationAuthority::new();
+    host.publish(
+        RegistrationNamespace::Remote,
+        RegistrationSetRevision::new(1).unwrap(),
+        vec![value.clone()],
+    )
+    .unwrap();
+    let desired = CompleteDesiredRegistrations::capture(&host, RegistrationNamespace::Remote)
+        .await
+        .unwrap();
+    assert_eq!(value.persistence_digest_v1().unwrap(), desired.set_digest());
+    let mut config = remote_config(source(9002));
+    config.limits.max_json_depth += 1;
+    assert_ne!(
+        value.persistence_digest_v1().unwrap(),
+        remote(config).persistence_digest_v1().unwrap()
+    );
 }

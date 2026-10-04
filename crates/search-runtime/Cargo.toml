@@ -9,6 +9,7 @@ publish = false
 outbox-delivery = { version = "0.0.0", path = "../outbox-delivery" }
 search-application = { version = "0.0.0", path = "../search-application" }
 search-source-document = { version = "0.0.0", path = "../search-source-document" }
+serde_json.workspace = true
 sqlx.workspace = true
 time.workspace = true
 tokio.workspace = true
