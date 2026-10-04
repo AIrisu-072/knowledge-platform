@@ -1,0 +1,24 @@
+# 仕事の手渡し: p5-reconcile-contract
+
+- 種類: docs / 役: DomainDesigner / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Close exact common trusted type disclosure lease and valid Problem wire contract
+
+## 入力
+- `p5-revised` (docs/superpowers/programs/search-platform-completion/p5-api-design-revision-1.md) — Revised design resolving independent architecture findings [`p5-repair-design` が作る (済み)]
+- `p5-arch-recheck` (docs/superpowers/programs/search-platform-completion/p5-api-architecture-recheck.md) — Independent revised exact design architecture gate [`p5-recheck-design` が作る (済み)]
+- `p1-unit-frozen` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md) — Frozen provider neutral input contract for Vector evaluation [`p1-freeze-unit` が作る (済み)]
+- `p1-contract` (docs/superpowers/programs/search-platform-completion/p1-extraction-freeze.md) — extraction contract [`p1-freeze` が作る (未着手)]
+- `p3-contract` (docs/superpowers/programs/search-platform-completion/p3-graph-freeze.md) — graph contract [`p3-freeze-architecture` が作る (済み)]
+- `p4-contract` (docs/superpowers/programs/search-platform-completion/p4-remote-freeze.md) — remote contract [`p4-freeze-architecture` が作る (済み)]
+- `p4-trust-code` (crates/search-application/src/scoped.rs) — P4-02 sealed trusted actor and globally unique visible catalog [`p4-impl-trust` が作る (作業中)]
+
+## 出すもの
+- `p5-reconciliation` (docs/superpowers/programs/search-platform-completion/p5-api-contract-reconciliation.md) — Exact P1-P4 type/lease and valid Problem wire closure
+
+## 受入条件
+Close exact common trusted type disclosure lease and valid Problem wire contract with exact composed freeze input and no false full-capability claim
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p5-api-contract-reconciliation.md` だけ。他は触らない。

@@ -1,0 +1,18 @@
+# 仕事の手渡し: inspect-environment
+
+- 種類: spike / 役: Explorer / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Inspect current runtime toolchain fixtures and local capacity for bounded qualification
+
+## 入力
+- `p0-closure` (docs/superpowers/execution/search-discovery-platform-v0-acceptance.md) — live exact head qualification [`p0-close` が作る (済み)]
+
+## 出すもの
+- `environment-evidence` (docs/superpowers/programs/search-platform-completion/environment.md) — current runtime toolchain container PDFium and capacity discovery without secret reads
+
+## 受入条件
+Concrete verified executable dependency and fixture paths with limits and no secret reads
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/environment.md` だけ。他は触らない。

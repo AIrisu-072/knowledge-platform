@@ -1,0 +1,8 @@
+# P3 Build Guard — FK-safe cleanup order correction
+
+- Binding amendment to `p3-graph-build-guard-amendment.md` §shared transaction steps 5–6; all other semantics remain. A guard FK has `ON DELETE RESTRICT`, so its row must be deleted before its target generation.
+- Expired cleanup and explicit abort lock Source → sorted base/target generations → guard → evaluation leases, then recheck token/fence/expiry and that target is unpublished and unpinned. Keep all generation row locks to transaction commit.
+- Within that same transaction, capture the validated guard binding, mark unpublished target DELETING, **DELETE the matching build_guard row first**, then DELETE target child rows, then DELETE target generation row. Any failed condition or SQL error rolls the whole transaction back, restoring guard and target. Never commit between these deletes.
+- Source and base/target generation locks prevent concurrent GC/build/publish from observing an unguarded live target or unprotected base before commit. At commit, target and guard disappear together; only then may base be retired. If target is current/pinned, preserve both and return integrity failure.
+- Successful publication remains one transaction: validate READY/current fence, pointer CAS, matching guard DELETE, commit. No generation delete occurs on that path. CAS loss retains guard until checked abort.
+- Required real PostgreSQL regression: expired unpublished target cleanup commits without SQLSTATE 23503; child-delete failure rolls back guard/target; concurrent stale copy/GC cannot pass during cleanup. No DB test has run in this correction record.

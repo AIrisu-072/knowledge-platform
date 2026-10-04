@@ -1,0 +1,7 @@
+{"query_id":"q0","text":"監査 証跡","seed_index":4}
+{"query_id":"q1","text":"incident response","seed_index":14}
+{"query_id":"q2","text":"保守 承認","seed_index":24}
+{"query_id":"qpart","text":"添付専用語","seed_index":null}
+{"query_id":"qnone","text":"存在しない固有語","seed_index":null}
+{"query_id":"qaccess","text":"秘匿固有語","seed_index":null}
+{"query_id":"qfalse","text":"無関連可視語","seed_index":null}

@@ -1,0 +1,183 @@
+warning[no-license-field]: license expression was not specified in manifest for crate 'ovba = 0.7.1'
+
+warning[license-not-encountered]: license was not encountered
+   ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/deny.toml:15:4
+   │
+15 │   "BSD-2-Clause",
+   │    ━━━━━━━━━━━━ unmatched license allowance
+
+warning[license-not-encountered]: license was not encountered
+   ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/deny.toml:17:4
+   │
+17 │   "PostgreSQL",
+   │    ━━━━━━━━━━ unmatched license allowance
+
+warning[duplicate]: found 2 duplicate entries for crate 'base64'
+   ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:19:1
+   │
+19 │ ╭ base64 0.22.1 registry+https://github.com/rust-lang/crates.io-index
+20 │ │ base64 0.23.1 registry+https://github.com/rust-lang/crates.io-index
+   │ ╰───────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'block-buffer'
+   ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:23:1
+   │
+23 │ ╭ block-buffer 0.10.4 registry+https://github.com/rust-lang/crates.io-index
+24 │ │ block-buffer 0.12.1 registry+https://github.com/rust-lang/crates.io-index
+   │ ╰─────────────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'cfb'
+   ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:34:1
+   │
+34 │ ╭ cfb 0.10.0 registry+https://github.com/rust-lang/crates.io-index
+35 │ │ cfb 0.14.0 registry+https://github.com/rust-lang/crates.io-index
+   │ ╰────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'const-oid'
+   ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:45:1
+   │
+45 │ ╭ const-oid 0.9.6 registry+https://github.com/rust-lang/crates.io-index
+46 │ │ const-oid 0.10.2 registry+https://github.com/rust-lang/crates.io-index
+   │ ╰──────────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'cpufeatures'
+   ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:50:1
+   │
+50 │ ╭ cpufeatures 0.2.17 registry+https://github.com/rust-lang/crates.io-index
+51 │ │ cpufeatures 0.3.1 registry+https://github.com/rust-lang/crates.io-index
+   │ ╰───────────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'crypto-common'
+   ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:55:1
+   │
+55 │ ╭ crypto-common 0.1.7 registry+https://github.com/rust-lang/crates.io-index
+56 │ │ crypto-common 0.2.2 registry+https://github.com/rust-lang/crates.io-index
+   │ ╰─────────────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'der'
+   ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:66:1
+   │
+66 │ ╭ der 0.7.10 registry+https://github.com/rust-lang/crates.io-index
+67 │ │ der 0.8.2 registry+https://github.com/rust-lang/crates.io-index
+   │ ╰───────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'der_derive'
+   ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:69:1
+   │
+69 │ ╭ der_derive 0.7.3 registry+https://github.com/rust-lang/crates.io-index
+70 │ │ der_derive 0.8.0 registry+https://github.com/rust-lang/crates.io-index
+   │ ╰──────────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'digest'
+   ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:74:1
+   │
+74 │ ╭ digest 0.10.7 registry+https://github.com/rust-lang/crates.io-index
+75 │ │ digest 0.11.3 registry+https://github.com/rust-lang/crates.io-index
+   │ ╰───────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'getrandom'
+    ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:105:1
+    │
+105 │ ╭ getrandom 0.2.17 registry+https://github.com/rust-lang/crates.io-index
+106 │ │ getrandom 0.4.3 registry+https://github.com/rust-lang/crates.io-index
+    │ ╰─────────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'miniz_oxide'
+    ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:145:1
+    │
+145 │ ╭ miniz_oxide 0.8.9 registry+https://github.com/rust-lang/crates.io-index
+146 │ │ miniz_oxide 0.9.1 registry+https://github.com/rust-lang/crates.io-index
+    │ ╰───────────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'nom'
+    ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:151:1
+    │
+151 │ ╭ nom 7.1.3 registry+https://github.com/rust-lang/crates.io-index
+152 │ │ nom 8.0.0 registry+https://github.com/rust-lang/crates.io-index
+    │ ╰───────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'pem-rfc7468'
+    ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:174:1
+    │
+174 │ ╭ pem-rfc7468 0.7.0 registry+https://github.com/rust-lang/crates.io-index
+175 │ │ pem-rfc7468 1.0.0 registry+https://github.com/rust-lang/crates.io-index
+    │ ╰───────────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'proc-macro2'
+    ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:195:1
+    │
+195 │ ╭ proc-macro2 0.4.30 registry+https://github.com/rust-lang/crates.io-index
+196 │ │ proc-macro2 1.0.107 registry+https://github.com/rust-lang/crates.io-index
+    │ ╰─────────────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'quick-xml'
+    ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:197:1
+    │
+197 │ ╭ quick-xml 0.41.0 registry+https://github.com/rust-lang/crates.io-index
+198 │ │ quick-xml 0.42.0 registry+https://github.com/rust-lang/crates.io-index
+    │ ╰──────────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'quote'
+    ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:199:1
+    │
+199 │ ╭ quote 0.6.13 registry+https://github.com/rust-lang/crates.io-index
+200 │ │ quote 1.0.47 registry+https://github.com/rust-lang/crates.io-index
+    │ ╰──────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'sha2'
+    ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:230:1
+    │
+230 │ ╭ sha2 0.10.9 registry+https://github.com/rust-lang/crates.io-index
+231 │ │ sha2 0.11.0 registry+https://github.com/rust-lang/crates.io-index
+    │ ╰─────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'signature'
+    ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:233:1
+    │
+233 │ ╭ signature 2.2.0 registry+https://github.com/rust-lang/crates.io-index
+234 │ │ signature 3.0.0 registry+https://github.com/rust-lang/crates.io-index
+    │ ╰─────────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'spki'
+    ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:242:1
+    │
+242 │ ╭ spki 0.7.3 registry+https://github.com/rust-lang/crates.io-index
+243 │ │ spki 0.8.0 registry+https://github.com/rust-lang/crates.io-index
+    │ ╰────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 3 duplicate entries for crate 'syn'
+    ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:252:1
+    │
+252 │ ╭ syn 0.15.44 registry+https://github.com/rust-lang/crates.io-index
+253 │ │ syn 2.0.119 registry+https://github.com/rust-lang/crates.io-index
+254 │ │ syn 3.0.6 registry+https://github.com/rust-lang/crates.io-index
+    │ ╰───────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'synstructure'
+    ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:255:1
+    │
+255 │ ╭ synstructure 0.13.2 registry+https://github.com/rust-lang/crates.io-index
+256 │ │ synstructure 0.14.0 registry+https://github.com/rust-lang/crates.io-index
+    │ ╰─────────────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'x509-cert'
+    ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:314:1
+    │
+314 │ ╭ x509-cert 0.2.5 registry+https://github.com/rust-lang/crates.io-index
+315 │ │ x509-cert 0.3.0 registry+https://github.com/rust-lang/crates.io-index
+    │ ╰─────────────────────────────────────────────────────────────────────┘ lock entries
+
+warning[duplicate]: found 2 duplicate entries for crate 'zip'
+    ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:329:1
+    │
+329 │ ╭ zip 2.4.2 registry+https://github.com/rust-lang/crates.io-index
+330 │ │ zip 8.6.0 registry+https://github.com/rust-lang/crates.io-index
+    │ ╰───────────────────────────────────────────────────────────────┘ lock entries
+
+error[yanked]: detected yanked crate (try `cargo update -p yoke-derive`)
+    ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/document-semantic-inspection/Cargo.lock:322:1
+    │
+322 │ yoke-derive 0.8.3 registry+https://github.com/rust-lang/crates.io-index
+    │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ yanked version
+
+advisories FAILED, bans ok, licenses ok, sources ok

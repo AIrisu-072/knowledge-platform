@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "G07 observed pre-spawn offline cluster control proof, DRAFT",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "run_id", "run_root", "data_dir", "offline_system_identifier", "owner_uid", "observed_before_server_spawn", "executable", "executable_sha256", "executable_dev", "executable_inode", "argv", "actual_exit_code", "stdout_path", "stdout_sha256"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_id": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+    "run_root": {"type": "string", "pattern": "^/workspace/scratch/13897606dfde/p6pg\\.[A-Za-z0-9]{8}$"},
+    "data_dir": {"type": "string", "pattern": "^/workspace/scratch/13897606dfde/p6pg\\.[A-Za-z0-9]{8}/data$"},
+    "offline_system_identifier": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "owner_uid": {"const": 1000}, "observed_before_server_spawn": {"const": true},
+    "executable": {"type": "string", "pattern": "^/workspace/scratch/13897606dfde/p6pg\\.[A-Za-z0-9]{8}/install/bin/pg_controldata$"},
+    "executable_sha256": {"$ref": "#/$defs/sha256"},
+    "executable_dev": {"type": "integer", "minimum": 1}, "executable_inode": {"type": "integer", "minimum": 1},
+    "argv": {"type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{"type": "string"}, {"const": "-D"}, {"type": "string"}], "items": false},
+    "actual_exit_code": {"const": 0},
+    "stdout_path": {"type": "string", "pattern": "^/workspace/scratch/13897606dfde/p6pg\\.[A-Za-z0-9]{8}/logs/offline-control\\.stdout\\.log$"},
+    "stdout_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
+  "$comment": "Effectful observer independently enforces path equality to this root/data/executable and argv [executable,-D,data], actual exit, retained stdout ownership/hash/identifier; JSON alone never grants DDL authority"
+}

@@ -1,0 +1,19 @@
+# 仕事の手渡し: p4-repair-design
+
+- 種類: docs / 役: DomainDesigner / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Revise remote design to resolve recorded independent architecture findings
+
+## 入力
+- `p4-draft` (docs/superpowers/programs/search-platform-completion/p4-remote-design.md) — remote draft [`p4-design` が作る (済み)]
+- `p4-arch` (docs/superpowers/programs/search-platform-completion/p4-remote-architecture-review.md) — remote arch [`p4-architecture` が作る (済み)]
+
+## 出すもの
+- `p4-revised` (docs/superpowers/programs/search-platform-completion/p4-remote-design-revision-1.md) — Revised design resolving independent architecture findings
+
+## 受入条件
+Revised design explicitly addresses all architecture blockers without changing frozen Search semantics
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p4-remote-design-revision-1.md` だけ。他は触らない。

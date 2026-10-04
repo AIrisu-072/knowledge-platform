@@ -1,0 +1,53 @@
+   Compiling outbox-delivery v0.0.0 (/workspace/scratch/13897606dfde/search-dependency-recovery/crates/outbox-delivery)
+    Finished `test` profile [unoptimized] target(s) in 1.94s
+     Running tests/runner_admission.rs (/workspace/scratch/13897606dfde/search-recovery-target/debug/deps/runner_admission-656c0e27ebfab39f)
+
+running 5 tests
+test batch_32_inflight_8_never_claims_queued_work ... ok
+test pre_dispatch_lost_never_calls_handler ... ok
+test search_admission_denied_claims_zero ... ok
+test short_remaining_source_permit_renew_lost_never_dispatches ... ok
+test source_style_admission_caps_a_generic_batch_to_one ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.45s
+
+     Running tests/runner_lifecycle.rs (/workspace/scratch/13897606dfde/search-recovery-target/debug/deps/runner_lifecycle-1a767a2951f858ed)
+
+running 35 tests
+test cancellation_before_heartbeat_prevents_new_renewal_attempts ... ok
+test cancellation_during_final_outbox_response_stops_source_fences ... ok
+test cancellation_during_final_source_preflight_stops_settlement ... ok
+test cancellation_during_final_source_renewal_stops_source_preflight ... ok
+test cancellation_during_heartbeat_outbox_response_stops_source_renewal ... ok
+test cancellation_during_heartbeat_source_response_stops_handler_polling ... ok
+test initial_preflight_time_counts_toward_total_processing_deadline ... ok
+test outage_does_not_spin_or_ack_unknown ... ok
+test pending_heartbeat_becomes_unknown_before_lease_expiry ... ok
+test renew_lost_cancels_and_never_settles ... ok
+test returned_store_unknown_is_preserved_when_final_preflight_also_cancels ... ok
+test shutdown_bounds_pending_final_reaper_without_confirming_reap ... ok
+test shutdown_bounds_pending_source_release_after_drain ... ok
+test shutdown_drains_completed_and_leaves_unfinished ... ok
+test shutdown_interrupts_pending_admission_without_claiming ... ok
+test shutdown_interrupts_pending_claim_without_dispatching ... ok
+test shutdown_interrupts_pending_cycle_reaper ... ok
+test shutdown_interrupts_pending_policy_verification ... ok
+test shutdown_pending_failure_settlement_remains_unknown ... ok
+test shutdown_pending_initial_outbox_preflight_remains_unknown ... ok
+test shutdown_pending_initial_source_preflight_remains_unknown ... ok
+test shutdown_pending_outbox_heartbeat_remains_unknown ... ok
+test shutdown_pending_source_heartbeat_remains_unknown ... ok
+test shutdown_pending_success_settlement_remains_unknown ... ok
+test shutdown_releases_still_owned_source_permit_after_timeout ... ok
+test total_deadline_bounds_pending_failure_settlement_without_confirming_retry ... ok
+test total_deadline_bounds_pending_initial_outbox_preflight ... ok
+test total_deadline_bounds_pending_initial_source_preflight ... ok
+test total_deadline_bounds_pending_initial_source_renewal ... ok
+test total_deadline_bounds_pending_outbox_heartbeat ... ok
+test total_deadline_bounds_pending_post_handler_outbox_preflight ... ok
+test total_deadline_bounds_pending_post_handler_source_preflight ... ok
+test total_deadline_bounds_pending_post_handler_source_renewal ... ok
+test total_deadline_bounds_pending_source_heartbeat ... ok
+test total_deadline_bounds_pending_success_settlement_without_confirming_ack ... ok
+
+test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.67s

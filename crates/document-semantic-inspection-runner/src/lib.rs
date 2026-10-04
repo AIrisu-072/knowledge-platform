@@ -24,11 +24,7 @@ const MAX_REQUEST_BYTES: usize = 64 * 1024;
 #[cfg(target_os = "linux")]
 const MAX_RESULT_BYTES: usize = 16 * 1024 * 1024;
 #[cfg(target_os = "linux")]
-const MAX_STDERR_BYTES: usize = 1024 * 1024;
-#[cfg(target_os = "linux")]
 const MAX_TRUST_BYTES: usize = 1024 * 1024;
-#[cfg(target_os = "linux")]
-const MAX_TEMP_BYTES: u64 = 1024 * 1024 * 1024;
 const MAX_WALL_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]

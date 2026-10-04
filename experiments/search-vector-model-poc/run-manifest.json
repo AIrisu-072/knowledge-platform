@@ -1,0 +1,342 @@
+{
+  "assets_manifest_sha256": "d3580da6bb9ef3c51e60f5fa52c2810b8e89b2854aa50e244c99727e438e104a",
+  "execution": {
+    "actor": "baseline synthetic ACTOR (do not infer public Source access)",
+    "dedup": "Unit hit folded to parent Version ResourceId before first reported rank; one parent once",
+    "fusion": "S1 PriorityConcat after Source-current eligibility",
+    "host": "macos-arm64",
+    "observation_method": "df -k .; sysctl -n hw.memsize; memory_pressure -Q",
+    "observed_free_disk_kib": 4134436,
+    "observed_memory_free_percent": 37,
+    "physical_memory_bytes": 17179869184,
+    "route_order": {
+      "D": [
+        "Vector"
+      ],
+      "L": [
+        "Lexical"
+      ],
+      "LD": [
+        "Lexical",
+        "Vector"
+      ],
+      "LDG": [
+        "Lexical",
+        "Vector",
+        "HyperGraph"
+      ],
+      "LG": [
+        "Lexical",
+        "HyperGraph"
+      ]
+    },
+    "route_order_state": "LD/LDG proposed evaluation order; freeze actual planner output before paired run, retaining Lexical-before-HyperGraph",
+    "rustc": "1.98.1",
+    "score_policy": "raw scores within retriever trace only; no cross-retriever arithmetic",
+    "seed": 20260930,
+    "selected_candidate_id": null,
+    "window": 20,
+    "window_max": 256
+  },
+  "execution_guard": {
+    "cargo_build": "FORBIDDEN_IN_P2_01",
+    "cleanup": "retain receipts, model SHA and vector test oracle before deleting only owned disposable assets/target; never remove baseline or another worker output",
+    "current_capacity_verdict": "NOT_ADMITTED_P2_01_ACTUAL_RUN_DEFERRED",
+    "network_after_pin": "block outbound at OS/process boundary and repeat load/query/rebuild; Python preflight offline test does not prove runtime offline",
+    "pytorch_bin": "NEVER_IN_THIS_PROTOCOL",
+    "weight_download": "FORBIDDEN_IN_P2_01"
+  },
+  "historical_baseline": {
+    "baseline_query_count": 7,
+    "code_head": "80a47960d025e4dfdea1eacade28b15d218725ff",
+    "input_aggregate_sha256": "e491c50e915deca95756065f673b5c5ab875c724e391b00819840926c3a74de1",
+    "isolated_lock_sha256": "8d5bdb829c0d5cd322c730d169087cad1f76cefb80edc83c0b7a18660705c81f",
+    "resource_scales": [
+      32,
+      256,
+      1024
+    ],
+    "run_log_sha256": "c5f04793d5d48fb6f540f2e6d68b40e6d4d3cc38df378d269f8b46bd33c05257",
+    "run_manifest_sha256": "605113e14ce8d69755014a784b056223939625288db31bea3ac1d1994cfd6d22",
+    "source": "docs/superpowers/programs/search-platform-completion/p2-baseline-recheck.md",
+    "synthetic_seed": 20260930,
+    "verdict": "GO_SYNTHETIC_L_LG_ONLY",
+    "warning": "historical exact input only; current shared path crates are changing; never treat as paired dense execution without a new same-code snapshot"
+  },
+  "measurement": {
+    "ann_oracle": "same vectors and filters exact scan; qrel Recall separate",
+    "critical_checks": [
+      "current Read and Version/Part/raw/profile/generation",
+      "parent fold",
+      "no-positive denied/unknown ID-free trace",
+      "S1 Lexical/Graph relative order",
+      "BodyRequired not minted by vector"
+    ],
+    "decision_sheet": "freeze priority families, meaningful deltas and resource limits before opening public holdout; selected six-query slice is diagnostic only, not enough by itself for production selection",
+    "disk": [
+      "asset",
+      "native runtime",
+      "target",
+      "temporary conversion",
+      "index",
+      "cache"
+    ],
+    "latency_samples": "100 or more independently timed requests for stable p99; otherwise descriptive maximum only",
+    "memory": [
+      "process RSS sampled and peak",
+      "model resident bytes",
+      "index/cache bytes"
+    ],
+    "no_positive": "relevance ratios undefined; count false-positive and disclosure separately",
+    "scale_claim": "same 32 labeled challenge parents at each scale; scale metrics are capacity evidence, not harder relevance generalization",
+    "semantic_metrics": [
+      "parent Recall@1/5/10/20",
+      "MRR@10",
+      "nDCG@10",
+      "Unit recall",
+      "logical Resource recall",
+      "graph-only rescue",
+      "false-composite",
+      "unjudged_fraction",
+      "visible_false_positive",
+      "unauthorized_disclosure"
+    ],
+    "sizes": [
+      32,
+      256,
+      1024
+    ],
+    "timing": [
+      "cold/warm model load",
+      "query embed",
+      "exact scan",
+      "authorization",
+      "fusion",
+      "disclosure",
+      "full build",
+      "incremental add/change/delete",
+      "lease purge",
+      "restart"
+    ],
+    "unjudged": "unknown, never grade 0; closed pool or blind adjudication before scoring newly found top-window result"
+  },
+  "observed_at": "2026-09-30 JST",
+  "parity": {
+    "dimension": 384,
+    "finite_nonzero_required": true,
+    "max_component_absolute_error": 0.002,
+    "max_cosine_absolute_error": 0.0001,
+    "maximum_norm_after_l2": 1.0001,
+    "minimum_norm_after_l2": 0.9999,
+    "rank_reversal": "No reversal when reference cosine margin exceeds 0.0002 (=2x cosine tolerance); near-tie reversals at or below 0.0002 are listed per query and cannot change judged top-k without explicit review",
+    "reference_vs_rust": "report both raw mean-pool and retrieval-normalized vectors; test-only reference PASS never substitutes for Rust CPU PASS",
+    "token_ids": "exact token IDs, masks, special tokens, truncation and query/passage prefix match",
+    "vector_reference": "pinned model test-only oracle on fixed Japanese/mixed/long/pad examples, captured before Rust outcome"
+  },
+  "pre_run_inputs": {
+    "build_identity": null,
+    "capacity_admission": null,
+    "code": {
+      "baseline_harness_sha256": null,
+      "index_engine_sha256": null,
+      "isolated_lock_sha256": null,
+      "model_adapter_sha256": null,
+      "path_crates_sha256": null,
+      "planner_executor_sha256": null,
+      "runtime_build_sha256": null
+    },
+    "data": {
+      "corpus_text_sha256": null,
+      "current_read_sha256": null,
+      "eligible_parent_set_sha256": null,
+      "filter_sha256": null,
+      "judgments_sha256": null,
+      "label_split_sha256": null,
+      "query_text_sha256": null,
+      "source_snapshot_sha256": null,
+      "unit_binding_sha256": null
+    },
+    "data_artifacts": {
+      "corpus_text_sha256": null,
+      "current_read_sha256": null,
+      "eligible_parent_set_sha256": null,
+      "filter_sha256": null,
+      "judgments_sha256": null,
+      "label_split_sha256": null,
+      "planner_output": null,
+      "query_text_sha256": null,
+      "source_snapshot_sha256": null,
+      "unit_binding_sha256": null
+    },
+    "deadline_utc": null,
+    "embedding_policy": {
+      "mask": null,
+      "metric": null,
+      "normalization": null,
+      "pooling": null,
+      "precision": null,
+      "tokenizer_sha256": null,
+      "truncation": null
+    },
+    "fanout_by_arm": null,
+    "host_hardware": {
+      "cpu_model": null,
+      "fingerprint_sha256": null,
+      "free_memory_bytes_at_admission": null
+    },
+    "planner_output_sha256": null,
+    "resource_scenario_id": null,
+    "sample_plan": null,
+    "source_files": {
+      "baseline_harness": {},
+      "index_engine": {},
+      "isolated_lock": {},
+      "model_adapter": {},
+      "path_crates": {},
+      "planner_executor": {},
+      "runtime_build": {}
+    },
+    "state": "PENDING_EXACT_INPUT_SNAPSHOT"
+  },
+  "public_japanese": {
+    "adoption_quality_status": "not_evaluable_until_rows_and_additional_queries_frozen",
+    "corpus_rows_ready": false,
+    "development_ids": [
+      "101",
+      "1059",
+      "1076"
+    ],
+    "holdout_ids": [
+      "0",
+      "102",
+      "1043"
+    ],
+    "holdout_rank_look_count": 0,
+    "qrels_artifact": null,
+    "selected_rows_artifact": null,
+    "slice_file": "public-ja-slice.json",
+    "status": "IDS_QRELS_ONLY",
+    "topics_artifact": null
+  },
+  "public_slice_manifest_sha256": "660a5e217b99d5e1274bea8b24718d43c75e8373f52739bca591b50ba996d62e",
+  "resource_ceiling": {
+    "current_free_bytes": 4233662464,
+    "currently_admitted_scenarios": [],
+    "free_disk_observations": [
+      {
+        "bytes": 1163415552,
+        "context": "low-water observation before concurrent cleanup"
+      },
+      {
+        "bytes": 4233662464,
+        "context": "later preflight snapshot; not a run admission"
+      }
+    ],
+    "index_cache_max_bytes": 134217728,
+    "native_unpack_max_bytes": 268435456,
+    "paired_run_wall_seconds": 7200,
+    "per_process_rss_max_bytes": 2684354560,
+    "recheck_before_each_acquire_or_build": "df, memory pressure, predicted sum of all simultaneously resident files, then stop if floor breached; no automatic download",
+    "reserve_free_bytes": 2147483648,
+    "rust_target_max_additional_bytes": 1073741824,
+    "single_model_wall_seconds": 1800,
+    "temporary_max_bytes": 268435456
+  },
+  "resource_scenarios": {
+    "e5_candle_only": {
+      "components_bytes": {
+        "index_and_cache": 134217728,
+        "model_artifact": 470641600,
+        "temporary_conversion_or_download": 268435456,
+        "temporary_target": 1073741824,
+        "tokenizer_and_sentencepiece": 22151781
+      },
+      "owned_peak_additional_bytes": 1969188389,
+      "required_free_with_reserve_bytes": 4116672037
+    },
+    "e5_candle_ort_overlap_one_model": {
+      "components_bytes": {
+        "index_and_cache": 134217728,
+        "native_archive": 32396562,
+        "native_unpacked_ceiling": 268435456,
+        "onnx": 470268510,
+        "safetensors": 470641600,
+        "temporary_conversion_or_download": 268435456,
+        "temporary_target": 1073741824,
+        "tokenizer_and_sentencepiece": 22151781
+      },
+      "owned_peak_additional_bytes": 2740288917,
+      "required_free_with_reserve_bytes": 4887772565
+    },
+    "e5_ort_only": {
+      "components_bytes": {
+        "index_and_cache": 134217728,
+        "model_artifact": 470268510,
+        "native_archive": 32396562,
+        "native_unpacked_ceiling": 268435456,
+        "temporary_conversion_or_download": 268435456,
+        "temporary_target": 1073741824,
+        "tokenizer_and_sentencepiece": 22151781
+      },
+      "owned_peak_additional_bytes": 2269647317,
+      "required_free_with_reserve_bytes": 4417130965
+    },
+    "minilm_candle_only": {
+      "components_bytes": {
+        "index_and_cache": 134217728,
+        "model_artifact": 470641600,
+        "temporary_conversion_or_download": 268435456,
+        "temporary_target": 1073741824,
+        "tokenizer_and_sentencepiece": 14150569
+      },
+      "owned_peak_additional_bytes": 1961187177,
+      "required_free_with_reserve_bytes": 4108670825
+    },
+    "minilm_candle_ort_overlap_one_model": {
+      "components_bytes": {
+        "index_and_cache": 134217728,
+        "native_archive": 32396562,
+        "native_unpacked_ceiling": 268435456,
+        "onnx": 470301610,
+        "safetensors": 470641600,
+        "temporary_conversion_or_download": 268435456,
+        "temporary_target": 1073741824,
+        "tokenizer_and_sentencepiece": 14150569
+      },
+      "owned_peak_additional_bytes": 2732320805,
+      "required_free_with_reserve_bytes": 4879804453
+    },
+    "minilm_ort_only": {
+      "components_bytes": {
+        "index_and_cache": 134217728,
+        "model_artifact": 470301610,
+        "native_archive": 32396562,
+        "native_unpacked_ceiling": 268435456,
+        "temporary_conversion_or_download": 268435456,
+        "temporary_target": 1073741824,
+        "tokenizer_and_sentencepiece": 14150569
+      },
+      "owned_peak_additional_bytes": 2261679205,
+      "required_free_with_reserve_bytes": 4409162853
+    }
+  },
+  "schema": "p2-model-run-protocol-v2",
+  "state": "PROTOCOL_ONLY_UNRUN",
+  "synthetic_fixture": {
+    "corpus_manifest_sha256": "0727f4cac9d6624d5ba1da2b0d7cbc77f946f7b000c24e855911b72a9ea1eef5",
+    "qrels_sha256": "90441a800c1a9062a990d718aa629edea664908cbad9c6e1831b2e716ac9bfae",
+    "quality_use": "development diagnostic only; all seven queries and ranks were previously inspected, so none is untouched holdout",
+    "queries_sha256": "993f82c2582b5ce7b416e958daabc7b91e14c6f4b28cd2760419e36dbef956aa",
+    "required_strata": [
+      "finance_identifier",
+      "paraphrase",
+      "japanese_english_mixed",
+      "table_slide_archive",
+      "token_limit",
+      "graph_only",
+      "multi_part_one_parent",
+      "denied_unknown_no_positive"
+    ],
+    "source_generation": "00000000-0000-0000-0000-000000000002"
+  }
+}

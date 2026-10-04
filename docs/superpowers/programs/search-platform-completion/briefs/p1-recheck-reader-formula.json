@@ -1,0 +1,21 @@
+# 仕事の手渡し: p1-recheck-reader-formula
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independent corrected formula cache reader qualification
+
+## 入力
+- `p1-reader-formula-fix` (experiments/search-extraction-poc/formula-fix-receipt.md) — Q01 fail closed unverified formula cache and requalify XLSX Archive [`p1-fix-reader-formula` が作る (済み)]
+- `p1-reader-review` (docs/superpowers/programs/search-platform-completion/p1-reader-poc-review.md) — Independent actual reader qualification review [`p1-review-readers` が作る (済み)]
+
+## 出すもの
+- `p1-reader-formula-review` (docs/superpowers/programs/search-platform-completion/p1-reader-formula-recheck.md) — Independent corrected formula cache reader qualification
+
+## 受入条件
+Exact source manifest hash and corrected semantic oracle; cached binary separately attested; formula absence never false Supported
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p1-reader-formula-recheck.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

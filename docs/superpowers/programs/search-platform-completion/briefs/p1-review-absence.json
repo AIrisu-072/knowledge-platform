@@ -1,0 +1,24 @@
+# 仕事の手渡し: p1-review-absence
+
+- 種類: audit / 役: QualityAuditor / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Verify complete body design and exact absence proof before freeze
+
+## 入力
+- `p1-revised` (docs/superpowers/programs/search-platform-completion/p1-extraction-design-revision-1.md) — Revised design resolving independent architecture findings [`p1-repair-design` が作る (済み)]
+- `p1-arch-recheck` (docs/superpowers/programs/search-platform-completion/p1-extraction-architecture-recheck.md) — Independent revised exact design architecture gate [`p1-recheck-design` が作る (済み)]
+- `p1-body-amendment` (docs/superpowers/programs/search-platform-completion/p1-body-absence-amendment.md) — Exact text negative proof and shared discovery signature correction [`p1-amend-absence` が作る (済み)]
+- `p1-unit-frozen` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md) — Frozen provider neutral input contract for Vector evaluation [`p1-freeze-unit` が作る (済み)]
+- `baseline` (docs/superpowers/specs/2026-09-28-search-discovery-platform-v0-design.md) — existing approved Search semantics [既に在る]
+
+## 出すもの
+- `p1-body-final-review` (docs/superpowers/programs/search-platform-completion/p1-body-absence-review.md) — Exact text negative proof and shared discovery signature correction
+
+## 受入条件
+No remaining body semantics P1/P2 in composed exact design and minimal Unit contract
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p1-body-absence-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

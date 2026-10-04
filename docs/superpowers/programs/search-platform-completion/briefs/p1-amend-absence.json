@@ -1,0 +1,19 @@
+# 仕事の手渡し: p1-amend-absence
+
+- 種類: decision / 役: DomainDesigner / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Bind exact text negative proof independent of lexical candidate recall
+
+## 入力
+- `p1-revised` (docs/superpowers/programs/search-platform-completion/p1-extraction-design-revision-1.md) — Revised design resolving independent architecture findings [`p1-repair-design` が作る (済み)]
+- `baseline` (docs/superpowers/specs/2026-09-28-search-discovery-platform-v0-design.md) — existing approved Search semantics [既に在る]
+
+## 出すもの
+- `p1-body-amendment` (docs/superpowers/programs/search-platform-completion/p1-body-absence-amendment.md) — Exact text negative proof and shared discovery signature correction
+
+## 受入条件
+Lexical no-hit alone cannot emit Absent; bounded same-generation exact corpus scan/current authorized binding proof defined; P1 method naming aligned P4
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p1-body-absence-amendment.md` だけ。他は触らない。

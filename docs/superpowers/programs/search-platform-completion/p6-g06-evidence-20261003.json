@@ -1,0 +1,372 @@
+{
+  "schema_version": 1,
+  "scope": "P6 G05/G06 in-process synthetic admission/lifecycle only",
+  "chronological_red_receipts": {
+    "g06-lifecycle-pending-red": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "-j",
+        "2",
+        "-p",
+        "outbox-delivery",
+        "--test",
+        "runner_lifecycle",
+        "--",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "elapsed_seconds": 14.213,
+      "minimum_free_bytes": 25474134016,
+      "disk_floor_bytes": 1610612736,
+      "log_sha256": "1378d02ebed3a26e7230be663d02caee3ea4bcd871e02bbbe26eb1c91bbe0798",
+      "source_hashes": {
+        "crates/outbox-delivery/src/runner.rs": "e04313b441f9848bc8ff58eaa2a117fc8af2c839b06276972bd6f2cb43dc85de",
+        "crates/outbox-delivery/tests/runner_lifecycle.rs": "e525c4098621f3c9e5e3e3dc0f2c03ebadc899db48706fb25ec10678cd451b8f"
+      },
+      "scope": "synthetic-only lifecycle target; no production fixes"
+    },
+    "g06-shutdown-unknown-red": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "-j",
+        "2",
+        "-p",
+        "outbox-delivery",
+        "--test",
+        "runner_lifecycle",
+        "--",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "elapsed_seconds": 7.008,
+      "minimum_free_bytes": 25409105920,
+      "disk_floor_bytes": 1610612736,
+      "log_sha256": "e2971ebed82a5ead05a15679f06965e61e0994ddcaf68fe718cb7c428d12accd",
+      "source_hashes": {
+        "crates/outbox-delivery/src/runner.rs": "01cd97cc77b38260e27e90401af33c5541c12688418ed04ef6c1b55edbcda807",
+        "crates/outbox-delivery/tests/runner_lifecycle.rs": "1dd6cb02455ac007e04fa59f92aa68dd18fd805b0ba01e694aa25b0dc4e2dfd3"
+      },
+      "scope": "six synthetic-only shutdown unknown regressions plus one positive lease bound; no production fixes"
+    },
+    "g06-cancel-before-heartbeat-red": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "-j",
+        "2",
+        "-p",
+        "outbox-delivery",
+        "--test",
+        "runner_lifecycle",
+        "--",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "elapsed_seconds": 7.807,
+      "minimum_free_bytes": 25265004544,
+      "disk_floor_bytes": 1610612736,
+      "log_sha256": "551d97722bf8253a0816b10bc8d8d7dff0f2053a77683f3c5382e10317c0269f",
+      "source_hashes": {
+        "crates/outbox-delivery/src/runner.rs": "b7c8d5f2cf1fb863925df2ab48caffccf04cfd27e25e0d9a5edcdc26dcbbbafc",
+        "crates/outbox-delivery/tests/runner_lifecycle.rs": "931b176b63bcb810e7a45232ca9391a3701484448cbebc699f2bac095bd22ce6"
+      },
+      "scope": "synthetic-only cancellation-before-heartbeat witness plus test let-chain lint fix; no production fixes"
+    },
+    "g06-response-boundary-cancel-red": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "-j",
+        "2",
+        "-p",
+        "outbox-delivery",
+        "--test",
+        "runner_lifecycle",
+        "--",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "elapsed_seconds": 7.407,
+      "minimum_free_bytes": 25263476736,
+      "disk_floor_bytes": 1610612736,
+      "log_sha256": "8517dee39adba4d6f4781c9694e79a8fca9f276ada573969323f79772c8c8caa",
+      "source_hashes": {
+        "crates/outbox-delivery/src/runner.rs": "b4bdc9ee8670fd39717ce22cce78366ee70dc07d6293b8e7dd96bc310448fe1e",
+        "crates/outbox-delivery/tests/runner_lifecycle.rs": "4e8b3fa50f7446ba3b7dd843c91d346b8b309fd9d685b16b7ba978dbf5799db2"
+      },
+      "scope": "five response-boundary cancellation regressions and one positive StoreUnknown precedence test; synthetic-only, no production fixes"
+    }
+  },
+  "final_confirmation": {
+    "schema_version": 1,
+    "scope": "P6 G05/G06 synthetic admission/lifecycle only",
+    "base_local_commit": "3955eb5eeedebebc1a77afe3df44d0569953ad47",
+    "base_local_tree": "d22b3b3e784839dade91734d725f1e3384740aa0",
+    "source_hashes": {
+      "crates/outbox-delivery/src/runner.rs": "fdb3c1164e6db4d092fe8745af0c952e5e33a122441cd6a4eaa4377867ea22cb",
+      "crates/outbox-delivery/tests/runner_lifecycle.rs": "4e8b3fa50f7446ba3b7dd843c91d346b8b309fd9d685b16b7ba978dbf5799db2",
+      "crates/outbox-delivery/tests/runner_admission.rs": "9fa72c22fa0cb555c0a293ca29e02644c6722e83f7008452ccb71cb407d82d20",
+      "Cargo.toml": "6bd7d132cfb539579c54e03d1b48ab1a456a547fd77ad7782bb59ec9aa3df1e1",
+      "Cargo.lock": "368e5b43a7a13976eb0c4b2b0bb5c604fda42a38d86f4b707e73b4511c8a6b95"
+    },
+    "disk_floor_bytes": 1610612736,
+    "steps": [
+      {
+        "label": "g06-final-confirmed-tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "--offline",
+          "-j",
+          "2",
+          "-p",
+          "outbox-delivery",
+          "--test",
+          "runner_admission",
+          "--test",
+          "runner_lifecycle",
+          "--",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 6.506,
+        "minimum_free_bytes": 25272311808,
+        "log": "g06-final-confirmed-tests.log",
+        "log_bytes": 3237,
+        "log_sha256": "70b78a64a5fc476e4c4b4b598080cde9b91e68e0ba10ca993804c19f2db5f5a1"
+      },
+      {
+        "label": "g06-final-confirmed-clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--locked",
+          "--offline",
+          "-j",
+          "2",
+          "-p",
+          "outbox-delivery",
+          "--test",
+          "runner_admission",
+          "--test",
+          "runner_lifecycle",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 0.252,
+        "minimum_free_bytes": 25272311808,
+        "log": "g06-final-confirmed-clippy.log",
+        "log_bytes": 60,
+        "log_sha256": "59e339d2aa27cd2222fead9549dbc67b0a6e0d10e368fb0ddf49b9c9ba0ac0a3"
+      },
+      {
+        "label": "g06-final-confirmed-format",
+        "command": [
+          "rustfmt",
+          "--edition",
+          "2024",
+          "--check",
+          "crates/outbox-delivery/src/runner.rs",
+          "crates/outbox-delivery/tests/runner_lifecycle.rs"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 0.251,
+        "minimum_free_bytes": 25272307712,
+        "log": "g06-final-confirmed-format.log",
+        "log_bytes": 0,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "g06-final-confirmed-diff",
+        "command": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 0.251,
+        "minimum_free_bytes": 25272307712,
+        "log": "g06-final-confirmed-diff.log",
+        "log_bytes": 0,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ],
+    "all_selected_checks_pass": true
+  },
+  "negative_control": {
+    "kind": "post-fix counterfactual negative control, not chronological TDD RED",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "-j",
+      "2",
+      "-p",
+      "outbox-delivery",
+      "--test",
+      "runner_lifecycle",
+      "--",
+      "--test-threads=1"
+    ],
+    "exit_code": 101,
+    "passed": 5,
+    "failed": 30,
+    "base_commit": "3955eb5eeedebebc1a77afe3df44d0569953ad47",
+    "runner_sha256": "e04313b441f9848bc8ff58eaa2a117fc8af2c839b06276972bd6f2cb43dc85de",
+    "test_sha256": "4e8b3fa50f7446ba3b7dd843c91d346b8b309fd9d685b16b7ba978dbf5799db2",
+    "supervision": "shell prerequisite floor check, test-local watchdogs; actual exit 101 captured by exec session 24074; no persistent process receipt/continuous disk sampler for this control"
+  },
+  "log_artifacts": [
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g06-lifecycle-pending-red-20261003.log",
+      "raw_sha256": "1378d02ebed3a26e7230be663d02caee3ea4bcd871e02bbbe26eb1c91bbe0798",
+      "raw_bytes": 8065,
+      "committed_sha256": "1378d02ebed3a26e7230be663d02caee3ea4bcd871e02bbbe26eb1c91bbe0798",
+      "committed_bytes": 8065,
+      "normalization": "strip trailing whitespace per line and trailing blank lines; retain all diagnostic lines"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g06-shutdown-unknown-red-20261003.log",
+      "raw_sha256": "e2971ebed82a5ead05a15679f06965e61e0994ddcaf68fe718cb7c428d12accd",
+      "raw_bytes": 5512,
+      "committed_sha256": "e2971ebed82a5ead05a15679f06965e61e0994ddcaf68fe718cb7c428d12accd",
+      "committed_bytes": 5512,
+      "normalization": "strip trailing whitespace per line and trailing blank lines; retain all diagnostic lines"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g06-cancel-before-heartbeat-red-20261003.log",
+      "raw_sha256": "551d97722bf8253a0816b10bc8d8d7dff0f2053a77683f3c5382e10317c0269f",
+      "raw_bytes": 2968,
+      "committed_sha256": "551d97722bf8253a0816b10bc8d8d7dff0f2053a77683f3c5382e10317c0269f",
+      "committed_bytes": 2968,
+      "normalization": "strip trailing whitespace per line and trailing blank lines; retain all diagnostic lines"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g06-response-boundary-cancel-red-20261003.log",
+      "raw_sha256": "8517dee39adba4d6f4781c9694e79a8fca9f276ada573969323f79772c8c8caa",
+      "raw_bytes": 5152,
+      "committed_sha256": "8517dee39adba4d6f4781c9694e79a8fca9f276ada573969323f79772c8c8caa",
+      "committed_bytes": 5152,
+      "normalization": "strip trailing whitespace per line and trailing blank lines; retain all diagnostic lines"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g06-final-test-negative-control-20261003.log",
+      "raw_sha256": "615884550d9a878a98157250ac66d8be85a043b08f126da8a270761f0fd54ff6",
+      "raw_bytes": 15561,
+      "committed_sha256": "615884550d9a878a98157250ac66d8be85a043b08f126da8a270761f0fd54ff6",
+      "committed_bytes": 15561,
+      "normalization": "strip trailing whitespace per line and trailing blank lines; retain all diagnostic lines"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g06-final-confirmed-tests-20261003.log",
+      "raw_sha256": "70b78a64a5fc476e4c4b4b598080cde9b91e68e0ba10ca993804c19f2db5f5a1",
+      "raw_bytes": 3237,
+      "committed_sha256": "24709b059b5ad8de39b651a8b70d46dafdb913ecaf39cae6becbfaee34c1604c",
+      "committed_bytes": 3236,
+      "normalization": "strip trailing whitespace per line and trailing blank lines; retain all diagnostic lines"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g06-final-confirmed-clippy-20261003.log",
+      "raw_sha256": "59e339d2aa27cd2222fead9549dbc67b0a6e0d10e368fb0ddf49b9c9ba0ac0a3",
+      "raw_bytes": 60,
+      "committed_sha256": "59e339d2aa27cd2222fead9549dbc67b0a6e0d10e368fb0ddf49b9c9ba0ac0a3",
+      "committed_bytes": 60,
+      "normalization": "strip trailing whitespace per line and trailing blank lines; retain all diagnostic lines"
+    }
+  ],
+  "tool_components": {
+    "manifest_sha256": "a7c8774a5fd8441c997d94c029776cbc5eb111e9d72ab5d256fa69866644347e",
+    "components": [
+      {
+        "name": "rustfmt-preview",
+        "version": "1.9.0",
+        "url": "https://static.rust-lang.org/dist/2026-09-03/rustfmt-1.98.1-x86_64-unknown-linux-gnu.tar.xz",
+        "sha256": "b29a1addcbf2aa8f5785075605700e63cbe131b08c8334b50c09cfca8bbc51dc"
+      },
+      {
+        "name": "clippy-preview",
+        "version": "0.1.98",
+        "url": "https://static.rust-lang.org/dist/2026-09-03/clippy-1.98.1-x86_64-unknown-linux-gnu.tar.xz",
+        "sha256": "e167f333be24e1d5eea56ea563c7def0aa0bd613f5ce3445976c93b0288799d1"
+      }
+    ]
+  },
+  "execution_environment": {
+    "rust": "1.98.1",
+    "platform": "Linux x86_64",
+    "cargo_home": "isolated shared verified toolchain cache",
+    "cargo_target": "Search-owned isolated target",
+    "CARGO_NET_OFFLINE": "true",
+    "SQLX_OFFLINE": "true",
+    "DATABASE_URL": "unset",
+    "P6_TEST_DATABASE_URL": "unset",
+    "CARGO_PROFILE_DEV_DEBUG": "0",
+    "CARGO_PROFILE_TEST_DEBUG": "0",
+    "CARGO_INCREMENTAL": "0",
+    "CARGO_TERM_COLOR": "never"
+  },
+  "limits": [
+    "No database/Docker/child-process/parser/model/security-probe runtime",
+    "Only named admission/lifecycle targets; compiled existing trusted dependency/build-script/proc-macro closure",
+    "No all-target/full workspace or G07/G08/P1-P7 qualification",
+    "Not a hard CPU-preemption proof, production SLO or multicore model check",
+    "Source-scoped independent read-only review; reviewer did not rerun Cargo",
+    "No public publication in this checkpoint"
+  ],
+  "post_negative_cache_check": {
+    "observation": "first switch back reused the negative-control lifecycle executable while rebuilding admission: lifecycle binary/depfile timestamp remained at negative-control build and exactly the same 30 cases failed",
+    "hypothesis_confirmation": "touching only the two owned candidate source mtimes (bytes unchanged) forced recompilation; the same command then passed all 5+35 tests; targeted Clippy, rustfmt and diff check also exit 0",
+    "source_hashes": {
+      "crates/outbox-delivery/src/runner.rs": "fdb3c1164e6db4d092fe8745af0c952e5e33a122441cd6a4eaa4377867ea22cb",
+      "crates/outbox-delivery/tests/runner_lifecycle.rs": "4e8b3fa50f7446ba3b7dd843c91d346b8b309fd9d685b16b7ba978dbf5799db2",
+      "crates/outbox-delivery/tests/runner_admission.rs": "9fa72c22fa0cb555c0a293ca29e02644c6722e83f7008452ccb71cb407d82d20",
+      "Cargo.toml": "6bd7d132cfb539579c54e03d1b48ab1a456a547fd77ad7782bb59ec9aa3df1e1",
+      "Cargo.lock": "368e5b43a7a13976eb0c4b2b0bb5c604fda42a38d86f4b707e73b4511c8a6b95"
+    },
+    "no_cleanup": "No target files deleted and no source bytes changed; future counterfactual worktrees must use separate Cargo targets",
+    "logs": [
+      {
+        "path": "docs/superpowers/programs/search-platform-completion/g06-post-negative-confirmation-20261003.log",
+        "exit_code": 101,
+        "raw_sha256": "1017bf20f0f0abea6fdd7c30b67e67f981172e78575786459abc22239015c6c4",
+        "committed_sha256": "1017bf20f0f0abea6fdd7c30b67e67f981172e78575786459abc22239015c6c4",
+        "raw_bytes": 15516,
+        "committed_bytes": 15516,
+        "normalization": "strip trailing whitespace per line and trailing blank lines; retain all diagnostic lines"
+      },
+      {
+        "path": "docs/superpowers/programs/search-platform-completion/g06-forced-recompile-confirmation-20261003.log",
+        "exit_code": 0,
+        "raw_sha256": "677ff14f165aa186f23888c66c500461d4ee18c16f5e20354880dc1806a443ea",
+        "committed_sha256": "f9106d6b561d7e0d2ffbbaf5ec73a4268e28728f18a0488650ad18aa05273a66",
+        "raw_bytes": 3357,
+        "committed_bytes": 3356,
+        "normalization": "strip trailing whitespace per line and trailing blank lines; retain all diagnostic lines"
+      },
+      {
+        "path": "docs/superpowers/programs/search-platform-completion/g06-forced-recompile-clippy-20261003.log",
+        "exit_code": 0,
+        "raw_sha256": "02bb04e18e269ac730115d912b35f684287d3738519c65b162b857589b38fae7",
+        "committed_sha256": "02bb04e18e269ac730115d912b35f684287d3738519c65b162b857589b38fae7",
+        "raw_bytes": 180,
+        "committed_bytes": 180,
+        "normalization": "strip trailing whitespace per line and trailing blank lines; retain all diagnostic lines"
+      }
+    ],
+    "execution_receipt": "direct exec completion records failed first switch (101) and forced recompile chain (0), with prerequisite floor checks but no continuous disk sampler"
+  }
+}

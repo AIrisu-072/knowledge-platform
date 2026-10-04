@@ -1,0 +1,24 @@
+# 仕事の手渡し: p6-review-reap
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independent G04 DBclock policyguard bounded SKIPLOCKED finalexpiry andmultiprocess reaper
+
+## 入力
+- `p6-reap-code` (crates/outbox-delivery/tests/postgres_reaper.rs) — p6-reap-code [`p6-impl-reap` が作る (作業中)]
+- `p6-settle-review` (docs/superpowers/programs/search-platform-completion/p6-postgres-settle-review.md) — G03 independent PostgreSQL fenced settle and real unknown COMMIT audit [`p6-review-settle` が作る (済み)]
+- `p6-contract` (docs/superpowers/programs/search-platform-completion/p6-outbox-freeze.md) — outbox contract [`p6-freeze` が作る (済み)]
+- `p6-plan` (docs/superpowers/programs/search-platform-completion/p6-outbox-plan.md) — outbox plan [`p6-freeze` が作る (済み)]
+- `p6-recheck-domain-artifact` (docs/superpowers/programs/search-platform-completion/p6-domain-migration-recheck.md) — Independent bounded policy and additive preservation gate [`p6-recheck-domain` が作る (済み)]
+
+## 出すもの
+- `p6-reap-review` (docs/superpowers/programs/search-platform-completion/p6-postgres-reaper-review.md) — Independent final-attempt bounded expired lease reaper functional gate
+
+## 受入条件
+Exactsource/test/SQL hashes freshcachedactualPG multiprocess policy/exhaustion/renew races andchangednone; generic only no Search publication/role/throughput claims
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p6-postgres-reaper-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

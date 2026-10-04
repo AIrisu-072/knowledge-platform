@@ -1,0 +1,403 @@
+{
+  "corpus": {
+    "dataset_card_license": "apache-2.0",
+    "redistribution": "no text committed; attribution/license per passage to be captured before local use",
+    "repository": "miracl/miracl-corpus",
+    "revision": "d921ec7e349ce0d28daf30b2da9da5ee698bef0d",
+    "selected_row_to_source_version_part_unit_map": null,
+    "selected_rows_sha256": null,
+    "shards": [
+      {
+        "bytes": 87302446,
+        "path": "miracl-corpus-v1.0-ja/docs-0.jsonl.gz",
+        "sha256": "c205bf3cece2098f3357fdb1b096e9ed0fd257632dd52b8d9095d01e07c61172"
+      },
+      {
+        "bytes": 84310580,
+        "path": "miracl-corpus-v1.0-ja/docs-1.jsonl.gz",
+        "sha256": "2d1b8be5ab579604ccc483bebe170dec2b5d0fdcf54a7eb4d1f3dada72795306"
+      },
+      {
+        "bytes": 74375206,
+        "path": "miracl-corpus-v1.0-ja/docs-10.jsonl.gz",
+        "sha256": "859b4cce1009e965e3663ce606d49de355ee82362028f6b6ecd0bf3f237b85ec"
+      },
+      {
+        "bytes": 73261365,
+        "path": "miracl-corpus-v1.0-ja/docs-11.jsonl.gz",
+        "sha256": "216585793ed7c836eb66a4b5c982025e79a0d0184715d24a404ce0ee009931ce"
+      },
+      {
+        "bytes": 71472211,
+        "path": "miracl-corpus-v1.0-ja/docs-12.jsonl.gz",
+        "sha256": "92a950e46775d5c2aebe5e58f1498ddcf16e3e35dafb07f4f04fd3cd9cb64ba3"
+      },
+      {
+        "bytes": 64646621,
+        "path": "miracl-corpus-v1.0-ja/docs-13.jsonl.gz",
+        "sha256": "98acce36aa778df24f24be39965a2654cf7fbd923c09acc9eede8d91dc2b081a"
+      },
+      {
+        "bytes": 82263425,
+        "path": "miracl-corpus-v1.0-ja/docs-2.jsonl.gz",
+        "sha256": "8992797e86cb16e9be395aae7c68ee2f7be043af638863fb0d36f6cdeb7a02a8"
+      },
+      {
+        "bytes": 79819291,
+        "path": "miracl-corpus-v1.0-ja/docs-3.jsonl.gz",
+        "sha256": "8d0f12ce5aa5b3feca45c80ba4aed6abaa4a01d754e309bd8004bd8f181ba92b"
+      },
+      {
+        "bytes": 76369546,
+        "path": "miracl-corpus-v1.0-ja/docs-4.jsonl.gz",
+        "sha256": "c32936efa13c72a32c75986dac3737c7d85db103ffabc7d8023320fac7446c57"
+      },
+      {
+        "bytes": 73543156,
+        "path": "miracl-corpus-v1.0-ja/docs-5.jsonl.gz",
+        "sha256": "4fbf518b8ec8f57298fa23ffe52863410641173ee368a244863e60ed8b985e62"
+      },
+      {
+        "bytes": 75527173,
+        "path": "miracl-corpus-v1.0-ja/docs-6.jsonl.gz",
+        "sha256": "6d55eb02dfa62b79662e3829a3ef223312374699d528b5af6643e0678bd6d517"
+      },
+      {
+        "bytes": 75265643,
+        "path": "miracl-corpus-v1.0-ja/docs-7.jsonl.gz",
+        "sha256": "fe74fbd9c3965bffc848f74296e8f3fd7db9d63c1b4c62903d1a9779276a963c"
+      },
+      {
+        "bytes": 74070028,
+        "path": "miracl-corpus-v1.0-ja/docs-8.jsonl.gz",
+        "sha256": "0abb18418c92d8013cad727dfffcc3fa719c14f818654f9800d7ebee8748f83a"
+      },
+      {
+        "bytes": 72893709,
+        "path": "miracl-corpus-v1.0-ja/docs-9.jsonl.gz",
+        "sha256": "1129864292948a2c8d479aef61ba020d4870cabc3d28e3baed5c8cabee07fe98"
+      }
+    ],
+    "underlying_wikipedia_text_license": "CC BY-SA 3.0 for pre-2023 Wikipedia revisions; verify each source article attribution before redistribution"
+  },
+  "grading": {
+    "closed_pool_only": true,
+    "eligible_qrels": "all selected positive judged parents after same Source/Read filter",
+    "unjudged_fraction": "measure_per_arm_after_rank",
+    "unjudged_policy": "unknown_not_grade_zero"
+  },
+  "guard": "Do not evaluate holdout until selected corpus row bytes, hashes, mapping, qrel closure and new paired baseline are frozen.",
+  "queries": [
+    {
+      "family": "insurance",
+      "judgments": [
+        {
+          "docid": "1017686#4",
+          "grade": 0
+        },
+        {
+          "docid": "113352#16",
+          "grade": 0
+        },
+        {
+          "docid": "116380#1",
+          "grade": 0
+        },
+        {
+          "docid": "147530#1",
+          "grade": 0
+        },
+        {
+          "docid": "2130645#11",
+          "grade": 0
+        },
+        {
+          "docid": "270867#0",
+          "grade": 0
+        },
+        {
+          "docid": "3481610#7",
+          "grade": 0
+        },
+        {
+          "docid": "67824#6",
+          "grade": 0
+        },
+        {
+          "docid": "859445#37",
+          "grade": 0
+        },
+        {
+          "docid": "96129#16",
+          "grade": 1
+        }
+      ],
+      "judgments_canonical_sha256": "ebaf0966f589de3378ebdc2764eedbb8f781182014392a283a183edf1cdba0b5",
+      "query_id": "101",
+      "split": "development",
+      "topic_sha256": "dd3c9e482b63f83ced6fea904461df4e98d87d8929e425ba02a629f743e54aca"
+    },
+    {
+      "family": "institution",
+      "judgments": [
+        {
+          "docid": "1374654#0",
+          "grade": 0
+        },
+        {
+          "docid": "2126071#6",
+          "grade": 0
+        },
+        {
+          "docid": "2471#0",
+          "grade": 0
+        },
+        {
+          "docid": "2471#17",
+          "grade": 0
+        },
+        {
+          "docid": "2471#3",
+          "grade": 1
+        },
+        {
+          "docid": "2471#7",
+          "grade": 1
+        },
+        {
+          "docid": "2471#8",
+          "grade": 0
+        },
+        {
+          "docid": "3255366#23",
+          "grade": 0
+        },
+        {
+          "docid": "3574862#1",
+          "grade": 0
+        },
+        {
+          "docid": "657204#1",
+          "grade": 0
+        },
+        {
+          "docid": "710493#4",
+          "grade": 0
+        }
+      ],
+      "judgments_canonical_sha256": "c3f405f425a3474aa36d7628783456b9483aebd1e0b1b92b84e159b13e5260a2",
+      "query_id": "1059",
+      "split": "development",
+      "topic_sha256": "8f860353df5c8669df65d52f8b8f5c6bb6d0d88af814b27c0be557da0bcffb7d"
+    },
+    {
+      "family": "organization_date",
+      "judgments": [
+        {
+          "docid": "1701007#1",
+          "grade": 0
+        },
+        {
+          "docid": "186385#7",
+          "grade": 1
+        },
+        {
+          "docid": "1951#19",
+          "grade": 0
+        },
+        {
+          "docid": "2185451#1",
+          "grade": 0
+        },
+        {
+          "docid": "246696#1",
+          "grade": 0
+        },
+        {
+          "docid": "3050917#1",
+          "grade": 0
+        },
+        {
+          "docid": "448543#1",
+          "grade": 0
+        },
+        {
+          "docid": "69958#1",
+          "grade": 0
+        },
+        {
+          "docid": "69958#2",
+          "grade": 0
+        },
+        {
+          "docid": "790206#1",
+          "grade": 0
+        }
+      ],
+      "judgments_canonical_sha256": "8a702fae810d00cbcdfe8c111d86c5e02133d9648a9271a9ffc306a9bb3925d4",
+      "query_id": "1076",
+      "split": "development",
+      "topic_sha256": "44a9fcf2c3b9f4f1aa2e6965678d458d98ea6935408dfd7655e4e7de85125f8a"
+    },
+    {
+      "family": "biography",
+      "judgments": [
+        {
+          "docid": "1113239#4",
+          "grade": 0
+        },
+        {
+          "docid": "1113240#1",
+          "grade": 0
+        },
+        {
+          "docid": "1720331#0",
+          "grade": 0
+        },
+        {
+          "docid": "2194424#0",
+          "grade": 0
+        },
+        {
+          "docid": "2677294#0",
+          "grade": 0
+        },
+        {
+          "docid": "2681119#0",
+          "grade": 0
+        },
+        {
+          "docid": "2681119#1",
+          "grade": 1
+        },
+        {
+          "docid": "2681119#16",
+          "grade": 0
+        },
+        {
+          "docid": "2681119#4",
+          "grade": 0
+        },
+        {
+          "docid": "343986#0",
+          "grade": 0
+        }
+      ],
+      "judgments_canonical_sha256": "baa86806341c12f10b413df63cfc6bde5a1a94f1dd28dc03aaeeea2604bc7bec",
+      "query_id": "0",
+      "split": "untouched_holdout",
+      "topic_sha256": "8bf24fa0fc68a934f4688b8293daf6d0a0067bf05d65c493e7b6d35b2088b12f"
+    },
+    {
+      "family": "history",
+      "judgments": [
+        {
+          "docid": "1733237#46",
+          "grade": 0
+        },
+        {
+          "docid": "1883682#0",
+          "grade": 1
+        },
+        {
+          "docid": "1883682#11",
+          "grade": 0
+        },
+        {
+          "docid": "1883682#15",
+          "grade": 0
+        },
+        {
+          "docid": "1883682#2",
+          "grade": 0
+        },
+        {
+          "docid": "1883682#9",
+          "grade": 0
+        },
+        {
+          "docid": "2017729#11",
+          "grade": 1
+        },
+        {
+          "docid": "2064617#19",
+          "grade": 1
+        },
+        {
+          "docid": "2588164#14",
+          "grade": 0
+        },
+        {
+          "docid": "44863#2",
+          "grade": 0
+        }
+      ],
+      "judgments_canonical_sha256": "605202ad8000783b97a9656692c8de44b6ae1f666141293218bfd7c061271bff",
+      "query_id": "102",
+      "split": "untouched_holdout",
+      "topic_sha256": "fb0feb83685d2f278a1326d039ac2bec50f922466d181b9cfe6456d1d499d984"
+    },
+    {
+      "family": "natural_science",
+      "judgments": [
+        {
+          "docid": "1665070#12",
+          "grade": 0
+        },
+        {
+          "docid": "2642086#3",
+          "grade": 1
+        },
+        {
+          "docid": "2884020#14",
+          "grade": 0
+        },
+        {
+          "docid": "37467#11",
+          "grade": 0
+        },
+        {
+          "docid": "37467#2",
+          "grade": 0
+        },
+        {
+          "docid": "37467#3",
+          "grade": 1
+        },
+        {
+          "docid": "37467#49",
+          "grade": 0
+        },
+        {
+          "docid": "37467#50",
+          "grade": 0
+        },
+        {
+          "docid": "37467#6",
+          "grade": 1
+        },
+        {
+          "docid": "37467#7",
+          "grade": 0
+        }
+      ],
+      "judgments_canonical_sha256": "85acfcb3c4c41827d07f644b09aa9d8ac5264ebff98838718a36e38a1eb08ed6",
+      "query_id": "1043",
+      "split": "untouched_holdout",
+      "topic_sha256": "09ef3a0dea3ffd7a4b3aa5dc11bc05f938b0e7c59515c9b4fb4c6d4ac7b0b86e"
+    }
+  ],
+  "schema": "p2-public-ja-closed-pool-v1",
+  "selection_rule": "six prechosen Japanese dev topic IDs; no retrieval rank viewed; retain every originally judged passage for each selected query",
+  "state": "IDS_AND_QRELS_PINNED_CORPUS_ROWS_UNFETCHED",
+  "topics_qrels": {
+    "attribution": "MIRACL, Zhang et al., TACL 2023, DOI 10.1162/tacl_a_00595",
+    "license": "apache-2.0",
+    "qrels_path": "miracl-v1.0-ja/qrels/qrels.miracl-v1.0-ja-dev.tsv",
+    "qrels_sha256": "1e2a60ba96b889bd076adea950e7e83a2d083f671955a5ab3e9bdc332b492e5f",
+    "repository": "miracl/miracl",
+    "revision": "5be20db9509754dadad47689368639fcec739c00",
+    "topics_path": "miracl-v1.0-ja/topics/topics.miracl-v1.0-ja-dev.tsv",
+    "topics_sha256": "1904b9bf0fc52e1b684daa7539b2bcfdd90122e603ffbcf6b5065a0e210525b0"
+  }
+}

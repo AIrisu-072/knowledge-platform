@@ -1,0 +1,24 @@
+{
+  "actual_returncode": 0,
+  "elapsed_seconds": 2.35522387400124,
+  "failure": null,
+  "maximum_owned_bytes": 1407312678,
+  "minimum_free_bytes": 23743442944,
+  "run_id": "a53a280c-c335-4226-b37a-b24533fe77a6",
+  "schema_version": 1,
+  "stage": "compile-helper-green",
+  "stderr": {
+    "overflow": false,
+    "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/compile-helper-green.stderr.log",
+    "retained": 180,
+    "seen": 180,
+    "sha256": "cb0a85ea1cc7c5d973a3935c03ddc91952fcdd8c971bd489f10ac606770ffded"
+  },
+  "stdout": {
+    "overflow": false,
+    "path": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/logs/compile-helper-green.stdout.log",
+    "retained": 282339,
+    "seen": 282339,
+    "sha256": "b66919c929f4571fe884ef078b2a5e0857c077fb77c16c49d014492197c1a3f3"
+  }
+}

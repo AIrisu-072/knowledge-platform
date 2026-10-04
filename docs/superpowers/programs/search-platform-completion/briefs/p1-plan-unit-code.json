@@ -1,0 +1,19 @@
+# 仕事の手渡し: p1-plan-unit-code
+
+- 種類: docs / 役: Worker / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Plan minimum frozen Unit core types and exact codecs without fullbody wait
+
+## 入力
+- `p1-unit-frozen` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md) — Frozen provider neutral input contract for Vector evaluation [`p1-freeze-unit` が作る (済み)]
+- `baseline` (docs/superpowers/specs/2026-09-28-search-discovery-platform-v0-design.md) — existing approved Search semantics [既に在る]
+
+## 出すもの
+- `p1-unit-code-plan` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-implementation-plan.md) — Bounded minimal Unit core implementation independent of fullbody pipeline
+
+## 受入条件
+Frozen minimal contract has exact core implementation files interfaces golden and rejection tests; normative SSOT additions scoped
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-implementation-plan.md` / `spec/data/logical-data-model-v0.md` だけ。他は触らない。

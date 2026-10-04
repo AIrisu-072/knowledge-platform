@@ -1,0 +1,22 @@
+# 仕事の手渡し: p5-review-normative
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independent RFC9457 OAS and four route exact semantic normative gate
+
+## 入力
+- `p5-normative-code` (docs/superpowers/programs/search-platform-completion/p5-normative-receipt.md) — P5-01 Search error registry and four operation normative OpenAPI [`p5-normative` が作る (済み)]
+- `p5-contract` (docs/superpowers/programs/search-platform-completion/p5-api-freeze.md) — api contract [`p5-freeze` が作る (済み)]
+- `p5-plan` (docs/superpowers/programs/search-platform-completion/p5-api-plan.md) — api plan [`p5-plan-implementation` が作る (済み)]
+
+## 出すもの
+- `p5-normative-review` (docs/superpowers/programs/search-platform-completion/p5-normative-review.md) — Independent RFC9457 OAS and four route exact semantic normative gate
+
+## 受入条件
+Independent RFC9457 OAS and four route exact semantic normative gate; exactinputs and meaningfulfocusedfresh gate; no fullproduction claim
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p5-normative-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

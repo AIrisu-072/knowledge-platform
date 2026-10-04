@@ -1,0 +1,21 @@
+# 仕事の手渡し: p1-review-snapshot
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independently verify all authoritative snapshot Parts exact raw binding and legacy nofallback
+
+## 入力
+- `p1-snapshot-code` (docs/superpowers/programs/search-platform-completion/p1-snapshot-code.md) — p1-snapshot-code [`p1-impl-snapshot` が作る (済み)]
+- `p1-contract` (docs/superpowers/programs/search-platform-completion/p1-extraction-freeze.md) — extraction contract [`p1-freeze` が作る (済み)]
+
+## 出すもの
+- `p1-snapshot-review` (docs/superpowers/programs/search-platform-completion/p1-authoritative-snapshot-review.md) — Independent same-snapshot all AUTHORITATIVE Part/Representation/FileObject mapping gate
+
+## 受入条件
+Fresh6actualPGcachedtests exactscopedsource andunchangedassertionfixture audit; allAUTHORITATIVE/currentorHistory bindingfailclosed; rawbytes/extractionoutsideS01
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p1-authoritative-snapshot-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

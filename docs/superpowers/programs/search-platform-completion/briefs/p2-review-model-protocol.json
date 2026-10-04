@@ -1,0 +1,21 @@
+# 仕事の手渡し: p2-review-model-protocol
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independently check exact model corpus architecture license offline freeze and capacity protocol
+
+## 入力
+- `p2-model-protocol` (experiments/search-vector-model-poc/protocol-receipt.md) — P2-01 two actual model pinned assets runtime and measurement protocol [`p2-pin-model-protocol` が作る (作業中)]
+- `p2-contract` (docs/superpowers/programs/search-platform-completion/p2-vector-freeze.md) — vector contract [`p2-freeze` が作る (済み)]
+
+## 出すもの
+- `p2-model-protocol-review` (docs/superpowers/programs/search-platform-completion/p2-model-protocol-review.md) — Independent exact two-model offline corpus and license protocol gate
+
+## 受入条件
+Fresh offline tests exact revision SHA official metadata and corpus provenance, no model selection before inference
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p2-model-protocol-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

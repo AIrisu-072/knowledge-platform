@@ -64,11 +64,11 @@ pub use document_history::{
 };
 pub use document_management::DocumentManagementService;
 pub use document_query::{
-    AuthoringDocumentSummary, AuthoringQuery, DisplayTimestampKind, DocumentListFilter,
-    DocumentQueryRepository, DocumentQueryService, FolderPageQuery, FolderSummary,
-    GuiDisplayTimestamp, GuiDocumentReadModel, GuiPrimaryFileSummary, GuiVersionFileSummary,
-    GuiVersionSummary, HistoryDocumentSummary, HistoryQuery, Page, PublishedDocumentSummary,
-    PublishedQuery, RootFolderSummary,
+    AuthoringDocumentSummary, AuthoringQuery, DisplayTimestampKind, DocumentAccessCheckRepository,
+    DocumentAccessCheckService, DocumentListFilter, DocumentQueryRepository, DocumentQueryService,
+    FolderPageQuery, FolderSummary, GuiDisplayTimestamp, GuiDocumentReadModel,
+    GuiPrimaryFileSummary, GuiVersionFileSummary, GuiVersionSummary, HistoryDocumentSummary,
+    HistoryQuery, Page, PublishedDocumentSummary, PublishedQuery, RootFolderSummary,
 };
 pub use document_revision_read::{
     DocumentRevisionDetail, DocumentRevisionDetailQuery, DocumentRevisionPageQuery,

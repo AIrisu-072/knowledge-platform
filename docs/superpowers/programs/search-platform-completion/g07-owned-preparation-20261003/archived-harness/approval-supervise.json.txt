@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "scope": "G07 owned launcher",
+  "phase": "supervise",
+  "outcome": "GO",
+  "run_id": "a53a280c-c335-4226-b37a-b24533fe77a6",
+  "run_root": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL",
+  "source_sha256": "211c19d6949d907a8da299e4405ca19cb49c61b89a58dce04e082266a103f42e",
+  "fixture_sha256": "87cb1dc2edf8ba7f0dd471f12363d4832c46be1f07a8bf18c5f236d2795de4c0",
+  "launcher_sha256": "07c4bb91b67f199f217b74d690667e82b5b027718be90811ae8b1a4a4c58c598",
+  "policy_sha256": "5e73e089616cfd8e6838129f5abe739cd59586639b2eb246bd2ffe6a1a69a724",
+  "manifest_sha256": "353d7d99e650835c5d07a9fd1edb28e5e3f40ac8483fc8c2a4ac7e466ec394ab",
+  "test_executable": {
+    "path": "/workspace/scratch/13897606dfde/search-g07-target/debug/deps/process_recovery-14aa5f7befc07076",
+    "sha256": "c5190bb11072bcb972ad14b716ab60345f78491a058ff535f7221026e4d9864d"
+  }
+}

@@ -1,0 +1,21 @@
+# 仕事の手渡し: p2-harden-model-protocol
+
+- 種類: impl / 役: Worker / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Reject omitted reachable code fabricated corpus mapping understated pinned assets and future receipt false PASS
+
+## 入力
+- `p2-model-protocol-fixed` (experiments/search-vector-model-poc/protocol-fix-receipt.md) — Noncircular premeasure frozen RunPin fully seals all semantic inputs [`p2-fix-model-protocol` が作る (済み)]
+- `p2-model-protocol-fixed-review` (docs/superpowers/programs/search-platform-completion/p2-model-protocol-recheck.md) — Independent complete noncircular frozen paired run protocol gate [`p2-recheck-model-protocol` が作る (済み)]
+- `p2-contract` (docs/superpowers/programs/search-platform-completion/p2-vector-freeze.md) — vector contract [`p2-freeze` が作る (済み)]
+- `p2-plan` (docs/superpowers/programs/search-platform-completion/p2-vector-plan.md) — vector plan [`p2-plan-implementation` が作る (済み)]
+
+## 出すもの
+- `p2-model-protocol-hardened` (experiments/search-vector-model-poc/protocol-hardening-receipt.md) — Derived complete Rust/path closure real input artifact capacity and nonfuture measured arm binding
+
+## 受入条件
+Actual independent falsePASS reproductions RED then derive deterministic full localCargo paths patched trees build/config/features/nativefile inventory; verified data/Source/planner/rows artifacts and measured capacity selectedpinbytes; nonfuture structured measured arms exactfixture routeeligibility count and preexecutionpin verification; realRunPin/runtime stillUNRUN until assets/scaffold qualification
+
+## 守ること
+- 書いてよいのは `experiments/search-vector-model-poc` だけ。他は触らない。

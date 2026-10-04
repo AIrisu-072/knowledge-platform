@@ -1,0 +1,71 @@
+"""TEST-ONLY narrow Debian Packages UTF-8 compatibility regression.
+
+Debian Policy section 5.1 specifies UTF-8 control-file encoding and ASCII
+field names: https://www.debian.org/doc/debian-policy/ch-controlfields.html#syntax-of-control-files
+Only ancillary Maintainer/Description values differ from the existing ASCII
+fixtures. Protected pins remain exact ASCII values; invalid UTF-8 still fails.
+No metadata acquisition, files, archives, processes, network or DB operations
+occur in these fixtures. Preparation did not import or execute this source.
+Any later isolated execution requires its own independently reviewed manifest.
+"""
+
+from copy import deepcopy
+import importlib.util
+from pathlib import Path
+import unittest
+
+_source = Path(__file__).with_name("launcher.py")
+_spec = importlib.util.spec_from_file_location("g07_utf8_launcher", _source)
+launcher = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(launcher)
+
+# Archive pins match commands.draft.json. Dependency strings are synthetic
+# matching observations and make no claim about downloaded signed paragraphs.
+PINS = [
+    {"package": "m4", "version": "1.4.19-8", "architecture": "amd64",
+     "filename": "pool/main/m/m4/m4_1.4.19-8_amd64.deb", "bytes": 293956,
+     "sha256": "221b3e224708c1da2a1a88b6824380593579b2254ae7d914afa14cbd5d343334",
+     "depends": "synthetic-libc (>= 2.34)", "pre_depends": None},
+    {"package": "bison", "version": "2:3.8.2+dfsg-1+b2", "architecture": "amd64",
+     "filename": "pool/main/b/bison/bison_3.8.2+dfsg-1+b2_amd64.deb", "bytes": 1169636,
+     "sha256": "ce6eb1f7aad18850e32d223a68f54bcbe756d74f138c8ec5460ad9d220f4d335",
+     "depends": "synthetic-libc (>= 2.34), synthetic-m4", "pre_depends": None},
+    {"package": "flex", "version": "2.6.4-8.2+b4", "architecture": "amd64",
+     "filename": "pool/main/f/flex/flex_2.6.4-8.2+b4_amd64.deb", "bytes": 423136,
+     "sha256": "75f963765232c356d0a2fb70e780dfa9de2425aca036ec60eefb7fc98a2c905b",
+     "depends": "synthetic-libc (>= 2.34), synthetic-m4", "pre_depends": None},
+]
+FIELDS = {
+    "package": "Package", "version": "Version", "architecture": "Architecture",
+    "filename": "Filename", "bytes": "Size", "sha256": "SHA256",
+    "depends": "Depends", "pre_depends": "Pre-Depends",
+}
+
+
+def utf8_index_fixture():
+    paragraphs = []
+    for index, pin in enumerate(PINS):
+        lines = [f"{field}: {pin[key]}" for key, field in FIELDS.items()
+                 if pin[key] is not None]
+        if index == 0:
+            lines.extend(("Maintainer: José Dupré <maintainer@example.invalid>",
+                          "Description: synthetic café compatibility fixture"))
+        paragraphs.append("\n".join(lines))
+    return ("\n\n".join(paragraphs) + "\n").encode("utf-8")
+
+
+class PackageUtf8CompatibilityTests(unittest.TestCase):
+    def test_utf8_ancillary_values_preserve_exact_package_pin_acceptance(self):
+        self.assertIs(launcher.verify_package_paragraphs(utf8_index_fixture(), deepcopy(PINS)), True)
+
+    def test_utf8_ancillary_values_do_not_mask_pinned_version_mismatch(self):
+        index_bytes = utf8_index_fixture().replace(b"Version: 1.4.19-8\n", b"Version: 1.4.19-9\n", 1)
+        self.assertIs(launcher.verify_package_paragraphs(index_bytes, deepcopy(PINS)), False)
+
+    def test_invalid_utf8_ancillary_value_is_rejected(self):
+        index_bytes = utf8_index_fixture().replace(b"Description: synthetic ", b"Description: synthetic \xff", 1)
+        self.assertIs(launcher.verify_package_paragraphs(index_bytes, deepcopy(PINS)), False)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

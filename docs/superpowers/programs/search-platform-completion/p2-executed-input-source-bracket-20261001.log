@@ -1,0 +1,108 @@
+    Finished `test` profile [unoptimized] target(s) in 0.11s
+     Running unittests src/lib.rs (experiments/search-vector-poc/target/debug/deps/search_vector_poc-c1d8e016848d43d3)
+
+running 1 test
+test run::tests::restricted_only_query_reaches_tantivy_but_not_authorized_trace ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+     Running unittests src/main.rs (experiments/search-vector-poc/target/debug/deps/search_vector_poc-83fa221cad690e64)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/executed_input_export.rs (experiments/search-vector-poc/target/debug/deps/executed_input_export-18a2308efb20d56d)
+
+running 1 test
+test exported_input_is_the_corpus_and_planner_used_by_the_baseline ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/frozen_unit_codec.rs (experiments/search-vector-poc/target/debug/deps/frozen_unit_codec-ad4ee944edd2293b)
+
+running 4 tests
+test frozen_nine_field_vectors_and_text_digest_match_spec ... ok
+test source_binding_cannot_be_rewritten_even_with_recomputed_unit_id ... ok
+test text_digest_and_raw_binding_tamper_are_rejected ... ok
+test distinct_parts_of_one_version_require_source_owned_bindings ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/relevance.rs (experiments/search-vector-poc/target/debug/deps/relevance-43e6f80032216a6c)
+
+running 4 tests
+test no_positive_query_is_separate_and_never_labeled_perfect ... ok
+test duplicate_parent_rank_or_qrel_is_rejected ... ok
+test independent_multi_positive_metric_fixture_uses_graded_idcg_and_all_gold_denominators ... ok
+test no_positive_access_stratum_counts_disclosure_separately_from_visible_false_positive ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/security.rs (experiments/search-vector-poc/target/debug/deps/security-a83c6d363fdfb9cc)
+
+running 4 tests
+test mock_vector_port_rejects_dimension_nan_stale_binding_and_retention ... ok
+test mismatched_generation_pin_and_actor_never_run ... ok
+test current_read_and_live_version_revocation_fail_closed ... ok
+test actual_lexical_graph_federation_preserves_s1_and_graph_only_gold ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+seed=20260930; process_rss_method=ps -o rss= -p PID; index_store=in-memory; query_samples=7 per arm/scale; cold=first query after build, warm=remaining six
+scale=32 arm=L scored=4 no_positive=["qnone", "qaccess", "qfalse"] visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0} recall@1=0.4375 recall@5=0.6250 recall@10=0.6250 recall@20=0.6250 mrr@10=1.0000 ndcg@10=0.7497
+trace scale=32 arm=L query=q0 ranks=[0, 1] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0, 9, 1], eligible_gold_misses: [2, 3] }]
+trace scale=32 arm=L query=q1 ranks=[10, 11] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [10, 19, 11], eligible_gold_misses: [12, 13] }]
+trace scale=32 arm=L query=q2 ranks=[20, 21] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [20, 29, 21], eligible_gold_misses: [22, 23] }]
+trace scale=32 arm=L query=qpart ranks=[0] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0], eligible_gold_misses: [] }]
+trace scale=32 arm=L query=qnone ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=32 arm=L query=qaccess ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=32 arm=L query=qfalse ranks=[31] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [31], eligible_gold_misses: [] }]
+scale=32 arm=LG scored=4 no_positive=["qnone", "qaccess", "qfalse"] visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0} recall@1=0.4375 recall@5=1.0000 recall@10=1.0000 recall@20=1.0000 mrr@10=1.0000 ndcg@10=0.9706
+trace scale=32 arm=LG query=q0 ranks=[0, 1, 2, 3] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0, 9, 1], eligible_gold_misses: [2, 3] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [0, 2, 3], eligible_gold_misses: [1] }]
+trace scale=32 arm=LG query=q1 ranks=[10, 11, 12, 13] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [10, 19, 11], eligible_gold_misses: [12, 13] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [10, 12, 13], eligible_gold_misses: [11] }]
+trace scale=32 arm=LG query=q2 ranks=[20, 21, 22, 23] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [20, 29, 21], eligible_gold_misses: [22, 23] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [20, 22, 23], eligible_gold_misses: [21] }]
+trace scale=32 arm=LG query=qpart ranks=[0] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0], eligible_gold_misses: [] }]
+trace scale=32 arm=LG query=qnone ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=32 arm=LG query=qaccess ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=32 arm=LG query=qfalse ranks=[31] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [31], eligible_gold_misses: [] }]
+measure scale=32 arm=L build_lexical_ms=32.397 build_graph_ms=0.249 update_lexical_ms=27.744 update_graph_ms=0.243 update_n=1 query_n=7 query_p50_ms=8.365 query_p95_ms=12.522 query_p99_ms=12.522 cold_query_ms=12.522 warm_n=6 warm_p50_ms=7.925 warm_p95_ms=10.395 warm_p99_ms=10.395 fusion_n=7 fusion_p50_ms=0.152 fusion_p95_ms=0.529 fusion_p99_ms=0.529 rss_kib=15776 index_disk_bytes=0
+measure scale=32 arm=LG build_lexical_ms=32.397 build_graph_ms=0.249 update_lexical_ms=27.744 update_graph_ms=0.243 update_n=1 query_n=7 query_p50_ms=9.474 query_p95_ms=9.711 query_p99_ms=9.711 cold_query_ms=9.237 warm_n=6 warm_p50_ms=9.474 warm_p95_ms=9.711 warm_p99_ms=9.711 fusion_n=7 fusion_p50_ms=0.162 fusion_p95_ms=0.358 fusion_p99_ms=0.358 rss_kib=15800 index_disk_bytes=0
+scale=256 arm=L scored=4 no_positive=["qnone", "qaccess", "qfalse"] visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0} recall@1=0.4375 recall@5=0.6250 recall@10=0.6250 recall@20=0.6250 mrr@10=1.0000 ndcg@10=0.7497
+trace scale=256 arm=L query=q0 ranks=[0, 1] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0, 9, 1], eligible_gold_misses: [2, 3] }]
+trace scale=256 arm=L query=q1 ranks=[10, 11] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [10, 19, 11], eligible_gold_misses: [12, 13] }]
+trace scale=256 arm=L query=q2 ranks=[20, 21] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [20, 29, 21], eligible_gold_misses: [22, 23] }]
+trace scale=256 arm=L query=qpart ranks=[0] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0], eligible_gold_misses: [] }]
+trace scale=256 arm=L query=qnone ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=256 arm=L query=qaccess ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=256 arm=L query=qfalse ranks=[31] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [31], eligible_gold_misses: [] }]
+scale=256 arm=LG scored=4 no_positive=["qnone", "qaccess", "qfalse"] visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0} recall@1=0.4375 recall@5=1.0000 recall@10=1.0000 recall@20=1.0000 mrr@10=1.0000 ndcg@10=0.9706
+trace scale=256 arm=LG query=q0 ranks=[0, 1, 2, 3] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0, 9, 1], eligible_gold_misses: [2, 3] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [0, 2, 3], eligible_gold_misses: [1] }]
+trace scale=256 arm=LG query=q1 ranks=[10, 11, 12, 13] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [10, 19, 11], eligible_gold_misses: [12, 13] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [10, 12, 13], eligible_gold_misses: [11] }]
+trace scale=256 arm=LG query=q2 ranks=[20, 21, 22, 23] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [20, 29, 21], eligible_gold_misses: [22, 23] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [20, 22, 23], eligible_gold_misses: [21] }]
+trace scale=256 arm=LG query=qpart ranks=[0] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0], eligible_gold_misses: [] }]
+trace scale=256 arm=LG query=qnone ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=256 arm=LG query=qaccess ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=256 arm=LG query=qfalse ranks=[31] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [31], eligible_gold_misses: [] }]
+measure scale=256 arm=L build_lexical_ms=60.202 build_graph_ms=0.608 update_lexical_ms=138.749 update_graph_ms=0.739 update_n=1 query_n=7 query_p50_ms=9.344 query_p95_ms=15.709 query_p99_ms=15.709 cold_query_ms=12.905 warm_n=6 warm_p50_ms=9.286 warm_p95_ms=15.709 warm_p99_ms=15.709 fusion_n=7 fusion_p50_ms=0.178 fusion_p95_ms=0.313 fusion_p99_ms=0.313 rss_kib=37508 index_disk_bytes=0
+measure scale=256 arm=LG build_lexical_ms=60.202 build_graph_ms=0.608 update_lexical_ms=138.749 update_graph_ms=0.739 update_n=1 query_n=7 query_p50_ms=10.913 query_p95_ms=19.181 query_p99_ms=19.181 cold_query_ms=14.326 warm_n=6 warm_p50_ms=10.195 warm_p95_ms=19.181 warm_p99_ms=19.181 fusion_n=7 fusion_p50_ms=0.385 fusion_p95_ms=0.488 fusion_p99_ms=0.488 rss_kib=37508 index_disk_bytes=0
+scale=1024 arm=L scored=4 no_positive=["qnone", "qaccess", "qfalse"] visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0} recall@1=0.4375 recall@5=0.6250 recall@10=0.6250 recall@20=0.6250 mrr@10=1.0000 ndcg@10=0.7497
+trace scale=1024 arm=L query=q0 ranks=[0, 1] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0, 9, 1], eligible_gold_misses: [2, 3] }]
+trace scale=1024 arm=L query=q1 ranks=[10, 11] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [10, 19, 11], eligible_gold_misses: [12, 13] }]
+trace scale=1024 arm=L query=q2 ranks=[20, 21] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [20, 29, 21], eligible_gold_misses: [22, 23] }]
+trace scale=1024 arm=L query=qpart ranks=[0] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0], eligible_gold_misses: [] }]
+trace scale=1024 arm=L query=qnone ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=1024 arm=L query=qaccess ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=1024 arm=L query=qfalse ranks=[31] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [31], eligible_gold_misses: [] }]
+scale=1024 arm=LG scored=4 no_positive=["qnone", "qaccess", "qfalse"] visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0} recall@1=0.4375 recall@5=1.0000 recall@10=1.0000 recall@20=1.0000 mrr@10=1.0000 ndcg@10=0.9706
+trace scale=1024 arm=LG query=q0 ranks=[0, 1, 2, 3] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0, 9, 1], eligible_gold_misses: [2, 3] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [0, 2, 3], eligible_gold_misses: [1] }]
+trace scale=1024 arm=LG query=q1 ranks=[10, 11, 12, 13] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [10, 19, 11], eligible_gold_misses: [12, 13] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [10, 12, 13], eligible_gold_misses: [11] }]
+trace scale=1024 arm=LG query=q2 ranks=[20, 21, 22, 23] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [20, 29, 21], eligible_gold_misses: [22, 23] }, StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:HyperGraph", raw_parent_ranks: [20, 22, 23], eligible_gold_misses: [21] }]
+trace scale=1024 arm=LG query=qpart ranks=[0] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [0], eligible_gold_misses: [] }]
+trace scale=1024 arm=LG query=qnone ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=1024 arm=LG query=qaccess ranks=[] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [], eligible_gold_misses: [] }]
+trace scale=1024 arm=LG query=qfalse ranks=[31] stages=[StageTrace { retriever_id: "00000000-0000-0000-0000-000000000001:Lexical", raw_parent_ranks: [31], eligible_gold_misses: [] }]
+measure scale=1024 arm=L build_lexical_ms=113.791 build_graph_ms=2.251 update_lexical_ms=145.585 update_graph_ms=7.093 update_n=1 query_n=7 query_p50_ms=9.174 query_p95_ms=10.379 query_p99_ms=10.379 cold_query_ms=10.176 warm_n=6 warm_p50_ms=8.652 warm_p95_ms=10.379 warm_p99_ms=10.379 fusion_n=7 fusion_p50_ms=0.154 fusion_p95_ms=0.289 fusion_p99_ms=0.289 rss_kib=45944 index_disk_bytes=0
+measure scale=1024 arm=LG build_lexical_ms=113.791 build_graph_ms=2.251 update_lexical_ms=145.585 update_graph_ms=7.093 update_n=1 query_n=7 query_p50_ms=13.410 query_p95_ms=24.951 query_p99_ms=24.951 cold_query_ms=18.928 warm_n=6 warm_p50_ms=11.401 warm_p95_ms=24.951 warm_p99_ms=24.951 fusion_n=7 fusion_p50_ms=0.290 fusion_p95_ms=0.856 fusion_p99_ms=0.856 rss_kib=45944 index_disk_bytes=0
+dense_arms=UNRUN; vector_mock=security_contract_only; full_P1_body_qualification=UNRUN
+    Finished `dev` profile [unoptimized] target(s) in 0.17s

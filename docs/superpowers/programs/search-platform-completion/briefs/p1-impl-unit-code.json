@@ -1,0 +1,19 @@
+# 仕事の手渡し: p1-impl-unit-code
+
+- 種類: impl / 役: Worker / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Implement frozen provider-neutral Unit locator profile identity codecs
+
+## 入力
+- `p1-unit-frozen` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md) — Frozen provider neutral input contract for Vector evaluation [`p1-freeze-unit` が作る (済み)]
+- `p1-unit-code-plan` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-implementation-plan.md) — Bounded minimal Unit core implementation independent of fullbody pipeline [`p1-plan-unit-code` が作る (済み)]
+
+## 出すもの
+- `p1-unit-code` (crates/search-core/src/knowledge_unit.rs) — Canonical provider-neutral Unit and locator codec
+
+## 受入条件
+Exact codec goldens and validation rejection tests RED GREEN; no fullbody behavior implied
+
+## 守ること
+- 書いてよいのは `crates/search-core/src/knowledge_unit` / `crates/search-core/src/knowledge_unit.rs` / `crates/search-core/src/lib.rs` / `crates/search-core/tests/knowledge_unit_contract.rs` / `crates/search-core/Cargo.toml` だけ。他は触らない。

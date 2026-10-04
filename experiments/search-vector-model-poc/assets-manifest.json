@@ -1,0 +1,295 @@
+{
+  "candidates": [
+    {
+      "id": "e5-candle-f32",
+      "model_artifact": "safetensors",
+      "model_id": "e5",
+      "runtime_id": "candle_cpu",
+      "status": "PIN_ONLY_UNRUN"
+    },
+    {
+      "id": "e5-ort-f32",
+      "model_artifact": "onnx",
+      "model_id": "e5",
+      "runtime_id": "ort_cpu",
+      "status": "PIN_ONLY_UNRUN"
+    },
+    {
+      "id": "minilm-candle-f32",
+      "model_artifact": "safetensors",
+      "model_id": "minilm",
+      "runtime_id": "candle_cpu",
+      "status": "PIN_ONLY_UNRUN"
+    },
+    {
+      "id": "minilm-ort-f32",
+      "model_artifact": "onnx",
+      "model_id": "minilm",
+      "runtime_id": "ort_cpu",
+      "status": "PIN_ONLY_UNRUN"
+    }
+  ],
+  "models": [
+    {
+      "artifacts": {
+        "onnx": {
+          "bytes": 470268510,
+          "local_path": "assets/e5/onnx/model.onnx",
+          "remote_path": "onnx/model.onnx",
+          "sha256": "ca456c06b3a9505ddfd9131408916dd79290368331e7d76bb621f1cba6bc8665"
+        },
+        "safetensors": {
+          "bytes": 470641600,
+          "local_path": "assets/e5/model.safetensors",
+          "remote_path": "model.safetensors",
+          "sha256": "1a55775f53449dac10a2bcbc312469fac40b96d53198c407081a831f81c98477"
+        },
+        "sentencepiece": {
+          "bytes": 5069051,
+          "local_path": "assets/e5/sentencepiece.bpe.model",
+          "remote_path": "sentencepiece.bpe.model",
+          "sha256": "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865"
+        },
+        "tokenizer_json": {
+          "bytes": 17082730,
+          "local_path": "assets/e5/tokenizer.json",
+          "remote_path": "tokenizer.json",
+          "sha256": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39"
+        }
+      },
+      "embedding": {
+        "architecture": "BertModel",
+        "hidden_size": 384,
+        "layers": 12,
+        "max_seq_length": 512,
+        "metric": "cosine",
+        "model_type": "bert",
+        "passage_prefix": "passage: ",
+        "pooling": "attention_masked_mean",
+        "position_ids": "verify_against_reference",
+        "precision": "f32",
+        "query_prefix": "query: ",
+        "reference_output_normalization": "l2",
+        "retrieval_normalization": "l2_for_cosine",
+        "token_type_ids": "verify_against_reference",
+        "tokenizer_class": "XLMRobertaTokenizer",
+        "truncation": "tokenizer_after_prefix_with_special_tokens",
+        "unicode": "pinned_tokenizer_json_exact"
+      },
+      "id": "e5",
+      "license": "mit",
+      "license_source_url": "https://huggingface.co/intfloat/multilingual-e5-small/blob/614241f622f53c4eeff9890bdc4f31cfecc418b3/README.md",
+      "metadata": {
+        "1_Pooling/config.json": {
+          "bytes": 200,
+          "local_path": "metadata/e5/1_Pooling/config.json",
+          "remote_path": "1_Pooling/config.json",
+          "sha256": "987f7a67a38fa564c849bb5d277c52ab9088a84368fc0be31a354125aebb12a0"
+        },
+        "config.json": {
+          "bytes": 655,
+          "local_path": "metadata/e5/config.json",
+          "remote_path": "config.json",
+          "sha256": "69137736cab8b8903a07fe8afaafdda25aac55415a12a55d1bffa9f581abf959"
+        },
+        "modules.json": {
+          "bytes": 387,
+          "local_path": "metadata/e5/modules.json",
+          "remote_path": "modules.json",
+          "sha256": "c6e29747481e8b5dd2b58401966aeac910de39092f90cda9a704b1545f902b04"
+        },
+        "sentence_bert_config.json": {
+          "bytes": 57,
+          "local_path": "metadata/e5/sentence_bert_config.json",
+          "remote_path": "sentence_bert_config.json",
+          "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+        },
+        "special_tokens_map.json": {
+          "bytes": 167,
+          "local_path": "metadata/e5/special_tokens_map.json",
+          "remote_path": "special_tokens_map.json",
+          "sha256": "d05497f1da52c5e09554c0cd874037a083e1dc1b9cfd48034d1c717f1afc07a7"
+        },
+        "tokenizer_config.json": {
+          "bytes": 443,
+          "local_path": "metadata/e5/tokenizer_config.json",
+          "remote_path": "tokenizer_config.json",
+          "sha256": "a1d6bc8734a6f635dc158508bef000f8e2e5a759c7d92f984b2c86e5ff53425b"
+        }
+      },
+      "repository": "intfloat/multilingual-e5-small",
+      "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3"
+    },
+    {
+      "artifacts": {
+        "onnx": {
+          "bytes": 470301610,
+          "local_path": "assets/minilm/onnx/model.onnx",
+          "remote_path": "onnx/model.onnx",
+          "sha256": "10f7a088420252b26caf819236ca2c9d2987afd0fc06fec7553b542a5655a05a"
+        },
+        "safetensors": {
+          "bytes": 470641600,
+          "local_path": "assets/minilm/model.safetensors",
+          "remote_path": "model.safetensors",
+          "sha256": "eaa086f0ffee582aeb45b36e34cdd1fe2d6de2bef61f8a559a1bbc9bd955917b"
+        },
+        "sentencepiece": {
+          "bytes": 5069051,
+          "local_path": "assets/minilm/sentencepiece.bpe.model",
+          "remote_path": "sentencepiece.bpe.model",
+          "sha256": "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865"
+        },
+        "tokenizer_json": {
+          "bytes": 9081518,
+          "local_path": "assets/minilm/tokenizer.json",
+          "remote_path": "tokenizer.json",
+          "sha256": "2c3387be76557bd40970cec13153b3bbf80407865484b209e655e5e4729076b8"
+        }
+      },
+      "embedding": {
+        "architecture": "BertModel",
+        "hidden_size": 384,
+        "layers": 12,
+        "max_seq_length": 128,
+        "metric": "cosine",
+        "model_type": "bert",
+        "passage_prefix": "",
+        "pooling": "attention_masked_mean",
+        "position_ids": "verify_against_reference",
+        "precision": "f32",
+        "query_prefix": "",
+        "reference_output_normalization": "none",
+        "retrieval_normalization": "l2_for_cosine",
+        "token_type_ids": "verify_against_reference",
+        "tokenizer_class": "PreTrainedTokenizerFast",
+        "truncation": "tokenizer_after_prefix_with_special_tokens",
+        "unicode": "pinned_tokenizer_json_exact"
+      },
+      "id": "minilm",
+      "license": "apache-2.0",
+      "license_source_url": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/blob/e8f8c211226b894fcb81acc59f3b34ba3efd5f42/README.md",
+      "metadata": {
+        "1_Pooling/config.json": {
+          "bytes": 190,
+          "local_path": "metadata/minilm/1_Pooling/config.json",
+          "remote_path": "1_Pooling/config.json",
+          "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+        },
+        "config.json": {
+          "bytes": 645,
+          "local_path": "metadata/minilm/config.json",
+          "remote_path": "config.json",
+          "sha256": "6300193cb75e01cf80c96decef7187dfb33094d97cc1490b7ead6ff134476e4e"
+        },
+        "modules.json": {
+          "bytes": 229,
+          "local_path": "metadata/minilm/modules.json",
+          "remote_path": "modules.json",
+          "sha256": "8f4b264b80206c830bebbdcae377e137925650a433b689343a63bdc9b3145460"
+        },
+        "sentence_bert_config.json": {
+          "bytes": 53,
+          "local_path": "metadata/minilm/sentence_bert_config.json",
+          "remote_path": "sentence_bert_config.json",
+          "sha256": "70f4448f31320443fe3557cacea5abf2dcc4915dda8c80646bec9f3bb0aa5a1f"
+        },
+        "special_tokens_map.json": {
+          "bytes": 239,
+          "local_path": "metadata/minilm/special_tokens_map.json",
+          "remote_path": "special_tokens_map.json",
+          "sha256": "378eb3bf733eb16e65792d7e3fda5b8a4631387ca04d2015199c4d4f22ae554d"
+        },
+        "tokenizer_config.json": {
+          "bytes": 526,
+          "local_path": "metadata/minilm/tokenizer_config.json",
+          "remote_path": "tokenizer_config.json",
+          "sha256": "5036ea374ffedd706e3bef33e2e0d6953cb868ef8a490e76e32ba0faa37a6b9b"
+        }
+      },
+      "repository": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "revision": "e8f8c211226b894fcb81acc59f3b34ba3efd5f42"
+    }
+  ],
+  "observed_date": "2026-09-30",
+  "remote_asset_policy": "exact revision and listed SHA-256 only; no alias, implicit fetch, pickle, auto conversion or fallback",
+  "runtimes": {
+    "candle_cpu": {
+      "backend": "CPU",
+      "code_build_sha256": null,
+      "crates": {
+        "candle-core": {
+          "crate_archive_sha256": "5ecb245093b0f791b89d3420c3df9c6d49c60ab63ba54db896bf8a3baf486706",
+          "features": [],
+          "version": "0.11.0"
+        },
+        "candle-nn": {
+          "crate_archive_sha256": "eaa10b6ccc365b33210ce404fbf45e60d3e0bdac1004463cf1052e6ee1c1739a",
+          "features": [],
+          "version": "0.11.0"
+        },
+        "candle-transformers": {
+          "crate_archive_sha256": "3bcbbf7ff00ff6fe2af22b93600195917fe90e90ff48424a140d1a926c44b1c1",
+          "features": [],
+          "version": "0.11.0"
+        },
+        "tokenizers": {
+          "crate_archive_sha256": "af10f51be57162b69d90a15cb226eef12c9e4faecbd5e3ea98a86bfb920b3d71",
+          "features": [
+            "onig"
+          ],
+          "version": "0.22.0"
+        }
+      },
+      "default_features": false,
+      "features": [],
+      "license": "MIT OR Apache-2.0",
+      "status": "candidate_uncompiled",
+      "version": "0.11.0"
+    },
+    "ort_cpu": {
+      "backend": "CPUExecutionProvider",
+      "code_build_sha256": null,
+      "crates": {
+        "ort": {
+          "crate_archive_sha256": "4336a1e2b38848325241c72889086886004e589b7c74f335e60a8e8db5138a0b",
+          "version": "2.0.0-rc.13"
+        },
+        "ort-sys": {
+          "crate_archive_sha256": "cf211e3776eea6aec988552fa118dd746d70e1b1e5e244058d1c98015f3e5872",
+          "version": "2.0.0-rc.13"
+        }
+      },
+      "default_features": false,
+      "disabled_features": [
+        "download-binaries",
+        "copy-dylibs",
+        "fetch-models",
+        "coreml",
+        "cuda"
+      ],
+      "features": [
+        "std",
+        "ndarray",
+        "tracing",
+        "load-dynamic",
+        "api-28"
+      ],
+      "license": "MIT OR Apache-2.0",
+      "native_archive": {
+        "bytes": 32396562,
+        "extracted_library_path": null,
+        "extracted_library_sha256": null,
+        "license": "MIT",
+        "local_path": "assets/runtime/onnxruntime-osx-arm64-1.28.0.tgz",
+        "name": "onnxruntime-osx-arm64-1.28.0.tgz",
+        "sha256": "1268b359718099bde2cedb55787f182a130067bc4f31e8c88478c445b850d3d8",
+        "source_url": "https://github.com/microsoft/onnxruntime/releases/download/v1.28.0/onnxruntime-osx-arm64-1.28.0.tgz"
+      },
+      "status": "candidate_uncompiled_native_missing",
+      "version": "2.0.0-rc.13"
+    }
+  },
+  "schema": "p2-model-assets-v1",
+  "source": "Hugging Face exact revision API with blobs=true; crates.io exact versions; Microsoft ONNX Runtime v1.28.0 GitHub release API"
+}

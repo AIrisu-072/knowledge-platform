@@ -1,5 +1,6 @@
 /target/
 /experiments/document-semantic-inspection/target/
+/experiments/search-discovery-poc/target/
 /node_modules/
 /apps/document-web/node_modules/
 /apps/document-web/dist/
@@ -24,3 +25,5 @@ target/assurance/
 /apps/document-mcp/node_modules/
 /apps/document-mcp/dist/
 /.superpowers/
+
+/experiments/search-vector-poc/target/

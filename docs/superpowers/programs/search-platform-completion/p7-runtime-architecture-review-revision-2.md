@@ -1,0 +1,34 @@
+# P7 runtime revision 2 — independent architecture/security re-review
+
+## Findings and verdict
+
+**PASS / GO — design/plan Freeze に限る**（2026-10-01）。revision 1 の残存 P2 2件は、具体的な source、sole owner、file、transaction boundary、実 PostgreSQL の負試験まで割り当てられた。先行3件の設計上の closure も維持される。この GO は P7-Rxx code、P1〜P6 最終資格、P3 backend 採択、SLO、merge、本番 migration、live deploy の判定ではない。parent が本レビューの exact input を確認し、合成 Freeze を別途記録するまでは Rxx production code を開始しない。
+
+1. **host inventory publisher — CLOSED at design level.** [設計2:20–28](p7-runtime-design-revision-2.md) は trusted operator の versioned `HostRegistrationInputV1` を唯一の host authoring input とし、登録集合とは独立した tenant roster、0件 tenant、Document/Remote の全 DTO、epoch/revision/digest と writer provenance を要求する。P7-R01P の `host_inventory_publish.rs` と Search `0004_host_registration_inventory_v1.sql` が sole publisher で、inventory 全 row、current head CAS、`host.registration.changed` Audit row を同一 PG transaction で確定する。R02 は read-only adapter、P7-02 は唯一の Source ledger、P5-08 は四 route factory と分離される。[計画2:22–27,35–49](p7-runtime-plan-revision-2.md) は publisher 実出力を用いた別 connection/restart、欠落 tenant・片 namespace・同 revision 異 digest・競合・Audit INSERT failure rollback・unknown commit の named negative tests を割り当て、synthetic manifest 単独 GREEN を排除する。trusted host が独立 roster を提供できなければ fail closed とする信頼の起点も明示された。
+2. **typed Search/system Audit source と producer — CLOSED at design level.** [設計2:30–47](p7-runtime-design-revision-2.md) は既存 Document `audit_outbox_events` の UUID/subject 制約を維持し、Domain `0010_audit_delivery_v0.sql` の別表 `search_audit_outbox_events` に閉じた class/type/actor/subject/result/reason と immutable event 列を置く。R04A-S は transaction-bound append port、R04A-C は Audit policy command、R01P は host CAS、R05 は management/admission/result と quarantine、P5-06/08 は denial hook の producer を所有する。[計画2:22–33,51–66](p7-runtime-plan-revision-2.md) は各 mutation と Audit INSERT の同一 connection/transaction、INSERT 失敗時 rollback、外部作用前の durable admission、拒否時の独立記録失敗でも拒否維持を、それぞれの owner の実 PG 負試験にした。R04A-D の Document/Search 両 source→別 PG sink、fenced ack/retry/DLQ、P6 Domain ack との role 分離も維持する。既存 Document 表の `resource_id UUID NOT NULL` と `resource_type` 制約（`0001_document_authoritative_core.sql:86–100`、`0006_document_management_access_v0.sql:55–57`）へ Search/system subject を偽装しない点は妥当。
+3. **先行3件 — CLOSED at design level を維持。** `NoRetention` は sink/retention/visibility の closed allowlist、二 lease、実 socket、exporter queue/flush/drop と保持 handle の sentinel を維持する（[設計1:44–61](p7-runtime-design-revision-1.md)、[計画1:83–88](p7-runtime-plan-revision-1.md)、[設計2:49–51](p7-runtime-design-revision-2.md)）。OTLP HTTP/protobuf 対 gRPC は隔離 PoC、exact feature/lock/Collector/停止時挙動、独立採択・規範 pin 前の production Cargo/R06 image 拒否を維持する（設計1:63–65、計画1:61–73,90–92）。capacity は immutable workload axes、pilot に基づく admission/途中停止、`NOT_ADMITTED`、測定範囲内の SLO 提案を維持する（設計1:67–71、計画1:94–104、[計画2:68–72](p7-runtime-plan-revision-2.md)）。いずれも named test/PoC/実測は未実行。
+
+## Freeze の範囲と残余 risk
+
+- P7 shared freeze は P6 Search `0001`、P7 `0002+`、同一 PG Source/current/READY/pin/guard と、P3 `source_control` の alias を固定する（[shared freeze:11](p7-shared-durable-freeze.md)、[shared plan:5–23](p7-shared-durable-plan.md)）。revision 2 は host inventory current head を別の Source pointer にせず、P6 Search receipt/generic ack を Audit ack に流用しない。P3-P04 採択前の Graph READY/publish/R02/R09 production acceptance は閉じ、P2 Vector `Disabled` は lexical/current/final gate の省略にならない。P1〜P6 final receipt は R09 のみが fan-in する（設計2:53、計画2:18,72）。
+- **[W1 / 実装時確認]** 規範 §14.1–15 に加え、`document.version.read_confirmed` は Document Management Basics v0 の必須 Audit である（`spec/operations/observability-audit-requirements-v0.md:540–597`）。既存 producer は `crates/document-repository-postgres/src/read_state.rs:146–164` にあるが、計画2:55–64 の Document 列挙には名称がない。R04A-S の class policy/legacy decoder と Document owner の class 別 rollback 試験にこの event を含めること。`spec/` が規範正本であり、既存 producer と「全必須 class」試験指示があるため、この省略だけでは今回の二つの closure を覆さない。
+- **[W2 / fresh bootstrap 確認]** 計画2:33 は Domain `0009` → Search `0001`〜`0003` → Domain `0010` → Search `0004` の段階順を記す。一方、現在の `search-runtime::migrate` は単一の `sqlx::migrate!("./migrations")` 入口（`crates/search-runtime/src/lib.rs:7–12`）である。全 migration を含む fresh DB の起動順と checksum/role gate は R03/R09 の実 DB 試験で固定すること。これは現在の実行・配備資格の未証明であり、schema-first と publisher の責務割当自体の blocker ではない。
+- trusted operator roster の正しさ、Document capability witness、各 business producer の class 網羅、別接続/restart/unknown commit、role grant、NoRetention 全 sink、OTLP 採択、capacity/SLO、P5 socket、P6 fenced ack、P7-12 別 DB restore は設計では証明できない。R01P/R02/R04A/R09 の計画済み gate と独立 review で実証する。失敗または不明なら listener/claim/production acceptance を閉じる。
+
+## Evidence and method
+
+`feat/search-platform-completion-core@80a47960d025e4dfdea1eacade28b15d218725ff` の dirty worktree を fresh static review した。taskgraph `p7-review-runtime-revision2`（`task-graph.yaml:7064–7083`）は本レビュー file だけを書込範囲とする。入力 source/doc は読取のみで、Cargo、DB、container、load、runtime、deploy は実行していない。named tests は acceptance 計画であり PASS receipt ではない。GitHub の PR/CI は本監査で再取得していないため、その現在結果を本判定の証拠にしない。
+
+| exact input | SHA-256 |
+| --- | --- |
+| `p7-runtime-design-revision-2.md` | `415d5a1648702670eb5737eecfe16581b7565191f2e64409c143236a00e95461` |
+| `p7-runtime-plan-revision-2.md` | `336894fcfaba7adf2e67474b56357ddfa7e9ad4502e1a0206616cb4743d9cb6b` |
+| `p7-runtime-architecture-review-revision-1.md` | `a6f91b67ecfd220191486aa2cdd6715967a8115f9e0b9dc6aee8ecaee6c19e29` |
+| `p7-runtime-design-revision-1.md` / `p7-runtime-plan-revision-1.md` | `422e00dcb0c685feb2fc9f81755e25bdd555d2e4b7602ccadb85e4c281a9d035` / `d24cba464e40f9d07d2baf9095d4ece1bb099f0f8b06cfaca6eee2e2982e3d57` |
+| `p7-runtime-architecture-review.md` | `0bf9ce336e664a3eb4a5e14c7f37ec9a351bc4edbfa9d6b8b6435f002088f793` |
+| `p7-runtime-design-completion.md` / `p7-runtime-plan-proposal.md` | `df0f2ba4e91526a24567addfac3777a7d7219ae296d5a3dc4b0dcc0c51737f3e` / `acecf896ad5481955b805728bb8c0d970e154657e1a4d5a89f7c100f3bc0ed3a` |
+| `p7-shared-durable-design.md` / `p7-shared-durable-plan.md` / `p7-shared-durable-freeze.md` | `99a989e30ec77ea5f79915a3db22ecd31b910decbabc825c2ae8bca6f1041a3b` / `97c122bf4447dd63caeac24930503247c11d52e533e1825d913f737162812517` / `20b5b64ac6c8e6209a3618e1c8f4577f1f48333991df0cffe9af96e2cbd5e110` |
+
+`toolbox-context status --workspace "$PWD"` は該当 managed run `search-completion-p2p7-r2-20260930` を `inspect-before-resume` と返した。Active/Status は uncertain operation を再実行せず scoped native fallback と明記する（`docs/superpowers/execution/active.md:8–11`、`search-platform-completion-program-status.md:8–12`）。親が指定した `gpt-6-sol / max` の native route で本レビューを受けたが、managed health gate/receipt と実 worker model attribution はこの監査から独立に証明できない。routing の制約をこの設計 GO と混同しない。
+
+**Exact next action:** parent は上記 input SHA と本レビューを照合して合成 runtime design/plan Freeze を別記録する。実装時は W1/W2 を acceptance に明記し、R01P/R04A-S から指定の順序で focused RED→GREEN と独立 read-only review を進める。

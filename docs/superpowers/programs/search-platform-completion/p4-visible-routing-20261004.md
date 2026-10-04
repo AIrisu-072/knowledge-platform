@@ -1,0 +1,13 @@
+# P4-03 可視Sourceだけを渡すルーティング
+
+状態：対象の純粋試験は成功、独立レビュー待ち。Sourceへの通信、検索API、Remote統合の受入ではありません。
+
+凍結済み`p4-remote-plan.md`のP4-03と、可視性に関する既存規範を実装します。既存`SourceRouter::plan`の順序、役割、検索モード判定を再利用し、その手前で`VisibleRouting::prepare`が検証済みactorと可視登録を受け取ります。
+
+同一actor・sessionの登録だけを受け入れ、重複SourceIdや異なるscopeはIDを含まない`OperationFailed`で全体を拒否します。required/preferredのIDは可視集合と交差させ、見えないrequiredが一つ以上あれば、件数やIDによらず一つの`required_source_unavailable` blocking gapを返します。見えないpreferredは除外します。残った入力には既存routerの順序とoptional budgetを保ちます。
+
+これは同期の入力境界です。actorの有効期限は確認しますが、DBや認可元への再照会は行いません。呼出側の現在のactor・Source許可確認や最終開示ゲートを置き換えるものではありません。P4-12/13がこのwrapperを同じDiscovery評価経路へ接続し、評価途中の失効と送出前の再確認を扱います。
+
+P7登録実装とは別worktreeで進め、共有する登録型、依存lock、DBスキーマは変更しません。対象は新module、新しい純粋contract test、module exportだけです。
+
+2026-10-04 14:50 UTCに、新しいcontract testが未実装moduleのE0432で失敗するREDを取得しました。実装後、同じ5ケースが成功しました。不可視・未知・他tenantのrequiredと複数件を完全に同じ出力へ揃えること、見えないpreferredの除外、重複の拒否、別actor bindingの拒否、既存順序/役割/budgetの維持を検証しています。既存`routing_contract`12件と`scoped_catalog_contract`13件も成功しました。対象のstrict Clippy、rustfmt、差分検査は成功し、依存追加やDB/socket実行はありません。これはwrapperの純粋な境界の検証であり、実際のRemote検索や送出経路の合格ではありません。

@@ -1,0 +1,86 @@
+{
+  "case_seconds_used": 0.0,
+  "direct_handle_terminal_observations": [
+    {
+      "actual_returncode": 0,
+      "exit_observed": true,
+      "identity": {
+        "pgrp": 5,
+        "pid": 5,
+        "session": 5,
+        "start_ticks": 4945019,
+        "state": "R"
+      },
+      "observation_error": null,
+      "pid": 5,
+      "reaped": true,
+      "stage": "runtime-git-closure-1"
+    },
+    {
+      "actual_returncode": 0,
+      "exit_observed": true,
+      "identity": {
+        "pgrp": 6,
+        "pid": 6,
+        "session": 6,
+        "start_ticks": 4945037,
+        "state": "R"
+      },
+      "observation_error": null,
+      "pid": 6,
+      "reaped": true,
+      "stage": "runtime-git-closure-2"
+    },
+    {
+      "actual_returncode": 0,
+      "exit_observed": true,
+      "identity": {
+        "pgrp": 7,
+        "pid": 7,
+        "session": 7,
+        "start_ticks": 4945054,
+        "state": "R"
+      },
+      "observation_error": null,
+      "pid": 7,
+      "reaped": true,
+      "stage": "runtime-git-closure-3"
+    },
+    {
+      "actual_returncode": 0,
+      "exit_observed": true,
+      "identity": {
+        "pgrp": 11,
+        "pid": 11,
+        "session": 11,
+        "start_ticks": 4945072,
+        "state": "R"
+      },
+      "observation_error": null,
+      "pid": 11,
+      "reaped": true,
+      "stage": "runtime-git-closure-4"
+    }
+  ],
+  "elapsed_cleanup_seconds": 0.00023717199655948207,
+  "failure": "FileNotFoundError: [Errno 2] No such file or directory: '/proc/12/exe'",
+  "full50_seconds_post_parent_exit_observed": false,
+  "initial_unknowns": [],
+  "initial_unreaped_owned_direct_handles": [],
+  "nonparent_claims_reaping": false,
+  "outer_parent_exit_observation": "observed-before-worker-loop",
+  "outer_parent_exit_observed_monotonic_ns": 49450920991865,
+  "post_parent_exit_observation_seconds": 4.006e-06,
+  "retained_root": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL",
+  "run_id": "a53a280c-c335-4226-b37a-b24533fe77a6",
+  "schema_version": 1,
+  "server_stop": "confirmed-exit",
+  "server_terminal_receipt": "receipts/server.terminal.json",
+  "status": "stopped-Unknown-retained",
+  "unknowns": [],
+  "unreaped_owned_direct_handles": [],
+  "worker_observation_anchor": "confirmed parent exit; actual remaining interval recorded",
+  "worker_observation_finished_monotonic_ns": 49450920996221,
+  "worker_observation_started_monotonic_ns": 49450920992215,
+  "worker_observations": []
+}

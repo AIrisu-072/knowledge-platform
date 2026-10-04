@@ -757,27 +757,35 @@ DB選定時にはどちらも実現可能であることを確認する。
 
 ## 必須要件
 
-Outbox Eventは以下を持つ。
+Document Domainの`outbox_events`は、既存producerとの互換性を保ち、以下を永続化する。
 
 ```text
 event_id
 event_type
 aggregate_type
 aggregate_id
-aggregate_version
 occurred_at
-payload / reference
-processing_state
+payload
+available_at
 attempt_count
+delivered_at
 ```
+
+P6のadditive migrationは配送管理用の`lease_token`、`lease_owner`、`lease_expires_at`、`last_attempt_at`、`dead_lettered_at`、allowlist化した`last_error_code`、初回claimで固定する`attempt_limit`、任意の`traceparent`/`tracestate`を追加する。既存行のidentity、payload、時刻、配送状態とproducer insertを保つ。
+
+`processing_state`は永続化列ではなく、配送管理列とDB時刻から導く **derived read model** とする。判定順は`delivered_at IS NOT NULL`なら`DELIVERED`、`dead_lettered_at IS NOT NULL`なら`DEAD_LETTER`、未完了で有効なleaseがあれば`IN_FLIGHT`、それ以外は`PENDING`とする。期限切れleaseは`PENDING`に戻す。`attempt_limit IS NOT NULL AND attempt_count >= attempt_limit`で有効なleaseがない未完了行は、terminal回収まで`PENDING`の中でも**上限到達・回復待ち**として別に可視化し、通常の再claim対象にしない。`attempt_limit IS NULL AND attempt_count >= outbox_delivery_policy.max_attempts`の旧行があればworker起動・claim・reapを拒否して件数とIDを監査し、暗黙のresetやterminal化をしない。
+
+`aggregate_version`は現行の共通永続化列ではなく、異種producerのpayloadから一律backfillしない。必要になった場合はproducerごとの型付きversionと順序の契約を別に定める。
 
 ## 配送要件
 
-- at-least-once deliveryを基本とする
+- at-least-once deliveryを基本とし、重複と再配送を許容する。exactly-onceやaggregate単位の厳密な順序を保証しない
 - consumer側をidempotentにする
 - duplicate eventを許容しても結果が壊れない
 - retry可能
-- dead-letter / failed stateを観測可能
+- dead-letter / failed / 上限到達・回復待ち状態を観測可能にする。最終試行後のlease失効は、成功・失敗を推定せず結果不明としてterminal回収し、原eventを保持する
+
+P6 v0の`outbox_events.delivered_at`は、設定済みの単一のSearch bridgeへの配送完了だけを表す。claimの`available_at, occurred_at, event_id`順は候補の優先順であり、並列claimやretry後の配送順序ではない。Search consumerはevent payloadを索引正本とせず現行Sourceを再読し、Search projectionの条件付き公開とdurable receiptを確認した後、generic workerだけがtoken付きで`delivered_at`をackする。Search receiptとDomain ackは別の証拠として扱う。`audit_outbox_events`の行・配送状態・ackは独立したAudit経路が所有する。第二の独立配送先は別の配送状態契約を要する。
 
 ## Search Platform側
 
@@ -1025,3 +1033,110 @@ Diff は両版の原本と DSI 証拠を整合した snapshot で取得する。
 結果を開示する直前に、現在の policy、actor の有効期限、両版の lifecycle/current/T10 状態と snapshot binding を再確認する。WORKING を含む場合は Document revision も照合する。変更があれば `StaleComparisonInput` として古い結果を返さない。cache hit と対照表 Projection にも同じ確認を適用する。
 
 最終認可、鮮度確認、必須 `document.diff.result_access_granted` Audit の挿入を同一の短い transaction で確定する。この commit が結果開示の線形化点である。Audit の失敗または commit 結果不明時には結果を開示しない。送信完了はこの transaction の意味に含めない。
+
+
+---
+
+# Search / Discovery Platform v0 consistency amendment
+
+## SD-T1: Source observation and projection publication
+
+Source正本の更新とSearch Projection更新を分散transactionで結合しない。
+Document Platform等のtransactional Sourceでは既存Transactional Outbox等からSearch配送可能にする。
+Remote SourceはSource capabilityに応じたObservationとして扱う。
+
+Projection更新は以下を満たす。
+
+1. Generation Nを利用中にGeneration N+1を別領域へbuildできる。
+2. N+1はvalidation完了前にcurrentとして公開しない。
+3. publishはatomicなgeneration pointer切替として扱える。
+4. failed generationはcurrent generationを壊さない。
+5. 同じSource snapshot / projection versionsからfull rebuildとincremental rebuildが論理的に同じ結果になることを検証可能にする。
+
+## SD-T2: Discovery evaluation snapshot
+
+1 Discovery evaluation内では `evaluated_at` と利用Projection generation / Observation snapshotを固定してtrace可能にする。
+探索途中のindex切替で既存candidate semanticsを暗黙に変更しない。
+必要なら新しいevaluationとして再探索する。
+
+## SD-T3: Session working state
+
+SESSION_ONLY / NO_RETENTION由来のWorking Index / GraphはPersistent Projectionと分離する。
+Retention期限・Session終了時に破棄可能であること。
+Persistent Sourceへの暗黙昇格を禁止する。
+
+## SD-T4: Binding stability
+
+Discoveryはdynamicだが、Session BindingしたLogicalResource / Representation / Version / digestを新Generationで暗黙置換しない。
+Rebindは新しいDiscovery / qualification / binding revisionとして記録する。
+Current authorization、availability、policy、temporal applicabilityは実行時に再評価する。
+
+## SD-T5: Evidence / qualification state
+
+Applicability、Evidence Sufficiency、InformationGap等のDiscovery実行状態はSource正本ではない。
+再計算可能であり、Projection / Observation / Rule versionをtraceできること。
+Missing factをFALSEへtransactionally固定しない。
+
+## SD-T6: HyperGraph projection
+
+TypedRelationInstanceをCanonical relation semanticsとする。
+Graph projection更新でparticipant role / provenance / authority / evidence referenceを失わない。
+Relation更新時に影響segmentだけをincremental rebuild可能にしてよいが、full rebuildと論理等価であること。
+
+## SD-T7: Remote outcome semantics
+
+REMOTE_QUERY / QUERY_ONLY Sourceで検索結果に存在しないことをResource deletionとしてcommitしない。
+COMPLETE_ENUMERATIONやauthoritative DIRECT_LOOKUP等、Source contractがabsence evidenceを提供する場合のみCurrentDiscoveryStateへ反映する。
+Source outageはResource単位の大量delete/updateとして表現しない。
+
+# P4 Remote Source consistency amendment
+
+以下のSD-T8〜SD-T10は、既存のSD-T2/3/4/7をremote Sourceに適用する追加条件である。根拠は[P4設計改訂1](../../docs/superpowers/programs/search-platform-completion/p4-remote-design-revision-1.md)、実装責務は[P4実装計画](../../docs/superpowers/programs/search-platform-completion/p4-remote-plan.md)に従う。Source正本、S1のSource間順序、既存のDocument transaction境界は変更しない。
+
+## SD-T8: Trusted actor and visible Source binding
+
+対応: P4設計改訂1 §2、P4-02/03/13。
+
+Remote Discoveryはserver-issued `TrustedSearchScope`、`TrustedDiscoveryBinding`、`AuthorizedSourceScope`を一つの現行actor/Source bindingから構築する。tenant、principal、session、access handle/revision、evaluation ID、Source visibility/revisionをregistry、routing、pin、networkより前に検証し、全read/writeと開示直前にも再検証する。requestの`access_context`、HTTP header、provider応答からこれらの権限値を生成しない。binding不一致・期限切れ・revision変更はSourceに触れる前に同一の外部エラーへ閉じる。
+
+`SourceId`はserver-ownedで全tenant横断で一意とし、tenant間再利用、重複registration、provider指定を起動時とregistry更新時に拒否する。SourceIdの一意性だけを認可として扱わず、各accessでactor tenantとregistration tenant、SourceId、revisionを照合する。可視Sourceだけをroutingへ渡し、未知・別tenant・不可視のRequired SourceはIDを含まない同一の`required_source_unavailable` gapへ正規化する。不可視のPreferred Sourceは除外する。途中でSource visibilityを失った場合は、そのSource由来のcandidate、Claim、rank、gap、trace、Graph path、locatorを一括除去する。
+
+## SD-T9: One sealed generation per Source and evaluation
+
+対応: P4設計改訂1 §4、P4-05/06/09/11/12。
+
+一つのDiscovery evaluationで一Sourceに割り当てるgeneration keyは一つだけとする。複数remote actionは最初のfederation前にSource単位で集約し、同じ検証済みSource snapshot、認可scope/ACL revision、Resource version/digest、同名fieldのtyped value/provenanceの整合を確認した後に一回だけsealする。整合を証明できないbatchは混合せず失敗させる。同一Sourceでdurableとremoteのgenerationを混ぜない。seal後のaction追加・projection更新には新しいevaluationを要求する。
+
+Remote evaluation generationはowner付きRAMに限り、durable `ProjectionGenerationStore`や`PersistableGenerationManifest`へ渡さない。全hit、rank list、Claim/evidence read、probe bindingは同じsealed keyを参照する。keyのSource不一致・衝突はstructural errorとして閉じる。Required Sourceは計画済みだけではexecutedとせず、current accessを通った有効actionの完了で初めてexecutedとする。remote失敗はactionごとのgapとして残し、独立した可視Sourceの結果を妨げない。Source正本や既存durable Resource stateを失敗から更新しない。
+
+## SD-T10: Verified remote absence and immutable binding
+
+対応: P4設計改訂1 §§3–5、P4-05/06/14。
+
+`Presence::Absent`はadapterがtenant、Source、認可scope、snapshotまたはlookup token、対象のexact native ID、coverage、access revision、観測時点を検証した非公開`VerifiedAbsence` receiptからのみ生成する。既知IDの同一snapshot・scope/revisionで全pageがterminalに達したcomplete enumeration、または登録済みauthoritativeかつACL-unmaskedなdirect lookupだけがreceiptを発行できる。query miss、partial enumeration、通常の403/404、`LIVE_ONLY` miss、probe `NotFoundByProbe`、timeout、outage、page/cursor/snapshot/ACL不整合は`Unknown`またはgapとし、Resource deletionを起こさない。
+
+同じnative ID/versionの異なるdigestは`IntegrityConflict`とする。seal後のprobe/detail/materializationではcurrent actor/Source/item/field accessとpinned snapshot/version/digestを再検証し、内容が変われば古いcandidate・binding・projectionに結合せず、新しいDiscovery/qualificationを要求する。provider locatorはfetch先として使わない。
+
+# P1 Search 本文 consistency amendment
+
+以下の SD-T11〜SD-T13 は `p1-extraction-freeze.md`（SHA-256 `205c5a5ff68843e073da8d87b825a55078dbdb66bd985f22d2044eb888fd406d`）、`p1-body-absence-amendment.md`、`p1-partial-positive-correction.md`、`p1-unit-archive-binding-ruling.md` の合成契約を SD-T1/2/4/5 に適用する。P4 の remote absence、P6 の outbox 配送、Document/DSI の transaction と証拠の意味は変更しない。
+
+## SD-T11: Authoritative body build と同一 generation 公開
+
+1. Document Source の一つの `REPEATABLE READ, READ ONLY` snapshot で現行 Live `PUBLISHED`/T10、document/access revision、全 AUTHORITATIVE ContentItem/representation/FileObject とその順序を固定する。immutable FileStorage bytes の hash/size を worker 前・応答後に FileObject binding と照合し、Unit/coverage を全 item から作る。公開直前に Source を再読し、現行 Version/T10、revision、全 Part/representation/raw binding を再照合する。変化・Source 不明・raw 不一致では新 generation を公開しない。DB と Search の分散 transaction は作らず、CAS 後の Source 変更は outbox/reconciliation と query 時の再検証で扱う。
+2. Production の未信頼 raw 解析は **実際に Landlock/seccomp/FD 閉鎖/rlimit/temp/output/timeout が強制された Linux fresh process** で行い、native PDFium 等の登録 pin/hash を検証する。sandbox 不在・未強制・pin 不一致は fail closed の構成/integrity incident とする。macOS parity や設定受理だけを enforcement PASS としない。入力 256 MiB、ZIP entry 20,000、展開1件64 MiB/合計512 MiB、worker AS 2 GiB、scratch 1 GiB、result 16 MiB、wall 10秒/CPU 8秒は絶対上限とし、format profile の全15 budget は資格結果によりこの内側へ固定する。pre-admission・解析中・host result 検証の上限違反から途中 Unit を公開しない。通常 log/trace に本文、filename、StorageKey、snippet、Denied の ID/件数を出さない。
+3. `BodyUnitManifest`、`BodyCoverageArtifact`、構築後の実検索可能 lexical Unit doc 集合、Graph、projection、profile set は同一 `ProjectionGenerationKey` で私有 stage する。runtime は各 receipt の key/count/digest と Unit↔実 lexical doc の全 field/本文 bytes の双方向一対一を再計算・seal し、`Staging → Validated → Published | Discarded` の immutable 遷移を守る。既存 projection-only `manifest.digest` と Resource count/Source enumeration coverage は変更せず、別の composite `GenerationBundleReceipt` を用いる。同じ lock で bundle を再検証してから `publish_if_current(expected_current)` の pointer CAS を最後に行う。stage/validate/CAS 失敗では当該未公開 Graph ownership・Graph・lexical・Unit/coverage・projection を全て discard し旧 pointerを保つ。cleanup 失敗は incident とし、未公開 artifact を query に見せない。公開後の receipt 書込みだけの失敗は公開 bundle を保ち、同じ event の再試行で補完する。
+4. `Completed + Supported/Partial/Unsupported` と `FailedPermanent` は検証済みの operation/coverage として記録可能だが、`Retryable`、worker kill/timeout/応答切断、raw/provenance/bundle 不一致から新 bundle を公開しない。`Partial` の既知省略は可視 item の blocking gap を残す。旧 projection-only generation に body bundle がなければ本文対応済みとみなさない。full/incremental rebuild は同じ Source snapshot・item ordering・raw/profile・Unit normalization で同じ論理 digest を得る。
+
+## SD-T12: Pinned BodyOnly 評価と肯定 evidence
+
+1. `BodyRequired` は trusted adapter の request 単位 `BodyOnly` query と exact selector を要求し、Document Source の lexical Unit body だけを executable な本文経路とする。未接続・未実行・scope違い・bundle不在は typed blocking gap と空の qualified body result にする。title、Graph、Vector、probe、DSI や Resource doc の body は本文の代用にならない。通常検索の S1 順序は変えない。全 port は `pin_current_bundle()` の同一 immutable generation/receipt を使い、欠落・不一致なら本文評価を止める。
+2. Unit hit は実 lexical doc、pinned manifest、親 Version Resource/Part/representation/raw/profile/locator/text/span を照合する。現行 Live Version/T10 と Source-owned `Read`、現在の Part/raw binding は候補化前、raw 再読取による exact locator/span 解決時、公開直前に照合する。trusted query/selector/required ClaimId・subject・predicate・正規化値が同一で、`Completed + Supported` **または** `Completed + Partial` の一つの検証済み Unit 内に連続 literal がある場合に限り、親に束縛した `Extracted` claim を組み立てる。Partial の肯定結果にも access-filtered blocking coverage gap を残し、全体 completeness は false とする。別親の同文面、違う locator/raw/Read、一般 hit から claim を流用しない。
+3. gap、trace、count、候補、rank、claim の開示前に現行 `Read` と Version/Part binding を再確認する。`Denied` の item と ID/件数は結果・scan・receipt から除外し、`Unknown`/error は ID/件数を伏せた非開示 blocking gap に畳む。途中の Read 取消や権限不明では古い候補、claim、rank、trace を伏せる。公開済み旧 generation は in-flight pin がなくなるまで immutable に保持する。
+
+## SD-T13: Source-owned finite exact absence
+
+1. v1 の `document.body.contains_exact` は指定した**一つの現行 Live 親 Version Resource** に対し、正規化済み非空期待文字列が、可視 AUTHORITATIVE item の検証済み `Completed + Supported/Partial` Unit **一つの中**に連続 UTF-8 literal substring としてあるかを問う。CRLF/CR→LF、次に NFC を query/selector と Unit に同じ順で適用し、case・幅・かな・空白・句読点を変えない。別 Unit/item の連結、History、profile 対象外を含む広い不存在は主張しない。query text、selector text、required claim value/ClaimId/subject、許可 predicate、親 Source/Version、`BodyOnly` の不一致・未登録・曖昧さは `Unknown` と非開示 blocking gap にする。
+2. Lexical no-hit と `exhausted_matching_units=true` は Source-owned scan の起動条件にすぎず、`Absent` の証拠ではない。trusted Source port だけが、同じ pinned bundle に対し、現行 Version/T10/`Read` 後の**全可視** AUTHORITATIVE item を列挙し、item identity、Version/Part/representation/raw/profile、operation/coverage/Unit count を manifest と coverage artifact に全件照合する。可視 item 0 件の推定、欠落/余分、`Partial`、`Unsupported`、`FailedPermanent`、権限/Source 不明は否定を `Unknown` と blocking gap にする。Denied item の存在・件数・理由は漏らさず、Denied 側だけの Partial は可視親の証明を阻害しない。
+3. 全可視 item が `Completed + Supported` の場合に限り、全 Unit を ordinal 順に、UnitId/親/Part/representation/raw/profile/locator/`SHA-256(Unit.text)` を検証してから UTF-8 char boundary の literal scan をする。lexical candidate/analyzer を scan 対象の選定に使わない。有限の visible item数・Unit数・text bytes・deadline の上限に達すれば `Unknown` と blocking `Availability` gap にする。1件でも literal があれば内部 `MatchFound` とし、lexical no-hit との不一致を integrity/recall signal と blocking gap にする。`MatchFound` だけで公開 hit/evidence や `Absent` を作らない。
+4. 全走査後に Source-owned 現行 Version/T10、`Read`、全 Part/raw、document/access revision、pinned generation/receipt を再照合できた場合だけ、非公開 constructor の一時的 `ExactTextNegativeProof` を発行する。receipt は claim/親/期待text digest、bundle digest、snapshot、revision、可視 item と走査 Unit の順序・長さ付き binding digest/count に束縛し、本文・StorageKey・Denied 情報を含めない。結果組立・公開直前の再照合で変化すれば receipt を破棄して `Unknown` にする。`ProvenAbsent` はその親・ClaimId・期待文字列に限って使い、Source 全体や別親、一般 Discovery completenessへ拡張しない。
