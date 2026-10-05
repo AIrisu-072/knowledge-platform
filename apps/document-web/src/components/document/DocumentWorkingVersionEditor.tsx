@@ -6,6 +6,7 @@ import { originalOf, prepareWorkingVersion, refreshWorkingQueries, replacementEr
   type EditManifest, type WorkingOperation } from '../../application/document-working-version';
 import { createOperationId } from '../../application/operation-id';
 import { mapApiProblem, problemFromUnknown } from '../../application/problem-mapping';
+import { CapabilityButton } from '../shared/CapabilityButton';
 import { ApiFeedback, LoadingState } from '../shared/ApiFeedback';
 import styles from '../../routes/DocumentDetail.module.css';
 import workspace from '../../routes/DocumentWorkspace.module.css';
@@ -13,6 +14,11 @@ import workspace from '../../routes/DocumentWorkspace.module.css';
 type Props = {
   documentId: string; document?: DocumentDetail; version?: VersionDetail; purpose: 'published' | 'authoring';
   active: boolean; contextKey: string; showActions: boolean; onOpen: () => void; onClose: () => void;
+  onModeChange?: (value: { contextKey: string; mode: 'create' | 'update' } | null) => void;
+};
+type EditorBaseline = {
+  contextKey: string; generation: number; manifest: EditManifest; mode: 'create' | 'update';
+  currentVersionId: string | null; displayVersionId: string; invalidated: boolean;
 };
 export function DocumentWorkingVersionEditor(props: Props) {
   const { documentId, document, version, active, contextKey, onOpen, onClose, showActions } = props;
@@ -21,9 +27,17 @@ export function DocumentWorkingVersionEditor(props: Props) {
   const { data: operation } = useQuery<WorkingOperation | null>({ queryKey: key, queryFn: skipToken, enabled: false, initialData: null, gcTime: Infinity });
   const [rebase, setRebase] = useState<{ versionId: string; currentVersionId: string; revision: number } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [baseline, setBaseline] = useState<EditorBaseline | null>(null);
+  const [replaceBaseline, setReplaceBaseline] = useState(false);
+  const baselineGeneration = useRef(0);
+  const session = baseline?.contextKey === contextKey ? baseline : null;
+  const refreshAttempt = useRef<object | null>(null);
+  const refreshContext = useRef({ contextKey, generation: session?.generation });
+  refreshContext.current = { contextKey, generation: session?.generation };
+  useEffect(() => { refreshAttempt.current = null; setRefreshing(false); }, [contextKey]);
   const { sourceVersionId, mode, purpose } = workingEditorSource(document, version);
-  const allowed = mode === 'update' ? version?.capabilities.edit.status === 'available' : document?.capabilities.createVersion.status === 'available';
-  const canRebase = version?.capabilities.rebase.status === 'available';
+  const allowed = mode === 'update' ? version?.capabilities.edit?.status === 'available' : document?.capabilities.createVersion?.status === 'available';
+  const canRebase = version?.capabilities.rebase?.status === 'available';
   const unresolved = operation?.status === 'unknown' || operation?.status === 'pending';
   const blocked = Boolean(operation && operation.status !== 'succeeded');
   const manifestQuery = useQuery({
@@ -39,29 +53,66 @@ export function DocumentWorkingVersionEditor(props: Props) {
   }, [active, operation, client, key]);
   const manifest = manifestQuery.error ? undefined : manifestQuery.data;
   const manifestMatches = manifest && manifest.documentId === documentId && manifest.sourceVersionId === sourceVersionId && manifest.purpose === purpose;
+  // The parent observer may notify after this explicit-refresh state update. Read the same Query snapshot, never stale props, for coherence.
+  const documentRead = client.getQueryState<DocumentDetail>(['document', documentId, props.purpose]);
+  const currentDocument = documentRead?.status === 'success' ? documentRead.data : undefined;
+  const sourceContextMatches = Boolean(document && currentDocument
+    && document.currentVersionId === currentDocument.currentVersionId
+    && document.displayVersion.versionId === currentDocument.displayVersion.versionId
+    && document.displayVersion.lifecycleState === currentDocument.displayVersion.lifecycleState
+    && (!version || version.versionId !== currentDocument.displayVersion.versionId
+      || version.lifecycleState.toUpperCase() === currentDocument.displayVersion.lifecycleState));
+  const baselineMatches = Boolean(session && currentDocument && sourceContextMatches && manifestMatches && !manifestQuery.error
+    && session.mode === mode && session.currentVersionId === currentDocument.currentVersionId
+    && session.displayVersionId === currentDocument.displayVersion.versionId
+    && session.manifest.documentRevision === currentDocument.revision
+    && JSON.stringify(session.manifest) === JSON.stringify(manifest));
+  useEffect(() => {
+    if (!active) { setBaseline(null); setReplaceBaseline(false); return; }
+    if (!operation && currentDocument && sourceContextMatches && manifestMatches && !manifestQuery.isFetching
+      && (!session || (replaceBaseline && manifest.documentRevision === currentDocument.revision))) {
+      setBaseline({ contextKey, generation: ++baselineGeneration.current, manifest, mode,
+        currentVersionId: currentDocument.currentVersionId, displayVersionId: currentDocument.displayVersion.versionId, invalidated: false });
+      setReplaceBaseline(false);
+    } else if (session && !baselineMatches && !session.invalidated) {
+      setBaseline({ ...session, invalidated: true });
+    }
+    // An explicit read gets one adoption attempt; a later background response cannot consume it.
+    if (replaceBaseline) setReplaceBaseline(false);
+  }, [active, operation, currentDocument, sourceContextMatches, manifestMatches, manifest, manifestQuery.isFetching, manifestQuery.error,
+    session, replaceBaseline, baselineMatches, contextKey, mode]);
+  useEffect(() => {
+    props.onModeChange?.(active && session ? { contextKey, mode: session.mode } : null);
+  }, [active, contextKey, session?.mode, props.onModeChange]);
   const problem = problemFromUnknown(operation?.error);
   const failure = problem ? mapApiProblem(problem).message : '応答を照合できません。';
   async function refresh() {
-    if (refreshing || unresolved) return;
-    setRefreshing(true);
-    try { await refreshWorkingQueries(client, documentId); client.setQueryData(key, null); setRebase(null); }
-    catch { /* Retain the refusal until current state can be checked. */ }
-    finally { setRefreshing(false); }
+    const previousOperation = client.getQueryData<WorkingOperation | null>(key);
+    if (refreshing || unresolved || previousOperation?.status === 'pending' || previousOperation?.status === 'unknown') return;
+    const attempt = { contextKey, generation: session?.generation };
+    refreshAttempt.current = attempt; setRefreshing(true);
+    try {
+      await refreshWorkingQueries(client, documentId);
+      if (refreshAttempt.current !== attempt || refreshContext.current.contextKey !== attempt.contextKey
+        || refreshContext.current.generation !== attempt.generation || client.getQueryData(key) !== previousOperation) return;
+      client.setQueryData(key, null); setRebase(null); setReplaceBaseline(true);
+    } catch { /* Retain the refusal until current state can be checked. */ }
+    finally { if (refreshAttempt.current === attempt) { refreshAttempt.current = null; setRefreshing(false); } }
   }
-  function start() { if (!blocked) { client.setQueryData(key, null); onOpen(); } }
+  function start() { if (!blocked) { client.setQueryData(key, null); setBaseline(null); setReplaceBaseline(false); onOpen(); } }
   function confirmRebase() {
     if (!rebase || blocked || !canRebase || rebase.revision !== document?.revision || rebase.versionId !== version?.versionId || rebase.currentVersionId !== document.currentVersionId) return;
     void runWorkingOperation(client, { kind: 'rebase', documentId, sourceVersionId: rebase.versionId, currentVersionId: rebase.currentVersionId,
       body: { operationId: createOperationId(), expectedRevision: rebase.revision } });
     setRebase(null);
   }
-  if (!active && !operation && !(showActions && (allowed && mode === 'update' || canRebase))) return null;
+  if (!active && !operation && !(showActions && (version?.capabilities.edit || version?.capabilities.rebase))) return null;
   return <section className={styles.contentSection} aria-label="作業版の編集">
     {showActions && <div className={styles.actionRow}>
-      {mode === 'update' && allowed && <button type="button" disabled={blocked} onClick={start}>作業版を編集</button>}
-      {canRebase && <button type="button" disabled={blocked || !document?.currentVersionId} onClick={() => {
+      <CapabilityButton label="作業版を編集" availability={version?.capabilities.edit} disabled={blocked} onClick={start} />
+      <CapabilityButton label="現行版へ基準を更新" availability={version?.capabilities.rebase} disabled={blocked || !document?.currentVersionId} onClick={() => {
         if (document?.currentVersionId && version) setRebase({ versionId: version.versionId, currentVersionId: document.currentVersionId, revision: document.revision });
-      }}>現行版へ基準を更新</button>}
+      }} />
     </div>}
     {operation && <div aria-busy={operation.status === 'pending'}>
       {operation.status === 'pending' && <p role="status">保存結果を確認しています…</p>}
@@ -78,8 +129,8 @@ export function DocumentWorkingVersionEditor(props: Props) {
       {manifestQuery.isPending && <LoadingState label="原本と補助ファイルを読み込み中" />}
       {manifestQuery.error && <ApiFeedback error={manifestQuery.error} onRetry={() => void manifestQuery.refetch()} />}
       {manifest && !manifestMatches && <p role="alert">編集元を照合できません。保存は送信していません。</p>}
-      {manifestMatches && <ManifestForm key={`${contextKey}:${manifest.sourceVersionId}:${manifest.documentRevision}`} manifest={manifest} mode={mode} readOnly={Boolean(operation)}
-        allowed={Boolean(allowed && document && manifest.documentRevision === document.revision && sourceVersionId === manifest.sourceVersionId)}
+      {session && <ManifestForm key={`${contextKey}:${session.generation}`} manifest={session.manifest} mode={session.mode} readOnly={Boolean(operation)}
+        allowed={Boolean(allowed && baselineMatches && !session.invalidated)}
         onClose={onClose} onRefresh={refresh} refreshing={refreshing} />}
     </>}
     {active && ((!manifestMatches || operation?.status === 'unknown' || operation?.status === 'succeeded' || operation?.intent.kind === 'rebase')) && <button type="button" onClick={onClose}>版の一覧へ戻る</button>}
@@ -124,14 +175,14 @@ function ManifestForm({ manifest, mode, allowed, readOnly, onClose, onRefresh, r
   const problem = problemFromUnknown(error);
   const failure = problem ? mapApiProblem(problem).message : error instanceof Error ? error.message : 'ファイルを取得できませんでした。';
   return <form aria-label="作業版の原本を編集" className={styles.newVersionWorkspace} onSubmit={event => void submit(event)} aria-busy={preparing}>
-    <label className={workspace.formField}>文書名<input value={title} disabled={preparing || readOnly} required maxLength={500} onChange={event => { setTitle(event.target.value); setError(null); }} /></label>
+    <label className={workspace.formField}>文書名<input value={title} disabled={preparing || readOnly || refreshing} required maxLength={500} onChange={event => { setTitle(event.target.value); setError(null); }} /></label>
     <p>すべての原本を確認し、差し替える原本を選択してください。パス・順序・形式の変更、原本の追加・削除はできません。</p>
     <p>公開を確定するまで、現行の公開版は変わりません。保存時は保持する原本・補助ファイルも認可・監査を経て取得します。</p>
     <ul className={styles.fileList}>{manifest.items.map(item => {
       const original = originalOf(item); const selected = replacements.get(item.contentItemId); const renditions = item.representations.filter(part => part.role === 'rendition');
       return <li key={item.contentItemId}><div>
         <h3>{original.originalFilename}</h3><dl><dt>固定パス</dt><dd>{item.logicalPath}</dd><dt>順序</dt><dd>{item.ordinal}</dd><dt>形式</dt><dd>{original.mediaType}</dd></dl>
-        <label className={workspace.formField}>差替ファイル: {original.originalFilename}（固定パス: {item.logicalPath}、順序: {item.ordinal}）<input type="file" disabled={preparing || readOnly} onChange={event => {
+        <label className={workspace.formField}>差替ファイル: {original.originalFilename}（固定パス: {item.logicalPath}、順序: {item.ordinal}）<input type="file" disabled={preparing || readOnly || refreshing} onChange={event => {
           const file = event.target.files?.item(0); setReplacements(previous => { const next = new Map(previous); if (file) next.set(item.contentItemId, file); else next.delete(item.contentItemId); return next; }); setError(null);
         }} /></label>
         {selected ? <p>差替後: {selected.name} · {selected.size.toLocaleString()} bytes</p> : <p>原本を保持 · {original.sizeBytes.toLocaleString()} bytes</p>}

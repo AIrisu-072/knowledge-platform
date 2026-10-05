@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { useLocation, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Dialog, Heading, Modal } from 'react-aria-components';
 import {
   documentApi,
@@ -20,8 +20,10 @@ import {
 } from '../application/document-workspace';
 import { ApiFeedback, LoadingState } from '../components/shared/ApiFeedback';
 import { DocumentScheduleCancellation } from '../components/document/DocumentScheduleCancellation';
+import { CapabilityButton, availabilityReason } from '../components/shared/CapabilityButton';
 import { OriginalVersionDownload } from '../components/shared/OriginalVersionDownload';
 import { DocumentWorkingVersionEditor } from '../components/document/DocumentWorkingVersionEditor';
+import { DocumentMetadataEditor } from '../components/document/DocumentMetadataEditor';
 import { DocumentLifecycleOperations } from '../components/document/DocumentLifecycleOperations';
 import { AppShell } from '../components/app-shell/AppShell';
 import { workingEditorSource, workingOperationKey, unresolvedWorkingOperation, type WorkingOperation } from '../application/document-working-version';
@@ -44,8 +46,10 @@ const tabs: Array<{ id: DocumentDetailTab; label: string }> = [
 export function DocumentDetailPage() {
   const { documentId } = useParams({ from: '/documents/$documentId' });
   const search = useSearch({ from: '/documents/$documentId' }) as DetailSearch;
+  const location = useLocation();
   const navigate = useNavigate({ from: '/documents/$documentId' });
   const queryClient = useQueryClient();
+  const [editingMode, setEditingMode] = useState<{ contextKey: string; mode: 'create' | 'update' } | null>(null);
   const [publicationMethod, setPublicationMethod] = useState<'now' | 'scheduled'>('now');
   const detailQuery = useQuery({
     queryKey: ['document', documentId, search.view],
@@ -134,6 +138,8 @@ export function DocumentDetailPage() {
   }
 
   const headingId = 'document-workspace-heading';
+  const workingContextKey = `${documentId}:${search.view}:${activeTab}:${search.versionId ?? ''}:${search.workflow ?? ''}`;
+  const workingMode = editingMode?.contextKey === workingContextKey ? editingMode.mode : workingEditorSource(document, versionDetailQuery.data).mode;
   const showContextPanel = !search.workflow && activeTab !== 'compare' && activeTab !== 'access';
   const contextPanel = document ? (
     <div className={styles.contextPanelContent}>
@@ -189,7 +195,7 @@ export function DocumentDetailPage() {
             <header className={styles.workflowHeader}>
               <button type="button" onClick={() => search.workflow ? updateSearch({ workflow: undefined }) : updateSearch({ tab: 'versions' })}>{search.workflow ? '← 版の一覧へ戻る' : '← 版・改訂へ戻る'}</button>
               <div>
-                <h1 id={headingId}>{search.workflow === 'newVersion' ? (workingEditorSource(document, versionDetailQuery.data).mode === 'update' ? '作業版を編集' : '新しい版を作成') : search.workflow === 'publication' ? '公開・予約公開' : '新旧比較'}</h1>
+                <h1 id={headingId}>{search.workflow === 'newVersion' ? (workingMode === 'update' ? '作業版を編集' : '新しい版を作成') : search.workflow === 'publication' ? '公開・予約公開' : '新旧比較'}</h1>
                 <p>{document?.title} · Version {document?.displayVersion.versionNo}</p>
           </div>
         </header>
@@ -209,7 +215,7 @@ export function DocumentDetailPage() {
                 </div>
                 <p className={styles.versionContext}>Version {document.displayVersion.versionNo}{document.folderName && <>　·　{document.folderName}</>}</p>
               </div>
-              {document.capabilities.createVersion.status === 'available' && <button className={styles.headerAction} type="button" onClick={() => updateSearch({ tab: 'versions', workflow: 'newVersion' })}>新しい版を作成</button>}
+              <CapabilityButton label="新しい版を作成" availability={document.capabilities.createVersion} className={styles.headerAction} onClick={() => updateSearch({ tab: 'versions', workflow: 'newVersion' })} />
             </div>
           ) : <h1 id={headingId}>文書ワークスペース</h1>}
         </header>
@@ -222,7 +228,8 @@ export function DocumentDetailPage() {
         version={versionDetailQuery.error ? undefined : versionDetailQuery.data}
         purpose={search.view}
         active={search.workflow === 'newVersion' && activeTab === 'versions'}
-        contextKey={`${documentId}:${search.view}:${activeTab}:${search.versionId ?? ''}:${search.workflow ?? ''}`}
+        contextKey={workingContextKey}
+        onModeChange={setEditingMode}
         showActions={activeTab === 'versions' && !search.workflow}
         onOpen={() => updateSearch({ tab: 'versions', workflow: 'newVersion' })}
         onClose={() => updateSearch({ workflow: undefined })}
@@ -269,7 +276,7 @@ export function DocumentDetailPage() {
                 ))}
               </div>
               <section id="document-tab-panel" role="tabpanel" aria-labelledby={`tab-${activeTab}`} tabIndex={0} className={styles.tabPanel}>
-                {activeTab === 'overview' && <OverviewTab document={document} filesQuery={filesQuery} />}
+                {activeTab === 'overview' && <OverviewTab key={location.href} document={document} filesQuery={filesQuery} reload={async () => { const result = await detailQuery.refetch(); if (result.error) throw result.error; }} />}
                 {activeTab === 'versions' && search.workflow !== 'newVersion' && <>{versionsPanel}{selectedVersion && <DocumentScheduleCancellation key={`${documentId}:${selectedVersion.versionId}`} document={document} view={search.view} versionId={selectedVersion.versionId} version={versionDetailQuery.data} contextKey={`${documentId}:${search.view}:${activeTab}:${selectedVersion.versionId}`} currentRead={!detailQuery.isFetching && !detailQuery.isError && !versionDetailQuery.isFetching && !versionDetailQuery.isError} />}</>}
                 {activeTab === 'history' && <HistoryTab query={historyQuery} />}
                 {activeTab === 'access' && canManageAccess && <AccessTab documentId={documentId} documentTitle={document.title} documentFolderId={document.folderId ?? null} folderName={document.folderName ?? null} policy={accessQuery.data} loading={accessQuery.isPending} error={accessQuery.error} onRetry={() => void accessQuery.refetch()} />}
@@ -282,17 +289,19 @@ export function DocumentDetailPage() {
   );
 }
 
-function OverviewTab({ document, filesQuery }: {
+function OverviewTab({ document, filesQuery, reload }: {
+  reload: () => Promise<unknown>;
   document: DocumentDetail;
   filesQuery: { data?: FileList; isPending: boolean; error: unknown; refetch: () => Promise<unknown> };
 }) {
   const metadata = document.metadata ?? {};
-  const mainMetadataKeys = new Set(['department', 'documentType', 'category']);
+  const mainMetadataKeys = new Set(['owning_department', 'document_type', 'category']);
   const additionalMetadata = Object.entries(metadata).filter(([key]) => !mainMetadataKeys.has(key));
   return (
     <div className={styles.overviewGrid}>
       <section className={styles.overviewSection}>
         <h2>基本情報</h2>
+        <DocumentMetadataEditor document={document} reload={reload} />
         <dl className={styles.metadataGrid}>
           <dt>状態</dt><dd>{documentStatusLabel(document)}</dd>
           <dt>現行Version</dt><dd>Version {document.displayVersion.versionNo}</dd>
@@ -300,8 +309,8 @@ function OverviewTab({ document, filesQuery }: {
           <dt>{document.displayTimestamp.kind === 'workingUpdatedAt' ? '更新日時' : '公開日時'}</dt><dd>{formatDate(document.displayTimestamp.value)}</dd>
           <dt>更新日時</dt><dd>{formatDate(document.displayVersion.updatedAt)}</dd>
           <dt>フォルダー</dt><dd>{document.folderName ?? 'ルート'}</dd>
-          {typeof metadata.department === 'string' && <><dt>所管部署</dt><dd>{metadata.department}</dd></>}
-          {typeof metadata.documentType === 'string' && <><dt>文書種別</dt><dd>{metadata.documentType}</dd></>}
+          {typeof metadata.owning_department === 'string' && <><dt>所管部署</dt><dd>{metadata.owning_department}</dd></>}
+          {typeof metadata.document_type === 'string' && <><dt>文書種別</dt><dd>{metadata.document_type}</dd></>}
           {typeof metadata.category === 'string' && <><dt>カテゴリ</dt><dd>{metadata.category}</dd></>}
         </dl>
       </section>
@@ -321,7 +330,7 @@ function OverviewTab({ document, filesQuery }: {
           <p className={styles.muted}>内容を確認するときは、現行版の原本を参照してください。</p>
         </section>
         <section className={styles.overviewSection}>
-          <h2>主要メタデータ</h2>
+          <h2>その他の属性</h2>
           {additionalMetadata.length === 0
             ? <p className={styles.muted}>追加のメタデータはありません。</p>
             : <dl className={styles.metadataGrid}>{additionalMetadata.map(([key, value]) => <Fragment key={key}><dt>{key}</dt><dd>{formatValue(value)}</dd></Fragment>)}</dl>}
@@ -499,7 +508,7 @@ function VersionsTab({
           <section className={styles.contentSection}>
             <div className={styles.sectionHeading}>
               <div><h2>コンテンツ版</h2><p>WORKING版と正式に公開した改訂を分けて表示します。</p></div>
-              {document.capabilities.createVersion.status === 'available' && <button className={workspaceStyles.primaryButton} type="button" onClick={() => updateSearch({ workflow: 'newVersion' })}>新しい版を作成</button>}
+              <CapabilityButton label="新しい版を作成" availability={document.capabilities.createVersion} className={workspaceStyles.primaryButton} onClick={() => updateSearch({ workflow: 'newVersion' })} />
             </div>
             {versionsLoading && <LoadingState label="版と改訂を読み込み中" />}
             {Boolean(versionsError) && <ApiFeedback error={versionsError} onRetry={onRetry} />}
@@ -927,10 +936,6 @@ function AccessTab({ documentId, documentTitle, documentFolderId, folderName, po
   );
 }
 
-function CapabilityButton({ label, availability, onClick }: { label: string; availability: DocumentDetail['capabilities']['createVersion']; onClick: () => void }) {
-  if (availability.status === 'available') return <button type="button" onClick={onClick}>{label}</button>;
-  return <p className={styles.muted}>{label}: {availabilityReason(availability.reason)}</p>;
-}
 
 function DownloadButton({ documentId, versionId, contentItemId, representationId, purpose, filename, label = 'ダウンロード' }: {
   documentId: string; versionId: string; contentItemId: string; representationId: string; purpose: 'published' | 'authoring' | 'history'; filename: string; label?: string;
@@ -984,18 +989,6 @@ function handleTabKeyDown(event: React.KeyboardEvent<HTMLDivElement>, visibleTab
   requestAnimationFrame(() => document.getElementById(`tab-${target.id}`)?.focus());
 }
 
-function availabilityReason(reason: string): string {
-  const labels: Record<string, string> = {
-    permission: '権限がありません',
-    lifecycle: '現在の状態では実行できません',
-    pendingSchedule: '予約公開中です',
-    staleBase: '元の版が更新されています',
-    notCurrent: '現在の版ではありません',
-    notHumanInteractive: '利用者による操作ではありません',
-    unsupported: '現在の画面からは実行できません',
-  };
-  return labels[reason] ?? '実行できません';
-}
 
 function revisionLabel(revision: { major: number; minor: number }) {
   return `${revision.major}.${revision.minor}`;

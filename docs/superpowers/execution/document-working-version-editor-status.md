@@ -1,5 +1,31 @@
 # WORKING複数原本編集の状況
 
+## 2026-10-05 08:04 UTC — D2最終source/DOM検証完了、stacked公開資格はこれから
+
+- branch `feat/document-working-manifest-gui-20261005`。保存済みD2 `b6ec14b471282e4fa1b50b6ebf30004133e483b5` と、metadata/予約取消main `b4663e41` を保持するD1 `75b9df5111ca7010f41696d9ae389ae197b8ce7f` を両parentとして統合する。元完成 `f639fbf0` とD1各checkpointも保持する
+- D2差分はD1比25path。backend・OpenAPI/schema・生成SDK・lock/workflowはD1と同じbytes。手書きclientのbinary transportとその試験はD2範囲であり、固定multipart Blobを担う。専用metadata/取消などmain-only 13pathを完全保持した
+- 元f639からの限定補正は、公開mainとの共存、同名原本をpath/ordinalで区別するラベル、server available/disabled理由の表示、編集中の基準固定である。D1のT10補正はD1記録へ分離し、業務条件を追加しない
+- 編集sessionのmanifest・mode・元対象を固定し、背景revision/source/current/display/purposeの変化や読取失敗では文書名/File選択を保持して保存を止める。明示最新確認が同じsessionで整合したsnapshotを得た場合だけ採用する。採用要求は不整合・別source読取中も一度で消費し、後続の背景応答に入力破棄の権限を残さない
+- 遅い明示読取の完了はcontext/session世代/attempt/操作オブジェクト同一性で限定し、新しいpending/unknown操作を消さない。成功statusの正確なdocument queryだけで整合を判定し、エラー時の残留cacheで権限を復活させない。新しい自動merge・永続draftはない
+
+### 最終の新鮮な検証
+
+- 全GUI400件/28 suites成功。WORKING52件と独立再reviewの144件/8 suitesはその限定再実行であり、unique成功数へ足さない。型/schema freshness・production build・runtime型が成功
+- API18/client11・有限診断/記録/用途35・安全なruntime純粋123・MCP build・lintが成功。有限35は123と加算してunique件数を主張しない。既存Webpack advisory3件/API lint warning1件を保持
+- 既存runnerへのcollection-onlyはjourney18件/9filesとpersistence5件/5files。D2でCargo・DB/socket/listener/browser・画像は実行していない。D1のRust164 unique/DB4target36宣言case compile-onlyをD2で再実行したとは扱わない
+- 独立source/DOMの最終判定はGO、残るImportant所見なし。未送信入力消失、旧refreshによる新rebase unknown消失、不整合/新query保留後の遅延採用をすべて実DOM RED→GREENで閉じた。途中の398件中397成功/1失敗を合格へ付け替えず、最後の400件全成功と区別する
+- 最終review対象23pathのhashは `46feedc6578fa297feeb4035b0921f2fb20a94a09b420bc7aa3a82f20773aab1`。全manifest準備/同一要求再送helper・binary transportと既存取消/lifecycleの意味は元sourceを保持する。review後の変更はこの実行記録だけ
+
+### 残る資格と次の操作
+
+このexact headの全適用CI、Ubuntu/PostgreSQL18.6/固定2合成profile/Chromiumの実操作・HTTP再起動・owned cleanupは公開後に親が確認する。新runtime specのscreenshot/trace/videoは全offで、既存有限診断だけを使用し、公開artifact0を確認する。
+
+macOS golden比較は未実行・未更新。影響候補mock2/3/4/7の4枚、他3枚のpixel不変も未証明であり、標準Ubuntu CIの既存darwin限定画像assertは実行されない。golden更新・skip/期待緩和・新画像基盤/公開はない。今回は画像なしUbuntu実操作と独立source/DOMレビューでPoCを判断し、全visual qualification済みとは主張しない。
+
+次のexact action: 両履歴を保持したlocal merge commitと日本語stacked packetを作り、D1をbaseとするDraft公開・exact-head CI/実受入を親へ渡す。main mergeはroot、実サーバー導入は所有者の手動操作。以下は各時点の履歴であり、その時点の未完/失敗を最終結果で消さない。
+
+---
+
 ## 2026-10-05 06:54 UTC — D2 GUI/runtimeをD1＋合格mainへstack
 
 - D2 branch `feat/document-working-manifest-gui-20261005`、基点はD1＋合格mainの `ff0aae673cb065ae056ae48499537b0fc213b4fc` / tree `7f0b70fabb256673602812fe6183c8df07fef4d9`。D1状況は[こちら](document-working-manifest-api-status.md)
@@ -60,3 +86,18 @@ ff0aae67上のD2は21pathを3-wayで適用し、既存予約取消・lifecycle�
 fresh結果: GUI337件/25 suites、API18/client11、型/schema/build/MCP/runtime型、有限診断/記録配線31、許可されたruntime純粋119、collection17journey/8files・4persistence/4filesが成功。WebPack既存3 advisoryとlint既存warning1を保持。独立source/DOM reviewはGO、focused GUI79/4 suitesと診断31を実行し、元f639の保持・全取得/対象変換物除外・固定unknown要求・用途/rebase/公開予約interlock・同名ラベル・取消共存を確認した。DB/browser/画像は実行していない。
 
 このsourceをcheckpoint commitで保持する。最新mainはmetadataも含むb4663e41へ進んだため、次にそのmainを保持する新D1へD2をstackし、metadata/取消/複数原本の最終共存を再検証・reviewする。現checkpointを最終hosted資格へ付け替えない。
+
+## 2026-10-05 07:11 UTC — metadata保持とdisabled理由の純粋表示配線
+
+D2 checkpoint `b6ec14b471282e4fa1b50b6ebf30004133e483b5` を保持し、最新D1 `75b9df5111ca7010f41696d9ae389ae197b8ce7f`（main b466のmetadata/取消を保持）とのno-commit mergeを開始した。runtime配列、DocumentDetailPage imports、有限診断、strict配線期待を両機能の和へ解消する。Activeは両履歴を自動保持した。backend・OpenAPI/schema・生成SDK・lockは最新D1をそのまま維持する。D2範囲の手書きbinary transportとその試験は含む。
+
+親の追加確認により、WORKING edit/rebaseのdisabled理由が既存の他panelにも表示されていなかった点を補正する。サーバーが返すavailableは実行可、disabledはそのreasonの既存日本語mapping付き無効control、不在は非表示とし、GUI独自の業務条件を推測しない。現schemaにないhidden enumをbackendへ新設しない。stale、予約、権限、lifecycle、notCurrent等のDOM RED→GREENを追加し、unknownの固定要求回復とlocal interlockは保持する。これは元f639からの限定UI表示補正として記録し、manifest/公開の業務意味を変えない。
+
+新組合せの全GUI/型/build/API/診断/runtime collectionと独立source/DOM reviewは進行中。画像の資格境界は上記から変更しない。
+
+
+## 2026-10-05 07:39 UTC — 最終確認で背景再取得による未送信入力消失を検出
+
+最新D1との共存検証は一度GUI388件/28 suites・型/schema/build・API18/client11・有限診断35に成功し、source/DOMレビューもGOとなった。その後の親の追加確認で、編集中のmanifest背景再取得によってrevision keyが変わり、未送信の文書名と選択Fileが通知なく失われる反例を独立DOM実行で再現した。保存送信は起きていないが、新しいrevisionに対する保存が再度有効になるImportant所見であり、先のGOをこの所見の解決後資格として扱わない。
+
+全体のwindow-focus refetchは既にoffだが、stale後の再接続refetchは有効である。背景読取失敗や別利用者の公開切替によるsource/purpose変更もフォーム再作成を起こし得る。編集sessionのmanifestとcreate/update modeを固定し、変化・読取失敗では入力を保持して保存を止め、明示的な最新状態確認が成功したときだけ新しい基準を採用する限定補正をRED→GREENで進める。新しい自動merge・永続draft・backend業務条件は追加しない。最終commit/packetはこの補正と再検証・独立再reviewの後に作る。

@@ -19,6 +19,7 @@ import {
   listFolderChildren,
   listVersionFiles,
   publishVersion,
+  patchDocumentMetadata,
   recoverDocumentCreation,
   schedulePublication,
   setDocumentAccessPolicy,
@@ -26,6 +27,7 @@ import {
   type CommandsWithdrawVersion,
   type CommandsEndPublication,
   type CommandsCreateDocument,
+  type CommandsMetadataPatch,
   type CreateDocumentResult,
   type CommandsPolicyExplicit,
   type CommandsPolicyInherit,
@@ -66,6 +68,9 @@ function apiSort(sort: string | undefined): string | undefined {
 }
 
 export const documentApi = {
+  patchDocumentMetadata(documentId: string, body: CommandsMetadataPatch) {
+    return payload(patchDocumentMetadata({ ...data, path: { documentId }, body }));
+  },
   createDocument(request: CommandsCreateDocument, file: File): Promise<CreateDocumentResult> {
     return binary.createDocument({ request, file, originalFilename: file.name, mediaType: file.type || 'application/octet-stream' });
   },

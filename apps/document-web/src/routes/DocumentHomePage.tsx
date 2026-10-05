@@ -190,8 +190,8 @@ export function DocumentHomePage() {
       <div className={styles.panelVersion}><span className={styles.stateBadge}>{documentListStatusLabel(selected)}</span><span>Version {selected.displayVersion.versionNo}</span></div>
       <dl className={styles.summaryList}>
         <dt>フォルダー</dt><dd>{selected.folderName ?? rootQuery.data?.name ?? 'すべての文書'}</dd>
-        {typeof selectedDetailQuery.data?.metadata?.department === 'string' && <><dt>所管部署</dt><dd>{selectedDetailQuery.data.metadata.department}</dd></>}
-        {typeof selectedDetailQuery.data?.metadata?.documentType === 'string' && <><dt>文書種別</dt><dd>{selectedDetailQuery.data.metadata.documentType}</dd></>}
+        {typeof selectedDetailQuery.data?.metadata?.owning_department === 'string' && <><dt>所管部署</dt><dd>{selectedDetailQuery.data.metadata.owning_department}</dd></>}
+        {typeof selectedDetailQuery.data?.metadata?.document_type === 'string' && <><dt>文書種別</dt><dd>{selectedDetailQuery.data.metadata.document_type}</dd></>}
         <dt>{selected.displayTimestamp.kind === 'workingUpdatedAt' ? '更新日時' : '公開日時'}</dt><dd>{formatDate(selected.displayTimestamp.value)}</dd>
       </dl>
       <section className={styles.panelSection}>

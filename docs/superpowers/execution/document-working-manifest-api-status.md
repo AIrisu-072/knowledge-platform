@@ -39,3 +39,13 @@ source `9212c7b01f0e3e269dbedc2964342e7b4d489561` と合格main `c4388433e97e239
 - 新独立共存reviewはGO、blockingなし。main専用17path/D1専用25pathは各parentのbytesを保持し、重複8pathを個別確認。document-web既存118pathはmainと一致。Review後はこの検証記録だけを追記した
 
 D1はlocal source/契約資格のみ。新exact-head CI・実DB/browser/restart/cleanupは公開後に親が確認する。元f639、D1source、mainの履歴は保持し、次は日本語Draft packetを親へ渡してD2をstackする。公開/main mergeは親、実サーバー導入は所有者が手動実施する。
+
+## 2026-10-05 07:05 UTC — metadataも含む最新mainのD1候補
+
+前候補 `ff0aae673cb065ae056ae48499537b0fc213b4fc` と最新main `b4663e413845e10ba720e4b39ccdac941650c8e0` を両parentとして保持する。共通baseはc4388433。競合はActive先頭だけで、両履歴を残した。全D1backend/API/SDK/lockはff0とbyte一致し、全GUI/runtimeはb466とbyte一致する。D2はまだ入れない。
+
+この新組合せのfresh検証: GUI338件/25 suites、API18/client6、型/schema/build/MCP/runtime型、lint、診断/記録/metadata読取用途32、collection16journey/8files・4persistence/4files成功。Rustも164 unique pure、DB4target/36宣言case compile-only（実行0）、strict Clippy/fmt/architectureを改めて成功確認した。既存warning/advisoryは継続する。
+
+新独立union reviewはGO、blockingなし。D1-only32pathとmain-only18pathを各parentのmode/blobで保持、他2410pathも共通base一致。全124document-webと42runtime-tool pathはb466と一致し、D2留保20pathの7新規fileは存在しない。D1の29製品pathもff0と一致。9lockfile・195画像/golden/migration/workflow/停止workは両parentと一致した。Review後の追加はこの検証記録だけである。
+
+旧f639/9212/ff0と各packetを保持する。次は本候補の日本語Draft packetを親へ渡し、D2をこの新D1へstackする。本候補のexact-head hosted CI/実runtimeは未実行で、親が公開後に確認する。実サーバー導入は所有者の手動操作。

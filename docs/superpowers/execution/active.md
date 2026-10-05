@@ -1,9 +1,20 @@
 # Active Execution Pointer
 
+## 2026-10-05 08:04 UTC — WORKING編集D2のlocal検証完了、Draft公開待ち
+
+- [D2最終状況](document-working-version-editor-status.md)を再開先とする。D2 checkpoint `b6ec14b4` とmetadata/取消を保持するD1 `75b9df51` を両履歴保持で統合。元f639・D1各checkpointも維持する
+- 全GUI400件/28 suites、型/schema/build、API18/client11、runtime型・有限診断35・安全な純粋runtime123・collection18+5成功。独立144件のsource/DOM再reviewはGO。背景更新による未送信入力消失と遅延refresh/unknown競合を閉じ、最終sourceを固定した
+- backend/OpenAPI/生成SDK/lock/workflowはD1のbytes。手書きbinary transportはD2に含む。D1のRust/DB compile資格とD2の検証を混ぜず、ローカル実DB/browserは未実行
+- 次は日本語stacked Draftの公開packetを親へ渡し、このexact headの全CI・画像なし実受入・再起動/owned cleanup/artifact0を確認する。macOS golden比較と全visual資格は未取得、golden/skip変更なし。実サーバー導入は所有者が手動実施する
+
+---
+
 ## 2026-10-05 06:54 UTC — WORKING編集 D2 GUI/runtime
 
 - 元完成 `f639fbf0` を保持し、D1＋合格main `ff0aae67` に複数原本GUI・固定bytes回復・runtimeをstackする。[D2状況](document-working-version-editor-status.md)、[D1状況](document-working-manifest-api-status.md)、[共通追補](../specs/2026-10-05-document-working-version-editor-amendment.md)を参照
 - 現公開を編集中維持し、選択原本だけ差替え/対象旧変換物だけ除外する。現在予約ID/read/取消GUIとD1初回修復・T10補正を保持する。新main組合せの検証・独立reviewは未完
+- 07:11 UTC追補: D2 checkpoint `b6ec14b4` とmetadata保持済み最新D1 `75b9df51` の統合を進める。同名原本のpath/ordinal labelに加え、backend disabled reasonを純粋表示するDOM補正を検証する。業務条件・新権限は追加しない
+- 07:39 UTC追補: 背景manifest再取得による未送信入力消失を独立DOMで再現。最終commit前に編集基準の固定と明示更新までの停止を限定補正し、GOと全GUI検証を取り直す
 - 実DB/browserは既存hostedで確認。ローカルは純粋/compile/collectionのみ。画像生成/公開・golden更新・skip変更なし。最新headの全visual資格は主張しない
 
 ---
@@ -14,6 +25,48 @@
 - D1は初回未公開WORKINGの修復・capability整合・exact manifest read・nullable結果を扱う。複数原本GUI有効化はD2で、旧公開維持/選択変換物除外の承認意味は変えない
 - D1source `9212c7b0` と合格main `c4388433` を両履歴保持で統合。新しい組合せのGUI302・pureRust164・DB4target/36宣言case compile-only・型/build/API18/Clippy/fmt/architectureと独立共存review GO。新exact-head CI/実runtimeは公開後。旧資格を付け替えず、画像生成/公開も行わない
 
+
+- 07:05 UTC追補: metadata統合済みmain `b4663e41` と前候補 `ff0aae67` を両履歴保持で統合。GUI338・pureRust164・DB4target/36宣言case compile-only・型/build/API18/Clippy/fmt/architectureと新独立union review GO。全GUI/runtimeは最新mainのbytes、D1backendはff0のbytesを保持。新exact-head hosted資格は公開後に確認する
+
+---
+
+## 2026-10-05 UTC — 属性編集の実受入完了後、予約取消mainと合流
+
+- PR71 exact `8eaa3942` は全13jobs・DSI・Sandboxと実15+3/Organization/cleanup/artifact公開0が成功。その終端確認後、予約取消main `c4388433` と両public履歴を保持して統合する。[今回の資格と統合状況](document-metadata-main-integration-status.md)を再開先とする
+- metadata/取消/lifecycleの製品sourceと受入を保持し、共有配線と有限診断だけを合流。旧3spec期待はRED1→厳密4specへ、Version fixtureは正規nullable予約IDへ整合させた
+- 新組合せは全GUI338件・型/build・純粋runner36件・telemetry offのAPI16件・collection16+4成功、独立共存レビューGO。新exact-headの実runtimeと全CIはこれから親が確認する。元の成功/失敗記録を新headへ付け替えない
+
+---
+
+## 2026-10-05 05:55 UTC — metadata公開後の受入read用途を修正
+
+- PR71 exact `5ed279fa` はhosted journey14件成功/metadata1件失敗。未公開編集の確認後、公開済み版をauthoringで読む受入helperの契約不一致を確認した。[今回の状況](document-metadata-main-integration-status.md)を再開先とする
+- 公開前authoring/公開後publishedを引数と画面遷移で明示し、検査内容・locator/timeout/retry・診断は保持。純粋source契約RED3→GREEN、全GUI315件・型/build・runner34件・collection15+3成功、独立限定レビューGO
+- 新exact-headの実DB/browserと全CIは未実行。PR71の2回の失敗と公開履歴を保持し、親が公開して再検証する。以下は各時点の履歴
+
+---
+
+## 2026-10-05 05:06 UTC — 属性編集と公開状態操作を両公開履歴で統合
+
+- 公開PR71 `8d53d7a3` とPR70統合済みmain `5d262557` を両parentとして保持する。[今回の統合状況](document-metadata-main-integration-status.md)を再開先とする
+- 両GUI/受入spec/有限診断を加算的に保持し、metadataの実label matcher RED2に基づくaria-label修正だけを加える。fixture capability1行と受入配線の3spec期待を整合させる
+- 全GUI315件・型/build・純粋runner31件・collection15+3成功、独立共存レビューGO。新組合せの実DB/browserとexact-head全CIは未実行。PR71旧headの失敗と双方の過去記録は保持し、親が同PRを更新して新headを検証する
+
+---
+
+## 2026-10-05 04:58 UTC — metadata実受入のラベル不一致を修正
+
+- PR71 exact `8d53d7a3` は既存hosted journey12件成功/metadata1件失敗。[失敗と修正状況](document-metadata-editor-status.md)を今回の再開先とする
+- 実Playwright label matcherを使う純粋RED2件で、非空textareaが親labelのexact名へ混入する問題を再現。可視文言と一致するaria-labelだけを追加し、locator/timeout/retryや診断は緩めない
+- 全GUI295件・型/build・collection13+2成功、限定独立レビューGO。修正後の実DB/browser・新exact-head全CIは未実行。元の失敗結果を保持し、親が4ファイルの差分を公開する。以下の初回未実行記録はその時点の履歴
+
+---
+
+## 2026-10-05 UTC — 文書共通属性3項目の編集GUI
+
+- 公開main `e9c7f773` から、既存T5を文書概要の最小フォームへ接続する。[今回の状況](document-metadata-editor-status.md)、[小さい計画](../plans/2026-10-05-document-metadata-editor.md)を参照
+- 正本snake_case3項目・明示削除・理由のみ。legacy/extensionsは表示保持、未知結果は同じ操作ID/payloadの明示再送。新backend・認可・依存・永続draftを追加しない
+- 全GUI293件・型/build・純粋runner29件・collection13+2成功、限定独立レビューGO。実DB/browser・同一head全CIは未実行で、公開/mergeは親担当、実サーバー反映は所有者が手動実施する。以下の過去記録を今回の受入へ付け替えない
 
 ---
 

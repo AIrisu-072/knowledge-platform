@@ -9,7 +9,7 @@ import { validateDetailSearch } from '../src/application/search-state';
 jest.mock('../src/application/document-workspace', () => ({ documentApi: {
   getDocument: jest.fn(), listDocumentVersions: jest.fn(), getDocumentVersion: jest.fn(),
   listDocumentRevisions: jest.fn(), getDocumentHistory: jest.fn(), listVersionFiles: jest.fn(),
-  getVersionEditManifest: jest.fn(), downloadVersionFile: jest.fn(), prepareVersionUpload: jest.fn(), createVersion: jest.fn(),
+  patchDocumentMetadata: jest.fn(), getVersionEditManifest: jest.fn(), downloadVersionFile: jest.fn(), prepareVersionUpload: jest.fn(), createVersion: jest.fn(),
   updateWorkingVersion: jest.fn(), rebaseWorkingVersion: jest.fn(), publishVersion: jest.fn(), schedulePublication: jest.fn(),
 } }));
 const documentId = '00000000-0000-4000-8000-000000000001';
@@ -35,14 +35,14 @@ function manifest() { return { documentId, sourceVersionId: versionId, documentR
 const problem = (status: number, code: string) => ({ type: 'about:blank', title: '拒否', status, code, traceId: 'synthetic', retryable: status >= 500 });
 const clients: QueryClient[] = [];
 afterEach(() => { clients.splice(0).forEach(client => client.clear()); });
-function setup(input: { published?: boolean; view?: 'published' | 'authoring' } = {}) {
+function setup(input: { published?: boolean; view?: 'published' | 'authoring'; versionOverride?: VersionDetail; documentOverride?: DocumentDetail } = {}) {
   const api = documentApi as unknown as { [Key in keyof typeof documentApi]: jest.Mock };
   Object.values(api).forEach(mock => mock.mockReset());
   const current = { ...version, versionId: baseId, lifecycleState: 'published' as const, isCurrent: true, capabilities: { ...version.capabilities, edit: denied } };
-  const doc = input.published ? { ...detail(), documentVersionId: baseId, displayVersion: { ...current, lifecycleState: 'PUBLISHED' as const }, capabilities: { ...detail().capabilities, createVersion: available } } : detail();
+  const doc = input.documentOverride ?? (input.published ? { ...detail(), documentVersionId: baseId, displayVersion: { ...current, lifecycleState: 'PUBLISHED' as const }, capabilities: { ...detail().capabilities, createVersion: available } } : detail());
   api.getDocument.mockImplementation((id: string) => Promise.resolve({ ...doc, documentId: id, title: id === documentId ? doc.title : '別の合成文書' }));
   api.listDocumentVersions.mockResolvedValue({ items: [input.published ? current : version], nextCursor: null });
-  api.getDocumentVersion.mockResolvedValue(input.published ? current : version);
+  api.getDocumentVersion.mockResolvedValue(input.versionOverride ?? (input.published ? current : version));
   api.listDocumentRevisions.mockResolvedValue({ items: [], nextCursor: null });
   api.getDocumentHistory.mockResolvedValue({ items: [], nextCursor: null }); api.listVersionFiles.mockResolvedValue({ items: [] });
   api.getVersionEditManifest.mockResolvedValue({ ...manifest(), sourceVersionId: input.published ? baseId : versionId, purpose: input.published ? 'published' : 'authoring' });
@@ -336,4 +336,328 @@ test('同名原本は固定パスと順序で一意に選び、対象contentItem
     { documentId, versionId, contentItemId: 'item-a', representationId: 'representation-a-r', purpose: 'authoring' },
   ]);
   expect(api.createVersion).not.toHaveBeenCalled();
+});
+
+const disabledReasons = [
+  ['staleBase', '元の版が更新されています'],
+  ['pendingSchedule', '予約公開中です'],
+  ['permission', '権限がありません'],
+  ['lifecycle', '現在の状態では実行できません'],
+  ['notCurrent', '現在の版ではありません'],
+] as const;
+test.each(disabledReasons)('サーバーdisabledの編集・基準更新は%s理由を示して操作を止める', async (reason, message) => {
+  const disabled = { status: 'disabled' as const, reason };
+  const { api } = setup({ versionOverride: { ...version, capabilities: { ...version.capabilities, edit: disabled, rebase: disabled } } });
+  await screen.findByRole('heading', { name: '合成文書', level: 1 });
+  for (const name of ['作業版を編集', '現行版へ基準を更新']) {
+    const button = await screen.findByRole('button', { name });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription(message);
+    fireEvent.click(button);
+  }
+  expect(screen.queryByRole('form', { name: '作業版の原本を編集' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('dialog', { name: '作業版の基準更新を確認' })).not.toBeInTheDocument();
+  expect(api.getVersionEditManifest).not.toHaveBeenCalled();
+  expect(api.rebaseWorkingVersion).not.toHaveBeenCalled();
+});
+test.each(disabledReasons)('サーバーdisabledの新版作成は既存2導線だけで%s理由を示す', async (reason, message) => {
+  const { api } = setup({ published: true, documentOverride: { ...detail(), capabilities: { ...detail().capabilities,
+    createVersion: { status: 'disabled', reason } } } });
+  await screen.findByRole('heading', { name: '合成文書', level: 1 });
+  const buttons = await screen.findAllByRole('button', { name: '新しい版を作成' });
+  expect(buttons).toHaveLength(2);
+  for (const button of buttons) {
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription(message);
+    fireEvent.click(button);
+  }
+  expect(api.getVersionEditManifest).not.toHaveBeenCalled();
+  expect(api.createVersion).not.toHaveBeenCalled();
+});
+test('欠落した編集・基準更新・新版作成capabilityから操作や理由を推測しない', async () => {
+  setup({ versionOverride: { ...version, capabilities: { ...version.capabilities, edit: undefined, rebase: undefined } } as unknown as VersionDetail,
+    documentOverride: { ...detail(), capabilities: { ...detail().capabilities, createVersion: undefined } } as unknown as DocumentDetail });
+  await screen.findByRole('heading', { name: '合成文書', level: 1 });
+  for (const name of ['作業版を編集', '現行版へ基準を更新', '新しい版を作成']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: '作業版の編集' })).not.toBeInTheDocument();
+});
+test('未確認保存はサーバーが利用可能と返した編集・基準更新も止める', async () => {
+  const { api } = setup({ versionOverride: { ...version, capabilities: { ...version.capabilities, rebase: available } } });
+  api.updateWorkingVersion.mockRejectedValueOnce(problem(503, 'COMMIT_OUTCOME_UNKNOWN'));
+  const form = await open(); await replace(form); fireEvent.submit(form);
+  await screen.findByText('保存結果を確認できません');
+  fireEvent.click(screen.getAllByRole('button', { name: '版の一覧へ戻る' })[0]!);
+  expect(await screen.findByRole('button', { name: '作業版を編集' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '現行版へ基準を更新' })).toBeDisabled();
+  expect(api.rebaseWorkingVersion).not.toHaveBeenCalled();
+  expect(api.updateWorkingVersion).toHaveBeenCalledTimes(1);
+});
+
+test('同じ文書のmetadata保存と履歴移動でも未確認WORKINGの固定要求とbytesを保持する', async () => {
+  const document = { ...detail(), capabilities: { ...detail().capabilities, updateMetadata: available } };
+  const { api, router, history } = setup({ documentOverride: document });
+  api.updateWorkingVersion.mockRejectedValueOnce(problem(503, 'COMMIT_OUTCOME_UNKNOWN'));
+  api.patchDocumentMetadata.mockImplementation((_id, body) => Promise.resolve({ operationId: body.operationId, resourceId: documentId,
+    changed: true, resultingRevision: 8, occurredAt: '2026-10-05T02:00:00Z' }));
+  const form = await open(); await replace(form); fireEvent.submit(form);
+  await screen.findByText('保存結果を確認できません');
+  const originalRequest = api.updateWorkingVersion.mock.calls[0];
+  await act(async () => router.navigate({ to: '/documents/$documentId', params: { documentId }, search: { view: 'authoring', tab: 'overview' } }));
+  fireEvent.click(await screen.findByRole('button', { name: 'メタデータを編集' }));
+  const dialog = await screen.findByRole('dialog', { name: 'メタデータを編集' });
+  fireEvent.change(within(dialog).getByLabelText('カテゴリ'), { target: { value: '合成の分類' } });
+  fireEvent.change(within(dialog).getByLabelText('変更理由'), { target: { value: '合成の確認' } });
+  api.getDocument.mockResolvedValue({ ...document, revision: 8, metadata: { category: '合成の分類' } });
+  fireEvent.submit(within(dialog).getByRole('button', { name: '保存する' }).closest('form')!);
+  await within(dialog).findByText('メタデータを更新しました。');
+  fireEvent.click(within(dialog).getByRole('button', { name: '閉じる' }));
+  await act(async () => history.back());
+  fireEvent.click(await screen.findByRole('button', { name: '同じ内容で再試行' }));
+  await screen.findByText('作業版を保存しました。');
+  expect(api.patchDocumentMetadata).toHaveBeenCalledTimes(1);
+  expect(api.updateWorkingVersion).toHaveBeenCalledTimes(2);
+  expect(api.updateWorkingVersion.mock.calls[1]).toEqual(originalRequest);
+  expect(api.updateWorkingVersion.mock.calls[1]![2]).toBe(originalRequest![2]);
+  expect(api.updateWorkingVersion.mock.calls[1]![4]).toBe(originalRequest![4]);
+  expect(api.downloadVersionFile).toHaveBeenCalledTimes(2);
+  expect(api.getVersionEditManifest).toHaveBeenCalledTimes(1);
+});
+
+async function backgroundManifestChangeWithUnsentInput() {
+  const state = setup();
+  const form = await open();
+  fireEvent.change(within(form).getByLabelText('文書名'), { target: { value: '未送信の文書名' } });
+  const replacement = await replace(form);
+  const changedManifest = manifest();
+  changedManifest.documentRevision = 8;
+  changedManifest.title = '別の利用者が保存した文書名';
+  changedManifest.items[0]!.representations[0] = representation('other-human-a', '別の利用者の原本A.txt');
+  state.api.getDocument.mockResolvedValue({ ...detail(), revision: 8, title: changedManifest.title });
+  state.api.getVersionEditManifest.mockResolvedValue(changedManifest);
+  await act(async () => { await Promise.all([
+    state.client.invalidateQueries({ queryKey: ['document', documentId, 'authoring'] }),
+    state.client.invalidateQueries({ queryKey: ['document-edit-manifest', documentId, versionId, 'authoring'] }),
+  ]); });
+  await screen.findByText(`${changedManifest.title} · Version 2`);
+  expect(state.api.getVersionEditManifest).toHaveBeenCalledTimes(2);
+  expect(state.api.downloadVersionFile).not.toHaveBeenCalled();
+  expect(state.api.updateWorkingVersion).not.toHaveBeenCalled();
+  return { ...state, replacement, currentForm: await screen.findByRole('form', { name: '作業版の原本を編集' }) };
+}
+
+test('背景manifest更新は未送信の文書名・選択File・編集元を無告知で置換しない', async () => {
+  const { currentForm, replacement } = await backgroundManifestChangeWithUnsentInput();
+  expect(within(currentForm).getByLabelText('文書名')).toHaveValue('未送信の文書名');
+  const originalInput = within(currentForm).getAllByLabelText(/^差替ファイル:/)[0] as HTMLInputElement;
+  expect(originalInput.files?.[0]).toBe(replacement);
+  expect(within(currentForm).getByRole('heading', { name: '正確な 原本A.txt' })).toBeVisible();
+  expect(within(currentForm).queryByRole('heading', { name: '別の利用者の原本A.txt' })).not.toBeInTheDocument();
+});
+
+test('背景manifest更新は明示最新状態確認まで保存を止め競合を知らせる', async () => {
+  const { currentForm, api } = await backgroundManifestChangeWithUnsentInput();
+  expect(within(currentForm).getByRole('button', { name: '作業版を保存' })).toBeDisabled();
+  expect(within(currentForm).getByRole('alert')).toHaveTextContent(/更新|変更/);
+  expect(within(currentForm).getByRole('button', { name: '最新状態を確認' })).toBeEnabled();
+  fireEvent.submit(currentForm);
+  expect(api.prepareVersionUpload).not.toHaveBeenCalled();
+  expect(api.updateWorkingVersion).not.toHaveBeenCalled();
+  expect(api.createVersion).not.toHaveBeenCalled();
+});
+
+test('背景manifest更新の読取失敗でも未送信入力を保持し保存を停止する', async () => {
+  const { api, client } = setup();
+  const form = await open();
+  fireEvent.change(within(form).getByLabelText('文書名'), { target: { value: '読取失敗前の未送信文書名' } });
+  const replacement = await replace(form);
+  api.getVersionEditManifest.mockRejectedValueOnce(problem(503, 'DEPENDENCY_UNAVAILABLE'));
+  await act(async () => { await client.invalidateQueries({ queryKey: ['document-edit-manifest', documentId, versionId, 'authoring'] }); });
+  expect(api.getVersionEditManifest).toHaveBeenCalledTimes(2);
+  await screen.findAllByRole('alert');
+  const currentForm = screen.getByRole('form', { name: '作業版の原本を編集' });
+  expect(within(currentForm).getByLabelText('文書名')).toHaveValue('読取失敗前の未送信文書名');
+  const originalInput = within(currentForm).getAllByLabelText(/^差替ファイル:/)[0] as HTMLInputElement;
+  expect(originalInput.files?.[0]).toBe(replacement);
+  expect(within(currentForm).getByRole('button', { name: '作業版を保存' })).toBeDisabled();
+  expect(within(currentForm).getByRole('button', { name: '最新状態を確認' })).toBeEnabled();
+  fireEvent.submit(currentForm);
+  expect(api.downloadVersionFile).not.toHaveBeenCalled();
+  expect(api.updateWorkingVersion).not.toHaveBeenCalled();
+  await act(async () => { await client.invalidateQueries({ queryKey: ['document-edit-manifest', documentId, versionId, 'authoring'] }); });
+  await waitFor(() => expect(api.getVersionEditManifest).toHaveBeenCalledTimes(3));
+  expect(within(screen.getByRole('form', { name: '作業版の原本を編集' })).getByRole('button', { name: '作業版を保存' })).toBeDisabled();
+});
+
+test.each([false, true])('編集中の別Human公開で元対象とmodeを自動切替しない create=%s', async published => {
+  const { api, client } = setup({ published });
+  const form = published ? (fireEvent.click((await screen.findAllByRole('button', { name: '新しい版を作成' }))[0]!), await screen.findByRole('form', { name: '作業版の原本を編集' })) : await open();
+  fireEvent.change(within(form).getByLabelText('文書名'), { target: { value: '公開切替前の未送信文書名' } });
+  const replacement = await replace(form);
+  const currentId = published ? '00000000-0000-4000-8000-000000000005' : versionId;
+  const current = { ...version, versionId: currentId, lifecycleState: 'published' as const, isCurrent: true, capabilities: { ...version.capabilities, edit: { status: 'disabled' as const, reason: 'lifecycle' as const } } };
+  api.getDocument.mockResolvedValue({ ...detail(), title: '別Humanが公開済み', revision: 8, currentVersionId: currentId, documentVersionId: currentId,
+    displayVersion: { ...current, lifecycleState: 'PUBLISHED' }, capabilities: { ...detail().capabilities, createVersion: available } });
+  api.listDocumentVersions.mockResolvedValue({ items: [current], nextCursor: null });
+  api.getDocumentVersion.mockResolvedValue(current);
+  api.getVersionEditManifest.mockResolvedValue({ ...manifest(), sourceVersionId: currentId, documentRevision: 8, purpose: 'published', title: '別Humanが公開済み' });
+  await act(async () => { await Promise.all(['document', 'document-versions', 'document-version', 'document-edit-manifest'].map(key => client.invalidateQueries({ queryKey: [key, documentId] }))); });
+  await screen.findByText('別Humanが公開済み · Version 2');
+  expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(published ? '新しい版を作成' : '作業版を編集');
+  const currentForm = screen.getByRole('form', { name: '作業版の原本を編集' });
+  expect(within(currentForm).getByLabelText('文書名')).toHaveValue('公開切替前の未送信文書名');
+  expect((within(currentForm).getAllByLabelText(/^差替ファイル:/)[0] as HTMLInputElement).files?.[0]).toBe(replacement);
+  expect(within(currentForm).getByRole('button', { name: published ? '新しい作業版を作成' : '作業版を保存' })).toBeDisabled();
+  expect(within(currentForm).getByRole('button', { name: '最新状態を確認' })).toBeEnabled();
+  fireEvent.submit(currentForm);
+  expect(api.updateWorkingVersion).not.toHaveBeenCalled(); expect(api.createVersion).not.toHaveBeenCalled();
+});
+
+test('背景manifest競合の明示再読込が失敗しても旧入力を保ち、成功時だけ新manifestへ切替える', async () => {
+  const { api, currentForm, replacement } = await backgroundManifestChangeWithUnsentInput();
+  api.getVersionEditManifest.mockRejectedValueOnce(problem(503, 'DEPENDENCY_UNAVAILABLE'));
+  fireEvent.click(within(currentForm).getByRole('button', { name: '最新状態を確認' }));
+  await waitFor(() => expect(api.getVersionEditManifest).toHaveBeenCalledTimes(3));
+  await waitFor(() => expect(screen.getByRole('button', { name: '最新状態を確認' })).toBeEnabled());
+  const retained = screen.getByRole('form', { name: '作業版の原本を編集' });
+  expect(within(retained).getByLabelText('文書名')).toHaveValue('未送信の文書名');
+  expect((within(retained).getAllByLabelText(/^差替ファイル:/)[0] as HTMLInputElement).files?.[0]).toBe(replacement);
+  expect(within(retained).getByRole('button', { name: '作業版を保存' })).toBeDisabled();
+  fireEvent.click(within(retained).getByRole('button', { name: '最新状態を確認' }));
+  await waitFor(() => expect(screen.getByLabelText('文書名')).toHaveValue('別の利用者が保存した文書名'));
+  const refreshed = screen.getByRole('form', { name: '作業版の原本を編集' });
+  expect((within(refreshed).getAllByLabelText(/^差替ファイル:/)[0] as HTMLInputElement).files).toHaveLength(0);
+  expect(within(refreshed).getByRole('heading', { name: '別の利用者の原本A.txt' })).toBeVisible();
+  expect(within(refreshed).getByRole('button', { name: '作業版を保存' })).toBeEnabled();
+  expect(api.updateWorkingVersion).not.toHaveBeenCalled();
+});
+
+test('download準備中の背景manifest変更は入力を保って遅い旧bytesからの保存を止める', async () => {
+  const { api, client } = setup();
+  let finishDownload!: (value: Blob) => void;
+  api.downloadVersionFile.mockImplementation(() => new Promise(resolve => { finishDownload = resolve; }));
+  const form = await open(); const replacement = await replace(form); fireEvent.submit(form);
+  await waitFor(() => expect(api.downloadVersionFile).toHaveBeenCalledTimes(1));
+  api.getDocument.mockResolvedValue({ ...detail(), revision: 8, title: '準備中に他Humanが更新' });
+  api.getVersionEditManifest.mockResolvedValue({ ...manifest(), documentRevision: 8, title: '準備中に他Humanが更新' });
+  await act(async () => { await Promise.all(['document', 'document-edit-manifest'].map(key => client.invalidateQueries({ queryKey: [key, documentId] }))); });
+  await screen.findByText('準備中に他Humanが更新 · Version 2');
+  await act(async () => finishDownload(new Blob(['content'])));
+  const currentForm = screen.getByRole('form', { name: '作業版の原本を編集' });
+  expect((within(currentForm).getAllByLabelText(/^差替ファイル:/)[0] as HTMLInputElement).files?.[0]).toBe(replacement);
+  expect(within(currentForm).getByRole('button', { name: '作業版を保存' })).toBeDisabled();
+  expect(api.downloadVersionFile).toHaveBeenCalledTimes(1);
+  expect(api.updateWorkingVersion).not.toHaveBeenCalled();
+});
+
+test('古いrefreshのpending状態を移動先の新sessionへ持ち越さず入力を保持する', async () => {
+  const { api, router, client, currentForm } = await backgroundManifestChangeWithUnsentInput();
+  let finishRead!: (value: DocumentDetail) => void;
+  api.getDocument.mockImplementationOnce(() => new Promise(resolve => { finishRead = resolve; }));
+  fireEvent.click(within(currentForm).getByRole('button', { name: '最新状態を確認' }));
+  await waitFor(() => expect(api.getDocument).toHaveBeenCalledTimes(3));
+  await act(async () => router.navigate({ to: '/documents/$documentId', params: { documentId }, search: { view: 'authoring', tab: 'overview' } }));
+  await act(async () => router.navigate({ to: '/documents/$documentId', params: { documentId }, search: { view: 'authoring', tab: 'versions' } }));
+  const nextForm = await open();
+  expect(within(nextForm).getByLabelText('文書名')).toBeEnabled();
+  fireEvent.change(within(nextForm).getByLabelText('文書名'), { target: { value: '新しい編集sessionの文書名' } });
+  const nextFile = await replace(nextForm, '別の利用者の原本A.txt');
+  await act(async () => finishRead({ ...detail(), revision: 8, title: '別の利用者が保存した文書名' }));
+  await waitFor(() => expect(client.isFetching()).toBe(0));
+  const finalForm = screen.getByRole('form', { name: '作業版の原本を編集' });
+  expect(within(finalForm).getByLabelText('文書名')).toHaveValue('新しい編集sessionの文書名');
+  expect((within(finalForm).getAllByLabelText(/^差替ファイル:/)[0] as HTMLInputElement).files?.[0]).toBe(nextFile);
+  expect(api.updateWorkingVersion).not.toHaveBeenCalled();
+});
+
+test('古い編集sessionのrefresh完了は後から始めたrebase結果不明の固定要求を消さない', async () => {
+  const { api, client, router } = setup({ versionOverride: { ...version, capabilities: { ...version.capabilities, rebase: available } } });
+  const form = await open(); await replace(form);
+  act(() => client.setQueryData(['document', documentId, 'authoring'], { ...detail(), revision: 8 }));
+  await waitFor(() => expect(within(form).getByRole('button', { name: '作業版を保存' })).toBeDisabled());
+  let finishManifest!: (value: ReturnType<typeof manifest>) => void;
+  api.getDocument.mockResolvedValue({ ...detail(), revision: 8 });
+  api.getVersionEditManifest.mockImplementationOnce(() => new Promise(resolve => { finishManifest = resolve; }));
+  fireEvent.click(within(form).getByRole('button', { name: '最新状態を確認' }));
+  await waitFor(() => expect(api.getVersionEditManifest).toHaveBeenCalledTimes(2));
+  await act(async () => router.navigate({ to: '/documents/$documentId', params: { documentId }, search: { view: 'authoring', tab: 'versions' } }));
+  api.rebaseWorkingVersion.mockRejectedValueOnce(problem(503, 'COMMIT_OUTCOME_UNKNOWN'));
+  fireEvent.click(await screen.findByRole('button', { name: '現行版へ基準を更新' }));
+  fireEvent.click(await screen.findByRole('button', { name: '基準更新を確定' }));
+  await screen.findByText('保存結果を確認できません');
+  const originalRequest = api.rebaseWorkingVersion.mock.calls[0];
+  const unknown = client.getQueryData(['document-working-operation', documentId]);
+  expect(unknown).toMatchObject({ status: 'unknown' });
+  await act(async () => finishManifest({ ...manifest(), documentRevision: 8 }));
+  await waitFor(() => expect(client.isFetching()).toBe(0));
+  expect(client.getQueryData(['document-working-operation', documentId])).toBe(unknown);
+  fireEvent.click(screen.getByRole('button', { name: '同じ内容で再試行' }));
+  await waitFor(() => expect(api.rebaseWorkingVersion).toHaveBeenCalledTimes(2));
+  expect(api.rebaseWorkingVersion.mock.calls[1]).toEqual(originalRequest);
+});
+
+test('不整合な明示refreshの採用要求を後の背景成功へ持ち越さない', async () => {
+  const { api, client, currentForm, replacement } = await backgroundManifestChangeWithUnsentInput();
+  api.getDocument.mockResolvedValue({ ...detail(), revision: 9, title: '別の利用者が保存した文書名' });
+  fireEvent.click(within(currentForm).getByRole('button', { name: '最新状態を確認' }));
+  await waitFor(() => expect(api.getVersionEditManifest).toHaveBeenCalledTimes(3));
+  await waitFor(() => expect(screen.getByRole('button', { name: '最新状態を確認' })).toBeEnabled());
+  const retained = screen.getByRole('form', { name: '作業版の原本を編集' });
+  fireEvent.change(within(retained).getByLabelText('文書名'), { target: { value: '不整合確認後に保持する入力' } });
+  api.getVersionEditManifest.mockResolvedValue({ ...manifest(), documentRevision: 9, title: '別の利用者が保存した文書名' });
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['document-edit-manifest', documentId, versionId, 'authoring'] });
+    // Let Query's scheduled observer notification settle before asserting the live form.
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+  expect(api.getVersionEditManifest).toHaveBeenCalledTimes(4);
+  const current = screen.getByRole('form', { name: '作業版の原本を編集' });
+  expect(within(current).getByLabelText('文書名')).toHaveValue('不整合確認後に保持する入力');
+  expect((within(current).getAllByLabelText(/^差替ファイル:/)[0] as HTMLInputElement).files?.[0]).toBe(replacement);
+  expect(within(current).getByRole('button', { name: '作業版を保存' })).toBeDisabled();
+  expect(within(current).getByRole('button', { name: '最新状態を確認' })).toBeEnabled();
+  expect(api.updateWorkingVersion).not.toHaveBeenCalled();
+});
+
+test('明示refresh外で始まった新source queryの遅延成功へ採用要求を持ち越さない', async () => {
+  const { api, client } = setup({ published: true });
+  fireEvent.click((await screen.findAllByRole('button', { name: '新しい版を作成' }))[0]!);
+  const form = await screen.findByRole('form', { name: '作業版の原本を編集' });
+  const replacement = await replace(form);
+  const oldDocument = client.getQueryData<DocumentDetail>(['document', documentId, 'published'])!;
+  act(() => client.setQueryData(['document', documentId, 'published'], { ...oldDocument, revision: 8 }));
+  await within(form).findByRole('button', { name: '最新状態を確認' });
+  const nextId = '00000000-0000-4000-8000-000000000005';
+  const publishedVersion = { ...version, versionId: nextId, lifecycleState: 'published' as const, isCurrent: true, capabilities: { ...version.capabilities, edit: denied } };
+  api.getDocument.mockResolvedValue({ ...oldDocument, revision: 9, currentVersionId: nextId, documentVersionId: nextId, title: '新しい公開版', displayVersion: { ...publishedVersion, lifecycleState: 'PUBLISHED' } });
+  api.listDocumentVersions.mockResolvedValue({ items: [publishedVersion], nextCursor: null });
+  api.getDocumentVersion.mockResolvedValue(publishedVersion);
+  let finishA!: (value: unknown) => void, finishB!: (value: unknown) => void;
+  api.getVersionEditManifest.mockImplementation((_documentId, target) => new Promise(resolve => { if (target === baseId) finishA = resolve; else finishB = resolve; }));
+  fireEvent.click(within(form).getByRole('button', { name: '最新状態を確認' }));
+  await waitFor(() => expect(api.getVersionEditManifest).toHaveBeenCalledWith(documentId, nextId, 'published'));
+  await act(async () => finishA({ ...manifest(), sourceVersionId: baseId, purpose: 'published', documentRevision: 8 }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '最新状態を確認' })).toBeEnabled());
+  const retained = screen.getByRole('form', { name: '作業版の原本を編集' });
+  expect(within(retained).getByLabelText('文書名')).toBeEnabled();
+  fireEvent.change(within(retained).getByLabelText('文書名'), { target: { value: 'B応答前に保持する入力' } });
+  await act(async () => { finishB({ ...manifest(), sourceVersionId: nextId, purpose: 'published', documentRevision: 9, title: '新しい公開版' }); await new Promise(resolve => setTimeout(resolve, 0)); });
+  const current = screen.getByRole('form', { name: '作業版の原本を編集' });
+  expect(within(current).getByLabelText('文書名')).toHaveValue('B応答前に保持する入力');
+  expect((within(current).getAllByLabelText(/^差替ファイル:/)[0] as HTMLInputElement).files?.[0]).toBe(replacement);
+  expect(within(current).getByRole('button', { name: '新しい作業版を作成' })).toBeDisabled();
+  expect(api.createVersion).not.toHaveBeenCalled();
+});
+
+test('最新document readの403をcache内の旧success値で上書きせず入力を保持して停止する', async () => {
+  const { api, client } = setup(); const form = await open(); const replacement = await replace(form);
+  fireEvent.change(within(form).getByLabelText('文書名'), { target: { value: '権限確認前の未送信文書名' } });
+  api.getDocument.mockRejectedValueOnce(problem(403, 'FORBIDDEN'));
+  await act(async () => { await client.invalidateQueries({ queryKey: ['document', documentId, 'authoring'] }); await new Promise(resolve => setTimeout(resolve, 0)); });
+  expect(client.getQueryState(['document', documentId, 'authoring'])?.status).toBe('error');
+  expect(client.getQueryData(['document', documentId, 'authoring'])).toBeDefined();
+  const retained = screen.getByRole('form', { name: '作業版の原本を編集' });
+  expect(within(retained).getByLabelText('文書名')).toHaveValue('権限確認前の未送信文書名');
+  expect((within(retained).getAllByLabelText(/^差替ファイル:/)[0] as HTMLInputElement).files?.[0]).toBe(replacement);
+  expect(within(retained).getByRole('button', { name: '作業版を保存' })).toBeDisabled();
+  fireEvent.submit(retained); expect(api.updateWorkingVersion).not.toHaveBeenCalled();
 });
