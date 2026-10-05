@@ -1,5 +1,16 @@
 # Organization合成Agent — main統合候補
 
+## 2026-10-05 00:44 UTC — 公開再開後の実受入を診断
+
+- 所有者の具体的な再試行指示により同じ統合treeを公開し、PR62は `c42f0d973eb344db54ae67a90d67ec784f8b41bd` / tree `a71c000d6dc54ac11a7c1a0cc3198f65ac9b6167` へ更新した。旧PR62とmain `f9d6f5ff` の両parentを保持し、main自体は変更していない
+- [通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37247215056)のRust1550件/9skipと既存Search jobを含む、runtimeとrequired-check以外のjobs、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37247215077)と[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37247215045)は成功した
+- [Organization実runtime](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37247215056/job/111567351659)は実DB/transaction/初期化/2名Agent journey/両HTTP server再起動まで成功し、persistenceのGETでHTTP200期待に失敗した。通常shutdownは未実行、finally cleanupは所有一時container削除成功。公開artifact0。統合headは未受入であり、失敗を合格と扱わない
+- 現診断では実statusと対象readが分からないため、既存get()の失敗時だけHTTP statusと固定13分類を記録する。URL/ID/bodyは追加公開せず、元assert/例外/通信を維持する。製品コード・DB・認可やretry/timeoutは変更しない。純粋RED2→回帰43件とruntime型成功、controllerの対象20件/型も成功
+
+次のexact action: 診断3pathの限定独立レビュー後、同じhosted条件で新exact headを実行し、失敗箇所を確定する。ローカルDB/socket/browserは実行しない。以下は以前の公開準備と資格の履歴。
+
+---
+
 ## 2026-10-04 17:27 UTC — Search統合済みmainとの再統合
 
 - mainは[PR61](https://github.com/AIrisu-072/knowledge-platform/pull/61)の統合により `f9d6f5ff778c95eaeed0ce9d0f714f80798ff4af` へ進んだ。PR62の公開head `c43039676dacad866462263986a95b35ed42550d` を第一parentに保持し、この新mainを追加parentにする

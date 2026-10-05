@@ -63,7 +63,34 @@ export function readRuntimeContext(): RuntimeContext {
 
 export async function get<T>(request: APIRequestContext, origin: string, path: string): Promise<T> {
   const response = await request.get(`${new URL(origin).origin}${path}`);
-  expect(response.status(), `GET ${path} returned an unexpected status`).toBe(200);
+  try {
+    expect(response.status(), `GET ${path} returned an unexpected status`).toBe(200);
+  } catch (error) {
+    try {
+      // Closed failure-only metadata: no URL, ID, response body or additional request.
+      const routes: [RegExp, string][] = [
+        [/^\/v1\/organization\/session$/, 'session'],
+        [/^\/v1\/organization\/tasks\?view=(?:context|queue)$/, 'task-list'],
+        [/^\/v1\/organization\/tasks\/[A-Za-z0-9_-]+$/, 'task'],
+        [/^\/v1\/organization\/handoff-snapshots\/[A-Za-z0-9_-]+$/, 'snapshot'],
+        [/^\/v1\/organization\/return-instructions\/[A-Za-z0-9_-]+$/, 'return-instruction'],
+        [/^\/v1\/organization\/working-artifacts\/[A-Za-z0-9_-]+$/, 'artifact'],
+        [/^\/v1\/organization\/operations\/[A-Za-z0-9_-]+$/, 'operation'],
+        [/^\/v1\/organization\/(?:evidence\/[A-Za-z0-9_-]+|tasks\/[A-Za-z0-9_-]+\/evidence)$/, 'evidence'],
+        [/^\/v1\/organization\/(?:findings\/[A-Za-z0-9_-]+|tasks\/[A-Za-z0-9_-]+\/findings)$/, 'finding'],
+        [/^\/v1\/organization\/findings\/[A-Za-z0-9_-]+\/decisions$/, 'decision'],
+        [/^\/v1\/organization\/agent-executions\/[A-Za-z0-9_-]+$/, 'agent'],
+        [/^\/v1\/organization\/agent-executions\/[A-Za-z0-9_-]+\/result$/, 'agent-result'],
+        [/^\/v1\/documents\/[A-Za-z0-9_-]+(?:\?view=published|\/revisions\?pageSize=100|\/versions\/[A-Za-z0-9_-]+\/files\?purpose=published)$/, 'document'],
+      ];
+      const endpoint = path.length <= 2048 && !/[\r\n]/.test(path) ? routes.find(([route]) => route.test(path))?.[1] : undefined;
+      const status = response.status();
+      if (endpoint && Number.isInteger(status) && status >= 100 && status <= 599 && status !== 200) {
+        test.info().annotations.push({ type: 'organization-read-failure', description: `${status}:${endpoint}` });
+      }
+    } catch { /* Diagnostics must not replace the original status assertion. */ }
+    throw error;
+  }
   return await response.json() as T;
 }
 export async function assertSessions(request: APIRequestContext, context: RuntimeContext) {
