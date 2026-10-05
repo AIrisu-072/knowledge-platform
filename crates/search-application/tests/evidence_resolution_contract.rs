@@ -543,7 +543,9 @@ async fn mismatched_binding_and_assertion_fields_do_not_become_support() {
     )
     .await
     .unwrap();
-    assert_eq!(claims[0].state, ClaimState::Unknown);
+    // Assertions about another subject or predicate are outside the Claim's
+    // judgement: no Claim, and the requirement stays unresolved.
+    assert!(claims.is_empty());
     assert_eq!(
         assess_claim_evidence(&requirement, &claims).unwrap(),
         EvidenceSufficiency::Unresolved

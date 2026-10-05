@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 2026-10-06 — Search Platform本番化プログラム
+
+- main `ce8ed4f` から `feat/search-platform-production-20261006` のDraft PR 1本で進める。[状態](search-platform-production-program-status.md)と[計画](../programs/search-platform-production/plan.md)が再開先
+- 範囲はA1（複数Sourceの充足）、A2（抽出の再試行、低優先）、B4〜B7（永続世代の読取り、ホスト登録一覧の公開、差分世代の公開、Graphの三者権限取消）、D（P3の改善）、E（Vectorの本番実装）。旧A3と本番前作業は範囲外
+- mergeはCIがすべて成功した後に所有者が確認してから。deployはしない
+
+---
+
 ## 2026-10-05 12:12 UTC — System Root直下のフォルダー作成GUI
 
 - PR75統合main `495dedb39` を基点に、既存root read/create APIだけを通常フォルダー欄へ接続する。[状況](document-root-folder-create-status.md)と[小計画](../plans/2026-10-05-document-root-folder-create.md)を今回の再開先とする

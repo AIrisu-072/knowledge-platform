@@ -662,9 +662,7 @@ fn ids(value: &Value, list: &str, field: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// (Claim, Source, value) of every supported evidence entry. Candidates of
-/// other visible Sources cannot evaluate a Source-owned Claim, so a union
-/// Discover is judged by its supported evidence, not by sufficiency.
+/// (Claim, Source, value) of every supported evidence entry.
 fn supported(value: &Value) -> BTreeSet<(String, String, String)> {
     value["evidence"]
         .as_array()
@@ -838,6 +836,15 @@ async fn document_real_db_fs_and_remote_real_tcp_search_discover_get_sources() {
         "{}",
         evaluated.json()
     );
+    // Candidates of the other visible Source cannot evaluate this
+    // Document-owned Claim; they are outside its judgement, so the union
+    // Discover is sufficient.
+    assert_eq!(
+        evaluated.json()["evidenceSufficiency"],
+        "sufficient",
+        "{}",
+        evaluated.json()
+    );
     assert!(
         ids(&evaluated.json(), "qualifiedResources", "resourceId").contains(&first.to_string())
     );
@@ -848,6 +855,12 @@ async fn document_real_db_fs_and_remote_real_tcp_search_discover_get_sources() {
     assert_eq!(remote.status, 200, "{}", remote.json());
     assert!(
         supported(&remote.json()).contains(&fact(world.remote_claim, world.remote, "規程 R")),
+        "{}",
+        remote.json()
+    );
+    assert_eq!(
+        remote.json()["evidenceSufficiency"],
+        "sufficient",
         "{}",
         remote.json()
     );

@@ -1599,8 +1599,45 @@ impl<'a> DiscoveryService<'a> {
                 // No verified span: the Claim stays Unknown without saying why.
                 claims.push(Claim::new(exact, ClaimState::Unknown));
             }
+            // A required Claim judged by no pinned Source stays visible as
+            // Unknown and says why; Sources that cannot evaluate a Claim never
+            // contribute an Unknown of their own.
+            let mut unevaluable = Vec::new();
+            if let Some(requirement) = &generic_requirement
+                && !qualified.is_empty()
+            {
+                for claim_id in &requirement.required_claims {
+                    if claims.iter().any(|claim| claim.claim_id == *claim_id) {
+                        continue;
+                    }
+                    claims.push(Claim::new(*claim_id, ClaimState::Unknown));
+                    let mut evaluable = false;
+                    for pin in pins.values() {
+                        if self
+                            .ports
+                            .selectors
+                            .selector_for(pin.key, *claim_id)
+                            .await?
+                            .is_some()
+                        {
+                            evaluable = true;
+                            break;
+                        }
+                    }
+                    if !evaluable {
+                        unevaluable.push(InformationGap::new(
+                            format!("no_evaluating_source:{}", claim_id.as_uuid()),
+                            GapReason::UnsupportedCoverage,
+                            true,
+                        ));
+                    }
+                }
+            }
             let sufficiency = assess_claim_evidence(&request.need.completion_requirement, &claims)?;
             let mut gaps = route_gaps.to_vec();
+            for gap in unevaluable {
+                push_gap(&mut gaps, gap);
+            }
             // A visible factual conflict remains an InformationGap even when an
             // independent hard gate rejects that Resource. Federation exposes
             // rejected reasons but does not carry their gaps into the result.

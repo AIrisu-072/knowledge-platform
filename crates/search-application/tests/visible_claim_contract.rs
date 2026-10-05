@@ -241,6 +241,12 @@ async fn required_claim_not_dropped_or_sufficient() {
             .iter()
             .any(|gap| gap.code == PublicGapCode::RequiredClaimUnresolved && gap.blocking)
     );
+    // No visible Source can evaluate the unknown Claim, and the result says so.
+    assert!(
+        view.gaps
+            .iter()
+            .any(|gap| gap.code == PublicGapCode::UnsupportedCoverage && gap.blocking)
+    );
 }
 
 #[tokio::test]
