@@ -1,0 +1,10 @@
+.module { min-width: 0; overflow-wrap: anywhere; }
+.module h3 { margin-top: 20px; font-size: 15px; }
+.module h4 { font-size: 14px; }
+.module label { display: grid; gap: 5px; font-size: 13px; }
+.module select { max-width: 100%; min-width: 0; padding: 7px; margin-bottom: 10px; }
+.module ul { padding-left: 20px; }
+.module li { margin: 10px 0; }
+.module small { color: var(--color-text-muted); }
+.module button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--color-border-strong); border-radius: 6px; background: var(--color-surface); color: var(--color-text); cursor: pointer; }
+.module button:disabled { cursor: not-allowed; color: var(--color-text-muted); background: var(--color-canvas); }
