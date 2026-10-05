@@ -749,15 +749,15 @@ dependencies = [
 
 [[package]]
 name = "const-oid"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
-
-[[package]]
-name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
+
+[[package]]
+name = "const-oid"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
 name = "core-foundation"
@@ -4127,10 +4127,19 @@ dependencies = [
 name = "search-extraction-worker"
 version = "0.0.0"
 dependencies = [
+ "csv",
  "document-sandbox-runner",
+ "encoding_rs",
+ "html5ever",
+ "lopdf",
+ "markup5ever_rcdom",
+ "pdfium-render",
+ "quick-xml 0.42.0",
  "search-core",
  "search-extraction-core",
  "sha2 0.11.0",
+ "unicode-normalization",
+ "zip 8.6.0",
 ]
 
 [[package]]
