@@ -2,6 +2,7 @@
 
 mod body;
 mod index;
+mod persist;
 mod query;
 mod schema;
 
@@ -13,3 +14,4 @@ pub use index::UnitIndexFault;
 pub use index::{
     LexicalBuildInput, LexicalDocument, LexicalIndexError, SourceSuppliedBody, TantivyLexicalIndex,
 };
+pub use persist::PersistedLexical;

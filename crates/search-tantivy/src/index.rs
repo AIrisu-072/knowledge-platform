@@ -16,7 +16,8 @@ use crate::schema::{
 
 /// Content explicitly furnished by the owning Source for indexing. There is
 /// intentionally no conversion from ResourceBody or DSI extraction evidence.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SourceSuppliedBody {
     source_id: SourceId,
     text: String,
@@ -37,7 +38,8 @@ impl SourceSuppliedBody {
 
 /// Source-provided lexical fields. The adapter never extracts or infers text
 /// from a DiscoverableResource or a document-inspection result.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LexicalDocument {
     pub resource_ref: ResourceId,
     pub kind: ResourceKind,
@@ -136,6 +138,10 @@ pub enum LexicalIndexError {
     UnitEncoding,
     #[error("lexical generation is not body-ready")]
     NotBodyReady,
+    #[error("persisted lexical generation is missing, foreign or inconsistent")]
+    PersistedMismatch,
+    #[error("lexical index file I/O failed")]
+    Io,
     #[error(transparent)]
     Tantivy(#[from] tantivy::TantivyError),
 }
@@ -159,7 +165,7 @@ pub(crate) struct GenerationIndex {
 /// segments remain readable when another generation is built.
 #[derive(Default)]
 pub struct TantivyLexicalIndex {
-    generations: RwLock<BTreeMap<ProjectionGenerationKey, Arc<GenerationIndex>>>,
+    pub(crate) generations: RwLock<BTreeMap<ProjectionGenerationKey, Arc<GenerationIndex>>>,
 }
 
 impl TantivyLexicalIndex {
@@ -186,6 +192,28 @@ impl TantivyLexicalIndex {
         manifest: ProjectionGenerationManifest,
         source: &DiscoverableSource,
         input: LexicalBuildInput,
+    ) -> Result<(), LexicalIndexError> {
+        self.assemble(manifest, source, input, None)
+    }
+
+    /// Builds the generation into `dir` (Resource index, Unit index and the
+    /// Source-supplied input sidecar) and registers it for queries.
+    pub fn build_generation_at(
+        &self,
+        manifest: ProjectionGenerationManifest,
+        source: &DiscoverableSource,
+        input: LexicalBuildInput,
+        dir: &std::path::Path,
+    ) -> Result<(), LexicalIndexError> {
+        self.assemble(manifest, source, input, Some(dir))
+    }
+
+    fn assemble(
+        &self,
+        manifest: ProjectionGenerationManifest,
+        source: &DiscoverableSource,
+        input: LexicalBuildInput,
+        dir: Option<&std::path::Path>,
     ) -> Result<(), LexicalIndexError> {
         let key = manifest.key();
         if source.source_id != key.source_id || input.source_id != key.source_id {
@@ -265,10 +293,18 @@ impl TantivyLexicalIndex {
                 }
             }
         }
+        if let Some(dir) = dir {
+            crate::persist::write_sidecar(dir, &manifest, source, &input)?;
+        }
         let unit_index = input
             .body_units
             .as_deref()
-            .map(build_unit_index)
+            .map(|units| match dir {
+                Some(dir) => {
+                    crate::body::build_unit_index_at(units, &dir.join(crate::persist::UNITS_DIR))
+                }
+                None => build_unit_index(units),
+            })
             .transpose()?;
         let mut documents = input.documents;
         documents.sort_by_key(|document| document.resource_ref);
@@ -280,7 +316,14 @@ impl TantivyLexicalIndex {
         }
 
         let (schema, fields) = lexical_schema();
-        let index = Index::create_in_ram(schema);
+        let index = match dir {
+            Some(dir) => {
+                let path = dir.join(crate::persist::RESOURCES_DIR);
+                std::fs::create_dir_all(&path).map_err(|_| LexicalIndexError::Io)?;
+                Index::create_in_dir(path, schema)?
+            }
+            None => Index::create_in_ram(schema),
+        };
         let mut writer = index.writer(15_000_000)?;
         let mut metadata = BTreeMap::new();
         for document in documents {

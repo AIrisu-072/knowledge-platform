@@ -2,6 +2,7 @@
 
 pub mod full_guard;
 pub mod generation_registration;
+pub mod lexical_artifact;
 pub mod payload;
 pub mod source_lease;
 pub mod source_registration;

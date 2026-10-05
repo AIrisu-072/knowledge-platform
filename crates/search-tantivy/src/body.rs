@@ -80,7 +80,39 @@ fn metadata_json(unit: &KnowledgeUnit) -> Result<String, LexicalIndexError> {
 
 pub(crate) fn build_unit_index(units: &[KnowledgeUnit]) -> Result<UnitIndex, LexicalIndexError> {
     let (schema, fields) = unit_schema();
-    let index = Index::create_in_ram(schema);
+    fill_unit_index(Index::create_in_ram(schema), fields, units)
+}
+
+pub(crate) fn build_unit_index_at(
+    units: &[KnowledgeUnit],
+    dir: &std::path::Path,
+) -> Result<UnitIndex, LexicalIndexError> {
+    std::fs::create_dir_all(dir).map_err(|_| LexicalIndexError::Io)?;
+    let (schema, fields) = unit_schema();
+    fill_unit_index(Index::create_in_dir(dir, schema)?, fields, units)
+}
+
+/// Opens a committed Unit index and checks it has the Unit schema.
+pub(crate) fn open_unit_index(dir: &std::path::Path) -> Result<UnitIndex, LexicalIndexError> {
+    let index = Index::open_in_dir(dir)?;
+    let (schema, fields) = unit_schema();
+    if index.schema() != schema {
+        return Err(LexicalIndexError::PersistedMismatch);
+    }
+    let reader = index.reader()?;
+    reader.reload()?;
+    Ok(UnitIndex {
+        index,
+        reader,
+        fields,
+    })
+}
+
+fn fill_unit_index(
+    index: Index,
+    fields: UnitFields,
+    units: &[KnowledgeUnit],
+) -> Result<UnitIndex, LexicalIndexError> {
     let mut writer = index.writer(15_000_000)?;
     for unit in units {
         writer.add_document(doc!(
@@ -99,6 +131,26 @@ pub(crate) fn build_unit_index(units: &[KnowledgeUnit]) -> Result<UnitIndex, Lex
         reader,
         fields,
     })
+}
+
+/// Every committed Unit document, decoded back to the stored KnowledgeUnit.
+pub(crate) fn stored_units(units: &UnitIndex) -> Result<Vec<KnowledgeUnit>, LexicalIndexError> {
+    let searcher = units.reader.searcher();
+    let mut out = Vec::new();
+    for (segment_ord, segment) in searcher.segment_readers().iter().enumerate() {
+        let alive = segment.alive_bitset();
+        for doc_id in 0..segment.max_doc() {
+            if alive.is_some_and(|bits| !bits.is_alive(doc_id)) {
+                continue;
+            }
+            let document: TantivyDocument = searcher.doc(tantivy::DocAddress::new(
+                u32::try_from(segment_ord).map_err(|_| LexicalIndexError::UnitEncoding)?,
+                doc_id,
+            ))?;
+            out.push(read_unit(&document, units.fields)?);
+        }
+    }
+    Ok(out)
 }
 
 pub(crate) fn enumerate(

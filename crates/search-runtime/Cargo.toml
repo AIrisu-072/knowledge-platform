@@ -10,8 +10,10 @@ outbox-delivery = { version = "0.0.0", path = "../outbox-delivery" }
 search-application = { version = "0.0.0", path = "../search-application" }
 search-projection-memory = { version = "0.0.0", path = "../search-projection-memory" }
 search-source-document = { version = "0.0.0", path = "../search-source-document" }
+search-tantivy = { version = "0.0.0", path = "../search-tantivy" }
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 sqlx.workspace = true
 time.workspace = true
 tokio.workspace = true

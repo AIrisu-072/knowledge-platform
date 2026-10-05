@@ -275,7 +275,7 @@ pub(crate) fn derive_coverage(
 /// Bijective seal: every Supported/Partial Unit has exactly one searchable
 /// document with the same identity, binding and text, and no other document
 /// exists. Unsupported and failed items therefore contribute zero documents.
-pub(crate) fn seal_lexical(
+pub fn seal_lexical(
     manifest: &BodyUnitManifest,
     documents: &[IndexedUnitDoc],
 ) -> Result<(), SearchError> {

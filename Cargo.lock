@@ -4180,8 +4180,10 @@ dependencies = [
  "search-extraction-core",
  "search-projection-memory",
  "search-source-document",
+ "search-tantivy",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "sqlx",
  "testcontainers",
  "time",
@@ -4223,6 +4225,7 @@ version = "0.0.0"
 dependencies = [
  "search-application",
  "search-core",
+ "serde",
  "serde_json",
  "sha2 0.11.0",
  "tantivy",

@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 search-core = { version = "0.0.0", path = "../search-core" }
 search-application = { version = "0.0.0", path = "../search-application" }
+serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 tantivy.workspace = true
