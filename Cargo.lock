@@ -4194,6 +4194,7 @@ dependencies = [
  "search-application",
  "search-extraction-core",
  "search-graph",
+ "search-graph-memory",
  "search-projection-memory",
  "search-source-document",
  "search-tantivy",

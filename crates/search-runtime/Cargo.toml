@@ -23,5 +23,6 @@ uuid.workspace = true
 
 [dev-dependencies]
 search-extraction-core = { version = "0.0.0", path = "../search-extraction-core" }
+search-graph-memory = { version = "0.0.0", path = "../search-graph-memory" }
 testcontainers.workspace = true
 document-repository-postgres = { version = "0.0.0", path = "../document-repository-postgres" }

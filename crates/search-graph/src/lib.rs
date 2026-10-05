@@ -6,6 +6,7 @@
 
 pub mod canonical;
 pub mod migrate;
+pub mod reader;
 pub mod store;
 
 pub use canonical::{
@@ -14,6 +15,7 @@ pub use canonical::{
     relation_digest,
 };
 pub use migrate::migrate;
+pub use reader::PostgresGraphReader;
 pub use store::PostgresGraphStore;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

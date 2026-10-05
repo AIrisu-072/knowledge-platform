@@ -17,6 +17,7 @@ use search_core::projection::ProjectionGenerationKey;
 use search_core::relation::{RelationNamespace, TypedRelationInstance};
 use search_core::resource::ResourceKind;
 use serde_json::Value;
+use sqlx::postgres::PgRow;
 use sqlx::{PgConnection, PgPool, Row};
 use uuid::Uuid;
 
@@ -331,26 +332,8 @@ pub(crate) async fn load_rows(
     .fetch_all(&mut *connection)
     .await?;
     let mut relations = Vec::with_capacity(relation_rows.len());
-    for row in relation_rows {
-        let payload: Value = row.try_get("payload")?;
-        if payload.get("dto_version").and_then(Value::as_str) != Some(RELATION_DTO_VERSION)
-            || payload.as_object().is_none_or(|object| object.len() != 2)
-        {
-            return Err(GraphError::Integrity("relation payload version"));
-        }
-        let relation: TypedRelationInstance = serde_json::from_value(
-            payload
-                .get("relation")
-                .cloned()
-                .ok_or(GraphError::Integrity("relation payload"))?,
-        )
-        .map_err(|_| GraphError::Integrity("relation payload"))?;
-        if relation.relation_id.as_uuid() != row.try_get::<Uuid, _>("relation_id")?
-            || relation_digest(&relation)? != row.try_get::<String, _>("canonical_digest")?
-        {
-            return Err(GraphError::Integrity("relation digest"));
-        }
-        relations.push(relation);
+    for row in &relation_rows {
+        relations.push(relation_from_row(row)?);
     }
     let participant_rows = sqlx::query(
         "SELECT relation_id, ordinal, role, resource_id FROM search_graph.participant \
@@ -384,17 +367,12 @@ pub(crate) async fn load_rows(
         return Err(GraphError::Integrity("orphan participant rows"));
     }
 
-    let resource_rows = sqlx::query(
-        "SELECT resource_id,resource_kind,resource_version_id,mapping_kind,owner_document_id, \
-         folder_id,version_id,adapter_id,native_id, \
-         valid_from_nanos::text AS valid_from_nanos,valid_from_offset, \
-         valid_to_nanos::text AS valid_to_nanos,valid_to_offset, \
-         freshness_anchor_nanos::text AS freshness_anchor_nanos,freshness_anchor_offset, \
-         freshness_basis,effective_from_nanos::text AS effective_from_nanos, \
-         effective_from_offset,effective_to_nanos::text AS effective_to_nanos, \
-         effective_to_offset FROM search_graph.resource \
-         WHERE source_id=$1 AND generation_id=$2 ORDER BY resource_id",
-    )
+    let resource_rows = sqlx::query(concat!(
+        "SELECT ",
+        resource_columns!(),
+        " FROM search_graph.resource WHERE source_id=$1 AND generation_id=$2 \
+         ORDER BY resource_id"
+    ))
     .bind(key.source_id.as_uuid())
     .bind(key.generation_id.as_uuid())
     .fetch_all(&mut *connection)
@@ -411,78 +389,125 @@ pub(crate) async fn load_rows(
         }
     }
     let mut resources = Vec::with_capacity(resource_rows.len());
-    for row in resource_rows {
+    for row in &resource_rows {
         let resource_id: Uuid = row.try_get("resource_id")?;
-        let mapping = match row.try_get::<String, _>("mapping_kind")?.as_str() {
-            "DOCUMENT" => GraphSourceMapping::Document {
-                document_id: row
-                    .try_get::<Option<Uuid>, _>("owner_document_id")?
-                    .ok_or(GraphError::Integrity("owner"))?,
-            },
-            "FOLDER_PLACEMENT" => GraphSourceMapping::FolderPlacement {
-                document_id: row
-                    .try_get::<Option<Uuid>, _>("owner_document_id")?
-                    .ok_or(GraphError::Integrity("owner"))?,
-                folder_id: row
-                    .try_get::<Option<Uuid>, _>("folder_id")?
-                    .ok_or(GraphError::Integrity("folder"))?,
-            },
-            "VERSION" => GraphSourceMapping::Version {
-                document_id: row
-                    .try_get::<Option<Uuid>, _>("owner_document_id")?
-                    .ok_or(GraphError::Integrity("owner"))?,
-                version_id: row
-                    .try_get::<Option<Uuid>, _>("version_id")?
-                    .ok_or(GraphError::Integrity("version"))?,
-            },
-            "REGISTERED" => GraphSourceMapping::Registered {
-                adapter_id: row
-                    .try_get::<Option<String>, _>("adapter_id")?
-                    .ok_or(GraphError::Integrity("adapter"))?,
-                native_id: row
-                    .try_get::<Option<String>, _>("native_id")?
-                    .ok_or(GraphError::Integrity("native"))?,
-            },
-            _ => return Err(GraphError::Integrity("mapping kind")),
-        };
-        let columns = TemporalColumns {
-            resource_ref: ResourceId::from_uuid(resource_id),
-            valid_from: instant(
-                row.try_get("valid_from_nanos")?,
-                row.try_get("valid_from_offset")?,
-            )?,
-            valid_to: instant(
-                row.try_get("valid_to_nanos")?,
-                row.try_get("valid_to_offset")?,
-            )?,
-            freshness_anchor_at: instant(
-                row.try_get("freshness_anchor_nanos")?,
-                row.try_get("freshness_anchor_offset")?,
-            )?,
-            freshness_basis: row.try_get("freshness_basis")?,
-            effective_from: instant(
-                row.try_get("effective_from_nanos")?,
-                row.try_get("effective_from_offset")?,
-            )?,
-            effective_to: instant(
-                row.try_get("effective_to_nanos")?,
-                row.try_get("effective_to_offset")?,
-            )?,
-        };
         let mut relations_here = attached.remove(&resource_id).unwrap_or_default();
         relations_here.sort_by_key(|relation| relation.relation_id);
-        resources.push(GraphResourceRecord {
-            resource_ref: ResourceId::from_uuid(resource_id),
-            kind: kind_from(&row.try_get::<String, _>("resource_kind")?)?,
-            resource_version_ref: row
-                .try_get::<Option<Uuid>, _>("resource_version_id")?
-                .map(ResourceVersionId::from_uuid),
-            temporal: decode_temporal(&columns)?,
-            mapping,
-            attached_relations: relations_here,
-        });
+        resources.push(resource_from_row(row, relations_here)?);
     }
     Ok((resources, relations))
+}
+
+/// Column list decoded by [`resource_from_row`]; instants travel as text.
+macro_rules! resource_columns {
+    () => {
+        "resource_id,resource_kind,resource_version_id, \
+     mapping_kind,owner_document_id,folder_id,version_id,adapter_id,native_id, \
+     valid_from_nanos::text AS valid_from_nanos,valid_from_offset, \
+     valid_to_nanos::text AS valid_to_nanos,valid_to_offset, \
+     freshness_anchor_nanos::text AS freshness_anchor_nanos,freshness_anchor_offset, \
+     freshness_basis,effective_from_nanos::text AS effective_from_nanos, \
+     effective_from_offset,effective_to_nanos::text AS effective_to_nanos,effective_to_offset"
+    };
+}
+pub(crate) use resource_columns;
+
+/// Rebuilds one typed relation from its versioned payload and checks the
+/// stored ID and canonical digest.
+pub(crate) fn relation_from_row(row: &PgRow) -> Result<TypedRelationInstance, GraphError> {
+    let payload: Value = row.try_get("payload")?;
+    if payload.get("dto_version").and_then(Value::as_str) != Some(RELATION_DTO_VERSION)
+        || payload.as_object().is_none_or(|object| object.len() != 2)
+    {
+        return Err(GraphError::Integrity("relation payload version"));
+    }
+    let relation: TypedRelationInstance = serde_json::from_value(
+        payload
+            .get("relation")
+            .cloned()
+            .ok_or(GraphError::Integrity("relation payload"))?,
+    )
+    .map_err(|_| GraphError::Integrity("relation payload"))?;
+    if relation.relation_id.as_uuid() != row.try_get::<Uuid, _>("relation_id")?
+        || relation_digest(&relation)? != row.try_get::<String, _>("canonical_digest")?
+    {
+        return Err(GraphError::Integrity("relation digest"));
+    }
+    Ok(relation)
+}
+
+/// Rebuilds one resource record from a [`RESOURCE_COLUMNS`] row.
+pub(crate) fn resource_from_row(
+    row: &PgRow,
+    attached_relations: Vec<TypedRelationInstance>,
+) -> Result<GraphResourceRecord, GraphError> {
+    let resource_id: Uuid = row.try_get("resource_id")?;
+    let mapping = match row.try_get::<String, _>("mapping_kind")?.as_str() {
+        "DOCUMENT" => GraphSourceMapping::Document {
+            document_id: row
+                .try_get::<Option<Uuid>, _>("owner_document_id")?
+                .ok_or(GraphError::Integrity("owner"))?,
+        },
+        "FOLDER_PLACEMENT" => GraphSourceMapping::FolderPlacement {
+            document_id: row
+                .try_get::<Option<Uuid>, _>("owner_document_id")?
+                .ok_or(GraphError::Integrity("owner"))?,
+            folder_id: row
+                .try_get::<Option<Uuid>, _>("folder_id")?
+                .ok_or(GraphError::Integrity("folder"))?,
+        },
+        "VERSION" => GraphSourceMapping::Version {
+            document_id: row
+                .try_get::<Option<Uuid>, _>("owner_document_id")?
+                .ok_or(GraphError::Integrity("owner"))?,
+            version_id: row
+                .try_get::<Option<Uuid>, _>("version_id")?
+                .ok_or(GraphError::Integrity("version"))?,
+        },
+        "REGISTERED" => GraphSourceMapping::Registered {
+            adapter_id: row
+                .try_get::<Option<String>, _>("adapter_id")?
+                .ok_or(GraphError::Integrity("adapter"))?,
+            native_id: row
+                .try_get::<Option<String>, _>("native_id")?
+                .ok_or(GraphError::Integrity("native"))?,
+        },
+        _ => return Err(GraphError::Integrity("mapping kind")),
+    };
+    let columns = TemporalColumns {
+        resource_ref: ResourceId::from_uuid(resource_id),
+        valid_from: instant(
+            row.try_get("valid_from_nanos")?,
+            row.try_get("valid_from_offset")?,
+        )?,
+        valid_to: instant(
+            row.try_get("valid_to_nanos")?,
+            row.try_get("valid_to_offset")?,
+        )?,
+        freshness_anchor_at: instant(
+            row.try_get("freshness_anchor_nanos")?,
+            row.try_get("freshness_anchor_offset")?,
+        )?,
+        freshness_basis: row.try_get("freshness_basis")?,
+        effective_from: instant(
+            row.try_get("effective_from_nanos")?,
+            row.try_get("effective_from_offset")?,
+        )?,
+        effective_to: instant(
+            row.try_get("effective_to_nanos")?,
+            row.try_get("effective_to_offset")?,
+        )?,
+    };
+    Ok(GraphResourceRecord {
+        resource_ref: ResourceId::from_uuid(resource_id),
+        kind: kind_from(&row.try_get::<String, _>("resource_kind")?)?,
+        resource_version_ref: row
+            .try_get::<Option<Uuid>, _>("resource_version_id")?
+            .map(ResourceVersionId::from_uuid),
+        temporal: decode_temporal(&columns)?,
+        mapping,
+        attached_relations,
+    })
 }
 
 /// Digest, mapping and counts recomputed from rows, checked against the parent.

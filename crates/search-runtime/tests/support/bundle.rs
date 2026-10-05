@@ -29,7 +29,8 @@ pub use search_application::search_core::source::{
 };
 pub use search_application::search_core::temporal::TemporalDiscoveryProfile;
 pub use search_application::source_registration::{
-    RegistrationNamespace, SourceRegistrationLedgerPort, SyntheticHostRegistrationAuthority,
+    CompleteDesiredRegistrations, RegistrationNamespace, SourceRegistrationCatalog,
+    SourceRegistrationLedgerPort, SyntheticHostRegistrationAuthority,
 };
 pub use search_graph::{GRAPH_SCHEMA_VERSION, PostgresGraphStore, canonical_mapping_digest};
 pub use search_projection_memory::generation_digest;
@@ -199,6 +200,11 @@ pub struct Fixture {
     pub admin: PgPool,
     pub registrar: PgGenerationRegistrar,
     pub root: PathBuf,
+    pub ledger: Arc<PgSourceRegistrationLedger>,
+    pub host: Arc<SyntheticHostRegistrationAuthority>,
+    pub options: sqlx::postgres::PgConnectOptions,
+    pub document_desired: CompleteDesiredRegistrations,
+    pub remote_desired: CompleteDesiredRegistrations,
 }
 
 impl Drop for Fixture {
@@ -208,12 +214,12 @@ impl Drop for Fixture {
 }
 
 pub async fn fixture() -> Fixture {
-    let (guard, admin, _) = super::support::postgres::postgres("ready_bundle_test").await;
+    let (guard, admin, options) = super::support::postgres::postgres("ready_bundle_test").await;
     document_repository_postgres::migrate(&admin).await.unwrap();
     search_runtime::migrate(&admin).await.unwrap();
     search_graph::migrate(&admin).await.unwrap();
     let host = Arc::new(SyntheticHostRegistrationAuthority::new());
-    let ledger = PgSourceRegistrationLedger::new(admin.clone(), host.clone());
+    let ledger = Arc::new(PgSourceRegistrationLedger::new(admin.clone(), host.clone()));
     let empty_remote =
         super::registration::publish(&host, RegistrationNamespace::Remote, 1, vec![]).await;
     ledger.reconcile(&empty_remote).await.unwrap();
@@ -234,6 +240,11 @@ pub async fn fixture() -> Fixture {
         admin,
         registrar,
         root: std::env::temp_dir().join(format!("search-ready-bundle-{}", Uuid::now_v7())),
+        ledger,
+        host,
+        options,
+        document_desired: desired,
+        remote_desired: empty_remote,
     }
 }
 
@@ -252,6 +263,71 @@ pub struct BuiltEvent {
 impl Fixture {
     pub fn coordinator(&self) -> ReadyCoordinator {
         ReadyCoordinator::new(self.admin.clone(), &self.root, source())
+    }
+
+    /// The actor-facing catalog over the same PostgreSQL ledger.
+    pub async fn catalog(&self) -> SourceRegistrationCatalog {
+        SourceRegistrationCatalog::try_new(
+            self.ledger.clone(),
+            &self.document_desired,
+            &self.remote_desired,
+        )
+        .await
+        .unwrap()
+    }
+
+    /// A one-connection pool for a fresh LOGIN granted only `group`.
+    pub async fn login(&self, group: &str) -> PgPool {
+        for roles in [
+            concat!(env!("CARGO_MANIFEST_DIR"), "/sql/roles.sql"),
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../search-graph/sql/roles.sql"),
+        ] {
+            let text = std::fs::read_to_string(roles).unwrap();
+            sqlx::raw_sql(sqlx::AssertSqlSafe(text.as_str()))
+                .execute(&self.admin)
+                .await
+                .unwrap();
+        }
+        let login = format!("p7_bundle_{}", Uuid::new_v4().simple());
+        for statement in [
+            format!("CREATE ROLE {login} LOGIN PASSWORD 'p7-disposable-fixture'"),
+            format!("GRANT {group} TO {login}"),
+        ] {
+            sqlx::query(sqlx::AssertSqlSafe(statement.as_str()))
+                .execute(&self.admin)
+                .await
+                .unwrap();
+        }
+        sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                self.options
+                    .clone()
+                    .username(&login)
+                    .password("p7-disposable-fixture"),
+            )
+            .await
+            .unwrap()
+    }
+
+    /// Builds, readies and manually publishes one generation as current.
+    pub async fn publish_current(&self, generation: u128) -> ProjectionGenerationKey {
+        let built = self.build(generation, "document-platform").await;
+        let verified = self
+            .coordinator()
+            .ready_manual(&built.handle)
+            .await
+            .unwrap();
+        let publication = search_runtime::event_completion::PgPublication::new(self.admin.clone());
+        let before = publication.current(source_id()).await.unwrap();
+        assert_eq!(
+            publication
+                .publish_manual(&built.handle, &verified, &before)
+                .await
+                .unwrap(),
+            search_application::ports::SearchCompletionOutcome::Published(built.key)
+        );
+        built.key
     }
 
     /// Registers a MANUAL target with its Graph parent and stages every artifact.
