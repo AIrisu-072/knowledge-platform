@@ -48,7 +48,7 @@ export function AppShell({
             {organizationMode ? <Link className={styles.navigationLink} to="/documents" search={validateListSearch({ view: 'published' })} aria-current={activeNavigation === 'documents' ? 'page' : undefined}>文書</Link> : <a className={styles.navigationLink} href="/documents?view=published" aria-current={activeNavigation === 'documents' ? 'page' : undefined}>
               <span aria-hidden="true">▯</span>文書
             </a>}
-            {!organizationMode && <a className={styles.navigationLink} href="/documents?view=authoring" aria-current={activeNavigation === 'editing' ? 'page' : undefined}>
+            {organizationMode ? <Link className={styles.navigationLink} to="/documents" search={validateListSearch({ view: 'authoring' })} aria-current={activeNavigation === 'editing' ? 'page' : undefined}>編集作業</Link> : <a className={styles.navigationLink} href="/documents?view=authoring" aria-current={activeNavigation === 'editing' ? 'page' : undefined}>
               <span aria-hidden="true">✎</span>編集作業
             </a>}
             {organizationMode && <Link className={styles.navigationLink} to="/search" aria-current={activeNavigation === 'search' ? 'page' : undefined}>検索</Link>}

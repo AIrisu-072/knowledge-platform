@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 2026-10-05 09:14 UTC — 編集作業への可視導線と成功通知の限定補修
+
+- PR74公開head `2e1e17f4` を保持し、独立branchでOrganizationの「編集作業」入口と作業版成功通知の文脈だけを最小補修する。[今回の状況・小計画](document-authoring-navigation-status.md)を再開先とする
+- 製品2行の変更、DOM反例4件RED→GREEN、最終全GUI403件/28 suites・型/schema/build・runtime型・純粋診断52件成功。既存Document/Organization受入の可視ナビ往復を追加し、公開の単一status期待を維持する
+- 既存MCP buildとcollection（Document18+5、Organization1+1）は成功。独立source/DOM reviewはGO、変更DOM150件成功。ローカルDB/browser/Cargo・画像は実行せず、golden/skipを変更しない。新exact-head全CI/hosted受入・公開artifact0の確認と公開は親担当。以下は過去の各時点の履歴
+
+---
+
 ## 2026-10-05 08:04 UTC — WORKING編集D2のlocal検証完了、Draft公開待ち
 
 - [D2最終状況](document-working-version-editor-status.md)を再開先とする。D2 checkpoint `b6ec14b4` とmetadata/取消を保持するD1 `75b9df51` を両履歴保持で統合。元f639・D1各checkpointも維持する

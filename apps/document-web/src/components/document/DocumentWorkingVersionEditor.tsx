@@ -122,7 +122,7 @@ export function DocumentWorkingVersionEditor(props: Props) {
       </section>}
       {operation.status === 'rejected' && <section role="alert"><p>{failure} 最新状態を確認してから編集をやり直してください。</p>
         <button type="button" disabled={refreshing} onClick={() => void refresh()}>最新状態を確認</button></section>}
-      {operation.status === 'succeeded' && <p role="status" className={styles.noticeSuccess}>{operation.message}</p>}
+      {operation.status === 'succeeded' && (active || showActions) && <p role="status" className={styles.noticeSuccess}>{operation.message}</p>}
       {problem?.traceId && <small>照会ID: {problem.traceId}</small>}
     </div>}
     {active && (!operation || (operation.intent.kind !== 'rebase' && (operation.status === 'pending' || operation.status === 'rejected'))) && <>
