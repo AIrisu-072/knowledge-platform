@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useNavigate, useRouterState, useSearch } from '@tanstack/react-router';
@@ -7,6 +7,7 @@ import { documentApi, type DocumentList, type Folder } from '../application/docu
 import { ApiFeedback, LoadingState } from '../components/shared/ApiFeedback';
 import { AppShell } from '../components/app-shell/AppShell';
 import { OriginalVersionDownload } from '../components/shared/OriginalVersionDownload';
+import { DocumentRegistration } from '../components/document/DocumentRegistration';
 import type { ListSearch } from '../application/search-state';
 import { documentListStatusLabel } from '../view-model/document-status';
 import { formatDateTime as formatDate } from '../view-model/date-time';
@@ -19,6 +20,8 @@ export function DocumentHomePage() {
   const search = useSearch({ from: '/documents' }) as ListSearch;
   const navigate = useNavigate({ from: '/documents' });
   const currentUrl = useRouterState({ select: (state) => state.location.href });
+  const queryClient = useQueryClient();
+  const [chosenFolder, setChosenFolder] = useState<Folder | undefined>();
   const [draftTitle, setDraftTitle] = useState(search.titleContains ?? '');
   useEffect(() => setDraftTitle(search.titleContains ?? ''), [search.titleContains]);
   const listQuery = useQuery({
@@ -42,6 +45,15 @@ export function DocumentHomePage() {
     }),
   });
   const rootQuery = useQuery({ queryKey: ['folder-tree', 'root'], queryFn: documentApi.getRootFolder });
+  const registrationFolderQuery = useQuery({
+    queryKey: ['folder-tree', search.folderId],
+    queryFn: () => documentApi.listFolderChildren(search.folderId!),
+    enabled: Boolean(search.folderId),
+  });
+  const registrationFolder = search.folderId
+    ? { folderId: search.folderId, name: chosenFolder?.folderId === search.folderId ? chosenFolder.name : `選択中のフォルダー（${search.folderId}）` }
+    : rootQuery.data;
+  const registrationCapability = search.folderId ? registrationFolderQuery.data?.capabilities.createDocument : rootQuery.data?.capabilities.createDocument;
   const items = useMemo(() => listQuery.data?.items ?? [], [listQuery.data?.items]);
   const panelOpen = search.panel === 'open' && search.view !== 'history';
   const selected = items.find((item) => item.documentId === search.selectedDocumentId) ?? (panelOpen ? items[0] : undefined);
@@ -213,7 +225,7 @@ export function DocumentHomePage() {
           <FolderNode
             folder={rootQuery.data}
             selectedFolderId={search.folderId}
-            onSelect={(folderId) => updateSearch({ folderId, includeDescendants: false, cursor: undefined })}
+            onSelect={(folderId, folder) => { setChosenFolder(folder); updateSearch({ folderId, includeDescendants: false, cursor: undefined }); }}
             isRoot
           />
         </ul>
@@ -238,6 +250,10 @@ export function DocumentHomePage() {
         <div>
           <h1>{selected?.folderName ? `${selected.folderName}の文書` : search.view === 'authoring' ? '編集作業' : '文書一覧'}</h1>
         </div>
+        <DocumentRegistration folder={registrationFolder} capabilityKnown={Boolean(registrationCapability)} canCreate={registrationCapability?.status === 'available'} contextKey={currentUrl} onCreated={result => {
+          void queryClient.invalidateQueries({ queryKey: ['documents'] });
+          void navigate({ to: '/documents/$documentId', params: { documentId: result.documentId }, search: { tab: 'versions', view: 'authoring', versionId: result.documentVersionId, returnTo: currentUrl } });
+        }} />
       </div>
 
       <div className={styles.listLayout}>
@@ -310,7 +326,7 @@ function FolderNode({
 }: {
   folder: FolderItem;
   selectedFolderId?: string;
-  onSelect: (folderId?: string) => void;
+  onSelect: (folderId?: string, folder?: Folder) => void;
   isRoot?: boolean;
 }) {
   const [expanded, setExpanded] = useState(isRoot);
@@ -323,7 +339,7 @@ function FolderNode({
     <li>
       <div className={styles.folderEntry}>
         <button type="button" className={styles.expandButton} aria-label={`${folder.name}の子フォルダーを${expanded ? '閉じる' : '開く'}`} aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>{expanded ? '▾' : '▸'}</button>
-        <button type="button" className={styles.folderButton} aria-current={(isRoot ? !selectedFolderId : selectedFolderId === folder.folderId) ? 'location' : undefined} onClick={() => onSelect(isRoot ? undefined : folder.folderId)}>{folder.name}</button>
+        <button type="button" className={styles.folderButton} aria-current={(isRoot ? !selectedFolderId : selectedFolderId === folder.folderId) ? 'location' : undefined} onClick={() => onSelect(isRoot ? undefined : folder.folderId, folder)}>{folder.name}</button>
       </div>
       {childrenQuery.error && expanded && <ApiFeedback error={childrenQuery.error} onRetry={() => void childrenQuery.refetch()} />}
       {expanded && childrenQuery.data && childrenQuery.data.items.length > 0 && (

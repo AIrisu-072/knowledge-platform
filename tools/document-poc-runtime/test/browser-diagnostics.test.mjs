@@ -47,6 +47,29 @@ test('PDF operation milestones survive both privacy filters beside an allowliste
   }
 });
 
+test('GUI初回登録の固定到達段階だけを既存の診断境界へ残す', () => {
+  const stages = ['gui-initial-capabilities-verified', 'gui-initial-cancel-verified', 'gui-initial-created',
+    'gui-initial-working-verified', 'gui-initial-published-shared', 'gui-initial-snapshot-saved'];
+  for (const stage of stages) {
+    const input = report([{ status: 'passed' }]);
+    input.suites[0].specs[0].file = '/private/source/initial-registration.spec.ts';
+    input.suites[0].specs[0].tests[0].annotations = [
+      { type: 'runtime-completed', description: stage },
+      { type: 'runtime-completed', description: 'gui-initial-PRIVATE_BODY' },
+    ];
+    const actual = sanitizeBrowserDiagnostics(browserDiagnostics(input));
+    assert.equal(actual.tests[0].source, 'initial-registration.spec.ts');
+    assert.equal(actual.tests[0].lastCompletedStage, stage);
+    assert.ok(!JSON.stringify(actual).includes('PRIVATE_BODY'));
+  }
+  const failure = browserDiagnostics(report([{ status: 'failed', error: {
+    message: 'Error: expect(value).toBe() failed',
+    stack: 'at /private/source/initial-registration.spec.ts:12:3',
+  } }]));
+  assert.equal(failure.tests[0].source, 'initial-registration.spec.ts');
+  assert.equal(failure.tests[0].line, 12);
+});
+
 test('classifies strict-locator and emits only allowlisted failure location/matcher', () => {
   const result = browserDiagnostics(report([{ status: 'failed', error: {
     message: 'Error: expect(locator).toBeVisible() failed: strict mode violation: PRIVATE_SELECTOR',

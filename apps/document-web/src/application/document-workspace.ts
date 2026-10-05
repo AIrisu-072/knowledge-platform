@@ -1,5 +1,6 @@
 export { documentApi } from '../api/document-api';
 export type {
+  CreateDocumentResult,
   AccessPolicyRead,
   CommandsPolicyExplicit,
   CommandsPolicyInherit,

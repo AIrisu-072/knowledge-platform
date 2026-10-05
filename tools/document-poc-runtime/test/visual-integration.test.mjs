@@ -15,6 +15,17 @@ test('runtime browser overrides Desktop Chrome viewport and never emits failure 
   assert.match(config, /\.\.\.devices\['Desktop Chrome'\], viewport: \{ width: 1440, height: 900 \}, deviceScaleFactor: 1/);
   for (const kind of ['trace', 'screenshot', 'video']) assert.match(config, new RegExp(`${kind}: context.visualCapture \\? 'off'`));
 });
+test('初回登録だけを既存journeyへ追加し、成功時も失敗時も画像を記録しない', async () => {
+  const source = await read('../../../apps/document-web/e2e-runtime/initial-registration.spec.ts');
+  const config = await read('../../../apps/document-web/playwright.runtime.config.ts');
+  assert.match(config, /testMatch: phase === 'journey' \? \[[^\]]*'initial-registration\.spec\.ts'/);
+  assert.match(config, /retries: 0/);
+  assert.match(source, /^test\.use\(\{ screenshot: 'off', trace: 'off', video: 'off' \}\);$/m);
+  assert.equal((source.match(/^test\('/gm) ?? []).length, 1);
+  assert.match(source, /await startDiagnostics\(page\)/);
+  assert.match(source, /await finishDiagnostics\(page\)/);
+  assert.doesNotMatch(source, /visualCheckpoint|screenshot\(|recordVideo|tracing|page\.route\(|route\.fulfill\(|route\.abort\(/);
+});
 test('all fixed checkpoints occur exactly once in real runtime suites without route interception', async () => {
   const { VISUAL_CHECKPOINTS } = await import('../visual-evidence.mjs');
   const source = (await read('../../../apps/document-web/e2e-runtime/document-runtime.spec.ts')) + (await read('../../../apps/document-web/e2e-runtime/human-agent-consistency.spec.ts'));

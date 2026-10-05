@@ -15,9 +15,12 @@ import {
   listFolderChildren,
   listVersionFiles,
   publishVersion,
+  recoverDocumentCreation,
   schedulePublication,
   setDocumentAccessPolicy,
   type CommandsComparisonRequest,
+  type CommandsCreateDocument,
+  type CreateDocumentResult,
   type CommandsPolicyExplicit,
   type CommandsPolicyInherit,
   type CommandsRevisionComparisonRequest,
@@ -56,6 +59,13 @@ function apiSort(sort: string | undefined): string | undefined {
 }
 
 export const documentApi = {
+  createDocument(request: CommandsCreateDocument, file: File): Promise<CreateDocumentResult> {
+    return binary.createDocument({ request, file, originalFilename: file.name, mediaType: file.type || 'application/octet-stream' });
+  },
+  recoverDocumentCreation(ids: CreateDocumentResult): Promise<CreateDocumentResult> {
+    return payload(recoverDocumentCreation({ ...data, path: { documentId: ids.documentId },
+      query: { documentVersionId: ids.documentVersionId, fileId: ids.fileId } }));
+  },
   getSession(): Promise<ModelsSession> {
     return payload(getSession(data));
   },
