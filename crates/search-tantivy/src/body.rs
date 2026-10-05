@@ -152,7 +152,7 @@ pub(crate) fn enumerate(
             });
         }
     }
-    docs.sort_by(|left, right| left.unit_id.cmp(&right.unit_id));
+    docs.sort_by_key(|doc| doc.unit_id);
     Ok(docs)
 }
 

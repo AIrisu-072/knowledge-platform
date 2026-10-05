@@ -209,7 +209,7 @@ async fn schema2_resource_and_unit_fields() {
     let docs = index.enumerate_unit_docs(key(7)).unwrap();
     assert_eq!(docs.len(), 3);
     let mut expected = units();
-    expected.sort_by(|left, right| left.unit_id.cmp(&right.unit_id));
+    expected.sort_by_key(|unit| unit.unit_id);
     for (doc, unit) in docs.iter().zip(&expected) {
         assert_eq!(doc.generation, key(7));
         assert_eq!(doc.parent_resource, unit.version.resource_id);
