@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 2026-10-05 03:50 UTC — 既存APIの現行版取下げ・公開終了GUI
+
+- 所有者の既存内部処理のGUI化を続け、PR69統合後main `e9c7f773` と同一の初回登録sourceから現行公開版の取下げ・文書の公開終了を小さい別branchへ追加する。[今回の状況](document-lifecycle-operations-status.md)、[計画](../plans/2026-10-05-document-lifecycle-operations.md)、[画面操作](../../operations/document-gui-v0.md)を参照
+- 既存capability・typed API・UUIDv7操作IDを使用し、理由/影響確認、同payload再送、競合/権限失効、遅延応答と戻る/進むを扱う。authoringをhistoryへ暗黙変更せず、通常公開画面の現行版に限定する
+- 全GUI279件・型・build・journey14/persistence2のcollectionと限定独立レビューGO。予約取消の必要ID read、過去版選択、WORKING更新/rebaseは残件。新backend/API、依存・migration・認可・停止中Search/Audit/Toolbox作業は追加しない。実DB/browserはhostedの同2名・使い捨てDB・既存runnerで確認予定、ローカル実行はしない。以下の旧headの資格を本候補へ付け替えない
+
+---
+
 ## 2026-10-05 03:12 UTC — 既存APIの文書初回登録をGUIへ追加
 
 - 所有者の「内部処理があるものを画面操作から使えるようにする」指示に従い、main `d20f2c1c` から初回文書登録を最優先で追加する。[今回の状況](document-initial-registration-status.md)、[小さい計画](../plans/2026-10-05-document-initial-registration.md)を参照

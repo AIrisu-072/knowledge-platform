@@ -316,7 +316,7 @@ chmod 600 "$KP_HOME/config/restore.env"
 ## 根拠と保守
 
 - [Organization設定と固定profile](../../crates/organization-server/src/config.rs)、[実装済みCLI](../../crates/organization-server/src/main.rs)
-- [Document runtimeの境界](document-poc-runtime-v0.md)、[Organization操作](organization-browser-poc.md)
+- [Document runtimeの境界](document-poc-runtime-v0.md)、[文書GUIの初回登録・取下げ・公開終了](document-gui-v0.md)、[Organization操作](organization-browser-poc.md)
 - [固定toolchain](../../mise.toml)、[Work migrationと台帳](../../crates/work-repository-postgres/src/lib.rs)
 - [手順書の検証状況](../superpowers/execution/linux-manual-installation-guide-status.md)
 

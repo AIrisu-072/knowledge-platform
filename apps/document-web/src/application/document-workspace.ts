@@ -1,6 +1,10 @@
 export { documentApi } from '../api/document-api';
 export type {
   CreateDocumentResult,
+  CommandsWithdrawVersion,
+  CommandsEndPublication,
+  WithdrawResult,
+  EndPublicationResult,
   AccessPolicyRead,
   CommandsPolicyExplicit,
   CommandsPolicyInherit,
