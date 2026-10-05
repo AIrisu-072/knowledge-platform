@@ -34,6 +34,12 @@ use crate::retrieval::RetrievalAction;
 
 const GENERATION: &str = "generation";
 
+/// The remote retriever ID a planned Discovery action is sealed under. The
+/// planner's `source:kind` ID uses a character remote IDs do not allow.
+pub(crate) fn sealed_retriever_id(retriever_id: &str) -> String {
+    retriever_id.replace(':', ".")
+}
+
 /// Server-owned remote Claim selectors: ClaimId → predicate and optional
 /// expected value, always about `REMOTE_CLAIM_SUBJECT`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -416,9 +422,11 @@ impl SealedRemoteRetrieverPort for CompositeEvaluationReadView<'_> {
                 ));
             }
             let sealed = self.remote_generation(key).await?.ok_or_else(unavailable)?;
-            sealed.candidates(&action.retriever_id).ok_or_else(|| {
-                SearchError::SourceUnavailable("remote action did not complete".into())
-            })
+            sealed
+                .candidates(&sealed_retriever_id(&action.retriever_id))
+                .ok_or_else(|| {
+                    SearchError::SourceUnavailable("remote action did not complete".into())
+                })
         })
     }
 }

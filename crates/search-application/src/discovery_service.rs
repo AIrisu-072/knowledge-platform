@@ -21,6 +21,7 @@ use search_core::materialization::{ProbeCompletenessSemantics, ProbeOutcome};
 use search_core::predicate::{ConceptResolver, Operand, PredicateExpr, TypedValue};
 use search_core::profile::FacetState;
 use search_core::projection::{CompiledResourceProjection, ProjectionGenerationKey};
+use search_core::source::{DiscoverableSource, DiscoveryMode};
 use sha2::{Digest, Sha256};
 
 use crate::action_selection::{
@@ -46,6 +47,14 @@ use crate::ports::{
     SourceRegistryPort, StructuredFacetFilter, StructuredFacetOutcome, assemble_resource_claims,
     assemble_verified_unit_text_claim, assess_claim_evidence,
 };
+use crate::remote::{
+    EvaluationLeaseId, PlannedRemoteAction, RemoteActionOutcome, RemoteOperation, RemoteSourcePort,
+    TrustedRemoteContext, validate_remote_batch,
+};
+use crate::remote_evidence::{RegisteredLineage, RemoteProvenanceLookupPort};
+use crate::remote_generation::{RemoteGenerationBuilder, StageOutcome};
+use crate::remote_lease::RemoteLease;
+use crate::remote_read_view::{CompositeEvaluationReadView, sealed_retriever_id};
 use crate::retrieval::{
     ActionState, RetrievalAction, RetrievalInputs, RetrieverKind, RetrieverPlanner,
     RetrieverProfile, RetrieverSupport,
@@ -53,7 +62,9 @@ use crate::retrieval::{
 use crate::retrieval_execution::{
     RawRetrievalHit, RetrievalExecutionInput, RetrievalExecutionPorts, RetrievalExecutor,
 };
-use crate::routing::{RoutingConstraints, SourceRole, SourceRoutePlan, SourceRouter};
+use crate::routing::{RouteStage, RoutingConstraints, SourceRole, SourceRoutePlan, SourceRouter};
+use crate::scoped::{TrustedDiscoveryBinding, VisibleSourceRegistration};
+use crate::visible_routing::VisibleRouting;
 
 /// A trusted caller resolves temporal policy before creating the service.
 /// Opaque `DiscoveryNeed.freshness_requirements` are never guessed as durations.
@@ -97,6 +108,34 @@ pub struct DiscoveryService<'a> {
     exact_text: Option<&'a dyn ExactTextEvidencePort>,
     body_coverage: Option<&'a dyn BodyCoverageGapPort>,
     absence: Option<&'a dyn SourceExactTextAbsencePort>,
+}
+
+/// One visible remote Source's trusted inputs for a scoped evaluation. The
+/// context, lineage and provenance lookup are server-owned; the port is the
+/// fixed Source's checked adapter and the lease bounds the sealed generation.
+pub struct RemoteSourceExecution<'a> {
+    pub context: TrustedRemoteContext,
+    pub port: &'a dyn RemoteSourcePort,
+    pub lineage: RegisteredLineage,
+    pub provenance: &'a dyn RemoteProvenanceLookupPort,
+    pub lease: RemoteLease,
+}
+
+/// Trusted per-evaluation inputs of the one Discovery path: the actor-visible
+/// registrations, server routing, remote Sources and the explicit-key view
+/// that serves every generation this evaluation reads.
+pub struct ScopedDiscoveryExecution<'a> {
+    pub content_scope: DiscoveryScope,
+    pub binding: &'a TrustedDiscoveryBinding,
+    pub visible: &'a [VisibleSourceRegistration],
+    pub routing: RoutingConstraints,
+    pub remote: Vec<RemoteSourceExecution<'a>>,
+    pub view: &'a CompositeEvaluationReadView<'a>,
+}
+
+struct RemotePhase<'a> {
+    sources: Vec<RemoteSourceExecution<'a>>,
+    view: &'a CompositeEvaluationReadView<'a>,
 }
 
 struct PinnedSource {
@@ -217,26 +256,117 @@ impl<'a> DiscoveryService<'a> {
         request: DiscoveryRequest,
         scope: DiscoveryScope,
     ) -> Result<DiscoveryResult, SearchError> {
-        validate_request(&request)?;
-        let body = scope.body();
-        if let Some(spec) = body {
-            spec.validate()?;
-            // An exact-text selector may bind only a Claim this request requires.
-            if spec.exact_text_claim.is_some_and(|claim| {
-                !request.need.required_claims.contains(&claim)
-                    || !request
-                        .need
-                        .completion_requirement
-                        .required_claims
-                        .contains(&claim)
-            }) {
+        validate_scope(&request, &scope)?;
+        let sources = self.ports.sources.list_sources().await?;
+        self.run(
+            request,
+            scope,
+            &sources,
+            &self.config.routing,
+            Vec::new(),
+            None,
+        )
+        .await
+    }
+
+    /// The same evaluation loop over the actor-visible Sources. Every remote
+    /// Source runs its bounded initial actions as one batch that is sealed
+    /// before the first federation; a Source then reads exactly one
+    /// generation (durable pin or sealed remote) through the view.
+    pub async fn discover_scoped(
+        &self,
+        request: DiscoveryRequest,
+        execution: ScopedDiscoveryExecution<'_>,
+    ) -> Result<DiscoveryResult, SearchError> {
+        validate_scope(&request, &execution.content_scope)?;
+        let (sources, routing, gaps) = VisibleRouting::prepare(
+            execution.binding.actor(),
+            execution.visible,
+            &execution.routing,
+        )?;
+        let mut remote_sources = BTreeSet::new();
+        for remote in &execution.remote {
+            let scope = remote.context.source_scope();
+            if remote.context.binding() != execution.binding
+                || !execution.visible.iter().any(|entry| entry.scope() == scope)
+                || !remote_sources.insert(scope.source_id())
+            {
                 return Err(SearchError::InvalidRequest(
-                    "exact-text claim is not a required claim of this request".into(),
+                    "remote execution is not bound to this visible evaluation".into(),
                 ));
             }
         }
-        let sources = self.ports.sources.list_sources().await?;
-        let routes = SourceRouter::plan(&request.need, &sources, &self.config.routing);
+        let view = execution.view;
+        let retrieval = &self.ports.retrieval;
+        let scoped = DiscoveryService {
+            config: self.config.clone(),
+            ports: DiscoveryPorts {
+                sources: self.ports.sources,
+                generations: view,
+                concepts: view,
+                retrieval: RetrievalExecutionPorts {
+                    directory: retrieval.directory,
+                    structured: retrieval.structured,
+                    lexical: retrieval.lexical,
+                    hypergraph: retrieval.hypergraph,
+                    graph_resource_access: retrieval.graph_resource_access,
+                    remote: Some(view),
+                    access: retrieval.access,
+                },
+                selectors: view,
+                assertions: view,
+                evidence: view,
+                probe: self.ports.probe,
+                probe_catalog: self.ports.probe_catalog,
+                source_policy: self.ports.source_policy,
+            },
+            exact_text: self.exact_text,
+            body_coverage: self.body_coverage,
+            absence: self.absence,
+        };
+        scoped
+            .run(
+                request,
+                execution.content_scope,
+                &sources,
+                &routing,
+                gaps,
+                Some(RemotePhase {
+                    sources: execution.remote,
+                    view,
+                }),
+            )
+            .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn run(
+        &self,
+        request: DiscoveryRequest,
+        scope: DiscoveryScope,
+        sources: &[DiscoverableSource],
+        routing: &RoutingConstraints,
+        visibility_gaps: Vec<InformationGap>,
+        remote: Option<RemotePhase<'_>>,
+    ) -> Result<DiscoveryResult, SearchError> {
+        let body = scope.body();
+        // Remote modes route only when this evaluation wired a remote port.
+        let routes = match &remote {
+            Some(phase) if !phase.sources.is_empty() => SourceRouter::plan_with_runtime_modes(
+                &request.need,
+                sources,
+                routing,
+                &[
+                    DiscoveryMode::LocalDirectory,
+                    DiscoveryMode::LocalContentSearch,
+                    DiscoveryMode::RemoteEnumeration,
+                    DiscoveryMode::RemoteQuery,
+                    DiscoveryMode::DirectAddress,
+                    DiscoveryMode::LiveOnly,
+                ],
+            ),
+            _ => SourceRouter::plan(&request.need, sources, routing),
+        };
         // Directory, Structured, Graph, Vector, remote and probes cannot create a
         // body match, so a body scope plans only Lexical with the request query.
         let body_plan_inputs = body.map(|spec| {
@@ -264,7 +394,23 @@ impl<'a> DiscoveryService<'a> {
         };
         let plan = RetrieverPlanner::plan(self.config.retriever_profile, &routes, support, inputs);
         let mut pins = BTreeMap::new();
-        let mut route_gaps = Vec::new();
+        let mut route_gaps = visibility_gaps;
+        // Remote batches seal before the first federation; nothing is appended
+        // to a seal afterwards.
+        let mut sealed = BTreeSet::new();
+        if let Some(phase) = remote {
+            for execution in phase.sources {
+                self.seal_remote(
+                    &routes,
+                    &plan,
+                    execution,
+                    phase.view,
+                    &mut sealed,
+                    &mut route_gaps,
+                )
+                .await?;
+            }
+        }
         for route in &routes.routes {
             route_gaps.extend(
                 route
@@ -352,17 +498,28 @@ impl<'a> DiscoveryService<'a> {
                 NextAction::Retrieval(action) => {
                     attempted_retrievers.insert(action.retriever_id.clone());
                     if let Some(pin) = pins.get(&action.source_id) {
-                        if matches!(
-                            action.retriever,
-                            RetrieverKind::Vector
-                                | RetrieverKind::RemoteEnumeration
-                                | RetrieverKind::RemoteQuery
-                                | RetrieverKind::DirectAddress
-                                | RetrieverKind::LiveOnly
-                        ) {
+                        let remote_kind = is_remote(action.retriever);
+                        if action.retriever == RetrieverKind::Vector
+                            || (remote_kind && self.ports.retrieval.remote.is_none())
+                        {
                             action_gaps.push(source_gap(
                                 action.source_id,
                                 &format!("{:?}_execution_port_unavailable", action.retriever),
+                                false,
+                            ));
+                        } else if remote_kind && !sealed.contains(&action.retriever_id) {
+                            // Only a completed, sealed action executes; a later
+                            // remote expansion needs a new snapshot and evaluation.
+                            // A Required Source without any completed action is
+                            // blocked by `required_source_not_executed`, missing
+                            // evidence by its Claim gap.
+                            action_gaps.push(source_gap(
+                                action.source_id,
+                                if action.stage == RouteStage::Expansion {
+                                    "remote_expansion_requires_new_evaluation"
+                                } else {
+                                    "remote_action_unavailable"
+                                },
                                 false,
                             ));
                         } else {
@@ -662,6 +819,122 @@ impl<'a> DiscoveryService<'a> {
             }
         }
         Ok(evaluation.result)
+    }
+
+    /// Executes one remote Source's bounded initial actions as a single batch,
+    /// stages and verifies them, then seals and registers the generation.
+    /// Provider failures become gaps; only completed actions are sealed.
+    async fn seal_remote(
+        &self,
+        routes: &SourceRoutePlan,
+        plan: &crate::retrieval::RetrievalPlan,
+        execution: RemoteSourceExecution<'_>,
+        view: &CompositeEvaluationReadView<'_>,
+        sealed: &mut BTreeSet<String>,
+        gaps: &mut Vec<InformationGap>,
+    ) -> Result<(), SearchError> {
+        let context = &execution.context;
+        let source = context.source_scope().source_id();
+        let unavailable = source_gap(
+            source,
+            "remote_batch_unavailable",
+            source_required(routes, source),
+        );
+        let mut planned = Vec::new();
+        for action in plan
+            .initial_actions
+            .iter()
+            .filter(|action| {
+                action.source_id == source
+                    && action.state == ActionState::Planned
+                    && is_remote(action.retriever)
+            })
+            .take(context.registration().limits().max_actions)
+        {
+            if let Some(operation) = remote_operation(action, &self.config.retrieval_inputs)
+                && let Ok(remote) = PlannedRemoteAction::new(
+                    context,
+                    sealed_retriever_id(&action.retriever_id),
+                    operation,
+                )
+            {
+                planned.push((action.retriever_id.clone(), remote));
+            }
+        }
+        if planned.is_empty() {
+            return Ok(());
+        }
+        let actions: Vec<_> = planned.iter().map(|(_, action)| action.clone()).collect();
+        if validate_remote_batch(context, &actions).is_err() {
+            push_gap(gaps, unavailable);
+            return Ok(());
+        }
+        let Ok(outcomes) = execution.port.execute_batch(context, &actions).await else {
+            push_gap(gaps, unavailable);
+            return Ok(());
+        };
+        let mut builder = RemoteGenerationBuilder::new(
+            context.clone(),
+            context.binding().evaluation(),
+            EvaluationLeaseId::new(),
+        )?;
+        let mut completed = BTreeSet::new();
+        for outcome in outcomes {
+            let RemoteActionOutcome::Completed(response) = outcome else {
+                continue;
+            };
+            let id = response.retriever_id().to_owned();
+            if !actions.iter().any(|action| action.retriever_id() == id) {
+                push_gap(gaps, unavailable);
+                return Ok(());
+            }
+            match builder.stage(*response) {
+                Ok(StageOutcome::Staged) => {
+                    completed.insert(id);
+                }
+                Ok(StageOutcome::Gap(gap)) => push_gap(gaps, gap),
+                // A conflicting or foreign response aborts the whole batch.
+                Err(_) => {
+                    push_gap(gaps, unavailable);
+                    return Ok(());
+                }
+            }
+        }
+        if completed.is_empty() {
+            return Ok(());
+        }
+        if builder
+            .verify_evidence(&execution.lineage, execution.provenance)
+            .await
+            .is_err()
+        {
+            push_gap(
+                gaps,
+                source_gap(source, "remote_evidence_unavailable", false),
+            );
+        }
+        let Ok(generation) = builder.seal() else {
+            push_gap(gaps, unavailable);
+            return Ok(());
+        };
+        for gap in generation.gaps() {
+            push_gap(gaps, gap.clone());
+        }
+        if view
+            .register_remote(generation, execution.lease)
+            .await
+            .is_err()
+        {
+            push_gap(gaps, unavailable);
+            return Ok(());
+        }
+        sealed.extend(
+            planned
+                .into_iter()
+                .filter(|(_, action)| completed.contains(action.retriever_id()))
+                .map(|(id, _)| id),
+        );
+        Ok(())
     }
 
     /// A finite Source-owned scan may turn the still-Unknown exact Claim into
@@ -1375,6 +1648,70 @@ impl<'a> DiscoveryService<'a> {
                 Ok(Some((action, Some(key))))
             }
         }
+    }
+}
+
+fn validate_scope(request: &DiscoveryRequest, scope: &DiscoveryScope) -> Result<(), SearchError> {
+    validate_request(request)?;
+    if let Some(spec) = scope.body() {
+        spec.validate()?;
+        // An exact-text selector may bind only a Claim this request requires.
+        if spec.exact_text_claim.is_some_and(|claim| {
+            !request.need.required_claims.contains(&claim)
+                || !request
+                    .need
+                    .completion_requirement
+                    .required_claims
+                    .contains(&claim)
+        }) {
+            return Err(SearchError::InvalidRequest(
+                "exact-text claim is not a required claim of this request".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+const fn is_remote(kind: RetrieverKind) -> bool {
+    matches!(
+        kind,
+        RetrieverKind::RemoteEnumeration
+            | RetrieverKind::RemoteQuery
+            | RetrieverKind::DirectAddress
+            | RetrieverKind::LiveOnly
+    )
+}
+
+/// The trusted, Source-local input for one planned remote action.
+fn remote_operation(action: &RetrievalAction, inputs: &RetrievalInputs) -> Option<RemoteOperation> {
+    let source = action.source_id;
+    match action.retriever {
+        RetrieverKind::RemoteEnumeration => Some(RemoteOperation::Enumerate { cursor: None }),
+        RetrieverKind::RemoteQuery => {
+            inputs
+                .remote_queries
+                .get(&source)
+                .map(|input| RemoteOperation::Query {
+                    input: input.clone(),
+                })
+        }
+        RetrieverKind::DirectAddress => {
+            inputs
+                .native_ids
+                .get(&source)
+                .map(|native_id| RemoteOperation::Lookup {
+                    native_id: native_id.clone(),
+                })
+        }
+        RetrieverKind::LiveOnly => {
+            inputs
+                .live_inputs
+                .get(&source)
+                .map(|input| RemoteOperation::Live {
+                    input: input.clone(),
+                })
+        }
+        _ => None,
     }
 }
 
