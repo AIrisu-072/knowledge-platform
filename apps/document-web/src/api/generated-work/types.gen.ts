@@ -44,6 +44,12 @@ export type TaskSummary = {
     canRegisterFinding: boolean;
     canRecordDecision: boolean;
     canRequestAgent: boolean;
+    canComplete: boolean;
+    completionActionId: string | null;
+    canHold: boolean;
+    holdActionId: string | null;
+    canResume: boolean;
+    resumeActionId: string | null;
 };
 
 export type WorkingArtifact = {
@@ -91,6 +97,12 @@ export type TaskDetail = {
     canRecordDecision: boolean;
     canRequestAgent: boolean;
     agentExecutionIds: Array<string>;
+    canComplete: boolean;
+    completionActionId: string | null;
+    canHold: boolean;
+    holdActionId: string | null;
+    canResume: boolean;
+    resumeActionId: string | null;
 };
 
 export type TaskPage = {
@@ -172,7 +184,7 @@ export type Submitted = {
     nextTask: TaskSummary;
 };
 
-export type WorkResult = DraftSaved | Claimed | Submitted | Returned | EvidenceRegistered | FindingRegistered | DecisionRecorded | AgentExecutionRequested | AgentExecutionCancelled;
+export type WorkResult = DraftSaved | Claimed | Submitted | Returned | EvidenceRegistered | FindingRegistered | DecisionRecorded | AgentExecutionRequested | AgentExecutionCancelled | Completed | Held | Resumed;
 
 export type Problem = {
     type: string;
@@ -487,6 +499,33 @@ export type AgentExecutionCancelled = {
     kind: 'agent_execution_cancelled';
     task: TaskSummary;
     execution: AgentExecution;
+};
+
+/**
+ * 定義済みの完了・保留・再開だけを受け付ける。現在担当・試行・revision・定義actionを再確認し、保留と再開では同じ試行・担当・保存内容を保持する。
+ */
+export type WorkflowActionCommand = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    expectedAttemptId: string;
+    action: 'complete' | 'hold' | 'resume';
+    definitionActionId: string;
+};
+
+export type Completed = {
+    kind: 'completed';
+    task: TaskSummary;
+};
+
+export type Held = {
+    kind: 'held';
+    task: TaskSummary;
+};
+
+export type Resumed = {
+    kind: 'resumed';
+    task: TaskSummary;
 };
 
 export type GetOrganizationSessionData = {
@@ -1275,3 +1314,34 @@ export type GetAgentResultResponses = {
 };
 
 export type GetAgentResultResponse = GetAgentResultResponses[keyof GetAgentResultResponses];
+
+export type ExecuteOrganizationWorkflowActionData = {
+    body: WorkflowActionCommand;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/tasks/{id}/actions';
+};
+
+export type ExecuteOrganizationWorkflowActionErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ExecuteOrganizationWorkflowActionError = ExecuteOrganizationWorkflowActionErrors[keyof ExecuteOrganizationWorkflowActionErrors];
+
+export type ExecuteOrganizationWorkflowActionResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type ExecuteOrganizationWorkflowActionResponse = ExecuteOrganizationWorkflowActionResponses[keyof ExecuteOrganizationWorkflowActionResponses];

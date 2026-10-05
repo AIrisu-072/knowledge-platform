@@ -1383,6 +1383,65 @@
           }
         ]
       }
+    },
+    "/v1/organization/tasks/{id}/actions": {
+      "post": {
+        "operationId": "executeOrganizationWorkflowAction",
+        "summary": "executeOrganizationWorkflowAction",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowActionCommand"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1538,6 +1597,48 @@
           },
           "canRequestAgent": {
             "type": "boolean"
+          },
+          "canComplete": {
+            "type": "boolean"
+          },
+          "completionActionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canHold": {
+            "type": "boolean"
+          },
+          "holdActionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canResume": {
+            "type": "boolean"
+          },
+          "resumeActionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1559,7 +1660,13 @@
           "canRegisterEvidence",
           "canRegisterFinding",
           "canRecordDecision",
-          "canRequestAgent"
+          "canRequestAgent",
+          "canComplete",
+          "completionActionId",
+          "canHold",
+          "holdActionId",
+          "canResume",
+          "resumeActionId"
         ]
       },
       "WorkingArtifact": {
@@ -1760,6 +1867,48 @@
               "format": "uuid"
             },
             "maxItems": 16
+          },
+          "canComplete": {
+            "type": "boolean"
+          },
+          "completionActionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canHold": {
+            "type": "boolean"
+          },
+          "holdActionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canResume": {
+            "type": "boolean"
+          },
+          "resumeActionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1785,7 +1934,13 @@
           "canRegisterFinding",
           "canRecordDecision",
           "canRequestAgent",
-          "agentExecutionIds"
+          "agentExecutionIds",
+          "canComplete",
+          "completionActionId",
+          "canHold",
+          "holdActionId",
+          "canResume",
+          "resumeActionId"
         ]
       },
       "TaskPage": {
@@ -2154,6 +2309,15 @@
           },
           {
             "$ref": "#/components/schemas/AgentExecutionCancelled"
+          },
+          {
+            "$ref": "#/components/schemas/Completed"
+          },
+          {
+            "$ref": "#/components/schemas/Held"
+          },
+          {
+            "$ref": "#/components/schemas/Resumed"
           }
         ]
       },
@@ -3448,6 +3612,101 @@
           "kind",
           "task",
           "execution"
+        ]
+      },
+      "WorkflowActionCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "hold",
+              "resume"
+            ]
+          },
+          "definitionActionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedAttemptId",
+          "action",
+          "definitionActionId"
+        ],
+        "description": "定義済みの完了・保留・再開だけを受け付ける。現在担当・試行・revision・定義actionを再確認し、保留と再開では同じ試行・担当・保存内容を保持する。"
+      },
+      "Completed": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "completed",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          }
+        },
+        "required": [
+          "kind",
+          "task"
+        ]
+      },
+      "Held": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "held",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          }
+        },
+        "required": [
+          "kind",
+          "task"
+        ]
+      },
+      "Resumed": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "resumed",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          }
+        },
+        "required": [
+          "kind",
+          "task"
         ]
       }
     }

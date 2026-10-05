@@ -1,10 +1,34 @@
 # Active Execution Pointer
 
+## 2026-10-05 01:21 UTC — 完了・保留再開・Document参照をmainへ統合する候補
+
+- 受入済みPR65 `64b5ddb0` とmain `b9097a43` を両parent保持で統合する。[今回の状況](organization-workflow-document-main-integration-status.md)を再開先とする
+- mainのSearch/Document migration・分割API・限定read診断、PR63/64/65の完了/保留再開/原本取得を保持する。先頭履歴の競合だけを解消し、下記の両履歴を残す
+- 新しい組合せのexact-head CI/同2名実受入は未取得。初回再起動後read失敗の原因未特定という観測を残し、main mergeは親が直列調整する
+
+---
+
 ## 2026-10-04 17:27 UTC — AgentとSearchを保持するmain統合候補
 
 - mainはSearch統合済み `f9d6f5ff` へ進んだ。PR62のAgent sourceを保持して新mainを祖先に加える。[統合状況](organization-agent-main-integration-status.md)を参照
 - 製品変更は両受入元の非競合な和集合。Document9/10とSearch Outbox11、分割API、既存workflowを新mainのbytesで保持する。競合はこの文書の先頭追記のみ、両方の履歴を残す
 - 旧PR62 headの結果と新統合headの資格は分ける。最終事務completeは別候補で、この統合へ入れない。新exact headの全CI/実runtime後、親がmainへのmergeを直列調整する
+
+---
+
+## 2026-10-04 23:54 UTC — タスク内Document参照
+
+- PR64 exact `2519be29` は保留/再開の実DB・2名操作・両HTTP server再起動・復元・cleanupと全CI成功済み
+- [状況](organization-document-context-slice-status.md)を再開先とし、Frozenの既存入力文書を公開改訂/原本一覧/明示取得へ接続する。新しい添付書込・権限・APIは追加しない
+- 独立branch `feat/organization-document-context-slice`、同じ模擬2名・一時DB・画像無し。以下は各時点の履歴
+
+---
+
+## 2026-10-04 21:54 UTC — 保留/再開の最小slice
+
+- PR63 exact `cc994b4e` は完了操作とreadonly履歴の実DB/2名操作/再起動/cleanup・全CI成功済み
+- Frozen active→held→activeだけを独立branchで実装する。[状況](organization-hold-resume-slice-status.md)、[計画](../plans/2026-10-04-organization-hold-resume-slice.md)
+- 同じ模擬2名・使い捨てDB・Chromium・画像無し。別のSearch/main統合変更は含めず、旧definition/過去snapshot/privateを保持する
 
 ---
 
@@ -17,6 +41,12 @@
 
 ---
 
+## 2026-10-04 17:04 UTC — 最終事務タスク完了
+
+- Agent基点PR60 `48ae1bfd` の実runtimeは成功。全CIの残りを監視しつつ、別branchでFrozen complete→readonlyの最小sliceを準備する
+- [状況](organization-complete-slice-status.md)、[計画](../plans/2026-10-04-organization-complete-slice.md)。固定2名・同じ一時DB/Chromium・画像無し。hold/resumeや外部送信へ広げない
+
+---
 
 ## 2026-10-04 13:45 UTC — Organization合成Agent slice
 

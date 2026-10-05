@@ -6,7 +6,7 @@
 
 ## 現在の範囲
 
-2名の起動時固定の模擬ユーザーを使い、タスク一覧・詳細、privateな文案の保存、共有Document参照、提出、事務担当の引受けと提出内容の閲覧、理由付き差戻と新試行での再提出、Documentを参照する根拠・候補・人間判断の保存、選択根拠に結び付いた合成Agentの候補作成を行う。PostgreSQLを状態の正本とし、ページ再読込でも保存済み状態を取得する。未保存の入力と結果不明操作はタブ内メモリーに保持する。
+2名の起動時固定の模擬ユーザーを使い、タスク一覧・詳細、privateな文案の保存、共有Document参照、提出、事務担当の引受けと提出内容の閲覧、理由付き差戻と新試行での再提出、Documentを参照する根拠・候補・人間判断の保存、選択根拠に結び付いた合成Agentの候補作成、最終事務タスクの明示的な完了、担当中タスクの保留と再開を行う。PostgreSQLを状態の正本とし、ページ再読込でも保存済み状態を取得する。未保存の入力と結果不明操作はタブ内メモリーに保持する。
 
 これは認証システムではない。各loopbackポートへ接続できる利用者はその固定profileとして扱われる。顧客情報・秘密情報・production DBを使用しない。外部公開・production deploy・Tauri実行を含まない。
 
@@ -67,10 +67,21 @@ export KP_ORGANIZATION_DOCUMENT_ID='<上で公開したdocumentId>'
 - 事務: 同じDB/worker/storage/GUI設定で `KP_ORGANIZATION_PROFILE=office-01` として別processを起動し、`http://127.0.0.1:8091/tasks?view=queue`
 
 1. 営業でタスクを選び、文案を保存する。事務の一覧にはまだタスクもprivate本文も出ない
-2. 営業で「文書・比較」から共有参照資料を開く。版・改訂・比較・認可は従来のDocument機能が扱う。戻るとタスク選択を保持する
+2. 営業で「文書・比較」から入力文書を選び、公開改訂・内容の版・原本一覧を確認する。「原本を取得」で共有資料をダウンロードできる。詳細・比較は従来のDocument画面へ移動し、戻るとタスク選択を保持する
 3. 営業で保存済み文案を確認して「提出」を確定する。サーバーの成功応答までPending。応答を確認できない時は同じoperation IDで結果確認する
 4. 事務で再読込すると担当待ちタスクが出る。「担当を引き受ける」後、提出時点で固定された本文を読める。元のprivate artifactへの直接アクセスは許可しない
 5. ページ再読込で保存済み状態を確認する。履歴・snapshot・次task・operation・必須event stagingは同一Work transactionで保存する
+
+## タスク内で公開入力文書を確認する
+
+営業・事務のどちらも、担当タスクの「文書・比較」で「確認する入力文書」を選ぶ。表示するのは既存Taskに結び付いた共有Documentだけであり、Work-private文案や新しい添付の保存先ではない。
+
+- 公開改訂と内容の版（Version）を別々に表示する。文書の詳細・改訂履歴・比較は既存Document画面へのリンクを使う
+- 原本を明示的に取得してもTaskの文案保存・提出・状態変更は行わない。未保存入力を保持し、原本を画面内で実行しない
+- 公開改訂が無い、権限を失った、または取得できない時は、以前の文書情報や原本を表示し続けない。「公開文書を再読込」で現在の状態を確認する。authoring/historyへ自動的に切り替えない
+- 保留中・完了後の正当な読取りでも同じDocument現在認可を使う。Taskの閲覧権限だけで文書の権限が付与されることはない
+
+この追加経路の受入状況は[タスク内Document参照の状況](../superpowers/execution/organization-document-context-slice-status.md)を参照する。元の入力文書やACLを変更せず、ファイルアップロード・添付追加・新規binding作成は提供しない。
 
 ## 差戻して再提出する
 
@@ -109,6 +120,28 @@ export KP_ORGANIZATION_DOCUMENT_ID='<上で公開したdocumentId>'
 
 この追加経路の資格は[合成Agentの最新状況](../superpowers/execution/organization-synthetic-agent-slice-status.md)に記録する。以前のEvidence受入だけでAgent実動作を合格にしない。
 
+## 最終事務タスクを完了する
+
+1. 最終事務タスクで受領内容と判断を確認し、「完了内容を確認」を開く。定義された次担当への提出が必要な営業stepには、この操作を表示しない
+2. 対象タスク・試行・現在の担当と、完了後は読取り専用になることを確認する。キャンセル/Escapeでは何も確定しない
+3. 「完了を確定」で現在の試行を閉じる。新しい担当や提出snapshotは作らず、過去の提出・根拠・判断・Agent結果を保持する。履歴に完了を表示する
+4. 読取りは引き続き現在の担当と原本権限で確認する。完了は非公開情報の共有を増やさない。結果不明時は同じ操作IDで確認し、新しい操作として繰り返さない
+
+完了対応は新しいimmutable definition versionのfixtureに限定する。旧DBへWork migration0005を適用しても、既存workflowの定義と進捗を自動変更しない。以前のPoC DBでは完了操作を追加せず、新しい所有された使い捨てDBで開始する。保留/再開は後続の専用definition versionを使う。
+
+この追加経路の資格は[完了sliceの最新状況](../superpowers/execution/organization-complete-slice-status.md)を参照する。合成Agentの既存成功を新しい完了操作の実証とは扱わない。
+
+## 作業を保留して再開する
+
+1. 現在担当中のタスクで「保留内容を確認」を開き、対象の試行・担当と、未保存入力を自動保存しないことを確認する。キャンセルでは何も変更しない
+2. 保留を確定すると、同じ試行と担当のまま読取り専用になる。保存済み文案・根拠・判断・過去の提出は残る。未保存入力はこのタブ内だけに残り、ページを閉じると失われる
+3. 再開の確認後に「再開を確定」すると、同じ試行の作業へ戻る。タブ内に残した入力も戻るが、新たな保存・提出は別の明示操作で行う
+4. 保留前の古いAgent出力を新しい状態へ採用しない。再開してもAgentを自動再実行しない。過去の保存済み結果は現在権限で確認する
+
+保留/再開は新しいfixture definition versionでのみ提供する。旧workflowの定義・担当・進捗をmigration0006で自動変更せず、新しい所有された使い捨てDBで試す。状態文字列ではなく、serverが返す現在の操作可否と定義action IDを使う。正確な同operation再送・記録の回復は保留中も読取りとして扱い、新しい変更操作とは区別する。
+
+実受入の状況は[保留/再開sliceの最新状況](../superpowers/execution/organization-hold-resume-slice-status.md)を参照する。以前の完了操作の成功を新機能の資格へ付け替えない。
+
 ## 未対応と検証限界
 
 - Tauri/実Windows/WebView2/native Workspace、ファイル添付、実LLM/外部model・MCP通信、検索の接続、role管理・委任は今回の最小slice外
@@ -132,4 +165,4 @@ PostgreSQL transaction試験は既定で明示ignoreされる。実行してい�
 
 `mise run organization:poc:runtime` は既存Document CI後段向けの単発確認である。外部DBを受け付けず、既存と同じ公式PostgreSQL一時containerを別途所有し、独立したtransaction試験用DBとbrowser用DB・storageを作る。既存固定Chromiumでsales/officeの操作を行い、2processを停止・再起動して保存状態を確認した後、所有containerを削除する。
 
-通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。初回PoCの実証は[PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54)のsource `44e1b412` で完了している。差戻追加経路は[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d` で全CIと実DB/2名browser/両HTTP server再起動後復元/cleanupが成功した。根拠・候補・判断は[PR57](https://github.com/AIrisu-072/knowledge-platform/pull/57) exact `d383bacc` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。合成Agentは別のexact-head結果で確認する。PostgreSQL processそのものの再起動は確認対象に含めていない。画像・trace・videoはoff、raw実行ログ・標準runnerの原文は一時workspace内に保持し、公開artifactは追加しない。既存の有限stage/statusと許可された操作名だけをCIへ出力する。
+通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。初回PoCの実証は[PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54)のsource `44e1b412` で完了している。差戻追加経路は[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d` で全CIと実DB/2名browser/両HTTP server再起動後復元/cleanupが成功した。根拠・候補・判断は[PR57](https://github.com/AIrisu-072/knowledge-platform/pull/57) exact `d383bacc` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。合成Agentは[PR60](https://github.com/AIrisu-072/knowledge-platform/pull/60) exact `48ae1bfd` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。最終事務の完了は別のexact-head結果で確認する。PostgreSQL processそのものの再起動は確認対象に含めていない。画像・trace・videoはoff、raw実行ログ・標準runnerの原文は一時workspace内に保持し、公開artifactは追加しない。既存の有限stage/statusと許可された操作名だけをCIへ出力する。

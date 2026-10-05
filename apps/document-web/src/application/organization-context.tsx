@@ -6,7 +6,7 @@ export const emptySelection: SelectedHandoff = { evidenceRevisionRefs: [], findi
 type OrganizationContextValue = { session: WorkSession | null; taskHref: string; setContext: (session: WorkSession, taskHref: string) => void };
 export type AgentDraft = { purpose: string; support: RevisionRef[]; executionId: string | null; recoveryExecutionId?: string };
 export const emptyAgentDraft: AgentDraft = { purpose: '', support: [], executionId: null };
-type TaskTransient = { draft: string | null; reason: string | null; operation: WorkOperation | null; unknown: boolean; notice: string; error: unknown; evidence?: EvidenceDraft; sharing?: SelectedHandoff; agent?: AgentDraft };
+type TaskTransient = { draft: string | null; reason: string | null; operation: WorkOperation | null; unknown: boolean; notice: string; error: unknown; evidence?: EvidenceDraft; sharing?: SelectedHandoff; agent?: AgentDraft; selectedDocumentId?: string };
 const emptyTransient: TaskTransient = { draft: null, reason: null, operation: null, unknown: false, notice: '', error: null };
 const TransientContext = createContext<{ items: Record<string, TaskTransient>; update: (key: string, value: SetStateAction<TaskTransient>) => void; clear: (prefix: string, except?: string) => void; clearAgent: (except?: string) => void }>({ items: {}, update: () => undefined, clear: () => undefined, clearAgent: () => undefined });
 const OrganizationContext = createContext<OrganizationContextValue>({ session: null, taskHref: '/tasks', setContext: () => undefined });
