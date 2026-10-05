@@ -26,10 +26,23 @@ test('初回登録だけを既存journeyへ追加し、成功時も失敗時も�
   assert.match(source, /await finishDiagnostics\(page\)/);
   assert.doesNotMatch(source, /visualCheckpoint|screenshot\(|recordVideo|tracing|page\.route\(|route\.fulfill\(|route\.abort\(/);
 });
+test('予約取消は同じjourneyと再起動phaseへ追加し、専用画像や外部artifactを生成しない', async () => {
+  const config = await read('../../../apps/document-web/playwright.runtime.config.ts');
+  assert.match(config, /testMatch: phase === 'journey' \? \[[^\]]*'document-schedule-cancellation\.spec\.ts'[^\]]*\] : \[[^\]]*'persistence\.spec\.ts'[^\]]*'document-schedule-cancellation\.spec\.ts'/);
+  const source = await read('../../../apps/document-web/e2e-runtime/document-schedule-cancellation.spec.ts');
+  assert.match(source, /^test\.use\(\{ screenshot: 'off', trace: 'off', video: 'off' \}\);$/m);
+  assert.match(source, /process\.env\.KP_POC_RUNTIME_PHASE === 'journey'/);
+  assert.match(source, /await startDiagnostics\(page\)/);
+  assert.match(source, /await finishDiagnostics\(page\)/);
+  assert.match(source, /\$\{context\.statePath\}\.schedule-cancellation\.json/);
+  assert.match(source, /mode: 0o600/);
+  assert.doesNotMatch(source, /saveSnapshot\(|visualCheckpoint|screenshot\(|recordVideo|tracing|page\.route\(|route\.fulfill\(|route\.abort\(/);
+});
+
 test('取下げ・公開終了の専用journeyと再起動だけを既存runnerへ追加し、画像を記録しない', async () => {
   const config = await read('../../../apps/document-web/playwright.runtime.config.ts');
   assert.match(config, /testMatch: phase === 'journey' \? \[[^\]]*'lifecycle-operations\.spec\.ts'/);
-  assert.match(config, /: \['persistence\.spec\.ts', 'metadata-editor\.spec\.ts', 'lifecycle-operations-persistence\.spec\.ts'\]/);
+  assert.match(config, /: \['persistence\.spec\.ts', 'metadata-editor\.spec\.ts', 'lifecycle-operations-persistence\.spec\.ts', 'document-schedule-cancellation\.spec\.ts'\]/);
   assert.match(config, /retries: 0/);
   for (const name of ['lifecycle-operations', 'lifecycle-operations-persistence']) {
     const source = await read(`../../../apps/document-web/e2e-runtime/${name}.spec.ts`);

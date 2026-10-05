@@ -368,3 +368,14 @@ test('action capabilities are detail-scoped hints with typed reasons', () => {
     undefined,
   );
 });
+
+
+test('version detail exposes only its required nullable current publication schedule identity', () => {
+  const detail = resolved(contract.components.schemas.VersionDetail);
+  assert.ok(detail.required.includes('currentPublicationScheduleId'));
+  assert.deepEqual(detail.properties.currentPublicationScheduleId.type, ['string', 'null']);
+  assert.equal(detail.properties.currentPublicationScheduleId.format, 'uuid');
+  assert.equal(resolved(contract.components.schemas.Version).properties.currentPublicationScheduleId, undefined);
+  const example = resolved(contract.components.responses.Version).content['application/json'].example;
+  assert.equal(example.currentPublicationScheduleId, null);
+});

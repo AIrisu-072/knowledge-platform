@@ -33,7 +33,7 @@ function setup(values: Record<string, unknown> = metadata, capability: unknown =
   api.getRootFolder.mockResolvedValue({ folderId: '00000000-0000-4000-8000-000000000099', name: 'ルート', capabilities: {} });
   api.listFolderChildren.mockResolvedValue({ items: [], nextCursor: null, capabilities: {} });
   api.listDocuments.mockResolvedValue({ view: 'published', items: [{ ...detail(), folderName: null }], nextCursor: null });
-  api.getDocumentVersion.mockResolvedValue({ capabilities: { download: denied, withdraw: denied } });
+  api.getDocumentVersion.mockResolvedValue({ currentPublicationScheduleId: null, capabilities: { download: denied, withdraw: denied } });
   api.listVersionFiles.mockResolvedValue({ items: [] });
   api.listDocumentVersions.mockResolvedValue({ items: [], nextCursor: null });
   api.listDocumentRevisions.mockResolvedValue({ items: [], nextCursor: null });

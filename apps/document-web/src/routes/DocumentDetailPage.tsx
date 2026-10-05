@@ -19,6 +19,7 @@ import {
   type VersionDetail,
 } from '../application/document-workspace';
 import { ApiFeedback, LoadingState } from '../components/shared/ApiFeedback';
+import { DocumentScheduleCancellation } from '../components/document/DocumentScheduleCancellation';
 import { OriginalVersionDownload } from '../components/shared/OriginalVersionDownload';
 import { DocumentMetadataEditor } from '../components/document/DocumentMetadataEditor';
 import { DocumentLifecycleOperations } from '../components/document/DocumentLifecycleOperations';
@@ -257,7 +258,7 @@ export function DocumentDetailPage() {
               </div>
               <section id="document-tab-panel" role="tabpanel" aria-labelledby={`tab-${activeTab}`} tabIndex={0} className={styles.tabPanel}>
                 {activeTab === 'overview' && <OverviewTab key={location.href} document={document} filesQuery={filesQuery} reload={async () => { const result = await detailQuery.refetch(); if (result.error) throw result.error; }} />}
-                {activeTab === 'versions' && versionsPanel}
+                {activeTab === 'versions' && <>{versionsPanel}{selectedVersion && <DocumentScheduleCancellation key={`${documentId}:${selectedVersion.versionId}`} document={document} view={search.view} versionId={selectedVersion.versionId} version={versionDetailQuery.data} contextKey={`${documentId}:${search.view}:${activeTab}:${selectedVersion.versionId}`} currentRead={!detailQuery.isFetching && !detailQuery.isError && !versionDetailQuery.isFetching && !versionDetailQuery.isError} />}</>}
                 {activeTab === 'history' && <HistoryTab query={historyQuery} />}
                 {activeTab === 'access' && canManageAccess && <AccessTab documentId={documentId} documentTitle={document.title} documentFolderId={document.folderId ?? null} folderName={document.folderName ?? null} policy={accessQuery.data} loading={accessQuery.isPending} error={accessQuery.error} onRetry={() => void accessQuery.refetch()} />}
               </section>

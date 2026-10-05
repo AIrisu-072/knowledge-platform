@@ -70,6 +70,8 @@ pub struct VersionDetail {
     pub summary: VersionSummary,
     pub title: String,
     pub metadata: Value,
+    /// 同じ認可済みsnapshotで対象Version・時刻に一致するPENDING予約のPublish ID。
+    pub current_publication_schedule_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

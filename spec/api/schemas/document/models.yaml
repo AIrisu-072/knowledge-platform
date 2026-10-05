@@ -298,7 +298,7 @@ $defs:
   VersionDetail:
     type: object
     additionalProperties: false
-    required: [versionId, versionNo, baseVersionId, lifecycleState, isCurrent, createdAt, approvedAt, scheduledPublishAt, publishedAt, withdrawnAt, updatedAt, fileSummary, firstReadAt, title, metadata, capabilities]
+    required: [versionId, versionNo, baseVersionId, lifecycleState, isCurrent, createdAt, approvedAt, scheduledPublishAt, publishedAt, withdrawnAt, updatedAt, fileSummary, firstReadAt, title, metadata, currentPublicationScheduleId, capabilities]
     properties:
       versionId: {type: string, format: uuid}
       versionNo: {type: integer, minimum: 1}
@@ -315,6 +315,10 @@ $defs:
       firstReadAt: {type: [string, 'null'], format: date-time}
       title: {type: string}
       metadata: {type: object}
+      currentPublicationScheduleId:
+        type: [string, 'null']
+        format: uuid
+        description: 同じ認可済み読取snapshotでDocument・対象Version・PENDING状態・scheduledPublishAtが一致する現在の公開予約のpublishOperationId。一致する予約がなければnull。mutation認可や成功を保証しない。
       capabilities: {$ref: '#/$defs/VersionCapabilities'}
   History:
     type: object

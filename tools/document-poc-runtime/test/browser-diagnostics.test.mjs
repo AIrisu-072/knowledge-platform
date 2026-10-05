@@ -95,6 +95,29 @@ test('GUI metadata受入は固定到達段階だけを公開し、値や理由�
   assert.ok(!JSON.stringify(failure).includes('PRIVATE'));
 });
 
+test('公開予約取消の固定到達段階とsourceだけを両診断境界へ残す', () => {
+  const stages = ['gui-schedule-created', 'gui-schedule-dismissed', 'gui-schedule-cancelled',
+    'gui-schedule-replaced', 'gui-schedule-final-state-saved', 'gui-schedule-restart-verified'];
+  for (const stage of stages) {
+    const input = report([{ status: 'passed' }]);
+    input.suites[0].specs[0].file = '/private/source/document-schedule-cancellation.spec.ts';
+    input.suites[0].specs[0].tests[0].annotations = [
+      { type: 'runtime-completed', description: stage },
+      { type: 'runtime-completed', description: 'gui-schedule-PRIVATE_BODY' },
+    ];
+    const actual = sanitizeBrowserDiagnostics(browserDiagnostics(input));
+    assert.equal(actual.tests[0].source, 'document-schedule-cancellation.spec.ts');
+    assert.equal(actual.tests[0].lastCompletedStage, stage);
+    assert.ok(!JSON.stringify(actual).includes('PRIVATE_BODY'));
+  }
+  const failure = browserDiagnostics(report([{ status: 'failed', error: {
+    message: 'Error: expect(value).toBe() failed',
+    stack: 'at /private/source/document-schedule-cancellation.spec.ts:12:3',
+  } }]));
+  assert.equal(failure.tests[0].source, 'document-schedule-cancellation.spec.ts');
+  assert.equal(failure.tests[0].line, 12);
+});
+
 test('GUI取下げ・公開終了と再起動の固定到達段階だけを既存の診断境界へ残す', () => {
   const stages = ['gui-lifecycle-fixture-ready', 'gui-lifecycle-cancel-verified', 'gui-withdraw-fallback-verified',
     'gui-withdraw-null-verified', 'gui-publication-end-verified', 'gui-lifecycle-snapshot-saved', 'gui-lifecycle-restart-verified'];
