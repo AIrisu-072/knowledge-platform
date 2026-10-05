@@ -4,6 +4,7 @@
 
 mod coverage;
 mod evidence;
+mod extraction;
 mod history;
 mod model;
 mod outbox;
@@ -13,6 +14,9 @@ mod translate;
 
 pub use coverage::{DocumentCoveragePreflight, DocumentCoverageRequirement};
 pub use evidence::{DocumentEvidenceCatalog, DocumentEvidenceField};
+pub use extraction::{
+    BodyBuildError, BodyProfileRegistry, DocumentBodyExtractor, ExtractedItemResult,
+};
 pub use history::DocumentHistoricalLookup;
 pub use model::{
     AuthoritativeItemBinding, DocumentAccessProjectionInput, DocumentSourceSnapshot,
