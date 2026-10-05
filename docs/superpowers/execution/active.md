@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 2026-10-05 UTC — 文書共通属性3項目の編集GUI
+
+- 公開main `e9c7f773` から、既存T5を文書概要の最小フォームへ接続する。[今回の状況](document-metadata-editor-status.md)、[小さい計画](../plans/2026-10-05-document-metadata-editor.md)を参照
+- 正本snake_case3項目・明示削除・理由のみ。legacy/extensionsは表示保持、未知結果は同じ操作ID/payloadの明示再送。新backend・認可・依存・永続draftを追加しない
+- 全GUI293件・型/build・純粋runner29件・collection13+2成功、限定独立レビューGO。実DB/browser・同一head全CIは未実行で、公開/mergeは親担当、実サーバー反映は所有者が手動実施する。以下の過去記録を今回の受入へ付け替えない
+
+---
+
 ## 2026-10-05 03:12 UTC — 既存APIの文書初回登録をGUIへ追加
 
 - 所有者の「内部処理があるものを画面操作から使えるようにする」指示に従い、main `d20f2c1c` から初回文書登録を最優先で追加する。[今回の状況](document-initial-registration-status.md)、[小さい計画](../plans/2026-10-05-document-initial-registration.md)を参照

@@ -70,6 +70,31 @@ test('GUI初回登録の固定到達段階だけを既存の診断境界へ残�
   assert.equal(failure.tests[0].line, 12);
 });
 
+test('GUI metadata受入は固定到達段階だけを公開し、値や理由を診断へ含めない', () => {
+  const stages = ['gui-metadata-created', 'gui-metadata-cancel-verified', 'gui-metadata-working-verified',
+    'gui-metadata-published-verified', 'gui-metadata-minor-verified', 'gui-metadata-noop-verified',
+    'gui-metadata-snapshot-saved', 'gui-metadata-restart-verified'];
+  for (const stage of stages) {
+    const input = report([{ status: 'passed', stdout: ['PRIVATE_METADATA_VALUE'], attachments: [{ body: 'PRIVATE_REASON' }] }]);
+    input.suites[0].specs[0].file = '/private/source/metadata-editor.spec.ts';
+    input.suites[0].specs[0].tests[0].annotations = [
+      { type: 'runtime-completed', description: stage },
+      { type: 'runtime-completed', description: 'gui-metadata-PRIVATE_METADATA_VALUE' },
+    ];
+    const actual = sanitizeBrowserDiagnostics(browserDiagnostics(input));
+    assert.equal(actual.tests[0].source, 'metadata-editor.spec.ts');
+    assert.equal(actual.tests[0].lastCompletedStage, stage);
+    assert.ok(!JSON.stringify(actual).includes('PRIVATE'));
+  }
+  const failure = browserDiagnostics(report([{ status: 'failed', error: {
+    message: 'Error: expect(value).toBe() failed: PRIVATE_METADATA_VALUE',
+    stack: 'at /private/source/metadata-editor.spec.ts:17:3',
+  } }]));
+  assert.equal(failure.tests[0].source, 'metadata-editor.spec.ts');
+  assert.equal(failure.tests[0].line, 17);
+  assert.ok(!JSON.stringify(failure).includes('PRIVATE'));
+});
+
 test('classifies strict-locator and emits only allowlisted failure location/matcher', () => {
   const result = browserDiagnostics(report([{ status: 'failed', error: {
     message: 'Error: expect(locator).toBeVisible() failed: strict mode violation: PRIVATE_SELECTOR',
