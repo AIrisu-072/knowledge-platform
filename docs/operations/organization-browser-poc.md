@@ -2,6 +2,10 @@
 
 ## 検証済みの最小経路
 
+2026-10-05、[PR67](https://github.com/AIrisu-072/knowledge-platform/pull/67) `a39c90c2` / tree `880b1a57abc6890ed47df5e7bc16a4694d4546cc` で、合成Agent・完了・保留/再開・公開原本Downloadを含む同2名操作、実DB/transaction、両HTTP server再起動/復元/cleanupと[全通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574840)が成功した。統合後main `6c514850` は同一tree。[Linux手動導入](linux-manual-installation.md)はこの固定版を使う。初回read失敗と原本bytes観測失敗の原因未特定という記録は残し、実サーバーや本番Identityの資格とは区別する。
+
+以下は最初の最小経路の受入履歴である。
+
 2026-10-04、[PR54のsource44e1b412](https://github.com/AIrisu-072/knowledge-platform/commit/44e1b41219a77809f82fe22045cb4fceaf0c1ed8) をGitHub Actionsの使い捨てPostgreSQLと実Chromiumで検証した。2名の保存・文書参照・提出・引受け・snapshot、2つのHTTP server再起動後の復元、private非開示、transaction rollback/競合、cleanupがPASS。通常CIと既存Document回帰もPASS。詳細は[完了記録](../superpowers/execution/organization-browser-poc-slice-status.md)を参照。
 
 ## 現在の範囲
@@ -165,4 +169,4 @@ PostgreSQL transaction試験は既定で明示ignoreされる。実行してい�
 
 `mise run organization:poc:runtime` は既存Document CI後段向けの単発確認である。外部DBを受け付けず、既存と同じ公式PostgreSQL一時containerを別途所有し、独立したtransaction試験用DBとbrowser用DB・storageを作る。既存固定Chromiumでsales/officeの操作を行い、2processを停止・再起動して保存状態を確認した後、所有containerを削除する。
 
-通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。初回PoCの実証は[PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54)のsource `44e1b412` で完了している。差戻追加経路は[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d` で全CIと実DB/2名browser/両HTTP server再起動後復元/cleanupが成功した。根拠・候補・判断は[PR57](https://github.com/AIrisu-072/knowledge-platform/pull/57) exact `d383bacc` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。合成Agentは[PR60](https://github.com/AIrisu-072/knowledge-platform/pull/60) exact `48ae1bfd` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。最終事務の完了は別のexact-head結果で確認する。PostgreSQL processそのものの再起動は確認対象に含めていない。画像・trace・videoはoff、raw実行ログ・標準runnerの原文は一時workspace内に保持し、公開artifactは追加しない。既存の有限stage/statusと許可された操作名だけをCIへ出力する。
+通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。初回PoCの実証は[PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54)のsource `44e1b412` で完了している。差戻追加経路は[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d` で全CIと実DB/2名browser/両HTTP server再起動後復元/cleanupが成功した。根拠・候補・判断は[PR57](https://github.com/AIrisu-072/knowledge-platform/pull/57) exact `d383bacc` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。合成Agentは[PR60](https://github.com/AIrisu-072/knowledge-platform/pull/60) exact `48ae1bfd` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。最終事務の完了・保留/再開・Document原本取得を含む現在の統合結果は、本書冒頭のPR67 exact-head記録を参照する。PostgreSQL processそのものの再起動は確認対象に含めていない。画像・trace・videoはoff、raw実行ログ・標準runnerの原文は一時workspace内に保持し、公開artifactは追加しない。既存の有限stage/statusと許可された操作名だけをCIへ出力する。
