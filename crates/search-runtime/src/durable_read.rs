@@ -9,27 +9,37 @@
 //! is self-contained and is dropped once no request holds it. A key that
 //! fails re-verification is never served; the API reports the Source as
 //! unavailable until a new key is published.
+//!
+//! B7: the verified Graph is loaded with the generation, its structural
+//! owners taken from the verified Graph rows. Each request enters it with
+//! its own Document access, so every traversed participant is checked for
+//! that actor alone.
 
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use document_domain::DocumentId;
 use search_api_http::router::ApiFuture;
 use search_application::api_scope::ApiError;
-use search_application::ports::{CurrentCandidateAccessEvaluatorPort, ProjectionGenerationStore};
+use search_application::graph_generation::GraphSourceMapping;
+use search_application::ports::ProjectionGenerationStore;
 use search_application::projection::{
     PersistableGenerationManifest, PersistableResourceProjection,
 };
 use search_application::resource_read::{CurrentResourceReadPort, ResourceLocatorPort};
 use search_application::scoped::TrustedSearchScope;
 use search_application::search_core::id::ProjectionGenerationId;
+use search_application::search_core::id::ResourceId;
 use search_application::search_core::projection::{
     ProjectionGenerationKey, ProjectionGenerationManifest,
 };
 use search_application::search_core::source::DiscoverableSource;
+use search_graph::PostgresGraphStore;
 use search_projection_memory::MemoryProjectionStore;
 use search_source_document::{
-    DocumentEvidenceCatalog, DocumentLexicalReader, DocumentProjectionReader,
+    DocumentCurrentAccessAdapter, DocumentEvidenceCatalog, DocumentLexicalReader,
+    DocumentProjectionReader, DurableDocumentGraph,
 };
 use search_tantivy::TantivyLexicalIndex;
 use sqlx::PgPool;
@@ -72,6 +82,7 @@ pub struct LoadedGeneration {
     key: ProjectionGenerationKey,
     store: MemoryProjectionStore,
     lexical: Arc<TantivyLexicalIndex>,
+    graph: DurableDocumentGraph,
 }
 
 impl LoadedGeneration {
@@ -85,6 +96,10 @@ impl LoadedGeneration {
 
     pub fn lexical_reader(&self) -> DocumentLexicalReader {
         DocumentLexicalReader::over(self.lexical.clone())
+    }
+
+    pub fn graph(&self) -> &DurableDocumentGraph {
+        &self.graph
     }
 }
 
@@ -193,6 +208,29 @@ impl DurableDocumentReadModel {
             .await
             .map_err(|error| store_error("payload restore", error))?;
 
+        // Structural owners come from the verified Graph rows, never RAM.
+        let (_, records, _) = PostgresGraphStore::new(self.pool.clone())
+            .recover_rows(key, &manifest.digest)
+            .await
+            .map_err(|error| store_error("graph rows", error))?;
+        let owners: Vec<(ResourceId, DocumentId)> = records
+            .iter()
+            .filter_map(|record| match &record.mapping {
+                GraphSourceMapping::Document { document_id }
+                | GraphSourceMapping::FolderPlacement { document_id, .. } => {
+                    Some((record.resource_ref, DocumentId::from_uuid(*document_id)))
+                }
+                _ => None,
+            })
+            .collect();
+        let graph = DurableDocumentGraph::load(
+            manifest.clone(),
+            &self.source,
+            projection.resources.clone(),
+            owners,
+        )
+        .map_err(|error| store_error("graph load", error))?;
+
         let store = MemoryProjectionStore::new();
         let persistable = PersistableGenerationManifest::try_from((manifest.clone(), &self.source))
             .map_err(|error| store_error("manifest retention", error))?;
@@ -230,6 +268,7 @@ impl DurableDocumentReadModel {
             key,
             store,
             lexical,
+            graph,
         })
     }
 }
@@ -237,7 +276,8 @@ impl DurableDocumentReadModel {
 /// The actor's current Document access and Resource reads, from the host
 /// that maps a verified Search actor to its Document identity.
 pub struct DocumentActorAccess {
-    pub access: Arc<dyn CurrentCandidateAccessEvaluatorPort>,
+    /// The actor's current Document access; Graph participants use it too.
+    pub access: Arc<DocumentCurrentAccessAdapter>,
     pub resource_locator: Arc<dyn ResourceLocatorPort>,
     pub resource_reader: Arc<dyn CurrentResourceReadPort>,
 }
@@ -280,6 +320,28 @@ impl ActorPortsFactory for DurableDocumentPorts {
                     DocumentLexicalReader::over(Arc::new(TantivyLexicalIndex::new())),
                 ),
             };
+            let (hypergraph, graph_resource_access) = match &loaded {
+                Some(loaded) => {
+                    let entered = loaded
+                        .graph()
+                        .enter(
+                            actor.access_handle().to_opaque_string(),
+                            access.access.clone(),
+                        )
+                        .map_err(|_| ApiError::ServiceUnavailable)?;
+                    (
+                        Some(Arc::new(loaded.graph().reader())
+                            as Arc<
+                                dyn search_application::ports::HyperGraphRetrieverPort,
+                            >),
+                        Some(Arc::new(entered)
+                            as Arc<
+                                dyn search_application::ports::CurrentAccessEvaluatorPort,
+                            >),
+                    )
+                }
+                None => (None, None),
+            };
             Ok(ActorPorts {
                 generations: Arc::new(reader.clone()),
                 concepts: Arc::new(reader.clone()),
@@ -288,8 +350,8 @@ impl ActorPortsFactory for DurableDocumentPorts {
                 directory: Some(Arc::new(reader.clone())),
                 structured: Some(Arc::new(reader)),
                 lexical: Some(Arc::new(lexical)),
-                hypergraph: None,
-                graph_resource_access: None,
+                hypergraph,
+                graph_resource_access,
                 access: access.access,
                 resource_locator: access.resource_locator,
                 resource_reader: access.resource_reader,

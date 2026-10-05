@@ -47,9 +47,10 @@ pub use model::{
     DsiEvidenceRefs, PermittedDocumentMetadata, PublicationEndRecord,
 };
 pub use outbox::{
-    DocumentGraphAccessReader, DocumentGraphReader, DocumentIndexRuntime, DocumentIndexingConfig,
-    DocumentLexicalReader, DocumentOutboxIndexer, DocumentOutboxReader, DocumentProjectionReader,
-    IndexingReceipt, IndexingReceiptStore, MemoryDocumentIndexRuntime,
+    DocumentGraphAccessReader, DocumentGraphActorAccess, DocumentGraphReader, DocumentIndexRuntime,
+    DocumentIndexingConfig, DocumentLexicalReader, DocumentOutboxIndexer, DocumentOutboxReader,
+    DocumentProjectionReader, DurableDocumentGraph, IndexingReceipt, IndexingReceiptStore,
+    MemoryDocumentIndexRuntime,
 };
 pub use postgres::{
     DocumentCurrentAccessAdapter, DocumentOutboxSnapshot, DocumentSnapshotReader, DsiReadState,

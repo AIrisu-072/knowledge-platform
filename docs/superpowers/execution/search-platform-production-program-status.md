@@ -14,4 +14,10 @@
 
 設計との差分（B5）：凍結設計はSearch Audit生成元の表をDomainの移行に置くとしていたが、Document Platformの移行に触れないため、Searchの移行0007に置いた。Audit保存先への配送worker（R04Aの残り）は未実装で、生成元の行は `delivered_at` が空のまま残る。
 
-次の作業：B7（Graphの三者権限取消）。
+完了：B7。公開Discoverに任意の `graph`（起点Resource 1〜8件、関係の種類、from/toの役割、最大ホップ1〜3）を追加し、OAS `DiscoveryGraph` と契約試験を更新した（追加のみ）。名前空間、actorのaccess context、評価の時刻文脈、走査上限はサーバーが付け、呼び出し側は指定できない。routeは可視のDocument Sourceごとに走査計画を作る。永続の読取りモデルは、検証済みGraph行の構造上の所有者とともにGraphを読み込み（`DurableDocumentGraph`）、各要求はそのactorのDocument権限で入る。参加者の権限確認はその束縛のactorだけに効き、要求を抜けると束縛は消える。`durable_graph::graph_nary_third_participant_revocation`（三者関係 `document_current_placement` をDocumentからVersionへ辿る経路が、権限のあるactorにだけ存在し、権限の無いactorと抜けた後の束縛では存在しない）と、公開入力の受理・項目エラー・未知項目拒否の試験が成功した。
+
+制約（B7）：Document Sourceの公開候補はDocument Versionだけで、Folder配置は文書ごとの構造節点のため、文書をまたぐ経路は存在しない。三者関係の参加者は同じDocumentの権限に属するため、第三参加者だけの取消は表現できず、actor単位の権限と束縛の解放で確認した。公開結果はGraph経路を開示しない。
+
+A1の影響：`search-source-document::vertical_slice` の一件は、別の主語の主張を判定外にしたことで `Unresolved` から `Sufficient` に変わる（所有者判断①どおり）ため、期待値を更新した。
+
+次の作業：E（Vectorの本番実装）。

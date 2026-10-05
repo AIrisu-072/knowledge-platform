@@ -84,6 +84,7 @@ fn input(claims: &[u128]) -> DiscoverInput {
         business_timezone: None,
         query: None,
         coverage: SearchCoverage::TitleAndPermittedMetadata,
+        graph: None,
     }
 }
 

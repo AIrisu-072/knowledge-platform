@@ -808,7 +808,9 @@ async fn shared_folder_placements_inherit_only_their_own_documents_read_policy()
     )
     .unwrap();
     let ranked = discovery.discover(request.clone()).await.unwrap();
-    assert_eq!(ranked.evidence_sufficiency, EvidenceSufficiency::Unresolved);
+    // The other Version's title is about another subject: it is outside the
+    // Claim's judgement (A1), so the first Version's title suffices.
+    assert_eq!(ranked.evidence_sufficiency, EvidenceSufficiency::Sufficient);
     assert!(
         ranked
             .evidence_set

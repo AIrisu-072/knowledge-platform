@@ -1451,3 +1451,129 @@ fn one_source_snapshot(snapshot: &DocumentOutboxSnapshot) -> Result<String, Sear
     }
     Ok(snapshot.source_snapshot.clone())
 }
+
+/// Participant access of the actors currently reading one durable Graph,
+/// keyed by each request's opaque access-context binding.
+#[derive(Default)]
+struct GraphActors {
+    owners: BTreeMap<ResourceId, DocumentId>,
+    bound: RwLock<BTreeMap<String, (Arc<DocumentCurrentAccessAdapter>, usize)>>,
+}
+
+impl CurrentAccessEvaluatorPort for GraphActors {
+    fn evaluate<'a>(
+        &'a self,
+        resource_ref: ResourceId,
+        access_context: &'a str,
+    ) -> BoxFuture<'a, AccessDecision> {
+        Box::pin(async move {
+            let access = self
+                .bound
+                .read()
+                .map_err(|_| SearchError::OperationFailed("graph actor lock poisoned".into()))?
+                .get(access_context)
+                .map(|(access, _)| access.clone());
+            // A context no live request bound is never evaluated.
+            let Some(access) = access else {
+                return Ok(AccessDecision::Unknown);
+            };
+            match self.owners.get(&resource_ref) {
+                Some(document) => {
+                    access
+                        .evaluate_owned_document(*document, access_context)
+                        .await
+                }
+                None => access.evaluate(resource_ref, access_context).await,
+            }
+        })
+    }
+}
+
+/// One durable generation's Graph, loaded once and read by many actors.
+/// Each request enters with its own Document access; its participant checks
+/// use only that access, and leaving drops the binding.
+pub struct DurableDocumentGraph {
+    graph: Arc<MemoryGraphRetriever>,
+    actors: Arc<GraphActors>,
+}
+
+impl DurableDocumentGraph {
+    pub fn load(
+        manifest: ProjectionGenerationManifest,
+        source: &DiscoverableSource,
+        projections: Vec<CompiledResourceProjection>,
+        ownership: Vec<(ResourceId, DocumentId)>,
+    ) -> Result<Self, SearchError> {
+        validate_document_graph(&projections)?;
+        let owners = validate_graph_ownership(&projections, ownership)?;
+        let actors = Arc::new(GraphActors {
+            owners,
+            bound: RwLock::default(),
+        });
+        let graph = Arc::new(MemoryGraphRetriever::new(actors.clone()));
+        graph
+            .build_generation(manifest, source, projections)
+            .map_err(|error| {
+                SearchError::OperationFailed(format!("Document graph load failed: {error}"))
+            })?;
+        Ok(Self { graph, actors })
+    }
+
+    pub fn reader(&self) -> DocumentGraphReader {
+        DocumentGraphReader(self.graph.clone())
+    }
+
+    /// Binds `access` to `binding` for one request.
+    pub fn enter(
+        &self,
+        binding: String,
+        access: Arc<DocumentCurrentAccessAdapter>,
+    ) -> Result<DocumentGraphActorAccess, SearchError> {
+        let mut bound = self
+            .actors
+            .bound
+            .write()
+            .map_err(|_| SearchError::OperationFailed("graph actor lock poisoned".into()))?;
+        let entry = bound.entry(binding.clone()).or_insert((access, 0));
+        entry.1 += 1;
+        Ok(DocumentGraphActorAccess {
+            actors: self.actors.clone(),
+            binding,
+        })
+    }
+}
+
+/// One request's Graph participant access; dropping it leaves the Graph.
+pub struct DocumentGraphActorAccess {
+    actors: Arc<GraphActors>,
+    binding: String,
+}
+
+impl CurrentAccessEvaluatorPort for DocumentGraphActorAccess {
+    fn evaluate<'a>(
+        &'a self,
+        resource_ref: ResourceId,
+        access_context: &'a str,
+    ) -> BoxFuture<'a, AccessDecision> {
+        Box::pin(async move {
+            if access_context != self.binding {
+                return Ok(AccessDecision::Unknown);
+            }
+            CurrentAccessEvaluatorPort::evaluate(self.actors.as_ref(), resource_ref, access_context)
+                .await
+        })
+    }
+}
+
+impl Drop for DocumentGraphActorAccess {
+    fn drop(&mut self) {
+        if let Ok(mut bound) = self.actors.bound.write()
+            && let Some(entry) = bound.get_mut(&self.binding)
+        {
+            entry.1 -= 1;
+            if entry.1 == 0 {
+                bound.remove(&self.binding);
+            }
+        }
+    }
+}
