@@ -75,7 +75,8 @@ enum Mode {
 const DELETE_ORDER: [&str; 11] = [
     "DELETE FROM search_generation_full_guard WHERE source_id=$1 AND target_generation_id=$2",
     "DELETE FROM search_graph.build_guard WHERE source_id=$1 AND target_generation_id=$2",
-    "DELETE FROM search_evaluation_lease WHERE source_id=$1 AND generation_id=$2",
+    "DELETE FROM search_evaluation_lease WHERE source_id=$1 AND generation_id=$2 \
+     AND expires_at <= clock_timestamp()",
     "DELETE FROM search_graph.participant WHERE source_id=$1 AND generation_id=$2",
     "DELETE FROM search_graph.relation WHERE source_id=$1 AND generation_id=$2",
     "DELETE FROM search_graph.resource WHERE source_id=$1 AND generation_id=$2",
@@ -201,7 +202,8 @@ impl PgGenerationGc {
         let leases = sqlx::query(
             "DELETE FROM search_evaluation_lease WHERE (source_id, lease_id) IN ( \
              SELECT source_id, lease_id FROM search_evaluation_lease \
-             WHERE expires_at <= clock_timestamp() ORDER BY expires_at LIMIT $1)",
+             WHERE expires_at <= clock_timestamp() ORDER BY expires_at LIMIT $1) \
+             AND expires_at <= clock_timestamp()",
         )
         .bind(i64::from(limit))
         .execute(&self.pool)
@@ -393,6 +395,22 @@ impl PgGenerationGc {
                 .bind(generation)
                 .execute(&mut *tx)
                 .await?;
+            // A renew that read its lease as live before expiry can commit
+            // after the pinned check; the expiry-checked DELETE then keeps
+            // the renewed row, and its presence rolls everything back.
+            if statement.starts_with("DELETE FROM search_evaluation_lease") {
+                let renewed: bool = sqlx::query_scalar(
+                    "SELECT EXISTS (SELECT 1 FROM search_evaluation_lease \
+                     WHERE source_id=$1 AND generation_id=$2)",
+                )
+                .bind(source)
+                .bind(generation)
+                .fetch_one(&mut *tx)
+                .await?;
+                if renewed {
+                    return Ok(GcOutcome::Protected(Protection::Pinned));
+                }
+            }
         }
         tx.commit().await.map_err(|_| GcError::CompletionUnknown)?;
         remove_dir(&self.lexical.final_dir(key));

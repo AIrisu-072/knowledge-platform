@@ -438,7 +438,7 @@ async fn revocation_expiry_scope_change_and_cancel_purge() {
         world.build(&expiring, &[]).await,
         VectorBuildOutcome::Published(_)
     ));
-    assert_eq!(world.search(2, "alpha").await.1, false);
+    assert!(!world.search(2, "alpha").await.1);
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     assert_eq!(world.search(2, "alpha").await, (vec![], true));
     // A build cancelled after staging leaves only an orphan the next

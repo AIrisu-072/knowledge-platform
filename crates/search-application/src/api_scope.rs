@@ -16,7 +16,7 @@ use std::time::Instant;
 
 use crate::scoped::{
     AccessBindingState, AccessContextAuthorityPort, AccessContextHandle, ScopedSourceRegistryPort,
-    TrustedSearchScope, VisibleCatalogSnapshot, check_actor_current, prepare_actor_visible_sources,
+    TrustedSearchScope, VisibleCatalogSnapshot, prepare_actor_visible_sources,
 };
 
 /// The registry outcome classes a Search route can end in. The HTTP adapter

@@ -24,6 +24,9 @@ use vector::*;
 
 const SCOPE: &str = "tenant-a-scope";
 
+/// One change to the Source's current Unit.
+type Mutation = Box<dyn Fn(&mut KnowledgeUnit)>;
+
 fn rid(value: u128) -> ResourceId {
     ResourceId::from_uuid(Uuid::from_u128(value))
 }
@@ -241,7 +244,7 @@ async fn stale_version_t10_part_representation_raw_profile_text_model_or_generat
         VectorResolution::Visible(_)
     ));
     // The Source's current Unit differs in any bound field: suppressed.
-    let mutations: Vec<Box<dyn Fn(&mut KnowledgeUnit)>> = vec![
+    let mutations: Vec<Mutation> = vec![
         Box::new(|unit| unit.version.source_native_version = "version-2".into()),
         Box::new(|unit| unit.part.source_native_part_id = "part-other".into()),
         Box::new(|unit| {

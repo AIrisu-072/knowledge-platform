@@ -78,6 +78,9 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 const REMOTE_BASE: &str = "/r/v1";
+
+/// Builds one raw request for a measured route.
+type RequestBytes<'a> = Box<dyn Fn() -> Vec<u8> + 'a>;
 const PRINCIPALS: [&str; 3] = ["human", "llm", "agent"];
 
 type Indexer = DocumentIndexingService<
@@ -1115,7 +1118,7 @@ async fn measure_route_latency() {
     world.claim_title(first.unwrap());
     world.login("reader");
     let token = Some("reader-token");
-    let routes: Vec<(&str, Box<dyn Fn() -> Vec<u8>>)> = vec![
+    let routes: Vec<(&str, RequestBytes)> = vec![
         (
             "search",
             Box::new(|| {

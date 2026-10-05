@@ -268,3 +268,137 @@ async fn guard_delete_then_child_failure_rolls_back_full_target() {
         0
     );
 }
+
+/// A pin for `alice` on the Source's current generation.
+async fn pin_current(fixture: &Fixture) -> uuid::Uuid {
+    let catalog = fixture.catalog().await;
+    let authority = SyntheticAuthorityAdapter::new();
+    let visibility = SyntheticVisibilityAdapter::new(&catalog);
+    visibility
+        .grant(
+            TenantId::new("tenant-a").unwrap(),
+            PrincipalRef::new("alice").unwrap(),
+            source_id(),
+            registration::revision(1),
+            registration::visibility(1),
+        )
+        .unwrap();
+    let handle = authority
+        .issue_verified_identity(
+            TenantId::new("tenant-a").unwrap(),
+            PrincipalRef::new("alice").unwrap(),
+            Some(SessionId::from_uuid(Uuid::now_v7())),
+            AccessRevision::new(1).unwrap(),
+            Duration::from_secs(600),
+        )
+        .unwrap();
+    let actor = authority.resolve(&handle).await.unwrap().unwrap();
+    let binding = authority
+        .bind_discovery(&actor, DiscoveryEvaluationId::from_uuid(Uuid::from_u128(2)))
+        .await
+        .unwrap()
+        .unwrap();
+    let scope = visibility
+        .bind_source(&actor, source_id())
+        .await
+        .unwrap()
+        .unwrap();
+    let pins = PgEvaluationPins::new(
+        fixture.admin.clone(),
+        &fixture.root,
+        &authority,
+        &visibility,
+    );
+    pins.pin_current(
+        &binding,
+        &scope,
+        PinTtl::new(Duration::from_secs(60)).unwrap(),
+    )
+    .await
+    .unwrap()
+    .lease
+    .lease_id()
+}
+
+async fn expire_lease(admin: &PgPool, lease: uuid::Uuid) {
+    sqlx::query(
+        "UPDATE search_evaluation_lease SET expires_at = clock_timestamp() - interval '1 second' \
+         WHERE lease_id=$1",
+    )
+    .bind(lease)
+    .execute(admin)
+    .await
+    .unwrap();
+}
+
+/// Waits until another session of this database waits on a lock.
+async fn lock_wait(admin: &PgPool) {
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let waiting: bool = sqlx::query_scalar(
+                "SELECT EXISTS (SELECT 1 FROM pg_stat_activity \
+                 WHERE datname = current_database() AND wait_event_type = 'Lock')",
+            )
+            .fetch_one(admin)
+            .await
+            .unwrap();
+            if waiting {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("GC must wait on the renewing transaction");
+}
+
+#[tokio::test]
+async fn renew_racing_gc_keeps_the_lease_and_generation() {
+    let fixture = fixture().await;
+    let first = fixture.publish_current(8_201).await;
+    let lease = pin_current(&fixture).await;
+    fixture.publish_current(8_202).await;
+    let renewed = |admin: PgPool| async move {
+        // A renew that read its lease as live just before expiry and has
+        // not committed yet when GC decides.
+        let mut renew = admin.begin().await.unwrap();
+        sqlx::query(
+            "UPDATE search_evaluation_lease SET expires_at = clock_timestamp() \
+             + interval '1 hour' WHERE lease_id=$1",
+        )
+        .bind(lease)
+        .execute(&mut *renew)
+        .await
+        .unwrap();
+        renew
+    };
+
+    expire_lease(&fixture.admin, lease).await;
+    let renew = renewed(fixture.admin.clone()).await;
+    let (pool, root) = (fixture.admin.clone(), fixture.root.clone());
+    let retire = tokio::spawn(async move {
+        PgGenerationGc::new(pool, &root)
+            .retire_unpinned(first)
+            .await
+    });
+    lock_wait(&fixture.admin).await;
+    renew.commit().await.unwrap();
+    assert_eq!(
+        retire.await.unwrap(),
+        Ok(GcOutcome::Protected(Protection::Pinned))
+    );
+    assert_eq!(count(&fixture.admin, "search_generation", first).await, 1);
+
+    expire_lease(&fixture.admin, lease).await;
+    let renew = renewed(fixture.admin.clone()).await;
+    let (pool, root) = (fixture.admin.clone(), fixture.root.clone());
+    let cleanup =
+        tokio::spawn(async move { PgGenerationGc::new(pool, &root).cleanup_expired(10).await });
+    lock_wait(&fixture.admin).await;
+    renew.commit().await.unwrap();
+    assert_eq!(cleanup.await.unwrap().unwrap().leases, 0);
+    assert_eq!(
+        count(&fixture.admin, "search_evaluation_lease", first).await,
+        1
+    );
+}
