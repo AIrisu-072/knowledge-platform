@@ -201,3 +201,54 @@ test('RFC 9457 failures preserve the generated stable problem contract', async (
       && error.problem.traceId === 'trace-1',
   );
 });
+
+function versionUpload(count = 1) {
+  const items = Array.from({ length: count }, (_, index) => ({ logicalPath: `item-${index}`, ordinal: index,
+    fileId: `file-${index}`, partId: `part-${index}`, mediaType: 'text/plain', originalFilename: `name-${index}.txt` }));
+  return { request: { operationId, targetVersionId: versionId, expectedRevision: 3, title: 'changed', items },
+    files: new Map(items.map(item => [item.partId, new Blob(['bytes'])])) };
+}
+test('prepared multipart retains identical serialized bytes and boundary for an exact replay', async () => {
+  const captures = [];
+  const bridge = new BinaryTransportBridge({ baseUrl: 'https://documents.test', fetch: async (_url, init) => { captures.push(init); throw new TypeError('lost'); } });
+  const input = versionUpload();
+  const prepared = bridge.prepareVersionUpload(input);
+  await assert.rejects(bridge.createVersion(documentId, input, prepared));
+  await assert.rejects(bridge.createVersion(documentId, input, prepared));
+  assert.strictEqual(captures[0].body, captures[1].body);
+  assert.deepEqual(captures[0].headers, captures[1].headers);
+  assert.equal(await captures[0].body.text(), await captures[1].body.text());
+});
+test('multipart preparation rejects 64 binaries, oversized JSON, duplicate FileIDs, and oversized files before fetch', () => {
+  const bridge = new BinaryTransportBridge({ baseUrl: 'https://documents.test', fetch: async () => { throw new Error('must not fetch'); } });
+  assert.throws(() => bridge.prepareVersionUpload(versionUpload(64)), /63/);
+  const largeJson = versionUpload(); largeJson.request.title = 'あ'.repeat(400000);
+  assert.throws(() => bridge.prepareVersionUpload(largeJson), /JSON/);
+  const duplicate = versionUpload(2); duplicate.request.items[1].fileId = duplicate.request.items[0].fileId;
+  assert.throws(() => bridge.prepareVersionUpload(duplicate), /FileID/);
+  const large = versionUpload(); Object.defineProperty(large.files.get('part-0'), 'size', { value: 256 * 1024 * 1024 + 1 });
+  assert.throws(() => bridge.prepareVersionUpload(large), /256/);
+});
+test('multipart size includes JSON and boundaries in the 1 GiB ceiling', () => {
+  const bridge = new BinaryTransportBridge({ baseUrl: 'https://documents.test' });
+  const input = versionUpload(4);
+  for (const value of input.files.values()) Object.defineProperty(value, 'size', { value: 256 * 1024 * 1024 });
+  assert.throws(() => bridge.prepareVersionUpload(input), /1 GiB/);
+});
+test('an aborted audited download stops waiting without changing its purpose', async () => {
+  let signal;
+  const bridge = new BinaryTransportBridge({ baseUrl: 'https://documents.test', fetch: async (_url, init) => { signal = init.signal; return new Promise(() => {}); } });
+  const controller = new AbortController();
+  const result = bridge.downloadVersionFileBlob({ documentId, versionId, contentItemId: fileId, representationId: fileId, purpose: 'authoring' }, { signal: controller.signal });
+  controller.abort();
+  await assert.rejects(result, /cancel|abort/i); assert.equal(signal.aborted, true);
+});
+test('version request has a 120-second deadline even when the fetch never settles', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let signal;
+  const bridge = new BinaryTransportBridge({ baseUrl: 'https://documents.test', fetch: async (_url, init) => { signal = init.signal; return new Promise(() => {}); } });
+  const pending = bridge.createVersion(documentId, versionUpload());
+  const assertion = assert.rejects(pending, /120/);
+  t.mock.timers.tick(120000);
+  await assertion; assert.equal(signal.aborted, true);
+});

@@ -261,3 +261,118 @@ of every worker crash, resource exhaustion or parser failure. The full productio
 runtime still must execute these cases on an exact head. Local permission-control
 fixtures are never executed as workers and count only as harness tests. No new
 sandbox bypass, worker fallback, business mapping, dependency or upload is added.
+
+## WORKING multi-original editor candidate
+
+The existing owned journey includes `working-version-editor.spec.ts` (two cases)
+and restart includes `working-version-editor-persistence.spec.ts` (one case).
+Both use top-level screenshot/trace/video `off`, the same two synthetic profiles,
+disposable PostgreSQL18.6 and existing Chromium. No new runner, public artifact,
+Playwright private environment variable or global capture setting is introduced.
+
+The first case repairs an uninspected invalid-UTF-8 original in never-published
+Version1 with null base/current, preserving its media type, ID/number and unpublished
+state without requiring old-original inspection. The second prepares two originals and two
+renditions through the full-manifest API, creates a new WORKING by replacing one
+original in the GUI, checks exact filenames and all retained file IDs/bytes, then
+updates only the other original. Only the selected original's old renditions are
+omitted. The old publication and all its files remain intact while editing and
+a rejected stale publication leaves it unchanged. A successful GUI publish switches
+current directly to the new version and preserves the previous version in history.
+A separate `.working-editor.json` sidecar stores observed hashes, exact manifest,
+version/revision state and ledger source IDs for both HTTP-process restarts.
+
+This slice's local evidence is limited to pure tests, compilation and collection;
+the exact-head hosted run must establish database/browser/restart/owned cleanup.
+Finite diagnostic source/stage allowlists include the new cases, without exposing
+filenames, content or raw assertion messages.
+
+### WORKING実応答喪失の追加受入（2026-10-05承認、local検証完了）
+
+公開D2 `2e1e17f4` の通常経路を保持した別branch
+`feat/document-working-response-loss-20261005` で、既存5filesだけを補修する。
+最初に純粋guard/配線のREDを取り、localhost専用proxyと既存2journeyを実装し、
+独立review・型・collectionを確認する。初回PUT・新版POST・公開base付PUTの
+backend成功完了後にGUI応答だけを失わせ、結果不明表示から明示同内容再送する。
+raw multipart/Content-Type、受信/dispatch回数、retry前後のcommit済みsnapshot、
+revision/履歴の非重複を確認する。自動再試行を明示回復とは扱わない。
+
+同じ使捨てhosted・固定Human origin・2合成profileだけを使用する。専用pageの
+公開context proxy optionに限定し、AgentのAPIRequestContextは直接接続する。
+GET/HEAD以外は対象Doc/Version POST/PUTと回復後の同版publish1回だけを許可する。
+外部宛先/CONNECT/upgrade/認証情報を拒否し、raw payloadはメモリ内だけに置く。
+context・listener・socket・upstream・timerの終了を必須とする。既存metadata喪失
+契約、製品コード、runner、依存、全体設定、画像/trace/videoとartifact公開0は維持。
+ローカルではlistener/browser/DBを起動しない。純粋TDD・型・collectionだけを資格とし、
+実通信とcleanupの成功は公開後の既存hostedが成立するまで未確認である。
+
+2026-10-05 09:04 UTC時点: 純粋proxy6件・既存の安全なruntime純粋124件、
+配線13件（124の内数）・runtime型・collection18+5が成功し、独立source reviewはGO。
+初回collectionは未生成MCP bundleで失敗したが、既存MCPのcompile-only後に成功した。
+listenerを使う既存/追加HTTP単体試験は当地では未実行。scope全体に50秒を掛ける
+途中案はREDで補正し、初回送信/明示再送の観測だけ各50秒に限定した。
+製品/生成SDK/lock/runner/全体設定と元metadata喪失helper本文は不変。
+約400行の追加は固定宛先・byte透過・失敗保持・cleanupと回帰試験に必要と独立確認した。
+次の操作はこの別commitを公開D2へ追加し、同一headの既存hostedで実socket喪失、
+GUI明示回復、HTTP再起動、owned cleanupと公開artifact0を確認することである。
+
+2026-10-05 10:06 UTC — 既存有限診断だけの追補:
+公開 `2105210c` はHTTP helper151件成功後、WORKINGの2件が分類不能で失敗した。
+原因は未確定。新しい固定failure code11種と保存の到達段階6種だけを既存診断へ追加し、
+同一対象の未arm再送を他の拒否と区別する。最初の例外を保持し、後続teardownの
+未回復例外へ原因を置き換えない。許可/拒否・応答喪失・timeout・明示再送の期待は不変。
+両sanitize境界はcode/stageだけを許可し、raw message/URL/header/payloadは出力しない。
+新6件RED→GREENを含む純粋49件・runtime型・既存MCP compileとcollection18+5が成功し、
+独立source reviewもGO。ローカルlistener/browser/DB/Cargoや画像は実行していない。
+これは診断差分の資格であり、WORKING実回復の成功・失敗原因は新exact-head hostedで確認する。
+
+
+2026-10-05 10:28 UTC — WORKING成功応答のbody途中喪失へ限定補修する小計画:
+公開 `421f93f7`（tree `ac063a9d`、CI `37295307089`）はHTTP helper157件成功、
+GUI404件成功、journey16成功/2失敗/0skip。初回PUT・新版POSTはともに
+`unarmed-retry`、最終到達は `gui-working-loss-unknown-visible` だった。
+同版Chromium153の再利用接続でheaders未受信の切断はmethodに依存せず
+自動再送し得る。最終headers解析後のbody読取errorとは別経路である。
+公式根拠: [HttpNetworkTransaction](https://raw.githubusercontent.com/chromium/chromium/153.0.8010.12/net/http/http_network_transaction.cc)
+のL1934–1997/2157–2164/1612–1663、および
+[HttpStreamParser](https://raw.githubusercontent.com/chromium/chromium/153.0.8010.12/net/http/http_stream_parser.cc)
+のL690–723。`flushHeaders()`直後のdestroyだけでは相手のheader受信を保証しない。
+
+1. 元source/診断branchを保持し、公開head親の独立branch
+   `fix/working-loss-body-truncation-20261005` で純粋反例を先にREDにする
+2. 実upstream成功status・完全raw body・result検証を保持。実status/end-to-end
+   headersとraw bytesの非空な厳密prefixだけを送り、Content-Lengthには完全raw長を
+   宣言する。Content-Encodingは原raw bytesのまま保持し、write callback後にFINする
+3. GUIで実headersとbody読取失敗・UNKNOWNを観測してからallowRetryと明示clickを行う。
+   同operation/full multipart/Content-Type、received2/dispatched2/drop1/unexpected0、
+   同result、再送前後DB snapshot一致を維持し、自動再送を人間retryに数えない
+4. 既存HTTP試験をheaders/厳密prefix/不完全長の意味へ強化するが、実行はhostedだけ。
+   ローカルは純粋/privacy・型・collection18+5と独立reviewを行い、小commitを親へ渡す
+
+今回のfaultは「実成功応答のbody途中喪失」で、従来の「status/headersも全喪失」と
+同じ資格ではない。Node24.21.0のdownstream送出とChromiumの実挙動は新exact-head
+hostedで初めて検証する。metadata helper本文・回数guard・有限診断上限・製品・
+依存・runner・lock・golden/skipは保持。ローカルlistener/socket/browser/DB/Cargo、
+画像/trace/video/artifact公開は行わない。公開/main統合は親、実サーバー反映は所有者。
+
+
+2026-10-05 10:36 UTC — body途中喪失候補のローカル検証:
+初回純粋反例6件をRED→GREENにし、最終の純粋guard/body11件＋
+有限診断/配線/summary/既存契約47件（計58件）、全GUI404件/28suites、
+GUI schema/型・runtime型・既存MCP build、collection18+5が成功した。
+既存HTTP試験はPOST/PUT各々のplain/gzipについて実status/header・raw厳密prefix・
+未完Content-Length・厳密2/2/1/0・listener終了を要求するが、当地では未実行。
+
+独立reviewで途中案の `Response.finished()` にImportant所見を得た。固定
+Playwright1.63.0のrequestfailed経路ではclientの完了promiseがsettleしないため、
+headersを観測してもこのawaitが待ち続ける。配線反例を先にREDとし、送信前の
+`requestfailed`監視、実headersを持つ同じRequestであることのboolean比較、
+`failure()`非nullへ補正した。body()/finished()や不確かなエラー文には依存しない。
+headers/requestfailed/drop/clickをPromise.allで同時に扱い、早期失敗でも待機の
+rejectionを未処理にしない。retryのresponse待ちとclickも同様に束ねる。
+これら追加配線のRED→GREENも確認し、回数・UNKNOWN・明示回復は緩めない。
+
+最終独立source reviewはGO、残るCritical/Important/Minorなし。reviewerも純粋53件
+（上記58件の内数）とdiffを再確認した。次のexact actionは小commitを親へ渡し、公開後の同一headで
+既存hosted HTTP/Chromium受入・再起動・owned cleanup・公開artifact0を確認すること。
+純粋/型/collectionの成功を実通信資格へ付け替えない。

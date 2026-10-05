@@ -13,6 +13,7 @@ import {
 import { hash, options, persistedSnapshot, runtime, saveSnapshot, uuidV7 } from './support';
 
 test.describe.configure({ mode: 'serial' });
+test.use({ screenshot: 'off', trace: 'off', video: 'off' });
 test.beforeEach(async ({ page }) => { await page.setViewportSize({ width: 1440, height: 900 }); await startDiagnostics(page); });
 test.afterEach(async ({ page }, info) => { await info.attach('runtime-startup.json', { body: Buffer.from(JSON.stringify(await finishDiagnostics(page))), contentType: 'application/json' }); });
 const completed = (stage: string) => test.info().annotations.push({ type: 'runtime-completed', description: stage });
@@ -101,7 +102,13 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   expect(agentComparison.resultDigest).toBe(humanComparison.resultDigest);
   await visualCheckpoint(page, '05-comparison-1440.png');
   completed('comparison-verified');
-  await page.goto(`/documents/${documentId}?view=authoring&tab=access`);
+  await page.getByRole('navigation', { name: 'メインナビゲーション' }).getByRole('link', { name: '編集作業', exact: true }).click();
+  await expect(page).toHaveURL((url) => url.pathname === '/documents' && url.searchParams.get('view') === 'authoring');
+  await page.getByRole('button', { name: 'PoC Shared', exact: true }).click();
+  await page.getByRole('button', { name: /規程サンプル/ }).click();
+  await page.getByRole('button', { name: '詳細を開く', exact: true }).click();
+  await expect(page).toHaveURL((url) => url.pathname === `/documents/${documentId}` && url.searchParams.get('view') === 'authoring');
+  await page.getByRole('tab', { name: 'アクセス', exact: true }).click();
   await expect(page.getByRole('heading', { name: '現在有効なアクセス権' })).toBeVisible();
   await expect(page.getByRole('rowheader', { name: /poc-agents/ })).toBeVisible();
   await page.getByRole('radio', { name: 'この文書だけに個別設定' }).check();
@@ -118,28 +125,28 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   expect(policy.effectiveGrants.find(grant => grant.subjectId === 'poc-agents')!.actions.sort()).toEqual(['read', 'readHistory']);
   completed('policy-saved');
 
-  await page.goto(`/documents/${documentId}?view=authoring&tab=versions`);
+  await page.getByRole('tab', { name: '版・改訂', exact: true }).click();
   await page.getByRole('button', { name: '新しい版を作成', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: '新しい版を作成', level: 1 })).toBeVisible();
   completed('version-form-opened');
   // Keep a supported single-line edit against both seeded Versions; replacing
   // multiple lines together is intentionally ambiguous in document-diff-v0.
   const changedContent = Buffer.from('【合成データ】規程サンプル\n第1条 この文書はPoC検証専用です。\n第2条 実Runtime GUIで作成した第三版の更新履歴を確認します。\n');
-  // The GUI maps upload name to logicalPath. Preserve the synthetic primary
-  // anchor so this tests a content edit, not the intentionally unresolved move+edit case.
+  // The manifest editor preserves logicalPath independently of the replacement filename.
+  // Keep the synthetic primary anchor so this remains a content-only edit.
   for (const version of before.versions) {
     const files = (await listVersionFiles({ ...humanOptions, path: { documentId, versionId: version.versionId }, query: { purpose: 'history' } })).data;
     expect(files.items).toHaveLength(1);
     expect(files.items[0]).toMatchObject({ logicalPath: 'primary', ordinal: 0, mediaType: 'text/plain' });
   }
-  await page.getByLabel('原本ファイル').setInputFiles({ name: 'primary', mimeType: 'text/plain', buffer: changedContent });
-  await expect(page.getByLabel('原本ファイル')).toHaveValue(/(?:^|[\\/])primary$/);
+  await page.getByLabel(/^差替ファイル:/).setInputFiles({ name: 'primary', mimeType: 'text/plain', buffer: changedContent });
+  await expect(page.getByLabel(/^差替ファイル:/)).toHaveValue(/(?:^|[\\/])primary$/);
   await visualCheckpoint(page, '06-version-file-selected-1440.png');
   const createResponse = page.waitForResponse(response => response.url().endsWith(`/documents/${documentId}/versions`) && response.request().method() === 'POST');
-  await page.getByRole('button', { name: '新しい版を作成', exact: true }).click();
+  await page.getByRole('button', { name: '新しい作業版を作成', exact: true }).click();
   const createdResponse = await createResponse; expect(createdResponse.status()).toBe(201);
   const created = await createdResponse.json() as VersionMutationResult;
-  await expect(page.getByRole('status')).toContainText('新しい版を作成しました');
+  await expect(page.getByRole('status')).toContainText('新しい作業版を作成しました');
   const createdFiles = (await listVersionFiles({ ...humanOptions, path: { documentId, versionId: created.targetVersionId }, query: { purpose: 'authoring' } })).data;
   expect(createdFiles.items).toHaveLength(1);
   expect(createdFiles.items[0]).toMatchObject({ logicalPath: 'primary', ordinal: 0, mediaType: 'text/plain', displayName: 'primary' });
@@ -150,6 +157,7 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   const publishButton = page.getByRole('button', { name: '公開する', exact: true });
   await expect(publishButton).toBeDisabled();
   completed('publication-form-opened');
+  await expect(page.getByText('新しい作業版を作成しました。', { exact: true })).toHaveCount(0);
   await page.getByRole('checkbox', { name: '公開対象の版とファイルを確認しました。' }).check();
   await expect(publishButton).toBeEnabled();
   await visualCheckpoint(page, '07-publication-ready-1440.png');
@@ -276,7 +284,7 @@ test('a real stale GUI version upload reports OCC conflict without duplicate cre
   await page.getByRole('button', { name: '新しい版を作成', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: '新しい版を作成', level: 1 })).toBeVisible();
   const bytes = Buffer.from('Synthetic concurrent version, never customer data.\n');
-  await page.getByLabel('原本ファイル').setInputFiles({ name: 'stale.txt', mimeType: 'text/plain', buffer: bytes });
+  await page.getByLabel(/^差替ファイル:/).setInputFiles({ name: 'stale.txt', mimeType: 'text/plain', buffer: bytes });
   const detail = (await getDocument({ ...common, path: { documentId }, query: { view: 'authoring' } })).data;
   await new BinaryTransportBridge({ baseUrl: context.human }).createVersion(documentId, {
     request: { operationId: uuidV7(), targetVersionId: uuidV7(), expectedRevision: detail.revision, title: detail.title,
@@ -284,11 +292,11 @@ test('a real stale GUI version upload reports OCC conflict without duplicate cre
     files: new Map([['primary', new Blob([bytes], { type: 'text/plain' })]]),
   });
   const responsePromise = page.waitForResponse(response => response.url().endsWith(`/documents/${documentId}/versions`) && response.request().method() === 'POST');
-  await page.getByRole('button', { name: '新しい版を作成', exact: true }).click();
+  await page.getByRole('button', { name: '新しい作業版を作成', exact: true }).click();
   const response = await responsePromise;
   expect(response.status()).toBe(409); expect((await response.json()).code).toBe('REVISION_CONFLICT');
   await expect(page.getByRole('alert')).toContainText('文書の状態が更新されています');
-  await expect(page.getByRole('status').filter({ hasText: '新しい版を作成しました' })).toHaveCount(0);
+  await expect(page.getByRole('status').filter({ hasText: '新しい作業版を作成しました' })).toHaveCount(0);
   const versions = (await listDocumentVersions({ ...common, path: { documentId }, query: { purpose: 'history', pageSize: 100 } })).data;
   expect(versions.items).toHaveLength(2);
   await visualCheckpoint(page, '11-occ-conflict-1440.png');

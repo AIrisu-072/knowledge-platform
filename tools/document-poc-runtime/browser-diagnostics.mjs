@@ -5,9 +5,11 @@ import { join, resolve } from 'node:path';
 
 export const MAX_BROWSER_REPORT_BYTES = 8 * 1024 * 1024;
 const MAX_RECORDS = 20, MAX_NODES = 1000, MAX_DEPTH = 8, MAX_TEXT = 16 * 1024;
-const sources = new Set(['document-runtime.spec.ts', 'initial-registration.spec.ts', 'metadata-editor.spec.ts', 'document-schedule-cancellation.spec.ts', 'lifecycle-operations.spec.ts', 'lifecycle-operations-persistence.spec.ts', 'human-agent-consistency.spec.ts', 'worker-failure.spec.ts', 'persistence.spec.ts', 'timestamp-layout.spec.ts', 'support.ts', 'japanese-font.ts']);
+const sources = new Set(['document-runtime.spec.ts', 'initial-registration.spec.ts', 'metadata-editor.spec.ts', 'document-schedule-cancellation.spec.ts', 'lifecycle-operations.spec.ts', 'lifecycle-operations-persistence.spec.ts', 'working-version-editor.spec.ts', 'working-version-editor-persistence.spec.ts', 'human-agent-consistency.spec.ts', 'worker-failure.spec.ts', 'persistence.spec.ts', 'timestamp-layout.spec.ts', 'support.ts', 'japanese-font.ts']);
 const statuses = new Set(['passed', 'failed', 'timedOut', 'skipped', 'interrupted', 'unavailable']);
-const categories = new Set(['strict-locator', 'locator-timeout', 'test-timeout', 'HTTP-status-assertion', 'assertion', 'unavailable']);
+const categories = new Set(['strict-locator', 'locator-timeout', 'test-timeout', 'HTTP-status-assertion', 'assertion', 'response-loss', 'unavailable']);
+const responseLossCodes = new Set(['configuration', 'admission', 'unarmed-retry', 'payload', 'upstream-status', 'upstream-result',
+  'retry-payload', 'retry-result', 'unrecovered', 'observation-window', 'upstream-transport']);
 const matchers = new Set(['toBe', 'toEqual', 'toStrictEqual', 'toBeVisible', 'toBeHidden', 'toHaveCount', 'toHaveText', 'toContainText',
   'toHaveURL', 'toHaveAttribute', 'toHaveCSS', 'toHaveLength', 'toBeFocused', 'toBeEnabled', 'toBeDisabled', 'toBeChecked',
   'toBeGreaterThan', 'toBeLessThan', 'toBeGreaterThanOrEqual', 'toBeLessThanOrEqual', 'toContain', 'toMatchObject', 'toMatch']);
@@ -47,6 +49,11 @@ const journeyStages = new Set(['context-read', 'sessions-verified', 'api-preflig
   'gui-withdraw-null-verified', 'gui-publication-end-verified', 'gui-lifecycle-snapshot-saved', 'gui-lifecycle-restart-verified',
   'gui-schedule-created', 'gui-schedule-dismissed', 'gui-schedule-cancelled',
   'gui-schedule-replaced', 'gui-schedule-final-state-saved', 'gui-schedule-restart-verified',
+  'gui-working-loss-armed', 'gui-working-loss-save-clicked', 'gui-working-loss-dropped',
+  'gui-working-loss-headers-observed', 'gui-working-loss-unknown-visible', 'gui-working-loss-retry-armed', 'gui-working-loss-recovered',
+  'gui-working-initial-updated', 'gui-working-manifest-ready', 'gui-working-cancel-verified',
+  'gui-working-created', 'gui-working-updated', 'gui-working-publication-preserved',
+  'gui-working-published', 'gui-working-snapshot-saved', 'gui-working-restart-verified',
   'pdf-context-read', 'pdf-fixtures-read', 'pdf-base-created', 'pdf-base-detail-read', 'pdf-base-published',
   'pdf-published-detail-read', 'pdf-target-created', 'pdf-target-detail-read', 'pdf-target-published', 'pdf-comparison-read',
   'pdf-base-files-read', 'pdf-base-download-verified', 'pdf-target-files-read', 'pdf-target-download-verified',
@@ -95,7 +102,7 @@ function location(value) {
   return { source, ...(integer(value.line) ? { line: value.line } : {}), ...(integer(value.column) ? { column: value.column } : {}) };
 }
 function stackLocation(value) {
-  const match = text(value).match(/(?:^|[\\/\s(])((?:document-runtime|initial-registration|metadata-editor|document-schedule-cancellation|lifecycle-operations(?:-persistence)?|human-agent-consistency|worker-failure|persistence|timestamp-layout)\.spec\.ts|support\.ts):(\d{1,7}):(\d{1,7})(?:\D|$)/u);
+  const match = text(value).match(/(?:^|[\\/\s(])((?:document-runtime|initial-registration|metadata-editor|document-schedule-cancellation|lifecycle-operations(?:-persistence)?|working-version-editor(?:-persistence)?|human-agent-consistency|worker-failure|persistence|timestamp-layout)\.spec\.ts|support\.ts):(\d{1,7}):(\d{1,7})(?:\D|$)/u);
   return match ? location({ file: match[1], line: Number(match[2]), column: Number(match[3]) }) : undefined;
 }
 // Node util.inspect uses unquoted property names and quoted string values. Accept
@@ -111,6 +118,8 @@ function inspectedProblemCode(value) {
 
 function describeError(error, status) {
   const message = text(error?.message), snippet = text(error?.snippet);
+  const lossCode = message.match(/^(?:Error: )?\[working-loss:([a-z-]+)\](?: |$)/u)?.[1];
+  if (responseLossCodes.has(lossCode)) return { errorCategory: 'response-loss', responseLossCode: lossCode };
   const rawMatcher = error?.matcherResult?.name ?? message.match(/\b(to[A-Z][A-Za-z]+)\s*\(/u)?.[1];
   const matcher = matchers.has(rawMatcher) ? rawMatcher : undefined;
   let expected = error?.matcherResult?.expected, actual = error?.matcherResult?.actual;
@@ -193,6 +202,8 @@ export function sanitizeBrowserDiagnostics(value) {
       ...(integer(record.column) ? { column: record.column } : {}) } : {}),
     status: statuses.has(record.status) ? record.status : 'unavailable',
     ...(['passed', 'skipped'].includes(record.status) ? {} : { errorCategory: categories.has(record.errorCategory) ? record.errorCategory : 'unavailable' }),
+    ...(!['passed', 'skipped'].includes(record.status) && record.errorCategory === 'response-loss' && responseLossCodes.has(record.responseLossCode)
+      ? { responseLossCode: record.responseLossCode } : {}),
     ...(matchers.has(record.matcher) ? { matcher: record.matcher } : {}),
     ...(record.errorCategory === 'HTTP-status-assertion' && httpCode(record.expected) && httpCode(record.actual) ? { expected: record.expected, actual: record.actual } : {}),
     ...(problemCodes.has(record.problemCode) ? { problemCode: record.problemCode } : {}),

@@ -1,5 +1,40 @@
 # Active Execution Pointer
 
+## 2026-10-05 10:36 UTC — WORKING実成功応答のbody途中喪失候補
+
+- 公開 `421f93f7` / tree `ac063a9d` を親とする `fix/working-loss-body-truncation-20261005`。元全応答喪失sourceと診断branchを保持し、[今回の小計画・資格・次の操作](../../../tools/document-poc-runtime/README.md#working実応答喪失の追加受入2026-10-05承認local検証完了)に従う
+- 実upstream成功結果を検証してから本物headersとraw厳密prefixを完全長付きで送り、write後FIN。GUIは同requestのheaders/requestfailedとUNKNOWNを確認後に明示再送する。旧「全応答喪失」とは別の「body途中喪失」資格で、業務設計・metadata helper・厳密guard・製品・依存・runnerは変更しない
+- 純粋58・全GUI404/28suites・型/schema/MCP build・collection18+5成功。固定Playwright finished()の途中案は独立Importantで停止し、requestfailedへRED→GREEN補正。最終独立reviewはGO、残る所見なし。次は小commitを親へ渡し、親が同一head hostedと全CIを検証する。ローカルlistener/socket/browser/DB/Cargoと画像は実行せず、公開/main統合は親、実サーバー反映は所有者
+
+---
+
+## 2026-10-05 09:14 UTC — 編集作業への可視導線と成功通知の限定補修
+
+- PR74公開head `2e1e17f4` を保持し、独立branchでOrganizationの「編集作業」入口と作業版成功通知の文脈だけを最小補修する。[今回の状況・小計画](document-authoring-navigation-status.md)を再開先とする
+- 製品2行の変更、DOM反例4件RED→GREEN、最終全GUI403件/28 suites・型/schema/build・runtime型・純粋診断52件成功。既存Document/Organization受入の可視ナビ往復を追加し、公開の単一status期待を維持する
+- 既存MCP buildとcollection（Document18+5、Organization1+1）は成功。独立source/DOM reviewはGO、変更DOM150件成功。ローカルDB/browser/Cargo・画像は実行せず、golden/skipを変更しない。新exact-head全CI/hosted受入・公開artifact0の確認と公開は親担当。以下は過去の各時点の履歴
+
+---
+
+## 2026-10-05 08:04 UTC — WORKING編集D2のlocal検証完了、Draft公開待ち
+
+- [D2最終状況](document-working-version-editor-status.md)を再開先とする。D2 checkpoint `b6ec14b4` とmetadata/取消を保持するD1 `75b9df51` を両履歴保持で統合。元f639・D1各checkpointも維持する
+- 全GUI400件/28 suites、型/schema/build、API18/client11、runtime型・有限診断35・安全な純粋runtime123・collection18+5成功。独立144件のsource/DOM再reviewはGO。背景更新による未送信入力消失と遅延refresh/unknown競合を閉じ、最終sourceを固定した
+- backend/OpenAPI/生成SDK/lock/workflowはD1のbytes。手書きbinary transportはD2に含む。D1のRust/DB compile資格とD2の検証を混ぜず、ローカル実DB/browserは未実行
+- 次は日本語stacked Draftの公開packetを親へ渡し、このexact headの全CI・画像なし実受入・再起動/owned cleanup/artifact0を確認する。macOS golden比較と全visual資格は未取得、golden/skip変更なし。実サーバー導入は所有者が手動実施する
+
+---
+
+## 2026-10-05 06:54 UTC — WORKING編集 D2 GUI/runtime
+
+- 元完成 `f639fbf0` を保持し、D1＋合格main `ff0aae67` に複数原本GUI・固定bytes回復・runtimeをstackする。[D2状況](document-working-version-editor-status.md)、[D1状況](document-working-manifest-api-status.md)、[共通追補](../specs/2026-10-05-document-working-version-editor-amendment.md)を参照
+- 現公開を編集中維持し、選択原本だけ差替え/対象旧変換物だけ除外する。現在予約ID/read/取消GUIとD1初回修復・T10補正を保持する。新main組合せの検証・独立reviewは未完
+- 07:11 UTC追補: D2 checkpoint `b6ec14b4` とmetadata保持済み最新D1 `75b9df51` の統合を進める。同名原本のpath/ordinal labelに加え、backend disabled reasonを純粋表示するDOM補正を検証する。業務条件・新権限は追加しない
+- 07:39 UTC追補: 背景manifest再取得による未送信入力消失を独立DOMで再現。最終commit前に編集基準の固定と明示更新までの停止を限定補正し、GOと全GUI検証を取り直す
+- 実DB/browserは既存hostedで確認。ローカルは純粋/compile/collectionのみ。画像生成/公開・golden更新・skip変更なし。最新headの全visual資格は主張しない
+
+---
+
 ## 2026-10-05 06:28 UTC — WORKING編集 D1 backend/API
 
 - 完成source `f639fbf0`を保持し、レビュー境界に沿いD1 backend/API/SDKとD2 GUI/runtimeへ分ける。D1の[状況](document-working-manifest-api-status.md)、共通[承認追補](../specs/2026-10-05-document-working-version-editor-amendment.md)、[小計画](../plans/2026-10-05-document-working-version-editor.md)を参照

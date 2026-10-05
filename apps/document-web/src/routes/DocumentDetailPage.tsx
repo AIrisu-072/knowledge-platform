@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Dialog, Heading, Modal } from 'react-aria-components';
 import {
@@ -20,10 +20,13 @@ import {
 } from '../application/document-workspace';
 import { ApiFeedback, LoadingState } from '../components/shared/ApiFeedback';
 import { DocumentScheduleCancellation } from '../components/document/DocumentScheduleCancellation';
+import { CapabilityButton, availabilityReason } from '../components/shared/CapabilityButton';
 import { OriginalVersionDownload } from '../components/shared/OriginalVersionDownload';
+import { DocumentWorkingVersionEditor } from '../components/document/DocumentWorkingVersionEditor';
 import { DocumentMetadataEditor } from '../components/document/DocumentMetadataEditor';
 import { DocumentLifecycleOperations } from '../components/document/DocumentLifecycleOperations';
 import { AppShell } from '../components/app-shell/AppShell';
+import { workingEditorSource, workingOperationKey, unresolvedWorkingOperation, type WorkingOperation } from '../application/document-working-version';
 import { createOperationId } from '../application/operation-id';
 import { documentStatusLabel, versionStatusLabel } from '../view-model/document-status';
 import { jstDateTimeLocalToUtc } from '../application/schedule-time';
@@ -46,6 +49,7 @@ export function DocumentDetailPage() {
   const location = useLocation();
   const navigate = useNavigate({ from: '/documents/$documentId' });
   const queryClient = useQueryClient();
+  const [editingMode, setEditingMode] = useState<{ contextKey: string; mode: 'create' | 'update' } | null>(null);
   const [publicationMethod, setPublicationMethod] = useState<'now' | 'scheduled'>('now');
   const detailQuery = useQuery({
     queryKey: ['document', documentId, search.view],
@@ -77,7 +81,7 @@ export function DocumentDetailPage() {
   });
   const versionItems = versionsQuery.data?.items ?? [];
   const selectedVersion = chooseVersion(document, versionItems, search.versionId);
-  const currentFileVersionId = document?.currentVersionId ?? document?.displayVersion.versionId;
+  const currentFileVersionId = search.view === 'authoring' ? document?.displayVersion.versionId : document?.currentVersionId ?? document?.displayVersion.versionId;
   const detailVersionId = activeTab === 'overview' ? currentFileVersionId : selectedVersion?.versionId;
   const versionDetailQuery = useQuery({
     queryKey: ['document-version', documentId, detailVersionId, search.view],
@@ -134,6 +138,8 @@ export function DocumentDetailPage() {
   }
 
   const headingId = 'document-workspace-heading';
+  const workingContextKey = `${documentId}:${search.view}:${activeTab}:${search.versionId ?? ''}:${search.workflow ?? ''}`;
+  const workingMode = editingMode?.contextKey === workingContextKey ? editingMode.mode : workingEditorSource(document, versionDetailQuery.data).mode;
   const showContextPanel = !search.workflow && activeTab !== 'compare' && activeTab !== 'access';
   const contextPanel = document ? (
     <div className={styles.contextPanelContent}>
@@ -159,7 +165,7 @@ export function DocumentDetailPage() {
       versions={versionItems}
       revisions={revisions}
       selectedVersion={selectedVersion}
-      versionDetail={versionDetailQuery.data}
+      versionDetail={versionDetailQuery.error ? undefined : versionDetailQuery.data}
       versionsLoading={versionsQuery.isPending || revisionsQuery.isPending}
       versionsError={versionsQuery.error ?? revisionsQuery.error}
       onRetry={() => { void versionsQuery.refetch(); void revisionsQuery.refetch(); }}
@@ -189,7 +195,7 @@ export function DocumentDetailPage() {
             <header className={styles.workflowHeader}>
               <button type="button" onClick={() => search.workflow ? updateSearch({ workflow: undefined }) : updateSearch({ tab: 'versions' })}>{search.workflow ? '← 版の一覧へ戻る' : '← 版・改訂へ戻る'}</button>
               <div>
-                <h1 id={headingId}>{search.workflow === 'newVersion' ? '新しい版を作成' : search.workflow === 'publication' ? '公開・予約公開' : '新旧比較'}</h1>
+                <h1 id={headingId}>{search.workflow === 'newVersion' ? (workingMode === 'update' ? '作業版を編集' : '新しい版を作成') : search.workflow === 'publication' ? '公開・予約公開' : '新旧比較'}</h1>
                 <p>{document?.title} · Version {document?.displayVersion.versionNo}</p>
           </div>
         </header>
@@ -209,12 +215,25 @@ export function DocumentDetailPage() {
                 </div>
                 <p className={styles.versionContext}>Version {document.displayVersion.versionNo}{document.folderName && <>　·　{document.folderName}</>}</p>
               </div>
-              {document.capabilities.createVersion.status === 'available' && <button className={styles.headerAction} type="button" onClick={() => updateSearch({ tab: 'versions', workflow: 'newVersion' })}>新しい版を作成</button>}
+              <CapabilityButton label="新しい版を作成" availability={document.capabilities.createVersion} className={styles.headerAction} onClick={() => updateSearch({ tab: 'versions', workflow: 'newVersion' })} />
             </div>
           ) : <h1 id={headingId}>文書ワークスペース</h1>}
         </header>
       )}
 
+      <DocumentWorkingVersionEditor
+        key={`working:${documentId}`}
+        documentId={documentId}
+        document={document}
+        version={versionDetailQuery.error ? undefined : versionDetailQuery.data}
+        purpose={search.view}
+        active={search.workflow === 'newVersion' && activeTab === 'versions'}
+        contextKey={workingContextKey}
+        onModeChange={setEditingMode}
+        showActions={activeTab === 'versions' && !search.workflow}
+        onOpen={() => updateSearch({ tab: 'versions', workflow: 'newVersion' })}
+        onClose={() => updateSearch({ workflow: undefined })}
+      />
       <DocumentLifecycleOperations
         key={documentId}
         documentId={documentId}
@@ -230,7 +249,7 @@ export function DocumentDetailPage() {
           {search.workflow || activeTab === 'compare' ? (
             search.workflow ? (
             <section className={styles.workflowPanel} aria-label={search.workflow === 'newVersion' ? '新版作成' : '公開・予約公開'}>
-              {activeTab === 'versions' && versionsPanel}
+              {activeTab === 'versions' && search.workflow !== 'newVersion' && versionsPanel}
             </section>
             ) : (
               <section className={styles.wideWorkflowPanel} aria-label="新旧比較">
@@ -258,7 +277,7 @@ export function DocumentDetailPage() {
               </div>
               <section id="document-tab-panel" role="tabpanel" aria-labelledby={`tab-${activeTab}`} tabIndex={0} className={styles.tabPanel}>
                 {activeTab === 'overview' && <OverviewTab key={location.href} document={document} filesQuery={filesQuery} reload={async () => { const result = await detailQuery.refetch(); if (result.error) throw result.error; }} />}
-                {activeTab === 'versions' && <>{versionsPanel}{selectedVersion && <DocumentScheduleCancellation key={`${documentId}:${selectedVersion.versionId}`} document={document} view={search.view} versionId={selectedVersion.versionId} version={versionDetailQuery.data} contextKey={`${documentId}:${search.view}:${activeTab}:${selectedVersion.versionId}`} currentRead={!detailQuery.isFetching && !detailQuery.isError && !versionDetailQuery.isFetching && !versionDetailQuery.isError} />}</>}
+                {activeTab === 'versions' && search.workflow !== 'newVersion' && <>{versionsPanel}{selectedVersion && <DocumentScheduleCancellation key={`${documentId}:${selectedVersion.versionId}`} document={document} view={search.view} versionId={selectedVersion.versionId} version={versionDetailQuery.data} contextKey={`${documentId}:${search.view}:${activeTab}:${selectedVersion.versionId}`} currentRead={!detailQuery.isFetching && !detailQuery.isError && !versionDetailQuery.isFetching && !versionDetailQuery.isError} />}</>}
                 {activeTab === 'history' && <HistoryTab query={historyQuery} />}
                 {activeTab === 'access' && canManageAccess && <AccessTab documentId={documentId} documentTitle={document.title} documentFolderId={document.folderId ?? null} folderName={document.folderName ?? null} policy={accessQuery.data} loading={accessQuery.isPending} error={accessQuery.error} onRetry={() => void accessQuery.refetch()} />}
               </section>
@@ -358,14 +377,6 @@ function VersionsTab({
   setPublicationMethod: (method: 'now' | 'scheduled') => void;
   invalidate: () => Promise<void>;
 }) {
-  const [uploadTitle, setUploadTitle] = useState(document.title);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadIntent, setUploadIntent] = useState<UploadIntent | null>(null);
-  const [uploadPending, setUploadPending] = useState(false);
-  const [uploadError, setUploadError] = useState<unknown>(null);
-  const [uploadSuccess, setUploadSuccess] = useState(false);
-  const [uploadValidation, setUploadValidation] = useState('');
-  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [publicationConfirmed, setPublicationConfirmed] = useState(false);
   const [action, setAction] = useState<'publish' | 'schedule' | null>(null);
   const [scheduledAt, setScheduledAt] = useState('');
@@ -379,6 +390,8 @@ function VersionsTab({
   const documentId = document.documentId;
   const queryClient = useQueryClient();
   const revisionsPair = chooseRevisionPair(revisions, undefined, undefined);
+  const { data: workingOperation } = useQuery<WorkingOperation | null>({ queryKey: workingOperationKey(documentId), queryFn: skipToken, enabled: false, gcTime: Infinity });
+  const workingBlocked = workingOperation?.status === 'pending' || workingOperation?.status === 'unknown';
 
   useEffect(() => {
     if (action || actionPending) return;
@@ -391,55 +404,8 @@ function VersionsTab({
     return () => window.cancelAnimationFrame(frame);
   }, [action, actionPending]);
 
-  async function submitUpload(event?: React.FormEvent<HTMLFormElement>) {
-    event?.preventDefault();
-    if (!uploadFile || !uploadTitle.trim()) return;
-    if (uploadFile.size > 256 * 1024 * 1024) {
-      setUploadValidation('1ファイルあたり256 MiB以下のファイルを選択してください。');
-      return;
-    }
-    setUploadValidation('');
-    const intent = uploadIntent ?? {
-      operationId: createOperationId(),
-      targetVersionId: createOperationId(),
-      fileId: createOperationId(),
-      partId: createOperationId(),
-      expectedRevision: document.revision,
-      title: uploadTitle.trim(),
-      file: uploadFile,
-    };
-    setUploadIntent(intent);
-    setUploadError(null);
-    setUploadPending(true);
-    setUploadSuccess(false);
-    try {
-      await documentApi.createVersion(documentId, {
-        operationId: intent.operationId,
-        targetVersionId: intent.targetVersionId,
-        expectedRevision: intent.expectedRevision,
-        title: intent.title,
-        items: [{
-          logicalPath: intent.file.name,
-          ordinal: 0,
-          fileId: intent.fileId,
-          partId: intent.partId,
-          mediaType: intent.file.type || 'application/octet-stream',
-          originalFilename: intent.file.name,
-        }],
-      }, new Map([[intent.partId, intent.file]]));
-      setUploadSuccess(true);
-      setUploadFile(null);
-      setUploadIntent(null);
-      await invalidate();
-    } catch (error) {
-      setUploadError(error);
-    } finally {
-      setUploadPending(false);
-    }
-  }
-
   async function confirmAction() {
-    if (!selectedVersion) return;
+    if (!selectedVersion || unresolvedWorkingOperation(queryClient, documentId)) return;
     setActionPending(true);
     setActionError(null);
     try {
@@ -480,15 +446,8 @@ function VersionsTab({
     setActionMessage('');
   }
 
-  function selectUploadFile(file: File | null) {
-    setUploadFile(file);
-    setUploadIntent(null);
-    setUploadError(null);
-    setUploadValidation(file && file.size > 256 * 1024 * 1024 ? '1ファイルあたり256 MiB以下のファイルを選択してください。' : '');
-  }
-
   function openPublication(method: 'now' | 'scheduled') {
-    if (!selectedVersion) return;
+    if (!selectedVersion || unresolvedWorkingOperation(queryClient, documentId)) return;
     setPublicationMethod(method);
     setPublicationConfirmed(false);
     setScheduledAt('');
@@ -500,7 +459,7 @@ function VersionsTab({
   }
 
   function requestPublicationConfirmation(event: React.MouseEvent<HTMLButtonElement>) {
-    if (!publicationConfirmed || (publicationMethod === 'scheduled' && !jstDateTimeLocalToUtc(scheduledAt))) return;
+    if (unresolvedWorkingOperation(queryClient, documentId) || !publicationConfirmed || (publicationMethod === 'scheduled' && !jstDateTimeLocalToUtc(scheduledAt))) return;
     actionTriggerRef.current = event.currentTarget;
     setAction(publicationMethod === 'now' ? 'publish' : 'schedule');
     setActionError(null);
@@ -508,50 +467,9 @@ function VersionsTab({
 
   return (
     <div className={workflow ? styles.workflowContent : styles.versionLayout}>
-      {workflow === 'newVersion' ? (
-        <form className={styles.newVersionWorkspace} onSubmit={(event) => void submitUpload(event)} aria-busy={uploadPending}>
-          <label className={workspaceStyles.formField}>文書名
-            <input value={uploadTitle} onChange={(event) => { setUploadTitle(event.target.value); setUploadIntent(null); setUploadError(null); }} required maxLength={500} />
-          </label>
-          <div className={styles.workflowFacts}>
-            <span>基準版</span>
-            <strong>{versions.find((version) => version.isCurrent)?.versionNo ? `Version ${versions.find((version) => version.isCurrent)?.versionNo}` : document.displayVersion.lifecycleState === 'PUBLISHED' ? `Version ${document.displayVersion.versionNo}` : '公開済みの基準版はありません'}</strong>
-            <span>新しい版</span>
-            <strong>作業版として作成</strong>
-          </div>
-          <section className={styles.fileSelection} aria-labelledby="new-version-file-heading">
-            <h2 id="new-version-file-heading">ファイル</h2>
-            <label
-              className={styles.fileDrop}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => { event.preventDefault(); selectUploadFile(event.dataTransfer.files.item(0)); }}
-            >
-              <span>ファイルをドロップ</span>
-              <span>または選択</span>
-              <input
-                key={uploadSuccess ? 'upload-cleared' : 'upload-ready'}
-                ref={uploadInputRef}
-                aria-label="原本ファイル"
-                type="file"
-                onChange={(event) => selectUploadFile(event.target.files?.item(0) ?? null)}
-                required
-              />
-            </label>
-            {uploadFile && <div className={styles.selectedFile}><strong>{uploadFile.name}</strong><span>{formatBytes(uploadFile.size)} · 作成対象</span></div>}
-            {uploadValidation && <p className={styles.statusWarning} role="alert">{uploadValidation}</p>}
-            <p className={styles.muted}>基準版を保持したまま、新しい作業版を作成します。アップロード中の進捗率は表示しません。</p>
-            {Boolean(uploadError) && <ApiFeedback error={uploadError} onRetry={() => void submitUpload()} />}
-            {uploadSuccess && <p role="status" className={styles.noticeSuccess}>新しい版を作成しました。</p>}
-          </section>
-          <div className={styles.workflowFooter}>
-            <button type="button" onClick={() => updateSearch({ workflow: undefined })}>版の一覧へ戻る</button>
-            <button className={workspaceStyles.primaryButton} type="submit" disabled={uploadPending || !uploadFile || Boolean(uploadValidation)}>
-              {uploadPending ? 'アップロード中…' : uploadIntent ? '同じ内容で再試行' : '新しい版を作成'}
-            </button>
-          </div>
-        </form>
-      ) : workflow === 'publication' ? (
+      {workflow === 'publication' ? (
         <section className={styles.publicationWorkspace} aria-busy={actionPending}>
+          {workingBlocked && <p role="alert">作業版の保存結果を確認するまで、公開・予約公開はできません。</p>}
           <div className={styles.publicationVersions}>
             <div><span>現在</span><strong>{versions.find((version) => version.isCurrent)?.versionNo ? `Version ${versions.find((version) => version.isCurrent)?.versionNo}` : document.currentVersionId ? `Version ${document.displayVersion.versionNo}` : '現行の公開版はありません'}</strong><small>{versions.find((version) => version.isCurrent) ? versionStatusLabel(versions.find((version) => version.isCurrent)!) : '現在の状態'}</small></div>
             <span aria-hidden="true">→</span>
@@ -580,7 +498,7 @@ function VersionsTab({
           {versionDetail?.capabilities.publish.status === 'disabled' && versionDetail.capabilities.schedulePublication.status === 'disabled' && <p className={styles.muted}>公開できません: {availabilityReason(versionDetail.capabilities.publish.reason)}</p>}
           <div className={styles.workflowFooter}>
             <button ref={actionReturnRef} type="button" onClick={() => updateSearch({ workflow: undefined })}>版の一覧へ戻る</button>
-            <button className={workspaceStyles.primaryButton} type="button" disabled={!publicationConfirmed || actionPending || (publicationMethod === 'now' ? versionDetail?.capabilities.publish.status !== 'available' : versionDetail?.capabilities.schedulePublication.status !== 'available' || !jstDateTimeLocalToUtc(scheduledAt))} onClick={requestPublicationConfirmation}>
+            <button className={workspaceStyles.primaryButton} type="button" disabled={workingBlocked || !publicationConfirmed || actionPending || (publicationMethod === 'now' ? versionDetail?.capabilities.publish.status !== 'available' : versionDetail?.capabilities.schedulePublication.status !== 'available' || !jstDateTimeLocalToUtc(scheduledAt))} onClick={requestPublicationConfirmation}>
               {publicationMethod === 'now' ? '公開する' : '公開を予約する'}
             </button>
           </div>
@@ -590,7 +508,7 @@ function VersionsTab({
           <section className={styles.contentSection}>
             <div className={styles.sectionHeading}>
               <div><h2>コンテンツ版</h2><p>WORKING版と正式に公開した改訂を分けて表示します。</p></div>
-              {document.capabilities.createVersion.status === 'available' && <button className={workspaceStyles.primaryButton} type="button" onClick={() => updateSearch({ workflow: 'newVersion' })}>新しい版を作成</button>}
+              <CapabilityButton label="新しい版を作成" availability={document.capabilities.createVersion} className={workspaceStyles.primaryButton} onClick={() => updateSearch({ workflow: 'newVersion' })} />
             </div>
             {versionsLoading && <LoadingState label="版と改訂を読み込み中" />}
             {Boolean(versionsError) && <ApiFeedback error={versionsError} onRetry={onRetry} />}
@@ -610,8 +528,8 @@ function VersionsTab({
             {selectedVersion && (
               <div className={styles.selectedVersionActions}>
                 <h3>選択中: {selectedVersion.lifecycleState === 'working' ? 'WORKING · ' : ''}版 {selectedVersion.versionNo}</h3>
-                {versionDetail?.capabilities.publish.status === 'available' && <button type="button" onClick={() => openPublication('now')}>公開する</button>}
-                {versionDetail?.capabilities.schedulePublication.status === 'available' && <button type="button" onClick={() => openPublication('scheduled')}>予約公開する</button>}
+                {versionDetail?.capabilities.publish.status === 'available' && <button type="button" disabled={workingBlocked} onClick={() => openPublication('now')}>公開する</button>}
+                {versionDetail?.capabilities.schedulePublication.status === 'available' && <button type="button" disabled={workingBlocked} onClick={() => openPublication('scheduled')}>予約公開する</button>}
                 {versionDetail?.capabilities.publish.status === 'disabled' && <p className={styles.muted}>公開できません: {availabilityReason(versionDetail.capabilities.publish.reason)}</p>}
                 {versionDetail?.capabilities.download.status === 'available' && <p>原本ファイルは「概要」タブからダウンロードできます。</p>}
               </div>
@@ -674,7 +592,7 @@ function VersionsTab({
             {action === 'schedule' && <p>公開日時: {formatJstDateTime(scheduledAt)}</p>}
             {Boolean(actionError) && <ApiFeedback error={actionError} onRetry={() => void confirmAction()} />}
             <div className={styles.actionRow}>
-              <button type="button" disabled={actionPending || (action === 'schedule' && !jstDateTimeLocalToUtc(scheduledAt))} onClick={() => void confirmAction()}>{actionPending ? '処理中…' : actionError ? '同じ内容で再試行' : '確定する'}</button>
+              <button type="button" disabled={workingBlocked || actionPending || (action === 'schedule' && !jstDateTimeLocalToUtc(scheduledAt))} onClick={() => void confirmAction()}>{actionPending ? '処理中…' : actionError ? '同じ内容で再試行' : '確定する'}</button>
               <button type="button" autoFocus disabled={actionPending} onClick={() => { setAction(null); setActionError(null); }}>キャンセル</button>
             </div>
           </Dialog>
@@ -683,16 +601,6 @@ function VersionsTab({
     </div>
   );
 }
-
-type UploadIntent = {
-  operationId: string;
-  targetVersionId: string;
-  fileId: string;
-  partId: string;
-  expectedRevision: number;
-  title: string;
-  file: File;
-};
 
 function CompareTab({ documentId, purpose, revisions, pair, comparison, loading, error, onRetry, updateSearch }: {
   documentId: string;
@@ -1028,10 +936,6 @@ function AccessTab({ documentId, documentTitle, documentFolderId, folderName, po
   );
 }
 
-function CapabilityButton({ label, availability, onClick }: { label: string; availability: DocumentDetail['capabilities']['createVersion']; onClick: () => void }) {
-  if (availability.status === 'available') return <button type="button" onClick={onClick}>{label}</button>;
-  return <p className={styles.muted}>{label}: {availabilityReason(availability.reason)}</p>;
-}
 
 function DownloadButton({ documentId, versionId, contentItemId, representationId, purpose, filename, label = 'ダウンロード' }: {
   documentId: string; versionId: string; contentItemId: string; representationId: string; purpose: 'published' | 'authoring' | 'history'; filename: string; label?: string;
@@ -1085,18 +989,6 @@ function handleTabKeyDown(event: React.KeyboardEvent<HTMLDivElement>, visibleTab
   requestAnimationFrame(() => document.getElementById(`tab-${target.id}`)?.focus());
 }
 
-function availabilityReason(reason: string): string {
-  const labels: Record<string, string> = {
-    permission: '権限がありません',
-    lifecycle: '現在の状態では実行できません',
-    pendingSchedule: '予約公開中です',
-    staleBase: '元の版が更新されています',
-    notCurrent: '現在の版ではありません',
-    notHumanInteractive: '利用者による操作ではありません',
-    unsupported: '現在の画面からは実行できません',
-  };
-  return labels[reason] ?? '実行できません';
-}
 
 function revisionLabel(revision: { major: number; minor: number }) {
   return `${revision.major}.${revision.minor}`;

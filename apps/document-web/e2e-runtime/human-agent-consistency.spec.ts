@@ -104,14 +104,14 @@ test('ordered Human GUI/API → actual MCP equality covers publication, interrup
 
   await page.goto(`/documents/${documentId}?view=authoring&tab=versions`);
   await page.getByRole('button', { name: '新しい版を作成', exact: true }).first().click();
-  await page.getByLabel('原本ファイル').setInputFiles({ name: 'c3-next.txt', mimeType: 'text/plain', buffer: nextBytes });
+  await page.getByLabel(/^差替ファイル:/).setInputFiles({ name: 'c3-next.txt', mimeType: 'text/plain', buffer: nextBytes });
   const uploadResponse = page.waitForResponse(response => new URL(response.url()).pathname === `/v1/documents/${documentId}/versions` && response.request().method() === 'POST');
-  await page.getByRole('button', { name: '新しい版を作成', exact: true }).click();
+  await page.getByRole('button', { name: '新しい作業版を作成', exact: true }).click();
   const uploaded = await uploadResponse; expect(uploaded.status()).toBe(201);
   const version = await uploaded.json() as VersionMutationResult;
   expect(version.documentId).toBe(documentId); expect(version.versionNo).toBe(2); expect(version.baseVersionId).toBe(created.documentVersionId);
   expect(version.resultingRevision).toBe(recovered.resultingRevision + 1);
-  await expect(page.getByRole('status')).toContainText('新しい版を作成しました');
+  await expect(page.getByRole('status')).toContainText('新しい作業版を作成しました');
   const contentPublication = await publishInGui(page, documentId, 2);
   const major = await checkpoint(page, context, documentId, 'new-major');
   assertRevisionTransition(unchanged, major, { sourceKind: 'contentPublication', versionId: version.targetVersionId, major: 2, minor: 0, resultingRevision: contentPublication.resultingDocumentRevision, metadata: { extensions: { c3Stage: 'C3 changed metadata' } } });
@@ -151,8 +151,8 @@ test('stale GUI create capability is reauthorized after Human write revocation, 
   const policy = (await getDocumentAccessPolicy({ ...common, path })).data;
   await page.goto(`/documents/${documentId}?view=authoring&tab=versions`);
   await page.getByRole('button', { name: '新しい版を作成', exact: true }).first().click();
-  await page.getByLabel('原本ファイル').setInputFiles({ name: 'race-denied.txt', mimeType: 'text/plain', buffer: bytes });
-  await expect(page.getByRole('button', { name: '新しい版を作成', exact: true })).toBeEnabled();
+  await page.getByLabel(/^差替ファイル:/).setInputFiles({ name: 'race-denied.txt', mimeType: 'text/plain', buffer: Buffer.from('Synthetic changed text after permission restoration.\n') });
+  await expect(page.getByRole('button', { name: '新しい作業版を作成', exact: true })).toBeEnabled();
   let revoked = false;
   const restore = async () => {
     const current = (await getDocumentAccessPolicy({ ...common, path })).data;
@@ -172,23 +172,25 @@ test('stale GUI create capability is reauthorized after Human write revocation, 
     const hiddenAuthoring = await getDocument({ ...common, throwOnError: false, path, query: { view: 'authoring' } });
     expect(hiddenAuthoring.response?.status).toBe(404); expect(hiddenAuthoring.error?.code).toBe('DOCUMENT_NOT_FOUND');
     const responsePromise = page.waitForResponse(response => new URL(response.url()).pathname === `/v1/documents/${documentId}/versions` && response.request().method() === 'POST');
-    await page.getByRole('button', { name: '新しい版を作成', exact: true }).click();
+    await page.getByRole('button', { name: '新しい作業版を作成', exact: true }).click();
     const response = await responsePromise;
     // A fresh operation loses its Internal snapshot before mutation. Replayed
     // operations or revocation after loading that snapshot instead reach403.
     expect(response.status()).toBe(404); expect((await response.json()).code).toBe('DOCUMENT_NOT_FOUND');
     await expect(page.getByRole('alert')).toContainText('文書が見つからないか、閲覧できません');
-    await expect(page.getByRole('status').filter({ hasText: '新しい版を作成しました' })).toHaveCount(0);
-    await expect(page.getByLabel('原本ファイル')).toHaveValue(/race-denied\.txt$/);
+    await expect(page.getByRole('status').filter({ hasText: '新しい作業版を作成しました' })).toHaveCount(0);
+    await expect(page.getByLabel(/^差替ファイル:/)).toHaveValue(/race-denied\.txt$/);
     expect(await persistedSnapshot(context.human, documentId)).toEqual(before);
     const versions = (await listDocumentVersions({ ...common, path, query: { purpose: 'history', pageSize: 100 } })).data;
     expect(versions.items).toHaveLength(1);
     await visualCheckpoint(page, '12-permission-denied-file-retained-1440.png');
     await restore();
     const retryResponse = page.waitForResponse(result => new URL(result.url()).pathname === `/v1/documents/${documentId}/versions` && result.request().method() === 'POST');
-    await page.getByRole('alert').getByRole('button', { name: '再読み込み', exact: true }).click();
+    await page.getByRole('button', { name: '最新状態を確認', exact: true }).click();
+    await page.getByLabel(/^差替ファイル:/).setInputFiles({ name: 'race-denied.txt', mimeType: 'text/plain', buffer: Buffer.from('Synthetic changed text after permission restoration.\n') });
+    await page.getByRole('button', { name: '新しい作業版を作成', exact: true }).click();
     expect((await retryResponse).status()).toBe(201);
-    await expect(page.getByRole('status')).toContainText('新しい版を作成しました');
+    await expect(page.getByRole('status')).toContainText('新しい作業版を作成しました');
     const after = (await listDocumentVersions({ ...common, path, query: { purpose: 'history', pageSize: 100 } })).data;
     expect(after.items).toHaveLength(2);
     await visualCheckpoint(page, '13-permission-restored-retry-success-1440.png');
