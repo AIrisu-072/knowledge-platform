@@ -4,11 +4,15 @@
 //! lock, increments the Source `build_fence_seq` shared with FULL builds, and
 //! inserts the P7 INCREMENTAL target, its Graph parent and the build guard in
 //! one commit, before any copy. Renewal follows Source → generation → guard
-//! and never revives an expired guard. The P7 bundle of an incremental target
-//! (payload and lexical children) is not composed here: the frozen P7 schema
-//! admits children only for FULL targets.
+//! and never revives an expired guard. Since B6 (migration 0006) the target
+//! is a self-contained P7 bundle: its payload and lexical children are
+//! written under this Graph build guard. An EVENT-origin target binds its
+//! outbox event and Source epoch exactly like a FULL event candidate.
 
 use search_application::graph_generation::{BuildGuardHandle, GraphGenerationReceipt};
+use search_application::indexing_service::DocumentSourceEvent;
+use search_application::ports::SearchDeliveryFence;
+use search_application::source_registration::SourceKind;
 use uuid::Uuid;
 
 use crate::full_guard::FullGuardTtl;
@@ -26,6 +30,48 @@ impl PgGenerationRegistrar {
         target_mapping_digest: &str,
         ttl: FullGuardTtl,
     ) -> Result<BuildGuardHandle, GenerationError> {
+        self.register_incremental_inner(base, request, None, target_mapping_digest, ttl)
+            .await
+    }
+
+    /// B6: an INCREMENTAL target for one fenced outbox delivery.
+    pub async fn register_incremental_event(
+        &self,
+        event: &DocumentSourceEvent,
+        fence: SearchDeliveryFence,
+        base: &GraphGenerationReceipt,
+        request: &FullBuildRequest,
+        target_mapping_digest: &str,
+        ttl: FullGuardTtl,
+    ) -> Result<BuildGuardHandle, GenerationError> {
+        if self.registration.kind() != SourceKind::Document
+            || event.event_id != fence.event_id
+            || fence.event_id.is_nil()
+            || fence.outbox_token.is_nil()
+            || fence.source.owner_token.is_nil()
+            || fence.source.epoch <= 0
+            || fence.source.source_id != self.registration.source_id()
+        {
+            return Err(GenerationError::InvalidInput);
+        }
+        self.register_incremental_inner(
+            base,
+            request,
+            Some((event, fence)),
+            target_mapping_digest,
+            ttl,
+        )
+        .await
+    }
+
+    async fn register_incremental_inner(
+        &self,
+        base: &GraphGenerationReceipt,
+        request: &FullBuildRequest,
+        event: Option<(&DocumentSourceEvent, SearchDeliveryFence)>,
+        target_mapping_digest: &str,
+        ttl: FullGuardTtl,
+    ) -> Result<BuildGuardHandle, GenerationError> {
         self.validate_request(request)?;
         if !valid_digest(target_mapping_digest)
             || base.key.source_id != request.manifest.source_id
@@ -40,7 +86,15 @@ impl PgGenerationRegistrar {
         let token = Uuid::new_v4();
         for _ in 0..3 {
             let result = self
-                .register_incremental_once(base, request, target_mapping_digest, ttl, token, stamp)
+                .register_incremental_once(
+                    base,
+                    request,
+                    event,
+                    target_mapping_digest,
+                    ttl,
+                    token,
+                    stamp,
+                )
                 .await;
             self.check_gate(stamp)
                 .map_err(|_| GenerationError::StoreUnknown)?;
@@ -53,10 +107,12 @@ impl PgGenerationRegistrar {
         Err(GenerationError::StoreUnknown)
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn register_incremental_once(
         &self,
         base: &GraphGenerationReceipt,
         request: &FullBuildRequest,
+        event: Option<(&DocumentSourceEvent, SearchDeliveryFence)>,
         target_mapping_digest: &str,
         ttl: FullGuardTtl,
         token: Uuid,
@@ -66,7 +122,17 @@ impl PgGenerationRegistrar {
         let result = async {
             self.check_gate(stamp)?;
             transaction_bounds(&mut tx).await?;
-            self.lock_source(&mut tx, None).await?;
+            if let Some((event, fence)) = event {
+                // EVENT locks outbox → Source, as a FULL event candidate does.
+                sqlx::query("SELECT event_id FROM outbox_events WHERE event_id=$1 FOR UPDATE")
+                    .bind(fence.event_id)
+                    .fetch_optional(&mut *tx)
+                    .await?
+                    .ok_or(GenerationError::Lost)?;
+                self.check_event(&mut tx, event, fence).await?;
+            }
+            self.lock_source(&mut tx, event.map(|(_, fence)| fence))
+                .await?;
             let base_ready: Option<String> = sqlx::query_scalar(
                 "SELECT state FROM search_generation WHERE source_id=$1 AND generation_id=$2 \
                  FOR SHARE",
@@ -104,9 +170,10 @@ impl PgGenerationRegistrar {
             .await?;
             sqlx::query(
                 "INSERT INTO search_generation(source_id,generation_id,activation_epoch,state, \
-                 build_kind,stage_origin,source_snapshot,projection_manifest, \
-                 projection_manifest_digest,projection_resource_count,bundle_version) \
-                 VALUES($1,$2,$3,'BUILDING','INCREMENTAL','MANUAL',$4,$5,$6,$7,'v1')",
+                 build_kind,stage_origin,stage_event_id,stage_source_epoch,source_snapshot, \
+                 projection_manifest,projection_manifest_digest,projection_resource_count, \
+                 bundle_version) \
+                 VALUES($1,$2,$3,'BUILDING','INCREMENTAL',$8,$9,$10,$4,$5,$6,$7,'v1')",
             )
             .bind(manifest.source_id.as_uuid())
             .bind(manifest.generation_id.as_uuid())
@@ -115,6 +182,9 @@ impl PgGenerationRegistrar {
             .bind(manifest_dto(manifest))
             .bind(&manifest.digest)
             .bind(manifest.resource_count as i64)
+            .bind(if event.is_some() { "EVENT" } else { "MANUAL" })
+            .bind(event.map(|(_, fence)| fence.event_id))
+            .bind(event.map(|(_, fence)| fence.source.epoch))
             .execute(&mut *tx)
             .await?;
             let handle = search_graph::incremental::register_incremental_on(
@@ -130,7 +200,11 @@ impl PgGenerationRegistrar {
             )
             .await
             .map_err(graph_failure)?;
-            self.check_source(&mut tx, None).await?;
+            self.check_source(&mut tx, event.map(|(_, fence)| fence))
+                .await?;
+            if let Some((event, fence)) = event {
+                self.check_event(&mut tx, event, fence).await?;
+            }
             self.check_gate(stamp)?;
             Ok(handle)
         }
