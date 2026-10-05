@@ -86,6 +86,9 @@ GRANT UPDATE (state) ON search_generation TO search_gc;
 GRANT DELETE ON search_generation_full_guard, search_generation_payload,
     search_generation_receipt, search_lexical_artifact,
     search_evaluation_lease, search_generation TO search_gc;
+-- Migration 0004: lock-only access to the Source row for GC.
+REVOKE ALL ON FUNCTION search_gc_lock_source(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION search_gc_lock_source(UUID) TO search_gc;
 
 GRANT EXECUTE ON FUNCTION search_is_sha256_digest(TEXT),
     search_valid_actor_scope_ref(TEXT)
