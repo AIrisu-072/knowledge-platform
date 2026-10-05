@@ -10,6 +10,7 @@ document-application = { version = "0.0.0", path = "../document-application" }
 document-domain = { version = "0.0.0", path = "../document-domain" }
 document-repository-postgres = { version = "0.0.0", path = "../document-repository-postgres" }
 document-semantic-inspection-core = { version = "0.0.0", path = "../document-semantic-inspection-core" }
+outbox-delivery = { version = "0.0.0", path = "../outbox-delivery" }
 search-application = { version = "0.0.0", path = "../search-application" }
 search-core = { version = "0.0.0", path = "../search-core" }
 search-extraction-core = { version = "0.0.0", path = "../search-extraction-core" }

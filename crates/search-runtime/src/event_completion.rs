@@ -9,8 +9,10 @@
 //! A lost CAS keeps the guard; the generic outbox ack stays with the delivery
 //! worker in its own fenced transaction.
 
+use search_application::SearchError;
 use search_application::ports::{
-    CurrentGenerationSnapshot, SearchCompletionOutcome, SearchDeliveryFence,
+    BoxFuture, CompleteEventRequest, CompletionMode, CurrentGenerationSnapshot,
+    SearchCompletionOutcome, SearchDeliveryFence, SearchEventCompletionPort,
 };
 use search_application::search_core::id::{ProjectionGenerationId, SourceId};
 use search_application::search_core::projection::ProjectionGenerationKey;
@@ -280,6 +282,47 @@ async fn commit(
     Ok(outcome)
 }
 
+/// The PublishCandidate branch after the outbox, receipt and Source checks:
+/// expected pointer, READY bundle digests, the candidate's EVENT origin and
+/// live guard, then pointer CAS, receipt and guard DELETE in this commit.
+#[allow(clippy::too_many_arguments)]
+async fn publish_candidate(
+    mut tx: sqlx::Transaction<'_, sqlx::Postgres>,
+    fence: SearchDeliveryFence,
+    source: &SourceRow,
+    expected_current: &CurrentGenerationSnapshot,
+    key: ProjectionGenerationKey,
+    (token, fence_seq): (Uuid, i64),
+    manifest_digest: &str,
+    bundle_digest: &str,
+) -> Result<SearchCompletionOutcome, CompletionError> {
+    if source.current != *expected_current {
+        // A lost CAS keeps the guard for an explicit abort or retry.
+        return Ok(SearchCompletionOutcome::Retry);
+    }
+    if key.source_id != fence.source.source_id
+        || !ready_bundle_matches(&mut tx, key, manifest_digest, bundle_digest).await?
+        || !candidate_binding(&mut tx, key, token, fence_seq, Some(fence)).await?
+    {
+        return Ok(SearchCompletionOutcome::Lost);
+    }
+    if !swap_pointer(
+        &mut tx,
+        key,
+        expected_current.pointer_revision,
+        manifest_digest,
+        bundle_digest,
+        Some(fence.source.epoch),
+    )
+    .await?
+    {
+        return Ok(SearchCompletionOutcome::Retry);
+    }
+    record_receipt(&mut tx, fence, key, manifest_digest, bundle_digest).await?;
+    delete_guard(&mut tx, key, token).await?;
+    commit(tx, SearchCompletionOutcome::Published(key)).await
+}
+
 /// Pointer CAS and Search event receipts on the shared Source row.
 #[derive(Clone)]
 pub struct PgPublication {
@@ -335,45 +378,24 @@ impl PgPublication {
                 bundle,
                 ..
             } => {
-                if source.current != expected_current {
-                    // A lost CAS keeps the guard for an explicit abort or retry.
-                    return Ok(SearchCompletionOutcome::Retry);
-                }
                 let key = candidate.key();
                 let target = candidate
                     .graph_target()
                     .ok_or(CompletionError::StoreUnknown)?;
-                let manifest_digest = sha256_text(&bundle.receipt().projection_digest);
-                let bundle_digest = sha256_text(&bundle.receipt().composite_digest);
-                if bundle.key() != key
-                    || key.source_id != fence.source.source_id
-                    || !ready_bundle_matches(&mut tx, key, &manifest_digest, &bundle_digest).await?
-                    || !candidate_binding(
-                        &mut tx,
-                        key,
-                        target.guard_token(),
-                        target.build_fence(),
-                        Some(fence),
-                    )
-                    .await?
-                {
+                if bundle.key() != key {
                     return Ok(SearchCompletionOutcome::Lost);
                 }
-                if !swap_pointer(
-                    &mut tx,
+                publish_candidate(
+                    tx,
+                    fence,
+                    &source,
+                    &expected_current,
                     key,
-                    expected_current.pointer_revision,
-                    &manifest_digest,
-                    &bundle_digest,
-                    Some(fence.source.epoch),
+                    (target.guard_token(), target.build_fence()),
+                    &sha256_text(&bundle.receipt().projection_digest),
+                    &sha256_text(&bundle.receipt().composite_digest),
                 )
-                .await?
-                {
-                    return Ok(SearchCompletionOutcome::Retry);
-                }
-                record_receipt(&mut tx, fence, key, &manifest_digest, &bundle_digest).await?;
-                delete_guard(&mut tx, key, target.guard_token()).await?;
-                commit(tx, SearchCompletionOutcome::Published(key)).await
+                .await
             }
             EventCompletion::ReuseCurrent {
                 expected_current,
@@ -408,6 +430,66 @@ impl PgPublication {
                 commit(tx, SearchCompletionOutcome::Unchanged(key)).await
             }
         }
+    }
+
+    /// P6-S03 through the application port: the candidate is named by key
+    /// and digests only; its guard binding is read from its own row and must
+    /// be the EVENT origin of exactly this fence.
+    async fn complete_request(
+        &self,
+        request: CompleteEventRequest,
+    ) -> Result<SearchCompletionOutcome, CompletionError> {
+        if request.mode == CompletionMode::ReuseCurrent {
+            return self
+                .complete_event(EventCompletion::ReuseCurrent {
+                    fence: request.fence,
+                    expected_current: request.expected_current,
+                    expected_manifest_digest: request.manifest_digest,
+                    expected_bundle_digest: request.bundle_digest,
+                })
+                .await;
+        }
+        let fence = request.fence;
+        let mut tx = self.pool.begin().await?;
+        if !lock_outbox(&mut tx, fence).await? {
+            return Ok(SearchCompletionOutcome::Lost);
+        }
+        if let Some(generation) = existing_receipt(&mut tx, fence).await? {
+            let key = ProjectionGenerationKey {
+                source_id: fence.source.source_id,
+                generation_id: ProjectionGenerationId::from_uuid(generation),
+            };
+            return Ok(SearchCompletionOutcome::Duplicate(key));
+        }
+        let Some(source) = lock_source(&mut tx, fence.source.source_id, Some(fence)).await? else {
+            return Ok(SearchCompletionOutcome::Lost);
+        };
+        if source.last_published_epoch > fence.source.epoch {
+            return Ok(SearchCompletionOutcome::Lost);
+        }
+        let key = request.candidate;
+        let binding: Option<(Option<Uuid>, Option<i64>)> = sqlx::query_as(
+            "SELECT full_guard_token, full_build_fence FROM search_generation \
+             WHERE source_id=$1 AND generation_id=$2",
+        )
+        .bind(key.source_id.as_uuid())
+        .bind(key.generation_id.as_uuid())
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((Some(token), Some(fence_seq))) = binding else {
+            return Ok(SearchCompletionOutcome::Lost);
+        };
+        publish_candidate(
+            tx,
+            fence,
+            &source,
+            &request.expected_current,
+            key,
+            (token, fence_seq),
+            &request.manifest_digest,
+            &request.bundle_digest,
+        )
+        .await
     }
 
     /// Manual publication: Source → generation → guard, CAS and guard DELETE.
@@ -456,5 +538,32 @@ impl PgPublication {
         }
         delete_guard(&mut tx, key, target.guard_token()).await?;
         commit(tx, SearchCompletionOutcome::Published(key)).await
+    }
+}
+
+impl From<CompletionError> for SearchError {
+    fn from(error: CompletionError) -> Self {
+        match error {
+            CompletionError::StoreUnknown => {
+                Self::SourceUnavailable("search completion store unavailable".into())
+            }
+            CompletionError::CompletionUnknown => Self::CompletionUnknown,
+        }
+    }
+}
+
+impl SearchEventCompletionPort for PgPublication {
+    fn current_snapshot<'a>(
+        &'a self,
+        source_id: SourceId,
+    ) -> BoxFuture<'a, CurrentGenerationSnapshot> {
+        Box::pin(async move { Ok(self.current(source_id).await?) })
+    }
+
+    fn complete_event_if_current<'a>(
+        &'a self,
+        request: CompleteEventRequest,
+    ) -> BoxFuture<'a, SearchCompletionOutcome> {
+        Box::pin(async move { Ok(self.complete_request(request).await?) })
     }
 }

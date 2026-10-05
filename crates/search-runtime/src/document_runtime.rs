@@ -19,7 +19,10 @@ use std::sync::{Arc, Mutex};
 use document_domain::DocumentId;
 use search_application::SearchError;
 use search_application::graph_generation::{GraphResourceRecord, GraphSourceMapping};
-use search_application::ports::{BoxFuture, SearchCompletionOutcome, SemanticRegistrySnapshot};
+use search_application::indexing_service::DocumentSourceEvent;
+use search_application::ports::{
+    BoxFuture, SearchCompletionOutcome, SearchDeliveryFence, SemanticRegistrySnapshot,
+};
 use search_application::projection::{
     PersistableGenerationManifest, PersistableResourceProjection,
 };
@@ -41,15 +44,24 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::event_completion::PgPublication;
-use crate::full_guard::{FullGuardTtl, ManualBuildHandle};
+use crate::full_guard::{EventCandidateHandle, FullGuardTtl, ManualBuildHandle};
 use crate::gc::PgGenerationGc;
-use crate::generation_registration::{FullBuildRequest, PgGenerationRegistrar};
+use crate::generation_registration::{FullBuildRequest, GenerationError, PgGenerationRegistrar};
 use crate::lexical_artifact::LexicalArtifactStore;
 use crate::payload::{PgPayloadStore, ProjectionPayloadV1, StoredBundleV1};
 use crate::ready::{ReadyCoordinator, VerifiedBundle};
 
 fn failed(what: &str, error: impl Debug) -> SearchError {
     SearchError::OperationFailed(format!("durable Document {what}: {error:?}"))
+}
+
+/// A registration refused because a delivery or Source fence moved on is a
+/// lost fence, not an indexing failure.
+fn registration_error(error: GenerationError) -> SearchError {
+    match error {
+        GenerationError::Lost => SearchError::FenceLost,
+        other => failed("registration", other),
+    }
 }
 
 /// One build in progress. Only the registered handle and the verified
@@ -64,8 +76,27 @@ struct Pending {
     graph: Option<GraphPlan>,
     unit_manifest: Option<BodyUnitManifest>,
     coverage: Option<BodyCoverageArtifact>,
-    handle: Option<Arc<ManualBuildHandle>>,
+    delivery: Option<(DocumentSourceEvent, SearchDeliveryFence)>,
+    handle: Option<Registered>,
     verified: Option<VerifiedBundle>,
+}
+
+/// The P7 target: MANUAL for a rebuild, EVENT for a fenced delivery.
+#[derive(Clone)]
+enum Registered {
+    Manual(Arc<ManualBuildHandle>),
+    Event(Arc<EventCandidateHandle>),
+}
+
+impl Registered {
+    fn graph_target(
+        &self,
+    ) -> Option<search_application::graph_generation::RegisteredFullBuildHandle> {
+        match self {
+            Self::Manual(handle) => handle.graph_target(),
+            Self::Event(handle) => handle.graph_target(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -172,15 +203,17 @@ impl PgDocumentIndexRuntime {
         let Some(handle) = pending.and_then(|pending| pending.handle) else {
             return Ok(false);
         };
-        PgGenerationGc::new(self.pool.clone(), &self.lexical_root)
-            .abort_manual(&handle)
-            .await
-            .map_err(|error| failed("abort", error))?;
+        let gc = PgGenerationGc::new(self.pool.clone(), &self.lexical_root);
+        match handle {
+            Registered::Manual(handle) => gc.abort_manual(&handle).await,
+            Registered::Event(handle) => gc.abort_event(&handle).await,
+        }
+        .map_err(|error| failed("abort", error))?;
         Ok(true)
     }
 
     async fn settle(&self, key: ProjectionGenerationKey) -> Result<VerifiedBundle, SearchError> {
-        let (manifest, registry, resources, lexical, graph, unit_manifest, coverage) =
+        let (manifest, registry, resources, lexical, graph, unit_manifest, coverage, delivery) =
             self.with(key, |pending| {
                 Ok((
                     pending.manifest.clone(),
@@ -190,6 +223,7 @@ impl PgDocumentIndexRuntime {
                     pending.graph.clone(),
                     pending.unit_manifest.clone(),
                     pending.coverage.clone(),
+                    pending.delivery.clone(),
                 ))
             })?;
         let (
@@ -205,19 +239,30 @@ impl PgDocumentIndexRuntime {
                 "durable Document build needs every artifact and a body bundle".into(),
             ));
         };
-        let handle = Arc::new(
-            self.registrar
-                .register_manual_with_graph(
-                    &FullBuildRequest {
-                        manifest: manifest.clone(),
-                        expected_snapshot: manifest.source_snapshot.clone(),
-                    },
-                    &graph.mapping_digest,
-                    self.guard_ttl,
-                )
-                .await
-                .map_err(|error| failed("registration", error))?,
-        );
+        let request = FullBuildRequest {
+            manifest: manifest.clone(),
+            expected_snapshot: manifest.source_snapshot.clone(),
+        };
+        let handle = match &delivery {
+            Some((event, fence)) => Registered::Event(Arc::new(
+                self.registrar
+                    .register_event_with_graph(
+                        event,
+                        *fence,
+                        &request,
+                        &graph.mapping_digest,
+                        self.guard_ttl,
+                    )
+                    .await
+                    .map_err(registration_error)?,
+            )),
+            None => Registered::Manual(Arc::new(
+                self.registrar
+                    .register_manual_with_graph(&request, &graph.mapping_digest, self.guard_ttl)
+                    .await
+                    .map_err(registration_error)?,
+            )),
+        };
         self.with(key, |pending| {
             pending.handle = Some(handle.clone());
             Ok(())
@@ -263,11 +308,13 @@ impl PgDocumentIndexRuntime {
             .stage_full(&target, &graph.records, &graph.relations)
             .await
             .map_err(|error| failed("graph stage", error))?;
-        let verified =
-            ReadyCoordinator::new(self.pool.clone(), &self.lexical_root, self.source.clone())
-                .ready_manual(&handle)
-                .await
-                .map_err(|error| failed("READY", error))?;
+        let coordinator =
+            ReadyCoordinator::new(self.pool.clone(), &self.lexical_root, self.source.clone());
+        let verified = match &handle {
+            Registered::Manual(handle) => coordinator.ready_manual(handle).await,
+            Registered::Event(handle) => coordinator.ready_event(handle).await,
+        }
+        .map_err(|error| failed("READY", error))?;
         if verified.receipt() != &receipt {
             return Err(failed("READY receipt", key));
         }
@@ -314,6 +361,29 @@ impl DocumentIndexRuntime for PgDocumentIndexRuntime {
                     ..Pending::default()
                 },
             );
+            Ok(())
+        })
+    }
+
+    fn bind_delivery<'a>(
+        &'a self,
+        key: ProjectionGenerationKey,
+        event: &'a DocumentSourceEvent,
+        fence: SearchDeliveryFence,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            self.with(key, |pending| {
+                pending.delivery = Some((event.clone(), fence));
+                Ok(())
+            })
+        })
+    }
+
+    fn settled<'a>(&'a self, key: ProjectionGenerationKey) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            if let Ok(mut pending) = self.pending.lock() {
+                pending.remove(&key);
+            }
             Ok(())
         })
     }
@@ -381,9 +451,9 @@ impl DocumentIndexRuntime for PgDocumentIndexRuntime {
             let (handle, verified) = self.with(key, |pending| {
                 Ok((pending.handle.clone(), pending.verified.clone()))
             })?;
-            let (Some(handle), Some(verified)) = (handle, verified) else {
+            let (Some(Registered::Manual(handle)), Some(verified)) = (handle, verified) else {
                 return Err(SearchError::OperationFailed(
-                    "durable Document publication needs a READY bundle".into(),
+                    "durable Document publication needs a READY MANUAL bundle".into(),
                 ));
             };
             let publication = PgPublication::new(self.pool.clone());

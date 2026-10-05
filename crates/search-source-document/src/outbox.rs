@@ -2,6 +2,7 @@
 //! This adapter never acknowledges or edits the generic Document outbox.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
 use document_domain::DocumentId;
@@ -11,10 +12,13 @@ use search_application::indexing_service::{
     DocumentIndexingPort, DocumentSourceEvent, IndexingOutcome,
 };
 use search_application::ports::{
-    AccessDecision, AssertionStorePort, BoxFuture, ConceptRegistryPort, CurrentAccessEvaluatorPort,
-    DirectoryRetrieverPort, GraphRetrievalResult, HyperGraphRetrieverPort, LexicalQuery,
-    LexicalRetrieverPort, ProjectionGenerationStore, SemanticRegistrySnapshot,
-    StructuredFacetFilter, StructuredRetrievalHit, StructuredRetrieverPort,
+    AccessDecision, AssertionStorePort, BoxFuture, CompleteEventRequest, CompletionMode,
+    ConceptRegistryPort, CurrentAccessEvaluatorPort, CurrentGenerationSnapshot,
+    DirectoryRetrieverPort, FencedDocumentIndexingPort, GraphRetrievalResult,
+    HyperGraphRetrieverPort, LexicalQuery, LexicalRetrieverPort, ProjectionGenerationStore,
+    SearchCompletionOutcome, SearchDeliveryFence, SearchEventCompletionPort,
+    SemanticRegistrySnapshot, StructuredFacetFilter, StructuredRetrievalHit,
+    StructuredRetrieverPort,
 };
 use search_application::projection::{
     PersistableGenerationManifest, PersistableResourceProjection, ProjectionCompiler,
@@ -168,6 +172,22 @@ pub trait DocumentIndexRuntime: Send + Sync {
         _key: ProjectionGenerationKey,
         _snapshot: &'a DocumentOutboxSnapshot,
     ) -> BoxFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
+    /// The delivery an event-origin build belongs to (P6-S04). A durable
+    /// runtime registers the candidate as that event's EVENT target.
+    fn bind_delivery<'a>(
+        &'a self,
+        _key: ProjectionGenerationKey,
+        _event: &'a DocumentSourceEvent,
+        _fence: SearchDeliveryFence,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
+    /// A fenced completion committed this key; its build state may go.
+    fn settled<'a>(&'a self, _key: ProjectionGenerationKey) -> BoxFuture<'a, ()> {
         Box::pin(async { Ok(()) })
     }
 }
@@ -791,6 +811,39 @@ pub struct DocumentOutboxIndexer<R, E, T = MemoryDocumentIndexRuntime> {
     receipts: E,
     gate: Mutex<()>,
     body: Option<Arc<dyn BodyItemExtractor>>,
+    completion: Option<Arc<dyn SearchEventCompletionPort>>,
+}
+
+/// One fenced delivery: the event, both live leases, the runner's
+/// cancellation and the only port allowed to complete it.
+struct Delivery {
+    event: DocumentSourceEvent,
+    fence: SearchDeliveryFence,
+    cancel: Arc<AtomicBool>,
+    completion: Arc<dyn SearchEventCompletionPort>,
+}
+
+impl Delivery {
+    fn check(&self) -> Result<(), SearchError> {
+        if self.cancel.load(Ordering::Acquire) {
+            Err(SearchError::FenceLost)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// A committed fenced outcome; `Retry` rebuilds from a new snapshot.
+fn fenced_outcome(
+    outcome: SearchCompletionOutcome,
+) -> Result<Option<IndexingOutcome>, SearchError> {
+    match outcome {
+        SearchCompletionOutcome::Published(key) => Ok(Some(IndexingOutcome::Published(key))),
+        SearchCompletionOutcome::Unchanged(key) => Ok(Some(IndexingOutcome::Unchanged(key))),
+        SearchCompletionOutcome::Duplicate(key) => Ok(Some(IndexingOutcome::Duplicate(key))),
+        SearchCompletionOutcome::Retry => Ok(None),
+        SearchCompletionOutcome::Lost => Err(SearchError::FenceLost),
+    }
 }
 
 impl<R, E, T: DocumentIndexRuntime> DocumentOutboxIndexer<R, E, T> {
@@ -802,7 +855,18 @@ impl<R, E, T: DocumentIndexRuntime> DocumentOutboxIndexer<R, E, T> {
             receipts,
             gate: Mutex::new(()),
             body: None,
+            completion: None,
         }
+    }
+
+    /// P6-S04: an event-origin build completes only through this atomic
+    /// port, never through the legacy receipt store or pointer switch.
+    pub fn with_fenced_completion(
+        mut self,
+        completion: Arc<dyn SearchEventCompletionPort>,
+    ) -> Self {
+        self.completion = Some(completion);
+        self
     }
 
     /// Build body-ready (P1) generations: every Live authoritative item is
@@ -927,12 +991,16 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
         &self,
         event_id: Option<Uuid>,
         full_rebuild: bool,
+        delivery: Option<Delivery>,
     ) -> Result<IndexingOutcome, SearchError> {
         // Serialize this instance. The shared store's conditional pointer
         // switch protects independent indexers using the same Source.
         let _guard = self.gate.lock().await;
         for _ in 0..3 {
-            if let Some(outcome) = self.reconcile_once(event_id, full_rebuild).await? {
+            if let Some(outcome) = self
+                .reconcile_once(event_id, full_rebuild, delivery.as_ref())
+                .await?
+            {
                 return Ok(outcome);
             }
         }
@@ -945,6 +1013,7 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
         &self,
         event_id: Option<Uuid>,
         full_rebuild: bool,
+        delivery: Option<&Delivery>,
     ) -> Result<Option<IndexingOutcome>, SearchError> {
         let source_id = self.config.source.source_id;
         let expected_current = self
@@ -952,7 +1021,14 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
             .pin_current(source_id)
             .await?
             .map(|item| item.key());
+        let fenced_current: Option<CurrentGenerationSnapshot> = match delivery {
+            Some(delivery) => Some(delivery.completion.current_snapshot(source_id).await?),
+            None => None,
+        };
         let snapshot = self.reader.enumerate_snapshot().await?;
+        if let Some(delivery) = delivery {
+            delivery.check()?;
+        }
         let source_snapshot = one_source_snapshot(&snapshot)?;
         let body_snapshot = self.body.as_ref().map(|_| snapshot.clone());
         let live_count = snapshot.live.len();
@@ -1089,6 +1165,24 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
                 && current.coverage == manifest.coverage
         }) {
             let key = current.key();
+            if let (Some(delivery), Some(snapshot)) = (delivery, &fenced_current) {
+                // The current READY bundle is re-validated by the port.
+                if snapshot.key != Some(key) {
+                    return Ok(None);
+                }
+                let outcome = delivery
+                    .completion
+                    .complete_event_if_current(CompleteEventRequest {
+                        fence: delivery.fence,
+                        expected_current: snapshot.clone(),
+                        candidate: key,
+                        manifest_digest: snapshot.manifest_digest.clone().unwrap_or_default(),
+                        bundle_digest: snapshot.bundle_digest.clone().unwrap_or_default(),
+                        mode: CompletionMode::ReuseCurrent,
+                    })
+                    .await?;
+                return fenced_outcome(outcome);
+            }
             let digest = match &current_bundle {
                 Some(receipt) => format!("bundle:{}", hex(&receipt.composite_digest)),
                 None => manifest.digest.clone(),
@@ -1130,6 +1224,12 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
         let staged = async {
             if let Some(snapshot) = &body_snapshot {
                 self.runtime.bind_source_snapshot(key, snapshot).await?;
+            }
+            if let Some(delivery) = delivery {
+                self.runtime
+                    .bind_delivery(key, &delivery.event, delivery.fence)
+                    .await?;
+                delivery.check()?;
             }
             self.runtime
                 .stage_concept_registry(key, self.config.semantic_registry.clone())
@@ -1210,6 +1310,40 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
                 return Ok(None);
             }
         }
+        if let (Some(delivery), Some(snapshot)) = (delivery, fenced_current) {
+            let completion = async {
+                delivery.check()?;
+                let receipt = bundle_receipt.as_ref().ok_or_else(|| {
+                    SearchError::OperationFailed(
+                        "fenced Document completion needs a body-ready bundle".into(),
+                    )
+                })?;
+                delivery
+                    .completion
+                    .complete_event_if_current(CompleteEventRequest {
+                        fence: delivery.fence,
+                        expected_current: snapshot,
+                        candidate: key,
+                        manifest_digest: manifest.digest.clone(),
+                        bundle_digest: format!("sha256:{}", hex(&receipt.composite_digest)),
+                        mode: CompletionMode::PublishCandidate,
+                    })
+                    .await
+            }
+            .await;
+            return match completion {
+                Ok(SearchCompletionOutcome::Published(published)) if published == key => {
+                    self.runtime.settled(key).await?;
+                    Ok(Some(IndexingOutcome::Published(key)))
+                }
+                Ok(outcome) => {
+                    // A lost or stale candidate is removed by its guard holder.
+                    self.cleanup_unpublished(key).await?;
+                    fenced_outcome(outcome)
+                }
+                Err(error) => Err(self.cleanup_after_error(key, error).await),
+            };
+        }
         let published = self.runtime.publish_if_current(key, expected_current).await;
         match published {
             Ok(true) => {}
@@ -1248,11 +1382,46 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime> 
     for DocumentOutboxIndexer<R, E, T>
 {
     fn refresh<'a>(&'a self, event: DocumentSourceEvent) -> BoxFuture<'a, IndexingOutcome> {
-        Box::pin(async move { self.reconcile(Some(event.event_id), false).await })
+        Box::pin(async move { self.reconcile(Some(event.event_id), false, None).await })
     }
 
     fn rebuild<'a>(&'a self) -> BoxFuture<'a, IndexingOutcome> {
-        Box::pin(async move { self.reconcile(None, true).await })
+        Box::pin(async move { self.reconcile(None, true, None).await })
+    }
+}
+
+impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
+    FencedDocumentIndexingPort for DocumentOutboxIndexer<R, E, T>
+{
+    fn refresh_fenced<'a>(
+        &'a self,
+        event: DocumentSourceEvent,
+        fence: SearchDeliveryFence,
+        cancel: Arc<AtomicBool>,
+    ) -> BoxFuture<'a, IndexingOutcome> {
+        Box::pin(async move {
+            let completion = self.completion.clone().ok_or_else(|| {
+                SearchError::OperationFailed("fenced completion is not configured".into())
+            })?;
+            if fence.event_id != event.event_id
+                || fence.source.source_id != self.config.source.source_id
+            {
+                return Err(SearchError::InvalidRequest(
+                    "delivery fence does not match the event or Source".into(),
+                ));
+            }
+            self.reconcile(
+                Some(event.event_id),
+                false,
+                Some(Delivery {
+                    event,
+                    fence,
+                    cancel,
+                    completion,
+                }),
+            )
+            .await
+        })
     }
 }
 

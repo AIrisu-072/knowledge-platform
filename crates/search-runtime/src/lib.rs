@@ -13,6 +13,7 @@ pub mod ready;
 pub mod recovery;
 pub mod source_lease;
 pub mod source_registration;
+pub mod worker;
 
 use sqlx::{PgPool, migrate::MigrateError};
 

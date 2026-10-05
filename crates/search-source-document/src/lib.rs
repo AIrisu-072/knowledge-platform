@@ -7,6 +7,7 @@ mod body_bundle;
 mod body_evidence;
 mod body_manifest;
 mod coverage;
+mod delivery;
 mod evidence;
 mod extraction;
 mod graph_mapping;
@@ -28,6 +29,7 @@ pub use body_manifest::{
     validate_restored_manifest,
 };
 pub use coverage::{DocumentCoveragePreflight, DocumentCoverageRequirement};
+pub use delivery::DocumentSearchDeliveryHandler;
 pub use evidence::{DocumentEvidenceCatalog, DocumentEvidenceField};
 pub use extraction::{
     BodyBuildError, BodyItemExtractor, BodyProfileRegistry, DocumentBodyExtractor,
