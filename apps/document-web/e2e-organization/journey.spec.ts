@@ -1,6 +1,7 @@
 import { currentAction } from './support';
 import { expect, test, type Page, type APIRequestContext } from '@playwright/test';
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import type { PublishedDocumentDetail, FileList } from '@knowledge-platform/document-api-client';
 import type { WorkflowActionCommand, Completed, Claimed, DraftCommand, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, SubmitCommand, Submitted, TaskDetail, TaskPage, WorkCommand, WorkingArtifact } from '../src/api/generated-work/types.gen';
 import { holdAndResume, assertHoldResumeState, assertCompletionState, assertHidden, assertSessions, assertEvidenceState, assertAgentState, requestSyntheticFinding, captureFinal, get, publishedEvidenceSource, readRuntimeContext, recordDecision, registerEvidence, registerFinding, revisionRef, saveState } from './support';
@@ -10,7 +11,8 @@ const revisedText = '【合成データ】対象数量は10件です。営業で
 
 const text = '【合成データ】営業で参照資料を確認しました。事務担当は提出内容と共有文書を照合してください。';
 
-// The UI fetch is observed in memory; no download.path/saveAs, binary artifact or capture.
+// Verify the actual UI Download bytes in Playwright's private temporary directory.
+// Text response.body() can re-encode CDP strings. Never use it as an original-byte oracle.
 async function assertPublishedOriginal(page: Page, request: APIRequestContext, origin: string, documentId: string, taskId: string) {
   currentAction('source-read');
   const before = await get<TaskDetail>(request, origin, `/v1/organization/tasks/${taskId}`);
@@ -31,11 +33,17 @@ async function assertPublishedOriginal(page: Page, request: APIRequestContext, o
   await panel.getByRole('button', { name: `原本を取得 ${file.displayName}`, exact: true }).click();
   const response = await responsePromise;
   expect(response.status()).toBe(200);
-  const bytes = await response.body();
-  expect(bytes.byteLength).toBe(file.sizeBytes);
-  expect(bytes.byteLength).toBe(fixture.byteLength);
-  expect(createHash('sha256').update(bytes).digest('hex')).toBe(createHash('sha256').update(fixture).digest('hex'));
-  expect((await downloadPromise).suggestedFilename()).toBe(file.displayName);
+  const download = await downloadPromise;
+  try {
+    expect(await download.failure()).toBeNull();
+    const bytes = await readFile((await download.path())!);
+    expect(bytes.byteLength).toBe(file.sizeBytes);
+    expect(bytes.byteLength).toBe(fixture.byteLength);
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(createHash('sha256').update(fixture).digest('hex'));
+    expect(download.suggestedFilename()).toBe(file.displayName);
+  } finally {
+    await download.delete();
+  }
   expect(await get<TaskDetail>(request, origin, `/v1/organization/tasks/${taskId}`)).toEqual(before);
 }
 
@@ -54,7 +62,7 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
   expect(document.documentId).toBe(context.documentId);
   expect((await get<{ documentId: string }>(request, context.office, `/v1/documents/${context.documentId}?view=published`)).documentId).toBe(context.documentId);
 
-  const officeContext = await browser.newContext({ locale: 'ja-JP', viewport: { width: 1440, height: 900 }, serviceWorkers: 'block', acceptDownloads: false });
+  const officeContext = await browser.newContext({ locale: 'ja-JP', viewport: { width: 1440, height: 900 }, serviceWorkers: 'block', acceptDownloads: true });
   const office = await officeContext.newPage();
   try {
     currentAction('office-navigation');

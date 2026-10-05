@@ -1,5 +1,17 @@
 # Organization Browser PoC — タスク内Document参照の状況
 
+## 2026-10-05 00:46 UTC — 実原本の観測方法を補正、再受入待ち
+
+- [PR65](https://github.com/AIrisu-072/knowledge-platform/pull/65) 初head `989e1d7c` の[実runtime](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37247650348/job/111568621515)は実DB/transaction/初期化、公開改訂/原本一覧表示と原本APIのHTTP200まで成功したが、Playwright response.body()のbytes長と原本metadataの比較に失敗した。再起動/復元/通常shutdownは未実行、finally cleanupは成功、公開artifact0。機能全体の実受入は未完了
+- 製品は既存fetch Response.blob()を渡すが、固定PlaywrightはCDPの文字列responseをUTF-8へ再符号化する。保存原本と観測bytesが異なり得る純粋反例を確認した。ただし初回runの実charsetや差分数値は未取得であり、今回の原因と断定しない
+- 既存Document実試験と同じ、実Downloadのprivate一時bytesをreadFileして確認する方法へ限定補正する。元のHTTP200、metadata/合成fixtureのsize、SHA-256とfilenameの期待値は維持し、不一致を許容しない。finallyで削除し、既存context終了時の削除も残す
+- 一時download許可はjourneyの2contextだけ。persistenceの拒否設定、画像/trace/video off、artifact0を維持する。製品UI/API/Bridge/ACL/fixturebytesは変更せず、恒久設定や外部送信は加えない
+- 補正後GUI240件/20 suites、pure runner17件、両型/schema、Playwrightの各1件収集成功。新exact-headで実Downloadとmetadataの一致を再確認するまで未受入とする
+
+次のexact action: この2pathの限定独立レビュー後に新headを公開し、同じhosted条件の実操作・再起動・cleanupと全CIを終端まで確認する。以下は各時点の記録。
+
+---
+
 ## 2026-10-05 00:18 UTC — 選択保持とfocusを補正し再レビュー中
 
 - 独立レビューのImportant: モジュール往復で入力文書の選択が先頭へ戻る点を、既存のprincipal/責任/Task/attempt別タブ内状態へDocument IDだけ保持する最小修正で対応した。providerメタデータや原本bytesは保持しない。参照削除時に別文書へ自動変更しない
