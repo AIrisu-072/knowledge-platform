@@ -115,11 +115,52 @@ impl SearchExtractionRunner {
         Ok(report.fragments)
     }
 
+    /// Extract with a profile the trusted host registered for this item, such as a
+    /// ZIP composite plan built from host-owned leaf definitions. Worker bytes never
+    /// create or select the profile.
+    pub fn extract_registered(
+        &self,
+        raw: &[u8],
+        request: WorkerRequest,
+        profile: &RegisteredProfile,
+    ) -> Result<WorkerReport, ExtractionError> {
+        if !matches!(request.operation, WorkerOperation::Extract) {
+            return Err(ExtractionError::Configuration("extract operation"));
+        }
+        self.execute_with(raw, request, profile)
+    }
+
+    /// Resolve locators with a host-registered profile; see [`Self::extract_registered`].
+    pub fn resolve_registered(
+        &self,
+        raw: &[u8],
+        request: WorkerRequest,
+        profile: &RegisteredProfile,
+    ) -> Result<Vec<WorkerFragment>, ExtractionError> {
+        if !matches!(request.operation, WorkerOperation::ResolveLocators(_)) {
+            return Err(ExtractionError::Configuration("resolve operation"));
+        }
+        let report = self.execute_with(raw, request, profile)?;
+        if matches!(report.coverage, BodyCoverage::Unsupported { .. }) {
+            return Err(ExtractionError::Integrity("resolve unsupported"));
+        }
+        Ok(report.fragments)
+    }
+
     fn execute(&self, raw: &[u8], request: WorkerRequest) -> Result<WorkerReport, ExtractionError> {
         let profile = self
             .profiles
             .get(request.profile.as_str())
             .ok_or(ExtractionError::Configuration("unregistered profile"))?;
+        self.execute_with(raw, request, profile)
+    }
+
+    fn execute_with(
+        &self,
+        raw: &[u8],
+        request: WorkerRequest,
+        profile: &RegisteredProfile,
+    ) -> Result<WorkerReport, ExtractionError> {
         validate_worker_request(&request, profile)?;
         if raw.len() as u64 != request.expected_raw.size_bytes
             || Sha256::digest(raw).as_slice() != request.expected_raw.sha256
@@ -259,5 +300,25 @@ fn map_sandbox_error(error: SandboxRunError) -> ExtractionError {
             }
             ExtractionError::Retryable(RetryableFailureCode::WorkerKilled)
         }
+    }
+}
+
+impl search_extraction_core::ContentExtractor for SearchExtractionRunner {
+    fn extract(
+        &self,
+        raw: &[u8],
+        request: WorkerRequest,
+        profile: &RegisteredProfile,
+    ) -> Result<WorkerReport, ExtractionError> {
+        self.extract_registered(raw, request, profile)
+    }
+
+    fn resolve_locators(
+        &self,
+        raw: &[u8],
+        request: WorkerRequest,
+        profile: &RegisteredProfile,
+    ) -> Result<Vec<WorkerFragment>, ExtractionError> {
+        self.resolve_registered(raw, request, profile)
     }
 }

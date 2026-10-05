@@ -306,6 +306,7 @@ async fn graph_only_current_version_qualifies_with_source_title_evidence_and_har
             generations: &reader,
             concepts: &reader,
             retrieval: RetrievalExecutionPorts {
+                remote: None,
                 directory: Some(&reader),
                 structured: Some(&reader),
                 lexical: Some(&lexical),
@@ -353,6 +354,7 @@ async fn graph_only_current_version_qualifies_with_source_title_evidence_and_har
             generations: &reader,
             concepts: &reader,
             retrieval: RetrievalExecutionPorts {
+                remote: None,
                 directory: Some(&reader),
                 structured: Some(&reader),
                 lexical: Some(&lexical),
@@ -585,6 +587,7 @@ async fn body_required_coverage_returns_gap_before_real_title_lexical_port_is_ca
             generations: &reader,
             concepts: &reader,
             retrieval: RetrievalExecutionPorts {
+                remote: None,
                 directory: Some(&reader),
                 structured: Some(&reader),
                 lexical: Some(&lexical),
@@ -605,6 +608,7 @@ async fn body_required_coverage_returns_gap_before_real_title_lexical_port_is_ca
         &service,
         discovery_support::request(),
         DocumentCoverageRequirement::BodyRequired,
+        None,
     )
     .await
     .unwrap();
@@ -786,6 +790,7 @@ async fn shared_folder_placements_inherit_only_their_own_documents_read_policy()
             generations: &reader,
             concepts: &reader,
             retrieval: RetrievalExecutionPorts {
+                remote: None,
                 directory: Some(&reader),
                 structured: Some(&reader),
                 lexical: Some(&lexical),

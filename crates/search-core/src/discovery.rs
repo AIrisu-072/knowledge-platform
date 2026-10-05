@@ -93,6 +93,9 @@ impl InformationGap {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QualifiedResource {
     pub resource_ref: ResourceId,
+    /// The Source whose candidate qualified; absent only in older records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_ref: Option<SourceId>,
     pub usage_profile_ref: Option<UsageProfileId>,
     pub applicability: ApplicabilityState,
     pub matched_conditions: Vec<String>,

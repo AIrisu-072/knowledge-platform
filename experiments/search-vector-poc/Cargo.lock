@@ -739,6 +739,7 @@ name = "search-application"
 version = "0.0.0"
 dependencies = [
  "search-core",
+ "serde",
  "serde_json",
  "sha2",
  "thiserror",
@@ -772,6 +773,9 @@ version = "0.0.0"
 dependencies = [
  "search-application",
  "search-core",
+ "serde",
+ "serde_json",
+ "sha2",
  "tantivy",
  "thiserror",
 ]

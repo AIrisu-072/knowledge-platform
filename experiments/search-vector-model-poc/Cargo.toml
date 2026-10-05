@@ -1,0 +1,30 @@
+[package]
+name = "search-vector-model-poc"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98"
+publish = false
+
+# Isolated measurement workspace: never a root workspace member and never a
+# production dependency. Model bytes stay under the ignored `assets/`.
+[workspace]
+resolver = "3"
+
+[dependencies]
+candle-core = { version = "=0.11.0", default-features = false }
+candle-nn = { version = "=0.11.0", default-features = false }
+candle-transformers = { version = "=0.11.0", default-features = false }
+tokenizers = { version = "=0.22.0", default-features = false, features = ["onig"] }
+search-application = { path = "../../crates/search-application" }
+search-core = { path = "../../crates/search-core" }
+search-vector-poc = { path = "../search-vector-poc" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+time = "0.3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+uuid = { version = "1", features = ["v7"] }
+
+[patch.crates-io]
+# The baseline path crates use the reviewed Tantivy 0.26.2 source.
+tantivy = { path = "../../third_party/search/tantivy-0.26.2" }

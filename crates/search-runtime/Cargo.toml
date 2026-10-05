@@ -5,16 +5,42 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+# Test-only: the real-TCP server E2E uses the synthetic loopback transport.
+synthetic-loopback-test-only = ["search-source-http/synthetic-loopback-test-only"]
+
 [dependencies]
+axum = { version = "=0.8.9", features = ["json", "matched-path"] }
+document-domain = { version = "0.0.0", path = "../document-domain" }
+document-storage-fs = { version = "0.0.0", path = "../document-storage-fs" }
 outbox-delivery = { version = "0.0.0", path = "../outbox-delivery" }
+search-api-http = { version = "0.0.0", path = "../search-api-http" }
 search-application = { version = "0.0.0", path = "../search-application" }
+search-core = { version = "0.0.0", path = "../search-core" }
+search-extraction-core = { version = "0.0.0", path = "../search-extraction-core" }
+search-extraction-runner = { version = "0.0.0", path = "../search-extraction-runner" }
+search-graph = { version = "0.0.0", path = "../search-graph" }
+search-projection-memory = { version = "0.0.0", path = "../search-projection-memory" }
 search-source-document = { version = "0.0.0", path = "../search-source-document" }
+search-source-http = { version = "0.0.0", path = "../search-source-http" }
+search-tantivy = { version = "0.0.0", path = "../search-tantivy" }
+serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 sqlx.workspace = true
 time.workspace = true
 tokio.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+document-application = { version = "0.0.0", path = "../document-application" }
+search-extraction-worker = { version = "0.0.0", path = "../search-extraction-worker" }
+zip.workspace = true
+search-graph-memory = { version = "0.0.0", path = "../search-graph-memory" }
 testcontainers.workspace = true
 document-repository-postgres = { version = "0.0.0", path = "../document-repository-postgres" }
+tower = { version = "=0.5.3", features = ["util"] }
+
+[[test]]
+name = "server_e2e"
+required-features = ["synthetic-loopback-test-only"]

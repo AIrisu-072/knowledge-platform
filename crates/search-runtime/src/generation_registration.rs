@@ -108,7 +108,23 @@ impl PgGenerationRegistrar {
         request: &FullBuildRequest,
         ttl: FullGuardTtl,
     ) -> Result<ManualBuildHandle, GenerationError> {
-        self.register(request, None, ttl)
+        self.register(request, None, None, ttl)
+            .await
+            .map(ManualBuildHandle)
+    }
+
+    /// P7-07: also registers the Graph BUILDING parent, bound to this target
+    /// and the Source mapping commitment, in the same commit.
+    pub async fn register_manual_with_graph(
+        &self,
+        request: &FullBuildRequest,
+        graph_mapping_digest: &str,
+        ttl: FullGuardTtl,
+    ) -> Result<ManualBuildHandle, GenerationError> {
+        if !valid_digest(graph_mapping_digest) {
+            return Err(GenerationError::InvalidInput);
+        }
+        self.register(request, None, Some(graph_mapping_digest), ttl)
             .await
             .map(ManualBuildHandle)
     }
@@ -118,6 +134,34 @@ impl PgGenerationRegistrar {
         event: &DocumentSourceEvent,
         fence: SearchDeliveryFence,
         request: &FullBuildRequest,
+        ttl: FullGuardTtl,
+    ) -> Result<EventCandidateHandle, GenerationError> {
+        self.register_event_inner(event, fence, request, None, ttl)
+            .await
+    }
+
+    /// P7-07 for an EVENT target: the Graph parent joins the same commit.
+    pub async fn register_event_with_graph(
+        &self,
+        event: &DocumentSourceEvent,
+        fence: SearchDeliveryFence,
+        request: &FullBuildRequest,
+        graph_mapping_digest: &str,
+        ttl: FullGuardTtl,
+    ) -> Result<EventCandidateHandle, GenerationError> {
+        if !valid_digest(graph_mapping_digest) {
+            return Err(GenerationError::InvalidInput);
+        }
+        self.register_event_inner(event, fence, request, Some(graph_mapping_digest), ttl)
+            .await
+    }
+
+    async fn register_event_inner(
+        &self,
+        event: &DocumentSourceEvent,
+        fence: SearchDeliveryFence,
+        request: &FullBuildRequest,
+        graph_mapping_digest: Option<&str>,
         ttl: FullGuardTtl,
     ) -> Result<EventCandidateHandle, GenerationError> {
         if self.registration.kind() != SourceKind::Document
@@ -130,7 +174,9 @@ impl PgGenerationRegistrar {
         {
             return Err(GenerationError::InvalidInput);
         }
-        let build = self.register(request, Some((event, fence)), ttl).await?;
+        let build = self
+            .register(request, Some((event, fence)), graph_mapping_digest, ttl)
+            .await?;
         Ok(EventCandidateHandle {
             build,
             event: event.clone(),
@@ -142,6 +188,7 @@ impl PgGenerationRegistrar {
         &self,
         request: &FullBuildRequest,
         event: Option<(&DocumentSourceEvent, SearchDeliveryFence)>,
+        graph: Option<&str>,
         ttl: FullGuardTtl,
     ) -> Result<RegisteredFullBuild, GenerationError> {
         self.validate_request(request)?;
@@ -151,7 +198,9 @@ impl PgGenerationRegistrar {
             .ok_or(GenerationError::StoreUnknown)?;
         let token = Uuid::new_v4();
         for _ in 0..3 {
-            let result = self.register_once(request, event, ttl, token, stamp).await;
+            let result = self
+                .register_once(request, event, graph, ttl, token, stamp)
+                .await;
             self.check_gate(stamp)
                 .map_err(|_| GenerationError::StoreUnknown)?;
             match result {
@@ -163,7 +212,10 @@ impl PgGenerationRegistrar {
         Err(GenerationError::StoreUnknown)
     }
 
-    fn validate_request(&self, request: &FullBuildRequest) -> Result<(), GenerationError> {
+    pub(crate) fn validate_request(
+        &self,
+        request: &FullBuildRequest,
+    ) -> Result<(), GenerationError> {
         let manifest = &request.manifest;
         let bounded = |value: &str| !value.is_empty() && value.len() <= 1024;
         if manifest.source_id != self.registration.source_id()
@@ -194,6 +246,7 @@ impl PgGenerationRegistrar {
         &self,
         request: &FullBuildRequest,
         event: Option<(&DocumentSourceEvent, SearchDeliveryFence)>,
+        graph: Option<&str>,
         ttl: FullGuardTtl,
         token: Uuid,
         stamp: u64,
@@ -226,8 +279,19 @@ impl PgGenerationRegistrar {
             sqlx::query("INSERT INTO search_generation_full_guard(source_id,target_generation_id,guard_token,build_fence,expires_at) VALUES($1,$2,$3,$4,clock_timestamp()+($5::bigint * interval '1 microsecond'))")
                 .bind(manifest.source_id.as_uuid()).bind(manifest.generation_id.as_uuid()).bind(token)
                 .bind(fence).bind(ttl.micros()).execute(&mut *tx).await?;
+            if let Some(mapping) = graph {
+                // The Graph parent joins this commit; the trigger binds it to
+                // the BUILDING target, its snapshot and manifest digest.
+                search_graph::store::register_full_on(
+                    &mut tx, manifest.key(), token, fence, &manifest.source_snapshot,
+                    &manifest.digest, mapping,
+                )
+                .await
+                .map_err(graph_failure)?;
+            }
             let handle = RegisteredFullBuild { manifest: manifest.clone(), token, fence,
-                activation: self.activation, registration_digest: self.registration_digest.clone() };
+                activation: self.activation, registration_digest: self.registration_digest.clone(),
+                graph: graph.is_some() };
             self.check_source(&mut tx,event.map(|(_,f)|f)).await?;
             if let Some((event,fence))=event { self.check_event(&mut tx,event,fence).await?; }
             self.check_guard(&mut tx,&handle,event.map(|(_,f)|f)).await?;
@@ -306,10 +370,21 @@ impl PgGenerationRegistrar {
     }
 }
 
+pub(crate) fn graph_failure(error: search_graph::GraphError) -> Failure {
+    match error {
+        search_graph::GraphError::Invalid(_) => GenerationError::InvalidInput.into(),
+        search_graph::GraphError::FenceLost => GenerationError::Lost.into(),
+        search_graph::GraphError::Integrity(_) | search_graph::GraphError::RequiresFullRebuild => {
+            GenerationError::Conflict.into()
+        }
+        search_graph::GraphError::Store => GenerationError::StoreUnknown.into(),
+    }
+}
+
 pub(crate) fn manifest_dto(manifest: &ProjectionGenerationManifest) -> Value {
     serde_json::json!({"dto_version":"v1", "manifest":manifest})
 }
-fn valid_digest(value: &str) -> bool {
+pub(crate) fn valid_digest(value: &str) -> bool {
     value.len() == 71
         && value.starts_with("sha256:")
         && value.as_bytes()[7..]

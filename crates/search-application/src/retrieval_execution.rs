@@ -10,17 +10,20 @@ use search_core::id::{RelationId, ResourceId};
 use search_core::projection::ProjectionGenerationKey;
 use search_core::relation::{RelationNamespace, RelationParticipant};
 
+use crate::body_ports::KnowledgeUnitHitRef;
 use crate::error::SearchError;
 use crate::ports::{
     AccessDecision, CurrentAccessEvaluatorPort, CurrentCandidateAccessEvaluatorPort,
-    DirectoryRetrieverPort, HyperGraphRetrieverPort, LexicalQuery, LexicalRetrieverPort,
-    StructuredFacetFilter, StructuredFacetOutcome, StructuredRetrieverPort,
+    DirectoryRetrieverPort, HyperGraphRetrieverPort, LexicalFieldScope, LexicalQuery,
+    LexicalRetrieverPort, SealedRemoteRetrieverPort, StructuredFacetFilter, StructuredFacetOutcome,
+    StructuredRetrieverPort,
 };
 use crate::qualification::QualificationService;
 use crate::retrieval::{ActionState, RetrievalAction, RetrieverKind};
 
 /// The caller installs only adapters available for this evaluation. Access is
 /// always current and Source-owned, rather than inferred from a projection.
+#[derive(Clone, Copy)]
 pub struct RetrievalExecutionPorts<'a> {
     pub directory: Option<&'a dyn DirectoryRetrieverPort>,
     pub structured: Option<&'a dyn StructuredRetrieverPort>,
@@ -35,6 +38,8 @@ pub struct RetrievalExecutionPorts<'a> {
     /// Required for Graph execution. No path leaves this boundary without
     /// current Source-owned access to every path node and relation participant.
     pub graph_resource_access: Option<&'a dyn CurrentAccessEvaluatorPort>,
+    /// The four remote modes read only the Source's sealed evaluation list.
+    pub remote: Option<&'a dyn SealedRemoteRetrieverPort>,
     pub access: &'a dyn CurrentCandidateAccessEvaluatorPort,
 }
 
@@ -44,6 +49,9 @@ pub struct RetrievalExecutionInput<'a> {
     pub request: &'a DiscoveryRequest,
     pub structured_filters: &'a [StructuredFacetFilter],
     pub lexical_query: Option<&'a LexicalQuery>,
+    /// Request-scoped BodyOnly query; when present the Lexical arm searches
+    /// only Source-owned Units and keeps each Unit hit reference.
+    pub body_query: Option<&'a LexicalQuery>,
     pub graph_plan: Option<&'a GraphTraversalPlan>,
 }
 
@@ -58,11 +66,14 @@ pub struct RawRetrievalHit {
     pub retriever_id: String,
     pub generation: ProjectionGenerationKey,
     pub rank: usize,
+    pub unit_hit: Option<KnowledgeUnitHitRef>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RetrievalExecutionResult {
     pub hits: Vec<RawRetrievalHit>,
+    /// For a BodyOnly action: whether every matching Unit was seen.
+    pub body_exhausted: Option<bool>,
 }
 
 struct PortHit {
@@ -70,6 +81,7 @@ struct PortHit {
     structured_outcomes: Option<Vec<StructuredFacetOutcome>>,
     graph_paths: Option<Vec<GraphPathEvidence>>,
     graph_generation: Option<ProjectionGenerationKey>,
+    unit_hit: Option<KnowledgeUnitHitRef>,
 }
 
 pub struct RetrievalExecutor;
@@ -89,7 +101,43 @@ impl RetrievalExecutor {
             ));
         }
 
+        let mut body_exhausted = None;
         let port_hits: Vec<PortHit> = match input.action.retriever {
+            RetrieverKind::Lexical if input.body_query.is_some() => {
+                let query = input.body_query.expect("guarded body query");
+                if query.field_scope != LexicalFieldScope::BodyOnly
+                    || query.text.trim().is_empty()
+                    || query.limit == 0
+                {
+                    return Err(SearchError::InvalidRequest(
+                        "body retrieval requires nonempty text and a positive limit".into(),
+                    ));
+                }
+                let port = ports.lexical.ok_or_else(|| unsupported("lexical"))?;
+                let batch = port
+                    .retrieve_body(input.generation, input.request, query)
+                    .await?;
+                body_exhausted = Some(batch.exhausted_matching_units);
+                let mut body_hits = Vec::with_capacity(batch.hits.len());
+                for hit in batch.hits {
+                    if let Some(unit) = &hit.unit_hit
+                        && (unit.generation != input.generation
+                            || hit.candidate.resource_ref != Some(unit.parent_resource))
+                    {
+                        return Err(SearchError::OperationFailed(
+                            "body retriever returned a Unit outside the pinned parent".into(),
+                        ));
+                    }
+                    body_hits.push(PortHit {
+                        candidate: hit.candidate,
+                        structured_outcomes: None,
+                        graph_paths: None,
+                        graph_generation: None,
+                        unit_hit: hit.unit_hit,
+                    });
+                }
+                body_hits
+            }
             RetrieverKind::Directory => {
                 let port = ports.directory.ok_or_else(|| unsupported("directory"))?;
                 port.retrieve(input.generation, input.request)
@@ -100,6 +148,7 @@ impl RetrievalExecutor {
                         structured_outcomes: None,
                         graph_paths: None,
                         graph_generation: None,
+                        unit_hit: None,
                     })
                     .collect()
             }
@@ -113,6 +162,7 @@ impl RetrievalExecutor {
                         structured_outcomes: Some(hit.outcomes),
                         graph_paths: None,
                         graph_generation: None,
+                        unit_hit: None,
                     })
                     .collect()
             }
@@ -120,7 +170,10 @@ impl RetrievalExecutor {
                 let query = input.lexical_query.ok_or_else(|| {
                     SearchError::InvalidRequest("lexical retrieval requires a query".into())
                 })?;
-                if query.text.trim().is_empty() || query.limit == 0 {
+                if query.field_scope != LexicalFieldScope::ExistingFields
+                    || query.text.trim().is_empty()
+                    || query.limit == 0
+                {
                     return Err(SearchError::InvalidRequest(
                         "lexical retrieval requires nonempty text and a positive limit".into(),
                     ));
@@ -134,6 +187,7 @@ impl RetrievalExecutor {
                         structured_outcomes: None,
                         graph_paths: None,
                         graph_generation: None,
+                        unit_hit: None,
                     })
                     .collect()
             }
@@ -164,14 +218,46 @@ impl RetrievalExecutor {
                         structured_outcomes: None,
                         graph_paths: Some(hit.paths),
                         graph_generation: Some(returned_generation),
+                        unit_hit: None,
                     })
                     .collect()
             }
-            RetrieverKind::Vector
-            | RetrieverKind::RemoteEnumeration
+            RetrieverKind::RemoteEnumeration
             | RetrieverKind::RemoteQuery
             | RetrieverKind::DirectAddress
             | RetrieverKind::LiveOnly => {
+                let port = ports.remote.ok_or_else(|| unsupported("remote"))?;
+                let candidates = port.retrieve(input.action, input.generation).await?;
+                for candidate in &candidates {
+                    if candidate.source_ref != input.generation.source_id
+                        || candidate.resource_ref.is_none()
+                        || candidate.retrieval_trace_ref.as_deref()
+                            != Some(
+                                format!(
+                                    "{}:{}",
+                                    input.generation.source_id.as_uuid(),
+                                    input.generation.generation_id.as_uuid()
+                                )
+                                .as_str(),
+                            )
+                    {
+                        return Err(SearchError::OperationFailed(
+                            "remote list does not belong to the sealed generation".into(),
+                        ));
+                    }
+                }
+                candidates
+                    .into_iter()
+                    .map(|candidate| PortHit {
+                        candidate,
+                        structured_outcomes: None,
+                        graph_paths: None,
+                        graph_generation: None,
+                        unit_hit: None,
+                    })
+                    .collect()
+            }
+            RetrieverKind::Vector => {
                 return Err(unsupported("retriever"));
             }
         };
@@ -240,9 +326,13 @@ impl RetrievalExecutor {
                 retriever_id: input.action.retriever_id.clone(),
                 generation: input.generation,
                 rank: hits.len() + 1,
+                unit_hit: hit.unit_hit,
             });
         }
-        Ok(RetrievalExecutionResult { hits })
+        Ok(RetrievalExecutionResult {
+            hits,
+            body_exhausted,
+        })
     }
 }
 

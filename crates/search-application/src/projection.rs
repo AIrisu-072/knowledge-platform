@@ -58,6 +58,10 @@ pub enum ProjectionError {
     InconsistentFacetProjections { facet: String },
     #[error("projection relation is missing, extraneous, or invalid")]
     InvalidRelation,
+    #[error("remote field `{field}` has no durable proof")]
+    FieldNotPermitted { field: String },
+    #[error("metadata-only persistence cannot hold content, assertions or relations")]
+    ContentNotPermitted,
     #[error("Source retention policy does not permit persistent projection state")]
     PersistenceDenied,
     #[error("generation must be validated before publish")]
@@ -453,5 +457,133 @@ impl GenerationPublication {
         self.records
             .get_mut(&key.generation_id)
             .ok_or(ProjectionError::UnknownGeneration)
+    }
+}
+
+/// The value kinds a server-owned remote field proof can admit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemoteFieldKind {
+    Text,
+    Integer,
+    Bool,
+    Date,
+    DateTime,
+    ConceptRef,
+}
+
+impl RemoteFieldKind {
+    fn admits(self, value: &search_core::predicate::TypedValue) -> bool {
+        use search_core::predicate::TypedValue;
+        matches!(
+            (self, value),
+            (Self::Text, TypedValue::String(_))
+                | (Self::Integer, TypedValue::Integer(_))
+                | (Self::Bool, TypedValue::Bool(_))
+                | (Self::Date, TypedValue::Date(_))
+                | (Self::DateTime, TypedValue::DateTime(_))
+                | (Self::ConceptRef, TypedValue::ConceptRef(_))
+        )
+    }
+}
+
+/// Names that never persist from a remote Source, whatever the allowlist:
+/// content-bearing values, credentials and raw provider payloads.
+const RESERVED_REMOTE_FIELDS: [&str; 14] = [
+    "body",
+    "content",
+    "fragment",
+    "snippet",
+    "text",
+    "raw",
+    "raw_response",
+    "provider_response",
+    "credential",
+    "credentials",
+    "authorization",
+    "token",
+    "secret",
+    "password",
+];
+
+fn reserved(field: &str) -> bool {
+    RESERVED_REMOTE_FIELDS.iter().any(|name| {
+        field == *name
+            || field.starts_with(&format!("{name}."))
+            || field.ends_with(&format!(".{name}"))
+    })
+}
+
+/// Server-owned durable field proofs of one remote registration. Built from
+/// trusted configuration only; a provider response cannot extend it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteFieldProofs {
+    allowed: BTreeMap<String, RemoteFieldKind>,
+}
+
+impl RemoteFieldProofs {
+    pub fn new(fields: Vec<(String, RemoteFieldKind)>) -> Result<Self, ProjectionError> {
+        let mut allowed = BTreeMap::new();
+        for (field, kind) in fields {
+            if field.is_empty() || reserved(&field) || allowed.insert(field.clone(), kind).is_some()
+            {
+                return Err(ProjectionError::FieldNotPermitted { field });
+            }
+        }
+        Ok(Self { allowed })
+    }
+}
+
+/// P4-09: the only durable conversion for a remote projection.
+pub struct VerifiedPersistentProjection;
+
+impl VerifiedPersistentProjection {
+    pub fn try_from_remote(
+        projection: CompiledResourceProjection,
+        registration: &crate::remote_registration::RemoteSourceRegistration,
+        current_policy: &crate::ports::CurrentSourcePolicy,
+        field_proofs: &RemoteFieldProofs,
+    ) -> Result<PersistableResourceProjection, ProjectionError> {
+        let mode = registration.retention_mode();
+        if !permits_persistent_state(mode)
+            || projection.retention_mode != mode
+            || current_policy.retention_mode != mode
+        {
+            return Err(ProjectionError::PersistenceDenied);
+        }
+        if projection.manifest.source_id != registration.source_id() {
+            return Err(ProjectionError::SourceMismatch);
+        }
+        let kind = projection.directory.kind;
+        if (!registration.allowed_resource_kinds().is_empty()
+            && !registration.allowed_resource_kinds().contains(&kind))
+            || current_policy.resource_kind != kind
+        {
+            return Err(ProjectionError::LensResourceTypeMismatch);
+        }
+        let structured = &projection.structured;
+        for (field, state) in &structured.typed_facets {
+            let FacetState::Known(value) = state else {
+                continue;
+            };
+            let proven = field_proofs.allowed.get(field);
+            if reserved(field) || !proven.is_some_and(|kind| kind.admits(value)) {
+                return Err(ProjectionError::FieldNotPermitted {
+                    field: field.clone(),
+                });
+            }
+        }
+        for field in structured.high_signal_facets.keys() {
+            if reserved(field) || !field_proofs.allowed.contains_key(field) {
+                return Err(ProjectionError::FieldNotPermitted {
+                    field: field.clone(),
+                });
+            }
+        }
+        if mode == RetentionMode::PersistentDiscoveryMetadata
+            && (!structured.assertions.is_empty() || !projection.relations.is_empty())
+        {
+            return Err(ProjectionError::ContentNotPermitted);
+        }
+        PersistableResourceProjection::try_from(projection)
     }
 }

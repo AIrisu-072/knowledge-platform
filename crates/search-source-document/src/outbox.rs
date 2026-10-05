@@ -2,18 +2,23 @@
 //! This adapter never acknowledges or edits the generic Document outbox.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
 use document_domain::DocumentId;
 use search_application::SearchError;
+use search_application::body_ports::LexicalRetrievalBatch;
 use search_application::indexing_service::{
     DocumentIndexingPort, DocumentSourceEvent, IndexingOutcome,
 };
 use search_application::ports::{
-    AccessDecision, AssertionStorePort, BoxFuture, ConceptRegistryPort, CurrentAccessEvaluatorPort,
-    DirectoryRetrieverPort, GraphRetrievalResult, HyperGraphRetrieverPort, LexicalQuery,
-    LexicalRetrieverPort, ProjectionGenerationStore, SemanticRegistrySnapshot,
-    StructuredFacetFilter, StructuredRetrievalHit, StructuredRetrieverPort,
+    AccessDecision, AssertionStorePort, BoxFuture, CompleteEventRequest, CompletionMode,
+    ConceptRegistryPort, CurrentAccessEvaluatorPort, CurrentGenerationSnapshot,
+    DirectoryRetrieverPort, FencedDocumentIndexingPort, GraphRetrievalResult,
+    HyperGraphRetrieverPort, LexicalQuery, LexicalRetrieverPort, ProjectionGenerationStore,
+    SearchCompletionOutcome, SearchDeliveryFence, SearchEventCompletionPort,
+    SemanticRegistrySnapshot, StructuredFacetFilter, StructuredRetrievalHit,
+    StructuredRetrieverPort,
 };
 use search_application::projection::{
     PersistableGenerationManifest, PersistableResourceProjection, ProjectionCompiler,
@@ -33,12 +38,21 @@ use search_core::resource::ResourceKind;
 use search_core::source::DiscoverableSource;
 use search_graph_memory::MemoryGraphRetriever;
 use search_projection_memory::{MemoryProjectionStore, generation_digest};
-use search_tantivy::{LexicalBuildInput, LexicalIndexError, TantivyLexicalIndex};
+use search_tantivy::{
+    LexicalBuildInput, LexicalIndexError, TantivyLexicalIndex, lexical_input_digest,
+};
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use crate::body_bundle::{BundleRegistry, PublishedBody, graph_receipt};
+use crate::body_manifest::{
+    ArtifactReceipt, BodyCoverageArtifact, BodyItemEntry, BodyUnitManifest,
+    GenerationBundleReceipt, coverage_receipt, profile_set_digest, unit_manifest_receipt,
+    validate_manifest,
+};
 use crate::evidence::{append_authoritative_assertions, expose_generation_locators};
+use crate::extraction::BodyItemExtractor;
 use crate::postgres::{
     DocumentCurrentAccessAdapter, DocumentOutboxSnapshot, PostgresDocumentSnapshotReader,
 };
@@ -119,6 +133,67 @@ pub trait DocumentIndexRuntime: Send + Sync {
         ownership: Vec<(ResourceId, DocumentId)>,
     ) -> Result<(), SearchError>;
     fn discard_graph_generation(&self, key: ProjectionGenerationKey) -> Result<bool, SearchError>;
+
+    /// Stage the body Unit manifest of a same-key bundle (P1-B02).
+    fn stage_body_unit_manifest<'a>(&'a self, _manifest: BodyUnitManifest) -> BoxFuture<'a, ()> {
+        Box::pin(async { Err(body_bundles_unsupported()) })
+    }
+
+    fn stage_body_coverage<'a>(&'a self, _artifact: BodyCoverageArtifact) -> BoxFuture<'a, ()> {
+        Box::pin(async { Err(body_bundles_unsupported()) })
+    }
+
+    /// Recompute all receipts and seal the actual lexical Unit documents.
+    fn validate_bundle<'a>(
+        &'a self,
+        _key: ProjectionGenerationKey,
+        _projection_digest: String,
+    ) -> BoxFuture<'a, GenerationBundleReceipt> {
+        Box::pin(async { Err(body_bundles_unsupported()) })
+    }
+
+    /// The current projection generation together with its published bundle.
+    /// `None` when the current generation is not body-ready.
+    fn pin_current_bundle<'a>(
+        &'a self,
+        _source_id: SourceId,
+    ) -> BoxFuture<'a, Option<(ProjectionGenerationManifest, GenerationBundleReceipt)>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn discard_body_generation<'a>(&'a self, _key: ProjectionGenerationKey) -> BoxFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// The authoritative snapshot behind a body-ready generation, for a
+    /// durable runtime that commits the Graph mapping to it (P3-D01).
+    fn bind_source_snapshot<'a>(
+        &'a self,
+        _key: ProjectionGenerationKey,
+        _snapshot: &'a DocumentOutboxSnapshot,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
+    /// The delivery an event-origin build belongs to (P6-S04). A durable
+    /// runtime registers the candidate as that event's EVENT target.
+    fn bind_delivery<'a>(
+        &'a self,
+        _key: ProjectionGenerationKey,
+        _event: &'a DocumentSourceEvent,
+        _fence: SearchDeliveryFence,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
+    /// A fenced completion committed this key; its build state may go.
+    fn settled<'a>(&'a self, _key: ProjectionGenerationKey) -> BoxFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+fn body_bundles_unsupported() -> SearchError {
+    SearchError::OperationFailed("this Document index runtime has no body bundles".into())
 }
 
 #[derive(Default)]
@@ -135,6 +210,7 @@ pub struct MemoryDocumentIndexRuntime {
     graph: Arc<MemoryGraphRetriever>,
     graph_access: DocumentGraphAccessReader,
     ownership: Arc<RwLock<GraphOwnership>>,
+    bundles: Arc<std::sync::Mutex<BundleRegistry>>,
 }
 
 impl MemoryDocumentIndexRuntime {
@@ -158,7 +234,14 @@ impl MemoryDocumentIndexRuntime {
             graph: Arc::new(MemoryGraphRetriever::new(Arc::new(graph_access.clone()))),
             graph_access,
             ownership,
+            bundles: Arc::new(std::sync::Mutex::new(BundleRegistry::default())),
         }
+    }
+
+    fn bundles(&self) -> Result<std::sync::MutexGuard<'_, BundleRegistry>, SearchError> {
+        self.bundles
+            .lock()
+            .map_err(|_| SearchError::OperationFailed("body bundle lock poisoned".into()))
     }
 
     pub fn projection_reader(&self) -> DocumentProjectionReader {
@@ -175,6 +258,15 @@ impl MemoryDocumentIndexRuntime {
 
     pub fn graph_access_reader(&self) -> DocumentGraphAccessReader {
         self.graph_access.clone()
+    }
+
+    /// Artifacts of a published body bundle; `None` for an unpublished or
+    /// projection-only generation.
+    pub fn published_body(
+        &self,
+        key: ProjectionGenerationKey,
+    ) -> Result<Option<PublishedBody>, SearchError> {
+        Ok(self.bundles()?.published_body(key))
     }
 
     /// Drop a rebuildable lexical segment after detected loss/corruption; the
@@ -407,6 +499,15 @@ impl LexicalRetrieverPort for DocumentLexicalReader {
     ) -> BoxFuture<'a, Vec<FederatedCandidate>> {
         LexicalRetrieverPort::retrieve(self.0.as_ref(), generation, request, query)
     }
+
+    fn retrieve_body<'a>(
+        &'a self,
+        generation: ProjectionGenerationKey,
+        request: &'a DiscoveryRequest,
+        query: &'a LexicalQuery,
+    ) -> BoxFuture<'a, LexicalRetrievalBatch> {
+        LexicalRetrieverPort::retrieve_body(self.0.as_ref(), generation, request, query)
+    }
 }
 
 impl DocumentIndexRuntime for MemoryDocumentIndexRuntime {
@@ -446,8 +547,16 @@ impl DocumentIndexRuntime for MemoryDocumentIndexRuntime {
         expected_current: Option<ProjectionGenerationKey>,
     ) -> BoxFuture<'a, bool> {
         Box::pin(async move {
-            self.store
-                .publish_generation_if_current(key, expected_current)
+            // Re-verify the validated bundle and switch the pointer under one lock.
+            let mut bundles = self.bundles()?;
+            let bundle = bundles.publishable(key)?;
+            let switched = self
+                .store
+                .publish_generation_if_current(key, expected_current)?;
+            if switched && bundle.is_some() {
+                bundles.mark_published(key);
+            }
+            Ok(switched)
         })
     }
 
@@ -468,13 +577,27 @@ impl DocumentIndexRuntime for MemoryDocumentIndexRuntime {
         source: &DiscoverableSource,
         input: LexicalBuildInput,
     ) -> Result<(), LexicalIndexError> {
-        self.lexical.build_generation(manifest, source, input)
+        let key = manifest.key();
+        let digest = lexical_input_digest(&input)?;
+        self.lexical.build_generation(manifest, source, input)?;
+        self.bundles()
+            .and_then(|mut bundles| {
+                bundles.record_lexical(ArtifactReceipt {
+                    key,
+                    digest: digest.digest,
+                    count: digest.count,
+                })
+            })
+            .map_err(|_| LexicalIndexError::DuplicateGeneration)
     }
 
     fn discard_lexical_generation(
         &self,
         key: ProjectionGenerationKey,
     ) -> Result<bool, LexicalIndexError> {
+        if let Ok(mut bundles) = self.bundles() {
+            bundles.forget_lexical(key);
+        }
         self.lexical.discard_generation(key)
     }
 
@@ -486,8 +609,9 @@ impl DocumentIndexRuntime for MemoryDocumentIndexRuntime {
         ownership: Vec<(ResourceId, DocumentId)>,
     ) -> Result<(), SearchError> {
         validate_document_graph(&projections)?;
-        let owners = validate_graph_ownership(&projections, ownership)?;
         let key = manifest.key();
+        let receipt = graph_receipt(key, &projections, &ownership)?;
+        let owners = validate_graph_ownership(&projections, ownership)?;
         let mut map = self
             .ownership
             .write()
@@ -521,10 +645,11 @@ impl DocumentIndexRuntime for MemoryDocumentIndexRuntime {
                 .insert(key);
         }
         map.by_generation.insert(key, owners.into_keys().collect());
-        Ok(())
+        self.bundles()?.record_graph(receipt)
     }
 
     fn discard_graph_generation(&self, key: ProjectionGenerationKey) -> Result<bool, SearchError> {
+        self.bundles()?.forget_graph(key);
         let mut map = self
             .ownership
             .write()
@@ -543,6 +668,46 @@ impl DocumentIndexRuntime for MemoryDocumentIndexRuntime {
             }
         }
         Ok(discarded)
+    }
+
+    fn stage_body_unit_manifest<'a>(&'a self, manifest: BodyUnitManifest) -> BoxFuture<'a, ()> {
+        Box::pin(async move { self.bundles()?.stage_manifest(manifest) })
+    }
+
+    fn stage_body_coverage<'a>(&'a self, artifact: BodyCoverageArtifact) -> BoxFuture<'a, ()> {
+        Box::pin(async move { self.bundles()?.stage_coverage(artifact) })
+    }
+
+    fn validate_bundle<'a>(
+        &'a self,
+        key: ProjectionGenerationKey,
+        projection_digest: String,
+    ) -> BoxFuture<'a, GenerationBundleReceipt> {
+        Box::pin(async move {
+            let documents = self.lexical.enumerate_unit_docs(key).map_err(|error| {
+                SearchError::OperationFailed(format!("body bundle: lexical seal: {error}"))
+            })?;
+            self.bundles()?.validate(key, &projection_digest, documents)
+        })
+    }
+
+    fn pin_current_bundle<'a>(
+        &'a self,
+        source_id: SourceId,
+    ) -> BoxFuture<'a, Option<(ProjectionGenerationManifest, GenerationBundleReceipt)>> {
+        Box::pin(async move {
+            let Some(manifest) =
+                ProjectionGenerationStore::pin_current(&self.store, source_id).await?
+            else {
+                return Ok(None);
+            };
+            let receipt = self.bundles()?.published(manifest.key());
+            Ok(receipt.map(|receipt| (manifest, receipt)))
+        })
+    }
+
+    fn discard_body_generation<'a>(&'a self, key: ProjectionGenerationKey) -> BoxFuture<'a, bool> {
+        Box::pin(async move { self.bundles()?.discard(key) })
     }
 }
 
@@ -645,6 +810,40 @@ pub struct DocumentOutboxIndexer<R, E, T = MemoryDocumentIndexRuntime> {
     runtime: T,
     receipts: E,
     gate: Mutex<()>,
+    body: Option<Arc<dyn BodyItemExtractor>>,
+    completion: Option<Arc<dyn SearchEventCompletionPort>>,
+}
+
+/// One fenced delivery: the event, both live leases, the runner's
+/// cancellation and the only port allowed to complete it.
+struct Delivery {
+    event: DocumentSourceEvent,
+    fence: SearchDeliveryFence,
+    cancel: Arc<AtomicBool>,
+    completion: Arc<dyn SearchEventCompletionPort>,
+}
+
+impl Delivery {
+    fn check(&self) -> Result<(), SearchError> {
+        if self.cancel.load(Ordering::Acquire) {
+            Err(SearchError::FenceLost)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// A committed fenced outcome; `Retry` rebuilds from a new snapshot.
+fn fenced_outcome(
+    outcome: SearchCompletionOutcome,
+) -> Result<Option<IndexingOutcome>, SearchError> {
+    match outcome {
+        SearchCompletionOutcome::Published(key) => Ok(Some(IndexingOutcome::Published(key))),
+        SearchCompletionOutcome::Unchanged(key) => Ok(Some(IndexingOutcome::Unchanged(key))),
+        SearchCompletionOutcome::Duplicate(key) => Ok(Some(IndexingOutcome::Duplicate(key))),
+        SearchCompletionOutcome::Retry => Ok(None),
+        SearchCompletionOutcome::Lost => Err(SearchError::FenceLost),
+    }
 }
 
 impl<R, E, T: DocumentIndexRuntime> DocumentOutboxIndexer<R, E, T> {
@@ -655,15 +854,109 @@ impl<R, E, T: DocumentIndexRuntime> DocumentOutboxIndexer<R, E, T> {
             runtime,
             receipts,
             gate: Mutex::new(()),
+            body: None,
+            completion: None,
         }
     }
+
+    /// P6-S04: an event-origin build completes only through this atomic
+    /// port, never through the legacy receipt store or pointer switch.
+    pub fn with_fenced_completion(
+        mut self,
+        completion: Arc<dyn SearchEventCompletionPort>,
+    ) -> Self {
+        self.completion = Some(completion);
+        self
+    }
+
+    /// Build body-ready (P1) generations: every Live authoritative item is
+    /// extracted, sealed into the same-key bundle and published together.
+    pub fn with_body_extractor(mut self, extractor: Arc<dyn BodyItemExtractor>) -> Self {
+        self.body = Some(extractor);
+        self
+    }
+}
+
+/// Every Live item binding that must still hold right before publication.
+fn live_binding_fingerprint(snapshot: &DocumentOutboxSnapshot) -> Vec<String> {
+    let mut rows: Vec<String> = snapshot
+        .live
+        .iter()
+        .map(|record| {
+            format!(
+                "{}|{}|{:?}|{}|{}|{:?}|{:?}",
+                record.snapshot.document_id.as_uuid(),
+                record.snapshot.document_version_id.as_uuid(),
+                record.snapshot.current_version_id.map(|id| id.as_uuid()),
+                record.document_revision,
+                record.access_revision,
+                record.snapshot.publication_end,
+                record.authoritative_items,
+            )
+        })
+        .collect();
+    rows.sort();
+    rows
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
     DocumentOutboxIndexer<R, E, T>
 {
+    /// Extract every Live authoritative item exactly once and validate the result
+    /// against the same Source snapshot.
+    async fn body_bundle(
+        &self,
+        extractor: &dyn BodyItemExtractor,
+        snapshot: &DocumentOutboxSnapshot,
+        key: ProjectionGenerationKey,
+    ) -> Result<(BodyUnitManifest, BodyCoverageArtifact), SearchError> {
+        let source_id = self.config.source.source_id;
+        let mut entries = Vec::new();
+        for record in &snapshot.live {
+            for item in &record.authoritative_items {
+                let result = extractor.extract(record, item).await?;
+                entries.push(BodyItemEntry::from_extracted(
+                    source_id,
+                    record,
+                    item,
+                    extractor.parser_build_id(),
+                    result,
+                ));
+            }
+        }
+        entries.sort_by(|left, right| {
+            (
+                left.version.resource_id,
+                left.part.ordinal,
+                &left.part.logical_path,
+                &left.part.source_native_part_id,
+            )
+                .cmp(&(
+                    right.version.resource_id,
+                    right.part.ordinal,
+                    &right.part.logical_path,
+                    &right.part.source_native_part_id,
+                ))
+        });
+        let manifest = BodyUnitManifest {
+            key,
+            source_snapshot: snapshot.source_snapshot.clone(),
+            entries,
+        };
+        let coverage = validate_manifest(&manifest, snapshot)
+            .map_err(|error| SearchError::OperationFailed(error.to_string()))?;
+        Ok((manifest, coverage))
+    }
+
     async fn cleanup_unpublished(&self, key: ProjectionGenerationKey) -> Result<(), SearchError> {
         let mut failures = Vec::new();
+        if let Err(error) = self.runtime.discard_body_generation(key).await {
+            failures.push(format!("body bundle cleanup: {error}"));
+        }
         if let Err(error) = self.runtime.discard_graph_generation(key) {
             failures.push(format!("graph cleanup: {error}"));
         }
@@ -698,12 +991,16 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
         &self,
         event_id: Option<Uuid>,
         full_rebuild: bool,
+        delivery: Option<Delivery>,
     ) -> Result<IndexingOutcome, SearchError> {
         // Serialize this instance. The shared store's conditional pointer
         // switch protects independent indexers using the same Source.
         let _guard = self.gate.lock().await;
         for _ in 0..3 {
-            if let Some(outcome) = self.reconcile_once(event_id, full_rebuild).await? {
+            if let Some(outcome) = self
+                .reconcile_once(event_id, full_rebuild, delivery.as_ref())
+                .await?
+            {
                 return Ok(outcome);
             }
         }
@@ -716,6 +1013,7 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
         &self,
         event_id: Option<Uuid>,
         full_rebuild: bool,
+        delivery: Option<&Delivery>,
     ) -> Result<Option<IndexingOutcome>, SearchError> {
         let source_id = self.config.source.source_id;
         let expected_current = self
@@ -723,8 +1021,16 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
             .pin_current(source_id)
             .await?
             .map(|item| item.key());
+        let fenced_current: Option<CurrentGenerationSnapshot> = match delivery {
+            Some(delivery) => Some(delivery.completion.current_snapshot(source_id).await?),
+            None => None,
+        };
         let snapshot = self.reader.enumerate_snapshot().await?;
+        if let Some(delivery) = delivery {
+            delivery.check()?;
+        }
         let source_snapshot = one_source_snapshot(&snapshot)?;
+        let body_snapshot = self.body.as_ref().map(|_| snapshot.clone());
         let live_count = snapshot.live.len();
         let records = snapshot.live.into_iter().chain(snapshot.historical);
         let translator = DocumentSourceTranslator::new(
@@ -805,9 +1111,50 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
         );
         manifest.digest =
             generation_digest(source_id, &projections, &self.config.semantic_registry)?;
+        let body = match (&self.body, &body_snapshot) {
+            (Some(extractor), Some(snapshot)) => Some(
+                self.body_bundle(extractor.as_ref(), snapshot, manifest.key())
+                    .await?,
+            ),
+            _ => None,
+        };
         let current = self.runtime.pin_current(source_id).await?;
+        // A projection-only generation is never body-ready; a body-ready one is
+        // unchanged only when its published bundle has the same body digests.
+        let mut current_bundle = None;
+        let body_unchanged = match &body {
+            None => true,
+            Some((unit_manifest, coverage)) => {
+                match self.runtime.pin_current_bundle(source_id).await? {
+                    Some((pinned, receipt))
+                        if current
+                            .as_ref()
+                            .is_some_and(|current| current.key() == pinned.key()) =>
+                    {
+                        let unchanged = receipt.unit_manifest.digest
+                            == unit_manifest_receipt(unit_manifest)
+                                .map_err(|error| SearchError::OperationFailed(error.to_string()))?
+                                .digest
+                            && receipt.body_coverage.digest
+                                == coverage_receipt(coverage)
+                                    .map_err(|error| {
+                                        SearchError::OperationFailed(error.to_string())
+                                    })?
+                                    .digest
+                            && receipt.profile_set_digest
+                                == profile_set_digest(unit_manifest).map_err(|error| {
+                                    SearchError::OperationFailed(error.to_string())
+                                })?;
+                        current_bundle = Some(receipt);
+                        unchanged
+                    }
+                    _ => false,
+                }
+            }
+        };
         if let Some(current) = current.filter(|current| {
-            !full_rebuild
+            body_unchanged
+                && !full_rebuild
                 && current.digest == manifest.digest
                 && current.projection_schema_version == manifest.projection_schema_version
                 && current.lens_version == manifest.lens_version
@@ -818,17 +1165,39 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
                 && current.coverage == manifest.coverage
         }) {
             let key = current.key();
+            if let (Some(delivery), Some(snapshot)) = (delivery, &fenced_current) {
+                // The current READY bundle is re-validated by the port.
+                if snapshot.key != Some(key) {
+                    return Ok(None);
+                }
+                let outcome = delivery
+                    .completion
+                    .complete_event_if_current(CompleteEventRequest {
+                        fence: delivery.fence,
+                        expected_current: snapshot.clone(),
+                        candidate: key,
+                        manifest_digest: snapshot.manifest_digest.clone().unwrap_or_default(),
+                        bundle_digest: snapshot.bundle_digest.clone().unwrap_or_default(),
+                        mode: CompletionMode::ReuseCurrent,
+                    })
+                    .await?;
+                return fenced_outcome(outcome);
+            }
+            let digest = match &current_bundle {
+                Some(receipt) => format!("bundle:{}", hex(&receipt.composite_digest)),
+                None => manifest.digest.clone(),
+            };
             let duplicate = if let Some(event_id) = event_id {
                 let previous = self.receipts.get(event_id).await?;
-                let duplicate = previous.as_ref().is_some_and(|receipt| {
-                    receipt.digest == manifest.digest && receipt.generation == key
-                });
+                let duplicate = previous
+                    .as_ref()
+                    .is_some_and(|receipt| receipt.digest == digest && receipt.generation == key);
                 if !duplicate {
                     self.receipts
                         .put(
                             event_id,
                             IndexingReceipt {
-                                digest: manifest.digest,
+                                digest,
                                 generation: key,
                             },
                         )
@@ -853,6 +1222,15 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
                 .map_err(|error| SearchError::OperationFailed(error.to_string()))?;
         self.runtime.begin_generation(persistent).await?;
         let staged = async {
+            if let Some(snapshot) = &body_snapshot {
+                self.runtime.bind_source_snapshot(key, snapshot).await?;
+            }
+            if let Some(delivery) = delivery {
+                self.runtime
+                    .bind_delivery(key, &delivery.event, delivery.fence)
+                    .await?;
+                delivery.check()?;
+            }
             self.runtime
                 .stage_concept_registry(key, self.config.semantic_registry.clone())
                 .await?;
@@ -867,13 +1245,22 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
         if let Err(error) = staged {
             return Err(self.cleanup_after_error(key, error).await);
         }
-        let lexical_input = LexicalBuildInput::new(
+        let mut lexical_input = LexicalBuildInput::new(
             source_id,
             source_snapshot,
             manifest.projection_schema_version.clone(),
             manifest.lens_version,
             lexical_documents,
         );
+        if let Some((unit_manifest, _)) = &body {
+            lexical_input = lexical_input.with_body_units(
+                unit_manifest
+                    .entries
+                    .iter()
+                    .flat_map(|entry| entry.units.iter().cloned())
+                    .collect(),
+            );
+        }
         if let Err(error) = self.runtime.build_lexical_generation(
             manifest.clone(),
             &self.config.source,
@@ -894,6 +1281,69 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
         ) {
             return Err(self.cleanup_after_error(key, error).await);
         }
+        let mut bundle_receipt = None;
+        if let Some((unit_manifest, coverage)) = body {
+            let validated = async {
+                self.runtime.stage_body_unit_manifest(unit_manifest).await?;
+                self.runtime.stage_body_coverage(coverage).await?;
+                self.runtime
+                    .validate_bundle(key, manifest.digest.clone())
+                    .await
+            }
+            .await;
+            match validated {
+                Ok(receipt) => bundle_receipt = Some(receipt),
+                Err(error) => return Err(self.cleanup_after_error(key, error).await),
+            }
+            // Re-read the Source right before publication; any binding change
+            // discards this key and rebuilds from the new snapshot.
+            let reread = self.reader.enumerate_snapshot().await;
+            let unchanged = match (&reread, &body_snapshot) {
+                (Ok(again), Some(first)) => {
+                    live_binding_fingerprint(again) == live_binding_fingerprint(first)
+                }
+                _ => false,
+            };
+            if !unchanged {
+                self.cleanup_unpublished(key).await?;
+                reread?;
+                return Ok(None);
+            }
+        }
+        if let (Some(delivery), Some(snapshot)) = (delivery, fenced_current) {
+            let completion = async {
+                delivery.check()?;
+                let receipt = bundle_receipt.as_ref().ok_or_else(|| {
+                    SearchError::OperationFailed(
+                        "fenced Document completion needs a body-ready bundle".into(),
+                    )
+                })?;
+                delivery
+                    .completion
+                    .complete_event_if_current(CompleteEventRequest {
+                        fence: delivery.fence,
+                        expected_current: snapshot,
+                        candidate: key,
+                        manifest_digest: manifest.digest.clone(),
+                        bundle_digest: format!("sha256:{}", hex(&receipt.composite_digest)),
+                        mode: CompletionMode::PublishCandidate,
+                    })
+                    .await
+            }
+            .await;
+            return match completion {
+                Ok(SearchCompletionOutcome::Published(published)) if published == key => {
+                    self.runtime.settled(key).await?;
+                    Ok(Some(IndexingOutcome::Published(key)))
+                }
+                Ok(outcome) => {
+                    // A lost or stale candidate is removed by its guard holder.
+                    self.cleanup_unpublished(key).await?;
+                    fenced_outcome(outcome)
+                }
+                Err(error) => Err(self.cleanup_after_error(key, error).await),
+            };
+        }
         let published = self.runtime.publish_if_current(key, expected_current).await;
         match published {
             Ok(true) => {}
@@ -908,11 +1358,17 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
             Err(error) => return Err(self.cleanup_after_error(key, error).await),
         }
         if let Some(event_id) = event_id {
+            let digest = match &bundle_receipt {
+                Some(receipt) => format!("bundle:{}", hex(&receipt.composite_digest)),
+                None => manifest.digest,
+            };
+            // A receipt write failure after publication keeps the published
+            // bundle; the same event retries and completes the receipt.
             self.receipts
                 .put(
                     event_id,
                     IndexingReceipt {
-                        digest: manifest.digest,
+                        digest,
                         generation: key,
                     },
                 )
@@ -926,11 +1382,46 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime> 
     for DocumentOutboxIndexer<R, E, T>
 {
     fn refresh<'a>(&'a self, event: DocumentSourceEvent) -> BoxFuture<'a, IndexingOutcome> {
-        Box::pin(async move { self.reconcile(Some(event.event_id), false).await })
+        Box::pin(async move { self.reconcile(Some(event.event_id), false, None).await })
     }
 
     fn rebuild<'a>(&'a self) -> BoxFuture<'a, IndexingOutcome> {
-        Box::pin(async move { self.reconcile(None, true).await })
+        Box::pin(async move { self.reconcile(None, true, None).await })
+    }
+}
+
+impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
+    FencedDocumentIndexingPort for DocumentOutboxIndexer<R, E, T>
+{
+    fn refresh_fenced<'a>(
+        &'a self,
+        event: DocumentSourceEvent,
+        fence: SearchDeliveryFence,
+        cancel: Arc<AtomicBool>,
+    ) -> BoxFuture<'a, IndexingOutcome> {
+        Box::pin(async move {
+            let completion = self.completion.clone().ok_or_else(|| {
+                SearchError::OperationFailed("fenced completion is not configured".into())
+            })?;
+            if fence.event_id != event.event_id
+                || fence.source.source_id != self.config.source.source_id
+            {
+                return Err(SearchError::InvalidRequest(
+                    "delivery fence does not match the event or Source".into(),
+                ));
+            }
+            self.reconcile(
+                Some(event.event_id),
+                false,
+                Some(Delivery {
+                    event,
+                    fence,
+                    cancel,
+                    completion,
+                }),
+            )
+            .await
+        })
     }
 }
 

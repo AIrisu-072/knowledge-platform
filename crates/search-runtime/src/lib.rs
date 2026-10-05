@@ -1,9 +1,20 @@
 #![forbid(unsafe_code)]
 
+pub mod api;
+pub mod document_runtime;
+pub mod event_completion;
 pub mod full_guard;
+pub mod gc;
 pub mod generation_registration;
+pub mod graph_coordination;
+pub mod lexical_artifact;
+pub mod payload;
+pub mod pin;
+pub mod ready;
+pub mod recovery;
 pub mod source_lease;
 pub mod source_registration;
+pub mod worker;
 
 use sqlx::{PgPool, migrate::MigrateError};
 

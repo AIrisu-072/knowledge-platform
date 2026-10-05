@@ -152,6 +152,13 @@ fn map_claimed(row: PgRow) -> Result<ClaimedEvent, DeliveryError> {
 }
 
 impl OutboxStore for PostgresOutboxStore {
+    fn backoff_bounds(&self) -> (Duration, Duration) {
+        (
+            Duration::from_millis(u64::try_from(self.expected.backoff_min_ms).unwrap_or(0)),
+            Duration::from_millis(u64::try_from(self.expected.backoff_max_ms).unwrap_or(0)),
+        )
+    }
+
     fn queue_snapshot(&self) -> DeliveryFuture<'_, Option<QueueSnapshot>> {
         Box::pin(async move {
             // 同じ DB 時計と MVCC スナップショットで状態を導出する。

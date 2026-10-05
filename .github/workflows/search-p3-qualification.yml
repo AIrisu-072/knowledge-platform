@@ -1,0 +1,52 @@
+name: Search P3 backend qualification
+
+# P3-P04 native backend measurement on dedicated hosted runners.
+# Runs only for measurement branches; regular CI is unaffected.
+on:
+  push:
+    branches:
+      - "measure/search-p3-**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: search-p3-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    name: P3 ${{ matrix.backend }} ${{ matrix.profile }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [pg, neo, redb]
+        profile: [100, 1000, 3000]
+    env:
+      CARGO_INCREMENTAL: "0"
+      BACKEND: ${{ matrix.backend }}
+      PROFILE: ${{ matrix.profile }}
+      PG_REF: postgres@sha256:3725f4e2499eef5134592b3b4ab79a543ed7f8e533b05b5b637af926630f6650
+      NEO_REF: neo4j@sha256:0dfcadbd51e1d2e5a0cf86d054a0bb537a4bce212796d967cbd88445aaf3fbf3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Pinned Rust toolchain
+        run: mise install rust
+      - name: Timed cells, restart, restore and faults
+        run: mise run poc:search-graph:qualify
+      - name: Keep raw receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: search-p3-${{ matrix.backend }}-${{ matrix.profile }}
+          path: |
+            experiments/search-graph-poc/data/runs/*.json
+            experiments/search-graph-poc/data/runs/*.jsonl.gz
+          retention-days: 30

@@ -249,6 +249,7 @@ async fn candidate_access_is_bound_to_source_version_and_current_document_policy
             generations: &projection,
             concepts: &projection,
             retrieval: RetrievalExecutionPorts {
+                remote: None,
                 directory: None,
                 structured: None,
                 lexical: Some(&lexical),

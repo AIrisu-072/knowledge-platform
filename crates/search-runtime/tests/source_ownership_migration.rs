@@ -92,12 +92,19 @@ async fn ownership_migration_preserves_independent_ledgers_and_namespaces() {
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(search_after.len(), 3);
+    assert_eq!(
+        search_after
+            .iter()
+            .map(|(version, _)| *version)
+            .collect::<Vec<_>>(),
+        vec![1, 2, 3, 4, 5]
+    );
     assert_eq!(search_after[0], first_search);
-    assert_eq!(search_after[1].0, 2);
-    assert!(!search_after[1].1.is_empty());
-    assert_eq!(search_after[2].0, 3);
-    assert!(!search_after[2].1.is_empty());
+    assert!(
+        search_after
+            .iter()
+            .all(|(_, checksum)| !checksum.is_empty())
+    );
     let domain_after: Vec<(i64, Vec<u8>)> =
         sqlx::query_as("SELECT version,checksum FROM _sqlx_migrations ORDER BY version")
             .fetch_all(&pool)

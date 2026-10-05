@@ -116,7 +116,9 @@ pub trait FencedDocumentIndexingPort: Send + Sync {
 
 #[path = "evidence_resolution.rs"]
 mod evidence_resolution;
-pub use evidence_resolution::{assemble_resource_claims, assess_claim_evidence};
+pub use evidence_resolution::{
+    assemble_resource_claims, assemble_verified_unit_text_claim, assess_claim_evidence,
+};
 
 #[path = "probe_execution.rs"]
 mod probe_execution;
@@ -202,7 +204,8 @@ pub trait ConceptRegistryPort: Send + Sync {
 
 /// Concept edges are staged with the generation, rather than expanded into
 /// each resource. Edges must refer to explicitly known concepts.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SemanticRegistrySnapshot {
     pub version: String,
     pub concepts: BTreeSet<String>,
@@ -264,6 +267,49 @@ pub trait ProjectionGenerationStore: Send + Sync {
     ) -> BoxFuture<'a, Option<CompiledResourceProjection>>;
 }
 
+/// The read half of a generation store, which is all Discovery uses. A
+/// durable store forwards; the request-scoped composite view dispatches by an
+/// explicit key registry between durable pins and sealed remote generations.
+pub trait GenerationReadPort: Send + Sync {
+    fn pin_current<'a>(
+        &'a self,
+        source_id: SourceId,
+    ) -> BoxFuture<'a, Option<ProjectionGenerationManifest>>;
+
+    fn resource_at<'a>(
+        &'a self,
+        key: ProjectionGenerationKey,
+        resource_id: ResourceId,
+    ) -> BoxFuture<'a, Option<CompiledResourceProjection>>;
+}
+
+impl<T: ProjectionGenerationStore + ?Sized> GenerationReadPort for T {
+    fn pin_current<'a>(
+        &'a self,
+        source_id: SourceId,
+    ) -> BoxFuture<'a, Option<ProjectionGenerationManifest>> {
+        ProjectionGenerationStore::pin_current(self, source_id)
+    }
+
+    fn resource_at<'a>(
+        &'a self,
+        key: ProjectionGenerationKey,
+        resource_id: ResourceId,
+    ) -> BoxFuture<'a, Option<CompiledResourceProjection>> {
+        ProjectionGenerationStore::resource_at(self, key, resource_id)
+    }
+}
+
+/// One planned remote action's list from the Source's sealed evaluation
+/// generation. A list absent from the seal is an error, never an empty hit.
+pub trait SealedRemoteRetrieverPort: Send + Sync {
+    fn retrieve<'a>(
+        &'a self,
+        action: &'a crate::retrieval::RetrievalAction,
+        key: ProjectionGenerationKey,
+    ) -> BoxFuture<'a, Vec<FederatedCandidate>>;
+}
+
 pub trait DirectoryRetrieverPort: Send + Sync {
     fn retrieve<'a>(
         &'a self,
@@ -320,6 +366,31 @@ pub trait LexicalRetrieverPort: Send + Sync {
         request: &'a DiscoveryRequest,
         query: &'a LexicalQuery,
     ) -> BoxFuture<'a, Vec<FederatedCandidate>>;
+
+    /// `LexicalFieldScope::BodyOnly` retrieval over the Source-owned Units of a
+    /// body-ready generation. Ports without body Units refuse instead of guessing.
+    fn retrieve_body<'a>(
+        &'a self,
+        _generation: ProjectionGenerationKey,
+        _request: &'a DiscoveryRequest,
+        _query: &'a LexicalQuery,
+    ) -> BoxFuture<'a, crate::body_ports::LexicalRetrievalBatch> {
+        Box::pin(async {
+            Err(SearchError::OperationFailed(
+                "BodyOnly lexical retrieval is not supported by this port".into(),
+            ))
+        })
+    }
+}
+
+/// Which indexed fields a lexical query may read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LexicalFieldScope {
+    /// Canonical name, aliases, title, high signal, body tiers in S1 order.
+    #[default]
+    ExistingFields,
+    /// Only the body field of Source-owned Unit documents.
+    BodyOnly,
 }
 
 /// Explicit lexical input; DiscoveryRequest is an intent/evidence request,
@@ -329,6 +400,7 @@ pub trait LexicalRetrieverPort: Send + Sync {
 pub struct LexicalQuery {
     pub text: String,
     pub limit: usize,
+    pub field_scope: LexicalFieldScope,
 }
 
 impl LexicalQuery {
@@ -336,16 +408,28 @@ impl LexicalQuery {
         Self {
             text: text.into(),
             limit,
+            field_scope: LexicalFieldScope::ExistingFields,
+        }
+    }
+
+    pub fn body_only(text: impl Into<String>, limit: usize) -> Self {
+        Self {
+            text: text.into(),
+            limit,
+            field_scope: LexicalFieldScope::BodyOnly,
         }
     }
 }
 
+/// The Vector seam accepts only a server-compiled query for the P1 key the
+/// evaluation pinned; see `crate::vector` for the contract.
 pub trait VectorRetrieverPort: Send + Sync {
     fn retrieve<'a>(
         &'a self,
-        generation: ProjectionGenerationKey,
-        request: &'a DiscoveryRequest,
-    ) -> BoxFuture<'a, Vec<FederatedCandidate>>;
+        bundle: ProjectionGenerationKey,
+        query: &'a crate::vector::TrustedVectorQuery,
+        now: time::OffsetDateTime,
+    ) -> BoxFuture<'a, crate::vector::VectorRetrievalBatch>;
 }
 
 pub trait HyperGraphRetrieverPort: Send + Sync {

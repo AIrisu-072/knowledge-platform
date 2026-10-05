@@ -83,6 +83,12 @@ impl DeliveryConfig {
     }
 }
 
+/// `retry_delay` kept inside a pinned policy's backoff range.
+pub fn retry_delay_within(event_id: Uuid, attempt: i32, bounds: (Duration, Duration)) -> Duration {
+    let (low, high) = bounds;
+    retry_delay(event_id, attempt).clamp(low, high.max(low))
+}
+
 /// Exponential seconds plus a stable SHA-256 jitter, capped at five minutes.
 /// Attempts at or below zero use the first-attempt delay. The hash input is
 /// UUID bytes followed by the positive attempt number in big-endian order.
@@ -108,7 +114,7 @@ pub fn retry_delay(event_id: Uuid, attempt: i32) -> Duration {
 
 #[cfg(test)]
 mod tests {
-    use super::{DeliveryConfig, DeliveryPolicy, retry_delay};
+    use super::{DeliveryConfig, DeliveryPolicy, retry_delay, retry_delay_within};
     use crate::model::{DeliveryError, ErrorCode};
     use std::time::Duration;
     use uuid::Uuid;
@@ -184,6 +190,27 @@ mod tests {
         for (attempt, expected_ms) in [(1, 1_055), (2, 2_153), (9, 289_301)] {
             assert_eq!(retry_delay(id, attempt), Duration::from_millis(expected_ms));
         }
+    }
+
+    #[test]
+    fn retry_delay_stays_inside_a_narrower_pinned_policy() {
+        let id = Uuid::from_u128(7);
+        let bounds = (Duration::from_millis(5_000), Duration::from_millis(60_000));
+        for attempt in 1..=12 {
+            let delay = retry_delay_within(id, attempt, bounds);
+            assert!(
+                (bounds.0..=bounds.1).contains(&delay),
+                "{attempt}: {delay:?}"
+            );
+        }
+        assert_eq!(
+            retry_delay_within(id, 1, bounds),
+            Duration::from_millis(5_000)
+        );
+        assert_eq!(
+            retry_delay_within(id, 12, bounds),
+            Duration::from_millis(60_000)
+        );
     }
 
     #[test]

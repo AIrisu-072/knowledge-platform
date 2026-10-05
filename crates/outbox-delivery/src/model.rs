@@ -129,6 +129,11 @@ pub trait OutboxStore: Send + Sync {
     }
 
     fn verify_policy(&self) -> DeliveryFuture<'_, ()>;
+    /// The pinned policy's backoff range; a failure settlement outside it is
+    /// refused, so the runner keeps its schedule inside.
+    fn backoff_bounds(&self) -> (Duration, Duration) {
+        (Duration::from_millis(1_000), Duration::from_millis(300_000))
+    }
     fn claim(
         &self,
         owner: Uuid,

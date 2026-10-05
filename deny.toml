@@ -36,6 +36,29 @@ name = "untrusted"
 version = "0.9.0"
 allow = ["ISC"]
 
+# P4-15/P4-16: reqwest =0.13.5 with the selected `rustls` feature (crypto
+# provider and platform verifier). Exact versions qualified in
+# docs/superpowers/programs/search-platform-completion/ via the HTTP client PoC.
+[[licenses.exceptions]]
+name = "aws-lc-rs"
+version = "1.18.1"
+allow = ["ISC"]
+
+[[licenses.exceptions]]
+name = "aws-lc-sys"
+version = "0.45.0"
+allow = ["ISC"]
+
+[[licenses.exceptions]]
+name = "rustls-webpki"
+version = "0.103.15"
+allow = ["ISC"]
+
+[[licenses.exceptions]]
+name = "webpki-root-certs"
+version = "1.0.9"
+allow = ["CDLA-Permissive-2.0"]
+
 [licenses.private]
 ignore = true
 

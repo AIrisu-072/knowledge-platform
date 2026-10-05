@@ -235,13 +235,18 @@ async fn migration_keeps_pointer_and_receipt_same_database() {
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(search_before.len(), 3);
-    assert_eq!(search_before[0].0, 1);
-    assert_eq!(search_before[1].0, 2);
-    assert_eq!(search_before[2].0, 3);
-    assert!(!search_before[0].1.is_empty());
-    assert!(!search_before[1].1.is_empty());
-    assert!(!search_before[2].1.is_empty());
+    assert_eq!(
+        search_before
+            .iter()
+            .map(|(version, _)| *version)
+            .collect::<Vec<_>>(),
+        vec![1, 2, 3, 4, 5]
+    );
+    assert!(
+        search_before
+            .iter()
+            .all(|(_, checksum)| !checksum.is_empty())
+    );
 
     let event_id = Uuid::from_u128(10);
     let source_id = Uuid::from_u128(11);
