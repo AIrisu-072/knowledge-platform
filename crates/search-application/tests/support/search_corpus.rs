@@ -138,7 +138,34 @@ impl Corpus {
     }
 
     pub fn service(&self) -> DiscoveryService<'_> {
-        DiscoveryService::new(
+        DiscoveryService::new(self.service_config(), self.ports()).unwrap()
+    }
+
+    pub fn ports(&self) -> DiscoveryPorts<'_> {
+        DiscoveryPorts {
+            sources: self,
+            generations: self,
+            concepts: self,
+            retrieval: RetrievalExecutionPorts {
+                directory: None,
+                structured: None,
+                lexical: Some(self),
+                hypergraph: None,
+                graph_resource_access: None,
+                remote: None,
+                access: self,
+            },
+            selectors: self,
+            assertions: self,
+            evidence: self,
+            probe: None,
+            probe_catalog: None,
+            source_policy: None,
+        }
+    }
+
+    pub fn service_config(&self) -> DiscoveryConfig {
+        {
             DiscoveryConfig {
                 routing: RoutingConstraints {
                     required_source_ids: vec![],
@@ -167,29 +194,8 @@ impl Corpus {
                 },
                 max_actions: 8,
                 evaluation_currency: "USD".into(),
-            },
-            DiscoveryPorts {
-                sources: self,
-                generations: self,
-                concepts: self,
-                retrieval: RetrievalExecutionPorts {
-                    directory: None,
-                    structured: None,
-                    lexical: Some(self),
-                    hypergraph: None,
-                    graph_resource_access: None,
-                    remote: None,
-                    access: self,
-                },
-                selectors: self,
-                assertions: self,
-                evidence: self,
-                probe: None,
-                probe_catalog: None,
-                source_policy: None,
-            },
-        )
-        .unwrap()
+            }
+        }
     }
 }
 

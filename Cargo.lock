@@ -4364,6 +4364,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "search-api-http"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "search-application",
+ "search-core",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
+ "tower",
+ "uuid",
+]
+
+[[package]]
 name = "search-application"
 version = "0.0.0"
 dependencies = [

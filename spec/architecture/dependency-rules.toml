@@ -74,6 +74,11 @@ crate_path = "crates/search-application"
 forbidden_dependencies = ["sqlx", "axum", "tantivy", "search-tantivy", "reqwest"]
 forbidden_source_patterns = ["std::fs", "std::path", "tokio::fs"]
 
+[workspace.boundaries.search_api_http]
+crate_path = "crates/search-api-http"
+forbidden_dependencies = ["sqlx", "tantivy", "search-tantivy", "search-source-document", "search-source-http", "search-runtime", "document-api-http", "reqwest"]
+forbidden_source_patterns = ["std::fs", "tokio::fs", "AllowAllIdentityAdapter"]
+
 [workspace.boundaries.search_source_http]
 crate_path = "crates/search-source-http"
 forbidden_dependencies = ["sqlx", "axum", "tantivy", "search-tantivy", "search-source-document", "search-runtime"]

@@ -1,0 +1,19 @@
+[package]
+name = "search-api-http"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+axum = { version = "=0.8.9", features = ["json", "matched-path"] }
+search-application = { version = "0.0.0", path = "../search-application" }
+search-core = { version = "0.0.0", path = "../search-core" }
+serde.workspace = true
+serde_json.workspace = true
+time = { workspace = true, features = ["parsing"] }
+tokio.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tower = { version = "=0.5.3", features = ["util"] }
