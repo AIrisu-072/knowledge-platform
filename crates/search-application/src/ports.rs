@@ -421,12 +421,15 @@ impl LexicalQuery {
     }
 }
 
+/// The Vector seam accepts only a server-compiled query for the P1 key the
+/// evaluation pinned; see `crate::vector` for the contract.
 pub trait VectorRetrieverPort: Send + Sync {
     fn retrieve<'a>(
         &'a self,
-        generation: ProjectionGenerationKey,
-        request: &'a DiscoveryRequest,
-    ) -> BoxFuture<'a, Vec<FederatedCandidate>>;
+        bundle: ProjectionGenerationKey,
+        query: &'a crate::vector::TrustedVectorQuery,
+        now: time::OffsetDateTime,
+    ) -> BoxFuture<'a, crate::vector::VectorRetrievalBatch>;
 }
 
 pub trait HyperGraphRetrieverPort: Send + Sync {

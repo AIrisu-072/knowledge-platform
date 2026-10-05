@@ -43,6 +43,7 @@ pub mod session;
 pub mod source_browse;
 pub mod source_registration;
 pub mod source_registry;
+pub mod vector;
 pub mod visible_claim;
 pub mod visible_routing;
 
