@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -16,7 +16,7 @@ const report = (result, phase = 'journey', spec = {}) => JSON.stringify({ suites
 }] }] });
 
 const readEndpoints = ['session', 'task-list', 'task', 'snapshot', 'return-instruction', 'artifact', 'operation',
-  'evidence', 'finding', 'decision', 'agent', 'agent-result', 'document'];
+  'evidence', 'finding', 'decision', 'agent', 'agent-result', 'document', 'folder-root', 'folder-children'];
 const readAnnotation = description => ({ type: 'organization-read-failure', description });
 const readFailure = annotations => ({ status: 'failed', annotations, error: {
   message: 'expect(received).toBe(expected) PRIVATE', location: { file: 'support.ts', line: 66, column: 74 },
@@ -79,6 +79,7 @@ test('get emits safe endpoint families only on its unchanged failing status asse
     ['/v1/organization/findings/PRIVATE/decisions', 'decision'], ['/v1/organization/agent-executions/PRIVATE', 'agent'],
     ['/v1/organization/agent-executions/PRIVATE/result', 'agent-result'], ['/v1/documents/PRIVATE?view=published', 'document'],
     ['/v1/documents/PRIVATE/revisions?pageSize=100', 'document'], ['/v1/documents/PRIVATE/versions/PRIVATE/files?purpose=published', 'document'],
+    ['/v1/folders/root', 'folder-root'], ['/v1/folders/PRIVATE/children?pageSize=200', 'folder-children'],
   ];
   const annotations = [], original = new Error('PRIVATE original assertion');
   const get = await isolatedGet(annotations, original);
@@ -100,13 +101,91 @@ test('get emits safe endpoint families only on its unchanged failing status asse
   const payload = { unchanged: true };
   assert.equal(await get({ get: async () => ({ status: () => 200, json: async () => payload }) }, 'http://127.0.0.1:1', '/v1/organization/session'), payload);
   assert.equal(annotations.length, 0);
-  for (const path of ['/v1/organization/PRIVATE', '/v1/organization/tasks/PRIVATE/unknown', '/v1/organization/session?PRIVATE', '/v1/organization/tasks/' + 'PRIVATE'.repeat(1000)]) {
+  for (const path of ['/v1/organization/PRIVATE', '/v1/organization/tasks/PRIVATE/unknown', '/v1/organization/session?PRIVATE', '/v1/organization/tasks/' + 'PRIVATE'.repeat(1000),
+    '/v1/folders/root?PRIVATE', '/v1/folders/PRIVATE/children?name=PRIVATE', '/v1/folders/PRIVATE/children?pageSize=200&cursor=PRIVATE']) {
     await assert.rejects(get({ get: async () => ({ status: () => 404 }) }, 'http://127.0.0.1:1', path), error => error === original);
     assert.equal(annotations.length, 0);
   }
   const brokenAnnotations = Object.freeze([]);
   const brokenGet = await isolatedGet(brokenAnnotations, original);
   await assert.rejects(brokenGet({ get: async () => ({ status: () => 404 }) }, 'http://127.0.0.1:1', '/v1/organization/session'), error => error === original);
+});
+
+const rootFolderTitles = {
+  journey: '実2名UIでSystem Root直下にフォルダーを作成し固定要求replayと現在Readを確認する',
+  persistence: '両process再起動後もRoot直下フォルダーと固定要求replayと現在権限を保持する',
+};
+const rootFolderActions = ['root-folder-read', 'root-folder-preview', 'root-folder-cancel', 'root-folder-input',
+  'root-folder-create', 'root-folder-verify', 'root-folder-replay', 'root-folder-office', 'root-folder-persistence'];
+
+test('Root folder tests retain only their fixed case and action without disclosing names, reasons or receipts', () => {
+  const secret = 'https://PRIVATE_NAME:PRIVATE_REASON@private.example/PRIVATE_OPERATION';
+  for (const phase of ['journey', 'persistence']) for (const action of rootFolderActions) {
+    const raw = report({ status: 'failed', annotations: [{ type: 'organization-stage', description: action, name: secret }],
+      error: { message: `expect(value).toBe(expected) ${secret}`, matcherResult: { name: 'toBe', actual: secret, expected: secret } },
+      request: { name: secret, reason: secret }, receipt: secret, stdout: [secret], attachments: [{ body: secret }] }, phase, { title: rootFolderTitles[phase] });
+    assert.deepEqual(browserFailureDiagnostics(raw, phase).failure, {
+      test: `root-folder-${phase}`, status: 'failed', errorCategory: 'assertion', matcher: 'toBe', currentAction: action,
+    });
+  }
+  for (const phase of ['journey', 'persistence']) {
+    const raw = report(readFailure([readAnnotation('403:folder-root')]), phase, { title: rootFolderTitles[phase] });
+    assert.equal(browserFailureDiagnostics(raw, phase).failure.readEndpoint, 'folder-root');
+    const unknown = report({ status: 'failed', error: { message: secret }, annotations: [{ type: 'organization-stage', description: `${rootFolderActions[0]}:${secret}` }] }, phase, { title: `${rootFolderTitles[phase]} ${secret}` });
+    assert.deepEqual(browserFailureDiagnostics(unknown, phase).failure, { status: 'failed', errorCategory: 'unavailable' });
+  }
+});
+
+test('existing phase selection collects the separate Root folder cases with explicit capture off and actual GUI receipts', async () => {
+  const config = await readFile(new URL('../../apps/document-web/playwright.organization.config.ts', import.meta.url), 'utf8');
+  assert.match(config, /testMatch: phase === 'journey' \? 'journey\.spec\.ts' : 'persistence\.spec\.ts'/u);
+  for (const phase of ['journey', 'persistence']) {
+    const source = await readFile(new URL(`../../apps/document-web/e2e-organization/${phase}.spec.ts`, import.meta.url), 'utf8');
+    assert.equal((source.match(/\btest\('/gu) ?? []).length, 2);
+    assert.ok(source.includes(`test('${rootFolderTitles[phase]}'`));
+    const root = source.slice(source.indexOf("test.describe('System Root folder creation'"));
+    // Capture options are worker-scoped in pinned Playwright, so they must be file-level.
+    const captureSettings = source.indexOf("test.use({ screenshot: 'off', trace: 'off', video: 'off' })");
+    assert.ok(captureSettings >= 0 && captureSettings < source.indexOf("test('"));
+    for (const setting of ["serviceWorkers: 'block'", 'acceptDownloads: false']) assert.ok(root.includes(setting));
+    assert.match(root, /finally \{\s*await officeContext\.close\(\);/u);
+    assert.doesNotMatch(root, /test\.(?:skip|fixme|setTimeout)|waitForTimeout|\.attach\(|\.screenshot\(|\.tracing\.|recordVideo: \{/u);
+    if (phase === 'journey') {
+      assert.ok(root.indexOf('page.waitForResponse(') < root.indexOf("name: '作成する'"));
+      assert.match(root, /response\.request\(\)\.postDataJSON\(\)/u);
+      assert.match(root, /expect\(folderPosts\)\.toBe\(0\)/u);
+      assert.match(root, /expect\(folderPosts\)\.toBe\(1\)/u);
+      assert.match(root, /await saveRootFolderState\(context,/u);
+    } else {
+      assert.match(root, /await loadRootFolderState\(context\)/u);
+      assert.match(root, /await replayRootFolderCreate\(request, context, state\)/u);
+    }
+  }
+});
+
+test('Root folder restart oracle is separate, private, exclusive and bound to the owned run', async () => {
+  const source = await readFile(new URL('../../apps/document-web/e2e-organization/support.ts', import.meta.url), 'utf8');
+  assert.ok(source.includes('export type RootFolderState'));
+  const require = createRequire(new URL('../../apps/document-web/package.json', import.meta.url));
+  const ts = require('typescript');
+  const body = source.slice(source.indexOf('export type RootFolderState'), source.indexOf('export type EvidenceReceipt'));
+  const output = ts.transpileModule(body, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const exports = {};
+  runInNewContext(output, { exports, readFile, writeFile, expect: actual => ({ toBe: expected => assert.equal(actual, expected) }) });
+  const directory = await mkdtemp(join(tmpdir(), 'organization-root-folder-'));
+  const context = { statePath: join(directory, 'state.json'), documentId: 'synthetic-run-document' };
+  const state = { schemaVersion: 1, documentId: context.documentId, request: { name: 'PRIVATE_NAME', reason: 'PRIVATE_REASON' } };
+  try {
+    await writeFile(context.statePath, 'unchanged Work state', { mode: 0o600 });
+    await exports.saveRootFolderState(context, state);
+    assert.equal((await stat(`${context.statePath}.root-folder`)).mode & 0o777, 0o600);
+    assert.deepEqual(JSON.parse(JSON.stringify(await exports.loadRootFolderState(context))), state);
+    await assert.rejects(exports.saveRootFolderState(context, state), { code: 'EEXIST' });
+    assert.equal(await readFile(context.statePath, 'utf8'), 'unchanged Work state');
+    await assert.rejects(exports.loadRootFolderState({ ...context, documentId: 'different-run' }));
+    await writeFile(`${context.statePath}.root-folder`, JSON.stringify({ ...state, schemaVersion: 2 }));
+    await assert.rejects(exports.loadRootFolderState(context));
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
 test('standard JSON timeout retains only the current result action annotation without inferring completion', () => {

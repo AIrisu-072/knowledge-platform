@@ -1,6 +1,7 @@
 import {
   BinaryTransportBridge,
   cancelPublicationSchedule,
+  createFolder,
   withdrawVersion,
   endDocumentPublication,
   compareDocumentRevisions,
@@ -27,6 +28,7 @@ import {
   type CommandsWithdrawVersion,
   type CommandsEndPublication,
   type CommandsCreateDocument,
+  type CommandsCreateFolder,
   type CommandsMetadataPatch,
   type CreateDocumentResult,
   type CommandsPolicyExplicit,
@@ -68,6 +70,9 @@ function apiSort(sort: string | undefined): string | undefined {
 }
 
 export const documentApi = {
+  createFolder(body: CommandsCreateFolder) {
+    return payload(createFolder({ ...data, body }));
+  },
   patchDocumentMetadata(documentId: string, body: CommandsMetadataPatch) {
     return payload(patchDocumentMetadata({ ...data, path: { documentId }, body }));
   },

@@ -8,6 +8,7 @@ import { ApiFeedback, LoadingState } from '../components/shared/ApiFeedback';
 import { AppShell } from '../components/app-shell/AppShell';
 import { OriginalVersionDownload } from '../components/shared/OriginalVersionDownload';
 import { DocumentRegistration } from '../components/document/DocumentRegistration';
+import { RootFolderCreate } from '../components/document/RootFolderCreate';
 import type { ListSearch } from '../application/search-state';
 import { documentListStatusLabel } from '../view-model/document-status';
 import { formatDateTime as formatDate } from '../view-model/date-time';
@@ -218,6 +219,11 @@ export function DocumentHomePage() {
   const navigationContent = (
     <section className={styles.folderRail} aria-label="フォルダー">
       <h2>フォルダー</h2>
+      <RootFolderCreate root={rootQuery.data} readReady={rootQuery.isSuccess && !rootQuery.isFetching} contextKey={currentUrl} reload={async () => {
+        const result = await rootQuery.refetch({ throwOnError: true });
+        if (!result.data || result.isError) throw new Error('System Rootを取得できません。');
+        return result.data;
+      }} />
       {rootQuery.isPending && <LoadingState label="フォルダーを読み込み中" />}
       {rootQuery.error && <ApiFeedback error={rootQuery.error} onRetry={() => void rootQuery.refetch()} />}
       {rootQuery.data && (

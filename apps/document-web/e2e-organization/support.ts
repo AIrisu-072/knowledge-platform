@@ -4,9 +4,10 @@ import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import type { WorkflowActionCommand, Completed, Held, Resumed, AgentExecutionRequest, AgentExecutionRequested, AgentExecution, AgentResult, Finding, DecisionCommand, DecisionRecorded, EvidenceCommand, EvidenceRegistered, FindingCommand, FindingRegistered, RevisionRef, Claimed, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, Submitted, TaskDetail, TaskPage, WorkSession } from '../src/api/generated-work/types.gen';
 
-import type { DocumentRevisionPage, FileList, PublishedDocumentDetail } from '@knowledge-platform/document-api-client';
+import type { CreateFolderData, DocumentRevisionPage, FileList, FolderChildren, FolderDetail, MutationResult, PublishedDocumentDetail } from '@knowledge-platform/document-api-client';
 
 export type RuntimeContext = { sales: string; office: string; documentId: string; statePath: string };
 export type PersistedState = {
@@ -85,6 +86,8 @@ export async function get<T>(request: APIRequestContext, origin: string, path: s
         [/^\/v1\/organization\/agent-executions\/[A-Za-z0-9_-]+$/, 'agent'],
         [/^\/v1\/organization\/agent-executions\/[A-Za-z0-9_-]+\/result$/, 'agent-result'],
         [/^\/v1\/documents\/[A-Za-z0-9_-]+(?:\?view=published|\/revisions\?pageSize=100|\/versions\/[A-Za-z0-9_-]+\/files\?purpose=published)$/, 'document'],
+        [/^\/v1\/folders\/root$/, 'folder-root'],
+        [/^\/v1\/folders\/[A-Za-z0-9_-]+\/children\?pageSize=200$/, 'folder-children'],
       ];
       const endpoint = path.length <= 2048 && !/[\r\n]/.test(path) ? routes.find(([route]) => route.test(path))?.[1] : undefined;
       const status = response.status();
@@ -140,6 +143,83 @@ export async function loadState(context: RuntimeContext): Promise<PersistedState
   return state;
 }
 
+
+export type RootFolderState = {
+  schemaVersion: 1;
+  documentId: string;
+  request: CreateFolderData['body'];
+  receipt: MutationResult;
+  sales: RootFolderSnapshot;
+  office: RootFolderSnapshot;
+};
+export type RootFolderSnapshot = { root: FolderDetail; children: FolderChildren };
+
+export async function saveRootFolderState(context: RuntimeContext, state: RootFolderState) {
+  // Private synthetic restart oracle only; never attach it or modify the Work state schema.
+  await writeFile(`${context.statePath}.root-folder`, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
+}
+export async function loadRootFolderState(context: RuntimeContext): Promise<RootFolderState> {
+  const state = JSON.parse(await readFile(`${context.statePath}.root-folder`, 'utf8')) as RootFolderState;
+  expect(state.schemaVersion).toBe(1);
+  expect(state.documentId === context.documentId).toBe(true);
+  return state;
+}
+export async function readRootFolderSnapshot(request: APIRequestContext, origin: string): Promise<RootFolderSnapshot> {
+  const root = await get<FolderDetail>(request, origin, '/v1/folders/root');
+  const children = await get<FolderChildren>(request, origin, `/v1/folders/${root.folderId}/children?pageSize=200`);
+  // The bounded synthetic fixture must fit in one page; never silently omit another page.
+  expect(children.nextCursor).toBeNull();
+  return { root, children };
+}
+export function assertRootFolderCreated(snapshot: RootFolderSnapshot, command: RootFolderState['request']) {
+  expect(snapshot.root.folderId === command.parentFolderId).toBe(true);
+  expect(snapshot.root.parentFolderId).toBeNull();
+  expect(snapshot.root.revision).toBe(command.expectedParentRevision);
+  const matches = snapshot.children.items.filter(folder => folder.folderId === command.folderId);
+  expect(matches.length).toBe(1);
+  const child = matches[0]!;
+  expect(child.parentFolderId === snapshot.root.folderId).toBe(true);
+  expect(child.name === command.name).toBe(true);
+  expect(child.revision).toBe(0);
+}
+export async function replayRootFolderCreate(request: APIRequestContext, context: RuntimeContext, state: RootFolderState) {
+  currentAction('root-folder-replay');
+  for (const role of ['sales', 'office'] as const) {
+    expect(isDeepStrictEqual(await readRootFolderSnapshot(request, context[role]), state[role])).toBe(true);
+  }
+  // Deliberate backend fixed-request replay, not a GUI transport-loss recovery qualification.
+  const replay = await request.post(`${context.sales}/v1/folders`, { data: state.request });
+  expect(replay.status()).toBe(201);
+  expect(isDeepStrictEqual(await replay.json(), state.receipt)).toBe(true);
+  for (const role of ['sales', 'office'] as const) {
+    const actual = await readRootFolderSnapshot(request, context[role]);
+    expect(isDeepStrictEqual(actual, state[role])).toBe(true);
+    assertRootFolderCreated(actual, state.request);
+  }
+}
+export async function openRootFolderHome(page: Page, origin: string) {
+  currentAction('document-navigation');
+  await page.goto(`${origin}/tasks`);
+  await page.getByRole('navigation', { name: 'メインナビゲーション', exact: true }).getByRole('link', { name: '文書', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'フォルダー', exact: true })).toBeVisible();
+}
+export async function assertRootFolderUi(page: Page, snapshot: RootFolderSnapshot, childId: string, role: 'sales' | 'office') {
+  const rail = page.getByRole('region', { name: 'フォルダー', exact: true });
+  const child = snapshot.children.items.find(folder => folder.folderId === childId)!;
+  // Boolean/count oracles keep synthetic names out of assertion value diffs.
+  for (const name of [snapshot.root.name, child.name]) {
+    await expect.poll(async () => (await rail.getByRole('button').allTextContents()).filter(text => text === name).length).toBe(1);
+  }
+  const entry = rail.getByRole('button', { name: 'System Rootにフォルダーを作成', exact: true });
+  if (role === 'office') {
+    expect(snapshot.root.capabilities.createFolder).toEqual({ status: 'disabled', reason: 'permission' });
+    await expect(entry).toBeDisabled();
+    await expect.poll(() => entry.evaluate(button => document.getElementById(button.getAttribute('aria-describedby') ?? '')?.textContent?.trim() === '権限がありません')).toBe(true);
+  } else {
+    expect(snapshot.root.capabilities.createFolder).toEqual({ status: 'available' });
+    await expect(entry).toBeEnabled();
+  }
+}
 
 export type EvidenceReceipt = { operationId: string; command: EvidenceCommand; result: EvidenceRegistered };
 export type FindingReceipt = { operationId: string; command: FindingCommand; result: FindingRegistered };
@@ -316,7 +396,9 @@ type OrganizationAction =
   | 'sales-reclaim' | 'resubmit' | 'office-reclaim' | 'final-verify' | 'persistence-verify'
   | 'agent-module' | 'agent-input' | 'agent-request' | 'agent-result' | 'agent-replay'
   | 'complete-preview' | 'complete-confirm' | 'complete-replay'
-  | 'hold-preview' | 'hold-confirm' | 'hold-replay' | 'resume-preview' | 'resume-confirm' | 'resume-replay';
+  | 'hold-preview' | 'hold-confirm' | 'hold-replay' | 'resume-preview' | 'resume-confirm' | 'resume-replay'
+  | 'root-folder-read' | 'root-folder-preview' | 'root-folder-cancel' | 'root-folder-input'
+  | 'root-folder-create' | 'root-folder-verify' | 'root-folder-replay' | 'root-folder-office' | 'root-folder-persistence';
 export function currentAction(action: OrganizationAction): void {
   const annotations = test.info().annotations;
   for (let index = annotations.length - 1; index >= 0; index--) {
