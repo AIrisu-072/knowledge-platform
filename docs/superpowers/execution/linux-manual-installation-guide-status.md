@@ -1,5 +1,16 @@
 # Linux手動導入手順書の状態
 
+## 2026-10-05 02:18 UTC — 統合済みPoCへ手順を同期する候補
+
+- 固定版をmain `6c514850850110a3c2f8b2b5664ec263510c5d47`（合格PR67 `a39c90c2` と同tree `880b1a57`）へ同期する。Document migration1〜11/Work別台帳1〜6、合成Agent・完了・保留再開・公開原本取得を現在sourceと照合した
+- 既存の起動/停止/backup/restore/権限・秘密情報の扱いは保持する。実行例の変更は固定source SHAだけ。12個のLinux手順と4個の操作手順のBash構文、相対リンク、diff検査は成功。コマンド本体の実行は行っていない
+- [PR67](https://github.com/AIrisu-072/knowledge-platform/pull/67)の全CIと実受入は成功。main push [CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37253316995)も13 jobs・Rust1566件/9skip・実DB/2名操作/再起動/復元/cleanup成功、公開artifact0。初回read失敗/encoding観測の原因未特定を残し、対象PCの実手順・backup/restore・PostgreSQL再起動は未検証
+- 独立branch `docs/organization-integrated-manual-20261005`。手順2文書と本記録の3文書のみで、製品sourceやSearch作業を変更しない。既存履歴は以下に保持する
+- 限定独立文書レビューGO、未解決Critical/Important/Minorなし。元CLI/settingsと整合し、旧履歴を保持する。今回のdocs-only headのCIは未実行で、実機の手順一式を試したとは扱わない
+- 次のexact action: 日本語Draft候補を親へ返す。公開/main mergeと実サーバーへの導入は別の実行段階として扱う
+
+---
+
 ## 2026年10月4日 UTC
 
 - 対象：所有者がLinuxサーバーへ手動導入するための[日本語手順書](../../operations/linux-manual-installation.md)

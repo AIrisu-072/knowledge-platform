@@ -6,10 +6,10 @@
 
 **現在実行できるのは、架空データだけを使うOrganization Browser PoCの導入である。本番利用開始の手順は未完成。** 固定の営業・事務profileを使い、そのポートへ接続した人は同じprofileとして扱われる。認証画面、実利用者の識別、production modeはない。実文書・顧客情報を投入せず、インターネットや社内LANへ公開しない。
 
-- 固定ソース：PR57の `d383baccddd5081687b500f064f6fce195a24816`
-- 既存確認：同一headの[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37205217912)、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37205217991)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37205217880)成功。使い捨てPostgreSQL・2名操作・HTTPサーバー再起動後の復元を確認済み
+- 固定ソース：統合済みmain `6c514850850110a3c2f8b2b5664ec263510c5d47`。受入済み[PR67](https://github.com/AIrisu-072/knowledge-platform/pull/67) `a39c90c2` と同一tree `880b1a57abc6890ed47df5e7bc16a4694d4546cc`
+- 既存確認：PR67の[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574840)、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574859)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574842)成功。同treeで使い捨てPostgreSQL・2名の合成Agent/完了/保留再開/原本取得・HTTPサーバー再起動後の復元・cleanupを確認済み。統合後mainの[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37253316995)もrequired-checkを含む13 jobsと実受入が成功
 - この手順そのものの対象PCでの実行、常設DBのbackup/restore、PostgreSQLプロセス再起動後の確認は未実施。CI成功と区別する
-- GPU、CUDA、外部モデル、Tauriは使わない。新しいAgent機能はこの固定版に含まれない
+- GPU、CUDA、外部モデル、Tauriは使わない。Agentは固定の合成executorであり、既存Document現在認可を確認して候補を作る。本文分析・実LLM・外部MCP通信は行わない
 - 本書のコマンドは所有者が実行する。既存本番サーバーへの接続や秘密情報の送信を代行するものではない
 
 ## 1 開始前の確認
@@ -33,7 +33,7 @@ set -euo pipefail
 set +x
 umask 077
 export KP_HOME="$HOME/knowledge-platform-poc"
-export KP_SOURCE_SHA=d383baccddd5081687b500f064f6fce195a24816
+export KP_SOURCE_SHA=6c514850850110a3c2f8b2b5664ec263510c5d47
 export KP_SOURCE="$KP_HOME/releases/$KP_SOURCE_SHA"
 test ! -e "$KP_HOME"
 install -d -m 700 "$KP_HOME" "$KP_HOME/releases" "$KP_HOME/config" \
@@ -125,7 +125,7 @@ versionが18.6であることを確認する。readinessはTCPを指定し、初
 
 ## 4 明示的な初期化
 
-初回の新しい専用DBだけで実行する。Document migration 0001〜0010と、別台帳のWork migration 0001〜0003を適用する。`serve` はmigrationやseedを実行しない。
+初回の新しい専用DBだけで実行する。Document migration 0001〜0011（0011はOutbox）を `_sqlx_migrations`、Work migration 0001〜0006を別schema/台帳 `work.schema_migrations` へ適用する。Workの0004は合成Agent、0005は完了、0006は保留/再開の記録を支える。`serve` はmigrationやseedを実行しない。
 
 ```bash
 source "$KP_HOME/config/runtime.env"
@@ -135,7 +135,7 @@ unset KP_BIND
 "$KP_SOURCE/target/debug/organization-server" bootstrap-poc
 ```
 
-DocumentとWorkのmigrationは別々に適用され、両方を一括rollbackするコマンドではない。失敗・結果不明ならDBと台帳を調査し、ledgerの行削除やchecksum変更で通さない。`bootstrap-poc` は固定2名の合成Document権限を作り、異なる既存policyを上書きしない。
+DocumentとWorkのmigrationは別々に適用され、両方を一括rollbackするコマンドではない。失敗・結果不明ならDBと台帳を調査し、ledgerの行削除やchecksum変更で通さない。`bootstrap-poc` はsales-01のfixture作成権限、office-01と固定Document provider `poc/poc-agent` のread/readHistoryを作る。異なる既存policyは上書きせず停止する。Agent対応前のDBへ暗黙にgrantを追加しない。
 
 ## 5 営業と事務を起動
 
@@ -194,21 +194,25 @@ export KP_ORGANIZATION_DOCUMENT_ID
 KP_ORGANIZATION_PROFILE=sales-01 "$KP_SOURCE/target/debug/organization-server" seed-work
 ```
 
-seedは既存Workをリセットしない。別の入力文書や以前のforward-only定義を再利用して作り直す場合は、このDBを上書きせず新しい専用環境で行う。予約公開schedulerはこのOrganization手順では起動しない。
+seedは既存Workをリセットせず、新規fixtureだけに完了/保留/再開を含む定義versionを使う。migration適用だけで既存workflowの定義・担当・進捗を変更しない。以前のforward-only/差戻/完了のみの定義や別の入力文書から作り直す場合は、このDBを上書きせず新しい専用環境で行う。予約公開schedulerはこのOrganization手順では起動しない。
 
 確認する操作:
 
 - [ ] 営業が文案を保存し、事務には未提出本文が見えない
-- [ ] 共有文書を参照し、営業が提出、事務が引き受けて提出内容を読む
+- [ ] 営業と事務のタスク内で公開改訂・内容の版・原本一覧を確認し、明示取得した原本を確認する。文書参照だけでTaskや未保存入力を変更しない
+- [ ] 営業が提出、事務が引き受けて提出内容を読む
 - [ ] 事務が理由を付けて差戻し、営業が新試行で修正・再提出する。旧提出は変わらない
 - [ ] 根拠・候補・採用/修正/却下を作り、明示選択分だけ提出へ含める
-- [ ] 両HTTPプロセスを正常停止して同じ設定で再起動し、保存済み状態と非公開分離を再確認する
+- [ ] 選択した根拠を使って合成Agentを明示実行し、候補を人間が採用/修正/却下する。Agent結果だけで提出や完了が確定しない
+- [ ] 営業/事務の担当中タスクを保留し、同じ試行・担当・private保存内容のまま再開する。未保存入力はタブ内だけで、自動保存しない
+- [ ] 最終事務タスクを明示完了し、過去提出・根拠・判断・Agent結果を現在権限で読めること、新しい担当/提出が作られないことを確認する
+- [ ] 両HTTPプロセスを正常停止して同じ設定で再起動し、完了状態・保存済み内容・操作結果と非公開分離を再確認する
 
 詳細は[既存の操作手順](organization-browser-poc.md)に従う。画像、ログ、DB、storageを外部へ送らず、結果だけを記録する。
 
 ## 7 正常停止と再開
 
-両ブラウザーの操作・downloadを終了し、営業と事務の各terminalでCtrl+Cを1回送る。両方の `organization-server: graceful drain complete` とプロセス終了を確認する。処理中のstreamには全体の強制終了期限がないため、完了しない場合は接続中clientを確認する。強制killを正常停止と扱わない。
+両ブラウザーの操作・downloadを終了し、営業と事務の各terminalでCtrl+Cを1回送る。両方の `organization-server: graceful drain complete` とプロセス終了を確認する。処理中のstreamには全体の強制終了期限がないため、完了しない場合は接続中clientを確認する。強制killを正常停止と扱わない。停止/再起動時に残った未完了Agent実行は `outcome_unknown` として扱い、自動再実行しない。元の実行ID・operation IDで保存結果を確認する。
 
 DBも停止する場合は、両アプリが終了してから行う。volumeは削除しない。
 
@@ -280,7 +284,7 @@ chmod 600 "$KP_HOME/config/restore.env"
 
 復元先は空DBなので、先にmigration/bootstrap/seedを走らせない。`pg_restore --single-transaction` は復元SQLを一括transactionで処理する。失敗時に `--clean`、ledger修正、元DB削除で続行しない。[pg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html)
 
-節5の2つのterminalで、読み込むファイルだけを `config/restore.env` に変えて起動する。health、合成文書の原本、提出・差戻・根拠・非公開分離、以前の保存状態を確認する。元環境と同じportなので同時起動しない。元環境へ戻る場合は復元側を正常停止し、元の `runtime.env` で再開する。復元コピーへの新しい書込は元DBへ戻らない。
+節5の2つのterminalで、読み込むファイルだけを `config/restore.env` に変えて起動する。health、合成文書の原本、提出・差戻・根拠/判断・合成Agent結果・完了/保留状態・非公開分離、以前の保存状態を確認する。元環境と同じportなので同時起動しない。元環境へ戻る場合は復元側を正常停止し、元の `runtime.env` で再開する。復元コピーへの新しい書込は元DBへ戻らない。
 
 ## 10 更新と切戻し
 
@@ -295,16 +299,16 @@ chmod 600 "$KP_HOME/config/restore.env"
 
 現在の統合注意点:
 
-- Document/Orgには `0009_document_revisions_v0.sql` と `0010_document_version_updated_at.sql`、Search PR40には同じmigration列の `0009_outbox_delivery_v0.sql` がある。単純統合ではversion 9が重複する。適用済み台帳を調べ、互換方針と統合試験を確定するまで同一DBへ適用しない
-- 2026年10月4日の別統合候補ではDocument9/10を保持し、OutboxのSQL本文を変えず11へ配置する。[判断記録](../decisions/2026-10-04-search-main-migration-integration.md)と[旧Search9・不明履歴のSTOP条件](search-main-migration-stop.md)を参照。本書の固定releaseに候補SHAだけを差し替える許可ではなく、実環境に旧Search9がないことも未証明
-- 新Agent sliceは別branchで進行中。本書の基点はWork 0001〜0003のみ。TODO：受入済みAgent commit、Work 0004の内容・互換性・新設定・停止/回復経路を確認してから手順を更新する。外部モデルが動くと推測しない
+- この固定版ではDocument `0009_document_revisions_v0.sql` / `0010_document_version_updated_at.sql` を保持し、OutboxをSQL本文不変で `0011_outbox_delivery_v0.sql` へ配置済み。旧Search `0009_outbox_delivery_v0.sql` 適用済み・不明履歴は変換せず停止する。[判断記録](../decisions/2026-10-04-search-main-migration-integration.md)と[STOP条件](search-main-migration-stop.md)に従い、既存DBへこの初回手順を流用しない。所有者の実環境に旧Search9がないことは未証明
+- Work 0001〜0006はDocumentと別の `work.schema_migrations` 台帳を使う。旧checksumは保持する。合成Agent/完了/保留再開は新規fixtureの定義を使用し、既存workflowの定義を自動昇格しない。モデル用秘密情報や新しい認証設定は不要
+- PR62初回の再起動後read失敗とPR65初回のresponse.body()観測bytesの実encoding原因は未特定。PR67の実Download照合・再起動後復元成功を、対象PCの復旧資格や原因解消と読み替えない
 
 ## 11 本番利用開始までの未達項目
 
 - [ ] OSのdistribution/version、運用ユーザー、RAM/ディスク容量、backup先、接続方式を決定し、対象機で既存worker保護を実証する
 - [ ] production Identity adapterを実装・受入し、実利用者とrole/assignmentを現在の認可に結び付ける。固定profileを本番認証として使わない
 - [ ] TLS、公開範囲、DNS、reverse proxy、DB最小権限、secret管理、service定義、起動順、監視・アラートを設計して受入する
-- [ ] migrationのversion衝突と既存DB互換を解消し、Document/Organization/Searchを組み合わせる対象commitで統合試験を行う
+- [ ] 対象実DBのmigration履歴・互換性を確認し、Document/Organization/Searchを組み合わせる対象commitで統合試験を行う
 - [ ] Audit配送・保存、Search全体、Agent連携など必要機能の未完gateを閉じる。個別schemaや合成PoCの合格で代替しない
 - [ ] 定期backup、暗号化、別媒体保存、restore演習、切戻し時のデータ損失/RPO/RTOを決めて検証する
 - [ ] 本番の対象releaseと利用範囲を確定する。現在のmain mergeはCIを起動するが、production配備は行わない
