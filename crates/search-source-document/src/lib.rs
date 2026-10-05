@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+mod api_read;
 mod body_absence;
 mod body_bundle;
 mod body_evidence;
@@ -18,6 +19,7 @@ mod postgres;
 mod relations;
 mod translate;
 
+pub use api_read::DocumentApiRead;
 pub use body_bundle::{PublishedBody, graph_receipt, seal_lexical};
 pub use body_evidence::{
     CurrentVersionReader, DocumentBodyCoverageGaps, DocumentExactTextEvidenceCatalog,
