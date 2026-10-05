@@ -65,3 +65,11 @@ harness version so the comparison does not mix source hashes.
    default user, and the restore container's entrypoint hands `/data` to `neo4j` before
    the server starts. A failed offline command now reports the last 2,000 bytes of its
    stderr so a remaining failure is diagnosable from the receipt.
+
+## Changes after round 4 (run 37254157214)
+
+7. **Load input stream.** The captured stderr showed `Not a valid Neo4j archive:
+   reading from stdin`: the harness passed the dump bytes on stdin but started the
+   offline load container without `-i`, so the container never received them. The
+   load command now attaches stdin. The dump, the timed cells and the PostgreSQL and
+   redb paths are unchanged.

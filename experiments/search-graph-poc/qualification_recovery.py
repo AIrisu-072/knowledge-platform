@@ -352,8 +352,10 @@ def _neo_admin(image_id, data_dir, operation, input_bytes=None):
     # the runner, so it runs as the image default user; the restore container's
     # entrypoint then hands /data to neo4j (amendment 2026-10-05).
     user = ["--user", "neo4j"] if operation == "dump" else []
+    # The archive reaches load on stdin, which docker attaches only with -i.
+    stdin = ["-i"] if operation == "load" else []
     try:
-        return command(["docker", "run", "--rm", "--pull=never", "--memory=2g", *user,
+        return command(["docker", "run", "--rm", "--pull=never", "--memory=2g", *stdin, *user,
                         "--label", f"{OWNER_LABEL}=1", "--entrypoint", "neo4j-admin",
                         "-v", f"{data_dir}:/data", image_id, *args], timeout=180,
                        input_bytes=input_bytes)
