@@ -1,0 +1,25 @@
+# 仕事の手渡し: p1-freeze
+
+- 種類: decision / 役: Orchestrator / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Freeze reviewed extraction contract and bounded implementation plan
+
+## 入力
+- `p1-revised` (docs/superpowers/programs/search-platform-completion/p1-extraction-design-revision-1.md) — Revised design resolving independent architecture findings [`p1-repair-design` が作る (済み)]
+- `p1-arch-recheck` (docs/superpowers/programs/search-platform-completion/p1-extraction-architecture-recheck.md) — Independent revised exact design architecture gate [`p1-recheck-design` が作る (済み)]
+- `p1-unit-frozen` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md) — Frozen provider neutral input contract for Vector evaluation [`p1-freeze-unit` が作る (済み)]
+- `p1-body-amendment` (docs/superpowers/programs/search-platform-completion/p1-body-absence-amendment.md) — Exact text negative proof and shared discovery signature correction [`p1-amend-absence` が作る (済み)]
+- `p1-body-final-review` (docs/superpowers/programs/search-platform-completion/p1-body-absence-review.md) — Exact text negative proof and shared discovery signature correction [`p1-review-absence` が作る (済み)]
+- `p1-partial-positive` (docs/superpowers/programs/search-platform-completion/p1-partial-positive-correction.md) — Close precise Partial-positive exact text predicate contradiction [`p1-correct-partial-positive` が作る (済み)]
+- `p1-partial-review` (docs/superpowers/programs/search-platform-completion/p1-partial-positive-review.md) — Close precise Partial-positive exact text predicate contradiction [`p1-review-partial-positive` が作る (済み)]
+
+## 出すもの
+- `p1-contract` (docs/superpowers/programs/search-platform-completion/p1-extraction-freeze.md) — extraction contract
+- `p1-plan` (docs/superpowers/programs/search-platform-completion/p1-extraction-plan.md) — extraction plan
+
+## 受入条件
+Independent findings resolved and exact contract digest recorded
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p1-extraction-freeze.md` / `docs/superpowers/programs/search-platform-completion/p1-extraction-plan.md` だけ。他は触らない。

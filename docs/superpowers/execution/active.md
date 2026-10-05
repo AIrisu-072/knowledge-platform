@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-04 17:27 UTC — AgentとSearchを保持するmain統合候補
+
+- mainはSearch統合済み `f9d6f5ff` へ進んだ。PR62のAgent sourceを保持して新mainを祖先に加える。[統合状況](organization-agent-main-integration-status.md)を参照
+- 製品変更は両受入元の非競合な和集合。Document9/10とSearch Outbox11、分割API、既存workflowを新mainのbytesで保持する。競合はこの文書の先頭追記のみ、両方の履歴を残す
+- 旧PR62 headの結果と新統合headの資格は分ける。最終事務completeは別候補で、この統合へ入れない。新exact headの全CI/実runtime後、親がmainへのmergeを直列調整する
+
+---
+
+
 ## 2026-10-04 17:08 UTC — 合成Agentをmainへ統合する候補
 
 - 状況：受入済みPR60 exact `48ae1bfd` とmain `9c90f383` の祖先を保持した統合候補。[統合状況](organization-agent-main-integration-status.md)が再開先
@@ -17,6 +26,20 @@
 
 ---
 
+## Searchのmain統合・Remote観測の現在状態：2026-10-04 16:43 UTC
+
+**ACTIVE / WIP。** 公開Search `1571ee49` / tree `ca7ecabe` は通常CI・DSI・Sandboxが終端SUCCESSで、P7-06の実DB12件＋純粋4件も成功した。[新しい候補と正確な検証範囲](../programs/search-platform-completion/search-main-integration-candidate-20261004.md)を現在の再開先とする。
+
+main `9c90f383` とのmigration互換候補へP4-05を追加し、統合source `2078f7ad` のapplication/core純粋350件＋doc8件とstrict Clippyが成功。Document9/10とOutbox SQL本文を保ち、旧Search9は明示STOP。次は別Draft公開後の同一head全CIと合成DB履歴4経路。現候補のhosted合格、本文索引、Remote実通信、READY/公開/pin/GC、API縦断の完成は未達である。以下は各時点の履歴として保持する。
+
+
+## Search/mainのDomain migration統合候補：2026-10-04
+
+**ACTIVE / ローカル候補、hosted検証待ち。** main `9c90f383` とSearchレビュー済み `3738e286`（公開 `1571ee49` と同一tree）を履歴ごと統合する。[判断・検証記録](../../decisions/2026-10-04-search-main-migration-integration.md)と[実環境STOP手順](../../operations/search-main-migration-stop.md)が今回の再開先。
+
+Document9/10のbytesを保持し、Search OutboxだけをSQL本文不変で11へ配置した。旧Search9適用済み履歴は変換せず停止する。所有者の実環境にこの履歴がないことは未証明。OpenAPIはDocument原本とSearch4routes原本をそれぞれbyte保持し、既存lint/contract gateで両方を確認する。凍結設計・原承認hashは変更しない。
+
+新履歴試験5件と既存Outbox4件はcompile、純粋1件・strict Clippy・architecture22件・policy・API contract15件・SDK34operation一致1件はPASS。DB4件と全sourceの同一head CIは未実行。独立ソースレビューはGOで、既存Search台帳分離2targetもversion1〜11期待へ追随しcompile/strict Clippy PASS。次は親担当による公開→公式PostgreSQL合成履歴試験と全適用CI。ローカルDB/socket/listener、実本番接続、deployは行わない。以下のcheckpointは各時点の履歴として保持する。
 
 ## 2026年10月4日 DocumentとOrganizationのmain統合候補
 
@@ -643,6 +666,123 @@
 - 次の exact action: 計画・承認・Status記録をcommit/pushし、計画を依頼者へ提示する。設計のみの依頼範囲に従い、製品実装には進まない。
 
 以下は先行Capabilityの履歴checkpointであり、現在のDocument Diff工程ではない。
+
+## Source登録・リースの実DB実証と次の候補：2026-10-04
+
+**ACTIVE / WIP。** 公開head `93a5781c733da7ede634e34c592579e034bc38ef` / tree `bc000c09db10c2ff8245651b7f3daea9c25e8cee` で、P7登録18件・leaseの実DB6件・既存schema24件、通信なし8件が成功しました。通常CI全10ジョブ・DSI PoC・Sandboxも終端SUCCESSです。[正確なcheckoutと検証範囲](../programs/search-platform-completion/p7-registration-hosted-result-20261004.md)を参照してください。
+
+次はP7-06のEVENT/MANUAL世代登録と完全構築guardを、同じ登録ゲートと既存SQLの上へ接続します。Source現在状態・所有者・配送lease・DB時計を再確認してBUILDINGだけを作り、READY/Graph/公開の証明は発行しません。新候補の対象限定コンパイル・純粋試験と独立レビューを経て、公開後の合成GitHub PostgreSQLで実DBケースを検証します。P4の可視Sourceルーティングと4種類のRemote検索計画は並行する別の差分です。
+
+上記CI成功は後続候補の合格ではありません。本番inventoryと起動許可、本文抽出・索引、世代公開/pin/GC、検索APIと最終縦断は未完了です。Domain migration番号9の統合衝突と以前のローカルDB/socket停止は維持し、以下の過去本文は変更していません。
+
+## 現在のSearch継続作業：2026-10-04
+
+**ACTIVE / WIP。** 公開head `0610b49327cd3c1c37e385281f087423c27b5638` / tree `0fe596fde7d9d2fe6e5f174bf4be0f189ed55830` で、通常CI全10ジョブ・DSI PoC・Sandboxが成功しました。合成GitHub PostgreSQLでG07復旧2件、G08の監視・配送ロールの実DB2件、トレース純粋1件、その他の純粋回帰56件が成功しています。[正確なcheckoutと検証範囲](../programs/search-platform-completion/p6-g08-hosted-result-20261004.md)を現在の結果として参照してください。
+
+凍結済みP7-02のSource登録・leaseを単一のPostgreSQL台帳へ接続し、対象限定コンパイル・純粋試験・strict Clippyと、範囲を限定した独立ソースレビューが成功しました。次はこの候補を公開し、合成GitHub PostgreSQLで登録18件・lease6件の実DB試験を実行します。leaseの通信なし2件は既に成功しています。現時点の新P7候補に実DB合格はありません。並行して凍結P4-03の可視Sourceルーティングを、別の差分で準備しています。Source登録の根拠や検索時の許可をprovider入力から新たに生成しません。
+
+世代の永続化・公開・pin・GC、本文索引、検索APIと最終縦断の受入は未完了です。Document/OrganizationとのDomain migration番号9の衝突は、適用済み履歴を分類してから統合します。以前のローカルDB/socket拒否は維持し、過去の成功・停止・共有保留を現在の全体状態と混同しません。以下の履歴本文と原承認hashは変更していません。
+
+## Search G07の実証とG08着手：2026-10-04
+
+G07の復旧2ケースは、公開head `3d3bfcb2a6881d1a61d724a2d8d15c8d4cd843a3` に対するGitHub Ubuntu・公式PostgreSQL・架空データのCIで成功しました。[実結果と検証範囲](../programs/search-platform-completion/p6-g07-hosted-result-20261004.md)を現在の結果として参照してください。過去の実DB REDや元の全資格試験の完了は主張しません。以前のローカルソケット拒否は保持します。
+
+公開headは、その後のCI引用1行修正により `6441f7d4f0a244a952f72f7855e7201d5601f722`、treeは `1b76634675a4fd0917a245470ab7c44487a2e96d` です。G08は、既存observe欠落を埋める有限ラベルの監視・W3Cトレース検証・配送列限定のSQL権限を実装中です。ローカルでは対象限定コンパイルと純粋テスト、実DB/権限ケースは承認された合成GitHub環境で検証します。新しいsourceの資格、P6/P7・Search全体の受入、マージ・デプロイは未完了です。以下の過去記録を現在の停止条件や完了状態へ読み替えないでください。
+
+## Searchの公開後の状態照合：2026-10-03 18:12 UTC
+
+Draft #40の公開headは `0ecf486719e3c9d71242e289a7564ad6d1032b3c`、treeは `72f1f578c46ff605cc96f22508f54623118d1928` です。DSI・Sandboxは成功、全体CIはRustの既存 `outbox_delivery::observe` 欠落と、由来を直接確定できていない履歴検査5件により未完了です。[新しい状態照合記録](search-current-state-20261003.md)で限定再現とホスト結果を区別しています。G07実行停止、G08の依存待ち、新規公開のOSV送信確認待ちを維持します。以下はそれぞれの時点の履歴であり、現在の実行指示ではありません。
+
+## 最新のG07専用環境の準備と実行停止の記録：2026-10-03
+
+- **ACTIVE / WIP / 実行時検証は停止中。** 対象を固定した専用フィクスチャは、新たな対象限定コンパイル、Rustの純粋テスト9件、Pythonの純粋テスト243件に成功しています。公式PostgreSQLの非公開領域でのビルド・インストール、初期化、オフラインの識別証明は完了しました。[記録と対象を限定した証拠](../programs/search-platform-completion/g07-owned-preparation-20261003/README.md)を参照してください。
+- その後、サーバーは専用Unixソケットの作成時に**Operation not permitted**となり、終了コード1で停止しました。管理下プロセスの終了・回収と出力全文の回収は確認済みです。復旧用の子プロセス、ケース固有のテストデータベース、意味的なRED、GREENのケースはいずれも実行されていません。子プロセスのclaim/reap（処理権の取得と期限切れ処理の回収）は意図的に未接続のままです。再試行、通信方式・場所・実行環境を変える回避策、権限変更は行っていません。Cargoの占有は解放済みです。
+- G07の実行時2ケース、その後のコンパイル・品質確認・完了確認、G08は未実行です。タスクグラフは引き続き`p6-impl-observe`より先に`p6-process-test`を要求しており、G08はその依存により保留です。凍結済みの順序や意味は変更していません。継続できるのは、文書化、静的な照合、Draft公開に向けたレビューです。
+- 14:36 UTCの読み取り専用GitHubメタデータ確認では、Draft #40のheadは`da5e7155db616c1df9a688a7043fc3b4730bb1a3`、treeは`a6146b0bf3bbb241d918e3b579155e7c6d3dc98f`です。以前のPoCロック修正、G06、G07純粋テストの記録は公開済みです。最後に確認した当該headのDSI・Sandboxは成功していますが、Rust CIは`outbox_delivery::observe`の欠落で失敗しています。新headの適合やCI成功を推定してはいけません。
+- 公開用の証拠は必要最小限に絞り、認証関連のPostgreSQL制御出力1行だけを除外しています。非公開原本と公開コピーのハッシュ・サイズを区別し、非公開原本とクラスタは変更せず保持しています。秘密情報の破棄・無効化は主張しません。拒否された内容の再送や、実行時処理の再試行は行っていません。`archived-harness/`と`receipts/`は、元の証拠バイトとハッシュの照合可能性を保つため翻訳せず、日本語の説明を添えています。
+- 元の公開GOは撤回され、英語の最小化候補だけが別途レビューでGOとなりました。日本語化前の英語版候補はローカルHEAD `4ff7075692503d875f256d23a94b6f89f64c9f33`、tree `b8353b9f4e935d45da38b724b7b79e76afc93c2b`で、53ファイルに限定されています。2つのRustソースは固定です。53個のblobと正確な最小化treeはremoteに作成済みですが、15:27 UTCの`create_commit`は`user cancelled MCP tool call`で停止し、refは`da5e7155db616c1df9a688a7043fc3b4730bb1a3`のままです。commit SHAは返されず、commitオブジェクトの作成成否は未確定です。15:27:40 UTCの読み取り専用照合では、refは旧head `da5e7155db616c1df9a688a7043fc3b4730bb1a3`のままでした。新headは公開されていません。
+- **次に行う具体的な作業：** 日本語版の意味保存レビューを行い、公開可否を再判断します。将来の公開ではリモートの親commitを再確認し、Draftを維持して正確なtreeを検証します。実行時ゲートは停止状態を維持し、G08へ進めません。保存したコマンドや過去のGOを再試行の許可として扱わないでください。以前の内容未特定の停止事象は、今回とは別の未解決事項です。マージ・デプロイは行いません。
+
+以下の過去の記録は履歴であり、現在の実行指示ではありません。
+
+以下の4節は、[固定された公開原文のSearch依存修復・G06・G07節](https://github.com/AIrisu-072/knowledge-platform/blob/0ecf486719e3c9d71242e289a7564ad6d1032b3c/docs/superpowers/execution/active.md#L15-L42)の意味保存訳です。ここにある状態、公開保留、次の作業は記録当時のものであり、現在の実行指示ではありません。既存ハッシュは原文・当時の証拠を指し、訳文のハッシュではありません。最上部のG07実行停止と、[現在状態の記録](search-platform-completion-program-status.md)を優先してください。
+
+<a id="active-checkpoint--search-g07-pure-guard-preparation-2026-10-03"></a>
+## Search G07の純粋ガード準備の記録：2026-10-03
+
+- **ACTIVE / WIP / 未完了。** 2ファイルの純粋フィクスチャのチェックポイント `fda5ff8a77cb7e237d55665c532134392267a651` / tree `14c66619732559e3403eaea096cb297afc142c9d` は、新たなRust純粋テスト6件のGREEN、Python 53/53、対象限定の厳格なClippy、2ファイルのfmtと差分検査に成功しています。[範囲を限定した検証記録](../programs/search-platform-completion/p6-g07-pure-guards-20261003.md)を参照してください。G07の実際の子プロセス/DB経路は未接続・未実行です。
+- 既存フィクスチャの変更は、以前から存在したClippyのサイズ警告を記録した後、既存コンテナのフィールド・生成処理をBox化した箇所だけです。Dockerの動作は実行時に検証していません。追加したPythonのDB名/アーカイブのテストは、意図したRED 25件と対照9件を示しています。その修正と、実際の作用を伴うフィクスチャ/起動処理の全ゲートは未完了です。
+- 最後に確認したリモートDraft #40は `401b31047a64ed76c470477c6db15fc7e8221d2d`。その後のPoCロック、G06、このチェックポイントは、別途の公開共有保留のためローカルにだけ存在します。Search全体/P1〜P7の受入と、内容未特定の過去の停止は未解決です。
+- **当時の次の具体的な作業：** 追加の純粋テストに対する修正・レビューを完了し、セットアップや実プロセス実行の前に、管理下の起動処理/フィクスチャについて正確なコマンド一覧を実装し、独立レビューします。範囲を広げたプローブ、マージ、デプロイは行いません。
+
+<a id="active-checkpoint--search-g05g06-synthetic-runner-correction-2026-10-03"></a>
+## Search G05/G06の合成入力によるランナー修正記録：2026-10-03
+
+- **ACTIVE / WIP / 未完了。** 正確に特定した修正ソースは、受入5件＋ライフサイクル35件のテスト、対象限定の厳格なClippy、2ファイルのrustfmtに成功しています。範囲を限定したソース・契約の独立レビューはGOです。最終テストを元ランナーへ適用する、修正後の負の対照実験も明示しており、5 pass / 30 failでした。[検証記録](../programs/search-platform-completion/p6-g06-runner-correction-20261003.md)を参照してください。
+- 修正は、準備、処理全体、ハートビート、結果確定、終了時の後始末に上限を設けます。未完了の依存処理の結果はUnknownのままとし、キャンセル後の作業を停止します。G07/G08、実DB/プロセス復旧、P1〜P7、最終受入は未完了です。内容未特定の過去の停止操作を再試行したり、停止を解除したりするものではありません。
+- 最後に確認したリモートDraft #40は引き続き `401b31047a64ed76c470477c6db15fc7e8221d2d`。別の三つのPoCロックのメタデータと、このソースのチェックポイントはローカルのみで、公開共有の承認待ちです。ホストRust CIの `outbox_delivery::observe` 欠落による失敗は残っています。マージ・デプロイは行いません。
+- **当時の次の具体的な作業：** レビュー済みの変更がないローカルチェックポイントを保全します。セットアップや実行の前に、G07の公式ツール/初期構築/合成プロセスの正確な範囲を準備して独立レビューします。公開は、保留中の共有承認が解決した後だけ行い、正確なtreeを照合します。
+
+<a id="active-checkpoint--search-isolated-poc-dependency-locks-2026-10-03"></a>
+## Searchの独立したPoC依存ロックの記録：2026-10-03
+
+- **ACTIVE / WIP / 未完了。** ルート依存関係のチェックポイントは、Draft PR #40の `401b31047a64ed76c470477c6db15fc7e8221d2d`、tree `2df2784e8017f1433a2fb96d8054e4aca3478299` としてリポジトリに保存・公開されています。ホストのセキュリティジョブ `111137273878` は成功しています。Rustの静的検査/テストは `outbox_delivery::observe` の欠落で引き続き失敗し、DSI PoCは別の取り下げ済み依存バージョンで失敗しています。
+- 未修復だった三つの独立ロックでは、`yoke-derive 0.8.3 → 0.8.4` のバージョンとチェックサムだけを変更します。それぞれ同じコマンドによるcargo-deny検査がexit 1 → 0となり、四つの依存関係ゲートがすべてOK、既存警告は不変でした。PoCその他のランタイムは実行していません。範囲を限定したメタデータ公開の独立レビューはGOです。[検証記録](../programs/search-platform-completion/poc-lock-metadata-recovery-20261003.md)を参照してください。
+- P6 G05/G06の合成入力による検証は別作業です。G06レビューでは、最初の4テストがPASSしていても、保留中操作の期限処理に欠落が見つかりました。このロックだけのチェックポイントは、ライフサイクル修正や受入を主張しません。P1〜P7、G07/G08、最終受入、内容未特定の過去の安全上の停止は未解決です。
+- **当時の次の具体的な作業：** このメタデータのチェックポイントを公開し、通常の対象headに固定したCIを確認します。凍結済みP6ランタイムの順序を先へ進める前に、別途レビューした合成G06の回帰・修正を完了します。ランタイム全般の実行許可、マージ、デプロイは含みません。
+
+<a id="active-checkpoint--search-root-dependency-metadata-recovery-2026-10-03"></a>
+## Searchルート依存関係のメタデータ修復記録：2026-10-03
+
+- **ACTIVE / WIP / 未完了。** 依頼者の指示による新たなSearch継続作業は、Draft PR #40の `a945fbd32145a3109e35cb9cb056cea052698138` から始めます。復元された古い作業ツリーを上書きせず、他の機能ブランチも混在させません。
+- 5ファイルに限定した依存関係修復です。既存のローカルパス8件に、対応するパッケージ版 `0.0.0` を付けます。ルートのロックは、`yoke-derive 0.8.3 → 0.8.4` とチェックサムだけを変更します。同じコマンドによる新たなcargo-deny検査は、基準のexit 3 → 候補のexit 0で、advisories/bans/licenses/sourcesは既存警告を残してPASSでした。独立したソースレビューはGOです。[検証記録](../programs/search-platform-completion/dependency-metadata-recovery-20261003.md)を参照してください。
+- 三つの別々の実験用ロックには、取り下げ済みバージョンがまだ残っています。`outbox_delivery::observe` の欠落、P6 G05〜G08の新たな実行、P1〜P7/最終受入全体、内容未特定の過去の安全上の停止は未解決です。このチェックポイントでは、プロジェクトのビルド/テスト、パーサー/DB/プロセス/モデル/セキュリティプローブ/P3の実行はしていません。
+- **当時の次の具体的な作業：** この範囲限定・レビュー済みチェックポイントを公開し、通常の対象headに固定したCIを確認します。実行前に、凍結した順序の中で次に該当するP6ゲートの範囲を独立して確定します。実装停止全般の解除、マージ、デプロイは含みません。
+
+## Active checkpoint — Search narrow compile correction, 2026-10-01T21:45Z
+
+- **ACTIVE / WIP / incomplete.** Draft PR #40 retains the implementation safety hold and all P1–P7 acceptance gates. This update changes only the P6 process-recovery test's SQLx UUID type annotation, with a separately recorded focused compile RED→GREEN and independent static review.
+- Current detail: `search-platform-completion-program-status.md` → Latest compile-only checkpoint and its linked receipt. E0432 missing `outbox_delivery::observe`, unexecuted P6 tests, the security gate and yanked-dependency gate remain open. No Gitleaks suppression, broader implementation, new P3 workflow, merge or deployment.
+- **Exact next action:** verify the fast-forward Draft head and observe ordinary exact-head hosted CI. Earlier runtime/parser execution actions remain held; this bounded compile correction does not qualify P6 or the program.
+
+## Active checkpoint — Search WIP Draft publication, 2026-10-01T21:08Z
+
+- **ACTIVE, incomplete, safety hold on implementation.** Latest truth: `search-platform-completion-program-status.md` → Latest publication checkpoint, and the linked Draft publication checkpoint. P1–P7 and whole-program acceptance remain open.
+- Publish saved source on `feat/search-platform-cloud-continuation-20261001` over PR #34 foundation `80a47960d025e4dfdea1eacade28b15d218725ff`, keeping all PRs Draft. Old bounded passes do not qualify the current full tree; P1 Office v2, P6 G07/G08 and P7 pending tests remain unfinished.
+- No stopped execution is retried. The unreviewed P3 hosted workflow/helper/test/proposal and generated/binary/cache artifacts are excluded, with local files preserved. No merge/deploy or completion claim.
+- **Exact next action:** verify published head/base and inspect ordinary hosted CI read-only. Identify and independently review the precise safety-stopped operation before resuming implementation; older active sections' execution instructions are historical and superseded by this hold.
+
+
+## Active checkpoint — Search cloud review repairs, 2026-10-01T15:50Z
+
+- **ACTIVE, incomplete.** Current detail and exact next actions: `search-platform-completion-program-status.md` → Latest cloud checkpoint. The restored implementation is still uncommitted on `feat/search-platform-cloud-continuation-20261001`; no remote push/merge/deploy.
+- P2 executed-input seam has independent bounded GO. P1 Linux reader PoC is undergoing independently reproduced hidden-sheet integrity repair; no production promotion. P7 schema/role review repairs passed real PG24/24, pending independent recheck. P6 pre-dispatch Source renewal/lifecycle tests await serialized Cargo.
+- P3 local measurement is blocked by absent equivalent hard resource caps. Separate local `feat/search-platform-p3-hosted-pilot-20261001` prepares the explicitly scoped same-host container pilot; no workflow was pushed or run. Exact source closure build, fixtures and independent review are required before a Draft push, and the pilot cannot select a backend.
+- Continue P1 recheck, P3 locked prerequisite build/fixture verification, then P6 RED/GREEN; keep P7 reviewed files stable until recheck and proceed only with Graph-independent authorized tasks. Preserve all frozen semantic, memory, sample, publication and licensing gates.
+
+
+## Active checkpoint — Search cloud continuation, 2026-10-01T15:01Z
+
+- **ACTIVE:** Search Platform Completion Program P1–P7 and whole-program acceptance remain incomplete. Source of truth is this restored repository and `search-platform-completion-program-status.md` cloud admission section; historical Mac-only timing/temporary paths are not current cloud evidence.
+- Current branch `feat/search-platform-cloud-continuation-20261001` at baseline `80a47960d025e4dfdea1eacade28b15d218725ff`, with restored uncommitted implementation and no remote push. Separate Document work remains untouched.
+- Rust 1.98.1 and locked crate acquisition work on Linux x86_64. Local official PostgreSQL 18.6 source build is in progress for functional tests. P2 actual compiled exporter passed 1/1 and model protocol 31/31; independent review and all model/production qualification remain open.
+- Exact next action: finish P2 proof receipt/review; after PostgreSQL is ready, execute P7-03 named DB RED→GREEN, then P6 G05+ runner. Deterministically restore P3 ignored fixtures only on exact hash match; prepare reviewed environment-only amendment before any cross-backend cloud measurements. Shared Cargo/schema writes stay serialized. Keep PRs Draft; no merge or deploy.
+
+
+## Active checkpoint — Search Platform Completion Program continuation, 2026-10-01 JST
+
+- Status: **ACTIVE**. P0 Phase-D closure is complete; P1–P7 implementation/qualification and whole-program acceptance remain incomplete. No enumerated Hard Stop, merge, or live deployment has occurred.
+- Workspace: `/Users/airisu/.codex/worktrees/search-discovery-phase-d/knowledge-platform`, branch `feat/search-platform-completion-core`, HEAD `80a47960d025e4dfdea1eacade28b15d218725ff`; production work is uncommitted. Live main is `d71753d46590bb4406a1c0b74894ab90a27a6c88`. PR #34 is OPEN/Draft at the same baseline SHA on `feat/search-platform-completion-program`; its 9 checks pass but do not qualify the dirty worktree.
+- Live PR stack: #20 → #21 → #22 → #25 → #26 → #28 → #33, with Draft PR #34 based on #33. Phase-D PR #33 exact head `4892ba5d2736b35bf95de25f834f016609d2e0d4` still has standard CI `36665497017`, PoC `36665497015`, and Sandbox `36665497041` SUCCESS. P0 closure remains recorded in the first commit `9a802be`.
+- Task graph `docs/superpowers/programs/search-platform-completion/task-graph.yaml` validates at 258 tasks / 271 artifacts / 11 claims. P1 sandbox review is NO-GO with three classification defects; regression cases exist but are uncompiled. P2 pinned L/LG baseline is recorded and independently GO only for its historical synthetic input hash; the current dirty `search-application` tree differs, so the receipt cannot qualify current code or Vector selection. Protocol hardening is 28/28 offline tests PASS; no RunPin/model execution, and fresh adversarial review is held for disk capacity. P3 issuer revision review is GO for the SQLx-free pre-code interface only; compile/DB gates remain. P3 refined fixture correctness is bounded GO (7/7 lightweight tests); P3-P04 backend selection remains Blocked on measurement, recovery, shared publication/pin/GC, and independent selection evidence. P7 revision-2 independent review is PASS/GO and the design/plan Freeze is recorded; implementation gates W1 (`document.version.read_confirmed` producer/rollback case) and W2 (fresh-DB migration/checksum/role order) remain explicit. Runtime/production qualification is still not claimed.
+- Capacity update 2026-10-01T14:15Z: authorized cleanup of 16 unrelated, inactive, ignored Next.js/Flutter generated-cache directories recovered observed free space from 964,636,672 to 5,696,122,880 bytes. Financial repositories (including this project and financial agent repositories), every related worktree, ResoSeed/corpora/evidence, shared dependencies, ambiguous ownership and Docker persistent data were protected. No Docker images/volumes/containers were deleted. Receipt is `/tmp/search-completion-resume-20261001/cleanup.json`. After serialized builds, free space remains about 4.7 GiB; every new build/measurement must remeasure its gate.
+- Fresh P1-I02 named Linux RED reproduced exactly three classification failures (6 pass/3 fail). Fix and independent bounded GO are recorded in `p1-sandbox-failure-classification-fix.md` and `p1-sandbox-failure-classification-review.md`: final Core12/matrix10/isolation5 and DSI baseline1/isolation6 PASS; final Linux strict Clippy, fmt and diff checks PASS. Unsupported terminal zero-output validation is clarified without inventing traversal or reader-use. Whole P1/actual readers/Source integration and hosted exact-head gates remain open.
+- Fresh real PostgreSQL existing read-state producer regression 7/7 and Search0001/0002 migration regression 3+6/9 PASS (`p7-current-db-regression-20261001.md`). Full W1 decoder/sink and W2 Search0003/Domain0010/Search0004 order/checksum/roles remain unimplemented; these local results do not qualify them.
+- Current continuation owns the advisory Cargo/measurement lock `/tmp/search-completion-resume-20261001/cargo.lock`. Initial process/cwd inspection found no Cargo/rustc or other process using this worktree. OrbStack was safely started; existing persistent containers were retained. P3 fresh oracle binary/100-group fixture passed; redb native timed qualification is running in the exclusive CPU/Cargo window. P2 current independent audit is structural28 PASS but same-input NO-GO; a separately scoped canonical executed-input export repair worker is preparing RED and waiting for Cargo. GUI/Production Identity work is explicitly excluded from this Search session.
+- Managed run `search-completion-p2p7-r2-20260930` remains `inspect-before-resume`; its uncertain split is not replayed. Scoped native workers are an explicit fallback with no managed receipts. Parent state is saved through the repository script; the `toolbox-context parent` symlink path incorrectly resolves `parent-context.py` under `~/.local/bin`.
+- Exact next actions: finish the active P3 redb100 measured cells then run separate restart/restore/fault probes; retain raw output before any cleanup. Release CPU/Cargo to the P2 canonical executed-input export repair for real RED/GREEN after its test-only preparation. Then continue admitted PG/Neo100 measurements and shared physical-schema publication/pin/GC implementation gates; do not turn partial measurement into backend selection. Keep Draft PRs unmerged and do not deploy. Current source remains uncommitted; local snapshot hashes, not the baseline HEAD, identify new verification.
+
+This checkpoint supersedes the prior active pointer while this Search Platform continuation is selected. Earlier Document Management checkpoints remain preserved below as historical task state.
 
 ## Active checkpoint — Document Management Basics v0 PR D 実装head GREEN、2026-09-28 JST
 

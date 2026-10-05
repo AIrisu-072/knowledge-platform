@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use document_application::{RepositoryError, VerifiedActorContext};
+use document_application::{DocumentAccessCheckRepository, RepositoryError, VerifiedActorContext};
 use document_domain::{
     Action, DocumentId, PolicyGrant, PolicyMode, PolicySubject, PolicySubjectKind, PrincipalRef,
     ResourceRef, evaluate_policy,
@@ -8,7 +8,19 @@ use document_domain::{
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
+use crate::PostgresDocumentRepository;
 use crate::error::map_statement_error;
+
+impl DocumentAccessCheckRepository for PostgresDocumentRepository {
+    async fn check_document_access(
+        &self,
+        ctx: &VerifiedActorContext,
+        document_id: DocumentId,
+        required: &[Action],
+    ) -> Result<(), RepositoryError> {
+        authorize_document_snapshot(&self.pool, ctx, document_id, required).await
+    }
+}
 
 pub(crate) fn verified_subjects_json(ctx: &VerifiedActorContext) -> serde_json::Value {
     serde_json::Value::Array(

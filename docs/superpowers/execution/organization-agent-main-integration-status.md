@@ -1,5 +1,20 @@
 # Organization合成Agent — main統合候補
 
+## 2026-10-04 17:27 UTC — Search統合済みmainとの再統合
+
+- mainは[PR61](https://github.com/AIrisu-072/knowledge-platform/pull/61)の統合により `f9d6f5ff778c95eaeed0ce9d0f714f80798ff4af` へ進んだ。PR62の公開head `c43039676dacad866462263986a95b35ed42550d` を第一parentに保持し、この新mainを追加parentにする
+- Agent変更とSearch/main変更の製品pathは重ならない。Agent側は受入 `48ae1bfd`、Search側は新mainのblobをそのまま採用する。製品コードの手修正は無い。競合はactive.mdの先頭追記のみ、両履歴を残す
+- Document migration9/10とOutbox11、Search側の旧Search9 STOP、分割OpenAPI、依存lock・workflowを新mainのまま保持する。ここでmigrationの変換、旧checksum書換、新認可や外部接続を追加しない
+- 旧PR62 headの[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37219658627)・[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37219658639)・[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37219658670)と実DB/transaction/2名Agent判断提出/private/両HTTP server再起動/persistence/shutdown/cleanupは成功済み。新しい組合せの成功とは扱わない。既存のOrganization受入とSearch合成DB履歴を含む通常CIを新exact headで再確認する
+- 最終事務completeは別branchであり、この候補に含まない。実サーバーへの反映は所有者による手動作業。main mergeは親が直列管理する
+
+2026-10-04 17:33 UTC、組合せの対象5packageを生成物から再構築し、純粋74件PASS・実DB1件compile済み/ignored、strict Clippy PASS。対新mainの差分検査と製品blob和集合の照合、限定独立レビューもGO。新しい組合せのhosted受入は未取得。
+
+次のexact action: PR62をfast-forward更新し、新exact headの全CIを終端まで確認する。以下は旧main基点での履歴。
+
+---
+
+
 2026-10-04 17:08 UTC。状態: **候補準備、統合headのCIは未取得**。
 
 ## 受入済み基点

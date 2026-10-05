@@ -1,0 +1,22 @@
+# 仕事の手渡し: p1-review-wire
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Independent P1-I01 pure wire coverage profile budget validation
+
+## 入力
+- `p1-wire-code` (docs/superpowers/programs/search-platform-completion/p1-wire-code.md) — p1-wire-code [`p1-impl-wire` が作る (済み)]
+- `p1-contract` (docs/superpowers/programs/search-platform-completion/p1-extraction-freeze.md) — extraction contract [`p1-freeze` が作る (済み)]
+- `p1-plan` (docs/superpowers/programs/search-platform-completion/p1-extraction-plan.md) — extraction plan [`p1-freeze` が作る (済み)]
+
+## 出すもの
+- `p1-wire-review` (docs/superpowers/programs/search-platform-completion/p1-wire-code-review.md) — Independent P1-I01 pure wire coverage profile budget validation
+
+## 受入条件
+Independent P1-I01 pure wire coverage profile budget validation; exact frozen plan named real REDGREEN and independent gate; no production READY before P3 selection dual encoder
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p1-wire-code-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

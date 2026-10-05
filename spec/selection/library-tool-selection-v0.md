@@ -101,6 +101,7 @@ React / UI Primitive / Motion
 | Async runtime | Tokio 1.x | **SELECTED** | MIT | Rust async runtime |
 | HTTP API | axum 0.8.x | **SELECTED** | MIT | Rust HTTP API |
 | HTTP middleware | tower-http 0.7.x | **SELECTED** | MIT | CORS/trace/compression等、必要featureのみ |
+| Search Remote Source HTTP client | `reqwest = "=0.13.5"` (`default-features = false`, `rustls`, `gzip`) | **SELECTED** | MIT OR Apache-2.0 | P4-15の実TCP・TLS・SSRF・制限PoCと依存gateを通過。P4-16の`search-source-http` adapterに限って昇格可 |
 | DB access | SQLx 0.9.x | **SELECTED** | MIT OR Apache-2.0 | PostgreSQL access / migrations |
 | Serialization | serde / serde_json | **SELECTED** | MIT OR Apache-2.0 | transport / persisted JSON |
 | Typed errors | thiserror 2.x | **SELECTED** | MIT OR Apache-2.0 | Domain/Application error型 |
@@ -124,6 +125,11 @@ migrate
 `uuid` / date-time / json等はDomain modelが必要とするものだけ追加する。
 
 DB migrationはSQLx migrationsを第一候補とし、別migration frameworkを初期導入しない。
+
+### Search Remote Source HTTP client (P4-15)
+
+選定証拠は [隔離PoCの計測報告](../../experiments/search-http-client-poc/report.md)。
+`reqwest 0.13.5` の公式 [ClientBuilder API](https://docs.rs/reqwest/0.13.5/reqwest/struct.ClientBuilder.html) と [retry::never](https://docs.rs/reqwest/0.13.5/reqwest/retry/fn.never.html) を確認した。固定HTTPS endpoint、全A/AAAA検査後の接続先pin、元hostnameのTLS検証、ambient proxy・redirectの遮断、decoded byteとdeadlineの上限をlocal TCPで検証し、自動retry禁止設定と切断時の1回送信を確認した。PoCの`cargo deny`はadvisories/licenses/sourcesがPASS（`syn`二重versionのwarningのみ）。本番adapterの接続・権限・retention・service E2E受入はP4-16/17で別途行う。root Cargoへの依存追加はこの選定記録だけでは実施しない。
 
 ## 3.2 REJECTED / DEFERRED
 
@@ -562,13 +568,14 @@ Design Tokens
 |---|---|---|---|---|
 | Lexical index/search | Tantivy 0.26.x | **SELECTED** | MIT | in-process BM25/search |
 | Japanese tokenizer | Lindera + lindera-tantivy | **POC REQUIRED** | MIT | Japanese corpus評価 |
-| Vector retrieval | - | **DEFERRED** | - | evaluation後 |
+| Vector retrieval | - | **DEFERRED / POC AFTER BASELINE** | - | Resource/Need type別に必要性を評価。ANN missはabsence evidenceにしない |
 | Embedding model/runtime | - | **DEFERRED** | - | evaluation後 |
-| Reranker | - | **DEFERRED** | - | candidate recall評価後 |
-| Graph retrieval | - | **DEFERRED** | - | concrete use case後 |
-| Fusion | library/custom thin algorithm | **DEFERRED** | - | retrieval evaluationで決定 |
+| Reranker | - | **DEFERRED** | - | candidate recall / qualification後の小候補集合で評価 |
+| Graph retrieval contract | Typed HyperEdge / n-ary relation | **REQUIRED** | project contract | Search / Discovery v0のfirst-class projection/retriever contract |
+| Graph backend | PostgreSQL / Rust adjacency / dedicated graph DB 等 | **POC REQUIRED** | varies | backend製品はbenchmark後に選定 |
+| Fusion | rank-based strategy候補（RRF等） | **DEFERRED / POC REQUIRED** | varies | raw score直接加算を避け、retrieval evaluationで決定 |
 
-Searchの初期PoCはまずlexical retrievalを基準線とし、vector等を先に必須化しない。
+Search / Discovery v0の初期実装はlexical / structuredを基準線としつつ、Graph contractは最初から保持する。Vector / Reranker / dedicated Graph backendを先に必須化しない。
 
 ---
 
@@ -1231,3 +1238,45 @@ Task 1 acceptance evidence:
 - cargo-deny advisories / bans / licenses / sources: PASS with no policy exception.
 
 Production support is Linux-first. macOS remains a semantic/parser portability target and is not selected as the v0 production sandbox substrate.
+
+
+## 13.2 Search / Discovery v0 backend selection boundary
+
+承認済みSearch / Discovery Platform v0では以下をDomain Contractとして先に固定する。
+
+- DiscoverableSource / typed DiscoverableResource
+- Assertion / Authority / Logical Identity
+- DiscoveryLens / Projection generation
+- Typed Predicate IR
+- Typed N-ary Relation / HyperEdge
+- GraphTraversalPlan / HyperGraphRetriever trait boundary
+- Evidence Requirement / Sufficiency
+- Session Binding
+
+以下はPoC evidenceなしにproductionへpromoteしない。
+
+- Japanese tokenizer
+- Vector engine / ANN
+- Embedding runtime/model
+- dedicated Graph backend
+- Reranker
+- Fusion implementation/library
+
+Graph backendをDEFERREDとすることはGraph semantics / Graph retrieval contractをDEFERREDにする意味ではない。
+
+## 13.3 Search / Discovery Phase B PoC receipt (2026-09-29)
+
+Evidence: `docs/superpowers/execution/search-discovery-platform-v0-poc-report.md` and the isolated `experiments/search-discovery-poc/qualification-report.json`. PoC `verify` checks six fixture SHA-256 hashes, locked candidate versions, fusion target IDs against lexical query relevance truth, hard eligibility and stable quality values; the full PoC gate also exercises PostgreSQL parity and the typed path used by the graph-only relevance case. No PoC dependency has been added to a production crate.
+
+| Item | Current decision after PoC | Evidence boundary |
+|---|---|---|
+| Tantivy 0.26.2 with local `lru = "=0.18.2"` patch | **SELECTED for the production lexical adapter; integration gate pending** | Default tokenizer recovered all 11 mandatory exact/alias synthetic cases; two diagnostic compound cases remain uncovered. The unpatched release resolved vulnerable `lru 0.16.4`. The reviewed local copy is the published 0.26.2 crate with one retained-source manifest change to fixed `lru 0.18.2`; its PoC lockfile has no `RUSTSEC-2026-0253` exception. The requester approved production adoption on 2026-09-29. Production `Cargo.lock`, source-local adapter tests, dependency/license/security checks and exact-head hosted gates still need to pass when Phase C starts. No full-text/body extraction is implied. |
+| Lindera 6.2.0 IPADIC / lindera-tantivy | **POC REQUIRED unchanged** | Standalone pretokenization recovered 12/13 versus default 11/13; `lindera-tantivy` 4.0.0 targets Tantivy 0.25.x, and downloaded dictionary asset rights/packaging are not cleared. No production promotion. |
+| Typed HyperEdge reference | **REQUIRED contract, in-process implementation qualified for Phase C** | False composite, role swap, namespace, bounded high-degree traversal and PostgreSQL parity passed. The Phase C in-process adapter is rebuildable; this is not a durable backend selection. |
+| Durable Graph backend | **POC REQUIRED unchanged** | PostgreSQL incidence feasibility was measured to 1,024 synthetic relations; recovery/readiness/concurrency/production scale remain unmeasured. |
+| Rank fusion | **SELECTED initial policy: routed retriever-order priority concatenation; S1 decided** | The requester selected the conservative initial policy on 2026-09-29 after reviewing the eight-case Phase B evidence. Apply hard eligibility before ranking; concatenate the routed retriever lists in route order, preserve each list's rank and trace, and deduplicate logical candidates without adding raw scores. This retains a graph-only hit but ranks the target third in the rescue case. Priority concat has MRR `0.9167` and Recall@10 `1.0` on eight hand-built cases; these are sensitivity probes, not end-to-end production quality evidence. RRF `k=20` improves one case and regresses another, so RRF, its `k`, and any external fusion library remain unselected. The strategy must remain exchangeable behind `FusionStrategy`. |
+| Vector / Embedding / Reranker | **DEFERRED unchanged** | The PoC did not establish a need or select a candidate. |
+
+A [Tantivy dependency patch](../../docs/superpowers/execution/search-discovery-platform-v0-tantivy-patch.md) pins the published 0.26.2 source with only its `lru` requirement changed to fixed `0.18.2`. Local PoC tests, cargo-deny and OSV Scanner passed without the former advisory exception. Independent review found no blocking code or provenance issue, and exact-head hosted results are recorded in the Search execution status. The requester selected this reviewed patch for the production lexical adapter. This decision clears the dependency **selection** gate; it does not claim that a production crate, root Cargo patch or production lockfile is already present. At Phase C C3, add the root patch and `search-tantivy` dependency together, confirm `lru 0.18.2` in the production lock graph, and repeat license/security and lexical-contract checks on the exact adapter head. Keep the vendor provenance and remove the local patch only after a fixed published release passes the same qualification.
+
+The requester chose the additional Phase B evaluation, and the evidence above is now recorded. On 2026-09-29 the requester selected routed retriever-order priority concat as the **initial** production fusion policy, with hard applicability before ranking. It retains the graph-only hit but ranks the target third in the rescue case. RRF improves that case and worsens another; these constructed inputs do not establish a production quality gain or justify `k=20`. Tantivy default for the initial lexical adapter and rebuildable in-process HyperEdge reference remain limited functional candidates. The patched Tantivy production dependency is selected. S1 and the dependency selection gate are now resolved for Phase C entry; the adapter's implementation, root dependency checks, independent review and exact-head hosted gates remain ahead. Recheck upstream publication at C3 rather than setting an unsupported wait duration.

@@ -1,0 +1,215 @@
+{
+  "schema_version": 1,
+  "status": "限定静的検査は成功。新しい公開headの全履歴検査は未確認。",
+  "repository": "AIrisu-072/knowledge-platform",
+  "base_head": "0ecf486719e3c9d71242e289a7564ad6d1032b3c",
+  "scope": "所有者が既に承認した同一4fingerprintを、Search branchの既存31項目に追加するだけ。新しいSearch指紋や広い除外は含めない。",
+  "old_ignore_sha256": "8e65604cebb17b7b512a9c88993707360316495e89b9ebc52545dc0796adde22",
+  "new_ignore_sha256": "36ee2472cd52625349a6db8f631a10806a5fa898e6ebd801ab13233d144fddab",
+  "old_entries": 31,
+  "new_entries": 35,
+  "old_4722_bytes_unchanged": true,
+  "approved_fingerprints": [
+    "0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json:generic-api-key:10",
+    "0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json:generic-api-key:21",
+    "0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json:generic-api-key:32",
+    "0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/inventory/inactive_or_other_target-007.json:generic-api-key:1"
+  ],
+  "classification": {
+    "runtime_terms_lines_10_21_32": "Microsoft公式WebView2ライセンス文書レスポンスのSHA-256値。",
+    "inventory_line_1_two_findings": "公開WinAPI依存アーカイブ2件に含まれるGNU形式のインポートライブラリ lib/libwinapi_oemlicense.a のメンバーSHA-256。ライセンス本文の値ではない。"
+  },
+  "ci_observation": {
+    "run_id": 37134510769,
+    "security_job_id": 111236185715,
+    "head": "0ecf486719e3c9d71242e289a7564ad6d1032b3c",
+    "scan_commits": 912,
+    "findings": 5,
+    "finding_metadata_available": false,
+    "artifact_count": 0,
+    "checkout_fetch_depth": 0,
+    "checkout_scope": "全公開branchとtag、およびpull/40/mergeを取得。",
+    "scanner_command": "gitleaks git --redact --exit-code 1",
+    "default_git_log": "git log -p -U0 --full-history --all --diff-filter=tuxdb"
+  },
+  "scanner": {
+    "version": "8.30.1",
+    "binary_sha256": "88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509",
+    "official_archive_sha256": "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb",
+    "source_default_url": "https://github.com/gitleaks/gitleaks/blob/v8.30.1/sources/git.go#L93-L94",
+    "config_sha256": "5e23d84fcd126b17b5c7ea900bd6e021eb08a792d4cd8baa6b3bb696c432d5e0",
+    "config_unchanged": true,
+    "mise_and_selftest_source_unchanged": true
+  },
+  "search_before": {
+    "scope": "公開済みSearch最新1commit差分のみ",
+    "head": "0ecf486719e3c9d71242e289a7564ad6d1032b3c",
+    "parent": "da5e7155db616c1df9a688a7043fc3b4730bb1a3",
+    "tree": "72f1f578c46ff605cc96f22508f54623118d1928",
+    "changed_files": 53,
+    "version": "8.30.1",
+    "binary_sha256": "88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509",
+    "returncode": 0,
+    "complete": true,
+    "findings_metadata": [],
+    "full_ci_912_history_reproduced": false,
+    "private_refs_scanned": false,
+    "new_exception_or_source_change": false
+  },
+  "known_tauri_before": {
+    "scope": "既知公開Tauri対象の1commit差分のみ",
+    "head": "0802fe6de30c9491c0fe459c57b2c56641f027d9",
+    "parent": "629822a49657bf447da9061c568dc72558265ce7",
+    "scanner_version": "8.30.1",
+    "returncode": 1,
+    "complete": true,
+    "findings": 5,
+    "findings_metadata": [
+      {
+        "Fingerprint": "0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json:generic-api-key:10",
+        "RuleID": "generic-api-key",
+        "Commit": "0802fe6de30c9491c0fe459c57b2c56641f027d9",
+        "File": "docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json",
+        "StartLine": 10,
+        "EndLine": 10
+      },
+      {
+        "Fingerprint": "0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json:generic-api-key:21",
+        "RuleID": "generic-api-key",
+        "Commit": "0802fe6de30c9491c0fe459c57b2c56641f027d9",
+        "File": "docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json",
+        "StartLine": 21,
+        "EndLine": 21
+      },
+      {
+        "Fingerprint": "0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json:generic-api-key:32",
+        "RuleID": "generic-api-key",
+        "Commit": "0802fe6de30c9491c0fe459c57b2c56641f027d9",
+        "File": "docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json",
+        "StartLine": 32,
+        "EndLine": 32
+      },
+      {
+        "Fingerprint": "0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/inventory/inactive_or_other_target-007.json:generic-api-key:1",
+        "RuleID": "generic-api-key",
+        "Commit": "0802fe6de30c9491c0fe459c57b2c56641f027d9",
+        "File": "docs/research/organization-tauri-windows-inventory/inventory/inactive_or_other_target-007.json",
+        "StartLine": 1,
+        "EndLine": 1
+      },
+      {
+        "Fingerprint": "0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/inventory/inactive_or_other_target-007.json:generic-api-key:1",
+        "RuleID": "generic-api-key",
+        "Commit": "0802fe6de30c9491c0fe459c57b2c56641f027d9",
+        "File": "docs/research/organization-tauri-windows-inventory/inventory/inactive_or_other_target-007.json",
+        "StartLine": 1,
+        "EndLine": 1
+      }
+    ],
+    "exact_approved_fingerprint_set": true,
+    "search_current_configuration_bytes_equal": true,
+    "full_ci_912_history_reproduced": false,
+    "private_refs_scanned": false,
+    "exception_policy_changed": false
+  },
+  "after_and_reversal": [
+    {
+      "name": "tauri-after",
+      "parent": "629822a49657bf447da9061c568dc72558265ce7",
+      "head": "0802fe6de30c9491c0fe459c57b2c56641f027d9",
+      "exit": 0,
+      "ignore_sha256": "36ee2472cd52625349a6db8f631a10806a5fa898e6ebd801ab13233d144fddab",
+      "findings_metadata": []
+    },
+    {
+      "name": "tauri-reversal",
+      "parent": "629822a49657bf447da9061c568dc72558265ce7",
+      "head": "0802fe6de30c9491c0fe459c57b2c56641f027d9",
+      "exit": 1,
+      "ignore_sha256": "8e65604cebb17b7b512a9c88993707360316495e89b9ebc52545dc0796adde22",
+      "findings_metadata": [
+        {
+          "Fingerprint": "0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json:generic-api-key:10",
+          "RuleID": "generic-api-key",
+          "Commit": "0802fe6de30c9491c0fe459c57b2c56641f027d9",
+          "File": "docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json",
+          "StartLine": 10,
+          "EndLine": 10
+        },
+        {
+          "Fingerprint": "0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json:generic-api-key:21",
+          "RuleID": "generic-api-key",
+          "Commit": "0802fe6de30c9491c0fe459c57b2c56641f027d9",
+          "File": "docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json",
+          "StartLine": 21,
+          "EndLine": 21
+        },
+        {
+          "Fingerprint": "0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json:generic-api-key:32",
+          "RuleID": "generic-api-key",
+          "Commit": "0802fe6de30c9491c0fe459c57b2c56641f027d9",
+          "File": "docs/research/organization-tauri-windows-inventory/runtime-terms-receipt.json",
+          "StartLine": 32,
+          "EndLine": 32
+        },
+        {
+          "Fingerprint": "0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/inventory/inactive_or_other_target-007.json:generic-api-key:1",
+          "RuleID": "generic-api-key",
+          "Commit": "0802fe6de30c9491c0fe459c57b2c56641f027d9",
+          "File": "docs/research/organization-tauri-windows-inventory/inventory/inactive_or_other_target-007.json",
+          "StartLine": 1,
+          "EndLine": 1
+        },
+        {
+          "Fingerprint": "0802fe6de30c9491c0fe459c57b2c56641f027d9:docs/research/organization-tauri-windows-inventory/inventory/inactive_or_other_target-007.json:generic-api-key:1",
+          "RuleID": "generic-api-key",
+          "Commit": "0802fe6de30c9491c0fe459c57b2c56641f027d9",
+          "File": "docs/research/organization-tauri-windows-inventory/inventory/inactive_or_other_target-007.json",
+          "StartLine": 1,
+          "EndLine": 1
+        }
+      ]
+    },
+    {
+      "name": "search-after",
+      "parent": "da5e7155db616c1df9a688a7043fc3b4730bb1a3",
+      "head": "0ecf486719e3c9d71242e289a7564ad6d1032b3c",
+      "exit": 0,
+      "ignore_sha256": "36ee2472cd52625349a6db8f631a10806a5fa898e6ebd801ab13233d144fddab",
+      "findings_metadata": []
+    }
+  ],
+  "selftest": {
+    "source_sha256": "1853067779ce7d4b5be5f970e88349a3b411273d15fe66dfe7c43f318d9ce7b3",
+    "script_exit": 0,
+    "expected_detector_exit": 42,
+    "expected_probe_count": 1,
+    "new_probe_added": false
+  },
+  "execution_boundary": {
+    "git_transport_disabled": true,
+    "git_lazy_fetch_disabled": true,
+    "view_remote_count": 0,
+    "ref_scope": "既に取得済みの公開refと明示した1commit範囲だけ。",
+    "shared_object_store_note": "object storeはalternatesで参照する。公開objectだけを物理分離した、という主張ではない。private refsは取り込まず、対象commit範囲を限定した。",
+    "network_note": "Gitのprotocol.allow=neverとGIT_NO_LAZY_FETCH=1を設定した。OS全体のネットワーク遮断やセキュリティ設定変更を行ったという意味ではない。",
+    "outer_process_timeout_seconds": 75,
+    "full_ci_912_history_reproduced": false,
+    "g07_runtime_or_g08_executed": false,
+    "git_scan_timeout_seconds": 60,
+    "unchanged_selftest_timeout_note": "元self-testにはscannerの60秒指定がない。元ソースは変更せず、外側process上限75秒だけを適用した。"
+  },
+  "evidence_hashes": {
+    "search-public-delta-gitleaks-3_78qg1s/receipt.json": "f26ecf8a5c0f3690ee4a121289317d09004490c4bc3f141c5953709ace2a65c9",
+    "search-public-delta-gitleaks-3_78qg1s/known-tauri-receipt.json": "22e52afe0593296abf690918cb15c4e767de13f501f1e8bbda2e20667521582c",
+    "search-checksum-sync-apb91jf3/receipt.json": "553bbd96a65d3f5311a99b4fbbc43ce435763f5f0758b96c51bd51f4ad4941e1",
+    "search-checksum-sync-apb91jf3/unchanged-self-test.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "search-checksum-sync-apb91jf3/unchanged-self-test.stderr.log": "6e70d881ef8b6e7ca9b972cc792d5b82cd7ed15695be0920fb302a16dab0ef78"
+  },
+  "limits": [
+    "CIの元5件のmetadataは取得できず、912commit全履歴の同一集合を直接再現したものではない。",
+    "現在のSearch公開差分0件と、同一設定下の既知Tauri差分5件→0件→5件だけを確認した。",
+    "新headのhosted全履歴PASSまで、security解消やSearch全体の合格を断定しない。",
+    "Runtime EULAへの同意、G07/G08の再開、マージ、デプロイを許可するものではない。"
+  ]
+}

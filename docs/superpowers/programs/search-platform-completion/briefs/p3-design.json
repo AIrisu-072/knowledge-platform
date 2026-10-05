@@ -1,0 +1,19 @@
+# 仕事の手渡し: p3-design
+
+- 種類: spike / 役: DomainDesigner / 大きさ: M / 危険度: high / 隔離: none
+
+## やること
+Inspect and design graph with evidence and explicit extension contracts
+
+## 入力
+- `p0-closure` (docs/superpowers/execution/search-discovery-platform-v0-acceptance.md) — live exact head qualification [`p0-close` が作る (済み)]
+- `baseline` (docs/superpowers/specs/2026-09-28-search-discovery-platform-v0-design.md) — existing approved Search semantics [既に在る]
+
+## 出すもの
+- `p3-draft` (docs/superpowers/programs/search-platform-completion/p3-graph-design.md) — graph draft
+
+## 受入条件
+Design enumerates repository contracts, options, security, qualification and scoped implementation artifacts
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p3-graph-design.md` だけ。他は触らない。

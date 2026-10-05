@@ -145,6 +145,39 @@ impl Config {
                             ],
                         },
                     ),
+                    (
+                        "search_core".into(),
+                        BoundaryRule {
+                            crate_path: "crates/search-core".into(),
+                            forbidden_dependencies: vec![
+                                "sqlx".into(),
+                                "axum".into(),
+                                "tokio".into(),
+                                "tantivy".into(),
+                            ],
+                            forbidden_source_patterns: vec![
+                                "std::fs".into(),
+                                "std::path".into(),
+                                "tokio::fs".into(),
+                            ],
+                        },
+                    ),
+                    (
+                        "search_application".into(),
+                        BoundaryRule {
+                            crate_path: "crates/search-application".into(),
+                            forbidden_dependencies: vec![
+                                "sqlx".into(),
+                                "axum".into(),
+                                "tantivy".into(),
+                            ],
+                            forbidden_source_patterns: vec![
+                                "std::fs".into(),
+                                "std::path".into(),
+                                "tokio::fs".into(),
+                            ],
+                        },
+                    ),
                 ]),
             },
         }

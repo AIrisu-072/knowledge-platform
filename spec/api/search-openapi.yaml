@@ -1,0 +1,1465 @@
+openapi: 3.2.1
+info:
+  title: Knowledge Platform API
+  version: 0.0.0
+  description: P5 Search/Discovery v0 normative wire contract. Runtime and production qualification are separate.
+servers:
+- url: http://localhost
+  description: Local bootstrap placeholder; no production endpoint is defined.
+tags:
+- name: Search
+  description: Four actor-scoped Search and Discovery operations.
+paths:
+  /v1/search:
+    post:
+      tags:
+      - Search
+      operationId: search
+      summary: Search currently visible Resources
+      description: One server-verified actor and complete Document/Remote visible catalog. No private actor or hidden
+        Source fields.
+      security:
+      - SearchBearer: []
+      responses:
+        '200':
+          $ref: '#/components/responses/SearchPage200'
+        '400':
+          $ref: '#/components/responses/Problem400'
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '403':
+          $ref: '#/components/responses/Problem403'
+        '409':
+          $ref: '#/components/responses/Problem409'
+        '413':
+          $ref: '#/components/responses/Problem413'
+        '415':
+          $ref: '#/components/responses/Problem415'
+        '422':
+          $ref: '#/components/responses/Problem422'
+        '429':
+          $ref: '#/components/responses/Problem429'
+        '431':
+          $ref: '#/components/responses/Problem431'
+        '503':
+          $ref: '#/components/responses/Problem503'
+        '504':
+          $ref: '#/components/responses/Problem504'
+      requestBody:
+        required: true
+        description: JSON hard limit 16 KiB; unknown fields rejected.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchQuery'
+        x-max-body-bytes: 16384
+  /v1/discover:
+    post:
+      tags:
+      - Search
+      operationId: discover
+      summary: Evaluate a Need against visible Sources
+      description: One server-verified actor and complete Document/Remote visible catalog. No private actor or hidden
+        Source fields.
+      security:
+      - SearchBearer: []
+      responses:
+        '200':
+          $ref: '#/components/responses/DiscoveryEvaluation200'
+        '400':
+          $ref: '#/components/responses/Problem400'
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '403':
+          $ref: '#/components/responses/Problem403'
+        '413':
+          $ref: '#/components/responses/Problem413'
+        '415':
+          $ref: '#/components/responses/Problem415'
+        '422':
+          $ref: '#/components/responses/Problem422'
+        '429':
+          $ref: '#/components/responses/Problem429'
+        '431':
+          $ref: '#/components/responses/Problem431'
+        '503':
+          $ref: '#/components/responses/Problem503'
+        '504':
+          $ref: '#/components/responses/Problem504'
+      requestBody:
+        required: true
+        description: JSON hard limit 16 KiB; unknown fields rejected.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiscoveryInput'
+        x-max-body-bytes: 16384
+  /v1/resources/{resourceId}:
+    get:
+      tags:
+      - Search
+      operationId: getResource
+      summary: Read one current visible durable Resource
+      description: One server-verified actor and complete Document/Remote visible catalog. No private actor or hidden
+        Source fields.
+      security:
+      - SearchBearer: []
+      responses:
+        '200':
+          $ref: '#/components/responses/ResourceDetail200'
+        '400':
+          $ref: '#/components/responses/Problem400'
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '403':
+          $ref: '#/components/responses/Problem403'
+        '404':
+          $ref: '#/components/responses/Problem404'
+        '422':
+          $ref: '#/components/responses/Problem422'
+        '429':
+          $ref: '#/components/responses/Problem429'
+        '431':
+          $ref: '#/components/responses/Problem431'
+        '503':
+          $ref: '#/components/responses/Problem503'
+        '504':
+          $ref: '#/components/responses/Problem504'
+      parameters:
+      - $ref: '#/components/parameters/ResourceId'
+  /v1/sources:
+    get:
+      tags:
+      - Search
+      operationId: listSources
+      summary: List currently visible Source capabilities
+      description: One server-verified actor and complete Document/Remote visible catalog. No private actor or hidden
+        Source fields.
+      security:
+      - SearchBearer: []
+      responses:
+        '200':
+          $ref: '#/components/responses/SourcePage200'
+        '400':
+          $ref: '#/components/responses/Problem400'
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '403':
+          $ref: '#/components/responses/Problem403'
+        '409':
+          $ref: '#/components/responses/Problem409'
+        '422':
+          $ref: '#/components/responses/Problem422'
+        '429':
+          $ref: '#/components/responses/Problem429'
+        '431':
+          $ref: '#/components/responses/Problem431'
+        '503':
+          $ref: '#/components/responses/Problem503'
+        '504':
+          $ref: '#/components/responses/Problem504'
+      parameters:
+      - $ref: '#/components/parameters/PageSize'
+      - $ref: '#/components/parameters/Cursor'
+components:
+  securitySchemes:
+    SearchBearer:
+      type: http
+      scheme: bearer
+      description: 'Authorization: Bearer <opaque token>. Server verifier resolves trusted session; 401 challenge
+        is Bearer realm="search".'
+  parameters:
+    ResourceId:
+      name: resourceId
+      in: path
+      required: true
+      description: Canonical platform ResourceId, never a provider locator.
+      schema:
+        $ref: '#/components/schemas/CanonicalId'
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/PageSize'
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque RAM handle; redact from access logs.
+      schema:
+        $ref: '#/components/schemas/Cursor'
+  headers:
+    PrivateNoStore:
+      description: Required on every Search success and Problem.
+      schema:
+        type: string
+        const: private, no-store
+    NoSniff:
+      description: Required on every Search success and Problem.
+      schema:
+        type: string
+        const: nosniff
+    BearerChallenge:
+      description: Required on every 401, including preparse authentication failure.
+      schema:
+        type: string
+        const: Bearer realm="search"
+    RetryAfter:
+      description: Optional only if a public retry policy safely determines a delay.
+      schema:
+        type: string
+  responses:
+    SearchPage200:
+      description: Safe, current, bounded response after final disclosure gate.
+      headers:
+        Cache-Control: &id001
+          $ref: '#/components/headers/PrivateNoStore'
+        X-Content-Type-Options: &id002
+          $ref: '#/components/headers/NoSniff'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SearchPage'
+      x-required-response-headers:
+      - Cache-Control
+      - X-Content-Type-Options
+    DiscoveryEvaluation200:
+      description: Safe, current, bounded response after final disclosure gate.
+      headers:
+        Cache-Control: *id001
+        X-Content-Type-Options: *id002
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DiscoveryEvaluation'
+      x-required-response-headers:
+      - Cache-Control
+      - X-Content-Type-Options
+    ResourceDetail200:
+      description: Safe, current, bounded response after final disclosure gate.
+      headers:
+        Cache-Control: *id001
+        X-Content-Type-Options: *id002
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResourceDetail'
+      x-required-response-headers:
+      - Cache-Control
+      - X-Content-Type-Options
+    SourcePage200:
+      description: Safe, current, bounded response after final disclosure gate.
+      headers:
+        Cache-Control: *id001
+        X-Content-Type-Options: *id002
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SourcePage'
+      x-required-response-headers:
+      - Cache-Control
+      - X-Content-Type-Options
+    Problem400:
+      description: MALFORMED_REQUEST. Fixed title/detail in Search registry.
+      headers:
+        Cache-Control: *id001
+        X-Content-Type-Options: *id002
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                status:
+                  const: 400
+                code:
+                  type: string
+                  enum:
+                  - MALFORMED_REQUEST
+      x-required-response-headers:
+      - Cache-Control
+      - X-Content-Type-Options
+    Problem401:
+      description: AUTHENTICATION_REQUIRED. Fixed title/detail in Search registry.
+      headers:
+        Cache-Control: *id001
+        X-Content-Type-Options: *id002
+        WWW-Authenticate:
+          $ref: '#/components/headers/BearerChallenge'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                status:
+                  const: 401
+                code:
+                  type: string
+                  enum:
+                  - AUTHENTICATION_REQUIRED
+      x-required-response-headers:
+      - Cache-Control
+      - X-Content-Type-Options
+      - WWW-Authenticate
+    Problem403:
+      description: FORBIDDEN. Fixed title/detail in Search registry.
+      headers:
+        Cache-Control: *id001
+        X-Content-Type-Options: *id002
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                status:
+                  const: 403
+                code:
+                  type: string
+                  enum:
+                  - FORBIDDEN
+      x-required-response-headers:
+      - Cache-Control
+      - X-Content-Type-Options
+    Problem404:
+      description: RESOURCE_NOT_FOUND. Fixed title/detail in Search registry.
+      headers:
+        Cache-Control: *id001
+        X-Content-Type-Options: *id002
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                status:
+                  const: 404
+                code:
+                  type: string
+                  enum:
+                  - RESOURCE_NOT_FOUND
+      x-required-response-headers:
+      - Cache-Control
+      - X-Content-Type-Options
+    Problem409:
+      description: CURSOR_STALE. Fixed title/detail in Search registry.
+      headers:
+        Cache-Control: *id001
+        X-Content-Type-Options: *id002
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                status:
+                  const: 409
+                code:
+                  type: string
+                  enum:
+                  - CURSOR_STALE
+      x-required-response-headers:
+      - Cache-Control
+      - X-Content-Type-Options
+    Problem413:
+      description: PAYLOAD_TOO_LARGE. Fixed title/detail in Search registry.
+      headers:
+        Cache-Control: *id001
+        X-Content-Type-Options: *id002
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                status:
+                  const: 413
+                code:
+                  type: string
+                  enum:
+                  - PAYLOAD_TOO_LARGE
+      x-required-response-headers:
+      - Cache-Control
+      - X-Content-Type-Options
+    Problem415:
+      description: UNSUPPORTED_MEDIA_TYPE. Fixed title/detail in Search registry.
+      headers:
+        Cache-Control: *id001
+        X-Content-Type-Options: *id002
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                status:
+                  const: 415
+                code:
+                  type: string
+                  enum:
+                  - UNSUPPORTED_MEDIA_TYPE
+      x-required-response-headers:
+      - Cache-Control
+      - X-Content-Type-Options
+    Problem422:
+      description: VALIDATION_FAILED. Fixed title/detail in Search registry.
+      headers:
+        Cache-Control: *id001
+        X-Content-Type-Options: *id002
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                status:
+                  const: 422
+                code:
+                  type: string
+                  enum:
+                  - VALIDATION_FAILED
+      x-required-response-headers:
+      - Cache-Control
+      - X-Content-Type-Options
+    Problem429:
+      description: RATE_LIMITED. Fixed title/detail in Search registry.
+      headers:
+        Cache-Control: *id001
+        X-Content-Type-Options: *id002
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                status:
+                  const: 429
+                code:
+                  type: string
+                  enum:
+                  - RATE_LIMITED
+      x-required-response-headers:
+      - Cache-Control
+      - X-Content-Type-Options
+    Problem431:
+      description: REQUEST_HEADERS_TOO_LARGE. Fixed title/detail in Search registry.
+      headers:
+        Cache-Control: *id001
+        X-Content-Type-Options: *id002
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                status:
+                  const: 431
+                code:
+                  type: string
+                  enum:
+                  - REQUEST_HEADERS_TOO_LARGE
+      x-required-response-headers:
+      - Cache-Control
+      - X-Content-Type-Options
+    Problem503:
+      description: IDENTITY_UNAVAILABLE / DEPENDENCY_UNAVAILABLE / SERVICE_UNAVAILABLE. Fixed title/detail in Search
+        registry.
+      headers:
+        Cache-Control: *id001
+        X-Content-Type-Options: *id002
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                status:
+                  const: 503
+                code:
+                  type: string
+                  enum:
+                  - IDENTITY_UNAVAILABLE
+                  - DEPENDENCY_UNAVAILABLE
+                  - SERVICE_UNAVAILABLE
+      x-required-response-headers:
+      - Cache-Control
+      - X-Content-Type-Options
+    Problem504:
+      description: UPSTREAM_TIMEOUT. Fixed title/detail in Search registry.
+      headers:
+        Cache-Control: *id001
+        X-Content-Type-Options: *id002
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                status:
+                  const: 504
+                code:
+                  type: string
+                  enum:
+                  - UPSTREAM_TIMEOUT
+      x-required-response-headers:
+      - Cache-Control
+      - X-Content-Type-Options
+  schemas:
+    CanonicalId:
+      type: string
+      format: uuid
+      pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+    Cursor:
+      type: string
+      format: uuid
+      pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
+      description: Opaque server-side RAM session handle. Redact it from logs.
+    PublicCode:
+      type: string
+      pattern: ^[A-Z][A-Z0-9_]{0,63}$
+      maxLength: 64
+      description: Server-registered non-data-derived code only.
+    ResourceType:
+      type: string
+      enum:
+      - knowledge
+      - document
+      - folderPlacement
+      - semantic
+      - capability
+      - agentSkill
+      - workflow
+      - policy
+    RequestCoverage:
+      type: string
+      enum:
+      - titleAndPermittedMetadata
+      - bodyRequired
+    CoverageKind:
+      type: string
+      enum:
+      - titleAndPermittedMetadata
+      - bodySearchWithPerItemCoverage
+    PageSize:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 20
+    Snippet:
+      type: object
+      additionalProperties: false
+      required:
+      - text
+      - field
+      - coverage
+      properties:
+        text:
+          type: string
+          maxLength: 320
+          x-plain-text: true
+        field:
+          type: string
+          enum:
+          - title
+          - metadata
+          - body
+        coverage:
+          type: string
+          enum:
+          - title
+          - metadata
+          - body
+      description: Only currently authorized plain text, at most 320 Unicode code points.
+    PublicProvenance:
+      type: object
+      additionalProperties: false
+      required:
+      - sourceId
+      properties:
+        sourceId:
+          $ref: '#/components/schemas/CanonicalId'
+        resourceVersionId:
+          $ref: '#/components/schemas/CanonicalId'
+      description: Authorized canonical IDs only; no native locator or Graph path.
+    SearchQuery:
+      type: object
+      additionalProperties: false
+      required:
+      - query
+      - coverage
+      properties:
+        query: &id003
+          type: string
+          minLength: 1
+          maxLength: 2048
+          pattern: \S
+          x-utf8-byte-max: 2048
+          description: Nonblank; handler enforces 2,048 UTF-8 bytes.
+        resourceTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceType'
+          minItems: 1
+          maxItems: 8
+        sourceIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/CanonicalId'
+          minItems: 1
+          maxItems: 16
+        coverage:
+          $ref: '#/components/schemas/RequestCoverage'
+        pageSize:
+          $ref: '#/components/schemas/PageSize'
+        cursor:
+          $ref: '#/components/schemas/Cursor'
+      description: Unknown fields invalid; sourceIds intersects the visible catalog only.
+    DiscoveryNeed:
+      type: object
+      additionalProperties: false
+      required:
+      - purpose
+      - requiredResourceTypes
+      - requiredClaimIds
+      properties:
+        purpose:
+          type: string
+          minLength: 1
+          maxLength: 512
+          pattern: \S
+          x-utf8-byte-max: 512
+          description: Nonblank; handler enforces 512 UTF-8 bytes.
+        requiredResourceTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceType'
+          minItems: 1
+          maxItems: 8
+        requiredClaimIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/CanonicalId'
+          minItems: 1
+          maxItems: 16
+        temporalTarget:
+          type: string
+          format: date-time
+        businessTimezone:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: IANA time-zone ID; does not grant history read.
+    DiscoveryInput:
+      type: object
+      additionalProperties: false
+      required:
+      - need
+      - coverage
+      properties:
+        need:
+          $ref: '#/components/schemas/DiscoveryNeed'
+        query: *id003
+        coverage:
+          $ref: '#/components/schemas/RequestCoverage'
+      description: No actor, tenant, selector, routing, provider URL, or access context.
+    SearchCoverage:
+      type: object
+      additionalProperties: false
+      required:
+      - sourceId
+      - kind
+      properties:
+        sourceId:
+          $ref: '#/components/schemas/CanonicalId'
+        kind:
+          $ref: '#/components/schemas/CoverageKind'
+    PublicGap:
+      type: object
+      additionalProperties: false
+      required:
+      - reasonCode
+      - blocking
+      properties:
+        reasonCode:
+          type: string
+          enum:
+          - MISSING_FACT
+          - INSUFFICIENT_EVIDENCE_CLASS
+          - AUTHORITY
+          - FRESHNESS
+          - CORROBORATION
+          - CONFLICT
+          - AVAILABILITY
+          - UNSUPPORTED_COVERAGE
+          - PAGINATION_UNAVAILABLE
+          - REQUIRED_CLAIM_UNRESOLVED
+          - REQUIRED_SOURCE_UNAVAILABLE
+          - BUDGET_EXHAUSTED
+        blocking:
+          type: boolean
+        requiredFactCode:
+          $ref: '#/components/schemas/PublicCode'
+        acceptableEvidenceCodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicCode'
+          minItems: 0
+          maxItems: 16
+      description: Only registered generic codes; never a private fact or hidden Source.
+    PublicTrace:
+      type: object
+      additionalProperties: false
+      required:
+      - stage
+      - outcomeCode
+      properties:
+        stage:
+          type: string
+          enum:
+          - routing
+          - retrieval
+          - qualification
+          - evidence
+          - disclosure
+        outcomeCode:
+          type: string
+          enum:
+          - completed
+          - bounded
+          - interrupted
+          - skipped
+          - unavailable
+        visibleSourceId:
+          $ref: '#/components/schemas/CanonicalId'
+        count:
+          type: integer
+          minimum: 0
+          maximum: 200
+      description: Only currently visible Source and count.
+    SearchItem:
+      type: object
+      additionalProperties: false
+      required:
+      - resourceId
+      - sourceId
+      - resourceType
+      - rank
+      - matchedFields
+      - provenance
+      properties:
+        resourceId:
+          $ref: '#/components/schemas/CanonicalId'
+        sourceId:
+          $ref: '#/components/schemas/CanonicalId'
+        resourceType:
+          $ref: '#/components/schemas/ResourceType'
+        resourceVersionId:
+          $ref: '#/components/schemas/CanonicalId'
+        title:
+          type: string
+          maxLength: 512
+        rank:
+          type: integer
+          minimum: 1
+          description: One-based S1 rank after the final gate; it may exceed a single page size.
+        matchedFields:
+          type: array
+          items:
+            type: string
+            enum:
+            - title
+            - metadata
+            - body
+          minItems: 0
+          maxItems: 3
+        snippet:
+          $ref: '#/components/schemas/Snippet'
+        provenance:
+          $ref: '#/components/schemas/PublicProvenance'
+    SearchPage:
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      - nextCursor
+      - partial
+      - coverage
+      - gaps
+      - traceId
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchItem'
+          minItems: 0
+          maxItems: 100
+        nextCursor: &id004
+          oneOf:
+          - $ref: '#/components/schemas/Cursor'
+          - type: 'null'
+        partial:
+          type: boolean
+        coverage:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchCoverage'
+          minItems: 0
+          maxItems: 100
+        gaps:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicGap'
+          minItems: 0
+          maxItems: 64
+        traceId:
+          $ref: '#/components/schemas/CanonicalId'
+      description: S1 PriorityConcat rank after final current gate; empty result is normal 200.
+    QualifiedResource:
+      type: object
+      additionalProperties: false
+      required:
+      - resourceId
+      - sourceId
+      - applicability
+      - matchedConditionCodes
+      - resolvedDiscriminatorCodes
+      - evidenceIds
+      properties:
+        resourceId:
+          $ref: '#/components/schemas/CanonicalId'
+        sourceId:
+          $ref: '#/components/schemas/CanonicalId'
+        usageProfileId:
+          $ref: '#/components/schemas/CanonicalId'
+        applicability:
+          type: string
+          enum:
+          - applicable
+          - excluded
+          - unresolved
+          - invalid
+        matchedConditionCodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicCode'
+          minItems: 0
+          maxItems: 64
+        resolvedDiscriminatorCodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicCode'
+          minItems: 0
+          maxItems: 64
+        evidenceIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/CanonicalId'
+          minItems: 0
+          maxItems: 64
+    Citation:
+      type: object
+      additionalProperties: false
+      required:
+      - resourceId
+      - field
+      properties:
+        resourceId:
+          $ref: '#/components/schemas/CanonicalId'
+        field:
+          type: string
+          enum:
+          - title
+          - metadata
+          - body
+      description: Authorized resource and field only; no native locator.
+    EvidenceValue:
+      oneOf:
+      - type: string
+        maxLength: 320
+      - type: number
+      - type: boolean
+      description: Only a currently authorized field value.
+    DiscoveryEvidence:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - claimId
+      - state
+      - role
+      properties:
+        id:
+          $ref: '#/components/schemas/CanonicalId'
+        claimId:
+          $ref: '#/components/schemas/CanonicalId'
+        state:
+          type: string
+          enum:
+          - supported
+          - absent
+          - unknown
+          - conflicted
+          - invalid
+        role:
+          type: string
+          enum:
+          - primary
+          - corroborating
+          - contradicting
+          - contextual
+          - derived
+        sourceId:
+          $ref: '#/components/schemas/CanonicalId'
+        resourceId:
+          $ref: '#/components/schemas/CanonicalId'
+        citation:
+          $ref: '#/components/schemas/Citation'
+        value:
+          $ref: '#/components/schemas/EvidenceValue'
+      description: Primary requires Source-owned assertion; Graph path is not Primary or citation.
+    RejectedCandidate:
+      type: object
+      additionalProperties: false
+      required:
+      - reasonCode
+      properties:
+        reasonCode:
+          $ref: '#/components/schemas/PublicCode'
+      description: Only registered reason for a currently visible candidate; no hidden ID/count.
+    DiscoveryEvaluation:
+      type: object
+      additionalProperties: false
+      required:
+      - needId
+      - discoveryEvaluationId
+      - qualifiedResources
+      - evidenceSufficiency
+      - evidence
+      - gaps
+      - rejectedCandidates
+      - evaluationCompleteness
+      - completenessReasonCodes
+      - trace
+      - traceId
+      properties:
+        needId:
+          $ref: '#/components/schemas/CanonicalId'
+        discoveryEvaluationId:
+          $ref: '#/components/schemas/CanonicalId'
+        qualifiedResources:
+          type: array
+          items:
+            $ref: '#/components/schemas/QualifiedResource'
+          minItems: 0
+          maxItems: 50
+        evidenceSufficiency:
+          type: string
+          enum:
+          - sufficient
+          - insufficient
+          - unresolved
+          - conflicted
+          - invalid
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiscoveryEvidence'
+          minItems: 0
+          maxItems: 64
+        gaps:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicGap'
+          minItems: 0
+          maxItems: 64
+        rejectedCandidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/RejectedCandidate'
+          minItems: 0
+          maxItems: 200
+        evaluationCompleteness:
+          type: string
+          enum:
+          - complete
+          - bounded
+          - interrupted
+        completenessReasonCodes:
+          type: array
+          items:
+            type: string
+            enum:
+            - BUDGET_EXHAUSTED
+            - SOURCE_INTERRUPTED
+            - REQUIRED_EVIDENCE_UNEVALUATED
+            - BODY_COVERAGE_INCOMPLETE
+          minItems: 0
+          maxItems: 4
+        trace:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicTrace'
+          minItems: 0
+          maxItems: 64
+        traceId:
+          $ref: '#/components/schemas/CanonicalId'
+      description: Required evidence unassessed or Partial body coverage is never sufficient. N-ary Graph requires
+        every participant current grant.
+    ResourceDetail:
+      type: object
+      additionalProperties: false
+      required:
+      - resourceId
+      - sourceId
+      - resourceType
+      - coverage
+      - provenance
+      - traceId
+      properties:
+        resourceId:
+          $ref: '#/components/schemas/CanonicalId'
+        sourceId:
+          $ref: '#/components/schemas/CanonicalId'
+        resourceType:
+          $ref: '#/components/schemas/ResourceType'
+        resourceVersionId:
+          $ref: '#/components/schemas/CanonicalId'
+        title:
+          type: string
+          maxLength: 512
+        snippet:
+          $ref: '#/components/schemas/Snippet'
+        coverage:
+          $ref: '#/components/schemas/ResourceCoverage'
+        provenance:
+          $ref: '#/components/schemas/PublicProvenance'
+        traceId:
+          $ref: '#/components/schemas/CanonicalId'
+      description: Current durable Resource only; no history, full body, native URL, or ephemeral fallback.
+    SourceItem:
+      type: object
+      additionalProperties: false
+      required:
+      - sourceId
+      - sourceType
+      - resourceTypes
+      - discoveryModes
+      - enumerationSemantics
+      - coverage
+      properties:
+        sourceId:
+          $ref: '#/components/schemas/CanonicalId'
+        sourceType:
+          type: string
+          enum:
+          - document
+          - remote
+        resourceTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceType'
+          minItems: 0
+          maxItems: 8
+        discoveryModes:
+          type: array
+          items:
+            type: string
+            enum:
+            - localDirectory
+            - localContentSearch
+            - remoteEnumeration
+            - remoteQuery
+            - directAddress
+            - liveOnly
+          minItems: 0
+          maxItems: 6
+        enumerationSemantics:
+          type: string
+          enum:
+          - complete
+          - partial
+          - queryOnly
+          - none
+        coverage:
+          type: array
+          items:
+            $ref: '#/components/schemas/CoverageKind'
+          minItems: 0
+          maxItems: 2
+        availabilityCode:
+          type: string
+          enum:
+          - available
+          - degraded
+          - unavailable
+          - unknown
+      description: Only connected and authorized capabilities; no endpoint, authority, retention, or credential.
+    SourcePage:
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      - nextCursor
+      - traceId
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceItem'
+          minItems: 0
+          maxItems: 100
+        nextCursor: *id004
+        traceId:
+          $ref: '#/components/schemas/CanonicalId'
+      description: Complete visible catalog only; no stable stamp plus overflow is 503, never truncated 200.
+    FieldError:
+      type: object
+      additionalProperties: false
+      required:
+      - pointer
+      - code
+      properties:
+        pointer:
+          type: string
+          pattern: ^/(?:query|resourceTypes|sourceIds|coverage|pageSize|cursor|resourceId|need(?:/(?:purpose|requiredResourceTypes|requiredClaimIds|temporalTarget|businessTimezone))?)(?:/[0-9]+)?$
+        code:
+          type: string
+          enum:
+          - INVALID_FIELD
+          - INVALID_FORMAT
+          - OUT_OF_RANGE
+          - UNKNOWN_FIELD
+          - REQUIRED_FIELD
+    Problem:
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      - title
+      - status
+      - detail
+      - code
+      - trace_id
+      properties:
+        type:
+          type: string
+          const: about:blank
+        title:
+          type: string
+          enum:
+          - Bad Request
+          - Unauthorized
+          - Forbidden
+          - Not Found
+          - Conflict
+          - Content Too Large
+          - Unsupported Media Type
+          - Unprocessable Content
+          - Too Many Requests
+          - Request Header Fields Too Large
+          - Service Unavailable
+          - Gateway Timeout
+        status:
+          type: integer
+          enum:
+          - 400
+          - 401
+          - 403
+          - 404
+          - 409
+          - 413
+          - 415
+          - 422
+          - 429
+          - 431
+          - 503
+          - 504
+        detail:
+          type: string
+          enum:
+          - The request could not be parsed.
+          - Authentication is required.
+          - The operation is not permitted.
+          - The resource was not found.
+          - The cursor is unavailable.
+          - The request content is too large.
+          - The request media type is unsupported.
+          - The request fields are invalid.
+          - The request rate limit was reached.
+          - The request headers are too large.
+          - A required service is unavailable.
+          - The service could not complete the operation.
+          - An upstream service did not respond in time.
+        code:
+          type: string
+          enum:
+          - MALFORMED_REQUEST
+          - AUTHENTICATION_REQUIRED
+          - FORBIDDEN
+          - RESOURCE_NOT_FOUND
+          - CURSOR_STALE
+          - PAYLOAD_TOO_LARGE
+          - UNSUPPORTED_MEDIA_TYPE
+          - VALIDATION_FAILED
+          - RATE_LIMITED
+          - REQUEST_HEADERS_TOO_LARGE
+          - IDENTITY_UNAVAILABLE
+          - DEPENDENCY_UNAVAILABLE
+          - SERVICE_UNAVAILABLE
+          - UPSTREAM_TIMEOUT
+        trace_id:
+          $ref: '#/components/schemas/CanonicalId'
+        retryable:
+          type: boolean
+          description: Only with a safe public retry policy.
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldError'
+          minItems: 0
+          maxItems: 16
+      description: 'RFC 9457 about:blank. code is a declared Search extension; instance omitted. Canonical map:
+        spec/errors/search-api-error-registry.yaml.'
+      allOf:
+      - if:
+          properties:
+            code:
+              const: MALFORMED_REQUEST
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 400
+            title:
+              const: Bad Request
+            detail:
+              const: The request could not be parsed.
+            errors: false
+      - if:
+          properties:
+            code:
+              const: AUTHENTICATION_REQUIRED
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 401
+            title:
+              const: Unauthorized
+            detail:
+              const: Authentication is required.
+            errors: false
+      - if:
+          properties:
+            code:
+              const: FORBIDDEN
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 403
+            title:
+              const: Forbidden
+            detail:
+              const: The operation is not permitted.
+            errors: false
+      - if:
+          properties:
+            code:
+              const: RESOURCE_NOT_FOUND
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 404
+            title:
+              const: Not Found
+            detail:
+              const: The resource was not found.
+            errors: false
+      - if:
+          properties:
+            code:
+              const: CURSOR_STALE
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 409
+            title:
+              const: Conflict
+            detail:
+              const: The cursor is unavailable.
+            errors: false
+      - if:
+          properties:
+            code:
+              const: PAYLOAD_TOO_LARGE
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 413
+            title:
+              const: Content Too Large
+            detail:
+              const: The request content is too large.
+            errors: false
+      - if:
+          properties:
+            code:
+              const: UNSUPPORTED_MEDIA_TYPE
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 415
+            title:
+              const: Unsupported Media Type
+            detail:
+              const: The request media type is unsupported.
+            errors: false
+      - if:
+          properties:
+            code:
+              const: VALIDATION_FAILED
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 422
+            title:
+              const: Unprocessable Content
+            detail:
+              const: The request fields are invalid.
+      - if:
+          properties:
+            code:
+              const: RATE_LIMITED
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 429
+            title:
+              const: Too Many Requests
+            detail:
+              const: The request rate limit was reached.
+            errors: false
+      - if:
+          properties:
+            code:
+              const: REQUEST_HEADERS_TOO_LARGE
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 431
+            title:
+              const: Request Header Fields Too Large
+            detail:
+              const: The request headers are too large.
+            errors: false
+      - if:
+          properties:
+            code:
+              const: IDENTITY_UNAVAILABLE
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 503
+            title:
+              const: Service Unavailable
+            detail:
+              const: A required service is unavailable.
+            errors: false
+      - if:
+          properties:
+            code:
+              const: DEPENDENCY_UNAVAILABLE
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 503
+            title:
+              const: Service Unavailable
+            detail:
+              const: A required service is unavailable.
+            errors: false
+      - if:
+          properties:
+            code:
+              const: SERVICE_UNAVAILABLE
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 503
+            title:
+              const: Service Unavailable
+            detail:
+              const: The service could not complete the operation.
+            errors: false
+      - if:
+          properties:
+            code:
+              const: UPSTREAM_TIMEOUT
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 504
+            title:
+              const: Gateway Timeout
+            detail:
+              const: An upstream service did not respond in time.
+            errors: false
+    ResourceCoverage:
+      type: string
+      enum:
+      - titleAndPermittedMetadata
+      - bodySupported
+      - bodyPartial
+      - bodyUnsupported
+      - bodyUnknown
+      description: Current per-item P1 body coverage; bodyPartial describes extraction coverage, not partial ResourceDetail
+        success.
+x-search-error-registry: ../errors/search-api-error-registry.yaml
+x-search-v0-limits:
+  requestHeadersBytes: 16384
+  postJsonBodyBytes: 16384
+  successBodyBytes: 1048576
+  queryUtf8Bytes: 2048
+  purposeUtf8Bytes: 512
+  discoveryActions: 16
+  optionalInitialSources: 8
+  evaluatedCandidates: 200
+  qualifiedResources: 50
+  evidence: 64
+  gaps: 64
+  publicTrace: 64
+  rejectedVisibleCandidates: 200

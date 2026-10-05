@@ -1,0 +1,104 @@
+# P5 Search HTTP only. This file is the canonical (status, code, title, detail) mapping.
+# Document HTTP's existing problem type contract is outside this registry.
+version: 0
+scope: search-v1
+problemType: about:blank
+mediaType: application/problem+json
+requiredBodyFields: [type, title, status, detail, code, trace_id]
+omittedBodyFields: [instance]
+requiredResponseHeaders:
+  Cache-Control: private, no-store
+  X-Content-Type-Options: nosniff
+authentication:
+  openApiSchemeId: SearchBearer
+  httpScheme: bearer
+  credentialHeader: Authorization
+  challengeHeader: WWW-Authenticate
+  challengeValue: 'Bearer realm="search"'
+  startupRequirement: credential verifier, trusted resolver, and valid challenge must all be wired
+conditionalFields:
+  retryable: only when a public retry policy safely determines it
+  errors: only public request field pointer and fixed code on validation failures
+conditionalHeaders:
+  Retry-After: only when a public retry policy safely determines it
+operations:
+  search: 'POST /v1/search'
+  discover: 'POST /v1/discover'
+  resource: 'GET /v1/resources/{resourceId}'
+  sources: 'GET /v1/sources'
+codes:
+  MALFORMED_REQUEST:
+    status: 400
+    title: Bad Request
+    detail: The request could not be parsed.
+    operations: [search, discover, resource, sources]
+  AUTHENTICATION_REQUIRED:
+    status: 401
+    title: Unauthorized
+    detail: Authentication is required.
+    operations: [search, discover, resource, sources]
+    requiredHeader: 'WWW-Authenticate: Bearer realm="search"'
+  FORBIDDEN:
+    status: 403
+    title: Forbidden
+    detail: The operation is not permitted.
+    operations: [search, discover, resource, sources]
+  RESOURCE_NOT_FOUND:
+    status: 404
+    title: Not Found
+    detail: The resource was not found.
+    operations: [resource]
+    causeDisclosure: none
+  CURSOR_STALE:
+    status: 409
+    title: Conflict
+    detail: The cursor is unavailable.
+    operations: [search, sources]
+    causeDisclosure: none
+  PAYLOAD_TOO_LARGE:
+    status: 413
+    title: Content Too Large
+    detail: The request content is too large.
+    operations: [search, discover]
+  UNSUPPORTED_MEDIA_TYPE:
+    status: 415
+    title: Unsupported Media Type
+    detail: The request media type is unsupported.
+    operations: [search, discover]
+  VALIDATION_FAILED:
+    status: 422
+    title: Unprocessable Content
+    detail: The request fields are invalid.
+    operations: [search, discover, resource, sources]
+  RATE_LIMITED:
+    status: 429
+    title: Too Many Requests
+    detail: The request rate limit was reached.
+    operations: [search, discover, resource, sources]
+  REQUEST_HEADERS_TOO_LARGE:
+    status: 431
+    title: Request Header Fields Too Large
+    detail: The request headers are too large.
+    operations: [search, discover, resource, sources]
+  IDENTITY_UNAVAILABLE:
+    status: 503
+    title: Service Unavailable
+    detail: A required service is unavailable.
+    operations: [search, discover, resource, sources]
+  DEPENDENCY_UNAVAILABLE:
+    status: 503
+    title: Service Unavailable
+    detail: A required service is unavailable.
+    operations: [search, discover, resource, sources]
+  SERVICE_UNAVAILABLE:
+    status: 503
+    title: Service Unavailable
+    detail: The service could not complete the operation.
+    operations: [search, discover, resource, sources]
+    causes: [internal deadline, unsafe or oversized success DTO]
+  UPSTREAM_TIMEOUT:
+    status: 504
+    title: Gateway Timeout
+    detail: An upstream service did not respond in time.
+    operations: [search, discover, resource, sources]
+    cause: gateway or proxy waiting for a required upstream response

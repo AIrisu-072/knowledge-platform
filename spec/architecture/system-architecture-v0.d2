@@ -7,91 +7,134 @@ vars: {
 
 direction: down
 
-title: "Knowledge / Document Architecture v0 — Flow View"
+title: "Knowledge Platform v0 — Document + Search / Discovery"
 
 identity: {
-  label: "共通 Identity"
-  windows: "Windows 統合認証\nIdentity Adapter"
+  label: "Identity / Authorization"
+  adapter: "Identity Adapter\n安定Principal / Group"
 }
 
 document_flow: {
-  label: "A. 文書管理フロー（正本管理）"
+  label: "A. Document Platform（正本）"
   direction: right
-  human_ui: "人間用 Document UI\nReact / TypeScript"
-  api: "Document API\n人間 / LLM 共通"
-  core: "Document Platform\n文書登録 / 版管理 / metadata\n既読・未読 / access policy"
-  storage: "Document Storage\nfilesystem"
-  db: "Metadata Store / DB\nPostgreSQL (primary candidate selected)"
+  ui: "Document UI"
+  api: "Document API\nHuman / Agent 共通"
+  core: "Document Platform\nDocument / Version / Folder\nAccessPolicy / ReadState"
+  storage: "Document Storage"
+  db: "PostgreSQL Metadata"
 
-  human_ui -> api -> core
+  ui -> api -> core
   core -> storage
   core -> db
 }
 
 sources: {
-  label: "Knowledge Sources"
+  label: "B. Discoverable Sources（各Sourceが正本）"
   direction: right
-  egov: "e-Gov 等\n外部 Knowledge"
+  document: "Document Platform"
   internal: "内部 DB / API"
-  future: "将来の Knowledge Source"
+  crm: "CRM / SFA"
+  provider: "MCP / Tool Provider"
+  external: "契約外部Source"
+  web: "Web / Live Source"
 }
 
-indexing_flow: {
-  label: "B. Indexing / ETL フロー（検索可能な表現へ変換）"
+discovery_data: {
+  label: "C. Federated Discovery / Projection"
   direction: right
-  adapter: "Source Adapter / ETL\nExtract → Transform → Load"
-  extraction: "Extraction / Normalization\nOffice / PDF / ZIP"
-  canonical: "Canonical Knowledge Model\n共通項目 + 拡張 metadata"
-  representations: "Search Representations / Indexes\nLexical / Vector / Metadata\nTemporal / Graph(将来)"
+  registry: "Global Source Registry\nDiscoverableSource"
+  local: "Source-local Directory / Remote Discovery"
+  normalize: "Observation / Assertions\nTypedRelationInstance"
+  resolve: "Authority / Logical Identity\nDiscovery Lens"
+  projections: {
+    label: "Derived Projections"
+    directory: "Directory"
+    structured: "Structured"
+    lexical: "Lexical"
+    vector: "Vector (optional)"
+    temporal: "Temporal"
+    access: "Access"
+    graph: "Typed HyperEdge Graph"
+  }
 
-  adapter -> extraction -> canonical -> representations
+  registry -> local -> normalize -> resolve
+  resolve -> projections.directory
+  resolve -> projections.structured
+  resolve -> projections.lexical
+  resolve -> projections.vector
+  resolve -> projections.temporal
+  resolve -> projections.access
+  resolve -> projections.graph
 }
 
-query_flow: {
-  label: "C. Query / Retrieval フロー（1回の検索で横断検索）"
+discovery_runtime: {
+  label: "D. Search / Discovery Runtime"
   direction: right
   clients: {
-    label: "利用者"
-    human: "人間用 Search UI"
+    label: "Clients"
+    human: "Human Search UI"
     agent: "LLM / Agent"
-    chat: "LLM Chat"
+    batch: "Batch / Service"
   }
-  search_api: "Search API\n人間 / LLM 共通"
-  planner: "Retrieval Planner / Policy\n意図 → Retriever / filter / weight\nLLM利用可 + Policyで検証"
-  retrieval: "Retrieval Engine\nLexical / Semantic / Structured\nTemporal / Graph(将来)"
-  fusion: "Fusion / Reranking\n候補統合・最終順位付け"
-  results: "共通 SearchResult[]\nsource / locator / snippet\nhighlight / score / provenance"
+  api: "Common Search / Discovery API"
+  need: "Need / IntentSignature"
+  routing: "Source Routing"
+  retrieval: "Adaptive Retrieval\nExact / Structured / Lexical / Vector"
+  graph: "HyperGraph Expansion"
+  qualify: "Applicability / Contrast\nAuthority / Temporal"
+  evidence: "Evidence Sufficiency\nInformationGap"
+  result: "SearchResult[] / DiscoveryResult"
 
-  clients.human -> search_api
-  clients.agent -> search_api
-  clients.chat -> search_api
-  search_api -> planner -> retrieval -> fusion -> results
+  clients.human -> api
+  clients.agent -> api
+  clients.batch -> api
+  api -> need -> routing -> retrieval
+  retrieval -> graph -> qualify -> evidence -> result
+}
+
+agent_boundary: {
+  label: "E. Agent / Execution boundary（Search外）"
+  direction: right
+  binding: "Session Binding"
+  planner: "Task Planner / DAG"
+  context: "Context Compiler"
+  execution: "Execution Control Plane"
+  binding -> planner -> context -> execution
 }
 
 ops: {
-  label: "D. Observability / Audit"
+  label: "F. Observability / Audit"
   direction: right
-  otel: "OpenTelemetry Collector"
-  observability: "Observability Platform\nlogs / traces / metrics"
-  audit: "Audit Store\n監査イベント"
+  otel: "OpenTelemetry / OTLP"
+  observability: "Observability Platform"
+  audit: "Audit Store"
+  evaluation: "Evaluation Artifacts"
   otel -> observability
 }
 
-identity.windows -> document_flow.api
-identity.windows -> query_flow.search_api
+identity.adapter -> document_flow.api
+identity.adapter -> discovery_runtime.api
 
-document_flow.core -> indexing_flow.adapter: "Knowledge Source"
-sources.egov -> indexing_flow.adapter
-sources.internal -> indexing_flow.adapter
-sources.future -> indexing_flow.adapter
+document_flow.core -> sources.document
+sources.document -> discovery_data.local
+sources.internal -> discovery_data.local
+sources.crm -> discovery_data.local
+sources.provider -> discovery_data.local
+sources.external -> discovery_data.local
+sources.web -> discovery_data.local
 
-indexing_flow.representations -> query_flow.retrieval: "検索 Index"
+discovery_data.projections.directory -> discovery_runtime.retrieval
+discovery_data.projections.structured -> discovery_runtime.retrieval
+discovery_data.projections.lexical -> discovery_runtime.retrieval
+discovery_data.projections.vector -> discovery_runtime.retrieval
+discovery_data.projections.temporal -> discovery_runtime.qualify
+discovery_data.projections.access -> discovery_runtime.qualify
+discovery_data.projections.graph -> discovery_runtime.graph
 
-# 観測・監査は共通規格で横断
-# PNG暫定レンダリングでは線量を抑えるため主要ポイントのみ表現
-query_flow.search_api -> ops.otel: "telemetry"
-query_flow.retrieval -> ops.otel: "telemetry"
-query_flow.fusion -> ops.otel: "telemetry"
-document_flow.core -> ops.otel: "telemetry"
-document_flow.api -> ops.audit: "audit events"
-query_flow.search_api -> ops.audit: "audit events"
+discovery_runtime.result -> agent_boundary.binding: "QualifiedResource / Evidence / Gap"
+
+document_flow.api -> ops.audit: "audit"
+discovery_runtime.api -> ops.otel: "telemetry"
+discovery_runtime.retrieval -> ops.otel: "telemetry"
+discovery_runtime.graph -> ops.otel: "telemetry"
+discovery_runtime.evidence -> ops.evaluation: "evaluation trace"

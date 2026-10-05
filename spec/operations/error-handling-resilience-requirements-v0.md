@@ -504,23 +504,27 @@ completion item
 
 ## 15. Search-specific error semantics
 
-検索処理では以下を区別する。
+### 15.1 P5 Search HTTP の適用範囲と Error Registry
 
-```text
-Query invalid
-Source unavailable
-Retriever failed
-Reranker failed
-Partial source failure
-No result
-Search timeout
-Internal error
-```
+`POST /v1/search`、`POST /v1/discover`、`GET /v1/resources/{resourceId}`、`GET /v1/sources` に限る。status、`code`、固定 `title`/`detail`、適用 operation の唯一の対応表は [`spec/errors/search-api-error-registry.yaml`](../errors/search-api-error-registry.yaml) とする。既存 Document HTTP の §7 の URN 型とその handler は、この Search 専用規範では変更しない。
 
-`No result` はエラーではない。
+全 P5 error は RFC 9457 `application/problem+json` とし、明示的な `type: "about:blank"`、実 HTTP status と一致する body `status`、その status の固定英語 reason phrase `title`、registry の固定 `detail`、宣言済み extension `code` と無作為な相関 ID `trace_id` を持つ。`about:blank` 自体は HTTP status を超える意味を持たない。機械判定に必要な Search 固有区別は `code` を使い、`title`/`detail` を分岐に使わない。`instance` は省略する。`errors[]` は 422 の公開 request field の pointer と固定 code のみで、Source、Claim、resource ID、query、SQL、locator、内部 trace、秘密情報を含めない。認可前 parse error を含む**全** Problem と全 200 に `Cache-Control: private, no-store` と `X-Content-Type-Options: nosniff` を付ける。
 
-Rerankerが失敗しても、policy上許可する場合はretrieval / fusion結果をfallbackとして返却可能にする。
-Fallback発生はresponse metadataへ明示する。
+v0 の実 transport は `Authorization: Bearer <opaque token>` である。`SearchCredentialVerifierPort` が credential を検証し、server 内だけで既知の session descriptor に解決する。`VerifiedActorResolverPort` と P4 の `CheckedAuthorityAdapter` が同じ opaque session を `TrustedSearchScope` に結ぶ。request body/header の自己申告 principal、tenant、role、group、Source grant は使わない。401 `AUTHENTICATION_REQUIRED` には四 operation とも `WWW-Authenticate: Bearer realm="search"` を必ず付ける。auth scheme/challenge/verifier/resolver が未配線、空、または不正な場合は route の起動を拒否し、header のない 401 を送らない。認証済みの operation 全体の拒否は 403、trusted identity 基盤障害は 503 `IDENTITY_UNAVAILABLE`。scheme 変更には本節、OpenAPI、handler の明示差分と再試験を要する。
+
+Resource GET の未知・他 tenant・不可視・旧版・T10 終了・取消・重複 locator と、存在開示確定前の target 固有障害は同一 `404 RESOURCE_NOT_FOUND` とする。cursor の不明・失効・別 actor/session・request/可視集合/generation/retention 不一致は同一 `409 CURSOR_STALE` とする。両者の応答は原因別の body、status、固定 detail、header、retry policy を変えず、相関 ID だけを発生ごとに新しくする。隠れた個別 Source の障害を 503 の分類に使わない。完全な actor-visible catalog を作れない registry/ledger/visibility 障害は四 operation とも generic 503 `DEPENDENCY_UNAVAILABLE` とし、途中の Source 集合を 200 として返さない。
+
+内部 final gate、local read、projection、serialization の operation deadline、または gateway 条件を証明できない timeout は 503 `SERVICE_UNAVAILABLE`。実際に gateway/proxy として必要な upstream response を待ち、時間内に受け取れなかったと型で確定した場合だけ 504 `UPSTREAM_TIMEOUT` とする。自由文字列や provider URL から 503/504 を推測しない。認可済みの独立結果と全 final gate と bounded DTO を期限内に確定できた Search/Discover だけ不完全性を明示した 200 が可能で、Search は `partial=true`、Discover は `evaluationCompleteness=bounded|interrupted` と typed gap を使う。header 送出後の失敗は status を変えず接続と disclosure lease を閉じる。`Retry-After` と `retryable` は公開 retry policy が安全に確定した場合にだけ出す。
+
+### 15.2 Search の部分結果と有限予算
+
+`No result` は正常な 200 の空配列である。optional Source/Probe、retriever/reranker の失敗時も、安全な独立結果と最終 gate がある場合だけ Search は `partial=true`、Discover は `evaluationCompleteness=interrupted` と型付き gap を返せる。required evidence が未評価なら `sufficient` にしない。未知・不可視 Source/Claim を absent と推論しない。Discovery の未知・他 tenant・不可視・失効 required Claim は `unresolved` と blocking `REQUIRED_CLAIM_UNRESOLVED` に統一し、Claim の存在差を trace/validation/error class に出さない。
+
+公開 gap reason は既存の `MISSING_FACT`、`INSUFFICIENT_EVIDENCE_CLASS`、`AUTHORITY`、`FRESHNESS`、`CORROBORATION`、`CONFLICT`、`AVAILABILITY`、`UNSUPPORTED_COVERAGE` に `PAGINATION_UNAVAILABLE`、`REQUIRED_CLAIM_UNRESOLVED`、`REQUIRED_SOURCE_UNAVAILABLE`、`BUDGET_EXHAUSTED` を加えた閉じた enum とする。後者四つは Application の `PublicGapReasonCode` であり、Core の `MissingFact` に読み替えない。`evaluationCompleteness` は `complete` / `bounded` / `interrupted`、`completenessReasonCodes[]` は `BUDGET_EXHAUSTED`、`SOURCE_INTERRUPTED`、`REQUIRED_EVIDENCE_UNEVALUATED`、`BODY_COVERAGE_INCOMPLETE` に限る。上限到達時に安全な独立 200 を返すなら Search は `partial=true` と `BUDGET_EXHAUSTED` gap、Discover は `bounded`、同名 reason、同 gap を必須とする。required evidence 未評価には blocking gap と `REQUIRED_EVIDENCE_UNEVALUATED` を付け、本文 Partial の verified positive にも blocking body coverage gap を残す。negative `Absent` は Source 正本の全対象 item の `Completed + Supported` と有限 exact literal scan の証明時だけである。
+
+v0 の**安全側 hard limit**は query 2,048 UTF-8 bytes、purpose 512 UTF-8 bytes、`sourceIds` 16、`requiredClaimIds` 1〜16、`resourceTypes` 8、page size 既定 20/最大 100、Discovery action 16、optional initial Source 8、evaluated candidate 200、qualified resource 50、evidence 64、gap 64、public trace 64、rejected visible candidate 200、snippet 320 Unicode code points、POST JSON body 16 KiB、request headers 総量 16 KiB、serialized success body 1 MiB とする。未知 JSON field と公開 input の形・範囲違反は 422、JSON/encoding 破損は 400、POST body bytes 超過は 413、header bytes 超過は 431、承認外 POST media type は 415。response 上限で安全な typed outcome に再構成できないときは 503 `SERVICE_UNAVAILABLE` とし、黙った切捨て 200 を禁じる。SourcePage は部分成功を持たず、可視集合の authoritative continuation stamp がなければ**全可視 Source が一つの上限内 page に収まる場合だけ** 200 とする。超過時は cursor なしの切捨てをせず 503 `DEPENDENCY_UNAVAILABLE` とする。
+
+これらの limit は公開契約の初期安全上限であり、測定済み SLO・production latency 値ではない。§11 の `Client timeout > API operation budget > dependency timeout` に従い、具体的な秒数と配備値は P1/P4/P7 workload と実 transport の資格試験で固定する。deadline 未設定や残余時間超過の dependency call は許さない。cursor は同じ trusted session に束縛した RAM-only UUID v4 handle とし、絶対 5 分、idle 1 分、actor/provider/retention のより短い期限に従う。`NO_RETENTION` や必要 Source の非継続性があれば Search は `nextCursor=null`、`partial=true`、`PAGINATION_UNAVAILABLE` gap とし、provider cursor を保存・公開しない。SourcePage の stamp が不安定なら cursor を発行しない。ResourceDetail と SourcePage に partial 成功はない。
 
 ---
 

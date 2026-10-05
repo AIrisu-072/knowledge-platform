@@ -1,0 +1,19 @@
+# 仕事の手渡し: p4-amend-source-neutral
+
+- 種類: docs / 役: Worker / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Freeze P4 implementation amendment for accepted Document Remote source-neutral contract
+
+## 入力
+- `p5-contract` (docs/superpowers/programs/search-platform-completion/p5-api-freeze.md) — api contract [`p5-freeze` が作る (済み)]
+- `p7-shared-contract` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-freeze.md) — p7-shared-contract [`p7-freeze-shared` が作る (済み)]
+
+## 出すもの
+- `p4-source-neutral-plan` (docs/superpowers/programs/search-platform-completion/p4-source-neutral-implementation-amendment.md) — Freeze P4 implementation amendment for accepted Document Remote source-neutral contract
+
+## 受入条件
+Exact acceptedP5rev2 andP7rev1; same trust mint and union catalog namespace alltenantfullsnapshot immutable owner/kind canonical fullDTO digest; scoped files and named focused REDGREEN
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p4-source-neutral-implementation-amendment.md` だけ。他は触らない。

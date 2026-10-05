@@ -1,0 +1,401 @@
+{
+  "schema_version": 1,
+  "status": "作業中。G07 の実行は制限により停止しており、適格性は未確認",
+  "repository": "AIrisu-072/knowledge-platform",
+  "pull_request": 40,
+  "remote_readback": {
+    "observed_at": "2026-10-03T14:36Z",
+    "state": "open",
+    "draft": true,
+    "head": "da5e7155db616c1df9a688a7043fc3b4730bb1a3",
+    "tree": "a6146b0bf3bbb241d918e3b579155e7c6d3dc98f",
+    "base": "80a47960d025e4dfdea1eacade28b15d218725ff"
+  },
+  "local_base": {
+    "commit": "56ac5fd50140fb9e098a378da46579e6d22bc645",
+    "tree": "a6146b0bf3bbb241d918e3b579155e7c6d3dc98f"
+  },
+  "fixture_sources": [
+    {
+      "path": "crates/outbox-delivery/tests/process_recovery.rs",
+      "sha256": "211c19d6949d907a8da299e4405ca19cb49c61b89a58dce04e082266a103f42e",
+      "bytes": 179461
+    },
+    {
+      "path": "crates/outbox-delivery/tests/support/postgres.rs",
+      "sha256": "87cb1dc2edf8ba7f0dd471f12363d4832c46be1f07a8bf18c5f236d2795de4c0",
+      "bytes": 3795
+    }
+  ],
+  "record_inventory": [
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/launcher.py.txt",
+      "bytes": 177920,
+      "sha256": "07c4bb91b67f199f217b74d690667e82b5b027718be90811ae8b1a4a4c58c598",
+      "kind": "当該環境に固定されたソース。証拠保存用のテキストであり、実行用ではない",
+      "historical_source_name": "launcher.py"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/launcher_policy.py.txt",
+      "bytes": 14375,
+      "sha256": "5e73e089616cfd8e6838129f5abe739cd59586639b2eb246bd2ffe6a1a69a724",
+      "kind": "当該環境に固定されたソース。証拠保存用のテキストであり、実行用ではない",
+      "historical_source_name": "launcher_policy.py"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/scope.schema.json.txt",
+      "bytes": 1906,
+      "sha256": "62c3850c7de5bf606fe47bc90def670ef83f36b5a2bc6a2401a6cae5462b2369",
+      "kind": "当該環境に固定されたソース。証拠保存用のテキストであり、実行用ではない",
+      "historical_source_name": "scope.schema.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/approval.schema.draft.json.txt",
+      "bytes": 2032,
+      "sha256": "e5bac0a30701ab336408ba9a6468c00e3b1cd7e6784a09a79e11afeef574cedc",
+      "kind": "当該環境に固定されたソース。証拠保存用のテキストであり、実行用ではない",
+      "historical_source_name": "approval.schema.draft.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/request.schema.draft.json.txt",
+      "bytes": 1694,
+      "sha256": "b40b54b9de25d6e0e28baffc3d93f8d9995829a2b4d0c2d6cf4b8743f86d0415",
+      "kind": "当該環境に固定されたソース。証拠保存用のテキストであり、実行用ではない",
+      "historical_source_name": "request.schema.draft.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/cluster-control.schema.draft.json.txt",
+      "bytes": 1996,
+      "sha256": "d2f5b97031b1784c6dd3b3f16e75333c4aa1fca5314f70a95d3ed2288b71b216",
+      "kind": "当該環境に固定されたソース。証拠保存用のテキストであり、実行用ではない",
+      "historical_source_name": "cluster-control.schema.draft.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/observations.schema.draft.json.txt",
+      "bytes": 1357,
+      "sha256": "07fb27ccf8f159ba31d23ddc5472d4dbb553e52a872faf9ea3e413c65b6682cb",
+      "kind": "当該環境に固定されたソース。証拠保存用のテキストであり、実行用ではない",
+      "historical_source_name": "observations.schema.draft.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/test-receipt.schema.draft.json.txt",
+      "bytes": 5137,
+      "sha256": "cd5078e3caba67fe94c68e66e5ca836c501432ccccde76c144b20dc41211f1a3",
+      "kind": "当該環境に固定されたソース。証拠保存用のテキストであり、実行用ではない",
+      "historical_source_name": "test-receipt.schema.draft.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/execution-seams.contract.json.txt",
+      "bytes": 11209,
+      "sha256": "adc154ff9ae7382ffa82a27a16c3e6d08dbac88a99f04cc733c21d7e7f56c45b",
+      "kind": "当該環境に固定されたソース。証拠保存用のテキストであり、実行用ではない",
+      "historical_source_name": "execution-seams.contract.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/test_launcher_policy.py.txt",
+      "bytes": 13646,
+      "sha256": "910334847887b763014f14c2453350f74f7c9384b75ab239e41d6159f883299c",
+      "kind": "当該環境に固定されたソース。証拠保存用のテキストであり、実行用ではない",
+      "historical_source_name": "test_launcher_policy.py"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/test_launcher_integration.py.txt",
+      "bytes": 9204,
+      "sha256": "f0644f46310d27adf93741b7d310debce7d11ee562a096bf42a6cf347d4145db",
+      "kind": "当該環境に固定されたソース。証拠保存用のテキストであり、実行用ではない",
+      "historical_source_name": "test_launcher_integration.py"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/test_launcher_execution.py.txt",
+      "bytes": 59816,
+      "sha256": "b285cf59979071f61430504ca519d8592fc947dfec72bd653f0fa19a01163fd2",
+      "kind": "当該環境に固定されたソース。証拠保存用のテキストであり、実行用ではない",
+      "historical_source_name": "test_launcher_execution.py"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/test_launcher_utf8.py.txt",
+      "bytes": 3602,
+      "sha256": "33cd9f97ac3f9fdcfc9f0f4dd87e241ce60df9898ad445dba10b4e0d366801b2",
+      "kind": "当該環境に固定されたソース。証拠保存用のテキストであり、実行用ではない",
+      "historical_source_name": "test_launcher_utf8.py"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/test_launcher_pg_library.py.txt",
+      "bytes": 7392,
+      "sha256": "f0fb569df42347ac4d5c26aefbb31e7e317e04cc9853a1df4b5646d9153939bf",
+      "kind": "当該環境に固定されたソース。証拠保存用のテキストであり、実行用ではない",
+      "historical_source_name": "test_launcher_pg_library.py"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/managed_bootstrap_entry.py.txt",
+      "bytes": 2871,
+      "sha256": "6b4499755e91c67c1bf4e60ffb209a357ec95bc6cd233b138aa572e8f9c912e8",
+      "kind": "当該環境に固定されたソース。証拠保存用のテキストであり、実行用ではない",
+      "historical_source_name": "managed_bootstrap_entry.py"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/test_launcher_proxy.py.txt",
+      "bytes": 1727,
+      "sha256": "fc51d97dd3352683f1d2af517ecc12b6dfde9d4915e19b8d8fceb5feb6f07da9",
+      "kind": "当該環境に固定されたソース。証拠保存用のテキストであり、実行用ではない",
+      "historical_source_name": "test_launcher_proxy.py"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/bootstrap-resume.schema.draft.json.txt",
+      "bytes": 4425,
+      "sha256": "d5f00b13cec951b5e8480ccf33c2388246f9f4edf1671489c4c2f9d1ea33de7f",
+      "kind": "当該環境に固定されたソース。証拠保存用のテキストであり、実行用ではない",
+      "historical_source_name": "bootstrap-resume.schema.draft.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/commands.final.json.txt",
+      "bytes": 62924,
+      "sha256": "353d7d99e650835c5d07a9fd1edb28e5e3f40ac8483fc8c2a4ac7e466ec394ab",
+      "kind": "使用済みのコマンド・試験記録。現在の実行許可を表さない",
+      "historical_source_name": "commands.final.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/approval-supervise.json.txt",
+      "bytes": 876,
+      "sha256": "6205591836155f240b8f791f21f4d109138e2c8821ba100da01d9d83439b9a4b",
+      "kind": "使用済みのコマンド・試験記録。現在の実行許可を表さない",
+      "historical_source_name": "approval-supervise.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/run_supervise_entry_pure.py.txt",
+      "bytes": 3001,
+      "sha256": "dfed3aedf0dbd105f08840cf5af496acc4d0d7b67e60d1f74eef13ae3ee47d60",
+      "kind": "使用済みのコマンド・試験記録。現在の実行許可を表さない",
+      "historical_source_name": "run_supervise_entry_pure.py"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/supervise-entry-pure-manifest.json.txt",
+      "bytes": 5435,
+      "sha256": "e9957cdafe0068497baeb699a6e1379c5321f6c549893478b1375e9603937e5f",
+      "kind": "使用済みのコマンド・試験記録。現在の実行許可を表さない",
+      "historical_source_name": "supervise-entry-pure-manifest.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/run_green_inventory_red.py.txt",
+      "bytes": 21240,
+      "sha256": "34e62fe171574f4e8133817eb5eba0463e3dfe1800291e0b9b80bc58d6cfbfc2",
+      "kind": "使用済みのコマンド・試験記録。現在の実行許可を表さない",
+      "historical_source_name": "run_green_inventory_red.py"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/archived-harness/bootstrap-tested-launcher.py.txt",
+      "bytes": 177861,
+      "sha256": "e869c1be3a51b834fbeca6a65732d44a20197e10c13e89bdfd79e125065ad0f3",
+      "kind": "完了済みの環境準備で実際に使用したランチャーのソース",
+      "historical_source_name": "g07-bootstrap243-green-source.py"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/bootstrap-terminal.json",
+      "bytes": 11739,
+      "sha256": "136b975f414859117ea66a52ee0884f36ba1e3f4cb809f10bb4dd1934ea86995",
+      "kind": "範囲を限定して実行した処理の実記録",
+      "historical_source_name": "bootstrap-terminal.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/cluster-control.json",
+      "bytes": 936,
+      "sha256": "a22cbf8ae02b71fa294e88326fab88d1f3c1cd35b05e74ce3ada3b8b4c1dd80d",
+      "kind": "範囲を限定して実行した処理の実記録",
+      "historical_source_name": "cluster-control.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/compile-helper-green-artifact.json",
+      "bytes": 1395,
+      "sha256": "0a1cdb08084835c33cf953ad885f212aca4a78b6371762c322b63e72710516ca",
+      "kind": "範囲を限定して実行した処理の実記録",
+      "historical_source_name": "compile-helper-green-artifact.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/compile-helper-green-source-freshness.json",
+      "bytes": 722,
+      "sha256": "cbfc8812befa5f501744dd1916f8a30e476ec93481f9e1a7b33f2c682c928408",
+      "kind": "範囲を限定して実行した処理の実記録",
+      "historical_source_name": "compile-helper-green-source-freshness.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/compile-helper-green.terminal.json",
+      "bytes": 795,
+      "sha256": "c8a738758dfffb30c7f03483a7fe40818961a709c1cafaac9d8c606fbd650389",
+      "kind": "範囲を限定して実行した処理の実記録",
+      "historical_source_name": "compile-helper-green.terminal.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/root-owner.json",
+      "bytes": 219,
+      "sha256": "2093587b1b77f1f7a1fbdb5065fdd7ae44fdaca973fa8384561ce5f0212f2ad3",
+      "kind": "範囲を限定して実行した処理の実記録",
+      "historical_source_name": "root-owner.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/postgres-elf-review-observations.json",
+      "bytes": 2281,
+      "sha256": "a90876bd3072f564632a005e6e0ed0751237406a10ed04c134e39012863bc524",
+      "kind": "範囲を限定して実行した処理の実記録",
+      "historical_source_name": "postgres-elf-review-observations.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/server.spawn.json",
+      "bytes": 1058,
+      "sha256": "1635abe98d6f1392d9e441e7cd2e10cdd1788f61bfdf7e332b3b8d145ca41019",
+      "kind": "範囲を限定して実行した処理の実記録",
+      "historical_source_name": "server.spawn.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/server.terminal.json",
+      "bytes": 1699,
+      "sha256": "4b40448dcfdb6d39595ea8849fc7804c193c5e802016d6ba2690fd370367bd9c",
+      "kind": "範囲を限定して実行した処理の実記録",
+      "historical_source_name": "server.terminal.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/runtime-terminal.json",
+      "bytes": 2438,
+      "sha256": "41c3c1a78d0762eba170420e17c4d77ca2b65b1f53073dd1f010528687094231",
+      "kind": "範囲を限定して実行した処理の実記録",
+      "historical_source_name": "runtime-terminal.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/offline-control.stdout.log",
+      "bytes": 2210,
+      "sha256": "82c9b0071a7667751e038e79267ae1875b414573d854e63001e58ca807e11a98",
+      "kind": "保存済み UTF-8 出力から認証関連情報を除いた公開用コピー",
+      "historical_source_name": "offline-control.stdout.log",
+      "redaction": {
+        "omitted_fields": 1,
+        "reason": "クラスタの認証関連情報を公開記録から除外するため。",
+        "original_sha256": "163a1c29a6580b74569bafe3fe604d092d2e44e981a0649cd16a6af04a46e180",
+        "original_bytes": 2313,
+        "private_original_retained_unchanged": true,
+        "transformation": "認証関連情報を含む出力の 1 行全体だけを除外し、それ以外の元バイトは保持した。",
+        "original_receipt_stream_hashes": "機械生成された実行記録内の出力ハッシュは、この公開コピーではなく、引き続き非公開の原本出力を識別する。"
+      }
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/server.stderr.log",
+      "bytes": 629,
+      "sha256": "724b5dbca60d160c0a8696f17de33a0eb8a4f90b0a40d246db6bda80895650d6",
+      "kind": "実際に取得・保存した UTF-8 出力",
+      "historical_source_name": "server.stderr.log"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/server.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "kind": "実際に取得・保存した UTF-8 出力",
+      "historical_source_name": "server.stdout.log"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/historical-bootstrap-outer-error.json",
+      "bytes": 280,
+      "sha256": "8341f90beade43111eab3d8616587097f37c8ee971a56801ee4b3cf4f907a30e",
+      "kind": "過去の EOF 記録。今回の実行失敗の原因ではない",
+      "historical_source_name": "launcher-error.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/approved-postgres-elf-closure.json",
+      "bytes": 6625,
+      "sha256": "7247fa12266087825f12552622abf16f9f7bfe99a8f787aa19b638906c0d55d8",
+      "kind": "完了済みの環境準備における実行ファイル・依存ライブラリ確認記録",
+      "historical_source_name": "postgres-elf-review.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/python243-terminal.json",
+      "bytes": 8198,
+      "sha256": "2b80ebdde83a0a8714966aad77525e774597e3cbb00efb059741bb19adddaa6c",
+      "kind": "最終ソースに対する副作用のない確認の実結果",
+      "historical_source_name": "terminal.json"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/python243-execution-green.stderr.log",
+      "bytes": 20035,
+      "sha256": "ae77006308ab31f648cf59e14a3d32ae845efa0a51032cf0ff2a6d63b3d6ef0e",
+      "kind": "副作用のない試験で実際に取得した出力",
+      "historical_source_name": "execution-green.stderr.log"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/python243-integration-green.stderr.log",
+      "bytes": 5119,
+      "sha256": "9cc7d81e93eb2448e00983e6e0e49fa2a2535e5fcda19aa48d7d2cbe8fb7f131",
+      "kind": "副作用のない試験で実際に取得した出力",
+      "historical_source_name": "integration-green.stderr.log"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/python243-pg-library-green.stderr.log",
+      "bytes": 2749,
+      "sha256": "92a1a269ce4f39ffd0ffda0e7695c65261be8cc998a7ea0005f0cd3607a1fe79",
+      "kind": "副作用のない試験で実際に取得した出力",
+      "historical_source_name": "pg-library-green.stderr.log"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/python243-policy-green.stderr.log",
+      "bytes": 7188,
+      "sha256": "2ecae1a8072ed37dc9d223093f700f6f17588f93b66b1d69e911fb8763ecb1c1",
+      "kind": "副作用のない試験で実際に取得した出力",
+      "historical_source_name": "policy-green.stderr.log"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/python243-proxy-value-green.stderr.log",
+      "bytes": 272,
+      "sha256": "11a283225028065a629e9a276a63710dc18d166cbba577aa27cd127d5a2493ed",
+      "kind": "副作用のない試験で実際に取得した出力",
+      "historical_source_name": "proxy-value-green.stderr.log"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/python243-utf8-green.stderr.log",
+      "bytes": 590,
+      "sha256": "44f7bf455c6ce7b19c88e66ad5cffd3f8b53be9cbc530b754f37edb3ae905e15",
+      "kind": "副作用のない試験で実際に取得した出力",
+      "historical_source_name": "utf8-green.stderr.log"
+    },
+    {
+      "path": "docs/superpowers/programs/search-platform-completion/g07-owned-preparation-20261003/receipts/rust-nine-pure-bundle.json",
+      "bytes": 13253,
+      "sha256": "305f5c450e3c9eff678b30fe2d96c61bed10a55b5a40fda2b257fc504f8ba623",
+      "kind": "Rust の副作用のない確認 9 件について、実記録と出力の元バイトを保持した UTF-8 集約ファイル"
+    }
+  ],
+  "execution_limit": "保存資料は使用済みで当該環境に限定された証拠であり、別環境の CI 用アダプターでも、制限された実行を再試行する許可でもない。配布元のアーカイブ、実行バイナリ、キャッシュ、クラスタデータ、認証情報、実業務データは公開対象に含めない。",
+  "blocked_action": {
+    "operation": "専用の Unix-domain socket を使って、管理対象の PostgreSQL サーバーを起動する処理",
+    "target": "/workspace/scratch/13897606dfde/p6pg.7W3PeNcL/socket/.s.PGSQL.5432",
+    "diagnostic": "Operation not permitted",
+    "observed_at": "2026-10-03T14:27:04.786Z",
+    "server_returncode": 1,
+    "server_exit_and_output": "confirmed-exit",
+    "recovery_children": 0,
+    "case_seconds_used": 0,
+    "semantic_red": false,
+    "retry_or_workaround_performed": false
+  },
+  "not_executed": [
+    "未配線の G07 に対する最初の実プロセス RED",
+    "子プロセスの claim/reap 配線",
+    "compile-runtime-green（実行時配線後のコンパイル）",
+    "last_claim_kill9_restart_reaps_unknown_once の GREEN",
+    "four_processes_disjoint_claims_and_recover_expired の GREEN",
+    "実行後の品質確認と終了確認",
+    "G08 の実装・試験"
+  ],
+  "known_receipt_limit": "追加の外側エラー記録の書き込み先が、過去の環境準備の記録と衝突した。今回の失敗と後片付けは、別の server/runtime 記録と完全なサーバー標準エラー出力で確認できる。過去のファイルは上書きしていない。",
+  "publication_minimization": {
+    "status": "認証関連情報を除いた公開用表現。実行は引き続き停止中",
+    "scope": "offline-control.stdout.log から認証関連情報を含む出力 1 行を除外し、原本のハッシュとサイズを保持した。ソースや実行時の挙動は変更していない。",
+    "original_packet": "非公開の原本ソース・証拠 commit d20e97e2b437e90d17643510af68dee2713da457 は変更していない。このローカル履歴をリモート commit の親には使用しない。",
+    "prior_publication_attempt": "最初の公開試行は認証関連情報を含む出力 blob で停止し、その時点では tree、commit、branch ref を更新していない。先行して作成した 36 blob には除外対象の値が含まれていないことを確認した。別途、全 53 ファイルを認証関連の同等項目も含めて確認した。",
+    "private_cluster": "非公開のまま変更せず保持している。サーバーの終了は、クラスタの破棄や認証関連情報の無効化を意味しない。"
+  },
+  "publication_after_minimization": {
+    "status": "英語版の公開用最小化 tree はリモートに存在するが、PR の公開済み head ではない",
+    "unreferenced_tree": "b8353b9f4e935d45da38b724b7b79e76afc93c2b",
+    "create_commit_diagnostic": "user cancelled MCP tool call",
+    "commit_sha_returned": false,
+    "ref_after_cancellation": "da5e7155db616c1df9a688a7043fc3b4730bb1a3",
+    "ref_observed_at": "2026-10-03T15:27:40Z",
+    "explanation": "全 53 blob の SHA と tree 一致を確認した後、create_commit 呼び出しが中断された。commit SHA は返されず、branch ref は変更していない。無条件の再試行はせず、日本語版の意味保存レビューと再照合を先に行う。新しい head の公開や CI 実行を主張しない。"
+  }
+}

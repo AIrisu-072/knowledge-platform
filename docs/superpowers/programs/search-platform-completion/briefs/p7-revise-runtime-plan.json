@@ -1,0 +1,22 @@
+# 仕事の手渡し: p7-revise-runtime-plan
+
+- 種類: docs / 役: DomainDesigner / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Resolve five independent P7 design NO-GO findings in separately scoped implementation plan
+
+## 入力
+- `p7-draft` (docs/superpowers/programs/search-platform-completion/p7-runtime-design-completion.md) — runtime draft [`p7-design` が作る (済み)]
+- `p7-arch` (docs/superpowers/programs/search-platform-completion/p7-runtime-architecture-review.md) — runtime arch [`p7-architecture` が作る (作業中)]
+- `p7-shared-contract` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-freeze.md) — p7-shared-contract [`p7-freeze-shared` が作る (済み)]
+- `p7-shared-plan` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-plan.md) — p7-shared-plan [`p7-plan-shared` が作る (済み)]
+
+## 出すもの
+- `p7-runtime-revised-design` (docs/superpowers/programs/search-platform-completion/p7-runtime-design-revision-1.md) — Corrected P7 runtime design addressing five independent architecture blockers
+- `p7-runtime-revised-plan` (docs/superpowers/programs/search-platform-completion/p7-runtime-plan-revision-1.md) — Corrected bounded runtime plan explicit host audit transport privacy load budget owners
+
+## 受入条件
+Each of five reviewer findings closes with exact host async host inventory→PG ledger→P5 composition owner, transactional audit outbox/role/delivery/idempotency, sink-by-sink closed typed privacy allowlists+NO_RETENTION sentinel test, isolated HTTP/protobuf vs gRPC OTLP transport PoC selection/licensing/dependency lock gate before prod, measured Source/tenant/Doc/Unit/Graph/payload/fanout/concurrency/backlog/coldwarm/fault axes with resource/admission/stop/walltime budget; freezeable plan only; keep no SLO invention, Draft/live boundary and P7 aliases
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p7-runtime-design-revision-1.md` / `docs/superpowers/programs/search-platform-completion/p7-runtime-plan-revision-1.md` だけ。他は触らない。

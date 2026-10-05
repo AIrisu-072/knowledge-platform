@@ -1,0 +1,21 @@
+# 仕事の手渡し: p1-impl-wire
+
+- 種類: impl / 役: Worker / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+I01 pure worker protocol and budgets
+
+## 入力
+- `p1-contract` (docs/superpowers/programs/search-platform-completion/p1-extraction-freeze.md) — extraction contract [`p1-freeze` が作る (済み)]
+- `p1-plan` (docs/superpowers/programs/search-platform-completion/p1-extraction-plan.md) — extraction plan [`p1-freeze` が作る (済み)]
+- `p1-body-normative` (docs/superpowers/programs/search-platform-completion/p1-body-normative.md) — p1-body-normative [`p1-normative-body` が作る (済み)]
+- `p1-unit-code-review` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-code-review.md) — Independent minimal core typed identity codec review [`p1-review-unit-code` が作る (済み)]
+
+## 出すもの
+- `p1-wire-code` (docs/superpowers/programs/search-platform-completion/p1-wire-code.md) — p1-wire-code
+
+## 受入条件
+Frozen focused named RED/GREEN and exact artifact evidence, independent review downstream; no unqualified library adoption
+
+## 守ること
+- 書いてよいのは `crates/search-extraction-core` / `crates/document-sandbox-runner/Cargo.toml` / `crates/document-sandbox-runner/src/lib.rs` / `crates/search-extraction-runner/Cargo.toml` / `crates/search-extraction-runner/src/lib.rs` / `crates/search-extraction-worker/Cargo.toml` / `crates/search-extraction-worker/src/lib.rs` / `Cargo.toml` / `Cargo.lock` だけ。他は触らない。

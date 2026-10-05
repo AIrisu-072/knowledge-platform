@@ -126,7 +126,7 @@ Office / PDF / ZIPなどの内部情報を事前に抽出する。
 - Vector
 - Metadata
 - Temporal
-- Graph（必要になった場合）
+- Typed HyperEdge Graph
 
 ---
 
@@ -317,3 +317,46 @@ Architectureとしては、Document / Search / Extraction / Identity / Observabi
 ```
 
 負荷や運用上の必要が生じたコンポーネントのみ、後から分離できる構造とする。
+
+
+---
+
+# Search / Discovery Platform v0 architecture amendment
+
+承認済みSearch / Discovery Platform v0では、既存のIndexing / Query flowを次のFederated Discoveryへ拡張する。
+
+```text
+Discoverable Sources
+├─ Document Platform
+├─ CRM / SFA
+├─ Internal DB / API
+├─ MCP / Tool Providers
+├─ External contracted sources
+└─ Web / live sources
+        ↓
+Global Source Registry
+        ↓
+Source-local Directory / Remote Discovery
+        ↓
+Observation / Assertions / Typed Relations
+        ↓
+Projection Compiler
+        ↓
+Directory / Structured / Lexical / Vector /
+Temporal / Access / Typed HyperEdge Graph
+        ↓
+Adaptive Retrieval / HyperGraph Expansion / Probe
+        ↓
+Applicability / Contrast / Authority / Temporal
+        ↓
+Evidence Sufficiency
+        ↓
+SearchResult / DiscoveryResult
+        ↓
+Human / LLM / Agent
+```
+
+Graph RAGは外部から独立Systemとして扱わず、Search Platform内部のHyperGraph Projection / Retrieverとして論理分離する。
+Task DAG / Execution Control PlaneはSearch Platform外であり、DiscoveryResultから必要ResourceをBindingして利用する。
+
+Source-local indexを基本とし、単一巨大Global Resource Indexを必須にしない。

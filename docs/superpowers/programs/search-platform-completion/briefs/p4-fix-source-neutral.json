@@ -1,0 +1,20 @@
+# 仕事の手渡し: p4-fix-source-neutral
+
+- 種類: impl / 役: Worker / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Fix synthetic Vec bypass and source scope structural error dependency classification
+
+## 入力
+- `p4-source-neutral-code` (docs/superpowers/programs/search-platform-completion/p4-source-neutral-code-receipt.md) — P4 source-neutral actor visibility and full namespace ledger contract [`p4-impl-source-neutral` が作る (済み)]
+- `p4-source-neutral-review` (docs/superpowers/programs/search-platform-completion/p4-source-neutral-code-review.md) — Independent source-neutral trusted scope and namespace ledger gate [`p4-review-source-neutral` が作る (済み)]
+- `p4-source-neutral-plan` (docs/superpowers/programs/search-platform-completion/p4-source-neutral-implementation-amendment.md) — Freeze P4 implementation amendment for accepted Document Remote source-neutral contract [`p4-amend-source-neutral` が作る (済み)]
+
+## 出すもの
+- `p4-source-neutral-fixed-code` (docs/superpowers/programs/search-platform-completion/p4-source-neutral-code-fix.md) — Remove normal-build Vec catalog facade and classify internal scope mismatch as dependency
+
+## 受入条件
+No production public Vec synthetic catalog facade; legacy fixture uses complete host snapshot capture and normal factory; mismatch OperationFailed with actualRED oldInvalidRequest then focused regressionGREEN
+
+## 守ること
+- 書いてよいのは `crates/search-application/src/source_registration.rs` / `crates/search-application/tests/scoped_catalog_contract.rs` / `crates/search-application/tests/source_neutral_catalog_contract.rs` / `crates/search-application/tests/support` / `docs/superpowers/programs/search-platform-completion/p4-source-neutral-code-fix.md` だけ。他は触らない。

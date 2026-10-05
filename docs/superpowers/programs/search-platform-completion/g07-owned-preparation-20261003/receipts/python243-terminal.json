@@ -1,0 +1,259 @@
+{
+  "scope": "G07 all243 Python pure GREEN only",
+  "status": "python243-green-observed",
+  "results": [
+    {
+      "label": "policy-green",
+      "argv": [
+        "/usr/bin/python3.13",
+        "-I",
+        "-B",
+        "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_policy.py"
+      ],
+      "cwd": "/workspace/scratch/13897606dfde/search-g07-launcher",
+      "deadline_seconds": 30,
+      "returncode": 0,
+      "abnormal_reason": null,
+      "logs": {
+        "stdout": {
+          "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-supervise-entry-pure-oebktf26/policy-green.stdout.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "stderr": {
+          "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-supervise-entry-pure-oebktf26/policy-green.stderr.log",
+          "sha256": "2ecae1a8072ed37dc9d223093f700f6f17588f93b66b1d69e911fb8763ecb1c1",
+          "bytes": 7188
+        }
+      },
+      "environment_keys": [
+        "HOME",
+        "LC_ALL",
+        "RUST_BACKTRACE",
+        "TMPDIR",
+        "TZ"
+      ],
+      "output_cap_per_stream": 65536,
+      "leader_identity": {
+        "pid": 5,
+        "state": "R",
+        "pgrp": 5,
+        "session": 5,
+        "start_ticks": 4922308
+      },
+      "elapsed_seconds": 0.315,
+      "minimum_free_bytes": 23701897216
+    },
+    {
+      "label": "integration-green",
+      "argv": [
+        "/usr/bin/python3.13",
+        "-I",
+        "-B",
+        "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_integration.py"
+      ],
+      "cwd": "/workspace/scratch/13897606dfde/search-g07-launcher",
+      "deadline_seconds": 30,
+      "returncode": 0,
+      "abnormal_reason": null,
+      "logs": {
+        "stdout": {
+          "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-supervise-entry-pure-oebktf26/integration-green.stdout.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "stderr": {
+          "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-supervise-entry-pure-oebktf26/integration-green.stderr.log",
+          "sha256": "9cc7d81e93eb2448e00983e6e0e49fa2a2535e5fcda19aa48d7d2cbe8fb7f131",
+          "bytes": 5119
+        }
+      },
+      "environment_keys": [
+        "HOME",
+        "LC_ALL",
+        "RUST_BACKTRACE",
+        "TMPDIR",
+        "TZ"
+      ],
+      "output_cap_per_stream": 65536,
+      "leader_identity": {
+        "pid": 8,
+        "state": "R",
+        "pgrp": 8,
+        "session": 8,
+        "start_ticks": 4922340
+      },
+      "elapsed_seconds": 0.312,
+      "minimum_free_bytes": 23701876736
+    },
+    {
+      "label": "execution-green",
+      "argv": [
+        "/usr/bin/python3.13",
+        "-I",
+        "-B",
+        "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_execution.py"
+      ],
+      "cwd": "/workspace/scratch/13897606dfde/search-g07-launcher",
+      "deadline_seconds": 30,
+      "returncode": 0,
+      "abnormal_reason": null,
+      "logs": {
+        "stdout": {
+          "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-supervise-entry-pure-oebktf26/execution-green.stdout.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "stderr": {
+          "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-supervise-entry-pure-oebktf26/execution-green.stderr.log",
+          "sha256": "ae77006308ab31f648cf59e14a3d32ae845efa0a51032cf0ff2a6d63b3d6ef0e",
+          "bytes": 20035
+        }
+      },
+      "environment_keys": [
+        "HOME",
+        "LC_ALL",
+        "RUST_BACKTRACE",
+        "TMPDIR",
+        "TZ"
+      ],
+      "output_cap_per_stream": 65536,
+      "leader_identity": {
+        "pid": 11,
+        "state": "R",
+        "pgrp": 11,
+        "session": 11,
+        "start_ticks": 4922372
+      },
+      "elapsed_seconds": 0.411,
+      "minimum_free_bytes": 23701856256
+    },
+    {
+      "label": "utf8-green",
+      "argv": [
+        "/usr/bin/python3.13",
+        "-I",
+        "-B",
+        "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_utf8.py"
+      ],
+      "cwd": "/workspace/scratch/13897606dfde/search-g07-launcher",
+      "deadline_seconds": 30,
+      "returncode": 0,
+      "abnormal_reason": null,
+      "logs": {
+        "stdout": {
+          "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-supervise-entry-pure-oebktf26/utf8-green.stdout.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "stderr": {
+          "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-supervise-entry-pure-oebktf26/utf8-green.stderr.log",
+          "sha256": "44f7bf455c6ce7b19c88e66ad5cffd3f8b53be9cbc530b754f37edb3ae905e15",
+          "bytes": 590
+        }
+      },
+      "environment_keys": [
+        "HOME",
+        "LC_ALL",
+        "RUST_BACKTRACE",
+        "TMPDIR",
+        "TZ"
+      ],
+      "output_cap_per_stream": 65536,
+      "leader_identity": {
+        "pid": 14,
+        "state": "R",
+        "pgrp": 14,
+        "session": 14,
+        "start_ticks": 4922414
+      },
+      "elapsed_seconds": 0.316,
+      "minimum_free_bytes": 23701823488
+    },
+    {
+      "label": "pg-library-green",
+      "argv": [
+        "/usr/bin/python3.13",
+        "-I",
+        "-B",
+        "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_pg_library.py"
+      ],
+      "cwd": "/workspace/scratch/13897606dfde/search-g07-launcher",
+      "deadline_seconds": 30,
+      "returncode": 0,
+      "abnormal_reason": null,
+      "logs": {
+        "stdout": {
+          "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-supervise-entry-pure-oebktf26/pg-library-green.stdout.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "stderr": {
+          "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-supervise-entry-pure-oebktf26/pg-library-green.stderr.log",
+          "sha256": "92a1a269ce4f39ffd0ffda0e7695c65261be8cc998a7ea0005f0cd3607a1fe79",
+          "bytes": 2749
+        }
+      },
+      "environment_keys": [
+        "HOME",
+        "LC_ALL",
+        "RUST_BACKTRACE",
+        "TMPDIR",
+        "TZ"
+      ],
+      "output_cap_per_stream": 65536,
+      "leader_identity": {
+        "pid": 17,
+        "state": "R",
+        "pgrp": 17,
+        "session": 17,
+        "start_ticks": 4922446
+      },
+      "elapsed_seconds": 0.314,
+      "minimum_free_bytes": 23701807104
+    },
+    {
+      "label": "proxy-value-green",
+      "argv": [
+        "/usr/bin/python3.13",
+        "-I",
+        "-B",
+        "/workspace/scratch/13897606dfde/search-g07-launcher/test_launcher_proxy.py"
+      ],
+      "cwd": "/workspace/scratch/13897606dfde/search-g07-launcher",
+      "deadline_seconds": 30,
+      "returncode": 0,
+      "abnormal_reason": null,
+      "logs": {
+        "stdout": {
+          "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-supervise-entry-pure-oebktf26/proxy-value-green.stdout.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "stderr": {
+          "path": "/workspace/scratch/13897606dfde/search-recovery-evidence/g07-supervise-entry-pure-oebktf26/proxy-value-green.stderr.log",
+          "sha256": "11a283225028065a629e9a276a63710dc18d166cbba577aa27cd127d5a2493ed",
+          "bytes": 272
+        }
+      },
+      "environment_keys": [
+        "HOME",
+        "LC_ALL",
+        "RUST_BACKTRACE",
+        "TMPDIR",
+        "TZ"
+      ],
+      "output_cap_per_stream": 65536,
+      "leader_identity": {
+        "pid": 20,
+        "state": "R",
+        "pgrp": 20,
+        "session": 20,
+        "start_ticks": 4922478
+      },
+      "elapsed_seconds": 0.314,
+      "minimum_free_bytes": 23701790720
+    }
+  ],
+  "broader_runtime_admitted": false
+}

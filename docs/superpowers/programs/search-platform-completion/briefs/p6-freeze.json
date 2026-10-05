@@ -1,0 +1,20 @@
+# 仕事の手渡し: p6-freeze
+
+- 種類: decision / 役: Orchestrator / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Freeze reviewed outbox contract and bounded implementation plan
+
+## 入力
+- `p6-revised` (docs/superpowers/programs/search-platform-completion/p6-outbox-design-revision-1.md) — Revised design resolving independent architecture findings [`p6-repair-design` が作る (済み)]
+- `p6-arch-recheck` (docs/superpowers/programs/search-platform-completion/p6-outbox-architecture-recheck.md) — Independent revised exact design architecture gate [`p6-recheck-design` が作る (作業中)]
+
+## 出すもの
+- `p6-contract` (docs/superpowers/programs/search-platform-completion/p6-outbox-freeze.md) — outbox contract
+- `p6-plan` (docs/superpowers/programs/search-platform-completion/p6-outbox-plan.md) — outbox plan
+
+## 受入条件
+Independent findings resolved and exact contract digest recorded
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p6-outbox-freeze.md` / `docs/superpowers/programs/search-platform-completion/p6-outbox-plan.md` だけ。他は触らない。

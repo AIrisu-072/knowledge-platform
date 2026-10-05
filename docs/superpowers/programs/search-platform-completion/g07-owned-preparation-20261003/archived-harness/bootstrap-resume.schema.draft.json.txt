@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "G07 fixed tools-ELF boundary adoption descriptor draft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "run_root", "inventory", "root_owner_sha256", "eof_error_sha256", "authenticated_tree_comparison", "required_empty_dirs", "tools_elf_observations_sha256"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_id": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+    "run_root": {"type": "string", "pattern": "^/workspace/scratch/13897606dfde/p6pg\\.[A-Za-z0-9]{8}$"},
+    "inventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "max_entries", "max_bytes", "max_regular_bytes"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^/workspace/scratch/13897606dfde/search-recovery-evidence/g07-[A-Za-z0-9_.-]+\\.jsonl$"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "max_entries": {"enum": [12000, 16000]},
+        "max_bytes": {"const": 8388608},
+        "max_regular_bytes": {"const": 1073741824}
+      }
+    },
+    "root_owner_sha256": {"$ref": "#/$defs/sha256"},
+    "eof_error_sha256": {"$ref": "#/$defs/sha256"},
+    "authenticated_tree_comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^/workspace/scratch/13897606dfde/search-recovery-evidence/g07-[A-Za-z0-9_.-]+\\.json$"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "required_empty_dirs": {"type": "array"},
+    "tools_elf_observations_sha256": {"$ref": "#/$defs/sha256"},
+    "boundary": {"enum": ["configured-build-after-owned-make-stop", "configured-build-after-owned-make-race-stop", "installed-before-postgres-elf-approval"]},
+    "configured_stop_sha256": {"$ref": "#/$defs/sha256"},
+    "prior_adoption_sha256": {"$ref": "#/$defs/sha256"},
+    "tools_review_sha256": {"$ref": "#/$defs/sha256"},
+    "race_stop_sha256": {"$ref": "#/$defs/sha256"},
+    "configured_adoption_sha256": {"$ref": "#/$defs/sha256"},
+    "race_adoption_sha256": {"$ref": "#/$defs/sha256"},
+    "installed_stop_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "oneOf": [
+    {
+      "required": ["boundary", "configured_stop_sha256", "prior_adoption_sha256", "tools_review_sha256"],
+      "properties": {"boundary": {"const": "configured-build-after-owned-make-stop"}, "inventory": {"properties": {"max_entries": {"const": 12000}}}, "required_empty_dirs": {"const": ["install", "data", "socket", "home", "tmp"]}},
+      "not": {"anyOf": [{"required": ["race_stop_sha256"]}, {"required": ["configured_adoption_sha256"]}, {"required": ["race_adoption_sha256"]}, {"required": ["installed_stop_sha256"]}]}
+    },
+    {
+      "required": ["boundary", "configured_stop_sha256", "prior_adoption_sha256", "tools_review_sha256", "race_stop_sha256", "configured_adoption_sha256"],
+      "properties": {"boundary": {"const": "configured-build-after-owned-make-race-stop"}, "inventory": {"properties": {"max_entries": {"const": 12000}}}, "required_empty_dirs": {"const": ["install", "data", "socket", "home", "tmp"]}},
+      "not": {"anyOf": [{"required": ["race_adoption_sha256"]}, {"required": ["installed_stop_sha256"]}]}
+    },
+    {
+      "required": ["boundary", "configured_stop_sha256", "prior_adoption_sha256", "tools_review_sha256", "race_stop_sha256", "configured_adoption_sha256", "race_adoption_sha256", "installed_stop_sha256"],
+      "properties": {"boundary": {"const": "installed-before-postgres-elf-approval"}, "inventory": {"properties": {"max_entries": {"const": 16000}}}, "required_empty_dirs": {"const": ["data", "socket", "home", "tmp"]}}
+    },
+    {
+      "not": {"anyOf": [{"required": ["boundary"]}, {"required": ["configured_stop_sha256"]}, {"required": ["prior_adoption_sha256"]}, {"required": ["tools_review_sha256"]}, {"required": ["race_stop_sha256"]}, {"required": ["configured_adoption_sha256"]}, {"required": ["race_adoption_sha256"]}, {"required": ["installed_stop_sha256"]}]},
+      "properties": {"inventory": {"properties": {"max_entries": {"const": 12000}}}, "required_empty_dirs": {"const": ["build", "install", "data", "socket", "home", "tmp"]}}
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

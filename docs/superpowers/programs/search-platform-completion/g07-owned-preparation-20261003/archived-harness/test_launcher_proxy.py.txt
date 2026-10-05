@@ -1,0 +1,44 @@
+"""TEST-ONLY per-invocation managed HTTPS proxy value boundary.
+
+One pure unittest method uses synthetic values only. Preparation did not import
+or execute this file. Tests do not read an environment or use network transport.
+A later isolated import/execution needs its own independently reviewed manifest.
+"""
+
+import importlib.util
+from pathlib import Path
+import unittest
+
+_source = Path(__file__).with_name("launcher.py")
+_spec = importlib.util.spec_from_file_location("g07_proxy_launcher", _source)
+launcher = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(launcher)
+
+
+class ManagedHttpsProxyTests(unittest.TestCase):
+    def test_managed_proxy_value_requires_exact_loopback_http_integer_port(self):
+        cases = (
+            ("http://127.0.0.1:12345", "http://127.0.0.1:12345"),
+            ("http://127.0.0.1:54321", "http://127.0.0.1:54321"),
+            ("http://user@127.0.0.1:12345", None),
+            ("http://127.0.0.1:12345/", None),
+            ("http://127.0.0.1:12345?option=1", None),
+            ("http://127.0.0.1:12345#fragment", None),
+            ("http://proxy.example.invalid:12345", None),
+            ("https://127.0.0.1:12345", None),
+            ("http://127.0.0.1:0", None),
+            ("http://127.0.0.1:65536", None),
+            ("http://127.0.0.1:012345", None),
+            ("http://127.0.0.1:12345\n", None),
+            (None, None),
+            (12345, None),
+            (True, None),
+            (b"http://127.0.0.1:12345", None),
+        )
+        for value, expected in cases:
+            with self.subTest(value=value):
+                self.assertEqual(launcher._managed_https_proxy(value), expected)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

@@ -1,0 +1,19 @@
+# 仕事の手渡し: p6-normative
+
+- 種類: docs / 役: Worker / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+N01 normative delivery state ordering and validated trace reconciliation
+
+## 入力
+- `p6-contract` (docs/superpowers/programs/search-platform-completion/p6-outbox-freeze.md) — outbox contract [`p6-freeze` が作る (作業中)]
+- `p6-plan` (docs/superpowers/programs/search-platform-completion/p6-outbox-plan.md) — outbox plan [`p6-freeze` が作る (作業中)]
+
+## 出すもの
+- `p6-normative-code` (docs/superpowers/programs/search-platform-completion/p6-outbox-normative-receipt.md) — p6-normative-code
+
+## 受入条件
+N01 normative delivery state ordering and validated trace reconciliation; focused named RED GREEN and no changed frozen semantics
+
+## 守ること
+- 書いてよいのは `spec/data/transaction-consistency-requirements-v0.md` / `spec/operations/observability-audit-requirements-v0.md` / `docs/superpowers/programs/search-platform-completion/p6-outbox-normative-receipt.md` だけ。他は触らない。

@@ -1,0 +1,21 @@
+# 仕事の手渡し: p7-design-shared
+
+- 種類: docs / 役: DomainDesigner / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+Specify durable shared generation READY pointer pin guarded GC substrate
+
+## 入力
+- `p7-early-contract` (docs/superpowers/programs/search-platform-completion/p7-runtime-contract-draft.md) — Early consolidated runtime composition and shared coordination contract, reconcile required [`p7-early-design` が作る (済み)]
+- `p3-contract` (docs/superpowers/programs/search-platform-completion/p3-graph-freeze.md) — graph contract [`p3-freeze-architecture` が作る (済み)]
+- `p6-contract` (docs/superpowers/programs/search-platform-completion/p6-outbox-freeze.md) — outbox contract [`p6-freeze` が作る (作業中)]
+- `p1-unit-frozen` (docs/superpowers/programs/search-platform-completion/p1-knowledgeunit-freeze.md) — Frozen provider neutral input contract for Vector evaluation [`p1-freeze-unit` が作る (済み)]
+
+## 出すもの
+- `p7-shared-draft` (docs/superpowers/programs/search-platform-completion/p7-shared-durable-design.md) — p7-shared-draft
+
+## 受入条件
+Concrete typed ports schema readiness fullbundle digest lock and cleanup semantics; deployment selection remains final P7
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p7-shared-durable-design.md` だけ。他は触らない。

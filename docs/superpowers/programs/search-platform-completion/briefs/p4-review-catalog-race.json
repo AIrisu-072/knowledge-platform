@@ -1,0 +1,20 @@
+# 仕事の手渡し: p4-review-catalog-race
+
+- 種類: audit / 役: QualityAuditor / 大きさ: S / 危険度: (未記入) / 隔離: none
+
+## やること
+Independent race correction exacthash gate
+
+## 入力
+- `p4-fix-catalog-race-artifact` (docs/superpowers/programs/search-platform-completion/p4-catalog-race-fix-receipt.md) — Skip only stale registration snapshot race and preserve independently visible Source [`p4-fix-catalog-race` が作る (済み)]
+
+## 出すもの
+- `p4-review-catalog-race-artifact` (docs/superpowers/programs/search-platform-completion/p4-trust-code-final-review.md) — Independent race correction exacthash gate
+
+## 受入条件
+Exact named finding closure and scoped fresh evidence; no unverified qualification claim
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p4-trust-code-final-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

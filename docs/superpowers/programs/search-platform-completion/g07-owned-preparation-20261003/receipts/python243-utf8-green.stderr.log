@@ -1,0 +1,8 @@
+test_invalid_utf8_ancillary_value_is_rejected (__main__.PackageUtf8CompatibilityTests.test_invalid_utf8_ancillary_value_is_rejected) ... ok
+test_utf8_ancillary_values_do_not_mask_pinned_version_mismatch (__main__.PackageUtf8CompatibilityTests.test_utf8_ancillary_values_do_not_mask_pinned_version_mismatch) ... ok
+test_utf8_ancillary_values_preserve_exact_package_pin_acceptance (__main__.PackageUtf8CompatibilityTests.test_utf8_ancillary_values_preserve_exact_package_pin_acceptance) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.000s
+
+OK

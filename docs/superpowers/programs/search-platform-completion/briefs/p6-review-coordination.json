@@ -1,0 +1,21 @@
+# 仕事の手渡し: p6-review-coordination
+
+- 種類: audit / 役: QualityAuditor / 大きさ: M / 危険度: (未記入) / 隔離: none
+
+## やること
+I03 independent Source coordination and separate migration ledger gate
+
+## 入力
+- `p6-coordination-schema` (crates/search-runtime/migrations/0001_search_source_coordination_v0.sql) — p6-coordination-schema [`p6-migrate-coordination` が作る (済み)]
+- `p6-recheck-domain-artifact` (docs/superpowers/programs/search-platform-completion/p6-domain-migration-recheck.md) — Independent bounded policy and additive preservation gate [`p6-recheck-domain` が作る (済み)]
+
+## 出すもの
+- `p6-coordination-review` (docs/superpowers/programs/search-platform-completion/p6-coordination-migration-review.md) — I03 independent Source coordination and separate migration ledger gate
+
+## 受入条件
+Three actual PostgreSQL cached tests sequential; Domain ledger unchanged separate Search ledger and one pointer exacthash; no READY/GC completion claim
+
+## 守ること
+- 書いてよいのは `docs/superpowers/programs/search-platform-completion/p6-coordination-migration-review.md` だけ。他は触らない。
+- **作った側の過程は伏せてある。** 受入条件だけを物差しにして、
+  作った人と相談したり一緒に直したりしない ―― 独立していないと確認にならない。

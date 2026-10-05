@@ -1,0 +1,8 @@
+warning[duplicate]: found 2 duplicate entries for crate 'syn'
+    ┌─ /workspace/scratch/13897606dfde/search-poc-dependency-repair/experiments/search-http-client-poc/Cargo.lock:103:1
+    │
+103 │ ╭ syn 2.0.119 registry+https://github.com/rust-lang/crates.io-index
+104 │ │ syn 3.0.6 registry+https://github.com/rust-lang/crates.io-index
+    │ ╰───────────────────────────────────────────────────────────────┘ lock entries
+
+advisories ok, bans ok, licenses ok, sources ok
