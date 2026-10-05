@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useRouterState, useSearch } from '@tanstack/react-router';
 import { Dialog, Heading, Modal } from 'react-aria-components';
 import { AppShell } from '../components/app-shell/AppShell';
-import { useOrganizationContext, useTaskTransient, useClearTaskTransients, emptySelection } from '../application/organization-context';
+import { useOrganizationContext, useTaskTransient, useClearTaskTransients, useClearAgentTransients, emptySelection, emptyAgentDraft } from '../application/organization-context';
+import { AgentContextModule } from '../components/agent/AgentContextModule';
 import { EvidenceContextModule, decisionLabel } from '../components/evidence/EvidenceContextModule';
 import { useEvidenceRecords, evidenceRecordsKey } from '../application/use-evidence-records';
 import { selectedHandoffIsClosed, toggleReference } from '../application/evidence-workspace';
@@ -25,6 +26,7 @@ export function TaskHomePage() {
   const currentHref = useRouterState({ select: (state) => state.location.href });
   const organization = useOrganizationContext();
   const clearTransients = useClearTaskTransients();
+  const clearAgentTransients = useClearAgentTransients();
   const client = useQueryClient();
   const [blockedId, setBlockedId] = useState<string | null>(null);
   const session = useQuery({ queryKey: sessionKey, queryFn: workApi.getSession, staleTime: 0, gcTime: 0, retry: false });
@@ -45,8 +47,13 @@ export function TaskHomePage() {
   const priorSnapshotId = instruction.isSuccess && detailData?.returnInstructionId === instruction.data.id ? instruction.data.previousSubmissionId : undefined;
   const priorSnapshot = useQuery({ queryKey: [...(sessionData ? actorKey(sessionData) : ['organization-unavailable']), 'snapshot', priorSnapshotId], queryFn: () => workApi.getSnapshot(priorSnapshotId!), enabled: Boolean(priorSnapshotId && priorSnapshotId !== detailData?.handoffSnapshotId), staleTime: 0, gcTime: 0, retry: false });
   useEffect(() => { if (sessionData && selected) clearTransients(`${sessionData.principalId}:${sessionData.actingAssignmentId}:${selected.id}:`, `${sessionData.principalId}:${sessionData.actingAssignmentId}:${selected.id}:${selected.attemptId}`); }, [sessionData?.principalId, sessionData?.actingAssignmentId, selected?.id, selected?.attemptId, clearTransients]);
+  useEffect(() => {
+    const current = sessionData && selected ? `${sessionData.principalId}:${sessionData.actingAssignmentId}:${selected.id}:${selected.attemptId}` : undefined;
+    clearAgentTransients(current);
+    client.removeQueries({ queryKey: ['organization'], predicate: (query) => query.queryKey[3] === 'agent-context' && (query.queryKey[1] !== sessionData?.principalId || query.queryKey[2] !== sessionData?.actingAssignmentId || query.queryKey[4] !== selected?.id || query.queryKey[5] !== selected?.attemptId) });
+  }, [sessionData?.principalId, sessionData?.actingAssignmentId, selected?.id, selected?.attemptId, clearAgentTransients, client]);
   const [module, setModule] = useState('document');
-  useEffect(() => { setModule('document'); setBlockedId(null); }, [search.taskId, sessionData?.principalId]);
+  useEffect(() => { setModule('document'); setBlockedId(null); }, [search.taskId, sessionData?.principalId, sessionData?.actingAssignmentId]);
   const updateSearch = (patch: Partial<TaskSearch>) => { void navigate({ search: (previous) => ({ ...previous, ...patch }) }); };
   const refresh = async () => { if (sessionData && selected) await client.invalidateQueries({ queryKey: evidenceRecordsKey(sessionData, selected) }); await tasks.refetch(); if (selected && !selected.canClaim) await detail.refetch(); if (detailData?.handoffSnapshotId) await snapshot.refetch(); if (detailData?.returnInstructionId) await instruction.refetch(); if (priorSnapshotId && priorSnapshotId !== detailData?.handoffSnapshotId) await priorSnapshot.refetch(); };
   function denyDisclosure() {
@@ -54,6 +61,7 @@ export function TaskHomePage() {
     setBlockedId(attemptKey(selected));
     clearTransients(`${sessionData.principalId}:${sessionData.actingAssignmentId}:${selected.id}:`);
     client.removeQueries({ queryKey: [...actorKey(sessionData), 'evidence-context', selected.id] });
+    client.removeQueries({ queryKey: [...actorKey(sessionData), 'agent-context', selected.id] });
     client.removeQueries({ queryKey: taskKey(sessionData, selected) });
     client.removeQueries({ queryKey: [...actorKey(sessionData), 'snapshot'] });
     client.removeQueries({ queryKey: [...actorKey(sessionData), 'return-instruction'] });
@@ -62,7 +70,7 @@ export function TaskHomePage() {
   function applyResult(result: WorkResult) {
     if (!sessionData || result.task.id !== selected?.id || result.task.attemptId !== selected.attemptId || result.task.revision < selected.revision || blockedId === attemptKey(selected)) return;
     client.setQueriesData<{ items: TaskSummary[]; nextCursor: null }>({ queryKey: [...actorKey(sessionData), 'tasks'] }, (previous) => previous ? { ...previous, items: previous.items.map((item) => matchesCurrent(item, result.task) ? result.task : item) } : previous);
-    if (result.kind !== 'claimed') client.setQueryData<TaskDetail>(taskKey(sessionData, result.task), (previous) => previous && matchesCurrent(previous, result.task) ? { ...previous, ...result.task, workingArtifacts: result.kind === 'draft_saved' ? [result.artifact] : previous.workingArtifacts } : previous);
+    if (result.kind !== 'claimed') client.setQueryData<TaskDetail>(taskKey(sessionData, result.task), (previous) => previous && matchesCurrent(previous, result.task) ? { ...previous, ...result.task, workingArtifacts: result.kind === 'draft_saved' ? [result.artifact] : previous.workingArtifacts, ...((result.kind === 'agent_execution_requested' || result.kind === 'agent_execution_cancelled') ? { agentExecutionIds: Array.from(new Set([...previous.agentExecutionIds, result.execution.id])) } : {}) } : previous);
     if (['evidence_registered', 'finding_registered', 'decision_recorded'].includes(result.kind)) void client.invalidateQueries({ queryKey: evidenceRecordsKey(sessionData, result.task) });
     if (result.kind === 'returned') client.setQueryData([...actorKey(sessionData), 'return-instruction', result.returnInstruction.id], result.returnInstruction);
     if (result.kind === 'submitted') client.setQueryData([...actorKey(sessionData), 'snapshot', result.snapshot.id], result.snapshot);
@@ -89,8 +97,8 @@ export function TaskHomePage() {
       <h2>共有の入力文書</h2><p className={styles.muted}>文書側の現在の権限で開きます。作業文案とは別の共有資料です。</p>
       {detailData.inputResources.length === 0 ? <p>入力文書はありません</p> : <ul>{detailData.inputResources.map((input) => <li key={input.documentId}><Link to="/documents/$documentId" params={{ documentId: input.documentId }} search={validateDetailSearch({ view: 'published' })}>{input.label}</Link></li>)}</ul>}
       <p className={styles.muted}>版・改訂・比較は既存の文書画面で確認できます。戻ると選択したタスクに戻ります。</p>
-    </> : module === 'evidence' ? <EvidenceContextModule key={`${sessionData!.principalId}:${sessionData!.actingAssignmentId}:${detailData.id}:${detailData.attemptId}`} session={sessionData!} task={detailData} applyResult={applyResult} onDenied={denyDisclosure} /> : module === 'history' ? <><h2>業務履歴</h2>{detailData.history.length ? <ul>{detailData.history.map((entry, index) => <li key={`${entry.occurredAt}-${index}`}>{historyLabel(entry.kind)}<br /><time dateTime={entry.occurredAt}>{formatDateTime(entry.occurredAt)}</time></li>)}</ul> : <p>記録された履歴はありません</p>}<p className={styles.muted}>この履歴は監査基盤の資格取得を示すものではありません。</p></> : module === 'return' ? <><h2>差戻</h2><p>{detailData.returnInstructionId ? '確定した差戻指示と過去の提出内容を主作業に表示します。差戻理由は変更できません。' : detailData.canReturn ? '受領内容と差戻理由を確認して、主作業から差戻してください。' : 'この試行に差戻の記録はありません。'}</p></> : <><h2>{module === 'agent' ? 'Agent' : module === 'search' ? '検索' : module === 'evidence' ? '根拠・判断' : 'Workspace'}</h2><p>このブラウザーPoCでは未実装です</p></>}
-    <div className={styles.notice}><strong>ブラウザーPoC</strong><p>ブラウザーではネイティブWorkspaceを利用できません</p><p>Search / Agent / ファイル添付は未実装です</p></div>
+    </> : module === 'agent' ? <AgentContextModule key={`${sessionData!.principalId}:${sessionData!.actingAssignmentId}:${detailData.id}:${detailData.attemptId}`} session={sessionData!} task={detailData} applyResult={applyResult} onDenied={denyDisclosure} refresh={refresh} openEvidence={() => setModule('evidence')} /> : module === 'evidence' ? <EvidenceContextModule key={`${sessionData!.principalId}:${sessionData!.actingAssignmentId}:${detailData.id}:${detailData.attemptId}`} session={sessionData!} task={detailData} applyResult={applyResult} onDenied={denyDisclosure} /> : module === 'history' ? <><h2>業務履歴</h2>{detailData.history.length ? <ul>{detailData.history.map((entry, index) => <li key={`${entry.occurredAt}-${index}`}>{historyLabel(entry.kind)}<br /><time dateTime={entry.occurredAt}>{formatDateTime(entry.occurredAt)}</time></li>)}</ul> : <p>記録された履歴はありません</p>}<p className={styles.muted}>この履歴は監査基盤の資格取得を示すものではありません。</p></> : module === 'return' ? <><h2>差戻</h2><p>{detailData.returnInstructionId ? '確定した差戻指示と過去の提出内容を主作業に表示します。差戻理由は変更できません。' : detailData.canReturn ? '受領内容と差戻理由を確認して、主作業から差戻してください。' : 'この試行に差戻の記録はありません。'}</p></> : <><h2>{module === 'agent' ? 'Agent' : module === 'search' ? '検索' : module === 'evidence' ? '根拠・判断' : 'Workspace'}</h2><p>このブラウザーPoCでは未実装です</p></>}
+    <div className={styles.notice}><strong>ブラウザーPoC</strong><p>ブラウザーではネイティブWorkspaceを利用できません</p><p>Search / ファイル添付は未実装です</p></div>
   </>;
   return <AppShell activeNavigation="tasks" mainLabel="タスクワークスペース" headerContext={<span className={styles.identity}>{sessionData ? <><strong>{sessionData.displayName}</strong> · {sessionData.principalId}<br />担当: {sessionData.actingAssignmentId} · 起動時固定の模擬ユーザー</> : 'タスク'} </span>} contextPanel={contextPanel}>
     <div className={styles.layout}>{collection}<section className={styles.work} aria-label="主作業">
@@ -99,7 +107,7 @@ export function TaskHomePage() {
       {sessionData && !search.taskId && <><h1>タスク</h1><p>一覧から作業するタスクを選択してください</p></>}
       {sessionData && search.taskId && tasks.isSuccess && !selected && <><h1>選択中のタスクを利用できません</h1><p>対象が一覧にありません。別のタスクを自動選択していません。</p></>}
       {sessionData && selected && <><h1>{selected.title}</h1><p className={styles.muted}>タスク {selected.id} · 試行 {selected.attemptNumber}（{selected.attemptId}）</p><span className={styles.badge}>{taskStateLabel(selected.state)}</span>
-        {blockedId === attemptKey(selected) ? <p role="alert">このタスクを現在の担当では利用できません。内容を非表示にしました。</p> : selected.canClaim ? <TaskAction key={`${sessionData.principalId}:${selected.id}:${selected.attemptId}`} session={sessionData} task={selected} applyResult={applyResult} refresh={refresh} onDenied={denyDisclosure} /> : detail.isError ? <p role="alert">{workErrorMessage(detail.error)}</p> : detailData ? <>
+        {blockedId === attemptKey(selected) ? <p role="alert">このタスクを現在の担当では利用できません。内容を非表示にしました。</p> : selected.canClaim ? <TaskAction key={`${sessionData.principalId}:${sessionData.actingAssignmentId}:${selected.id}:${selected.attemptId}`} session={sessionData} task={selected} applyResult={applyResult} refresh={refresh} onDenied={denyDisclosure} /> : detail.isError ? <p role="alert">{workErrorMessage(detail.error)}</p> : detailData ? <>
           {detailData.returnInstructionId && instruction.isPending && <p role="status">差戻指示を確認中…</p>}
           {detailData.returnInstructionId && instruction.isError && <p role="alert">差戻指示を取得できません。{workErrorMessage(instruction.error)}</p>}
           {detailData.returnInstructionId && instruction.isSuccess && <ReturnInstructionView instruction={instruction.data} />}
@@ -108,7 +116,7 @@ export function TaskHomePage() {
           {snapshot.isError && <p role="alert">受け渡し内容を取得できません。{workErrorMessage(snapshot.error)}</p>}
           {detailData.handoffSnapshotId && snapshot.isFetching && <p role="status">受け渡し内容を確認中…</p>}
           {snapshot.isSuccess && snapshot.data && <Snapshot snapshot={snapshot.data} received={snapshot.data.sourceTaskId !== detailData.id} />}
-          <TaskAction key={`${sessionData.principalId}:${detailData.id}:${detailData.attemptId}`} session={sessionData} task={detailData} detail={detailData} snapshot={snapshot.isSuccess ? snapshot.data : undefined} applyResult={applyResult} refresh={refresh} onDenied={denyDisclosure} />
+          <TaskAction key={`${sessionData.principalId}:${sessionData.actingAssignmentId}:${detailData.id}:${detailData.attemptId}`} session={sessionData} task={detailData} detail={detailData} snapshot={snapshot.isSuccess ? snapshot.data : undefined} applyResult={applyResult} refresh={refresh} onDenied={denyDisclosure} />
         </> : <p role="status">タスクの詳細を読み込み中…</p>}
       </>}
     </section></div>
@@ -133,8 +141,15 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
     mutationFn: async (input: { execute: () => Promise<WorkResult>; recovery?: boolean }) => input.execute(),
     onSuccess: (result) => {
       if (!mounted.current) return;
-      if (result.task.id !== task.id || result.task.attemptId !== task.attemptId || (operation && operation.kind !== result.kind)) { setTransient((previous) => ({ ...previous, unknown: true })); setNotice('応答と操作が一致しません。同じ操作IDで結果を確認してください。'); return; }
-      applyResult(result); setTransient((previous) => ({ ...previous, unknown: false, operation: null, error: null })); setConfirmation(null);
+      if (result.task.id !== task.id || result.task.attemptId !== task.attemptId || (operation && operation.kind !== result.kind) || (operation?.kind === 'agent_execution_cancelled' && (result.kind !== 'agent_execution_cancelled' || result.execution.id !== operation.executionId))) { setTransient((previous) => ({ ...previous, unknown: true })); setNotice('応答と操作が一致しません。同じ操作IDで結果を確認してください。'); return; }
+      applyResult(result); setConfirmation(null);
+      if (result.kind === 'agent_execution_requested' || result.kind === 'agent_execution_cancelled') {
+        // A recovered/replayed receipt does not admit a worker. Only a fresh terminal read resolves execution uncertainty.
+        const unresolved = result.kind === 'agent_execution_requested' && ['queued', 'running'].includes(result.execution.status);
+        setTransient((previous) => ({ ...previous, unknown: unresolved, operation: unresolved ? previous.operation : null, error: null, notice: '操作の記録を確認しました。Agentの現在の実行状態を確認してください。', agent: { ...(previous.agent ?? emptyAgentDraft), executionId: result.execution.id, recoveryExecutionId: unresolved ? result.execution.id : undefined } }));
+        return;
+      }
+      setTransient((previous) => ({ ...previous, unknown: false, operation: null, error: null }));
       if (result.kind === 'draft_saved') { setDraft(null); setNotice('文案を保存しました'); }
       if (result.kind === 'returned') { setTransient((previous) => ({ ...previous, reason: null, notice: '差戻が確定しました' })); }
       if (result.kind === 'evidence_registered') setNotice('根拠を登録しました');

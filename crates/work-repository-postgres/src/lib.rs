@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 //! Separate Work schema, migration ledger and atomic workflow/operation/event transaction.
+mod agent;
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row, types::Json};
 use std::{
@@ -9,7 +10,8 @@ use std::{
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use uuid::Uuid;
 use work_application::{
-    EvidenceSourcePort, EvidenceSourcePurpose, WorkFuture, WorkRepository, command_digest,
+    AgentExecutionAcceptance, AgentSourcePort, EvidenceSourcePort, EvidenceSourcePurpose,
+    WorkFuture, WorkRepository, command_digest,
 };
 use work_domain::*;
 
@@ -19,18 +21,21 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (1, include_str!("../migrations/0001_work.sql")),
     (2, include_str!("../migrations/0002_return.sql")),
     (3, include_str!("../migrations/0003_evidence.sql")),
+    (4, include_str!("../migrations/0004_agent.sql")),
 ];
 const MIGRATION_LOCK: i64 = 0x574F524B504F4301;
 #[derive(Clone)]
 pub struct PostgresWorkRepository {
     pool: PgPool,
     evidence_source: Option<Arc<dyn EvidenceSourcePort>>,
+    agent_source: Option<Arc<dyn AgentSourcePort>>,
 }
 impl PostgresWorkRepository {
     pub fn new(pool: PgPool) -> Self {
         Self {
             pool,
             evidence_source: None,
+            agent_source: None,
         }
     }
     pub fn with_evidence_source(
@@ -40,6 +45,7 @@ impl PostgresWorkRepository {
         Self {
             pool,
             evidence_source: Some(evidence_source),
+            agent_source: None,
         }
     }
     async fn load(&self) -> Result<Workflow, WorkError> {
@@ -125,18 +131,24 @@ impl PostgresWorkRepository {
         actor: VerifiedActor,
         result: MutationResult,
     ) -> Result<MutationResult, WorkError> {
+        let started = Instant::now();
         let workflow = self.load().await?;
         let evidence = workflow.result_evidence(actor, &result)?;
+        self.verify_result_agent_sources(&workflow, &result, workflow.revision)
+            .await
+            .map_err(|_| WorkError::CommitOutcomeUnknown)?;
         self.verify_read_sources(actor, workflow.revision, evidence)
             .await
             .map_err(|_| WorkError::CommitOutcomeUnknown)?;
+        validate_disclosure_freshness(started, Instant::now())
+            .map_err(|_| WorkError::CommitOutcomeUnknown)?;
         Ok(result)
     }
-    async fn execute_command(
+    async fn execute_command_receipt(
         &self,
         actor: VerifiedActor,
         command: Command,
-    ) -> Result<MutationResult, WorkError> {
+    ) -> Result<AgentExecutionAcceptance, WorkError> {
         command.context().authorize(actor)?;
         let digest = command_digest(actor, &command)?;
         let operation_id = command.context().operation_id;
@@ -152,7 +164,10 @@ impl PostgresWorkRepository {
                 return Err(WorkError::OperationConflict);
             }
             workflow.authorize_recovery(actor, &outcome)?;
-            return self.disclose_result(actor, outcome).await;
+            return Ok(AgentExecutionAcceptance {
+                outcome: self.disclose_result(actor, outcome).await?,
+                dispatch: false,
+            });
         }
         let observed = self.load().await?;
         let mut preview = observed.clone();
@@ -175,8 +190,16 @@ impl PostgresWorkRepository {
         } else {
             EvidenceSourcePurpose::ReadHistory
         };
-        self.authorize_sources(actor, &receipt.sources, purpose)
-            .await?;
+        if matches!(&command, Command::RequestAgentExecution { .. }) {
+            let id = command.context().operation_id;
+            self.authorize_agent_context(preview.agent_disclosure_context(id)?, observed.revision)
+                .await?;
+        } else if !matches!(&command, Command::CancelAgentExecution { .. }) {
+            self.authorize_sources(actor, &receipt.sources, purpose)
+                .await?;
+            self.verify_result_agent_sources(&preview, &preview_result, observed.revision)
+                .await?;
+        }
         let checked_at = OffsetDateTime::now_utc()
             .format(&Rfc3339)
             .map_err(|_| WorkError::IntegrityViolation)?;
@@ -206,7 +229,10 @@ impl PostgresWorkRepository {
             workflow.authorize_recovery(actor, &outcome)?;
             // Explicit rollback releases the lock before any provider disclosure.
             tx.rollback().await.map_err(database_error)?;
-            return self.disclose_result(actor, outcome).await;
+            return Ok(AgentExecutionAcceptance {
+                outcome: self.disclose_result(actor, outcome).await?,
+                dispatch: false,
+            });
         }
         receipt.validate(actor, workflow.revision, &digest, &receipt.sources)?;
         let now = OffsetDateTime::now_utc();
@@ -223,10 +249,22 @@ impl PostgresWorkRepository {
                 stored.retrieved_at = evidence.retrieved_at.clone();
             }
         }
+        for before in &observed.agent_executions {
+            if before.status.is_active()
+                && let Some(after) = workflow
+                    .agent_executions
+                    .iter()
+                    .find(|e| e.id == before.id && e.status == AgentExecutionStatus::Failed)
+            {
+                agent::stage(&mut tx, after, "agent_execution_failed").await?;
+            }
+        }
         validate_record_collections(&workflow)?;
         let actual_sources = source_set(&workflow.result_evidence(actor, &result)?);
         receipt.validate(actor, observed.revision, &digest, &actual_sources)?;
         let action = match &result {
+            MutationResult::AgentExecutionRequested { .. } => "agent_execution_requested",
+            MutationResult::AgentExecutionCancelled { .. } => "agent_execution_cancelled",
             MutationResult::EvidenceRegistered { .. } => "evidence_registered",
             MutationResult::FindingRegistered { .. } => "finding_registered",
             MutationResult::DecisionRecorded { .. } => "decision_recorded",
@@ -254,10 +292,29 @@ impl PostgresWorkRepository {
             .bind(Uuid::now_v7()).bind(operation_id).bind(WORKFLOW_ID).bind(actor.principal_id()).bind(command.context().acting_assignment_id).bind(command.task_id()).bind(action).bind(now).bind(Json(payload)).execute(&mut *tx).await.map_err(database_error)?;
         // Final local/freshness check under the same lock, with no remote call.
         receipt.validate(actor, observed.revision, &digest, &actual_sources)?;
-        tx.commit()
-            .await
-            .map_err(|_| WorkError::CommitOutcomeUnknown)?;
-        self.disclose_result(actor, result).await
+        if tx.commit().await.is_err() {
+            if matches!(&command, Command::RequestAgentExecution { .. }) {
+                let _ = self
+                    .reconcile_uncertain_request(actor, &command, &digest)
+                    .await;
+            }
+            return Err(WorkError::CommitOutcomeUnknown);
+        }
+        let dispatch = matches!(&command, Command::RequestAgentExecution { .. });
+        match self.disclose_result(actor, result).await {
+            Ok(outcome) => Ok(AgentExecutionAcceptance { dispatch, outcome }),
+            Err(error) => {
+                // Commit is known here, but no owned dispatch has been admitted.
+                // Close the undisclosed queue without claiming an execution occurred.
+                // A bookkeeping failure remains unknown and never authorizes a retry.
+                if dispatch {
+                    let _ = self
+                        .fail_agent(actor, operation_id, AgentFailureCode::DependencyUnavailable)
+                        .await;
+                }
+                Err(error)
+            }
+        }
     }
 }
 /// A complete visible collection must stay retrievable after every mutation,
@@ -297,6 +354,13 @@ fn validate_collection_bytes(
     Ok(())
 }
 const PREFLIGHT_LIFETIME: Duration = Duration::from_secs(5);
+fn validate_disclosure_freshness(started: Instant, completed: Instant) -> Result<(), WorkError> {
+    if completed.duration_since(started) > PREFLIGHT_LIFETIME {
+        Err(WorkError::DependencyUnavailable)
+    } else {
+        Ok(())
+    }
+}
 fn source_set(evidence: &[EvidenceRecord]) -> Vec<EvidenceSource> {
     evidence
         .iter()
@@ -405,6 +469,63 @@ pub async fn seed_synthetic(pool: &PgPool, document_id: Option<Uuid>) -> Result<
     Ok(())
 }
 impl WorkRepository for PostgresWorkRepository {
+    fn request_agent_execution(
+        &self,
+        actor: VerifiedActor,
+        command: Command,
+    ) -> WorkFuture<'_, AgentExecutionAcceptance> {
+        Box::pin(async move {
+            if !matches!(&command, Command::RequestAgentExecution { .. }) {
+                return Err(WorkError::ValidationFailed);
+            }
+            self.execute_command_receipt(actor, command).await
+        })
+    }
+    fn agent_execution(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, AgentExecution> {
+        Box::pin(self.read_agent_execution(actor, id))
+    }
+    fn agent_result(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, AgentResult> {
+        Box::pin(async move {
+            let e = self.read_agent_execution(actor, id).await?;
+            if e.status != AgentExecutionStatus::Succeeded {
+                return Err(WorkError::AgentResultNotReady);
+            }
+            e.result.ok_or(WorkError::IntegrityViolation)
+        })
+    }
+    fn start_agent_execution(
+        &self,
+        actor: VerifiedActor,
+        id: Uuid,
+    ) -> WorkFuture<'_, Option<AgentDispatchContext>> {
+        Box::pin(self.start_agent(actor, id))
+    }
+    fn build_agent_context(
+        &self,
+        actor: VerifiedActor,
+        id: Uuid,
+    ) -> WorkFuture<'_, AgentDispatchContext> {
+        Box::pin(self.current_agent_context(actor, id))
+    }
+    fn finish_agent_execution(
+        &self,
+        context: AgentDispatchContext,
+        output: AgentFindingOutput,
+    ) -> WorkFuture<'_, AgentExecution> {
+        Box::pin(self.finish_agent(context, output))
+    }
+    fn fail_agent_execution(
+        &self,
+        actor: VerifiedActor,
+        id: Uuid,
+        code: AgentFailureCode,
+    ) -> WorkFuture<'_, AgentExecution> {
+        Box::pin(self.fail_agent(actor, id, code))
+    }
+    fn interrupt_agent_executions(&self, actor: VerifiedActor) -> WorkFuture<'_, usize> {
+        Box::pin(self.interrupt_agents(actor))
+    }
+
     fn list_evidence(
         &self,
         actor: VerifiedActor,
@@ -429,27 +550,34 @@ impl WorkRepository for PostgresWorkRepository {
     }
     fn list_findings(&self, actor: VerifiedActor, task_id: Uuid) -> WorkFuture<'_, Vec<Finding>> {
         Box::pin(async move {
+            let started = Instant::now();
             let w = self.load().await?;
             let findings = w.list_findings(actor, task_id)?;
+            self.verify_agent_origins(&w, &findings, w.revision).await?;
             let mut evidence = vec![];
             for f in &findings {
                 evidence.extend(w.resolve_evidence(actor, &f.evidence_revision_refs)?);
             }
             self.verify_read_sources(actor, w.revision, evidence)
                 .await?;
+            validate_disclosure_freshness(started, Instant::now())?;
             Ok(findings)
         })
     }
     fn finding(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, Finding> {
         Box::pin(async move {
+            let started = Instant::now();
             let w = self.load().await?;
             let finding = w.finding(actor, id)?;
+            self.verify_agent_origins(&w, std::slice::from_ref(&finding), w.revision)
+                .await?;
             self.verify_read_sources(
                 actor,
                 w.revision,
                 w.resolve_evidence(actor, &finding.evidence_revision_refs)?,
             )
             .await?;
+            validate_disclosure_freshness(started, Instant::now())?;
             Ok(finding)
         })
     }
@@ -459,8 +587,11 @@ impl WorkRepository for PostgresWorkRepository {
         finding_id: Uuid,
     ) -> WorkFuture<'_, Vec<HumanDecision>> {
         Box::pin(async move {
+            let started = Instant::now();
             let w = self.load().await?;
             let finding = w.finding(actor, finding_id)?;
+            self.verify_agent_origins(&w, std::slice::from_ref(&finding), w.revision)
+                .await?;
             let decisions = w.list_decisions(actor, finding_id)?;
             let mut evidence = w.resolve_evidence(actor, &finding.evidence_revision_refs)?;
             for d in &decisions {
@@ -468,6 +599,7 @@ impl WorkRepository for PostgresWorkRepository {
             }
             self.verify_read_sources(actor, w.revision, evidence)
                 .await?;
+            validate_disclosure_freshness(started, Instant::now())?;
             Ok(decisions)
         })
     }
@@ -482,14 +614,18 @@ impl WorkRepository for PostgresWorkRepository {
     }
     fn snapshot(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, HandoffSnapshot> {
         Box::pin(async move {
+            let started = Instant::now();
             let workflow = self.load().await?;
             let snapshot = workflow.snapshot(actor, id)?;
+            self.verify_snapshot_agent_sources(&workflow, &snapshot, workflow.revision)
+                .await?;
             self.verify_read_sources(
                 actor,
                 workflow.revision,
                 workflow.snapshot_evidence(actor, id)?,
             )
             .await?;
+            validate_disclosure_freshness(started, Instant::now())?;
             Ok(snapshot)
         })
     }
@@ -501,7 +637,7 @@ impl WorkRepository for PostgresWorkRepository {
         Box::pin(async move { self.load().await?.return_instruction(actor, id) })
     }
     fn execute(&self, actor: VerifiedActor, command: Command) -> WorkFuture<'_, MutationResult> {
-        Box::pin(async move { self.execute_command(actor, command).await })
+        Box::pin(async move { Ok(self.execute_command_receipt(actor, command).await?.outcome) })
     }
     fn recover(&self, actor: VerifiedActor, operation_id: Uuid) -> WorkFuture<'_, MutationResult> {
         Box::pin(async move {
@@ -709,6 +845,30 @@ mod tests {
         assert_eq!(
             validate_migration_records(&future, false),
             Err(WorkError::IntegrityViolation)
+        );
+    }
+    #[test]
+    fn composed_authorization_phases_require_one_disclosure_deadline() {
+        // Deterministic dependency fakes: provider and requester each consume 3s.
+        // Either private 5s receipt is valid in isolation; the first is stale at disclosure.
+        fn authorize(start: Instant) -> Instant {
+            start + Duration::from_secs(3)
+        }
+        let start = Instant::now();
+        let provider_done = authorize(start);
+        let requester_done = authorize(provider_done);
+        assert_eq!(validate_disclosure_freshness(start, provider_done), Ok(()));
+        assert_eq!(
+            validate_disclosure_freshness(provider_done, requester_done),
+            Ok(())
+        );
+        assert_eq!(
+            validate_disclosure_freshness(start, requester_done),
+            Err(WorkError::DependencyUnavailable)
+        );
+        assert_eq!(
+            validate_disclosure_freshness(start, start + PREFLIGHT_LIFETIME),
+            Ok(())
         );
     }
 }

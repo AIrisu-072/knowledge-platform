@@ -58,6 +58,8 @@ pub struct EvidenceRecord {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Finding {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_execution_id: Option<Uuid>,
     pub id: Uuid,
     pub revision: i64,
     pub context_id: Uuid,
@@ -100,7 +102,7 @@ pub struct HumanDecision {
     pub supersedes_decision_id: Option<Uuid>,
     pub visibility: String,
 }
-fn bounded_text(value: &str) -> Result<(), WorkError> {
+pub(super) fn bounded_text(value: &str) -> Result<(), WorkError> {
     if value.trim().is_empty() || value.len() > MAX_TEXT_BYTES {
         return Err(WorkError::ValidationFailed);
     }
@@ -112,6 +114,11 @@ pub fn validate_refs(refs: &[RevisionRef]) -> Result<(), WorkError> {
         return Err(WorkError::ValidationFailed);
     }
     Ok(())
+}
+pub(super) struct FindingInput<'a> {
+    pub claim: &'a str,
+    pub evidence_revision_refs: &'a [RevisionRef],
+    pub supersedes_finding_id: Option<Uuid>,
 }
 impl Workflow {
     fn record_visible(
@@ -327,6 +334,10 @@ impl Workflow {
     ) -> Result<Vec<EvidenceRecord>, WorkError> {
         self.authorize_recovery(actor, result)?;
         match result {
+            MutationResult::AgentExecutionRequested { execution, .. }
+            | MutationResult::AgentExecutionCancelled { execution, .. } => {
+                self.resolve_evidence(actor, &execution.evidence_revision_refs)
+            }
             MutationResult::EvidenceRegistered { evidence, .. } => {
                 Ok(vec![self.evidence_record(actor, evidence.id)?])
             }
@@ -406,7 +417,7 @@ impl Workflow {
         }
         Ok(())
     }
-    fn next_record_revision(&mut self, task: Uuid) -> Result<(), WorkError> {
+    pub(super) fn next_record_revision(&mut self, task: Uuid) -> Result<(), WorkError> {
         let item = if task == self.source.id {
             &mut self.source
         } else {
@@ -417,6 +428,64 @@ impl Workflow {
             .checked_add(1)
             .ok_or(WorkError::IntegrityViolation)?;
         Ok(())
+    }
+    pub(super) fn create_finding(
+        &self,
+        actor: VerifiedActor,
+        task_id: Uuid,
+        input: FindingInput<'_>,
+        origin_execution_id: Option<Uuid>,
+        now: &str,
+    ) -> Result<Finding, WorkError> {
+        let FindingInput {
+            claim,
+            evidence_revision_refs,
+            supersedes_finding_id,
+        } = input;
+        let item = self.item(task_id)?;
+        bounded_text(claim)?;
+        if evidence_revision_refs.is_empty() {
+            return Err(WorkError::ValidationFailed);
+        }
+        self.resolve_evidence(actor, evidence_revision_refs)?;
+        for r in evidence_revision_refs {
+            let e = self.evidence_record(actor, r.id)?;
+            if !self.record_in_task(item, e.task_id, e.attempt_id, r, |s| {
+                &s.evidence_revision_refs
+            }) {
+                return Err(WorkError::EvidenceNotFound);
+            }
+        }
+        if let Some(id) = supersedes_finding_id {
+            let f = self.finding(actor, id)?;
+            if f.task_id != task_id || f.attempt_id != item.attempt_id {
+                return Err(WorkError::FindingNotFound);
+            }
+        }
+        if self.list_findings(actor, task_id)?.len() >= MAX_VISIBLE_RECORDS {
+            return Err(WorkError::ValidationFailed);
+        }
+        Ok(Finding {
+            uncertainty: vec![],
+            conflicts: vec![],
+            id: Uuid::now_v7(),
+            revision: 1,
+            context_id: self.context_id,
+            task_id,
+            attempt_id: item.attempt_id,
+            author: if origin_execution_id.is_some() {
+                SYNTHETIC_EXECUTOR.into()
+            } else {
+                actor.principal_id().into()
+            },
+            origin_execution_id,
+            acting_assignment_id: actor.assignment_id(),
+            claim: claim.to_owned(),
+            evidence_revision_refs: evidence_revision_refs.to_vec(),
+            supersedes_finding_id,
+            visibility: "work_item_private".into(),
+            created_at: now.into(),
+        })
     }
     pub(super) fn apply_evidence(
         &mut self,
@@ -500,44 +569,17 @@ impl Workflow {
                 supersedes_finding_id,
                 ..
             } => {
-                bounded_text(claim)?;
-                if evidence_revision_refs.is_empty() {
-                    return Err(WorkError::ValidationFailed);
-                }
-                self.resolve_evidence(actor, evidence_revision_refs)?;
-                for r in evidence_revision_refs {
-                    let e = self.evidence_record(actor, r.id)?;
-                    if !self.record_in_task(&item, e.task_id, e.attempt_id, r, |s| {
-                        &s.evidence_revision_refs
-                    }) {
-                        return Err(WorkError::EvidenceNotFound);
-                    }
-                }
-                if let Some(id) = supersedes_finding_id {
-                    let f = self.finding(actor, *id)?;
-                    if f.task_id != task_id || f.attempt_id != item.attempt_id {
-                        return Err(WorkError::FindingNotFound);
-                    }
-                }
-                if self.list_findings(actor, task_id)?.len() >= MAX_VISIBLE_RECORDS {
-                    return Err(WorkError::ValidationFailed);
-                }
-                let finding = Finding {
-                    uncertainty: vec![],
-                    conflicts: vec![],
-                    id: Uuid::now_v7(),
-                    revision: 1,
-                    context_id: self.context_id,
+                let finding = self.create_finding(
+                    actor,
                     task_id,
-                    attempt_id: item.attempt_id,
-                    author: actor.principal_id().into(),
-                    acting_assignment_id: actor.assignment_id(),
-                    claim: claim.clone(),
-                    evidence_revision_refs: evidence_revision_refs.clone(),
-                    supersedes_finding_id: *supersedes_finding_id,
-                    visibility: "work_item_private".into(),
-                    created_at: now.into(),
-                };
+                    FindingInput {
+                        claim,
+                        evidence_revision_refs,
+                        supersedes_finding_id: *supersedes_finding_id,
+                    },
+                    None,
+                    now,
+                )?;
                 self.findings.push(finding.clone());
                 self.next_record_revision(task_id)?;
                 Ok(MutationResult::FindingRegistered {

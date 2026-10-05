@@ -1,6 +1,6 @@
 export { workApi, WorkApiError } from '../api/work-api';
-export type { WorkSession, TaskSummary, TaskDetail, WorkingArtifact, HandoffSnapshot, WorkCommand, WorkResult, ReturnCommand, ReturnInstruction, EvidenceRecord, Finding, HumanDecision, RevisionRef, SelectedHandoff, EvidenceCommand, FindingCommand, DecisionCommand, SubmitCommand } from '../api/work-api';
-import { WorkApiError, workApi, type WorkCommand, type ReturnCommand, type EvidenceCommand, type FindingCommand, type DecisionCommand, type SubmitCommand, type WorkResult } from '../api/work-api';
+export type { WorkSession, TaskSummary, TaskDetail, WorkingArtifact, HandoffSnapshot, WorkCommand, WorkResult, ReturnCommand, ReturnInstruction, EvidenceRecord, Finding, HumanDecision, RevisionRef, SelectedHandoff, EvidenceCommand, FindingCommand, DecisionCommand, SubmitCommand, AgentExecution, AgentResult, AgentExecutionRequest, CancelAgentExecution } from '../api/work-api';
+import { WorkApiError, workApi, type WorkCommand, type ReturnCommand, type EvidenceCommand, type FindingCommand, type DecisionCommand, type SubmitCommand, type WorkResult, type AgentExecutionRequest, type CancelAgentExecution } from '../api/work-api';
 export type TaskSearch = { view: 'context' | 'queue'; taskId?: string };
 export function validateTaskSearch(value: Record<string, unknown>): TaskSearch {
   return { view: value.view === 'queue' ? 'queue' : 'context', ...(typeof value.taskId === 'string' && /^[a-zA-Z0-9-]{1,128}$/.test(value.taskId) ? { taskId: value.taskId } : {}) };
@@ -19,6 +19,8 @@ export function taskStateLabel(state: string): string { return ({ ready: '担当
 
 /** Closed, replayable commands retain the original OCC and payload under one operation ID. */
 export type WorkOperation =
+  | { kind: 'agent_execution_requested'; taskId: string; input: AgentExecutionRequest }
+  | { kind: 'agent_execution_cancelled'; taskId: string; executionId: string; input: CancelAgentExecution }
   | { kind: 'evidence_registered'; taskId: string; input: EvidenceCommand }
   | { kind: 'finding_registered'; taskId: string; input: FindingCommand }
   | { kind: 'decision_recorded'; taskId: string; findingId: string; input: DecisionCommand }
@@ -28,6 +30,8 @@ export type WorkOperation =
   | { kind: 'submitted'; taskId: string; input: SubmitCommand };
 export function executeWorkOperation(operation: WorkOperation): Promise<WorkResult> {
   switch (operation.kind) {
+    case 'agent_execution_requested': return workApi.requestAgentExecution(operation.taskId, operation.input);
+    case 'agent_execution_cancelled': return workApi.cancelAgentExecution(operation.executionId, operation.input);
     case 'evidence_registered': return workApi.registerEvidence(operation.taskId, operation.input);
     case 'finding_registered': return workApi.registerFinding(operation.taskId, operation.input);
     case 'decision_recorded': return workApi.recordDecision(operation.findingId, operation.input);

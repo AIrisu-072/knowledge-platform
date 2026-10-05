@@ -1,0 +1,39 @@
+# Organization合成Agent PoCの実装上の判断
+
+日付: 2026-10-04 UTC。状態: **実装者による選定・所有者の最終レビュー対象**。
+
+この記録は、Frozen設計とBrowser先行の継続範囲を最小実装へ落とした判断を示す。個々の案を所有者が事前に具体承認したという記録ではない。元の業務契約と権限を最大限維持し、理由・影響を後から確認できるよう残す。
+
+## 1. 実Document認可と合成executorを分ける
+
+既存StaticPoCIdentityAdapterの固定poc/poc-agentを使い、依頼したHumanとproviderの双方をDocument Applicationサービスで認可する。organization-synthetic/agent-01は別のexecutorとして保持する。新しい外部モデル・MCP process・credentialは導入しない。
+
+executorは既存根拠参照に結び付いた固定説明のFindingを1件だけ作る。本文の読解・要約・事実検証はしない。生成物は実行IDと模擬であることを保持し、既存HumanDecision/提出へ進む。これは役割・保存・認可・操作のPoCで、実LLM性能やMCP通信の資格にはならない。
+
+使い捨てfixture初期化へproviderのRead/ReadHistory grantを加えるため、旧fixture policyとは一致しない。既存DBを暗黙に更新せず、新しいowned disposable DBを使う。
+
+## 2. 受付と結果を分け、所有された単発taskで実行する
+
+Work transactionでqueuedとoperation receiptを確定してIDを返す。既存Tokioの所有taskだけで実行し、独立queue/worker基盤は追加しない。取消と結果確定を同じWork fenceで競合させる。task/attempt/context変更や取消後の結果を採用しない。
+
+現在attemptの履歴16件、task同時1件に限定する。これはPoCの有界profileで、全Agent基盤の容量設計ではない。再起動時の非終端はoutcome_unknownとし、自動再実行しない。receiptは当時の受付結果、現在状態はGETの正本として区別する。
+
+## 3. sourceごとの再認可と非開示
+
+各source参照確認の直前/直後にWork execution/cancel/contextを確認する。Revision/Historyの内部readはそれぞれ既存Document現在認可を使う。Work lock中にproviderを呼ばず、cross-provider atomic transactionとは称さない。Agent由来確認とHuman側のsource確認をまたぐ開示全体で5秒の鮮度を確認し、phaseごとに期限をリセットしない。
+
+取消は現在Work権限による停止であり、provider権限が失われても停止できる。結果やoperation本文の開示は別途現在source認可を要求する。成功した実行の同attempt内再読は現在権限で行い、後続の人間判断によるrevision増加だけでは消さない。新attempt/他Humanにはprivate実行を開示しない。
+
+## 4. 開示失敗とshutdownの残りを成功にしない
+
+受付commit後、開示の再認可に失敗してdispatchしていないことが確かな場合は、副作用なしのfailedとして内部状態を閉じる。commitやその記録が不明なら既存unknownを維持し、同operation回復で勝手に再実行しない。背景taskがstart/finishの保存結果不明で終了する場合や受付commitの応答が不明な場合は、対象の非終端だけを条件付きでoutcome_unknownへ記録する。既に成功済みの結果や他の実行を上書きしない。DB障害でその記録も不明なら、queued/running receiptの回復だけで進行が確実になったとは表示しない。
+
+正常shutdownは所有taskを停止・joinし、HTTP drain後もactor自身の非終端を冪等に再確認してからWork poolを閉じる。drain直前の遅い受付を成功扱いせず、terminal recordや履歴を重複更新しない。
+
+## 5. 読取り競合の回復と失敗時の最小観測
+
+Agentのqueued/running/succeeded更新により、状態GETの認可snapshotが409/WORK_CONTEXT_STALEになる場合がある。最初の競合で画面pollingが永久停止する不具合を純粋試験で再現したため、このcode/statusの組合せだけ250ms間隔・追加2回まで読取りを再試行する。上限後は手動再読込とし、mutation・認可拒否を再試行しない。現在の認可fenceやtask/context切替時の応答破棄は緩和しない。
+
+公開18abf350のjourneyは成功表示待ちで失敗したが、当時のbackend結果は未確定である。次の実検証で同じassertionが失敗した場合だけ、同じ認可済みexecutionを最大2秒・retry/redirect無しで1回観測する。既存の閉じた診断へstatus/failureCodeのみを追加し、本文・ID・目的・根拠・画像は公開しない。元のassertion/errorを保持し、後からの観測を過去時点や成功の証拠としない。
+
+関連: [計画](../superpowers/plans/2026-10-04-organization-synthetic-agent-slice.md)、[状況](../superpowers/execution/organization-synthetic-agent-slice-status.md)。本番identity/data、外部送信、Tauri/native、merge/deployはこの変更に含めない。

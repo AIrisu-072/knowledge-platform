@@ -3,13 +3,13 @@ import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
-import type { DecisionCommand, DecisionRecorded, EvidenceCommand, EvidenceRegistered, FindingCommand, FindingRegistered, RevisionRef, Claimed, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, Submitted, TaskDetail, TaskPage, WorkSession } from '../src/api/generated-work/types.gen';
+import type { AgentExecutionRequest, AgentExecutionRequested, AgentExecution, AgentResult, Finding, DecisionCommand, DecisionRecorded, EvidenceCommand, EvidenceRegistered, FindingCommand, FindingRegistered, RevisionRef, Claimed, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, Submitted, TaskDetail, TaskPage, WorkSession } from '../src/api/generated-work/types.gen';
 
 import type { DocumentRevisionPage, FileList, PublishedDocumentDetail } from '@knowledge-platform/document-api-client';
 
 export type RuntimeContext = { sales: string; office: string; documentId: string; statePath: string };
 export type PersistedState = {
-  schemaVersion: 3;
+  schemaVersion: 4;
   documentId: string;
   salesTaskId: string;
   officeTaskId: string;
@@ -28,6 +28,7 @@ export type PersistedState = {
     officeClaim: { operationId: string; result: Claimed };
   };
   evidence: EvidenceState;
+  agents: AgentState;
   final: {
     salesContext: TaskPage;
     salesQueue: TaskPage;
@@ -62,7 +63,34 @@ export function readRuntimeContext(): RuntimeContext {
 
 export async function get<T>(request: APIRequestContext, origin: string, path: string): Promise<T> {
   const response = await request.get(`${new URL(origin).origin}${path}`);
-  expect(response.status(), `GET ${path} returned an unexpected status`).toBe(200);
+  try {
+    expect(response.status(), `GET ${path} returned an unexpected status`).toBe(200);
+  } catch (error) {
+    try {
+      // Closed failure-only metadata: no URL, ID, response body or additional request.
+      const routes: [RegExp, string][] = [
+        [/^\/v1\/organization\/session$/, 'session'],
+        [/^\/v1\/organization\/tasks\?view=(?:context|queue)$/, 'task-list'],
+        [/^\/v1\/organization\/tasks\/[A-Za-z0-9_-]+$/, 'task'],
+        [/^\/v1\/organization\/handoff-snapshots\/[A-Za-z0-9_-]+$/, 'snapshot'],
+        [/^\/v1\/organization\/return-instructions\/[A-Za-z0-9_-]+$/, 'return-instruction'],
+        [/^\/v1\/organization\/working-artifacts\/[A-Za-z0-9_-]+$/, 'artifact'],
+        [/^\/v1\/organization\/operations\/[A-Za-z0-9_-]+$/, 'operation'],
+        [/^\/v1\/organization\/(?:evidence\/[A-Za-z0-9_-]+|tasks\/[A-Za-z0-9_-]+\/evidence)$/, 'evidence'],
+        [/^\/v1\/organization\/(?:findings\/[A-Za-z0-9_-]+|tasks\/[A-Za-z0-9_-]+\/findings)$/, 'finding'],
+        [/^\/v1\/organization\/findings\/[A-Za-z0-9_-]+\/decisions$/, 'decision'],
+        [/^\/v1\/organization\/agent-executions\/[A-Za-z0-9_-]+$/, 'agent'],
+        [/^\/v1\/organization\/agent-executions\/[A-Za-z0-9_-]+\/result$/, 'agent-result'],
+        [/^\/v1\/documents\/[A-Za-z0-9_-]+(?:\?view=published|\/revisions\?pageSize=100|\/versions\/[A-Za-z0-9_-]+\/files\?purpose=published)$/, 'document'],
+      ];
+      const endpoint = path.length <= 2048 && !/[\r\n]/.test(path) ? routes.find(([route]) => route.test(path))?.[1] : undefined;
+      const status = response.status();
+      if (endpoint && Number.isInteger(status) && status >= 100 && status <= 599 && status !== 200) {
+        test.info().annotations.push({ type: 'organization-read-failure', description: `${status}:${endpoint}` });
+      }
+    } catch { /* Diagnostics must not replace the original status assertion. */ }
+    throw error;
+  }
   return await response.json() as T;
 }
 export async function assertSessions(request: APIRequestContext, context: RuntimeContext) {
@@ -71,7 +99,7 @@ export async function assertSessions(request: APIRequestContext, context: Runtim
   expect(sales.principalId).toBe('sales-01');
   expect(office.principalId).toBe('office-01');
   expect(sales.actingAssignmentId).not.toBe(office.actingAssignmentId);
-  for (const session of [sales, office]) expect(session.capabilities).toEqual({ nativeWorkspace: false, agent: false, search: false, fileUpload: false, return: true });
+  for (const session of [sales, office]) expect(session.capabilities).toEqual({ nativeWorkspace: false, agent: true, search: false, fileUpload: false, return: true });
   return { sales, office };
 }
 export async function assertHidden(request: APIRequestContext, origin: string, path: string, code: string, privateText?: string) {
@@ -104,7 +132,7 @@ export async function saveState(context: RuntimeContext, state: PersistedState) 
 }
 export async function loadState(context: RuntimeContext): Promise<PersistedState> {
   const state = JSON.parse(await readFile(context.statePath, 'utf8')) as PersistedState;
-  expect(state.schemaVersion).toBe(3);
+  expect(state.schemaVersion).toBe(4);
   expect(state.documentId).toBe(context.documentId);
   return state;
 }
@@ -239,16 +267,16 @@ export async function recordDecision(page: Page, taskId: string, finding: Findin
   return { operationId: command.operationId, command, result };
 }
 
-export async function assertEvidenceState(request: APIRequestContext, context: RuntimeContext, salesTaskId: string, officeTaskId: string, state: EvidenceState) {
+export async function assertEvidenceState(request: APIRequestContext, context: RuntimeContext, salesTaskId: string, officeTaskId: string, state: EvidenceState, agents: AgentState) {
   const sharedEvidence = state.selected.result.evidence;
   const sharedFinding = state.finding.result.finding;
   const privateEvidence = state.rework.evidence.result.evidence;
   const privateFinding = state.rework.finding.result.finding;
   const sharedDecisions = state.decisions.map((receipt) => receipt.result.decision);
   expect(await get(request, context.sales, `/v1/organization/tasks/${salesTaskId}/evidence`)).toEqual({ items: [sharedEvidence, privateEvidence], nextCursor: null });
-  expect(await get(request, context.sales, `/v1/organization/tasks/${salesTaskId}/findings`)).toEqual({ items: [sharedFinding, privateFinding], nextCursor: null });
+  expect(await get(request, context.sales, `/v1/organization/tasks/${salesTaskId}/findings`)).toEqual({ items: [sharedFinding, privateFinding, agents.sales.finding], nextCursor: null });
   expect(await get(request, context.office, `/v1/organization/tasks/${officeTaskId}/evidence`)).toEqual({ items: [sharedEvidence], nextCursor: null });
-  expect(await get(request, context.office, `/v1/organization/tasks/${officeTaskId}/findings`)).toEqual({ items: [sharedFinding], nextCursor: null });
+  expect(await get(request, context.office, `/v1/organization/tasks/${officeTaskId}/findings`)).toEqual({ items: [sharedFinding, agents.sales.finding, agents.office.finding], nextCursor: null });
   for (const origin of [context.sales, context.office]) {
     expect(await get(request, origin, `/v1/organization/evidence/${sharedEvidence.id}`)).toEqual(sharedEvidence);
     expect(await get(request, origin, `/v1/organization/findings/${sharedFinding.id}`)).toEqual(sharedFinding);
@@ -282,11 +310,107 @@ type OrganizationAction =
   | 'evidence-input' | 'evidence-submit' | 'finding-input' | 'finding-submit' | 'decision-select'
   | 'decision-input' | 'decision-preview' | 'decision-confirm' | 'visibility-verify' | 'submit-preview'
   | 'submit-selection' | 'submit-confirm' | 'office-claim' | 'return-preview' | 'return-confirm'
-  | 'sales-reclaim' | 'resubmit' | 'office-reclaim' | 'final-verify' | 'persistence-verify';
+  | 'sales-reclaim' | 'resubmit' | 'office-reclaim' | 'final-verify' | 'persistence-verify'
+  | 'agent-module' | 'agent-input' | 'agent-request' | 'agent-result' | 'agent-replay';
 export function currentAction(action: OrganizationAction): void {
   const annotations = test.info().annotations;
   for (let index = annotations.length - 1; index >= 0; index--) {
     if (annotations[index]?.type === 'organization-stage') annotations.splice(index, 1);
   }
   annotations.push({ type: 'organization-stage', description: action });
+}
+
+
+export type AgentReceipt = { operationId: string; command: AgentExecutionRequest; result: AgentExecutionRequested; execution: AgentExecution; output: AgentResult; finding: Finding };
+export type AgentState = { sales: AgentReceipt & { decision: DecisionReceipt }; office: AgentReceipt & { decision: DecisionReceipt } };
+
+export async function requestSyntheticFinding(page: Page, request: APIRequestContext, origin: string, taskId: string, evidence: EvidenceRegistered['evidence'], principal: 'sales-01' | 'office-01'): Promise<AgentReceipt> {
+  currentAction('agent-module');
+  await page.getByRole('button', { name: 'Agent', exact: true }).click();
+  const module = page.getByRole('region', { name: '合成Agent', exact: true });
+  for (const label of ['固定規則の模擬処理', '原本本文を分析しません', '実LLM・MCP通信は使用しません']) await expect(module).toContainText(label);
+  currentAction('agent-input');
+  const purpose = '【合成データ】選択した参照から固定規則の候補を作成し、人間が別途判断する。';
+  await module.getByLabel('Agentへの依頼目的', { exact: true }).fill(purpose);
+  await expect(module.getByRole('button', { name: '合成Agentに依頼', exact: true })).toBeDisabled();
+  await module.getByLabel(`Agentの根拠 ${evidence.id}`, { exact: true }).check();
+  const accepted = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${taskId}/agent-executions` && response.request().method() === 'POST');
+  currentAction('agent-request');
+  await module.getByRole('button', { name: '合成Agentに依頼', exact: true }).click();
+  const response = await accepted;
+  expect(response.status()).toBe(202);
+  const command = response.request().postDataJSON() as AgentExecutionRequest;
+  const result = await response.json() as AgentExecutionRequested;
+  expect(Object.keys(command).sort()).toEqual(['actingAssignmentId', 'evidenceRevisionRefs', 'expectedAttemptId', 'expectedRevision', 'operationId', 'purpose']);
+  expect(command).toMatchObject({ expectedAttemptId: result.task.attemptId, expectedRevision: result.task.revision - 1, purpose, evidenceRevisionRefs: [revisionRef(evidence)] });
+  expect(result).toMatchObject({ kind: 'agent_execution_requested', task: { id: taskId, state: 'active', canRequestAgent: false }, execution: { workItemId: taskId, attemptId: result.task.attemptId, contextId: result.task.contextId, requestedBy: principal, requesterResponsibility: command.actingAssignmentId, executedBy: 'organization-synthetic/agent-01', executorInvocationKind: 'agent', status: 'queued', result: null, purpose, evidenceRevisionRefs: [revisionRef(evidence)], providerPrincipalBindings: [{ providerId: 'document', principalId: 'poc/poc-agent', invocationKind: 'agent' }] } });
+  currentAction('agent-result');
+  const executionRegion = page.getByRole('region', { name: `Agent実行 ${result.execution.id}`, exact: true });
+  try {
+    await expect(executionRegion).toContainText('実行状態：成功');
+  } catch (error) {
+    // Failure-only observation of this same authorized execution. Never log its body, identifiers or purpose.
+    try {
+      const observed = await request.get(`${origin}/v1/organization/agent-executions/${result.execution.id}`, { timeout: 2000, maxRetries: 0, maxRedirects: 0 });
+      if (observed.status() === 200) {
+        const value: unknown = await observed.json();
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          const { status, failureCode } = value as Record<string, unknown>;
+          if (typeof status === 'string' && ['queued', 'running', 'succeeded', 'failed', 'cancelled', 'outcome_unknown'].includes(status) && (failureCode === null || typeof failureCode === 'string' && ['provider_denied', 'context_stale', 'invalid_output', 'dependency_unavailable', 'interrupted', 'commit_outcome_unknown'].includes(failureCode))) {
+            test.info().annotations.push({ type: 'organization-agent-status', description: status }, { type: 'organization-agent-failure-code', description: failureCode ?? 'none' });
+          }
+        }
+      }
+    } catch { /* Preserve the original UI failure even when the bounded diagnostic read is unavailable. */ }
+    throw error;
+  }
+  const openCandidate = executionRegion.getByRole('button', { name: '候補を根拠モジュールで確認', exact: true });
+  await expect(openCandidate).toBeEnabled();
+  const execution = await get<AgentExecution>(request, origin, `/v1/organization/agent-executions/${result.execution.id}`);
+  const output = await get<AgentResult>(request, origin, `/v1/organization/agent-executions/${result.execution.id}/result`);
+  expect(execution).toMatchObject({ ...result.execution, status: 'succeeded', taskRevision: result.task.revision + 1, startedAt: execution.startedAt, effectiveContextRevision: execution.effectiveContextRevision, endedAt: execution.endedAt, result: output });
+  expect(execution.endedAt).not.toBeNull();
+  expect(output).toMatchObject({ simulated: true, bodyAnalyzed: false, liveLlm: false, mcpWireExecuted: false, evidenceRevisionRefs: [revisionRef(evidence)] });
+  expect(output.findingRevisionRefs).toHaveLength(1);
+  expect(output.uncertainty.length).toBeGreaterThan(0);
+  const finding = await get<Finding>(request, origin, `/v1/organization/findings/${output.findingRevisionRefs[0].id}`);
+  expect(finding).toMatchObject({ ...output.findingRevisionRefs[0], taskId, attemptId: result.task.attemptId, contextId: result.task.contextId, author: 'organization-synthetic/agent-01', originExecutionId: execution.id, evidenceRevisionRefs: [revisionRef(evidence)], uncertainty: output.uncertainty, visibility: 'work_item_private' });
+  expect(await get(request, origin, `/v1/organization/findings/${finding.id}/decisions`)).toEqual({ items: [], nextCursor: null });
+  const beforeReplay = await get<TaskDetail>(request, origin, `/v1/organization/tasks/${taskId}`);
+  expect(beforeReplay).toMatchObject({ state: 'active', revision: execution.taskRevision, agentExecutionIds: [execution.id] });
+  if (principal === 'office-01') expect(beforeReplay).toMatchObject({ canEdit: false, workingArtifacts: [] });
+  currentAction('agent-replay');
+  const replay = await request.post(`${origin}/v1/organization/tasks/${taskId}/agent-executions`, { data: command });
+  expect(replay.status()).toBe(202);
+  expect(await replay.json()).toEqual(result);
+  expect(await get(request, origin, `/v1/organization/operations/${command.operationId}`)).toEqual(result);
+  expect(await get(request, origin, `/v1/organization/agent-executions/${execution.id}`)).toEqual(execution);
+  expect(await get(request, origin, `/v1/organization/tasks/${taskId}`)).toEqual(beforeReplay);
+  currentAction('agent-result');
+  await openCandidate.click();
+  const candidate = page.getByRole('region', { name: `候補 ${finding.id}`, exact: true });
+  await expect(candidate).toContainText(finding.claim);
+  await expect(candidate).toContainText('organization-synthetic/agent-01');
+  await expect(candidate).toContainText(`生成元の実行 ${execution.id}`);
+  return { operationId: command.operationId, command, result, execution, output, finding };
+}
+
+export async function assertAgentState(request: APIRequestContext, context: RuntimeContext, agents: AgentState) {
+  for (const [role, receipt] of Object.entries(agents) as ['sales' | 'office', AgentState['sales']][]) {
+    const origin = context[role], other = context[role === 'sales' ? 'office' : 'sales'];
+    expect(await get(request, origin, `/v1/organization/agent-executions/${receipt.execution.id}`)).toEqual(receipt.execution);
+    expect(await get(request, origin, `/v1/organization/agent-executions/${receipt.execution.id}/result`)).toEqual(receipt.output);
+    expect(await get(request, origin, `/v1/organization/operations/${receipt.operationId}`)).toEqual(receipt.result);
+    expect(await get(request, origin, `/v1/organization/operations/${receipt.decision.operationId}`)).toEqual(receipt.decision.result);
+    expect(await get(request, origin, `/v1/organization/findings/${receipt.finding.id}`)).toEqual(receipt.finding);
+    expect(await get(request, origin, `/v1/organization/findings/${receipt.finding.id}/decisions`)).toEqual({ items: [receipt.decision.result.decision], nextCursor: null });
+    await assertHidden(request, other, `/v1/organization/agent-executions/${receipt.execution.id}`, 'WORK_ITEM_NOT_FOUND', receipt.command.purpose);
+    await assertHidden(request, other, `/v1/organization/agent-executions/${receipt.execution.id}/result`, 'WORK_ITEM_NOT_FOUND', receipt.command.purpose);
+    await assertHidden(request, other, `/v1/organization/operations/${receipt.operationId}`, 'WORK_ITEM_NOT_FOUND', receipt.command.purpose);
+    await assertHidden(request, other, `/v1/organization/operations/${receipt.decision.operationId}`, 'WORK_ITEM_NOT_FOUND');
+  }
+  expect(await get(request, context.office, `/v1/organization/findings/${agents.sales.finding.id}`)).toEqual(agents.sales.finding);
+  expect(await get(request, context.office, `/v1/organization/findings/${agents.sales.finding.id}/decisions`)).toEqual({ items: [agents.sales.decision.result.decision], nextCursor: null });
+  await assertHidden(request, context.sales, `/v1/organization/findings/${agents.office.finding.id}`, 'FINDING_NOT_FOUND', agents.office.finding.claim);
+  await assertHidden(request, context.sales, `/v1/organization/findings/${agents.office.finding.id}/decisions`, 'FINDING_NOT_FOUND');
 }

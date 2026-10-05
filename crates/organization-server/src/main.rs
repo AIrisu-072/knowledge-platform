@@ -3,11 +3,13 @@ use document_server::{
     config::{Command, ConfigSource, ProcessEnvironment},
 };
 use organization_server::{
-    DocumentEvidenceSource, OrganizationConfig, OrganizationProfile, SyntheticIdentityAdapter,
-    bootstrap_document_policy, compose_routes, verify_shared_document,
+    DocumentAgentSource, DocumentEvidenceSource, OrganizationConfig, OrganizationProfile,
+    OwnedAgentDispatcher, SyntheticIdentityAdapter, bootstrap_document_policy, compose_routes,
+    verify_shared_document,
 };
 use std::{process::ExitCode, sync::Arc};
 use uuid::Uuid;
+use work_application::WorkRepository;
 use work_domain::VerifiedActor;
 use work_repository_postgres::PostgresWorkRepository;
 
@@ -83,16 +85,22 @@ async fn run() -> Result<(), String> {
             )
             .await
             .map_err(|error| error.to_string())?;
-            let evidence_source = Arc::new(DocumentEvidenceSource::new(Arc::new(
+            let documents = Arc::new(
                 document_repository_postgres::PostgresDocumentRepository::new(pool.clone()),
-            )));
-            let work = work_api_http::router(
-                Arc::new(PostgresWorkRepository::with_evidence_source(
-                    pool.clone(),
-                    evidence_source,
-                )),
-                actor,
             );
+            let repository = Arc::new(PostgresWorkRepository::with_agent_source(
+                pool.clone(),
+                Arc::new(DocumentEvidenceSource::new(documents.clone())),
+                Arc::new(DocumentAgentSource::new(documents)),
+            ));
+            // A previous process's queued/running work is uncertain, never replayed.
+            // Only this startup profile's nonterminal executions are affected.
+            repository
+                .interrupt_agent_executions(actor)
+                .await
+                .map_err(|_| "synthetic execution recovery unavailable")?;
+            let dispatcher = Arc::new(OwnedAgentDispatcher::new(repository.clone(), actor));
+            let work = work_api_http::router_with_agent(repository, actor, dispatcher.clone());
             let joined = compose_routes(work, runtime.router());
             let bind = config
                 .document()
@@ -105,11 +113,26 @@ async fn run() -> Result<(), String> {
             eprintln!(
                 "organization-server: loopback synthetic profile ready; not production authentication"
             );
-            runtime
+            let draining_dispatcher = dispatcher.clone();
+            let serve_result = runtime
                 .with_router(joined)
-                .serve(listener, shutdown_signal())
-                .await
-                .map_err(|error| error.to_string())?;
+                .serve(listener, async move {
+                    shutdown_signal().await;
+                    // Runtime closes its Document pool only after this signal
+                    // settles. Work's separate pool remains open for fencing.
+                    let _ = draining_dispatcher.shutdown().await;
+                })
+                .await;
+            // Also drain if serving ended without the normal signal future.
+            let drain_result = dispatcher.shutdown().await;
+            if let Err(error) = serve_result {
+                pool.close().await;
+                return Err(error.to_string());
+            }
+            if drain_result.is_err() {
+                pool.close().await;
+                return Err("synthetic execution drain could not confirm durable outcomes".into());
+            }
         }
         _ => unreachable!(),
     }
