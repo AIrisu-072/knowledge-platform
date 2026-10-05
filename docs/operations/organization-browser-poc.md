@@ -1,8 +1,16 @@
 # Organization Browser PoC の起動と確認
 
-## 検証済みの最小経路
+## 対象ソースと確認状況
 
-2026-10-05、[PR67](https://github.com/AIrisu-072/knowledge-platform/pull/67) `a39c90c2` / tree `880b1a57abc6890ed47df5e7bc16a4694d4546cc` で、合成Agent・完了・保留/再開・公開原本Downloadを含む同2名操作、実DB/transaction、両HTTP server再起動/復元/cleanupと[全通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574840)が成功した。統合後main `6c514850` は同一tree。[Linux手動導入](linux-manual-installation.md)はこの固定版を使う。初回read失敗と原本bytes観測失敗の原因未特定という記録は残し、実サーバーや本番Identityの資格とは区別する。
+導入対象の資格：固定の模擬利用者2名・画像保存なしのUbuntu機能受入に合格した版（対象PCでの手順実行、本番認証、見た目全体の比較検証は対象外）。最終受入main `3d8deb253de19cb0954aa70a9a31cc5c4fc7540c` / tree `3f1ac6aa9e66d58bd5f01316e46334a48a64664f` を[Linux手動導入](linux-manual-installation.md)と共通の固定ソースにする。固定SHAと受入記録が未確定の版は実行しない。
+
+Document GUIの追加はPR69初回登録、PR70取下げ・公開終了、PR71属性編集、PR72予約取消、PR73 WORKING backendと、[PR74](https://github.com/AIrisu-072/knowledge-platform/pull/74)の既存複数原本編集・固定要求再送・Organizationの「編集作業」入口を対象とする。PR74 exact `ce56801f7ec73ed284a99838f07cfe0c92cf71f4` / tree `3f1ac6aa9e66d58bd5f01316e46334a48a64664f` の[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371770)、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371873)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371821)の確認結果：required-checkを含む通常CI13/13・DSI・Sandboxが成功。Rust1599成功/9skip、指定実DB36成功、GUI404・runtime補助試験161成功。Document18件とHTTP再起動後5件、Agent9項目/provenance、Organizationの操作・往復・再起動・owned cleanup、公開artifact0を確認した。初回PUT・新版POST・続くPUTで、実成功応答のbody途中喪失から実headers/同一requestの失敗→UNKNOWN→同一要求の明示再送・結果一致・DB snapshot不変を確認。status/headersも全喪失する旧faultのGUI明示再送は未合格のままで、今回へ付け替えない。統合後mainの[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37301558995)の確認結果：main自身のpush CIでrequired-checkを含む13/13 jobsが成功。Rust1599成功/9skip、指定実DB36成功。Document18件とHTTP再起動後5件、Agent9項目/provenance、Organizationの通常ナビ往復・操作・再起動・owned cleanup、公開artifact0を、PRとは別のmainログで確認した。exact head/clean、PostgreSQL18.6、固定合成2profileを照合した。作業版の固定再送資格は実成功応答のbody途中喪失に限定する（2026-10-05 11:31 UTC）。
+
+資格対象は画像なしUbuntu実操作PoCであり、対象PCでの手順全文・backup/restore・PostgreSQLプロセス再起動の確認は未実施。macOS golden比較は未実行・未更新で、影響候補Mock 2・3・4・7の4枚と、他3枚の画素不変も未証明。全visual資格や本番Identityの資格は主張しない。
+
+### 過去の受入記録
+
+2026-10-05、[PR67](https://github.com/AIrisu-072/knowledge-platform/pull/67) `a39c90c2` / tree `880b1a57abc6890ed47df5e7bc16a4694d4546cc` で、合成Agent・完了・保留/再開・公開原本Downloadを含む同2名操作、実DB/transaction、両HTTP server再起動/復元/cleanupと[全通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574840)が成功した。統合後main `6c514850` は同一tree。この版は以前の[Linux手動導入](linux-manual-installation.md)の固定ソースであり、後続GUIや最終統合版の資格とは区別する。初回read失敗と原本bytes観測失敗の原因未特定という記録は残し、実サーバーや本番Identityの資格とは区別する。
 
 以下は最初の最小経路の受入履歴である。
 
@@ -43,20 +51,23 @@ export KP_WEB_DIST='/absolute/path/to/apps/document-web/dist'
 
 ## 共有文書を用意する
 
-タスクの入力文書はDocumentの既存APIで作成・公開する。WorkはDocumentのACLや版を変えない。既存の公開文書を2profileで読めるならそのIDを利用できる。
+タスクの入力文書はDocumentのGUIで作成・公開する。WorkはDocumentのACLや版を変えない。既存の公開文書を2profileで読めるならそのIDを利用できる。
 
-初めての使い捨てDBでは、salesサーバー起動後に次の合成ファイルを既存APIへ送れる。
+初めての使い捨てDBでは、salesサーバー起動後に次の手順を使う。
 
-```sh
-printf '【合成データ】PoCの共有参照資料です。実在する顧客情報を含みません。\n' > /tmp/organization-poc-reference.txt
-curl --fail-with-body -F 'request={"folderId":"00000000-0000-7000-8000-000000000001","title":"PoC共有参照資料","documentMetadata":{},"versionMetadata":{}};type=application/json' \
-  -F 'file=@/tmp/organization-poc-reference.txt;type=text/plain' \
-  http://127.0.0.1:8090/v1/documents
-```
+1. ブラウザーを開くPC側に、実在する顧客情報を含まないUTF-8の `organization-poc-reference.txt` を作る。本文の例は `【合成データ】PoCの共有参照資料です。実在する顧客情報を含みません。`。SSH転送時もファイルは手元PC側に用意する
+2. 営業のOrganization画面の「文書」で「System Root」を選び、「文書を登録」を押す。「PoC Shared」は別のDocument PoC fixtureであり、この手順の登録先ではない
+3. 登録先を確認し、文書名 `PoC共有参照資料` と上の原本1件を指定して「下書きとして登録」を押す。登録成功後、authoring用途の「版・改訂」へ自動遷移する
+4. 「公開する」を開き、「今すぐ公開」と「公開対象の版とファイルを確認しました。」を選ぶ。画面の「公開する」に続き、「公開を確認」ダイアログの「確定する」を押す
+5. 公開成功後、「概要」の「記録・技術情報を確認」に表示される `Document ID` を控える
 
-返却された `documentId` / `documentVersionId` を使い、salesの `/documents/{documentId}?view=authoring` を開いて既存の「公開」操作で公開する。作成/公開が結果不明なら、既存Documentの回復手順で同じ対象を確認してから進める。新しい文書を無条件に再作成しない。
+初回登録の結果が不明なら「登録結果を確認」で照会し、再POST・再登録はしない。初回登録には操作IDが無く、WORKING保存の固定要求再送とは異なる。照会できなければ「編集作業」の一覧や管理者に確認する。
 
-別のshellで同じ環境変数を設定して次を実行する。
+公開・予約公開の確定結果が不明なら、未公開や旧公開維持と断定せず、確認ダイアログの「同じ内容で再試行」で同じ操作ID・同じ対象・同じ要求を再送して結果を確認する。要求は公開画面の一時状態に保持されるため、版の変更、公開方法・予約日時の変更、公開画面の開き直し、画面からの離脱、ページの再読み込み、タブ終了を避ける。既に元の要求を失った場合は新しい公開要求を送らず、管理者に元の操作結果を確認する。公開成功前にWork fixtureを作らない。
+
+既存WORKINGへ戻る入口、属性編集、既存複数原本の選択差替え、予約取消、取下げ・公開終了は[文書GUI手順](document-gui-v0.md)を参照する。初回登録自体は単原本である。
+
+サーバー側の別shellで同じ環境変数を設定して次を実行する。[Linux手動導入](linux-manual-installation.md)に従っている場合は、同手順の節6で `runtime.env` を読み込み、Document IDを入力して `seed-work` へ渡す。ブラウザー側PCからこのコマンドを実行しない。
 
 ```sh
 export KP_ORGANIZATION_DOCUMENT_ID='<上で公開したdocumentId>'
@@ -64,6 +75,8 @@ export KP_ORGANIZATION_DOCUMENT_ID='<上で公開したdocumentId>'
 ```
 
 このコマンドは既存Document read serviceで2profileの現在のPublishedアクセスを確かめてからWork fixtureを作る。既存Workの進捗はリセットしない。入力文書を変えるには新しい使い捨てDBを用意する。差戻対応のfixtureは新しいdefinition versionを使う。以前のforward-only定義のDBは0002 migration後も元の定義を保ち、差戻対応へ自動付替えしない。新しい差戻PoCには新しい使い捨てDBを用いる。
+
+予約公開schedulerはこのOrganization手順では起動しない。予約取消GUIの提供は自動公開の稼働確認ではない。[Document PoCのscheduler起動例](document-poc-runtime-v0.md#scheduler-and-other-boundaries)は `KP_RUNTIME_MODE=poc` 用で、`organization-synthetic` のrequesterを解決しないため流用しない。
 
 ## 2名で一連の操作をする
 
@@ -169,4 +182,4 @@ PostgreSQL transaction試験は既定で明示ignoreされる。実行してい�
 
 `mise run organization:poc:runtime` は既存Document CI後段向けの単発確認である。外部DBを受け付けず、既存と同じ公式PostgreSQL一時containerを別途所有し、独立したtransaction試験用DBとbrowser用DB・storageを作る。既存固定Chromiumでsales/officeの操作を行い、2processを停止・再起動して保存状態を確認した後、所有containerを削除する。
 
-通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。初回PoCの実証は[PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54)のsource `44e1b412` で完了している。差戻追加経路は[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d` で全CIと実DB/2名browser/両HTTP server再起動後復元/cleanupが成功した。根拠・候補・判断は[PR57](https://github.com/AIrisu-072/knowledge-platform/pull/57) exact `d383bacc` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。合成Agentは[PR60](https://github.com/AIrisu-072/knowledge-platform/pull/60) exact `48ae1bfd` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。最終事務の完了・保留/再開・Document原本取得を含む現在の統合結果は、本書冒頭のPR67 exact-head記録を参照する。PostgreSQL processそのものの再起動は確認対象に含めていない。画像・trace・videoはoff、raw実行ログ・標準runnerの原文は一時workspace内に保持し、公開artifactは追加しない。既存の有限stage/statusと許可された操作名だけをCIへ出力する。
+通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。初回PoCの実証は[PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54)のsource `44e1b412` で完了している。差戻追加経路は[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d` で全CIと実DB/2名browser/両HTTP server再起動後復元/cleanupが成功した。根拠・候補・判断は[PR57](https://github.com/AIrisu-072/knowledge-platform/pull/57) exact `d383bacc` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。合成Agentは[PR60](https://github.com/AIrisu-072/knowledge-platform/pull/60) exact `48ae1bfd` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。最終事務の完了・保留/再開・Document原本取得を含むPR67時点の統合結果は、本書冒頭の過去受入記録を参照する。最終対象のGUI・統合後mainの資格は、冒頭の対象ソースと確認状況で別に確認する。PostgreSQL processそのものの再起動は確認対象に含めていない。画像・trace・videoはoff、raw実行ログ・標準runnerの原文は一時workspace内に保持し、公開artifactは追加しない。既存の有限stage/statusと許可された操作名だけをCIへ出力する。

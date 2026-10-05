@@ -4,13 +4,23 @@
 
 所有者が自分でLinuxサーバーへ導入するための手順。対象は10月2日に設置したPCで、確定情報はCore Ultra 9 285KとLinux方針のみ。ディストリビューション、OS版、メモリー、ディスク、接続先は未確定である。「最新安定版」だけからUbuntu等を選定済みとは扱わない。
 
-**現在実行できるのは、架空データだけを使うOrganization Browser PoCの導入である。本番利用開始の手順は未完成。** 固定の営業・事務profileを使い、そのポートへ接続した人は同じprofileとして扱われる。認証画面、実利用者の識別、production modeはない。実文書・顧客情報を投入せず、インターネットや社内LANへ公開しない。
+**本書の対象は、架空データだけを使うOrganization Browser PoCの導入である。本番利用開始の手順は未完成。** 固定の営業・事務profileを使い、そのポートへ接続した人は同じprofileとして扱われる。認証画面、実利用者の識別、production modeはない。実文書・顧客情報を投入せず、インターネットや社内LANへ公開しない。
 
-- 固定ソース：統合済みmain `6c514850850110a3c2f8b2b5664ec263510c5d47`。受入済み[PR67](https://github.com/AIrisu-072/knowledge-platform/pull/67) `a39c90c2` と同一tree `880b1a57abc6890ed47df5e7bc16a4694d4546cc`
-- 既存確認：PR67の[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574840)、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574859)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574842)成功。同treeで使い捨てPostgreSQL・2名の合成Agent/完了/保留再開/原本取得・HTTPサーバー再起動後の復元・cleanupを確認済み。統合後mainの[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37253316995)もrequired-checkを含む13 jobsと実受入が成功
+- 導入対象の資格：固定の模擬利用者2名・画像保存なしのUbuntu機能受入に合格した版（対象PCでの手順実行、本番認証、見た目全体の比較検証は対象外）。固定SHAと受入記録が未確定の版は実行しない
+- 固定ソース：最終受入main `3d8deb253de19cb0954aa70a9a31cc5c4fc7540c` / tree `3f1ac6aa9e66d58bd5f01316e46334a48a64664f`
+- GUI統合の確認：PR69初回登録、PR70取下げ・公開終了、PR71属性編集、PR72予約取消、PR73 WORKING backendを保持した[PR74](https://github.com/AIrisu-072/knowledge-platform/pull/74) exact `ce56801f7ec73ed284a99838f07cfe0c92cf71f4` / tree `3f1ac6aa9e66d58bd5f01316e46334a48a64664f`。[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371770)、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371873)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371821)。確認結果：required-checkを含む通常CI13/13・DSI・Sandboxが成功。Rust1599成功/9skip、指定実DB36成功、GUI404・runtime補助試験161成功。Document18件とHTTP再起動後5件、Agent9項目/provenance、Organizationの操作・往復・再起動・owned cleanup、公開artifact0を確認した。初回PUT・新版POST・続くPUTで、実成功応答のbody途中喪失から実headers/同一requestの失敗→UNKNOWN→同一要求の明示再送・結果一致・DB snapshot不変を確認。status/headersも全喪失する旧faultのGUI明示再送は未合格のままで、今回へ付け替えない
+- 統合後mainの[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37301558995)。確認日：2026-10-05 11:31 UTC。確認結果：main自身のpush CIでrequired-checkを含む13/13 jobsが成功。Rust1599成功/9skip、指定実DB36成功。Document18件とHTTP再起動後5件、Agent9項目/provenance、Organizationの通常ナビ往復・操作・再起動・owned cleanup、公開artifact0を、PRとは別のmainログで確認した。exact head/clean、PostgreSQL18.6、固定合成2profileを照合した。作業版の固定再送資格は実成功応答のbody途中喪失に限定する
+- 資格対象は画像なしUbuntuの実操作PoC。macOS golden比較は未実行・未更新。影響候補Mock 2・3・4・7の4枚に加え、他3枚の画素不変も未証明で、全visual資格は主張しない
 - この手順そのものの対象PCでの実行、常設DBのbackup/restore、PostgreSQLプロセス再起動後の確認は未実施。CI成功と区別する
 - GPU、CUDA、外部モデル、Tauriは使わない。Agentは固定の合成executorであり、既存Document現在認可を確認して候補を作る。本文分析・実LLM・外部MCP通信は行わない
 - 本書のコマンドは所有者が実行する。既存本番サーバーへの接続や秘密情報の送信を代行するものではない
+
+### 過去の受入記録
+
+以下はGUI追加前の固定版に対する記録であり、上記の最終ソースや対象PCの手動導入へ資格を付け替えない。
+
+- 当時の固定ソース：統合済みmain `6c514850850110a3c2f8b2b5664ec263510c5d47`。受入済み[PR67](https://github.com/AIrisu-072/knowledge-platform/pull/67) `a39c90c2` と同一tree `880b1a57abc6890ed47df5e7bc16a4694d4546cc`
+- 当時の確認：PR67の[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574840)、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574859)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574842)成功。同treeで使い捨てPostgreSQL・2名の合成Agent/完了/保留再開/原本取得・HTTPサーバー再起動後の復元・cleanupを確認済み。統合後mainの[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37253316995)もrequired-checkを含む13 jobsと実受入が成功
 
 ## 1 開始前の確認
 
@@ -33,7 +43,8 @@ set -euo pipefail
 set +x
 umask 077
 export KP_HOME="$HOME/knowledge-platform-poc"
-export KP_SOURCE_SHA=6c514850850110a3c2f8b2b5664ec263510c5d47
+export KP_SOURCE_SHA='3d8deb253de19cb0954aa70a9a31cc5c4fc7540c'
+[[ "$KP_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '受入済みの固定SHAが未設定です'; exit 1; }
 export KP_SOURCE="$KP_HOME/releases/$KP_SOURCE_SHA"
 test ! -e "$KP_HOME"
 install -d -m 700 "$KP_HOME" "$KP_HOME/releases" "$KP_HOME/config" \
@@ -172,29 +183,40 @@ curl --fail --max-time 30 http://127.0.0.1:8091/health/ready
 
 ## 6 合成文書とタスクの準備
 
-初回だけ、営業serverへ合成文書を1件登録する。下のPOSTに自動retryは付けない。送信後の応答を失った場合、再POSTで二重作成せず、一覧から結果を確認する。
+初回だけ、営業画面の通常GUIから合成文書を1件登録して公開する。ファイル選択はブラウザーを開いているPCのファイルを使う。SSH転送で手元PCから見ている場合も、Linuxサーバーではなく手元PC側にUTF-8の `organization-reference.txt` を作る。内容は架空の確認文だけにする。
+
+ブラウザー側PCでBashを使える場合の例（同名ファイルがあれば停止する）。Bashを使わない場合は、テキストエディターで同じ本文をUTF-8の `.txt` として保存する。この操作ではサーバー用の `runtime.env` を読み込まない。
+
+```bash
+set -euo pipefail
+umask 077
+test ! -e "$HOME/organization-reference.txt"
+printf '【合成データ】2名の動作確認だけに使う共有資料です。\n' \
+  > "$HOME/organization-reference.txt"
+```
+
+1. 営業のOrganization画面でメインナビゲーションの「文書」を開く
+2. フォルダーの「System Root」を選び、「文書を登録」を押す。Organizationの `bootstrap-poc` が権限を用意するのはこのルートであり、別のDocument PoC fixtureの「PoC Shared」は選ばない
+3. 登録先が「System Root」であることを確認し、文書名を `PoC共有参照資料`、原本ファイルを上で作成した1件にする。「下書きとして登録」を押す
+4. 登録が確認できると、対象文書のauthoring用途の「版・改訂」へ自動で移動する。登録直後はWORKINGの下書きであり、まだ公開されていない
+5. 対象版と原本を確認して「公開する」を開く。「今すぐ公開」を選び、「公開対象の版とファイルを確認しました。」にチェックする
+6. 画面の「公開する」を押し、「公開を確認」ダイアログの対象を確認して「確定する」を押す。成功表示を確認するまで次へ進まない
+7. 公開成功後、同じ文書の「概要」で「記録・技術情報を確認」を開き、`Document ID` を控える。Version IDやrevision番号と取り違えない
+
+初回登録の結果が不明なら、画面の「登録結果を確認」で照会する。初回登録には重複を防ぐ操作IDが無いため、再登録・再POSTをしない。照会できなければ「編集作業」の一覧や管理者に結果を確認する。未解決のまま別文書を作らない。
+
+公開・予約公開の確定結果が不明なら、未公開や旧公開維持と断定せず、確認ダイアログの「同じ内容で再試行」で同じ操作ID・同じ対象・同じ要求を再送して結果を確認する。要求は公開画面の一時状態に保持されるため、版の変更、公開方法・予約日時の変更、公開画面の開き直し、画面からの離脱、ページの再読み込み、タブ終了を避ける。既に元の要求を失った場合は新しい公開要求を送らず、管理者に元の操作結果を確認する。公開成功を確認するまでは `seed-work` を実行しない。
+
+次は**既存のLinuxサーバー側terminal**で行う。保存済み設定を読み、控えた公開済みDocument IDを入力してWorkの合成タスクを作る。
 
 ```bash
 source "$HOME/knowledge-platform-poc/config/runtime.env"
-umask 077
-printf '【合成データ】2名の動作確認だけに使う共有資料です。\n' \
-  > "$KP_HOME/organization-reference.txt"
-curl --fail-with-body --max-time 60 \
-  -F 'request={"folderId":"00000000-0000-7000-8000-000000000001","title":"PoC共有参照資料","documentMetadata":{},"versionMetadata":{}};type=application/json' \
-  -F "file=@$KP_HOME/organization-reference.txt;type=text/plain" \
-  http://127.0.0.1:8090/v1/documents \
-  > "$KP_HOME/document-create-result.json"
-```
-
-保存したJSONの `documentId` と `documentVersionId` を確認する。営業画面の `/documents/{documentId}?view=authoring` で、その文書を「公開」する。公開成功後、同じ文書IDを入力してWorkの合成タスクを作る。
-
-```bash
 read -r -p '公開済みの合成documentId: ' KP_ORGANIZATION_DOCUMENT_ID
 export KP_ORGANIZATION_DOCUMENT_ID
 KP_ORGANIZATION_PROFILE=sales-01 "$KP_SOURCE/target/debug/organization-server" seed-work
 ```
 
-seedは既存Workをリセットせず、新規fixtureだけに完了/保留/再開を含む定義versionを使う。migration適用だけで既存workflowの定義・担当・進捗を変更しない。以前のforward-only/差戻/完了のみの定義や別の入力文書から作り直す場合は、このDBを上書きせず新しい専用環境で行う。予約公開schedulerはこのOrganization手順では起動しない。
+seedは既存Workをリセットせず、新規fixtureだけに完了/保留/再開を含む定義versionを使う。migration適用だけで既存workflowの定義・担当・進捗を変更しない。以前のforward-only/差戻/完了のみの定義や別の入力文書から作り直す場合は、このDBを上書きせず新しい専用環境で行う。予約公開schedulerはこのOrganization手順では起動しない。予約取消GUIがあっても、予約時刻の自動公開が稼働することを意味しない。[Document PoCのscheduler起動例](document-poc-runtime-v0.md#scheduler-and-other-boundaries)は `KP_RUNTIME_MODE=poc` 用であり、`organization-synthetic` のrequesterを解決しないため流用しない。
 
 確認する操作:
 
@@ -207,6 +229,8 @@ seedは既存Workをリセットせず、新規fixtureだけに完了/保留/再
 - [ ] 営業/事務の担当中タスクを保留し、同じ試行・担当・private保存内容のまま再開する。未保存入力はタブ内だけで、自動保存しない
 - [ ] 最終事務タスクを明示完了し、過去提出・根拠・判断・Agent結果を現在権限で読めること、新しい担当/提出が作られないことを確認する
 - [ ] 両HTTPプロセスを正常停止して同じ設定で再起動し、完了状態・保存済み内容・操作結果と非公開分離を再確認する
+
+文書の属性編集・既存複数原本の選択差替え・予約取消・公開状態の操作は[文書GUI手順](document-gui-v0.md)を参照する。初回登録は単原本で、複数原本の追加登録は今回含まない。
 
 詳細は[既存の操作手順](organization-browser-poc.md)に従う。画像、ログ、DB、storageを外部へ送らず、結果だけを記録する。
 
@@ -316,7 +340,7 @@ chmod 600 "$KP_HOME/config/restore.env"
 ## 根拠と保守
 
 - [Organization設定と固定profile](../../crates/organization-server/src/config.rs)、[実装済みCLI](../../crates/organization-server/src/main.rs)
-- [Document runtimeの境界](document-poc-runtime-v0.md)、[文書GUIの初回登録・取下げ・公開終了](document-gui-v0.md)、[Organization操作](organization-browser-poc.md)
+- [Document runtimeの境界](document-poc-runtime-v0.md)、[文書GUIの登録・属性編集・原本差替え・公開操作](document-gui-v0.md)、[Organization操作](organization-browser-poc.md)
 - [固定toolchain](../../mise.toml)、[Work migrationと台帳](../../crates/work-repository-postgres/src/lib.rs)
 - [手順書の検証状況](../superpowers/execution/linux-manual-installation-guide-status.md)
 
