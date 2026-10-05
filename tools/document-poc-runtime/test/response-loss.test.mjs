@@ -183,8 +183,8 @@ test('hosted HTTP working loss forwards raw compressed reads and exact multipart
   await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
   t.after(() => { upstream.closeAllConnections(); return new Promise(resolve => upstream.close(resolve)); });
   const origin = `http://127.0.0.1:${upstream.address().port}`;
-  const through = (proxy, method, path, body) => new Promise((resolve, reject) => {
-    const outgoing = request(proxy, { method, path: origin + path, headers: body ? { 'content-type': multipartType } : {} }, async incoming => {
+  const through = (proxy, method, path, body, { agent } = {}) => new Promise((resolve, reject) => {
+    const outgoing = request(proxy, { method, path: origin + path, agent, headers: body ? { 'content-type': multipartType } : {} }, async incoming => {
       try { resolve({ status: incoming.statusCode, headers: incoming.headers, body: Buffer.concat(await Array.fromAsync(incoming)) }); } catch (error) { reject(error); }
     });
     outgoing.on('error', reject); outgoing.end(body);
@@ -201,7 +201,9 @@ test('hosted HTTP working loss forwards raw compressed reads and exact multipart
     assert.equal(replay.status, 201); assert.equal(replay.body.equals(gzipSync(JSON.stringify(mutationResult))), true);
     assert.equal((await control.assertRecovered()).dispatched, 2);
   });
-  assert.equal(writes, 2); await assert.rejects(through(proxy, 'GET', '/asset'), /ECONNREFUSED/);
+  assert.equal(writes, 2);
+  // Listener closure requires a fresh connection, not a just-closed keep-alive socket.
+  await assert.rejects(through(proxy, 'GET', '/asset', undefined, { agent: false }), { code: 'ECONNREFUSED' });
 });
 
 test('hosted HTTP working loss bounds stalled upstream and closes accepted sockets', async t => {
