@@ -1,5 +1,45 @@
 # Active Execution Pointer
 
+## 2026-10-05 UTC — 属性編集の実受入完了後、予約取消mainと合流
+
+- PR71 exact `8eaa3942` は全13jobs・DSI・Sandboxと実15+3/Organization/cleanup/artifact公開0が成功。その終端確認後、予約取消main `c4388433` と両public履歴を保持して統合する。[今回の資格と統合状況](document-metadata-main-integration-status.md)を再開先とする
+- metadata/取消/lifecycleの製品sourceと受入を保持し、共有配線と有限診断だけを合流。旧3spec期待はRED1→厳密4specへ、Version fixtureは正規nullable予約IDへ整合させた
+- 新組合せは全GUI338件・型/build・純粋runner36件・telemetry offのAPI16件・collection16+4成功、独立共存レビューGO。新exact-headの実runtimeと全CIはこれから親が確認する。元の成功/失敗記録を新headへ付け替えない
+
+---
+
+## 2026-10-05 05:55 UTC — metadata公開後の受入read用途を修正
+
+- PR71 exact `5ed279fa` はhosted journey14件成功/metadata1件失敗。未公開編集の確認後、公開済み版をauthoringで読む受入helperの契約不一致を確認した。[今回の状況](document-metadata-main-integration-status.md)を再開先とする
+- 公開前authoring/公開後publishedを引数と画面遷移で明示し、検査内容・locator/timeout/retry・診断は保持。純粋source契約RED3→GREEN、全GUI315件・型/build・runner34件・collection15+3成功、独立限定レビューGO
+- 新exact-headの実DB/browserと全CIは未実行。PR71の2回の失敗と公開履歴を保持し、親が公開して再検証する。以下は各時点の履歴
+
+---
+
+## 2026-10-05 05:06 UTC — 属性編集と公開状態操作を両公開履歴で統合
+
+- 公開PR71 `8d53d7a3` とPR70統合済みmain `5d262557` を両parentとして保持する。[今回の統合状況](document-metadata-main-integration-status.md)を再開先とする
+- 両GUI/受入spec/有限診断を加算的に保持し、metadataの実label matcher RED2に基づくaria-label修正だけを加える。fixture capability1行と受入配線の3spec期待を整合させる
+- 全GUI315件・型/build・純粋runner31件・collection15+3成功、独立共存レビューGO。新組合せの実DB/browserとexact-head全CIは未実行。PR71旧headの失敗と双方の過去記録は保持し、親が同PRを更新して新headを検証する
+
+---
+
+## 2026-10-05 04:58 UTC — metadata実受入のラベル不一致を修正
+
+- PR71 exact `8d53d7a3` は既存hosted journey12件成功/metadata1件失敗。[失敗と修正状況](document-metadata-editor-status.md)を今回の再開先とする
+- 実Playwright label matcherを使う純粋RED2件で、非空textareaが親labelのexact名へ混入する問題を再現。可視文言と一致するaria-labelだけを追加し、locator/timeout/retryや診断は緩めない
+- 全GUI295件・型/build・collection13+2成功、限定独立レビューGO。修正後の実DB/browser・新exact-head全CIは未実行。元の失敗結果を保持し、親が4ファイルの差分を公開する。以下の初回未実行記録はその時点の履歴
+
+---
+
+## 2026-10-05 UTC — 文書共通属性3項目の編集GUI
+
+- 公開main `e9c7f773` から、既存T5を文書概要の最小フォームへ接続する。[今回の状況](document-metadata-editor-status.md)、[小さい計画](../plans/2026-10-05-document-metadata-editor.md)を参照
+- 正本snake_case3項目・明示削除・理由のみ。legacy/extensionsは表示保持、未知結果は同じ操作ID/payloadの明示再送。新backend・認可・依存・永続draftを追加しない
+- 全GUI293件・型/build・純粋runner29件・collection13+2成功、限定独立レビューGO。実DB/browser・同一head全CIは未実行で、公開/mergeは親担当、実サーバー反映は所有者が手動実施する。以下の過去記録を今回の受入へ付け替えない
+
+---
+
 ## 2026-10-05 04:57 UTC — 公開予約取消の最小読取補修とGUI
 
 - 所有者の予約取消優先指示に従い、main `e9c7f773` から独立branchで既存取消APIへGUIを接続する。[今回の状況](document-schedule-cancel-status.md)、[小さい計画](../plans/2026-10-05-document-schedule-cancel.md)、[追加読取field](../specs/2026-10-05-document-schedule-cancel-read-amendment.md)を参照
