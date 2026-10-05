@@ -16,7 +16,7 @@ mod postgres;
 mod relations;
 mod translate;
 
-pub use body_bundle::{PublishedBody, seal_lexical};
+pub use body_bundle::{PublishedBody, graph_receipt, seal_lexical};
 pub use body_evidence::{
     CurrentVersionReader, DocumentBodyCoverageGaps, DocumentExactTextEvidenceCatalog,
 };

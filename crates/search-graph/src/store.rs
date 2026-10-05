@@ -503,6 +503,65 @@ fn recompute(
     Ok((content, count(resources.len())?, count(relations.len())?))
 }
 
+/// P7-08: revalidates the staged generation on the caller's connection, under
+/// its parent lock, returning the report and the rebuilt rows.
+pub async fn validate_on(
+    connection: &mut PgConnection,
+    target: &GraphBuildRef,
+) -> Result<
+    (
+        GraphStageReport,
+        Vec<GraphResourceRecord>,
+        Vec<TypedRelationInstance>,
+    ),
+    GraphError,
+> {
+    let key = target.target_key();
+    let parent = building_for(parent(&mut *connection, key, "FOR UPDATE").await?, target)?;
+    let (resources, relations) = load_rows(&mut *connection, key).await?;
+    let (graph_content_digest, resource_count, relation_count) =
+        recompute(key, &parent, &resources, &relations)?;
+    Ok((
+        GraphStageReport {
+            key,
+            source_snapshot: parent.source_snapshot,
+            projection_manifest_digest: parent.projection_manifest_digest,
+            source_mapping_digest: parent.source_mapping_digest,
+            graph_content_digest,
+            resource_count,
+            relation_count,
+            graph_schema_version: GRAPH_SCHEMA_VERSION.into(),
+        },
+        resources,
+        relations,
+    ))
+}
+
+/// P7-08: marks the Graph READY with the recomputed digest and counts, on the
+/// caller's connection and inside its READY transaction.
+pub async fn settle_ready_on(
+    connection: &mut PgConnection,
+    report: &GraphStageReport,
+) -> Result<(), GraphError> {
+    let count = |n: u64| i64::try_from(n).map_err(|_| GraphError::Integrity("count"));
+    let updated = sqlx::query(
+        "UPDATE search_graph.generation SET state='READY', graph_content_digest=$3, \
+         resource_count=$4, relation_count=$5, ready_at=clock_timestamp() \
+         WHERE source_id=$1 AND generation_id=$2 AND state='BUILDING'",
+    )
+    .bind(report.key.source_id.as_uuid())
+    .bind(report.key.generation_id.as_uuid())
+    .bind(&report.graph_content_digest)
+    .bind(count(report.resource_count)?)
+    .bind(count(report.relation_count)?)
+    .execute(connection)
+    .await?;
+    if updated.rows_affected() != 1 {
+        return Err(GraphError::FenceLost);
+    }
+    Ok(())
+}
+
 /// The PostgreSQL Graph store. Holds only a pool; every reference is checked
 /// against stored rows on each use.
 #[derive(Clone)]

@@ -6,6 +6,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+document-domain = { version = "0.0.0", path = "../document-domain" }
 outbox-delivery = { version = "0.0.0", path = "../outbox-delivery" }
 search-application = { version = "0.0.0", path = "../search-application" }
 search-graph = { version = "0.0.0", path = "../search-graph" }

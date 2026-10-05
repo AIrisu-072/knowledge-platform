@@ -4188,6 +4188,7 @@ dependencies = [
 name = "search-runtime"
 version = "0.0.0"
 dependencies = [
+ "document-domain",
  "document-repository-postgres",
  "outbox-delivery",
  "search-application",

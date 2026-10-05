@@ -39,6 +39,14 @@ pub struct StoredBundleV1 {
     pub receipt: GenerationBundleReceipt,
 }
 
+/// Restored payload DTOs, checked except for the external artifact receipts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoredPayloadV1 {
+    pub projection: ProjectionPayloadV1,
+    pub unit_manifest: BodyUnitManifest,
+    pub coverage: BodyCoverageArtifact,
+}
+
 /// A bundle whose payload digests were all recomputed. Not a READY proof.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidatedPayloadV1 {
@@ -202,6 +210,109 @@ impl PgPayloadStore {
         }
         tx.commit().await?;
         Ok(())
+    }
+
+    /// Restores the payload DTOs of `manifest` and checks everything that does
+    /// not depend on external artifacts: the projection-only digest, the Unit
+    /// manifest structure, derived coverage and the stored digest columns.
+    pub async fn restore(
+        &self,
+        manifest: &ProjectionGenerationManifest,
+    ) -> Result<RestoredPayloadV1, BundleError> {
+        let key = manifest.key();
+        let rows = sqlx::query(
+            "SELECT kind, dto_version, payload::text AS payload, logical_digest, logical_count \
+             FROM search_generation_payload WHERE source_id=$1 AND generation_id=$2",
+        )
+        .bind(key.source_id.as_uuid())
+        .bind(key.generation_id.as_uuid())
+        .fetch_all(&self.pool)
+        .await?;
+        let (mut projection, mut units, mut coverage) = (None, None, None);
+        let mut columns = std::collections::BTreeMap::new();
+        for row in rows {
+            let kind: String = row.try_get("kind")?;
+            let version: String = row.try_get("dto_version")?;
+            let text: String = row.try_get("payload")?;
+            if version != PAYLOAD_DTO_VERSION {
+                return Err(BundleError::Shape);
+            }
+            let slot_taken = match kind.as_str() {
+                "projection" => projection
+                    .replace(restore::<ProjectionPayloadV1>(&text)?)
+                    .is_some(),
+                "unit_manifest" => units.replace(restore::<BodyUnitManifest>(&text)?).is_some(),
+                "body_coverage" => coverage
+                    .replace(restore::<BodyCoverageArtifact>(&text)?)
+                    .is_some(),
+                _ => return Err(BundleError::Shape),
+            };
+            if slot_taken {
+                return Err(BundleError::Shape);
+            }
+            columns.insert(
+                kind,
+                (
+                    row.try_get::<String, _>("logical_digest")?,
+                    row.try_get::<i64, _>("logical_count")?,
+                ),
+            );
+        }
+        let (Some(projection), Some(unit_manifest), Some(coverage)) = (projection, units, coverage)
+        else {
+            return Err(BundleError::Shape);
+        };
+        if unit_manifest.key != key
+            || coverage.key != key
+            || unit_manifest.source_snapshot != manifest.source_snapshot
+            || projection.registry.version != manifest.semantic_registry_version
+            || u64::try_from(projection.resources.len()).ok() != Some(manifest.resource_count)
+        {
+            return Err(BundleError::Binding);
+        }
+        let projection_digest =
+            generation_digest(key.source_id, &projection.resources, &projection.registry)
+                .map_err(|_| BundleError::Digest)?;
+        if projection_digest != manifest.digest {
+            return Err(BundleError::Digest);
+        }
+        if validate_restored_manifest(&unit_manifest).map_err(|_| BundleError::Digest)? != coverage
+        {
+            return Err(BundleError::Binding);
+        }
+        let units_receipt = search_source_document::unit_manifest_receipt(&unit_manifest)
+            .map_err(|_| BundleError::Digest)?;
+        let coverage_receipt =
+            search_source_document::coverage_receipt(&coverage).map_err(|_| BundleError::Digest)?;
+        let expected = [
+            (
+                "projection",
+                manifest.digest.clone(),
+                manifest.resource_count,
+            ),
+            (
+                "unit_manifest",
+                sha256_text(&units_receipt.digest),
+                units_receipt.count,
+            ),
+            (
+                "body_coverage",
+                sha256_text(&coverage_receipt.digest),
+                coverage_receipt.count,
+            ),
+        ];
+        for (kind, digest, count) in expected {
+            match columns.get(kind) {
+                Some((stored, stored_count))
+                    if *stored == digest && u64::try_from(*stored_count).ok() == Some(count) => {}
+                _ => return Err(BundleError::Digest),
+            }
+        }
+        Ok(RestoredPayloadV1 {
+            projection,
+            unit_manifest,
+            coverage,
+        })
     }
 
     /// Restores the payload rows of `manifest` and revalidates them against the

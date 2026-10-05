@@ -321,7 +321,7 @@ pub fn seal_lexical(
 
 /// Canonical Graph staged input: typed n-ary relations by RelationId plus the
 /// Document owner mapping of auxiliary Resources.
-pub(crate) fn graph_receipt(
+pub fn graph_receipt(
     key: ProjectionGenerationKey,
     projections: &[CompiledResourceProjection],
     ownership: &[(ResourceId, DocumentId)],
