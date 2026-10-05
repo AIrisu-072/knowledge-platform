@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 2026-10-05 06:28 UTC — WORKING編集 D1 backend/API
+
+- 完成source `f639fbf0`を保持し、レビュー境界に沿いD1 backend/API/SDKとD2 GUI/runtimeへ分ける。D1の[状況](document-working-manifest-api-status.md)、共通[承認追補](../specs/2026-10-05-document-working-version-editor-amendment.md)、[小計画](../plans/2026-10-05-document-working-version-editor.md)を参照
+- D1は初回未公開WORKINGの修復・capability整合・exact manifest read・nullable結果を扱う。複数原本GUI有効化はD2で、旧公開維持/選択変換物除外の承認意味は変えない
+- 分割単独の検証と最新合格mainへの両履歴保持統合は未完。旧完成treeの資格を新headへ付け替えない。画像を生成/公開せず、実DB/ブラウザーは既存hosted受入で確認する
+
+---
+
 ## 2026-10-05 03:50 UTC — 既存APIの現行版取下げ・公開終了GUI
 
 - 所有者の既存内部処理のGUI化を続け、PR69統合後main `e9c7f773` と同一の初回登録sourceから現行公開版の取下げ・文書の公開終了を小さい別branchへ追加する。[今回の状況](document-lifecycle-operations-status.md)、[計画](../plans/2026-10-05-document-lifecycle-operations.md)、[画面操作](../../operations/document-gui-v0.md)を参照

@@ -147,7 +147,7 @@ async fn initial_to_replacement_schedule_withdrawal_and_rebase_preserve_one_line
         .unwrap();
     assert_eq!(
         (third.version_no(), third.base_version_id()),
-        (3, replacement_id)
+        (3, Some(replacement_id))
     );
     let withdrawn = service
         .withdraw_version(
@@ -173,7 +173,7 @@ async fn initial_to_replacement_schedule_withdrawal_and_rebase_preserve_one_line
         .unwrap();
     assert_eq!(
         (rebased.version_no(), rebased.base_version_id()),
-        (3, base_id)
+        (3, Some(base_id))
     );
     let row: (Option<Uuid>, i64) =
         sqlx::query_as("SELECT current_version_id,revision FROM documents WHERE document_id = $1")

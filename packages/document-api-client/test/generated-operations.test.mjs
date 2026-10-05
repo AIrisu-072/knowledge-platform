@@ -18,5 +18,5 @@ test('generated SDK operations match every OpenAPI operationId', async () => {
   )].sort();
 
   assert.deepEqual(generatedOperations, operationIds);
-  assert.equal(operationIds.length, 34);
+  assert.equal(operationIds.length, 35);
 });

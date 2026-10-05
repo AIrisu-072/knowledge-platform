@@ -168,7 +168,7 @@ struct VersionMutationResultDto {
     document_id: Uuid,
     target_version_id: Uuid,
     version_no: i64,
-    base_version_id: Uuid,
+    base_version_id: Option<Uuid>,
     resulting_revision: i64,
 }
 
@@ -519,7 +519,28 @@ fn result_dto(result: VersionOperationResult) -> VersionMutationResultDto {
         document_id: result.document_id().as_uuid(),
         target_version_id: result.target_version_id().as_uuid(),
         version_no: result.version_no(),
-        base_version_id: result.base_version_id().as_uuid(),
+        base_version_id: result.base_version_id().map(|id| id.as_uuid()),
         resulting_revision: result.resulting_revision(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn initial_working_update_result_serializes_an_explicit_null_base() {
+        let result = VersionOperationResult::from_persisted(
+            VersionOperationId::try_from_uuid(Uuid::now_v7()).unwrap(),
+            DocumentId::from_uuid(Uuid::from_u128(1)),
+            DocumentVersionId::from_uuid(Uuid::from_u128(2)),
+            1,
+            None,
+            1,
+        );
+        let value = serde_json::to_value(result_dto(result)).unwrap();
+        assert!(value.as_object().unwrap().contains_key("baseVersionId"));
+        assert_eq!(value["baseVersionId"], serde_json::Value::Null);
+        assert_eq!(value["versionNo"], 1);
     }
 }

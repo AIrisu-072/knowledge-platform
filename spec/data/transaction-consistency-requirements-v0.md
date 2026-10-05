@@ -405,6 +405,13 @@ Documentごとの `WORKING` は高々1版とする。第2版以降の新規版�
 
 公開前の表示ラベルは `approved_at` / `scheduled_publish_at` から「下書き」「非公開」「公開待ち」を導出する。
 
+### WORKING内容の更新
+
+承認済みの[複数原本編集追補](../../docs/superpowers/specs/2026-10-05-document-working-version-editor-amendment.md)に従い、一度も公開されていない初回#1 WORKINGはcurrent/baseが共にnullでも、全authoritative原本を新検査して更新できる。以前公開された文書のcurrentがnullであることを初回の証明として使わない。初回には比較する公開baseがないため、内容同一を新たに拒否しない。 旧初回原本の再検査を修復の前提とせず、matching logicalPath/ordinalの既存mediaTypeを変更不可として保持する。信頼できる既存DSI証拠がある場合はformat/profile互換を確認し、raw binding不整合は拒否する。証拠が無い場合は同じmediaTypeで新候補が検査に成功する修復だけを許し、mediaType一致をDSI同等性の証明とは扱わない。現公開がある更新は記録base=currentと既存semantic差分を要求する。stale更新は拒否し、rebaseは現公開がある場合に限って明示操作する。
+
+現在のread+write認可、期待Document revision、WORKING、未公開終了、PENDING予約なし、immutable file/inspection bindingをtransactionで再確認し、全manifestを一度に置換する。Version ID/番号と現公開pointerを維持し、Document revision、成功操作台帳、Domain/Audit Outboxをatomicに記録する。初回結果のbaseはnullで、同一操作の再送はその結果を復元する。結果不明は成功済みの可能性を残し、同操作・同payloadを再送する。公開済み・取下げ済み版の内容は更新しない。
+
+
 ### 競合
 
 同一Documentに複数利用者が同時Version作成する可能性を許容するかは業務ルールで制御する。
@@ -649,6 +656,8 @@ T10 の対象は現行 `PUBLISHED` Version を持つ Document に限る。呼出
 ### 読み取りと Search
 
 通常公開用の Document・ファイル読み取りは、同じ Document の現行 `PUBLISHED` Version のみを返す。現行版参照が null なら結果を返さず、過去版や `WORKING` Version へフォールバックしない。既存の編集・authoritative 読み取りは T10 未終了の `WORKING` 初版を扱えるが、T10 終了後は旧版を返さない。終了記録の確認と取得は同じ DB statement で行う。権限に基づく過去資料の参照は AccessPolicy を使う別経路とする。
+
+複数原本編集用manifest readはread+writeを要求し、同一snapshotでDocument revision、対象Version、全item/representationの正確な元名・FileId・取得用IDを返す。published用途は現公開版だけ、authoring用途はWORKINGだけであり、historyへの暗黙fallbackをしない。原本bytesの取得は既存の現在認可・監査付きdownloadに従う。
 
 Document Management Basics v0 の認可付き履歴経路は、明示 Document/Version ID と `read + read_history` を要求し、残存 `WORKING` の内容にはさらに `write` を要求する。この経路は通常公開用の取得へフォールバックせず、T10 の `current_version_id = null` や Version の内容・状態を変更しない。
 

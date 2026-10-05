@@ -446,6 +446,31 @@ paths:
       parameters:
       - $ref: '#/components/parameters/pageSize'
       - $ref: '#/components/parameters/cursor'
+  /v1/documents/{documentId}/versions/{versionId}/edit-manifest:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    - $ref: '#/components/parameters/versionId'
+    get:
+      tags:
+      - Files
+      summary: Read the complete exact manifest for editing
+      operationId: getVersionEditManifest
+      description: Requires current Read+Write and the existing published or authoring lifecycle authorization. Returns document revision, source version, title and every item/representation from the same snapshot. Published requires the current published version; authoring requires WORKING. History purpose and implicit history fallback are forbidden. This metadata read does not replace the separately authorized, audited binary download.
+      parameters:
+      - name: purpose
+        in: query
+        required: true
+        description: Exact editing source authorization purpose.
+        schema:
+          type: string
+          enum: [published, authoring]
+      responses:
+        '200':
+          $ref: '#/components/responses/EditManifest'
+        '401':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/documents/{documentId}/versions/{versionId}/files:
     parameters:
     - $ref: '#/components/parameters/documentId'
@@ -747,6 +772,8 @@ components:
       $ref: ./schemas/document/models.yaml#/$defs/VersionList
     History:
       $ref: ./schemas/document/models.yaml#/$defs/History
+    EditManifest:
+      $ref: ./schemas/document/models.yaml#/$defs/EditManifest
     FileList:
       $ref: ./schemas/document/models.yaml#/$defs/FileList
     Folder:
@@ -1505,6 +1532,41 @@ components:
           schema:
             type: string
             const: private, no-store
+    EditManifest:
+      description: Exact complete manifest and document revision from one authorized snapshot.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EditManifest'
+          example:
+            documentId: 00000000-0000-4000-8000-000000000001
+            sourceVersionId: 00000000-0000-4000-8000-000000000002
+            documentRevision: 5
+            purpose: authoring
+            title: Operations policy
+            items:
+            - contentItemId: 00000000-0000-4000-8000-000000000041
+              logicalPath: primary
+              ordinal: 0
+              representations:
+              - representationId: 00000000-0000-4000-8000-000000000042
+                role: authoritative
+                fileId: 00000000-0000-4000-8000-000000000003
+                originalFilename: source/Operations policy.txt
+                mediaType: text/plain
+                sizeBytes: 23
+              - representationId: 00000000-0000-4000-8000-000000000043
+                role: rendition
+                fileId: 00000000-0000-4000-8000-000000000004
+                originalFilename: Operations policy.pdf
+                mediaType: application/pdf
+                sizeBytes: 100
+      headers:
+        Cache-Control:
+          description: Sensitive response is never shared or stored.
+          schema:
+            type: string
+            const: private, no-store
     FileList:
       description: FileList
       content:
@@ -1649,13 +1711,23 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/VersionMutationResult'
-          example:
-            operationId: 01890f7a-6f6e-7b0a-8000-000000000013
-            documentId: 00000000-0000-4000-8000-000000000001
-            targetVersionId: 00000000-0000-4000-8000-000000000022
-            versionNo: 2
-            baseVersionId: 00000000-0000-4000-8000-000000000002
-            resultingRevision: 5
+          examples:
+            basedOnPublished:
+              value:
+                operationId: 01890f7a-6f6e-7b0a-8000-000000000013
+                documentId: 00000000-0000-4000-8000-000000000001
+                targetVersionId: 00000000-0000-4000-8000-000000000022
+                versionNo: 2
+                baseVersionId: 00000000-0000-4000-8000-000000000002
+                resultingRevision: 5
+            initialWorking:
+              value:
+                operationId: 01890f7a-6f6e-7b0a-8000-000000000014
+                documentId: 00000000-0000-4000-8000-000000000001
+                targetVersionId: 00000000-0000-4000-8000-000000000002
+                versionNo: 1
+                baseVersionId: null
+                resultingRevision: 2
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.

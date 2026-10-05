@@ -188,6 +188,25 @@ async fn seed_gui_document(f: &support::Fixture) -> (uuid::Uuid, uuid::Uuid) {
     (version_id, latest_revision_id)
 }
 
+// A genuinely never-published version: no revision rows are created or removed.
+async fn seed_initial_gui_document(f: &support::Fixture) -> uuid::Uuid {
+    let version_id = uuid::Uuid::now_v7();
+    let file_id = uuid::Uuid::now_v7();
+    let item_id = uuid::Uuid::now_v7();
+    let representation_id = uuid::Uuid::now_v7();
+    let mut tx = f.pool.begin().await.unwrap();
+    sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,lifecycle_state,title,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,1,'WORKING','Initial policy','test-idp','policy-admin','{}',now())")
+        .bind(version_id).bind(f.document_id.as_uuid()).execute(&mut *tx).await.unwrap();
+    sqlx::query("INSERT INTO file_objects (file_id,content_hash,media_type,size_bytes,storage_locator,created_at) VALUES ($1,$2,'text/plain',7,$3,now())")
+        .bind(file_id).bind(vec![9_u8;32]).bind(format!("objects/{file_id}")).execute(&mut *tx).await.unwrap();
+    sqlx::query("INSERT INTO content_items (content_item_id,document_version_id,logical_path,ordinal,authoritative_representation_id) VALUES ($1,$2,'primary',0,$3)")
+        .bind(item_id).bind(version_id).bind(representation_id).execute(&mut *tx).await.unwrap();
+    sqlx::query("INSERT INTO content_representations (content_representation_id,content_item_id,file_id,role,original_filename) VALUES ($1,$2,$3,'AUTHORITATIVE','source.txt')")
+        .bind(representation_id).bind(item_id).bind(file_id).execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
+    version_id
+}
+
 fn context_for(principal_id: &str) -> VerifiedActorContext {
     let principal = PrincipalRef::new("test-idp", principal_id).unwrap();
     VerifiedActorContext::from_trusted_adapter(
@@ -578,6 +597,10 @@ async fn working_version_capabilities_disable_publish_and_enable_rebase_for_stal
     assert_eq!(status, StatusCode::OK, "{version}");
     assert_eq!(version["capabilities"]["rebase"]["status"], "available");
     assert_eq!(
+        version["capabilities"]["edit"],
+        json!({"status": "disabled", "reason": "staleBase"})
+    );
+    assert_eq!(
         version["capabilities"]["publish"],
         json!({"status": "disabled", "reason": "staleBase"})
     );
@@ -619,12 +642,28 @@ async fn document_capabilities_distinguish_missing_current_from_ended_publicatio
 
     let router = read_router(f.repository.clone(), Arc::new(FixedIdentity(context()))).unwrap();
     let path = format!("/v1/documents/{}?view=authoring", f.document_id.as_uuid());
-    let (status, document) = get(router, &path).await;
+    let (status, document) = get(router.clone(), &path).await;
     assert_eq!(status, StatusCode::OK, "{document}");
+    assert_eq!(
+        document["capabilities"]["createVersion"]["status"],
+        "disabled"
+    );
     assert_eq!(
         document["capabilities"]["endPublication"],
         json!({"status": "disabled", "reason": "notCurrent"})
     );
+    let version_path = format!(
+        "/v1/documents/{}/versions/{}?purpose=authoring",
+        f.document_id.as_uuid(),
+        working_id
+    );
+    let (status, working) = get(router, &version_path).await;
+    assert_eq!(status, StatusCode::OK, "{working}");
+    assert_eq!(
+        working["capabilities"]["edit"],
+        json!({"status": "disabled", "reason": "staleBase"})
+    );
+    assert_eq!(working["capabilities"]["rebase"]["status"], "disabled");
 }
 
 #[tokio::test]
@@ -1053,4 +1092,490 @@ async fn unavailable_identity_presentation_does_not_fail_history_or_policy_reads
         policy["effectiveGrants"][0]["presentation"]["ref"]["subjectId"],
         "policy-admin"
     );
+}
+
+#[tokio::test]
+async fn edit_manifest_reads_exact_metadata_and_order_with_current_write_authorization() {
+    let f = fixture().await;
+    let (version_id, _) = seed_gui_document(&f).await;
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![
+                grant_for("policy-admin", [Action::Read, Action::Write]),
+                grant_for("reader-two", [Action::Read, Action::ReadHistory]),
+            ],
+        )
+        .await
+        .unwrap();
+    let mut tx = f.pool.begin().await.unwrap();
+    let existing_item: uuid::Uuid = sqlx::query_scalar(
+        "SELECT content_item_id FROM content_items WHERE document_version_id = $1",
+    )
+    .bind(version_id)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    let existing_file: uuid::Uuid = sqlx::query_scalar(
+        "SELECT file_id FROM content_representations WHERE content_item_id = $1",
+    )
+    .bind(existing_item)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    let extra_item = uuid::Uuid::from_u128(90);
+    let authoritative = uuid::Uuid::from_u128(93);
+    let rendition = uuid::Uuid::from_u128(91);
+    sqlx::query("INSERT INTO content_items (content_item_id,document_version_id,logical_path,ordinal,authoritative_representation_id) VALUES ($1,$2,'appendix',0,$3)")
+        .bind(extra_item).bind(version_id).bind(authoritative).execute(&mut *tx).await.unwrap();
+    for (id, role, name) in [
+        (rendition, "RENDITION", "preview\\exact.pdf"),
+        (authoritative, "AUTHORITATIVE", "source/../exact\nname.txt"),
+    ] {
+        sqlx::query("INSERT INTO content_representations (content_representation_id,content_item_id,file_id,role,original_filename) VALUES ($1,$2,$3,$4,$5)")
+            .bind(id).bind(extra_item).bind(existing_file).bind(role).bind(name).execute(&mut *tx).await.unwrap();
+    }
+    sqlx::query("UPDATE documents SET revision=17 WHERE document_id=$1")
+        .bind(f.document_id.as_uuid())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let path = format!(
+        "/v1/documents/{}/versions/{version_id}/edit-manifest",
+        f.document_id.as_uuid()
+    );
+    let router = read_router(f.repository.clone(), Arc::new(FixedIdentity(context()))).unwrap();
+    let (status, body) = get(router.clone(), &format!("{path}?purpose=published")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["sourceVersionId"], version_id.to_string());
+    assert_eq!(body["documentRevision"], 17);
+    assert_eq!(body["purpose"], "published");
+    assert_eq!(body["title"], "Operations policy");
+    let items = body["items"].as_array().unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0]["logicalPath"], "appendix");
+    assert_eq!(items[1]["logicalPath"], "primary");
+    assert_eq!(
+        items[1]["representations"][0]["originalFilename"],
+        "../../Policy.pdf"
+    );
+    let reps = items[0]["representations"].as_array().unwrap();
+    assert_eq!(reps[0]["representationId"], authoritative.to_string());
+    assert_eq!(reps[0]["role"], "authoritative");
+    assert_eq!(reps[0]["originalFilename"], "source/../exact\nname.txt");
+    assert_eq!(reps[0]["fileId"], existing_file.to_string());
+    assert_eq!(reps[0]["mediaType"], "application/pdf");
+    assert_eq!(reps[0]["sizeBytes"], 7);
+    assert_eq!(reps[1]["role"], "rendition");
+    assert_eq!(reps[1]["originalFilename"], "preview\\exact.pdf");
+    let reader = read_router(
+        f.repository.clone(),
+        Arc::new(FixedIdentity(context_for("reader-two"))),
+    )
+    .unwrap();
+    assert_eq!(
+        get(reader, &format!("{path}?purpose=published")).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        get(router.clone(), &format!("{path}?purpose=authoring"))
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        get(router.clone(), &format!("{path}?purpose=history"))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    // Revoking Write after a successful read must invalidate a new read.
+    sqlx::query(
+        "DELETE FROM access_policy_grants WHERE subject_id='policy-admin' AND action='write'",
+    )
+    .execute(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        get(router, &format!("{path}?purpose=published")).await.0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn initial_working_edit_capability_rejects_existing_publication_history() {
+    let f = fixture().await;
+    let (version_id, _) = seed_gui_document(&f).await;
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![grant_for(
+                "policy-admin",
+                [Action::Read, Action::Write, Action::ReadHistory],
+            )],
+        )
+        .await
+        .unwrap();
+    sqlx::query("UPDATE documents SET current_version_id = NULL WHERE document_id = $1")
+        .bind(f.document_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE document_versions SET lifecycle_state = 'WORKING', published_at = NULL WHERE document_version_id = $1")
+        .bind(version_id).execute(&f.pool).await.unwrap();
+    let router = read_router(f.repository.clone(), Arc::new(FixedIdentity(context()))).unwrap();
+    let path = format!(
+        "/v1/documents/{}/versions/{version_id}?purpose=authoring",
+        f.document_id.as_uuid()
+    );
+    let (_, prior) = get(router.clone(), &path).await;
+    assert_eq!(
+        prior["capabilities"]["edit"]["status"], "disabled",
+        "issued revisions prove this is not an initial draft"
+    );
+    assert_eq!(prior["capabilities"]["rebase"]["status"], "disabled");
+}
+
+#[tokio::test]
+async fn initial_working_edit_capability_requires_no_publication_history_or_pending_schedule() {
+    let f = fixture().await;
+    let version_id = seed_initial_gui_document(&f).await;
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![grant_for(
+                "policy-admin",
+                [Action::Read, Action::Write, Action::ReadHistory],
+            )],
+        )
+        .await
+        .unwrap();
+    let router = read_router(f.repository.clone(), Arc::new(FixedIdentity(context()))).unwrap();
+    let path = format!(
+        "/v1/documents/{}/versions/{version_id}?purpose=authoring",
+        f.document_id.as_uuid()
+    );
+    let (status, initial) = get(router.clone(), &path).await;
+    assert_eq!(status, StatusCode::OK, "{initial}");
+    assert_eq!(initial["capabilities"]["edit"]["status"], "available");
+    assert_eq!(initial["capabilities"]["rebase"]["status"], "disabled");
+    sqlx::query("INSERT INTO document_publish_schedules (publish_operation_id,document_id,target_document_version_id,expected_document_revision,accepted_document_revision,scheduled_publish_at,actor_identity_provider,actor_principal_id,manifest_digest,status,created_at) VALUES ($1,$2,$3,0,1,now() + interval '1 day','test-idp','policy-admin',$4,'PENDING',now())")
+        .bind(uuid::Uuid::now_v7()).bind(f.document_id.as_uuid()).bind(version_id).bind(vec![1_u8; 32]).execute(&f.pool).await.unwrap();
+    let (_, pending) = get(router, &path).await;
+    assert_eq!(
+        pending["capabilities"]["edit"],
+        json!({"status":"disabled","reason":"pendingSchedule"})
+    );
+}
+
+#[tokio::test]
+async fn edit_manifest_snapshot_keeps_revision_title_and_original_filename_together() {
+    let f = fixture().await;
+    let version_id = seed_initial_gui_document(&f).await;
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![grant_for("policy-admin", [Action::Read, Action::Write])],
+        )
+        .await
+        .unwrap();
+    let mut tx = f.pool.begin().await.unwrap();
+    sqlx::query("UPDATE document_versions SET title='snapshot-1' WHERE document_version_id=$1")
+        .bind(version_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE content_representations SET original_filename='snapshot-1' WHERE content_item_id IN (SELECT content_item_id FROM content_items WHERE document_version_id=$1)")
+        .bind(version_id).execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
+    // Agent contexts remain eligible under the existing authoring policy.
+    let router = read_router(
+        f.repository.clone(),
+        Arc::new(FixedIdentity(context_for_kind(
+            "policy-admin",
+            InvocationKind::Agent,
+        ))),
+    )
+    .unwrap();
+    let path = format!(
+        "/v1/documents/{}/versions/{version_id}/edit-manifest?purpose=authoring",
+        f.document_id.as_uuid()
+    );
+    let pool = f.pool.clone();
+    let document_id = f.document_id;
+    let writer = tokio::spawn(async move {
+        for revision in 2..=30_i64 {
+            let mut tx = pool.begin().await.unwrap();
+            sqlx::query("UPDATE documents SET revision=$2 WHERE document_id=$1")
+                .bind(document_id.as_uuid())
+                .bind(revision)
+                .execute(&mut *tx)
+                .await
+                .unwrap();
+            let name = format!("snapshot-{revision}");
+            sqlx::query("UPDATE document_versions SET title=$2 WHERE document_version_id=$1")
+                .bind(version_id)
+                .bind(&name)
+                .execute(&mut *tx)
+                .await
+                .unwrap();
+            sqlx::query("UPDATE content_representations SET original_filename=$2 WHERE content_item_id IN (SELECT content_item_id FROM content_items WHERE document_version_id=$1)")
+                .bind(version_id).bind(&name).execute(&mut *tx).await.unwrap();
+            tx.commit().await.unwrap();
+            tokio::task::yield_now().await;
+        }
+    });
+    for _ in 0..30 {
+        let (status, body) = get(router.clone(), &path).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let revision = body["documentRevision"].as_i64().unwrap();
+        assert_eq!(body["title"], format!("snapshot-{revision}"));
+        assert_eq!(
+            body["items"][0]["representations"][0]["originalFilename"],
+            format!("snapshot-{revision}")
+        );
+        assert_eq!(body["sourceVersionId"], version_id.to_string());
+    }
+    writer.await.unwrap();
+}
+
+#[tokio::test]
+async fn edit_manifest_never_falls_back_to_history_after_publication_changes_or_ends() {
+    let f = fixture().await;
+    let (old_version, _) = seed_gui_document(&f).await;
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![grant_for(
+                "policy-admin",
+                [Action::Read, Action::ReadHistory, Action::Write],
+            )],
+        )
+        .await
+        .unwrap();
+    let router = read_router(f.repository.clone(), Arc::new(FixedIdentity(context()))).unwrap();
+    let path = format!(
+        "/v1/documents/{}/versions/{old_version}/edit-manifest?purpose=published",
+        f.document_id.as_uuid()
+    );
+    assert_eq!(get(router.clone(), &path).await.0, StatusCode::OK);
+    let current = uuid::Uuid::now_v7();
+    sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,lifecycle_state,title,published_at,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,2,'PUBLISHED','Replacement',now(),'test-idp','policy-admin','{}',now())")
+        .bind(current).bind(f.document_id.as_uuid()).execute(&f.pool).await.unwrap();
+    sqlx::query("UPDATE documents SET current_version_id=$2 WHERE document_id=$1")
+        .bind(f.document_id.as_uuid())
+        .bind(current)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    assert_eq!(get(router.clone(), &path).await.0, StatusCode::NOT_FOUND);
+    sqlx::query("UPDATE document_versions SET lifecycle_state='WITHDRAWN',withdrawn_at=now() WHERE document_version_id=$1")
+        .bind(old_version).execute(&f.pool).await.unwrap();
+    assert_eq!(get(router.clone(), &path).await.0, StatusCode::NOT_FOUND);
+    // The purpose gate also rejects ended publication, even if an inconsistent
+    // fixture still has a current pointer. No history permission broadens it.
+    sqlx::query("INSERT INTO document_publication_end_operations (operation_id,document_id,command_digest,expected_document_revision,expected_current_version_id,actor_identity_provider,actor_principal_id,reason,former_current_version_id,resulting_document_revision,ended_at) VALUES ($1,$2,$3,1,$4,'test-idp','policy-admin','end', $4,2,now())")
+        .bind(uuid::Uuid::now_v7()).bind(f.document_id.as_uuid()).bind(vec![1u8;32]).bind(current).execute(&f.pool).await.unwrap();
+    let current_path = format!(
+        "/v1/documents/{}/versions/{current}/edit-manifest?purpose=published",
+        f.document_id.as_uuid()
+    );
+    assert_eq!(get(router, &current_path).await.0, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn create_version_capability_requires_current_published_and_no_working_or_schedule() {
+    use document_application::{
+        ActionAvailability, ActionCapabilityReadRepository, CapabilityDisabledReason,
+    };
+    let f = fixture().await;
+    let (version_id, _) = seed_gui_document(&f).await;
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![grant_for("policy-admin", [Action::Read, Action::Write])],
+        )
+        .await
+        .unwrap();
+    let available = f
+        .repository
+        .read_document_action_capabilities(&context(), f.document_id)
+        .await
+        .unwrap();
+    assert_eq!(available.create_version, ActionAvailability::available());
+    sqlx::query("UPDATE documents SET current_version_id = NULL WHERE document_id = $1")
+        .bind(f.document_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    let absent = f
+        .repository
+        .read_document_action_capabilities(&context(), f.document_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        absent.create_version,
+        ActionAvailability::disabled(CapabilityDisabledReason::NotCurrent)
+    );
+    sqlx::query("UPDATE documents SET current_version_id = $1 WHERE document_id = $2")
+        .bind(version_id)
+        .bind(f.document_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    let working_id = uuid::Uuid::now_v7();
+    sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,base_document_version_id,lifecycle_state,title,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,2,$3,'WORKING','Working','test-idp','policy-admin','{}',now())")
+        .bind(working_id).bind(f.document_id.as_uuid()).bind(version_id).execute(&f.pool).await.unwrap();
+    let working = f
+        .repository
+        .read_document_action_capabilities(&context(), f.document_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        working.create_version,
+        ActionAvailability::disabled(CapabilityDisabledReason::Lifecycle)
+    );
+    sqlx::query("INSERT INTO document_publish_schedules (publish_operation_id,document_id,target_document_version_id,base_document_version_id,current_version_id,expected_document_revision,accepted_document_revision,scheduled_publish_at,actor_identity_provider,actor_principal_id,manifest_digest,status,created_at) VALUES ($1,$2,$3,$4,$4,0,1,now() + interval '1 day','test-idp','policy-admin',$5,'PENDING',now())")
+        .bind(uuid::Uuid::now_v7()).bind(f.document_id.as_uuid()).bind(working_id).bind(version_id).bind(vec![1_u8; 32]).execute(&f.pool).await.unwrap();
+    let pending = f
+        .repository
+        .read_document_action_capabilities(&context(), f.document_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        pending.create_version,
+        ActionAvailability::disabled(CapabilityDisabledReason::PendingSchedule)
+    );
+}
+
+#[tokio::test]
+async fn edit_manifest_refuses_unclassified_legacy_or_empty_content() {
+    let f = fixture().await;
+    let version_id = seed_initial_gui_document(&f).await;
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![grant_for("policy-admin", [Action::Read, Action::Write])],
+        )
+        .await
+        .unwrap();
+    let router = read_router(f.repository.clone(), Arc::new(FixedIdentity(context()))).unwrap();
+    let path = format!(
+        "/v1/documents/{}/versions/{version_id}/edit-manifest?purpose=authoring",
+        f.document_id.as_uuid()
+    );
+    sqlx::query("UPDATE document_versions SET requires_content_classification=TRUE WHERE document_version_id=$1")
+        .bind(version_id).execute(&f.pool).await.unwrap();
+    let (status, body) = get(router.clone(), &path).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["code"], "BUSINESS_RULE_REJECTED");
+    sqlx::query("UPDATE document_versions SET requires_content_classification=FALSE WHERE document_version_id=$1")
+        .bind(version_id).execute(&f.pool).await.unwrap();
+    sqlx::query("DELETE FROM content_items WHERE document_version_id=$1")
+        .bind(version_id)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    let (status, body) = get(router, &path).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["code"], "BUSINESS_RULE_REJECTED");
+}
+
+#[tokio::test]
+async fn unclassified_current_can_end_publication_while_versioning_stays_disabled() {
+    use document_application::{
+        EndDocumentPublicationCommand, EndPublicationRecord, PublicationEndOperationId,
+        PublicationEndRepository,
+    };
+    use document_domain::{AuditEventId, DocumentVersionId, EventId};
+
+    let f = fixture().await;
+    let (published_id, _) = seed_gui_document(&f).await;
+    sqlx::query("UPDATE document_versions SET requires_content_classification=TRUE WHERE document_version_id=$1")
+        .bind(published_id).execute(&f.pool).await.unwrap();
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![grant_for(
+                "policy-admin",
+                [Action::Read, Action::Write, Action::Publish],
+            )],
+        )
+        .await
+        .unwrap();
+    let router = read_router(f.repository.clone(), Arc::new(FixedIdentity(context()))).unwrap();
+    let document_path = format!("/v1/documents/{}?view=published", f.document_id.as_uuid());
+    let (status, document) = get(router.clone(), &document_path).await;
+    assert_eq!(status, StatusCode::OK, "{document}");
+    assert_eq!(
+        document["capabilities"]["createVersion"],
+        json!({"status": "disabled", "reason": "notCurrent"}),
+    );
+    assert_eq!(
+        document["capabilities"]["endPublication"]["status"],
+        "available"
+    );
+
+    let published_path = format!(
+        "/v1/documents/{}/versions/{published_id}?purpose=published",
+        f.document_id.as_uuid(),
+    );
+    let (status, published) = get(router.clone(), &published_path).await;
+    assert_eq!(status, StatusCode::OK, "{published}");
+    assert_eq!(published["capabilities"]["withdraw"]["status"], "available");
+
+    let working_id = uuid::Uuid::now_v7();
+    sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,base_document_version_id,lifecycle_state,title,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,2,$3,'WORKING','Working','test-idp','policy-admin','{}',now())")
+        .bind(working_id).bind(f.document_id.as_uuid()).bind(published_id).execute(&f.pool).await.unwrap();
+    let working_path = format!(
+        "/v1/documents/{}/versions/{working_id}?purpose=authoring",
+        f.document_id.as_uuid(),
+    );
+    let (status, working) = get(router, &working_path).await;
+    assert_eq!(status, StatusCode::OK, "{working}");
+    for operation in ["edit", "rebase"] {
+        assert_eq!(
+            working["capabilities"][operation],
+            json!({"status": "disabled", "reason": "lifecycle"}),
+        );
+    }
+
+    let command = EndDocumentPublicationCommand::new(
+        PublicationEndOperationId::try_from_uuid(uuid::Uuid::now_v7()).unwrap(),
+        f.document_id,
+        1,
+        DocumentVersionId::from_uuid(published_id),
+        support::actor(),
+        "Retire the legacy publication".into(),
+    )
+    .unwrap();
+    let result = f
+        .repository
+        .with_verified_actor(context())
+        .end_document_publication(EndPublicationRecord::new(
+            command,
+            OffsetDateTime::now_utc(),
+            EventId::from_uuid(uuid::Uuid::now_v7()),
+            AuditEventId::from_uuid(uuid::Uuid::now_v7()),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(result.former_current_version_id().as_uuid(), published_id);
+    assert_eq!(result.resulting_document_revision(), 2);
+    let current: Option<uuid::Uuid> =
+        sqlx::query_scalar("SELECT current_version_id FROM documents WHERE document_id=$1")
+            .bind(f.document_id.as_uuid())
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(current, None);
+    let original: (String, bool) = sqlx::query_as(
+        "SELECT lifecycle_state, requires_content_classification FROM document_versions WHERE document_version_id=$1",
+    )
+    .bind(published_id)
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(original, ("PUBLISHED".into(), true));
 }

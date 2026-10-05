@@ -42,6 +42,8 @@ struct VersionState {
     lifecycle_state: String,
     requires_content_classification: bool,
     scheduled_publish_at: Option<time::OffsetDateTime>,
+    published_at: Option<time::OffsetDateTime>,
+    withdrawn_at: Option<time::OffsetDateTime>,
 }
 
 pub(crate) async fn get_operation(
@@ -100,12 +102,13 @@ fn map_operation(row: OperationRow) -> Result<VersionOperationRecord, Repository
         .get("version_no")
         .and_then(Value::as_i64)
         .ok_or(RepositoryError::IntegrityViolation)?;
-    let base_id = row
-        .result
-        .get("base_version_id")
-        .and_then(Value::as_str)
-        .and_then(|value| Uuid::parse_str(value).ok())
-        .ok_or(RepositoryError::IntegrityViolation)?;
+    let base_id = match row.result.get("base_version_id") {
+        Some(Value::Null) if kind == VersionOperationKind::Update && version_no == 1 => None,
+        Some(Value::String(value)) => {
+            Some(Uuid::parse_str(value).map_err(|_| RepositoryError::IntegrityViolation)?)
+        }
+        _ => return Err(RepositoryError::IntegrityViolation),
+    };
     let identity = VersionCommandIdentity::from_persisted(
         operation_id,
         kind,
@@ -120,7 +123,7 @@ fn map_operation(row: OperationRow) -> Result<VersionOperationRecord, Repository
         document_id,
         target_id,
         version_no,
-        DocumentVersionId::from_uuid(base_id),
+        base_id.map(DocumentVersionId::from_uuid),
         row.resulting_document_revision,
     );
     Ok(VersionOperationRecord::new(identity, result))
@@ -157,23 +160,32 @@ pub(crate) async fn mutate_scoped(
         let revision: i64 = document.get("revision");
         let current_id: Option<Uuid> = document.get("current_version_id");
         if revision != identity.expected_revision()
-            || current_id != Some(record.expected_current_version_id().as_uuid())
+            || current_id != record.expected_current_version_id().map(|id| id.as_uuid())
         {
             return Err(RepositoryError::Conflict);
         }
-        let current_id = current_id.ok_or(RepositoryError::BusinessRule)?;
-        let current_state = load_version_state(&mut tx, current_id).await?
-            .ok_or(RepositoryError::IntegrityViolation)?;
-        if current_state.document_id != identity.document_id().as_uuid()
-            || current_state.lifecycle_state != "PUBLISHED"
-            || current_state.requires_content_classification
-        {
-            return Err(RepositoryError::BusinessRule);
-        }
-        let current_manifest = load_manifest(&mut tx, current_id).await?;
-        if current_manifest.identity_digest() != record.expected_current_manifest_digest() {
-            return Err(RepositoryError::Conflict);
-        }
+        let current_manifest = if let Some(current_id) = current_id {
+            let current_state = load_version_state(&mut tx, current_id).await?
+                .ok_or(RepositoryError::IntegrityViolation)?;
+            if current_state.document_id != identity.document_id().as_uuid()
+                || current_state.lifecycle_state != "PUBLISHED"
+                || current_state.requires_content_classification
+            {
+                return Err(RepositoryError::BusinessRule);
+            }
+            let manifest = load_manifest(&mut tx, current_id).await?;
+            if Some(manifest.identity_digest()) != record.expected_current_manifest_digest() {
+                return Err(RepositoryError::Conflict);
+            }
+            Some(manifest)
+        } else {
+            if identity.kind() != VersionOperationKind::Update
+                || record.expected_current_manifest_digest().is_some()
+            {
+                return Err(RepositoryError::BusinessRule);
+            }
+            None
+        };
         let pending: bool = sqlx::query_scalar(
             "SELECT EXISTS (SELECT 1 FROM document_publish_schedules \
              WHERE document_id = $1 AND status = 'PENDING')",
@@ -220,15 +232,23 @@ pub(crate) async fn mutate_scoped(
                 }
                 match identity.kind() {
                     VersionOperationKind::Update => {
-                        if target.base_document_version_id != Some(current_id) {
+                        if target.base_document_version_id != current_id {
                             return Err(RepositoryError::Conflict);
+                        }
+                        if current_id.is_none()
+                            && (target.version_no != 1
+                                || target.published_at.is_some()
+                                || target.withdrawn_at.is_some()
+                                || has_publication_history(&mut tx, identity.document_id()).await?)
+                        {
+                            return Err(RepositoryError::BusinessRule);
                         }
                         let prepared = record.prepared().ok_or(RepositoryError::IntegrityViolation)?;
                         validate_prepared(&mut tx, prepared).await?;
                         (target.version_no, prepared.manifest().clone())
                     }
                     VersionOperationKind::Rebase => {
-                        if target.base_document_version_id == Some(current_id) {
+                        if current_id.is_none() || target.base_document_version_id == current_id {
                             return Err(RepositoryError::BusinessRule);
                         }
                         (target.version_no, load_manifest(&mut tx, target_id).await?)
@@ -237,7 +257,13 @@ pub(crate) async fn mutate_scoped(
                 }
             }
         };
-        ensure_semantic_change(&current_manifest, &candidate)?;
+        if let Some(current_manifest) = &current_manifest {
+            ensure_semantic_change(current_manifest, &candidate)?;
+        } else {
+            check_existing_initial_formats(
+                &mut tx, target_id, record.prepared().ok_or(RepositoryError::IntegrityViolation)?,
+            ).await?;
+        }
         let next_revision = revision.checked_add(1).ok_or(RepositoryError::IntegrityViolation)?;
 
         match identity.kind() {
@@ -275,9 +301,9 @@ pub(crate) async fn mutate_scoped(
 
         let result = VersionOperationResult::from_persisted(
             identity.operation_id(), identity.document_id(), identity.target_version_id(),
-            version_no, DocumentVersionId::from_uuid(current_id), next_revision,
+            version_no, current_id.map(DocumentVersionId::from_uuid), next_revision,
         );
-        let result_json = json!({"version_no": version_no, "base_version_id": current_id.to_string()});
+        let result_json = json!({"version_no": version_no, "base_version_id": current_id.map(|id| id.to_string())});
         sqlx::query(
             "INSERT INTO document_version_operations \
              (operation_id, operation_kind, document_id, target_document_version_id, \
@@ -307,13 +333,33 @@ pub(crate) async fn mutate_scoped(
     }
 }
 
+/// A null current pointer alone never proves that a Document is an initial draft.
+/// Call in the same snapshot/locked transaction used for the state decision.
+pub(crate) async fn has_publication_history(
+    tx: &mut Transaction<'_, Postgres>,
+    document_id: DocumentId,
+) -> Result<bool, RepositoryError> {
+    sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM document_versions \
+                        WHERE document_id = $1 AND (version_no <> 1 \
+                          OR lifecycle_state <> 'WORKING' \
+                          OR published_at IS NOT NULL OR withdrawn_at IS NOT NULL)) \
+             OR EXISTS (SELECT 1 FROM document_publish_operations WHERE document_id = $1) \
+             OR EXISTS (SELECT 1 FROM document_revisions WHERE document_id = $1)",
+    )
+    .bind(document_id.as_uuid())
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(map_statement_error)
+}
+
 async fn load_version_state(
     tx: &mut Transaction<'_, Postgres>,
     version_id: Uuid,
 ) -> Result<Option<VersionState>, RepositoryError> {
     sqlx::query_as::<_, VersionState>(
         "SELECT document_id, version_no, base_document_version_id, lifecycle_state, \
-                requires_content_classification, scheduled_publish_at \
+                requires_content_classification, scheduled_publish_at, published_at, withdrawn_at \
          FROM document_versions WHERE document_version_id = $1",
     )
     .bind(version_id)
@@ -400,6 +446,17 @@ pub(crate) fn ensure_semantic_change(
     base: &VersionManifest,
     candidate: &VersionManifest,
 ) -> Result<(), RepositoryError> {
+    ensure_compatible_formats(base, candidate)?;
+    if base.identity_digest() == candidate.identity_digest() {
+        return Err(RepositoryError::BusinessRule);
+    }
+    Ok(())
+}
+
+fn ensure_compatible_formats(
+    base: &VersionManifest,
+    candidate: &VersionManifest,
+) -> Result<(), RepositoryError> {
     for old in base.items() {
         if let Some(new) = candidate.items().iter().find(|item| {
             item.logical_path() == old.logical_path() && item.ordinal() == old.ordinal()
@@ -409,8 +466,58 @@ pub(crate) fn ensure_semantic_change(
             return Err(RepositoryError::BusinessRule);
         }
     }
-    if base.identity_digest() == candidate.identity_digest() {
-        return Err(RepositoryError::BusinessRule);
+    Ok(())
+}
+
+async fn check_existing_initial_formats(
+    tx: &mut Transaction<'_, Postgres>,
+    target_id: Uuid,
+    candidate: &PreparedManifest,
+) -> Result<(), RepositoryError> {
+    let rows = sqlx::query(
+        "SELECT item.logical_path,item.ordinal,inspection.detected_format, \
+                inspection.inspection_profile_version,inspection.observed_raw_content_hash, \
+                inspection.observed_size_bytes,file.content_hash,file.size_bytes,file.media_type \
+         FROM content_items item \
+         JOIN content_representations rep ON rep.content_representation_id=item.authoritative_representation_id \
+              AND rep.content_item_id=item.content_item_id AND rep.role='AUTHORITATIVE' \
+         JOIN file_objects file ON file.file_id=rep.file_id \
+         LEFT JOIN document_semantic_inspections inspection ON inspection.file_id=file.file_id \
+              AND inspection.inspection_profile_version='dsi-v0' \
+         WHERE item.document_version_id=$1",
+    ).bind(target_id).fetch_all(&mut **tx).await.map_err(map_statement_error)?;
+    for row in rows {
+        let path: String = row.get("logical_path");
+        let ordinal: i32 = row.get("ordinal");
+        let Some(new) = candidate.items().iter().find(|item| {
+            item.logical_path().as_str() == path && i64::from(item.ordinal()) == i64::from(ordinal)
+        }) else {
+            continue;
+        };
+        if new.file().media_type().as_str() != row.get::<String, _>("media_type") {
+            return Err(RepositoryError::BusinessRule);
+        }
+        let Some(format) = row.get::<Option<String>, _>("detected_format") else {
+            continue;
+        };
+        if row.get::<Option<Vec<u8>>, _>("observed_raw_content_hash")
+            != Some(row.get::<Vec<u8>, _>("content_hash"))
+            || row.get::<Option<i64>, _>("observed_size_bytes")
+                != Some(row.get::<i64, _>("size_bytes"))
+        {
+            return Err(RepositoryError::IntegrityViolation);
+        }
+        if format_id(new.inspection().response().detected_format) != format
+            || Some(
+                new.inspection()
+                    .response()
+                    .inspection_profile_version
+                    .as_str()
+                    .to_owned(),
+            ) != row.get::<Option<String>, _>("inspection_profile_version")
+        {
+            return Err(RepositoryError::BusinessRule);
+        }
     }
     Ok(())
 }
@@ -549,7 +656,7 @@ async fn insert_events(
         "documentId": identity.document_id().as_uuid().to_string(),
         "documentVersionId": identity.target_version_id().as_uuid().to_string(),
         "versionNo": result.version_no(),
-        "baseDocumentVersionId": result.base_version_id().as_uuid().to_string(),
+        "baseDocumentVersionId": result.base_version_id().map(|id| id.as_uuid().to_string()),
         "resultingDocumentRevision": result.resulting_revision(),
     });
     sqlx::query(
@@ -602,5 +709,51 @@ fn format_id(format: document_semantic_inspection_core::FormatId) -> &'static st
         FormatId::Txt => "txt",
         FormatId::Csv => "csv",
         FormatId::Html => "html",
+    }
+}
+
+#[cfg(test)]
+mod edit_tests {
+    use super::*;
+
+    fn stored_initial_update(base: Value) -> OperationRow {
+        OperationRow {
+            operation_id: Uuid::now_v7(),
+            operation_kind: "UPDATE".into(),
+            document_id: Uuid::from_u128(1),
+            target_document_version_id: Uuid::from_u128(2),
+            expected_document_revision: 0,
+            actor_identity_provider: "test".into(),
+            actor_principal_id: "editor".into(),
+            command_digest: vec![9; 32],
+            result: json!({"version_no": 1, "base_version_id": base}),
+            resulting_document_revision: 1,
+        }
+    }
+
+    #[test]
+    fn initial_update_ledger_restores_null_base() {
+        let stored = map_operation(stored_initial_update(Value::Null));
+        assert!(
+            stored.is_ok(),
+            "initial WORKING update must replay its null base: {stored:?}"
+        );
+        let stored = stored.unwrap();
+        assert_eq!(stored.result().version_no(), 1);
+        assert_eq!(stored.result().base_version_id(), None);
+    }
+
+    #[test]
+    fn malformed_ledger_base_is_not_treated_as_initial() {
+        assert_eq!(
+            map_operation(stored_initial_update(json!("invalid"))),
+            Err(RepositoryError::IntegrityViolation)
+        );
+        let mut row = stored_initial_update(Value::Null);
+        row.result
+            .as_object_mut()
+            .unwrap()
+            .remove("base_version_id");
+        assert_eq!(map_operation(row), Err(RepositoryError::IntegrityViolation));
     }
 }

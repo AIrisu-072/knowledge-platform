@@ -134,7 +134,7 @@ pub struct VersionOperationResult {
     document_id: DocumentId,
     target_version_id: DocumentVersionId,
     version_no: i64,
-    base_version_id: DocumentVersionId,
+    base_version_id: Option<DocumentVersionId>,
     resulting_revision: i64,
 }
 
@@ -144,7 +144,7 @@ impl VersionOperationResult {
         document_id: DocumentId,
         target_version_id: DocumentVersionId,
         version_no: i64,
-        base_version_id: DocumentVersionId,
+        base_version_id: Option<DocumentVersionId>,
         resulting_revision: i64,
     ) -> Self {
         Self {
@@ -168,7 +168,7 @@ impl VersionOperationResult {
     pub const fn version_no(&self) -> i64 {
         self.version_no
     }
-    pub const fn base_version_id(&self) -> DocumentVersionId {
+    pub const fn base_version_id(&self) -> Option<DocumentVersionId> {
         self.base_version_id
     }
     pub const fn resulting_revision(&self) -> i64 {
@@ -201,8 +201,8 @@ impl VersionOperationRecord {
 pub struct VersionMutationRecord {
     identity: VersionCommandIdentity,
     prepared: Option<PreparedManifest>,
-    expected_current_version_id: DocumentVersionId,
-    expected_current_manifest_digest: [u8; 32],
+    expected_current_version_id: Option<DocumentVersionId>,
+    expected_current_manifest_digest: Option<[u8; 32]>,
     domain_event_id: EventId,
     audit_event_id: AuditEventId,
     occurred_at: OffsetDateTime,
@@ -212,8 +212,8 @@ impl VersionMutationRecord {
     pub fn new(
         identity: VersionCommandIdentity,
         prepared: Option<PreparedManifest>,
-        expected_current_version_id: DocumentVersionId,
-        expected_current_manifest_digest: [u8; 32],
+        expected_current_version_id: Option<DocumentVersionId>,
+        expected_current_manifest_digest: Option<[u8; 32]>,
         domain_event_id: EventId,
         audit_event_id: AuditEventId,
         occurred_at: OffsetDateTime,
@@ -234,10 +234,10 @@ impl VersionMutationRecord {
     pub fn prepared(&self) -> Option<&PreparedManifest> {
         self.prepared.as_ref()
     }
-    pub const fn expected_current_version_id(&self) -> DocumentVersionId {
+    pub const fn expected_current_version_id(&self) -> Option<DocumentVersionId> {
         self.expected_current_version_id
     }
-    pub const fn expected_current_manifest_digest(&self) -> [u8; 32] {
+    pub const fn expected_current_manifest_digest(&self) -> Option<[u8; 32]> {
         self.expected_current_manifest_digest
     }
     pub const fn domain_event_id(&self) -> EventId {

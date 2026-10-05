@@ -77,6 +77,8 @@ export type VersionList = ModelsVersionList;
 
 export type History = ModelsHistory;
 
+export type EditManifest = ModelsEditManifest;
+
 export type FileList = ModelsFileList;
 
 export type Folder = ModelsFolder;
@@ -588,6 +590,36 @@ export type ModelsDocumentRevisionSummary = {
     metadataSnapshotStatus: 'complete' | 'unavailableLegacy';
 };
 
+export type ModelsEditManifest = {
+    documentId: string;
+    sourceVersionId: string;
+    documentRevision: number;
+    purpose: 'published' | 'authoring';
+    title: string;
+    /**
+     * Complete items in ordinal then logicalPath order.
+     */
+    items: Array<{
+        contentItemId: string;
+        logicalPath: string;
+        ordinal: number;
+        /**
+         * Authoritative representation first, then renditions in representationId order.
+         */
+        representations: Array<{
+            representationId: string;
+            role: 'authoritative' | 'rendition';
+            fileId: string;
+            /**
+             * Exact stored original filename, never reconstructed from the safe display name.
+             */
+            originalFilename: string;
+            mediaType: string;
+            sizeBytes: number;
+        }>;
+    }>;
+};
+
 export type ModelsEndPublicationResult = {
     operationId: string;
     documentId: string;
@@ -994,7 +1026,7 @@ export type ModelsVersionMutationResult = {
     documentId: string;
     targetVersionId: string;
     versionNo: number;
-    baseVersionId: string;
+    baseVersionId: string | null;
     resultingRevision: number;
 };
 
@@ -2079,6 +2111,49 @@ export type GetDocumentHistoryResponses = {
 };
 
 export type GetDocumentHistoryResponse = GetDocumentHistoryResponses[keyof GetDocumentHistoryResponses];
+
+export type GetVersionEditManifestData = {
+    body?: never;
+    path: {
+        /**
+         * Document identifier.
+         */
+        documentId: IdentifiersUuid;
+        /**
+         * Version identifier.
+         */
+        versionId: IdentifiersUuid;
+    };
+    query: {
+        /**
+         * Exact editing source authorization purpose.
+         */
+        purpose: 'published' | 'authoring';
+    };
+    url: '/v1/documents/{documentId}/versions/{versionId}/edit-manifest';
+};
+
+export type GetVersionEditManifestErrors = {
+    /**
+     * RFC 9457 problem with stable machine code.
+     */
+    401: Problem;
+    /**
+     * RFC 9457 problem with stable machine code.
+     */
+    default: Problem;
+};
+
+export type GetVersionEditManifestError = GetVersionEditManifestErrors[keyof GetVersionEditManifestErrors];
+
+export type GetVersionEditManifestResponses = {
+    /**
+     * Exact complete manifest and document revision from one authorized snapshot.
+     */
+    200: ModelsEditManifest;
+};
+
+export type GetVersionEditManifestResponse = GetVersionEditManifestResponses[keyof GetVersionEditManifestResponses];
 
 export type ListVersionFilesData = {
     body?: never;
