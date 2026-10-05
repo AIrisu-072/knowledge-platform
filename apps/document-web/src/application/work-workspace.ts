@@ -1,6 +1,6 @@
 export { workApi, WorkApiError } from '../api/work-api';
-export type { WorkSession, TaskSummary, TaskDetail, WorkingArtifact, HandoffSnapshot, WorkCommand, WorkResult, ReturnCommand, ReturnInstruction, EvidenceRecord, Finding, HumanDecision, RevisionRef, SelectedHandoff, EvidenceCommand, FindingCommand, DecisionCommand, SubmitCommand, AgentExecution, AgentResult, AgentExecutionRequest, CancelAgentExecution } from '../api/work-api';
-import { WorkApiError, workApi, type WorkCommand, type ReturnCommand, type EvidenceCommand, type FindingCommand, type DecisionCommand, type SubmitCommand, type WorkResult, type AgentExecutionRequest, type CancelAgentExecution } from '../api/work-api';
+export type { WorkSession, TaskSummary, TaskDetail, WorkingArtifact, HandoffSnapshot, WorkCommand, WorkflowActionCommand, WorkResult, ReturnCommand, ReturnInstruction, EvidenceRecord, Finding, HumanDecision, RevisionRef, SelectedHandoff, EvidenceCommand, FindingCommand, DecisionCommand, SubmitCommand, AgentExecution, AgentResult, AgentExecutionRequest, CancelAgentExecution } from '../api/work-api';
+import { WorkApiError, workApi, type WorkCommand, type WorkflowActionCommand, type ReturnCommand, type EvidenceCommand, type FindingCommand, type DecisionCommand, type SubmitCommand, type WorkResult, type AgentExecutionRequest, type CancelAgentExecution } from '../api/work-api';
 export type TaskSearch = { view: 'context' | 'queue'; taskId?: string };
 export function validateTaskSearch(value: Record<string, unknown>): TaskSearch {
   return { view: value.view === 'queue' ? 'queue' : 'context', ...(typeof value.taskId === 'string' && /^[a-zA-Z0-9-]{1,128}$/.test(value.taskId) ? { taskId: value.taskId } : {}) };
@@ -24,6 +24,9 @@ export type WorkOperation =
   | { kind: 'evidence_registered'; taskId: string; input: EvidenceCommand }
   | { kind: 'finding_registered'; taskId: string; input: FindingCommand }
   | { kind: 'decision_recorded'; taskId: string; findingId: string; input: DecisionCommand }
+  | { kind: 'completed'; taskId: string; input: WorkflowActionCommand & { action: 'complete' } }
+  | { kind: 'held'; taskId: string; input: WorkflowActionCommand & { action: 'hold' } }
+  | { kind: 'resumed'; taskId: string; input: WorkflowActionCommand & { action: 'resume' } }
   | { kind: 'returned'; taskId: string; input: ReturnCommand }
   | { kind: 'claimed'; taskId: string; input: WorkCommand }
   | { kind: 'draft_saved'; taskId: string; input: WorkCommand & { artifactId?: string; value: { text: string } } }
@@ -35,6 +38,9 @@ export function executeWorkOperation(operation: WorkOperation): Promise<WorkResu
     case 'evidence_registered': return workApi.registerEvidence(operation.taskId, operation.input);
     case 'finding_registered': return workApi.registerFinding(operation.taskId, operation.input);
     case 'decision_recorded': return workApi.recordDecision(operation.findingId, operation.input);
+    case 'completed': return workApi.completeTask(operation.taskId, operation.input);
+    case 'held': return workApi.holdTask(operation.taskId, operation.input);
+    case 'resumed': return workApi.resumeTask(operation.taskId, operation.input);
     case 'returned': return workApi.returnTask(operation.taskId, operation.input);
     case 'claimed': return workApi.claim(operation.taskId, operation.input);
     case 'draft_saved': return workApi.saveDraft({ ...operation.input, taskId: operation.taskId });

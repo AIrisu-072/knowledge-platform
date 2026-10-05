@@ -1,7 +1,7 @@
 import { currentAction } from './support';
 import { expect, test } from '@playwright/test';
 import type { HandoffSnapshot, ReturnInstruction, WorkingArtifact } from '../src/api/generated-work/types.gen';
-import { assertEvidenceState, assertAgentState, assertHidden, assertSessions, captureFinal, get, loadState, readRuntimeContext } from './support';
+import { assertHoldResumeState, assertCompletionState, assertEvidenceState, assertAgentState, assertHidden, assertSessions, captureFinal, get, loadState, readRuntimeContext } from './support';
 
 test('両process再起動後も根拠・候補・人間判断・固定提出・試行2・操作結果とprivate非開示を保持する', async ({ page, browser, request }) => {
   // The owning harness stops and restarts both processes before invoking this phase.
@@ -15,7 +15,7 @@ test('両process再起動後も根拠・候補・人間判断・固定提出・�
   const actual = await captureFinal(request, context, state.salesTaskId, state.officeTaskId, resubmissionId, state.snapshotId, instructionId);
   expect(actual).toEqual(state.final);
   expect(actual.salesTask).toMatchObject({ id: state.salesTaskId, state: 'completed', attemptNumber: 2, canEdit: false, handoffSnapshotId: resubmissionId });
-  expect(actual.officeTask).toMatchObject({ id: state.officeTaskId, state: 'active', attemptNumber: 2, canClaim: false, canEdit: false, workingArtifacts: [], handoffSnapshotId: resubmissionId });
+  expect(actual.officeTask).toMatchObject({ id: state.officeTaskId, state: 'completed', attemptNumber: 2, canComplete: false, completionActionId: null, canClaim: false, canEdit: false, workingArtifacts: [], handoffSnapshotId: resubmissionId });
   expect(actual.snapshot).toEqual(state.rework.submit.result.snapshot);
   expect(actual.priorSnapshot).toEqual(state.submit.result.snapshot);
   expect(actual.returnInstruction).toEqual(state.rework.returned.result.returnInstruction);
@@ -30,6 +30,8 @@ test('両process再起動後も根拠・候補・人間判断・固定提出・�
   currentAction('persistence-verify');
   await assertEvidenceState(request, context, state.salesTaskId, state.officeTaskId, state.evidence, state.agents);
   await assertAgentState(request, context, state.agents);
+  await assertCompletionState(request, context, state.completion);
+  await assertHoldResumeState(request, context, state.holdResume);
   for (const [role, receipt] of Object.entries(state.agents) as ['sales' | 'office', typeof state.agents.sales][]) {
     const replay = await request.post(`${context[role]}/v1/organization/tasks/${receipt.execution.workItemId}/agent-executions`, { data: receipt.command });
     expect(replay.status()).toBe(202);
@@ -91,8 +93,13 @@ test('両process再起動後も根拠・候補・人間判断・固定提出・�
     await expect(office.getByRole('region', { name: '確定した差戻指示', exact: true })).toContainText(state.final.returnInstruction.reason);
     await expect(office.getByRole('button', { name: '担当を引き受ける', exact: true })).toHaveCount(0);
     await expect(office.getByLabel('作業中の文案', { exact: true })).toHaveCount(0);
+    await expect(office.getByRole('button', { name: '完了内容を確認', exact: true })).toHaveCount(0);
+    await expect(office.getByLabel('差戻理由', { exact: true })).toHaveCount(0);
+    await office.getByRole('button', { name: '履歴', exact: true }).click();
+    await expect(office.getByText('タスクを完了', { exact: true })).toBeVisible();
     currentAction('evidence-module');
     await office.getByRole('button', { name: '根拠', exact: true }).click();
+    await expect(office.getByRole('button', { name: '判断内容を確認', exact: true })).toHaveCount(0);
     const officeFinding = office.getByRole('region', { name: `候補 ${state.evidence.finding.result.finding.id}`, exact: true });
     await expect(officeFinding).toContainText(state.evidence.finding.result.finding.claim);
     for (const receipt of [...state.evidence.decisions, state.evidence.officeReworkDecision]) await expect(officeFinding).toContainText(receipt.result.decision.reason!);
@@ -113,6 +120,7 @@ test('両process再起動後も根拠・候補・人間判断・固定提出・�
     const persistedOfficeExecution = office.getByRole('region', { name: `Agent実行 ${state.agents.office.execution.id}`, exact: true });
     await expect(persistedOfficeExecution).toContainText('実行状態：成功');
     await expect(persistedOfficeExecution).toContainText(state.agents.office.output.summary);
+    await expect(office.getByLabel('Agentへの依頼目的', { exact: true })).toBeDisabled();
     await expect(office.getByRole('region', { name: `Agent実行 ${state.agents.sales.execution.id}`, exact: true })).toHaveCount(0);
     currentAction('document-navigation');
     await office.getByRole('button', { name: '文書・比較', exact: true }).click();

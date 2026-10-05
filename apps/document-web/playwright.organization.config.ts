@@ -29,7 +29,8 @@ export default defineConfig({
     trace: 'off',
     screenshot: 'off',
     video: 'off',
-    acceptDownloads: false,
+    // Only the synthetic journey reads/deletes private temporary original downloads.
+    acceptDownloads: phase === 'journey',
     serviceWorkers: 'block',
   },
   // No webServer, channel or executablePath: only the pinned bundled Chromium.

@@ -17,6 +17,13 @@ pub const SALES_ASSIGNMENT_ID: Uuid = Uuid::from_u128(0x019000000000700080000000
 pub const OFFICE_ASSIGNMENT_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000000008);
 pub const DEFINITION_VERSION_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000000009);
 pub const RETURN_DEFINITION_VERSION_ID: Uuid = Uuid::from_u128(0x0190000000007000800000000000000f);
+pub const COMPLETE_DEFINITION_VERSION_ID: Uuid =
+    Uuid::from_u128(0x01900000000070008000000000000011);
+pub const HOLD_RESUME_DEFINITION_VERSION_ID: Uuid =
+    Uuid::from_u128(0x01900000000070008000000000000013);
+pub const HOLD_ACTION_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000000014);
+pub const RESUME_ACTION_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000000015);
+pub const COMPLETE_ACTION_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000000012);
 pub const RETURN_TRANSITION_ID: Uuid = Uuid::from_u128(0x01900000000070008000000000000010);
 pub const SALES_STEP_ID: Uuid = Uuid::from_u128(0x0190000000007000800000000000000a);
 pub const OFFICE_STEP_ID: Uuid = Uuid::from_u128(0x0190000000007000800000000000000b);
@@ -96,6 +103,7 @@ pub enum WorkError {
 pub enum TaskState {
     Ready,
     Active,
+    Held,
     Completed,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -183,6 +191,18 @@ fn first_attempt() -> u32 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskSummary {
+    #[serde(default)]
+    pub can_hold: bool,
+    #[serde(default)]
+    pub hold_action_id: Option<Uuid>,
+    #[serde(default)]
+    pub can_resume: bool,
+    #[serde(default)]
+    pub resume_action_id: Option<Uuid>,
+    #[serde(default)]
+    pub can_complete: bool,
+    #[serde(default)]
+    pub completion_action_id: Option<Uuid>,
     #[serde(default)]
     pub can_request_agent: bool,
     #[serde(default)]
@@ -310,6 +330,24 @@ pub struct ArtifactSelection {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Command {
+    Hold {
+        task_id: Uuid,
+        context: CommandContext,
+        expected_attempt_id: Uuid,
+        definition_action_id: Uuid,
+    },
+    Resume {
+        task_id: Uuid,
+        context: CommandContext,
+        expected_attempt_id: Uuid,
+        definition_action_id: Uuid,
+    },
+    Complete {
+        task_id: Uuid,
+        context: CommandContext,
+        expected_attempt_id: Uuid,
+        definition_action_id: Uuid,
+    },
     RequestAgentExecution {
         task_id: Uuid,
         context: CommandContext,
@@ -390,7 +428,10 @@ pub enum Command {
 impl Command {
     pub fn context(&self) -> &CommandContext {
         match self {
-            Self::RequestAgentExecution { context, .. }
+            Self::Hold { context, .. }
+            | Self::Resume { context, .. }
+            | Self::Complete { context, .. }
+            | Self::RequestAgentExecution { context, .. }
             | Self::CancelAgentExecution { context, .. }
             | Self::RegisterEvidence { context, .. }
             | Self::RegisterFinding { context, .. }
@@ -403,7 +444,10 @@ impl Command {
     }
     pub fn task_id(&self) -> Uuid {
         match self {
-            Self::RequestAgentExecution { task_id, .. }
+            Self::Hold { task_id, .. }
+            | Self::Resume { task_id, .. }
+            | Self::Complete { task_id, .. }
+            | Self::RequestAgentExecution { task_id, .. }
             | Self::CancelAgentExecution { task_id, .. }
             | Self::RegisterEvidence { task_id, .. }
             | Self::RegisterFinding { task_id, .. }
@@ -418,6 +462,15 @@ impl Command {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum MutationResult {
+    Held {
+        task: TaskSummary,
+    },
+    Resumed {
+        task: TaskSummary,
+    },
+    Completed {
+        task: TaskSummary,
+    },
     AgentExecutionRequested {
         task: TaskSummary,
         execution: AgentExecution,
@@ -467,7 +520,7 @@ impl Workflow {
             findings: vec![],
             decisions: vec![],
             id: WORKFLOW_ID,
-            definition_version_id: RETURN_DEFINITION_VERSION_ID,
+            definition_version_id: HOLD_RESUME_DEFINITION_VERSION_ID,
             completed_attempts: vec![],
             return_instructions: vec![],
             context_id: CONTEXT_ID,
@@ -524,8 +577,12 @@ impl Workflow {
         self.has_responsibility(actor, item.id) && item.assignee == Some(actor)
     }
     fn return_transition(&self, actor: VerifiedActor, item: &WorkItem) -> Option<ReturnTransition> {
-        if self.definition_version_id != RETURN_DEFINITION_VERSION_ID
-            || item.id != OFFICE_TASK_ID
+        if !matches!(
+            self.definition_version_id,
+            RETURN_DEFINITION_VERSION_ID
+                | COMPLETE_DEFINITION_VERSION_ID
+                | HOLD_RESUME_DEFINITION_VERSION_ID
+        ) || item.id != OFFICE_TASK_ID
             || !self.can_read(actor, item)
             || item.state != TaskState::Active
             || self.source.state != TaskState::Completed
@@ -545,6 +602,37 @@ impl Workflow {
             previous_submission_id: snapshot.id,
         })
     }
+    fn completion_action(&self, actor: VerifiedActor, item: &WorkItem) -> Option<Uuid> {
+        (matches!(
+            self.definition_version_id,
+            COMPLETE_DEFINITION_VERSION_ID | HOLD_RESUME_DEFINITION_VERSION_ID
+        ) && item.id == OFFICE_TASK_ID
+            && item.step_id == OFFICE_STEP_ID
+            && self.can_read(actor, item)
+            && item.state == TaskState::Active)
+            .then_some(COMPLETE_ACTION_ID)
+    }
+    fn pause_action(&self, actor: VerifiedActor, item: &WorkItem, resume: bool) -> Option<Uuid> {
+        let state = if resume {
+            TaskState::Held
+        } else {
+            TaskState::Active
+        };
+        (self.definition_version_id == HOLD_RESUME_DEFINITION_VERSION_ID
+            && matches!(
+                (item.id, item.step_id),
+                (SALES_TASK_ID, SALES_STEP_ID) | (OFFICE_TASK_ID, OFFICE_STEP_ID)
+            )
+            && self.can_read(actor, item)
+            && item.acting_assignment_id == Some(actor.assignment_id())
+            && item.work_assignment_id.is_some()
+            && item.state == state)
+            .then_some(if resume {
+                RESUME_ACTION_ID
+            } else {
+                HOLD_ACTION_ID
+            })
+    }
     fn summary(&self, actor: VerifiedActor, item: &WorkItem) -> TaskSummary {
         let source = item.id == self.source.id;
         let editable = source && self.can_read(actor, item) && item.state == TaskState::Active;
@@ -554,7 +642,16 @@ impl Workflow {
             "事務内容確認"
         };
         let return_transition = self.return_transition(actor, item);
+        let completion_action_id = self.completion_action(actor, item);
+        let hold_action_id = self.pause_action(actor, item, false);
+        let resume_action_id = self.pause_action(actor, item, true);
         TaskSummary {
+            can_hold: hold_action_id.is_some(),
+            hold_action_id,
+            can_resume: resume_action_id.is_some(),
+            resume_action_id,
+            can_complete: completion_action_id.is_some(),
+            completion_action_id,
             can_request_agent: self.can_read(actor, item)
                 && item.state == TaskState::Active
                 && self
@@ -697,7 +794,10 @@ impl Workflow {
             || self.source.id != SALES_TASK_ID
             || !matches!(
                 self.definition_version_id,
-                DEFINITION_VERSION_ID | RETURN_DEFINITION_VERSION_ID
+                DEFINITION_VERSION_ID
+                    | RETURN_DEFINITION_VERSION_ID
+                    | COMPLETE_DEFINITION_VERSION_ID
+                    | HOLD_RESUME_DEFINITION_VERSION_ID
             )
             || self
                 .next
@@ -760,7 +860,10 @@ impl Workflow {
                     }
                 }
             }
-            Command::RequestAgentExecution { .. }
+            Command::Hold { .. }
+            | Command::Resume { .. }
+            | Command::Complete { .. }
+            | Command::RequestAgentExecution { .. }
             | Command::CancelAgentExecution { .. }
             | Command::RegisterEvidence { .. }
             | Command::RegisterFinding { .. }
@@ -801,7 +904,10 @@ impl Workflow {
             MutationResult::DraftSaved { artifact, .. } => {
                 self.artifact(actor, artifact.id)?;
             }
-            MutationResult::Claimed { task } => {
+            MutationResult::Held { task }
+            | MutationResult::Resumed { task }
+            | MutationResult::Claimed { task }
+            | MutationResult::Completed { task } => {
                 self.detail(actor, task.id)?;
             }
             MutationResult::Submitted { snapshot, .. } => {
@@ -822,6 +928,11 @@ impl Workflow {
         if item.revision != command.context().expected_revision {
             return Err(WorkError::RevisionConflict);
         }
+        // This guards only a new mutation. Repository replay/recovery resolves the
+        // committed receipt first and keeps current read authorization while held.
+        if item.state == TaskState::Held && !matches!(command, Command::Resume { .. }) {
+            return Err(WorkError::HandoffNotReady);
+        }
         // Validate against a private copy so every failed command leaves the aggregate untouched.
         let mut next = self.clone();
         let result = next.apply_validated(actor, command, now)?;
@@ -841,6 +952,79 @@ impl Workflow {
         now: &str,
     ) -> Result<MutationResult, WorkError> {
         match command {
+            Command::Hold {
+                task_id,
+                expected_attempt_id,
+                definition_action_id,
+                ..
+            }
+            | Command::Resume {
+                task_id,
+                expected_attempt_id,
+                definition_action_id,
+                ..
+            } => {
+                let resume = matches!(command, Command::Resume { .. });
+                let item = self.item(*task_id)?;
+                if item.attempt_id != *expected_attempt_id {
+                    return Err(WorkError::RevisionConflict);
+                }
+                if self.pause_action(actor, item, resume) != Some(*definition_action_id) {
+                    return Err(WorkError::HandoffNotReady);
+                }
+                let item = if *task_id == self.source.id {
+                    &mut self.source
+                } else {
+                    self.next.as_mut().ok_or(WorkError::IntegrityViolation)?
+                };
+                item.state = if resume {
+                    TaskState::Active
+                } else {
+                    TaskState::Held
+                };
+                item.revision = item
+                    .revision
+                    .checked_add(1)
+                    .ok_or(WorkError::IntegrityViolation)?;
+                self.history.push(HistoryEntry {
+                    kind: if resume { "resumed" } else { "held" }.into(),
+                    occurred_at: now.into(),
+                });
+                let task = self.summary(actor, self.item(*task_id)?);
+                Ok(if resume {
+                    MutationResult::Resumed { task }
+                } else {
+                    MutationResult::Held { task }
+                })
+            }
+            Command::Complete {
+                task_id,
+                expected_attempt_id,
+                definition_action_id,
+                ..
+            } => {
+                let item = self.item(*task_id)?;
+                if item.attempt_id != *expected_attempt_id {
+                    return Err(WorkError::RevisionConflict);
+                }
+                if self.completion_action(actor, item) != Some(*definition_action_id) {
+                    return Err(WorkError::HandoffNotReady);
+                }
+                let item = self.next.as_mut().ok_or(WorkError::IntegrityViolation)?;
+                item.state = TaskState::Completed;
+                item.completed_at = Some(now.into());
+                item.revision = item
+                    .revision
+                    .checked_add(1)
+                    .ok_or(WorkError::IntegrityViolation)?;
+                self.history.push(HistoryEntry {
+                    kind: "completed".into(),
+                    occurred_at: now.into(),
+                });
+                Ok(MutationResult::Completed {
+                    task: self.summary(actor, self.item(*task_id)?),
+                })
+            }
             Command::RequestAgentExecution { .. } | Command::CancelAgentExecution { .. } => {
                 self.apply_agent(actor, command, now)
             }
@@ -1040,7 +1224,12 @@ impl Workflow {
                         .as_ref()
                         .is_some_and(|item| item.state != TaskState::Completed)
                     || (self.next.is_some()
-                        && self.definition_version_id != RETURN_DEFINITION_VERSION_ID)
+                        && !matches!(
+                            self.definition_version_id,
+                            RETURN_DEFINITION_VERSION_ID
+                                | COMPLETE_DEFINITION_VERSION_ID
+                                | HOLD_RESUME_DEFINITION_VERSION_ID
+                        ))
                 {
                     return Err(WorkError::HandoffNotReady);
                 }

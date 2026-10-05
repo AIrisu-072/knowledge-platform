@@ -1,15 +1,16 @@
+import { createOperationId } from '../src/application/operation-id';
 import { test } from '@playwright/test';
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
-import type { AgentExecutionRequest, AgentExecutionRequested, AgentExecution, AgentResult, Finding, DecisionCommand, DecisionRecorded, EvidenceCommand, EvidenceRegistered, FindingCommand, FindingRegistered, RevisionRef, Claimed, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, Submitted, TaskDetail, TaskPage, WorkSession } from '../src/api/generated-work/types.gen';
+import type { WorkflowActionCommand, Completed, Held, Resumed, AgentExecutionRequest, AgentExecutionRequested, AgentExecution, AgentResult, Finding, DecisionCommand, DecisionRecorded, EvidenceCommand, EvidenceRegistered, FindingCommand, FindingRegistered, RevisionRef, Claimed, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, Submitted, TaskDetail, TaskPage, WorkSession } from '../src/api/generated-work/types.gen';
 
 import type { DocumentRevisionPage, FileList, PublishedDocumentDetail } from '@knowledge-platform/document-api-client';
 
 export type RuntimeContext = { sales: string; office: string; documentId: string; statePath: string };
 export type PersistedState = {
-  schemaVersion: 4;
+  schemaVersion: 6;
   documentId: string;
   salesTaskId: string;
   officeTaskId: string;
@@ -29,6 +30,8 @@ export type PersistedState = {
   };
   evidence: EvidenceState;
   agents: AgentState;
+  holdResume: { sales: HoldResumeState; office: HoldResumeState };
+  completion: { operationId: string; command: WorkflowActionCommand; result: Completed };
   final: {
     salesContext: TaskPage;
     salesQueue: TaskPage;
@@ -132,7 +135,7 @@ export async function saveState(context: RuntimeContext, state: PersistedState) 
 }
 export async function loadState(context: RuntimeContext): Promise<PersistedState> {
   const state = JSON.parse(await readFile(context.statePath, 'utf8')) as PersistedState;
-  expect(state.schemaVersion).toBe(4);
+  expect(state.schemaVersion).toBe(6);
   expect(state.documentId).toBe(context.documentId);
   return state;
 }
@@ -311,7 +314,9 @@ type OrganizationAction =
   | 'decision-input' | 'decision-preview' | 'decision-confirm' | 'visibility-verify' | 'submit-preview'
   | 'submit-selection' | 'submit-confirm' | 'office-claim' | 'return-preview' | 'return-confirm'
   | 'sales-reclaim' | 'resubmit' | 'office-reclaim' | 'final-verify' | 'persistence-verify'
-  | 'agent-module' | 'agent-input' | 'agent-request' | 'agent-result' | 'agent-replay';
+  | 'agent-module' | 'agent-input' | 'agent-request' | 'agent-result' | 'agent-replay'
+  | 'complete-preview' | 'complete-confirm' | 'complete-replay'
+  | 'hold-preview' | 'hold-confirm' | 'hold-replay' | 'resume-preview' | 'resume-confirm' | 'resume-replay';
 export function currentAction(action: OrganizationAction): void {
   const annotations = test.info().annotations;
   for (let index = annotations.length - 1; index >= 0; index--) {
@@ -413,4 +418,144 @@ export async function assertAgentState(request: APIRequestContext, context: Runt
   expect(await get(request, context.office, `/v1/organization/findings/${agents.sales.finding.id}/decisions`)).toEqual({ items: [agents.sales.decision.result.decision], nextCursor: null });
   await assertHidden(request, context.sales, `/v1/organization/findings/${agents.office.finding.id}`, 'FINDING_NOT_FOUND', agents.office.finding.claim);
   await assertHidden(request, context.sales, `/v1/organization/findings/${agents.office.finding.id}/decisions`, 'FINDING_NOT_FOUND');
+}
+
+
+export async function assertCompletionState(request: APIRequestContext, context: RuntimeContext, completion: PersistedState['completion']) {
+  const taskId = completion.result.task.id;
+  const before = await get<TaskDetail>(request, context.office, `/v1/organization/tasks/${taskId}`);
+  expect(before).toMatchObject({ ...completion.result.task, state: 'completed', canClaim: false, canEdit: false, canSubmit: false, canReturn: false, canComplete: false, completionActionId: null, canRegisterEvidence: false, canRegisterFinding: false, canRecordDecision: false, canRequestAgent: false });
+  expect(before.history.filter((entry) => entry.kind === 'completed')).toHaveLength(1);
+  expect(await get(request, context.office, `/v1/organization/operations/${completion.operationId}`)).toEqual(completion.result);
+  await assertHidden(request, context.sales, `/v1/organization/operations/${completion.operationId}`, 'WORK_ITEM_NOT_FOUND');
+  currentAction('complete-replay');
+  const replay = await request.post(`${context.office}/v1/organization/tasks/${taskId}/actions`, { data: completion.command });
+  expect(replay.status()).toBe(200);
+  expect(await replay.json()).toEqual(completion.result);
+  const denied = await request.post(`${context.office}/v1/organization/tasks/${taskId}/actions`, { data: { ...completion.command, operationId: createOperationId(), expectedRevision: before.revision } });
+  expect(denied.status()).toBe(409);
+  expect(await denied.json()).toMatchObject({ code: 'HANDOFF_NOT_READY' });
+  expect(await get(request, context.office, `/v1/organization/tasks/${taskId}`)).toEqual(before);
+}
+
+export type HoldResumeState = {
+  hold: { operationId: string; command: WorkflowActionCommand; result: Held };
+  resume: { operationId: string; command: WorkflowActionCommand; result: Resumed };
+};
+
+export async function holdAndResume(page: Page, request: APIRequestContext, origin: string, otherOrigin: string, taskId: string, session: WorkSession, unsaved: { label: string; text: string }): Promise<HoldResumeState> {
+  const before = await get<TaskDetail>(request, origin, `/v1/organization/tasks/${taskId}`);
+  expect(before).toMatchObject({ state: 'active', canHold: true, canResume: false, resumeActionId: null });
+  expect(before.holdActionId).not.toBeNull();
+  const readSaved = async () => ({
+    evidence: await get(request, origin, `/v1/organization/tasks/${taskId}/evidence`),
+    findings: await get(request, origin, `/v1/organization/tasks/${taskId}/findings`),
+    snapshot: before.handoffSnapshotId ? await get(request, origin, `/v1/organization/handoff-snapshots/${before.handoffSnapshotId}`) : null,
+    instruction: before.returnInstructionId ? await get(request, origin, `/v1/organization/return-instructions/${before.returnInstructionId}`) : null,
+    executions: await Promise.all(before.agentExecutionIds.map((id) => get(request, origin, `/v1/organization/agent-executions/${id}`))),
+  });
+  const saved = await readSaved();
+  await page.getByLabel(unsaved.label, { exact: true }).fill(unsaved.text);
+  currentAction('hold-preview');
+  await page.getByRole('button', { name: '保留内容を確認', exact: true }).click();
+  const confirmation = page.getByRole('dialog', { name: '保留の確認', exact: true });
+  await expect(confirmation).toContainText(before.attemptId);
+  await expect(confirmation).toContainText(session.actingAssignmentId);
+  await expect(confirmation).toContainText('未保存の入力は保存せず');
+  await expect(confirmation.getByRole('button', { name: 'キャンセル', exact: true })).toBeFocused();
+  await confirmation.getByRole('button', { name: 'キャンセル', exact: true }).click();
+  expect(await get(request, origin, `/v1/organization/tasks/${taskId}`)).toEqual(before);
+  await expect(page.getByLabel(unsaved.label, { exact: true })).toHaveValue(unsaved.text);
+  await page.getByRole('button', { name: '保留内容を確認', exact: true }).click();
+  const heldResponse = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${taskId}/actions` && response.request().method() === 'POST');
+  currentAction('hold-confirm');
+  await page.getByRole('button', { name: '保留を確定', exact: true }).click();
+  const holdResponse = await heldResponse;
+  expect(holdResponse.status()).toBe(200);
+  const held = await holdResponse.json() as Held;
+  const holdCommand = holdResponse.request().postDataJSON() as WorkflowActionCommand;
+  expect(holdCommand).toEqual({ operationId: expect.any(String), expectedRevision: before.revision, actingAssignmentId: session.actingAssignmentId, expectedAttemptId: before.attemptId, action: 'hold', definitionActionId: before.holdActionId });
+  expect(held).toMatchObject({ kind: 'held', task: { id: taskId, attemptId: before.attemptId, attemptNumber: before.attemptNumber, revision: before.revision + 1, state: 'held', canClaim: false, canEdit: false, canSubmit: false, canReturn: false, canComplete: false, canHold: false, holdActionId: null, canResume: true, canRegisterEvidence: false, canRegisterFinding: false, canRecordDecision: false, canRequestAgent: false } });
+  expect(held.task.resumeActionId).not.toBeNull();
+  await expect(page.getByText('タスクを保留しました', { exact: true })).toBeVisible();
+  await expect(page.getByText(/未保存の入力はこのタブ内だけに保持しています/)).toBeVisible();
+  for (const name of ['作業中の文案', '差戻理由']) await expect(page.getByLabel(name, { exact: true })).toHaveCount(0);
+  for (const name of ['文案を保存', '提出内容を確認', '完了内容を確認', '差戻内容を確認', '保留内容を確認']) await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+  await expect(page.getByText(unsaved.text, { exact: true })).toHaveCount(0);
+  if (before.workingArtifacts.length) {
+    const readonly = page.getByRole('region', { name: '保存済みの作業文案', exact: true });
+    for (const artifact of before.workingArtifacts) await expect(readonly).toContainText(artifact.value.text);
+    await expect(readonly).not.toContainText(unsaved.text);
+  }
+  const heldDetail = await get<TaskDetail>(request, origin, `/v1/organization/tasks/${taskId}`);
+  expect(heldDetail.history.at(-1)).toEqual({ kind: 'held', occurredAt: expect.any(String) });
+  expect(heldDetail).toEqual({ ...before, ...held.task, history: [...before.history, heldDetail.history.at(-1)] });
+  expect(await readSaved()).toEqual(saved);
+  await assertHidden(request, otherOrigin, `/v1/organization/tasks/${taskId}`, 'WORK_ITEM_NOT_FOUND', unsaved.text);
+  await assertHidden(request, otherOrigin, `/v1/organization/operations/${holdCommand.operationId}`, 'WORK_ITEM_NOT_FOUND', unsaved.text);
+  await page.getByRole('button', { name: 'Agent', exact: true }).click();
+  await expect(page.getByLabel('Agentへの依頼目的', { exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '実行を取消', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '履歴', exact: true }).click();
+  await expect(page.getByText('タスクを保留', { exact: true })).toHaveCount(heldDetail.history.filter((entry) => entry.kind === 'held').length);
+  currentAction('hold-replay');
+  expect(await get(request, origin, `/v1/organization/operations/${holdCommand.operationId}`)).toEqual(held);
+  const holdReplay = await request.post(`${origin}/v1/organization/tasks/${taskId}/actions`, { data: holdCommand });
+  expect(holdReplay.status()).toBe(200);
+  expect(await holdReplay.json()).toEqual(held);
+  expect(await get(request, origin, `/v1/organization/tasks/${taskId}`)).toEqual(heldDetail);
+
+  currentAction('resume-preview');
+  await page.getByRole('button', { name: '再開内容を確認', exact: true }).click();
+  const resumeDialog = page.getByRole('dialog', { name: '再開の確認', exact: true });
+  await expect(resumeDialog).toContainText(before.attemptId);
+  await expect(resumeDialog).toContainText('Agentは自動再実行しません');
+  await resumeDialog.getByRole('button', { name: 'キャンセル', exact: true }).click();
+  expect(await get(request, origin, `/v1/organization/tasks/${taskId}`)).toEqual(heldDetail);
+  await page.getByRole('button', { name: '再開内容を確認', exact: true }).click();
+  const resumedResponse = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${taskId}/actions` && response.request().method() === 'POST');
+  currentAction('resume-confirm');
+  await page.getByRole('button', { name: '再開を確定', exact: true }).click();
+  const resumeResponse = await resumedResponse;
+  expect(resumeResponse.status()).toBe(200);
+  const resumed = await resumeResponse.json() as Resumed;
+  const resumeCommand = resumeResponse.request().postDataJSON() as WorkflowActionCommand;
+  expect(resumeCommand).toEqual({ operationId: expect.any(String), expectedRevision: held.task.revision, actingAssignmentId: session.actingAssignmentId, expectedAttemptId: before.attemptId, action: 'resume', definitionActionId: held.task.resumeActionId });
+  const { inputResources, workingArtifacts, history, agentExecutionIds, ...beforeSummary } = before;
+  expect(resumed.task).toEqual({ ...beforeSummary, revision: before.revision + 2 });
+  expect(resumed.kind).toBe('resumed');
+  await expect(page.getByText('タスクを再開しました', { exact: true })).toBeVisible();
+  await expect(page.getByLabel(unsaved.label, { exact: true })).toHaveValue(unsaved.text);
+  const resumedDetail = await get<TaskDetail>(request, origin, `/v1/organization/tasks/${taskId}`);
+  expect(resumedDetail.history.at(-1)).toEqual({ kind: 'resumed', occurredAt: expect.any(String) });
+  expect(resumedDetail).toEqual({ ...before, ...resumed.task, history: [...heldDetail.history, resumedDetail.history.at(-1)] });
+  expect(await readSaved()).toEqual(saved);
+  await expect(page.getByText('タスクを再開', { exact: true })).toHaveCount(resumedDetail.history.filter((entry) => entry.kind === 'resumed').length);
+  currentAction('resume-replay');
+  expect(await get(request, origin, `/v1/organization/operations/${resumeCommand.operationId}`)).toEqual(resumed);
+  const resumeReplay = await request.post(`${origin}/v1/organization/tasks/${taskId}/actions`, { data: resumeCommand });
+  expect(resumeReplay.status()).toBe(200);
+  expect(await resumeReplay.json()).toEqual(resumed);
+  expect(await get(request, origin, `/v1/organization/tasks/${taskId}`)).toEqual(resumedDetail);
+  return { hold: { operationId: holdCommand.operationId, command: holdCommand, result: held }, resume: { operationId: resumeCommand.operationId, command: resumeCommand, result: resumed } };
+}
+
+export async function assertHoldResumeState(request: APIRequestContext, context: RuntimeContext, transitions: PersistedState['holdResume']) {
+  for (const role of ['sales', 'office'] as const) {
+    const origin = context[role], other = context[role === 'sales' ? 'office' : 'sales'];
+    const before = await get<TaskDetail>(request, origin, `/v1/organization/tasks/${transitions[role].hold.result.task.id}`);
+    for (const action of ['hold', 'resume'] as const) {
+      const receipt = transitions[role][action];
+      expect(receipt.result.task.attemptId).toBe(before.attemptId);
+      expect(await get(request, origin, `/v1/organization/operations/${receipt.operationId}`)).toEqual(receipt.result);
+      await assertHidden(request, other, `/v1/organization/operations/${receipt.operationId}`, 'WORK_ITEM_NOT_FOUND');
+      currentAction(action === 'hold' ? 'hold-replay' : 'resume-replay');
+      const replay = await request.post(`${origin}/v1/organization/tasks/${before.id}/actions`, { data: receipt.command });
+      expect(replay.status()).toBe(200);
+      expect(await replay.json()).toEqual(receipt.result);
+    }
+    expect(await get(request, origin, `/v1/organization/tasks/${before.id}`)).toEqual(before);
+    expect(before.history.filter((entry) => entry.kind === 'held')).toHaveLength(2);
+    expect(before.history.filter((entry) => entry.kind === 'resumed')).toHaveLength(2);
+  }
 }

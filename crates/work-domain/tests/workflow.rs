@@ -588,6 +588,8 @@ fn old_ledger_results_decode_missing_additive_summary_fields() {
         for added in [
             "attemptNumber",
             "canReturn",
+            "canComplete",
+            "completionActionId",
             "returnInstructionId",
             "returnTransition",
         ] {
@@ -605,6 +607,8 @@ fn old_ledger_results_decode_missing_additive_summary_fields() {
             assert_eq!(task.attempt_number, 1);
             assert_eq!(next_task.attempt_number, 1);
             assert!(!task.can_return);
+            assert!(!task.can_complete);
+            assert_eq!(task.completion_action_id, None);
             assert_eq!(task.return_instruction_id, None);
             assert_eq!(
                 serde_json::to_vec(&serde_json::to_value(snapshot).unwrap()).unwrap(),
@@ -788,4 +792,286 @@ fn operation_context_requires_valid_identity_revision_and_current_responsibility
         invalid.authorize(VerifiedActor::Office01),
         Err(WorkError::ValidationFailed)
     );
+}
+
+fn complete_command(workflow: &Workflow) -> Command {
+    let item = workflow.next.as_ref().unwrap();
+    serde_json::from_value(serde_json::json!({
+        "kind":"complete", "task_id":OFFICE_TASK_ID,
+        "context":context(VerifiedActor::Office01, item.revision),
+        "expected_attempt_id":item.attempt_id,
+        "definition_action_id":"01900000-0000-7000-8000-000000000012"
+    }))
+    .expect("definition-bound completion command must be supported")
+}
+#[test]
+fn completion_closes_only_final_attempt_without_rewriting_submissions_or_creating_work() {
+    let (mut workflow, snapshot) = received_workflow();
+    let before = workflow.clone();
+    let hints = serde_json::to_value(
+        workflow
+            .detail(VerifiedActor::Office01, OFFICE_TASK_ID)
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(hints["canComplete"], true);
+    assert_eq!(
+        hints["completionActionId"],
+        "01900000-0000-7000-8000-000000000012"
+    );
+    let result = workflow
+        .apply(VerifiedActor::Office01, &complete_command(&workflow), NOW)
+        .unwrap();
+    let json = serde_json::to_value(&result).unwrap();
+    assert_eq!(json["kind"], "completed");
+    assert_eq!(json.as_object().unwrap().len(), 2);
+    assert_eq!(json["task"]["state"], "completed");
+    for key in [
+        "canClaim",
+        "canEdit",
+        "canSubmit",
+        "canReturn",
+        "canComplete",
+        "canRegisterEvidence",
+        "canRegisterFinding",
+        "canRecordDecision",
+        "canRequestAgent",
+    ] {
+        assert_eq!(json["task"][key], false, "{key}");
+    }
+    assert!(json["task"]["completionActionId"].is_null());
+    let office = workflow.next.as_ref().unwrap();
+    assert_eq!(office.attempt_id, before.next.as_ref().unwrap().attempt_id);
+    assert_eq!(
+        office.attempt_number,
+        before.next.as_ref().unwrap().attempt_number
+    );
+    assert_eq!(office.revision, before.next.as_ref().unwrap().revision + 1);
+    assert_eq!(office.completed_at.as_deref(), Some(NOW));
+    assert_eq!(workflow.source, before.source);
+    assert_eq!(workflow.snapshots, before.snapshots);
+    assert_eq!(workflow.completed_attempts, before.completed_attempts);
+    assert_eq!(workflow.return_instructions, before.return_instructions);
+    assert_eq!(workflow.artifacts, before.artifacts);
+    assert_eq!(workflow.history.last().unwrap().kind, "completed");
+    assert_eq!(
+        workflow
+            .snapshot(VerifiedActor::Office01, snapshot.id)
+            .unwrap(),
+        snapshot
+    );
+    assert_eq!(
+        workflow.authorize_recovery(VerifiedActor::Office01, &result),
+        Ok(())
+    );
+    assert_eq!(
+        workflow.authorize_recovery(VerifiedActor::Sales01, &result),
+        Err(WorkError::WorkItemNotFound)
+    );
+    assert_eq!(
+        workflow.artifact(VerifiedActor::Office01, workflow.artifacts[0].id),
+        Err(WorkError::WorkArtifactNotFound)
+    );
+}
+#[test]
+fn completion_rejects_wrong_action_attempt_revision_actor_and_terminal_without_mutation() {
+    let (workflow, _) = received_workflow();
+    let original = complete_command(&workflow);
+    for (field, value, error) in [
+        (
+            "definition_action_id",
+            serde_json::json!(RETURN_TRANSITION_ID),
+            WorkError::HandoffNotReady,
+        ),
+        (
+            "expected_attempt_id",
+            serde_json::json!(Uuid::now_v7()),
+            WorkError::RevisionConflict,
+        ),
+        (
+            "context",
+            serde_json::json!(context(VerifiedActor::Office01, 0)),
+            WorkError::RevisionConflict,
+        ),
+        (
+            "context",
+            serde_json::json!(context(VerifiedActor::Sales01, 1)),
+            WorkError::Forbidden,
+        ),
+    ] {
+        let mut wire = serde_json::to_value(&original).unwrap();
+        wire[field] = value;
+        let command = serde_json::from_value(wire).unwrap();
+        let mut candidate = workflow.clone();
+        assert_eq!(
+            candidate.apply(VerifiedActor::Office01, &command, NOW),
+            Err(error),
+            "{field}"
+        );
+        assert_eq!(candidate, workflow);
+    }
+    let mut wrong_actor = serde_json::to_value(&original).unwrap();
+    wrong_actor["context"] = serde_json::json!(context(VerifiedActor::Sales01, 1));
+    let mut candidate = workflow.clone();
+    assert_eq!(
+        candidate.apply(
+            VerifiedActor::Sales01,
+            &serde_json::from_value(wrong_actor).unwrap(),
+            NOW
+        ),
+        Err(WorkError::WorkItemNotFound)
+    );
+    assert_eq!(candidate, workflow);
+    candidate
+        .apply(VerifiedActor::Office01, &original, NOW)
+        .unwrap();
+    let terminal = candidate.clone();
+    assert_eq!(
+        candidate.apply(VerifiedActor::Office01, &complete_command(&candidate), NOW),
+        Err(WorkError::HandoffNotReady)
+    );
+    assert_eq!(candidate, terminal);
+}
+#[test]
+fn completion_never_bypasses_forward_submission_or_changes_older_definition_versions() {
+    let (workflow, _) = received_workflow();
+    for version in [DEFINITION_VERSION_ID, RETURN_DEFINITION_VERSION_ID] {
+        let mut legacy = workflow.clone();
+        legacy.definition_version_id = version;
+        let before = legacy.clone();
+        let hints = serde_json::to_value(
+            legacy
+                .detail(VerifiedActor::Office01, OFFICE_TASK_ID)
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(hints["canComplete"], false);
+        assert!(hints["completionActionId"].is_null());
+        assert_eq!(
+            legacy.apply(VerifiedActor::Office01, &complete_command(&legacy), NOW),
+            Err(WorkError::HandoffNotReady)
+        );
+        assert_eq!(legacy, before);
+    }
+    let mut sales = Workflow::synthetic(None);
+    let before = sales.clone();
+    let mut command = serde_json::to_value(complete_command(&workflow)).unwrap();
+    command["task_id"] = serde_json::json!(SALES_TASK_ID);
+    command["expected_attempt_id"] = serde_json::json!(SALES_ATTEMPT_ID);
+    command["context"] = serde_json::json!(context(VerifiedActor::Sales01, 0));
+    assert_eq!(
+        sales.apply(
+            VerifiedActor::Sales01,
+            &serde_json::from_value(command).unwrap(),
+            NOW
+        ),
+        Err(WorkError::HandoffNotReady)
+    );
+    assert_eq!(sales, before);
+}
+#[test]
+fn completion_hints_do_not_authorize_shared_progress_or_unclaimed_queue() {
+    let mut workflow = Workflow::synthetic(None);
+    let artifact = save(&mut workflow);
+    submit(&mut workflow, &artifact);
+    for (actor, view) in [
+        (VerifiedActor::Sales01, TaskView::Context),
+        (VerifiedActor::Office01, TaskView::Queue),
+    ] {
+        let summary = workflow
+            .list_tasks(actor, view)
+            .into_iter()
+            .find(|t| t.id == OFFICE_TASK_ID)
+            .unwrap();
+        let summary = serde_json::to_value(summary).unwrap();
+        assert_eq!(summary["canComplete"], false);
+        assert!(summary["completionActionId"].is_null());
+    }
+    let before = workflow.clone();
+    assert_eq!(
+        workflow.apply(VerifiedActor::Office01, &complete_command(&workflow), NOW),
+        Err(WorkError::WorkItemNotFound)
+    );
+    assert_eq!(workflow, before);
+}
+#[test]
+fn completion_invalidates_running_agent_and_rejects_late_candidate_output() {
+    let (mut workflow, _) = received_workflow();
+    workflow.input_resources.push(InputResourceRef {
+        kind: "document".into(),
+        document_id: Uuid::from_u128(71),
+        label: "合成入力".into(),
+    });
+    let register = Command::RegisterEvidence {
+        task_id: OFFICE_TASK_ID,
+        context: context(VerifiedActor::Office01, 1),
+        expected_attempt_id: OFFICE_ATTEMPT_ID,
+        source: EvidenceSource {
+            source_ref: SourceRef {
+                provider_id: "document".into(),
+                resource_id: Uuid::from_u128(71),
+                revision_id: Uuid::from_u128(72),
+                version_id: Uuid::from_u128(73),
+            },
+            authoritative_locator: AuthoritativeLocator {
+                kind: "contentItem".into(),
+                content_item_id: Uuid::from_u128(74),
+                representation_id: Uuid::from_u128(75),
+            },
+        },
+        relevant_location: "完了前の根拠".into(),
+    };
+    let evidence = match workflow
+        .apply(VerifiedActor::Office01, &register, NOW)
+        .unwrap()
+    {
+        MutationResult::EvidenceRegistered { evidence, .. } => evidence,
+        _ => panic!(),
+    };
+    let request = Command::RequestAgentExecution {
+        task_id: OFFICE_TASK_ID,
+        context: context(VerifiedActor::Office01, 2),
+        expected_attempt_id: OFFICE_ATTEMPT_ID,
+        purpose: "合成確認".into(),
+        evidence_revision_refs: vec![RevisionRef {
+            id: evidence.id,
+            revision: 1,
+        }],
+    };
+    let execution = match workflow
+        .apply(VerifiedActor::Office01, &request, NOW)
+        .unwrap()
+    {
+        MutationResult::AgentExecutionRequested { execution, .. } => execution,
+        _ => panic!(),
+    };
+    let running = workflow
+        .start_agent_execution(VerifiedActor::Office01, execution.id, NOW)
+        .unwrap()
+        .unwrap();
+    workflow
+        .apply(VerifiedActor::Office01, &complete_command(&workflow), NOW)
+        .unwrap();
+    let done = workflow.clone();
+    assert_eq!(
+        workflow
+            .agent_execution(VerifiedActor::Office01, execution.id)
+            .unwrap()
+            .status,
+        AgentExecutionStatus::Failed
+    );
+    assert_eq!(
+        workflow.finish_agent_execution(
+            &running,
+            AgentFindingOutput {
+                summary: "合成実行".into(),
+                claim: "遅い出力".into(),
+                uncertainty: vec!["本文分析なし".into()]
+            },
+            NOW
+        ),
+        Err(WorkError::WorkContextStale)
+    );
+    assert_eq!(workflow, done);
+    assert!(workflow.findings.is_empty());
 }

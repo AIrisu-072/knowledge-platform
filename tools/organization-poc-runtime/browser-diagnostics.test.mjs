@@ -118,13 +118,13 @@ test('standard JSON timeout retains only the current result action annotation wi
   } });
 });
 
-test('all thirty-five fixed action names survive the closed projection', () => {
+test('all forty-four fixed action names survive the closed projection', () => {
   const stages = ['journey-setup', 'office-navigation', 'sales-navigation', 'document-navigation', 'task-navigation',
     'draft-save', 'source-read', 'evidence-module', 'source-document-select', 'source-file-select', 'evidence-input',
     'evidence-submit', 'finding-input', 'finding-submit', 'decision-select', 'decision-input', 'decision-preview',
     'decision-confirm', 'visibility-verify', 'submit-preview', 'submit-selection', 'submit-confirm', 'office-claim',
-    'return-preview', 'return-confirm', 'sales-reclaim', 'resubmit', 'office-reclaim', 'final-verify', 'persistence-verify', 'agent-module', 'agent-input', 'agent-request', 'agent-result', 'agent-replay'];
-  assert.equal(stages.length, 35);
+    'return-preview', 'return-confirm', 'sales-reclaim', 'resubmit', 'office-reclaim', 'final-verify', 'persistence-verify', 'agent-module', 'agent-input', 'agent-request', 'agent-result', 'agent-replay', 'complete-preview', 'complete-confirm', 'complete-replay', 'hold-preview', 'hold-confirm', 'hold-replay', 'resume-preview', 'resume-confirm', 'resume-replay'];
+  assert.equal(stages.length, 44);
   for (const description of stages) {
     const raw = report({ status: 'timedOut', annotations: [{ type: 'organization-stage', description }] });
     assert.equal(browserFailureDiagnostics(raw, 'journey').failure.currentAction, description);

@@ -4,12 +4,12 @@ import { Link, useNavigate, useRouterState, useSearch } from '@tanstack/react-ro
 import { Dialog, Heading, Modal } from 'react-aria-components';
 import { AppShell } from '../components/app-shell/AppShell';
 import { useOrganizationContext, useTaskTransient, useClearTaskTransients, useClearAgentTransients, emptySelection, emptyAgentDraft } from '../application/organization-context';
+import { DocumentContextModule } from '../components/document/DocumentContextModule';
 import { AgentContextModule } from '../components/agent/AgentContextModule';
 import { EvidenceContextModule, decisionLabel } from '../components/evidence/EvidenceContextModule';
 import { useEvidenceRecords, evidenceRecordsKey } from '../application/use-evidence-records';
 import { selectedHandoffIsClosed, toggleReference } from '../application/evidence-workspace';
 import { createOperationId } from '../application/operation-id';
-import { validateDetailSearch } from '../application/search-state';
 import { workApi, executeWorkOperation, isOperationNotFound, validateTaskSearch, workErrorMessage, isDisclosureDenied, isUnknownOutcome, taskStateLabel, type TaskSearch, type TaskSummary, type TaskDetail, type WorkSession, type WorkResult, type WorkCommand, type WorkOperation, type HandoffSnapshot, type ReturnInstruction } from '../application/work-workspace';
 import { formatDateTime } from '../view-model/date-time';
 import styles from './TaskWorkspace.module.css';
@@ -72,6 +72,7 @@ export function TaskHomePage() {
     client.setQueriesData<{ items: TaskSummary[]; nextCursor: null }>({ queryKey: [...actorKey(sessionData), 'tasks'] }, (previous) => previous ? { ...previous, items: previous.items.map((item) => matchesCurrent(item, result.task) ? result.task : item) } : previous);
     if (result.kind !== 'claimed') client.setQueryData<TaskDetail>(taskKey(sessionData, result.task), (previous) => previous && matchesCurrent(previous, result.task) ? { ...previous, ...result.task, workingArtifacts: result.kind === 'draft_saved' ? [result.artifact] : previous.workingArtifacts, ...((result.kind === 'agent_execution_requested' || result.kind === 'agent_execution_cancelled') ? { agentExecutionIds: Array.from(new Set([...previous.agentExecutionIds, result.execution.id])) } : {}) } : previous);
     if (['evidence_registered', 'finding_registered', 'decision_recorded'].includes(result.kind)) void client.invalidateQueries({ queryKey: evidenceRecordsKey(sessionData, result.task) });
+    if (['completed', 'held', 'resumed'].includes(result.kind)) void client.invalidateQueries({ queryKey: taskKey(sessionData, result.task) });
     if (result.kind === 'returned') client.setQueryData([...actorKey(sessionData), 'return-instruction', result.returnInstruction.id], result.returnInstruction);
     if (result.kind === 'submitted') client.setQueryData([...actorKey(sessionData), 'snapshot', result.snapshot.id], result.snapshot);
   }
@@ -93,11 +94,7 @@ export function TaskHomePage() {
     <div className={styles.moduleButtons} aria-label="文脈モジュール">
       {[['document', '文書・比較'], ['history', '履歴'], ['evidence', '根拠'], ['agent', 'Agent'], ['search', '検索'], ['resources', 'Workspace'], ['return', '差戻']].map(([id, label]) => <button key={id} type="button" aria-pressed={module === id} onClick={() => setModule(id!)}>{label}</button>)}
     </div>
-    {!detailData ? <p>担当を引き受けたタスクの情報を表示します</p> : module === 'document' ? <>
-      <h2>共有の入力文書</h2><p className={styles.muted}>文書側の現在の権限で開きます。作業文案とは別の共有資料です。</p>
-      {detailData.inputResources.length === 0 ? <p>入力文書はありません</p> : <ul>{detailData.inputResources.map((input) => <li key={input.documentId}><Link to="/documents/$documentId" params={{ documentId: input.documentId }} search={validateDetailSearch({ view: 'published' })}>{input.label}</Link></li>)}</ul>}
-      <p className={styles.muted}>版・改訂・比較は既存の文書画面で確認できます。戻ると選択したタスクに戻ります。</p>
-    </> : module === 'agent' ? <AgentContextModule key={`${sessionData!.principalId}:${sessionData!.actingAssignmentId}:${detailData.id}:${detailData.attemptId}`} session={sessionData!} task={detailData} applyResult={applyResult} onDenied={denyDisclosure} refresh={refresh} openEvidence={() => setModule('evidence')} /> : module === 'evidence' ? <EvidenceContextModule key={`${sessionData!.principalId}:${sessionData!.actingAssignmentId}:${detailData.id}:${detailData.attemptId}`} session={sessionData!} task={detailData} applyResult={applyResult} onDenied={denyDisclosure} /> : module === 'history' ? <><h2>業務履歴</h2>{detailData.history.length ? <ul>{detailData.history.map((entry, index) => <li key={`${entry.occurredAt}-${index}`}>{historyLabel(entry.kind)}<br /><time dateTime={entry.occurredAt}>{formatDateTime(entry.occurredAt)}</time></li>)}</ul> : <p>記録された履歴はありません</p>}<p className={styles.muted}>この履歴は監査基盤の資格取得を示すものではありません。</p></> : module === 'return' ? <><h2>差戻</h2><p>{detailData.returnInstructionId ? '確定した差戻指示と過去の提出内容を主作業に表示します。差戻理由は変更できません。' : detailData.canReturn ? '受領内容と差戻理由を確認して、主作業から差戻してください。' : 'この試行に差戻の記録はありません。'}</p></> : <><h2>{module === 'agent' ? 'Agent' : module === 'search' ? '検索' : module === 'evidence' ? '根拠・判断' : 'Workspace'}</h2><p>このブラウザーPoCでは未実装です</p></>}
+    {!detailData ? <p>担当を引き受けたタスクの情報を表示します</p> : module === 'document' ? <DocumentContextModule key={`${sessionData!.principalId}:${sessionData!.actingAssignmentId}:${detailData.id}:${detailData.attemptId}`} session={sessionData!} task={detailData} /> : module === 'agent' ? <AgentContextModule key={`${sessionData!.principalId}:${sessionData!.actingAssignmentId}:${detailData.id}:${detailData.attemptId}`} session={sessionData!} task={detailData} applyResult={applyResult} onDenied={denyDisclosure} refresh={refresh} openEvidence={() => setModule('evidence')} /> : module === 'evidence' ? <EvidenceContextModule key={`${sessionData!.principalId}:${sessionData!.actingAssignmentId}:${detailData.id}:${detailData.attemptId}`} session={sessionData!} task={detailData} applyResult={applyResult} onDenied={denyDisclosure} /> : module === 'history' ? <><h2>業務履歴</h2>{detailData.history.length ? <ul>{detailData.history.map((entry, index) => <li key={`${entry.occurredAt}-${index}`}><span>{historyLabel(entry.kind)}</span><br /><time dateTime={entry.occurredAt}>{formatDateTime(entry.occurredAt)}</time></li>)}</ul> : <p>記録された履歴はありません</p>}<p className={styles.muted}>この履歴は監査基盤の資格取得を示すものではありません。</p></> : module === 'return' ? <><h2>差戻</h2><p>{detailData.returnInstructionId ? '確定した差戻指示と過去の提出内容を主作業に表示します。差戻理由は変更できません。' : detailData.canReturn ? '受領内容と差戻理由を確認して、主作業から差戻してください。' : 'この試行に差戻の記録はありません。'}</p></> : <><h2>{module === 'agent' ? 'Agent' : module === 'search' ? '検索' : module === 'evidence' ? '根拠・判断' : 'Workspace'}</h2><p>このブラウザーPoCでは未実装です</p></>}
     <div className={styles.notice}><strong>ブラウザーPoC</strong><p>ブラウザーではネイティブWorkspaceを利用できません</p><p>Search / ファイル添付は未実装です</p></div>
   </>;
   return <AppShell activeNavigation="tasks" mainLabel="タスクワークスペース" headerContext={<span className={styles.identity}>{sessionData ? <><strong>{sessionData.displayName}</strong> · {sessionData.principalId}<br />担当: {sessionData.actingAssignmentId} · 起動時固定の模擬ユーザー</> : 'タスク'} </span>} contextPanel={contextPanel}>
@@ -132,10 +129,11 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
   const { draft, reason, notice, operation, unknown, error } = transient;
   const setDraft = (value: string | null) => setTransient((previous) => ({ ...previous, draft: value }));
   const setNotice = (value: string) => setTransient((previous) => ({ ...previous, notice: value }));
-  const [confirmation, setConfirmation] = useState<'submit' | 'return' | null>(null);
+  const [confirmation, setConfirmation] = useState<'submit' | 'return' | 'complete' | 'hold' | 'resume' | null>(null);
   const [denied, setDenied] = useState(false);
   const text = draft ?? artifact?.value.text ?? '';
   const dirty = text !== (artifact?.value.text ?? '');
+  const hasUnsavedInput = dirty || Boolean(reason || transient.agent?.purpose || transient.agent?.support.length || transient.evidence?.documentId || transient.evidence?.fileKey || transient.evidence?.relevantLocation || transient.evidence?.claim || transient.evidence?.support.length || Object.values(transient.evidence?.decisions ?? {}).some((entry) => entry.adoptedClaim || entry.reason || entry.decision !== 'accepted'));
   const oversized = new TextEncoder().encode(text).length > 8192;
   const mutation = useMutation({
     mutationFn: async (input: { execute: () => Promise<WorkResult>; recovery?: boolean }) => input.execute(),
@@ -155,6 +153,9 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
       if (result.kind === 'evidence_registered') setNotice('根拠を登録しました');
       if (result.kind === 'finding_registered') setNotice('候補を登録しました');
       if (result.kind === 'decision_recorded') setNotice('人間判断を記録しました');
+      if (result.kind === 'completed') setTransient((previous) => ({ ...previous, draft: null, reason: null, notice: 'タスクの完了が確定しました' }));
+      if (result.kind === 'held') setNotice('タスクを保留しました');
+      if (result.kind === 'resumed') setNotice('タスクを再開しました');
       if (result.kind === 'claimed') setNotice('担当が確定しました');
       if (result.kind === 'submitted') setNotice(`提出が確定しました`);
     },
@@ -170,6 +171,9 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
   }
   const returnReason = reason ?? '';
   const returnOversized = new TextEncoder().encode(returnReason).length > 8192;
+  const completionActionId = task.canComplete ? task.completionActionId : null;
+  const holdActionId = task.canHold ? task.holdActionId : null;
+  const resumeActionId = task.canResume ? task.resumeActionId : null;
   const returnTarget = task.canReturn ? task.returnTransition : null;
   const canConfirmReturn = Boolean(returnTarget && snapshot?.id === returnTarget.previousSubmissionId && returnReason.trim() && !returnOversized);
   const busy = mutation.isPending || unknown;
@@ -191,11 +195,20 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
       {!task.canSubmit && <p className={styles.muted}>この段階では提出できません。現在の担当で文案の確認・保存を行えます。</p>}
       {detail.workingArtifacts.length > 1 && <p role="alert">複数の成果物の編集・提出はこのPoCでは対応していません</p>}
     </div>}
+    {detail && (holdActionId || resumeActionId) && <section className={styles.editor} aria-label="保留と再開"><h2>保留と再開</h2><p>同じ試行・担当・保存済みの内容を保持します。</p><div className={styles.actions}>
+      {holdActionId && <button type="button" disabled={busy} onClick={() => setConfirmation('hold')}>保留内容を確認</button>}
+      {resumeActionId && <button type="button" disabled={busy} onClick={() => setConfirmation('resume')}>再開内容を確認</button>}
+    </div></section>}
+    {detail && task.state === 'held' && <><p className={styles.notice}>保留中は読み取り専用です。保存済みの内容を現在の権限で確認できます。</p>
+      {hasUnsavedInput && <p className={styles.notice}>未保存の入力はこのタブ内だけに保持しています。保存済みではありません。再開後に戻ります。タブを閉じると失われます。</p>}
+      {detail.workingArtifacts.length > 0 && <section className={styles.snapshot} aria-label="保存済みの作業文案"><h2>保存済みの作業文案</h2>{detail.workingArtifacts.map((saved) => <div key={saved.id}><p className={styles.muted}>非公開 · 文案版 {saved.revision}</p><p className={styles.text}>{saved.value.text}</p></div>)}</section>}
+    </>}
+    {detail && completionActionId && <section className={styles.editor} aria-label="タスクの完了"><h2>タスクの完了</h2><p>現在のタスクを完了し、保存済みの内容を読み取り専用で残します。</p><div className={styles.actions}><button type="button" className={styles.primary} disabled={busy} onClick={() => setConfirmation('complete')}>完了内容を確認</button></div></section>}
     {detail && returnTarget && <div className={styles.editor}><h2>営業への差戻</h2><p className={styles.muted}>受領した提出内容は固定のまま残し、差戻先に新しい試行を作成します。</p><label htmlFor="return-reason">差戻理由</label><p id="return-reason-help" className={styles.muted}>必須 · 空白のみ不可、UTF-8で8192バイト以内</p><textarea id="return-reason" required aria-describedby="return-reason-help" value={returnReason} disabled={busy} onChange={(event) => { setTransient((previous) => ({ ...previous, reason: event.target.value, notice: '' })); }} />
       {returnOversized && <p role="alert">差戻理由はUTF-8で8192バイト以内にしてください</p>}
       <div className={styles.actions}><button type="button" disabled={busy || !canConfirmReturn} onClick={() => setConfirmation('return')}>差戻内容を確認</button></div>
     </div>}
-    {detail && !task.canEdit && <p className={styles.notice}>{returnTarget ? '受領した提出内容は読み取り専用です。' : '現在のタスクは読み取り専用です。提出済み内容は変更されません。'}</p>}
+    {detail && task.state !== 'held' && !task.canEdit && !completionActionId && <p className={styles.notice}>{returnTarget ? '受領した提出内容は読み取り専用です。' : '現在のタスクは読み取り専用です。提出済み内容は変更されません。'}</p>}
     {mutation.data?.kind === 'submitted' && <p>次のタスク：{mutation.data.nextTask.stepLabel}（{taskStateLabel(mutation.data.nextTask.state)}）</p>}
     {confirmation === 'submit' && artifact && <Modal className={styles.dialogScrim} isOpen isDismissable={false} isKeyboardDismissDisabled={mutation.isPending} onOpenChange={(open) => { if (!open && !mutation.isPending) setConfirmation(null); }}><Dialog className={styles.dialog} aria-labelledby="submit-title"><Heading slot="title" id="submit-title">提出の確認</Heading>
       <p>{task.title} · タスク {task.id}</p><p className={styles.muted}>試行 {task.attemptId} · タスク版 {task.revision} · 文案版 {artifact.revision}</p>
@@ -208,6 +221,22 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
         {!closure && evidenceRecords.isSuccess && <p role="alert">選択した候補・判断が参照する根拠と候補の同じ版も選択してください。合計100件以内です。</p>}
       </fieldset>
       <div className={styles.actions}><button type="button" autoFocus disabled={mutation.isPending} onClick={() => setConfirmation(null)}>キャンセル</button><button type="button" className={styles.primary} disabled={mutation.isPending || !closure} onClick={() => { startOperation({ kind: 'submitted', taskId: task.id, input: { ...command(), expectedAttemptId: task.attemptId, ...selection, artifacts: [{ artifactId: artifact.id, revision: artifact.revision }] } }); }}>提出を確定</button></div>
+    </Dialog></Modal>}
+    {confirmation === 'complete' && completionActionId && <Modal className={styles.dialogScrim} isOpen isDismissable={false} isKeyboardDismissDisabled={mutation.isPending} onOpenChange={(open) => { if (!open && !mutation.isPending) setConfirmation(null); }}><Dialog className={styles.dialog} aria-labelledby="complete-title"><Heading slot="title" id="complete-title">タスク完了の確認</Heading>
+      <p>{task.title} · タスク {task.id}</p><p>試行 {task.attemptNumber}（{task.attemptId}） · タスク版 {task.revision}</p>
+      <p>実行する担当 {session.principalId} · {session.actingAssignmentId}</p>
+      <p>現在の試行を完了します。完了後は読み取り専用になり、保存済みの提出内容・根拠・人間判断・Agent結果を現在の権限で確認できます。</p>
+      <p>新しい担当や提出スナップショットは作成せず、過去の記録は変更しません。</p>
+      <div className={styles.actions}><button type="button" autoFocus disabled={mutation.isPending} onClick={() => setConfirmation(null)}>キャンセル</button><button type="button" className={styles.primary} disabled={busy} onClick={() => startOperation({ kind: 'completed', taskId: task.id, input: { ...command(), expectedAttemptId: task.attemptId, action: 'complete', definitionActionId: completionActionId } })}>完了を確定</button></div>
+    </Dialog></Modal>}
+    {((confirmation === 'hold' && holdActionId) || (confirmation === 'resume' && resumeActionId)) && <Modal className={styles.dialogScrim} isOpen isDismissable={false} isKeyboardDismissDisabled={mutation.isPending} onOpenChange={(open) => { if (!open && !mutation.isPending) setConfirmation(null); }}><Dialog className={styles.dialog} aria-labelledby="hold-resume-title"><Heading slot="title" id="hold-resume-title">{confirmation === 'hold' ? '保留の確認' : '再開の確認'}</Heading>
+      <p>{task.title} · タスク {task.id}</p><p>試行 {task.attemptNumber}（{task.attemptId}） · タスク版 {task.revision}</p><p>実行する担当 {session.principalId} · {session.actingAssignmentId}</p>
+      <p>{confirmation === 'hold' ? '現在の試行を保留し、読み取り専用にします。未保存の入力は保存せず、このタブ内だけに保持します。' : '同じ試行と担当で作業を再開します。このタブ内に保持した未保存の入力を戻します。Agentは自動再実行しません。'}</p>
+      <p>保存済みの内容と過去の提出は保持されます。保存・提出・担当変更は行いません。</p>
+      <div className={styles.actions}><button type="button" autoFocus disabled={mutation.isPending} onClick={() => setConfirmation(null)}>キャンセル</button><button type="button" className={styles.primary} disabled={busy} onClick={() => {
+        if (confirmation === 'hold' && holdActionId) startOperation({ kind: 'held', taskId: task.id, input: { ...command(), expectedAttemptId: task.attemptId, action: 'hold', definitionActionId: holdActionId } });
+        if (confirmation === 'resume' && resumeActionId) startOperation({ kind: 'resumed', taskId: task.id, input: { ...command(), expectedAttemptId: task.attemptId, action: 'resume', definitionActionId: resumeActionId } });
+      }}>{confirmation === 'hold' ? '保留を確定' : '再開を確定'}</button></div>
     </Dialog></Modal>}
     {confirmation === 'return' && returnTarget && snapshot && <Modal className={styles.dialogScrim} isOpen isDismissable={false} isKeyboardDismissDisabled={mutation.isPending} onOpenChange={(open) => { if (!open && !mutation.isPending) setConfirmation(null); }}><Dialog className={styles.dialog} aria-labelledby="return-title"><Heading slot="title" id="return-title">差戻の確認</Heading>
       <p>{task.title} · 試行 {task.attemptNumber}（{task.attemptId}） · タスク版 {task.revision}</p><p>差戻先タスク {returnTarget.targetTaskId} · 元の提出 {returnTarget.previousSubmissionId}</p>
@@ -223,5 +252,5 @@ function ReturnInstructionView({ instruction }: { instruction: ReturnInstruction
 function Snapshot({ snapshot, received, prior = false }: { snapshot: HandoffSnapshot; received: boolean; prior?: boolean }) {
   return <section className={styles.snapshot} aria-label={prior ? '差戻前のスナップショット' : received ? '受領したスナップショット' : '提出済みスナップショット'}><h2>{prior ? '差戻前のスナップショット' : received ? '受領したスナップショット' : '提出済みスナップショット'}</h2><p className={styles.muted}>固定された提出内容 · {snapshot.id}<br /><time dateTime={snapshot.createdAt}>{formatDateTime(snapshot.createdAt)}</time></p>{snapshot.artifacts.map((artifact) => <div key={artifact.artifactId}><p className={styles.muted}>文案版 {artifact.revision}</p><p className={styles.text}>{artifact.value.text}</p></div>)}{(['evidenceRevisionRefs', 'findingRevisionRefs', 'decisionRevisionRefs'] as const).map((kind) => <p key={kind} className={styles.muted}>{({ evidenceRevisionRefs: '共有された根拠', findingRevisionRefs: '共有された候補', decisionRevisionRefs: '共有された判断' })[kind]}：{snapshot[kind]?.length ? snapshot[kind].map((ref) => `${ref.id}（版 ${ref.revision}）`).join('、') : 'なし'}</p>)}</section>;
 }
-function historyLabel(kind: string): string { return ({ claimed: '担当を引受', draft_saved: '文案を保存', evidence_registered: '根拠を登録', finding_registered: '候補を登録', decision_recorded: '人間判断を記録', submitted: '提出', returned: '差戻', seeded: 'タスクを作成' })[kind] ?? '業務状態を更新'; }
+function historyLabel(kind: string): string { return ({ claimed: '担当を引受', draft_saved: '文案を保存', evidence_registered: '根拠を登録', finding_registered: '候補を登録', decision_recorded: '人間判断を記録', submitted: '提出', completed: 'タスクを完了', held: 'タスクを保留', resumed: 'タスクを再開', returned: '差戻', seeded: 'タスクを作成' })[kind] ?? '業務状態を更新'; }
 export function OrganizationSearchPage() { const organization = useOrganizationContext(); const search = validateTaskSearch(Object.fromEntries(new URLSearchParams(organization.taskHref.split('?')[1] ?? ''))); return <AppShell activeNavigation="search" mainLabel="検索ワークスペース" showContextPanel={false}><section className={styles.work}><h1>検索</h1><p>Search PlatformはこのブラウザーPoCでは未実装です</p><Link to="/tasks" search={search}>タスクへ戻る</Link></section></AppShell>; }
