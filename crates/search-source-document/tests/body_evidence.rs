@@ -1,190 +1,14 @@
 //! P1-A03 Source-owned exact positive evidence: pinned manifest Unit, current
 //! Live Version and Read, and the same raw bytes rebuilding the same span.
 
+#[path = "support/body_claims.rs"]
+mod body_claims;
 #[path = "support/body_index.rs"]
 mod body_index;
 #[path = "support/body.rs"]
 mod body_support;
 
-use std::collections::VecDeque;
-
-use body_index::*;
-use search_application::body_ports::{
-    BodyCoverageGapPort, CONTAINS_EXACT_PREDICATE, ExactTextEvidencePort, ExactTextSelector,
-    KnowledgeUnitHitRef,
-};
-use search_application::ports::{
-    AccessDecision, CurrentAccessEvaluatorPort, LexicalQuery, LexicalRetrieverPort,
-    assemble_verified_unit_text_claim,
-};
-use search_core::assertion::AssertionOrigin;
-use search_core::discovery::{DiscoveryNeed, DiscoveryRequest};
-use search_core::evidence::{ClaimState, EvidenceRequirement, EvidenceRole};
-use search_core::id::{ClaimId, DiscoveryEvaluationId, NeedId, ProjectionGenerationId, ResourceId};
-use search_core::intent::{IntentFact, IntentFactOrigin, IntentSignature};
-use search_core::knowledge_unit::{ExtractionProfileId, FormatId, TextSpan};
-use search_core::projection::ProjectionGenerationKey;
-use search_core::temporal::TemporalEvaluationContext;
-use search_source_document::{
-    BodyItemExtractor, DocumentBodyCoverageGaps, DocumentExactTextEvidenceCatalog,
-};
-
-const DOCX: &str = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-
-fn claim() -> ClaimId {
-    ClaimId::from_uuid(Uuid::from_u128(500))
-}
-
-fn parent() -> ResourceId {
-    ResourceId::from_uuid(Uuid::from_u128(20))
-}
-
-fn request() -> DiscoveryRequest {
-    let now = OffsetDateTime::from_unix_timestamp(400).unwrap();
-    DiscoveryRequest {
-        need: DiscoveryNeed {
-            need_id: NeedId::from_uuid(Uuid::from_u128(501)),
-            intent_signature: IntentSignature::new(IntentFact::new(
-                "find body".into(),
-                IntentFactOrigin::Explicit,
-            )),
-            required_resource_types: vec![],
-            required_claims: vec![claim()],
-            authority_requirements: vec![],
-            freshness_requirements: vec![],
-            constraints: vec![],
-            completion_requirement: EvidenceRequirement::new(vec![claim()]),
-        },
-        temporal_context: TemporalEvaluationContext::new(
-            DiscoveryEvaluationId::from_uuid(Uuid::from_u128(502)),
-            now,
-            now,
-            "Asia/Tokyo",
-        ),
-        access_context: "trusted-session".into(),
-    }
-}
-
-/// Returns queued decisions first, then the default.
-struct ScriptedAccess {
-    queued: Mutex<VecDeque<AccessDecision>>,
-    default: AccessDecision,
-}
-
-fn access(default: AccessDecision, queued: &[AccessDecision]) -> Arc<ScriptedAccess> {
-    Arc::new(ScriptedAccess {
-        queued: Mutex::new(queued.iter().copied().collect()),
-        default,
-    })
-}
-
-impl CurrentAccessEvaluatorPort for ScriptedAccess {
-    fn evaluate<'a>(&'a self, _: ResourceId, _: &'a str) -> BoxFuture<'a, AccessDecision> {
-        let decision = self
-            .queued
-            .lock()
-            .unwrap()
-            .pop_front()
-            .unwrap_or(self.default);
-        Box::pin(async move { Ok(decision) })
-    }
-}
-
-/// A DOCX whose referenced header is a located omission: Completed + Partial.
-fn partial_docx(text: &str) -> Vec<u8> {
-    let content_types = r#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>"#;
-    let package = r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>"#;
-    let document = format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:p><w:r><w:t>{text}</w:t></w:r></w:p><w:sectPr><w:headerReference w:type="default" r:id="rId9"/></w:sectPr></w:body></w:document>"#
-    );
-    let rels = r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId9" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/></Relationships>"#;
-    let header = r#"<?xml version="1.0" encoding="UTF-8"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>ヘッダ</w:t></w:r></w:p></w:hdr>"#;
-    body_support::zip(&[
-        ("[Content_Types].xml", content_types.as_bytes()),
-        ("_rels/.rels", package.as_bytes()),
-        ("word/document.xml", document.as_bytes()),
-        ("word/_rels/document.xml.rels", rels.as_bytes()),
-        ("word/header1.xml", header.as_bytes()),
-    ])
-}
-
-struct Published {
-    harness: Harness,
-    key: ProjectionGenerationKey,
-    items: Vec<AuthoritativeItemBinding>,
-}
-
-/// Part 0 holds 東京の本文 (text or Partial DOCX), part 1 a Supported text,
-/// part 2 an Unsupported image.
-async fn publish(partial: bool) -> Published {
-    let storage = KeyedStorage::default();
-    let (first, media) = if partial {
-        (partial_docx("東京の本文"), DOCX)
-    } else {
-        ("東京の本文\n".as_bytes().to_vec(), "text/plain")
-    };
-    let second = "大阪の本文\n".as_bytes().to_vec();
-    let third = b"\x89PNG\r\n\x1a\n".to_vec();
-    storage.put("objects/a", &first);
-    storage.put("objects/b", &second);
-    storage.put("objects/c", &third);
-    let items = vec![
-        binding("objects/a", &first, media, 0, 100),
-        binding("objects/b", &second, "text/plain", 1, 200),
-        binding("objects/c", &third, "image/png", 2, 300),
-    ];
-    let harness = harness(snapshot("s1", items.clone()), storage, true);
-    let key = published(&harness, 1).await;
-    Published {
-        harness,
-        key,
-        items,
-    }
-}
-
-impl Published {
-    async fn hit(&self, text: &str) -> KnowledgeUnitHitRef {
-        let batch = self
-            .harness
-            .runtime
-            .lexical_reader()
-            .retrieve_body(self.key, &request(), &LexicalQuery::body_only(text, 10))
-            .await
-            .unwrap();
-        batch.hits[0].unit_hit.clone().expect("literal Unit hit")
-    }
-
-    fn catalog(&self, access: Arc<ScriptedAccess>) -> DocumentExactTextEvidenceCatalog {
-        let extractor: Arc<dyn BodyItemExtractor> = Arc::new(DocumentBodyExtractor::new(
-            source_id(),
-            self.harness.storage.clone(),
-            InProcessExtractor::new(Mode::Honest),
-            registry(),
-        ));
-        let mut catalog = DocumentExactTextEvidenceCatalog::new(
-            source_id(),
-            self.harness.runtime.clone(),
-            Arc::new(self.harness.reader.clone()),
-            access,
-            extractor,
-        );
-        catalog.register(selector("東京の本文")).unwrap();
-        catalog
-    }
-}
-
-fn selector(text: &str) -> ExactTextSelector {
-    ExactTextSelector {
-        claim_id: claim(),
-        parent_resource: parent(),
-        predicate: CONTAINS_EXACT_PREDICATE.into(),
-        expected_exact_text: text.into(),
-    }
-}
-
-fn verified_some(result: Result<Option<impl Sized>, search_application::SearchError>) -> bool {
-    matches!(result, Ok(Some(_)))
-}
+use body_claims::*;
 
 #[tokio::test]
 async fn source_reread_verifies_the_unit_span_for_the_bound_claim() {
@@ -343,7 +167,7 @@ async fn read_or_source_change_before_disclosure_is_unknown() {
     published
         .harness
         .storage
-        .put("objects/a", "東京の別文\n".as_bytes());
+        .put("objects/0", "東京の別文\n".as_bytes());
     assert!(!verified_some(
         catalog.resolve_hit(&request(), &hit, &bound).await
     ));

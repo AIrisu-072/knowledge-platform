@@ -11,7 +11,8 @@ use search_core::discovery::{
     InformationGap,
 };
 use search_core::evidence::{
-    Claim, ClaimState, EvidenceSufficiency, claim_values_semantically_equal,
+    Claim, ClaimState, EvidenceReference, EvidenceRole, EvidenceSufficiency,
+    claim_values_semantically_equal,
 };
 use search_core::fact::{Fact, FactOrigin, FactSet};
 use search_core::id::{ClaimId, ResourceId, SourceId};
@@ -27,7 +28,9 @@ use crate::action_selection::{
     NoProgressKey, Selection, select_next_action,
 };
 use crate::body_ports::{
-    BodyCoverageGapPort, CONTAINS_EXACT_PREDICATE, ExactTextEvidencePort, KnowledgeUnitHitRef,
+    BodyCoverageGapPort, CONTAINS_EXACT_PREDICATE, ExactScanBudget, ExactTextAbsenceOutcome,
+    ExactTextEvidencePort, ExactTextSelector, KnowledgeUnitHitRef, PinnedBodyBundle,
+    SourceExactTextAbsencePort,
 };
 use crate::candidate::{
     CandidateHardGates, HardGateEvaluation, RankedCandidateHit, RetrieverRankList,
@@ -93,6 +96,7 @@ pub struct DiscoveryService<'a> {
     ports: DiscoveryPorts<'a>,
     exact_text: Option<&'a dyn ExactTextEvidencePort>,
     body_coverage: Option<&'a dyn BodyCoverageGapPort>,
+    absence: Option<&'a dyn SourceExactTextAbsencePort>,
 }
 
 struct PinnedSource {
@@ -175,12 +179,19 @@ impl<'a> DiscoveryService<'a> {
             ports,
             exact_text: None,
             body_coverage: None,
+            absence: None,
         })
     }
 
     /// Source-owned exact-text selectors and Unit verification for body scope.
     pub fn with_exact_text_evidence(mut self, port: &'a dyn ExactTextEvidencePort) -> Self {
         self.exact_text = Some(port);
+        self
+    }
+
+    /// Source-owned finite negative proof for an exact-text Claim.
+    pub fn with_exact_text_absence(mut self, port: &'a dyn SourceExactTextAbsencePort) -> Self {
+        self.absence = Some(port);
         self
     }
 
@@ -602,8 +613,19 @@ impl<'a> DiscoveryService<'a> {
                 evaluation.result.evidence_sufficiency = EvidenceSufficiency::Unresolved;
             }
         }
-        if body.is_some() {
+        if let Some(spec) = body {
             restrict_to_body_hits(&mut evaluation.result, &records);
+            if let Some(claim_id) = spec.exact_text_claim {
+                self.exact_absence(
+                    &mut evaluation.result,
+                    &request,
+                    &pins,
+                    &records,
+                    spec,
+                    claim_id,
+                )
+                .await?;
+            }
             for pin in pins.values() {
                 let gaps = match self.body_coverage {
                     Some(port) => {
@@ -640,6 +662,108 @@ impl<'a> DiscoveryService<'a> {
             }
         }
         Ok(evaluation.result)
+    }
+
+    /// A finite Source-owned scan may turn the still-Unknown exact Claim into
+    /// `Absent`, but only for the selector parent, only when no Unit of that
+    /// parent was hit, and only with a proof bound to this Claim and literal.
+    async fn exact_absence(
+        &self,
+        result: &mut DiscoveryResult,
+        request: &DiscoveryRequest,
+        pins: &BTreeMap<SourceId, PinnedSource>,
+        records: &[HitRecord],
+        spec: &BodySearchSpec,
+        claim_id: ClaimId,
+    ) -> Result<(), SearchError> {
+        let (Some(absence), Some(exact)) = (self.absence, self.exact_text) else {
+            return Ok(());
+        };
+        if result
+            .evidence_set
+            .iter()
+            .any(|claim| claim.claim_id == claim_id && claim.state != ClaimState::Unknown)
+        {
+            return Ok(());
+        }
+        let literal = normalize_unit_text(&spec.query.text);
+        for pin in pins.values() {
+            let Ok(Some(selector)) = exact.selector_for(pin.key, claim_id).await else {
+                continue;
+            };
+            if selector.claim_id != claim_id
+                || selector.predicate != CONTAINS_EXACT_PREDICATE
+                || selector.expected_exact_text != literal
+                || records.iter().any(|record| {
+                    record
+                        .raw
+                        .unit_hit
+                        .as_ref()
+                        .is_some_and(|unit| unit.parent_resource == selector.parent_resource)
+                })
+            {
+                continue;
+            }
+            let pinned = match absence.pin_body(pin.key).await {
+                Ok(Some(pinned)) if pinned.generation == pin.key => pinned,
+                _ => {
+                    push_gap(
+                        &mut result.unresolved_gaps,
+                        InformationGap::new(
+                            "document.body.absence_unavailable",
+                            GapReason::Availability,
+                            true,
+                        ),
+                    );
+                    continue;
+                }
+            };
+            let outcome = absence
+                .verify_absence(
+                    request,
+                    &pinned,
+                    &selector,
+                    ExactScanBudget::initial(std::time::Instant::now()),
+                )
+                .await;
+            let gap = match outcome {
+                Ok(ExactTextAbsenceOutcome::ProvenAbsent(proof))
+                    if proof_bound(&proof, claim_id, &selector, &pinned) =>
+                {
+                    result
+                        .evidence_set
+                        .retain(|claim| claim.claim_id != claim_id);
+                    result.evidence_set.push(absent_claim(&proof, &selector));
+                    result.evidence_sufficiency = assess_claim_evidence(
+                        &request.need.completion_requirement,
+                        &result.evidence_set,
+                    )?;
+                    return Ok(());
+                }
+                Ok(ExactTextAbsenceOutcome::ProvenAbsent(_)) => InformationGap::new(
+                    "document.body.absence_unbound",
+                    GapReason::Availability,
+                    true,
+                ),
+                // A literal the index did not return: an integrity/recall signal only.
+                Ok(ExactTextAbsenceOutcome::MatchFound) => InformationGap::new(
+                    "document.body.recall_mismatch",
+                    GapReason::Availability,
+                    true,
+                ),
+                Ok(ExactTextAbsenceOutcome::Unknown(mut gap)) => {
+                    gap.blocking = true;
+                    gap
+                }
+                Err(_) => InformationGap::new(
+                    "document.body.absence_unavailable",
+                    GapReason::Availability,
+                    true,
+                ),
+            };
+            push_gap(&mut result.unresolved_gaps, gap);
+        }
+        Ok(())
     }
 
     /// Exact-text Claim for one qualified parent: the trusted selector must name
@@ -1678,6 +1802,51 @@ fn combine_state(left: ApplicabilityState, right: ApplicabilityState) -> Applica
         (Unresolved, _) | (_, Unresolved) => Unresolved,
         _ => Applicable,
     }
+}
+
+fn proof_bound(
+    proof: &crate::body_ports::ExactTextNegativeProof,
+    claim_id: ClaimId,
+    selector: &ExactTextSelector,
+    pinned: &PinnedBodyBundle,
+) -> bool {
+    let expected: [u8; 32] = Sha256::digest(selector.expected_exact_text.as_bytes()).into();
+    proof.claim_id() == claim_id
+        && proof.parent().resource_id == selector.parent_resource
+        && proof.parent().source_id == pinned.generation.source_id
+        && proof.generation() == pinned.generation
+        && proof.bundle_digest() == pinned.composite_digest
+        && proof.exact_text_sha256() == expected
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn absent_claim(
+    proof: &crate::body_ports::ExactTextNegativeProof,
+    selector: &ExactTextSelector,
+) -> Claim {
+    let parent = proof.parent().resource_id.as_uuid();
+    let generation = proof.generation();
+    let (items, units) = proof.binding_digests();
+    let mut claim = Claim::new(proof.claim_id(), ClaimState::Absent);
+    claim.subject = Some(parent.to_string());
+    claim.predicate = Some(proof.predicate().into());
+    claim.value = Some(TypedValue::String(selector.expected_exact_text.clone()));
+    let mut evidence = EvidenceReference::new(
+        generation.source_id,
+        format!(
+            "body-absence:v1:{}:{}:{parent}",
+            generation.source_id.as_uuid(),
+            generation.generation_id.as_uuid()
+        ),
+        EvidenceRole::Primary,
+    );
+    evidence.evidence_ref = Some(format!("body-absence-receipt:v1:{}", hex(&units)));
+    evidence.content_digest = Some(format!("sha256:{}", hex(&items)));
+    claim.evidence_refs.push(evidence);
+    claim
 }
 
 /// Body scope counts only Resources reached through a verified Unit hit. Title

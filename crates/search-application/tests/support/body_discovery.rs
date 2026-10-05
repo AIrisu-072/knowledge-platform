@@ -6,8 +6,10 @@ pub use std::sync::{Arc, Mutex};
 
 pub use search_application::SearchError;
 pub use search_application::body_ports::{
-    BodyCoverageGapPort, CONTAINS_EXACT_PREDICATE, ExactTextEvidencePort, ExactTextSelector,
-    KnowledgeUnitHitRef, LexicalHit, LexicalRetrievalBatch, VerifiedExtractedTextEvidence,
+    BodyCoverageGapPort, CONTAINS_EXACT_PREDICATE, ExactScanBudget, ExactTextAbsenceOutcome,
+    ExactTextEvidencePort, ExactTextNegativeProof, ExactTextSelector, KnowledgeUnitHitRef,
+    LexicalHit, LexicalRetrievalBatch, NegativeProofFields, PinnedBodyBundle,
+    SourceExactTextAbsencePort, VerifiedExtractedTextEvidence,
 };
 pub use search_application::content_scope::{BodySearchSpec, DiscoveryScope};
 pub use search_application::discovery_service::{
@@ -51,6 +53,7 @@ pub use search_core::source::{
     DiscoverableSource, DiscoveryMode, EnumerationSemantics, RetentionMode,
 };
 pub use search_core::temporal::{TemporalDiscoveryProfile, TemporalEvaluationContext};
+pub use sha2::{Digest, Sha256};
 pub use time::OffsetDateTime;
 pub use uuid::Uuid;
 
@@ -288,6 +291,8 @@ pub struct Fixture {
     pub exact_verified: Option<VerifiedExtractedTextEvidence>,
     /// Access-filtered coverage gaps; `None` leaves the coverage port unwired.
     pub coverage: Option<Vec<InformationGap>>,
+    /// Source scan outcome; `None` leaves the absence port unwired.
+    pub absence: Option<ExactTextAbsenceOutcome>,
 }
 
 impl Fixture {
@@ -311,6 +316,7 @@ impl Fixture {
             exact_selector: None,
             exact_verified: None,
             coverage: Some(vec![]),
+            absence: None,
         }
     }
 
@@ -343,6 +349,10 @@ impl Fixture {
         )
         .unwrap()
         .with_exact_text_evidence(self);
+        let service = match self.absence {
+            Some(_) => service.with_exact_text_absence(self),
+            None => service,
+        };
         match self.coverage {
             Some(_) => service.with_body_coverage(self),
             None => service,
@@ -674,5 +684,55 @@ pub fn exact_scope(text: &str) -> DiscoveryScope {
     DiscoveryScope::BodyRequired(BodySearchSpec {
         query: LexicalQuery::body_only(text, 10),
         exact_text_claim: Some(cid()),
+    })
+}
+
+/// The composite digest the fake Source reports for its pinned bundle.
+pub const BUNDLE_DIGEST: [u8; 32] = [5; 32];
+
+impl SourceExactTextAbsencePort for Fixture {
+    fn pin_body<'a>(
+        &'a self,
+        generation: ProjectionGenerationKey,
+    ) -> BoxFuture<'a, Option<PinnedBodyBundle>> {
+        Box::pin(async move {
+            Ok(Some(PinnedBodyBundle {
+                generation,
+                composite_digest: BUNDLE_DIGEST,
+            }))
+        })
+    }
+
+    fn verify_absence<'a>(
+        &'a self,
+        _: &'a DiscoveryRequest,
+        _: &'a PinnedBodyBundle,
+        _: &'a ExactTextSelector,
+        _: ExactScanBudget,
+    ) -> BoxFuture<'a, ExactTextAbsenceOutcome> {
+        self.calls.lock().unwrap().push("absence-scan".into());
+        Box::pin(async move { Ok(self.absence.clone().expect("absence port wired")) })
+    }
+}
+
+/// A Source receipt for `text` absent from `parent`, bound to the request Claim.
+pub fn proof(parent: ResourceId, text: &str) -> ExactTextNegativeProof {
+    ExactTextNegativeProof::issue(NegativeProofFields {
+        generation: manifest().key(),
+        bundle_digest: BUNDLE_DIGEST,
+        source_snapshot: "snap-5".into(),
+        claim_id: cid(),
+        parent: ResourceVersionRef {
+            source_id: sid(),
+            resource_id: parent,
+            source_native_version: "version-1".into(),
+        },
+        document_revision: 1,
+        access_revision: 1,
+        exact_text_sha256: Sha256::digest(text.as_bytes()).into(),
+        visible_item_bindings_digest: [1; 32],
+        scanned_unit_bindings_digest: [2; 32],
+        visible_item_count: 1,
+        scanned_unit_count: 1,
     })
 }

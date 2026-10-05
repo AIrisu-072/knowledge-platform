@@ -56,7 +56,7 @@ impl CurrentVersionReader for PostgresDocumentSnapshotReader {
     }
 }
 
-fn hex(bytes: &[u8]) -> String {
+pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
@@ -69,7 +69,7 @@ fn searchable(operation: &ItemOperationState, coverage: Option<&BodyCoverage>) -
         )
 }
 
-fn current_live(record: &VersionSnapshotRecord) -> bool {
+pub(crate) fn current_live(record: &VersionSnapshotRecord) -> bool {
     let snapshot = &record.snapshot;
     snapshot.current_version_id == Some(snapshot.document_version_id)
         && snapshot.lifecycle_state == LifecycleState::Published
@@ -104,12 +104,12 @@ fn literal_at(unit: &KnowledgeUnit, hit: &KnowledgeUnitHitRef, expected: &str) -
 
 /// Trusted exact-text selectors and the Source-owned resolver for Unit hits.
 pub struct DocumentExactTextEvidenceCatalog {
-    source_id: SourceId,
-    runtime: MemoryDocumentIndexRuntime,
-    versions: Arc<dyn CurrentVersionReader>,
-    access: Arc<dyn CurrentAccessEvaluatorPort>,
+    pub(crate) source_id: SourceId,
+    pub(crate) runtime: MemoryDocumentIndexRuntime,
+    pub(crate) versions: Arc<dyn CurrentVersionReader>,
+    pub(crate) access: Arc<dyn CurrentAccessEvaluatorPort>,
     extractor: Arc<dyn BodyItemExtractor>,
-    selectors: BTreeMap<ClaimId, ExactTextSelector>,
+    pub(crate) selectors: BTreeMap<ClaimId, ExactTextSelector>,
 }
 
 impl DocumentExactTextEvidenceCatalog {
@@ -145,7 +145,7 @@ impl DocumentExactTextEvidenceCatalog {
         Ok(())
     }
 
-    async fn allowed(&self, resource: ResourceId, request: &DiscoveryRequest) -> bool {
+    pub(crate) async fn allowed(&self, resource: ResourceId, request: &DiscoveryRequest) -> bool {
         matches!(
             self.access
                 .evaluate(resource, &request.access_context)

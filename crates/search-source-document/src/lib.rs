@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+mod body_absence;
 mod body_bundle;
 mod body_evidence;
 mod body_manifest;

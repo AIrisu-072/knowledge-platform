@@ -1,6 +1,8 @@
 //! P1-A02 BodyOnly lexical contracts. A Unit hit reference is copied unchanged
 //! through retrieval records so qualification and evidence can re-verify it.
 
+use std::time::{Duration, Instant};
+
 use search_core::assertion::Assertion;
 use search_core::discovery::{DiscoveryRequest, FederatedCandidate, InformationGap};
 use search_core::id::{ClaimId, ResourceId};
@@ -92,4 +94,148 @@ pub trait BodyCoverageGapPort: Send + Sync {
         request: &'a DiscoveryRequest,
         generation: ProjectionGenerationKey,
     ) -> BoxFuture<'a, Vec<InformationGap>>;
+}
+
+/// Handle of one published body bundle, as pinned for this evaluation. The
+/// owning Source re-checks it against its own published receipt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PinnedBodyBundle {
+    pub generation: ProjectionGenerationKey,
+    pub composite_digest: [u8; 32],
+}
+
+/// Finite limits of one exact absence scan. Reaching any limit is `Unknown`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExactScanBudget {
+    pub max_visible_items: u64,
+    pub max_units: u64,
+    pub max_text_bytes: u64,
+    pub deadline: Instant,
+}
+
+impl ExactScanBudget {
+    /// Initial request limits: 1024 items, 100000 Units, 64 MiB, 2 s.
+    pub fn initial(now: Instant) -> Self {
+        Self {
+            max_visible_items: 1024,
+            max_units: 100_000,
+            max_text_bytes: 64 * 1024 * 1024,
+            deadline: now + Duration::from_secs(2),
+        }
+    }
+}
+
+/// Receipt of a completed, finite, Source-owned scan: the literal occurs in
+/// no Unit of any visible item of one current parent Version. Only a
+/// registered Source port issues it; it carries bindings, never body text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExactTextNegativeProof {
+    generation: ProjectionGenerationKey,
+    bundle_digest: [u8; 32],
+    source_snapshot: String,
+    claim_id: ClaimId,
+    parent: ResourceVersionRef,
+    document_revision: i64,
+    access_revision: i64,
+    exact_text_sha256: [u8; 32],
+    visible_item_bindings_digest: [u8; 32],
+    scanned_unit_bindings_digest: [u8; 32],
+    visible_item_count: u64,
+    scanned_unit_count: u64,
+}
+
+/// Fields of a negative proof, as computed by the issuing Source port.
+pub struct NegativeProofFields {
+    pub generation: ProjectionGenerationKey,
+    pub bundle_digest: [u8; 32],
+    pub source_snapshot: String,
+    pub claim_id: ClaimId,
+    pub parent: ResourceVersionRef,
+    pub document_revision: i64,
+    pub access_revision: i64,
+    pub exact_text_sha256: [u8; 32],
+    pub visible_item_bindings_digest: [u8; 32],
+    pub scanned_unit_bindings_digest: [u8; 32],
+    pub visible_item_count: u64,
+    pub scanned_unit_count: u64,
+}
+
+impl ExactTextNegativeProof {
+    /// Issued only by a Source-owned absence port after its verified scan.
+    pub fn issue(fields: NegativeProofFields) -> Self {
+        Self {
+            generation: fields.generation,
+            bundle_digest: fields.bundle_digest,
+            source_snapshot: fields.source_snapshot,
+            claim_id: fields.claim_id,
+            parent: fields.parent,
+            document_revision: fields.document_revision,
+            access_revision: fields.access_revision,
+            exact_text_sha256: fields.exact_text_sha256,
+            visible_item_bindings_digest: fields.visible_item_bindings_digest,
+            scanned_unit_bindings_digest: fields.scanned_unit_bindings_digest,
+            visible_item_count: fields.visible_item_count,
+            scanned_unit_count: fields.scanned_unit_count,
+        }
+    }
+
+    pub fn predicate(&self) -> &'static str {
+        CONTAINS_EXACT_PREDICATE
+    }
+    pub fn generation(&self) -> ProjectionGenerationKey {
+        self.generation
+    }
+    pub fn bundle_digest(&self) -> [u8; 32] {
+        self.bundle_digest
+    }
+    pub fn source_snapshot(&self) -> &str {
+        &self.source_snapshot
+    }
+    pub fn claim_id(&self) -> ClaimId {
+        self.claim_id
+    }
+    pub fn parent(&self) -> &ResourceVersionRef {
+        &self.parent
+    }
+    pub fn revisions(&self) -> (i64, i64) {
+        (self.document_revision, self.access_revision)
+    }
+    pub fn exact_text_sha256(&self) -> [u8; 32] {
+        self.exact_text_sha256
+    }
+    pub fn binding_digests(&self) -> ([u8; 32], [u8; 32]) {
+        (
+            self.visible_item_bindings_digest,
+            self.scanned_unit_bindings_digest,
+        )
+    }
+    pub fn counts(&self) -> (u64, u64) {
+        (self.visible_item_count, self.scanned_unit_count)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExactTextAbsenceOutcome {
+    ProvenAbsent(Box<ExactTextNegativeProof>),
+    /// Internal integrity/recall signal; never a hit or evidence by itself.
+    MatchFound,
+    /// Blocking gap with a non-disclosing `required_fact`.
+    Unknown(InformationGap),
+}
+
+/// Finite exact negative proof for one selector parent. Lexical no-hit only
+/// starts the scan; it is never evidence of absence.
+pub trait SourceExactTextAbsencePort: Send + Sync {
+    fn pin_body<'a>(
+        &'a self,
+        generation: ProjectionGenerationKey,
+    ) -> BoxFuture<'a, Option<PinnedBodyBundle>>;
+
+    fn verify_absence<'a>(
+        &'a self,
+        request: &'a DiscoveryRequest,
+        pinned: &'a PinnedBodyBundle,
+        selector: &'a ExactTextSelector,
+        budget: ExactScanBudget,
+    ) -> BoxFuture<'a, ExactTextAbsenceOutcome>;
 }
