@@ -10,32 +10,52 @@ use search_core::discovery::{
     CandidateIdentityClass, DiscoveryRequest, DiscoveryResult, FederatedCandidate, GapReason,
     InformationGap,
 };
-use search_core::evidence::{Claim, EvidenceSufficiency, claim_values_semantically_equal};
+use search_core::evidence::{
+    Claim, ClaimState, EvidenceReference, EvidenceRole, EvidenceSufficiency,
+    claim_values_semantically_equal,
+};
 use search_core::fact::{Fact, FactOrigin, FactSet};
-use search_core::id::{ResourceId, SourceId};
+use search_core::id::{ClaimId, ResourceId, ResourceVersionId, SourceId};
+use search_core::knowledge_unit::normalize_unit_text;
 use search_core::materialization::{ProbeCompletenessSemantics, ProbeOutcome};
 use search_core::predicate::{ConceptResolver, Operand, PredicateExpr, TypedValue};
 use search_core::profile::FacetState;
 use search_core::projection::{CompiledResourceProjection, ProjectionGenerationKey};
+use search_core::resource::ResourceKind;
+use search_core::source::{DiscoverableSource, DiscoveryMode};
 use sha2::{Digest, Sha256};
 
 use crate::action_selection::{
     ActionCandidate, ActionCostEstimate, ActionPriority, KnownStateDigest, NoProgressHistory,
     NoProgressKey, Selection, select_next_action,
 };
+use crate::body_ports::{
+    BodyCoverageGapPort, CONTAINS_EXACT_PREDICATE, ExactScanBudget, ExactTextAbsenceOutcome,
+    ExactTextEvidencePort, ExactTextSelector, KnowledgeUnitHitRef, PinnedBodyBundle,
+    SourceExactTextAbsencePort,
+};
 use crate::candidate::{
     CandidateHardGates, HardGateEvaluation, RankedCandidateHit, RetrieverRankList,
 };
+use crate::content_scope::{BodySearchSpec, DiscoveryScope};
 use crate::error::SearchError;
 use crate::federation::{CandidateFederator, FusionStrategy};
 use crate::materialization::ProbeBudget;
 use crate::ports::{
     AccessDecision, AssertionStorePort, ClaimSelectorPort, ConceptRegistryPort,
-    CurrentSourcePolicyPort, EvidenceResolverPort, LexicalQuery, ProbeCapabilityCatalogPort,
-    ProbeExecutionInput, ProbeExecutionService, ProbePort, ProjectionGenerationStore,
+    CurrentSourcePolicyPort, EvidenceResolverPort, GenerationReadPort, LexicalQuery,
+    ProbeCapabilityCatalogPort, ProbeExecutionInput, ProbeExecutionService, ProbePort,
     SourceRegistryPort, StructuredFacetFilter, StructuredFacetOutcome, assemble_resource_claims,
-    assess_claim_evidence,
+    assemble_verified_unit_text_claim, assess_claim_evidence,
 };
+use crate::remote::{
+    EvaluationLeaseId, PlannedRemoteAction, RemoteActionOutcome, RemoteOperation, RemoteSourcePort,
+    TrustedRemoteContext, validate_remote_batch,
+};
+use crate::remote_evidence::{RegisteredLineage, RemoteProvenanceLookupPort};
+use crate::remote_generation::{RemoteGenerationBuilder, StageOutcome};
+use crate::remote_lease::RemoteLease;
+use crate::remote_read_view::{CompositeEvaluationReadView, sealed_retriever_id};
 use crate::retrieval::{
     ActionState, RetrievalAction, RetrievalInputs, RetrieverKind, RetrieverPlanner,
     RetrieverProfile, RetrieverSupport,
@@ -43,7 +63,9 @@ use crate::retrieval::{
 use crate::retrieval_execution::{
     RawRetrievalHit, RetrievalExecutionInput, RetrievalExecutionPorts, RetrievalExecutor,
 };
-use crate::routing::{RoutingConstraints, SourceRole, SourceRoutePlan, SourceRouter};
+use crate::routing::{RouteStage, RoutingConstraints, SourceRole, SourceRoutePlan, SourceRouter};
+use crate::scoped::{TrustedDiscoveryBinding, TrustedSearchScope, VisibleSourceRegistration};
+use crate::visible_routing::VisibleRouting;
 
 /// A trusted caller resolves temporal policy before creating the service.
 /// Opaque `DiscoveryNeed.freshness_requirements` are never guessed as durations.
@@ -70,7 +92,7 @@ pub struct DiscoveryConfig {
 
 pub struct DiscoveryPorts<'a> {
     pub sources: &'a dyn SourceRegistryPort,
-    pub generations: &'a dyn ProjectionGenerationStore,
+    pub generations: &'a dyn GenerationReadPort,
     pub concepts: &'a dyn ConceptRegistryPort,
     pub retrieval: RetrievalExecutionPorts<'a>,
     pub selectors: &'a dyn ClaimSelectorPort,
@@ -84,6 +106,77 @@ pub struct DiscoveryPorts<'a> {
 pub struct DiscoveryService<'a> {
     config: DiscoveryConfig,
     ports: DiscoveryPorts<'a>,
+    exact_text: Option<&'a dyn ExactTextEvidencePort>,
+    body_coverage: Option<&'a dyn BodyCoverageGapPort>,
+    absence: Option<&'a dyn SourceExactTextAbsencePort>,
+}
+
+/// One visible remote Source's trusted inputs for a scoped evaluation. The
+/// context, lineage and provenance lookup are server-owned; the port is the
+/// fixed Source's checked adapter and the lease bounds the sealed generation.
+pub struct RemoteSourceExecution<'a> {
+    pub context: TrustedRemoteContext,
+    pub port: &'a dyn RemoteSourcePort,
+    pub lineage: RegisteredLineage,
+    pub provenance: &'a dyn RemoteProvenanceLookupPort,
+    pub lease: RemoteLease,
+}
+
+/// Trusted per-evaluation inputs of the one Discovery path: the actor-visible
+/// registrations, server routing, remote Sources and the explicit-key view
+/// that serves every generation this evaluation reads.
+pub struct ScopedDiscoveryExecution<'a> {
+    pub content_scope: DiscoveryScope,
+    pub binding: &'a TrustedDiscoveryBinding,
+    pub visible: &'a [VisibleSourceRegistration],
+    pub routing: RoutingConstraints,
+    pub remote: Vec<RemoteSourceExecution<'a>>,
+    pub view: &'a CompositeEvaluationReadView<'a>,
+}
+
+/// A field a Search hit matched in, by the retriever that found it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MatchedField {
+    Title,
+    Metadata,
+    Body,
+}
+
+/// One S1-ranked Search hit that passed the final current-access gate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchHit {
+    pub source_id: SourceId,
+    pub resource_id: ResourceId,
+    pub generation: ProjectionGenerationKey,
+    pub resource_kind: Option<ResourceKind>,
+    pub resource_version: Option<ResourceVersionId>,
+    pub title: Option<String>,
+    pub matched: Vec<MatchedField>,
+}
+
+/// A Search retrieval pass: ranked hits, pinned generations and gaps.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchOutcome {
+    pub hits: Vec<SearchHit>,
+    pub pins: BTreeMap<SourceId, ProjectionGenerationKey>,
+    pub gaps: Vec<InformationGap>,
+    /// Sources whose BodyOnly retrieval executed in a body scope.
+    pub body_sources: BTreeSet<SourceId>,
+    pub bounded: bool,
+}
+
+/// The durable read ports a scoped evaluation's view dispatches to.
+pub(crate) struct DurableReadPorts<'a> {
+    pub(crate) generations: &'a dyn GenerationReadPort,
+    pub(crate) concepts: &'a dyn ConceptRegistryPort,
+    pub(crate) selectors: &'a dyn ClaimSelectorPort,
+    pub(crate) assertions: &'a dyn AssertionStorePort,
+    pub(crate) evidence: &'a dyn EvidenceResolverPort,
+}
+
+struct RemotePhase<'a> {
+    sources: Vec<RemoteSourceExecution<'a>>,
+    view: &'a CompositeEvaluationReadView<'a>,
 }
 
 struct PinnedSource {
@@ -161,24 +254,214 @@ impl<'a> DiscoveryService<'a> {
                 "Probe budget currency differs from evaluation currency".into(),
             ));
         }
-        Ok(Self { config, ports })
+        Ok(Self {
+            config,
+            ports,
+            exact_text: None,
+            body_coverage: None,
+            absence: None,
+        })
+    }
+
+    pub(crate) fn durable_read_ports(&self) -> DurableReadPorts<'a> {
+        DurableReadPorts {
+            generations: self.ports.generations,
+            concepts: self.ports.concepts,
+            selectors: self.ports.selectors,
+            assertions: self.ports.assertions,
+            evidence: self.ports.evidence,
+        }
+    }
+
+    /// Source-owned exact-text selectors and Unit verification for body scope.
+    pub fn with_exact_text_evidence(mut self, port: &'a dyn ExactTextEvidencePort) -> Self {
+        self.exact_text = Some(port);
+        self
+    }
+
+    /// Source-owned finite negative proof for an exact-text Claim.
+    pub fn with_exact_text_absence(mut self, port: &'a dyn SourceExactTextAbsencePort) -> Self {
+        self.absence = Some(port);
+        self
+    }
+
+    /// Source-owned, access-filtered body coverage for body scope. Without it a
+    /// body result never claims a complete corpus.
+    pub fn with_body_coverage(mut self, port: &'a dyn BodyCoverageGapPort) -> Self {
+        self.body_coverage = Some(port);
+        self
     }
 
     pub async fn discover(
         &self,
         request: DiscoveryRequest,
     ) -> Result<DiscoveryResult, SearchError> {
-        validate_request(&request)?;
+        self.discover_with_content_scope(request, DiscoveryScope::Normal)
+            .await
+    }
+
+    /// One shared evaluation loop for every content scope. `BodyRequired` runs
+    /// only BodyOnly lexical actions and qualifies only verified Unit hits.
+    pub async fn discover_with_content_scope(
+        &self,
+        request: DiscoveryRequest,
+        scope: DiscoveryScope,
+    ) -> Result<DiscoveryResult, SearchError> {
+        validate_scope(&request, &scope)?;
         let sources = self.ports.sources.list_sources().await?;
-        let routes = SourceRouter::plan(&request.need, &sources, &self.config.routing);
-        let plan = RetrieverPlanner::plan(
-            self.config.retriever_profile,
-            &routes,
-            &self.config.retriever_support,
-            &self.config.retrieval_inputs,
-        );
+        self.run(
+            request,
+            scope,
+            &sources,
+            &self.config.routing,
+            Vec::new(),
+            None,
+        )
+        .await
+    }
+
+    /// The same evaluation loop over the actor-visible Sources. Every remote
+    /// Source runs its bounded initial actions as one batch that is sealed
+    /// before the first federation; a Source then reads exactly one
+    /// generation (durable pin or sealed remote) through the view.
+    pub async fn discover_scoped(
+        &self,
+        request: DiscoveryRequest,
+        execution: ScopedDiscoveryExecution<'_>,
+    ) -> Result<DiscoveryResult, SearchError> {
+        validate_scope(&request, &execution.content_scope)?;
+        let (sources, routing, gaps) = VisibleRouting::prepare(
+            execution.binding.actor(),
+            execution.visible,
+            &execution.routing,
+        )?;
+        let mut remote_sources = BTreeSet::new();
+        for remote in &execution.remote {
+            let scope = remote.context.source_scope();
+            if remote.context.binding() != execution.binding
+                || !execution.visible.iter().any(|entry| entry.scope() == scope)
+                || !remote_sources.insert(scope.source_id())
+            {
+                return Err(SearchError::InvalidRequest(
+                    "remote execution is not bound to this visible evaluation".into(),
+                ));
+            }
+        }
+        let view = execution.view;
+        let retrieval = &self.ports.retrieval;
+        let scoped = DiscoveryService {
+            config: self.config.clone(),
+            ports: DiscoveryPorts {
+                sources: self.ports.sources,
+                generations: view,
+                concepts: view,
+                retrieval: RetrievalExecutionPorts {
+                    directory: retrieval.directory,
+                    structured: retrieval.structured,
+                    lexical: retrieval.lexical,
+                    hypergraph: retrieval.hypergraph,
+                    graph_resource_access: retrieval.graph_resource_access,
+                    remote: Some(view),
+                    access: retrieval.access,
+                },
+                selectors: view,
+                assertions: view,
+                evidence: view,
+                probe: self.ports.probe,
+                probe_catalog: self.ports.probe_catalog,
+                source_policy: self.ports.source_policy,
+            },
+            exact_text: self.exact_text,
+            body_coverage: self.body_coverage,
+            absence: self.absence,
+        };
+        scoped
+            .run(
+                request,
+                execution.content_scope,
+                &sources,
+                &routing,
+                gaps,
+                Some(RemotePhase {
+                    sources: execution.remote,
+                    view,
+                }),
+            )
+            .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn run(
+        &self,
+        request: DiscoveryRequest,
+        scope: DiscoveryScope,
+        sources: &[DiscoverableSource],
+        routing: &RoutingConstraints,
+        visibility_gaps: Vec<InformationGap>,
+        remote: Option<RemotePhase<'_>>,
+    ) -> Result<DiscoveryResult, SearchError> {
+        let body = scope.body();
+        // Remote modes route only when this evaluation wired a remote port.
+        let routes = match &remote {
+            Some(phase) if !phase.sources.is_empty() => SourceRouter::plan_with_runtime_modes(
+                &request.need,
+                sources,
+                routing,
+                &[
+                    DiscoveryMode::LocalDirectory,
+                    DiscoveryMode::LocalContentSearch,
+                    DiscoveryMode::RemoteEnumeration,
+                    DiscoveryMode::RemoteQuery,
+                    DiscoveryMode::DirectAddress,
+                    DiscoveryMode::LiveOnly,
+                ],
+            ),
+            _ => SourceRouter::plan(&request.need, sources, routing),
+        };
+        // Directory, Structured, Graph, Vector, remote and probes cannot create a
+        // body match, so a body scope plans only Lexical with the request query.
+        let body_plan_inputs = body.map(|spec| {
+            (
+                RetrieverSupport {
+                    lexical: self.config.retriever_support.lexical,
+                    ..RetrieverSupport::default()
+                },
+                RetrievalInputs {
+                    lexical_query: Some(spec.query.text.clone()),
+                    max_initial_retrievers_per_source: self
+                        .config
+                        .retrieval_inputs
+                        .max_initial_retrievers_per_source,
+                    ..RetrievalInputs::default()
+                },
+            )
+        });
+        let (support, inputs) = match &body_plan_inputs {
+            Some((support, inputs)) => (support, inputs),
+            None => (
+                &self.config.retriever_support,
+                &self.config.retrieval_inputs,
+            ),
+        };
+        let plan = RetrieverPlanner::plan(self.config.retriever_profile, &routes, support, inputs);
         let mut pins = BTreeMap::new();
-        let mut route_gaps = Vec::new();
+        let mut route_gaps = visibility_gaps;
+        // Remote batches seal before the first federation; nothing is appended
+        // to a seal afterwards.
+        let mut sealed = BTreeSet::new();
+        if let Some(phase) = remote {
+            for execution in phase.sources {
+                self.seal_remote(
+                    &routes,
+                    &plan,
+                    execution,
+                    phase.view,
+                    &mut sealed,
+                    &mut route_gaps,
+                )
+                .await?;
+            }
+        }
         for route in &routes.routes {
             route_gaps.extend(
                 route
@@ -241,6 +524,7 @@ impl<'a> DiscoveryService<'a> {
                 &attempted_trace,
                 &route_gaps,
                 &action_gaps,
+                body,
             )
             .await?;
 
@@ -265,28 +549,44 @@ impl<'a> DiscoveryService<'a> {
                 NextAction::Retrieval(action) => {
                     attempted_retrievers.insert(action.retriever_id.clone());
                     if let Some(pin) = pins.get(&action.source_id) {
-                        if matches!(
-                            action.retriever,
-                            RetrieverKind::Vector
-                                | RetrieverKind::RemoteEnumeration
-                                | RetrieverKind::RemoteQuery
-                                | RetrieverKind::DirectAddress
-                                | RetrieverKind::LiveOnly
-                        ) {
+                        let remote_kind = is_remote(action.retriever);
+                        if action.retriever == RetrieverKind::Vector
+                            || (remote_kind && self.ports.retrieval.remote.is_none())
+                        {
                             action_gaps.push(source_gap(
                                 action.source_id,
                                 &format!("{:?}_execution_port_unavailable", action.retriever),
                                 false,
                             ));
+                        } else if remote_kind && !sealed.contains(&action.retriever_id) {
+                            // Only a completed, sealed action executes; a later
+                            // remote expansion needs a new snapshot and evaluation.
+                            // A Required Source without any completed action is
+                            // blocked by `required_source_not_executed`, missing
+                            // evidence by its Claim gap.
+                            action_gaps.push(source_gap(
+                                action.source_id,
+                                if action.stage == RouteStage::Expansion {
+                                    "remote_expansion_requires_new_evaluation"
+                                } else {
+                                    "remote_action_unavailable"
+                                },
+                                false,
+                            ));
                         } else {
-                            let result = RetrievalExecutor::execute(
+                            let executed = RetrievalExecutor::execute(
                                 &self.ports.retrieval,
                                 RetrievalExecutionInput {
                                     action: &action,
                                     generation: pin.key,
                                     request: &request,
                                     structured_filters: &self.config.structured_filters,
-                                    lexical_query: self.config.lexical_query.as_ref(),
+                                    lexical_query: if body.is_some() {
+                                        None
+                                    } else {
+                                        self.config.lexical_query.as_ref()
+                                    },
+                                    body_query: body.map(|spec| &spec.query),
                                     graph_plan: self
                                         .config
                                         .retrieval_inputs
@@ -294,57 +594,77 @@ impl<'a> DiscoveryService<'a> {
                                         .get(&action.source_id),
                                 },
                             )
-                            .await?;
-                            // The executor already checks current access. Recheck the
-                            // candidate and every Graph path resource before detail I/O.
-                            for raw in result.hits {
-                                if !self.currently_allowed(&raw.candidate, &request).await
-                                    || !self.graph_paths_currently_allowed(&raw, &request).await
-                                {
-                                    continue;
-                                }
-                                let projection = if let Some(resource) = raw.candidate.resource_ref
-                                {
-                                    self.ports
-                                        .generations
-                                        .resource_at(pin.key, resource)
-                                        .await?
-                                } else {
+                            .await;
+                            let result = match executed {
+                                Ok(result) => Some(result),
+                                // A missing port, unpublished body bundle or refusal is a
+                                // blocking body gap, never a partial body success.
+                                Err(_) if body.is_some() => {
+                                    action_gaps.push(InformationGap::new(
+                                        "document.body.retrieval_unavailable",
+                                        GapReason::Availability,
+                                        true,
+                                    ));
                                     None
-                                };
-                                if let Some(ref detail) = projection {
-                                    validate_detail(detail, pin.key, resource_of(&raw)?)?;
                                 }
-                                // Probe observations belong to the pinned durable Resource,
-                                // even when retrievers use distinct candidates or locators.
-                                let (probe_facts, probe_outcomes, probe_origins) = records
-                                    .iter()
-                                    .find(|record| {
-                                        same_probe_binding(
-                                            &record.raw.candidate,
-                                            record.raw.generation,
-                                            &raw.candidate,
-                                            raw.generation,
-                                        )
-                                    })
-                                    .map(|record| {
-                                        (
-                                            record.probe_facts.clone(),
-                                            record.probe_outcomes.clone(),
-                                            record.probe_origins.clone(),
-                                        )
-                                    })
-                                    .unwrap_or_default();
-                                records.push(HitRecord {
-                                    raw,
-                                    projection,
-                                    probe_facts,
-                                    probe_outcomes,
-                                    probe_origins,
-                                });
+                                Err(error) => return Err(error),
+                            };
+                            if let Some(result) = result {
+                                // The executor already checks current access. Recheck the
+                                // candidate and every Graph path resource before detail I/O.
+                                for raw in result.hits {
+                                    // Body scope counts only hits that carry a literal Unit span.
+                                    if body.is_some() && raw.unit_hit.is_none() {
+                                        continue;
+                                    }
+                                    if !self.currently_allowed(&raw.candidate, &request).await
+                                        || !self.graph_paths_currently_allowed(&raw, &request).await
+                                    {
+                                        continue;
+                                    }
+                                    let projection =
+                                        if let Some(resource) = raw.candidate.resource_ref {
+                                            self.ports
+                                                .generations
+                                                .resource_at(pin.key, resource)
+                                                .await?
+                                        } else {
+                                            None
+                                        };
+                                    if let Some(ref detail) = projection {
+                                        validate_detail(detail, pin.key, resource_of(&raw)?)?;
+                                    }
+                                    // Probe observations belong to the pinned durable Resource,
+                                    // even when retrievers use distinct candidates or locators.
+                                    let (probe_facts, probe_outcomes, probe_origins) = records
+                                        .iter()
+                                        .find(|record| {
+                                            same_probe_binding(
+                                                &record.raw.candidate,
+                                                record.raw.generation,
+                                                &raw.candidate,
+                                                raw.generation,
+                                            )
+                                        })
+                                        .map(|record| {
+                                            (
+                                                record.probe_facts.clone(),
+                                                record.probe_outcomes.clone(),
+                                                record.probe_origins.clone(),
+                                            )
+                                        })
+                                        .unwrap_or_default();
+                                    records.push(HitRecord {
+                                        raw,
+                                        projection,
+                                        probe_facts,
+                                        probe_outcomes,
+                                        probe_origins,
+                                    });
+                                }
+                                executed_retrievers.insert(action.retriever_id.clone());
+                                attempted_trace.push(format!("retriever:{}", action.retriever_id));
                             }
-                            executed_retrievers.insert(action.retriever_id.clone());
-                            attempted_trace.push(format!("retriever:{}", action.retriever_id));
                         }
                     } else {
                         action_gaps.push(source_gap(
@@ -457,6 +777,7 @@ impl<'a> DiscoveryService<'a> {
                     &attempted_trace,
                     &route_gaps,
                     &action_gaps,
+                    body,
                 )
                 .await?;
             if let Some(key) = no_progress_key
@@ -500,7 +821,565 @@ impl<'a> DiscoveryService<'a> {
                 evaluation.result.evidence_sufficiency = EvidenceSufficiency::Unresolved;
             }
         }
+        if let Some(spec) = body {
+            restrict_to_body_hits(&mut evaluation.result, &records);
+            if let Some(claim_id) = spec.exact_text_claim {
+                self.exact_absence(
+                    &mut evaluation.result,
+                    &request,
+                    &pins,
+                    &records,
+                    spec,
+                    claim_id,
+                )
+                .await?;
+            }
+            for pin in pins.values() {
+                let gaps = match self.body_coverage {
+                    Some(port) => {
+                        port.coverage_gaps(&request, pin.key)
+                            .await
+                            .unwrap_or_else(|_| {
+                                vec![InformationGap::new(
+                                    "document.body.coverage_unavailable",
+                                    GapReason::Availability,
+                                    true,
+                                )]
+                            })
+                    }
+                    None => vec![InformationGap::new(
+                        "document.body.coverage_unverified",
+                        GapReason::UnsupportedCoverage,
+                        true,
+                    )],
+                };
+                for gap in gaps {
+                    push_gap(&mut evaluation.result.unresolved_gaps, gap);
+                }
+            }
+            // A verified positive Claim may coexist with these gaps; the corpus
+            // as a whole is not complete while any of them blocks.
+            if evaluation.result.evidence_sufficiency == EvidenceSufficiency::Sufficient
+                && evaluation
+                    .result
+                    .unresolved_gaps
+                    .iter()
+                    .any(|gap| gap.blocking)
+            {
+                evaluation.result.evidence_sufficiency = EvidenceSufficiency::Unresolved;
+            }
+        }
         Ok(evaluation.result)
+    }
+
+    /// Search over the actor-visible durable generations: the same routing,
+    /// planning, pins, executor, hard gates, current-access checks and S1
+    /// `PriorityConcat` federation as Discovery, without the evidence loop.
+    /// Live remote retrieval needs a Discovery evaluation binding, so a
+    /// remote Source contributes only its durable generation here.
+    pub async fn search_visible(
+        &self,
+        actor: &TrustedSearchScope,
+        visible: &[VisibleSourceRegistration],
+        routing: &RoutingConstraints,
+        request: DiscoveryRequest,
+        query: LexicalQuery,
+        max_candidates: usize,
+    ) -> Result<SearchOutcome, SearchError> {
+        let (sources, routing, mut gaps) = VisibleRouting::prepare(actor, visible, routing)?;
+        let routes = SourceRouter::plan(&request.need, &sources, &routing);
+        let body = query.field_scope == crate::ports::LexicalFieldScope::BodyOnly;
+        // Search is query-driven: Directory enumeration and server-side
+        // Structured filters evaluate no query text, so only lexical matches
+        // can be Search hits.
+        let support = RetrieverSupport {
+            lexical: self.config.retriever_support.lexical,
+            ..RetrieverSupport::default()
+        };
+        let inputs = RetrievalInputs {
+            lexical_query: Some(query.text.clone()),
+            max_initial_retrievers_per_source: self
+                .config
+                .retrieval_inputs
+                .max_initial_retrievers_per_source
+                .max(1),
+            ..RetrievalInputs::default()
+        };
+        let plan =
+            RetrieverPlanner::plan(self.config.retriever_profile, &routes, &support, &inputs);
+        for route in &routes.routes {
+            gaps.extend(
+                route
+                    .unresolved_gaps
+                    .iter()
+                    .filter(|gap| {
+                        !matches!(gap.reason, GapReason::Authority | GapReason::Freshness)
+                    })
+                    .cloned(),
+            );
+        }
+        let mut pins = BTreeMap::new();
+        for route in &routes.routes {
+            if !plan.initial_actions.iter().any(|action| {
+                action.source_id == route.source_id && action.state == ActionState::Planned
+            }) {
+                continue;
+            }
+            match self.ports.generations.pin_current(route.source_id).await? {
+                Some(manifest) if manifest.source_id == route.source_id => {
+                    let key = manifest.key();
+                    let concepts = self.ports.concepts.pin_view(key).await?;
+                    pins.insert(route.source_id, PinnedSource { key, concepts });
+                }
+                Some(_) => {
+                    return Err(SearchError::OperationFailed(
+                        "pinned generation belongs to another Source".into(),
+                    ));
+                }
+                None => push_gap(
+                    &mut gaps,
+                    source_gap(route.source_id, "projection_generation_unavailable", false),
+                ),
+            }
+        }
+        let mut records = Vec::new();
+        let mut bounded = false;
+        let mut body_sources = BTreeSet::new();
+        for action in plan
+            .initial_actions
+            .iter()
+            .filter(|action| action.state == ActionState::Planned)
+        {
+            let Some(pin) = pins.get(&action.source_id) else {
+                continue;
+            };
+            if !matches!(
+                action.retriever,
+                RetrieverKind::Directory | RetrieverKind::Structured | RetrieverKind::Lexical
+            ) {
+                continue;
+            }
+            let executed = RetrievalExecutor::execute(
+                &self.ports.retrieval,
+                RetrievalExecutionInput {
+                    action,
+                    generation: pin.key,
+                    request: &request,
+                    structured_filters: &self.config.structured_filters,
+                    lexical_query: (!body).then_some(&query),
+                    body_query: body.then_some(&query),
+                    graph_plan: None,
+                },
+            )
+            .await;
+            let Ok(result) = executed else {
+                push_gap(
+                    &mut gaps,
+                    source_gap(
+                        action.source_id,
+                        if body {
+                            "body_retrieval_unavailable"
+                        } else {
+                            "retrieval_unavailable"
+                        },
+                        false,
+                    ),
+                );
+                continue;
+            };
+            if body {
+                body_sources.insert(action.source_id);
+            }
+            for raw in result.hits {
+                // A body scope keeps only hits with a verified Unit span.
+                if body && raw.unit_hit.is_none() {
+                    continue;
+                }
+                if records.len() >= max_candidates {
+                    bounded = true;
+                    break;
+                }
+                let projection = match raw.candidate.resource_ref {
+                    Some(resource) => {
+                        self.ports
+                            .generations
+                            .resource_at(pin.key, resource)
+                            .await?
+                    }
+                    None => None,
+                };
+                if let Some(ref detail) = projection {
+                    validate_detail(detail, pin.key, resource_of(&raw)?)?;
+                }
+                records.push(HitRecord {
+                    raw,
+                    projection,
+                    probe_facts: BTreeMap::new(),
+                    probe_outcomes: BTreeMap::new(),
+                    probe_origins: BTreeMap::new(),
+                });
+            }
+        }
+        // Final gate: ranks and counts are computed only over hits that are
+        // currently allowed after every Source read finished.
+        let mut allowed = Vec::with_capacity(records.len());
+        for record in records {
+            if self
+                .currently_allowed(&record.raw.candidate, &request)
+                .await
+            {
+                allowed.push(record);
+            }
+        }
+        let records = allowed;
+        let hard_gates = records
+            .iter()
+            .map(|record| {
+                let pin = pins.get(&record.raw.candidate.source_ref).ok_or_else(|| {
+                    SearchError::OperationFailed("search hit has no pinned Source".into())
+                })?;
+                Ok(self.hard_gates(record, pin, &request))
+            })
+            .collect::<Result<Vec<_>, SearchError>>()?;
+        let mut lists = Vec::new();
+        for action in plan.initial_actions.iter() {
+            let Some(pin) = pins.get(&action.source_id) else {
+                continue;
+            };
+            let hits: Vec<_> = records
+                .iter()
+                .zip(&hard_gates)
+                .filter(|(record, _)| record.raw.retriever_id == action.retriever_id)
+                .map(|(record, gates)| RankedCandidateHit {
+                    candidate: record.raw.candidate.clone(),
+                    hard_gates: gates.clone(),
+                    identity_evidence: vec![],
+                    raw_score: None,
+                    evidence_refs: vec![],
+                })
+                .collect();
+            if !hits.is_empty() {
+                lists.push(RetrieverRankList {
+                    retriever_id: action.retriever_id.clone(),
+                    generation: pin.key,
+                    hits,
+                });
+            }
+        }
+        let federation = CandidateFederator::merge(&lists, FusionStrategy::PriorityConcat)
+            .map_err(|error| SearchError::OperationFailed(error.to_string()))?;
+        let mut hits = Vec::new();
+        let mut seen = BTreeSet::new();
+        for group in &federation.ranked {
+            let mut matched = BTreeSet::new();
+            let mut first: Option<(SourceId, ResourceId, ProjectionGenerationKey)> = None;
+            for hit in &group.hits {
+                let Some(resource) = hit.candidate.resource_ref else {
+                    continue;
+                };
+                if hit
+                    .hard_gates
+                    .applicability
+                    .qualify(&hit.candidate)
+                    .is_none()
+                {
+                    continue;
+                }
+                matched.insert(if body {
+                    MatchedField::Body
+                } else if hit
+                    .candidate
+                    .matched_signals
+                    .iter()
+                    .any(|signal| matches!(signal.as_str(), "title" | "canonical_name" | "aliases"))
+                {
+                    MatchedField::Title
+                } else {
+                    MatchedField::Metadata
+                });
+                first.get_or_insert((hit.candidate.source_ref, resource, hit.trace.generation));
+            }
+            let Some((source_id, resource_id, generation)) = first else {
+                continue;
+            };
+            if !seen.insert((generation, resource_id)) {
+                continue;
+            }
+            let projection = records
+                .iter()
+                .find(|record| {
+                    record.raw.generation == generation
+                        && record.raw.candidate.resource_ref == Some(resource_id)
+                })
+                .and_then(|record| record.projection.as_ref());
+            hits.push(SearchHit {
+                source_id,
+                resource_id,
+                generation,
+                resource_kind: projection.map(|detail| detail.directory.kind),
+                resource_version: projection.and_then(|detail| detail.directory.resource_version),
+                title: projection.and_then(|detail| detail.directory.title.clone()),
+                matched: matched.into_iter().collect(),
+            });
+        }
+        Ok(SearchOutcome {
+            hits,
+            pins: pins
+                .iter()
+                .map(|(source, pin)| (*source, pin.key))
+                .collect(),
+            gaps,
+            body_sources,
+            bounded,
+        })
+    }
+
+    /// Executes one remote Source's bounded initial actions as a single batch,
+    /// stages and verifies them, then seals and registers the generation.
+    /// Provider failures become gaps; only completed actions are sealed.
+    async fn seal_remote(
+        &self,
+        routes: &SourceRoutePlan,
+        plan: &crate::retrieval::RetrievalPlan,
+        execution: RemoteSourceExecution<'_>,
+        view: &CompositeEvaluationReadView<'_>,
+        sealed: &mut BTreeSet<String>,
+        gaps: &mut Vec<InformationGap>,
+    ) -> Result<(), SearchError> {
+        let context = &execution.context;
+        let source = context.source_scope().source_id();
+        let unavailable = source_gap(
+            source,
+            "remote_batch_unavailable",
+            source_required(routes, source),
+        );
+        let mut planned = Vec::new();
+        for action in plan
+            .initial_actions
+            .iter()
+            .filter(|action| {
+                action.source_id == source
+                    && action.state == ActionState::Planned
+                    && is_remote(action.retriever)
+            })
+            .take(context.registration().limits().max_actions)
+        {
+            if let Some(operation) = remote_operation(action, &self.config.retrieval_inputs)
+                && let Ok(remote) = PlannedRemoteAction::new(
+                    context,
+                    sealed_retriever_id(&action.retriever_id),
+                    operation,
+                )
+            {
+                planned.push((action.retriever_id.clone(), remote));
+            }
+        }
+        if planned.is_empty() {
+            return Ok(());
+        }
+        let actions: Vec<_> = planned.iter().map(|(_, action)| action.clone()).collect();
+        if validate_remote_batch(context, &actions).is_err() {
+            push_gap(gaps, unavailable);
+            return Ok(());
+        }
+        let Ok(outcomes) = execution.port.execute_batch(context, &actions).await else {
+            push_gap(gaps, unavailable);
+            return Ok(());
+        };
+        let mut builder = RemoteGenerationBuilder::new(
+            context.clone(),
+            context.binding().evaluation(),
+            EvaluationLeaseId::new(),
+        )?;
+        let mut completed = BTreeSet::new();
+        for outcome in outcomes {
+            let RemoteActionOutcome::Completed(response) = outcome else {
+                continue;
+            };
+            let id = response.retriever_id().to_owned();
+            if !actions.iter().any(|action| action.retriever_id() == id) {
+                push_gap(gaps, unavailable);
+                return Ok(());
+            }
+            match builder.stage(*response) {
+                Ok(StageOutcome::Staged) => {
+                    completed.insert(id);
+                }
+                Ok(StageOutcome::Gap(gap)) => push_gap(gaps, gap),
+                // A conflicting or foreign response aborts the whole batch.
+                Err(_) => {
+                    push_gap(gaps, unavailable);
+                    return Ok(());
+                }
+            }
+        }
+        if completed.is_empty() {
+            return Ok(());
+        }
+        if builder
+            .verify_evidence(&execution.lineage, execution.provenance)
+            .await
+            .is_err()
+        {
+            push_gap(
+                gaps,
+                source_gap(source, "remote_evidence_unavailable", false),
+            );
+        }
+        let Ok(generation) = builder.seal() else {
+            push_gap(gaps, unavailable);
+            return Ok(());
+        };
+        for gap in generation.gaps() {
+            push_gap(gaps, gap.clone());
+        }
+        if view
+            .register_remote(generation, execution.lease)
+            .await
+            .is_err()
+        {
+            push_gap(gaps, unavailable);
+            return Ok(());
+        }
+        sealed.extend(
+            planned
+                .into_iter()
+                .filter(|(_, action)| completed.contains(action.retriever_id()))
+                .map(|(id, _)| id),
+        );
+        Ok(())
+    }
+
+    /// A finite Source-owned scan may turn the still-Unknown exact Claim into
+    /// `Absent`, but only for the selector parent, only when no Unit of that
+    /// parent was hit, and only with a proof bound to this Claim and literal.
+    async fn exact_absence(
+        &self,
+        result: &mut DiscoveryResult,
+        request: &DiscoveryRequest,
+        pins: &BTreeMap<SourceId, PinnedSource>,
+        records: &[HitRecord],
+        spec: &BodySearchSpec,
+        claim_id: ClaimId,
+    ) -> Result<(), SearchError> {
+        let (Some(absence), Some(exact)) = (self.absence, self.exact_text) else {
+            return Ok(());
+        };
+        if result
+            .evidence_set
+            .iter()
+            .any(|claim| claim.claim_id == claim_id && claim.state != ClaimState::Unknown)
+        {
+            return Ok(());
+        }
+        let literal = normalize_unit_text(&spec.query.text);
+        for pin in pins.values() {
+            let Ok(Some(selector)) = exact.selector_for(pin.key, claim_id).await else {
+                continue;
+            };
+            if selector.claim_id != claim_id
+                || selector.predicate != CONTAINS_EXACT_PREDICATE
+                || selector.expected_exact_text != literal
+                || records.iter().any(|record| {
+                    record
+                        .raw
+                        .unit_hit
+                        .as_ref()
+                        .is_some_and(|unit| unit.parent_resource == selector.parent_resource)
+                })
+            {
+                continue;
+            }
+            let pinned = match absence.pin_body(pin.key).await {
+                Ok(Some(pinned)) if pinned.generation == pin.key => pinned,
+                _ => {
+                    push_gap(
+                        &mut result.unresolved_gaps,
+                        InformationGap::new(
+                            "document.body.absence_unavailable",
+                            GapReason::Availability,
+                            true,
+                        ),
+                    );
+                    continue;
+                }
+            };
+            let outcome = absence
+                .verify_absence(
+                    request,
+                    &pinned,
+                    &selector,
+                    ExactScanBudget::initial(std::time::Instant::now()),
+                )
+                .await;
+            let gap = match outcome {
+                Ok(ExactTextAbsenceOutcome::ProvenAbsent(proof))
+                    if proof_bound(&proof, claim_id, &selector, &pinned) =>
+                {
+                    result
+                        .evidence_set
+                        .retain(|claim| claim.claim_id != claim_id);
+                    result.evidence_set.push(absent_claim(&proof, &selector));
+                    result.evidence_sufficiency = assess_claim_evidence(
+                        &request.need.completion_requirement,
+                        &result.evidence_set,
+                    )?;
+                    return Ok(());
+                }
+                Ok(ExactTextAbsenceOutcome::ProvenAbsent(_)) => InformationGap::new(
+                    "document.body.absence_unbound",
+                    GapReason::Availability,
+                    true,
+                ),
+                // A literal the index did not return: an integrity/recall signal only.
+                Ok(ExactTextAbsenceOutcome::MatchFound) => InformationGap::new(
+                    "document.body.recall_mismatch",
+                    GapReason::Availability,
+                    true,
+                ),
+                Ok(ExactTextAbsenceOutcome::Unknown(mut gap)) => {
+                    gap.blocking = true;
+                    gap
+                }
+                Err(_) => InformationGap::new(
+                    "document.body.absence_unavailable",
+                    GapReason::Availability,
+                    true,
+                ),
+            };
+            push_gap(&mut result.unresolved_gaps, gap);
+        }
+        Ok(())
+    }
+
+    /// Exact-text Claim for one qualified parent: the trusted selector must name
+    /// this parent and the request literal, and the owning Source must verify the
+    /// retained Unit hit. Every failure leaves the Claim to the Unknown fallback.
+    async fn exact_text_claim(
+        &self,
+        generation: ProjectionGenerationKey,
+        resource: ResourceId,
+        claim_id: ClaimId,
+        spec: &BodySearchSpec,
+        request: &DiscoveryRequest,
+        records: &[HitRecord],
+    ) -> Option<Claim> {
+        let port = self.exact_text?;
+        let hit: &KnowledgeUnitHitRef = records
+            .iter()
+            .filter_map(|record| record.raw.unit_hit.as_ref())
+            .find(|unit| unit.generation == generation && unit.parent_resource == resource)?;
+        let selector = port.selector_for(generation, claim_id).await.ok()??;
+        if selector.claim_id != claim_id
+            || selector.parent_resource != resource
+            || selector.predicate != CONTAINS_EXACT_PREDICATE
+            || normalize_unit_text(&spec.query.text) != selector.expected_exact_text
+        {
+            return None;
+        }
+        let verified = port.resolve_hit(request, hit, &selector).await.ok()??;
+        let claim = assemble_verified_unit_text_claim(claim_id, &selector, &verified);
+        (claim.state == ClaimState::Supported).then_some(claim)
     }
 
     async fn currently_allowed(
@@ -530,7 +1409,19 @@ impl<'a> DiscoveryService<'a> {
         attempted: &[String],
         route_gaps: &[InformationGap],
         action_gaps: &[InformationGap],
+        body: Option<&BodySearchSpec>,
     ) -> Result<Evaluation, SearchError> {
+        // The exact-text Claim is assembled only from a verified Unit span; the
+        // stored-Assertion path keeps every other required Claim.
+        let exact_claim = body.and_then(|spec| spec.exact_text_claim);
+        let generic_requirement = match exact_claim {
+            None => Some(request.need.completion_requirement.clone()),
+            Some(exact) => {
+                let mut requirement = request.need.completion_requirement.clone();
+                requirement.required_claims.retain(|claim| *claim != exact);
+                (!requirement.required_claims.is_empty()).then_some(requirement)
+            }
+        };
         loop {
             let mut visible = Vec::new();
             for record in records.drain(..) {
@@ -629,15 +1520,27 @@ impl<'a> DiscoveryService<'a> {
                     if !seen_resources.insert((pin.key, resource)) {
                         continue;
                     }
-                    let resource_claims = assemble_resource_claims(
-                        pin.key,
-                        resource,
-                        &request.need.completion_requirement,
-                        self.ports.selectors,
-                        self.ports.assertions,
-                        self.ports.evidence,
-                    )
-                    .await?;
+                    let mut resource_claims = match &generic_requirement {
+                        Some(requirement) => {
+                            assemble_resource_claims(
+                                pin.key,
+                                resource,
+                                requirement,
+                                self.ports.selectors,
+                                self.ports.assertions,
+                                self.ports.evidence,
+                            )
+                            .await?
+                        }
+                        None => Vec::new(),
+                    };
+                    if let (Some(exact), Some(spec)) = (exact_claim, body)
+                        && let Some(claim) = self
+                            .exact_text_claim(pin.key, resource, exact, spec, request, records)
+                            .await
+                    {
+                        resource_claims.push(claim);
+                    }
                     qualified_resource.evidence_refs = resource_claims
                         .iter()
                         .flat_map(|claim| {
@@ -690,6 +1593,12 @@ impl<'a> DiscoveryService<'a> {
                 }
             }
             retrieval_trace.extend(probe_trace);
+            if let Some(exact) = exact_claim
+                && !claims.iter().any(|claim| claim.claim_id == exact)
+            {
+                // No verified span: the Claim stays Unknown without saying why.
+                claims.push(Claim::new(exact, ClaimState::Unknown));
+            }
             let sufficiency = assess_claim_evidence(&request.need.completion_requirement, &claims)?;
             let mut gaps = route_gaps.to_vec();
             // A visible factual conflict remains an InformationGap even when an
@@ -1052,6 +1961,70 @@ impl<'a> DiscoveryService<'a> {
                 Ok(Some((action, Some(key))))
             }
         }
+    }
+}
+
+fn validate_scope(request: &DiscoveryRequest, scope: &DiscoveryScope) -> Result<(), SearchError> {
+    validate_request(request)?;
+    if let Some(spec) = scope.body() {
+        spec.validate()?;
+        // An exact-text selector may bind only a Claim this request requires.
+        if spec.exact_text_claim.is_some_and(|claim| {
+            !request.need.required_claims.contains(&claim)
+                || !request
+                    .need
+                    .completion_requirement
+                    .required_claims
+                    .contains(&claim)
+        }) {
+            return Err(SearchError::InvalidRequest(
+                "exact-text claim is not a required claim of this request".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+const fn is_remote(kind: RetrieverKind) -> bool {
+    matches!(
+        kind,
+        RetrieverKind::RemoteEnumeration
+            | RetrieverKind::RemoteQuery
+            | RetrieverKind::DirectAddress
+            | RetrieverKind::LiveOnly
+    )
+}
+
+/// The trusted, Source-local input for one planned remote action.
+fn remote_operation(action: &RetrievalAction, inputs: &RetrievalInputs) -> Option<RemoteOperation> {
+    let source = action.source_id;
+    match action.retriever {
+        RetrieverKind::RemoteEnumeration => Some(RemoteOperation::Enumerate { cursor: None }),
+        RetrieverKind::RemoteQuery => {
+            inputs
+                .remote_queries
+                .get(&source)
+                .map(|input| RemoteOperation::Query {
+                    input: input.clone(),
+                })
+        }
+        RetrieverKind::DirectAddress => {
+            inputs
+                .native_ids
+                .get(&source)
+                .map(|native_id| RemoteOperation::Lookup {
+                    native_id: native_id.clone(),
+                })
+        }
+        RetrieverKind::LiveOnly => {
+            inputs
+                .live_inputs
+                .get(&source)
+                .map(|input| RemoteOperation::Live {
+                    input: input.clone(),
+                })
+        }
+        _ => None,
     }
 }
 
@@ -1479,6 +2452,84 @@ fn combine_state(left: ApplicabilityState, right: ApplicabilityState) -> Applica
         (Unresolved, _) | (_, Unresolved) => Unresolved,
         _ => Applicable,
     }
+}
+
+fn proof_bound(
+    proof: &crate::body_ports::ExactTextNegativeProof,
+    claim_id: ClaimId,
+    selector: &ExactTextSelector,
+    pinned: &PinnedBodyBundle,
+) -> bool {
+    let expected: [u8; 32] = Sha256::digest(selector.expected_exact_text.as_bytes()).into();
+    proof.claim_id() == claim_id
+        && proof.parent().resource_id == selector.parent_resource
+        && proof.parent().source_id == pinned.generation.source_id
+        && proof.generation() == pinned.generation
+        && proof.bundle_digest() == pinned.composite_digest
+        && proof.exact_text_sha256() == expected
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn absent_claim(
+    proof: &crate::body_ports::ExactTextNegativeProof,
+    selector: &ExactTextSelector,
+) -> Claim {
+    let parent = proof.parent().resource_id.as_uuid();
+    let generation = proof.generation();
+    let (items, units) = proof.binding_digests();
+    let mut claim = Claim::new(proof.claim_id(), ClaimState::Absent);
+    claim.subject = Some(parent.to_string());
+    claim.predicate = Some(proof.predicate().into());
+    claim.value = Some(TypedValue::String(selector.expected_exact_text.clone()));
+    let mut evidence = EvidenceReference::new(
+        generation.source_id,
+        format!(
+            "body-absence:v1:{}:{}:{parent}",
+            generation.source_id.as_uuid(),
+            generation.generation_id.as_uuid()
+        ),
+        EvidenceRole::Primary,
+    );
+    evidence.evidence_ref = Some(format!("body-absence-receipt:v1:{}", hex(&units)));
+    evidence.content_digest = Some(format!("sha256:{}", hex(&items)));
+    claim.evidence_refs.push(evidence);
+    claim
+}
+
+/// Body scope counts only Resources reached through a verified Unit hit. Title
+/// Assertions or Graph paths never make a body result complete on their own.
+fn restrict_to_body_hits(result: &mut DiscoveryResult, records: &[HitRecord]) {
+    let parents: BTreeSet<ResourceId> = records
+        .iter()
+        .filter_map(|record| record.raw.unit_hit.as_ref())
+        .map(|unit| unit.parent_resource)
+        .collect();
+    result
+        .qualified_resources
+        .retain(|qualified| parents.contains(&qualified.resource_ref));
+    if result.qualified_resources.is_empty() {
+        push_gap(
+            &mut result.unresolved_gaps,
+            InformationGap::new(
+                "document.body.match_unproven",
+                GapReason::UnsupportedCoverage,
+                true,
+            ),
+        );
+        if result.evidence_sufficiency == EvidenceSufficiency::Sufficient {
+            result.evidence_sufficiency = EvidenceSufficiency::Unresolved;
+        }
+    }
+    result.qualification_trace.push(format!(
+        "content_scope:body_required:unit_hits:{}",
+        records
+            .iter()
+            .filter(|record| record.raw.unit_hit.is_some())
+            .count()
+    ));
 }
 
 fn complete(result: &DiscoveryResult) -> bool {

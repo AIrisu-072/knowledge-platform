@@ -46,6 +46,8 @@ description = "Run Rust static checks"
 run = [
   "cargo check --workspace --locked",
   "cargo clippy --workspace --all-targets --locked -- -D warnings",
+  "cargo clippy -p search-source-http --all-targets --locked --features synthetic-loopback-test-only -- -D warnings",
+  "cargo clippy -p search-runtime --all-targets --locked --features synthetic-loopback-test-only -- -D warnings",
 ]
 
 [tasks."test:rust"]
@@ -59,6 +61,8 @@ if [ "$(uname -s)" = Linux ]; then
   export DIFF_WORKER_BIN="$(realpath "${CARGO_TARGET_DIR:-target}/debug/document-diff-worker")"
 fi
 cargo nextest run --workspace
+cargo nextest run -p search-source-http --features synthetic-loopback-test-only
+cargo nextest run -p search-runtime --features synthetic-loopback-test-only --test server_e2e
 '''
 
 [tasks."sqlx:prepare"]
@@ -337,6 +341,10 @@ run = [
   "cargo deny --manifest-path experiments/search-discovery-poc/Cargo.toml --config experiments/search-discovery-poc/deny.toml check",
   "cargo run --locked --manifest-path experiments/search-discovery-poc/Cargo.toml --bin search-discovery-poc -- report --format json > experiments/search-discovery-poc/target/qualification.json",
 ]
+
+[tasks."poc:search-graph:qualify"]
+description = "Measure one P3 Graph backend/profile (BACKEND, PROFILE, PG_REF, NEO_REF) on a dedicated runner"
+run = "bash experiments/search-graph-poc/qualify.sh"
 
 [tasks."poc:dsi:test"]
 run = ["cargo test --locked --manifest-path experiments/document-semantic-inspection/Cargo.toml"]

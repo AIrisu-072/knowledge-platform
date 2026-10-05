@@ -79,6 +79,7 @@ impl ApplicabilityEvaluation {
         }
         Some(QualifiedResource {
             resource_ref: candidate.resource_ref?,
+            source_ref: Some(candidate.source_ref),
             usage_profile_ref: None,
             applicability: self.state,
             matched_conditions: self.matched_conditions.clone(),

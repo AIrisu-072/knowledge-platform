@@ -2,11 +2,13 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
 
 use search_core::id::{ResourceId, SourceId};
+use search_core::knowledge_unit::KnowledgeUnit;
 use search_core::projection::{ProjectionGenerationKey, ProjectionGenerationManifest};
 use search_core::resource::ResourceKind;
 use search_core::source::{DiscoverableSource, DiscoveryMode, RetentionMode};
 use tantivy::{Index, IndexReader, doc};
 
+use crate::body::{IndexedUnitDoc, UnitIndex, build_unit_index, enumerate};
 use crate::schema::{
     ANALYZER_VERSION, LEXICAL_SCHEMA_VERSION, LexicalFields, kind_token, lexical_schema,
     normalize_exact,
@@ -14,7 +16,8 @@ use crate::schema::{
 
 /// Content explicitly furnished by the owning Source for indexing. There is
 /// intentionally no conversion from ResourceBody or DSI extraction evidence.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SourceSuppliedBody {
     source_id: SourceId,
     text: String,
@@ -27,11 +30,16 @@ impl SourceSuppliedBody {
             text: text.into(),
         }
     }
+
+    pub(crate) fn text(&self) -> &str {
+        &self.text
+    }
 }
 
 /// Source-provided lexical fields. The adapter never extracts or infers text
 /// from a DiscoverableResource or a document-inspection result.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LexicalDocument {
     pub resource_ref: ResourceId,
     pub kind: ResourceKind,
@@ -53,6 +61,7 @@ pub struct LexicalBuildInput {
     projection_schema_version: String,
     lens_version: u32,
     documents: Vec<LexicalDocument>,
+    body_units: Option<Vec<KnowledgeUnit>>,
 }
 
 impl LexicalBuildInput {
@@ -69,7 +78,23 @@ impl LexicalBuildInput {
             projection_schema_version: projection_schema_version.into(),
             lens_version,
             documents,
+            body_units: None,
         }
+    }
+
+    /// Make the generation body-ready (schema-2) with exactly these verified
+    /// Units. An empty collection is still body-ready: every item had no text.
+    pub fn with_body_units(mut self, units: Vec<KnowledgeUnit>) -> Self {
+        self.body_units = Some(units);
+        self
+    }
+
+    pub(crate) fn documents(&self) -> &[LexicalDocument] {
+        &self.documents
+    }
+
+    pub(crate) fn body_units(&self) -> Option<&[KnowledgeUnit]> {
+        self.body_units.as_deref()
     }
 }
 
@@ -103,6 +128,20 @@ pub enum LexicalIndexError {
     UnknownGeneration,
     #[error("lexical index lock is poisoned")]
     LockPoisoned,
+    #[error("body Unit belongs to another Source")]
+    UnitSourceMismatch,
+    #[error("body Unit parent Resource is not in the generation")]
+    UnitParentMissing,
+    #[error("body Unit occurs more than once in generation")]
+    DuplicateUnit,
+    #[error("body Unit document cannot be encoded or decoded")]
+    UnitEncoding,
+    #[error("lexical generation is not body-ready")]
+    NotBodyReady,
+    #[error("persisted lexical generation is missing, foreign or inconsistent")]
+    PersistedMismatch,
+    #[error("lexical index file I/O failed")]
+    Io,
     #[error(transparent)]
     Tantivy(#[from] tantivy::TantivyError),
 }
@@ -119,13 +158,14 @@ pub(crate) struct GenerationIndex {
     pub reader: IndexReader,
     pub fields: LexicalFields,
     pub documents: BTreeMap<String, DocumentMetadata>,
+    pub units: Option<UnitIndex>,
 }
 
 /// A generation is assembled privately, then inserted once. Existing keyed
 /// segments remain readable when another generation is built.
 #[derive(Default)]
 pub struct TantivyLexicalIndex {
-    generations: RwLock<BTreeMap<ProjectionGenerationKey, Arc<GenerationIndex>>>,
+    pub(crate) generations: RwLock<BTreeMap<ProjectionGenerationKey, Arc<GenerationIndex>>>,
 }
 
 impl TantivyLexicalIndex {
@@ -152,6 +192,28 @@ impl TantivyLexicalIndex {
         manifest: ProjectionGenerationManifest,
         source: &DiscoverableSource,
         input: LexicalBuildInput,
+    ) -> Result<(), LexicalIndexError> {
+        self.assemble(manifest, source, input, None)
+    }
+
+    /// Builds the generation into `dir` (Resource index, Unit index and the
+    /// Source-supplied input sidecar) and registers it for queries.
+    pub fn build_generation_at(
+        &self,
+        manifest: ProjectionGenerationManifest,
+        source: &DiscoverableSource,
+        input: LexicalBuildInput,
+        dir: &std::path::Path,
+    ) -> Result<(), LexicalIndexError> {
+        self.assemble(manifest, source, input, Some(dir))
+    }
+
+    fn assemble(
+        &self,
+        manifest: ProjectionGenerationManifest,
+        source: &DiscoverableSource,
+        input: LexicalBuildInput,
+        dir: Option<&std::path::Path>,
     ) -> Result<(), LexicalIndexError> {
         let key = manifest.key();
         if source.source_id != key.source_id || input.source_id != key.source_id {
@@ -206,6 +268,44 @@ impl TantivyLexicalIndex {
                 }
             }
         }
+        if let Some(units) = &input.body_units {
+            if !units.is_empty()
+                && (source.retention_mode != RetentionMode::PersistentResource
+                    || !source.supports(DiscoveryMode::LocalContentSearch))
+            {
+                return Err(LexicalIndexError::BodyNotPermitted);
+            }
+            let parents: std::collections::BTreeSet<_> = input
+                .documents
+                .iter()
+                .map(|document| document.resource_ref)
+                .collect();
+            let mut seen = std::collections::BTreeSet::new();
+            for unit in units {
+                if unit.version.source_id != key.source_id {
+                    return Err(LexicalIndexError::UnitSourceMismatch);
+                }
+                if !parents.contains(&unit.version.resource_id) {
+                    return Err(LexicalIndexError::UnitParentMissing);
+                }
+                if !seen.insert(unit.unit_id) {
+                    return Err(LexicalIndexError::DuplicateUnit);
+                }
+            }
+        }
+        if let Some(dir) = dir {
+            crate::persist::write_sidecar(dir, &manifest, source, &input)?;
+        }
+        let unit_index = input
+            .body_units
+            .as_deref()
+            .map(|units| match dir {
+                Some(dir) => {
+                    crate::body::build_unit_index_at(units, &dir.join(crate::persist::UNITS_DIR))
+                }
+                None => build_unit_index(units),
+            })
+            .transpose()?;
         let mut documents = input.documents;
         documents.sort_by_key(|document| document.resource_ref);
         if documents
@@ -216,7 +316,14 @@ impl TantivyLexicalIndex {
         }
 
         let (schema, fields) = lexical_schema();
-        let index = Index::create_in_ram(schema);
+        let index = match dir {
+            Some(dir) => {
+                let path = dir.join(crate::persist::RESOURCES_DIR);
+                std::fs::create_dir_all(&path).map_err(|_| LexicalIndexError::Io)?;
+                Index::create_in_dir(path, schema)?
+            }
+            None => Index::create_in_ram(schema),
+        };
         let mut writer = index.writer(15_000_000)?;
         let mut metadata = BTreeMap::new();
         for document in documents {
@@ -261,6 +368,7 @@ impl TantivyLexicalIndex {
             reader,
             fields,
             documents: metadata,
+            units: unit_index,
         });
         let mut generations = self
             .generations
@@ -270,6 +378,100 @@ impl TantivyLexicalIndex {
             return Err(LexicalIndexError::DuplicateGeneration);
         }
         generations.insert(key, generation);
+        Ok(())
+    }
+
+    /// Searchable Unit documents of a body-ready generation, read back from the
+    /// committed index rather than from builder inputs.
+    pub fn enumerate_unit_docs(
+        &self,
+        key: ProjectionGenerationKey,
+    ) -> Result<Vec<IndexedUnitDoc>, LexicalIndexError> {
+        let generation = self.generation(key)?;
+        let units = generation
+            .units
+            .as_ref()
+            .ok_or(LexicalIndexError::NotBodyReady)?;
+        enumerate(key, units)
+    }
+
+    pub fn is_body_ready(&self, key: ProjectionGenerationKey) -> Result<bool, LexicalIndexError> {
+        Ok(self.generation(key)?.units.is_some())
+    }
+
+    /// Test-only corruption of a committed Unit index, used to prove that seals
+    /// compare the actual index instead of builder inputs.
+    #[cfg(feature = "fault-injection")]
+    pub fn inject_unit_fault(
+        &self,
+        key: ProjectionGenerationKey,
+        fault: UnitIndexFault,
+    ) -> Result<(), LexicalIndexError> {
+        let mut generations = self
+            .generations
+            .write()
+            .map_err(|_| LexicalIndexError::LockPoisoned)?;
+        let current = generations
+            .get(&key)
+            .cloned()
+            .ok_or(LexicalIndexError::UnknownGeneration)?;
+        let units = current
+            .units
+            .as_ref()
+            .ok_or(LexicalIndexError::NotBodyReady)?;
+        let mut docs = enumerate(key, units)?;
+        match fault {
+            UnitIndexFault::DropFirst => {
+                docs.remove(0);
+            }
+            UnitIndexFault::DuplicateFirst => docs.push(docs[0].clone()),
+            UnitIndexFault::ReplaceFirstText(text) => docs[0].text = text,
+        }
+        let rebuilt: Vec<KnowledgeUnit> = docs
+            .into_iter()
+            .map(|doc| KnowledgeUnit {
+                unit_id: doc.unit_id,
+                version: doc.version,
+                part: doc.part,
+                parent_unit_id: None,
+                ordinal: doc.ordinal,
+                kind: doc.kind,
+                text: doc.text,
+                locator: doc.locator,
+                text_sha256: doc.text_sha256,
+                provenance: search_core::knowledge_unit::UnitProvenance {
+                    source_snapshot: String::new(),
+                    authoritative_representation_ref: doc.authoritative_representation_ref,
+                    raw: doc.raw,
+                    detected_format: search_core::knowledge_unit::FormatId::Text,
+                    archive_inner_format: None,
+                    profile: doc.profile,
+                    parser_build_id: "fault".into(),
+                },
+            })
+            .collect();
+        let replaced = GenerationIndex {
+            index: current.index.clone(),
+            reader: current.index.reader()?,
+            fields: current.fields,
+            documents: current
+                .documents
+                .iter()
+                .map(|(id, metadata)| {
+                    (
+                        id.clone(),
+                        DocumentMetadata {
+                            resource_ref: metadata.resource_ref,
+                            kind: metadata.kind,
+                            locator: metadata.locator.clone(),
+                            provenance: metadata.provenance.clone(),
+                        },
+                    )
+                })
+                .collect(),
+            units: Some(build_unit_index(&rebuilt)?),
+        };
+        generations.insert(key, Arc::new(replaced));
         Ok(())
     }
 
@@ -284,4 +486,13 @@ impl TantivyLexicalIndex {
             .cloned()
             .ok_or(LexicalIndexError::UnknownGeneration)
     }
+}
+
+/// Committed-index corruptions available only with the fault-injection feature.
+#[cfg(feature = "fault-injection")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnitIndexFault {
+    DropFirst,
+    DuplicateFirst,
+    ReplaceFirstText(String),
 }

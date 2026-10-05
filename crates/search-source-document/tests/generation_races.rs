@@ -376,6 +376,7 @@ async fn discovery_keeps_one_runtime_generation_when_new_document_publishes_mid_
                 generations: &traced,
                 concepts: &traced,
                 retrieval: RetrievalExecutionPorts {
+                    remote: None,
                     directory: None,
                     structured: None,
                     lexical: Some(&paused_lexical),
@@ -499,6 +500,7 @@ async fn discovery_keeps_one_runtime_generation_when_new_document_publishes_mid_
             generations: &projection,
             concepts: &projection,
             retrieval: RetrievalExecutionPorts {
+                remote: None,
                 directory: None,
                 structured: None,
                 lexical: Some(&lexical),
@@ -771,6 +773,7 @@ async fn source_outage_fails_without_receipt_or_replacing_stored_generation() {
             generations: &projection,
             concepts: &projection,
             retrieval: RetrievalExecutionPorts {
+                remote: None,
                 directory: None,
                 structured: None,
                 lexical: Some(&lexical),

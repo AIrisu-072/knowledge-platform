@@ -1,0 +1,334 @@
+//! P7-05: file-backed lexical artifacts.
+//!
+//! A generation directory is built under the trusted staging root, every file
+//! and directory is fsynced, it is renamed once to the immutable final path
+//! derived only from the trusted root and the key, and the parent is fsynced.
+//! The seal reopens the real index: the logical P1 digest is recomputed from
+//! what is stored, every searchable Unit document is matched one-to-one with
+//! the Unit manifest, and the file tree digest covers every byte. Files and
+//! database rows cannot commit atomically, so READY, CAS, pin and return all
+//! reopen and revalidate.
+
+use std::path::{Path, PathBuf};
+
+use search_application::search_core::projection::{
+    ProjectionGenerationKey, ProjectionGenerationManifest,
+};
+use search_application::search_core::source::DiscoverableSource;
+use search_source_document::{ArtifactReceipt, BodyUnitManifest, seal_lexical};
+use search_tantivy::{IndexedUnitDoc, TantivyLexicalIndex};
+use sha2::{Digest, Sha256};
+use sqlx::{PgPool, Row};
+
+pub const LEXICAL_INDEX_FORMAT_VERSION: &str = "tantivy-dir-v1";
+
+/// What a reopened, sealed lexical generation directory contains.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LexicalSealV1 {
+    pub key: ProjectionGenerationKey,
+    pub schema_version: String,
+    pub analyzer_version: String,
+    pub logical_digest: [u8; 32],
+    pub logical_count: u64,
+    pub searchable_doc_count: u64,
+    pub unit_seal_digest: [u8; 32],
+    pub unit_seal_count: u64,
+    pub tree_digest: [u8; 32],
+    pub index_relpath: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LexicalArtifactError {
+    /// Staging or final path is not the trusted path for this key.
+    Path,
+    /// The final directory already exists or the rename/fsync failed.
+    Io,
+    /// The directory does not reopen as this generation's index.
+    Index,
+    /// Searchable Unit documents differ from the Unit manifest.
+    Seal,
+    /// The reopened logical digest differs from the expected P1 receipt.
+    Receipt,
+    /// The saved artifact row differs from what is on disk now.
+    Drift,
+    /// The database refused the row: no BUILDING parent with a live guard.
+    Rejected,
+    StoreUnknown,
+}
+
+impl From<sqlx::Error> for LexicalArtifactError {
+    fn from(error: sqlx::Error) -> Self {
+        match error.as_database_error().and_then(|e| e.code()).as_deref() {
+            Some("23514" | "23503" | "23505" | "42501") => Self::Rejected,
+            _ => Self::StoreUnknown,
+        }
+    }
+}
+
+fn sha256_text(digest: &[u8; 32]) -> String {
+    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    format!("sha256:{hex}")
+}
+
+fn frame(hasher: &mut Sha256, bytes: &[u8]) {
+    hasher.update((bytes.len() as u64).to_be_bytes());
+    hasher.update(bytes);
+}
+
+#[cfg(unix)]
+fn sync_path(path: &Path) -> Result<(), LexicalArtifactError> {
+    std::fs::File::open(path)
+        .and_then(|handle| handle.sync_all())
+        .map_err(|_| LexicalArtifactError::Io)
+}
+
+#[cfg(not(unix))]
+fn sync_path(path: &Path) -> Result<(), LexicalArtifactError> {
+    if path.is_file() {
+        std::fs::File::open(path)
+            .and_then(|handle| handle.sync_all())
+            .map_err(|_| LexicalArtifactError::Io)?;
+    }
+    Ok(())
+}
+
+/// Index lock files are transient and excluded from the tree digest.
+fn is_lock(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|extension| extension == "lock")
+}
+
+/// Every regular file below `dir`, as sorted `/`-separated relative paths.
+fn tree_files(dir: &Path) -> Result<Vec<(String, PathBuf)>, LexicalArtifactError> {
+    let mut out = Vec::new();
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(current) = pending.pop() {
+        for entry in std::fs::read_dir(&current).map_err(|_| LexicalArtifactError::Io)? {
+            let entry = entry.map_err(|_| LexicalArtifactError::Io)?;
+            let kind = entry.file_type().map_err(|_| LexicalArtifactError::Io)?;
+            let path = entry.path();
+            if kind.is_symlink() {
+                return Err(LexicalArtifactError::Index);
+            } else if kind.is_dir() {
+                pending.push(path);
+            } else if kind.is_file() && !is_lock(&path) {
+                let relative = path
+                    .strip_prefix(dir)
+                    .map_err(|_| LexicalArtifactError::Path)?
+                    .components()
+                    .map(|part| part.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                out.push((relative, path));
+            }
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+fn tree_digest(dir: &Path) -> Result<[u8; 32], LexicalArtifactError> {
+    let mut hasher = Sha256::new();
+    hasher.update(b"lexical-tree:v1\0");
+    let files = tree_files(dir)?;
+    hasher.update((files.len() as u64).to_be_bytes());
+    for (relative, path) in files {
+        let bytes = std::fs::read(&path).map_err(|_| LexicalArtifactError::Io)?;
+        frame(&mut hasher, relative.as_bytes());
+        hasher.update((bytes.len() as u64).to_be_bytes());
+        hasher.update(Sha256::digest(&bytes));
+    }
+    Ok(hasher.finalize().into())
+}
+
+/// Ordered binding of every searchable Unit document.
+fn unit_seal(units: &[IndexedUnitDoc]) -> Result<[u8; 32], LexicalArtifactError> {
+    let mut ordered: Vec<&IndexedUnitDoc> = units.iter().collect();
+    ordered.sort_by_key(|doc| doc.unit_id);
+    let mut hasher = Sha256::new();
+    hasher.update(b"lexical-unit-seal:v1\0");
+    hasher.update((ordered.len() as u64).to_be_bytes());
+    for doc in ordered {
+        frame(&mut hasher, doc.unit_id.to_string().as_bytes());
+        hasher.update(doc.parent_resource.as_uuid().as_bytes());
+        frame(&mut hasher, doc.part.source_native_part_id.as_bytes());
+        frame(&mut hasher, doc.part.logical_path.as_bytes());
+        hasher.update(doc.part.ordinal.to_be_bytes());
+        hasher.update(doc.ordinal.to_be_bytes());
+        frame(
+            &mut hasher,
+            &doc.locator
+                .encode()
+                .map_err(|_| LexicalArtifactError::Seal)?,
+        );
+        hasher.update(doc.text_sha256);
+    }
+    Ok(hasher.finalize().into())
+}
+
+/// Lexical artifact directories under one trusted root plus their rows.
+#[derive(Clone)]
+pub struct LexicalArtifactStore {
+    root: PathBuf,
+    pool: PgPool,
+}
+
+impl LexicalArtifactStore {
+    pub fn new(root: impl Into<PathBuf>, pool: PgPool) -> Self {
+        Self {
+            root: root.into(),
+            pool,
+        }
+    }
+
+    pub fn relpath(key: ProjectionGenerationKey) -> String {
+        format!(
+            "generations/{}/{}",
+            key.source_id.as_uuid(),
+            key.generation_id.as_uuid()
+        )
+    }
+
+    /// The only directory a builder may stage this key's index in.
+    pub fn staging_dir(&self, key: ProjectionGenerationKey) -> PathBuf {
+        self.root.join("staging").join(format!(
+            "{}-{}",
+            key.source_id.as_uuid(),
+            key.generation_id.as_uuid()
+        ))
+    }
+
+    pub fn final_dir(&self, key: ProjectionGenerationKey) -> PathBuf {
+        self.root.join(Self::relpath(key))
+    }
+
+    /// Seals what is on disk now for `manifest`, without any database row.
+    pub fn seal_from_disk(
+        &self,
+        manifest: &ProjectionGenerationManifest,
+        source: &DiscoverableSource,
+        unit_manifest: &BodyUnitManifest,
+    ) -> Result<LexicalSealV1, LexicalArtifactError> {
+        let key = manifest.key();
+        if unit_manifest.key != key {
+            return Err(LexicalArtifactError::Seal);
+        }
+        let dir = self.final_dir(key);
+        let tree = tree_digest(&dir)?;
+        let persisted = TantivyLexicalIndex::inspect_persisted(manifest, source, &dir)
+            .map_err(|_| LexicalArtifactError::Index)?;
+        seal_lexical(unit_manifest, &persisted.units).map_err(|_| LexicalArtifactError::Seal)?;
+        let unit_count =
+            u64::try_from(persisted.units.len()).map_err(|_| LexicalArtifactError::Seal)?;
+        Ok(LexicalSealV1 {
+            key,
+            schema_version: persisted.schema_version.into(),
+            analyzer_version: persisted.analyzer_version.into(),
+            logical_digest: persisted.logical.digest,
+            logical_count: persisted.logical.count,
+            searchable_doc_count: persisted.resource_docs + unit_count,
+            unit_seal_digest: unit_seal(&persisted.units)?,
+            unit_seal_count: unit_count,
+            tree_digest: tree,
+            index_relpath: Self::relpath(key),
+        })
+    }
+
+    /// Moves the staged directory to its immutable final path, seals it against
+    /// the Unit manifest and the expected P1 lexical receipt, and records the
+    /// artifact row (admitted only under the generation's live full guard).
+    pub async fn finalize(
+        &self,
+        manifest: &ProjectionGenerationManifest,
+        source: &DiscoverableSource,
+        staged: &Path,
+        expected: &ArtifactReceipt,
+        unit_manifest: &BodyUnitManifest,
+    ) -> Result<LexicalSealV1, LexicalArtifactError> {
+        let key = manifest.key();
+        if staged != self.staging_dir(key) || expected.key != key {
+            return Err(LexicalArtifactError::Path);
+        }
+        let target = self.final_dir(key);
+        if target.exists() {
+            return Err(LexicalArtifactError::Io);
+        }
+        let mut directories = vec![staged.to_path_buf()];
+        for (_, path) in tree_files(staged)? {
+            sync_path(&path)?;
+            if let Some(parent) = path.parent() {
+                directories.push(parent.to_path_buf());
+            }
+        }
+        directories.sort();
+        directories.dedup();
+        for directory in &directories {
+            sync_path(directory)?;
+        }
+        let parent = target.parent().ok_or(LexicalArtifactError::Path)?;
+        std::fs::create_dir_all(parent).map_err(|_| LexicalArtifactError::Io)?;
+        std::fs::rename(staged, &target).map_err(|_| LexicalArtifactError::Io)?;
+        sync_path(parent)?;
+        if let Some(staging_parent) = staged.parent() {
+            sync_path(staging_parent)?;
+        }
+        let seal = self.seal_from_disk(manifest, source, unit_manifest)?;
+        if seal.logical_digest != expected.digest || seal.logical_count != expected.count {
+            return Err(LexicalArtifactError::Receipt);
+        }
+        sqlx::query(
+            "INSERT INTO search_lexical_artifact (source_id,generation_id,index_relpath, \
+             index_format_version,lexical_schema_version,tree_digest,logical_digest, \
+             searchable_doc_count,unit_seal_digest,unit_seal_count,finalized_at) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,clock_timestamp())",
+        )
+        .bind(key.source_id.as_uuid())
+        .bind(key.generation_id.as_uuid())
+        .bind(&seal.index_relpath)
+        .bind(LEXICAL_INDEX_FORMAT_VERSION)
+        .bind(&seal.schema_version)
+        .bind(sha256_text(&seal.tree_digest))
+        .bind(sha256_text(&seal.logical_digest))
+        .bind(i64::try_from(seal.searchable_doc_count).map_err(|_| LexicalArtifactError::Seal)?)
+        .bind(sha256_text(&seal.unit_seal_digest))
+        .bind(i64::try_from(seal.unit_seal_count).map_err(|_| LexicalArtifactError::Seal)?)
+        .execute(&self.pool)
+        .await?;
+        Ok(seal)
+    }
+
+    /// Reopens the final directory and compares it with the saved row.
+    pub async fn reopen_and_validate(
+        &self,
+        manifest: &ProjectionGenerationManifest,
+        source: &DiscoverableSource,
+        unit_manifest: &BodyUnitManifest,
+    ) -> Result<LexicalSealV1, LexicalArtifactError> {
+        let key = manifest.key();
+        let row = sqlx::query(
+            "SELECT index_relpath, index_format_version, lexical_schema_version, tree_digest, \
+             logical_digest, searchable_doc_count, unit_seal_digest, unit_seal_count \
+             FROM search_lexical_artifact WHERE source_id=$1 AND generation_id=$2",
+        )
+        .bind(key.source_id.as_uuid())
+        .bind(key.generation_id.as_uuid())
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(LexicalArtifactError::Drift)?;
+        let seal = self.seal_from_disk(manifest, source, unit_manifest)?;
+        let same = row.try_get::<String, _>("index_relpath")? == seal.index_relpath
+            && row.try_get::<String, _>("index_format_version")? == LEXICAL_INDEX_FORMAT_VERSION
+            && row.try_get::<String, _>("lexical_schema_version")? == seal.schema_version
+            && row.try_get::<String, _>("tree_digest")? == sha256_text(&seal.tree_digest)
+            && row.try_get::<String, _>("logical_digest")? == sha256_text(&seal.logical_digest)
+            && u64::try_from(row.try_get::<i64, _>("searchable_doc_count")?).ok()
+                == Some(seal.searchable_doc_count)
+            && row.try_get::<String, _>("unit_seal_digest")? == sha256_text(&seal.unit_seal_digest)
+            && u64::try_from(row.try_get::<i64, _>("unit_seal_count")?).ok()
+                == Some(seal.unit_seal_count);
+        if !same {
+            return Err(LexicalArtifactError::Drift);
+        }
+        Ok(seal)
+    }
+}

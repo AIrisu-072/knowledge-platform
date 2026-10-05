@@ -298,7 +298,14 @@ fn search_boundaries_are_present_in_real_policy() {
     assert_eq!(core.crate_path, "crates/search-core");
     assert_eq!(
         core.forbidden_dependencies,
-        ["sqlx", "axum", "tokio", "tantivy", "search-tantivy"]
+        [
+            "sqlx",
+            "axum",
+            "tokio",
+            "tantivy",
+            "search-tantivy",
+            "reqwest"
+        ]
     );
     assert_eq!(
         core.forbidden_source_patterns,
@@ -312,7 +319,7 @@ fn search_boundaries_are_present_in_real_policy() {
     assert_eq!(application.crate_path, "crates/search-application");
     assert_eq!(
         application.forbidden_dependencies,
-        ["sqlx", "axum", "tantivy", "search-tantivy"]
+        ["sqlx", "axum", "tantivy", "search-tantivy", "reqwest"]
     );
     assert_eq!(
         application.forbidden_source_patterns,

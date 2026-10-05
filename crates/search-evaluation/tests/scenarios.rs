@@ -558,6 +558,7 @@ fn typed_search_outputs_are_reduced_to_ids_and_verified_direct_locators() {
             generation_id: ProjectionGenerationId::from_uuid(Uuid::from_u128(2)),
         },
         rank: 1,
+        unit_hit: None,
     }];
     let mut supported = Claim::new(claim(50), ClaimState::Supported);
     let mut direct = EvidenceReference::new(source(1), "synthetic-origin", EvidenceRole::Primary);
@@ -583,6 +584,7 @@ fn typed_search_outputs_are_reduced_to_ids_and_verified_direct_locators() {
         },
         qualified_resources: vec![QualifiedResource {
             resource_ref: resource(10),
+            source_ref: None,
             usage_profile_ref: None,
             applicability: ApplicabilityState::Applicable,
             matched_conditions: vec![],

@@ -1,4 +1,5 @@
-//! One-shot Search extraction worker. Reader dispatch is installed by P1-I03–I05.
+//! One-shot Search extraction worker. Pins are verified and native libraries are
+//! bound before the mandatory sandbox seal; format readers run only after it.
 
 use std::{
     fs::File,
@@ -11,9 +12,8 @@ use std::{
 use search_core::knowledge_unit::{
     ArchiveProfilePlan, ExtractionProfileDefinitionV1, ExtractionProfileId, FormatId,
 };
-use search_extraction_core::{
-    ReaderFailure, RetryableFailureCode, WorkerResponse, decode_request, encode_response,
-};
+use search_extraction_core::{decode_request, encode_response};
+use search_extraction_worker::readers;
 use sha2::{Digest, Sha256};
 
 const MAX_REQUEST_BYTES: u64 = 16_777_216;
@@ -73,17 +73,18 @@ fn run() -> Result<(), Failure> {
         return Err(Failure::Raw);
     }
 
+    let mut plan = None;
     if request.format == FormatId::Zip {
         let leaves = archive_leaf_chains(&request.profile_bytes)?;
-        let plan = ArchiveProfilePlan::decode(&request.profile_bytes, leaves)
+        let plan_value = ArchiveProfilePlan::decode(&request.profile_bytes, leaves)
             .map_err(|_| Failure::Protocol)?;
-        if ExtractionProfileId::for_archive(&plan).map_err(|_| Failure::Protocol)?
+        if ExtractionProfileId::for_archive(&plan_value).map_err(|_| Failure::Protocol)?
             != request.profile
         {
             return Err(Failure::Protocol);
         }
         let mut pdfium_pin = None;
-        for node in &plan.nodes {
+        for node in &plan_value.nodes {
             if node.definition.format == FormatId::Pdf {
                 let pin = node
                     .definition
@@ -97,7 +98,9 @@ fn run() -> Result<(), Failure> {
         }
         if let Some(pin) = pdfium_pin {
             verify_pdfium_native(pin)?;
+            readers::warm_up_pdfium().map_err(|_| Failure::Native)?;
         }
+        plan = Some(plan_value);
     } else {
         let definition = ExtractionProfileDefinitionV1::decode(&request.profile_bytes)
             .map_err(|_| Failure::Protocol)?;
@@ -109,15 +112,12 @@ fn run() -> Result<(), Failure> {
         }
         if request.format == FormatId::Pdf {
             verify_pdfium_native(definition.native_binary_sha256.ok_or(Failure::Native)?)?;
+            readers::warm_up_pdfium().map_err(|_| Failure::Native)?;
         }
     }
 
     document_sandbox_runner::seal_worker_sandbox().map_err(|_| Failure::Sandbox)?;
-    // Format readers are registered in later implementation tasks. No successful
-    // report can be emitted while they are absent.
-    let response = WorkerResponse::Failure(ReaderFailure::Retryable(
-        RetryableFailureCode::WorkerUnavailable,
-    ));
+    let response = readers::respond(&request, &raw, plan.as_ref());
     let encoded = encode_response(&response).map_err(|_| Failure::Protocol)?;
     io::stdout()
         .write_all(&encoded)

@@ -5,6 +5,7 @@
 
 pub mod budget;
 pub mod coverage;
+pub mod port;
 pub mod protocol;
 pub mod validation;
 
@@ -12,6 +13,7 @@ pub use budget::{BudgetMeter, ExtractionBudgets};
 pub use coverage::{
     BodyCoverage, CoverageReason, ItemOperationState, PermanentFailureCode, RetryableFailureCode,
 };
+pub use port::ContentExtractor;
 pub use protocol::{
     NativeOmission, ReaderFailure, WorkerFragment, WorkerOperation, WorkerReport, WorkerRequest,
     WorkerResponse, decode_request, decode_response, encode_request, encode_response,

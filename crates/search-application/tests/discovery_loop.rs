@@ -345,6 +345,7 @@ impl Fixture {
                 generations: self,
                 concepts: self,
                 retrieval: RetrievalExecutionPorts {
+                    remote: None,
                     directory: Some(self),
                     structured: Some(self),
                     lexical: Some(self),

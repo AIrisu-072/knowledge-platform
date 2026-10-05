@@ -28,6 +28,8 @@ use search_application::search_core::projection::{
 use sqlx::{PgConnection, Row};
 use uuid::Uuid;
 
+use search_application::graph_generation::RegisteredFullBuildHandle;
+
 use crate::generation_registration::{
     Failure, GenerationError, PgGenerationRegistrar, finish, manifest_dto, transaction_bounds,
 };
@@ -43,6 +45,12 @@ pub struct ManualBuildHandle(pub(crate) RegisteredFullBuild);
 impl ManualBuildHandle {
     pub fn key(&self) -> ProjectionGenerationKey {
         self.0.manifest.key()
+    }
+
+    /// Identity of the Graph parent registered in the same commit, if any.
+    /// Writes are still admitted only by the stored rows and live guard.
+    pub fn graph_target(&self) -> Option<RegisteredFullBuildHandle> {
+        self.0.graph_target()
     }
 }
 
@@ -64,6 +72,11 @@ impl EventCandidateHandle {
     pub fn key(&self) -> ProjectionGenerationKey {
         self.build.manifest.key()
     }
+
+    /// Identity of the Graph parent registered in the same commit, if any.
+    pub fn graph_target(&self) -> Option<RegisteredFullBuildHandle> {
+        self.build.graph_target()
+    }
 }
 
 pub(crate) struct RegisteredFullBuild {
@@ -72,6 +85,15 @@ pub(crate) struct RegisteredFullBuild {
     pub(crate) fence: i64,
     pub(crate) activation: i64,
     pub(crate) registration_digest: String,
+    pub(crate) graph: bool,
+}
+
+impl RegisteredFullBuild {
+    fn graph_target(&self) -> Option<RegisteredFullBuildHandle> {
+        self.graph.then(|| {
+            RegisteredFullBuildHandle::from_identifiers(self.manifest.key(), self.token, self.fence)
+        })
+    }
 }
 
 impl PgGenerationRegistrar {

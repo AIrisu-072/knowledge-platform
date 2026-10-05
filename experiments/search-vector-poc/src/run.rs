@@ -561,6 +561,7 @@ fn planned_baseline_query(
             .unwrap_or_default(),
         vector_query_available: false,
         max_initial_retrievers_per_source: if arm == Arm::LexicalGraph { 2 } else { 1 },
+        ..RetrievalInputs::default()
     };
     let plan = RetrieverPlanner::plan(
         RetrieverProfile::Exploratory,
@@ -806,6 +807,7 @@ pub async fn run_arm(
         lexical: Some(&harness.lexical),
         hypergraph: Some(&harness.graph),
         graph_resource_access: Some(harness.access.as_ref()),
+        remote: None,
         access: harness.access.as_ref(),
     };
     let mut runs = Vec::new();
@@ -831,6 +833,7 @@ pub async fn run_arm(
                     request: &request,
                     structured_filters: &[],
                     lexical_query: Some(&lexical_query),
+                    body_query: None,
                     graph_plan: graph_plan.as_ref(),
                 },
             )

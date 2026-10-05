@@ -1,0 +1,6 @@
+# Measurement-only workspace: Vector is DISABLED and nothing here is a
+# production dependency (see report.md). The exception is scoped to this
+# directory's lockfile.
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0436"
+reason = "paste 1.0.15 is unmaintained (informational, no known vulnerability). It is a build-time macro dependency of gemm/pulp (Candle CPU) and tokenizers in this isolated measurement workspace only."

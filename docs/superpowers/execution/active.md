@@ -127,6 +127,19 @@
 
 ---
 
+## Search完成作業の再開：2026-10-05
+
+**完了（2026-10-05）。** 所有者は、最終headのhosted CIが成功したらmainへmergeすることを承認した（deployはしない）。Searchの既存実装はPR #61でmainへ統合済み。main `f9d6f5ff778c95eaeed0ce9d0f714f80798ff4af` / tree `97fae4eb65f756071ba181b3aaf36bdbb1fbd600` はPR #61 head `5a5fa7a420312df737600eee5ea7a4029b04c63f` と同一treeで、PR CI `37218936232`・DSI PoC `37218936244`・Sandbox `37218936195`、main push CI `37220420564` がすべて成功した。Search専用jobでは新規・base8・Document10・旧Search9停止の履歴DB試験、G07/G08、P7-02/03/06を含む143件が成功している。2026-10-04 16:43 UTCの節にある「hosted全CIと履歴DB4経路は未実行」は、この結果で解消した。PR #40（head `1571ee49`）と積み上げDraftの内容はすべてmainに含まれる。
+
+残りの作業は、mainを基点にした `feat/search-platform-completion-20261005` の一つのDraft PRで進める。所有者の判断（2026-10-05）は次のとおり。
+
+- P3のGraph保存先とP2の密ベクトル採用は、凍結済みの計測手順で計測してから決める
+- 成果は一つのDraft PRにまとめ、mainへのmergeは所有者が最後に確認してから行う。deployはしない
+- DB試験はローカルのOrbStack（testcontainersの公式PostgreSQL 18.6）でも実行する
+- 検証は凍結計画の受入試験・CIを基本とし、過剰な証跡は作らない
+
+結果（同日）：P1〜P7の残りとG1〜G3を実施した。各タスクの結果、未実装・不採用とした項目とその理由、所有者判断事項、本番前の改善候補は[状態記録](search-platform-completion-program-status.md)にある。P4-03/P4-04/P7-06の個別レビューGOは、G2の領域別レビューで代替した。所有者実環境に旧Search9の履歴が無いことは未確認で、[STOP手順](../../operations/search-main-migration-stop.md)を維持する。
+
 ## 2026-10-04 17:27 UTC — AgentとSearchを保持するmain統合候補
 
 - mainはSearch統合済み `f9d6f5ff` へ進んだ。PR62のAgent sourceを保持して新mainを祖先に加える。[統合状況](organization-agent-main-integration-status.md)を参照

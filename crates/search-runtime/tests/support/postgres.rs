@@ -109,3 +109,42 @@ pub async fn postgres(name: &str) -> (DatabaseGuard, PgPool, PgConnectOptions) {
         PgConnectOptions::from_str(&url).unwrap(),
     )
 }
+
+impl DatabaseGuard {
+    /// Runs a shell script inside the disposable PostgreSQL container, e.g.
+    /// `pg_dump`/`pg_restore` of the same server version. Not available for an
+    /// external test database.
+    #[allow(dead_code)]
+    pub async fn exec_sh(&self, script: &str) -> Result<String, String> {
+        let DatabaseGuard::Docker { _container } = self else {
+            return Err("exec needs the disposable Docker PostgreSQL".into());
+        };
+        let mut result = _container
+            .exec(testcontainers::core::ExecCommand::new(["sh", "-c", script]))
+            .await
+            .map_err(|error| error.to_string())?;
+        let stdout = result
+            .stdout_to_vec()
+            .await
+            .map_err(|error| error.to_string())?;
+        let stderr = result
+            .stderr_to_vec()
+            .await
+            .map_err(|error| error.to_string())?;
+        let code = loop {
+            if let Some(code) = result
+                .exit_code()
+                .await
+                .map_err(|error| error.to_string())?
+            {
+                break code;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        };
+        if code == 0 {
+            Ok(String::from_utf8_lossy(&stdout).into_owned())
+        } else {
+            Err(String::from_utf8_lossy(&stderr).into_owned())
+        }
+    }
+}

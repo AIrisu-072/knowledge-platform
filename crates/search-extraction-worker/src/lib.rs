@@ -1,3 +1,5 @@
-//! Search extraction worker bootstrap. Reader implementations begin in P1-I03.
+//! Search extraction worker: sealed one-shot process with qualified format readers.
 
 #![forbid(unsafe_code)]
+
+pub mod readers;

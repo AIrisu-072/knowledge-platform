@@ -8,7 +8,9 @@ and image IDs have been admitted; this command never touches Docker state.
 import argparse
 import copy
 import json
+import os
 import shutil
+import subprocess
 import tempfile
 import time
 from pathlib import Path
@@ -345,17 +347,28 @@ def _neo_admin(image_id, data_dir, operation, input_bytes=None):
                 "--overwrite-destination=true"]
     else:
         raise ValueError("unknown Neo4j offline operation")
-    return command(["docker", "run", "--rm", "--pull=never", "--memory=2g",
-                    "--user", "neo4j",
-                    "--label", f"{OWNER_LABEL}=1", "--entrypoint", "neo4j-admin",
-                    "-v", f"{data_dir}:/data", image_id, *args], timeout=180,
-                   input_bytes=input_bytes)
+    # Dump reads the live candidate directory as its owning neo4j user. Load
+    # writes a harness-created directory that Linux bind mounts keep owned by
+    # the runner, so it runs as the image default user; the restore container's
+    # entrypoint then hands /data to neo4j (amendment 2026-10-05).
+    user = ["--user", "neo4j"] if operation == "dump" else []
+    # The archive reaches load on stdin, which docker attaches only with -i.
+    stdin = ["-i"] if operation == "load" else []
+    try:
+        return command(["docker", "run", "--rm", "--pull=never", "--memory=2g", *stdin, *user,
+                        "--label", f"{OWNER_LABEL}=1", "--entrypoint", "neo4j-admin",
+                        "-v", f"{data_dir}:/data", image_id, *args], timeout=180,
+                       input_bytes=input_bytes)
+    except subprocess.CalledProcessError as error:
+        detail = (error.stderr or b"")[-2000:].decode(errors="replace")
+        raise RuntimeError(f"neo4j-admin {operation} failed: {detail}") from error
 
 
 def _neo_start_restore(name, image_id, data_dir):
     command(["docker", "run", "-d", "--pull=never", "--name", name,
              "--label", f"{OWNER_LABEL}=1", "--memory=2g",
              "-e", "NEO4J_AUTH=neo4j/p3syntheticpass",
+             "-e", "NEO4J_db_tx__log_preallocate=false",
              "-e", "NEO4J_server_memory_heap_initial__size=256m",
              "-e", "NEO4J_server_memory_heap_max__size=256m",
              "-e", "NEO4J_server_memory_pagecache_size=128m",

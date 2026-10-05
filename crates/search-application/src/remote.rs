@@ -5,7 +5,10 @@
 
 use search_core::materialization::MaterializationState;
 use search_core::observation::{Coverage, Presence};
+use search_core::predicate::TypedValue;
+use search_core::resource::ResourceKind;
 use search_core::source::DiscoveryMode;
+use std::collections::BTreeMap;
 use std::fmt;
 use uuid::Uuid;
 
@@ -75,6 +78,9 @@ impl TrustedRemoteContext {
     }
     pub fn source_scope(&self) -> &AuthorizedSourceScope {
         &self.source_scope
+    }
+    pub fn registration(&self) -> &RemoteSourceRegistration {
+        &self.registration
     }
 
     pub(crate) fn matches_registration(&self, registration: &RemoteSourceRegistration) -> bool {
@@ -256,6 +262,19 @@ pub fn validate_remote_batch(
     Ok(())
 }
 
+/// One provider field value and the provider's own provenance label. Both are
+/// untrusted: the label is never evidence and never selects authority.
+#[derive(Clone, PartialEq, Eq)]
+pub struct UntrustedFieldValue {
+    pub(crate) value: TypedValue,
+    pub(crate) provenance: Option<String>,
+}
+impl fmt::Debug for UntrustedFieldValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("UntrustedFieldValue(<untrusted>)")
+    }
+}
+
 /// Provider identity hints, deliberately without SourceId, ResourceId,
 /// candidate ID, evidence role, upstream authority, or a fetch destination.
 #[derive(Clone, PartialEq, Eq)]
@@ -263,6 +282,9 @@ pub struct UntrustedRemoteHit {
     native_id: Option<OpaqueNativeId>,
     version: Option<String>,
     digest: Option<String>,
+    kind: Option<ResourceKind>,
+    title: Option<String>,
+    fields: BTreeMap<String, UntrustedFieldValue>,
 }
 impl fmt::Debug for UntrustedRemoteHit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -284,10 +306,59 @@ impl UntrustedRemoteHit {
             native_id,
             version,
             digest,
+            kind: None,
+            title: None,
+            fields: BTreeMap::new(),
         })
     }
+
+    /// Bounded, untrusted projection fields. Names are lowercase field keys;
+    /// a duplicate name is malformed rather than silently overwritten.
+    pub fn with_projection(
+        mut self,
+        kind: Option<ResourceKind>,
+        title: Option<String>,
+        fields: Vec<(String, TypedValue, Option<String>)>,
+    ) -> Result<Self, SearchError> {
+        let bounded = |value: &str, max: usize| {
+            !value.is_empty() && value.len() <= max && !value.chars().any(char::is_control)
+        };
+        if title.as_deref().is_some_and(|title| !bounded(title, 1024)) || fields.len() > 64 {
+            return Err(invalid_remote());
+        }
+        let mut map = BTreeMap::new();
+        for (name, value, provenance) in fields {
+            if !bounded(&name, 128)
+                || !name.bytes().all(|b| {
+                    b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'_' | b'.')
+                })
+                || provenance
+                    .as_deref()
+                    .is_some_and(|label| !bounded(label, 256))
+                || map
+                    .insert(name, UntrustedFieldValue { value, provenance })
+                    .is_some()
+            {
+                return Err(invalid_remote());
+            }
+        }
+        self.kind = kind;
+        self.title = title;
+        self.fields = map;
+        Ok(self)
+    }
+
     pub fn native_id(&self) -> Option<&OpaqueNativeId> {
         self.native_id.as_ref()
+    }
+    pub const fn kind(&self) -> Option<ResourceKind> {
+        self.kind
+    }
+    pub fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+    pub(crate) fn fields(&self) -> &BTreeMap<String, UntrustedFieldValue> {
+        &self.fields
     }
     pub fn version(&self) -> Option<&str> {
         self.version.as_deref()
@@ -390,6 +461,9 @@ impl RemoteActionResponse {
     }
     pub fn source_snapshot_proof(&self) -> &SourceSnapshotProof {
         &self.proof
+    }
+    pub fn page(&self) -> &RemotePage {
+        &self.page
     }
     pub const fn coverage(&self) -> Coverage {
         self.coverage
@@ -520,6 +594,20 @@ impl PinnedRemoteTarget {
             version: hit.version.clone(),
             digest: hit.digest.clone(),
         })
+    }
+    /// A sealed batch's own staged identity, version and digest.
+    pub(crate) fn from_parts(
+        identity: RemoteIdentity,
+        snapshot: SourceSnapshotProof,
+        version: Option<String>,
+        digest: Option<String>,
+    ) -> Self {
+        Self {
+            identity,
+            snapshot,
+            version,
+            digest,
+        }
     }
     pub fn identity(&self) -> &RemoteIdentity {
         &self.identity
