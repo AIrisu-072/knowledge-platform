@@ -26,6 +26,7 @@ use crate::action_selection::{
 use crate::candidate::{
     CandidateHardGates, HardGateEvaluation, RankedCandidateHit, RetrieverRankList,
 };
+use crate::content_scope::DiscoveryScope;
 use crate::error::SearchError;
 use crate::federation::{CandidateFederator, FusionStrategy};
 use crate::materialization::ProbeBudget;
@@ -168,15 +169,50 @@ impl<'a> DiscoveryService<'a> {
         &self,
         request: DiscoveryRequest,
     ) -> Result<DiscoveryResult, SearchError> {
+        self.discover_with_content_scope(request, DiscoveryScope::Normal)
+            .await
+    }
+
+    /// One shared evaluation loop for every content scope. `BodyRequired` runs
+    /// only BodyOnly lexical actions and qualifies only verified Unit hits.
+    pub async fn discover_with_content_scope(
+        &self,
+        request: DiscoveryRequest,
+        scope: DiscoveryScope,
+    ) -> Result<DiscoveryResult, SearchError> {
         validate_request(&request)?;
+        let body = scope.body();
+        if let Some(spec) = body {
+            spec.validate()?;
+        }
         let sources = self.ports.sources.list_sources().await?;
         let routes = SourceRouter::plan(&request.need, &sources, &self.config.routing);
-        let plan = RetrieverPlanner::plan(
-            self.config.retriever_profile,
-            &routes,
-            &self.config.retriever_support,
-            &self.config.retrieval_inputs,
-        );
+        // Directory, Structured, Graph, Vector, remote and probes cannot create a
+        // body match, so a body scope plans only Lexical with the request query.
+        let body_plan_inputs = body.map(|spec| {
+            (
+                RetrieverSupport {
+                    lexical: self.config.retriever_support.lexical,
+                    ..RetrieverSupport::default()
+                },
+                RetrievalInputs {
+                    lexical_query: Some(spec.query.text.clone()),
+                    max_initial_retrievers_per_source: self
+                        .config
+                        .retrieval_inputs
+                        .max_initial_retrievers_per_source,
+                    ..RetrievalInputs::default()
+                },
+            )
+        });
+        let (support, inputs) = match &body_plan_inputs {
+            Some((support, inputs)) => (support, inputs),
+            None => (
+                &self.config.retriever_support,
+                &self.config.retrieval_inputs,
+            ),
+        };
+        let plan = RetrieverPlanner::plan(self.config.retriever_profile, &routes, support, inputs);
         let mut pins = BTreeMap::new();
         let mut route_gaps = Vec::new();
         for route in &routes.routes {
@@ -279,14 +315,19 @@ impl<'a> DiscoveryService<'a> {
                                 false,
                             ));
                         } else {
-                            let result = RetrievalExecutor::execute(
+                            let executed = RetrievalExecutor::execute(
                                 &self.ports.retrieval,
                                 RetrievalExecutionInput {
                                     action: &action,
                                     generation: pin.key,
                                     request: &request,
                                     structured_filters: &self.config.structured_filters,
-                                    lexical_query: self.config.lexical_query.as_ref(),
+                                    lexical_query: if body.is_some() {
+                                        None
+                                    } else {
+                                        self.config.lexical_query.as_ref()
+                                    },
+                                    body_query: body.map(|spec| &spec.query),
                                     graph_plan: self
                                         .config
                                         .retrieval_inputs
@@ -294,57 +335,77 @@ impl<'a> DiscoveryService<'a> {
                                         .get(&action.source_id),
                                 },
                             )
-                            .await?;
-                            // The executor already checks current access. Recheck the
-                            // candidate and every Graph path resource before detail I/O.
-                            for raw in result.hits {
-                                if !self.currently_allowed(&raw.candidate, &request).await
-                                    || !self.graph_paths_currently_allowed(&raw, &request).await
-                                {
-                                    continue;
-                                }
-                                let projection = if let Some(resource) = raw.candidate.resource_ref
-                                {
-                                    self.ports
-                                        .generations
-                                        .resource_at(pin.key, resource)
-                                        .await?
-                                } else {
+                            .await;
+                            let result = match executed {
+                                Ok(result) => Some(result),
+                                // A missing port, unpublished body bundle or refusal is a
+                                // blocking body gap, never a partial body success.
+                                Err(_) if body.is_some() => {
+                                    action_gaps.push(InformationGap::new(
+                                        "document.body.retrieval_unavailable",
+                                        GapReason::Availability,
+                                        true,
+                                    ));
                                     None
-                                };
-                                if let Some(ref detail) = projection {
-                                    validate_detail(detail, pin.key, resource_of(&raw)?)?;
                                 }
-                                // Probe observations belong to the pinned durable Resource,
-                                // even when retrievers use distinct candidates or locators.
-                                let (probe_facts, probe_outcomes, probe_origins) = records
-                                    .iter()
-                                    .find(|record| {
-                                        same_probe_binding(
-                                            &record.raw.candidate,
-                                            record.raw.generation,
-                                            &raw.candidate,
-                                            raw.generation,
-                                        )
-                                    })
-                                    .map(|record| {
-                                        (
-                                            record.probe_facts.clone(),
-                                            record.probe_outcomes.clone(),
-                                            record.probe_origins.clone(),
-                                        )
-                                    })
-                                    .unwrap_or_default();
-                                records.push(HitRecord {
-                                    raw,
-                                    projection,
-                                    probe_facts,
-                                    probe_outcomes,
-                                    probe_origins,
-                                });
+                                Err(error) => return Err(error),
+                            };
+                            if let Some(result) = result {
+                                // The executor already checks current access. Recheck the
+                                // candidate and every Graph path resource before detail I/O.
+                                for raw in result.hits {
+                                    // Body scope counts only hits that carry a literal Unit span.
+                                    if body.is_some() && raw.unit_hit.is_none() {
+                                        continue;
+                                    }
+                                    if !self.currently_allowed(&raw.candidate, &request).await
+                                        || !self.graph_paths_currently_allowed(&raw, &request).await
+                                    {
+                                        continue;
+                                    }
+                                    let projection =
+                                        if let Some(resource) = raw.candidate.resource_ref {
+                                            self.ports
+                                                .generations
+                                                .resource_at(pin.key, resource)
+                                                .await?
+                                        } else {
+                                            None
+                                        };
+                                    if let Some(ref detail) = projection {
+                                        validate_detail(detail, pin.key, resource_of(&raw)?)?;
+                                    }
+                                    // Probe observations belong to the pinned durable Resource,
+                                    // even when retrievers use distinct candidates or locators.
+                                    let (probe_facts, probe_outcomes, probe_origins) = records
+                                        .iter()
+                                        .find(|record| {
+                                            same_probe_binding(
+                                                &record.raw.candidate,
+                                                record.raw.generation,
+                                                &raw.candidate,
+                                                raw.generation,
+                                            )
+                                        })
+                                        .map(|record| {
+                                            (
+                                                record.probe_facts.clone(),
+                                                record.probe_outcomes.clone(),
+                                                record.probe_origins.clone(),
+                                            )
+                                        })
+                                        .unwrap_or_default();
+                                    records.push(HitRecord {
+                                        raw,
+                                        projection,
+                                        probe_facts,
+                                        probe_outcomes,
+                                        probe_origins,
+                                    });
+                                }
+                                executed_retrievers.insert(action.retriever_id.clone());
+                                attempted_trace.push(format!("retriever:{}", action.retriever_id));
                             }
-                            executed_retrievers.insert(action.retriever_id.clone());
-                            attempted_trace.push(format!("retriever:{}", action.retriever_id));
                         }
                     } else {
                         action_gaps.push(source_gap(
@@ -499,6 +560,9 @@ impl<'a> DiscoveryService<'a> {
             ) {
                 evaluation.result.evidence_sufficiency = EvidenceSufficiency::Unresolved;
             }
+        }
+        if body.is_some() {
+            restrict_to_body_hits(&mut evaluation.result, &records);
         }
         Ok(evaluation.result)
     }
@@ -1479,6 +1543,39 @@ fn combine_state(left: ApplicabilityState, right: ApplicabilityState) -> Applica
         (Unresolved, _) | (_, Unresolved) => Unresolved,
         _ => Applicable,
     }
+}
+
+/// Body scope counts only Resources reached through a verified Unit hit. Title
+/// Assertions or Graph paths never make a body result complete on their own.
+fn restrict_to_body_hits(result: &mut DiscoveryResult, records: &[HitRecord]) {
+    let parents: BTreeSet<ResourceId> = records
+        .iter()
+        .filter_map(|record| record.raw.unit_hit.as_ref())
+        .map(|unit| unit.parent_resource)
+        .collect();
+    result
+        .qualified_resources
+        .retain(|qualified| parents.contains(&qualified.resource_ref));
+    if result.qualified_resources.is_empty() {
+        push_gap(
+            &mut result.unresolved_gaps,
+            InformationGap::new(
+                "document.body.match_unproven",
+                GapReason::UnsupportedCoverage,
+                true,
+            ),
+        );
+        if result.evidence_sufficiency == EvidenceSufficiency::Sufficient {
+            result.evidence_sufficiency = EvidenceSufficiency::Unresolved;
+        }
+    }
+    result.qualification_trace.push(format!(
+        "content_scope:body_required:unit_hits:{}",
+        records
+            .iter()
+            .filter(|record| record.raw.unit_hit.is_some())
+            .count()
+    ));
 }
 
 fn complete(result: &DiscoveryResult) -> bool {

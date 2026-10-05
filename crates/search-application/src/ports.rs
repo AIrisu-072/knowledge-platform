@@ -320,6 +320,31 @@ pub trait LexicalRetrieverPort: Send + Sync {
         request: &'a DiscoveryRequest,
         query: &'a LexicalQuery,
     ) -> BoxFuture<'a, Vec<FederatedCandidate>>;
+
+    /// `LexicalFieldScope::BodyOnly` retrieval over the Source-owned Units of a
+    /// body-ready generation. Ports without body Units refuse instead of guessing.
+    fn retrieve_body<'a>(
+        &'a self,
+        _generation: ProjectionGenerationKey,
+        _request: &'a DiscoveryRequest,
+        _query: &'a LexicalQuery,
+    ) -> BoxFuture<'a, crate::body_ports::LexicalRetrievalBatch> {
+        Box::pin(async {
+            Err(SearchError::OperationFailed(
+                "BodyOnly lexical retrieval is not supported by this port".into(),
+            ))
+        })
+    }
+}
+
+/// Which indexed fields a lexical query may read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LexicalFieldScope {
+    /// Canonical name, aliases, title, high signal, body tiers in S1 order.
+    #[default]
+    ExistingFields,
+    /// Only the body field of Source-owned Unit documents.
+    BodyOnly,
 }
 
 /// Explicit lexical input; DiscoveryRequest is an intent/evidence request,
@@ -329,6 +354,7 @@ pub trait LexicalRetrieverPort: Send + Sync {
 pub struct LexicalQuery {
     pub text: String,
     pub limit: usize,
+    pub field_scope: LexicalFieldScope,
 }
 
 impl LexicalQuery {
@@ -336,6 +362,15 @@ impl LexicalQuery {
         Self {
             text: text.into(),
             limit,
+            field_scope: LexicalFieldScope::ExistingFields,
+        }
+    }
+
+    pub fn body_only(text: impl Into<String>, limit: usize) -> Self {
+        Self {
+            text: text.into(),
+            limit,
+            field_scope: LexicalFieldScope::BodyOnly,
         }
     }
 }

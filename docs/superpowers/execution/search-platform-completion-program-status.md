@@ -12,6 +12,8 @@
 - DB試験はローカルのOrbStack（testcontainersの公式PostgreSQL 18.6）でも実行する
 - 検証は凍結計画の受入試験・CIを基本とし、過剰な証跡は作らない
 
+進捗（同日）：P1はI03〜I05（reader）、S02、B01、E01、B02/B03、A02（`DiscoveryScope::BodyRequired`とpreflight）、E02（Tantivy BodyOnly）まで実装・試験済み。A02の束縛名は凍結設計の `LexicalRetrieverPort::retrieve(...)->LexicalRetrievalBatch` ではなく、既存 `retrieve` を保ったまま `retrieve_body(...)->LexicalRetrievalBatch` を追加した。`LexicalQuery.field_scope` で両者の取り違えを拒否し、意味（BodyOnly、`unit_hit`、`exhausted_matching_units`）は設計どおりである。P3は3候補×3規模の計測を完了（run `37255132277`）。再起動・復元・故障注入は全候補PASS、公開gateはPGが「P7物理schema待ち」、redb/Neo4jは「PG Source台帳との原子的公開手順なし」。計測手順は非PGの公開手順を所有者判断のHard Stopとしているため、保存先の選定は所有者の判断待ちで、P3 G03以降とP7-07以降は未着手。
+
 未完了：P1本文抽出〜本文検索、P2計測と採否、P3計測・選定と永続Graph、P4-06〜17、P5 HTTP API、P6のS04/S05/I04、P7-04/05/07〜12、G1〜G3。P4-03/P4-04/P7-06の独立レビューGOの記録は無い。所有者実環境に旧Search9の履歴が無いことは未確認で、[STOP手順](../../operations/search-main-migration-stop.md)を維持する。前回のOpenAI側セッションが停止した未公開の作業は再実行せず、凍結計画から実装する。
 
 ## Searchのmain統合・Remote観測の現在状態：2026-10-04 16:43 UTC

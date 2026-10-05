@@ -6,6 +6,7 @@ use std::sync::{Arc, RwLock};
 
 use document_domain::DocumentId;
 use search_application::SearchError;
+use search_application::body_ports::LexicalRetrievalBatch;
 use search_application::indexing_service::{
     DocumentIndexingPort, DocumentSourceEvent, IndexingOutcome,
 };
@@ -458,6 +459,15 @@ impl LexicalRetrieverPort for DocumentLexicalReader {
         query: &'a LexicalQuery,
     ) -> BoxFuture<'a, Vec<FederatedCandidate>> {
         LexicalRetrieverPort::retrieve(self.0.as_ref(), generation, request, query)
+    }
+
+    fn retrieve_body<'a>(
+        &'a self,
+        generation: ProjectionGenerationKey,
+        request: &'a DiscoveryRequest,
+        query: &'a LexicalQuery,
+    ) -> BoxFuture<'a, LexicalRetrievalBatch> {
+        LexicalRetrieverPort::retrieve_body(self.0.as_ref(), generation, request, query)
     }
 }
 

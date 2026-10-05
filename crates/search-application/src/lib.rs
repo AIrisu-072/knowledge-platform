@@ -3,8 +3,10 @@
 #![forbid(unsafe_code)]
 
 pub mod action_selection;
+pub mod body_ports;
 
 pub mod candidate;
+pub mod content_scope;
 pub mod context;
 pub mod discovery_service;
 pub mod error;

@@ -48,8 +48,6 @@ pub(crate) struct UnitFields {
 }
 
 pub(crate) struct UnitIndex {
-    // Queried by the P1-E02 BodyOnly retriever.
-    #[allow(dead_code)]
     pub index: Index,
     pub reader: IndexReader,
     pub fields: UnitFields,
@@ -119,22 +117,7 @@ pub(crate) fn enumerate(
                 u32::try_from(segment_ord).map_err(|_| LexicalIndexError::UnitEncoding)?,
                 doc_id,
             ))?;
-            let text = |field| {
-                document
-                    .get_first(field)
-                    .and_then(|value| value.as_str())
-                    .map(str::to_owned)
-                    .ok_or(LexicalIndexError::UnitEncoding)
-            };
-            let mut unit: KnowledgeUnit = serde_json::from_str(&text(units.fields.metadata)?)
-                .map_err(|_| LexicalIndexError::UnitEncoding)?;
-            unit.text = text(units.fields.body)?;
-            if text(units.fields.unit_id)? != unit.unit_id.to_string()
-                || text(units.fields.parent_resource)?
-                    != unit.version.resource_id.as_uuid().to_string()
-            {
-                return Err(LexicalIndexError::UnitEncoding);
-            }
+            let unit = read_unit(&document, units.fields)?;
             docs.push(IndexedUnitDoc {
                 generation: key,
                 parent_resource: unit.version.resource_id,
@@ -154,6 +137,30 @@ pub(crate) fn enumerate(
     }
     docs.sort_by_key(|doc| doc.unit_id);
     Ok(docs)
+}
+
+/// Rebuilds the stored Unit and rejects documents whose indexed identity
+/// fields disagree with the stored metadata.
+pub(crate) fn read_unit(
+    document: &TantivyDocument,
+    fields: UnitFields,
+) -> Result<KnowledgeUnit, LexicalIndexError> {
+    let text = |field| {
+        document
+            .get_first(field)
+            .and_then(|value| value.as_str())
+            .map(str::to_owned)
+            .ok_or(LexicalIndexError::UnitEncoding)
+    };
+    let mut unit: KnowledgeUnit = serde_json::from_str(&text(fields.metadata)?)
+        .map_err(|_| LexicalIndexError::UnitEncoding)?;
+    unit.text = text(fields.body)?;
+    if text(fields.unit_id)? != unit.unit_id.to_string()
+        || text(fields.parent_resource)? != unit.version.resource_id.as_uuid().to_string()
+    {
+        return Err(LexicalIndexError::UnitEncoding);
+    }
+    Ok(unit)
 }
 
 /// Deterministic digest of the staged lexical input (never Tantivy segment bytes):

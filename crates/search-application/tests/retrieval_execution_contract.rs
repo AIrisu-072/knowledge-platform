@@ -366,6 +366,7 @@ fn input<'a>(
         structured_filters: &[],
         lexical_query: None,
         graph_plan: None,
+        body_query: None,
     }
 }
 

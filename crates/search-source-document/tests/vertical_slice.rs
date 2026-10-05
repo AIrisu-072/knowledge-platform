@@ -605,6 +605,7 @@ async fn body_required_coverage_returns_gap_before_real_title_lexical_port_is_ca
         &service,
         discovery_support::request(),
         DocumentCoverageRequirement::BodyRequired,
+        None,
     )
     .await
     .unwrap();

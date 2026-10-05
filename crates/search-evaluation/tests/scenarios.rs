@@ -558,6 +558,7 @@ fn typed_search_outputs_are_reduced_to_ids_and_verified_direct_locators() {
             generation_id: ProjectionGenerationId::from_uuid(Uuid::from_u128(2)),
         },
         rank: 1,
+        unit_hit: None,
     }];
     let mut supported = Claim::new(claim(50), ClaimState::Supported);
     let mut direct = EvidenceReference::new(source(1), "synthetic-origin", EvidenceRole::Primary);
