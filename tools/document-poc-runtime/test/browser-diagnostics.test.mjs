@@ -351,3 +351,57 @@ test('WORKING複数原本編集は有限の段階とsourceだけを公開診断�
     assert.equal(failure.tests[0].source, source);
   }
 });
+
+
+test('working loss fixed failure codes survive both privacy boundaries without raw error details', () => {
+  const codes = ['configuration', 'admission', 'unarmed-retry', 'payload', 'upstream-status', 'upstream-result',
+    'retry-payload', 'retry-result', 'unrecovered', 'observation-window', 'upstream-transport'];
+  const privateValue = 'https://user:PRIVATE_SECRET@private.example/file?payload=PRIVATE_BYTES';
+  for (const code of codes) {
+    const input = report([{ status: 'failed', error: { message: `Error: [working-loss:${code}] ${privateValue}`, stack: privateValue,
+      headers: privateValue, payload: privateValue, cause: privateValue } }], { file: 'working-version-editor.spec.ts' });
+    const result = sanitizeBrowserDiagnostics(browserDiagnostics(input));
+    assert.deepEqual(result.tests[0], { source: 'working-version-editor.spec.ts', line: 12, column: 3,
+      status: 'failed', errorCategory: 'response-loss', responseLossCode: code });
+    assert.ok(!JSON.stringify(result).includes('PRIVATE'));
+  }
+  for (const message of [`Error: [working-loss:${privateValue}]`, `Error: PRIVATE [working-loss:unarmed-retry]`,
+    '[working-loss:unknown] PRIVATE', '[working-loss:admission]PRIVATE', '[working-loss:admission-extra] PRIVATE']) {
+    const result = browserDiagnostics(report([{ status: 'failed', error: { message } }]));
+    assert.equal(result.tests[0].responseLossCode, undefined);
+    assert.ok(!JSON.stringify(result).includes('PRIVATE'));
+  }
+  const dirty = { availability: 'available', tests: [{ status: 'failed', errorCategory: 'response-loss',
+    responseLossCode: privateValue, phase: privateValue, receipt: { payload: privateValue } }] };
+  assert.deepEqual(sanitizeBrowserDiagnostics(dirty).tests, [{ status: 'failed', errorCategory: 'response-loss' }]);
+  dirty.tests[0] = { status: 'passed', responseLossCode: 'unarmed-retry', errorCategory: 'response-loss' };
+  assert.deepEqual(sanitizeBrowserDiagnostics(dirty).tests, [{ status: 'passed' }]);
+});
+
+test('working loss secondary teardown errors never replace the primary test error', () => {
+  const primary = { message: 'Error: expect(locator).toBeVisible() failed: PRIVATE' };
+  const secondary = { message: 'Error: [working-loss:unrecovered] Mutation is not recovered' };
+  for (const result of [{ status: 'failed', error: primary, errors: [primary, secondary] },
+    { status: 'failed', errors: [primary, secondary] }]) {
+    const actual = browserDiagnostics(report([result])).tests[0];
+    assert.equal(actual.errorCategory, 'assertion');
+    assert.equal(actual.responseLossCode, undefined);
+  }
+  const sticky = { message: 'Error: [working-loss:unarmed-retry] Unexpected mutation request or automatic retry' };
+  const actual = browserDiagnostics(report([{ status: 'failed', error: sticky, errors: [sticky, secondary] }])).tests[0];
+  assert.equal(actual.responseLossCode, 'unarmed-retry');
+});
+
+test('working loss save milestones are finite and survive both privacy boundaries', () => {
+  for (const suffix of ['armed', 'save-clicked', 'dropped', 'unknown-visible', 'retry-armed', 'recovered']) {
+    const stage = `gui-working-loss-${suffix}`;
+    const input = report([{ status: 'failed' }], { file: 'working-version-editor.spec.ts' });
+    input.suites[0].specs[0].tests[0].annotations = [
+      { type: 'runtime-completed', description: stage },
+      { type: 'runtime-completed', description: 'gui-working-loss-PRIVATE_FILENAME' },
+    ];
+    const actual = sanitizeBrowserDiagnostics(browserDiagnostics(input));
+    assert.equal(actual.tests[0].lastCompletedStage, stage);
+    assert.ok(!JSON.stringify(actual).includes('PRIVATE'));
+  }
+});

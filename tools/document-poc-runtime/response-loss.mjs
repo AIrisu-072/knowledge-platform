@@ -58,13 +58,16 @@ export const SYNTHETIC_MULTIPART_LIMIT = 256 * 1024;
 const SMALL_RESULT_LIMIT = 64 * 1024;
 const versionPathPattern = /^\/v1\/documents\/([0-9a-f-]{36})\/versions(?:\/([0-9a-f-]{36}))?$/;
 
+// Fixed test-only markers survive Playwright error serialization; never expose raw details in CI.
+const workingLossError = (code, message) => Error(`[working-loss:${code}] ${message}`);
+
 // Pure admission/state logic is shared by the actual proxy and socket-free tests.
 export function workingResponseLossGuard(origin) {
   const target = new URL(origin);
   if (target.protocol !== 'http:' || target.hostname !== '127.0.0.1' || !target.port
-    || ![target.origin, target.origin + '/'].includes(origin)) throw Error('Requires an owned fixed loopback origin');
+    || ![target.origin, target.origin + '/'].includes(origin)) throw workingLossError('configuration', 'Requires an owned fixed loopback origin');
   let phase = 'idle', cycles = 0, failure, rawPayload, receipt, publishPath;
-  const reject = message => { if (!failure) { failure = Error(message); if (receipt) receipt.unexpected++; } throw failure; };
+  const reject = (message, code = 'upstream-transport') => { if (!failure) { failure = workingLossError(code, message); if (receipt) receipt.unexpected++; } throw failure; };
   const healthy = () => { if (failure) throw failure; };
   const snapshot = () => structuredClone(receipt);
   const guard = {
@@ -72,7 +75,7 @@ export function workingResponseLossGuard(origin) {
       healthy(); const match = versionPathPattern.exec(path);
       if (!match || !['POST', 'PUT'].includes(method) || (method === 'PUT') !== Boolean(match[2])
         || (cycles && (cycles !== 1 || phase !== 'recovered' || receipt.method !== 'POST' || method !== 'PUT'
-          || path !== `${receipt.path}/${receipt.result.targetVersionId}`))) reject('Unexpected mutation arm');
+          || path !== `${receipt.path}/${receipt.result.targetVersionId}`))) reject('Unexpected mutation arm', 'admission');
       cycles++; phase = 'armed'; rawPayload = undefined;
       receipt = { method, path, received: 0, dispatched: 0, dropped: 0, unexpected: 0, published: 0 };
     },
@@ -81,7 +84,7 @@ export function workingResponseLossGuard(origin) {
       if (destination.origin !== target.origin || destination.username || destination.password || destination.hash
         || ![destination.pathname + destination.search, destination.href].includes(url)
         || Object.keys(headers).some(name => /^(authorization|proxy-authorization|cookie|set-cookie|x-api-key|x-auth-token|upgrade)$/i.test(name))) {
-        reject('Unexpected origin or credential/upgrade header');
+        reject('Unexpected origin or credential/upgrade header', 'admission');
       }
       if (['GET', 'HEAD'].includes(method)) return 'read';
       if (method === 'POST' && phase === 'publish-armed' && destination.pathname === publishPath && !destination.search) {
@@ -89,47 +92,48 @@ export function workingResponseLossGuard(origin) {
       }
       if (receipt) receipt.received++;
       if (!receipt || method !== receipt.method || destination.pathname + destination.search !== receipt.path
-        || !['armed', 'retry-armed'].includes(phase)) reject('Unexpected mutation request or automatic retry');
+        || !['armed', 'retry-armed'].includes(phase)) reject('Unexpected mutation request or automatic retry',
+          receipt && method === receipt.method && destination.pathname + destination.search === receipt.path && phase === 'dropped' ? 'unarmed-retry' : 'admission');
       const kind = phase === 'armed' ? 'initial' : 'retry'; phase = kind; return kind;
     },
     dispatch(kind, body, contentType) {
       healthy();
-      if (!body.length || body.length > SYNTHETIC_MULTIPART_LIMIT) reject('Invalid synthetic fixture body size');
+      if (!body.length || body.length > SYNTHETIC_MULTIPART_LIMIT) reject('Invalid synthetic fixture body size', 'payload');
       if (kind === 'publish') {
-        if (phase !== 'publishing' || contentType !== 'application/json') reject('Unexpected publish request');
+        if (phase !== 'publishing' || contentType !== 'application/json') reject('Unexpected publish request', 'admission');
         return;
       }
-      if (phase !== kind || !/^multipart\/form-data;\s*boundary=.+$/i.test(contentType ?? '')) reject('Unexpected multipart dispatch');
+      if (phase !== kind || !/^multipart\/form-data;\s*boundary=.+$/i.test(contentType ?? '')) reject('Unexpected multipart dispatch', 'payload');
       if (kind === 'initial') {
         rawPayload = Buffer.from(body);
         Object.assign(receipt, { contentType, payloadBytes: body.length, payloadSha256: createHash('sha256').update(body).digest('hex') });
-      } else if (!rawPayload.equals(body) || contentType !== receipt.contentType) reject('Retry payload or content-type changed');
+      } else if (!rawPayload.equals(body) || contentType !== receipt.contentType) reject('Retry payload or content-type changed', 'retry-payload');
       if (kind === 'retry') Object.assign(receipt, { bytesEqual: true, contentTypeEqual: true });
       receipt.dispatched++;
     },
     complete(kind, status, result) {
       healthy();
       if (kind === 'publish') {
-        if (phase !== 'publishing' || status !== 200) reject('Publish was not successful');
+        if (phase !== 'publishing' || status !== 200) reject('Publish was not successful', 'upstream-status');
         receipt.published++; phase = 'published'; return;
       }
-      if (phase !== kind || status !== (receipt.method === 'POST' ? 201 : 200)) reject('Mutation was not successful');
+      if (phase !== kind || status !== (receipt.method === 'POST' ? 201 : 200)) reject('Mutation was not successful', 'upstream-status');
       if (kind === 'initial') {
         const match = versionPathPattern.exec(receipt.path);
         if (result?.documentId !== match[1] || !/^[0-9a-f-]{36}$/.test(result?.targetVersionId ?? '')
-          || (match[2] && result.targetVersionId !== match[2])) reject('Unexpected upstream mutation result');
+          || (match[2] && result.targetVersionId !== match[2])) reject('Unexpected upstream mutation result', 'upstream-result');
         Object.assign(receipt, { upstreamStatus: status, result: structuredClone(result) }); receipt.dropped++; phase = 'dropped';
       } else {
-        if (!isDeepStrictEqual(result, receipt.result)) reject('Retry upstream result changed');
+        if (!isDeepStrictEqual(result, receipt.result)) reject('Retry upstream result changed', 'retry-result');
         Object.assign(receipt, { retryStatus: status, retryResult: structuredClone(result) }); phase = 'recovered'; rawPayload = undefined;
       }
     },
-    allowRetry() { healthy(); if (phase !== 'dropped') reject('Unexpected retry arm'); phase = 'retry-armed'; },
-    assertRecovered() { healthy(); if (!['recovered', 'published'].includes(phase)) reject('Mutation is not recovered'); return snapshot(); },
+    allowRetry() { healthy(); if (phase !== 'dropped') reject('Unexpected retry arm', 'admission'); phase = 'retry-armed'; },
+    assertRecovered() { healthy(); if (!['recovered', 'published'].includes(phase)) reject('Mutation is not recovered', 'unrecovered'); return snapshot(); },
     allowPublish(path) {
       guard.assertRecovered();
       const documentPath = receipt.path.split('/versions')[0];
-      if (phase !== 'recovered' || path !== `${documentPath}/versions/${receipt.result.targetVersionId}:publish`) reject('Unexpected publish target');
+      if (phase !== 'recovered' || path !== `${documentPath}/versions/${receipt.result.targetVersionId}:publish`) reject('Unexpected publish target', 'admission');
       publishPath = path; phase = 'publish-armed';
     },
     receipt: snapshot,
@@ -140,17 +144,17 @@ export function workingResponseLossGuard(origin) {
 
 
 export async function withWorkingResponseLoss(origin, use, { timeoutMs = 50_000 } = {}) {
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 50_000) throw Error('Invalid response-loss observation window');
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 50_000) throw workingLossError('configuration', 'Invalid response-loss observation window');
   const guard = workingResponseLossGuard(origin), target = new URL(origin);
   const sockets = new Set(), upstreams = new Set(), failed = Promise.withResolvers();
   failed.promise.catch(() => {}); // An error can precede a caller starting its wait.
   let dropped, recovered, timeout;
   const stopObservation = () => clearTimeout(timeout);
-  const fail = error => { stopObservation(); try { guard.reject(error.message); } catch (failure) { failed.reject(failure); } };
+  const fail = (error, code = 'upstream-transport') => { stopObservation(); try { guard.reject(error.message, code); } catch (failure) { failed.reject(failure); } };
   const startObservation = () => {
     stopObservation();
     timeout = setTimeout(() => {
-      fail(Error('Response-loss observation window expired'));
+      fail(Error('Response-loss observation window expired'), 'observation-window');
       for (const request of upstreams) request.destroy(); for (const socket of sockets) socket.destroy();
     }, timeoutMs);
   };
@@ -165,11 +169,13 @@ export async function withWorkingResponseLoss(origin, use, { timeoutMs = 50_000 
     return Buffer.concat(chunks);
   };
   const proxy = createServer(async (request, response) => {
-    let kind, upstream;
+    let kind, upstream, failureCode = 'admission';
     try {
       kind = guard.receive(request.method, request.url, request.headers);
+      failureCode = 'payload';
       const body = kind === 'read' ? undefined : await bounded(request, SYNTHETIC_MULTIPART_LIMIT);
       if (body) guard.dispatch(kind, body, request.headers['content-type']);
+      failureCode = 'upstream-transport';
       const incoming = await new Promise((resolve, reject) => {
         const path = new URL(request.url, target); path.hostname = target.hostname; path.port = target.port;
         upstream = httpRequest(path, { method: request.method, headers: { ...headers(request.headers), host: target.host }, agent: false }, resolve);
@@ -181,6 +187,7 @@ export async function withWorkingResponseLoss(origin, use, { timeoutMs = 50_000 
       if (kind === 'read') {
         response.writeHead(incoming.statusCode, headers(incoming.headers)); await pipeline(incoming, response); return;
       }
+      failureCode = 'upstream-result';
       const bytes = await bounded(incoming, SMALL_RESULT_LIMIT);
       const encoding = incoming.headers['content-encoding'];
       const decode = { gzip: gunzipSync, deflate: inflateSync, br: brotliDecompressSync }[encoding];
@@ -194,12 +201,12 @@ export async function withWorkingResponseLoss(origin, use, { timeoutMs = 50_000 
       }
     } catch (error) {
       // Read cancellation on navigation is ordinary browser behavior, never a mutation retry.
-      if (!(kind === 'read' && (request.aborted || response.destroyed))) fail(error);
+      if (!(kind === 'read' && (request.aborted || response.destroyed))) fail(error, failureCode);
       upstream?.destroy(); response.destroy();
     }
   });
   proxy.on('connection', socket => { sockets.add(socket); socket.once('close', () => sockets.delete(socket)); });
-  for (const event of ['connect', 'upgrade']) proxy.on(event, (_request, socket) => { fail(Error('Unexpected CONNECT/upgrade')); socket.destroy(); });
+  for (const event of ['connect', 'upgrade']) proxy.on(event, (_request, socket) => { fail(Error('Unexpected CONNECT/upgrade'), 'admission'); socket.destroy(); });
   try {
     await new Promise((resolve, reject) => { proxy.once('error', reject); proxy.listen(0, '127.0.0.1', resolve); });
     const result = await use({
