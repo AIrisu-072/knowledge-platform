@@ -22,7 +22,7 @@ use crate::{
         DeliveryMetricKind as Metric, DeliveryObserver, DeliveryOutcome as Outcome, DeliveryRoute,
         DeliverySpan, HandlerTiming, Observation, SpanTiming, ValidatedTrace,
     },
-    retry_delay,
+    retry_delay_within,
 };
 
 /// A separate admission fence, such as a distributed Source lease.
@@ -861,14 +861,12 @@ where
                 store.settle_success(id, token).await
             }
             DeliveryDecision::Retryable(code) => {
-                store
-                    .settle_failure(id, token, code, false, retry_delay(id, event.attempt))
-                    .await
+                let backoff = retry_delay_within(id, event.attempt, store.backoff_bounds());
+                store.settle_failure(id, token, code, false, backoff).await
             }
             DeliveryDecision::Terminal(code) => {
-                store
-                    .settle_failure(id, token, code, true, retry_delay(id, event.attempt))
-                    .await
+                let backoff = retry_delay_within(id, event.attempt, store.backoff_bounds());
+                store.settle_failure(id, token, code, true, backoff).await
             }
         }
     };

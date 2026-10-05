@@ -311,7 +311,32 @@ async fn closure(
         .chain(changed.iter().copied())
         .chain(retired.iter().copied())
         .collect();
-    if !required.is_subset(&old) {
+    // Closure both ways: every removed relation is incident, changed or
+    // retired, and nothing else is removed.
+    if required != old {
+        return Err(GraphError::RequiresFullRebuild);
+    }
+    // A replacement may overwrite a copied relation only when it is declared
+    // changed.
+    let present: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT relation_id FROM search_graph.relation \
+         WHERE source_id=$1 AND generation_id=$2 AND relation_id=ANY($3)",
+    )
+    .bind(target.source_id.as_uuid())
+    .bind(target.generation_id.as_uuid())
+    .bind(
+        replacement
+            .iter()
+            .map(|id| id.as_uuid())
+            .collect::<Vec<_>>(),
+    )
+    .fetch_all(&mut *connection)
+    .await?;
+    if present
+        .into_iter()
+        .map(RelationId::from_uuid)
+        .any(|id| !changed.contains(&id))
+    {
         return Err(GraphError::RequiresFullRebuild);
     }
     // Every old relation and every replacement ID present in the copy goes.

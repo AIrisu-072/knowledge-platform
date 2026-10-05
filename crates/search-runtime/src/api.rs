@@ -69,8 +69,7 @@ use sqlx::PgPool;
 
 use crate::source_registration::PgSourceRegistrationLedger;
 
-/// The longest operation a route may run; a deadline must stay representable.
-pub const MAX_OPERATION_TIMEOUT: Duration = Duration::from_secs(300);
+pub use search_api_http::router::MAX_OPERATION_TIMEOUT;
 
 /// Source read ports bound to one verified actor for one request.
 #[derive(Clone)]

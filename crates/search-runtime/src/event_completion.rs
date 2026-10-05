@@ -232,21 +232,27 @@ async fn swap_pointer(
     Ok(updated.rows_affected() == 1)
 }
 
+/// Deletes exactly the caller's still-live guard. The DELETE locks the row,
+/// so an expiry or a concurrent sweep after `candidate_binding` makes it
+/// delete nothing, and the publication is lost instead of committed.
 async fn delete_guard(
     connection: &mut PgConnection,
     key: ProjectionGenerationKey,
     token: Uuid,
-) -> Result<(), CompletionError> {
-    sqlx::query(
+    fence_seq: i64,
+) -> Result<bool, CompletionError> {
+    let deleted = sqlx::query(
         "DELETE FROM search_generation_full_guard WHERE source_id=$1 \
-         AND target_generation_id=$2 AND guard_token=$3",
+         AND target_generation_id=$2 AND guard_token=$3 AND build_fence=$4 \
+         AND expires_at > clock_timestamp()",
     )
     .bind(key.source_id.as_uuid())
     .bind(key.generation_id.as_uuid())
     .bind(token)
+    .bind(fence_seq)
     .execute(connection)
     .await?;
-    Ok(())
+    Ok(deleted.rows_affected() == 1)
 }
 
 async fn record_receipt(
@@ -319,7 +325,9 @@ async fn publish_candidate(
         return Ok(SearchCompletionOutcome::Retry);
     }
     record_receipt(&mut tx, fence, key, manifest_digest, bundle_digest).await?;
-    delete_guard(&mut tx, key, token).await?;
+    if !delete_guard(&mut tx, key, token, fence_seq).await? {
+        return Ok(SearchCompletionOutcome::Lost);
+    }
     commit(tx, SearchCompletionOutcome::Published(key)).await
 }
 
@@ -536,7 +544,9 @@ impl PgPublication {
         {
             return Ok(SearchCompletionOutcome::Retry);
         }
-        delete_guard(&mut tx, key, target.guard_token()).await?;
+        if !delete_guard(&mut tx, key, target.guard_token(), target.build_fence()).await? {
+            return Ok(SearchCompletionOutcome::Lost);
+        }
         commit(tx, SearchCompletionOutcome::Published(key)).await
     }
 }

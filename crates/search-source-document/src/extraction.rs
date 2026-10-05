@@ -98,6 +98,24 @@ pub struct BodyProfileRegistry {
     profiles: Vec<(FormatId, RegisteredProfile)>,
 }
 
+/// The format a declared lowercase MIME essence names.
+fn declared_format(media_type: &str) -> Option<FormatId> {
+    Some(match media_type {
+        "text/plain" => FormatId::Text,
+        "text/csv" => FormatId::Csv,
+        "text/html" => FormatId::Html,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => FormatId::Docx,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => FormatId::Xlsx,
+        "application/vnd.ms-excel.sheet.macroenabled.12" => FormatId::Xlsm,
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" => {
+            FormatId::Pptx
+        }
+        "application/pdf" => FormatId::Pdf,
+        "application/zip" | "application/x-zip-compressed" => FormatId::Zip,
+        _ => return None,
+    })
+}
+
 impl BodyProfileRegistry {
     pub fn new(
         parser_build_id: impl Into<String>,
@@ -145,25 +163,21 @@ impl BodyProfileRegistry {
             .map(|(_, definition)| definition)
     }
 
+    /// The declared format's pre-admission byte limit, checked against the
+    /// raw binding's size before any byte is read from storage.
+    fn admission_limit(&self, media_type: &str) -> Option<(FormatId, u64)> {
+        let format = declared_format(media_type)?;
+        let limit = *self
+            .definition(format)?
+            .limits
+            .get(&BudgetKey::InputBytes)?;
+        Some((format, limit))
+    }
+
     /// Declared lowercase MIME essence plus a magic check. A mismatch is an
     /// unsupported item, never a guess at another format.
     pub fn detect(&self, media_type: &str, raw: &[u8]) -> Result<FormatId, CoverageReason> {
-        let format = match media_type {
-            "text/plain" => FormatId::Text,
-            "text/csv" => FormatId::Csv,
-            "text/html" => FormatId::Html,
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => {
-                FormatId::Docx
-            }
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => FormatId::Xlsx,
-            "application/vnd.ms-excel.sheet.macroenabled.12" => FormatId::Xlsm,
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation" => {
-                FormatId::Pptx
-            }
-            "application/pdf" => FormatId::Pdf,
-            "application/zip" | "application/x-zip-compressed" => FormatId::Zip,
-            _ => return Err(CoverageReason::UnsupportedFormat),
-        };
+        let format = declared_format(media_type).ok_or(CoverageReason::UnsupportedFormat)?;
         let zip_magic = raw.starts_with(b"PK\x03\x04") || raw.starts_with(b"PK\x05\x06");
         let consistent = match format {
             FormatId::Docx | FormatId::Xlsx | FormatId::Xlsm | FormatId::Pptx | FormatId::Zip => {
@@ -293,6 +307,17 @@ impl<F: FileStorage, E: ContentExtractor> DocumentBodyExtractor<F, E> {
         snapshot: &VersionSnapshotRecord,
         item: &AuthoritativeItemBinding,
     ) -> Result<ExtractedItemResult, BodyBuildError> {
+        // Pre-admission: an object larger than its format's input budget is
+        // never buffered or parsed by the host.
+        if let Some((format, limit)) = self.registry.admission_limit(&item.raw.media_type)
+            && item.raw.size_bytes > limit
+        {
+            return Ok(ExtractedItemResult::unsupported(
+                Some(format),
+                None,
+                CoverageReason::ResourceLimit,
+            ));
+        }
         let raw = self.read_raw(item).await?;
         let format = match self.registry.detect(&item.raw.media_type, &raw) {
             Ok(format) => format,

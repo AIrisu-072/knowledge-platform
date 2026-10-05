@@ -141,6 +141,9 @@ struct AppState {
     timeout: Duration,
 }
 
+/// The longest operation a route may run; its deadline stays representable.
+pub const MAX_OPERATION_TIMEOUT: Duration = Duration::from_secs(300);
+
 /// Refuses to start without a verifier, a valid challenge and a deadline.
 pub fn build_search_router(config: SearchRouterConfig) -> Result<Router, StartupError> {
     let credentials = config
@@ -151,7 +154,7 @@ pub fn build_search_router(config: SearchRouterConfig) -> Result<Router, Startup
         .ok_or(StartupError::ChallengeUnwired)?
         .validate()
         .map_err(StartupError::Challenge)?;
-    if config.operation_timeout.is_zero() {
+    if config.operation_timeout.is_zero() || config.operation_timeout > MAX_OPERATION_TIMEOUT {
         return Err(StartupError::InvalidTimeout);
     }
     let state = Arc::new(AppState {
@@ -211,20 +214,16 @@ async fn route(
 ) -> Response {
     let trace = Uuid::new_v4();
     let (parts, body) = request.into_parts();
-    let outcome = match bounded_body(&parts, body).await {
-        Err(failure) => Err(failure),
-        Ok(bytes) => {
-            match tokio::time::timeout(
-                state.timeout,
-                pipeline(&state, operation, &parts, bytes, resource_id, trace),
-            )
-            .await
-            {
-                Ok(outcome) => outcome,
-                // The internal operation deadline is never an upstream 504.
-                Err(_) => Err(ProblemCode::ServiceUnavailable.into()),
-            }
-        }
+    // Reading the body counts against the same operation deadline.
+    let outcome = match tokio::time::timeout(state.timeout, async {
+        let bytes = bounded_body(&parts, body).await?;
+        pipeline(&state, operation, &parts, bytes, resource_id, trace).await
+    })
+    .await
+    {
+        Ok(outcome) => outcome,
+        // The internal operation deadline is never an upstream 504.
+        Err(_) => Err(ProblemCode::ServiceUnavailable.into()),
     };
     match outcome {
         // On the socket server the body owns a lease until the send completes.
@@ -406,7 +405,9 @@ async fn pipeline(
         }
     }
     let bytes = bytes.ok_or(ProblemCode::ServiceUnavailable)?;
-    if bytes.len() > SUCCESS_BODY_BYTES {
+    // A result whose evaluation (and its remote leases) is still open is
+    // never sent: remote items rely on that closed evaluation.
+    if bytes.len() > SUCCESS_BODY_BYTES || !evaluation_closed {
         return Err(ProblemCode::ServiceUnavailable.into());
     }
     Ok((bytes, evaluation_closed))

@@ -237,8 +237,14 @@ pub async fn serve(
     loop {
         tokio::select! {
             () = &mut shutdown => break,
+            // Finished connections are reaped as they end, not at shutdown.
+            Some(_) = connections.join_next(), if !connections.is_empty() => {}
             accepted = listener.accept() => {
-                let Ok((stream, _)) = accepted else { continue };
+                let Ok((stream, _)) = accepted else {
+                    // Descriptor exhaustion must not spin the accept loop.
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    continue;
+                };
                 let Ok(stream) = bound_send_buffer(stream, options.send_buffer_bytes) else {
                     continue;
                 };

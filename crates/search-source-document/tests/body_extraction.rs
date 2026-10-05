@@ -182,3 +182,26 @@ async fn zip_plan_comes_from_the_trusted_registry() {
         })
     );
 }
+
+#[tokio::test]
+async fn oversized_declared_item_is_resource_limited_before_any_read() {
+    // No stored image: any read would fail as unavailable.
+    let body = extractor(vec![], Mode::Honest);
+    for (raw, media_type) in [
+        (&b"small"[..], "text/plain"),
+        (&b"PK"[..], "application/zip"),
+    ] {
+        let mut binding = item(raw, media_type);
+        binding.raw.size_bytes = u64::MAX / 2;
+        let result = body.extract_item(&record(), &binding).await.unwrap();
+        assert_eq!(result.operation, ItemOperationState::Completed);
+        assert_eq!(
+            result.coverage,
+            Some(BodyCoverage::Unsupported {
+                reason: CoverageReason::ResourceLimit
+            })
+        );
+        assert!(result.units.is_empty());
+    }
+    assert!(body_requests(&body).is_empty());
+}
