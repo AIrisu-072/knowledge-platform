@@ -22,7 +22,12 @@ tokio.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+document-application = { version = "0.0.0", path = "../document-application" }
+document-storage-fs = { version = "0.0.0", path = "../document-storage-fs" }
+search-core = { version = "0.0.0", path = "../search-core" }
 search-extraction-core = { version = "0.0.0", path = "../search-extraction-core" }
+search-extraction-worker = { version = "0.0.0", path = "../search-extraction-worker" }
+zip.workspace = true
 search-graph-memory = { version = "0.0.0", path = "../search-graph-memory" }
 testcontainers.workspace = true
 document-repository-postgres = { version = "0.0.0", path = "../document-repository-postgres" }

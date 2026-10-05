@@ -4188,11 +4188,15 @@ dependencies = [
 name = "search-runtime"
 version = "0.0.0"
 dependencies = [
+ "document-application",
  "document-domain",
  "document-repository-postgres",
+ "document-storage-fs",
  "outbox-delivery",
  "search-application",
+ "search-core",
  "search-extraction-core",
+ "search-extraction-worker",
  "search-graph",
  "search-graph-memory",
  "search-projection-memory",
@@ -4206,6 +4210,7 @@ dependencies = [
  "time",
  "tokio",
  "uuid",
+ "zip 8.6.0",
 ]
 
 [[package]]

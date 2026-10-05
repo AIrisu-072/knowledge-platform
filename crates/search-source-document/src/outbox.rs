@@ -160,6 +160,16 @@ pub trait DocumentIndexRuntime: Send + Sync {
     fn discard_body_generation<'a>(&'a self, _key: ProjectionGenerationKey) -> BoxFuture<'a, bool> {
         Box::pin(async { Ok(false) })
     }
+
+    /// The authoritative snapshot behind a body-ready generation, for a
+    /// durable runtime that commits the Graph mapping to it (P3-D01).
+    fn bind_source_snapshot<'a>(
+        &'a self,
+        _key: ProjectionGenerationKey,
+        _snapshot: &'a DocumentOutboxSnapshot,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
 }
 
 fn body_bundles_unsupported() -> SearchError {
@@ -1118,6 +1128,9 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
                 .map_err(|error| SearchError::OperationFailed(error.to_string()))?;
         self.runtime.begin_generation(persistent).await?;
         let staged = async {
+            if let Some(snapshot) = &body_snapshot {
+                self.runtime.bind_source_snapshot(key, snapshot).await?;
+            }
             self.runtime
                 .stage_concept_registry(key, self.config.semantic_registry.clone())
                 .await?;
