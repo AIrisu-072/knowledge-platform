@@ -612,10 +612,23 @@ impl DocumentHistoryRepository for PostgresDocumentRepository {
         let row = authorize_version_in_tx(&mut tx, ctx, request).await?;
         let (file_summary, first_read_at) =
             version_projection(&mut tx, ctx, request.document_version_id.as_uuid()).await?;
+        let summary = decode_version_with_projection(&row, file_summary, first_read_at)?;
+        let current_publication_schedule_id = sqlx::query_scalar(
+            "SELECT publish_operation_id FROM document_publish_schedules \
+             WHERE document_id = $1 AND target_document_version_id = $2 \
+               AND status = 'PENDING' AND scheduled_publish_at = $3",
+        )
+        .bind(request.document_id.as_uuid())
+        .bind(request.document_version_id.as_uuid())
+        .bind(summary.scheduled_publish_at)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(map_statement_error)?;
         let detail = VersionDetail {
-            summary: decode_version_with_projection(&row, file_summary, first_read_at)?,
+            summary,
             title: row.try_get("title").map_err(map_statement_error)?,
             metadata: row.try_get("metadata").map_err(map_statement_error)?,
+            current_publication_schedule_id,
         };
         tx.rollback().await.map_err(map_statement_error)?;
         Ok(detail)

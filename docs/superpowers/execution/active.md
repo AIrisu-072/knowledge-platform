@@ -4,7 +4,16 @@
 
 - 完成source `f639fbf0`を保持し、レビュー境界に沿いD1 backend/API/SDKとD2 GUI/runtimeへ分ける。D1の[状況](document-working-manifest-api-status.md)、共通[承認追補](../specs/2026-10-05-document-working-version-editor-amendment.md)、[小計画](../plans/2026-10-05-document-working-version-editor.md)を参照
 - D1は初回未公開WORKINGの修復・capability整合・exact manifest read・nullable結果を扱う。複数原本GUI有効化はD2で、旧公開維持/選択変換物除外の承認意味は変えない
-- 分割単独の検証と最新合格mainへの両履歴保持統合は未完。旧完成treeの資格を新headへ付け替えない。画像を生成/公開せず、実DB/ブラウザーは既存hosted受入で確認する
+- D1source `9212c7b0` と合格main `c4388433` を両履歴保持で統合。新しい組合せのGUI302・pureRust164・DB4target/36宣言case compile-only・型/build/API18/Clippy/fmt/architectureと独立共存review GO。新exact-head CI/実runtimeは公開後。旧資格を付け替えず、画像生成/公開も行わない
+
+
+---
+
+## 2026-10-05 04:57 UTC — 公開予約取消の最小読取補修とGUI
+
+- 所有者の予約取消優先指示に従い、main `e9c7f773` から独立branchで既存取消APIへGUIを接続する。[今回の状況](document-schedule-cancel-status.md)、[小さい計画](../plans/2026-10-05-document-schedule-cancel.md)、[追加読取field](../specs/2026-10-05-document-schedule-cancel-read-amendment.md)を参照
+- Version detailの現在PENDING予約IDだけを追加する。既存mutation・現在認可・capability条件・予約公開の意味は不変。WORKING更新/rebaseは対象外
+- main `5d262557` との両履歴保持の統合候補。全GUI302件・型/build・API16件・HTTP純粋6件・runtime純粋116件・collection15+3件成功、限定独立レビューGO。新exact-head hosted受入は未実行。公開とmain統合は親担当、実サーバー反映は所有者が手動実施する。以下の過去記録の資格を今回へ付け替えない
 
 ---
 

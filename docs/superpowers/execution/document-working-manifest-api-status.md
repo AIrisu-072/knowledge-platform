@@ -26,3 +26,16 @@ D1単独の旧GUI279件/22 suites、型・build・MCP/seed/runtime型、API17、
 修正は `crates/document-repository-postgres/src/action_capability.rs` と `crates/document-api-http/tests/read_http.rs` の2pathに限定。実production predicateのRED（Disabled/NotCurrentが返る）とGREEN2件を取得し、legacy currentのcapability行列と認可付きT10実mutation成功を確認するDBcaseを追加した。DBcaseはcompile-onlyとし実行しない。元f639は改変せず、分割和の差分はこの既存意味を戻す補正として明示する。修正後のfresh検証・独立再レビュー・最新main統合はこの後に記録する。
 
 06:43 UTC: T10補正のlocked/offline再実行はpure2件とread_http compile-onlyが成功し、Cargo.lockの一時的な順序変更を元blobへ完全復元した。新read_httpのsource宣言は20件（D1のDB対象は計3target/32宣言case、実行0）。独立再レビューでsource/契約/分割境界GO、残件なし。27backend pathは元f639とbyte一致、残る2pathだけ承認したT10補正で、D2留保20pathとlockはbaseと一致する。ここでsourceをlocalcommitし、合格main c4388433へ履歴保持mergeして、その新しい組合せで全最終検証を取り直す。
+
+## 2026-10-05 06:50 UTC — 合格mainの予約取消を保持したD1統合候補
+
+source `9212c7b01f0e3e269dbedc2964342e7b4d489561` と合格main `c4388433e97e239057921f2412d1ac3e00900de4` を両parentとして保持する。read_httpとAPI契約の末尾追加test、Active先頭だけが競合し、両者を残して解消した。OpenAPIからSDKを再生成し全generated fileのbyte再現性を確認した。現在予約ID/read・取消GUI・元の固定要求回復を落とさず、D2のGUIはまだ入れない。
+
+新しい組合せでfresh検証を実施した:
+
+- GUI302件/23 suites、client6、API18、型/schema freshness/build/MCP/seed/runtime型、lint成功。既存Webpack3 advisoryとlint warning1を保持
+- 164 unique pure Rustケース成功、package/target/caseで重複0。DBは4targetをcompile-onlyし、source宣言testは10+2+3+21=36、実行0。4crate全target strict Clippy、fmt、architecture成功
+- 有限診断/記録配線28件、既存journey15/7files・persistence3/3filesのcollection-only成功
+- 新独立共存reviewはGO、blockingなし。main専用17path/D1専用25pathは各parentのbytesを保持し、重複8pathを個別確認。document-web既存118pathはmainと一致。Review後はこの検証記録だけを追記した
+
+D1はlocal source/契約資格のみ。新exact-head CI・実DB/browser/restart/cleanupは公開後に親が確認する。元f639、D1source、mainの履歴は保持し、次は日本語Draft packetを親へ渡してD2をstackする。公開/main mergeは親、実サーバー導入は所有者が手動実施する。

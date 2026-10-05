@@ -293,7 +293,7 @@ fn assert_schema(definition: &str, value: &Value) {
         "Version" => json!({
             "type": "object",
             "additionalProperties": false,
-            "required": ["versionId", "versionNo", "baseVersionId", "lifecycleState", "isCurrent", "createdAt", "approvedAt", "scheduledPublishAt", "publishedAt", "withdrawnAt", "updatedAt", "fileSummary", "firstReadAt", "title", "metadata", "capabilities"],
+            "required": ["versionId", "versionNo", "baseVersionId", "lifecycleState", "isCurrent", "createdAt", "approvedAt", "scheduledPublishAt", "publishedAt", "withdrawnAt", "updatedAt", "fileSummary", "firstReadAt", "title", "metadata", "currentPublicationScheduleId", "capabilities"],
             "properties": {
                 "versionId": {"type": "string", "format": "uuid"},
                 "versionNo": {"type": "integer", "minimum": 1},
@@ -319,6 +319,7 @@ fn assert_schema(definition: &str, value: &Value) {
                 "firstReadAt": {"type": ["string", "null"], "format": "date-time"},
                 "title": {"type": "string"},
                 "metadata": {"type": "object"},
+                "currentPublicationScheduleId": {"type": ["string", "null"], "format": "uuid"},
                 "capabilities": {"type": "object"}
             }
         }),
@@ -1578,4 +1579,62 @@ async fn unclassified_current_can_end_publication_while_versioning_stays_disable
     .await
     .unwrap();
     assert_eq!(original, ("PUBLISHED".into(), true));
+}
+
+#[tokio::test]
+async fn version_detail_returns_current_schedule_identity_and_explicit_null_after_cancellation() {
+    let f = fixture().await;
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![grant_for(
+                "policy-admin",
+                [Action::Read, Action::Write, Action::Publish],
+            )],
+        )
+        .await
+        .unwrap();
+    let working = uuid::Uuid::now_v7();
+    let schedule = uuid::Uuid::now_v7();
+    sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,lifecycle_state,title,scheduled_publish_at,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,1,'WORKING','予約対象',to_timestamp(100),'test-idp','policy-admin','{}',now())")
+        .bind(working).bind(f.document_id.as_uuid()).execute(&f.pool).await.unwrap();
+    sqlx::query("INSERT INTO document_publish_schedules (publish_operation_id,document_id,target_document_version_id,expected_document_revision,accepted_document_revision,scheduled_publish_at,actor_identity_provider,actor_principal_id,manifest_digest,status,created_at) VALUES ($1,$2,$3,1,2,to_timestamp(100),'test-idp','policy-admin',$4,'PENDING',now())")
+        .bind(schedule).bind(f.document_id.as_uuid()).bind(working).bind(vec![1_u8;32])
+        .execute(&f.pool).await.unwrap();
+    let router = read_router(f.repository.clone(), Arc::new(FixedIdentity(context()))).unwrap();
+    let path = format!(
+        "/v1/documents/{}/versions/{working}?purpose=authoring",
+        f.document_id.as_uuid()
+    );
+    let (status, body) = get(router.clone(), &path).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["currentPublicationScheduleId"], schedule.to_string());
+    assert_schema("Version", &body);
+
+    let list_path = format!(
+        "/v1/documents/{}/versions?purpose=authoring",
+        f.document_id.as_uuid()
+    );
+    let (status, list) = get(router.clone(), &list_path).await;
+    assert_eq!(status, StatusCode::OK, "{list}");
+    assert!(
+        list["items"][0]
+            .get("currentPublicationScheduleId")
+            .is_none()
+    );
+
+    let mut tx = f.pool.begin().await.unwrap();
+    sqlx::query("UPDATE document_publish_schedules SET status = 'CANCELLED' WHERE publish_operation_id = $1").bind(schedule).execute(&mut *tx).await.unwrap();
+    sqlx::query(
+        "UPDATE document_versions SET scheduled_publish_at = NULL WHERE document_version_id = $1",
+    )
+    .bind(working)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    let (status, body) = get(router, &path).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body.get("currentPublicationScheduleId"), Some(&Value::Null));
+    assert_schema("Version", &body);
 }

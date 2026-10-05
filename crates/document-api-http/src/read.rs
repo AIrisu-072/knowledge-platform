@@ -431,6 +431,7 @@ struct VersionDto {
 struct VersionDetailDto {
     #[serde(flatten)]
     version: VersionDto,
+    current_publication_schedule_id: Option<Uuid>,
     capabilities: VersionActionCapabilities,
 }
 
@@ -788,6 +789,7 @@ async fn get_version<R: AuthorizedReadRepository>(
         .await
         .map_err(|error| problem(error, &path, &trace))?;
     Ok(Json(VersionDetailDto {
+        current_publication_schedule_id: detail.current_publication_schedule_id,
         version: version_detail_dto(detail).map_err(|error| problem(error, &path, &trace))?,
         capabilities,
     }))
@@ -1471,5 +1473,68 @@ fn policy_grant_dto(value: PolicyGrant, presentation: IdentityPresentation) -> P
             })
             .collect(),
         presentation: identity_presentation_dto(presentation),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use document_application::ActionAvailability;
+
+    fn version_detail() -> VersionDetailDto {
+        let available = ActionAvailability::available();
+        VersionDetailDto {
+            version: VersionDto {
+                version_id: Uuid::now_v7(),
+                version_no: 1,
+                base_version_id: None,
+                lifecycle_state: "working".into(),
+                is_current: false,
+                created_at: "2026-10-05T00:00:00Z".into(),
+                approved_at: None,
+                scheduled_publish_at: None,
+                published_at: None,
+                withdrawn_at: None,
+                updated_at: "2026-10-05T00:00:00Z".into(),
+                file_summary: GuiVersionFileSummaryDto {
+                    authoritative_item_count: 0,
+                    total_size_bytes: 0,
+                    primary: None,
+                },
+                first_read_at: None,
+                title: Some("予約対象".into()),
+                metadata: Some(serde_json::json!({})),
+            },
+            current_publication_schedule_id: None,
+            capabilities: VersionActionCapabilities {
+                edit: available,
+                rebase: available,
+                publish: available,
+                withdraw: available,
+                schedule_publication: available,
+                cancel_publication_schedule: available,
+                download: available,
+            },
+        }
+    }
+
+    #[test]
+    fn version_detail_serializes_current_publication_schedule_id_as_explicit_null() {
+        let body = serde_json::to_value(version_detail()).unwrap();
+        assert_eq!(body.get("currentPublicationScheduleId"), Some(&Value::Null));
+    }
+
+    #[test]
+    fn version_detail_serializes_the_exact_schedule_id_without_adding_it_to_version_summary() {
+        let schedule_id = Uuid::now_v7();
+        let mut detail = version_detail();
+        detail.current_publication_schedule_id = Some(schedule_id);
+        let summary = serde_json::to_value(&detail.version).unwrap();
+        assert!(summary.get("currentPublicationScheduleId").is_none());
+        let body = serde_json::to_value(detail).unwrap();
+        assert_eq!(
+            body["currentPublicationScheduleId"],
+            schedule_id.to_string()
+        );
     }
 }

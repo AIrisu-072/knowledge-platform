@@ -18,7 +18,7 @@ const baseId = '00000000-0000-4000-8000-000000000004';
 const available = { status: 'available' as const };
 const denied = { status: 'disabled' as const, reason: 'permission' as const };
 const version: VersionDetail = { versionId, versionNo: 2, baseVersionId: baseId, lifecycleState: 'published', isCurrent: true,
-  createdAt: '2026-10-05T01:00:00Z', approvedAt: null, scheduledPublishAt: null, publishedAt: '2026-10-05T01:00:00Z', withdrawnAt: null,
+  createdAt: '2026-10-05T01:00:00Z', approvedAt: null, scheduledPublishAt: null, currentPublicationScheduleId: null, publishedAt: '2026-10-05T01:00:00Z', withdrawnAt: null,
   updatedAt: '2026-10-05T01:00:00Z', fileSummary: { authoritativeItemCount: 1, totalSizeBytes: 5, primary: { displayName: '合成.txt', mediaType: 'text/plain', sizeBytes: 5 } },
   firstReadAt: null, title: '合成文書', metadata: {}, capabilities: { edit: denied, rebase: denied, publish: denied, withdraw: available,
     schedulePublication: denied, cancelPublicationSchedule: denied, download: denied } };
