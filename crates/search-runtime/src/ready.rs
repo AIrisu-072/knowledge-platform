@@ -217,6 +217,98 @@ impl ReadyCoordinator {
         Ok(manifest)
     }
 
+    /// P7-12: re-verifies a READY generation from what is stored now: the
+    /// payload DTOs and composite digest, the lexical directory, and the Graph
+    /// rows against both their READY receipt and the projection. Nothing is
+    /// written; any drift is an error and the key must not be served.
+    pub async fn reverify(
+        &self,
+        key: ProjectionGenerationKey,
+    ) -> Result<VerifiedBundle, ReadyError> {
+        let state: Option<String> = sqlx::query_scalar(
+            "SELECT state FROM search_generation WHERE source_id=$1 AND generation_id=$2",
+        )
+        .bind(key.source_id.as_uuid())
+        .bind(key.generation_id.as_uuid())
+        .fetch_optional(&self.pool)
+        .await?;
+        if state.as_deref() != Some("READY") {
+            return Err(ReadyError::Fence);
+        }
+        let manifest = self.manifest(key).await?;
+        let RestoredPayloadV1 {
+            projection,
+            unit_manifest,
+            coverage,
+        } = self
+            .payloads
+            .restore(&manifest)
+            .await
+            .map_err(ReadyError::Payload)?;
+        let seal = self
+            .lexical
+            .reopen_and_validate(&manifest, &self.source, &unit_manifest)
+            .await
+            .map_err(ReadyError::Lexical)?;
+        let (graph, resources, relations) =
+            search_graph::PostgresGraphStore::new(self.pool.clone())
+                .recover_rows(key, &manifest.digest)
+                .await?;
+        let report = GraphStageReport {
+            key,
+            source_snapshot: graph.source_snapshot,
+            projection_manifest_digest: graph.projection_manifest_digest,
+            source_mapping_digest: graph.source_mapping_digest,
+            graph_content_digest: graph.graph_content_digest,
+            resource_count: graph.resource_count,
+            relation_count: graph.relation_count,
+            graph_schema_version: graph.graph_schema_version,
+        };
+        let p1_relations: Vec<TypedRelationInstance> = projection
+            .resources
+            .iter()
+            .flat_map(|resource| resource.relations.clone())
+            .collect();
+        let p1_graph = graph_receipt(key, &projection.resources, &owners(&resources))
+            .map_err(|_| ReadyError::Mapping)?;
+        GraphReceiptMappingV1::validate(&manifest, &p1_graph, &p1_relations, &report, &relations)?;
+        let receipt = compute_bundle_receipt(
+            key,
+            &manifest.source_snapshot,
+            &manifest.digest,
+            &unit_manifest,
+            &coverage,
+            ArtifactReceipt {
+                key,
+                digest: seal.logical_digest,
+                count: seal.logical_count,
+            },
+            p1_graph,
+        )
+        .map_err(|_| ReadyError::Payload(BundleError::Digest))?;
+        let stored: Option<(String, String, String)> = sqlx::query_as(
+            "SELECT composite_digest, graph_content_digest, graph_mapping_digest              FROM search_generation_receipt WHERE source_id=$1 AND generation_id=$2",
+        )
+        .bind(key.source_id.as_uuid())
+        .bind(key.generation_id.as_uuid())
+        .fetch_optional(&self.pool)
+        .await?;
+        if stored
+            != Some((
+                sha256_text(&receipt.composite_digest),
+                report.graph_content_digest.clone(),
+                report.source_mapping_digest.clone(),
+            ))
+        {
+            return Err(ReadyError::Payload(BundleError::Digest));
+        }
+        Ok(VerifiedBundle {
+            key,
+            receipt,
+            graph: report,
+        })
+    }
+
     async fn ready(
         &self,
         key: ProjectionGenerationKey,

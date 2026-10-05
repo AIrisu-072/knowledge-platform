@@ -9,6 +9,7 @@ pub mod lexical_artifact;
 pub mod payload;
 pub mod pin;
 pub mod ready;
+pub mod recovery;
 pub mod source_lease;
 pub mod source_registration;
 

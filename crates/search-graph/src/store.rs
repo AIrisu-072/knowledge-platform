@@ -693,6 +693,26 @@ impl PostgresGraphStore {
         key: ProjectionGenerationKey,
         expected_manifest_digest: &str,
     ) -> Result<GraphGenerationReceipt, GraphError> {
+        self.recover_rows(key, expected_manifest_digest)
+            .await
+            .map(|(receipt, _, _)| receipt)
+    }
+
+    /// `recover` together with the rebuilt rows, for a bundle re-verification
+    /// that compares them with the stored projection.
+    #[allow(clippy::type_complexity)]
+    pub async fn recover_rows(
+        &self,
+        key: ProjectionGenerationKey,
+        expected_manifest_digest: &str,
+    ) -> Result<
+        (
+            GraphGenerationReceipt,
+            Vec<GraphResourceRecord>,
+            Vec<TypedRelationInstance>,
+        ),
+        GraphError,
+    > {
         let mut tx = self.pool.begin().await?;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
             .execute(&mut *tx)
@@ -714,16 +734,20 @@ impl PostgresGraphStore {
             return Err(GraphError::Integrity("READY receipt"));
         }
         tx.commit().await?;
-        Ok(GraphGenerationReceipt {
-            key,
-            projection_manifest_digest: parent.projection_manifest_digest,
-            source_snapshot: parent.source_snapshot,
-            source_mapping_digest: parent.source_mapping_digest,
-            graph_content_digest: content,
-            resource_count,
-            relation_count,
-            graph_schema_version: GRAPH_SCHEMA_VERSION.into(),
-        })
+        Ok((
+            GraphGenerationReceipt {
+                key,
+                projection_manifest_digest: parent.projection_manifest_digest,
+                source_snapshot: parent.source_snapshot,
+                source_mapping_digest: parent.source_mapping_digest,
+                graph_content_digest: content,
+                resource_count,
+                relation_count,
+                graph_schema_version: GRAPH_SCHEMA_VERSION.into(),
+            },
+            resources,
+            relations,
+        ))
     }
 }
 
