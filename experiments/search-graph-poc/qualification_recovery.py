@@ -10,6 +10,7 @@ import copy
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import time
 from pathlib import Path
@@ -346,16 +347,19 @@ def _neo_admin(image_id, data_dir, operation, input_bytes=None):
                 "--overwrite-destination=true"]
     else:
         raise ValueError("unknown Neo4j offline operation")
-    # Linux bind mounts keep host ownership; the explicit neo4j user must be
-    # able to write a harness-created offline directory (amendment 2026-10-05).
-    # A directory already handed to the container's user is left unchanged.
-    if Path(data_dir).stat().st_uid == os.getuid():
-        Path(data_dir).chmod(0o777)
-    return command(["docker", "run", "--rm", "--pull=never", "--memory=2g",
-                    "--user", "neo4j",
-                    "--label", f"{OWNER_LABEL}=1", "--entrypoint", "neo4j-admin",
-                    "-v", f"{data_dir}:/data", image_id, *args], timeout=180,
-                   input_bytes=input_bytes)
+    # Dump reads the live candidate directory as its owning neo4j user. Load
+    # writes a harness-created directory that Linux bind mounts keep owned by
+    # the runner, so it runs as the image default user; the restore container's
+    # entrypoint then hands /data to neo4j (amendment 2026-10-05).
+    user = ["--user", "neo4j"] if operation == "dump" else []
+    try:
+        return command(["docker", "run", "--rm", "--pull=never", "--memory=2g", *user,
+                        "--label", f"{OWNER_LABEL}=1", "--entrypoint", "neo4j-admin",
+                        "-v", f"{data_dir}:/data", image_id, *args], timeout=180,
+                       input_bytes=input_bytes)
+    except subprocess.CalledProcessError as error:
+        detail = (error.stderr or b"")[-2000:].decode(errors="replace")
+        raise RuntimeError(f"neo4j-admin {operation} failed: {detail}") from error
 
 
 def _neo_start_restore(name, image_id, data_dir):

@@ -55,3 +55,13 @@ harness version so the comparison does not mix source hashes.
 5. **Restore directory ownership.** The permission change from item 3 now applies only
    to a directory owned by the runner user. The live candidate directory, which the
    Neo4j entrypoint hands to its own user, is left unchanged.
+
+## Changes after round 3 (run 37253346842)
+
+6. **Offline load user.** PostgreSQL and redb completed every cell plus restart,
+   restore and fault probes. Neo4j completed its timed cells after one canary resume,
+   then `neo4j-admin database load` into the harness-created restore directory failed
+   on Linux. Dump still runs as the owning `neo4j` user; load now runs as the image
+   default user, and the restore container's entrypoint hands `/data` to `neo4j` before
+   the server starts. A failed offline command now reports the last 2,000 bytes of its
+   stderr so a remaining failure is diagnosable from the receipt.
