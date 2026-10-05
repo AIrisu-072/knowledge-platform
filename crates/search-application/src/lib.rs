@@ -18,6 +18,7 @@ pub mod ports;
 pub mod projection;
 pub mod qualification;
 pub mod remote;
+pub mod remote_binding;
 pub mod remote_cache;
 pub mod remote_disclosure;
 pub mod remote_evidence;

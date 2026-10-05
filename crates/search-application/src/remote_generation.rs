@@ -502,8 +502,6 @@ pub struct RemoteEvaluationGeneration {
     manifest: ProjectionGenerationManifest,
     receipts: Vec<ActionReceipt>,
     resources: BTreeMap<ResourceId, CompiledResourceProjection>,
-    // Read by the P4-11 composite view and P4-14 binding.
-    #[allow(dead_code)]
     identities: BTreeMap<ResourceId, StagedResource>,
     assertions: BTreeMap<ResourceId, Vec<Assertion>>,
     evidence: BTreeMap<(ResourceId, String), VerifiedProvenance>,
@@ -571,12 +569,7 @@ impl RemoteEvaluationGeneration {
     ) -> Option<&VerifiedProvenance> {
         self.evidence.get(&(id, evidence_ref.to_owned()))
     }
-    #[allow(dead_code)]
     pub(crate) fn identity(&self, id: ResourceId) -> Option<&StagedResource> {
         self.identities.get(&id)
-    }
-    #[allow(dead_code)]
-    pub(crate) fn retrievers(&self) -> impl Iterator<Item = &str> {
-        self.lists.iter().map(|(retriever, _)| retriever.as_str())
     }
 }
