@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 2026-10-05 04:57 UTC — 公開予約取消の最小読取補修とGUI
+
+- 所有者の予約取消優先指示に従い、main `e9c7f773` から独立branchで既存取消APIへGUIを接続する。[今回の状況](document-schedule-cancel-status.md)、[小さい計画](../plans/2026-10-05-document-schedule-cancel.md)、[追加読取field](../specs/2026-10-05-document-schedule-cancel-read-amendment.md)を参照
+- Version detailの現在PENDING予約IDだけを追加する。既存mutation・現在認可・capability条件・予約公開の意味は不変。WORKING更新/rebaseは対象外
+- main `5d262557` との両履歴保持の統合候補。全GUI302件・型/build・API16件・HTTP純粋6件・runtime純粋116件・collection15+3件成功、限定独立レビューGO。新exact-head hosted受入は未実行。公開とmain統合は親担当、実サーバー反映は所有者が手動実施する。以下の過去記録の資格を今回へ付け替えない
+
+---
+
 ## 2026-10-05 03:50 UTC — 既存APIの現行版取下げ・公開終了GUI
 
 - 所有者の既存内部処理のGUI化を続け、PR69統合後main `e9c7f773` と同一の初回登録sourceから現行公開版の取下げ・文書の公開終了を小さい別branchへ追加する。[今回の状況](document-lifecycle-operations-status.md)、[計画](../plans/2026-10-05-document-lifecycle-operations.md)、[画面操作](../../operations/document-gui-v0.md)を参照
