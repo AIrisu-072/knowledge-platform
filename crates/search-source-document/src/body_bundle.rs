@@ -38,6 +38,14 @@ struct StagedBundle {
     state: BundleState,
 }
 
+/// A published body bundle: its receipt, Unit manifest and coverage artifact.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublishedBody {
+    pub receipt: GenerationBundleReceipt,
+    pub manifest: BodyUnitManifest,
+    pub coverage: BodyCoverageArtifact,
+}
+
 /// Runtime-owned bundle state keyed by generation. Lexical and Graph receipts
 /// are recorded for every generation the runtime builds; only a staged Unit
 /// manifest turns a generation into a body bundle.
@@ -174,6 +182,19 @@ impl BundleRegistry {
             Some(BundleState::Published(receipt)) => Some(receipt.clone()),
             _ => None,
         }
+    }
+
+    /// The immutable artifacts of a published bundle, for Source-owned readers.
+    pub(crate) fn published_body(&self, key: ProjectionGenerationKey) -> Option<PublishedBody> {
+        let bundle = self.staged.get(&key)?;
+        let BundleState::Published(receipt) = &bundle.state else {
+            return None;
+        };
+        Some(PublishedBody {
+            receipt: receipt.clone(),
+            manifest: bundle.unit_manifest.clone()?,
+            coverage: bundle.coverage.clone()?,
+        })
     }
 
     /// Remove an unpublished bundle. A published bundle stays immutable for

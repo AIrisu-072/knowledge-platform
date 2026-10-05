@@ -2,15 +2,21 @@
 
 use std::collections::BTreeSet;
 
+use search_core::assertion::AssertionOrigin;
 use search_core::evidence::{
     Claim, ClaimState, EvidenceReference, EvidenceRequirement, EvidenceRole, EvidenceSufficiency,
     claim_values_semantically_equal, evaluate_evidence_sufficiency,
     is_verified_direct_claim_evidence,
 };
-use search_core::id::ResourceId;
+use search_core::id::{ClaimId, ResourceId};
+use search_core::knowledge_unit::normalize_unit_text;
+use search_core::predicate::TypedValue;
 use search_core::projection::ProjectionGenerationKey;
 use search_core::relation::RelationTemporalScope;
 
+use crate::body_ports::{
+    CONTAINS_EXACT_PREDICATE, ExactTextSelector, VerifiedExtractedTextEvidence,
+};
 use crate::error::SearchError;
 
 use super::{AssertionStorePort, ClaimSelectorPort, EvidenceResolverPort};
@@ -146,6 +152,63 @@ pub async fn assemble_resource_claims(
         }
     }
     Ok(claims)
+}
+
+/// The only route from a body Unit to a Claim. The trusted selector for
+/// `required` and the Source-verified span must agree on the Claim, parent,
+/// predicate and normalized literal; anything else stays `Unknown`. A generic
+/// body hit, a similarity score or a title Assertion never reaches here.
+pub fn assemble_verified_unit_text_claim(
+    required: ClaimId,
+    selector: &ExactTextSelector,
+    verified: &VerifiedExtractedTextEvidence,
+) -> Claim {
+    let expected = &selector.expected_exact_text;
+    let assertion = &verified.assertion;
+    let resolved = &verified.resolved;
+    let mut claim = Claim::new(required, ClaimState::Unknown);
+    claim.subject = Some(assertion.subject_ref.clone());
+    claim.predicate = Some(selector.predicate.clone());
+    claim.value = Some(TypedValue::String(expected.clone()));
+    let span_len = verified
+        .matched_span
+        .end_byte
+        .checked_sub(verified.matched_span.start_byte)
+        .map(|len| len as usize);
+    let bound = selector.claim_id == required
+        && selector.predicate == CONTAINS_EXACT_PREDICATE
+        && !expected.is_empty()
+        && normalize_unit_text(expected) == *expected
+        && span_len == Some(expected.len())
+        && assertion.origin == AssertionOrigin::Extracted
+        && !assertion.subject_ref.trim().is_empty()
+        && assertion.predicate == selector.predicate
+        && assertion.value == TypedValue::String(expected.clone())
+        && assertion.evidence_refs == [resolved.evidence_ref.clone()]
+        && resolved.resource_id == selector.parent_resource
+        && resolved.source_id == resolved.generation.source_id
+        && resolved.role == EvidenceRole::Primary
+        && resolved.content_digest.is_some()
+        && is_verified_direct_claim_evidence(
+            resolved.role,
+            resolved.is_summary,
+            &resolved.upstream_origin,
+        );
+    if !bound {
+        return claim;
+    }
+    let mut evidence = EvidenceReference::new(
+        resolved.source_id,
+        resolved.upstream_origin.clone(),
+        EvidenceRole::Primary,
+    );
+    evidence.evidence_ref = Some(resolved.evidence_ref.clone());
+    evidence.citation_chain = resolved.citation_chain.clone();
+    evidence.content_digest = resolved.content_digest.clone();
+    evidence.is_summary = false;
+    claim.evidence_refs.push(evidence);
+    claim.state = ClaimState::Supported;
+    claim
 }
 
 /// C8 completion gate. The core evaluator owns sufficiency semantics.

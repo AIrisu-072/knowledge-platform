@@ -41,7 +41,7 @@ use time::OffsetDateTime;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::body_bundle::{BundleRegistry, graph_receipt};
+use crate::body_bundle::{BundleRegistry, PublishedBody, graph_receipt};
 use crate::body_manifest::{
     ArtifactReceipt, BodyCoverageArtifact, BodyItemEntry, BodyUnitManifest,
     GenerationBundleReceipt, coverage_receipt, profile_set_digest, unit_manifest_receipt,
@@ -228,6 +228,15 @@ impl MemoryDocumentIndexRuntime {
 
     pub fn graph_access_reader(&self) -> DocumentGraphAccessReader {
         self.graph_access.clone()
+    }
+
+    /// Artifacts of a published body bundle; `None` for an unpublished or
+    /// projection-only generation.
+    pub fn published_body(
+        &self,
+        key: ProjectionGenerationKey,
+    ) -> Result<Option<PublishedBody>, SearchError> {
+        Ok(self.bundles()?.published_body(key))
     }
 
     /// Drop a rebuildable lexical segment after detected loss/corruption; the

@@ -10,9 +10,12 @@ use search_core::discovery::{
     CandidateIdentityClass, DiscoveryRequest, DiscoveryResult, FederatedCandidate, GapReason,
     InformationGap,
 };
-use search_core::evidence::{Claim, EvidenceSufficiency, claim_values_semantically_equal};
+use search_core::evidence::{
+    Claim, ClaimState, EvidenceSufficiency, claim_values_semantically_equal,
+};
 use search_core::fact::{Fact, FactOrigin, FactSet};
-use search_core::id::{ResourceId, SourceId};
+use search_core::id::{ClaimId, ResourceId, SourceId};
+use search_core::knowledge_unit::normalize_unit_text;
 use search_core::materialization::{ProbeCompletenessSemantics, ProbeOutcome};
 use search_core::predicate::{ConceptResolver, Operand, PredicateExpr, TypedValue};
 use search_core::profile::FacetState;
@@ -23,10 +26,13 @@ use crate::action_selection::{
     ActionCandidate, ActionCostEstimate, ActionPriority, KnownStateDigest, NoProgressHistory,
     NoProgressKey, Selection, select_next_action,
 };
+use crate::body_ports::{
+    BodyCoverageGapPort, CONTAINS_EXACT_PREDICATE, ExactTextEvidencePort, KnowledgeUnitHitRef,
+};
 use crate::candidate::{
     CandidateHardGates, HardGateEvaluation, RankedCandidateHit, RetrieverRankList,
 };
-use crate::content_scope::DiscoveryScope;
+use crate::content_scope::{BodySearchSpec, DiscoveryScope};
 use crate::error::SearchError;
 use crate::federation::{CandidateFederator, FusionStrategy};
 use crate::materialization::ProbeBudget;
@@ -35,7 +41,7 @@ use crate::ports::{
     CurrentSourcePolicyPort, EvidenceResolverPort, LexicalQuery, ProbeCapabilityCatalogPort,
     ProbeExecutionInput, ProbeExecutionService, ProbePort, ProjectionGenerationStore,
     SourceRegistryPort, StructuredFacetFilter, StructuredFacetOutcome, assemble_resource_claims,
-    assess_claim_evidence,
+    assemble_verified_unit_text_claim, assess_claim_evidence,
 };
 use crate::retrieval::{
     ActionState, RetrievalAction, RetrievalInputs, RetrieverKind, RetrieverPlanner,
@@ -85,6 +91,8 @@ pub struct DiscoveryPorts<'a> {
 pub struct DiscoveryService<'a> {
     config: DiscoveryConfig,
     ports: DiscoveryPorts<'a>,
+    exact_text: Option<&'a dyn ExactTextEvidencePort>,
+    body_coverage: Option<&'a dyn BodyCoverageGapPort>,
 }
 
 struct PinnedSource {
@@ -162,7 +170,25 @@ impl<'a> DiscoveryService<'a> {
                 "Probe budget currency differs from evaluation currency".into(),
             ));
         }
-        Ok(Self { config, ports })
+        Ok(Self {
+            config,
+            ports,
+            exact_text: None,
+            body_coverage: None,
+        })
+    }
+
+    /// Source-owned exact-text selectors and Unit verification for body scope.
+    pub fn with_exact_text_evidence(mut self, port: &'a dyn ExactTextEvidencePort) -> Self {
+        self.exact_text = Some(port);
+        self
+    }
+
+    /// Source-owned, access-filtered body coverage for body scope. Without it a
+    /// body result never claims a complete corpus.
+    pub fn with_body_coverage(mut self, port: &'a dyn BodyCoverageGapPort) -> Self {
+        self.body_coverage = Some(port);
+        self
     }
 
     pub async fn discover(
@@ -184,6 +210,19 @@ impl<'a> DiscoveryService<'a> {
         let body = scope.body();
         if let Some(spec) = body {
             spec.validate()?;
+            // An exact-text selector may bind only a Claim this request requires.
+            if spec.exact_text_claim.is_some_and(|claim| {
+                !request.need.required_claims.contains(&claim)
+                    || !request
+                        .need
+                        .completion_requirement
+                        .required_claims
+                        .contains(&claim)
+            }) {
+                return Err(SearchError::InvalidRequest(
+                    "exact-text claim is not a required claim of this request".into(),
+                ));
+            }
         }
         let sources = self.ports.sources.list_sources().await?;
         let routes = SourceRouter::plan(&request.need, &sources, &self.config.routing);
@@ -277,6 +316,7 @@ impl<'a> DiscoveryService<'a> {
                 &attempted_trace,
                 &route_gaps,
                 &action_gaps,
+                body,
             )
             .await?;
 
@@ -518,6 +558,7 @@ impl<'a> DiscoveryService<'a> {
                     &attempted_trace,
                     &route_gaps,
                     &action_gaps,
+                    body,
                 )
                 .await?;
             if let Some(key) = no_progress_key
@@ -563,8 +604,72 @@ impl<'a> DiscoveryService<'a> {
         }
         if body.is_some() {
             restrict_to_body_hits(&mut evaluation.result, &records);
+            for pin in pins.values() {
+                let gaps = match self.body_coverage {
+                    Some(port) => {
+                        port.coverage_gaps(&request, pin.key)
+                            .await
+                            .unwrap_or_else(|_| {
+                                vec![InformationGap::new(
+                                    "document.body.coverage_unavailable",
+                                    GapReason::Availability,
+                                    true,
+                                )]
+                            })
+                    }
+                    None => vec![InformationGap::new(
+                        "document.body.coverage_unverified",
+                        GapReason::UnsupportedCoverage,
+                        true,
+                    )],
+                };
+                for gap in gaps {
+                    push_gap(&mut evaluation.result.unresolved_gaps, gap);
+                }
+            }
+            // A verified positive Claim may coexist with these gaps; the corpus
+            // as a whole is not complete while any of them blocks.
+            if evaluation.result.evidence_sufficiency == EvidenceSufficiency::Sufficient
+                && evaluation
+                    .result
+                    .unresolved_gaps
+                    .iter()
+                    .any(|gap| gap.blocking)
+            {
+                evaluation.result.evidence_sufficiency = EvidenceSufficiency::Unresolved;
+            }
         }
         Ok(evaluation.result)
+    }
+
+    /// Exact-text Claim for one qualified parent: the trusted selector must name
+    /// this parent and the request literal, and the owning Source must verify the
+    /// retained Unit hit. Every failure leaves the Claim to the Unknown fallback.
+    async fn exact_text_claim(
+        &self,
+        generation: ProjectionGenerationKey,
+        resource: ResourceId,
+        claim_id: ClaimId,
+        spec: &BodySearchSpec,
+        request: &DiscoveryRequest,
+        records: &[HitRecord],
+    ) -> Option<Claim> {
+        let port = self.exact_text?;
+        let hit: &KnowledgeUnitHitRef = records
+            .iter()
+            .filter_map(|record| record.raw.unit_hit.as_ref())
+            .find(|unit| unit.generation == generation && unit.parent_resource == resource)?;
+        let selector = port.selector_for(generation, claim_id).await.ok()??;
+        if selector.claim_id != claim_id
+            || selector.parent_resource != resource
+            || selector.predicate != CONTAINS_EXACT_PREDICATE
+            || normalize_unit_text(&spec.query.text) != selector.expected_exact_text
+        {
+            return None;
+        }
+        let verified = port.resolve_hit(request, hit, &selector).await.ok()??;
+        let claim = assemble_verified_unit_text_claim(claim_id, &selector, &verified);
+        (claim.state == ClaimState::Supported).then_some(claim)
     }
 
     async fn currently_allowed(
@@ -594,7 +699,19 @@ impl<'a> DiscoveryService<'a> {
         attempted: &[String],
         route_gaps: &[InformationGap],
         action_gaps: &[InformationGap],
+        body: Option<&BodySearchSpec>,
     ) -> Result<Evaluation, SearchError> {
+        // The exact-text Claim is assembled only from a verified Unit span; the
+        // stored-Assertion path keeps every other required Claim.
+        let exact_claim = body.and_then(|spec| spec.exact_text_claim);
+        let generic_requirement = match exact_claim {
+            None => Some(request.need.completion_requirement.clone()),
+            Some(exact) => {
+                let mut requirement = request.need.completion_requirement.clone();
+                requirement.required_claims.retain(|claim| *claim != exact);
+                (!requirement.required_claims.is_empty()).then_some(requirement)
+            }
+        };
         loop {
             let mut visible = Vec::new();
             for record in records.drain(..) {
@@ -693,15 +810,27 @@ impl<'a> DiscoveryService<'a> {
                     if !seen_resources.insert((pin.key, resource)) {
                         continue;
                     }
-                    let resource_claims = assemble_resource_claims(
-                        pin.key,
-                        resource,
-                        &request.need.completion_requirement,
-                        self.ports.selectors,
-                        self.ports.assertions,
-                        self.ports.evidence,
-                    )
-                    .await?;
+                    let mut resource_claims = match &generic_requirement {
+                        Some(requirement) => {
+                            assemble_resource_claims(
+                                pin.key,
+                                resource,
+                                requirement,
+                                self.ports.selectors,
+                                self.ports.assertions,
+                                self.ports.evidence,
+                            )
+                            .await?
+                        }
+                        None => Vec::new(),
+                    };
+                    if let (Some(exact), Some(spec)) = (exact_claim, body)
+                        && let Some(claim) = self
+                            .exact_text_claim(pin.key, resource, exact, spec, request, records)
+                            .await
+                    {
+                        resource_claims.push(claim);
+                    }
                     qualified_resource.evidence_refs = resource_claims
                         .iter()
                         .flat_map(|claim| {
@@ -754,6 +883,12 @@ impl<'a> DiscoveryService<'a> {
                 }
             }
             retrieval_trace.extend(probe_trace);
+            if let Some(exact) = exact_claim
+                && !claims.iter().any(|claim| claim.claim_id == exact)
+            {
+                // No verified span: the Claim stays Unknown without saying why.
+                claims.push(Claim::new(exact, ClaimState::Unknown));
+            }
             let sufficiency = assess_claim_evidence(&request.need.completion_requirement, &claims)?;
             let mut gaps = route_gaps.to_vec();
             // A visible factual conflict remains an InformationGap even when an

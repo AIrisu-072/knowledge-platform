@@ -116,7 +116,9 @@ pub trait FencedDocumentIndexingPort: Send + Sync {
 
 #[path = "evidence_resolution.rs"]
 mod evidence_resolution;
-pub use evidence_resolution::{assemble_resource_claims, assess_claim_evidence};
+pub use evidence_resolution::{
+    assemble_resource_claims, assemble_verified_unit_text_claim, assess_claim_evidence,
+};
 
 #[path = "probe_execution.rs"]
 mod probe_execution;

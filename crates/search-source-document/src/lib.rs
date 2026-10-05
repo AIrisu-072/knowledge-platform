@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 mod body_bundle;
+mod body_evidence;
 mod body_manifest;
 mod coverage;
 mod evidence;
@@ -14,6 +15,10 @@ mod postgres;
 mod relations;
 mod translate;
 
+pub use body_bundle::PublishedBody;
+pub use body_evidence::{
+    CurrentVersionReader, DocumentBodyCoverageGaps, DocumentExactTextEvidenceCatalog,
+};
 pub use body_manifest::{
     ArtifactReceipt, BodyCoverageArtifact, BodyCoverageItem, BodyItemEntry, BodyUnitManifest,
     GenerationBundleReceipt, LEXICAL_SCHEMA_VERSION, compute_bundle_receipt, coverage_receipt,
