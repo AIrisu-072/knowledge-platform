@@ -286,3 +286,32 @@ This slice's local evidence is limited to pure tests, compilation and collection
 the exact-head hosted run must establish database/browser/restart/owned cleanup.
 Finite diagnostic source/stage allowlists include the new cases, without exposing
 filenames, content or raw assertion messages.
+
+### WORKING実応答喪失の追加受入（2026-10-05承認、local検証完了）
+
+公開D2 `2e1e17f4` の通常経路を保持した別branch
+`feat/document-working-response-loss-20261005` で、既存5filesだけを補修する。
+最初に純粋guard/配線のREDを取り、localhost専用proxyと既存2journeyを実装し、
+独立review・型・collectionを確認する。初回PUT・新版POST・公開base付PUTの
+backend成功完了後にGUI応答だけを失わせ、結果不明表示から明示同内容再送する。
+raw multipart/Content-Type、受信/dispatch回数、retry前後のcommit済みsnapshot、
+revision/履歴の非重複を確認する。自動再試行を明示回復とは扱わない。
+
+同じ使捨てhosted・固定Human origin・2合成profileだけを使用する。専用pageの
+公開context proxy optionに限定し、AgentのAPIRequestContextは直接接続する。
+GET/HEAD以外は対象Doc/Version POST/PUTと回復後の同版publish1回だけを許可する。
+外部宛先/CONNECT/upgrade/認証情報を拒否し、raw payloadはメモリ内だけに置く。
+context・listener・socket・upstream・timerの終了を必須とする。既存metadata喪失
+契約、製品コード、runner、依存、全体設定、画像/trace/videoとartifact公開0は維持。
+ローカルではlistener/browser/DBを起動しない。純粋TDD・型・collectionだけを資格とし、
+実通信とcleanupの成功は公開後の既存hostedが成立するまで未確認である。
+
+2026-10-05 09:04 UTC時点: 純粋proxy6件・既存の安全なruntime純粋124件、
+配線13件（124の内数）・runtime型・collection18+5が成功し、独立source reviewはGO。
+初回collectionは未生成MCP bundleで失敗したが、既存MCPのcompile-only後に成功した。
+listenerを使う既存/追加HTTP単体試験は当地では未実行。scope全体に50秒を掛ける
+途中案はREDで補正し、初回送信/明示再送の観測だけ各50秒に限定した。
+製品/生成SDK/lock/runner/全体設定と元metadata喪失helper本文は不変。
+約400行の追加は固定宛先・byte透過・失敗保持・cleanupと回帰試験に必要と独立確認した。
+次の操作はこの別commitを公開D2へ追加し、同一headの既存hostedで実socket喪失、
+GUI明示回復、HTTP再起動、owned cleanupと公開artifact0を確認することである。

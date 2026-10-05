@@ -141,3 +141,20 @@ test('WORKING編集と予約取消を既存journey・再起動の正確な集合
   assert.deepEqual(entries(match[2]), ['persistence.spec.ts', 'metadata-editor.spec.ts', 'lifecycle-operations-persistence.spec.ts',
     'document-schedule-cancellation.spec.ts', 'working-version-editor-persistence.spec.ts']);
 });
+
+test('WORKING実応答喪失は専用pageだけをproxyへ通し結果不明から明示再送する', async () => {
+  const source = await read('../../../apps/document-web/e2e-runtime/working-version-editor.spec.ts');
+  assert.match(source, /withWorkingResponseLoss/);
+  assert.match(source, /page: async \(\{ browser, loss \}/);
+  assert.match(source, /browser\.newContext\([\s\S]*?proxy: \{ server: loss\.origin \}/);
+  assert.match(source, /finally \{ await context\.close\(\); \}/);
+  assert.doesNotMatch(source, /test\.use\(\{\s*proxy|PLAYWRIGHT_|launchOptions|page\.route\(|route\.fulfill\(|route\.abort\(/);
+  const save = source.slice(source.indexOf('async function save('), source.indexOf('async function openWorking('));
+  const stages = ['loss.arm(', 'await loss.dropped()', '保存結果を確認できません', 'const committed =',
+    'loss.allowRetry()', "name: '同じ内容で再試行'", 'await loss.assertRecovered()', '.toEqual(committed)'];
+  let position = -1;
+  for (const stage of stages) { const next = save.indexOf(stage); assert.ok(next > position, stage); position = next; }
+  assert.match(save, /received: 2, dispatched: 2, dropped: 1, unexpected: 0/);
+  assert.match(source, /loss\.allowPublish\(`/);
+  assert.equal((source.match(/^test\('/gm) ?? []).length, 2);
+});
