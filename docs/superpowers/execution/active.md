@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 2026-10-05 10:36 UTC — WORKING実成功応答のbody途中喪失候補
+
+- 公開 `421f93f7` / tree `ac063a9d` を親とする `fix/working-loss-body-truncation-20261005`。元全応答喪失sourceと診断branchを保持し、[今回の小計画・資格・次の操作](../../../tools/document-poc-runtime/README.md#working実応答喪失の追加受入2026-10-05承認local検証完了)に従う
+- 実upstream成功結果を検証してから本物headersとraw厳密prefixを完全長付きで送り、write後FIN。GUIは同requestのheaders/requestfailedとUNKNOWNを確認後に明示再送する。旧「全応答喪失」とは別の「body途中喪失」資格で、業務設計・metadata helper・厳密guard・製品・依存・runnerは変更しない
+- 純粋58・全GUI404/28suites・型/schema/MCP build・collection18+5成功。固定Playwright finished()の途中案は独立Importantで停止し、requestfailedへRED→GREEN補正。最終独立reviewはGO、残る所見なし。次は小commitを親へ渡し、親が同一head hostedと全CIを検証する。ローカルlistener/socket/browser/DB/Cargoと画像は実行せず、公開/main統合は親、実サーバー反映は所有者
+
+---
+
 ## 2026-10-05 09:14 UTC — 編集作業への可視導線と成功通知の限定補修
 
 - PR74公開head `2e1e17f4` を保持し、独立branchでOrganizationの「編集作業」入口と作業版成功通知の文脈だけを最小補修する。[今回の状況・小計画](document-authoring-navigation-status.md)を再開先とする

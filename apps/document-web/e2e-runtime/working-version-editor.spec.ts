@@ -41,11 +41,21 @@ async function save(page: Page, loss: WorkingLoss, origin: string, documentId: s
   const before = await workingEditorSnapshot(origin, documentId);
   loss.arm({ method, path: pathname });
   completed('gui-working-loss-armed');
-  await editor(page).getByRole('button', { name: method === 'POST' ? '新しい作業版を作成' : '作業版を保存', exact: true }).click();
-  completed('gui-working-loss-save-clicked');
-  const lost = await loss.dropped();
+  const initialResponsePromise = page.waitForResponse(response => new URL(response.url()).pathname === pathname && response.request().method() === method);
+  const failedRequestPromise = page.waitForEvent('requestfailed', request => new URL(request.url()).pathname === pathname && request.method() === method);
+  const [initialResponse, failedRequest, lost] = await Promise.all([
+    initialResponsePromise, failedRequestPromise, loss.dropped(),
+    editor(page).getByRole('button', { name: method === 'POST' ? '新しい作業版を作成' : '作業版を保存', exact: true })
+      .click().then(() => completed('gui-working-loss-save-clicked')),
+  ]);
   completed('gui-working-loss-dropped');
   expect(lost).toMatchObject({ received: 1, dispatched: 1, dropped: 1, unexpected: 0, upstreamStatus: method === 'POST' ? 201 : 200 });
+  expect(initialResponse.status()).toBe(lost.upstreamStatus);
+  expect(await initialResponse.headerValue('content-type')).toMatch(/^application\/json(?:;|$)/);
+  expect(Number(await initialResponse.headerValue('content-length'))).toBeGreaterThan(1);
+  expect(failedRequest === initialResponse.request()).toBe(true);
+  expect(failedRequest.failure()).not.toBeNull();
+  completed('gui-working-loss-headers-observed');
   await expect(page.getByRole('heading', { name: '保存結果を確認できません', exact: true })).toBeVisible();
   completed('gui-working-loss-unknown-visible');
   await expect(page.getByRole('status').filter({ hasText: method === 'POST' ? '新しい作業版を作成しました' : '作業版を保存しました' })).toHaveCount(0);
@@ -54,11 +64,12 @@ async function save(page: Page, loss: WorkingLoss, origin: string, documentId: s
   expect(committed.currentVersionId).toBe(before.currentVersionId);
   expect(committed.versions).toHaveLength(before.versions.length + (method === 'POST' ? 1 : 0));
   expect(committed.operations.filter(item => item.sourceKey === `version_operation:${lost.result.operationId}`)).toHaveLength(1);
-  const responsePromise = page.waitForResponse(response => new URL(response.url()).pathname === pathname && response.request().method() === method);
   loss.allowRetry();
   completed('gui-working-loss-retry-armed');
-  await page.getByRole('button', { name: '同じ内容で再試行', exact: true }).click();
-  const response = await responsePromise;
+  const [response] = await Promise.all([
+    page.waitForResponse(response => new URL(response.url()).pathname === pathname && response.request().method() === method),
+    page.getByRole('button', { name: '同じ内容で再試行', exact: true }).click(),
+  ]);
   expect(response.status()).toBe(method === 'POST' ? 201 : 200);
   const result = await response.json() as VersionMutationResult;
   const replay = await loss.assertRecovered();

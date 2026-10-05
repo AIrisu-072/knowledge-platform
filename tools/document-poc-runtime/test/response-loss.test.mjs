@@ -163,47 +163,117 @@ test('pure working response-loss observations start at each explicit send, not a
   const source = (await readFile(new URL('../response-loss.mjs', import.meta.url), 'utf8')).split('export async function withWorkingResponseLoss')[1];
   assert.match(source, /arm: operation => \{[^\n]+startObservation\(\)/);
   assert.match(source, /allowRetry: \(\) => \{ guard\.allowRetry\(\); startObservation\(\); \}/);
-  assert.match(source, /guard\.complete\(kind, incoming\.statusCode, result\); stopObservation\(\)/);
+  assert.match(source, /response\.socket\.end\(\); stopObservation\(\)/);
   assert.doesNotMatch(source, /const timeout = setTimeout/);
 });
 
+
+test('pure working body loss preserves exact raw prefixes and declared complete lengths for every supported encoding', async () => {
+  assert.equal(typeof workingLoss.workingResponseLossBody, 'function');
+  const { gzipSync, deflateSync, brotliCompressSync } = await import('node:zlib');
+  const json = Buffer.from(JSON.stringify(mutationResult));
+  for (const [encoding, encode] of [[undefined, value => value], ['identity', value => value],
+    ['gzip', gzipSync], ['deflate', deflateSync], ['br', brotliCompressSync]]) {
+    const bytes = encode(json), original = Buffer.from(bytes);
+    const headers = { 'content-type': 'application/json', 'x-synthetic-result': 'retained',
+      connection: 'keep-alive, x-hop', 'x-hop': 'remove', 'transfer-encoding': 'chunked',
+      ...(encoding ? { 'content-encoding': encoding } : {}) };
+    const partial = workingLoss.workingResponseLossBody(headers, bytes);
+    assert.equal(partial.headers['content-type'], headers['content-type']);
+    assert.equal(partial.headers['x-synthetic-result'], headers['x-synthetic-result']);
+    assert.equal(partial.headers['content-encoding'], encoding);
+    assert.equal(partial.headers['content-length'], bytes.length);
+    for (const hop of ['connection', 'x-hop', 'transfer-encoding']) assert.equal(partial.headers[hop], undefined);
+    assert.ok(partial.prefix.length > 0 && partial.prefix.length < bytes.length);
+    assert.deepEqual(partial.prefix, bytes.subarray(0, partial.prefix.length));
+    assert.deepEqual(bytes, original); assert.equal(headers['transfer-encoding'], 'chunked');
+  }
+});
+
+test('pure working body loss refuses nontruncatable or oversized responses and replaces stale length framing', () => {
+  assert.equal(typeof workingLoss.workingResponseLossBody, 'function');
+  for (const bytes of [Buffer.alloc(0), Buffer.alloc(1), Buffer.alloc(64 * 1024 + 1)]) {
+    assert.throws(() => workingLoss.workingResponseLossBody({}, bytes), /\[working-loss:upstream-result\]/);
+  }
+  const partial = workingLoss.workingResponseLossBody({ 'content-length': '999', 'content-encoding': 'identity' }, Buffer.from('{}'));
+  assert.deepEqual(partial, { headers: { 'content-length': 2, 'content-encoding': 'identity' }, prefix: Buffer.from('{') });
+});
+
+test('pure working body loss sends verified upstream headers and a raw prefix before FIN without ending the declared body', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = (await readFile(new URL('../response-loss.mjs', import.meta.url), 'utf8')).split('export async function withWorkingResponseLoss')[1];
+  const initial = source.slice(source.indexOf("if (kind === 'initial') {"), source.indexOf('else {', source.indexOf("if (kind === 'initial') {")));
+  assert.match(initial, /workingResponseLossBody\(incoming\.headers, bytes\)/);
+  const sequence = ['response.writeHead(incoming.statusCode, partial.headers)', 'await new Promise', 'response.write(partial.prefix',
+    'response.socket.end()', 'stopObservation()', 'dropped.resolve(guard.receipt())'];
+  let position = -1;
+  for (const token of sequence) { const next = initial.indexOf(token); assert.ok(next > position, token); position = next; }
+  assert.ok(source.indexOf('guard.complete(kind, incoming.statusCode, result)') < source.indexOf("if (kind === 'initial') {"));
+  assert.doesNotMatch(initial, /response\.(?:destroy|end|flushHeaders)\(/);
+});
+
 // Hosted-only HTTP cases. Local verification explicitly selects ^pure working.
-test('hosted HTTP working loss forwards raw compressed reads and exact multipart retries, then closes its listener', async t => {
+test('hosted HTTP working loss forwards real headers and incomplete raw bodies before exact multipart retries, then closes its listener', async t => {
   const { request } = await import('node:http');
   const { gzipSync } = await import('node:zlib');
-  let writes = 0;
+  let writes = 0, encoded = false;
+  const resultBytes = () => encoded ? gzipSync(JSON.stringify(mutationResult)) : Buffer.from(JSON.stringify(mutationResult));
   const upstream = createServer(async (req, res) => {
     const body = Buffer.concat(await Array.fromAsync(req));
     if (req.method === 'GET') {
       res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'gzip' }); res.end(gzipSync('synthetic read')); return;
     }
     writes++; assert.equal(body.equals(multipart), true); assert.equal(req.headers['content-type'], multipartType);
-    res.writeHead(201, { 'content-type': 'application/json', 'content-encoding': 'gzip' }); res.end(gzipSync(JSON.stringify(mutationResult)));
+    res.writeHead(req.method === 'POST' ? 201 : 200, { 'content-type': 'application/json', 'x-synthetic-result': 'retained',
+      ...(encoded ? { 'content-encoding': 'gzip' } : {}) }); res.end(resultBytes());
   });
   await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
   t.after(() => { upstream.closeAllConnections(); return new Promise(resolve => upstream.close(resolve)); });
   const origin = `http://127.0.0.1:${upstream.address().port}`;
   const through = (proxy, method, path, body, { agent } = {}) => new Promise((resolve, reject) => {
     const outgoing = request(proxy, { method, path: origin + path, agent, headers: body ? { 'content-type': multipartType } : {} }, async incoming => {
-      try { resolve({ status: incoming.statusCode, headers: incoming.headers, body: Buffer.concat(await Array.fromAsync(incoming)) }); } catch (error) { reject(error); }
+      const chunks = [];
+      const observed = () => ({ status: incoming.statusCode, headers: incoming.headers, body: Buffer.concat(chunks), complete: incoming.complete });
+      try { for await (const chunk of incoming) chunks.push(chunk); resolve(observed()); }
+      catch (error) { reject(Object.assign(error, { response: observed() })); }
     });
     outgoing.on('error', reject); outgoing.end(body);
   });
-  let proxy;
-  await workingLoss.withWorkingResponseLoss(origin, async control => {
-    proxy = control.origin;
-    const read = await through(proxy, 'GET', '/asset');
-    assert.equal(read.headers['content-encoding'], 'gzip'); assert.equal(read.body.equals(gzipSync('synthetic read')), true);
-    control.arm({ method: 'POST', path: versionPath });
-    const lost = assert.rejects(through(proxy, 'POST', versionPath, multipart));
-    assert.equal((await control.dropped()).upstreamStatus, 201); await lost;
-    control.allowRetry(); const replay = await through(proxy, 'POST', versionPath, multipart);
-    assert.equal(replay.status, 201); assert.equal(replay.body.equals(gzipSync(JSON.stringify(mutationResult))), true);
-    assert.equal((await control.assertRecovered()).dispatched, 2);
-  });
-  assert.equal(writes, 2);
-  // Listener closure requires a fresh connection, not a just-closed keep-alive socket.
-  await assert.rejects(through(proxy, 'GET', '/asset', undefined, { agent: false }), { code: 'ECONNREFUSED' });
+  for (const compressed of [false, true]) for (const method of ['POST', 'PUT']) {
+    encoded = compressed;
+    const path = method === 'POST' ? versionPath : `${versionPath}/${versionId}`, status = method === 'POST' ? 201 : 200;
+    const before = writes, raw = resultBytes(); let proxy;
+    await workingLoss.withWorkingResponseLoss(origin, async control => {
+      proxy = control.origin;
+      const read = await through(proxy, 'GET', '/asset');
+      assert.equal(read.headers['content-encoding'], 'gzip'); assert.equal(read.body.equals(gzipSync('synthetic read')), true);
+      control.arm({ method, path });
+      const lost = assert.rejects(through(proxy, method, path, multipart), error => {
+        // Reject a pre-header disconnect: the real response and raw prefix must
+        // arrive before the incomplete Content-Length terminates body reading.
+        assert.equal(error.code, 'ECONNRESET');
+        const partial = error.response; assert.ok(partial);
+        assert.equal(partial.status, status); assert.equal(partial.headers['content-type'], 'application/json');
+        assert.equal(partial.headers['content-encoding'], encoded ? 'gzip' : undefined);
+        assert.equal(partial.headers['x-synthetic-result'], 'retained');
+        assert.equal(Number(partial.headers['content-length']), raw.length);
+        assert.equal(partial.headers['transfer-encoding'], undefined); assert.equal(partial.complete, false);
+        assert.ok(partial.body.length > 0 && partial.body.length < raw.length);
+        assert.deepEqual(partial.body, raw.subarray(0, partial.body.length)); return true;
+      });
+      const dropped = await control.dropped(); await lost;
+      assert.deepEqual([dropped.received, dropped.dispatched, dropped.dropped, dropped.unexpected, dropped.upstreamStatus], [1, 1, 1, 0, status]);
+      control.allowRetry(); const replay = await through(proxy, method, path, multipart);
+      assert.equal(replay.status, status); assert.deepEqual(replay.body, raw); assert.equal(replay.complete, true);
+      const recovered = await control.assertRecovered();
+      assert.deepEqual([recovered.received, recovered.dispatched, recovered.dropped, recovered.unexpected], [2, 2, 1, 0]);
+      assert.equal(recovered.bytesEqual, true); assert.equal(recovered.contentTypeEqual, true);
+      assert.deepEqual(recovered.retryResult, dropped.result);
+    });
+    assert.equal(writes - before, 2);
+    // Listener closure requires a fresh connection, not a just-closed keep-alive socket.
+    await assert.rejects(through(proxy, 'GET', '/asset', undefined, { agent: false }), { code: 'ECONNREFUSED' });
+  }
 });
 
 test('hosted HTTP working loss bounds stalled upstream and closes accepted sockets', async t => {

@@ -393,7 +393,7 @@ test('working loss secondary teardown errors never replace the primary test erro
 });
 
 test('working loss save milestones are finite and survive both privacy boundaries', () => {
-  for (const suffix of ['armed', 'save-clicked', 'dropped', 'unknown-visible', 'retry-armed', 'recovered']) {
+  for (const suffix of ['armed', 'save-clicked', 'dropped', 'headers-observed', 'unknown-visible', 'retry-armed', 'recovered']) {
     const stage = `gui-working-loss-${suffix}`;
     const input = report([{ status: 'failed' }], { file: 'working-version-editor.spec.ts' });
     input.suites[0].specs[0].tests[0].annotations = [

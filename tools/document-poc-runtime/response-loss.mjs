@@ -143,6 +143,19 @@ export function workingResponseLossGuard(origin) {
 }
 
 
+const headers = source => {
+  const hop = new Set(['connection', 'proxy-connection', 'keep-alive', 'transfer-encoding', 'te', 'trailer', 'upgrade',
+    ...(source.connection ?? '').toLowerCase().split(',').map(name => name.trim())]);
+  return Object.fromEntries(Object.entries(source).filter(([name]) => !hop.has(name)));
+};
+
+// Preserve the real wire encoding and declare the full upstream length, but send
+// only a strict raw prefix. No response JSON or compressed bytes are synthesized.
+export function workingResponseLossBody(sourceHeaders, bytes) {
+  if (bytes.length < 2 || bytes.length > SMALL_RESULT_LIMIT) throw workingLossError('upstream-result', 'Response cannot be truncated within fixture limits');
+  return { headers: { ...headers(sourceHeaders), 'content-length': bytes.length }, prefix: bytes.subarray(0, Math.floor(bytes.length / 2)) };
+}
+
 export async function withWorkingResponseLoss(origin, use, { timeoutMs = 50_000 } = {}) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 50_000) throw workingLossError('configuration', 'Invalid response-loss observation window');
   const guard = workingResponseLossGuard(origin), target = new URL(origin);
@@ -157,11 +170,6 @@ export async function withWorkingResponseLoss(origin, use, { timeoutMs = 50_000 
       fail(Error('Response-loss observation window expired'), 'observation-window');
       for (const request of upstreams) request.destroy(); for (const socket of sockets) socket.destroy();
     }, timeoutMs);
-  };
-  const headers = source => {
-    const hop = new Set(['connection', 'proxy-connection', 'keep-alive', 'transfer-encoding', 'te', 'trailer', 'upgrade',
-      ...(source.connection ?? '').toLowerCase().split(',').map(name => name.trim())]);
-    return Object.fromEntries(Object.entries(source).filter(([name]) => !hop.has(name)));
   };
   const bounded = async (stream, limit) => {
     let size = 0; const chunks = [];
@@ -193,10 +201,18 @@ export async function withWorkingResponseLoss(origin, use, { timeoutMs = 50_000 
       const decode = { gzip: gunzipSync, deflate: inflateSync, br: brotliDecompressSync }[encoding];
       if (encoding && encoding !== 'identity' && !decode) throw Error('Unexpected result encoding');
       const result = JSON.parse((decode ? decode(bytes, { maxOutputLength: SMALL_RESULT_LIMIT }) : bytes).toString('utf8'));
-      guard.complete(kind, incoming.statusCode, result); stopObservation();
-      if (kind === 'initial') { response.destroy(); dropped.resolve(guard.receipt()); }
+      guard.complete(kind, incoming.statusCode, result);
+      if (kind === 'initial') {
+        const partial = workingResponseLossBody(incoming.headers, bytes);
+        failureCode = 'upstream-transport';
+        response.writeHead(incoming.statusCode, partial.headers);
+        // The ordered FIN follows headers and prefix bytes. An immediate destroy
+        // could hide headers and allow Chromium's reused-connection auto-retry.
+        await new Promise((resolve, reject) => response.write(partial.prefix, error => error ? reject(error) : resolve()));
+        response.socket.end(); stopObservation(); dropped.resolve(guard.receipt());
+      }
       else {
-        response.writeHead(incoming.statusCode, headers(incoming.headers)); response.end(bytes);
+        response.writeHead(incoming.statusCode, headers(incoming.headers)); response.end(bytes); stopObservation();
         if (kind === 'retry') recovered.resolve(guard.assertRecovered());
       }
     } catch (error) {

@@ -150,7 +150,7 @@ test('WORKING実応答喪失は専用pageだけをproxyへ通し結果不明か�
   assert.match(source, /finally \{ await context\.close\(\); \}/);
   assert.doesNotMatch(source, /test\.use\(\{\s*proxy|PLAYWRIGHT_|launchOptions|page\.route\(|route\.fulfill\(|route\.abort\(/);
   const save = source.slice(source.indexOf('async function save('), source.indexOf('async function openWorking('));
-  const stages = ['loss.arm(', 'await loss.dropped()', '保存結果を確認できません', 'const committed =',
+  const stages = ['loss.arm(', 'loss.dropped()', '保存結果を確認できません', 'const committed =',
     'loss.allowRetry()', "name: '同じ内容で再試行'", 'await loss.assertRecovered()', '.toEqual(committed)'];
   let position = -1;
   for (const stage of stages) { const next = save.indexOf(stage); assert.ok(next > position, stage); position = next; }
@@ -163,10 +163,25 @@ test('WORKING実応答喪失は専用pageだけをproxyへ通し結果不明か�
 test('WORKING喪失の有限到達段階は実操作の完了後だけ記録する', async () => {
   const source = await read('../../../apps/document-web/e2e-runtime/working-version-editor.spec.ts');
   const save = source.slice(source.indexOf('async function save('), source.indexOf('async function openWorking('));
-  const sequence = ['loss.arm(', "completed('gui-working-loss-armed')", ').click();', "completed('gui-working-loss-save-clicked')",
-    'await loss.dropped()', "completed('gui-working-loss-dropped')", "name: '保存結果を確認できません'", '.toBeVisible();',
+  assert.match(save, /\.click\(\)\.then\(\(\) => completed\('gui-working-loss-save-clicked'\)\)/);
+  const sequence = ['loss.arm(', "completed('gui-working-loss-armed')", 'await Promise.all([', 'loss.dropped()',
+    "completed('gui-working-loss-save-clicked')", "completed('gui-working-loss-dropped')", "name: '保存結果を確認できません'", '.toBeVisible();',
     "completed('gui-working-loss-unknown-visible')", 'loss.allowRetry()', "completed('gui-working-loss-retry-armed')",
     'await loss.assertRecovered()', "completed('gui-working-loss-recovered')"];
   let position = -1;
   for (const token of sequence) { const next = save.indexOf(token, position + 1); assert.ok(next > position, token); position = next; }
+});
+
+
+test('WORKING body途中喪失は実headersと読取失敗を確認してから明示再送をarmする', async () => {
+  const source = await read('../../../apps/document-web/e2e-runtime/working-version-editor.spec.ts');
+  const save = source.slice(source.indexOf('async function save('), source.indexOf('async function openWorking('));
+  const sequence = ['const initialResponsePromise = page.waitForResponse(', "const failedRequestPromise = page.waitForEvent('requestfailed',",
+    'const [initialResponse, failedRequest, lost] = await Promise.all([', 'initialResponsePromise, failedRequestPromise, loss.dropped()', '.click().then(',
+    'expect(initialResponse.status())', "initialResponse.headerValue('content-length')",
+    'expect(failedRequest === initialResponse.request()).toBe(true)', 'expect(failedRequest.failure()).not.toBeNull()',
+    "completed('gui-working-loss-headers-observed')", "name: '保存結果を確認できません'", 'loss.allowRetry()'];
+  let position = -1;
+  for (const token of sequence) { const next = save.indexOf(token, position + 1); assert.ok(next > position, token); position = next; }
+  assert.doesNotMatch(save, /initialResponse\.(?:finished|body|json)\(/);
 });

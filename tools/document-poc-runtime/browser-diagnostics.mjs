@@ -50,7 +50,7 @@ const journeyStages = new Set(['context-read', 'sessions-verified', 'api-preflig
   'gui-schedule-created', 'gui-schedule-dismissed', 'gui-schedule-cancelled',
   'gui-schedule-replaced', 'gui-schedule-final-state-saved', 'gui-schedule-restart-verified',
   'gui-working-loss-armed', 'gui-working-loss-save-clicked', 'gui-working-loss-dropped',
-  'gui-working-loss-unknown-visible', 'gui-working-loss-retry-armed', 'gui-working-loss-recovered',
+  'gui-working-loss-headers-observed', 'gui-working-loss-unknown-visible', 'gui-working-loss-retry-armed', 'gui-working-loss-recovered',
   'gui-working-initial-updated', 'gui-working-manifest-ready', 'gui-working-cancel-verified',
   'gui-working-created', 'gui-working-updated', 'gui-working-publication-preserved',
   'gui-working-published', 'gui-working-snapshot-saved', 'gui-working-restart-verified',
