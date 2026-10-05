@@ -77,6 +77,9 @@ impl DisclosureOwner {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DisclosedFields {
     pub resources: Vec<ResourceId>,
+    /// The owning Source of each disclosed item, where the result names it;
+    /// an item gate refuses an item without one.
+    pub resource_sources: Vec<(ResourceId, SourceId)>,
     pub claims: Vec<ClaimId>,
 }
 
@@ -288,6 +291,15 @@ impl TransientDisclosure<DiscoveryResult> {
                 .qualified_resources
                 .iter()
                 .map(|resource| resource.resource_ref)
+                .collect(),
+            resource_sources: result
+                .qualified_resources
+                .iter()
+                .filter_map(|resource| {
+                    resource
+                        .source_ref
+                        .map(|source| (resource.resource_ref, source))
+                })
                 .collect(),
             claims: result
                 .evidence_set

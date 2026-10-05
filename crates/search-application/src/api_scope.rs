@@ -124,10 +124,19 @@ pub async fn prepare_api_visible_sources(
     context: &SearchOperationContext,
 ) -> Result<VisibleCatalogSnapshot, ApiError> {
     context.check_live()?;
-    // An actor revoked before routing stops every Source read.
-    check_actor_current(authority, context.actor())
-        .await
-        .map_err(|_| ApiError::AuthenticationRequired)?;
+    // An actor revoked before routing stops every Source read; an authority
+    // that cannot answer is an identity outage, not a credential failure.
+    let actor = context.actor();
+    match authority.resolve(actor.access_handle()).await {
+        Ok(Some(resolved)) if &resolved == actor => {}
+        Ok(_) => return Err(ApiError::AuthenticationRequired),
+        Err(_) => return Err(ApiError::IdentityUnavailable),
+    }
+    match authority.current(actor).await {
+        Ok(AccessBindingState::Current) if actor.is_live() => {}
+        Ok(_) => return Err(ApiError::AuthenticationRequired),
+        Err(_) => return Err(ApiError::IdentityUnavailable),
+    }
     let snapshot = prepare_actor_visible_sources(authority, registry, context.actor())
         .await
         .map_err(|_| ApiError::DependencyUnavailable)?;

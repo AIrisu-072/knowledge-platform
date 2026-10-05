@@ -228,6 +228,13 @@ async fn registry_ledger_visibility_error_is_generic_dependency_failure() {
             .unwrap_err(),
         ApiError::IdentityUnavailable
     );
+    // The same outage after authentication, while preparing Sources.
+    assert_eq!(
+        prepare_api_visible_sources(&Down, &failing, &context)
+            .await
+            .unwrap_err(),
+        ApiError::IdentityUnavailable
+    );
 }
 
 #[tokio::test]

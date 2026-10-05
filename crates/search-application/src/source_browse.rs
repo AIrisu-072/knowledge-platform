@@ -70,6 +70,7 @@ impl Disclosable for SourceView {
     fn disclosed_fields(&self) -> DisclosedFields {
         DisclosedFields {
             resources: vec![],
+            resource_sources: vec![],
             claims: vec![],
         }
     }

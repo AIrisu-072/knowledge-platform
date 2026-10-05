@@ -122,6 +122,7 @@ impl Disclosable for ResourceView {
     fn disclosed_fields(&self) -> DisclosedFields {
         DisclosedFields {
             resources: vec![self.snapshot.resource_id],
+            resource_sources: vec![(self.snapshot.resource_id, self.snapshot.source_id)],
             claims: vec![],
         }
     }

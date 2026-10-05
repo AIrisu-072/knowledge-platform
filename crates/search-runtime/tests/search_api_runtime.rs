@@ -108,6 +108,16 @@ async fn missing_identity_challenge_durable_ledger_or_namespace_reconcile_reject
             .unwrap_err(),
         StartupError::ClaimCatalogUnwired
     );
+    for ttl in [Duration::ZERO, Duration::from_secs(61)] {
+        let mut bad_ttl = config();
+        bad_ttl.disclosure_ttl = ttl;
+        assert_eq!(
+            build_search_api_runtime(bad_ttl, durable(&pool, no_ports()), host.identity())
+                .await
+                .unwrap_err(),
+            StartupError::InvalidDisclosureTtl
+        );
+    }
     let mut ports = durable(&pool, no_ports());
     ports.actor_ports = None;
     assert_eq!(

@@ -37,8 +37,8 @@ use search_application::ports::{
     LexicalRetrieverPort, StructuredRetrieverPort,
 };
 use search_application::remote_disclosure::{
-    CurrentDisclosureAccessPort, DisclosedFields, DisclosureOwner, RemoteWiring,
-    ScopedDisclosureGate, TransientDisclosure,
+    CurrentDisclosureAccessPort, DisclosedFields, DisclosureOwner, MAX_DISCLOSURE_TTL,
+    RemoteWiring, ScopedDisclosureGate, TransientDisclosure,
 };
 use search_application::remote_evidence::RegisteredLineage;
 use search_application::remote_lease::{LeaseClock, SystemLeaseClock};
@@ -60,7 +60,7 @@ use search_application::source_registration::{
 };
 use search_application::source_registry::InMemorySourceRegistry;
 use search_application::visible_claim::ActorVisibleClaimCatalogPort;
-use search_core::discovery::{DiscoveryResult, FederatedCandidate};
+use search_core::discovery::{CandidateIdentityClass, DiscoveryResult, FederatedCandidate};
 use search_core::id::{ClaimId, ResourceId};
 use search_core::projection::ProjectionGenerationKey;
 use search_source_http::adapter::HttpRemoteSourceAdapter;
@@ -160,6 +160,8 @@ pub enum StartupError {
     ClaimCatalogUnwired,
     ActorPortsUnwired,
     RemoteTransportUnwired,
+    /// Zero, or longer than the longest disclosure lease.
+    InvalidDisclosureTtl,
     /// A namespace's complete desired set or the durable ledger refused.
     Registration,
 }
@@ -220,6 +222,9 @@ pub async fn build_search_api_runtime(
         .map_err(|error| StartupError::Http(HttpStartupError::Challenge(error)))?;
     if host_config.operation_timeout.is_zero() {
         return Err(StartupError::Http(HttpStartupError::InvalidTimeout));
+    }
+    if host_config.disclosure_ttl.is_zero() || host_config.disclosure_ttl > MAX_DISCLOSURE_TTL {
+        return Err(StartupError::InvalidDisclosureTtl);
     }
     let claims = host_config
         .claims
@@ -547,6 +552,11 @@ impl SearchApiBackend for RuntimeBackend {
     }
 }
 
+/// The final gate: actor and Source through the checked adapters, then each
+/// disclosed item's current access at its owning Source. A Document item is
+/// rechecked right here; a remote item's evaluation, with its per-item
+/// checks, closed before disclosure and nothing of it remains to ask. An
+/// item without a visible owning Source is refused.
 impl CurrentDisclosureAccessPort for RuntimeBackend {
     fn authorize<'a>(
         &'a self,
@@ -558,7 +568,50 @@ impl CurrentDisclosureAccessPort for RuntimeBackend {
             let visibility = self.checked_visibility();
             ScopedDisclosureGate::new(&authority, &visibility)
                 .authorize(owner, disclosed_fields)
+                .await?;
+            if disclosed_fields.resources.is_empty() {
+                return Ok(());
+            }
+            let unavailable = || SearchError::SourceUnavailable("disclosure unavailable".into());
+            let ports = self
+                .actor_ports
+                .for_actor(owner.actor())
                 .await
+                .map_err(|_| unavailable())?;
+            let access_context = owner.actor().access_handle().to_opaque_string();
+            for resource in &disclosed_fields.resources {
+                let source = disclosed_fields
+                    .resource_sources
+                    .iter()
+                    .find(|(id, _)| id == resource)
+                    .map(|(_, source)| *source)
+                    .filter(|source| {
+                        owner
+                            .sources()
+                            .iter()
+                            .any(|scope| scope.source_id() == *source)
+                    })
+                    .ok_or_else(unavailable)?;
+                match self.catalog.get_for_server(source) {
+                    Some(SourceRegistration::Document(_)) => {
+                        let mut candidate = FederatedCandidate::new(
+                            format!("{}:{}", source.as_uuid(), resource.as_uuid()),
+                            CandidateIdentityClass::DurableResource,
+                            source,
+                            "disclosure",
+                        );
+                        candidate.resource_ref = Some(*resource);
+                        if ports.access.evaluate(&candidate, &access_context).await?
+                            != AccessDecision::Allowed
+                        {
+                            return Err(unavailable());
+                        }
+                    }
+                    Some(SourceRegistration::Remote(_)) => {}
+                    None => return Err(unavailable()),
+                }
+            }
+            Ok(())
         })
     }
 }

@@ -218,12 +218,24 @@ struct DocumentPorts {
     pool: PgPool,
     repository: Arc<PostgresDocumentRepository>,
     index: MemoryDocumentIndexRuntime,
+    /// From this many calls on, the actor's Document Read is gone (0: never).
+    revoke_from_call: std::sync::atomic::AtomicUsize,
+    calls: std::sync::atomic::AtomicUsize,
 }
 
 impl ActorPortsFactory for DocumentPorts {
     fn for_actor<'a>(&'a self, actor: &'a TrustedSearchScope) -> ApiFuture<'a, ActorPorts> {
         Box::pin(async move {
-            let principal = actor.principal().as_str();
+            use std::sync::atomic::Ordering;
+            let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+            let revoke_from = self.revoke_from_call.load(Ordering::SeqCst);
+            // A principal without the Document Read grant stands for a
+            // revocation that happened after the earlier calls.
+            let principal = if revoke_from != 0 && call >= revoke_from {
+                "outsider"
+            } else {
+                actor.principal().as_str()
+            };
             let document_actor = VerifiedActorContext::from_trusted_adapter(
                 DocumentPrincipal::new("test-idp", principal)
                     .map_err(|_| ApiError::IdentityUnavailable)?,
@@ -321,6 +333,7 @@ struct World {
     indexer: Indexer,
     addr: SocketAddr,
     events: Arc<Events>,
+    ports: Arc<DocumentPorts>,
     _api: SearchApiRuntime,
     _stop: oneshot::Sender<()>,
 }
@@ -423,6 +436,14 @@ impl World {
             })
             .unwrap();
         let snapshot: Arc<dyn HostRegistrationSnapshotPort> = registrations.clone();
+        let ports = Arc::new(DocumentPorts {
+            source: document,
+            pool: pool.clone(),
+            repository,
+            index,
+            revoke_from_call: std::sync::atomic::AtomicUsize::new(0),
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        });
         let transports: Arc<dyn RemoteTransportFactory> =
             Arc::new(LoopbackTransports(catalog.port()));
         let api = build_search_api_runtime(
@@ -437,15 +458,7 @@ impl World {
                     RetrievalInputs::default(),
                 ),
             ),
-            durable(
-                &pool,
-                Arc::new(DocumentPorts {
-                    source: document,
-                    pool: pool.clone(),
-                    repository,
-                    index,
-                }),
-            ),
+            durable(&pool, ports.clone()),
             host.identity(),
         )
         .await
@@ -482,6 +495,7 @@ impl World {
             indexer,
             addr,
             events,
+            ports,
             _api: api,
             _stop: stop,
         }
@@ -1077,4 +1091,144 @@ async fn lease_send_finish_and_no_retention() {
         .await;
     assert_eq!(found.status, 200);
     assert!(!ids(&found.json(), "items", "sourceId").contains(&world.remote.as_uuid().to_string()));
+}
+
+/// G1 capacity sample, not a CI gate: sequential requests per route on the
+/// real socket against 24 indexed Documents and the 2-item remote catalog.
+/// Run optimized with
+/// `CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true cargo test --release -p search-runtime --features synthetic-loopback-test-only --test server_e2e -- --ignored --nocapture`.
+#[tokio::test]
+#[ignore = "capacity measurement; run explicitly"]
+async fn measure_route_latency() {
+    const SAMPLES: usize = 200;
+    let world = World::start().await;
+    let mut first = None;
+    for n in 0..24 {
+        let version = world
+            .publish(
+                &format!("規程 {n}"),
+                &[("text/plain", format!("本文 {n} alpha").as_bytes())],
+            )
+            .await;
+        first.get_or_insert(version);
+    }
+    world.claim_title(first.unwrap());
+    world.login("reader");
+    let token = Some("reader-token");
+    let routes: Vec<(&str, Box<dyn Fn() -> Vec<u8>>)> = vec![
+        (
+            "search",
+            Box::new(|| {
+                raw_request(
+                    "POST",
+                    "/v1/search",
+                    token,
+                    &search("規程", "titleAndPermittedMetadata").to_string(),
+                )
+            }),
+        ),
+        (
+            "search_body",
+            Box::new(|| {
+                raw_request(
+                    "POST",
+                    "/v1/search",
+                    token,
+                    &search("alpha", "bodyRequired").to_string(),
+                )
+            }),
+        ),
+        (
+            "discover_remote",
+            Box::new(|| {
+                raw_request(
+                    "POST",
+                    "/v1/discover",
+                    token,
+                    &discover(&[world.remote_claim]).to_string(),
+                )
+            }),
+        ),
+        (
+            "resource",
+            Box::new(|| {
+                raw_request(
+                    "GET",
+                    &format!("/v1/resources/{}", first.unwrap()),
+                    token,
+                    "",
+                )
+            }),
+        ),
+        (
+            "sources",
+            Box::new(|| raw_request("GET", "/v1/sources", token, "")),
+        ),
+    ];
+    for (name, request) in routes {
+        for _ in 0..10 {
+            assert_eq!(exchange(world.addr, &request()).await.status, 200);
+        }
+        let mut samples = Vec::with_capacity(SAMPLES);
+        for _ in 0..SAMPLES {
+            let started = Instant::now();
+            let wire = exchange(world.addr, &request()).await;
+            samples.push(started.elapsed().as_secs_f64() * 1_000.0);
+            assert_eq!(wire.status, 200, "{name}");
+        }
+        samples.sort_by(f64::total_cmp);
+        let at =
+            |q: f64| samples[((samples.len() as f64 * q).ceil() as usize).min(samples.len()) - 1];
+        println!(
+            "route={name} n={SAMPLES} p50_ms={:.2} p95_ms={:.2} p99_ms={:.2} max_ms={:.2}",
+            at(0.50),
+            at(0.95),
+            at(0.99),
+            samples[samples.len() - 1]
+        );
+    }
+}
+
+#[tokio::test]
+async fn item_revoked_before_disclosure_is_never_sent() {
+    use std::sync::atomic::Ordering;
+    let world = World::start().await;
+    let version = world
+        .publish("規程 取消", &[("text/plain", "本文".as_bytes())])
+        .await;
+    world.login("reader");
+    let token = Some("reader-token");
+    assert_eq!(
+        ids(
+            &world
+                .post(
+                    "/v1/search",
+                    token,
+                    &search("規程", "titleAndPermittedMetadata")
+                )
+                .await
+                .json(),
+            "items",
+            "resourceId"
+        ),
+        set(&[version.to_string()])
+    );
+    // The route's evaluation still sees the item; the Read is gone by the
+    // final gate, so nothing of the item is sent.
+    let next = world.ports.calls.load(Ordering::SeqCst) + 2;
+    world.ports.revoke_from_call.store(next, Ordering::SeqCst);
+    let revoked = world
+        .post(
+            "/v1/search",
+            token,
+            &search("規程", "titleAndPermittedMetadata"),
+        )
+        .await;
+    assert_ne!(revoked.status, 200, "{}", revoked.json());
+    assert!(!String::from_utf8_lossy(&revoked.body).contains(&version.to_string()));
+    let next = world.ports.calls.load(Ordering::SeqCst) + 2;
+    world.ports.revoke_from_call.store(next, Ordering::SeqCst);
+    let read = world.get(&format!("/v1/resources/{version}"), token).await;
+    assert_ne!(read.status, 200);
+    assert!(!String::from_utf8_lossy(&read.body).contains("規程 取消"));
 }

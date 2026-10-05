@@ -221,6 +221,11 @@ impl Disclosable for SearchResultView {
     fn disclosed_fields(&self) -> DisclosedFields {
         DisclosedFields {
             resources: self.items.iter().map(|item| item.resource_id).collect(),
+            resource_sources: self
+                .items
+                .iter()
+                .map(|item| (item.resource_id, item.source_id))
+                .collect(),
             claims: vec![],
         }
     }
