@@ -219,3 +219,37 @@ test('hosted HTTP working loss bounds stalled upstream and closes accepted socke
     await control.dropped();
   }, { timeoutMs: 100 }), /window/);
 });
+
+
+test('pure working loss diagnostics distinguish unarmed repeats and preserve the first failure through teardown', () => {
+  const guard = makeGuard(); guard.arm({ method: 'POST', path: versionPath });
+  guard.complete(sendMutation(guard), 201, mutationResult);
+  let first;
+  assert.throws(() => sendMutation(guard), error => {
+    first = error; return /^\[working-loss:unarmed-retry\]/.test(error.message);
+  });
+  for (const action of [() => guard.allowRetry(), () => guard.assertRecovered(), () => guard.reject('PRIVATE_SECONDARY')]) {
+    assert.throws(action, error => error === first);
+  }
+  assert.deepEqual([guard.receipt().received, guard.receipt().dispatched, guard.receipt().dropped, guard.receipt().unexpected], [2, 1, 1, 1]);
+  const wrong = makeGuard(); wrong.arm({ method: 'POST', path: versionPath });
+  wrong.complete(sendMutation(wrong), 201, mutationResult);
+  assert.throws(() => wrong.receive('PUT', humanOrigin + versionPath, {}), /\[working-loss:admission\]/);
+  assert.throws(() => makeGuard().assertRecovered(), /\[working-loss:unrecovered\]/);
+});
+
+test('pure working loss diagnostics label existing guard rejection sites without relaxing them', () => {
+  const cases = [
+    ['admission', guard => guard.receive('GET', 'http://external.invalid/x', {})],
+    ['payload', guard => sendMutation(guard, 'POST', versionPath, Buffer.alloc(0))],
+    ['upstream-status', guard => guard.complete(sendMutation(guard), 503, mutationResult)],
+    ['upstream-result', guard => guard.complete(sendMutation(guard), 201, {})],
+    ['retry-payload', guard => { guard.complete(sendMutation(guard), 201, mutationResult); guard.allowRetry(); sendMutation(guard, 'POST', versionPath, Buffer.from('changed')); }],
+    ['retry-result', guard => { guard.complete(sendMutation(guard), 201, mutationResult); guard.allowRetry(); guard.complete(sendMutation(guard), 201, {}); }],
+  ];
+  for (const [code, action] of cases) {
+    const guard = makeGuard(); guard.arm({ method: 'POST', path: versionPath });
+    assert.throws(() => action(guard), error => error.message.startsWith(`[working-loss:${code}] `));
+  }
+  assert.throws(() => workingLoss.workingResponseLossGuard('https://127.0.0.1:41001'), /\[working-loss:configuration\]/);
+});

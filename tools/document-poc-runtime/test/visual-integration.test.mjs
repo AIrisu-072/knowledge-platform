@@ -158,3 +158,15 @@ test('WORKING実応答喪失は専用pageだけをproxyへ通し結果不明か�
   assert.match(source, /loss\.allowPublish\(`/);
   assert.equal((source.match(/^test\('/gm) ?? []).length, 2);
 });
+
+
+test('WORKING喪失の有限到達段階は実操作の完了後だけ記録する', async () => {
+  const source = await read('../../../apps/document-web/e2e-runtime/working-version-editor.spec.ts');
+  const save = source.slice(source.indexOf('async function save('), source.indexOf('async function openWorking('));
+  const sequence = ['loss.arm(', "completed('gui-working-loss-armed')", ').click();', "completed('gui-working-loss-save-clicked')",
+    'await loss.dropped()', "completed('gui-working-loss-dropped')", "name: '保存結果を確認できません'", '.toBeVisible();',
+    "completed('gui-working-loss-unknown-visible')", 'loss.allowRetry()', "completed('gui-working-loss-retry-armed')",
+    'await loss.assertRecovered()', "completed('gui-working-loss-recovered')"];
+  let position = -1;
+  for (const token of sequence) { const next = save.indexOf(token, position + 1); assert.ok(next > position, token); position = next; }
+});

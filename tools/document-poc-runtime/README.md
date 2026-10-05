@@ -315,3 +315,13 @@ listenerを使う既存/追加HTTP単体試験は当地では未実行。scope�
 約400行の追加は固定宛先・byte透過・失敗保持・cleanupと回帰試験に必要と独立確認した。
 次の操作はこの別commitを公開D2へ追加し、同一headの既存hostedで実socket喪失、
 GUI明示回復、HTTP再起動、owned cleanupと公開artifact0を確認することである。
+
+2026-10-05 10:06 UTC — 既存有限診断だけの追補:
+公開 `2105210c` はHTTP helper151件成功後、WORKINGの2件が分類不能で失敗した。
+原因は未確定。新しい固定failure code11種と保存の到達段階6種だけを既存診断へ追加し、
+同一対象の未arm再送を他の拒否と区別する。最初の例外を保持し、後続teardownの
+未回復例外へ原因を置き換えない。許可/拒否・応答喪失・timeout・明示再送の期待は不変。
+両sanitize境界はcode/stageだけを許可し、raw message/URL/header/payloadは出力しない。
+新6件RED→GREENを含む純粋49件・runtime型・既存MCP compileとcollection18+5が成功し、
+独立source reviewもGO。ローカルlistener/browser/DB/Cargoや画像は実行していない。
+これは診断差分の資格であり、WORKING実回復の成功・失敗原因は新exact-head hostedで確認する。

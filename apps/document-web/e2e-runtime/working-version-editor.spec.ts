@@ -40,10 +40,14 @@ async function save(page: Page, loss: WorkingLoss, origin: string, documentId: s
   const pathname = `/v1/documents/${documentId}/versions${target ? `/${target}` : ''}`;
   const before = await workingEditorSnapshot(origin, documentId);
   loss.arm({ method, path: pathname });
+  completed('gui-working-loss-armed');
   await editor(page).getByRole('button', { name: method === 'POST' ? '新しい作業版を作成' : '作業版を保存', exact: true }).click();
+  completed('gui-working-loss-save-clicked');
   const lost = await loss.dropped();
+  completed('gui-working-loss-dropped');
   expect(lost).toMatchObject({ received: 1, dispatched: 1, dropped: 1, unexpected: 0, upstreamStatus: method === 'POST' ? 201 : 200 });
   await expect(page.getByRole('heading', { name: '保存結果を確認できません', exact: true })).toBeVisible();
+  completed('gui-working-loss-unknown-visible');
   await expect(page.getByRole('status').filter({ hasText: method === 'POST' ? '新しい作業版を作成しました' : '作業版を保存しました' })).toHaveCount(0);
   const committed = await workingEditorSnapshot(origin, documentId);
   expect(committed.revision).toBe(before.revision + 1);
@@ -52,11 +56,13 @@ async function save(page: Page, loss: WorkingLoss, origin: string, documentId: s
   expect(committed.operations.filter(item => item.sourceKey === `version_operation:${lost.result.operationId}`)).toHaveLength(1);
   const responsePromise = page.waitForResponse(response => new URL(response.url()).pathname === pathname && response.request().method() === method);
   loss.allowRetry();
+  completed('gui-working-loss-retry-armed');
   await page.getByRole('button', { name: '同じ内容で再試行', exact: true }).click();
   const response = await responsePromise;
   expect(response.status()).toBe(method === 'POST' ? 201 : 200);
   const result = await response.json() as VersionMutationResult;
   const replay = await loss.assertRecovered();
+  completed('gui-working-loss-recovered');
   expect(replay).toMatchObject({ received: 2, dispatched: 2, dropped: 1, unexpected: 0,
     bytesEqual: true, contentTypeEqual: true, retryStatus: method === 'POST' ? 201 : 200 });
   expect(result).toEqual(lost.result);
