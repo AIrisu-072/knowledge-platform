@@ -5,6 +5,7 @@
 #![forbid(unsafe_code)]
 
 pub mod canonical;
+pub mod incremental;
 pub mod migrate;
 pub mod reader;
 pub mod store;
@@ -30,6 +31,9 @@ pub enum GraphError {
     FenceLost,
     #[error("graph store is unavailable")]
     Store,
+    /// The incremental closure cannot be proved; build the target in full.
+    #[error("graph closure requires a full rebuild")]
+    RequiresFullRebuild,
 }
 
 impl From<sqlx::Error> for GraphError {
@@ -49,6 +53,9 @@ impl From<GraphError> for search_application::SearchError {
             GraphError::Store => Self::SourceUnavailable("graph store unavailable".into()),
             GraphError::Invalid(_) | GraphError::Integrity(_) => {
                 Self::OperationFailed("graph generation integrity".into())
+            }
+            GraphError::RequiresFullRebuild => {
+                Self::OperationFailed("graph closure requires a full rebuild".into())
             }
         }
     }

@@ -5,7 +5,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use search_application::SearchError;
 use search_application::graph_generation::{
     BuildGuardHandle, DurableGraphGenerationPort, GraphBatchCursor, GraphBuildRef,
     GraphGenerationReceipt, GraphIncrementalDelta, GraphResourceRecord, GraphSourceMapping,
@@ -100,23 +99,23 @@ pub async fn register_full_on(
     ))
 }
 
-struct Parent {
-    state: String,
-    build_kind: String,
-    full_guard_token: Option<Uuid>,
-    full_build_fence: Option<i64>,
-    base: Option<Uuid>,
-    build_guard_token: Option<Uuid>,
-    build_fence: Option<i64>,
-    source_snapshot: String,
-    projection_manifest_digest: String,
-    source_mapping_digest: String,
-    graph_content_digest: Option<String>,
-    resource_count: Option<i64>,
-    relation_count: Option<i64>,
+pub(crate) struct Parent {
+    pub(crate) state: String,
+    pub(crate) build_kind: String,
+    pub(crate) full_guard_token: Option<Uuid>,
+    pub(crate) full_build_fence: Option<i64>,
+    pub(crate) base: Option<Uuid>,
+    pub(crate) build_guard_token: Option<Uuid>,
+    pub(crate) build_fence: Option<i64>,
+    pub(crate) source_snapshot: String,
+    pub(crate) projection_manifest_digest: String,
+    pub(crate) source_mapping_digest: String,
+    pub(crate) graph_content_digest: Option<String>,
+    pub(crate) resource_count: Option<i64>,
+    pub(crate) relation_count: Option<i64>,
 }
 
-async fn parent(
+pub(crate) async fn parent(
     connection: &mut PgConnection,
     key: ProjectionGenerationKey,
     lock: &str,
@@ -154,7 +153,10 @@ async fn parent(
 }
 
 /// The parent must be BUILDING and bound to exactly this reference.
-fn building_for(parent: Option<Parent>, target: &GraphBuildRef) -> Result<Parent, GraphError> {
+pub(crate) fn building_for(
+    parent: Option<Parent>,
+    target: &GraphBuildRef,
+) -> Result<Parent, GraphError> {
     let parent = parent.ok_or(GraphError::FenceLost)?;
     let bound = match target {
         GraphBuildRef::Full(handle) => {
@@ -195,7 +197,7 @@ fn instant(nanos: Option<String>, offset: Option<i32>) -> Result<Option<Instant>
     }
 }
 
-async fn insert_rows(
+pub(crate) async fn insert_rows(
     connection: &mut PgConnection,
     key: ProjectionGenerationKey,
     resources: &[GraphResourceRecord],
@@ -542,6 +544,9 @@ pub async fn validate_on(
     GraphError,
 > {
     let key = target.target_key();
+    if let GraphBuildRef::Incremental(handle) = target {
+        crate::incremental::ready_gate(&mut *connection, handle).await?;
+    }
     let parent = building_for(parent(&mut *connection, key, "FOR UPDATE").await?, target)?;
     let (resources, relations) = load_rows(&mut *connection, key).await?;
     let (graph_content_digest, resource_count, relation_count) =
@@ -599,6 +604,10 @@ impl PostgresGraphStore {
         Self { pool }
     }
 
+    pub(crate) fn pool(&self) -> &PgPool {
+        &self.pool
+    }
+
     /// Writes all children of a registered FULL target in one transaction.
     pub async fn stage_full(
         &self,
@@ -632,6 +641,10 @@ impl PostgresGraphStore {
     pub async fn validate(&self, target: &GraphBuildRef) -> Result<GraphStageReport, GraphError> {
         let key = target.target_key();
         let mut tx = self.pool.begin().await?;
+        if let GraphBuildRef::Incremental(handle) = target {
+            // Base before target, then the guard: live, copy verified, delta applied.
+            crate::incremental::ready_gate(&mut tx, handle).await?;
+        }
         let parent = building_for(parent(&mut tx, key, "FOR UPDATE").await?, target)?;
         let (resources, relations) = load_rows(&mut tx, key).await?;
         let (graph_content_digest, resource_count, relation_count) =
@@ -726,36 +739,28 @@ impl DurableGraphGenerationPort for PostgresGraphStore {
 
     fn copy_batch<'a>(
         &'a self,
-        _target: &'a BuildGuardHandle,
-        _expected: &'a GraphBatchCursor,
-        _limit: u32,
+        target: &'a BuildGuardHandle,
+        expected: &'a GraphBatchCursor,
+        limit: u32,
     ) -> BoxFuture<'a, GraphBatchCursor> {
-        Box::pin(async {
-            Err(SearchError::OperationFailed(
-                "incremental Graph build is not available".into(),
-            ))
-        })
+        Box::pin(async move { Ok(self.copy_batch(target, expected, limit).await?) })
     }
 
-    fn verify_copy<'a>(&'a self, _target: &'a BuildGuardHandle) -> BoxFuture<'a, ()> {
-        Box::pin(async {
-            Err(SearchError::OperationFailed(
-                "incremental Graph build is not available".into(),
-            ))
-        })
+    fn verify_copy<'a>(&'a self, target: &'a BuildGuardHandle) -> BoxFuture<'a, ()> {
+        Box::pin(async move { Ok(self.verify_copy(target).await?) })
     }
 
     fn apply_delta_batch<'a>(
         &'a self,
-        _target: &'a BuildGuardHandle,
-        _delta: &'a GraphIncrementalDelta,
-        _expected: &'a GraphBatchCursor,
-        _limit: u32,
+        target: &'a BuildGuardHandle,
+        delta: &'a GraphIncrementalDelta,
+        expected: &'a GraphBatchCursor,
+        limit: u32,
     ) -> BoxFuture<'a, GraphBatchCursor> {
-        Box::pin(async {
-            Err(SearchError::OperationFailed(
-                "incremental Graph build is not available".into(),
-            ))
+        Box::pin(async move {
+            Ok(self
+                .apply_delta_batch(target, delta, expected, limit)
+                .await?)
         })
     }
 

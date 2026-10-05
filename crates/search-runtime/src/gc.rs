@@ -67,6 +67,8 @@ enum Mode {
     Discard,
     /// The guard holder gives up its own live target.
     Abort { token: Uuid, fence: i64 },
+    /// The holder of a live Graph build guard gives up its incremental target.
+    AbortIncremental { base: Uuid, token: Uuid, fence: i64 },
 }
 
 /// One child or parent delete of the binding order.
@@ -140,6 +142,23 @@ impl PgGenerationGc {
             Mode::Abort {
                 token: build.token,
                 fence: build.fence,
+            },
+        )
+        .await
+    }
+
+    /// The holder of a live Graph build guard abandons its incremental target;
+    /// the base becomes collectable in the same commit.
+    pub async fn abort_incremental(
+        &self,
+        handle: &search_application::graph_generation::BuildGuardHandle,
+    ) -> Result<GcOutcome, GcError> {
+        self.collect(
+            handle.target_key(),
+            Mode::AbortIncremental {
+                base: handle.base_key().generation_id.as_uuid(),
+                token: handle.guard_token(),
+                fence: handle.build_fence(),
             },
         )
         .await
@@ -269,7 +288,7 @@ impl PgGenerationGc {
         let state_ok = match mode {
             Mode::Retire => state == "READY",
             Mode::Discard => state == "BUILDING" || state == "FAILED",
-            Mode::Abort { .. } => state != "DELETING",
+            Mode::Abort { .. } | Mode::AbortIncremental { .. } => state != "DELETING",
         };
         if !state_ok {
             return Ok(Some(GcOutcome::Protected(Protection::State)));
@@ -293,6 +312,7 @@ impl PgGenerationGc {
             .transpose()?;
         let guarded = match mode {
             Mode::Abort { token, fence } => guard != Some((token, fence, true)),
+            Mode::AbortIncremental { .. } => guard.is_some(),
             Mode::Retire | Mode::Discard => guard.is_some_and(|(_, _, live)| live),
         };
         if guarded {
@@ -304,18 +324,39 @@ impl PgGenerationGc {
              EXISTS (SELECT 1 FROM search_graph.build_guard \
                  WHERE source_id=$1 AND target_generation_id=$2 \
                    AND expires_at > clock_timestamp()) AS target, \
+             EXISTS (SELECT 1 FROM search_graph.build_guard \
+                 WHERE source_id=$1 AND target_generation_id=$2 \
+                   AND base_generation_id=$3 AND guard_token=$4 AND fence=$5 \
+                   AND expires_at > clock_timestamp()) AS own, \
              EXISTS (SELECT 1 FROM search_evaluation_lease \
                  WHERE source_id=$1 AND generation_id=$2 \
                    AND expires_at > clock_timestamp()) AS pinned",
         )
         .bind(source)
         .bind(generation)
+        .bind(match mode {
+            Mode::AbortIncremental { base, .. } => Some(base),
+            _ => None,
+        })
+        .bind(match mode {
+            Mode::AbortIncremental { token, .. } => Some(token),
+            _ => None,
+        })
+        .bind(match mode {
+            Mode::AbortIncremental { fence, .. } => Some(fence),
+            _ => None,
+        })
         .fetch_one(&mut *connection)
         .await?;
         if graph.try_get::<bool, _>("base")? {
             return Ok(Some(GcOutcome::Protected(Protection::BaseOfBuild)));
         }
-        if graph.try_get::<bool, _>("target")? {
+        let own = graph.try_get::<bool, _>("own")?;
+        let guarded = match mode {
+            Mode::AbortIncremental { .. } => !own,
+            _ => graph.try_get::<bool, _>("target")?,
+        };
+        if guarded {
             return Ok(Some(GcOutcome::Protected(Protection::Guarded)));
         }
         if graph.try_get::<bool, _>("pinned")? {

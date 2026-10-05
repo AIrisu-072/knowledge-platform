@@ -4,6 +4,7 @@ pub mod event_completion;
 pub mod full_guard;
 pub mod gc;
 pub mod generation_registration;
+pub mod graph_coordination;
 pub mod lexical_artifact;
 pub mod payload;
 pub mod pin;

@@ -212,7 +212,10 @@ impl PgGenerationRegistrar {
         Err(GenerationError::StoreUnknown)
     }
 
-    fn validate_request(&self, request: &FullBuildRequest) -> Result<(), GenerationError> {
+    pub(crate) fn validate_request(
+        &self,
+        request: &FullBuildRequest,
+    ) -> Result<(), GenerationError> {
         let manifest = &request.manifest;
         let bounded = |value: &str| !value.is_empty() && value.len() <= 1024;
         if manifest.source_id != self.registration.source_id()
@@ -367,11 +370,13 @@ impl PgGenerationRegistrar {
     }
 }
 
-fn graph_failure(error: search_graph::GraphError) -> Failure {
+pub(crate) fn graph_failure(error: search_graph::GraphError) -> Failure {
     match error {
         search_graph::GraphError::Invalid(_) => GenerationError::InvalidInput.into(),
         search_graph::GraphError::FenceLost => GenerationError::Lost.into(),
-        search_graph::GraphError::Integrity(_) => GenerationError::Conflict.into(),
+        search_graph::GraphError::Integrity(_) | search_graph::GraphError::RequiresFullRebuild => {
+            GenerationError::Conflict.into()
+        }
         search_graph::GraphError::Store => GenerationError::StoreUnknown.into(),
     }
 }
@@ -379,7 +384,7 @@ fn graph_failure(error: search_graph::GraphError) -> Failure {
 pub(crate) fn manifest_dto(manifest: &ProjectionGenerationManifest) -> Value {
     serde_json::json!({"dto_version":"v1", "manifest":manifest})
 }
-fn valid_digest(value: &str) -> bool {
+pub(crate) fn valid_digest(value: &str) -> bool {
     value.len() == 71
         && value.starts_with("sha256:")
         && value.as_bytes()[7..]
