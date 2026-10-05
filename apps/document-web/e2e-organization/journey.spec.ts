@@ -1,7 +1,7 @@
 import { currentAction } from './support';
 import { expect, test } from '@playwright/test';
 import type { Claimed, DraftCommand, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, SubmitCommand, Submitted, TaskDetail, TaskPage, WorkCommand, WorkingArtifact } from '../src/api/generated-work/types.gen';
-import { assertHidden, assertSessions, assertEvidenceState, captureFinal, get, publishedEvidenceSource, readRuntimeContext, recordDecision, registerEvidence, registerFinding, revisionRef, saveState } from './support';
+import { assertHidden, assertSessions, assertEvidenceState, assertAgentState, requestSyntheticFinding, captureFinal, get, publishedEvidenceSource, readRuntimeContext, recordDecision, registerEvidence, registerFinding, revisionRef, saveState } from './support';
 
 const returnReason = '【合成データ】対象数量を追記して再提出してください。';
 const revisedText = '【合成データ】対象数量は10件です。営業で参照資料と照合して追記しました。';
@@ -285,6 +285,13 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     for (const receipt of [reworkEvidence, reworkFinding, reworkDecision]) await assertHidden(request, context.office, `/v1/organization/operations/${receipt.operationId}`, 'WORK_ITEM_NOT_FOUND');
     expect(await get(request, context.office, `/v1/organization/evidence/${selectedEvidence.result.evidence.id}`)).toEqual(selectedEvidence.result.evidence);
     expect(await get(request, context.office, `/v1/organization/findings/${sharedFinding.result.finding.id}`)).toEqual(sharedFinding.result.finding);
+    const salesAgent = await requestSyntheticFinding(page, request, context.sales, source.id, selectedEvidence.result.evidence, 'sales-01');
+    const salesAgentDecision = await recordDecision(page, source.id, salesAgent.finding, selectedEvidence.result.evidence, 'modified', '【合成データ】合成候補を営業が確認し修正した。本文は別途確認が必要。', '【合成データ】営業が人間判断で修正した合成候補の採用文。');
+    expect(salesAgentDecision.result.decision).toMatchObject({ humanPrincipal: 'sales-01', actingAssignmentId: sessions.sales.actingAssignmentId, attemptId: returned.nextTask.attemptId });
+    await assertHidden(request, context.office, `/v1/organization/agent-executions/${salesAgent.execution.id}`, 'WORK_ITEM_NOT_FOUND', salesAgent.command.purpose);
+    await assertHidden(request, context.office, `/v1/organization/agent-executions/${salesAgent.execution.id}/result`, 'WORK_ITEM_NOT_FOUND');
+    await assertHidden(request, context.office, `/v1/organization/findings/${salesAgent.finding.id}`, 'FINDING_NOT_FOUND', salesAgent.finding.claim);
+    await assertHidden(request, context.office, `/v1/organization/findings/${salesAgent.finding.id}/decisions`, 'FINDING_NOT_FOUND');
     await page.getByLabel('作業中の文案', { exact: true }).fill(revisedText);
     const resaveResponse = page.waitForResponse((response) => new URL(response.url()).pathname === `/v1/organization/tasks/${source.id}/working-artifacts` && response.request().method() === 'POST');
     currentAction('draft-save');
@@ -320,6 +327,8 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     await resubmitDialog.getByLabel(`共有する根拠 ${selectedEvidence.result.evidence.id}`, { exact: true }).check();
     await resubmitDialog.getByLabel(`共有する候補 ${sharedFinding.result.finding.id}`, { exact: true }).check();
     for (const receipt of sharedDecisions) await resubmitDialog.getByLabel(`共有する判断 ${receipt.result.decision.id}`, { exact: true }).check();
+    await resubmitDialog.getByLabel(`共有する候補 ${salesAgent.finding.id}`, { exact: true }).check();
+    await resubmitDialog.getByLabel(`共有する判断 ${salesAgentDecision.result.decision.id}`, { exact: true }).check();
     await expect(resubmitDialog.getByLabel(`共有する根拠 ${reworkEvidence.result.evidence.id}`, { exact: true })).not.toBeChecked();
     await expect(resubmitDialog.getByLabel(`共有する候補 ${reworkFinding.result.finding.id}`, { exact: true })).not.toBeChecked();
     await expect(resubmitDialog.getByLabel(`共有する判断 ${reworkDecision.result.decision.id}`, { exact: true })).not.toBeChecked();
@@ -330,8 +339,8 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     expect(resubmittedResponse.status()).toBe(200);
     const resubmitted = await resubmittedResponse.json() as Submitted;
     const resubmitCommand = resubmittedResponse.request().postDataJSON() as SubmitCommand;
-    expect(resubmitCommand).toMatchObject({ expectedRevision: resaved.task.revision, expectedAttemptId: returned.nextTask.attemptId, evidenceRevisionRefs: submitCommand.evidenceRevisionRefs, findingRevisionRefs: submitCommand.findingRevisionRefs, decisionRevisionRefs: submitCommand.decisionRevisionRefs });
-    expect(resubmitted.snapshot).toMatchObject({ evidenceRevisionRefs: submitCommand.evidenceRevisionRefs, findingRevisionRefs: submitCommand.findingRevisionRefs, decisionRevisionRefs: submitCommand.decisionRevisionRefs });
+    expect(resubmitCommand).toMatchObject({ expectedRevision: resaved.task.revision, expectedAttemptId: returned.nextTask.attemptId, evidenceRevisionRefs: submitCommand.evidenceRevisionRefs, findingRevisionRefs: [...submitted.snapshot.findingRevisionRefs, revisionRef(salesAgent.finding)], decisionRevisionRefs: [...submitted.snapshot.decisionRevisionRefs, revisionRef(salesAgentDecision.result.decision)] });
+    expect(resubmitted.snapshot).toMatchObject({ evidenceRevisionRefs: submitCommand.evidenceRevisionRefs, findingRevisionRefs: [...submitted.snapshot.findingRevisionRefs, revisionRef(salesAgent.finding)], decisionRevisionRefs: [...submitted.snapshot.decisionRevisionRefs, revisionRef(salesAgentDecision.result.decision)] });
     expect(resubmitted.task).toMatchObject({ id: source.id, attemptNumber: 2, state: 'completed' });
     expect(resubmitted.nextTask).toMatchObject({ id: claimed.task.id, attemptNumber: 2, state: 'ready', canClaim: false });
     expect(resubmitted.nextTask.attemptId).not.toBe(claimed.task.attemptId);
@@ -361,9 +370,14 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     const officeReworkDecision = await recordDecision(office, officeReclaimed.task.id, sharedFinding.result.finding, selectedEvidence.result.evidence, 'accepted', '【合成データ】事務が試行2で受領候補を独立して採用した。');
     expect(officeReworkDecision.result.decision).toMatchObject({ humanPrincipal: 'office-01', actingAssignmentId: sessions.office.actingAssignmentId, attemptId: officeReclaimed.task.attemptId });
     expect(officeReworkDecision.result.decision.id).not.toBe(officeDecision.result.decision.id);
+    const officeAgent = await requestSyntheticFinding(office, request, context.office, officeReclaimed.task.id, selectedEvidence.result.evidence, 'office-01');
+    const officeAgentDecision = await recordDecision(office, officeReclaimed.task.id, officeAgent.finding, selectedEvidence.result.evidence, 'rejected', '【合成データ】事務が合成候補を却下した。元候補を保持し、営業へ自動共有しない。');
+    expect(officeAgentDecision.result.decision).toMatchObject({ humanPrincipal: 'office-01', actingAssignmentId: sessions.office.actingAssignmentId, attemptId: officeReclaimed.task.attemptId });
+    const agents = { sales: { ...salesAgent, decision: salesAgentDecision }, office: { ...officeAgent, decision: officeAgentDecision } };
+    await assertAgentState(request, context, agents);
     const evidence = { selected: selectedEvidence, unselected: privateEvidence, finding: sharedFinding, privateFinding, decisions: sharedDecisions, privateDecision, officeDecision, officeReworkDecision, rework: { evidence: reworkEvidence, finding: reworkFinding, decision: reworkDecision } };
     currentAction('final-verify');
-    await assertEvidenceState(request, context, source.id, claimed.task.id, evidence);
+    await assertEvidenceState(request, context, source.id, claimed.task.id, evidence, agents);
     currentAction('final-verify');
     const final = await captureFinal(request, context, source.id, submitted.nextTask.id, resubmitted.snapshot.id, submitted.snapshot.id, returned.returnInstruction.id);
     expect(final.snapshot).toEqual(resubmitted.snapshot);
@@ -372,7 +386,7 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     expect(final.salesTask).toMatchObject({ state: 'completed', attemptNumber: 2 });
     expect(final.officeTask).toMatchObject({ state: 'active', attemptNumber: 2, workingArtifacts: [] });
     currentAction('final-verify');
-    await saveState(context, { schemaVersion: 3, documentId: context.documentId, salesTaskId: source.id, officeTaskId: submitted.nextTask.id, artifactId: saved.artifact.id, snapshotId: submitted.snapshot.id, text, save: { operationId: saveCommand.operationId, result: saved }, submit: { operationId: submitCommand.operationId, result: submitted }, claim: { operationId: claimCommand.operationId, result: claimed }, rework: { text: revisedText, returned: { operationId: returnCommand.operationId, command: returnCommand, result: returned }, salesClaim: { operationId: salesClaimCommand.operationId, result: salesClaimed }, save: { operationId: resaveCommand.operationId, result: resaved }, submit: { operationId: resubmitCommand.operationId, result: resubmitted }, officeClaim: { operationId: officeReclaimCommand.operationId, result: officeReclaimed } }, evidence, final });
+    await saveState(context, { schemaVersion: 4, documentId: context.documentId, salesTaskId: source.id, officeTaskId: submitted.nextTask.id, artifactId: saved.artifact.id, snapshotId: submitted.snapshot.id, text, save: { operationId: saveCommand.operationId, result: saved }, submit: { operationId: submitCommand.operationId, result: submitted }, claim: { operationId: claimCommand.operationId, result: claimed }, rework: { text: revisedText, returned: { operationId: returnCommand.operationId, command: returnCommand, result: returned }, salesClaim: { operationId: salesClaimCommand.operationId, result: salesClaimed }, save: { operationId: resaveCommand.operationId, result: resaved }, submit: { operationId: resubmitCommand.operationId, result: resubmitted }, officeClaim: { operationId: officeReclaimCommand.operationId, result: officeReclaimed } }, evidence, agents, final });
   } finally {
     await officeContext.close();
   }

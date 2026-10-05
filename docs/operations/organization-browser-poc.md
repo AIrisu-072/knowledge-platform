@@ -6,7 +6,7 @@
 
 ## 現在の範囲
 
-2名の起動時固定の模擬ユーザーを使い、タスク一覧・詳細、privateな文案の保存、共有Document参照、提出、事務担当の引受けと提出内容の閲覧、理由付き差戻と新試行での再提出、Documentを参照する根拠・候補・人間判断の保存を行う。PostgreSQLを状態の正本とし、ページ再読込でも保存済み状態を取得する。未保存の入力と結果不明操作はタブ内メモリーに保持する。
+2名の起動時固定の模擬ユーザーを使い、タスク一覧・詳細、privateな文案の保存、共有Document参照、提出、事務担当の引受けと提出内容の閲覧、理由付き差戻と新試行での再提出、Documentを参照する根拠・候補・人間判断の保存、選択根拠に結び付いた合成Agentの候補作成を行う。PostgreSQLを状態の正本とし、ページ再読込でも保存済み状態を取得する。未保存の入力と結果不明操作はタブ内メモリーに保持する。
 
 これは認証システムではない。各loopbackポートへ接続できる利用者はその固定profileとして扱われる。顧客情報・秘密情報・production DBを使用しない。外部公開・production deploy・Tauri実行を含まない。
 
@@ -35,7 +35,7 @@ export KP_WEB_DIST='/absolute/path/to/apps/document-web/dist'
 ./target/debug/organization-server serve
 ```
 
-`migrate` は明示コマンドだけでDocument既存migrationとWork専用schema/migration ledgerを処理する。通常の `serve` はmigrationもseedも実行しない。`bootstrap-poc` はDocumentの既存bootstrap portでsales-01のfixture作成権限とoffice-01のread/readHistoryを初期化する。既存policyが異なる場合は停止する。
+`migrate` は明示コマンドだけでDocument既存migrationとWork専用schema/migration ledgerを処理する。通常の `serve` はmigrationもseedも実行しない。`bootstrap-poc` はDocumentの既存bootstrap portでsales-01のfixture作成権限、office-01と固定Document provider poc/poc-agentのread/readHistoryを初期化する。Agent対応前のDBを含め、既存policyが異なる場合は停止し、暗黙にgrantを追加しない。新しい合成Agent PoCでは新しい所有された使い捨てDBを用いる。
 
 ## 共有文書を用意する
 
@@ -95,9 +95,23 @@ export KP_ORGANIZATION_DOCUMENT_ID='<上で公開したdocumentId>'
 
 入力と結果不明操作は同じ利用者・担当・タスク・試行のタブ内状態として扱う。通信結果不明時は元operation IDで確認・再送し、新しいIDで重複作成しない。タブを閉じると未保存入力は失われる。
 
+## 合成Agentから人間判断へつなぐ
+
+この経路のexecutorは固定規則の検証用処理で、実LLMではない。原本本文の読解・要約・事実検証はしない。Documentの現在認可は実Applicationサービスで確認するが、MCP transportは実行していない。
+
+1. 担当中のタスクで「根拠」から少なくとも1件の参照を登録しておき、「Agent」を開く
+2. 目的と、使わせる既存根拠のexact revisionを1–16件選択して依頼する。選択は権限を広げず、他のprivate文案や別タスクを自動追加しない
+3. サーバーへ保存された実行IDと状態を確認する。実行中の取消は今後の処理を止めるもので、既に成功した候補を消したりworkflowを戻したりしない。通信結果が不明なら元operation IDで回復し、新しいIDを作らない。回復できたものがqueued/runningの受付記録だけなら、実行が進行中と断定せず、結果不明の表示から状態の再確認または取消を行う
+4. 成功後の構造化結果から候補を確認する。作成者organization-synthetic/agent-01、依頼者、Document provider poc/poc-agent、合成実行と本文分析なしの表示を区別する。候補は通常のFindingとして保存され、chatだけには残らない
+5. 「根拠」で人間が候補を採用・修正・却下する。Agentは人間判断や提出を代行しない。次担当へ共有するには既存の提出確認で根拠・候補・判断を明示選択する
+
+同時実行はtaskごと1件、現在attemptの実行履歴は最大16件。task/attempt/責任変更、取消、原本権限の喪失後は古い実行結果を新しいcontextへ表示しない。process再起動時の未完了実行はoutcome_unknownとなり、自動再実行しない。完了済み候補の内容は書き換えない。
+
+この追加経路の資格は[合成Agentの最新状況](../superpowers/execution/organization-synthetic-agent-slice-status.md)に記録する。以前のEvidence受入だけでAgent実動作を合格にしない。
+
 ## 未対応と検証限界
 
-- Tauri/実Windows/WebView2/native Workspace、ファイル添付、Agent/model実行、検索の接続、role管理・委任は今回の最小slice外
+- Tauri/実Windows/WebView2/native Workspace、ファイル添付、実LLM/外部model・MCP通信、検索の接続、role管理・委任は今回の最小slice外
 - Work fixtureは2stepの1workflow。物理DBでは1aggregateをrow lockし、privateなschema-bound textを保存する。一般workflow designerや大規模運用を意味しない
 - AuditはWork transaction内のstagingまで。別Audit pipeline配送の資格取得は主張しない
 - 実PostgreSQLとbrowserの確認は、明示承認されたGitHub Actionsの使い捨て環境で行う。ローカルの既知DB/browser拒否を再試行しない。以前、純粋試験と誤認したDocument Node試験が合成loopback listenerを起動した事実は報告・終了確認済みで、実DB資格や追加実行許可を意味しない。純粋テスト/HTTP oneshot/型検査/buildの成功で実runtime合格としない
@@ -118,4 +132,4 @@ PostgreSQL transaction試験は既定で明示ignoreされる。実行してい�
 
 `mise run organization:poc:runtime` は既存Document CI後段向けの単発確認である。外部DBを受け付けず、既存と同じ公式PostgreSQL一時containerを別途所有し、独立したtransaction試験用DBとbrowser用DB・storageを作る。既存固定Chromiumでsales/officeの操作を行い、2processを停止・再起動して保存状態を確認した後、所有containerを削除する。
 
-通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。初回PoCの実証は[PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54)のsource `44e1b412` で完了している。差戻追加経路は[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d` で全CIと実DB/2名browser/両HTTP server再起動後復元/cleanupが成功した。今回の根拠・候補・判断は[最新状況](../superpowers/execution/organization-evidence-slice-status.md)の新しいexact-head結果で別途確認する。PostgreSQL processそのものの再起動は確認対象に含めていない。画像・trace・videoはoff、実行ログ・標準runnerの失敗時文脈は一時workspace内だけに保持し、公開artifactは追加しない。
+通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。初回PoCの実証は[PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54)のsource `44e1b412` で完了している。差戻追加経路は[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d` で全CIと実DB/2名browser/両HTTP server再起動後復元/cleanupが成功した。根拠・候補・判断は[PR57](https://github.com/AIrisu-072/knowledge-platform/pull/57) exact `d383bacc` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。合成Agentは別のexact-head結果で確認する。PostgreSQL processそのものの再起動は確認対象に含めていない。画像・trace・videoはoff、raw実行ログ・標準runnerの原文は一時workspace内に保持し、公開artifactは追加しない。既存の有限stage/statusと許可された操作名だけをCIへ出力する。

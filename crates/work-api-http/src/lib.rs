@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 //! Work HTTP transport. The composition root injects a process-fixed verified actor.
+mod agent;
 mod evidence;
+use agent::*;
 use axum::{
     Json, Router,
     extract::{
@@ -16,7 +18,7 @@ use evidence::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
-use work_application::WorkRepository;
+use work_application::{AgentDispatchPort, WorkRepository};
 use work_domain::*;
 
 const MAX_JSON_BYTES: usize = 1024 * 1024;
@@ -24,9 +26,24 @@ const MAX_JSON_BYTES: usize = 1024 * 1024;
 struct ApiState {
     repository: Arc<dyn WorkRepository>,
     actor: VerifiedActor,
+    agent_dispatch: Option<Arc<dyn AgentDispatchPort>>,
 }
 /// Header/body/query values cannot change identity or grant acting responsibility.
 pub fn router(repository: Arc<dyn WorkRepository>, actor: VerifiedActor) -> Router {
+    build_router(repository, actor, None)
+}
+pub fn router_with_agent(
+    repository: Arc<dyn WorkRepository>,
+    actor: VerifiedActor,
+    dispatch: Arc<dyn AgentDispatchPort>,
+) -> Router {
+    build_router(repository, actor, Some(dispatch))
+}
+fn build_router(
+    repository: Arc<dyn WorkRepository>,
+    actor: VerifiedActor,
+    agent_dispatch: Option<Arc<dyn AgentDispatchPort>>,
+) -> Router {
     Router::new()
         .route("/v1/organization/session", get(session))
         .route("/v1/organization/tasks", get(list_tasks))
@@ -53,6 +70,22 @@ pub fn router(repository: Arc<dyn WorkRepository>, actor: VerifiedActor) -> Rout
             "/v1/organization/findings/{id}/decisions",
             get(list_decisions).post(record_decision),
         )
+        .route(
+            "/v1/organization/tasks/{id}/agent-executions",
+            post(request_agent_execution),
+        )
+        .route(
+            "/v1/organization/agent-executions/{id}",
+            get(agent_execution),
+        )
+        .route(
+            "/v1/organization/agent-executions/{id}/result",
+            get(agent_result),
+        )
+        .route(
+            "/v1/organization/agent-executions/{id}/cancel",
+            post(cancel_agent_execution),
+        )
         .route("/v1/organization/tasks/{id}/claim", post(claim))
         .route("/v1/organization/tasks/{id}/submit", post(submit))
         .route("/v1/organization/tasks/{id}/return", post(return_task))
@@ -64,7 +97,11 @@ pub fn router(repository: Arc<dyn WorkRepository>, actor: VerifiedActor) -> Rout
         .route("/v1/organization/operations/{id}", get(recover))
         .fallback(|| async { Problem(WorkError::WorkItemNotFound) })
         .method_not_allowed_fallback(|| async { Problem(WorkError::ValidationFailed) })
-        .with_state(ApiState { repository, actor })
+        .with_state(ApiState {
+            repository,
+            actor,
+            agent_dispatch,
+        })
         .layer(DefaultBodyLimit::max(MAX_JSON_BYTES))
         .layer(middleware::from_fn(transport_boundary))
 }
@@ -133,7 +170,7 @@ async fn session(State(state): State<ApiState>) -> Json<serde_json::Value> {
         "principalId":state.actor.principal_id(),
         "displayName":match state.actor { VerifiedActor::Sales01 => "営業担当（模擬）", VerifiedActor::Office01 => "事務担当（模擬）" },
         "actingAssignmentId":state.actor.assignment_id(),
-        "capabilities":{"nativeWorkspace":false,"agent":false,"search":false,"fileUpload":false,"return":true}
+        "capabilities":{"nativeWorkspace":false,"agent":state.agent_dispatch.is_some(),"search":false,"fileUpload":false,"return":true}
     }))
 }
 async fn list_tasks(
@@ -378,6 +415,8 @@ impl IntoResponse for Problem {
             WorkError::RevisionConflict
             | WorkError::OperationConflict
             | WorkError::WorkAssignmentConflict
+            | WorkError::WorkContextStale
+            | WorkError::AgentResultNotReady
             | WorkError::HandoffNotReady
             | WorkError::CursorStale => StatusCode::CONFLICT,
             WorkError::DependencyUnavailable | WorkError::CommitOutcomeUnknown => {

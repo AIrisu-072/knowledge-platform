@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
+import { runInNewContext } from 'node:vm';
 import { browserFailureDiagnostics, readBrowserFailureDiagnostics } from './browser-diagnostics.mjs';
 
 const titles = {
@@ -13,6 +15,100 @@ const report = (result, phase = 'journey', spec = {}) => JSON.stringify({ suites
   title: titles[phase], file: `${phase}.spec.ts`, line: 10, column: 1, ...spec, tests: [{ results: [result] }],
 }] }] });
 
+const readEndpoints = ['session', 'task-list', 'task', 'snapshot', 'return-instruction', 'artifact', 'operation',
+  'evidence', 'finding', 'decision', 'agent', 'agent-result', 'document'];
+const readAnnotation = description => ({ type: 'organization-read-failure', description });
+const readFailure = annotations => ({ status: 'failed', annotations, error: {
+  message: 'expect(received).toBe(expected) PRIVATE', location: { file: 'support.ts', line: 66, column: 74 },
+} });
+
+test('failed GET projection retains only an atomic bounded HTTP status and closed endpoint class', () => {
+  for (const phase of ['journey', 'persistence']) for (const endpoint of readEndpoints) for (const httpStatus of [100, 199, 201, 301, 400, 401, 403, 404, 409, 429, 500, 503, 599]) {
+    const annotation = { ...readAnnotation(`${httpStatus}:${endpoint}`), body: 'PRIVATE', url: 'PRIVATE' };
+    const actual = browserFailureDiagnostics(report(readFailure([annotation]), phase), phase).failure;
+    assert.deepEqual(actual, { test: phase, source: 'support.ts', line: 66, column: 74,
+      status: 'failed', errorCategory: 'assertion', matcher: 'toBe', httpStatus, readEndpoint: endpoint });
+  }
+});
+
+test('invalid, duplicate, excessive, stale or unrelated GET annotations disclose no read fields', () => {
+  const valid = readAnnotation('404:operation');
+  for (const annotations of [undefined, 'PRIVATE', [null], [readAnnotation(null)], [readAnnotation(404)],
+    ...['099:task', '600:task', '200:task', '0404:task', '404:unknown', '404:task\n', '404:PRIVATE', '404:task:PRIVATE', 'PRIVATE'.repeat(10000)].map(value => [readAnnotation(value)]),
+    [valid, valid], [valid, readAnnotation('PRIVATE')], Array(33).fill(valid)]) {
+    const raw = JSON.parse(report(readFailure(annotations), 'persistence'));
+    raw.suites[0].specs[0].tests[0].annotations = [valid];
+    const actual = browserFailureDiagnostics(JSON.stringify(raw), 'persistence').failure;
+    assert.equal(actual.httpStatus, undefined);
+    assert.equal(actual.readEndpoint, undefined);
+    assert.ok(!JSON.stringify(actual).includes('PRIVATE'));
+  }
+  for (const result of [
+    { ...readFailure([valid]), status: 'timedOut' },
+    { ...readFailure([valid]), error: { message: 'expect(value).toEqual(expected)' } },
+    { ...readFailure([valid]), error: { message: 'expect(value).toBe(expected)', location: { file: 'journey.spec.ts' } } },
+  ]) {
+    const actual = browserFailureDiagnostics(report(result), 'journey').failure;
+    assert.equal(actual.httpStatus, undefined);
+    assert.equal(actual.readEndpoint, undefined);
+  }
+});
+
+// Execute the actual get() body with only its request, assertion and annotation boundaries replaced.
+// Importing the runtime runner or starting Playwright/HTTP is neither needed nor allowed here.
+async function isolatedGet(annotations, failure) {
+  const source = await readFile(new URL('../../apps/document-web/e2e-organization/support.ts', import.meta.url), 'utf8');
+  const require = createRequire(new URL('../../apps/document-web/package.json', import.meta.url));
+  const ts = require('typescript');
+  const body = source.slice(source.indexOf('export async function get<T>'), source.indexOf('export async function assertSessions'));
+  const output = ts.transpileModule(body, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const exports = {};
+  runInNewContext(output, { exports, URL, test: { info: () => ({ annotations }) },
+    expect: actual => ({ toBe: expected => { assert.equal(expected, 200); if (actual !== expected) throw failure; } }) });
+  return exports.get;
+}
+
+test('get emits safe endpoint families only on its unchanged failing status assertion without reading bodies or retrying', async () => {
+  const routes = [
+    ['/v1/organization/session', 'session'], ['/v1/organization/tasks?view=context', 'task-list'],
+    ['/v1/organization/tasks?view=queue', 'task-list'], ['/v1/organization/tasks/PRIVATE', 'task'],
+    ['/v1/organization/handoff-snapshots/PRIVATE', 'snapshot'], ['/v1/organization/return-instructions/PRIVATE', 'return-instruction'],
+    ['/v1/organization/working-artifacts/PRIVATE', 'artifact'], ['/v1/organization/operations/PRIVATE', 'operation'],
+    ['/v1/organization/tasks/PRIVATE/evidence', 'evidence'], ['/v1/organization/evidence/PRIVATE', 'evidence'],
+    ['/v1/organization/tasks/PRIVATE/findings', 'finding'], ['/v1/organization/findings/PRIVATE', 'finding'],
+    ['/v1/organization/findings/PRIVATE/decisions', 'decision'], ['/v1/organization/agent-executions/PRIVATE', 'agent'],
+    ['/v1/organization/agent-executions/PRIVATE/result', 'agent-result'], ['/v1/documents/PRIVATE?view=published', 'document'],
+    ['/v1/documents/PRIVATE/revisions?pageSize=100', 'document'], ['/v1/documents/PRIVATE/versions/PRIVATE/files?purpose=published', 'document'],
+  ];
+  const annotations = [], original = new Error('PRIVATE original assertion');
+  const get = await isolatedGet(annotations, original);
+  for (const [path, readEndpoint] of routes) {
+    annotations.length = 0;
+    let calls = 0, bodies = 0;
+    const request = { get: async (...args) => {
+      calls++; assert.deepEqual(args, [`http://127.0.0.1:1${path}`]);
+      return { status: () => 503, json: () => { bodies++; return {}; } };
+    } };
+    await assert.rejects(get(request, 'http://127.0.0.1:1', path), error => error === original);
+    assert.equal(calls, 1); assert.equal(bodies, 0);
+    assert.deepEqual(JSON.parse(JSON.stringify(annotations)), [readAnnotation(`503:${readEndpoint}`)]);
+    const projected = browserFailureDiagnostics(report(readFailure(annotations), 'persistence'), 'persistence').failure;
+    assert.equal(projected.httpStatus, 503); assert.equal(projected.readEndpoint, readEndpoint);
+    assert.ok(!JSON.stringify(projected).includes('PRIVATE'));
+  }
+  annotations.length = 0;
+  const payload = { unchanged: true };
+  assert.equal(await get({ get: async () => ({ status: () => 200, json: async () => payload }) }, 'http://127.0.0.1:1', '/v1/organization/session'), payload);
+  assert.equal(annotations.length, 0);
+  for (const path of ['/v1/organization/PRIVATE', '/v1/organization/tasks/PRIVATE/unknown', '/v1/organization/session?PRIVATE', '/v1/organization/tasks/' + 'PRIVATE'.repeat(1000)]) {
+    await assert.rejects(get({ get: async () => ({ status: () => 404 }) }, 'http://127.0.0.1:1', path), error => error === original);
+    assert.equal(annotations.length, 0);
+  }
+  const brokenAnnotations = Object.freeze([]);
+  const brokenGet = await isolatedGet(brokenAnnotations, original);
+  await assert.rejects(brokenGet({ get: async () => ({ status: () => 404 }) }, 'http://127.0.0.1:1', '/v1/organization/session'), error => error === original);
+});
+
 test('standard JSON timeout retains only the current result action annotation without inferring completion', () => {
   const raw = JSON.parse(report({ status: 'timedOut', error: { message: 'Test timeout of 120000ms exceeded.' },
     annotations: [{ type: 'organization-stage', description: 'source-file-select', detail: 'PRIVATE' }] }));
@@ -22,13 +118,13 @@ test('standard JSON timeout retains only the current result action annotation wi
   } });
 });
 
-test('all thirty fixed action names survive the closed projection', () => {
+test('all thirty-five fixed action names survive the closed projection', () => {
   const stages = ['journey-setup', 'office-navigation', 'sales-navigation', 'document-navigation', 'task-navigation',
     'draft-save', 'source-read', 'evidence-module', 'source-document-select', 'source-file-select', 'evidence-input',
     'evidence-submit', 'finding-input', 'finding-submit', 'decision-select', 'decision-input', 'decision-preview',
     'decision-confirm', 'visibility-verify', 'submit-preview', 'submit-selection', 'submit-confirm', 'office-claim',
-    'return-preview', 'return-confirm', 'sales-reclaim', 'resubmit', 'office-reclaim', 'final-verify', 'persistence-verify'];
-  assert.equal(stages.length, 30);
+    'return-preview', 'return-confirm', 'sales-reclaim', 'resubmit', 'office-reclaim', 'final-verify', 'persistence-verify', 'agent-module', 'agent-input', 'agent-request', 'agent-result', 'agent-replay'];
+  assert.equal(stages.length, 35);
   for (const description of stages) {
     const raw = report({ status: 'timedOut', annotations: [{ type: 'organization-stage', description }] });
     assert.equal(browserFailureDiagnostics(raw, 'journey').failure.currentAction, description);
@@ -134,4 +230,53 @@ test('runner pins the JSON environment override, rethrows failure and keeps capt
   assert.match(runner, /catch \(error\) \{\s*console\.error\(`Organization browser failure: \$\{JSON\.stringify\(await readBrowserFailureDiagnostics\(directory, phase\)\)\}`\);\s*throw error;/u);
   assert.match(config, /\['json', \{ outputFile: join\(output, 'results\.json'\) \}\]/u);
   for (const setting of ["preserveOutput: 'never'", "trace: 'off'", "screenshot: 'off'", "video: 'off'"]) assert.ok(config.includes(setting));
+});
+
+test('Agent result failures retain only the closed observed execution status and failure code', () => {
+  const executionStatuses = ['queued', 'running', 'succeeded', 'failed', 'cancelled', 'outcome_unknown'];
+  const failureCodes = ['none', 'provider_denied', 'context_stale', 'invalid_output', 'dependency_unavailable', 'interrupted', 'commit_outcome_unknown'];
+  for (const executionStatus of executionStatuses) for (const failureCode of failureCodes) {
+    const raw = report({ status: 'failed', error: { message: 'expect(locator).toContainText() timeout PRIVATE' }, annotations: [
+      { type: 'organization-stage', description: 'agent-result' },
+      { type: 'organization-agent-status', description: executionStatus, body: 'PRIVATE', id: 'PRIVATE' },
+      { type: 'organization-agent-failure-code', description: failureCode, purpose: 'PRIVATE' },
+    ] });
+    const actual = browserFailureDiagnostics(raw, 'journey').failure;
+    assert.equal(actual.executionStatus, executionStatus);
+    assert.equal(actual.executionFailureCode, failureCode === 'none' ? null : failureCode);
+    assert.ok(!JSON.stringify(actual).includes('PRIVATE'));
+  }
+});
+
+test('invalid, excessive, incomplete or unrelated Agent observations disclose no execution fields', () => {
+  const valid = [
+    { type: 'organization-stage', description: 'agent-result' },
+    { type: 'organization-agent-status', description: 'failed' },
+    { type: 'organization-agent-failure-code', description: 'context_stale' },
+  ];
+  for (const annotations of [
+    undefined, 'PRIVATE', [null], valid.slice(0, 2),
+    [...valid, { type: 'organization-agent-status', description: 'PRIVATE' }],
+    [...valid, { type: 'organization-agent-failure-code', description: 'PRIVATE' }],
+    [...valid, { type: 'organization-stage', description: 'draft-save' }],
+    [...valid, ...Array(30).fill({ type: 'PRIVATE', description: 'PRIVATE' })],
+  ]) {
+    const raw = JSON.parse(report({ status: 'failed', annotations }));
+    raw.suites[0].specs[0].tests[0].annotations = valid;
+    const actual = browserFailureDiagnostics(JSON.stringify(raw), 'journey').failure;
+    assert.equal(actual.executionStatus, undefined);
+    assert.equal(actual.executionFailureCode, undefined);
+    assert.ok(!JSON.stringify(actual).includes('PRIVATE'));
+  }
+  const unrelated = browserFailureDiagnostics(report({ status: 'failed', annotations: valid }, 'persistence'), 'persistence').failure;
+  assert.equal(unrelated.executionStatus, undefined);
+  assert.equal(unrelated.executionFailureCode, undefined);
+});
+
+test('Agent observation follows only the unchanged failed UI assertion and rethrows its original error', async () => {
+  const support = await readFile(new URL('../../apps/document-web/e2e-organization/support.ts', import.meta.url), 'utf8');
+  assert.match(support, /try \{\s*await expect\(executionRegion\)\.toContainText\('実行状態：成功'\);\s*\} catch \(error\) \{/u);
+  assert.match(support, /request\.get\(`\$\{origin\}\/v1\/organization\/agent-executions\/\$\{result\.execution\.id\}`, \{ timeout: 2000, maxRetries: 0, maxRedirects: 0 \}\)/u);
+  assert.match(support, /\} catch \{ \/\* Preserve the original UI failure[^\n]*\n\s*throw error;/u);
+  assert.match(support, /annotations\.push\(\{ type: 'organization-agent-status', description: status \}, \{ type: 'organization-agent-failure-code', description: failureCode \?\? 'none' \}\)/u);
 });

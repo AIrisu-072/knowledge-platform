@@ -7,11 +7,18 @@ use document_application::{
     VersionPageQuery, VersionPurpose, VersionRequest, VersionSummary,
 };
 use document_domain::DocumentVersionId;
-use organization_server::DocumentEvidenceSource;
-use std::{future::pending, sync::Arc, time::Duration};
+use organization_server::{DocumentAgentSource, DocumentEvidenceSource};
+use std::{
+    future::pending,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 use time::OffsetDateTime;
 use uuid::Uuid;
-use work_application::{EvidenceSourcePort, EvidenceSourcePurpose};
+use work_application::{AgentSourcePort, EvidenceSourcePort, EvidenceSourcePurpose};
 use work_domain::{AuthoritativeLocator, EvidenceSource, SourceRef, VerifiedActor, WorkError};
 
 struct ReadRepository {
@@ -24,6 +31,10 @@ struct ReadRepository {
     revision_error: Option<RepositoryError>,
     file_error: Option<RepositoryError>,
     stalled: bool,
+    requester_allowed: bool,
+    provider_allowed: bool,
+    provider_revoked: Arc<AtomicBool>,
+    calls: Arc<Mutex<Vec<String>>>,
 }
 
 impl ReadRepository {
@@ -60,19 +71,37 @@ impl ReadRepository {
             revision_error: None,
             file_error: None,
             stalled: false,
+            requester_allowed: true,
+            provider_allowed: false,
+            provider_revoked: Arc::new(AtomicBool::new(false)),
+            calls: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
     fn authorize_actor(&self, ctx: &VerifiedActorContext) -> Result<(), RepositoryError> {
-        if ctx.ensure_current().is_err()
-            || ctx.principal().identity_provider() != "organization-synthetic"
-            || ctx.principal().principal_id() != self.actor.principal_id()
-            || ctx.invocation_kind() != InvocationKind::HumanInteractive
-            || ctx.service_executor().is_some()
+        self.calls.lock().unwrap().push(format!(
+            "{}/{}:{}",
+            ctx.principal().identity_provider(),
+            ctx.principal().principal_id(),
+            ctx.invocation_kind().as_str()
+        ));
+        let requester = self.requester_allowed
+            && ctx.principal().identity_provider() == "organization-synthetic"
+            && ctx.principal().principal_id() == self.actor.principal_id()
+            && ctx.invocation_kind() == InvocationKind::HumanInteractive;
+        let provider = self.provider_allowed
+            && !self.provider_revoked.load(Ordering::SeqCst)
+            && ctx.principal().identity_provider() == "poc"
+            && ctx.principal().principal_id() == "poc-agent"
+            && ctx.invocation_kind() == InvocationKind::Agent;
+        if ctx.ensure_current().is_ok()
+            && ctx.service_executor().is_none()
+            && (requester || provider)
         {
-            return Err(RepositoryError::Forbidden);
+            Ok(())
+        } else {
+            Err(RepositoryError::Forbidden)
         }
-        Ok(())
     }
 }
 
@@ -423,4 +452,178 @@ async fn stalled_provider_is_bounded_and_never_authorizes() {
     .await
     .expect("provider authorization must have its own deadline");
     assert_eq!(result, Err(WorkError::DependencyUnavailable));
+}
+
+fn agent_context(source: EvidenceSource) -> work_domain::AgentDispatchContext {
+    use work_domain::*;
+    let mut workflow = Workflow::synthetic(Some(source.source_ref.resource_id));
+    let context = |revision| CommandContext {
+        operation_id: Uuid::now_v7(),
+        expected_revision: revision,
+        acting_assignment_id: SALES_ASSIGNMENT_ID,
+    };
+    workflow
+        .apply(
+            VerifiedActor::Sales01,
+            &Command::RegisterEvidence {
+                task_id: SALES_TASK_ID,
+                context: context(workflow.source.revision),
+                expected_attempt_id: SALES_ATTEMPT_ID,
+                source,
+                relevant_location: "private location must not become generated output".into(),
+            },
+            "2026-10-04T13:00:00Z",
+        )
+        .unwrap();
+    let request = Command::RequestAgentExecution {
+        task_id: SALES_TASK_ID,
+        context: context(workflow.source.revision),
+        expected_attempt_id: SALES_ATTEMPT_ID,
+        purpose: "private prompt must not become generated output".into(),
+        evidence_revision_refs: vec![RevisionRef {
+            id: workflow.evidence[0].id,
+            revision: 1,
+        }],
+    };
+    let execution = match workflow
+        .apply(VerifiedActor::Sales01, &request, "2026-10-04T13:00:00Z")
+        .unwrap()
+    {
+        MutationResult::AgentExecutionRequested { execution, .. } => execution,
+        _ => panic!("request must produce its exact durable execution"),
+    };
+    workflow
+        .start_agent_execution(VerifiedActor::Sales01, execution.id, "2026-10-04T13:00:00Z")
+        .unwrap()
+        .unwrap()
+}
+
+#[tokio::test]
+async fn agent_source_requires_both_actual_requester_and_distinct_document_provider() {
+    for (requester_allowed, provider_allowed, expected) in [
+        (true, true, Ok(())),
+        (false, true, Err(WorkError::EvidenceNotFound)),
+        (true, false, Err(WorkError::EvidenceNotFound)),
+    ] {
+        let mut repository = ReadRepository::fixture(VerifiedActor::Sales01);
+        repository.requester_allowed = requester_allowed;
+        repository.provider_allowed = provider_allowed;
+        let context = agent_context(repository.source.clone());
+        let calls = repository.calls.clone();
+        let adapter = DocumentAgentSource::new(Arc::new(repository));
+        assert_eq!(authorize_agent(&adapter, context).await, expected);
+        if requester_allowed && provider_allowed {
+            assert_eq!(
+                *calls.lock().unwrap(),
+                [
+                    "organization-synthetic/sales-01:human_interactive",
+                    "organization-synthetic/sales-01:human_interactive",
+                    "poc/poc-agent:agent",
+                    "poc/poc-agent:agent",
+                ]
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn agent_source_reauthorizes_disclosure_and_cannot_change_exact_source_or_provider_binding() {
+    let mut repository = ReadRepository::fixture(VerifiedActor::Sales01);
+    repository.provider_allowed = true;
+    let context = agent_context(repository.source.clone());
+    let revoked = repository.provider_revoked.clone();
+    let adapter = DocumentAgentSource::new(Arc::new(repository));
+    assert_eq!(authorize_agent(&adapter, context.clone()).await, Ok(()));
+    for field in [
+        "resource",
+        "revision",
+        "version",
+        "item",
+        "representation",
+        "executor",
+        "provider",
+        "invocation",
+    ] {
+        let mut changed = context.clone();
+        match field {
+            "resource" => changed.evidence[0].source.source_ref.resource_id = Uuid::from_u128(999),
+            "revision" => changed.evidence[0].source.source_ref.revision_id = Uuid::from_u128(999),
+            "version" => changed.evidence[0].source.source_ref.version_id = Uuid::from_u128(999),
+            "item" => {
+                changed.evidence[0]
+                    .source
+                    .authoritative_locator
+                    .content_item_id = Uuid::from_u128(999)
+            }
+            "representation" => {
+                changed.evidence[0]
+                    .source
+                    .authoritative_locator
+                    .representation_id = Uuid::from_u128(999)
+            }
+            "executor" => changed.execution.executed_by = "poc/poc-agent".into(),
+            "provider" => {
+                changed.execution.provider_principal_bindings[0].principal_id =
+                    "organization-synthetic/agent-01".into()
+            }
+            "invocation" => {
+                changed.execution.provider_principal_bindings[0].invocation_kind =
+                    "human_interactive".into()
+            }
+            _ => unreachable!(),
+        }
+        assert!(
+            authorize_agent(&adapter, changed).await.is_err(),
+            "changed {field}"
+        );
+    }
+    // A successful prior use grants no cached provider authority for disclosure.
+    revoked.store(true, Ordering::SeqCst);
+    assert_eq!(
+        authorize_agent(&adapter, context).await,
+        Err(WorkError::EvidenceNotFound)
+    );
+}
+
+async fn authorize_agent(
+    adapter: &DocumentAgentSource<ReadRepository>,
+    context: work_domain::AgentDispatchContext,
+) -> Result<(), WorkError> {
+    let reference = context.execution.evidence_revision_refs[0].clone();
+    adapter
+        .authorize(context, reference, Duration::from_secs(5))
+        .await
+}
+
+#[tokio::test]
+async fn agent_source_cannot_expand_selection_or_exceed_remaining_authorization_budget() {
+    let mut repository = ReadRepository::fixture(VerifiedActor::Sales01);
+    repository.provider_allowed = true;
+    let calls = repository.calls.clone();
+    let context = agent_context(repository.source.clone());
+    let adapter = DocumentAgentSource::new(Arc::new(repository));
+    assert!(
+        adapter
+            .authorize(
+                context.clone(),
+                work_domain::RevisionRef {
+                    id: Uuid::now_v7(),
+                    revision: 1
+                },
+                Duration::from_secs(5)
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        adapter
+            .authorize(
+                context.clone(),
+                context.execution.evidence_revision_refs[0].clone(),
+                Duration::ZERO
+            )
+            .await,
+        Err(WorkError::DependencyUnavailable)
+    );
+    assert!(calls.lock().unwrap().is_empty());
 }

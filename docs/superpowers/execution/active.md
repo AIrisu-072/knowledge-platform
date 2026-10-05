@@ -1,5 +1,31 @@
 # Active Execution Pointer
 
+## 2026-10-04 17:27 UTC — AgentとSearchを保持するmain統合候補
+
+- mainはSearch統合済み `f9d6f5ff` へ進んだ。PR62のAgent sourceを保持して新mainを祖先に加える。[統合状況](organization-agent-main-integration-status.md)を参照
+- 製品変更は両受入元の非競合な和集合。Document9/10とSearch Outbox11、分割API、既存workflowを新mainのbytesで保持する。競合はこの文書の先頭追記のみ、両方の履歴を残す
+- 旧PR62 headの結果と新統合headの資格は分ける。最終事務completeは別候補で、この統合へ入れない。新exact headの全CI/実runtime後、親がmainへのmergeを直列調整する
+
+---
+
+
+## 2026-10-04 17:08 UTC — 合成Agentをmainへ統合する候補
+
+- 状況：受入済みPR60 exact `48ae1bfd` とmain `9c90f383` の祖先を保持した統合候補。[統合状況](organization-agent-main-integration-status.md)が再開先
+- 製品source/lock/migration/workflowはAgent受入treeと一致。競合はこの文書の先頭追記だけで、両方の履歴を保持する
+- 次は限定独立レビュー、新しいmain-base Draftのexact通常CI。main mergeは親担当が直列調整し、実サーバーへの導入は所有者が手動実施する。以下の未受入記録は各時点の履歴
+
+---
+
+
+## 2026-10-04 13:45 UTC — Organization合成Agent slice
+
+- 受入PR57 exact `d383baccddd5081687b500f064f6fce195a24816` はEvidence/判断/提出の実DB・2名操作・復元・cleanupと全CI成功済み
+- 別branchでFrozenのAgentExecutionを最小実装。[状況](organization-synthetic-agent-slice-status.md)、[計画](../plans/2026-10-04-organization-synthetic-agent-slice.md)
+- 実Document現在認可＋合成executor。本文分析・実LLM・外部MCP通信を主張せず、同2名/一時DB/Chromium/画像無しを維持する
+
+---
+
 ## Searchのmain統合・Remote観測の現在状態：2026-10-04 16:43 UTC
 
 **ACTIVE / WIP。** 公開Search `1571ee49` / tree `ca7ecabe` は通常CI・DSI・Sandboxが終端SUCCESSで、P7-06の実DB12件＋純粋4件も成功した。[新しい候補と正確な検証範囲](../programs/search-platform-completion/search-main-integration-candidate-20261004.md)を現在の再開先とする。
