@@ -98,6 +98,12 @@ pub struct BodyProfileRegistry {
     profiles: Vec<(FormatId, RegisteredProfile)>,
 }
 
+/// The pre-admission decision for one item.
+enum Admission {
+    Read,
+    Refused(Option<FormatId>, CoverageReason),
+}
+
 /// The format a declared lowercase MIME essence names.
 fn declared_format(media_type: &str) -> Option<FormatId> {
     Some(match media_type {
@@ -163,15 +169,30 @@ impl BodyProfileRegistry {
             .map(|(_, definition)| definition)
     }
 
-    /// The declared format's pre-admission byte limit, checked against the
-    /// raw binding's size before any byte is read from storage.
-    fn admission_limit(&self, media_type: &str) -> Option<(FormatId, u64)> {
-        let format = declared_format(media_type)?;
-        let limit = *self
-            .definition(format)?
-            .limits
-            .get(&BudgetKey::InputBytes)?;
-        Some((format, limit))
+    /// Pre-admission from the raw binding alone, before any byte is read: an
+    /// unknown or unregistered format is unsupported, and an object larger
+    /// than its format's input budget is resource-limited. A registered
+    /// format without an input budget is a configuration error, never an
+    /// unbounded read.
+    fn admit(&self, media_type: &str, size_bytes: u64) -> Result<Admission, BodyBuildError> {
+        let Some((format, definition)) = declared_format(media_type).and_then(|format| {
+            self.definition(format)
+                .map(|definition| (format, definition))
+        }) else {
+            return Ok(Admission::Refused(None, CoverageReason::UnsupportedFormat));
+        };
+        let limit =
+            *definition
+                .limits
+                .get(&BudgetKey::InputBytes)
+                .ok_or(BodyBuildError::Configuration(
+                    "format without an input budget",
+                ))?;
+        Ok(if size_bytes > limit {
+            Admission::Refused(Some(format), CoverageReason::ResourceLimit)
+        } else {
+            Admission::Read
+        })
     }
 
     /// Declared lowercase MIME essence plus a magic check. A mismatch is an
@@ -307,16 +328,12 @@ impl<F: FileStorage, E: ContentExtractor> DocumentBodyExtractor<F, E> {
         snapshot: &VersionSnapshotRecord,
         item: &AuthoritativeItemBinding,
     ) -> Result<ExtractedItemResult, BodyBuildError> {
-        // Pre-admission: an object larger than its format's input budget is
-        // never buffered or parsed by the host.
-        if let Some((format, limit)) = self.registry.admission_limit(&item.raw.media_type)
-            && item.raw.size_bytes > limit
+        // Nothing is buffered or parsed by the host before admission.
+        if let Admission::Refused(format, reason) = self
+            .registry
+            .admit(&item.raw.media_type, item.raw.size_bytes)?
         {
-            return Ok(ExtractedItemResult::unsupported(
-                Some(format),
-                None,
-                CoverageReason::ResourceLimit,
-            ));
+            return Ok(ExtractedItemResult::unsupported(format, None, reason));
         }
         let raw = self.read_raw(item).await?;
         let format = match self.registry.detect(&item.raw.media_type, &raw) {

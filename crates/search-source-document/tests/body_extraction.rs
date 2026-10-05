@@ -205,3 +205,20 @@ async fn oversized_declared_item_is_resource_limited_before_any_read() {
     }
     assert!(body_requests(&body).is_empty());
 }
+
+#[tokio::test]
+async fn unknown_media_type_is_unsupported_before_any_read() {
+    // No stored image: any read would fail as unavailable.
+    let body = extractor(vec![], Mode::Honest);
+    let mut binding = item(b"\x00\x00\x00\x18ftypmp42", "video/mp4");
+    binding.raw.size_bytes = u64::MAX / 2;
+    let result = body.extract_item(&record(), &binding).await.unwrap();
+    assert_eq!(result.operation, ItemOperationState::Completed);
+    assert_eq!(
+        result.coverage,
+        Some(BodyCoverage::Unsupported {
+            reason: CoverageReason::UnsupportedFormat
+        })
+    );
+    assert!(body_requests(&body).is_empty());
+}
