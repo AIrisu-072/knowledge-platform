@@ -592,6 +592,20 @@ impl PinnedRemoteTarget {
             digest: hit.digest.clone(),
         })
     }
+    /// A sealed batch's own staged identity, version and digest.
+    pub(crate) fn from_parts(
+        identity: RemoteIdentity,
+        snapshot: SourceSnapshotProof,
+        version: Option<String>,
+        digest: Option<String>,
+    ) -> Self {
+        Self {
+            identity,
+            snapshot,
+            version,
+            digest,
+        }
+    }
     pub fn identity(&self) -> &RemoteIdentity {
         &self.identity
     }

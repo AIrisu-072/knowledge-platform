@@ -267,6 +267,49 @@ pub trait ProjectionGenerationStore: Send + Sync {
     ) -> BoxFuture<'a, Option<CompiledResourceProjection>>;
 }
 
+/// The read half of a generation store, which is all Discovery uses. A
+/// durable store forwards; the request-scoped composite view dispatches by an
+/// explicit key registry between durable pins and sealed remote generations.
+pub trait GenerationReadPort: Send + Sync {
+    fn pin_current<'a>(
+        &'a self,
+        source_id: SourceId,
+    ) -> BoxFuture<'a, Option<ProjectionGenerationManifest>>;
+
+    fn resource_at<'a>(
+        &'a self,
+        key: ProjectionGenerationKey,
+        resource_id: ResourceId,
+    ) -> BoxFuture<'a, Option<CompiledResourceProjection>>;
+}
+
+impl<T: ProjectionGenerationStore + ?Sized> GenerationReadPort for T {
+    fn pin_current<'a>(
+        &'a self,
+        source_id: SourceId,
+    ) -> BoxFuture<'a, Option<ProjectionGenerationManifest>> {
+        ProjectionGenerationStore::pin_current(self, source_id)
+    }
+
+    fn resource_at<'a>(
+        &'a self,
+        key: ProjectionGenerationKey,
+        resource_id: ResourceId,
+    ) -> BoxFuture<'a, Option<CompiledResourceProjection>> {
+        ProjectionGenerationStore::resource_at(self, key, resource_id)
+    }
+}
+
+/// One planned remote action's list from the Source's sealed evaluation
+/// generation. A list absent from the seal is an error, never an empty hit.
+pub trait SealedRemoteRetrieverPort: Send + Sync {
+    fn retrieve<'a>(
+        &'a self,
+        action: &'a crate::retrieval::RetrievalAction,
+        key: ProjectionGenerationKey,
+    ) -> BoxFuture<'a, Vec<FederatedCandidate>>;
+}
+
 pub trait DirectoryRetrieverPort: Send + Sync {
     fn retrieve<'a>(
         &'a self,

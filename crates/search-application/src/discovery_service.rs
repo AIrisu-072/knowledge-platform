@@ -41,8 +41,8 @@ use crate::federation::{CandidateFederator, FusionStrategy};
 use crate::materialization::ProbeBudget;
 use crate::ports::{
     AccessDecision, AssertionStorePort, ClaimSelectorPort, ConceptRegistryPort,
-    CurrentSourcePolicyPort, EvidenceResolverPort, LexicalQuery, ProbeCapabilityCatalogPort,
-    ProbeExecutionInput, ProbeExecutionService, ProbePort, ProjectionGenerationStore,
+    CurrentSourcePolicyPort, EvidenceResolverPort, GenerationReadPort, LexicalQuery,
+    ProbeCapabilityCatalogPort, ProbeExecutionInput, ProbeExecutionService, ProbePort,
     SourceRegistryPort, StructuredFacetFilter, StructuredFacetOutcome, assemble_resource_claims,
     assemble_verified_unit_text_claim, assess_claim_evidence,
 };
@@ -80,7 +80,7 @@ pub struct DiscoveryConfig {
 
 pub struct DiscoveryPorts<'a> {
     pub sources: &'a dyn SourceRegistryPort,
-    pub generations: &'a dyn ProjectionGenerationStore,
+    pub generations: &'a dyn GenerationReadPort,
     pub concepts: &'a dyn ConceptRegistryPort,
     pub retrieval: RetrievalExecutionPorts<'a>,
     pub selectors: &'a dyn ClaimSelectorPort,

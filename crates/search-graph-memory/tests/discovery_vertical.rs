@@ -399,6 +399,7 @@ fn discovery_ports<'a>(
         generations: projection_store,
         concepts: projection_store,
         retrieval: RetrievalExecutionPorts {
+            remote: None,
             directory: Some(projection_store),
             structured: Some(projection_store),
             lexical: Some(lexical),

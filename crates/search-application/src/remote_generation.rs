@@ -13,6 +13,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
+use search_core::assertion::Assertion;
 use search_core::discovery::{
     CandidateIdentityClass, FederatedCandidate, GapReason, InformationGap,
 };
@@ -31,14 +32,21 @@ use uuid::Uuid;
 
 use crate::SearchError;
 use crate::remote::{
-    EvaluationLeaseId, RemoteActionResponse, RemoteOperationKind, TrustedRemoteContext,
-    UntrustedFieldValue, UntrustedRemoteHit,
+    EvaluationLeaseId, PinnedRemoteTarget, RemoteActionResponse, RemoteIdentity,
+    RemoteOperationKind, TrustedRemoteContext, UntrustedFieldValue, UntrustedRemoteHit,
+};
+use crate::remote_evidence::{
+    RegisteredLineage, RemoteProvenanceLookupPort, UntrustedEvidenceHint, VerifiedProvenance,
+    verify_provenance,
 };
 use crate::remote_identity::{remote_candidate_id, remote_resource_id};
 use crate::remote_observation::{SnapshotExtent, SourceSnapshotProof};
 use crate::retrieval::OpaqueNativeId;
 
 pub const REMOTE_PROJECTION_SCHEMA: &str = "remote-evaluation-v1";
+
+/// Subject of every remote Assertion; remote ClaimSelectors use the same one.
+pub const REMOTE_CLAIM_SUBJECT: &str = "remote-resource";
 
 fn conflict() -> SearchError {
     SearchError::OperationFailed("remote Source batch integrity conflict".into())
@@ -119,6 +127,7 @@ pub struct RemoteGenerationBuilder {
     resources: BTreeMap<ResourceId, StagedResource>,
     lists: Vec<(String, RemoteOperationKind, Vec<ResourceId>)>,
     gaps: Vec<InformationGap>,
+    verified: BTreeMap<(ResourceId, String), (String, VerifiedProvenance)>,
     poisoned: bool,
 }
 
@@ -158,8 +167,56 @@ impl RemoteGenerationBuilder {
             resources: BTreeMap::new(),
             lists: Vec::new(),
             gaps: Vec::new(),
+            verified: BTreeMap::new(),
             poisoned: false,
         })
+    }
+
+    /// Before seal: each field's provider provenance label is only a hint;
+    /// the fixed Source's lookup against the pinned version and digest and the
+    /// registered lineage decide whether it becomes verified evidence.
+    pub async fn verify_evidence(
+        &mut self,
+        lineage: &RegisteredLineage,
+        lookup: &dyn RemoteProvenanceLookupPort,
+    ) -> Result<(), SearchError> {
+        let Some(proof) = self.proof.clone() else {
+            return Ok(());
+        };
+        let registration = self.context.registration().clone();
+        let candidates: Vec<(ResourceId, StagedResource)> = self
+            .resources
+            .iter()
+            .map(|(id, staged)| (*id, staged.clone()))
+            .collect();
+        for (id, staged) in candidates {
+            let target = PinnedRemoteTarget::from_parts(
+                RemoteIdentity::new(&self.context, staged.native_id.clone())?,
+                proof.clone(),
+                staged.version.clone(),
+                staged.digest.clone(),
+            );
+            for (field, value) in &staged.fields {
+                let Some(label) = &value.provenance else {
+                    continue;
+                };
+                let hint = UntrustedEvidenceHint::new(label.clone(), None, None, false)?;
+                if let Some(verified) = verify_provenance(
+                    &registration,
+                    lineage,
+                    self.context.source_scope(),
+                    &target,
+                    &hint,
+                    lookup,
+                )
+                .await?
+                {
+                    self.verified
+                        .insert((id, field.clone()), (label.clone(), verified));
+                }
+            }
+        }
+        Ok(())
     }
 
     fn poison(&mut self) -> SearchError {
@@ -369,6 +426,28 @@ impl RemoteGenerationBuilder {
             resources.insert(id, projection);
             identities.insert(id, staged);
         }
+        let mut assertions: BTreeMap<ResourceId, Vec<Assertion>> = BTreeMap::new();
+        let mut evidence = BTreeMap::new();
+        for ((id, field), (label, verified)) in self.verified {
+            let Some(value) = identities
+                .get(&id)
+                .and_then(|staged: &StagedResource| staged.fields.get(&field))
+            else {
+                continue;
+            };
+            let mut assertion = Assertion::new(
+                REMOTE_CLAIM_SUBJECT,
+                field.clone(),
+                value.value.clone(),
+                source.as_uuid().to_string(),
+                verified.assertion_origin(),
+                registration.canonical_upstream_lineage(),
+                proof.observed_at(),
+            );
+            assertion.evidence_refs = vec![label.clone()];
+            assertions.entry(id).or_default().push(assertion);
+            evidence.insert((id, label), verified);
+        }
         let trace = format!("{}:{}", source.as_uuid(), key.generation_id.as_uuid());
         let lists = self
             .lists
@@ -402,9 +481,12 @@ impl RemoteGenerationBuilder {
             owner: self.lease,
             context: self.context,
             proof,
+            manifest,
             receipts: self.receipts,
             resources,
             identities,
+            assertions,
+            evidence,
             lists,
             gaps: self.gaps,
         })
@@ -417,11 +499,14 @@ pub struct RemoteEvaluationGeneration {
     owner: EvaluationLeaseId,
     context: TrustedRemoteContext,
     proof: SourceSnapshotProof,
+    manifest: ProjectionGenerationManifest,
     receipts: Vec<ActionReceipt>,
     resources: BTreeMap<ResourceId, CompiledResourceProjection>,
     // Read by the P4-11 composite view and P4-14 binding.
     #[allow(dead_code)]
     identities: BTreeMap<ResourceId, StagedResource>,
+    assertions: BTreeMap<ResourceId, Vec<Assertion>>,
+    evidence: BTreeMap<(ResourceId, String), VerifiedProvenance>,
     lists: Vec<(String, Vec<FederatedCandidate>)>,
     gaps: Vec<InformationGap>,
 }
@@ -461,9 +546,30 @@ impl RemoteEvaluationGeneration {
             .find(|(retriever, _)| retriever == retriever_id)
             .map(|(_, candidates)| candidates.clone())
     }
-    #[allow(dead_code)]
     pub(crate) fn projection(&self, id: ResourceId) -> Option<&CompiledResourceProjection> {
         self.resources.get(&id)
+    }
+    pub(crate) fn manifest(&self) -> &ProjectionGenerationManifest {
+        &self.manifest
+    }
+    pub(crate) fn assertions(&self, id: ResourceId, predicate: &str) -> Vec<Assertion> {
+        self.assertions
+            .get(&id)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter(|assertion| assertion.predicate == predicate)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+    pub(crate) fn evidence(
+        &self,
+        id: ResourceId,
+        evidence_ref: &str,
+    ) -> Option<&VerifiedProvenance> {
+        self.evidence.get(&(id, evidence_ref.to_owned()))
     }
     #[allow(dead_code)]
     pub(crate) fn identity(&self, id: ResourceId) -> Option<&StagedResource> {

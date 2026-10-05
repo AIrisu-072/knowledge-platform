@@ -24,6 +24,7 @@ pub mod remote_generation;
 pub mod remote_identity;
 pub mod remote_lease;
 pub mod remote_observation;
+pub mod remote_read_view;
 pub mod remote_registration;
 pub mod remote_session;
 pub mod retrieval;

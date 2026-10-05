@@ -71,6 +71,7 @@ async fn body_required_without_a_trusted_spec_is_a_blocking_gap() {
             generations: &reader,
             concepts: &reader,
             retrieval: RetrievalExecutionPorts {
+                remote: None,
                 directory: Some(&reader),
                 structured: Some(&reader),
                 lexical: Some(&lexical),

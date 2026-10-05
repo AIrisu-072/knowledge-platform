@@ -346,6 +346,7 @@ impl CurrentCandidateAccessEvaluatorPort for CurrentAccess {
 
 fn ports<'a>(retrievers: &'a Retrievers, access: &'a CurrentAccess) -> RetrievalExecutionPorts<'a> {
     RetrievalExecutionPorts {
+        remote: None,
         directory: Some(retrievers),
         structured: Some(retrievers),
         lexical: Some(retrievers),

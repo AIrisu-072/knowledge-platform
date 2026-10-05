@@ -15,7 +15,8 @@ use crate::error::SearchError;
 use crate::ports::{
     AccessDecision, CurrentAccessEvaluatorPort, CurrentCandidateAccessEvaluatorPort,
     DirectoryRetrieverPort, HyperGraphRetrieverPort, LexicalFieldScope, LexicalQuery,
-    LexicalRetrieverPort, StructuredFacetFilter, StructuredFacetOutcome, StructuredRetrieverPort,
+    LexicalRetrieverPort, SealedRemoteRetrieverPort, StructuredFacetFilter, StructuredFacetOutcome,
+    StructuredRetrieverPort,
 };
 use crate::qualification::QualificationService;
 use crate::retrieval::{ActionState, RetrievalAction, RetrieverKind};
@@ -36,6 +37,8 @@ pub struct RetrievalExecutionPorts<'a> {
     /// Required for Graph execution. No path leaves this boundary without
     /// current Source-owned access to every path node and relation participant.
     pub graph_resource_access: Option<&'a dyn CurrentAccessEvaluatorPort>,
+    /// The four remote modes read only the Source's sealed evaluation list.
+    pub remote: Option<&'a dyn SealedRemoteRetrieverPort>,
     pub access: &'a dyn CurrentCandidateAccessEvaluatorPort,
 }
 
@@ -218,11 +221,42 @@ impl RetrievalExecutor {
                     })
                     .collect()
             }
-            RetrieverKind::Vector
-            | RetrieverKind::RemoteEnumeration
+            RetrieverKind::RemoteEnumeration
             | RetrieverKind::RemoteQuery
             | RetrieverKind::DirectAddress
             | RetrieverKind::LiveOnly => {
+                let port = ports.remote.ok_or_else(|| unsupported("remote"))?;
+                let candidates = port.retrieve(input.action, input.generation).await?;
+                for candidate in &candidates {
+                    if candidate.source_ref != input.generation.source_id
+                        || candidate.resource_ref.is_none()
+                        || candidate.retrieval_trace_ref.as_deref()
+                            != Some(
+                                format!(
+                                    "{}:{}",
+                                    input.generation.source_id.as_uuid(),
+                                    input.generation.generation_id.as_uuid()
+                                )
+                                .as_str(),
+                            )
+                    {
+                        return Err(SearchError::OperationFailed(
+                            "remote list does not belong to the sealed generation".into(),
+                        ));
+                    }
+                }
+                candidates
+                    .into_iter()
+                    .map(|candidate| PortHit {
+                        candidate,
+                        structured_outcomes: None,
+                        graph_paths: None,
+                        graph_generation: None,
+                        unit_hit: None,
+                    })
+                    .collect()
+            }
+            RetrieverKind::Vector => {
                 return Err(unsupported("retriever"));
             }
         };

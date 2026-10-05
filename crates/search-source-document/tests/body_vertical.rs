@@ -318,6 +318,7 @@ impl Source {
                 generations: &reader,
                 concepts: &reader,
                 retrieval: RetrievalExecutionPorts {
+                    remote: None,
                     directory: Some(&reader),
                     structured: Some(&reader),
                     lexical: Some(&lexical),
