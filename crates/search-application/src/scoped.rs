@@ -250,6 +250,39 @@ impl VisibleSetStamp {
     pub const fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
+
+    /// Digest of one actor's complete visible set: every Source with its
+    /// registration and visibility revisions and its ledger activation. Only
+    /// a registry with an authoritative stable visibility epoch may attach
+    /// it to a snapshot; the union catalog view does not.
+    pub fn of(actor: &TrustedSearchScope, entries: &[VisibleSourceRegistration]) -> Self {
+        use sha2::{Digest, Sha256};
+        let mut parts: Vec<[u8; 40]> = entries
+            .iter()
+            .map(|entry| {
+                let mut part = [0u8; 40];
+                part[..16].copy_from_slice(entry.scope.source.as_uuid().as_bytes());
+                part[16..24]
+                    .copy_from_slice(&entry.scope.registration_revision.get().to_be_bytes());
+                part[24..32].copy_from_slice(&entry.scope.visibility_revision.get().to_be_bytes());
+                part[32..40]
+                    .copy_from_slice(&entry.scope.registration_activation.get().to_be_bytes());
+                part
+            })
+            .collect();
+        parts.sort();
+        let mut hasher = Sha256::new();
+        hasher.update(b"search-visible-set:v1");
+        for field in [actor.tenant.as_str(), actor.principal.as_str()] {
+            hasher.update((field.len() as u64).to_be_bytes());
+            hasher.update(field.as_bytes());
+        }
+        hasher.update(actor.access_revision.get().to_be_bytes());
+        for part in parts {
+            hasher.update(part);
+        }
+        Self(hasher.finalize().into())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -265,6 +298,15 @@ impl VisibleCatalogSnapshot {
         Self {
             entries,
             continuation_stamp: None,
+        }
+    }
+
+    /// A complete enumeration with an authoritative visible-set stamp, the
+    /// only snapshot a continuation cursor can be bound to.
+    pub fn stamped(entries: Vec<VisibleSourceRegistration>, stamp: VisibleSetStamp) -> Self {
+        Self {
+            entries,
+            continuation_stamp: Some(stamp),
         }
     }
 

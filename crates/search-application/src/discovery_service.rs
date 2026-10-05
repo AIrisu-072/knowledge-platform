@@ -15,12 +15,13 @@ use search_core::evidence::{
     claim_values_semantically_equal,
 };
 use search_core::fact::{Fact, FactOrigin, FactSet};
-use search_core::id::{ClaimId, ResourceId, SourceId};
+use search_core::id::{ClaimId, ResourceId, ResourceVersionId, SourceId};
 use search_core::knowledge_unit::normalize_unit_text;
 use search_core::materialization::{ProbeCompletenessSemantics, ProbeOutcome};
 use search_core::predicate::{ConceptResolver, Operand, PredicateExpr, TypedValue};
 use search_core::profile::FacetState;
 use search_core::projection::{CompiledResourceProjection, ProjectionGenerationKey};
+use search_core::resource::ResourceKind;
 use search_core::source::{DiscoverableSource, DiscoveryMode};
 use sha2::{Digest, Sha256};
 
@@ -63,7 +64,7 @@ use crate::retrieval_execution::{
     RawRetrievalHit, RetrievalExecutionInput, RetrievalExecutionPorts, RetrievalExecutor,
 };
 use crate::routing::{RouteStage, RoutingConstraints, SourceRole, SourceRoutePlan, SourceRouter};
-use crate::scoped::{TrustedDiscoveryBinding, VisibleSourceRegistration};
+use crate::scoped::{TrustedDiscoveryBinding, TrustedSearchScope, VisibleSourceRegistration};
 use crate::visible_routing::VisibleRouting;
 
 /// A trusted caller resolves temporal policy before creating the service.
@@ -131,6 +132,37 @@ pub struct ScopedDiscoveryExecution<'a> {
     pub routing: RoutingConstraints,
     pub remote: Vec<RemoteSourceExecution<'a>>,
     pub view: &'a CompositeEvaluationReadView<'a>,
+}
+
+/// A field a Search hit matched in, by the retriever that found it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MatchedField {
+    Title,
+    Metadata,
+    Body,
+}
+
+/// One S1-ranked Search hit that passed the final current-access gate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchHit {
+    pub source_id: SourceId,
+    pub resource_id: ResourceId,
+    pub generation: ProjectionGenerationKey,
+    pub resource_kind: Option<ResourceKind>,
+    pub resource_version: Option<ResourceVersionId>,
+    pub title: Option<String>,
+    pub matched: Vec<MatchedField>,
+}
+
+/// A Search retrieval pass: ranked hits, pinned generations and gaps.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchOutcome {
+    pub hits: Vec<SearchHit>,
+    pub pins: BTreeMap<SourceId, ProjectionGenerationKey>,
+    pub gaps: Vec<InformationGap>,
+    /// Sources whose BodyOnly retrieval executed in a body scope.
+    pub body_sources: BTreeSet<SourceId>,
+    pub bounded: bool,
 }
 
 /// The durable read ports a scoped evaluation's view dispatches to.
@@ -838,6 +870,270 @@ impl<'a> DiscoveryService<'a> {
             }
         }
         Ok(evaluation.result)
+    }
+
+    /// Search over the actor-visible durable generations: the same routing,
+    /// planning, pins, executor, hard gates, current-access checks and S1
+    /// `PriorityConcat` federation as Discovery, without the evidence loop.
+    /// Live remote retrieval needs a Discovery evaluation binding, so a
+    /// remote Source contributes only its durable generation here.
+    pub async fn search_visible(
+        &self,
+        actor: &TrustedSearchScope,
+        visible: &[VisibleSourceRegistration],
+        routing: &RoutingConstraints,
+        request: DiscoveryRequest,
+        query: LexicalQuery,
+        max_candidates: usize,
+    ) -> Result<SearchOutcome, SearchError> {
+        let (sources, routing, mut gaps) = VisibleRouting::prepare(actor, visible, routing)?;
+        let routes = SourceRouter::plan(&request.need, &sources, &routing);
+        let body = query.field_scope == crate::ports::LexicalFieldScope::BodyOnly;
+        let configured = self.config.retriever_support;
+        let support = if body {
+            RetrieverSupport {
+                lexical: configured.lexical,
+                ..RetrieverSupport::default()
+            }
+        } else {
+            RetrieverSupport {
+                directory: configured.directory,
+                structured: configured.structured,
+                lexical: configured.lexical,
+                ..RetrieverSupport::default()
+            }
+        };
+        let inputs = RetrievalInputs {
+            lexical_query: Some(query.text.clone()),
+            max_initial_retrievers_per_source: self
+                .config
+                .retrieval_inputs
+                .max_initial_retrievers_per_source
+                .max(1),
+            ..RetrievalInputs::default()
+        };
+        let plan =
+            RetrieverPlanner::plan(self.config.retriever_profile, &routes, &support, &inputs);
+        for route in &routes.routes {
+            gaps.extend(
+                route
+                    .unresolved_gaps
+                    .iter()
+                    .filter(|gap| {
+                        !matches!(gap.reason, GapReason::Authority | GapReason::Freshness)
+                    })
+                    .cloned(),
+            );
+        }
+        let mut pins = BTreeMap::new();
+        for route in &routes.routes {
+            if !plan.initial_actions.iter().any(|action| {
+                action.source_id == route.source_id && action.state == ActionState::Planned
+            }) {
+                continue;
+            }
+            match self.ports.generations.pin_current(route.source_id).await? {
+                Some(manifest) if manifest.source_id == route.source_id => {
+                    let key = manifest.key();
+                    let concepts = self.ports.concepts.pin_view(key).await?;
+                    pins.insert(route.source_id, PinnedSource { key, concepts });
+                }
+                Some(_) => {
+                    return Err(SearchError::OperationFailed(
+                        "pinned generation belongs to another Source".into(),
+                    ));
+                }
+                None => push_gap(
+                    &mut gaps,
+                    source_gap(route.source_id, "projection_generation_unavailable", false),
+                ),
+            }
+        }
+        let mut records = Vec::new();
+        let mut bounded = false;
+        let mut body_sources = BTreeSet::new();
+        for action in plan
+            .initial_actions
+            .iter()
+            .filter(|action| action.state == ActionState::Planned)
+        {
+            let Some(pin) = pins.get(&action.source_id) else {
+                continue;
+            };
+            if !matches!(
+                action.retriever,
+                RetrieverKind::Directory | RetrieverKind::Structured | RetrieverKind::Lexical
+            ) {
+                continue;
+            }
+            let executed = RetrievalExecutor::execute(
+                &self.ports.retrieval,
+                RetrievalExecutionInput {
+                    action,
+                    generation: pin.key,
+                    request: &request,
+                    structured_filters: &self.config.structured_filters,
+                    lexical_query: (!body).then_some(&query),
+                    body_query: body.then_some(&query),
+                    graph_plan: None,
+                },
+            )
+            .await;
+            let Ok(result) = executed else {
+                push_gap(
+                    &mut gaps,
+                    source_gap(
+                        action.source_id,
+                        if body {
+                            "body_retrieval_unavailable"
+                        } else {
+                            "retrieval_unavailable"
+                        },
+                        false,
+                    ),
+                );
+                continue;
+            };
+            if body {
+                body_sources.insert(action.source_id);
+            }
+            for raw in result.hits {
+                // A body scope keeps only hits with a verified Unit span.
+                if body && raw.unit_hit.is_none() {
+                    continue;
+                }
+                if records.len() >= max_candidates {
+                    bounded = true;
+                    break;
+                }
+                let projection = match raw.candidate.resource_ref {
+                    Some(resource) => {
+                        self.ports
+                            .generations
+                            .resource_at(pin.key, resource)
+                            .await?
+                    }
+                    None => None,
+                };
+                if let Some(ref detail) = projection {
+                    validate_detail(detail, pin.key, resource_of(&raw)?)?;
+                }
+                records.push(HitRecord {
+                    raw,
+                    projection,
+                    probe_facts: BTreeMap::new(),
+                    probe_outcomes: BTreeMap::new(),
+                    probe_origins: BTreeMap::new(),
+                });
+            }
+        }
+        // Final gate: ranks and counts are computed only over hits that are
+        // currently allowed after every Source read finished.
+        let mut allowed = Vec::with_capacity(records.len());
+        for record in records {
+            if self
+                .currently_allowed(&record.raw.candidate, &request)
+                .await
+            {
+                allowed.push(record);
+            }
+        }
+        let records = allowed;
+        let hard_gates = records
+            .iter()
+            .map(|record| {
+                let pin = pins.get(&record.raw.candidate.source_ref).ok_or_else(|| {
+                    SearchError::OperationFailed("search hit has no pinned Source".into())
+                })?;
+                Ok(self.hard_gates(record, pin, &request))
+            })
+            .collect::<Result<Vec<_>, SearchError>>()?;
+        let mut lists = Vec::new();
+        for action in plan.initial_actions.iter() {
+            let Some(pin) = pins.get(&action.source_id) else {
+                continue;
+            };
+            let hits: Vec<_> = records
+                .iter()
+                .zip(&hard_gates)
+                .filter(|(record, _)| record.raw.retriever_id == action.retriever_id)
+                .map(|(record, gates)| RankedCandidateHit {
+                    candidate: record.raw.candidate.clone(),
+                    hard_gates: gates.clone(),
+                    identity_evidence: vec![],
+                    raw_score: None,
+                    evidence_refs: vec![],
+                })
+                .collect();
+            if !hits.is_empty() {
+                lists.push(RetrieverRankList {
+                    retriever_id: action.retriever_id.clone(),
+                    generation: pin.key,
+                    hits,
+                });
+            }
+        }
+        let federation = CandidateFederator::merge(&lists, FusionStrategy::PriorityConcat)
+            .map_err(|error| SearchError::OperationFailed(error.to_string()))?;
+        let mut hits = Vec::new();
+        let mut seen = BTreeSet::new();
+        for group in &federation.ranked {
+            let mut matched = BTreeSet::new();
+            let mut first: Option<(SourceId, ResourceId, ProjectionGenerationKey)> = None;
+            for hit in &group.hits {
+                let Some(resource) = hit.candidate.resource_ref else {
+                    continue;
+                };
+                if hit
+                    .hard_gates
+                    .applicability
+                    .qualify(&hit.candidate)
+                    .is_none()
+                {
+                    continue;
+                }
+                matched.insert(if body {
+                    MatchedField::Body
+                } else if hit.trace.retriever_id.ends_with(":Structured") {
+                    MatchedField::Metadata
+                } else {
+                    MatchedField::Title
+                });
+                first.get_or_insert((hit.candidate.source_ref, resource, hit.trace.generation));
+            }
+            let Some((source_id, resource_id, generation)) = first else {
+                continue;
+            };
+            if !seen.insert((generation, resource_id)) {
+                continue;
+            }
+            let projection = records
+                .iter()
+                .find(|record| {
+                    record.raw.generation == generation
+                        && record.raw.candidate.resource_ref == Some(resource_id)
+                })
+                .and_then(|record| record.projection.as_ref());
+            hits.push(SearchHit {
+                source_id,
+                resource_id,
+                generation,
+                resource_kind: projection.map(|detail| detail.directory.kind),
+                resource_version: projection.and_then(|detail| detail.directory.resource_version),
+                title: projection.and_then(|detail| detail.directory.title.clone()),
+                matched: matched.into_iter().collect(),
+            });
+        }
+        Ok(SearchOutcome {
+            hits,
+            pins: pins
+                .iter()
+                .map(|(source, pin)| (*source, pin.key))
+                .collect(),
+            gaps,
+            body_sources,
+            bounded,
+        })
     }
 
     /// Executes one remote Source's bounded initial actions as a single batch,

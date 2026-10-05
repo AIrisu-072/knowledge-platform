@@ -62,6 +62,9 @@ impl fmt::Debug for DisclosureOwner {
 }
 
 impl DisclosureOwner {
+    pub(crate) fn new(actor: TrustedSearchScope, sources: Vec<AuthorizedSourceScope>) -> Self {
+        Self { actor, sources }
+    }
     pub fn actor(&self) -> &TrustedSearchScope {
         &self.actor
     }
@@ -189,7 +192,55 @@ impl<T> fmt::Debug for TransientDisclosure<T> {
     }
 }
 
+/// A result type whose disclosure the final gate can describe.
+pub trait Disclosable {
+    fn disclosed_fields(&self) -> DisclosedFields;
+}
+
 impl<T> TransientDisclosure<T> {
+    pub(crate) fn new(
+        payload: T,
+        owner: DisclosureOwner,
+        ttl: Duration,
+        clock: Arc<dyn LeaseClock>,
+        evaluation_closed: bool,
+    ) -> Self {
+        let deadline = clock.now() + ttl.min(MAX_DISCLOSURE_TTL);
+        Self {
+            payload: Some(payload),
+            owner,
+            deadline,
+            clock,
+            state: LeaseState::Open,
+            evaluation_closed,
+        }
+    }
+
+    /// The same one-shot, cancel-safe gate for any disclosable result; the
+    /// callback sees only a shared borrow of the allow-listed view.
+    pub async fn disclose_with(
+        &mut self,
+        gate: &dyn CurrentDisclosureAccessPort,
+        inspect: impl FnOnce(&T) -> Result<(), SearchError>,
+    ) -> Result<(), SearchError>
+    where
+        T: Disclosable,
+    {
+        let open = self.state() == LeaseState::Open;
+        let payload = self.payload.take();
+        self.state = if open {
+            LeaseState::Closed
+        } else {
+            self.state()
+        };
+        let Some(payload) = payload.filter(|_| open) else {
+            return Err(disclosure_unavailable());
+        };
+        gate.authorize(&self.owner, &payload.disclosed_fields())
+            .await?;
+        inspect(&payload)
+    }
+
     pub fn state(&self) -> LeaseState {
         if self.state == LeaseState::Open && self.clock.now() >= self.deadline {
             LeaseState::Expired

@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 pub mod action_selection;
+pub mod api_cursor;
 pub mod api_scope;
 pub mod body_ports;
 
@@ -34,6 +35,7 @@ pub mod retrieval;
 pub mod retrieval_execution;
 pub mod routing;
 pub mod scoped;
+pub mod search_query;
 pub mod session;
 pub mod source_registration;
 pub mod source_registry;

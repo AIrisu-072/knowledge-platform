@@ -104,25 +104,35 @@ pub async fn document_registration(id: SourceId, tenant_name: &str) -> DocumentS
     DocumentSourceRegistration::from_server_config(config, &witness).unwrap()
 }
 
-/// tenant-a: one Document and one Remote Source; tenant-b: one Remote.
+/// tenant-a: Documents `document` and `second`, a never-granted Document
+/// `hidden`, and one Remote; tenant-b: one Remote and one Document.
 pub struct ApiWorld {
     pub authority: SyntheticAuthorityAdapter,
     pub catalog: SourceRegistrationCatalog,
     pub document: SourceId,
     pub remote: SourceId,
     pub foreign: SourceId,
+    pub second: SourceId,
+    pub hidden: SourceId,
+    pub foreign_document: SourceId,
 }
 
 impl ApiWorld {
     pub async fn new() -> Self {
         let (document, remote, foreign) = (source(5_001), source(5_002), source(5_003));
+        let (second, hidden, foreign_document) = (source(5_004), source(5_005), source(5_006));
         let host = Arc::new(SyntheticHostRegistrationAuthority::new());
         host.publish(
             RegistrationNamespace::Document,
             RegistrationSetRevision::new(1).unwrap(),
-            vec![SourceRegistration::Document(
-                document_registration(document, "tenant-a").await,
-            )],
+            vec![
+                SourceRegistration::Document(document_registration(document, "tenant-a").await),
+                SourceRegistration::Document(document_registration(second, "tenant-a").await),
+                SourceRegistration::Document(document_registration(hidden, "tenant-a").await),
+                SourceRegistration::Document(
+                    document_registration(foreign_document, "tenant-b").await,
+                ),
+            ],
         )
         .unwrap();
         host.publish(
@@ -154,6 +164,9 @@ impl ApiWorld {
             document,
             remote,
             foreign,
+            second,
+            hidden,
+            foreign_document,
         }
     }
 
