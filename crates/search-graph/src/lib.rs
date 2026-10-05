@@ -5,11 +5,13 @@
 #![forbid(unsafe_code)]
 
 pub mod canonical;
+pub mod migrate;
 
 pub use canonical::{
     GRAPH_SCHEMA_VERSION, Instant, TemporalColumns, canonical_graph_digest, canonical_relation,
     decode_temporal, encode_temporal,
 };
+pub use migrate::migrate;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum GraphError {

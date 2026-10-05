@@ -9,6 +9,7 @@ publish = false
 search-application = { version = "0.0.0", path = "../search-application" }
 search-core = { version = "0.0.0", path = "../search-core" }
 sha2.workspace = true
+sqlx.workspace = true
 thiserror.workspace = true
 time.workspace = true
 uuid.workspace = true

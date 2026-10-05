@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 outbox-delivery = { version = "0.0.0", path = "../outbox-delivery" }
 search-application = { version = "0.0.0", path = "../search-application" }
+search-graph = { version = "0.0.0", path = "../search-graph" }
 search-projection-memory = { version = "0.0.0", path = "../search-projection-memory" }
 search-source-document = { version = "0.0.0", path = "../search-source-document" }
 search-tantivy = { version = "0.0.0", path = "../search-tantivy" }
