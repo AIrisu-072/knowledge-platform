@@ -133,6 +133,15 @@ pub struct ScopedDiscoveryExecution<'a> {
     pub view: &'a CompositeEvaluationReadView<'a>,
 }
 
+/// The durable read ports a scoped evaluation's view dispatches to.
+pub(crate) struct DurableReadPorts<'a> {
+    pub(crate) generations: &'a dyn GenerationReadPort,
+    pub(crate) concepts: &'a dyn ConceptRegistryPort,
+    pub(crate) selectors: &'a dyn ClaimSelectorPort,
+    pub(crate) assertions: &'a dyn AssertionStorePort,
+    pub(crate) evidence: &'a dyn EvidenceResolverPort,
+}
+
 struct RemotePhase<'a> {
     sources: Vec<RemoteSourceExecution<'a>>,
     view: &'a CompositeEvaluationReadView<'a>,
@@ -220,6 +229,16 @@ impl<'a> DiscoveryService<'a> {
             body_coverage: None,
             absence: None,
         })
+    }
+
+    pub(crate) fn durable_read_ports(&self) -> DurableReadPorts<'a> {
+        DurableReadPorts {
+            generations: self.ports.generations,
+            concepts: self.ports.concepts,
+            selectors: self.ports.selectors,
+            assertions: self.ports.assertions,
+            evidence: self.ports.evidence,
+        }
     }
 
     /// Source-owned exact-text selectors and Unit verification for body scope.

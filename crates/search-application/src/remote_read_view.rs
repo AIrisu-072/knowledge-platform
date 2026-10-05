@@ -28,7 +28,7 @@ use crate::ports::{
 use crate::remote_evidence::resolved_evidence;
 use crate::remote_generation::{REMOTE_CLAIM_SUBJECT, RemoteEvaluationGeneration};
 use crate::remote_lease::{
-    GuardedRemoteStore, LeaseClock, RemoteLease, RemoteOwner, RemoteOwnerGate,
+    GuardedRemoteStore, LeaseClock, LeaseState, RemoteLease, RemoteOwner, RemoteOwnerGate,
 };
 use crate::retrieval::RetrievalAction;
 
@@ -196,6 +196,21 @@ impl<'a> CompositeEvaluationReadView<'a> {
         {
             entry.store.revoke();
         }
+    }
+
+    /// Whether every remote lease of this evaluation has ended.
+    pub fn is_closed(&self) -> bool {
+        self.remote
+            .read()
+            .map(|remote| {
+                remote.values().all(|entry| {
+                    matches!(
+                        entry.store.state(),
+                        LeaseState::Closed | LeaseState::Revoked | LeaseState::Expired
+                    )
+                })
+            })
+            .unwrap_or(false)
     }
 
     pub fn is_remote(&self, key: ProjectionGenerationKey) -> bool {
