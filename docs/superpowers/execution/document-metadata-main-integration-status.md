@@ -1,5 +1,21 @@
 # 文書属性編集と公開状態操作のmain統合状況
 
+## 2026-10-05 05:55 UTC — 公開後の受入read用途を修正
+
+- 公開PR71 `5ed279fac43c187421f626a24aec85a97b023a6c` / tree `7091ac4f31fdbb230fef4fcf0cbe269326a83eaa` の[CI37268915967](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37268915967)、runtime job `111631545451` はjourney14件成功/metadata1件失敗。属性入力のexact label問題は先へ進み、取消・未公開metadata保存の確認後、`gui-metadata-working-verified` を最後に `DOCUMENT_VERSION_NOT_FOUND` で停止した。agent・再起動・persistence・Organizationは未実行。最初のPR71失敗と今回の失敗をともに保持する
+- 受入specの `version()` が `purpose: authoring` 固定で、公開後にも同じhelperを呼んでいた。既存repositoryの `document_history.rs` はauthoringをWORKINGに限定し、公開済み版のauthoring readを404にする。公開失敗と断定せず、公開後のread契約との不整合を修正する
+- `detail(view)` / `version(purpose)` を既定値のない必須引数にし、公開前はauthoring、公開後はpublishedを明示する。公開後と再起動後のGUIもpublishedへ明示遷移する。既存のpublished/history snapshot、原本・Version・read-state・metadata・正式改訂・no-opの検査は保持する
+- 純粋source契約3件でhelper引数・公開境界前後の呼出し・GUI用途をRED3→GREEN3で確認。これはTypeScript ASTと既存repository sourceとの対応を検査するもので、Rust/API/browserを実行した証拠ではない
+- 最終検証：全GUI315件/24 suites、application/runtime型、schema freshness、production build、純粋runner34件、collection-only journey15件/persistence3件がPASS。Webpack advisory3件は継続
+- 作者以外の主担当による独立限定レビューGO、Critical/Importantなし。新source契約3件とdiff検査を別途実行してPASS。review対象spec blob `7e97e7ab2bc3a8503b7fd1195a9cf3f74a3c0509`、test blob `dffba9c518a444ed019d32c4c31c7b98197d9956`
+- 製品source、backend/API/認可、既存runtime locator/timeout/retry、有限診断、依存/lock/workflowは不変。ローカルDB/socket/listener/browser/Cargoは実行していない
+
+次の操作：公開5edを祖先に保持する小さい差分を親へ渡し、新exact headの既存hosted受入と全CIを確認する。今回の純粋成功を実DB/browser・再起動・cleanup・artifact公開0の成功へ読み替えない。
+
+以下は統合候補の履歴。
+
+---
+
 ## 2026-10-05 05:06 UTC — 両公開履歴を保持した統合候補
 
 - 第一parent：公開PR71 `8d53d7a3931b0e23f7929b85eb6846213985c71e` / tree `f728e6008ad0b892c5caaeab8d46db64f3a35e82`

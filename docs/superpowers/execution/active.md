@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 2026-10-05 05:55 UTC — metadata公開後の受入read用途を修正
+
+- PR71 exact `5ed279fa` はhosted journey14件成功/metadata1件失敗。未公開編集の確認後、公開済み版をauthoringで読む受入helperの契約不一致を確認した。[今回の状況](document-metadata-main-integration-status.md)を再開先とする
+- 公開前authoring/公開後publishedを引数と画面遷移で明示し、検査内容・locator/timeout/retry・診断は保持。純粋source契約RED3→GREEN、全GUI315件・型/build・runner34件・collection15+3成功、独立限定レビューGO
+- 新exact-headの実DB/browserと全CIは未実行。PR71の2回の失敗と公開履歴を保持し、親が公開して再検証する。以下は各時点の履歴
+
+---
+
 ## 2026-10-05 05:06 UTC — 属性編集と公開状態操作を両公開履歴で統合
 
 - 公開PR71 `8d53d7a3` とPR70統合済みmain `5d262557` を両parentとして保持する。[今回の統合状況](document-metadata-main-integration-status.md)を再開先とする

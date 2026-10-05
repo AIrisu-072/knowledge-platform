@@ -62,10 +62,10 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
       file: new Blob([original]), originalFilename: 'synthetic-metadata.txt', mediaType: 'text/plain',
     });
     const documentId = created.documentId, path = { documentId }, versionPath = { ...path, versionId: created.documentVersionId };
-    const detail = () => getDocument({ ...common, path, query: { view: 'authoring' } }).then(response => response.data);
-    const version = () => getDocumentVersion({ ...common, path: versionPath, query: { purpose: 'authoring' } }).then(response => response.data);
+    const detail = (view: 'authoring' | 'published') => getDocument({ ...common, path, query: { view } }).then(response => response.data);
+    const version = (purpose: 'authoring' | 'published') => getDocumentVersion({ ...common, path: versionPath, query: { purpose } }).then(response => response.data);
     const revisions = () => listDocumentRevisions({ ...common, path, query: { pageSize: 100 } }).then(response => response.data.items);
-    const before = await detail(), beforeVersion = await version();
+    const before = await detail('authoring'), beforeVersion = await version('authoring');
     const beforeFiles = (await listVersionFiles({ ...common, path: versionPath, query: { purpose: 'authoring' } })).data;
     expect(before.capabilities.updateMetadata.status).toBe('available');
     expect(before.currentVersionId).toBeNull();
@@ -111,13 +111,13 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
       set: workingSet, unset: [], reason: workingReason });
     expect(working.result).toMatchObject({ operationId: working.body.operationId, resourceId: documentId,
       changed: true, resultingRevision: before.revision + 1 });
-    const unpublished = await detail();
+    const unpublished = await detail('authoring');
     privatelyEqual(unpublished.metadata, { ...initialMetadata, ...workingSet });
     expect(unpublished.revision).toBe(before.revision + 1);
     expect(unpublished.currentVersionId).toBeNull();
     expect(unpublished.displayRevision).toBeNull();
     privatelyEqual(unpublished.readState, before.readState);
-    privatelyEqual(await version(), beforeVersion);
+    privatelyEqual(await version('authoring'), beforeVersion);
     privatelyEqual((await listVersionFiles({ ...common, path: versionPath, query: { purpose: 'authoring' } })).data, beforeFiles);
     expect((await listDocumentVersions({ ...common, path, query: { purpose: 'authoring', pageSize: 100 } })).data.items).toHaveLength(1);
     expect(await revisions()).toHaveLength(0);
@@ -133,10 +133,10 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     expect(published.revisions[0]).toMatchObject({ documentVersionId: created.documentVersionId, major: 1, minor: 0, sourceKind: 'initialPublication' });
     expect(published.versions).toHaveLength(1);
     expect(published.versions[0]!.files[0]!.hash).toBe(hash(original));
-    const publishedVersion = await version();
-    const publishedDetail = await detail();
+    const publishedVersion = await version('published');
+    const publishedDetail = await detail('published');
     const agentReadState = (await getDocument({ ...options(context.agent), path, query: { view: 'published' } })).data.readState;
-    await page.reload();
+    await page.goto(`/documents/${documentId}?view=published&tab=overview`);
     await expect(openEditor).toBeEnabled();
     completed('gui-metadata-published-verified');
 
@@ -164,8 +164,8 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     expect(after.currentVersionId).toBe(published.currentVersionId);
     privatelyEqual(after.versions, published.versions);
     privatelyEqual(after.publications, published.publications);
-    privatelyEqual(await version(), publishedVersion);
-    privatelyEqual((await detail()).readState, publishedDetail.readState);
+    privatelyEqual(await version('published'), publishedVersion);
+    privatelyEqual((await detail('published')).readState, publishedDetail.readState);
     privatelyEqual((await getDocument({ ...options(context.agent), path, query: { view: 'published' } })).data.readState, agentReadState);
     expect(patchRequests).toBe(2);
     completed('gui-metadata-minor-verified');
@@ -200,7 +200,7 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     const snapshot = state.documents[0]!.snapshot;
     privatelyEqual(await persistedSnapshot(context.human, snapshot.documentId), snapshot);
     privatelyEqual(await persistedSnapshot(context.agent, snapshot.documentId), snapshot);
-    await page.goto(`/documents/${snapshot.documentId}?view=authoring&tab=overview`);
+    await page.goto(`/documents/${snapshot.documentId}?view=published&tab=overview`);
     await page.getByRole('button', { name: 'メタデータを編集', exact: true }).press('Enter');
     const dialog = editor(page), metadata = snapshot.metadata as Record<string, unknown>;
     await inputEquals(dialog.getByLabel('文書種別', { exact: true }), metadata.document_type as string);
