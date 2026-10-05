@@ -159,7 +159,7 @@ pub(crate) async fn authorize_version_in_tx(
         other => other?,
     }
     let row = sqlx::query(
-        "SELECT v.*, d.current_version_id, \
+        "SELECT v.*, d.current_version_id, d.revision AS document_revision, \
                 EXISTS (SELECT 1 FROM document_publication_end_operations ended \
                         WHERE ended.document_id = d.document_id) AS ended \
          FROM documents d JOIN document_versions v ON v.document_id = d.document_id \

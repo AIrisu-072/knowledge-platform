@@ -347,6 +347,45 @@ $defs:
                 identityProvider: {type: string, minLength: 1}
                 principalId: {type: string, minLength: 1}
                 presentation: {$ref: '#/$defs/IdentityPresentation'}
+  EditManifest:
+    type: object
+    additionalProperties: false
+    required: [documentId, sourceVersionId, documentRevision, purpose, title, items]
+    properties:
+      documentId: {type: string, format: uuid}
+      sourceVersionId: {type: string, format: uuid}
+      documentRevision: {type: integer, minimum: 0}
+      purpose: {type: string, enum: [published, authoring]}
+      title: {type: string}
+      items:
+        type: array
+        minItems: 1
+        description: Complete items in ordinal then logicalPath order.
+        items:
+          type: object
+          additionalProperties: false
+          required: [contentItemId, logicalPath, ordinal, representations]
+          properties:
+            contentItemId: {type: string, format: uuid}
+            logicalPath: {type: string}
+            ordinal: {type: integer, minimum: 0}
+            representations:
+              type: array
+              minItems: 1
+              description: Authoritative representation first, then renditions in representationId order.
+              items:
+                type: object
+                additionalProperties: false
+                required: [representationId, role, fileId, originalFilename, mediaType, sizeBytes]
+                properties:
+                  representationId: {type: string, format: uuid}
+                  role: {type: string, enum: [authoritative, rendition]}
+                  fileId: {type: string, format: uuid}
+                  originalFilename:
+                    type: string
+                    description: Exact stored original filename, never reconstructed from the safe display name.
+                  mediaType: {type: string}
+                  sizeBytes: {type: integer, minimum: 0}
   FileList:
     type: object
     additionalProperties: false
@@ -502,7 +541,7 @@ $defs:
       documentId: {type: string, format: uuid}
       targetVersionId: {type: string, format: uuid}
       versionNo: {type: integer, minimum: 1}
-      baseVersionId: {type: string, format: uuid}
+      baseVersionId: {type: [string, 'null'], format: uuid}
       resultingRevision: {type: integer, minimum: 0}
   PublishResult:
     type: object

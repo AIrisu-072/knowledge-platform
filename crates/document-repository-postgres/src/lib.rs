@@ -15,6 +15,7 @@ mod document_management;
 mod document_query;
 mod document_revision;
 mod document_revision_read;
+mod edit_manifest;
 mod error;
 mod file_access;
 mod folder_management;

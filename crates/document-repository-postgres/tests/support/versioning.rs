@@ -201,6 +201,14 @@ pub(super) fn actor() -> PrincipalRef {
 }
 
 pub(super) async fn fixture() -> Fixture {
+    fixture_with_publication(true).await
+}
+
+pub(super) async fn initial_fixture() -> Fixture {
+    fixture_with_publication(false).await
+}
+
+async fn fixture_with_publication(published: bool) -> Fixture {
     let container = GenericImage::new("postgres", "18.6-bookworm")
         .with_exposed_port(5432.tcp())
         .with_wait_for(WaitFor::message_on_stderr(
@@ -224,10 +232,10 @@ pub(super) async fn fixture() -> Fixture {
     let document_id = DocumentId::from_uuid(Uuid::now_v7());
     let base_id = DocumentVersionId::from_uuid(Uuid::now_v7());
     let base_file = FileId::from_uuid(Uuid::now_v7());
-    sqlx::query("INSERT INTO documents (document_id,folder_id,current_version_id,revision,metadata,created_at) VALUES ($1,$2,NULL,1,'{}',to_timestamp(0))")
-        .bind(document_id.as_uuid()).bind(SYSTEM_ROOT_FOLDER_ID).execute(&pool).await.unwrap();
-    sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,lifecycle_state,title,published_at,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,1,'PUBLISHED','Base',to_timestamp(0),'test-idp','editor','{}',to_timestamp(0))")
-        .bind(base_id.as_uuid()).bind(document_id.as_uuid()).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO documents (document_id,folder_id,current_version_id,revision,metadata,created_at) VALUES ($1,$2,NULL,$3,'{}',to_timestamp(0))")
+        .bind(document_id.as_uuid()).bind(SYSTEM_ROOT_FOLDER_ID).bind(i64::from(published)).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,lifecycle_state,title,published_at,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,1,$3,'Base',CASE WHEN $3 = 'PUBLISHED' THEN to_timestamp(0) ELSE NULL END,'test-idp','editor','{}',to_timestamp(0))")
+        .bind(base_id.as_uuid()).bind(document_id.as_uuid()).bind(if published { "PUBLISHED" } else { "WORKING" }).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO file_objects (file_id,content_hash,media_type,size_bytes,storage_locator,created_at) VALUES ($1,$2,'text/plain',3,'objects/base',to_timestamp(0))")
         .bind(base_file.as_uuid()).bind(vec![1_u8; 32]).execute(&pool).await.unwrap();
     let item_id = Uuid::now_v7();
@@ -238,14 +246,15 @@ pub(super) async fn fixture() -> Fixture {
     sqlx::query("INSERT INTO content_representations (content_representation_id,content_item_id,file_id,role,original_filename) VALUES ($1,$2,$3,'AUTHORITATIVE','base.txt')")
         .bind(representation_id).bind(item_id).bind(base_file.as_uuid()).execute(&mut *tx).await.unwrap();
     tx.commit().await.unwrap();
-    sqlx::query("UPDATE documents SET current_version_id = $1 WHERE document_id = $2")
-        .bind(base_id.as_uuid())
-        .bind(document_id.as_uuid())
-        .execute(&pool)
-        .await
-        .unwrap();
-    sqlx::query(
-        "INSERT INTO document_revisions \
+    if published {
+        sqlx::query("UPDATE documents SET current_version_id = $1 WHERE document_id = $2")
+            .bind(base_id.as_uuid())
+            .bind(document_id.as_uuid())
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO document_revisions \
          (document_id,document_version_id,major_no,minor_no,metadata_snapshot, \
           metadata_snapshot_status,source_kind,operation_id,created_at, \
           actor_identity_provider,actor_principal_id,reason) \
@@ -253,12 +262,13 @@ pub(super) async fn fixture() -> Fixture {
                  jsonb_build_object('document_type',NULL,'owning_department',NULL, \
                                     'category',NULL,'extensions',NULL), \
                  'complete','legacyBackfill',NULL,to_timestamp(0),NULL,NULL,NULL)",
-    )
-    .bind(document_id.as_uuid())
-    .bind(base_id.as_uuid())
-    .execute(&pool)
-    .await
-    .unwrap();
+        )
+        .bind(document_id.as_uuid())
+        .bind(base_id.as_uuid())
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
     let storage = Arc::new(TestStorage::default());
     storage.insert("objects/base", vec![1; 3]);
     Fixture {

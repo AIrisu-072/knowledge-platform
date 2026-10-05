@@ -44,6 +44,7 @@ const operations = [
   ['put', '/v1/documents/{documentId}/versions/{versionId}/read-state'],
   ['get', '/v1/documents/{documentId}/history'],
   ['get', '/v1/documents/{documentId}/versions/{versionId}/files'],
+  ['get', '/v1/documents/{documentId}/versions/{versionId}/edit-manifest'],
   ['get', '/v1/documents/{documentId}/versions/{versionId}/files/{contentItemId}/{representationId}'],
   ['post', '/v1/documents/{documentId}/comparisons'],
   ['post', '/v1/documents/{documentId}/revision-comparisons'],
@@ -79,6 +80,7 @@ const acceptanceEvidence = [
   ['setDocumentAccessPolicy', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['markDocumentVersionRead', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['getDocumentHistory', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['getVersionEditManifest', 'crates/document-api-http/tests/read_http.rs', 'edit_manifest_reads_exact_metadata_and_order_with_current_write_authorization'],
   ['listVersionFiles', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['downloadVersionFile', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['compareDocumentVersions', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
@@ -369,6 +371,40 @@ test('action capabilities are detail-scoped hints with typed reasons', () => {
   );
 });
 
+test('edit manifest is a write-authorized exact snapshot with no history purpose', () => {
+  const endpoint = operation('get', '/v1/documents/{documentId}/versions/{versionId}/edit-manifest');
+  assert.ok(endpoint, 'missing exact edit manifest read');
+  assert.equal(endpoint.operationId, 'getVersionEditManifest');
+  const purpose = endpoint.parameters.map(resolved).find((parameter) => parameter.name === 'purpose');
+  assert.equal(purpose.required, true);
+  assert.deepEqual(purpose.schema.enum, ['published', 'authoring']);
+  assert.match(endpoint.description, /Read\+Write/);
+  assert.match(endpoint.description, /same snapshot/);
+  const response = resolved(endpoint.responses['200']);
+  const schema = resolved(response.content['application/json'].schema);
+  assert.deepEqual(schema.required, ['documentId', 'sourceVersionId', 'documentRevision', 'purpose', 'title', 'items']);
+  assert.equal(schema.properties.items.minItems, 1);
+  const item = resolved(schema.properties.items.items);
+  assert.equal(item.properties.representations.minItems, 1);
+  assert.deepEqual(item.required, ['contentItemId', 'logicalPath', 'ordinal', 'representations']);
+  const representation = resolved(item.properties.representations.items);
+  assert.deepEqual(representation.required, ['representationId', 'role', 'fileId', 'originalFilename', 'mediaType', 'sizeBytes']);
+  assert.deepEqual(representation.properties.role.enum, ['authoritative', 'rendition']);
+  assert.equal(representation.properties.originalFilename.type, 'string');
+  assert.equal(representation.properties.fileId.format, 'uuid');
+  assert.equal(representation.properties.displayName, undefined);
+  assert.equal(response.headers['Cache-Control'].schema.const, 'private, no-store');
+});
+
+test('initial working update mutation results preserve an explicit null base', () => {
+  const result = resolved(contract.components.schemas.VersionMutationResult);
+  assert.ok(result.required.includes('baseVersionId'));
+  assert.deepEqual(result.properties.baseVersionId.type, ['string', 'null']);
+  const response = resolved(contract.components.responses.VersionMutationResult);
+  const initial = response.content['application/json'].examples?.initialWorking?.value;
+  assert.equal(initial?.versionNo, 1);
+  assert.equal(initial?.baseVersionId, null);
+});
 
 test('version detail exposes only its required nullable current publication schedule identity', () => {
   const detail = resolved(contract.components.schemas.VersionDetail);

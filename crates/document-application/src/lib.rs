@@ -15,6 +15,7 @@ mod document_history;
 mod document_management;
 mod document_query;
 mod document_revision_read;
+mod edit_manifest;
 mod error;
 mod events;
 mod file_access;
@@ -74,6 +75,10 @@ pub use document_revision_read::{
     DocumentRevisionDetail, DocumentRevisionDetailQuery, DocumentRevisionPageQuery,
     DocumentRevisionReadRepository, DocumentRevisionReadService, DocumentRevisionSummary,
     RevisionComparisonAuditRequest,
+};
+pub use edit_manifest::{
+    EditManifest, EditManifestItem, EditManifestPurpose, EditManifestRepository,
+    EditManifestRepresentation, EditManifestRequest, EditManifestRole, EditManifestService,
 };
 pub use error::{ApplicationError, InspectionExecutionError, RepositoryError, StorageError};
 pub use events::{

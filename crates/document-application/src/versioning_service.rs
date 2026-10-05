@@ -83,8 +83,8 @@ where
         let record = self.record(
             identity,
             Some(prepared),
-            current.version().document_version_id(),
-            base_digest,
+            Some(current.version().document_version_id()),
+            Some(base_digest),
         );
         self.map_mutation_result(
             command.operation_id(),
@@ -111,24 +111,40 @@ where
         if let Some(result) = self.replay(&identity).await? {
             return Ok(result);
         }
-        let current = self
-            .load_current(command.document_id(), command.expected_revision())
-            .await?;
         let working = self
             .load_working(command.document_id(), command.target_version_id())
             .await?;
-        if working.version().base_document_version_id()
-            != Some(current.version().document_version_id())
-        {
+        if working.document().revision() != command.expected_revision() {
             return Err(ApplicationError::Conflict);
         }
-        let base_digest = self.compare_to_base(&current, prepared.manifest()).await?;
-        let record = self.record(
-            identity,
-            Some(prepared),
-            current.version().document_version_id(),
-            base_digest,
-        );
+        let record = if working.document().current_version_id().is_none() {
+            if working.version().version_no().get() != 1
+                || working.version().base_document_version_id().is_some()
+            {
+                return Err(ApplicationError::BusinessRule);
+            }
+            self.check_existing_initial_formats(&working, &prepared)
+                .await?;
+            // The repository rechecks never-published history under the Document lock.
+            // Initial updates have no published base and intentionally no no-change guard.
+            self.record(identity, Some(prepared), None, None)
+        } else {
+            let current = self
+                .load_current(command.document_id(), command.expected_revision())
+                .await?;
+            if working.version().base_document_version_id()
+                != Some(current.version().document_version_id())
+            {
+                return Err(ApplicationError::Conflict);
+            }
+            let base_digest = self.compare_to_base(&current, prepared.manifest()).await?;
+            self.record(
+                identity,
+                Some(prepared),
+                Some(current.version().document_version_id()),
+                Some(base_digest),
+            )
+        };
         self.map_mutation_result(
             command.operation_id(),
             command.document_id(),
@@ -169,8 +185,8 @@ where
         let record = self.record(
             identity,
             None,
-            current.version().document_version_id(),
-            base_digest,
+            Some(current.version().document_version_id()),
+            Some(base_digest),
         );
         self.map_mutation_result(
             command.operation_id(),
@@ -826,7 +842,9 @@ where
             .get_version_snapshot(document_id, version_id)
             .await?
             .ok_or(ApplicationError::DocumentVersionNotFound)?;
-        if working.version().lifecycle_state() != LifecycleState::Working {
+        if working.version().lifecycle_state() != LifecycleState::Working
+            || working.version().scheduled_publish_at().is_some()
+        {
             return Err(ApplicationError::BusinessRule);
         }
         if working.requires_content_classification() {
@@ -835,21 +853,55 @@ where
         Ok(working)
     }
 
+    async fn check_existing_initial_formats(
+        &self,
+        working: &AuthoritativeDocument,
+        candidate: &PreparedManifest,
+    ) -> Result<(), ApplicationError> {
+        for old in working.content_items() {
+            let Some(new) = candidate.items().iter().find(|item| {
+                item.logical_path() == old.logical_path() && item.ordinal() == old.ordinal()
+            }) else {
+                continue;
+            };
+            if old.file().media_type() != new.file().media_type() {
+                return Err(ApplicationError::BusinessRule);
+            }
+            // A missing old inspection must not block replacement of an uninspectable
+            // initial file. Use only already stored, raw-bound evidence; never open it.
+            let Some(inspection) = self
+                .repository
+                .get_semantic_inspection(old.file().file_id(), InspectionProfileVersion::DsiV0)
+                .await?
+            else {
+                continue;
+            };
+            let response = inspection.response();
+            if inspection.file_id() != old.file().file_id()
+                || response.inspection_profile_version != InspectionProfileVersion::DsiV0
+                || response.observed_raw_content_hash != *old.file().content_hash().as_bytes()
+                || response.observed_size_bytes != old.file().size_bytes().get() as u64
+                || response.validate().is_err()
+            {
+                return Err(ApplicationError::IntegrityViolation);
+            }
+            if new.inspection().response().detected_format != response.detected_format
+                || new.inspection().response().inspection_profile_version
+                    != response.inspection_profile_version
+            {
+                return Err(ApplicationError::BusinessRule);
+            }
+        }
+        Ok(())
+    }
+
     async fn compare_to_base(
         &self,
         current: &AuthoritativeDocument,
         candidate: &VersionManifest,
     ) -> Result<[u8; 32], ApplicationError> {
         let base = self.ensure_manifest(current).await?;
-        for old in base.items() {
-            if let Some(new) = candidate.items().iter().find(|item| {
-                item.logical_path() == old.logical_path() && item.ordinal() == old.ordinal()
-            }) && (new.format_id() != old.format_id()
-                || new.inspection_profile_id() != old.inspection_profile_id())
-            {
-                return Err(ApplicationError::BusinessRule);
-            }
-        }
+        ensure_compatible_formats(&base, candidate)?;
         let base_digest = base.identity_digest();
         if base_digest == candidate.identity_digest() {
             return Err(ApplicationError::BusinessRule);
@@ -891,8 +943,8 @@ where
         &self,
         identity: VersionCommandIdentity,
         prepared: Option<PreparedManifest>,
-        base_id: DocumentVersionId,
-        base_digest: [u8; 32],
+        base_id: Option<DocumentVersionId>,
+        base_digest: Option<[u8; 32]>,
     ) -> VersionMutationRecord {
         VersionMutationRecord::new(
             identity,
@@ -924,6 +976,22 @@ where
             Err(error) => Err(error.into()),
         }
     }
+}
+
+fn ensure_compatible_formats(
+    base: &VersionManifest,
+    candidate: &VersionManifest,
+) -> Result<(), ApplicationError> {
+    for old in base.items() {
+        if let Some(new) = candidate.items().iter().find(|item| {
+            item.logical_path() == old.logical_path() && item.ordinal() == old.ordinal()
+        }) && (new.format_id() != old.format_id()
+            || new.inspection_profile_id() != old.inspection_profile_id())
+        {
+            return Err(ApplicationError::BusinessRule);
+        }
+    }
+    Ok(())
 }
 
 fn ensure_publish_difference(

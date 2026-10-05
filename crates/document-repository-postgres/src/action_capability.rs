@@ -32,6 +32,39 @@ fn availability(
     ActionAvailability::available()
 }
 
+struct CurrentPublicationState {
+    published: bool,
+    requires_content_classification: bool,
+}
+
+impl CurrentPublicationState {
+    fn from_row(row: &PgRow) -> Result<Self, RepositoryError> {
+        Ok(Self {
+            published: row
+                .try_get("has_current_published")
+                .map_err(map_statement_error)?,
+            requires_content_classification: row
+                .try_get("current_requires_content_classification")
+                .map_err(map_statement_error)?,
+        })
+    }
+
+    fn has_classified_published(&self) -> bool {
+        self.published && !self.requires_content_classification
+    }
+
+    fn end_publication_reason(&self, ended: bool) -> Option<CapabilityDisabledReason> {
+        if ended {
+            Some(CapabilityDisabledReason::Lifecycle)
+        } else if !self.published {
+            // T10 removes publication without restoring or classifying content.
+            Some(CapabilityDisabledReason::NotCurrent)
+        } else {
+            None
+        }
+    }
+}
+
 async fn permits(
     tx: &mut Transaction<'_, Postgres>,
     ctx: &VerifiedActorContext,
@@ -63,6 +96,10 @@ async fn document_state(
                         WHERE version.document_id = d.document_id \
                           AND version.document_version_id = d.current_version_id \
                           AND version.lifecycle_state = 'PUBLISHED') AS has_current_published, \
+                EXISTS (SELECT 1 FROM document_versions version \
+                        WHERE version.document_id = d.document_id \
+                          AND version.document_version_id = d.current_version_id \
+                          AND version.requires_content_classification) AS current_requires_content_classification, \
                 (SELECT count(*)::bigint FROM document_versions version \
                  WHERE version.document_id = d.document_id) AS version_count \
          FROM documents d WHERE d.document_id = $1",
@@ -96,9 +133,8 @@ impl ActionCapabilityReadRepository for PostgresDocumentRepository {
         let has_working: bool = state
             .try_get("has_working_version")
             .map_err(map_statement_error)?;
-        let has_current_published: bool = state
-            .try_get("has_current_published")
-            .map_err(map_statement_error)?;
+        let current_publication = CurrentPublicationState::from_row(&state)?;
+        let has_classified_current_published = current_publication.has_classified_published();
         let version_count: i64 = state
             .try_get("version_count")
             .map_err(map_statement_error)?;
@@ -137,21 +173,20 @@ impl ActionCapabilityReadRepository for PostgresDocumentRepository {
         let administer = permits(&mut tx, ctx, document, &[Action::Administer]).await?;
         let compare = permits(&mut tx, ctx, document, &[Action::Read, Action::ReadHistory]).await?;
         let pending_reason = pending.then_some(CapabilityDisabledReason::PendingSchedule);
-        let end_publication_reason = if ended {
-            Some(CapabilityDisabledReason::Lifecycle)
-        } else if !has_current_published {
-            Some(CapabilityDisabledReason::NotCurrent)
-        } else {
-            None
-        };
+        let end_publication_reason = current_publication.end_publication_reason(ended);
         let capabilities = DocumentActionCapabilities {
             create_version: availability(
                 write,
                 true,
                 is_human,
-                pending_reason.or_else(|| {
-                    (ended || has_working).then_some(CapabilityDisabledReason::Lifecycle)
-                }),
+                pending_reason
+                    .or_else(|| {
+                        (ended || has_working).then_some(CapabilityDisabledReason::Lifecycle)
+                    })
+                    .or_else(|| {
+                        (!has_classified_current_published)
+                            .then_some(CapabilityDisabledReason::NotCurrent)
+                    }),
             ),
             update_metadata: availability(metadata_permissions, true, is_human, pending_reason),
             move_document: availability(move_document, true, is_human, pending_reason),
@@ -193,9 +228,23 @@ impl ActionCapabilityReadRepository for PostgresDocumentRepository {
             .try_get("base_document_version_id")
             .map_err(map_statement_error)?;
         let document_version_id = request.document_version_id.as_uuid();
+        let requires_classification: bool = row
+            .try_get("requires_content_classification")
+            .map_err(map_statement_error)?;
+        let scheduled: Option<time::OffsetDateTime> = row
+            .try_get("scheduled_publish_at")
+            .map_err(map_statement_error)?;
+        let state = document_state(&mut tx, request.document_id).await?;
+        let current_publication = CurrentPublicationState::from_row(&state)?;
+        let has_classified_current_published = current_publication.has_classified_published();
+        let initial = version_no == 1
+            && current.is_none()
+            && base.is_none()
+            && !crate::versioning_mutation::has_publication_history(&mut tx, request.document_id)
+                .await?;
         let stale_base = lifecycle == "WORKING"
             && if version_no == 1 {
-                current.is_some() || base.is_some()
+                !initial
             } else {
                 current.is_none() || base != current
             };
@@ -229,26 +278,32 @@ impl ActionCapabilityReadRepository for PostgresDocumentRepository {
         let is_human = ctx.invocation_kind() == InvocationKind::HumanInteractive;
         let working = lifecycle == "WORKING";
         let published = lifecycle == "PUBLISHED";
-        let pending_reason = pending.then_some(CapabilityDisabledReason::PendingSchedule);
+        let pending_reason =
+            (pending || scheduled.is_some()).then_some(CapabilityDisabledReason::PendingSchedule);
         let stale_reason = stale_base.then_some(CapabilityDisabledReason::StaleBase);
         let capabilities = VersionActionCapabilities {
             edit: availability(
                 write,
                 true,
                 is_human,
-                if !working || ended {
+                if !working
+                    || ended
+                    || requires_classification
+                    || (current.is_some() && !has_classified_current_published)
+                {
                     Some(CapabilityDisabledReason::Lifecycle)
                 } else {
-                    pending_reason
+                    pending_reason.or(stale_reason)
                 },
             ),
             rebase: availability(
                 write,
                 true,
                 is_human,
-                if !working || ended {
+                if !working || ended || requires_classification || !has_classified_current_published
+                {
                     Some(CapabilityDisabledReason::Lifecycle)
-                } else if pending {
+                } else if pending_reason.is_some() {
                     pending_reason
                 } else if stale_base {
                     None
@@ -340,5 +395,53 @@ impl ActionCapabilityReadRepository for PostgresDocumentRepository {
         };
         tx.rollback().await.map_err(map_statement_error)?;
         Ok(capabilities)
+    }
+}
+
+#[cfg(test)]
+mod current_publication_tests {
+    use super::{CurrentPublicationState, availability};
+    use document_application::{ActionAvailability, CapabilityDisabledReason};
+
+    #[test]
+    fn unclassified_current_can_end_publication_but_cannot_be_a_versioning_base() {
+        let current = CurrentPublicationState {
+            published: true,
+            requires_content_classification: true,
+        };
+        assert_eq!(
+            availability(true, true, true, current.end_publication_reason(false)),
+            ActionAvailability::available(),
+        );
+        assert!(!current.has_classified_published());
+    }
+
+    #[test]
+    fn end_publication_preserves_ended_and_missing_current_guards() {
+        for requires_content_classification in [false, true] {
+            let current = CurrentPublicationState {
+                published: false,
+                requires_content_classification,
+            };
+            assert_eq!(
+                current.end_publication_reason(false),
+                Some(CapabilityDisabledReason::NotCurrent),
+            );
+            assert_eq!(
+                current.end_publication_reason(true),
+                Some(CapabilityDisabledReason::Lifecycle),
+            );
+            assert!(!current.has_classified_published());
+        }
+        let current = CurrentPublicationState {
+            published: true,
+            requires_content_classification: false,
+        };
+        assert_eq!(
+            current.end_publication_reason(true),
+            Some(CapabilityDisabledReason::Lifecycle),
+        );
+        assert_eq!(current.end_publication_reason(false), None);
+        assert!(current.has_classified_published());
     }
 }

@@ -48,6 +48,7 @@ fn rendition(raw_id: u128, byte: u8) -> VersioningRenditionInput {
 #[derive(Clone, Copy)]
 enum Mode {
     Plain,
+    Csv,
     Unsupported,
     Ambiguous,
     UnresolvedChange,
@@ -60,9 +61,32 @@ enum Mode {
 struct FakeRepository {
     files: Mutex<HashMap<FileId, FileObject>>,
     inspections: Mutex<HashMap<FileId, SemanticInspectionRecord>>,
+    snapshot: Mutex<Option<document_application::AuthoritativeDocument>>,
+    mutations: Mutex<Vec<document_application::VersionMutationRecord>>,
 }
 
 impl VersioningRepository for FakeRepository {
+    async fn get_version_operation(
+        &self,
+        _: document_application::VersionOperationId,
+    ) -> Result<Option<document_application::VersionOperationRecord>, RepositoryError> {
+        Ok(None)
+    }
+    async fn get_version_snapshot(
+        &self,
+        _: document_domain::DocumentId,
+        _: document_domain::DocumentVersionId,
+    ) -> Result<Option<document_application::AuthoritativeDocument>, RepositoryError> {
+        Ok(self.snapshot.lock().unwrap().clone())
+    }
+    async fn update_working(
+        &self,
+        record: document_application::VersionMutationRecord,
+    ) -> Result<document_application::VersionOperationResult, RepositoryError> {
+        self.mutations.lock().unwrap().push(record);
+        Err(RepositoryError::CommitOutcomeUnknown)
+    }
+
     async fn register_file_object(&self, file: FileObject) -> Result<(), RepositoryError> {
         let mut files = self.files.lock().unwrap();
         if let Some(existing) = files.get(&file.file_id()) {
@@ -200,7 +224,7 @@ impl SemanticInspectionExecutor for FakeExecutor {
             "protocol_version":"dsi-worker-v0", "inspection_profile_version":"dsi-v0",
             "observed_raw_content_hash":request.expected_raw_content_hash,
             "observed_size_bytes":request.expected_size_bytes,
-            "detected_format":"txt", "semantic_fingerprint":{"algorithm":"sha256","digest":digest},
+            "detected_format": if matches!(mode, Mode::Csv) { "csv" } else { "txt" }, "semantic_fingerprint":{"algorithm":"sha256","digest":digest},
             "semantic_capabilities":[],
             "editorial_provenance":{"tracked_changes":changes,"comments":comments,"document_author_labels":[],"last_modified_by":null,"modification_metadata":{}},
             "external_dependencies":[], "digital_signature_evidence":signatures,
@@ -394,5 +418,338 @@ async fn publish_quality_allows_unsigned_and_rejects_unresolved_editorial_or_inv
                 Err(ApplicationError::PublishQualityRejected(_))
             ));
         }
+    }
+}
+
+impl document_application::DocumentRepository for FakeRepository {
+    async fn create_initial_document(
+        &self,
+        _: document_application::CreateInitialDocumentRecord,
+    ) -> Result<(), RepositoryError> {
+        unreachable!()
+    }
+    async fn get_authoritative_document(
+        &self,
+        _: document_domain::DocumentId,
+    ) -> Result<Option<document_application::AuthoritativeDocument>, RepositoryError> {
+        Ok(self.snapshot.lock().unwrap().clone())
+    }
+    async fn get_authoring_document(
+        &self,
+        _: document_domain::DocumentId,
+    ) -> Result<Option<document_application::AuthoritativeDocument>, RepositoryError> {
+        unreachable!()
+    }
+    async fn get_current_published_document(
+        &self,
+        _: document_domain::DocumentId,
+    ) -> Result<Option<document_application::AuthoritativeDocument>, RepositoryError> {
+        unreachable!()
+    }
+    async fn is_current_published_version(
+        &self,
+        _: document_domain::DocumentId,
+        _: document_domain::DocumentVersionId,
+    ) -> Result<bool, RepositoryError> {
+        unreachable!()
+    }
+    async fn list_current_published_versions(
+        &self,
+        _: Option<document_domain::DocumentId>,
+        _: i64,
+    ) -> Result<Vec<document_application::CurrentPublishedVersionRef>, RepositoryError> {
+        unreachable!()
+    }
+    async fn file_reference_exists(&self, _: FileId) -> Result<bool, RepositoryError> {
+        unreachable!()
+    }
+    async fn list_referenced_file_ids(&self) -> Result<Vec<FileId>, RepositoryError> {
+        unreachable!()
+    }
+}
+
+struct TestIds;
+impl document_application::IdGenerator for TestIds {
+    fn next_uuid_v7(&self) -> Uuid {
+        Uuid::now_v7()
+    }
+}
+
+fn initial_update_fixture() -> (
+    Fixture,
+    document_domain::DocumentId,
+    document_domain::DocumentVersionId,
+    document_domain::PrincipalRef,
+) {
+    use document_application::AuthoritativeDocument;
+    use document_domain::{
+        CreateInitialDocument, DocumentId, DocumentVersionId, FolderId, InitialDocument, Metadata,
+        PrincipalRef, StoredFileDescriptor,
+    };
+    let f = fixture(Mode::Plain);
+    let document_id = DocumentId::from_uuid(Uuid::from_u128(100));
+    let version_id = DocumentVersionId::from_uuid(Uuid::from_u128(101));
+    let actor = PrincipalRef::new("test", "editor").unwrap();
+    let initial = InitialDocument::create(CreateInitialDocument {
+        document_id,
+        version_id,
+        file_id: file_id(50),
+        folder_id: FolderId::from_uuid(Uuid::from_u128(102)),
+        title: Title::new("Initial").unwrap(),
+        document_metadata: Metadata::default(),
+        version_metadata: Metadata::default(),
+        principal: actor.clone(),
+        stored_file: StoredFileDescriptor::new(
+            StorageKey::new("objects/initial").unwrap(),
+            ContentHash::from_slice(&[7; 32]).unwrap(),
+            FileSize::new(3).unwrap(),
+            MediaType::new("text/plain").unwrap(),
+        ),
+        original_filename: "initial.txt".into(),
+        created_at: OffsetDateTime::UNIX_EPOCH,
+    })
+    .unwrap();
+    let snapshot = AuthoritativeDocument::from_initial(initial);
+    f.repository
+        .files
+        .lock()
+        .unwrap()
+        .insert(snapshot.file().file_id(), snapshot.file().clone());
+    f.storage
+        .objects
+        .lock()
+        .unwrap()
+        .insert("objects/initial".into(), vec![7; 3]);
+    *f.repository.snapshot.lock().unwrap() = Some(snapshot);
+    (f, document_id, version_id, actor)
+}
+
+#[tokio::test]
+async fn initial_working_update_accepts_null_base_and_same_semantics_after_fresh_preflight() {
+    use document_application::{
+        DocumentVersionService, UpdateWorkingVersionCommand, VersionOperationId,
+    };
+    let (f, document_id, version_id, actor) = initial_update_fixture();
+    let prepared = f
+        .service
+        .prepare(
+            Title::new("Initial").unwrap(),
+            vec![input("primary", 0, 51, 7)],
+            InspectionProfileVersion::DsiV0,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        f.executor.calls.load(Ordering::SeqCst),
+        1,
+        "new file must be inspected even when semantics are unchanged"
+    );
+    // An initial original without prior evidence can be repaired even if its old
+    // bytes are unavailable. Only the submitted originals must inspect.
+    f.storage.objects.lock().unwrap().remove("objects/initial");
+    let operation_id = VersionOperationId::try_from_uuid(Uuid::now_v7()).unwrap();
+    let service = DocumentVersionService::new(
+        Arc::new(TestIds),
+        Arc::new(FixedClock),
+        f.storage.clone(),
+        f.executor.clone(),
+        f.repository.clone(),
+    );
+    let result = service
+        .update_working(
+            UpdateWorkingVersionCommand::new(operation_id, document_id, version_id, 0, actor)
+                .unwrap(),
+            prepared,
+        )
+        .await;
+    assert_eq!(
+        result,
+        Err(ApplicationError::VersionCommitOutcomeUnknown {
+            operation_id,
+            document_id,
+            document_version_id: version_id
+        }),
+        "the initial update must reach the atomic mutation and preserve its recovery identity"
+    );
+    let records = f.repository.mutations.lock().unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].identity().target_version_id(), version_id);
+}
+
+#[tokio::test]
+async fn initial_working_update_rejects_authority_format_migration_without_semantic_no_change_rule()
+{
+    use document_application::{
+        DocumentVersionService, UpdateWorkingVersionCommand, VersionOperationId,
+    };
+    let (f, document_id, version_id, actor) = initial_update_fixture();
+    let snapshot = f.repository.snapshot.lock().unwrap().clone().unwrap();
+    f.service.inspect_existing(&snapshot).await.unwrap();
+    // Synthetic raw-bound cached candidate evidence isolates the DSI format
+    // comparison: both immutable FileObjects still declare text/plain.
+    let mut response = f
+        .repository
+        .inspections
+        .lock()
+        .unwrap()
+        .get(&file_id(50))
+        .unwrap()
+        .response()
+        .clone();
+    response.detected_format = document_semantic_inspection_core::FormatId::Csv;
+    response.observed_raw_content_hash = [8; 32];
+    let candidate_inspection =
+        SemanticInspectionRecord::restore(file_id(52), response, OffsetDateTime::UNIX_EPOCH)
+            .unwrap();
+    f.repository
+        .inspections
+        .lock()
+        .unwrap()
+        .insert(file_id(52), candidate_inspection);
+    let prepared = f
+        .service
+        .prepare(
+            Title::new("Changed").unwrap(),
+            vec![input("primary", 0, 52, 8)],
+            InspectionProfileVersion::DsiV0,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        prepared.items()[0].file().media_type(),
+        snapshot.file().media_type()
+    );
+    assert_ne!(
+        prepared.items()[0].inspection().response().detected_format,
+        f.repository
+            .inspections
+            .lock()
+            .unwrap()
+            .get(&file_id(50))
+            .unwrap()
+            .response()
+            .detected_format
+    );
+    let service = DocumentVersionService::new(
+        Arc::new(TestIds),
+        Arc::new(FixedClock),
+        f.storage.clone(),
+        f.executor.clone(),
+        f.repository.clone(),
+    );
+    let operation_id = VersionOperationId::try_from_uuid(Uuid::now_v7()).unwrap();
+    let result = service
+        .update_working(
+            UpdateWorkingVersionCommand::new(operation_id, document_id, version_id, 0, actor)
+                .unwrap(),
+            prepared,
+        )
+        .await;
+    assert_eq!(result, Err(ApplicationError::BusinessRule));
+    assert!(f.repository.mutations.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn initial_working_update_rejects_media_type_change_without_old_inspection() {
+    use document_application::{
+        DocumentVersionService, UpdateWorkingVersionCommand, VersionOperationId,
+    };
+    let (f, document_id, version_id, actor) = initial_update_fixture();
+    f.storage.objects.lock().unwrap().remove("objects/initial");
+    *f.executor.mode.lock().unwrap() = Mode::Csv;
+    let prepared = f
+        .service
+        .prepare(
+            Title::new("Changed").unwrap(),
+            vec![VersioningItemInput::new(
+                LogicalPath::new("primary").unwrap(),
+                0,
+                file_id(52),
+                MediaType::new("text/csv").unwrap(),
+                "changed.csv",
+                Box::pin(Cursor::new(vec![8; 3])),
+            )],
+            InspectionProfileVersion::DsiV0,
+        )
+        .await
+        .unwrap();
+    let service = DocumentVersionService::new(
+        Arc::new(TestIds),
+        Arc::new(FixedClock),
+        f.storage.clone(),
+        f.executor.clone(),
+        f.repository.clone(),
+    );
+    let operation_id = VersionOperationId::try_from_uuid(Uuid::now_v7()).unwrap();
+    let result = service
+        .update_working(
+            UpdateWorkingVersionCommand::new(operation_id, document_id, version_id, 0, actor)
+                .unwrap(),
+            prepared,
+        )
+        .await;
+    assert_eq!(result, Err(ApplicationError::BusinessRule));
+    assert!(f.repository.mutations.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn initial_working_update_rejects_stored_inspection_binding_mismatch() {
+    use document_application::{
+        DocumentVersionService, UpdateWorkingVersionCommand, VersionOperationId,
+    };
+    for mismatched_hash in [true, false] {
+        let (f, document_id, version_id, actor) = initial_update_fixture();
+        let snapshot = f.repository.snapshot.lock().unwrap().clone().unwrap();
+        f.service.inspect_existing(&snapshot).await.unwrap();
+        let old = f
+            .repository
+            .inspections
+            .lock()
+            .unwrap()
+            .get(&file_id(50))
+            .unwrap()
+            .clone();
+        let mut response = old.response().clone();
+        if mismatched_hash {
+            response.observed_raw_content_hash = [99; 32];
+        } else {
+            response.observed_size_bytes += 1;
+        }
+        let corrupt =
+            SemanticInspectionRecord::restore(file_id(50), response, old.inspected_at()).unwrap();
+        f.repository
+            .inspections
+            .lock()
+            .unwrap()
+            .insert(file_id(50), corrupt);
+        let prepared = f
+            .service
+            .prepare(
+                Title::new("Changed").unwrap(),
+                vec![input("primary", 0, 53, 8)],
+                InspectionProfileVersion::DsiV0,
+            )
+            .await
+            .unwrap();
+        let service = DocumentVersionService::new(
+            Arc::new(TestIds),
+            Arc::new(FixedClock),
+            f.storage.clone(),
+            f.executor.clone(),
+            f.repository.clone(),
+        );
+        let command = UpdateWorkingVersionCommand::new(
+            VersionOperationId::try_from_uuid(Uuid::now_v7()).unwrap(),
+            document_id,
+            version_id,
+            0,
+            actor,
+        )
+        .unwrap();
+        assert_eq!(
+            service.update_working(command, prepared).await,
+            Err(ApplicationError::IntegrityViolation)
+        );
+        assert!(f.repository.mutations.lock().unwrap().is_empty());
     }
 }

@@ -13,11 +13,11 @@ use document_application::{
     DocumentHistoryEntry, DocumentHistoryRepository, DocumentHistoryService, DocumentListFilter,
     DocumentQueryRepository, DocumentQueryService, DocumentRevisionDetail,
     DocumentRevisionDetailQuery, DocumentRevisionPageQuery, DocumentRevisionReadRepository,
-    DocumentRevisionReadService, DocumentRevisionSummary, DocumentSort, FolderActionCapabilities,
-    FolderPageQuery, GuiDocumentReadModel, GuiVersionFileSummary, GuiVersionSummary,
-    HistoryDocumentSummary, HistoryPageQuery, HistoryQuery, IdentityPresentation,
-    IdentityPresentationResolver, IdentityPresentationService, IdentityRef, Page,
-    PolicyBindingMode, ProvenanceQuality, PublishedDocumentSummary, PublishedQuery,
+    DocumentRevisionReadService, DocumentRevisionSummary, DocumentSort, EditManifestRepository,
+    FolderActionCapabilities, FolderPageQuery, GuiDocumentReadModel, GuiVersionFileSummary,
+    GuiVersionSummary, HistoryDocumentSummary, HistoryPageQuery, HistoryQuery,
+    IdentityPresentation, IdentityPresentationResolver, IdentityPresentationService, IdentityRef,
+    Page, PolicyBindingMode, ProvenanceQuality, PublishedDocumentSummary, PublishedQuery,
     VerifiedActorContext, VersionActionCapabilities, VersionDetail, VersionFileSummary,
     VersionPageQuery, VersionPurpose, VersionRequest, VersionSummary,
 };
@@ -40,6 +40,7 @@ use crate::trace::TraceContext;
 pub trait AuthorizedReadRepository:
     DocumentQueryRepository
     + DocumentHistoryRepository
+    + EditManifestRepository
     + DocumentRevisionReadRepository
     + ActionCapabilityReadRepository
     + AccessPolicyReadRepository
@@ -52,6 +53,7 @@ pub trait AuthorizedReadRepository:
 impl<T> AuthorizedReadRepository for T where
     T: DocumentQueryRepository
         + DocumentHistoryRepository
+        + EditManifestRepository
         + DocumentRevisionReadRepository
         + ActionCapabilityReadRepository
         + AccessPolicyReadRepository
@@ -100,6 +102,7 @@ pub fn read_router_with_identity_presentation<R: AuthorizedReadRepository>(
     identity_presentations: Arc<dyn IdentityPresentationResolver>,
 ) -> Result<Router, StartupError> {
     let session_routes = session_routes(identity_presentations.clone());
+    let manifest_routes = crate::edit_manifest::edit_manifest_routes(repository.clone());
     let routes = Router::new()
         .route("/v1/documents", get(list_documents::<R>))
         .route("/v1/documents/{document_id}", get(get_document::<R>))
@@ -144,7 +147,8 @@ pub fn read_router_with_identity_presentation<R: AuthorizedReadRepository>(
             repository,
             identity_presentations,
         })
-        .merge(session_routes);
+        .merge(session_routes)
+        .merge(manifest_routes);
     protect_routes(
         with_operation_timeout(routes, ORDINARY_OPERATION_TIMEOUT),
         Some(identity_adapter),

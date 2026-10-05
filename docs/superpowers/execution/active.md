@@ -1,5 +1,16 @@
 # Active Execution Pointer
 
+## 2026-10-05 06:28 UTC — WORKING編集 D1 backend/API
+
+- 完成source `f639fbf0`を保持し、レビュー境界に沿いD1 backend/API/SDKとD2 GUI/runtimeへ分ける。D1の[状況](document-working-manifest-api-status.md)、共通[承認追補](../specs/2026-10-05-document-working-version-editor-amendment.md)、[小計画](../plans/2026-10-05-document-working-version-editor.md)を参照
+- D1は初回未公開WORKINGの修復・capability整合・exact manifest read・nullable結果を扱う。複数原本GUI有効化はD2で、旧公開維持/選択変換物除外の承認意味は変えない
+- D1source `9212c7b0` と合格main `c4388433` を両履歴保持で統合。新しい組合せのGUI302・pureRust164・DB4target/36宣言case compile-only・型/build/API18/Clippy/fmt/architectureと独立共存review GO。新exact-head CI/実runtimeは公開後。旧資格を付け替えず、画像生成/公開も行わない
+
+
+- 07:05 UTC追補: metadata統合済みmain `b4663e41` と前候補 `ff0aae67` を両履歴保持で統合。GUI338・pureRust164・DB4target/36宣言case compile-only・型/build/API18/Clippy/fmt/architectureと新独立union review GO。全GUI/runtimeは最新mainのbytes、D1backendはff0のbytesを保持。新exact-head hosted資格は公開後に確認する
+
+---
+
 ## 2026-10-05 UTC — 属性編集の実受入完了後、予約取消mainと合流
 
 - PR71 exact `8eaa3942` は全13jobs・DSI・Sandboxと実15+3/Organization/cleanup/artifact公開0が成功。その終端確認後、予約取消main `c4388433` と両public履歴を保持して統合する。[今回の資格と統合状況](document-metadata-main-integration-status.md)を再開先とする

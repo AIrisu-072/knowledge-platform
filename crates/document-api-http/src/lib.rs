@@ -3,6 +3,7 @@
 pub mod api;
 pub mod create;
 pub mod diff;
+pub mod edit_manifest;
 pub mod error;
 pub mod file_download;
 pub mod identity;
