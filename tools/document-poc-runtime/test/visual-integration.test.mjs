@@ -42,7 +42,7 @@ test('予約取消は同じjourneyと再起動phaseへ追加し、専用画像�
 test('取下げ・公開終了の専用journeyと再起動だけを既存runnerへ追加し、画像を記録しない', async () => {
   const config = await read('../../../apps/document-web/playwright.runtime.config.ts');
   assert.match(config, /testMatch: phase === 'journey' \? \[[^\]]*'lifecycle-operations\.spec\.ts'/);
-  assert.match(config, /: \['persistence\.spec\.ts', 'lifecycle-operations-persistence\.spec\.ts'[^\]]*\]/);
+  assert.match(config, /: \['persistence\.spec\.ts', 'metadata-editor\.spec\.ts', 'lifecycle-operations-persistence\.spec\.ts', 'document-schedule-cancellation\.spec\.ts'\]/);
   assert.match(config, /retries: 0/);
   for (const name of ['lifecycle-operations', 'lifecycle-operations-persistence']) {
     const source = await read(`../../../apps/document-web/e2e-runtime/${name}.spec.ts`);
