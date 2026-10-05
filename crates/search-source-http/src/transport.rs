@@ -273,13 +273,18 @@ impl GuardedHttpTransport {
             if remaining.is_zero() {
                 return Err(TransportError::DeadlineExceeded);
             }
+            let target = format!("{}/{}", self.base_path, path.suffix);
             let url = self
                 .origin
-                .join(&format!("{}/{}", self.base_path, path.suffix))
+                .join(&target)
                 .map_err(|_| TransportError::Endpoint)?;
+            // A `.`/`..` segment from a provider ID would be normalized away
+            // to an unregistered path; the path must survive the join intact.
+            let expected_path = target.split('?').next().unwrap_or_default();
             if url.host_str() != Some(self.host.as_str())
                 || url.port_or_known_default() != Some(self.port)
                 || url.scheme() != self.origin.scheme()
+                || url.path() != expected_path
             {
                 return Err(TransportError::Endpoint);
             }

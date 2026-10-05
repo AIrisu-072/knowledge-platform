@@ -37,17 +37,23 @@ struct World {
     index: Index,
     generations: Generations,
     resolver: Resolver,
+    activations: Activations,
 }
 
 impl World {
     async fn new() -> Self {
-        Self {
+        let world = Self {
             api: ApiWorld::new().await,
             provider: Provider::new(spec("commit-abc123")),
             index: Index::default(),
             generations: Generations::default(),
             resolver: Resolver::default(),
-        }
+            activations: Activations::default(),
+        };
+        world
+            .activations
+            .opt_in(world.api.document, spec("commit-abc123"));
+        world
     }
 
     fn source(&self) -> SourceId {
@@ -59,6 +65,7 @@ impl World {
             provider: &self.provider,
             index: &self.index,
             generations: &self.generations,
+            activations: &self.activations,
         }
     }
 
@@ -92,14 +99,9 @@ impl World {
     }
 
     async fn query(&self, text: &str) -> TrustedVectorQuery {
-        TrustedVectorQuery::compile(
-            &scope(&self.api).await,
-            VectorActivationPolicy::EligibleOptIn,
-            &self.provider.spec,
-            text,
-            10,
-        )
-        .unwrap()
+        TrustedVectorQuery::compile(&scope(&self.api).await, &self.activations, text, 10)
+            .await
+            .unwrap()
     }
 }
 
@@ -116,21 +118,39 @@ async fn forged_query_or_model_rejected() {
     let source = world.source();
     world.publish(&[unit(source, 1, 0, "alpha", 9)]).await;
     let scope = scope(&world.api).await;
-    let model = &world.provider.spec;
-    // Disabled by default; bounded text and window.
-    for (policy, text, window) in [
-        (VectorActivationPolicy::default(), "alpha", 10),
-        (VectorActivationPolicy::EligibleOptIn, " ", 10),
-        (
-            VectorActivationPolicy::EligibleOptIn,
-            &"x".repeat(2_049),
-            10,
-        ),
-        (VectorActivationPolicy::EligibleOptIn, "alpha", 0),
-        (VectorActivationPolicy::EligibleOptIn, "alpha", 101),
+    // Bounded text and window.
+    for (text, window) in [
+        (" ", 10),
+        (&"x".repeat(2_049), 10),
+        ("alpha", 0),
+        ("alpha", 101),
     ] {
-        assert!(TrustedVectorQuery::compile(&scope, policy, model, text, window).is_err());
+        assert!(
+            TrustedVectorQuery::compile(&scope, &world.activations, text, window)
+                .await
+                .is_err()
+        );
     }
+    // The policy is the Source's registration, never the caller's: a Source
+    // registered Disabled, or not registered, refuses whatever is asked.
+    let disabled = Activations::default();
+    assert!(
+        TrustedVectorQuery::compile(&scope, &disabled, "alpha", 10)
+            .await
+            .is_err()
+    );
+    disabled.0.lock().unwrap().insert(
+        source,
+        search_application::vector::VectorActivation {
+            policy: VectorActivationPolicy::Disabled,
+            model: spec("commit-abc123"),
+        },
+    );
+    assert!(
+        TrustedVectorQuery::compile(&scope, &disabled, "alpha", 10)
+            .await
+            .is_err()
+    );
     let query = world.query("alpha").await;
     let now = OffsetDateTime::now_utc();
     // The query is bound to its Source: another Source's P1 key is refused.
@@ -469,6 +489,7 @@ async fn unavailable_does_not_assert_absence() {
         .await
         .unwrap();
     assert!(missing.is_unavailable() && missing.candidates().is_empty());
+    // Fusion never receives a list that could read as complete.
     assert!(missing.gap().unwrap().blocking);
     assert!(missing.rank_list("source:Vector", |_| gates()).is_none());
     // A failing Source resolver.
@@ -480,6 +501,7 @@ async fn unavailable_does_not_assert_absence() {
         .await
         .unwrap();
     assert!(failing.is_unavailable() && failing.candidates().is_empty());
+    assert!(failing.rank_list("source:Vector", |_| gates()).is_none());
     assert_eq!(failing.gap().unwrap().reason, GapReason::Availability);
 }
 

@@ -39,7 +39,6 @@ use search_application::scoped::{
 use search_core::discovery::FederatedCandidate;
 use search_core::id::{DiscoveryEvaluationId, ResourceId};
 use search_core::materialization::MaterializationState;
-use search_core::resource::ResourceKind;
 use time::OffsetDateTime;
 
 use crate::protocol::{
@@ -150,9 +149,10 @@ impl<'a> HttpRemoteSourceAdapter<'a> {
     ) -> Option<T> {
         let mut evaluations = self.evaluations.lock().ok()?;
         let key = context.binding().evaluation();
+        // At capacity a new evaluation is refused (Unknown), never admitted
+        // by evicting a running one and resetting its budget.
         if !evaluations.contains_key(&key) && evaluations.len() >= TRACKED_EVALUATIONS {
-            let oldest = *evaluations.keys().next()?;
-            evaluations.remove(&oldest);
+            return None;
         }
         let entry = evaluations.entry(key).or_insert_with(|| Evaluation {
             context: context.clone(),
@@ -434,25 +434,27 @@ impl RemoteSourcePort for HttpRemoteSourceAdapter<'_> {
         target: &'b RemoteIdentity,
     ) -> BoxFuture<'b, CurrentSourcePolicy> {
         Box::pin(async move {
+            let unknown =
+                || SearchError::SourceUnavailable("current remote policy is unknown".into());
+            // Nothing, not even the actor's principal, goes to this origin for
+            // a context or target of another registration or scope.
+            if !self.owns(context) || target.source_scope() != context.source_scope() {
+                return Err(unknown());
+            }
+            // The item's own kind is not observed here: only a single-kind
+            // registration can answer.
+            let [resource_kind] = self.registration.allowed_resource_kinds() else {
+                return Err(unknown());
+            };
+            let resource_kind = *resource_kind;
             let authorization = match self.authorize(context, Some(target)).await {
-                Ok(authorization)
-                    if self.owns(context) && authorization.decision == AccessDecision::Allowed =>
-                {
+                Ok(authorization) if authorization.decision == AccessDecision::Allowed => {
                     authorization
                 }
-                _ => {
-                    return Err(SearchError::SourceUnavailable(
-                        "current remote policy is unknown".into(),
-                    ));
-                }
+                _ => return Err(unknown()),
             };
             Ok(CurrentSourcePolicy {
-                resource_kind: self
-                    .registration
-                    .allowed_resource_kinds()
-                    .first()
-                    .copied()
-                    .unwrap_or(ResourceKind::Knowledge),
+                resource_kind,
                 provider_permission: authorization.permission,
                 retention_mode: self.registration.retention_mode(),
                 probe_allowed: false,
@@ -554,6 +556,11 @@ impl RemoteProvenanceLookupPort for HttpRemoteSourceAdapter<'_> {
             }) else {
                 return Ok(None);
             };
+            // Provenance of an item is read only while the actor may read it.
+            match self.authorize(&context, Some(target.identity())).await {
+                Ok(authorization) if authorization.decision == AccessDecision::Allowed => {}
+                _ => return Ok(None),
+            }
             let Ok(content) = self
                 .content(&context, target.identity().native_id().as_str())
                 .await

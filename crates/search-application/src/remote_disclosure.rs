@@ -301,9 +301,12 @@ impl TransientDisclosure<DiscoveryResult> {
                         .map(|source| (resource.resource_ref, source))
                 })
                 .collect(),
+            // An unbound or unevaluated Claim carries only the caller's own
+            // ID; every Claim with a value or evidence is rechecked.
             claims: result
                 .evidence_set
                 .iter()
+                .filter(|claim| claim.value.is_some() || !claim.evidence_refs.is_empty())
                 .map(|claim| claim.claim_id)
                 .collect(),
         };

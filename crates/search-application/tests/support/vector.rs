@@ -12,7 +12,8 @@ use search_application::ports::{AccessDecision, BoxFuture};
 use search_application::scoped::{AuthorizedSourceScope, CurrentSourceVisibilityPort};
 use search_application::vector::{
     CurrentSourceUnit, EmbeddingProvider, PinnedVectorGeneration, SourceUnitState,
-    TrustedVectorQuery, VectorGenerationPort, VectorIndexPort, VectorSourceResolverPort,
+    TrustedVectorQuery, VectorActivation, VectorActivationPort, VectorGenerationPort,
+    VectorIndexPort, VectorSourceResolverPort,
 };
 use search_core::id::{ProjectionGenerationId, ResourceId, SourceId};
 use search_core::knowledge_unit::{
@@ -229,9 +230,35 @@ impl EmbeddingProvider for Provider {
     }
 }
 
+/// Registered activations by Source; a missing Source is Disabled.
+#[derive(Default)]
+pub struct Activations(pub Mutex<BTreeMap<SourceId, VectorActivation>>);
+
+impl Activations {
+    pub fn opt_in(&self, source: SourceId, model: EmbeddingModelSpec) {
+        self.0.lock().unwrap().insert(
+            source,
+            VectorActivation {
+                policy: search_core::vector::VectorActivationPolicy::EligibleOptIn,
+                model,
+            },
+        );
+    }
+}
+
+impl VectorActivationPort for Activations {
+    fn activation<'a>(&'a self, source: SourceId) -> BoxFuture<'a, Option<VectorActivation>> {
+        Box::pin(async move { Ok(self.0.lock().unwrap().get(&source).cloned()) })
+    }
+}
+
+pub type StageHook = Box<dyn FnOnce() + Send>;
+
 #[derive(Default)]
 pub struct Index {
     stages: Mutex<BTreeMap<String, (VectorIndexDescriptor, Vec<BoundEmbedding>)>>,
+    /// Runs inside the next stage, e.g. a purge racing the build.
+    pub on_stage: Mutex<Option<StageHook>>,
     counter: AtomicUsize,
     /// Leave the last entry out of the next stage (a partial write).
     pub drop_one: Mutex<bool>,
@@ -269,6 +296,9 @@ impl VectorIndexPort for Index {
                 index_receipt_digest: digest(12),
                 index_digest: format!("sha256:{number:064x}"),
             };
+            if let Some(hook) = self.on_stage.lock().unwrap().take() {
+                hook();
+            }
             let mut stored = embeddings.to_vec();
             if std::mem::take(&mut *self.drop_one.lock().unwrap()) {
                 stored.pop();
@@ -379,6 +409,7 @@ impl VectorIndexPort for Index {
 pub struct Generations {
     pub p1_current: Mutex<BTreeMap<SourceId, ProjectionGenerationKey>>,
     published: Mutex<Vec<VectorProjectionManifest>>,
+    pub epochs: std::sync::Arc<Mutex<BTreeMap<String, u64>>>,
 }
 
 impl Generations {
@@ -394,14 +425,23 @@ impl VectorGenerationPort for Generations {
     fn publish_if_current<'a>(
         &'a self,
         manifest: &'a VectorProjectionManifest,
+        scope_epoch: u64,
     ) -> BoxFuture<'a, bool> {
         Box::pin(async move {
-            if self
-                .p1_current
+            let epoch = self
+                .epochs
                 .lock()
                 .unwrap()
-                .get(&manifest.bundle_key.source_id)
-                != Some(&manifest.bundle_key)
+                .get(&manifest.authority_scope_key)
+                .copied()
+                .unwrap_or(0);
+            if epoch != scope_epoch
+                || self
+                    .p1_current
+                    .lock()
+                    .unwrap()
+                    .get(&manifest.bundle_key.source_id)
+                    != Some(&manifest.bundle_key)
             {
                 return Ok(false);
             }
@@ -431,6 +471,25 @@ impl VectorGenerationPort for Generations {
     }
     fn published<'a>(&'a self) -> BoxFuture<'a, Vec<VectorProjectionManifest>> {
         Box::pin(async move { Ok(self.published.lock().unwrap().clone()) })
+    }
+    fn scope_epoch<'a>(&'a self, authority_scope_key: &'a str) -> BoxFuture<'a, u64> {
+        Box::pin(async move {
+            Ok(self
+                .epochs
+                .lock()
+                .unwrap()
+                .get(authority_scope_key)
+                .copied()
+                .unwrap_or(0))
+        })
+    }
+    fn advance_scope_epoch<'a>(&'a self, authority_scope_key: &'a str) -> BoxFuture<'a, u64> {
+        Box::pin(async move {
+            let mut epochs = self.epochs.lock().unwrap();
+            let epoch = epochs.entry(authority_scope_key.to_owned()).or_default();
+            *epoch += 1;
+            Ok(*epoch)
+        })
     }
     fn withdraw<'a>(&'a self, manifest: &'a VectorProjectionManifest) -> BoxFuture<'a, ()> {
         Box::pin(async move {

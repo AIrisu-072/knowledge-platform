@@ -61,13 +61,16 @@ use search_application::source_registration::{
 use search_application::source_registry::InMemorySourceRegistry;
 use search_application::visible_claim::ActorVisibleClaimCatalogPort;
 use search_core::discovery::{CandidateIdentityClass, DiscoveryResult, FederatedCandidate};
-use search_core::id::{ClaimId, ResourceId};
+use search_core::id::{ClaimId, ResourceId, SourceId};
 use search_core::projection::ProjectionGenerationKey;
 use search_source_http::adapter::HttpRemoteSourceAdapter;
 use search_source_http::transport::{AddressResolver, GuardedHttpTransport, TransportLimits};
 use sqlx::PgPool;
 
 use crate::source_registration::PgSourceRegistrationLedger;
+
+/// The longest operation a route may run; a deadline must stay representable.
+pub const MAX_OPERATION_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Source read ports bound to one verified actor for one request.
 #[derive(Clone)]
@@ -220,7 +223,9 @@ pub async fn build_search_api_runtime(
         .ok_or(StartupError::Http(HttpStartupError::ChallengeUnwired))?
         .validate()
         .map_err(|error| StartupError::Http(HttpStartupError::Challenge(error)))?;
-    if host_config.operation_timeout.is_zero() {
+    if host_config.operation_timeout.is_zero()
+        || host_config.operation_timeout > MAX_OPERATION_TIMEOUT
+    {
         return Err(StartupError::Http(HttpStartupError::InvalidTimeout));
     }
     if host_config.disclosure_ttl.is_zero() || host_config.disclosure_ttl > MAX_DISCLOSURE_TTL {
@@ -569,46 +574,69 @@ impl CurrentDisclosureAccessPort for RuntimeBackend {
             ScopedDisclosureGate::new(&authority, &visibility)
                 .authorize(owner, disclosed_fields)
                 .await?;
-            if disclosed_fields.resources.is_empty() {
-                return Ok(());
-            }
             let unavailable = || SearchError::SourceUnavailable("disclosure unavailable".into());
-            let ports = self
-                .actor_ports
-                .for_actor(owner.actor())
-                .await
-                .map_err(|_| unavailable())?;
-            let access_context = owner.actor().access_handle().to_opaque_string();
-            for resource in &disclosed_fields.resources {
-                let source = disclosed_fields
+            let visible = |source: &SourceId| {
+                owner
+                    .sources()
+                    .iter()
+                    .any(|scope| scope.source_id() == *source)
+            };
+            if disclosed_fields.resources.iter().any(|resource| {
+                !disclosed_fields
                     .resource_sources
                     .iter()
-                    .find(|(id, _)| id == resource)
-                    .map(|(_, source)| *source)
-                    .filter(|source| {
-                        owner
-                            .sources()
-                            .iter()
-                            .any(|scope| scope.source_id() == *source)
-                    })
-                    .ok_or_else(unavailable)?;
-                match self.catalog.get_for_server(source) {
+                    .any(|(id, _)| id == resource)
+            }) || disclosed_fields
+                .resource_sources
+                .iter()
+                .any(|(_, source)| !visible(source))
+            {
+                return Err(unavailable());
+            }
+            let mut ports = None;
+            for (resource, source) in &disclosed_fields.resource_sources {
+                match self.catalog.get_for_server(*source) {
                     Some(SourceRegistration::Document(_)) => {
+                        if ports.is_none() {
+                            ports = Some(
+                                self.actor_ports
+                                    .for_actor(owner.actor())
+                                    .await
+                                    .map_err(|_| unavailable())?,
+                            );
+                        }
                         let mut candidate = FederatedCandidate::new(
                             format!("{}:{}", source.as_uuid(), resource.as_uuid()),
                             CandidateIdentityClass::DurableResource,
-                            source,
+                            *source,
                             "disclosure",
                         );
                         candidate.resource_ref = Some(*resource);
-                        if ports.access.evaluate(&candidate, &access_context).await?
-                            != AccessDecision::Allowed
-                        {
+                        let access_context = owner.actor().access_handle().to_opaque_string();
+                        let decision = ports
+                            .as_ref()
+                            .expect("ports were bound above")
+                            .access
+                            .evaluate(&candidate, &access_context)
+                            .await?;
+                        if decision != AccessDecision::Allowed {
                             return Err(unavailable());
                         }
                     }
                     Some(SourceRegistration::Remote(_)) => {}
                     None => return Err(unavailable()),
+                }
+            }
+            // A Claim that left the actor's visible catalog after the
+            // evaluation is not disclosed.
+            for claim in &disclosed_fields.claims {
+                if self
+                    .claims
+                    .bind(owner.actor(), owner.sources(), *claim)
+                    .await?
+                    .is_none()
+                {
+                    return Err(unavailable());
                 }
             }
             Ok(())

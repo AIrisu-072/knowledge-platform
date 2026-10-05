@@ -12,9 +12,7 @@ use search_application::vector::{
 };
 use search_core::id::{ResourceId, SourceId};
 use search_core::knowledge_unit::KnowledgeUnit;
-use search_core::vector::{
-    BoundEmbedding, VectorActivationPolicy, VectorManifestInput, VectorStorageKind,
-};
+use search_core::vector::{BoundEmbedding, VectorManifestInput, VectorStorageKind};
 use time::OffsetDateTime;
 use uuid::Uuid;
 use vector::*;
@@ -27,17 +25,23 @@ struct World {
     index: Index,
     generations: Generations,
     resolver: Resolver,
+    activations: Activations,
 }
 
 impl World {
     async fn new() -> Self {
-        Self {
+        let world = Self {
             api: ApiWorld::new().await,
             provider: Provider::new(spec("commit-abc123")),
             index: Index::default(),
             generations: Generations::default(),
             resolver: Resolver::default(),
-        }
+            activations: Activations::default(),
+        };
+        world
+            .activations
+            .opt_in(world.api.document, spec("commit-abc123"));
+        world
     }
 
     fn source(&self) -> SourceId {
@@ -49,6 +53,7 @@ impl World {
             provider,
             index: &self.index,
             generations: &self.generations,
+            activations: &self.activations,
         }
     }
 
@@ -86,14 +91,9 @@ impl World {
 
     async fn search(&self, generation_number: u128, text: &str) -> (Vec<ResourceId>, bool) {
         let scope = scope(&self.api).await;
-        let query = TrustedVectorQuery::compile(
-            &scope,
-            VectorActivationPolicy::EligibleOptIn,
-            &self.provider.spec,
-            text,
-            10,
-        )
-        .unwrap();
+        let query = TrustedVectorQuery::compile(&scope, &self.activations, text, 10)
+            .await
+            .unwrap();
         let batch = VectorRetriever {
             provider: &self.provider,
             index: &self.index,
@@ -233,7 +233,7 @@ async fn restart_orphan_unready() {
     // and is never pinnable.
     let recovery = world
         .lifecycle()
-        .recover(std::slice::from_ref(&first))
+        .recover(std::slice::from_ref(&first), OffsetDateTime::now_utc())
         .await
         .unwrap();
     assert_eq!(
@@ -247,7 +247,11 @@ async fn restart_orphan_unready() {
     assert_eq!(world.index.stage_count(), 1);
     assert!(world.pinned(1).await.is_some());
     // Without its P1 input, a published generation is not inferred READY.
-    let recovery = world.lifecycle().recover(&[]).await.unwrap();
+    let recovery = world
+        .lifecycle()
+        .recover(&[], OffsetDateTime::now_utc())
+        .await
+        .unwrap();
     assert_eq!(recovery.withdrawn, 1);
     assert_eq!(world.pinned(1).await, None);
     assert_eq!(world.search(1, "alpha").await, (vec![], true));
@@ -328,8 +332,10 @@ async fn model_profile_change_reembeds() {
         VectorBuildOutcome::Published(_)
     ));
     let previous = embeddings(&world, 1, &first).await;
-    // Another model: nothing of the old model is reused.
+    // The Source's registration moves to another model: nothing of the
+    // old model is reused.
     let other = Provider::new(spec("commit-other"));
+    world.activations.opt_in(source, spec("commit-other"));
     world.generations.set_p1(generation(source, 2));
     let second = input(&units(source), generation(source, 2), SCOPE);
     assert!(matches!(
@@ -347,6 +353,7 @@ async fn model_profile_change_reembeds() {
     ));
     assert_eq!(other.embedded(), 3);
     // Another extraction profile: every Unit is embedded again.
+    world.activations.opt_in(source, spec("commit-abc123"));
     world.generations.set_p1(generation(source, 3));
     let reprofiled: Vec<KnowledgeUnit> = vec![
         unit(source, 1, 0, "alpha", 29),
@@ -456,11 +463,57 @@ async fn revocation_expiry_scope_change_and_cancel_purge() {
         .unwrap();
     let recovery = world
         .lifecycle()
-        .recover(&[expiring.clone()])
+        .recover(&[expiring.clone()], OffsetDateTime::now_utc())
         .await
         .unwrap();
-    // The purged generation's emptied stage and the cancelled stage.
+    // The expired generation is withdrawn at restart; its stage, the purged
+    // generation's emptied stage and the cancelled stage are discarded.
     assert_eq!(stages, 2);
-    assert_eq!(recovery.orphans_discarded, 2);
-    assert_eq!(world.index.stage_count(), 1);
+    assert_eq!(recovery.withdrawn, 1);
+    assert_eq!(recovery.orphans_discarded, 3);
+    assert_eq!(world.index.stage_count(), 0);
+}
+
+#[tokio::test]
+async fn purge_racing_build_and_disabled_source_never_publish() {
+    let world = World::new().await;
+    let source = world.source();
+    let first = input(&units(source), generation(source, 1), SCOPE);
+    world.generations.set_p1(generation(source, 1));
+    // The scope is purged while the build is staging: nothing is published.
+    let epochs = world.generations.epochs.clone();
+    *world.index.on_stage.lock().unwrap() = Some(Box::new(move || {
+        *epochs.lock().unwrap().entry(SCOPE.into()).or_default() += 1;
+    }));
+    assert_eq!(world.build(&first, &[]).await, VectorBuildOutcome::LostCas);
+    assert_eq!(world.pinned(1).await, None);
+    assert_eq!(world.index.stage_count(), 0);
+    // A Source registered Disabled, or with another model, never builds.
+    world.activations.0.lock().unwrap().remove(&source);
+    assert!(
+        world
+            .lifecycle()
+            .build(
+                &first,
+                &[],
+                VectorStorageKind::Persistent,
+                OffsetDateTime::now_utc()
+            )
+            .await
+            .is_err()
+    );
+    world.activations.opt_in(source, spec("commit-other"));
+    assert!(
+        world
+            .lifecycle()
+            .build(
+                &first,
+                &[],
+                VectorStorageKind::Persistent,
+                OffsetDateTime::now_utc()
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(world.index.stage_count(), 0);
 }

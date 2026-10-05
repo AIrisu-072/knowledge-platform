@@ -326,6 +326,17 @@ async fn caller_or_provider_url_never_fetched() {
         );
         assert!(!head.contains("elsewhere.example.test:"));
     }
+    // A `.` or `..` ID would be normalized to another path: refused before
+    // any connection.
+    for id in ["..", "."] {
+        assert!(matches!(
+            transport
+                .request(&RegisteredPath::content(id), b"", soon())
+                .await,
+            Err(TransportError::Endpoint)
+        ));
+    }
+    assert_eq!(server.heads.lock().unwrap().len(), 2);
 }
 
 #[tokio::test]
