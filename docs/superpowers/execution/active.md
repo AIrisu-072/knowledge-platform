@@ -10,7 +10,7 @@
 
 ## Search完成作業の再開：2026-10-05
 
-**ACTIVE / WIP。** Searchの既存実装はPR #61でmainへ統合済み。main `f9d6f5ff778c95eaeed0ce9d0f714f80798ff4af` / tree `97fae4eb65f756071ba181b3aaf36bdbb1fbd600` はPR #61 head `5a5fa7a420312df737600eee5ea7a4029b04c63f` と同一treeで、PR CI `37218936232`・DSI PoC `37218936244`・Sandbox `37218936195`、main push CI `37220420564` がすべて成功した。Search専用jobでは新規・base8・Document10・旧Search9停止の履歴DB試験、G07/G08、P7-02/03/06を含む143件が成功している。2026-10-04 16:43 UTCの節にある「hosted全CIと履歴DB4経路は未実行」は、この結果で解消した。PR #40（head `1571ee49`）と積み上げDraftの内容はすべてmainに含まれる。
+**完了（2026-10-05）。** 所有者は、最終headのhosted CIが成功したらmainへmergeすることを承認した（deployはしない）。Searchの既存実装はPR #61でmainへ統合済み。main `f9d6f5ff778c95eaeed0ce9d0f714f80798ff4af` / tree `97fae4eb65f756071ba181b3aaf36bdbb1fbd600` はPR #61 head `5a5fa7a420312df737600eee5ea7a4029b04c63f` と同一treeで、PR CI `37218936232`・DSI PoC `37218936244`・Sandbox `37218936195`、main push CI `37220420564` がすべて成功した。Search専用jobでは新規・base8・Document10・旧Search9停止の履歴DB試験、G07/G08、P7-02/03/06を含む143件が成功している。2026-10-04 16:43 UTCの節にある「hosted全CIと履歴DB4経路は未実行」は、この結果で解消した。PR #40（head `1571ee49`）と積み上げDraftの内容はすべてmainに含まれる。
 
 残りの作業は、mainを基点にした `feat/search-platform-completion-20261005` の一つのDraft PRで進める。所有者の判断（2026-10-05）は次のとおり。
 
@@ -19,7 +19,7 @@
 - DB試験はローカルのOrbStack（testcontainersの公式PostgreSQL 18.6）でも実行する
 - 検証は凍結計画の受入試験・CIを基本とし、過剰な証跡は作らない
 
-未完了：P1本文抽出〜本文検索、P2計測と採否、P3計測・選定と永続Graph、P4-06〜17、P5 HTTP API、P6のS04/S05/I04、P7-04/05/07〜12、G1〜G3。P4-03/P4-04/P7-06の独立レビューGOの記録は無い。所有者実環境に旧Search9の履歴が無いことは未確認で、[STOP手順](../../operations/search-main-migration-stop.md)を維持する。前回のOpenAI側セッションが停止した未公開の作業は再実行せず、凍結計画から実装する。
+結果（同日）：P1〜P7の残りとG1〜G3を実施した。各タスクの結果、未実装・不採用とした項目とその理由、所有者判断事項、本番前の改善候補は[状態記録](search-platform-completion-program-status.md)にある。P4-03/P4-04/P7-06の個別レビューGOは、G2の領域別レビューで代替した。所有者実環境に旧Search9の履歴が無いことは未確認で、[STOP手順](../../operations/search-main-migration-stop.md)を維持する。
 
 ## 2026-10-04 17:27 UTC — AgentとSearchを保持するmain統合候補
 
