@@ -11,6 +11,7 @@ pub mod context;
 pub mod discovery_service;
 pub mod error;
 pub mod federation;
+pub mod graph_generation;
 pub mod indexing_service;
 pub mod materialization;
 pub mod ports;
