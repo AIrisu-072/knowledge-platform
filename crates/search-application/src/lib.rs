@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 pub mod action_selection;
+pub mod api_scope;
 pub mod body_ports;
 
 pub mod candidate;
