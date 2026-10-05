@@ -4149,6 +4149,7 @@ version = "0.0.0"
 dependencies = [
  "search-application",
  "search-core",
+ "serde_json",
  "sha2 0.11.0",
  "sqlx",
  "thiserror",

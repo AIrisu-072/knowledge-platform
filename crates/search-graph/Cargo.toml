@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 search-application = { version = "0.0.0", path = "../search-application" }
 search-core = { version = "0.0.0", path = "../search-core" }
+serde_json.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true

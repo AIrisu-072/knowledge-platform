@@ -190,7 +190,7 @@ fn namespace_tag(namespace: RelationNamespace) -> u8 {
     }
 }
 
-fn kind_tag(kind: ResourceKind) -> u8 {
+pub(crate) fn kind_tag(kind: ResourceKind) -> u8 {
     match kind {
         ResourceKind::Knowledge => 1,
         ResourceKind::Document => 2,
@@ -436,6 +436,61 @@ fn validate_attachments(
     Ok(())
 }
 
+fn sha256_text(domain: &[u8], bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(domain);
+    hasher.update(bytes);
+    let hex: String = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!("sha256:{hex}")
+}
+
+/// `sha256:` digest of the canonical relation bytes stored with each row.
+pub fn relation_digest(relation: &TypedRelationInstance) -> Result<String, GraphError> {
+    Ok(sha256_text(
+        b"search-graph:relation-v1\0",
+        &canonical_relation(relation)?,
+    ))
+}
+
+/// `sha256:` Source mapping commitment of one snapshot: every Resource's kind,
+/// Version reference and Source-native mapping, in Resource order. The Source
+/// adapter issues it at registration; stage and recover recompute it from rows.
+pub fn canonical_mapping_digest(
+    source: SourceId,
+    source_snapshot: &str,
+    resources: &[GraphResourceRecord],
+) -> Result<String, GraphError> {
+    let mut ordered: Vec<&GraphResourceRecord> = resources.iter().collect();
+    ordered.sort_by_key(|record| record.resource_ref);
+    if ordered
+        .windows(2)
+        .any(|pair| pair[0].resource_ref == pair[1].resource_ref)
+    {
+        return Err(invalid("duplicate Resource"));
+    }
+    let mut out = Canonical::default();
+    out.uuid(source.as_uuid());
+    out.text(source_snapshot)?;
+    out.count(ordered.len())?;
+    for record in ordered {
+        out.uuid(record.resource_ref.as_uuid());
+        out.tag(kind_tag(record.kind));
+        match record.resource_version_ref {
+            None => out.tag(0),
+            Some(version) => {
+                out.tag(1);
+                out.uuid(version.as_uuid());
+            }
+        }
+        mapping(&mut out, &record.mapping)?;
+    }
+    Ok(sha256_text(b"search-graph:source-mapping-v1\0", &out.0))
+}
+
 /// `sha256:` digest of one Source's Graph content: schema, every Resource and
 /// every relation, in key order. Generation identity is excluded.
 pub fn canonical_graph_digest(
@@ -484,13 +539,5 @@ pub fn canonical_graph_digest(
     for bytes in canonical_relations.values() {
         out.frame(bytes)?;
     }
-    let mut hasher = Sha256::new();
-    hasher.update(DOMAIN);
-    hasher.update(&out.0);
-    let hex: String = hasher
-        .finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
-    Ok(format!("sha256:{hex}"))
+    Ok(sha256_text(DOMAIN, &out.0))
 }
