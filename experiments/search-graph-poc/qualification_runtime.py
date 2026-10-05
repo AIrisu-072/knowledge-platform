@@ -173,6 +173,7 @@ def start_candidate(backend, profile, image_id):
         port_id = "5432/tcp"
     else:
         args = ["--memory=2g", "-e", "NEO4J_AUTH=neo4j/p3syntheticpass",
+                "-e", "NEO4J_db_tx__log_preallocate=false",
                 "-e", "NEO4J_server_memory_heap_initial__size=256m",
                 "-e", "NEO4J_server_memory_heap_max__size=256m",
                 "-e", "NEO4J_server_memory_pagecache_size=128m",

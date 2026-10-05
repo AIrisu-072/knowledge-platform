@@ -345,6 +345,9 @@ def _neo_admin(image_id, data_dir, operation, input_bytes=None):
                 "--overwrite-destination=true"]
     else:
         raise ValueError("unknown Neo4j offline operation")
+    # Linux bind mounts keep host ownership; the explicit neo4j user must be
+    # able to write the separately owned offline directory (amendment 2026-10-05).
+    Path(data_dir).chmod(0o777)
     return command(["docker", "run", "--rm", "--pull=never", "--memory=2g",
                     "--user", "neo4j",
                     "--label", f"{OWNER_LABEL}=1", "--entrypoint", "neo4j-admin",
@@ -356,6 +359,7 @@ def _neo_start_restore(name, image_id, data_dir):
     command(["docker", "run", "-d", "--pull=never", "--name", name,
              "--label", f"{OWNER_LABEL}=1", "--memory=2g",
              "-e", "NEO4J_AUTH=neo4j/p3syntheticpass",
+             "-e", "NEO4J_db_tx__log_preallocate=false",
              "-e", "NEO4J_server_memory_heap_initial__size=256m",
              "-e", "NEO4J_server_memory_heap_max__size=256m",
              "-e", "NEO4J_server_memory_pagecache_size=128m",

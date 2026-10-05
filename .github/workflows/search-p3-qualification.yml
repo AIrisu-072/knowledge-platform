@@ -54,7 +54,10 @@ jobs:
         run: |
           mkdir -p data/runs
           for groups in 100 "$PROFILE"; do
-            if [ ! -f "fixture-$groups.json" ]; then
+            if [ -f "base-fixtures/fixture-$groups.json.gz" ]; then
+              # Historical 1,000/3,000 bases predate the Source-2 canary generator.
+              gzip -dc "base-fixtures/fixture-$groups.json.gz" > "fixture-$groups.json"
+            elif [ ! -f "fixture-$groups.json" ]; then
               ./target/release/search-graph-backend-poc make "$groups" "fixture-$groups.json"
             fi
           done
