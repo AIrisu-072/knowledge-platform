@@ -240,7 +240,7 @@ async fn migration_keeps_pointer_and_receipt_same_database() {
             .iter()
             .map(|(version, _)| *version)
             .collect::<Vec<_>>(),
-        vec![1, 2, 3, 4, 5, 6]
+        vec![1, 2, 3, 4, 5, 6, 7]
     );
     assert!(
         search_before
