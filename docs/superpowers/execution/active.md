@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 2026-10-05 03:12 UTC — 既存APIの文書初回登録をGUIへ追加
+
+- 所有者の「内部処理があるものを画面操作から使えるようにする」指示に従い、main `d20f2c1c` から初回文書登録を最優先で追加する。[今回の状況](document-initial-registration-status.md)、[小さい計画](../plans/2026-10-05-document-initial-registration.md)を参照
+- 既存multipart create/回復GETと現在Folder capabilityだけを使用する。初回createにはoperationIdがないため、結果不明後は再POSTせず、タブ内の未解決markerと既存3 IDsの照会を使う。新backend・認可方式・公開規則は変更しない
+- 純粋GUI259件・型・production build・collection-onlyは成功。限定独立レビューGO、既存hosted実DB/browserのexact-head受入は未完。main mergeは親担当、実サーバー反映は所有者が手動実施する。以下の過去記録を現在の資格へ付け替えない
+
+---
+
 ## 2026-10-05 01:21 UTC — 完了・保留再開・Document参照をmainへ統合する候補
 
 - 受入済みPR65 `64b5ddb0` とmain `b9097a43` を両parent保持で統合する。[今回の状況](organization-workflow-document-main-integration-status.md)を再開先とする
