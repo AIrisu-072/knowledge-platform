@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+mod body_manifest;
 mod coverage;
 mod evidence;
 mod extraction;
@@ -12,6 +13,11 @@ mod postgres;
 mod relations;
 mod translate;
 
+pub use body_manifest::{
+    ArtifactReceipt, BodyCoverageArtifact, BodyCoverageItem, BodyItemEntry, BodyUnitManifest,
+    GenerationBundleReceipt, LEXICAL_SCHEMA_VERSION, compute_bundle_receipt, coverage_receipt,
+    profile_set_digest, projection_digest, unit_manifest_receipt, validate_manifest,
+};
 pub use coverage::{DocumentCoveragePreflight, DocumentCoverageRequirement};
 pub use evidence::{DocumentEvidenceCatalog, DocumentEvidenceField};
 pub use extraction::{

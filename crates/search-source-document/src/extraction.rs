@@ -37,6 +37,8 @@ pub struct ExtractedItemResult {
     /// `None` when the declared media type is outside every registered format.
     pub detected_format: Option<FormatId>,
     pub profile: Option<ExtractionProfileId>,
+    /// The host-built composite plan for a ZIP item.
+    pub archive_plan: Option<ArchiveProfilePlan>,
 }
 
 impl ExtractedItemResult {
@@ -51,6 +53,7 @@ impl ExtractedItemResult {
             units: Vec::new(),
             detected_format: format,
             profile,
+            archive_plan: None,
         }
     }
 
@@ -65,6 +68,7 @@ impl ExtractedItemResult {
             units: Vec::new(),
             detected_format: format,
             profile,
+            archive_plan: None,
         }
     }
 }
@@ -378,6 +382,7 @@ impl<F: FileStorage, E: ContentExtractor> DocumentBodyExtractor<F, E> {
             units,
             detected_format: Some(format),
             profile: Some(profile_id),
+            archive_plan: profile.archive_plan().cloned(),
         })
     }
 
