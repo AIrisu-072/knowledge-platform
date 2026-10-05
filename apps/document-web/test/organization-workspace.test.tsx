@@ -9,10 +9,11 @@ import { workApi, WorkApiError } from '../src/api/work-api';
 import { OrganizationProvider } from '../src/application/organization-context';
 import { validateTaskSearch } from '../src/application/work-workspace';
 import { AppShell } from '../src/components/app-shell/AppShell';
-import { validateDetailSearch } from '../src/application/search-state';
+import { validateDetailSearch, validateListSearch } from '../src/application/search-state';
 import { TaskHomePage } from '../src/routes/TaskHomePage';
+import { DocumentHomePage } from '../src/routes/DocumentHomePage';
 
-jest.mock('../src/application/document-workspace', () => ({ documentApi: { getDocument: jest.fn(), listVersionFiles: jest.fn(), downloadVersionFile: jest.fn() } }));
+jest.mock('../src/application/document-workspace', () => ({ documentApi: { getDocument: jest.fn(), listVersionFiles: jest.fn(), downloadVersionFile: jest.fn(), getRootFolder: jest.fn(), listFolderChildren: jest.fn(), listDocuments: jest.fn() } }));
 
 const session = { principalId: 'sales-01', displayName: '営業担当（模擬）', actingAssignmentId: 'assignment-sales', capabilities: { nativeWorkspace: false, agent: true, search: false, fileUpload: false, return: false } };
 const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canComplete: false, completionActionId: null, canHold: false, holdActionId: null, canResume: false, resumeActionId: null, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, canRequestAgent: true, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null };
@@ -22,6 +23,9 @@ const nextTask = { ...task, id: 'task-2', attemptId: 'attempt-2', title: '事務
 const snapshot = { id: 'snapshot-1', sourceTaskId: task.id, sourceAttemptId: task.attemptId, targetTaskId: nextTask.id, createdAt: '2026-10-04T05:00:00Z', evidenceRevisionRefs: [], findingRevisionRefs: [], decisionRevisionRefs: [], artifacts: [{ artifactId: artifact.id, revision: 2, schemaId: artifact.schemaId, value: { text: '提出する文案' } }] };
 
 function setup(entry = '/tasks?view=context&taskId=task-1') {
+  jest.mocked(documentApi.getRootFolder).mockResolvedValue({ folderId: '00000000-0000-7000-8000-000000000001', name: 'ルート', revision: 1, parentFolderId: null, capabilities: {} } as never);
+  jest.mocked(documentApi.listFolderChildren).mockResolvedValue({ items: [], nextCursor: null, capabilities: {} } as never);
+  jest.mocked(documentApi.listDocuments).mockImplementation(async query => ({ view: query.view, items: [], nextCursor: null } as never));
   jest.mocked(documentApi.getDocument).mockResolvedValue({ documentId: detail.inputResources[0]!.documentId, displayRevision: null } as never);
   jest.spyOn(workApi, 'getSession').mockResolvedValue(session as never);
   jest.spyOn(workApi, 'listTasks').mockResolvedValue({ items: [task], nextCursor: null } as never);
@@ -33,7 +37,8 @@ function setup(entry = '/tasks?view=context&taskId=task-1') {
   const root = createRootRoute({ component: Outlet });
   const tasks = createRoute({ getParentRoute: () => root, path: '/tasks', validateSearch: validateTaskSearch, component: TaskHomePage });
   const document = createRoute({ getParentRoute: () => root, path: '/documents/$documentId', validateSearch: validateDetailSearch, component: () => <AppShell><h1>入力文書</h1></AppShell> });
-  const router = createRouter({ routeTree: root.addChildren([tasks, document]), history: createMemoryHistory({ initialEntries: [entry] }) });
+  const documents = createRoute({ getParentRoute: () => root, path: '/documents', validateSearch: validateListSearch, component: DocumentHomePage });
+  const router = createRouter({ routeTree: root.addChildren([tasks, document, documents]), history: createMemoryHistory({ initialEntries: [entry] }) });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   render(<OrganizationProvider><QueryClientProvider client={client}><RouterProvider router={router as never} /></QueryClientProvider></OrganizationProvider>);
   return { router, client };
@@ -45,11 +50,30 @@ test('task selection stays in URL across the two projections; shared input opens
   const { router } = setup();
   expect(await screen.findByLabelText('作業中の文案')).toHaveValue('保存済みの文案');
   const navigation = screen.getByRole('navigation', { name: 'メインナビゲーション' });
-  expect(within(navigation).getAllByRole('link').map((link) => link.textContent?.trim())).toEqual(['タスク', '文書', '検索']);
+  expect(within(navigation).getAllByRole('link').map((link) => link.textContent?.trim())).toEqual(['タスク', '文書', '編集作業', '検索']);
   expect(screen.getByRole('link', { name: '共有の入力文書' })).toHaveAttribute('href', expect.stringContaining('/documents/00000000-0000-4000-8000-000000000010'));
   await userEvent.click(screen.getByRole('button', { name: '事務型・キュー' }));
   await waitFor(() => expect(router.state.location.search).toMatchObject({ view: 'queue', taskId: 'task-1' }));
   expect(screen.getByText(/ブラウザーではネイティブWorkspaceを利用できません/)).toBeVisible();
+});
+
+test('Organizationの可視ナビから編集作業と公開一覧へ移動し、未保存のタスク文案へ戻れる', async () => {
+  const { router } = setup();
+  fireEvent.change(await screen.findByLabelText('作業中の文案'), { target: { value: '未保存の文案を保持' } });
+  await userEvent.click(screen.getByRole('link', { name: '共有の入力文書' }));
+  await screen.findByRole('heading', { name: '入力文書' });
+  const navigation = () => within(screen.getByRole('navigation', { name: 'メインナビゲーション' }));
+  await userEvent.click(navigation().getByRole('link', { name: '編集作業' }));
+  expect(await screen.findByRole('heading', { name: '編集作業', level: 1 })).toBeVisible();
+  expect(router.state.location.search).toMatchObject({ view: 'authoring' });
+  expect(navigation().getByRole('link', { name: '編集作業' })).toHaveAttribute('aria-current', 'page');
+  expect(documentApi.listDocuments).toHaveBeenCalledWith(expect.objectContaining({ view: 'authoring' }));
+  await userEvent.click(navigation().getByRole('link', { name: '文書' }));
+  expect(await screen.findByRole('heading', { name: '文書一覧', level: 1 })).toBeVisible();
+  expect(navigation().getByRole('link', { name: '文書' })).toHaveAttribute('aria-current', 'page');
+  await userEvent.click(navigation().getByRole('link', { name: 'タスク' }));
+  expect(await screen.findByLabelText('作業中の文案')).toHaveValue('未保存の文案を保持');
+  expect(router.state.location.search).toMatchObject({ view: 'context', taskId: task.id });
 });
 
 test('save then confirmation submits the exact saved revision and shows immutable receipt', async () => {

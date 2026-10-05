@@ -5,6 +5,7 @@ import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet
 import { documentApi, type DocumentDetail, type VersionDetail } from '../src/application/document-workspace';
 import { DocumentDetailPage } from '../src/routes/DocumentDetailPage';
 import { validateDetailSearch } from '../src/application/search-state';
+import { workingOperationKey } from '../src/application/document-working-version';
 
 jest.mock('../src/application/document-workspace', () => ({ documentApi: {
   getDocument: jest.fn(), listDocumentVersions: jest.fn(), getDocumentVersion: jest.fn(),
@@ -158,6 +159,47 @@ test('確定済み成功後の次の新版作成では新しいフォームを�
   expect(await screen.findByRole('form', { name: '作業版の原本を編集' })).toBeVisible();
   expect(screen.queryByText('新しい作業版を作成しました。')).not.toBeInTheDocument();
   expect(api.createVersion).toHaveBeenCalledTimes(1);
+});
+test('保存の成功通知は編集と版一覧だけに残り、公開成功のlive statusと競合しない', async () => {
+  const { api, client } = setup();
+  api.publishVersion.mockResolvedValue({ publishedAt: '2026-10-05T01:00:00Z' });
+  const form = await open(); await replace(form); fireEvent.submit(form);
+  expect(await screen.findByRole('status')).toHaveTextContent('作業版を保存しました。');
+  const saved = client.getQueryData(workingOperationKey(documentId));
+  fireEvent.click(screen.getAllByRole('button', { name: '版の一覧へ戻る' })[0]!);
+  expect(await screen.findByRole('status')).toHaveTextContent('作業版を保存しました。');
+  fireEvent.click(screen.getByRole('tab', { name: '概要' }));
+  await waitFor(() => expect(screen.getByRole('tab', { name: '概要' })).toHaveAttribute('aria-selected', 'true'));
+  expect(screen.queryByText('作業版を保存しました。')).not.toBeInTheDocument();
+  expect(client.getQueryData(workingOperationKey(documentId))).toBe(saved);
+  fireEvent.click(screen.getByRole('tab', { name: '版・改訂' }));
+  expect(await screen.findByRole('status')).toHaveTextContent('作業版を保存しました。');
+  fireEvent.click(screen.getByRole('button', { name: '公開する' }));
+  await screen.findByRole('checkbox', { name: '公開対象の版とファイルを確認しました。' });
+  expect(screen.queryByText('作業版を保存しました。')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('checkbox', { name: '公開対象の版とファイルを確認しました。' }));
+  fireEvent.click(screen.getByRole('button', { name: '公開する' }));
+  fireEvent.click(within(await screen.findByRole('dialog', { name: '公開を確認' })).getByRole('button', { name: '確定する' }));
+  expect(await screen.findByRole('status')).toHaveTextContent('公開しました');
+  expect(screen.queryByText('作業版を保存しました。')).not.toBeInTheDocument();
+  expect(client.getQueryData(workingOperationKey(documentId))).toBe(saved);
+});
+test('送信中と結果不明は概要へ移っても保持し、固定要求で回復できる', async () => {
+  const { api, client, router } = setup(); let reject!: (reason: unknown) => void;
+  api.updateWorkingVersion.mockImplementationOnce(() => new Promise((_resolve, failed) => { reject = failed; }));
+  const form = await open(); await replace(form); fireEvent.submit(form);
+  await screen.findByText('保存結果を確認しています…');
+  const pending = client.getQueryData(workingOperationKey(documentId));
+  await act(async () => router.navigate({ to: '/documents/$documentId', params: { documentId }, search: { view: 'authoring', tab: 'overview' } }));
+  expect(await screen.findByRole('status')).toHaveTextContent('保存結果を確認しています…');
+  expect(client.getQueryData(workingOperationKey(documentId))).toBe(pending);
+  await act(async () => reject(new TypeError('lost')));
+  expect(await screen.findByRole('alert')).toHaveTextContent('保存結果を確認できません');
+  fireEvent.click(screen.getByRole('button', { name: '同じ内容で再試行' }));
+  await waitFor(() => expect(client.getQueryData(workingOperationKey(documentId))).toMatchObject({ status: 'succeeded' }));
+  expect(api.updateWorkingVersion.mock.calls[1]).toEqual(api.updateWorkingVersion.mock.calls[0]);
+  expect(api.downloadVersionFile).toHaveBeenCalledTimes(2);
+  expect(screen.queryByText('作業版を保存しました。')).not.toBeInTheDocument();
 });
 test('確定した拒否では選択ファイルをreadonlyで保持し、確認前に再送しない', async () => {
   const { api } = setup(); api.updateWorkingVersion.mockRejectedValueOnce(problem(403, 'FORBIDDEN'));

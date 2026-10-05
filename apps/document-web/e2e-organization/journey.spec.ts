@@ -84,6 +84,14 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     await input.click();
     await expect(page).toHaveURL((url) => url.pathname === `/documents/${context.documentId}`);
     await expect(page.getByRole('heading', { name: document.title, level: 1 })).toBeVisible();
+    await page.getByRole('navigation', { name: 'メインナビゲーション' }).getByRole('link', { name: '編集作業', exact: true }).click();
+    await expect(page).toHaveURL((url) => url.pathname === '/documents' && url.searchParams.get('view') === 'authoring');
+    await expect(page.getByRole('navigation', { name: 'メインナビゲーション' }).getByRole('link', { name: '編集作業', exact: true })).toHaveAttribute('aria-current', 'page');
+    await page.getByRole('button', { name: new RegExp(document.title) }).click();
+    await page.getByRole('button', { name: '詳細を開く', exact: true }).click();
+    await expect(page).toHaveURL((url) => url.pathname === `/documents/${context.documentId}` && url.searchParams.get('view') === 'authoring');
+    await page.getByRole('tab', { name: '版・改訂', exact: true }).click();
+    await expect(page.getByRole('button', { name: '新しい版を作成', exact: true }).first()).toBeEnabled();
     currentAction('task-navigation');
     await page.getByRole('navigation', { name: 'メインナビゲーション' }).getByRole('link', { name: 'タスク', exact: true }).click();
     await expect(page).toHaveURL((url) => url.pathname === '/tasks' && url.searchParams.get('taskId') === source.id && url.searchParams.get('view') === 'context');
