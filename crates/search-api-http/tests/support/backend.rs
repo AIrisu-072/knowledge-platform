@@ -114,14 +114,16 @@ fn name(operation: SearchOperation) -> &'static str {
 
 impl Backend {
     pub async fn new() -> &'static Self {
+        Self::with_documents(vec![doc(11, "規程 A1", None), doc(12, "規程 A2", None)]).await
+    }
+
+    /// The same world with `documents` in the first Document Source.
+    pub async fn with_documents(documents: Vec<crate::corpus::Doc>) -> &'static Self {
         let world: &'static ApiWorld = Box::leak(Box::new(ApiWorld::new().await));
         let visibility: &'static SyntheticVisibilityAdapter<'static> =
             Box::leak(Box::new(world.visibility()));
         let corpus: &'static Corpus = Box::leak(Box::new(Corpus::new(vec![
-            (
-                world.document,
-                vec![doc(11, "規程 A1", None), doc(12, "規程 A2", None)],
-            ),
+            (world.document, documents),
             (world.second, vec![doc(21, "規程 B1", None)]),
         ])));
         Box::leak(Box::new(Self {
@@ -143,13 +145,17 @@ impl Backend {
 
     /// A verified handle for `principal` with both tenant-a Documents.
     pub async fn handle(&self, principal: &str) -> AccessContextHandle {
+        self.handle_with(principal, &[self.world.document, self.world.second])
+            .await
+    }
+
+    pub async fn handle_with(
+        &self,
+        principal: &str,
+        sources: &[search_core::id::SourceId],
+    ) -> AccessContextHandle {
         self.world
-            .actor(
-                "tenant-a",
-                principal,
-                self.visibility,
-                &[self.world.document, self.world.second],
-            )
+            .actor("tenant-a", principal, self.visibility, sources)
             .await
     }
 

@@ -13,6 +13,7 @@ pub mod dto;
 pub mod limits;
 pub mod problem;
 pub mod router;
+pub mod send;
 
 pub use auth::{
     AuthConfigurationError, CredentialError, SearchAuthChallengePort, SearchAuthSchemeBinding,
@@ -22,3 +23,4 @@ pub use router::{
     ApiFuture, SearchApiBackend, SearchOperation, SearchRouterConfig, StartupError,
     build_search_router,
 };
+pub use send::{CloseReason, ConnectionLeases, SendLease, SendObserver, ServeOptions, serve};

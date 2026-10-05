@@ -44,6 +44,7 @@ use crate::limits::{
     header_bytes, is_json,
 };
 use crate::problem::{FieldError, NO_SNIFF, PRIVATE_NO_STORE, ProblemCode, problem};
+use crate::send::{ConnectionLeases, leased_response};
 
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, ApiError>> + Send + 'a>>;
 
@@ -226,7 +227,11 @@ async fn route(
         }
     };
     match outcome {
-        Ok(bytes) => success(bytes),
+        // On the socket server the body owns a lease until the send completes.
+        Ok((bytes, evaluation_closed)) => match parts.extensions.get::<ConnectionLeases>() {
+            Some(leases) => leased_response(bytes, leases.open(evaluation_closed)),
+            None => success(bytes),
+        },
         Err(Failure(code, errors)) => problem(code, trace, Some(&state.challenge), &errors),
     }
 }
@@ -315,7 +320,7 @@ async fn pipeline(
     body: Bytes,
     resource_id: Option<String>,
     trace: Uuid,
-) -> Result<Vec<u8>, Failure> {
+) -> Result<(Vec<u8>, bool), Failure> {
     let token = bearer_token(&parts.headers).ok_or(ProblemCode::AuthenticationRequired)?;
     let handle = state
         .credentials
@@ -329,6 +334,7 @@ async fn pipeline(
     backend.authorize(&context, operation).await?;
     let gate = backend.gate();
     let mut bytes: Option<Vec<u8>> = None;
+    let evaluation_closed;
     let encode = |slot: &mut Option<Vec<u8>>, encoded: serde_json::Result<Vec<u8>>| {
         *slot = Some(encoded.map_err(|_| SearchError::OperationFailed("encode".into()))?);
         Ok(())
@@ -340,6 +346,7 @@ async fn pipeline(
                 .map_err(validation)?;
             let snapshot = backend.visible(&context).await?;
             let mut disclosure = backend.search(&context, &snapshot, input).await?;
+            evaluation_closed = disclosure.evaluation_closed();
             disclosure
                 .disclose_with(gate, |view| {
                     encode(&mut bytes, dto::search_page(view, trace))
@@ -353,6 +360,7 @@ async fn pipeline(
                 .map_err(validation)?;
             let snapshot = backend.visible(&context).await?;
             let mut disclosure = backend.discover(&context, &snapshot, input).await?;
+            evaluation_closed = disclosure.evaluation_closed();
             disclosure
                 .with_disclosure(gate, |view| {
                     encode(&mut bytes, dto::discovery_evaluation(&view.public(trace)))
@@ -374,6 +382,7 @@ async fn pipeline(
             let mut disclosure = backend
                 .resource(&context, &snapshot, ResourceId::from_uuid(id))
                 .await?;
+            evaluation_closed = disclosure.evaluation_closed();
             disclosure
                 .disclose_with(gate, |view| {
                     encode(&mut bytes, dto::resource_detail(view, trace))
@@ -387,6 +396,7 @@ async fn pipeline(
             let mut disclosure = backend
                 .sources(&context, &snapshot, page_size, cursor)
                 .await?;
+            evaluation_closed = disclosure.evaluation_closed();
             disclosure
                 .disclose_with(gate, |view| {
                     encode(&mut bytes, dto::source_page(view, trace))
@@ -399,7 +409,7 @@ async fn pipeline(
     if bytes.len() > SUCCESS_BODY_BYTES {
         return Err(ProblemCode::ServiceUnavailable.into());
     }
-    Ok(bytes)
+    Ok((bytes, evaluation_closed))
 }
 
 fn success(bytes: Vec<u8>) -> Response {
