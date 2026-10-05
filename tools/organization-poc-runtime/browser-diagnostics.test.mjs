@@ -174,7 +174,7 @@ test('Root folder restart oracle is separate, private, exclusive and bound to th
   runInNewContext(output, { exports, readFile, writeFile, expect: actual => ({ toBe: expected => assert.equal(actual, expected) }) });
   const directory = await mkdtemp(join(tmpdir(), 'organization-root-folder-'));
   const context = { statePath: join(directory, 'state.json'), documentId: 'synthetic-run-document' };
-  const state = { schemaVersion: 1, documentId: context.documentId, request: { name: 'PRIVATE_NAME', reason: 'PRIVATE_REASON' } };
+  const state = { schemaVersion: 2, documentId: context.documentId, request: { name: 'PRIVATE_NAME', reason: 'PRIVATE_REASON' }, paginationChildren: [] };
   try {
     await writeFile(context.statePath, 'unchanged Work state', { mode: 0o600 });
     await exports.saveRootFolderState(context, state);
@@ -183,9 +183,46 @@ test('Root folder restart oracle is separate, private, exclusive and bound to th
     await assert.rejects(exports.saveRootFolderState(context, state), { code: 'EEXIST' });
     assert.equal(await readFile(context.statePath, 'utf8'), 'unchanged Work state');
     await assert.rejects(exports.loadRootFolderState({ ...context, documentId: 'different-run' }));
-    await writeFile(`${context.statePath}.root-folder`, JSON.stringify({ ...state, schemaVersion: 2 }));
+    await writeFile(`${context.statePath}.root-folder`, JSON.stringify({ ...state, schemaVersion: 1 }));
     await assert.rejects(exports.loadRootFolderState(context));
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('pagination fixture creates 201 descendants once and stops on an unknown write without new IDs or retries', async () => {
+  const source = await readFile(new URL('../../apps/document-web/e2e-organization/support.ts', import.meta.url), 'utf8');
+  const require = createRequire(new URL('../../apps/document-web/package.json', import.meta.url));
+  const ts = require('typescript');
+  const body = source.slice(source.indexOf('export type RootFolderState'), source.indexOf('export type EvidenceReceipt'));
+  const output = ts.transpileModule(body, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const exports = {}; let nextId = 0;
+  runInNewContext(output, { exports, createOperationId: () => `synthetic-${++nextId}`, currentAction: () => {},
+    expect: actual => ({ toBe: expected => assert.equal(actual, expected) }) });
+  assert.equal(typeof exports.prepareFolderPagination, 'function');
+  for (const failureAt of [null, 3]) {
+    const commands = [];
+    const request = { post: async (url, { data }) => {
+      assert.equal(url, 'http://127.0.0.1:1/v1/folders'); commands.push(data);
+      if (commands.length === failureAt) throw new Error('unknown synthetic response');
+      return { status: () => 201, json: async () => ({ operationId: data.operationId, resourceId: data.folderId, resultingRevision: 0, changed: true }) };
+    } };
+    const result = exports.prepareFolderPagination(request, 'http://127.0.0.1:1', 'gui-created-parent', 0);
+    if (failureAt) {
+      await assert.rejects(result, /unknown synthetic response/u);
+      assert.equal(commands.length, failureAt);
+    } else {
+      const rows = await result;
+      assert.equal(rows.length, 201); assert.equal(commands.length, 201);
+      assert.equal(new Set(commands.flatMap(command => [command.operationId, command.folderId])).size, 402);
+      assert.equal(new Set(rows.map(row => row.name)).size, 201);
+      for (const [index, row] of rows.entries()) {
+        assert.equal(row.folderId, commands[index].folderId);
+        assert.equal(row.parentFolderId, 'gui-created-parent'); assert.equal(row.revision, 0);
+      }
+    }
+    for (const command of commands) {
+      assert.equal(command.parentFolderId, 'gui-created-parent'); assert.equal(command.expectedParentRevision, 0);
+    }
+  }
 });
 
 test('standard JSON timeout retains only the current result action annotation without inferring completion', () => {

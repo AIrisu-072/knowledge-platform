@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-05 15:57 UTC — フォルダー一覧の続き表示
+
+- PR76統合main `ce8ed4f1` から、既存children cursor APIを「さらに表示」へ接続する。[状況](document-folder-pagination-status.md)と[小計画](../plans/2026-10-05-document-folder-pagination.md)を今回の再開先とする
+- 各親の先頭200件と続き、選択・表示保持、読取エラー、再読取をTDDで確認する。capability用queryとページ列のcacheを混ぜず、新backend・認可推測を追加しない
+- 16:23 UTC追補: source `6913e43d` はDOM15/API4を含む全GUI537件/33 suites、型/build、runtime純粋24、collection Organization2+2/Document18+5成功。既存Root caseへ201子の表示・再起動確認だけを加え、Work本文/helperを保持した。次は独立レビューと日本語Draft公開、同一head hostedである
+- 実browser/201件準備の所要時間は未確認で、120秒/画像off/retries0を緩めない。新検証基盤、Search作業、実サーバー反映は行わない。以下は各時点の履歴
+
+---
+
 ## 2026-10-05 12:12 UTC — System Root直下のフォルダー作成GUI
 
 - PR75統合main `495dedb39` を基点に、既存root read/create APIだけを通常フォルダー欄へ接続する。[状況](document-root-folder-create-status.md)と[小計画](../plans/2026-10-05-document-root-folder-create.md)を今回の再開先とする
