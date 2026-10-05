@@ -1,10 +1,15 @@
 import { currentAction } from './support';
 import { expect, test, type Page, type APIRequestContext } from '@playwright/test';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import type { PublishedDocumentDetail, FileList } from '@knowledge-platform/document-api-client';
+import { isDeepStrictEqual } from 'node:util';
+import type { CreateFolderData, FolderDetail, MutationResult, PublishedDocumentDetail, FileList } from '@knowledge-platform/document-api-client';
+import { assertRootFolderCreated, assertRootFolderUi, openRootFolderHome, readRootFolderSnapshot, replayRootFolderCreate, saveRootFolderState, type RootFolderState } from './support';
 import type { WorkflowActionCommand, Completed, Claimed, DraftCommand, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, SubmitCommand, Submitted, TaskDetail, TaskPage, WorkCommand, WorkingArtifact } from '../src/api/generated-work/types.gen';
 import { holdAndResume, assertHoldResumeState, assertCompletionState, assertHidden, assertSessions, assertEvidenceState, assertAgentState, requestSyntheticFinding, captureFinal, get, publishedEvidenceSource, readRuntimeContext, recordDecision, registerEvidence, registerFinding, revisionRef, saveState } from './support';
+
+// These worker-scoped settings explicitly preserve the existing image-free runtime configuration.
+test.use({ screenshot: 'off', trace: 'off', video: 'off' });
 
 const returnReason = '【合成データ】対象数量を追記して再提出してください。';
 const revisedText = '【合成データ】対象数量は10件です。営業で参照資料と照合して追記しました。';
@@ -487,4 +492,115 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
   } finally {
     await officeContext.close();
   }
+});
+
+test.describe('System Root folder creation', () => {
+  test.use({ acceptDownloads: false });
+
+  test('実2名UIでSystem Root直下にフォルダーを作成し固定要求replayと現在Readを確認する', async ({ page, browser, request }) => {
+    const context = readRuntimeContext();
+    currentAction('root-folder-read');
+    await assertSessions(request, context);
+    const before = {
+      sales: await readRootFolderSnapshot(request, context.sales),
+      office: await readRootFolderSnapshot(request, context.office),
+    };
+    expect(before.sales.root.capabilities.createFolder).toEqual({ status: 'available' });
+    expect(before.office.root.capabilities.createFolder).toEqual({ status: 'disabled', reason: 'permission' });
+    expect(before.sales.root.folderId === before.office.root.folderId).toBe(true);
+    for (const snapshot of Object.values(before)) expect(snapshot.root.parentFolderId).toBeNull();
+    let folderPosts = 0;
+    page.on('request', sent => {
+      const url = new URL(sent.url());
+      if (url.origin === context.sales && url.pathname === '/v1/folders' && sent.method() === 'POST') folderPosts++;
+    });
+    await openRootFolderHome(page, context.sales);
+    const rail = page.getByRole('region', { name: 'フォルダー', exact: true });
+    // If the existing fixture has a child, exercise selection without creating extra fixtures.
+    const existing = before.sales.children.items[0];
+    if (existing) {
+      const selection = rail.getByRole('button', { name: existing.name, exact: true });
+      await selection.click();
+      await expect(selection).toHaveAttribute('aria-current', 'location');
+    }
+    const entry = rail.getByRole('button', { name: 'System Rootにフォルダーを作成', exact: true });
+    currentAction('root-folder-preview');
+    await expect(entry).toBeEnabled();
+    await entry.click();
+    const dialog = page.getByRole('dialog', { name: 'System Rootにフォルダーを作成', exact: true });
+    await expect(dialog).toContainText('登録先：System Root直下（選択中のフォルダーには作成しません）');
+    await dialog.getByLabel('フォルダー名', { exact: true }).fill('【合成データ】キャンセルする名前');
+    await dialog.getByLabel('作成理由', { exact: true }).fill('【合成データ】キャンセルする理由');
+    currentAction('root-folder-cancel');
+    await dialog.getByRole('button', { name: 'キャンセル', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    await expect(entry).toBeFocused();
+    expect(folderPosts).toBe(0);
+    await entry.click();
+    expect(await dialog.getByLabel('フォルダー名', { exact: true }).inputValue() === '').toBe(true);
+    expect(await dialog.getByLabel('作成理由', { exact: true }).inputValue() === '').toBe(true);
+    expect(folderPosts).toBe(0);
+
+    currentAction('root-folder-input');
+    const name = `合成Rootフォルダー-${randomUUID()}`;
+    const reason = '【合成データ】System Root直下のフォルダー作成を確認する';
+    await dialog.getByLabel('フォルダー名', { exact: true }).fill(name);
+    await dialog.getByLabel('作成理由', { exact: true }).fill(reason);
+    // Observe the fresh server read and actual GUI POST before the click; never synthesize a receipt.
+    const freshRootPromise = page.waitForResponse(response => new URL(response.url()).origin === context.sales && new URL(response.url()).pathname === '/v1/folders/root' && response.request().method() === 'GET');
+    const responsePromise = page.waitForResponse(response => new URL(response.url()).origin === context.sales && new URL(response.url()).pathname === '/v1/folders' && response.request().method() === 'POST');
+    currentAction('root-folder-create');
+    await dialog.getByRole('button', { name: '作成する', exact: true }).click();
+    const freshRootResponse = await freshRootPromise;
+    expect(freshRootResponse.status()).toBe(200);
+    const freshRoot = await freshRootResponse.json() as FolderDetail;
+    expect(isDeepStrictEqual(freshRoot, before.sales.root)).toBe(true);
+    const response = await responsePromise;
+    expect(response.status()).toBe(201);
+    const command = response.request().postDataJSON() as CreateFolderData['body'];
+    const receipt = await response.json() as MutationResult;
+    const uuidV7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    expect(uuidV7.test(command.operationId)).toBe(true);
+    expect(uuidV7.test(command.folderId)).toBe(true);
+    expect(command.operationId !== command.folderId).toBe(true);
+    expect(isDeepStrictEqual(command, { operationId: command.operationId, folderId: command.folderId, parentFolderId: freshRoot.folderId, expectedParentRevision: freshRoot.revision, name, reason })).toBe(true);
+    expect(receipt.operationId === command.operationId).toBe(true);
+    expect(receipt.resourceId === command.folderId).toBe(true);
+    expect(receipt.changed).toBe(true);
+    expect(receipt.resultingRevision).toBe(0);
+    expect(Number.isFinite(Date.parse(receipt.occurredAt))).toBe(true);
+    await expect(dialog.getByRole('status')).toHaveText('フォルダーを作成しました。');
+    await dialog.getByRole('button', { name: '確認して閉じる', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    expect(folderPosts).toBe(1);
+
+    currentAction('root-folder-verify');
+    const state: RootFolderState = {
+      schemaVersion: 1, documentId: context.documentId, request: command, receipt,
+      sales: await readRootFolderSnapshot(request, context.sales),
+      office: await readRootFolderSnapshot(request, context.office),
+    };
+    for (const role of ['sales', 'office'] as const) {
+      assertRootFolderCreated(state[role], command);
+      expect(isDeepStrictEqual(state[role].root, before[role].root)).toBe(true);
+      expect(state[role].children.items.length).toBe(before[role].children.items.length + 1);
+      expect(isDeepStrictEqual(state[role].children.items.filter(folder => folder.folderId !== command.folderId), before[role].children.items)).toBe(true);
+    }
+    await assertRootFolderUi(page, state.sales, command.folderId, 'sales');
+    await replayRootFolderCreate(request, context, state);
+    // The independent office context never starts tracing or records video/screenshots.
+    const officeContext = await browser.newContext({ locale: 'ja-JP', viewport: { width: 1440, height: 900 }, serviceWorkers: 'block', acceptDownloads: false, recordVideo: undefined });
+    try {
+      const office = await officeContext.newPage();
+      await openRootFolderHome(office, context.office);
+      currentAction('root-folder-office');
+      await assertRootFolderUi(office, state.office, command.folderId, 'office');
+    } finally {
+      await officeContext.close();
+    }
+    currentAction('root-folder-verify');
+    for (const role of ['sales', 'office'] as const) expect(isDeepStrictEqual(await readRootFolderSnapshot(request, context[role]), state[role])).toBe(true);
+    expect(folderPosts).toBe(1);
+    await saveRootFolderState(context, state);
+  });
 });

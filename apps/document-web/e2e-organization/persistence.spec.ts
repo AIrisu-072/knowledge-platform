@@ -1,7 +1,12 @@
 import { currentAction } from './support';
 import { expect, test } from '@playwright/test';
+import { isDeepStrictEqual } from 'node:util';
+import { assertRootFolderCreated, assertRootFolderUi, loadRootFolderState, openRootFolderHome, readRootFolderSnapshot, replayRootFolderCreate } from './support';
 import type { HandoffSnapshot, ReturnInstruction, WorkingArtifact } from '../src/api/generated-work/types.gen';
 import { assertHoldResumeState, assertCompletionState, assertEvidenceState, assertAgentState, assertHidden, assertSessions, captureFinal, get, loadState, readRuntimeContext } from './support';
+
+// These worker-scoped settings explicitly preserve the existing image-free runtime configuration.
+test.use({ screenshot: 'off', trace: 'off', video: 'off' });
 
 test('両process再起動後も根拠・候補・人間判断・固定提出・試行2・操作結果とprivate非開示を保持する', async ({ page, browser, request }) => {
   // The owning harness stops and restarts both processes before invoking this phase.
@@ -135,4 +140,36 @@ test('両process再起動後も根拠・候補・人間判断・固定提出・�
   // Merely reading both UIs must not create another handoff, task revision or history entry.
   currentAction('persistence-verify');
   expect(await captureFinal(request, context, state.salesTaskId, state.officeTaskId, resubmissionId, state.snapshotId, instructionId)).toEqual(state.final);
+});
+
+test.describe('System Root folder creation', () => {
+  test.use({ acceptDownloads: false });
+
+  test('両process再起動後もRoot直下フォルダーと固定要求replayと現在権限を保持する', async ({ page, browser, request }) => {
+    // The existing harness already restarted both HTTP processes; no process, DB or seed setup here.
+    const context = readRuntimeContext();
+    currentAction('root-folder-persistence');
+    const state = await loadRootFolderState(context);
+    await assertSessions(request, context);
+    for (const role of ['sales', 'office'] as const) {
+      const actual = await readRootFolderSnapshot(request, context[role]);
+      expect(isDeepStrictEqual(actual, state[role])).toBe(true);
+      assertRootFolderCreated(actual, state.request);
+    }
+    await replayRootFolderCreate(request, context, state);
+    await openRootFolderHome(page, context.sales);
+    await assertRootFolderUi(page, state.sales, state.request.folderId, 'sales');
+    // No tracing, video or screenshot capture for this independent office context.
+    const officeContext = await browser.newContext({ locale: 'ja-JP', viewport: { width: 1440, height: 900 }, serviceWorkers: 'block', acceptDownloads: false, recordVideo: undefined });
+    try {
+      const office = await officeContext.newPage();
+      await openRootFolderHome(office, context.office);
+      currentAction('root-folder-office');
+      await assertRootFolderUi(office, state.office, state.request.folderId, 'office');
+    } finally {
+      await officeContext.close();
+    }
+    currentAction('root-folder-persistence');
+    for (const role of ['sales', 'office'] as const) expect(isDeepStrictEqual(await readRootFolderSnapshot(request, context[role]), state[role])).toBe(true);
+  });
 });

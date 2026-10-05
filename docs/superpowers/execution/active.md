@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-05 12:12 UTC — System Root直下のフォルダー作成GUI
+
+- PR75統合main `495dedb39` を基点に、既存root read/create APIだけを通常フォルダー欄へ接続する。[状況](document-root-folder-create-status.md)と[小計画](../plans/2026-10-05-document-root-folder-create.md)を今回の再開先とする
+- root ID/revision/capability正本、名前・理由、固定operation/folder ID/payloadを使う。画面往復・pending/unknown・同一再送・OCCをTDDで確認し、子のresultingRevisionを親へ代入しない
+- 12:53 UTC追補: GUI source `b5805d98` は全518件/31 suites・型/build・独立レビューGO。受入source `4c2f7895` は純粋23・型・collection Organization2+2/Document18+5成功。次は日本語文書を含む最終レビュー、日本語Draft公開、同一head hostedである。実受入は未取得
+- 非root作成・改名・移動・ACL・既読は対象外。新backend・依存・検証基盤を追加せず、既存hosted/画像なし受入を使う。rootのGUI通信断は純粋DOM資格で、追加runtimeは通常作成・backend同要求replay・再起動確認に限る。以下は各時点の履歴
+
+---
+
 ## 2026-10-05 10:36 UTC — WORKING実成功応答のbody途中喪失候補
 
 - 公開 `421f93f7` / tree `ac063a9d` を親とする `fix/working-loss-body-truncation-20261005`。元全応答喪失sourceと診断branchを保持し、[今回の小計画・資格・次の操作](../../../tools/document-poc-runtime/README.md#working実応答喪失の追加受入2026-10-05承認local検証完了)に従う

@@ -10,16 +10,19 @@ const statuses = new Set(['failed', 'timedOut', 'interrupted']);
 const executionStatuses = new Set(['queued', 'running', 'succeeded', 'failed', 'cancelled', 'outcome_unknown']);
 const executionFailureCodes = new Set(['none', 'provider_denied', 'context_stale', 'invalid_output', 'dependency_unavailable', 'interrupted', 'commit_outcome_unknown']);
 const readEndpoints = new Set(['session', 'task-list', 'task', 'snapshot', 'return-instruction', 'artifact', 'operation',
-  'evidence', 'finding', 'decision', 'agent', 'agent-result', 'document']);
+  'evidence', 'finding', 'decision', 'agent', 'agent-result', 'document', 'folder-root', 'folder-children']);
 const tests = new Map([
   ['実2名UIで根拠・候補・3種の人間判断を選択提出し、差戻後の新試行を非公開で再提出する', 'journey'],
   ['両process再起動後も根拠・候補・人間判断・固定提出・試行2・操作結果とprivate非開示を保持する', 'persistence'],
+  ['実2名UIでSystem Root直下にフォルダーを作成し固定要求replayと現在Readを確認する', 'root-folder-journey'],
+  ['両process再起動後もRoot直下フォルダーと固定要求replayと現在権限を保持する', 'root-folder-persistence'],
 ]);
 const actions = new Set(['journey-setup', 'office-navigation', 'sales-navigation', 'document-navigation', 'task-navigation',
   'draft-save', 'source-read', 'evidence-module', 'source-document-select', 'source-file-select', 'evidence-input',
   'evidence-submit', 'finding-input', 'finding-submit', 'decision-select', 'decision-input', 'decision-preview',
   'decision-confirm', 'visibility-verify', 'submit-preview', 'submit-selection', 'submit-confirm', 'office-claim',
-  'return-preview', 'return-confirm', 'sales-reclaim', 'resubmit', 'office-reclaim', 'final-verify', 'persistence-verify', 'agent-module', 'agent-input', 'agent-request', 'agent-result', 'agent-replay', 'complete-preview', 'complete-confirm', 'complete-replay', 'hold-preview', 'hold-confirm', 'hold-replay', 'resume-preview', 'resume-confirm', 'resume-replay']);
+  'return-preview', 'return-confirm', 'sales-reclaim', 'resubmit', 'office-reclaim', 'final-verify', 'persistence-verify', 'agent-module', 'agent-input', 'agent-request', 'agent-result', 'agent-replay', 'complete-preview', 'complete-confirm', 'complete-replay', 'hold-preview', 'hold-confirm', 'hold-replay', 'resume-preview', 'resume-confirm', 'resume-replay',
+  'root-folder-read', 'root-folder-preview', 'root-folder-cancel', 'root-folder-input', 'root-folder-create', 'root-folder-verify', 'root-folder-replay', 'root-folder-office', 'root-folder-persistence']);
 const matchers = new Set(['toBe', 'toEqual', 'toStrictEqual', 'toMatchObject', 'toMatch', 'toContain', 'toContainEqual',
   'toBeNull', 'toBeVisible', 'toBeHidden', 'toBeFocused', 'toBeEnabled', 'toBeDisabled', 'toBeChecked',
   'toHaveCount', 'toHaveText', 'toContainText', 'toHaveURL', 'toHaveAttribute', 'toHaveLength', 'toHaveValue',
