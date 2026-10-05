@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useNavigate, useRouterState, useSearch } from '@tanstack/react-router';
@@ -336,24 +336,54 @@ function FolderNode({
   isRoot?: boolean;
 }) {
   const [expanded, setExpanded] = useState(isRoot);
-  const childrenQuery = useQuery({
-    queryKey: ['folder-tree', folder.folderId],
-    queryFn: () => documentApi.listFolderChildren(folder.folderId),
+  const queryClient = useQueryClient();
+  // Keep paged data separate from the ordinary registration-capability query.
+  // The existing parent prefix still invalidates both after a Root create.
+  const queryKey = ['folder-tree', folder.folderId, 'pages'];
+  const childrenQuery = useInfiniteQuery({
+    queryKey,
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) => documentApi.listFolderChildren(folder.folderId, pageParam),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: expanded,
   });
+  const children = useMemo(() => {
+    const unique = new Map<string, Folder>();
+    // Live pages are not a snapshot: a moved/renamed row can reappear later.
+    for (const page of childrenQuery.data?.pages ?? []) {
+      for (const child of page.items) unique.set(child.folderId, child);
+    }
+    return [...unique.values()];
+  }, [childrenQuery.data]);
+  function restartChildren() {
+    if (queryClient.getQueryState(queryKey)?.fetchStatus === 'fetching') return;
+    // Reset only this read; never clear the QueryClient or unresolved mutations.
+    void queryClient.resetQueries({ queryKey, exact: true });
+  }
   return (
     <li>
       <div className={styles.folderEntry}>
         <button type="button" className={styles.expandButton} aria-label={`${folder.name}の子フォルダーを${expanded ? '閉じる' : '開く'}`} aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>{expanded ? '▾' : '▸'}</button>
         <button type="button" className={styles.folderButton} aria-current={(isRoot ? !selectedFolderId : selectedFolderId === folder.folderId) ? 'location' : undefined} onClick={() => onSelect(isRoot ? undefined : folder.folderId, folder)}>{folder.name}</button>
       </div>
-      {childrenQuery.error && expanded && <ApiFeedback error={childrenQuery.error} onRetry={() => void childrenQuery.refetch()} />}
-      {expanded && childrenQuery.data && childrenQuery.data.items.length > 0 && (
+      {childrenQuery.error && expanded && <ApiFeedback error={childrenQuery.error} onRetry={childrenQuery.isFetchNextPageError ? undefined : () => void childrenQuery.refetch({ cancelRefetch: false })} />}
+      {expanded && children.length > 0 && (
         <ul className={styles.folderChildren}>
-          {childrenQuery.data.items.map((child) => <FolderNode key={child.folderId} folder={child} selectedFolderId={selectedFolderId} onSelect={onSelect} />)}
+          {children.map((child) => <FolderNode key={child.folderId} folder={child} selectedFolderId={selectedFolderId} onSelect={onSelect} />)}
         </ul>
       )}
-      {expanded && childrenQuery.isPending && <span className={styles.folderLoading}>読み込み中</span>}
+      {expanded && childrenQuery.hasNextPage && (!childrenQuery.error || childrenQuery.isFetchNextPageError) && (
+        <button type="button" className={styles.secondaryButton} disabled={childrenQuery.isFetching}
+          aria-label={`${folder.name}の子フォルダー${childrenQuery.isFetchNextPageError ? 'の続きを再試行' : 'をさらに表示'}`}
+          onClick={() => { if (!childrenQuery.isFetching) void childrenQuery.fetchNextPage({ cancelRefetch: false }); }}>
+          {childrenQuery.isFetchNextPageError ? '続きを再試行' : 'さらに表示'}
+        </button>
+      )}
+      {expanded && (childrenQuery.hasNextPage || (childrenQuery.data?.pages.length ?? 0) > 1 || childrenQuery.error) && (
+        <button type="button" className={styles.secondaryButton} disabled={childrenQuery.isFetching}
+          aria-label={`${folder.name}の子フォルダーを最初から読み直す`} onClick={restartChildren}>最初から読み直す</button>
+      )}
+      {expanded && childrenQuery.isFetching && <span className={styles.folderLoading} role="status">読み込み中</span>}
     </li>
   );
 }

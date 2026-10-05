@@ -7,7 +7,7 @@ import { isAbsolute } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type { WorkflowActionCommand, Completed, Held, Resumed, AgentExecutionRequest, AgentExecutionRequested, AgentExecution, AgentResult, Finding, DecisionCommand, DecisionRecorded, EvidenceCommand, EvidenceRegistered, FindingCommand, FindingRegistered, RevisionRef, Claimed, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, Submitted, TaskDetail, TaskPage, WorkSession } from '../src/api/generated-work/types.gen';
 
-import type { CreateFolderData, DocumentRevisionPage, FileList, FolderChildren, FolderDetail, MutationResult, PublishedDocumentDetail } from '@knowledge-platform/document-api-client';
+import type { CreateFolderData, DocumentRevisionPage, FileList, Folder, FolderChildren, FolderDetail, MutationResult, PublishedDocumentDetail } from '@knowledge-platform/document-api-client';
 
 export type RuntimeContext = { sales: string; office: string; documentId: string; statePath: string };
 export type PersistedState = {
@@ -145,12 +145,13 @@ export async function loadState(context: RuntimeContext): Promise<PersistedState
 
 
 export type RootFolderState = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   documentId: string;
   request: CreateFolderData['body'];
   receipt: MutationResult;
   sales: RootFolderSnapshot;
   office: RootFolderSnapshot;
+  paginationChildren: Folder[];
 };
 export type RootFolderSnapshot = { root: FolderDetail; children: FolderChildren };
 
@@ -160,7 +161,7 @@ export async function saveRootFolderState(context: RuntimeContext, state: RootFo
 }
 export async function loadRootFolderState(context: RuntimeContext): Promise<RootFolderState> {
   const state = JSON.parse(await readFile(`${context.statePath}.root-folder`, 'utf8')) as RootFolderState;
-  expect(state.schemaVersion).toBe(1);
+  expect(state.schemaVersion).toBe(2);
   expect(state.documentId === context.documentId).toBe(true);
   return state;
 }
@@ -219,6 +220,68 @@ export async function assertRootFolderUi(page: Page, snapshot: RootFolderSnapsho
     expect(snapshot.root.capabilities.createFolder).toEqual({ status: 'available' });
     await expect(entry).toBeEnabled();
   }
+}
+
+// Fixture preparation only: these are not GUI-created nonroot folders.
+export async function prepareFolderPagination(request: APIRequestContext, origin: string, parentFolderId: string, expectedParentRevision: number): Promise<Folder[]> {
+  currentAction('root-folder-verify');
+  const children: Folder[] = [];
+  for (let index = 1; index <= 201; index++) {
+    const command: CreateFolderData['body'] = {
+      operationId: createOperationId(), folderId: createOperationId(), parentFolderId, expectedParentRevision,
+      name: `合成ページ送り-${String(index).padStart(3, '0')}`, reason: '【合成データ】フォルダー一覧の続き表示を確認する',
+    };
+    // Each fixed request is sent exactly once. An unknown result aborts this case.
+    const response = await request.post(`${origin}/v1/folders`, { data: command });
+    expect(response.status()).toBe(201);
+    const receipt = await response.json() as MutationResult;
+    expect(receipt.operationId === command.operationId).toBe(true);
+    expect(receipt.resourceId === command.folderId).toBe(true);
+    expect(receipt.changed).toBe(true);
+    expect(receipt.resultingRevision).toBe(0);
+    children.push({ folderId: command.folderId, parentFolderId, name: command.name, revision: receipt.resultingRevision });
+  }
+  return children;
+}
+
+export async function assertFolderPaginationUi(page: Page, state: RootFolderState) {
+  currentAction('root-folder-verify');
+  const rail = page.getByRole('region', { name: 'フォルダー', exact: true });
+  const path = `/v1/folders/${state.request.folderId}/children`;
+  const firstResponse = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === path && url.searchParams.get('pageSize') === '200' && !url.searchParams.has('cursor') && response.request().method() === 'GET';
+  });
+  const expand = rail.getByRole('button', { name: `${state.request.name}の子フォルダーを開く`, exact: true });
+  const parent = rail.getByRole('button', { name: state.request.name, exact: true }).locator('..').locator('..');
+  await expand.click();
+  const response = await firstResponse;
+  expect(response.status()).toBe(200);
+  const first = await response.json() as FolderChildren;
+  expect(first.items.length).toBe(200);
+  expect(typeof first.nextCursor === 'string').toBe(true);
+  const rows = parent.locator(':scope > ul > li');
+  await expect(rows).toHaveCount(200);
+  await expect.poll(async () => isDeepStrictEqual(await rows.locator(':scope > div > button:nth-child(2)').allTextContents(), first.items.map(folder => folder.name))).toBe(true);
+  const more = rail.getByRole('button', { name: `${state.request.name}の子フォルダーをさらに表示`, exact: true });
+  const nextResponse = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === path && url.searchParams.get('pageSize') === '200' && url.searchParams.get('cursor') === first.nextCursor && response.request().method() === 'GET';
+  });
+  await more.click();
+  const next = await nextResponse;
+  expect(next.status()).toBe(200);
+  const last = await next.json() as FolderChildren;
+  expect(last.items.length).toBe(1); expect(last.nextCursor).toBeNull();
+  const byId = (a: Folder, b: Folder) => a.folderId.localeCompare(b.folderId);
+  expect(isDeepStrictEqual([...first.items, ...last.items].sort(byId), [...state.paginationChildren].sort(byId))).toBe(true);
+  await expect(rows).toHaveCount(201);
+  await expect.poll(async () => isDeepStrictEqual(await rows.locator(':scope > div > button:nth-child(2)').allTextContents(), [...first.items, ...last.items].map(folder => folder.name))).toBe(true);
+  await expect(more).toHaveCount(0);
+  const tail = rail.getByRole('button', { name: last.items[0]!.name, exact: true });
+  await tail.click();
+  await expect(tail).toHaveAttribute('aria-current', 'location');
+  await expect.poll(() => new URL(page.url()).searchParams.get('folderId') === last.items[0]!.folderId).toBe(true);
 }
 
 export type EvidenceReceipt = { operationId: string; command: EvidenceCommand; result: EvidenceRegistered };
