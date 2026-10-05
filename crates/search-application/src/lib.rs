@@ -19,6 +19,7 @@ pub mod projection;
 pub mod qualification;
 pub mod remote;
 pub mod remote_cache;
+pub mod remote_evidence;
 pub mod remote_generation;
 pub mod remote_identity;
 pub mod remote_lease;
