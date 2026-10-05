@@ -1,0 +1,116 @@
+name: Search P3 backend qualification
+
+# P3-P04 native backend measurement on dedicated hosted runners.
+# Runs only for measurement branches; regular CI is unaffected.
+on:
+  push:
+    branches:
+      - "measure/search-p3-**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: search-p3-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    name: P3 ${{ matrix.backend }} ${{ matrix.profile }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [pg, neo, redb]
+        profile: [100, 1000, 3000]
+    env:
+      CARGO_INCREMENTAL: "0"
+      BACKEND: ${{ matrix.backend }}
+      PROFILE: ${{ matrix.profile }}
+      PG_REF: postgres@sha256:3725f4e2499eef5134592b3b4ab79a543ed7f8e533b05b5b637af926630f6650
+      NEO_REF: neo4j@sha256:0dfcadbd51e1d2e5a0cf86d054a0bb537a4bce212796d967cbd88445aaf3fbf3
+    defaults:
+      run:
+        working-directory: experiments/search-graph-poc
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Pinned toolchain, client and candidate images
+        run: |
+          mise install rust
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet 'psycopg[binary]==3.2.10'
+          docker pull "$PG_REF"
+          docker pull "$NEO_REF"
+          git rev-parse HEAD 'HEAD^{tree}'
+      - name: Build oracle and redb binaries
+        run: cargo build --release --locked --bins
+      - name: Fixed fixtures and actual memory oracle
+        run: |
+          mkdir -p data/runs
+          for groups in 100 "$PROFILE"; do
+            if [ ! -f "fixture-$groups.json" ]; then
+              ./target/release/search-graph-backend-poc make "$groups" "fixture-$groups.json"
+            fi
+          done
+          .venv/bin/python qualification_driver.py generate --profile "$PROFILE" \
+            --output "data/runs/fixture-$PROFILE.json" \
+            --oracle-binary target/release/search-graph-backend-poc
+          if [ "$PROFILE" != 100 ]; then
+            printf '{"profile": %s, "status": "accepted", "basis": "%s"}\n' "$PROFILE" \
+              "dedicated hosted runner per candidate and profile; owner chose measurement before selection on 2026-10-05" \
+              > "data/runs/admission-$PROFILE.json"
+          fi
+      - name: Timed cells, restart, restore and faults
+        run: |
+          oracle=target/release/search-graph-backend-poc
+          fixture="data/runs/fixture-$PROFILE.json"
+          admission=()
+          if [ "$PROFILE" != 100 ]; then
+            admission=(--admission "data/runs/admission-$PROFILE.json")
+          fi
+          status=0
+          if [ "$BACKEND" = redb ]; then
+            mkdir -p data/qualification
+            db="data/qualification/redb-$PROFILE.db"
+            .venv/bin/python qualification_driver.py measure --backend redb --profile "$PROFILE" \
+              --fixture "$fixture" --oracle-binary "$oracle" \
+              --redb-binary target/release/qualification_redb --db-path "$db" "${admission[@]}" \
+              --output "data/runs/measure-redb-$PROFILE.json" || status=$?
+            .venv/bin/python qualification_recovery.py --backend redb \
+              --redb-binary target/release/qualification_redb --db-path "$db" \
+              --fixture "$fixture" --output "data/runs/recovery-redb-$PROFILE.json" || status=$?
+            exit "$status"
+          fi
+          ref="$PG_REF"
+          if [ "$BACKEND" = neo ]; then ref="$NEO_REF"; fi
+          image="$(docker image inspect "$ref" --format '{{.Id}}')"
+          started="$(.venv/bin/python qualification_runtime.py start --backend "$BACKEND" \
+            --profile "$PROFILE" --image-id "$image")"
+          printf '%s\n' "$started" > "data/runs/start-$BACKEND-$PROFILE.json"
+          name="$(printf '%s' "$started" | jq -r .container_name)"
+          port="$(printf '%s' "$started" | jq -r .host_port)"
+          data="$(printf '%s' "$started" | jq -r .data_dir)"
+          .venv/bin/python qualification_driver.py measure --backend "$BACKEND" --profile "$PROFILE" \
+            --fixture "$fixture" --oracle-binary "$oracle" --port "$port" --image-id "$image" \
+            --container-name "$name" --data-dir "$data" "${admission[@]}" \
+            --output "data/runs/measure-$BACKEND-$PROFILE.json" || status=$?
+          .venv/bin/python qualification_recovery.py --backend "$BACKEND" --container-name "$name" \
+            --image-id "$image" --data-dir "$data" --port "$port" --fixture "$fixture" \
+            --output "data/runs/recovery-$BACKEND-$PROFILE.json" || status=$?
+          docker stats --no-stream --format '{{json .}}' "$name" > "data/runs/final-stats-$BACKEND-$PROFILE.json" || true
+          exit "$status"
+      - name: Keep raw receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: search-p3-${{ matrix.backend }}-${{ matrix.profile }}
+          path: |
+            experiments/search-graph-poc/data/runs/*.json
+            experiments/search-graph-poc/data/runs/*.jsonl.gz
+          retention-days: 30
