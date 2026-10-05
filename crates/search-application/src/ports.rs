@@ -204,7 +204,8 @@ pub trait ConceptRegistryPort: Send + Sync {
 
 /// Concept edges are staged with the generation, rather than expanded into
 /// each resource. Edges must refer to explicitly known concepts.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SemanticRegistrySnapshot {
     pub version: String,
     pub concepts: BTreeSet<String>,

@@ -16,6 +16,7 @@ search-extraction-core = { version = "0.0.0", path = "../search-extraction-core"
 search-graph-memory = { version = "0.0.0", path = "../search-graph-memory" }
 search-projection-memory = { version = "0.0.0", path = "../search-projection-memory" }
 search-tantivy = { version = "0.0.0", path = "../search-tantivy" }
+serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 sqlx.workspace = true

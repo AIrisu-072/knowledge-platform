@@ -16,6 +16,7 @@ use search_core::projection::ProjectionGenerationKey;
 use search_extraction_core::{
     BodyCoverage, CoverageReason, ItemOperationState, PermanentFailureCode,
 };
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::extraction::{BodyBuildError, ExtractedItemResult};
@@ -26,7 +27,8 @@ use crate::postgres::{DocumentOutboxSnapshot, VersionSnapshotRecord};
 pub const LEXICAL_SCHEMA_VERSION: &str = "schema-2";
 
 /// One Live authoritative item and its publication-safe extraction outcome.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BodyItemEntry {
     pub version: ResourceVersionRef,
     pub part: ContentPartRef,
@@ -90,14 +92,16 @@ pub(crate) fn version_ref(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BodyUnitManifest {
     pub key: ProjectionGenerationKey,
     pub source_snapshot: String,
     pub entries: Vec<BodyItemEntry>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BodyCoverageItem {
     pub version: ResourceVersionRef,
     pub part: ContentPartRef,
@@ -107,20 +111,23 @@ pub struct BodyCoverageItem {
     pub unit_count: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BodyCoverageArtifact {
     pub key: ProjectionGenerationKey,
     pub items: Vec<BodyCoverageItem>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactReceipt {
     pub key: ProjectionGenerationKey,
     pub digest: [u8; 32],
     pub count: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GenerationBundleReceipt {
     pub key: ProjectionGenerationKey,
     pub source_snapshot: String,
@@ -191,6 +198,41 @@ pub fn validate_manifest(
             || entry.raw != item.raw
         {
             return Err(integrity("manifest item binding"));
+        }
+        validate_entry(entry, &manifest.source_snapshot)?;
+        items.push(BodyCoverageItem {
+            version: entry.version.clone(),
+            part: entry.part.clone(),
+            operation: entry.operation,
+            coverage: entry.coverage.clone(),
+            raw: entry.raw.clone(),
+            unit_count: u32::try_from(entry.units.len()).map_err(|_| integrity("unit count"))?,
+        });
+    }
+    Ok(BodyCoverageArtifact {
+        key: manifest.key,
+        items,
+    })
+}
+
+/// Structural check of a manifest restored from durable storage, without the
+/// Source snapshot: canonical order, one Source, publication-safe outcomes and
+/// full Unit authority (binding, ordinals, normalized text and its digest).
+/// Returns the coverage artifact derived from the same items.
+pub fn validate_restored_manifest(
+    manifest: &BodyUnitManifest,
+) -> Result<BodyCoverageArtifact, BodyBuildError> {
+    if manifest
+        .entries
+        .windows(2)
+        .any(|pair| pair[0].order_key() >= pair[1].order_key())
+    {
+        return Err(integrity("manifest order"));
+    }
+    let mut items = Vec::with_capacity(manifest.entries.len());
+    for entry in &manifest.entries {
+        if entry.version.source_id != manifest.key.source_id {
+            return Err(integrity("manifest source"));
         }
         validate_entry(entry, &manifest.source_snapshot)?;
         items.push(BodyCoverageItem {
