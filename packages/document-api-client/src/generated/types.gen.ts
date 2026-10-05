@@ -975,6 +975,10 @@ export type ModelsVersionDetail = {
     metadata: {
         [key: string]: unknown;
     };
+    /**
+     * 同じ認可済み読取snapshotでDocument・対象Version・PENDING状態・scheduledPublishAtが一致する現在の公開予約のpublishOperationId。一致する予約がなければnull。mutation認可や成功を保証しない。
+     */
+    currentPublicationScheduleId: string | null;
     capabilities: ModelsVersionCapabilities;
 };
 

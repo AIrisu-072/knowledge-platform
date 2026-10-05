@@ -1395,6 +1395,7 @@ components:
             createdAt: '2029-01-01T00:00:00Z'
             approvedAt: '2029-01-01T12:00:00Z'
             scheduledPublishAt: null
+            currentPublicationScheduleId: null
             publishedAt: '2029-01-02T00:00:00Z'
             withdrawnAt: null
             updatedAt: '2029-01-02T00:00:00Z'

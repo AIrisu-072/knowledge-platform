@@ -205,3 +205,181 @@ async fn publish_ledger_replaces_fallback_and_unknown_terminal_facts_stay_unknow
         terminal.source_key
     );
 }
+
+#[tokio::test]
+async fn current_publication_schedule_identity_matches_only_the_authorized_version_snapshot() {
+    use document_application::{VersionPurpose, VersionRequest};
+    use document_domain::DocumentVersionId;
+
+    let f = fixture().await;
+    f.repository
+        .initialize_root_policy(
+            &context(),
+            vec![grant([Action::Read, Action::Write, Action::ReadHistory])],
+        )
+        .await
+        .unwrap();
+    let working = Uuid::now_v7();
+    let historical = Uuid::now_v7();
+    for (version, number, state) in [(historical, 1_i64, "PUBLISHED"), (working, 2, "WORKING")] {
+        sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,lifecycle_state,title,scheduled_publish_at,published_at,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,$3,$4,'予約対象',to_timestamp(100),CASE WHEN $4 = 'PUBLISHED' THEN to_timestamp(50) ELSE NULL END,'test-idp','policy-admin','{}',now())")
+            .bind(version).bind(f.document_id.as_uuid()).bind(number).bind(state)
+            .execute(&f.pool).await.unwrap();
+    }
+    let request = VersionRequest {
+        document_id: f.document_id,
+        document_version_id: DocumentVersionId::from_uuid(working),
+        purpose: VersionPurpose::Authoring,
+    };
+    let service = DocumentHistoryService::new(f.repository.clone());
+    assert_eq!(
+        service
+            .get_document_version(&context(), request)
+            .await
+            .unwrap()
+            .current_publication_schedule_id,
+        None
+    );
+
+    let other_document = Uuid::now_v7();
+    let other_version = Uuid::now_v7();
+    sqlx::query("INSERT INTO documents (document_id,folder_id,revision,metadata,created_at) VALUES ($1,$2,1,'{}',now())")
+        .bind(other_document).bind(f.root_id.as_uuid()).execute(&f.pool).await.unwrap();
+    sqlx::query("INSERT INTO document_versions (document_version_id,document_id,version_no,lifecycle_state,title,scheduled_publish_at,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES ($1,$2,1,'WORKING','別文書',to_timestamp(100),'test-idp','policy-admin','{}',now())")
+        .bind(other_version).bind(other_document).execute(&f.pool).await.unwrap();
+    for (document, version) in [
+        (other_document, other_version),
+        (f.document_id.as_uuid(), historical),
+    ] {
+        sqlx::query("INSERT INTO document_publish_schedules (publish_operation_id,document_id,target_document_version_id,expected_document_revision,accepted_document_revision,scheduled_publish_at,actor_identity_provider,actor_principal_id,manifest_digest,status,created_at) VALUES ($1,$2,$3,1,2,to_timestamp(100),'test-idp','policy-admin',$4,'PENDING',now())")
+            .bind(Uuid::now_v7()).bind(document).bind(version).bind(vec![1_u8; 32])
+            .execute(&f.pool).await.unwrap();
+    }
+    // 同時刻でも別文書・別Versionの予約を返さない。
+    assert_eq!(
+        service
+            .get_document_version(&context(), request)
+            .await
+            .unwrap()
+            .current_publication_schedule_id,
+        None
+    );
+    sqlx::query(
+        "UPDATE document_publish_schedules SET status = 'CANCELLED' WHERE document_id = $1",
+    )
+    .bind(f.document_id.as_uuid())
+    .execute(&f.pool)
+    .await
+    .unwrap();
+
+    let schedule = Uuid::now_v7();
+    sqlx::query("INSERT INTO document_publish_schedules (publish_operation_id,document_id,target_document_version_id,expected_document_revision,accepted_document_revision,scheduled_publish_at,actor_identity_provider,actor_principal_id,manifest_digest,status,created_at) VALUES ($1,$2,$3,1,2,to_timestamp(101),'test-idp','policy-admin',$4,'PENDING',now())")
+        .bind(schedule).bind(f.document_id.as_uuid()).bind(working).bind(vec![2_u8; 32])
+        .execute(&f.pool).await.unwrap();
+    // 同じ対象でもVersion側の時刻projectionと一致しなければ返さない。
+    assert_eq!(
+        service
+            .get_document_version(&context(), request)
+            .await
+            .unwrap()
+            .current_publication_schedule_id,
+        None
+    );
+    sqlx::query("UPDATE document_publish_schedules SET scheduled_publish_at = to_timestamp(100) WHERE publish_operation_id = $1")
+        .bind(schedule).execute(&f.pool).await.unwrap();
+    assert_eq!(
+        service
+            .get_document_version(&context(), request)
+            .await
+            .unwrap()
+            .current_publication_schedule_id,
+        Some(schedule)
+    );
+
+    for status in ["CANCELLED", "PUBLISHED", "TERMINAL"] {
+        sqlx::query(
+            "UPDATE document_publish_schedules SET status = $1 WHERE publish_operation_id = $2",
+        )
+        .bind(status)
+        .bind(schedule)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            service
+                .get_document_version(&context(), request)
+                .await
+                .unwrap()
+                .current_publication_schedule_id,
+            None,
+            "{status}"
+        );
+    }
+    // 再予約では過去の履歴IDではなく、新しいPENDINGのIDだけを返す。
+    let replacement = Uuid::now_v7();
+    sqlx::query("INSERT INTO document_publish_schedules (publish_operation_id,document_id,target_document_version_id,expected_document_revision,accepted_document_revision,scheduled_publish_at,actor_identity_provider,actor_principal_id,manifest_digest,status,created_at) VALUES ($1,$2,$3,1,2,to_timestamp(100),'test-idp','policy-admin',$4,'PENDING',now())")
+        .bind(replacement).bind(f.document_id.as_uuid()).bind(working).bind(vec![3_u8; 32])
+        .execute(&f.pool).await.unwrap();
+    assert_eq!(
+        service
+            .get_document_version(&context(), request)
+            .await
+            .unwrap()
+            .current_publication_schedule_id,
+        Some(replacement)
+    );
+    sqlx::query(
+        "UPDATE document_versions SET scheduled_publish_at = NULL WHERE document_version_id = $1",
+    )
+    .bind(working)
+    .execute(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        service
+            .get_document_version(&context(), request)
+            .await
+            .unwrap()
+            .current_publication_schedule_id,
+        None
+    );
+
+    let wrong_document = VersionRequest {
+        document_id: document_domain::DocumentId::from_uuid(other_document),
+        ..request
+    };
+    assert!(matches!(
+        service
+            .get_document_version(&context(), wrong_document)
+            .await,
+        Err(ApplicationError::DocumentVersionNotFound)
+    ));
+    sqlx::query("DELETE FROM access_policy_grants WHERE action = 'write'")
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        service.get_document_version(&context(), request).await,
+        Err(ApplicationError::DocumentVersionNotFound)
+    ));
+    assert!(matches!(
+        service
+            .get_document_version(
+                &context(),
+                VersionRequest {
+                    purpose: VersionPurpose::History,
+                    ..request
+                }
+            )
+            .await,
+        Err(ApplicationError::DocumentVersionNotFound)
+    ));
+    sqlx::query("DELETE FROM access_policy_grants WHERE action = 'read'")
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        service.get_document_version(&context(), request).await,
+        Err(ApplicationError::DocumentNotFound)
+    ));
+}
