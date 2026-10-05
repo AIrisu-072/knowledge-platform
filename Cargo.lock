@@ -4193,6 +4193,7 @@ dependencies = [
  "document-domain",
  "document-repository-postgres",
  "document-semantic-inspection-core",
+ "document-storage-fs",
  "search-application",
  "search-core",
  "search-extraction-core",

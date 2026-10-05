@@ -26,5 +26,6 @@ uuid.workspace = true
 zip.workspace = true
 
 [dev-dependencies]
+document-storage-fs = { version = "0.0.0", path = "../document-storage-fs" }
 search-extraction-worker = { version = "0.0.0", path = "../search-extraction-worker" }
 testcontainers.workspace = true

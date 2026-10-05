@@ -20,7 +20,7 @@ use search_core::projection::ProjectionGenerationKey;
 use search_extraction_core::{BodyCoverage, ItemOperationState};
 use sha2::{Digest, Sha256};
 
-use crate::body_evidence::{DocumentExactTextEvidenceCatalog, current_live};
+use crate::body_evidence::{DocumentExactTextEvidenceCatalog, current_live, same_version_binding};
 use crate::body_manifest::{BodyItemEntry, version_ref};
 use crate::model::AuthoritativeItemBinding;
 
@@ -186,7 +186,7 @@ impl DocumentExactTextEvidenceCatalog {
             return unknown(UNVERIFIABLE, GapReason::Availability);
         }
         match self.versions.load_version(version).await {
-            Ok(Some(again)) if again == record => {}
+            Ok(Some(again)) if same_version_binding(&record, &again) => {}
             Ok(_) => return unknown(UNVERIFIABLE, GapReason::Availability),
             Err(_) => return unknown(UNAVAILABLE, GapReason::Availability),
         }

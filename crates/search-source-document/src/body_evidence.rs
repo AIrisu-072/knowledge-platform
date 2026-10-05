@@ -76,6 +76,20 @@ pub(crate) fn current_live(record: &VersionSnapshotRecord) -> bool {
         && snapshot.publication_end.is_none()
 }
 
+/// Two reads of one Version agree on every binding; only the per-read Source
+/// snapshot token (a fresh `pg_current_snapshot()`) may differ.
+pub(crate) fn same_version_binding(
+    first: &VersionSnapshotRecord,
+    again: &VersionSnapshotRecord,
+) -> bool {
+    let mut first = first.clone();
+    first
+        .snapshot
+        .source_snapshot
+        .clone_from(&again.snapshot.source_snapshot);
+    first == *again
+}
+
 fn same_unit(unit: &KnowledgeUnit, hit: &KnowledgeUnitHitRef) -> bool {
     unit.unit_id == hit.unit_id
         && unit.version == hit.version
@@ -225,7 +239,7 @@ impl DocumentExactTextEvidenceCatalog {
             return Ok(None);
         }
         match self.versions.load_version(version).await? {
-            Some(again) if again == record => {}
+            Some(again) if same_version_binding(&record, &again) => {}
             _ => return Ok(None),
         }
         Ok(Some(self.evidence(hit, selector, &record)))

@@ -1,0 +1,511 @@
+{
+ "schema": "p1-v01-capacity-probe/v1",
+ "measured_at_unix": 1791171260,
+ "environment": {
+  "os": "Darwin",
+  "release": "25.5.0",
+  "machine": "arm64",
+  "python": "3.14.6",
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "git_head": "96678e0382817adf391c15348365df8d3ded7474",
+  "cargo_lock_sha256": "6920833ba2afc30ba08567b710a69aa8360750b6f7d9557452092188697142d9",
+  "probe_sha256": "0c0d67fbb7cbc163d29dac58918b2cf6b533d902a7c0d769ab4b1e742901e13a"
+ },
+ "scope": {
+  "measured": [
+   "host body pipeline in one process: raw read and SHA-256 binding, readers, locator round trip, Unit manifest, Tantivy Unit index seal, publication",
+   "cold build (first in a fresh process) and warm full rebuild",
+   "BodyOnly query latency, verified-hit ratio, unique-parent fill (limit 10)",
+   "per-process CPU time and children peak RSS so far (monotonic across cases)"
+  ],
+  "not_measured": [
+   "fresh-process Linux sandbox (Landlock/seccomp), cgroup high-water, scratch bytes",
+   "PDF/XLSX/PPTX representatives (fixtures exist only in the reader PoC)",
+   "real PostgreSQL/FS latency (covered functionally by body_vertical)",
+   "production SLO: none is declared from these numbers"
+  ],
+  "profile_limits": "every applicable BudgetKey at its absolute code ceiling"
+ },
+ "cases": [
+  {
+   "case": "text",
+   "mib": 1,
+   "exit_code": 0,
+   "wall_s": 4.103,
+   "stderr_tail": "",
+   "cpu_s": 4.261,
+   "children_peak_rss_bytes_so_far": 227016704,
+   "result": {
+    "case": "text",
+    "cold_build_ms": 1934,
+    "items": 1,
+    "mib": 1,
+    "outcomes": {
+     "Completed/Some(Supported)": 1
+    },
+    "queries": 200,
+    "query_us": {
+     "p50": 251,
+     "p95": 3738,
+     "p99": 3770
+    },
+    "raw_bytes": 1048577,
+    "unique_parent_fill": 1.0,
+    "unit_text_bytes": 1017517,
+    "units": 31060,
+    "verified_hit_ratio": 1.0,
+    "versions": 1,
+    "warm_build_ms": 1771
+   },
+   "status": "measured"
+  },
+  {
+   "case": "text",
+   "mib": 10,
+   "exit_code": 0,
+   "wall_s": 0.234,
+   "stderr_tail": "",
+   "cpu_s": 0.233,
+   "children_peak_rss_bytes_so_far": 227016704,
+   "result": {
+    "case": "text",
+    "cold_build_ms": 105,
+    "items": 1,
+    "mib": 10,
+    "outcomes": {
+     "Completed/Some(Unsupported { reason: ResourceLimit })": 1
+    },
+    "queries": 200,
+    "query_us": {
+     "p50": 1,
+     "p95": 1,
+     "p99": 2
+    },
+    "raw_bytes": 10485775,
+    "unique_parent_fill": 0.0,
+    "unit_text_bytes": 0,
+    "units": 0,
+    "verified_hit_ratio": 0.0,
+    "versions": 1,
+    "warm_build_ms": 102
+   },
+   "status": "measured"
+  },
+  {
+   "case": "text",
+   "mib": 50,
+   "exit_code": 0,
+   "wall_s": 0.886,
+   "stderr_tail": "",
+   "cpu_s": 0.882,
+   "children_peak_rss_bytes_so_far": 572555264,
+   "result": {
+    "case": "text",
+    "cold_build_ms": 392,
+    "items": 1,
+    "mib": 50,
+    "outcomes": {
+     "Completed/Some(Unsupported { reason: ResourceLimit })": 1
+    },
+    "queries": 200,
+    "query_us": {
+     "p50": 1,
+     "p95": 1,
+     "p99": 1
+    },
+    "raw_bytes": 52428812,
+    "unique_parent_fill": 0.0,
+    "unit_text_bytes": 0,
+    "units": 0,
+    "verified_hit_ratio": 0.0,
+    "versions": 1,
+    "warm_build_ms": 385
+   },
+   "status": "measured"
+  },
+  {
+   "case": "csv",
+   "mib": 1,
+   "exit_code": 0,
+   "wall_s": 0.046,
+   "stderr_tail": "",
+   "cpu_s": 0.047,
+   "children_peak_rss_bytes_so_far": 572555264,
+   "result": {
+    "case": "csv",
+    "cold_build_ms": 19,
+    "items": 1,
+    "mib": 1,
+    "outcomes": {
+     "Completed/Some(Unsupported { reason: ResourceLimit })": 1
+    },
+    "queries": 200,
+    "query_us": {
+     "p50": 1,
+     "p95": 1,
+     "p99": 1
+    },
+    "raw_bytes": 1048591,
+    "unique_parent_fill": 0.0,
+    "unit_text_bytes": 0,
+    "units": 0,
+    "verified_hit_ratio": 0.0,
+    "versions": 1,
+    "warm_build_ms": 18
+   },
+   "status": "measured"
+  },
+  {
+   "case": "csv",
+   "mib": 10,
+   "exit_code": 0,
+   "wall_s": 0.108,
+   "stderr_tail": "",
+   "cpu_s": 0.109,
+   "children_peak_rss_bytes_so_far": 572555264,
+   "result": {
+    "case": "csv",
+    "cold_build_ms": 31,
+    "items": 1,
+    "mib": 10,
+    "outcomes": {
+     "Completed/Some(Unsupported { reason: ResourceLimit })": 1
+    },
+    "queries": 200,
+    "query_us": {
+     "p50": 1,
+     "p95": 1,
+     "p99": 2
+    },
+    "raw_bytes": 10485765,
+    "unique_parent_fill": 0.0,
+    "unit_text_bytes": 0,
+    "units": 0,
+    "verified_hit_ratio": 0.0,
+    "versions": 1,
+    "warm_build_ms": 31
+   },
+   "status": "measured"
+  },
+  {
+   "case": "csv",
+   "mib": 50,
+   "exit_code": 0,
+   "wall_s": 0.395,
+   "stderr_tail": "",
+   "cpu_s": 0.393,
+   "children_peak_rss_bytes_so_far": 572555264,
+   "result": {
+    "case": "csv",
+    "cold_build_ms": 87,
+    "items": 1,
+    "mib": 50,
+    "outcomes": {
+     "Completed/Some(Unsupported { reason: ResourceLimit })": 1
+    },
+    "queries": 200,
+    "query_us": {
+     "p50": 1,
+     "p95": 1,
+     "p99": 1
+    },
+    "raw_bytes": 52428819,
+    "unique_parent_fill": 0.0,
+    "unit_text_bytes": 0,
+    "units": 0,
+    "verified_hit_ratio": 0.0,
+    "versions": 1,
+    "warm_build_ms": 87
+   },
+   "status": "measured"
+  },
+  {
+   "case": "html",
+   "mib": 1,
+   "exit_code": 0,
+   "wall_s": 5.339,
+   "stderr_tail": "",
+   "cpu_s": 5.474,
+   "children_peak_rss_bytes_so_far": 572555264,
+   "result": {
+    "case": "html",
+    "cold_build_ms": 2478,
+    "items": 1,
+    "mib": 1,
+    "outcomes": {
+     "Completed/Some(Supported)": 1
+    },
+    "queries": 200,
+    "query_us": {
+     "p50": 215,
+     "p95": 4000,
+     "p99": 4171
+    },
+    "raw_bytes": 1048615,
+    "unique_parent_fill": 1.0,
+    "unit_text_bytes": 863676,
+    "units": 26414,
+    "verified_hit_ratio": 1.0,
+    "versions": 1,
+    "warm_build_ms": 2452
+   },
+   "status": "measured"
+  },
+  {
+   "case": "html",
+   "mib": 10,
+   "exit_code": 0,
+   "wall_s": 0.275,
+   "stderr_tail": "",
+   "cpu_s": 0.275,
+   "children_peak_rss_bytes_so_far": 572555264,
+   "result": {
+    "case": "html",
+    "cold_build_ms": 114,
+    "items": 1,
+    "mib": 10,
+    "outcomes": {
+     "Completed/Some(Unsupported { reason: ResourceLimit })": 1
+    },
+    "queries": 200,
+    "query_us": {
+     "p50": 1,
+     "p95": 1,
+     "p99": 1
+    },
+    "raw_bytes": 10485774,
+    "unique_parent_fill": 0.0,
+    "unit_text_bytes": 0,
+    "units": 0,
+    "verified_hit_ratio": 0.0,
+    "versions": 1,
+    "warm_build_ms": 115
+   },
+   "status": "measured"
+  },
+  {
+   "case": "docx",
+   "mib": 1,
+   "exit_code": 0,
+   "wall_s": 1.962,
+   "stderr_tail": "",
+   "cpu_s": 2.052,
+   "children_peak_rss_bytes_so_far": 572555264,
+   "result": {
+    "case": "docx",
+    "cold_build_ms": 797,
+    "items": 1,
+    "mib": 1,
+    "outcomes": {
+     "Completed/Some(Supported)": 1
+    },
+    "queries": 200,
+    "query_us": {
+     "p50": 142,
+     "p95": 3591,
+     "p99": 3782
+    },
+    "raw_bytes": 102734,
+    "unique_parent_fill": 1.0,
+    "unit_text_bytes": 519666,
+    "units": 16028,
+    "verified_hit_ratio": 1.0,
+    "versions": 1,
+    "warm_build_ms": 789
+   },
+   "status": "measured"
+  },
+  {
+   "case": "docx",
+   "mib": 10,
+   "exit_code": 0,
+   "wall_s": 0.277,
+   "stderr_tail": "",
+   "cpu_s": 0.276,
+   "children_peak_rss_bytes_so_far": 572555264,
+   "result": {
+    "case": "docx",
+    "cold_build_ms": 109,
+    "items": 1,
+    "mib": 10,
+    "outcomes": {
+     "Completed/Some(Unsupported { reason: ResourceLimit })": 1
+    },
+    "queries": 200,
+    "query_us": {
+     "p50": 1,
+     "p95": 1,
+     "p99": 1
+    },
+    "raw_bytes": 1019996,
+    "unique_parent_fill": 0.0,
+    "unit_text_bytes": 0,
+    "units": 0,
+    "verified_hit_ratio": 0.0,
+    "versions": 1,
+    "warm_build_ms": 107
+   },
+   "status": "measured"
+  },
+  {
+   "case": "zip-high-ratio",
+   "mib": 10,
+   "exit_code": 0,
+   "wall_s": 0.01,
+   "stderr_tail": "",
+   "cpu_s": 0.011,
+   "children_peak_rss_bytes_so_far": 572555264,
+   "result": {
+    "case": "zip-high-ratio",
+    "cold_build_ms": 2,
+    "items": 1,
+    "mib": 10,
+    "outcomes": {
+     "Completed/Some(Unsupported { reason: ResourceLimit })": 1
+    },
+    "queries": 200,
+    "query_us": {
+     "p50": 1,
+     "p95": 1,
+     "p99": 2
+    },
+    "raw_bytes": 42867,
+    "unique_parent_fill": 0.0,
+    "unit_text_bytes": 0,
+    "units": 0,
+    "verified_hit_ratio": 0.0,
+    "versions": 1,
+    "warm_build_ms": 1
+   },
+   "status": "measured"
+  },
+  {
+   "case": "zip-high-ratio",
+   "mib": 50,
+   "exit_code": 0,
+   "wall_s": 0.019,
+   "stderr_tail": "",
+   "cpu_s": 0.02,
+   "children_peak_rss_bytes_so_far": 572555264,
+   "result": {
+    "case": "zip-high-ratio",
+    "cold_build_ms": 2,
+    "items": 1,
+    "mib": 50,
+    "outcomes": {
+     "Completed/Some(Unsupported { reason: ResourceLimit })": 1
+    },
+    "queries": 200,
+    "query_us": {
+     "p50": 1,
+     "p95": 1,
+     "p99": 2
+    },
+    "raw_bytes": 213687,
+    "unique_parent_fill": 0.0,
+    "unit_text_bytes": 0,
+    "units": 0,
+    "verified_hit_ratio": 0.0,
+    "versions": 1,
+    "warm_build_ms": 1
+   },
+   "status": "measured"
+  },
+  {
+   "case": "many-parts",
+   "mib": 1,
+   "exit_code": 0,
+   "wall_s": 1.584,
+   "stderr_tail": "",
+   "cpu_s": 1.753,
+   "children_peak_rss_bytes_so_far": 572555264,
+   "result": {
+    "case": "many-parts",
+    "cold_build_ms": 522,
+    "items": 200,
+    "mib": 1,
+    "outcomes": {
+     "Completed/Some(Supported)": 200
+    },
+    "queries": 200,
+    "query_us": {
+     "p50": 1741,
+     "p95": 3892,
+     "p99": 3924
+    },
+    "raw_bytes": 1047002,
+    "unique_parent_fill": 1.0,
+    "unit_text_bytes": 1013148,
+    "units": 33854,
+    "verified_hit_ratio": 1.0,
+    "versions": 1,
+    "warm_build_ms": 518
+   },
+   "status": "measured"
+  },
+  {
+   "case": "many-documents",
+   "mib": 1,
+   "exit_code": 0,
+   "wall_s": 1.492,
+   "stderr_tail": "",
+   "cpu_s": 1.666,
+   "children_peak_rss_bytes_so_far": 572555264,
+   "result": {
+    "case": "many-documents",
+    "cold_build_ms": 526,
+    "items": 200,
+    "mib": 1,
+    "outcomes": {
+     "Completed/Some(Supported)": 200
+    },
+    "queries": 200,
+    "query_us": {
+     "p50": 309,
+     "p95": 3945,
+     "p99": 3990
+    },
+    "raw_bytes": 1025600,
+    "unique_parent_fill": 0.7,
+    "unit_text_bytes": 992400,
+    "units": 33200,
+    "verified_hit_ratio": 1.0,
+    "versions": 200,
+    "warm_build_ms": 540
+   },
+   "status": "measured"
+  },
+  {
+   "case": "max-unit",
+   "mib": 1,
+   "exit_code": 0,
+   "wall_s": 0.015,
+   "stderr_tail": "",
+   "cpu_s": 0.015,
+   "children_peak_rss_bytes_so_far": 572555264,
+   "result": {
+    "case": "max-unit",
+    "cold_build_ms": 5,
+    "items": 1,
+    "mib": 1,
+    "outcomes": {
+     "Completed/Some(Supported)": 1
+    },
+    "queries": 200,
+    "query_us": {
+     "p50": 1,
+     "p95": 2,
+     "p99": 2
+    },
+    "raw_bytes": 65533,
+    "unique_parent_fill": 0.0,
+    "unit_text_bytes": 65532,
+    "units": 1,
+    "verified_hit_ratio": 0.0,
+    "versions": 1,
+    "warm_build_ms": 4
+   },
+   "status": "measured"
+  }
+ ]
+}
