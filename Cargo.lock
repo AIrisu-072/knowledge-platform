@@ -4503,11 +4503,13 @@ dependencies = [
 name = "search-runtime"
 version = "0.0.0"
 dependencies = [
+ "axum",
  "document-application",
  "document-domain",
  "document-repository-postgres",
  "document-storage-fs",
  "outbox-delivery",
+ "search-api-http",
  "search-application",
  "search-core",
  "search-extraction-core",
@@ -4517,6 +4519,7 @@ dependencies = [
  "search-graph-memory",
  "search-projection-memory",
  "search-source-document",
+ "search-source-http",
  "search-tantivy",
  "serde",
  "serde_json",
@@ -4525,6 +4528,7 @@ dependencies = [
  "testcontainers",
  "time",
  "tokio",
+ "tower",
  "uuid",
  "zip 8.6.0",
 ]

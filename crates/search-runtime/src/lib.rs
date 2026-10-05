@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod api;
 pub mod document_runtime;
 pub mod event_completion;
 pub mod full_guard;
