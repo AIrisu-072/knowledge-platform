@@ -118,6 +118,16 @@ impl SourceSnapshotProof {
     pub const fn extent(&self) -> SnapshotExtent {
         self.extent
     }
+    /// Opaque fingerprint of the verified token, safe for a manifest field.
+    pub(crate) fn fingerprint(&self) -> String {
+        let hex: String = self
+            .token_digest
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        format!("remote-snapshot:sha256:{hex}")
+    }
+
     /// Observations may share a seal only when a Source snapshot was verified.
     /// Single-response fingerprints deliberately never prove a shared snapshot.
     pub fn same_source_snapshot(&self, other: &Self) -> bool {
