@@ -19,7 +19,7 @@ if (context.human === context.agent) throw new Error('Human and agent must be se
 
 export default defineConfig({
   testDir: './e2e-runtime',
-  testMatch: phase === 'journey' ? ['document-runtime.spec.ts', 'initial-registration.spec.ts', 'metadata-editor.spec.ts', 'human-agent-consistency.spec.ts', 'worker-failure.spec.ts', 'timestamp-layout.spec.ts'] : ['persistence.spec.ts', 'metadata-editor.spec.ts'],
+  testMatch: phase === 'journey' ? ['document-runtime.spec.ts', 'initial-registration.spec.ts', 'metadata-editor.spec.ts', 'lifecycle-operations.spec.ts', 'human-agent-consistency.spec.ts', 'worker-failure.spec.ts', 'timestamp-layout.spec.ts'] : ['persistence.spec.ts', 'metadata-editor.spec.ts', 'lifecycle-operations-persistence.spec.ts'],
   fullyParallel: false,
   workers: 1,
   retries: 0,

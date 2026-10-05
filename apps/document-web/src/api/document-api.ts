@@ -1,6 +1,8 @@
 import {
   BinaryTransportBridge,
   cancelPublicationSchedule,
+  withdrawVersion,
+  endDocumentPublication,
   compareDocumentRevisions,
   compareDocumentVersions,
   getDocument,
@@ -20,6 +22,8 @@ import {
   schedulePublication,
   setDocumentAccessPolicy,
   type CommandsComparisonRequest,
+  type CommandsWithdrawVersion,
+  type CommandsEndPublication,
   type CommandsCreateDocument,
   type CommandsMetadataPatch,
   type CreateDocumentResult,
@@ -134,6 +138,12 @@ export const documentApi = {
   },
   cancelPublicationSchedule(documentId: string, versionId: string, body: { operationId: string; publishOperationId: string; expectedRevision: number }) {
     return payload(cancelPublicationSchedule({ ...data, path: { documentId, versionId }, body }));
+  },
+  withdrawVersion(documentId: string, versionId: string, body: CommandsWithdrawVersion) {
+    return payload(withdrawVersion({ ...data, path: { documentId, versionId }, body }));
+  },
+  endDocumentPublication(documentId: string, body: CommandsEndPublication) {
+    return payload(endDocumentPublication({ ...data, path: { documentId }, body }));
   },
   setDocumentAccessPolicy(documentId: string, body: CommandsPolicyExplicit | CommandsPolicyInherit) {
     // The generated union currently adds a synthetic discriminator that conflicts with the normative wire values.

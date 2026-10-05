@@ -26,6 +26,21 @@ test('初回登録だけを既存journeyへ追加し、成功時も失敗時も�
   assert.match(source, /await finishDiagnostics\(page\)/);
   assert.doesNotMatch(source, /visualCheckpoint|screenshot\(|recordVideo|tracing|page\.route\(|route\.fulfill\(|route\.abort\(/);
 });
+test('取下げ・公開終了の専用journeyと再起動だけを既存runnerへ追加し、画像を記録しない', async () => {
+  const config = await read('../../../apps/document-web/playwright.runtime.config.ts');
+  assert.match(config, /testMatch: phase === 'journey' \? \[[^\]]*'lifecycle-operations\.spec\.ts'/);
+  assert.match(config, /: \['persistence\.spec\.ts', 'metadata-editor\.spec\.ts', 'lifecycle-operations-persistence\.spec\.ts'\]/);
+  assert.match(config, /retries: 0/);
+  for (const name of ['lifecycle-operations', 'lifecycle-operations-persistence']) {
+    const source = await read(`../../../apps/document-web/e2e-runtime/${name}.spec.ts`);
+    assert.match(source, /^test\.use\(\{ screenshot: 'off', trace: 'off', video: 'off' \}\);$/m);
+    assert.equal((source.match(/^test\('/gm) ?? []).length, name === 'lifecycle-operations' ? 2 : 1);
+    assert.doesNotMatch(source, /visualCheckpoint|screenshot\(|recordVideo|tracing|page\.route\(|route\.fulfill\(|route\.abort\(/);
+  }
+  const helper = await read('../../../apps/document-web/e2e-runtime/lifecycle-support.ts');
+  assert.match(helper, /context\.statePath\}\.lifecycle\.json/);
+  assert.doesNotMatch(helper, /manifest\.documents|saveSnapshot\(/);
+});
 test('all fixed checkpoints occur exactly once in real runtime suites without route interception', async () => {
   const { VISUAL_CHECKPOINTS } = await import('../visual-evidence.mjs');
   const source = (await read('../../../apps/document-web/e2e-runtime/document-runtime.spec.ts')) + (await read('../../../apps/document-web/e2e-runtime/human-agent-consistency.spec.ts'));

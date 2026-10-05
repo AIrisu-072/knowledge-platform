@@ -1,5 +1,19 @@
 # 文書共通属性3項目の編集GUIの状況
 
+## 2026-10-05 04:58 UTC — 初回hosted失敗とラベル修正
+
+- 公開[PR71](https://github.com/AIrisu-072/knowledge-platform/pull/71) exact `8d53d7a3931b0e23f7929b85eb6846213985c71e` / tree `f728e6008ad0b892c5caaeab8d46db64f3a35e82` の[CI37264679347](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37264679347)、実runtime job `111618856328` は失敗。journeyは12件成功/1件失敗、metadata専用specだけが `gui-metadata-created` 後、初期入力値の確認で停止した。再起動以降は未実行。元の失敗証跡を保持し、旧headを受入済みとは扱わない
+- 有限診断では当該ケースのAPI取得は成功し、CSP/page/console/API失敗はなかった。rawエラー本文は公開しておらず、診断不足を新しい観測基盤やログ公開で補っていない
+- pin済みPlaywright 1.63.0の既存label matcherをjsdomで実行し、非空のcontrolled textareaの本文が親labelの文字列へ含まれ、exact名が一致しないことをRED2件で再現。React Testing Libraryのlabel照合だけでは検出できていなかった
+- 製品修正は3項目と理由textareaへ、見えている文言と一致する明示 `aria-label` を付ける2行だけ。既存Evidenceフォームと同じ方式で、値・PATCH契約・runtime locator/timeout/retry・診断・依存は変更しない
+- 回帰は初期値あり、全4項目への入力後、結果不明で閉じる/再表示した後のexact一致を確認。focused36件、全GUI295件/23 suites、application/runtime型、schema freshness、production build、collection-only journey13件/persistence2件がPASS。Webpack advisory3件は継続。独立レビューはGUI34件と実matcherの反例を別途確認してGO（未解消Critical/Importantなし）。review対象editor blob `8baa798da21528e5e7930030a9edeac60cbe60e4`、test blob `b3a04f2124182fb151e8abe2b22f7070061e1881`
+
+次の操作：限定修正を親へdelta packetで渡し、新しい公開headで同じ実runtimeと全CIを確認する。ローカルDB/socket/listener/browserは実行せず、修正後の実受入成功はまだ主張しない。
+
+以下は初回候補の履歴。
+
+---
+
 ## 2026-10-05 UTC — 独立実装・純粋検証と限定レビュー完了
 
 - 基点：公開main `e9c7f7737f1ddac676c3880475b83fb3cd7135c7` / tree `9085ce0db85857df50ad7d80b6db71d16477df40`。branch `feat/document-metadata-editor-20261005`

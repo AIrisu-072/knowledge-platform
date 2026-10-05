@@ -83,12 +83,12 @@ export function DocumentMetadataEditor({ document, reload }: { document: Documen
         <p>空文字・空白も値として保存します。値を消す場合は「削除」にチェックしてください。その他の属性は保持します。</p>
         <form onSubmit={submit} aria-busy={pending}>
           {metadataFields.map(({ key, label }, index) => <div key={key} className={styles.field}>
-            <label className={workspace.formField}>{label}<textarea autoFocus={index === 0} rows={2} value={draft[key].value} disabled={locked || draft[key].remove || !allowed} onChange={event => change(key, { value: event.target.value, touched: true })} /></label>
+            <label className={workspace.formField}>{label}<textarea aria-label={label} autoFocus={index === 0} rows={2} value={draft[key].value} disabled={locked || draft[key].remove || !allowed} onChange={event => change(key, { value: event.target.value, touched: true })} /></label>
             {draft[key].present && typeof draft[key].original !== 'string' && <p className={styles.currentValue}>現在の値（文字列以外・未編集なら保持）：<span>{JSON.stringify(draft[key].original)}</span></p>}
             {!draft[key].present && <small>現在は未設定です。</small>}
             <label className={styles.remove}><input type="checkbox" checked={draft[key].remove} disabled={locked || !allowed} onChange={event => change(key, { remove: event.target.checked })} />{label}を削除</label>
           </div>)}
-          <label className={workspace.formField}>変更理由<textarea rows={2} value={reason} disabled={locked || !allowed} onChange={event => setReason(event.target.value)} /></label>
+          <label className={workspace.formField}>変更理由<textarea aria-label="変更理由" rows={2} value={reason} disabled={locked || !allowed} onChange={event => setReason(event.target.value)} /></label>
           {!locked && reason && validation && <p role="alert">{validation}</p>}
           {!allowed && <p role="alert">現在の権限または文書状態では保存できません。</p>}
           {localError && <p role="alert">{localError}</p>}

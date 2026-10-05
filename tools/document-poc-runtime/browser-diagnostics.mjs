@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 
 export const MAX_BROWSER_REPORT_BYTES = 8 * 1024 * 1024;
 const MAX_RECORDS = 20, MAX_NODES = 1000, MAX_DEPTH = 8, MAX_TEXT = 16 * 1024;
-const sources = new Set(['document-runtime.spec.ts', 'initial-registration.spec.ts', 'metadata-editor.spec.ts', 'human-agent-consistency.spec.ts', 'worker-failure.spec.ts', 'persistence.spec.ts', 'timestamp-layout.spec.ts', 'support.ts', 'japanese-font.ts']);
+const sources = new Set(['document-runtime.spec.ts', 'initial-registration.spec.ts', 'metadata-editor.spec.ts', 'lifecycle-operations.spec.ts', 'lifecycle-operations-persistence.spec.ts', 'human-agent-consistency.spec.ts', 'worker-failure.spec.ts', 'persistence.spec.ts', 'timestamp-layout.spec.ts', 'support.ts', 'japanese-font.ts']);
 const statuses = new Set(['passed', 'failed', 'timedOut', 'skipped', 'interrupted', 'unavailable']);
 const categories = new Set(['strict-locator', 'locator-timeout', 'test-timeout', 'HTTP-status-assertion', 'assertion', 'unavailable']);
 const matchers = new Set(['toBe', 'toEqual', 'toStrictEqual', 'toBeVisible', 'toBeHidden', 'toHaveCount', 'toHaveText', 'toContainText',
@@ -43,6 +43,8 @@ const journeyStages = new Set(['context-read', 'sessions-verified', 'api-preflig
   'gui-metadata-created', 'gui-metadata-cancel-verified', 'gui-metadata-working-verified',
   'gui-metadata-published-verified', 'gui-metadata-minor-verified', 'gui-metadata-noop-verified',
   'gui-metadata-snapshot-saved', 'gui-metadata-restart-verified',
+  'gui-lifecycle-fixture-ready', 'gui-lifecycle-cancel-verified', 'gui-withdraw-fallback-verified',
+  'gui-withdraw-null-verified', 'gui-publication-end-verified', 'gui-lifecycle-snapshot-saved', 'gui-lifecycle-restart-verified',
   'pdf-context-read', 'pdf-fixtures-read', 'pdf-base-created', 'pdf-base-detail-read', 'pdf-base-published',
   'pdf-published-detail-read', 'pdf-target-created', 'pdf-target-detail-read', 'pdf-target-published', 'pdf-comparison-read',
   'pdf-base-files-read', 'pdf-base-download-verified', 'pdf-target-files-read', 'pdf-target-download-verified',
@@ -91,7 +93,7 @@ function location(value) {
   return { source, ...(integer(value.line) ? { line: value.line } : {}), ...(integer(value.column) ? { column: value.column } : {}) };
 }
 function stackLocation(value) {
-  const match = text(value).match(/(?:^|[\\/\s(])((?:document-runtime|initial-registration|metadata-editor|human-agent-consistency|worker-failure|persistence|timestamp-layout)\.spec\.ts|support\.ts):(\d{1,7}):(\d{1,7})(?:\D|$)/u);
+  const match = text(value).match(/(?:^|[\\/\s(])((?:document-runtime|initial-registration|metadata-editor|lifecycle-operations(?:-persistence)?|human-agent-consistency|worker-failure|persistence|timestamp-layout)\.spec\.ts|support\.ts):(\d{1,7}):(\d{1,7})(?:\D|$)/u);
   return match ? location({ file: match[1], line: Number(match[2]), column: Number(match[3]) }) : undefined;
 }
 // Node util.inspect uses unquoted property names and quoted string values. Accept

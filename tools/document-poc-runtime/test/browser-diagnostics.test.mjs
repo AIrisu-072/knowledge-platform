@@ -95,6 +95,29 @@ test('GUI metadata受入は固定到達段階だけを公開し、値や理由�
   assert.ok(!JSON.stringify(failure).includes('PRIVATE'));
 });
 
+test('GUI取下げ・公開終了と再起動の固定到達段階だけを既存の診断境界へ残す', () => {
+  const stages = ['gui-lifecycle-fixture-ready', 'gui-lifecycle-cancel-verified', 'gui-withdraw-fallback-verified',
+    'gui-withdraw-null-verified', 'gui-publication-end-verified', 'gui-lifecycle-snapshot-saved', 'gui-lifecycle-restart-verified'];
+  for (const source of ['lifecycle-operations.spec.ts', 'lifecycle-operations-persistence.spec.ts']) {
+    for (const stage of stages) {
+      const input = report([{ status: 'passed' }], { file: `/private/source/${source}` });
+      input.suites[0].specs[0].tests[0].annotations = [
+        { type: 'runtime-completed', description: stage },
+        { type: 'runtime-completed', description: 'gui-lifecycle-PRIVATE_BODY' },
+      ];
+      const actual = sanitizeBrowserDiagnostics(browserDiagnostics(input));
+      assert.equal(actual.tests[0].source, source);
+      assert.equal(actual.tests[0].lastCompletedStage, stage);
+      assert.ok(!JSON.stringify(actual).includes('PRIVATE_BODY'));
+    }
+    const failure = browserDiagnostics(report([{ status: 'failed', error: {
+      message: 'Error: expect(value).toBe() failed', stack: `at /private/source/${source}:12:3`,
+    } }]));
+    assert.equal(failure.tests[0].source, source);
+    assert.equal(failure.tests[0].line, 12);
+  }
+});
+
 test('classifies strict-locator and emits only allowlisted failure location/matcher', () => {
   const result = browserDiagnostics(report([{ status: 'failed', error: {
     message: 'Error: expect(locator).toBeVisible() failed: strict mode violation: PRIVATE_SELECTOR',

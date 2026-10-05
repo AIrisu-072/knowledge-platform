@@ -33,7 +33,7 @@ function setup(values: Record<string, unknown> = metadata, capability: unknown =
   api.getRootFolder.mockResolvedValue({ folderId: '00000000-0000-4000-8000-000000000099', name: 'ルート', capabilities: {} });
   api.listFolderChildren.mockResolvedValue({ items: [], nextCursor: null, capabilities: {} });
   api.listDocuments.mockResolvedValue({ view: 'published', items: [{ ...detail(), folderName: null }], nextCursor: null });
-  api.getDocumentVersion.mockResolvedValue({ capabilities: { download: denied } });
+  api.getDocumentVersion.mockResolvedValue({ capabilities: { download: denied, withdraw: denied } });
   api.listVersionFiles.mockResolvedValue({ items: [] });
   api.listDocumentVersions.mockResolvedValue({ items: [], nextCursor: null });
   api.listDocumentRevisions.mockResolvedValue({ items: [], nextCursor: null });
@@ -297,4 +297,37 @@ test.each(['success', 'failure'])('古い読み直し %s は閉じる/再表示�
   expect(again.dialog).toBeInTheDocument();
   expect(within(again.dialog).getByLabelText('カテゴリ')).toHaveValue('新しい未送信入力');
   expect(within(again.dialog).queryByText('最新の内容を取得できません。もう一度読み直してください。')).not.toBeInTheDocument();
+});
+
+test('実Playwrightのexact labelは初期値付き3項目を値の本文と分離して識別する', async () => {
+  const matches = require('./playwright-label-matcher.cjs')() as (element: Element, name: string) => boolean;
+  setup(); const { dialog } = await open();
+  for (const label of ['文書種別', '所管部署', 'カテゴリ']) {
+    const field = within(dialog).getByLabelText(label) as HTMLTextAreaElement;
+    expect(field.textContent).not.toBe('');
+    expect(matches(field, label)).toBe(true);
+    expect(matches(field, `${label}${field.textContent}`)).toBe(false);
+  }
+});
+
+test('実Playwrightのexact labelは入力後と結果不明の再表示後も全4項目を識別する', async () => {
+  const matches = require('./playwright-label-matcher.cjs')() as (element: Element, name: string) => boolean;
+  const { api } = setup({}); api.patchDocumentMetadata.mockRejectedValue(new Error('response lost'));
+  const { dialog, user } = await open();
+  const labels = ['文書種別', '所管部署', 'カテゴリ', '変更理由'];
+  for (const label of labels) {
+    const field = within(dialog).getByLabelText(label) as HTMLTextAreaElement;
+    expect(matches(field, label)).toBe(true);
+    fireEvent.change(field, { target: { value: `合成 ${label} 入力` } });
+    expect(field.textContent).toBe(`合成 ${label} 入力`);
+    expect(matches(field, label)).toBe(true);
+  }
+  save(dialog); await within(dialog).findByRole('button', { name: '同じ内容で再送' });
+  await user.click(within(dialog).getByRole('button', { name: '閉じる' }));
+  const again = await open();
+  for (const label of labels) {
+    const field = within(again.dialog).getByLabelText(label) as HTMLTextAreaElement;
+    expect(field).toBeDisabled();
+    expect(matches(field, label)).toBe(true);
+  }
 });

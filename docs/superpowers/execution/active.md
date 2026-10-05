@@ -1,10 +1,34 @@
 # Active Execution Pointer
 
+## 2026-10-05 05:06 UTC — 属性編集と公開状態操作を両公開履歴で統合
+
+- 公開PR71 `8d53d7a3` とPR70統合済みmain `5d262557` を両parentとして保持する。[今回の統合状況](document-metadata-main-integration-status.md)を再開先とする
+- 両GUI/受入spec/有限診断を加算的に保持し、metadataの実label matcher RED2に基づくaria-label修正だけを加える。fixture capability1行と受入配線の3spec期待を整合させる
+- 全GUI315件・型/build・純粋runner31件・collection15+3成功、独立共存レビューGO。新組合せの実DB/browserとexact-head全CIは未実行。PR71旧headの失敗と双方の過去記録は保持し、親が同PRを更新して新headを検証する
+
+---
+
+## 2026-10-05 04:58 UTC — metadata実受入のラベル不一致を修正
+
+- PR71 exact `8d53d7a3` は既存hosted journey12件成功/metadata1件失敗。[失敗と修正状況](document-metadata-editor-status.md)を今回の再開先とする
+- 実Playwright label matcherを使う純粋RED2件で、非空textareaが親labelのexact名へ混入する問題を再現。可視文言と一致するaria-labelだけを追加し、locator/timeout/retryや診断は緩めない
+- 全GUI295件・型/build・collection13+2成功、限定独立レビューGO。修正後の実DB/browser・新exact-head全CIは未実行。元の失敗結果を保持し、親が4ファイルの差分を公開する。以下の初回未実行記録はその時点の履歴
+
+---
+
 ## 2026-10-05 UTC — 文書共通属性3項目の編集GUI
 
 - 公開main `e9c7f773` から、既存T5を文書概要の最小フォームへ接続する。[今回の状況](document-metadata-editor-status.md)、[小さい計画](../plans/2026-10-05-document-metadata-editor.md)を参照
 - 正本snake_case3項目・明示削除・理由のみ。legacy/extensionsは表示保持、未知結果は同じ操作ID/payloadの明示再送。新backend・認可・依存・永続draftを追加しない
 - 全GUI293件・型/build・純粋runner29件・collection13+2成功、限定独立レビューGO。実DB/browser・同一head全CIは未実行で、公開/mergeは親担当、実サーバー反映は所有者が手動実施する。以下の過去記録を今回の受入へ付け替えない
+
+---
+
+## 2026-10-05 03:50 UTC — 既存APIの現行版取下げ・公開終了GUI
+
+- 所有者の既存内部処理のGUI化を続け、PR69統合後main `e9c7f773` と同一の初回登録sourceから現行公開版の取下げ・文書の公開終了を小さい別branchへ追加する。[今回の状況](document-lifecycle-operations-status.md)、[計画](../plans/2026-10-05-document-lifecycle-operations.md)、[画面操作](../../operations/document-gui-v0.md)を参照
+- 既存capability・typed API・UUIDv7操作IDを使用し、理由/影響確認、同payload再送、競合/権限失効、遅延応答と戻る/進むを扱う。authoringをhistoryへ暗黙変更せず、通常公開画面の現行版に限定する
+- 全GUI279件・型・build・journey14/persistence2のcollectionと限定独立レビューGO。予約取消の必要ID read、過去版選択、WORKING更新/rebaseは残件。新backend/API、依存・migration・認可・停止中Search/Audit/Toolbox作業は追加しない。実DB/browserはhostedの同2名・使い捨てDB・既存runnerで確認予定、ローカル実行はしない。以下の旧headの資格を本候補へ付け替えない
 
 ---
 
