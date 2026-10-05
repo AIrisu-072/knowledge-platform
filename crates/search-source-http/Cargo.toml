@@ -31,3 +31,11 @@ required-features = ["synthetic-loopback-test-only"]
 [[test]]
 name = "protocol_contract"
 required-features = ["synthetic-loopback-test-only"]
+
+[[test]]
+name = "scoped_tcp_e2e"
+required-features = ["synthetic-loopback-test-only"]
+
+[[test]]
+name = "retention_tcp_e2e"
+required-features = ["synthetic-loopback-test-only"]

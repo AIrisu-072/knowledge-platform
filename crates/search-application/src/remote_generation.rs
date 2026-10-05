@@ -572,4 +572,28 @@ impl RemoteEvaluationGeneration {
     pub(crate) fn identity(&self, id: ResourceId) -> Option<&StagedResource> {
         self.identities.get(&id)
     }
+
+    /// The only route from a sealed remote projection to durable state: the
+    /// registration's retention, the current Source policy and server-owned
+    /// field proofs must all permit it. A Resource not in this seal is a
+    /// Source mismatch.
+    pub fn persistable_projection(
+        &self,
+        resource: ResourceId,
+        current_policy: &crate::ports::CurrentSourcePolicy,
+        proofs: &crate::projection::RemoteFieldProofs,
+    ) -> Result<crate::projection::PersistableResourceProjection, crate::projection::ProjectionError>
+    {
+        let projection = self
+            .resources
+            .get(&resource)
+            .cloned()
+            .ok_or(crate::projection::ProjectionError::SourceMismatch)?;
+        crate::projection::VerifiedPersistentProjection::try_from_remote(
+            projection,
+            self.context.registration(),
+            current_policy,
+            proofs,
+        )
+    }
 }

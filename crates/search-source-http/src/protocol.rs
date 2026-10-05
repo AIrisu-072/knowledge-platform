@@ -37,6 +37,8 @@ pub enum RemoteProtocolError {
 pub struct DecodedSnapshot {
     pub token: String,
     pub extent: SnapshotExtent,
+    /// The provider's inventory claim for the snapshot (bounded IDs).
+    pub known: Vec<OpaqueNativeId>,
 }
 
 impl fmt::Debug for DecodedSnapshot {
@@ -80,6 +82,8 @@ pub struct DecodedAuthorization {
 struct WireSnapshot {
     token: String,
     extent: String,
+    #[serde(default)]
+    known: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -323,9 +327,15 @@ pub fn decode_response(
     if wire.snapshot.token.is_empty() || wire.snapshot.token.len() > 1024 {
         return Err(RemoteProtocolError::Malformed);
     }
-    if wire.hits.len() > limits.max_hits_per_page {
+    if wire.hits.len() > limits.max_hits_per_page || wire.snapshot.known.len() > limits.max_hits {
         return Err(RemoteProtocolError::LimitExceeded);
     }
+    let known = wire
+        .snapshot
+        .known
+        .into_iter()
+        .map(|id| native(id, registration))
+        .collect::<Result<Vec<_>, _>>()?;
     let status = match wire.status.as_deref() {
         None | Some("ok") => RemoteResponseStatus::Success,
         Some("partial") => RemoteResponseStatus::Partial,
@@ -363,6 +373,7 @@ pub fn decode_response(
         snapshot: DecodedSnapshot {
             token: wire.snapshot.token,
             extent,
+            known,
         },
     })
 }

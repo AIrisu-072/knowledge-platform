@@ -1,11 +1,14 @@
-//! `RemoteSourcePort` and provenance lookup over the guarded transport.
+//! `RemoteSourcePort`, provenance lookup and remote candidate access over
+//! the guarded transport.
 //!
-//! Each planned action becomes one request to a fixed path; its decoded,
-//! untrusted input goes through the application's checked observation
-//! adapter, which rechecks actor/Source currency and turns the provider's
-//! snapshot claim into a proof. Transport, status and decode failures are
-//! low-cardinality `Unknown` outcomes, never absence. Requests per
-//! evaluation are bounded by the registration.
+//! Each planned action becomes one request to a fixed path (an enumeration
+//! sweep, one request per page); its decoded, untrusted input goes through
+//! the application's checked observation adapter, which rechecks
+//! actor/Source currency and turns the provider's snapshot claim into a
+//! proof. Transport, status and decode failures are low-cardinality
+//! `Unknown` outcomes, never absence. List and content requests per
+//! evaluation are bounded by the registration; current item access is asked
+//! of the Source's `/authorize` every time and is never cached.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -13,38 +16,44 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use search_application::SearchError;
-use search_application::ports::{AccessDecision, BoxFuture, CurrentSourcePolicy};
+use search_application::ports::{
+    AccessDecision, BoxFuture, CurrentCandidateAccessEvaluatorPort, CurrentSourcePolicy,
+};
 use search_application::remote::{
-    PinnedRemoteTarget, PlannedRemoteAction, RemoteAccessTarget, RemoteActionOutcome,
+    OpaqueCursor, PinnedRemoteTarget, PlannedRemoteAction, RemoteAccessTarget, RemoteActionOutcome,
     RemoteIdentity, RemoteOperation, RemotePage, RemoteReadOutcome, RemoteResponseInput,
     RemoteResponseStatus, RemoteSourcePort, RemoteUnknownReason, TrustedRemoteContext,
     UntrustedRemoteHit, validate_remote_batch,
 };
 use search_application::remote_evidence::{RemoteProvenanceLookupPort, VerifiedSourceProvenance};
+use search_application::remote_identity::remote_resource_id;
 use search_application::remote_observation::{
     CheckedRemoteObservationAdapter, RemoteSnapshotVerifierPort, SnapshotAttestation,
     SnapshotExtent,
 };
 use search_application::remote_registration::RemoteSourceRegistration;
+use search_application::retrieval::OpaqueNativeId;
 use search_application::scoped::{
     AccessContextAuthorityPort, AuthorizedSourceScope, CurrentSourceVisibilityPort,
 };
-use search_core::id::DiscoveryEvaluationId;
+use search_core::discovery::FederatedCandidate;
+use search_core::id::{DiscoveryEvaluationId, ResourceId};
 use search_core::materialization::MaterializationState;
 use search_core::resource::ResourceKind;
 use time::OffsetDateTime;
 
 use crate::protocol::{
-    DecodedContent, DecodedSnapshot, authorize_body, decode_authorize, decode_content,
-    decode_response, live_body, lookup_body, search_body,
+    DecodedAuthorization, DecodedContent, DecodedSnapshot, authorize_body, decode_authorize,
+    decode_content, decode_response, live_body, lookup_body, search_body,
 };
 use crate::transport::{GuardedHttpTransport, RegisteredPath, TransportError};
 
-/// Evaluations whose request budget is remembered at once.
+/// Evaluations remembered at once for request budgets and item identities.
 const TRACKED_EVALUATIONS: usize = 256;
 
 /// The protocol verifier for one decoded response: the provider's snapshot
-/// token and extent, observed now. The application decides what it proves.
+/// token, extent and inventory, observed now. The application decides what
+/// they prove.
 struct ProtocolSnapshot(DecodedSnapshot);
 
 impl RemoteSnapshotVerifierPort for ProtocolSnapshot {
@@ -59,7 +68,7 @@ impl RemoteSnapshotVerifierPort for ProtocolSnapshot {
                 self.0.token.clone(),
                 self.0.extent,
                 OffsetDateTime::now_utc(),
-                vec![],
+                self.0.known.clone(),
             )?))
         })
     }
@@ -77,12 +86,20 @@ fn reason(error: TransportError) -> RemoteUnknownReason {
     }
 }
 
+/// Per-evaluation request count and the native IDs this adapter observed,
+/// so a candidate's current access can be asked of the Source.
+struct Evaluation {
+    context: TrustedRemoteContext,
+    requests: usize,
+    natives: BTreeMap<ResourceId, OpaqueNativeId>,
+}
+
 pub struct HttpRemoteSourceAdapter<'a> {
     registration: RemoteSourceRegistration,
     transport: GuardedHttpTransport,
     authority: &'a dyn AccessContextAuthorityPort,
     visibility: &'a dyn CurrentSourceVisibilityPort,
-    requests: Mutex<BTreeMap<DiscoveryEvaluationId, usize>>,
+    evaluations: Mutex<BTreeMap<DiscoveryEvaluationId, Evaluation>>,
 }
 
 impl fmt::Debug for HttpRemoteSourceAdapter<'_> {
@@ -113,32 +130,60 @@ impl<'a> HttpRemoteSourceAdapter<'a> {
             transport,
             authority,
             visibility,
-            requests: Mutex::new(BTreeMap::new()),
+            evaluations: Mutex::new(BTreeMap::new()),
         })
     }
 
-    /// One request within the evaluation's request budget.
+    pub fn registration(&self) -> &RemoteSourceRegistration {
+        &self.registration
+    }
+
+    fn owns(&self, context: &TrustedRemoteContext) -> bool {
+        context.registration() == &self.registration
+    }
+
+    /// Runs `change` on the evaluation's entry, opening it if needed.
+    fn with_evaluation<T>(
+        &self,
+        context: &TrustedRemoteContext,
+        change: impl FnOnce(&mut Evaluation) -> T,
+    ) -> Option<T> {
+        let mut evaluations = self.evaluations.lock().ok()?;
+        let key = context.binding().evaluation();
+        if !evaluations.contains_key(&key) && evaluations.len() >= TRACKED_EVALUATIONS {
+            let oldest = *evaluations.keys().next()?;
+            evaluations.remove(&oldest);
+        }
+        let entry = evaluations.entry(key).or_insert_with(|| Evaluation {
+            context: context.clone(),
+            requests: 0,
+            natives: BTreeMap::new(),
+        });
+        (entry.context == *context).then(|| change(entry))
+    }
+
+    /// One request; list/content requests count against the evaluation's
+    /// page/request budget.
     async fn call(
         &self,
-        evaluation: DiscoveryEvaluationId,
+        context: &TrustedRemoteContext,
         path: RegisteredPath,
         body: Vec<u8>,
         deadline: Instant,
+        budgeted: bool,
     ) -> Result<Vec<u8>, RemoteUnknownReason> {
-        {
-            let mut requests = self
-                .requests
-                .lock()
-                .map_err(|_| RemoteUnknownReason::Unavailable)?;
-            if !requests.contains_key(&evaluation) && requests.len() >= TRACKED_EVALUATIONS {
-                let oldest = *requests.keys().next().expect("nonempty");
-                requests.remove(&oldest);
-            }
-            let used = requests.entry(evaluation).or_insert(0);
-            if *used >= self.registration.limits().max_pages_or_requests {
+        if budgeted {
+            let limit = self.registration.limits().max_pages_or_requests;
+            let admitted = self
+                .with_evaluation(context, |evaluation| {
+                    let admitted = evaluation.requests < limit;
+                    evaluation.requests += usize::from(admitted);
+                    admitted
+                })
+                .unwrap_or(false);
+            if !admitted {
                 return Err(RemoteUnknownReason::Unavailable);
             }
-            *used += 1;
         }
         let response = self
             .transport
@@ -152,10 +197,13 @@ impl<'a> HttpRemoteSourceAdapter<'a> {
         Instant::now() + Duration::from_millis(self.registration.limits().call_millis)
     }
 
+    /// One page or list for `action`; `page` overrides an enumeration cursor
+    /// within the same sweep action.
     async fn observe(
         &self,
         context: &TrustedRemoteContext,
         action: &PlannedRemoteAction,
+        page: Option<&OpaqueCursor>,
         deadline: Instant,
     ) -> Result<RemoteActionOutcome, SearchError> {
         let operation = action.operation();
@@ -166,7 +214,7 @@ impl<'a> HttpRemoteSourceAdapter<'a> {
         };
         let (path, body) = match operation {
             RemoteOperation::Enumerate { cursor } => (
-                RegisteredPath::catalog(cursor.as_ref().map(|cursor| cursor.as_str())),
+                RegisteredPath::catalog(page.or(cursor.as_ref()).map(OpaqueCursor::as_str)),
                 Vec::new(),
             ),
             RemoteOperation::Query { input } => (RegisteredPath::search(), search_body(input)),
@@ -175,10 +223,7 @@ impl<'a> HttpRemoteSourceAdapter<'a> {
             }
             RemoteOperation::Live { input } => (RegisteredPath::live(), live_body(input)),
         };
-        let bytes = match self
-            .call(context.binding().evaluation(), path, body, deadline)
-            .await
-        {
+        let bytes = match self.call(context, path, body, deadline, true).await {
             Ok(bytes) => bytes,
             Err(reason) => return Ok(unknown(reason)),
         };
@@ -188,27 +233,97 @@ impl<'a> HttpRemoteSourceAdapter<'a> {
             return Ok(unknown(RemoteUnknownReason::Malformed));
         };
         let verifier = ProtocolSnapshot(decoded.snapshot);
-        CheckedRemoteObservationAdapter::new(
+        let outcome = CheckedRemoteObservationAdapter::new(
             &self.registration,
             self.authority,
             self.visibility,
             &verifier,
         )
         .observe(context, action, decoded.input)
-        .await
+        .await?;
+        if let RemoteActionOutcome::Completed(response) = &outcome {
+            self.remember(context, response.hits());
+        }
+        Ok(outcome)
+    }
+
+    fn remember(&self, context: &TrustedRemoteContext, hits: &[UntrustedRemoteHit]) {
+        let registration = &self.registration;
+        let observed: Vec<_> = hits
+            .iter()
+            .filter_map(|hit| hit.native_id())
+            .filter_map(|native| {
+                remote_resource_id(
+                    registration.tenant(),
+                    registration.source_id(),
+                    registration.provider_kind(),
+                    native,
+                )
+                .ok()
+                .map(|id| (id, native.clone()))
+            })
+            .collect();
+        self.with_evaluation(context, |evaluation| evaluation.natives.extend(observed));
+    }
+
+    /// The whole enumeration sweep of one `Enumerate { cursor: None }` action:
+    /// every page observed under that same action until the terminal page, a
+    /// failure, or the page budget. Only such a sweep can support absence.
+    pub async fn sweep(
+        &self,
+        context: &TrustedRemoteContext,
+        action: &PlannedRemoteAction,
+    ) -> Result<Vec<RemoteActionOutcome>, SearchError> {
+        if !self.owns(context)
+            || !matches!(
+                action.operation(),
+                RemoteOperation::Enumerate { cursor: None }
+            )
+        {
+            return Err(SearchError::InvalidRequest(
+                "a sweep starts from an unpaged enumeration".into(),
+            ));
+        }
+        let deadline =
+            Instant::now() + Duration::from_millis(self.registration.limits().evaluation_millis);
+        let mut cursor: Option<OpaqueCursor> = None;
+        let mut pages = Vec::new();
+        for _ in 0..self.registration.limits().max_pages_or_requests {
+            let outcome = self
+                .observe(context, action, cursor.as_ref(), deadline)
+                .await?;
+            let next = match &outcome {
+                RemoteActionOutcome::Completed(response) => match response.page() {
+                    RemotePage::Enumeration {
+                        next: Some(next),
+                        terminal: false,
+                        ..
+                    } => Some(next.clone()),
+                    _ => None,
+                },
+                RemoteActionOutcome::Unknown { .. } => None,
+            };
+            pages.push(outcome);
+            match next {
+                Some(next) => cursor = Some(next),
+                None => break,
+            }
+        }
+        Ok(pages)
     }
 
     async fn content(
         &self,
-        evaluation: DiscoveryEvaluationId,
+        context: &TrustedRemoteContext,
         native_id: &str,
     ) -> Result<DecodedContent, RemoteUnknownReason> {
         let bytes = self
             .call(
-                evaluation,
+                context,
                 RegisteredPath::content(native_id),
                 Vec::new(),
                 self.call_deadline(),
+                true,
             )
             .await?;
         let decoded = decode_content(&bytes, &self.registration);
@@ -224,23 +339,42 @@ impl<'a> HttpRemoteSourceAdapter<'a> {
         &self,
         context: &TrustedRemoteContext,
         target: Option<&RemoteIdentity>,
-    ) -> Result<crate::protocol::DecodedAuthorization, RemoteUnknownReason> {
+    ) -> Result<DecodedAuthorization, RemoteUnknownReason> {
         let bytes = self
             .call(
-                context.binding().evaluation(),
+                context,
                 RegisteredPath::authorize(),
                 authorize_body(
                     context.binding().actor().principal().as_str(),
                     target.map(RemoteIdentity::native_id),
                 ),
                 self.call_deadline(),
+                false,
             )
             .await?;
         decode_authorize(&bytes, &self.registration).map_err(|_| RemoteUnknownReason::Malformed)
     }
 
-    fn owns(&self, context: &TrustedRemoteContext) -> bool {
-        context.registration() == &self.registration
+    /// The context of the evaluation whose binding issued `access_context`
+    /// and whose responses contained `resource`.
+    fn observed(
+        &self,
+        access_context: &str,
+        resource: ResourceId,
+    ) -> Option<(TrustedRemoteContext, OpaqueNativeId)> {
+        let evaluations = self.evaluations.lock().ok()?;
+        evaluations.values().find_map(|evaluation| {
+            let handle = evaluation
+                .context
+                .binding()
+                .actor()
+                .access_handle()
+                .to_opaque_string();
+            (handle == access_context)
+                .then(|| evaluation.natives.get(&resource))
+                .flatten()
+                .map(|native| (evaluation.context.clone(), native.clone()))
+        })
     }
 }
 
@@ -261,7 +395,7 @@ impl RemoteSourcePort for HttpRemoteSourceAdapter<'_> {
                 + Duration::from_millis(self.registration.limits().evaluation_millis);
             let mut outcomes = Vec::with_capacity(actions.len());
             for action in actions {
-                outcomes.push(self.observe(context, action, deadline).await?);
+                outcomes.push(self.observe(context, action, None, deadline).await?);
             }
             Ok(outcomes)
         })
@@ -339,10 +473,7 @@ impl RemoteSourcePort for HttpRemoteSourceAdapter<'_> {
                 ));
             }
             let native_id = target.identity().native_id();
-            let content = match self
-                .content(context.binding().evaluation(), native_id.as_str())
-                .await
-            {
+            let content = match self.content(context, native_id.as_str()).await {
                 Ok(content) => content,
                 Err(reason) => return Ok(RemoteReadOutcome::Unknown(reason)),
             };
@@ -376,6 +507,7 @@ impl RemoteSourcePort for HttpRemoteSourceAdapter<'_> {
                     OffsetDateTime::now_utc().unix_timestamp_nanos()
                 ),
                 extent: SnapshotExtent::SingleResponse,
+                known: vec![],
             });
             let outcome = CheckedRemoteObservationAdapter::new(
                 &self.registration,
@@ -409,15 +541,21 @@ impl RemoteProvenanceLookupPort for HttpRemoteSourceAdapter<'_> {
         evidence_ref: &'b str,
     ) -> BoxFuture<'b, Option<VerifiedSourceProvenance>> {
         Box::pin(async move {
-            if target.identity().source_scope() != scope
-                || scope.source_id() != self.registration.source_id()
-            {
+            let context = {
+                let Ok(evaluations) = self.evaluations.lock() else {
+                    return Ok(None);
+                };
+                evaluations
+                    .get(&target.snapshot().evaluation())
+                    .map(|evaluation| evaluation.context.clone())
+            };
+            let Some(context) = context.filter(|context| {
+                context.source_scope() == scope && target.identity().source_scope() == scope
+            }) else {
                 return Ok(None);
-            }
-            // The provenance record is read for the binding's evaluation.
-            let evaluation = target.snapshot().evaluation();
+            };
             let Ok(content) = self
-                .content(evaluation, target.identity().native_id().as_str())
+                .content(&context, target.identity().native_id().as_str())
                 .await
             else {
                 return Ok(None);
@@ -435,6 +573,34 @@ impl RemoteProvenanceLookupPort for HttpRemoteSourceAdapter<'_> {
                     predicate: record.predicate,
                     citation_chain: record.citations,
                 }))
+        })
+    }
+}
+
+/// Current item access of a remote candidate, asked of the Source's
+/// `/authorize` for the identity this adapter observed in the actor's own
+/// evaluation. Anything not observed that way is `Unknown`.
+impl CurrentCandidateAccessEvaluatorPort for HttpRemoteSourceAdapter<'_> {
+    fn evaluate<'b>(
+        &'b self,
+        candidate: &'b FederatedCandidate,
+        access_context: &'b str,
+    ) -> BoxFuture<'b, AccessDecision> {
+        Box::pin(async move {
+            let Some(resource) = candidate
+                .resource_ref
+                .filter(|_| candidate.source_ref == self.registration.source_id())
+            else {
+                return Ok(AccessDecision::Unknown);
+            };
+            let Some((context, native)) = self.observed(access_context, resource) else {
+                return Ok(AccessDecision::Unknown);
+            };
+            let Ok(identity) = RemoteIdentity::new(&context, native) else {
+                return Ok(AccessDecision::Unknown);
+            };
+            self.current_access(&context, &RemoteAccessTarget::Resource(identity))
+                .await
         })
     }
 }

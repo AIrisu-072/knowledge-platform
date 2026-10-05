@@ -62,6 +62,8 @@ pub enum Fault {
     Status(u16),
     Body(String),
     Delay(Duration),
+    /// Close the connection without any response.
+    Disconnect,
 }
 
 #[derive(Debug, Clone)]
@@ -74,7 +76,11 @@ pub struct Collection {
     pub permission: String,
     pub page_size: usize,
     pub docs: Vec<Doc>,
+    /// Inventory IDs the snapshot claims to know (including removed ones).
+    pub known: Vec<String>,
     pub extra: Value,
+    /// Revokes `(document, principal)` when that document's content is read.
+    pub revoke_on_content: Option<(String, String)>,
 }
 
 impl Collection {
@@ -88,7 +94,9 @@ impl Collection {
             permission: "full_content".into(),
             page_size: 100,
             docs,
+            known: vec![],
             extra: Value::Null,
+            revoke_on_content: None,
         }
     }
 }
@@ -121,6 +129,9 @@ impl Catalog {
                         return;
                     };
                     let (status, payload, delay) = respond(&state, &method, &target, &body);
+                    if status == 0 {
+                        return;
+                    }
                     if let Some(delay) = delay {
                         tokio::time::sleep(delay).await;
                     }
@@ -260,7 +271,7 @@ fn list(collection: &Collection, extent: &str, hits: Vec<Value>, page: Option<Va
     let mut value = json!({
         "tenant": collection.tenant,
         "source": collection.source,
-        "snapshot": {"token": collection.snapshot, "extent": extent},
+        "snapshot": {"token": collection.snapshot, "extent": extent, "known": collection.known},
         "hits": hits,
     });
     if let Some(page) = page {
@@ -305,6 +316,7 @@ fn respond(
         Some(Fault::Status(status)) => return (status, "{}".into(), None),
         Some(Fault::Body(body)) => return (200, body, None),
         Some(Fault::Delay(wait)) => delay = Some(wait),
+        Some(Fault::Disconnect) => return (0, String::new(), None),
         None => {}
     }
     let request: Value = serde_json::from_slice(body).unwrap_or(Value::Null);
@@ -385,6 +397,14 @@ fn respond(
                 return (404, "{}".into(), delay);
             };
             state.bodies_served += 1;
+            if let Some((target, principal)) = &collection.revoke_on_content
+                && *target == id
+                && let Some(stored) = state.collections.get_mut(&base)
+            {
+                for doc in stored.docs.iter_mut().filter(|doc| doc.id == id) {
+                    doc.readers.remove(principal);
+                }
+            }
             json!({
                 "tenant": collection.tenant,
                 "source": collection.source,

@@ -3,6 +3,7 @@
 //! visibility grants, and the loopback-only transport constructor.
 #![allow(dead_code)]
 
+pub mod discovery;
 pub mod synthetic_catalog;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -33,6 +34,24 @@ use search_source_http::transport::{
     AddressResolver, GuardedHttpTransport, TransportFuture, TransportLimits,
 };
 use uuid::Uuid;
+
+/// A lease clock the test moves by hand.
+pub struct ManualClock(std::sync::Mutex<std::time::Instant>);
+
+impl ManualClock {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self(std::sync::Mutex::new(std::time::Instant::now())))
+    }
+    pub fn advance(&self, by: Duration) {
+        *self.0.lock().unwrap() += by;
+    }
+}
+
+impl search_application::remote_lease::LeaseClock for ManualClock {
+    fn now(&self) -> std::time::Instant {
+        *self.0.lock().unwrap()
+    }
+}
 
 /// Resolves the registered hostname to the synthetic catalog's loopback port.
 pub struct Loopback(pub u16);
