@@ -649,6 +649,30 @@ impl PostgresGraphStore {
         })
     }
 
+    /// The stored mapping row of one Resource of a READY generation, for a
+    /// Source access gate. Attachments are not loaded.
+    pub async fn ready_resource(
+        &self,
+        key: ProjectionGenerationKey,
+        resource_ref: ResourceId,
+    ) -> Result<Option<GraphResourceRecord>, GraphError> {
+        let row = sqlx::query(concat!(
+            "SELECT ",
+            resource_columns!(),
+            " FROM search_graph.resource r WHERE r.source_id=$1 AND r.generation_id=$2 \
+             AND r.resource_id=$3 AND EXISTS (SELECT 1 FROM search_graph.generation g \
+             WHERE g.source_id=r.source_id AND g.generation_id=r.generation_id \
+               AND g.state='READY')"
+        ))
+        .bind(key.source_id.as_uuid())
+        .bind(key.generation_id.as_uuid())
+        .bind(resource_ref.as_uuid())
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(|row| resource_from_row(&row, Vec::new()))
+            .transpose()
+    }
+
     /// Read-only recovery of a READY generation: every row is rebuilt and the
     /// stored digest, counts and mapping commitment must still hold.
     pub async fn recover(

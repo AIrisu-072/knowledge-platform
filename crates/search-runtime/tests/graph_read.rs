@@ -562,3 +562,41 @@ async fn real_pin_reads_current_graph_until_the_pin_expires() {
         Err(SearchError::SourceUnavailable(_))
     ));
 }
+
+#[tokio::test]
+async fn missing_mapping_commitment_fails_recovery() {
+    let fixture = fixture().await;
+    let key = graph_ready(&fixture, 8_031, false).await;
+    let store = PostgresGraphStore::new(fixture.admin.clone());
+    let manifest_digest = manifest(8_031).digest;
+    let receipt = store.recover(key, &manifest_digest).await.unwrap();
+    assert_eq!(receipt.resource_count, 7);
+    let stored = store.ready_resource(key, rid(101)).await.unwrap().unwrap();
+    assert!(matches!(
+        stored.mapping,
+        GraphSourceMapping::Registered { .. }
+    ));
+
+    // Admin-only corruption below the triggers: one owner mapping changes
+    // after READY, so the committed mapping digest no longer holds.
+    let mut tx = fixture.admin.begin().await.unwrap();
+    sqlx::query("SET LOCAL session_replication_role = replica")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE search_graph.resource SET native_id='borrowed' \
+         WHERE source_id=$1 AND generation_id=$2 AND resource_id=$3",
+    )
+    .bind(key.source_id.as_uuid())
+    .bind(key.generation_id.as_uuid())
+    .bind(rid(101).as_uuid())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    assert!(matches!(
+        store.recover(key, &manifest_digest).await,
+        Err(search_graph::GraphError::Integrity(_))
+    ));
+}

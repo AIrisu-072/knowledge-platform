@@ -9,6 +9,7 @@ mod body_manifest;
 mod coverage;
 mod evidence;
 mod extraction;
+mod graph_mapping;
 mod history;
 mod model;
 mod outbox;
@@ -31,6 +32,10 @@ pub use evidence::{DocumentEvidenceCatalog, DocumentEvidenceField};
 pub use extraction::{
     BodyBuildError, BodyItemExtractor, BodyProfileRegistry, DocumentBodyExtractor,
     ExtractedItemResult,
+};
+pub use graph_mapping::{
+    DocumentGenerationAccess, DocumentGraphMappingValidator, document_graph_records,
+    graph_relations, validate_document_graph_mapping,
 };
 pub use history::DocumentHistoricalLookup;
 pub use model::{

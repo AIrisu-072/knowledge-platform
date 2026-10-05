@@ -573,6 +573,30 @@ impl DocumentCurrentAccessAdapter {
         }
     }
 
+    pub(crate) const fn source_id(&self) -> SourceId {
+        self.expected_source_id
+    }
+
+    /// A Version node: its owner must still be the Document whose current
+    /// Version it is, then the direct current-Version decision applies.
+    pub(crate) async fn evaluate_version(
+        &self,
+        version: ResourceId,
+        owner: DocumentId,
+        access_context: &str,
+    ) -> Result<AccessDecision, search_application::SearchError> {
+        let current = self
+            .current_version(version.as_uuid())
+            .await
+            .map_err(|error| {
+                search_application::SearchError::SourceUnavailable(error.to_string())
+            })?;
+        if current.map(|(document, _)| document) != Some(owner.as_uuid()) {
+            return Ok(AccessDecision::Denied);
+        }
+        CurrentAccessEvaluatorPort::evaluate(self, version, access_context).await
+    }
+
     async fn current_version(&self, version_id: Uuid) -> Result<Option<(Uuid, i64)>, sqlx::Error> {
         sqlx::query_as(
             "SELECT d.document_id, a.access_revision \

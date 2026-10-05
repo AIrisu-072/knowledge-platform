@@ -13,6 +13,7 @@ document-semantic-inspection-core = { version = "0.0.0", path = "../document-sem
 search-application = { version = "0.0.0", path = "../search-application" }
 search-core = { version = "0.0.0", path = "../search-core" }
 search-extraction-core = { version = "0.0.0", path = "../search-extraction-core" }
+search-graph = { version = "0.0.0", path = "../search-graph" }
 search-graph-memory = { version = "0.0.0", path = "../search-graph-memory" }
 search-projection-memory = { version = "0.0.0", path = "../search-projection-memory" }
 search-tantivy = { version = "0.0.0", path = "../search-tantivy" }
