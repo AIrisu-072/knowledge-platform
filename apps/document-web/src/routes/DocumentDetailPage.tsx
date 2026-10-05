@@ -20,6 +20,7 @@ import {
 } from '../application/document-workspace';
 import { ApiFeedback, LoadingState } from '../components/shared/ApiFeedback';
 import { OriginalVersionDownload } from '../components/shared/OriginalVersionDownload';
+import { DocumentLifecycleOperations } from '../components/document/DocumentLifecycleOperations';
 import { AppShell } from '../components/app-shell/AppShell';
 import { createOperationId } from '../application/operation-id';
 import { documentStatusLabel, versionStatusLabel } from '../view-model/document-status';
@@ -47,7 +48,7 @@ export function DocumentDetailPage() {
     queryKey: ['document', documentId, search.view],
     queryFn: () => documentApi.getDocument(documentId, search.view),
   });
-  const document = detailQuery.data;
+  const document = detailQuery.error ? undefined : detailQuery.data;
   const canManageAccess = document?.capabilities.manageAccess.status === 'available';
   const visibleTabs = tabs.filter((tab) => tab.id !== 'access' || canManageAccess);
   const activeTab = visibleTabs.some((tab) => tab.id === search.tab) ? search.tab : 'overview';
@@ -211,6 +212,14 @@ export function DocumentDetailPage() {
         </header>
       )}
 
+      <DocumentLifecycleOperations
+        key={documentId}
+        documentId={documentId}
+        document={document}
+        version={versionDetailQuery.error ? undefined : versionDetailQuery.data}
+        contextKey={`${documentId}:${search.view}:${activeTab}:${search.versionId ?? ''}:${search.workflow ?? ''}`}
+        showActions={activeTab === 'versions' && !search.workflow}
+      />
       {detailQuery.isPending && <LoadingState label="文書情報を読み込み中" />}
       {detailQuery.error && <ApiFeedback error={detailQuery.error} onRetry={retryAll} />}
       {document && (
