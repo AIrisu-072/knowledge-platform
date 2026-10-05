@@ -43,3 +43,15 @@ refuses an image ID it cannot inspect.
 PostgreSQL and redb provisioning is unchanged. Round 1 receipts for redb 100 remain
 valid evidence for that harness version only; round 2 re-measures every cell with one
 harness version so the comparison does not mix source hashes.
+
+## Changes after round 2 (run 37251744747)
+
+4. **Canary slices on hosted runners.** Every PostgreSQL and Neo4j job stopped at the
+   predeclared five-minute profile canary after 36–42 of 48 cells; redb and PostgreSQL
+   3,000 completed inside one slice. The method already defines this stop as a
+   diagnosis point followed by `--resume`, which keeps the saved cells and raw attempts.
+   The workflow now resumes a slice only when the recorded error is exactly that canary,
+   at most 20 times; any other error ends the job.
+5. **Restore directory ownership.** The permission change from item 3 now applies only
+   to a directory owned by the runner user. The live candidate directory, which the
+   Neo4j entrypoint hands to its own user, is left unchanged.

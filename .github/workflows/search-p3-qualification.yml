@@ -78,12 +78,29 @@ jobs:
             admission=(--admission "data/runs/admission-$PROFILE.json")
           fi
           status=0
+          # The predeclared five-minute canary stops a slice for diagnosis; resume
+          # continues from the saved cells without counting incomplete attempts.
+          measure() {
+            local output resume=() attempt
+            output="${*: -1}"
+            for attempt in $(seq 1 20); do
+              if .venv/bin/python qualification_driver.py measure --profile "$PROFILE" \
+                  --fixture "$fixture" --oracle-binary "$oracle" "${admission[@]}" \
+                  "${resume[@]}" "$@"; then
+                return 0
+              fi
+              if [ "$(jq -r '.error.message // ""' "$output")" != "five-minute candidate/profile canary exceeded" ]; then
+                return 1
+              fi
+              echo "canary slice $attempt stopped; resuming"
+              resume=(--resume)
+            done
+            return 1
+          }
           if [ "$BACKEND" = redb ]; then
             mkdir -p data/qualification
             db="data/qualification/redb-$PROFILE.db"
-            .venv/bin/python qualification_driver.py measure --backend redb --profile "$PROFILE" \
-              --fixture "$fixture" --oracle-binary "$oracle" \
-              --redb-binary target/release/qualification_redb --db-path "$db" "${admission[@]}" \
+            measure --backend redb --redb-binary target/release/qualification_redb --db-path "$db" \
               --output "data/runs/measure-redb-$PROFILE.json" || status=$?
             .venv/bin/python qualification_recovery.py --backend redb \
               --redb-binary target/release/qualification_redb --db-path "$db" \
@@ -99,9 +116,8 @@ jobs:
           name="$(printf '%s' "$started" | jq -r .container_name)"
           port="$(printf '%s' "$started" | jq -r .host_port)"
           data="$(printf '%s' "$started" | jq -r .data_dir)"
-          .venv/bin/python qualification_driver.py measure --backend "$BACKEND" --profile "$PROFILE" \
-            --fixture "$fixture" --oracle-binary "$oracle" --port "$port" --image-id "$image" \
-            --container-name "$name" --data-dir "$data" "${admission[@]}" \
+          measure --backend "$BACKEND" --port "$port" --image-id "$image" \
+            --container-name "$name" --data-dir "$data" \
             --output "data/runs/measure-$BACKEND-$PROFILE.json" || status=$?
           .venv/bin/python qualification_recovery.py --backend "$BACKEND" --container-name "$name" \
             --image-id "$image" --data-dir "$data" --port "$port" --fixture "$fixture" \
