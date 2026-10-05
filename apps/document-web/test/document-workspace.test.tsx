@@ -30,6 +30,10 @@ jest.mock('../src/application/document-workspace', () => ({
     cancelPublicationSchedule: jest.fn(),
     setDocumentAccessPolicy: jest.fn(),
     createVersion: jest.fn(),
+    updateWorkingVersion: jest.fn(),
+    getVersionEditManifest: jest.fn(),
+    prepareVersionUpload: jest.fn(),
+    rebaseWorkingVersion: jest.fn(),
     downloadVersionFile: jest.fn(),
   },
 }));
@@ -58,7 +62,9 @@ function mockApi() {
   api.listVersionFiles.mockResolvedValue({ items: [] });
   api.getDocumentAccessPolicy.mockResolvedValue(policyRead());
   api.compareDocumentRevisions.mockResolvedValue(comparison() as never);
-  api.createVersion.mockResolvedValue({ operationId: 'op', documentId, targetVersionId: versionId, versionNo: 3, baseVersionId, resultingRevision: 8 });
+  api.createVersion.mockImplementation((id, body) => Promise.resolve({ operationId: body.operationId, documentId: id, targetVersionId: body.targetVersionId, versionNo: 3, baseVersionId, resultingRevision: 8 }));
+  api.prepareVersionUpload.mockImplementation(() => ({ body: new Blob(['wire']), contentType: 'multipart/form-data; boundary=fixed' }));
+  api.getVersionEditManifest.mockImplementation((id, sourceVersionId, purpose) => Promise.resolve({ documentId: id, sourceVersionId, purpose, documentRevision: 7, title: '受入手順', items: [{ contentItemId: 'primary-item', logicalPath: 'primary', ordinal: 0, representations: [{ role: 'authoritative', representationId: 'primary-representation', fileId: 'source-file', mediaType: 'text/plain', originalFilename: 'source.txt', sizeBytes: 8 }] }] }));
   api.publishVersion.mockResolvedValue({ publishOperationId: 'pub', documentId, documentVersionId: versionId, resultingDocumentRevision: 8, publishedAt: '2026-10-01T02:00:00Z' });
   api.schedulePublication.mockResolvedValue({ publishOperationId: 'pub', documentId, targetVersionId: versionId, acceptedRevision: 8, scheduledPublishAt: '2026-10-02T02:00:00Z' });
   api.setDocumentAccessPolicy.mockResolvedValue({ operationId: 'op', resourceId: documentId, resultingRevision: 5, changed: true, occurredAt: '2026-10-01T02:00:00Z' });
@@ -229,69 +235,46 @@ test('versions keep WORKING content separate from numbered revisions', async () 
   expect(api.getDocumentVersion).toHaveBeenLastCalledWith(documentId, baseVersionId, 'authoring');
 });
 
-test.each([
-  { failure: 'lost response', error: new Error('connection lost'), message: '文書サービスに接続できません' },
-  { failure: 'hidden mutation snapshot', error: { type: 'about:blank', title: 'Document not found', status: 404,
-    code: 'DOCUMENT_NOT_FOUND', traceId: 'synthetic', retryable: false }, message: '文書が見つからないか、閲覧できません' },
-])('new version retries preserve operation and target IDs with the same file payload after $failure', async ({ error, message }) => {
+test('new version unknown retry retains operation, target and full immutable upload', async () => {
   const api = mockApi();
-  api.getDocument.mockResolvedValue(documentDetail('authoring'));
-  api.listDocumentVersions.mockResolvedValue({ items: [version({ lifecycleState: 'working', versionNo: 3, isCurrent: false })], nextCursor: null });
-  api.getDocumentVersion.mockResolvedValue(versionDetail({ publish: operationDenied, schedulePublication: operationDenied }));
-  api.createVersion.mockRejectedValueOnce(error).mockResolvedValueOnce({ operationId: 'ok', documentId, targetVersionId: versionId, versionNo: 4, baseVersionId: versionId, resultingRevision: 8 });
+  api.getDocument.mockResolvedValue(documentDetail('published'));
+  api.listDocumentVersions.mockResolvedValue({ items: [version({ lifecycleState: 'published', isCurrent: true })], nextCursor: null });
+  api.getDocumentVersion.mockResolvedValue({ ...versionDetail(), lifecycleState: 'published', isCurrent: true });
+  api.createVersion.mockRejectedValueOnce(new Error('connection lost'));
   const user = userEvent.setup();
-  renderAt(`/documents/${documentId}?view=authoring&tab=versions`);
-
-  await screen.findByRole('heading', { name: '受入手順' });
-  const versionPanel = await screen.findByRole('tabpanel', { name: '版・改訂' });
-  await user.click(within(versionPanel).getByRole('button', { name: '新しい版を作成' }));
+  renderAt(`/documents/${documentId}?view=published&tab=versions`);
+  const panel = await screen.findByRole('tabpanel', { name: '版・改訂' });
+  await user.click(within(panel).getByRole('button', { name: '新しい版を作成' }));
   expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
   expect(screen.queryByRole('complementary', { name: '原本と版' })).not.toBeInTheDocument();
   expect(await screen.findByRole('heading', { name: '新しい版を作成' })).toBeInTheDocument();
   const file = new File(['内容'], '受入手順.txt', { type: 'text/plain' });
-  const fileInput = screen.getByLabelText('原本ファイル') as HTMLInputElement;
-  await user.upload(fileInput, file);
-  expect(fileInput.files?.[0]?.name).toBe('受入手順.txt');
-  // jsdom does not treat its FileList as satisfying the native required-file constraint.
-  fireEvent.submit(fileInput.form!);
-  await waitFor(() => expect(api.createVersion).toHaveBeenCalled());
-  expect(await screen.findByRole('alert')).toHaveTextContent(message);
-  expect(fileInput.files?.[0]).toBe(file);
-  await user.click(screen.getByRole('button', { name: '再読み込み' }));
-  await screen.findByText('新しい版を作成しました。');
-
+  const input = await screen.findByLabelText('差替ファイル: source.txt（固定パス: primary、順序: 0）') as HTMLInputElement;
+  await user.upload(input, file); fireEvent.submit(input.form!);
+  await screen.findByText('保存結果を確認できません');
+  await user.click(screen.getByRole('button', { name: '同じ内容で再試行' }));
+  await screen.findByText('新しい作業版を作成しました。');
   expect(api.createVersion).toHaveBeenCalledTimes(2);
-  const first = api.createVersion.mock.calls[0];
-  const second = api.createVersion.mock.calls[1];
-  expect(first[0]).toBe(documentId);
-  expect(first[1]).toMatchObject({
-    targetVersionId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
-    expectedRevision: 7,
-    title: '受入手順',
-    items: [{ originalFilename: '受入手順.txt' }],
-  });
-  expect(second[1].operationId).toBe(first[1].operationId);
-  expect(second[1].targetVersionId).toBe(first[1].targetVersionId);
-  expect(second[1].items).toEqual(first[1].items);
-  expect([...second[2].values()]).toEqual([...first[2].values()]);
-  expect(first[2].get(first[1].items[0].partId)).toBe(file);
-  expect(second[2].get(second[1].items[0].partId)).toBe(file);
+  const first = api.createVersion.mock.calls[0]!; const second = api.createVersion.mock.calls[1]!;
+  expect(first[1]).toMatchObject({ targetVersionId: expect.stringMatching(/^[0-9a-f-]{36}$/i), expectedRevision: 7, title: '受入手順',
+    items: [{ logicalPath: 'primary', ordinal: 0, originalFilename: '受入手順.txt' }] });
+  expect(second).toEqual(first); expect(first[2].get(first[1].items[0].partId)).toBe(file);
 });
 
-test('an explicit-MIME synthetic upload preserves the primary manifest anchor without an extension', async () => {
+test('an explicit-MIME synthetic replacement preserves its existing manifest anchor without an extension', async () => {
   const api = mockApi();
-  api.getDocument.mockResolvedValue(documentDetail('authoring'));
+  api.listDocumentVersions.mockResolvedValue({ items: [version({ lifecycleState: 'published', isCurrent: true })], nextCursor: null });
+  api.getDocumentVersion.mockResolvedValue({ ...versionDetail(), lifecycleState: 'published', isCurrent: true });
   const user = userEvent.setup();
-  renderAt(`/documents/${documentId}?view=authoring&tab=versions`);
+  renderAt(`/documents/${documentId}?view=published&tab=versions`);
   const panel = await screen.findByRole('tabpanel', { name: '版・改訂' });
   await user.click(within(panel).getByRole('button', { name: '新しい版を作成' }));
   const file = new File(['Synthetic changed content'], 'primary', { type: 'text/plain' });
-  const input = screen.getByLabelText('原本ファイル') as HTMLInputElement;
-  await user.upload(input, file);
-  fireEvent.submit(input.form!);
-  await screen.findByText('新しい版を作成しました。');
+  const input = await screen.findByLabelText('差替ファイル: source.txt（固定パス: primary、順序: 0）') as HTMLInputElement;
+  await user.upload(input, file); fireEvent.submit(input.form!);
+  await screen.findByText('新しい作業版を作成しました。');
   expect(api.createVersion).toHaveBeenCalledTimes(1);
-  const [id, body, files] = api.createVersion.mock.calls[0];
+  const [id, body, files] = api.createVersion.mock.calls[0]!;
   expect(id).toBe(documentId);
   expect(body.items).toEqual([expect.objectContaining({ logicalPath: 'primary', ordinal: 0,
     mediaType: 'text/plain', originalFilename: 'primary' })]);

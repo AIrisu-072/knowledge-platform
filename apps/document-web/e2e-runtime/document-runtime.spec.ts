@@ -125,21 +125,21 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   // Keep a supported single-line edit against both seeded Versions; replacing
   // multiple lines together is intentionally ambiguous in document-diff-v0.
   const changedContent = Buffer.from('【合成データ】規程サンプル\n第1条 この文書はPoC検証専用です。\n第2条 実Runtime GUIで作成した第三版の更新履歴を確認します。\n');
-  // The GUI maps upload name to logicalPath. Preserve the synthetic primary
-  // anchor so this tests a content edit, not the intentionally unresolved move+edit case.
+  // The manifest editor preserves logicalPath independently of the replacement filename.
+  // Keep the synthetic primary anchor so this remains a content-only edit.
   for (const version of before.versions) {
     const files = (await listVersionFiles({ ...humanOptions, path: { documentId, versionId: version.versionId }, query: { purpose: 'history' } })).data;
     expect(files.items).toHaveLength(1);
     expect(files.items[0]).toMatchObject({ logicalPath: 'primary', ordinal: 0, mediaType: 'text/plain' });
   }
-  await page.getByLabel('原本ファイル').setInputFiles({ name: 'primary', mimeType: 'text/plain', buffer: changedContent });
-  await expect(page.getByLabel('原本ファイル')).toHaveValue(/(?:^|[\\/])primary$/);
+  await page.getByLabel(/^差替ファイル:/).setInputFiles({ name: 'primary', mimeType: 'text/plain', buffer: changedContent });
+  await expect(page.getByLabel(/^差替ファイル:/)).toHaveValue(/(?:^|[\\/])primary$/);
   await visualCheckpoint(page, '06-version-file-selected-1440.png');
   const createResponse = page.waitForResponse(response => response.url().endsWith(`/documents/${documentId}/versions`) && response.request().method() === 'POST');
-  await page.getByRole('button', { name: '新しい版を作成', exact: true }).click();
+  await page.getByRole('button', { name: '新しい作業版を作成', exact: true }).click();
   const createdResponse = await createResponse; expect(createdResponse.status()).toBe(201);
   const created = await createdResponse.json() as VersionMutationResult;
-  await expect(page.getByRole('status')).toContainText('新しい版を作成しました');
+  await expect(page.getByRole('status')).toContainText('新しい作業版を作成しました');
   const createdFiles = (await listVersionFiles({ ...humanOptions, path: { documentId, versionId: created.targetVersionId }, query: { purpose: 'authoring' } })).data;
   expect(createdFiles.items).toHaveLength(1);
   expect(createdFiles.items[0]).toMatchObject({ logicalPath: 'primary', ordinal: 0, mediaType: 'text/plain', displayName: 'primary' });
@@ -276,7 +276,7 @@ test('a real stale GUI version upload reports OCC conflict without duplicate cre
   await page.getByRole('button', { name: '新しい版を作成', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: '新しい版を作成', level: 1 })).toBeVisible();
   const bytes = Buffer.from('Synthetic concurrent version, never customer data.\n');
-  await page.getByLabel('原本ファイル').setInputFiles({ name: 'stale.txt', mimeType: 'text/plain', buffer: bytes });
+  await page.getByLabel(/^差替ファイル:/).setInputFiles({ name: 'stale.txt', mimeType: 'text/plain', buffer: bytes });
   const detail = (await getDocument({ ...common, path: { documentId }, query: { view: 'authoring' } })).data;
   await new BinaryTransportBridge({ baseUrl: context.human }).createVersion(documentId, {
     request: { operationId: uuidV7(), targetVersionId: uuidV7(), expectedRevision: detail.revision, title: detail.title,
@@ -284,11 +284,11 @@ test('a real stale GUI version upload reports OCC conflict without duplicate cre
     files: new Map([['primary', new Blob([bytes], { type: 'text/plain' })]]),
   });
   const responsePromise = page.waitForResponse(response => response.url().endsWith(`/documents/${documentId}/versions`) && response.request().method() === 'POST');
-  await page.getByRole('button', { name: '新しい版を作成', exact: true }).click();
+  await page.getByRole('button', { name: '新しい作業版を作成', exact: true }).click();
   const response = await responsePromise;
   expect(response.status()).toBe(409); expect((await response.json()).code).toBe('REVISION_CONFLICT');
   await expect(page.getByRole('alert')).toContainText('文書の状態が更新されています');
-  await expect(page.getByRole('status').filter({ hasText: '新しい版を作成しました' })).toHaveCount(0);
+  await expect(page.getByRole('status').filter({ hasText: '新しい作業版を作成しました' })).toHaveCount(0);
   const versions = (await listDocumentVersions({ ...common, path: { documentId }, query: { purpose: 'history', pageSize: 100 } })).data;
   expect(versions.items).toHaveLength(2);
   await visualCheckpoint(page, '11-occ-conflict-1440.png');

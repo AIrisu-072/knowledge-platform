@@ -261,3 +261,28 @@ of every worker crash, resource exhaustion or parser failure. The full productio
 runtime still must execute these cases on an exact head. Local permission-control
 fixtures are never executed as workers and count only as harness tests. No new
 sandbox bypass, worker fallback, business mapping, dependency or upload is added.
+
+## WORKING multi-original editor candidate
+
+The existing owned journey includes `working-version-editor.spec.ts` (two cases)
+and restart includes `working-version-editor-persistence.spec.ts` (one case).
+Both use top-level screenshot/trace/video `off`, the same two synthetic profiles,
+disposable PostgreSQL18.6 and existing Chromium. No new runner, public artifact,
+Playwright private environment variable or global capture setting is introduced.
+
+The first case repairs an uninspected invalid-UTF-8 original in never-published
+Version1 with null base/current, preserving its media type, ID/number and unpublished
+state without requiring old-original inspection. The second prepares two originals and two
+renditions through the full-manifest API, creates a new WORKING by replacing one
+original in the GUI, checks exact filenames and all retained file IDs/bytes, then
+updates only the other original. Only the selected original's old renditions are
+omitted. The old publication and all its files remain intact while editing and
+a rejected stale publication leaves it unchanged. A successful GUI publish switches
+current directly to the new version and preserves the previous version in history.
+A separate `.working-editor.json` sidecar stores observed hashes, exact manifest,
+version/revision state and ledger source IDs for both HTTP-process restarts.
+
+This slice's local evidence is limited to pure tests, compilation and collection;
+the exact-head hosted run must establish database/browser/restart/owned cleanup.
+Finite diagnostic source/stage allowlists include the new cases, without exposing
+filenames, content or raw assertion messages.

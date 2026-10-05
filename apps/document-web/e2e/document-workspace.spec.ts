@@ -70,7 +70,7 @@ function mockDocument(view: 'published' | 'authoring') {
       value: '2026-10-01T01:00:00Z',
     },
     capabilities: {
-      createVersion: available,
+      createVersion: { status: 'disabled', reason: 'lifecycle' },
       updateMetadata: permissionDenied,
       moveDocument: permissionDenied,
       endPublication: permissionDenied,
@@ -79,7 +79,7 @@ function mockDocument(view: 'published' | 'authoring') {
     },
   };
   return working
-    ? { ...common, currentVersionId: null, lifecycleState: 'working' }
+    ? { ...common, currentVersionId: baseVersionId, lifecycleState: 'working' }
     : { ...common, currentVersionId: baseVersionId, unread: false, publishedAt: '2026-09-30T03:00:00Z' };
 }
 
@@ -203,6 +203,11 @@ async function installApi(page: Page, publishDelayMs = 0) {
       body = mockVersion();
     } else if (method === 'GET' && url.pathname === `/v1/documents/${documentId}/versions/${baseVersionId}`) {
       body = { ...mockVersion(), versionId: baseVersionId, versionNo: 2, lifecycleState: 'PUBLISHED', isCurrent: true };
+    } else if (method === 'GET' && url.pathname === `/v1/documents/${documentId}/versions/${versionId}/edit-manifest`) {
+      body = { documentId, sourceVersionId: versionId, documentRevision: 7, purpose: 'authoring', title: '受入手順',
+        items: [{ contentItemId: 'content-id', logicalPath: 'source.txt', ordinal: 0,
+          representations: [{ representationId: 'representation-id', role: 'authoritative',
+            fileId: '00000000-0000-4000-8000-000000000030', originalFilename: 'source.txt', mediaType: 'text/plain', sizeBytes: 12 }] }] };
     } else if (method === 'GET' && url.pathname === `/v1/documents/${documentId}/revisions`) {
       body = {
         items: [revision(newerRevisionId, versionId, 2), revision(revisionId, baseVersionId, 1)],
@@ -455,12 +460,12 @@ test('Mock 1 through Mock 7 preserve the approved screens and core states', asyn
   await expect(page.getByRole('heading', { name: '正式改訂' })).toBeVisible();
   await snapshot('mock-3-revisions-versions.png');
 
-  await page.getByRole('button', { name: '新しい版を作成', exact: true }).first().click();
-  await expect(page.getByRole('heading', { name: '新しい版を作成', level: 1 })).toBeVisible();
+  await page.getByRole('button', { name: '作業版を編集', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: '作業版を編集', level: 1 })).toBeVisible();
   await expect(page.getByRole('complementary', { name: '原本と版' })).toHaveCount(0);
-  await page.getByLabel('原本ファイル').setInputFiles({ name: 'new-policy.txt', mimeType: 'text/plain', buffer: Buffer.from('new policy') });
+  await page.getByLabel(/^差替ファイル:/).setInputFiles({ name: 'new-policy.txt', mimeType: 'text/plain', buffer: Buffer.from('new policy') });
   await expect(page.getByText('new-policy.txt')).toBeVisible();
-  await expect(page.getByRole('button', { name: '新しい版を作成', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '作業版を保存', exact: true })).toBeEnabled();
   await snapshot('mock-4-new-version-selected.png');
 
   await page.getByRole('button', { name: '← 版の一覧へ戻る' }).click();

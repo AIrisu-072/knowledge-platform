@@ -9,6 +9,8 @@ import {
   getDocumentAccessPolicy,
   getDocumentHistory,
   getDocumentVersion,
+  getVersionEditManifest,
+  rebaseWorkingVersion,
   getRootFolder,
   getSession,
   listDocumentRevisions,
@@ -30,6 +32,7 @@ import {
   type CommandsRevisionComparisonRequest,
   type CommandsSetAccessPolicy,
   type CommandsVersionWrite,
+  type ModelsEditManifest,
   type DocumentDetail,
   type DocumentList,
   type DocumentRevisionPage,
@@ -144,8 +147,20 @@ export const documentApi = {
     // The generated union currently adds a synthetic discriminator that conflicts with the normative wire values.
     return payload(setDocumentAccessPolicy({ ...data, path: { documentId }, body: body as unknown as CommandsSetAccessPolicy }));
   },
-  createVersion(documentId: string, request: CommandsVersionWrite, files: ReadonlyMap<string, Blob | File>) {
-    return binary.createVersion(documentId, { request, files });
+  getVersionEditManifest(documentId: string, versionId: string, purpose: 'published' | 'authoring'): Promise<ModelsEditManifest> {
+    return payload(getVersionEditManifest({ ...data, path: { documentId, versionId }, query: { purpose } }));
+  },
+  prepareVersionUpload(request: CommandsVersionWrite, files: ReadonlyMap<string, Blob | File>) {
+    return binary.prepareVersionUpload({ request, files });
+  },
+  createVersion(documentId: string, request: CommandsVersionWrite, files: ReadonlyMap<string, Blob | File>, prepared?: ReturnType<BinaryTransportBridge['prepareVersionUpload']>) {
+    return binary.createVersion(documentId, { request, files }, prepared);
+  },
+  updateWorkingVersion(documentId: string, versionId: string, request: CommandsVersionWrite, files: ReadonlyMap<string, Blob | File>, prepared?: ReturnType<BinaryTransportBridge['prepareVersionUpload']>) {
+    return binary.updateWorkingVersion(documentId, versionId, { request, files }, prepared);
+  },
+  rebaseWorkingVersion(documentId: string, versionId: string, body: { operationId: string; expectedRevision: number }) {
+    return payload(rebaseWorkingVersion({ ...data, path: { documentId, versionId }, body }));
   },
   downloadVersionFile(input: {
     documentId: string;
@@ -153,8 +168,8 @@ export const documentApi = {
     contentItemId: string;
     representationId: string;
     purpose: View;
-  }) {
-    return binary.downloadVersionFileBlob(input);
+  }, options?: { signal?: AbortSignal }) {
+    return binary.downloadVersionFileBlob(input, options);
   },
 };
 

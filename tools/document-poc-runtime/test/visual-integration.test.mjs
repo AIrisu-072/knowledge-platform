@@ -42,7 +42,7 @@ test('予約取消は同じjourneyと再起動phaseへ追加し、専用画像�
 test('取下げ・公開終了の専用journeyと再起動だけを既存runnerへ追加し、画像を記録しない', async () => {
   const config = await read('../../../apps/document-web/playwright.runtime.config.ts');
   assert.match(config, /testMatch: phase === 'journey' \? \[[^\]]*'lifecycle-operations\.spec\.ts'/);
-  assert.match(config, /: \['persistence\.spec\.ts', 'lifecycle-operations-persistence\.spec\.ts'[^\]]*\]/);
+  assert.match(config, /: \['persistence\.spec\.ts', 'lifecycle-operations-persistence\.spec\.ts', 'document-schedule-cancellation\.spec\.ts', 'working-version-editor-persistence\.spec\.ts'\]/);
   assert.match(config, /retries: 0/);
   for (const name of ['lifecycle-operations', 'lifecycle-operations-persistence']) {
     const source = await read(`../../../apps/document-web/e2e-runtime/${name}.spec.ts`);
@@ -112,4 +112,32 @@ test('normal runtime checkpoints qualify readiness before the optional capture g
   const gate = source.indexOf('if (!context.visualCapture) return;');
   const capture = source.indexOf('await captureVisualCheckpoint(');
   assert.ok(ready > 0 && gate > ready && capture > gate, 'Ordinary runs must check settlement and page bounds without taking screenshots');
+});
+
+test('複数原本WORKINGのjourneyと再起動は同じrunnerで全recordingをoffに保つ', async () => {
+  const config = await read('../../../apps/document-web/playwright.runtime.config.ts');
+  assert.match(config, /testMatch: phase === 'journey' \? \[[^\]]*'working-version-editor\.spec\.ts'/);
+  assert.match(config, /: \[[^\]]*'working-version-editor-persistence\.spec\.ts'/);
+  for (const name of ['working-version-editor', 'working-version-editor-persistence']) {
+    const source = await read(`../../../apps/document-web/e2e-runtime/${name}.spec.ts`);
+    assert.match(source, /^test\.use\(\{ screenshot: 'off', trace: 'off', video: 'off' \}\);$/m);
+    assert.equal((source.match(/^test\('/gm) ?? []).length, name === 'working-version-editor' ? 2 : 1);
+    assert.doesNotMatch(source, /visualCheckpoint|screenshot\(|recordVideo|tracing|page\.route\(|route\.fulfill\(|route\.abort\(/);
+  }
+  const helper = await read('../../../apps/document-web/e2e-runtime/working-version-support.ts');
+  assert.match(helper, /context\.statePath\}\.working-editor\.json/);
+  assert.doesNotMatch(helper, /manifest\.documents|saveSnapshot\(/);
+});
+
+// A split integration must preserve both previously accepted journeys, without changing phases.
+test('WORKING編集と予約取消を既存journey・再起動の正確な集合へ共存させる', async () => {
+  const config = await read('../../../apps/document-web/playwright.runtime.config.ts');
+  const match = config.match(/testMatch: phase === 'journey' \? (\[[^\]]*\]) : (\[[^\]]*\])/);
+  assert.ok(match);
+  const entries = value => [...value.matchAll(/'([^']+)'/g)].map(item => item[1]);
+  assert.deepEqual(entries(match[1]), ['document-runtime.spec.ts', 'initial-registration.spec.ts',
+    'lifecycle-operations.spec.ts', 'document-schedule-cancellation.spec.ts', 'working-version-editor.spec.ts',
+    'human-agent-consistency.spec.ts', 'worker-failure.spec.ts', 'timestamp-layout.spec.ts']);
+  assert.deepEqual(entries(match[2]), ['persistence.spec.ts', 'lifecycle-operations-persistence.spec.ts',
+    'document-schedule-cancellation.spec.ts', 'working-version-editor-persistence.spec.ts']);
 });

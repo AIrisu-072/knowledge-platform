@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 2026-10-05 06:54 UTC — WORKING編集 D2 GUI/runtime
+
+- 元完成 `f639fbf0` を保持し、D1＋合格main `ff0aae67` に複数原本GUI・固定bytes回復・runtimeをstackする。[D2状況](document-working-version-editor-status.md)、[D1状況](document-working-manifest-api-status.md)、[共通追補](../specs/2026-10-05-document-working-version-editor-amendment.md)を参照
+- 現公開を編集中維持し、選択原本だけ差替え/対象旧変換物だけ除外する。現在予約ID/read/取消GUIとD1初回修復・T10補正を保持する。新main組合せの検証・独立reviewは未完
+- 実DB/browserは既存hostedで確認。ローカルは純粋/compile/collectionのみ。画像生成/公開・golden更新・skip変更なし。最新headの全visual資格は主張しない
+
+---
+
 ## 2026-10-05 06:28 UTC — WORKING編集 D1 backend/API
 
 - 完成source `f639fbf0`を保持し、レビュー境界に沿いD1 backend/API/SDKとD2 GUI/runtimeへ分ける。D1の[状況](document-working-manifest-api-status.md)、共通[承認追補](../specs/2026-10-05-document-working-version-editor-amendment.md)、[小計画](../plans/2026-10-05-document-working-version-editor.md)を参照

@@ -303,3 +303,26 @@ test('timestamp layout receipt requires a passed test and stays fixed through bo
   input.suites[0].specs[0].tests[0].annotations = [{ type: 'other', description: 'long-iana-both-folds-1280-1440' }];
   assert.equal(browserDiagnostics(input).tests[0].timestampLayout, undefined);
 });
+
+test('WORKING複数原本編集は有限の段階とsourceだけを公開診断へ残す', () => {
+  const stages = ['gui-working-initial-updated', 'gui-working-manifest-ready', 'gui-working-cancel-verified',
+    'gui-working-created', 'gui-working-updated', 'gui-working-publication-preserved',
+    'gui-working-published', 'gui-working-snapshot-saved', 'gui-working-restart-verified'];
+  for (const source of ['working-version-editor.spec.ts', 'working-version-editor-persistence.spec.ts']) {
+    for (const stage of stages) {
+      const input = report([{ status: 'passed' }], { file: `/private/${source}` });
+      input.suites[0].specs[0].tests[0].annotations = [
+        { type: 'runtime-completed', description: stage },
+        { type: 'runtime-completed', description: 'gui-working-PRIVATE_CONTENT' },
+      ];
+      const actual = sanitizeBrowserDiagnostics(browserDiagnostics(input));
+      assert.equal(actual.tests[0].source, source);
+      assert.equal(actual.tests[0].lastCompletedStage, stage);
+      assert.ok(!JSON.stringify(actual).includes('PRIVATE_CONTENT'));
+    }
+    const failure = browserDiagnostics(report([{ status: 'failed', error: {
+      message: 'Error: expect(value).toBe() failed', stack: `at /private/${source}:12:3`,
+    } }]));
+    assert.equal(failure.tests[0].source, source);
+  }
+});

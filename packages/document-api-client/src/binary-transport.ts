@@ -29,6 +29,9 @@ export type BinaryTransportBridgeOptions = {
 };
 
 type HttpMethod = 'GET' | 'POST' | 'PUT';
+type BinaryRequestOptions = { signal?: AbortSignal };
+const binaryDeadlineMs = 120_000;
+
 
 export class BinaryTransportError extends Error {
   readonly status?: number;
@@ -81,16 +84,22 @@ export class BinaryTransportBridge {
     );
   }
 
+  prepareVersionUpload(input: VersionUpload): BuiltMultipart {
+    return Object.freeze(buildVersionMultipart(input.request, input.files));
+  }
+
   async createVersion(
     documentId: string,
     input: VersionUpload,
+    prepared?: BuiltMultipart,
   ): Promise<CreateDocumentVersionResponses[201]> {
-    const multipart = buildVersionMultipart(input.request, input.files);
+    const multipart = prepared ?? this.prepareVersionUpload(input);
     return this.requestJson<CreateDocumentVersionResponses[201]>(
       `v1/documents/${encodeURIComponent(documentId)}/versions`,
       'POST',
       multipart.body,
       { 'Content-Type': multipart.contentType },
+      true,
     );
   }
 
@@ -98,19 +107,23 @@ export class BinaryTransportBridge {
     documentId: string,
     versionId: string,
     input: VersionUpload,
+    prepared?: BuiltMultipart,
   ): Promise<VersionMutationResult> {
-    const multipart = buildVersionMultipart(input.request, input.files);
+    const multipart = prepared ?? this.prepareVersionUpload(input);
     return this.requestJson<VersionMutationResult>(
       `v1/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}`,
       'PUT',
       multipart.body,
       { 'Content-Type': multipart.contentType },
+      true,
     );
   }
 
-  async downloadVersionFileBlob(input: DownloadVersionFileInput): Promise<Blob> {
-    const response = await this.request(downloadPath(input), 'GET');
-    return response.blob();
+  async downloadVersionFileBlob(input: DownloadVersionFileInput, options: BinaryRequestOptions = {}): Promise<Blob> {
+    return boundedBinaryRequest(async signal => {
+      const response = await this.request(downloadPath(input), 'GET', undefined, undefined, signal);
+      return response.blob();
+    }, options.signal);
   }
 
   async downloadVersionFileStream(
@@ -130,16 +143,16 @@ export class BinaryTransportBridge {
     method: HttpMethod,
     body: BodyInit,
     headers?: Record<string, string>,
+    bounded = false,
   ): Promise<T> {
-    const response = await this.request(path, method, body, headers);
-    try {
-      return await response.json() as T;
-    } catch (cause) {
-      throw new BinaryTransportError('The successful API response was not valid JSON', {
-        status: response.status,
-        cause,
-      });
-    }
+    const read = async (signal?: AbortSignal) => {
+      const response = await this.request(path, method, body, headers, signal);
+      try { return await response.json() as T; }
+      catch (cause) {
+        throw new BinaryTransportError('The successful API response was not valid JSON', { status: response.status, cause });
+      }
+    };
+    return bounded ? boundedBinaryRequest(read) : read();
   }
 
   private async request(
@@ -147,12 +160,14 @@ export class BinaryTransportBridge {
     method: HttpMethod,
     body?: BodyInit,
     headers?: Record<string, string>,
+    signal?: AbortSignal,
   ): Promise<Response> {
     let response: Response;
     try {
       response = await this.fetcher(this.url(path), {
         method,
         credentials: 'same-origin',
+        ...(signal ? { signal } : {}),
         ...(body === undefined ? {} : { body }),
         ...(headers === undefined ? {} : { headers }),
       });
@@ -194,12 +209,19 @@ function buildVersionMultipart(request: CommandsVersionWrite, files: ReadonlyMap
       fileId: rendition.fileId,
     })),
   ]);
+  if (parts.length > 63) throw new BinaryTransportError('Binary parts must be at most 63 (64 total multipart parts)');
+  const json = JSON.stringify(request);
+  const jsonBytes = new Blob([json]).size;
+  if (jsonBytes > 1024 * 1024) throw new BinaryTransportError('Version JSON must be at most 1 MiB');
   const expectedIds = new Set<string>();
+  const fileIds = new Set<string>();
   for (const part of parts) {
     if (!isSafePartId(part.partId) || expectedIds.has(part.partId)) {
       throw new BinaryTransportError('The version manifest has an invalid or duplicate partId');
     }
     expectedIds.add(part.partId);
+    if (fileIds.has(part.fileId)) throw new BinaryTransportError('Shared FileID cannot be uploaded more than once');
+    fileIds.add(part.fileId);
   }
 
   if (expectedIds.size !== files.size || [...files.keys()].some((id) => !expectedIds.has(id))) {
@@ -212,15 +234,18 @@ function buildVersionMultipart(request: CommandsVersionWrite, files: ReadonlyMap
     `--${boundary}\r\n`,
     'Content-Disposition: form-data; name="request"\r\n',
     'Content-Type: application/json\r\n\r\n',
-    JSON.stringify(request),
+    json,
     '\r\n',
   );
 
+  let binarySize = 0;
   for (const { partId } of parts) {
     const file = files.get(partId);
     if (!file) {
       throw new BinaryTransportError(`Binary file for manifest part ${partId} is missing`);
     }
+    if (file.size > 256 * 1024 * 1024) throw new BinaryTransportError('Each binary file must be at most 256 MiB');
+    binarySize += file.size;
     body.push(
       `--${boundary}\r\n`,
       'Content-Disposition: form-data; name="files"; filename="binary"\r\n',
@@ -232,6 +257,8 @@ function buildVersionMultipart(request: CommandsVersionWrite, files: ReadonlyMap
   }
   body.push(`--${boundary}--\r\n`);
 
+  const framingBytes = body.reduce<number>((size, part) => size + (typeof part === 'string' ? new Blob([part]).size : 0), 0);
+  if (binarySize + framingBytes > 1024 * 1024 * 1024) throw new BinaryTransportError('Multipart including JSON and boundaries must be at most 1 GiB');
   return {
     body: new Blob(body, { type: `multipart/form-data; boundary=${boundary}` }),
     contentType: `multipart/form-data; boundary=${boundary}`,
@@ -285,4 +312,23 @@ function isProblem(value: unknown): value is Problem {
     && typeof problem.code === 'string'
     && typeof problem.traceId === 'string'
     && typeof problem.retryable === 'boolean';
+}
+
+async function boundedBinaryRequest<T>(run: (signal: AbortSignal) => Promise<T>, external?: AbortSignal): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onExternal: (() => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    onExternal = () => { controller.abort(); reject(new BinaryTransportError('Binary request was cancelled/aborted')); };
+    if (external?.aborted) { onExternal(); return; }
+    external?.addEventListener('abort', onExternal, { once: true });
+    timer = setTimeout(() => { controller.abort(); reject(new BinaryTransportError('Binary request exceeded the 120-second deadline')); }, binaryDeadlineMs);
+  });
+  try {
+    if (controller.signal.aborted) return await aborted;
+    return await Promise.race([run(controller.signal), aborted]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    if (onExternal) external?.removeEventListener('abort', onExternal);
+  }
 }
