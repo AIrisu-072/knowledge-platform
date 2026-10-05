@@ -462,6 +462,9 @@ impl RemoteActionResponse {
     pub fn source_snapshot_proof(&self) -> &SourceSnapshotProof {
         &self.proof
     }
+    pub fn page(&self) -> &RemotePage {
+        &self.page
+    }
     pub const fn coverage(&self) -> Coverage {
         self.coverage
     }

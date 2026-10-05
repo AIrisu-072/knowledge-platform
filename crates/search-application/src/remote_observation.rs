@@ -109,6 +109,10 @@ impl fmt::Debug for SourceSnapshotProof {
     }
 }
 impl SourceSnapshotProof {
+    /// The Discovery evaluation this observation belongs to.
+    pub fn evaluation(&self) -> search_core::id::DiscoveryEvaluationId {
+        self.context.binding().evaluation()
+    }
     pub fn matches_context(&self, context: &TrustedRemoteContext) -> bool {
         &self.context == context && context.binding().actor().is_live()
     }

@@ -1,0 +1,33 @@
+[package]
+name = "search-source-http"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[features]
+# Test-only loopback constructor for synthetic real-TCP qualification. A
+# release build with this feature fails to compile; production code cannot
+# select it.
+synthetic-loopback-test-only = []
+
+[dependencies]
+reqwest = { version = "=0.13.5", default-features = false, features = ["rustls", "gzip"] }
+search-application = { version = "0.0.0", path = "../search-application" }
+search-core = { version = "0.0.0", path = "../search-core" }
+serde.workspace = true
+serde_json.workspace = true
+time.workspace = true
+tokio = { workspace = true, features = ["net"] }
+
+[dev-dependencies]
+flate2 = "1"
+uuid.workspace = true
+
+[[test]]
+name = "transport_policy"
+required-features = ["synthetic-loopback-test-only"]
+
+[[test]]
+name = "protocol_contract"
+required-features = ["synthetic-loopback-test-only"]
