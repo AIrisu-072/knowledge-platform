@@ -4144,6 +4144,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "search-graph"
+version = "0.0.0"
+dependencies = [
+ "search-application",
+ "search-core",
+ "sha2 0.11.0",
+ "thiserror",
+ "time",
+ "uuid",
+]
+
+[[package]]
 name = "search-graph-memory"
 version = "0.0.0"
 dependencies = [
