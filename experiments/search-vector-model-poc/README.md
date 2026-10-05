@@ -1,4 +1,6 @@
-# P2 real-model PoC: pin and protocol only
+# P2 real-model PoC
+
+**2026-10-05:** both pinned models ran on Candle CPU with reference parity, and the paired synthetic-lane measurement decided `DISABLED`; see [report.md](report.md). The isolated Rust workspace is `Cargo.toml`/`src/`/`tests/embedding_parity.rs`; fetch the pinned assets into the ignored `assets/`, regenerate the oracle with `scripts/reference_vectors.py`, then run `cargo test --release --test embedding_parity` and `cargo run --release`. The protocol-only notes below still describe the unrun `ort`, public-lane and RunPin parts.
 
 `assets-manifest.json` pins two actual 384-dimensional model repositories, their required file bytes, exact revisions and two CPU runtime candidates. `metadata/` holds only the small, immutable configuration files from those revisions. `public-ja-slice.json` pins six MIRACL Japanese query IDs and all their published judgments; corpus passages and model weights are absent. `run-manifest.json` is `PROTOCOL_ONLY_UNRUN`; it contains no admitted current capacity, actual RunPin or measured model arm.
 
