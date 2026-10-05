@@ -889,19 +889,12 @@ impl<'a> DiscoveryService<'a> {
         let (sources, routing, mut gaps) = VisibleRouting::prepare(actor, visible, routing)?;
         let routes = SourceRouter::plan(&request.need, &sources, &routing);
         let body = query.field_scope == crate::ports::LexicalFieldScope::BodyOnly;
-        let configured = self.config.retriever_support;
-        let support = if body {
-            RetrieverSupport {
-                lexical: configured.lexical,
-                ..RetrieverSupport::default()
-            }
-        } else {
-            RetrieverSupport {
-                directory: configured.directory,
-                structured: configured.structured,
-                lexical: configured.lexical,
-                ..RetrieverSupport::default()
-            }
+        // Search is query-driven: Directory enumeration and server-side
+        // Structured filters evaluate no query text, so only lexical matches
+        // can be Search hits.
+        let support = RetrieverSupport {
+            lexical: self.config.retriever_support.lexical,
+            ..RetrieverSupport::default()
         };
         let inputs = RetrievalInputs {
             lexical_query: Some(query.text.clone()),
@@ -1094,10 +1087,15 @@ impl<'a> DiscoveryService<'a> {
                 }
                 matched.insert(if body {
                     MatchedField::Body
-                } else if hit.trace.retriever_id.ends_with(":Structured") {
-                    MatchedField::Metadata
-                } else {
+                } else if hit
+                    .candidate
+                    .matched_signals
+                    .iter()
+                    .any(|signal| matches!(signal.as_str(), "title" | "canonical_name" | "aliases"))
+                {
                     MatchedField::Title
+                } else {
+                    MatchedField::Metadata
                 });
                 first.get_or_insert((hit.candidate.source_ref, resource, hit.trace.generation));
             }

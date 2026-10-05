@@ -373,7 +373,11 @@ impl LexicalRetrieverPort for Corpus {
                 .into_iter()
                 .flatten()
                 .filter(|doc| doc.title.contains(&query.text))
-                .map(|doc| Self::candidate(key.source_id, doc.id))
+                .map(|doc| {
+                    let mut candidate = Self::candidate(key.source_id, doc.id);
+                    candidate.matched_signals.push("title".into());
+                    candidate
+                })
                 .collect())
         })
     }

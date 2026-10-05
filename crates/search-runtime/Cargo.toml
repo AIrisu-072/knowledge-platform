@@ -40,3 +40,7 @@ search-graph-memory = { version = "0.0.0", path = "../search-graph-memory" }
 testcontainers.workspace = true
 document-repository-postgres = { version = "0.0.0", path = "../document-repository-postgres" }
 tower = { version = "=0.5.3", features = ["util"] }
+
+[[test]]
+name = "server_e2e"
+required-features = ["synthetic-loopback-test-only"]
