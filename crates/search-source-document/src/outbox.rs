@@ -336,6 +336,11 @@ impl HyperGraphRetrieverPort for DocumentGraphReader {
 pub struct DocumentProjectionReader(MemoryProjectionStore);
 
 impl DocumentProjectionReader {
+    /// A reader over a store hydrated from durable READY generations.
+    pub fn over(store: MemoryProjectionStore) -> Self {
+        Self(store)
+    }
+
     pub async fn pin_current(
         &self,
         source_id: SourceId,
@@ -489,6 +494,13 @@ impl AssertionStorePort for DocumentProjectionReader {
 
 #[derive(Clone)]
 pub struct DocumentLexicalReader(Arc<TantivyLexicalIndex>);
+
+impl DocumentLexicalReader {
+    /// A reader over generations reopened from sealed lexical directories.
+    pub fn over(index: Arc<TantivyLexicalIndex>) -> Self {
+        Self(index)
+    }
+}
 
 impl LexicalRetrieverPort for DocumentLexicalReader {
     fn retrieve<'a>(

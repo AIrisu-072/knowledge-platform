@@ -2,6 +2,7 @@
 
 pub mod api;
 pub mod document_runtime;
+pub mod durable_read;
 pub mod event_completion;
 pub mod full_guard;
 pub mod gc;
