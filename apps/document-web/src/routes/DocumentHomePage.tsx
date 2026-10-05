@@ -209,7 +209,7 @@ export function DocumentHomePage() {
         <dl className={styles.summaryList}><dt>正式改訂</dt><dd>{selected.displayRevision?.label ?? '正式改訂なし'}</dd><dt>ファイル数</dt><dd>{selected.displayVersion.fileSummary.authoritativeItemCount}</dd></dl>
       </section>
       {selectedDetailQuery.data && <CapabilitySummary document={selectedDetailQuery.data} />}
-      <button className={styles.primaryButton} type="button" onClick={() => openDetail(selected.documentId)}>詳細を開く →</button>
+      <button className={styles.primaryButton} type="button" onClick={() => openDetail(selected.documentId)}>詳細を開く <span aria-hidden="true">→</span></button>
     </div>
   ) : (
     <p className={styles.emptyPanel}>一覧から文書を選択すると、改訂とコンテンツ版の情報が表示されます。</p>

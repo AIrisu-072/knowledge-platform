@@ -1,5 +1,17 @@
 # 編集作業への可視導線と成功通知の限定補修
 
+## 2026-10-05 10:00 UTC — 実受入で判明した詳細ボタン名の補修
+
+- 公開head `2105210c3e37c561ae361385a744dd36498843b8` / tree `108fe261` の通常ナビ実受入は、`詳細を開く` のexact role locatorでtimeoutした。実DOMのaccessible nameは装飾矢印を含む`詳細を開く →`だった。以前のローカル403件・独立レビューGOをこの実受入の成功へ付け替えない
+- Organizationの追加往復工程も同じexact locatorを使う。同headでその工程の成功は未確認であり、今回の補修後に既存hosted受入で確認する
+- 元branchの`dff1c603`を保持し、公開headから`fix/document-navigation-accessible-name-20261005`を開始。承認済み小補修として、DocumentHomePageの装飾矢印だけを`span aria-hidden=true`にする。可視文字列・イベント・既存runtime locator/timeoutは変更しない
+- TDD: 既存Document workspace17件baseline成功。実React page DOMへ固定Playwright1.63.0のrole engineを適用し、非exactでは見えるボタンがexactでは0件となるREDを確認。修正後はexact名で1件を特定し、authoring一覧から同文書のauthoring詳細へ操作できる。テスト専用helperは既存label/text matcherと同じ純粋DOM方式で、ブラウザーを起動しない
+- 最終focused18件、全GUI404件/28 suites、schema freshness・型・production build・diff検査は成功。既存Webpack performance advisory3件は保持。独立source/純粋DOMレビューはGO、Critical/Important/Minor所見なし、対象18件とdiff検査の独立再実行も成功
+- ローカルDB/socket/listener/browser/Cargo・画像生成は実行していない。active、応答喪失proxy/有限診断、backend、依存/lock、runner、goldenは未変更。全visual資格や新exact-headの実DB/browser成功は未取得
+- 次のexact action: コード・試験・この記録だけの小commitを親へ渡す。親が並行の有限診断補修と統合し、公開後の新exact-head CI/hosted受入と公開artifact0を確認する
+
+以下は前回の補修時点の記録。
+
 ## 基点・範囲
 
 - 状態: ローカル検証・独立レビュー完了、公開後資格待ち。PR74公開head `2e1e17f4c7d1d3b2819ac57771774282c3348d0b` から独立branch `fix/document-authoring-navigation-20261005` を作成。元headと凍結済みworktreeは変更しない

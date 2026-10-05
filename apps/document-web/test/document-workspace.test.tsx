@@ -213,6 +213,30 @@ test('folder selection scopes the document list request', async () => {
   })));
 });
 
+test('実Playwrightのexact role名で編集一覧の詳細を開き、装飾矢印を読上げない', async () => {
+  const matches = require('./playwright-role-matcher.cjs')() as (root: Document, role: string, name: string) => HTMLElement[];
+  const computedStyle = window.getComputedStyle.bind(window);
+  // jsdom has no pseudo-element styles; the production arrow is actual DOM text.
+  const style = jest.spyOn(window, 'getComputedStyle').mockImplementation(element => computedStyle(element));
+  try {
+    const api = mockApi();
+    api.listDocuments.mockResolvedValue({ view: 'authoring', items: [listItem('authoring')], nextCursor: null });
+    api.getDocument.mockResolvedValue(documentDetail('authoring'));
+    const { router } = renderAt('/documents?view=authoring&panel=closed');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /受入手順/ }));
+    const visibleButton = await screen.findByRole('button', { name: /詳細を開く/ });
+    expect(visibleButton).toHaveTextContent('詳細を開く →');
+    const exact = matches(document, 'button', '詳細を開く');
+    expect(exact).toEqual([visibleButton]);
+    expect(visibleButton).toHaveAccessibleName('詳細を開く');
+    await user.click(exact[0]!);
+    expect(await screen.findByRole('heading', { name: '受入手順', level: 1 })).toBeVisible();
+    expect(router.state.location.pathname).toBe(`/documents/${documentId}`);
+    expect(router.state.location.search).toMatchObject({ view: 'authoring' });
+  } finally { style.mockRestore(); }
+});
+
 test('versions keep WORKING content separate from numbered revisions', async () => {
   const api = mockApi();
   api.getDocument.mockResolvedValue(documentDetail('authoring'));
