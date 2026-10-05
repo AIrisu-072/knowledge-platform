@@ -5,11 +5,11 @@
 mod body_support;
 
 use body_support::*;
-use search_core::knowledge_unit::{FormatId, NativeLocator, UnitId, UnitKind};
+use search_core::knowledge_unit::{BudgetKey, FormatId, NativeLocator, UnitId, UnitKind};
 use search_extraction_core::{
     BodyCoverage, CoverageReason, ItemOperationState, PermanentFailureCode, RetryableFailureCode,
 };
-use search_source_document::BodyBuildError;
+use search_source_document::{BodyBuildError, BodyProfileRegistry};
 use uuid::Uuid;
 
 #[tokio::test]
@@ -221,4 +221,16 @@ async fn unknown_media_type_is_unsupported_before_any_read() {
         })
     );
     assert!(body_requests(&body).is_empty());
+}
+
+#[test]
+fn zip_definition_without_host_budgets_is_rejected_at_startup() {
+    for key in [BudgetKey::InputBytes, BudgetKey::ZipEntries] {
+        let mut zip = definition(FormatId::Zip);
+        zip.limits.remove(&key);
+        assert!(matches!(
+            BodyProfileRegistry::new("build-1", vec![zip]),
+            Err(BodyBuildError::Configuration(_))
+        ));
+    }
 }

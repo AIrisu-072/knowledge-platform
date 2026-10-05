@@ -7,8 +7,11 @@
 //! transaction: DELETING → guard DELETE → lease DELETE → Graph participant,
 //! relation and resource → P7 children → Graph and P7 parents. The permanent
 //! identity, guard issuance and historical Search receipts stay, so an expired
-//! target never receives a guard again. Guard and lease rows are not locked:
-//! renewal never revives an expired row and a new lease needs a current key.
+//! target never receives a guard again. Guard rows are not locked: guards are
+//! never renewed. A lease can be renewed across its expiry while GC runs, so
+//! the lease DELETE re-checks expiry against the row version it locks, and a
+//! lease that survives it rolls the whole collection back as
+//! `Protected(Pinned)`. A new lease needs a current key.
 //! Lexical directories are removed only after commit, idempotently.
 
 use std::path::Path;

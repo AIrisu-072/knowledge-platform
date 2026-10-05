@@ -142,7 +142,16 @@ impl BodyProfileRegistry {
             {
                 return Err(BodyBuildError::Configuration("duplicate format definition"));
             }
-            if definition.format != FormatId::Zip {
+            if definition.format == FormatId::Zip {
+                // ZIP has no single-format profile to validate it; the host
+                // itself reads these budgets before any worker runs.
+                if [BudgetKey::InputBytes, BudgetKey::ZipEntries]
+                    .iter()
+                    .any(|key| !definition.limits.contains_key(key))
+                {
+                    return Err(BodyBuildError::Configuration("ZIP budgets"));
+                }
+            } else {
                 profiles.push((
                     definition.format,
                     RegisteredProfile::register_definition(definition.clone())
