@@ -12,9 +12,8 @@ use document_application::{ContentReader, FileStorage, StorageError};
 use search_core::id::SourceId;
 use search_core::knowledge_unit::{
     ArchiveProfilePlan, ArchiveReaderNode, BudgetKey, ExtractionProfileDefinitionV1,
-    ExtractionProfileId, FormatId, KnowledgeUnit, NativeLocator, ResourceVersionRef,
-    UnitAuthorityBinding, UnitId, UnitProvenance, text_sha256, validate_archive_member,
-    validate_part_units,
+    ExtractionProfileId, FormatId, KnowledgeUnit, NativeLocator, UnitAuthorityBinding, UnitId,
+    UnitProvenance, text_sha256, validate_archive_member, validate_part_units,
 };
 use search_extraction_core::{
     BodyCoverage, ContentExtractor, CoverageReason, ExtractionError, ItemOperationState,
@@ -24,9 +23,9 @@ use search_extraction_core::{
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
 
+use crate::body_manifest::version_ref;
 use crate::model::AuthoritativeItemBinding;
 use crate::postgres::VersionSnapshotRecord;
-use crate::relations::document_resource_id;
 
 /// Publication-safe outcome for one authoritative item.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -394,11 +393,7 @@ impl<F: FileStorage, E: ContentExtractor> DocumentBodyExtractor<F, E> {
         profile: &RegisteredProfile,
         report: &WorkerReport,
     ) -> Result<Vec<KnowledgeUnit>, BodyBuildError> {
-        let version = ResourceVersionRef {
-            source_id: self.source_id,
-            resource_id: document_resource_id(self.source_id, snapshot.snapshot.document_id),
-            source_native_version: snapshot.snapshot.document_version_id.as_uuid().to_string(),
-        };
+        let version = version_ref(self.source_id, snapshot);
         let binding = UnitAuthorityBinding {
             version: version.clone(),
             part: item.part.clone(),
@@ -515,5 +510,47 @@ fn build_error(error: ExtractionError) -> BodyBuildError {
         ExtractionError::Wire(_) => BodyBuildError::Integrity("worker wire"),
         // A permanent outcome during locator resolution contradicts the first pass.
         ExtractionError::Permanent(_) => BodyBuildError::Integrity("worker outcome changed"),
+    }
+}
+
+/// Object-safe body extraction used by the outbox indexer.
+pub trait BodyItemExtractor: Send + Sync {
+    fn parser_build_id(&self) -> &str;
+
+    fn extract<'a>(
+        &'a self,
+        record: &'a VersionSnapshotRecord,
+        item: &'a AuthoritativeItemBinding,
+    ) -> search_application::ports::BoxFuture<'a, ExtractedItemResult>;
+}
+
+impl<F, E> BodyItemExtractor for DocumentBodyExtractor<F, E>
+where
+    F: FileStorage + 'static,
+    E: ContentExtractor + 'static,
+{
+    fn parser_build_id(&self) -> &str {
+        self.registry.parser_build_id()
+    }
+
+    fn extract<'a>(
+        &'a self,
+        record: &'a VersionSnapshotRecord,
+        item: &'a AuthoritativeItemBinding,
+    ) -> search_application::ports::BoxFuture<'a, ExtractedItemResult> {
+        Box::pin(async move {
+            self.extract_item(record, item)
+                .await
+                .map_err(|error| match error {
+                    BodyBuildError::Retryable(code) => {
+                        search_application::SearchError::SourceUnavailable(format!(
+                            "Document body extraction is retryable: {code:?}"
+                        ))
+                    }
+                    other => search_application::SearchError::OperationFailed(format!(
+                        "Document body extraction stopped: {other}"
+                    )),
+                })
+        })
     }
 }

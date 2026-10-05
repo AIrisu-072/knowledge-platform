@@ -5,12 +5,11 @@
 mod body_support;
 
 use body_support::*;
-use document_domain::DocumentId;
 use search_core::knowledge_unit::{FormatId, NativeLocator, UnitId, UnitKind};
 use search_extraction_core::{
     BodyCoverage, CoverageReason, ItemOperationState, PermanentFailureCode, RetryableFailureCode,
 };
-use search_source_document::{BodyBuildError, document_resource_id};
+use search_source_document::BodyBuildError;
 use uuid::Uuid;
 
 #[tokio::test]
@@ -28,7 +27,7 @@ async fn text_item_builds_verified_units_without_source_identity_in_worker() {
     assert_eq!(unit.kind, UnitKind::PlainText);
     assert_eq!(
         unit.version.resource_id,
-        document_resource_id(source_id(), DocumentId::from_uuid(Uuid::from_u128(10)))
+        search_core::id::ResourceId::from_uuid(Uuid::from_u128(20))
     );
     assert_eq!(
         unit.unit_id,

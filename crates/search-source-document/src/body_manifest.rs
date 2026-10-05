@@ -21,7 +21,6 @@ use sha2::{Digest, Sha256};
 use crate::extraction::{BodyBuildError, ExtractedItemResult};
 use crate::model::AuthoritativeItemBinding;
 use crate::postgres::{DocumentOutboxSnapshot, VersionSnapshotRecord};
-use crate::relations::document_resource_id;
 
 /// P1 lexical schema version carried by every body-ready bundle.
 pub const LEXICAL_SCHEMA_VERSION: &str = "schema-2";
@@ -77,14 +76,17 @@ impl BodyItemEntry {
     }
 }
 
+/// Units belong to the Live Knowledge Resource of the exact Document version,
+/// the same Resource identity the projection translator publishes.
 pub(crate) fn version_ref(
     source_id: SourceId,
     record: &VersionSnapshotRecord,
 ) -> ResourceVersionRef {
+    let version = record.snapshot.document_version_id.as_uuid();
     ResourceVersionRef {
         source_id,
-        resource_id: document_resource_id(source_id, record.snapshot.document_id),
-        source_native_version: record.snapshot.document_version_id.as_uuid().to_string(),
+        resource_id: search_core::id::ResourceId::from_uuid(version),
+        source_native_version: version.to_string(),
     }
 }
 

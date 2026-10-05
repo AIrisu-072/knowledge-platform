@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+mod body_bundle;
 mod body_manifest;
 mod coverage;
 mod evidence;
@@ -21,7 +22,8 @@ pub use body_manifest::{
 pub use coverage::{DocumentCoveragePreflight, DocumentCoverageRequirement};
 pub use evidence::{DocumentEvidenceCatalog, DocumentEvidenceField};
 pub use extraction::{
-    BodyBuildError, BodyProfileRegistry, DocumentBodyExtractor, ExtractedItemResult,
+    BodyBuildError, BodyItemExtractor, BodyProfileRegistry, DocumentBodyExtractor,
+    ExtractedItemResult,
 };
 pub use history::DocumentHistoricalLookup;
 pub use model::{
