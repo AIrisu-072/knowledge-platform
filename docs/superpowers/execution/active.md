@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 2026-10-04 23:54 UTC — タスク内Document参照
+
+- PR64 exact `2519be29` は保留/再開の実DB・2名操作・両HTTP server再起動・復元・cleanupと全CI成功済み
+- [状況](organization-document-context-slice-status.md)を再開先とし、Frozenの既存入力文書を公開改訂/原本一覧/明示取得へ接続する。新しい添付書込・権限・APIは追加しない
+- 独立branch `feat/organization-document-context-slice`、同じ模擬2名・一時DB・画像無し。以下は各時点の履歴
+
+---
+
 ## 2026-10-04 21:54 UTC — 保留/再開の最小slice
 
 - PR63 exact `cc994b4e` は完了操作とreadonly履歴の実DB/2名操作/再起動/cleanup・全CI成功済み

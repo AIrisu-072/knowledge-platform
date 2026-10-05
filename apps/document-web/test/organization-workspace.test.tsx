@@ -22,6 +22,7 @@ const nextTask = { ...task, id: 'task-2', attemptId: 'attempt-2', title: '事務
 const snapshot = { id: 'snapshot-1', sourceTaskId: task.id, sourceAttemptId: task.attemptId, targetTaskId: nextTask.id, createdAt: '2026-10-04T05:00:00Z', evidenceRevisionRefs: [], findingRevisionRefs: [], decisionRevisionRefs: [], artifacts: [{ artifactId: artifact.id, revision: 2, schemaId: artifact.schemaId, value: { text: '提出する文案' } }] };
 
 function setup(entry = '/tasks?view=context&taskId=task-1') {
+  jest.mocked(documentApi.getDocument).mockResolvedValue({ documentId: detail.inputResources[0]!.documentId, displayRevision: null } as never);
   jest.spyOn(workApi, 'getSession').mockResolvedValue(session as never);
   jest.spyOn(workApi, 'listTasks').mockResolvedValue({ items: [task], nextCursor: null } as never);
   jest.spyOn(workApi, 'getTask').mockResolvedValue(detail as never);
@@ -379,7 +380,7 @@ test('human judgment has separate candidate/support, modified validation, cancel
   const record = jest.spyOn(workApi, 'recordDecision').mockResolvedValue({ kind: 'decision_recorded', task: { ...task, revision: 2 }, decision: { id: 'decision-1', taskId: task.id, attemptId: task.attemptId } } as never);
   const submit = jest.spyOn(workApi, 'submit'); const returning = jest.spyOn(workApi, 'returnTask');
   await openEvidence();
-  const candidate = await screen.findByRole('region', { name: '候補 finding-1' });
+  let candidate = await screen.findByRole('region', { name: '候補 finding-1' });
   expect(candidate).toHaveTextContent('検討中の候補'); expect(candidate).toHaveTextContent('evidence-1');
   await userEvent.selectOptions(within(candidate).getByLabelText('候補の判断 finding-1'), 'modified');
   expect(within(candidate).getByRole('button', { name: '判断内容を確認' })).toBeDisabled();
@@ -389,6 +390,11 @@ test('human judgment has separate candidate/support, modified validation, cancel
   await waitFor(() => expect(within(dialog).getByRole('button', { name: 'キャンセル' })).toHaveFocus());
   await userEvent.keyboard('{Escape}');
   expect(record).not.toHaveBeenCalled();
+  expect(within(candidate).getByLabelText('採用文')).toHaveValue('修正した採用文');
+  await userEvent.click(screen.getByRole('button', { name: '文書・比較' }));
+  await screen.findByText('公開改訂はありません');
+  await userEvent.click(screen.getByRole('button', { name: '根拠' }));
+  candidate = await screen.findByRole('region', { name: '候補 finding-1' });
   expect(within(candidate).getByLabelText('採用文')).toHaveValue('修正した採用文');
   await userEvent.click(within(candidate).getByRole('button', { name: '判断内容を確認' }));
   await userEvent.click(screen.getByRole('button', { name: '判断を確定' }));

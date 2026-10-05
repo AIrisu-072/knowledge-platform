@@ -1,5 +1,7 @@
 import { currentAction } from './support';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page, type APIRequestContext } from '@playwright/test';
+import { createHash } from 'node:crypto';
+import type { PublishedDocumentDetail, FileList } from '@knowledge-platform/document-api-client';
 import type { WorkflowActionCommand, Completed, Claimed, DraftCommand, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, SubmitCommand, Submitted, TaskDetail, TaskPage, WorkCommand, WorkingArtifact } from '../src/api/generated-work/types.gen';
 import { holdAndResume, assertHoldResumeState, assertCompletionState, assertHidden, assertSessions, assertEvidenceState, assertAgentState, requestSyntheticFinding, captureFinal, get, publishedEvidenceSource, readRuntimeContext, recordDecision, registerEvidence, registerFinding, revisionRef, saveState } from './support';
 
@@ -7,6 +9,35 @@ const returnReason = '【合成データ】対象数量を追記して再提出�
 const revisedText = '【合成データ】対象数量は10件です。営業で参照資料と照合して追記しました。';
 
 const text = '【合成データ】営業で参照資料を確認しました。事務担当は提出内容と共有文書を照合してください。';
+
+// The UI fetch is observed in memory; no download.path/saveAs, binary artifact or capture.
+async function assertPublishedOriginal(page: Page, request: APIRequestContext, origin: string, documentId: string, taskId: string) {
+  currentAction('source-read');
+  const before = await get<TaskDetail>(request, origin, `/v1/organization/tasks/${taskId}`);
+  const document = await get<PublishedDocumentDetail>(request, origin, `/v1/documents/${documentId}?view=published`);
+  const files = await get<FileList>(request, origin, `/v1/documents/${documentId}/versions/${document.currentVersionId}/files?purpose=published`);
+  expect(files.items).toHaveLength(1);
+  const file = files.items[0]!;
+  const fixture = Buffer.from('【合成データ】2名の提出確認に使う共有資料です。\n', 'utf8');
+  const panel = page.getByRole('region', { name: '公開文書の内容', exact: true });
+  await expect(panel).toContainText(`公開改訂 ${document.displayRevision!.label}`);
+  await expect(panel).toContainText(document.displayRevision!.revisionId);
+  await expect(panel).toContainText(`内容の版（Version） ${document.currentVersionId}`);
+  await expect(panel).toContainText(file.displayName);
+  await expect(panel).toContainText(`${file.mediaType} · ${file.sizeBytes} bytes`);
+  const path = `/v1/documents/${documentId}/versions/${document.currentVersionId}/files/${file.contentItemId}/${file.representationId}`;
+  const responsePromise = page.waitForResponse((response) => new URL(response.url()).pathname === path && new URL(response.url()).searchParams.get('purpose') === 'published' && response.request().method() === 'GET');
+  const downloadPromise = page.waitForEvent('download');
+  await panel.getByRole('button', { name: `原本を取得 ${file.displayName}`, exact: true }).click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(200);
+  const bytes = await response.body();
+  expect(bytes.byteLength).toBe(file.sizeBytes);
+  expect(bytes.byteLength).toBe(fixture.byteLength);
+  expect(createHash('sha256').update(bytes).digest('hex')).toBe(createHash('sha256').update(fixture).digest('hex'));
+  expect((await downloadPromise).suggestedFilename()).toBe(file.displayName);
+  expect(await get<TaskDetail>(request, origin, `/v1/organization/tasks/${taskId}`)).toEqual(before);
+}
 
 test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差戻後の新試行を非公開で再提出する', async ({ page, browser, request }) => {
   const context = readRuntimeContext();
@@ -37,6 +68,8 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     await expect(editor).toHaveValue('');
     await editor.fill(text);
     await expect(page.getByRole('button', { name: '提出内容を確認', exact: true })).toBeDisabled();
+    await assertPublishedOriginal(page, request, context.sales, context.documentId, source.id);
+    await expect(editor).toHaveValue(text);
     const input = page.getByRole('link', { name: '共有入力文書', exact: true });
     await expect(input).toHaveAttribute('href', new RegExp(`/documents/${context.documentId}`));
     currentAction('document-navigation');
@@ -169,6 +202,7 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     expect(claimed.kind).toBe('claimed');
     expect(claimCommand).toMatchObject({ expectedRevision: officeReady.items[0]!.revision, actingAssignmentId: sessions.office.actingAssignmentId });
     expect(claimed.task).toMatchObject({ id: submitted.nextTask.id, state: 'active', canClaim: false, canEdit: false });
+    await assertPublishedOriginal(office, request, context.office, context.documentId, claimed.task.id);
     await expect(office.getByRole('region', { name: '受領したスナップショット', exact: true })).toContainText(text);
     await expect(office.getByLabel('作業中の文案', { exact: true })).toHaveCount(0);
     expect(await get<HandoffSnapshot>(request, context.office, `/v1/organization/handoff-snapshots/${submitted.snapshot.id}`)).toEqual(submitted.snapshot);
