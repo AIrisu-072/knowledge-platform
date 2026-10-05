@@ -8,6 +8,7 @@ import { ApiFeedback, LoadingState } from '../components/shared/ApiFeedback';
 import { AppShell } from '../components/app-shell/AppShell';
 import { OriginalVersionDownload } from '../components/shared/OriginalVersionDownload';
 import { DocumentRegistration } from '../components/document/DocumentRegistration';
+import type { SelectedFolderContext } from '../application/document-root-folder';
 import { RootFolderCreate } from '../components/document/RootFolderCreate';
 import type { ListSearch } from '../application/search-state';
 import { documentListStatusLabel } from '../view-model/document-status';
@@ -23,6 +24,8 @@ export function DocumentHomePage() {
   const currentUrl = useRouterState({ select: (state) => state.location.href });
   const queryClient = useQueryClient();
   const [chosenFolder, setChosenFolder] = useState<Folder | undefined>();
+  const [folderContext, setFolderContext] = useState<SelectedFolderContext>();
+  const [selectionGeneration, setSelectionGeneration] = useState(0);
   const [draftTitle, setDraftTitle] = useState(search.titleContains ?? '');
   useEffect(() => setDraftTitle(search.titleContains ?? ''), [search.titleContains]);
   const listQuery = useQuery({
@@ -219,7 +222,12 @@ export function DocumentHomePage() {
   const navigationContent = (
     <section className={styles.folderRail} aria-label="フォルダー">
       <h2>フォルダー</h2>
-      <RootFolderCreate root={rootQuery.data} readReady={rootQuery.isSuccess && !rootQuery.isFetching} contextKey={currentUrl} reload={async () => {
+      <RootFolderCreate root={rootQuery.data} readReady={rootQuery.isSuccess && !rootQuery.isFetching} contextKey={`${currentUrl}:${selectionGeneration}`} selectedFolderId={search.folderId}
+        selected={folderContext && folderContext.folderId === search.folderId && chosenFolder ? {
+          context: folderContext, folder: { ...chosenFolder, parentFolderId: folderContext.sourceParentId,
+            capabilities: registrationFolderQuery.data?.capabilities },
+          readReady: registrationFolderQuery.isSuccess && !registrationFolderQuery.isFetching,
+        } : undefined} reload={async () => {
         const result = await rootQuery.refetch({ throwOnError: true });
         if (!result.data || result.isError) throw new Error('System Rootを取得できません。');
         return result.data;
@@ -231,7 +239,7 @@ export function DocumentHomePage() {
           <FolderNode
             folder={rootQuery.data}
             selectedFolderId={search.folderId}
-            onSelect={(folderId, folder) => { setChosenFolder(folder); updateSearch({ folderId, includeDescendants: false, cursor: undefined }); }}
+            onSelect={(folderId, folder, context) => { setChosenFolder(folder); setFolderContext(context); setSelectionGeneration(value => value + 1); updateSearch({ folderId, includeDescendants: false, cursor: undefined }); }}
             isRoot
           />
         </ul>
@@ -329,11 +337,15 @@ function FolderNode({
   selectedFolderId,
   onSelect,
   isRoot = false,
+  sourceParentId,
+  sourcePageLimit,
 }: {
   folder: FolderItem;
   selectedFolderId?: string;
-  onSelect: (folderId?: string, folder?: Folder) => void;
+  onSelect: (folderId?: string, folder?: Folder, context?: SelectedFolderContext) => void;
   isRoot?: boolean;
+  sourceParentId?: string;
+  sourcePageLimit?: number;
 }) {
   const [expanded, setExpanded] = useState(isRoot);
   const queryClient = useQueryClient();
@@ -364,12 +376,12 @@ function FolderNode({
     <li>
       <div className={styles.folderEntry}>
         <button type="button" className={styles.expandButton} aria-label={`${folder.name}の子フォルダーを${expanded ? '閉じる' : '開く'}`} aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>{expanded ? '▾' : '▸'}</button>
-        <button type="button" className={styles.folderButton} aria-current={(isRoot ? !selectedFolderId : selectedFolderId === folder.folderId) ? 'location' : undefined} onClick={() => onSelect(isRoot ? undefined : folder.folderId, folder)}>{folder.name}</button>
+        <button type="button" className={styles.folderButton} aria-current={(isRoot ? !selectedFolderId : selectedFolderId === folder.folderId) ? 'location' : undefined} onClick={() => onSelect(isRoot ? undefined : folder.folderId, folder, !isRoot && sourceParentId && sourcePageLimit ? { kind: 'selected', folderId: folder.folderId, name: folder.name, sourceParentId, pageLimit: sourcePageLimit } : undefined)}>{folder.name}</button>
       </div>
       {childrenQuery.error && expanded && <ApiFeedback error={childrenQuery.error} onRetry={childrenQuery.isFetchNextPageError ? undefined : () => void childrenQuery.refetch({ cancelRefetch: false })} />}
       {expanded && children.length > 0 && (
         <ul className={styles.folderChildren}>
-          {children.map((child) => <FolderNode key={child.folderId} folder={child} selectedFolderId={selectedFolderId} onSelect={onSelect} />)}
+          {children.map((child) => <FolderNode key={child.folderId} folder={child} selectedFolderId={selectedFolderId} onSelect={onSelect} sourceParentId={folder.folderId} sourcePageLimit={childrenQuery.data?.pages.length} />)}
         </ul>
       )}
       {expanded && childrenQuery.hasNextPage && (!childrenQuery.error || childrenQuery.isFetchNextPageError) && (

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, Heading, Modal } from 'react-aria-components';
-import { documentApi, type FolderDetail } from '../../application/document-workspace';
-import { canCreateRootFolder, folderName, rootFolderOperations, rootFolderValidation, sendRootFolderOperation } from '../../application/document-root-folder';
+import { documentApi, type Folder, type FolderDetail } from '../../application/document-workspace';
+import { canCreateRootFolder, folderName, rootFolderOperations, rootFolderValidation, sendRootFolderOperation, readSelectedFolder, type FolderCreateContext, type SelectedFolderContext } from '../../application/document-root-folder';
 import { metadataReason } from '../../application/document-metadata';
 import { createOperationId } from '../../application/operation-id';
 import { mapApiProblem, problemFromUnknown } from '../../application/problem-mapping';
@@ -10,9 +10,13 @@ import { CapabilityButton, availabilityReason } from '../shared/CapabilityButton
 import styles from './DocumentMetadataEditor.module.css';
 import workspace from '../../routes/DocumentWorkspace.module.css';
 
-const title = 'System Rootにフォルダーを作成';
-export function RootFolderCreate({ root, readReady, reload, contextKey }: {
+const rootTitle = 'System Rootにフォルダーを作成';
+const selectedTitle = '選択したフォルダーに子フォルダーを作成';
+const rootContext: FolderCreateContext = { kind: 'root', name: 'System Root' };
+export function RootFolderCreate({ root, readReady, reload, contextKey, selected, selectedFolderId }: {
   root?: FolderDetail; readReady: boolean; reload: () => Promise<FolderDetail>; contextKey: string;
+  selectedFolderId?: string;
+  selected?: { context: SelectedFolderContext; folder: Folder & { capabilities?: FolderDetail['capabilities'] }; readReady: boolean };
 }) {
   const client = useQueryClient();
   const store = rootFolderOperations(client);
@@ -22,55 +26,87 @@ export function RootFolderCreate({ root, readReady, reload, contextKey }: {
   const [reason, setReason] = useState('');
   const [reading, setReading] = useState(false);
   const [localError, setLocalError] = useState('');
+  const [draftContext, setDraftContext] = useState<FolderCreateContext>(rootContext);
+  const [reviewed, setReviewed] = useState<FolderDetail>();
+  const [blocked, setBlocked] = useState(false);
   const opening = useRef(0);
   const refreshing = useRef(false);
+  const blockedSelection = useRef<SelectedFolderContext | undefined>(undefined);
   const triggerContainer = useRef<HTMLSpanElement>(null);
-  useEffect(() => { opening.current += 1; refreshing.current = false; setReading(false); setOpen(false); }, [contextKey]);
+  const returnFocus = useRef<HTMLButtonElement | null>(null);
+  const liveContextKey = useRef(contextKey); liveContextKey.current = contextKey;
+  useEffect(() => { opening.current += 1; refreshing.current = false; setReading(false); setOpen(false); setReviewed(undefined); setBlocked(false); }, [contextKey]);
   useEffect(() => () => { opening.current += 1; }, []);
   const pending = operation?.status === 'pending';
   const unknown = operation?.status === 'unknown';
-  const allowed = readReady && canCreateRootFolder(root);
+  const selectedDetail = selected?.folder.capabilities
+    ? { ...selected.folder, parentFolderId: selected.context.sourceParentId, capabilities: selected.folder.capabilities } : undefined;
+  const rootAllowed = readReady && canCreateRootFolder(root);
+  const reselectRequired = Boolean(selected && selected.context === blockedSelection.current);
+  const selectedAllowed = Boolean(selected?.readReady && !reselectRequired && canCreateRootFolder(selectedDetail));
+  const target = operation ? operation.context ?? rootContext : draftContext;
+  const title = target.kind === 'root' ? rootTitle : selectedTitle;
+  const targetDetail = reviewed ?? (target.kind === 'root' ? root : selected?.context.folderId === target.folderId ? selectedDetail : undefined);
+  const allowed = !blocked && (reviewed ? canCreateRootFolder(reviewed) : target.kind === 'root' ? rootAllowed : selectedAllowed);
   const locked = Boolean(operation) || reading;
   const validation = rootFolderValidation(name, reason);
   const problem = problemFromUnknown(operation?.error);
 
-  function show() {
+  function show(context: FolderCreateContext, button: HTMLButtonElement | null) {
     opening.current += 1; refreshing.current = false; setReading(false);
+    returnFocus.current = button; setDraftContext(context); setReviewed(undefined); setBlocked(false);
     setName(''); setReason(''); setLocalError(''); setOpen(true);
   }
   function close() {
     if (store.get()?.status === 'pending') return;
     opening.current += 1; refreshing.current = false; setReading(false); setOpen(false);
-    requestAnimationFrame(() => triggerContainer.current?.querySelector('button')?.focus());
+    requestAnimationFrame(() => returnFocus.current?.focus());
   }
-  async function invalidate() {
-    const parentId = store.get()?.request.parentFolderId;
+  async function invalidate(parentId: string) {
     await Promise.all([
       client.invalidateQueries({ queryKey: ['folder-tree', 'root'] }),
       client.invalidateQueries({ queryKey: ['folder-tree', parentId] }),
     ]);
   }
+  async function readTarget(context: FolderCreateContext) {
+    return context.kind === 'root' ? reload() : readSelectedFolder(context, documentApi.listFolderChildren);
+  }
+  function blockTarget(context: FolderCreateContext) {
+    setBlocked(true);
+    if (context.kind === 'selected') {
+      // Keep an invalid selection stopped across dialog/list navigation; clicking its tree row creates new provenance.
+      blockedSelection.current = selected?.context.folderId === context.folderId ? selected.context : context;
+    }
+  }
+  function readError(context: FolderCreateContext) {
+    return context.kind === 'root' ? '最新のSystem Rootを取得できません。状態を読み直してから作成してください。'
+      : '選択したフォルダーの最新の状態を取得できません。元の親の取得済み範囲を確認し、ツリーで選び直してください。';
+  }
+  function unavailable(context: FolderCreateContext, current: FolderDetail) {
+    return context.kind === 'root' ? '現在のSystem Rootでは作成できません。権限と最新の状態を確認してください。'
+      : current.capabilities?.createFolder?.status === 'disabled' ? availabilityReason(current.capabilities.createFolder.reason)
+        : '現在のフォルダーでは作成できません。ツリーで選び直してください。';
+  }
   async function submit(event?: React.FormEvent) {
     event?.preventDefault();
     const saved = store.get();
     if (saved) {
-      if (saved.status === 'unknown') await sendRootFolderOperation({ store, request: saved.request, send: documentApi.createFolder, invalidate });
+      if (saved.status === 'unknown') await sendRootFolderOperation({ store, request: saved.request, send: documentApi.createFolder, invalidate: () => invalidate(saved.request.parentFolderId) });
       return;
     }
     if (!allowed || validation || refreshing.current) return;
     refreshing.current = true; setReading(true); setLocalError('');
-    const generation = opening.current;
+    const generation = opening.current; const key = contextKey; const context = draftContext;
     try {
-      // refetch deliberately bypasses the 15s query freshness window before each new request.
-      const current = await reload();
-      if (generation !== opening.current || store.get()) return;
-      if (!canCreateRootFolder(current)) { setLocalError('現在のSystem Rootでは作成できません。権限と最新の状態を確認してください。'); return; }
-      await sendRootFolderOperation({ store, request: {
+      const current = await readTarget(context);
+      if (generation !== opening.current || key !== liveContextKey.current || store.get()) return;
+      if (!canCreateRootFolder(current)) { setLocalError(unavailable(context, current)); blockTarget(context); return; }
+      await sendRootFolderOperation({ store, context: { ...context, name: current.name }, request: {
         operationId: createOperationId(), folderId: createOperationId(), parentFolderId: current.folderId,
         expectedParentRevision: current.revision, name: folderName(name), reason: metadataReason(reason),
-      }, send: documentApi.createFolder, invalidate });
+      }, send: documentApi.createFolder, invalidate: () => invalidate(current.folderId) });
     } catch {
-      if (generation === opening.current) setLocalError('最新のSystem Rootを取得できません。状態を読み直してから作成してください。');
+      if (generation === opening.current && key === liveContextKey.current) { setLocalError(readError(context)); blockTarget(context); }
     } finally {
       if (generation === opening.current) { refreshing.current = false; setReading(false); }
     }
@@ -78,35 +114,48 @@ export function RootFolderCreate({ root, readReady, reload, contextKey }: {
   async function review() {
     const saved = store.get();
     if (saved?.status !== 'rejected' || refreshing.current) return;
-    const generation = opening.current;
+    const generation = opening.current; const key = contextKey;
+    const savedContext = saved.context ?? rootContext;
+    // A definitive rejection may use a real reselection of the same parent, never another target or a URL alone.
+    const context = savedContext.kind === 'selected' && selected?.context.folderId === saved.request.parentFolderId
+      ? selected.context : savedContext;
     refreshing.current = true; setReading(true); setLocalError('');
     try {
-      const current = await reload();
-      if (generation !== opening.current || store.get() !== saved) return;
-      if (!canCreateRootFolder(current)) { setLocalError('現在のSystem Rootでは作成できません。権限と最新の状態を確認してください。'); return; }
-      if (store.clearSettled(saved)) { setName(saved.request.name); setReason(saved.request.reason); }
+      const current = await readTarget(context);
+      if (generation !== opening.current || key !== liveContextKey.current || store.get() !== saved) return;
+      if (!canCreateRootFolder(current)) { setLocalError(unavailable(context, current)); return; }
+      if (store.clearSettled(saved)) { blockedSelection.current = undefined; setDraftContext({ ...context, name: current.name }); setReviewed(current); setBlocked(false); setName(saved.request.name); setReason(saved.request.reason); }
     } catch {
-      if (generation === opening.current) setLocalError('最新のSystem Rootを取得できません。状態を読み直してから作成してください。');
+      if (generation === opening.current && key === liveContextKey.current) { setLocalError(readError(context)); blockTarget(context); }
     } finally {
       if (generation === opening.current) { refreshing.current = false; setReading(false); }
     }
   }
   return <>
-    <span ref={triggerContainer}>{operation
-      ? <button type="button" onClick={show}>{title}</button>
-      : <CapabilityButton label={title} availability={root?.capabilities?.createFolder} disabled={!allowed} onClick={show} />}</span>
+    <span ref={triggerContainer}>
+      {operation ? <button type="button" onClick={event => show(rootContext, event.currentTarget)}>{rootTitle}</button>
+        : <CapabilityButton label={rootTitle} availability={root?.capabilities?.createFolder} disabled={!rootAllowed}
+          onClick={() => show(rootContext, triggerContainer.current?.querySelector('button') ?? null)} />}
+      {(selectedFolderId || operation?.context?.kind === 'selected') && (operation
+        ? <button type="button" onClick={event => show(selected?.context ?? rootContext, event.currentTarget)}>{selectedTitle}</button>
+        : selected ? <CapabilityButton label={selectedTitle} availability={selectedDetail?.capabilities.createFolder} disabled={!selectedAllowed}
+          onClick={() => show(selected.context, triggerContainer.current?.querySelectorAll('button')[1] ?? null)} />
+          : <><button type="button" disabled>{selectedTitle}</button><small> 作成先をツリーで選び直してください。</small></>)}
+      {!operation && reselectRequired && <small> 作成先をツリーで選び直してください。</small>}
+    </span>
     <Modal isOpen={open} onOpenChange={value => { if (!value) close(); }} isDismissable={!pending} isKeyboardDismissDisabled={pending} className={styles.modal}>
       <Dialog aria-labelledby="root-folder-create-title" className={styles.dialog}>
         <Heading slot="title" id="root-folder-create-title">{title}</Heading>
-        <p>登録先：System Root直下（選択中のフォルダーには作成しません）</p>
+        {target.kind === 'root' ? <p>登録先：System Root直下（選択中のフォルダーには作成しません）</p>
+          : <p>登録先：{target.name}（{target.folderId}）直下</p>}
         <form onSubmit={submit} aria-busy={pending || reading}>
           <label className={workspace.formField}>フォルダー名<textarea aria-label="フォルダー名" rows={1} autoFocus value={operation?.request.name ?? name} disabled={locked || !allowed} onChange={event => { if (!locked) setName(event.target.value); }} /></label>
           <label className={workspace.formField}>作成理由<textarea aria-label="作成理由" rows={2} value={operation?.request.reason ?? reason} disabled={locked || !allowed} onChange={event => { if (!locked) setReason(event.target.value); }} /></label>
           {!operation && (name || reason) && validation && <p role="alert">{validation}</p>}
-          {!operation && !allowed && <p role="alert">{root?.capabilities?.createFolder?.status === 'disabled' ? availabilityReason(root.capabilities.createFolder.reason) : 'System Rootの現在の状態を確認してください。'}</p>}
+          {!operation && !allowed && !localError && <p role="alert">{targetDetail?.capabilities?.createFolder?.status === 'disabled' ? availabilityReason(targetDetail.capabilities.createFolder.reason) : target.kind === 'root' ? 'System Rootの現在の状態を確認してください。' : '作成先をツリーで選び直してください。'}</p>}
           {localError && <p role="alert">{localError}</p>}
           {pending && <p role="status">作成結果を確認しています…</p>}
-          {reading && !operation && <p role="status">System Rootの最新の状態を確認しています…</p>}
+          {reading && !operation && <p role="status">{target.kind === 'root' ? 'System Root' : target.name}の最新の状態を確認しています…</p>}
           {unknown && <section role="alert"><h3>作成結果を確認できません</h3><p>同じ操作ID・同じ内容で再試行して結果を確認してください。新しい作成は開始できません。</p><p>要求はこのアプリのメモリー内だけに保持されます。ページ再読み込みやタブ終了で失われるため、このページからの離脱を避け、解決しない場合は操作IDを添えて管理者へ結果を確認してください。</p></section>}
           {operation && <p>操作ID：{operation.request.operationId}<br />作成先フォルダーID：{operation.request.parentFolderId}<br />新しいフォルダーID：{operation.request.folderId}</p>}
           {operation?.status === 'rejected' && <p role="alert">作成は拒否されました。最新の状態を取得し、名前と状態を見直してください。</p>}
