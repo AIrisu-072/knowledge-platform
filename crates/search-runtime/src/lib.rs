@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod event_completion;
 pub mod full_guard;
 pub mod generation_registration;
 pub mod lexical_artifact;
