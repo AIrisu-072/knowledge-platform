@@ -23,6 +23,7 @@ use crate::retrieval::{ActionState, RetrievalAction, RetrieverKind};
 
 /// The caller installs only adapters available for this evaluation. Access is
 /// always current and Source-owned, rather than inferred from a projection.
+#[derive(Clone, Copy)]
 pub struct RetrievalExecutionPorts<'a> {
     pub directory: Option<&'a dyn DirectoryRetrieverPort>,
     pub structured: Option<&'a dyn StructuredRetrieverPort>,

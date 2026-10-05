@@ -166,6 +166,14 @@ impl DisclosureView<'_> {
             .iter()
             .map(|gap| (gap.required_fact.as_str(), gap.reason, gap.blocking))
     }
+    /// The safe public projection, built only inside the disclosure gate.
+    pub fn public(
+        &self,
+        trace_id: uuid::Uuid,
+    ) -> crate::public_projection::DiscoveryEvaluationView {
+        crate::public_projection::project_discovery(self.result, trace_id)
+    }
+
     pub fn trace(&self) -> impl Iterator<Item = &str> + '_ {
         self.result
             .source_trace
@@ -294,6 +302,7 @@ impl TransientDisclosure<DiscoveryResult> {
 
 /// Host wiring of one remote Source: its checked adapter, server-owned
 /// lineage and provenance lookup, and the evaluation lease bounds.
+#[derive(Clone)]
 pub struct RemoteWiring<'a> {
     pub port: &'a dyn RemoteSourcePort,
     pub lineage: RegisteredLineage,
@@ -361,8 +370,21 @@ impl<'a> ScopedDiscoveryService<'a> {
     pub async fn discover(
         &self,
         binding: &TrustedDiscoveryBinding,
+        request: DiscoveryRequest,
+        trusted_routing: RoutingConstraints,
+    ) -> Result<TransientDisclosure<DiscoveryResult>, SearchError> {
+        self.discover_with_scope(binding, request, trusted_routing, DiscoveryScope::Normal)
+            .await
+    }
+
+    /// The same entrypoint for an explicit content scope (e.g. a body scope
+    /// whose query was validated by the trusted route).
+    pub async fn discover_with_scope(
+        &self,
+        binding: &TrustedDiscoveryBinding,
         mut request: DiscoveryRequest,
         trusted_routing: RoutingConstraints,
+        content_scope: DiscoveryScope,
     ) -> Result<TransientDisclosure<DiscoveryResult>, SearchError> {
         request.access_context = binding.actor().access_handle().to_opaque_string();
         request.temporal_context.evaluation_id = binding.evaluation();
@@ -379,7 +401,13 @@ impl<'a> ScopedDiscoveryService<'a> {
         // Each round drops at least one revoked Source, so this is bounded.
         for _ in 0..=visible.len() {
             let (outcome, evaluation_closed) = self
-                .evaluate(binding, &request, &visible, &trusted_routing)
+                .evaluate(
+                    binding,
+                    &request,
+                    &visible,
+                    &trusted_routing,
+                    &content_scope,
+                )
                 .await;
             let mut revoked = Vec::new();
             for entry in &visible {
@@ -416,6 +444,7 @@ impl<'a> ScopedDiscoveryService<'a> {
         request: &DiscoveryRequest,
         visible: &[VisibleSourceRegistration],
         routing: &RoutingConstraints,
+        content_scope: &DiscoveryScope,
     ) -> (Result<DiscoveryResult, SearchError>, bool) {
         let durable = self.service.durable_read_ports();
         let gate = ScopedOwnerGate::new(self.authority, self.visibility);
@@ -462,7 +491,7 @@ impl<'a> ScopedDiscoveryService<'a> {
             .discover_scoped(
                 request.clone(),
                 ScopedDiscoveryExecution {
-                    content_scope: DiscoveryScope::Normal,
+                    content_scope: content_scope.clone(),
                     binding,
                     visible,
                     routing: routing.clone(),

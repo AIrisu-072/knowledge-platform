@@ -44,15 +44,28 @@ pub(crate) fn sealed_retriever_id(retriever_id: &str) -> String {
 /// expected value, always about `REMOTE_CLAIM_SUBJECT`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RemoteClaimSelectors {
-    selectors: BTreeMap<ClaimId, (String, Option<TypedValue>)>,
+    selectors: BTreeMap<ClaimId, (Option<SourceId>, String, Option<TypedValue>)>,
 }
 
 impl RemoteClaimSelectors {
+    /// Server-owned selectors valid for any remote Source of the evaluation.
     pub fn new(selectors: Vec<(ClaimId, String, Option<TypedValue>)>) -> Self {
         Self {
             selectors: selectors
                 .into_iter()
-                .map(|(claim, predicate, expected)| (claim, (predicate, expected)))
+                .map(|(claim, predicate, expected)| (claim, (None, predicate, expected)))
+                .collect(),
+        }
+    }
+
+    /// Selectors that answer only for the remote Source owning each Claim.
+    pub fn for_sources(selectors: Vec<(ClaimId, SourceId, String, Option<TypedValue>)>) -> Self {
+        Self {
+            selectors: selectors
+                .into_iter()
+                .map(|(claim, source, predicate, expected)| {
+                    (claim, (Some(source), predicate, expected))
+                })
                 .collect(),
         }
     }
@@ -303,14 +316,19 @@ impl ClaimSelectorPort for CompositeEvaluationReadView<'_> {
     ) -> BoxFuture<'b, Option<ClaimSelector>> {
         Box::pin(async move {
             if self.is_remote(generation) {
-                return Ok(self.remote_selectors.selectors.get(&claim_id).map(
-                    |(predicate, expected)| ClaimSelector {
+                return Ok(self
+                    .remote_selectors
+                    .selectors
+                    .get(&claim_id)
+                    .filter(|(source, _, _)| {
+                        source.is_none_or(|owner| owner == generation.source_id)
+                    })
+                    .map(|(_, predicate, expected)| ClaimSelector {
                         claim_id,
                         subject_ref: REMOTE_CLAIM_SUBJECT.into(),
                         predicate: predicate.clone(),
                         expected_value: expected.clone(),
-                    },
-                ));
+                    }));
             }
             if self.durable_registered(generation) {
                 return self
