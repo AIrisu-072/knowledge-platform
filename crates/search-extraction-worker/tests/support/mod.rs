@@ -97,6 +97,11 @@ pub fn zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
     for (name, bytes) in entries {
+        // A trailing `/` writes an explicit directory entry.
+        if name.ends_with('/') {
+            writer.add_directory(*name, options).unwrap();
+            continue;
+        }
         writer.start_file(*name, options).unwrap();
         writer.write_all(bytes).unwrap();
     }

@@ -279,6 +279,12 @@ impl VectorMaintainer {
         {
             return Ok(None);
         }
+        // The epoch is read before the input is captured.
+        let scope_epoch = self
+            .services
+            .generations
+            .scope_epoch(&document_scope_key(key.source_id))
+            .await?;
         let input = self.input(key).await?;
         // Reuse stored vectors whose cache key is unchanged, re-bound here.
         let stored = self
@@ -302,11 +308,12 @@ impl VectorMaintainer {
             activations: self.services.activations.as_ref(),
         };
         lifecycle
-            .build(
+            .build_at(
                 &input,
                 &previous,
                 VectorStorageKind::Persistent,
                 OffsetDateTime::now_utc(),
+                scope_epoch,
             )
             .await
             .map(Some)

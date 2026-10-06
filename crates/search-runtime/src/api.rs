@@ -168,6 +168,8 @@ pub enum StartupError {
     InvalidDisclosureTtl,
     /// A namespace's complete desired set or the durable ledger refused.
     Registration,
+    /// The host DiscoveryConfig fails the rules every request would apply.
+    InvalidDiscoveryConfig,
 }
 
 pub struct SearchApiRuntime {
@@ -231,6 +233,9 @@ pub async fn build_search_api_runtime(
     }
     if host_config.disclosure_ttl.is_zero() || host_config.disclosure_ttl > MAX_DISCLOSURE_TTL {
         return Err(StartupError::InvalidDisclosureTtl);
+    }
+    if host_config.config.validate().is_err() {
+        return Err(StartupError::InvalidDiscoveryConfig);
     }
     let claims = host_config
         .claims

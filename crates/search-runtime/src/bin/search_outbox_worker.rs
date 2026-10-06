@@ -253,10 +253,12 @@ async fn run() -> Result<(), String> {
                 .map_err(|error| format!("vector model: {error}"))?,
         );
         let services = search_runtime::vector_runtime::VectorServices {
-            activations: Arc::new(search_runtime::vector_runtime::RegisteredVectorActivation::new(
-                [source_id],
-                provider.as_ref(),
-            )),
+            activations: Arc::new(
+                search_runtime::vector_runtime::RegisteredVectorActivation::new(
+                    [source_id],
+                    provider.as_ref(),
+                ),
+            ),
             provider,
             index: Arc::new(search_runtime::vector_store::PgVectorIndex::new(
                 search_pool.clone(),
@@ -286,6 +288,22 @@ async fn run() -> Result<(), String> {
         });
     }
 
+    // The parser build stamped into Unit provenance must name the worker that
+    // runs; the runner re-checks the same pin before every extraction.
+    let worker_sha256 = search_extraction_runner::executable_sha256(&config.extraction_worker)
+        .map_err(|error| format!("extraction worker: {error:?}"))?;
+    let expected_build = format!(
+        "sha256:{}",
+        worker_sha256
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    );
+    if config.parser_build_id != expected_build {
+        return Err(format!(
+            "parser_build_id must be the extraction worker's {expected_build}"
+        ));
+    }
     let registry = BodyProfileRegistry::new(config.parser_build_id, config.profiles.clone())
         .map_err(|error| format!("extraction profiles: {error:?}"))?;
     let profiles = config
@@ -295,9 +313,11 @@ async fn run() -> Result<(), String> {
             search_extraction_core::RegisteredProfile::register_definition(definition).ok()
         })
         .collect();
-    let runner =
-        SearchExtractionRunner::new(SearchRunnerConfig::new(config.extraction_worker), profiles)
-            .map_err(|error| format!("extraction runner: {error:?}"))?;
+    let runner = SearchExtractionRunner::new(
+        SearchRunnerConfig::new(config.extraction_worker).with_worker_sha256(worker_sha256),
+        profiles,
+    )
+    .map_err(|error| format!("extraction runner: {error:?}"))?;
     let extractor = Arc::new(DocumentBodyExtractor::new(
         source_id,
         FileSystemStorage::new(&config.file_root),

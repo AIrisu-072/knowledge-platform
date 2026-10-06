@@ -244,13 +244,28 @@ impl BodyProfileRegistry {
             .definition(FormatId::Zip)
             .ok_or(BodyBuildError::Configuration("ZIP definition"))?
             .clone();
-        let Ok(archive) = zip::ZipArchive::new(Cursor::new(raw)) else {
+        let Ok(mut archive) = zip::ZipArchive::new(Cursor::new(raw)) else {
             return Ok(Planned::Failed(PermanentFailureCode::MalformedArchive));
         };
         if archive.len() as u64 > root.limits[&BudgetKey::ZipEntries] {
             return Ok(Planned::Unsupported(CoverageReason::ResourceLimit));
         }
-        let mut names: Vec<String> = archive.file_names().map(str::to_owned).collect();
+        let mut names = Vec::with_capacity(archive.len());
+        for index in 0..archive.len() {
+            let Ok(entry) = archive.by_index_raw(index) else {
+                return Ok(Planned::Failed(PermanentFailureCode::MalformedArchive));
+            };
+            let name = entry.name().to_owned();
+            // OS archivers write explicit directory entries (`docs/`); they
+            // carry no content and are not planned as leaves.
+            if let Some(directory) = name.strip_suffix('/') {
+                if entry.size() != 0 || validate_archive_member(directory).is_err() {
+                    return Ok(Planned::Unsupported(CoverageReason::UnsupportedStructure));
+                }
+                continue;
+            }
+            names.push(name);
+        }
         names.sort();
         let mut nodes = vec![ArchiveReaderNode {
             members: Vec::new(),

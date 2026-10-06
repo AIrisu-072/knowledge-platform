@@ -42,7 +42,9 @@ use search_runtime::api::build_search_api_runtime;
 use search_runtime::durable_read::{
     DocumentActorAccess, DocumentActorAccessPort, DurableDocumentPorts, DurableDocumentReadModel,
 };
-use search_runtime::vector_runtime::{RegisteredVectorActivation, VectorMaintainer, VectorServices};
+use search_runtime::vector_runtime::{
+    RegisteredVectorActivation, VectorMaintainer, VectorServices,
+};
 use search_runtime::vector_store::{PgVectorGenerations, PgVectorIndex};
 use search_source_document::{DocumentApiRead, DocumentCurrentAccessAdapter};
 use serde_json::{Value, json};
@@ -67,9 +69,9 @@ impl BigramProvider {
         let chars: Vec<char> = text.chars().filter(|c| !c.is_whitespace()).collect();
         let mut values = vec![0f32; DIMENSION];
         for pair in chars.windows(2) {
-            let hash = pair
-                .iter()
-                .fold(2_166_136_261u32, |h, c| (h ^ *c as u32).wrapping_mul(16_777_619));
+            let hash = pair.iter().fold(2_166_136_261u32, |h, c| {
+                (h ^ *c as u32).wrapping_mul(16_777_619)
+            });
             values[hash as usize % DIMENSION] += 1.0;
         }
         if values.iter().all(|value| *value == 0.0) {
@@ -93,15 +95,22 @@ impl EmbeddingProvider for BigramProvider {
             Ok(units
                 .iter()
                 .map(|item| {
-                    BoundEmbedding::new(&self.spec, &item.unit, &item.authority, Self::embed(&item.unit.text))
-                        .unwrap()
+                    BoundEmbedding::new(
+                        &self.spec,
+                        &item.unit,
+                        &item.authority,
+                        Self::embed(&item.unit.text),
+                    )
+                    .unwrap()
                 })
                 .collect())
         })
     }
 
     fn embed_query<'a>(&'a self, query: &'a TrustedVectorQuery) -> BoxFuture<'a, QueryEmbedding> {
-        Box::pin(async move { Ok(QueryEmbedding::new(&self.spec, Self::embed(query.text())).unwrap()) })
+        Box::pin(
+            async move { Ok(QueryEmbedding::new(&self.spec, Self::embed(query.text())).unwrap()) },
+        )
     }
 }
 
@@ -183,8 +192,18 @@ fn qualified(body: &Value) -> Vec<String> {
 #[tokio::test]
 async fn discover_ranks_vector_candidates_through_the_owning_source() {
     let durable = Durable::start_with(true).await;
-    let tokyo = publish(&durable.pool, &durable.storage, "東京本社の就業規程と休暇の申請").await;
-    let rooms = publish(&durable.pool, &durable.storage, "会議室の予約手順と利用時間").await;
+    let tokyo = publish(
+        &durable.pool,
+        &durable.storage,
+        "東京本社の就業規程と休暇の申請",
+    )
+    .await;
+    let rooms = publish(
+        &durable.pool,
+        &durable.storage,
+        "会議室の予約手順と利用時間",
+    )
+    .await;
     index(&durable, tokyo).await;
     index(&durable, rooms).await;
 
@@ -198,7 +217,8 @@ async fn discover_ranks_vector_candidates_through_the_owning_source() {
             provider.as_ref(),
         )),
     };
-    let maintainer = VectorMaintainer::new(durable.pool.clone(), durable.source(), services.clone());
+    let maintainer =
+        VectorMaintainer::new(durable.pool.clone(), durable.source(), services.clone());
     assert!(matches!(
         maintainer.ensure_current().await.unwrap(),
         Some(VectorBuildOutcome::Published(_))
@@ -260,9 +280,19 @@ async fn discover_ranks_vector_candidates_through_the_owning_source() {
 
     let leave = call(&router, discover("editor-token", "休暇の申請")).await;
     assert_eq!(leave.status, StatusCode::OK, "{}", leave.body);
-    assert_eq!(qualified(&leave.body)[0], version(&durable, tokyo).await, "{}", leave.body);
+    assert_eq!(
+        qualified(&leave.body)[0],
+        version(&durable, tokyo).await,
+        "{}",
+        leave.body
+    );
     let booking = call(&router, discover("editor-token", "会議室の予約")).await;
-    assert_eq!(qualified(&booking.body)[0], version(&durable, rooms).await, "{}", booking.body);
+    assert_eq!(
+        qualified(&booking.body)[0],
+        version(&durable, rooms).await,
+        "{}",
+        booking.body
+    );
     // Below the similarity floor nothing is a candidate.
     let unrelated = call(&router, discover("editor-token", "ｘｙｚｗ")).await;
     assert!(qualified(&unrelated.body).is_empty(), "{}", unrelated.body);
@@ -289,6 +319,14 @@ async fn discover_ranks_vector_candidates_through_the_owning_source() {
     assert!(maintainer.ensure_current().await.unwrap().is_some());
     let rebuilt = call(&router, discover("editor-token", "休暇の申請")).await;
     let found = qualified(&rebuilt.body);
-    assert!(found.contains(&version(&durable, tokyo).await), "{}", rebuilt.body);
-    assert!(found.contains(&version(&durable, osaka).await), "{}", rebuilt.body);
+    assert!(
+        found.contains(&version(&durable, tokyo).await),
+        "{}",
+        rebuilt.body
+    );
+    assert!(
+        found.contains(&version(&durable, osaka).await),
+        "{}",
+        rebuilt.body
+    );
 }

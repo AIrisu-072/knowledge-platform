@@ -242,18 +242,27 @@ enum NextAction {
     Probe(Box<ProbeTarget>),
 }
 
-impl<'a> DiscoveryService<'a> {
-    pub fn new(config: DiscoveryConfig, ports: DiscoveryPorts<'a>) -> Result<Self, SearchError> {
-        if config.max_actions == 0 || config.evaluation_currency.trim().is_empty() {
+impl DiscoveryConfig {
+    /// The checks every DiscoveryService applies; a host validates its
+    /// configuration once at startup with the same rules.
+    pub fn validate(&self) -> Result<(), SearchError> {
+        if self.max_actions == 0 || self.evaluation_currency.trim().is_empty() {
             return Err(SearchError::InvalidRequest(
                 "Discovery requires a positive action limit and evaluation currency".into(),
             ));
         }
-        if config.probe_budget.currency != config.evaluation_currency {
+        if self.probe_budget.currency != self.evaluation_currency {
             return Err(SearchError::InvalidRequest(
                 "Probe budget currency differs from evaluation currency".into(),
             ));
         }
+        Ok(())
+    }
+}
+
+impl<'a> DiscoveryService<'a> {
+    pub fn new(config: DiscoveryConfig, ports: DiscoveryPorts<'a>) -> Result<Self, SearchError> {
+        config.validate()?;
         Ok(Self {
             config,
             ports,

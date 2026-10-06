@@ -4,4 +4,4 @@
 
 mod executor;
 
-pub use executor::{SearchExtractionRunner, SearchRunnerConfig};
+pub use executor::{SearchExtractionRunner, SearchRunnerConfig, executable_sha256};
