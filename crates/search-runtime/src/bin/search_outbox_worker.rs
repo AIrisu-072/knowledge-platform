@@ -151,6 +151,13 @@ fn invalid(what: &str) -> impl Fn(SearchError) -> String + '_ {
 }
 
 async fn run() -> Result<(), String> {
+    // A2: `rebuild` is the manual retry: one full rebuild, then exit. It can
+    // be run any number of times; delivery retries stay bounded.
+    let rebuild = match std::env::args().nth(1).as_deref() {
+        None => false,
+        Some("rebuild") => true,
+        Some(_) => return Err("usage: search_outbox_worker [rebuild]".into()),
+    };
     let file = std::fs::read(env("SEARCH_WORKER_CONFIG")?)
         .map_err(|_| "SEARCH_WORKER_CONFIG cannot be read".to_string())?;
     let config: WorkerFile =
@@ -240,14 +247,17 @@ async fn run() -> Result<(), String> {
         .startup(64)
         .await
         .map_err(|error| format!("startup recovery: {error:?}"))?;
-    if let CurrentState::Unusable(_, error) = report.current {
+    // An unusable current generation is exactly what a rebuild replaces.
+    if let CurrentState::Unusable(_, error) = report.current
+        && !rebuild
+    {
         return Err(format!("current generation is unusable: {error:?}"));
     }
 
     // E: Vector maintenance runs beside delivery. An enabled Vector whose
     // pinned model files are missing or altered stops startup, never
     // silently serving without it.
-    if config.vector.enabled {
+    if config.vector.enabled && !rebuild {
         let provider: Arc<dyn search_application::vector::EmbeddingProvider> = Arc::new(
             search_vector_adapter::CandleEmbeddingProvider::load(&config.vector.model_dir)
                 .map_err(|error| format!("vector model: {error}"))?,
@@ -324,26 +334,37 @@ async fn run() -> Result<(), String> {
         runner,
         registry,
     ));
+    let worker_config = SearchWorkerConfig {
+        registration,
+        activation,
+        source,
+        lens: config.lens,
+        projection_schema_version: config.projection_schema_version,
+        analyzer_version: config.analyzer_version,
+        semantic_registry: SemanticRegistrySnapshot::new(config.semantic_registry_version),
+        lexical_root: config.lexical_root,
+        delivery: DeliveryConfig::default(),
+        policy: DeliveryPolicy::default(),
+        source_lease: Duration::from_millis(config.source_lease_ms),
+        guard_ttl: FullGuardTtl::new(Duration::from_millis(config.guard_ttl_ms))
+            .ok_or("guard TTL must be positive and at most 120 s")?,
+    };
+    if rebuild {
+        let outcome =
+            search_runtime::worker::compose_rebuild(search_pool, &ledger, extractor, worker_config)
+                .map_err(|error| format!("rebuild composition: {error:?}"))?
+                .rebuild()
+                .await
+                .map_err(|error| format!("rebuild: {error}"))?;
+        println!("search_outbox_worker: rebuild {outcome:?}");
+        return Ok(());
+    }
     let worker = compose(
         delivery_pool,
         search_pool,
         &ledger,
         extractor,
-        SearchWorkerConfig {
-            registration,
-            activation,
-            source,
-            lens: config.lens,
-            projection_schema_version: config.projection_schema_version,
-            analyzer_version: config.analyzer_version,
-            semantic_registry: SemanticRegistrySnapshot::new(config.semantic_registry_version),
-            lexical_root: config.lexical_root,
-            delivery: DeliveryConfig::default(),
-            policy: DeliveryPolicy::default(),
-            source_lease: Duration::from_millis(config.source_lease_ms),
-            guard_ttl: FullGuardTtl::new(Duration::from_millis(config.guard_ttl_ms))
-                .ok_or("guard TTL must be positive and at most 120 s")?,
-        },
+        worker_config,
     )
     .map_err(|error| format!("worker composition: {error:?}"))?;
 
