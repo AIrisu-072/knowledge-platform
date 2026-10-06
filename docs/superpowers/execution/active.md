@@ -1,5 +1,27 @@
 # Active Execution Pointer
 
+## 2026-10-06 20:20 UTC — PR91へ最新mainのコンテンツ版履歴を統合
+
+- [PR91](https://github.com/AIrisu-072/knowledge-platform/pull/91)の公開head `81be7976` に、[PR92](https://github.com/AIrisu-072/knowledge-platform/pull/92)統合main `f431c374` を通常mergeする。[イベント履歴の状況](document-history-pagination-status.md)と[小計画](../plans/2026-10-06-document-history-pagination.md)が再開先。両parentの履歴・操作手順・受入検査を保持し、同じPR91内で新しい組合せheadの資格を取る
+- 文書詳細の現在拒否を正式改訂/比較・イベント履歴・コンテンツ版履歴へ伝え、両履歴の明示再読取が互いの拒否状態を消さない共存反例を確認する。公開/編集対象、固定UNKNOWN、元の各read/cursor/原本契約は変えない
+- 旧PR91の全CI/check/step・Rust/DB/artifactは確認済みだが、正式runtime stdoutは未取得。同じ接続済みtoolの20:01復旧確認もTransport closedだった。匿名公式GETの403を再試行/回避せず、この旧exact資格未確認を保持する。新headのCIを旧headの証拠へ転用しない
+- PR92 head `9e508716` は全13jobs/18checks（15成功/既存skip3）、GUI1266/51、正式runtime Document18+5/Agent9/Org8、fresh DB36/Folder4、再起動/cleanup/artifact0を確認してmainへ統合。main自身のpush CI `37525170447` は別途監視中で未資格。以下は各時点の公開記録として保持する
+
+20:30追補：競合5filesを双方保持で解消し、両拒否通知の片方を外す各2REDから、再読取2順序の共存を確認した。固定sourceの全1312/53・focused100/4・schema/型/build、safe66/runtime型/MCP compile/収集18+5成功。独立reviewも186/6・schema/diffでGO、両hook本体と両側受入assertionは保持。既存PR91 observer警告と訂正した新テスト型指定の初回失敗を記録した。次は両parentの組合せheadを同PR91に保存して通常CIへ進む。main f431自身の実runtimeは独立成功したが残CI監視中であり、新組合せの実hostedは未資格。
+
+---
+
+## 2026-10-06 19:23 UTC — 閲覧専用コンテンツ版履歴
+
+- 資格済みmain `c2b68850` を独立worktreeの基点とし、通常詳細「版・改訂」から既存history-purposeで旧版詳細と原本を開く。[状況](document-content-history-status.md)と[小計画](../plans/2026-10-06-document-content-history.md)が再開先
+- 旧版選択を通常の公開/編集対象と隔離し、全AUTHORITATIVE原本・現在認可・cache失効・中断後の遅いdownload抑止をTDDで確認する。backend/OAS/SDK・新基盤・大量fixtureは追加しない
+- 未mergeのイベント履歴PR91は正式runtime stdout未取得を記録して保持する。この新機能はそのsourceや未取得資格へ依存しない。既存GUI・試験・日本語手順を同機能1PRにまとめる
+- main c2自身のCI `37505782574` は全13jobs/checks・実受入・DB36/Folder4・HTTP再起動・artifact0確認済み。今回新GUIは未資格であり、次は反例→実装/既存受入→独立review→同head hosted
+
+19:43追補：GUI `31ad2ddd` は37REDから実装し、余分な旧detail GET・close focus・背景再読取tail失敗の3境界も反例から補修。最終focused54・全1266/51・schema/型/build成功。受入 `00a272a2` は既存regulation2caseのみを拡張し、safe66・型/MCP compile・収集18+5成功。通常2版/再起動後3版から原本1件の旧版を確認するsourceで、実GUI複数原本・101版は未資格。全11pathsの独立組合せreviewは244/5とschema検査も合格してGO。次は同head既存hostedであり、実browser合格はまだ記録していない。
+
+---
+
 ## 2026-10-06 18:19 UTC — 文書イベント履歴の続き表示
 
 - PR90統合main `c2b68850` から既存history/100/cursorを「履歴」タブへ接続する。[状況](document-history-pagination-status.md)と[小計画](../plans/2026-10-06-document-history-pagination.md)が再開先

@@ -1,5 +1,15 @@
 # 文書イベント履歴の続きを既存APIへ接続する小計画
 
+## 2026-10-06 20:20 UTC：PR92統合mainへの通常追従
+
+旧公開head `81be7976` と最新main `f431c374` の履歴を保持したmergeを、同じPR91へ保存する。最新mainの閲覧専用コンテンツ版履歴と、本機能のイベント履歴のread/cursor/拒否・明示再読取・未確定操作保持を共存させる。新しい業務意味やbackendを加えない。
+
+- [x] 競合5filesを両UI/全受入assertion/公開記録を保持して解消し、通常詳細拒否と両履歴の独立した再読取の共存反例を検証する
+- [x] 全GUI/schema/型/build、既存runtime型/純粋検査/収集18+5、独立組合せreviewを行う
+- [ ] 同PRへ両parentのmerge commitを保存し、新head自身の通常既存CIとhostedを確認する
+
+旧headの正式runtime stdout未取得と匿名公式GET403停止は[実行状況](../execution/document-history-pagination-status.md)に保持する。旧CIの再実行やログ取得の代替を目的とせず、異なるsourceの組合せを検証する。新headの成功を旧headの実行証拠へ転用しない。
+
 ## 目的と承認範囲
 
 既存内部処理を通常GUIから使う所有者の指示と、機能単位のPRをmainへ取り込む方針に従う。PR90統合main `c2b68850aa022ac77ff180e5010c2197f949036d` を基点に、既存「履歴」タブへ100件単位の続き表示を接続する。Document management basics §12とFrozen GUIの既存History projectionを使い、新backend/OpenAPI/生成SDK・認可・イベントの意味は変更しない。

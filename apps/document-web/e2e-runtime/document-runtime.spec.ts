@@ -10,6 +10,7 @@ import {
   getDocumentAccessPolicy, getDocumentHistory, getRootFolder, getSession, listDocumentRevisions,
   listDocuments, listDocumentVersions, listFolderChildren, listVersionFiles, publishVersion,
   type VersionMutationResult, type CommandsMetadataPatch, type ModelsVersion, type ModelsDisplayFragment, type ModelsHistory, type RevisionComparisonResponse,
+  type VersionList, type VersionDetail, type FileList,
 } from '@knowledge-platform/document-api-client';
 import { hash, options, persistedSnapshot, runtime, saveSnapshot, uuidV7 } from './support';
 import { formatDateTime } from '../src/view-model/date-time';
@@ -91,6 +92,77 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await expect(page.getByRole('heading', { name: '正式改訂', exact: true })).toBeVisible();
   expect(before.revisions).toHaveLength(2);
   await visualCheckpoint(page, '04-revision-version-1440.png');
+  const oldVersion = before.versions.find(version => version.versionNo === 1)!;
+  expect(oldVersion.versionId).not.toBe(before.currentVersionId);
+  const currentVersion = before.versions.find(version => version.versionId === before.currentVersionId)!;
+  const normalSelection = page.getByRole('heading', { name: `選択中: 版 ${currentVersion.versionNo}`, exact: true });
+  await expect(normalSelection).toBeVisible();
+  const normalUrl = page.url();
+  const readStateBeforeHistory = (await getDocument({ ...humanOptions, path: { documentId }, query: { view: 'published' } })).data.readState;
+  const versionsBeforeHistory = (await listDocumentVersions({ ...humanOptions, path: { documentId }, query: { purpose: 'history', pageSize: 100 } })).data;
+  const versionReadStatesBeforeHistory = versionsBeforeHistory.items.map(({ versionId, firstReadAt }) => ({ versionId, firstReadAt }));
+  const historyResponse = (suffix: string) => page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.origin === human && url.pathname === `/v1/documents/${documentId}/versions${suffix}`
+      && url.searchParams.get('purpose') === 'history' && response.request().method() === 'GET';
+  });
+  const historyListResponse = historyResponse('');
+  await page.getByRole('button', { name: 'コンテンツ版の履歴を開く', exact: true }).click();
+  const historyListResult = await historyListResponse;
+  expect(historyListResult.status()).toBe(200);
+  expect(new URL(historyListResult.url()).searchParams.get('pageSize')).toBe('100');
+  expect(new URL(historyListResult.url()).searchParams.has('cursor')).toBe(false);
+  const historyVersions = await historyListResult.json() as VersionList;
+  expect(historyVersions.items.map(version => version.versionId)).toEqual(before.versions.map(version => version.versionId));
+  expect(historyVersions.items.map(({ versionId, firstReadAt }) => ({ versionId, firstReadAt }))).toEqual(versionReadStatesBeforeHistory);
+  // 既存の2版だけを使う。実GUIのコンテンツ版101件目の資格には読み替えない。
+  expect(historyVersions.nextCursor).toBeNull();
+  const contentHistory = page.getByRole('region', { name: 'コンテンツ版の履歴（閲覧専用）', exact: true });
+  await expect(contentHistory).toBeVisible();
+  const historySelection = contentHistory.getByRole('combobox', { name: '履歴のコンテンツ版を選択', exact: true });
+  await expect(historySelection).toHaveValue('');
+  const oldDetailResponse = historyResponse(`/${oldVersion.versionId}`);
+  const oldFilesResponse = historyResponse(`/${oldVersion.versionId}/files`);
+  await historySelection.selectOption(oldVersion.versionId);
+  const oldDetailResult = await oldDetailResponse, oldFilesResult = await oldFilesResponse;
+  expect(oldDetailResult.status()).toBe(200); expect(oldFilesResult.status()).toBe(200);
+  const oldDetail = await oldDetailResult.json() as VersionDetail;
+  expect(oldDetail).toMatchObject({ versionId: oldVersion.versionId, versionNo: 1, lifecycleState: 'published', isCurrent: false,
+    firstReadAt: historyVersions.items.find(version => version.versionId === oldVersion.versionId)!.firstReadAt });
+  expect(oldDetail.capabilities.download.status).toBe('available');
+  const historyDetail = contentHistory.getByRole('region', { name: '選択したコンテンツ版の詳細', exact: true });
+  await expect(historyDetail).toContainText(oldDetail.title);
+  await expect(historyDetail).toContainText(`Version ${oldDetail.versionNo}`);
+  const oldFiles = await oldFilesResult.json() as FileList;
+  const originals = oldFiles.items.filter(file => file.role === 'AUTHORITATIVE');
+  expect(originals.length).toBeGreaterThan(0);
+  const originalButtons = historyDetail.getByRole('button', { name: /^履歴の原本を取得: / });
+  await expect(originalButtons).toHaveCount(originals.length);
+  for (const [index, file] of originals.entries()) {
+    const originalResponse = historyResponse(`/${oldVersion.versionId}/files/${file.contentItemId}/${file.representationId}`);
+    const historicalDownload = page.waitForEvent('download');
+    await expect(originalButtons.nth(index)).toHaveAccessibleName(`履歴の原本を取得: ${file.displayName}`);
+    await originalButtons.nth(index).click();
+    expect((await originalResponse).status()).toBe(200);
+    const originalDownload = await historicalDownload;
+    expect(originalDownload.suggestedFilename()).toBe(file.displayName);
+    const originalBytes = await readFile((await originalDownload.path())!);
+    const originalSnapshot = oldVersion.files.find(item => item.contentItemId === file.contentItemId && item.representationId === file.representationId)!;
+    expect(originalBytes.byteLength).toBe(file.sizeBytes); expect(hash(originalBytes)).toBe(originalSnapshot.hash);
+  }
+  await expect(historySelection).toHaveValue(oldVersion.versionId);
+  await expect(normalSelection).toBeVisible();
+  await expect(page).toHaveURL(normalUrl);
+  await contentHistory.getByRole('button', { name: 'コンテンツ版の履歴を閉じる', exact: true }).click();
+  await expect(contentHistory).toBeHidden();
+  await expect(normalSelection).toBeVisible();
+  await expect(page).toHaveURL(normalUrl);
+  expect((await getDocument({ ...humanOptions, path: { documentId }, query: { view: 'published' } })).data.readState).toEqual(readStateBeforeHistory);
+  const versionsAfterHistory = (await listDocumentVersions({ ...humanOptions, path: { documentId }, query: { purpose: 'history', pageSize: 100 } })).data;
+  expect(versionsAfterHistory.items.map(({ versionId, firstReadAt }) => ({ versionId, firstReadAt })))
+    .toEqual(versionReadStatesBeforeHistory);
+  expect(await persistedSnapshot(human, documentId)).toEqual(before);
+  expect(await persistedSnapshot(agent, documentId)).toEqual(before);
   const historyReadState = (await getDocument({ ...humanOptions, path: { documentId }, query: { view: 'published' } })).data.readState;
   const historyRegion = page.getByRole('region', { name: '変更履歴', exact: true });
   let initialHistory: ModelsHistory | undefined;
@@ -132,6 +204,9 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   }
   expect(isDeepStrictEqual(await persistedSnapshot(human, documentId), before)).toBe(true);
   expect(isDeepStrictEqual((await getDocument({ ...humanOptions, path: { documentId }, query: { view: 'published' } })).data.readState, historyReadState)).toBe(true);
+  await page.getByRole('tab', { name: '履歴', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '変更履歴' })).toBeVisible();
+  await expect(page.getByText('document.version.published', { exact: true }).first()).toBeVisible();
   completed('history-opened');
   const comparisonResponse = page.waitForResponse(response => {
     const url = new URL(response.url());

@@ -1,5 +1,20 @@
 # 文書イベント履歴の続き表示：実行状況
 
+## 2026-10-06 20:20 UTC — 最新mainとの通常統合
+
+- 同じ[PR91](https://github.com/AIrisu-072/knowledge-platform/pull/91)で、公開head `81be79766bc9062284839ff036b3acf61edfe545` と、コンテンツ版履歴PR92統合main `f431c374e8452e0eba26ce4e923901f2d3b374ea` の両parentを保持する通常mergeを進める。結果だけの別PRを作らず、新しい機能を加えない。
+- 旧headの[CI37511331626](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37511331626)は全13jobs成功、18checks中15成功/既存skip3、4runの公開artifact0。Rust正式ログは1849成功/skip10、21成功、7成功/skip1、DB36/Folder4を確認した。Runtime job112432939363とDocument/Organization/summary出力stepはsuccessだが、正式stdoutの実行head/clean/qualified・実測件数・個別receipt・実行元/再起動/cleanupは未取得として保持する。
+- 接続済みjob-log toolは当該旧ログでTransport closedを反復した。許可された認証情報なし公式GETは403で停止し、20:01 UTCの元tool・同一argsによる復旧確認1回もTransport closedだった。追加credential・別route・旧CI rerunは行わない。下記の新組合せheadの受入を旧headの資格へ読み替えない。
+- main側PR92の公開head `9e508716` / tree `e08a5494` は全13jobs/全18checks中15成功・既存skip3、GUI1266/51、実行head一致/clean/qualified、Document22工程/18+5/Agent9、Organization8、fresh Rust/DB36/Folder4、HTTP再起動/artifact0を確認して統合された。通常regulation個別PASSは直接取得、再起動後regulationの個別行は有限枠で省略され全5件成功と同sourceから対応確認した。Organization cleanupは直接出力、Document cleanupとOrganization固有の実行元値は同一job/sourceと成功条件からの対応確認である。main自身のCI37525170447は別途進行中。
+- 詳細route、既存runtime2files、操作手順、Activeの競合5filesは両側を保持して解消する。現在の文書拒否は3系統へ伝え、イベント履歴とコンテンツ版履歴の明示再読取を相互に独立させる。通常版選択/公開/編集・未確定要求/Blob/Organizationは従来どおり保持する。
+- 競合は両UI・全受入assertionを保持して解消した。通常詳細の401→自動200後も両履歴が停止し、どちらから明示再読取しても他方の拒否を消さない2順序の反例を追加。イベント/コンテンツ版それぞれの拒否通知を外すnegative controlで各2件RED、3系統接続後はGREENとなった。両hook本体は親からbyte不変である。
+- 固定sourceの全GUI1312件/53 suites、両履歴focused100件/4 suites、schema・型・build、受入純粋66件、runtime型/MCP compile、収集18+5が成功した。新テストに誤って加えたPlaywright専用のexact指定4箇所は型検査で検出し、Testing Libraryの元の厳密な文字列照合を保持して除去、最終sourceで全GUIを再確認した。初回失敗も証拠へ保持する。
+- 親PR91の不変なrefusal observerに由来するmissing queryFn警告を共存反例実行で観測し、警告が全て無いとは記載しない。既存webpack性能警告3件も保持した。固定lockの供給元724件検査、687再利用/download0とlock不変を確認し、通常の公式依存復旧以外は行っていない。
+- 両parentの公開記録と全17paths（共通基点c2からの和）の独立組合せreviewはGO。4所有sourceのGit blob不変、独立した両履歴/正式改訂/比較の186件/6 suitesとschema・diff検査、相対link21件が成功した。統合sourceの実hostedはまだ未資格である。
+- main f431自身のpush runtimeは新しい正式ログでhead一致/clean/qualified、GUI1266/51、Document18+5/Agent9/Org8、HTTP再起動/owned cleanupを独立確認した。mainの残CI終端は別に監視中であり、この組合せheadへ資格を転用しない。
+- 次のexact action: 同PRへ両parentのmerge commitを保存→新head自身の通常既存CI/hosted資格。新backend・schema/SDK・workflow・fixture/runnerの追加や、旧ログアクセスの迂回ではない。
+- 以下18:19の記録は旧候補作成時点の履歴として保持する。実GUI101件目、画像/macOS、本番Identity等の未資格と導入pin e249未収録は継続する。
+
 ## 2026-10-06 18:19 UTC
 
 - 基点main `c2b68850aa022ac77ff180e5010c2197f949036d` / tree `d9c30aed0858a6c5f798a00df544e46f9f93b5e5`、branch `feat/document-history-pagination-20261006`。[小計画](../plans/2026-10-06-document-history-pagination.md)に従う。
