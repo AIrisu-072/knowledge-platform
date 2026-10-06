@@ -1,5 +1,15 @@
 # Active Execution Pointer
 
+## 2026-10-06 18:19 UTC — 文書イベント履歴の続き表示
+
+- PR90統合main `c2b68850` から既存history/100/cursorを「履歴」タブへ接続する。[状況](document-history-pagination-status.md)と[小計画](../plans/2026-10-06-document-history-pagination.md)が再開先
+- offset cursorを完全snapshotとは扱わず、source組の重複除去、現在認可拒否後のcache失効、明示再読取、遅延/往復と未確定操作保持をTDDで確認する。新backend・新基盤・大量fixtureなし
+- PR90は全適用CI・GUI1212/49・実受入Document18+5/Agent9/Org8・DB36/Folder4・HTTP再起動/cleanup/artifact0合格後main統合。main自身のCI `37505782574` も全13jobs/checks・GUI1212/49・実受入/DB/cleanup/artifact0を独立確認。以下は各時点の履歴として保持する
+- GUI `989e72a4` は33反例REDから全1256/51・focused144/6・schema/型/build成功、独立GO。拒否errorだけの小さいmarkerをread resetから保持し、明示再読取で解除する。受入 `c42258e0` は既存2filesだけを追加し、safe66・型/MCP compile・収集18+5・限定review GO。環境中断後の依存確認も同一1回復旧で合格した
+- GUI・試験・日本語4docsを含む全11pathsの組合せreviewはGO、未解決所見なし。同機能1PRへまとめ、実GUI履歴100件超と画像等の未資格を明記する。今回の実hostedは未取得。次は候補固定→Draft/同head CI
+
+---
+
 ## 2026-10-06 17:11 UTC — 比較結果の続き表示
 
 - PR89統合main `e249fb8d` から既存display/50/cursorを比較画面へ接続する。[状況](document-comparison-pagination-status.md)と[小計画](../plans/2026-10-06-document-comparison-pagination.md)が再開先
