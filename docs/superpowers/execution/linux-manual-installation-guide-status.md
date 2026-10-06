@@ -1,5 +1,28 @@
 # Linux手動導入手順書の状態
 
+## 2026-10-06 09:11 UTC — PR87受入済み公開製品headへ固定版を同期
+
+- 対象はLinux手動導入、Organization Browser PoC、文書GUI、本記録の4文書。同じPR87内のpin更新として、製品と実受入を含む受入済み公開製品head `cd6aafcc4e914050d8fc0e0f85483d82572e29da` / tree `dfba74428ef342d43369b094bd9e5117f3ee9fb4` を固定する。基点mainは `b9f447faa294f1898ef2b1d375b055c4b9e96cd8`。公開製品headの資格とmain統合結果は別に確認し、文書更新commit自身のSHAを本文へ書かない
+- PR81までの旧固定版0801の範囲を保持し、PR82未読条件、PR84作成日時条件、PR87移動GUI・限定mapper・既存受入を含める。移動操作本文、旧0801/PR81・3d8/PR74等のSHA・CI数値・確認時刻は保持し、旧headの資格を今回へ転用しない
+- 製品資格の最終確認：2026-10-06 09:11:48 UTC。固定合成2profile・画像なしUbuntu機能受入の資格であり、main統合結果や対象PC導入の資格とは分ける
+- [通常CI37438675289](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37438675289)は13/13 jobs成功。[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37438675264)・[Sandbox Preflight](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37438675307)も成功し、[Organization D2](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37438675413)は既存適用条件によりskip。全18checksは15成功/既存skip3/failure0、全4runはattempt1で終端。DSIのmacOS qualificationとOrganization D2の2jobsの既存skipを、画像・golden資格へ転用しない
+- [実runtime job](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37438675289/job/112186722085)は公開製品head自身のcheckout、gitDirty=false、acceptanceQualified=true、全22stages passedを示す。通常RustのPR検査用merge `6ea0486f3057b83457cd2711849007e723ddde1d` は同treeで、parentsは基点mainと公開製品head。ローカルGUI952件/42 suites・schema/型/build成功と独立SOURCEレビューGOはローカル資格として区別する
+- [Rust実DB job](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37438675289/job/112186722380)で指定36件を今回の正式PASS行と36/36照合し、新規同名衝突のHTTP/Repository2反例と既存拡張no-op/replay/stale caseもPASS。HTTP409/REVISION_CONFLICT・台帳0、rollbackとFolder/Document/access・台帳/イベント/監査不変は同treeの該当assertionと正式case PASSの対応から確認し、個別state値の直接ログとは扱わない。workspace1849成功/既存skip10、追加21成功、別追加7成功/既存skip1、全failure0
+- Organizationは同[実runtime job](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37438675289/job/112186722085)でbuild/database/transaction/initialize/journey/restart/persistence/shutdownの8phaseがpassed。既存journey2＋persistence2の移動・fresh GET/DOM・201件・通常ナビ往復の詳細は、固定sourceの同2+2 caseとphase成功を対応させた推論である。個別case名・個々のassertion値は公開stdoutに出ていない
+- Document18件＋HTTP再起動後5件は全PASS・fail/skip0。属性・未読・日時の実GET/往復と本人/Agent readState不変を含む既存受入を保持し、Agent9項目・provenanceVerified=trueを同[実runtime job](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37438675289/job/112186722085)で確認した。WORKING固定再送の実通信資格は成功応答のbody途中喪失に限る
+- Document側HTTP再起動ではrestartIdentityVerified=true。Organizationの2HTTP process再起動後の現在親・同ID/同名/revision 2、元create/rename/move receiptのsales固定replay・office403と前後read不変は同sourceのpersistence caseとphase成功からの推論。HTTP再起動をPostgreSQL process再起動へ読み替えない
+- Organizationのcleanupは正式logのowned-container-removedで確認。Document cleanupは最終passed summaryと同sourceのfail-closed cleanup経路からの推論であり、個別PID/CIDの生receiptはない。全4runの終端後公開artifact0を確認した
+- test-first head db9031dbの実HTTP500/期待409 REDは履歴として保持する。当時fail-fastで未実行だったRepository衝突・追加no-op/replayは当時のREDやPASSと扱わず、今回Pの正式case PASSで初めてGREENを確認した
+- この文書更新の同PR最終CIは公開後に確認し、実結果を同PR本文へ記録する。本記録時点で文書更新後のCI資格は未取得であり、pin先製品の実資格と分ける。結果記録だけの再commitや独立docs-only PRは作らない
+- 固定Git objectの限定照合では旧0801から同treeのsource45c6d05まで、既存CLI/env、Document0001〜0011とWork0001〜0006のSQL/台帳、Node/pnpm/生成SDK/schema/PDFium仕様は不変。既存15shellblocksは `KP_SOURCE_SHA` の1行だけをPへ変更する。共通Cargo.toml/Cargo.lock/deny.tomlは基点main側で更新済みのbytesを保持し、新lockで既存 `--locked` debug buildとGUI buildを使う。依存追加・`cargo update`・新migration/reset・本番Identity手順は増やさず、全面互換や対象実DBの更新可能を主張しない
+- 所有者の未実施手動確認に、合成子の移動/現在親/HTTP再起動、未読条件の往復/解除、作成日時の範囲/往復/解除を追加した。対象PCで未実施のチェックをCI成功で埋めない。今回の文書更新でコマンド本体、実サーバー、DB、Cargo、browser、画像、installは実行していない
+- 残る限界：macOS golden/画像/全visual、WORKING全status・headers喪失、実ACL変化、GUI移動通信断・実GUI同親no-op、実文書folderName更新、対象PCの手順全文、本番Identity/TLS、backup/restore、PostgreSQL process再起動は未資格。今回の同Root継承・文書なしfixtureとHTTP2 process再起動の範囲を広げない。旧PR82 persistence失敗とPR83 Organization HTTP503の原因未特定履歴を、後続head成功だけで修正済みとしない
+- 次のexact action：この4docsを独立確認し、同PR87へ更新を収録して最終CIを確認する。実結果は同PR本文へ記録する。以下の過去記録にある別PR方針は今回へ継承せず、実サーバーへは所有者が手動で反映する
+
+以下は当時の固定版・文書更新方針の履歴であり、今回の公開製品head・同PR更新・対象PCへ資格や次操作を付け替えない。
+
+---
+
 ## 2026-10-06 03:30 UTC — PR81までの受入済みmainへ固定版を同期
 
 - 対象はLinux手動導入、Organization Browser PoC、文書GUI、本記録の4文書のみ。固定ソースをmain `0801c9864bdb7faf5fcbe7ee1062367335ee7bfb` / tree `794407fc62e2418bd6ecbdc2de4541cd3e207b02`へ同期する。PR76 Root直下作成、PR78続き表示、PR79選択親への子作成、PR80改名、PR81属性3項目の絞り込みを含み、未公開の後続GUIは含めない

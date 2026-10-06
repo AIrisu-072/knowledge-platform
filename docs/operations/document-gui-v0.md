@@ -1,12 +1,12 @@
 # 文書GUIの登録・フォルダー操作・属性絞り込みと編集・複数原本編集・公開操作
 
-この手順は、既存Document APIを通常GUIから使う操作を説明する。文書操作の固定導入版はmain `0801c9864bdb7faf5fcbe7ee1062367335ee7bfb` / tree `794407fc62e2418bd6ecbdc2de4541cd3e207b02`。PR76 Root直下作成、PR78続き表示、PR79選択親への子作成、PR80改名、PR81属性3項目の絞り込みを含む。各節の初回統合履歴と現在pinの資格を区別する。資格状態は 固定の模擬利用者2名・画像保存なしのUbuntu機能受入に合格した版（対象PCでの手順実行、本番認証、見た目全体の比較検証は対象外）。実サーバーへ導入済みとは扱わず、固定SHAと受入記録は[手動導入手順](linux-manual-installation.md)で確認する。所有者がサーバー反映を手動で行う。
+この手順は、既存Document APIを通常GUIから使う操作を説明する。固定導入版は[PR87](https://github.com/AIrisu-072/knowledge-platform/pull/87)の受入済み公開製品head `cd6aafcc4e914050d8fc0e0f85483d82572e29da` / tree `dfba74428ef342d43369b094bd9e5117f3ee9fb4`。PR76 Root直下作成、PR78続き表示、PR79選択親への子作成、PR80改名、PR81属性3項目に加え、PR82未読条件、PR84作成日時条件、PR87フォルダー移動を含む。各節の初回統合履歴、現在pinの公開製品headの資格、main統合結果は区別する。資格は固定合成2profile・画像なしUbuntuの機能受入であり、対象PCでの手順実行・本番認証・見た目全体の比較検証を含まない。exact-headの資格記録は[手動導入手順](linux-manual-installation.md)を正本とし、実サーバーへの反映は所有者が手動で行う。
 
 資格対象は画像なしUbuntu実操作PoC。macOS golden比較は未実行・未更新で、WORKING更新時の影響候補Mock 2・3・4・7の4枚と、他3枚の画素不変も未証明。後続のフォルダー操作を追加した一覧画面も画像比較は未取得である。現在pinのhosted機能受入と、純粋/DOM確認・画像比較の資格を区別し、以下のsource上の操作説明だけで全visual資格を合格としない。
 
 ## 文書の属性で一覧を絞り込む
 
-この機能はPR80統合main `1fe1b011` を基点に[PR81](https://github.com/AIrisu-072/knowledge-platform/pull/81)で統合し、現在pin `0801c986` に含まれる。PR公開head `426db3a5a43083a1b4bd76b656ea58322019eed3` と、統合後main自身の[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37407454204)は別実行で、いずれも属性の実GET・詳細往復・HTTP再起動・cleanup・公開artifact0を確認した。現在の確定資格は[手動導入手順](linux-manual-installation.md)の新head欄を正本とし、[属性絞り込みの記録](../superpowers/execution/document-metadata-filters-status.md)の未hosted記述は実装時点の履歴として保持する。旧固定版3d8deb2には含まれない。
+この機能はPR80統合main `1fe1b011` を基点に[PR81](https://github.com/AIrisu-072/knowledge-platform/pull/81)で統合し、初回統合後main `0801c986` に含まれる。PR公開head `426db3a5a43083a1b4bd76b656ea58322019eed3` と、統合後main自身の[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37407454204)は別実行で、いずれも属性の実GET・詳細往復・HTTP再起動・cleanup・公開artifact0を確認した。現在pinの資格は[手動導入手順](linux-manual-installation.md)の新head欄を正本とし、[属性絞り込みの記録](../superpowers/execution/document-metadata-filters-status.md)の未hosted記述は実装時点の履歴として保持する。旧固定版3d8deb2には含まれない。
 
 1. 「文書」または「編集作業」の一覧を開く。「文書種別」「所管部署」「カテゴリ」に必要な条件を入力する
 2. 「絞り込む」を押す。文書名の条件と併用でき、指定した条件がすべて一致する文書を現在読める範囲から表示する。入力している途中では条件を適用しない
@@ -18,9 +18,9 @@
 
 属性の空値や欠損だけを選ぶ専用条件、属性候補の一覧、日時条件、未読だけの条件は今回の画面追加に含めない。短い合成値による実GETとHTTPサーバー再起動後の確認、長さ・特殊文字・遅延応答などの純粋/DOM確認は別の資格として記録する。見た目全体の画像比較は未取得のままである。
 
-## 文書の作成日時で一覧を絞り込む（追加候補）
+## 文書の作成日時で一覧を絞り込む
 
-この節はPR83統合main `dc04ba4a` を基点にした追加候補で、固定導入版 `0801c986` には含まれない。[作成日時条件の状況](../superpowers/execution/document-created-range-status.md)で公開・受入状態を確認する。今回の日時GUIの実操作受入は未取得で、source上の操作説明や純粋/DOM確認を固定導入版の資格へ付け替えない。
+この機能はPR83統合main `dc04ba4a` を基点にPR84で統合した。旧固定導入版 `0801c986` には含まれず、現在pinには含まれる。[作成日時条件の状況](../superpowers/execution/document-created-range-status.md)の初回受入履歴と、[手動導入手順](linux-manual-installation.md)の公開製品headの資格を区別する。
 
 1. 「文書」「編集作業」または履歴一覧で「作成日時の開始（含む）」「作成日時の終了（含まない）」にカレンダーと時刻で入力する。入力はJST / UTC+09:00の分単位で、片側だけでも指定できる。対象は文書自体（Document）の作成日時で、公開日時や版の作成日時ではない
 2. 「絞り込む」を押す。入力しただけでは適用しない。開始以上（`createdAt >= createdFrom`）、終了未満（`createdAt < createdBefore`）の文書を現在読める範囲から表示し、文書名・属性・フォルダー、公開一覧の未読条件とも併用できる。適用後は最初のページから表示する
@@ -28,7 +28,7 @@
 4. 片側だけ外すときは「作成日時の開始を解除」または「作成日時の終了を解除」を押し、「絞り込む」で適用する。両側をすぐ外すときは「日時の条件を解除」を押す。日時の適用・解除は他の有効な条件と未読条件を保持し、最初のページに戻る。「属性の絞り込みを解除」は日時条件を保持する。解除後は既存の読取cacheを使う場合がある
 5. 日時の構文や開始・終了の順序は既存APIが検査する。開始と終了が同じ、または開始が終了より後の場合などの422は、0件の「文書がありません」とは別の読取エラーである。URLと入力を保持するので、表示された理由を確認して日時を指定し直すか解除する。URLの型・転送上限などで取得が止まった場合も、画面の案内から不正な条件を明示解除する
 
-条件はURLにも含まれるため、共有先に見せたくない条件のURLは共有しない。絞り込みは元の文書・属性・版・原本・既読状態を変更しない。既存metadata受入の2ケースへ通常カレンダー入力のGET、精密原文の開始包含・終了除外、詳細往復・HTTPサーバー再起動後の確認を追加しているが、同sourceのhosted成功前に実通信の資格を主張しない。画像比較、全status/headers喪失、対象PC導入・backup/restore・PostgreSQLプロセス再起動・本番認証の資格も追加しない。
+条件はURLにも含まれるため、共有先に見せたくない条件のURLは共有しない。絞り込みは元の文書・属性・版・原本・既読状態を変更しない。既存metadata受入の2ケースへ通常カレンダー入力のGET、精密原文の開始包含・終了除外、詳細往復・HTTPサーバー再起動後の確認を追加している。現在pinの実hosted結果は[手動導入手順](linux-manual-installation.md)の資格記録を参照する。画像比較、全status/headers喪失、対象PC導入・backup/restore・PostgreSQLプロセス再起動・本番認証の資格も追加しない。
 
 ## System Root直下にフォルダーを作る
 
@@ -90,9 +90,9 @@ Rootと選択親は、進行中または未確認の作成を1つだけ共有し
 
 実hosted資格は子1件の実変更・固定replay・現在権限・HTTP再起動後の保持に限る。実no-opと実文書のfolderName更新は今回の追加runtimeに含めず、純粋/DOMの確認と区別する。通信断fault、移動・ACL変更・既読、画像比較の資格も追加しない。
 
-## 選択したフォルダーを移動する（追加候補）
+## 選択したフォルダーを移動する
 
-この節は既存Folder移動APIを通常GUIへ接続する追加候補である。現在の固定導入版 `0801c986` には含まれない。[移動の状況と計画](../superpowers/execution/document-folder-move-status.md)で同機能PRの公開・受入状態を確認する。以下の手順追加だけで導入版の合格や実サーバーへの反映を意味しない。
+この機能はPR87で既存Folder移動APIを通常GUIへ接続し、現在pinに含まれる。旧固定導入版 `0801c986` には含まれない。公開製品headの実資格は[手動導入手順](linux-manual-installation.md)を正本とし、[移動の状況と計画](../superpowers/execution/document-folder-move-status.md)の実装時点の記録と区別する。ローカルGUI952件/42 suites・独立SOURCEレビューGOはローカル資格であり、下記の実hosted資格や実サーバーへの反映とは分ける。
 
 1. 通常のフォルダーツリーで対象を選び、「選択したフォルダーを移動」を押す。対象ID・現在名・現在の親IDを確認する。直接URLを開いただけの場合はツリーで選び直す。System Root自身は移動できない
 2. 「移動先フォルダー」の「移動先を選択」で別の親を明示選択し、移動先ID・名前を確認する。System Rootも移動先に選べる。候補を読めることや候補自身の操作可否だけで、移動が必ず許可されるとは判断しない
@@ -107,9 +107,9 @@ Rootと選択親は、進行中または未確認の作成を1つだけ共有し
 
 今回追加する実受入は、既存201兄弟の別親へ改名済みの子を1回移動し、旧親・移動先の現在GET、新しいcursorによる200件＋1件、通常ナビ往復、HTTP 2 process再起動後の現在親・同ID・同名・revision 2と元create/rename/move receiptの固定replayを確認する範囲である。実hosted実行の結果は上記記録を正本とし、ローカルの純粋試験・型検査を実受入合格へ読み替えない。同名衝突・rollback・台帳/監査不変は同機能の既存DB/HTTP反例で扱う。公開されないaccess_revisionの数値、実の権限変化、GUI通信断、PostgreSQL process再起動、画像比較、対象PC・本番Identityの資格は追加しない。
 
-## 公開一覧で未読の文書だけを表示する（追加候補）
+## 公開一覧で未読の文書だけを表示する
 
-この節はPR81統合main `0801c986` を基点にした追加候補で、0801以前の固定導入版には含まれない。[未読条件の状況](../superpowers/execution/document-unread-filter-status.md)で公開・受入状態を確認する。
+この機能はPR81統合main `0801c986` を基点にPR82で統合した。旧固定導入版0801には含まれず、現在pinには含まれる。[未読条件の状況](../superpowers/execution/document-unread-filter-status.md)の初回受入履歴と、[手動導入手順](linux-manual-installation.md)の公開製品headの資格を区別する。
 
 1. 「文書」の公開一覧を開き、「未読のみ」を選んで「絞り込む」を押す。チェックを変えただけでは適用しない。文書名・3属性・フォルダーの条件と併用できる
 2. 現在の利用者が現行公開版について既読を記録していない文書を、サーバーが現在読める範囲から表示する。以前の版を既読にしていても、現在の公開版についての判定を使う
