@@ -572,8 +572,8 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     expect(comparisonBody.metadataComparisonStatus).toBe('different');
     await inputEquals(page.getByRole('combobox', { name: '基準改訂', exact: true }), baseRevision.revisionId);
     await inputEquals(page.getByRole('combobox', { name: '比較対象', exact: true }), targetRevision.revisionId);
-    await expect(page.locator('dt').filter({ hasText: /^基準$/ }).locator('+ dd')).toHaveText('1.1');
-    await expect(page.locator('dt').filter({ hasText: /^対象$/ }).locator('+ dd')).toHaveText('1.0');
+    await expect(page.getByRole('region', { name: '新旧比較', exact: true }).locator('dt').filter({ hasText: /^基準$/ }).locator('+ dd')).toHaveText('1.1');
+    await expect(page.getByRole('region', { name: '新旧比較', exact: true }).locator('dt').filter({ hasText: /^対象$/ }).locator('+ dd')).toHaveText('1.0');
     await expect(page.getByText('同じコンテンツ版のため本文比較なし', { exact: true })).toBeVisible();
     completed('gui-metadata-revision-first-comparison-verified');
     await page.getByRole('button', { name: '← 版・改訂へ戻る', exact: true }).press('Enter');
@@ -623,8 +623,8 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     await inputEquals(page.getByRole('combobox', { name: '比較対象', exact: true }), targetRevision.revisionId);
     await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
       && new URL(page.url()).searchParams.get('targetRevisionId') === targetRevision.revisionId).toBe(true);
-    await expect(page.locator('dt').filter({ hasText: /^基準$/ }).locator('+ dd')).toHaveText('1.1');
-    await expect(page.locator('dt').filter({ hasText: /^対象$/ }).locator('+ dd')).toHaveText('1.0');
+    await expect(page.getByRole('region', { name: '新旧比較', exact: true }).locator('dt').filter({ hasText: /^基準$/ }).locator('+ dd')).toHaveText('1.1');
+    await expect(page.getByRole('region', { name: '新旧比較', exact: true }).locator('dt').filter({ hasText: /^対象$/ }).locator('+ dd')).toHaveText('1.0');
     await expect(page.getByText('同じコンテンツ版のため本文比較なし', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '← 版・改訂へ戻る', exact: true }).press('Enter');
     await page.getByRole('tab', { name: '概要', exact: true }).press('Enter');
@@ -758,8 +758,8 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     await inputEquals(page.getByRole('combobox', { name: '比較対象', exact: true }), targetRevision.revisionId);
     await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
       && new URL(page.url()).searchParams.get('targetRevisionId') === targetRevision.revisionId).toBe(true);
-    await expect(page.locator('dt').filter({ hasText: /^基準$/ }).locator('+ dd')).toHaveText('1.1');
-    await expect(page.locator('dt').filter({ hasText: /^対象$/ }).locator('+ dd')).toHaveText('1.0');
+    await expect(page.getByRole('region', { name: '新旧比較', exact: true }).locator('dt').filter({ hasText: /^基準$/ }).locator('+ dd')).toHaveText('1.1');
+    await expect(page.getByRole('region', { name: '新旧比較', exact: true }).locator('dt').filter({ hasText: /^対象$/ }).locator('+ dd')).toHaveText('1.0');
     await expect(page.getByText('同じコンテンツ版のため本文比較なし', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '← 版・改訂へ戻る', exact: true }).press('Enter');
     await page.getByRole('tab', { name: '概要', exact: true }).press('Enter');

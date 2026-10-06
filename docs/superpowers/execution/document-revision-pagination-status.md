@@ -1,6 +1,6 @@
 # 正式改訂の続き表示：実行状況
 
-## 2026-10-06 15:22 UTC
+## 2026-10-06 15:59 UTC
 
 - PR88統合main `ea40684833ebcdf945636300b7b22741725fc80c` / tree `cd18f8cfdafeb57bb537df11e46a0e30ba907030` を基点とする。branch `feat/document-revision-pagination-20261006`、[小計画](../plans/2026-10-06-document-revision-pagination.md)に従い既存nextCursorを通常GUIへ配線する。
 - PR88公開head `af08e586` は[CI37455031944](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37455031944)の全13jobs・全18checks（15成功/既存skip3）、Document18+5/Agent9・Organization・HTTP再起動・指定DB36・cleanup/artifact0を確認してmainへ統合した。個別移動/replay/Document cleanupは同tree sourceと公開PASSの対応推論。main自身の[push CI `37457937486`](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37457937486)もattempt1の全13jobs/checks・Document18+5/Agent9/22工程・Organization全8工程・HTTP再起動/cleanup・指定DB36/36・artifact0を独立確認した。ref/tree/両parentsも終端後に一致。
@@ -34,3 +34,6 @@
 - 同時に独立した移動closeの遅延focus欠陥を `935f1c8a` で限定補修した。close時の世代・文脈・元container/入口を捕捉し、現在focusがbodyで同じ文脈の場合だけ復帰する。成功ackで入口が差し替わる正常fallback、UNKNOWN保持、pending禁止を維持。実DOMの最終6反例RED→focused83成功、製品同一の全GUI1160/47・schema/型/build成功。全GUI開始後の試験型option4箇所の整理は最終focused/型/buildで再確認し、reportで検証範囲を区別した。このfocus順序が実CIで起きたと断定しない。
 - `1cdf9665` は既存診断へ固定3工程だけを追加した。pairのURL確認後、比較tabのキー操作command完了後、比較responseのHTTP200確認後を区切る。後二者はそれぞれ画面遷移成功・body検証完了を意味しない。既存field/cap40・元await/要求/全assertionは保持し、safe64・runtime型・collection18+5が成功した。
 - この6filesの限定独立spec/品質・組合せreviewはGO、新所見0。次は同PRの新headを固定し、selector補修後の実受入を確認する。過去3runの失敗・診断解釈訂正を保持し、単にCIを繰り返して成功扱いにはしない。
+- 第4公開head `b7885fabc9e513094e01cfe6139723ca50b6839d` / tree `fc20d67dddd29313cdf8c4bce1d598edc34fe9f2` の[CI37487992438](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37487992438)は17成功/metadataだけ失敗。timeoutからstrict-locator/toHaveTextへ進み、固定stageは比較HTTP200確認後だった。正式error locationは `metadata-editor.spec.ts:576:82` で、対象dt/ddの1.0検査に一致した。要求/応答・選択値・基準ddまでの通過は同treeの逐次sourceとの対応推論として区別する。
+- この失敗は、ページ全体に現行版要約の「対象」と比較結果の「対象」が同居するためだった。`75bcf849` は初回/再読取後/再起動後の基準・対象6検査だけを既存「新旧比較」region内へ限定する。1.1/1.0の完全一致、現行版要約の表示、元要求・全assertionを保持し、製品のlabelや通知は変更しない。実routeで旧global1件期待がactual2のRED、新scopeと要約保持の回帰を含む43 PASS、Web/runtime型・safe64・collection18+5が成功した。他の追加global locatorも見直し、同種の衝突は確認していない。
+- 第4runもRust/DB36/Folder4成功・全4workflow artifact0。Agent・HTTP再起動・persistence・Organizationは未実行、失敗時cleanupは未確認。この2files限定補修は独立spec/品質・組合せGO、新所見0。次は同PR新headで実完走を確認する。製品は不変で、全GUI1160の既存証拠と今回fresh focused43を区別し、同じ全suiteは反復していない。

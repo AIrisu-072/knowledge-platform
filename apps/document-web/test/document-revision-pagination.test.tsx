@@ -63,6 +63,32 @@ function setup(search = 'tab=versions', retry: boolean | number = false) {
 async function compare() { fireEvent.click(screen.getByRole('tab', { name: '新旧比較' })); await screen.findByRole('heading', { name: '正式改訂の比較' }); }
 async function ready() { await screen.findByRole('heading', { name: '正式改訂' }); await waitFor(() => expect(within(timeline()).getAllByRole('listitem')).toHaveLength(2)); }
 
+test('比較の基準と対象は新旧比較region内で厳密に確認し、現行版の対象要約を保持する', async () => {
+  const base = { ...first, major: 1, minor: 1, label: '1.1' }, target = { ...second, major: 1, minor: 0, label: '1.0' };
+  const h = setup(`tab=compare&baseRevisionId=${base.revisionId}&targetRevisionId=${target.revisionId}`);
+  h.api.listDocumentRevisions.mockResolvedValue(page([base, target]));
+  h.api.compareDocumentRevisions.mockResolvedValue({ projection: 'display', baseRevision: base, targetRevision: target,
+    contentComparisonStatus: 'sameAuthoritativeVersion', metadataComparisonStatus: 'different', metadataChanges: [],
+    displayItems: [], unverifiedRegions: [], nextCursor: null, changes: [], rows: [], ancillaryChanges: [],
+    baseMetadataSnapshotDigest: 'base', targetMetadataSnapshotDigest: 'target', auditEventId: 'synthetic', pageSize: 50 });
+  await screen.findByText('同じコンテンツ版のため本文比較なし');
+  expect(screen.getAllByRole('region', { name: '新旧比較' })).toHaveLength(1);
+  expect(screen.getByText('現行版 · Version 1')).toBeInTheDocument();
+  const comparison = screen.getByRole('region', { name: '新旧比較' });
+  expect(within(comparison).getByRole('combobox', { name: '基準改訂' })).toHaveValue(base.revisionId);
+  expect(within(comparison).getByRole('combobox', { name: '比較対象' })).toHaveValue(target.revisionId);
+  expect(screen.getAllByText('対象', { selector: 'dt', exact: true })).toHaveLength(2);
+  const baseTerms = within(comparison).getAllByText('基準', { selector: 'dt', exact: true });
+  const targetTerms = within(comparison).getAllByText('対象', { selector: 'dt', exact: true });
+  expect(baseTerms).toHaveLength(1);
+  expect(targetTerms).toHaveLength(1);
+  expect(baseTerms[0]!.nextElementSibling).toHaveTextContent(/^1\.1$/);
+  expect(targetTerms[0]!.nextElementSibling).toHaveTextContent(/^1\.0$/);
+  fireEvent.click(screen.getByRole('button', { name: '← 版・改訂へ戻る' }));
+  await ready();
+  expect(screen.getByText('現行版 · Version 1')).toBeVisible();
+});
+
 // Without the continuation control, the 101st revision cannot be reached from the real route.
 test('先頭100件からopaque cursorだけで101件目を追加し、終端とタブ共有を保つ', async () => {
   const h = setup(); const hundred = Array.from({ length: 100 }, (_, i) => revision(200 - i)); const last = revision(100); const cursor = 'opaque+/=?日本語';
