@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, Heading, Modal } from 'react-aria-components';
 import { documentApi, type Folder, type FolderDetail } from '../../application/document-workspace';
 import { canCreateRootFolder, folderName, rootFolderOperations, rootFolderValidation, sendRootFolderOperation, readSelectedFolder, type FolderCreateContext, type SelectedFolderContext } from '../../application/document-root-folder';
+import { folderRenameOperations } from '../../application/document-folder-rename';
 import { metadataReason } from '../../application/document-metadata';
 import { createOperationId } from '../../application/operation-id';
 import { mapApiProblem, problemFromUnknown } from '../../application/problem-mapping';
@@ -21,6 +22,9 @@ export function RootFolderCreate({ root, readReady, reload, contextKey, selected
   const client = useQueryClient();
   const store = rootFolderOperations(client);
   const operation = useSyncExternalStore(store.subscribe, store.get);
+  const renameStore = folderRenameOperations(client);
+  const rename = useSyncExternalStore(renameStore.subscribe, renameStore.get);
+  const renameUnresolved = rename?.status === 'pending' || rename?.status === 'unknown';
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [reason, setReason] = useState('');
@@ -41,13 +45,13 @@ export function RootFolderCreate({ root, readReady, reload, contextKey, selected
   const unknown = operation?.status === 'unknown';
   const selectedDetail = selected?.folder.capabilities
     ? { ...selected.folder, parentFolderId: selected.context.sourceParentId, capabilities: selected.folder.capabilities } : undefined;
-  const rootAllowed = readReady && canCreateRootFolder(root);
+  const rootAllowed = !renameUnresolved && readReady && canCreateRootFolder(root);
   const reselectRequired = Boolean(selected && selected.context === blockedSelection.current);
-  const selectedAllowed = Boolean(selected?.readReady && !reselectRequired && canCreateRootFolder(selectedDetail));
+  const selectedAllowed = Boolean(!renameUnresolved && selected?.readReady && !reselectRequired && canCreateRootFolder(selectedDetail));
   const target = operation ? operation.context ?? rootContext : draftContext;
   const title = target.kind === 'root' ? rootTitle : selectedTitle;
   const targetDetail = reviewed ?? (target.kind === 'root' ? root : selected?.context.folderId === target.folderId ? selectedDetail : undefined);
-  const allowed = !blocked && (reviewed ? canCreateRootFolder(reviewed) : target.kind === 'root' ? rootAllowed : selectedAllowed);
+  const allowed = !blocked && !renameUnresolved && (reviewed ? canCreateRootFolder(reviewed) : target.kind === 'root' ? rootAllowed : selectedAllowed);
   const locked = Boolean(operation) || reading;
   const validation = rootFolderValidation(name, reason);
   const problem = problemFromUnknown(operation?.error);
@@ -100,6 +104,7 @@ export function RootFolderCreate({ root, readReady, reload, contextKey, selected
     try {
       const current = await readTarget(context);
       if (generation !== opening.current || key !== liveContextKey.current || store.get()) return;
+      if (renameStore.get()?.status === 'pending' || renameStore.get()?.status === 'unknown') { setLocalError('改名結果が未確定です。保持されている改名操作の結果を先に確認してください。'); return; }
       if (!canCreateRootFolder(current)) { setLocalError(unavailable(context, current)); blockTarget(context); return; }
       await sendRootFolderOperation({ store, context: { ...context, name: current.name }, request: {
         operationId: createOperationId(), folderId: createOperationId(), parentFolderId: current.folderId,
@@ -141,6 +146,7 @@ export function RootFolderCreate({ root, readReady, reload, contextKey, selected
         : selected ? <CapabilityButton label={selectedTitle} availability={selectedDetail?.capabilities.createFolder} disabled={!selectedAllowed}
           onClick={() => show(selected.context, triggerContainer.current?.querySelectorAll('button')[1] ?? null)} />
           : <><button type="button" disabled>{selectedTitle}</button><small> 作成先をツリーで選び直してください。</small></>)}
+      {!operation && renameUnresolved && <small> 改名結果が未確定です。保持されている改名操作の結果を先に確認してください。</small>}
       {!operation && reselectRequired && <small> 作成先をツリーで選び直してください。</small>}
     </span>
     <Modal isOpen={open} onOpenChange={value => { if (!value) close(); }} isDismissable={!pending} isKeyboardDismissDisabled={pending} className={styles.modal}>
@@ -148,6 +154,7 @@ export function RootFolderCreate({ root, readReady, reload, contextKey, selected
         <Heading slot="title" id="root-folder-create-title">{title}</Heading>
         {target.kind === 'root' ? <p>登録先：System Root直下（選択中のフォルダーには作成しません）</p>
           : <p>登録先：{target.name}（{target.folderId}）直下</p>}
+        {operation?.context?.kind === 'selected' && <p>登録先は送信時の表示名です。現在名と異なる場合があります。フォルダーIDで確認してください。</p>}
         <form onSubmit={submit} aria-busy={pending || reading}>
           <label className={workspace.formField}>フォルダー名<textarea aria-label="フォルダー名" rows={1} autoFocus value={operation?.request.name ?? name} disabled={locked || !allowed} onChange={event => { if (!locked) setName(event.target.value); }} /></label>
           <label className={workspace.formField}>作成理由<textarea aria-label="作成理由" rows={2} value={operation?.request.reason ?? reason} disabled={locked || !allowed} onChange={event => { if (!locked) setReason(event.target.value); }} /></label>

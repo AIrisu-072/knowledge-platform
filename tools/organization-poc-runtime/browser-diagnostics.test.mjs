@@ -189,7 +189,11 @@ test('Root folder restart oracle is separate, private, exclusive and bound to th
   runInNewContext(output, { exports, readFile, writeFile, expect: actual => ({ toBe: expected => assert.equal(actual, expected) }) });
   const directory = await mkdtemp(join(tmpdir(), 'organization-root-folder-'));
   const context = { statePath: join(directory, 'state.json'), documentId: 'synthetic-run-document' };
-  const state = { schemaVersion: 3, documentId: context.documentId, request: { name: 'PRIVATE_NAME', reason: 'PRIVATE_REASON' }, paginationChildren: [], selectedCreate: { request: { parentFolderId: 'tail' }, receipt: { resourceId: 'child' }, child: { folderId: 'child' } } };
+  const originalChild = { folderId: 'child', parentFolderId: 'tail', name: 'PRIVATE_OLD', revision: 0 };
+  const state = { schemaVersion: 4, documentId: context.documentId, request: { name: 'PRIVATE_NAME', reason: 'PRIVATE_REASON' }, paginationChildren: [],
+    selectedCreate: { request: { parentFolderId: 'tail', name: originalChild.name }, receipt: { resourceId: 'child', resultingRevision: 0 }, child: originalChild },
+    selectedRename: { targetFolderId: 'child', request: { operationId: 'rename', expectedFolderRevision: 0, name: 'PRIVATE_NEW', reason: 'PRIVATE_REASON' },
+      receipt: { operationId: 'rename', resourceId: 'child', resultingRevision: 1, changed: true }, beforeChild: originalChild, child: { ...originalChild, name: 'PRIVATE_NEW', revision: 1 } } };
   try {
     await writeFile(context.statePath, 'unchanged Work state', { mode: 0o600 });
     await exports.saveRootFolderState(context, state);
@@ -198,7 +202,7 @@ test('Root folder restart oracle is separate, private, exclusive and bound to th
     await assert.rejects(exports.saveRootFolderState(context, state), { code: 'EEXIST' });
     assert.equal(await readFile(context.statePath, 'utf8'), 'unchanged Work state');
     await assert.rejects(exports.loadRootFolderState({ ...context, documentId: 'different-run' }));
-    for (const schemaVersion of [1, 2]) {
+    for (const schemaVersion of [1, 2, 3]) {
       await writeFile(`${context.statePath}.root-folder`, JSON.stringify({ ...state, schemaVersion }));
       await assert.rejects(exports.loadRootFolderState(context));
     }
@@ -439,4 +443,47 @@ test('Agent observation follows only the unchanged failed UI assertion and rethr
   assert.match(support, /request\.get\(`\$\{origin\}\/v1\/organization\/agent-executions\/\$\{result\.execution\.id\}`, \{ timeout: 2000, maxRetries: 0, maxRedirects: 0 \}\)/u);
   assert.match(support, /\} catch \{ \/\* Preserve the original UI failure[^\n]*\n\s*throw error;/u);
   assert.match(support, /annotations\.push\(\{ type: 'organization-agent-status', description: status \}, \{ type: 'organization-agent-failure-code', description: failureCode \?\? 'none' \}\)/u);
+});
+
+test('rename replay uses the GUI path/body and original receipt while selected-create replay checks only the current child projection', async () => {
+  const source = await readFile(new URL('../../apps/document-web/e2e-organization/support.ts', import.meta.url), 'utf8');
+  const require = createRequire(new URL('../../apps/document-web/package.json', import.meta.url));
+  const ts = require('typescript');
+  const body = source.slice(source.indexOf('export type RootFolderState'), source.indexOf('export type EvidenceReceipt'));
+  const output = ts.transpileModule(body, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const context = { sales: 'http://127.0.0.1:1', office: 'http://127.0.0.1:2' };
+  const original = { folderId: 'child', parentFolderId: 'tail', revision: 0, name: 'PRIVATE_OLD' };
+  const current = { ...original, name: 'PRIVATE_NEW', revision: 1 };
+  const state = { request: { parentFolderId: 'root', folderId: 'parent' },
+    sales: { root: { folderId: 'root' }, children: { items: [], nextCursor: null } }, office: { root: { folderId: 'root' }, children: { items: [], nextCursor: null } },
+    selectedCreate: { request: { operationId: 'create', folderId: 'child', parentFolderId: 'tail', expectedParentRevision: 0, name: original.name, reason: 'PRIVATE_REASON' },
+      receipt: { operationId: 'create', resourceId: 'child', resultingRevision: 0, changed: true }, child: original },
+    selectedRename: { targetFolderId: 'child', request: { operationId: 'rename', expectedFolderRevision: 0, name: current.name, reason: 'PRIVATE_REASON' },
+      receipt: { operationId: 'rename', resourceId: 'child', resultingRevision: 1, changed: true }, beforeChild: original, child: current } };
+  const before = JSON.stringify(state); const calls = []; const exports = {};
+  runInNewContext(output, { exports, currentAction: () => {}, isDeepStrictEqual: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+    expect: actual => ({ toBe: expected => assert.equal(actual, expected), toBeNull: () => assert.equal(actual, null) }),
+    get: async (_request, origin, path) => path === '/v1/folders/root' ? state.sales.root : path.includes('/tail/') ? { items: [current], nextCursor: null } : path.includes('/child/') ? { items: [], nextCursor: null, capabilities: { renameFolder: origin === context.sales ? { status: 'available' } : { status: 'disabled', reason: 'permission' } } } : state.sales.children });
+  assert.equal(typeof exports.replaySelectedFolderRename, 'function');
+  const request = {
+    post: async (url, { data }) => { calls.push(['POST', url, data]); assert.equal(data, state.selectedCreate.request); return { status: () => url.startsWith(context.sales) ? 201 : 403, json: async () => url.startsWith(context.sales) ? state.selectedCreate.receipt : { code: 'FORBIDDEN' } }; },
+    patch: async (url, { data }) => { calls.push(['PATCH', url, data]); assert.equal(data, state.selectedRename.request); return { status: () => url.startsWith(context.sales) ? 200 : 403, json: async () => url.startsWith(context.sales) ? state.selectedRename.receipt : { code: 'FORBIDDEN' } }; },
+  };
+  await exports.replaySelectedFolderCreate(request, context, state); await exports.replaySelectedFolderRename(request, context, state);
+  assert.deepEqual(calls.map(([method, url]) => [method, url]), [['POST', `${context.sales}/v1/folders`], ['POST', `${context.office}/v1/folders`], ['PATCH', `${context.sales}/v1/folders/child`], ['PATCH', `${context.office}/v1/folders/child`]]);
+  assert.equal(JSON.stringify(state), before);
+});
+
+test('existing two Root cases add one child rename after create qualification and persist schema4 independently of Work', async () => {
+  const journey = await readFile(new URL('../../apps/document-web/e2e-organization/journey.spec.ts', import.meta.url), 'utf8');
+  const persistence = await readFile(new URL('../../apps/document-web/e2e-organization/persistence.spec.ts', import.meta.url), 'utf8');
+  const support = await readFile(new URL('../../apps/document-web/e2e-organization/support.ts', import.meta.url), 'utf8');
+  assert.match(journey, /await renameSelectedFolderFromUi\(page, request, context, \{ \.\.\.state, selectedCreate \}\)/u);
+  assert.ok(journey.indexOf('await replaySelectedFolderCreate') < journey.indexOf('await renameSelectedFolderFromUi'));
+  assert.match(persistence, /await replaySelectedFolderRename\(request, context, state\)/u);
+  assert.match(support, /schemaVersion: 4;/u); assert.match(support, /schemaVersion: 6;/u);
+  const rename = support.slice(support.indexOf('export async function renameSelectedFolderFromUi'), support.indexOf('export async function replaySelectedFolderRename'));
+  assert.match(rename, /getByRole\('button', \{ name: '選択したフォルダー名を変更', exact: true \}\)/u);
+  assert.match(rename, /response\.request\(\)\.postDataJSON\(\)/u);
+  assert.doesNotMatch(rename, /request\.(?:post|patch)|waitForTimeout|setTimeout|screenshot|tracing/u);
 });

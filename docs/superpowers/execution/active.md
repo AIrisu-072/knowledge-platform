@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-06 00:28 UTC — 選択フォルダーの改名GUI
+
+- PR79統合main `5d9e3c46` から、既存rename APIを通常GUIへ接続する。[状況](document-folder-rename-status.md)と[小計画](../plans/2026-10-06-document-folder-rename.md)を今回の再開先とする
+- 選択行のfresh read/自身のcapability、固定要求、実変更/no-opのreceipt照合を使う。stale時は入力保持と明示見直し、成功後はURL ID保持と現在名再読取。旧replay結果を現在名として注入しない
+- create/renameのpending・unknownを相互に保持し、新規開始だけ止める。Root/201件/Workを保持する既存2+2受入へ子1件の改名を最小追加。新backend・権限推測・移動/ACL/既読・Search・新検証基盤なし
+- 選択親作成はPR79で全適用CI・実受入・cleanup・artifact0を確認してmerge済み。main push CI `37392942272` も全13 jobs・実runtime・DB36・cleanup・公開artifact0成功。00:57 UTC追補：改名source `a2be0497` は全GUI708/38 suites・型/build・runtime純粋28・collection2+2/18+5成功。次は独立レビュー、日本語Draftと同一head hosted。実no-op/文書folderName更新はDOM資格と区別する。以下は各時点の履歴
+
+---
+
 ## 2026-10-05 22:47 UTC — 選択した親への子フォルダー作成
 
 - PR78統合main `09f79a26` から、既存create APIとRoot作成の固定操作storeを選択済み非root親へ接続する。[状況](document-selected-folder-create-status.md)と[小計画](../plans/2026-10-05-document-selected-folder-create.md)を今回の再開先とする
