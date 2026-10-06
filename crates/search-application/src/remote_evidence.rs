@@ -110,6 +110,15 @@ impl RegisteredLineage {
     }
 }
 
+/// A verified record's own stance toward the Claim it is cited for.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SourceStance {
+    #[default]
+    Primary,
+    Corroborating,
+    Contradicting,
+}
+
 /// What the fixed Source's own provenance protocol verified for one
 /// evidence reference of one pinned Resource.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,6 +132,8 @@ pub struct VerifiedSourceProvenance {
     pub lineage_label: String,
     pub predicate: String,
     pub citation_chain: Vec<String>,
+    /// The stance as the Source's record states it, not the provider hint.
+    pub stance: SourceStance,
 }
 
 /// Host-wired provenance lookup of the fixed Source. Returning `None` keeps
@@ -199,15 +210,15 @@ pub async fn verify_provenance(
         return Ok(None);
     }
     let direct = record.direct && !record.summary && !hint.quoted;
-    // Provider role labels never elevate; a direct record may only say it
-    // corroborates or contradicts instead of being the primary source.
+    // The polarity comes from the verified record; the provider's role label
+    // is never read. Only a direct record has a stance at all.
     let role = if !direct {
         EvidenceRole::Contextual
     } else {
-        match hint.role_label.as_deref() {
-            Some("corroborating") => EvidenceRole::Corroborating,
-            Some("contradicting") => EvidenceRole::Contradicting,
-            _ => EvidenceRole::Primary,
+        match record.stance {
+            SourceStance::Primary => EvidenceRole::Primary,
+            SourceStance::Corroborating => EvidenceRole::Corroborating,
+            SourceStance::Contradicting => EvidenceRole::Contradicting,
         }
     };
     let authoritative = direct

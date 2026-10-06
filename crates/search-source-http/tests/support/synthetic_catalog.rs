@@ -272,6 +272,7 @@ fn list(collection: &Collection, extent: &str, hits: Vec<Value>, page: Option<Va
         "tenant": collection.tenant,
         "source": collection.source,
         "snapshot": {"token": collection.snapshot, "extent": extent, "known": collection.known},
+        "status": "ok",
         "hits": hits,
     });
     if let Some(page) = page {
@@ -386,6 +387,8 @@ fn respond(
             json!({
                 "tenant": collection.tenant,
                 "source": collection.source,
+                "principal": principal,
+                "id": request["id"],
                 "decision": if allowed { "allowed" } else { "denied" },
                 "acl_revision": collection.acl_revision,
                 "permission": collection.permission,

@@ -11,8 +11,8 @@ use search_application::ports::{
 };
 use search_application::remote::{PinnedRemoteTarget, TrustedRemoteContext};
 use search_application::remote_evidence::{
-    RegisteredLineage, RemoteProvenanceLookupPort, UntrustedEvidenceHint, VerifiedProvenance,
-    VerifiedSourceProvenance, resolved_evidence, verify_provenance,
+    RegisteredLineage, RemoteProvenanceLookupPort, SourceStance, UntrustedEvidenceHint,
+    VerifiedProvenance, VerifiedSourceProvenance, resolved_evidence, verify_provenance,
 };
 use search_application::scoped::AuthorizedSourceScope;
 use search_core::assertion::{Assertion, AssertionOrigin};
@@ -47,6 +47,7 @@ fn record(label: &str, direct: bool, version: &str) -> VerifiedSourceProvenance 
         lineage_label: label.into(),
         predicate: "catalog.title".into(),
         citation_chain: vec![],
+        stance: SourceStance::Primary,
     }
 }
 
@@ -313,18 +314,26 @@ async fn two_registered_independent_groups_can_satisfy_threshold() {
     .unwrap();
     let lookup = Lookup(BTreeMap::from([
         ("ev-a".to_string(), record("registry-a", true, "v1")),
-        ("ev-b".to_string(), record("registry-b", true, "v1")),
+        (
+            "ev-b".to_string(),
+            VerifiedSourceProvenance {
+                stance: SourceStance::Corroborating,
+                ..record("registry-b", true, "v1")
+            },
+        ),
     ]));
+    // The stance is the verified record's; the hint's role label is ignored.
     let verified = verify_all(
         &remote,
         &lineage,
         &lookup,
         &[
-            hint("ev-a", "primary", "x", false),
-            hint("ev-b", "corroborating", "x", false),
+            hint("ev-a", "contradicting", "x", false),
+            hint("ev-b", "primary", "x", false),
         ],
     )
     .await;
+    assert_eq!(verified[0].as_ref().unwrap().role(), EvidenceRole::Primary);
     assert_eq!(
         verified[1].as_ref().unwrap().role(),
         EvidenceRole::Corroborating
