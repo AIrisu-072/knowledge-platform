@@ -14,6 +14,9 @@ test('app shell exposes skip link, navigation, main workspace, and context panel
   expect(screen.getByRole('link', { name: 'メインコンテンツへ' })).toHaveAttribute('href', '#main-content');
   expect(screen.getByRole('banner')).toBeInTheDocument();
   expect(screen.getByRole('navigation', { name: 'メインナビゲーション' })).toBeInTheDocument();
+  const navigation = within(screen.getByRole('navigation', { name: 'メインナビゲーション' }));
+  expect(navigation.getByRole('link', { name: '文書' })).toHaveAttribute('href', expect.stringContaining('view=published'));
+  expect(navigation.getByRole('link', { name: '文書履歴' })).toHaveAttribute('href', expect.stringContaining('view=history'));
   expect(screen.getByRole('main', { name: '文書ワークスペース' })).toContainElement(
     screen.getByRole('heading', { name: '文書管理', level: 1 }),
   );

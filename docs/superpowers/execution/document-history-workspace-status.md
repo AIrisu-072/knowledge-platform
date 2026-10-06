@@ -1,5 +1,13 @@
 # 履歴一覧から旧版・原本・イベントを開く：実行状況
 
+## 2026-10-06 22:10 UTC — 初回hosted失敗と既存smokeの限定補修
+
+- [PR93](https://github.com/AIrisu-072/knowledge-platform/pull/93)の初回head `cd67bc7aa42dc31b64a2dd8aac7ffcd706c627f0` / tree `98d3713e17978c5961935cbdd618b6a481d25c19` は、凍結21filesと一致することをreadbackした。[CI37536784720](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37536784720)のDocument runtimeは失敗し、必須gate未合格である。
+- 公式stepはcheckout/依存準備/Chromium成功、composition失敗、Organization未実行、bounded summary失敗。元の接続済みlog tool初回と時間を置いた1回の通信復旧はいずれもTransport closed。check outputも空で、失敗case・到達phase・cleanup stdoutを取得できていない。未対応annotation URLや以前の公開GET403を別経路で回避せず、失敗を成功stepから補完しない。
+- 同じ製品sourceをCI=trueで確認し、全GUI1351/54、schema/型/build、preview純粋36が成功した。runtime helperのDTO/日時/原本名・bytes/既読と監査のsource再点検でも追加の確定矛盾は無かった。これらをhostedの失敗原因解明や実browser合格とは扱わない。
+- composition前段の既存e2eに、今回のナビ追加で成立する別の確定回帰を発見した。`e2e/document-workspace.spec.ts` の2箇所がlink名「文書」の部分一致を単一要素として検査し、「文書履歴」にも一致する。実AppShell DOMで同じ部分一致の単一queryが複数要素となるREDを保存し、完全名と各URLを確認するGREENへ変更した。実Playwrightの失敗stdoutと同じ原因だったかは未確認のままである。
+- e2eの2locatorを`exact: true`へ限定し、既存keyboard caseでは「文書履歴」の存在確認も加えた。caseの操作・成功条件を削らず、製品source、timeout/retries/skip、golden・画像設定を変更しない。AppShell1件とschema、e2e6件の収集が成功。独立reviewも限定2testfilesの変更とAppShell1件を確認してGO。次は同PR次headで通常CIを確認する。実browser資格はまだ得ていない。
+
 ## 2026-10-06 21:44 UTC — 実装とローカル検証
 
 - GUI commit `c11471c7508e34fd9a89395d94f652ddaac5a5a8`、既存受入拡張 `130de682` と実投影修正 `1d415680`、導入手順更新 `54040d50`。同じ機能branch内で固定し、新PR/hosted CIはまだ未作成。

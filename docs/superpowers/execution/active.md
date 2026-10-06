@@ -1,5 +1,12 @@
 # Active Execution Pointer
 
+## 2026-10-06 22:10 UTC — PR93初回失敗を保持しsmokeを補修
+
+- [PR93](https://github.com/AIrisu-072/knowledge-platform/pull/93)初回headcd67bc7aのcomposition/summaryはFAIL、Organization未実行。元log toolの初回/限定通信復旧もTransport closedで実失敗caseとcleanupは未取得。[本機能の状況](document-history-workspace-status.md)に失敗と制約を保持し、未合格のまま扱う
+- CI=trueのGUI1351/54・型/build・preview36は成功。既存前段e2eの「文書」部分一致が新「文書履歴」と重なる確定回帰をDOM反例で確認し、完全名locatorと新入口の存在確認へ限定補修。製品source・画像/golden・skip/timeoutは不変。独立review後、同PR次headの通常CIへ進む
+
+---
+
 ## 2026-10-06 21:44 UTC — 履歴文書の閲覧導線を固定
 
 - [履歴一覧の状況](document-history-workspace-status.md)と[小計画](../plans/2026-10-06-document-history-workspace.md)を更新。通常入口から終了/取下げ後の明示行・旧版・原本・イベントへ進むGUIを固定し、全1351/54・focused326/6・schema/型/buildと既存受入sourceの純粋81/型/収集18+5が成功。独立reviewは230/5・schema・docs照合でGO。同機能Draft/hosted CIはこれから
