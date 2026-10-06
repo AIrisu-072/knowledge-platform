@@ -23,9 +23,13 @@ test('standalone validators preserve Ajv coercion, defaults, pruning and boundar
     { pageSize: 0 }, { pageSize: 200 }, { pageSize: 201 }, { pageSize: 'bad' },
     { folderId: '00000000-0000-0000-0000-000000000000' }, { folderId: 'invalid' },
     { titleContains: '日'.repeat(1024) }, { titleContains: '日'.repeat(1025) },
+    { documentType: '123', owningDepartment: '   ', category: 'e\u0301' },
+    { documentType: '', owningDepartment: '日'.repeat(342), category: 'a\u0085b' },
+    { documentType: '\ud800' },
     { cursor: '' }, { cursor: 'x'.repeat(4096) }, { cursor: 'x'.repeat(4097) },
     { panel: 'closed' }, { panel: 'invalid' }, { tab: 'versions', workflow: 'publication' },
     { returnTo: '/documents?view=published' }, { returnTo: 'https://example.invalid/' },
+    { returnTo: '/documents?' + 'x'.repeat(81909) }, { returnTo: '/documents?' + 'x'.repeat(81910) },
     { tab: 'unknown', view: 'history' }, null, [], 'invalid',
   ];
   for (const [schema, standalone] of [[listSchema, generated.validateList], [detailSchema, generated.validateDetail]]) {

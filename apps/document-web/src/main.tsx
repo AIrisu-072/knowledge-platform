@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { OrganizationProvider } from './application/organization-context';
 import { validateTaskSearch } from './application/work-workspace';
 import { DocumentHomePage } from './routes/DocumentHomePage';
+import { DocumentListRouteError } from './routes/DocumentListRouteError';
 import { validateDetailSearch, validateListSearch } from './application/search-state';
 import './design-system/global.css';
 
@@ -31,6 +32,7 @@ const documentsRoute = createRoute({
   path: '/documents',
   validateSearch: validateListSearch,
   component: DocumentHomePage,
+  errorComponent: DocumentListRouteError,
 });
 const documentDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
