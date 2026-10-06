@@ -38,6 +38,8 @@ export function DocumentHomePage() {
     setFolderContext(current => current?.folderId === targetId ? undefined : current);
   }, [rename?.status, rename?.request.operationId]);
   const [selectionGeneration, setSelectionGeneration] = useState(0);
+  const [draftUnread, setDraftUnread] = useState(search.unreadOnly === true);
+  useEffect(() => setDraftUnread(search.unreadOnly === true), [search.unreadOnly]);
   const [draftTitle, setDraftTitle] = useState(search.titleContains ?? '');
   useEffect(() => setDraftTitle(search.titleContains ?? ''), [search.titleContains]);
   const [draftMetadata, setDraftMetadata] = useState<MetadataFilters>({ documentType: search.documentType ?? '', owningDepartment: search.owningDepartment ?? '', category: search.category ?? '' });
@@ -51,6 +53,7 @@ export function DocumentHomePage() {
     enabled: !appliedFilterError,
     queryKey: ['documents', {
       view: search.view,
+      unreadOnly: search.unreadOnly === true ? true : undefined,
       titleContains: search.titleContains,
       documentType: search.documentType || undefined,
       owningDepartment: search.owningDepartment || undefined,
@@ -65,6 +68,7 @@ export function DocumentHomePage() {
       view: search.view,
       sort: search.sort,
       pageSize: search.pageSize,
+      ...(search.unreadOnly === true ? { unreadOnly: true } : {}),
       ...(search.titleContains ? { titleContains: search.titleContains } : {}),
       ...(search.documentType ? { documentType: search.documentType } : {}),
       ...(search.owningDepartment ? { owningDepartment: search.owningDepartment } : {}),
@@ -103,6 +107,7 @@ export function DocumentHomePage() {
     void navigate({
       search: (previous) => {
         const next = { ...previous, ...patch } as ListSearch;
+        if (patch.unreadOnly === undefined && Object.prototype.hasOwnProperty.call(patch, 'unreadOnly')) delete next.unreadOnly;
         if (patch.cursor === undefined && Object.prototype.hasOwnProperty.call(patch, 'cursor')) delete next.cursor;
         if (patch.folderId === undefined && Object.prototype.hasOwnProperty.call(patch, 'folderId')) delete next.folderId;
         for (const { key } of metadataFilterFields) {
@@ -312,7 +317,7 @@ export function DocumentHomePage() {
             const error = metadataFilterValidation(draftMetadata);
             setFilterError(error);
             if (error) return;
-            updateSearch({ titleContains: draftTitle || undefined, documentType: draftMetadata.documentType || undefined, owningDepartment: draftMetadata.owningDepartment || undefined, category: draftMetadata.category || undefined, cursor: undefined });
+            updateSearch({ unreadOnly: search.view === 'published' && draftUnread ? true : undefined, titleContains: draftTitle || undefined, documentType: draftMetadata.documentType || undefined, owningDepartment: draftMetadata.owningDepartment || undefined, category: draftMetadata.category || undefined, cursor: undefined });
           }}>
             <label className={styles.searchField}>
               <span>文書名で絞り込み</span>
@@ -324,6 +329,10 @@ export function DocumentHomePage() {
                 <input type="text" aria-label={label} aria-describedby="metadata-filter-help" value={draftMetadata[key] ?? ''} onChange={event => { setDraftMetadata(previous => ({ ...previous, [key]: event.target.value })); setFilterError(null); }} />
               </label>
             ))}
+            {search.view === 'published' && <label className={styles.checkLine}>
+              <input type="checkbox" checked={draftUnread} onChange={event => setDraftUnread(event.target.checked)} />
+              未読のみ
+            </label>}
             <button className={styles.secondaryButton} type="submit">絞り込む</button>
             <button className={styles.secondaryButton} type="button" onClick={() => {
               setDraftMetadata({ documentType: '', owningDepartment: '', category: '' }); setFilterError(null);

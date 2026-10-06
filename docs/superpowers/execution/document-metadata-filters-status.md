@@ -20,3 +20,10 @@
 - I1と節番号の所見は閉鎖。限定再レビューで、直URLの空属性がrouterのmergeにより復活しAPIへ空値を送るImportant I2を確認した。公開前のまま、`ec05d6f8` でHomeのquery keyとGET入口6行だけを空文字未指定へ揃えた。space等の非空値、SDK、既存validator、I1補修は変更していない
 - 実route DOM6件で空キー送信とcache分離のREDを確認し、修正後は同sourceHEADの全GUI788/39 suites・focused103/4・型/schema/buildに成功。実HTTPの422試験を実行した資格とは区別する。runtime等は前の資格対象と同bytes
 - 次はI2差分だけの独立再確認から、日本語Draft・同一headの既存hosted実受入へ進む。まだ今回の公開/実runtime資格は未取得
+
+## 2026-10-06 03:28 UTC — PR81とmainの統合資格
+
+- [PR81](https://github.com/AIrisu-072/knowledge-platform/pull/81)のhead `426db3a5a43083a1b4bd76b656ea58322019eed3` / tree `794407fc62e2418bd6ecbdc2de4541cd3e207b02` はI1/M1/I2閉鎖・独立レビューGOで公開。全18checks（15成功/既存skip3）、通常CI `37405694808` 全13jobs、全4run公開artifact0成功を確認してmergeした
+- main `0801c9864bdb7faf5fcbe7ee1062367335ee7bfb` は同tree、parents `[1fe1b011,426db3a5]`。[main自身のpush CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37407454204)も全13checks/jobs成功。GUI788/39、Document18+5、属性の実GET/詳細往復/HTTP再起動、Agent9、Organization2+2/build含む8段階、Rust1831と既存別21/7、今回DB36/36、owned cleanup、公開artifact0を新しい実ログで確認した
+- metadata persistenceの個別公開summaryは上限で一部省略されるため、固定spec/configと全5成功・skip0も照合した。長さ/Unicode/複合URL/遅延応答のDOM資格と実の短い合成値によるGET資格を分け、既存visual・対象PC手順等の未資格を維持する
+- このsliceの統合後確認は完了。手順pin4docsの更新と、別branchの公開一覧未読条件を次作業とする。実サーバー反映は所有者の手動操作

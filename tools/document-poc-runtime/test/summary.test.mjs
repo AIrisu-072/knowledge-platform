@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { summarize } from '../ci-summary.mjs';
+import { sanitizeBrowserPhases } from '../browser-diagnostics.mjs';
 
 test('CI summary allowlists hashes, profiles, versions and stage categories without raw reasons or paths', () => {
   const secret = 'postgres://u:secret@127.0.0.1/private';
@@ -37,6 +38,21 @@ test('browser diagnostics are sanitized again before the CI summary is printed',
   assert.equal(summary.browserDiagnostics.journey.tests[0].errorCategory, 'strict-locator');
   assert.ok(!JSON.stringify(summary).includes('credential'));
   assert.deepEqual(Object.keys(summary.browserDiagnostics), ['journey', 'persistence']);
+});
+
+test('CI summary retains the late persistence failure after report phase allocation', () => {
+  const browserDiagnostics = sanitizeBrowserPhases({
+    journey: { availability: 'available', counts: { passed: 18, failed: 0, skipped: 0 },
+      tests: Array(18).fill({ source: 'document-runtime.spec.ts', status: 'passed' }) },
+    persistence: { availability: 'available', counts: { passed: 4, failed: 1, skipped: 0 },
+      tests: ['passed', 'passed', 'failed', 'passed', 'passed'].map((status, index) => ({
+        source: 'metadata-editor.spec.ts', line: index + 1, status, errorCategory: 'assertion', matcher: 'toBe',
+      })) },
+  });
+  const summary = summarize({ status: 'failed', browserDiagnostics });
+  assert.equal(summary.browserDiagnostics.persistence.tests.find(record => record.status === 'failed')?.line, 3);
+  assert.deepEqual(summary.browserDiagnostics, browserDiagnostics);
+  assert.equal(summary.acceptanceQualified, false);
 });
 
 test('E3 summary exposes bounded owned run identity, ports and actual manifest fixture hash', () => {

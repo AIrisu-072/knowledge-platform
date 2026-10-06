@@ -245,9 +245,13 @@ export async function readBrowserDiagnostics(runDirectory, phase) {
 export function sanitizeBrowserPhases(value) {
   const journey = sanitizeBrowserDiagnostics(value?.journey);
   const persistence = sanitizeBrowserDiagnostics(value?.persistence);
-  const remaining = Math.max(0, MAX_RECORDS - journey.tests.length);
-  if (persistence.tests.length > remaining) {
-    persistence.tests = persistence.tests.slice(0, remaining); persistence.truncated = true;
+  const candidates = [...journey.tests, ...persistence.tests];
+  const unsuccessful = record => !['passed', 'skipped'].includes(record.status);
+  const selected = new Set([...candidates.filter(unsuccessful), ...candidates.filter(record => !unsuccessful(record))].slice(0, MAX_RECORDS));
+  for (const phase of [journey, persistence]) {
+    const retained = phase.tests.filter(record => selected.has(record));
+    if (retained.length < phase.tests.length) phase.truncated = true;
+    phase.tests = retained;
   }
   return { journey, persistence };
 }

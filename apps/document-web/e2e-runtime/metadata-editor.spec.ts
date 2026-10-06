@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from 'node:util';
 import {
   BinaryTransportBridge, getDocument, getDocumentHistory, getDocumentVersion,
   listDocumentRevisions, listDocumentVersions, listVersionFiles, publishVersion,
-  type CommandsMetadataPatch, type MutationResult,
+  type CommandsMetadataPatch, type MutationResult, type PublishedDocument,
 } from '@knowledge-platform/document-api-client';
 import { startDiagnostics, finishDiagnostics } from './startup-diagnostics';
 import { hash, options, persistedSnapshot, runtime, saveSnapshot, uuidV7, type PersistedState, type RuntimeContext } from './support';
@@ -57,6 +57,26 @@ async function readFilteredList(page: Page, filters: MetadataListFilters, docume
     await expect(page.getByRole('table', { name: '文書一覧', exact: true }).getByRole('row')).toHaveCount(documentIds.length + 1);
     for (const documentId of documentIds) await expect(page.locator(`[data-document-id="${documentId}"]`)).toBeVisible();
   }
+}
+
+async function readUnreadPublishedList(page: Page, documentId: string, currentVersionId: string) {
+  await page.getByRole('checkbox', { name: '未読のみ', exact: true }).check();
+  const response = page.waitForResponse(result => new URL(result.url()).pathname === '/v1/documents'
+    && result.request().method() === 'GET' && new URL(result.url()).searchParams.get('unreadOnly') === 'true');
+  await page.getByRole('button', { name: '絞り込む', exact: true }).press('Enter');
+  const result = await response;
+  expect(result.status()).toBe(200);
+  const params = new URL(result.url()).searchParams;
+  expect(params.get('view')).toBe('published');
+  expect(params.get('unreadOnly')).toBe('true');
+  expect(params.get('titleContains') === listTitle).toBe(true);
+  expect(params.has('cursor')).toBe(false);
+  const body = await result.json() as { view: string; items: PublishedDocument[] };
+  expect(body.view).toBe('published');
+  privatelyEqual(body.items.map(item => ({ documentId: item.documentId, currentVersionId: item.currentVersionId, readState: item.readState })),
+    [{ documentId, currentVersionId, readState: { isRead: false, firstReadAt: null } }]);
+  await expect(page.getByRole('table', { name: '文書一覧', exact: true }).getByRole('row')).toHaveCount(2);
+  await expect(page.locator(`[data-document-id="${documentId}"]`).getByText('未読', { exact: true })).toBeVisible();
 }
 
 async function saveMetadata(page: Page, documentId: string, reason: string) {
@@ -251,6 +271,30 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     expect(patchRequests).toBe(3);
     expect(origins).toEqual(new Set([context.human]));
     completed('gui-metadata-noop-verified');
+    await page.getByRole('link', { name: '文書', exact: true }).press('Enter');
+    await expect(page.getByRole('table', { name: '文書一覧', exact: true })).toBeVisible();
+    await fillPrivate(page.getByLabel('文書名で絞り込み', { exact: true }), listTitle);
+    await readUnreadPublishedList(page, documentId, created.documentVersionId);
+    await page.locator(`[data-document-id="${documentId}"]`).press('Enter');
+    await page.getByRole('button', { name: '詳細を開く', exact: true }).press('Enter');
+    await expect.poll(() => new URL(page.url()).pathname === `/documents/${documentId}`).toBe(true);
+    await page.getByRole('button', { name: '← 一覧へ戻る', exact: true }).press('Enter');
+    await expect.poll(() => new URL(page.url()).pathname === '/documents').toBe(true);
+    await expect(page.getByRole('checkbox', { name: '未読のみ', exact: true })).toBeChecked();
+    expect(new URL(page.url()).searchParams.get('unreadOnly')).toBe('true');
+    await expect(page.locator(`[data-document-id="${documentId}"]`)).toBeFocused();
+    await page.getByRole('checkbox', { name: '未読のみ', exact: true }).uncheck();
+    // Off may reuse the valid 15-second Query cache; no unconditional response wait.
+    await page.getByRole('button', { name: '絞り込む', exact: true }).press('Enter');
+    await expect.poll(() => new URL(page.url()).searchParams.has('unreadOnly')).toBe(false);
+    expect(new URL(page.url()).searchParams.has('cursor')).toBe(false);
+    await expect(page.getByRole('checkbox', { name: '未読のみ', exact: true })).not.toBeChecked();
+    await expect(page.locator(`[data-document-id="${documentId}"]`)).toBeVisible();
+    privatelyEqual((await getDocument({ ...common, path, query: { view: 'published' } })).data.readState, publishedDetail.readState);
+    privatelyEqual((await getDocument({ ...options(context.agent), path, query: { view: 'published' } })).data.readState, agentReadState);
+    expect(patchRequests).toBe(3);
+    expect(origins).toEqual(new Set([context.human]));
+    completed('gui-unread-readonly-verified');
     await saveSnapshot(metadataContext(context), 'gui-metadata', documentId);
     completed('gui-metadata-snapshot-saved');
   });
@@ -279,6 +323,13 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     await fillMetadataListFilters(page, retainedFilters);
     await readFilteredList(page, retainedFilters, [snapshot.documentId]);
     expect(new URL(page.url()).searchParams.get('view')).toBe('published');
+    const path = { documentId: snapshot.documentId };
+    const humanReadState = (await getDocument({ ...options(context.human), path, query: { view: 'published' } })).data.readState;
+    const agentReadState = (await getDocument({ ...options(context.agent), path, query: { view: 'published' } })).data.readState;
+    await readUnreadPublishedList(page, snapshot.documentId, snapshot.currentVersionId!);
+    privatelyEqual((await getDocument({ ...options(context.human), path, query: { view: 'published' } })).data.readState, humanReadState);
+    privatelyEqual((await getDocument({ ...options(context.agent), path, query: { view: 'published' } })).data.readState, agentReadState);
+    completed('gui-unread-restart-readonly-verified');
     const removedCategoryFilters = { ...retainedFilters, category: 'synthetic-working-category' };
     await fillMetadataListFilters(page, removedCategoryFilters);
     await readFilteredList(page, removedCategoryFilters, []);

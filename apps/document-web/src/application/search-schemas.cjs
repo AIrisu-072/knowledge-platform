@@ -7,6 +7,7 @@ const listSchema = {
   properties: {
     view: { type: 'string', enum: ['published', 'authoring', 'history'], default: 'published' },
     titleContains: { type: 'string', maxLength: 1024 },
+    unreadOnly: { type: 'boolean' },
     // Retain invalid URL text so the form can explain byte/control errors and stop GET.
     documentType: { type: 'string' },
     owningDepartment: { type: 'string' },
