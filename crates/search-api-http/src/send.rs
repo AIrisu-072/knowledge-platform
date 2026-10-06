@@ -200,6 +200,26 @@ pub fn leased_response(bytes: Vec<u8>, lease: Arc<SendLease>) -> Response {
         })
 }
 
+/// Closes a connection's leases when its task ends, including by panic, so no
+/// lease stays open for a connection that no longer exists.
+struct CloseOnExit {
+    leases: ConnectionLeases,
+    /// The connection's outcome once it has finished.
+    reason: Option<CloseReason>,
+}
+
+impl Drop for CloseOnExit {
+    fn drop(&mut self) {
+        let reason = self.reason.unwrap_or(if std::thread::panicking() {
+            CloseReason::ConnectionError
+        } else {
+            // The task was dropped unfinished, e.g. with the whole server.
+            CloseReason::Dropped
+        });
+        self.leases.close_all(reason);
+    }
+}
+
 /// Transport bounds of the socket server.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ServeOptions {
@@ -253,6 +273,12 @@ pub async fn serve(
                 active.push(leases.clone());
                 let router = router.clone();
                 connections.spawn(async move {
+                    // A panic unwinds through this guard as a connection error;
+                    // an unfinished drop (server abort) stays `Dropped`.
+                    let mut exit = CloseOnExit {
+                        leases: leases.clone(),
+                        reason: None,
+                    };
                     let per_request = leases.clone();
                     let service = hyper::service::service_fn(move |mut request: Request<Incoming>| {
                         request.extensions_mut().insert(per_request.clone());
@@ -267,7 +293,7 @@ pub async fn serve(
                         Ok(Err(_)) => CloseReason::ConnectionError,
                         Err(_) => CloseReason::Deadline,
                     };
-                    leases.close_all(reason);
+                    exit.reason = Some(reason);
                 });
             }
         }
