@@ -67,3 +67,58 @@ test('公開後と再起動後のGUIもpublishedへ明示遷移し、authoring�
     }
   }
 });
+
+// 実GUI通信の限定記録を判定するspec内関数そのものを純粋に実行する。
+// POST後のreset GETやheadersだけ到着したGETでfresh readを誤充足させる変更を検出する。
+function specFunction(name) {
+  const declaration = nodes.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name);
+  assert.ok(declaration, `${name}の実通信guardが必要`);
+  const compiled = ts.transpileModule(`const predicate = ${declaration.getText(syntax)};`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  return new Function(`${compiled}\nreturn predicate;`)();
+}
+
+test('文書移動のfresh GETは送信操作後に開始し、200のbody完了がPOSTより前である', () => {
+  const precedes = specFunction('moveReadPrecedesPost');
+  assert.equal(precedes({ started: 11, finished: 12, status: 200 }, 10, 13), true);
+  for (const record of [
+    { started: 9, finished: 12, status: 200 },
+    { started: 11, status: 200 },
+    { started: 11, finished: 13, status: 200 },
+    { started: 14, finished: 15, status: 200 },
+    { started: 11, finished: 12, status: 403 },
+  ]) assert.equal(precedes(record, 10, 13), false);
+});
+
+test('文書移動の記録はHumanの対象published詳細とcursorなし200件の元行/先childrenだけに限る', () => {
+  const route = specFunction('moveReadRoute');
+  const classify = (path, method = 'GET', origin = 'http://127.0.0.1:31001') =>
+    route(new URL(path, origin), method, 'http://127.0.0.1:31001', 'document', 'root', 'sandbox');
+  assert.equal(classify('/v1/documents/document?view=published'), 'document');
+  assert.equal(classify('/v1/folders/root/children?pageSize=200'), 'root-children');
+  assert.equal(classify('/v1/folders/sandbox/children?pageSize=200'), 'destination-children');
+  for (const path of ['/v1/documents/other?view=published', '/v1/documents/document?view=authoring',
+    '/v1/folders/root/children?pageSize=200&cursor=next', '/v1/folders/root/children?pageSize=100',
+    '/v1/folders/other/children?pageSize=200', '/v1/documents']) assert.equal(classify(path), undefined);
+  assert.equal(classify('/v1/documents/document?view=published', 'POST'), undefined);
+  assert.equal(classify('/v1/documents/document?view=published', 'GET', 'http://127.0.0.1:31002'), undefined);
+});
+
+test('既存metadata journeyの1回移動と再起動後の同一要求replayは別の現在状態を検証する', () => {
+  assert.equal(calls('test').length, 2, '既存18+5へcaseを増やさない');
+  const replay = calls('moveDocument');
+  assert.equal(replay.length, 1, '初回移動はGUI、再起動後のreplayだけSDKを使う');
+  assert.deepEqual(properties(replay[0].arguments[0], 'body'), ['state.move.request']);
+  assert.match(source, /privatelyEqual\(replay\.data, state\.move\.receipt\)/);
+  assert.match(source, /privatelyEqual\(await persistedSnapshot\(context\.human, documentId\), movedSnapshot\)/);
+  assert.match(source, /privatelyEqual\(await persistedSnapshot\(context\.agent, documentId\), movedSnapshot\)/);
+  assert.match(source, /const movedSnapshot = \{ \.\.\.after, revision: moveReceipt\.resultingRevision \}/);
+  assert.match(source, /moveRequests\)\.toBe\(1\)/);
+  assert.match(source, /page\.on\('requestfinished', recordMoveReadFinished\)/);
+  assert.match(source, /readsAtPost = \[\.\.\.moveReads\.values\(\)\]\.map\(read => \(\{ \.\.\.read \}\)\)/);
+  assert.match(source, /moveReadPrecedesPost\(read, sendingBoundary, movePostOrder\)/);
+  assert.match(source, /privatelyEqual\(replayedHuman, humanDetail\)/);
+  assert.match(source, /privatelyEqual\(replayedAgent, agentDetail\)/);
+  assert.match(source, /humanReadState: sourceBefore\.readState, agentReadState: agentBefore\.readState/);
+});

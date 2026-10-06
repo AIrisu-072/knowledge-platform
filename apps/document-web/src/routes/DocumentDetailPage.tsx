@@ -24,6 +24,7 @@ import { DocumentScheduleCancellation } from '../components/document/DocumentSch
 import { CapabilityButton, availabilityReason } from '../components/shared/CapabilityButton';
 import { OriginalVersionDownload } from '../components/shared/OriginalVersionDownload';
 import { DocumentWorkingVersionEditor } from '../components/document/DocumentWorkingVersionEditor';
+import { DocumentMove } from '../components/document/DocumentMove';
 import { DocumentMetadataEditor } from '../components/document/DocumentMetadataEditor';
 import { DocumentLifecycleOperations } from '../components/document/DocumentLifecycleOperations';
 import { AppShell } from '../components/app-shell/AppShell';
@@ -253,6 +254,7 @@ export function DocumentDetailPage() {
         contextKey={`${documentId}:${search.view}:${activeTab}:${search.versionId ?? ''}:${search.workflow ?? ''}`}
         showActions={activeTab === 'versions' && !search.workflow}
       />
+      <DocumentMove document={document} purpose={search.view} currentRead={detailQuery.isSuccess && !detailQuery.isFetching} contextKey={location.href} />
       {detailQuery.isPending && <LoadingState label="文書情報を読み込み中" />}
       {detailQuery.error && <ApiFeedback error={detailQuery.error} onRetry={retryAll} />}
       {document && (
@@ -319,7 +321,7 @@ function OverviewTab({ document, filesQuery, reload }: {
           <dt>正式改訂</dt><dd>{document.displayRevision?.label ?? '未発行'}</dd>
           <dt>{document.displayTimestamp.kind === 'workingUpdatedAt' ? '更新日時' : '公開日時'}</dt><dd>{formatDate(document.displayTimestamp.value)}</dd>
           <dt>更新日時</dt><dd>{formatDate(document.displayVersion.updatedAt)}</dd>
-          <dt>フォルダー</dt><dd>{document.folderName ?? 'ルート'}</dd>
+          <dt>フォルダー</dt><dd>{document.folderName ?? '所属フォルダーを確認できません'}</dd>
           {typeof metadata.owning_department === 'string' && <><dt>所管部署</dt><dd>{metadata.owning_department}</dd></>}
           {typeof metadata.document_type === 'string' && <><dt>文書種別</dt><dd>{metadata.document_type}</dd></>}
           {typeof metadata.category === 'string' && <><dt>カテゴリ</dt><dd>{metadata.category}</dd></>}

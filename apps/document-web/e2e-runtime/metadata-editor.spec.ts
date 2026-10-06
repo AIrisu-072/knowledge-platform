@@ -1,10 +1,10 @@
-import { test, expect, type Locator, type Page, type Response } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
+import { test, expect, type Locator, type Page, type Request, type Response } from '@playwright/test';
+import { readFile, writeFile } from 'node:fs/promises';
 import { isDeepStrictEqual } from 'node:util';
 import {
   BinaryTransportBridge, getDocument, getDocumentHistory, getDocumentVersion,
-  listDocumentRevisions, listDocumentVersions, listVersionFiles, publishVersion,
-  type CommandsMetadataPatch, type MutationResult, type PublishedDocument,
+  listDocumentRevisions, listDocumentVersions, listVersionFiles, moveDocument, publishVersion,
+  type CommandsMetadataPatch, type CommandsMoveDocument, type FolderChildren, type GuiReadState, type MutationResult, type PublishedDocument,
 } from '@knowledge-platform/document-api-client';
 import { startDiagnostics, finishDiagnostics } from './startup-diagnostics';
 import { hash, options, persistedSnapshot, runtime, saveSnapshot, uuidV7, type PersistedState, type RuntimeContext } from './support';
@@ -18,6 +18,9 @@ const completed = (stage: string) => test.info().annotations.push({ type: 'runti
 // 既存のowned snapshot helperを非公開sidecarへ再利用する。
 // 元のpersistence testが添付するstateには、このmetadataを含めない。
 const metadataContext = (context: RuntimeContext): RuntimeContext => ({ ...context, statePath: `${context.statePath}.metadata-editor` });
+type MetadataState = PersistedState & { move: {
+  request: CommandsMoveDocument; receipt: MutationResult; folderId: string; humanReadState: GuiReadState; agentReadState: GuiReadState;
+} };
 const privatelyEqual = (actual: unknown, expected: unknown) => expect(isDeepStrictEqual(actual, expected)).toBe(true);
 const inputEquals = async (field: Locator, value: string) => {
   await expect.poll(async () => (await field.inputValue()) === value).toBe(true);
@@ -27,6 +30,19 @@ const fillPrivate = async (field: Locator, value: string) => {
   catch { throw new Error('合成metadataの入力操作に失敗しました'); }
 };
 const editor = (page: Page) => page.getByRole('dialog', { name: 'メタデータを編集', exact: true });
+type MoveReadRoute = 'document' | 'root-children' | 'destination-children';
+type MoveRead = { route: MoveReadRoute; started: number; finished?: number; status?: number; response?: Response };
+function moveReadRoute(url: URL, method: string, human: string, documentId: string, rootId: string, destinationId: string): MoveReadRoute | undefined {
+  if (url.origin !== human || method !== 'GET') return undefined;
+  if (url.pathname === `/v1/documents/${documentId}` && url.searchParams.get('view') === 'published') return 'document';
+  if (url.searchParams.get('pageSize') !== '200' || url.searchParams.has('cursor')) return undefined;
+  if (url.pathname === `/v1/folders/${rootId}/children`) return 'root-children';
+  if (url.pathname === `/v1/folders/${destinationId}/children`) return 'destination-children';
+  return undefined;
+}
+function moveReadPrecedesPost(read: { started: number; finished?: number; status?: number }, boundary: number, post: number): boolean {
+  return read.started > boundary && read.finished !== undefined && read.finished > read.started && read.finished < post && read.status === 200;
+}
 type MetadataListFilters = { documentType: string; owningDepartment: string; category: string };
 type CreatedListRange = { createdFrom: string | null; createdBefore: string | null };
 const listTitle = 'Synthetic metadata GUI acceptance';
@@ -162,12 +178,13 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     privatelyEqual(before.metadata, initialMetadata);
     completed('gui-metadata-created');
 
-    let patchRequests = 0;
+    let patchRequests = 0, moveRequests = 0;
     const origins = new Set<string>();
     page.on('request', request => {
       const url = new URL(request.url());
       if (url.pathname.startsWith('/v1/')) origins.add(url.origin);
       if (url.pathname === `/v1/documents/${documentId}/metadata` && request.method() === 'PATCH') patchRequests++;
+      if (url.pathname === `/v1/documents/${documentId}:move` && request.method() === 'POST') moveRequests++;
     });
     await page.goto(`/documents/${documentId}?view=authoring&tab=overview`);
     await page.getByRole('link', { name: '編集作業', exact: true }).press('Enter');
@@ -366,19 +383,186 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     expect(patchRequests).toBe(3);
     expect(origins).toEqual(new Set([context.human]));
     completed('gui-unread-readonly-verified');
+
+    // 既存合成文書を通常の一覧→詳細→可視ツリーから、同権限のSandboxへ1回だけ移動する。
+    const sourceBefore = (await getDocument({ ...common, path, query: { view: 'published' } })).data;
+    const agentBefore = (await getDocument({ ...options(context.agent), path, query: { view: 'published' } })).data;
+    expect(sourceBefore.documentId === documentId && sourceBefore.title === after.title).toBe(true);
+    expect(sourceBefore.folderId === context.manifest.folders.shared.folderId).toBe(true);
+    expect(typeof sourceBefore.folderName === 'string' && sourceBefore.folderName.length > 0).toBe(true);
+    expect(sourceBefore.revision === after.revision).toBe(true);
+    expect(sourceBefore.capabilities.moveDocument.status).toBe('available');
+    privatelyEqual(sourceBefore.readState, publishedDetail.readState);
+    privatelyEqual(agentBefore.readState, agentReadState);
+    await page.locator(`[data-document-id="${documentId}"]`).press('Enter');
+    await page.getByRole('button', { name: '詳細を開く', exact: true }).press('Enter');
+    await expect.poll(() => new URL(page.url()).pathname === `/documents/${documentId}`).toBe(true);
+
+    expect(typeof context.manifest.rootFolderId === 'string').toBe(true);
+    const rootFolderId = context.manifest.rootFolderId!, sandboxId = context.manifest.folders.sandbox.folderId;
+    const movePath = `/v1/documents/${documentId}:move`;
+    let moveSequence = 0, movePostOrder = 0, moveReadOverflow = false;
+    const moveReads = new Map<Request, MoveRead>();
+    let readsAtPost: MoveRead[] = [];
+    const recordMoveRequest = (request: Request) => {
+      const url = new URL(request.url());
+      if (url.origin === context.human && url.pathname === movePath && request.method() === 'POST') {
+        movePostOrder = ++moveSequence;
+        // コピーをPOST開始時に固定する。以後のreset GET/完了イベントで遡及的に合格させない。
+        readsAtPost = [...moveReads.values()].map(read => ({ ...read }));
+        return;
+      }
+      const route = moveReadRoute(url, request.method(), context.human, documentId, rootFolderId, sandboxId);
+      if (!route) return;
+      if (moveReads.size >= 24) { moveReadOverflow = true; return; }
+      moveReads.set(request, { route, started: ++moveSequence });
+    };
+    const recordMoveResponse = (response: Response) => {
+      const read = moveReads.get(response.request());
+      if (read) { read.status = response.status(); read.response = response; }
+    };
+    const recordMoveReadFinished = (request: Request) => {
+      const read = moveReads.get(request);
+      if (read) read.finished = ++moveSequence;
+    };
+    page.on('request', recordMoveRequest);
+    page.on('response', recordMoveResponse);
+    page.on('requestfinished', recordMoveReadFinished);
+    const isMoveRead = (response: Response, route: MoveReadRoute) =>
+      moveReadRoute(new URL(response.url()), response.request().method(), context.human, documentId, rootFolderId, sandboxId) === route;
+    const moveEntry = page.getByRole('button', { name: '文書を移動', exact: true });
+    await expect(moveEntry).toBeEnabled();
+    const openingBoundary = moveSequence;
+    const openingSource = page.waitForResponse(response => isMoveRead(response, 'document')
+      && (moveReads.get(response.request())?.started ?? 0) > openingBoundary);
+    await moveEntry.press('Enter');
+    const moveDialog = page.getByRole('dialog', { name: '文書を移動', exact: true });
+    await expect(moveDialog).toBeVisible();
+    const openingRead = await openingSource;
+    expect(openingRead.status()).toBe(200);
+    expect(await openingRead.finished()).toBeNull();
+    privatelyEqual(await openingRead.json(), sourceBefore);
+    const candidates = moveDialog.getByRole('group', { name: '移動先フォルダー', exact: true });
+    const sandboxEntry = candidates.getByRole('button', { name: 'Agent Sandbox', exact: true });
+    await expect(sandboxEntry).toBeEnabled();
+    const selectionBoundary = moveSequence;
+    const selectionRows = page.waitForResponse(response => isMoveRead(response, 'root-children')
+      && (moveReads.get(response.request())?.started ?? 0) > selectionBoundary);
+    const selectionChildren = page.waitForResponse(response => isMoveRead(response, 'destination-children')
+      && (moveReads.get(response.request())?.started ?? 0) > selectionBoundary);
+    await sandboxEntry.press('Enter');
+    const rootRead = await selectionRows, sandboxRead = await selectionChildren;
+    expect(rootRead.status()).toBe(200); expect(sandboxRead.status()).toBe(200);
+    expect(await rootRead.finished()).toBeNull(); expect(await sandboxRead.finished()).toBeNull();
+    const rootRows = await rootRead.json() as FolderChildren;
+    const destinationChildren = await sandboxRead.json() as FolderChildren;
+    expect(rootRows.nextCursor).toBeNull();
+    const sandbox = rootRows.items.find(row => row.folderId === sandboxId)!;
+    expect(Boolean(sandbox) && sandbox.name === 'Agent Sandbox' && sandbox.parentFolderId === rootFolderId).toBe(true);
+    const moveReason = 'Synthetic same-policy document move acceptance';
+    await fillPrivate(moveDialog.getByLabel('移動理由', { exact: true }), moveReason);
+    for (const text of [`対象文書ID：${sourceBefore.documentId}`, `元フォルダーID：${sourceBefore.folderId}`,
+      `現在の元所属名：${sourceBefore.folderName}`, `現在の対象名：${sourceBefore.title}（revision ${sourceBefore.revision}）`,
+      `移動先フォルダーID：${sandbox.folderId}`, `移動先名：${sandbox.name}`]) {
+      await expect.poll(async () => (await moveDialog.textContent())?.includes(text)).toBe(true);
+    }
+    await expect(moveDialog).toContainText('明示アクセス設定は保持。継承中は移動先の設定が適用され、自分を含む閲覧・編集権限が変わり得る');
+    const moveConfirmation = moveDialog.getByRole('checkbox', { name: 'アクセス設定への影響を確認しました', exact: true });
+    await expect(moveConfirmation).not.toBeChecked();
+    await expect(moveDialog.getByRole('button', { name: '移動する', exact: true })).toBeDisabled();
+    expect(moveRequests).toBe(0);
+    await moveConfirmation.check();
+    await expect(moveConfirmation).toBeChecked();
+    expect(moveRequests).toBe(0);
+    const sendingBoundary = moveSequence;
+    const moveResponse = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.origin === context.human && url.pathname === movePath && response.request().method() === 'POST';
+    });
+    await moveDialog.getByRole('button', { name: '移動する', exact: true }).press('Enter');
+    const moved = await moveResponse;
+    expect(moved.status()).toBe(200);
+    expect(moveReadOverflow).toBe(false);
+    const submissionReads = readsAtPost.filter(read => moveReadPrecedesPost(read, sendingBoundary, movePostOrder));
+    privatelyEqual(submissionReads.map(read => read.route), ['document', 'root-children', 'destination-children']);
+    privatelyEqual(await submissionReads[0]!.response!.json(), sourceBefore);
+    const currentRootRows = await submissionReads[1]!.response!.json() as FolderChildren;
+    expect(currentRootRows.nextCursor).toBeNull();
+    privatelyEqual(currentRootRows.items.find(row => row.folderId === sandbox.folderId), sandbox);
+    privatelyEqual(await submissionReads[2]!.response!.json(), destinationChildren);
+    const moveRequest = moved.request().postDataJSON() as CommandsMoveDocument;
+    expect(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(moveRequest.operationId)).toBe(true);
+    privatelyEqual(moveRequest, { operationId: moveRequest.operationId, fromFolderId: sourceBefore.folderId,
+      toFolderId: sandbox.folderId, expectedDocumentRevision: sourceBefore.revision, reason: moveReason });
+    const moveReceipt = await moved.json() as MutationResult;
+    privatelyEqual(Object.keys(moveReceipt).sort(), ['changed', 'occurredAt', 'operationId', 'resourceId', 'resultingRevision']);
+    expect(moveReceipt.operationId === moveRequest.operationId && moveReceipt.resourceId === documentId).toBe(true);
+    expect(moveReceipt.changed).toBe(true);
+    expect(Number.isSafeInteger(moveReceipt.resultingRevision) && moveReceipt.resultingRevision === sourceBefore.revision + 1).toBe(true);
+    expect(Number.isFinite(Date.parse(moveReceipt.occurredAt))).toBe(true);
+    await expect(moveDialog.getByText('文書を移動しました。', { exact: true })).toBeVisible();
+    await expect(moveDialog.getByText('表示を更新中です。', { exact: true })).toHaveCount(0);
+    await expect(moveDialog.getByText('表示を更新できませんでした。移動結果は確定しています。読取を再試行してください。', { exact: true })).toHaveCount(0);
+    await moveDialog.getByRole('button', { name: '確認して閉じる', exact: true }).press('Enter');
+    await expect(moveDialog).toBeHidden();
+    page.off('request', recordMoveRequest);
+    page.off('response', recordMoveResponse);
+    page.off('requestfinished', recordMoveReadFinished);
+    const movedHuman = (await getDocument({ ...common, path, query: { view: 'published' } })).data;
+    const movedAgent = (await getDocument({ ...options(context.agent), path, query: { view: 'published' } })).data;
+    // folder/revision以外の正式表示・日時・既読もactorごとの移動前値を保持する。
+    for (const [current, previous] of [[movedHuman, sourceBefore], [movedAgent, agentBefore]]) {
+      expect(current!.folderId === sandbox.folderId && current!.folderName === sandbox.name).toBe(true);
+      expect(current!.revision === moveReceipt.resultingRevision).toBe(true);
+      privatelyEqual({ displayRevision: current!.displayRevision, displayVersion: current!.displayVersion,
+        currentVersionId: current!.currentVersionId, createdAt: current!.createdAt,
+        publishedAt: 'publishedAt' in current! ? current.publishedAt : undefined, readState: current!.readState },
+      { displayRevision: previous!.displayRevision, displayVersion: previous!.displayVersion,
+        currentVersionId: previous!.currentVersionId, createdAt: previous!.createdAt,
+        publishedAt: 'publishedAt' in previous! ? previous.publishedAt : undefined, readState: previous!.readState });
+    }
+    const movedSnapshot = { ...after, revision: moveReceipt.resultingRevision };
+    privatelyEqual(await persistedSnapshot(context.human, documentId), movedSnapshot);
+    privatelyEqual(await persistedSnapshot(context.agent, documentId), movedSnapshot);
+    expect(moveRequests).toBe(1); expect(patchRequests).toBe(3);
+    expect(origins).toEqual(new Set([context.human]));
+    completed('gui-document-move-verified');
     await saveSnapshot(metadataContext(context), 'gui-metadata', documentId);
+    const metadataState = JSON.parse(await readFile(metadataContext(context).statePath, 'utf8')) as PersistedState;
+    privatelyEqual(metadataState.documents[0]!.snapshot, movedSnapshot);
+    const move: MetadataState['move'] = { request: moveRequest, receipt: moveReceipt, folderId: sandbox.folderId,
+      humanReadState: sourceBefore.readState, agentReadState: agentBefore.readState };
+    await writeFile(metadataContext(context).statePath, JSON.stringify({ ...metadataState, move }, null, 2), { mode: 0o600 });
     completed('gui-metadata-snapshot-saved');
   });
 } else if (process.env.KP_POC_RUNTIME_PHASE === 'persistence') {
   test('両composition rootの再起動後もmetadataを復元し、値を外部へ添付しない', async ({ page }) => {
     const context = await runtime();
-    const state = JSON.parse(await readFile(metadataContext(context).statePath, 'utf8')) as PersistedState;
+    const state = JSON.parse(await readFile(metadataContext(context).statePath, 'utf8')) as MetadataState;
     expect(state.documents.map(item => item.key)).toEqual(['gui-metadata']);
     const snapshot = state.documents[0]!.snapshot;
     privatelyEqual(await persistedSnapshot(context.human, snapshot.documentId), snapshot);
     privatelyEqual(await persistedSnapshot(context.agent, snapshot.documentId), snapshot);
     const path = { documentId: snapshot.documentId };
     const humanDetail = (await getDocument({ ...options(context.human), path, query: { view: 'published' } })).data;
+    const agentDetail = (await getDocument({ ...options(context.agent), path, query: { view: 'published' } })).data;
+    for (const detail of [humanDetail, agentDetail]) {
+      expect(detail.folderId === state.move.folderId && detail.folderId === context.manifest.folders.sandbox.folderId).toBe(true);
+      expect(detail.revision === snapshot.revision).toBe(true);
+    }
+    privatelyEqual(humanDetail.readState, state.move.humanReadState);
+    privatelyEqual(agentDetail.readState, state.move.agentReadState);
+    // 現所属へ作り直さず、同一Human・同一旧Shared要求を既存2 HTTP再起動後に再送する。
+    const replay = await moveDocument({ ...options(context.human), path, body: state.move.request });
+    expect(replay.response.status).toBe(200);
+    privatelyEqual(replay.data, state.move.receipt);
+    const replayedHuman = (await getDocument({ ...options(context.human), path, query: { view: 'published' } })).data;
+    const replayedAgent = (await getDocument({ ...options(context.agent), path, query: { view: 'published' } })).data;
+    privatelyEqual(replayedHuman, humanDetail);
+    privatelyEqual(replayedAgent, agentDetail);
+    privatelyEqual(await persistedSnapshot(context.human, snapshot.documentId), snapshot);
+    privatelyEqual(await persistedSnapshot(context.agent, snapshot.documentId), snapshot);
+    completed('gui-document-move-replay-verified');
     const humanReadState = humanDetail.readState;
     expect(typeof humanDetail.createdAt === 'string' && humanDetail.createdAt.length > 0).toBe(true);
     const createdAt = humanDetail.createdAt!;

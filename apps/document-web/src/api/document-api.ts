@@ -4,6 +4,7 @@ import {
   createFolder,
   renameFolder,
   moveFolder,
+  moveDocument,
   withdrawVersion,
   endDocumentPublication,
   compareDocumentRevisions,
@@ -33,6 +34,7 @@ import {
   type CommandsCreateFolder,
   type CommandsRenameFolder,
   type CommandsMoveFolder,
+  type CommandsMoveDocument,
   type CommandsMetadataPatch,
   type CreateDocumentResult,
   type CommandsPolicyExplicit,
@@ -74,6 +76,9 @@ function apiSort(sort: string | undefined): string | undefined {
 }
 
 export const documentApi = {
+  moveDocument(documentId: string, body: CommandsMoveDocument) {
+    return payload(moveDocument({ ...data, path: { documentId }, body }));
+  },
   moveFolder(folderId: string, body: CommandsMoveFolder) {
     return payload(moveFolder({ ...data, path: { folderId }, body }));
   },

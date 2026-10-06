@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-06 11:01 UTC — 読める文書の移動GUI
+
+- PR87統合main `3448c51d` から、通常詳細の非null folderIdと可視ツリーだけで既存Document moveをGUI化する。[状況](document-move-status.md)と[小計画](../plans/2026-10-06-document-move.md)が再開先
+- fresh read、元/先と継承影響の明示確認、固定UNKNOWN、移動後read拒否時も一覧から保持結果へ戻る導線をTDDで確認する。新backend・権限推測・新基盤なし
+- PR87 main自身のCI `37447848469` は全13jobs/checks・Document/Organization実受入・HTTP再起動・DB36/新衝突2/既存拡張case・cleanup・artifact0を確認済み。公開mainと公式toolchainでworkspaceを復旧したが、旧ローカル証拠が戻ったとは扱わない
+- GUI `6bb0b26` は不正な移動先名/IDの独立I1を反例から補修し、全GUI1089/45・schema/型/build・独立再review GO。受入source `d4a6bc5` は既存metadataケースへの移動1回/HTTP再起動後の固定replayを追加し、純粋66・型・MCP compile・収集18+5成功。次は組合せreviewと同headのDraft/hosted。実装・手順・試験は同機能1PRへ。今回文書移動の実runtimeは未資格。以下は各時点の履歴
+
+---
+
 ## 2026-10-06 08:37 UTC — フォルダー移動の実装・受入source統合
 
 - [Folder移動の状況](document-folder-move-status.md)と[小計画](../plans/2026-10-06-document-folder-move.md)が現在の再開先。同機能の[PR87](https://github.com/AIrisu-072/knowledge-platform/pull/87)内でGUI・限定mapper・試験・日本語手順を完成させる
