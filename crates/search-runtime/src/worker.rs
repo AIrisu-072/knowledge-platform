@@ -97,6 +97,14 @@ pub fn compose(
             "Source descriptor and registration differ",
         ));
     }
+    // The Source lease is renewed on the delivery heartbeat. A lease that
+    // does not outlast several heartbeats expires during any build longer
+    // than one interval, so every such delivery ends unknown and retries.
+    if config.source_lease < config.delivery.renew_interval * 3 {
+        return Err(WorkerError::InvalidConfig(
+            "Source lease must exceed three delivery renewal intervals",
+        ));
+    }
     let indexer = indexer(search_pool, ledger, extractor, &config)?;
     let handler =
         DocumentSearchDeliveryHandler::new(DocumentIndexingService::new(indexer), source_id);
