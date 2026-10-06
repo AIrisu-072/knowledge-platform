@@ -29,6 +29,8 @@ use tokenizers::{PaddingParams, PaddingStrategy, Tokenizer, TruncationParams};
 pub const E5_REVISION: &str = "614241f622f53c4eeff9890bdc4f31cfecc418b3";
 /// Units embedded per forward pass.
 const BATCH: usize = 16;
+/// Texts per blocking call: the longest wait a cancelled caller can see.
+const BLOCKING_GROUP: usize = BATCH * 4;
 
 fn hex(value: &str) -> [u8; 32] {
     let mut out = [0u8; 32];
@@ -233,12 +235,28 @@ impl CandleEmbeddingProvider {
         self.run(texts).await
     }
 
+    /// Embeds in length order, so each batch pads only to similar lengths,
+    /// and in bounded blocking groups, so a cancelled caller (a worker
+    /// shutting down) waits for one group, not the whole Source. Results are
+    /// returned in input order.
     async fn run(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>, SearchError> {
-        let model = self.model.clone();
-        tokio::task::spawn_blocking(move || model.embed(texts))
-            .await
-            .map_err(|_| SearchError::OperationFailed("embedding task failed".into()))?
-            .map_err(|error| SearchError::OperationFailed(format!("embedding failed: {error}")))
+        let mut order: Vec<usize> = (0..texts.len()).collect();
+        order.sort_by_key(|&index| texts[index].len());
+        let mut out = vec![Vec::new(); texts.len()];
+        for group in order.chunks(BLOCKING_GROUP) {
+            let model = self.model.clone();
+            let batch: Vec<String> = group.iter().map(|&index| texts[index].clone()).collect();
+            let values = tokio::task::spawn_blocking(move || model.embed(batch))
+                .await
+                .map_err(|_| SearchError::OperationFailed("embedding task failed".into()))?
+                .map_err(|error| {
+                    SearchError::OperationFailed(format!("embedding failed: {error}"))
+                })?;
+            for (&index, values) in group.iter().zip(values) {
+                out[index] = values;
+            }
+        }
+        Ok(out)
     }
 }
 
