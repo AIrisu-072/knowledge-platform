@@ -31,6 +31,7 @@ import { createOperationId } from '../application/operation-id';
 import { documentStatusLabel, versionStatusLabel } from '../view-model/document-status';
 import { jstDateTimeLocalToUtc } from '../application/schedule-time';
 import { formatDateTime } from '../view-model/date-time';
+import { unreadFilterRouteError } from '../application/document-unread-filter';
 import { metadataFilterRouteError } from '../application/document-metadata-filters';
 import { validateListSearch, type DetailSearch, type DocumentDetailTab, type VersionWorkflow } from '../application/search-state';
 import styles from './DocumentDetail.module.css';
@@ -128,7 +129,7 @@ export function DocumentDetailPage() {
         const returnUrl = new URL(search.returnTo, window.location.origin);
         if (returnUrl.origin === window.location.origin && returnUrl.pathname === '/documents') {
           const parsed = defaultParseSearch(returnUrl.search);
-          const error = metadataFilterRouteError(parsed);
+          const error = metadataFilterRouteError(parsed) ?? unreadFilterRouteError(parsed);
           if (error) { setReturnError(error); return; }
           listSearch = validateListSearch(parsed);
         }

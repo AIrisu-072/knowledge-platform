@@ -955,3 +955,174 @@ test('empty metadata route uses the same Query key and cached query as unspecifi
   expect(api.listDocuments).toHaveBeenCalledTimes(initialCalls);
   expect(query.queryKey[1]).toMatchObject({ documentType: undefined, owningDepartment: undefined, category: undefined });
 });
+
+test('published unread draft applies with existing filters, drops cursor on and off, and keeps selection', async () => {
+  const api = mockApi();
+  const conditions = { titleContains: 'keep', documentType: 'type', owningDepartment: '   ', category: 'category', folderId, includeDescendants: true, sort: 'title_asc', pageSize: 25, cursor: 'old', selectedDocumentId: documentId, panel: 'open' };
+  const { router } = renderAt('/documents' + defaultStringifySearch(conditions));
+  const checkbox = await screen.findByRole('checkbox', { name: '未読のみ' });
+  expect(checkbox).not.toBeChecked();
+  const calls = api.listDocuments.mock.calls.length;
+  fireEvent.click(checkbox);
+  expect(api.listDocuments).toHaveBeenCalledTimes(calls);
+  expect(router.state.location.search).not.toHaveProperty('unreadOnly');
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  await waitFor(() => expect(api.listDocuments.mock.lastCall![0]).toHaveProperty('unreadOnly', true));
+  const { cursor: oldCursor, ...keptConditions } = conditions; void oldCursor;
+  expect(router.state.location.search).toMatchObject({ ...keptConditions, unreadOnly: true });
+  expect(router.state.location.search).not.toHaveProperty('cursor');
+  await act(async () => { await router.navigate({ to: '/documents', search: { ...router.state.location.search, cursor: 'second' } as never }); });
+  fireEvent.click(screen.getByRole('button', { name: '属性の絞り込みを解除' }));
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('documentType'));
+  expect(router.state.location.search).toHaveProperty('unreadOnly', true);
+  expect(checkbox).toBeChecked();
+  await act(async () => { await router.navigate({ to: '/documents', search: { ...router.state.location.search, cursor: 'third' } as never }); });
+  fireEvent.click(checkbox);
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('unreadOnly'));
+  expect(router.state.location.search).not.toHaveProperty('cursor');
+  expect(router.state.location.search).toMatchObject({ titleContains: 'keep', folderId, includeDescendants: true, sort: 'title_asc', pageSize: 25, selectedDocumentId: documentId, panel: 'open' });
+  await waitFor(() => expect(api.listDocuments.mock.lastCall![0]).not.toHaveProperty('unreadOnly'));
+});
+
+test.each(['authoring', 'history'])('unread checkbox is hidden for %s', async view => {
+  mockApi();
+  renderAt('/documents' + defaultStringifySearch({ view }));
+  await screen.findByRole('button', { name: /受入手順/ });
+  expect(screen.queryByRole('checkbox', { name: '未読のみ' })).not.toBeInTheDocument();
+});
+
+test('raw published false and missing unread share a GET and cached Query despite router merge', async () => {
+  const api = mockApi();
+  const { router, client } = renderAt('/documents?view=published&unreadOnly=false&panel=closed');
+  const checkbox = await screen.findByRole('checkbox', { name: '未読のみ' });
+  expect(checkbox).not.toBeChecked();
+  expect(api.listDocuments.mock.lastCall![0]).not.toHaveProperty('unreadOnly');
+  const query = client.getQueryCache().findAll({ queryKey: ['documents'] })[0]!;
+  const calls = api.listDocuments.mock.calls.length;
+  await act(async () => { await router.navigate({ to: '/documents', search: { view: 'published', includeDescendants: false, sort: 'published_at_desc', pageSize: 50, panel: 'closed' } }); });
+  expect(client.getQueryCache().findAll({ queryKey: ['documents'] })).toEqual([query]);
+  expect(api.listDocuments).toHaveBeenCalledTimes(calls);
+  expect(query.queryKey[1]).toMatchObject({ unreadOnly: undefined });
+});
+
+test.each([
+  [{ unreadOnly: '', documentType: 'keep' }, { documentType: 'keep' }, ['unreadOnly']],
+  [{ unreadOnly: false, view: 'authoring', category: 'keep' }, { view: 'authoring', category: 'keep' }, ['unreadOnly']],
+  [{ documentType: [1], unreadOnly: true }, { unreadOnly: true }, ['documentType']],
+  [{ documentType: [1], unreadOnly: '' }, {}, ['documentType', 'unreadOnly']],
+  [{ documentType: null, unreadOnly: false, view: 'history' }, { view: 'history' }, ['documentType', 'unreadOnly']],
+])('route error removes each invalid group independently without widening valid conditions: %p', async (conditions, expected, removed) => {
+  const api = mockApi();
+  const originalResponse = globalThis.Response; globalThis.Response = class {} as typeof Response;
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    const { router } = renderAt('/documents' + defaultStringifySearch({ ...conditions, titleContains: 'keep', cursor: 'discard', panel: 'closed' }));
+    const link = await screen.findByRole('link', { name: '条件を解除して一覧へ戻る' });
+    expect(api.listDocuments).not.toHaveBeenCalled();
+    fireEvent.click(link);
+    await screen.findByRole('button', { name: /受入手順/ });
+    expect(router.state.location.search).toMatchObject({ titleContains: 'keep', ...expected });
+    for (const key of [...removed, 'cursor']) expect(router.state.location.search).not.toHaveProperty(key);
+    expect(api.listDocuments.mock.lastCall![0]).toMatchObject(expected);
+  } finally { globalThis.Response = originalResponse; warn.mockRestore(); error.mockRestore(); }
+});
+
+test.each(['/documents?unreadOnly=', '/documents?view=authoring&unreadOnly=false', '/documents?view=invalid&unreadOnly=true'])('invalid unread returnTo stops with a fixed reason instead of a default GET: %p', async returnTo => {
+  const api = mockApi();
+  const { router } = renderAt(`/documents/${documentId}` + defaultStringifySearch({ view: 'published', returnTo }));
+  await screen.findByRole('heading', { name: '受入手順', level: 1 });
+  fireEvent.click(screen.getByRole('button', { name: /一覧へ戻る/ }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(returnTo.endsWith('=') ? '未読のみはtrueまたはfalseで指定してください。URLの条件を確認してください。' : '未読のみは公開一覧でのみ指定できます。URLの条件を確認してください。');
+  expect(router.state.location.pathname).toBe(`/documents/${documentId}`);
+  expect(api.listDocuments).not.toHaveBeenCalled();
+});
+
+test.each([{ pageSize: 0 }, { cursor: '' }, { sort: 'invalid' }])('unread actual GET survives old-condition fallback and detail return: %p', async invalid => {
+  const api = mockApi();
+  const returnTo = '/documents' + defaultStringifySearch({ unreadOnly: true, documentType: 'keep', ...invalid });
+  const { router } = renderAt(`/documents/${documentId}` + defaultStringifySearch({ view: 'published', returnTo }));
+  await screen.findByRole('heading', { name: '受入手順', level: 1 });
+  fireEvent.click(screen.getByRole('button', { name: /一覧へ戻る/ }));
+  expect(await screen.findByRole('checkbox', { name: '未読のみ' })).toBeChecked();
+  await screen.findByRole('button', { name: /受入手順/ });
+  expect(api.listDocuments.mock.lastCall![0]).toMatchObject({ unreadOnly: true, documentType: 'keep' });
+  expect(router.state.location.search.unreadOnly).toBe(true);
+});
+
+test('unread URL history, detail selection and page/sort/folder changes preserve unknown operations', async () => {
+  const api = mockApi();
+  api.listDocuments.mockResolvedValue({ view: 'published', items: [listItem('published')], nextCursor: 'next' });
+  api.listFolderChildren.mockResolvedValue({ items: [{ folderId: reviewFolderId, parentFolderId: folderId, name: '審査', revision: 3, capabilities: {} }], nextCursor: null, capabilities: {} });
+  const { router, client } = renderAt('/documents' + defaultStringifySearch({ documentType: 'keep', unreadOnly: true, selectedDocumentId: documentId }));
+  const store = metadataOperations(client);
+  const snapshot = { status: 'unknown' as const, request: { operationId: 'unread-kept', expectedDocumentRevision: 7, set: { category: 'kept' }, unset: [], reason: 'keep' } };
+  store.put(documentId, snapshot);
+  try {
+    const checkbox = await screen.findByRole('checkbox', { name: '未読のみ' });
+    expect(checkbox).toBeChecked();
+    await screen.findByRole('button', { name: /受入手順/ });
+    fireEvent.click(screen.getByRole('button', { name: /詳細を開く/ }));
+    await screen.findByRole('heading', { name: '受入手順', level: 1 });
+    expect(String(router.state.location.search.returnTo)).toContain('unreadOnly=true');
+    fireEvent.click(screen.getByRole('button', { name: /一覧へ戻る/ }));
+    expect(await screen.findByRole('checkbox', { name: '未読のみ' })).toBeChecked();
+    await screen.findByRole('button', { name: /受入手順/ });
+    expect(router.state.location.search).toMatchObject({ unreadOnly: true, documentType: 'keep', selectedDocumentId: documentId });
+    fireEvent.click(screen.getByRole('checkbox', { name: '未読のみ' }));
+    fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+    await waitFor(() => expect(router.state.location.search).not.toHaveProperty('unreadOnly'));
+    await act(async () => router.history.back());
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: '未読のみ' })).toBeChecked());
+    await act(async () => router.history.forward());
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: '未読のみ' })).not.toBeChecked());
+    fireEvent.click(screen.getByRole('checkbox', { name: '未読のみ' }));
+    fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+    await waitFor(() => expect(router.state.location.search.unreadOnly).toBe(true));
+    await screen.findByRole('button', { name: /受入手順/ });
+    fireEvent.click(screen.getByRole('button', { name: '次のページ' }));
+    await waitFor(() => expect(api.listDocuments.mock.lastCall![0].cursor).toBe('next'));
+    fireEvent.change(screen.getByRole('combobox', { name: '並び順' }), { target: { value: 'title_asc' } });
+    await waitFor(() => expect(router.state.location.search).not.toHaveProperty('cursor'));
+    fireEvent.change(screen.getByRole('combobox', { name: '1ページあたりの件数' }), { target: { value: '25' } });
+    await waitFor(() => expect(api.listDocuments.mock.lastCall![0].pageSize).toBe(25));
+    fireEvent.click(await screen.findByRole('button', { name: '審査' }));
+    await waitFor(() => expect(api.listDocuments.mock.lastCall![0].folderId).toBe(reviewFolderId));
+    expect(api.listDocuments.mock.lastCall![0]).toMatchObject({ unreadOnly: true, documentType: 'keep', sort: 'title_asc', pageSize: 25 });
+    expect(store.get(documentId)).toBe(snapshot);
+  } finally { store.clear(documentId); }
+});
+
+test('unread key keeps a delayed old published list out of current results', async () => {
+  const api = mockApi();
+  let resolveOld!: (value: DocumentList) => void;
+  api.listDocuments.mockImplementation(query => query.unreadOnly === true ? Promise.resolve({ view: 'published', items: [{ ...listItem('published'), title: '現在の未読結果' }], nextCursor: null }) : new Promise(resolve => { resolveOld = resolve; }));
+  renderAt('/documents?panel=closed');
+  await waitFor(() => expect(api.listDocuments).toHaveBeenCalled());
+  fireEvent.click(await screen.findByRole('checkbox', { name: '未読のみ' }));
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  await screen.findByRole('button', { name: '現在の未読結果' });
+  await act(async () => resolveOld({ view: 'published', items: [{ ...listItem('published'), title: '旧条件の遅延結果' }], nextCursor: null } as DocumentList));
+  expect(screen.getByRole('button', { name: '現在の未読結果' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: '旧条件の遅延結果' })).not.toBeInTheDocument();
+});
+
+test('unread GET failure remains distinct from empty unread results and retries the same condition', async () => {
+  const api = mockApi();
+  api.listDocuments.mockRejectedValueOnce({ code: 'FORBIDDEN', status: 403 }).mockResolvedValue({ view: 'published', items: [], nextCursor: null });
+  renderAt('/documents?unreadOnly=true&panel=closed');
+  expect(await screen.findByRole('alert')).toBeVisible();
+  expect(screen.queryByRole('heading', { name: '文書がありません' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+  expect(await screen.findByRole('heading', { name: '文書がありません' })).toBeVisible();
+  expect(api.listDocuments.mock.lastCall![0]).toHaveProperty('unreadOnly', true);
+});
+
+test('normal editing and document links have fresh query targets without unread or cursor', async () => {
+  mockApi();
+  renderAt('/documents?unreadOnly=true&cursor=old');
+  await screen.findByRole('button', { name: /受入手順/ });
+  expect(screen.getByRole('link', { name: '編集作業' })).toHaveAttribute('href', '/documents?view=authoring');
+  expect(screen.getByRole('link', { name: '文書' })).toHaveAttribute('href', '/documents?view=published');
+});

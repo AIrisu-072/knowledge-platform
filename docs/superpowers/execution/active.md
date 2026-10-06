@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 2026-10-06 03:16 UTC — 公開一覧の未読条件GUI
+
+- PR81統合main `0801c986` から、既存unreadOnly queryを公開一覧の明示絞り込みへ接続する。[状況](document-unread-filter-status.md)と[小計画](../plans/2026-10-06-document-unread-filter.md)を今回の再開先とする
+- optional bool、非published falseも停止、query入口の正規化、metadataとの複合不正条件解除、URL/詳細往復をTDDで確認する。既読記録、新backend、Search、新fixture/基盤なし
+- 属性3条件PR81は全適用CI・実GET/HTTP再起動・cleanup・全4run artifact0成功でmerge済み。main push CI `37407454204` も全13jobs・属性実GET/再起動・Org build・DB36・cleanup・artifact0成功。03:25 UTC追補：未読source `1621e25c` は全GUI828/39・型/build・pure28+3・collection2+2/18+5成功。次は日本語文書との組合せの独立レビューと同head Draft/hosted。今回未読条件の実runtime資格は未取得。以下は各時点の履歴
+
+---
+
 ## 2026-10-06 — Search Platform本番化プログラム
 
 - main `ce8ed4f` から `feat/search-platform-production-20261006` のDraft PR 1本で進める。[状態](search-platform-production-program-status.md)と[計画](../programs/search-platform-production/plan.md)が再開先
