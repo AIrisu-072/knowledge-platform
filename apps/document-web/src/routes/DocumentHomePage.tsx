@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useNavigate, useRouterState, useSearch } from '@tanstack/react-router';
+import { useNavigate, useRouter, useRouterState, useSearch } from '@tanstack/react-router';
+import { problemFromUnknown } from '../application/problem-mapping';
 import { documentApi, type DocumentList, type Folder } from '../application/document-workspace';
 import { ApiFeedback, LoadingState } from '../components/shared/ApiFeedback';
 import { AppShell } from '../components/app-shell/AppShell';
 import { OriginalVersionDownload } from '../components/shared/OriginalVersionDownload';
+import { DocumentHistoryPanel } from '../components/document/DocumentHistoryPanel';
 import { DocumentRegistration } from '../components/document/DocumentRegistration';
 import type { SelectedFolderContext } from '../application/document-root-folder';
 import { FolderNode } from '../components/document/FolderNode';
@@ -18,7 +20,7 @@ import { FolderMove } from '../components/document/FolderMove';
 import { folderMoveOperations } from '../application/document-folder-move';
 import { RootFolderCreate } from '../components/document/RootFolderCreate';
 import { createdRangeFields, createdRangeLocalValue, createdRangeRouteError, initialCreatedRangeDraft, currentCreatedRangeDraft, resolveCreatedRangeDraft, documentListUrlError } from '../application/document-created-range';
-import type { ListSearch } from '../application/search-state';
+import { validateListSearch, type ListSearch } from '../application/search-state';
 import { metadataFilterFields, metadataFilterValidation, type MetadataFilters } from '../application/document-metadata-filters';
 import { documentListStatusLabel } from '../view-model/document-status';
 import { formatDateTime as formatDate } from '../view-model/date-time';
@@ -31,6 +33,7 @@ export function DocumentHomePage() {
   const navigate = useNavigate({ from: '/documents' });
   const currentUrl = useRouterState({ select: (state) => state.location.href });
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [chosenFolder, setChosenFolder] = useState<Folder | undefined>();
   const [folderContext, setFolderContext] = useState<SelectedFolderContext>();
   const renameStore = folderRenameOperations(queryClient);
@@ -71,39 +74,93 @@ export function DocumentHomePage() {
   // A changed URL pair invalidates both drafts during render, before effect synchronization.
   const currentCreatedDraft = currentCreatedRangeDraft(search, createdDraft);
   const appliedFilterError = metadataFilterValidation(search) ?? createdRangeRouteError(search) ?? documentListUrlError(currentUrl);
+  const listKey = ['documents', {
+    view: search.view,
+    unreadOnly: search.unreadOnly === true ? true : undefined,
+    titleContains: search.titleContains,
+    documentType: search.documentType || undefined,
+    owningDepartment: search.owningDepartment || undefined,
+    category: search.category || undefined,
+    createdFrom: search.createdFrom || undefined,
+    createdBefore: search.createdBefore || undefined,
+    folderId: search.folderId,
+    includeDescendants: search.includeDescendants,
+    sort: search.sort,
+    pageSize: search.pageSize,
+    cursor: search.cursor,
+  }] as const;
+  const historyList = search.view === 'history';
+  // Keep only the refusal across normal read resets; successful rows are never an authorization cache.
+  const refusalKey = ['document-history-list-refusal', listKey[1]] as const;
+  const refusal = useQuery<{ error: unknown } | null>({ queryKey: refusalKey, queryFn: skipToken, initialData: null, gcTime: Infinity });
+  const listIdentity = JSON.stringify(listKey);
+  useEffect(() => {
+    if (!historyList) return;
+    return () => {
+      void queryClient.cancelQueries({ queryKey: listKey, exact: true }, { revert: false });
+      queryClient.removeQueries({ queryKey: listKey, exact: true });
+    };
+  }, [queryClient, historyList, listIdentity]);
   const listQuery = useQuery({
-    enabled: !appliedFilterError,
-    queryKey: ['documents', {
-      view: search.view,
-      unreadOnly: search.unreadOnly === true ? true : undefined,
-      titleContains: search.titleContains,
-      documentType: search.documentType || undefined,
-      owningDepartment: search.owningDepartment || undefined,
-      category: search.category || undefined,
-      createdFrom: search.createdFrom || undefined,
-      createdBefore: search.createdBefore || undefined,
-      folderId: search.folderId,
-      includeDescendants: search.includeDescendants,
-      sort: search.sort,
-      pageSize: search.pageSize,
-      cursor: search.cursor,
-    }],
-    queryFn: () => documentApi.listDocuments({
-      view: search.view,
-      sort: search.sort,
-      pageSize: search.pageSize,
-      ...(search.unreadOnly === true ? { unreadOnly: true } : {}),
-      ...(search.titleContains ? { titleContains: search.titleContains } : {}),
-      ...(search.documentType ? { documentType: search.documentType } : {}),
-      ...(search.owningDepartment ? { owningDepartment: search.owningDepartment } : {}),
-      ...(search.category ? { category: search.category } : {}),
-      ...(search.createdFrom ? { createdFrom: search.createdFrom } : {}),
-      ...(search.createdBefore ? { createdBefore: search.createdBefore } : {}),
-      ...(search.folderId ? { folderId: search.folderId } : {}),
-      ...(search.includeDescendants ? { includeDescendants: true } : {}),
-      ...(search.cursor ? { cursor: search.cursor } : {}),
-    }),
+    enabled: !appliedFilterError && (!historyList || !refusal.data),
+    queryKey: listKey,
+    ...(historyList ? { retry: false, refetchOnMount: 'always' as const } : {}),
+    queryFn: async ({ signal }) => {
+      const blocked = historyList && queryClient.getQueryData<{ error: unknown }>(refusalKey);
+      if (blocked) throw blocked.error;
+      try {
+        const result = await documentApi.listDocuments({
+          view: search.view,
+          sort: search.sort,
+          pageSize: search.pageSize,
+          ...(search.unreadOnly === true ? { unreadOnly: true } : {}),
+          ...(search.titleContains ? { titleContains: search.titleContains } : {}),
+          ...(search.documentType ? { documentType: search.documentType } : {}),
+          ...(search.owningDepartment ? { owningDepartment: search.owningDepartment } : {}),
+          ...(search.category ? { category: search.category } : {}),
+          ...(search.createdFrom ? { createdFrom: search.createdFrom } : {}),
+          ...(search.createdBefore ? { createdBefore: search.createdBefore } : {}),
+          ...(search.folderId ? { folderId: search.folderId } : {}),
+          ...(search.includeDescendants ? { includeDescendants: true } : {}),
+          ...(search.cursor ? { cursor: search.cursor } : {}),
+        });
+        if (historyList && result.view !== 'history') throw new Error('履歴一覧の応答を確認できません。');
+        return result;
+      } catch (error) {
+        const problem = problemFromUnknown(error);
+        if (historyList && !signal.aborted && problem && [401, 403, 404].includes(problem.status)) {
+          queryClient.setQueryData(refusalKey, { error });
+        }
+        throw error;
+      }
+    },
   });
+  const listState = useSyncExternalStore(
+    listener => queryClient.getQueryCache().subscribe(listener),
+    () => historyList ? queryClient.getQueryState<DocumentList>(listKey) : undefined,
+  );
+  const listError = historyList ? refusal.data?.error ?? listQuery.error : listQuery.error;
+  const historyListReady = !appliedFilterError && !listError && listQuery.isSuccess && listQuery.fetchStatus === 'idle'
+    && listQuery.isFetchedAfterMount && !listState?.isInvalidated && listQuery.data.view === 'history';
+  function historySelectionReadable() {
+    const state = queryClient.getQueryState<DocumentList>(listKey);
+    let liveSearch: ListSearch;
+    try { liveSearch = validateListSearch(router.state.location.search); } catch { return false; }
+    const sameSelection = [...new Set([...Object.keys(search), ...Object.keys(liveSearch)])]
+      .every(key => search[key as keyof ListSearch] === liveSearch[key as keyof ListSearch]);
+    return sameSelection && liveSearch.view === 'history' && liveSearch.panel === 'open' && router.history.location.href === currentUrl && !queryClient.getQueryData(refusalKey)
+      && state?.status === 'success' && !state.isInvalidated && state.fetchStatus === 'idle'
+      && state.data === listQuery.data && state.data?.view === 'history'
+      && state.data.items.some(item => item.documentId === search.selectedDocumentId);
+  }
+  function restartHistoryList() {
+    if (queryClient.getQueryState(listKey)?.fetchStatus === 'fetching') return;
+    void queryClient.cancelQueries({ queryKey: listKey, exact: true }, { revert: false });
+    // Reset the successful data before clearing the barrier, never revive old rows.
+    void queryClient.resetQueries({ queryKey: listKey, exact: true });
+    queryClient.setQueryData(refusalKey, null);
+  }
+
   const rootQuery = useQuery({ queryKey: ['folder-tree', 'root'], queryFn: documentApi.getRootFolder });
   const registrationFolderQuery = useQuery({
     queryKey: ['folder-tree', search.folderId],
@@ -114,25 +171,28 @@ export function DocumentHomePage() {
     ? { folderId: search.folderId, name: chosenFolder?.folderId === search.folderId ? chosenFolder.name : `選択中のフォルダー（${search.folderId}）` }
     : rootQuery.data;
   const registrationCapability = search.folderId ? registrationFolderQuery.data?.capabilities.createDocument : rootQuery.data?.capabilities.createDocument;
-  const items = useMemo(() => appliedFilterError ? [] : listQuery.data?.items ?? [], [listQuery.data?.items, appliedFilterError]);
-  const panelOpen = search.panel === 'open' && search.view !== 'history';
-  const selected = items.find((item) => item.documentId === search.selectedDocumentId) ?? (panelOpen ? items[0] : undefined);
+  const items = useMemo(() => appliedFilterError || historyList && !historyListReady ? [] : listQuery.data?.items ?? [], [listQuery.data?.items, appliedFilterError, historyList, historyListReady]);
+  const panelOpen = search.panel === 'open';
+  const selected = items.find((item) => item.documentId === search.selectedDocumentId) ?? (panelOpen && search.view !== 'history' ? items[0] : undefined);
   const detailView = search.view === 'authoring' ? 'authoring' : 'published';
   const selectedDetailQuery = useQuery({
     queryKey: ['document', selected?.documentId, detailView],
     queryFn: () => documentApi.getDocument(selected!.documentId, detailView),
-    enabled: Boolean(selected && panelOpen),
+    enabled: Boolean(selected && panelOpen && search.view !== 'history'),
   });
   const selectedVersionQuery = useQuery({
     queryKey: ['document-version', selected?.documentId, selected?.displayVersion.versionId, detailView],
     queryFn: () => documentApi.getDocumentVersion(selected!.documentId, selected!.displayVersion.versionId, detailView),
-    enabled: Boolean(selected && panelOpen),
+    enabled: Boolean(selected && panelOpen && search.view !== 'history'),
   });
 
   function updateSearch(patch: Partial<ListSearch>) {
     void navigate({
       search: (previous) => {
         const next = { ...previous, ...patch } as ListSearch;
+        if (historyList && Object.keys(patch).some(key => key !== 'panel' && key !== 'selectedDocumentId')) {
+          next.panel = 'closed';
+        }
         if (patch.unreadOnly === undefined && Object.prototype.hasOwnProperty.call(patch, 'unreadOnly')) delete next.unreadOnly;
         if (patch.cursor === undefined && Object.prototype.hasOwnProperty.call(patch, 'cursor')) delete next.cursor;
         if (patch.folderId === undefined && Object.prototype.hasOwnProperty.call(patch, 'folderId')) delete next.folderId;
@@ -170,12 +230,14 @@ export function DocumentHomePage() {
     {
       id: 'state',
       header: '状態',
-      cell: ({ row }) => <span className={styles.stateBadge}>{documentListStatusLabel(row.original)}</span>,
+      cell: ({ row }) => historyList && 'ended' in row.original
+        ? <><span className={styles.stateBadge}>{row.original.ended ? '公開終了済み' : '公開終了していません'}</span><span>代表版: {row.original.displayVersion.lifecycleState}</span></>
+        : <span className={styles.stateBadge}>{documentListStatusLabel(row.original)}</span>,
     },
     {
       id: 'folder',
       header: 'フォルダー',
-      cell: ({ row }) => row.original.folderName ?? 'すべての文書',
+      cell: ({ row }) => row.original.folderName ?? (search.view === 'history' ? '表示できません' : 'すべての文書'),
     },
     {
       id: 'version',
@@ -184,7 +246,7 @@ export function DocumentHomePage() {
     },
     {
       id: 'timestamp',
-      header: search.view === 'authoring' ? '更新日時' : '公開日時',
+      header: historyList ? '表示日時' : search.view === 'authoring' ? '更新日時' : '公開日時',
       cell: ({ row }) => (
         <time dateTime={row.original.displayTimestamp.value}>
           {formatDate(row.original.displayTimestamp.value)}
@@ -245,7 +307,12 @@ export function DocumentHomePage() {
     });
   }
 
-  const panel = selected ? (
+  const panel = selected && historyList && 'ended' in selected && panelOpen ? (
+    <DocumentHistoryPanel key={selected.documentId} document={selected} isDocumentReadable={historySelectionReadable} onClose={() => {
+      updateSearch({ panel: 'closed' });
+      document.querySelector<HTMLButtonElement>(`[data-document-id="${selected.documentId}"]`)?.focus();
+    }} />
+  ) : selected && !historyList ? (
     <div className={styles.panelContent}>
       <div className={styles.panelHeader}>
         <div><small>選択中の文書</small><h2>{selected.title}</h2></div>
@@ -328,16 +395,16 @@ export function DocumentHomePage() {
 
   return (
     <AppShell
-      activeNavigation={search.view === 'authoring' ? 'editing' : 'documents'}
+      activeNavigation={search.view === 'history' ? 'history' : search.view === 'authoring' ? 'editing' : 'documents'}
       contextPanel={panel}
-      contextPanelLabel="選択中の文書"
+      contextPanelLabel={search.view === 'history' ? '文書履歴パネル' : '選択中の文書'}
       headerContext={<><span>文書</span>{selected?.folderName && <>　/　{selected.folderName}</>}</>}
       navigationContent={navigationContent}
       showContextPanel={Boolean(selected && panelOpen)}
     >
       <div className={styles.pageHeader}>
         <div>
-          <h1>{selected?.folderName ? `${selected.folderName}の文書` : search.view === 'authoring' ? '編集作業' : '文書一覧'}</h1>
+          <h1>{search.view === 'history' ? '文書履歴' : selected?.folderName ? `${selected.folderName}の文書` : search.view === 'authoring' ? '編集作業' : '文書一覧'}</h1>
         </div>
         <DocumentRegistration folder={registrationFolder} capabilityKnown={Boolean(registrationCapability)} canCreate={registrationCapability?.status === 'available'} contextKey={currentUrl} onCreated={result => {
           void queryClient.invalidateQueries({ queryKey: ['documents'] });
@@ -414,9 +481,10 @@ export function DocumentHomePage() {
           <p id="metadata-filter-help" className={styles.muted}>属性は完全一致で、複数の条件はすべて一致する文書を表示します。空欄は未指定です。空白も値として扱います。</p>
           <p id="created-range-help" className={styles.muted}>文書自体の作成日時で絞り込みます。JST / UTC+09:00・分単位。開始を含み、終了を含みません。</p>
           {(filterError || appliedFilterError) && <p role="alert">{filterError || appliedFilterError}</p>}
-          {!appliedFilterError && listQuery.isPending && <LoadingState label="文書を読み込み中" />}
-          {!appliedFilterError && listQuery.error && <ApiFeedback error={listQuery.error} onRetry={() => void listQuery.refetch()} />}
-          {!appliedFilterError && listQuery.data && items.length === 0 && (
+          {!appliedFilterError && (!historyList || !listError) && listQuery.isPending && <LoadingState label="文書を読み込み中" />}
+          {!appliedFilterError && Boolean(listError) && <ApiFeedback error={listError} {...(!historyList ? { onRetry: () => void listQuery.refetch() } : {})} />}
+          {historyList && <button type="button" disabled={listQuery.isFetching} onClick={restartHistoryList}>文書履歴一覧を読み直す</button>}
+          {!appliedFilterError && listQuery.data && (!historyList || historyListReady) && items.length === 0 && (
             <div className={styles.emptyState}>
               <h2>文書がありません</h2>
               <p>検索条件やフォルダーを変更してください。</p>

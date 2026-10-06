@@ -38,7 +38,7 @@ function retryable(error: unknown) {
   return !problem || problem.status >= 500 && problem.retryable;
 }
 
-export function useDocumentContentHistory(documentId: string) {
+export function useDocumentContentHistory(documentId: string, isDocumentReadable?: () => boolean) {
   const client = useQueryClient();
   const refusal = useQuery<Refusal>({ queryKey: refusalKey(documentId), queryFn: skipToken, initialData: null, gcTime: Infinity });
   const queryKey = pagesKey(documentId);
@@ -56,7 +56,7 @@ export function useDocumentContentHistory(documentId: string) {
     },
     getNextPageParam: last => last.nextCursor ?? undefined,
     retry: false,
-    enabled: !refusal.data,
+    enabled: () => !refusal.data && isDocumentReadable?.() !== false,
   });
   const continuationError = query.isFetchNextPageError && retryable(query.error);
   const readable = !refusal.data && (!query.error || continuationError) && !(query.isFetching && !query.isFetchingNextPage);

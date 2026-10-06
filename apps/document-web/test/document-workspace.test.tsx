@@ -58,7 +58,11 @@ function mockApi() {
   Object.values(api).forEach((mock) => mock.mockReset());
   api.getRootFolder.mockResolvedValue({ folderId, name: 'ルート', revision: 1, parentFolderId: null, capabilities: {} });
   api.listFolderChildren.mockResolvedValue({ items: [], nextCursor: null, capabilities: {} });
-  api.listDocuments.mockResolvedValue({ view: 'published', items: [listItem('published')], nextCursor: null });
+  api.listDocuments.mockImplementation(query => {
+    if (query.view !== 'history') return Promise.resolve({ view: 'published', items: [listItem('published')], nextCursor: null });
+    const { currentVersionId: ignored, ...historyItem } = listItem('published'); void ignored;
+    return Promise.resolve({ view: 'history', items: [{ ...historyItem, lifecycleState: 'published', ended: false }], nextCursor: null });
+  });
   api.getDocument.mockResolvedValue(documentDetail('published'));
   api.listDocumentVersions.mockResolvedValue({ items: [version()], nextCursor: null });
   api.getDocumentVersion.mockResolvedValue(versionDetail());
@@ -1123,8 +1127,8 @@ test('normal editing and document links have fresh query targets without unread 
   mockApi();
   renderAt('/documents?unreadOnly=true&cursor=old');
   await screen.findByRole('button', { name: /受入手順/ });
-  expect(screen.getByRole('link', { name: '編集作業' })).toHaveAttribute('href', '/documents?view=authoring');
-  expect(screen.getByRole('link', { name: '文書' })).toHaveAttribute('href', '/documents?view=published');
+  expect(screen.getByRole('link', { name: '編集作業' })).toHaveAttribute('href', '/documents' + defaultStringifySearch(validateListSearch({ view: 'authoring' })));
+  expect(screen.getByRole('link', { name: '文書' })).toHaveAttribute('href', '/documents' + defaultStringifySearch(validateListSearch({ view: 'published' })));
 });
 
 
