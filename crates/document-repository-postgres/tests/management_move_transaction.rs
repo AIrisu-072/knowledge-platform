@@ -255,6 +255,86 @@ async fn concurrent_reciprocal_folder_moves_cannot_form_a_cycle() {
 }
 
 #[tokio::test]
+async fn folder_move_name_collision_returns_conflict_without_persisting_changes() {
+    let f = fixture().await;
+    allow(&f, [Action::Administer]).await;
+    let from = add_folder(&f, f.root_id, "Source").await;
+    let to = add_folder(&f, f.root_id, "Destination").await;
+    let moved = add_folder(&f, from, "Same Name").await;
+    let existing = add_folder(&f, to, "Same Name").await;
+    sqlx::query("UPDATE documents SET folder_id = $1 WHERE document_id = $2")
+        .bind(moved.as_uuid())
+        .bind(f.document_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    let folders_before = [
+        folder_state(&f, moved).await,
+        folder_state(&f, existing).await,
+        folder_state(&f, from).await,
+        folder_state(&f, to).await,
+    ];
+    let document_before = document_state(&f).await;
+    let access_before: i64 =
+        sqlx::query_scalar("SELECT access_revision FROM document_access_state WHERE id = 1")
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    let events_before = event_count(&f, "FolderMoved").await;
+    let audits_before: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_outbox_events WHERE event_type = 'folder.moved'",
+    )
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    let command = move_folder(moved, from, to, 0);
+    let operation_id = command.operation_id();
+    let result = FolderService::new(f.repository.clone())
+        .move_folder(&context(), command)
+        .await;
+
+    assert_eq!(
+        [
+            folder_state(&f, moved).await,
+            folder_state(&f, existing).await,
+            folder_state(&f, from).await,
+            folder_state(&f, to).await,
+        ],
+        folders_before
+    );
+    assert_eq!(document_state(&f).await, document_before);
+    let access_after: i64 =
+        sqlx::query_scalar("SELECT access_revision FROM document_access_state WHERE id = 1")
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(access_after, access_before);
+    let operations: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM document_management_operations WHERE operation_id = $1",
+    )
+    .bind(operation_id.as_uuid())
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(operations, 0);
+    assert_eq!(event_count(&f, "FolderMoved").await, events_before);
+    let audits_after: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_outbox_events WHERE event_type = 'folder.moved'",
+    )
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(audits_after, audits_before);
+    let outcome = match result {
+        Err(ApplicationError::Conflict) => "conflict",
+        Err(ApplicationError::Internal(_)) => "internal",
+        Err(_) => "other-error",
+        Ok(_) => "success",
+    };
+    assert_eq!(outcome, "conflict");
+}
+
+#[tokio::test]
 async fn folder_move_rejects_pending_subtree_and_preserves_document_revision() {
     let f = fixture().await;
     allow(&f, [Action::Administer]).await;
@@ -284,15 +364,104 @@ async fn folder_move_rejects_pending_subtree_and_preserves_document_revision() {
     ));
     sqlx::query("UPDATE document_publish_schedules SET status='CANCELLED',cancelled_at=now() WHERE publish_operation_id=$1")
         .bind(publish_id).execute(&f.pool).await.unwrap();
-    assert!(
-        service
-            .move_folder(&context(), move_folder(a, f.root_id, b, 0))
+    let count_sql = "SELECT (SELECT count(*) FROM document_management_operations), \
+                     (SELECT count(*) FROM outbox_events), \
+                     (SELECT count(*) FROM audit_outbox_events)";
+    let counts_before: (i64, i64, i64) =
+        sqlx::query_as(count_sql).fetch_one(&f.pool).await.unwrap();
+    let access_before_move: i64 =
+        sqlx::query_scalar("SELECT access_revision FROM document_access_state WHERE id = 1")
+            .fetch_one(&f.pool)
             .await
-            .unwrap()
-            .changed
-    );
+            .unwrap();
+    let command = move_folder(a, f.root_id, b, 0);
+    let moved = service
+        .move_folder(&context(), command.clone())
+        .await
+        .unwrap();
+    assert!(moved.changed);
+    assert_eq!(moved.resulting_revision, 1);
+    assert_eq!(moved.access_revision, Some(access_before_move + 1));
     assert_eq!(document_state(&f).await.1, 1);
     assert_eq!(folder_state(&f, a).await, (Some(b.as_uuid()), 1));
+    let counts_after_move = (
+        counts_before.0 + 1,
+        counts_before.1 + 1,
+        counts_before.2 + 1,
+    );
+    let persisted_counts: (i64, i64, i64) =
+        sqlx::query_as(count_sql).fetch_one(&f.pool).await.unwrap();
+    assert_eq!(persisted_counts, counts_after_move);
+    let replayed = service.move_folder(&context(), command).await.unwrap();
+    assert_eq!(replayed, moved);
+    let persisted_counts: (i64, i64, i64) =
+        sqlx::query_as(count_sql).fetch_one(&f.pool).await.unwrap();
+    assert_eq!(persisted_counts, counts_after_move);
+
+    let folder_before_noop = folder_state(&f, a).await;
+    assert_eq!(folder_before_noop, (Some(b.as_uuid()), 1));
+    let document_before_noop = document_state(&f).await;
+    let access_before_noop: i64 =
+        sqlx::query_scalar("SELECT access_revision FROM document_access_state WHERE id = 1")
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(Some(access_before_noop), moved.access_revision);
+    let noop_command = move_folder(a, b, b, 1);
+    let noop = service
+        .move_folder(&context(), noop_command.clone())
+        .await
+        .unwrap();
+    assert_eq!(noop.operation_id, noop_command.operation_id());
+    assert_eq!(noop.resource, ResourceRef::Folder(a));
+    assert!(!noop.changed);
+    assert_eq!(noop.resulting_revision, 1);
+    assert_eq!(noop.access_revision, Some(access_before_noop));
+    let movement = noop.movement.as_ref().unwrap();
+    assert_eq!(movement.from_folder_id, b);
+    assert_eq!(movement.to_folder_id, b);
+    assert_eq!(movement.subtree_affected, Some(0));
+    let counts_after_noop = (
+        counts_after_move.0 + 1,
+        counts_after_move.1,
+        counts_after_move.2,
+    );
+    let persisted_counts: (i64, i64, i64) =
+        sqlx::query_as(count_sql).fetch_one(&f.pool).await.unwrap();
+    assert_eq!(persisted_counts, counts_after_noop);
+    let replayed_noop = service.move_folder(&context(), noop_command).await.unwrap();
+    assert_eq!(replayed_noop, noop);
+    let persisted_counts: (i64, i64, i64) =
+        sqlx::query_as(count_sql).fetch_one(&f.pool).await.unwrap();
+    assert_eq!(persisted_counts, counts_after_noop);
+    assert_eq!(folder_state(&f, a).await, folder_before_noop);
+    assert_eq!(document_state(&f).await, document_before_noop);
+    let access_after_noop: i64 =
+        sqlx::query_scalar("SELECT access_revision FROM document_access_state WHERE id = 1")
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(access_after_noop, access_before_noop);
+
+    let stale_noop = move_folder(a, b, b, 0);
+    let stale_operation_id = stale_noop.operation_id();
+    assert!(matches!(
+        service.move_folder(&context(), stale_noop).await,
+        Err(ApplicationError::Management(
+            ManagementErrorCode::RevisionConflict
+        ))
+    ));
+    let stale_operations: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM document_management_operations WHERE operation_id = $1",
+    )
+    .bind(stale_operation_id.as_uuid())
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(stale_operations, 0);
+    let persisted_counts: (i64, i64, i64) =
+        sqlx::query_as(count_sql).fetch_one(&f.pool).await.unwrap();
+    assert_eq!(persisted_counts, counts_after_noop);
 }
 
 #[tokio::test]

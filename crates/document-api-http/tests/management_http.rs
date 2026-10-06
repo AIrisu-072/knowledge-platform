@@ -120,6 +120,58 @@ async fn create_folder(
 }
 
 #[tokio::test]
+async fn folder_move_name_collision_returns_revision_conflict_without_operation_receipt() {
+    let f = fixture().await;
+    allow_all(&f).await;
+    let identity: Arc<dyn IdentityAdapter> = Arc::new(FixedIdentity(context()));
+    let router = management_router(f.repository.clone(), identity).unwrap();
+    let from = Uuid::now_v7();
+    let to = Uuid::now_v7();
+    let moved = Uuid::now_v7();
+    let existing = Uuid::now_v7();
+    for (folder_id, parent_id, name) in [
+        (from, f.root_id.as_uuid(), "Source"),
+        (to, f.root_id.as_uuid(), "Destination"),
+        (moved, from, "Same Name"),
+        (existing, to, "Same Name"),
+    ] {
+        create_folder(
+            router.clone(),
+            request_operation(),
+            folder_id,
+            parent_id,
+            name,
+        )
+        .await;
+    }
+    let operation_id = request_operation();
+    let body = json!({
+        "operationId": operation_id,
+        "fromParentId": from,
+        "toParentId": to,
+        "expectedFolderRevision": 0,
+        "reason": "Move folder with an existing destination name"
+    });
+    let (status, problem) = json_request(
+        router,
+        Method::POST,
+        &format!("/v1/folders/{moved}:move"),
+        Some(&body),
+    )
+    .await;
+    let operations: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM document_management_operations WHERE operation_id = $1",
+    )
+    .bind(operation_id)
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(operations, 0);
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(problem["code"].as_str(), Some("REVISION_CONFLICT"));
+}
+
+#[tokio::test]
 async fn management_commands_preserve_replay_revision_and_typed_error_contracts() {
     let f = fixture().await;
     allow_all(&f).await;

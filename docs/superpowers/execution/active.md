@@ -1,5 +1,15 @@
 # Active Execution Pointer
 
+## 2026-10-06 07:13 UTC — 選択フォルダー移動の既存契約GUI化
+
+- PR84統合main `b9f447fa` から、既存move POST/read/hintを通常GUIへ接続する。[状況](document-folder-move-status.md)と[小計画](../plans/2026-10-06-document-folder-move.md)を今回の再開先とする
+- 対象/移動先/継承影響の明示確認、現POSTの最終認可、固定要求/UNKNOWN、移動後の現在readを保持する。ACL差分previewを捏造せず、新権限projection・新基盤を作らない
+- 同名衝突の既存mapper接続を同機能内TDDに含める。最初に既存DB/HTTP反例の実REDをhostedで確認し、rollback/台帳/監査を保ってGREENへ進む。GUI・文書・試験は同PRで完結し、結果だけの別PRを作らない
+- 日時PR84は全適用CI成功後mainへ統合し、main自身のCI `37427490836` 全13jobs・実受入・DB36・cleanup・artifact0まで確認済み
+- 07:27 UTC追補：test-only `b00b372d` で同名衝突の既存DB/HTTP反例とno-op/replay確認を追加、担当2filesの静的format/diff check成功。compile/実DB/実REDは未取得。次は反例先行sourceの独立reviewと同機能Draftの既存hosted。mapper/移動GUIは未実装。以下は過去時点の履歴
+
+---
+
 ## 2026-10-06 05:58 UTC — 文書作成日時の範囲GUI
 
 - PR83統合main `dc04ba4a` から、既存createdFrom / createdBeforeを通常日時入力へ接続する。[状況](document-created-range-status.md)と[小計画](../plans/2026-10-06-document-created-range.md)を今回の再開先とする
