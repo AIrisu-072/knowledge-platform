@@ -92,7 +92,7 @@ test('no-op後の固定診断は元のrequest登録・await・検証の境界に
     ['gui-metadata-comparison-response-verified', 'expect(comparisonResult.status()).toBe(200);',
       "privatelyEqual(comparisonResult.request().postDataJSON(), {\n      baseRevisionId: baseRevision.revisionId, targetRevisionId: targetRevision.revisionId, projection: 'display', pageSize: 50,\n    });"],
     ['gui-metadata-revision-first-comparison-verified', "await expect(page.getByText('同じコンテンツ版のため本文比較なし', { exact: true })).toBeVisible();",
-      "await page.getByRole('button', { name: '← 版・改訂へ戻る', exact: true }).press('Enter');"],
+      "const comparisonReloadResponse = page.waitForResponse(response => {\n      const url = new URL(response.url());\n      return url.origin === context.human && url.pathname === `/v1/documents/${documentId}/revision-comparisons`\n        && response.request().method() === 'POST';\n    });"],
     ['gui-metadata-revision-reload-page-verified', "await expect(page.getByRole('button', { name: '正式改訂をさらに表示', exact: true })).toBeHidden();",
       "await inputEquals(page.getByRole('combobox', { name: '基準', exact: true }), baseRevision.revisionId);"],
   ];
@@ -187,7 +187,7 @@ test('既存metadata journeyの1回移動と再起動後の同一要求replayは
 
 test('正式改訂の通常GUI readは両caseのHuman・対象Document・先頭100件と比較POSTだけを待つ', () => {
   const cases = calls('test');
-  for (const [index, revisionCount, comparisonCount] of [[0, 2, 2], [1, 1, 1]]) {
+  for (const [index, revisionCount, comparisonCount] of [[0, 2, 3], [1, 1, 2]]) {
     const body = cases[index].arguments[1];
     const waits = calls('page.waitForResponse').filter(call => call.pos > body.pos && call.end < body.end);
     const revisionWaits = waits.filter(call => call.arguments[0].getText(syntax).includes('/revisions`'));
@@ -218,6 +218,48 @@ test('正式改訂の通常GUI readは両caseのHuman・対象Document・先頭1
     }
   }
   assert.equal(calls('compareDocumentRevisions').length, 0, '比較は通常GUIで読み、SDK readを追加しない');
+});
+
+test('比較結果の明示再読取は両phaseで新POSTを待ち、cursorなしの固定pairと一度だけのmetadata表示を保つ', () => {
+  for (const testCase of calls('test')) {
+    const body = testCase.arguments[1].body;
+    const statements = body.statements.map(statement => statement.getText(syntax));
+    const registered = statements.findIndex(statement => statement.startsWith('const comparisonReloadResponse = page.waitForResponse('));
+    assert.ok(registered > 0, '初回比較後に再読取のHTTP待機を新しく登録する');
+    assert.equal(statements[registered + 1], "await page.getByRole('button', { name: '比較結果を最初から読み直す', exact: true }).press('Enter');");
+    assert.equal(statements[registered + 2], 'const comparisonReloadResult = await comparisonReloadResponse;');
+    assert.equal(statements[registered + 3], 'expect(comparisonReloadResult.status()).toBe(200);');
+    assert.equal(statements[registered + 4], "privatelyEqual(comparisonReloadResult.request().postDataJSON(), {\n      baseRevisionId: baseRevision.revisionId, targetRevisionId: targetRevision.revisionId, projection: 'display', pageSize: 50,\n    });");
+    const returned = statements.findIndex((statement, index) => index > registered
+      && statement === "await page.getByRole('button', { name: '← 版・改訂へ戻る', exact: true }).press('Enter');");
+    assert.ok(returned > registered);
+    const assertions = statements.slice(registered + 5, returned).join('\n');
+    for (const beforeReturn of [
+      "privatelyEqual(comparisonReloadBody.metadataChanges, comparisonBody.metadataChanges);",
+      "expect(comparisonReloadBody.nextCursor ?? null).toBeNull();",
+      "await inputEquals(page.getByRole('combobox', { name: '基準改訂', exact: true }), baseRevision.revisionId);",
+      "await inputEquals(page.getByRole('combobox', { name: '比較対象', exact: true }), targetRevision.revisionId);",
+      "await expect(metadataChanges).toHaveCount(1);",
+      "await expect(metadataChanges.getByRole('listitem')).toHaveCount(comparisonReloadBody.metadataChanges.length);",
+      "await expect(comparisonRegion.getByRole('button', { name: '比較結果をさらに表示', exact: true })).toBeHidden();",
+    ]) assert.ok(assertions.includes(beforeReturn), `再読取結果を確認してから画面を離れる: ${beforeReturn}`);
+    assert.match(assertions, /searchParams\.get\('baseRevisionId'\) === baseRevision\.revisionId/);
+    assert.match(assertions, /searchParams\.get\('targetRevisionId'\) === targetRevision\.revisionId/);
+    const firstPage = statements.slice(0, registered).join('\n');
+    assert.match(firstPage, /expect\(comparisonBody\.nextCursor \?\? null\)\.toBeNull\(\)/);
+    assert.match(firstPage, /expect\(comparisonBody\.metadataChanges\.length\)\.toBeGreaterThan\(0\)/);
+    assert.match(firstPage, /await expect\(metadataChanges\)\.toHaveCount\(1\)/);
+    assert.match(firstPage, /metadataChanges\.getByRole\('listitem'\)\)\.toHaveCount\(comparisonBody\.metadataChanges\.length\)/);
+  }
+});
+
+test('通常本文比較の既存fixtureはGUIのdisplay50要求と実応答の本文行数・終端を確認する', async () => {
+  const runtime = await readFile(new URL('../../../apps/document-web/e2e-runtime/document-runtime.spec.ts', import.meta.url), 'utf8');
+  assert.match(runtime, /const comparisonResponse = page\.waitForResponse\(response => \{/);
+  assert.match(runtime, /expect\(comparisonResult\.request\(\)\.postDataJSON\(\)\)\.toEqual\(\{ \.\.\.compareBody, pageSize: 50 \}\)/);
+  assert.match(runtime, /expect\(comparisonBody\.nextCursor \?\? null\)\.toBeNull\(\)/);
+  assert.match(runtime, /bodyChanges\.getByRole\('listitem'\)\)\.toHaveCount\(comparisonBody\.displayItems\.length\)/);
+  assert.match(runtime, /comparisonRegion\.getByRole\('button', \{ name: '比較結果をさらに表示', exact: true \}\)\)\.toBeHidden\(\)/);
 });
 
 test('正式改訂readはmove listener外と再起動metadata取消後で行い、既存readState・snapshot検査を残す', () => {
