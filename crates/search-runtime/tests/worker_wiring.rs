@@ -42,7 +42,7 @@ fn config(durable: &Durable, policy: DeliveryPolicy) -> SearchWorkerConfig {
             ..DeliveryConfig::default()
         },
         policy,
-        source_lease: Duration::from_secs(30),
+        source_lease: Duration::from_secs(120),
         guard_ttl: FullGuardTtl::new(Duration::from_secs(60)).unwrap(),
     }
 }
@@ -55,6 +55,23 @@ fn worker(durable: &Durable, policy: DeliveryPolicy) -> Result<SearchWorkerRunne
         durable.extractor(),
         config(durable, policy),
     )
+}
+
+/// A Source lease that cannot outlast three delivery heartbeats would expire
+/// in every build longer than one heartbeat; the worker refuses to start.
+#[tokio::test]
+async fn worker_refuses_a_source_lease_shorter_than_three_renewals() {
+    let durable = Durable::start().await;
+    let mut short = config(&durable, DeliveryPolicy::default());
+    short.source_lease = short.delivery.renew_interval * 3 - Duration::from_millis(1);
+    let refused = compose(
+        durable.pool.clone(),
+        durable.pool.clone(),
+        &durable.ledger,
+        durable.extractor(),
+        short,
+    );
+    assert!(matches!(refused, Err(WorkerError::InvalidConfig(_))));
 }
 
 #[tokio::test]
