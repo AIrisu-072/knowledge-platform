@@ -133,6 +133,9 @@ struct ActorFile {
     granted: bool,
 }
 
+/// Synthetic sessions end with the validation run; restart renews them.
+const SESSION_LIFETIME: Duration = Duration::from_secs(24 * 60 * 60);
+
 struct Actor {
     principal: String,
     groups: Vec<String>,
@@ -159,14 +162,15 @@ impl VerifiedActorResolverPort for Actors {
             let Some(actor) = self.by_token.get(raw_handle) else {
                 return Ok(None);
             };
-            let now = Instant::now();
+            // A synthetic session's lifetime is fixed at startup, so every
+            // re-resolution of the same handle describes the same session.
             Ok(Some(VerifiedActorDescriptor::new(
                 TenantId::new(self.tenant.clone())?,
                 PrincipalRef::new(actor.principal.clone())?,
                 Some(SessionId::from_uuid(actor.session)),
                 AccessRevision::new(1)?,
-                now.max(self.started),
-                now + Duration::from_secs(600),
+                self.started,
+                self.started + SESSION_LIFETIME,
             )?))
         })
     }
