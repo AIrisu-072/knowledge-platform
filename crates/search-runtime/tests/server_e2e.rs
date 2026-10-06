@@ -280,6 +280,7 @@ impl ActorPortsFactory for DocumentPorts {
                 lexical: Some(Arc::new(self.index.lexical_reader())),
                 hypergraph: None,
                 graph_resource_access: None,
+                vector: None,
                 access,
                 resource_locator: read.clone(),
                 resource_reader: read,

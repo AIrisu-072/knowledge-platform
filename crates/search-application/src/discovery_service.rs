@@ -363,6 +363,7 @@ impl<'a> DiscoveryService<'a> {
                     graph_resource_access: retrieval.graph_resource_access,
                     remote: Some(view),
                     access: retrieval.access,
+                    vector: retrieval.vector,
                 },
                 selectors: view,
                 assertions: view,
@@ -550,7 +551,8 @@ impl<'a> DiscoveryService<'a> {
                     attempted_retrievers.insert(action.retriever_id.clone());
                     if let Some(pin) = pins.get(&action.source_id) {
                         let remote_kind = is_remote(action.retriever);
-                        if action.retriever == RetrieverKind::Vector
+                        if (action.retriever == RetrieverKind::Vector
+                            && self.ports.retrieval.vector.is_none())
                             || (remote_kind && self.ports.retrieval.remote.is_none())
                         {
                             action_gaps.push(source_gap(
@@ -592,6 +594,11 @@ impl<'a> DiscoveryService<'a> {
                                         .retrieval_inputs
                                         .graph_plans
                                         .get(&action.source_id),
+                                    vector_query: self
+                                        .config
+                                        .retrieval_inputs
+                                        .vector_query
+                                        .as_deref(),
                                 },
                             )
                             .await;
@@ -602,6 +609,18 @@ impl<'a> DiscoveryService<'a> {
                                 Err(_) if body.is_some() => {
                                     action_gaps.push(InformationGap::new(
                                         "document.body.retrieval_unavailable",
+                                        GapReason::Availability,
+                                        true,
+                                    ));
+                                    None
+                                }
+                                // Vector that cannot run completely is a blocking,
+                                // ID-free gap; the other retrievers still answer.
+                                Err(SearchError::SourceUnavailable(_))
+                                    if action.retriever == RetrieverKind::Vector =>
+                                {
+                                    action_gaps.push(InformationGap::new(
+                                        "vector_unavailable",
                                         GapReason::Availability,
                                         true,
                                     ));
@@ -969,6 +988,7 @@ impl<'a> DiscoveryService<'a> {
                     lexical_query: (!body).then_some(&query),
                     body_query: body.then_some(&query),
                     graph_plan: None,
+                    vector_query: None,
                 },
             )
             .await;

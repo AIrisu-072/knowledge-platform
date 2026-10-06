@@ -352,6 +352,7 @@ impl Fixture {
                     hypergraph: Some(self),
                     graph_resource_access: Some(self),
                     access: self,
+                    vector: None,
                 },
                 selectors: self,
                 assertions: self,

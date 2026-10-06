@@ -406,6 +406,7 @@ fn discovery_ports<'a>(
             hypergraph: Some(graph),
             graph_resource_access: Some(source_adapter),
             access: source_adapter,
+            vector: None,
         },
         selectors: source_adapter,
         assertions: projection_store,

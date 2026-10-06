@@ -386,6 +386,7 @@ fn ports<'a>(
         graph_resource_access: None,
         remote,
         access,
+        vector: None,
     }
 }
 
@@ -406,6 +407,7 @@ async fn execute(
             lexical_query: None,
             body_query: None,
             graph_plan: None,
+            vector_query: None,
         },
     )
     .await?;
@@ -672,6 +674,7 @@ async fn remote_executor_ranks_only_accessible_hits() {
             lexical_query: None,
             body_query: None,
             graph_plan: None,
+            vector_query: None,
         },
     )
     .await;

@@ -20,4 +20,6 @@
 
 A1の影響：`search-source-document::vertical_slice` の一件は、別の主語の主張を判定外にしたことで `Unresolved` から `Sufficient` に変わる（所有者判断①どおり）ため、期待値を更新した。
 
-次の作業：E（Vectorの本番実装）。
+完了：E（Discoverまで）。計測前に固定した条件G1〜G6がすべて合格し、Vectorは既定で有効、類似度の下限τ=0.890とした（[報告](../../../experiments/search-vector-model-poc/report.md)のE節、選定は `spec/selection` 13.4）。公開レーンMIRACL日本語devの評価100問でnDCG@10はL 0.035→LD 0.552（+0.518、95%区間[0.433, 0.603]、文字bigramのBM25に対しても+0.311）、合成レーンはLGD=LG（0.9706）、正解の無い問のFP@10は0.43→1.15、1,024 Unitでp95 18.8 ms。本番実装は、計画器のExploratory順をL→G→Dへ変更、`search-vector-adapter`（固定E5-small、Candle CPU、ファイルのSHA-256照合）、migration `0008_search_vector_v1.sql` と `PgVectorIndex`/`PgVectorGenerations`（完全走査・τ・読込み時のdigest再計算、P7現在世代とscope epochのCAS）、`VectorMaintainer`（現在のP1バンドルのUnitから構築、同じcache keyの埋込みを再利用、起動時の復旧）、Discover routeの実行port（可視Sourceごとのactor権限範囲に束縛、hitは読み込んだ世代のUnitとactorの現在Readで解決）。Vectorが利用不可のときはDiscover全体を失敗させず、閉塞gap `vector_unavailable` を返す。workerは既定でVectorを保守し、固定モデルが無い・改変されていれば起動を止める。`paste`（RUSTSEC-2024-0436、保守終了・既知の脆弱性なし）はCandleとtokenizersの構築時依存のため、理由付きで除外した。実DBの `durable_vector`（順位、τ、権限の無いactor、Vector未構築の新世代はgap、構築後に回復）、実モデルの確認（`--ignored`）、影響crateの全試験621件、clippy、cargo-deny、osv-scanner、アーキテクチャlintが成功した。
+
+次の作業：E（Search APIの意味検索の範囲）、D（P3の改善）、A2（低優先）。

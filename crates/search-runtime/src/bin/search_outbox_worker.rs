@@ -66,6 +66,30 @@ struct WorkerFile {
     profiles: Vec<ExtractionProfileDefinitionV1>,
     source_lease_ms: u64,
     guard_ttl_ms: u64,
+    /// E: Vector is on by default; `"vector": {"enabled": false}` turns it off.
+    #[serde(default)]
+    vector: VectorFile,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, default)]
+struct VectorFile {
+    enabled: bool,
+    /// The pinned `intfloat/multilingual-e5-small` files.
+    model_dir: PathBuf,
+    similarity_floor: f32,
+    maintain_interval_ms: u64,
+}
+
+impl Default for VectorFile {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            model_dir: PathBuf::from("/var/lib/knowledge-platform/models/multilingual-e5-small"),
+            similarity_floor: search_runtime::vector_runtime::DEFAULT_SIMILARITY_FLOOR,
+            maintain_interval_ms: 15_000,
+        }
+    }
 }
 
 /// The configured Document adapter declares exactly the configured scope.
@@ -218,6 +242,48 @@ async fn run() -> Result<(), String> {
         .map_err(|error| format!("startup recovery: {error:?}"))?;
     if let CurrentState::Unusable(_, error) = report.current {
         return Err(format!("current generation is unusable: {error:?}"));
+    }
+
+    // E: Vector maintenance runs beside delivery. An enabled Vector whose
+    // pinned model files are missing or altered stops startup, never
+    // silently serving without it.
+    if config.vector.enabled {
+        let provider: Arc<dyn search_application::vector::EmbeddingProvider> = Arc::new(
+            search_vector_adapter::CandleEmbeddingProvider::load(&config.vector.model_dir)
+                .map_err(|error| format!("vector model: {error}"))?,
+        );
+        let services = search_runtime::vector_runtime::VectorServices {
+            activations: Arc::new(search_runtime::vector_runtime::RegisteredVectorActivation::new(
+                [source_id],
+                provider.as_ref(),
+            )),
+            provider,
+            index: Arc::new(search_runtime::vector_store::PgVectorIndex::new(
+                search_pool.clone(),
+                config.vector.similarity_floor,
+            )),
+            generations: Arc::new(search_runtime::vector_store::PgVectorGenerations::new(
+                search_pool.clone(),
+            )),
+        };
+        let maintainer = search_runtime::vector_runtime::VectorMaintainer::new(
+            search_pool.clone(),
+            source.clone(),
+            services,
+        );
+        maintainer
+            .recover()
+            .await
+            .map_err(|error| format!("vector recovery: {error}"))?;
+        let interval = Duration::from_millis(config.vector.maintain_interval_ms.max(1_000));
+        tokio::spawn(async move {
+            loop {
+                if let Err(error) = maintainer.ensure_current().await {
+                    eprintln!("search_outbox_worker: vector maintenance: {error}");
+                }
+                tokio::time::sleep(interval).await;
+            }
+        });
     }
 
     let registry = BodyProfileRegistry::new(config.parser_build_id, config.profiles.clone())

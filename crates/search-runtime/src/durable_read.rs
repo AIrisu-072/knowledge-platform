@@ -83,6 +83,8 @@ pub struct LoadedGeneration {
     store: MemoryProjectionStore,
     lexical: Arc<TantivyLexicalIndex>,
     graph: DurableDocumentGraph,
+    /// E: the generation's indexed Units for Vector hit resolution.
+    vector_units: Arc<crate::vector_runtime::VectorUnits>,
 }
 
 impl LoadedGeneration {
@@ -201,7 +203,7 @@ impl DurableDocumentReadModel {
         let manifest = self.manifest(key).await?;
         let RestoredPayloadV1 {
             projection,
-            unit_manifest: _,
+            unit_manifest,
             coverage: _,
         } = PgPayloadStore::new(self.pool.clone())
             .restore(&manifest)
@@ -269,6 +271,7 @@ impl DurableDocumentReadModel {
             store,
             lexical,
             graph,
+            vector_units: Arc::new(crate::vector_runtime::vector_units(key, &unit_manifest)),
         })
     }
 }
@@ -291,6 +294,7 @@ pub trait DocumentActorAccessPort: Send + Sync {
 pub struct DurableDocumentPorts {
     model: Arc<DurableDocumentReadModel>,
     access: Arc<dyn DocumentActorAccessPort>,
+    vector: Option<crate::vector_runtime::VectorServices>,
 }
 
 impl DurableDocumentPorts {
@@ -298,7 +302,17 @@ impl DurableDocumentPorts {
         model: Arc<DurableDocumentReadModel>,
         access: Arc<dyn DocumentActorAccessPort>,
     ) -> Self {
-        Self { model, access }
+        Self {
+            model,
+            access,
+            vector: None,
+        }
+    }
+
+    /// E: Vector retrieval over the loaded generation's published index.
+    pub fn with_vector(mut self, services: crate::vector_runtime::VectorServices) -> Self {
+        self.vector = Some(services);
+        self
     }
 }
 
@@ -342,6 +356,19 @@ impl ActorPortsFactory for DurableDocumentPorts {
                 }
                 None => (None, None),
             };
+            let vector = match (&loaded, &self.vector) {
+                (Some(loaded), Some(services)) => {
+                    Some(Arc::new(crate::vector_runtime::DocumentActorVector::new(
+                        services.clone(),
+                        loaded.key(),
+                        loaded.vector_units.clone(),
+                        access.access.clone(),
+                        actor.access_handle().to_opaque_string(),
+                    ))
+                        as Arc<dyn crate::vector_runtime::ActorVectorPort>)
+                }
+                _ => None,
+            };
             Ok(ActorPorts {
                 generations: Arc::new(reader.clone()),
                 concepts: Arc::new(reader.clone()),
@@ -352,6 +379,7 @@ impl ActorPortsFactory for DurableDocumentPorts {
                 lexical: Some(Arc::new(lexical)),
                 hypergraph,
                 graph_resource_access,
+                vector,
                 access: access.access,
                 resource_locator: access.resource_locator,
                 resource_reader: access.resource_reader,

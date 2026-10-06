@@ -78,6 +78,7 @@ async fn body_required_without_a_trusted_spec_is_a_blocking_gap() {
                 hypergraph: None,
                 graph_resource_access: None,
                 access: &access,
+                vector: None,
             },
             selectors: &discovery_support::NoEvidence,
             assertions: &discovery_support::NoEvidence,

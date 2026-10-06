@@ -378,6 +378,18 @@ impl VectorRetrievalBatch {
     }
 }
 
+/// The Discovery executor's Vector port: one Source's candidates for the
+/// pinned P1 bundle `generation`. The host binds it to the actor's
+/// authorized scope of that Source and to the Source's registered model.
+pub trait VectorExecutionPort: Send + Sync {
+    fn retrieve<'a>(
+        &'a self,
+        generation: ProjectionGenerationKey,
+        text: &'a str,
+        window: usize,
+    ) -> BoxFuture<'a, VectorRetrievalBatch>;
+}
+
 /// The Vector façade over the trusted ports.
 pub struct VectorRetriever<'a> {
     pub provider: &'a dyn EmbeddingProvider,

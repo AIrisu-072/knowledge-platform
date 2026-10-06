@@ -123,6 +123,7 @@ async fn discover(
             graph_resource_access: None,
             remote: None,
             access: &access,
+            vector: None,
         },
         assertions: &nothing,
         evidence: &nothing,

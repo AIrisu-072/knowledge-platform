@@ -17,6 +17,8 @@ pub mod ready;
 pub mod recovery;
 pub mod source_lease;
 pub mod source_registration;
+pub mod vector_runtime;
+pub mod vector_store;
 pub mod worker;
 
 use sqlx::{PgPool, migrate::MigrateError};

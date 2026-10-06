@@ -464,6 +464,7 @@ pub fn service<'a>(
                 graph_resource_access: None,
                 remote: None,
                 access,
+                vector: None,
             },
             selectors: nothing,
             assertions: nothing,
