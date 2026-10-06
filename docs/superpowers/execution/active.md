@@ -9,6 +9,14 @@
 
 ---
 
+## 2026-10-06 01:56 UTC — 文書一覧の属性3項目フィルター
+
+- PR80統合main `1fe1b011` から、既存listDocumentsの属性3項目を通常一覧へ接続する。[状況](document-metadata-filters-status.md)と[小計画](../plans/2026-10-06-document-metadata-filters.md)を今回の再開先とする
+- 完全一致・空欄省略・URL正本・cursor破棄・詳細往復をTDDで確認する。既存metadata実受入へreadのみ追加し、新backend・移動/ACL/既読・Search・新検証基盤は含めない
+- 改名PR80は全適用CI・実改名/HTTP再起動・cleanup・全4run artifact0を確認してmerge済み。main push CI `37401300371` も全13jobs・実改名/HTTP再起動・DB36・cleanup・artifact0成功。02:16 UTC追補：属性GUI `2f9eb7b2` は全768/39 suites・型/build・pure28+3・collection2+2/18+5成功。次は日本語文書との組合せの独立レビューと同一head Draft/hosted。02:30 UTC追補：独立レビューの複合不正URL fallback欠陥を `59912a97` で限定補正し、全GUI782/39・型/build成功。02:37 UTC追補：空欄URLがrouterで復活するI2も `ec05d6f8` のquery key/GET入口6行で補正し、全GUI788/39・型/build成功。次はI2限定再レビュー。今回フィルター実runtime資格は未取得。以下は各時点の履歴
+
+---
+
 ## 2026-10-06 00:28 UTC — 選択フォルダーの改名GUI
 
 - PR79統合main `5d9e3c46` から、既存rename APIを通常GUIへ接続する。[状況](document-folder-rename-status.md)と[小計画](../plans/2026-10-06-document-folder-rename.md)を今回の再開先とする

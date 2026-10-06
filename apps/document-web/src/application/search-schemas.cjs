@@ -7,6 +7,10 @@ const listSchema = {
   properties: {
     view: { type: 'string', enum: ['published', 'authoring', 'history'], default: 'published' },
     titleContains: { type: 'string', maxLength: 1024 },
+    // Retain invalid URL text so the form can explain byte/control errors and stop GET.
+    documentType: { type: 'string' },
+    owningDepartment: { type: 'string' },
+    category: { type: 'string' },
     folderId: { type: 'string', pattern: uuid },
     includeDescendants: { type: 'boolean', default: false },
     sort: { type: 'string', enum: ['created_at_desc', 'title_asc', 'published_at_desc'], default: 'created_at_desc' },
@@ -26,7 +30,7 @@ const detailSchema = {
     versionId: { type: 'string', pattern: uuid },
     baseRevisionId: { type: 'string', pattern: uuid },
     targetRevisionId: { type: 'string', pattern: uuid },
-    returnTo: { type: 'string', maxLength: 2048, pattern: '^/documents(?:\\?.*)?$' },
+    returnTo: { type: 'string', maxLength: 81920, pattern: '^/documents(?:\\?.*)?$' },
     workflow: { type: 'string', enum: ['newVersion', 'publication'] },
   },
 };

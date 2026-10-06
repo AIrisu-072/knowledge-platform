@@ -1,12 +1,17 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { defaultStringifySearch, createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { documentApi } from '../src/application/document-workspace';
 import type { DocumentDetail, DocumentList, Version } from '../src/application/document-workspace';
 import { DocumentDetailPage } from '../src/routes/DocumentDetailPage';
 import { DocumentHomePage } from '../src/routes/DocumentHomePage';
+import { DocumentListRouteError } from '../src/routes/DocumentListRouteError';
 import { validateDetailSearch, validateListSearch } from '../src/application/search-state';
+import { metadataOperations } from '../src/application/document-metadata';
+import { rootFolderOperations } from '../src/application/document-root-folder';
+import { folderRenameOperations } from '../src/application/document-folder-rename';
+import { readCreationReceipt, saveCreationReceipt, clearCreationReceipt } from '../src/application/document-registration';
 
 jest.mock('../src/routes/DocumentWorkspace.module.css', () => ({ timestampCell: 'timestamp-cell' }));
 
@@ -72,9 +77,9 @@ function mockApi() {
   return api;
 }
 
-function renderAt(entry: string) {
+function renderAt(entry: string, listError?: Error) {
   const root = createRootRoute({ component: Outlet });
-  const list = createRoute({ getParentRoute: () => root, path: '/documents', validateSearch: validateListSearch, component: DocumentHomePage });
+  const list = createRoute({ getParentRoute: () => root, path: '/documents', validateSearch: validateListSearch, component: DocumentHomePage, errorComponent: DocumentListRouteError, ...(listError ? { beforeLoad: () => { throw listError; } } : {}) });
   const detail = createRoute({ getParentRoute: () => root, path: '/documents/$documentId', validateSearch: validateDetailSearch, component: DocumentDetailPage });
   const router = createRouter({
     routeTree: root.addChildren([list, detail]),
@@ -627,3 +632,326 @@ function comparison() {
     nextCursor: null,
   };
 }
+
+
+const metadataFields = [
+  ['documentType', '文書種別'], ['owningDepartment', '所管部署'], ['category', 'カテゴリ'],
+] as const;
+
+async function fillMetadata(values: Record<string, string>) {
+  for (const [key, label] of metadataFields) fireEvent.change(screen.getByRole('textbox', { name: label }), { target: { value: values[key] ?? '' } });
+}
+
+test('metadata drafts apply explicitly and clearing only metadata discards cursor but keeps list context', async () => {
+  const api = mockApi();
+  const { router } = renderAt('/documents?view=authoring&titleContains=keep&sort=title_asc&pageSize=25&includeDescendants=true&folderId=' + folderId + '&cursor=old&selectedDocumentId=' + documentId + '&panel=closed');
+  await screen.findByRole('button', { name: /受入手順/ });
+  const initialCalls = api.listDocuments.mock.calls.length;
+  const values = { documentType: '123', owningDepartment: '   ', category: 'e\u0301%_"\\' };
+  await fillMetadata(values);
+  expect(api.listDocuments).toHaveBeenCalledTimes(initialCalls);
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  await waitFor(() => expect(api.listDocuments).toHaveBeenLastCalledWith(expect.objectContaining(values)));
+  expect(api.listDocuments.mock.lastCall![0]).not.toHaveProperty('cursor');
+  expect(router.state.location.search).toMatchObject({ ...values, view: 'authoring', titleContains: 'keep', folderId, includeDescendants: true, sort: 'title_asc', pageSize: 25, panel: 'closed', selectedDocumentId: documentId });
+  await act(async () => { await router.navigate({ to: '/documents', search: { ...router.state.location.search, cursor: 'new-page' } as never }); });
+  fireEvent.click(screen.getByRole('button', { name: '属性の絞り込みを解除' }));
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('documentType'));
+  expect(router.state.location.search).toMatchObject({ view: 'authoring', titleContains: 'keep', folderId, includeDescendants: true, sort: 'title_asc', pageSize: 25, panel: 'closed', selectedDocumentId: documentId });
+  for (const key of ['cursor', 'documentType', 'owningDepartment', 'category']) expect(router.state.location.search).not.toHaveProperty(key);
+  await waitFor(() => expect(api.listDocuments).toHaveBeenLastCalledWith(expect.objectContaining({ titleContains: 'keep' })));
+  for (const key of ['cursor', 'documentType', 'owningDepartment', 'category']) expect(api.listDocuments.mock.lastCall![0]).not.toHaveProperty(key);
+});
+
+test.each(metadataFields)('single %s filter omits the two empty fields from GET', async (key, label) => {
+  const api = mockApi();
+  renderAt('/documents?panel=closed');
+  await screen.findByRole('button', { name: /受入手順/ });
+  fireEvent.change(screen.getByRole('textbox', { name: label }), { target: { value: 'true' } });
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  await waitFor(() => expect(api.listDocuments.mock.lastCall![0][key]).toBe('true'));
+  for (const [other] of metadataFields) if (other !== key) expect(api.listDocuments.mock.lastCall![0]).not.toHaveProperty(other);
+});
+
+test.each([
+  ['a'.repeat(1024), null], ['日'.repeat(341) + 'a', null], ['😀'.repeat(256), null],
+  ['a'.repeat(1025), '1024 UTF-8 bytes'], ['日'.repeat(342), '1024 UTF-8 bytes'],
+  ['a\u0001b', '制御文字'], ['a\u0085b', '制御文字'], ['\ud800', 'Unicode'],
+])('metadata form retains %p and blocks invalid GET with a reason', async (value, reason) => {
+  const api = mockApi();
+  const { router } = renderAt('/documents?panel=closed');
+  await screen.findByRole('button', { name: /受入手順/ });
+  const calls = api.listDocuments.mock.calls.length;
+  const input = screen.getByRole('textbox', { name: '文書種別' });
+  fireEvent.change(input, { target: { value } });
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  expect(input).toHaveValue(value);
+  if (reason) {
+    expect(await screen.findByRole('alert')).toHaveTextContent(reason);
+    expect(api.listDocuments).toHaveBeenCalledTimes(calls);
+    expect(router.state.location.search).not.toHaveProperty('documentType');
+  } else await waitFor(() => expect(api.listDocuments.mock.lastCall![0].documentType).toBe(value));
+});
+
+test.each(['日'.repeat(342), 'a\u0085b'])('invalid metadata URL remains visible and never fetches an unfiltered list: %p', async value => {
+  const api = mockApi();
+  const { router } = renderAt('/documents' + defaultStringifySearch({ documentType: value, titleContains: 'keep', panel: 'closed' }));
+  await screen.findByRole('textbox', { name: '文書種別' });
+  expect(screen.getByRole('textbox', { name: '文書種別' })).toHaveValue(value);
+  expect(await screen.findByRole('alert')).toBeVisible();
+  expect(router.state.location.search).toMatchObject({ documentType: value, titleContains: 'keep' });
+  expect(api.listDocuments).not.toHaveBeenCalled();
+  expect(screen.queryByRole('heading', { name: '文書がありません' })).not.toBeInTheDocument();
+  expect(screen.queryByText('文書を読み込み中')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '属性の絞り込みを解除' }));
+  await waitFor(() => expect(api.listDocuments).toHaveBeenLastCalledWith(expect.objectContaining({ titleContains: 'keep' })));
+});
+
+test.each([
+  { documentType: '123', owningDepartment: 'true', category: 'null', titleContains: '[1]' },
+  { documentType: 'é'.repeat(512), owningDepartment: '日'.repeat(341) + 'a', category: '😀'.repeat(256), titleContains: 'quote"\\' },
+])('detail return decodes router-quoted metadata and retains >2KiB filter context', async values => {
+  const api = mockApi();
+  const { router } = renderAt('/documents' + defaultStringifySearch({ view: 'authoring', ...values, cursor: 'opaque+/=', sort: 'title_asc', pageSize: 25, selectedDocumentId: documentId, panel: 'open' }));
+  await screen.findByRole('button', { name: /受入手順/ });
+  fireEvent.click(await screen.findByRole('button', { name: /詳細を開く/ }));
+  expect(await screen.findByRole('heading', { name: '受入手順', level: 1 })).toBeVisible();
+  expect(router.state.location.search).toHaveProperty('returnTo');
+  if (values.documentType.length > 100) expect(String(router.state.location.search.returnTo).length).toBeGreaterThan(2048);
+  fireEvent.click(screen.getByRole('button', { name: /一覧へ戻る/ }));
+  await screen.findByRole('button', { name: /受入手順/ });
+  expect(router.state.location.search).toMatchObject({ ...values, cursor: 'opaque+/=', sort: 'title_asc', pageSize: 25, selectedDocumentId: documentId, panel: 'open' });
+  expect(api.listDocuments).toHaveBeenLastCalledWith(expect.objectContaining(values));
+});
+
+test('metadata URL history and page/sort/folder changes keep exact conditions and independent mutation stores', async () => {
+  const api = mockApi();
+  api.listDocuments.mockResolvedValue({ view: 'published', items: [listItem('published')], nextCursor: 'next' });
+  api.listFolderChildren.mockResolvedValue({ items: [{ folderId: reviewFolderId, parentFolderId: folderId, name: '審査', revision: 3, capabilities: {} }], nextCursor: null, capabilities: {} });
+  const { router, client } = renderAt('/documents' + defaultStringifySearch({ documentType: 'old', owningDepartment: '   ', category: '[1]' }));
+  const rootStore = rootFolderOperations(client);
+  const renameStore = folderRenameOperations(client);
+  const metadataStore = metadataOperations(client);
+  const creation = { state: 'unknown' as const, ids: { documentId, documentVersionId: versionId, fileId: revisionId } };
+  const rootSnapshot = { status: 'unknown' as const, request: { operationId: 'kept-root', folderId: reviewFolderId, parentFolderId: folderId, expectedParentRevision: 1, name: 'kept', reason: 'keep' } };
+  const renameSnapshot = { status: 'unknown' as const, targetFolderId: reviewFolderId, request: { operationId: 'kept-rename', expectedFolderRevision: 3, name: 'kept', reason: 'keep' }, context: { kind: 'selected' as const, folderId: reviewFolderId, sourceParentId: folderId, pageLimit: 1, name: '審査' }, currentName: '審査', expectedChanged: true };
+  const metadataSnapshot = { status: 'unknown' as const, request: { operationId: 'kept-metadata', expectedDocumentRevision: 7, set: { category: 'kept' }, unset: [], reason: 'keep' } };
+  await act(async () => { rootStore.put(rootSnapshot); renameStore.put(renameSnapshot); metadataStore.put(documentId, metadataSnapshot); });
+  saveCreationReceipt(creation);
+  await screen.findByRole('button', { name: /受入手順/ });
+  fireEvent.change(screen.getByRole('textbox', { name: '文書種別' }), { target: { value: 'new' } });
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  await waitFor(() => expect(router.state.location.search.documentType).toBe('new'));
+  await act(async () => router.history.back());
+  await waitFor(() => expect(screen.getByRole('textbox', { name: '文書種別' })).toHaveValue('old'));
+  await act(async () => router.history.forward());
+  await waitFor(() => expect(screen.getByRole('textbox', { name: '文書種別' })).toHaveValue('new'));
+  fireEvent.click(screen.getByRole('button', { name: /次のページ/ }));
+  await waitFor(() => expect(api.listDocuments.mock.lastCall![0].cursor).toBe('next'));
+  fireEvent.change(screen.getByRole('combobox', { name: '並び順' }), { target: { value: 'title_asc' } });
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('cursor'));
+  fireEvent.change(screen.getByRole('combobox', { name: '1ページあたりの件数' }), { target: { value: '25' } });
+  await waitFor(() => expect(api.listDocuments.mock.lastCall![0].pageSize).toBe(25));
+  fireEvent.click(await screen.findByRole('button', { name: '審査' }));
+  await waitFor(() => expect(api.listDocuments.mock.lastCall![0].folderId).toBe(reviewFolderId));
+  expect(api.listDocuments.mock.lastCall![0]).toMatchObject({ documentType: 'new', owningDepartment: '   ', category: '[1]', sort: 'title_asc', pageSize: 25 });
+  expect(rootStore.get()).toBe(rootSnapshot);
+  expect(renameStore.get()).toBe(renameSnapshot);
+  expect(metadataStore.get(documentId)).toBe(metadataSnapshot);
+  expect(readCreationReceipt()).toEqual(creation);
+  await act(async () => {
+    rootStore.put({ ...rootSnapshot, status: 'rejected' }); rootStore.clearSettled(rootStore.get()!);
+    renameStore.put({ ...renameSnapshot, status: 'rejected' }); renameStore.clearSettled(renameStore.get()!);
+    metadataStore.clear(documentId);
+  });
+  clearCreationReceipt();
+});
+
+test.each(metadataFields)('separate %s query keys prevent delayed old results replacing the current list', async (key, label) => {
+  const api = mockApi();
+  let resolveOld!: (value: DocumentList) => void;
+  api.listDocuments.mockImplementation(query => query[key] === 'old' ? new Promise(resolve => { resolveOld = resolve; }) : Promise.resolve({ view: 'published', items: [{ ...listItem('published'), title: '現在条件の結果' }], nextCursor: null }));
+  const { router } = renderAt('/documents' + defaultStringifySearch({ [key]: 'old', panel: 'closed' }));
+  await waitFor(() => expect(api.listDocuments).toHaveBeenCalledWith(expect.objectContaining({ [key]: 'old' })));
+  fireEvent.change(screen.getByRole('textbox', { name: label }), { target: { value: 'new' } });
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  await screen.findByRole('button', { name: '現在条件の結果' });
+  await act(async () => resolveOld({ view: 'published', items: [{ ...listItem('published'), title: '旧条件の遅延結果' }], nextCursor: null } as DocumentList));
+  expect(router.state.location.search[key]).toBe('new');
+  expect(screen.getByRole('button', { name: '現在条件の結果' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: '旧条件の遅延結果' })).not.toBeInTheDocument();
+});
+
+test('metadata GET failure is distinct from a successful empty result and supports explicit retry', async () => {
+  const api = mockApi();
+  api.listDocuments.mockRejectedValueOnce({ code: 'FORBIDDEN', status: 403 }).mockResolvedValue({ view: 'published', items: [], nextCursor: null });
+  renderAt('/documents' + defaultStringifySearch({ category: 'synthetic', panel: 'closed' }));
+  expect(await screen.findByRole('alert')).toBeVisible();
+  expect(screen.queryByRole('heading', { name: '文書がありません' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+  expect(await screen.findByRole('heading', { name: '文書がありません' })).toBeVisible();
+  expect(api.listDocuments).toHaveBeenLastCalledWith(expect.objectContaining({ category: 'synthetic' }));
+});
+
+
+test('isolated surrogate URL stops at the existing route error without a replacement-value GET', async () => {
+  const api = mockApi();
+  // jsdom omits Response; router error classification only needs the browser instanceof boundary.
+  const originalResponse = globalThis.Response;
+  globalThis.Response = class {} as typeof Response;
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    const { router } = renderAt('/documents?documentType=%22%5Cud800%22');
+    expect(await screen.findByText('文書種別に不正なUnicode文字が含まれています。入力を確認してください。')).toBeVisible();
+    expect(api.listDocuments).not.toHaveBeenCalled();
+    expect(screen.queryByRole('textbox', { name: '文書種別' })).not.toBeInTheDocument();
+    expect(router.state.matches.find(match => match.routeId === '/documents')?.status).toBe('error');
+  } finally { globalThis.Response = originalResponse; warn.mockRestore(); error.mockRestore(); }
+});
+
+
+test.each([
+  ['documentType', '文書種別', [1]], ['owningDepartment', '所管部署', null], ['category', 'カテゴリ', true],
+])('non-string %s route shows a fixed reason and never requests a broader list', async (key, label, value) => {
+  const api = mockApi();
+  // jsdom omits Response; router error classification only needs the browser instanceof boundary.
+  const originalResponse = globalThis.Response;
+  globalThis.Response = class {} as typeof Response;
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    renderAt('/documents' + defaultStringifySearch({ [key]: value }));
+    expect(await screen.findByText(`${label}は文字列で指定してください。URLの条件を確認してください。`)).toBeVisible();
+    expect(api.listDocuments).not.toHaveBeenCalled();
+  } finally { globalThis.Response = originalResponse; warn.mockRestore(); error.mockRestore(); }
+});
+
+
+test('invalid metadata route offers an in-app attribute reset while preserving other list state and unknown operations', async () => {
+  const api = mockApi();
+  const originalResponse = globalThis.Response; globalThis.Response = class {} as typeof Response;
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    const { router, client } = renderAt('/documents' + defaultStringifySearch({ documentType: [1], titleContains: 'keep', view: 'authoring', folderId, sort: 'title_asc', pageSize: 25, cursor: 'discard', selectedDocumentId: documentId, panel: 'closed' }));
+    const store = metadataOperations(client);
+    const unknown = { status: 'unknown' as const, request: { operationId: 'kept-route-error', expectedDocumentRevision: 7, set: { category: 'kept' }, unset: [], reason: 'keep' } };
+    store.put(documentId, unknown);
+    const link = await screen.findByRole('link', { name: '条件を解除して一覧へ戻る' });
+    expect(api.listDocuments).not.toHaveBeenCalled();
+    fireEvent.click(link);
+    await screen.findByRole('button', { name: /受入手順/ });
+    expect(router.state.location.search).toMatchObject({ titleContains: 'keep', view: 'authoring', folderId, sort: 'title_asc', pageSize: 25, selectedDocumentId: documentId, panel: 'closed' });
+    expect(router.state.location.search).not.toHaveProperty('documentType');
+    expect(router.state.location.search).not.toHaveProperty('cursor');
+    expect(store.get(documentId)).toBe(unknown);
+    store.clear(documentId);
+  } finally { globalThis.Response = originalResponse; warn.mockRestore(); error.mockRestore(); }
+});
+
+
+test('document route error never renders unknown error text or a stack', async () => {
+  mockApi();
+  const originalResponse = globalThis.Response; globalThis.Response = class {} as typeof Response;
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    renderAt('/documents', new Error('synthetic-private-unknown-error'));
+    expect(await screen.findByText('一覧の条件を確認できません。条件を解除して再度お試しください。')).toBeVisible();
+    expect(screen.queryByText(/synthetic-private-unknown-error/)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '条件を解除して一覧へ戻る' })).toBeVisible();
+  } finally { globalThis.Response = originalResponse; warn.mockRestore(); error.mockRestore(); }
+});
+
+test.each([
+  ['/documents?documentType=%22%5Cud800%22', '文書種別に不正なUnicode文字が含まれています。入力を確認してください。'],
+  ['/documents?category=%5B1%5D', 'カテゴリは文字列で指定してください。URLの条件を確認してください。'],
+])('invalid returnTo metadata shows its fixed reason and never falls back to an unfiltered list', async (returnTo, reason) => {
+  const api = mockApi();
+  const { router } = renderAt(`/documents/${documentId}` + defaultStringifySearch({ view: 'published', tab: 'overview', returnTo }));
+  await screen.findByRole('heading', { name: '受入手順', level: 1 });
+  fireEvent.click(screen.getByRole('button', { name: /一覧へ戻る/ }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(reason);
+  expect(router.state.location.pathname).toBe(`/documents/${documentId}`);
+  expect(api.listDocuments).not.toHaveBeenCalled();
+});
+
+test.each([
+  ['/documents?documentType=a%01b&titleContains=keep&pageSize=0', '文書種別', 'a\u0001b', '制御文字'],
+  ['/documents?category=' + 'a'.repeat(1025) + '&titleContains=keep&cursor=', 'カテゴリ', 'a'.repeat(1025), '1024 UTF-8 bytes'],
+])('compound invalid metadata URL keeps its input and stops every list GET', async (entry, label, value, reason) => {
+  const api = mockApi();
+  const { router } = renderAt(entry);
+  expect(await screen.findByRole('textbox', { name: label })).toHaveValue(value);
+  expect(await screen.findByRole('alert')).toHaveTextContent(reason);
+  expect(api.listDocuments).not.toHaveBeenCalled();
+  expect(router.state.location.pathname).toBe('/documents');
+  expect(screen.queryByRole('heading', { name: '文書がありません' })).not.toBeInTheDocument();
+});
+
+test.each([
+  ['/documents?documentType=a%01b&titleContains=keep&pageSize=0', '文書種別', 'a\u0001b', '制御文字'],
+  ['/documents?category=' + 'a'.repeat(1025) + '&titleContains=keep&cursor=', 'カテゴリ', 'a'.repeat(1025), '1024 UTF-8 bytes'],
+])('compound invalid returnTo keeps metadata on the list and cannot fall back to a broader GET', async (returnTo, label, value, reason) => {
+  const api = mockApi();
+  const { router } = renderAt(`/documents/${documentId}` + defaultStringifySearch({ view: 'published', tab: 'overview', returnTo }));
+  await screen.findByRole('heading', { name: '受入手順', level: 1 });
+  fireEvent.click(screen.getByRole('button', { name: /一覧へ戻る/ }));
+  expect(await screen.findByRole('textbox', { name: label })).toHaveValue(value);
+  expect(await screen.findByRole('alert')).toHaveTextContent(reason);
+  expect(router.state.location.pathname).toBe('/documents');
+  expect(api.listDocuments).not.toHaveBeenCalled();
+});
+
+test('valid metadata remains in the actual GET when an old condition falls back to defaults', async () => {
+  const api = mockApi();
+  const metadata = { documentType: '123', owningDepartment: '   ', category: 'e\u0301' };
+  const { router } = renderAt('/documents' + defaultStringifySearch({ ...metadata, titleContains: 'keep', pageSize: 0 }));
+  await screen.findByRole('button', { name: /受入手順/ });
+  expect(api.listDocuments).toHaveBeenLastCalledWith(expect.objectContaining({ ...metadata, pageSize: 50 }));
+  // TanStack preserves the original title while merging the old default fallback; keep that contract.
+  expect(api.listDocuments.mock.lastCall![0]).toHaveProperty('titleContains', 'keep');
+  expect(router.state.location.search).toMatchObject(metadata);
+  for (const [key, label] of metadataFields) expect(screen.getByRole('textbox', { name: label })).toHaveValue(metadata[key]);
+});
+
+
+test('valid metadata also survives old-condition fallback when returning from detail', async () => {
+  const api = mockApi();
+  const metadata = { documentType: '123', owningDepartment: '   ', category: 'e\u0301' };
+  const returnTo = '/documents' + defaultStringifySearch({ ...metadata, titleContains: 'keep', pageSize: 0 });
+  const { router } = renderAt(`/documents/${documentId}` + defaultStringifySearch({ view: 'published', tab: 'overview', returnTo }));
+  await screen.findByRole('heading', { name: '受入手順', level: 1 });
+  fireEvent.click(screen.getByRole('button', { name: /一覧へ戻る/ }));
+  await screen.findByRole('button', { name: /受入手順/ });
+  expect(api.listDocuments).toHaveBeenLastCalledWith(expect.objectContaining({ ...metadata, pageSize: 50 }));
+  expect(router.state.location.search).toMatchObject(metadata);
+});
+
+test.each([
+  [{ documentType: '', owningDepartment: '', category: '' }, {}],
+  [{ documentType: '', owningDepartment: '   ', category: '[1]' }, { owningDepartment: '   ', category: '[1]' }],
+  [{ documentType: '123', owningDepartment: '', category: 'e\u0301' }, { documentType: '123', category: 'e\u0301' }],
+  [{ documentType: 'null', owningDepartment: '   ', category: '', pageSize: 0 }, { documentType: 'null', owningDepartment: '   ' }],
+  [{ documentType: '', owningDepartment: '', category: '', pageSize: 0 }, {}],
+])('real route omits only empty metadata from the GUI GET, including old invalid conditions: %p', async (conditions, expectedMetadata) => {
+  const api = mockApi();
+  renderAt('/documents' + defaultStringifySearch({ ...conditions, titleContains: 'keep', panel: 'closed' }));
+  await screen.findByRole('button', { name: /受入手順/ });
+  expect(api.listDocuments).toHaveBeenLastCalledWith({ view: 'published', titleContains: 'keep', sort: 'published_at_desc', pageSize: 50, ...expectedMetadata });
+});
+
+test('empty metadata route uses the same Query key and cached query as unspecified metadata', async () => {
+  const api = mockApi();
+  const { router, client } = renderAt('/documents?documentType=&owningDepartment=&category=&panel=closed');
+  await screen.findByRole('button', { name: /受入手順/ });
+  const initialQuery = client.getQueryCache().findAll({ queryKey: ['documents'] })[0]!;
+  const initialCalls = api.listDocuments.mock.calls.length;
+  await act(async () => { await router.navigate({ to: '/documents', search: { view: 'published', includeDescendants: false, sort: 'published_at_desc', pageSize: 50, panel: 'closed' } }); });
+  await screen.findByRole('button', { name: /受入手順/ });
+  const query = client.getQueryCache().findAll({ queryKey: ['documents'] })[0]!;
+  expect(query).toBe(initialQuery);
+  expect(api.listDocuments).toHaveBeenCalledTimes(initialCalls);
+  expect(query.queryKey[1]).toMatchObject({ documentType: undefined, owningDepartment: undefined, category: undefined });
+});

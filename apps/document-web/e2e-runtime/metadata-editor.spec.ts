@@ -27,6 +27,37 @@ const fillPrivate = async (field: Locator, value: string) => {
   catch { throw new Error('合成metadataの入力操作に失敗しました'); }
 };
 const editor = (page: Page) => page.getByRole('dialog', { name: 'メタデータを編集', exact: true });
+type MetadataListFilters = { documentType: string; owningDepartment: string; category: string };
+const listTitle = 'Synthetic metadata GUI acceptance';
+
+async function fillMetadataListFilters(page: Page, filters: MetadataListFilters) {
+  await fillPrivate(page.getByLabel('文書種別', { exact: true }), filters.documentType);
+  await fillPrivate(page.getByLabel('所管部署', { exact: true }), filters.owningDepartment);
+  await fillPrivate(page.getByLabel('カテゴリ', { exact: true }), filters.category);
+}
+
+async function readFilteredList(page: Page, filters: MetadataListFilters, documentIds: string[], reset = false) {
+  const response = page.waitForResponse(result => new URL(result.url()).pathname === '/v1/documents'
+    && result.request().method() === 'GET');
+  await page.getByRole('button', { name: reset ? '属性の絞り込みを解除' : '絞り込む', exact: true }).press('Enter');
+  const result = await response;
+  expect(result.status()).toBe(200);
+  const params = new URL(result.url()).searchParams;
+  privatelyEqual(Object.fromEntries(['documentType', 'owningDepartment', 'category'].map(key => [key, params.get(key)])), {
+    documentType: filters.documentType || null, owningDepartment: filters.owningDepartment || null, category: filters.category || null,
+  });
+  expect(params.get('titleContains') === listTitle).toBe(true);
+  expect(params.has('cursor')).toBe(false);
+  const body = await result.json() as { items: { documentId: string }[] };
+  privatelyEqual(body.items.map(item => item.documentId), documentIds);
+  if (documentIds.length === 0) {
+    await expect(page.getByRole('heading', { name: '文書がありません', exact: true })).toBeVisible();
+    await expect(page.getByRole('table', { name: '文書一覧', exact: true })).toBeHidden();
+  } else {
+    await expect(page.getByRole('table', { name: '文書一覧', exact: true }).getByRole('row')).toHaveCount(documentIds.length + 1);
+    for (const documentId of documentIds) await expect(page.locator(`[data-document-id="${documentId}"]`)).toBeVisible();
+  }
+}
 
 async function saveMetadata(page: Page, documentId: string, reason: string) {
   const dialog = editor(page);
@@ -81,6 +112,37 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
       if (url.pathname === `/v1/documents/${documentId}/metadata` && request.method() === 'PATCH') patchRequests++;
     });
     await page.goto(`/documents/${documentId}?view=authoring&tab=overview`);
+    await page.getByRole('link', { name: '編集作業', exact: true }).press('Enter');
+    await expect(page.getByRole('table', { name: '文書一覧', exact: true })).toBeVisible();
+    await fillPrivate(page.getByLabel('文書名で絞り込み', { exact: true }), listTitle);
+    const initialFilters = { documentType: initialMetadata.document_type, owningDepartment: initialMetadata.owning_department, category: initialMetadata.category };
+    await fillMetadataListFilters(page, initialFilters);
+    await readFilteredList(page, initialFilters, [documentId]);
+    expect(new URL(page.url()).searchParams.get('view')).toBe('authoring');
+    await page.locator(`[data-document-id="${documentId}"]`).press('Enter');
+    await page.getByRole('button', { name: '詳細を開く', exact: true }).press('Enter');
+    await expect.poll(() => new URL(page.url()).pathname === `/documents/${documentId}`).toBe(true);
+    await page.getByRole('button', { name: '← 一覧へ戻る', exact: true }).press('Enter');
+    await expect.poll(() => new URL(page.url()).pathname === '/documents').toBe(true);
+    await inputEquals(page.getByLabel('文書名で絞り込み', { exact: true }), listTitle);
+    await inputEquals(page.getByLabel('文書種別', { exact: true }), initialFilters.documentType);
+    await inputEquals(page.getByLabel('所管部署', { exact: true }), initialFilters.owningDepartment);
+    await inputEquals(page.getByLabel('カテゴリ', { exact: true }), initialFilters.category);
+    await expect(page.locator(`[data-document-id="${documentId}"]`)).toBeFocused();
+    const mismatchedFilters = { ...initialFilters, category: 'synthetic-nonmatching-category' };
+    await fillMetadataListFilters(page, mismatchedFilters);
+    await readFilteredList(page, mismatchedFilters, []);
+    await readFilteredList(page, { documentType: '', owningDepartment: '', category: '' }, [documentId], true);
+    await inputEquals(page.getByLabel('文書名で絞り込み', { exact: true }), listTitle);
+    for (const name of ['文書種別', '所管部署', 'カテゴリ']) await inputEquals(page.getByLabel(name, { exact: true }), '');
+    expect(new URL(page.url()).searchParams.get('view')).toBe('authoring');
+    await page.locator(`[data-document-id="${documentId}"]`).press('Enter');
+    await page.getByRole('button', { name: '詳細を開く', exact: true }).press('Enter');
+    await expect.poll(() => new URL(page.url()).pathname === `/documents/${documentId}`).toBe(true);
+    expect(patchRequests).toBe(0);
+    privatelyEqual(await detail('authoring'), before);
+    privatelyEqual(await version('authoring'), beforeVersion);
+    expect(await revisions()).toHaveLength(0);
     const openEditor = page.getByRole('button', { name: 'メタデータを編集', exact: true });
     await expect(openEditor).toBeEnabled();
     await openEditor.press('Enter');
@@ -208,5 +270,19 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     await inputEquals(dialog.getByLabel('カテゴリ', { exact: true }), '');
     await dialog.getByRole('button', { name: 'キャンセル', exact: true }).press('Enter');
     completed('gui-metadata-restart-verified');
+    await page.getByRole('link', { name: '文書', exact: true }).press('Enter');
+    await expect(page.getByRole('table', { name: '文書一覧', exact: true })).toBeVisible();
+    await fillPrivate(page.getByLabel('文書名で絞り込み', { exact: true }), listTitle);
+    const retainedFilters = { documentType: metadata.document_type as string, owningDepartment: metadata.owning_department as string, category: '' };
+    privatelyEqual(retainedFilters, { documentType: 'synthetic-published-type', owningDepartment: '   ', category: '' });
+    expect(Object.prototype.hasOwnProperty.call(metadata, 'category')).toBe(false);
+    await fillMetadataListFilters(page, retainedFilters);
+    await readFilteredList(page, retainedFilters, [snapshot.documentId]);
+    expect(new URL(page.url()).searchParams.get('view')).toBe('published');
+    const removedCategoryFilters = { ...retainedFilters, category: 'synthetic-working-category' };
+    await fillMetadataListFilters(page, removedCategoryFilters);
+    await readFilteredList(page, removedCategoryFilters, []);
+    privatelyEqual(await persistedSnapshot(context.human, snapshot.documentId), snapshot);
+    privatelyEqual(await persistedSnapshot(context.agent, snapshot.documentId), snapshot);
   });
 }

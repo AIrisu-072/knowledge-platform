@@ -41,7 +41,7 @@ test('公開前のWORKINGはauthoring、公開後の同一Versionはpublishedで
   assert.equal(publication.length, 1);
   for (const name of ['detail', 'version']) {
     const reads = calls(name);
-    assert.equal(reads.length, 4);
+    assert.equal(reads.length, 5);
     for (const call of reads) {
       const expected = call.pos < publication[0].pos ? 'authoring' : 'published';
       assert.equal(call.arguments.length, 1, `${name}の用途を明示する`);
