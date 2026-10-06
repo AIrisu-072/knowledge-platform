@@ -5,6 +5,7 @@ import { documentApi, type Folder, type FolderChildren } from '../src/applicatio
 import { DocumentHomePage } from '../src/routes/DocumentHomePage';
 import { rootFolderOperations } from '../src/application/document-root-folder';
 import { folderRenameOperations } from '../src/application/document-folder-rename';
+import { documentMoveOperations } from '../src/application/document-move';
 import { folderMoveOperations } from '../src/application/document-folder-move';
 import { validateListSearch } from '../src/application/search-state';
 
@@ -23,7 +24,7 @@ const problem = (code: string, status: number) => ({ type: 'about:blank', title:
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(yes => { resolve = yes; }); return { promise, resolve }; }
 const clients: QueryClient[] = [];
 afterEach(() => clients.splice(0).forEach(client => {
-  for (const store of [rootFolderOperations(client), folderRenameOperations(client), folderMoveOperations(client)]) {
+  for (const store of [rootFolderOperations(client), folderRenameOperations(client), folderMoveOperations(client), documentMoveOperations(client)]) {
     const operation = store.get(); if (operation) { store.put({ ...operation, status: 'succeeded' } as never); store.clearSettled(store.get()! as never); }
   }
   client.clear();
@@ -259,4 +260,45 @@ test('移動先変更とsubmitが同じevent batchでも旧移動先と旧確認
   act(() => { fireEvent.click(within(dialog).getByRole('button', { name: 'System Root' })); submit(dialog); });
   await act(async () => read.resolve({ folderId: rootId, name: 'System Root', parentFolderId: null, revision: 17, capabilities: page([]).capabilities }));
   expect(api.moveFolder).not.toHaveBeenCalled(); expect(within(dialog).getByLabelText(confirmation)).not.toBeChecked();
+});
+
+function holdDocumentMove(client: QueryClient) {
+  documentMoveOperations(client).put({ status: 'unknown', targetDocumentId: 'document', context: { documentId: 'document', title: '合成文書', folderId: g.folderId, folderName: g.name, view: 'published' }, destination: { kind: 'root', folderId: rootId, name: 'System Root' }, expectedChanged: true,
+    request: { operationId: 'document-move', fromFolderId: g.folderId, toFolderId: rootId, expectedDocumentRevision: 7, reason: '理由' } });
+}
+test.each(['System Rootにフォルダーを作成', '選択したフォルダーに子フォルダーを作成', '選択したフォルダー名を変更', title])('文書移動UNKNOWNは新しい%sの入口だけを止める', async entry => {
+  const { client } = setup(); await choose(); expect(screen.getByRole('button', { name: entry })).toBeEnabled();
+  act(() => holdDocumentMove(client)); expect(screen.getByRole('button', { name: entry })).toBeDisabled();
+});
+test.each(['create', 'rename', 'move'])('新Folder %sのfresh read中に文書移動UNKNOWNが発生したら送信前に止める', async kind => {
+  const { api, client } = setup(); await choose();
+  let dialog: HTMLElement;
+  if (kind === 'move') { dialog = await openMove(); await destination(dialog); fill(dialog); }
+  else {
+    fireEvent.click(screen.getByRole('button', { name: kind === 'create' ? 'System Rootにフォルダーを作成' : '選択したフォルダー名を変更' })); dialog = await screen.findByRole('dialog');
+    const nameLabel = kind === 'create' ? 'フォルダー名' : '変更先のフォルダー名'; await waitFor(() => expect(within(dialog).getByLabelText(nameLabel)).toBeEnabled());
+    fireEvent.change(within(dialog).getByLabelText(nameLabel), { target: { value: '新資料' } }); fireEvent.change(within(dialog).getByLabelText(kind === 'create' ? '作成理由' : '変更理由'), { target: { value: '理由' } });
+  }
+  const read = deferred<FolderChildren>(); const rootRead = deferred<Awaited<ReturnType<typeof documentApi.getRootFolder>>>();
+  if (kind === 'create') api.getRootFolder.mockReturnValue(rootRead.promise); else api.listFolderChildren.mockImplementation(id => id === g.folderId ? read.promise : Promise.resolve(page(id === rootId ? [g, d] : [])));
+  fireEvent.submit(within(dialog).getByRole('button', { name: kind === 'create' ? '作成する' : kind === 'rename' ? '変更を保存する' : '移動する' }).closest('form')!);
+  act(() => holdDocumentMove(client));
+  await act(async () => { if (kind === 'create') rootRead.resolve({ folderId: rootId, name: 'System Root', parentFolderId: null, revision: 17, capabilities: page([]).capabilities }); else read.resolve(page([p])); });
+  expect(kind === 'create' ? api.createFolder : kind === 'rename' ? api.renameFolder : api.moveFolder).not.toHaveBeenCalled();
+});
+
+test.each(['create', 'rename', 'move'])('文書移動UNKNOWNと既存Folder %sのUNKNOWNを両方保持し既存要求を同一再送できる', async kind => {
+  const { api, client } = setup(); await choose();
+  act(() => {
+    holdDocumentMove(client);
+    if (kind === 'create') rootFolderOperations(client).put({ status: 'unknown', request: { operationId: 'create', folderId: 'new', parentFolderId: rootId, expectedParentRevision: 17, name: '新', reason: '理由' } });
+    else if (kind === 'rename') folderRenameOperations(client).put({ status: 'unknown', targetFolderId: p.folderId, context: { kind: 'selected', folderId: p.folderId, sourceParentId: g.folderId, pageLimit: 1, name: p.name }, currentName: p.name, expectedChanged: true, request: { operationId: 'rename', expectedFolderRevision: 8, name: '新', reason: '理由' } });
+    else folderMoveOperations(client).put({ status: 'unknown', targetFolderId: p.folderId, context: { kind: 'selected', folderId: p.folderId, sourceParentId: g.folderId, pageLimit: 1, name: p.name }, destination: { kind: 'root', folderId: rootId, name: 'System Root' }, currentName: p.name, expectedChanged: true, request: { operationId: 'move', fromParentId: g.folderId, toParentId: rootId, expectedFolderRevision: 8, reason: '理由' } });
+  });
+  const store = kind === 'create' ? rootFolderOperations(client) : kind === 'rename' ? folderRenameOperations(client) : folderMoveOperations(client); const fixed = store.get()!.request;
+  const documentFixed = documentMoveOperations(client).get()!;
+  const method = kind === 'create' ? api.createFolder : kind === 'rename' ? api.renameFolder : api.moveFolder; method.mockRejectedValue(problem('FORBIDDEN', 403));
+  fireEvent.click(screen.getByRole('button', { name: kind === 'create' ? 'System Rootにフォルダーを作成' : kind === 'rename' ? '選択したフォルダー名を変更' : title })); const dialog = await screen.findByRole('dialog');
+  fireEvent.click(within(dialog).getByRole('button', { name: '同じ内容で再試行' })); await within(dialog).findByText(/FORBIDDEN.*初回/);
+  expect(method.mock.calls[0]![kind === 'create' ? 0 : 1]).toBe(fixed); expect(store.get()?.status).toBe('unknown'); expect(documentMoveOperations(client).get()).toBe(documentFixed);
 });

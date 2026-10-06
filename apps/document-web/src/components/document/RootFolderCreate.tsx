@@ -5,6 +5,7 @@ import { documentApi, type Folder, type FolderDetail } from '../../application/d
 import { canCreateRootFolder, folderName, rootFolderOperations, rootFolderValidation, sendRootFolderOperation, readSelectedFolder, type FolderCreateContext, type SelectedFolderContext } from '../../application/document-root-folder';
 import { folderRenameOperations } from '../../application/document-folder-rename';
 import { folderMoveOperations } from '../../application/document-folder-move';
+import { documentMoveOperations } from '../../application/document-move';
 import { metadataReason } from '../../application/document-metadata';
 import { createOperationId } from '../../application/operation-id';
 import { mapApiProblem, problemFromUnknown } from '../../application/problem-mapping';
@@ -21,15 +22,17 @@ export function RootFolderCreate({ root, readReady, reload, contextKey, selected
   selected?: { context: SelectedFolderContext; folder: Folder & { capabilities?: FolderDetail['capabilities'] }; readReady: boolean };
 }) {
   const client = useQueryClient();
+  const documentMoveStore = documentMoveOperations(client);
+  const documentMove = useSyncExternalStore(documentMoveStore.subscribe, documentMoveStore.get);
   const store = rootFolderOperations(client);
   const operation = useSyncExternalStore(store.subscribe, store.get);
   const renameStore = folderRenameOperations(client);
   const rename = useSyncExternalStore(renameStore.subscribe, renameStore.get);
   const moveStore = folderMoveOperations(client);
   const move = useSyncExternalStore(moveStore.subscribe, moveStore.get);
-  const renameUnresolved = [rename, move].some(item => item?.status === 'pending' || item?.status === 'unknown');
-  const otherUnresolvedNow = () => [renameStore.get(), moveStore.get()].some(item => item?.status === 'pending' || item?.status === 'unknown');
-  const otherBlocked = move?.status === 'pending' || move?.status === 'unknown'
+  const renameUnresolved = [rename, move, documentMove].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const otherUnresolvedNow = () => [renameStore.get(), moveStore.get(), documentMoveStore.get()].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const otherBlocked = move?.status === 'pending' || move?.status === 'unknown' || documentMove?.status === 'pending' || documentMove?.status === 'unknown'
     ? '移動結果が未確定です。保持されている移動操作の結果を先に確認してください。'
     : '改名結果が未確定です。保持されている改名操作の結果を先に確認してください。';
   const [open, setOpen] = useState(false);

@@ -5,6 +5,7 @@ import { documentApi, type Folder, type FolderDetail } from '../../application/d
 import { readSelectedFolder, rootFolderOperations, type SelectedFolderContext } from '../../application/document-root-folder';
 import { folderRenameOperations } from '../../application/document-folder-rename';
 import { canMoveFolder, folderMoveOperations, moveReasonValidation, moveRevisionError, refreshFolderMoveReads, sendFolderMoveOperation, type FolderMoveDestination } from '../../application/document-folder-move';
+import { documentMoveOperations } from '../../application/document-move';
 import { metadataReason } from '../../application/document-metadata';
 import { createOperationId } from '../../application/operation-id';
 import { mapApiProblem, problemFromUnknown } from '../../application/problem-mapping';
@@ -17,12 +18,14 @@ const title = '選択したフォルダーを移動';
 const reselect = '移動対象はフォルダーツリーからもう一度選択してください。';
 const sourceError = '対象の最新の状態を取得できません。元の親の取得済み範囲を確認し、ツリーで選び直してください。';
 const destinationError = '移動先の最新の状態を取得できません。移動先ツリーで選び直してください。';
-const otherBlocked = '作成または改名結果が未確定です。保持されている操作の結果を先に確認してください。';
+const otherBlocked = '文書移動・作成または改名結果が未確定です。保持されている操作の結果を先に確認してください。';
 export function FolderMove({ root, selected, contextKey }: {
   root?: FolderDetail; contextKey: string;
   selected?: { context: SelectedFolderContext; folder: Folder & { capabilities?: FolderDetail['capabilities'] }; readReady: boolean };
 }) {
   const client = useQueryClient();
+  const documentMoveStore = documentMoveOperations(client);
+  const documentMove = useSyncExternalStore(documentMoveStore.subscribe, documentMoveStore.get);
   const store = folderMoveOperations(client); const createStore = rootFolderOperations(client); const renameStore = folderRenameOperations(client);
   const operation = useSyncExternalStore(store.subscribe, store.get);
   const create = useSyncExternalStore(createStore.subscribe, createStore.get); const rename = useSyncExternalStore(renameStore.subscribe, renameStore.get);
@@ -39,8 +42,8 @@ export function FolderMove({ root, selected, contextKey }: {
   const trigger = useRef<HTMLSpanElement>(null); const returnFocus = useRef<HTMLButtonElement | null>(null);
   useEffect(() => { generation.current += 1; destinationGeneration.current += 1; destinationBusy.current = false; refreshing.current = false; setReading(false); setDestinationReading(false); setOpen(false); }, [contextKey]);
   useEffect(() => () => { generation.current += 1; destinationGeneration.current += 1; }, []);
-  const otherUnresolved = [create, rename].some(item => item?.status === 'pending' || item?.status === 'unknown');
-  const otherUnresolvedNow = () => [createStore.get(), renameStore.get()].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const otherUnresolved = [create, rename, documentMove].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const otherUnresolvedNow = () => [createStore.get(), renameStore.get(), documentMoveStore.get()].some(item => item?.status === 'pending' || item?.status === 'unknown');
   const pending = operation?.status === 'pending'; const unknown = operation?.status === 'unknown';
   const selectedDetail = selected?.folder.capabilities ? { ...selected.folder, parentFolderId: selected.context.sourceParentId, capabilities: selected.folder.capabilities } : undefined;
   const reselectRequired = selected?.context === blockedSelection.current;
