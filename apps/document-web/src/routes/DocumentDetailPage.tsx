@@ -21,6 +21,8 @@ import {
 } from '../application/document-workspace';
 import { ApiFeedback, LoadingState } from '../components/shared/ApiFeedback';
 import { denyDocumentRevisionReads, useDocumentRevisions, type DocumentRevisionsRead } from '../application/use-document-revisions';
+import { DocumentContentHistory } from '../components/document/DocumentContentHistory';
+import { denyDocumentContentHistoryReads } from '../application/use-document-content-history';
 import { DocumentRevisionReadControls } from '../components/document/DocumentRevisionReadControls';
 import { useDocumentComparison, type DocumentComparisonRead } from '../application/use-document-comparison';
 import { DocumentComparisonReadControls } from '../components/document/DocumentComparisonReadControls';
@@ -65,7 +67,7 @@ export function DocumentDetailPage() {
     queryKey: ['document', documentId, search.view],
     queryFn: async ({ signal }) => {
       try { return await documentApi.getDocument(documentId, search.view); }
-      catch (error) { if (!signal.aborted) denyDocumentRevisionReads(queryClient, documentId, error); throw error; }
+      catch (error) { if (!signal.aborted) { denyDocumentRevisionReads(queryClient, documentId, error); denyDocumentContentHistoryReads(queryClient, documentId, error); } throw error; }
     },
   });
   const document = detailQuery.error ? undefined : detailQuery.data;
@@ -285,7 +287,7 @@ export function DocumentDetailPage() {
               </div>
               <section id="document-tab-panel" role="tabpanel" aria-labelledby={`tab-${activeTab}`} tabIndex={0} className={styles.tabPanel}>
                 {activeTab === 'overview' && <OverviewTab key={location.href} document={document} filesQuery={filesQuery} reload={async () => { const result = await detailQuery.refetch(); if (result.error) throw result.error; }} />}
-                {activeTab === 'versions' && search.workflow !== 'newVersion' && <>{versionsPanel}{selectedVersion && <DocumentScheduleCancellation key={`${documentId}:${selectedVersion.versionId}`} document={document} view={search.view} versionId={selectedVersion.versionId} version={versionDetailQuery.data} contextKey={`${documentId}:${search.view}:${activeTab}:${selectedVersion.versionId}`} currentRead={!detailQuery.isFetching && !detailQuery.isError && !versionDetailQuery.isFetching && !versionDetailQuery.isError} />}</>}
+                {activeTab === 'versions' && search.workflow !== 'newVersion' && <>{versionsPanel}<DocumentContentHistory key={location.href} documentId={documentId} />{selectedVersion && <DocumentScheduleCancellation key={`${documentId}:${selectedVersion.versionId}`} document={document} view={search.view} versionId={selectedVersion.versionId} version={versionDetailQuery.data} contextKey={`${documentId}:${search.view}:${activeTab}:${selectedVersion.versionId}`} currentRead={!detailQuery.isFetching && !detailQuery.isError && !versionDetailQuery.isFetching && !versionDetailQuery.isError} />}</>}
                 {activeTab === 'history' && <HistoryTab query={historyQuery} />}
                 {activeTab === 'access' && canManageAccess && <AccessTab documentId={documentId} documentTitle={document.title} documentFolderId={document.folderId ?? null} folderName={document.folderName ?? null} policy={accessQuery.data} loading={accessQuery.isPending} error={accessQuery.error} onRetry={() => void accessQuery.refetch()} />}
               </section>
