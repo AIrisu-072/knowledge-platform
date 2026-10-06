@@ -43,7 +43,9 @@ impl RetrieverProfile {
             Self::Capability => [Structured, HyperGraph, Directory, Lexical, Vector],
             Self::Knowledge => [Structured, Lexical, Directory, HyperGraph, Vector],
             Self::EvidenceInvestigation => [HyperGraph, Structured, Lexical, Directory, Vector],
-            Self::Exploratory => [Lexical, Vector, HyperGraph, Directory, Structured],
+            // E (2026-10-06): Vector after HyperGraph, so a Graph-only answer is
+            // never displaced by similarity candidates.
+            Self::Exploratory => [Lexical, HyperGraph, Vector, Directory, Structured],
         }
     }
 }
@@ -259,6 +261,8 @@ pub struct RetrievalInputs {
     /// A graph plan is source-local and must pass the core traversal validator.
     pub graph_plans: BTreeMap<SourceId, GraphTraversalPlan>,
     pub vector_query_available: bool,
+    /// Request-scoped Vector query text; Vector plans only with text.
+    pub vector_query: Option<String>,
     /// Remote inputs are explicit and source-local; local query text is never
     /// implicitly transmitted to a remote provider.
     pub remote_queries: BTreeMap<SourceId, RemoteQueryInput>,

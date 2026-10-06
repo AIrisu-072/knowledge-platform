@@ -809,6 +809,7 @@ pub async fn run_arm(
         graph_resource_access: Some(harness.access.as_ref()),
         remote: None,
         access: harness.access.as_ref(),
+        vector: None,
     };
     let mut runs = Vec::new();
     for query in &harness.corpus.queries {
@@ -835,6 +836,7 @@ pub async fn run_arm(
                     lexical_query: Some(&lexical_query),
                     body_query: None,
                     graph_plan: graph_plan.as_ref(),
+                    vector_query: None,
                 },
             )
             .await

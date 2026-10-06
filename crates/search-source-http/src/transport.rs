@@ -181,6 +181,7 @@ impl BoundedResponse {
 }
 
 pub struct GuardedHttpTransport {
+    endpoint: RegisteredEndpoint,
     origin: reqwest::Url,
     base_path: String,
     host: String,
@@ -246,10 +247,11 @@ impl GuardedHttpTransport {
             return Err(invalid_endpoint());
         }
         Ok(Self {
-            origin,
             base_path: endpoint.base_path().trim_end_matches('/').to_owned(),
-            host,
             port: endpoint.port(),
+            endpoint,
+            origin,
+            host,
             resolver,
             limits,
             allow_loopback,
@@ -258,6 +260,10 @@ impl GuardedHttpTransport {
 
     pub const fn limits(&self) -> TransportLimits {
         self.limits
+    }
+
+    pub fn endpoint(&self) -> &RegisteredEndpoint {
+        &self.endpoint
     }
 
     /// One bounded call. `body` is the adapter's own encoded request; an

@@ -352,6 +352,7 @@ pub async fn discover_scoped(
                 graph_resource_access: None,
                 remote: None,
                 access: &access,
+                vector: None,
             },
             selectors: &nothing,
             assertions: &nothing,

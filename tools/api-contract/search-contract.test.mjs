@@ -52,7 +52,7 @@ test('Search preserves its own problem spelling and closed request fields', () =
     ['query', 'resourceTypes', 'sourceIds', 'coverage', 'pageSize', 'cursor'].sort());
   assert.equal(contract.components.schemas.SearchQuery.additionalProperties, false);
   assert.deepEqual(Object.keys(contract.components.schemas.DiscoveryInput.properties).sort(),
-    ['need', 'query', 'coverage'].sort());
+    ['need', 'query', 'coverage', 'graph'].sort());
   assert.equal(contract.components.schemas.DiscoveryInput.additionalProperties, false);
 });
 

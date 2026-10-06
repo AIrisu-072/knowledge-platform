@@ -13,8 +13,10 @@ use std::time::Duration;
 
 use search_core::discovery::{DiscoveryNeed, DiscoveryRequest, DiscoveryResult};
 use search_core::evidence::EvidenceRequirement;
-use search_core::id::{ClaimId, DiscoveryEvaluationId, NeedId, SourceId};
+use search_core::graph::{GraphTraversalPlan, RelationPathPattern, TraversalBudget};
+use search_core::id::{ClaimId, DiscoveryEvaluationId, NeedId, ResourceId, SourceId};
 use search_core::intent::{IntentFact, IntentFactOrigin, IntentSignature};
+use search_core::relation::RelationNamespace;
 use search_core::resource::ResourceKind;
 use search_core::temporal::TemporalEvaluationContext;
 use time::OffsetDateTime;
@@ -54,6 +56,85 @@ pub struct DiscoverInput {
     pub business_timezone: Option<String>,
     pub query: Option<String>,
     pub coverage: SearchCoverage,
+    /// B7: one public Graph path request, or none.
+    pub graph: Option<DiscoverGraphInput>,
+}
+
+/// Seed Resources and one relation path. The server adds the namespace,
+/// the actor's access context, the evaluation's temporal context and fixed
+/// traversal budgets; a caller never names them.
+#[derive(Clone, PartialEq, Eq)]
+pub struct DiscoverGraphInput {
+    pub seed_resource_ids: Vec<ResourceId>,
+    pub relation_type: String,
+    pub from_role: String,
+    pub to_role: String,
+    pub max_hops: usize,
+}
+
+pub const MAX_GRAPH_SEEDS: usize = 8;
+pub const MAX_GRAPH_HOPS: usize = 3;
+
+/// A relation type or role: a short lowercase token.
+pub fn graph_token_ok(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= 64
+        && bytes[0].is_ascii_lowercase()
+        && bytes
+            .iter()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"_.-".contains(byte))
+}
+
+impl DiscoverGraphInput {
+    pub fn validate(&self) -> Result<(), ApiError> {
+        let mut seeds = self.seed_resource_ids.clone();
+        seeds.sort();
+        seeds.dedup();
+        if self.seed_resource_ids.is_empty()
+            || self.seed_resource_ids.len() > MAX_GRAPH_SEEDS
+            || seeds.len() != self.seed_resource_ids.len()
+            || !graph_token_ok(&self.relation_type)
+            || !graph_token_ok(&self.from_role)
+            || !graph_token_ok(&self.to_role)
+            || !(1..=MAX_GRAPH_HOPS).contains(&self.max_hops)
+        {
+            return Err(ApiError::ValidationFailed);
+        }
+        Ok(())
+    }
+
+    fn plan(
+        &self,
+        access_context: String,
+        temporal_context: TemporalEvaluationContext,
+    ) -> GraphTraversalPlan {
+        GraphTraversalPlan {
+            seed_nodes: self.seed_resource_ids.clone(),
+            path_patterns: vec![RelationPathPattern {
+                namespace: RelationNamespace::Discovery,
+                relation_type: self.relation_type.clone(),
+                from_role: self.from_role.clone(),
+                to_role: self.to_role.clone(),
+                from_resource: None,
+                to_resource: None,
+                required_participants: vec![],
+            }],
+            allowed_relation_types: vec![self.relation_type.clone()],
+            allowed_namespaces: vec![RelationNamespace::Discovery],
+            authority_requirement: None,
+            temporal_context: Some(temporal_context),
+            access_context,
+            expansion_budget: TraversalBudget {
+                max_hops: self.max_hops,
+                max_relations: 256,
+                max_branching_per_node: 32,
+                max_seed_nodes: MAX_GRAPH_SEEDS,
+                max_paths: 64,
+            },
+            stop_conditions: vec![],
+        }
+    }
 }
 
 impl fmt::Debug for DiscoverInput {
@@ -64,6 +145,9 @@ impl fmt::Debug for DiscoverInput {
 
 impl DiscoverInput {
     pub fn validate(&self) -> Result<(), ApiError> {
+        if let Some(graph) = &self.graph {
+            graph.validate()?;
+        }
         let mut claims = self.required_claim_ids.clone();
         claims.sort();
         claims.dedup();
@@ -166,8 +250,32 @@ impl<'a> DiscoverRouteService<'a> {
             .map(|entry| entry.scope().source_id())
             .collect();
         let remote_selectors = selectors.remote_selectors(&remote_sources);
+        let now = OffsetDateTime::now_utc();
+        let temporal_context = TemporalEvaluationContext::new(
+            binding.evaluation(),
+            input.temporal_target.unwrap_or(now),
+            now,
+            input.business_timezone.as_deref().unwrap_or("UTC"),
+        );
+        let mut config = wiring.config.clone();
+        if let Some(graph) = &input.graph {
+            // One plan per visible Document Source; Remote Sources expose
+            // no Graph. The plan carries this actor's access context.
+            config.retriever_support.hypergraph = true;
+            let access_context = actor.access_handle().to_opaque_string();
+            for entry in snapshot
+                .entries()
+                .iter()
+                .filter(|entry| entry.registration().kind() == SourceKind::Document)
+            {
+                config.retrieval_inputs.graph_plans.insert(
+                    entry.scope().source_id(),
+                    graph.plan(access_context.clone(), temporal_context.clone()),
+                );
+            }
+        }
         let service = DiscoveryService::new(
-            wiring.config.clone(),
+            config,
             DiscoveryPorts {
                 sources: wiring.sources,
                 generations: wiring.generations,
@@ -193,7 +301,6 @@ impl<'a> DiscoverRouteService<'a> {
             wiring.disclosure_ttl,
         )
         .map_err(|_| ApiError::ServiceUnavailable)?;
-        let now = OffsetDateTime::now_utc();
         let request = DiscoveryRequest {
             need: DiscoveryNeed {
                 need_id: NeedId::from_uuid(Uuid::now_v7()),
@@ -209,12 +316,7 @@ impl<'a> DiscoverRouteService<'a> {
                 constraints: vec![],
                 completion_requirement: EvidenceRequirement::new(input.required_claim_ids.clone()),
             },
-            temporal_context: TemporalEvaluationContext::new(
-                binding.evaluation(),
-                input.temporal_target.unwrap_or(now),
-                now,
-                input.business_timezone.as_deref().unwrap_or("UTC"),
-            ),
+            temporal_context,
             access_context: String::new(),
         };
         let visible_ids: Vec<SourceId> = scopes.iter().map(|scope| scope.source_id()).collect();

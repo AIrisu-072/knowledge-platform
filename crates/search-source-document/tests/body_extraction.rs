@@ -184,6 +184,41 @@ async fn zip_plan_comes_from_the_trusted_registry() {
 }
 
 #[tokio::test]
+async fn zip_directory_entries_are_not_leaves() {
+    let raw = zip(&[
+        ("docs/", b""),
+        ("docs/a.txt", "東京\n".as_bytes()),
+        ("docs/sub/", b""),
+        ("docs/sub/b.csv", "同文。\n".as_bytes()),
+    ]);
+    let result = extractor(vec![raw.clone()], Mode::Honest)
+        .extract_item(&record(), &item(&raw, "application/zip"))
+        .await
+        .unwrap();
+    assert_eq!(result.coverage, Some(BodyCoverage::Supported));
+    assert_eq!(
+        result
+            .units
+            .iter()
+            .map(|unit| unit.text.as_str())
+            .collect::<Vec<_>>(),
+        vec!["東京", "同文。"]
+    );
+    // A directory entry with an unsafe path still refuses the archive.
+    let unsafe_directory = zip(&[("../", b""), ("a.txt", b"x\n")]);
+    let result = extractor(vec![unsafe_directory.clone()], Mode::Honest)
+        .extract_item(&record(), &item(&unsafe_directory, "application/zip"))
+        .await
+        .unwrap();
+    assert_eq!(
+        result.coverage,
+        Some(BodyCoverage::Unsupported {
+            reason: CoverageReason::UnsupportedStructure
+        })
+    );
+}
+
+#[tokio::test]
 async fn oversized_declared_item_is_resource_limited_before_any_read() {
     // No stored image: any read would fail as unavailable.
     let body = extractor(vec![], Mode::Honest);

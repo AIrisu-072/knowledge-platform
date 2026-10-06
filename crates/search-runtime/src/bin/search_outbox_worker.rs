@@ -66,6 +66,30 @@ struct WorkerFile {
     profiles: Vec<ExtractionProfileDefinitionV1>,
     source_lease_ms: u64,
     guard_ttl_ms: u64,
+    /// E: Vector is on by default; `"vector": {"enabled": false}` turns it off.
+    #[serde(default)]
+    vector: VectorFile,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, default)]
+struct VectorFile {
+    enabled: bool,
+    /// The pinned `intfloat/multilingual-e5-small` files.
+    model_dir: PathBuf,
+    similarity_floor: f32,
+    maintain_interval_ms: u64,
+}
+
+impl Default for VectorFile {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            model_dir: PathBuf::from("/var/lib/knowledge-platform/models/multilingual-e5-small"),
+            similarity_floor: search_runtime::vector_runtime::DEFAULT_SIMILARITY_FLOOR,
+            maintain_interval_ms: 15_000,
+        }
+    }
 }
 
 /// The configured Document adapter declares exactly the configured scope.
@@ -127,6 +151,13 @@ fn invalid(what: &str) -> impl Fn(SearchError) -> String + '_ {
 }
 
 async fn run() -> Result<(), String> {
+    // A2: `rebuild` is the manual retry: one full rebuild, then exit. It can
+    // be run any number of times; delivery retries stay bounded.
+    let rebuild = match std::env::args().nth(1).as_deref() {
+        None => false,
+        Some("rebuild") => true,
+        Some(_) => return Err("usage: search_outbox_worker [rebuild]".into()),
+    };
     let file = std::fs::read(env("SEARCH_WORKER_CONFIG")?)
         .map_err(|_| "SEARCH_WORKER_CONFIG cannot be read".to_string())?;
     let config: WorkerFile =
@@ -216,10 +247,73 @@ async fn run() -> Result<(), String> {
         .startup(64)
         .await
         .map_err(|error| format!("startup recovery: {error:?}"))?;
-    if let CurrentState::Unusable(_, error) = report.current {
+    // An unusable current generation is exactly what a rebuild replaces.
+    if let CurrentState::Unusable(_, error) = report.current
+        && !rebuild
+    {
         return Err(format!("current generation is unusable: {error:?}"));
     }
 
+    // E: Vector maintenance runs beside delivery. An enabled Vector whose
+    // pinned model files are missing or altered stops startup, never
+    // silently serving without it.
+    if config.vector.enabled && !rebuild {
+        let provider: Arc<dyn search_application::vector::EmbeddingProvider> = Arc::new(
+            search_vector_adapter::CandleEmbeddingProvider::load(&config.vector.model_dir)
+                .map_err(|error| format!("vector model: {error}"))?,
+        );
+        let services = search_runtime::vector_runtime::VectorServices {
+            activations: Arc::new(
+                search_runtime::vector_runtime::RegisteredVectorActivation::new(
+                    [source_id],
+                    provider.as_ref(),
+                ),
+            ),
+            provider,
+            index: Arc::new(search_runtime::vector_store::PgVectorIndex::new(
+                search_pool.clone(),
+                config.vector.similarity_floor,
+            )),
+            generations: Arc::new(search_runtime::vector_store::PgVectorGenerations::new(
+                search_pool.clone(),
+            )),
+        };
+        let maintainer = search_runtime::vector_runtime::VectorMaintainer::new(
+            search_pool.clone(),
+            source.clone(),
+            services,
+        );
+        maintainer
+            .recover()
+            .await
+            .map_err(|error| format!("vector recovery: {error}"))?;
+        let interval = Duration::from_millis(config.vector.maintain_interval_ms.max(1_000));
+        tokio::spawn(async move {
+            loop {
+                if let Err(error) = maintainer.ensure_current().await {
+                    eprintln!("search_outbox_worker: vector maintenance: {error}");
+                }
+                tokio::time::sleep(interval).await;
+            }
+        });
+    }
+
+    // The parser build stamped into Unit provenance must name the worker that
+    // runs; the runner re-checks the same pin before every extraction.
+    let worker_sha256 = search_extraction_runner::executable_sha256(&config.extraction_worker)
+        .map_err(|error| format!("extraction worker: {error:?}"))?;
+    let expected_build = format!(
+        "sha256:{}",
+        worker_sha256
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    );
+    if config.parser_build_id != expected_build {
+        return Err(format!(
+            "parser_build_id must be the extraction worker's {expected_build}"
+        ));
+    }
     let registry = BodyProfileRegistry::new(config.parser_build_id, config.profiles.clone())
         .map_err(|error| format!("extraction profiles: {error:?}"))?;
     let profiles = config
@@ -229,35 +323,48 @@ async fn run() -> Result<(), String> {
             search_extraction_core::RegisteredProfile::register_definition(definition).ok()
         })
         .collect();
-    let runner =
-        SearchExtractionRunner::new(SearchRunnerConfig::new(config.extraction_worker), profiles)
-            .map_err(|error| format!("extraction runner: {error:?}"))?;
+    let runner = SearchExtractionRunner::new(
+        SearchRunnerConfig::new(config.extraction_worker).with_worker_sha256(worker_sha256),
+        profiles,
+    )
+    .map_err(|error| format!("extraction runner: {error:?}"))?;
     let extractor = Arc::new(DocumentBodyExtractor::new(
         source_id,
         FileSystemStorage::new(&config.file_root),
         runner,
         registry,
     ));
+    let worker_config = SearchWorkerConfig {
+        registration,
+        activation,
+        source,
+        lens: config.lens,
+        projection_schema_version: config.projection_schema_version,
+        analyzer_version: config.analyzer_version,
+        semantic_registry: SemanticRegistrySnapshot::new(config.semantic_registry_version),
+        lexical_root: config.lexical_root,
+        delivery: DeliveryConfig::default(),
+        policy: DeliveryPolicy::default(),
+        source_lease: Duration::from_millis(config.source_lease_ms),
+        guard_ttl: FullGuardTtl::new(Duration::from_millis(config.guard_ttl_ms))
+            .ok_or("guard TTL must be positive and at most 120 s")?,
+    };
+    if rebuild {
+        let outcome =
+            search_runtime::worker::compose_rebuild(search_pool, &ledger, extractor, worker_config)
+                .map_err(|error| format!("rebuild composition: {error:?}"))?
+                .rebuild()
+                .await
+                .map_err(|error| format!("rebuild: {error}"))?;
+        println!("search_outbox_worker: rebuild {outcome:?}");
+        return Ok(());
+    }
     let worker = compose(
         delivery_pool,
         search_pool,
         &ledger,
         extractor,
-        SearchWorkerConfig {
-            registration,
-            activation,
-            source,
-            lens: config.lens,
-            projection_schema_version: config.projection_schema_version,
-            analyzer_version: config.analyzer_version,
-            semantic_registry: SemanticRegistrySnapshot::new(config.semantic_registry_version),
-            lexical_root: config.lexical_root,
-            delivery: DeliveryConfig::default(),
-            policy: DeliveryPolicy::default(),
-            source_lease: Duration::from_millis(config.source_lease_ms),
-            guard_ttl: FullGuardTtl::new(Duration::from_millis(config.guard_ttl_ms))
-                .ok_or("guard TTL must be positive and at most 120 s")?,
-        },
+        worker_config,
     )
     .map_err(|error| format!("worker composition: {error:?}"))?;
 

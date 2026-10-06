@@ -256,6 +256,7 @@ async fn candidate_access_is_bound_to_source_version_and_current_document_policy
                 hypergraph: None,
                 graph_resource_access: None,
                 access: &access,
+                vector: None,
             },
             selectors: &evidence,
             assertions: &evidence,

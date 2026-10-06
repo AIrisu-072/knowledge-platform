@@ -353,6 +353,7 @@ fn ports<'a>(retrievers: &'a Retrievers, access: &'a CurrentAccess) -> Retrieval
         hypergraph: Some(retrievers),
         graph_resource_access: Some(&ALLOW_GRAPH_RESOURCES),
         access,
+        vector: None,
     }
 }
 
@@ -368,6 +369,7 @@ fn input<'a>(
         lexical_query: None,
         graph_plan: None,
         body_query: None,
+        vector_query: None,
     }
 }
 

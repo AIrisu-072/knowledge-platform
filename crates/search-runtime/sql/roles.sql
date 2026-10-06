@@ -17,6 +17,9 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'search_gc') THEN
         CREATE ROLE search_gc NOLOGIN;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'search_host_publisher') THEN
+        CREATE ROLE search_host_publisher NOLOGIN;
+    END IF;
 END;
 $roles$;
 
@@ -106,3 +109,15 @@ BEGIN
     END IF;
 END;
 $search_outbox_lock_role$;
+
+-- B5: only the host inventory publisher writes the inventory and its Audit
+-- event; registration and readers only read the inventory.
+REVOKE ALL ON search_host_inventory_revision, search_host_inventory_head,
+    search_audit_outbox_events FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO search_host_publisher;
+GRANT SELECT, INSERT ON search_host_inventory_revision TO search_host_publisher;
+GRANT SELECT, INSERT, UPDATE (deployment_epoch, authority_revision, inventory_digest, updated_at)
+    ON search_host_inventory_head TO search_host_publisher;
+GRANT INSERT ON search_audit_outbox_events TO search_host_publisher;
+GRANT SELECT ON search_host_inventory_revision, search_host_inventory_head
+    TO search_registration, search_reader;
