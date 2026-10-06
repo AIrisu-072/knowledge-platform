@@ -12,7 +12,6 @@ import {
   type DocumentRevisionSummary,
   type DisplayFragment,
   type FileList,
-  type History,
   type PolicyGrantInput,
   type RevisionComparisonResponse,
   type SourceLocator,
@@ -21,6 +20,8 @@ import {
 } from '../application/document-workspace';
 import { ApiFeedback, LoadingState } from '../components/shared/ApiFeedback';
 import { denyDocumentRevisionReads, useDocumentRevisions, type DocumentRevisionsRead } from '../application/use-document-revisions';
+import { denyDocumentHistoryReads, useDocumentHistory, type DocumentHistoryRead } from '../application/use-document-history';
+import { DocumentHistoryReadControls } from '../components/document/DocumentHistoryReadControls';
 import { DocumentContentHistory } from '../components/document/DocumentContentHistory';
 import { denyDocumentContentHistoryReads } from '../application/use-document-content-history';
 import { DocumentRevisionReadControls } from '../components/document/DocumentRevisionReadControls';
@@ -67,7 +68,14 @@ export function DocumentDetailPage() {
     queryKey: ['document', documentId, search.view],
     queryFn: async ({ signal }) => {
       try { return await documentApi.getDocument(documentId, search.view); }
-      catch (error) { if (!signal.aborted) { denyDocumentRevisionReads(queryClient, documentId, error); denyDocumentContentHistoryReads(queryClient, documentId, error); } throw error; }
+      catch (error) {
+        if (!signal.aborted) {
+          denyDocumentRevisionReads(queryClient, documentId, error);
+          denyDocumentHistoryReads(queryClient, documentId, error);
+          denyDocumentContentHistoryReads(queryClient, documentId, error);
+        }
+        throw error;
+      }
     },
   });
   const document = detailQuery.error ? undefined : detailQuery.data;
@@ -80,11 +88,7 @@ export function DocumentDetailPage() {
     enabled: Boolean(document && (activeTab === 'versions' || activeTab === 'compare')),
   });
   const revisionRead = useDocumentRevisions(documentId, Boolean(document && (activeTab === 'versions' || activeTab === 'compare')));
-  const historyQuery = useQuery({
-    queryKey: ['document-history', documentId],
-    queryFn: () => documentApi.getDocumentHistory(documentId),
-    enabled: Boolean(document && activeTab === 'history'),
-  });
+  const historyRead = useDocumentHistory(documentId, Boolean(document && activeTab === 'history'));
   const accessQuery = useQuery({
     queryKey: ['document-access-policy', documentId],
     queryFn: () => documentApi.getDocumentAccessPolicy(documentId),
@@ -288,7 +292,7 @@ export function DocumentDetailPage() {
               <section id="document-tab-panel" role="tabpanel" aria-labelledby={`tab-${activeTab}`} tabIndex={0} className={styles.tabPanel}>
                 {activeTab === 'overview' && <OverviewTab key={location.href} document={document} filesQuery={filesQuery} reload={async () => { const result = await detailQuery.refetch(); if (result.error) throw result.error; }} />}
                 {activeTab === 'versions' && search.workflow !== 'newVersion' && <>{versionsPanel}<DocumentContentHistory key={location.href} documentId={documentId} />{selectedVersion && <DocumentScheduleCancellation key={`${documentId}:${selectedVersion.versionId}`} document={document} view={search.view} versionId={selectedVersion.versionId} version={versionDetailQuery.data} contextKey={`${documentId}:${search.view}:${activeTab}:${selectedVersion.versionId}`} currentRead={!detailQuery.isFetching && !detailQuery.isError && !versionDetailQuery.isFetching && !versionDetailQuery.isError} />}</>}
-                {activeTab === 'history' && <HistoryTab query={historyQuery} />}
+                {activeTab === 'history' && <HistoryTab read={historyRead} />}
                 {activeTab === 'access' && canManageAccess && <AccessTab documentId={documentId} documentTitle={document.title} documentFolderId={document.folderId ?? null} folderName={document.folderName ?? null} policy={accessQuery.data} loading={accessQuery.isPending} error={accessQuery.error} onRetry={() => void accessQuery.refetch()} />}
               </section>
             </>
@@ -741,16 +745,15 @@ function DownloadSourceButton({ documentId, purpose, versionId, evidence, label 
   return <span className={styles.originalAction}><button type="button" disabled={pending} onClick={() => void download()}>{pending ? '取得中…' : label}</button>{Boolean(error) && <ApiFeedback error={error} />}</span>;
 }
 
-function HistoryTab({ query }: { query: { data?: History; isPending: boolean; error: unknown; refetch: () => Promise<unknown> } }) {
+function HistoryTab({ read }: { read: DocumentHistoryRead }) {
   return (
-    <section>
-      <div className={styles.sectionHeading}><div><h2>変更履歴</h2><p>記録された操作と由来を表示します。</p></div></div>
-      {query.isPending && <LoadingState label="履歴を読み込み中" />}
-      {Boolean(query.error) && <ApiFeedback error={query.error} onRetry={() => void query.refetch()} />}
-      {query.data?.items.length === 0 && <p className={styles.muted}>表示できる履歴はありません。</p>}
+    <section aria-labelledby="document-history-heading">
+      <div className={styles.sectionHeading}><div><h2 id="document-history-heading">変更履歴</h2><p>記録された操作と由来を表示します。</p></div></div>
+      <DocumentHistoryReadControls read={read} />
+      {read.empty && <p className={styles.muted}>表示できる履歴はありません。</p>}
       <ol className={styles.historyList}>
-        {query.data?.items.map((entry, index) => (
-          <li key={`${entry.sourceKind}:${entry.sourceKey}:${index}`}>
+        {read.entries.map((entry) => (
+          <li key={JSON.stringify([entry.sourceKind, entry.sourceKey])}>
             <div className={styles.historyTitle}><strong>{entry.actionCode}</strong><span>{entry.provenanceQuality === 'operationLedger' ? '操作記録' : entry.provenanceQuality === 'versionFallback' ? '版からの履歴' : '由来不明の履歴'}</span></div>
             <time>{entry.occurredAt ? formatDate(entry.occurredAt) : '日時不明'}</time>
             <p>{entry.actor?.presentation.displayName ?? entry.actor?.principalId ?? '実行者不明'}{entry.actor?.presentation.resolution === 'notFound' ? ' · ディレクトリに存在しません' : entry.actor?.presentation.resolution === 'unavailable' ? ' · 表示情報を取得できません' : ''}</p>

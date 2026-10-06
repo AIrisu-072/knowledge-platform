@@ -4,14 +4,16 @@ import { startDiagnostics, finishDiagnostics, captureUiDiagnostics } from './sta
 import { test, expect } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import {
   BinaryTransportBridge, compareDocumentRevisions, compareDocumentVersions, getDocument,
   getDocumentAccessPolicy, getDocumentHistory, getRootFolder, getSession, listDocumentRevisions,
   listDocuments, listDocumentVersions, listFolderChildren, listVersionFiles, publishVersion,
-  type VersionMutationResult, type CommandsMetadataPatch, type ModelsVersion, type ModelsDisplayFragment, type RevisionComparisonResponse,
+  type VersionMutationResult, type CommandsMetadataPatch, type ModelsVersion, type ModelsDisplayFragment, type ModelsHistory, type RevisionComparisonResponse,
   type VersionList, type VersionDetail, type FileList,
 } from '@knowledge-platform/document-api-client';
 import { hash, options, persistedSnapshot, runtime, saveSnapshot, uuidV7 } from './support';
+import { formatDateTime } from '../src/view-model/date-time';
 
 test.describe.configure({ mode: 'serial' });
 test.use({ screenshot: 'off', trace: 'off', video: 'off' });
@@ -161,6 +163,47 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
     .toEqual(versionReadStatesBeforeHistory);
   expect(await persistedSnapshot(human, documentId)).toEqual(before);
   expect(await persistedSnapshot(agent, documentId)).toEqual(before);
+  const historyReadState = (await getDocument({ ...humanOptions, path: { documentId }, query: { view: 'published' } })).data.readState;
+  const historyRegion = page.getByRole('region', { name: '変更履歴', exact: true });
+  let initialHistory: ModelsHistory | undefined;
+  for (const read of ['open', 'restart'] as const) {
+    const historyResponse = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.origin === human && url.pathname === `/v1/documents/${documentId}/history`
+        && response.request().method() === 'GET';
+    });
+    if (read === 'open') await page.getByRole('tab', { name: '履歴', exact: true }).click();
+    else await historyRegion.getByRole('button', { name: '変更履歴を最初から読み直す', exact: true }).click();
+    const historyResult = await historyResponse;
+    expect(historyResult.status()).toBe(200);
+    expect([...new URL(historyResult.url()).searchParams]).toEqual([['pageSize', '100']]);
+    const history = await historyResult.json() as ModelsHistory;
+    expect(history.items.length).toBeGreaterThan(0);
+    expect(history.items.some(entry => entry.actionCode === 'document.version.published')).toBe(true);
+    // 既存seedの少数履歴だけを使う。実GUIの101件目や跨page snapshotの資格には読み替えない。
+    expect(history.nextCursor).toBeNull();
+    if (initialHistory) expect(isDeepStrictEqual(history, initialHistory)).toBe(true);
+    else initialHistory = history;
+    await expect(historyRegion.getByRole('heading', { name: '変更履歴', exact: true })).toBeVisible();
+    const historyRows = historyRegion.getByRole('listitem');
+    await expect(historyRows).toHaveCount(history.items.length);
+    await expect(historyRows.locator('strong')).toHaveText(history.items.map(entry => entry.actionCode));
+    await expect(historyRows.locator('span')).toHaveText(history.items.map(entry =>
+      entry.provenanceQuality === 'operationLedger' ? '操作記録' : entry.provenanceQuality === 'versionFallback' ? '版からの履歴' : '由来不明の履歴'));
+    for (const [index, entry] of history.items.entries()) {
+      const renderedRow = historyRows.nth(index);
+      await expect(renderedRow.locator('time')).toHaveText(entry.occurredAt ? formatDateTime(entry.occurredAt, 'Asia/Tokyo') : '日時不明');
+      const actorLabel = entry.actor?.presentation.displayName ?? entry.actor?.principalId ?? '実行者不明';
+      const actorStatus = entry.actor?.presentation.resolution === 'notFound' ? ' · ディレクトリに存在しません'
+        : entry.actor?.presentation.resolution === 'unavailable' ? ' · 表示情報を取得できません' : '';
+      await expect(renderedRow.locator('p')).toHaveText(actorLabel + actorStatus);
+    }
+    await expect(historyRegion.getByRole('button', { name: '変更履歴をさらに表示', exact: true })).toBeHidden();
+    await expect(historyRegion.getByRole('button', { name: '変更履歴の続きを再試行', exact: true })).toBeHidden();
+    await expect(historyRegion.getByRole('button', { name: '変更履歴を最初から読み直す', exact: true })).toBeEnabled();
+  }
+  expect(isDeepStrictEqual(await persistedSnapshot(human, documentId), before)).toBe(true);
+  expect(isDeepStrictEqual((await getDocument({ ...humanOptions, path: { documentId }, query: { view: 'published' } })).data.readState, historyReadState)).toBe(true);
   await page.getByRole('tab', { name: '履歴', exact: true }).click();
   await expect(page.getByRole('heading', { name: '変更履歴' })).toBeVisible();
   await expect(page.getByText('document.version.published', { exact: true }).first()).toBeVisible();

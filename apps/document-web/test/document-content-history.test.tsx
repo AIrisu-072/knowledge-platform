@@ -10,7 +10,7 @@ import { refreshLifecycleQueries } from '../src/application/document-lifecycle-o
 import { refreshFolderMoveReads } from '../src/application/document-folder-move';
 
 jest.mock('../src/application/document-workspace', () => ({ documentApi: {
-  getRootFolder: jest.fn(), getDocument: jest.fn(), listDocumentVersions: jest.fn(), getDocumentVersion: jest.fn(),
+  getDocumentHistory: jest.fn(), getRootFolder: jest.fn(), getDocument: jest.fn(), listDocumentVersions: jest.fn(), getDocumentVersion: jest.fn(),
   listDocumentRevisions: jest.fn(), listVersionFiles: jest.fn(), downloadVersionFile: jest.fn(),
   publishVersion: jest.fn(), schedulePublication: jest.fn(), withdrawVersion: jest.fn(), updateWorkingVersion: jest.fn(), markDocumentVersionRead: jest.fn(),
 } }));
@@ -151,6 +151,50 @@ test('通常詳細の401を自動再試行200が上書きしても履歴の拒�
   if (screen.queryByRole('button', { name: 'コンテンツ版の履歴を開く' })) await openBlocked(); else await region().findByRole('alert');
   expect(historyCalls(h.api.listDocumentVersions)).toHaveLength(count); expect(screen.queryByText('履歴タイトル101')).not.toBeInTheDocument();
   fireEvent.click(restart()); await waitFor(() => expect(chooser()).toBeInTheDocument());
+});
+
+// 片方の拒否接続を落とす、または片方の再読取で両markerを消すと、他方の履歴が自動復活する。
+test.each(['event', 'content'])('通常詳細の拒否は両履歴を止め、%sから明示再読取しても他方を解除しない', async first => {
+  const h = setup(undefined, 1);
+  h.api.getDocumentHistory.mockResolvedValue({ items: [{ sourceKind: 'operation', sourceKey: 'same-document-event', actionCode: '合成イベント', occurredAt: current.createdAt, details: {}, provenanceQuality: 'operationLedger' }], nextCursor: null });
+  await open(); await select(); await downloadReady();
+  const contentReadCount = historyCalls(h.api.listDocumentVersions).length;
+  fireEvent.click(screen.getByRole('tab', { name: '履歴' })); await screen.findByText('合成イベント');
+  const eventReadCount = h.api.getDocumentHistory.mock.calls.length;
+  h.api.getDocument.mockRejectedValueOnce(problem('AUTHENTICATION_REQUIRED', 401)).mockResolvedValue(detail());
+  await act(async () => h.client.invalidateQueries({ queryKey: ['document', documentId] }));
+  await screen.findByRole('heading', { name: '合成文書' });
+
+  const eventRegion = () => within(screen.getByRole('region', { name: '変更履歴' }));
+  async function eventDenied() {
+    fireEvent.click(screen.getByRole('tab', { name: '履歴' }));
+    await waitFor(() => expect(eventRegion().getByRole('alert')).toBeVisible());
+    expect(eventRegion().queryByText('合成イベント')).not.toBeInTheDocument();
+    expect(h.api.getDocumentHistory).toHaveBeenCalledTimes(eventReadCount);
+  }
+  async function contentDenied() {
+    fireEvent.click(screen.getByRole('tab', { name: '版・改訂' })); await openBlocked();
+    expect(region().queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.queryByText('履歴タイトル101')).not.toBeInTheDocument();
+    expect(historyCalls(h.api.listDocumentVersions)).toHaveLength(contentReadCount);
+  }
+  await eventDenied(); await contentDenied();
+  if (first === 'event') {
+    await eventDenied();
+    fireEvent.click(eventRegion().getByRole('button', { name: '変更履歴を最初から読み直す' }));
+    await screen.findByText('合成イベント'); expect(h.api.getDocumentHistory).toHaveBeenCalledTimes(eventReadCount + 1);
+    await contentDenied(); fireEvent.click(restart()); await waitFor(() => expect(chooser()).toBeInTheDocument());
+    expect(historyCalls(h.api.listDocumentVersions)).toHaveLength(contentReadCount + 1);
+    await select(); await downloadReady();
+  } else {
+    fireEvent.click(restart()); await waitFor(() => expect(chooser()).toBeInTheDocument());
+    expect(historyCalls(h.api.listDocumentVersions)).toHaveLength(contentReadCount + 1);
+    await select(); await downloadReady(); await eventDenied();
+    fireEvent.click(eventRegion().getByRole('button', { name: '変更履歴を最初から読み直す' }));
+    await screen.findByText('合成イベント'); expect(h.api.getDocumentHistory).toHaveBeenCalledTimes(eventReadCount + 1);
+  }
+  expect(h.router.state.location.search.versionId).toBe(current.versionId);
+  expect(h.api.markDocumentVersionRead).not.toHaveBeenCalled();
 });
 
 test('明示再読取は旧cursorを捨て、見つからない明示IDを他版へ置換しない', async () => {
