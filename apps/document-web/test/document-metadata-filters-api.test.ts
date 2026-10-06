@@ -23,3 +23,14 @@ test.each([
     expect(url.searchParams.get(key)).toBe(metadata[key as keyof typeof metadata] ?? null);
   }
 });
+
+test.each([true, undefined])('existing list SDK sends only explicitly applied unread true: %p', async unreadOnly => {
+  const fetcher = jest.fn().mockResolvedValue(Response.json({ view: 'published', items: [], nextCursor: null }));
+  client.setConfig({ baseUrl: 'http://synthetic.invalid', fetch: fetcher });
+  await documentApi.listDocuments({ view: 'published', ...(unreadOnly === true ? { unreadOnly: true } : {}) });
+  const request = fetcher.mock.calls[0]![0] as Request;
+  expect(request.method).toBe('GET');
+  const url = new URL(request.url);
+  expect(url.searchParams.get('view')).toBe('published');
+  expect(url.searchParams.get('unreadOnly')).toBe(unreadOnly === true ? 'true' : null);
+});

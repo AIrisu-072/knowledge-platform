@@ -1,4 +1,5 @@
 import { validateList, validateDetail } from './search-validators.generated.js';
+import { unreadFilterRouteError } from './document-unread-filter';
 import { metadataFilterFields, metadataFilterRouteError } from './document-metadata-filters';
 
 export type DocumentView = 'published' | 'authoring' | 'history';
@@ -7,6 +8,7 @@ export type VersionWorkflow = 'newVersion' | 'publication';
 export type ListSearch = {
   view: DocumentView;
   titleContains?: string;
+  unreadOnly?: boolean;
   documentType?: string;
   owningDepartment?: string;
   category?: string;
@@ -37,7 +39,7 @@ function sourceRecord(value: unknown): Record<string, unknown> {
 export function validateListSearch(value: unknown): ListSearch {
   const candidate = sourceRecord(value);
   // The default router serializer replaces lone surrogates. Stop before it changes exact-match text.
-  const routeError = metadataFilterRouteError(candidate);
+  const routeError = metadataFilterRouteError(candidate) ?? unreadFilterRouteError(candidate);
   if (routeError) throw new Error(routeError);
   if (!validateList(candidate)) {
     const fallback = defaultListSearch();
@@ -46,11 +48,13 @@ export function validateListSearch(value: unknown): ListSearch {
       const metadata = candidate[key];
       if (typeof metadata === 'string' && metadata !== '') fallback[key] = metadata;
     }
+    if (candidate.unreadOnly === true) fallback.unreadOnly = true;
     return fallback;
   }
   for (const key of ['titleContains', 'documentType', 'owningDepartment', 'category'] as const) {
     if (candidate[key] === '') delete candidate[key];
   }
+  if (candidate.unreadOnly !== true) delete candidate.unreadOnly;
   const hasExplicitSort = Object.prototype.hasOwnProperty.call(sourceRecord(value), 'sort');
   const result = candidate as ListSearch;
   if (!hasExplicitSort) result.sort = result.view === 'published' ? 'published_at_desc' : 'created_at_desc';

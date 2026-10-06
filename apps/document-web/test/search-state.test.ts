@@ -107,3 +107,26 @@ test.each([{ pageSize: 0 }, { cursor: '' }])('empty metadata stays omitted and m
   expect(validateListSearch({ titleContains: 'keep', ...invalidOldCondition })).toEqual(defaultListSearch());
   expect(validateListSearch({ documentType: '', owningDepartment: '', category: '', titleContains: 'keep', ...invalidOldCondition })).toEqual(defaultListSearch());
 });
+
+test('unread is optional and only true remains an applied published condition', async () => {
+  const { validateListSearch, defaultListSearch } = await import('../src/application/search-state');
+  expect(defaultListSearch()).not.toHaveProperty('unreadOnly');
+  expect(validateListSearch({})).not.toHaveProperty('unreadOnly');
+  expect(validateListSearch({ unreadOnly: false })).not.toHaveProperty('unreadOnly');
+  expect(validateListSearch({ unreadOnly: true })).toHaveProperty('unreadOnly', true);
+});
+
+test.each(['', 0, 1, null, 'true', 'false', ' ', [], [true], {}])('unread rejects non-booleans before AJV coercion: %p', async unreadOnly => {
+  const { validateListSearch } = await import('../src/application/search-state');
+  expect(() => validateListSearch({ unreadOnly })).toThrow('未読のみはtrueまたはfalseで指定してください。URLの条件を確認してください。');
+});
+
+test.each(['authoring', 'history', 'invalid', '', null])('any unread key is invalid outside raw published scope: %p', async view => {
+  const { validateListSearch } = await import('../src/application/search-state');
+  for (const unreadOnly of [true, false]) expect(() => validateListSearch({ view, unreadOnly })).toThrow('未読のみは公開一覧でのみ指定できます。URLの条件を確認してください。');
+});
+
+test.each([{ pageSize: 0 }, { cursor: '' }, { sort: 'invalid' }])('old-condition fallback preserves validated unread and metadata: %p', async invalid => {
+  const { validateListSearch, defaultListSearch } = await import('../src/application/search-state');
+  expect(validateListSearch({ unreadOnly: true, documentType: 'keep', ...invalid })).toEqual({ ...defaultListSearch(), unreadOnly: true, documentType: 'keep' });
+});
