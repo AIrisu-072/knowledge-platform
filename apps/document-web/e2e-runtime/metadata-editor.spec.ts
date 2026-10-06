@@ -1,4 +1,4 @@
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page, type Response } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { isDeepStrictEqual } from 'node:util';
 import {
@@ -28,7 +28,44 @@ const fillPrivate = async (field: Locator, value: string) => {
 };
 const editor = (page: Page) => page.getByRole('dialog', { name: 'メタデータを編集', exact: true });
 type MetadataListFilters = { documentType: string; owningDepartment: string; category: string };
+type CreatedListRange = { createdFrom: string | null; createdBefore: string | null };
 const listTitle = 'Synthetic metadata GUI acceptance';
+const createdListRange = (params: URLSearchParams): CreatedListRange => ({ createdFrom: params.get('createdFrom'), createdBefore: params.get('createdBefore') });
+const waitCreatedList = (page: Page, range: CreatedListRange) => page.waitForResponse(result => {
+  const url = new URL(result.url());
+  return url.pathname === '/v1/documents' && result.request().method() === 'GET'
+    && url.searchParams.get('view') === 'published' && url.searchParams.get('titleContains') === listTitle
+    && isDeepStrictEqual(createdListRange(url.searchParams), range);
+});
+async function verifyCreatedInput(page: Page, label: string, raw: string, local: string | null) {
+  const field = page.getByLabel(label, { exact: true });
+  await inputEquals(field, local ?? raw);
+  await expect(field).toHaveAttribute('type', local === null ? 'text' : 'datetime-local');
+  if (local === null) await expect(field).toHaveAttribute('readonly', '');
+  else {
+    await expect(field).toHaveAttribute('step', '60');
+    await expect(field).toBeEditable();
+  }
+}
+
+async function verifyCreatedList(page: Page, response: Response, range: CreatedListRange, documents: { documentId: string; createdAt: string }[]) {
+  expect(response.status()).toBe(200);
+  const params = new URL(response.url()).searchParams;
+  privatelyEqual(createdListRange(params), range);
+  expect(params.get('view')).toBe('published');
+  expect(params.get('titleContains') === listTitle).toBe(true);
+  expect(params.has('cursor')).toBe(false);
+  const body = await response.json() as { view: string; items: PublishedDocument[] };
+  expect(body.view).toBe('published');
+  privatelyEqual(body.items.map(item => ({ documentId: item.documentId, createdAt: item.createdAt })), documents);
+  if (documents.length === 0) {
+    await expect(page.getByRole('heading', { name: '文書がありません', exact: true })).toBeVisible();
+    await expect(page.getByRole('table', { name: '文書一覧', exact: true })).toBeHidden();
+  } else {
+    await expect(page.getByRole('table', { name: '文書一覧', exact: true }).getByRole('row')).toHaveCount(documents.length + 1);
+    for (const { documentId } of documents) await expect(page.locator(`[data-document-id="${documentId}"]`)).toBeVisible();
+  }
+}
 
 async function fillMetadataListFilters(page: Page, filters: MetadataListFilters) {
   await fillPrivate(page.getByLabel('文書種別', { exact: true }), filters.documentType);
@@ -59,7 +96,7 @@ async function readFilteredList(page: Page, filters: MetadataListFilters, docume
   }
 }
 
-async function readUnreadPublishedList(page: Page, documentId: string, currentVersionId: string) {
+async function readUnreadPublishedList(page: Page, documentId: string, currentVersionId: string, range: CreatedListRange = { createdFrom: null, createdBefore: null }) {
   await page.getByRole('checkbox', { name: '未読のみ', exact: true }).check();
   const response = page.waitForResponse(result => new URL(result.url()).pathname === '/v1/documents'
     && result.request().method() === 'GET' && new URL(result.url()).searchParams.get('unreadOnly') === 'true');
@@ -71,6 +108,7 @@ async function readUnreadPublishedList(page: Page, documentId: string, currentVe
   expect(params.get('unreadOnly')).toBe('true');
   expect(params.get('titleContains') === listTitle).toBe(true);
   expect(params.has('cursor')).toBe(false);
+  privatelyEqual(createdListRange(params), range);
   const body = await result.json() as { view: string; items: PublishedDocument[] };
   expect(body.view).toBe('published');
   privatelyEqual(body.items.map(item => ({ documentId: item.documentId, currentVersionId: item.currentVersionId, readState: item.readState })),
@@ -217,8 +255,18 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     expect(published.versions[0]!.files[0]!.hash).toBe(hash(original));
     const publishedVersion = await version('published');
     const publishedDetail = await detail('published');
+    expect(typeof publishedDetail.createdAt === 'string' && publishedDetail.createdAt.length > 0).toBe(true);
+    const createdAt = publishedDetail.createdAt!;
+    // Dateは既知の合成createdAtを含む分幅・期待表示のfixtureだけに使う。
+    const createdMilliseconds = new Date(createdAt).getTime();
+    expect(Number.isFinite(createdMilliseconds)).toBe(true);
+    const minuteStart = Math.floor(createdMilliseconds / 60_000) * 60_000;
+    const localStart = new Date(minuteStart + 9 * 60 * 60 * 1000).toISOString().slice(0, 16);
+    const exactLocal = new Date(minuteStart).toISOString() === createdAt ? localStart : null;
+    const exactFrom = { createdFrom: createdAt, createdBefore: null };
+    const fromReturnTo = `/documents?${new URLSearchParams({ view: 'published', titleContains: listTitle, createdFrom: createdAt })}`;
     const agentReadState = (await getDocument({ ...options(context.agent), path, query: { view: 'published' } })).data.readState;
-    await page.goto(`/documents/${documentId}?view=published&tab=overview`);
+    await page.goto(`/documents/${documentId}?view=published&tab=overview&returnTo=${encodeURIComponent(fromReturnTo)}`);
     await expect(openEditor).toBeEnabled();
     completed('gui-metadata-published-verified');
 
@@ -271,10 +319,13 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     expect(patchRequests).toBe(3);
     expect(origins).toEqual(new Set([context.human]));
     completed('gui-metadata-noop-verified');
-    await page.getByRole('link', { name: '文書', exact: true }).press('Enter');
-    await expect(page.getByRole('table', { name: '文書一覧', exact: true })).toBeVisible();
-    await fillPrivate(page.getByLabel('文書名で絞り込み', { exact: true }), listTitle);
-    await readUnreadPublishedList(page, documentId, created.documentVersionId);
+    // 既存detailのreturnToへ試験seedを置き、server原文と開始包含を実GETで検査する。
+    const fromResponse = waitCreatedList(page, exactFrom);
+    await page.getByRole('button', { name: '← 一覧へ戻る', exact: true }).press('Enter');
+    await verifyCreatedList(page, await fromResponse, exactFrom, [{ documentId, createdAt }]);
+    await inputEquals(page.getByLabel('文書名で絞り込み', { exact: true }), listTitle);
+    await verifyCreatedInput(page, '作成日時の開始（含む）', createdAt, exactLocal);
+    await readUnreadPublishedList(page, documentId, created.documentVersionId, exactFrom);
     await page.locator(`[data-document-id="${documentId}"]`).press('Enter');
     await page.getByRole('button', { name: '詳細を開く', exact: true }).press('Enter');
     await expect.poll(() => new URL(page.url()).pathname === `/documents/${documentId}`).toBe(true);
@@ -282,7 +333,27 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     await expect.poll(() => new URL(page.url()).pathname === '/documents').toBe(true);
     await expect(page.getByRole('checkbox', { name: '未読のみ', exact: true })).toBeChecked();
     expect(new URL(page.url()).searchParams.get('unreadOnly')).toBe('true');
+    privatelyEqual(createdListRange(new URL(page.url()).searchParams), exactFrom);
+    await verifyCreatedInput(page, '作成日時の開始（含む）', createdAt, exactLocal);
     await expect(page.locator(`[data-document-id="${documentId}"]`)).toBeFocused();
+    const minuteRange = { createdFrom: new Date(minuteStart).toISOString(), createdBefore: new Date(minuteStart + 60_000).toISOString() };
+    if (exactLocal === null) await page.getByRole('button', { name: '作成日時の開始を指定し直す', exact: true }).press('Enter');
+    else await expect(page.getByRole('button', { name: '作成日時の開始を指定し直す', exact: true })).toBeHidden();
+    await fillPrivate(page.getByLabel('作成日時の開始（含む）', { exact: true }), localStart);
+    await fillPrivate(page.getByLabel('作成日時の終了（含まない）', { exact: true }), new Date(minuteStart + 60_000 + 9 * 60 * 60 * 1000).toISOString().slice(0, 16));
+    const calendarResponse = waitCreatedList(page, minuteRange);
+    await page.getByRole('button', { name: '絞り込む', exact: true }).press('Enter');
+    await verifyCreatedList(page, await calendarResponse, minuteRange, [{ documentId, createdAt }]);
+    privatelyEqual(createdListRange(new URL(page.url()).searchParams), minuteRange);
+    expect(new URL(page.url()).searchParams.get('unreadOnly')).toBe('true');
+    // 日時解除も有効なQuery cacheを再利用し得るため、無条件に新responseを待たない。
+    await page.getByRole('button', { name: '日時の条件を解除', exact: true }).press('Enter');
+    await expect.poll(() => new URL(page.url()).searchParams.has('createdFrom') || new URL(page.url()).searchParams.has('createdBefore')).toBe(false);
+    expect(new URL(page.url()).searchParams.get('titleContains') === listTitle).toBe(true);
+    expect(new URL(page.url()).searchParams.get('unreadOnly')).toBe('true');
+    expect(new URL(page.url()).searchParams.has('cursor')).toBe(false);
+    await expect(page.getByRole('checkbox', { name: '未読のみ', exact: true })).toBeChecked();
+    await expect(page.locator(`[data-document-id="${documentId}"]`)).toBeVisible();
     await page.getByRole('checkbox', { name: '未読のみ', exact: true }).uncheck();
     // Off may reuse the valid 15-second Query cache; no unconditional response wait.
     await page.getByRole('button', { name: '絞り込む', exact: true }).press('Enter');
@@ -306,7 +377,19 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     const snapshot = state.documents[0]!.snapshot;
     privatelyEqual(await persistedSnapshot(context.human, snapshot.documentId), snapshot);
     privatelyEqual(await persistedSnapshot(context.agent, snapshot.documentId), snapshot);
-    await page.goto(`/documents/${snapshot.documentId}?view=published&tab=overview`);
+    const path = { documentId: snapshot.documentId };
+    const humanDetail = (await getDocument({ ...options(context.human), path, query: { view: 'published' } })).data;
+    const humanReadState = humanDetail.readState;
+    expect(typeof humanDetail.createdAt === 'string' && humanDetail.createdAt.length > 0).toBe(true);
+    const createdAt = humanDetail.createdAt!;
+    const createdMilliseconds = new Date(createdAt).getTime();
+    expect(Number.isFinite(createdMilliseconds)).toBe(true);
+    const minuteStart = Math.floor(createdMilliseconds / 60_000) * 60_000;
+    const exactLocal = new Date(minuteStart).toISOString() === createdAt
+      ? new Date(minuteStart + 9 * 60 * 60 * 1000).toISOString().slice(0, 16) : null;
+    const exactBefore = { createdFrom: null, createdBefore: createdAt };
+    const beforeReturnTo = `/documents?${new URLSearchParams({ view: 'published', titleContains: listTitle, createdBefore: createdAt })}`;
+    await page.goto(`/documents/${snapshot.documentId}?view=published&tab=overview&returnTo=${encodeURIComponent(beforeReturnTo)}`);
     await page.getByRole('button', { name: 'メタデータを編集', exact: true }).press('Enter');
     const dialog = editor(page), metadata = snapshot.metadata as Record<string, unknown>;
     await inputEquals(dialog.getByLabel('文書種別', { exact: true }), metadata.document_type as string);
@@ -314,17 +397,24 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     await inputEquals(dialog.getByLabel('カテゴリ', { exact: true }), '');
     await dialog.getByRole('button', { name: 'キャンセル', exact: true }).press('Enter');
     completed('gui-metadata-restart-verified');
-    await page.getByRole('link', { name: '文書', exact: true }).press('Enter');
+    // 再起動後も同じDocumentのcreatedAtを終了境界へそのまま渡し、終了除外を検査する。
+    const beforeResponse = waitCreatedList(page, exactBefore);
+    await page.getByRole('button', { name: '← 一覧へ戻る', exact: true }).press('Enter');
+    await verifyCreatedList(page, await beforeResponse, exactBefore, []);
+    privatelyEqual(createdListRange(new URL(page.url()).searchParams), exactBefore);
+    await verifyCreatedInput(page, '作成日時の終了（含まない）', createdAt, exactLocal);
+    await page.getByRole('button', { name: '日時の条件を解除', exact: true }).press('Enter');
+    await expect.poll(() => new URL(page.url()).searchParams.has('createdFrom') || new URL(page.url()).searchParams.has('createdBefore')).toBe(false);
+    expect(new URL(page.url()).searchParams.get('titleContains') === listTitle).toBe(true);
+    expect(new URL(page.url()).searchParams.has('cursor')).toBe(false);
     await expect(page.getByRole('table', { name: '文書一覧', exact: true })).toBeVisible();
-    await fillPrivate(page.getByLabel('文書名で絞り込み', { exact: true }), listTitle);
+    await inputEquals(page.getByLabel('文書名で絞り込み', { exact: true }), listTitle);
     const retainedFilters = { documentType: metadata.document_type as string, owningDepartment: metadata.owning_department as string, category: '' };
     privatelyEqual(retainedFilters, { documentType: 'synthetic-published-type', owningDepartment: '   ', category: '' });
     expect(Object.prototype.hasOwnProperty.call(metadata, 'category')).toBe(false);
     await fillMetadataListFilters(page, retainedFilters);
     await readFilteredList(page, retainedFilters, [snapshot.documentId]);
     expect(new URL(page.url()).searchParams.get('view')).toBe('published');
-    const path = { documentId: snapshot.documentId };
-    const humanReadState = (await getDocument({ ...options(context.human), path, query: { view: 'published' } })).data.readState;
     const agentReadState = (await getDocument({ ...options(context.agent), path, query: { view: 'published' } })).data.readState;
     await readUnreadPublishedList(page, snapshot.documentId, snapshot.currentVersionId!);
     privatelyEqual((await getDocument({ ...options(context.human), path, query: { view: 'published' } })).data.readState, humanReadState);

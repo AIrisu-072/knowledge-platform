@@ -12,6 +12,7 @@ import type { SelectedFolderContext } from '../application/document-root-folder'
 import { FolderRename } from '../components/document/FolderRename';
 import { folderRenameOperations } from '../application/document-folder-rename';
 import { RootFolderCreate } from '../components/document/RootFolderCreate';
+import { createdRangeFields, createdRangeLocalValue, createdRangeRouteError, initialCreatedRangeDraft, currentCreatedRangeDraft, resolveCreatedRangeDraft, documentListUrlError } from '../application/document-created-range';
 import type { ListSearch } from '../application/search-state';
 import { metadataFilterFields, metadataFilterValidation, type MetadataFilters } from '../application/document-metadata-filters';
 import { documentListStatusLabel } from '../view-model/document-status';
@@ -48,7 +49,14 @@ export function DocumentHomePage() {
     setDraftMetadata({ documentType: search.documentType ?? '', owningDepartment: search.owningDepartment ?? '', category: search.category ?? '' });
     setFilterError(null);
   }, [search.documentType, search.owningDepartment, search.category]);
-  const appliedFilterError = metadataFilterValidation(search);
+  const [createdDraft, setCreatedDraft] = useState(() => initialCreatedRangeDraft(search));
+  useEffect(() => {
+    setCreatedDraft(initialCreatedRangeDraft(search));
+    setFilterError(null);
+  }, [search.createdFrom, search.createdBefore]);
+  // A changed URL pair invalidates both drafts during render, before effect synchronization.
+  const currentCreatedDraft = currentCreatedRangeDraft(search, createdDraft);
+  const appliedFilterError = metadataFilterValidation(search) ?? createdRangeRouteError(search) ?? documentListUrlError(currentUrl);
   const listQuery = useQuery({
     enabled: !appliedFilterError,
     queryKey: ['documents', {
@@ -58,6 +66,8 @@ export function DocumentHomePage() {
       documentType: search.documentType || undefined,
       owningDepartment: search.owningDepartment || undefined,
       category: search.category || undefined,
+      createdFrom: search.createdFrom || undefined,
+      createdBefore: search.createdBefore || undefined,
       folderId: search.folderId,
       includeDescendants: search.includeDescendants,
       sort: search.sort,
@@ -73,6 +83,8 @@ export function DocumentHomePage() {
       ...(search.documentType ? { documentType: search.documentType } : {}),
       ...(search.owningDepartment ? { owningDepartment: search.owningDepartment } : {}),
       ...(search.category ? { category: search.category } : {}),
+      ...(search.createdFrom ? { createdFrom: search.createdFrom } : {}),
+      ...(search.createdBefore ? { createdBefore: search.createdBefore } : {}),
       ...(search.folderId ? { folderId: search.folderId } : {}),
       ...(search.includeDescendants ? { includeDescendants: true } : {}),
       ...(search.cursor ? { cursor: search.cursor } : {}),
@@ -110,7 +122,7 @@ export function DocumentHomePage() {
         if (patch.unreadOnly === undefined && Object.prototype.hasOwnProperty.call(patch, 'unreadOnly')) delete next.unreadOnly;
         if (patch.cursor === undefined && Object.prototype.hasOwnProperty.call(patch, 'cursor')) delete next.cursor;
         if (patch.folderId === undefined && Object.prototype.hasOwnProperty.call(patch, 'folderId')) delete next.folderId;
-        for (const { key } of metadataFilterFields) {
+        for (const { key } of [...metadataFilterFields, ...createdRangeFields]) {
           if (patch[key] === undefined && Object.prototype.hasOwnProperty.call(patch, key)) delete next[key];
         }
         if (patch.titleContains === undefined && Object.prototype.hasOwnProperty.call(patch, 'titleContains')) delete next.titleContains;
@@ -206,6 +218,8 @@ export function DocumentHomePage() {
   }, [panelOpen, selected?.documentId, selectedRowIndex]);
 
   function openDetail(documentId: string) {
+    const error = documentListUrlError(currentUrl);
+    if (error) { setFilterError(error); return; }
     void navigate({
       to: '/documents/$documentId',
       params: { documentId },
@@ -314,10 +328,11 @@ export function DocumentHomePage() {
         <section className={styles.listMain} aria-label="文書">
           <form className={styles.filterBar} onSubmit={(event) => {
             event.preventDefault();
-            const error = metadataFilterValidation(draftMetadata);
+            const created = resolveCreatedRangeDraft(currentCreatedDraft);
+            const error = metadataFilterValidation(draftMetadata) ?? created.error;
             setFilterError(error);
-            if (error) return;
-            updateSearch({ unreadOnly: search.view === 'published' && draftUnread ? true : undefined, titleContains: draftTitle || undefined, documentType: draftMetadata.documentType || undefined, owningDepartment: draftMetadata.owningDepartment || undefined, category: draftMetadata.category || undefined, cursor: undefined });
+            if (error || created.error !== null) return;
+            updateSearch({ ...created.range, unreadOnly: search.view === 'published' && draftUnread ? true : undefined, titleContains: draftTitle || undefined, documentType: draftMetadata.documentType || undefined, owningDepartment: draftMetadata.owningDepartment || undefined, category: draftMetadata.category || undefined, cursor: undefined });
           }}>
             <label className={styles.searchField}>
               <span>文書名で絞り込み</span>
@@ -329,6 +344,33 @@ export function DocumentHomePage() {
                 <input type="text" aria-label={label} aria-describedby="metadata-filter-help" value={draftMetadata[key] ?? ''} onChange={event => { setDraftMetadata(previous => ({ ...previous, [key]: event.target.value })); setFilterError(null); }} />
               </label>
             ))}
+            {createdRangeFields.map(({ key, label, name }) => {
+              const endpoint = currentCreatedDraft[key];
+              const local = endpoint.intent === 'set' ? endpoint.local : endpoint.intent === 'clear' ? '' : createdRangeLocalValue(currentCreatedDraft.base[key]);
+              return <div key={key} className={styles.searchField}>
+                <label className={styles.searchField}>
+                  <span>{label}</span>
+                  {local === null
+                    ? <input type="text" aria-label={label} aria-describedby="created-range-help" value={currentCreatedDraft.base[key] ?? ''} readOnly />
+                    : <input type="datetime-local" step="60" aria-label={label} aria-describedby="created-range-help" value={local} onChange={event => {
+                      setCreatedDraft({ ...currentCreatedDraft, [key]: { intent: 'set', local: event.target.value } }); setFilterError(null);
+                    }} />}
+                </label>
+                {local === null && <button type="button" onClick={() => {
+                  setCreatedDraft({ ...currentCreatedDraft, [key]: { intent: 'set', local: '' } }); setFilterError(null);
+                }}>{name}を指定し直す</button>}
+                {endpoint.intent !== 'keep' && <button type="button" onClick={() => {
+                  setCreatedDraft({ ...currentCreatedDraft, [key]: { intent: 'keep' } }); setFilterError(null);
+                }}>{name}の指定し直しを取消</button>}
+                <button type="button" onClick={() => {
+                  setCreatedDraft({ ...currentCreatedDraft, [key]: { intent: 'clear' } }); setFilterError(null);
+                }}>{name}を解除</button>
+              </div>;
+            })}
+            <button className={styles.secondaryButton} type="button" onClick={() => {
+              setCreatedDraft(initialCreatedRangeDraft({})); setFilterError(null);
+              updateSearch({ createdFrom: undefined, createdBefore: undefined, cursor: undefined });
+            }}>日時の条件を解除</button>
             {search.view === 'published' && <label className={styles.checkLine}>
               <input type="checkbox" checked={draftUnread} onChange={event => setDraftUnread(event.target.checked)} />
               未読のみ
@@ -349,6 +391,7 @@ export function DocumentHomePage() {
           </form>
 
           <p id="metadata-filter-help" className={styles.muted}>属性は完全一致で、複数の条件はすべて一致する文書を表示します。空欄は未指定です。空白も値として扱います。</p>
+          <p id="created-range-help" className={styles.muted}>文書自体の作成日時で絞り込みます。JST / UTC+09:00・分単位。開始を含み、終了を含みません。</p>
           {(filterError || appliedFilterError) && <p role="alert">{filterError || appliedFilterError}</p>}
           {!appliedFilterError && listQuery.isPending && <LoadingState label="文書を読み込み中" />}
           {!appliedFilterError && listQuery.error && <ApiFeedback error={listQuery.error} onRetry={() => void listQuery.refetch()} />}

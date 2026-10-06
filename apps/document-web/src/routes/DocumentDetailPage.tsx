@@ -1,3 +1,4 @@
+import { createdRangeRouteError, documentListUrlError } from '../application/document-created-range';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
 import { defaultParseSearch, useLocation, useNavigate, useParams, useSearch } from '@tanstack/react-router';
@@ -125,11 +126,13 @@ export function DocumentDetailPage() {
   async function goBack() {
     let listSearch = validateListSearch({});
     if (search.returnTo) {
+      const lengthError = documentListUrlError(search.returnTo);
+      if (lengthError) { setReturnError(lengthError); return; }
       try {
         const returnUrl = new URL(search.returnTo, window.location.origin);
         if (returnUrl.origin === window.location.origin && returnUrl.pathname === '/documents') {
           const parsed = defaultParseSearch(returnUrl.search);
-          const error = metadataFilterRouteError(parsed) ?? unreadFilterRouteError(parsed);
+          const error = metadataFilterRouteError(parsed) ?? unreadFilterRouteError(parsed) ?? createdRangeRouteError(parsed);
           if (error) { setReturnError(error); return; }
           listSearch = validateListSearch(parsed);
         }
