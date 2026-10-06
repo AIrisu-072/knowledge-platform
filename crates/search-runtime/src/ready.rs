@@ -418,10 +418,6 @@ impl ReadyCoordinator {
             }
         };
         guard.ok_or(ReadyError::Fence)?;
-        let (locked_report, _, _) = search_graph::store::validate_on(&mut tx, graph_target).await?;
-        if locked_report != report {
-            return Err(ReadyError::Graph);
-        }
         let lexical_row: Option<(String, String)> = sqlx::query_as(
             "SELECT logical_digest, tree_digest FROM search_lexical_artifact \
              WHERE source_id=$1 AND generation_id=$2",
@@ -438,7 +434,12 @@ impl ReadyCoordinator {
         {
             return Err(ReadyError::Lexical(LexicalArtifactError::Drift));
         }
-        search_graph::store::settle_ready_on(&mut tx, &report).await?;
+        search_graph::store::settle_ready_on(&mut tx, graph_target, &report)
+            .await
+            .map_err(|error| match error {
+                search_graph::GraphError::Integrity(_) => ReadyError::Graph,
+                other => other.into(),
+            })?;
         let count = |n: u64| i64::try_from(n).map_err(|_| ReadyError::Mapping);
         sqlx::query(
             "INSERT INTO search_generation_receipt (source_id,generation_id,source_snapshot, \

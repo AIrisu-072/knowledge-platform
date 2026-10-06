@@ -159,7 +159,7 @@ async fn ready_bundle_matches(
          FROM search_generation g \
          JOIN search_generation_receipt r USING (source_id, generation_id) \
          JOIN search_graph.generation gg USING (source_id, generation_id) \
-         WHERE g.source_id=$1 AND g.generation_id=$2 FOR UPDATE OF g",
+         WHERE g.source_id=$1 AND g.generation_id=$2 FOR UPDATE OF g FOR SHARE OF gg",
     )
     .bind(key.source_id.as_uuid())
     .bind(key.generation_id.as_uuid())

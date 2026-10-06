@@ -145,9 +145,13 @@ async fn relation_only_replacement_matches_full_build_digest_and_paths() {
         .await
         .unwrap();
     let mut connection = fixture.admin.acquire().await.unwrap();
-    search_graph::store::settle_ready_on(&mut connection, &report)
-        .await
-        .unwrap();
+    search_graph::store::settle_ready_on(
+        &mut connection,
+        &GraphBuildRef::Incremental(handle),
+        &report,
+    )
+    .await
+    .unwrap();
 
     // The same target built in full has the same content digest and paths.
     let (resources, mut relations) = graph(false);
@@ -405,4 +409,70 @@ async fn abort_fence_overflow_and_missing_base() {
         register(&fixture, &base, 9_304).await,
         Err(GenerationError::FenceOverflow)
     );
+}
+
+#[tokio::test]
+async fn database_guards_hold_without_the_rust_gates() {
+    let fixture = fixture().await;
+    let store = PostgresGraphStore::new(fixture.admin.clone());
+    let base = base(&fixture, 9_401).await;
+    let handle = register(&fixture, &base, 9_402).await.unwrap();
+    copy_all(&store, &handle, 100).await;
+    let target = handle.target_key();
+
+    // A verified copy without the applied delta is never READY.
+    let early = sqlx::query(
+        "UPDATE search_graph.generation SET state='READY', graph_content_digest=$3, \
+         resource_count=$4, relation_count=$5, ready_at=clock_timestamp() \
+         WHERE source_id=$1 AND generation_id=$2",
+    )
+    .bind(source_id().as_uuid())
+    .bind(target.generation_id.as_uuid())
+    .bind(&base.graph_content_digest)
+    .bind(base.resource_count as i64)
+    .bind(base.relation_count as i64)
+    .execute(&fixture.admin)
+    .await
+    .unwrap_err();
+    assert!(early.to_string().contains("applied delta"), "{early}");
+
+    // A guard whose base receipt is not the READY base is refused.
+    let forged = sqlx::query(
+        "INSERT INTO search_graph.build_guard (source_id,base_generation_id, \
+         target_generation_id,guard_token,fence,base_manifest_digest, \
+         base_graph_content_digest,base_source_snapshot,base_source_mapping_digest, \
+         base_resource_count,base_relation_count,target_manifest_digest,expires_at) \
+         SELECT source_id,base_generation_id,target_generation_id,guard_token,fence, \
+         base_manifest_digest,'sha256:' || repeat('0',64),base_source_snapshot, \
+         base_source_mapping_digest,base_resource_count,base_relation_count, \
+         target_manifest_digest,clock_timestamp() + interval '1 minute' \
+         FROM search_graph.build_guard WHERE source_id=$1 AND target_generation_id=$2",
+    )
+    .bind(source_id().as_uuid())
+    .bind(target.generation_id.as_uuid())
+    .execute(&fixture.admin)
+    .await
+    .unwrap_err();
+    assert!(
+        forged.to_string().contains("READY base receipt"),
+        "{forged}"
+    );
+
+    // TRUNCATE bypasses row guards, so it is refused outright.
+    for statement in [
+        "TRUNCATE search_graph.participant CASCADE",
+        "TRUNCATE search_graph.relation CASCADE",
+        "TRUNCATE search_graph.resource CASCADE",
+        "TRUNCATE search_graph.build_guard CASCADE",
+        "TRUNCATE search_graph.generation CASCADE",
+    ] {
+        let truncated = sqlx::query(statement)
+            .execute(&fixture.admin)
+            .await
+            .unwrap_err();
+        assert!(
+            truncated.to_string().contains("never truncated"),
+            "{truncated}"
+        );
+    }
 }

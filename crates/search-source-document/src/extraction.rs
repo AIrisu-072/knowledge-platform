@@ -136,6 +136,11 @@ impl BodyProfileRegistry {
         let mut registered = Vec::new();
         let mut profiles = Vec::new();
         for definition in definitions {
+            if !definition.limits.contains_key(&BudgetKey::InputBytes) {
+                return Err(BodyBuildError::Configuration(
+                    "format without an input budget",
+                ));
+            }
             if registered
                 .iter()
                 .any(|(format, _): &(FormatId, _)| *format == definition.format)
@@ -247,7 +252,11 @@ impl BodyProfileRegistry {
         let Ok(mut archive) = zip::ZipArchive::new(Cursor::new(raw)) else {
             return Ok(Planned::Failed(PermanentFailureCode::MalformedArchive));
         };
-        if archive.len() as u64 > root.limits[&BudgetKey::ZipEntries] {
+        let entry_budget = *root
+            .limits
+            .get(&BudgetKey::ZipEntries)
+            .ok_or(BodyBuildError::Configuration("ZIP entry budget"))?;
+        if archive.len() as u64 > entry_budget {
             return Ok(Planned::Unsupported(CoverageReason::ResourceLimit));
         }
         let mut names = Vec::with_capacity(archive.len());
