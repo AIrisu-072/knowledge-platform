@@ -22,6 +22,8 @@ import {
 import { ApiFeedback, LoadingState } from '../components/shared/ApiFeedback';
 import { denyDocumentRevisionReads, useDocumentRevisions, type DocumentRevisionsRead } from '../application/use-document-revisions';
 import { DocumentRevisionReadControls } from '../components/document/DocumentRevisionReadControls';
+import { useDocumentComparison, type DocumentComparisonRead } from '../application/use-document-comparison';
+import { DocumentComparisonReadControls } from '../components/document/DocumentComparisonReadControls';
 import { DocumentScheduleCancellation } from '../components/document/DocumentScheduleCancellation';
 import { CapabilityButton, availabilityReason } from '../components/shared/CapabilityButton';
 import { OriginalVersionDownload } from '../components/shared/OriginalVersionDownload';
@@ -103,19 +105,7 @@ export function DocumentDetailPage() {
   const revisions = revisionRead.revisions;
   const revisionPair = chooseRevisionPair(revisions, search.baseRevisionId, search.targetRevisionId);
   const canCompare = Boolean(document && activeTab === 'compare' && revisionRead.ready && revisionPair.base && revisionPair.target && revisionPair.base.revisionId !== revisionPair.target.revisionId);
-  const comparisonQuery = useQuery({
-    queryKey: ['revision-comparison', documentId, revisionPair.base?.revisionId, revisionPair.target?.revisionId],
-    queryFn: async ({ signal }) => {
-      try { return await documentApi.compareDocumentRevisions(documentId, {
-        baseRevisionId: revisionPair.base!.revisionId,
-        targetRevisionId: revisionPair.target!.revisionId,
-        projection: 'display',
-        pageSize: 50,
-      }); }
-      catch (error) { if (!signal.aborted) denyDocumentRevisionReads(queryClient, documentId, error); throw error; }
-    },
-    enabled: canCompare,
-  });
+  const comparisonRead = useDocumentComparison(documentId, revisionPair.base?.revisionId, revisionPair.target?.revisionId, canCompare);
 
   function updateSearch(patch: Partial<DetailSearch>) {
     void navigate({
@@ -279,10 +269,7 @@ export function DocumentDetailPage() {
                   revisions={revisions}
                   pair={revisionPair}
                   revisionRead={revisionRead}
-                  comparison={canCompare && !comparisonQuery.error ? comparisonQuery.data : undefined}
-                  loading={canCompare && comparisonQuery.isPending}
-                  error={canCompare ? comparisonQuery.error : null}
-                  onRetry={() => { if (canCompare) void comparisonQuery.refetch(); }}
+                  comparisonRead={canCompare ? comparisonRead : undefined}
                   updateSearch={updateSearch}
                 />
               </section>
@@ -620,16 +607,13 @@ function VersionsTab({
   );
 }
 
-function CompareTab({ documentId, purpose, revisions, pair, revisionRead, comparison, loading, error, onRetry, updateSearch }: {
+function CompareTab({ documentId, purpose, revisions, pair, revisionRead, comparisonRead, updateSearch }: {
   documentId: string;
   purpose: 'published' | 'authoring';
   revisions: DocumentRevisionSummary[];
   pair: ReturnType<typeof chooseRevisionPair>;
   revisionRead: DocumentRevisionsRead;
-  comparison?: RevisionComparisonResponse;
-  loading: boolean;
-  error: unknown;
-  onRetry: () => void;
+  comparisonRead?: DocumentComparisonRead;
   updateSearch: (patch: Partial<DetailSearch>) => void;
 }) {
   return (
@@ -645,9 +629,8 @@ function CompareTab({ documentId, purpose, revisions, pair, revisionRead, compar
         </div>
       )}
       {!revisionRead.error && <RevisionPairNotice pair={pair} />}
-      {loading && <LoadingState label="比較結果を取得中" />}
-      {Boolean(error) && <ApiFeedback error={error} onRetry={onRetry} />}
-      {comparison && <ComparisonResult documentId={documentId} purpose={purpose} comparison={comparison} />}
+      {comparisonRead && <DocumentComparisonReadControls read={comparisonRead} />}
+      {comparisonRead?.comparison && <ComparisonResult documentId={documentId} purpose={purpose} comparison={comparisonRead.comparison} />}
     </div>
   );
 }
@@ -672,7 +655,9 @@ function ComparisonResult({ documentId, purpose, comparison }: { documentId: str
       {comparison.contentComparisonStatus === 'differentAuthoritativeVersions' && (
         <section className={styles.diffSection}>
           <h3>本文の変更</h3>
-          {comparison.displayItems.length === 0 && <p className={styles.muted}>表示できる差分はありません。判定は上記の比較範囲を確認してください。</p>}
+          {comparison.displayItems.length === 0 && <p className={styles.muted}>{comparison.nextCursor
+            ? 'このページには表示できる差分がありません。続きの比較結果を確認してください。'
+            : '表示できる差分はありません。判定は上記の比較範囲を確認してください。'}</p>}
           <ol className={styles.diffItems}>
             {comparison.displayItems.map((item) => (
               <li key={`${item.changeIndex}:${item.facet}`}>
@@ -688,7 +673,7 @@ function ComparisonResult({ documentId, purpose, comparison }: { documentId: str
       )}
       {comparison.unverifiedRegions.length > 0 && (
         <section className={styles.unverifiedSection} aria-labelledby="unverified-heading">
-          <h3 id="unverified-heading">未比較範囲 · {comparison.unverifiedRegions.length}</h3>
+          <h3 id="unverified-heading">未比較範囲 · 取得済み{comparison.unverifiedRegions.length}件</h3>
           <p>この範囲の意味は比較できていません。原本をダウンロードして目視で確認してください。</p>
           <ul>
             {comparison.unverifiedRegions.map((region, index) => (

@@ -1,5 +1,18 @@
 # Active Execution Pointer
 
+## 2026-10-06 17:11 UTC — 比較結果の続き表示
+
+- PR89統合main `e249fb8d` から既存display/50/cursorを比較画面へ接続する。[状況](document-comparison-pagination-status.md)と[小計画](../plans/2026-10-06-document-comparison-pagination.md)が再開先
+- 本文差分と未比較範囲を両方継続し、metadata/本文判定の一貫性、認可失効、固定pairとcursor、遅延/再読取/既存操作保持をTDDで確認する。新backend・新基盤・大量fixtureなし
+- PR89 head `075a1e79` は全適用CI・実受入Document18+5/Agent9/Org8・DB36/Folder4・再起動/cleanup/artifact0合格後main統合。main自身のCI `37497603490` も独立して全13jobs/checks・GUI1161/47・実受入/DB36/Folder4/cleanup/artifact0を確認。以下のPR89記録は各時点の履歴として保持する
+- GUI・試験・日本語手順は同機能1PRにまとめる。実GUI50件超・画像等の未資格を明記し、導入pinはmain資格を確認して同PRでe249へ追従した。次は候補固定→日本語Draft→同head hosted
+
+17:03追補：GUI `95790bef` は35反例から実装し、追加失敗後のinvalidateとunmount往復の旧cursor残留もRED→GREENで補修。最終全1212/49・focused204/5・schema/型/build成功、独立GO。受入 `dc3dfb49` は既存caseだけへ通常比較・terminal・metadata一回表示・比較再読取/HTTP再起動を追加し、safe66・型/MCP compile・収集18+5・独立GO。main実runtimeは合格、残Rust/最終artifact確認後に手順pinを追従する。今回機能の実hostedは未資格であり、次は組合せreviewと同head Draft/CI。
+
+17:11追補：main e249の独立push全13checks/jobs・GUI1161/47・実受入/DB/cleanup/artifact0を確認し、手順4docs `7afe3400` をそのpinへ追従した。既存CLI/env/migration等17指定objectは旧pinから不変。全16pathsの独立組合せreview GO、新所見なし。Bash15/相対link49と既存履歴/停止復旧/コマンド保持も確認。今回の比較GUIはpin未収録・実hosted未資格で、次は同機能Draftの既存CIへ進む。
+
+---
+
 ## 2026-10-06 15:59 UTC — 正式改訂の続き表示
 
 - PR88統合main `ea406848` から既存100件/nextCursorを「版」「新旧比較」へ接続する。[状況](document-revision-pagination-status.md)と[小計画](../plans/2026-10-06-document-revision-pagination.md)が再開先

@@ -570,12 +570,48 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     }
     expect(comparisonBody.contentComparisonStatus).toBe('sameAuthoritativeVersion');
     expect(comparisonBody.metadataComparisonStatus).toBe('different');
+    expect(comparisonBody.nextCursor ?? null).toBeNull();
+    expect(comparisonBody.metadataChanges.length).toBeGreaterThan(0);
+    const comparisonRegion = page.getByRole('region', { name: '新旧比較', exact: true });
+    const metadataChanges = comparisonRegion.locator('section')
+      .filter({ has: page.getByRole('heading', { name: 'メタデータの変更', exact: true }) });
+    await expect(metadataChanges).toHaveCount(1);
+    await expect(metadataChanges.getByRole('listitem')).toHaveCount(comparisonBody.metadataChanges.length);
+    await expect(comparisonRegion.getByRole('button', { name: '比較結果をさらに表示', exact: true })).toBeHidden();
     await inputEquals(page.getByRole('combobox', { name: '基準改訂', exact: true }), baseRevision.revisionId);
     await inputEquals(page.getByRole('combobox', { name: '比較対象', exact: true }), targetRevision.revisionId);
     await expect(page.getByRole('region', { name: '新旧比較', exact: true }).locator('dt').filter({ hasText: /^基準$/ }).locator('+ dd')).toHaveText('1.1');
     await expect(page.getByRole('region', { name: '新旧比較', exact: true }).locator('dt').filter({ hasText: /^対象$/ }).locator('+ dd')).toHaveText('1.0');
     await expect(page.getByText('同じコンテンツ版のため本文比較なし', { exact: true })).toBeVisible();
     completed('gui-metadata-revision-first-comparison-verified');
+    const comparisonReloadResponse = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.origin === context.human && url.pathname === `/v1/documents/${documentId}/revision-comparisons`
+        && response.request().method() === 'POST';
+    });
+    await page.getByRole('button', { name: '比較結果を最初から読み直す', exact: true }).press('Enter');
+    const comparisonReloadResult = await comparisonReloadResponse;
+    expect(comparisonReloadResult.status()).toBe(200);
+    privatelyEqual(comparisonReloadResult.request().postDataJSON(), {
+      baseRevisionId: baseRevision.revisionId, targetRevisionId: targetRevision.revisionId, projection: 'display', pageSize: 50,
+    });
+    const comparisonReloadBody = await comparisonReloadResult.json() as RevisionComparisonResponse;
+    privatelyEqual(comparisonReloadBody.baseRevision, comparisonBody.baseRevision);
+    privatelyEqual(comparisonReloadBody.targetRevision, comparisonBody.targetRevision);
+    privatelyEqual(comparisonReloadBody.metadataChanges, comparisonBody.metadataChanges);
+    expect(comparisonReloadBody.contentComparisonStatus).toBe('sameAuthoritativeVersion');
+    expect(comparisonReloadBody.metadataComparisonStatus).toBe('different');
+    expect(comparisonReloadBody.nextCursor ?? null).toBeNull();
+    await inputEquals(page.getByRole('combobox', { name: '基準改訂', exact: true }), baseRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '比較対象', exact: true }), targetRevision.revisionId);
+    await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
+      && new URL(page.url()).searchParams.get('targetRevisionId') === targetRevision.revisionId).toBe(true);
+    await expect(metadataChanges).toHaveCount(1);
+    await expect(metadataChanges.getByRole('listitem')).toHaveCount(comparisonReloadBody.metadataChanges.length);
+    await expect(comparisonRegion.getByRole('button', { name: '比較結果をさらに表示', exact: true })).toBeHidden();
+    await expect(comparisonRegion.locator('dt').filter({ hasText: /^基準$/ }).locator('+ dd')).toHaveText('1.1');
+    await expect(comparisonRegion.locator('dt').filter({ hasText: /^対象$/ }).locator('+ dd')).toHaveText('1.0');
+    await expect(comparisonRegion.getByText('同じコンテンツ版のため本文比較なし', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '← 版・改訂へ戻る', exact: true }).press('Enter');
     // tab往復の有効cache再利用に、無条件のGET待ちや通信総数の上限を置かない。
     await inputEquals(page.getByRole('combobox', { name: '基準', exact: true }), baseRevision.revisionId);
@@ -619,6 +655,11 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     privatelyEqual(comparisonRestartBody.targetRevision, comparisonBody.targetRevision);
     expect(comparisonRestartBody.contentComparisonStatus).toBe('sameAuthoritativeVersion');
     expect(comparisonRestartBody.metadataComparisonStatus).toBe('different');
+    privatelyEqual(comparisonRestartBody.metadataChanges, comparisonBody.metadataChanges);
+    expect(comparisonRestartBody.nextCursor ?? null).toBeNull();
+    await expect(metadataChanges).toHaveCount(1);
+    await expect(metadataChanges.getByRole('listitem')).toHaveCount(comparisonRestartBody.metadataChanges.length);
+    await expect(comparisonRegion.getByRole('button', { name: '比較結果をさらに表示', exact: true })).toBeHidden();
     await inputEquals(page.getByRole('combobox', { name: '基準改訂', exact: true }), baseRevision.revisionId);
     await inputEquals(page.getByRole('combobox', { name: '比較対象', exact: true }), targetRevision.revisionId);
     await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
@@ -754,6 +795,14 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     }
     expect(comparisonBody.contentComparisonStatus).toBe('sameAuthoritativeVersion');
     expect(comparisonBody.metadataComparisonStatus).toBe('different');
+    expect(comparisonBody.nextCursor ?? null).toBeNull();
+    expect(comparisonBody.metadataChanges.length).toBeGreaterThan(0);
+    const comparisonRegion = page.getByRole('region', { name: '新旧比較', exact: true });
+    const metadataChanges = comparisonRegion.locator('section')
+      .filter({ has: page.getByRole('heading', { name: 'メタデータの変更', exact: true }) });
+    await expect(metadataChanges).toHaveCount(1);
+    await expect(metadataChanges.getByRole('listitem')).toHaveCount(comparisonBody.metadataChanges.length);
+    await expect(comparisonRegion.getByRole('button', { name: '比較結果をさらに表示', exact: true })).toBeHidden();
     await inputEquals(page.getByRole('combobox', { name: '基準改訂', exact: true }), baseRevision.revisionId);
     await inputEquals(page.getByRole('combobox', { name: '比較対象', exact: true }), targetRevision.revisionId);
     await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
@@ -761,6 +810,34 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     await expect(page.getByRole('region', { name: '新旧比較', exact: true }).locator('dt').filter({ hasText: /^基準$/ }).locator('+ dd')).toHaveText('1.1');
     await expect(page.getByRole('region', { name: '新旧比較', exact: true }).locator('dt').filter({ hasText: /^対象$/ }).locator('+ dd')).toHaveText('1.0');
     await expect(page.getByText('同じコンテンツ版のため本文比較なし', { exact: true })).toBeVisible();
+    const comparisonReloadResponse = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.origin === context.human && url.pathname === `/v1/documents/${snapshot.documentId}/revision-comparisons`
+        && response.request().method() === 'POST';
+    });
+    await page.getByRole('button', { name: '比較結果を最初から読み直す', exact: true }).press('Enter');
+    const comparisonReloadResult = await comparisonReloadResponse;
+    expect(comparisonReloadResult.status()).toBe(200);
+    privatelyEqual(comparisonReloadResult.request().postDataJSON(), {
+      baseRevisionId: baseRevision.revisionId, targetRevisionId: targetRevision.revisionId, projection: 'display', pageSize: 50,
+    });
+    const comparisonReloadBody = await comparisonReloadResult.json() as RevisionComparisonResponse;
+    privatelyEqual(comparisonReloadBody.baseRevision, comparisonBody.baseRevision);
+    privatelyEqual(comparisonReloadBody.targetRevision, comparisonBody.targetRevision);
+    privatelyEqual(comparisonReloadBody.metadataChanges, comparisonBody.metadataChanges);
+    expect(comparisonReloadBody.contentComparisonStatus).toBe('sameAuthoritativeVersion');
+    expect(comparisonReloadBody.metadataComparisonStatus).toBe('different');
+    expect(comparisonReloadBody.nextCursor ?? null).toBeNull();
+    await inputEquals(page.getByRole('combobox', { name: '基準改訂', exact: true }), baseRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '比較対象', exact: true }), targetRevision.revisionId);
+    await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
+      && new URL(page.url()).searchParams.get('targetRevisionId') === targetRevision.revisionId).toBe(true);
+    await expect(metadataChanges).toHaveCount(1);
+    await expect(metadataChanges.getByRole('listitem')).toHaveCount(comparisonReloadBody.metadataChanges.length);
+    await expect(comparisonRegion.getByRole('button', { name: '比較結果をさらに表示', exact: true })).toBeHidden();
+    await expect(comparisonRegion.locator('dt').filter({ hasText: /^基準$/ }).locator('+ dd')).toHaveText('1.1');
+    await expect(comparisonRegion.locator('dt').filter({ hasText: /^対象$/ }).locator('+ dd')).toHaveText('1.0');
+    await expect(comparisonRegion.getByText('同じコンテンツ版のため本文比較なし', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '← 版・改訂へ戻る', exact: true }).press('Enter');
     await page.getByRole('tab', { name: '概要', exact: true }).press('Enter');
     // 再起動後も同じDocumentのcreatedAtを終了境界へそのまま渡し、終了除外を検査する。

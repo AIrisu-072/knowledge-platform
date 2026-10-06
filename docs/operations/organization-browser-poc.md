@@ -2,6 +2,20 @@
 
 ## 対象ソースと確認状況
 
+固定ソースは[PR89](https://github.com/AIrisu-072/knowledge-platform/pull/89)統合main `e249fb8da91549115d1371c05959e3219dbfde1c` / tree `c8188d99b33b52ce36383c96d19e0d9f39fcb92c` で、[Linux手動導入](linux-manual-installation.md)と共通にする。固定合成2profile・画像なしUbuntu機能受入に合格した版であり、main自身の[push CI37497603490](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37497603490)をPR公開headとは別に確認した。対象PCでの手順実行や本番認証の資格ではない。固定SHAと受入記録が未確定の版は実行しない。
+
+採用sourceはPR69〜PR74の文書GUI、PR76 Root直下作成、PR78フォルダーの続き表示、PR79選択親への子作成、PR80改名、PR81属性3項目、PR82未読条件、PR84作成日時条件、PR87フォルダー移動を保持し、PR88文書移動とPR89正式改訂の続き表示・明示比較選択の保持を含む。旧固定版 `cd6aafcc` にはPR88/89は含まれない。資格の実測値・exact run/job URL・確認時刻は[Linux手動導入の対象資格](linux-manual-installation.md#この手順でできること)を正本とする。
+
+mainのDocument実受入、Agent、Organizationのbuild/database/transaction/initialize/journey/restart/persistence/shutdown、HTTP再起動・cleanupを確認した。文書移動と正式改訂2件の読取・明示比較・再読取の個別assertionは同tree sourceと正式PASSの対応推論であり、再起動後metadataの個別行は有限stdoutで省略されている。Document cleanupも最終qualifiedと同sourceの失敗条件からの推論、Organizationのowned-container-removedは直接stdoutである。HTTP再起動をPostgreSQLプロセス再起動へ読み替えない。
+
+正式改訂100件超の実GUIは未資格。今回の比較結果の続き表示は固定版e249に未収録で、[新しい操作説明](document-gui-v0.md#比較結果の続きを表示する)は後続source向けである。比較結果50件超の実GUIも未資格。DOMや既存HTTPページ試験と区別する。WORKING固定再送の実通信資格は成功応答body途中喪失だけで、status/headers全喪失は未資格のままである。
+
+資格対象は画像なしUbuntu実操作PoCであり、対象PCでの手順全文・backup/restore・PostgreSQLプロセス再起動の確認は未実施。macOS golden比較は未実行・未更新で、影響候補Mock 2・3・4・7の4枚と、他3枚の画素不変も未証明。全visual資格や本番Identityの資格は主張しない。PR87の同Root継承・文書なしのフォルダー移動fixtureとPR88の同権限の文書移動fixtureでは実ACL変化・GUI移動通信断・実no-opの資格を追加しない。旧PR82 persistence失敗とPR83 Organization HTTP503の原因未特定履歴を保持する。
+
+### 過去の受入記録
+
+#### 2026-10-06 09:11 UTC PR87の固定版
+
 固定ソースは[PR87](https://github.com/AIrisu-072/knowledge-platform/pull/87)の受入済み公開製品head `cd6aafcc4e914050d8fc0e0f85483d82572e29da` / tree `dfba74428ef342d43369b094bd9e5117f3ee9fb4` で、[Linux手動導入](linux-manual-installation.md)と共通にする。固定合成2profile・画像なしUbuntu機能受入に合格した版であり、基点main `b9f447faa294f1898ef2b1d375b055c4b9e96cd8` からの製品資格とmain統合結果は別に確認する。対象PCでの手順実行や本番認証の資格ではない。固定SHAと受入記録が未確定の版は実行しない。
 
 採用sourceはPR69〜PR74の文書GUI、PR76 Root直下作成、PR78続き表示、PR79選択親への子作成、PR80改名、PR81属性3項目の絞り込みを保持し、PR82未読条件、PR84作成日時条件、PR87移動・同名衝突mapper・既存移動受入を含む。旧固定版0801にはこの3機能は含まれない。資格の実測値・exact run/job URL・確認時刻は[Linux手動導入の対象資格](linux-manual-installation.md#この手順でできること)と共通にする。
@@ -14,10 +28,6 @@
 - Document18件＋HTTP再起動後5件は全PASS・fail/skip0。属性・未読・日時の実GET/往復と本人/Agent readState不変を含む既存受入を保持し、Agent9項目・provenanceVerified=trueを同[実runtime job](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37438675289/job/112186722085)で確認した。WORKING固定再送の実通信資格は成功応答のbody途中喪失に限る
 - Document側HTTP再起動ではrestartIdentityVerified=true。Organizationの2HTTP process再起動後の現在親・同ID/同名/revision 2、元create/rename/move receiptのsales固定replay・office403と前後read不変は同sourceのpersistence caseとphase成功からの推論。HTTP再起動をPostgreSQL process再起動へ読み替えない
 - Organizationのcleanupは正式logのowned-container-removedで確認。Document cleanupは最終passed summaryと同sourceのfail-closed cleanup経路からの推論であり、個別PID/CIDの生receiptはない。全4runの終端後公開artifact0を確認した
-
-資格対象は画像なしUbuntu実操作PoCであり、対象PCでの手順全文・backup/restore・PostgreSQLプロセス再起動の確認は未実施。macOS golden比較は未実行・未更新で、影響候補Mock 2・3・4・7の4枚と、他3枚の画素不変も未証明。全visual資格や本番Identityの資格は主張しない。今回の同Root継承・文書なしの移動fixtureでは実ACL変化・GUI移動通信断・実no-opの資格を追加しない。旧PR82 persistence失敗とPR83 Organization HTTP503の原因未特定履歴を保持する。
-
-### 過去の受入記録
 
 #### 2026-10-06 03:27 UTC PR81までの固定版
 
@@ -207,4 +217,4 @@ PostgreSQL transaction試験は既定で明示ignoreされる。実行してい�
 
 `mise run organization:poc:runtime` は既存Document CI後段向けの単発確認である。外部DBを受け付けず、既存と同じ公式PostgreSQL一時containerを別途所有し、独立したtransaction試験用DBとbrowser用DB・storageを作る。既存固定Chromiumでsales/officeの操作を行い、2processを停止・再起動して保存状態を確認した後、所有containerを削除する。
 
-通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。初回PoCの実証は[PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54)のsource `44e1b412` で完了している。差戻追加経路は[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d` で全CIと実DB/2名browser/両HTTP server再起動後復元/cleanupが成功した。根拠・候補・判断は[PR57](https://github.com/AIrisu-072/knowledge-platform/pull/57) exact `d383bacc` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。合成Agentは[PR60](https://github.com/AIrisu-072/knowledge-platform/pull/60) exact `48ae1bfd` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。最終事務の完了・保留/再開・Document原本取得を含むPR67時点の統合結果は、本書冒頭の過去受入記録を参照する。現在pinの公開製品headの資格は、冒頭の対象ソースと確認状況で確認し、main統合結果とは分ける。PostgreSQL processそのものの再起動は確認対象に含めていない。画像・trace・videoはoff、raw実行ログ・標準runnerの原文は一時workspace内に保持し、公開artifactは追加しない。既存の有限stage/statusと許可された操作名だけをCIへ出力する。
+通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。初回PoCの実証は[PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54)のsource `44e1b412` で完了している。差戻追加経路は[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d` で全CIと実DB/2名browser/両HTTP server再起動後復元/cleanupが成功した。根拠・候補・判断は[PR57](https://github.com/AIrisu-072/knowledge-platform/pull/57) exact `d383bacc` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。合成Agentは[PR60](https://github.com/AIrisu-072/knowledge-platform/pull/60) exact `48ae1bfd` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。最終事務の完了・保留/再開・Document原本取得を含むPR67時点の統合結果は、本書冒頭の過去受入記録を参照する。現在pinのmain自身の資格は、冒頭の対象ソースと確認状況で確認し、過去の公開製品headの資格とは分ける。PostgreSQL processそのものの再起動は確認対象に含めていない。画像・trace・videoはoff、raw実行ログ・標準runnerの原文は一時workspace内に保持し、公開artifactは追加しない。既存の有限stage/statusと許可された操作名だけをCIへ出力する。

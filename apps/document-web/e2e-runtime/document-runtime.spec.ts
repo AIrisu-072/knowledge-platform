@@ -8,7 +8,7 @@ import {
   BinaryTransportBridge, compareDocumentRevisions, compareDocumentVersions, getDocument,
   getDocumentAccessPolicy, getDocumentHistory, getRootFolder, getSession, listDocumentRevisions,
   listDocuments, listDocumentVersions, listFolderChildren, listVersionFiles, publishVersion,
-  type VersionMutationResult, type CommandsMetadataPatch, type ModelsVersion, type ModelsDisplayFragment,
+  type VersionMutationResult, type CommandsMetadataPatch, type ModelsVersion, type ModelsDisplayFragment, type RevisionComparisonResponse,
 } from '@knowledge-platform/document-api-client';
 import { hash, options, persistedSnapshot, runtime, saveSnapshot, uuidV7 } from './support';
 
@@ -93,12 +93,34 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await expect(page.getByRole('heading', { name: '変更履歴' })).toBeVisible();
   await expect(page.getByText('document.version.published', { exact: true }).first()).toBeVisible();
   completed('history-opened');
+  const comparisonResponse = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.origin === human && url.pathname === `/v1/documents/${documentId}/revision-comparisons`
+      && response.request().method() === 'POST';
+  });
   await page.getByRole('tab', { name: '新旧比較', exact: true }).click();
   await expect(page.getByRole('heading', { name: '本文の変更' })).toBeVisible();
   const compareBody = { baseRevisionId: before.revisions[1]!.revisionId, targetRevisionId: before.revisions[0]!.revisionId, projection: 'display' as const };
+  const comparisonResult = await comparisonResponse;
+  expect(comparisonResult.status()).toBe(200);
+  expect(comparisonResult.request().postDataJSON()).toEqual({ ...compareBody, pageSize: 50 });
+  const comparisonBody = await comparisonResult.json() as RevisionComparisonResponse;
+  expect(comparisonBody.contentComparisonStatus).toBe('differentAuthoritativeVersions');
+  expect(comparisonBody.coverage).toBe('full');
+  expect(comparisonBody.displayItems.length).toBeGreaterThan(0);
+  // 既存の1行更新fixtureだけを使う。実GUIの50件超の追加page資格には読み替えない。
+  expect(comparisonBody.nextCursor ?? null).toBeNull();
+  const comparisonRegion = page.getByRole('region', { name: '新旧比較', exact: true });
+  const bodyChanges = comparisonRegion.locator('section')
+    .filter({ has: page.getByRole('heading', { name: '本文の変更', exact: true }) });
+  await expect(bodyChanges).toHaveCount(1);
+  await expect(bodyChanges.getByRole('listitem')).toHaveCount(comparisonBody.displayItems.length);
+  await expect(comparisonRegion.getByRole('button', { name: '比較結果をさらに表示', exact: true })).toBeHidden();
+  await expect(comparisonRegion.getByRole('button', { name: '比較結果を最初から読み直す', exact: true })).toBeVisible();
   const humanComparison = (await compareDocumentRevisions({ ...humanOptions, path: { documentId }, body: compareBody })).data;
   const agentComparison = (await compareDocumentRevisions({ ...agentOptions, path: { documentId }, body: compareBody })).data;
   expect(humanComparison.coverage).toBe('full'); expect(humanComparison.displayItems.length).toBeGreaterThan(0);
+  expect(comparisonBody.resultDigest).toBe(humanComparison.resultDigest);
   expect(agentComparison.resultDigest).toBe(humanComparison.resultDigest);
   await visualCheckpoint(page, '05-comparison-1440.png');
   completed('comparison-verified');

@@ -1,5 +1,28 @@
 # Linux手動導入手順書の状態
 
+## 2026-10-06 17:06 UTC — PR89統合mainへ固定版を同期
+
+- 対象はLinux手動導入、Organization Browser PoC、文書GUI、本記録の4文書。比較結果の続き表示と同じ機能PR内で、導入pinを旧PR87公開製品head `cd6aafcc4e914050d8fc0e0f85483d82572e29da` / tree `dfba74428ef342d43369b094bd9e5117f3ee9fb4` からPR89統合main `e249fb8da91549115d1371c05959e3219dbfde1c` / tree `c8188d99b33b52ce36383c96d19e0d9f39fcb92c` へ更新する。文書自身のcommitをpinにしない
+- 新pinはPR88文書移動、PR89正式改訂の続き表示・明示比較選択の保持を含む。今回の比較結果の続き表示は含まず、GUIの新節で後続source向けと明記する。旧PR87/PR81/PR74以前の受入数値・run URL・確認時刻は過去履歴へそのまま保持する
+- main資格の最終確認：2026-10-06 17:06:10 UTC。[main自身のpush CI37497603490](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37497603490)はattempt1・全13jobs/13checks成功、failure/skip/未終端0、終端後公開artifact0。このmainのpush workflowは1runであり、PR89側の4workflow/18checksとは別の実行である。終端後のmain ref/tree/両parents（旧main ea406848・PR89 head075a1e79）も一致した
+- [実runtime job112386056459](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37497603490/job/112386056459)の正式stdoutでactual head=e249fb8、gitDirty=false、acceptanceQualified=true、Document全22工程、journey18件＋HTTP再起動後persistence5件、Agent9項目/provenanceVerified=true、restartIdentityVerified=trueを確認。GUIも同mainログの47 suites/1161件PASSであり、PRのローカル1160件や後続featureの件数を流用しない
+- [Rust実DB job112386055919](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37497603490/job/112386055919)もmain e249自身のcheckout。workspace1849成功/既存skip10、追加21成功/skip0、別追加7成功/既存skip1。指定実DB36/36とFolder回帰4/4を各1本の正式PASS行で照合し、missing/ambiguous各0。個別state値は同tree assertionとPASSの対応であり、全値の直接ログとは扱わない
+- journeyのmetadata個別PASSは直接公開されている。一方persistenceの有限tests配列はtruncated=trueでmetadata個別行を省いており、再起動後の文書移動replay・正式改訂read/比較・snapshot/readState保持は5/5 phase PASSと同treeの選択sourceを対応させた推論である。metadata個別PASS行を直接観測したとは記録しない
+- Organizationは同runtime jobでbuild/database/transaction/initialize/journey/restart/persistence/shutdownの8phaseと `cleanup: owned-container-removed` を直接stdoutで確認。既存journey2＋persistence2の個別操作・HTTP2 process再起動後の内容は同tree sourceとphase PASSの対応推論。Document cleanupも最終qualified/passと同sourceのcleanup失敗条件からの推論であり、個別PID/CIDの生receiptはない。HTTP再起動をPostgreSQLプロセス再起動へ読み替えない
+- 環境は既存PostgreSQL18.6・固定toolchain・合成profileによる画像なしPoC。WORKING固定再送の実通信資格は成功応答body途中喪失だけで、status/headers全喪失は未資格のままである
+- 文書移動の同権限Shared→Sandbox1回、元要求replayと正式改訂/Version/原本hash/本人・Agent readState不変、正式改訂2件の通常読取・1.1→1.0の明示比較・一覧先頭再読取後の同pair新POST・HTTP再起動後の読取は同tree sourceと正式PASSを対応させた推論であり、個々のHTTP応答・assertion値の直接ログではない。有限stdoutで再起動後metadataの個別行は省略されている
+- 固定Git objectの限定照合では旧cd6aafcc→e249のOrganization全tree（CLI/env/identity/bootstrap）、Document 0001〜0011/Work 0001〜0006のmigrationと台帳lib、Cargo manifest/lock/deny、mise/rust設定、Node/pnpm関連manifest/lock、生成SDK/API schema/PDFium取得scriptの指定17objectsは全て同一。差分はGUI/試験/docs/有限診断の35paths。新依存・migration/reset・env・本番Identity手順は追加せず、対象実DBの更新可能性や全面互換を主張しない
+- コマンドは既存15shellblocksを保持し、変更はLinuxの `KP_SOURCE_SHA` 1行だけ。起動/停止/backup/restore/更新切戻し、Work9項目、秘密情報保護、合成2profile・localhost限定、scheduler不起動、旧Search9/不明台帳/checksumの停止条件を保持する。停止中Search/Audit/Toolboxの内容調査や追加作業はしない
+- 所有者が今後行う文書移動・正式改訂の読取/比較/HTTP再起動の手動確認を未チェックで追加する。100件以下の対象機を101件目以降の実GUI合格とは記録しない。実サーバーへの反映は所有者の手動操作である
+- 新しい比較GUI手順は固定3ラベル、本文差分と未比較範囲の両方の続き、メタデータ1回表示、取得済み未比較件数、固定pairとURL、一時失敗の同cursor再試行、stale/入力不一致と認可拒否を分けた明示再読取を説明する。新featureの実runtime資格は同機能PRの既存hostedで別途確認する
+- 静的検査：Bash構文15個（Linux12、Organization3）、相対リンク49件、限定4path差分、旧受入履歴・Work9項目・停止/復旧/更新本文の保持、コマンド差分がpin1行だけであることを確認。コマンド本体、実サーバー、DB/socket/browser/Cargo、package install、画像、deploymentは今回の文書更新で実行していない
+- 残る限界：正式改訂実GUI100件超・比較結果実GUI50件超、画像/macOS golden/全visual、WORKING全status/headers喪失、実ACL変化・GUI移動通信断・実GUI同親no-op、PR87フォルダー改名での実文書folderName更新、対象PCの手順全文、本番Identity/TLS、backup/restore、PostgreSQLプロセス再起動は未資格。旧PR82 persistence失敗とPR83 Organization503、PR89の過去失敗・有限診断訂正・Home focus残件を後続成功だけで解消済みとしない
+- 次のexact action：この4docsと機能sourceを独立確認し、比較続き表示と同じPRへ収録して最終CI/実受入を確認する。結果だけの再commit/別PRを作らない。main mergeは親担当、実サーバーへは所有者が手動反映する
+
+以下は当時のpin・資格・文書更新方針の履歴であり、現在mainや後続feature、対象PCへ資格や次操作を付け替えない。
+
+---
+
 ## 2026-10-06 09:11 UTC — PR87受入済み公開製品headへ固定版を同期
 
 - 対象はLinux手動導入、Organization Browser PoC、文書GUI、本記録の4文書。同じPR87内のpin更新として、製品と実受入を含む受入済み公開製品head `cd6aafcc4e914050d8fc0e0f85483d82572e29da` / tree `dfba74428ef342d43369b094bd9e5117f3ee9fb4` を固定する。基点mainは `b9f447faa294f1898ef2b1d375b055c4b9e96cd8`。公開製品headの資格とmain統合結果は別に確認し、文書更新commit自身のSHAを本文へ書かない

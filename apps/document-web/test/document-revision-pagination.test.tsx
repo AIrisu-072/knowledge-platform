@@ -212,7 +212,7 @@ test('比較GETの失敗は以前の結果を残さず、明示した対象の�
   await act(async () => { await h.client.invalidateQueries({ queryKey: ['revision-comparison', documentId] }); });
   const alert = await screen.findByRole('alert'); expect(screen.queryByText('同じコンテンツ版のため本文比較なし')).not.toBeInTheDocument();
   expect(screen.getByRole('combobox', { name: '基準改訂' })).toHaveValue(second.revisionId); expect(h.router.state.location.search.targetRevisionId).toBe(first.revisionId);
-  fireEvent.click(within(alert).getByRole('button', { name: '再読み込み' })); await screen.findByText('同じコンテンツ版のため本文比較なし');
+  fireEvent.click(screen.getByRole('button', { name: '比較結果を最初から読み直す' })); await screen.findByText('同じコンテンツ版のため本文比較なし');
 });
 
 test('先頭再読取より遅い旧比較応答は未取得の選択へ戻った画面を復活させない', async () => {
