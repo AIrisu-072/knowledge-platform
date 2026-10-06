@@ -964,6 +964,26 @@ impl DocumentIndexRuntime for PgDocumentIndexRuntime {
         })
     }
 
+    fn current_body_entries<'a>(
+        &'a self,
+        source_id: SourceId,
+    ) -> BoxFuture<'a, Option<Vec<search_source_document::BodyItemEntry>>> {
+        Box::pin(async move {
+            let Some(key) = self.current_key(source_id).await? else {
+                return Ok(None);
+            };
+            let manifest = self.stored_manifest(key).await?;
+            // The restore recomputes every digest before an entry is reused.
+            match PgPayloadStore::new(self.pool.clone())
+                .restore(&manifest)
+                .await
+            {
+                Ok(restored) => Ok(Some(restored.unit_manifest.entries)),
+                Err(_) => Ok(None),
+            }
+        })
+    }
+
     fn pin_current_bundle<'a>(
         &'a self,
         source_id: SourceId,

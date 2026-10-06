@@ -176,6 +176,14 @@ impl BodyProfileRegistry {
         &self.parser_build_id
     }
 
+    /// The registered single-format profile of `format`, if any.
+    pub(crate) fn profile_id(&self, format: FormatId) -> Option<&ExtractionProfileId> {
+        self.profiles
+            .iter()
+            .find(|(candidate, _)| *candidate == format)
+            .map(|(_, profile)| profile.id())
+    }
+
     fn definition(&self, format: FormatId) -> Option<&ExtractionProfileDefinitionV1> {
         self.definitions
             .iter()
@@ -592,6 +600,13 @@ fn build_error(error: ExtractionError) -> BodyBuildError {
 pub trait BodyItemExtractor: Send + Sync {
     fn parser_build_id(&self) -> &str;
 
+    /// Whether a published entry may stand for a fresh extraction of the same
+    /// item: same parser build and the profile this extractor would use now.
+    /// The default never reuses.
+    fn reusable(&self, _entry: &crate::body_manifest::BodyItemEntry) -> bool {
+        false
+    }
+
     fn extract<'a>(
         &'a self,
         record: &'a VersionSnapshotRecord,
@@ -606,6 +621,19 @@ where
 {
     fn parser_build_id(&self) -> &str {
         self.registry.parser_build_id()
+    }
+
+    fn reusable(&self, entry: &crate::body_manifest::BodyItemEntry) -> bool {
+        // Only a completed single-format read; archives and refusals are cheap
+        // or plan-bound and are always read again.
+        entry.operation == ItemOperationState::Completed
+            && entry.archive_plan.is_none()
+            && entry.parser_build_id == self.registry.parser_build_id()
+            && matches!(
+                (entry.detected_format, &entry.profile),
+                (Some(format), Some(profile))
+                    if self.registry.profile_id(format) == Some(profile)
+            )
     }
 
     fn extract<'a>(
