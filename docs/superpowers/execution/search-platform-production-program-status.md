@@ -22,4 +22,20 @@ A1の影響：`search-source-document::vertical_slice` の一件は、別の主�
 
 完了：E（Discoverまで）。計測前に固定した条件G1〜G6がすべて合格し、Vectorは既定で有効、類似度の下限τ=0.890とした（[報告](../../../experiments/search-vector-model-poc/report.md)のE節、選定は `spec/selection` 13.4）。公開レーンMIRACL日本語devの評価100問でnDCG@10はL 0.035→LD 0.552（+0.518、95%区間[0.433, 0.603]、文字bigramのBM25に対しても+0.311）、合成レーンはLGD=LG（0.9706）、正解の無い問のFP@10は0.43→1.15、1,024 Unitでp95 18.8 ms。本番実装は、計画器のExploratory順をL→G→Dへ変更、`search-vector-adapter`（固定E5-small、Candle CPU、ファイルのSHA-256照合）、migration `0008_search_vector_v1.sql` と `PgVectorIndex`/`PgVectorGenerations`（完全走査・τ・読込み時のdigest再計算、P7現在世代とscope epochのCAS）、`VectorMaintainer`（現在のP1バンドルのUnitから構築、同じcache keyの埋込みを再利用、起動時の復旧）、Discover routeの実行port（可視Sourceごとのactor権限範囲に束縛、hitは読み込んだ世代のUnitとactorの現在Readで解決）。Vectorが利用不可のときはDiscover全体を失敗させず、閉塞gap `vector_unavailable` を返す。workerは既定でVectorを保守し、固定モデルが無い・改変されていれば起動を止める。`paste`（RUSTSEC-2024-0436、保守終了・既知の脆弱性なし）はCandleとtokenizersの構築時依存のため、理由付きで除外した。実DBの `durable_vector`（順位、τ、権限の無いactor、Vector未構築の新世代はgap、構築後に回復）、実モデルの確認（`--ignored`）、影響crateの全試験621件、clippy、cargo-deny、osv-scanner、アーキテクチャlintが成功した。
 
-次の作業：E（Search APIの意味検索の範囲）、D（P3の改善）、A2（低優先）。
+完了：D（P3の改善）。完成プログラムのG2レビュー記録（`g2-review-*.md`）のP3を一件ずつコードで確かめ、既に直っていた項目（ZIP予算、gc文書、0005のpg_temp、timeout上限、本文読込みのtimeout、accept backoff、最終ゲートの全組確認、Vectorの順位確認、復旧の期限と非中断、評価未完了の503）を除いて修正した。
+- Vector：入力を取る前にscope epochを読み（`build_at`）、公開CASが失敗したら未公開の段を破棄する。
+- 起動：`DiscoveryConfig::validate` を起動時に一度だけ適用し、不正なら台帳に触れる前に起動を拒否する。
+- 抽出：ZIPの明示ディレクトリ項目（`docs/`）はhostの計画とworkerの読取りの両方で葉にしない。`parser_build_id` はworker実行ファイルのSHA-256（`sha256:<hex>`）で、起動時に照合し、runnerが実行ごとに再照合する。登録する全形式に `InputBytes` を必須とし、ZIP項目数の予算は索引で読まない。
+- API：backendへ渡す期限は外側のtimeoutと同じ一つにした。接続taskがpanicしてもleaseを `ConnectionError` で閉じ、server全体のabortは `Dropped` のまま。lease無しの送信経路は `Connection: close` を付ける。
+- Graph/DB：Graph migration `0002`（INCREMENTALのREADYは差分適用後だけ、build guardの登録はREADYの基準receiptと登録済みtargetに一致するときだけ、Graph表のTRUNCATE拒否、definer関数のpg_temp）、Search migration `0009`（0006より前のdefiner関数にpg_tempを末尾で明示）。`settle_ready_on` はbuild refで再lockして再計算し、報告と一致しなければ拒否する。ポインターCASはREADYのGraph世代を共有lockする。
+- Remote：adapterは別endpoint向けのtransportを拒否し、probeは本文取得の前に `/authorize` を確認する。sweepはexecute_batchと同じ検証を通す。`/authorize` に評価ごとの予算を設けた。一覧応答は `status` を必須とし、hitのversion/digest/title/項目名を本文と同じ上限で検査する。符号化できないfacetは要求を拒否し（`Unsupported`）、live問合せにもfacetを送る。`/authorize` の応答は問い合わせたprincipalとitemを返さなければ受理しない。証拠の向き（primary/corroborating/contradicting）は検証済みの来歴記録から取り、providerのヒントは読まない。
+
+理由付きで変更しなかったP3：
+- remote adapterの評価entryが消えない件。adapterは要求ごとに作るため。
+- outbox runnerで処理期限のhandler中断が `Lost` に数えられる件。spanは既に `Unknown` を報告し、重複はhandlerのreceiptで防がれる。Document Platformと共有するrunnerの意味論は変えない。
+
+完了：A2。自動の再試行は配送policyの `max_attempts`（既定8回）で上限付きのまま。手動の再試行として `search_outbox_worker rebuild` を追加した。現在のDocumentスナップショットからSource全体を一回再構築し、MANUAL CASで公開して終了する。回数の上限は無く、dead-letterになったeventも上書きし、使えない現在世代の置換えにも使える。`worker_wiring::manual_rebuild_has_no_attempt_limit` で、自動の上限を超える回数を続けて実行できることを確認した。
+
+検証：`search-application` 387件、`search-runtime`・`search-graph`・`search-source-document` 236件、`search-source-http` 21件、`search-api-http` 14件、workspace全体のclippy（all features）が成功した。PDFiumが必要な2件はローカルに固定版PDFiumが無いため実行していない（CIで実行）。
+
+残り：Search APIの意味検索の範囲（OAS `coverage` への追加）は未着手。Vectorは現在Discoverだけで使う。
