@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -9,6 +9,8 @@ import { AppShell } from '../components/app-shell/AppShell';
 import { OriginalVersionDownload } from '../components/shared/OriginalVersionDownload';
 import { DocumentRegistration } from '../components/document/DocumentRegistration';
 import type { SelectedFolderContext } from '../application/document-root-folder';
+import { FolderRename } from '../components/document/FolderRename';
+import { folderRenameOperations } from '../application/document-folder-rename';
 import { RootFolderCreate } from '../components/document/RootFolderCreate';
 import type { ListSearch } from '../application/search-state';
 import { documentListStatusLabel } from '../view-model/document-status';
@@ -25,6 +27,15 @@ export function DocumentHomePage() {
   const queryClient = useQueryClient();
   const [chosenFolder, setChosenFolder] = useState<Folder | undefined>();
   const [folderContext, setFolderContext] = useState<SelectedFolderContext>();
+  const renameStore = folderRenameOperations(queryClient);
+  const rename = useSyncExternalStore(renameStore.subscribe, renameStore.get);
+  useEffect(() => {
+    if (rename?.status !== 'succeeded') return;
+    const targetId = rename.targetFolderId;
+    // Preserve the URL/filter and a different selection; discard only stale, query-external target copies.
+    setChosenFolder(current => current?.folderId === targetId ? undefined : current);
+    setFolderContext(current => current?.folderId === targetId ? undefined : current);
+  }, [rename?.status, rename?.request.operationId]);
   const [selectionGeneration, setSelectionGeneration] = useState(0);
   const [draftTitle, setDraftTitle] = useState(search.titleContains ?? '');
   useEffect(() => setDraftTitle(search.titleContains ?? ''), [search.titleContains]);
@@ -232,6 +243,12 @@ export function DocumentHomePage() {
         if (!result.data || result.isError) throw new Error('System Rootを取得できません。');
         return result.data;
       }} />
+      <FolderRename root={!search.folderId ? rootQuery.data : undefined} contextKey={`${currentUrl}:${selectionGeneration}`}
+        selected={folderContext && folderContext.folderId === search.folderId && chosenFolder ? {
+          context: folderContext, folder: { ...chosenFolder, parentFolderId: folderContext.sourceParentId,
+            capabilities: registrationFolderQuery.data?.capabilities },
+          readReady: registrationFolderQuery.isSuccess && !registrationFolderQuery.isFetching,
+        } : undefined} />
       {rootQuery.isPending && <LoadingState label="フォルダーを読み込み中" />}
       {rootQuery.error && <ApiFeedback error={rootQuery.error} onRetry={() => void rootQuery.refetch()} />}
       {rootQuery.data && (

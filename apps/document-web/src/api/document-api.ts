@@ -2,6 +2,7 @@ import {
   BinaryTransportBridge,
   cancelPublicationSchedule,
   createFolder,
+  renameFolder,
   withdrawVersion,
   endDocumentPublication,
   compareDocumentRevisions,
@@ -29,6 +30,7 @@ import {
   type CommandsEndPublication,
   type CommandsCreateDocument,
   type CommandsCreateFolder,
+  type CommandsRenameFolder,
   type CommandsMetadataPatch,
   type CreateDocumentResult,
   type CommandsPolicyExplicit,
@@ -70,6 +72,9 @@ function apiSort(sort: string | undefined): string | undefined {
 }
 
 export const documentApi = {
+  renameFolder(folderId: string, body: CommandsRenameFolder) {
+    return payload(renameFolder({ ...data, path: { folderId }, body }));
+  },
   createFolder(body: CommandsCreateFolder) {
     return payload(createFolder({ ...data, body }));
   },
