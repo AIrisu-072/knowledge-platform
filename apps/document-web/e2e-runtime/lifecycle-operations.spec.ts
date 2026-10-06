@@ -69,7 +69,8 @@ test('GUI現行公開版の取下げは直前の公開版へ復帰し、最後�
   const fallbackResult = await fallbackResponse.json() as ModelsWithdrawResult;
   expect(fallbackResult).toMatchObject({ operationId: withdrawals[0]!.operationId, documentId, targetVersionId: secondVersionId,
     formerCurrentVersionId: secondVersionId, resultingCurrentVersionId: firstVersionId, resultingRevision: before.published.revision! + 1 });
-  await expect(page.getByRole('status')).toContainText('版を取下げました。');
+  const lifecycle = page.getByRole('region', { name: '公開状態の操作', exact: true });
+  await expect(lifecycle.getByRole('status')).toHaveText('版を取下げました。直前の公開版へ復帰しました。');
   const fallback = await lifecycleSnapshot(context.human, documentId);
   expect(withdrawals).toHaveLength(1);
   expect(withdrawals[0]!.expectedRevision).toBe(before.published.revision);
@@ -88,7 +89,7 @@ test('GUI現行公開版の取下げは直前の公開版へ復帰し、最後�
   const nullResult = await nullResponse.json() as ModelsWithdrawResult;
   expect(nullResult).toMatchObject({ operationId: withdrawals[1]!.operationId, documentId, targetVersionId: firstVersionId,
     formerCurrentVersionId: firstVersionId, resultingCurrentVersionId: null, resultingRevision: fallback.published.revision! + 1 });
-  await expect(page.getByRole('status')).toContainText('版を取下げました。');
+  await expect(lifecycle.getByRole('status')).toHaveText('版を取下げました。現行の公開版はありません。');
   expect(withdrawals).toHaveLength(2);
   expect(withdrawals[1]!.expectedRevision).toBe(fallback.published.revision);
   expect(new Set(withdrawals.map(item => item.operationId)).size).toBe(2);
@@ -135,12 +136,13 @@ test('GUI公開終了は過去PUBLISHED版と原本を保持し、通常readを�
     resultingCurrentVersionId: null, resultingDocumentRevision: before.published.revision! + 1 });
   expect(endings).toHaveLength(1);
   expect(endings[0]).toMatchObject({ expectedRevision: before.published.revision, expectedCurrentVersionId: secondVersionId });
-  await expect(page.getByRole('status')).toContainText('文書の公開を終了しました。');
+  const lifecycle = page.getByRole('region', { name: '公開状態の操作', exact: true });
+  await expect(lifecycle.getByRole('status')).toHaveText('文書の公開を終了しました。原本と過去版は保持されています。');
   // The refresh is expected to fail closed after T10; the successful operation notice must survive it.
   const authoring = await getDocument({ ...common, throwOnError: false, path, query: { view: 'authoring' } });
   expect(authoring.response?.status).toBe(404); expect(authoring.error?.code).toBe('DOCUMENT_NOT_FOUND');
   await expect(page.getByRole('alert')).toContainText('文書が見つからないか、閲覧できません');
-  await expect(page.getByRole('status')).toContainText('文書の公開を終了しました。');
+  await expect(lifecycle.getByRole('status')).toHaveText('文書の公開を終了しました。原本と過去版は保持されています。');
   const ended = await lifecycleSnapshot(context.human, documentId);
   expect(ended.published).toEqual({ status: 404, code: 'DOCUMENT_NOT_FOUND' });
   expect(ended.versions.map(version => version.lifecycleState)).toEqual(['published', 'published']);

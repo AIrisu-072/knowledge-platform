@@ -7,7 +7,7 @@ import { DocumentDetailPage } from '../src/routes/DocumentDetailPage';
 import { validateDetailSearch } from '../src/application/search-state';
 
 jest.mock('../src/application/document-workspace', () => ({ documentApi: {
-  getDocument: jest.fn(), listDocumentVersions: jest.fn(), getDocumentVersion: jest.fn(),
+  getRootFolder: jest.fn(), getDocument: jest.fn(), listDocumentVersions: jest.fn(), getDocumentVersion: jest.fn(),
   listDocumentRevisions: jest.fn(), getDocumentHistory: jest.fn(), listVersionFiles: jest.fn(),
   withdrawVersion: jest.fn(), endDocumentPublication: jest.fn(),
 } }));
@@ -99,6 +99,70 @@ test('公開終了はDocumentの現行IDを固定し、終了後404でも成功�
   expect(await screen.findByText(/文書の公開を終了しました/)).toBeVisible();
   expect(api.endDocumentPublication).toHaveBeenCalledWith(documentId, expect.objectContaining({ expectedRevision: 7, expectedCurrentVersionId: versionId, reason: '合成の操作理由' }));
   await waitFor(() => expect(screen.queryByRole('button', { name: '公開を終了' })).not.toBeInTheDocument());
+});
+test.each([
+  ['withdraw', 'success'], ['withdraw', 'forbidden'], ['end', 'not-found'],
+] as const)('%sの確定成功と遅い正式改訂readを分け、%s後も単一の操作結果を保持する', async (kind, outcome) => {
+  const h = setup();
+  const revisionPage = { items: [{ revisionId: '00000000-0000-4000-8000-000000000101', documentVersionId: versionId,
+    major: 2, minor: 0, label: '2.0', createdAt: version.updatedAt, sourceKind: 'contentPublication', metadataSnapshotStatus: 'complete' }], nextCursor: null };
+  h.api.listDocumentRevisions.mockResolvedValue(revisionPage);
+  const { dialog, confirm } = await open(kind); await reason(dialog);
+  let finishRead!: (value: typeof revisionPage) => void, rejectRead!: (reason: unknown) => void;
+  h.api.listDocumentRevisions.mockReturnValue(new Promise<typeof revisionPage>((resolve, reject) => { finishRead = resolve; rejectRead = reject; }));
+  let finishDocument!: (value: DocumentDetail) => void, rejectDocument!: (reason: unknown) => void;
+  if (kind === 'end') {
+    h.api.getDocument.mockReturnValue(new Promise<DocumentDetail>((resolve, reject) => { finishDocument = resolve; rejectDocument = reject; }));
+  } else {
+    const fallbackVersion = { ...version, versionId: baseId, versionNo: 1, baseVersionId: null };
+    h.api.getDocument.mockResolvedValue({ ...detail(), revision: 8, currentVersionId: baseId, documentVersionId: baseId,
+      displayVersion: { ...fallbackVersion, lifecycleState: 'PUBLISHED' } });
+    h.api.listDocumentVersions.mockResolvedValue({ items: [fallbackVersion], nextCursor: null });
+    h.api.getDocumentVersion.mockResolvedValue(fallbackVersion);
+  }
+  const method = kind === 'withdraw' ? h.api.withdrawVersion : h.api.endDocumentPublication;
+  const message = kind === 'withdraw' ? '版を取下げました。直前の公開版へ復帰しました。' : '文書の公開を終了しました。原本と過去版は保持されています。';
+  try {
+    fireEvent.click(confirm);
+    await screen.findByText(message);
+    await waitFor(() => expect(h.api.listDocumentRevisions).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('status').map(node => node.textContent)).toEqual([message, '正式改訂を読み直し中…']);
+    expect(screen.getByText('正式改訂を読み直し中…')).toHaveAttribute('aria-live', 'polite');
+    // runtimeと同じ単一status検査を、正式改訂readがpendingの間にも行う。
+    expect(within(screen.getByRole('region', { name: '公開状態の操作' })).getByRole('status').textContent).toBe(message);
+    const restart = screen.getByRole('button', { name: '正式改訂を最初から読み直す' });
+    expect(restart).toBeDisabled();
+    const revisions = screen.getByRole('list', { name: '正式改訂一覧' });
+    expect(within(revisions).getByText('2.0')).toBeVisible();
+    expect(method).toHaveBeenCalledTimes(1);
+    if (outcome === 'success') {
+      const fallbackRevision = { ...revisionPage.items[0]!, revisionId: '00000000-0000-4000-8000-000000000102',
+        documentVersionId: baseId, major: 3, label: '3.0', sourceKind: 'withdrawFallback' };
+      await act(async () => finishRead({ items: [fallbackRevision, ...revisionPage.items], nextCursor: null }));
+      await waitFor(() => expect(restart).toBeEnabled());
+      expect(within(revisions).getByText('3.0')).toBeVisible();
+      expect(within(revisions).getByText('2.0')).toBeVisible();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    } else if (outcome === 'forbidden') {
+      await act(async () => rejectRead(problem(403, 'FORBIDDEN')));
+      await screen.findByRole('alert');
+      expect(within(revisions).queryByText('2.0')).not.toBeInTheDocument();
+      expect(screen.queryByText('正式改訂はありません。WORKING版は上の版一覧に表示されます。')).not.toBeInTheDocument();
+    } else {
+      await act(async () => rejectDocument(problem(404, 'DOCUMENT_NOT_FOUND')));
+      expect(await screen.findByRole('alert')).toHaveTextContent('文書が見つからないか、閲覧できません');
+      expect(screen.queryByRole('list', { name: '正式改訂一覧' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '公開を終了' })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText('正式改訂を読み直し中…')).not.toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: '公開状態の操作' })).getByRole('status').textContent).toBe(message);
+    expect(screen.queryByRole('button', { name: '同じ内容で再試行' })).not.toBeInTheDocument();
+    expect(method).toHaveBeenCalledTimes(1);
+  } finally {
+    await act(async () => { finishRead(revisionPage); finishDocument?.(detail()); });
+    h.unmount(); h.client.clear();
+  }
 });
 for (const kind of ['withdraw', 'end'] as const) {
   test(`${kind}: 結果不明後は理由もrevisionも変えず同じ要求だけを再送する`, async () => {

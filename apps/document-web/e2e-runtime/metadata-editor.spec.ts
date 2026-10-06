@@ -340,10 +340,13 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     // 既存detailのreturnToへ試験seedを置き、server原文と開始包含を実GETで検査する。
     const fromResponse = waitCreatedList(page, exactFrom);
     await page.getByRole('button', { name: '← 一覧へ戻る', exact: true }).press('Enter');
+    completed('gui-metadata-list-return-pressed');
     await verifyCreatedList(page, await fromResponse, exactFrom, [{ documentId, createdAt }]);
+    completed('gui-metadata-created-from-verified');
     await inputEquals(page.getByLabel('文書名で絞り込み', { exact: true }), listTitle);
     await verifyCreatedInput(page, '作成日時の開始（含む）', createdAt, exactLocal);
     await readUnreadPublishedList(page, documentId, created.documentVersionId, exactFrom);
+    completed('gui-metadata-unread-list-verified');
     await page.locator(`[data-document-id="${documentId}"]`).press('Enter');
     await page.getByRole('button', { name: '詳細を開く', exact: true }).press('Enter');
     await expect.poll(() => new URL(page.url()).pathname === `/documents/${documentId}`).toBe(true);
@@ -509,6 +512,7 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     page.off('request', recordMoveRequest);
     page.off('response', recordMoveResponse);
     page.off('requestfinished', recordMoveReadFinished);
+    completed('gui-metadata-revision-entry-ready');
 
     // 既存2改訂を通常GUIで読む。100件超の追加pageはDOM資格であり、この実例では未資格。
     const baseRevision = after.revisions[0]!, targetRevision = after.revisions[1]!;
@@ -537,6 +541,7 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     await expect(revisionRows.nth(0).locator('strong')).toHaveText('1.1');
     await expect(revisionRows.nth(1).locator('strong')).toHaveText('1.0');
     await expect(page.getByRole('button', { name: '正式改訂をさらに表示', exact: true })).toBeHidden();
+    completed('gui-metadata-revision-first-page-verified');
     // 既定と逆の明示pairで、先頭2件への無言fallbackを識別する。版tabでは比較readはdisabled。
     await page.getByLabel('基準', { exact: true }).selectOption(baseRevision.revisionId);
     await page.getByLabel('対象', { exact: true }).selectOption(targetRevision.revisionId);
@@ -567,6 +572,7 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     await expect(page.locator('dt').filter({ hasText: /^基準$/ }).locator('+ dd')).toHaveText('1.1');
     await expect(page.locator('dt').filter({ hasText: /^対象$/ }).locator('+ dd')).toHaveText('1.0');
     await expect(page.getByText('同じコンテンツ版のため本文比較なし', { exact: true })).toBeVisible();
+    completed('gui-metadata-revision-first-comparison-verified');
     await page.getByRole('button', { name: '← 版・改訂へ戻る', exact: true }).press('Enter');
     // tab往復の有効cache再利用に、無条件のGET待ちや通信総数の上限を置かない。
     await inputEquals(page.getByLabel('基準', { exact: true }), baseRevision.revisionId);
@@ -588,6 +594,7 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     await expect(revisionRows.nth(0).locator('strong')).toHaveText('1.1');
     await expect(revisionRows.nth(1).locator('strong')).toHaveText('1.0');
     await expect(page.getByRole('button', { name: '正式改訂をさらに表示', exact: true })).toBeHidden();
+    completed('gui-metadata-revision-reload-page-verified');
     await inputEquals(page.getByLabel('基準', { exact: true }), baseRevision.revisionId);
     await inputEquals(page.getByLabel('対象', { exact: true }), targetRevision.revisionId);
     await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId

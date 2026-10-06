@@ -1,6 +1,6 @@
 # 正式改訂の続き表示：実行状況
 
-## 2026-10-06 13:47 UTC
+## 2026-10-06 14:26 UTC
 
 - PR88統合main `ea40684833ebcdf945636300b7b22741725fc80c` / tree `cd18f8cfdafeb57bb537df11e46a0e30ba907030` を基点とする。branch `feat/document-revision-pagination-20261006`、[小計画](../plans/2026-10-06-document-revision-pagination.md)に従い既存nextCursorを通常GUIへ配線する。
 - PR88公開head `af08e586` は[CI37455031944](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37455031944)の全13jobs・全18checks（15成功/既存skip3）、Document18+5/Agent9・Organization・HTTP再起動・指定DB36・cleanup/artifact0を確認してmainへ統合した。個別移動/replay/Document cleanupは同tree sourceと公開PASSの対応推論。main自身の[push CI `37457937486`](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37457937486)もattempt1の全13jobs/checks・Document18+5/Agent9/22工程・Organization全8工程・HTTP再起動/cleanup・指定DB36/36・artifact0を独立確認した。ref/tree/両parentsも終端後に一致。
@@ -20,4 +20,11 @@
 - metadataのtimeout根因・停止awaitは有限診断から未確定。固定Nodeの実routeでは、日時開始・未読ON・分範囲の3条件は初回の異なるGETであり、overview中の改訂GETは0だった。cache再利用や新改訂readを根因と断定しない。一方、閉じた編集dialogの遅いfocus復帰が別の操作へ移したfocusを奪う具体反例は成立した。
 - `31aed928` はこの独立したUI欠陥だけを補修した。close時の元triggerと既存opening世代を捕捉し、同世代・接続中・有効・focusがbodyの場合だけ復帰する。実RED2→metadata39 PASS、予約取消補修を含む全GUI1144/47・schema/型/build成功。既存build性能warning3件を保持。実CIのtimeout根因を特定・解消したという主張ではない。Homeの選択行focusにも別の競合反例があり、今回は残件として保持する。
 - metadata focus補修と予約取消fixの組合せは限定独立spec/品質GO、新所見0。次のexact actionは同PRの新headで既存hosted CI/実受入・cleanup/artifact0を確認すること。初回失敗の証拠を保持し、原因未特定を修正済みとは扱わない。timeout延長・skip・根拠のない繰返し実行はせず、業務意味・権限モデルは変えない。
+- 補修後の公開head `a27389c3fe3cb1501d0164b45443c5de78adc398` / tree `29312bb7bec440bea37e06a109003272718617d5` の[CI37474338595](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37474338595)も全終端した。予約取消は実PASSになったが、journey全体は16成功/2失敗。今回はlifecycleの通知検査がstrict-locator、metadataが同じ公開lastStageのtimeoutだった。Agent・HTTP再起動・persistence・Organizationは未実行、実受入未資格。Rust/DB36/Folder4成功、全4workflow artifact0、失敗runのcleanupは未確認。
+- **14:14 診断解釈の訂正**：既存 `gui-unread-readonly-verified` は公開診断のallowlistに未登録だった。未知のannotationは無視され、直前の許可済み工程が表示される。そのためno-op後という表示だけから「未読完了前」「新しい正式改訂read未到達」を断定できなかった。停止範囲は次の許可済み `gui-document-move-verified` までで、移動・正式改訂read/比較の途中も含む。追加readの時間消費を除外した推論も撤回する。両runのraw証拠は保持し、派生reportへ訂正を追記した。
+- 次は同じ背景readとの通知同居を全runtimeで確認し、成立するlifecycleの4検査だけを既存の名前付き操作regionへ限定する。同時にmetadataの既存 `lastCompletedStage` と同じ公開項目・上限のまま、固定7工程と既存1工程の許可漏れ補修で旧一覧/未読・移動後・正式改訂の初回read/比較/再読取を区切る。動的値・URL・body・新診断field、製品変更、timeout/skip/再試行緩和は追加しない。限定TDDと独立review後、同PRの新headで実際の停止位置を確認する。
 - 100件超の実GUI例は既存fixtureになく、今回の実資格へ含めない。DOM100+1と既存HTTP cursor試験、既存2改訂の画像なし実受入を区別する。macOS golden/画像・本番Identity/対象PC/PGプロセス再起動等の既存未資格を保持する。固定導入版 `cd6aafcc` は文書移動と今回の続き表示を含まず、GUI手順に明記した。結果だけの別PRは作らない。
+
+- `d1f43a51` はlifecycleの通知4検査を既存操作regionへ限定し、3反例RED→既存含む23 PASS、Web/runtime型・collection18+5成功。全runtime14通知検査を確認し、同じread controlsが描かれない他10箇所は変更していない。
+- `4fed4451` は固定工程7呼出とallowlist8値、既存privacy/sourceguardだけを変更した。追加行を除けば元await/要求/全assertionと診断本体はbyte一致。RED2→focused39・safe64/9files・既存runtime型設定・collection18+5成功。annotationはjourney17/persistence4で既存cap40を維持する。
+- この6filesの独立spec/品質reviewはGO、新所見0。同じHEADの全GUIも47 suites / 1147 testsとschema checkが成功した。製品の追加変更はない。次は日本語の失敗・訂正記録を含む同PR新headを固定し、既存CIで実受入と現在の停止工程を確認する。診断追加をmetadata timeoutの解消とは扱わない。

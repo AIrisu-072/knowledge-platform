@@ -68,6 +68,60 @@ test('公開後と再起動後のGUIもpublishedへ明示遷移し、authoring�
   }
 });
 
+test('no-op後の固定診断は元のrequest登録・await・検証の境界にだけ置く', () => {
+  const statements = calls('test')[0].arguments[1].body.statements.map(statement => statement.getText(syntax));
+  const completion = stage => `completed('${stage}');`;
+  const boundaries = [
+    ['gui-metadata-list-return-pressed', "await page.getByRole('button', { name: '← 一覧へ戻る', exact: true }).press('Enter');",
+      'await verifyCreatedList(page, await fromResponse, exactFrom, [{ documentId, createdAt }]);'],
+    ['gui-metadata-created-from-verified', 'await verifyCreatedList(page, await fromResponse, exactFrom, [{ documentId, createdAt }]);',
+      "await inputEquals(page.getByLabel('文書名で絞り込み', { exact: true }), listTitle);"],
+    ['gui-metadata-unread-list-verified', 'await readUnreadPublishedList(page, documentId, created.documentVersionId, exactFrom);',
+      'await page.locator(`[data-document-id="${documentId}"]`).press(\'Enter\');'],
+    ['gui-unread-readonly-verified', 'expect(origins).toEqual(new Set([context.human]));',
+      "const sourceBefore = (await getDocument({ ...common, path, query: { view: 'published' } })).data;"],
+    ['gui-metadata-revision-entry-ready', "page.off('requestfinished', recordMoveReadFinished);",
+      'const baseRevision = after.revisions[0]!, targetRevision = after.revisions[1]!;'],
+    ['gui-metadata-revision-first-page-verified', "await expect(page.getByRole('button', { name: '正式改訂をさらに表示', exact: true })).toBeHidden();",
+      "await page.getByLabel('基準', { exact: true }).selectOption(baseRevision.revisionId);"],
+    ['gui-metadata-revision-first-comparison-verified', "await expect(page.getByText('同じコンテンツ版のため本文比較なし', { exact: true })).toBeVisible();",
+      "await page.getByRole('button', { name: '← 版・改訂へ戻る', exact: true }).press('Enter');"],
+    ['gui-metadata-revision-reload-page-verified', "await expect(page.getByRole('button', { name: '正式改訂をさらに表示', exact: true })).toBeHidden();",
+      "await inputEquals(page.getByLabel('基準', { exact: true }), baseRevision.revisionId);"],
+  ];
+  for (const [stage, before, after] of boundaries) {
+    const index = statements.indexOf(completion(stage));
+    assert.ok(index > 0, `${stage}が既存await間の停止区間を区別する`);
+    assert.equal(statements[index - 1], before, `${stage}は元の操作完了後だけ`);
+    assert.equal(statements[index + 1], after, `${stage}の次の既存awaitを省略しない`);
+  }
+  const start = statements.indexOf(completion('gui-metadata-noop-verified'));
+  const end = statements.indexOf(completion('gui-document-move-verified'));
+  assert.deepEqual(statements.slice(start + 1, end).filter(statement => statement.startsWith('completed(')),
+    boundaries.map(([stage]) => completion(stage)));
+  const returned = statements.indexOf(completion('gui-metadata-list-return-pressed'));
+  assert.equal(statements[returned - 2], 'const fromResponse = waitCreatedList(page, exactFrom);');
+  for (const [response, result, action] of [
+    ['revisionResponse', 'revisionResult', "page.getByRole('tab', { name: '版・改訂', exact: true })"],
+    ['comparisonResponse', 'comparisonResult', "page.getByRole('tab', { name: '新旧比較', exact: true })"],
+    ['revisionRestartResponse', 'revisionRestartResult', "page.getByRole('button', { name: '正式改訂を最初から読み直す', exact: true })"],
+  ]) {
+    const registered = statements.findIndex(statement => statement.startsWith(`const ${response} = page.waitForResponse(`));
+    assert.ok(registered > 0);
+    assert.equal(statements[registered + 1], `await ${action}.press('Enter');`);
+    assert.equal(statements[registered + 2], `const ${result} = await ${response};`);
+  }
+  for (const call of calls('completed')) {
+    assert.equal(call.arguments.length, 1);
+    assert.ok(ts.isStringLiteral(call.arguments[0]), '公開工程には動的値を渡さない');
+  }
+  for (const testCase of calls('test')) {
+    const body = testCase.arguments[1].body;
+    assert.ok(calls('completed').filter(call => call.pos > body.pos && call.end < body.end).length < 40,
+      '既存annotation上限を増やさず、最終工程も同じ枠に収める');
+  }
+});
+
 // 実GUI通信の限定記録を判定するspec内関数そのものを純粋に実行する。
 // POST後のreset GETやheadersだけ到着したGETでfresh readを誤充足させる変更を検出する。
 function specFunction(name) {

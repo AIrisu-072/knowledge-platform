@@ -170,6 +170,9 @@ test('GUI初回登録の固定到達段階だけを既存の診断境界へ残�
 test('GUI metadata受入は固定到達段階だけを公開し、値や理由を診断へ含めない', () => {
   const stages = ['gui-metadata-created', 'gui-metadata-cancel-verified', 'gui-metadata-working-verified',
     'gui-metadata-published-verified', 'gui-metadata-minor-verified', 'gui-metadata-noop-verified',
+    'gui-metadata-list-return-pressed', 'gui-metadata-created-from-verified', 'gui-metadata-unread-list-verified',
+    'gui-unread-readonly-verified', 'gui-metadata-revision-entry-ready', 'gui-metadata-revision-first-page-verified',
+    'gui-metadata-revision-first-comparison-verified', 'gui-metadata-revision-reload-page-verified',
     'gui-metadata-snapshot-saved', 'gui-metadata-restart-verified',
     'gui-document-move-verified', 'gui-document-move-replay-verified',
     'gui-formal-revisions-readonly-verified', 'gui-formal-revisions-restart-readonly-verified'];
@@ -184,6 +187,13 @@ test('GUI metadata受入は固定到達段階だけを公開し、値や理由�
     assert.equal(actual.tests[0].source, 'metadata-editor.spec.ts');
     assert.equal(actual.tests[0].lastCompletedStage, stage);
     assert.ok(!JSON.stringify(actual).includes('PRIVATE'));
+    input.suites[0].specs[0].tests[0].results[0].status = 'timedOut';
+    input.suites[0].specs[0].tests[0].results[0].error = { message: 'Test timeout of 120000ms exceeded. PRIVATE_METADATA_VALUE' };
+    const timedOut = browserDiagnostics(input);
+    assert.deepEqual(timedOut.tests[0], { source: 'metadata-editor.spec.ts', line: 12, column: 3, status: 'timedOut',
+      errorCategory: 'test-timeout', lastCompletedStage: stage });
+    assert.deepEqual(sanitizeBrowserDiagnostics({ ...timedOut, tests: [{ ...timedOut.tests[0],
+      url: 'PRIVATE_URL', documentId: 'PRIVATE_ID', body: 'PRIVATE_BODY', metadata: 'PRIVATE_METADATA_VALUE' }] }), timedOut);
   }
   const failure = browserDiagnostics(report([{ status: 'failed', error: {
     message: 'Error: expect(value).toBe() failed: PRIVATE_METADATA_VALUE',

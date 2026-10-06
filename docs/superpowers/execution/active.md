@@ -1,6 +1,6 @@
 # Active Execution Pointer
 
-## 2026-10-06 13:47 UTC — 正式改訂の続き表示
+## 2026-10-06 14:26 UTC — 正式改訂の続き表示
 
 - PR88統合main `ea406848` から既存100件/nextCursorを「版」「新旧比較」へ接続する。[状況](document-revision-pagination-status.md)と[小計画](../plans/2026-10-06-document-revision-pagination.md)が再開先
 - 明示した古い比較IDを先頭2件へ無言で置換せず、追加read/再読取・失効・遅延・既存操作保持をTDDで確認する。新backend・新基盤・大量fixtureなし
@@ -10,6 +10,10 @@
 13:35追補：[PR89](https://github.com/AIrisu-072/knowledge-platform/pull/89)初回head `de849c92` / tree `d35e9f6d` は13files・凍結候補一致。CI `37469083623` の実受入はjourney16成功/2失敗でqualified=false、後段は未到達。予約取消の成功statusと履歴背景read statusの同居を純粋DOMで再現し、既存取消region内への検査限定を補修中。metadataの旧日時/未読/一覧区間のtimeoutは原因未確定として別に診断する。失敗を保持し、限定修正/review後に同PRの新headで確認する。
 
 13:47追補：初回CIはRust/DB36/Folder4を含む11jobs成功、実受入と集約checkだけ失敗、全4run artifact0。取消試験の限定scope修正 `04a393f9` は25 PASS・型/収集・独立GO。metadataの実timeout根因は未確定のまま、別の実DOM反例で証明した遅いfocus奪取だけを `31aed928` で補修し、全GUI1144/47・schema/型/build成功。当該focus補修と取消fixの組合せも限定独立GO。次は同PR新headの実受入。Home側の別focus競合は残件である。
+
+14:20追補：次head `a27389c3` / CI `37474338595` は予約取消PASS、lifecycle通知strict-locatorとmetadata timeoutでjourney16/2・後段未到達。既存未読完了stageのallowlist漏れにより、公開lastStageから「正式改訂read未到達」とした解釈は撤回。停止範囲には移動・改訂read/比較も含まれる。lifecycle4検査を正しい操作regionへ限定し、既存診断の同一field/capへ固定7工程＋既存1工程許可だけを追加して実停止区間を判定する。製品・timeout/skip・診断の動的公開値は変えない。両失敗証拠と根因未確定を保持する。
+
+14:26追補：lifecycle限定検査 `d1f43a51` は23 PASS・型/収集、固定工程だけの診断 `4fed4451` はsafe64・型/収集が成功。6files組合せは独立GOで、同HEAD全GUI1147/47も合格。次は同PRの新head既存CIで実停止工程と受入を確認する。元metadata timeout根因未確定、実GUI100超未資格、既存未解明失敗を保持する。
 
 ---
 
