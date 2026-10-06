@@ -170,6 +170,81 @@ test('取消・再表示で未送信入力を捨て、トリガーへfocusを戻
   expect(api.patchDocumentMetadata).not.toHaveBeenCalled();
 });
 
+test.each([false, true])('閉じたmetadataの遅いfocus復帰は一覧へ戻るへの新しいfocus=%pを尊重する', async movedFocus => {
+  const { api, router } = setup();
+  api.patchDocumentMetadata.mockImplementation((id: string, body: { operationId: string }) => Promise.resolve({ operationId: body.operationId, resourceId: id, changed: false, resultingRevision: 7, occurredAt: '2026-10-05T00:00:00Z' }));
+  const { dialog, user } = await open(); await fillReason(dialog); save(dialog);
+  await within(dialog).findByText('変更はありませんでした。');
+  const frames: FrameRequestCallback[] = [];
+  const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+  fireEvent.click(within(dialog).getByRole('button', { name: '閉じる' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  const back = screen.getByRole('button', { name: '← 一覧へ戻る' });
+  if (movedFocus) back.focus();
+  else expect(document.body).toHaveFocus();
+  expect(frames.length).toBeGreaterThan(0);
+  await act(async () => { frames.splice(0).forEach(callback => callback(performance.now())); });
+  expect(movedFocus ? back : screen.getByRole('button', { name: 'メタデータを編集' })).toHaveFocus();
+  raf.mockRestore();
+  if (movedFocus) {
+    await user.keyboard('{Enter}');
+    await screen.findByRole('table', { name: '文書一覧' });
+    expect(router.state.location.pathname).toBe('/documents');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  }
+});
+
+test('閉じたmetadataの遅いfocus復帰は同じ文書の新しいdialogを上書きしない', async () => {
+  setup(); const { dialog } = await open();
+  const frames: FrameRequestCallback[] = [];
+  const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'キャンセル' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  const closingFrames = frames.splice(0);
+  raf.mockRestore();
+  const again = await open();
+  const field = within(again.dialog).getByLabelText('カテゴリ');
+  field.focus();
+  await act(async () => { closingFrames.forEach(callback => callback(performance.now())); });
+  expect(field).toHaveFocus();
+  expect(again.dialog).toBeVisible();
+});
+
+test('閉じたmetadataの遅いfocus復帰は差し替わったtriggerへ引き継がない', async () => {
+  const { client } = setup(); const { dialog } = await open();
+  const trigger = screen.getByRole('button', { name: 'メタデータを編集', hidden: true });
+  const frames: FrameRequestCallback[] = [];
+  jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'キャンセル' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  await act(async () => { client.setQueryData(['document', documentId, 'published'], detail(documentId, metadata, null)); });
+  await waitFor(() => expect(trigger).not.toBeInTheDocument());
+  await act(async () => { client.setQueryData(['document', documentId, 'published'], detail()); });
+  const replacement = await screen.findByRole('button', { name: 'メタデータを編集' });
+  expect(replacement).not.toBe(trigger);
+  expect(document.body).toHaveFocus();
+  await act(async () => { frames.splice(0).forEach(callback => callback(performance.now())); });
+  expect(document.body).toHaveFocus();
+});
+
+test('閉じたmetadataの遅いfocus復帰は別文書へ遷移した後のdialogを上書きしない', async () => {
+  const { router } = setup(); const { dialog } = await open();
+  const frames: FrameRequestCallback[] = [];
+  const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'キャンセル' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  const closingFrames = frames.splice(0);
+  raf.mockRestore();
+  await go(router, otherId);
+  const other = await open();
+  const field = within(other.dialog).getByLabelText('カテゴリ');
+  field.focus();
+  await act(async () => { closingFrames.forEach(callback => callback(performance.now())); });
+  expect(field).toHaveFocus();
+  expect(other.dialog).toBeVisible();
+  expect(router.state.location.pathname).toBe(`/documents/${otherId}`);
+});
+
 test.each([['REVISION_CONFLICT', 409], ['FORBIDDEN', 403], ['RESERVED_DOCUMENT', 409]])('現在状態の拒否 %s を成功扱いせず再取得を促す', async (code, status) => {
   const { api } = setup(); api.patchDocumentMetadata.mockRejectedValue(problem(code as string, status as number));
   const { dialog } = await open(); await fillReason(dialog); save(dialog);

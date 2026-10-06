@@ -7,7 +7,7 @@ import { DocumentDetailPage } from '../src/routes/DocumentDetailPage';
 import { validateDetailSearch } from '../src/application/search-state';
 
 jest.mock('../src/application/document-workspace', () => ({ documentApi: {
-  getDocument: jest.fn(), getDocumentVersion: jest.fn(), listVersionFiles: jest.fn(),
+  getRootFolder: jest.fn(), getDocument: jest.fn(), getDocumentVersion: jest.fn(), listVersionFiles: jest.fn(),
   listDocumentVersions: jest.fn(), listDocumentRevisions: jest.fn(), getDocumentHistory: jest.fn(),
   cancelPublicationSchedule: jest.fn(),
 } }));
@@ -200,6 +200,54 @@ test('取消成功後の再読取失敗は成功を保持して取消を再送�
   await waitFor(() => expect(api.getDocument).toHaveBeenCalledTimes(2));
   expect(screen.queryByRole('button', { name: '同じ内容で再試行' })).not.toBeInTheDocument();
   expect(api.cancelPublicationSchedule).toHaveBeenCalledTimes(1);
+});
+
+test.each(['success', 'forbidden'])('取消成功と遅い正式改訂refreshを分け、read結果 %s でも取消は1回だけ送る', async outcome => {
+  const h = setup();
+  const revisionPage = { items: [{ revisionId: '00000000-0000-4000-8000-000000000101', documentVersionId: otherVersionId,
+    major: 1, minor: 0, label: '1.0', createdAt: '2026-10-01T00:00:00Z', sourceKind: 'initialPublication', metadataSnapshotStatus: 'complete' }], nextCursor: null };
+  h.api.listDocumentRevisions.mockResolvedValue(revisionPage);
+  const { dialog } = await open();
+  const refreshed = deferred<typeof revisionPage>();
+  h.api.listDocumentRevisions.mockReturnValue(refreshed.promise);
+  h.api.getDocument.mockResolvedValue(detail(documentId, 8));
+  h.api.getDocumentVersion.mockResolvedValue({ ...version(), currentPublicationScheduleId: null, scheduledPublishAt: null,
+    capabilities: { ...version().capabilities, cancelPublicationSchedule: denied, schedulePublication: available } });
+  try {
+    submit(dialog);
+    await screen.findByText('公開予約を取り消しました');
+    await waitFor(() => expect(h.api.listDocumentRevisions).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('status').map(node => node.textContent)).toEqual(['正式改訂を読み直し中…', '公開予約を取り消しました']);
+    expect(screen.getByText('正式改訂を読み直し中…')).toHaveAttribute('aria-live', 'polite');
+    // runtimeと同じ成功確認を、実readがまだpendingの間にも厳密に行う。
+    expect(within(screen.getByRole('region', { name: '公開予約の取消操作' })).getByRole('status')).toHaveTextContent(/^公開予約を取り消しました$/);
+    expect(screen.queryByRole('button', { name: '公開予約を取り消す' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '予約公開する' })).toBeEnabled();
+    const restart = screen.getByRole('button', { name: '正式改訂を最初から読み直す' });
+    expect(restart).toBeDisabled();
+    const revisions = screen.getByRole('list', { name: '正式改訂一覧' });
+    expect(within(revisions).getByText('1.0')).toBeVisible();
+    expect(h.api.cancelPublicationSchedule).toHaveBeenCalledTimes(1);
+    if (outcome === 'success') {
+      await act(async () => refreshed.resolve(revisionPage));
+      await waitFor(() => expect(screen.queryByText('正式改訂を読み直し中…')).not.toBeInTheDocument());
+      expect(restart).toBeEnabled();
+      expect(within(revisions).getByText('1.0')).toBeVisible();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    } else {
+      await act(async () => refreshed.reject(problem('FORBIDDEN', 403)));
+      await screen.findByRole('alert');
+      expect(within(revisions).queryByText('1.0')).not.toBeInTheDocument();
+      expect(screen.queryByText('正式改訂はありません。WORKING版は上の版一覧に表示されます。')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '同じ内容で再試行' })).not.toBeInTheDocument();
+    }
+    expect(within(screen.getByRole('region', { name: '公開予約の取消操作' })).getByRole('status')).toHaveTextContent(/^公開予約を取り消しました$/);
+    expect(h.api.cancelPublicationSchedule).toHaveBeenCalledTimes(1);
+  } finally {
+    await act(async () => refreshed.resolve(revisionPage));
+    h.unmount(); h.client.clear();
+  }
 });
 
 test('取消の未知結果だけはページ離脱前の警告を保持し成功後に解除する', async () => {

@@ -39,10 +39,14 @@ export function DocumentMetadataEditor({ document, reload }: { document: Documen
   }
   function close() {
     if (store.get(document.documentId)?.status === 'pending') return;
-    opening.current += 1;
+    const generation = ++opening.current;
+    const target = trigger.current;
     if (operation?.status === 'succeeded' || operation?.status === 'rejected') store.clear(document.documentId);
     setOpen(false);
-    requestAnimationFrame(() => trigger.current?.focus());
+    requestAnimationFrame(() => {
+      if (opening.current === generation && target?.isConnected && !target.disabled
+        && target.ownerDocument.activeElement === target.ownerDocument.body) target.focus();
+    });
   }
   async function reloadCurrentOpening() {
     const generation = opening.current;
