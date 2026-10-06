@@ -132,7 +132,7 @@ async fn all_four_modes_decode_bounded_inputs() {
 
     // Decoder bounds: depth 32, 100 hits/page, 512-byte ID, 1 KiB cursor.
     let scope = json!({"tenant": "tenant-a", "source": registration.source_id().as_uuid().to_string(),
-        "snapshot": {"token": "s", "extent": "partial"}});
+        "snapshot": {"token": "s", "extent": "partial"}, "status": "ok"});
     let with = |key: &str, value: serde_json::Value| {
         let mut body = scope.clone();
         body[key] = value;
@@ -166,6 +166,36 @@ async fn all_four_modes_decode_bounded_inputs() {
         .unwrap_err(),
         RemoteProtocolError::LimitExceeded
     );
+    // Completeness is never inferred from a missing status.
+    let mut silent = scope.clone();
+    silent.as_object_mut().unwrap().remove("status");
+    silent["hits"] = json!([]);
+    assert_eq!(
+        decode_response(
+            RemoteOperationKind::Query,
+            silent.to_string().as_bytes(),
+            &registration
+        )
+        .unwrap_err(),
+        RemoteProtocolError::Malformed
+    );
+    // List-hit version/digest/title/field names have the content bounds.
+    for hit in [
+        json!({"id": "d", "version": "v".repeat(513)}),
+        json!({"id": "d", "digest": "a\u{7}b"}),
+        json!({"id": "d", "title": "t".repeat(1025)}),
+        json!({"id": "d", "fields": [{"name": "", "value": "x"}]}),
+    ] {
+        assert_eq!(
+            decode_response(
+                RemoteOperationKind::Query,
+                &with("hits", json!([hit])),
+                &registration
+            )
+            .unwrap_err(),
+            RemoteProtocolError::Malformed
+        );
+    }
     let mut paged = scope.clone();
     paged["hits"] = json!([]);
     paged["page"] = json!({"next": "c".repeat(1025), "terminal": false});
@@ -403,6 +433,26 @@ async fn authorize_and_content_require_current_scope_and_version() {
         AccessDecision::Unknown
     );
     catalog.update(BASE, |collection| collection.acl_revision = 1);
+    // An answer that echoes another item or principal is not this decision.
+    for (principal, id) in [("reader", "doc-2"), ("someone-else", "doc-1")] {
+        catalog.fault(
+            BASE,
+            "authorize",
+            Fault::Body(
+                json!({"tenant": "tenant-a", "source": registration.source_id().as_uuid().to_string(),
+                    "principal": principal, "id": id, "decision": "allowed", "acl_revision": 1})
+                .to_string(),
+            ),
+        );
+        assert_eq!(
+            adapter
+                .current_access(&context, &RemoteAccessTarget::Resource(identity("doc-1")))
+                .await
+                .unwrap(),
+            AccessDecision::Unknown
+        );
+    }
+    catalog.clear_faults();
 
     // Content is read for the pinned identity; a changed version requires a
     // new qualification instead of a silent rebind.

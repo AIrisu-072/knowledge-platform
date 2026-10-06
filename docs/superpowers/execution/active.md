@@ -8,6 +8,15 @@
 
 ---
 
+## 2026-10-06 — Search Platform本番化プログラム
+
+- main `ce8ed4f` から `feat/search-platform-production-20261006` のDraft PR 1本で進める。[状態](search-platform-production-program-status.md)と[計画](../programs/search-platform-production/plan.md)が再開先
+- 範囲はA1（複数Sourceの充足）、A2（抽出の再試行、低優先）、B4〜B7（永続世代の読取り、ホスト登録一覧の公開、差分世代の公開、Graphの三者権限取消）、D（P3の改善）、E（Vectorの本番実装）。旧A3と本番前作業は範囲外
+- mergeはCIがすべて成功した後に所有者が確認してから。deployはしない
+- A1・A2・B4〜B7・D・Eを実装済み。次は最終headのCI成功を確認し、所有者へmergeの確認を依頼する。Search APIの意味検索（OAS `coverage` への追加）は未着手
+
+---
+
 ## 2026-10-06 01:56 UTC — 文書一覧の属性3項目フィルター
 
 - PR80統合main `1fe1b011` から、既存listDocumentsの属性3項目を通常一覧へ接続する。[状況](document-metadata-filters-status.md)と[小計画](../plans/2026-10-06-document-metadata-filters.md)を今回の再開先とする

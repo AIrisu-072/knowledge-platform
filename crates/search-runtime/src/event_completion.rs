@@ -7,7 +7,8 @@
 //! candidate and only records a receipt for a still-current READY bundle.
 //! Manual publication starts at the Source row and never acknowledges events.
 //! A lost CAS keeps the guard; the generic outbox ack stays with the delivery
-//! worker in its own fenced transaction.
+//! worker in its own fenced transaction. A FULL target is bound by its full
+//! guard; an INCREMENTAL target (B6) by its verified Graph build guard.
 
 use search_application::SearchError;
 use search_application::ports::{
@@ -19,8 +20,19 @@ use search_application::search_core::projection::ProjectionGenerationKey;
 use sqlx::{PgConnection, PgPool, Row};
 use uuid::Uuid;
 
+use search_application::graph_generation::BuildGuardHandle;
+
 use crate::full_guard::{EventCandidateHandle, ManualBuildHandle};
 use crate::ready::VerifiedBundle;
+
+/// The build authority a candidate is published under.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BuildGuard {
+    /// `search_generation_full_guard`, bound on the FULL target row.
+    Full { token: Uuid, fence: i64 },
+    /// `search_graph.build_guard` of an INCREMENTAL target, copy verified.
+    Incremental { token: Uuid, fence: i64 },
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompletionError {
@@ -147,7 +159,7 @@ async fn ready_bundle_matches(
          FROM search_generation g \
          JOIN search_generation_receipt r USING (source_id, generation_id) \
          JOIN search_graph.generation gg USING (source_id, generation_id) \
-         WHERE g.source_id=$1 AND g.generation_id=$2 FOR UPDATE OF g",
+         WHERE g.source_id=$1 AND g.generation_id=$2 FOR UPDATE OF g FOR SHARE OF gg",
     )
     .bind(key.source_id.as_uuid())
     .bind(key.generation_id.as_uuid())
@@ -166,13 +178,13 @@ async fn ready_bundle_matches(
 async fn candidate_binding(
     connection: &mut PgConnection,
     key: ProjectionGenerationKey,
-    token: Uuid,
-    fence_seq: i64,
+    guard: BuildGuard,
     event: Option<SearchDeliveryFence>,
 ) -> Result<bool, CompletionError> {
     let Some(row) = sqlx::query(
         "SELECT stage_origin, stage_event_id, stage_source_epoch, full_guard_token, \
-         full_build_fence FROM search_generation WHERE source_id=$1 AND generation_id=$2",
+         full_build_fence, build_kind FROM search_generation \
+         WHERE source_id=$1 AND generation_id=$2",
     )
     .bind(key.source_id.as_uuid())
     .bind(key.generation_id.as_uuid())
@@ -189,21 +201,44 @@ async fn candidate_binding(
         }
         None => row.try_get::<String, _>("stage_origin")? == "MANUAL",
     };
-    let guard_live: bool = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM search_generation_full_guard WHERE source_id=$1 \
-         AND target_generation_id=$2 AND guard_token=$3 AND build_fence=$4 \
-         AND expires_at > clock_timestamp())",
-    )
-    .bind(key.source_id.as_uuid())
-    .bind(key.generation_id.as_uuid())
-    .bind(token)
-    .bind(fence_seq)
-    .fetch_one(&mut *connection)
-    .await?;
-    Ok(origin_ok
-        && row.try_get::<Option<Uuid>, _>("full_guard_token")? == Some(token)
-        && row.try_get::<Option<i64>, _>("full_build_fence")? == Some(fence_seq)
-        && guard_live)
+    let kind: String = row.try_get("build_kind")?;
+    let bound = match guard {
+        BuildGuard::Full { token, fence } => {
+            kind == "FULL"
+                && row.try_get::<Option<Uuid>, _>("full_guard_token")? == Some(token)
+                && row.try_get::<Option<i64>, _>("full_build_fence")? == Some(fence)
+        }
+        BuildGuard::Incremental { .. } => kind == "INCREMENTAL",
+    };
+    let guard_live: bool = match guard {
+        BuildGuard::Full { token, fence } => {
+            sqlx::query_scalar(
+                "SELECT EXISTS (SELECT 1 FROM search_generation_full_guard WHERE source_id=$1 \
+                 AND target_generation_id=$2 AND guard_token=$3 AND build_fence=$4 \
+                 AND expires_at > clock_timestamp())",
+            )
+            .bind(key.source_id.as_uuid())
+            .bind(key.generation_id.as_uuid())
+            .bind(token)
+            .bind(fence)
+            .fetch_one(&mut *connection)
+            .await?
+        }
+        BuildGuard::Incremental { token, fence } => {
+            sqlx::query_scalar(
+                "SELECT EXISTS (SELECT 1 FROM search_graph.build_guard WHERE source_id=$1 \
+                 AND target_generation_id=$2 AND guard_token=$3 AND fence=$4 \
+                 AND copy_verified_at IS NOT NULL AND expires_at > clock_timestamp())",
+            )
+            .bind(key.source_id.as_uuid())
+            .bind(key.generation_id.as_uuid())
+            .bind(token)
+            .bind(fence)
+            .fetch_one(&mut *connection)
+            .await?
+        }
+    };
+    Ok(origin_ok && bound && guard_live)
 }
 
 async fn swap_pointer(
@@ -238,20 +273,31 @@ async fn swap_pointer(
 async fn delete_guard(
     connection: &mut PgConnection,
     key: ProjectionGenerationKey,
-    token: Uuid,
-    fence_seq: i64,
+    guard: BuildGuard,
 ) -> Result<bool, CompletionError> {
-    let deleted = sqlx::query(
-        "DELETE FROM search_generation_full_guard WHERE source_id=$1 \
-         AND target_generation_id=$2 AND guard_token=$3 AND build_fence=$4 \
-         AND expires_at > clock_timestamp()",
-    )
-    .bind(key.source_id.as_uuid())
-    .bind(key.generation_id.as_uuid())
-    .bind(token)
-    .bind(fence_seq)
-    .execute(connection)
-    .await?;
+    let (statement, token, fence) = match guard {
+        BuildGuard::Full { token, fence } => (
+            "DELETE FROM search_generation_full_guard WHERE source_id=$1 \
+             AND target_generation_id=$2 AND guard_token=$3 AND build_fence=$4 \
+             AND expires_at > clock_timestamp()",
+            token,
+            fence,
+        ),
+        BuildGuard::Incremental { token, fence } => (
+            "DELETE FROM search_graph.build_guard WHERE source_id=$1 \
+             AND target_generation_id=$2 AND guard_token=$3 AND fence=$4 \
+             AND copy_verified_at IS NOT NULL AND expires_at > clock_timestamp()",
+            token,
+            fence,
+        ),
+    };
+    let deleted = sqlx::query(statement)
+        .bind(key.source_id.as_uuid())
+        .bind(key.generation_id.as_uuid())
+        .bind(token)
+        .bind(fence)
+        .execute(connection)
+        .await?;
     Ok(deleted.rows_affected() == 1)
 }
 
@@ -298,7 +344,7 @@ async fn publish_candidate(
     source: &SourceRow,
     expected_current: &CurrentGenerationSnapshot,
     key: ProjectionGenerationKey,
-    (token, fence_seq): (Uuid, i64),
+    guard: BuildGuard,
     manifest_digest: &str,
     bundle_digest: &str,
 ) -> Result<SearchCompletionOutcome, CompletionError> {
@@ -308,7 +354,7 @@ async fn publish_candidate(
     }
     if key.source_id != fence.source.source_id
         || !ready_bundle_matches(&mut tx, key, manifest_digest, bundle_digest).await?
-        || !candidate_binding(&mut tx, key, token, fence_seq, Some(fence)).await?
+        || !candidate_binding(&mut tx, key, guard, Some(fence)).await?
     {
         return Ok(SearchCompletionOutcome::Lost);
     }
@@ -325,7 +371,7 @@ async fn publish_candidate(
         return Ok(SearchCompletionOutcome::Retry);
     }
     record_receipt(&mut tx, fence, key, manifest_digest, bundle_digest).await?;
-    if !delete_guard(&mut tx, key, token, fence_seq).await? {
+    if !delete_guard(&mut tx, key, guard).await? {
         return Ok(SearchCompletionOutcome::Lost);
     }
     commit(tx, SearchCompletionOutcome::Published(key)).await
@@ -399,7 +445,10 @@ impl PgPublication {
                     &source,
                     &expected_current,
                     key,
-                    (target.guard_token(), target.build_fence()),
+                    BuildGuard::Full {
+                        token: target.guard_token(),
+                        fence: target.build_fence(),
+                    },
                     &sha256_text(&bundle.receipt().projection_digest),
                     &sha256_text(&bundle.receipt().composite_digest),
                 )
@@ -476,16 +525,33 @@ impl PgPublication {
             return Ok(SearchCompletionOutcome::Lost);
         }
         let key = request.candidate;
-        let binding: Option<(Option<Uuid>, Option<i64>)> = sqlx::query_as(
-            "SELECT full_guard_token, full_build_fence FROM search_generation \
+        let binding: Option<(String, Option<Uuid>, Option<i64>)> = sqlx::query_as(
+            "SELECT build_kind, full_guard_token, full_build_fence FROM search_generation \
              WHERE source_id=$1 AND generation_id=$2",
         )
         .bind(key.source_id.as_uuid())
         .bind(key.generation_id.as_uuid())
         .fetch_optional(&mut *tx)
         .await?;
-        let Some((Some(token), Some(fence_seq))) = binding else {
-            return Ok(SearchCompletionOutcome::Lost);
+        let guard = match binding {
+            Some((kind, Some(token), Some(fence))) if kind == "FULL" => {
+                BuildGuard::Full { token, fence }
+            }
+            Some((kind, None, None)) if kind == "INCREMENTAL" => {
+                let graph: Option<(Uuid, i64)> = sqlx::query_as(
+                    "SELECT guard_token, fence FROM search_graph.build_guard \
+                     WHERE source_id=$1 AND target_generation_id=$2",
+                )
+                .bind(key.source_id.as_uuid())
+                .bind(key.generation_id.as_uuid())
+                .fetch_optional(&mut *tx)
+                .await?;
+                let Some((token, fence)) = graph else {
+                    return Ok(SearchCompletionOutcome::Lost);
+                };
+                BuildGuard::Incremental { token, fence }
+            }
+            _ => return Ok(SearchCompletionOutcome::Lost),
         };
         publish_candidate(
             tx,
@@ -493,7 +559,7 @@ impl PgPublication {
             &source,
             &request.expected_current,
             key,
-            (token, fence_seq),
+            guard,
             &request.manifest_digest,
             &request.bundle_digest,
         )
@@ -524,8 +590,10 @@ impl PgPublication {
             || !candidate_binding(
                 &mut tx,
                 key,
-                target.guard_token(),
-                target.build_fence(),
+                BuildGuard::Full {
+                    token: target.guard_token(),
+                    fence: target.build_fence(),
+                },
                 None,
             )
             .await?
@@ -544,7 +612,62 @@ impl PgPublication {
         {
             return Ok(SearchCompletionOutcome::Retry);
         }
-        if !delete_guard(&mut tx, key, target.guard_token(), target.build_fence()).await? {
+        if !delete_guard(
+            &mut tx,
+            key,
+            BuildGuard::Full {
+                token: target.guard_token(),
+                fence: target.build_fence(),
+            },
+        )
+        .await?
+        {
+            return Ok(SearchCompletionOutcome::Lost);
+        }
+        commit(tx, SearchCompletionOutcome::Published(key)).await
+    }
+
+    /// B6: manual publication of an INCREMENTAL target under its verified
+    /// Graph build guard: Source → generation → guard, CAS and guard DELETE.
+    pub async fn publish_incremental_manual(
+        &self,
+        handle: &BuildGuardHandle,
+        bundle: &VerifiedBundle,
+        expected_current: &CurrentGenerationSnapshot,
+    ) -> Result<SearchCompletionOutcome, CompletionError> {
+        let key = handle.target_key();
+        let guard = BuildGuard::Incremental {
+            token: handle.guard_token(),
+            fence: handle.build_fence(),
+        };
+        let manifest_digest = sha256_text(&bundle.receipt().projection_digest);
+        let bundle_digest = sha256_text(&bundle.receipt().composite_digest);
+        let mut tx = self.pool.begin().await?;
+        let Some(source) = lock_source(&mut tx, key.source_id, None).await? else {
+            return Ok(SearchCompletionOutcome::Lost);
+        };
+        if source.current != *expected_current {
+            return Ok(SearchCompletionOutcome::Retry);
+        }
+        if bundle.key() != key
+            || !ready_bundle_matches(&mut tx, key, &manifest_digest, &bundle_digest).await?
+            || !candidate_binding(&mut tx, key, guard, None).await?
+        {
+            return Ok(SearchCompletionOutcome::Lost);
+        }
+        if !swap_pointer(
+            &mut tx,
+            key,
+            expected_current.pointer_revision,
+            &manifest_digest,
+            &bundle_digest,
+            None,
+        )
+        .await?
+        {
+            return Ok(SearchCompletionOutcome::Retry);
+        }
+        if !delete_guard(&mut tx, key, guard).await? {
             return Ok(SearchCompletionOutcome::Lost);
         }
         commit(tx, SearchCompletionOutcome::Published(key)).await

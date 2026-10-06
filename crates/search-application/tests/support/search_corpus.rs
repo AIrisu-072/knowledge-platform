@@ -154,6 +154,7 @@ impl Corpus {
                 graph_resource_access: None,
                 remote: None,
                 access: self,
+                vector: None,
             },
             selectors: self,
             assertions: self,

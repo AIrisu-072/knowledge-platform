@@ -77,16 +77,19 @@ fn dot(left: &[f32], right: &[f32]) -> f32 {
     left.iter().zip(right).map(|(a, b)| a * b).sum()
 }
 
+/// Units below the similarity floor `tau` are never candidates (E).
 pub fn dense_stage(
     index: &DenseIndex,
     query: &[f32],
     visible: &BTreeSet<usize>,
     window: usize,
+    tau: f32,
 ) -> Vec<usize> {
     let mut scored: Vec<(f32, &str, usize)> = index
         .units
         .iter()
         .map(|unit| (dot(&unit.vector, query), unit.unit_id.as_str(), unit.parent))
+        .filter(|(score, _, _)| *score >= tau)
         .collect();
     scored.sort_by(|left, right| right.0.total_cmp(&left.0).then_with(|| left.1.cmp(right.1)));
     let mut parents = Vec::new();

@@ -242,18 +242,27 @@ enum NextAction {
     Probe(Box<ProbeTarget>),
 }
 
-impl<'a> DiscoveryService<'a> {
-    pub fn new(config: DiscoveryConfig, ports: DiscoveryPorts<'a>) -> Result<Self, SearchError> {
-        if config.max_actions == 0 || config.evaluation_currency.trim().is_empty() {
+impl DiscoveryConfig {
+    /// The checks every DiscoveryService applies; a host validates its
+    /// configuration once at startup with the same rules.
+    pub fn validate(&self) -> Result<(), SearchError> {
+        if self.max_actions == 0 || self.evaluation_currency.trim().is_empty() {
             return Err(SearchError::InvalidRequest(
                 "Discovery requires a positive action limit and evaluation currency".into(),
             ));
         }
-        if config.probe_budget.currency != config.evaluation_currency {
+        if self.probe_budget.currency != self.evaluation_currency {
             return Err(SearchError::InvalidRequest(
                 "Probe budget currency differs from evaluation currency".into(),
             ));
         }
+        Ok(())
+    }
+}
+
+impl<'a> DiscoveryService<'a> {
+    pub fn new(config: DiscoveryConfig, ports: DiscoveryPorts<'a>) -> Result<Self, SearchError> {
+        config.validate()?;
         Ok(Self {
             config,
             ports,
@@ -363,6 +372,7 @@ impl<'a> DiscoveryService<'a> {
                     graph_resource_access: retrieval.graph_resource_access,
                     remote: Some(view),
                     access: retrieval.access,
+                    vector: retrieval.vector,
                 },
                 selectors: view,
                 assertions: view,
@@ -550,7 +560,8 @@ impl<'a> DiscoveryService<'a> {
                     attempted_retrievers.insert(action.retriever_id.clone());
                     if let Some(pin) = pins.get(&action.source_id) {
                         let remote_kind = is_remote(action.retriever);
-                        if action.retriever == RetrieverKind::Vector
+                        if (action.retriever == RetrieverKind::Vector
+                            && self.ports.retrieval.vector.is_none())
                             || (remote_kind && self.ports.retrieval.remote.is_none())
                         {
                             action_gaps.push(source_gap(
@@ -592,6 +603,11 @@ impl<'a> DiscoveryService<'a> {
                                         .retrieval_inputs
                                         .graph_plans
                                         .get(&action.source_id),
+                                    vector_query: self
+                                        .config
+                                        .retrieval_inputs
+                                        .vector_query
+                                        .as_deref(),
                                 },
                             )
                             .await;
@@ -602,6 +618,18 @@ impl<'a> DiscoveryService<'a> {
                                 Err(_) if body.is_some() => {
                                     action_gaps.push(InformationGap::new(
                                         "document.body.retrieval_unavailable",
+                                        GapReason::Availability,
+                                        true,
+                                    ));
+                                    None
+                                }
+                                // Vector that cannot run completely is a blocking,
+                                // ID-free gap; the other retrievers still answer.
+                                Err(SearchError::SourceUnavailable(_))
+                                    if action.retriever == RetrieverKind::Vector =>
+                                {
+                                    action_gaps.push(InformationGap::new(
+                                        "vector_unavailable",
                                         GapReason::Availability,
                                         true,
                                     ));
@@ -969,6 +997,7 @@ impl<'a> DiscoveryService<'a> {
                     lexical_query: (!body).then_some(&query),
                     body_query: body.then_some(&query),
                     graph_plan: None,
+                    vector_query: None,
                 },
             )
             .await;
@@ -1599,8 +1628,45 @@ impl<'a> DiscoveryService<'a> {
                 // No verified span: the Claim stays Unknown without saying why.
                 claims.push(Claim::new(exact, ClaimState::Unknown));
             }
+            // A required Claim judged by no pinned Source stays visible as
+            // Unknown and says why; Sources that cannot evaluate a Claim never
+            // contribute an Unknown of their own.
+            let mut unevaluable = Vec::new();
+            if let Some(requirement) = &generic_requirement
+                && !qualified.is_empty()
+            {
+                for claim_id in &requirement.required_claims {
+                    if claims.iter().any(|claim| claim.claim_id == *claim_id) {
+                        continue;
+                    }
+                    claims.push(Claim::new(*claim_id, ClaimState::Unknown));
+                    let mut evaluable = false;
+                    for pin in pins.values() {
+                        if self
+                            .ports
+                            .selectors
+                            .selector_for(pin.key, *claim_id)
+                            .await?
+                            .is_some()
+                        {
+                            evaluable = true;
+                            break;
+                        }
+                    }
+                    if !evaluable {
+                        unevaluable.push(InformationGap::new(
+                            format!("no_evaluating_source:{}", claim_id.as_uuid()),
+                            GapReason::UnsupportedCoverage,
+                            true,
+                        ));
+                    }
+                }
+            }
             let sufficiency = assess_claim_evidence(&request.need.completion_requirement, &claims)?;
             let mut gaps = route_gaps.to_vec();
+            for gap in unevaluable {
+                push_gap(&mut gaps, gap);
+            }
             // A visible factual conflict remains an InformationGap even when an
             // independent hard gate rejects that Resource. Federation exposes
             // rejected reasons but does not carry their gaps into the result.

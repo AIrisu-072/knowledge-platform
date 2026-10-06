@@ -1,0 +1,4 @@
+# E (2026-10-06): see deny.toml and spec/selection/library-tool-selection-v0.md 13.4.
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0436"
+reason = "paste 1.0.15 is unmaintained (informational, no known vulnerability); a build-time macro of the selected Candle CPU runtime (gemm/pulp) and tokenizers."

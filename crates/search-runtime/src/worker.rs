@@ -97,30 +97,7 @@ pub fn compose(
             "Source descriptor and registration differ",
         ));
     }
-    let registrar = ledger
-        .generation_registrar(config.registration.clone(), config.activation)
-        .map_err(|_| WorkerError::InvalidConfig("generation registrar"))?;
-    let runtime = PgDocumentIndexRuntime::new(
-        search_pool.clone(),
-        &config.lexical_root,
-        config.source.clone(),
-        registrar,
-        config.guard_ttl,
-    );
-    let indexer = DocumentOutboxIndexer::new(
-        PostgresDocumentSnapshotReader::new(search_pool.clone()),
-        DocumentIndexingConfig {
-            source: config.source,
-            lens: config.lens,
-            projection_schema_version: config.projection_schema_version,
-            analyzer_version: config.analyzer_version,
-            semantic_registry: config.semantic_registry,
-        },
-        runtime,
-        NoLegacyReceipts,
-    )
-    .with_body_extractor(extractor)
-    .with_fenced_completion(Arc::new(PgPublication::new(search_pool)));
+    let indexer = indexer(search_pool, ledger, extractor, &config)?;
     let handler =
         DocumentSearchDeliveryHandler::new(DocumentIndexingService::new(indexer), source_id);
     let admission = ledger
@@ -139,4 +116,62 @@ pub fn compose(
         delivery,
     )
     .map_err(WorkerError::Delivery)
+}
+
+/// The fenced durable indexer both the delivery runner and a manual rebuild
+/// run on.
+fn indexer(
+    search_pool: PgPool,
+    ledger: &PgSourceRegistrationLedger,
+    extractor: Arc<dyn BodyItemExtractor>,
+    config: &SearchWorkerConfig,
+) -> Result<SearchIndexer, WorkerError> {
+    let registrar = ledger
+        .generation_registrar(config.registration.clone(), config.activation)
+        .map_err(|_| WorkerError::InvalidConfig("generation registrar"))?;
+    let runtime = PgDocumentIndexRuntime::new(
+        search_pool.clone(),
+        &config.lexical_root,
+        config.source.clone(),
+        registrar,
+        config.guard_ttl,
+    );
+    Ok(DocumentOutboxIndexer::new(
+        PostgresDocumentSnapshotReader::new(search_pool.clone()),
+        DocumentIndexingConfig {
+            source: config.source.clone(),
+            lens: config.lens.clone(),
+            projection_schema_version: config.projection_schema_version.clone(),
+            analyzer_version: config.analyzer_version.clone(),
+            semantic_registry: config.semantic_registry.clone(),
+        },
+        runtime,
+        NoLegacyReceipts,
+    )
+    .with_body_extractor(extractor)
+    .with_fenced_completion(Arc::new(PgPublication::new(search_pool))))
+}
+
+/// A2: the operator's manual retry. A full rebuild of the Source from its
+/// current Document snapshot, outside the outbox, so it has no attempt limit
+/// (automatic redelivery stops at the delivery policy's `max_attempts`) and
+/// supersedes any event that limit dead-lettered. It publishes only through
+/// the MANUAL CAS on the Source row, never by acknowledging events.
+pub fn compose_rebuild(
+    search_pool: PgPool,
+    ledger: &PgSourceRegistrationLedger,
+    extractor: Arc<dyn BodyItemExtractor>,
+    config: SearchWorkerConfig,
+) -> Result<DocumentIndexingService<SearchIndexer>, WorkerError> {
+    if config.source.source_id != config.registration.source_id() {
+        return Err(WorkerError::InvalidConfig(
+            "Source descriptor and registration differ",
+        ));
+    }
+    Ok(DocumentIndexingService::new(indexer(
+        search_pool,
+        ledger,
+        extractor,
+        &config,
+    )?))
 }

@@ -445,7 +445,7 @@ fn exploratory_starts_supported_actions_in_profile_order_without_a_vector_adapte
 }
 
 #[test]
-fn exploratory_prioritizes_supported_vector_before_hypergraph() {
+fn exploratory_places_supported_vector_after_hypergraph() {
     let local = source(
         1,
         vec![ResourceKind::Knowledge],
@@ -487,10 +487,11 @@ fn exploratory_prioritizes_supported_vector_before_hypergraph() {
             .iter()
             .map(|action| action.retriever)
             .collect::<Vec<_>>(),
+        // E: a Graph-only answer is never displaced by similarity candidates.
         vec![
             RetrieverKind::Lexical,
-            RetrieverKind::Vector,
             RetrieverKind::HyperGraph,
+            RetrieverKind::Vector,
         ]
     );
 }

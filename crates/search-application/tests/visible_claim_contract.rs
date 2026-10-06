@@ -84,6 +84,7 @@ fn input(claims: &[u128]) -> DiscoverInput {
         business_timezone: None,
         query: None,
         coverage: SearchCoverage::TitleAndPermittedMetadata,
+        graph: None,
     }
 }
 
@@ -122,6 +123,7 @@ async fn discover(
             graph_resource_access: None,
             remote: None,
             access: &access,
+            vector: None,
         },
         assertions: &nothing,
         evidence: &nothing,
@@ -240,6 +242,12 @@ async fn required_claim_not_dropped_or_sufficient() {
         view.gaps
             .iter()
             .any(|gap| gap.code == PublicGapCode::RequiredClaimUnresolved && gap.blocking)
+    );
+    // No visible Source can evaluate the unknown Claim, and the result says so.
+    assert!(
+        view.gaps
+            .iter()
+            .any(|gap| gap.code == PublicGapCode::UnsupportedCoverage && gap.blocking)
     );
 }
 

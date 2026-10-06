@@ -41,7 +41,9 @@ pub async fn assemble_resource_claims(
             continue;
         }
         let Some(selector) = selectors.selector_for(generation, *claim_id).await? else {
-            claims.push(Claim::new(*claim_id, ClaimState::Unknown));
+            // The Source cannot evaluate this Claim: its Resources are outside
+            // the Claim's judgement, not evidence that it is unknown. Without
+            // any evaluating Source the Claim still stays unresolved.
             continue;
         };
         if selector.claim_id != *claim_id
@@ -143,13 +145,9 @@ pub async fn assemble_resource_claims(
             };
             claims.push(claim);
         }
-        if !matched {
-            let mut claim = Claim::new(*claim_id, ClaimState::Unknown);
-            claim.subject = Some(selector.subject_ref);
-            claim.predicate = Some(selector.predicate);
-            claim.value = selector.expected_value;
-            claims.push(claim);
-        }
+        // Assertions about another subject say nothing about this Claim; the
+        // Resource is outside its judgement rather than evidence of Unknown.
+        let _ = matched;
     }
     Ok(claims)
 }

@@ -313,6 +313,7 @@ async fn graph_only_current_version_qualifies_with_source_title_evidence_and_har
                 hypergraph: Some(&graph),
                 graph_resource_access: Some(&graph_access),
                 access: access.as_ref(),
+                vector: None,
             },
             selectors: &evidence,
             assertions: &reader,
@@ -361,6 +362,7 @@ async fn graph_only_current_version_qualifies_with_source_title_evidence_and_har
                 hypergraph: Some(&graph),
                 graph_resource_access: Some(&graph_access),
                 access: access.as_ref(),
+                vector: None,
             },
             selectors: &evidence,
             assertions: &reader,
@@ -594,6 +596,7 @@ async fn body_required_coverage_returns_gap_before_real_title_lexical_port_is_ca
                 hypergraph: None,
                 graph_resource_access: None,
                 access: &access,
+                vector: None,
             },
             selectors: &evidence,
             assertions: &reader,
@@ -797,6 +800,7 @@ async fn shared_folder_placements_inherit_only_their_own_documents_read_policy()
                 hypergraph: Some(&graph),
                 graph_resource_access: Some(&graph_access),
                 access: access.as_ref(),
+                vector: None,
             },
             selectors: &evidence,
             assertions: &reader,
@@ -808,7 +812,9 @@ async fn shared_folder_placements_inherit_only_their_own_documents_read_policy()
     )
     .unwrap();
     let ranked = discovery.discover(request.clone()).await.unwrap();
-    assert_eq!(ranked.evidence_sufficiency, EvidenceSufficiency::Unresolved);
+    // The other Version's title is about another subject: it is outside the
+    // Claim's judgement (A1), so the first Version's title suffices.
+    assert_eq!(ranked.evidence_sufficiency, EvidenceSufficiency::Sufficient);
     assert!(
         ranked
             .evidence_set

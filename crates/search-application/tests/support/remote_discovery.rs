@@ -223,6 +223,7 @@ impl RemoteProvenanceLookupPort for Lookup {
                 lineage_label: "catalog".into(),
                 predicate: "catalog.title".into(),
                 citation_chain: vec![],
+                stance: Default::default(),
             }))
         })
     }
@@ -464,6 +465,7 @@ pub fn service<'a>(
                 graph_resource_access: None,
                 remote: None,
                 access,
+                vector: None,
             },
             selectors: nothing,
             assertions: nothing,

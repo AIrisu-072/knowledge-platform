@@ -170,13 +170,17 @@ impl ReadyCoordinator {
         handle: &ManualBuildHandle,
     ) -> Result<VerifiedBundle, ReadyError> {
         let graph = handle.graph_target().ok_or(ReadyError::NoGraph)?;
-        self.ready(
-            handle.key(),
-            &GraphBuildRef::Full(graph),
-            graph.guard_token(),
-            graph.build_fence(),
-        )
-        .await
+        self.ready(handle.key(), &GraphBuildRef::Full(graph)).await
+    }
+
+    /// B6: an INCREMENTAL target becomes READY under its verified Graph
+    /// build guard, with the same bundle checks as a full build.
+    pub async fn ready_incremental(
+        &self,
+        handle: &search_application::graph_generation::BuildGuardHandle,
+    ) -> Result<VerifiedBundle, ReadyError> {
+        self.ready(handle.target_key(), &GraphBuildRef::Incremental(*handle))
+            .await
     }
 
     pub async fn ready_event(
@@ -184,13 +188,7 @@ impl ReadyCoordinator {
         handle: &EventCandidateHandle,
     ) -> Result<VerifiedBundle, ReadyError> {
         let graph = handle.graph_target().ok_or(ReadyError::NoGraph)?;
-        self.ready(
-            handle.key(),
-            &GraphBuildRef::Full(graph),
-            graph.guard_token(),
-            graph.build_fence(),
-        )
-        .await
+        self.ready(handle.key(), &GraphBuildRef::Full(graph)).await
     }
 
     async fn manifest(
@@ -313,8 +311,6 @@ impl ReadyCoordinator {
         &self,
         key: ProjectionGenerationKey,
         graph_target: &GraphBuildRef,
-        token: Uuid,
-        fence: i64,
     ) -> Result<VerifiedBundle, ReadyError> {
         // Prevalidation outside every lock: payload DTOs, the lexical files and
         // the Graph rows, each recomputed from what is stored.
@@ -370,7 +366,7 @@ impl ReadyCoordinator {
         // One short transaction: target → guard → Graph parent, then commit.
         let mut tx = self.pool.begin().await?;
         let target = sqlx::query(
-            "SELECT state, full_guard_token, full_build_fence FROM search_generation \
+            "SELECT state, build_kind, full_guard_token, full_build_fence FROM search_generation \
              WHERE source_id=$1 AND generation_id=$2 FOR UPDATE",
         )
         .bind(key.source_id.as_uuid())
@@ -378,28 +374,50 @@ impl ReadyCoordinator {
         .fetch_optional(&mut *tx)
         .await?
         .ok_or(ReadyError::Fence)?;
-        if target.try_get::<String, _>("state")? != "BUILDING"
-            || target.try_get::<Option<Uuid>, _>("full_guard_token")? != Some(token)
-            || target.try_get::<Option<i64>, _>("full_build_fence")? != Some(fence)
-        {
+        if target.try_get::<String, _>("state")? != "BUILDING" {
             return Err(ReadyError::Fence);
         }
-        sqlx::query(
-            "SELECT 1 FROM search_generation_full_guard WHERE source_id=$1 \
-             AND target_generation_id=$2 AND guard_token=$3 AND build_fence=$4 \
-             AND expires_at > clock_timestamp() FOR UPDATE",
-        )
-        .bind(key.source_id.as_uuid())
-        .bind(key.generation_id.as_uuid())
-        .bind(token)
-        .bind(fence)
-        .fetch_optional(&mut *tx)
-        .await?
-        .ok_or(ReadyError::Fence)?;
-        let (locked_report, _, _) = search_graph::store::validate_on(&mut tx, graph_target).await?;
-        if locked_report != report {
-            return Err(ReadyError::Graph);
-        }
+        let kind: String = target.try_get("build_kind")?;
+        let guard = match graph_target {
+            GraphBuildRef::Full(graph) => {
+                let (token, fence) = (graph.guard_token(), graph.build_fence());
+                if kind != "FULL"
+                    || target.try_get::<Option<Uuid>, _>("full_guard_token")? != Some(token)
+                    || target.try_get::<Option<i64>, _>("full_build_fence")? != Some(fence)
+                {
+                    return Err(ReadyError::Fence);
+                }
+                sqlx::query(
+                    "SELECT 1 FROM search_generation_full_guard WHERE source_id=$1 \
+                     AND target_generation_id=$2 AND guard_token=$3 AND build_fence=$4 \
+                     AND expires_at > clock_timestamp() FOR UPDATE",
+                )
+                .bind(key.source_id.as_uuid())
+                .bind(key.generation_id.as_uuid())
+                .bind(token)
+                .bind(fence)
+                .fetch_optional(&mut *tx)
+                .await?
+            }
+            GraphBuildRef::Incremental(handle) => {
+                if kind != "INCREMENTAL" {
+                    return Err(ReadyError::Fence);
+                }
+                sqlx::query(
+                    "SELECT 1 FROM search_graph.build_guard WHERE source_id=$1 \
+                     AND target_generation_id=$2 AND guard_token=$3 AND fence=$4 \
+                     AND copy_verified_at IS NOT NULL \
+                     AND expires_at > clock_timestamp() FOR UPDATE",
+                )
+                .bind(key.source_id.as_uuid())
+                .bind(key.generation_id.as_uuid())
+                .bind(handle.guard_token())
+                .bind(handle.build_fence())
+                .fetch_optional(&mut *tx)
+                .await?
+            }
+        };
+        guard.ok_or(ReadyError::Fence)?;
         let lexical_row: Option<(String, String)> = sqlx::query_as(
             "SELECT logical_digest, tree_digest FROM search_lexical_artifact \
              WHERE source_id=$1 AND generation_id=$2",
@@ -416,7 +434,12 @@ impl ReadyCoordinator {
         {
             return Err(ReadyError::Lexical(LexicalArtifactError::Drift));
         }
-        search_graph::store::settle_ready_on(&mut tx, &report).await?;
+        search_graph::store::settle_ready_on(&mut tx, graph_target, &report)
+            .await
+            .map_err(|error| match error {
+                search_graph::GraphError::Integrity(_) => ReadyError::Graph,
+                other => other.into(),
+            })?;
         let count = |n: u64| i64::try_from(n).map_err(|_| ReadyError::Mapping);
         sqlx::query(
             "INSERT INTO search_generation_receipt (source_id,generation_id,source_snapshot, \

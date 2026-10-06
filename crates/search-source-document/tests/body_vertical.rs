@@ -325,6 +325,7 @@ impl Source {
                     hypergraph: None,
                     graph_resource_access: None,
                     access: self.access.as_ref(),
+                    vector: None,
                 },
                 selectors: &evidence,
                 assertions: &reader,

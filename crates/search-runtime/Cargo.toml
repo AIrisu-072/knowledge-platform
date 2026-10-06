@@ -23,6 +23,7 @@ search-graph = { version = "0.0.0", path = "../search-graph" }
 search-projection-memory = { version = "0.0.0", path = "../search-projection-memory" }
 search-source-document = { version = "0.0.0", path = "../search-source-document" }
 search-source-http = { version = "0.0.0", path = "../search-source-http" }
+search-vector-adapter = { version = "0.0.0", path = "../search-vector-adapter" }
 search-tantivy = { version = "0.0.0", path = "../search-tantivy" }
 serde.workspace = true
 serde_json.workspace = true

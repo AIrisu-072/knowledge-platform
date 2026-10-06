@@ -2,3 +2,4 @@
 
 pub mod arms;
 pub mod embed;
+pub mod public;

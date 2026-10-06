@@ -49,3 +49,18 @@ The synthetic corpus is lexical by construction (its Graph-only golds share no t
 Re-opening the decision needs the public holdout first, then ANN only if a model is adopted.
 
 The Python protocol suite (`tests/test_asset_contract.py`) has two time-bound failures (`deadline exceeded`) whose fixture deadline has passed; they occur without this work and are outside CI.
+
+## E re-measurement (2026-10-06)
+
+The gate was fixed before the run in `docs/superpowers/programs/search-platform-production/plan.md` (section E). Changes measured: the planner's Exploratory S1 order is now Lexical → HyperGraph → Vector, and Vector candidates need cosine ≥ τ. Model: pinned E5-small on Candle CPU. Full output: `measurement-e-run.log`; public lane IDs and digests: `public-ja-lane-manifest.json` (passage text stays outside the repository; `scripts/prepare_public_ja.py` rebuilds it from the hash-pinned MIRACL ja files).
+
+- Calibration (40 MIRACL ja dev queries, never evaluated): τ = 0.890.
+- G1 PASS: synthetic nDCG@10 LGD = LG = 0.9706 at 32, 256 and 1,024 (L 0.7497).
+- G2 PASS: synthetic visible false positives LGD = LG at every scale.
+- G3 PASS: 100 untouched MIRACL ja dev queries, nDCG@10 L 0.0348 (production lexical: default tokenizer, literal phrase) → LD 0.5523, gain +0.5175, paired bootstrap 95% [0.4333, 0.6025]. Sensitivity against character-bigram BM25: 0.2486 → 0.5601, +0.3114 [0.2347, 0.3925].
+- G4 PASS: with each query's positives removed, mean FP@10 L 0.43 → LD 1.15 (limit L + 1).
+- G5 PASS: no unauthorized disclosure in any synthetic arm.
+- G6 PASS: query embedding plus exact scan p95 18.80 ms at 1,024 Units (public lane 24.06 ms at 1,215 passages).
+
+Decision: `DEFAULT_ENABLED`, τ = 0.890. The synthetic lane shows no gain because Vector now follows Graph; the gain is on natural-language queries the current lexical arm cannot segment.
+
