@@ -17,7 +17,7 @@ pub const LEGACY_ANALYZER_VERSION: &str = "tantivy-default-0.26.2";
 /// Character-bigram CJK segmentation, Tantivy built-ins only.
 pub const CJK_BIGRAM_ANALYZER_VERSION: &str = "tantivy-0.26.2-cjk-bigram-v1";
 
-const CJK_BIGRAM_TOKENIZER: &str = "kp_cjk_bigram_v1";
+pub(crate) const CJK_BIGRAM_TOKENIZER: &str = "kp_cjk_bigram_v1";
 /// Longer alphanumeric words are dropped, as Tantivy's default does at 40.
 const MAX_TOKEN_BYTES: usize = 40;
 

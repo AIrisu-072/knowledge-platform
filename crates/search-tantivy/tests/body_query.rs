@@ -435,12 +435,28 @@ async fn cjk_bigram_analyzer_finds_words_inside_unspaced_japanese() {
         .unwrap();
     assert_eq!(body.hits.len(), 1);
     assert_eq!(body.hits[0].candidate.resource_ref, Some(resource(11)));
-    // A substring that is not contiguous in the text is not a phrase match.
+    // Most of the query's tokens, not contiguous: still a hit in a bigram
+    // generation, and its span is the longest part of the query the Unit
+    // contains, so the snippet points at real text.
     let scattered = index
         .retrieve_body(key(), &request(), &LexicalQuery::body_only("申請総務", 10))
         .await
         .unwrap();
-    assert!(scattered.hits.is_empty());
+    assert_eq!(scattered.hits.len(), 1);
+    let span = &scattered.hits[0].unit_hit.as_ref().unwrap().span;
+    let text = "会議室は前日までに総務部へ申請する。";
+    let part = &text[span.start_byte as usize..span.end_byte as usize];
+    assert!(part == "申請" || part == "総務", "{part}");
+    // Too few of the query's tokens: no hit.
+    let unrelated = index
+        .retrieve_body(
+            key(),
+            &request(),
+            &LexicalQuery::body_only("会計監査の基準", 10),
+        )
+        .await
+        .unwrap();
+    assert!(unrelated.hits.is_empty());
 
     // The legacy default analyzer cannot see the word inside the sentence.
     let legacy = build(
