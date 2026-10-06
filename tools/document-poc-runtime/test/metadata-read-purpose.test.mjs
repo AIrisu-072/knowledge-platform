@@ -83,11 +83,18 @@ test('no-op後の固定診断は元のrequest登録・await・検証の境界に
     ['gui-metadata-revision-entry-ready', "page.off('requestfinished', recordMoveReadFinished);",
       'const baseRevision = after.revisions[0]!, targetRevision = after.revisions[1]!;'],
     ['gui-metadata-revision-first-page-verified', "await expect(page.getByRole('button', { name: '正式改訂をさらに表示', exact: true })).toBeHidden();",
-      "await page.getByLabel('基準', { exact: true }).selectOption(baseRevision.revisionId);"],
+      "await page.getByRole('combobox', { name: '基準', exact: true }).selectOption(baseRevision.revisionId);"],
+    ['gui-metadata-comparison-pair-verified',
+      "await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId\n      && new URL(page.url()).searchParams.get('targetRevisionId') === targetRevision.revisionId).toBe(true);",
+      "const comparisonResponse = page.waitForResponse(response => {\n      const url = new URL(response.url());\n      return url.origin === context.human && url.pathname === `/v1/documents/${documentId}/revision-comparisons`\n        && response.request().method() === 'POST';\n    });"],
+    ['gui-metadata-comparison-tab-pressed', "await page.getByRole('tab', { name: '新旧比較', exact: true }).press('Enter');",
+      'const comparisonResult = await comparisonResponse;'],
+    ['gui-metadata-comparison-response-verified', 'expect(comparisonResult.status()).toBe(200);',
+      "privatelyEqual(comparisonResult.request().postDataJSON(), {\n      baseRevisionId: baseRevision.revisionId, targetRevisionId: targetRevision.revisionId, projection: 'display', pageSize: 50,\n    });"],
     ['gui-metadata-revision-first-comparison-verified', "await expect(page.getByText('同じコンテンツ版のため本文比較なし', { exact: true })).toBeVisible();",
       "await page.getByRole('button', { name: '← 版・改訂へ戻る', exact: true }).press('Enter');"],
     ['gui-metadata-revision-reload-page-verified', "await expect(page.getByRole('button', { name: '正式改訂をさらに表示', exact: true })).toBeHidden();",
-      "await inputEquals(page.getByLabel('基準', { exact: true }), baseRevision.revisionId);"],
+      "await inputEquals(page.getByRole('combobox', { name: '基準', exact: true }), baseRevision.revisionId);"],
   ];
   for (const [stage, before, after] of boundaries) {
     const index = statements.indexOf(completion(stage));
@@ -101,15 +108,16 @@ test('no-op後の固定診断は元のrequest登録・await・検証の境界に
     boundaries.map(([stage]) => completion(stage)));
   const returned = statements.indexOf(completion('gui-metadata-list-return-pressed'));
   assert.equal(statements[returned - 2], 'const fromResponse = waitCreatedList(page, exactFrom);');
+  const operations = statements.filter(statement => !statement.startsWith('completed('));
   for (const [response, result, action] of [
     ['revisionResponse', 'revisionResult', "page.getByRole('tab', { name: '版・改訂', exact: true })"],
     ['comparisonResponse', 'comparisonResult', "page.getByRole('tab', { name: '新旧比較', exact: true })"],
     ['revisionRestartResponse', 'revisionRestartResult', "page.getByRole('button', { name: '正式改訂を最初から読み直す', exact: true })"],
   ]) {
-    const registered = statements.findIndex(statement => statement.startsWith(`const ${response} = page.waitForResponse(`));
+    const registered = operations.findIndex(statement => statement.startsWith(`const ${response} = page.waitForResponse(`));
     assert.ok(registered > 0);
-    assert.equal(statements[registered + 1], `await ${action}.press('Enter');`);
-    assert.equal(statements[registered + 2], `const ${result} = await ${response};`);
+    assert.equal(operations[registered + 1], `await ${action}.press('Enter');`);
+    assert.equal(operations[registered + 2], `const ${result} = await ${response};`);
   }
   for (const call of calls('completed')) {
     assert.equal(call.arguments.length, 1);

@@ -90,8 +90,13 @@ export function DocumentMove({ document, purpose = 'published', currentRead = fa
   }
   function close() {
     if (store.get()?.status === 'pending') return;
-    generation.current += 1; destinationGeneration.current += 1; refreshing.current = false; destinationBusy.current = false; setReading(false); setDestinationReading(false); setOpen(false);
-    requestAnimationFrame(() => { if (returnFocus.current?.isConnected && !returnFocus.current.disabled) returnFocus.current.focus(); else trigger.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus(); });
+    const closing = ++generation.current; const key = contextKey; const preferred = returnFocus.current; const container = trigger.current;
+    destinationGeneration.current += 1; refreshing.current = false; destinationBusy.current = false; setReading(false); setDestinationReading(false); setOpen(false);
+    requestAnimationFrame(() => {
+      if (!isCurrent(closing, key) || !container?.isConnected || container.ownerDocument.activeElement !== container.ownerDocument.body) return;
+      const target = preferred?.isConnected && !preferred.disabled ? preferred : container.querySelector<HTMLButtonElement>('button:not(:disabled)');
+      target?.focus();
+    });
   }
   async function chooseDestination(folder: Folder, rowContext?: SelectedFolderContext) {
     if (store.get() || refreshing.current) return;

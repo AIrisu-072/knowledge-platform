@@ -1,6 +1,6 @@
 # 正式改訂の続き表示：実行状況
 
-## 2026-10-06 14:26 UTC
+## 2026-10-06 15:22 UTC
 
 - PR88統合main `ea40684833ebcdf945636300b7b22741725fc80c` / tree `cd18f8cfdafeb57bb537df11e46a0e30ba907030` を基点とする。branch `feat/document-revision-pagination-20261006`、[小計画](../plans/2026-10-06-document-revision-pagination.md)に従い既存nextCursorを通常GUIへ配線する。
 - PR88公開head `af08e586` は[CI37455031944](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37455031944)の全13jobs・全18checks（15成功/既存skip3）、Document18+5/Agent9・Organization・HTTP再起動・指定DB36・cleanup/artifact0を確認してmainへ統合した。個別移動/replay/Document cleanupは同tree sourceと公開PASSの対応推論。main自身の[push CI `37457937486`](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37457937486)もattempt1の全13jobs/checks・Document18+5/Agent9/22工程・Organization全8工程・HTTP再起動/cleanup・指定DB36/36・artifact0を独立確認した。ref/tree/両parentsも終端後に一致。
@@ -28,3 +28,9 @@
 - `d1f43a51` はlifecycleの通知4検査を既存操作regionへ限定し、3反例RED→既存含む23 PASS、Web/runtime型・collection18+5成功。全runtime14通知検査を確認し、同じread controlsが描かれない他10箇所は変更していない。
 - `4fed4451` は固定工程7呼出とallowlist8値、既存privacy/sourceguardだけを変更した。追加行を除けば元await/要求/全assertionと診断本体はbyte一致。RED2→focused39・safe64/9files・既存runtime型設定・collection18+5成功。annotationはjourney17/persistence4で既存cap40を維持する。
 - この6filesの独立spec/品質reviewはGO、新所見0。同じHEADの全GUIも47 suites / 1147 testsとschema checkが成功した。製品の追加変更はない。次は日本語の失敗・訂正記録を含む同PR新headを固定し、既存CIで実受入と現在の停止工程を確認する。診断追加をmetadata timeoutの解消とは扱わない。
+- 第3公開head `de2cf4158cba79aaa3fcdbbfa232b349025b5b18` / tree `7060d4d79110b1099d92b507558ed4ea8648a239` の[CI37479950755](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37479950755)はjourney17成功/metadataだけ失敗。予約取消とlifecycleは実PASSになった。公開stageは `gui-metadata-revision-first-page-verified` であり、先頭改訂GET・2改訂/1コンテンツ版・終端表示までを通過し、次の明示pair選択・URL確認・最初の比較POST/body/DOMの区間でtimeoutだった。停止awaitの直接記録はなく、Agent・HTTP再起動・persistence・Organizationは未実行。Rust/DB36/Folder4成功、全4workflow artifact0、失敗runのcleanupは未確認。
+- 停止区間先頭の試験selector不一致を再現した。公式の固定Playwright 1.63.0 engineと実 `RevisionPairInputs` の描画では、selectを内包するlabelのtextにoption文字も含まれるため、旧exact `getByLabel` は4名×通常/未取得の8条件全て0件だった。同じaccessible nameのexact combobox roleは全て1件で選択値も一致した。自作matcherではなく公式selector生成とquerySelectorAllを使用した純粋DOM証拠で、実browser通過とは区別する。
+- `d885f66c` はこの4名の18locatorだけをexact combobox roleへ置換し、既存guardの対応2参照だけを調整した。残りのspec/guardはbyte一致、元の選択・URL・固定要求/応答・全assertionを保持する。公式engineの旧1件期待RED→新8条件GREEN、safe64・runtime型・collection18+5成功。製品labelや比較条件は変更していない。
+- 同時に独立した移動closeの遅延focus欠陥を `935f1c8a` で限定補修した。close時の世代・文脈・元container/入口を捕捉し、現在focusがbodyで同じ文脈の場合だけ復帰する。成功ackで入口が差し替わる正常fallback、UNKNOWN保持、pending禁止を維持。実DOMの最終6反例RED→focused83成功、製品同一の全GUI1160/47・schema/型/build成功。全GUI開始後の試験型option4箇所の整理は最終focused/型/buildで再確認し、reportで検証範囲を区別した。このfocus順序が実CIで起きたと断定しない。
+- `1cdf9665` は既存診断へ固定3工程だけを追加した。pairのURL確認後、比較tabのキー操作command完了後、比較responseのHTTP200確認後を区切る。後二者はそれぞれ画面遷移成功・body検証完了を意味しない。既存field/cap40・元await/要求/全assertionは保持し、safe64・runtime型・collection18+5が成功した。
+- この6filesの限定独立spec/品質・組合せreviewはGO、新所見0。次は同PRの新headを固定し、selector補修後の実受入を確認する。過去3runの失敗・診断解釈訂正を保持し、単にCIを繰り返して成功扱いにはしない。

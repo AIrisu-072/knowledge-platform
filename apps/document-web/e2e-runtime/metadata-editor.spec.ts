@@ -543,20 +543,23 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     await expect(page.getByRole('button', { name: '正式改訂をさらに表示', exact: true })).toBeHidden();
     completed('gui-metadata-revision-first-page-verified');
     // 既定と逆の明示pairで、先頭2件への無言fallbackを識別する。版tabでは比較readはdisabled。
-    await page.getByLabel('基準', { exact: true }).selectOption(baseRevision.revisionId);
-    await page.getByLabel('対象', { exact: true }).selectOption(targetRevision.revisionId);
-    await inputEquals(page.getByLabel('基準', { exact: true }), baseRevision.revisionId);
-    await inputEquals(page.getByLabel('対象', { exact: true }), targetRevision.revisionId);
+    await page.getByRole('combobox', { name: '基準', exact: true }).selectOption(baseRevision.revisionId);
+    await page.getByRole('combobox', { name: '対象', exact: true }).selectOption(targetRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '基準', exact: true }), baseRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '対象', exact: true }), targetRevision.revisionId);
     await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
       && new URL(page.url()).searchParams.get('targetRevisionId') === targetRevision.revisionId).toBe(true);
+    completed('gui-metadata-comparison-pair-verified');
     const comparisonResponse = page.waitForResponse(response => {
       const url = new URL(response.url());
       return url.origin === context.human && url.pathname === `/v1/documents/${documentId}/revision-comparisons`
         && response.request().method() === 'POST';
     });
     await page.getByRole('tab', { name: '新旧比較', exact: true }).press('Enter');
+    completed('gui-metadata-comparison-tab-pressed');
     const comparisonResult = await comparisonResponse;
     expect(comparisonResult.status()).toBe(200);
+    completed('gui-metadata-comparison-response-verified');
     privatelyEqual(comparisonResult.request().postDataJSON(), {
       baseRevisionId: baseRevision.revisionId, targetRevisionId: targetRevision.revisionId, projection: 'display', pageSize: 50,
     });
@@ -567,16 +570,16 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     }
     expect(comparisonBody.contentComparisonStatus).toBe('sameAuthoritativeVersion');
     expect(comparisonBody.metadataComparisonStatus).toBe('different');
-    await inputEquals(page.getByLabel('基準改訂', { exact: true }), baseRevision.revisionId);
-    await inputEquals(page.getByLabel('比較対象', { exact: true }), targetRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '基準改訂', exact: true }), baseRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '比較対象', exact: true }), targetRevision.revisionId);
     await expect(page.locator('dt').filter({ hasText: /^基準$/ }).locator('+ dd')).toHaveText('1.1');
     await expect(page.locator('dt').filter({ hasText: /^対象$/ }).locator('+ dd')).toHaveText('1.0');
     await expect(page.getByText('同じコンテンツ版のため本文比較なし', { exact: true })).toBeVisible();
     completed('gui-metadata-revision-first-comparison-verified');
     await page.getByRole('button', { name: '← 版・改訂へ戻る', exact: true }).press('Enter');
     // tab往復の有効cache再利用に、無条件のGET待ちや通信総数の上限を置かない。
-    await inputEquals(page.getByLabel('基準', { exact: true }), baseRevision.revisionId);
-    await inputEquals(page.getByLabel('対象', { exact: true }), targetRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '基準', exact: true }), baseRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '対象', exact: true }), targetRevision.revisionId);
     await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
       && new URL(page.url()).searchParams.get('targetRevisionId') === targetRevision.revisionId).toBe(true);
     const revisionRestartResponse = page.waitForResponse(response => {
@@ -595,8 +598,8 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     await expect(revisionRows.nth(1).locator('strong')).toHaveText('1.0');
     await expect(page.getByRole('button', { name: '正式改訂をさらに表示', exact: true })).toBeHidden();
     completed('gui-metadata-revision-reload-page-verified');
-    await inputEquals(page.getByLabel('基準', { exact: true }), baseRevision.revisionId);
-    await inputEquals(page.getByLabel('対象', { exact: true }), targetRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '基準', exact: true }), baseRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '対象', exact: true }), targetRevision.revisionId);
     await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
       && new URL(page.url()).searchParams.get('targetRevisionId') === targetRevision.revisionId).toBe(true);
     // 明示再読取は比較cacheも破棄する。同pairの新POSTと結果を確認してから概要へ戻る。
@@ -616,8 +619,8 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     privatelyEqual(comparisonRestartBody.targetRevision, comparisonBody.targetRevision);
     expect(comparisonRestartBody.contentComparisonStatus).toBe('sameAuthoritativeVersion');
     expect(comparisonRestartBody.metadataComparisonStatus).toBe('different');
-    await inputEquals(page.getByLabel('基準改訂', { exact: true }), baseRevision.revisionId);
-    await inputEquals(page.getByLabel('比較対象', { exact: true }), targetRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '基準改訂', exact: true }), baseRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '比較対象', exact: true }), targetRevision.revisionId);
     await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
       && new URL(page.url()).searchParams.get('targetRevisionId') === targetRevision.revisionId).toBe(true);
     await expect(page.locator('dt').filter({ hasText: /^基準$/ }).locator('+ dd')).toHaveText('1.1');
@@ -727,10 +730,10 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     await expect(revisionRows.nth(0).locator('strong')).toHaveText('1.1');
     await expect(revisionRows.nth(1).locator('strong')).toHaveText('1.0');
     await expect(page.getByRole('button', { name: '正式改訂をさらに表示', exact: true })).toBeHidden();
-    await page.getByLabel('基準', { exact: true }).selectOption(baseRevision.revisionId);
-    await page.getByLabel('対象', { exact: true }).selectOption(targetRevision.revisionId);
-    await inputEquals(page.getByLabel('基準', { exact: true }), baseRevision.revisionId);
-    await inputEquals(page.getByLabel('対象', { exact: true }), targetRevision.revisionId);
+    await page.getByRole('combobox', { name: '基準', exact: true }).selectOption(baseRevision.revisionId);
+    await page.getByRole('combobox', { name: '対象', exact: true }).selectOption(targetRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '基準', exact: true }), baseRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '対象', exact: true }), targetRevision.revisionId);
     await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
       && new URL(page.url()).searchParams.get('targetRevisionId') === targetRevision.revisionId).toBe(true);
     const comparisonResponse = page.waitForResponse(response => {
@@ -751,8 +754,8 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     }
     expect(comparisonBody.contentComparisonStatus).toBe('sameAuthoritativeVersion');
     expect(comparisonBody.metadataComparisonStatus).toBe('different');
-    await inputEquals(page.getByLabel('基準改訂', { exact: true }), baseRevision.revisionId);
-    await inputEquals(page.getByLabel('比較対象', { exact: true }), targetRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '基準改訂', exact: true }), baseRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '比較対象', exact: true }), targetRevision.revisionId);
     await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
       && new URL(page.url()).searchParams.get('targetRevisionId') === targetRevision.revisionId).toBe(true);
     await expect(page.locator('dt').filter({ hasText: /^基準$/ }).locator('+ dd')).toHaveText('1.1');

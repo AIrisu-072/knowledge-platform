@@ -1,6 +1,6 @@
 # Active Execution Pointer
 
-## 2026-10-06 14:26 UTC — 正式改訂の続き表示
+## 2026-10-06 15:22 UTC — 正式改訂の続き表示
 
 - PR88統合main `ea406848` から既存100件/nextCursorを「版」「新旧比較」へ接続する。[状況](document-revision-pagination-status.md)と[小計画](../plans/2026-10-06-document-revision-pagination.md)が再開先
 - 明示した古い比較IDを先頭2件へ無言で置換せず、追加read/再読取・失効・遅延・既存操作保持をTDDで確認する。新backend・新基盤・大量fixtureなし
@@ -14,6 +14,8 @@
 14:20追補：次head `a27389c3` / CI `37474338595` は予約取消PASS、lifecycle通知strict-locatorとmetadata timeoutでjourney16/2・後段未到達。既存未読完了stageのallowlist漏れにより、公開lastStageから「正式改訂read未到達」とした解釈は撤回。停止範囲には移動・改訂read/比較も含まれる。lifecycle4検査を正しい操作regionへ限定し、既存診断の同一field/capへ固定7工程＋既存1工程許可だけを追加して実停止区間を判定する。製品・timeout/skip・診断の動的公開値は変えない。両失敗証拠と根因未確定を保持する。
 
 14:26追補：lifecycle限定検査 `d1f43a51` は23 PASS・型/収集、固定工程だけの診断 `4fed4451` はsafe64・型/収集が成功。6files組合せは独立GOで、同HEAD全GUI1147/47も合格。次は同PRの新head既存CIで実停止工程と受入を確認する。元metadata timeout根因未確定、実GUI100超未資格、既存未解明失敗を保持する。
+
+15:22追補：第3head `de2cf415` / CI `37479950755` はjourney17成功/metadataのみtimeout。初回改訂GET/2行は実通過し、次の比較操作区間へ絞れた。公式Playwright engineと実select描画で旧exact labelが0件・exact comboboxが1件となる8条件を再現し、`d885f66c` で18locatorだけを修正。独立した移動closeのfocus欠陥も `935f1c8a` で正常fallbackを保って限定補修し、focused83・製品同一の全1160/47・型/build成功。診断3固定工程 `1cdf9665` は同field/capを維持。6files組合せの限定独立reviewはGO。次は同PR新headの実受入。過去失敗・訂正・未資格を保持する。
 
 ---
 

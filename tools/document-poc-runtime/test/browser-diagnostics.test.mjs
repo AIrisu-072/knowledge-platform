@@ -172,6 +172,7 @@ test('GUI metadata受入は固定到達段階だけを公開し、値や理由�
     'gui-metadata-published-verified', 'gui-metadata-minor-verified', 'gui-metadata-noop-verified',
     'gui-metadata-list-return-pressed', 'gui-metadata-created-from-verified', 'gui-metadata-unread-list-verified',
     'gui-unread-readonly-verified', 'gui-metadata-revision-entry-ready', 'gui-metadata-revision-first-page-verified',
+    'gui-metadata-comparison-pair-verified', 'gui-metadata-comparison-tab-pressed', 'gui-metadata-comparison-response-verified',
     'gui-metadata-revision-first-comparison-verified', 'gui-metadata-revision-reload-page-verified',
     'gui-metadata-snapshot-saved', 'gui-metadata-restart-verified',
     'gui-document-move-verified', 'gui-document-move-replay-verified',
