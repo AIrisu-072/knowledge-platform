@@ -50,7 +50,7 @@ init() {
   fi
   python3 "$REPO/experiments/search-validation-corpus/scripts/runtime_config.py" \
     --root "$ROOT" --worker "$BIN/search-extraction-worker" --source-id "$SOURCE_ID" \
-    --formats text --vector-model "$MODEL"
+    --formats text --vector-model "$MODEL" --analyzer "${ANALYZER:-tantivy-default-0.26.2}"
   load_env
   "$BIN/document-server" migrate
   KP_IDENTITY_PROFILE=poc-human "$BIN/document-server" bootstrap-poc
@@ -108,6 +108,22 @@ status() {
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then echo "$name running ($pid)"; else echo "$name stopped"; tail -3 "$ROOT/logs/$name.log" 2>/dev/null || true; fi
   done
   curl -s -o /dev/null -w 'document-server ready: %{http_code}\n' http://127.0.0.1:8080/health/ready || true
+}
+
+# Rewrites only the config files (e.g. ANALYZER=... linux_runtime.sh configure).
+configure() {
+  python3 "$REPO/experiments/search-validation-corpus/scripts/runtime_config.py" \
+    --root "$ROOT" --worker "$BIN/search-extraction-worker" --source-id "$SOURCE_ID" \
+    --formats text --vector-model "$MODEL" --analyzer "${ANALYZER:-tantivy-default-0.26.2}"
+}
+
+# One full rebuild of the Source (manual retry), timed, with the worker config.
+rebuild() {
+  load_env
+  local start
+  start=$(date +%s)
+  "$BIN/search_outbox_worker" rebuild
+  echo "rebuild elapsed $(( $(date +%s) - start ))s"
 }
 
 "${1:-status}"

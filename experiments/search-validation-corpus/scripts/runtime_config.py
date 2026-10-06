@@ -58,6 +58,8 @@ def main() -> None:
     parser.add_argument("--pdfium-sha256")
     parser.add_argument("--vector-model", type=Path)
     parser.add_argument("--bind", default="127.0.0.1:8090")
+    parser.add_argument("--analyzer", default="tantivy-default-0.26.2",
+                        help="tantivy-default-0.26.2 (legacy) or tantivy-0.26.2-cjk-bigram-v1")
     args = parser.parse_args()
     digest = hashlib.sha256(args.worker.read_bytes()).digest()
     worker_sha = list(digest)
@@ -91,7 +93,7 @@ def main() -> None:
             "projection_policy": None,
         },
         "projection_schema_version": "schema-1",
-        "analyzer_version": "tantivy-default-0.26.2",
+        "analyzer_version": args.analyzer,
         "semantic_registry_version": "validation-1",
         "lexical_root": str(args.root / "lexical"),
         "file_root": str(args.root / "storage"),
