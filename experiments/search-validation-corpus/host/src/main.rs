@@ -375,6 +375,23 @@ fn invalid(what: &str) -> impl Fn(SearchError) -> String + '_ {
 }
 
 async fn run() -> Result<(), String> {
+    // `migrate`: the packaged Search runtime and Graph migrations, in the
+    // order the durable tests use (after `document-server migrate`).
+    if std::env::args().nth(1).as_deref() == Some("migrate") {
+        let pool = PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&env("SEARCH_API_DATABASE_URL")?)
+            .await
+            .map_err(|_| "Search database unavailable".to_string())?;
+        search_runtime::migrate(&pool)
+            .await
+            .map_err(|error| format!("Search migrations: {error}"))?;
+        search_graph::migrate(&pool)
+            .await
+            .map_err(|error| format!("Graph migrations: {error}"))?;
+        eprintln!("search-validation-host: Search and Graph migrations applied");
+        return Ok(());
+    }
     let source_file: SourceFile = serde_json::from_slice(
         &std::fs::read(env("SEARCH_WORKER_CONFIG")?)
             .map_err(|_| "SEARCH_WORKER_CONFIG cannot be read".to_string())?,

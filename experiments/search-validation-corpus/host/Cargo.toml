@@ -18,6 +18,7 @@ document-domain = { path = "../../../crates/document-domain" }
 document-repository-postgres = { path = "../../../crates/document-repository-postgres" }
 search-api-http = { path = "../../../crates/search-api-http" }
 search-application = { path = "../../../crates/search-application" }
+search-graph = { path = "../../../crates/search-graph" }
 search-runtime = { path = "../../../crates/search-runtime" }
 search-source-document = { path = "../../../crates/search-source-document" }
 search-vector-adapter = { path = "../../../crates/search-vector-adapter" }

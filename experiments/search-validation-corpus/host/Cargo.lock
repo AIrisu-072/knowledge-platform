@@ -2824,6 +2824,7 @@ dependencies = [
  "document-repository-postgres",
  "search-api-http",
  "search-application",
+ "search-graph",
  "search-runtime",
  "search-source-document",
  "search-vector-adapter",
