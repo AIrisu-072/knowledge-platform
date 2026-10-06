@@ -1,5 +1,22 @@
 # Linux手動導入手順書の状態
 
+## 2026-10-06 03:30 UTC — PR81までの受入済みmainへ固定版を同期
+
+- 対象はLinux手動導入、Organization Browser PoC、文書GUI、本記録の4文書のみ。固定ソースをmain `0801c9864bdb7faf5fcbe7ee1062367335ee7bfb` / tree `794407fc62e2418bd6ecbdc2de4541cd3e207b02`へ同期する。PR76 Root直下作成、PR78続き表示、PR79選択親への子作成、PR80改名、PR81属性3項目の絞り込みを含み、未公開の後続GUIは含めない
+- PR81公開head `426db3a5a43083a1b4bd76b656ea58322019eed3` / 同treeの[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37405694808)全13jobs、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37405694768)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37405694748)は成功。全18checksは15成功・既存条件skip3・failure0、Organization専用workflowの既存skipを含む全4runの終端後公開artifact0
+- 別のmain自身の新[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37407454204)も全13jobs/checks成功・failure0・skip0、終端後公開artifact0（03:27 UTC確認）。今回mainの実ログでGUI788件/39 suites、Document18件＋HTTP再起動後5件、短い合成3属性の実GET一致/不一致/解除・詳細往復、Agent9項目/provenance、Organization buildを含む全8stages（固定source/configの2+2に対応）、owned cleanupを確認した。Rust1831成功/9skip、別feature suite21成功と7成功/1skip、今回指定実DB36のPASS名36/36を照合した
+- Organizationのbuildは手動手順と同じ既存debug build経路。exact main checkout、Document summaryのcleanと同tree runnerの必須clean gate通過を併せて確認し、Organization固有のhead/dirtyが公開logへ単独出力されたとは記録しない。hosted build成功は対象PCでのビルド・手順全文の実行証拠ではない
+- 旧固定3d8deb2/PR74の数値・run URL・時刻、各フォルダー機能の初回統合SHA/CIを履歴として保持した。Work9項目、単原本登録→公開→Document ID→seed-work、scheduler不起動、起動/停止/backup/restore/更新切戻し、旧Search9・不明台帳/checksumの停止条件と本番未達を保持する
+- 所有者が今後行う手動確認として、Root子作成、選択親への子作成、続きを表示、同ID改名/HTTP再起動、3属性一致/不一致/解除/詳細往復の未実施チェック5項目だけを追加した。対象機が200件以下なら201件表示の合格とは記録しない。新テンプレート・検証基盤・コード・fixtureを追加しない
+- 旧3d8→新0801のGit object限定照合：Organization-server全tree（CLI/config/identity/bootstrapを含む）、Document migration0001〜0011/lib.rs、Work migration0001〜0006/lib.rs、Node/pnpm関連manifestとpnpm lock、GUI package、PDFium取得scriptは同bytes。scalar pins Rust1.98.1/Node24.21.0/pnpm12.4.1とPDFium151.0.7881.0は不変。一方、共通Cargo.toml/Cargo.lock/deny.toml/mise.toml/CI、共有outbox/architecture policy等は変更pathあり。全lock不変・全面互換・対象DBへの更新可能を主張しない。Search関連は変更pathの把握だけで、内容・依存・migration・停止作業の追加調査はしない
+- 静的検査結果：Bash構文15個（Linux12、Organization3）、相対リンク33件、固定SHA/treeと変更4path、旧受入履歴・Work9項目・停止/復旧/更新のbytes保持を確認。実行例の差分はKP_SOURCE_SHAの1行だけ。コマンド本体は未実行。実サーバー/DB/socket/browser/Cargo/package install/画像作業、GitHub write/merge/manual workflowは行わない
+- 残る限界：対象PCのdistribution/version・手順全文、production Identity/TLS、backup/restore、PostgreSQLプロセス再起動、macOS golden/full visual/画素不変、WORKING全status/headers喪失、Folder実no-op/実文書folderName更新/実通信断、新原本の追加/削除/並替/初回複数登録、日時/未読条件、移動/ACL/既読記録、実LLM/外部MCPは未資格または未対応。既存の旧公開維持・atomic publish・body途中喪失の限定資格を拡張しない
+- 次のexact action：この4文書だけを独立read-onlyレビューへ渡す。親担当が日本語の独立小Draft PRを公開し、docs-only exact-head CIを別途確認する。main mergeはrootが直列化し、対象PCへの反映は所有者が手動で行う。この時点では今回文書の独立レビュー・公開後CIは未確認
+
+以下の2026-10-05以前の記録は当時の資格であり、今回の新headや対象機へ付け替えない。
+
+---
+
 ## 2026-10-05 11:31 UTC — 通常GUIを入口とする手動導入手順
 
 - 対象：Linux手動導入、Organization Browser PoC、文書GUI、本記録の4文書。サーバー反映は所有者の手動操作であり、この文書更新はdeployを行わない

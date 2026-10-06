@@ -1,12 +1,12 @@
 # 文書GUIの登録・フォルダー操作・属性絞り込みと編集・複数原本編集・公開操作
 
-この手順は、既存Document APIを通常GUIから使う操作を説明する。文書操作の固定導入版はmain `3d8deb253de19cb0954aa70a9a31cc5c4fc7540c`。後続のフォルダー機能は各節の対象版・状況を確認する。資格状態は 固定の模擬利用者2名・画像保存なしのUbuntu機能受入に合格した版（対象PCでの手順実行、本番認証、見た目全体の比較検証は対象外）。実サーバーへ導入済みとは扱わず、固定SHAと受入記録は[手動導入手順](linux-manual-installation.md)で確認する。所有者がサーバー反映を手動で行う。
+この手順は、既存Document APIを通常GUIから使う操作を説明する。文書操作の固定導入版はmain `0801c9864bdb7faf5fcbe7ee1062367335ee7bfb` / tree `794407fc62e2418bd6ecbdc2de4541cd3e207b02`。PR76 Root直下作成、PR78続き表示、PR79選択親への子作成、PR80改名、PR81属性3項目の絞り込みを含む。各節の初回統合履歴と現在pinの資格を区別する。資格状態は 固定の模擬利用者2名・画像保存なしのUbuntu機能受入に合格した版（対象PCでの手順実行、本番認証、見た目全体の比較検証は対象外）。実サーバーへ導入済みとは扱わず、固定SHAと受入記録は[手動導入手順](linux-manual-installation.md)で確認する。所有者がサーバー反映を手動で行う。
 
-資格対象は画像なしUbuntu実操作PoC。macOS golden比較は未実行・未更新で、WORKING更新時の影響候補Mock 2・3・4・7の4枚と、他3枚の画素不変も未証明。後続のフォルダー操作を追加した一覧画面も画像比較は未取得である。以下のsource上の操作説明だけで候補の実受入や全visual資格を合格としない。
+資格対象は画像なしUbuntu実操作PoC。macOS golden比較は未実行・未更新で、WORKING更新時の影響候補Mock 2・3・4・7の4枚と、他3枚の画素不変も未証明。後続のフォルダー操作を追加した一覧画面も画像比較は未取得である。現在pinのhosted機能受入と、純粋/DOM確認・画像比較の資格を区別し、以下のsource上の操作説明だけで全visual資格を合格としない。
 
 ## 文書の属性で一覧を絞り込む
 
-この節はPR80統合main `1fe1b011` を基点にした追加候補で、上記の固定導入版3d8deb2には含まれない。実装・資格の状況は[属性絞り込みの記録](../superpowers/execution/document-metadata-filters-status.md)を確認する。公開headの実操作受入が合格するまでは候補として扱う。
+この機能はPR80統合main `1fe1b011` を基点に[PR81](https://github.com/AIrisu-072/knowledge-platform/pull/81)で統合し、現在pin `0801c986` に含まれる。PR公開head `426db3a5a43083a1b4bd76b656ea58322019eed3` と、統合後main自身の[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37407454204)は別実行で、いずれも属性の実GET・詳細往復・HTTP再起動・cleanup・公開artifact0を確認した。現在の確定資格は[手動導入手順](linux-manual-installation.md)の新head欄を正本とし、[属性絞り込みの記録](../superpowers/execution/document-metadata-filters-status.md)の未hosted記述は実装時点の履歴として保持する。旧固定版3d8deb2には含まれない。
 
 1. 「文書」または「編集作業」の一覧を開く。「文書種別」「所管部署」「カテゴリ」に必要な条件を入力する
 2. 「絞り込む」を押す。文書名の条件と併用でき、指定した条件がすべて一致する文書を現在読める範囲から表示する。入力している途中では条件を適用しない
@@ -20,7 +20,7 @@
 
 ## System Root直下にフォルダーを作る
 
-この機能は上記の固定導入版には含まれず、[PR76](https://github.com/AIrisu-072/knowledge-platform/pull/76)をmain `ce8ed4f15dd564235c4f68a406eec42fd8ca91d4`へ統合した。main自身の[CIと実操作受入](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37334503863)は成功した。[Root作成の記録](../superpowers/execution/document-root-folder-create-status.md)は実装時点の履歴として保持し、旧固定導入版にこの機能があるとは扱わない。
+この機能は旧固定版3d8deb2には含まれず、現在pinには含まれる。初回は[PR76](https://github.com/AIrisu-072/knowledge-platform/pull/76)をmain `ce8ed4f15dd564235c4f68a406eec42fd8ca91d4`へ統合した。main自身の[CIと実操作受入](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37334503863)は成功した。[Root作成の記録](../superpowers/execution/document-root-folder-create-status.md)は実装時点の履歴として保持し、旧固定導入版にこの機能があるとは扱わない。
 
 1. 「文書」または「編集作業」の一覧を開き、フォルダー欄の「System Rootにフォルダーを作成」を押す。保存済みの作成要求や確認結果がない新規作成では、別のフォルダーを選択していてもSystem Rootの直下に作成する。要求や確認結果が残っている場合は、どちらの入口でも元の作成先名・IDを表示するので、「登録先」を確認する
 2. 「フォルダー名」と「作成理由」を入力する。空欄、名前の改行・制御文字・区切り記号などは使えない。入力例は合成データに限る
@@ -35,7 +35,7 @@ ce8ed4fに統合した機能はSystem Root直下の作成だけである。非ro
 
 ## フォルダー一覧の続きを表示する
 
-この機能は[PR78](https://github.com/AIrisu-072/knowledge-platform/pull/78)をmain `09f79a2635b09510e2d0bdeb530ba77881a70e37`へ統合した。[統合後CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37384154333)でも201件の表示とHTTPサーバー再起動後の保持を確認した。固定導入版3d8deb2とRoot作成のみのce8ed4fには含まれない。[続き表示の記録](../superpowers/execution/document-folder-pagination-status.md)を参照する。
+この機能は[PR78](https://github.com/AIrisu-072/knowledge-platform/pull/78)をmain `09f79a2635b09510e2d0bdeb530ba77881a70e37`へ統合した。[統合後CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37384154333)でも201件の表示とHTTPサーバー再起動後の保持を確認した。旧固定版3d8deb2とRoot作成のみのce8ed4fには含まれず、現在pinには含まれる。[続き表示の記録](../superpowers/execution/document-folder-pagination-status.md)を参照する。
 
 1. フォルダー欄で対象の子フォルダーを開く。最初は1回あたり200件を表示する
 2. 「さらに表示」があれば押す。その親の続きだけを取得し、既に表示した行とフォルダー選択を保つ。文書一覧下部の「次のページ」とは別の操作である
@@ -46,7 +46,7 @@ ce8ed4fに統合した機能はSystem Root直下の作成だけである。非ro
 
 ## 選択したフォルダー内に子フォルダーを作る
 
-この機能は[PR79](https://github.com/AIrisu-072/knowledge-platform/pull/79)をmain `5d9e3c46c5b8ed1b5dd8cbe32edefb46482f787a`へ統合した。[統合後CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37392942272)でも、通常GUIで選んだ親の子作成とHTTPサーバー再起動後の保持を確認した。固定導入版3d8deb2、Root作成のみのce8ed4f、ページ送りまでの09f79a26には含まれない。[選択親作成の記録](../superpowers/execution/document-selected-folder-create-status.md)を参照する。
+この機能は[PR79](https://github.com/AIrisu-072/knowledge-platform/pull/79)をmain `5d9e3c46c5b8ed1b5dd8cbe32edefb46482f787a`へ統合した。[統合後CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37392942272)でも、通常GUIで選んだ親の子作成とHTTPサーバー再起動後の保持を確認した。旧固定版3d8deb2、Root作成のみのce8ed4f、ページ送りまでの09f79a26には含まれず、現在pinには含まれる。[選択親作成の記録](../superpowers/execution/document-selected-folder-create-status.md)を参照する。
 
 1. フォルダーツリーで、作成先にするSystem Root以外のフォルダー名を押す。必要なら「さらに表示」で対象まで進む。URLのフォルダーIDだけでは作成先の現在行を確認できないため、直接開いた場合もツリーで選び直す
 2. 「選択したフォルダーに子フォルダーを作成」を開き、「登録先」の名前とIDを確認する。「System Rootにフォルダーを作成」は別の入口で、保存済みの作成要求や確認結果がない場合のRoot直下への新規作成用である
@@ -62,7 +62,7 @@ Rootと選択親は、進行中または未確認の作成を1つだけ共有し
 
 ## 選択したフォルダー名を変更する
 
-この機能は[PR80](https://github.com/AIrisu-072/knowledge-platform/pull/80)をmain `1fe1b011e31477cd7a4de1b7facdcef56a97612d`へ統合した。[統合後CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37401300371)でも、子フォルダーの実改名・同要求replay・現在権限・HTTP再起動後の同ID/新名保持を確認した。上記の固定導入版や選択親作成までの版には含まれない。[改名の記録](../superpowers/execution/document-folder-rename-status.md)を参照する。
+この機能は[PR80](https://github.com/AIrisu-072/knowledge-platform/pull/80)をmain `1fe1b011e31477cd7a4de1b7facdcef56a97612d`へ統合した。[統合後CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37401300371)でも、子フォルダーの実改名・同要求replay・現在権限・HTTP再起動後の同ID/新名保持を確認した。旧固定版3d8deb2や選択親作成までの版には含まれず、現在pinには含まれる。[改名の記録](../superpowers/execution/document-folder-rename-status.md)を参照する。
 
 1. フォルダーツリーで改名するフォルダー名を押し、「選択したフォルダー名を変更」を開く。現在名とIDを確認する。URLのIDだけでは変更できないので、直接開いた場合もツリーで対象を選び直す。System Rootや権限不足では、サーバーが示す変更不可の理由を確認する
 2. 「変更先のフォルダー名」と「変更理由」を入力する。名前の前後空白とUnicode正規化、文字数・禁止文字の規約は作成時と同じである
