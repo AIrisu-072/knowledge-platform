@@ -19,8 +19,11 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 
 pub const PAYLOAD_DTO_VERSION: &str = "v1";
-/// Upper bound of one stored payload document, in bytes of its JSON text.
-const MAX_PAYLOAD_BYTES: usize = 256 * 1024 * 1024;
+/// Upper bound of one restored payload document, in bytes of its JSON text.
+const MAX_PAYLOAD_BYTES: usize = 1024 * 1024 * 1024;
+/// A payload whose JSON text is longer is stored as ordered text chunks of
+/// at most this many bytes, below the 256 MiB limit of one JSONB value.
+const CHUNK_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -102,6 +105,108 @@ fn restore<T: DeserializeOwned>(text: &str) -> Result<T, BundleError> {
     Ok(envelope.body)
 }
 
+/// The stored rows of one payload: the envelope itself when it fits, else
+/// `{"dto_version", "chunk"}` objects whose strings concatenate to its text.
+fn payload_rows(
+    value: &serde_json::Value,
+    chunk_bytes: usize,
+) -> Result<Vec<serde_json::Value>, BundleError> {
+    let text = serde_json::to_string(value).map_err(|_| BundleError::Shape)?;
+    if text.len() <= chunk_bytes {
+        return Ok(vec![value.clone()]);
+    }
+    if text.len() > MAX_PAYLOAD_BYTES {
+        return Err(BundleError::Shape);
+    }
+    let mut rows = Vec::new();
+    let mut rest = text.as_str();
+    while !rest.is_empty() {
+        let mut end = chunk_bytes.min(rest.len());
+        while !rest.is_char_boundary(end) {
+            end -= 1;
+        }
+        if end == 0 {
+            // A chunk smaller than one character cannot split the text.
+            return Err(BundleError::Shape);
+        }
+        rows.push(serde_json::json!({
+            "dto_version": PAYLOAD_DTO_VERSION,
+            "chunk": &rest[..end],
+        }));
+        rest = &rest[end..];
+    }
+    Ok(rows)
+}
+
+/// One payload kind restored from its rows: its envelope text, digest and
+/// count. Chunks must be 0..n without gaps and agree on digest and count.
+struct PayloadText {
+    kind: String,
+    text: String,
+    digest: String,
+    count: i64,
+}
+
+async fn read_payloads(
+    pool: &PgPool,
+    key: ProjectionGenerationKey,
+) -> Result<Vec<PayloadText>, BundleError> {
+    let rows = sqlx::query(
+        "SELECT kind, chunk, dto_version, payload::text AS payload, payload ? 'chunk' AS chunked, \
+         payload ->> 'chunk' AS chunk_text, logical_digest, logical_count \
+         FROM search_generation_payload WHERE source_id=$1 AND generation_id=$2 \
+         ORDER BY kind, chunk",
+    )
+    .bind(key.source_id.as_uuid())
+    .bind(key.generation_id.as_uuid())
+    .fetch_all(pool)
+    .await?;
+    let mut out: Vec<PayloadText> = Vec::new();
+    let mut chunks_of_last = 0i32;
+    for row in rows {
+        let kind: String = row.try_get("kind")?;
+        let chunk: i32 = row.try_get("chunk")?;
+        let version: String = row.try_get("dto_version")?;
+        if version != PAYLOAD_DTO_VERSION {
+            return Err(BundleError::Shape);
+        }
+        let chunked: bool = row.try_get("chunked")?;
+        let piece: String = if chunked {
+            row.try_get::<Option<String>, _>("chunk_text")?
+                .ok_or(BundleError::Shape)?
+        } else {
+            row.try_get("payload")?
+        };
+        let digest: String = row.try_get("logical_digest")?;
+        let count: i64 = row.try_get("logical_count")?;
+        let continues = out.last().is_some_and(|last| last.kind == kind);
+        if continues {
+            let last = out.last_mut().ok_or(BundleError::Shape)?;
+            // A whole-envelope row is never continued; chunks are contiguous.
+            if !chunked || chunk != chunks_of_last || last.digest != digest || last.count != count {
+                return Err(BundleError::Shape);
+            }
+            if last.text.len() + piece.len() > MAX_PAYLOAD_BYTES {
+                return Err(BundleError::Shape);
+            }
+            last.text.push_str(&piece);
+            chunks_of_last += 1;
+        } else {
+            if chunk != 0 {
+                return Err(BundleError::Shape);
+            }
+            out.push(PayloadText {
+                kind,
+                text: piece,
+                digest,
+                count,
+            });
+            chunks_of_last = 1;
+        }
+    }
+    Ok(out)
+}
+
 fn sha256_text(digest: &[u8; 32]) -> String {
     let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
     format!("sha256:{hex}")
@@ -160,11 +265,22 @@ pub fn validate_stored_bundle_v1(
 #[derive(Clone)]
 pub struct PgPayloadStore {
     pool: PgPool,
+    chunk_bytes: usize,
 }
 
 impl PgPayloadStore {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            chunk_bytes: CHUNK_BYTES,
+        }
+    }
+
+    /// A smaller chunk size (at most the default), e.g. to exercise chunked
+    /// rows without a payload of tens of MiB.
+    pub fn with_chunk_bytes(mut self, chunk_bytes: usize) -> Self {
+        self.chunk_bytes = chunk_bytes.clamp(4, CHUNK_BYTES);
+        self
     }
 
     /// Validates the bundle, then writes its three payload rows in one commit.
@@ -193,20 +309,27 @@ impl PgPayloadStore {
         ];
         let mut tx = self.pool.begin().await?;
         for (kind, payload, digest, count) in rows {
-            sqlx::query(
-                "INSERT INTO search_generation_payload \
-                 (source_id,generation_id,kind,dto_version,payload,logical_digest,logical_count) \
-                 VALUES ($1,$2,$3,$4,$5,$6,$7)",
-            )
-            .bind(validated.key.source_id.as_uuid())
-            .bind(validated.key.generation_id.as_uuid())
-            .bind(kind)
-            .bind(PAYLOAD_DTO_VERSION)
-            .bind(payload)
-            .bind(digest)
-            .bind(i64::try_from(count).map_err(|_| BundleError::Binding)?)
-            .execute(&mut *tx)
-            .await?;
+            let count = i64::try_from(count).map_err(|_| BundleError::Binding)?;
+            for (chunk, part) in payload_rows(&payload, self.chunk_bytes)?
+                .into_iter()
+                .enumerate()
+            {
+                sqlx::query(
+                    "INSERT INTO search_generation_payload \
+                     (source_id,generation_id,kind,chunk,dto_version,payload,logical_digest, \
+                      logical_count) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+                )
+                .bind(validated.key.source_id.as_uuid())
+                .bind(validated.key.generation_id.as_uuid())
+                .bind(kind)
+                .bind(i32::try_from(chunk).map_err(|_| BundleError::Shape)?)
+                .bind(PAYLOAD_DTO_VERSION)
+                .bind(part)
+                .bind(&digest)
+                .bind(count)
+                .execute(&mut *tx)
+                .await?;
+            }
         }
         tx.commit().await?;
         Ok(())
@@ -220,23 +343,15 @@ impl PgPayloadStore {
         manifest: &ProjectionGenerationManifest,
     ) -> Result<RestoredPayloadV1, BundleError> {
         let key = manifest.key();
-        let rows = sqlx::query(
-            "SELECT kind, dto_version, payload::text AS payload, logical_digest, logical_count \
-             FROM search_generation_payload WHERE source_id=$1 AND generation_id=$2",
-        )
-        .bind(key.source_id.as_uuid())
-        .bind(key.generation_id.as_uuid())
-        .fetch_all(&self.pool)
-        .await?;
         let (mut projection, mut units, mut coverage) = (None, None, None);
         let mut columns = std::collections::BTreeMap::new();
-        for row in rows {
-            let kind: String = row.try_get("kind")?;
-            let version: String = row.try_get("dto_version")?;
-            let text: String = row.try_get("payload")?;
-            if version != PAYLOAD_DTO_VERSION {
-                return Err(BundleError::Shape);
-            }
+        for PayloadText {
+            kind,
+            text,
+            digest,
+            count,
+        } in read_payloads(&self.pool, key).await?
+        {
             let slot_taken = match kind.as_str() {
                 "projection" => projection
                     .replace(restore::<ProjectionPayloadV1>(&text)?)
@@ -250,13 +365,7 @@ impl PgPayloadStore {
             if slot_taken {
                 return Err(BundleError::Shape);
             }
-            columns.insert(
-                kind,
-                (
-                    row.try_get::<String, _>("logical_digest")?,
-                    row.try_get::<i64, _>("logical_count")?,
-                ),
-            );
+            columns.insert(kind, (digest, count));
         }
         let (Some(projection), Some(unit_manifest), Some(coverage)) = (projection, units, coverage)
         else {
@@ -324,24 +433,15 @@ impl PgPayloadStore {
         receipt: &GenerationBundleReceipt,
     ) -> Result<StoredBundleV1, BundleError> {
         let key = manifest.key();
-        let rows = sqlx::query(
-            "SELECT kind, dto_version, payload::text AS payload, logical_digest, logical_count \
-             FROM search_generation_payload WHERE source_id=$1 AND generation_id=$2 \
-             ORDER BY kind",
-        )
-        .bind(key.source_id.as_uuid())
-        .bind(key.generation_id.as_uuid())
-        .fetch_all(&self.pool)
-        .await?;
         let (mut projection, mut units, mut coverage) = (None, None, None);
         let mut columns = std::collections::BTreeMap::new();
-        for row in rows {
-            let kind: String = row.try_get("kind")?;
-            let version: String = row.try_get("dto_version")?;
-            let text: String = row.try_get("payload")?;
-            if version != PAYLOAD_DTO_VERSION {
-                return Err(BundleError::Shape);
-            }
+        for PayloadText {
+            kind,
+            text,
+            digest,
+            count,
+        } in read_payloads(&self.pool, key).await?
+        {
             let slot_taken = match kind.as_str() {
                 "projection" => projection
                     .replace(restore::<ProjectionPayloadV1>(&text)?)
@@ -355,8 +455,6 @@ impl PgPayloadStore {
             if slot_taken {
                 return Err(BundleError::Shape);
             }
-            let digest: String = row.try_get("logical_digest")?;
-            let count: i64 = row.try_get("logical_count")?;
             columns.insert(kind, (digest, count));
         }
         let (Some(projection), Some(unit_manifest), Some(coverage)) = (projection, units, coverage)
