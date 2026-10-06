@@ -173,6 +173,17 @@ async fn four_routes_follow_the_verified_durable_current_and_refuse_drift() {
     let body_hit = call(&router, search("東京", "bodyRequired")).await;
     assert_eq!(body_hit.status, StatusCode::OK, "{}", body_hit.body);
     assert_eq!(items(&body_hit.body).len(), 1, "{}", body_hit.body);
+    // A body match discloses the plain-text window of the matched Unit; a
+    // title match discloses none.
+    let snippet = &items(&body_hit.body)[0]["snippet"];
+    assert_eq!(snippet["field"], "body", "{}", body_hit.body);
+    assert_eq!(snippet["coverage"], "body", "{}", body_hit.body);
+    assert!(
+        snippet["text"].as_str().unwrap().contains("東京"),
+        "{}",
+        body_hit.body
+    );
+    assert!(first[0].get("snippet").is_none(), "{}", found.body);
     let resource = first[0]["resourceId"].as_str().unwrap().to_owned();
     let read = call(
         &router,

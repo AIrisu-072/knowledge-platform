@@ -353,6 +353,7 @@ fn body_hit(
                 version: unit.version,
                 part: unit.part,
                 unit_id: unit.unit_id,
+                excerpt: search_application::body_ports::excerpt_around(&unit.text, &span),
                 span,
                 text_sha256: unit.text_sha256,
                 opaque_locator: locator.iter().map(|byte| format!("{byte:02x}")).collect(),
