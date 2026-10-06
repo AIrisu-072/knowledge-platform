@@ -4,12 +4,109 @@ import { mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { inspect } from 'node:util';
-import { browserDiagnostics, readBrowserDiagnostics, sanitizeBrowserDiagnostics, MAX_BROWSER_REPORT_BYTES } from '../browser-diagnostics.mjs';
+import { browserDiagnostics, readBrowserDiagnostics, sanitizeBrowserDiagnostics, sanitizeBrowserPhases, MAX_BROWSER_REPORT_BYTES } from '../browser-diagnostics.mjs';
 
 const report = (results, overrides = {}) => ({ suites: [{ title: 'never copied', specs: results.map(result => ({
   title: 'never copied', file: '/private/source/document-runtime.spec.ts', line: 12, column: 3,
   tests: [{ results: [result] }], ...overrides,
 })) }] });
+
+const phaseDiagnostics = (statuses, source = 'document-runtime.spec.ts') => sanitizeBrowserDiagnostics({
+  availability: 'available', counts: { passed: statuses.filter(status => status === 'passed').length,
+    failed: statuses.filter(status => ['failed', 'timedOut', 'interrupted'].includes(status)).length,
+    skipped: statuses.filter(status => status === 'skipped').length },
+  tests: statuses.map((status, index) => ({ source, line: index + 1, status, errorCategory: 'assertion' })), truncated: false,
+});
+
+test('phase budget retains a late persistence failure and only its allowlisted details', () => {
+  const journey = phaseDiagnostics(Array(18).fill('passed'));
+  const persistence = phaseDiagnostics(['passed', 'passed', 'failed', 'passed', 'passed'], 'working-version-editor-persistence.spec.ts');
+  const secret = 'https://user:PRIVATE_SECRET@private.example/file?payload=PRIVATE_BYTES';
+  persistence.tests[2] = { ...persistence.tests[2], column: 8, matcher: 'toBe', problemCode: 'REVISION_CONFLICT',
+    message: secret, title: secret, selector: secret, url: secret, stack: secret, actual: secret, expected: secret };
+  const actual = sanitizeBrowserPhases({ journey, persistence });
+  assert.deepEqual(actual.persistence.tests.find(record => record.status === 'failed'), {
+    source: 'working-version-editor-persistence.spec.ts', line: 3, column: 8, status: 'failed',
+    errorCategory: 'assertion', matcher: 'toBe', problemCode: 'REVISION_CONFLICT',
+  });
+  assert.equal(actual.journey.tests.length + actual.persistence.tests.length, 20);
+  assert.deepEqual(actual.persistence.tests.map(record => record.line), [1, 3]);
+  assert.deepEqual(actual.journey.counts, journey.counts);
+  assert.deepEqual(actual.persistence.counts, persistence.counts);
+  assert.equal(actual.journey.truncated, false);
+  assert.equal(actual.persistence.truncated, true);
+  assert.ok(!JSON.stringify(actual).includes('PRIVATE'));
+  assert.deepEqual(sanitizeBrowserPhases(actual), actual);
+});
+
+test('persistence failure displaces a passed journey record when journey fills all 20 slots', () => {
+  const journey = phaseDiagnostics(Array(20).fill('passed'));
+  const persistence = phaseDiagnostics(['failed'], 'persistence.spec.ts');
+  const actual = sanitizeBrowserPhases({ journey, persistence });
+  assert.deepEqual(actual.persistence.tests, persistence.tests);
+  assert.deepEqual(actual.journey.tests, journey.tests.slice(0, 19));
+  assert.equal(actual.journey.truncated, true);
+  assert.equal(actual.persistence.truncated, false);
+  assert.deepEqual(actual.journey.counts, journey.counts);
+  assert.deepEqual(actual.persistence.counts, persistence.counts);
+  assert.deepEqual(sanitizeBrowserPhases(actual), actual);
+});
+
+test('phase budget preserves failures from both phases and marks each discarded phase', () => {
+  const journey = phaseDiagnostics([...Array(10).fill('passed'), ...Array(10).fill('failed')]);
+  const persistence = phaseDiagnostics([...Array(10).fill('passed'), ...Array(10).fill('failed')], 'persistence.spec.ts');
+  const actual = sanitizeBrowserPhases({ journey, persistence });
+  for (const phase of ['journey', 'persistence']) {
+    assert.deepEqual(actual[phase].tests, { journey, persistence }[phase].tests.slice(10));
+    assert.deepEqual(actual[phase].counts, { journey, persistence }[phase].counts);
+    assert.equal(actual[phase].truncated, true);
+  }
+  assert.equal(actual.journey.tests.length + actual.persistence.tests.length, 20);
+  assert.deepEqual(sanitizeBrowserPhases(actual), actual);
+});
+
+test('more than 20 failures stay bounded in original phase order with accurate truncation', () => {
+  const journey = phaseDiagnostics(Array(10).fill('failed'));
+  const persistence = phaseDiagnostics(Array(15).fill('failed'), 'persistence.spec.ts');
+  const actual = sanitizeBrowserPhases({ journey, persistence });
+  assert.deepEqual(actual.journey, journey);
+  assert.deepEqual(actual.persistence.tests, persistence.tests.slice(0, 10));
+  assert.deepEqual(actual.persistence.counts, persistence.counts);
+  assert.equal(actual.persistence.truncated, true);
+  assert.equal(actual.journey.tests.length + actual.persistence.tests.length, 20);
+  assert.deepEqual(sanitizeBrowserPhases(actual), actual);
+});
+
+test('failed and other unsuccessful records precede skipped and passed records in phase allocation', () => {
+  const journey = phaseDiagnostics(Array(20).fill('skipped'));
+  const persistence = phaseDiagnostics(['failed', 'timedOut', 'interrupted', 'unavailable', 'passed'], 'persistence.spec.ts');
+  const actual = sanitizeBrowserPhases({ journey, persistence });
+  assert.deepEqual(actual.persistence.tests, persistence.tests.slice(0, 4));
+  assert.deepEqual(actual.journey.tests, journey.tests.slice(0, 16));
+  assert.equal(actual.journey.truncated, true);
+  assert.equal(actual.persistence.truncated, true);
+  assert.deepEqual(actual.journey.counts, journey.counts);
+  assert.deepEqual(actual.persistence.counts, persistence.counts);
+  assert.deepEqual(sanitizeBrowserPhases(actual), actual);
+});
+
+test('passed and skipped phase allocation retains the old leading order and existing truncation', () => {
+  for (const includeSkipped of [false, true]) {
+    const journey = phaseDiagnostics(Array.from({ length: 18 }, (_, index) => includeSkipped && index % 2 ? 'skipped' : 'passed'));
+    journey.truncated = true;
+    const persistence = phaseDiagnostics(Array.from({ length: 5 }, (_, index) => includeSkipped && index % 2 ? 'skipped' : 'passed'), 'persistence.spec.ts');
+    const actual = sanitizeBrowserPhases({ journey, persistence });
+    assert.deepEqual(actual.journey, journey);
+    assert.deepEqual(actual.persistence.tests, persistence.tests.slice(0, 2));
+    assert.deepEqual(actual.persistence.counts, persistence.counts);
+    assert.equal(actual.persistence.truncated, true);
+    assert.deepEqual(sanitizeBrowserPhases(actual), actual);
+    const unavailable = sanitizeBrowserPhases({ journey });
+    assert.deepEqual(unavailable.journey, journey);
+    assert.deepEqual(unavailable.persistence, sanitizeBrowserDiagnostics(undefined));
+    assert.deepEqual(sanitizeBrowserPhases(unavailable), unavailable);
+  }
+});
 
 test('journey progress emits only the last completed fixed milestone and is resanitized', () => {
   const input = report([{ status: 'timedOut', error: { message: 'Test timeout of 120000ms exceeded.' } }]);
