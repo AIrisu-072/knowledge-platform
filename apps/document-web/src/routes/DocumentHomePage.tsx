@@ -13,6 +13,7 @@ import { FolderRename } from '../components/document/FolderRename';
 import { folderRenameOperations } from '../application/document-folder-rename';
 import { RootFolderCreate } from '../components/document/RootFolderCreate';
 import type { ListSearch } from '../application/search-state';
+import { metadataFilterFields, metadataFilterValidation, type MetadataFilters } from '../application/document-metadata-filters';
 import { documentListStatusLabel } from '../view-model/document-status';
 import { formatDateTime as formatDate } from '../view-model/date-time';
 import styles from './DocumentWorkspace.module.css';
@@ -39,10 +40,21 @@ export function DocumentHomePage() {
   const [selectionGeneration, setSelectionGeneration] = useState(0);
   const [draftTitle, setDraftTitle] = useState(search.titleContains ?? '');
   useEffect(() => setDraftTitle(search.titleContains ?? ''), [search.titleContains]);
+  const [draftMetadata, setDraftMetadata] = useState<MetadataFilters>({ documentType: search.documentType ?? '', owningDepartment: search.owningDepartment ?? '', category: search.category ?? '' });
+  const [filterError, setFilterError] = useState<string | null>(null);
+  useEffect(() => {
+    setDraftMetadata({ documentType: search.documentType ?? '', owningDepartment: search.owningDepartment ?? '', category: search.category ?? '' });
+    setFilterError(null);
+  }, [search.documentType, search.owningDepartment, search.category]);
+  const appliedFilterError = metadataFilterValidation(search);
   const listQuery = useQuery({
+    enabled: !appliedFilterError,
     queryKey: ['documents', {
       view: search.view,
       titleContains: search.titleContains,
+      documentType: search.documentType || undefined,
+      owningDepartment: search.owningDepartment || undefined,
+      category: search.category || undefined,
       folderId: search.folderId,
       includeDescendants: search.includeDescendants,
       sort: search.sort,
@@ -54,6 +66,9 @@ export function DocumentHomePage() {
       sort: search.sort,
       pageSize: search.pageSize,
       ...(search.titleContains ? { titleContains: search.titleContains } : {}),
+      ...(search.documentType ? { documentType: search.documentType } : {}),
+      ...(search.owningDepartment ? { owningDepartment: search.owningDepartment } : {}),
+      ...(search.category ? { category: search.category } : {}),
       ...(search.folderId ? { folderId: search.folderId } : {}),
       ...(search.includeDescendants ? { includeDescendants: true } : {}),
       ...(search.cursor ? { cursor: search.cursor } : {}),
@@ -69,7 +84,7 @@ export function DocumentHomePage() {
     ? { folderId: search.folderId, name: chosenFolder?.folderId === search.folderId ? chosenFolder.name : `選択中のフォルダー（${search.folderId}）` }
     : rootQuery.data;
   const registrationCapability = search.folderId ? registrationFolderQuery.data?.capabilities.createDocument : rootQuery.data?.capabilities.createDocument;
-  const items = useMemo(() => listQuery.data?.items ?? [], [listQuery.data?.items]);
+  const items = useMemo(() => appliedFilterError ? [] : listQuery.data?.items ?? [], [listQuery.data?.items, appliedFilterError]);
   const panelOpen = search.panel === 'open' && search.view !== 'history';
   const selected = items.find((item) => item.documentId === search.selectedDocumentId) ?? (panelOpen ? items[0] : undefined);
   const detailView = search.view === 'authoring' ? 'authoring' : 'published';
@@ -90,6 +105,9 @@ export function DocumentHomePage() {
         const next = { ...previous, ...patch } as ListSearch;
         if (patch.cursor === undefined && Object.prototype.hasOwnProperty.call(patch, 'cursor')) delete next.cursor;
         if (patch.folderId === undefined && Object.prototype.hasOwnProperty.call(patch, 'folderId')) delete next.folderId;
+        for (const { key } of metadataFilterFields) {
+          if (patch[key] === undefined && Object.prototype.hasOwnProperty.call(patch, key)) delete next[key];
+        }
         if (patch.titleContains === undefined && Object.prototype.hasOwnProperty.call(patch, 'titleContains')) delete next.titleContains;
         if (patch.selectedDocumentId === undefined && Object.prototype.hasOwnProperty.call(patch, 'selectedDocumentId')) delete next.selectedDocumentId;
         return next;
@@ -289,12 +307,28 @@ export function DocumentHomePage() {
 
       <div className={styles.listLayout}>
         <section className={styles.listMain} aria-label="文書">
-          <form className={styles.filterBar} onSubmit={(event) => { event.preventDefault(); updateSearch({ titleContains: draftTitle || undefined, cursor: undefined }); }}>
+          <form className={styles.filterBar} onSubmit={(event) => {
+            event.preventDefault();
+            const error = metadataFilterValidation(draftMetadata);
+            setFilterError(error);
+            if (error) return;
+            updateSearch({ titleContains: draftTitle || undefined, documentType: draftMetadata.documentType || undefined, owningDepartment: draftMetadata.owningDepartment || undefined, category: draftMetadata.category || undefined, cursor: undefined });
+          }}>
             <label className={styles.searchField}>
               <span>文書名で絞り込み</span>
               <input type="search" value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} placeholder="文書名で検索" />
             </label>
+            {metadataFilterFields.map(({ key, label }) => (
+              <label className={styles.searchField} key={key}>
+                <span>{label}</span>
+                <input type="text" aria-label={label} aria-describedby="metadata-filter-help" value={draftMetadata[key] ?? ''} onChange={event => { setDraftMetadata(previous => ({ ...previous, [key]: event.target.value })); setFilterError(null); }} />
+              </label>
+            ))}
             <button className={styles.secondaryButton} type="submit">絞り込む</button>
+            <button className={styles.secondaryButton} type="button" onClick={() => {
+              setDraftMetadata({ documentType: '', owningDepartment: '', category: '' }); setFilterError(null);
+              updateSearch({ documentType: undefined, owningDepartment: undefined, category: undefined, cursor: undefined });
+            }}>属性の絞り込みを解除</button>
             <label className={styles.sortField}>
               <span>並び順</span>
               <select value={search.sort} onChange={(event) => updateSearch({ sort: event.target.value as ListSearch['sort'], cursor: undefined })}>
@@ -305,15 +339,17 @@ export function DocumentHomePage() {
             </label>
           </form>
 
-          {listQuery.isPending && <LoadingState label="文書を読み込み中" />}
-          {listQuery.error && <ApiFeedback error={listQuery.error} onRetry={() => void listQuery.refetch()} />}
-          {listQuery.data && items.length === 0 && (
+          <p id="metadata-filter-help" className={styles.muted}>属性は完全一致で、複数の条件はすべて一致する文書を表示します。空欄は未指定です。空白も値として扱います。</p>
+          {(filterError || appliedFilterError) && <p role="alert">{filterError || appliedFilterError}</p>}
+          {!appliedFilterError && listQuery.isPending && <LoadingState label="文書を読み込み中" />}
+          {!appliedFilterError && listQuery.error && <ApiFeedback error={listQuery.error} onRetry={() => void listQuery.refetch()} />}
+          {!appliedFilterError && listQuery.data && items.length === 0 && (
             <div className={styles.emptyState}>
               <h2>文書がありません</h2>
               <p>検索条件やフォルダーを変更してください。</p>
             </div>
           )}
-          {listQuery.data && items.length > 0 && (
+          {!appliedFilterError && listQuery.data && items.length > 0 && (
               <div className={styles.tableCard}>
               <div className={styles.tableScroller} data-document-table-scroll ref={tableScrollerRef} role="region" aria-label="文書一覧、上下にスクロールできます" tabIndex={0}>
                 <div role="table" aria-label="文書一覧" aria-rowcount={items.length + 1}>

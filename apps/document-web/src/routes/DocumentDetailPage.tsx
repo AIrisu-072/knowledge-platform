@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocation, useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { defaultParseSearch, useLocation, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Dialog, Heading, Modal } from 'react-aria-components';
 import {
   documentApi,
@@ -31,6 +31,7 @@ import { createOperationId } from '../application/operation-id';
 import { documentStatusLabel, versionStatusLabel } from '../view-model/document-status';
 import { jstDateTimeLocalToUtc } from '../application/schedule-time';
 import { formatDateTime } from '../view-model/date-time';
+import { metadataFilterRouteError } from '../application/document-metadata-filters';
 import { validateListSearch, type DetailSearch, type DocumentDetailTab, type VersionWorkflow } from '../application/search-state';
 import styles from './DocumentDetail.module.css';
 import workspaceStyles from './DocumentWorkspace.module.css';
@@ -50,6 +51,8 @@ export function DocumentDetailPage() {
   const navigate = useNavigate({ from: '/documents/$documentId' });
   const queryClient = useQueryClient();
   const [editingMode, setEditingMode] = useState<{ contextKey: string; mode: 'create' | 'update' } | null>(null);
+  const [returnError, setReturnError] = useState<string | null>(null);
+  useEffect(() => setReturnError(null), [search.returnTo]);
   const [publicationMethod, setPublicationMethod] = useState<'now' | 'scheduled'>('now');
   const detailQuery = useQuery({
     queryKey: ['document', documentId, search.view],
@@ -124,7 +127,10 @@ export function DocumentDetailPage() {
       try {
         const returnUrl = new URL(search.returnTo, window.location.origin);
         if (returnUrl.origin === window.location.origin && returnUrl.pathname === '/documents') {
-          listSearch = validateListSearch(Object.fromEntries(returnUrl.searchParams.entries()));
+          const parsed = defaultParseSearch(returnUrl.search);
+          const error = metadataFilterRouteError(parsed);
+          if (error) { setReturnError(error); return; }
+          listSearch = validateListSearch(parsed);
         }
       } catch {
         // The route validator has already rejected non-local return targets.
@@ -206,6 +212,7 @@ export function DocumentDetailPage() {
             <span aria-hidden="true">/</span>
             <span>文書ワークスペース</span>
           </div>
+          {returnError && <p role="alert">{returnError}</p>}
           {document ? (
             <div className={styles.titleLine}>
               <div className={styles.titleWithState}>
