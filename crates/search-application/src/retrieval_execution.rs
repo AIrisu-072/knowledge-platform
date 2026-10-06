@@ -40,6 +40,8 @@ pub struct RetrievalExecutionPorts<'a> {
     pub graph_resource_access: Option<&'a dyn CurrentAccessEvaluatorPort>,
     /// The four remote modes read only the Source's sealed evaluation list.
     pub remote: Option<&'a dyn SealedRemoteRetrieverPort>,
+    /// Vector candidates, already resolved through the owning Source.
+    pub vector: Option<&'a dyn crate::vector::VectorExecutionPort>,
     pub access: &'a dyn CurrentCandidateAccessEvaluatorPort,
 }
 
@@ -53,6 +55,8 @@ pub struct RetrievalExecutionInput<'a> {
     /// only Source-owned Units and keeps each Unit hit reference.
     pub body_query: Option<&'a LexicalQuery>,
     pub graph_plan: Option<&'a GraphTraversalPlan>,
+    /// Request text for the Vector arm.
+    pub vector_query: Option<&'a str>,
 }
 
 /// Authorized retriever output, before applicability, evidence, or Primary
@@ -83,6 +87,9 @@ struct PortHit {
     graph_generation: Option<ProjectionGenerationKey>,
     unit_hit: Option<KnowledgeUnitHitRef>,
 }
+
+/// Vector hits per action, before Source resolution.
+pub const VECTOR_WINDOW: usize = 50;
 
 pub struct RetrievalExecutor;
 
@@ -258,7 +265,27 @@ impl RetrievalExecutor {
                     .collect()
             }
             RetrieverKind::Vector => {
-                return Err(unsupported("retriever"));
+                let port = ports.vector.ok_or_else(|| unsupported("retriever"))?;
+                let text = input.vector_query.ok_or_else(|| {
+                    SearchError::InvalidRequest("Vector retrieval requires query text".into())
+                })?;
+                let batch = port.retrieve(input.generation, text, VECTOR_WINDOW).await?;
+                // Unavailable is never absence.
+                if batch.is_unavailable() {
+                    return Err(SearchError::SourceUnavailable("vector_unavailable".into()));
+                }
+                batch
+                    .candidates()
+                    .iter()
+                    .cloned()
+                    .map(|candidate| PortHit {
+                        candidate,
+                        structured_outcomes: None,
+                        graph_paths: None,
+                        graph_generation: None,
+                        unit_hit: None,
+                    })
+                    .collect()
             }
         };
 

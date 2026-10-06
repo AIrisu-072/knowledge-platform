@@ -217,7 +217,7 @@ pub async fn graph_ready_with(
         .unwrap();
     let report = store.validate(&GraphBuildRef::Full(target)).await.unwrap();
     let mut connection = fixture.admin.acquire().await.unwrap();
-    search_graph::store::settle_ready_on(&mut connection, &report)
+    search_graph::store::settle_ready_on(&mut connection, &GraphBuildRef::Full(target), &report)
         .await
         .unwrap();
     handle.key()

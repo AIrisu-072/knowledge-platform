@@ -10,6 +10,7 @@ members = [
   "crates/search-application",
   "crates/search-projection-memory",
   "crates/search-tantivy",
+  "crates/search-vector-adapter",
   "crates/search-graph",
   "crates/search-graph-memory",
   "crates/search-source-document",
@@ -46,6 +47,11 @@ rust-version = "1.98"
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# E (2026-10-06): the selected Vector runtime, see spec/selection 13.4.
+candle-core = { version = "=0.11.0", default-features = false }
+candle-nn = { version = "=0.11.0", default-features = false }
+candle-transformers = { version = "=0.11.0", default-features = false }
+tokenizers = { version = "=0.22.0", default-features = false, features = ["onig"] }
 thiserror = "=2.0.21"
 libc = "=0.2.189"
 landlock = "=0.4.7"

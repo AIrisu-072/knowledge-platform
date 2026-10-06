@@ -378,6 +378,18 @@ impl VectorRetrievalBatch {
     }
 }
 
+/// The Discovery executor's Vector port: one Source's candidates for the
+/// pinned P1 bundle `generation`. The host binds it to the actor's
+/// authorized scope of that Source and to the Source's registered model.
+pub trait VectorExecutionPort: Send + Sync {
+    fn retrieve<'a>(
+        &'a self,
+        generation: ProjectionGenerationKey,
+        text: &'a str,
+        window: usize,
+    ) -> BoxFuture<'a, VectorRetrievalBatch>;
+}
+
 /// The Vector façade over the trusted ports.
 pub struct VectorRetriever<'a> {
     pub provider: &'a dyn EmbeddingProvider,
@@ -523,6 +535,24 @@ impl VectorLifecycle<'_> {
         storage: VectorStorageKind,
         now: OffsetDateTime,
     ) -> Result<VectorBuildOutcome, SearchError> {
+        let scope_epoch = self
+            .generations
+            .scope_epoch(&input.authority_scope_key)
+            .await?;
+        self.build_at(input, previous, storage, now, scope_epoch)
+            .await
+    }
+
+    /// `build` against the scope epoch the caller read *before* it captured
+    /// `input`, so a purge in between makes the publication lose its CAS.
+    pub async fn build_at(
+        &self,
+        input: &VectorManifestInput,
+        previous: &[BoundEmbedding],
+        storage: VectorStorageKind,
+        now: OffsetDateTime,
+        scope_epoch: u64,
+    ) -> Result<VectorBuildOutcome, SearchError> {
         let spec = self.provider.spec();
         let model = spec
             .validate_and_id()
@@ -531,10 +561,6 @@ impl VectorLifecycle<'_> {
         if registered.validate_and_id().ok().as_ref() != Some(&model) {
             return Err(invalid("Vector model is not the registered one"));
         }
-        let scope_epoch = self
-            .generations
-            .scope_epoch(&input.authority_scope_key)
-            .await?;
         let nonindexed: BTreeSet<_> = input
             .nonindexed_retention_unit_ids
             .iter()
@@ -606,11 +632,19 @@ impl VectorLifecycle<'_> {
                 return Ok(VectorBuildOutcome::Rejected);
             }
         };
-        if !self
+        let published = match self
             .generations
             .publish_if_current(&manifest.0, scope_epoch)
-            .await?
+            .await
         {
+            Ok(published) => published,
+            Err(error) => {
+                // The unpublished stage never outlives a failed publication.
+                let _ = self.index.discard(&descriptor).await;
+                return Err(error);
+            }
+        };
+        if !published {
             self.index.discard(&descriptor).await?;
             return Ok(VectorBuildOutcome::LostCas);
         }

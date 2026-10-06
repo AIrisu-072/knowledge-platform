@@ -568,11 +568,18 @@ pub async fn validate_on(
 }
 
 /// P7-08: marks the Graph READY with the recomputed digest and counts, on the
-/// caller's connection and inside its READY transaction.
+/// caller's connection and inside its READY transaction. The target is
+/// re-locked through its build ref and recomputed; a report that is not the
+/// locked recomputation is refused.
 pub async fn settle_ready_on(
     connection: &mut PgConnection,
+    target: &GraphBuildRef,
     report: &GraphStageReport,
 ) -> Result<(), GraphError> {
+    let (locked, _, _) = validate_on(&mut *connection, target).await?;
+    if &locked != report {
+        return Err(GraphError::Integrity("READY report"));
+    }
     let count = |n: u64| i64::try_from(n).map_err(|_| GraphError::Integrity("count"));
     let updated = sqlx::query(
         "UPDATE search_graph.generation SET state='READY', graph_content_digest=$3, \

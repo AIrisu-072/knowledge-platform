@@ -214,10 +214,21 @@ async fn route(
 ) -> Response {
     let trace = Uuid::new_v4();
     let (parts, body) = request.into_parts();
-    // Reading the body counts against the same operation deadline.
-    let outcome = match tokio::time::timeout(state.timeout, async {
+    // Reading the body counts against the same operation deadline, and the
+    // backend is handed that one deadline rather than a later restart.
+    let deadline = Instant::now() + state.timeout;
+    let outcome = match tokio::time::timeout_at(deadline.into(), async {
         let bytes = bounded_body(&parts, body).await?;
-        pipeline(&state, operation, &parts, bytes, resource_id, trace).await
+        pipeline(
+            &state,
+            operation,
+            &parts,
+            bytes,
+            resource_id,
+            trace,
+            deadline,
+        )
+        .await
     })
     .await
     {
@@ -229,7 +240,9 @@ async fn route(
         // On the socket server the body owns a lease until the send completes.
         Ok((bytes, evaluation_closed)) => match parts.extensions.get::<ConnectionLeases>() {
             Some(leases) => leased_response(bytes, leases.open(evaluation_closed)),
-            None => success(bytes),
+            // Another transport has no send lease; the response still ends
+            // its connection so no disclosure outlives one exchange.
+            None => untracked_success(bytes),
         },
         Err(Failure(code, errors)) => problem(code, trace, Some(&state.challenge), &errors),
     }
@@ -319,6 +332,7 @@ async fn pipeline(
     body: Bytes,
     resource_id: Option<String>,
     trace: Uuid,
+    deadline: Instant,
 ) -> Result<(Vec<u8>, bool), Failure> {
     let token = bearer_token(&parts.headers).ok_or(ProblemCode::AuthenticationRequired)?;
     let handle = state
@@ -327,7 +341,6 @@ async fn pipeline(
         .await
         .map_err(|_| ProblemCode::IdentityUnavailable)?
         .ok_or(ProblemCode::AuthenticationRequired)?;
-    let deadline = Instant::now() + state.timeout;
     let backend = &state.backend;
     let context = backend.authenticate(&handle, deadline).await?;
     backend.authorize(&context, operation).await?;
@@ -413,12 +426,13 @@ async fn pipeline(
     Ok((bytes, evaluation_closed))
 }
 
-fn success(bytes: Vec<u8>) -> Response {
+fn untracked_success(bytes: Vec<u8>) -> Response {
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/json")
         .header(header::CACHE_CONTROL, PRIVATE_NO_STORE)
         .header(header::X_CONTENT_TYPE_OPTIONS, NO_SNIFF)
+        .header(header::CONNECTION, "close")
         .body(Body::from(bytes))
         .unwrap_or_else(|_| {
             let mut fallback = Response::new(Body::empty());

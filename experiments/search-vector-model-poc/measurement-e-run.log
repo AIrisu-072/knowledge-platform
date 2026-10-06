@@ -1,0 +1,83 @@
+seed=20260930; window=20; scales=[32, 256, 1024]; model=e5; S1 order checked from the planner
+embedded 16 / 1215
+embedded 176 / 1215
+embedded 336 / 1215
+embedded 496 / 1215
+embedded 656 / 1215
+embedded 816 / 1215
+embedded 976 / 1215
+embedded 1136 / 1215
+public passages=1215 queries=140 build_ms=169750
+calibrate tau=0.700 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.705 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.710 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.715 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.720 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.725 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.730 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.735 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.740 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.745 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.750 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.755 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.760 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.765 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.770 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.775 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.780 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.785 recall@10=1.0000 no_answer_fp@10=10.00 lexical_fp@10=1.65
+calibrate tau=0.790 recall@10=1.0000 no_answer_fp@10=9.85 lexical_fp@10=1.65
+calibrate tau=0.795 recall@10=1.0000 no_answer_fp@10=9.45 lexical_fp@10=1.65
+calibrate tau=0.800 recall@10=1.0000 no_answer_fp@10=9.35 lexical_fp@10=1.65
+calibrate tau=0.805 recall@10=1.0000 no_answer_fp@10=9.00 lexical_fp@10=1.65
+calibrate tau=0.810 recall@10=1.0000 no_answer_fp@10=8.60 lexical_fp@10=1.65
+calibrate tau=0.815 recall@10=1.0000 no_answer_fp@10=8.15 lexical_fp@10=1.65
+calibrate tau=0.820 recall@10=1.0000 no_answer_fp@10=7.80 lexical_fp@10=1.65
+calibrate tau=0.825 recall@10=1.0000 no_answer_fp@10=7.25 lexical_fp@10=1.65
+calibrate tau=0.830 recall@10=1.0000 no_answer_fp@10=6.95 lexical_fp@10=1.65
+calibrate tau=0.835 recall@10=1.0000 no_answer_fp@10=6.70 lexical_fp@10=1.65
+calibrate tau=0.840 recall@10=0.9833 no_answer_fp@10=6.30 lexical_fp@10=1.65
+calibrate tau=0.845 recall@10=0.9833 no_answer_fp@10=5.70 lexical_fp@10=1.65
+calibrate tau=0.850 recall@10=0.9667 no_answer_fp@10=5.50 lexical_fp@10=1.65
+calibrate tau=0.855 recall@10=0.9667 no_answer_fp@10=5.30 lexical_fp@10=1.65
+calibrate tau=0.860 recall@10=0.9000 no_answer_fp@10=4.75 lexical_fp@10=1.65
+calibrate tau=0.865 recall@10=0.8500 no_answer_fp@10=4.25 lexical_fp@10=1.65
+calibrate tau=0.870 recall@10=0.8250 no_answer_fp@10=4.05 lexical_fp@10=1.65
+calibrate tau=0.875 recall@10=0.8083 no_answer_fp@10=3.65 lexical_fp@10=1.65
+calibrate tau=0.880 recall@10=0.7583 no_answer_fp@10=3.35 lexical_fp@10=1.65
+calibrate tau=0.885 recall@10=0.6625 no_answer_fp@10=2.95 lexical_fp@10=1.65
+calibrate tau=0.890 recall@10=0.5292 no_answer_fp@10=2.65 lexical_fp@10=1.65
+calibrated tau=0.890
+public arm=D ndcg@10=0.5522
+public arm=L ndcg@10=0.0348
+public arm=LD ndcg@10=0.5523
+public arm=L_bigram ndcg@10=0.2486
+public arm=L_bigram+D ndcg@10=0.5601
+public arm=L_bm25 ndcg@10=0.2301
+G3 PASS ndcg_gain(LD-L)=0.5175 ci95=[0.4333,0.6025] sensitivity(bigram+D - bigram)=0.3114 ci95=[0.2347,0.3925]
+G4 PASS no_answer_fp@10 L=0.43 LD=1.15 public_query_embed_scan_p95_ms=24.06
+synthetic scale=32 arm=D ndcg@10=0.3340 recall@10=0.3125 visible_false_positives={"qaccess": 0, "qfalse": 0, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0}
+synthetic scale=32 arm=L ndcg@10=0.7497 recall@10=0.6250 visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0}
+synthetic scale=32 arm=LD ndcg@10=0.7497 recall@10=0.6250 visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0}
+synthetic scale=32 arm=LG ndcg@10=0.9706 recall@10=1.0000 visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0}
+synthetic scale=32 arm=LGD ndcg@10=0.9706 recall@10=1.0000 visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0}
+synthetic scale=32 units=33 query_embed_scan_p95_ms=17.15
+synthetic scale=256 arm=D ndcg@10=0.3340 recall@10=0.3125 visible_false_positives={"qaccess": 0, "qfalse": 0, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0}
+synthetic scale=256 arm=L ndcg@10=0.7497 recall@10=0.6250 visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0}
+synthetic scale=256 arm=LD ndcg@10=0.7497 recall@10=0.6250 visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0}
+synthetic scale=256 arm=LG ndcg@10=0.9706 recall@10=1.0000 visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0}
+synthetic scale=256 arm=LGD ndcg@10=0.9706 recall@10=1.0000 visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0}
+synthetic scale=256 units=257 query_embed_scan_p95_ms=18.44
+synthetic scale=1024 arm=D ndcg@10=0.3340 recall@10=0.3125 visible_false_positives={"qaccess": 0, "qfalse": 0, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0}
+synthetic scale=1024 arm=L ndcg@10=0.7497 recall@10=0.6250 visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0}
+synthetic scale=1024 arm=LD ndcg@10=0.7497 recall@10=0.6250 visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0}
+synthetic scale=1024 arm=LG ndcg@10=0.9706 recall@10=1.0000 visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0}
+synthetic scale=1024 arm=LGD ndcg@10=0.9706 recall@10=1.0000 visible_false_positives={"qaccess": 0, "qfalse": 1, "qnone": 0} unauthorized_disclosures={"q0": 0, "q1": 0, "q2": 0, "qaccess": 0, "qfalse": 0, "qnone": 0, "qpart": 0}
+synthetic scale=1024 units=1025 query_embed_scan_p95_ms=18.80
+G1 PASS (LGD >= LG - 0.01 at every scale)
+G2 PASS (LGD visible FP <= LG + 1 at every scale)
+G3 PASS
+G4 PASS
+G5 PASS (no unauthorized disclosure)
+G6 PASS (p95 18.80 ms at 1024 units)
+DECISION DEFAULT_ENABLED tau=0.890

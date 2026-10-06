@@ -266,6 +266,7 @@ impl SearchApiBackend for &'static Backend {
                     graph_resource_access: None,
                     remote: None,
                     access: corpus,
+                    vector: None,
                 },
                 assertions: corpus,
                 evidence: corpus,

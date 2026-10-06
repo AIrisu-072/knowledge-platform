@@ -16,8 +16,11 @@ use std::time::Duration;
 
 use durable::*;
 use outbox_delivery::{DeliveryConfig, DeliveryError, DeliveryPolicy};
+use search_application::indexing_service::IndexingOutcome;
 use search_runtime::full_guard::FullGuardTtl;
-use search_runtime::worker::{SearchWorkerConfig, SearchWorkerRunner, WorkerError, compose};
+use search_runtime::worker::{
+    SearchWorkerConfig, SearchWorkerRunner, WorkerError, compose, compose_rebuild,
+};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
@@ -178,4 +181,33 @@ async fn shutdown_stops_claiming_and_drains() {
             .await
             .unwrap();
     assert_eq!(claimed, None);
+}
+
+/// A2: the manual retry is a full rebuild outside the outbox. It has no
+/// attempt limit: it can run again and again, and each run converges on the
+/// current Document snapshot.
+#[tokio::test]
+async fn manual_rebuild_has_no_attempt_limit() {
+    let durable = Durable::start().await;
+    publish(&durable.pool, &durable.storage, "manual rebuild body").await;
+    let rebuild = || {
+        compose_rebuild(
+            durable.pool.clone(),
+            &durable.ledger,
+            durable.extractor(),
+            config(&durable, DeliveryPolicy::default()),
+        )
+        .unwrap()
+    };
+    let first = rebuild().rebuild().await.unwrap();
+    let IndexingOutcome::Published(_) = first else {
+        panic!("first rebuild publishes: {first:?}");
+    };
+    // More attempts than the automatic delivery limit, each one admitted.
+    for _ in 0..=DeliveryPolicy::default().max_attempts {
+        match rebuild().rebuild().await.unwrap() {
+            IndexingOutcome::Published(_) | IndexingOutcome::Unchanged(_) => {}
+            other => panic!("manual retry refused: {other:?}"),
+        }
+    }
 }

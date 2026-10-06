@@ -6,7 +6,9 @@
 //! disclosure gate; no core type is serialized directly.
 
 use search_application::api_cursor::CursorHandle;
-use search_application::discover_route::DiscoverInput;
+use search_application::discover_route::{
+    DiscoverGraphInput, DiscoverInput, MAX_GRAPH_HOPS, MAX_GRAPH_SEEDS, graph_token_ok,
+};
 use search_application::discovery_service::MatchedField;
 use search_application::public_projection::{
     Completeness, CompletenessReason, DiscoveryEvaluationView, PublicApplicability,
@@ -183,11 +185,24 @@ pub struct DiscoveryNeedDto {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct DiscoveryGraphDto {
+    seed_resource_ids: Vec<Uuid>,
+    relation_type: String,
+    from_role: String,
+    to_role: String,
+    #[serde(default)]
+    max_hops: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct DiscoveryInputDto {
     need: DiscoveryNeedDto,
     #[serde(default)]
     query: Option<String>,
     coverage: RequestCoverageDto,
+    #[serde(default)]
+    graph: Option<DiscoveryGraphDto>,
 }
 
 impl DiscoveryInputDto {
@@ -232,6 +247,41 @@ impl DiscoveryInputDto {
         if self.coverage == RequestCoverageDto::BodyRequired && self.query.is_none() {
             errors.push(field("/query", "REQUIRED_FIELD"));
         }
+        let graph = self.graph.map(|graph| {
+            let mut seeds = graph.seed_resource_ids.clone();
+            seeds.sort();
+            seeds.dedup();
+            if graph.seed_resource_ids.is_empty()
+                || graph.seed_resource_ids.len() > MAX_GRAPH_SEEDS
+                || seeds.len() != graph.seed_resource_ids.len()
+            {
+                errors.push(field("/graph/seedResourceIds", "OUT_OF_RANGE"));
+            }
+            for (pointer, value) in [
+                ("/graph/relationType", &graph.relation_type),
+                ("/graph/fromRole", &graph.from_role),
+                ("/graph/toRole", &graph.to_role),
+            ] {
+                if !graph_token_ok(value) {
+                    errors.push(field(pointer, "INVALID_FORMAT"));
+                }
+            }
+            let max_hops = graph.max_hops.unwrap_or(2) as usize;
+            if !(1..=MAX_GRAPH_HOPS).contains(&max_hops) {
+                errors.push(field("/graph/maxHops", "OUT_OF_RANGE"));
+            }
+            DiscoverGraphInput {
+                seed_resource_ids: graph
+                    .seed_resource_ids
+                    .into_iter()
+                    .map(ResourceId::from_uuid)
+                    .collect(),
+                relation_type: graph.relation_type,
+                from_role: graph.from_role,
+                to_role: graph.to_role,
+                max_hops,
+            }
+        });
         if !errors.is_empty() {
             return Err(errors);
         }
@@ -251,6 +301,7 @@ impl DiscoveryInputDto {
             business_timezone: need.business_timezone,
             query: self.query,
             coverage: self.coverage.into(),
+            graph,
         })
     }
 }

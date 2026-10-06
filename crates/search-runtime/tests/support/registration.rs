@@ -125,6 +125,59 @@ pub async fn document_with_revision(
     )
 }
 
+struct SearchableDocumentAdapter;
+
+impl DocumentAdapterCapabilityPort for SearchableDocumentAdapter {
+    fn connected_capabilities<'a>(
+        &'a self,
+        binding: &'a DocumentAdapterRef,
+    ) -> BoxFuture<'a, Option<ConnectedDocumentAdapterCapabilities>> {
+        Box::pin(async move {
+            Ok(Some(ConnectedDocumentAdapterCapabilities::new(
+                binding.clone(),
+                vec![ResourceKind::Knowledge],
+                vec![
+                    DiscoveryMode::LocalDirectory,
+                    DiscoveryMode::LocalContentSearch,
+                ],
+                vec![EnumerationSemantics::Complete],
+                vec![RetentionMode::PersistentResource],
+            )?))
+        })
+    }
+}
+
+/// A Document Source the API can search: directory and content search over
+/// Knowledge Resources, complete enumeration.
+pub async fn searchable_document(id: SourceId, tenant_name: &str) -> SourceRegistration {
+    let binding = DocumentAdapterRef::new("document-binding-a").unwrap();
+    let witness =
+        ConnectedDocumentAdapterWitness::from_connected_port(&SearchableDocumentAdapter, &binding)
+            .await
+            .unwrap()
+            .unwrap();
+    SourceRegistration::Document(
+        DocumentSourceRegistration::from_server_config(
+            ServerDocumentRegistrationConfig {
+                tenant: tenant(tenant_name),
+                source_id: id,
+                document_adapter_ref: binding,
+                allowed_resource_kinds: vec![ResourceKind::Knowledge],
+                supported_modes: vec![
+                    DiscoveryMode::LocalDirectory,
+                    DiscoveryMode::LocalContentSearch,
+                ],
+                enumeration_semantics: EnumerationSemantics::Complete,
+                retention_mode: RetentionMode::PersistentResource,
+                registration_revision: revision(1),
+                visibility_revision: visibility(1),
+            },
+            &witness,
+        )
+        .unwrap(),
+    )
+}
+
 pub async fn publish(
     host: &SyntheticHostRegistrationAuthority,
     namespace: RegistrationNamespace,

@@ -136,6 +136,7 @@ pub struct Durable {
     pub source_id: SourceId,
     pub registration: search_application::source_registration::SourceRegistration,
     pub activation: search_application::source_registration::RegistrationActivation,
+    pub host: Arc<SyntheticHostRegistrationAuthority>,
 }
 
 impl Drop for Durable {
@@ -147,6 +148,12 @@ impl Drop for Durable {
 
 impl Durable {
     pub async fn start() -> Self {
+        Self::start_with(false).await
+    }
+
+    /// `searchable`: the Source is registered for API search (content search
+    /// over Knowledge Resources) instead of the minimal directory Source.
+    pub async fn start_with(searchable: bool) -> Self {
         let (guard, pool, _) = super::support::postgres::postgres("durable_document_test").await;
         document_repository_postgres::migrate(&pool).await.unwrap();
         search_runtime::migrate(&pool).await.unwrap();
@@ -179,7 +186,11 @@ impl Durable {
             super::registration::publish(&host, RegistrationNamespace::Remote, 1, vec![]).await;
         ledger.reconcile(&remote).await.unwrap();
         let source_id = super::registration::source(7_950);
-        let document = super::registration::document(source_id, "tenant-a").await;
+        let document = if searchable {
+            super::registration::searchable_document(source_id, "tenant-a").await
+        } else {
+            super::registration::document(source_id, "tenant-a").await
+        };
         let desired = super::registration::publish(
             &host,
             RegistrationNamespace::Document,
@@ -191,6 +202,7 @@ impl Durable {
         Self {
             registration: document,
             activation,
+            host,
             _guard: guard,
             storage: FileSystemStorage::new(&files),
             pool,

@@ -140,6 +140,12 @@ pub(super) fn safe_name(name: &str) -> bool {
             .any(|segment| segment.is_empty() || segment == "." || segment == "..")
 }
 
+/// A member name, or a content-free directory entry (`docs/`) whose path is
+/// otherwise safe.
+fn safe_entry_name(name: &str) -> bool {
+    safe_name(name.strip_suffix('/').unwrap_or(name))
+}
+
 fn u16le(raw: &[u8], at: usize) -> ReadResult<usize> {
     let end = at.checked_add(2).ok_or_else(malformed_archive)?;
     let bytes = raw.get(at..end).ok_or_else(malformed_archive)?;
@@ -191,7 +197,7 @@ pub(super) fn zip_parts(
             .ok_or_else(malformed_archive)?;
         let name = std::str::from_utf8(raw.get(at + 46..name_end).ok_or_else(malformed_archive)?)
             .map_err(|_| structure())?;
-        if !safe_name(name) || !central_names.insert(name.to_owned()) {
+        if !safe_entry_name(name) || !central_names.insert(name.to_owned()) {
             return Err(structure());
         }
         at = at
@@ -213,7 +219,10 @@ pub(super) fn zip_parts(
         if file.encrypted() {
             return Err(unsupported(CoverageReason::Encrypted));
         }
-        if !safe_name(&name) || !names.insert(name) {
+        if !safe_entry_name(&name) || (name.ends_with('/') && file.size() != 0) {
+            return Err(structure());
+        }
+        if !names.insert(name) {
             return Err(structure());
         }
         if file
@@ -253,6 +262,9 @@ pub(super) fn zip_parts(
     for index in 0..zip.len() {
         let file = zip.by_index(index).map_err(|_| malformed_archive())?;
         let name = file.name().to_owned();
+        if name.ends_with('/') {
+            continue;
+        }
         let expected = file.size();
         let mut bytes = Vec::new();
         file.take(expected.saturating_add(1))

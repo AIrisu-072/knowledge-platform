@@ -13,6 +13,7 @@ use search_application::remote::{
     OpaqueCursor, RemoteOperationKind, RemotePage, RemoteResponseInput, RemoteResponseStatus,
     UntrustedRemoteHit,
 };
+use search_application::remote_evidence::SourceStance;
 use search_application::remote_observation::SnapshotExtent;
 use search_application::remote_registration::RemoteSourceRegistration;
 use search_application::retrieval::{LiveInput, OpaqueNativeId, RemoteQueryInput};
@@ -29,6 +30,8 @@ pub enum RemoteProtocolError {
     DepthExceeded,
     LimitExceeded,
     ScopeMismatch,
+    /// A planned request input this protocol cannot carry faithfully.
+    Unsupported,
 }
 
 /// The provider's snapshot claim, checked for shape only. The application's
@@ -62,6 +65,8 @@ pub struct ProvenanceRecord {
     pub lineage: String,
     pub predicate: String,
     pub citations: Vec<String>,
+    /// The record's own stance toward the Claim; absent means primary.
+    pub stance: SourceStance,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,6 +149,8 @@ struct WireProvenance {
     predicate: String,
     #[serde(default)]
     citations: Vec<String>,
+    #[serde(default)]
+    stance: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -163,35 +170,54 @@ struct WireContent {
 struct WireAuthorization {
     tenant: String,
     source: String,
+    /// The decision is tied to the request by echoing its principal and item.
+    principal: String,
+    #[serde(default)]
+    id: Option<String>,
     decision: String,
     acl_revision: u64,
     #[serde(default)]
     permission: Option<String>,
 }
 
-pub fn search_body(input: &RemoteQueryInput) -> Vec<u8> {
-    let facets: Vec<Value> = input
+/// The planned facets, or `Unsupported` when one cannot be encoded: a
+/// weaker filter than planned is never sent.
+fn facets(input: &RemoteQueryInput) -> Result<Vec<Value>, RemoteProtocolError> {
+    input
         .facets()
         .iter()
-        .map(|facet| json!({"name": facet.facet, "value": typed_json(&facet.expected)}))
-        .collect();
-    json!({"query": input.text(), "limit": input.window(), "facets": facets})
-        .to_string()
-        .into_bytes()
+        .map(|facet| {
+            typed_json(&facet.expected)
+                .map(|value| json!({"name": facet.facet, "value": value}))
+                .ok_or(RemoteProtocolError::Unsupported)
+        })
+        .collect()
+}
+
+pub fn search_body(input: &RemoteQueryInput) -> Result<Vec<u8>, RemoteProtocolError> {
+    Ok(
+        json!({"query": input.text(), "limit": input.window(), "facets": facets(input)?})
+            .to_string()
+            .into_bytes(),
+    )
 }
 
 pub fn lookup_body(native_id: &OpaqueNativeId) -> Vec<u8> {
     json!({"id": native_id.as_str()}).to_string().into_bytes()
 }
 
-pub fn live_body(input: &LiveInput) -> Vec<u8> {
-    match (input.query_input(), input.native_id()) {
-        (Some(query), _) => json!({"query": query.text(), "limit": query.window()}),
+pub fn live_body(input: &LiveInput) -> Result<Vec<u8>, RemoteProtocolError> {
+    Ok(match (input.query_input(), input.native_id()) {
+        (Some(query), _) => json!({
+            "query": query.text(),
+            "limit": query.window(),
+            "facets": facets(query)?,
+        }),
         (None, Some(native_id)) => json!({"id": native_id.as_str()}),
         (None, None) => json!({}),
     }
     .to_string()
-    .into_bytes()
+    .into_bytes())
 }
 
 pub fn authorize_body(principal: &str, native_id: Option<&OpaqueNativeId>) -> Vec<u8> {
@@ -200,13 +226,18 @@ pub fn authorize_body(principal: &str, native_id: Option<&OpaqueNativeId>) -> Ve
         .into_bytes()
 }
 
-fn typed_json(value: &TypedValue) -> Value {
+fn typed_json(value: &TypedValue) -> Option<Value> {
     match value {
-        TypedValue::Bool(value) => json!(value),
-        TypedValue::String(value) | TypedValue::ConceptRef(value) => json!(value),
-        TypedValue::Integer(value) => i64::try_from(*value).map_or(Value::Null, |v| json!(v)),
-        _ => Value::Null,
+        TypedValue::Bool(value) => Some(json!(value)),
+        TypedValue::String(value) | TypedValue::ConceptRef(value) => Some(json!(value)),
+        TypedValue::Integer(value) => i64::try_from(*value).ok().map(|v| json!(v)),
+        _ => None,
     }
+}
+
+/// Non-empty, at most `max` bytes, no control characters.
+fn bounded(value: &str, max: usize) -> bool {
+    !value.is_empty() && value.len() <= max && !value.chars().any(char::is_control)
 }
 
 /// Nesting depth outside strings, without building a value first.
@@ -336,8 +367,9 @@ pub fn decode_response(
         .into_iter()
         .map(|id| native(id, registration))
         .collect::<Result<Vec<_>, _>>()?;
+    // Completeness is never inferred from a missing status.
     let status = match wire.status.as_deref() {
-        None | Some("ok") => RemoteResponseStatus::Success,
+        Some("ok") => RemoteResponseStatus::Success,
         Some("partial") => RemoteResponseStatus::Partial,
         _ => return Err(RemoteProtocolError::Malformed),
     };
@@ -353,6 +385,19 @@ pub fn decode_response(
     };
     let mut hits = Vec::with_capacity(wire.hits.len());
     for hit in wire.hits {
+        if [&hit.version, &hit.digest]
+            .into_iter()
+            .flatten()
+            .any(|value| !bounded(value, 512))
+            || hit
+                .title
+                .as_deref()
+                .is_some_and(|title| !bounded(title, 1024))
+            || hit.fields.len() > 64
+            || hit.fields.iter().any(|field| !bounded(&field.name, 128))
+        {
+            return Err(RemoteProtocolError::Malformed);
+        }
         let id = hit.id.map(|id| native(id, registration)).transpose()?;
         let fields = hit
             .fields
@@ -386,9 +431,6 @@ pub fn decode_content(
 ) -> Result<DecodedContent, RemoteProtocolError> {
     let wire: WireContent = parse(bytes, registration)?;
     check_scope(&wire.tenant, &wire.source, registration)?;
-    let bounded = |value: &str, max: usize| {
-        !value.is_empty() && value.len() <= max && !value.chars().any(char::is_control)
-    };
     if wire.provenance.len() > 64
         || [&wire.version, &wire.digest]
             .into_iter()
@@ -410,6 +452,12 @@ pub fn decode_content(
         {
             return Err(RemoteProtocolError::Malformed);
         }
+        let stance = match record.stance.as_deref() {
+            None | Some("primary") => SourceStance::Primary,
+            Some("corroborating") => SourceStance::Corroborating,
+            Some("contradicting") => SourceStance::Contradicting,
+            Some(_) => return Err(RemoteProtocolError::Malformed),
+        };
         provenance.push(ProvenanceRecord {
             evidence_ref: record.evidence_ref,
             direct: record.direct,
@@ -417,6 +465,7 @@ pub fn decode_content(
             lineage: record.lineage,
             predicate: record.predicate,
             citations: record.citations,
+            stance,
         });
     }
     Ok(DecodedContent {
@@ -428,13 +477,19 @@ pub fn decode_content(
 }
 
 /// Decodes `/authorize`. The ACL revision must be the one this Source scope
-/// was authorized under; anything else is unknown, never allowed.
+/// was authorized under; anything else is unknown, never allowed. The answer
+/// must echo the asked principal and item, so it cannot be another request's.
 pub fn decode_authorize(
     bytes: &[u8],
     registration: &RemoteSourceRegistration,
+    principal: &str,
+    native_id: Option<&OpaqueNativeId>,
 ) -> Result<DecodedAuthorization, RemoteProtocolError> {
     let wire: WireAuthorization = parse(bytes, registration)?;
     check_scope(&wire.tenant, &wire.source, registration)?;
+    if wire.principal != principal || wire.id.as_deref() != native_id.map(OpaqueNativeId::as_str) {
+        return Err(RemoteProtocolError::ScopeMismatch);
+    }
     let decision = match (
         wire.decision.as_str(),
         wire.acl_revision == registration.visibility_revision().get(),

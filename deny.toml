@@ -3,6 +3,13 @@ all-features = false
 
 [advisories]
 yanked = "deny"
+# E (2026-10-06): the selected Vector runtime (Candle CPU gemm/pulp and
+# tokenizers) needs the archived `paste` proc-macro at build time. The
+# advisory is informational (unmaintained, no known vulnerability); see
+# spec/selection/library-tool-selection-v0.md 13.4.
+ignore = [
+  { id = "RUSTSEC-2024-0436", reason = "paste is an unmaintained build-time macro of the selected Candle/tokenizers runtime; no known vulnerability" },
+]
 
 [bans]
 multiple-versions = "warn"

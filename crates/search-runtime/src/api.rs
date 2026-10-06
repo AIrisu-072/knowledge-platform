@@ -84,6 +84,8 @@ pub struct ActorPorts {
     /// Graph needs both the retriever and current access to every participant.
     pub hypergraph: Option<Arc<dyn HyperGraphRetrieverPort>>,
     pub graph_resource_access: Option<Arc<dyn CurrentAccessEvaluatorPort>>,
+    /// E: the actor's Vector retrieval, when the Source has Vector.
+    pub vector: Option<Arc<dyn crate::vector_runtime::ActorVectorPort>>,
     pub access: Arc<dyn CurrentCandidateAccessEvaluatorPort>,
     pub resource_locator: Arc<dyn ResourceLocatorPort>,
     pub resource_reader: Arc<dyn CurrentResourceReadPort>,
@@ -166,6 +168,8 @@ pub enum StartupError {
     InvalidDisclosureTtl,
     /// A namespace's complete desired set or the durable ledger refused.
     Registration,
+    /// The host DiscoveryConfig fails the rules every request would apply.
+    InvalidDiscoveryConfig,
 }
 
 pub struct SearchApiRuntime {
@@ -229,6 +233,9 @@ pub async fn build_search_api_runtime(
     }
     if host_config.disclosure_ttl.is_zero() || host_config.disclosure_ttl > MAX_DISCLOSURE_TTL {
         return Err(StartupError::InvalidDisclosureTtl);
+    }
+    if host_config.config.validate().is_err() {
+        return Err(StartupError::InvalidDiscoveryConfig);
     }
     let claims = host_config
         .claims
@@ -426,6 +433,7 @@ impl SearchApiBackend for RuntimeBackend {
                         graph_resource_access: None,
                         remote: None,
                         access: &*ports.access,
+                        vector: None,
                     },
                     selectors: &NoSelectors,
                     assertions: &*ports.assertions,
@@ -481,8 +489,26 @@ impl SearchApiBackend for RuntimeBackend {
                 ));
             }
             let sources = InMemorySourceRegistry::default();
+            let scoped_vector = ports.vector.as_deref().map(|port| ScopedVector {
+                port,
+                scopes: snapshot
+                    .entries()
+                    .iter()
+                    .map(|entry| (entry.scope().source_id(), entry.scope().clone()))
+                    .collect(),
+            });
+            let mut config = self.config.clone();
+            if let (Some(_), Some(query)) = (&scoped_vector, &input.query) {
+                config.retriever_support.vector = true;
+                config.retrieval_inputs.vector_query_available = true;
+                config.retrieval_inputs.vector_query = Some(query.clone());
+                config.retrieval_inputs.max_initial_retrievers_per_source = config
+                    .retrieval_inputs
+                    .max_initial_retrievers_per_source
+                    .max(5);
+            }
             DiscoverRouteService::new(DiscoverRouteWiring {
-                config: self.config.clone(),
+                config,
                 sources: &sources,
                 generations: &*ports.generations,
                 concepts: &*ports.concepts,
@@ -494,6 +520,9 @@ impl SearchApiBackend for RuntimeBackend {
                     graph_resource_access: ports.graph_resource_access.as_deref(),
                     remote: None,
                     access: &access,
+                    vector: scoped_vector.as_ref().map(|vector| {
+                        vector as &dyn search_application::vector::VectorExecutionPort
+                    }),
                 },
                 assertions: &*ports.assertions,
                 evidence: &*ports.evidence,
@@ -639,6 +668,31 @@ impl CurrentDisclosureAccessPort for RuntimeBackend {
                 }
             }
             Ok(())
+        })
+    }
+}
+
+/// The actor's Vector port bound to its authorized scope of each Source.
+struct ScopedVector<'a> {
+    port: &'a dyn crate::vector_runtime::ActorVectorPort,
+    scopes: std::collections::BTreeMap<
+        search_application::search_core::id::SourceId,
+        search_application::scoped::AuthorizedSourceScope,
+    >,
+}
+
+impl search_application::vector::VectorExecutionPort for ScopedVector<'_> {
+    fn retrieve<'a>(
+        &'a self,
+        generation: search_application::search_core::projection::ProjectionGenerationKey,
+        text: &'a str,
+        window: usize,
+    ) -> BoxFuture<'a, search_application::vector::VectorRetrievalBatch> {
+        Box::pin(async move {
+            let scope = self.scopes.get(&generation.source_id).ok_or_else(|| {
+                SearchError::SourceUnavailable("vector scope is not visible".into())
+            })?;
+            self.port.retrieve(scope, generation, text, window).await
         })
     }
 }

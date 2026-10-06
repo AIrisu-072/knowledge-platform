@@ -50,6 +50,16 @@ use crate::transport::{GuardedHttpTransport, RegisteredPath, TransportError};
 /// Evaluations remembered at once for request budgets and item identities.
 const TRACKED_EVALUATIONS: usize = 256;
 
+/// `/authorize` calls per registered hit within one evaluation.
+const AUTHORIZATIONS_PER_HIT: usize = 4;
+
+/// The per-evaluation budget a request counts against.
+#[derive(Clone, Copy)]
+enum Budget {
+    Request,
+    Authorize,
+}
+
 /// The protocol verifier for one decoded response: the provider's snapshot
 /// token, extent and inventory, observed now. The application decides what
 /// they prove.
@@ -90,6 +100,7 @@ fn reason(error: TransportError) -> RemoteUnknownReason {
 struct Evaluation {
     context: TrustedRemoteContext,
     requests: usize,
+    authorizations: usize,
     natives: BTreeMap<ResourceId, OpaqueNativeId>,
 }
 
@@ -114,6 +125,11 @@ impl<'a> HttpRemoteSourceAdapter<'a> {
         authority: &'a dyn AccessContextAuthorityPort,
         visibility: &'a dyn CurrentSourceVisibilityPort,
     ) -> Result<Self, SearchError> {
+        if transport.endpoint() != registration.endpoint() {
+            return Err(SearchError::InvalidRequest(
+                "transport was built for another endpoint".into(),
+            ));
+        }
         let limits = transport.limits();
         let registered = registration.limits();
         if limits.max_request_bytes > registered.max_request_bytes
@@ -157,33 +173,44 @@ impl<'a> HttpRemoteSourceAdapter<'a> {
         let entry = evaluations.entry(key).or_insert_with(|| Evaluation {
             context: context.clone(),
             requests: 0,
+            authorizations: 0,
             natives: BTreeMap::new(),
         });
         (entry.context == *context).then(|| change(entry))
     }
 
-    /// One request; list/content requests count against the evaluation's
-    /// page/request budget.
+    /// One request. List/content requests count against the evaluation's
+    /// page/request budget; `/authorize` against its own, scaled to the
+    /// registration's hit bound (each item is asked a few times at most:
+    /// evaluation, provenance, final gate).
     async fn call(
         &self,
         context: &TrustedRemoteContext,
         path: RegisteredPath,
         body: Vec<u8>,
         deadline: Instant,
-        budgeted: bool,
+        budget: Budget,
     ) -> Result<Vec<u8>, RemoteUnknownReason> {
-        if budgeted {
-            let limit = self.registration.limits().max_pages_or_requests;
-            let admitted = self
-                .with_evaluation(context, |evaluation| {
-                    let admitted = evaluation.requests < limit;
-                    evaluation.requests += usize::from(admitted);
-                    admitted
-                })
-                .unwrap_or(false);
-            if !admitted {
-                return Err(RemoteUnknownReason::Unavailable);
-            }
+        let limits = self.registration.limits();
+        let admitted = self
+            .with_evaluation(context, |evaluation| {
+                let (used, limit) = match budget {
+                    Budget::Request => (&mut evaluation.requests, limits.max_pages_or_requests),
+                    Budget::Authorize => (
+                        &mut evaluation.authorizations,
+                        limits
+                            .max_hits
+                            .saturating_mul(AUTHORIZATIONS_PER_HIT)
+                            .saturating_add(AUTHORIZATIONS_PER_HIT),
+                    ),
+                };
+                let admitted = *used < limit;
+                *used += usize::from(admitted);
+                admitted
+            })
+            .unwrap_or(false);
+        if !admitted {
+            return Err(RemoteUnknownReason::Unavailable);
         }
         let response = self
             .transport
@@ -217,13 +244,22 @@ impl<'a> HttpRemoteSourceAdapter<'a> {
                 RegisteredPath::catalog(page.or(cursor.as_ref()).map(OpaqueCursor::as_str)),
                 Vec::new(),
             ),
-            RemoteOperation::Query { input } => (RegisteredPath::search(), search_body(input)),
+            RemoteOperation::Query { input } => match search_body(input) {
+                Ok(body) => (RegisteredPath::search(), body),
+                Err(_) => return Ok(unknown(RemoteUnknownReason::Unsupported)),
+            },
             RemoteOperation::Lookup { native_id } => {
                 (RegisteredPath::lookup(), lookup_body(native_id))
             }
-            RemoteOperation::Live { input } => (RegisteredPath::live(), live_body(input)),
+            RemoteOperation::Live { input } => match live_body(input) {
+                Ok(body) => (RegisteredPath::live(), body),
+                Err(_) => return Ok(unknown(RemoteUnknownReason::Unsupported)),
+            },
         };
-        let bytes = match self.call(context, path, body, deadline, true).await {
+        let bytes = match self
+            .call(context, path, body, deadline, Budget::Request)
+            .await
+        {
             Ok(bytes) => bytes,
             Err(reason) => return Ok(unknown(reason)),
         };
@@ -284,6 +320,8 @@ impl<'a> HttpRemoteSourceAdapter<'a> {
                 "a sweep starts from an unpaged enumeration".into(),
             ));
         }
+        // The same batch rules as execute_batch: planned under this context.
+        validate_remote_batch(context, std::slice::from_ref(action))?;
         let deadline =
             Instant::now() + Duration::from_millis(self.registration.limits().evaluation_millis);
         let mut cursor: Option<OpaqueCursor> = None;
@@ -323,7 +361,7 @@ impl<'a> HttpRemoteSourceAdapter<'a> {
                 RegisteredPath::content(native_id),
                 Vec::new(),
                 self.call_deadline(),
-                true,
+                Budget::Request,
             )
             .await?;
         let decoded = decode_content(&bytes, &self.registration);
@@ -340,19 +378,19 @@ impl<'a> HttpRemoteSourceAdapter<'a> {
         context: &TrustedRemoteContext,
         target: Option<&RemoteIdentity>,
     ) -> Result<DecodedAuthorization, RemoteUnknownReason> {
+        let principal = context.binding().actor().principal().as_str();
+        let native_id = target.map(RemoteIdentity::native_id);
         let bytes = self
             .call(
                 context,
                 RegisteredPath::authorize(),
-                authorize_body(
-                    context.binding().actor().principal().as_str(),
-                    target.map(RemoteIdentity::native_id),
-                ),
+                authorize_body(principal, native_id),
                 self.call_deadline(),
-                false,
+                Budget::Authorize,
             )
             .await?;
-        decode_authorize(&bytes, &self.registration).map_err(|_| RemoteUnknownReason::Malformed)
+        decode_authorize(&bytes, &self.registration, principal, native_id)
+            .map_err(|_| RemoteUnknownReason::Malformed)
     }
 
     /// The context of the evaluation whose binding issued `access_context`
@@ -475,6 +513,12 @@ impl RemoteSourcePort for HttpRemoteSourceAdapter<'_> {
                 ));
             }
             let native_id = target.identity().native_id();
+            // The body is fetched only while the actor may read the item now.
+            match self.authorize(context, Some(target.identity())).await {
+                Ok(authorization) if authorization.decision == AccessDecision::Allowed => {}
+                Ok(_) => return Ok(RemoteReadOutcome::Unknown(RemoteUnknownReason::Denied)),
+                Err(reason) => return Ok(RemoteReadOutcome::Unknown(reason)),
+            }
             let content = match self.content(context, native_id.as_str()).await {
                 Ok(content) => content,
                 Err(reason) => return Ok(RemoteReadOutcome::Unknown(reason)),
@@ -579,6 +623,7 @@ impl RemoteProvenanceLookupPort for HttpRemoteSourceAdapter<'_> {
                     lineage_label: record.lineage,
                     predicate: record.predicate,
                     citation_chain: record.citations,
+                    stance: record.stance,
                 }))
         })
     }

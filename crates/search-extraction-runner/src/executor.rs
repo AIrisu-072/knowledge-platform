@@ -23,6 +23,7 @@ use sha2::{Digest, Sha256};
 #[derive(Debug)]
 pub struct SearchRunnerConfig {
     worker_executable: PathBuf,
+    worker_sha256: Option<[u8; 32]>,
     pdfium_runtime_dir: Option<PathBuf>,
     wall_timeout: Duration,
 }
@@ -31,9 +32,16 @@ impl SearchRunnerConfig {
     pub fn new(worker_executable: impl Into<PathBuf>) -> Self {
         Self {
             worker_executable: worker_executable.into(),
+            worker_sha256: None,
             pdfium_runtime_dir: None,
             wall_timeout: Duration::from_secs(10),
         }
+    }
+    /// Every run re-hashes the worker executable against this pin, so the
+    /// parser build stamped into Unit provenance is the one that ran.
+    pub fn with_worker_sha256(mut self, pin: [u8; 32]) -> Self {
+        self.worker_sha256 = Some(pin);
+        self
     }
     pub fn with_pdfium_runtime_dir(mut self, directory: impl Into<PathBuf>) -> Self {
         self.pdfium_runtime_dir = Some(directory.into());
@@ -168,6 +176,13 @@ impl SearchExtractionRunner {
             return Err(ExtractionError::Integrity("raw binding"));
         }
         verify_native_pin(profile, self.config.pdfium_runtime_dir.as_deref())?;
+        if let Some(pin) = self.config.worker_sha256
+            && executable_sha256(&self.config.worker_executable)? != pin
+        {
+            return Err(ExtractionError::Configuration(
+                "worker executable pin mismatch",
+            ));
+        }
         let wire = encode_request(&request)?;
         let output = self
             .process
@@ -268,6 +283,30 @@ fn verify_native_pin(
         return Err(ExtractionError::Configuration("PDFium native pin mismatch"));
     }
     Ok(())
+}
+
+/// SHA-256 of a worker executable, bounded like the native runtime.
+pub fn executable_sha256(path: &Path) -> Result<[u8; 32], ExtractionError> {
+    let mut file =
+        File::open(path).map_err(|_| ExtractionError::Configuration("worker unavailable"))?;
+    if !file
+        .metadata()
+        .is_ok_and(|metadata| metadata.is_file() && metadata.len() <= 268_435_456)
+    {
+        return Err(ExtractionError::Configuration("worker executable size"));
+    }
+    let mut hash = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let count = file
+            .read(&mut buffer)
+            .map_err(|_| ExtractionError::Configuration("worker unreadable"))?;
+        if count == 0 {
+            break;
+        }
+        hash.update(&buffer[..count]);
+    }
+    Ok(hash.finalize().into())
 }
 
 fn map_sandbox_error(error: SandboxRunError) -> ExtractionError {

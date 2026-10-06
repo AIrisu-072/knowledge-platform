@@ -669,7 +669,44 @@ components:
         query: *id003
         coverage:
           $ref: '#/components/schemas/RequestCoverage'
+        graph:
+          $ref: '#/components/schemas/DiscoveryGraph'
       description: No actor, tenant, selector, routing, provider URL, or access context.
+    DiscoveryGraph:
+      type: object
+      additionalProperties: false
+      required:
+      - seedResourceIds
+      - relationType
+      - fromRole
+      - toRole
+      properties:
+        seedResourceIds:
+          type: array
+          minItems: 1
+          maxItems: 8
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/CanonicalId'
+        relationType:
+          $ref: '#/components/schemas/GraphToken'
+        fromRole:
+          $ref: '#/components/schemas/GraphToken'
+        toRole:
+          $ref: '#/components/schemas/GraphToken'
+        maxHops:
+          type: integer
+          minimum: 1
+          maximum: 3
+          default: 2
+      description: Seed Resources and one relation path. The server adds the namespace, the
+        actor's access context, the evaluation's temporal context and fixed traversal budgets;
+        every participant of a traversed relation must be currently readable by the actor.
+    GraphToken:
+      type: string
+      minLength: 1
+      maxLength: 64
+      pattern: ^[a-z][a-z0-9_.-]{0,63}$
     SearchCoverage:
       type: object
       additionalProperties: false
