@@ -171,7 +171,9 @@ pub(crate) struct GenerationIndex {
     pub fields: LexicalFields,
     pub documents: BTreeMap<String, DocumentMetadata>,
     pub units: Option<UnitIndex>,
-    /// The tokenizer of this generation's fields.
+    /// The tokenizer of this generation's fields (read when a fault rebuilds
+    /// its Unit index).
+    #[cfg_attr(not(feature = "fault-injection"), allow(dead_code))]
     pub tokenizer: &'static str,
 }
 
