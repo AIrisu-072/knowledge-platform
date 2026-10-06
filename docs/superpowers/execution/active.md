@@ -8,6 +8,25 @@
 
 ---
 
+## 2026-10-05 22:47 UTC — 選択した親への子フォルダー作成
+
+- PR78統合main `09f79a26` から、既存create APIとRoot作成の固定操作storeを選択済み非root親へ接続する。[状況](document-selected-folder-create-status.md)と[小計画](../plans/2026-10-05-document-selected-folder-create.md)を今回の再開先とする
+- 選択行を載せた親の既取得ページ数内を先頭からfresh readし、対象の現在行と自身のcapabilityを照合する。直URL・未発見・移動・読取失敗は再選択へ止め、認可/revisionを推測しない
+- Rootと共有する未解決要求、別navigation・遅延read・固定再送をTDDで確認し、既存201件受入へ選択親作成/HTTP再起動確認だけを追加する。改名・新backend・Search・新検証基盤は含めない
+- PR78はhead `00c7bb5` の全適用CI/実受入/cleanup/artifact0を確認してmerge済み。main push CI `37384154333` も全13 jobs・実受入・cleanup・公開artifact0成功。23:13 UTC追補：今回sliceのsource `5286093a` は全GUI589/35 suites・型/build・runtime純粋26・collection Organization2+2/Document18+5成功。次は独立レビューと日本語Draft/同一head hostedであり、実受入は未取得。以下は各時点の履歴
+- 23:35 UTC追補：独立レビューの確定拒否後の再選択回復欠陥を `31b53ce6` で限定補正し、全GUI597/35 suites・型/build成功。Root手順も元要求の再表示を明示した。次は限定再レビューから修正後treeのDraft/hostedへ進む
+
+---
+
+## 2026-10-05 15:57 UTC — フォルダー一覧の続き表示
+
+- PR76統合main `ce8ed4f1` から、既存children cursor APIを「さらに表示」へ接続する。[状況](document-folder-pagination-status.md)と[小計画](../plans/2026-10-05-document-folder-pagination.md)を今回の再開先とする
+- 各親の先頭200件と続き、選択・表示保持、読取エラー、再読取をTDDで確認する。capability用queryとページ列のcacheを混ぜず、新backend・認可推測を追加しない
+- 16:23 UTC追補: source `6913e43d` はDOM15/API4を含む全GUI537件/33 suites、型/build、runtime純粋24、collection Organization2+2/Document18+5成功。既存Root caseへ201子の表示・再起動確認だけを加え、Work本文/helperを保持した。次は独立レビューと日本語Draft公開、同一head hostedである
+- 実browser/201件準備の所要時間は未確認で、120秒/画像off/retries0を緩めない。新検証基盤、Search作業、実サーバー反映は行わない。以下は各時点の履歴
+
+---
+
 ## 2026-10-05 12:12 UTC — System Root直下のフォルダー作成GUI
 
 - PR75統合main `495dedb39` を基点に、既存root read/create APIだけを通常フォルダー欄へ接続する。[状況](document-root-folder-create-status.md)と[小計画](../plans/2026-10-05-document-root-folder-create.md)を今回の再開先とする
