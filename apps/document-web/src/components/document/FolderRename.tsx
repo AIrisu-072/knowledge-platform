@@ -4,6 +4,7 @@ import { Dialog, Heading, Modal } from 'react-aria-components';
 import { documentApi, type Folder, type FolderDetail } from '../../application/document-workspace';
 import { folderName, readSelectedFolder, rootFolderOperations, type SelectedFolderContext } from '../../application/document-root-folder';
 import { canRenameFolder, folderRenameOperations, renameFolderValidation, renameRevisionError, sendFolderRenameOperation, type FolderRenameOperation } from '../../application/document-folder-rename';
+import { folderMoveOperations } from '../../application/document-folder-move';
 import { metadataReason } from '../../application/document-metadata';
 import { createOperationId } from '../../application/operation-id';
 import { mapApiProblem, problemFromUnknown } from '../../application/problem-mapping';
@@ -24,6 +25,8 @@ export function FolderRename({ root, selected, contextKey }: {
   const createStore = rootFolderOperations(client);
   const operation = useSyncExternalStore(store.subscribe, store.get);
   const create = useSyncExternalStore(createStore.subscribe, createStore.get);
+  const moveStore = folderMoveOperations(client);
+  const move = useSyncExternalStore(moveStore.subscribe, moveStore.get);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [reason, setReason] = useState('');
@@ -43,7 +46,10 @@ export function FolderRename({ root, selected, contextKey }: {
   useEffect(() => () => { generation.current += 1; }, []);
   const pending = operation?.status === 'pending';
   const unknown = operation?.status === 'unknown';
-  const createUnresolved = create?.status === 'pending' || create?.status === 'unknown';
+  const createUnresolved = [create, move].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const otherUnresolvedNow = () => [createStore.get(), moveStore.get()].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const otherBlocked = move?.status === 'pending' || move?.status === 'unknown'
+    ? '移動結果が未確定です。保持されている移動操作の結果を先に確認してください。' : createBlocked;
   const selectedDetail = selected?.folder.capabilities ? { ...selected.folder, parentFolderId: selected.context.sourceParentId, capabilities: selected.folder.capabilities } : undefined;
   const reselectRequired = Boolean(selected && selected.context === blockedSelection.current);
   const entryAllowed = Boolean(selected?.readReady && !reselectRequired && canRenameFolder(selectedDetail) && !createUnresolved);
@@ -70,7 +76,7 @@ export function FolderRename({ root, selected, contextKey }: {
   }
   async function show(button: HTMLButtonElement | null) {
     const saved = store.get();
-    if (!saved && (!entryAllowed || createStore.get()?.status === 'pending' || createStore.get()?.status === 'unknown')) return;
+    if (!saved && (!entryAllowed || otherUnresolvedNow())) return;
     const opening = ++generation.current; const key = contextKey;
     returnFocus.current = button; setOpen(true); setLocalError(''); setStale(undefined); setBaseline(undefined); setBlocked(false);
     if (saved) { refreshing.current = false; setReading(false); return; }
@@ -78,6 +84,7 @@ export function FolderRename({ root, selected, contextKey }: {
     try {
       const current = await readSelectedFolder(readContext, documentApi.listFolderChildren);
       if (!isCurrent(opening, key) || store.get()) return;
+      if (otherUnresolvedNow()) { setLocalError(otherBlocked); return; }
       if (!canRenameFolder(current)) { setLocalError(unavailable(current)); blockTarget(readContext); return; }
       setBaseline(current); setName(current.name); setContext({ ...readContext, name: current.name });
     } catch {
@@ -102,14 +109,14 @@ export function FolderRename({ root, selected, contextKey }: {
       if (saved.status === 'unknown') await sendFolderRenameOperation({ store, ...saved, send: documentApi.renameFolder, invalidate });
       return;
     }
-    if (!context || !baseline || !allowed || validation || revisionError || refreshing.current) return;
+    if (!context || !baseline || !allowed || validation || revisionError || refreshing.current || otherUnresolvedNow()) return;
     const opening = generation.current; const key = contextKey; const readContext = context;
     refreshing.current = true; setReading(true); setLocalError('');
     try {
       const current = await readSelectedFolder(readContext, documentApi.listFolderChildren);
       if (!isCurrent(opening, key) || store.get()) return;
       // The other operation can start while this fresh read is awaiting its response.
-      if (createStore.get()?.status === 'pending' || createStore.get()?.status === 'unknown') { setLocalError(createBlocked); return; }
+      if (otherUnresolvedNow()) { setLocalError(otherBlocked); return; }
       if (!canRenameFolder(current)) { setLocalError(unavailable(current)); blockTarget(readContext); return; }
       if (current.name !== baseline.name || current.revision !== baseline.revision) { setStale(current); return; }
       const numericError = renameRevisionError(current, name);
@@ -131,6 +138,7 @@ export function FolderRename({ root, selected, contextKey }: {
     try {
       const current = await readSelectedFolder(readContext, documentApi.listFolderChildren);
       if (!isCurrent(opening, key) || store.get() !== saved) return;
+      if (otherUnresolvedNow()) { setLocalError(otherBlocked); return; }
       if (!canRenameFolder(current)) { setLocalError(unavailable(current)); return; }
       if (saved && !store.clearSettled(saved)) return;
       if (saved) { setName(saved.request.name); setReason(saved.request.reason); }
@@ -146,7 +154,7 @@ export function FolderRename({ root, selected, contextKey }: {
           onClick={() => void show(trigger.current?.querySelector('button') ?? null)} />}
       {!operation && !selected && <small> {reselect}</small>}
       {!operation && reselectRequired && <small> {reselect}</small>}
-      {!operation && createUnresolved && <small> {createBlocked}</small>}
+      {!operation && createUnresolved && <small> {otherBlocked}</small>}
     </span>
     <Modal isOpen={open} onOpenChange={value => { if (!value) close(); }} isDismissable={!pending} isKeyboardDismissDisabled={pending} className={styles.modal}>
       <Dialog aria-labelledby="folder-rename-title" className={styles.dialog}>
@@ -158,7 +166,7 @@ export function FolderRename({ root, selected, contextKey }: {
           <label className={workspace.formField}>変更理由<textarea aria-label="変更理由" rows={2} value={operation?.request.reason ?? reason} disabled={locked || blocked || !baseline && !operation} onChange={event => { if (!locked) setReason(event.target.value); }} /></label>
           {!operation && (name || reason) && validation && <p role="alert">{validation}</p>}
           {!operation && revisionError && <p role="alert">{revisionError}</p>}
-          {!operation && createUnresolved && <p role="alert">{createBlocked}</p>}
+          {!operation && createUnresolved && <p role="alert">{otherBlocked}</p>}
           {localError && <p role="alert">{localError}</p>}
           {stale && <section role="alert"><p>編集中にフォルダーの名前またはrevisionが変わりました。希望する変更先名と理由を保持しています。最新の状態を取得して明示的に見直してください。</p><p>最新の現在名：{stale.name}（revision {stale.revision}）</p></section>}
           {reading && <p role="status">フォルダーの最新の状態を確認しています…</p>}

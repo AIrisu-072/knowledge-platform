@@ -1,5 +1,25 @@
 # Active Execution Pointer
 
+## 2026-10-06 08:37 UTC — フォルダー移動の実装・受入source統合
+
+- [Folder移動の状況](document-folder-move-status.md)と[小計画](../plans/2026-10-06-document-folder-move.md)が現在の再開先。同機能の[PR87](https://github.com/AIrisu-072/knowledge-platform/pull/87)内でGUI・限定mapper・試験・日本語手順を完成させる
+- 初回公開 `db9031db` は既存hostedでHTTP同名衝突の500/409差を実RED確認後、move UPDATEを既存mapperへ1行接続した。fail-fast未実行のRepository反例を合格扱いしない
+- ローカルGUI952/42・schema/型/build、既存受入の純粋28・型・MCP compile・collection2+2は成功。旧親のGUI読取失敗を空表示と取り違える穴も実反例から補修し、組合せreview→同PR exact-head実受入/DB GREENへ進む。新GUIの実runtimeは未資格
+- UNKNOWN固定要求、移動後の現在readと操作store保持、可視Root focus fallbackを含む。新権限projection/ACL preview・新runner・画像は追加しない
+- 製品head合格後に同PR内の導入4docsをその公開headへpinし、最終CIを確認する。現0801 pinへの機能収録は未完。実サーバーは所有者が手動反映する。以下は過去時点の履歴
+
+---
+
+## 2026-10-06 07:13 UTC — 選択フォルダー移動の既存契約GUI化
+
+- PR84統合main `b9f447fa` から、既存move POST/read/hintを通常GUIへ接続する。[状況](document-folder-move-status.md)と[小計画](../plans/2026-10-06-document-folder-move.md)を今回の再開先とする
+- 対象/移動先/継承影響の明示確認、現POSTの最終認可、固定要求/UNKNOWN、移動後の現在readを保持する。ACL差分previewを捏造せず、新権限projection・新基盤を作らない
+- 同名衝突の既存mapper接続を同機能内TDDに含める。最初に既存DB/HTTP反例の実REDをhostedで確認し、rollback/台帳/監査を保ってGREENへ進む。GUI・文書・試験は同PRで完結し、結果だけの別PRを作らない
+- 日時PR84は全適用CI成功後mainへ統合し、main自身のCI `37427490836` 全13jobs・実受入・DB36・cleanup・artifact0まで確認済み
+- 07:27 UTC追補：test-only `b00b372d` で同名衝突の既存DB/HTTP反例とno-op/replay確認を追加、担当2filesの静的format/diff check成功。compile/実DB/実REDは未取得。次は反例先行sourceの独立reviewと同機能Draftの既存hosted。mapper/移動GUIは未実装。以下は過去時点の履歴
+
+---
+
 ## 2026-10-06 05:58 UTC — 文書作成日時の範囲GUI
 
 - PR83統合main `dc04ba4a` から、既存createdFrom / createdBeforeを通常日時入力へ接続する。[状況](document-created-range-status.md)と[小計画](../plans/2026-10-06-document-created-range.md)を今回の再開先とする
