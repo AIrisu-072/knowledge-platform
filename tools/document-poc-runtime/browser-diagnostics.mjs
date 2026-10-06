@@ -46,6 +46,7 @@ const journeyStages = new Set(['context-read', 'sessions-verified', 'api-preflig
   'gui-metadata-published-verified', 'gui-metadata-minor-verified', 'gui-metadata-noop-verified',
   'gui-metadata-snapshot-saved', 'gui-metadata-restart-verified',
   'gui-document-move-verified', 'gui-document-move-replay-verified',
+  'gui-formal-revisions-readonly-verified', 'gui-formal-revisions-restart-readonly-verified',
   'gui-lifecycle-fixture-ready', 'gui-lifecycle-cancel-verified', 'gui-withdraw-fallback-verified',
   'gui-withdraw-null-verified', 'gui-publication-end-verified', 'gui-lifecycle-snapshot-saved', 'gui-lifecycle-restart-verified',
   'gui-schedule-created', 'gui-schedule-dismissed', 'gui-schedule-cancelled',

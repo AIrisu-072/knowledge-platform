@@ -122,3 +122,91 @@ test('既存metadata journeyの1回移動と再起動後の同一要求replayは
   assert.match(source, /privatelyEqual\(replayedAgent, agentDetail\)/);
   assert.match(source, /humanReadState: sourceBefore\.readState, agentReadState: agentBefore\.readState/);
 });
+
+test('正式改訂の通常GUI readは両caseのHuman・対象Document・先頭100件と比較POSTだけを待つ', () => {
+  const cases = calls('test');
+  for (const [index, revisionCount, comparisonCount] of [[0, 2, 2], [1, 1, 1]]) {
+    const body = cases[index].arguments[1];
+    const waits = calls('page.waitForResponse').filter(call => call.pos > body.pos && call.end < body.end);
+    const revisionWaits = waits.filter(call => call.arguments[0].getText(syntax).includes('/revisions`'));
+    const comparisonWaits = waits.filter(call => call.arguments[0].getText(syntax).includes('/revision-comparisons`'));
+    assert.equal(revisionWaits.length, revisionCount, '初回表示とjourneyの明示再読取が必要');
+    assert.equal(comparisonWaits.length, comparisonCount, '明示再読取後は同pairの新比較も必要');
+    for (const [kind, reads] of [['revisions', revisionWaits], ['revision-comparisons', comparisonWaits]]) {
+      for (const wait of reads) {
+        const compiled = ts.transpileModule(`const predicate = ${wait.arguments[0].getText(syntax)};`, {
+          compilerOptions: { target: ts.ScriptTarget.ES2022 },
+        }).outputText;
+        const predicate = new Function('context', 'documentId', 'snapshot', `${compiled}\nreturn predicate;`)(
+          { human: 'http://127.0.0.1:31001' }, 'document', { documentId: 'document' });
+        const classify = (path, method = kind === 'revisions' ? 'GET' : 'POST', origin = 'http://127.0.0.1:31001') =>
+          predicate({ url: () => new URL(path, origin).href, request: () => ({ method: () => method }) });
+        const suffix = kind === 'revisions' ? '?pageSize=100' : '';
+        assert.equal(classify(`/v1/documents/document/${kind}${suffix}`), true);
+        assert.equal(classify(`/v1/documents/other/${kind}${suffix}`), false);
+        assert.equal(classify(`/v1/documents/document/${kind}${suffix}`, 'PATCH'), false);
+        assert.equal(classify(`/v1/documents/document/${kind}${suffix}`, kind === 'revisions' ? 'POST' : 'GET'), false);
+        assert.equal(classify(`/v1/documents/document/${kind}${suffix}`, undefined, 'http://127.0.0.1:31002'), false);
+        if (kind === 'revisions') {
+          for (const query of ['', '?pageSize=1', '?pageSize=100&cursor=next', '?pageSize=100&cursor=']) {
+            assert.equal(classify(`/v1/documents/document/revisions${query}`), false);
+          }
+        }
+      }
+    }
+  }
+  assert.equal(calls('compareDocumentRevisions').length, 0, '比較は通常GUIで読み、SDK readを追加しない');
+});
+
+test('正式改訂readはmove listener外と再起動metadata取消後で行い、既存readState・snapshot検査を残す', () => {
+  const cases = calls('test').map(call => call.arguments[1].getText(syntax));
+  for (const body of cases) {
+    assert.match(body, /getByRole\('list', \{ name: '正式改訂一覧', exact: true \}\)/);
+    assert.match(body, /getByRole\('heading', \{ name: 'コンテンツ版', exact: true \}\)/);
+    assert.match(body, /getByRole\('heading', \{ name: '正式改訂', exact: true \}\)/);
+    assert.match(body, /getByRole\('button', \{ name: '正式改訂をさらに表示', exact: true \}\)\)\.toBeHidden\(\)/);
+    assert.match(body, /selectOption\(baseRevision\.revisionId\)/);
+    assert.match(body, /selectOption\(targetRevision\.revisionId\)/);
+    assert.match(body, /baseRevision\.major === 1 && baseRevision\.minor === 1/);
+    assert.match(body, /targetRevision\.major === 1 && targetRevision\.minor === 0/);
+    assert.match(body, /projection: 'display', pageSize: 50/);
+    assert.match(body, /contentComparisonStatus\)\.toBe\('sameAuthoritativeVersion'\)/);
+    assert.match(body, /metadataComparisonStatus\)\.toBe\('different'\)/);
+    assert.match(body, /locator\('dt'\)\.filter\(\{ hasText: \/\^基準\$\/ \}\)\.locator\('\+ dd'\)\)\.toHaveText\('1\.1'\)/);
+    assert.match(body, /locator\('dt'\)\.filter\(\{ hasText: \/\^対象\$\/ \}\)\.locator\('\+ dd'\)\)\.toHaveText\('1\.0'\)/);
+    assert.match(body, /searchParams\.get\('baseRevisionId'\) === baseRevision\.revisionId/);
+    assert.match(body, /searchParams\.get\('targetRevisionId'\) === targetRevision\.revisionId/);
+  }
+  const journey = cases[0], persistence = cases[1];
+  assert.ok(journey.indexOf("page.off('requestfinished', recordMoveReadFinished)") < journey.indexOf('const revisionResponse'));
+  assert.ok(journey.indexOf('const comparisonRestartResponse') < journey.indexOf('const movedHuman'));
+  assert.ok(journey.indexOf('const movedHuman') < journey.indexOf("completed('gui-formal-revisions-readonly-verified')"));
+  assert.ok(persistence.indexOf("completed('gui-metadata-restart-verified')") < persistence.indexOf('const revisionResponse'));
+  assert.ok(persistence.indexOf('const comparisonResponse') < persistence.indexOf('const beforeResponse'));
+  assert.ok(persistence.lastIndexOf('privatelyEqual(await persistedSnapshot') < persistence.indexOf("completed('gui-formal-revisions-restart-readonly-verified')"));
+});
+
+test('比較専用画面からは既存戻るbuttonを経て通常tabへ移り、再読取と概要へ到達する', () => {
+  for (const [index, expectedReturns] of [[0, 2], [1, 1]]) {
+    const body = calls('test')[index].arguments[1];
+    const navigation = nodes.filter(node => ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+      && node.expression.name.text === 'press' && node.pos > body.pos && node.end < body.end);
+    let comparing = false, returns = 0;
+    for (const action of navigation) {
+      const locator = action.expression.expression;
+      if (!ts.isCallExpression(locator) || locator.expression.getText(syntax) !== 'page.getByRole') continue;
+      const role = locator.arguments[0]?.text, name = properties(locator.arguments[1], 'name')[0];
+      if (role === 'tab') {
+        assert.equal(comparing, false, '比較専用画面には通常tablistがない。既存戻るbuttonを先に使う');
+        if (name === "'新旧比較'") comparing = true;
+      }
+      if (role === 'button' && name === "'← 版・改訂へ戻る'") {
+        assert.equal(comparing, true, '比較後の戻る導線だけを追加する');
+        comparing = false;
+        returns++;
+      }
+    }
+    assert.equal(returns, expectedReturns, 'journeyは2比較後、persistenceは1比較後に戻る');
+    assert.equal(comparing, false, '後段の既存概要/readState/snapshot検査へ戻る');
+  }
+});

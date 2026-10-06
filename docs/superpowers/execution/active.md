@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-06 13:05 UTC — 正式改訂の続き表示
+
+- PR88統合main `ea406848` から既存100件/nextCursorを「版」「新旧比較」へ接続する。[状況](document-revision-pagination-status.md)と[小計画](../plans/2026-10-06-document-revision-pagination.md)が再開先
+- 明示した古い比較IDを先頭2件へ無言で置換せず、追加read/再読取・失効・遅延・既存操作保持をTDDで確認する。新backend・新基盤・大量fixtureなし
+- 文書移動PR88は同headの全適用CI/実受入/DB36/cleanup/artifact0合格後にmain統合。main自身のCI `37457937486` も全13jobs/checks・実受入/再起動/DB36/cleanup/artifact0を独立確認した。GUI `9fc21a9` は独立I1/I2の認可拒否後cache復活を補修し、全1137/47・型/build・限定再review GO。受入は既存2改訂の通常read/比較/再読取/HTTP再起動を追加。独立I1の比較後の戻りを `06c27907` で既存button経由へ補修し、純粋63・型・MCP compile・収集18+5成功。限定再reviewはI1解消・組合せGO。次は同head Draft/hosted。実runtime・実GUI100件超は未資格のまま明示する
+- GUI・試験・日本語手順を同機能1PRへまとめ、mainへ直接統合する。以下は各時点の履歴
+
+---
+
 ## 2026-10-06 11:01 UTC — 読める文書の移動GUI
 
 - PR87統合main `3448c51d` から、通常詳細の非null folderIdと可視ツリーだけで既存Document moveをGUI化する。[状況](document-move-status.md)と[小計画](../plans/2026-10-06-document-move.md)が再開先

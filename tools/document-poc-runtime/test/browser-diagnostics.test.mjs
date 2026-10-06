@@ -171,7 +171,8 @@ test('GUI metadata受入は固定到達段階だけを公開し、値や理由�
   const stages = ['gui-metadata-created', 'gui-metadata-cancel-verified', 'gui-metadata-working-verified',
     'gui-metadata-published-verified', 'gui-metadata-minor-verified', 'gui-metadata-noop-verified',
     'gui-metadata-snapshot-saved', 'gui-metadata-restart-verified',
-    'gui-document-move-verified', 'gui-document-move-replay-verified'];
+    'gui-document-move-verified', 'gui-document-move-replay-verified',
+    'gui-formal-revisions-readonly-verified', 'gui-formal-revisions-restart-readonly-verified'];
   for (const stage of stages) {
     const input = report([{ status: 'passed', stdout: ['PRIVATE_METADATA_VALUE'], attachments: [{ body: 'PRIVATE_REASON' }] }]);
     input.suites[0].specs[0].file = '/private/source/metadata-editor.spec.ts';

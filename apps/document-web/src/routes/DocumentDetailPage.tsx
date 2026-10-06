@@ -20,6 +20,8 @@ import {
   type VersionDetail,
 } from '../application/document-workspace';
 import { ApiFeedback, LoadingState } from '../components/shared/ApiFeedback';
+import { denyDocumentRevisionReads, useDocumentRevisions, type DocumentRevisionsRead } from '../application/use-document-revisions';
+import { DocumentRevisionReadControls } from '../components/document/DocumentRevisionReadControls';
 import { DocumentScheduleCancellation } from '../components/document/DocumentScheduleCancellation';
 import { CapabilityButton, availabilityReason } from '../components/shared/CapabilityButton';
 import { OriginalVersionDownload } from '../components/shared/OriginalVersionDownload';
@@ -59,7 +61,10 @@ export function DocumentDetailPage() {
   const [publicationMethod, setPublicationMethod] = useState<'now' | 'scheduled'>('now');
   const detailQuery = useQuery({
     queryKey: ['document', documentId, search.view],
-    queryFn: () => documentApi.getDocument(documentId, search.view),
+    queryFn: async ({ signal }) => {
+      try { return await documentApi.getDocument(documentId, search.view); }
+      catch (error) { if (!signal.aborted) denyDocumentRevisionReads(queryClient, documentId, error); throw error; }
+    },
   });
   const document = detailQuery.error ? undefined : detailQuery.data;
   const canManageAccess = document?.capabilities.manageAccess.status === 'available';
@@ -70,11 +75,7 @@ export function DocumentDetailPage() {
     queryFn: () => documentApi.listDocumentVersions(documentId, search.view),
     enabled: Boolean(document && (activeTab === 'versions' || activeTab === 'compare')),
   });
-  const revisionsQuery = useQuery({
-    queryKey: ['document-revisions', documentId],
-    queryFn: () => documentApi.listDocumentRevisions(documentId),
-    enabled: Boolean(document && (activeTab === 'versions' || activeTab === 'compare')),
-  });
+  const revisionRead = useDocumentRevisions(documentId, Boolean(document && (activeTab === 'versions' || activeTab === 'compare')));
   const historyQuery = useQuery({
     queryKey: ['document-history', documentId],
     queryFn: () => documentApi.getDocumentHistory(documentId),
@@ -99,17 +100,21 @@ export function DocumentDetailPage() {
     queryFn: () => documentApi.listVersionFiles(documentId, currentFileVersionId!, search.view),
     enabled: Boolean(document && currentFileVersionId && activeTab === 'overview'),
   });
-  const revisions = revisionsQuery.data?.items ?? [];
+  const revisions = revisionRead.revisions;
   const revisionPair = chooseRevisionPair(revisions, search.baseRevisionId, search.targetRevisionId);
+  const canCompare = Boolean(document && activeTab === 'compare' && revisionRead.ready && revisionPair.base && revisionPair.target && revisionPair.base.revisionId !== revisionPair.target.revisionId);
   const comparisonQuery = useQuery({
     queryKey: ['revision-comparison', documentId, revisionPair.base?.revisionId, revisionPair.target?.revisionId],
-    queryFn: () => documentApi.compareDocumentRevisions(documentId, {
-      baseRevisionId: revisionPair.base!.revisionId,
-      targetRevisionId: revisionPair.target!.revisionId,
-      projection: 'display',
-      pageSize: 50,
-    }),
-    enabled: Boolean(document && activeTab === 'compare' && revisionPair.base && revisionPair.target && revisionPair.base.revisionId !== revisionPair.target.revisionId),
+    queryFn: async ({ signal }) => {
+      try { return await documentApi.compareDocumentRevisions(documentId, {
+        baseRevisionId: revisionPair.base!.revisionId,
+        targetRevisionId: revisionPair.target!.revisionId,
+        projection: 'display',
+        pageSize: 50,
+      }); }
+      catch (error) { if (!signal.aborted) denyDocumentRevisionReads(queryClient, documentId, error); throw error; }
+    },
+    enabled: canCompare,
   });
 
   function updateSearch(patch: Partial<DetailSearch>) {
@@ -177,9 +182,11 @@ export function DocumentDetailPage() {
       revisions={revisions}
       selectedVersion={selectedVersion}
       versionDetail={versionDetailQuery.error ? undefined : versionDetailQuery.data}
-      versionsLoading={versionsQuery.isPending || revisionsQuery.isPending}
-      versionsError={versionsQuery.error ?? revisionsQuery.error}
-      onRetry={() => { void versionsQuery.refetch(); void revisionsQuery.refetch(); }}
+      versionsLoading={versionsQuery.isPending}
+      versionsError={versionsQuery.error}
+      revisionRead={revisionRead}
+      revisionPair={revisionPair}
+      onRetry={() => { void versionsQuery.refetch(); }}
       updateSearch={updateSearch}
       workflow={search.workflow}
       publicationMethod={publicationMethod}
@@ -271,10 +278,11 @@ export function DocumentDetailPage() {
                   purpose={search.view}
                   revisions={revisions}
                   pair={revisionPair}
-                  comparison={comparisonQuery.data}
-                  loading={revisionsQuery.isPending || comparisonQuery.isPending}
-                  error={revisionsQuery.error ?? comparisonQuery.error}
-                  onRetry={() => { void revisionsQuery.refetch(); void comparisonQuery.refetch(); }}
+                  revisionRead={revisionRead}
+                  comparison={canCompare && !comparisonQuery.error ? comparisonQuery.data : undefined}
+                  loading={canCompare && comparisonQuery.isPending}
+                  error={canCompare ? comparisonQuery.error : null}
+                  onRetry={() => { if (canCompare) void comparisonQuery.refetch(); }}
                   updateSearch={updateSearch}
                 />
               </section>
@@ -369,6 +377,8 @@ function VersionsTab({
   versionDetail,
   versionsLoading,
   versionsError,
+  revisionRead,
+  revisionPair,
   onRetry,
   updateSearch,
   workflow,
@@ -383,6 +393,8 @@ function VersionsTab({
   versionDetail?: VersionDetail;
   versionsLoading: boolean;
   versionsError: unknown;
+  revisionRead: DocumentRevisionsRead;
+  revisionPair: ReturnType<typeof chooseRevisionPair>;
   onRetry: () => void;
   updateSearch: (patch: Partial<DetailSearch>) => void;
   workflow?: VersionWorkflow;
@@ -402,7 +414,7 @@ function VersionsTab({
   const actionReturnRef = useRef<HTMLButtonElement | null>(null);
   const documentId = document.documentId;
   const queryClient = useQueryClient();
-  const revisionsPair = chooseRevisionPair(revisions, undefined, undefined);
+  const revisionsPair = revisionPair;
   const { data: workingOperation } = useQuery<WorkingOperation | null>({ queryKey: workingOperationKey(documentId), queryFn: skipToken, enabled: false, gcTime: Infinity });
   const workingBlocked = workingOperation?.status === 'pending' || workingOperation?.status === 'unknown';
 
@@ -523,9 +535,9 @@ function VersionsTab({
               <div><h2>コンテンツ版</h2><p>WORKING版と正式に公開した改訂を分けて表示します。</p></div>
               <CapabilityButton label="新しい版を作成" availability={document.capabilities.createVersion} className={workspaceStyles.primaryButton} onClick={() => updateSearch({ workflow: 'newVersion' })} />
             </div>
-            {versionsLoading && <LoadingState label="版と改訂を読み込み中" />}
+            {versionsLoading && <LoadingState label="コンテンツ版を読み込み中" />}
             {Boolean(versionsError) && <ApiFeedback error={versionsError} onRetry={onRetry} />}
-            {!versionsLoading && versions.length === 0 && <p className={styles.muted}>表示できるコンテンツ版はありません。</p>}
+            {!versionsLoading && !versionsError && versions.length === 0 && <p className={styles.muted}>表示できるコンテンツ版はありません。</p>}
             <ul className={styles.versionList}>
               {versions.map((version) => (
                 <li key={version.versionId} className={version.versionId === selectedVersion?.versionId ? styles.versionSelected : undefined}>
@@ -555,8 +567,9 @@ function VersionsTab({
             <div className={styles.sectionHeading}>
               <div><h2>正式改訂</h2><p>公開時に確定した改訂番号とメタデータ履歴です。</p></div>
             </div>
-            {revisions.length === 0 && !versionsLoading && <p className={styles.muted}>正式改訂はありません。WORKING版は上の版一覧に表示されます。</p>}
-            <ol className={styles.revisionTimeline}>
+            {revisionRead.ready && revisions.length === 0 && <p className={styles.muted}>正式改訂はありません。WORKING版は上の版一覧に表示されます。</p>}
+            <DocumentRevisionReadControls read={revisionRead} />
+            <ol className={styles.revisionTimeline} aria-label="正式改訂一覧">
               {revisions.map((revision) => (
                 <li key={revision.revisionId}>
                   <strong>{revision.label}</strong>
@@ -566,19 +579,11 @@ function VersionsTab({
                 </li>
               ))}
             </ol>
-            {revisions.length >= 2 && (
+            {(revisions.length >= 2 || revisionsPair.unresolved) && (
               <div className={styles.comparisonChooser}>
                 <p>比較する正式改訂</p>
-                <label>基準
-                  <select value={revisionsPair.base?.revisionId ?? ''} onChange={(event) => updateSearch({ baseRevisionId: event.target.value || undefined })}>
-                    {revisions.map((revision) => <option key={revision.revisionId} value={revision.revisionId}>{revision.label}</option>)}
-                  </select>
-                </label>
-                <label>対象
-                  <select value={revisionsPair.target?.revisionId ?? ''} onChange={(event) => updateSearch({ targetRevisionId: event.target.value || undefined })}>
-                    {revisions.map((revision) => <option key={revision.revisionId} value={revision.revisionId}>{revision.label}</option>)}
-                  </select>
-                </label>
+                <RevisionPairInputs revisions={revisions} pair={revisionsPair} updateSearch={updateSearch} />
+                <RevisionPairNotice pair={revisionsPair} />
                 <p className={styles.muted}>正式改訂番号とWORKINGコンテンツ版は別の履歴です。</p>
               </div>
             )}
@@ -615,11 +620,12 @@ function VersionsTab({
   );
 }
 
-function CompareTab({ documentId, purpose, revisions, pair, comparison, loading, error, onRetry, updateSearch }: {
+function CompareTab({ documentId, purpose, revisions, pair, revisionRead, comparison, loading, error, onRetry, updateSearch }: {
   documentId: string;
   purpose: 'published' | 'authoring';
   revisions: DocumentRevisionSummary[];
-  pair: { base?: DocumentRevisionSummary; target?: DocumentRevisionSummary };
+  pair: ReturnType<typeof chooseRevisionPair>;
+  revisionRead: DocumentRevisionsRead;
   comparison?: RevisionComparisonResponse;
   loading: boolean;
   error: unknown;
@@ -631,22 +637,14 @@ function CompareTab({ documentId, purpose, revisions, pair, comparison, loading,
       <div className={styles.sectionHeading}>
         <div><h2>正式改訂の比較</h2><p>比較範囲と判定はDocument Diffの応答をそのまま表示します。</p></div>
       </div>
-      {revisions.length < 2 && <p className={styles.muted}>比較には2件以上の正式改訂が必要です。WORKING版は正式改訂と別に扱います。</p>}
-      {revisions.length >= 2 && (
+      <DocumentRevisionReadControls read={revisionRead} />
+      {revisionRead.ready && revisions.length < 2 && !pair.unresolved && <p className={styles.muted}>比較には2件以上の正式改訂が必要です。WORKING版は正式改訂と別に扱います。</p>}
+      {(revisions.length >= 2 || pair.unresolved) && !revisionRead.error && (
         <div className={styles.compareInputs}>
-          <label>基準改訂
-            <select value={pair.base?.revisionId ?? ''} onChange={(event) => updateSearch({ baseRevisionId: event.target.value || undefined })}>
-              {revisions.map((revision) => <option key={revision.revisionId} value={revision.revisionId}>{revision.label}</option>)}
-            </select>
-          </label>
-          <span aria-hidden="true">→</span>
-          <label>比較対象
-            <select value={pair.target?.revisionId ?? ''} onChange={(event) => updateSearch({ targetRevisionId: event.target.value || undefined })}>
-              {revisions.map((revision) => <option key={revision.revisionId} value={revision.revisionId}>{revision.label}</option>)}
-            </select>
-          </label>
+          <RevisionPairInputs revisions={revisions} pair={pair} updateSearch={updateSearch} compare />
         </div>
       )}
+      {!revisionRead.error && <RevisionPairNotice pair={pair} />}
       {loading && <LoadingState label="比較結果を取得中" />}
       {Boolean(error) && <ApiFeedback error={error} onRetry={onRetry} />}
       {comparison && <ComparisonResult documentId={documentId} purpose={purpose} comparison={comparison} />}
@@ -985,9 +983,35 @@ function chooseVersion(document: DocumentDetail | undefined, versions: Version[]
 }
 
 function chooseRevisionPair(revisions: DocumentRevisionSummary[], baseId?: string, targetId?: string) {
-  const target = revisions.find((revision) => revision.revisionId === targetId) ?? revisions[0];
-  const base = revisions.find((revision) => revision.revisionId === baseId) ?? revisions.find((revision) => revision.revisionId !== target?.revisionId) ?? revisions[1];
-  return { base, target };
+  const target = targetId === undefined ? revisions[0] : revisions.find((revision) => revision.revisionId === targetId);
+  const base = baseId === undefined ? revisions.find((revision) => revision.revisionId !== target?.revisionId) : revisions.find((revision) => revision.revisionId === baseId);
+  return { base, target, baseId: baseId ?? base?.revisionId, targetId: targetId ?? target?.revisionId,
+    unresolved: Boolean(baseId !== undefined && !base || targetId !== undefined && !target) };
+}
+
+function RevisionPairInputs({ revisions, pair, updateSearch, compare = false }: {
+  revisions: DocumentRevisionSummary[]; pair: ReturnType<typeof chooseRevisionPair>;
+  updateSearch: (patch: Partial<DetailSearch>) => void; compare?: boolean;
+}) {
+  return <>
+    <label>{compare ? '基準改訂' : '基準'}
+      <select value={pair.baseId ?? ''} onChange={(event) => updateSearch({ baseRevisionId: event.target.value || undefined })}>
+        {pair.baseId && !pair.base && <option value={pair.baseId}>未取得の基準改訂</option>}
+        {revisions.map((revision) => <option key={revision.revisionId} value={revision.revisionId}>{revision.label}</option>)}
+      </select>
+    </label>
+    {compare && <span aria-hidden="true">→</span>}
+    <label>{compare ? '比較対象' : '対象'}
+      <select value={pair.targetId ?? ''} onChange={(event) => updateSearch({ targetRevisionId: event.target.value || undefined })}>
+        {pair.targetId && !pair.target && <option value={pair.targetId}>未取得の対象改訂</option>}
+        {revisions.map((revision) => <option key={revision.revisionId} value={revision.revisionId}>{revision.label}</option>)}
+      </select>
+    </label>
+  </>;
+}
+
+function RevisionPairNotice({ pair }: { pair: ReturnType<typeof chooseRevisionPair> }) {
+  return pair.unresolved ? <p className={styles.muted}>未取得の選択があります。正式改訂の続きを表示するか、取得済みの改訂を選び直してください。指定した比較対象は保持しています。</p> : null;
 }
 
 function handleTabKeyDown(event: React.KeyboardEvent<HTMLDivElement>, visibleTabs: Array<{ id: DocumentDetailTab; label: string }>, updateSearch: (patch: Partial<DetailSearch>) => void) {
