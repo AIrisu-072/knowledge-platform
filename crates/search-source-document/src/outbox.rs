@@ -1263,7 +1263,8 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
             manifest.projection_schema_version.clone(),
             manifest.lens_version,
             lexical_documents,
-        );
+        )
+        .with_analyzer_version(self.config.analyzer_version.clone());
         if let Some((unit_manifest, _)) = &body {
             lexical_input = lexical_input.with_body_units(
                 unit_manifest

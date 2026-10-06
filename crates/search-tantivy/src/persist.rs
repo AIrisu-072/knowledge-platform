@@ -22,7 +22,7 @@ use crate::index::{
     DocumentMetadata, GenerationIndex, LexicalBuildInput, LexicalDocument, LexicalIndexError,
     TantivyLexicalIndex,
 };
-use crate::schema::{ANALYZER_VERSION, LEXICAL_SCHEMA_VERSION, LexicalFields, lexical_schema};
+use crate::schema::{LEXICAL_SCHEMA_VERSION, LexicalFields, lexical_schema};
 
 pub(crate) const RESOURCES_DIR: &str = "resources";
 pub(crate) const UNITS_DIR: &str = "units";
@@ -58,7 +58,7 @@ pub(crate) fn write_sidecar(
         source_snapshot: manifest.source_snapshot.clone(),
         projection_schema_version: manifest.projection_schema_version.clone(),
         lens_version: manifest.lens_version,
-        analyzer_version: ANALYZER_VERSION.into(),
+        analyzer_version: input.analyzer_version().into(),
         provenance: source.provenance.clone(),
         documents: input.documents().to_vec(),
         body_ready: input.body_units().is_some(),
@@ -83,6 +83,7 @@ struct Opened {
     persisted: PersistedLexical,
     index: Index,
     reader: IndexReader,
+    tokenizer: &'static str,
     fields: LexicalFields,
     documents: BTreeMap<String, DocumentMetadata>,
     units: Option<UnitIndex>,
@@ -106,14 +107,18 @@ fn open(
         || sidecar.source_snapshot != manifest.source_snapshot
         || sidecar.projection_schema_version != manifest.projection_schema_version
         || sidecar.lens_version != manifest.lens_version
-        || sidecar.analyzer_version != ANALYZER_VERSION
-        || manifest.analyzer_version.as_deref() != Some(ANALYZER_VERSION)
+        || manifest.analyzer_version.as_deref() != Some(sidecar.analyzer_version.as_str())
         || sidecar.provenance != source.provenance
     {
         return Err(mismatch());
     }
+    // Generations built with an earlier supported analyzer stay readable.
+    let analyzer_version =
+        crate::analyzer::supported(&sidecar.analyzer_version).ok_or_else(mismatch)?;
+    let tokenizer = crate::analyzer::tokenizer_name(analyzer_version).ok_or_else(mismatch)?;
     let index = Index::open_in_dir(dir.join(RESOURCES_DIR))?;
-    let (schema, fields) = lexical_schema();
+    crate::analyzer::register(&index);
+    let (schema, fields) = lexical_schema(tokenizer);
     if index.schema() != schema {
         return Err(mismatch());
     }
@@ -150,7 +155,7 @@ fn open(
     }
     let units_dir = dir.join(UNITS_DIR);
     let units = if sidecar.body_ready {
-        Some(open_unit_index(&units_dir)?)
+        Some(open_unit_index(&units_dir, tokenizer)?)
     } else if units_dir.exists() {
         return Err(mismatch());
     } else {
@@ -162,7 +167,8 @@ fn open(
         manifest.projection_schema_version.clone(),
         manifest.lens_version,
         documents.clone(),
-    );
+    )
+    .with_analyzer_version(analyzer_version);
     let unit_docs = match &units {
         Some(units) => {
             input = input.with_body_units(stored_units(units)?);
@@ -193,12 +199,13 @@ fn open(
             } else {
                 LEXICAL_SCHEMA_VERSION
             },
-            analyzer_version: ANALYZER_VERSION,
+            analyzer_version,
             resource_docs: u64::try_from(documents.len()).map_err(|_| mismatch())?,
             units: unit_docs,
         },
         index,
         reader,
+        tokenizer,
         fields,
         documents: metadata,
         units,
@@ -230,6 +237,7 @@ impl TantivyLexicalIndex {
             fields: opened.fields,
             documents: opened.documents,
             units: opened.units,
+            tokenizer: opened.tokenizer,
         });
         let mut generations = self
             .generations

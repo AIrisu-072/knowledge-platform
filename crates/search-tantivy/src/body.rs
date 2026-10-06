@@ -16,7 +16,7 @@ use tantivy::schema::{
 use tantivy::{Index, IndexReader, doc};
 
 use crate::index::{LexicalBuildInput, LexicalIndexError};
-use crate::schema::{ANALYZER_VERSION, kind_token};
+use crate::schema::kind_token;
 
 /// Lexical schema of a body-ready generation.
 pub const BODY_LEXICAL_SCHEMA_VERSION: &str = "schema-2";
@@ -53,12 +53,12 @@ pub(crate) struct UnitIndex {
     pub fields: UnitFields,
 }
 
-fn unit_schema() -> (Schema, UnitFields) {
+fn unit_schema(tokenizer: &str) -> (Schema, UnitFields) {
     let mut builder = Schema::builder();
     let body = TextOptions::default()
         .set_indexing_options(
             TextFieldIndexing::default()
-                .set_tokenizer("default")
+                .set_tokenizer(tokenizer)
                 .set_index_option(IndexRecordOption::WithFreqsAndPositions),
         )
         .set_stored();
@@ -78,24 +78,32 @@ fn metadata_json(unit: &KnowledgeUnit) -> Result<String, LexicalIndexError> {
     serde_json::to_string(&stored).map_err(|_| LexicalIndexError::UnitEncoding)
 }
 
-pub(crate) fn build_unit_index(units: &[KnowledgeUnit]) -> Result<UnitIndex, LexicalIndexError> {
-    let (schema, fields) = unit_schema();
+pub(crate) fn build_unit_index(
+    units: &[KnowledgeUnit],
+    tokenizer: &str,
+) -> Result<UnitIndex, LexicalIndexError> {
+    let (schema, fields) = unit_schema(tokenizer);
     fill_unit_index(Index::create_in_ram(schema), fields, units)
 }
 
 pub(crate) fn build_unit_index_at(
     units: &[KnowledgeUnit],
     dir: &std::path::Path,
+    tokenizer: &str,
 ) -> Result<UnitIndex, LexicalIndexError> {
     std::fs::create_dir_all(dir).map_err(|_| LexicalIndexError::Io)?;
-    let (schema, fields) = unit_schema();
+    let (schema, fields) = unit_schema(tokenizer);
     fill_unit_index(Index::create_in_dir(dir, schema)?, fields, units)
 }
 
 /// Opens a committed Unit index and checks it has the Unit schema.
-pub(crate) fn open_unit_index(dir: &std::path::Path) -> Result<UnitIndex, LexicalIndexError> {
+pub(crate) fn open_unit_index(
+    dir: &std::path::Path,
+    tokenizer: &str,
+) -> Result<UnitIndex, LexicalIndexError> {
     let index = Index::open_in_dir(dir)?;
-    let (schema, fields) = unit_schema();
+    crate::analyzer::register(&index);
+    let (schema, fields) = unit_schema(tokenizer);
     if index.schema() != schema {
         return Err(LexicalIndexError::PersistedMismatch);
     }
@@ -113,6 +121,7 @@ fn fill_unit_index(
     fields: UnitFields,
     units: &[KnowledgeUnit],
 ) -> Result<UnitIndex, LexicalIndexError> {
+    crate::analyzer::register(&index);
     let mut writer = index.writer(15_000_000)?;
     for unit in units {
         writer.add_document(doc!(
@@ -250,7 +259,7 @@ pub fn lexical_input_digest(
         crate::schema::LEXICAL_SCHEMA_VERSION
     };
     frame(&mut hasher, schema.as_bytes());
-    frame(&mut hasher, ANALYZER_VERSION.as_bytes());
+    frame(&mut hasher, input.analyzer_version().as_bytes());
     let mut documents: Vec<_> = input.documents().iter().collect();
     documents.sort_by_key(|document| document.resource_ref);
     hasher.update((documents.len() as u32).to_be_bytes());

@@ -388,3 +388,104 @@ async fn token_hit_without_literal_span_is_not_qualified() {
     assert!(batch.hits.is_empty());
     assert!(!batch.exhausted_matching_units);
 }
+
+/// Japanese text is segmented only by the CJK bigram analyzer: an unspaced
+/// sentence is one token under the legacy default, so a word inside it is
+/// found only with bigrams. The persisted generation keeps its analyzer.
+#[tokio::test]
+async fn cjk_bigram_analyzer_finds_words_inside_unspaced_japanese() {
+    let bigram = |dir: Option<&std::path::Path>| {
+        let mut manifest = manifest();
+        manifest.analyzer_version = Some(search_tantivy::CJK_BIGRAM_ANALYZER_VERSION.into());
+        let input = LexicalBuildInput::new(
+            source_id(),
+            "snapshot-body",
+            "schema-1",
+            1,
+            vec![card(10, "アンパサンドの歴史"), card(11, "会議室の予約手順")],
+        )
+        .with_body_units(vec![unit(
+            11,
+            "primary",
+            0,
+            "会議室は前日までに総務部へ申請する。",
+        )])
+        .with_analyzer_version(search_tantivy::CJK_BIGRAM_ANALYZER_VERSION);
+        let index = TantivyLexicalIndex::new();
+        match dir {
+            Some(dir) => index.build_generation_at(manifest, &source(), input, dir),
+            None => index.build_generation(manifest, &source(), input),
+        }
+        .unwrap();
+        index
+    };
+    let index = bigram(None);
+    let titles = index
+        .retrieve(key(), &request(), &LexicalQuery::new("パサンド", 10))
+        .await
+        .unwrap();
+    assert_eq!(titles[0].resource_ref, Some(resource(10)));
+    let body = index
+        .retrieve_body(
+            key(),
+            &request(),
+            &LexicalQuery::body_only("総務部へ申請", 10),
+        )
+        .await
+        .unwrap();
+    assert_eq!(body.hits.len(), 1);
+    assert_eq!(body.hits[0].candidate.resource_ref, Some(resource(11)));
+    // A substring that is not contiguous in the text is not a phrase match.
+    let scattered = index
+        .retrieve_body(key(), &request(), &LexicalQuery::body_only("申請総務", 10))
+        .await
+        .unwrap();
+    assert!(scattered.hits.is_empty());
+
+    // The legacy default analyzer cannot see the word inside the sentence.
+    let legacy = build(
+        vec![card(11, "会議室の予約手順")],
+        vec![unit(
+            11,
+            "primary",
+            0,
+            "会議室は前日までに総務部へ申請する。",
+        )],
+    );
+    let missed = legacy
+        .retrieve_body(
+            key(),
+            &request(),
+            &LexicalQuery::body_only("総務部へ申請", 10),
+        )
+        .await
+        .unwrap();
+    assert!(missed.hits.is_empty());
+
+    // A persisted bigram generation reopens with its own analyzer.
+    let dir = std::env::temp_dir().join(format!("kp-bigram-{}", Uuid::new_v4()));
+    bigram(Some(&dir));
+    let mut manifest = manifest();
+    manifest.analyzer_version = Some(search_tantivy::CJK_BIGRAM_ANALYZER_VERSION.into());
+    let reopened = TantivyLexicalIndex::new();
+    let persisted = reopened
+        .load_generation_at(&manifest, &source(), &dir)
+        .unwrap();
+    assert_eq!(
+        persisted.analyzer_version,
+        search_tantivy::CJK_BIGRAM_ANALYZER_VERSION
+    );
+    let again = reopened
+        .retrieve_body(
+            key(),
+            &request(),
+            &LexicalQuery::body_only("総務部へ申請", 10),
+        )
+        .await
+        .unwrap();
+    assert_eq!(again.hits.len(), 1);
+    // The manifest and the persisted sidecar must name the same analyzer.
+    let legacy_manifest = self::manifest();
+    assert!(TantivyLexicalIndex::inspect_persisted(&legacy_manifest, &source(), &dir).is_err());
+    let _ = std::fs::remove_dir_all(&dir);
+}
