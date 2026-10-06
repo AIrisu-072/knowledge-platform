@@ -1,4 +1,5 @@
 import { validateList, validateDetail } from './search-validators.generated.js';
+import { createdRangeFields, createdRangeRouteError } from './document-created-range';
 import { unreadFilterRouteError } from './document-unread-filter';
 import { metadataFilterFields, metadataFilterRouteError } from './document-metadata-filters';
 
@@ -9,6 +10,8 @@ export type ListSearch = {
   view: DocumentView;
   titleContains?: string;
   unreadOnly?: boolean;
+  createdFrom?: string;
+  createdBefore?: string;
   documentType?: string;
   owningDepartment?: string;
   category?: string;
@@ -39,7 +42,7 @@ function sourceRecord(value: unknown): Record<string, unknown> {
 export function validateListSearch(value: unknown): ListSearch {
   const candidate = sourceRecord(value);
   // The default router serializer replaces lone surrogates. Stop before it changes exact-match text.
-  const routeError = metadataFilterRouteError(candidate) ?? unreadFilterRouteError(candidate);
+  const routeError = metadataFilterRouteError(candidate) ?? unreadFilterRouteError(candidate) ?? createdRangeRouteError(candidate);
   if (routeError) throw new Error(routeError);
   if (!validateList(candidate)) {
     const fallback = defaultListSearch();
@@ -48,10 +51,14 @@ export function validateListSearch(value: unknown): ListSearch {
       const metadata = candidate[key];
       if (typeof metadata === 'string' && metadata !== '') fallback[key] = metadata;
     }
+    for (const { key } of createdRangeFields) {
+      const raw = candidate[key];
+      if (typeof raw === 'string' && raw !== '') fallback[key] = raw;
+    }
     if (candidate.unreadOnly === true) fallback.unreadOnly = true;
     return fallback;
   }
-  for (const key of ['titleContains', 'documentType', 'owningDepartment', 'category'] as const) {
+  for (const key of ['titleContains', 'documentType', 'owningDepartment', 'category', 'createdFrom', 'createdBefore'] as const) {
     if (candidate[key] === '') delete candidate[key];
   }
   if (candidate.unreadOnly !== true) delete candidate.unreadOnly;

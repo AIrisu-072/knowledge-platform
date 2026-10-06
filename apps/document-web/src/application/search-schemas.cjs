@@ -8,6 +8,8 @@ const listSchema = {
     view: { type: 'string', enum: ['published', 'authoring', 'history'], default: 'published' },
     titleContains: { type: 'string', maxLength: 1024 },
     unreadOnly: { type: 'boolean' },
+    createdFrom: { type: 'string' },
+    createdBefore: { type: 'string' },
     // Retain invalid URL text so the form can explain byte/control errors and stop GET.
     documentType: { type: 'string' },
     owningDepartment: { type: 'string' },

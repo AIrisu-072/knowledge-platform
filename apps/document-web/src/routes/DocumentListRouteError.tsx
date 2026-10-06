@@ -1,9 +1,15 @@
+import { createdRangeFields, createdRangeRouteError } from '../application/document-created-range';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { unreadFilterReasons, unreadFilterRouteError } from '../application/document-unread-filter';
 import { metadataFilterFields, metadataFilterRouteError } from '../application/document-metadata-filters';
 import { validateListSearch } from '../application/search-state';
 
-const reasons = new Set([...Object.values(unreadFilterReasons), ...metadataFilterFields.flatMap(({ label }) => [
+const reasons = new Set([...createdRangeFields.flatMap(({ label }) => [
+  `${label}は文字列で指定してください。URLの条件を確認してください。`,
+  `${label}に不正なUnicode文字が含まれています。入力を確認してください。`,
+  `${label}に制御文字を含めることはできません。`,
+  `${label}は128 UTF-8 bytes以下で入力してください。`,
+]), ...Object.values(unreadFilterReasons), ...metadataFilterFields.flatMap(({ label }) => [
   `${label}は文字列で指定してください。URLの条件を確認してください。`,
   `${label}に不正なUnicode文字が含まれています。入力を確認してください。`,
 ])]);
@@ -14,9 +20,11 @@ export function DocumentListRouteError({ error }: { error: unknown }) {
     ? error.message : '一覧の条件を確認できません。条件を解除して再度お試しください。';
   // Inspect both raw groups before validation so recovery cannot rethrow the other invalid group.
   const invalidMetadata = metadataFilterRouteError(search);
+  const invalidCreated = createdRangeRouteError(search);
   const invalidUnread = unreadFilterRouteError(search);
   const returnCandidate = { ...search };
   if (invalidMetadata) for (const { key } of metadataFilterFields) delete returnCandidate[key];
+  if (invalidCreated) for (const { key } of createdRangeFields) delete returnCandidate[key];
   if (invalidUnread) delete returnCandidate.unreadOnly;
   delete returnCandidate.cursor;
   const returnSearch = validateListSearch(returnCandidate);

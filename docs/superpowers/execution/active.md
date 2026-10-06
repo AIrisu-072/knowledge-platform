@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-06 05:58 UTC — 文書作成日時の範囲GUI
+
+- PR83統合main `dc04ba4a` から、既存createdFrom / createdBeforeを通常日時入力へ接続する。[状況](document-created-range-status.md)と[小計画](../plans/2026-10-06-document-created-range.md)を今回の再開先とする
+- 公開予約と同じJSTのカレンダー/時刻入力を再利用し、開始を含む・終了を含まない。精密URLは原文保持し、明示的な指定し直し/取消/解除で無言の丸めを防ぐ。新parser/backend/基盤なし
+- PR82とPR83のmain自身の全CI/実受入/DB36/cleanup/artifact0まで確認済み。旧persistence失敗/Organization503は原因未特定の履歴として保持する。機能・文書・試験を同PRにまとめ、結果だけの別PRを作らない
+- 06:26 UTC追補：製品 `787c8817` は全GUI870/39・型/schema/build・独立spec/品質レビューGO。受入 `3f586d43` は既存metadata2case内に加算し、型・純粋40・MCP compile・collection18+5成功。次は組合せ最終レビューと同head Draft/hosted。日時機能の実runtime資格は未取得。以下は過去時点の履歴
+
+---
+
 ## 2026-10-06 03:16 UTC — 公開一覧の未読条件GUI
 
 - PR81統合main `0801c986` から、既存unreadOnly queryを公開一覧の明示絞り込みへ接続する。[状況](document-unread-filter-status.md)と[小計画](../plans/2026-10-06-document-unread-filter.md)を今回の再開先とする
