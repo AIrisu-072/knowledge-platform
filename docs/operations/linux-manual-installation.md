@@ -7,9 +7,9 @@
 **本書の対象は、架空データだけを使うOrganization Browser PoCの導入である。本番利用開始の手順は未完成。** 固定の営業・事務profileを使い、そのポートへ接続した人は同じprofileとして扱われる。認証画面、実利用者の識別、production modeはない。実文書・顧客情報を投入せず、インターネットや社内LANへ公開しない。
 
 - 導入対象の資格：固定の模擬利用者2名・画像保存なしのUbuntu機能受入に合格した版（対象PCでの手順実行、本番認証、見た目全体の比較検証は対象外）。固定SHAと受入記録が未確定の版は実行しない
-- 固定ソース：最終受入main `3d8deb253de19cb0954aa70a9a31cc5c4fc7540c` / tree `3f1ac6aa9e66d58bd5f01316e46334a48a64664f`
-- GUI統合の確認：PR69初回登録、PR70取下げ・公開終了、PR71属性編集、PR72予約取消、PR73 WORKING backendを保持した[PR74](https://github.com/AIrisu-072/knowledge-platform/pull/74) exact `ce56801f7ec73ed284a99838f07cfe0c92cf71f4` / tree `3f1ac6aa9e66d58bd5f01316e46334a48a64664f`。[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371770)、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371873)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371821)。確認結果：required-checkを含む通常CI13/13・DSI・Sandboxが成功。Rust1599成功/9skip、指定実DB36成功、GUI404・runtime補助試験161成功。Document18件とHTTP再起動後5件、Agent9項目/provenance、Organizationの操作・往復・再起動・owned cleanup、公開artifact0を確認した。初回PUT・新版POST・続くPUTで、実成功応答のbody途中喪失から実headers/同一requestの失敗→UNKNOWN→同一要求の明示再送・結果一致・DB snapshot不変を確認。status/headersも全喪失する旧faultのGUI明示再送は未合格のままで、今回へ付け替えない
-- 統合後mainの[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37301558995)。確認日：2026-10-05 11:31 UTC。確認結果：main自身のpush CIでrequired-checkを含む13/13 jobsが成功。Rust1599成功/9skip、指定実DB36成功。Document18件とHTTP再起動後5件、Agent9項目/provenance、Organizationの通常ナビ往復・操作・再起動・owned cleanup、公開artifact0を、PRとは別のmainログで確認した。exact head/clean、PostgreSQL18.6、固定合成2profileを照合した。作業版の固定再送資格は実成功応答のbody途中喪失に限定する
+- 固定ソース：最終受入main `0801c9864bdb7faf5fcbe7ee1062367335ee7bfb` / tree `794407fc62e2418bd6ecbdc2de4541cd3e207b02`
+- GUI統合の確認：PR69初回登録、PR70取下げ・公開終了、PR71属性編集、PR72予約取消、PR73 WORKING backend、PR74複数原本編集・固定要求再送・「編集作業」入口を保持し、PR76 Root直下作成、PR78フォルダーの続き表示、PR79選択親への子作成、PR80改名、[PR81](https://github.com/AIrisu-072/knowledge-platform/pull/81)属性3項目の絞り込みを含む。PR81公開head `426db3a5a43083a1b4bd76b656ea58322019eed3` / tree `794407fc62e2418bd6ecbdc2de4541cd3e207b02` の[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37405694808)13/13 jobs、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37405694768)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37405694748)が成功。全18checksは15成功・既存条件skip3・failure0で、Organization専用workflowの既存条件skipを含む全4runの終端後公開artifact0を確認した
+- 統合後main自身の[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37407454204)は、2026-10-06 03:27 UTC確認で全13jobs/checks成功・failure0・skip0、終端後公開artifact0。今回mainの別実行でGUI788件/39 suites、Document18件＋HTTP再起動後5件、属性3条件の実GET一致/不一致/解除・詳細往復、Agent9項目/provenance、Organizationのbuildを含む全8stages（固定source/configの2+2に対応）、owned cleanupを確認した。Rust1831成功/9skip、別feature suite21成功および7成功/1skip、指定実DB36件の今回PASS名36/36を照合。exact main checkoutとDocument summaryのclean、同treeのOrganization runnerの必須clean gate通過を確認したが、Organization固有のhead/dirtyが公開logへ単独出力されたとは扱わない。環境はPostgreSQL18.6・固定合成2profileで、作業版の固定再送資格は実成功応答のbody途中喪失に限定し、全status/headers喪失は未資格のままとする
 - 資格対象は画像なしUbuntuの実操作PoC。macOS golden比較は未実行・未更新。影響候補Mock 2・3・4・7の4枚に加え、他3枚の画素不変も未証明で、全visual資格は主張しない
 - この手順そのものの対象PCでの実行、常設DBのbackup/restore、PostgreSQLプロセス再起動後の確認は未実施。CI成功と区別する
 - GPU、CUDA、外部モデル、Tauriは使わない。Agentは固定の合成executorであり、既存Document現在認可を確認して候補を作る。本文分析・実LLM・外部MCP通信は行わない
@@ -17,7 +17,11 @@
 
 ### 過去の受入記録
 
-以下はGUI追加前の固定版に対する記録であり、上記の最終ソースや対象PCの手動導入へ資格を付け替えない。
+以下は以前の固定版に対する記録であり、上記の最終ソースや対象PCの手動導入へ資格を付け替えない。
+
+- 当時の固定ソース：最終受入main `3d8deb253de19cb0954aa70a9a31cc5c4fc7540c` / tree `3f1ac6aa9e66d58bd5f01316e46334a48a64664f`
+- GUI統合の確認：PR69初回登録、PR70取下げ・公開終了、PR71属性編集、PR72予約取消、PR73 WORKING backendを保持した[PR74](https://github.com/AIrisu-072/knowledge-platform/pull/74) exact `ce56801f7ec73ed284a99838f07cfe0c92cf71f4` / tree `3f1ac6aa9e66d58bd5f01316e46334a48a64664f`。[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371770)、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371873)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371821)。確認結果：required-checkを含む通常CI13/13・DSI・Sandboxが成功。Rust1599成功/9skip、指定実DB36成功、GUI404・runtime補助試験161成功。Document18件とHTTP再起動後5件、Agent9項目/provenance、Organizationの操作・往復・再起動・owned cleanup、公開artifact0を確認した。初回PUT・新版POST・続くPUTで、実成功応答のbody途中喪失から実headers/同一requestの失敗→UNKNOWN→同一要求の明示再送・結果一致・DB snapshot不変を確認。status/headersも全喪失する旧faultのGUI明示再送は未合格のままで、今回へ付け替えない
+- 統合後mainの[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37301558995)。確認日：2026-10-05 11:31 UTC。確認結果：main自身のpush CIでrequired-checkを含む13/13 jobsが成功。Rust1599成功/9skip、指定実DB36成功。Document18件とHTTP再起動後5件、Agent9項目/provenance、Organizationの通常ナビ往復・操作・再起動・owned cleanup、公開artifact0を、PRとは別のmainログで確認した。exact head/clean、PostgreSQL18.6、固定合成2profileを照合した。作業版の固定再送資格は実成功応答のbody途中喪失に限定する
 
 - 当時の固定ソース：統合済みmain `6c514850850110a3c2f8b2b5664ec263510c5d47`。受入済み[PR67](https://github.com/AIrisu-072/knowledge-platform/pull/67) `a39c90c2` と同一tree `880b1a57abc6890ed47df5e7bc16a4694d4546cc`
 - 当時の確認：PR67の[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574840)、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574859)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574842)成功。同treeで使い捨てPostgreSQL・2名の合成Agent/完了/保留再開/原本取得・HTTPサーバー再起動後の復元・cleanupを確認済み。統合後mainの[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37253316995)もrequired-checkを含む13 jobsと実受入が成功
@@ -43,7 +47,7 @@ set -euo pipefail
 set +x
 umask 077
 export KP_HOME="$HOME/knowledge-platform-poc"
-export KP_SOURCE_SHA='3d8deb253de19cb0954aa70a9a31cc5c4fc7540c'
+export KP_SOURCE_SHA='0801c9864bdb7faf5fcbe7ee1062367335ee7bfb'
 [[ "$KP_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '受入済みの固定SHAが未設定です'; exit 1; }
 export KP_SOURCE="$KP_HOME/releases/$KP_SOURCE_SHA"
 test ! -e "$KP_HOME"
@@ -230,7 +234,15 @@ seedは既存Workをリセットせず、新規fixtureだけに完了/保留/再
 - [ ] 最終事務タスクを明示完了し、過去提出・根拠・判断・Agent結果を現在権限で読めること、新しい担当/提出が作られないことを確認する
 - [ ] 両HTTPプロセスを正常停止して同じ設定で再起動し、完了状態・保存済み内容・操作結果と非公開分離を再確認する
 
-文書の属性編集・既存複数原本の選択差替え・予約取消・公開状態の操作は[文書GUI手順](document-gui-v0.md)を参照する。初回登録は単原本で、複数原本の追加登録は今回含まない。
+文書のRoot直下作成・フォルダーの続き表示・選択親への子作成・改名・属性3項目の絞り込み、属性編集・既存複数原本の選択差替え・予約取消・公開状態の操作は[文書GUI手順](document-gui-v0.md)を参照する。初回登録は単原本で、複数原本の追加登録は今回含まない。
+
+追加GUIの手動確認（所有者が今後行う項目。未準備・未実施は未確認と記録し、CI成功だけではチェックしない）:
+
+- [ ] 現在の操作可否を読み取り、短い合成名と理由でSystem Root直下にフォルダーを作り、成功通知とIDを控える
+- [ ] 読める非root親をツリーで選び、登録先の名前・IDを確認して合成の子を作り、成功結果と子IDを控える
+- [ ] 続きがある場合は「さらに表示」で既表示行と選択を保持する。対象機で200件以下なら続きを未確認と記録し、201件表示の合格とは書かない
+- [ ] 作成した子を同じIDのまま短い合成名へ改名し、一覧再読取で確認する。節7の正常停止と同じ設定でのHTTP再起動後も同ID・新名を確認する
+- [ ] 文書種別・所管部署・カテゴリに短い合成値を持つ確認用文書で、3条件一致、1条件だけ不一致、属性解除、詳細往復と条件保持を確認する。絞り込みだけで元の属性・版を変更しない
 
 詳細は[既存の操作手順](organization-browser-poc.md)に従う。画像、ログ、DB、storageを外部へ送らず、結果だけを記録する。
 

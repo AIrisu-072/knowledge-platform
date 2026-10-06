@@ -2,13 +2,19 @@
 
 ## 対象ソースと確認状況
 
-導入対象の資格：固定の模擬利用者2名・画像保存なしのUbuntu機能受入に合格した版（対象PCでの手順実行、本番認証、見た目全体の比較検証は対象外）。最終受入main `3d8deb253de19cb0954aa70a9a31cc5c4fc7540c` / tree `3f1ac6aa9e66d58bd5f01316e46334a48a64664f` を[Linux手動導入](linux-manual-installation.md)と共通の固定ソースにする。固定SHAと受入記録が未確定の版は実行しない。
+導入対象の資格：固定の模擬利用者2名・画像保存なしのUbuntu機能受入に合格した版（対象PCでの手順実行、本番認証、見た目全体の比較検証は対象外）。最終受入main `0801c9864bdb7faf5fcbe7ee1062367335ee7bfb` / tree `794407fc62e2418bd6ecbdc2de4541cd3e207b02` を[Linux手動導入](linux-manual-installation.md)と共通の固定ソースにする。固定SHAと受入記録が未確定の版は実行しない。
 
-Document GUIの追加はPR69初回登録、PR70取下げ・公開終了、PR71属性編集、PR72予約取消、PR73 WORKING backendと、[PR74](https://github.com/AIrisu-072/knowledge-platform/pull/74)の既存複数原本編集・固定要求再送・Organizationの「編集作業」入口を対象とする。PR74 exact `ce56801f7ec73ed284a99838f07cfe0c92cf71f4` / tree `3f1ac6aa9e66d58bd5f01316e46334a48a64664f` の[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371770)、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371873)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371821)の確認結果：required-checkを含む通常CI13/13・DSI・Sandboxが成功。Rust1599成功/9skip、指定実DB36成功、GUI404・runtime補助試験161成功。Document18件とHTTP再起動後5件、Agent9項目/provenance、Organizationの操作・往復・再起動・owned cleanup、公開artifact0を確認した。初回PUT・新版POST・続くPUTで、実成功応答のbody途中喪失から実headers/同一requestの失敗→UNKNOWN→同一要求の明示再送・結果一致・DB snapshot不変を確認。status/headersも全喪失する旧faultのGUI明示再送は未合格のままで、今回へ付け替えない。統合後mainの[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37301558995)の確認結果：main自身のpush CIでrequired-checkを含む13/13 jobsが成功。Rust1599成功/9skip、指定実DB36成功。Document18件とHTTP再起動後5件、Agent9項目/provenance、Organizationの通常ナビ往復・操作・再起動・owned cleanup、公開artifact0を、PRとは別のmainログで確認した。exact head/clean、PostgreSQL18.6、固定合成2profileを照合した。作業版の固定再送資格は実成功応答のbody途中喪失に限定する（2026-10-05 11:31 UTC）。
+GUI統合の確認：PR69初回登録、PR70取下げ・公開終了、PR71属性編集、PR72予約取消、PR73 WORKING backend、PR74複数原本編集・固定要求再送・「編集作業」入口を保持し、PR76 Root直下作成、PR78フォルダーの続き表示、PR79選択親への子作成、PR80改名、[PR81](https://github.com/AIrisu-072/knowledge-platform/pull/81)属性3項目の絞り込みを含む。PR81公開head `426db3a5a43083a1b4bd76b656ea58322019eed3` / tree `794407fc62e2418bd6ecbdc2de4541cd3e207b02` の[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37405694808)13/13 jobs、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37405694768)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37405694748)が成功。全18checksは15成功・既存条件skip3・failure0で、Organization専用workflowの既存条件skipを含む全4runの終端後公開artifact0を確認した。
+
+統合後main自身の[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37407454204)は、2026-10-06 03:27 UTC確認で全13jobs/checks成功・failure0・skip0、終端後公開artifact0。今回mainの別実行でGUI788件/39 suites、Document18件＋HTTP再起動後5件、属性3条件の実GET一致/不一致/解除・詳細往復、Agent9項目/provenance、Organizationのbuildを含む全8stages（固定source/configの2+2に対応）、owned cleanupを確認した。Rust1831成功/9skip、別feature suite21成功および7成功/1skip、指定実DB36件の今回PASS名36/36を照合。exact main checkoutとDocument summaryのclean、同treeのOrganization runnerの必須clean gate通過を確認したが、Organization固有のhead/dirtyが公開logへ単独出力されたとは扱わない。環境はPostgreSQL18.6・固定合成2profileで、作業版の固定再送資格は実成功応答のbody途中喪失に限定し、全status/headers喪失は未資格のままとする。
 
 資格対象は画像なしUbuntu実操作PoCであり、対象PCでの手順全文・backup/restore・PostgreSQLプロセス再起動の確認は未実施。macOS golden比較は未実行・未更新で、影響候補Mock 2・3・4・7の4枚と、他3枚の画素不変も未証明。全visual資格や本番Identityの資格は主張しない。
 
 ### 過去の受入記録
+
+当時の固定ソースはmain `3d8deb253de19cb0954aa70a9a31cc5c4fc7540c` / tree `3f1ac6aa9e66d58bd5f01316e46334a48a64664f`。次の記録は2026-10-05 11:31 UTC時点のPR74までの資格であり、後続GUIや現在pinへ付け替えない。
+
+Document GUIの追加はPR69初回登録、PR70取下げ・公開終了、PR71属性編集、PR72予約取消、PR73 WORKING backendと、[PR74](https://github.com/AIrisu-072/knowledge-platform/pull/74)の既存複数原本編集・固定要求再送・Organizationの「編集作業」入口を対象とする。PR74 exact `ce56801f7ec73ed284a99838f07cfe0c92cf71f4` / tree `3f1ac6aa9e66d58bd5f01316e46334a48a64664f` の[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371770)、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371873)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37298371821)の確認結果：required-checkを含む通常CI13/13・DSI・Sandboxが成功。Rust1599成功/9skip、指定実DB36成功、GUI404・runtime補助試験161成功。Document18件とHTTP再起動後5件、Agent9項目/provenance、Organizationの操作・往復・再起動・owned cleanup、公開artifact0を確認した。初回PUT・新版POST・続くPUTで、実成功応答のbody途中喪失から実headers/同一requestの失敗→UNKNOWN→同一要求の明示再送・結果一致・DB snapshot不変を確認。status/headersも全喪失する旧faultのGUI明示再送は未合格のままで、今回へ付け替えない。統合後mainの[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37301558995)の確認結果：main自身のpush CIでrequired-checkを含む13/13 jobsが成功。Rust1599成功/9skip、指定実DB36成功。Document18件とHTTP再起動後5件、Agent9項目/provenance、Organizationの通常ナビ往復・操作・再起動・owned cleanup、公開artifact0を、PRとは別のmainログで確認した。exact head/clean、PostgreSQL18.6、固定合成2profileを照合した。作業版の固定再送資格は実成功応答のbody途中喪失に限定する（2026-10-05 11:31 UTC）。
 
 2026-10-05、[PR67](https://github.com/AIrisu-072/knowledge-platform/pull/67) `a39c90c2` / tree `880b1a57abc6890ed47df5e7bc16a4694d4546cc` で、合成Agent・完了・保留/再開・公開原本Downloadを含む同2名操作、実DB/transaction、両HTTP server再起動/復元/cleanupと[全通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574840)が成功した。統合後main `6c514850` は同一tree。この版は以前の[Linux手動導入](linux-manual-installation.md)の固定ソースであり、後続GUIや最終統合版の資格とは区別する。初回read失敗と原本bytes観測失敗の原因未特定という記録は残し、実サーバーや本番Identityの資格とは区別する。
 
@@ -65,7 +71,7 @@ export KP_WEB_DIST='/absolute/path/to/apps/document-web/dist'
 
 公開・予約公開の確定結果が不明なら、未公開や旧公開維持と断定せず、確認ダイアログの「同じ内容で再試行」で同じ操作ID・同じ対象・同じ要求を再送して結果を確認する。要求は公開画面の一時状態に保持されるため、版の変更、公開方法・予約日時の変更、公開画面の開き直し、画面からの離脱、ページの再読み込み、タブ終了を避ける。既に元の要求を失った場合は新しい公開要求を送らず、管理者に元の操作結果を確認する。公開成功前にWork fixtureを作らない。
 
-既存WORKINGへ戻る入口、属性編集、既存複数原本の選択差替え、予約取消、取下げ・公開終了は[文書GUI手順](document-gui-v0.md)を参照する。初回登録自体は単原本である。
+Root直下作成、フォルダーの続き表示、選択親への子作成、改名、属性3項目の絞り込み、既存WORKINGへ戻る入口、属性編集、既存複数原本の選択差替え、予約取消、取下げ・公開終了は[文書GUI手順](document-gui-v0.md)を参照する。初回登録自体は単原本である。
 
 サーバー側の別shellで同じ環境変数を設定して次を実行する。[Linux手動導入](linux-manual-installation.md)に従っている場合は、同手順の節6で `runtime.env` を読み込み、Document IDを入力して `seed-work` へ渡す。ブラウザー側PCからこのコマンドを実行しない。
 
