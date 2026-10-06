@@ -7,7 +7,7 @@ import { isAbsolute } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type { WorkflowActionCommand, Completed, Held, Resumed, AgentExecutionRequest, AgentExecutionRequested, AgentExecution, AgentResult, Finding, DecisionCommand, DecisionRecorded, EvidenceCommand, EvidenceRegistered, FindingCommand, FindingRegistered, RevisionRef, Claimed, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, Submitted, TaskDetail, TaskPage, WorkSession } from '../src/api/generated-work/types.gen';
 
-import type { CreateFolderData, DocumentRevisionPage, FileList, Folder, FolderChildren, FolderDetail, MutationResult, PublishedDocumentDetail } from '@knowledge-platform/document-api-client';
+import type { RenameFolderData, CreateFolderData, DocumentRevisionPage, FileList, Folder, FolderChildren, FolderDetail, MutationResult, PublishedDocumentDetail } from '@knowledge-platform/document-api-client';
 
 export type RuntimeContext = { sales: string; office: string; documentId: string; statePath: string };
 export type PersistedState = {
@@ -145,7 +145,7 @@ export async function loadState(context: RuntimeContext): Promise<PersistedState
 
 
 export type RootFolderState = {
-  schemaVersion: 3;
+  schemaVersion: 4;
   documentId: string;
   request: CreateFolderData['body'];
   receipt: MutationResult;
@@ -153,6 +153,7 @@ export type RootFolderState = {
   office: RootFolderSnapshot;
   paginationChildren: Folder[];
   selectedCreate: { request: CreateFolderData['body']; receipt: MutationResult; child: Folder };
+  selectedRename?: { targetFolderId: string; request: RenameFolderData['body']; receipt: MutationResult; beforeChild: Folder; child: Folder };
 };
 export type RootFolderSnapshot = { root: FolderDetail; children: FolderChildren };
 
@@ -162,7 +163,7 @@ export async function saveRootFolderState(context: RuntimeContext, state: RootFo
 }
 export async function loadRootFolderState(context: RuntimeContext): Promise<RootFolderState> {
   const state = JSON.parse(await readFile(`${context.statePath}.root-folder`, 'utf8')) as RootFolderState;
-  expect(state.schemaVersion).toBe(3);
+  expect(state.schemaVersion).toBe(4);
   expect(state.documentId === context.documentId).toBe(true);
   return state;
 }
@@ -340,7 +341,8 @@ export async function createSelectedFolderFromUi(page: Page, request: APIRequest
 
 export async function assertSelectedFolderUi(page: Page, request: APIRequestContext, context: RuntimeContext, state: RootFolderState) {
   currentAction('root-folder-verify');
-  const { request: command, child } = state.selectedCreate;
+  const { request: command } = state.selectedCreate;
+  const child = state.selectedRename?.child ?? state.selectedCreate.child;
   const parent = state.paginationChildren.find(folder => folder.folderId === command.parentFolderId)!;
   expect(new URL(page.url()).searchParams.get('folderId') === parent.folderId).toBe(true);
   for (const role of ['sales', 'office'] as const) {
@@ -366,7 +368,81 @@ export async function replaySelectedFolderCreate(request: APIRequestContext, con
   for (const [index, role] of (['sales', 'office'] as const).entries()) {
     const children = await get<FolderChildren>(request, context[role], `/v1/folders/${command.parentFolderId}/children?pageSize=200`);
     expect(isDeepStrictEqual(children, before[index])).toBe(true);
-    expect(isDeepStrictEqual(children.items, [state.selectedCreate.child])).toBe(true);
+    expect(isDeepStrictEqual(children.items, [state.selectedRename?.child ?? state.selectedCreate.child])).toBe(true);
+    expect(isDeepStrictEqual(await readRootFolderSnapshot(request, context[role]), state[role])).toBe(true);
+  }
+}
+
+// Rename only the GUI-created child. Root and the 201 pagination rows remain unchanged.
+export async function renameSelectedFolderFromUi(page: Page, request: APIRequestContext, context: RuntimeContext,
+  state: RootFolderState): Promise<NonNullable<RootFolderState['selectedRename']>> {
+  currentAction('root-folder-input');
+  const beforeChild = state.selectedCreate.child;
+  const parent = state.paginationChildren.find(folder => folder.folderId === beforeChild.parentFolderId)!;
+  const rail = page.getByRole('region', { name: 'フォルダー', exact: true });
+  await rail.getByRole('button', { name: `${parent.name}の子フォルダーを開く`, exact: true }).click();
+  await rail.getByRole('button', { name: beforeChild.name, exact: true }).click();
+  await expect.poll(() => new URL(page.url()).searchParams.get('folderId') === beforeChild.folderId).toBe(true);
+  const entry = rail.getByRole('button', { name: '選択したフォルダー名を変更', exact: true });
+  await expect(entry).toBeEnabled(); await entry.click();
+  const dialog = page.getByRole('dialog', { name: '選択したフォルダー名を変更', exact: true });
+  await expect(dialog.getByLabel('変更先のフォルダー名', { exact: true })).toHaveValue(beforeChild.name);
+  const name = '合成改名済み選択親の子フォルダー'; const reason = '【合成データ】GUI作成した子だけの改名を確認する';
+  await dialog.getByLabel('変更先のフォルダー名', { exact: true }).fill(name);
+  await dialog.getByLabel('変更理由', { exact: true }).fill(reason);
+  const sourcePromise = page.waitForResponse(response => new URL(response.url()).origin === context.sales
+    && new URL(response.url()).pathname === `/v1/folders/${parent.folderId}/children` && response.request().method() === 'GET');
+  const capabilityPromise = page.waitForResponse(response => new URL(response.url()).origin === context.sales
+    && new URL(response.url()).pathname === `/v1/folders/${beforeChild.folderId}/children` && response.request().method() === 'GET');
+  const responsePromise = page.waitForResponse(response => new URL(response.url()).origin === context.sales
+    && new URL(response.url()).pathname === `/v1/folders/${beforeChild.folderId}` && response.request().method() === 'PATCH');
+  currentAction('root-folder-create');
+  await dialog.getByRole('button', { name: '変更を保存する', exact: true }).click();
+  const source = await sourcePromise; expect(source.status()).toBe(200);
+  const rows = await source.json() as FolderChildren; expect(rows.nextCursor).toBeNull(); expect(isDeepStrictEqual(rows.items, [beforeChild])).toBe(true);
+  const capability = await capabilityPromise; expect(capability.status()).toBe(200);
+  expect((await capability.json() as FolderChildren).capabilities.renameFolder.status).toBe('available');
+  const response = await responsePromise; expect(response.status()).toBe(200);
+  const command = response.request().postDataJSON() as RenameFolderData['body'];
+  const receipt = await response.json() as MutationResult;
+  expect(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(command.operationId)).toBe(true);
+  expect(isDeepStrictEqual(command, { operationId: command.operationId, expectedFolderRevision: beforeChild.revision, name, reason })).toBe(true);
+  expect(receipt.operationId === command.operationId && receipt.resourceId === beforeChild.folderId).toBe(true);
+  expect(receipt.changed).toBe(true); expect(receipt.resultingRevision).toBe(1); expect(Number.isFinite(Date.parse(receipt.occurredAt))).toBe(true);
+  await expect(dialog.getByText('フォルダー名を変更しました。', { exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: '確認して閉じる', exact: true }).click();
+  const child = { ...beforeChild, name, revision: 1 };
+  await expect.poll(() => new URL(page.url()).searchParams.get('folderId') === child.folderId).toBe(true);
+  await expect(rail.getByRole('button', { name, exact: true })).toHaveAttribute('aria-current', 'location');
+  // Explicitly return to the original tail so the established pagination/UI helper assumptions remain intact.
+  await rail.getByRole('button', { name: parent.name, exact: true }).click();
+  await rail.getByRole('button', { name: `${parent.name}の子フォルダーを閉じる`, exact: true }).click();
+  const selectedRename = { targetFolderId: child.folderId, request: command, receipt, beforeChild, child };
+  await assertSelectedFolderUi(page, request, context, { ...state, selectedRename });
+  return selectedRename;
+}
+
+export async function replaySelectedFolderRename(request: APIRequestContext, context: RuntimeContext, state: RootFolderState) {
+  currentAction('root-folder-replay');
+  const rename = state.selectedRename!;
+  expect(Boolean(rename)).toBe(true);
+  expect(rename.targetFolderId === state.selectedCreate.child.folderId).toBe(true);
+  expect(isDeepStrictEqual(rename.beforeChild, state.selectedCreate.child)).toBe(true);
+  const parentPath = `/v1/folders/${rename.child.parentFolderId}/children?pageSize=200`;
+  const before = await Promise.all((['sales', 'office'] as const).map(role => get<FolderChildren>(request, context[role], parentPath)));
+  for (const role of ['sales', 'office'] as const) {
+    const capability = await get<FolderChildren>(request, context[role], `/v1/folders/${rename.targetFolderId}/children?pageSize=200`);
+    expect(isDeepStrictEqual(capability.capabilities.renameFolder, role === 'sales' ? { status: 'available' } : { status: 'disabled', reason: 'permission' })).toBe(true);
+  }
+  // Backend fixed-request replay qualification only; no GUI fault or new mutation is introduced.
+  const replay = await request.patch(`${context.sales}/v1/folders/${rename.targetFolderId}`, { data: rename.request });
+  expect(replay.status()).toBe(200); expect(isDeepStrictEqual(await replay.json(), rename.receipt)).toBe(true);
+  const denied = await request.patch(`${context.office}/v1/folders/${rename.targetFolderId}`, { data: rename.request });
+  expect(denied.status()).toBe(403); expect((await denied.json()).code).toBe('FORBIDDEN');
+  for (const [index, role] of (['sales', 'office'] as const).entries()) {
+    const current = await get<FolderChildren>(request, context[role], parentPath);
+    expect(isDeepStrictEqual(current, before[index])).toBe(true); expect(current.nextCursor).toBeNull();
+    expect(isDeepStrictEqual(current.items, [rename.child])).toBe(true);
     expect(isDeepStrictEqual(await readRootFolderSnapshot(request, context[role]), state[role])).toBe(true);
   }
 }

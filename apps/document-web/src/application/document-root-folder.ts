@@ -5,7 +5,7 @@ import { problemFromUnknown } from './problem-mapping';
 export function folderName(name: string): string {
   return metadataReason(name).normalize('NFC');
 }
-export function rootFolderValidation(name: string, reason: string): string | null {
+export function rootFolderValidation(name: string, reason: string, reasonLabel = '作成理由'): string | null {
   const normalized = folderName(name);
   // Unlike reason, the backend rejects name control characters before Unicode White_Space trim.
   if (/[\p{Cc}\p{Cs}]/u.test(name) || !normalized || [...normalized].length > 255
@@ -18,7 +18,7 @@ export function rootFolderValidation(name: string, reason: string): string | nul
     return total + (point <= 0x7f ? 1 : point <= 0x7ff ? 2 : point <= 0xffff ? 3 : 4);
   }, 0);
   if (!trimmedReason || bytes > 1024 || /[\p{Cc}\p{Cs}]/u.test(trimmedReason)) {
-    return '作成理由は前後の空白を除き1〜1024 UTF-8 bytesで、制御文字を含めず入力してください。';
+    return `${reasonLabel}は前後の空白を除き1〜1024 UTF-8 bytesで、制御文字を含めず入力してください。`;
   }
   return null;
 }
@@ -58,7 +58,7 @@ export async function readSelectedFolder(context: SelectedFolderContext,
   const children = await read(folderId);
   return { ...current, parentFolderId: sourceParentId, capabilities: children.capabilities };
 }
-function wasRejected(error: unknown): boolean {
+export function wasRejected(error: unknown): boolean {
   const problem = problemFromUnknown(error);
   const codes: Record<string, number> = {
     VALIDATION_FAILED: 422, AUTHENTICATION_REQUIRED: 401, FORBIDDEN: 403,
@@ -102,7 +102,7 @@ export function rootFolderOperations(owner: object) {
   if (!store) { store = createStore(); stores.set(owner, store); }
   return store;
 }
-function validOccurredAt(value: unknown): boolean {
+export function validOccurredAt(value: unknown): boolean {
   if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) return false;
   const match = /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/i.exec(value);
   // Date.parse alone accepts date-only strings and rolls February 30 into March.

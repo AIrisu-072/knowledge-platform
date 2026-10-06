@@ -19,3 +19,10 @@
 - 修正source `31b53ce6` は、初回の確定拒否だけに、同じ保存済み作成先IDを実ツリーで再選択した新しい読取根拠を使う。別対象・直URL・pending/unknownでは元要求を差し替えない。Root手順も新規要求と元要求の確認を区別した
 - 最終全GUI597件/35 suites、型/buildは成功。実再選択後の移動・ページ範囲外・別対象・UNKNOWN固定保持・遅延見直し等の反例を追加した。修正は製品1・DOM試験1・手順1ファイルで、runtime/configは元の26件/collection資格と同bytes
 - 次は限定修正とこの記録の独立再レビュー。GO確認後、修正後treeを固定して日本語Draftと同一headのhostedへ進む。旧NO-GOや以前の実通信資格を合格へ流用しない
+
+## 2026-10-06 00:33 UTC — PR79統合後の確認完了
+
+- PR79公開head `9c1d1f98c287873408e36be0929d1f0d1825e198`、tree `3ad89adbb4bf583c1f16cd16e23b3dcd78475fdb`。通常CI `37390502509` は全13 jobs成功、全18 checksは15成功と既存条件の3 skip、全4 run公開artifact0
+- 今回headでGUI597/35 suites、Document18+5、Agent9/provenance、DB36、選択親の子の実GUI作成・fresh200+1/capability・sales replay/office403・同HTTPサーバー再起動後の保持を確認。既存2+2/120秒/retries0/画像offとowned cleanupを維持した
+- main `5d9e3c46c5b8ed1b5dd8cbe32edefb46482f787a` へmerge済み。同tree、parents `09f79a26`＋`9c1d1f98`。統合後push CI `37392942272` でも全13 jobs・今回の実受入・DB36・cleanup・公開artifact0に独立成功した
+- 選択親作成の実装・統合後確認は完了。改名・移動・ACL・既読、golden/full visual、対象PC導入等へ資格を拡張しない。次の改名は別sliceの[状況](document-folder-rename-status.md)を参照する

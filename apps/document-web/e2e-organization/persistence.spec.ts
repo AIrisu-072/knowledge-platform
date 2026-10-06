@@ -1,7 +1,7 @@
 import { currentAction } from './support';
 import { expect, test } from '@playwright/test';
 import { isDeepStrictEqual } from 'node:util';
-import { assertSelectedFolderUi, replaySelectedFolderCreate, assertFolderPaginationUi, assertRootFolderCreated, assertRootFolderUi, loadRootFolderState, openRootFolderHome, readRootFolderSnapshot, replayRootFolderCreate } from './support';
+import { replaySelectedFolderRename, assertSelectedFolderUi, replaySelectedFolderCreate, assertFolderPaginationUi, assertRootFolderCreated, assertRootFolderUi, loadRootFolderState, openRootFolderHome, readRootFolderSnapshot, replayRootFolderCreate } from './support';
 import type { HandoffSnapshot, ReturnInstruction, WorkingArtifact } from '../src/api/generated-work/types.gen';
 import { assertHoldResumeState, assertCompletionState, assertEvidenceState, assertAgentState, assertHidden, assertSessions, captureFinal, get, loadState, readRuntimeContext } from './support';
 
@@ -162,6 +162,7 @@ test.describe('System Root folder creation', () => {
     await assertFolderPaginationUi(page, state);
     await assertSelectedFolderUi(page, request, context, state);
     await replaySelectedFolderCreate(request, context, state);
+    await replaySelectedFolderRename(request, context, state);
     // No tracing, video or screenshot capture for this independent office context.
     const officeContext = await browser.newContext({ locale: 'ja-JP', viewport: { width: 1440, height: 900 }, serviceWorkers: 'block', acceptDownloads: false, recordVideo: undefined });
     try {
