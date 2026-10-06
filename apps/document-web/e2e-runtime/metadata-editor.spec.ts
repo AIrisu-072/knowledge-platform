@@ -4,7 +4,8 @@ import { isDeepStrictEqual } from 'node:util';
 import {
   BinaryTransportBridge, getDocument, getDocumentHistory, getDocumentVersion,
   listDocumentRevisions, listDocumentVersions, listVersionFiles, moveDocument, publishVersion,
-  type CommandsMetadataPatch, type CommandsMoveDocument, type FolderChildren, type GuiReadState, type MutationResult, type PublishedDocument,
+  type CommandsMetadataPatch, type CommandsMoveDocument, type DocumentRevisionPage, type FolderChildren, type GuiReadState, type MutationResult,
+  type PublishedDocument, type RevisionComparisonResponse,
 } from '@knowledge-platform/document-api-client';
 import { startDiagnostics, finishDiagnostics } from './startup-diagnostics';
 import { hash, options, persistedSnapshot, runtime, saveSnapshot, uuidV7, type PersistedState, type RuntimeContext } from './support';
@@ -339,10 +340,13 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     // 既存detailのreturnToへ試験seedを置き、server原文と開始包含を実GETで検査する。
     const fromResponse = waitCreatedList(page, exactFrom);
     await page.getByRole('button', { name: '← 一覧へ戻る', exact: true }).press('Enter');
+    completed('gui-metadata-list-return-pressed');
     await verifyCreatedList(page, await fromResponse, exactFrom, [{ documentId, createdAt }]);
+    completed('gui-metadata-created-from-verified');
     await inputEquals(page.getByLabel('文書名で絞り込み', { exact: true }), listTitle);
     await verifyCreatedInput(page, '作成日時の開始（含む）', createdAt, exactLocal);
     await readUnreadPublishedList(page, documentId, created.documentVersionId, exactFrom);
+    completed('gui-metadata-unread-list-verified');
     await page.locator(`[data-document-id="${documentId}"]`).press('Enter');
     await page.getByRole('button', { name: '詳細を開く', exact: true }).press('Enter');
     await expect.poll(() => new URL(page.url()).pathname === `/documents/${documentId}`).toBe(true);
@@ -508,6 +512,122 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     page.off('request', recordMoveRequest);
     page.off('response', recordMoveResponse);
     page.off('requestfinished', recordMoveReadFinished);
+    completed('gui-metadata-revision-entry-ready');
+
+    // 既存2改訂を通常GUIで読む。100件超の追加pageはDOM資格であり、この実例では未資格。
+    const baseRevision = after.revisions[0]!, targetRevision = after.revisions[1]!;
+    expect(baseRevision.major === 1 && baseRevision.minor === 1).toBe(true);
+    expect(targetRevision.major === 1 && targetRevision.minor === 0).toBe(true);
+    expect(baseRevision.documentVersionId === targetRevision.documentVersionId).toBe(true);
+    const revisionResponse = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.origin === context.human && url.pathname === `/v1/documents/${documentId}/revisions`
+        && response.request().method() === 'GET' && url.searchParams.get('pageSize') === '100' && !url.searchParams.has('cursor');
+    });
+    await page.getByRole('tab', { name: '版・改訂', exact: true }).press('Enter');
+    const revisionResult = await revisionResponse;
+    expect(revisionResult.status()).toBe(200);
+    const revisionBody = await revisionResult.json() as DocumentRevisionPage;
+    privatelyEqual(revisionBody.items, after.revisions);
+    expect(revisionBody.nextCursor).toBeNull();
+    await expect(page.getByRole('heading', { name: 'コンテンツ版', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '正式改訂', exact: true })).toBeVisible();
+    const contentVersions = page.getByRole('tabpanel', { name: '版・改訂', exact: true }).locator('section')
+      .filter({ has: page.getByRole('heading', { name: 'コンテンツ版', exact: true }) });
+    await expect(contentVersions.getByRole('listitem')).toHaveCount(1);
+    await expect(contentVersions.getByRole('listitem').getByRole('button')).toContainText('版 1');
+    const revisionRows = page.getByRole('list', { name: '正式改訂一覧', exact: true }).getByRole('listitem');
+    await expect(revisionRows).toHaveCount(2);
+    await expect(revisionRows.nth(0).locator('strong')).toHaveText('1.1');
+    await expect(revisionRows.nth(1).locator('strong')).toHaveText('1.0');
+    await expect(page.getByRole('button', { name: '正式改訂をさらに表示', exact: true })).toBeHidden();
+    completed('gui-metadata-revision-first-page-verified');
+    // 既定と逆の明示pairで、先頭2件への無言fallbackを識別する。版tabでは比較readはdisabled。
+    await page.getByRole('combobox', { name: '基準', exact: true }).selectOption(baseRevision.revisionId);
+    await page.getByRole('combobox', { name: '対象', exact: true }).selectOption(targetRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '基準', exact: true }), baseRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '対象', exact: true }), targetRevision.revisionId);
+    await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
+      && new URL(page.url()).searchParams.get('targetRevisionId') === targetRevision.revisionId).toBe(true);
+    completed('gui-metadata-comparison-pair-verified');
+    const comparisonResponse = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.origin === context.human && url.pathname === `/v1/documents/${documentId}/revision-comparisons`
+        && response.request().method() === 'POST';
+    });
+    await page.getByRole('tab', { name: '新旧比較', exact: true }).press('Enter');
+    completed('gui-metadata-comparison-tab-pressed');
+    const comparisonResult = await comparisonResponse;
+    expect(comparisonResult.status()).toBe(200);
+    completed('gui-metadata-comparison-response-verified');
+    privatelyEqual(comparisonResult.request().postDataJSON(), {
+      baseRevisionId: baseRevision.revisionId, targetRevisionId: targetRevision.revisionId, projection: 'display', pageSize: 50,
+    });
+    const comparisonBody = await comparisonResult.json() as RevisionComparisonResponse;
+    for (const [actual, revision] of [[comparisonBody.baseRevision, baseRevision], [comparisonBody.targetRevision, targetRevision]]) {
+      privatelyEqual(actual, { revisionId: revision!.revisionId, documentVersionId: revision!.documentVersionId,
+        major: revision!.major, minor: revision!.minor, createdAt: revision!.createdAt });
+    }
+    expect(comparisonBody.contentComparisonStatus).toBe('sameAuthoritativeVersion');
+    expect(comparisonBody.metadataComparisonStatus).toBe('different');
+    await inputEquals(page.getByRole('combobox', { name: '基準改訂', exact: true }), baseRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '比較対象', exact: true }), targetRevision.revisionId);
+    await expect(page.getByRole('region', { name: '新旧比較', exact: true }).locator('dt').filter({ hasText: /^基準$/ }).locator('+ dd')).toHaveText('1.1');
+    await expect(page.getByRole('region', { name: '新旧比較', exact: true }).locator('dt').filter({ hasText: /^対象$/ }).locator('+ dd')).toHaveText('1.0');
+    await expect(page.getByText('同じコンテンツ版のため本文比較なし', { exact: true })).toBeVisible();
+    completed('gui-metadata-revision-first-comparison-verified');
+    await page.getByRole('button', { name: '← 版・改訂へ戻る', exact: true }).press('Enter');
+    // tab往復の有効cache再利用に、無条件のGET待ちや通信総数の上限を置かない。
+    await inputEquals(page.getByRole('combobox', { name: '基準', exact: true }), baseRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '対象', exact: true }), targetRevision.revisionId);
+    await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
+      && new URL(page.url()).searchParams.get('targetRevisionId') === targetRevision.revisionId).toBe(true);
+    const revisionRestartResponse = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.origin === context.human && url.pathname === `/v1/documents/${documentId}/revisions`
+        && response.request().method() === 'GET' && url.searchParams.get('pageSize') === '100' && !url.searchParams.has('cursor');
+    });
+    await page.getByRole('button', { name: '正式改訂を最初から読み直す', exact: true }).press('Enter');
+    const revisionRestartResult = await revisionRestartResponse;
+    expect(revisionRestartResult.status()).toBe(200);
+    const revisionRestartBody = await revisionRestartResult.json() as DocumentRevisionPage;
+    privatelyEqual(revisionRestartBody.items, after.revisions);
+    expect(revisionRestartBody.nextCursor).toBeNull();
+    await expect(revisionRows).toHaveCount(2);
+    await expect(revisionRows.nth(0).locator('strong')).toHaveText('1.1');
+    await expect(revisionRows.nth(1).locator('strong')).toHaveText('1.0');
+    await expect(page.getByRole('button', { name: '正式改訂をさらに表示', exact: true })).toBeHidden();
+    completed('gui-metadata-revision-reload-page-verified');
+    await inputEquals(page.getByRole('combobox', { name: '基準', exact: true }), baseRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '対象', exact: true }), targetRevision.revisionId);
+    await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
+      && new URL(page.url()).searchParams.get('targetRevisionId') === targetRevision.revisionId).toBe(true);
+    // 明示再読取は比較cacheも破棄する。同pairの新POSTと結果を確認してから概要へ戻る。
+    const comparisonRestartResponse = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.origin === context.human && url.pathname === `/v1/documents/${documentId}/revision-comparisons`
+        && response.request().method() === 'POST';
+    });
+    await page.getByRole('tab', { name: '新旧比較', exact: true }).press('Enter');
+    const comparisonRestartResult = await comparisonRestartResponse;
+    expect(comparisonRestartResult.status()).toBe(200);
+    privatelyEqual(comparisonRestartResult.request().postDataJSON(), {
+      baseRevisionId: baseRevision.revisionId, targetRevisionId: targetRevision.revisionId, projection: 'display', pageSize: 50,
+    });
+    const comparisonRestartBody = await comparisonRestartResult.json() as RevisionComparisonResponse;
+    privatelyEqual(comparisonRestartBody.baseRevision, comparisonBody.baseRevision);
+    privatelyEqual(comparisonRestartBody.targetRevision, comparisonBody.targetRevision);
+    expect(comparisonRestartBody.contentComparisonStatus).toBe('sameAuthoritativeVersion');
+    expect(comparisonRestartBody.metadataComparisonStatus).toBe('different');
+    await inputEquals(page.getByRole('combobox', { name: '基準改訂', exact: true }), baseRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '比較対象', exact: true }), targetRevision.revisionId);
+    await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
+      && new URL(page.url()).searchParams.get('targetRevisionId') === targetRevision.revisionId).toBe(true);
+    await expect(page.getByRole('region', { name: '新旧比較', exact: true }).locator('dt').filter({ hasText: /^基準$/ }).locator('+ dd')).toHaveText('1.1');
+    await expect(page.getByRole('region', { name: '新旧比較', exact: true }).locator('dt').filter({ hasText: /^対象$/ }).locator('+ dd')).toHaveText('1.0');
+    await expect(page.getByText('同じコンテンツ版のため本文比較なし', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '← 版・改訂へ戻る', exact: true }).press('Enter');
+    await page.getByRole('tab', { name: '概要', exact: true }).press('Enter');
     const movedHuman = (await getDocument({ ...common, path, query: { view: 'published' } })).data;
     const movedAgent = (await getDocument({ ...options(context.agent), path, query: { view: 'published' } })).data;
     // folder/revision以外の正式表示・日時・既読もactorごとの移動前値を保持する。
@@ -527,6 +647,7 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     expect(moveRequests).toBe(1); expect(patchRequests).toBe(3);
     expect(origins).toEqual(new Set([context.human]));
     completed('gui-document-move-verified');
+    completed('gui-formal-revisions-readonly-verified');
     await saveSnapshot(metadataContext(context), 'gui-metadata', documentId);
     const metadataState = JSON.parse(await readFile(metadataContext(context).statePath, 'utf8')) as PersistedState;
     privatelyEqual(metadataState.documents[0]!.snapshot, movedSnapshot);
@@ -581,6 +702,67 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     await inputEquals(dialog.getByLabel('カテゴリ', { exact: true }), '');
     await dialog.getByRole('button', { name: 'キャンセル', exact: true }).press('Enter');
     completed('gui-metadata-restart-verified');
+
+    // 保存済みの同じ正式改訂を、既存2 HTTP再起動後に通常tabで読む。
+    const baseRevision = snapshot.revisions[0]!, targetRevision = snapshot.revisions[1]!;
+    expect(baseRevision.major === 1 && baseRevision.minor === 1).toBe(true);
+    expect(targetRevision.major === 1 && targetRevision.minor === 0).toBe(true);
+    expect(baseRevision.documentVersionId === targetRevision.documentVersionId).toBe(true);
+    const revisionResponse = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.origin === context.human && url.pathname === `/v1/documents/${snapshot.documentId}/revisions`
+        && response.request().method() === 'GET' && url.searchParams.get('pageSize') === '100' && !url.searchParams.has('cursor');
+    });
+    await page.getByRole('tab', { name: '版・改訂', exact: true }).press('Enter');
+    const revisionResult = await revisionResponse;
+    expect(revisionResult.status()).toBe(200);
+    const revisionBody = await revisionResult.json() as DocumentRevisionPage;
+    privatelyEqual(revisionBody.items, snapshot.revisions);
+    expect(revisionBody.nextCursor).toBeNull();
+    await expect(page.getByRole('heading', { name: 'コンテンツ版', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '正式改訂', exact: true })).toBeVisible();
+    const contentVersions = page.getByRole('tabpanel', { name: '版・改訂', exact: true }).locator('section')
+      .filter({ has: page.getByRole('heading', { name: 'コンテンツ版', exact: true }) });
+    await expect(contentVersions.getByRole('listitem')).toHaveCount(1);
+    await expect(contentVersions.getByRole('listitem').getByRole('button')).toContainText('版 1');
+    const revisionRows = page.getByRole('list', { name: '正式改訂一覧', exact: true }).getByRole('listitem');
+    await expect(revisionRows).toHaveCount(2);
+    await expect(revisionRows.nth(0).locator('strong')).toHaveText('1.1');
+    await expect(revisionRows.nth(1).locator('strong')).toHaveText('1.0');
+    await expect(page.getByRole('button', { name: '正式改訂をさらに表示', exact: true })).toBeHidden();
+    await page.getByRole('combobox', { name: '基準', exact: true }).selectOption(baseRevision.revisionId);
+    await page.getByRole('combobox', { name: '対象', exact: true }).selectOption(targetRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '基準', exact: true }), baseRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '対象', exact: true }), targetRevision.revisionId);
+    await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
+      && new URL(page.url()).searchParams.get('targetRevisionId') === targetRevision.revisionId).toBe(true);
+    const comparisonResponse = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.origin === context.human && url.pathname === `/v1/documents/${snapshot.documentId}/revision-comparisons`
+        && response.request().method() === 'POST';
+    });
+    await page.getByRole('tab', { name: '新旧比較', exact: true }).press('Enter');
+    const comparisonResult = await comparisonResponse;
+    expect(comparisonResult.status()).toBe(200);
+    privatelyEqual(comparisonResult.request().postDataJSON(), {
+      baseRevisionId: baseRevision.revisionId, targetRevisionId: targetRevision.revisionId, projection: 'display', pageSize: 50,
+    });
+    const comparisonBody = await comparisonResult.json() as RevisionComparisonResponse;
+    for (const [actual, revision] of [[comparisonBody.baseRevision, baseRevision], [comparisonBody.targetRevision, targetRevision]]) {
+      privatelyEqual(actual, { revisionId: revision!.revisionId, documentVersionId: revision!.documentVersionId,
+        major: revision!.major, minor: revision!.minor, createdAt: revision!.createdAt });
+    }
+    expect(comparisonBody.contentComparisonStatus).toBe('sameAuthoritativeVersion');
+    expect(comparisonBody.metadataComparisonStatus).toBe('different');
+    await inputEquals(page.getByRole('combobox', { name: '基準改訂', exact: true }), baseRevision.revisionId);
+    await inputEquals(page.getByRole('combobox', { name: '比較対象', exact: true }), targetRevision.revisionId);
+    await expect.poll(() => new URL(page.url()).searchParams.get('baseRevisionId') === baseRevision.revisionId
+      && new URL(page.url()).searchParams.get('targetRevisionId') === targetRevision.revisionId).toBe(true);
+    await expect(page.getByRole('region', { name: '新旧比較', exact: true }).locator('dt').filter({ hasText: /^基準$/ }).locator('+ dd')).toHaveText('1.1');
+    await expect(page.getByRole('region', { name: '新旧比較', exact: true }).locator('dt').filter({ hasText: /^対象$/ }).locator('+ dd')).toHaveText('1.0');
+    await expect(page.getByText('同じコンテンツ版のため本文比較なし', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '← 版・改訂へ戻る', exact: true }).press('Enter');
+    await page.getByRole('tab', { name: '概要', exact: true }).press('Enter');
     // 再起動後も同じDocumentのcreatedAtを終了境界へそのまま渡し、終了除外を検査する。
     const beforeResponse = waitCreatedList(page, exactBefore);
     await page.getByRole('button', { name: '← 一覧へ戻る', exact: true }).press('Enter');
@@ -609,5 +791,6 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     await readFilteredList(page, removedCategoryFilters, []);
     privatelyEqual(await persistedSnapshot(context.human, snapshot.documentId), snapshot);
     privatelyEqual(await persistedSnapshot(context.agent, snapshot.documentId), snapshot);
+    completed('gui-formal-revisions-restart-readonly-verified');
   });
 }

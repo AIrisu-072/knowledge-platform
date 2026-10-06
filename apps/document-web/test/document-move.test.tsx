@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
 import { documentApi, type DocumentDetail, type Folder, type FolderChildren } from '../src/application/document-workspace';
@@ -12,7 +13,7 @@ import { folderMoveOperations } from '../src/application/document-folder-move';
 
 jest.mock('../src/application/document-workspace', () => ({ documentApi: {
   getRootFolder: jest.fn(), listFolderChildren: jest.fn(), listDocuments: jest.fn(), getDocument: jest.fn(), getDocumentVersion: jest.fn(), listVersionFiles: jest.fn(),
-  listDocumentVersions: jest.fn(), listDocumentRevisions: jest.fn(), getDocumentHistory: jest.fn(), moveDocument: jest.fn(), createFolder: jest.fn(), renameFolder: jest.fn(), moveFolder: jest.fn(),
+  listDocumentVersions: jest.fn(), listDocumentRevisions: jest.fn(), compareDocumentRevisions: jest.fn(), getDocumentHistory: jest.fn(), moveDocument: jest.fn(), createFolder: jest.fn(), renameFolder: jest.fn(), moveFolder: jest.fn(),
 } }));
 const documentId = '019a0010-0000-7000-8000-000000000010';
 const otherId = '019a0010-0000-7000-8000-000000000020';
@@ -66,6 +67,111 @@ async function chooseDestination(dialog: HTMLElement, name = destinationRow.name
 function fill(dialog: HTMLElement) { fireEvent.change(within(dialog).getByLabelText('移動理由'), { target: { value: ' 合成理由 ' } }); fireEvent.click(within(dialog).getByLabelText(confirmation)); }
 function submit(dialog: HTMLElement) { fireEvent.submit(within(dialog).getByRole('button', { name: '移動する' }).closest('form')!); }
 async function goList(h: ReturnType<typeof setup>, extra: Record<string, unknown> = {}) { await act(async () => { await h.router.navigate({ to: '/documents', search: validateListSearch(extra) }); }); }
+async function closeWithHeldFrames(dialog: HTMLElement, name = 'キャンセル') {
+  const frames: FrameRequestCallback[] = [];
+  const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+  fireEvent.click(within(dialog).getByRole('button', { name }));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: title })).not.toBeInTheDocument());
+  raf.mockRestore();
+  expect(frames.length).toBeGreaterThan(0);
+  return async () => { await act(async () => { frames.splice(0).forEach(callback => callback(performance.now())); }); };
+}
+
+// An unconditional close callback steals the next control's focus and makes Enter reopen move.
+test.each([false, true])('成功closeの遅いfocus復帰は次の操作へ移したfocus=%pを尊重し、旧triggerのfallbackを保つ', async movedFocus => {
+  const h = setup(); const original = await screen.findByRole('button', { name: title });
+  const dialog = await openMove(); await chooseDestination(dialog); fill(dialog); submit(dialog);
+  await within(dialog).findByText('文書を移動しました。');
+  await waitFor(() => expect(documentMoveOperations(h.client).get()).toMatchObject({ status: 'succeeded', refresh: 'complete' }));
+  expect(original).not.toBeInTheDocument();
+  const runFrames = await closeWithHeldFrames(dialog, '確認して閉じる');
+  expect(documentMoveOperations(h.client).get()).toBeUndefined();
+  const next = screen.getByRole('tab', { name: '版・改訂' });
+  if (movedFocus) next.focus(); else expect(document.body).toHaveFocus();
+  await runFrames();
+  expect(movedFocus ? next : screen.getByRole('button', { name: title })).toHaveFocus();
+  if (movedFocus) {
+    await userEvent.setup().keyboard('{Enter}');
+    await waitFor(() => expect(h.router.state.location.search.tab).toBe('versions'));
+    expect(h.api.listDocumentRevisions).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog', { name: title })).not.toBeInTheDocument();
+  }
+  expect(h.api.moveDocument).toHaveBeenCalledTimes(1);
+});
+
+test.each(['ordinary', 'unknown'])('通常closeのfocus復帰は%sの入口と保持要求を維持する', async state => {
+  const h = setup(); const dialog = await openMove();
+  if (state === 'unknown') {
+    h.api.moveDocument.mockRejectedValueOnce(new Error('lost')); await chooseDestination(dialog); fill(dialog); submit(dialog);
+    await within(dialog).findByText('移動結果を確認できません');
+  }
+  const saved = documentMoveOperations(h.client).get();
+  const runFrames = await closeWithHeldFrames(dialog, state === 'unknown' ? '閉じる' : 'キャンセル');
+  expect(document.body).toHaveFocus(); await runFrames();
+  expect(screen.getByRole('button', { name: state === 'unknown' ? recovery : title })).toHaveFocus();
+  expect(documentMoveOperations(h.client).get()).toBe(saved);
+});
+
+test.each(['disabled', 'removed'])('close後に入口が%sになったときfocus復帰しない', async state => {
+  const h = setup(); const dialog = await openMove(); const runFrames = await closeWithHeldFrames(dialog);
+  await act(async () => { h.client.setQueryData(['document', documentId, 'published'], detail(documentId, { capabilities: { ...detail().capabilities, moveDocument: state === 'disabled' ? denied : undefined } })); });
+  if (state === 'disabled') await waitFor(() => expect(screen.getByRole('button', { name: title })).toBeDisabled());
+  else await waitFor(() => expect(screen.queryByRole('button', { name: title })).not.toBeInTheDocument());
+  expect(document.body).toHaveFocus(); await runFrames(); expect(document.body).toHaveFocus();
+});
+
+test('pendingの移動は閉じる操作を受け付けず同じ要求を保持する', async () => {
+  const h = setup(); h.api.moveDocument.mockReturnValue(deferred<unknown>().promise);
+  const dialog = await openMove(); await chooseDestination(dialog); fill(dialog); submit(dialog);
+  await waitFor(() => expect(documentMoveOperations(h.client).get()?.status).toBe('pending'));
+  const saved = documentMoveOperations(h.client).get(); const close = within(dialog).getByRole('button', { name: '閉じる' });
+  expect(close).toBeDisabled(); fireEvent.click(close); await userEvent.setup().keyboard('{Escape}');
+  expect(dialog).toBeVisible(); expect(documentMoveOperations(h.client).get()).toBe(saved); expect(h.api.moveDocument).toHaveBeenCalledTimes(1);
+});
+
+test.each(['reopen', 'reopen-idle', 'tab', 'other-document', 'unmount'])('閉じた移動の遅いfocus復帰は%s後のfocusを上書きしない', async change => {
+  const h = setup(); const dialog = await openMove(); const runFrames = await closeWithHeldFrames(dialog);
+  let focus: HTMLElement = document.body;
+  if (change === 'reopen' || change === 'reopen-idle') {
+    const again = await openMove();
+    if (change === 'reopen') { focus = within(again).getByLabelText('移動理由'); focus.focus(); }
+    else (document.activeElement as HTMLElement).blur();
+  }
+  else if (change === 'unmount') h.unmount();
+  else {
+    await act(async () => { await h.router.navigate({ to: '/documents/$documentId', params: { documentId: change === 'tab' ? documentId : otherId }, search: validateDetailSearch({ tab: change === 'tab' ? 'versions' : 'overview' }) }); });
+    (document.activeElement as HTMLElement).blur();
+  }
+  expect(focus).toHaveFocus(); await runFrames(); expect(focus).toHaveFocus();
+  expect(h.api.moveDocument).not.toHaveBeenCalled();
+});
+
+test('閉じた移動の遅いfocus復帰は初回改訂readと明示pair選択後の比較Enterを妨げない', async () => {
+  const h = setup(); const baseRevisionId = '019a0010-0000-7000-8000-000000000111'; const targetRevisionId = '019a0010-0000-7000-8000-000000000110';
+  h.api.listDocumentRevisions.mockResolvedValue({ items: [
+    { revisionId: baseRevisionId, documentVersionId: 'version', major: 1, minor: 1, label: '1.1', createdAt: '2026-10-02T00:00:00Z', sourceKind: 'metadataRevision', metadataSnapshotStatus: 'complete' },
+    { revisionId: targetRevisionId, documentVersionId: 'version', major: 1, minor: 0, label: '1.0', createdAt: '2026-10-01T00:00:00Z', sourceKind: 'publication', metadataSnapshotStatus: 'complete' },
+  ], nextCursor: null });
+  h.api.compareDocumentRevisions.mockReturnValue(deferred<unknown>().promise);
+  const dialog = await openMove(); await chooseDestination(dialog); fill(dialog); submit(dialog);
+  await within(dialog).findByText('文書を移動しました。');
+  await waitFor(() => expect(documentMoveOperations(h.client).get()).toMatchObject({ status: 'succeeded', refresh: 'complete' }));
+  const runFrames = await closeWithHeldFrames(dialog, '確認して閉じる'); const user = userEvent.setup();
+  screen.getByRole('tab', { name: '版・改訂' }).focus(); await user.keyboard('{Enter}');
+  const revisions = await screen.findByRole('list', { name: '正式改訂一覧' }); expect(within(revisions).getAllByRole('listitem')).toHaveLength(2);
+  expect(h.api.listDocumentRevisions).toHaveBeenCalledTimes(1);
+  await user.selectOptions(screen.getByRole('combobox', { name: '基準' }), baseRevisionId);
+  await user.selectOptions(screen.getByRole('combobox', { name: '対象' }), targetRevisionId);
+  await waitFor(() => expect(h.router.state.location.search).toMatchObject({ tab: 'versions', baseRevisionId, targetRevisionId }));
+  expect(screen.getByRole('combobox', { name: '基準' })).toHaveValue(baseRevisionId);
+  expect(screen.getByRole('combobox', { name: '対象' })).toHaveValue(targetRevisionId);
+  const next = screen.getByRole('tab', { name: '新旧比較' }); next.focus(); await runFrames(); expect(next).toHaveFocus();
+  await user.keyboard('{Enter}');
+  await waitFor(() => expect(h.api.compareDocumentRevisions).toHaveBeenCalledTimes(1));
+  expect(h.api.compareDocumentRevisions).toHaveBeenCalledWith(documentId, { baseRevisionId, targetRevisionId, projection: 'display', pageSize: 50 });
+  expect(h.router.state.location.search).toMatchObject({ tab: 'compare', baseRevisionId, targetRevisionId });
+  expect(screen.queryByRole('dialog', { name: title })).not.toBeInTheDocument(); expect(h.api.moveDocument).toHaveBeenCalledTimes(1);
+});
 
 // Removing the ordinary detail entry must fail before any POST can run.
 test('通常概要から文書IDと元所属を示し、移動先と継承影響を明示確認する', async () => {

@@ -1,5 +1,26 @@
 # Active Execution Pointer
 
+## 2026-10-06 15:59 UTC — 正式改訂の続き表示
+
+- PR88統合main `ea406848` から既存100件/nextCursorを「版」「新旧比較」へ接続する。[状況](document-revision-pagination-status.md)と[小計画](../plans/2026-10-06-document-revision-pagination.md)が再開先
+- 明示した古い比較IDを先頭2件へ無言で置換せず、追加read/再読取・失効・遅延・既存操作保持をTDDで確認する。新backend・新基盤・大量fixtureなし
+- 文書移動PR88は同headの全適用CI/実受入/DB36/cleanup/artifact0合格後にmain統合。main自身のCI `37457937486` も全13jobs/checks・実受入/再起動/DB36/cleanup/artifact0を独立確認した。GUI `9fc21a9` は独立I1/I2の認可拒否後cache復活を補修し、全1137/47・型/build・限定再review GO。受入は既存2改訂の通常read/比較/再読取/HTTP再起動を追加。独立I1の比較後の戻りを `06c27907` で既存button経由へ補修し、純粋63・型・MCP compile・収集18+5成功。限定再reviewはI1解消・組合せGO。次は同head Draft/hosted。実runtime・実GUI100件超は未資格のまま明示する
+- GUI・試験・日本語手順を同機能1PRへまとめ、mainへ直接統合する。以下は各時点の履歴
+
+13:35追補：[PR89](https://github.com/AIrisu-072/knowledge-platform/pull/89)初回head `de849c92` / tree `d35e9f6d` は13files・凍結候補一致。CI `37469083623` の実受入はjourney16成功/2失敗でqualified=false、後段は未到達。予約取消の成功statusと履歴背景read statusの同居を純粋DOMで再現し、既存取消region内への検査限定を補修中。metadataの旧日時/未読/一覧区間のtimeoutは原因未確定として別に診断する。失敗を保持し、限定修正/review後に同PRの新headで確認する。
+
+13:47追補：初回CIはRust/DB36/Folder4を含む11jobs成功、実受入と集約checkだけ失敗、全4run artifact0。取消試験の限定scope修正 `04a393f9` は25 PASS・型/収集・独立GO。metadataの実timeout根因は未確定のまま、別の実DOM反例で証明した遅いfocus奪取だけを `31aed928` で補修し、全GUI1144/47・schema/型/build成功。当該focus補修と取消fixの組合せも限定独立GO。次は同PR新headの実受入。Home側の別focus競合は残件である。
+
+14:20追補：次head `a27389c3` / CI `37474338595` は予約取消PASS、lifecycle通知strict-locatorとmetadata timeoutでjourney16/2・後段未到達。既存未読完了stageのallowlist漏れにより、公開lastStageから「正式改訂read未到達」とした解釈は撤回。停止範囲には移動・改訂read/比較も含まれる。lifecycle4検査を正しい操作regionへ限定し、既存診断の同一field/capへ固定7工程＋既存1工程許可だけを追加して実停止区間を判定する。製品・timeout/skip・診断の動的公開値は変えない。両失敗証拠と根因未確定を保持する。
+
+14:26追補：lifecycle限定検査 `d1f43a51` は23 PASS・型/収集、固定工程だけの診断 `4fed4451` はsafe64・型/収集が成功。6files組合せは独立GOで、同HEAD全GUI1147/47も合格。次は同PRの新head既存CIで実停止工程と受入を確認する。元metadata timeout根因未確定、実GUI100超未資格、既存未解明失敗を保持する。
+
+15:22追補：第3head `de2cf415` / CI `37479950755` はjourney17成功/metadataのみtimeout。初回改訂GET/2行は実通過し、次の比較操作区間へ絞れた。公式Playwright engineと実select描画で旧exact labelが0件・exact comboboxが1件となる8条件を再現し、`d885f66c` で18locatorだけを修正。独立した移動closeのfocus欠陥も `935f1c8a` で正常fallbackを保って限定補修し、focused83・製品同一の全1160/47・型/build成功。診断3固定工程 `1cdf9665` は同field/capを維持。6files組合せの限定独立reviewはGO。次は同PR新headの実受入。過去失敗・訂正・未資格を保持する。
+
+15:59追補：第4head `b7885fab` / CI `37487992438` は比較HTTP200と前段検査まで進み、metadata576:82のglobal対象dt/dd検査が既存現行版要約と重複してstrict失敗。`75bcf849` で比較region内の基準/対象6検査だけに限定し、旧actual2 RED→focused43・型/safe64/18+5収集成功。製品表示と同値の厳密検査を保持する。限定独立reviewはGO。次は同PR新head実完走。実GUI100超などの未資格と失敗証拠を維持する。
+
+---
+
 ## 2026-10-06 11:01 UTC — 読める文書の移動GUI
 
 - PR87統合main `3448c51d` から、通常詳細の非null folderIdと可視ツリーだけで既存Document moveをGUI化する。[状況](document-move-status.md)と[小計画](../plans/2026-10-06-document-move.md)が再開先
