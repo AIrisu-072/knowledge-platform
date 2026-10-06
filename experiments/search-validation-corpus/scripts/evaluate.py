@@ -9,6 +9,7 @@ Systems:
   search    POST /v1/search, coverage bodyRequired, top 10 (lexical)
   discover  POST /v1/discover, coverage titleAndPermittedMetadata, the
             qualified Resources in returned order (S1 rank)
+  discover-body  the same with coverage bodyRequired (body lexical)
 
 Per question: rank of each gold Resource, Recall@1/5/10, nDCG@10 (binary
 gain), reciprocal rank, latency. `no_answer` scores a false positive when any
@@ -66,7 +67,8 @@ def ranked(system: str, query: str, actor: str):
         status, body, ms = search_client.search(actor, query, "bodyRequired", K)
         ids = [item["resourceId"] for item in body.get("items", [])] if status == 200 else []
     else:
-        status, body, ms = search_client.discover(actor, query, "titleAndPermittedMetadata")
+        coverage = "bodyRequired" if system == "discover-body" else "titleAndPermittedMetadata"
+        status, body, ms = search_client.discover(actor, query, coverage)
         ids = [item["resourceId"] for item in body.get("qualifiedResources", [])] if status == 200 else []
     return status, ids, ms
 

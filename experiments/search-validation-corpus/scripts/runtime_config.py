@@ -100,7 +100,7 @@ def main() -> None:
         "extraction_worker": str(args.worker),
         "parser_build_id": "sha256:" + digest.hex(),
         "profiles": [definition(f, worker_sha, pdfium) for f in formats],
-        "source_lease_ms": 30_000,
+        "source_lease_ms": 120_000,  # > 3 x the 30 s delivery renewal interval
         "guard_ttl_ms": 120_000,
         "vector": {"enabled": args.vector_model is not None,
                    "model_dir": str(args.vector_model or "/nonexistent")},
