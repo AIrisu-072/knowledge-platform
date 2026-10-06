@@ -1,0 +1,6 @@
+# Validation-only host workspace, never a production dependency. It links the
+# selected Candle CPU runtime through search-vector-adapter; the exception is
+# scoped to this directory's lockfile, as in the root and the Vector PoC.
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0436"
+reason = "paste 1.0.15 is unmaintained (informational, no known vulnerability). It is a build-time macro dependency of gemm/pulp (Candle CPU) and tokenizers, reached through search-vector-adapter in this validation-only host."
