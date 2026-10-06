@@ -462,6 +462,14 @@ async fn folder_move_rejects_pending_subtree_and_preserves_document_revision() {
     let persisted_counts: (i64, i64, i64) =
         sqlx::query_as(count_sql).fetch_one(&f.pool).await.unwrap();
     assert_eq!(persisted_counts, counts_after_noop);
+    assert_eq!(folder_state(&f, a).await, folder_before_noop);
+    assert_eq!(document_state(&f).await, document_before_noop);
+    let access_after_stale_noop: i64 =
+        sqlx::query_scalar("SELECT access_revision FROM document_access_state WHERE id = 1")
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(access_after_stale_noop, access_before_noop);
 }
 
 #[tokio::test]

@@ -33,3 +33,9 @@ moveの親UPDATEだけがmap_statement_errorを使い、一意名衝突をINTERN
 - 既存OrganizationのFolder作成/改名2casesへの最小移動・HTTP再起動確認を検討し、201件・Root・改名・Workの既存検査を保持する。画像・trace/video・新sidecar・新runtime基盤を増やさない
 - 同機能のGUI・限定mapper補修・日本語手順・試験を1本のPRにまとめる。意図したREDからGREENへ直し、独立spec/品質レビューと同head全CI・実受入・owned cleanup・公開artifact0を確認してから親がmainへ統合する。結果だけ/統合だけの別PRを作らない
 - Search/Audit/Toolbox作業、ACL editor/preview、新backend権限モデル、新依存、実サーバー反映は含めない。画像・対象PC導入/backup/restore/PostgreSQLプロセス再起動/本番Identity等の未資格を保持する
+
+## 既存文脈の保持と導入pin
+
+Organizationでは、Documentの現在認可に依存する `document-context` / `evidence-context` / `agent-context` / `snapshot` のreadだけを再取得する。identity/tasks/task選択までresetすると選択消失effectでAgentの未確定操作が消え得るため、それらとproviderは保持する。これは既存serverのread契約とclient操作保持を一致させる限定実装で、新権限モデルではない。
+
+導入4docsは、GUI・限定mapper・実受入を含む公開製品headの全CI合格後、その合格headを同じPRで固定する。pin更新後の最終CIと、pin先製品の実資格を区別し、自己SHA参照や独立docs-only PRを作らない。追加CI待ちが実装統合を大きく遅らせる場合は未収録範囲を明示して次の機能PRへ同梱する。既存CLI/env/migrationは限定照合し、公開main側の共通lockを保持した既存再build手順を使う。

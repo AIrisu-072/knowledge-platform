@@ -1,5 +1,15 @@
 # Active Execution Pointer
 
+## 2026-10-06 08:37 UTC — フォルダー移動の実装・受入source統合
+
+- [Folder移動の状況](document-folder-move-status.md)と[小計画](../plans/2026-10-06-document-folder-move.md)が現在の再開先。同機能の[PR87](https://github.com/AIrisu-072/knowledge-platform/pull/87)内でGUI・限定mapper・試験・日本語手順を完成させる
+- 初回公開 `db9031db` は既存hostedでHTTP同名衝突の500/409差を実RED確認後、move UPDATEを既存mapperへ1行接続した。fail-fast未実行のRepository反例を合格扱いしない
+- ローカルGUI952/42・schema/型/build、既存受入の純粋28・型・MCP compile・collection2+2は成功。旧親のGUI読取失敗を空表示と取り違える穴も実反例から補修し、組合せreview→同PR exact-head実受入/DB GREENへ進む。新GUIの実runtimeは未資格
+- UNKNOWN固定要求、移動後の現在readと操作store保持、可視Root focus fallbackを含む。新権限projection/ACL preview・新runner・画像は追加しない
+- 製品head合格後に同PR内の導入4docsをその公開headへpinし、最終CIを確認する。現0801 pinへの機能収録は未完。実サーバーは所有者が手動反映する。以下は過去時点の履歴
+
+---
+
 ## 2026-10-06 07:13 UTC — 選択フォルダー移動の既存契約GUI化
 
 - PR84統合main `b9f447fa` から、既存move POST/read/hintを通常GUIへ接続する。[状況](document-folder-move-status.md)と[小計画](../plans/2026-10-06-document-folder-move.md)を今回の再開先とする

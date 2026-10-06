@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { isDeepStrictEqual } from 'node:util';
 import type { CreateFolderData, FolderDetail, MutationResult, PublishedDocumentDetail, FileList } from '@knowledge-platform/document-api-client';
-import { renameSelectedFolderFromUi, replaySelectedFolderRename, createSelectedFolderFromUi, replaySelectedFolderCreate, assertFolderPaginationUi, prepareFolderPagination, assertRootFolderCreated, assertRootFolderUi, openRootFolderHome, readRootFolderSnapshot, replayRootFolderCreate, saveRootFolderState, type RootFolderState } from './support';
+import { moveSelectedFolderFromUi, renameSelectedFolderFromUi, replaySelectedFolderRename, createSelectedFolderFromUi, replaySelectedFolderCreate, assertFolderPaginationUi, prepareFolderPagination, assertRootFolderCreated, assertRootFolderUi, openRootFolderHome, readRootFolderSnapshot, replayRootFolderCreate, saveRootFolderState, type RootFolderState } from './support';
 import type { WorkflowActionCommand, Completed, Claimed, DraftCommand, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, SubmitCommand, Submitted, TaskDetail, TaskPage, WorkCommand, WorkingArtifact } from '../src/api/generated-work/types.gen';
 import { holdAndResume, assertHoldResumeState, assertCompletionState, assertHidden, assertSessions, assertEvidenceState, assertAgentState, requestSyntheticFinding, captureFinal, get, publishedEvidenceSource, readRuntimeContext, recordDecision, registerEvidence, registerFinding, revisionRef, saveState } from './support';
 
@@ -510,9 +510,12 @@ test.describe('System Root folder creation', () => {
     expect(before.sales.root.folderId === before.office.root.folderId).toBe(true);
     for (const snapshot of Object.values(before)) expect(snapshot.root.parentFolderId).toBeNull();
     let folderPosts = 0;
+    let renamePatches = 0; let movePosts = 0;
     page.on('request', sent => {
       const url = new URL(sent.url());
       if (url.origin === context.sales && url.pathname === '/v1/folders' && sent.method() === 'POST') folderPosts++;
+      if (url.origin === context.sales && /^\/v1\/folders\/[^/]+$/.test(url.pathname) && sent.method() === 'PATCH') renamePatches++;
+      if (url.origin === context.sales && /^\/v1\/folders\/[^/]+:move$/.test(url.pathname) && sent.method() === 'POST') movePosts++;
     });
     await openRootFolderHome(page, context.sales);
     const rail = page.getByRole('region', { name: 'フォルダー', exact: true });
@@ -575,8 +578,8 @@ test.describe('System Root folder creation', () => {
     expect(folderPosts).toBe(1);
 
     currentAction('root-folder-verify');
-    const state: Omit<RootFolderState, 'selectedCreate'> = {
-      schemaVersion: 4, documentId: context.documentId, request: command, receipt,
+    const state: Omit<RootFolderState, 'selectedCreate' | 'selectedMove'> = {
+      schemaVersion: 5, documentId: context.documentId, request: command, receipt,
       paginationChildren: await prepareFolderPagination(request, context.sales, command.folderId, receipt.resultingRevision),
       sales: await readRootFolderSnapshot(request, context.sales),
       office: await readRootFolderSnapshot(request, context.office),
@@ -593,6 +596,7 @@ test.describe('System Root folder creation', () => {
     await replaySelectedFolderCreate(request, context, { ...state, selectedCreate });
     const selectedRename = await renameSelectedFolderFromUi(page, request, context, { ...state, selectedCreate });
     await replaySelectedFolderRename(request, context, { ...state, selectedCreate, selectedRename });
+    const selectedMove = await moveSelectedFolderFromUi(page, request, context, { ...state, selectedCreate, selectedRename }, () => movePosts);
     await replayRootFolderCreate(request, context, state);
     // The independent office context never starts tracing or records video/screenshots.
     const officeContext = await browser.newContext({ locale: 'ja-JP', viewport: { width: 1440, height: 900 }, serviceWorkers: 'block', acceptDownloads: false, recordVideo: undefined });
@@ -607,6 +611,7 @@ test.describe('System Root folder creation', () => {
     currentAction('root-folder-verify');
     for (const role of ['sales', 'office'] as const) expect(isDeepStrictEqual(await readRootFolderSnapshot(request, context[role]), state[role])).toBe(true);
     expect(folderPosts).toBe(2);
-    await saveRootFolderState(context, { ...state, selectedCreate, selectedRename });
+    expect(renamePatches).toBe(1); expect(movePosts).toBe(1);
+    await saveRootFolderState(context, { ...state, selectedCreate, selectedRename, selectedMove });
   });
 });

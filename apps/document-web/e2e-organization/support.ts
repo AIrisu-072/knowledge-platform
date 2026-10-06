@@ -7,7 +7,7 @@ import { isAbsolute } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type { WorkflowActionCommand, Completed, Held, Resumed, AgentExecutionRequest, AgentExecutionRequested, AgentExecution, AgentResult, Finding, DecisionCommand, DecisionRecorded, EvidenceCommand, EvidenceRegistered, FindingCommand, FindingRegistered, RevisionRef, Claimed, DraftSaved, HandoffSnapshot, ReturnCommand, Returned, ReturnInstruction, Submitted, TaskDetail, TaskPage, WorkSession } from '../src/api/generated-work/types.gen';
 
-import type { RenameFolderData, CreateFolderData, DocumentRevisionPage, FileList, Folder, FolderChildren, FolderDetail, MutationResult, PublishedDocumentDetail } from '@knowledge-platform/document-api-client';
+import type { MoveFolderData, RenameFolderData, CreateFolderData, DocumentRevisionPage, FileList, Folder, FolderChildren, FolderDetail, MutationResult, PublishedDocumentDetail } from '@knowledge-platform/document-api-client';
 
 export type RuntimeContext = { sales: string; office: string; documentId: string; statePath: string };
 export type PersistedState = {
@@ -145,7 +145,7 @@ export async function loadState(context: RuntimeContext): Promise<PersistedState
 
 
 export type RootFolderState = {
-  schemaVersion: 4;
+  schemaVersion: 5;
   documentId: string;
   request: CreateFolderData['body'];
   receipt: MutationResult;
@@ -154,7 +154,9 @@ export type RootFolderState = {
   paginationChildren: Folder[];
   selectedCreate: { request: CreateFolderData['body']; receipt: MutationResult; child: Folder };
   selectedRename?: { targetFolderId: string; request: RenameFolderData['body']; receipt: MutationResult; beforeChild: Folder; child: Folder };
+  selectedMove: { targetFolderId: string; request: MoveFolderData['body']; receipt: MutationResult; beforeChild: Folder; child: Folder };
 };
+type RootFolderCurrentState = Omit<RootFolderState, 'selectedMove'> & Partial<Pick<RootFolderState, 'selectedMove'>>;
 export type RootFolderSnapshot = { root: FolderDetail; children: FolderChildren };
 
 export async function saveRootFolderState(context: RuntimeContext, state: RootFolderState) {
@@ -163,8 +165,24 @@ export async function saveRootFolderState(context: RuntimeContext, state: RootFo
 }
 export async function loadRootFolderState(context: RuntimeContext): Promise<RootFolderState> {
   const state = JSON.parse(await readFile(`${context.statePath}.root-folder`, 'utf8')) as RootFolderState;
-  expect(state.schemaVersion).toBe(4);
+  expect(state.schemaVersion).toBe(5);
   expect(state.documentId === context.documentId).toBe(true);
+  const move = state.selectedMove;
+  expect(Boolean(move && typeof move === 'object' && !Array.isArray(move))).toBe(true);
+  expect(Object.keys(move).sort().join(',') === 'beforeChild,child,receipt,request,targetFolderId').toBe(true);
+  expect(Boolean(move.request && move.receipt && move.beforeChild && move.child && state.selectedRename)).toBe(true);
+  expect(Object.keys(move.request).sort().join(',') === 'expectedFolderRevision,fromParentId,operationId,reason,toParentId').toBe(true);
+  expect(Object.keys(move.receipt).sort().join(',') === 'changed,occurredAt,operationId,resourceId,resultingRevision').toBe(true);
+  expect(isDeepStrictEqual(move.beforeChild, state.selectedRename!.child)).toBe(true);
+  expect(move.targetFolderId === move.beforeChild.folderId && move.child.folderId === move.targetFolderId).toBe(true);
+  expect(move.request.fromParentId === move.beforeChild.parentFolderId && move.request.toParentId === move.child.parentFolderId
+    && move.request.fromParentId !== move.request.toParentId && move.request.expectedFolderRevision === move.beforeChild.revision).toBe(true);
+  expect(typeof move.request.operationId === 'string' && Boolean(move.request.operationId)
+    && typeof move.request.reason === 'string' && Boolean(move.request.reason)).toBe(true);
+  expect(move.receipt.operationId === move.request.operationId && move.receipt.resourceId === move.targetFolderId
+    && move.receipt.changed === true && Number.isSafeInteger(move.receipt.resultingRevision)
+    && move.receipt.resultingRevision === move.beforeChild.revision + 1 && Number.isFinite(Date.parse(move.receipt.occurredAt))).toBe(true);
+  expect(isDeepStrictEqual(move.child, { ...move.beforeChild, parentFolderId: move.request.toParentId, revision: move.receipt.resultingRevision })).toBe(true);
   return state;
 }
 export async function readRootFolderSnapshot(request: APIRequestContext, origin: string): Promise<RootFolderSnapshot> {
@@ -246,17 +264,18 @@ export async function prepareFolderPagination(request: APIRequestContext, origin
   return children;
 }
 
-export async function assertFolderPaginationUi(page: Page, state: Pick<RootFolderState, 'request' | 'paginationChildren'>) {
+export async function assertFolderPaginationUi(page: Page, state: Pick<RootFolderState, 'request' | 'paginationChildren'>,
+  observedFirst?: import('@playwright/test').Response) {
   currentAction('root-folder-verify');
   const rail = page.getByRole('region', { name: 'フォルダー', exact: true });
   const path = `/v1/folders/${state.request.folderId}/children`;
-  const firstResponse = page.waitForResponse(response => {
+  const firstResponse = observedFirst ?? page.waitForResponse(response => {
     const url = new URL(response.url());
     return url.pathname === path && url.searchParams.get('pageSize') === '200' && !url.searchParams.has('cursor') && response.request().method() === 'GET';
   });
   const expand = rail.getByRole('button', { name: `${state.request.name}の子フォルダーを開く`, exact: true });
   const parent = rail.getByRole('button', { name: state.request.name, exact: true }).locator('..').locator('..');
-  await expand.click();
+  if (!observedFirst) await expand.click();
   const response = await firstResponse;
   expect(response.status()).toBe(200);
   const first = await response.json() as FolderChildren;
@@ -286,9 +305,171 @@ export async function assertFolderPaginationUi(page: Page, state: Pick<RootFolde
   await expect.poll(() => new URL(page.url()).searchParams.get('folderId') === last.items[0]!.folderId).toBe(true);
 }
 
+// The existing renamed child moves once; all 201 siblings and historical receipts stay intact.
+export async function moveSelectedFolderFromUi(page: Page, request: APIRequestContext, context: RuntimeContext,
+  state: RootFolderCurrentState, guiMovePosts: () => number): Promise<RootFolderState['selectedMove']> {
+  currentAction('root-folder-input');
+  const beforeChild = state.selectedRename!.child;
+  const parent = state.paginationChildren.find(folder => folder.folderId === beforeChild.parentFolderId)!;
+  const destination = state.paginationChildren.find(folder => folder.folderId !== parent.folderId)!;
+  expect(Boolean(parent && destination)).toBe(true);
+  const rail = page.getByRole('region', { name: 'フォルダー', exact: true });
+  await rail.getByRole('button', { name: `${parent.name}の子フォルダーを開く`, exact: true }).click();
+  await rail.getByRole('button', { name: beforeChild.name, exact: true }).click();
+  await expect.poll(() => new URL(page.url()).searchParams.get('folderId') === beforeChild.folderId).toBe(true);
+  const entry = rail.getByRole('button', { name: '選択したフォルダーを移動', exact: true });
+  await expect(entry).toBeEnabled();
+  const isChildren = (response: import('@playwright/test').Response, folderId: string) => {
+    const url = new URL(response.url());
+    return url.origin === context.sales && url.pathname === `/v1/folders/${folderId}/children`
+      && url.searchParams.get('pageSize') === '200' && response.request().method() === 'GET';
+  };
+  const openingSource = page.waitForResponse(response => isChildren(response, parent.folderId));
+  const openingCapability = page.waitForResponse(response => isChildren(response, beforeChild.folderId));
+  await entry.click();
+  const opening = await openingSource; expect(opening.status()).toBe(200);
+  const openingRows = await opening.json() as FolderChildren;
+  expect(openingRows.nextCursor).toBeNull(); expect(isDeepStrictEqual(openingRows.items, [beforeChild])).toBe(true);
+  const capability = await openingCapability; expect(capability.status()).toBe(200);
+  expect((await capability.json() as FolderChildren).capabilities.moveFolder.status).toBe('available');
+  const dialog = page.getByRole('dialog', { name: '選択したフォルダーを移動', exact: true });
+  const candidates = dialog.getByRole('group', { name: '移動先フォルダー', exact: true });
+  await expect(candidates.locator('legend')).toHaveText('移動先を選択');
+  await candidates.getByRole('button', { name: `${state.request.name}の子フォルダーを開く`, exact: true }).click();
+  // Destination selection always performs its own fresh read, even when the candidate tree is cached.
+  const destinationRows = page.waitForResponse(response => isChildren(response, state.request.folderId) && !new URL(response.url()).searchParams.has('cursor'));
+  const destinationCapability = page.waitForResponse(response => isChildren(response, destination.folderId));
+  await candidates.getByRole('button', { name: destination.name, exact: true }).click();
+  const destinationRead = await destinationRows; expect(destinationRead.status()).toBe(200);
+  expect(isDeepStrictEqual((await destinationRead.json() as FolderChildren).items.find(row => row.folderId === destination.folderId), destination)).toBe(true);
+  const destinationHint = await destinationCapability; expect(destinationHint.status()).toBe(200);
+  expect((await destinationHint.json() as FolderChildren).items.length).toBe(0);
+  const reason = '【合成データ】改名済みの子を既存の別親へ移動して現在読取を確認する';
+  await dialog.getByLabel('移動理由', { exact: true }).fill(reason);
+  for (const value of [`対象フォルダーID：${beforeChild.folderId}`, `現在の親ID：${parent.folderId}`,
+    `現在の対象名：${beforeChild.name}（revision 1）`, `移動先フォルダーID：${destination.folderId}`, `移動先名：${destination.name}`]) {
+    await expect.poll(async () => (await dialog.textContent())!.includes(value)).toBe(true);
+  }
+  await expect(dialog).toContainText('継承アクセス設定の変化により、配下や自分の閲覧・編集権限が変わる可能性があります。');
+  await expect(dialog.getByLabel('移動理由', { exact: true })).toHaveValue(reason);
+  const confirmation = dialog.getByRole('checkbox', { name: '継承アクセス設定への影響を確認しました', exact: true });
+  await expect(confirmation).not.toBeChecked();
+  await expect(dialog.getByRole('button', { name: '移動する', exact: true })).toBeDisabled();
+  expect(guiMovePosts()).toBe(0);
+  await confirmation.check(); await expect(confirmation).toBeChecked();
+  expect(guiMovePosts()).toBe(0);
+
+  const path = `/v1/folders/${beforeChild.folderId}:move`;
+  const sourcePromise = page.waitForResponse(response => isChildren(response, parent.folderId));
+  const capabilityPromise = page.waitForResponse(response => isChildren(response, beforeChild.folderId));
+  const destinationPromise = page.waitForResponse(response => isChildren(response, state.request.folderId) && !new URL(response.url()).searchParams.has('cursor'));
+  const destinationChildrenPromise = page.waitForResponse(response => isChildren(response, destination.folderId));
+  const responsePromise = page.waitForResponse(response => new URL(response.url()).origin === context.sales
+    && new URL(response.url()).pathname === path && response.request().method() === 'POST');
+  currentAction('root-folder-create');
+  await dialog.getByRole('button', { name: '移動する', exact: true }).click();
+  const source = await sourcePromise; expect(source.status()).toBe(200);
+  const sourceRows = await source.json() as FolderChildren;
+  expect(sourceRows.nextCursor).toBeNull(); expect(isDeepStrictEqual(sourceRows.items, [beforeChild])).toBe(true);
+  const currentCapability = await capabilityPromise; expect(currentCapability.status()).toBe(200);
+  expect((await currentCapability.json() as FolderChildren).capabilities.moveFolder.status).toBe('available');
+  const currentDestination = await destinationPromise; expect(currentDestination.status()).toBe(200);
+  const currentDestinationRows = await currentDestination.json() as FolderChildren;
+  expect(isDeepStrictEqual(currentDestinationRows.items.find(row => row.folderId === destination.folderId), destination)).toBe(true);
+  const priorCursor = currentDestinationRows.nextCursor;
+  expect(typeof priorCursor === 'string').toBe(true);
+  const destinationChildren = await destinationChildrenPromise; expect(destinationChildren.status()).toBe(200);
+  const beforeDestinationChildren = await destinationChildren.json() as FolderChildren;
+  expect(beforeDestinationChildren.nextCursor).toBeNull(); expect(beforeDestinationChildren.items.length).toBe(0);
+  const response = await responsePromise; expect(response.status()).toBe(200);
+  const command = response.request().postDataJSON() as MoveFolderData['body'];
+  expect(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(command.operationId)).toBe(true);
+  expect(isDeepStrictEqual(command, { operationId: command.operationId, fromParentId: parent.folderId, toParentId: destination.folderId,
+    expectedFolderRevision: beforeChild.revision, reason })).toBe(true);
+  const receipt = await response.json() as MutationResult;
+  expect(Object.keys(receipt).sort().join(',') === 'changed,occurredAt,operationId,resourceId,resultingRevision').toBe(true);
+  expect(receipt.operationId === command.operationId && receipt.resourceId === beforeChild.folderId).toBe(true);
+  expect(receipt.changed).toBe(true); expect(receipt.resultingRevision).toBe(2); expect(Number.isFinite(Date.parse(receipt.occurredAt))).toBe(true);
+  await expect(dialog.getByText('フォルダーを移動しました。', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('表示を更新中です。', { exact: true })).toHaveCount(0);
+  await expect(dialog.getByText('表示を更新できませんでした。移動結果は確定しています。読取を再試行してください。', { exact: true })).toHaveCount(0);
+  await dialog.getByRole('button', { name: '確認して閉じる', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect.poll(() => new URL(page.url()).searchParams.get('folderId') === beforeChild.folderId).toBe(true);
+  // Reset can remount a closed tree. Open cached rows normally, then explicitly restart
+  // after the successful POST, so submit's earlier destination GET cannot satisfy this read.
+  const rootExpand = rail.getByRole('button', { name: `${state.request.name}の子フォルダーを開く`, exact: true });
+  if (await rootExpand.count()) await rootExpand.click();
+  const restart = rail.getByRole('button', { name: `${state.request.name}の子フォルダーを最初から読み直す`, exact: true });
+  await expect(restart).toBeEnabled();
+  const refreshedFirst = page.waitForResponse(response => isChildren(response, state.request.folderId)
+    && !new URL(response.url()).searchParams.has('cursor'));
+  await restart.click();
+  const first = await refreshedFirst;
+  expect(first.status()).toBe(200);
+  expect((await first.json() as FolderChildren).nextCursor !== priorCursor).toBe(true);
+  await assertFolderPaginationUi(page, state, first);
+  const oldChildren = await get<FolderChildren>(request, context.sales, `/v1/folders/${parent.folderId}/children?pageSize=200`);
+  expect(oldChildren.nextCursor).toBeNull(); expect(oldChildren.items.length).toBe(0);
+  // Opening P can reuse its fresh empty page for 15 seconds. The existing move
+  // form always reads the selected P itself freshly, without submitting a move.
+  await expect(entry).toBeEnabled();
+  const oldGuiResponse = page.waitForResponse(response => isChildren(response, parent.folderId));
+  await entry.click();
+  const oldGui = await oldGuiResponse; expect(oldGui.status()).toBe(200);
+  const oldGuiChildren = await oldGui.json() as FolderChildren;
+  expect(oldGuiChildren.nextCursor).toBeNull(); expect(oldGuiChildren.items.length).toBe(0);
+  await dialog.getByRole('button', { name: 'キャンセル', exact: true }).click();
+  expect(guiMovePosts()).toBe(1);
+  await rail.getByRole('button', { name: `${parent.name}の子フォルダーを開く`, exact: true }).click();
+  const oldRow = rail.getByRole('button', { name: parent.name, exact: true }).locator('..').locator('..');
+  await expect(oldRow.getByRole('status')).toHaveCount(0);
+  await expect(oldRow.getByRole('alert')).toHaveCount(0);
+  await expect(oldRow.locator(':scope > ul > li')).toHaveCount(0);
+  await rail.getByRole('button', { name: `${parent.name}の子フォルダーを閉じる`, exact: true }).click();
+  await rail.getByRole('button', { name: destination.name, exact: true }).click();
+  const movedResponse = page.waitForResponse(response => isChildren(response, destination.folderId));
+  await rail.getByRole('button', { name: `${destination.name}の子フォルダーを開く`, exact: true }).click();
+  const moved = await movedResponse; expect(moved.status()).toBe(200);
+  const movedChildren = await moved.json() as FolderChildren;
+  expect(movedChildren.nextCursor).toBeNull(); expect(movedChildren.items.length).toBe(1);
+  const child = movedChildren.items[0]!;
+  expect(isDeepStrictEqual(child, { ...beforeChild, parentFolderId: destination.folderId, revision: 2 })).toBe(true);
+  const destinationRow = rail.getByRole('button', { name: destination.name, exact: true }).locator('..').locator('..');
+  await expect(destinationRow.locator(':scope > ul > li')).toHaveCount(1);
+  await destinationRow.getByRole('button', { name: child.name, exact: true }).click();
+  await expect(destinationRow.getByRole('button', { name: child.name, exact: true })).toHaveAttribute('aria-current', 'location');
+  await expect.poll(() => new URL(page.url()).searchParams.get('folderId') === child.folderId).toBe(true);
+  const selectedMove = { targetFolderId: child.folderId, request: command, receipt, beforeChild, child };
+  for (const role of ['sales', 'office'] as const) await readSelectedFolderParents(request, context[role], { ...state, selectedMove });
+
+  currentAction('document-navigation');
+  const navigation = page.getByRole('navigation', { name: 'メインナビゲーション', exact: true });
+  await navigation.getByRole('link', { name: 'タスク', exact: true }).click();
+  await expect(navigation.getByRole('link', { name: 'タスク', exact: true })).toHaveAttribute('aria-current', 'page');
+  const work = await loadState(context);
+  await page.getByRole('complementary', { name: 'タスク一覧' }).getByRole('button', { name: new RegExp(work.final.salesTask.title) }).click();
+  await expect(page.getByRole('region', { name: '提出済みスナップショット', exact: true })).toContainText(work.rework.text);
+  await navigation.getByRole('link', { name: '文書', exact: true }).click();
+  await expect(navigation.getByRole('link', { name: '文書', exact: true })).toHaveAttribute('aria-current', 'page');
+  // The ordinary navigation remounts a closed tree; cached reads need no unconditional response wait.
+  await rail.getByRole('button', { name: `${state.request.name}の子フォルダーを開く`, exact: true }).click();
+  await rail.getByRole('button', { name: destination.name, exact: true }).click();
+  await rail.getByRole('button', { name: `${destination.name}の子フォルダーを開く`, exact: true }).click();
+  await rail.getByRole('button', { name: child.name, exact: true }).click();
+  await expect.poll(() => new URL(page.url()).searchParams.get('folderId') === child.folderId).toBe(true);
+  await expect(entry).toBeEnabled(); await entry.click();
+  await expect.poll(async () => (await dialog.textContent())!.includes(`現在の親ID：${destination.folderId}`)
+    && (await dialog.textContent())!.includes(`現在の対象名：${child.name}（revision 2）`)).toBe(true);
+  await expect(dialog.getByRole('checkbox', { name: '継承アクセス設定への影響を確認しました', exact: true })).not.toBeChecked();
+  await dialog.getByRole('button', { name: 'キャンセル', exact: true }).click();
+  expect(guiMovePosts()).toBe(1);
+  return selectedMove;
+}
+
 // Extend the existing tail selection; no extra fixture, runner, fault or capture is introduced.
 export async function createSelectedFolderFromUi(page: Page, request: APIRequestContext, context: RuntimeContext,
-  state: Omit<RootFolderState, 'selectedCreate'>): Promise<RootFolderState['selectedCreate']> {
+  state: Omit<RootFolderState, 'selectedCreate' | 'selectedMove'>): Promise<RootFolderState['selectedCreate']> {
   currentAction('root-folder-input');
   const parentId = new URL(page.url()).searchParams.get('folderId');
   const parent = state.paginationChildren.find(folder => folder.folderId === parentId)!;
@@ -339,43 +520,64 @@ export async function createSelectedFolderFromUi(page: Page, request: APIRequest
   return selectedCreate;
 }
 
-export async function assertSelectedFolderUi(page: Page, request: APIRequestContext, context: RuntimeContext, state: RootFolderState) {
+export async function assertSelectedFolderUi(page: Page, request: APIRequestContext, context: RuntimeContext, state: RootFolderCurrentState) {
   currentAction('root-folder-verify');
   const { request: command } = state.selectedCreate;
-  const child = state.selectedRename?.child ?? state.selectedCreate.child;
-  const parent = state.paginationChildren.find(folder => folder.folderId === command.parentFolderId)!;
-  expect(new URL(page.url()).searchParams.get('folderId') === parent.folderId).toBe(true);
+  const child = state.selectedMove?.child ?? state.selectedRename?.child ?? state.selectedCreate.child;
+  const parent = state.paginationChildren.find(folder => folder.folderId === child.parentFolderId)!;
+  const rail = page.getByRole('region', { name: 'フォルダー', exact: true });
+  if (state.selectedMove) await rail.getByRole('button', { name: parent.name, exact: true }).click();
+  await expect.poll(() => new URL(page.url()).searchParams.get('folderId') === parent.folderId).toBe(true);
   for (const role of ['sales', 'office'] as const) {
     const children = await get<FolderChildren>(request, context[role], `/v1/folders/${parent.folderId}/children?pageSize=200`);
     expect(children.nextCursor).toBeNull(); expect(isDeepStrictEqual(children.items, [child])).toBe(true);
     expect(isDeepStrictEqual(children.capabilities.createFolder, role === 'sales' ? { status: 'available' } : { status: 'disabled', reason: 'permission' })).toBe(true);
+    if (state.selectedMove) {
+      const old = await get<FolderChildren>(request, context[role], `/v1/folders/${command.parentFolderId}/children?pageSize=200`);
+      expect(old.nextCursor).toBeNull(); expect(old.items.length).toBe(0);
+    }
   }
-  const rail = page.getByRole('region', { name: 'フォルダー', exact: true });
   await rail.getByRole('button', { name: `${parent.name}の子フォルダーを開く`, exact: true }).click();
   await expect.poll(async () => (await rail.getByRole('button').allTextContents()).filter(text => text === child.name).length).toBe(1);
+  if (state.selectedMove) {
+    const parentRow = rail.getByRole('button', { name: parent.name, exact: true }).locator('..').locator('..');
+    await parentRow.getByRole('button', { name: child.name, exact: true }).click();
+    await expect.poll(() => new URL(page.url()).searchParams.get('folderId') === child.folderId).toBe(true);
+    await rail.getByRole('button', { name: parent.name, exact: true }).click();
+  }
   await rail.getByRole('button', { name: `${parent.name}の子フォルダーを閉じる`, exact: true }).click();
 }
 
-export async function replaySelectedFolderCreate(request: APIRequestContext, context: RuntimeContext, state: RootFolderState) {
+export async function readSelectedFolderParents(request: APIRequestContext, origin: string, state: RootFolderCurrentState) {
+  const child = state.selectedMove?.child ?? state.selectedRename?.child ?? state.selectedCreate.child;
+  const original = await get<FolderChildren>(request, origin, `/v1/folders/${state.selectedCreate.request.parentFolderId}/children?pageSize=200`);
+  const current = child.parentFolderId === state.selectedCreate.request.parentFolderId ? original
+    : await get<FolderChildren>(request, origin, `/v1/folders/${child.parentFolderId}/children?pageSize=200`);
+  expect(original.nextCursor).toBeNull(); expect(current.nextCursor).toBeNull();
+  expect(isDeepStrictEqual(original.items, state.selectedMove ? [] : [child])).toBe(true);
+  expect(isDeepStrictEqual(current.items, [child])).toBe(true);
+  return { original, current };
+}
+
+export async function replaySelectedFolderCreate(request: APIRequestContext, context: RuntimeContext, state: RootFolderCurrentState) {
   currentAction('root-folder-replay');
   const command = state.selectedCreate.request;
-  const before = await Promise.all((['sales', 'office'] as const).map(role => get<FolderChildren>(request, context[role], `/v1/folders/${command.parentFolderId}/children?pageSize=200`)));
+  const before = await Promise.all((['sales', 'office'] as const).map(role => readSelectedFolderParents(request, context[role], state)));
   const replay = await request.post(`${context.sales}/v1/folders`, { data: command });
   expect(replay.status()).toBe(201); expect(isDeepStrictEqual(await replay.json(), state.selectedCreate.receipt)).toBe(true);
   // Idempotent replay still requires current authorization; the readable office profile cannot create.
   const denied = await request.post(`${context.office}/v1/folders`, { data: command });
   expect(denied.status()).toBe(403); expect((await denied.json()).code).toBe('FORBIDDEN');
   for (const [index, role] of (['sales', 'office'] as const).entries()) {
-    const children = await get<FolderChildren>(request, context[role], `/v1/folders/${command.parentFolderId}/children?pageSize=200`);
+    const children = await readSelectedFolderParents(request, context[role], state);
     expect(isDeepStrictEqual(children, before[index])).toBe(true);
-    expect(isDeepStrictEqual(children.items, [state.selectedRename?.child ?? state.selectedCreate.child])).toBe(true);
     expect(isDeepStrictEqual(await readRootFolderSnapshot(request, context[role]), state[role])).toBe(true);
   }
 }
 
 // Rename only the GUI-created child. Root and the 201 pagination rows remain unchanged.
 export async function renameSelectedFolderFromUi(page: Page, request: APIRequestContext, context: RuntimeContext,
-  state: RootFolderState): Promise<NonNullable<RootFolderState['selectedRename']>> {
+  state: RootFolderCurrentState): Promise<NonNullable<RootFolderState['selectedRename']>> {
   currentAction('root-folder-input');
   const beforeChild = state.selectedCreate.child;
   const parent = state.paginationChildren.find(folder => folder.folderId === beforeChild.parentFolderId)!;
@@ -422,14 +624,13 @@ export async function renameSelectedFolderFromUi(page: Page, request: APIRequest
   return selectedRename;
 }
 
-export async function replaySelectedFolderRename(request: APIRequestContext, context: RuntimeContext, state: RootFolderState) {
+export async function replaySelectedFolderRename(request: APIRequestContext, context: RuntimeContext, state: RootFolderCurrentState) {
   currentAction('root-folder-replay');
   const rename = state.selectedRename!;
   expect(Boolean(rename)).toBe(true);
   expect(rename.targetFolderId === state.selectedCreate.child.folderId).toBe(true);
   expect(isDeepStrictEqual(rename.beforeChild, state.selectedCreate.child)).toBe(true);
-  const parentPath = `/v1/folders/${rename.child.parentFolderId}/children?pageSize=200`;
-  const before = await Promise.all((['sales', 'office'] as const).map(role => get<FolderChildren>(request, context[role], parentPath)));
+  const before = await Promise.all((['sales', 'office'] as const).map(role => readSelectedFolderParents(request, context[role], state)));
   for (const role of ['sales', 'office'] as const) {
     const capability = await get<FolderChildren>(request, context[role], `/v1/folders/${rename.targetFolderId}/children?pageSize=200`);
     expect(isDeepStrictEqual(capability.capabilities.renameFolder, role === 'sales' ? { status: 'available' } : { status: 'disabled', reason: 'permission' })).toBe(true);
@@ -440,9 +641,27 @@ export async function replaySelectedFolderRename(request: APIRequestContext, con
   const denied = await request.patch(`${context.office}/v1/folders/${rename.targetFolderId}`, { data: rename.request });
   expect(denied.status()).toBe(403); expect((await denied.json()).code).toBe('FORBIDDEN');
   for (const [index, role] of (['sales', 'office'] as const).entries()) {
-    const current = await get<FolderChildren>(request, context[role], parentPath);
-    expect(isDeepStrictEqual(current, before[index])).toBe(true); expect(current.nextCursor).toBeNull();
-    expect(isDeepStrictEqual(current.items, [rename.child])).toBe(true);
+    const current = await readSelectedFolderParents(request, context[role], state);
+    expect(isDeepStrictEqual(current, before[index])).toBe(true);
+    expect(isDeepStrictEqual(await readRootFolderSnapshot(request, context[role]), state[role])).toBe(true);
+  }
+}
+
+export async function replaySelectedFolderMove(request: APIRequestContext, context: RuntimeContext, state: RootFolderState) {
+  currentAction('root-folder-replay');
+  const move = state.selectedMove;
+  expect(isDeepStrictEqual(move.beforeChild, state.selectedRename!.child)).toBe(true);
+  const before = await Promise.all((['sales', 'office'] as const).map(role => readSelectedFolderParents(request, context[role], state)));
+  for (const role of ['sales', 'office'] as const) {
+    const capability = await get<FolderChildren>(request, context[role], `/v1/folders/${move.targetFolderId}/children?pageSize=200`);
+    expect(isDeepStrictEqual(capability.capabilities.moveFolder, role === 'sales' ? { status: 'available' } : { status: 'disabled', reason: 'permission' })).toBe(true);
+  }
+  const replay = await request.post(`${context.sales}/v1/folders/${move.targetFolderId}:move`, { data: move.request });
+  expect(replay.status()).toBe(200); expect(isDeepStrictEqual(await replay.json(), move.receipt)).toBe(true);
+  const denied = await request.post(`${context.office}/v1/folders/${move.targetFolderId}:move`, { data: move.request });
+  expect(denied.status()).toBe(403); expect((await denied.json()).code).toBe('FORBIDDEN');
+  for (const [index, role] of (['sales', 'office'] as const).entries()) {
+    expect(isDeepStrictEqual(await readSelectedFolderParents(request, context[role], state), before[index])).toBe(true);
     expect(isDeepStrictEqual(await readRootFolderSnapshot(request, context[role]), state[role])).toBe(true);
   }
 }

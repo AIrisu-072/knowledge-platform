@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useNavigate, useRouterState, useSearch } from '@tanstack/react-router';
@@ -9,8 +9,11 @@ import { AppShell } from '../components/app-shell/AppShell';
 import { OriginalVersionDownload } from '../components/shared/OriginalVersionDownload';
 import { DocumentRegistration } from '../components/document/DocumentRegistration';
 import type { SelectedFolderContext } from '../application/document-root-folder';
+import { FolderNode } from '../components/document/FolderNode';
 import { FolderRename } from '../components/document/FolderRename';
 import { folderRenameOperations } from '../application/document-folder-rename';
+import { FolderMove } from '../components/document/FolderMove';
+import { folderMoveOperations } from '../application/document-folder-move';
 import { RootFolderCreate } from '../components/document/RootFolderCreate';
 import { createdRangeFields, createdRangeLocalValue, createdRangeRouteError, initialCreatedRangeDraft, currentCreatedRangeDraft, resolveCreatedRangeDraft, documentListUrlError } from '../application/document-created-range';
 import type { ListSearch } from '../application/search-state';
@@ -20,7 +23,6 @@ import { formatDateTime as formatDate } from '../view-model/date-time';
 import styles from './DocumentWorkspace.module.css';
 
 type DocumentRow = DocumentList['items'][number];
-type FolderItem = Folder;
 
 export function DocumentHomePage() {
   const search = useSearch({ from: '/documents' }) as ListSearch;
@@ -31,6 +33,14 @@ export function DocumentHomePage() {
   const [folderContext, setFolderContext] = useState<SelectedFolderContext>();
   const renameStore = folderRenameOperations(queryClient);
   const rename = useSyncExternalStore(renameStore.subscribe, renameStore.get);
+  const moveStore = folderMoveOperations(queryClient);
+  const move = useSyncExternalStore(moveStore.subscribe, moveStore.get);
+  useEffect(() => {
+    if (move?.status !== 'succeeded') return;
+    // Global authorization revision invalidates every query-external selection provenance.
+    // Leave the current URL/navigation alone and require another actual tree selection.
+    setChosenFolder(undefined); setFolderContext(undefined);
+  }, [move?.status, move?.request.operationId]);
   useEffect(() => {
     if (rename?.status !== 'succeeded') return;
     const targetId = rename.targetFolderId;
@@ -286,6 +296,12 @@ export function DocumentHomePage() {
             capabilities: registrationFolderQuery.data?.capabilities },
           readReady: registrationFolderQuery.isSuccess && !registrationFolderQuery.isFetching,
         } : undefined} />
+      <FolderMove root={rootQuery.data} contextKey={`${currentUrl}:${selectionGeneration}`}
+        selected={folderContext && folderContext.folderId === search.folderId && chosenFolder ? {
+          context: folderContext, folder: { ...chosenFolder, parentFolderId: folderContext.sourceParentId,
+            capabilities: registrationFolderQuery.data?.capabilities },
+          readReady: registrationFolderQuery.isSuccess && !registrationFolderQuery.isFetching,
+        } : undefined} />
       {rootQuery.isPending && <LoadingState label="フォルダーを読み込み中" />}
       {rootQuery.error && <ApiFeedback error={rootQuery.error} onRetry={() => void rootQuery.refetch()} />}
       {rootQuery.data && (
@@ -437,73 +453,6 @@ export function DocumentHomePage() {
   );
 }
 
-function FolderNode({
-  folder,
-  selectedFolderId,
-  onSelect,
-  isRoot = false,
-  sourceParentId,
-  sourcePageLimit,
-}: {
-  folder: FolderItem;
-  selectedFolderId?: string;
-  onSelect: (folderId?: string, folder?: Folder, context?: SelectedFolderContext) => void;
-  isRoot?: boolean;
-  sourceParentId?: string;
-  sourcePageLimit?: number;
-}) {
-  const [expanded, setExpanded] = useState(isRoot);
-  const queryClient = useQueryClient();
-  // Keep paged data separate from the ordinary registration-capability query.
-  // The existing parent prefix still invalidates both after a Root create.
-  const queryKey = ['folder-tree', folder.folderId, 'pages'];
-  const childrenQuery = useInfiniteQuery({
-    queryKey,
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) => documentApi.listFolderChildren(folder.folderId, pageParam),
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    enabled: expanded,
-  });
-  const children = useMemo(() => {
-    const unique = new Map<string, Folder>();
-    // Live pages are not a snapshot: a moved/renamed row can reappear later.
-    for (const page of childrenQuery.data?.pages ?? []) {
-      for (const child of page.items) unique.set(child.folderId, child);
-    }
-    return [...unique.values()];
-  }, [childrenQuery.data]);
-  function restartChildren() {
-    if (queryClient.getQueryState(queryKey)?.fetchStatus === 'fetching') return;
-    // Reset only this read; never clear the QueryClient or unresolved mutations.
-    void queryClient.resetQueries({ queryKey, exact: true });
-  }
-  return (
-    <li>
-      <div className={styles.folderEntry}>
-        <button type="button" className={styles.expandButton} aria-label={`${folder.name}の子フォルダーを${expanded ? '閉じる' : '開く'}`} aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>{expanded ? '▾' : '▸'}</button>
-        <button type="button" className={styles.folderButton} aria-current={(isRoot ? !selectedFolderId : selectedFolderId === folder.folderId) ? 'location' : undefined} onClick={() => onSelect(isRoot ? undefined : folder.folderId, folder, !isRoot && sourceParentId && sourcePageLimit ? { kind: 'selected', folderId: folder.folderId, name: folder.name, sourceParentId, pageLimit: sourcePageLimit } : undefined)}>{folder.name}</button>
-      </div>
-      {childrenQuery.error && expanded && <ApiFeedback error={childrenQuery.error} onRetry={childrenQuery.isFetchNextPageError ? undefined : () => void childrenQuery.refetch({ cancelRefetch: false })} />}
-      {expanded && children.length > 0 && (
-        <ul className={styles.folderChildren}>
-          {children.map((child) => <FolderNode key={child.folderId} folder={child} selectedFolderId={selectedFolderId} onSelect={onSelect} sourceParentId={folder.folderId} sourcePageLimit={childrenQuery.data?.pages.length} />)}
-        </ul>
-      )}
-      {expanded && childrenQuery.hasNextPage && (!childrenQuery.error || childrenQuery.isFetchNextPageError) && (
-        <button type="button" className={styles.secondaryButton} disabled={childrenQuery.isFetching}
-          aria-label={`${folder.name}の子フォルダー${childrenQuery.isFetchNextPageError ? 'の続きを再試行' : 'をさらに表示'}`}
-          onClick={() => { if (!childrenQuery.isFetching) void childrenQuery.fetchNextPage({ cancelRefetch: false }); }}>
-          {childrenQuery.isFetchNextPageError ? '続きを再試行' : 'さらに表示'}
-        </button>
-      )}
-      {expanded && (childrenQuery.hasNextPage || (childrenQuery.data?.pages.length ?? 0) > 1 || childrenQuery.error) && (
-        <button type="button" className={styles.secondaryButton} disabled={childrenQuery.isFetching}
-          aria-label={`${folder.name}の子フォルダーを最初から読み直す`} onClick={restartChildren}>最初から読み直す</button>
-      )}
-      {expanded && childrenQuery.isFetching && <span className={styles.folderLoading} role="status">読み込み中</span>}
-    </li>
-  );
-}
 
 function CapabilitySummary({ document }: { document: Awaited<ReturnType<typeof documentApi.getDocument>> }) {
   const capabilities = document.capabilities;
