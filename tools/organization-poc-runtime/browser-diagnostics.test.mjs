@@ -163,6 +163,21 @@ test('existing phase selection collects the separate Root folder cases with expl
   }
 });
 
+test('existing Root cases extend only the selected pagination tail create and restart oracle', async () => {
+  const support = await readFile(new URL('../../apps/document-web/e2e-organization/support.ts', import.meta.url), 'utf8');
+  const journey = await readFile(new URL('../../apps/document-web/e2e-organization/journey.spec.ts', import.meta.url), 'utf8');
+  const persistence = await readFile(new URL('../../apps/document-web/e2e-organization/persistence.spec.ts', import.meta.url), 'utf8');
+  assert.match(journey, /await createSelectedFolderFromUi\(page, request, context, state\)/u);
+  assert.match(journey, /expect\(folderPosts\)\.toBe\(2\)/u);
+  assert.match(persistence, /await assertSelectedFolderUi\(page, request, context, state\)/u);
+  assert.match(support, /selectedCreate: \{ request: CreateFolderData\['body'\]; receipt: MutationResult; child: Folder \}/u);
+  const create = support.slice(support.indexOf('export async function createSelectedFolderFromUi'), support.indexOf('export async function assertSelectedFolderUi'));
+  assert.match(create, /getByRole\('button', \{ name: '選択したフォルダーに子フォルダーを作成', exact: true \}\)/u);
+  assert.ok(create.indexOf('page.waitForResponse(') < create.indexOf("name: '作成する'"));
+  assert.match(create, /response\.request\(\)\.postDataJSON\(\)/u);
+  assert.doesNotMatch(create, /request\.post|waitForTimeout|test\.setTimeout|screenshot|tracing/u);
+});
+
 test('Root folder restart oracle is separate, private, exclusive and bound to the owned run', async () => {
   const source = await readFile(new URL('../../apps/document-web/e2e-organization/support.ts', import.meta.url), 'utf8');
   assert.ok(source.includes('export type RootFolderState'));
@@ -174,7 +189,7 @@ test('Root folder restart oracle is separate, private, exclusive and bound to th
   runInNewContext(output, { exports, readFile, writeFile, expect: actual => ({ toBe: expected => assert.equal(actual, expected) }) });
   const directory = await mkdtemp(join(tmpdir(), 'organization-root-folder-'));
   const context = { statePath: join(directory, 'state.json'), documentId: 'synthetic-run-document' };
-  const state = { schemaVersion: 2, documentId: context.documentId, request: { name: 'PRIVATE_NAME', reason: 'PRIVATE_REASON' }, paginationChildren: [] };
+  const state = { schemaVersion: 3, documentId: context.documentId, request: { name: 'PRIVATE_NAME', reason: 'PRIVATE_REASON' }, paginationChildren: [], selectedCreate: { request: { parentFolderId: 'tail' }, receipt: { resourceId: 'child' }, child: { folderId: 'child' } } };
   try {
     await writeFile(context.statePath, 'unchanged Work state', { mode: 0o600 });
     await exports.saveRootFolderState(context, state);
@@ -183,8 +198,10 @@ test('Root folder restart oracle is separate, private, exclusive and bound to th
     await assert.rejects(exports.saveRootFolderState(context, state), { code: 'EEXIST' });
     assert.equal(await readFile(context.statePath, 'utf8'), 'unchanged Work state');
     await assert.rejects(exports.loadRootFolderState({ ...context, documentId: 'different-run' }));
-    await writeFile(`${context.statePath}.root-folder`, JSON.stringify({ ...state, schemaVersion: 1 }));
-    await assert.rejects(exports.loadRootFolderState(context));
+    for (const schemaVersion of [1, 2]) {
+      await writeFile(`${context.statePath}.root-folder`, JSON.stringify({ ...state, schemaVersion }));
+      await assert.rejects(exports.loadRootFolderState(context));
+    }
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
@@ -223,6 +240,33 @@ test('pagination fixture creates 201 descendants once and stops on an unknown wr
       assert.equal(command.parentFolderId, 'gui-created-parent'); assert.equal(command.expectedParentRevision, 0);
     }
   }
+});
+
+test('selected-create replay retains exact GUI request and receipt and checks current office authorization without changing snapshots', async () => {
+  const source = await readFile(new URL('../../apps/document-web/e2e-organization/support.ts', import.meta.url), 'utf8');
+  const require = createRequire(new URL('../../apps/document-web/package.json', import.meta.url));
+  const ts = require('typescript');
+  const body = source.slice(source.indexOf('export type RootFolderState'), source.indexOf('export type EvidenceReceipt'));
+  const output = ts.transpileModule(body, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const context = { sales: 'http://127.0.0.1:1', office: 'http://127.0.0.1:2' };
+  const child = { folderId: 'child', parentFolderId: 'tail', revision: 0, name: 'PRIVATE_NAME' };
+  const state = { request: { parentFolderId: 'root', folderId: 'parent' },
+    sales: { root: { folderId: 'root' }, children: { items: [], nextCursor: null } }, office: { root: { folderId: 'root' }, children: { items: [], nextCursor: null } },
+    selectedCreate: { request: { operationId: 'operation', folderId: child.folderId, parentFolderId: child.parentFolderId, expectedParentRevision: 0, name: child.name, reason: 'PRIVATE_REASON' },
+      receipt: { operationId: 'operation', resourceId: child.folderId, resultingRevision: 0, changed: true, occurredAt: '2026-10-05T23:00:00Z' }, child } };
+  const calls = []; const reads = []; const exports = {};
+  runInNewContext(output, { exports, currentAction: () => {}, isDeepStrictEqual: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+    expect: actual => ({ toBe: expected => assert.equal(actual, expected), toBeNull: () => assert.equal(actual, null) }),
+    get: async (_request, origin, path) => { reads.push([origin, path]); return path === '/v1/folders/root' ? state.sales.root : path.includes('/tail/') ? { items: [child], nextCursor: null } : state.sales.children; } });
+  const request = { post: async (url, { data }) => {
+    calls.push([url, data]); assert.equal(data, state.selectedCreate.request);
+    return url.startsWith(context.sales) ? { status: () => 201, json: async () => state.selectedCreate.receipt }
+      : { status: () => 403, json: async () => ({ code: 'FORBIDDEN' }) };
+  } };
+  await exports.replaySelectedFolderCreate(request, context, state);
+  assert.deepEqual(calls.map(([url]) => url), [`${context.sales}/v1/folders`, `${context.office}/v1/folders`]);
+  assert.equal(reads.filter(([, path]) => path.includes('/tail/')).length, 4);
+  assert.equal(reads.filter(([, path]) => path === '/v1/folders/root').length, 2);
 });
 
 test('standard JSON timeout retains only the current result action annotation without inferring completion', () => {
