@@ -437,10 +437,8 @@ async fn run() -> Result<(), String> {
                 supported_modes: source_file.supported_modes.clone(),
                 enumeration_semantics: source_file.enumeration_semantics,
                 retention_mode: RetentionMode::PersistentResource,
-                registration_revision: RegistrationRevision::new(
-                    source_file.registration_revision,
-                )
-                .map_err(invalid("registration revision"))?,
+                registration_revision: RegistrationRevision::new(source_file.registration_revision)
+                    .map_err(invalid("registration revision"))?,
                 visibility_revision: VisibilityRevision::new(source_file.visibility_revision)
                     .map_err(invalid("visibility revision"))?,
             },
@@ -490,12 +488,16 @@ async fn run() -> Result<(), String> {
         started: Instant::now(),
     });
 
+    let vector_enabled = source_file
+        .vector
+        .as_ref()
+        .is_some_and(|vector| vector.enabled);
+    let mut model = DurableDocumentReadModel::new(pool.clone(), &source_file.lexical_root, source);
+    if !vector_enabled {
+        model = model.without_vector_units();
+    }
     let mut ports = DurableDocumentPorts::new(
-        Arc::new(DurableDocumentReadModel::new(
-            pool.clone(),
-            &source_file.lexical_root,
-            source,
-        )),
+        Arc::new(model),
         Arc::new(DocumentAccess {
             source: source_id,
             pool: pool.clone(),
