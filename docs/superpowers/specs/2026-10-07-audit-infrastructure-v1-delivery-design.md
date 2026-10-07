@@ -127,7 +127,7 @@ Status: DESIGN REVISION 3（独立review 1・再review・最終reviewの指摘�
 
 - 正本は `spec/telemetry/audit-event-catalog.json`。adapterごと（source、source_format、adapter_version、commitment・registrationの要否、trace_idの可否）の定義と、`registered_types` の元になる (source, type, adapter_version) の一覧もcatalogが持つ。各typeについて、source、event_class、origin（`relay` / `store` / `relay_control`）、許可するresource種別、version要否、result、subject形の一覧、fields、required、reason扱い、reason_code_field、service_executor_field、operation_id_field、publish_operation_id_fieldを持つ。
   - subject形は、placeholderを `resource.id` / `resource.version_id` / details fieldへ束縛した形の一覧である。例：`document.version.created` は `document/{resource.id}`（初回作成）と `document/{resource.id}/version/{resource.version_id}` の2形を許す。
-- kind（JSON整数は `is_i64`/`is_u64` のみ。浮動小数・指数表記は拒否）：
+- kind（JSON整数は `is_i64`/`is_u64` のみ。浮動小数・指数表記は拒否。下表はDocument用の主なkindである。control用のkind（resource_ref、event_type(_list)、source_urn/list、db_role、principal_ref、int8_text、code、nullable_positive_counter）を含む正本は `spec/telemetry/README.md` §kind）：
 
   | kind | 内容 |
   |---|---|
@@ -533,7 +533,7 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
 - 束縛（`bind_principal` / `unbind_principal`）はowner roleのmemberだけが行う（`pg_has_role(session_user, 'audit_store_owner', 'MEMBER')`、head lockの後）。administerは束縛を変えられないので、自分が誰として振る舞うかを変更できない。束縛は上書きせず、変更にはunbindを先に記録する。
 - 権限（Audit上の責務。Organization roleではない）は、`investigate`、`export`、`verify`、`administer`、`maintain`。DB層のcapability roleを持ち、かつ束縛された主体にAudit上の権限がある場合だけ実行できる。Document ACLは流用しない。
 - `change_access` は、呼出者自身の主体への付与を拒否し、その試行を記録する。2人の管理者の共謀と二人承認はv1の範囲外とする（すべての変更は主体とsession_userで記録され、検出できる）。
-- control eventには、主体と `session_user` の両方を記録する。主体に束縛されていないsession（未束縛の拒否、bootstrap）では、actorを `{issuer: "db_role", principal_id: <session role>}` とする（role名は `^[a-z_][a-z0-9_$]{0,62}$`）。control eventのdetailsは閉じたkind（event type、source、resource ref、db_role、principal）だけで構成し、自由文字列を持たない。
+- control eventには、主体と `session_user` の両方を記録する。主体に束縛されていないsession（未束縛の拒否、bootstrap）では、actorを `{issuer: "db_role", principal_id: <session role>}` とする（role名は `^[a-z_][a-z0-9_$]{0,62}$`）。control eventのdetailsは、閉じたkind（source、resource ref、db_role、enum等）と、文法で制限したkind（event type、principal）だけで構成し、自由記述fieldを持たない。event typeのfilter・selectorは、登録済みtypeとcontrol typeに限定する。actorのfilter値は、上限付きのprincipal文字列として残る（受容した残余）。
 - 最初の管理者：`bootstrap_administrator(db_role, issuer, principal_id)` はownerのmemberだけが呼べる（`current_user` は使わない）。head lockの後にadministerが0件であることを確認して成功する。最後の管理者を失った場合は、同じ経路で監査付きのlockout回復とする。
 - `audit.access.*` などcontrol eventの閲覧：investigate・exportのどちらでも、administer権限を持つ場合だけ含める（intentの時点で可視範囲を固定する）。
 

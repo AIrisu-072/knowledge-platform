@@ -68,7 +68,7 @@ sourceごとに1件。envelopeの `provenance` と `correlation.trace_id` の検
 
 ### kind
 
-自由文字列のkindは無い。文字列のkindはすべて閉じた文法か閉じた集合であり、control event専用のkind（読者が渡すfilter値やStoreが選ぶ名前を記録する）も同じである。JSON整数は `i64`/`u64` で表せる整数のみで、`1.0` や `1e0` は拒否する。
+自由記述用のkindは無い。文字列のkindは、閉じた集合（enum、source、resource ref、db_role等）か、文法で制限した値である。ただし、文法だけで制限するkind（`event_type`：catalogの文法・最大128 B、`principal_ref`：principal文字種・各256 B）には、読める文字列が入り得る。Store（unit B）は、filter・selectorのevent typeを登録済みtypeとcontrol typeだけに限定する。actorのfilter値は、上限付きのprincipal文字列として記録する（この残余は受容する）。JSON整数は `i64`/`u64` で表せる整数のみで、`1.0` や `1e0` は拒否する。
 
 | kind | 内容 |
 |---|---|
@@ -213,7 +213,7 @@ envelope全体の32 KiB（jsonb text）上限もRustだけが検査する。
 `origin: "store"`（source `urn:knowledge-platform:audit-store`）と `origin: "relay_control"`（source `urn:knowledge-platform:audit-relay`）のentryである。type名は `audit.` で始め、resourceは `{"type": "AuditStore", "id": "audit-store"}`、subjectは `audit-store`、`version_id` は持たない。envelopeは `crates/audit-store-postgres` のSQLが組み立て、`provenance` はadapterに従い `{source_format: "audit-store-control-v1" | "audit-relay-control-v1", adapter_version: 1}`（commitment・registrationなし）である。detailsは必ず `session_role`（呼出元の `session_user`、`db_role` kind）を持つ。
 
 - actor：束縛された主体があれば、その（issuer, principal_id）である。束縛された主体が無い場合（`denial_code: unbound` の `audit.access.denied`、owner loginからの `bootstrap_administrator` 等）は、`{issuer: "db_role", principal_id: <session_user>}` とする。Rustは、control経路でissuerが `db_role` のactorについて、principal_idが `db_role` kindで `details.session_role` と等しいことを検査する（不一致は `invalid_actor`）。`db_role` の文法に合わないlogin名（空白、大文字、Bidi文字等を含む引用符付きの名前）は、Storeが `bind_principal`・`posture_check` で拒否し、記録しない（unit Bの責務）。relay eventのactorはproducerのデータなので、この規則は適用しない。
-- 読者が渡すfilter（`filter_event_types`、`filter_source`、`filter_actor_issuer`、`filter_actor_principal_id`、`filter_resource_id`）とprincipal値のfield（`target_issuer`、`target_principal_id`）は閉じたkindで記録する。`open_access` は、これらのkindに合わない入力を `audit.access.denied`（`invalid_input`、入力値は記録しない）として扱い、読者の文字列をchainに入れない（unit Bの責務）。
+- 読者が渡すfilter（`filter_event_types`、`filter_source`、`filter_actor_issuer`、`filter_actor_principal_id`、`filter_resource_id`）とprincipal値のfield（`target_issuer`、`target_principal_id`）は閉じたkindで記録する。`open_access` は、これらのkindに合わない入力を `audit.access.denied`（`invalid_input`、入力値は記録しない）として扱い。event typeのfilterは、登録済みtypeとcontrol typeに限定する（unit Bの責務）。actorのfilter値は、上限付きのprincipal文字列としてchainに残る（受容した残余）。
 
 | type | origin | class | 主なdetails |
 |---|---|---|---|
@@ -256,7 +256,7 @@ receiptとstatusが持つStore由来の文字列は検査済みの型である�
 
 ### 失敗の分類（設計§6.3、二分類）
 
-- Terminal（quarantine）：`StoreError::Conflict { .. }` と `StoreError::Rejected { code, .. }` だけである。両variantは `port` moduleの外では作れない印 `Verdict` を持ち、crateの外ではingestの構造化された結果行（`IngestRow::into_result`）と、ingest前のorigin検査（`precheck_ingest`）からだけ得られる。adapterがSQL例外をverdictへ写すことは型の上でできない（`StoreError` のcompile_fail例で確認する）。
+- Terminal（quarantine）：`StoreError::Conflict { .. }` と `StoreError::Rejected { code, .. }` だけである。両variantは `port` moduleの外では作れない印 `Verdict` を持ち、crateの外ではingestの構造化された結果行（`IngestRow::into_result`）と、ingest前のorigin検査（`precheck_ingest`）からだけ得られる。この印は、terminalを生む経路をdecoderに集めるための慣行の補助である。`IngestRow` のfieldはpublicなので、adapterが誤って例外経路から `IngestRow` を作ればterminalになり得る。adapterは `IngestRow` を `audit_store.ingest` の結果列からだけ作る。これはunit Bの試験（全SQLSTATE・通信エラーがOutageになること）とreviewで担保する。外部から `Verdict` を作れないことは、compile_fail例で確認する。
 - Outage（試行を返却して保留）：`StoreError::Outage { code }`。それ以外のすべて。`is_outage() == !is_terminal()` を全variantで試験する。
 
 `classify_sqlstate` は全域関数で、どの入力もoutageになる。

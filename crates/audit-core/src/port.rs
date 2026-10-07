@@ -10,8 +10,10 @@
 //!   [`Verdict`] marker that only this module can create, so outside the
 //!   crate a terminal error can only come from decoding the structured
 //!   ingest result row ([`IngestRow::into_result`]) or from the local
-//!   origin precheck ([`precheck_ingest`]); an adapter cannot map a SQL
-//!   exception to a verdict.
+//!   origin precheck ([`precheck_ingest`]). This is a convention aid, not a
+//!   type-level guarantee: `IngestRow` has public fields, so adapters MUST
+//!   build it only from `audit_store.ingest` result columns, never from an
+//!   error path (enforced by unit-B tests and review).
 //! - **Outage** ([`StoreError::Outage`]): everything else. The relay returns
 //!   the attempt and holds delivery. Transport errors, timeouts, unknown
 //!   commit outcomes, every SQLSTATE ([`classify_sqlstate`] is total),

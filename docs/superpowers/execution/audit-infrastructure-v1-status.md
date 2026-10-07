@@ -37,6 +37,17 @@
     - 承認状態：依頼者の修正指示の範囲内で本trackが採用。設計本文（§8）へ反映済み。修正後の確認は単位Aの最終確認reviewで行う。
   - 束縛主体の無いcontrol event（unboundの拒否、bootstrap）のactorを `{issuer: "db_role", principal_id: session_user}` と定めた（設計§10.2とREADME §control eventに記載）。
     - 承認状態：依頼者の修正指示の範囲内で本trackが採用。設計本文へ反映済み。修正後の確認は単位Aの最終確認reviewで行う。
+- 単位Aの修正確認review（`fa197c0` 対象、security・correctnessの2観点）：両観点ともGO（Critical/Importantなし）。Minorの扱い：
+  - 文書が強すぎる主張をしていた2件（自由記述kindの有無、terminal verdictの型保証）は、単位Aで訂正した。
+  - 次の件は単位B・後続へ引継ぐ：
+    - open_accessのevent type filterを登録済み・control typeへ限定する
+    - export中のexpireとの競合（watermark後の失効証拠）
+    - 受領行decodeの相互整合
+    - begin_recovery_epochの期待値（restored head、lost upper）の照合
+    - identity chain検証の判定区分
+    - anchor時点のcheckpointとhead以降の記録を中立に扱う
+    - golden pinを入力変更とともに再投影する
+    - IngestRowを結果列からだけ作ることの試験
 - 単位B（Store・relay）：
   - Store crate（39件）とrelay crate（36件）は別worktreeで実装済み。
   - 改訂3と新しいcore APIへの追従は、別worktreeで実施中（未push）。
