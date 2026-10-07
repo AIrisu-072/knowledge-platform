@@ -122,7 +122,7 @@ impl AgentDispatchContext {
             || e.task_revision < 0
             || e.effective_context_revision < 0
             || e.id.get_version_num() != 7
-            || e.context_id != CONTEXT_ID
+            || context_fixture_for_context(e.context_id).is_none()
             || e.requester_responsibility.is_nil()
             || e.executed_by != SYNTHETIC_EXECUTOR
             || e.executor_invocation_kind != "agent"
