@@ -781,9 +781,6 @@ impl PgPayloadStore {
         Ok(())
     }
 
-    /// Restores the payload DTOs of `manifest` and checks everything that does
-    /// not depend on external artifacts: the projection-only digest, the Unit
-    /// manifest structure, derived coverage and the stored digest columns.
     /// The projection, Unit manifest header and coverage payloads of `key`,
     /// with each kind's stored digest and count.
     async fn read_parts(&self, key: ProjectionGenerationKey) -> Result<RestoredParts, BundleError> {
@@ -819,6 +816,9 @@ impl PgPayloadStore {
         Ok((projection, header, coverage, columns))
     }
 
+    /// Restores the payload DTOs of `manifest` and checks everything that does
+    /// not depend on external artifacts: the projection-only digest, the Unit
+    /// manifest structure, derived coverage and the stored digest columns.
     pub async fn restore(
         &self,
         manifest: &ProjectionGenerationManifest,
