@@ -1069,7 +1069,7 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
         let source_id = self.config.source.source_id;
         // Published entries of unchanged items stand for a new read; a manual
         // rebuild (`reuse == false`) reads every item again.
-        let previous: BTreeMap<_, BodyItemEntry> = if reuse {
+        let mut previous: BTreeMap<_, BodyItemEntry> = if reuse {
             self.runtime
                 .current_body_entries(source_id)
                 .await
@@ -1100,13 +1100,13 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
                 let representation = item.representation_id.to_string();
                 let lookup = reuse_key(&version, &item.part, &representation, &item.raw);
                 // The key is a digest of the fields; equality is rechecked.
-                if let Some(entry) = previous.get(&lookup).filter(|entry| {
+                // Each published entry is moved into the new manifest once.
+                if let Some(mut entry) = previous.remove(&lookup).filter(|entry| {
                     entry.version == version
                         && entry.part == item.part
                         && entry.authoritative_representation_ref == representation
                         && entry.raw == item.raw
                 }) {
-                    let mut entry = entry.clone();
                     for unit in &mut entry.units {
                         unit.provenance.source_snapshot = snapshot.source_snapshot.clone();
                     }
