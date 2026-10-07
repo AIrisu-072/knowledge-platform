@@ -125,10 +125,47 @@ glibc のスレッドごとの割当て領域が断片化していた。`MALLOC_
 
 - segment 数と検索の遅さを計測し、統合の条件の案を出す。統合した世代は新しいファイルになるので、それ以降の世代はそこからハードリンクする。
 
-## 段3：Vector の参照化（概要）
+## 段3：Vector の参照化
 
-- ベクトルの値を `EmbeddingCacheKey` ごとに1回だけ保存し、stage は部品単位の参照の一覧にする。
-- 1世代の構築を変わった部品の分だけにし、更新が続いても CAS で公開できるようにする。
+### 今の形と1万文書での問題（2026-10-07 調査）
+
+- 世代ごとに stage を作り、全 Unit のベクトル（384次元 f32）と参照を1行ずつ `search_vector_entry` に書き直す。1,000文書（27万 Unit）で 884 MB。1万文書（169万 Unit）では作っていない。
+- 構築は保存済みのベクトルを鍵（`EmbeddingCacheKey`）で再利用するが、`previous` を Unit ごとに線形に探す（Unit 数の2乗）。保存済みのベクトルは全 stage を読んで HashMap にする。
+- manifest の digest（`unit_bindings_digest`、`indexed_entries_digest`）は世代の鍵と全 Unit の本文を1本でハッシュするので、変わらない部品も毎回計算し直す。
+- 検索サーバーは stage 全体（ベクトルと参照）を読み込む。1万文書では f32 で約 2.6 GB になる。
+- 埋め込みは手元の CPU で約46 Unit/秒。1万文書で新しく要る約142万 Unit は約9時間かかる（GPU なら数分）。
+
+### T14 ベクトルの値と Vector 部品の保存（migration 0012、`vector_store.rs`）
+
+- `search_vector_value`：model × 鍵の digest ごとに値を1回だけ保存する（範囲の鍵、値、値の SHA-256）。
+- `search_vector_segment`：Unit 部品1件に対応する Vector 部品。中身は Unit ごとの（unit_id、鍵の digest、値の digest）の並び。世代の鍵と Source snapshot は持たず、読込み時に付ける（Unit 部品と同じ）。部品の digest と件数を検証 receipt として持つ。
+- `search_vector_stage_segment`：stage ごとの順序付きの部品の一覧。
+- 既存の `search_vector_entry` は migration で値と部品へ移し、作り直しで埋め込み直さない。
+
+### T15 manifest の digest v2（`search-core` vector）
+
+- `unit_bindings_digest` と `indexed_entries_digest` を、部品ごとの digest の並びと世代の鍵からの合成にする（SD-T11 5：full 構築と同じ論理 digest）。
+- 部品の digest は書込み時に1回だけ全件から計算し、既存の部品は各プロセスが初めて読むときに再計算する。v1 の manifest の世代は読込みで拒否し、作り直す。
+
+### T16 構築を変わった部品だけにする（`vector_runtime.rs`、`VectorLifecycle`）
+
+- 公開済みの stage の部品一覧を Unit 部品の digest で引き、Unit 部品と範囲が同じなら Vector 部品をそのまま使う。
+- 新しい部品の Unit だけ、値を鍵で DB から引き（一括、全件は読まない）、無いものだけを埋め込む。線形探索をやめる。
+- 入力（`VectorManifestInput`）は全 Unit を復元せず、部品の要約と新しい部品の Unit だけにする。
+
+### T17 検索サーバーの読込み（`PgVectorIndex`）
+
+- 部品ごとにベクトルを読み、部品の digest でプロセス内に共有する。新しい世代では新しい部品だけを読む。
+- まず f32 のまま測る。1万文書で上限（4 GB）を超えるなら、f16 の保持（読込み時に変換）を案として出す。
+
+### T18 GC
+
+- どの stage からも参照されない部品と値を消す。範囲の取消し（purge）は今と同じく epoch を進め、その範囲の値と部品を消す。
+
+### T19 計測
+
+- 1,000文書：移行後に作り直し、ベクトルを埋め込み直さないこと、1件の更新の Vector 反映時間、検索サーバーのメモリを測る。
+- 1万文書：新しい Unit の埋め込みが要る（CPU 約9時間）。GPU で埋め込む方法は所有者の判断を待つ。
 
 ## 段4：Graph の部品化（概要）
 

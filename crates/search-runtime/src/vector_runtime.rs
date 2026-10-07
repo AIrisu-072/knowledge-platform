@@ -8,6 +8,7 @@
 //! current Document Read before it can become a candidate.
 
 use std::collections::BTreeMap;
+use std::ops::Range;
 use std::sync::Arc;
 
 use search_application::SearchError;
@@ -21,23 +22,23 @@ use search_application::search_core::projection::ProjectionGenerationKey;
 use search_application::search_core::source::{DiscoverableSource, RetentionMode};
 use search_application::search_core::vector::{
     BoundEmbedding, EmbeddingModelId, VectorActivationPolicy, VectorManifestInput,
-    VectorManifestUnit, VectorStorageKind, VectorUnitCoverage,
+    VectorManifestUnit, VectorProjectionManifest, VectorStorageKind, VectorUnitCoverage,
 };
 use search_application::vector::{
     CurrentSourceUnit, EmbeddingProvider, SourceUnitState, TrustedVectorQuery, VectorActivation,
-    VectorActivationPort, VectorBuildOutcome, VectorGenerationPort, VectorLifecycle,
-    VectorRetrievalBatch, VectorRetriever, VectorSourceResolverPort,
+    VectorActivationPort, VectorBuildOutcome, VectorGenerationPort, VectorIndexPort,
+    VectorLifecycle, VectorRetrievalBatch, VectorRetriever, VectorSourceResolverPort,
 };
 use search_extraction_core::{BodyCoverage, ItemOperationState};
 use search_source_document::{
-    BodyUnitManifest, DocumentCurrentAccessAdapter, GenerationBundleReceipt,
+    BodyItemEntry, BodyUnitManifest, DocumentCurrentAccessAdapter, GenerationBundleReceipt,
 };
 use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::payload::PgPayloadStore;
-use crate::vector_store::{PgVectorGenerations, PgVectorIndex};
+use crate::payload::{PgPayloadStore, stored_segment_digest};
+use crate::vector_store::{PgVectorGenerations, PgVectorIndex, cache_digest, segment_digest_for};
 
 /// The one authority scope of a Document Source's embeddings: Read is
 /// checked per hit, the scope only partitions purge and epochs.
@@ -60,12 +61,10 @@ fn failed(what: &str, error: impl std::fmt::Debug) -> SearchError {
     SearchError::SourceUnavailable(format!("vector: {what}: {error:?}"))
 }
 
-/// The indexed Units of one stored bundle with their pinned authority.
-pub fn manifest_units(
-    key: ProjectionGenerationKey,
+/// The items of a stored bundle whose Units are indexed, with their coverage.
+fn indexed_items(
     units: &BodyUnitManifest,
-) -> Vec<VectorManifestUnit> {
-    let scope = document_scope_key(key.source_id);
+) -> impl Iterator<Item = (&BodyItemEntry, VectorUnitCoverage)> {
     units
         .entries
         .iter()
@@ -78,6 +77,15 @@ pub fn manifest_units(
             };
             Some((entry, coverage))
         })
+}
+
+/// The indexed Units of one stored bundle with their pinned authority.
+pub fn manifest_units(
+    key: ProjectionGenerationKey,
+    units: &BodyUnitManifest,
+) -> Vec<VectorManifestUnit> {
+    let scope = document_scope_key(key.source_id);
+    indexed_items(units)
         .flat_map(|(entry, coverage)| {
             let scope = scope.clone();
             entry.units.iter().map(move |unit| VectorManifestUnit {
@@ -189,6 +197,26 @@ fn cache_key(model: &EmbeddingModelId, item: &VectorManifestUnit) -> EmbeddingCa
     }
 }
 
+/// The Vector segment digest of each item of `input`.
+fn vector_segments(
+    model: &EmbeddingModelId,
+    input: &VectorManifestInput,
+    items: &[(String, Range<usize>)],
+) -> Vec<String> {
+    items
+        .iter()
+        .map(|(unit_segment, _)| {
+            segment_digest_for(
+                model,
+                unit_segment,
+                &input.authority_scope_key,
+                &input.retention_lease_id,
+                "",
+            )
+        })
+        .collect()
+}
+
 /// Builds and recovers the Vector generation of the current P1 bundle.
 pub struct VectorMaintainer {
     pool: PgPool,
@@ -219,10 +247,12 @@ impl VectorMaintainer {
         }))
     }
 
+    /// The comparison input of `key` and, per indexed item, its Unit segment
+    /// digest and the range of its Units in the input.
     async fn input(
         &self,
         key: ProjectionGenerationKey,
-    ) -> Result<VectorManifestInput, SearchError> {
+    ) -> Result<(VectorManifestInput, Vec<(String, Range<usize>)>), SearchError> {
         let row: (serde_json::Value, serde_json::Value) = sqlx::query_as(
             "SELECT g.projection_manifest, r.receipt_dto FROM search_generation g \
              JOIN search_generation_receipt r USING (source_id, generation_id) \
@@ -246,12 +276,24 @@ impl VectorMaintainer {
             .restore(&manifest)
             .await
             .map_err(|error| failed("payload", error))?;
-        Ok(manifest_input(
+        let mut items = Vec::new();
+        let mut at = 0;
+        for (entry, _) in indexed_items(&restored.unit_manifest) {
+            let digest =
+                stored_segment_digest(entry).map_err(|error| failed("segment digest", error))?;
+            items.push((digest, at..at + entry.units.len()));
+            at += entry.units.len();
+        }
+        let input = manifest_input(
             key,
             &manifest.source_snapshot,
             &restored.unit_manifest,
             &receipt,
-        ))
+        );
+        if input.units.len() != at {
+            return Err(failed("indexed Units", at));
+        }
+        Ok((input, items))
     }
 
     /// Builds the current bundle's Vector generation unless it is published
@@ -285,45 +327,158 @@ impl VectorMaintainer {
             .generations
             .scope_epoch(&document_scope_key(key.source_id))
             .await?;
-        let input = self.input(key).await?;
-        // Reuse stored vectors whose cache key is unchanged, re-bound here.
-        let stored = self
-            .services
-            .index
-            .values_by_cache_key(self.source.source_id, &model)
-            .await?;
+        let (input, items) = self.input(key).await?;
+        self.build(&input, &items, scope_epoch).await.map(Some)
+    }
+
+    /// One build of `input` by Unit segment (stage 3): a Vector segment
+    /// whose Unit segment and authority are unchanged is listed as it is;
+    /// a new one reuses stored values by cache key and embeds the rest.
+    async fn build(
+        &self,
+        input: &VectorManifestInput,
+        items: &[(String, Range<usize>)],
+        scope_epoch: u64,
+    ) -> Result<VectorBuildOutcome, SearchError> {
         let spec = self.services.provider.spec();
-        let previous: Vec<BoundEmbedding> = input
-            .units
-            .iter()
-            .filter_map(|item| {
-                let values = stored.get(&cache_key(&model, item))?;
-                BoundEmbedding::new(spec, &item.unit, &item.authority, values.clone()).ok()
-            })
-            .collect();
-        let lifecycle = VectorLifecycle {
-            provider: self.services.provider.as_ref(),
-            index: self.services.index.as_ref(),
-            generations: self.services.generations.as_ref(),
-            activations: self.services.activations.as_ref(),
+        let model = self.services.model()?;
+        if !input.nonindexed_retention_unit_ids.is_empty() {
+            return Err(failed("nonindexed retention Units", input.bundle_key));
+        }
+        let index = self.services.index.as_ref();
+        let segments = vector_segments(&model, input, items);
+        let existing = index.existing_segments(&segments).await?;
+        for ((_, range), segment) in items.iter().zip(&segments) {
+            if existing.contains(segment) {
+                continue;
+            }
+            let units = &input.units[range.clone()];
+            let keys = units
+                .iter()
+                .map(|item| cache_digest(&cache_key(&model, item)))
+                .collect::<Result<Vec<_>, _>>()?;
+            let stored = index.cached_values(&model, &keys).await?;
+            let mut missing = Vec::new();
+            let mut embeddings = Vec::with_capacity(units.len());
+            for (item, key) in units.iter().zip(&keys) {
+                match stored.get(key) {
+                    Some(values) => embeddings.push(Some(
+                        BoundEmbedding::new(spec, &item.unit, &item.authority, values.clone())
+                            .map_err(|error| failed("rebinding", error))?,
+                    )),
+                    None => {
+                        missing.push(item.clone());
+                        embeddings.push(None);
+                    }
+                }
+            }
+            let mut fresh = self
+                .services
+                .provider
+                .embed_units(&missing)
+                .await?
+                .into_iter();
+            if fresh.len() != missing.len() {
+                return Err(failed("embedding count", missing.len()));
+            }
+            let embeddings = embeddings
+                .into_iter()
+                .zip(units)
+                .map(|(embedding, item)| match embedding {
+                    Some(embedding) => Ok(embedding),
+                    None => {
+                        let embedding = fresh.next().ok_or_else(|| failed("embedding", ()))?;
+                        embedding
+                            .validate_binding(spec, &item.unit, &item.authority)
+                            .map_err(|error| failed("embedding binding", error))?;
+                        Ok(embedding)
+                    }
+                })
+                .collect::<Result<Vec<_>, SearchError>>()?;
+            index
+                .put_segment(segment, &model, &input.authority_scope_key, &embeddings)
+                .await?;
+        }
+        let (descriptor, staged) = index
+            .stage_segments(input.bundle_key, &model, &segments)
+            .await?;
+        let checked = VectorProjectionManifest::stage(
+            spec,
+            input,
+            descriptor.clone(),
+            &staged,
+            VectorStorageKind::Persistent,
+            OffsetDateTime::now_utc(),
+        )
+        .and_then(|manifest| {
+            manifest
+                .validate_against(input, &staged)
+                .map(|receipt| (manifest, receipt))
+        });
+        drop(staged);
+        let (manifest, receipt) = match checked {
+            Ok(checked) => checked,
+            Err(_) => {
+                index.discard(&descriptor).await?;
+                return Ok(VectorBuildOutcome::Rejected);
+            }
         };
-        lifecycle
-            .build_at(
-                &input,
-                &previous,
-                VectorStorageKind::Persistent,
-                OffsetDateTime::now_utc(),
-                scope_epoch,
-            )
+        let published = match self
+            .services
+            .generations
+            .publish_if_current(&manifest, scope_epoch)
             .await
-            .map(Some)
+        {
+            Ok(published) => published,
+            Err(error) => {
+                // The unpublished stage never outlives a failed publication.
+                let _ = index.discard(&descriptor).await;
+                return Err(error);
+            }
+        };
+        if !published {
+            index.discard(&descriptor).await?;
+            return Ok(VectorBuildOutcome::LostCas);
+        }
+        Ok(VectorBuildOutcome::Published(Box::new(receipt)))
+    }
+
+    /// The Units of the current generation that a build would embed: their
+    /// Vector segment is not stored and neither is their value. Each comes
+    /// with the cache digest its value is stored under, for values the same
+    /// model computed elsewhere (a validation import).
+    pub async fn unstored_units(&self) -> Result<Vec<(String, String)>, SearchError> {
+        let Some(key) = self.current_key().await? else {
+            return Ok(vec![]);
+        };
+        let model = self.services.model()?;
+        let (input, items) = self.input(key).await?;
+        let store = self.services.index.as_ref();
+        let segments = vector_segments(&model, &input, &items);
+        let existing = store.existing_segments(&segments).await?;
+        let mut pending = Vec::new();
+        for ((_, range), segment) in items.iter().zip(&segments) {
+            if existing.contains(segment) {
+                continue;
+            }
+            for item in &input.units[range.clone()] {
+                pending.push((
+                    cache_digest(&cache_key(&model, item))?,
+                    item.unit.text.clone(),
+                ));
+            }
+        }
+        let keys: Vec<String> = pending.iter().map(|(key, _)| key.clone()).collect();
+        let stored = store.cached_values(&model, &keys).await?;
+        pending.retain(|(key, _)| !stored.contains_key(key));
+        Ok(pending)
     }
 
     /// Restart: keep only published generations of the current bundle that
     /// still validate; discard every other stage.
     pub async fn recover(&self) -> Result<(), SearchError> {
         let inputs = match self.current_key().await? {
-            Some(key) => vec![self.input(key).await?],
+            Some(key) => vec![self.input(key).await?.0],
             None => vec![],
         };
         let lifecycle = VectorLifecycle {

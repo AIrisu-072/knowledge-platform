@@ -83,6 +83,13 @@ fn unbound(entry: &BodyItemEntry) -> BodyItemEntry {
     stored
 }
 
+/// The digest `entry` is stored under as a Unit segment.
+pub fn stored_segment_digest(entry: &BodyItemEntry) -> Result<String, BundleError> {
+    Ok(sha256_text(
+        &segment_digest(&unbound(entry)).map_err(|_| BundleError::Digest)?,
+    ))
+}
+
 /// Checks a segment read from the database before it is cached: its digest,
 /// Unit count and every Unit's text digest.
 fn verified_segment(digest: &str, count: i64, text: &str) -> Result<BodyItemEntry, BundleError> {
@@ -368,9 +375,7 @@ fn summarize_segment(
             })
         })
         .collect::<Result<Vec<_>, BundleError>>()?;
-    for unit in &mut entry.units {
-        Arc::make_mut(&mut unit.provenance).source_snapshot = header.source_snapshot.clone();
-    }
+    restamp_source_snapshot(&mut entry.units, &header.source_snapshot);
     let single = BodyUnitManifest {
         key: header.key,
         source_snapshot: header.source_snapshot.clone(),
