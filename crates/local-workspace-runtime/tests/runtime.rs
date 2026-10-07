@@ -1247,7 +1247,8 @@ fn workspace_creation_operations_are_never_forgotten() {
     let id = op();
     let created = rt.create_workspace("w", &id).unwrap();
     let mut view = created.workspace.clone();
-    for i in 0..600 {
+    // More operations than the retained log (1024 records) so eviction runs.
+    for i in 0..1100 {
         view = rt
             .rename_workspace(&ctx(&view), &format!("n{i}"), &op())
             .unwrap();

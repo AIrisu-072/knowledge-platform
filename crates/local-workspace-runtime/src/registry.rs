@@ -15,7 +15,7 @@ use crate::error::{RuntimeError, RuntimeErrorCode, RuntimeErrorReason, RuntimeRe
 
 pub const SCHEMA: u32 = 1;
 pub const REGISTRY_FILE: &str = "registry.json";
-pub const MAX_OPERATIONS: usize = 512;
+pub const MAX_OPERATIONS: usize = 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -112,12 +112,13 @@ impl RegistryFile {
         // never create a second Workspace or managed root. Among the rest the
         // oldest completed record goes first, then the oldest pending one.
         while self.operations.len() > MAX_OPERATIONS {
+            // The record just added (last) is never the one evicted.
+            let older = &self.operations[..self.operations.len() - 1];
             let evictable = |op: &&OperationRecord| op.kind != OperationKind::CreateWorkspace;
-            let index = self
-                .operations
+            let index = older
                 .iter()
                 .position(|op| evictable(&op) && op.state == OperationState::Completed)
-                .or_else(|| self.operations.iter().position(|op| evictable(&op)));
+                .or_else(|| older.iter().position(|op| evictable(&op)));
             match index {
                 Some(index) => {
                     self.operations.remove(index);

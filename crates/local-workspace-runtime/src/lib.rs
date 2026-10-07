@@ -46,6 +46,7 @@ pub const MAX_RETAINED_SNAPSHOT_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_SCANNED_ENTRIES: usize = 10_000;
 const MAX_SELECTIONS: usize = 4;
 const MAX_WORKSPACES: usize = 256;
+const MAX_PENDING_CREATIONS: usize = 16;
 const MAX_EXPLICIT_BINDINGS: usize = 32;
 const MAX_LABEL_CHARS: usize = 80;
 const MANAGED_DIR: &str = "managed";
@@ -564,7 +565,20 @@ impl LocalWorkspaceRuntime {
             }
             Some(op) => stored_workspace_ids(op)?,
             None => {
-                if state.registry.workspaces.len() >= MAX_WORKSPACES {
+                let reserved = state
+                    .registry
+                    .operations
+                    .iter()
+                    .filter(|op| {
+                        op.kind == OperationKind::CreateWorkspace
+                            && op.state == OperationState::Pending
+                    })
+                    .count();
+                // Creation records are never evicted, so both completed and
+                // pending reservations are bounded here.
+                if state.registry.workspaces.len() >= MAX_WORKSPACES
+                    || reserved >= MAX_PENDING_CREATIONS
+                {
                     return err(RuntimeErrorCode::Limit, RuntimeErrorReason::TooMany);
                 }
                 // Reserve the identities before touching the filesystem so a
@@ -1311,7 +1325,15 @@ impl LocalWorkspaceRuntime {
                             );
                             return self.complete_create(&mut state, operation_id, digest, receipt);
                         }
-                        // Our own partially written file: remove it and create again.
+                        // Only an interrupted write of ours (a strict prefix of the
+                        // intended bytes) is removed and created again. Anything else
+                        // may be the user's edit of our file and is never deleted.
+                        if content.len() >= bytes.len() || !bytes.starts_with(&content) {
+                            return err(
+                                RuntimeErrorCode::Conflict,
+                                RuntimeErrorReason::ConcurrentChange,
+                            );
+                        }
                         if !remove_own_file(&dir, &leaf, &existing) {
                             return Err(RuntimeError::new(RuntimeErrorCode::OutcomeUnknown));
                         }
@@ -1619,6 +1641,28 @@ mod crash_recovery_tests {
             .unwrap_err();
         assert_eq!(error.code, RuntimeErrorCode::Conflict);
         assert_eq!(std::fs::read(root.join("foreign.txt")).unwrap(), b"abc");
+        // A file of ours that was later edited in place (not a prefix of our
+        // bytes) is never deleted by a retry.
+        std::fs::write(root.join("edited.txt"), b"abc").unwrap();
+        pending(
+            &rt,
+            record(
+                "op-edited",
+                "edited.txt",
+                b"abc",
+                Some(identity_of("edited.txt")),
+            ),
+        );
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(root.join("edited.txt"))
+            .and_then(|mut f| std::io::Write::write_all(&mut f, b"XYZ"))
+            .unwrap();
+        let error = rt
+            .create_file(&context, &parent, "edited.txt", b"abc", "op-edited")
+            .unwrap_err();
+        assert_eq!(error.code, RuntimeErrorCode::Conflict);
+        assert_eq!(std::fs::read(root.join("edited.txt")).unwrap(), b"XYZ");
         // Nothing was written before the crash: the create proceeds once.
         pending(&rt, record("op-none", "none.txt", b"xyz", None));
         rt.create_file(&context, &parent, "none.txt", b"xyz", "op-none")
@@ -1637,5 +1681,44 @@ mod crash_recovery_tests {
             RuntimeErrorCode::StaleContext
         );
         assert!(!root.join("stale.txt").exists());
+    }
+
+    #[test]
+    fn workspace_creation_reservations_are_bounded_and_new_records_are_kept() {
+        let temp = tempfile::tempdir().unwrap();
+        let rt = LocalWorkspaceRuntime::open(temp.path().join("state")).unwrap();
+        for i in 0..MAX_PENDING_CREATIONS {
+            pending(
+                &rt,
+                OperationRecord {
+                    id: format!("op-reserved-{i}"),
+                    kind: OperationKind::CreateWorkspace,
+                    digest: "d".into(),
+                    state: OperationState::Pending,
+                    result: serde_json::json!({"workspaceId": format!("w_{i}"), "managedBindingId": format!("b_{i}"), "name": "x"}),
+                },
+            );
+        }
+        let error = rt.create_workspace("one more", "op-over").unwrap_err();
+        assert_eq!(error.code, RuntimeErrorCode::Limit);
+        // A full log never evicts the record that was just added.
+        let mut registry = RegistryFile::new("0".repeat(64));
+        for i in 0..registry::MAX_OPERATIONS + 10 {
+            registry.upsert_operation(OperationRecord {
+                id: format!("c{i}"),
+                kind: OperationKind::CreateWorkspace,
+                digest: "d".into(),
+                state: OperationState::Completed,
+                result: serde_json::Value::Null,
+            });
+        }
+        registry.upsert_operation(OperationRecord {
+            id: "newest".into(),
+            kind: OperationKind::CreateFile,
+            digest: "d".into(),
+            state: OperationState::Pending,
+            result: serde_json::Value::Null,
+        });
+        assert!(registry.operation("newest").is_some());
     }
 }
