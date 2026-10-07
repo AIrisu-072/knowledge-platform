@@ -63,6 +63,7 @@ export async function startBackend({ root, directory, pdfium, register }) {
   let starting;
   const stop = async () => {
     if (server && server.child.exitCode === null && !server.child.signalCode) {
+      server.child.kill('SIGCONT');
       try { await stopProcess(server); } catch { server.child.kill('SIGKILL'); }
     }
     // A stop during `docker run` (Ctrl-C, SIGTERM) waits for it to settle, then
@@ -107,7 +108,10 @@ export async function startBackend({ root, directory, pdfium, register }) {
     await waitReady(origin, server.child);
     const documentId = await publishDocument(origin, 'デスクトップ確認用資料', '【合成データ】デスクトップ版の画面確認に使う共有資料です。\n');
     await command(binary, ['seed-work'], options('seed-work', { ...env, KP_ORGANIZATION_DOCUMENT_ID: documentId }));
-    return { origin, documentId, postgres: { image: 'postgres:18.6-bookworm', version }, stop };
+    // pause() keeps requests in flight (the server stops answering) until resume().
+    const pause = () => server.child.kill('SIGSTOP');
+    const resume = () => server.child.kill('SIGCONT');
+    return { origin, documentId, postgres: { image: 'postgres:18.6-bookworm', version }, stop, pause, resume };
   } catch (error) {
     await stop();
     throw error;

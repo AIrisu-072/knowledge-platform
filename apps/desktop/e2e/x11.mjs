@@ -1,11 +1,15 @@
 // TEST-ONLY: a private Xvfb display and xdotool/xclip control of the real
-// native GTK folder dialog that the desktop shell opens (rfd). No window manager.
+// native GTK folder dialog that the desktop shell opens (rfd), and window close
+// requests (x11-close.py). No window manager.
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { writeFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const run = promisify(execFile);
+const here = dirname(fileURLToPath(import.meta.url));
 export const DIALOG_TITLE = '追加するフォルダーを選択';
 
 /**
@@ -64,10 +68,18 @@ export function x11(env) {
     }
     throw new Error(`native folder dialog did not ${open ? 'open' : 'close'}`);
   }
+  /** Asks the named top-level window to close (WM_DELETE_WINDOW). */
+  async function requestClose(name) {
+    const target = (await windows()).find((window) => window.name === name);
+    if (!target) throw new Error(`no window named ${name}`);
+    await run('python3', ['-I', join(here, 'x11-close.py'), target.id], { env });
+  }
+
   return {
     windows,
     dialog,
     waitDialog,
+    requestClose,
     /** Full X screen (includes the native dialog, which WebDriver cannot see). */
     async screenshot(path) {
       const { stdout } = await run('import', ['-window', 'root', 'png:-'], { env, encoding: 'buffer', maxBuffer: 64 * 1024 * 1024 });
@@ -102,6 +114,24 @@ export function x11(env) {
       await xdo('windowfocus', '--sync', id);
       await xdo('key', 'Escape');
       await waitDialog(false);
+    },
+    /** Real pointer and keyboard input to the named window (no WebDriver). */
+    async origin(name) {
+      const target = (await windows()).find((window) => window.name === name);
+      if (!target) throw new Error(`no window named ${name}`);
+      const geometry = await xdo('getwindowgeometry', '--shell', target.id);
+      const value = (key) => Number(new RegExp(`^${key}=(\\d+)$`, 'm').exec(geometry)?.[1] ?? NaN);
+      return { id: target.id, x: value('X'), y: value('Y') };
+    },
+    async clickAt(x, y) {
+      await xdo('mousemove', '--sync', String(Math.round(x)), String(Math.round(y)));
+      await xdo('click', '1');
+    },
+    async typeAscii(text) {
+      await xdo('type', '--delay', '40', text);
+    },
+    async key(name) {
+      await xdo('key', '--clearmodifiers', name);
     },
   };
 }

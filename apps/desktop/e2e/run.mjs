@@ -120,6 +120,14 @@ async function rootShot(name) {
   const file = join(directory, `${prefix()}-${name}-screen.png`);
   await X.screenshot(file);
   current.screenshots.push(file.slice(directory.length + 1));
+  return file;
+}
+
+/** Pixels that differ (ImageMagick, 5% fuzz) inside one region of two screenshots. */
+async function regionDiff(a, b, { x, y, width, height }) {
+  const crop = `[${width}x${height}+${x}+${y}]`;
+  const result = await run('compare', ['-metric', 'AE', '-fuzz', '5%', `${a}${crop}`, `${b}${crop}`, 'null:']).catch((error) => error);
+  return Number(String(result.stderr).trim().split(/\s/)[0]);
 }
 
 function appEnvironment({ apiOrigin, homeDir = home }) {
@@ -1209,6 +1217,91 @@ scenario('再起動後の復元と、IPCでの同じ操作IDの再送・同時�
     check('ディスク：ディスク上も1ファイルだけ', (await readdir(managedDir)).filter((name) => name === '再送確認.txt').length === 1);
   } finally {
     await quit(s);
+  }
+});
+
+scenario('ウィンドウを閉じる操作：処理中の操作があればページの離脱確認を出し、取消で残り、確定で終了する', async () => {
+  const closing = await startDriver('close', appEnvironment({ apiOrigin: backend.origin }));
+  try {
+    // Nothing unsaved: the window closes at once.
+    let s = await launch(closing);
+    try {
+      await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
+      await X.requestClose('Knowledge Platform');
+      check('未保存の入力が無ければ、ウィンドウを閉じる操作でそのまま終了する', await s.waitFor(async () => (await appPids()).length === 0, { message: 'app exited' }));
+    } finally {
+      await s.delete();
+    }
+    await lockReleased();
+    // WebDriver accepts leave-page prompts by itself (as the WebDriver spec
+    // requires), so the prompt is checked on an app started without WebDriver
+    // and driven by real X pointer and keyboard input. A metadata save is kept
+    // in flight (the backend is paused), which makes the page guard the close.
+    // WebDriver only measures where the controls are (same window size, data).
+    s = await launch(closing);
+    const centre = (css, text) => s.execute(`const element = [...document.querySelectorAll(arguments[0])].find((item) => !arguments[1] || item.textContent.includes(arguments[1]));
+      const rect = element.getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };`, [css, text]);
+    const at = {};
+    try {
+      await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
+      at.authoring = await centre('nav a', '編集作業');
+      await clickText(s, 'nav a', '編集作業');
+      await s.waitForText('button[data-document-id]', 'デスクトップ登録確認（合成）');
+      at.row = await centre('button[data-document-id]', 'デスクトップ登録確認（合成）');
+      await clickText(s, 'button[data-document-id]', 'デスクトップ登録確認（合成）');
+      at.open = await centre('button', '詳細を開く');
+      await clickText(s, 'button', '詳細を開く');
+      await s.waitForText('h1', 'デスクトップ登録確認（合成）');
+      at.edit = await centre('button', 'メタデータを編集');
+      await clickText(s, 'button', 'メタデータを編集');
+      await s.waitFor(() => s.find('[role="dialog"] textarea[aria-label="変更理由"]'), { message: 'metadata dialog' });
+      at.reason = await centre('[role="dialog"] textarea[aria-label="変更理由"]');
+      at.save = await centre('[role="dialog"] button', '保存する');
+    } finally {
+      await quit(s);
+    }
+    const direct = spawn(binary, [], { env: appEnvironment({ apiOrigin: backend.origin }), stdio: 'ignore' });
+    const alive = () => direct.exitCode === null && direct.signalCode === null;
+    try {
+      await s.waitFor(async () => (await X.windows()).some((window) => window.name === 'Knowledge Platform'), { message: 'direct window' });
+      await delay(5_000);
+      const origin = await X.origin('Knowledge Platform');
+      const click = async (point, wait) => { await X.clickAt(origin.x + point.x, origin.y + point.y); await delay(wait); };
+      await click(at.authoring, 2_500);
+      await click(at.row, 1_500);
+      await click(at.open, 3_000);
+      await click(at.edit, 2_000);
+      await click(at.reason, 500);
+      await X.typeAscii('close check');
+      backend.pause();
+      await click(at.save, 1_500);
+      const inFlight = await rootShot('save-in-flight');
+      await X.requestClose('Knowledge Platform');
+      await delay(2_000);
+      const prompt = await rootShot('leave-confirmation');
+      // WebKit draws its leave confirmation in the middle of the page.
+      const middle = { x: origin.x + 640 - 160, y: origin.y + 400 - 90, width: 320, height: 180 };
+      const shown = await regionDiff(inFlight, prompt, middle);
+      check('X操作：保存の処理中にウィンドウを閉じようとすると、ページの離脱確認が画面に出て、終了しない', alive() && shown > 2_000, { changedPixels: shown });
+      await X.key('Escape');
+      await delay(1_500);
+      const cancelled = await rootShot('after-cancel');
+      const gone = await regionDiff(inFlight, cancelled, middle);
+      check('X操作：確認を取り消すと確認は消え、ウィンドウと処理中の画面が残る', alive() && gone < 200, { changedPixels: gone });
+      await X.requestClose('Knowledge Platform');
+      await delay(2_000);
+      await rootShot('leave-confirmation-again');
+      await X.key('Return');
+      const deadline = Date.now() + 10_000;
+      while (alive() && Date.now() < deadline) await delay(200);
+      check('X操作：確認で離れることを選ぶと終了する', !alive());
+    } finally {
+      backend.resume();
+      if (alive()) direct.kill('SIGKILL');
+    }
+    await lockReleased();
+  } finally {
+    closing.stop();
   }
 });
 

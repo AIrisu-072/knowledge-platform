@@ -411,10 +411,14 @@ function FolderBrowser({ workspace, binding, locator, refresh, onNavigate, onNot
   const pending = create.state.status === 'pending';
   const createInput = create.state.status === 'unknown' || create.state.status === 'pending' ? create.state.input : { name: fileName, content };
   const createProblem = create.state.status === 'failed' || create.state.status === 'unknown' ? create.state.error : undefined;
+  const createSawChange = isRuntimeFailure(createProblem) && createProblem.code === 'stale_context';
+  // A changed context is explained once: by the file form when its operation
+  // hit it. The folder's own copy is dropped, so it does not reappear on retry.
+  useEffect(() => {
+    if (createSawChange) setStickyProblem((problem: unknown) => (isRuntimeFailure(problem) && problem.code === 'stale_context' ? undefined : problem));
+  }, [createSawChange, stickyProblem]);
   const listingProblem = entries.isError ? entries.error : stickyProblem;
-  // A changed context is explained once: by the file form when its operation hit it.
-  const sameChange = isRuntimeFailure(listingProblem) && listingProblem.code === 'stale_context'
-    && isRuntimeFailure(createProblem) && createProblem.code === 'stale_context';
+  const sameChange = createSawChange && isRuntimeFailure(listingProblem) && listingProblem.code === 'stale_context';
 
   return (
     <section className={styles.panel} aria-label={`${title} の閲覧`}>

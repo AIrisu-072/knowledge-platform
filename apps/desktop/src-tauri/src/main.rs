@@ -8,6 +8,8 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(target_os = "linux")]
+mod close_guard;
 mod picker;
 mod protocol;
 mod proxy;
@@ -156,7 +158,7 @@ fn main() {
             let picker = picker::NativePicker::new(app.handle().clone(), MAIN_WINDOW);
             app.manage(Arc::new(Broker { runtime, picker }));
             let downloads = downloads_dir(app);
-            WebviewWindowBuilder::new(app, MAIN_WINDOW, WebviewUrl::App("/".into()))
+            let window = WebviewWindowBuilder::new(app, MAIN_WINDOW, WebviewUrl::App("/".into()))
                 .title("Knowledge Platform")
                 .inner_size(1280.0, 800.0)
                 .min_inner_size(960.0, 600.0)
@@ -178,6 +180,10 @@ fn main() {
                 })
                 .disable_drag_drop_handler()
                 .build()?;
+            #[cfg(target_os = "linux")]
+            close_guard::install(&window)?;
+            #[cfg(not(target_os = "linux"))]
+            let _ = window;
             Ok(())
         })
         .run(tauri::generate_context!())

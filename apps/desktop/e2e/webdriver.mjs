@@ -75,6 +75,23 @@ export class Session {
     return call(this.base, 'POST', this.#path('/back'), {});
   }
 
+  /** The text of an open user prompt (alert, confirm, leave-page), or null. */
+  async promptText() {
+    try {
+      return await call(this.base, 'GET', this.#path('/alert/text'));
+    } catch {
+      return null;
+    }
+  }
+
+  dismissPrompt() {
+    return call(this.base, 'POST', this.#path('/alert/dismiss'), {});
+  }
+
+  acceptPrompt() {
+    return call(this.base, 'POST', this.#path('/alert/accept'), {});
+  }
+
   /** Runs a synchronous script in the page; returns its JSON value. */
   execute(script, args = []) {
     return call(this.base, 'POST', this.#path('/execute/sync'), { script, args });

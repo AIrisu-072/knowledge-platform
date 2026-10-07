@@ -526,17 +526,42 @@ mod tests {
     }
 
     /// Every request header an API definition declares must be forwarded,
-    /// or that operation fails in the desktop build only.
+    /// or that operation fails in the desktop build only. Parameters may be
+    /// inline or `$ref`s, on an operation or on its path.
     #[test]
     fn every_header_parameter_of_the_api_definitions_is_forwarded() {
         let organization: serde_json::Value = serde_json::from_str(include_str!(
             "../../../../spec/api/organization-poc.openapi.json"
         ))
         .unwrap();
+        let resolve = |parameter: &serde_json::Value| -> serde_json::Value {
+            match parameter["$ref"].as_str() {
+                Some(reference) => {
+                    let name = reference
+                        .strip_prefix("#/components/parameters/")
+                        .unwrap_or_else(|| panic!("unexpected parameter reference {reference}"));
+                    organization["components"]["parameters"][name].clone()
+                }
+                None => parameter.clone(),
+            }
+        };
         let mut declared = Vec::new();
-        for operations in organization["paths"].as_object().unwrap().values() {
-            for operation in operations.as_object().unwrap().values() {
-                for parameter in operation["parameters"].as_array().into_iter().flatten() {
+        for item in organization["paths"].as_object().unwrap().values() {
+            let item = item.as_object().unwrap();
+            // Path-level parameters apply to every operation of the path.
+            let lists: Vec<serde_json::Value> = item
+                .iter()
+                .filter_map(|(key, value)| {
+                    if key == "parameters" {
+                        Some(value.clone())
+                    } else {
+                        value.get("parameters").cloned()
+                    }
+                })
+                .collect();
+            for list in &lists {
+                for parameter in list.as_array().unwrap() {
+                    let parameter = resolve(parameter);
                     if parameter["in"] == "header" {
                         declared.push(parameter["name"].as_str().unwrap().to_ascii_lowercase());
                     }
@@ -552,12 +577,22 @@ mod tests {
                 "{name} is declared by the Work API but not forwarded"
             );
         }
-        // The YAML definitions (Document API, Search) declare no header parameter.
+        // The YAML definitions (Document API, Search) declare no header
+        // parameter, in any quoting.
         for yaml in [
             include_str!("../../../../spec/api/openapi.yaml"),
             include_str!("../../../../spec/api/search-openapi.yaml"),
         ] {
-            assert!(!yaml.contains("in: header"));
+            for line in yaml.lines() {
+                let line = line
+                    .trim()
+                    .trim_start_matches("- ")
+                    .replace(['\'', '"'], "");
+                assert!(
+                    !(line.starts_with("in:") && line["in:".len()..].trim() == "header"),
+                    "{line}"
+                );
+            }
         }
     }
 

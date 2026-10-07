@@ -27,6 +27,11 @@ reqwest = { version = "=0.13.5", default-features = false }
 serde_json = "1"
 url = "2"
 
+# Closing the window runs the page's leave confirmation (webkit_web_view_try_close).
+# Already in the tree through wry; pinned to the locked version.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "=2.0.2", default-features = false }
+
 [build-dependencies]
 tauri-build = { version = "=2.7.1", default-features = false }
 

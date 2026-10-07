@@ -468,3 +468,21 @@ test('opening the folder again also ends an earlier file-creation failure but ke
   await waitFor(() => expect(within(screen.getByRole('form', { name: 'この場所にファイルを作成' })).queryByRole('alert')).toBeNull());
   expect(within(screen.getByRole('form', { name: 'この場所にファイルを作成' })).getByRole('textbox', { name: 'ファイル名' })).toHaveValue('readme.txt');
 });
+
+test('a changed context explained by the file form leaves no listing alert once the retry succeeds', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'a.txt': 'a' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  const panel = await screen.findByRole('region', { name: '資料 の閲覧' });
+  await within(panel).findByRole('table', { name: '資料の内容' });
+  fake.bumpContext();
+  const form = screen.getByRole('form', { name: 'この場所にファイルを作成' });
+  await user.type(within(form).getByRole('textbox', { name: 'ファイル名' }), 'n.txt');
+  await user.click(within(form).getByRole('button', { name: '作成する' }));
+  await within(form).findByText(/Workspaceの状態が更新されました/);
+  await user.click(within(screen.getByRole('form', { name: 'この場所にファイルを作成' })).getByRole('button', { name: '作成する' }));
+  await screen.findByText('ファイル「n.txt」を作成しました。');
+  await screen.findByRole('button', { name: 'n.txt の内容を表示' });
+  expect(within(screen.getByRole('region', { name: '資料 の閲覧' })).queryAllByRole('alert')).toHaveLength(0);
+});

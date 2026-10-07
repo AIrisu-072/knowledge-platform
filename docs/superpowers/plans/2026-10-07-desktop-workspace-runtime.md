@@ -15,7 +15,7 @@
 | T1 | Tauri shell | `apps/desktop/src-tauri`（独立Cargo workspace）、単一window、IPC 1種、picker、`/v1`転送（応答はデータとしてだけ返す）、desktop用の依存policy、設定の固定試験 | 依頼者の承認（2026-10-07、全項目合意）、単体試験と変異試験（現行のshellで再実施）、clippy（Linux・Windows gnu）、cargo deny、architecture-lint、PRのsecurity job（OSV） | 完了 |
 | T2 | 実GUI確認 | tauri-driver＋WebKitWebDriver＋Xvfb＋xdotool＋実backend（`mise run desktop:gui:e2e`、CIにはしない） | commit済みの作業ツリーで全シナリオが成功し、report.jsonが `qualifying: true`。Linuxで確認できない項目は[手順書](../../operations/desktop-workspace-runtime.md)の「Linuxで未確認」に列挙。Windows・WebView2の証拠にはしない | 完了（Linux。未確認項目は手順書に記載） |
 | W1 | Windows broker | handle相対、reparse拒否、share-deny-write snapshot | Windows実機での検証 | 未着手 |
-| W2 | Windows実機確認 | 依頼者の実機で、[手順](../../operations/desktop-workspace-runtime.md)の確認項目1〜6（W1の後に7） | 実機の記録 | 未実施（依頼者） |
+| W2 | Windows実機確認 | 依頼者の実機で、[手順](../../operations/desktop-workspace-runtime.md)の確認項目1〜7（W1の後に8） | 実機の記録 | 未実施（依頼者） |
 
 ## 守ること
 
