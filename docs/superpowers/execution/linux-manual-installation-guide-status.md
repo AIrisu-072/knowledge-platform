@@ -1,5 +1,24 @@
 # Linux手動導入手順書の状態
 
+## 2026-10-07 04:38 UTC — Folderアクセス設定を含む資格済みmainへ固定版を同期
+
+- 対象はLinux手動導入、Organization Browser PoC、文書GUI、本記録の4文書。同じDocument ACL回復補修の機能PR内で、導入pinを旧d515 `d515aa38085c9ed7e41f8103d9c1a6c576025fd4` / tree `29f75ce9c8bc2c9d283a2ae9484529bcb8d6555d` から[PR97](https://github.com/AIrisu-072/knowledge-platform/pull/97)統合main `bba1d6dd45d93c5ad52e4a69debc9a3e77e5a8ab` / tree `84b0b0d48d3dfdc8b0a5b66ec53f9cc070aa6420` へ更新する。文書自身のcommitや未資格の補修headをpinにせず、別docs-only PRを作らない
+- 旧pinまでの操作を保持し、非root Folderアクセス設定GUIと関連する旧原本・比較結果の遅延保存/復活を抑止するguardを新pinへ含める。Folder節は統合済みの案内に改め、他の操作節の現行pin記述も追従する。今回開発中のDocument AccessTabのUNKNOWN固定要求・画面往復保持・関連read失効の回復補修はpin bba1d6ddに未収録。新Document ACL回復操作節は機能担当がこの4docs返却後に同PRへ追加する
+- 2026-10-07 04:36:54 UTCの新規終端観測と04:38 UTCの証拠整理で、[main自身のpush CI37570945202](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37570945202) attempt1がcompleted/success、全13jobs/13checks成功、failure/未終端0、唯一のmain workflow runの公開artifact0を確認した。treeと両parents（旧main d515aa38・PR97 head d1960453）も一致。PR97/旧pinの資格は転用しない
+- [runtime job112629195726](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37570945202/job/112629195726)のcheckout/Document/Organization/summaryは公式success。Documentは04:29:59、Organization/summaryは04:31:40 UTCに成功した。画像uploadだけが既存条件でskip。元tool初回のTransport closedでstdoutは未取得のまま、追加ログ取得・別route/credential・rerunは行っていない。head/clean/qualified印字、GUI/browser実測件数、UUID/port/hash/provenance、個別case/cleanup receiptを直接読取済みとはしない
+- 既存runtime gateは、新main固定sourceが強制するnonzero終了条件と新公式成功stepsの対応で合格評価した。Document22工程/選択18＋5、Agent9、Organization8工程/選択2＋2はsource-selected構成であり実測件数ではない。summaryはbrowser件数/skipped=0を独立強制しない。91filesの固定sourceをimmutable Git objectと新規に再照合し、進行中のDocument補修sourceを混ぜない
+- PR97の追加範囲は、既存合成Sharedの2groupへの4GUI PUT（agent履歴権限off→復元→継承→個別設定）、exact subject/payload/operationId/revisionと正規GET、別requestによる既知成功receiptの再送、継承Documentへの効果、Root/HumanOnly/Document不変、後続Agent権限の復旧である。最終GETをprivate stateへ保存し、同owned DB/storageでのHTTP再起動後にGET/revisionとGUIを照合する。[固定journey source](https://github.com/AIrisu-072/knowledge-platform/blob/bba1d6dd45d93c5ad52e4a69debc9a3e77e5a8ab/apps/document-web/e2e-runtime/document-runtime.spec.ts)と[固定persistence source](https://github.com/AIrisu-072/knowledge-platform/blob/bba1d6dd45d93c5ad52e4a69debc9a3e77e5a8ab/apps/document-web/e2e-runtime/persistence.spec.ts)、今回Document成功stepの対応評価であり、個々のHTTP応答やassertion値の直接公開ログではない。実通信断・自己失権・親並行変更を新hostedで再現したとは扱わず、read-to-commitの原子的保証も追加しない
+- [Fresh Rust job112629195607](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37570945202/job/112629195607)の新正式ログでactual checkoutはmain bba1d6dd本人。1849成功/既存skip10、追加21成功/skip0、別追加7成功/既存skip1を確認し、指定DB36とFolder4はcrate/target/caseごとに各一意PASS、不足/重複0。新保存ログの3summary/checkoutと全40行を今回も独立再照合した。個別state値は同tree assertionとPASSの対応である
+- 旧d515→新bba1d6ddのimmutable Git object ID/raw bytes/Git show内容を新規比較し、Organization全tree（CLI/env/identity/bootstrap）、Document0001〜0011/Work0001〜0006のmigrationと台帳lib、Cargo manifest/lock/deny、mise/rust設定、Node/pnpm関連manifest/lock、生成SDK/API schema/PDFium scriptの指定17objectsは全て同一。旧packetはpath識別だけ再利用。source不変は対象既存DBの履歴や更新安全性の実証ではない
+- 既存15shellblocksを保持し、変更はLinuxの`KP_SOURCE_SHA` literal1行だけ。起動/停止/backup/restore/更新切戻し、Work9項目、秘密情報保護、合成2profile・localhost限定、scheduler不起動、旧Search9/不明台帳/checksumの停止条件、既存番号付き操作と未実施チェックを保持。旧d515および以前の資格・失敗・exact SHA/tree・CI/job URL・確認時刻・stdout未取得は各時点別履歴に保持する
+- 静的検査：Bash構文15個（Linux12、Organization3）、相対リンク74件とanchor、旧資格本文/以前の履歴、全番号付き操作/チェック行、停止/復旧/更新本文、pin以外のコマンド不変、4pathのdiff空白を確認して成功。実サーバー、DB/socket/browser/Cargo/install、新画像、GitHub write/log再取得、CI rerun、deploymentは行っていない
+- 残る限界：Folder ACLの実通信断・自己失権・親並行変更、read-to-commit原子性、正のWORKING比較のHTTP再起動後確認、実50件超/複数原本比較、履歴101件目/複数旧原本、正式改訂100件超、画像/macOS golden、WORKING全status/headers喪失、実GUI移動通信断/同親no-op、対象PCの手順全文、本番Identity/TLS、backup/restore、PostgreSQLプロセス再起動。PR82/83未解明失敗、PR89過去失敗/診断訂正/Home focus残件、旧PR91/93/94/97と過去mainのstdout未取得も後続成功へ読み替えない
+- 次のexact action：4docsを機能担当へ返却し、Document ACL回復補修の新操作説明・実装・試験を同機能PRで独立reviewして、同head既存CIの資格を別途確認する。pin先mainの資格を補修へ転用しない。main統合は親担当、実サーバー反映は所有者が手動で行う
+
+以下は当時のpin・資格・文書更新方針の履歴であり、現在pinや後続feature、対象PCへ資格や次操作を付け替えない。
+
+---
+
 ## 2026-10-07 02:50 UTC — 公開前比較を含む資格済みmainへ固定版を同期
 
 - 対象はLinux手動導入、Organization Browser PoC、文書GUI、本記録の4文書。同じ非root Folderアクセス設定GUIの機能PR内で、導入pinを旧41b `41b584ddea6c3c9ec90343f3ba98cfdac560bd24` / tree `591eb64a2d54912c2faf925b16ed70bb97265deb` からPR94統合main `d515aa38085c9ed7e41f8103d9c1a6c576025fd4` / tree `29f75ce9c8bc2c9d283a2ae9484529bcb8d6555d` へ更新する。文書自身のcommitや未資格の新機能headをpinにしない。別docs-only PRを作らない

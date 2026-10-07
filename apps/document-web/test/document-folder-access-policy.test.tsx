@@ -1,3 +1,4 @@
+import { documentAccessPolicyOperations } from '../src/application/document-access-policy';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
@@ -153,13 +154,14 @@ test.each(['pending', 'unknown'] as const)('policy %sは作成/改名/移動を�
   for (const label of ['System Rootにフォルダーを作成', '選択したフォルダーに子フォルダーを作成', '選択したフォルダー名を変更', '選択したフォルダーを移動']) expect(screen.getByRole('button', { name: label })).toBeDisabled();
   expect(screen.getByRole('button', { name: title })).toBeEnabled();
 });
-test.each(['create', 'rename', 'move', 'documentMove'] as const)('他%s未確定がfresh GET中に生じたら新policyを送信しない', async kind => {
+test.each(['create', 'rename', 'move', 'documentMove', 'documentPolicy'] as const)('他%s未確定がfresh GET中に生じたら新policyを送信しない', async kind => {
   const { client, api } = setup(); await choose(); const dialog = await open(); change(dialog); const read = deferred<ReturnType<typeof policy>>(); api.getFolderAccessPolicy.mockReturnValue(read.promise); submit(dialog);
   act(() => {
     const context = policySaved('unknown').context;
     if (kind === 'create') rootFolderOperations(client).put({ status: 'unknown', request: { operationId: 'o', folderId: 'new', parentFolderId: rootId, expectedParentRevision: 17, name: '新', reason: '理由' } });
     else if (kind === 'rename') folderRenameOperations(client).put({ status: 'unknown', targetFolderId: p.folderId, context, currentName: p.name, expectedChanged: true, request: { operationId: 'o', expectedFolderRevision: 8, name: '新', reason: '理由' } });
     else if (kind === 'move') folderMoveOperations(client).put({ status: 'unknown', targetFolderId: p.folderId, context, currentName: p.name, expectedChanged: true, destination: { kind: 'root', folderId: rootId, name: 'System Root' }, request: { operationId: 'o', expectedFolderRevision: 8, fromParentId: rootId, toParentId: 'other', reason: '理由' } });
+    else if (kind === 'documentPolicy') documentAccessPolicyOperations(client).put({ targetDocumentId: 'retained', context: { documentId: 'retained', title: '保持文書', view: 'published' }, request: { operationId: 'retained-policy', expectedPolicyRevision: 3, mode: 'inherit', reason: '理由' }, expectedChanged: true, status: 'unknown' });
     else documentMoveOperations(client).put({ status: 'unknown' } as never);
   });
   await act(async () => read.resolve(policy())); expect(api.setFolderAccessPolicy).not.toHaveBeenCalled();
@@ -235,4 +237,12 @@ test('編集から継承へ切替中は変更前の読取だけを示し個別�
   fireEvent.change(within(dialog).getByLabelText('設定方式'), { target: { value: 'explicit' } });
   expect(within(grant(dialog)).getByLabelText('履歴閲覧')).not.toBeChecked(); expect(within(grant(dialog)).getByLabelText('履歴閲覧')).toBeEnabled();
   expect(within(dialog).getByText('保存する権限（編集内容）')).toBeVisible();
+});
+
+test.each(['pending', 'unknown'] as const)('Document ACL %s中は関連操作を開始せず保持入口を残す', async status => {
+  const { client } = setup();
+  await choose();
+  act(() => documentAccessPolicyOperations(client).put({ targetDocumentId: 'retained', context: { documentId: 'retained', title: '保持文書', view: 'published' }, request: { operationId: 'retained-policy', expectedPolicyRevision: 3, mode: 'inherit', reason: '理由' }, expectedChanged: true, status }));
+  for (const label of [title, 'System Rootにフォルダーを作成', '選択したフォルダーに子フォルダーを作成', '選択したフォルダー名を変更', '選択したフォルダーを移動']) expect(screen.getByRole('button', { name: label })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '文書アクセス設定の保存結果' })).toBeEnabled();
 });
