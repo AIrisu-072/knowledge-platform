@@ -77,6 +77,13 @@ async function leave(h: ReturnType<typeof setup>, target: string) {
 }
 async function back(h: ReturnType<typeof setup>) { await act(async () => h.history.back()); await screen.findByRole('heading', { name: '変更履歴' }); }
 
+// Event history keeps the detail page's JST contract even in a UTC browser.
+test('通常詳細の履歴日時は端末のtimezoneによらずJSTの日付境界を保つ', async () => {
+  const h = setup(); source(h, { items: [{ ...entry(0), occurredAt: '2026-10-01T23:30:00Z' }], nextCursor: null });
+  await loaded();
+  expect(result().getByRole('listitem').querySelector('time')).toHaveTextContent('2026/10/02 8:30 (Asia/Tokyo, UTC+09:00)');
+});
+
 // Removing continuation or ignoring nextCursor loses the 101st real route row.
 test('100+1をopaque cursorで追加しnullだけで終端とする', async () => {
   const h = setup(); const cursor = 'opaque+/=?日本語'; source(h, historyPage(Array.from({ length: 100 }, (_, i) => i), cursor), historyPage([100], null));

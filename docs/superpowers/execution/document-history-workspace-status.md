@@ -1,5 +1,14 @@
 # 履歴一覧から旧版・原本・イベントを開く：実行状況
 
+## 2026-10-07 00:10 UTC — 共有された有限診断から履歴日時の回帰を再現
+
+- 現在の公開head `202dc5ab76386b83b7aa155cf2b6dd75a5cf6e07` / tree `8beb37b0dda5862c995981303699064de9b3aa24` の[CI37539253902](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37539253902)は未合格のまま保持した。元の接続済みlog toolは10月6日23:09の所有者指示による再確認でもTransport closedで、全stdout取得は復旧していない。
+- 所有者から共有された既存bounded summaryにより、toolchain/build/artifacts/DB/migrate/bootstrap/両HTTP起動/trace/seed/replayが成功し、browser journeyで12成功・1失敗・5未実行と分かった。失敗は`document-runtime.spec.ts:195:49`の`toHaveText`、最後の完了記録は`snapshot-read`。新lifecycle2caseは成功しているが、Agent受入・HTTP再起動・persistence等の後続は未到達であり、全体資格へ広げない。
+- exact sourceの195行はtest宣言ではなく、履歴行の日時をJST表記と比較するassertionである。診断はerror位置をtest宣言より優先する。旧mainの詳細画面は`formatDateTime(value, 'Asia/Tokyo')`を使っていたが、PR93の表示component抽出時にtimezone指定が脱落していた。timezone省略はブラウザーの地域へ変換する既存helper仕様なので、UTC環境で表示が変わる。
+- 通常詳細と新履歴一覧の実route DOMに日付境界の反例を加え、TZ=UTCで2件ともREDを確認した。期待`2026/10/02 8:30 (Asia/Tokyo, UTC+09:00)`に対し実表示は`2026/10/01 23:30 (UTC, UTC+00:00)`。表示呼出し1箇所へ`Asia/Tokyo`を戻し、両suite79件がGREENとなった。runtimeの既存期待値、表示helperの一般仕様、認可・cache・API・画像・timeout/skipを変更していない。
+- 初回REDの開発用DOMでは、既存のno-queryFn警告と、FolderNodeの描画中のQueryCache通知によるDocumentHomePage更新警告も観測した。これらを抑制して合格扱いにしていない。共有された実browser診断はconsole/page error 0であり、今回の日時不一致と混同しない。
+- 固定sourceのTZ=UTC/CI=true全GUI1353件・54 suitesが成功し、schema/型を含むproduction buildも成功した（既存性能警告3件）。独立reviewは同TZの88件・3 suitesとschema/diff、5filesのscopeを確認してGO。次は同じPR93へ限定補修を保存し、新head自身の通常hosted資格を得る。共有summaryは全stdoutやExpected/Receivedの生ログと区別し、共有されていない情報・hash/port等を追加公開しない。
+
 ## 2026-10-06 22:10 UTC — 初回hosted失敗と既存smokeの限定補修
 
 - [PR93](https://github.com/AIrisu-072/knowledge-platform/pull/93)の初回head `cd67bc7aa42dc31b64a2dd8aac7ffcd706c627f0` / tree `98d3713e17978c5961935cbdd618b6a481d25c19` は、凍結21filesと一致することをreadbackした。[CI37536784720](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37536784720)のDocument runtimeは失敗し、必須gate未合格である。

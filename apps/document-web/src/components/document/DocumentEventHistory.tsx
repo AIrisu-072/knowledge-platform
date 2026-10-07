@@ -13,7 +13,7 @@ export function DocumentEventHistory({ read }: { read: DocumentHistoryRead }) {
         {read.entries.map((entry) => (
           <li key={JSON.stringify([entry.sourceKind, entry.sourceKey])}>
             <div className={styles.historyTitle}><strong>{entry.actionCode}</strong><span>{entry.provenanceQuality === 'operationLedger' ? '操作記録' : entry.provenanceQuality === 'versionFallback' ? '版からの履歴' : '由来不明の履歴'}</span></div>
-            <time>{entry.occurredAt ? formatDate(entry.occurredAt) : '日時不明'}</time>
+            <time>{entry.occurredAt ? formatDate(entry.occurredAt, 'Asia/Tokyo') : '日時不明'}</time>
             <p>{entry.actor?.presentation.displayName ?? entry.actor?.principalId ?? '実行者不明'}{entry.actor?.presentation.resolution === 'notFound' ? ' · ディレクトリに存在しません' : entry.actor?.presentation.resolution === 'unavailable' ? ' · 表示情報を取得できません' : ''}</p>
           </li>
         ))}

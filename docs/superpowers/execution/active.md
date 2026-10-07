@@ -1,5 +1,12 @@
 # Active Execution Pointer
 
+## 2026-10-07 00:10 UTC — 履歴日時のJST指定脱落を補修
+
+- [PR93](https://github.com/AIrisu-072/knowledge-platform/pull/93) head202dc5abの共有bounded summaryで、既存journeyの履歴日時toHaveText（document-runtime.spec.ts:195:49）を失敗箇所と確認。旧詳細のJST wrapperが共有component抽出時に脱落していた。[状況](document-history-workspace-status.md)に共有情報とsource照合を記録
+- UTCの通常詳細/新履歴一覧2反例で、JST翌日表示の代わりにUTCが出るREDを確認。表示呼出し1箇所へAsia/Tokyoを復元し、両suite79件GREEN。全GUI1353/54・schema/型/build、独立88/3と5files reviewが成功。同PR次headで資格確認する。旧失敗・通信制約・未到達のAgent/再起動等は保持し、画像/timeout/skipは変更しない
+
+---
+
 ## 2026-10-06 22:10 UTC — PR93初回失敗を保持しsmokeを補修
 
 - [PR93](https://github.com/AIrisu-072/knowledge-platform/pull/93)初回headcd67bc7aのcomposition/summaryはFAIL、Organization未実行。元log toolの初回/限定通信復旧もTransport closedで実失敗caseとcleanupは未取得。[本機能の状況](document-history-workspace-status.md)に失敗と制約を保持し、未合格のまま扱う

@@ -78,6 +78,14 @@ async function selectDocument(id = documentId) { fireEvent.click(await screen.fi
 async function openContent() { fireEvent.click(panel().getByRole('button', { name: 'コンテンツ版の履歴を開く' })); await waitFor(() => expect(chooser()).toHaveValue('')); }
 async function selectVersion() { fireEvent.change(chooser(), { target: { value: versionId } }); await panel().findByRole('button', { name: '履歴の原本を取得: 旧原本B.pdf' }); }
 
+test('履歴一覧のイベント日時も既存詳細と同じJSTで表示する', async () => {
+  const h = setup('/documents?view=history&panel=closed');
+  h.api.getDocumentHistory.mockResolvedValue({ items: [{ sourceKind: 'operation', sourceKey: 'dated-event', actionCode: '日時付き終了記録', occurredAt: '2026-10-01T23:30:00Z', details: {}, provenanceQuality: 'operationLedger' }], nextCursor: null });
+  await selectDocument(); await panel().findByText('日時付き終了記録');
+  const events = within(panel().getByRole('region', { name: '変更履歴' }));
+  expect(events.getByRole('listitem').querySelector('time')).toHaveTextContent('2026/10/02 8:30 (Asia/Tokyo, UTC+09:00)');
+});
+
 // Removing the normal navigation entry or routing a history row through normal detail breaks this real-route journey.
 test('通常navから履歴一覧で終了/全版取下げ文書を明示選択し旧版の全原本とイベントを読む', async () => {
   const h = setup(); fireEvent.click(await screen.findByRole('link', { name: '文書履歴' }));
