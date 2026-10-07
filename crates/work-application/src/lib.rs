@@ -60,6 +60,10 @@ pub trait WorkArtifactStore: Send + Sync {
     }
 }
 pub trait WorkRepository: Send + Sync {
+    /// Capability hint only: whether a Work artifact store is composed.
+    fn artifact_store_available(&self) -> bool {
+        false
+    }
     /// Authorize, store the received bytes as a new generation, then commit the
     /// content-write command with the server-computed identity.
     fn write_artifact_content(

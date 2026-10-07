@@ -10,7 +10,8 @@ import { EvidenceContextModule, decisionLabel } from '../components/evidence/Evi
 import { useEvidenceRecords, evidenceRecordsKey } from '../application/use-evidence-records';
 import { selectedHandoffIsClosed, toggleReference } from '../application/evidence-workspace';
 import { createOperationId } from '../application/operation-id';
-import { workApi, actingFor, executeWorkOperation, isOperationNotFound, validateTaskSearch, workErrorMessage, isDisclosureDenied, isUnknownOutcome, taskStateLabel, type TaskSearch, type TaskSummary, type TaskDetail, type WorkSession, type WorkResult, type WorkCommand, type WorkOperation, type HandoffSnapshot, type ReturnInstruction } from '../application/work-workspace';
+import { workApi, actingFor, executeWorkOperation, isOperationNotFound, validateTaskSearch, workErrorMessage, isDisclosureDenied, isUnknownOutcome, taskStateLabel, MAX_WORK_FILE_BYTES, type TaskSearch, type TaskSummary, type TaskDetail, type WorkSession, type WorkResult, type WorkCommand, type WorkOperation, type HandoffSnapshot, type ReturnInstruction, type WorkingArtifact } from '../application/work-workspace';
+import { WorkFileDownload, declaredMediaType, formatBytes, workFileProblem } from '../components/organization/WorkFiles';
 import { formatDateTime } from '../view-model/date-time';
 import { TaskAssignmentPanel, TaskAssignmentSummary } from '../components/organization/TaskAssignmentPanel';
 import { actingLabel, responsibilityLabel } from '../application/organization-policy';
@@ -93,7 +94,7 @@ export function TaskHomePage() {
   function applyResult(result: WorkResult) {
     if (!sessionData || result.task.id !== selected?.id || result.task.attemptId !== selected.attemptId || result.task.revision < selected.revision || blockedId === attemptKey(selected)) return;
     client.setQueriesData<{ items: TaskSummary[]; nextCursor: null }>({ queryKey: [...actorKey(sessionData), 'tasks'] }, (previous) => previous ? { ...previous, items: previous.items.map((item) => matchesCurrent(item, result.task) ? result.task : item) } : previous);
-    if (result.kind !== 'claimed') client.setQueryData<TaskDetail>(taskKey(sessionData, result.task), (previous) => previous && matchesCurrent(previous, result.task) ? { ...previous, ...result.task, workingArtifacts: result.kind === 'draft_saved' ? [result.artifact] : previous.workingArtifacts, ...((result.kind === 'agent_execution_requested' || result.kind === 'agent_execution_cancelled') ? { agentExecutionIds: Array.from(new Set([...previous.agentExecutionIds, result.execution.id])) } : {}) } : previous);
+    if (result.kind !== 'claimed') client.setQueryData<TaskDetail>(taskKey(sessionData, result.task), (previous) => previous && matchesCurrent(previous, result.task) ? { ...previous, ...result.task, workingArtifacts: workingArtifactsAfter(previous.workingArtifacts, result), ...((result.kind === 'agent_execution_requested' || result.kind === 'agent_execution_cancelled') ? { agentExecutionIds: Array.from(new Set([...previous.agentExecutionIds, result.execution.id])) } : {}) } : previous);
     if (['evidence_registered', 'finding_registered', 'decision_recorded'].includes(result.kind)) void client.invalidateQueries({ queryKey: evidenceRecordsKey(sessionData, result.task) });
     if (['completed', 'held', 'resumed'].includes(result.kind)) void client.invalidateQueries({ queryKey: taskKey(sessionData, result.task) });
     if (result.kind === 'returned') client.setQueryData([...actorKey(sessionData), 'return-instruction', result.returnInstruction.id], result.returnInstruction);
@@ -126,7 +127,7 @@ export function TaskHomePage() {
       {[['document', '文書・比較'], ['history', '履歴'], ['evidence', '根拠'], ['agent', 'Agent'], ['search', '検索'], ['resources', 'Workspace'], ['return', '差戻']].map(([id, label]) => <button key={id} type="button" aria-pressed={module === id} onClick={() => setModule(id!)}>{label}</button>)}
     </div>
     {!detailData ? <p>担当を引き受けたタスクの情報を表示します</p> : module === 'document' ? <DocumentContextModule key={`${sessionData!.principalId}:${sessionData!.actingAssignmentId}:${detailData.id}:${detailData.attemptId}`} session={sessionData!} task={detailData} /> : module === 'agent' ? <AgentContextModule key={`${sessionData!.principalId}:${sessionData!.actingAssignmentId}:${detailData.id}:${detailData.attemptId}`} session={sessionData!} task={detailData} applyResult={applyResult} onDenied={denyDisclosure} refresh={refresh} openEvidence={() => setModule('evidence')} /> : module === 'evidence' ? <EvidenceContextModule key={`${sessionData!.principalId}:${sessionData!.actingAssignmentId}:${detailData.id}:${detailData.attemptId}`} session={sessionData!} task={detailData} applyResult={applyResult} onDenied={denyDisclosure} /> : module === 'history' ? <><h2>業務履歴</h2>{detailData.history.length ? <ul>{detailData.history.map((entry, index) => <li key={`${entry.occurredAt}-${index}`}><span>{historyLabel(entry.kind)}</span><br /><time dateTime={entry.occurredAt}>{formatDateTime(entry.occurredAt)}</time></li>)}</ul> : <p>記録された履歴はありません</p>}<p className={styles.muted}>この履歴は監査基盤の資格取得を示すものではありません。</p></> : module === 'return' ? <><h2>差戻</h2><p>{detailData.returnInstructionId ? '確定した差戻指示と過去の提出内容を主作業に表示します。差戻理由は変更できません。' : detailData.canReturn ? '受領内容と差戻理由を確認して、主作業から差戻してください。' : 'この試行に差戻の記録はありません。'}</p></> : <><h2>{module === 'agent' ? 'Agent' : module === 'search' ? '検索' : module === 'evidence' ? '根拠・判断' : 'Workspace'}</h2><p>このブラウザーPoCでは未実装です</p></>}
-    <div className={styles.notice}><strong>ブラウザーPoC</strong><p>ブラウザーではネイティブWorkspaceを利用できません</p><p>Search / ファイル添付は未実装です</p></div>
+    <div className={styles.notice}><strong>ブラウザーPoC</strong><p>ブラウザーではネイティブWorkspaceを利用できません</p><p>Searchは未実装です。作業ファイルはブラウザーで選んだファイルだけを添付できます</p></div>
   </>;
   return <AppShell activeNavigation="tasks" mainLabel="タスクワークスペース" headerContext={<span className={styles.identity}>{sessionData ? <><strong>{sessionData.displayName}</strong> · {sessionData.principalId}<br />担当: {actingLabel(sessionData, sessionData.actingAssignmentId)} · 起動時固定の模擬ユーザー
     {sessionData.responsibilities === null ? <><br /><span role="alert">現在の担当・委任を確認できません。操作はサーバーで拒否されます。</span></> : sessionData.responsibilities && sessionData.responsibilities.length > 1 ? <><br /><label>表示する担当 <select value={scope ?? ''} onChange={(event) => updateSearch({ acting: event.target.value || undefined, taskId: undefined })}><option value="">すべての担当</option>{sessionData.responsibilities.map((value) => <option key={value.id} value={value.id}>{responsibilityLabel(value)}</option>)}</select></label></> : sessionData.responsibilities?.length === 0 ? <><br />現在有効な担当はありません</> : null}
@@ -163,7 +164,13 @@ export function TaskHomePage() {
 }
 
 function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onDenied }: { session: WorkSession; task: TaskSummary; detail?: TaskDetail; snapshot?: HandoffSnapshot; applyResult: (result: WorkResult) => void; refresh: () => Promise<void>; onDenied: () => void }) {
-  const artifact = detail?.workingArtifacts[0];
+  const textArtifacts = detail?.workingArtifacts.filter((value) => value.schemaId === 'organization.text-draft.v1') ?? [];
+  const artifact = textArtifacts[0];
+  const files = detail?.workingArtifacts.filter((value) => value.schemaId === 'organization.work-file.v1') ?? [];
+  const pendingFiles = files.filter((value) => !value.file?.generation);
+  // A file chosen for a new record; its content is registered right after the record exists.
+  const pendingUpload = useRef<File | null>(null);
+  const [fileProblem, setFileProblem] = useState('');
   const evidenceRecords = useEvidenceRecords(session, task, Boolean(detail));
   const mounted = useRef(true); useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => { if (isDisclosureDenied(evidenceRecords.error)) onDenied(); }, [evidenceRecords.error]);
@@ -173,13 +180,15 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
   const setNotice = (value: string) => setTransient((previous) => ({ ...previous, notice: value }));
   const [confirmation, setConfirmation] = useState<'submit' | 'return' | 'complete' | 'hold' | 'resume' | null>(null);
   const [denied, setDenied] = useState(false);
-  const text = draft ?? artifact?.value.text ?? '';
-  const dirty = text !== (artifact?.value.text ?? '');
+  const text = draft ?? artifact?.value?.text ?? '';
+  const dirty = text !== (artifact?.value?.text ?? '');
   const hasUnsavedInput = dirty || Boolean(reason || transient.agent?.purpose || transient.agent?.support.length || transient.evidence?.documentId || transient.evidence?.fileKey || transient.evidence?.relevantLocation || transient.evidence?.claim || transient.evidence?.support.length || Object.values(transient.evidence?.decisions ?? {}).some((entry) => entry.adoptedClaim || entry.reason || entry.decision !== 'accepted'));
   const oversized = new TextEncoder().encode(text).length > 8192;
   const mutation = useMutation({
-    mutationFn: async (input: { execute: () => Promise<WorkResult>; recovery?: boolean }) => input.execute(),
-    onSuccess: (result) => {
+    mutationFn: async (input: { execute: () => Promise<WorkResult>; recovery?: boolean; operation?: WorkOperation }) => input.execute(),
+    onSuccess: (result, input) => {
+      // A chained operation starts inside a callback: bind it to its own request, not a render.
+      const operation = input.operation ?? transient.operation;
       if (!mounted.current) return;
       if (result.task.id !== task.id || result.task.attemptId !== task.attemptId || (operation && operation.kind !== result.kind) || (operation?.kind === 'agent_execution_cancelled' && (result.kind !== 'agent_execution_cancelled' || result.execution.id !== operation.executionId))) { setTransient((previous) => ({ ...previous, unknown: true })); setNotice('応答と操作が一致しません。同じ操作IDで結果を確認してください。'); return; }
       applyResult(result); setConfirmation(null);
@@ -200,6 +209,14 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
       if (result.kind === 'resumed') setNotice('タスクを再開しました');
       if (result.kind === 'claimed') setNotice('担当が確定しました');
       if (result.kind === 'submitted') setNotice(`提出が確定しました`);
+      if (result.kind === 'artifact_created') {
+        setNotice('ファイルの記録を作成しました。内容を保存しています…');
+        const file = pendingUpload.current; pendingUpload.current = null;
+        if (file) startOperation({ kind: 'artifact_content_written', taskId: task.id, artifactId: result.artifact.id, content: file, input: { operationId: createOperationId(), expectedRevision: result.task.revision, actingAssignmentId: actingFor(session, task), expectedArtifactRevision: result.artifact.revision } });
+      }
+      if (result.kind === 'artifact_content_written') setNotice('ファイルを作業用保存領域へ保存しました。提出までは担当者だけが取得できます。');
+      if (result.kind === 'artifact_discarded') setNotice('ファイルを外しました。保存済みの内容は削除していません。');
+      if (result.kind === 'submission_imported') setNotice('前回の提出内容を新しい作業へ取り込みました。前回の提出は変更されません。');
     },
     onError: (error, input) => { if (!mounted.current) return; const unresolved = Boolean(input.recovery) || isUnknownOutcome(error); setTransient((previous) => ({ ...previous, unknown: unresolved, operation: unresolved ? previous.operation : null, error })); if (isDisclosureDenied(error) && !(input.recovery && isOperationNotFound(error))) { setDenied(true); setTransient({ draft: null, reason: null, operation: null, unknown: false, notice: '', error }); onDenied(); } setConfirmation(null); },
     retry: false,
@@ -209,7 +226,7 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
   }
   function startOperation(request: WorkOperation) {
     setTransient((previous) => ({ ...previous, operation: request, unknown: true, notice: '', error: null }));
-    mutation.mutate({ execute: () => executeWorkOperation(request) });
+    mutation.mutate({ execute: () => executeWorkOperation(request), operation: request });
   }
   const returnReason = reason ?? '';
   const returnOversized = new TextEncoder().encode(returnReason).length > 8192;
@@ -233,17 +250,29 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
       {oversized && <p role="alert">文案はUTF-8で8192バイト以内にしてください</p>}
       {dirty && <p className={styles.muted}>未保存の変更があります。提出前に保存してください。</p>}
       <div className={styles.actions}><button type="button" disabled={busy || oversized || !text.trim() || (!dirty && Boolean(artifact))} onClick={() => { startOperation({ kind: 'draft_saved', taskId: task.id, input: { ...command(), ...(artifact ? { artifactId: artifact.id } : {}), value: { text } } }); }}>文案を保存</button>
-      <button type="button" className={styles.primary} disabled={busy || dirty || !artifact || !task.canSubmit || Boolean(detail.workingArtifacts.length > 1)} onClick={() => setConfirmation('submit')}>提出内容を確認</button></div>
+      <button type="button" className={styles.primary} disabled={busy || dirty || !detail.workingArtifacts.length || !task.canSubmit || textArtifacts.length > 1 || pendingFiles.length > 0} onClick={() => setConfirmation('submit')}>提出内容を確認</button></div>
       {!task.canSubmit && <p className={styles.muted}>この段階では提出できません。現在の担当で文案の確認・保存を行えます。</p>}
-      {detail.workingArtifacts.length > 1 && <p role="alert">複数の成果物の編集・提出はこのPoCでは対応していません</p>}
+      {textArtifacts.length > 1 && <p role="alert">複数の文案の編集・提出はこのPoCでは対応していません</p>}
+      {pendingFiles.length > 0 && <p role="alert">内容が未登録のファイルがあります。内容を登録するか外してから提出してください。</p>}
+      <section aria-label="作業ファイル"><h3>作業ファイル</h3>
+        <p className={styles.muted}>非公開 · 選んだファイルだけをサーバーの作業用保存領域（共有provider）へ保存します。提出までは担当者だけが取得でき、提出で固定した内容だけを次担当へ渡します。端末上の場所（パス）は送信しません。1ファイル8MiBまで。</p>
+        {files.length ? <ul aria-label="作業ファイルの一覧">{files.map((value) => <li key={value.id}><span>{value.file!.fileName}</span> <span className={styles.muted}>{value.file!.generation ? `${formatBytes(value.file!.generation.sizeBytes)} · 保存済み` : '内容未登録'}{value.derivedFrom ? ' · 前回の提出から取込み' : ''}</span>
+          {value.file!.generation && <WorkFileDownload file={value.file!} label={`${value.file!.fileName} を取得`} read={(signal) => workApi.readArtifactContent(value.id, value.file!.generation!, signal)} />}
+          {!value.file!.generation && <label>内容を登録 <input type="file" aria-label={`${value.file!.fileName} の内容を登録`} disabled={busy} onChange={(event) => { const selected = event.target.files?.[0]; event.target.value = ''; if (!selected) return; const problem = workFileProblem(selected, MAX_WORK_FILE_BYTES); setFileProblem(problem ?? ''); if (!problem) startOperation({ kind: 'artifact_content_written', taskId: task.id, artifactId: value.id, content: selected, input: { ...command(), expectedArtifactRevision: value.revision } }); }} /></label>}
+          <button type="button" aria-label={`${value.file!.fileName} を外す`} disabled={busy} onClick={() => startOperation({ kind: 'artifact_discarded', taskId: task.id, artifactId: value.id, input: { ...command(), expectedArtifactRevision: value.revision } })}>外す</button></li>)}</ul> : <p className={styles.muted}>添付したファイルはありません</p>}
+        <label htmlFor="work-file">作業ファイルを追加</label>
+        <input id="work-file" type="file" disabled={busy} onChange={(event) => { const selected = event.target.files?.[0]; event.target.value = ''; if (!selected) return; const problem = workFileProblem(selected, MAX_WORK_FILE_BYTES); setFileProblem(problem ?? ''); if (problem) return; pendingUpload.current = selected; startOperation({ kind: 'artifact_created', taskId: task.id, input: { ...command(), file: { fileName: selected.name, mediaType: declaredMediaType(selected) } } }); }} />
+        {fileProblem && <p role="alert">{fileProblem}</p>}
+      </section>
     </div>}
+    {detail && task.canEdit && detail.returnInstructionId && detail.handoffSnapshotId && detail.workingArtifacts.length === 0 && <section className={styles.editor} aria-label="差戻し後の作業"><h2>差戻し後の作業</h2><p>前回の提出内容（文案・ファイル）を、この試行の新しい非公開の作業へ取り込めます。前回の提出は変更されません。ファイルは同じ保存内容を参照し、複製しません。</p><div className={styles.actions}><button type="button" disabled={busy} onClick={() => startOperation({ kind: 'submission_imported', taskId: task.id, input: { ...command(), expectedAttemptId: task.attemptId, snapshotId: detail.handoffSnapshotId! } })}>前回の提出内容を取り込む</button></div></section>}
     {detail && (holdActionId || resumeActionId) && <section className={styles.editor} aria-label="保留と再開"><h2>保留と再開</h2><p>同じ試行・担当・保存済みの内容を保持します。</p><div className={styles.actions}>
       {holdActionId && <button type="button" disabled={busy} onClick={() => setConfirmation('hold')}>保留内容を確認</button>}
       {resumeActionId && <button type="button" disabled={busy} onClick={() => setConfirmation('resume')}>再開内容を確認</button>}
     </div></section>}
     {detail && task.state === 'held' && <><p className={styles.notice}>保留中は読み取り専用です。保存済みの内容を現在の権限で確認できます。</p>
       {hasUnsavedInput && <p className={styles.notice}>未保存の入力はこのタブ内だけに保持しています。保存済みではありません。再開後に戻ります。タブを閉じると失われます。</p>}
-      {detail.workingArtifacts.length > 0 && <section className={styles.snapshot} aria-label="保存済みの作業文案"><h2>保存済みの作業文案</h2>{detail.workingArtifacts.map((saved) => <div key={saved.id}><p className={styles.muted}>非公開 · 文案版 {saved.revision}</p><p className={styles.text}>{saved.value.text}</p></div>)}</section>}
+      {detail.workingArtifacts.length > 0 && <section className={styles.snapshot} aria-label="保存済みの作業文案"><h2>保存済みの作業文案</h2>{detail.workingArtifacts.map((saved) => <div key={saved.id}><p className={styles.muted}>非公開 · {saved.file ? 'ファイル' : '文案'}版 {saved.revision}</p>{saved.file ? <p>{saved.file.fileName}{saved.file.generation ? ` · ${formatBytes(saved.file.generation.sizeBytes)}` : ' · 内容未登録'}</p> : <p className={styles.text}>{saved.value?.text}</p>}</div>)}</section>}
     </>}
     {detail && completionActionId && <section className={styles.editor} aria-label="タスクの完了"><h2>タスクの完了</h2><p>現在のタスクを完了し、保存済みの内容を読み取り専用で残します。</p><div className={styles.actions}><button type="button" className={styles.primary} disabled={busy} onClick={() => setConfirmation('complete')}>完了内容を確認</button></div></section>}
     {detail && returnTarget && <div className={styles.editor}><h2>営業への差戻</h2><p className={styles.muted}>受領した提出内容は固定のまま残し、差戻先に新しい試行を作成します。</p><label htmlFor="return-reason">差戻理由</label><p id="return-reason-help" className={styles.muted}>必須 · 空白のみ不可、UTF-8で8192バイト以内</p><textarea id="return-reason" required aria-describedby="return-reason-help" value={returnReason} disabled={busy} onChange={(event) => { setTransient((previous) => ({ ...previous, reason: event.target.value, notice: '' })); }} />
@@ -252,9 +281,9 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
     </div>}
     {detail && task.state !== 'held' && !task.canEdit && !completionActionId && <p className={styles.notice}>{returnTarget ? '受領した提出内容は読み取り専用です。' : '現在のタスクは読み取り専用です。提出済み内容は変更されません。'}</p>}
     {mutation.data?.kind === 'submitted' && <p>次のタスク：{mutation.data.nextTask.stepLabel}（{taskStateLabel(mutation.data.nextTask.state)}）</p>}
-    {confirmation === 'submit' && artifact && <Modal className={styles.dialogScrim} isOpen isDismissable={false} isKeyboardDismissDisabled={mutation.isPending} onOpenChange={(open) => { if (!open && !mutation.isPending) setConfirmation(null); }}><Dialog className={styles.dialog} aria-labelledby="submit-title"><Heading slot="title" id="submit-title">提出の確認</Heading>
-      <p>{task.title} · タスク {task.id}</p><p className={styles.muted}>試行 {task.attemptId} · タスク版 {task.revision} · 文案版 {artifact.revision}</p>
-      <p>保存済みの次の内容を固定し、ワークフローで定義された次担当へ渡します。</p><div className={styles.snapshot}><p className={styles.text}>{artifact.value.text}</p></div>
+    {confirmation === 'submit' && detail && detail.workingArtifacts.length > 0 && <Modal className={styles.dialogScrim} isOpen isDismissable={false} isKeyboardDismissDisabled={mutation.isPending} onOpenChange={(open) => { if (!open && !mutation.isPending) setConfirmation(null); }}><Dialog className={styles.dialog} aria-labelledby="submit-title"><Heading slot="title" id="submit-title">提出の確認</Heading>
+      <p>{task.title} · タスク {task.id}</p><p className={styles.muted}>試行 {task.attemptId} · タスク版 {task.revision}{artifact ? ` · 文案版 ${artifact.revision}` : ''}</p>
+      <p>保存済みの次の内容を固定し、ワークフローで定義された次担当へ渡します。ファイルは保存領域で確認できた内容だけを固定します。</p><div className={styles.snapshot}>{artifact ? <p className={styles.text}>{artifact.value?.text}</p> : <p className={styles.muted}>文案はありません</p>}{files.length > 0 && <ul aria-label="提出するファイル">{files.map((value) => <li key={value.id}>{value.file!.fileName} · {formatBytes(value.file!.generation!.sizeBytes)}</li>)}</ul>}</div>
       <fieldset disabled={busy}><legend>共有する根拠・候補・判断を選択</legend><p>選択した版だけを固定します。未選択の記録は非公開のままです。何も共有しない提出もできます。</p>
         {evidenceRecords.isPending && <p role="status">共有候補を確認中…</p>}{evidenceRecords.isError && <p role="alert">共有候補を取得できません。再読込してください。</p>}
         {(evidenceRecords.isSuccess ? evidenceRecords.data.evidence : []).map((record) => <label className={styles.shareChoice} key={record.id}><input type="checkbox" aria-label={`共有する根拠 ${record.id}`} checked={selection.evidenceRevisionRefs.some((ref) => ref.id === record.id)} onChange={(event) => selectRef('evidenceRevisionRefs', record, event.target.checked)} />根拠 {record.id} · 版 {record.revision}<br />{record.relevantLocation}</label>)}
@@ -262,7 +291,7 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
         {(evidenceRecords.isSuccess ? evidenceRecords.data.decisions : []).map((record) => <label className={styles.shareChoice} key={record.id}><input type="checkbox" aria-label={`共有する判断 ${record.id}`} checked={selection.decisionRevisionRefs.some((ref) => ref.id === record.id)} onChange={(event) => selectRef('decisionRevisionRefs', record, event.target.checked)} />判断 {record.id} · 版 {record.revision} · {decisionLabel(record.decision)}<br />{record.adoptedClaim ?? record.reason}<br />必要な候補：{record.findingId}（版 {record.findingRevision}）<br />必要な根拠：{record.evidenceRevisionRefs.map((ref) => `${ref.id}（版 ${ref.revision}）`).join('、')}</label>)}
         {!closure && evidenceRecords.isSuccess && <p role="alert">選択した候補・判断が参照する根拠と候補の同じ版も選択してください。合計100件以内です。</p>}
       </fieldset>
-      <div className={styles.actions}><button type="button" autoFocus disabled={mutation.isPending} onClick={() => setConfirmation(null)}>キャンセル</button><button type="button" className={styles.primary} disabled={mutation.isPending || !closure} onClick={() => { startOperation({ kind: 'submitted', taskId: task.id, input: { ...command(), expectedAttemptId: task.attemptId, ...selection, artifacts: [{ artifactId: artifact.id, revision: artifact.revision }] } }); }}>提出を確定</button></div>
+      <div className={styles.actions}><button type="button" autoFocus disabled={mutation.isPending} onClick={() => setConfirmation(null)}>キャンセル</button><button type="button" className={styles.primary} disabled={mutation.isPending || !closure} onClick={() => { startOperation({ kind: 'submitted', taskId: task.id, input: { ...command(), expectedAttemptId: task.attemptId, ...selection, artifacts: detail.workingArtifacts.map((value) => ({ artifactId: value.id, revision: value.revision })) } }); }}>提出を確定</button></div>
     </Dialog></Modal>}
     {confirmation === 'complete' && completionActionId && <Modal className={styles.dialogScrim} isOpen isDismissable={false} isKeyboardDismissDisabled={mutation.isPending} onOpenChange={(open) => { if (!open && !mutation.isPending) setConfirmation(null); }}><Dialog className={styles.dialog} aria-labelledby="complete-title"><Heading slot="title" id="complete-title">タスク完了の確認</Heading>
       <p>{task.title} · タスク {task.id}</p><p>試行 {task.attemptNumber}（{task.attemptId}） · タスク版 {task.revision}</p>
@@ -283,7 +312,7 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
     {confirmation === 'return' && returnTarget && snapshot && <Modal className={styles.dialogScrim} isOpen isDismissable={false} isKeyboardDismissDisabled={mutation.isPending} onOpenChange={(open) => { if (!open && !mutation.isPending) setConfirmation(null); }}><Dialog className={styles.dialog} aria-labelledby="return-title"><Heading slot="title" id="return-title">差戻の確認</Heading>
       <p>{task.title} · 試行 {task.attemptNumber}（{task.attemptId}） · タスク版 {task.revision}</p><p>差戻先タスク {returnTarget.targetTaskId} · 元の提出 {returnTarget.previousSubmissionId}</p>
       <p>現在の試行を完了し、差戻先に新しい試行を作成します。過去の提出内容とこの理由は変更できません。</p>
-      <div className={styles.snapshot}><h3>差戻理由</h3><p className={styles.text}>{returnReason}</p><h3>元の提出内容</h3>{snapshot.artifacts.map((item) => <p key={item.artifactId} className={styles.text}>{item.value.text}</p>)}</div>
+      <div className={styles.snapshot}><h3>差戻理由</h3><p className={styles.text}>{returnReason}</p><h3>元の提出内容</h3>{snapshot.artifacts.map((item) => item.file ? <p key={item.artifactId}>ファイル：{item.file.fileName}</p> : <p key={item.artifactId} className={styles.text}>{item.value?.text}</p>)}</div>
       <div className={styles.actions}><button type="button" autoFocus disabled={mutation.isPending} onClick={() => setConfirmation(null)}>キャンセル</button><button type="button" className={styles.primary} disabled={mutation.isPending || !canConfirmReturn} onClick={() => startOperation({ kind: 'returned', taskId: task.id, input: { ...command(), expectedAttemptId: task.attemptId, ...returnTarget, reason: returnReason } })}>差戻を確定</button></div>
     </Dialog></Modal>}
   </>;
@@ -292,7 +321,15 @@ function ReturnInstructionView({ instruction }: { instruction: ReturnInstruction
   return <section className={styles.snapshot} aria-label="確定した差戻指示"><h2>確定した差戻指示</h2><p className={styles.text}>{instruction.reason}</p><p className={styles.muted}>読み取り専用 · {instruction.id}<br />元の提出 {instruction.previousSubmissionId}<br />差戻元の試行 {instruction.sourceAttemptId} → 新しい試行 {instruction.targetAttemptId}<br /><time dateTime={instruction.createdAt}>{formatDateTime(instruction.createdAt)}</time></p></section>;
 }
 function Snapshot({ snapshot, received, prior = false }: { snapshot: HandoffSnapshot; received: boolean; prior?: boolean }) {
-  return <section className={styles.snapshot} aria-label={prior ? '差戻前のスナップショット' : received ? '受領したスナップショット' : '提出済みスナップショット'}><h2>{prior ? '差戻前のスナップショット' : received ? '受領したスナップショット' : '提出済みスナップショット'}</h2><p className={styles.muted}>固定された提出内容 · {snapshot.id}<br /><time dateTime={snapshot.createdAt}>{formatDateTime(snapshot.createdAt)}</time></p>{snapshot.artifacts.map((artifact) => <div key={artifact.artifactId}><p className={styles.muted}>文案版 {artifact.revision}</p><p className={styles.text}>{artifact.value.text}</p></div>)}{(['evidenceRevisionRefs', 'findingRevisionRefs', 'decisionRevisionRefs'] as const).map((kind) => <p key={kind} className={styles.muted}>{({ evidenceRevisionRefs: '共有された根拠', findingRevisionRefs: '共有された候補', decisionRevisionRefs: '共有された判断' })[kind]}：{snapshot[kind]?.length ? snapshot[kind].map((ref) => `${ref.id}（版 ${ref.revision}）`).join('、') : 'なし'}</p>)}</section>;
+  return <section className={styles.snapshot} aria-label={prior ? '差戻前のスナップショット' : received ? '受領したスナップショット' : '提出済みスナップショット'}><h2>{prior ? '差戻前のスナップショット' : received ? '受領したスナップショット' : '提出済みスナップショット'}</h2><p className={styles.muted}>固定された提出内容 · {snapshot.id}<br /><time dateTime={snapshot.createdAt}>{formatDateTime(snapshot.createdAt)}</time></p>{snapshot.artifacts.map((artifact) => artifact.file?.generation ? <div key={artifact.artifactId}><p className={styles.muted}>ファイル · 版 {artifact.revision}</p><p>{artifact.file.fileName} · {formatBytes(artifact.file.generation.sizeBytes)}</p><WorkFileDownload file={artifact.file} label={`${artifact.file.fileName} を取得`} read={(signal) => workApi.readSnapshotContent(snapshot.id, artifact.artifactId, artifact.file!.generation!, signal)} /></div> : <div key={artifact.artifactId}><p className={styles.muted}>文案版 {artifact.revision}</p><p className={styles.text}>{artifact.value?.text}</p></div>)}{(['evidenceRevisionRefs', 'findingRevisionRefs', 'decisionRevisionRefs'] as const).map((kind) => <p key={kind} className={styles.muted}>{({ evidenceRevisionRefs: '共有された根拠', findingRevisionRefs: '共有された候補', decisionRevisionRefs: '共有された判断' })[kind]}：{snapshot[kind]?.length ? snapshot[kind].map((ref) => `${ref.id}（版 ${ref.revision}）`).join('、') : 'なし'}</p>)}</section>;
+}
+/** The current attempt's private records after a receipt; others are untouched. */
+function workingArtifactsAfter(previous: WorkingArtifact[], result: WorkResult): WorkingArtifact[] {
+  const upsert = (artifact: WorkingArtifact) => previous.some((value) => value.id === artifact.id) ? previous.map((value) => value.id === artifact.id ? artifact : value) : [...previous, artifact];
+  if (result.kind === 'draft_saved' || result.kind === 'artifact_created' || result.kind === 'artifact_content_written') return upsert(result.artifact);
+  if (result.kind === 'artifact_discarded') return previous.filter((value) => value.id !== result.artifactId);
+  if (result.kind === 'submission_imported') return [...previous, ...result.artifacts.filter((artifact) => !previous.some((value) => value.id === artifact.id))];
+  return previous;
 }
 function historyLabel(kind: string): string { return ({ claimed: '担当を引受', draft_saved: '文案を保存', evidence_registered: '根拠を登録', finding_registered: '候補を登録', decision_recorded: '人間判断を記録', submitted: '提出', completed: 'タスクを完了', held: 'タスクを保留', resumed: 'タスクを再開', returned: '差戻', seeded: 'タスクを作成' })[kind] ?? '業務状態を更新'; }
 export function OrganizationSearchPage() { const organization = useOrganizationContext(); const search = validateTaskSearch(Object.fromEntries(new URLSearchParams(organization.taskHref.split('?')[1] ?? ''))); return <AppShell activeNavigation="search" mainLabel="検索ワークスペース" showContextPanel={false}><section className={styles.work}><h1>検索</h1><p>Search PlatformはこのブラウザーPoCでは未実装です</p><Link to="/tasks" search={search}>タスクへ戻る</Link></section></AppShell>; }

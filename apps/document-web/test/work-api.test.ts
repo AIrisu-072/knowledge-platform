@@ -280,3 +280,63 @@ test('an undisclosed context is null on rows; task and attempt still bind result
   expect(recordsMatchTask({ ...task, contextId: null }, { evidence: [{ ...record, attemptId: 'other' }], findings: [], decisions: [] })).toBe(false);
   expect(recordsMatchTask(task, { evidence: [{ ...record, contextId: 'other' }], findings: [], decisions: [] })).toBe(false);
 });
+
+const generation = { id: '01990000-0000-7000-8000-0000000000f1', sizeBytes: 3, sha256: 'b'.repeat(64), storedAt: '2026-10-07T09:00:00Z', providerId: 'organization.work-artifacts' };
+const workFile = { id: 'file-1', taskId: task.id, attemptId: task.attemptId, revision: 1, schemaId: 'organization.work-file.v1', visibility: 'work_item_private', file: { fileName: '合成.txt', mediaType: 'text/plain', generation } };
+
+test('file artifacts decode as exactly one of a text value or a file, and pinned files need a generation', async () => {
+  fetchMock.mockResolvedValue(response({ ...task, inputResources: [], history: [], agentExecutionIds: [], workingArtifacts: [artifact, workFile] }));
+  expect((await workApi.getTask(task.id)).workingArtifacts).toEqual([artifact, workFile]);
+  for (const invalid of [{ ...workFile, value: { text: '本文' } }, { ...artifact, file: workFile.file }, { ...workFile, schemaId: 'organization.binary.v9' }, { ...workFile, file: { ...workFile.file, generation: { ...generation, sha256: 'B'.repeat(64) } } }, { ...workFile, file: { ...workFile.file, generation: { ...generation, sizeBytes: 8 * 1024 * 1024 + 1 } } }, { ...workFile, file: { ...workFile.file, generation: { ...generation, providerId: 'document' } } }]) {
+    fetchMock.mockResolvedValue(response({ ...task, inputResources: [], history: [], agentExecutionIds: [], workingArtifacts: [invalid] }));
+    await expect(workApi.getTask(task.id)).rejects.toMatchObject({ code: 'invalid_response' });
+  }
+  const snapshot = { id: 'snapshot-1', sourceTaskId: task.id, sourceAttemptId: task.attemptId, targetTaskId: 'task-2', createdAt: '2026-10-07T09:00:00Z', evidenceRevisionRefs: [], findingRevisionRefs: [], decisionRevisionRefs: [], artifacts: [{ artifactId: 'file-1', revision: 1, schemaId: 'organization.work-file.v1', file: workFile.file }] };
+  fetchMock.mockResolvedValue(response(snapshot));
+  expect((await workApi.getSnapshot('snapshot-1')).artifacts[0]).toEqual(snapshot.artifacts[0]);
+  fetchMock.mockResolvedValue(response({ ...snapshot, artifacts: [{ ...snapshot.artifacts[0], file: { ...workFile.file, generation: null } }] }));
+  await expect(workApi.getSnapshot('snapshot-1')).rejects.toMatchObject({ code: 'invalid_response' });
+});
+
+test('content upload carries identity in headers and binds the receipt to its operation and size', async () => {
+  const command = { operationId: generation.id, expectedRevision: 2, actingAssignmentId: 'assignment-sales', expectedArtifactRevision: 0 };
+  const content = new Blob(['abc']);
+  fetchMock.mockResolvedValue(response({ kind: 'artifact_content_written', task, artifact: workFile }));
+  expect(await workApi.writeArtifactContent('file-1', command, content)).toMatchObject({ kind: 'artifact_content_written', artifact: workFile });
+  const [url, init] = fetchMock.mock.calls[0]!;
+  expect(url).toBe('/v1/organization/working-artifacts/file-1/content');
+  expect(init).toMatchObject({ method: 'PUT', credentials: 'same-origin', cache: 'no-store', body: content, headers: { 'Content-Type': 'application/octet-stream', 'x-operation-id': generation.id, 'x-expected-revision': '2', 'x-acting-assignment-id': 'assignment-sales', 'x-expected-artifact-revision': '0' } });
+  expect(JSON.stringify(init.headers)).not.toMatch(/path|filename/i);
+  // A receipt for another generation or size is an unknown outcome, never success.
+  for (const other of [{ ...workFile, file: { ...workFile.file, generation: { ...generation, id: '01990000-0000-7000-8000-0000000000f2' } } }, { ...workFile, file: { ...workFile.file, generation: { ...generation, sizeBytes: 4 } } }]) {
+    fetchMock.mockResolvedValue(response({ kind: 'artifact_content_written', task, artifact: other }));
+    await expect(workApi.writeArtifactContent('file-1', command, content)).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: true });
+  }
+  // The store refusing the bytes is definite: nothing committed.
+  fetchMock.mockResolvedValue(response({ code: 'WORK_ARTIFACT_UNAVAILABLE' }, 503));
+  await expect(workApi.writeArtifactContent('file-1', command, content)).rejects.toMatchObject({ status: 503, code: 'WORK_ARTIFACT_UNAVAILABLE', outcomeUnknown: false });
+  fetchMock.mockResolvedValue(response({ code: 'COMMIT_OUTCOME_UNKNOWN' }, 503));
+  await expect(workApi.writeArtifactContent('file-1', command, content)).rejects.toMatchObject({ outcomeUnknown: true });
+});
+
+test('content download returns the exact generation size or fails without content', async () => {
+  const binary = (bytes: string, status = 200) => ({ ok: status === 200, status, json: async () => ({ code: 'WORK_ARTIFACT_UNAVAILABLE' }), blob: async () => new Blob([bytes]) } as unknown as Response);
+  fetchMock.mockResolvedValue(binary('abc'));
+  expect((await workApi.readSnapshotContent('snapshot-1', 'file-1', generation)).size).toBe(3);
+  expect(fetchMock.mock.calls[0]![0]).toBe('/v1/organization/handoff-snapshots/snapshot-1/artifacts/file-1/content');
+  fetchMock.mockResolvedValue(binary('abcd'));
+  await expect(workApi.readArtifactContent('file-1', generation)).rejects.toMatchObject({ code: 'invalid_response' });
+  fetchMock.mockResolvedValue(binary('', 503));
+  await expect(workApi.readArtifactContent('file-1', generation)).rejects.toMatchObject({ status: 503, code: 'WORK_ARTIFACT_UNAVAILABLE' });
+});
+
+test('import and discard receipts are bound to their target and submission', async () => {
+  const imported = { ...workFile, id: 'file-2', revision: 0, derivedFrom: { snapshotId: 'snapshot-1', artifactId: 'file-1' } };
+  const command = { operationId: 'op', expectedRevision: 1, actingAssignmentId: 'assignment-sales', expectedAttemptId: task.attemptId, snapshotId: 'snapshot-1' };
+  fetchMock.mockResolvedValue(response({ kind: 'submission_imported', task, artifacts: [imported] }));
+  expect(await workApi.importSubmission(task.id, command)).toMatchObject({ kind: 'submission_imported', artifacts: [imported] });
+  fetchMock.mockResolvedValue(response({ kind: 'submission_imported', task, artifacts: [{ ...imported, derivedFrom: { snapshotId: 'other', artifactId: 'file-1' } }] }));
+  await expect(workApi.importSubmission(task.id, command)).rejects.toMatchObject({ code: 'invalid_response' });
+  fetchMock.mockResolvedValue(response({ kind: 'artifact_discarded', task, artifactId: 'other' }));
+  await expect(workApi.discardArtifact('file-1', { operationId: 'op', expectedRevision: 1, actingAssignmentId: 'a', expectedArtifactRevision: 1 })).rejects.toMatchObject({ code: 'invalid_response' });
+});

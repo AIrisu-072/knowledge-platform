@@ -44,7 +44,12 @@ export type PolicyResult = Generated.RoleAssignmentCreated | Generated.RoleAssig
 export const SYNTHETIC_PRINCIPALS = ['sales-01', 'office-01', 'review-01', 'approver-01', 'multi-role-01', 'delegate-01'] as const;
 export type SyntheticPrincipal = (typeof SYNTHETIC_PRINCIPALS)[number];
 export type CancelAgentExecution = Generated.CancelAgentExecution;
-export type WorkResult = Generated.Completed | Generated.Held | Generated.Resumed | Generated.AgentExecutionRequested | Generated.AgentExecutionCancelled | Generated.EvidenceRegistered | Generated.FindingRegistered | Generated.DecisionRecorded | Generated.Returned | Generated.DraftSaved | Generated.Claimed | Generated.Assigned | (Omit<Generated.Submitted, 'snapshot'> & { snapshot: HandoffSnapshot });
+export type WorkFile = Generated.WorkFile;
+export type FileGeneration = Generated.FileGeneration;
+export type FileArtifactCommand = Generated.FileArtifactCommand;
+export type DiscardArtifactCommand = Generated.DiscardArtifactCommand;
+export type ImportSubmissionCommand = Generated.ImportSubmissionCommand;
+export type WorkResult = Generated.ArtifactCreated | Generated.ArtifactContentWritten | Generated.ArtifactDiscarded | Generated.SubmissionImported | Generated.Completed | Generated.Held | Generated.Resumed | Generated.AgentExecutionRequested | Generated.AgentExecutionCancelled | Generated.EvidenceRegistered | Generated.FindingRegistered | Generated.DecisionRecorded | Generated.Returned | Generated.DraftSaved | Generated.Claimed | Generated.Assigned | (Omit<Generated.Submitted, 'snapshot'> & { snapshot: HandoffSnapshot });
 export class WorkApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, public readonly outcomeUnknown = false) { super(code); this.name = 'WorkApiError'; }
 }
@@ -106,7 +111,25 @@ function policyResult(value: unknown): PolicyResult {
   if (item.kind === 'delegation_created' || item.kind === 'delegation_revoked') return { kind: item.kind, delegation: delegation(item.delegation), policyRevision };
   throw new Error('invalid_result');
 }
-function schema(value: unknown): 'organization.text-draft.v1' { if (value !== 'organization.text-draft.v1') throw new Error('unsupported_schema'); return value; }
+const TEXT_SCHEMA = 'organization.text-draft.v1', FILE_SCHEMA = 'organization.work-file.v1';
+export const MAX_WORK_FILE_BYTES = 8 * 1024 * 1024;
+function schema(value: unknown): typeof TEXT_SCHEMA | typeof FILE_SCHEMA { if (value !== TEXT_SCHEMA && value !== FILE_SCHEMA) throw new Error('unsupported_schema'); return value; }
+function fileGeneration(value: unknown): FileGeneration {
+  const item = object(value); const sizeBytes = revision(item.sizeBytes); const sha256 = string(item.sha256);
+  if (sizeBytes < 1 || sizeBytes > MAX_WORK_FILE_BYTES || !/^[0-9a-f]{64}$/.test(sha256) || item.providerId !== 'organization.work-artifacts' || Number.isNaN(Date.parse(string(item.storedAt)))) throw new Error('invalid_file_generation');
+  return { id: string(item.id), sizeBytes, sha256, storedAt: string(item.storedAt), providerId: item.providerId };
+}
+function workFile(value: unknown): WorkFile { const item = object(value); return { fileName: string(item.fileName), mediaType: string(item.mediaType), generation: nullable(item.generation, fileGeneration) }; }
+/** A text draft carries only `value`; a work file carries only `file`. */
+function body(item: RecordValue, pinned: boolean): Pick<WorkingArtifact, 'schemaId' | 'value' | 'file'> {
+  const schemaId = schema(item.schemaId);
+  if (schemaId === TEXT_SCHEMA) { if (item.file !== undefined) throw new Error('invalid_artifact'); return { schemaId, value: textValue(item.value) }; }
+  if (item.value !== undefined) throw new Error('invalid_artifact');
+  const file = workFile(item.file);
+  // A submission pins an immutable generation, never a pending file.
+  if (pinned && !file.generation) throw new Error('invalid_artifact');
+  return { schemaId, file };
+}
 function task(value: unknown): TaskSummary {
   const item = object(value);
   if (revision(item.attemptNumber) < 1) throw new Error('invalid_attempt');
@@ -126,7 +149,8 @@ function returnInstruction(value: unknown): ReturnInstruction {
 function artifact(value: unknown): WorkingArtifact {
   const item = object(value);
   if (item.visibility !== 'work_item_private') throw new Error('invalid_visibility');
-  return { id: string(item.id), taskId: string(item.taskId), attemptId: string(item.attemptId), revision: revision(item.revision), schemaId: schema(item.schemaId), value: textValue(item.value), visibility: item.visibility };
+  const derived = item.derivedFrom === undefined ? undefined : object(item.derivedFrom);
+  return { id: string(item.id), taskId: string(item.taskId), attemptId: string(item.attemptId), revision: revision(item.revision), ...body(item, false), visibility: item.visibility, ...(derived ? { derivedFrom: { snapshotId: string(derived.snapshotId), artifactId: string(derived.artifactId) } } : {}) };
 }
 function reference(value: unknown): RevisionRef { const item = object(value); if (item.revision !== 1) throw new Error('invalid_record_revision'); return { id: string(item.id), revision: item.revision }; }
 function scope(value: unknown): RecordScope {
@@ -152,7 +176,7 @@ function policyPage<T>(value: unknown, decode: (value: unknown) => T): { items: 
 function exact<T extends { id: string }>(value: unknown, id: string, decode: (value: unknown) => T): T { const record = decode(value); if (record.id !== id) throw new Error('response_target_mismatch'); return record; }
 function snapshot(value: unknown): HandoffSnapshot {
   const item = object(value);
-  return { evidenceRevisionRefs: array(item.evidenceRevisionRefs, reference), findingRevisionRefs: array(item.findingRevisionRefs, reference), decisionRevisionRefs: array(item.decisionRevisionRefs, reference), id: string(item.id), sourceTaskId: string(item.sourceTaskId), sourceAttemptId: string(item.sourceAttemptId), targetTaskId: string(item.targetTaskId), createdAt: string(item.createdAt), artifacts: array(item.artifacts, (entry) => { const a = object(entry); return { artifactId: string(a.artifactId), revision: revision(a.revision), schemaId: schema(a.schemaId), value: textValue(a.value) }; }) };
+  return { evidenceRevisionRefs: array(item.evidenceRevisionRefs, reference), findingRevisionRefs: array(item.findingRevisionRefs, reference), decisionRevisionRefs: array(item.decisionRevisionRefs, reference), id: string(item.id), sourceTaskId: string(item.sourceTaskId), sourceAttemptId: string(item.sourceAttemptId), targetTaskId: string(item.targetTaskId), createdAt: string(item.createdAt), artifacts: array(item.artifacts, (entry) => { const a = object(entry); return { artifactId: string(a.artifactId), revision: revision(a.revision), ...body(a, true) }; }) };
 }
 function agentResult(value: unknown): AgentResult {
   const item = object(value);
@@ -198,6 +222,17 @@ function result(value: unknown): WorkResult {
     if (saved.taskId !== summary.id || saved.attemptId !== summary.attemptId) throw new Error('response_target_mismatch');
     return { kind: item.kind, task: summary, artifact: saved };
   }
+  if (item.kind === 'artifact_created' || item.kind === 'artifact_content_written') {
+    const summary = task(item.task); const saved = artifact(item.artifact);
+    if (saved.taskId !== summary.id || saved.attemptId !== summary.attemptId || saved.schemaId !== FILE_SCHEMA || Boolean(saved.file?.generation) !== (item.kind === 'artifact_content_written')) throw new Error('response_target_mismatch');
+    return { kind: item.kind, task: summary, artifact: saved };
+  }
+  if (item.kind === 'artifact_discarded') return { kind: item.kind, task: task(item.task), artifactId: string(item.artifactId) };
+  if (item.kind === 'submission_imported') {
+    const summary = task(item.task); const artifacts = array(item.artifacts, artifact);
+    if (!artifacts.length || artifacts.some((entry) => entry.taskId !== summary.id || entry.attemptId !== summary.attemptId || !entry.derivedFrom)) throw new Error('response_target_mismatch');
+    return { kind: item.kind, task: summary, artifacts };
+  }
   if (item.kind === 'submitted') return { kind: item.kind, task: task(item.task), snapshot: snapshot(item.snapshot), nextTask: task(item.nextTask) };
   if (item.kind === 'returned') {
     const source = task(item.task); const instruction = returnInstruction(item.returnInstruction); const nextTask = task(item.nextTask);
@@ -213,9 +248,38 @@ async function request<T>(path: string, decode: (value: unknown) => T, method = 
   if (!response.ok) {
     let code = 'request_failed';
     try { const problem = object(await response.json()); if (typeof problem.code === 'string') code = problem.code; } catch { /* Never render untrusted response bodies. */ }
-    throw new WorkApiError(response.status, code, method !== 'GET' && (response.status >= 500 || code === 'COMMIT_OUTCOME_UNKNOWN'));
+    throw new WorkApiError(response.status, code, method !== 'GET' && (response.status >= 500 || code === 'COMMIT_OUTCOME_UNKNOWN') && code !== 'WORK_ARTIFACT_UNAVAILABLE');
   }
   try { return decode(await response.json()); } catch { throw new WorkApiError(response.status, 'invalid_response', method !== 'GET'); }
+}
+/** The store refusing a generation is a definite failure: nothing was committed. */
+async function failure(response: Response, mutation: boolean): Promise<never> {
+  let code = 'request_failed';
+  try { const problem = object(await response.json()); if (typeof problem.code === 'string') code = problem.code; } catch { /* Never render untrusted response bodies. */ }
+  throw new WorkApiError(response.status, code, mutation && (response.status >= 500 || code === 'COMMIT_OUTCOME_UNKNOWN') && code !== 'WORK_ARTIFACT_UNAVAILABLE');
+}
+/** Binary content upload: operation identity travels in headers, never a local path. */
+async function upload(artifactId: string, command: WorkCommand & { expectedArtifactRevision: number }, content: Blob): Promise<WorkResult> {
+  let response: Response;
+  try {
+    response = await fetch(`/v1/organization/working-artifacts/${segment(artifactId)}/content`, { method: 'PUT', credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json', 'Content-Type': 'application/octet-stream', 'x-operation-id': command.operationId, 'x-expected-revision': String(command.expectedRevision), 'x-acting-assignment-id': command.actingAssignmentId, 'x-expected-artifact-revision': String(command.expectedArtifactRevision) }, body: content });
+  } catch { throw new WorkApiError(0, 'network_unavailable', true); }
+  if (!response.ok) return failure(response, true);
+  try {
+    const receipt = result(await response.json());
+    if (receipt.kind !== 'artifact_content_written' || receipt.artifact.id !== artifactId || receipt.artifact.file?.generation?.id !== command.operationId || receipt.artifact.file.generation.sizeBytes !== content.size) throw new Error('response_target_mismatch');
+    return receipt;
+  } catch { throw new WorkApiError(response.status, 'invalid_response', true); }
+}
+/** An opaque attachment of exactly the expected generation size. */
+async function download(path: string, generation: FileGeneration, signal?: AbortSignal): Promise<Blob> {
+  let response: Response;
+  try { response = await fetch(`/v1/organization${path}`, { method: 'GET', credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/octet-stream' }, signal }); }
+  catch { throw new WorkApiError(0, 'network_unavailable', false); }
+  if (!response.ok) return failure(response, false);
+  const blob = await response.blob().catch(() => { throw new WorkApiError(response.status, 'invalid_response', false); });
+  if (blob.size !== generation.sizeBytes) throw new WorkApiError(response.status, 'invalid_response', false);
+  return blob;
 }
 const segment = encodeURIComponent;
 function workflowAction(id: string, command: WorkflowActionCommand) {
@@ -274,4 +338,10 @@ export const workApi = {
   getAgentResult: (id: string) => request(`/agent-executions/${segment(id)}/result`, agentResult),
   cancelAgentExecution: (id: string, command: CancelAgentExecution) => request(`/agent-executions/${segment(id)}/cancel`, (value) => { const receipt = result(value); if (receipt.kind !== 'agent_execution_cancelled' || receipt.execution.id !== id || receipt.task.id !== command.taskId || receipt.task.attemptId !== command.expectedAttemptId) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),
   getOperation: (id: string) => request(`/operations/${segment(id)}`, result),
+  createFileArtifact: (taskId: string, command: FileArtifactCommand) => request(`/tasks/${segment(taskId)}/working-artifacts`, (value) => { const receipt = result(value); if (receipt.kind !== 'artifact_created' || receipt.task.id !== taskId || receipt.artifact.file?.fileName !== command.file.fileName) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),
+  writeArtifactContent: (artifactId: string, command: WorkCommand & { expectedArtifactRevision: number }, content: Blob) => upload(artifactId, command, content),
+  readArtifactContent: (artifactId: string, generation: FileGeneration, signal?: AbortSignal) => download(`/working-artifacts/${segment(artifactId)}/content`, generation, signal),
+  readSnapshotContent: (snapshotId: string, artifactId: string, generation: FileGeneration, signal?: AbortSignal) => download(`/handoff-snapshots/${segment(snapshotId)}/artifacts/${segment(artifactId)}/content`, generation, signal),
+  discardArtifact: (artifactId: string, command: DiscardArtifactCommand) => request(`/working-artifacts/${segment(artifactId)}/discard`, (value) => { const receipt = result(value); if (receipt.kind !== 'artifact_discarded' || receipt.artifactId !== artifactId) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),
+  importSubmission: (taskId: string, command: ImportSubmissionCommand) => request(`/tasks/${segment(taskId)}/working-artifacts/import`, (value) => { const receipt = result(value); if (receipt.kind !== 'submission_imported' || receipt.task.id !== taskId || receipt.task.attemptId !== command.expectedAttemptId || receipt.artifacts.some((entry) => entry.derivedFrom?.snapshotId !== command.snapshotId)) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),
 };

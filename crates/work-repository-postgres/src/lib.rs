@@ -1118,6 +1118,9 @@ impl WorkRepository for PostgresWorkRepository {
                 .return_instruction(actor, id)
         })
     }
+    fn artifact_store_available(&self) -> bool {
+        self.artifact_store.is_some()
+    }
     fn write_artifact_content(
         &self,
         actor: VerifiedActor,

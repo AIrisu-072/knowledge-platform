@@ -1011,7 +1011,7 @@ export async function holdAndResume(page: Page, request: APIRequestContext, orig
   await expect(page.getByText(unsaved.text, { exact: true })).toHaveCount(0);
   if (before.workingArtifacts.length) {
     const readonly = page.getByRole('region', { name: '保存済みの作業文案', exact: true });
-    for (const artifact of before.workingArtifacts) await expect(readonly).toContainText(artifact.value.text);
+    for (const artifact of before.workingArtifacts) await expect(readonly).toContainText(artifact.value?.text ?? artifact.file!.fileName);
     await expect(readonly).not.toContainText(unsaved.text);
   }
   const heldDetail = await get<TaskDetail>(request, origin, `/v1/organization/tasks/${taskId}`);
