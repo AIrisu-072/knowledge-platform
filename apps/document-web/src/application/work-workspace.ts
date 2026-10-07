@@ -1,12 +1,15 @@
 export { workApi, WorkApiError } from '../api/work-api';
-export type { PolicyAction, PolicyResult, Responsibility, RoleAssignment, Delegation, OrganizationalUnit, BusinessRole, SyntheticPrincipal, TaskAssignmentView } from '../api/work-api';
+export type { PolicyAction, PolicyResult, Responsibility, RoleAssignment, Delegation, OrganizationalUnit, BusinessRole, SyntheticPrincipal, TaskAssignmentView, Attention, TaskAttention, WorkContext, WorkContextHistory, WorkViewProfile } from '../api/work-api';
 export type { WorkSession, TaskSummary, TaskDetail, WorkingArtifact, HandoffSnapshot, WorkCommand, WorkflowActionCommand, WorkResult, ReturnCommand, ReturnInstruction, EvidenceRecord, Finding, HumanDecision, RevisionRef, SelectedHandoff, EvidenceCommand, FindingCommand, DecisionCommand, SubmitCommand, AgentExecution, AgentResult, AgentExecutionRequest, CancelAgentExecution } from '../api/work-api';
 import { WorkApiError, workApi, type WorkSession, type WorkCommand, type WorkflowActionCommand, type ReturnCommand, type EvidenceCommand, type FindingCommand, type DecisionCommand, type SubmitCommand, type WorkResult, type AgentExecutionRequest, type CancelAgentExecution } from '../api/work-api';
-/** `acting` selects a projection scope only; it is never sent as identity. */
-export type TaskSearch = { view: 'context' | 'queue'; taskId?: string; acting?: string };
+/** `acting` selects a projection scope only; it is never sent as identity. An absent
+ * `view` follows the selected responsibility's WorkViewProfile (presentation only);
+ * `contextId`/`workTypeId` narrow the same authorized projection. */
+export type TaskSearch = { view?: 'context' | 'queue'; taskId?: string; acting?: string; contextId?: string; workTypeId?: string };
 export function validateTaskSearch(value: Record<string, unknown>): TaskSearch {
   const id = (input: unknown) => typeof input === 'string' && /^[a-zA-Z0-9-]{1,128}$/.test(input);
-  return { view: value.view === 'queue' ? 'queue' : 'context', ...(id(value.taskId) ? { taskId: value.taskId as string } : {}), ...(id(value.acting) ? { acting: value.acting as string } : {}) };
+  const view = value.view === 'queue' || value.view === 'context' ? value.view : undefined;
+  return { ...(view ? { view } : {}), ...(id(value.taskId) ? { taskId: value.taskId as string } : {}), ...(id(value.acting) ? { acting: value.acting as string } : {}), ...(id(value.contextId) ? { contextId: value.contextId as string } : {}), ...(id(value.workTypeId) ? { workTypeId: value.workTypeId as string } : {}) };
 }
 export function workErrorMessage(error: unknown): string {
   if (error instanceof WorkApiError) {

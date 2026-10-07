@@ -345,3 +345,39 @@ PostgreSQL transaction試験は既定で明示ignoreされる。実行してい�
 `mise run organization:poc:runtime` は既存Document CI後段向けの単発確認である。外部DBを受け付けず、既存と同じ公式PostgreSQL一時containerを別途所有し、独立したtransaction試験用DBとbrowser用DB・storageを作る。既存固定Chromiumでsales/officeの操作を行い、2processを停止・再起動して保存状態を確認した後、所有containerを削除する。
 
 通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。初回PoCの実証は[PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54)のsource `44e1b412` で完了している。差戻追加経路は[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d` で全CIと実DB/2名browser/両HTTP server再起動後復元/cleanupが成功した。根拠・候補・判断は[PR57](https://github.com/AIrisu-072/knowledge-platform/pull/57) exact `d383bacc` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。合成Agentは[PR60](https://github.com/AIrisu-072/knowledge-platform/pull/60) exact `48ae1bfd` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。最終事務の完了・保留/再開・Document原本取得を含むPR67時点の統合結果は、本書冒頭の過去受入記録を参照する。現在pinのmain自身の資格は、冒頭の対象ソースと確認状況で確認し、過去の公開製品headの資格とは分ける。PostgreSQL processそのものの再起動は確認対象に含めていない。画像・trace・videoはoff、raw実行ログ・標準runnerの原文は一時workspace内に保持し、公開artifactは追加しない。既存の有限stage/statusと許可された操作名だけをCIへ出力する。
+
+## 複数の文脈（案件）・注意・表示Profileを使う
+
+この節は、複数の合成WorkContext（案件・依頼）、注意（Attention）、営業型／事務型の表示Profileを追加した後続source向けである。設計の具体化は[文脈・注意・Profileの実装追補](../superpowers/specs/2026-10-07-organization-work-context-attention-amendment.md)、検証状況は[文脈・注意・Profileの状況](../superpowers/execution/organization-work-context-status.md)を参照する。
+
+### 追加の合成文脈を用意する
+
+既存の `seed-work` は従来どおり1件の文脈（合成案件A）だけを作る。追加の2件は明示コマンドで作る（既存の進捗・行は上書きしない。再実行しても増えない）。
+
+```sh
+KP_ORGANIZATION_PROFILE=sales-01 KP_ORGANIZATION_DOCUMENT_ID="$document_id" \
+  ./target/debug/organization-server seed-contexts
+```
+
+| 文脈 | 種類 | 工程 | 初期状態 |
+|---|---|---|---|
+| 合成案件B・運転資金相談 | 案件 | 営業内容整理 → 審査内容確認 | 営業工程が担当待ち、期限はseedの6時間後（期限間近） |
+| 合成依頼C・住所変更届 | 依頼 | 営業内容整理 → 事務内容確認 | 営業工程が担当待ち、期限はseedの1時間前（期限超過） |
+
+既存DBへ追加する場合は、migration 0008を適用してから `seed-contexts` を実行する。表示名・期限は合成fixtureであり、実際の顧客・業務規則ではない。
+
+### 表示Profile
+
+- URLに表示の指定が無い場合、現在の担当（ヘッダーの「表示する担当」）の表示Profileで開く。営業店の担当は「営業・文脈」、事務・承認は「事務・キュー」、審査は「審査・キュー」（最初に「根拠」を開く）
+- 「営業型・文脈」「事務型・キュー」の切替は同じタスクの別の表示であり、権限は変わらない
+
+### 操作の流れ
+
+1. 営業型：左の一覧に、閲覧できる文脈（表示名・種類・注意の件数）と、その文脈のタスクが並ぶ。文脈を選ぶと、工程ごとの進捗（状態・試行・期限・担当の有無）、自分の次の作業、文脈の履歴（状態の推移と時刻だけ）を表示する。担当者の名前・理由・本文は表示しない
+2. 事務型：左の一覧で業務の種類（例：事務内容確認・審査内容確認）を選び、「自分の担当」「引受可能」「管理対象のタスク」に分けて表示する。引受可能なだけの行には、顧客名に当たる文脈の表示名を表示しない
+3. 注意：「新しい割当」（管理担当が自分に割り当てた）、「差戻し」、「期限間近」（期限の24時間前から）、「期限超過」を文字で表示する。「新しい割当」はタスクを開いて「確認済みにする」で消える。確認済みにしても作業は完了しない
+4. 文脈の表示名は、営業店の文脈閲覧の役割を持つ担当と、その文脈のタスクの現在の担当者だけに表示される。管理担当や引受可能なだけの利用者には表示しない
+
+### 実行確認
+
+`mise run organization:poc:runtime` は6名の確認の後、同じDBに `seed-contexts` を2回実行し（2回目は追加なし）、実画面で文脈の選択と概要、期限超過の依頼の引受・提出、管理担当による割当と「新しい割当」の確認済み、案件Bの審査（審査Profile）と差戻し、非開示を確認する。6processを再起動した後に、確認済み・差戻しの注意・文脈と操作結果の回復を確認する。

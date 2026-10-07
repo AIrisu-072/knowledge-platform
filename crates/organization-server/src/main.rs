@@ -28,14 +28,14 @@ async fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let action = args
         .next()
-        .ok_or("usage: organization-server migrate|bootstrap-poc|seed-work|serve")?;
+        .ok_or("usage: organization-server migrate|bootstrap-poc|seed-work|seed-contexts|serve")?;
     if args.next().is_some() {
         return Err("unexpected arguments".into());
     }
     let command = match action.as_str() {
         "serve" => Command::Serve,
         "migrate" => Command::Migrate,
-        "bootstrap-poc" | "seed-work" => Command::BootstrapPoc,
+        "bootstrap-poc" | "seed-work" | "seed-contexts" => Command::BootstrapPoc,
         _ => return Err("unknown command".into()),
     };
     let config = OrganizationConfig::from_env(&ProcessEnvironment, command)?;
@@ -72,6 +72,17 @@ async fn run() -> Result<(), String> {
                 .await
                 .map_err(|_| "Work seed failed; existing workflow is never reset")?;
             println!("organization-server: synthetic Work fixture ready");
+        }
+        "seed-contexts" => {
+            let id = ProcessEnvironment
+                .get("KP_ORGANIZATION_DOCUMENT_ID")
+                .ok_or("KP_ORGANIZATION_DOCUMENT_ID is required")?;
+            let id = Uuid::parse_str(&id).map_err(|_| "shared Document ID is invalid")?;
+            verify_shared_document(&pool, id).await?;
+            work_repository_postgres::seed_synthetic_contexts(&pool, Some(id))
+                .await
+                .map_err(|_| "context seed failed; existing workflows are never reset")?;
+            println!("organization-server: additional synthetic WorkContexts ready");
         }
         "serve" => {
             work_repository_postgres::check_schema_compatibility(&pool)

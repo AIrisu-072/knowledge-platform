@@ -67,6 +67,21 @@ fn build_router(
             post(revoke_delegation),
         )
         .route("/v1/organization/tasks/{id}/assignment", post(assign_task))
+        .route(
+            "/v1/organization/work-view-profiles",
+            get(work_view_profiles_page),
+        )
+        .route("/v1/organization/work-contexts", get(list_work_contexts))
+        .route("/v1/organization/work-contexts/{id}", get(work_context))
+        .route(
+            "/v1/organization/work-contexts/{id}/history",
+            get(work_context_history),
+        )
+        .route("/v1/organization/tasks/{id}/attention", get(task_attention))
+        .route(
+            "/v1/organization/tasks/{id}/attention-seen",
+            post(acknowledge_attention),
+        )
         .route("/v1/organization/tasks", get(list_tasks))
         .route("/v1/organization/tasks/{id}", get(task))
         .route(
@@ -147,6 +162,7 @@ async fn transport_boundary(request: Request, next: Next) -> Response {
     let path = request.uri().path();
     let collection_query = request.method() == axum::http::Method::GET
         && (path == "/v1/organization/tasks"
+            || path == "/v1/organization/work-contexts"
             || (path.starts_with("/v1/organization/tasks/")
                 && (path.ends_with("/evidence") || path.ends_with("/findings")))
             || (path.starts_with("/v1/organization/findings/") && path.ends_with("/decisions")));
@@ -182,6 +198,9 @@ struct ListQuery {
     cursor: Option<String>,
     /// Requested projection scope; re-resolved against the current policy.
     acting_assignment_id: Option<Uuid>,
+    /// Presentation filters over the same authorized projection.
+    context_id: Option<Uuid>,
+    work_type_id: Option<Uuid>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -201,14 +220,22 @@ async fn list_tasks(
     if query.cursor.is_some() {
         return Err(Problem(WorkError::CursorStale));
     }
-    let items = state
+    let items: Vec<TaskSummary> = state
         .repository
         .list_tasks_in(
             state.actor,
             query.view.unwrap_or(TaskView::Context),
             query.acting_assignment_id,
         )
-        .await?;
+        .await?
+        .into_iter()
+        .filter(|item| {
+            query
+                .context_id
+                .is_none_or(|id| item.context_id == Some(id))
+        })
+        .filter(|item| query.work_type_id.is_none_or(|id| item.work_type_id == id))
+        .collect();
     // This fixed two-step PoC has no pagination token implementation: never silently truncate.
     if items.len() > limit {
         return Err(Problem(WorkError::ValidationFailed));
@@ -485,6 +512,7 @@ impl IntoResponse for Problem {
             | WorkError::FindingNotFound
             | WorkError::WorkItemNotFound
             | WorkError::OrganizationRecordNotFound
+            | WorkError::WorkContextNotFound
             | WorkError::WorkArtifactNotFound => StatusCode::NOT_FOUND,
             WorkError::RevisionConflict
             | WorkError::OperationConflict

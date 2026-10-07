@@ -4,8 +4,8 @@ import { lstat, open, realpath } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 const MAX_BYTES = 8 * 1024 * 1024, MAX_NODES = 1000, MAX_DEPTH = 8, MAX_TEXT = 16 * 1024;
-const phases = new Set(['journey', 'persistence', 'policy-journey', 'policy-persistence']);
-const sources = new Set(['journey.spec.ts', 'persistence.spec.ts', 'support.ts', 'policy-journey.spec.ts', 'policy-persistence.spec.ts', 'policy-support.ts']);
+const phases = new Set(['journey', 'persistence', 'policy-journey', 'policy-persistence', 'context-journey', 'context-persistence']);
+const sources = new Set(['journey.spec.ts', 'persistence.spec.ts', 'support.ts', 'policy-journey.spec.ts', 'policy-persistence.spec.ts', 'policy-support.ts', 'context-journey.spec.ts', 'context-persistence.spec.ts', 'context-support.ts']);
 const statuses = new Set(['failed', 'timedOut', 'interrupted']);
 const executionStatuses = new Set(['queued', 'running', 'succeeded', 'failed', 'cancelled', 'outcome_unknown']);
 const executionFailureCodes = new Set(['none', 'provider_denied', 'context_stale', 'invalid_output', 'dependency_unavailable', 'interrupted', 'commit_outcome_unknown']);
@@ -18,6 +18,8 @@ const tests = new Map([
   ['両process再起動後もRoot直下フォルダーと固定要求replayと現在権限を保持する', 'root-folder-persistence'],
   ['6名の合成担当で割当・担当変更・期限付き委任・同時引受・権限失効を実UIで確認する', 'policy-journey'],
   ['6 processの再起動後も割当・委任・担当変更・取消と非開示を保持する', 'policy-persistence'],
+  ['文脈・注意・業務Profileで複数の文脈を実画面で扱い、非開示と確認済みを保つ', 'context-journey'],
+  ['6 processの再起動後も文脈・確認済み・差戻しの注意と非開示を保持する', 'context-persistence'],
 ]);
 const actions = new Set(['journey-setup', 'office-navigation', 'sales-navigation', 'document-navigation', 'task-navigation',
   'draft-save', 'source-read', 'evidence-module', 'source-document-select', 'source-file-select', 'evidence-input',
@@ -25,7 +27,8 @@ const actions = new Set(['journey-setup', 'office-navigation', 'sales-navigation
   'decision-confirm', 'visibility-verify', 'submit-preview', 'submit-selection', 'submit-confirm', 'office-claim',
   'return-preview', 'return-confirm', 'sales-reclaim', 'resubmit', 'office-reclaim', 'final-verify', 'persistence-verify', 'agent-module', 'agent-input', 'agent-request', 'agent-result', 'agent-replay', 'complete-preview', 'complete-confirm', 'complete-replay', 'hold-preview', 'hold-confirm', 'hold-replay', 'resume-preview', 'resume-confirm', 'resume-replay',
   'root-folder-read', 'root-folder-preview', 'root-folder-cancel', 'root-folder-input', 'root-folder-create', 'root-folder-verify', 'root-folder-replay', 'root-folder-office', 'root-folder-persistence',
-  'policy-setup', 'policy-draft', 'policy-role-assignment', 'policy-reassign-sales', 'policy-transfer-verify', 'policy-submit', 'policy-delegation', 'policy-concurrent-claim', 'policy-reassign-office', 'policy-delegation-revoke', 'policy-assignment-revoke', 'policy-complete', 'policy-persistence']);
+  'policy-setup', 'policy-draft', 'policy-role-assignment', 'policy-reassign-sales', 'policy-transfer-verify', 'policy-submit', 'policy-delegation', 'policy-concurrent-claim', 'policy-reassign-office', 'policy-delegation-revoke', 'policy-assignment-revoke', 'policy-complete', 'policy-persistence',
+  'context-setup', 'context-select', 'context-claim', 'context-submit', 'context-assign', 'context-acknowledge', 'context-review', 'context-return', 'context-verify', 'context-persistence']);
 const matchers = new Set(['toBe', 'toEqual', 'toStrictEqual', 'toMatchObject', 'toMatch', 'toContain', 'toContainEqual',
   'toBeNull', 'toBeVisible', 'toBeHidden', 'toBeFocused', 'toBeEnabled', 'toBeDisabled', 'toBeChecked',
   'toHaveCount', 'toHaveText', 'toContainText', 'toHaveURL', 'toHaveAttribute', 'toHaveLength', 'toHaveValue',
@@ -42,7 +45,7 @@ function location(value) {
     ...(coordinate(value.column) ? { column: value.column } : {}) } : undefined;
 }
 function stackLocation(value) {
-  const match = text(value).match(/(?:^|[\\/\s(])((?:policy-)?(?:journey|persistence)\.spec\.ts|(?:policy-)?support\.ts):(\d{1,7}):(\d{1,7})(?:\D|$)/u);
+  const match = text(value).match(/(?:^|[\\/\s(])((?:policy-|context-)?(?:journey|persistence)\.spec\.ts|(?:policy-|context-)?support\.ts):(\d{1,7}):(\d{1,7})(?:\D|$)/u);
   return match ? location({ file: match[1], line: Number(match[2]), column: Number(match[3]) }) : undefined;
 }
 function readObservation(annotations) {

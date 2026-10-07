@@ -141,11 +141,11 @@ test('existing phase selection collects the separate Root folder cases with expl
   const config = await readFile(new URL('../../apps/document-web/playwright.organization.config.ts', import.meta.url), 'utf8');
   // Each phase selects exactly one spec basename; `journey` never also selects `policy-journey`.
   assert.match(config, /testMatch: specs\[phase\]!,/u);
-  const specs = config.match(/const specs: Record<string, RegExp> = \{ journey: \/(.+?)\/u, persistence: \/(.+?)\/u, 'policy-journey': \/(.+?)\/u, 'policy-persistence': \/(.+?)\/u \};/u);
+  const specs = config.match(/const specs: Record<string, RegExp> = \{ journey: \/(.+?)\/u, persistence: \/(.+?)\/u, 'policy-journey': \/(.+?)\/u, 'policy-persistence': \/(.+?)\/u, 'context-journey': \/(.+?)\/u, 'context-persistence': \/(.+?)\/u \};/u);
   assert.ok(specs);
-  const [journey, persistence, policyJourney, policyPersistence] = specs.slice(1).map(source => new RegExp(source, 'u'));
-  const files = ['e2e-organization/journey.spec.ts', 'e2e-organization/persistence.spec.ts', 'e2e-organization/policy-journey.spec.ts', 'e2e-organization/policy-persistence.spec.ts'];
-  for (const [pattern, expected] of [[journey, 0], [persistence, 1], [policyJourney, 2], [policyPersistence, 3]]) {
+  const patterns = specs.slice(1).map(source => new RegExp(source, 'u'));
+  const files = ['journey', 'persistence', 'policy-journey', 'policy-persistence', 'context-journey', 'context-persistence'].map(name => `e2e-organization/${name}.spec.ts`);
+  for (const [pattern, expected] of patterns.map((value, index) => [value, index])) {
     assert.deepEqual(files.filter(file => pattern.test(file)), [files[expected]]);
   }
   for (const phase of ['journey', 'persistence']) {
@@ -554,6 +554,10 @@ test('multi-principal policy phases retain only their fixed case, source locatio
     'policy-journey': '6名の合成担当で割当・担当変更・期限付き委任・同時引受・権限失効を実UIで確認する',
     'policy-persistence': '6 processの再起動後も割当・委任・担当変更・取消と非開示を保持する',
   };
+  Object.assign(policyTitles, {
+    'context-journey': '文脈・注意・業務Profileで複数の文脈を実画面で扱い、非開示と確認済みを保つ',
+    'context-persistence': '6 processの再起動後も文脈・確認済み・差戻しの注意と非開示を保持する',
+  });
   for (const [phase, title] of Object.entries(policyTitles)) {
     const raw = JSON.stringify({ suites: [{ specs: [{ title, file: `${phase}.spec.ts`, line: 10, column: 1, tests: [{ results: [{
       status: 'failed', annotations: [{ type: 'organization-stage', description: 'policy-reassign-office' }, { type: 'note', description: 'PRIVATE review-01 理由' }],

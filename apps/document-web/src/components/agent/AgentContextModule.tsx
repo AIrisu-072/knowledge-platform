@@ -29,7 +29,7 @@ export function AgentContextModule({ session, task, applyResult, onDenied, refre
     refetchInterval: (query) => query.state.status === 'success' && query.state.data && activeStatus(query.state.data.status) ? 500 : false,
     queryFn: async () => {
       const execution = await workApi.getAgentExecution(executionId!);
-      if (execution.workItemId !== task.id || execution.contextId !== task.contextId || execution.attemptId !== task.attemptId || execution.requestedBy !== session.principalId || execution.requesterResponsibility !== actingFor(session, task)) throw new WorkApiError(404, 'WORK_ITEM_NOT_FOUND');
+      if (execution.workItemId !== task.id || (task.contextId !== null && execution.contextId !== task.contextId) || execution.attemptId !== task.attemptId || execution.requestedBy !== session.principalId || execution.requesterResponsibility !== actingFor(session, task)) throw new WorkApiError(404, 'WORK_ITEM_NOT_FOUND');
       return execution;
     },
   });

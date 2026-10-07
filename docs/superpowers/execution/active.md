@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-07 06:10 UTC — Organization 複数文脈・注意・表示Profile（U2）
+
+- U1は[PR #96](https://github.com/AIrisu-072/knowledge-platform/pull/96)でmain `04076b1` へ統合済み（[U1状況](organization-multi-principal-status.md)）。U2の再開先は[状況](organization-work-context-status.md)、[実装追補](../specs/2026-10-07-organization-work-context-attention-amendment.md)、[小計画](../plans/2026-10-07-organization-work-context.md)
+- branch `claude/trusting-knuth-dn5cx4` をmain `04076b1` から作り直した。合成文脈3件・文脈ごとのworkflow instance・Attention（導出）・確認済み（Work mutationではない）・表示Profile 3種・営業型の文脈一覧/事務型のWorkType別キュー
+- 独立reviewのNO-GO（審査文脈の差戻し後に再提出できない、差戻し注意の対象、注意APIの閲覧範囲ほか）を修正済み。ローカルで全Rust・実PostgreSQL・GUI・実browser 17 stageが成功。新しい判断は承認済みとして扱わない
+- [PR #101](https://github.com/AIrisu-072/knowledge-platform/pull/101)。再reviewはGO、軽微事項の修正後head `48efcfe` で全CI成功。main `4a71e56`（PR100 文書アクセス設定）を通常mergeで取り込み、組合せheadのCI合格後にmainへ統合する。次は統合後CI→同名branchを作り直してU3
+
+---
+
 ## 2026-10-07 04:36 UTC — 文書アクセス設定の回復補修
 
 - PR97統合main bba1d6ddを基点に、既に接続済みDocument ACLの結果不明要求の固定・往復保持・関連read失効を優先する。[状況](document-access-policy-recovery-status.md)と[限定計画](../plans/2026-10-07-document-access-policy-recovery.md)が再開先

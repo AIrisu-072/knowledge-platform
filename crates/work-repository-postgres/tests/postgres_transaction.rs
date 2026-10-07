@@ -80,7 +80,9 @@ impl work_application::AgentSourcePort for TestAgentSource {
 }
 
 use work_domain::*;
-use work_repository_postgres::{PostgresWorkRepository, migrate, seed_synthetic};
+use work_repository_postgres::{
+    PostgresWorkRepository, migrate, seed_synthetic, seed_synthetic_contexts,
+};
 fn ctx(actor: VerifiedActor, revision: i64) -> CommandContext {
     CommandContext {
         operation_id: Uuid::now_v7(),
@@ -113,7 +115,7 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(migrations_before.len(), 7);
+    assert_eq!(migrations_before.len(), 8);
     migrate(&pool).await.unwrap();
     let migrations_after: Vec<(i64, Vec<u8>, time::OffsetDateTime)> = sqlx::query_as(
         "SELECT version, checksum, applied_at FROM work.schema_migrations ORDER BY version",
@@ -1985,6 +1987,280 @@ async fn organization_policy_fences_concurrent_claims_delegation_and_revocation(
     );
     let ended = office_revision(&repository, VerifiedActor::Approver01).await;
     assert!(!ended.assignment.unwrap().responsibility_effective);
+    sqlx::raw_sql("DROP SCHEMA work CASCADE")
+        .execute(&pool)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires explicitly authorized disposable PostgreSQL database"]
+async fn several_contexts_commit_to_their_own_instance_and_acknowledgment_is_not_a_work_mutation() {
+    let pool = disposable_pool().await;
+    sqlx::raw_sql("DROP SCHEMA IF EXISTS work CASCADE")
+        .execute(&pool)
+        .await
+        .unwrap();
+    migrate(&pool).await.unwrap();
+    seed_synthetic(&pool, None).await.unwrap();
+    // The original fixture alone until the explicit context seed.
+    let count = || async {
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM work.workflow_instances")
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+    };
+    assert_eq!(count().await, 1);
+    seed_synthetic_contexts(&pool, None).await.unwrap();
+    seed_synthetic_contexts(&pool, None).await.unwrap();
+    let repository = PostgresWorkRepository::new(pool.clone());
+    let instances: Vec<Uuid> =
+        sqlx::query_scalar("SELECT id FROM work.workflow_instances ORDER BY id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        instances,
+        [WORKFLOW_ID, CONTEXT_B_WORKFLOW_ID, CONTEXT_C_WORKFLOW_ID]
+    );
+    // One projection spans every context the actor may see; identities stay distinct.
+    let sales = repository
+        .list_tasks(VerifiedActor::Sales01, TaskView::Context)
+        .await
+        .unwrap();
+    assert_eq!(
+        sales.iter().map(|item| item.id).collect::<Vec<_>>(),
+        [
+            SALES_TASK_ID,
+            CONTEXT_B_SALES_TASK_ID,
+            CONTEXT_C_SALES_TASK_ID
+        ]
+    );
+    let contexts = repository
+        .list_work_contexts(VerifiedActor::Sales01, None)
+        .await
+        .unwrap();
+    assert_eq!(contexts.len(), 3);
+    assert!(
+        repository
+            .list_work_contexts(VerifiedActor::Office01, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        repository
+            .work_context(VerifiedActor::Office01, CONTEXT_B_ID)
+            .await,
+        Err(WorkError::WorkContextNotFound)
+    );
+    assert_eq!(
+        repository
+            .work_context(VerifiedActor::Sales01, Uuid::now_v7())
+            .await,
+        Err(WorkError::WorkContextNotFound)
+    );
+    // Commands on context B commit only to its instance and ledger target.
+    let claim = acting(SALES_ASSIGNMENT_ID, 0);
+    repository
+        .execute(
+            VerifiedActor::Sales01,
+            Command::Claim {
+                task_id: CONTEXT_B_SALES_TASK_ID,
+                context: claim.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    let target: Uuid =
+        sqlx::query_scalar("SELECT workflow_id FROM work.operation_ledger WHERE operation_id=$1")
+            .bind(claim.operation_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(target, CONTEXT_B_WORKFLOW_ID);
+    let revisions = || async {
+        sqlx::query_as::<_, (Uuid, i64)>(
+            "SELECT id, revision FROM work.workflow_instances ORDER BY id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap()
+    };
+    assert_eq!(
+        revisions().await,
+        [
+            (WORKFLOW_ID, 0),
+            (CONTEXT_B_WORKFLOW_ID, 1),
+            (CONTEXT_C_WORKFLOW_ID, 0)
+        ]
+    );
+    // Replay of the exact claim recovers its receipt through the ledger's instance.
+    assert!(
+        repository
+            .recover(VerifiedActor::Sales01, claim.operation_id)
+            .await
+            .is_ok()
+    );
+    let MutationResult::DraftSaved { artifact, .. } = repository
+        .execute(
+            VerifiedActor::Sales01,
+            Command::SaveDraft {
+                task_id: CONTEXT_B_SALES_TASK_ID,
+                artifact_id: None,
+                context: acting(SALES_ASSIGNMENT_ID, 1),
+                value: TextValue {
+                    text: "案件Bの非公開文案".into(),
+                },
+            },
+        )
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    let attempt = repository
+        .task(VerifiedActor::Sales01, CONTEXT_B_SALES_TASK_ID)
+        .await
+        .unwrap()
+        .task
+        .attempt_id;
+    repository
+        .execute(
+            VerifiedActor::Sales01,
+            Command::Submit {
+                task_id: CONTEXT_B_SALES_TASK_ID,
+                context: acting(SALES_ASSIGNMENT_ID, 2),
+                expected_attempt_id: Some(attempt),
+                artifacts: vec![ArtifactSelection {
+                    artifact_id: artifact.id,
+                    revision: artifact.revision,
+                }],
+                evidence_revision_refs: vec![],
+                finding_revision_refs: vec![],
+                decision_revision_refs: vec![],
+            },
+        )
+        .await
+        .unwrap();
+    // The review step reaches reviewers only; processors never see it.
+    let review = repository
+        .list_tasks(VerifiedActor::Review01, TaskView::Queue)
+        .await
+        .unwrap();
+    assert_eq!(
+        review.iter().map(|item| item.id).collect::<Vec<_>>(),
+        [CONTEXT_B_REVIEW_TASK_ID]
+    );
+    assert_eq!(review[0].context_title, None);
+    assert!(
+        repository
+            .list_tasks(VerifiedActor::Office01, TaskView::Queue)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    // A manager's assignment: attention for the assignee, acknowledged idempotently
+    // without a Work revision, operation ledger row or business staging.
+    let MutationResult::Assigned { assignment, .. } = repository
+        .execute(
+            VerifiedActor::Approver01,
+            Command::Assign {
+                task_id: CONTEXT_C_SALES_TASK_ID,
+                context: acting(APPROVER_MANAGEMENT_ASSIGNMENT_ID, 0),
+                expected_attempt_id: context_fixture(CONTEXT_C_WORKFLOW_ID)
+                    .unwrap()
+                    .source_attempt_id,
+                assignee: VerifiedActor::Sales01,
+                assignee_responsibility_id: SALES_ASSIGNMENT_ID,
+                reason: "期限超過の依頼を割当".into(),
+            },
+        )
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    let kinds = |attention: TaskAttention| {
+        attention
+            .items
+            .into_iter()
+            .map(|value| value.kind)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        kinds(
+            repository
+                .task_attention(VerifiedActor::Sales01, CONTEXT_C_SALES_TASK_ID)
+                .await
+                .unwrap()
+        ),
+        [AttentionKind::NewlyAssigned, AttentionKind::Overdue]
+    );
+    let counts = || async {
+        sqlx::query_as::<_, (i64, i64, i64)>("SELECT (SELECT count(*) FROM work.operation_ledger), (SELECT count(*) FROM work.event_staging), (SELECT revision FROM work.workflow_instances WHERE id=$1)")
+            .bind(CONTEXT_C_WORKFLOW_ID)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+    };
+    let before = counts().await;
+    assert_eq!(
+        repository
+            .acknowledge_attention(
+                VerifiedActor::Approver01,
+                CONTEXT_C_SALES_TASK_ID,
+                assignment.id
+            )
+            .await,
+        Err(WorkError::WorkItemNotFound)
+    );
+    for _ in 0..2 {
+        assert_eq!(
+            kinds(
+                repository
+                    .acknowledge_attention(
+                        VerifiedActor::Sales01,
+                        CONTEXT_C_SALES_TASK_ID,
+                        assignment.id
+                    )
+                    .await
+                    .unwrap()
+            ),
+            [AttentionKind::Overdue]
+        );
+    }
+    assert_eq!(counts().await, before);
+    let stored: i64 = sqlx::query_scalar("SELECT count(*) FROM work.attention_acknowledgements")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(stored, 1);
+    // Re-seeding adds nothing and never resets progress.
+    seed_synthetic(&pool, None).await.unwrap();
+    seed_synthetic_contexts(&pool, None).await.unwrap();
+    assert_eq!(revisions().await.len(), 3);
+    assert_eq!(
+        repository
+            .task(VerifiedActor::Sales01, CONTEXT_B_SALES_TASK_ID)
+            .await
+            .unwrap()
+            .task
+            .state,
+        TaskState::Completed
+    );
+    let history = repository
+        .work_context_history(VerifiedActor::Sales01, CONTEXT_B_ID)
+        .await
+        .unwrap();
+    assert_eq!(
+        history
+            .entries
+            .iter()
+            .map(|entry| entry.kind.as_str())
+            .collect::<Vec<_>>(),
+        ["claimed", "submitted"]
+    );
     sqlx::raw_sql("DROP SCHEMA work CASCADE")
         .execute(&pool)
         .await

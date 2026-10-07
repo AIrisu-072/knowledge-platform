@@ -20,7 +20,8 @@ await mkdir(base, { recursive: true, mode: 0o700 });
 const directory = await mkdtemp(join(base, 'run-'));
 const runId = randomUUID();
 const report = new EvidenceReport(directory, ['build', 'database', 'transaction', 'initialize', 'journey', 'restart', 'persistence', 'shutdown',
-  'policy-initialize', 'policy-journey', 'policy-restart', 'policy-persistence', 'policy-shutdown']);
+  'policy-initialize', 'policy-journey', 'policy-restart', 'policy-persistence',
+  'context-seed', 'context-journey', 'context-restart', 'context-persistence', 'policy-shutdown']);
 report.data.scope = 'Synthetic Organization Browser PoC: actual PostgreSQL transaction, two-principal browser journey and a separate fresh-database six-principal policy journey';
 report.data.runId = runId;
 const processes = [];
@@ -148,6 +149,7 @@ try {
     }));
   }
   const stopPolicy = () => Promise.all(ORGANIZATION_PROFILES.map(profile => stopProcess(policyProcesses[profile])));
+  let policyDocumentId;
   await report.stage('policy-initialize', async () => {
     const create = postgresVersionArgs(cid);
     create[create.length - 1] = 'CREATE DATABASE kp_organization_policy_poc';
@@ -162,15 +164,25 @@ try {
     await run('policy-migrate', binary, ['migrate'], policyEnv('sales-01'));
     await run('policy-bootstrap', binary, ['bootstrap-poc'], policyEnv('sales-01'));
     await startPolicy(1);
-    const policyDocumentId = await publishSharedDocument(policyOrigin('sales-01'));
+    policyDocumentId = await publishSharedDocument(policyOrigin('sales-01'));
     await run('policy-seed', binary, ['seed-work'], { ...policyEnv('sales-01'), KP_ORGANIZATION_DOCUMENT_ID: policyDocumentId });
     const origins = Object.fromEntries(ORGANIZATION_PROFILES.map(profile => [roles[profile], policyOrigin(profile)]));
-    await writeFile(policyContextPath, JSON.stringify({ ...origins, documentId: policyDocumentId, statePath: join(directory, 'policy-state.json') }), { mode: 0o600 });
+    await writeFile(policyContextPath, JSON.stringify({ ...origins, documentId: policyDocumentId, statePath: join(directory, 'policy-state.json'), contextStatePath: join(directory, 'context-state.json') }), { mode: 0o600 });
     report.data.policy = { profiles: ORGANIZATION_PROFILES.length, database: 'separate-fresh-owned' };
   });
   await report.stage('policy-journey', () => browser('policy-journey', policyContextPath));
   await report.stage('policy-restart', async () => { await stopPolicy(); await startPolicy(2); });
   await report.stage('policy-persistence', () => browser('policy-persistence', policyContextPath));
+  // Additional synthetic WorkContexts through the explicit command on the same (now
+  // existing) database: the upgrade path, never a reset of earlier progress.
+  await report.stage('context-seed', async () => {
+    await run('context-seed', binary, ['seed-contexts'], { ...policyEnv('sales-01'), KP_ORGANIZATION_DOCUMENT_ID: policyDocumentId });
+    await run('context-seed-replay', binary, ['seed-contexts'], { ...policyEnv('sales-01'), KP_ORGANIZATION_DOCUMENT_ID: policyDocumentId });
+    report.data.contexts = { seeded: 'explicit-command', replay: 'idempotent' };
+  });
+  await report.stage('context-journey', () => browser('context-journey', policyContextPath));
+  await report.stage('context-restart', async () => { await stopPolicy(); await startPolicy(3); });
+  await report.stage('context-persistence', () => browser('context-persistence', policyContextPath));
   await report.stage('policy-shutdown', stopPolicy);
 } catch (error) {
   failed = true;

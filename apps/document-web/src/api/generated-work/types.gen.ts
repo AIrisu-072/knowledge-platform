@@ -38,7 +38,10 @@ export type WorkSession = {
 
 export type TaskSummary = {
     id: string;
-    contextId: string;
+    /**
+     * 文脈の不透明なID。contextTitleと同じ相手（owner unitのcontext.read保有者と、未完了の試行の担当者本人）にだけ開示し、それ以外はnull。
+     */
+    contextId: string | null;
     attemptId: string;
     revision: number;
     title: string;
@@ -66,6 +69,14 @@ export type TaskSummary = {
     claimAssignmentId: string | null;
     canAssign: boolean;
     assignment: TaskAssignmentView | null;
+    workTypeId: string;
+    workTypeLabel: string;
+    dueAt: string | null;
+    attention: Array<Attention>;
+    /**
+     * 文脈の表示名。owner unitのcontext.read保有者と、未完了の試行の担当者本人にだけ開示。完了した試行だけの担当者・担当可能なだけの利用者・管理担当にはnull。操作結果の再照会は確定時の受領内容をそのまま返す。
+     */
+    contextTitle: string | null;
 };
 
 export type WorkingArtifact = {
@@ -91,7 +102,10 @@ export type HistoryEntry = {
 
 export type TaskDetail = {
     id: string;
-    contextId: string;
+    /**
+     * 文脈の不透明なID。contextTitleと同じ相手（owner unitのcontext.read保有者と、未完了の試行の担当者本人）にだけ開示し、それ以外はnull。
+     */
+    contextId: string | null;
     attemptId: string;
     revision: number;
     title: string;
@@ -123,6 +137,14 @@ export type TaskDetail = {
     claimAssignmentId: string | null;
     canAssign: boolean;
     assignment: TaskAssignmentView | null;
+    workTypeId: string;
+    workTypeLabel: string;
+    dueAt: string | null;
+    attention: Array<Attention>;
+    /**
+     * 文脈の表示名。owner unitのcontext.read保有者と、未完了の試行の担当者本人にだけ開示。完了した試行だけの担当者・担当可能なだけの利用者・管理担当にはnull。操作結果の再照会は確定時の受領内容をそのまま返す。
+     */
+    contextTitle: string | null;
 };
 
 export type TaskPage = {
@@ -210,7 +232,7 @@ export type Problem = {
     type: string;
     title: string;
     status: number;
-    code: 'VALIDATION_FAILED' | 'FORBIDDEN' | 'WORK_ITEM_NOT_FOUND' | 'WORK_ARTIFACT_NOT_FOUND' | 'REVISION_CONFLICT' | 'OPERATION_CONFLICT' | 'WORK_ASSIGNMENT_CONFLICT' | 'HANDOFF_NOT_READY' | 'DEPENDENCY_UNAVAILABLE' | 'COMMIT_OUTCOME_UNKNOWN' | 'INTEGRITY_VIOLATION' | 'CURSOR_STALE' | 'EVIDENCE_NOT_FOUND' | 'FINDING_NOT_FOUND' | 'AGENT_RESULT_NOT_READY' | 'WORK_CONTEXT_STALE' | 'ORGANIZATION_RECORD_NOT_FOUND';
+    code: 'VALIDATION_FAILED' | 'FORBIDDEN' | 'WORK_ITEM_NOT_FOUND' | 'WORK_ARTIFACT_NOT_FOUND' | 'REVISION_CONFLICT' | 'OPERATION_CONFLICT' | 'WORK_ASSIGNMENT_CONFLICT' | 'HANDOFF_NOT_READY' | 'DEPENDENCY_UNAVAILABLE' | 'COMMIT_OUTCOME_UNKNOWN' | 'INTEGRITY_VIOLATION' | 'CURSOR_STALE' | 'EVIDENCE_NOT_FOUND' | 'FINDING_NOT_FOUND' | 'AGENT_RESULT_NOT_READY' | 'WORK_CONTEXT_STALE' | 'ORGANIZATION_RECORD_NOT_FOUND' | 'WORK_CONTEXT_NOT_FOUND';
     traceId: string;
 };
 
@@ -566,6 +588,10 @@ export type Responsibility = {
     validUntil: string | null;
     sourceAssignmentId: string | null;
     delegator: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01' | null;
+    /**
+     * 役割の上書き→組織単位の既定で選ぶ表示Profile。権限ではない。
+     */
+    workViewProfileId: string;
 };
 
 export type OrganizationalUnit = {
@@ -760,6 +786,96 @@ export type DelegationRevoked = {
     policyRevision: number;
 };
 
+/**
+ * 記録から導出した注意。lifecycleではない。waiting_for_confirmation/blockedは根拠の記録が無いため出さない。
+ */
+export type AttentionKind = 'newly_assigned' | 'returned' | 'due_soon' | 'overdue';
+
+export type Attention = {
+    kind: AttentionKind;
+    /**
+     * 根拠記録のID（割当期間・差戻指示）。担当者本人にだけ開示。
+     */
+    sourceId: string | null;
+    dueAt: string | null;
+};
+
+export type TaskAttention = {
+    taskId: string;
+    attemptId: string;
+    evaluatedAt: string;
+    items: Array<Attention>;
+};
+
+export type AttentionSeenCommand = {
+    /**
+     * 本人の現在の割当期間。Work操作ではなく冪等な確認済み記録。
+     */
+    workAssignmentId: string;
+};
+
+export type ContextProgressItem = {
+    taskId: string;
+    stepLabel: string;
+    workTypeId: string;
+    state: 'ready' | 'active' | 'held' | 'completed';
+    attemptNumber: number;
+    dueAt: string | null;
+    assigned: boolean;
+};
+
+export type WorkContext = {
+    id: string;
+    kind: 'case' | 'routine_run' | 'batch' | 'request';
+    title: string;
+    ownerUnitId: string;
+    /**
+     * owner unitのcontext.progress.readがある場合だけ。担当者識別・理由・本文を含まない。
+     */
+    progress: Array<ContextProgressItem> | null;
+    canReadHistory: boolean;
+    ownTaskIds: Array<string>;
+    attentionCount: number;
+};
+
+export type WorkContextPage = {
+    items: Array<WorkContext>;
+    nextCursor: null;
+};
+
+/**
+ * 業務状態の推移（種類と時刻）だけ。理由・本文・識別を含まない。
+ */
+export type WorkContextHistory = {
+    contextId: string;
+    entries: Array<{
+        kind: string;
+        occurredAt: string;
+    }>;
+};
+
+/**
+ * 表示だけを変える定義。権限・操作を変えない。
+ */
+export type WorkViewProfile = {
+    id: string;
+    key: string;
+    label: string;
+    archetype: 'context' | 'queue';
+    primaryGrouping: 'context' | 'work_type';
+    defaultSort: 'due_at';
+    initialModule: 'document' | 'history' | 'evidence' | 'agent' | 'search' | 'resources' | 'return';
+    modules: Array<{
+        module: 'document' | 'history' | 'evidence' | 'agent' | 'search' | 'resources' | 'return';
+        presentation: 'hidden' | 'available' | 'visible' | 'prominent';
+    }>;
+};
+
+export type WorkViewProfilePage = {
+    items: Array<WorkViewProfile>;
+    nextCursor: null;
+};
+
 export type GetOrganizationSessionData = {
     body?: never;
     path?: never;
@@ -803,6 +919,14 @@ export type ListWorkItemsData = {
          * 表示範囲とする本人の現在有効な責任。省略時は全有効責任の和。本人のものでなければFORBIDDEN。
          */
         actingAssignmentId?: string;
+        /**
+         * 同じ認可済みprojectionを文脈で絞る表示用filter。
+         */
+        contextId?: string;
+        /**
+         * 同じ認可済みprojectionをWorkTypeで絞る表示用filter。
+         */
+        workTypeId?: string;
     };
     url: '/v1/organization/tasks';
 };
@@ -1848,3 +1972,190 @@ export type AssignWorkItemResponses = {
 };
 
 export type AssignWorkItemResponse = AssignWorkItemResponses[keyof AssignWorkItemResponses];
+
+export type ListWorkViewProfilesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/organization/work-view-profiles';
+};
+
+export type ListWorkViewProfilesErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ListWorkViewProfilesError = ListWorkViewProfilesErrors[keyof ListWorkViewProfilesErrors];
+
+export type ListWorkViewProfilesResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkViewProfilePage;
+};
+
+export type ListWorkViewProfilesResponse = ListWorkViewProfilesResponses[keyof ListWorkViewProfilesResponses];
+
+export type ListWorkContextsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * 表示範囲とする本人の現在有効な責任。省略時は全有効責任の和。本人のものでなければFORBIDDEN。
+         */
+        actingAssignmentId?: string;
+    };
+    url: '/v1/organization/work-contexts';
+};
+
+export type ListWorkContextsErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ListWorkContextsError = ListWorkContextsErrors[keyof ListWorkContextsErrors];
+
+export type ListWorkContextsResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkContextPage;
+};
+
+export type ListWorkContextsResponse = ListWorkContextsResponses[keyof ListWorkContextsResponses];
+
+export type GetWorkContextData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/work-contexts/{id}';
+};
+
+export type GetWorkContextErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type GetWorkContextError = GetWorkContextErrors[keyof GetWorkContextErrors];
+
+export type GetWorkContextResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkContext;
+};
+
+export type GetWorkContextResponse = GetWorkContextResponses[keyof GetWorkContextResponses];
+
+export type GetWorkflowHistoryData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/work-contexts/{id}/history';
+};
+
+export type GetWorkflowHistoryErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type GetWorkflowHistoryError = GetWorkflowHistoryErrors[keyof GetWorkflowHistoryErrors];
+
+export type GetWorkflowHistoryResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkContextHistory;
+};
+
+export type GetWorkflowHistoryResponse = GetWorkflowHistoryResponses[keyof GetWorkflowHistoryResponses];
+
+export type GetWorkAttentionData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/tasks/{id}/attention';
+};
+
+export type GetWorkAttentionErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type GetWorkAttentionError = GetWorkAttentionErrors[keyof GetWorkAttentionErrors];
+
+export type GetWorkAttentionResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: TaskAttention;
+};
+
+export type GetWorkAttentionResponse = GetWorkAttentionResponses[keyof GetWorkAttentionResponses];
+
+export type MarkWorkAttentionSeenData = {
+    body: AttentionSeenCommand;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/tasks/{id}/attention-seen';
+};
+
+export type MarkWorkAttentionSeenErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type MarkWorkAttentionSeenError = MarkWorkAttentionSeenErrors[keyof MarkWorkAttentionSeenErrors];
+
+export type MarkWorkAttentionSeenResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: TaskAttention;
+};
+
+export type MarkWorkAttentionSeenResponse = MarkWorkAttentionSeenResponses[keyof MarkWorkAttentionSeenResponses];

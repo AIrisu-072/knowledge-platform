@@ -259,3 +259,72 @@ pub(super) async fn assign_task(
     };
     Ok(Json(state.repository.execute(state.actor, command).await?))
 }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ContextQuery {
+    acting_assignment_id: Option<Uuid>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct AttentionSeenBody {
+    work_assignment_id: Uuid,
+}
+/// Closed presentation definitions; identical for every principal.
+pub(super) async fn work_view_profiles_page() -> Json<Items<WorkViewProfile>> {
+    items(work_view_profiles())
+}
+pub(super) async fn list_work_contexts(
+    State(state): State<ApiState>,
+    query: Result<Query<ContextQuery>, QueryRejection>,
+) -> Result<Json<Items<WorkContextView>>, Problem> {
+    let Query(query) = query.map_err(|_| Problem(WorkError::ValidationFailed))?;
+    Ok(items(
+        state
+            .repository
+            .list_work_contexts(state.actor, query.acting_assignment_id)
+            .await?,
+    ))
+}
+pub(super) async fn work_context(
+    State(state): State<ApiState>,
+    id: Result<Path<Uuid>, PathRejection>,
+) -> Result<Json<WorkContextView>, Problem> {
+    let Path(id) = id.map_err(|_| Problem(WorkError::WorkContextNotFound))?;
+    Ok(Json(state.repository.work_context(state.actor, id).await?))
+}
+pub(super) async fn work_context_history(
+    State(state): State<ApiState>,
+    id: Result<Path<Uuid>, PathRejection>,
+) -> Result<Json<WorkContextHistory>, Problem> {
+    let Path(id) = id.map_err(|_| Problem(WorkError::WorkContextNotFound))?;
+    Ok(Json(
+        state
+            .repository
+            .work_context_history(state.actor, id)
+            .await?,
+    ))
+}
+pub(super) async fn task_attention(
+    State(state): State<ApiState>,
+    id: Result<Path<Uuid>, PathRejection>,
+) -> Result<Json<TaskAttention>, Problem> {
+    let Path(id) = id.map_err(|_| Problem(WorkError::WorkItemNotFound))?;
+    Ok(Json(
+        state.repository.task_attention(state.actor, id).await?,
+    ))
+}
+pub(super) async fn acknowledge_attention(
+    State(state): State<ApiState>,
+    id: Result<Path<Uuid>, PathRejection>,
+    body: Result<Json<AttentionSeenBody>, JsonRejection>,
+) -> Result<Json<TaskAttention>, Problem> {
+    let Path(id) = id.map_err(|_| Problem(WorkError::WorkItemNotFound))?;
+    let Json(body) = body.map_err(|_| Problem(WorkError::ValidationFailed))?;
+    Ok(Json(
+        state
+            .repository
+            .acknowledge_attention(state.actor, id, body.work_assignment_id)
+            .await?,
+    ))
+}
