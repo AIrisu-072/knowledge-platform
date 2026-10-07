@@ -105,6 +105,43 @@ function resolved(value) {
   return value;
 }
 
+test('本人の現在既読APIは旧PUTの形を保持し厳密な固定CAS要求を公開する', () => {
+  const path = '/v1/documents/{documentId}/versions/{versionId}/read-state';
+  const legacy = operation('put', path);
+  assert.equal(legacy.requestBody, undefined);
+  const legacyBody = resolved(resolved(legacy.responses['200']).content['application/json'].schema);
+  assert.equal(legacyBody.additionalProperties, false);
+  assert.deepEqual(Object.keys(legacyBody.properties).sort(), ['documentId', 'versionId', 'firstReadAt', 'inserted'].sort());
+
+  const get = operation('get', path);
+  assert.equal(get?.operationId, 'getCurrentDocumentVersionReadState');
+  const state = resolved(resolved(get.responses['200']).content['application/json'].schema);
+  assert.equal(state.additionalProperties, false);
+  assert.deepEqual(state.required, ['documentId', 'versionId', 'firstReadAt', 'needsRecheck', 'readStateRevision', 'isRead']);
+  assert.equal(state.properties.readStateRevision.maximum, 9007199254740991);
+
+  for (const [suffix, id] of [['view', 'recordDocumentVersionView'], ['reset', 'resetDocumentVersionReadState']]) {
+    const endpoint = operation('post', `${path}/${suffix}`);
+    assert.equal(endpoint?.operationId, id);
+    const body = resolved(resolved(endpoint.requestBody).content['application/json'].schema);
+    assert.equal(body.additionalProperties, false);
+    assert.deepEqual(body.required, ['operationId', 'expectedReadStateRevision']);
+    assert.deepEqual(Object.keys(body.properties).sort(), ['operationId', 'expectedReadStateRevision'].sort());
+    assert.equal(body.properties.operationId.format, 'uuid');
+    assert.ok(body.properties.operationId.pattern, 'UUIDv7/RFC variantの制約が必要');
+    assert.equal(body.properties.expectedReadStateRevision.type, 'integer');
+    assert.equal(body.properties.expectedReadStateRevision.minimum, 0);
+    assert.equal(body.properties.expectedReadStateRevision.maximum, 9007199254740991);
+    const result = resolved(resolved(endpoint.responses['200']).content['application/json'].schema);
+    assert.equal(result.additionalProperties, false);
+    assert.deepEqual(result.required, ['operationId', 'documentId', 'versionId', 'kind', 'expectedReadStateRevision', 'changed', 'occurredAt', 'resultingReadState']);
+    assert.deepEqual(result.properties.kind.enum, ['VIEW', 'RESET']);
+    const receiptState = resolved(result.properties.resultingReadState);
+    assert.equal(receiptState.additionalProperties, false);
+    assert.equal(receiptState.properties.readStateRevision.maximum, 9007199254740991);
+  }
+});
+
 test('OpenAPI 3.2.1 exposes every approved Document operation with unique IDs', () => {
   assert.equal(contract.openapi, '3.2.1');
   const ids = [];

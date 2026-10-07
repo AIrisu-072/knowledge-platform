@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-07 10:02 UTC — 文書詳細表示による既読・未読戻しの再実装
+
+- 承認済みの詳細正常表示→既読、未読へ戻す再確認目印を実装する。[状況](document-view-read-state-status.md)、[限定要件](../specs/2026-10-07-document-view-read-state-design.md)、[計画](../plans/2026-10-07-document-view-read-state.md)が再開先
+- 旧未公開sourceは実行環境の接続障害後に取得不能となったため、最新main a7cf93d53から新sourceでTDD/レビュー/hostedを取り直す。旧成功件数を転用しない
+- branch feat/document-view-read-state-20261007。同じ単一Draftへ検証単位で保存し、未完成/失敗/未実施を明記する。Node契約REDとRust test sourceが最初の境界で、ローカルRustは公式archive403により未実施
+- 他担当のmain記録を保持する。新しいviewerや読了証明は追加せず、既知の3GUI反例と未読snapshot検査を先行する。新hosted資格とmain統合はこれから
+
+---
+
 ## 2026-10-07 08:40 UTC — Organization 複数担当PoC（U1〜U4）完了
 
 - U4は[PR #104](https://github.com/AIrisu-072/knowledge-platform/pull/104)でmain `d92ca6d` へ統合済み（[U4状況](organization-agent-chat-status.md)）。U1〜U4の4単位（複数担当・役割・委任、複数文脈・注意・表示Profile、作業ファイル・Handoff・差戻し後の作業、Agentの構造化結果・Agent Chat）はすべてmainへ統合し、各統合前のexact-head CIと統合後のmain CIで確認済み（U4の統合後CIは本記録のPRで確認する）
