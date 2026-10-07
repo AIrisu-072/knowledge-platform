@@ -765,6 +765,116 @@ async fn adapter_maps_every_non_verdict_failure_to_an_outage() {
     db.assert_store_conforms().await;
 }
 
+/// The adapter's sources, embedded so the check runs without a database.
+const SOURCES: [(&str, &str); 8] = [
+    ("admin.rs", include_str!("../src/admin.rs")),
+    ("error.rs", include_str!("../src/error.rs")),
+    ("files.rs", include_str!("../src/files.rs")),
+    ("hex.rs", include_str!("../src/hex.rs")),
+    ("lib.rs", include_str!("../src/lib.rs")),
+    ("session.rs", include_str!("../src/session.rs")),
+    ("store.rs", include_str!("../src/store.rs")),
+    (
+        "bin/audit_admin.rs",
+        include_str!("../src/bin/audit_admin.rs"),
+    ),
+];
+
+/// The body of the function declared by `signature` in `source`, up to its
+/// closing brace (at the indentation of the declaration).
+fn function_body<'a>(source: &'a str, signature: &str) -> &'a str {
+    let start = source
+        .find(signature)
+        .unwrap_or_else(|| panic!("{signature} exists"));
+    let line_start = source[..start].rfind('\n').map_or(0, |i| i + 1);
+    let indent = &source[line_start..start];
+    let rest = &source[start..];
+    let end = rest.find(&format!("\n{indent}}}\n")).expect("function end");
+    &rest[..end]
+}
+
+/// IngestRow has public fields, so audit-core's two-way failure model relies
+/// on adapters building it only from `audit_store.ingest`'s result columns
+/// (README "失敗の分類"). Structurally: the crate builds exactly one
+/// IngestRow, in `decode_ingest_row`, each field read from the same-named
+/// column of the row, and decodes it exactly once, on the row of the ingest
+/// query. No error path (SQLSTATE, transport, timeout) can reach a verdict;
+/// the behaviour is tested in `adapter_maps_every_non_verdict_failure_to_an_outage`.
+#[test]
+fn ingest_rows_are_built_only_from_the_ingest_result_columns() {
+    // Every source file of the crate is scanned.
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut on_disk = BTreeSet::new();
+    let mut pending = vec![dir.clone()];
+    while let Some(next) = pending.pop() {
+        for entry in std::fs::read_dir(&next).expect("src") {
+            let path = entry.expect("entry").path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                let relative = path.strip_prefix(&dir).expect("relative");
+                on_disk.insert(relative.to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+    let embedded: BTreeSet<String> = SOURCES.iter().map(|(n, _)| (*n).to_owned()).collect();
+    assert_eq!(embedded, on_disk, "scan every source file");
+
+    // Occurrences in code lines (comments may name the API).
+    let count = |needle: &str| -> Vec<&str> {
+        SOURCES
+            .iter()
+            .flat_map(|(name, text)| {
+                text.lines()
+                    .filter(|line| !line.trim_start().starts_with("//"))
+                    .flat_map(move |line| line.matches(needle).map(move |_| *name))
+            })
+            .collect()
+    };
+    assert_eq!(count("IngestRow {"), ["store.rs"], "one IngestRow literal");
+    assert_eq!(count("IngestRow::"), Vec::<&str>::new());
+    assert_eq!(count(".into_result()"), ["store.rs"], "decoded once");
+    assert_eq!(count("decode_ingest_row("), ["store.rs", "store.rs"]);
+
+    let store = SOURCES[6].1;
+    let decoder = function_body(store, "fn decode_ingest_row(row: &PgRow)");
+    assert!(
+        decoder.contains("IngestRow {"),
+        "the literal is in the decoder"
+    );
+    let fields: Vec<&str> = decoder
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.contains(": row.try_get("))
+        .collect();
+    let columns = [
+        "status",
+        "seq",
+        "envelope_digest",
+        "adapter_version",
+        "code",
+    ];
+    assert_eq!(fields.len(), columns.len(), "{fields:?}");
+    for (line, column) in fields.iter().zip(columns) {
+        assert!(
+            line.starts_with(&format!("{column}: row.try_get(\"{column}\")")),
+            "{line}"
+        );
+    }
+    // The only caller decodes the row of the ingest query, after the local
+    // precheck, and nothing else.
+    let ingest = function_body(store, "async fn call_ingest(");
+    assert!(ingest.contains("precheck_ingest(envelope)?;"));
+    assert!(ingest.contains(
+        "\"SELECT status, seq, envelope_digest, adapter_version, code \\\n                     FROM audit_store.ingest($1::text::jsonb)\""
+    ));
+    assert!(
+        ingest
+            .trim_end()
+            .ends_with("decode_ingest_row(&row)?.into_result()")
+    );
+}
+
 #[tokio::test]
 async fn privileged_sessions_are_refused() {
     let db = TestDb::start().await;
