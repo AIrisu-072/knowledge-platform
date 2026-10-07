@@ -1,5 +1,5 @@
-// TEST-ONLY: a private Xvfb display and xdotool control of the real native
-// GTK folder dialog that the desktop shell opens (rfd). No window manager.
+// TEST-ONLY: a private Xvfb display and xdotool/xclip control of the real
+// native GTK folder dialog that the desktop shell opens (rfd). No window manager.
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { writeFile } from 'node:fs/promises';
@@ -37,6 +37,14 @@ export async function startXvfb() {
 
 export function x11(env) {
   const xdo = async (...args) => (await run('xdotool', args, { env })).stdout.trim();
+  // xclip forks a child that serves the selection until another client owns it
+  // (or the private display ends); the parent exits once the text is read.
+  const setClipboard = (text) => new Promise((resolve, reject) => {
+    const child = spawn('xclip', ['-selection', 'clipboard'], { env, stdio: ['pipe', 'ignore', 'ignore'] });
+    child.once('error', reject);
+    child.once('exit', (code) => (code === 0 ? resolve() : reject(new Error(`xclip exited ${code}`))));
+    child.stdin.end(text);
+  });
   const tryXdo = (...args) => xdo(...args).catch(() => '');
   async function windows() {
     const ids = (await tryXdo('search', '--onlyvisible', '--name', '')).split('\n').filter(Boolean);
@@ -65,7 +73,12 @@ export function x11(env) {
       const { stdout } = await run('import', ['-window', 'root', 'png:-'], { env, encoding: 'buffer', maxBuffer: 64 * 1024 * 1024 });
       await writeFile(path, stdout);
     },
-    /** Selects `folder` in the open GTK chooser through its location entry. */
+    /**
+     * Selects `folder` in the open GTK chooser through its location entry. The
+     * path is pasted, not typed: `xdotool type` can drop a non-ASCII character
+     * (it remaps a spare keycode per character), and the chooser would then
+     * create and return a different folder.
+     */
     async chooseFolder(folder) {
       const id = await waitDialog(true);
       await xdo('windowfocus', '--sync', id);
@@ -74,7 +87,9 @@ export function x11(env) {
       await delay(600);
       await xdo('key', '--clearmodifiers', 'ctrl+l');
       await delay(300);
-      await xdo('type', '--delay', '25', folder);
+      await setClipboard(folder);
+      await xdo('key', '--clearmodifiers', 'ctrl+a');
+      await xdo('key', '--clearmodifiers', 'ctrl+v');
       await delay(500);
       // Drop GTK's inline completion (it would append a child folder).
       await xdo('key', 'Delete');

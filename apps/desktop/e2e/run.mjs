@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // TEST-ONLY: drives the REAL desktop app (Tauri shell + WebKitGTK + the bundled
 // production React build + the local Workspace broker) through its GUI:
-// tauri-driver -> WebKitWebDriver, a private Xvfb display, xdotool for the
-// native GTK folder dialog, and a real synthetic backend (PostgreSQL 18.6 +
+// tauri-driver -> WebKitWebDriver, a private Xvfb display, xdotool/xclip for
+// the native GTK folder dialog, and a real synthetic backend (PostgreSQL 18.6 +
 // organization-server) reached only through the shell's /v1 forwarding.
 // Local developer verification only; it is intentionally not a CI job.
 // This is Linux evidence. It is NOT Windows/WebView2 evidence.
@@ -406,6 +406,7 @@ before(async () => {
         webkitWebDriver: await toolIdentity(webkitDriver, 'webkit2gtk-driver'),
         xvfb: await toolIdentity('Xvfb', 'xvfb'),
         xdotool: await toolIdentity('xdotool', 'xdotool'),
+        xclip: await toolIdentity('xclip', 'xclip'),
       },
     };
     display = await startXvfb();

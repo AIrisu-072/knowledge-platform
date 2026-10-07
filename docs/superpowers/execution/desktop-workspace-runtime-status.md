@@ -1,5 +1,25 @@
 # Desktop Workspace Runtime：実行状況
 
+## 2026-10-07 09:20 UTC — 独立review（1回目）の修正と、実GUI確認の拡充
+
+- PR：[#103](https://github.com/AIrisu-072/knowledge-platform/pull/103)（Draft）。前回の記録以降のcommit：`0075241`（tauri-driverをmiseの `[tools]` から外す。CIの `mise install rust` が追跡対象の `mise.lock` を書き換え、作業ツリー検査が失敗していたため）、`38be3f8`（1回目reviewの修正：遷移元originの完全一致、transport shimの素通し、XDGの無い端末のダウンロード先、接続先の形式誤りの表示）、`a621559`、`1a393d7`、`ef53c5c`、`d2d9fea`、`baad3bc`。
+- `38be3f8` のCI（run 37589403315）は全job成功。security jobでdesktop lock（420 package）のOSVが「No issues found」（承認済みの2件だけ除外）。
+- 1回目reviewの残りの修正（`a621559`）：
+  - `/v1` 応答をデータとしてだけ返す（JavaScript等は `application/octet-stream`、CSP sandbox）。実アプリで、JavaScriptとして登録した原本を `<script>` で読み込むとアプリのoriginで実行できることを確認してから修正し、修正後は実行されないことを確認。
+  - desktop用deny.tomlのライセンス例外を `=` の厳密版指定へ（裸の版はcargo-denyでは範囲指定になることを確認）。
+  - capabilities・tauri.conf.json・Tauri feature・build.rsを `tests/config.rs` で固定（変異で検出を確認）。
+  - ローカルWorkspace画面：「開く」で必ず取り直す、成功で失敗表示を消す、一覧の失敗時に古いプレビューを隠す（画面試験を先に追加）。
+  - THIRD_PARTY_NOTICESが配布用の完全な通知ではないことを明記。
+- 実GUI確認の拡充（`1a393d7` ほか）：review・completeness criticが挙げた未確認項目を実アプリで確認するシナリオを追加（応答の消失による結果不明、書き込み中の読み取り、8MiBの上限、ページ送り、利用中フォルダーの解除、二重送信・二重クリック、PATCH・multipart PUT、担当と委任、不正な接続先、強制終了、iframe・遷移・新規ウィンドウ）。証跡の欠陥（CSPの判定がCORSで成立していた、WebKitが正規化する脱出形式、検査場所の誤り、未実行のシナリオがあってもpassed、Xvfbの番号衝突、中断時の後片付け等）も修正。
+- 実GUIで見つけて直したもの：未確定の操作で止めたボタンが、有効なボタンと同じ見た目だった（cursor・色を無効表示へ。GUIで変更前の状態を確認してから修正）。
+- 確認の途中で直したharness側の問題（いずれも製品コードではない）：Tauriの `__TAURI_INTERNALS__.invoke` は書き換えできないため、応答の消失はLinuxのcustom protocol IPCが呼ぶ `window.fetch` で注入。modalの裏の同名ボタンを押していた。強制終了がbrokerの作成開始より前に届いていた（書き込み開始後にSIGKILLするよう変更し、8MiB中4MiBの時点で停止→再送で収束を確認）。skip linkの確認がWebKitの順次移動の起点に左右された。
+- 検証（ローカル、Linux）：
+  - 実GUI：`run-43HUha`（commit `baad3bc`、commit済みの作業ツリー）で24シナリオ・197項目すべて成功、`qualifying: true`。詳細と未確認の一覧は[手順書](../../operations/desktop-workspace-runtime.md)。
+  - shell：単体14件・設定固定3件・transport shim 5件、clippy -D warnings、fmt、desktopの `cargo deny check`。変異15件（転送先の `/v1` 判定、要求・応答header、loopback、接続先の正規形、Origin・Referer、OPTIONS、応答の型・sandbox・`+json`、遷移元のuser情報とorigin、ダウンロードのblob判定とDownloads直下）をすべて検出。
+  - 画面：全64 suites／1560件のうち1件（Documentの移動ダイアログのfocus復帰。この変更の対象外のファイル）が、shellの変異試験のbuildと並行した高負荷時に失敗。単独では3回連続84/84成功。型検査、本番build。
+- 未検証：Windows実機・WebView2・MSVC build（依頼者が実施）、Windows版broker（未実装、fail-closed）、macOSでの実行、手順書の「Linuxで未確認」の項目。
+- 次のexact action：独立review（2回目）の結果を確認・修正 → push → exact-head CI → Draft解除と統合 → 統合後のmain CIを確認。
+
 ## 2026-10-07 07:30 UTC — Tauri shellの実装と実GUI確認（依頼者が判断5項目に合意）
 
 - 依頼者が判断5項目すべてに合意し、「クラウド環境でTauriを構築し、デスクトップアプリのGUIから確認する。CIにはしない」と指示。[判断事項](../../decisions/2026-10-07-tauri-v2-desktop-qualification.md)へ合意内容と適用を記録しました。

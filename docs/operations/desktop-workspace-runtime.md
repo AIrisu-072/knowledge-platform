@@ -83,7 +83,7 @@ mise run desktop:gui:e2e
 
 `desktop:gui:e2e` は、本物のデスクトップアプリ（Tauri＋WebKitGTK＋埋め込んだ本番画面＋broker）を、その画面から操作して確かめます。
 
-- 使うもの：tauri-driver 2.1.0（`cargo install tauri-driver --version =2.1.0 --locked`。miseの `[tools]` には入れていません。追跡対象の `mise.lock` が変わり、CIの作業ツリー検査が失敗するため。2.1.0は `--version` を持たないので、report.jsonには実行ファイルのpathとsha256を記録します）、WebKitWebDriver（`webkit2gtk-driver`）、Xvfb、xdotool（OSのフォルダー選択画面を操作）、ImageMagick、Docker（PostgreSQL 18.6）、PDFium（`KP_DSI_PDFIUM_RUNTIME_DIR`、`experiments/document-semantic-inspection/scripts/install-pdfium.sh`）。
+- 使うもの：tauri-driver 2.1.0（`cargo install tauri-driver --version =2.1.0 --locked`。miseの `[tools]` には入れていません。追跡対象の `mise.lock` が変わり、CIの作業ツリー検査が失敗するため。2.1.0は `--version` を持たないので、report.jsonには実行ファイルのpathとsha256を記録します）、WebKitWebDriver（`webkit2gtk-driver`）、Xvfb、xdotool（OSのフォルダー選択画面を操作）、xclip（選択画面へpathを貼り付ける。`xdotool type` は日本語の文字を落とすことがあり、そのとき選択画面は別名のフォルダーを作ってしまうため）、ImageMagick、Docker（PostgreSQL 18.6）、PDFium（`KP_DSI_PDFIUM_RUNTIME_DIR`、`experiments/document-semantic-inspection/scripts/install-pdfium.sh`）。
 - 毎回、使い捨てのPostgreSQLとorganization-server（合成の `sales-01`）を起動し、合成文書を登録してから確認します。HOME・設定・データは実行ごとの一時フォルダーに分けます。Xvfbは空いている画面番号を自分で選び（`-displayfd`）、既存のX serverには接続しません。終了時（Ctrl-C・SIGTERMを含む）は、自分が作ったcontainerとprocessだけを止めます。
 - 結果は `apps/desktop/e2e/.state/run-*/report.json` とスクリーンショットに残ります（git管理外）。`status` は、全シナリオが成功したときだけ `passed` です（失敗・準備の失敗は `failed`、名前で絞った実行などで未実行が残れば `incomplete`、中断は `interrupted`）。`qualifying` は、`passed` で、かつ絞り込み無し・作業ツリーがcommit済み・実行ファイルが元のsourceより新しいときだけ `true` になります。証拠として引用できるのは `qualifying: true` の実行だけです。
 - 画面からの操作で確かめる項目と、ページのscriptからbrokerのIPCを直接呼ぶ項目（不正な要求、同じ操作IDの再送など）があります。後者はreport.jsonで「IPC：」と明記しています。
@@ -127,6 +127,13 @@ mise run desktop:gui:e2e
 - キーボードだけでのフォルダー追加・解除・ファイル作成、ダイアログ内のTab移動の閉じ込め。
 - 既存の文書詳細のその他の操作（公開・履歴・比較・アクセス設定）とDocumentHomePageのフォルダー操作。既存のbrowser E2Eの対象で、このデスクトップ確認では扱っていません。
 - macOSでの実行。
+
+### 証拠とした実行
+
+- 2026-10-07 09:12–09:16 UTC、`run-43HUha`：commit `baad3bc`（作業ツリーはcommit済み、絞り込み無し）で24シナリオ・197項目がすべて成功し、`qualifying: true`。そのうち「IPC：」の項目は35です。
+- 実行ファイル（debug build）のsha256は `2e9807218607569ee2aab14de9e7e874331a716d9318d14b6494f84a81ae76de`。WebKitGTK 2.52.6、webkit2gtk-driver 2.52.6-0ubuntu0.24.04.1、xvfb 2:21.1.12-1ubuntu1.8、xdotool 1:3.20160805.1-5build1、tauri-driver 2.1.0（sha256 `628e1b01729825cf688858699fb66969e987d04571a615c1c74a8141b34a2b5d`）、Node 22.22.0、PostgreSQL 18.6。
+- 強制終了は8MiB中4MiBを書いた時点で起き、同じ操作IDの再送で完全な1件に収束しました。
+- 証跡（report.jsonとスクリーンショット）はクラウド環境の `apps/desktop/e2e/.state/`（git管理外）にあり、環境の終了とともに消えます。手元で再現するときは `mise run desktop:gui:e2e` を実行してください。
 
 ## 状態の保存場所と復旧
 
