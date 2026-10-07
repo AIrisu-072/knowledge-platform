@@ -62,6 +62,7 @@ pub struct VersionSummary {
     pub withdrawn_at: Option<OffsetDateTime>,
     pub updated_at: OffsetDateTime,
     pub file_summary: GuiVersionFileSummary,
+    /// Historical first record; use CurrentReadProjection for the current badge.
     pub first_read_at: Option<OffsetDateTime>,
 }
 

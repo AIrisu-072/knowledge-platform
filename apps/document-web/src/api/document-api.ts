@@ -1,5 +1,11 @@
 import {
   BinaryTransportBridge,
+  getCurrentDocumentVersionReadState,
+  recordDocumentVersionView,
+  resetDocumentVersionReadState,
+  type CurrentReadState,
+  type ReadStateMutationRequest,
+  type ReadStateMutationResult,
   cancelPublicationSchedule,
   createFolder,
   renameFolder,
@@ -78,6 +84,15 @@ function apiSort(sort: string | undefined): string | undefined {
 }
 
 export const documentApi = {
+  getCurrentDocumentVersionReadState(documentId: string, versionId: string, options?: { signal?: AbortSignal }): Promise<CurrentReadState> {
+    return payload(getCurrentDocumentVersionReadState({ ...data, path: { documentId, versionId }, ...(options?.signal ? { signal: options.signal } : {}) }));
+  },
+  recordDocumentVersionView(documentId: string, versionId: string, body: ReadStateMutationRequest): Promise<ReadStateMutationResult> {
+    return payload(recordDocumentVersionView({ ...data, path: { documentId, versionId }, body }));
+  },
+  resetDocumentVersionReadState(documentId: string, versionId: string, body: ReadStateMutationRequest): Promise<ReadStateMutationResult> {
+    return payload(resetDocumentVersionReadState({ ...data, path: { documentId, versionId }, body }));
+  },
   getFolderAccessPolicy(folderId: string): Promise<ModelsAccessPolicyRead> {
     return payload(getFolderAccessPolicy({ ...data, path: { folderId } }));
   },

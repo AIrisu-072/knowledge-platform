@@ -1,9 +1,33 @@
 # Active Execution Pointer
 
+## 2026-10-07 23:11 UTC — PR106の手順head合格後に最新mainを保持して追従
+
+- 手順head e0836556 / tree0788260dの通常CI37698468205は14 jobs全成功、全19checks16成功・既存skip3。導入4手順の独立レビューもGO。CI確認中のmain643cc85d（Audit単位A/PR98）更新によりactive先頭だけが競合したため、双方の節を保持して解消する
+- Audit側の32fileは新mainと完全同一のまま取り込み、Document製品/試験/導入4手順はe0836556から変えない。導入pinは資格済み製品cbe65d14を保持する。再開は[状況](document-view-read-state-status.md)へ。次はこの統合headの通常全CI、親のmerge判定と統合後CI。旧baseの成功を新組合せの資格にはしない
+
+---
+
 ## 2026-10-07 — Audit Infrastructure v1（横断基盤track、Documentの作業pointerとは並行）
 
 - Audit Outbox → relay → Audit Storeの配送・保存・検証を完成させるtrack。再開先は[状況](audit-infrastructure-v1-status.md)、[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)、[計画](../plans/2026-10-07-audit-infrastructure-v1-delivery.md)。
 - branchは `claude/cool-darwin-7xh893`、Draft [PR98](https://github.com/AIrisu-072/knowledge-platform/pull/98)。旧PR44/45のstackには依存しない。Document producer・Search・Work・GUIは変更しない。下のDocument作業pointerはそのまま有効。
+
+---
+
+## 2026-10-07 22:38 UTC — 自動既読・未読戻しの製品資格と導入手順
+
+- [PR106](https://github.com/AIrisu-072/knowledge-platform/pull/106)の製品head cbe65d14 / tree b2cb1cbaの通常CI37692284389は14 jobs全成功、全19checksは16成功・既存skip3。新Rust/DBを実ログ確認し、Document/Organization/summaryも公式step成功。詳細な根拠と取得制限は[状況](document-view-read-state-status.md)へ記録
+- 再開先は同じ[限定要件](../specs/2026-10-07-document-view-read-state-design.md)と[計画](../plans/2026-10-07-document-view-read-state.md)。資格済み製品headへ導入4手順を更新し、source照合/日本語レビュー後に同Draftへ保存する。最終保存headの通常CIと親のmerge判定はこれから。実server反映は依頼者が手動で行う
+- 他担当のmainと履歴を保持。製品sourceや新機能の追加、別経路によるログ取得、旧資格の転用は行わない
+
+---
+
+## 2026-10-07 10:02 UTC — 文書詳細表示による既読・未読戻しの再実装
+
+- 承認済みの詳細正常表示→既読、未読へ戻す再確認目印を実装する。[状況](document-view-read-state-status.md)、[限定要件](../specs/2026-10-07-document-view-read-state-design.md)、[計画](../plans/2026-10-07-document-view-read-state.md)が再開先
+- 旧未公開sourceは実行環境の接続障害後に取得不能となったため、最新main a7cf93d53から新sourceでTDD/レビュー/hostedを取り直す。旧成功件数を転用しない
+- branch feat/document-view-read-state-20261007。同じ単一Draftへ検証単位で保存し、未完成/失敗/未実施を明記する。Node契約REDとRust test sourceが最初の境界で、ローカルRustは公式archive403により未実施
+- 他担当のmain記録を保持する。新しいviewerや読了証明は追加せず、既知の3GUI反例と未読snapshot検査を先行する。新hosted資格とmain統合はこれから
 
 ---
 

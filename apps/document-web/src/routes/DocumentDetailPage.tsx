@@ -1,3 +1,6 @@
+import { DocumentReadState, DocumentReadStateRecovery } from '../components/document/DocumentReadState';
+import { useDocumentViewReadState } from '../application/use-document-view-read-state';
+import { invalidateDocumentReadStateViews } from '../application/document-view-navigation';
 import { DocumentAccessPolicy, DocumentAccessPolicyRecovery } from '../components/document/DocumentAccessPolicy';
 import { validateDocumentPolicy } from '../application/document-access-policy';
 import { createdRangeRouteError, documentListUrlError } from '../application/document-created-range';
@@ -68,6 +71,7 @@ export function DocumentDetailPage() {
       try { return await documentApi.getDocument(documentId, search.view); }
       catch (error) {
         if (!signal.aborted) {
+          invalidateDocumentReadStateViews(queryClient, documentId);
           denyDocumentRevisionReads(queryClient, documentId, error);
           denyDocumentHistoryReads(queryClient, documentId, error);
           denyDocumentContentHistoryReads(queryClient, documentId, error);
@@ -106,6 +110,10 @@ export function DocumentDetailPage() {
     queryFn: () => documentApi.listVersionFiles(documentId, currentFileVersionId!, search.view),
     enabled: Boolean(document && currentFileVersionId && activeTab === 'overview'),
   });
+  const overviewRef = useRef<HTMLDivElement>(null);
+  const readState = useDocumentViewReadState({ document, view: search.view, activeTab, workflow: search.workflow,
+    detailReady: detailQuery.isSuccess && !detailQuery.isFetching && versionDetailQuery.isSuccess && !versionDetailQuery.isFetching && !versionDetailQuery.error,
+    filesReady: filesQuery.isSuccess && !filesQuery.isFetching && !filesQuery.error, overviewRef });
   const revisions = revisionRead.revisions;
   const revisionPair = chooseRevisionPair(revisions, search.baseRevisionId, search.targetRevisionId);
   const canCompare = Boolean(document && activeTab === 'compare' && revisionRead.ready && revisionPair.base && revisionPair.target && revisionPair.base.revisionId !== revisionPair.target.revisionId);
@@ -204,6 +212,7 @@ export function DocumentDetailPage() {
       showContextPanel={Boolean(document && showContextPanel)}
     >
           <DocumentAccessPolicyRecovery />
+          <DocumentReadStateRecovery />
           {search.workflow || activeTab === 'compare' ? (
             <header className={styles.workflowHeader}>
               <button type="button" onClick={() => search.workflow ? updateSearch({ workflow: undefined }) : updateSearch({ tab: 'versions' })}>{search.workflow ? '← 版の一覧へ戻る' : '← 版・改訂へ戻る'}</button>
@@ -289,7 +298,7 @@ export function DocumentDetailPage() {
                 ))}
               </div>
               <section id="document-tab-panel" role="tabpanel" aria-labelledby={`tab-${activeTab}`} tabIndex={0} className={styles.tabPanel}>
-                {activeTab === 'overview' && <OverviewTab key={location.href} document={document} filesQuery={filesQuery} reload={async () => { const result = await detailQuery.refetch(); if (result.error) throw result.error; }} />}
+                {activeTab === 'overview' && <div ref={overviewRef}>{search.view === 'published' && !search.workflow && <DocumentReadState read={readState} />}<OverviewTab key={location.href} document={document} filesQuery={filesQuery} reload={async () => { const result = await detailQuery.refetch(); if (result.error) throw result.error; }} /></div>}
                 {activeTab === 'versions' && search.workflow !== 'newVersion' && <>{versionsPanel}{search.view === 'authoring' && selectedVersion && (!search.versionId || search.versionId === selectedVersion.versionId) && <DocumentWorkingComparison key={`working-comparison:${location.href}:${selectedVersion.versionId}`} documentId={documentId} versionId={selectedVersion.versionId} /> }<DocumentContentHistory key={location.href} documentId={documentId} />{selectedVersion && <DocumentScheduleCancellation key={`${documentId}:${selectedVersion.versionId}`} document={document} view={search.view} versionId={selectedVersion.versionId} version={versionDetailQuery.data} contextKey={`${documentId}:${search.view}:${activeTab}:${selectedVersion.versionId}`} currentRead={!detailQuery.isFetching && !detailQuery.isError && !versionDetailQuery.isFetching && !versionDetailQuery.isError} />}</>}
                 {activeTab === 'history' && <DocumentEventHistory read={historyRead} />}
                 {activeTab === 'access' && canManageAccess && <DocumentAccessPolicy document={document} view={search.view} policy={accessQuery.data} loading={accessQuery.isPending} error={accessQuery.error} />}

@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { isDeepStrictEqual } from 'node:util';
-import { BinaryTransportBridge, getDocument, getDocumentAccessPolicy, getFolderAccessPolicy, getSession, listDocumentVersions, type ModelsHistory, type VersionList, type VersionDetail, type FileList, type ModelsAccessPolicyRead, type PolicyGrantInput } from '@knowledge-platform/document-api-client';
-import { hash, options, persistedSnapshot, runtime, type PersistedState } from './support';
+import { BinaryTransportBridge, getDocument, getDocumentAccessPolicy, getFolderAccessPolicy, getSession, listDocumentVersions, resetDocumentVersionReadState, type ModelsHistory, type VersionList, type VersionDetail, type FileList, type ModelsAccessPolicyRead, type PolicyGrantInput } from '@knowledge-platform/document-api-client';
+import { currentReadState, hash, observeReadStateChange, options, persistedSnapshot, runtime, type PersistedState } from './support';
 import { formatDateTime } from '../src/view-model/date-time';
 
 test('both restarted composition roots retain document/revision/operation IDs and storage hashes', async ({ page, request }) => {
@@ -14,6 +14,16 @@ test('both restarted composition roots retain document/revision/operation IDs an
   expect(state.documents.map(item => item.key).sort()).toEqual(['c3-consistency', 'c3-diff-recovery', 'c3-dsi-recovery', 'gui-initial', 'pdf', 'regulation']);
   expect((await getSession(options(context.human))).data.principal.principalId).toBe('poc-human');
   expect((await getSession(options(context.agent))).data.principal.principalId).toBe('poc-agent');
+  // GUI表示より前に最後のRESETと同一receiptを照合する。HTTP process再起動の資格だけを取る。
+  expect(state.documentReadState).toBeDefined();
+  const savedRead = state.documentReadState!;
+  const readPath = { documentId: savedRead.state.documentId, versionId: savedRead.state.versionId };
+  expect(savedRead.state).toMatchObject({ isRead: false, needsRecheck: true, readStateRevision: 4 });
+  expect(await currentReadState(context, readPath)).toEqual(savedRead.state);
+  const resetReplay = await resetDocumentVersionReadState({ ...options(context.human), path: readPath, body: savedRead.request });
+  expect(resetReplay.response.status).toBe(200); expect(resetReplay.data).toEqual(savedRead.receipt);
+  expect(await currentReadState(context, readPath)).toEqual(savedRead.state);
+  expect((await getDocument({ ...options(context.human), path: readPath, query: { view: 'published' } })).data.revision).toBe(savedRead.documentRevision);
   // 4回のGUI変更後に保存した正規GETと照合する。同一DBのHTTP再起動でありDB再起動ではない。
   const folderId = context.manifest.folders.shared.folderId;
   const policy = (await getFolderAccessPolicy({ ...options(context.human), path: { folderId } })).data;
@@ -46,7 +56,12 @@ test('both restarted composition roots retain document/revision/operation IDs an
   for (const { key, snapshot } of state.documents) {
     expect(await persistedSnapshot(context.human, snapshot.documentId)).toEqual(snapshot);
     expect(await persistedSnapshot(context.agent, snapshot.documentId)).toEqual(snapshot);
-    await page.goto(`/documents/${snapshot.documentId}?view=published&tab=overview`);
+    if (key === 'regulation') {
+      const reopened = await observeReadStateChange(page, context, savedRead.state, 'VIEW', () =>
+        page.goto(`/documents/${snapshot.documentId}?view=published&tab=overview`));
+      expect(reopened.state).toEqual({ ...savedRead.state, isRead: true, needsRecheck: false, readStateRevision: 5 });
+      expect(reopened.documentRevision).toBe(savedRead.documentRevision);
+    } else await page.goto(`/documents/${snapshot.documentId}?view=published&tab=overview`);
     await expect(page.getByRole('heading', { name: snapshot.title, level: 1 })).toBeVisible();
     await expect(page.getByRole('complementary', { name: '原本と版' })).toBeVisible();
     if (key === 'regulation') {

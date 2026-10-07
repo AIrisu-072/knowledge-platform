@@ -77,7 +77,7 @@ test('明示入口だけでhistoryを読み、空の選択から旧版詳細へ�
   expect(h.api.getDocumentVersion).toHaveBeenCalledWith(documentId, previous.versionId, 'history'); expect(h.api.listVersionFiles).toHaveBeenCalledWith(documentId, previous.versionId, 'history');
   expect(h.router.state.location.search.versionId).toBe(current.versionId); expect(h.router.state.location.search.workflow).toBeUndefined();
   expect(screen.getByRole('heading', { name: '選択中: 版 102' })).toBeVisible(); expect(selected().getByText('版属性101')).toBeVisible();
-  expect(selected().queryByText('現在の文書属性')).not.toBeInTheDocument(); expect(selected().getByText('本人の初回既読日時')).toBeVisible();
+  expect(selected().queryByText('現在の文書属性')).not.toBeInTheDocument(); expect(selected().getByText('初回記録日時')).toBeVisible();
   expect(region().queryByRole('button', { name: '公開する' })).not.toBeInTheDocument();
   expect(h.api.publishVersion).not.toHaveBeenCalled(); expect(h.api.withdrawVersion).not.toHaveBeenCalled(); expect(h.api.markDocumentVersionRead).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '公開する' })); await screen.findByRole('region', { name: '公開・予約公開' });

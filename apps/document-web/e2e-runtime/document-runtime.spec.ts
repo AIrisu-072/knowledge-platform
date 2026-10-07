@@ -13,7 +13,7 @@ import {
   type VersionList, type VersionDetail, type FileList, type ModelsDiffDisplayProjection,
   type PolicyGrantInput, type CommandsPolicyExplicit, type CommandsPolicyInherit, type MutationResult,
 } from '@knowledge-platform/document-api-client';
-import { hash, options, persistedSnapshot, runtime, saveSnapshot, uuidV7 } from './support';
+import { currentReadState, hash, observeReadStateChange, options, persistedSnapshot, resetReadStateInGui, runtime, saveSnapshot, uuidV7, type PersistedState } from './support';
 import { formatDateTime } from '../src/view-model/date-time';
 
 test.describe.configure({ mode: 'serial' });
@@ -184,7 +184,10 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await expect(page.getByRole('complementary', { name: '選択中の文書' })).toContainText('規程サンプル');
   await visualCheckpoint(page, '01-list-context-1440.png');
   completed('document-selected');
-  await page.getByRole('button', { name: '詳細を開く' }).press('Enter');
+  const initialReadState = await currentReadState(context, { documentId, versionId: originalDocument.currentVersionId! });
+  expect(initialReadState).toEqual({ documentId, versionId: originalDocument.currentVersionId,
+    firstReadAt: null, needsRecheck: false, readStateRevision: 0, isRead: false });
+  await observeReadStateChange(page, context, initialReadState, 'VIEW', () => page.getByRole('button', { name: '詳細を開く' }).press('Enter'));
   await expect(page.getByRole('heading', { name: '規程サンプル', level: 1 })).toBeVisible();
   await visualCheckpoint(page, '03-detail-overview-1440.png');
   completed('detail-opened');
@@ -467,7 +470,7 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await page.getByRole('button', { name: '新しい作業版を作成', exact: true }).click();
   const createdResponse = await createResponse; expect(createdResponse.status()).toBe(201);
   const created = await createdResponse.json() as VersionMutationResult;
-  await expect(page.getByRole('status')).toContainText('新しい作業版を作成しました');
+  await expect(page.getByRole('region', { name: '作業版の編集', exact: true }).getByRole('status')).toContainText('新しい作業版を作成しました');
   const createdFiles = (await listVersionFiles({ ...humanOptions, path: { documentId, versionId: created.targetVersionId }, query: { purpose: 'authoring' } })).data;
   expect(createdFiles.items).toHaveLength(1);
   expect(createdFiles.items[0]).toMatchObject({ logicalPath: 'primary', ordinal: 0, mediaType: 'text/plain', displayName: 'primary' });
@@ -565,7 +568,7 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   const publishResponse = page.waitForResponse(response => response.url().endsWith(':publish') && response.request().method() === 'POST');
   await page.keyboard.press('Enter'); expect((await publishResponse).status()).toBe(200);
   completed('publication-response-accepted');
-  await expect(page.getByRole('status')).toContainText('公開しました');
+  await expect(page.getByRole('region', { name: '公開・予約公開', exact: true }).getByRole('status')).toContainText('公開しました');
   completed('publication-success-visible');
   const returnToVersions = page.getByRole('button', { name: '版の一覧へ戻る', exact: true });
   await expect(page.locator('section[aria-busy]').filter({ has: publishButton })).toHaveAttribute('aria-busy', 'false');
@@ -584,6 +587,66 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   // Published/history visibility above does not grant authoring or publication access.
   const agentWrite = await request.post(`${agent}/v1/documents/${documentId}/versions/${after.currentVersionId}:publish`, { data: { operationId: uuidV7(), expectedRevision: after.revision } });
   expect(agentWrite.status()).toBe(404); expect((await agentWrite.json()).code).toBe('DOCUMENT_VERSION_NOT_FOUND');
+  expect(await persistedSnapshot(human, documentId)).toEqual(after);
+  expect(await persistedSnapshot(agent, documentId)).toEqual(after);
+  const readPath = { documentId, versionId: created.targetVersionId };
+  const newVersionUnread = await currentReadState(context, readPath);
+  expect(newVersionUnread).toEqual({ ...readPath, firstReadAt: null, needsRecheck: false, readStateRevision: 0, isRead: false });
+  const agentReadBefore = (await getDocument({ ...agentOptions, path: { documentId }, query: { view: 'published' } })).data.readState;
+  const readStateRequests: Request[] = [];
+  const readStateUrl = `${human}/v1/documents/${documentId}/versions/${readPath.versionId}/read-state`;
+  const recordReadState = (req: Request) => {
+    if (req.method() === 'POST' && [readStateUrl + '/view', readStateUrl + '/reset'].includes(req.url())) readStateRequests.push(req);
+  };
+  page.on('request', recordReadState);
+  const firstView = await observeReadStateChange(page, context, newVersionUnread, 'VIEW', () =>
+    page.goto(`/documents/${documentId}?view=published&tab=overview`));
+  const reset = await resetReadStateInGui(page, context, firstView.state);
+  // 旧PUTや過去VIEWの固定receipt再送は現在のRESETを解除しない。
+  const legacy = await request.put(readStateUrl);
+  expect(legacy.status()).toBe(200);
+  expect(await legacy.json()).toEqual({ ...readPath, firstReadAt: firstView.state.firstReadAt, inserted: false });
+  const replay = await request.post(readStateUrl + '/view', { data: firstView.request });
+  expect(replay.status()).toBe(200); expect(await replay.json()).toEqual(firstView.receipt);
+  const currentFile = createdFiles.items[0]!;
+  const originalAfterReset = await new BinaryTransportBridge({ baseUrl: human }).downloadVersionFileBlob({ ...readPath,
+    contentItemId: currentFile.contentItemId, representationId: currentFile.representationId, purpose: 'published' });
+  expect(hash(new Uint8Array(await originalAfterReset.arrayBuffer()))).toBe(hash(changedContent));
+  expect(await currentReadState(context, readPath)).toEqual(reset.state);
+  const readRegion = page.getByRole('region', { name: '本人の既読状態', exact: true });
+  const refreshed = page.waitForResponse(response => response.url() === readStateUrl && response.request().method() === 'GET');
+  await readRegion.getByRole('button', { name: '現在の既読状態を再取得', exact: true }).click();
+  expect((await refreshed).status()).toBe(200);
+  await expect(readRegion.getByRole('status')).toHaveText('未読');
+  await page.getByRole('tab', { name: '版・改訂', exact: true }).click();
+  await page.getByRole('tab', { name: '概要', exact: true }).click();
+  await expect(readRegion.getByRole('status')).toHaveText('未読');
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  expect(await currentReadState(context, readPath)).toEqual(reset.state);
+  expect(readStateRequests.map(req => req.url())).toEqual([readStateUrl + '/view', readStateUrl + '/reset']);
+  await page.getByRole('button', { name: '← 一覧へ戻る', exact: true }).click();
+  await page.getByLabel('文書名で絞り込み', { exact: true }).fill(after.title);
+  await page.getByRole('checkbox', { name: '未読のみ', exact: true }).check();
+  const unreadList = page.waitForResponse(response => new URL(response.url()).pathname === '/v1/documents'
+    && new URL(response.url()).searchParams.get('unreadOnly') === 'true' && response.request().method() === 'GET');
+  await page.getByRole('button', { name: '絞り込む', exact: true }).click();
+  const unreadListResult = await unreadList;
+  expect(unreadListResult.status()).toBe(200);
+  expect((await unreadListResult.json()).items).toEqual(expect.arrayContaining([expect.objectContaining({
+    documentId, currentVersionId: readPath.versionId, readState: { isRead: false, firstReadAt: firstView.state.firstReadAt },
+  })]));
+  await page.locator(`[data-document-id="${documentId}"]`).press('Enter');
+  const reopened = await observeReadStateChange(page, context, reset.state, 'VIEW', () =>
+    page.getByRole('button', { name: '詳細を開く', exact: true }).press('Enter'));
+  expect(reopened.state).toEqual({ ...firstView.state, readStateRevision: 3 });
+  expect(readStateRequests.map(req => req.url())).toEqual([readStateUrl + '/view', readStateUrl + '/reset', readStateUrl + '/view']);
+  page.off('request', recordReadState);
+  for (const suffix of ['', '/view', '/reset']) {
+    const url = `${agent}/v1/documents/${documentId}/versions/${readPath.versionId}/read-state${suffix}`;
+    const deniedReadState = suffix ? await request.post(url, { data: { operationId: uuidV7(), expectedReadStateRevision: 0 } }) : await request.get(url);
+    expect(deniedReadState.status()).toBe(403); expect((await deniedReadState.json()).code).toBe('FORBIDDEN');
+  }
+  expect((await getDocument({ ...agentOptions, path: { documentId }, query: { view: 'published' } })).data.readState).toEqual(agentReadBefore);
   expect(await persistedSnapshot(human, documentId)).toEqual(after);
   expect(await persistedSnapshot(agent, documentId)).toEqual(after);
   expect(apiOrigins).toEqual(new Set([human]));
@@ -720,6 +783,17 @@ test('real backend not-found and invalid API routes, keyboard return, reduced-mo
     await expect(page.getByRole('button', { name: /規程サンプル/ })).toBeFocused();
     if (width === 1280) await visualCheckpoint(page, '02-list-focus-return-1280.png');
   }
+  // 最後のkeyboard往復より後で未読へ戻し、HTTP再起動用の本人stateを固定する。
+  const savedState = JSON.parse(await readFile(context.statePath, 'utf8')) as PersistedState;
+  const regulation = savedState.documents.find(item => item.key === 'regulation')!.snapshot;
+  const readPath = { documentId, versionId: regulation.currentVersionId! };
+  await page.goto(`/documents/${documentId}?view=published&tab=overview`);
+  await expect(page.getByRole('region', { name: '本人の既読状態', exact: true }).getByRole('status')).toHaveText('既読');
+  const beforeReset = await currentReadState(context, readPath);
+  expect(beforeReset).toMatchObject({ isRead: true, needsRecheck: false, readStateRevision: 3 });
+  savedState.documentReadState = await resetReadStateInGui(page, context, beforeReset);
+  expect(savedState.documentReadState.documentRevision).toBe(regulation.revision);
+  await writeFile(context.statePath, JSON.stringify(savedState, null, 2), { mode: 0o600 });
   await page.goto(`/documents/${uuidV7()}?view=published`);
   await expect(page.getByRole('alert')).toContainText('文書が見つからないか、閲覧できません。');
   for (const path of ['/v1/not-a-real-route', '/health/not-a-real-route', '/missing.js', '/.env']) {

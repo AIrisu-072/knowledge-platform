@@ -156,6 +156,35 @@ async fn each_scope_uses_its_visible_title_and_unread_is_per_version() {
         .await
         .unwrap();
     assert!(unread.items.is_empty());
+    document_application::CurrentReadStateService::new(f.repository.clone())
+        .mutate_read_state(
+            &context(),
+            document_application::ReadStateMutation {
+                operation_id: document_application::ReadStateOperationId::try_from_uuid(
+                    Uuid::now_v7(),
+                )
+                .unwrap(),
+                document_id: f.document_id,
+                document_version_id: current,
+                expected_read_state_revision: 1,
+                kind: document_application::ReadStateMutationKind::Reset,
+            },
+        )
+        .await
+        .unwrap();
+    let reset = service
+        .list_published_documents(
+            &context(),
+            PublishedQuery {
+                unread_only: true,
+                ..PublishedQuery::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(reset.items.len(), 1);
+    assert!(!reset.items[0].gui.read_state.is_read());
+    assert!(reset.items[0].gui.read_state.first_read_at.is_some());
 }
 
 #[tokio::test]

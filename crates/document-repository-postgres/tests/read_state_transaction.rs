@@ -97,6 +97,9 @@ async fn first_explicit_confirmation_is_idempotent_even_under_concurrency() {
         .unwrap();
     assert!(!repeated.inserted);
     assert_eq!(repeated.first_read_at, first.first_read_at);
+    let projection: (bool, i64) = sqlx::query_as("SELECT needs_recheck,read_state_revision FROM document_read_states WHERE document_version_id=$1")
+        .bind(version_id.as_uuid()).fetch_one(&f.pool).await.unwrap();
+    assert_eq!(projection, (false, 1));
     assert_eq!(state_count(&f).await, 1);
     assert_eq!(audit_count(&f).await, 1);
     let after_revision: i64 =

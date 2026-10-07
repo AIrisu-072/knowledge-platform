@@ -32,7 +32,7 @@ WITH RECURSIVE selected_folders(folder_id, depth) AS (
            v.title, normalize(v.title, NFC) COLLATE "C" AS title_key,
            v.version_no, v.base_document_version_id, v.approved_at,
            v.scheduled_publish_at, v.published_at, v.withdrawn_at, v.updated_at,
-           rs.first_read_at,
+           rs.first_read_at, rs.needs_recheck, rs.read_state_revision,
            file_summary.authoritative_item_count, file_summary.total_size_bytes,
            primary_file.original_filename AS primary_original_filename,
            primary_file.media_type AS primary_media_type,
@@ -121,7 +121,7 @@ WHERE ($6::text IS NULL OR strpos(title_key, $6::text) > 0)
   AND ($9::text IS NULL OR metadata->>'category' = $9::text)
   AND ($10::timestamptz IS NULL OR created_at >= $10::timestamptz)
   AND ($11::timestamptz IS NULL OR created_at < $11::timestamptz)
-  AND (NOT $12::boolean OR first_read_at IS NULL)
+  AND (NOT $12::boolean OR first_read_at IS NULL OR needs_recheck)
   AND ($14::uuid IS NULL
        OR ($13::text = 'created_at_desc'
            AND (created_at, document_id) < ($15::timestamptz, $14::uuid))
@@ -275,7 +275,7 @@ impl QueryRow {
                 },
             },
             display_revision: latest_revision,
-            first_read_at,
+            read_state: crate::current_read_state::decode_projection(&row)?,
             display_timestamp,
         };
 
