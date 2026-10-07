@@ -1,5 +1,10 @@
 # Organization 作業ファイル・共有provider・Handoff・差戻し後の作業（U3）— Capability Execution Status
 
+## 2026-10-07 07:43 UTC — main統合
+
+- [PR #102](https://github.com/AIrisu-072/knowledge-platform/pull/102) をmain `3b06421` へsquash統合（exact head `3142ee9` で全CI成功、Organization 20 stage passed）。統合後のtreeはhead `3142ee9` と同一
+- 次はU4（[状況](organization-agent-chat-status.md)）
+
 ## 2026-10-07 — 実装・ローカル検証・独立review修正完了、PR/hosted CIへ
 
 ### 位置付け

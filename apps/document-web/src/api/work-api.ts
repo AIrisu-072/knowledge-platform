@@ -22,6 +22,9 @@ export type DecisionCommand = Generated.DecisionCommand;
 export type SubmitCommand = Generated.SubmitCommand;
 export type AgentExecution = Generated.AgentExecution;
 export type AgentResult = Generated.AgentResult;
+export type AgentSourceOutcome = Generated.AgentSourceOutcome;
+export type GeneratedArtifact = Generated.GeneratedArtifact;
+export type SuggestedAction = Generated.SuggestedAction;
 export type AgentExecutionRequest = Generated.AgentExecutionRequest;
 export type PolicyAction = Generated.PolicyAction;
 export type Responsibility = Generated.Responsibility;
@@ -178,11 +181,40 @@ function snapshot(value: unknown): HandoffSnapshot {
   const item = object(value);
   return { evidenceRevisionRefs: array(item.evidenceRevisionRefs, reference), findingRevisionRefs: array(item.findingRevisionRefs, reference), decisionRevisionRefs: array(item.decisionRevisionRefs, reference), id: string(item.id), sourceTaskId: string(item.sourceTaskId), sourceAttemptId: string(item.sourceAttemptId), targetTaskId: string(item.targetTaskId), createdAt: string(item.createdAt), artifacts: array(item.artifacts, (entry) => { const a = object(entry); return { artifactId: string(a.artifactId), revision: revision(a.revision), ...body(a, true) }; }) };
 }
+const SOURCE_USES = ['referenced', 'analyzed', 'unavailable', 'unsupported'] as const;
+const optionalArray = <T>(value: unknown, decode: (item: unknown) => T): T[] => value === undefined ? [] : array(value, decode);
+const sameRef = (a: RevisionRef, b: RevisionRef | undefined) => Boolean(b) && a.id === b!.id && a.revision === b!.revision;
+const byteLength = (text: string) => new TextEncoder().encode(text).length;
 function agentResult(value: unknown): AgentResult {
   const item = object(value);
   const findings = array(item.findingRevisionRefs, reference), evidence = array(item.evidenceRevisionRefs, reference);
-  if (item.simulated !== true || item.bodyAnalyzed !== false || item.liveLlm !== false || item.mcpWireExecuted !== false || findings.length !== 1 || !evidence.length || evidence.length > 16) throw new Error('unsupported_agent_result');
-  return { summary: string(item.summary), findingRevisionRefs: [findings[0]!], evidenceRevisionRefs: evidence, uncertainty: array(item.uncertainty, string), simulated: true, bodyAnalyzed: false, liveLlm: false, mcpWireExecuted: false };
+  const outcomes = optionalArray(item.sourceOutcomes, (entry): AgentSourceOutcome => { const outcome = object(entry); return { evidenceRevisionRef: reference(outcome.evidenceRevisionRef), outcome: oneOf(outcome.outcome, SOURCE_USES) }; });
+  const generated = optionalArray(item.generatedArtifactIds, string), suggested = optionalArray(item.suggestedActionIds, string);
+  // Earlier results carry exactly one finding and no per-source outcomes.
+  const legacy = outcomes.length === 0;
+  if (item.simulated !== true || item.bodyAnalyzed !== false || item.liveLlm !== false || item.mcpWireExecuted !== false || findings.length > 1 || (legacy && findings.length !== 1) || !evidence.length || evidence.length > 16) throw new Error('unsupported_agent_result');
+  if (!legacy && (outcomes.length !== evidence.length || outcomes.some((outcome, index) => !sameRef(outcome.evidenceRevisionRef, evidence[index]) || outcome.outcome === 'analyzed') || !outcomes.some((outcome) => outcome.outcome === 'referenced'))) throw new Error('unsupported_agent_result');
+  if (generated.length > 2 || suggested.length > 4 || new Set(generated).size !== generated.length || new Set(suggested).size !== suggested.length) throw new Error('unsupported_agent_result');
+  return { summary: string(item.summary), findingRevisionRefs: findings, evidenceRevisionRefs: evidence, uncertainty: array(item.uncertainty, string), simulated: true, bodyAnalyzed: false, liveLlm: false, mcpWireExecuted: false, ...(outcomes.length ? { sourceOutcomes: outcomes } : {}), ...(generated.length ? { generatedArtifactIds: generated } : {}), ...(suggested.length ? { suggestedActionIds: suggested } : {}) };
+}
+function candidateRefs(value: unknown): RevisionRef[] { const refs = array(value, reference); if (!refs.length || refs.length > 16) throw new Error('invalid_response'); return refs; }
+function generatedArtifact(value: unknown): GeneratedArtifact {
+  const item = object(value);
+  const title = string(item.title), text = textValue(item.value).text;
+  if (item.schemaId !== 'organization.text-draft.v1' || item.visibility !== 'agent_execution_private' || !title.trim() || byteLength(title) > 200 || /\p{Cc}/u.test(title) || !text.trim() || byteLength(text) > 8192) throw new Error('unsupported_generated_artifact');
+  return { id: string(item.id), executionId: string(item.executionId), contextId: string(item.contextId), workItemId: string(item.workItemId), attemptId: string(item.attemptId), schemaId: 'organization.text-draft.v1', title, value: { text }, sourceRevisionRefs: candidateRefs(item.sourceRevisionRefs), author: string(item.author), simulated: bool(item.simulated), visibility: 'agent_execution_private', createdAt: string(item.createdAt) };
+}
+function proposedAction(value: unknown): SuggestedAction['action'] {
+  const item = object(value);
+  if (item.kind === 'review_finding') return { kind: 'review_finding', findingRevisionRef: reference(item.findingRevisionRef) };
+  if (item.kind === 'use_generated_artifact') return { kind: 'use_generated_artifact', generatedArtifactId: string(item.generatedArtifactId) };
+  throw new Error('unsupported_suggested_action');
+}
+function suggestedAction(value: unknown): SuggestedAction {
+  const item = object(value);
+  const rationale = string(item.rationale);
+  if (item.visibility !== 'agent_execution_private' || !rationale.trim() || byteLength(rationale) > 1024) throw new Error('unsupported_suggested_action');
+  return { id: string(item.id), executionId: string(item.executionId), contextId: string(item.contextId), workItemId: string(item.workItemId), attemptId: string(item.attemptId), action: proposedAction(item.action), rationale, supportingRevisionRefs: candidateRefs(item.supportingRevisionRefs), author: string(item.author), visibility: 'agent_execution_private', createdAt: string(item.createdAt) };
 }
 function agentExecution(value: unknown): AgentExecution {
   const item = object(value);
@@ -337,6 +369,8 @@ export const workApi = {
   requestAgentExecution: (id: string, command: AgentExecutionRequest) => request(`/tasks/${segment(id)}/agent-executions`, result, 'POST', command),
   getAgentExecution: (id: string) => request(`/agent-executions/${segment(id)}`, (value) => exact(value, id, agentExecution)),
   getAgentResult: (id: string) => request(`/agent-executions/${segment(id)}/result`, agentResult),
+  getGeneratedArtifact: (id: string) => request(`/generated-artifacts/${segment(id)}`, (value) => exact(value, id, generatedArtifact)),
+  getSuggestedAction: (id: string) => request(`/suggested-actions/${segment(id)}`, (value) => exact(value, id, suggestedAction)),
   cancelAgentExecution: (id: string, command: CancelAgentExecution) => request(`/agent-executions/${segment(id)}/cancel`, (value) => { const receipt = result(value); if (receipt.kind !== 'agent_execution_cancelled' || receipt.execution.id !== id || receipt.task.id !== command.taskId || receipt.task.attemptId !== command.expectedAttemptId) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),
   getOperation: (id: string) => request(`/operations/${segment(id)}`, result),
   createFileArtifact: (taskId: string, command: FileArtifactCommand) => request(`/tasks/${segment(taskId)}/working-artifacts`, (value) => { const receipt = result(value); if (receipt.kind !== 'artifact_created' || receipt.task.id !== taskId || receipt.artifact.file?.fileName !== command.file.fileName) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),

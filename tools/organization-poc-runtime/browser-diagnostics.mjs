@@ -4,8 +4,8 @@ import { lstat, open, realpath } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 const MAX_BYTES = 8 * 1024 * 1024, MAX_NODES = 1000, MAX_DEPTH = 8, MAX_TEXT = 16 * 1024;
-const phases = new Set(['journey', 'persistence', 'policy-journey', 'policy-persistence', 'context-journey', 'context-persistence', 'files-journey', 'files-persistence']);
-const sources = new Set(['journey.spec.ts', 'persistence.spec.ts', 'support.ts', 'policy-journey.spec.ts', 'policy-persistence.spec.ts', 'policy-support.ts', 'context-journey.spec.ts', 'context-persistence.spec.ts', 'context-support.ts', 'files-journey.spec.ts', 'files-persistence.spec.ts', 'files-support.ts']);
+const phases = new Set(['journey', 'persistence', 'policy-journey', 'policy-persistence', 'context-journey', 'context-persistence', 'files-journey', 'files-persistence', 'agent-chat-journey', 'agent-chat-persistence']);
+const sources = new Set(['journey.spec.ts', 'persistence.spec.ts', 'support.ts', 'policy-journey.spec.ts', 'policy-persistence.spec.ts', 'policy-support.ts', 'context-journey.spec.ts', 'context-persistence.spec.ts', 'context-support.ts', 'files-journey.spec.ts', 'files-persistence.spec.ts', 'files-support.ts', 'agent-chat-journey.spec.ts', 'agent-chat-persistence.spec.ts', 'agent-chat-support.ts']);
 const statuses = new Set(['failed', 'timedOut', 'interrupted']);
 const executionStatuses = new Set(['queued', 'running', 'succeeded', 'failed', 'cancelled', 'outcome_unknown']);
 const executionFailureCodes = new Set(['none', 'provider_denied', 'context_stale', 'invalid_output', 'dependency_unavailable', 'interrupted', 'commit_outcome_unknown']);
@@ -22,6 +22,8 @@ const tests = new Map([
   ['6 processの再起動後も文脈・確認済み・差戻しの注意と非開示を保持する', 'context-persistence'],
   ['差戻し後に前回の提出を取り込み、作業ファイルを共有の作業領域へ保存して提出し、審査担当が取得する', 'files-journey'],
   ['6 processの再起動後も提出したファイル・前回の提出・取込みと非開示を保持する', 'files-persistence'],
+  ['Agent Chatで構造化結果を確認し、提案から通常の画面で人間判断と文案の保存を行う', 'agent-chat-journey'],
+  ['6 processの再起動後もAgentの構造化結果・下書き候補・提案と非開示を保持し、Chatの入力は残さない', 'agent-chat-persistence'],
 ]);
 const actions = new Set(['journey-setup', 'office-navigation', 'sales-navigation', 'document-navigation', 'task-navigation',
   'draft-save', 'source-read', 'evidence-module', 'source-document-select', 'source-file-select', 'evidence-input',
@@ -31,7 +33,8 @@ const actions = new Set(['journey-setup', 'office-navigation', 'sales-navigation
   'root-folder-read', 'root-folder-preview', 'root-folder-cancel', 'root-folder-input', 'root-folder-create', 'root-folder-verify', 'root-folder-replay', 'root-folder-office', 'root-folder-persistence',
   'policy-setup', 'policy-draft', 'policy-role-assignment', 'policy-reassign-sales', 'policy-transfer-verify', 'policy-submit', 'policy-delegation', 'policy-concurrent-claim', 'policy-reassign-office', 'policy-delegation-revoke', 'policy-assignment-revoke', 'policy-complete', 'policy-persistence',
   'context-setup', 'context-select', 'context-claim', 'context-submit', 'context-assign', 'context-acknowledge', 'context-review', 'context-return', 'context-verify', 'context-persistence',
-  'files-setup', 'files-claim', 'files-import', 'files-attach', 'files-visibility', 'files-submit', 'files-review', 'files-download', 'files-complete', 'files-persistence']);
+  'files-setup', 'files-claim', 'files-import', 'files-attach', 'files-visibility', 'files-submit', 'files-review', 'files-download', 'files-complete', 'files-persistence',
+  'agent-chat-setup', 'agent-chat-evidence', 'agent-chat-request', 'agent-chat-result', 'agent-chat-visibility', 'agent-chat-proposal', 'agent-chat-decision', 'agent-chat-return', 'agent-chat-claim', 'agent-chat-draft', 'agent-chat-followup', 'agent-chat-persistence']);
 const matchers = new Set(['toBe', 'toEqual', 'toStrictEqual', 'toMatchObject', 'toMatch', 'toContain', 'toContainEqual',
   'toBeNull', 'toBeVisible', 'toBeHidden', 'toBeFocused', 'toBeEnabled', 'toBeDisabled', 'toBeChecked',
   'toHaveCount', 'toHaveText', 'toContainText', 'toHaveURL', 'toHaveAttribute', 'toHaveLength', 'toHaveValue',
@@ -48,7 +51,7 @@ function location(value) {
     ...(coordinate(value.column) ? { column: value.column } : {}) } : undefined;
 }
 function stackLocation(value) {
-  const match = text(value).match(/(?:^|[\\/\s(])((?:policy-|context-|files-)?(?:journey|persistence)\.spec\.ts|(?:policy-|context-|files-)?support\.ts):(\d{1,7}):(\d{1,7})(?:\D|$)/u);
+  const match = text(value).match(/(?:^|[\\/\s(])((?:policy-|context-|files-|agent-chat-)?(?:journey|persistence)\.spec\.ts|(?:policy-|context-|files-|agent-chat-)?support\.ts):(\d{1,7}):(\d{1,7})(?:\D|$)/u);
   return match ? location({ file: match[1], line: Number(match[2]), column: Number(match[3]) }) : undefined;
 }
 function readObservation(annotations) {

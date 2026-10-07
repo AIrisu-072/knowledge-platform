@@ -1,3 +1,5 @@
+import { TextEncoder } from 'node:util';
+Object.assign(globalThis, { TextEncoder });
 import { workApi, WorkApiError } from '../src/api/work-api';
 
 const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canComplete: false, completionActionId: null, canHold: false, holdActionId: null, canResume: false, resumeActionId: null, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, canRequestAgent: true, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null, requiredRoleId: null, claimAssignmentId: null, canAssign: false, assignment: null, workTypeId: 'work-type-1', workTypeLabel: '内容確認', dueAt: null, attention: [], contextTitle: null };
@@ -157,6 +159,43 @@ test('Agent execution decoding rejects swapped IDs and upgraded simulation or pr
   for (const changed of [{ liveLlm: true }, { bodyAnalyzed: true }, { mcpWireExecuted: true }, { simulated: false }, { findingRevisionRefs: [] }]) {
     fetchMock.mockResolvedValue(response({ ...agentResult, ...changed }));
     await expect(workApi.getAgentResult(execution.id)).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: false });
+  }
+});
+
+test('structured Agent results decode per-source use, candidates and typed proposals strictly', async () => {
+  const structured = { ...agentResult, sourceOutcomes: [{ evidenceRevisionRef: { id: evidence.id, revision: 1 }, outcome: 'referenced' }], generatedArtifactIds: ['generated-1'], suggestedActionIds: ['suggested-1', 'suggested-2'] };
+  fetchMock.mockResolvedValue(response(structured));
+  await expect(workApi.getAgentResult(execution.id)).resolves.toEqual(structured);
+  // A bare suggestion without a Finding is a valid structured result.
+  fetchMock.mockResolvedValue(response({ ...structured, findingRevisionRefs: [] }));
+  await expect(workApi.getAgentResult(execution.id)).resolves.toMatchObject({ findingRevisionRefs: [] });
+  for (const changed of [
+    { sourceOutcomes: [{ evidenceRevisionRef: { id: evidence.id, revision: 1 }, outcome: 'analyzed' }] },
+    { sourceOutcomes: [{ evidenceRevisionRef: { id: 'other-evidence', revision: 1 }, outcome: 'referenced' }] },
+    { sourceOutcomes: [{ evidenceRevisionRef: { id: evidence.id, revision: 1 }, outcome: 'unavailable' }] },
+    { sourceOutcomes: [{ evidenceRevisionRef: { id: evidence.id, revision: 1 }, outcome: 'verified' }] },
+    { generatedArtifactIds: ['a', 'b', 'c'] },
+    { suggestedActionIds: ['s', 's'] },
+    { findingRevisionRefs: [{ id: 'f1', revision: 1 }, { id: 'f2', revision: 1 }] },
+  ]) {
+    fetchMock.mockResolvedValue(response({ ...structured, ...changed }));
+    await expect(workApi.getAgentResult(execution.id)).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: false });
+  }
+  const generated = { id: 'generated-1', executionId: execution.id, contextId: task.contextId, workItemId: task.id, attemptId: task.attemptId, schemaId: 'organization.text-draft.v1', title: '確認メモの下書き（合成）', value: { text: '【合成】下書き' }, sourceRevisionRefs: [{ id: evidence.id, revision: 1 }], author: 'organization-synthetic/agent-01', simulated: true, visibility: 'agent_execution_private', createdAt: '2026-10-07T09:00:00Z' };
+  fetchMock.mockResolvedValue(response(generated));
+  await expect(workApi.getGeneratedArtifact('generated-1')).resolves.toEqual(generated);
+  expect(fetchMock.mock.lastCall?.[0]).toBe('/v1/organization/generated-artifacts/generated-1');
+  for (const changed of [{ id: 'other' }, { visibility: 'work_item_private' }, { schemaId: 'organization.work-file.v1' }, { title: '改行\nあり' }, { title: 'あ'.repeat(67) }, { value: { text: 'x'.repeat(8193) } }, { sourceRevisionRefs: [] }]) {
+    fetchMock.mockResolvedValue(response({ ...generated, ...changed }));
+    await expect(workApi.getGeneratedArtifact('generated-1')).rejects.toMatchObject({ code: 'invalid_response' });
+  }
+  const suggested = { id: 'suggested-1', executionId: execution.id, contextId: task.contextId, workItemId: task.id, attemptId: task.attemptId, action: { kind: 'review_finding', findingRevisionRef: { id: 'synthetic-finding', revision: 1 } }, rationale: '候補を確認してください', supportingRevisionRefs: [{ id: evidence.id, revision: 1 }], author: 'organization-synthetic/agent-01', visibility: 'agent_execution_private', createdAt: '2026-10-07T09:00:00Z' };
+  fetchMock.mockResolvedValue(response(suggested));
+  await expect(workApi.getSuggestedAction('suggested-1')).resolves.toEqual(suggested);
+  expect(fetchMock.mock.lastCall?.[0]).toBe('/v1/organization/suggested-actions/suggested-1');
+  for (const changed of [{ action: { kind: 'submit_task' } }, { action: { kind: 'review_finding' } }, { rationale: 'x'.repeat(1025) }, { id: 'other' }]) {
+    fetchMock.mockResolvedValue(response({ ...suggested, ...changed }));
+    await expect(workApi.getSuggestedAction('suggested-1')).rejects.toMatchObject({ code: 'invalid_response' });
   }
 });
 

@@ -138,6 +138,26 @@ impl PostgresWorkRepository {
         fresh(started)?;
         Ok(e)
     }
+    /// Candidate reads follow the execution read: domain scope, provider
+    /// recheck of every selected source, then an unchanged re-read.
+    pub(super) async fn read_candidate<T: PartialEq>(
+        &self,
+        actor: VerifiedActor,
+        target: WorkTarget,
+        read: impl Fn(&Workflow) -> Result<(Uuid, T), WorkError>,
+    ) -> Result<T, WorkError> {
+        let w = self.load_for(actor, target).await?;
+        let (execution, record) = read(&w)?;
+        let started = Instant::now();
+        self.authorize_agent_context(w.agent_disclosure_context(execution)?, observed(&w))
+            .await?;
+        let current = self.load_id(actor, w.id).await?;
+        if current.revision != w.revision || read(&current)?.1 != record {
+            return Err(WorkError::WorkContextStale);
+        }
+        fresh(started)?;
+        Ok(record)
+    }
     pub(super) async fn current_agent_context(
         &self,
         actor: VerifiedActor,
@@ -191,7 +211,7 @@ impl PostgresWorkRepository {
     pub(super) async fn finish_agent(
         &self,
         context: AgentDispatchContext,
-        output: AgentFindingOutput,
+        output: AgentOutput,
     ) -> Result<AgentExecution, WorkError> {
         let actor = context.execution.requested_by;
         let id = context.execution.id;
@@ -399,7 +419,29 @@ pub(super) async fn stage(
     e: &AgentExecution,
     action: &str,
 ) -> Result<(), WorkError> {
-    let payload = serde_json::json!({"schemaVersion":1,"resourceType":"agent_execution","executionId":e.id,"status":e.status,"executedBy":e.executed_by,"executorInvocationKind":e.executor_invocation_kind,"providerPrincipalBindings":e.provider_principal_bindings});
+    let mut payload = serde_json::json!({"schemaVersion":1,"resourceType":"agent_execution","executionId":e.id,"status":e.status,"executedBy":e.executed_by,"executorInvocationKind":e.executor_invocation_kind,"providerPrincipalBindings":e.provider_principal_bindings});
+    // Structured results add references only: no title, text, rationale or purpose.
+    if let Some(result) = &e.result {
+        for (key, value) in [
+            (
+                "sourceOutcomes",
+                serde_json::to_value(&result.source_outcomes),
+            ),
+            (
+                "generatedArtifactIds",
+                serde_json::to_value(&result.generated_artifact_ids),
+            ),
+            (
+                "suggestedActionIds",
+                serde_json::to_value(&result.suggested_action_ids),
+            ),
+        ] {
+            let value = value.map_err(|_| WorkError::IntegrityViolation)?;
+            if value.as_array().is_some_and(|items| !items.is_empty()) {
+                payload[key] = value;
+            }
+        }
+    }
     sqlx::query("INSERT INTO work.event_staging(id,operation_id,workflow_id,principal_id,acting_assignment_id,task_id,action,occurred_at,payload) VALUES($1,NULL,$2,$3,$4,$5,$6,$7,$8)")
         .bind(Uuid::now_v7()).bind(workflow_id).bind(e.requested_by.principal_id()).bind(e.requester_responsibility).bind(e.work_item_id).bind(action).bind(OffsetDateTime::now_utc()).bind(Json(payload)).execute(&mut **tx).await.map_err(database_error)?;
     Ok(())

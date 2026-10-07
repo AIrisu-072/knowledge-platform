@@ -142,6 +142,14 @@ fn build_router(
             "/v1/organization/agent-executions/{id}/cancel",
             post(cancel_agent_execution),
         )
+        .route(
+            "/v1/organization/generated-artifacts/{id}",
+            get(generated_artifact),
+        )
+        .route(
+            "/v1/organization/suggested-actions/{id}",
+            get(suggested_action),
+        )
         .route("/v1/organization/tasks/{id}/claim", post(claim))
         .route("/v1/organization/tasks/{id}/submit", post(submit))
         .route("/v1/organization/tasks/{id}/return", post(return_task))

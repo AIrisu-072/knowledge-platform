@@ -964,11 +964,27 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
             .unwrap()
             .is_none()
     );
-    let output = AgentFindingOutput {
-        summary: "合成実行・本文分析なし".into(),
-        claim: "人間が原本を確認してください".into(),
-        uncertainty: vec!["実LLM/MCP通信なし".into()],
-    };
+    let mut output = AgentOutput::referenced_finding(
+        &dispatch,
+        "合成実行・本文分析なし",
+        "人間が原本を確認してください",
+        vec!["実LLM/MCP通信なし".into()],
+    );
+    output.generated_artifacts = vec![GeneratedArtifactCandidate {
+        title: "合成の下書き題名".into(),
+        text: "合成の下書き本文".into(),
+        source_revision_refs: dispatch.execution.evidence_revision_refs.clone(),
+    }];
+    output.suggested_actions = vec![
+        SuggestedActionCandidate {
+            action: ProposedActionCandidate::ReviewFinding,
+            rationale: "合成の提案理由".into(),
+        },
+        SuggestedActionCandidate {
+            action: ProposedActionCandidate::UseGeneratedArtifact(0),
+            rationale: "合成の提案理由2".into(),
+        },
+    ];
     let before: (serde_json::Value, i64, i64, i64, i64) = sqlx::query_as(rollback_state_sql)
         .bind(WORKFLOW_ID)
         .fetch_one(&pool)
@@ -1014,6 +1030,55 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
         .unwrap();
     assert_eq!(finding.author, SYNTHETIC_EXECUTOR);
     assert_eq!(finding.origin_execution_id, Some(execution.id));
+    // Structured candidates are stored with the result and read under its scope.
+    assert_eq!(result.generated_artifact_ids.len(), 1);
+    assert_eq!(result.suggested_action_ids.len(), 2);
+    let generated = agents
+        .generated_artifact(VerifiedActor::Office01, result.generated_artifact_ids[0])
+        .await
+        .unwrap();
+    assert_eq!(generated.value.text, "合成の下書き本文");
+    assert_eq!(generated.execution_id, execution.id);
+    let suggestion = agents
+        .suggested_action(VerifiedActor::Office01, result.suggested_action_ids[1])
+        .await
+        .unwrap();
+    assert_eq!(
+        suggestion.action,
+        ProposedAction::UseGeneratedArtifact {
+            generated_artifact_id: generated.id
+        }
+    );
+    for other in [VerifiedActor::Sales01, VerifiedActor::Approver01] {
+        assert_eq!(
+            agents.generated_artifact(other, generated.id).await,
+            Err(WorkError::WorkItemNotFound)
+        );
+        assert_eq!(
+            agents.suggested_action(other, suggestion.id).await,
+            Err(WorkError::WorkItemNotFound)
+        );
+    }
+    // Staging carries references only, never candidate text or rationale.
+    let staged: serde_json::Value = sqlx::query_scalar(
+        "SELECT payload FROM work.event_staging WHERE action='agent_execution_succeeded' ORDER BY occurred_at DESC LIMIT 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        staged["generatedArtifactIds"],
+        serde_json::json!([generated.id])
+    );
+    assert_eq!(
+        staged["suggestedActionIds"],
+        serde_json::to_value(&result.suggested_action_ids).unwrap()
+    );
+    assert_eq!(staged["sourceOutcomes"][0]["outcome"], "referenced");
+    let text = staged.to_string();
+    for private in ["合成の下書き", "合成の提案理由", "人間が原本を確認"] {
+        assert!(!text.contains(private), "{private}");
+    }
     assert!(
         agents
             .list_decisions(VerifiedActor::Office01, finding.id)
@@ -1067,6 +1132,18 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
         );
         assert_eq!(
             agents.finding(VerifiedActor::Office01, finding.id).await,
+            Err(WorkError::EvidenceNotFound)
+        );
+        assert_eq!(
+            agents
+                .generated_artifact(VerifiedActor::Office01, generated.id)
+                .await,
+            Err(WorkError::EvidenceNotFound)
+        );
+        assert_eq!(
+            agents
+                .suggested_action(VerifiedActor::Office01, suggestion.id)
+                .await,
             Err(WorkError::EvidenceNotFound)
         );
         assert_eq!(
@@ -1424,11 +1501,12 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
             restored
                 .finish_agent_execution(
                     hold_context.clone(),
-                    AgentFindingOutput {
-                        summary: "合成実行".into(),
-                        claim: "古い出力".into(),
-                        uncertainty: vec!["本文分析なし".into()],
-                    }
+                    AgentOutput::referenced_finding(
+                        &hold_context,
+                        "合成実行",
+                        "古い出力",
+                        vec!["本文分析なし".into()],
+                    )
                 )
                 .await,
             Err(WorkError::WorkContextStale)
@@ -1612,12 +1690,13 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
     assert_eq!(
         restored
             .finish_agent_execution(
-                late_context,
-                AgentFindingOutput {
-                    summary: "合成実行".into(),
-                    claim: "遅い候補".into(),
-                    uncertainty: vec!["本文分析なし".into()]
-                }
+                late_context.clone(),
+                AgentOutput::referenced_finding(
+                    &late_context,
+                    "合成実行",
+                    "遅い候補",
+                    vec!["本文分析なし".into()]
+                )
             )
             .await,
         Err(WorkError::WorkContextStale)

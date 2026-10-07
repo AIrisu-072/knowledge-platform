@@ -2,7 +2,7 @@ export { workApi, WorkApiError } from '../api/work-api';
 export type { PolicyAction, PolicyResult, Responsibility, RoleAssignment, Delegation, OrganizationalUnit, BusinessRole, SyntheticPrincipal, TaskAssignmentView, Attention, TaskAttention, WorkContext, WorkContextHistory, WorkViewProfile } from '../api/work-api';
 export { MAX_WORK_FILE_BYTES } from '../api/work-api';
 export type { WorkFile, FileGeneration } from '../api/work-api';
-export type { WorkSession, TaskSummary, TaskDetail, WorkingArtifact, HandoffSnapshot, WorkCommand, WorkflowActionCommand, WorkResult, ReturnCommand, ReturnInstruction, EvidenceRecord, Finding, HumanDecision, RevisionRef, SelectedHandoff, EvidenceCommand, FindingCommand, DecisionCommand, SubmitCommand, AgentExecution, AgentResult, AgentExecutionRequest, CancelAgentExecution } from '../api/work-api';
+export type { WorkSession, TaskSummary, TaskDetail, WorkingArtifact, HandoffSnapshot, WorkCommand, WorkflowActionCommand, WorkResult, ReturnCommand, ReturnInstruction, EvidenceRecord, Finding, HumanDecision, RevisionRef, SelectedHandoff, EvidenceCommand, FindingCommand, DecisionCommand, SubmitCommand, AgentExecution, AgentResult, AgentExecutionRequest, CancelAgentExecution, AgentSourceOutcome, GeneratedArtifact, SuggestedAction } from '../api/work-api';
 import { WorkApiError, workApi, type WorkSession, type WorkCommand, type WorkflowActionCommand, type ReturnCommand, type EvidenceCommand, type FindingCommand, type DecisionCommand, type SubmitCommand, type WorkResult, type AgentExecutionRequest, type CancelAgentExecution } from '../api/work-api';
 /** `acting` selects a projection scope only; it is never sent as identity. An absent
  * `view` follows the selected responsibility's WorkViewProfile (presentation only);
