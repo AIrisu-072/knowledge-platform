@@ -453,7 +453,7 @@ fn listing_pages_are_bounded_stable_and_report_omissions() {
         .unwrap();
     assert_eq!(first.entries.len(), 100);
     let cursor = first.next_cursor.clone().expect("next page");
-    assert!(!cursor.contains("f0"));
+    assert!(!cursor.contains(".txt"), "cursor must not expose raw names");
     let second = rt
         .list_entries(&ctx(&view), &local(&binding, &[]), Some(&cursor))
         .unwrap();

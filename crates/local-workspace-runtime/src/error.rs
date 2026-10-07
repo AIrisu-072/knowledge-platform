@@ -60,6 +60,8 @@ pub enum RuntimeErrorReason {
     TooMany,
     InvalidName,
     InvalidCursor,
+    InvalidRequest,
+    UnknownCommand,
     Io,
 }
 

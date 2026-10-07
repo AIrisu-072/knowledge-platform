@@ -10,6 +10,7 @@ pub mod base64;
 mod error;
 pub mod locator;
 mod registry;
+pub mod wire;
 
 #[cfg(unix)]
 #[path = "platform_unix.rs"]
@@ -82,14 +83,14 @@ impl Capabilities {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ContextRef {
     pub effective_context_revision: String,
     pub workspace_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LocalRef {
     pub binding_id: String,
     pub locator: Vec<String>,
