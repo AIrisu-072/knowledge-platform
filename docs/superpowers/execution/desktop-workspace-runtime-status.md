@@ -1,5 +1,23 @@
 # Desktop Workspace Runtime：実行状況
 
+## 2026-10-07 14:40 UTC — 3回目の独立reviewの修正（`d18df99`）
+
+- 2回目のreviewは、最後の検証1件（強制終了の確認。対象は `6a7fae8` で修正済み）がコマンド内で止まったため打ち切り、修正commitの確認と抜け漏れの確認を3回目として実施（12件中11件が再現つきで成立、1件は反証）。
+- **重要：デスクトップ版でタスク画面の作業ファイル保存が必ず失敗していた。** mainから取り込んだPR #102の作業ファイル内容のPUTは、操作ID・期待revision・担当の専用header（`x-operation-id`・`x-expected-revision`・`x-acting-assignment-id`・`x-expected-artifact-revision`）を使うが、shellの要求header許可リストに無く、serverが422を返していた。
+  - 4種を許可リストに追加。API定義（`spec/api/`）のheader parameterがすべて許可リストにあることを試験し、loopbackの試験用serverへのPUTで4種が届き名乗り用headerは届かないことを試験。
+  - 実GUIに「タスク画面の作業ファイル」の場面を追加（画面からファイルを選ぶ→保存済み→「ファイルを取得」でDownloadsの内容が一致）。修正前の許可リストのshellではこの場面が失敗することも確認。
+  - 手順書の「既存の画面がそのまま動き」を、実GUIで確かめた範囲に合わせて修正し、タスク画面の未確認の操作を一覧に追加。
+- 画面（ローカルWorkspace）：読み取り中に「開く」・一覧の失敗が起きたとき、遅れて終わった読み取りの内容を表示しない（世代で判定）。2ページ目以降からの「開く」で古いページを取り直さない（取得は1回）。状況変更以外の一覧の失敗は、一覧の取得が成功したら消す。「開く」で作成フォームの失敗表示も消す（入力は保持）。状況変更の説明は、作成フォームが同じ説明を出しているときは一覧側に重ねて出さない。aria-disabledのボタンも無効表示。いずれも画面試験を先に追加し、修正前に失敗することを確認。
+- shell：本文の途中での時間切れ（504）、応答の上限ちょうど・1バイト超過（宣言・逐次）、要求の上限試験を空きportで行う（8080番portで開発用serverが動いていても結果が変わらない）。設定固定の試験の `cargo metadata` から `--offline` を外す（新しい環境では、host以外の対象のcrateが未取得で失敗していた）。
+- 実GUIの証跡：確認項目の名前の先頭に、何で確かめたか（画面／IPC／ページのscript／ディスク／ログ／準備）を付け、report.jsonの `checkCounts` に集計。前回の「205項目のうちIPC 42・ページのscript 3、残りは画面」は誤りで、IPCは38、ページのscriptによる確認は約29件が画面の確認に数えられていた。処理中のボタンの見た目は、scriptでボタンを無効にする確認から、実際のWorkspace作成の応答を一時的に止めた間の確認に変更。
+- 作業プロセスの再起動でDockerのdaemonが止まっていたため起動し直した（実GUIの準備で失敗した実行 `run-glAok2` はこのため）。
+- 検証（ローカル、Linux）：
+  - 実GUI：`run-p5Dill`・`run-29mvyi`（commit `d18df99`、連続2回）で25シナリオ・212項目がすべて成功、`qualifying: true`（画面105、ページのscript 36、IPC 38、IPC・ディスク2、ディスク20、ログ3、準備8）。
+  - shell：単体28件・設定固定6件・transport shim 5件、clippy -D warnings、fmt、desktopの `cargo deny check`。変異27件（前回の21件＋専用header2件・本文の時間切れ・上限の境界3件）をすべて検出。architecture-lint成功。
+  - 画面：全69 suites／1659件、型検査、本番build。
+- 未検証：Windows実機・WebView2・MSVC build（依頼者が実施）、Windows版broker（未実装、fail-closed）、macOS、手順書の「Linuxで未確認」の項目（タスク画面の作業ファイル以外の操作を含む）。
+- 次のexact action：push → exact-head CI → 4回目の独立review（今回の修正の確認）→ 指摘があれば修正 → Draft解除と統合 → 統合後のmain CIを確認 → 最終報告。
+
 ## 2026-10-07 10:10 UTC — 2回目の独立reviewの修正
 
 - 2回目の独立review（4観点＋反証の検証＋completeness critic）の指摘を修正（`6a7fae8`、`3abfeca`）。

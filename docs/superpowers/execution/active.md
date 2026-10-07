@@ -72,6 +72,7 @@
 - 07:30追補：依頼者が[判断5項目](../../decisions/2026-10-07-tauri-v2-desktop-qualification.md)に合意。main `04076b1` から作り直した同名branchで、Tauri shell（`apps/desktop/src-tauri`、独立Cargo workspace）を実装し、実アプリのGUIをtauri-driver＋Xvfb＋xdotool＋実backendで17シナリオ確認（ローカル専用、CIにはしない）。Windows実機は未実施。次は独立review→Draft PR→exact-head CI→統合
 - 09:20追補：[PR #103](https://github.com/AIrisu-072/knowledge-platform/pull/103)（Draft）。1回目の独立reviewを修正し、実GUI確認を24シナリオへ拡充（commit `baad3bc` で `qualifying: true`）。Linuxで未確認の項目は[手順書](../../operations/desktop-workspace-runtime.md)、詳細は[状況](desktop-workspace-runtime-status.md)。次は2回目の独立reviewの確認→exact-head CI→統合→統合後CI
 - 10:10追補：2回目の独立reviewの指摘を修正（設定の上書き防止、転送の上限試験、下書き保持、証跡の厳密化）。commit `3abfeca` と、main（PR #100〜#105）取り込み後の `c31e6d0` で、実GUI 24シナリオ・205項目がそれぞれ連続2回 `qualifying: true`。次はexact-head CI→統合→統合後CI
+- 14:40追補：3回目の独立reviewで、デスクトップ版のタスク画面の作業ファイル保存が必ず失敗する不具合（Work APIの専用headerをshellが落とす）などを発見し修正（`d18df99`）。実GUI 25シナリオ・212項目が連続2回 `qualifying: true`。次はpush→exact-head CI→4回目のreview→統合→統合後CI
 
 ---
 

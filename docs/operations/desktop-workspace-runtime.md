@@ -87,10 +87,10 @@ mise run desktop:gui:e2e
 - 使うもの：tauri-driver 2.1.0（`cargo install tauri-driver --version =2.1.0 --locked`。miseの `[tools]` には入れていません。追跡対象の `mise.lock` が変わり、CIの作業ツリー検査が失敗するため。2.1.0は `--version` を持たないので、report.jsonには実行ファイルのpathとsha256を記録します）、WebKitWebDriver（`webkit2gtk-driver`）、Xvfb、xdotool（OSのフォルダー選択画面を操作）、xclip（選択画面へpathを貼り付ける。`xdotool type` は日本語の文字を落とすことがあり、そのとき選択画面は別名のフォルダーを作ってしまうため）、ImageMagick、Docker（PostgreSQL 18.6）、PDFium（`KP_DSI_PDFIUM_RUNTIME_DIR`、`experiments/document-semantic-inspection/scripts/install-pdfium.sh`）。
 - 毎回、使い捨てのPostgreSQLとorganization-server（合成の `sales-01`）を起動し、合成文書を登録してから確認します。HOME・設定・データは実行ごとの一時フォルダーに分けます。Xvfbは空いている画面番号を自分で選び（`-displayfd`）、既存のX serverには接続しません。終了時（Ctrl-C・SIGTERMを含む）は、自分が作ったcontainerとprocessだけを止めます。
 - 結果は `apps/desktop/e2e/.state/run-*/report.json` とスクリーンショットに残ります（git管理外）。`status` は、全シナリオが成功したときだけ `passed` です（失敗・準備の失敗は `failed`、名前で絞った実行などで未実行が残れば `incomplete`、中断は `interrupted`）。`qualifying` は、`passed` で、かつ絞り込み無し・作業ツリーがcommit済み・実行ファイルの差し替え（`KP_DESKTOP_BINARY`）無し・実行ファイルが主なbuild入力（shellとbrokerのsource・Cargoの設定・icon、画面のsource・webpack/babel/tsconfig・package.json・pnpm-lock.yaml）より新しいときだけ `true` になります。更新時刻による判定なので、`mise run desktop:gui:e2e`（実行前にbuildし直す）で実行してください。証拠として引用できるのは `qualifying: true` の実行だけです。
-- 各項目の名前の先頭に、何で確かめたかを付けています：接頭辞なし＝画面（操作して、画面に出たものを読む）、「IPC：」＝ページのscriptからbrokerを直接呼ぶ（不正な要求、同じ操作IDの再送、brokerの記録の確認など）、「ページのscript：」＝その他のページのscript（`/v1` への直接のfetch、新しいウィンドウ・iframe・遷移の試行、media query、IPCの呼び出し回数の計測）、「ディスク：」＝harnessがディスク上のファイルを読む、「ログ：」＝アプリのstderr、「準備：」＝確認のための準備。report.jsonの `checkCounts` に種類ごとの件数を集計します。
+- 各項目の名前の先頭に、何で確かめたかを付けています：接頭辞なし＝画面（操作して、画面に出たもの・画面の要素の状態を読む）、「IPC：」＝ページのscriptからbrokerを直接呼ぶ（不正な要求、同じ操作IDの再送、brokerの記録の確認など）、「ページのscript：」＝その他のページのscript（`/v1` への直接のfetch、新しいウィンドウ・iframe・遷移の試行、media query、IPCの呼び出し回数の計測）、「ディスク：」＝harnessがディスク上のファイルを読む、「ログ：」＝アプリのstderr、「準備：」＝確認のための準備。report.jsonの `checkCounts` に種類ごとの件数を集計します。
 - これはLinuxでの証拠です。Windows・WebView2の証拠にはなりません。
 
-2026-10-07の確認結果（24シナリオ。実行記録は下の「証拠とした実行」）：
+2026-10-07の確認結果（25シナリオ。実行記録は下の「証拠とした実行」）：
 
 | シナリオ | 主な確認内容（「IPC」はページのscriptからbrokerを直接呼んだ確認、「ページのscript」はその他のscriptによる確認） |
 |---|---|
@@ -137,8 +137,9 @@ mise run desktop:gui:e2e
 
 ### 証拠とした実行
 
-- 2026-10-07 10:15–10:23 UTC、`run-AZ0Gve` と `run-O8wwVK`（連続2回）：mainを取り込んだ後のcommit `c31e6d0`（作業ツリーはcommit済み、絞り込み無し、実行ファイルの差し替え無し）で、どちらも24シナリオ・205項目がすべて成功し、`qualifying: true`。205項目のうち「IPC：」は42、「ページのscript：」は3、残りは画面の操作と表示（およびディスク上の確認）です。main取り込み前のcommit `3abfeca` でも連続2回成功しています（`run-YnbwvF`・`run-VDyd9g`）。
-- 実行ファイル（debug build）のsha256は `c8bda7aae22d96d264b0fd3177503a30966942e3969ba354206dcef70174da62`。WebKitGTK 2.52.6、webkit2gtk-driver 2.52.6-0ubuntu0.24.04.1、xvfb 2:21.1.12-1ubuntu1.8、xdotool 1:3.20160805.1-5build1、xclip 0.13-3、tauri-driver 2.1.0（sha256 `628e1b01729825cf688858699fb66969e987d04571a615c1c74a8141b34a2b5d`）、Node 22.22.0、PostgreSQL 18.6。
+- 2026-10-07 14:25–14:32 UTC、`run-p5Dill` と `run-29mvyi`（連続2回）：commit `d18df99`（作業ツリーはcommit済み、絞り込み無し、実行ファイルの差し替え無し）で、どちらも25シナリオ・212項目がすべて成功し、`qualifying: true`。212項目の内訳（report.jsonの `checkCounts`）は、画面105、ページのscript 36、IPC 38、IPC・ディスク2、ディスク20、ログ3、準備8です。
+- 実行ファイル（debug build）のsha256は `08a95df4587e259447bbe537ea7e1f63d8ef5616a56fac6a825197f1b2780c84`。WebKitGTK 2.52.6、webkit2gtk-driver 2.52.6-0ubuntu0.24.04.1、xvfb 2:21.1.12-1ubuntu1.8、xdotool 1:3.20160805.1-5build1、xclip 0.13-3、tauri-driver 2.1.0（sha256 `628e1b01729825cf688858699fb66969e987d04571a615c1c74a8141b34a2b5d`）、Node 22.22.0、PostgreSQL 18.6。
+- それ以前の実行（`c31e6d0` の `run-AZ0Gve`・`run-O8wwVK` など）では、ページのscriptによる確認の一部を画面の確認として数えていました（IPCも42ではなく38）。上の実行から、確認手段ごとに分けて集計しています。
 - 強制終了は、どちらの実行も1回目の試行で8MiB中4MiBを書いた時点で起き、同じ操作IDの再送で完全な1件に収束しました。
 - 途中で失敗した実行もあります（いずれもharness側の問題で、直してから上の実行を行いました）：二重クリックがmodalの裏のボタンを押していた、`xdotool type` が「第」を落としてGTKの選択画面が別名のフォルダーを作った、skip linkの確認が直前のfocus位置や、文書一覧が読み込み後に選択行へfocusを移す動作と競合した。経緯は[実行状況](../superpowers/execution/desktop-workspace-runtime-status.md)にあります。
 - 証跡（report.jsonとスクリーンショット）はクラウド環境の `apps/desktop/e2e/.state/`（git管理外）にあり、環境の終了とともに消えます。手元で再現するときは `mise run desktop:gui:e2e` を実行してください。
