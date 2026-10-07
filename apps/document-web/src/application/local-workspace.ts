@@ -150,8 +150,12 @@ export function useRuntimeOperation<T, R>(key: string, place: OperationPlace, ru
       await onDone?.(result);
       return result;
     } catch (error) {
-      if (isRuntimeFailure(error) && error.code === 'outcome_unknown') {
+      const replay = current?.status === 'unknown';
+      if (isRuntimeFailure(error) && (error.code === 'outcome_unknown' || (replay && error.code === 'stale_context'))) {
+        // A replay refused only because the context moved keeps its operation:
+        // the Workspace is refreshed and the same operation can be confirmed.
         store.set(key, { key, status: 'unknown', operationId, input: value, error, ...place });
+        if (error.code === 'stale_context') await client.invalidateQueries({ queryKey: localRuntimeKeys.all });
       } else {
         store.set(key, undefined);
         setFailure(error);

@@ -147,3 +147,17 @@ test('replies must match the request they answer', async () => {
   // Recovery completes an interrupted creation, so a lost reply is uncertain.
   await expect(failure(runtime.workspace.recoverWorkspace('op-1'))).resolves.toMatchObject({ code: 'outcome_unknown' });
 });
+
+test('rename, detach and recovery replies must match their request', async () => {
+  const other = { ...workspace, workspaceId: 'w_other' };
+  const attachedWorkspace = { ...workspace, bindings: [...workspace.bindings, { bindingId: 'b_x', source: 'explicit', label: '資料', available: true }] };
+  const { invoke } = fakeInvoke([
+    other,
+    attachedWorkspace,
+    { state: 'ready', receipt: { operationId: 'someone-else', workspaceId: 'w_1', managedBindingId: 'b_m', runtimeRevision: '1' } },
+  ]);
+  const runtime = createDesktopRuntime(invoke);
+  await expect(failure(runtime.workspace.renameWorkspace(context, 'x', 'op-r'))).resolves.toMatchObject({ code: 'outcome_unknown' });
+  await expect(failure(runtime.resources.detachDirectory(context, 'b_x', 'op-d'))).resolves.toMatchObject({ code: 'outcome_unknown' });
+  await expect(failure(runtime.workspace.recoverWorkspace('op-1'))).resolves.toMatchObject({ code: 'outcome_unknown' });
+});

@@ -87,9 +87,13 @@ function workspaceCreated(value: unknown, operationId: string): WorkspaceCreated
   if (created.receipt.operationId !== operationId || created.receipt.workspaceId !== created.workspace.workspaceId) throw new Malformed();
   return created;
 }
-function outcome(value: unknown): RuntimeWorkspaceOutcome {
+function outcome(value: unknown, operationId: string): RuntimeWorkspaceOutcome {
   const state = oneOf((value as Json | null)?.state, ['ready', 'pending', 'not_found', 'unavailable', 'outcome_unknown'] as const);
-  if (state === 'ready') return { state, receipt: workspaceReceipt(record(value, ['state', 'receipt']).receipt) };
+  if (state === 'ready') {
+    const receipt = workspaceReceipt(record(value, ['state', 'receipt']).receipt);
+    if (receipt.operationId !== operationId) throw new Malformed();
+    return { state, receipt };
+  }
   record(value, ['state']);
   return { state };
 }
@@ -204,16 +208,24 @@ export function createDesktopRuntime(invoke: InvokeFn): RuntimeAdapter {
     workspace: {
       listWorkspaces: () => read('workspace.list', null, workspaceList),
       createLocalWorkspace: (name, operationId) => mutate('workspace.create', { name, operationId }, (value) => workspaceCreated(value, operationId)),
-      renameWorkspace: (context: ContextRef, name, operationId) => mutate('workspace.rename', { context, name, operationId }, workspace),
+      renameWorkspace: (context: ContextRef, name, operationId) => mutate('workspace.rename', { context, name, operationId }, (value) => {
+        const renamed = workspace(value);
+        if (renamed.workspaceId !== context.workspaceId) throw new Malformed();
+        return renamed;
+      }),
       // Recovery may complete an interrupted creation, so it is a mutation.
-      recoverWorkspace: (operationId) => mutate('workspace.recover', { operationId }, outcome),
+      recoverWorkspace: (operationId) => mutate('workspace.recover', { operationId }, (value) => outcome(value, operationId)),
     },
     dialog: {
       chooseDirectory: (context) => read('directory.choose', { context }, selection),
     },
     resources: {
       attachDirectory: (context, chosen, operationId) => mutate('directory.attach', { context, selectionId: chosen.selectionId, operationId }, (value) => attached(value, operationId)),
-      detachDirectory: (context, bindingId, operationId) => mutate('directory.detach', { context, bindingId, operationId }, workspace),
+      detachDirectory: (context, bindingId, operationId) => mutate('directory.detach', { context, bindingId, operationId }, (value) => {
+        const detached = workspace(value);
+        if (detached.workspaceId !== context.workspaceId || detached.bindings.some((item) => item.bindingId === bindingId)) throw new Malformed();
+        return detached;
+      }),
       listEntries: (context, ref, cursor) => read('entries.list', { context, ref, cursor: cursor ?? null }, (value) => entryPage(value, ref)),
       openRead: (context, ref, expectedFileIdentity) => read('file.openRead', { context, ref, expectedFileIdentity }, readHandle),
       readFile: (context, handle, offset, length) => length > MAX_READ_RANGE || length < 1

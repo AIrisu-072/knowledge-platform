@@ -217,3 +217,52 @@ test('an uncertain file creation survives navigation and blocks moving elsewhere
   expect(attempts[1]!.args[1]).toEqual({ bindingId: expect.any(String), locator: ['sub'] });
   expect(screen.getByRole('button', { name: 'W2' })).toBeEnabled();
 });
+
+test('while an operation is uncertain the folder cannot be detached or another attached, and a moved context keeps it', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'a.txt': 'a' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await screen.findByRole('table', { name: '資料の内容' });
+  const form = screen.getByRole('form', { name: 'この場所にファイルを作成' });
+  await user.type(within(form).getByRole('textbox', { name: 'ファイル名' }), 'n.txt');
+  fake.fail('createFile', new RuntimeFailure('outcome_unknown'));
+  await user.click(within(form).getByRole('button', { name: '作成する' }));
+  await within(form).findByRole('button', { name: '結果を確認' });
+  expect(screen.getByRole('button', { name: '資料を解除' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'フォルダーを追加' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '名前を変更' })).toBeDisabled();
+  // A context that moved meanwhile refreshes the Workspace but keeps the operation.
+  fake.bumpContext();
+  await user.click(within(form).getByRole('button', { name: '結果を確認' }));
+  expect(await screen.findByText(/Workspaceの状態が更新されました/)).toBeVisible();
+  const retry = await within(screen.getByRole('form', { name: 'この場所にファイルを作成' })).findByRole('button', { name: '結果を確認' });
+  await user.click(retry);
+  expect(await screen.findByRole('button', { name: 'n.txt の内容を表示' })).toBeVisible();
+  const attempts = fake.callsOf('createFile');
+  expect(new Set(attempts.map((call) => call.args[4])).size).toBe(1);
+  expect(screen.getByRole('button', { name: '資料を解除' })).toBeEnabled();
+});
+
+test('an uncertain workspace creation can be left for later and confirmed from the list', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W' }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '新しいWorkspace' }));
+  const dialog = await screen.findByRole('dialog', { name: '新しいWorkspace' });
+  await user.type(within(dialog).getByRole('textbox', { name: 'Workspace名' }), '後で');
+  fake.fail('createLocalWorkspace', new RuntimeFailure('outcome_unknown'));
+  await user.click(within(dialog).getByRole('button', { name: '作成する' }));
+  await user.click(await within(dialog).findByRole('button', { name: 'あとで確認する' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(screen.getByText(/結果を確認していない操作があります/)).toBeVisible();
+  await user.click(screen.getByRole('button', { name: 'Workspace作成の結果を確認' }));
+  const reopened = await screen.findByRole('dialog', { name: '新しいWorkspace' });
+  expect(within(reopened).getByRole('textbox', { name: 'Workspace名' })).toHaveValue('後で');
+  await user.click(within(reopened).getByRole('button', { name: '結果を確認' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(await screen.findByRole('button', { name: '後で' })).toBeVisible();
+  const attempts = fake.callsOf('createLocalWorkspace');
+  expect(attempts).toHaveLength(2);
+  expect(attempts[0]!.args[1]).toBe(attempts[1]!.args[1]);
+});

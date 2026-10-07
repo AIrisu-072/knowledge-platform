@@ -125,7 +125,9 @@ function WorkspaceList({ workspaces, selected, onSelect, onCreated, blocked }: {
           </li>
         ))}
       </ul>
-      <button ref={trigger} type="button" className={workspaceStyles.secondaryButton} disabled={blocked && !open} onClick={() => setOpen(true)}>新しいWorkspace</button>
+      {unknown && !open
+        ? <button ref={trigger} type="button" className={workspaceStyles.secondaryButton} onClick={() => setOpen(true)}>Workspace作成の結果を確認</button>
+        : <button ref={trigger} type="button" className={workspaceStyles.secondaryButton} disabled={blocked && !open} onClick={() => setOpen(true)}>新しいWorkspace</button>}
       <Modal isOpen={open} onOpenChange={(value) => { if (!value) close(); }} isDismissable={!pending && !unknown} isKeyboardDismissDisabled={pending || unknown} className={dialogStyles.modal}>
         <Dialog aria-labelledby="local-workspace-create-title" className={dialogStyles.dialog}>
           <form onSubmit={submit} className={styles.form}>
@@ -138,7 +140,9 @@ function WorkspaceList({ workspaces, selected, onSelect, onCreated, blocked }: {
             {create.state.status === 'failed' && <Problem error={create.state.error} />}
             {unknown && <Problem error={create.state.status === 'unknown' ? create.state.error : undefined} />}
             <div className={dialogStyles.actions}>
-              <button type="button" className={workspaceStyles.secondaryButton} onClick={close} disabled={pending || unknown}>キャンセル</button>
+              {unknown
+                ? <button type="button" className={workspaceStyles.secondaryButton} onClick={() => { setOpen(false); requestAnimationFrame(() => trigger.current?.focus()); }}>あとで確認する</button>
+                : <button type="button" className={workspaceStyles.secondaryButton} onClick={close} disabled={pending}>キャンセル</button>}
               <button type="submit" className={workspaceStyles.primaryButton} aria-disabled={pending || (!unknown && !name.trim())}>
                 {unknown ? '結果を確認' : pending ? '作成中…' : '作成する'}
               </button>
@@ -170,7 +174,8 @@ function WorkspaceDetail({ workspace, canPick, onNotice, refresh, blocked }: {
   const renameButton = useRef<HTMLButtonElement>(null);
   const [picking, setPicking] = useState(false);
   const [folderProblem, setFolderProblem] = useState<unknown>();
-  const [detaching, setDetaching] = useState<BindingSummary | undefined>(() => unresolved.find((item) => item.key === keys.detach)?.input as BindingSummary | undefined);
+  const unresolvedDetach = unresolved.find((item) => item.key === keys.detach)?.input as BindingSummary | undefined;
+  const [detaching, setDetaching] = useState<BindingSummary | undefined>(() => unresolvedDetach);
   const detachTrigger = useRef<HTMLButtonElement | null>(null);
   const [browse, setBrowse] = useState<Browse | undefined>(() => unresolved.find((item) => item.workspaceId === workspace.workspaceId && item.browse)?.browse);
 
@@ -240,7 +245,7 @@ function WorkspaceDetail({ workspace, canPick, onNotice, refresh, blocked }: {
     <section className={styles.panel} aria-labelledby="local-workspace-title">
       <div className={styles.toolbar}>
         <h2 id="local-workspace-title" ref={heading} tabIndex={-1}>{workspace.name}</h2>
-        {!renaming && <button ref={renameButton} type="button" className={styles.inlineButton} onClick={() => { setDraftName(workspace.name); setRenaming(true); }}>名前を変更</button>}
+        {!renaming && <button ref={renameButton} type="button" className={styles.inlineButton} disabled={blocked} onClick={() => { setDraftName(workspace.name); setRenaming(true); }}>名前を変更</button>}
       </div>
       {renaming && (
         <form className={styles.toolbar} onSubmit={(event) => { event.preventDefault(); if (rename.state.status !== 'pending' && draftName.trim()) void rename.submit(draftName); }}
@@ -262,13 +267,15 @@ function WorkspaceDetail({ workspace, canPick, onNotice, refresh, blocked }: {
               onClick={() => setBrowse({ bindingId: binding.bindingId, locator: [] })}>開く</button>
             {binding.source === 'explicit' && (
               <button type="button" className={workspaceStyles.secondaryButton} aria-label={`${binding.label}を解除`}
+                disabled={blocked && unresolvedDetach?.bindingId !== binding.bindingId}
                 onClick={(event) => { detachTrigger.current = event.currentTarget; setDetaching(binding); }}>解除</button>
             )}
           </li>
         ))}
       </ul>
       {canPick
-        ? <button ref={addButton} type="button" className={workspaceStyles.secondaryButton} aria-disabled={picking || attach.state.status === 'pending'} onClick={() => void addFolder()}>
+        ? <button ref={addButton} type="button" className={workspaceStyles.secondaryButton} aria-disabled={picking || attach.state.status === 'pending'}
+          disabled={blocked && attach.state.status !== 'unknown' && attach.state.status !== 'pending'} onClick={() => void addFolder()}>
           {attach.state.status === 'unknown' ? '結果を確認' : picking ? 'フォルダーを選択中…' : 'フォルダーを追加'}
         </button>
         : <p className={styles.note}>この環境ではフォルダー選択画面を利用できません。</p>}
@@ -280,7 +287,9 @@ function WorkspaceDetail({ workspace, canPick, onNotice, refresh, blocked }: {
           {detach.state.status === 'failed' && <Problem error={detach.state.error} />}
           {detach.state.status === 'unknown' && <Problem error={detach.state.error} />}
           <div className={dialogStyles.actions}>
-            <button type="button" className={workspaceStyles.secondaryButton} onClick={closeDetach} disabled={detach.state.status === 'pending' || detach.state.status === 'unknown'}>キャンセル</button>
+            {detach.state.status === 'unknown'
+              ? <button type="button" className={workspaceStyles.secondaryButton} onClick={() => { setDetaching(undefined); requestAnimationFrame(() => detachTrigger.current?.focus()); }}>あとで確認する</button>
+              : <button type="button" className={workspaceStyles.secondaryButton} onClick={closeDetach} disabled={detach.state.status === 'pending'}>キャンセル</button>}
             <button type="button" className={workspaceStyles.primaryButton} aria-disabled={detach.state.status === 'pending'}
               onClick={() => { if (detaching && detach.state.status !== 'pending') void detach.submit(detach.state.status === 'unknown' ? detach.state.input : detaching); }}>
               {detach.state.status === 'unknown' ? '結果を確認' : '解除する'}
