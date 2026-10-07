@@ -1,5 +1,12 @@
 # Active Execution Pointer
 
+## 2026-10-07 UTC — Desktop Workspace Runtime（Runtime担当、下記のDocument Pointerとは別）
+
+- Runtime担当の再開先は[状況](desktop-workspace-runtime-status.md)と[計画](../plans/2026-10-07-desktop-workspace-runtime.md)です。Document担当の公開前WORKING比較のPointer（下記）は変更していません
+- broker（`crates/local-workspace-runtime`）、単一IPCのRuntime Contract、`/local-workspaces` 画面、テスト専用bridgeによるChromium通しE2Eを実装しました。Tauri shellは、MPL-2.0・Linux advisory・Windows経路・WebView2・OSV送信の[依頼者判断](../../decisions/2026-10-07-tauri-v2-desktop-qualification.md)待ちでSTOPしています。PR52の限定例外は使っていません
+
+---
+
 ## 2026-10-07 02:31 UTC — 非root Folderアクセス設定
 
 - PR94統合main d515aa38を基点に、通常ツリーで選択・再確認できる非root Folderの既存主体だけを編集する。[状況](folder-access-policy-gui-status.md)と[小計画](../plans/2026-10-07-folder-access-policy-gui.md)が再開先

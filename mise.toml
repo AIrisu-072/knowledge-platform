@@ -389,6 +389,15 @@ run = [
   "pnpm --filter @knowledge-platform/document-web e2e",
 ]
 
+[tasks."desktop:bridge:e2e"]
+description = "Browser E2E of the desktop runtime adapter against the real local Workspace broker (TEST-ONLY stdio bridge; not Tauri/WebView2/Windows proof)"
+run = [
+  "cargo build --locked -p local-workspace-runtime --example stdio_bridge",
+  "pnpm --filter @knowledge-platform/document-web build",
+  "pnpm --filter @knowledge-platform/document-web exec tsc -p tsconfig.desktop-bridge.json",
+  "pnpm --filter @knowledge-platform/document-web exec playwright test -c playwright.desktop-bridge.config.ts",
+]
+
 [tasks."document:poc:runtime"]
 description = "Qualify the real two-process Document PoC runtime and same-origin GUI"
 run = '''
