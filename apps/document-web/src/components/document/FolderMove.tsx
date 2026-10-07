@@ -1,3 +1,4 @@
+import { folderAccessPolicyOperations } from '../../application/document-folder-access-policy';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, Heading, Modal } from 'react-aria-components';
@@ -18,12 +19,14 @@ const title = '選択したフォルダーを移動';
 const reselect = '移動対象はフォルダーツリーからもう一度選択してください。';
 const sourceError = '対象の最新の状態を取得できません。元の親の取得済み範囲を確認し、ツリーで選び直してください。';
 const destinationError = '移動先の最新の状態を取得できません。移動先ツリーで選び直してください。';
-const otherBlocked = '文書移動・作成または改名結果が未確定です。保持されている操作の結果を先に確認してください。';
+const otherBlocked = 'アクセス設定・文書移動・作成または改名結果が未確定です。保持されている操作の結果を先に確認してください。';
 export function FolderMove({ root, selected, contextKey }: {
   root?: FolderDetail; contextKey: string;
   selected?: { context: SelectedFolderContext; folder: Folder & { capabilities?: FolderDetail['capabilities'] }; readReady: boolean };
 }) {
   const client = useQueryClient();
+  const policyStore = folderAccessPolicyOperations(client);
+  const policyOperation = useSyncExternalStore(policyStore.subscribe, policyStore.get);
   const documentMoveStore = documentMoveOperations(client);
   const documentMove = useSyncExternalStore(documentMoveStore.subscribe, documentMoveStore.get);
   const store = folderMoveOperations(client); const createStore = rootFolderOperations(client); const renameStore = folderRenameOperations(client);
@@ -42,8 +45,8 @@ export function FolderMove({ root, selected, contextKey }: {
   const trigger = useRef<HTMLSpanElement>(null); const returnFocus = useRef<HTMLButtonElement | null>(null);
   useEffect(() => { generation.current += 1; destinationGeneration.current += 1; destinationBusy.current = false; refreshing.current = false; setReading(false); setDestinationReading(false); setOpen(false); }, [contextKey]);
   useEffect(() => () => { generation.current += 1; destinationGeneration.current += 1; }, []);
-  const otherUnresolved = [create, rename, documentMove].some(item => item?.status === 'pending' || item?.status === 'unknown');
-  const otherUnresolvedNow = () => [createStore.get(), renameStore.get(), documentMoveStore.get()].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const otherUnresolved = [create, rename, documentMove, policyOperation].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const otherUnresolvedNow = () => [createStore.get(), renameStore.get(), documentMoveStore.get(), policyStore.get()].some(item => item?.status === 'pending' || item?.status === 'unknown');
   const pending = operation?.status === 'pending'; const unknown = operation?.status === 'unknown';
   const selectedDetail = selected?.folder.capabilities ? { ...selected.folder, parentFolderId: selected.context.sourceParentId, capabilities: selected.folder.capabilities } : undefined;
   const reselectRequired = selected?.context === blockedSelection.current;

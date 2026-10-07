@@ -1,5 +1,17 @@
 # Active Execution Pointer
 
+## 2026-10-07 02:31 UTC — 非root Folderアクセス設定
+
+- PR94統合main d515aa38を基点に、通常ツリーで選択・再確認できる非root Folderの既存主体だけを編集する。[状況](folder-access-policy-gui-status.md)と[小計画](../plans/2026-10-07-folder-access-policy-gui.md)が再開先
+- 既存GET/PUT・manageAccess・最終backend認可/OCCを保持。5権限/明示削除/継承切替を保存前に確認し、全主体削除・新主体directory・Root保護意味変更を追加しない。UNKNOWNは固定要求を保持し、自己失権後の403を元操作の失敗へ読み替えない
+- branchはfeat/document-folder-access-policy-20261007。次はTDD・合成fixture・独立review・同機能PR。PR94の日本語本文に最終CI/未取得限界を記録済み、main d515自身の資格は監視中。以下の公開済み履歴は保持する
+
+02:55追補：GUIはUNKNOWN/正規主体/同revision継承変化と同期失効の反例を補修し、最終候補を検証・独立review中。既存原本の遅延保存は同tick反例から既存guardへ限定接続。合成受入2filesは型/純粋81/収集18+5成功、実hosted未取得。main d515の新push全13jobs/13checks・DB36/Folder4・artifact0は確認済みで、導入pinを同機能4docs内で追従した。runtime stdout未取得の境界は保持する。
+
+03:10追補：最終GUI1523/60・schema/型/buildと独立全体/限定再reviewが合格。継承確認欄と比較query失効後の旧Blob復活の2件を反例から補修し、Unicode別主体IDの集合比較も固定した。sourceは33b02f210＋f52af90d、実受入2filesと導入4docsを同機能へ保持。新操作のhostedは未資格で、次は最新base確認→候補固定→Draft/同head CI。
+
+---
+
 ## 2026-10-07 01:28 UTC — 公開前WORKINGの内容比較
 
 - PR93統合main41b584ddを基点に、通常「版・改訂」から正規readで確認したcurrent published/選択WORKINGの固定IDを既存Version comparisonへ送る。[状況](document-working-comparison-status.md)と[限定計画](../plans/2026-10-07-document-working-comparison.md)が再開先
