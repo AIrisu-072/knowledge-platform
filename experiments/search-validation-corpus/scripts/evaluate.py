@@ -95,6 +95,7 @@ def main() -> int:
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--systems", default="search,discover")
     parser.add_argument("--actor", default="poc-human")
+    parser.add_argument("--split", choices=["tuning", "final"], help="score only one split")
     args = parser.parse_args()
     keys = key_map(args.corpus, args.ingest)
     questions = []
@@ -103,6 +104,8 @@ def main() -> int:
     results = []
     for question in questions:
         question.setdefault("split", split_of(question["qid"]))
+        if args.split and question["split"] != args.split:
+            continue
         for system in args.systems.split(","):
             record = {"qid": question["qid"], "type": question["type"], "split": question["split"],
                       "lane": question["lane"], "verification": question["verification"], "system": system}
