@@ -4,6 +4,15 @@
 //! digest is recomputed from the restored values with the P1 encoders; a stored
 //! digest column is never trusted on its own. Lexical index bytes and Graph
 //! rows are verified by their own owners (P7-05 / P3) before READY.
+//!
+//! The Unit manifest is stored as one content-addressed segment per item
+//! (SD-T11 5), shared by every generation that has the same item; the
+//! `unit_manifest` payload row keeps only its header. A segment is verified
+//! before it is written and again when this process first reads it, then
+//! kept in a process-wide cache so an unchanged item is not read twice.
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use search_application::ports::SemanticRegistrySnapshot;
 use search_application::search_core::projection::{
@@ -11,11 +20,12 @@ use search_application::search_core::projection::{
 };
 use search_projection_memory::generation_digest;
 use search_source_document::{
-    BodyCoverageArtifact, BodyUnitManifest, GenerationBundleReceipt, compute_bundle_receipt,
-    validate_restored_manifest,
+    BodyCoverageArtifact, BodyItemEntry, BodyUnitManifest, GenerationBundleReceipt,
+    compute_bundle_receipt, segment_digest, validate_restored_manifest,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use sha2::Digest as _;
 use sqlx::{PgPool, Row};
 
 pub const PAYLOAD_DTO_VERSION: &str = "v1";
@@ -24,6 +34,63 @@ const MAX_PAYLOAD_BYTES: usize = 1024 * 1024 * 1024;
 /// A payload whose JSON text is longer is stored as ordered text chunks of
 /// at most this many bytes, below the 256 MiB limit of one JSONB value.
 const CHUNK_BYTES: usize = 64 * 1024 * 1024;
+/// Recorded on every segment this writer verified before inserting it.
+pub const SEGMENT_VERIFIER: &str = "search-runtime-payload-v1";
+/// Verified segments kept per process; above this the cache keeps only the
+/// segments of the generation being read.
+const SEGMENT_CACHE_ITEMS: usize = 200_000;
+
+/// The `unit_manifest` payload row of a segmented generation. Its items are
+/// the generation's ordered `search_generation_segment` rows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UnitManifestHeaderV1 {
+    key: ProjectionGenerationKey,
+    source_snapshot: String,
+    segments: u64,
+}
+
+/// Segments verified by this process, by digest text, without their Source
+/// snapshot (each generation rebinds its own).
+fn segment_cache() -> &'static Mutex<HashMap<String, Arc<BodyItemEntry>>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, Arc<BodyItemEntry>>>> = OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// Forgets every verified segment, as a restarted process would; the next
+/// read of each segment verifies it again.
+pub fn forget_verified_segments() {
+    if let Ok(mut cache) = segment_cache().lock() {
+        cache.clear();
+    }
+}
+
+/// An item as stored in a segment: every Unit's Source snapshot is cleared.
+fn unbound(entry: &BodyItemEntry) -> BodyItemEntry {
+    let mut stored = entry.clone();
+    for unit in &mut stored.units {
+        unit.provenance.source_snapshot.clear();
+    }
+    stored
+}
+
+/// Checks a segment read from the database before it is cached: its digest,
+/// Unit count and every Unit's text digest.
+fn verified_segment(digest: &str, count: i64, text: &str) -> Result<BodyItemEntry, BundleError> {
+    let entry = restore::<BodyItemEntry>(text)?;
+    if sha256_text(&segment_digest(&entry).map_err(|_| BundleError::Digest)?) != digest
+        || u64::try_from(count).ok() != Some(entry.units.len() as u64)
+    {
+        return Err(BundleError::Digest);
+    }
+    for unit in &entry.units {
+        let actual: [u8; 32] = sha2::Sha256::digest(unit.text.as_bytes()).into();
+        if actual != unit.text_sha256 || !unit.provenance.source_snapshot.is_empty() {
+            return Err(BundleError::Digest);
+        }
+    }
+    Ok(entry)
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -269,6 +336,89 @@ pub struct PgPayloadStore {
 }
 
 impl PgPayloadStore {
+    /// The Unit manifest of `key` from its ordered segments: cached segments
+    /// are reused, the others are read once, verified and cached.
+    async fn assemble(
+        &self,
+        key: ProjectionGenerationKey,
+        header: UnitManifestHeaderV1,
+    ) -> Result<BodyUnitManifest, BundleError> {
+        if header.key != key {
+            return Err(BundleError::Binding);
+        }
+        let list: Vec<(i32, String)> = sqlx::query_as(
+            "SELECT ordinal, segment_digest FROM search_generation_segment \
+             WHERE source_id=$1 AND generation_id=$2 ORDER BY ordinal",
+        )
+        .bind(key.source_id.as_uuid())
+        .bind(key.generation_id.as_uuid())
+        .fetch_all(&self.pool)
+        .await?;
+        if list.len() as u64 != header.segments
+            || list
+                .iter()
+                .enumerate()
+                .any(|(at, (ordinal, _))| usize::try_from(*ordinal).ok() != Some(at))
+        {
+            return Err(BundleError::Shape);
+        }
+        let missing: Vec<String> = {
+            let cache = segment_cache()
+                .lock()
+                .map_err(|_| BundleError::StoreUnknown)?;
+            let mut wanted: Vec<String> = list
+                .iter()
+                .filter(|(_, digest)| !cache.contains_key(digest))
+                .map(|(_, digest)| digest.clone())
+                .collect();
+            wanted.sort();
+            wanted.dedup();
+            wanted
+        };
+        let mut fetched = HashMap::new();
+        if !missing.is_empty() {
+            let rows: Vec<(String, String, String, i64)> = sqlx::query_as(
+                "SELECT segment_digest, dto_version, payload::text, unit_count \
+                 FROM search_unit_segment WHERE segment_digest = ANY($1)",
+            )
+            .bind(&missing)
+            .fetch_all(&self.pool)
+            .await?;
+            if rows.len() != missing.len() {
+                return Err(BundleError::Shape);
+            }
+            for (digest, version, text, count) in rows {
+                if version != PAYLOAD_DTO_VERSION {
+                    return Err(BundleError::Shape);
+                }
+                let entry = verified_segment(&digest, count, &text)?;
+                fetched.insert(digest, Arc::new(entry));
+            }
+        }
+        let mut cache = segment_cache()
+            .lock()
+            .map_err(|_| BundleError::StoreUnknown)?;
+        cache.extend(fetched);
+        let mut entries = Vec::with_capacity(list.len());
+        for (_, digest) in &list {
+            let mut entry = BodyItemEntry::clone(cache.get(digest).ok_or(BundleError::Shape)?);
+            for unit in &mut entry.units {
+                unit.provenance.source_snapshot = header.source_snapshot.clone();
+            }
+            entries.push(entry);
+        }
+        if cache.len() > SEGMENT_CACHE_ITEMS {
+            let current: std::collections::BTreeSet<&String> =
+                list.iter().map(|(_, digest)| digest).collect();
+            cache.retain(|digest, _| current.contains(digest));
+        }
+        Ok(BodyUnitManifest {
+            key,
+            source_snapshot: header.source_snapshot,
+            entries,
+        })
+    }
+
     pub fn new(pool: PgPool) -> Self {
         Self {
             pool,
@@ -296,7 +446,11 @@ impl PgPayloadStore {
             ),
             (
                 "unit_manifest",
-                envelope(&bundle.unit_manifest)?,
+                envelope(&UnitManifestHeaderV1 {
+                    key: validated.key,
+                    source_snapshot: bundle.unit_manifest.source_snapshot.clone(),
+                    segments: bundle.unit_manifest.entries.len() as u64,
+                })?,
                 sha256_text(&receipt.unit_manifest.digest),
                 receipt.unit_manifest.count,
             ),
@@ -307,7 +461,56 @@ impl PgPayloadStore {
                 receipt.body_coverage.count,
             ),
         ];
+        let digests = bundle
+            .unit_manifest
+            .entries
+            .iter()
+            .map(|entry| {
+                segment_digest(entry)
+                    .map(|digest| sha256_text(&digest))
+                    .map_err(|_| BundleError::Digest)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let mut tx = self.pool.begin().await?;
+        let present: std::collections::BTreeSet<String> = sqlx::query_scalar(
+            "SELECT segment_digest FROM search_unit_segment WHERE segment_digest = ANY($1)",
+        )
+        .bind(&digests)
+        .fetch_all(&mut *tx)
+        .await?
+        .into_iter()
+        .collect();
+        let mut written = std::collections::BTreeSet::new();
+        for (entry, digest) in bundle.unit_manifest.entries.iter().zip(&digests) {
+            if present.contains(digest) || !written.insert(digest.clone()) {
+                continue;
+            }
+            sqlx::query(
+                "INSERT INTO search_unit_segment \
+                 (segment_digest,dto_version,payload,unit_count,verified_build) \
+                 VALUES ($1,$2,$3,$4,$5) ON CONFLICT (segment_digest) DO NOTHING",
+            )
+            .bind(digest)
+            .bind(PAYLOAD_DTO_VERSION)
+            .bind(envelope(&unbound(entry))?)
+            .bind(i64::try_from(entry.units.len()).map_err(|_| BundleError::Shape)?)
+            .bind(SEGMENT_VERIFIER)
+            .execute(&mut *tx)
+            .await?;
+        }
+        let ordinals: Vec<i32> = (0..digests.len())
+            .map(|ordinal| i32::try_from(ordinal).map_err(|_| BundleError::Shape))
+            .collect::<Result<_, _>>()?;
+        sqlx::query(
+            "INSERT INTO search_generation_segment (source_id,generation_id,ordinal,segment_digest) \
+             SELECT $1, $2, ordinal, digest FROM UNNEST($3::int[], $4::text[]) AS t(ordinal, digest)",
+        )
+        .bind(validated.key.source_id.as_uuid())
+        .bind(validated.key.generation_id.as_uuid())
+        .bind(&ordinals)
+        .bind(&digests)
+        .execute(&mut *tx)
+        .await?;
         for (kind, payload, digest, count) in rows {
             let count = i64::try_from(count).map_err(|_| BundleError::Binding)?;
             for (chunk, part) in payload_rows(&payload, self.chunk_bytes)?
@@ -356,7 +559,9 @@ impl PgPayloadStore {
                 "projection" => projection
                     .replace(restore::<ProjectionPayloadV1>(&text)?)
                     .is_some(),
-                "unit_manifest" => units.replace(restore::<BodyUnitManifest>(&text)?).is_some(),
+                "unit_manifest" => units
+                    .replace(restore::<UnitManifestHeaderV1>(&text)?)
+                    .is_some(),
                 "body_coverage" => coverage
                     .replace(restore::<BodyCoverageArtifact>(&text)?)
                     .is_some(),
@@ -367,10 +572,10 @@ impl PgPayloadStore {
             }
             columns.insert(kind, (digest, count));
         }
-        let (Some(projection), Some(unit_manifest), Some(coverage)) = (projection, units, coverage)
-        else {
+        let (Some(projection), Some(header), Some(coverage)) = (projection, units, coverage) else {
             return Err(BundleError::Shape);
         };
+        let unit_manifest = self.assemble(key, header).await?;
         if unit_manifest.key != key
             || coverage.key != key
             || unit_manifest.source_snapshot != manifest.source_snapshot
@@ -446,7 +651,9 @@ impl PgPayloadStore {
                 "projection" => projection
                     .replace(restore::<ProjectionPayloadV1>(&text)?)
                     .is_some(),
-                "unit_manifest" => units.replace(restore::<BodyUnitManifest>(&text)?).is_some(),
+                "unit_manifest" => units
+                    .replace(restore::<UnitManifestHeaderV1>(&text)?)
+                    .is_some(),
                 "body_coverage" => coverage
                     .replace(restore::<BodyCoverageArtifact>(&text)?)
                     .is_some(),
@@ -457,10 +664,10 @@ impl PgPayloadStore {
             }
             columns.insert(kind, (digest, count));
         }
-        let (Some(projection), Some(unit_manifest), Some(coverage)) = (projection, units, coverage)
-        else {
+        let (Some(projection), Some(header), Some(coverage)) = (projection, units, coverage) else {
             return Err(BundleError::Shape);
         };
+        let unit_manifest = self.assemble(key, header).await?;
         let bundle = StoredBundleV1 {
             manifest: manifest.clone(),
             projection,

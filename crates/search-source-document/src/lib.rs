@@ -27,8 +27,8 @@ pub use body_evidence::{
 pub use body_manifest::{
     ArtifactReceipt, BodyCoverageArtifact, BodyCoverageItem, BodyItemEntry, BodyUnitManifest,
     GenerationBundleReceipt, LEXICAL_SCHEMA_VERSION, compute_bundle_receipt, coverage_receipt,
-    profile_set_digest, projection_digest, unit_manifest_receipt, validate_manifest,
-    validate_restored_manifest,
+    profile_set_digest, projection_digest, segment_digest, unit_manifest_receipt,
+    unit_manifest_receipt_from_segments, validate_manifest, validate_restored_manifest,
 };
 pub use coverage::{DocumentCoveragePreflight, DocumentCoverageRequirement};
 pub use delivery::DocumentSearchDeliveryHandler;
