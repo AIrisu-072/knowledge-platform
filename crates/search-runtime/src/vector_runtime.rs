@@ -197,6 +197,26 @@ fn cache_key(model: &EmbeddingModelId, item: &VectorManifestUnit) -> EmbeddingCa
     }
 }
 
+/// The Vector segment digest of each item of `input`.
+fn vector_segments(
+    model: &EmbeddingModelId,
+    input: &VectorManifestInput,
+    items: &[(String, Range<usize>)],
+) -> Vec<String> {
+    items
+        .iter()
+        .map(|(unit_segment, _)| {
+            segment_digest_for(
+                model,
+                unit_segment,
+                &input.authority_scope_key,
+                &input.retention_lease_id,
+                "",
+            )
+        })
+        .collect()
+}
+
 /// Builds and recovers the Vector generation of the current P1 bundle.
 pub struct VectorMaintainer {
     pool: PgPool,
@@ -326,18 +346,7 @@ impl VectorMaintainer {
             return Err(failed("nonindexed retention Units", input.bundle_key));
         }
         let index = self.services.index.as_ref();
-        let segments: Vec<String> = items
-            .iter()
-            .map(|(unit_segment, _)| {
-                segment_digest_for(
-                    &model,
-                    unit_segment,
-                    &input.authority_scope_key,
-                    &input.retention_lease_id,
-                    "",
-                )
-            })
-            .collect();
+        let segments = vector_segments(&model, input, items);
         let existing = index.existing_segments(&segments).await?;
         for ((_, range), segment) in items.iter().zip(&segments) {
             if existing.contains(segment) {
@@ -432,6 +441,37 @@ impl VectorMaintainer {
             return Ok(VectorBuildOutcome::LostCas);
         }
         Ok(VectorBuildOutcome::Published(Box::new(receipt)))
+    }
+
+    /// The Units of the current generation that a build would embed: their
+    /// Vector segment is not stored and neither is their value. Each comes
+    /// with the cache digest its value is stored under, for values the same
+    /// model computed elsewhere (a validation import).
+    pub async fn unstored_units(&self) -> Result<Vec<(String, String)>, SearchError> {
+        let Some(key) = self.current_key().await? else {
+            return Ok(vec![]);
+        };
+        let model = self.services.model()?;
+        let (input, items) = self.input(key).await?;
+        let store = self.services.index.as_ref();
+        let segments = vector_segments(&model, &input, &items);
+        let existing = store.existing_segments(&segments).await?;
+        let mut pending = Vec::new();
+        for ((_, range), segment) in items.iter().zip(&segments) {
+            if existing.contains(segment) {
+                continue;
+            }
+            for item in &input.units[range.clone()] {
+                pending.push((
+                    cache_digest(&cache_key(&model, item))?,
+                    item.unit.text.clone(),
+                ));
+            }
+        }
+        let keys: Vec<String> = pending.iter().map(|(key, _)| key.clone()).collect();
+        let stored = store.cached_values(&model, &keys).await?;
+        pending.retain(|(key, _)| !stored.contains_key(key));
+        Ok(pending)
     }
 
     /// Restart: keep only published generations of the current bundle that
