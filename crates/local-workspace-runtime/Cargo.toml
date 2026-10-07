@@ -1,0 +1,23 @@
+[package]
+name = "local-workspace-runtime"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+# Principal/device-local Workspace broker behind the bounded Runtime Contract.
+# It owns the protected local registry and OS handles; callers receive only
+# opaque IDs and relative locators. No shell, process or general filesystem API.
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
