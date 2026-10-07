@@ -281,7 +281,7 @@ test('an undisclosed context is null on rows; task and attempt still bind result
   expect(recordsMatchTask(task, { evidence: [{ ...record, contextId: 'other' }], findings: [], decisions: [] })).toBe(false);
 });
 
-const generation = { id: '01990000-0000-7000-8000-0000000000f1', sizeBytes: 3, sha256: 'b'.repeat(64), storedAt: '2026-10-07T09:00:00Z', providerId: 'organization.work-artifacts' };
+const generation = { id: '01990000-0000-7000-8000-0000000000f1', sizeBytes: 3, sha256: 'b'.repeat(64), storedAt: '2026-10-07T09:00:00Z', providerId: 'organization.work-artifacts' as const };
 const workFile = { id: 'file-1', taskId: task.id, attemptId: task.attemptId, revision: 1, schemaId: 'organization.work-file.v1', visibility: 'work_item_private', file: { fileName: '合成.txt', mediaType: 'text/plain', generation } };
 
 test('file artifacts decode as exactly one of a text value or a file, and pinned files need a generation', async () => {
