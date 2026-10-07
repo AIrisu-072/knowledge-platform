@@ -50,7 +50,7 @@ test('task selection stays in URL across the two projections; shared input opens
   const { router } = setup();
   expect(await screen.findByLabelText('作業中の文案')).toHaveValue('保存済みの文案');
   const navigation = screen.getByRole('navigation', { name: 'メインナビゲーション' });
-  expect(within(navigation).getAllByRole('link').map((link) => link.textContent?.trim())).toEqual(['タスク', '文書', '編集作業', '検索']);
+  expect(within(navigation).getAllByRole('link').map((link) => link.textContent?.trim())).toEqual(['タスク', '文書', '編集作業', '文書履歴', '検索']);
   expect(screen.getByRole('link', { name: '共有の入力文書' })).toHaveAttribute('href', expect.stringContaining('/documents/00000000-0000-4000-8000-000000000010'));
   await userEvent.click(screen.getByRole('button', { name: '事務型・キュー' }));
   await waitFor(() => expect(router.state.location.search).toMatchObject({ view: 'queue', taskId: 'task-1' }));

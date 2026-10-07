@@ -22,7 +22,7 @@ function canRetryContinuation(error: unknown): boolean {
   return !problem || problem.status >= 500 && problem.retryable;
 }
 
-export function useDocumentHistory(documentId: string, enabled: boolean) {
+export function useDocumentHistory(documentId: string, enabled: boolean, isDocumentReadable?: () => boolean) {
   const client = useQueryClient();
   const queryKey = useMemo(() => pagesKey(documentId), [documentId]);
   const refusal = useQuery<Refusal>({ queryKey: refusalKey(documentId), initialData: null,
@@ -53,7 +53,7 @@ export function useDocumentHistory(documentId: string, enabled: boolean) {
     retry: false,
     // Retryable continuation errors remain active for existing invalidations.
     // All other failures require the explicit restart, including after reset.
-    enabled: () => enabled && !client.getQueryData<Refusal>(refusalKey(documentId)),
+    enabled: () => enabled && isDocumentReadable?.() !== false && !client.getQueryData<Refusal>(refusalKey(documentId)),
   });
   const error = refusal.data?.error ?? query.error;
   const continuationError = !refusal.data && query.isFetchNextPageError && canRetryContinuation(error);

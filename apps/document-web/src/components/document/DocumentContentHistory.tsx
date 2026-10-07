@@ -7,11 +7,11 @@ import { versionStatusLabel } from '../../view-model/document-status';
 import { formatDateTime } from '../../view-model/date-time';
 import styles from '../../routes/DocumentDetail.module.css';
 
-export function DocumentContentHistory({ documentId }: { documentId: string }) {
+export function DocumentContentHistory({ documentId, isDocumentReadable }: { documentId: string; isDocumentReadable?: () => boolean }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   if (!open) return <button type="button" ref={trigger} onClick={() => setOpen(true)}>コンテンツ版の履歴を開く</button>;
-  return <ContentHistoryRead documentId={documentId} onClose={() => {
+  return <ContentHistoryRead documentId={documentId} isDocumentReadable={isDocumentReadable} onClose={() => {
     setOpen(false);
     window.requestAnimationFrame(() => {
       if (trigger.current?.isConnected && document.activeElement === document.body) trigger.current.focus();
@@ -19,8 +19,8 @@ export function DocumentContentHistory({ documentId }: { documentId: string }) {
   }} />;
 }
 
-function ContentHistoryRead({ documentId, onClose }: { documentId: string; onClose: () => void }) {
-  const read = useDocumentContentHistory(documentId);
+function ContentHistoryRead({ documentId, onClose, isDocumentReadable }: { documentId: string; onClose: () => void; isDocumentReadable?: () => boolean }) {
+  const read = useDocumentContentHistory(documentId, isDocumentReadable);
   const [versionId, setVersionId] = useState('');
   const selected = read.versions.find(version => version.versionId === versionId);
   return <section className={styles.contentSection} aria-label="コンテンツ版の履歴（閲覧専用）">
@@ -45,32 +45,34 @@ function ContentHistoryRead({ documentId, onClose }: { documentId: string; onClo
       </label>
       {read.versions.length === 0 && !read.canContinue && <p>表示できるコンテンツ版の履歴はありません。</p>}
       {versionId && !selected && <p>選択したコンテンツ版は未取得です。続きを取得するか、明示的に選び直してください。</p>}
-      {selected && <SelectedContentVersion key={versionId} documentId={documentId} versionId={versionId} />}
+      {selected && <SelectedContentVersion key={versionId} documentId={documentId} versionId={versionId} isDocumentReadable={isDocumentReadable} />}
     </>}
   </section>;
 }
 
-function SelectedContentVersion({ documentId, versionId }: { documentId: string; versionId: string }) {
+function SelectedContentVersion({ documentId, versionId, isDocumentReadable }: { documentId: string; versionId: string; isDocumentReadable?: () => boolean }) {
   const read = useContentHistoryVersion(documentId, versionId);
   const client = useQueryClient();
   const pending = useRef<AbortController | null>(null);
   const [downloading, setDownloading] = useState(false);
   const liveRead = useRef(read); liveRead.current = read;
+  const documentReadable = useRef(isDocumentReadable); documentReadable.current = isDocumentReadable;
   useEffect(() => {
     const unsubscribe = client.getQueryCache().subscribe(() => {
-      if (pending.current && !liveRead.current.downloadTarget()) { pending.current.abort(); pending.current = null; setDownloading(false); }
+      if (pending.current && (!liveRead.current.downloadTarget() || documentReadable.current?.() === false)) { pending.current.abort(); pending.current = null; setDownloading(false); }
     });
     return () => { unsubscribe(); pending.current?.abort(); pending.current = null; };
   }, [client]);
   async function download(file: FileList['items'][number]) {
     const target = read.downloadTarget();
-    if (pending.current || !target || target.version?.capabilities.download?.status !== 'available' || file.role !== 'AUTHORITATIVE' || !target.files?.items.includes(file)) return;
+    const documentTarget = documentReadable.current;
+    if (pending.current || documentReadable.current?.() === false || !target || target.version?.capabilities.download?.status !== 'available' || file.role !== 'AUTHORITATIVE' || !target.files?.items.includes(file)) return;
     const controller = new AbortController(); pending.current = controller; setDownloading(true);
     try {
       const blob = await documentApi.downloadVersionFile({ documentId, versionId, contentItemId: file.contentItemId,
         representationId: file.representationId, purpose: 'history' }, { signal: controller.signal });
       const current = liveRead.current.downloadTarget();
-      if (controller.signal.aborted || !current || current.version !== target.version || current.files !== target.files) return;
+      if (controller.signal.aborted || documentTarget?.() === false || documentReadable.current?.() === false || !current || current.version !== target.version || current.files !== target.files) return;
       const url = URL.createObjectURL(blob); const anchor = document.createElement('a');
       anchor.href = url; anchor.download = file.displayName; anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);

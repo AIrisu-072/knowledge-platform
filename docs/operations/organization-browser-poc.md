@@ -2,6 +2,26 @@
 
 ## 対象ソースと確認状況
 
+固定ソースは[PR91](https://github.com/AIrisu-072/knowledge-platform/pull/91)統合main `933d3b0f894e610496022defae8e494b16de39ea` / tree `8c6789bc3ae0332894ab1dea8f1b84686444a611` で、[Linux手動導入](linux-manual-installation.md)と共通にする。固定合成2profile・画像なしUbuntu機能受入に合格した版であり、main自身の[push CI37530751555](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37530751555)をPR公開headとは別に確認した。対象PCでの手順実行や本番認証の資格ではない。固定SHAと受入記録が未確定の版は実行しない。
+
+採用sourceは旧pin e249までの文書GUI/Folder操作/絞り込み/文書移動/正式改訂を保持し、PR90比較結果の続き表示、PR92通常詳細からの閲覧専用コンテンツ版履歴/旧原本、PR91イベント履歴の続き表示と両履歴の共存を含む。これら3機能は旧固定版e249に未収録。現在開発中の履歴一覧から旧版・原本・イベントを開く通常入口は新pin933dにも未収録で、追加される操作説明は後続source向けである。exact run/job URL・確認時刻・直接観測と対応推論の区別は[Linux手動導入の対象資格](linux-manual-installation.md#この手順でできること)を正本とする。
+
+2026-10-06 21:24:51 UTC確認で全13jobs/13checks成功・唯一のmain runの公開artifact0。[runtime job112499205642](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37530751555/job/112499205642)のcheckout/Document/Organization/summary各step成功は直接観測した。runtime stdoutは元tool初回のTransport closedで未取得のため、head/clean/qualified・GUI/browser件数・provenance/再起動/cleanup receiptの印字値は未読のままである。固定sourceが実build・全必須工程・Agent provenance・同じowned DB/storageでのHTTP再起動・owned cleanupを強制し、失敗時に非zeroとなることと今回成功stepを対応させ、既存必須gateを合格と評価した。PR/旧pinの出力値やローカルGUI1312/53を今回hosted値へ移さない。
+
+Document22工程/選択18＋5、Agent9 groups、Organization8工程/選択2＋2と、両履歴・比較・従来の文書移動/正式改訂の個別assertionは固定source構成と今回成功実行からの対応推論である。summaryはbrowser件数/skipped=0を直接検査しないため、no-skipの対応は固定選択source/configにskip/only/expected-failure経路がない範囲に限る。Organizationのowned-container-removedも今回は直接stdoutではない。HTTP再起動をPostgreSQLプロセス再起動へ読み替えない。[新Rust実DB job112499205731](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37530751555/job/112499205731)のmain933d checkout、1849成功/10skip＋21成功/0skip＋7成功/1skip、DB36/Folder4の各1本PASSは正式ログで直接確認した。
+
+旧e249→933dの限定Git object bytes照合で、既存CLI/env/identity/bootstrap、Document/Workのmigration/台帳、Cargo manifest/lock/deny、Rust/Node/pnpm設定/lock、生成SDK/schema、PDFium scriptの17objectsは不変。sourceの業務schema不変を対象既存DBの更新安全性の実証とはしない。実行例は保持し、Linux手順のKP_SOURCE_SHAだけを更新する。
+
+正式改訂100件超・比較結果50件超・イベント履歴101件目・コンテンツ版101件目/実複数旧原本の実GUIは未資格。DOMや既存HTTPページ試験と区別する。WORKING固定再送の実通信資格は成功応答body途中喪失だけで、status/headers全喪失は未資格のままである。
+
+資格対象は画像なしUbuntu実操作PoCであり、対象PCでの手順全文・backup/restore・PostgreSQLプロセス再起動の確認は未実施。macOS golden比較は未実行・未更新で、影響候補Mock 2・3・4・7の4枚と、他3枚の画素不変も未証明。全visual資格や本番Identityの資格は主張しない。PR87の同Root継承・文書なしのフォルダー移動fixtureとPR88の同権限の文書移動fixtureでは実ACL変化・GUI移動通信断・実no-opの資格を追加しない。旧PR82 persistence失敗とPR83 Organization HTTP503、PR89の過去失敗・Home focus残件、旧PR91 head81be7976のstdout未取得を後続成功だけで解消済みとしない。
+
+### 過去の受入記録
+
+#### 2026-10-06 17:06 UTC PR89統合mainの固定版
+
+以下の「固定版」「今回」「未収録」は当時のpinと比較GUI開発時点を指す。
+
 固定ソースは[PR89](https://github.com/AIrisu-072/knowledge-platform/pull/89)統合main `e249fb8da91549115d1371c05959e3219dbfde1c` / tree `c8188d99b33b52ce36383c96d19e0d9f39fcb92c` で、[Linux手動導入](linux-manual-installation.md)と共通にする。固定合成2profile・画像なしUbuntu機能受入に合格した版であり、main自身の[push CI37497603490](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37497603490)をPR公開headとは別に確認した。対象PCでの手順実行や本番認証の資格ではない。固定SHAと受入記録が未確定の版は実行しない。
 
 採用sourceはPR69〜PR74の文書GUI、PR76 Root直下作成、PR78フォルダーの続き表示、PR79選択親への子作成、PR80改名、PR81属性3項目、PR82未読条件、PR84作成日時条件、PR87フォルダー移動を保持し、PR88文書移動とPR89正式改訂の続き表示・明示比較選択の保持を含む。旧固定版 `cd6aafcc` にはPR88/89は含まれない。資格の実測値・exact run/job URL・確認時刻は[Linux手動導入の対象資格](linux-manual-installation.md#この手順でできること)を正本とする。
@@ -11,8 +31,6 @@ mainのDocument実受入、Agent、Organizationのbuild/database/transaction/ini
 正式改訂100件超の実GUIは未資格。今回の比較結果の続き表示は固定版e249に未収録で、[新しい操作説明](document-gui-v0.md#比較結果の続きを表示する)は後続source向けである。比較結果50件超の実GUIも未資格。DOMや既存HTTPページ試験と区別する。WORKING固定再送の実通信資格は成功応答body途中喪失だけで、status/headers全喪失は未資格のままである。
 
 資格対象は画像なしUbuntu実操作PoCであり、対象PCでの手順全文・backup/restore・PostgreSQLプロセス再起動の確認は未実施。macOS golden比較は未実行・未更新で、影響候補Mock 2・3・4・7の4枚と、他3枚の画素不変も未証明。全visual資格や本番Identityの資格は主張しない。PR87の同Root継承・文書なしのフォルダー移動fixtureとPR88の同権限の文書移動fixtureでは実ACL変化・GUI移動通信断・実no-opの資格を追加しない。旧PR82 persistence失敗とPR83 Organization HTTP503の原因未特定履歴を保持する。
-
-### 過去の受入記録
 
 #### 2026-10-06 09:11 UTC PR87の固定版
 

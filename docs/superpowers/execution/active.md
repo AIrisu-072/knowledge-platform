@@ -1,5 +1,36 @@
 # Active Execution Pointer
 
+## 2026-10-07 00:10 UTC — 履歴日時のJST指定脱落を補修
+
+- [PR93](https://github.com/AIrisu-072/knowledge-platform/pull/93) head202dc5abの共有bounded summaryで、既存journeyの履歴日時toHaveText（document-runtime.spec.ts:195:49）を失敗箇所と確認。旧詳細のJST wrapperが共有component抽出時に脱落していた。[状況](document-history-workspace-status.md)に共有情報とsource照合を記録
+- UTCの通常詳細/新履歴一覧2反例で、JST翌日表示の代わりにUTCが出るREDを確認。表示呼出し1箇所へAsia/Tokyoを復元し、両suite79件GREEN。全GUI1353/54・schema/型/build、独立88/3と5files reviewが成功。同PR次headで資格確認する。旧失敗・通信制約・未到達のAgent/再起動等は保持し、画像/timeout/skipは変更しない
+
+---
+
+## 2026-10-06 22:10 UTC — PR93初回失敗を保持しsmokeを補修
+
+- [PR93](https://github.com/AIrisu-072/knowledge-platform/pull/93)初回headcd67bc7aのcomposition/summaryはFAIL、Organization未実行。元log toolの初回/限定通信復旧もTransport closedで実失敗caseとcleanupは未取得。[本機能の状況](document-history-workspace-status.md)に失敗と制約を保持し、未合格のまま扱う
+- CI=trueのGUI1351/54・型/build・preview36は成功。既存前段e2eの「文書」部分一致が新「文書履歴」と重なる確定回帰をDOM反例で確認し、完全名locatorと新入口の存在確認へ限定補修。製品source・画像/golden・skip/timeoutは不変。独立review後、同PR次headの通常CIへ進む
+
+---
+
+## 2026-10-06 21:44 UTC — 履歴文書の閲覧導線を固定
+
+- [履歴一覧の状況](document-history-workspace-status.md)と[小計画](../plans/2026-10-06-document-history-workspace.md)を更新。通常入口から終了/取下げ後の明示行・旧版・原本・イベントへ進むGUIを固定し、全1351/54・focused326/6・schema/型/buildと既存受入sourceの純粋81/型/収集18+5が成功。独立reviewは230/5・schema・docs照合でGO。同機能Draft/hosted CIはこれから
+- 正規HistoryDocument.title、endedと版状態、現在属性と版属性を区別。現在一覧の拒否/paused/失効/遅延、同tick Blob、全体read reset、UNKNOWN/Organization保持の反例を確認した。新backend/fixture/runnerは追加しない
+- main933dのpush CI37530751555は全必須gate・freshDB・artifact0確認済み。runtime stdout未取得と固定source＋公式step結果の評価を分ける。導入4docsを資格済み933dへ同期し、今回の新入口がそのpinに含まれないことを明記。以下の公開済み履歴と過去の未取得項目も保持する
+
+---
+
+## 2026-10-06 21:20 UTC — 履歴一覧から旧版・原本・イベントへ
+
+- PR91/92統合main `933d3b0f` を基点とし、既存history一覧への通常入口と一覧内の閲覧専用選択を追加する。[状況](document-history-workspace-status.md)と[小計画](../plans/2026-10-06-document-history-workspace.md)が再開先
+- 公開終了/全版取下げ後も既存history-purposeで読む。通常detailへ権限意味を混ぜず、現在/過去metadata・ended/版状態・nullを区別し、拒否cache/遅延/再取得と未確定操作保持を検証する。既存lifecycle fixtureを使い、新backend・新基盤・大量fixtureは追加しない
+- PR91の新head `63ab9728` は全必須CI・freshDB/artifact0合格後に統合済み。runtime stdout未取得は保持し、既存sourceの強制終了条件＋公式step成功で必須gateを評価した。main自身CI37530751555は別監視中。以下の時点別記録と旧headの未取得項目も保持する
+- Folder ACL・公開前比較は後続候補であり、この機能を拡げない。次はTDD・独立review・同機能PRへの手順/試験一体化と同head資格
+
+---
+
 ## 2026-10-06 20:20 UTC — PR91へ最新mainのコンテンツ版履歴を統合
 
 - [PR91](https://github.com/AIrisu-072/knowledge-platform/pull/91)の公開head `81be7976` に、[PR92](https://github.com/AIrisu-072/knowledge-platform/pull/92)統合main `f431c374` を通常mergeする。[イベント履歴の状況](document-history-pagination-status.md)と[小計画](../plans/2026-10-06-document-history-pagination.md)が再開先。両parentの履歴・操作手順・受入検査を保持し、同じPR91内で新しい組合せheadの資格を取る

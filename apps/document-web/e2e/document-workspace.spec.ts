@@ -285,7 +285,8 @@ test('keyboard activation keeps list URL context and restores focus after return
   await page.goto('/documents?view=authoring&titleContains=manual&sort=title_asc&pageSize=25');
 
   const navigation = page.getByRole('navigation', { name: 'メインナビゲーション' });
-  await expect(navigation.getByRole('link', { name: '文書' })).toBeVisible();
+  await expect(navigation.getByRole('link', { name: '文書', exact: true })).toBeVisible();
+  await expect(navigation.getByRole('link', { name: '文書履歴', exact: true })).toBeVisible();
   await expect(navigation.getByRole('link', { name: '編集作業' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'フォルダー' })).toBeVisible();
   await expect(page.getByRole('columnheader', { name: '状態' })).toBeVisible();
@@ -447,7 +448,7 @@ test('Mock 1 through Mock 7 preserve the approved screens and core states', asyn
   await snapshot('mock-1-document-list.png');
 
   await page.goto(`/documents/${documentId}?view=published&tab=overview`);
-  await expect(page.getByRole('navigation', { name: 'メインナビゲーション' }).getByRole('link', { name: '文書' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'メインナビゲーション' }).getByRole('link', { name: '文書', exact: true })).toBeVisible();
   await expect(page.getByRole('complementary', { name: '原本と版' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '基本情報' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '基本情報' }).locator('xpath=..')).toHaveCSS('border-top-width', '0px');

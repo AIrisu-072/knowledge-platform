@@ -10,7 +10,7 @@ export type AppShellProps = {
   contextPanel?: ReactNode;
   contextPanelLabel?: string;
   navigationContent?: ReactNode;
-  activeNavigation?: 'documents' | 'editing' | 'tasks' | 'search';
+  activeNavigation?: 'documents' | 'editing' | 'history' | 'tasks' | 'search';
   mainLabel?: string;
   headerContext?: ReactNode;
   showContextPanel?: boolean;
@@ -35,22 +35,26 @@ export function AppShell({
         メインコンテンツへ
       </a>
       <header className={styles.header}>
-        <a className={styles.brand} href={organizationMode ? organization.taskHref : '/documents'} aria-label={organizationMode ? 'タスクホーム' : '文書管理ホーム'}>
+        {organizationMode ? <a className={styles.brand} href={organization.taskHref} aria-label="タスクホーム">
           <span className={styles.brandMark} aria-hidden="true">K</span>
-          <span className={styles.brandName}>Knowledge Platform<small>{organizationMode ? 'Organization Client' : '文書管理'}</small></span>
-        </a>
+          <span className={styles.brandName}>Knowledge Platform<small>Organization Client</small></span>
+        </a> : <Link className={styles.brand} to="/documents" search={validateListSearch({})} aria-label="文書管理ホーム">
+          <span className={styles.brandMark} aria-hidden="true">K</span>
+          <span className={styles.brandName}>Knowledge Platform<small>文書管理</small></span>
+        </Link>}
         <div className={styles.headerContext}>{headerContext}</div>
       </header>
       <div className={styles.body}>
         <nav className={styles.navigation} aria-label="メインナビゲーション">
           <div className={styles.primaryNavigation}>
             {organizationMode && <Link className={styles.navigationLink} to="/tasks" search={taskSearch} aria-current={activeNavigation === 'tasks' ? 'page' : undefined}>タスク</Link>}
-            {organizationMode ? <Link className={styles.navigationLink} to="/documents" search={validateListSearch({ view: 'published' })} aria-current={activeNavigation === 'documents' ? 'page' : undefined}>文書</Link> : <a className={styles.navigationLink} href="/documents?view=published" aria-current={activeNavigation === 'documents' ? 'page' : undefined}>
-              <span aria-hidden="true">▯</span>文書
-            </a>}
-            {organizationMode ? <Link className={styles.navigationLink} to="/documents" search={validateListSearch({ view: 'authoring' })} aria-current={activeNavigation === 'editing' ? 'page' : undefined}>編集作業</Link> : <a className={styles.navigationLink} href="/documents?view=authoring" aria-current={activeNavigation === 'editing' ? 'page' : undefined}>
-              <span aria-hidden="true">✎</span>編集作業
-            </a>}
+            <Link className={styles.navigationLink} to="/documents" search={validateListSearch({ view: 'published' })} aria-current={activeNavigation === 'documents' ? 'page' : undefined}>
+              {!organizationMode && <span aria-hidden="true">▯</span>}文書
+            </Link>
+            <Link className={styles.navigationLink} to="/documents" search={validateListSearch({ view: 'authoring' })} aria-current={activeNavigation === 'editing' ? 'page' : undefined}>
+              {!organizationMode && <span aria-hidden="true">✎</span>}編集作業
+            </Link>
+            <Link className={styles.navigationLink} to="/documents" search={validateListSearch({ view: 'history' })} aria-current={activeNavigation === 'history' ? 'page' : undefined}>文書履歴</Link>
             {organizationMode && <Link className={styles.navigationLink} to="/search" aria-current={activeNavigation === 'search' ? 'page' : undefined}>検索</Link>}
           </div>
           {navigationContent && <div className={styles.navigationContent}>{navigationContent}</div>}
