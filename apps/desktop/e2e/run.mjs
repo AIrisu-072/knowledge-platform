@@ -495,7 +495,10 @@ scenario('キーボード操作とfocus（skip link、ダイアログの開閉�
   const s = await launch(main);
   try {
     await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
-    await s.execute('document.activeElement && document.activeElement.blur(); window.focus();');
+    // Start sequential navigation from the top of the page. blur() alone keeps
+    // WebKit's starting point at the last focused element (the document list
+    // may restore focus to its selected row), so focus the body itself.
+    await s.execute('window.focus(); const body = document.body; body.setAttribute("tabindex", "-1"); body.focus(); body.removeAttribute("tabindex");');
     await s.keys([Keys.TAB]);
     const skip = await s.execute('return document.activeElement.textContent.trim();');
     check('最初のTabでskip link「メインコンテンツへ」にfocus', skip === 'メインコンテンツへ', skip);
