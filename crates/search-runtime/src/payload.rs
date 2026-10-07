@@ -20,8 +20,8 @@ use search_application::search_core::projection::{
 };
 use search_projection_memory::generation_digest;
 use search_source_document::{
-    BodyCoverageArtifact, BodyItemEntry, BodyUnitManifest, GenerationBundleReceipt,
-    compute_bundle_receipt_from, profile_set_digest, segment_digest,
+    BodyCoverageArtifact, BodyCoverageItem, BodyItemEntry, BodyUnitManifest,
+    GenerationBundleReceipt, compute_bundle_receipt_from, profile_set_digest, segment_digest,
     unit_manifest_receipt_from_segments, validate_restored_manifest_skipping,
 };
 use serde::de::DeserializeOwned;
@@ -62,6 +62,9 @@ fn segment_cache() -> &'static Mutex<HashMap<String, Arc<BodyItemEntry>>> {
 /// read of each segment verifies it again.
 pub fn forget_verified_segments() {
     if let Ok(mut cache) = segment_cache().lock() {
+        cache.clear();
+    }
+    if let Ok(mut cache) = summary_cache().lock() {
         cache.clear();
     }
 }
@@ -115,6 +118,22 @@ pub struct StoredBundleV1 {
 pub struct RestoredPayloadV1 {
     pub projection: ProjectionPayloadV1,
     pub unit_manifest: BodyUnitManifest,
+    pub coverage: BodyCoverageArtifact,
+}
+
+type RestoredParts = (
+    ProjectionPayloadV1,
+    UnitManifestHeaderV1,
+    BodyCoverageArtifact,
+    std::collections::BTreeMap<String, (String, i64)>,
+);
+
+/// Restored payload DTOs without the Units (see
+/// [`PgPayloadStore::restore_without_units`]), checked except for the
+/// external artifact receipts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoredSummaryV1 {
+    pub projection: ProjectionPayloadV1,
     pub coverage: BodyCoverageArtifact,
 }
 
@@ -280,6 +299,115 @@ fn sha256_text(digest: &[u8; 32]) -> String {
     format!("sha256:{hex}")
 }
 
+/// Segments read without their Units: verified once per process, then kept
+/// as their coverage item, digest and Unit count.
+struct SegmentSummary {
+    item: BodyCoverageItem,
+    digest: [u8; 32],
+}
+
+/// Summaries kept per process (a few hundred bytes each); above this the
+/// cache keeps only the segments of the generation being read.
+const SUMMARY_CACHE_ITEMS: usize = 1_000_000;
+/// Segments read per query by `restore_without_units`, so the Unit text of
+/// one batch at most is held at a time.
+const SUMMARY_FETCH_BATCH: usize = 256;
+
+fn summary_cache() -> &'static Mutex<HashMap<String, Arc<SegmentSummary>>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, Arc<SegmentSummary>>>> = OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// Verifies a segment read from the database as `assemble` does, applies the
+/// per-item checks bound to `header`'s Source snapshot and keeps its summary.
+fn summarize_segment(
+    digest: &str,
+    count: i64,
+    text: &str,
+    header: &UnitManifestHeaderV1,
+) -> Result<SegmentSummary, BundleError> {
+    let mut entry = verified_segment(digest, count, text)?;
+    let segment = segment_digest(&entry).map_err(|_| BundleError::Digest)?;
+    for unit in &mut entry.units {
+        unit.provenance.source_snapshot = header.source_snapshot.clone();
+    }
+    let single = BodyUnitManifest {
+        key: header.key,
+        source_snapshot: header.source_snapshot.clone(),
+        entries: vec![entry],
+    };
+    let coverage =
+        validate_restored_manifest_skipping(&single, |_| false).map_err(|_| BundleError::Digest)?;
+    let item = coverage
+        .items
+        .into_iter()
+        .next()
+        .ok_or(BundleError::Digest)?;
+    Ok(SegmentSummary {
+        item,
+        digest: segment,
+    })
+}
+
+/// The manifest order of an item (Resource, part ordinal, path, native ID).
+fn coverage_order(item: &BodyCoverageItem) -> (search_core::id::ResourceId, u32, &str, &str) {
+    (
+        item.version.resource_id,
+        item.part.ordinal,
+        item.part.logical_path.as_str(),
+        item.part.source_native_part_id.as_str(),
+    )
+}
+
+/// The checks shared by both restores: the projection digest, the derived
+/// coverage and every stored digest column.
+fn check_restored(
+    manifest: &ProjectionGenerationManifest,
+    projection: &ProjectionPayloadV1,
+    coverage: &BodyCoverageArtifact,
+    derived: &BodyCoverageArtifact,
+    units_receipt: &search_source_document::ArtifactReceipt,
+    columns: &std::collections::BTreeMap<String, (String, i64)>,
+) -> Result<(), BundleError> {
+    let key = manifest.key();
+    let projection_digest =
+        generation_digest(key.source_id, &projection.resources, &projection.registry)
+            .map_err(|_| BundleError::Digest)?;
+    if projection_digest != manifest.digest {
+        return Err(BundleError::Digest);
+    }
+    if derived != coverage {
+        return Err(BundleError::Binding);
+    }
+    let coverage_receipt =
+        search_source_document::coverage_receipt(coverage).map_err(|_| BundleError::Digest)?;
+    let expected = [
+        (
+            "projection",
+            manifest.digest.clone(),
+            manifest.resource_count,
+        ),
+        (
+            "unit_manifest",
+            sha256_text(&units_receipt.digest),
+            units_receipt.count,
+        ),
+        (
+            "body_coverage",
+            sha256_text(&coverage_receipt.digest),
+            coverage_receipt.count,
+        ),
+    ];
+    for (kind, digest, count) in expected {
+        match columns.get(kind) {
+            Some((stored, stored_count))
+                if *stored == digest && u64::try_from(*stored_count).ok() == Some(count) => {}
+            _ => return Err(BundleError::Digest),
+        }
+    }
+    Ok(())
+}
+
 /// Segment digests whose items passed the per-item checks in this process.
 fn validated_segments() -> &'static Mutex<std::collections::HashSet<[u8; 32]>> {
     static VALIDATED: OnceLock<Mutex<std::collections::HashSet<[u8; 32]>>> = OnceLock::new();
@@ -416,30 +544,15 @@ impl PgPayloadStore {
         if header.key != key {
             return Err(BundleError::Binding);
         }
-        let list: Vec<(i32, String)> = sqlx::query_as(
-            "SELECT ordinal, segment_digest FROM search_generation_segment \
-             WHERE source_id=$1 AND generation_id=$2 ORDER BY ordinal",
-        )
-        .bind(key.source_id.as_uuid())
-        .bind(key.generation_id.as_uuid())
-        .fetch_all(&self.pool)
-        .await?;
-        if list.len() as u64 != header.segments
-            || list
-                .iter()
-                .enumerate()
-                .any(|(at, (ordinal, _))| usize::try_from(*ordinal).ok() != Some(at))
-        {
-            return Err(BundleError::Shape);
-        }
+        let list = self.segment_list(key, &header).await?;
         let missing: Vec<String> = {
             let cache = segment_cache()
                 .lock()
                 .map_err(|_| BundleError::StoreUnknown)?;
             let mut wanted: Vec<String> = list
                 .iter()
-                .filter(|(_, digest)| !cache.contains_key(digest))
-                .map(|(_, digest)| digest.clone())
+                .filter(|digest| !cache.contains_key(*digest))
+                .cloned()
                 .collect();
             wanted.sort();
             wanted.dedup();
@@ -470,7 +583,7 @@ impl PgPayloadStore {
             .map_err(|_| BundleError::StoreUnknown)?;
         cache.extend(fetched);
         let mut entries = Vec::with_capacity(list.len());
-        for (_, digest) in &list {
+        for digest in &list {
             let mut entry = BodyItemEntry::clone(cache.get(digest).ok_or(BundleError::Shape)?);
             for unit in &mut entry.units {
                 unit.provenance.source_snapshot = header.source_snapshot.clone();
@@ -478,8 +591,7 @@ impl PgPayloadStore {
             entries.push(entry);
         }
         if cache.len() > SEGMENT_CACHE_ITEMS {
-            let current: std::collections::BTreeSet<&String> =
-                list.iter().map(|(_, digest)| digest).collect();
+            let current: std::collections::BTreeSet<&String> = list.iter().collect();
             cache.retain(|digest, _| current.contains(digest));
         }
         Ok(BodyUnitManifest {
@@ -487,6 +599,31 @@ impl PgPayloadStore {
             source_snapshot: header.source_snapshot,
             entries,
         })
+    }
+
+    /// The ordered segment digests of `key`, checked against its header.
+    async fn segment_list(
+        &self,
+        key: ProjectionGenerationKey,
+        header: &UnitManifestHeaderV1,
+    ) -> Result<Vec<String>, BundleError> {
+        let list: Vec<(i32, String)> = sqlx::query_as(
+            "SELECT ordinal, segment_digest FROM search_generation_segment \
+             WHERE source_id=$1 AND generation_id=$2 ORDER BY ordinal",
+        )
+        .bind(key.source_id.as_uuid())
+        .bind(key.generation_id.as_uuid())
+        .fetch_all(&self.pool)
+        .await?;
+        if list.len() as u64 != header.segments
+            || list
+                .iter()
+                .enumerate()
+                .any(|(at, (ordinal, _))| usize::try_from(*ordinal).ok() != Some(at))
+        {
+            return Err(BundleError::Shape);
+        }
+        Ok(list.into_iter().map(|(_, digest)| digest).collect())
     }
 
     pub fn new(pool: PgPool) -> Self {
@@ -611,11 +748,9 @@ impl PgPayloadStore {
     /// Restores the payload DTOs of `manifest` and checks everything that does
     /// not depend on external artifacts: the projection-only digest, the Unit
     /// manifest structure, derived coverage and the stored digest columns.
-    pub async fn restore(
-        &self,
-        manifest: &ProjectionGenerationManifest,
-    ) -> Result<RestoredPayloadV1, BundleError> {
-        let key = manifest.key();
+    /// The projection, Unit manifest header and coverage payloads of `key`,
+    /// with each kind's stored digest and count.
+    async fn read_parts(&self, key: ProjectionGenerationKey) -> Result<RestoredParts, BundleError> {
         let (mut projection, mut units, mut coverage) = (None, None, None);
         let mut columns = std::collections::BTreeMap::new();
         for PayloadText {
@@ -645,6 +780,15 @@ impl PgPayloadStore {
         let (Some(projection), Some(header), Some(coverage)) = (projection, units, coverage) else {
             return Err(BundleError::Shape);
         };
+        Ok((projection, header, coverage, columns))
+    }
+
+    pub async fn restore(
+        &self,
+        manifest: &ProjectionGenerationManifest,
+    ) -> Result<RestoredPayloadV1, BundleError> {
+        let key = manifest.key();
+        let (projection, header, coverage, columns) = self.read_parts(key).await?;
         let unit_manifest = self.assemble(key, header).await?;
         if unit_manifest.key != key
             || coverage.key != key
@@ -654,46 +798,113 @@ impl PgPayloadStore {
         {
             return Err(BundleError::Binding);
         }
-        let projection_digest =
-            generation_digest(key.source_id, &projection.resources, &projection.registry)
-                .map_err(|_| BundleError::Digest)?;
-        if projection_digest != manifest.digest {
-            return Err(BundleError::Digest);
-        }
         let segments = segment_digests(&unit_manifest)?;
         let (derived, units_receipt) = validate_units(&unit_manifest, &segments)?;
-        if derived != coverage {
-            return Err(BundleError::Binding);
-        }
-        let coverage_receipt =
-            search_source_document::coverage_receipt(&coverage).map_err(|_| BundleError::Digest)?;
-        let expected = [
-            (
-                "projection",
-                manifest.digest.clone(),
-                manifest.resource_count,
-            ),
-            (
-                "unit_manifest",
-                sha256_text(&units_receipt.digest),
-                units_receipt.count,
-            ),
-            (
-                "body_coverage",
-                sha256_text(&coverage_receipt.digest),
-                coverage_receipt.count,
-            ),
-        ];
-        for (kind, digest, count) in expected {
-            match columns.get(kind) {
-                Some((stored, stored_count))
-                    if *stored == digest && u64::try_from(*stored_count).ok() == Some(count) => {}
-                _ => return Err(BundleError::Digest),
-            }
-        }
+        check_restored(
+            manifest,
+            &projection,
+            &coverage,
+            &derived,
+            &units_receipt,
+            &columns,
+        )?;
         Ok(RestoredPayloadV1 {
             projection,
             unit_manifest,
+            coverage,
+        })
+    }
+
+    /// Restores and checks `manifest`'s payloads as [`Self::restore`] does,
+    /// without assembling its Units: each segment is verified when this
+    /// process first reads it and then kept only as its coverage item, digest
+    /// and Unit count. For a reader that needs no Unit text (T12).
+    pub async fn restore_without_units(
+        &self,
+        manifest: &ProjectionGenerationManifest,
+    ) -> Result<RestoredSummaryV1, BundleError> {
+        let key = manifest.key();
+        let (projection, header, coverage, columns) = self.read_parts(key).await?;
+        if header.key != key
+            || coverage.key != key
+            || header.source_snapshot != manifest.source_snapshot
+            || projection.registry.version != manifest.semantic_registry_version
+            || u64::try_from(projection.resources.len()).ok() != Some(manifest.resource_count)
+        {
+            return Err(BundleError::Binding);
+        }
+        let list = self.segment_list(key, &header).await?;
+        let missing: Vec<String> = {
+            let cache = summary_cache()
+                .lock()
+                .map_err(|_| BundleError::StoreUnknown)?;
+            let mut wanted: Vec<String> = list
+                .iter()
+                .filter(|digest| !cache.contains_key(*digest))
+                .cloned()
+                .collect();
+            wanted.sort();
+            wanted.dedup();
+            wanted
+        };
+        let mut fetched = HashMap::new();
+        for batch in missing.chunks(SUMMARY_FETCH_BATCH) {
+            let rows: Vec<(String, String, String, i64)> = sqlx::query_as(
+                "SELECT segment_digest, dto_version, payload::text, unit_count \
+                 FROM search_unit_segment WHERE segment_digest = ANY($1)",
+            )
+            .bind(batch)
+            .fetch_all(&self.pool)
+            .await?;
+            if rows.len() != batch.len() {
+                return Err(BundleError::Shape);
+            }
+            for (digest, version, text, count) in rows {
+                if version != PAYLOAD_DTO_VERSION {
+                    return Err(BundleError::Shape);
+                }
+                let summary = summarize_segment(&digest, count, &text, &header)?;
+                fetched.insert(digest, Arc::new(summary));
+            }
+        }
+        let mut cache = summary_cache()
+            .lock()
+            .map_err(|_| BundleError::StoreUnknown)?;
+        cache.extend(fetched);
+        let mut items = Vec::with_capacity(list.len());
+        let mut segments = Vec::with_capacity(list.len());
+        for digest in &list {
+            let summary = cache.get(digest).ok_or(BundleError::Shape)?;
+            if summary.item.version.source_id != key.source_id {
+                return Err(BundleError::Digest);
+            }
+            items.push(summary.item.clone());
+            segments.push((summary.digest, u64::from(summary.item.unit_count)));
+        }
+        if cache.len() > SUMMARY_CACHE_ITEMS {
+            let current: std::collections::BTreeSet<&String> = list.iter().collect();
+            cache.retain(|digest, _| current.contains(digest));
+        }
+        drop(cache);
+        if items
+            .windows(2)
+            .any(|pair| coverage_order(&pair[0]) >= coverage_order(&pair[1]))
+        {
+            return Err(BundleError::Digest);
+        }
+        let derived = BodyCoverageArtifact { key, items };
+        let units_receipt =
+            unit_manifest_receipt_from_segments(key, &segments).map_err(|_| BundleError::Digest)?;
+        check_restored(
+            manifest,
+            &projection,
+            &coverage,
+            &derived,
+            &units_receipt,
+            &columns,
+        )?;
+        Ok(RestoredSummaryV1 {
+            projection,
             coverage,
         })
     }

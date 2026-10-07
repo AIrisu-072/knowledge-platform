@@ -207,6 +207,17 @@ async fn stored_bundle_restores_on_a_new_connection_with_the_same_digests() {
             .composite_digest,
         stored.receipt.composite_digest
     );
+
+    // T12: the same checks without holding the Units, from cold and from the
+    // per-process summaries.
+    for _ in 0..2 {
+        let summary = PgPayloadStore::new(pool.clone())
+            .restore_without_units(&stored.manifest)
+            .await
+            .unwrap();
+        assert_eq!(summary.projection, stored.projection);
+        assert_eq!(summary.coverage, stored.coverage);
+    }
 }
 
 /// A payload larger than one JSONB value is stored as ordered text chunks
@@ -317,6 +328,10 @@ async fn tampered_unknown_or_unguarded_payload_fails_closed() {
     tx.commit().await.unwrap();
     search_runtime::payload::forget_verified_segments();
     assert_eq!(restore().await, Err(BundleError::Digest));
+    assert_eq!(
+        store.restore_without_units(&stored.manifest).await,
+        Err(BundleError::Digest)
+    );
 
     // A key without a registered BUILDING parent and live guard cannot be written.
     let unregistered = bundle(7_431, &["東京の本文"]);

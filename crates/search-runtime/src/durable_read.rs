@@ -256,21 +256,28 @@ impl DurableDocumentReadModel {
             _ => return Err(DurableReadError::Moved),
         }
         let manifest = self.manifest(key).await?;
-        let RestoredPayloadV1 {
-            projection,
-            unit_manifest,
-            coverage: _,
-        } = PgPayloadStore::new(self.pool.clone())
-            .restore(&manifest)
-            .await
-            .map_err(|error| store_error("payload restore", error))?;
-        // Release the assembled Units before the Graph and lexical loads.
-        let vector_units = Arc::new(if self.vector_units {
-            crate::vector_runtime::vector_units(key, &unit_manifest)
+        let payloads = PgPayloadStore::new(self.pool.clone());
+        // Without Vector retrieval no Unit text is needed: the payloads are
+        // checked from per-segment summaries and the Units are never held.
+        let (projection, vector_units) = if self.vector_units {
+            let RestoredPayloadV1 {
+                projection,
+                unit_manifest,
+                coverage: _,
+            } = payloads
+                .restore(&manifest)
+                .await
+                .map_err(|error| store_error("payload restore", error))?;
+            let units = crate::vector_runtime::vector_units(key, &unit_manifest);
+            (projection, units)
         } else {
-            Default::default()
-        });
-        drop(unit_manifest);
+            let restored = payloads
+                .restore_without_units(&manifest)
+                .await
+                .map_err(|error| store_error("payload restore", error))?;
+            (restored.projection, Default::default())
+        };
+        let vector_units = Arc::new(vector_units);
 
         // Structural owners come from the verified Graph rows, never RAM.
         let (_, records, _) = PostgresGraphStore::new(self.pool.clone())
