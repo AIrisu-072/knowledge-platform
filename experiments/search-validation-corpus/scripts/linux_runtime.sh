@@ -77,8 +77,10 @@ start_one() {
 start() {
   load_env
   KP_IDENTITY_PROFILE=poc-human start_one document-server "$BIN/document-server" serve
-  start_one search-worker "$BIN/search_outbox_worker"
-  start_one search-host "$HOST_BIN"
+  # glibc per-thread arenas fragment the Search processes' heap: at 1,000
+  # documents the worker peaked at 4.6 GB with the default and 2.5 GB with 2.
+  MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2} start_one search-worker "$BIN/search_outbox_worker"
+  MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2} start_one search-host "$HOST_BIN"
   sleep 3
   status
 }
