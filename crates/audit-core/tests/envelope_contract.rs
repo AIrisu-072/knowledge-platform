@@ -130,3 +130,70 @@ fn rejection_display_never_contains_values() {
         }
     }
 }
+
+#[test]
+fn control_envelopes_validate_only_on_their_own_path() {
+    let envelopes = control_envelopes();
+    assert_eq!(envelopes.len(), 28, "14 control types, minimal and full");
+    for (name, origin, value) in envelopes {
+        let envelope = AuditEnvelope::from_value(value.clone(), origin)
+            .unwrap_or_else(|r| panic!("{name}: {r}"));
+        assert_eq!(envelope.origin(), origin, "{name}");
+        assert_eq!(
+            validate_envelope(&value, Origin::Relay)
+                .expect_err(&name)
+                .code,
+            C::ControlTypeForbidden,
+            "{name}: the relay path refuses control events"
+        );
+        let other = if origin == Origin::Store {
+            Origin::RelayControl
+        } else {
+            Origin::Store
+        };
+        assert_eq!(
+            validate_envelope(&value, other).expect_err(&name).code,
+            C::ControlTypeForbidden,
+            "{name}: wrong control path"
+        );
+    }
+}
+
+#[test]
+fn control_envelopes_are_closed() {
+    let spec = audit_core::Catalog::embedded()
+        .get("audit.access.denied")
+        .expect("control type");
+    let base = control_envelope(spec, false);
+    let mut unknown = base.clone();
+    unknown["data"]["details"]["free_text"] = json!("x");
+    let mut bad_code = base.clone();
+    bad_code["data"]["details"]["denial_code"] = json!("other");
+    let mut bad_role = base.clone();
+    bad_role["data"]["details"]["session_role"] = json!("a\u{7}");
+    let mut commitment = base.clone();
+    commitment["data"]["provenance"]["source_commitment"] = json!("ab".repeat(32));
+    let mut relay_format = base.clone();
+    relay_format["data"]["provenance"]["source_format"] = json!("audit-relay-control-v1");
+    let mut wrong_subject = base.clone();
+    wrong_subject["subject"] = json!("audit-store/other");
+    let mut wrong_resource = base;
+    wrong_resource["data"]["resource"]["id"] = json!(DOC);
+    for (name, value, code) in [
+        ("unknown detail", unknown, C::UnknownField),
+        ("enum value", bad_code, C::InvalidField),
+        ("identifier control char", bad_role, C::InvalidField),
+        ("commitment on control", commitment, C::InvalidProvenance),
+        ("relay format on store", relay_format, C::InvalidProvenance),
+        ("subject", wrong_subject, C::InvalidSubject),
+        ("resource id", wrong_resource, C::InvalidResource),
+    ] {
+        assert_eq!(
+            validate_envelope(&value, Origin::Store)
+                .expect_err(name)
+                .code,
+            code,
+            "{name}"
+        );
+    }
+}

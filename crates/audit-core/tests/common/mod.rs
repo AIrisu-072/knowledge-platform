@@ -691,6 +691,84 @@ pub fn envelope_of(name: &str) -> Value {
         .into_value()
 }
 
+/// A sample value of a catalog kind (control fixtures).
+pub fn kind_sample(field: &audit_core::catalog::FieldSpec) -> Value {
+    use audit_core::kinds::Kind;
+    match field.kind {
+        Kind::Uuid | Kind::NullableUuid => json!(EVENT_ID),
+        Kind::Counter | Kind::NullableCounter | Kind::PositiveCounter => json!(7),
+        Kind::Boolean => json!(true),
+        Kind::Enum | Kind::NullableEnum => json!(field.values[0]),
+        Kind::EnumList => json!([field.values[0]]),
+        Kind::Digest | Kind::NullableDigest => bytes(1),
+        Kind::Principal => row_actor(),
+        Kind::LegacyTime => legacy_time(),
+        Kind::UtcTimestamp => json!(OCCURRED),
+        Kind::UuidList => json!([EVENT_ID, DOC]),
+        Kind::HexDigest => json!(commitment()),
+        Kind::Identifier => json!("audit_store_reader"),
+        Kind::IdentifierList => json!(["document.created", "folder.moved"]),
+        Kind::Code => json!("delivery_unknown_at_limit"),
+    }
+}
+
+/// A synthetic control envelope as the Store's SQL builds it. `full` also
+/// populates every optional field.
+pub fn control_envelope(spec: &audit_core::EventSpec, full: bool) -> Value {
+    let details: serde_json::Map<String, Value> = spec
+        .detail_fields()
+        .filter(|(name, _)| full || spec.required.iter().any(|r| r == name))
+        .map(|(name, field)| (name.to_owned(), kind_sample(field)))
+        .collect();
+    json!({
+        "specversion": "1.0",
+        "id": "0199a1b2-0000-7000-8000-00000000c0c1",
+        "source": spec.source,
+        "type": spec.event_type,
+        "subject": "audit-store",
+        "time": OCCURRED,
+        "datacontenttype": "application/json",
+        "dataschema": "urn:knowledge-platform:audit:payload:v1",
+        "data": {
+            "schema_version": 1,
+            "event_class": spec.event_class.as_str(),
+            "action": spec.event_type,
+            "actor": {"issuer": "synthetic-idp", "principal_id": "synthetic-operator"},
+            "resource": {"type": "AuditStore", "id": "audit-store"},
+            "result": spec.results[0],
+            "correlation": {},
+            "details": details,
+            "extensions": {},
+            "provenance": {
+                "source_format": audit_core::envelope::source_format_for(spec.origin),
+                "adapter_version": 1
+            }
+        }
+    })
+}
+
+/// Every control entry, minimal and fully populated.
+pub fn control_envelopes() -> Vec<(String, Origin, Value)> {
+    audit_core::Catalog::embedded()
+        .events()
+        .iter()
+        .filter(|spec| spec.origin != Origin::Relay)
+        .flat_map(|spec| {
+            [false, true].into_iter().map(move |full| {
+                (
+                    format!(
+                        "{}/{}",
+                        spec.event_type,
+                        if full { "full" } else { "minimal" }
+                    ),
+                    spec.origin,
+                    control_envelope(spec, full),
+                )
+            })
+        })
+        .collect()
+}
+
 /// Input to envelope-level validation.
 pub enum Input {
     Value(Value),

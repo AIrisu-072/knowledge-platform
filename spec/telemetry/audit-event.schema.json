@@ -23,6 +23,10 @@
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "type": "string"
     },
+    "code": {
+      "pattern": "^[a-z0-9_]{1,64}$",
+      "type": "string"
+    },
     "counter": {
       "maximum": 9223372036854775807,
       "minimum": 0,
@@ -196,6 +200,2037 @@
         },
         "source": {
           "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.audit.access.closed": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.access.closed"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "trace_id": {
+                  "$ref": "#/$defs/w3c_trace_id"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "intent_seq": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "page_count": {
+                  "$ref": "#/$defs/counter"
+                },
+                "page_digests_digest": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "returned_count": {
+                  "$ref": "#/$defs/counter"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/identifier"
+                }
+              },
+              "required": [
+                "session_role",
+                "intent_seq",
+                "returned_count",
+                "page_count",
+                "page_digests_digest"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "DATA_ACCESS"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance_store"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.access.denied": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.access.denied"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "trace_id": {
+                  "$ref": "#/$defs/w3c_trace_id"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "denial_code": {
+                  "enum": [
+                    "unbound",
+                    "insufficient_capability",
+                    "invalid_input",
+                    "self_grant"
+                  ]
+                },
+                "operation": {
+                  "enum": [
+                    "investigate",
+                    "export",
+                    "verify",
+                    "identity_chain",
+                    "close_access",
+                    "integrity_verify",
+                    "checkpoint",
+                    "change_access",
+                    "set_retention_policy",
+                    "expire",
+                    "purge_body",
+                    "begin_recovery_epoch",
+                    "rebind_fingerprint",
+                    "record_relay_control"
+                  ]
+                },
+                "required_capability": {
+                  "enum": [
+                    "investigate",
+                    "export",
+                    "verify",
+                    "administer",
+                    "maintain"
+                  ]
+                },
+                "session_role": {
+                  "$ref": "#/$defs/identifier"
+                }
+              },
+              "required": [
+                "session_role",
+                "operation",
+                "denial_code"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "SECURITY"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance_store"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "denied"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.access.intent_opened": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.access.intent_opened"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "trace_id": {
+                  "$ref": "#/$defs/w3c_trace_id"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "expires_at": {
+                  "$ref": "#/$defs/utc_timestamp"
+                },
+                "filter_actor_issuer": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "filter_actor_principal_id": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "filter_digest": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "filter_event_ids": {
+                  "$ref": "#/$defs/uuid_list"
+                },
+                "filter_event_types": {
+                  "$ref": "#/$defs/identifier_list"
+                },
+                "filter_occurred_from": {
+                  "$ref": "#/$defs/utc_timestamp"
+                },
+                "filter_occurred_to": {
+                  "$ref": "#/$defs/utc_timestamp"
+                },
+                "filter_resource_id": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "filter_resource_type": {
+                  "enum": [
+                    "Document",
+                    "Folder",
+                    "AccessPolicy",
+                    "AuditStore"
+                  ]
+                },
+                "filter_seq_after": {
+                  "$ref": "#/$defs/counter"
+                },
+                "filter_source": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "include_control": {
+                  "$ref": "#/$defs/boolean"
+                },
+                "max_pages": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "operation": {
+                  "enum": [
+                    "investigate",
+                    "export",
+                    "verify",
+                    "identity_chain"
+                  ]
+                },
+                "page_size": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "token_digest": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "watermark": {
+                  "$ref": "#/$defs/counter"
+                }
+              },
+              "required": [
+                "session_role",
+                "operation",
+                "filter_digest",
+                "watermark",
+                "page_size",
+                "max_pages",
+                "include_control",
+                "expires_at",
+                "token_digest"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "DATA_ACCESS"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance_store"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.access_policy.changed": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.access_policy.changed"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "trace_id": {
+                  "$ref": "#/$defs/w3c_trace_id"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "capability": {
+                  "enum": [
+                    "investigate",
+                    "export",
+                    "verify",
+                    "administer",
+                    "maintain"
+                  ]
+                },
+                "change": {
+                  "enum": [
+                    "granted",
+                    "revoked",
+                    "bound",
+                    "unbound",
+                    "bootstrap"
+                  ]
+                },
+                "db_role": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "target_issuer": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "target_principal_id": {
+                  "$ref": "#/$defs/identifier"
+                }
+              },
+              "required": [
+                "session_role",
+                "change",
+                "target_issuer",
+                "target_principal_id"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "ACCESS_POLICY"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance_store"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.body.purged": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.body.purged"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "trace_id": {
+                  "$ref": "#/$defs/w3c_trace_id"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "purge_reason_code": {
+                  "enum": [
+                    "minimization_failure",
+                    "prohibited_content",
+                    "adapter_defect"
+                  ]
+                },
+                "session_role": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "target_event_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "target_seq": {
+                  "$ref": "#/$defs/positive_counter"
+                }
+              },
+              "required": [
+                "session_role",
+                "target_seq",
+                "target_event_id",
+                "purge_reason_code"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "PRIVILEGED_OPERATION"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance_store"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.delivery.replay_requested": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.delivery.replay_requested"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "trace_id": {
+                  "$ref": "#/$defs/w3c_trace_id"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "event_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "quarantine_code": {
+                  "$ref": "#/$defs/code"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/identifier"
+                }
+              },
+              "required": [
+                "session_role",
+                "event_id",
+                "quarantine_code"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "PRIVILEGED_OPERATION"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance_relay_control"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-relay"
+        }
+      }
+    },
+    "event.audit.integrity.conflict_detected": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.integrity.conflict_detected"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "trace_id": {
+                  "$ref": "#/$defs/w3c_trace_id"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "commitment_match": {
+                  "$ref": "#/$defs/boolean"
+                },
+                "conflict_kind": {
+                  "enum": [
+                    "identity_mismatch",
+                    "commitment_mismatch",
+                    "projection_mismatch",
+                    "digest_mismatch"
+                  ]
+                },
+                "event_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "existing_adapter_version": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "existing_origin": {
+                  "enum": [
+                    "relay",
+                    "store",
+                    "relay_control"
+                  ]
+                },
+                "existing_seq": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "submitted_adapter_version": {
+                  "$ref": "#/$defs/positive_counter"
+                }
+              },
+              "required": [
+                "session_role",
+                "event_id",
+                "existing_seq",
+                "existing_origin",
+                "conflict_kind",
+                "commitment_match",
+                "existing_adapter_version",
+                "submitted_adapter_version"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "SECURITY"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance_store"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "failure"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.integrity.source_mismatch_detected": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.integrity.source_mismatch_detected"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "trace_id": {
+                  "$ref": "#/$defs/w3c_trace_id"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "event_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "mismatch_code": {
+                  "enum": [
+                    "source_digest_mismatch",
+                    "actor_mismatch"
+                  ]
+                },
+                "session_role": {
+                  "$ref": "#/$defs/identifier"
+                }
+              },
+              "required": [
+                "session_role",
+                "event_id",
+                "mismatch_code"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "SECURITY"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance_relay_control"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "failure"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-relay"
+        }
+      }
+    },
+    "event.audit.integrity.verified": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.integrity.verified"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "trace_id": {
+                  "$ref": "#/$defs/w3c_trace_id"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "checked": {
+                  "$ref": "#/$defs/counter"
+                },
+                "from_seq": {
+                  "$ref": "#/$defs/counter"
+                },
+                "head_chain": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "head_epoch": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "outcome": {
+                  "enum": [
+                    "ok",
+                    "violations"
+                  ]
+                },
+                "session_role": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "to_seq": {
+                  "$ref": "#/$defs/counter"
+                },
+                "trigger": {
+                  "enum": [
+                    "verify",
+                    "checkpoint"
+                  ]
+                },
+                "violation_body_digest_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_chain_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_epoch_regressed": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_event_id_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_expiry_state_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_head_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_identity_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_prev_chain_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_purge_evidence_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_retention_evidence_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_retention_evidence_missing": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_seq_gap": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violations_total": {
+                  "$ref": "#/$defs/counter"
+                },
+                "watermark": {
+                  "$ref": "#/$defs/counter"
+                }
+              },
+              "required": [
+                "session_role",
+                "trigger",
+                "from_seq",
+                "to_seq",
+                "watermark",
+                "checked",
+                "head_epoch",
+                "head_chain",
+                "outcome",
+                "violations_total",
+                "violation_seq_gap",
+                "violation_prev_chain_mismatch",
+                "violation_chain_mismatch",
+                "violation_body_digest_mismatch",
+                "violation_identity_mismatch",
+                "violation_event_id_mismatch",
+                "violation_expiry_state_mismatch",
+                "violation_epoch_regressed",
+                "violation_retention_evidence_missing",
+                "violation_retention_evidence_mismatch",
+                "violation_purge_evidence_mismatch",
+                "violation_head_mismatch"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "SYSTEM_AUDIT"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance_store"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success",
+                "failure"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.reconciliation.completed": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.reconciliation.completed"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "trace_id": {
+                  "$ref": "#/$defs/w3c_trace_id"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "count_delivered_missing": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_digest_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_ok": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_pending": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_quarantined": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_quarantined_conflict": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_quarantined_stored": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_source_tampered": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_store_only": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_unaudited_replay": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_unregistered": {
+                  "$ref": "#/$defs/counter"
+                },
+                "id_set_digest": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "mode": {
+                  "enum": [
+                    "read_only",
+                    "repair"
+                  ]
+                },
+                "repaired_delivered_missing": {
+                  "$ref": "#/$defs/counter"
+                },
+                "repaired_quarantined_stored": {
+                  "$ref": "#/$defs/counter"
+                },
+                "repaired_unregistered": {
+                  "$ref": "#/$defs/counter"
+                },
+                "run_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "watermark": {
+                  "$ref": "#/$defs/counter"
+                }
+              },
+              "required": [
+                "session_role",
+                "run_id",
+                "mode",
+                "watermark",
+                "id_set_digest",
+                "count_ok",
+                "count_delivered_missing",
+                "count_digest_mismatch",
+                "count_quarantined_stored",
+                "count_quarantined_conflict",
+                "count_pending",
+                "count_quarantined",
+                "count_unregistered",
+                "count_source_tampered",
+                "count_store_only",
+                "count_unaudited_replay",
+                "repaired_delivered_missing",
+                "repaired_quarantined_stored",
+                "repaired_unregistered"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "SYSTEM_AUDIT"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance_relay_control"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-relay"
+        }
+      }
+    },
+    "event.audit.recovery.epoch_started": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.recovery.epoch_started"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "trace_id": {
+                  "$ref": "#/$defs/w3c_trace_id"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "checkpoint_chain": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "checkpoint_classification": {
+                  "enum": [
+                    "match",
+                    "ahead",
+                    "store_behind",
+                    "mismatch"
+                  ]
+                },
+                "checkpoint_epoch": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "checkpoint_seq": {
+                  "$ref": "#/$defs/counter"
+                },
+                "lost_after_seq": {
+                  "$ref": "#/$defs/counter"
+                },
+                "lost_to_seq_claimed": {
+                  "$ref": "#/$defs/counter"
+                },
+                "new_database_oid": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "new_epoch": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "new_system_identifier": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "new_timeline": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "old_database_oid": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "old_epoch": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "old_system_identifier": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "old_timeline": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "reason_kind": {
+                  "enum": [
+                    "fingerprint_mismatch",
+                    "recovery_pending",
+                    "regressed"
+                  ]
+                },
+                "recovery_identity_digest": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "relay_max_seq": {
+                  "$ref": "#/$defs/counter"
+                },
+                "restored_head": {
+                  "$ref": "#/$defs/counter"
+                },
+                "restored_head_chain": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/identifier"
+                }
+              },
+              "required": [
+                "session_role",
+                "reason_kind",
+                "old_epoch",
+                "new_epoch",
+                "restored_head",
+                "restored_head_chain",
+                "recovery_identity_digest",
+                "checkpoint_epoch",
+                "checkpoint_seq",
+                "checkpoint_chain",
+                "checkpoint_classification",
+                "relay_max_seq",
+                "lost_after_seq",
+                "lost_to_seq_claimed",
+                "old_system_identifier",
+                "old_database_oid",
+                "old_timeline",
+                "new_system_identifier",
+                "new_database_oid",
+                "new_timeline"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "SYSTEM_AUDIT"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance_store"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.recovery.fingerprint_rebound": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.recovery.fingerprint_rebound"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "trace_id": {
+                  "$ref": "#/$defs/w3c_trace_id"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "epoch": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "head_seq": {
+                  "$ref": "#/$defs/counter"
+                },
+                "new_database_oid": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "new_system_identifier": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "new_timeline": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "old_database_oid": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "old_system_identifier": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "old_timeline": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/identifier"
+                }
+              },
+              "required": [
+                "session_role",
+                "epoch",
+                "head_seq",
+                "old_system_identifier",
+                "old_database_oid",
+                "old_timeline",
+                "new_system_identifier",
+                "new_database_oid",
+                "new_timeline"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "SYSTEM_AUDIT"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance_store"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.retention.expired": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.retention.expired"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "trace_id": {
+                  "$ref": "#/$defs/w3c_trace_id"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "count": {
+                  "$ref": "#/$defs/counter"
+                },
+                "current_revision": {
+                  "$ref": "#/$defs/nullable_counter"
+                },
+                "effective_cutoff": {
+                  "$ref": "#/$defs/utc_timestamp"
+                },
+                "expected_revision": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "expired_set_digest": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "first_seq": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "last_seq": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "limit": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "outcome": {
+                  "enum": [
+                    "expired",
+                    "stale_revision",
+                    "not_expirable",
+                    "held"
+                  ]
+                },
+                "policy_id": {
+                  "$ref": "#/$defs/code"
+                },
+                "requested_cutoff": {
+                  "$ref": "#/$defs/utc_timestamp"
+                },
+                "retain_days": {
+                  "$ref": "#/$defs/nullable_counter"
+                },
+                "selector_digest": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "selector_event_classes": {
+                  "items": {
+                    "enum": [
+                      "SECURITY",
+                      "PRIVILEGED_OPERATION",
+                      "CONTENT_LIFECYCLE",
+                      "ACCESS_POLICY",
+                      "DATA_ACCESS",
+                      "SEARCH_ACCESS",
+                      "CONFIGURATION",
+                      "SYSTEM_AUDIT"
+                    ]
+                  },
+                  "maxItems": 8,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "selector_event_types": {
+                  "$ref": "#/$defs/identifier_list"
+                },
+                "selector_sources": {
+                  "$ref": "#/$defs/identifier_list"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "transaction_time": {
+                  "$ref": "#/$defs/utc_timestamp"
+                }
+              },
+              "required": [
+                "session_role",
+                "outcome",
+                "policy_id",
+                "expected_revision",
+                "current_revision",
+                "requested_cutoff",
+                "transaction_time",
+                "limit",
+                "count",
+                "expired_set_digest"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "PRIVILEGED_OPERATION"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance_store"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success",
+                "failure"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.retention.policy_changed": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.retention.policy_changed"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "trace_id": {
+                  "$ref": "#/$defs/w3c_trace_id"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "policy_id": {
+                  "$ref": "#/$defs/code"
+                },
+                "retain_days": {
+                  "$ref": "#/$defs/nullable_counter"
+                },
+                "revision": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "selector_digest": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "selector_event_classes": {
+                  "items": {
+                    "enum": [
+                      "SECURITY",
+                      "PRIVILEGED_OPERATION",
+                      "CONTENT_LIFECYCLE",
+                      "ACCESS_POLICY",
+                      "DATA_ACCESS",
+                      "SEARCH_ACCESS",
+                      "CONFIGURATION",
+                      "SYSTEM_AUDIT"
+                    ]
+                  },
+                  "maxItems": 8,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "selector_event_types": {
+                  "$ref": "#/$defs/identifier_list"
+                },
+                "selector_sources": {
+                  "$ref": "#/$defs/identifier_list"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/identifier"
+                }
+              },
+              "required": [
+                "session_role",
+                "policy_id",
+                "revision",
+                "selector_digest",
+                "retain_days"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "CONFIGURATION"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance_store"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
         }
       }
     },
@@ -2753,6 +4788,22 @@
       "pattern": "^[0-9a-f]{64}$",
       "type": "string"
     },
+    "identifier": {
+      "description": "Control events only: a Store-chosen name",
+      "maxLength": 256,
+      "minLength": 1,
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$",
+      "type": "string"
+    },
+    "identifier_list": {
+      "items": {
+        "$ref": "#/$defs/identifier"
+      },
+      "maxItems": 32,
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
     "legacy_time": {
       "description": "time 0.3 serde tuple [year, ordinal, hour, minute, second, nanosecond, offset_h, offset_m, offset_s]; not RFC 3339",
       "items": false,
@@ -3297,6 +5348,216 @@
       "then": {
         "$ref": "#/$defs/event.authorization.denied"
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.access.intent_opened"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.access.intent_opened"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.access.denied"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.access.denied"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.access.closed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.access.closed"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.access_policy.changed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.access_policy.changed"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.retention.policy_changed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.retention.policy_changed"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.retention.expired"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.retention.expired"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.body.purged"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.body.purged"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.integrity.verified"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.integrity.verified"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.integrity.conflict_detected"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.integrity.conflict_detected"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.recovery.epoch_started"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.recovery.epoch_started"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.recovery.fingerprint_rebound"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.recovery.fingerprint_rebound"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.delivery.replay_requested"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.delivery.replay_requested"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.reconciliation.completed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.reconciliation.completed"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.integrity.source_mismatch_detected"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.integrity.source_mismatch_detected"
+      }
     }
   ],
   "description": "Generated by audit-core from spec/telemetry/audit-event-catalog.json. Do not edit; regenerate with AUDIT_SCHEMA_BLESS=1 cargo test -p audit-core --test schema_contract. Rust-only constraints are listed in spec/telemetry/README.md.",
@@ -3351,7 +5612,21 @@
         "document.file.access_granted",
         "document.diff.result_access_granted",
         "document.revision_comparison.result_access_granted",
-        "authorization.denied"
+        "authorization.denied",
+        "audit.access.intent_opened",
+        "audit.access.denied",
+        "audit.access.closed",
+        "audit.access_policy.changed",
+        "audit.retention.policy_changed",
+        "audit.retention.expired",
+        "audit.body.purged",
+        "audit.integrity.verified",
+        "audit.integrity.conflict_detected",
+        "audit.recovery.epoch_started",
+        "audit.recovery.fingerprint_rebound",
+        "audit.delivery.replay_requested",
+        "audit.reconciliation.completed",
+        "audit.integrity.source_mismatch_detected"
       ]
     }
   },

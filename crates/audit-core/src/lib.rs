@@ -18,8 +18,10 @@ pub use chain::{GENESIS, chain_next, envelope_digest};
 pub use codes::{Rejection, RejectionCode};
 pub use envelope::{AuditEnvelope, validate_envelope};
 pub use export::{
-    Anchor, Checkpoint, CheckpointComparison, ExportError, ExportReport, compare_checkpoint,
-    verify_export, verify_export_subset, verify_identity_chain,
+    Anchor, ChainVerdict, Checkpoint, CheckpointComparison, CheckpointFinding, EpochReview,
+    EpochTransition, ExportError, ExportReport, RecoveryAssessment, RecoveryRecord,
+    assess_recovery, compare_checkpoint, verify_export, verify_export_subset,
+    verify_identity_chain,
 };
 pub use json::parse_unique;
 pub use legacy::{DocumentStagingProjection, project};

@@ -89,10 +89,18 @@ pub enum OutageCode {
     LockUnavailable,
     RecoveryRequired,
     Regressed,
+    /// The Store's privilege posture check failed (design §7.3, §11).
+    PostureInvalid,
+    /// `(source, type, adapter_version)` is not registered in the Store: the
+    /// catalog and the Store migration disagree (design §6.3, §7.2).
+    VersionSkew,
+    /// Any other failure that is not a structured Store verdict (design §6.3:
+    /// everything that is not an explicit verdict holds delivery).
+    Unclassified,
 }
 
 impl OutageCode {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 14] = [
         Self::Transport,
         Self::Timeout,
         Self::Connection,
@@ -104,6 +112,9 @@ impl OutageCode {
         Self::LockUnavailable,
         Self::RecoveryRequired,
         Self::Regressed,
+        Self::PostureInvalid,
+        Self::VersionSkew,
+        Self::Unclassified,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -119,6 +130,9 @@ impl OutageCode {
             Self::LockUnavailable => "store_lock_unavailable",
             Self::RecoveryRequired => "store_recovery_required",
             Self::Regressed => "store_regressed",
+            Self::PostureInvalid => "store_posture_invalid",
+            Self::VersionSkew => "store_unregistered_type",
+            Self::Unclassified => "store_unclassified",
         }
     }
 
@@ -127,8 +141,10 @@ impl OutageCode {
     }
 }
 
-/// Classifies a PostgreSQL SQLSTATE as an outage, or `None` when the error is
-/// a definite verdict (or unknown) and must not hold delivery.
+/// Classifies a PostgreSQL SQLSTATE into a specific outage class, or `None`
+/// when no specific class applies. A Store adapter maps `None` to
+/// [`OutageCode::Unclassified`] unless the error is a structured verdict:
+/// verdicts are returned as result rows, never as SQL errors.
 pub fn classify_sqlstate(sqlstate: &str) -> Option<OutageCode> {
     let bytes = sqlstate.as_bytes();
     if bytes.len() != 5

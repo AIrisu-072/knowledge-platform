@@ -33,22 +33,104 @@ const DOCUMENT_TYPES: [&str; 21] = [
     "authorization.denied",
 ];
 
+/// Design §4.5 control events, plus `audit.access.closed` (§10.3 close_access)
+/// and `audit.recovery.fingerprint_rebound` (§11 rebind_fingerprint), which
+/// the design requires to be recorded but §4.5 does not list.
+const STORE_CONTROL_TYPES: [&str; 11] = [
+    "audit.access.intent_opened",
+    "audit.access.denied",
+    "audit.access.closed",
+    "audit.access_policy.changed",
+    "audit.retention.policy_changed",
+    "audit.retention.expired",
+    "audit.body.purged",
+    "audit.integrity.verified",
+    "audit.integrity.conflict_detected",
+    "audit.recovery.epoch_started",
+    "audit.recovery.fingerprint_rebound",
+];
+const RELAY_CONTROL_TYPES: [&str; 3] = [
+    "audit.delivery.replay_requested",
+    "audit.reconciliation.completed",
+    "audit.integrity.source_mismatch_detected",
+];
+
+fn types_of(origin: Origin) -> BTreeSet<&'static str> {
+    Catalog::embedded()
+        .events()
+        .iter()
+        .filter(|e| e.origin == origin)
+        .map(|e| e.event_type.as_str())
+        .collect()
+}
+
 #[test]
 fn embedded_catalog_lists_exactly_the_document_producer_types() {
     let catalog = Catalog::embedded();
     assert_eq!(catalog.version(), 1);
-    let types: BTreeSet<&str> = catalog
+    assert_eq!(
+        types_of(Origin::Relay),
+        DOCUMENT_TYPES.into_iter().collect()
+    );
+    for spec in catalog
         .events()
         .iter()
-        .map(|e| e.event_type.as_str())
-        .collect();
-    assert_eq!(types, DOCUMENT_TYPES.into_iter().collect());
-    for spec in catalog.events() {
-        assert_eq!(spec.origin, Origin::Relay, "{}", spec.event_type);
+        .filter(|e| e.origin == Origin::Relay)
+    {
         assert_eq!(spec.source, audit_core::catalog::DOCUMENT_SOURCE);
         assert!(catalog.get(&spec.event_type).is_some());
     }
-    assert!(catalog.get("audit.access.denied").is_none());
+    assert_eq!(
+        catalog.events().len(),
+        DOCUMENT_TYPES.len() + STORE_CONTROL_TYPES.len() + RELAY_CONTROL_TYPES.len()
+    );
+}
+
+#[test]
+fn control_types_are_registered_with_their_origin_source_and_resource() {
+    let catalog = Catalog::embedded();
+    assert_eq!(
+        types_of(Origin::Store),
+        STORE_CONTROL_TYPES.into_iter().collect()
+    );
+    assert_eq!(
+        types_of(Origin::RelayControl),
+        RELAY_CONTROL_TYPES.into_iter().collect()
+    );
+    for spec in catalog
+        .events()
+        .iter()
+        .filter(|e| e.origin != Origin::Relay)
+    {
+        let source = match spec.origin {
+            Origin::Store => audit_core::catalog::AUDIT_STORE_SOURCE,
+            _ => audit_core::catalog::AUDIT_RELAY_SOURCE,
+        };
+        assert_eq!(spec.source, source, "{}", spec.event_type);
+        assert_eq!(
+            spec.resources,
+            vec![audit_core::ResourceType::AuditStore],
+            "{}",
+            spec.event_type
+        );
+        assert_eq!(spec.version_required, VersionRequirement::Forbidden);
+        assert_eq!(spec.reason, ReasonPolicy::Absent);
+        assert_eq!(spec.subjects.len(), 1);
+        assert_eq!(spec.subjects[0].template, "audit-store");
+        assert!(
+            spec.required.iter().any(|f| f == "session_role"),
+            "{}: control events record session_user",
+            spec.event_type
+        );
+    }
+}
+
+#[test]
+fn control_only_kinds_are_refused_on_relay_entries() {
+    for kind in ["identifier", "identifier_list", "code"] {
+        let result = edited(|e| e["fields"]["name"] = json!({"kind": kind}));
+        assert!(result.is_err(), "{kind} must be control-only");
+    }
 }
 
 #[test]
@@ -56,12 +138,25 @@ fn event_classes_follow_the_design_assignment() {
     let catalog = Catalog::embedded();
     for spec in catalog.events() {
         let expected = match spec.event_type.as_str() {
-            "access_policy.changed" => EventClass::AccessPolicy,
-            "authorization.denied" => EventClass::Security,
+            "access_policy.changed" | "audit.access_policy.changed" => EventClass::AccessPolicy,
+            "authorization.denied"
+            | "audit.access.denied"
+            | "audit.integrity.conflict_detected"
+            | "audit.integrity.source_mismatch_detected" => EventClass::Security,
             "document.version.read_confirmed"
             | "document.file.access_granted"
             | "document.diff.result_access_granted"
-            | "document.revision_comparison.result_access_granted" => EventClass::DataAccess,
+            | "document.revision_comparison.result_access_granted"
+            | "audit.access.intent_opened"
+            | "audit.access.closed" => EventClass::DataAccess,
+            "audit.retention.policy_changed" => EventClass::Configuration,
+            "audit.retention.expired" | "audit.body.purged" | "audit.delivery.replay_requested" => {
+                EventClass::PrivilegedOperation
+            }
+            "audit.integrity.verified"
+            | "audit.recovery.epoch_started"
+            | "audit.recovery.fingerprint_rebound"
+            | "audit.reconciliation.completed" => EventClass::SystemAudit,
             _ => EventClass::ContentLifecycle,
         };
         assert_eq!(spec.event_class, expected, "{}", spec.event_type);
@@ -154,7 +249,11 @@ fn every_catalog_type_has_an_accepted_fixture() {
             fixture.row.event_type
         })
         .collect();
-    for spec in Catalog::embedded().events() {
+    for spec in Catalog::embedded()
+        .events()
+        .iter()
+        .filter(|e| e.origin == Origin::Relay)
+    {
         assert!(
             covered.contains(&spec.event_type),
             "{} has no fixture",

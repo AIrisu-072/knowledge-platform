@@ -518,6 +518,15 @@ fn check_event(mut raw: RawEvent) -> Result<EventSpec, CatalogError> {
         if !is_token(name) || name == "reason" {
             return Err(fail("field names must be tokens and must not be reason"));
         }
+        if raw.origin == Origin::Relay && field.kind.is_control_only() {
+            return Err(entry_error(
+                t,
+                format!(
+                    "{name}: {} is reserved for control events",
+                    field.kind.as_str()
+                ),
+            ));
+        }
         if field.kind.takes_values() {
             if field.values.is_empty()
                 || !unique(field.values.iter())

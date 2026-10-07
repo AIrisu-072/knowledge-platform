@@ -50,6 +50,11 @@ Audit Infrastructure v1（[設計](../../docs/superpowers/specs/2026-10-07-audit
 | `utc_timestamp` | `YYYY-MM-DDTHH:MM:SS.ffffffZ`（control用） |
 | `uuid_list` | `uuid` を最大100件、重複なし |
 | `hex_digest` | 小文字hex 64桁 |
+| `identifier` | control event専用。Storeが選ぶ名前（DB role、event type、source URN、issuer）。空でなく256 byte以下、制御文字なし |
+| `identifier_list` | control event専用。`identifier` を1–32件、重複なし |
+| `code` | control event専用。`[a-z0-9_]{1,64}` |
+
+`identifier` / `identifier_list` / `code` はsource payloadの値を運ばないので、`origin: relay` のentryでは読込時に拒否する（relay eventに自由文字列のkindは無いという規則を保つ）。
 
 ### legacy_time
 
@@ -101,9 +106,45 @@ cargo test -p audit-core --test schema_contract                        # byte一
 
 envelope全体の24 KiB上限もRustだけが検査する。
 
-## control event（単位B予約）
+## control event
 
-catalogは `origin: "store"`（source `urn:knowledge-platform:audit-store`）と `origin: "relay_control"`（source `urn:knowledge-platform:audit-relay`）のentryを読み込める。type名は `audit.` で始め、`AuditStore` resource（id `audit-store`）を使える。現時点ではcontrol entryを登録していない。単位B（Store・relay）が設計§4.5の12種を追加し、SQLが組み立てたcontrol eventをRustのcatalogで検証する試験を同時に追加する。relay経路（`Origin::Relay`）は、`audit.*` type、control source、`AuditStore` resourceを `control_type_forbidden` で常に拒否する。
+`origin: "store"`（source `urn:knowledge-platform:audit-store`）と `origin: "relay_control"`（source `urn:knowledge-platform:audit-relay`）のentryである。type名は `audit.` で始め、resourceは `{"type": "AuditStore", "id": "audit-store"}`、subjectは `audit-store`、`version_id` は持たない。envelopeは `crates/audit-store-postgres` のSQLが組み立て、`provenance` は `{source_format: "audit-store-control-v1" | "audit-relay-control-v1", adapter_version: 1}`（commitmentなし）である。detailsは必ず `session_role`（呼出元の `session_user`）を持つ。
+
+| type | origin | class |
+|---|---|---|
+| `audit.access.intent_opened` | store | DATA_ACCESS |
+| `audit.access.denied` | store | SECURITY |
+| `audit.access.closed` | store | DATA_ACCESS |
+| `audit.access_policy.changed` | store | ACCESS_POLICY |
+| `audit.retention.policy_changed` | store | CONFIGURATION |
+| `audit.retention.expired` | store | PRIVILEGED_OPERATION |
+| `audit.body.purged` | store | PRIVILEGED_OPERATION |
+| `audit.integrity.verified` | store | SYSTEM_AUDIT |
+| `audit.integrity.conflict_detected` | store | SECURITY |
+| `audit.recovery.epoch_started` | store | SYSTEM_AUDIT |
+| `audit.recovery.fingerprint_rebound` | store | SYSTEM_AUDIT |
+| `audit.delivery.replay_requested` | relay_control | PRIVILEGED_OPERATION |
+| `audit.reconciliation.completed` | relay_control | SYSTEM_AUDIT |
+| `audit.integrity.source_mismatch_detected` | relay_control | SECURITY |
+
+設計§4.5の12種に加え、設計が記録を求めるが§4.5に型の無い2種を登録した：`audit.access.closed`（§10.3 `close_access` の件数・page digest）と `audit.recovery.fingerprint_rebound`（§11 `rebind_fingerprint` の旧/新fingerprint）。`checkpoint` は `audit.integrity.verified`（`trigger: "checkpoint"`）として記録する。
+
+relay経路（`Origin::Relay`）は、`audit.*` type、control source、`AuditStore` resourceを `control_type_forbidden` で常に拒否する。control eventはそれぞれ `Origin::Store` / `Origin::RelayControl` の経路でだけ受理する。Storeの試験は、SQLが生成したすべてのcontrol eventをこの経路で検証する。
+
+## recovery epochのDB外判定
+
+`assess_recovery(report, checkpoints, records)` は、anchor付きで検証したexport（identity chainを含む）を、帯域外のcheckpointと復元記録（`RecoveryRecord`：旧/新epoch、復元head、消失範囲の上限）で判定する（設計§8）。
+
+| verdict | 意味 |
+|---|---|
+| `Authentic` | anchorから連続し、帯域外checkpointが検証経路上にあり、消失を伴うrecoveryが無い |
+| `NoCheckpoint` | 経路を確認する帯域外checkpointが無い（真正とは主張しない） |
+| `Lost` | 差異が帯域外に記録されたrecoveryの消失範囲だけで説明できる（authenticとはしない） |
+| `UnverifiedRecovery` | recovery epochに帯域外記録が無い、または記録と食い違う（改変の疑い） |
+| `Tampered` | 復元head以下、またはrecoveryの無い位置で帯域外checkpointと食い違う |
+| `Unanchored` | filter付きの部分集合 |
+
+全recovery epochと消失範囲は `epochs` に列挙され、人の確認対象になる。
 
 ## hash chain
 

@@ -18,7 +18,10 @@ use crate::envelope::{
     SCHEMA_VERSION, SPECVERSION, source_format_for,
 };
 use crate::json::canonicalize;
-use crate::kinds::{Kind, MAX_PRINCIPAL_PART_BYTES, MAX_STRING_BYTES, MAX_UUID_LIST, NIL_UUID};
+use crate::kinds::{
+    Kind, MAX_CODE_BYTES, MAX_IDENTIFIER_BYTES, MAX_IDENTIFIER_LIST, MAX_PRINCIPAL_PART_BYTES,
+    MAX_STRING_BYTES, MAX_UUID_LIST, NIL_UUID,
+};
 
 /// Repository path of the generated schema, relative to the workspace root.
 pub const SCHEMA_PATH: &str = "spec/telemetry/audit-event.schema.json";
@@ -109,6 +112,30 @@ fn shared_definitions() -> Map<String, Value> {
     put(
         "hex_digest",
         json!({"type": "string", "pattern": "^[0-9a-f]{64}$"}),
+    );
+    put(
+        "identifier",
+        json!({
+            "description": "Control events only: a Store-chosen name",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": MAX_IDENTIFIER_BYTES,
+            "pattern": NO_CONTROL_PATTERN
+        }),
+    );
+    put(
+        "identifier_list",
+        json!({
+            "type": "array",
+            "minItems": 1,
+            "maxItems": MAX_IDENTIFIER_LIST,
+            "uniqueItems": true,
+            "items": reference("identifier")
+        }),
+    );
+    put(
+        "code",
+        json!({"type": "string", "pattern": format!("^[a-z0-9_]{{1,{MAX_CODE_BYTES}}}$")}),
     );
     put(
         "w3c_trace_id",

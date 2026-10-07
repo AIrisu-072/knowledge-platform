@@ -90,6 +90,19 @@ fn everything_rust_accepts_the_schema_accepts() {
 }
 
 #[test]
+fn every_control_envelope_rust_accepts_the_schema_accepts() {
+    let validator = validator();
+    for (name, origin, value) in control_envelopes() {
+        audit_core::validate_envelope(&value, origin).unwrap_or_else(|r| panic!("{name}: {r}"));
+        let errors: Vec<String> = validator
+            .iter_errors(&value)
+            .map(|e| format!("{} at {}", e, e.instance_path()))
+            .collect();
+        assert!(errors.is_empty(), "{name}: schema rejected: {errors:?}");
+    }
+}
+
+#[test]
 fn rust_only_rejections_are_labeled_and_all_others_fail_the_schema() {
     let validator = validator();
     for case in envelope_rejections() {

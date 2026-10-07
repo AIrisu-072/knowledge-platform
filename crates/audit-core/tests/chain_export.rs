@@ -3,9 +3,9 @@
 
 use audit_core::chain::{GENESIS_PREIMAGE, parse_hex32, to_hex};
 use audit_core::{
-    Anchor, Checkpoint, CheckpointComparison as Cmp, ExportError, GENESIS, chain_next,
-    compare_checkpoint, envelope_digest, verify_export, verify_export_subset,
-    verify_identity_chain,
+    Anchor, ChainVerdict, Checkpoint, CheckpointComparison as Cmp, EpochTransition, ExportError,
+    GENESIS, RecoveryRecord, assess_recovery, chain_next, compare_checkpoint, envelope_digest,
+    verify_export, verify_export_subset, verify_identity_chain,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -447,4 +447,149 @@ fn malformed_lines_are_rejected() {
             "{input}"
         );
     }
+}
+
+/// Identity-chain rows (no body) for seq `from..=to` in `epoch`, continuing
+/// from `prev`.
+fn identity_rows(from: i64, to: i64, epoch: i64, prev: [u8; 32], salt: u128) -> Built {
+    let specs: Vec<Spec> = (from..=to)
+        .map(|seq| {
+            let mut s = spec(u128::try_from(seq).expect("positive") | (salt << 32));
+            s.body = None;
+            s.epoch = epoch;
+            s
+        })
+        .collect();
+    build(&specs, from - 1, prev)
+}
+
+fn checkpoint_at(built: &Built, from: i64, seq: i64, epoch: i64) -> Checkpoint {
+    Checkpoint {
+        epoch,
+        seq,
+        chain: built.chains[usize::try_from(seq - from).expect("in range")],
+    }
+}
+
+/// History 1..=10 in epoch 1 with an out-of-band checkpoint at 10, then a
+/// restore to head 7 and a recovery epoch 2 continuing from seq 8 to 11.
+fn restored_history() -> (String, Checkpoint) {
+    let original = identity_rows(1, 10, 1, GENESIS, 0);
+    let checkpoint = checkpoint_at(&original, 1, 10, 1);
+    let survived = &original.lines[..7];
+    let after = identity_rows(8, 11, 2, original.chains[6], 0xbeef);
+    let mut lines = survived.to_vec();
+    lines.extend(after.lines);
+    (text(&lines), checkpoint)
+}
+
+#[test]
+fn honest_history_with_a_matching_checkpoint_is_authentic() {
+    let built = identity_rows(1, 10, 1, GENESIS, 0);
+    let report = verify_identity_chain(&text(&built.lines), Anchor::Genesis).expect("valid");
+    assert!(report.epoch_transitions().is_empty());
+    let assessment = assess_recovery(&report, &[checkpoint_at(&built, 1, 10, 1)], &[]);
+    assert_eq!(assessment.verdict, ChainVerdict::Authentic);
+    let ahead = assess_recovery(&report, &[checkpoint_at(&built, 1, 6, 1)], &[]);
+    assert_eq!(ahead.verdict, ChainVerdict::Authentic);
+    assert_eq!(
+        assess_recovery(&report, &[], &[]).verdict,
+        ChainVerdict::NoCheckpoint
+    );
+}
+
+#[test]
+fn truncated_suffix_with_fabricated_epoch_and_no_record_is_unverified_recovery() {
+    let (export, checkpoint) = restored_history();
+    // The fabricated recovery is internally consistent: it verifies.
+    let report = verify_identity_chain(&export, Anchor::Genesis).expect("chain is consistent");
+    assert_eq!(
+        report.epoch_transitions(),
+        &[EpochTransition {
+            seq: 8,
+            old_epoch: 1,
+            new_epoch: 2
+        }]
+    );
+    let assessment = assess_recovery(&report, &[checkpoint], &[]);
+    assert_eq!(assessment.verdict, ChainVerdict::UnverifiedRecovery);
+    assert_ne!(assessment.verdict, ChainVerdict::Authentic);
+    assert_eq!(assessment.epochs.len(), 1);
+    assert_eq!(assessment.epochs[0].record, None);
+    assert_eq!(assessment.findings[0].comparison, Cmp::Mismatch);
+}
+
+#[test]
+fn documented_recovery_is_reported_as_lost_never_authentic() {
+    let (export, checkpoint) = restored_history();
+    let report = verify_identity_chain(&export, Anchor::Genesis).expect("valid");
+    let record = RecoveryRecord {
+        old_epoch: 1,
+        new_epoch: 2,
+        restored_head: 7,
+        lost_to: 10,
+    };
+    let assessment = assess_recovery(&report, &[checkpoint], &[record]);
+    assert_eq!(assessment.verdict, ChainVerdict::Lost);
+    assert_eq!(assessment.findings[0].explained_by, Some(record));
+    assert_eq!(assessment.epochs[0].record, Some(record));
+    // A record that disagrees (wrong restored head) does not explain it.
+    let wrong = RecoveryRecord {
+        restored_head: 6,
+        ..record
+    };
+    let assessment = assess_recovery(&report, &[checkpoint], &[wrong]);
+    assert_eq!(assessment.verdict, ChainVerdict::UnverifiedRecovery);
+    assert_eq!(assessment.unmatched_records, vec![wrong]);
+    // A lost range that does not reach the checkpoint disagrees as well.
+    let short = RecoveryRecord {
+        lost_to: 9,
+        ..record
+    };
+    assert_eq!(
+        assess_recovery(&report, &[checkpoint], &[short]).verdict,
+        ChainVerdict::UnverifiedRecovery
+    );
+}
+
+#[test]
+fn differences_at_or_below_the_restored_head_are_tampering() {
+    let original = identity_rows(1, 10, 1, GENESIS, 0);
+    // Seq 5 onwards rewritten, then a "recovery" at 8.
+    let rewritten = identity_rows(5, 7, 1, original.chains[3], 0xdead);
+    let after = identity_rows(8, 9, 2, rewritten.chains[2], 0xbeef);
+    let mut lines = original.lines[..4].to_vec();
+    lines.extend(rewritten.lines);
+    lines.extend(after.lines);
+    let report = verify_identity_chain(&text(&lines), Anchor::Genesis).expect("consistent");
+    let record = RecoveryRecord {
+        old_epoch: 1,
+        new_epoch: 2,
+        restored_head: 7,
+        lost_to: 10,
+    };
+    let old_checkpoint = checkpoint_at(&original, 1, 6, 1);
+    let assessment = assess_recovery(&report, &[old_checkpoint], &[record]);
+    assert_eq!(assessment.verdict, ChainVerdict::Tampered);
+}
+
+#[test]
+fn truncation_without_any_recovery_epoch_is_tampering() {
+    let original = identity_rows(1, 10, 1, GENESIS, 0);
+    let checkpoint = checkpoint_at(&original, 1, 10, 1);
+    let report = verify_identity_chain(&text(&original.lines[..7]), Anchor::Genesis)
+        .expect("prefix is consistent");
+    let assessment = assess_recovery(&report, &[checkpoint], &[]);
+    assert_eq!(assessment.findings[0].comparison, Cmp::StoreBehind);
+    assert_eq!(assessment.verdict, ChainVerdict::Tampered);
+}
+
+#[test]
+fn subsets_are_unanchored_in_assessment() {
+    let (_, built) = five();
+    let report = verify_export_subset(&text(&built.lines)).expect("subset");
+    assert_eq!(
+        assess_recovery(&report, &[], &[]).verdict,
+        ChainVerdict::Unanchored
+    );
 }

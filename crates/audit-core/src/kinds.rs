@@ -10,6 +10,12 @@ pub const MAX_STRING_BYTES: usize = 512;
 pub const MAX_PRINCIPAL_PART_BYTES: usize = 256;
 /// Upper bound for `uuid_list` values.
 pub const MAX_UUID_LIST: usize = 100;
+/// Upper bound for `identifier` values (control events), in UTF-8 bytes.
+pub const MAX_IDENTIFIER_BYTES: usize = 256;
+/// Upper bound for `identifier_list` values (control events).
+pub const MAX_IDENTIFIER_LIST: usize = 32;
+/// Upper bound for `code` values (`[a-z0-9_]{1,64}`).
+pub const MAX_CODE_BYTES: usize = 64;
 /// The nil UUID in canonical form.
 pub const NIL_UUID: &str = "00000000-0000-0000-0000-000000000000";
 
@@ -33,10 +39,18 @@ pub enum Kind {
     UtcTimestamp,
     UuidList,
     HexDigest,
+    /// Control events only: a bounded name chosen by the Store (database role,
+    /// event type, source URN, issuer). Non-empty, at most 256 bytes, no
+    /// control characters.
+    Identifier,
+    /// Control events only: 1 to 32 distinct `identifier` values.
+    IdentifierList,
+    /// Control events only: a machine code `[a-z0-9_]{1,64}`.
+    Code,
 }
 
 impl Kind {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 19] = [
         Self::Uuid,
         Self::NullableUuid,
         Self::Counter,
@@ -53,6 +67,9 @@ impl Kind {
         Self::UtcTimestamp,
         Self::UuidList,
         Self::HexDigest,
+        Self::Identifier,
+        Self::IdentifierList,
+        Self::Code,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -73,12 +90,22 @@ impl Kind {
             Self::UtcTimestamp => "utc_timestamp",
             Self::UuidList => "uuid_list",
             Self::HexDigest => "hex_digest",
+            Self::Identifier => "identifier",
+            Self::IdentifierList => "identifier_list",
+            Self::Code => "code",
         }
     }
 
     /// Whether the kind requires a non-empty `values` list.
     pub const fn takes_values(self) -> bool {
         matches!(self, Self::Enum | Self::NullableEnum | Self::EnumList)
+    }
+
+    /// Kinds reserved for control events built by the Store or relay. They
+    /// carry Store-chosen names, never source payload text, so relay-origin
+    /// entries must not use them.
+    pub const fn is_control_only(self) -> bool {
+        matches!(self, Self::Identifier | Self::IdentifierList | Self::Code)
     }
 
     /// Checks `value` against this kind. `values` is the closed set for enum kinds.
@@ -116,8 +143,36 @@ impl Kind {
                         .all(|(i, item)| !items[..i].contains(item))
             }),
             Self::HexDigest => value.as_str().is_some_and(is_hex_digest),
+            Self::Identifier => value.as_str().is_some_and(is_identifier),
+            Self::IdentifierList => value.as_array().is_some_and(|items| {
+                !items.is_empty()
+                    && items.len() <= MAX_IDENTIFIER_LIST
+                    && items
+                        .iter()
+                        .all(|item| item.as_str().is_some_and(is_identifier))
+                    && items
+                        .iter()
+                        .enumerate()
+                        .all(|(i, item)| !items[..i].contains(item))
+            }),
+            Self::Code => value.as_str().is_some_and(is_code),
         }
     }
+}
+
+/// A control-event identifier: non-empty, at most 256 bytes, no control
+/// characters.
+pub fn is_identifier(text: &str) -> bool {
+    !text.is_empty() && is_bounded_text(text, MAX_IDENTIFIER_BYTES)
+}
+
+/// A machine code: `[a-z0-9_]{1,64}`.
+pub fn is_code(text: &str) -> bool {
+    !text.is_empty()
+        && text.len() <= MAX_CODE_BYTES
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
 }
 
 fn is_counter(value: &Value) -> bool {
@@ -354,5 +409,25 @@ mod tests {
         assert!(!is_principal_part("a\u{7}"));
         assert!(!is_principal_part(&"é".repeat(129)));
         assert!(is_principal_part(&"é".repeat(128)));
+    }
+
+    #[test]
+    fn control_kinds_are_bounded() {
+        assert!(Kind::Identifier.accepts(&[], &json!("audit_store_reader")));
+        assert!(Kind::Identifier.accepts(&[], &json!("é".repeat(128))));
+        assert!(!Kind::Identifier.accepts(&[], &json!("é".repeat(129))));
+        assert!(!Kind::Identifier.accepts(&[], &json!("")));
+        assert!(!Kind::Identifier.accepts(&[], &json!("a\nb")));
+        assert!(!Kind::Identifier.accepts(&[], &json!(1)));
+        assert!(Kind::IdentifierList.accepts(&[], &json!(["a", "b"])));
+        assert!(!Kind::IdentifierList.accepts(&[], &json!([])));
+        assert!(!Kind::IdentifierList.accepts(&[], &json!(["a", "a"])));
+        let many: Vec<String> = (0..=MAX_IDENTIFIER_LIST).map(|i| i.to_string()).collect();
+        assert!(!Kind::IdentifierList.accepts(&[], &json!(many)));
+        assert!(Kind::Code.accepts(&[], &json!("delivery_unknown_at_limit")));
+        assert!(!Kind::Code.accepts(&[], &json!("Upper")));
+        assert!(!Kind::Code.accepts(&[], &json!("has space")));
+        assert!(!Kind::Code.accepts(&[], &json!("a".repeat(65))));
+        assert!(Kind::ALL.iter().filter(|k| k.is_control_only()).count() == 3);
     }
 }

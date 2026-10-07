@@ -68,6 +68,16 @@ pub struct ExportReport {
     pub expired: u64,
     /// Chain value of every verified row, in seq order (anchored only).
     chains: Vec<[u8; 32]>,
+    /// Recovery epoch changes along the verified path (anchored only).
+    transitions: Vec<EpochTransition>,
+}
+
+impl ExportReport {
+    /// Recovery epoch changes observed along the verified path. Every one of
+    /// them is listed for human review (design §8).
+    pub fn epoch_transitions(&self) -> &[EpochTransition] {
+        &self.transitions
+    }
 }
 
 impl fmt::Debug for ExportReport {
@@ -79,7 +89,207 @@ impl fmt::Debug for ExportReport {
             .field("rows", &self.rows)
             .field("bodies", &self.bodies)
             .field("expired", &self.expired)
+            .field("transitions", &self.transitions)
             .finish_non_exhaustive()
+    }
+}
+
+/// A recovery epoch change observed in an export: the row at `seq` is the
+/// first row of `new_epoch` (the Store's `audit.recovery.epoch_started`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EpochTransition {
+    pub seq: i64,
+    pub old_epoch: i64,
+    pub new_epoch: i64,
+}
+
+/// The operator's out-of-band record of a restore (design §8, §11): appended
+/// at restore time to the checkpoint log kept outside the database.
+/// `restored_head` is the last surviving seq; `lost_to` is the claimed upper
+/// bound of the lost range `(restored_head, lost_to]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RecoveryRecord {
+    pub old_epoch: i64,
+    pub new_epoch: i64,
+    pub restored_head: i64,
+    pub lost_to: i64,
+}
+
+impl RecoveryRecord {
+    fn matches(&self, transition: &EpochTransition) -> bool {
+        self.old_epoch == transition.old_epoch
+            && self.new_epoch == transition.new_epoch
+            && self.restored_head.checked_add(1) == Some(transition.seq)
+            && self.lost_to >= self.restored_head
+    }
+
+    fn loses(&self) -> bool {
+        self.lost_to > self.restored_head
+    }
+}
+
+/// Overall offline verdict (design §8). Ordered from best to worst.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ChainVerdict {
+    /// Contiguous from a trusted anchor, every out-of-band checkpoint lies on
+    /// the verified path, and no recovery lost rows.
+    Authentic,
+    /// Verified from a trusted anchor, but no out-of-band checkpoint confirms
+    /// the path. Authenticity is not claimed.
+    NoCheckpoint,
+    /// Differences are explained only by recoveries documented out of band:
+    /// reported as "lost (recovery epoch k)", never as authentic.
+    Lost,
+    /// A recovery epoch (or a checkpoint mismatch past a recovery) has no
+    /// matching out-of-band record, or the records disagree: suspected
+    /// tampering disguised as recovery.
+    UnverifiedRecovery,
+    /// History at or below a restored head, or without any recovery, differs
+    /// from an out-of-band checkpoint.
+    Tampered,
+    /// A filtered subset: it proves nothing about the chain.
+    Unanchored,
+}
+
+/// One recovery epoch along the verified path and its out-of-band record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EpochReview {
+    pub transition: EpochTransition,
+    pub record: Option<RecoveryRecord>,
+}
+
+/// How one out-of-band checkpoint relates to the verified path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CheckpointFinding {
+    pub checkpoint: Checkpoint,
+    pub comparison: CheckpointComparison,
+    pub verdict: ChainVerdict,
+    /// The documented recovery that explains a difference, if any.
+    pub explained_by: Option<RecoveryRecord>,
+}
+
+/// The offline assessment: the verdict plus everything a human must review.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecoveryAssessment {
+    pub verdict: ChainVerdict,
+    pub epochs: Vec<EpochReview>,
+    pub findings: Vec<CheckpointFinding>,
+    /// Out-of-band records that match no epoch on the verified path.
+    pub unmatched_records: Vec<RecoveryRecord>,
+}
+
+/// Assesses a verified, anchored export against the out-of-band checkpoints
+/// and recovery records (design §8 "recovery epochの扱い").
+///
+/// - A difference at or below a documented restored head is tampering.
+/// - A difference inside a documented lost range is `Lost`.
+/// - A difference past an undocumented recovery epoch, an undocumented epoch,
+///   or a record that matches no epoch is `UnverifiedRecovery`.
+/// - Any other difference is `Tampered`.
+pub fn assess_recovery(
+    report: &ExportReport,
+    checkpoints: &[Checkpoint],
+    records: &[RecoveryRecord],
+) -> RecoveryAssessment {
+    if !report.anchored {
+        return RecoveryAssessment {
+            verdict: ChainVerdict::Unanchored,
+            epochs: Vec::new(),
+            findings: Vec::new(),
+            unmatched_records: records.to_vec(),
+        };
+    }
+    let epochs: Vec<EpochReview> = report
+        .transitions
+        .iter()
+        .map(|transition| EpochReview {
+            transition: *transition,
+            record: records.iter().find(|r| r.matches(transition)).copied(),
+        })
+        .collect();
+    let unmatched_records: Vec<RecoveryRecord> = records
+        .iter()
+        .filter(|record| !epochs.iter().any(|e| e.record == Some(**record)))
+        .copied()
+        .collect();
+    let mut worst = ChainVerdict::Authentic;
+    for epoch in &epochs {
+        let verdict = match epoch.record {
+            None => ChainVerdict::UnverifiedRecovery,
+            Some(record) if record.loses() => ChainVerdict::Lost,
+            Some(_) => ChainVerdict::Authentic,
+        };
+        worst = worst.max(verdict);
+    }
+    if !unmatched_records.is_empty() {
+        worst = worst.max(ChainVerdict::UnverifiedRecovery);
+    }
+    let mut confirmed = false;
+    let findings: Vec<CheckpointFinding> = checkpoints
+        .iter()
+        .map(|checkpoint| {
+            let comparison = compare_checkpoint(report, checkpoint);
+            let (verdict, explained_by) = match comparison {
+                CheckpointComparison::Match | CheckpointComparison::Ahead => {
+                    confirmed = true;
+                    (ChainVerdict::Authentic, None)
+                }
+                CheckpointComparison::BeforeAnchor => (ChainVerdict::NoCheckpoint, None),
+                CheckpointComparison::Unanchored => (ChainVerdict::Unanchored, None),
+                CheckpointComparison::Mismatch | CheckpointComparison::StoreBehind => {
+                    classify_difference(checkpoint, &epochs)
+                }
+            };
+            worst = worst.max(verdict);
+            CheckpointFinding {
+                checkpoint: *checkpoint,
+                comparison,
+                verdict,
+                explained_by,
+            }
+        })
+        .collect();
+    if !confirmed {
+        worst = worst.max(ChainVerdict::NoCheckpoint);
+    }
+    RecoveryAssessment {
+        verdict: worst,
+        epochs,
+        findings,
+        unmatched_records,
+    }
+}
+
+fn classify_difference(
+    checkpoint: &Checkpoint,
+    epochs: &[EpochReview],
+) -> (ChainVerdict, Option<RecoveryRecord>) {
+    // Recoveries after the checkpoint was taken could have replaced it.
+    let later = || {
+        epochs
+            .iter()
+            .filter(|e| e.transition.old_epoch >= checkpoint.epoch)
+    };
+    let mut disagrees = false;
+    for epoch in later() {
+        match epoch.record {
+            // History that survived a documented restore must still match.
+            Some(record) if checkpoint.seq <= record.restored_head => {
+                return (ChainVerdict::Tampered, None);
+            }
+            Some(record) if checkpoint.seq <= record.lost_to => {
+                return (ChainVerdict::Lost, Some(record));
+            }
+            // The record's lost range does not cover the checkpoint.
+            Some(_) => disagrees = true,
+            None if checkpoint.seq >= epoch.transition.seq => disagrees = true,
+            None => {}
+        }
+    }
+    if disagrees {
+        (ChainVerdict::UnverifiedRecovery, None)
+    } else {
+        (ChainVerdict::Tampered, None)
     }
 }
 
@@ -278,6 +488,7 @@ fn verify(text: &str, start: Option<Anchor>, mode: Mode) -> Result<ExportReport,
         bodies: 0,
         expired: 0,
         chains: Vec::new(),
+        transitions: Vec::new(),
     };
     for (index, text) in split_lines(text).into_iter().enumerate() {
         let number = index + 1;
@@ -299,6 +510,13 @@ fn verify(text: &str, start: Option<Anchor>, mode: Mode) -> Result<ExportReport,
             }
             if line.epoch < head.epoch {
                 return Err(ExportError::EpochRegressed { line: number });
+            }
+            if line.epoch > head.epoch {
+                report.transitions.push(EpochTransition {
+                    seq: line.seq,
+                    old_epoch: head.epoch,
+                    new_epoch: line.epoch,
+                });
             }
         } else if report.rows > 0 && line.seq <= head.seq {
             return Err(ExportError::SeqGap {
