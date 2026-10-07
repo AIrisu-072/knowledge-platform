@@ -1095,7 +1095,7 @@ scenario('再起動後の復元と、IPCでの同じ操作IDの再送・同時�
   }
 });
 
-scenario('強制終了（SIGKILL）からの再起動：記録の復元と、作成途中だった操作の収束', async () => {
+scenario('強制終了（SIGKILL）からの再起動：記録の復元と、書き込み中に止めた作成の収束', async () => {
   const name = '強制終了時の作成.txt';
   const expected = Buffer.alloc(8 * MiB, 'z');
   const namesBefore = await readdir(managedDir);
@@ -1108,10 +1108,14 @@ scenario('強制終了（SIGKILL）からの再起動：記録の復元と、作
     request = { context: contextOf(workspace), parent: { bindingId: workspace.managedBindingId, locator: [] }, name, operationId: randomUUID() };
     const pids = await appPids();
     check('アプリのプロセスは1つ', pids.length === 1, pids);
-    // Start an 8MiB create and kill the app while the broker is (likely) working on it.
+    // Start an 8MiB create and kill the app as soon as its bytes reach the disk
+    // (the broker records the file identity before writing), so the crash
+    // lands while it writes or just after.
     await s.execute(`const request = arguments[0]; request.bytesBase64 = btoa('z'.repeat(8 * 1024 * 1024));
       window.__TAURI__.core.invoke('local_workspace_runtime', { command: 'file.create', request }); return true;`, [request]);
-    await delay(150);
+    const target = join(managedDir, name);
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline && !((await stat(target).catch(() => undefined))?.size > 0)) { /* poll as fast as possible */ }
     process.kill(pids[0], 'SIGKILL');
     await s.waitFor(async () => (await appPids()).length === 0, { message: 'app killed' });
   } finally {
@@ -1120,7 +1124,7 @@ scenario('強制終了（SIGKILL）からの再起動：記録の復元と、作
   }
   await lockReleased();
   const observed = await stat(join(managedDir, name)).then((info) => info.size, () => 'absent');
-  current.checks.push({ label: '強制終了直後のファイルの状態（記録のみ）', ok: true, detail: observed });
+  check('書き込みが始まった後で強制終了した（強制終了直後のファイルの大きさを記録）', observed !== 'absent' && observed > 0, { observed, expected: expected.length, midWrite: observed < expected.length });
   s = await launch(main);
   try {
     const workspace = await openWorkspace(s, workspaceName);
