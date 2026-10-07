@@ -41,6 +41,9 @@ pub const SEGMENT_VERIFIER: &str = "search-runtime-payload-v1";
 /// Verified segments kept per process; above this the cache keeps only the
 /// segments of the generation being read.
 const SEGMENT_CACHE_ITEMS: usize = 200_000;
+/// Units kept in cached segments (about 1.5 KB each). A generation with more
+/// is not kept at all, so a large Source is never held twice (T12).
+const SEGMENT_CACHE_UNITS: usize = 250_000;
 
 /// The `unit_manifest` payload row of a segmented generation. Its items are
 /// the generation's ordered `search_generation_segment` rows.
@@ -629,6 +632,9 @@ impl PgPayloadStore {
         if cache.len() > SEGMENT_CACHE_ITEMS {
             let current: std::collections::BTreeSet<&String> = list.iter().collect();
             cache.retain(|digest, _| current.contains(digest));
+        }
+        if cache.values().map(|entry| entry.units.len()).sum::<usize>() > SEGMENT_CACHE_UNITS {
+            cache.clear();
         }
         Ok(BodyUnitManifest {
             key,

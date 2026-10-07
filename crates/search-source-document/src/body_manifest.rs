@@ -100,6 +100,12 @@ pub struct BodyUnitManifest {
     pub entries: Vec<BodyItemEntry>,
 }
 
+impl search_tantivy::UnitSource for BodyUnitManifest {
+    fn units(&self) -> Vec<&search_core::knowledge_unit::KnowledgeUnit> {
+        self.entries.iter().flat_map(|entry| &entry.units).collect()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BodyCoverageItem {
