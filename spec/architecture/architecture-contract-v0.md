@@ -234,6 +234,14 @@ principal_id × document_version_id
 
 ---
 
+### AC-10追補：現在projectionと固定receipt
+
+[2026-10-07文書詳細表示・未読戻し追補](../../docs/superpowers/specs/2026-10-07-document-view-read-state-design.md)によりissuerを含む本人×VersionのCurrentReadProjectionを一覧/通常詳細で共有する。初回日時は履歴、現在isRead/unreadと絞り込みは再確認flagを含める。新版rowなしは未読r0、既存row/旧INSERTはr1。本人revisionはDocument revisionと独立する。
+
+新GET/VIEW/RESETはHumanInteractive本人・現在Read・現行PUBLISHED・未終了限定。旧版/終了後receipt再生は現在Read＋ReadHistory。fresh整合GET200はGUIの新操作資格hintであり、mutationの最終認可/CASを代替しない。新GET403だけで通常DocumentのRead拒否を推定しない。Agentの既存通常Readと旧PUT wire/自然キー再生を保持する。
+
+新必須fieldを旧closed DTOへ混ぜない。firstReadAt非nullを現在既読とする旧client独自推論は意味的に非互換であり、既存isRead/unreadを使う。旧PUT成功や過去receiptを現在既読badgeにしない。新API/GUI/migration/serverを資格確認した同sourceで導入し、新旧server混在を避ける。
+
 ## AC-11. Document Diff is a derived comparison
 
 Document Diffは同一Documentの異なる2つのDocumentVersionのauthoritative原本を比較し、原本位置へ戻れる差分と未比較範囲を返す派生Capabilityとする。Document、DocumentVersion、ContentItem、ContentRepresentation、FileObject、DSIの保存済み意味証拠を正本のまま維持する。Search用chunkやrenditionを比較の正本にしない。

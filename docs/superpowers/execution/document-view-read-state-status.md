@@ -2,6 +2,12 @@
 
 Status: ACTIVE
 
+## 2026-10-07 10:58 UTC — backend試験・規範の保存
+
+- 第2公開head1eb06caf/tree324ad1bbのcoreに、新しい純粋HTTP4case、DB transaction15case、migration反例、既存projection/legacy/HTTP受入のassertion、規範追補を加える。API全38操作のschema/evidence登録も新sourceへ揃える
+- 新NodeのAPI19件・SDK12件、生成/型/lint/diff checkは成功。Rust本体・追加試験はローカルfmt/compile/test/clippy未実施であり、次の通常hostedで確認する。旧sourceの合格を転用しない
+- 初段のNode/Rust欠如RED、別のfmt失敗、作業環境の喪失は記録を保持する。backend sourceは独立レビューへ渡し、GUIの新sourceは別の小単位で同じPRへ保存する
+
 ## 2026-10-07 10:40 UTC — 第2保存単位のbackend core
 
 - PR106の初段head5fca7835/tree0d592f03を公開し、6fileのblob・tree・parent・branch・本文を照合した。同head CI37606340153の実ログで新GET欠如のNode REDと、current_read_state_contract.rsの新契約未定義E0432を確認した。fmt失敗も別に記録し、hostedの実formatter diffに従って修正した

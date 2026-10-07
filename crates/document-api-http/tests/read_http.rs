@@ -334,7 +334,7 @@ fn assert_schema(definition: &str, value: &Value) {
 #[tokio::test]
 async fn gui_document_list_projects_version_revision_read_state_and_file_summary() {
     let f = fixture().await;
-    let (_, latest_revision_id) = seed_gui_document(&f).await;
+    let (version_id, latest_revision_id) = seed_gui_document(&f).await;
     f.repository
         .initialize_root_policy(
             &context(),
@@ -347,7 +347,7 @@ async fn gui_document_list_projects_version_revision_read_state_and_file_summary
         .unwrap();
     let router = read_router(f.repository.clone(), Arc::new(FixedIdentity(context()))).unwrap();
 
-    let (status, body) = get(router, "/v1/documents?view=published").await;
+    let (status, body) = get(router.clone(), "/v1/documents?view=published").await;
 
     assert_eq!(status, StatusCode::OK, "{body}");
     let item = &body["items"][0];
@@ -378,6 +378,15 @@ async fn gui_document_list_projects_version_revision_read_state_and_file_summary
     assert_eq!(item["displayRevision"]["minor"], 1);
     assert_eq!(item["readState"]["isRead"], false);
     assert_eq!(item["readState"]["firstReadAt"], Value::Null);
+    sqlx::query("INSERT INTO document_read_states(identity_provider,principal_id,document_version_id,first_read_at,needs_recheck,read_state_revision) VALUES('test-idp','policy-admin',$1,to_timestamp(10),true,2)")
+        .bind(version_id).execute(&f.pool).await.unwrap();
+    let (status, reset) = get(router, "/v1/documents?view=published&unreadOnly=true").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(reset["items"].as_array().unwrap().len(), 1);
+    assert_eq!(reset["items"][0]["readState"]["isRead"], false);
+    assert!(reset["items"][0]["readState"]["firstReadAt"].as_str().is_some());
+    assert_eq!(reset["items"][0]["unread"], true);
+
     assert_eq!(item["displayTimestamp"]["kind"], "revisionCreatedAt");
     assert_eq!(
         item["displayTimestamp"]["value"],

@@ -42,6 +42,9 @@ const operations = [
   ['get', '/v1/documents/{documentId}/access-policy'],
   ['put', '/v1/documents/{documentId}/access-policy'],
   ['put', '/v1/documents/{documentId}/versions/{versionId}/read-state'],
+  ['get', '/v1/documents/{documentId}/versions/{versionId}/read-state'],
+  ['post', '/v1/documents/{documentId}/versions/{versionId}/read-state/view'],
+  ['post', '/v1/documents/{documentId}/versions/{versionId}/read-state/reset'],
   ['get', '/v1/documents/{documentId}/history'],
   ['get', '/v1/documents/{documentId}/versions/{versionId}/files'],
   ['get', '/v1/documents/{documentId}/versions/{versionId}/edit-manifest'],
@@ -79,6 +82,9 @@ const acceptanceEvidence = [
   ['getDocumentAccessPolicy', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['setDocumentAccessPolicy', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['markDocumentVersionRead', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['getCurrentDocumentVersionReadState', 'crates/document-api-http/tests/management_http.rs', 'current_read_state_routes_preserve_replay_reset_and_legacy_wire'],
+  ['recordDocumentVersionView', 'crates/document-api-http/tests/management_http.rs', 'current_read_state_routes_preserve_replay_reset_and_legacy_wire'],
+  ['resetDocumentVersionReadState', 'crates/document-api-http/tests/management_http.rs', 'current_read_state_routes_preserve_replay_reset_and_legacy_wire'],
   ['getDocumentHistory', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['getVersionEditManifest', 'crates/document-api-http/tests/read_http.rs', 'edit_manifest_reads_exact_metadata_and_order_with_current_write_authorization'],
   ['listVersionFiles', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
@@ -119,6 +125,7 @@ test('本人の現在既読APIは旧PUTの形を保持し厳密な固定CAS要�
   assert.equal(state.additionalProperties, false);
   assert.deepEqual(state.required, ['documentId', 'versionId', 'firstReadAt', 'needsRecheck', 'readStateRevision', 'isRead']);
   assert.equal(state.properties.readStateRevision.maximum, 9007199254740991);
+  assert.equal(resolved(get.responses['200']).headers['Cache-Control'].schema.const, 'private, no-store');
 
   for (const [suffix, id] of [['view', 'recordDocumentVersionView'], ['reset', 'resetDocumentVersionReadState']]) {
     const endpoint = operation('post', `${path}/${suffix}`);
@@ -129,6 +136,10 @@ test('本人の現在既読APIは旧PUTの形を保持し厳密な固定CAS要�
     assert.deepEqual(Object.keys(body.properties).sort(), ['operationId', 'expectedReadStateRevision'].sort());
     assert.equal(body.properties.operationId.format, 'uuid');
     assert.ok(body.properties.operationId.pattern, 'UUIDv7/RFC variantの制約が必要');
+    const uuidPattern = new RegExp(body.properties.operationId.pattern);
+    assert.equal(uuidPattern.test('0199a8ad-cf25-7f22-8fd5-5facbb735015'), true);
+    assert.equal(uuidPattern.test('0199a8ad-cf25-4f22-8fd5-5facbb735015'), false);
+    assert.equal(uuidPattern.test('0199a8ad-cf25-7f22-0fd5-5facbb735015'), false);
     assert.equal(body.properties.expectedReadStateRevision.type, 'integer');
     assert.equal(body.properties.expectedReadStateRevision.minimum, 0);
     assert.equal(body.properties.expectedReadStateRevision.maximum, 9007199254740991);
