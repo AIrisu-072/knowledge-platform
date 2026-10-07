@@ -70,7 +70,8 @@ pub(crate) struct UnitIndex {
 type DecodedSegment = Arc<Vec<KnowledgeUnit>>;
 
 /// Segments decoded in this process: segment ID and the identity of its
-/// store file (device, inode, size, change time) to the decoded Units.
+/// store file (device, inode, size, modification time; linking changes the
+/// change time, so it is not part of the identity) to the decoded Units.
 type SegmentCache = Mutex<HashMap<(String, [u64; 5]), DecodedSegment>>;
 
 fn segment_cache() -> &'static SegmentCache {
@@ -89,8 +90,8 @@ fn file_identity(path: &Path) -> Option<[u64; 5]> {
         meta.dev(),
         meta.ino(),
         meta.size(),
-        u64::try_from(meta.ctime()).ok()?,
-        u64::try_from(meta.ctime_nsec()).ok()?,
+        u64::try_from(meta.mtime()).ok()?,
+        u64::try_from(meta.mtime_nsec()).ok()?,
     ])
 }
 
