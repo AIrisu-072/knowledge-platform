@@ -18,7 +18,9 @@ use search_application::search_core::projection::{
     ProjectionGenerationKey, ProjectionGenerationManifest,
 };
 use search_application::search_core::source::DiscoverableSource;
-use search_source_document::{ArtifactReceipt, BodyUnitManifest, seal_lexical};
+use search_source_document::{
+    ArtifactReceipt, BodyUnitManifest, seal_lexical, unit_manifest_receipt,
+};
 use search_tantivy::{IndexedUnitDoc, TantivyLexicalIndex};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
@@ -201,6 +203,18 @@ fn tree_digest(dir: &Path) -> Result<[u8; 32], LexicalArtifactError> {
     Ok(hasher.finalize().into())
 }
 
+type SealCache = Mutex<HashMap<(ProjectionGenerationKey, [u8; 32], [u8; 32]), LexicalSealV1>>;
+
+/// Seals computed in this process, by generation key, file tree digest and
+/// Unit manifest digest.
+fn sealed_cache() -> &'static SealCache {
+    static CACHE: OnceLock<SealCache> = OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// Seals kept per process before the cache is emptied.
+const CACHED_SEALS: usize = 64;
+
 /// Ordered binding of every searchable Unit document.
 fn unit_seal(units: &[IndexedUnitDoc]) -> Result<[u8; 32], LexicalArtifactError> {
     let mut ordered: Vec<&IndexedUnitDoc> = units.iter().collect();
@@ -295,12 +309,24 @@ impl LexicalArtifactStore {
         }
         let dir = self.final_dir(key);
         let tree = tree_digest(&dir)?;
+        let units = unit_manifest_receipt(unit_manifest)
+            .map_err(|_| LexicalArtifactError::Seal)?
+            .digest;
+        // The same files and the same Unit manifest were sealed in this
+        // process: reuse that seal (SD-T11 5).
+        if let Some(seal) = sealed_cache()
+            .lock()
+            .map_err(|_| LexicalArtifactError::Io)?
+            .get(&(key, tree, units))
+        {
+            return Ok(seal.clone());
+        }
         let persisted = TantivyLexicalIndex::inspect_persisted(manifest, source, &dir)
             .map_err(|_| LexicalArtifactError::Index)?;
         seal_lexical(unit_manifest, &persisted.units).map_err(|_| LexicalArtifactError::Seal)?;
         let unit_count =
             u64::try_from(persisted.units.len()).map_err(|_| LexicalArtifactError::Seal)?;
-        Ok(LexicalSealV1 {
+        let seal = LexicalSealV1 {
             key,
             schema_version: persisted.schema_version.into(),
             analyzer_version: persisted.analyzer_version.into(),
@@ -311,7 +337,15 @@ impl LexicalArtifactStore {
             unit_seal_count: unit_count,
             tree_digest: tree,
             index_relpath: Self::relpath(key),
-        })
+        };
+        let mut cache = sealed_cache()
+            .lock()
+            .map_err(|_| LexicalArtifactError::Io)?;
+        if cache.len() >= CACHED_SEALS {
+            cache.clear();
+        }
+        cache.insert((key, tree, units), seal.clone());
+        Ok(seal)
     }
 
     /// Moves the staged directory to its immutable final path, seals it against
