@@ -72,9 +72,12 @@
 }
 
 /* Buttons stopped while an operation is pending or unresolved must look
-   unavailable, also in the dialogs (rendered outside .page). */
+   unavailable, also in the dialogs (rendered outside .page). Primary buttons
+   of a pending operation stay focusable and use aria-disabled instead. */
 .page button:disabled,
-.dialogModal button:disabled {
+.page button[aria-disabled='true'],
+.dialogModal button:disabled,
+.dialogModal button[aria-disabled='true'] {
   cursor: not-allowed;
   color: var(--color-text-muted);
   background: var(--color-canvas);

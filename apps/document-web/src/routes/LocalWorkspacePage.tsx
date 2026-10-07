@@ -319,7 +319,10 @@ function FolderBrowser({ workspace, binding, locator, refresh, onNavigate, onNot
   const [stickyProblem, setStickyProblem] = useState<unknown>();
   const [preview, setPreview] = useState<{ name: string; size: number; truncated: boolean; text?: string; binary?: boolean }>();
   const [previewProblem, setPreviewProblem] = useState<unknown>();
-  const reading = useRef(false);
+  // A read belongs to the listing it started from: a re-list or a listing
+  // failure starts a new generation, and a read that finishes later is dropped.
+  const generation = useRef(0);
+  const reading = useRef<number | null>(null);
   const [fileName, setFileName] = useState('');
   const [content, setContent] = useState('');
   const title = [binding.label, ...locator].join(' / ');
@@ -329,24 +332,22 @@ function FolderBrowser({ workspace, binding, locator, refresh, onNavigate, onNot
     if (!error) return;
     setStickyProblem(error);
     // Content previewed from a folder that can no longer be listed is not trustworthy.
+    generation.current += 1;
     setPreview(undefined);
+    setPreviewProblem(undefined);
     if (isRuntimeFailure(error) && (error.code === 'stale_context' || error.code === 'not_found' || error.reason === 'folder_replaced')) {
       void client.invalidateQueries({ queryKey: localRuntimeKeys.workspaces });
     }
   }, [client, entries.error]);
 
-  // 「開く」 on the shown location lists it again from the first page. Earlier
-  // alerts and the preview end with it; the create-form draft is kept.
-  const shownRefresh = useRef(refresh);
+  // A listing that succeeds again ends an earlier failure, except a changed
+  // context: its explanation stays until 「開く」 or another folder is opened,
+  // as the automatic re-fetch with the new context would hide it at once.
   useEffect(() => {
-    if (shownRefresh.current === refresh) return;
-    shownRefresh.current = refresh;
-    setCursors([]);
+    if (!entries.isSuccess || entries.isFetching || stickyProblem === undefined) return;
+    if (isRuntimeFailure(stickyProblem) && stickyProblem.code === 'stale_context') return;
     setStickyProblem(undefined);
-    setPreview(undefined);
-    setPreviewProblem(undefined);
-    void client.invalidateQueries({ queryKey: ['local-runtime', 'entries', workspace.workspaceId] });
-  }, [client, refresh, workspace.workspaceId]);
+  }, [entries.isSuccess, entries.isFetching, stickyProblem]);
 
   const create = useRuntimeOperation(
     `ws:${workspace.workspaceId}:file:${binding.bindingId}:${locator.join('/')}`,
@@ -361,9 +362,28 @@ function FolderBrowser({ workspace, binding, locator, refresh, onNavigate, onNot
     },
   );
 
+  // 「開く」 on the shown location lists it again from the first page, once.
+  // Earlier alerts and the preview end with it; the create-form draft is kept.
+  const shownRefresh = useRef(refresh);
+  const { reset: resetCreate } = create;
+  useEffect(() => {
+    if (shownRefresh.current === refresh) return;
+    shownRefresh.current = refresh;
+    generation.current += 1;
+    setStickyProblem(undefined);
+    setPreview(undefined);
+    setPreviewProblem(undefined);
+    resetCreate();
+    // From a later page, switching to the first page fetches it; refetching
+    // the page being left would only send a wasted request.
+    void client.invalidateQueries({ queryKey: ['local-runtime', 'entries', workspace.workspaceId], refetchType: cursors.length > 0 ? 'none' : 'active' });
+    setCursors([]);
+  }, [client, refresh, workspace.workspaceId, cursors.length, resetCreate]);
+
   async function open(entry: LocalEntry) {
-    if (reading.current) return;
-    reading.current = true;
+    const started = generation.current;
+    if (reading.current === started) return;
+    reading.current = started;
     setPreviewProblem(undefined);
     const context = contextOf(workspace);
     try {
@@ -371,21 +391,30 @@ function FolderBrowser({ workspace, binding, locator, refresh, onNavigate, onNot
       try {
         const length = Math.min(handle.sizeBytes, MAX_READ_RANGE);
         const page = length > 0 ? await runtime.resources.readFile(context, handle, 0, length) : { bytes: new Uint8Array() };
-        setPreview({ name: entry.name, size: handle.sizeBytes, truncated: handle.sizeBytes > length, ...decodePreview(page.bytes) });
+        if (generation.current === started) {
+          setPreview({ name: entry.name, size: handle.sizeBytes, truncated: handle.sizeBytes > length, ...decodePreview(page.bytes) });
+        }
       } finally {
         await runtime.resources.closeRead(context, handle).catch(() => undefined);
       }
     } catch (error) {
-      setPreview(undefined);
-      setPreviewProblem(error);
+      if (generation.current === started) {
+        setPreview(undefined);
+        setPreviewProblem(error);
+      }
     } finally {
-      reading.current = false;
+      if (reading.current === started) reading.current = null;
     }
   }
 
   const unknown = create.state.status === 'unknown';
   const pending = create.state.status === 'pending';
   const createInput = create.state.status === 'unknown' || create.state.status === 'pending' ? create.state.input : { name: fileName, content };
+  const createProblem = create.state.status === 'failed' || create.state.status === 'unknown' ? create.state.error : undefined;
+  const listingProblem = entries.isError ? entries.error : stickyProblem;
+  // A changed context is explained once: by the file form when its operation hit it.
+  const sameChange = isRuntimeFailure(listingProblem) && listingProblem.code === 'stale_context'
+    && isRuntimeFailure(createProblem) && createProblem.code === 'stale_context';
 
   return (
     <section className={styles.panel} aria-label={`${title} の閲覧`}>
@@ -394,7 +423,7 @@ function FolderBrowser({ workspace, binding, locator, refresh, onNavigate, onNot
         {locator.length > 0 && <button type="button" className={workspaceStyles.secondaryButton} disabled={blocked} onClick={() => onNavigate(locator.slice(0, -1))}>上の階層へ</button>}
       </div>
       {entries.isPending && <p className={styles.note}>内容を読み込んでいます…</p>}
-      <Problem error={entries.isError ? entries.error : stickyProblem} />
+      <Problem error={sameChange ? undefined : listingProblem} />
       {entries.data && !entries.isError && (
         <>
           {entries.data.entries.length === 0

@@ -24,13 +24,21 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 /// Longer than the server's own multipart operation budget (120 s).
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(180);
 
-/// Request headers the existing frontend sends and the backend reads. Origin,
-/// Referer, Cookie, Authorization and every identity/claim header are dropped.
-const REQUEST_HEADERS: [HeaderName; 4] = [
+/// Request headers the existing frontend sends and the backend reads: the
+/// standard ones, and the Work API's command context for working-file content
+/// (operation ID, expected revisions and the acting assignment, which the
+/// server checks against its own actor). Origin, Referer, Cookie,
+/// Authorization and every identity/claim header are dropped. A test keeps
+/// this list in step with the header parameters of the API definitions.
+const REQUEST_HEADERS: [HeaderName; 8] = [
     header::ACCEPT,
     header::ACCEPT_LANGUAGE,
     header::CONTENT_TYPE,
     HeaderName::from_static("traceparent"),
+    HeaderName::from_static("x-operation-id"),
+    HeaderName::from_static("x-expected-revision"),
+    HeaderName::from_static("x-acting-assignment-id"),
+    HeaderName::from_static("x-expected-artifact-revision"),
 ];
 
 /// Response headers passed back to the page. Set-Cookie, Location, CORS and
@@ -517,14 +525,170 @@ mod tests {
         assert!(headers.get("x-internal").is_none());
     }
 
+    /// Every request header an API definition declares must be forwarded,
+    /// or that operation fails in the desktop build only.
+    #[test]
+    fn every_header_parameter_of_the_api_definitions_is_forwarded() {
+        let organization: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../spec/api/organization-poc.openapi.json"
+        ))
+        .unwrap();
+        let mut declared = Vec::new();
+        for operations in organization["paths"].as_object().unwrap().values() {
+            for operation in operations.as_object().unwrap().values() {
+                for parameter in operation["parameters"].as_array().into_iter().flatten() {
+                    if parameter["in"] == "header" {
+                        declared.push(parameter["name"].as_str().unwrap().to_ascii_lowercase());
+                    }
+                }
+            }
+        }
+        assert!(!declared.is_empty());
+        for name in &declared {
+            assert!(
+                REQUEST_HEADERS
+                    .iter()
+                    .any(|allowed| allowed == name.as_str()),
+                "{name} is declared by the Work API but not forwarded"
+            );
+        }
+        // The YAML definitions (Document API, Search) declare no header parameter.
+        for yaml in [
+            include_str!("../../../../spec/api/openapi.yaml"),
+            include_str!("../../../../spec/api/search-openapi.yaml"),
+        ] {
+            assert!(!yaml.contains("in: header"));
+        }
+    }
+
+    #[test]
+    fn the_work_api_content_upload_reaches_the_backend_with_its_command_context() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let received = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut seen = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            while !seen.windows(4).any(|window| window == b"\r\n\r\n") {
+                let read = stream.read(&mut buffer).unwrap_or(0);
+                if read == 0 {
+                    break;
+                }
+                seen.extend_from_slice(&buffer[..read]);
+            }
+            let _ = stream.write_all(b"HTTP/1.1 204 No Content\r\n\r\n");
+            String::from_utf8_lossy(&seen).to_ascii_lowercase()
+        });
+        let origin = parse_backend_origin(Some(&format!("http://127.0.0.1:{port}"))).unwrap();
+        let proxy = Proxy::with_limits(Ok(origin), APP, small(1024, Duration::from_secs(5)));
+        let request = Request::builder()
+            .method("PUT")
+            .uri("tauri://localhost/v1/organization/working-artifacts/artifact-01/content")
+            .header("content-type", "application/octet-stream")
+            .header("x-operation-id", "7f4c1e9a-0000-4000-8000-000000000001")
+            .header("x-expected-revision", "3")
+            .header("x-acting-assignment-id", "assignment-01")
+            .header("x-expected-artifact-revision", "1")
+            .header("x-principal-id", "someone")
+            .body(b"content".to_vec())
+            .unwrap();
+        let response = tauri::async_runtime::block_on(proxy.forward(request));
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let head = received.join().unwrap();
+        for expected in [
+            "put /v1/organization/working-artifacts/artifact-01/content ",
+            "x-operation-id: 7f4c1e9a-0000-4000-8000-000000000001\r\n",
+            "x-expected-revision: 3\r\n",
+            "x-acting-assignment-id: assignment-01\r\n",
+            "x-expected-artifact-revision: 1\r\n",
+        ] {
+            assert!(head.contains(expected), "{expected:?} missing in {head}");
+        }
+        assert!(!head.contains("x-principal-id"), "{head}");
+    }
+
+    /// A loopback origin with nothing listening (the port was just released).
+    fn closed_origin() -> Url {
+        let port = {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.local_addr().unwrap().port()
+        };
+        parse_backend_origin(Some(&format!("http://127.0.0.1:{port}"))).unwrap()
+    }
+
     #[test]
     fn a_request_body_over_the_limit_is_refused_before_connecting() {
         // Nothing listens on this origin: refusing first is the only way to get 413.
-        let proxy = Proxy::with_limits(Ok(origin()), APP, small(1024, Duration::from_secs(5)));
+        let proxy = Proxy::with_limits(
+            Ok(closed_origin()),
+            APP,
+            small(1024, Duration::from_secs(5)),
+        );
         let response = forward(&proxy, "POST", &[b'x'; 17]);
         assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        // At the limit the request is sent, so it fails only for want of a backend.
         let at_limit = forward(&proxy, "POST", &[b'x'; 16]);
-        assert_ne!(at_limit.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        assert_eq!(at_limit.status(), StatusCode::BAD_GATEWAY);
+    }
+
+    #[test]
+    fn a_response_of_exactly_the_limit_is_returned() {
+        let declared = backend(
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ncontent-length: 32\r\n\r\n01234567890123456789012345678901",
+            Duration::ZERO,
+        );
+        let proxy = Proxy::with_limits(Ok(declared), APP, small(32, Duration::from_secs(5)));
+        let response = forward(&proxy, "GET", b"");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.body().len(), 32);
+
+        let chunked = backend(
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ntransfer-encoding: chunked\r\n\r\n10\r\n0123456789012345\r\n10\r\n0123456789012345\r\n0\r\n\r\n",
+            Duration::ZERO,
+        );
+        let proxy = Proxy::with_limits(Ok(chunked), APP, small(32, Duration::from_secs(5)));
+        let response = forward(&proxy, "GET", b"");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.body().len(), 32);
+    }
+
+    #[test]
+    fn a_response_one_byte_over_the_limit_is_refused() {
+        let declared = backend(
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ncontent-length: 33\r\n\r\n012345678901234567890123456789012",
+            Duration::ZERO,
+        );
+        let proxy = Proxy::with_limits(Ok(declared), APP, small(32, Duration::from_secs(5)));
+        assert_eq!(
+            forward(&proxy, "GET", b"").status(),
+            StatusCode::BAD_GATEWAY
+        );
+
+        let chunked = backend(
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ntransfer-encoding: chunked\r\n\r\n10\r\n0123456789012345\r\n11\r\n01234567890123456\r\n0\r\n\r\n",
+            Duration::ZERO,
+        );
+        let proxy = Proxy::with_limits(Ok(chunked), APP, small(32, Duration::from_secs(5)));
+        let response = forward(&proxy, "GET", b"");
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        assert!(
+            detail(&response).contains("大きすぎます"),
+            "{}",
+            detail(&response)
+        );
+    }
+
+    #[test]
+    fn a_body_that_stops_arriving_is_a_gateway_timeout() {
+        // The headers and a first chunk arrive, then the connection stays open.
+        let origin = backend_holding(
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ntransfer-encoding: chunked\r\n\r\n4\r\nfirs\r\n",
+            Duration::ZERO,
+            Duration::from_secs(4),
+        );
+        let proxy = Proxy::with_limits(Ok(origin), APP, small(1024, Duration::from_millis(800)));
+        let response = forward(&proxy, "GET", b"");
+        assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
     }
 
     #[test]
@@ -607,12 +771,11 @@ mod tests {
 
     #[test]
     fn a_backend_that_is_not_running_is_a_bad_gateway_without_detail() {
-        let port = {
-            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-            listener.local_addr().unwrap().port()
-        };
-        let origin = parse_backend_origin(Some(&format!("http://127.0.0.1:{port}"))).unwrap();
-        let proxy = Proxy::with_limits(Ok(origin), APP, small(1024, Duration::from_secs(5)));
+        let proxy = Proxy::with_limits(
+            Ok(closed_origin()),
+            APP,
+            small(1024, Duration::from_secs(5)),
+        );
         let response = forward(&proxy, "GET", b"");
         assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
         assert!(
@@ -778,10 +941,18 @@ mod tests {
             ("cookie", "a=b"),
             ("authorization", "Bearer x"),
             ("x-principal-id", "someone"),
+            ("x-actor-id", "someone"),
+            ("x-user-id", "someone"),
+            ("x-groups", "admins"),
+            ("x-role", "admin"),
             ("x-acting-principal", "someone"),
             ("x-organization-profile", "approver-01"),
             ("host", "evil.example"),
             ("referer", "tauri://localhost/documents"),
+            ("x-operation-id", "7f4c1e9a-0000-4000-8000-000000000001"),
+            ("x-expected-revision", "3"),
+            ("x-acting-assignment-id", "assignment-01"),
+            ("x-expected-artifact-revision", "1"),
         ] {
             request.insert(
                 HeaderName::from_static(name),
@@ -791,7 +962,18 @@ mod tests {
         let kept = forwarded_request_headers(&request);
         let mut names: Vec<_> = kept.keys().map(HeaderName::as_str).collect();
         names.sort_unstable();
-        assert_eq!(names, ["accept", "content-type", "traceparent"]);
+        assert_eq!(
+            names,
+            [
+                "accept",
+                "content-type",
+                "traceparent",
+                "x-acting-assignment-id",
+                "x-expected-artifact-revision",
+                "x-expected-revision",
+                "x-operation-id",
+            ]
+        );
 
         let mut response = HeaderMap::new();
         for (name, value) in [

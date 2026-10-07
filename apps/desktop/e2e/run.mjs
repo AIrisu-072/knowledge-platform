@@ -7,8 +7,13 @@
 // Local developer verification only; it is intentionally not a CI job.
 // This is Linux evidence. It is NOT Windows/WebView2 evidence.
 //
-// Checks labelled "IPC" call the broker command from page script (as hostile
-// or replaying page code would); every other check goes through the screen.
+// Each check's label starts with how it was verified, and report.json counts
+// them by kind: no prefix = the screen (operating the UI and reading what it
+// shows); 「IPC：」 = the broker command called from page script (as hostile or
+// replaying page code would); 「ページのscript：」 = other page script (fetch,
+// window/frame/navigation probes, media queries, the IPC call counter);
+// 「ディスク：」 = files the harness reads on disk; 「ログ：」 = the app's stderr;
+// 「準備：」 = a harness setup step.
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { spawn, execFile } from 'node:child_process';
@@ -75,8 +80,15 @@ function scenario(name, body) {
   });
 }
 
+const CHECK_KINDS = ['IPC・ディスク', 'IPC', 'ページのscript', 'ディスク', 'ログ', '準備'];
+
+function kindOf(label) {
+  const prefix = /^([^：]+)：/.exec(label)?.[1];
+  return CHECK_KINDS.includes(prefix) ? prefix : '画面';
+}
+
 function check(label, condition, detail) {
-  current.checks.push({ label, ok: Boolean(condition), ...(detail === undefined ? {} : { detail }) });
+  current.checks.push({ kind: kindOf(label), label, ok: Boolean(condition), ...(detail === undefined ? {} : { detail }) });
   assert.ok(condition, `${label}${detail === undefined ? '' : `: ${JSON.stringify(detail)}`}`);
 }
 
@@ -87,6 +99,9 @@ function overallStatus() {
 }
 
 async function saveReport() {
+  const checks = report.scenarios.flatMap((item) => item.checks);
+  report.checkCounts = { total: checks.length };
+  for (const item of checks) report.checkCounts[item.kind] = (report.checkCounts[item.kind] ?? 0) + 1;
   if (directory) await writeFile(join(directory, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
 }
 
@@ -211,7 +226,7 @@ async function invokeRaw(session, name, args) {
 function instrumentIpc(session, lose = null) {
   return session.execute(`const realFetch = window.__kpRealFetch ?? window.fetch;
     window.__kpRealFetch = realFetch;
-    const state = window.__kpIpc = { calls: [], lost: [], lose: arguments[0] };
+    const state = window.__kpIpc = { calls: [], lost: [], lose: arguments[0], hold: null, held: null, release: null };
     const isBrokerIpc = (url) => ['ipc://localhost/local_workspace_runtime', 'http://ipc.localhost/local_workspace_runtime'].some((prefix) => url === prefix || url.startsWith(prefix + '?'));
     window.fetch = function fetch(input, init) {
       const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
@@ -222,6 +237,11 @@ function instrumentIpc(session, lose = null) {
       const operationId = payload && payload.request && payload.request.operationId;
       state.calls.push({ command, operationId });
       const reply = realFetch.call(this, input, init);
+      if (state.hold && command === state.hold) {
+        // Keep the operation pending on screen until the harness releases it.
+        state.hold = null;
+        return reply.then((response) => new Promise((resolve) => { state.held = command; state.release = () => resolve(response); }));
+      }
       if (!state.lose || command !== state.lose) return reply;
       state.lose = null;
       return reply.then(async (response) => {
@@ -234,7 +254,9 @@ function instrumentIpc(session, lose = null) {
     return window.fetch !== realFetch;`, [lose]);
 }
 
-const ipcState = (session) => session.execute('return window.__kpIpc;');
+const ipcState = (session) => session.execute('return { calls: window.__kpIpc.calls, lost: window.__kpIpc.lost, held: window.__kpIpc.held };');
+const holdNextReply = (session, command) => session.execute('window.__kpIpc.hold = arguments[0]; window.__kpIpc.held = null; return true;', [command]);
+const releaseHeldReply = (session) => session.execute('const release = window.__kpIpc.release; window.__kpIpc.release = null; window.__kpIpc.held = null; release(); return true;');
 const callsOf = (state, command) => state.calls.filter((call) => call.command === command);
 
 function pageFetch(session, url, init = {}) {
@@ -504,7 +526,7 @@ scenario('Router・Query：deep link（/tasks）と再読み込み、タスク�
     const api = await s.executeAsync(`const done = arguments[arguments.length - 1];
       fetch('/v1/organization/tasks').then(async (r) => done({ status: r.status, title: (await r.json()).items?.[0]?.title }), (e) => done({ error: String(e) }));`);
     const firstTitle = api.title;
-    check('タスク一覧のAPI（Work API）はshell経由で200', api.status === 200, api);
+    check('ページのscript：タスク一覧のAPI（Work API）はshell経由で200', api.status === 200, api);
     check('タスク画面がWork APIのタスクを表示（deep linkはindex.htmlへfallback）', firstTitle && await s.waitForText('[aria-label="タスク一覧"]', firstTitle), firstTitle);
     await s.execute('window.__kpBeforeReload = true; window.location.reload();');
     // A new document has no marker; only then is the reload proven.
@@ -569,8 +591,8 @@ scenario('reduced motion：既定（動きあり）', async () => {
   const s = await launch(main);
   try {
     const motion = await s.execute('return { reduce: matchMedia("(prefers-reduced-motion: reduce)").matches, fast: getComputedStyle(document.documentElement).getPropertyValue("--motion-fast").trim() };');
-    check('既定ではprefers-reduced-motionはreduceでない', motion.reduce === false, motion);
-    check('既定のmotion tokenは0msでない', motion.fast !== '0ms', motion);
+    check('ページのscript：既定ではprefers-reduced-motionはreduceでない', motion.reduce === false, motion);
+    check('ページのscript：既定のmotion tokenは0msでない', motion.fast !== '0ms', motion);
   } finally {
     await quit(s);
   }
@@ -597,7 +619,7 @@ scenario('Document API転送：上り下りのbody完全性、原本ダウンロ
       for (let i = 0; same && i < got.length; i++) same = got[i] === bytes[i];
       return { step: 'done', sent: bytes.length, received: got.length, same };
     })().then(done, (e) => done({ error: String(e) }));`, [SHARED_FOLDER]);
-    check('multipart上り（約2.8MB）と下りのbyte列が完全一致', integrity.same === true && integrity.sent > 2_500_000, integrity);
+    check('ページのscript：multipart上り（約2.8MB）と下りのbyte列が完全一致', integrity.same === true && integrity.sent > 2_500_000, integrity);
 
     const identity = await s.executeAsync(`const done = arguments[arguments.length - 1]; (async () => {
       const pick = (j) => ({ principalId: j.principalId, actingAssignmentId: j.actingAssignmentId });
@@ -605,20 +627,20 @@ scenario('Document API転送：上り下りのbody完全性、原本ダウンロ
       const claimed = await fetch('/v1/organization/session', { headers: { 'x-organization-profile': 'approver-01', 'x-principal-id': 'someone-else', 'x-acting-principal': 'someone-else' } });
       return { plain: pick(await plain.json()), claimed: pick(await claimed.json()), nosniff: plain.headers.get('x-content-type-options'), cookie: plain.headers.get('set-cookie') };
     })().then(done, (e) => done({ error: String(e) }));`);
-    check('identity系ヘッダーを付けても主体は変わらない（転送しない）', identity.plain?.principalId && JSON.stringify(identity.plain) === JSON.stringify(identity.claimed), identity);
-    check('API応答にnosniff、Set-Cookieなし', identity.nosniff === 'nosniff' && !identity.cookie, identity);
+    check('ページのscript：identity系ヘッダーを付けても主体は変わらない（転送しない）', identity.plain?.principalId && JSON.stringify(identity.plain) === JSON.stringify(identity.claimed), identity);
+    check('ページのscript：API応答にnosniff、Set-Cookieなし', identity.nosniff === 'nosniff' && !identity.cookie, identity);
 
     // WebKit's URL parser removes "/v1/../" and "%2e%2e" itself (the shell sees
     // "/health/ready" and serves index.html); these encoded forms are not
     // normalized, so they reach the shell's /v1 rule and must stay inside /v1.
     const normalized = await pageFetch(s, '/v1/../health/ready');
-    check('「/v1/../」はWebKitが正規化し、shellはアプリのHTMLを返す（転送しない）', normalized.status === 200 && (normalized.type ?? '').includes('text/html') && !normalized.body.includes('"ok"'), normalized);
+    check('ページのscript：「/v1/../」はWebKitが正規化し、shellはアプリのHTMLを返す（転送しない）', normalized.status === 200 && (normalized.type ?? '').includes('text/html') && !normalized.body.includes('"ok"'), normalized);
     for (const probe of ['/v1/..%2fhealth/ready', '/v1/%2e%2e%2fhealth/ready', '/v1/..%5chealth/ready', '/v1/..%2f..%2fhealth/ready']) {
       const reply = await pageFetch(s, probe);
-      check(`${probe} は/v1の内側として転送され、/v1外（health）へは出ない`, reply.status === 404 && !reply.body.includes('"ok"') && !(reply.type ?? '').includes('text/html'), reply);
+      check(`ページのscript：${probe} は/v1の内側として転送され、/v1外（health）へは出ない`, reply.status === 404 && !reply.body.includes('"ok"') && !(reply.type ?? '').includes('text/html'), reply);
     }
     const options = await pageFetch(s, '/v1/organization/session', { method: 'OPTIONS' });
-    check('OPTIONSは405（転送しない）', options.status === 405, options);
+    check('ページのscript：OPTIONSは405（転送しない）', options.status === 405, options);
 
     const marker = randomUUID();
     const csp = await s.executeAsync(`const done = arguments[arguments.length - 1]; (async () => {
@@ -637,9 +659,9 @@ scenario('Document API転送：上り下りのbody完全性、原本ダウンロ
     })().then(done, (e) => done({ error: String(e) }));`, [sentinel.origin, backend.origin, marker]);
     await delay(300);
     const reached = sentinel.hits.filter((hit) => hit.includes(marker));
-    check('他originへのfetchはCSP（connect-src）で送信前に遮断（CORS許可のloopbackにも届かない）', csp.sentinel?.error && csp.sentinelNoCors?.error && reached.length === 0, { csp, reached });
-    check('backendへの直接接続（no-cors）もCSPで遮断', Boolean(csp.backendNoCors?.error), csp.backendNoCors);
-    check('遮断はsecuritypolicyviolation（connect-src）として報告される', csp.violations.filter((item) => item.directive === 'connect-src').length >= 2, csp.violations);
+    check('ページのscript：他originへのfetchはCSP（connect-src）で送信前に遮断（CORS許可のloopbackにも届かない）', csp.sentinel?.error && csp.sentinelNoCors?.error && reached.length === 0, { csp, reached });
+    check('ページのscript：backendへの直接接続（no-cors）もCSPで遮断', Boolean(csp.backendNoCors?.error), csp.backendNoCors);
+    check('ページのscript：遮断はsecuritypolicyviolation（connect-src）として報告される', csp.violations.filter((item) => item.directive === 'connect-src').length >= 2, csp.violations);
 
     const script = await s.executeAsync(`const done = arguments[arguments.length - 1]; (async () => {
       const form = new FormData();
@@ -659,15 +681,15 @@ scenario('Document API転送：上り下りのbody完全性、原本ダウンロ
       await new Promise((r) => setTimeout(r, 500));
       return { storedType: f.mediaType, type, csp, text, loaded, ran: window.__uploadedScriptRan === true };
     })().then(done, (e) => done({ error: String(e) }));`, [SHARED_FOLDER]);
-    check('JavaScriptとして登録した原本も、/v1応答はapplication/octet-stream＋CSP sandbox', script.type === 'application/octet-stream' && (script.csp ?? '').includes('sandbox') && script.text === 'window.__uploadedScriptRan = true;', script);
-    check('/v1の原本を<script>で読み込んでも実行されない（アプリのoriginのコードにならない）', script.loaded === 'error' && script.ran === false, script);
+    check('ページのscript：JavaScriptとして登録した原本も、/v1応答はapplication/octet-stream＋CSP sandbox', script.type === 'application/octet-stream' && (script.csp ?? '').includes('sandbox') && script.text === 'window.__uploadedScriptRan = true;', script);
+    check('ページのscript：/v1の原本を<script>で読み込んでも実行されない（アプリのoriginのコードにならない）', script.loaded === 'error' && script.ran === false, script);
 
     const panel = await s.waitForText('button', 'ファイルを取得');
     await panel.click();
     const downloaded = join(home, 'Downloads', 'desktop-reference.txt');
     await s.waitFor(async () => (await stat(downloaded).catch(() => undefined))?.size > 0, { message: 'download file' });
     const content = await readFile(downloaded, 'utf8');
-    check('「ファイルを取得」で原本がDownloadsへ保存され、内容が一致', content === '【合成データ】デスクトップ版の画面確認に使う共有資料です。\n', content);
+    check('ディスク：「ファイルを取得」で原本がDownloadsへ保存され、内容が一致', content === '【合成データ】デスクトップ版の画面確認に使う共有資料です。\n', content);
     await shot(s, 'download');
   } finally {
     await quit(s);
@@ -700,7 +722,7 @@ scenario('GUIでの文書登録：ファイル選択→multipart上り（shell�
       const text = await (await fetch('/v1/documents/' + item.documentId + '/versions/' + versionId + '/files/' + file.contentItemId + '/' + file.representationId + '?purpose=authoring')).text();
       return { found: true, name: file.displayName, text };
     })().then(done, (e) => done({ error: String(e) }));`, [registeredId]);
-    check('登録した原本をAPIから取得すると内容が一致', roundTrip.found && roundTrip.text === original, { found: roundTrip.found, name: roundTrip.name, error: roundTrip.error, titles: roundTrip.titles, length: roundTrip.text?.length });
+    check('ページのscript：登録した原本をAPIから取得すると内容が一致', roundTrip.found && roundTrip.text === original, { found: roundTrip.found, name: roundTrip.name, error: roundTrip.error, titles: roundTrip.titles, length: roundTrip.text?.length });
     await clickText(s, 'nav a', '編集作業');
     check('編集作業の一覧に登録した文書が表示される（Queryの再取得）', await s.waitForText('[role="row"]', 'デスクトップ登録確認（合成）'));
   } finally {
@@ -723,7 +745,7 @@ scenario('GUIでの文書編集：メタデータ保存（PATCH）と作業版�
     await clickText(s, '[role="dialog"] button', '閉じる');
     const detail = await s.executeAsync(`const done = arguments[arguments.length - 1];
       fetch('/v1/documents/' + arguments[0] + '?view=authoring').then(async (r) => done(JSON.stringify(await r.json())), (e) => done(String(e)));`, [registeredId]);
-    check('保存したメタデータがAPIから読める', detail.includes('デスクトップ確認（合成）'), detail.slice(0, 300));
+    check('ページのscript：保存したメタデータがAPIから読める', detail.includes('デスクトップ確認（合成）'), detail.slice(0, 300));
     const replacement = join(fixtures, '差し替え原本.txt');
     const replaced = '【合成】作業版を差し替えた原本です。\n'.repeat(500);
     await writeFile(replacement, replaced);
@@ -743,7 +765,39 @@ scenario('GUIでの文書編集：メタデータ保存（PATCH）と作業版�
       const text = await (await fetch('/v1/documents/' + item.documentId + '/versions/' + versionId + '/files/' + file.contentItemId + '/' + file.representationId + '?purpose=authoring')).text();
       return { name: file.displayName, text };
     })().then(done, (e) => done({ error: String(e) }));`, [registeredId]);
-    check('差し替えた原本がAPIから同じ内容で取得できる', files.text === replaced, { name: files.name, error: files.error, length: files.text?.length });
+    check('ページのscript：差し替えた原本がAPIから同じ内容で取得できる', files.text === replaced, { name: files.name, error: files.error, length: files.text?.length });
+  } finally {
+    await quit(s);
+  }
+});
+
+scenario('タスク画面の作業ファイル：画面から選んだファイルを保存（Work APIのPUTと専用header）し、取得した内容が一致', async () => {
+  const s = await launch(main);
+  try {
+    await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
+    await s.execute('window.location.assign("/tasks")');
+    await s.waitFor(async () => new URL(await s.url()).pathname === '/tasks', { message: '/tasks' });
+    // The seeded task that sales-01 may edit (no claim needed).
+    const editable = await s.executeAsync(`const done = arguments[arguments.length - 1];
+      fetch('/v1/organization/tasks').then(async (r) => { const item = ((await r.json()).items ?? []).find((entry) => entry.canEdit);
+        done({ status: r.status, task: item && { id: item.id, title: item.title } }); }, (e) => done({ error: String(e) }));`);
+    const task = editable.task;
+    check('準備：sales-01が編集できる合成タスクがある', Boolean(task), editable);
+    await clickText(s, '[aria-label="タスク一覧"] button', task.title);
+    await s.waitFor(() => s.find('section[aria-label="作業ファイル"]'), { message: 'working files section' });
+    const fileName = 'desktop-work-note.txt';
+    const source = join(fixtures, fileName);
+    const content = '【合成】デスクトップ版のタスク画面から保存する作業ファイルです。\n'.repeat(500);
+    await writeFile(source, content);
+    await (await s.find('input#work-file')).type(source);
+    check('作業ファイルの保存を画面に通知（記録の作成と内容のPUTが成功）', await s.waitFor(async () => (await s.bodyText()).includes('ファイルを作業用保存領域へ保存しました。'), { timeout: 60_000, message: 'artifact content written' }));
+    check('作業ファイルの一覧に「保存済み」で表示', await s.waitForText('[aria-label="作業ファイルの一覧"] li', '保存済み'));
+    check('「内容が未登録」の警告は出ない', !(await s.bodyText()).includes('内容が未登録のファイルがあります'));
+    await shot(s, 'task-working-file');
+    const saved = join(home, 'Downloads', fileName);
+    await (await s.waitFor(() => s.find(`button[aria-label="${fileName} を取得"]`), { message: 'download button' })).click();
+    const downloaded = await s.waitFor(async () => readFile(saved, 'utf8').catch(() => ''), { message: 'working file downloaded' });
+    check('ディスク：「取得」でDownloadsに保存した内容が、選んだファイルと一致', downloaded === content, { length: downloaded.length, expected: content.length });
   } finally {
     await quit(s);
   }
@@ -767,7 +821,7 @@ scenario('ローカルWorkspace：作成・名前変更・管理フォルダー�
     workspaceName = '案件A（改名）';
     const [workspace] = (await workspaces(s)).filter((item) => item.name === workspaceName);
     const managedDirs = await readdir(join(stateRoot, 'managed'));
-    check('管理フォルダーが1つ作られた（名前と無関係なID）', managedDirs.length === 1 && !managedDirs[0].includes('案件'), managedDirs);
+    check('ディスク：管理フォルダーが1つ作られた（名前と無関係なID）', managedDirs.length === 1 && !managedDirs[0].includes('案件'), managedDirs);
     managedDir = join(stateRoot, 'managed', managedDirs[0]);
     await (await s.waitFor(() => s.find('button[aria-label="管理フォルダーを開く"]'), { message: '管理フォルダーを開く' })).click();
     await s.waitForText('p', 'このフォルダーには表示できる項目がありません。');
@@ -776,7 +830,7 @@ scenario('ローカルWorkspace：作成・名前変更・管理フォルダー�
     await clickText(s, `${FILE_FORM} button[type="submit"]`, '作成する');
     check('ファイル作成の通知', await notice(s, 'ファイル「メモ.txt」を作成しました。'));
     const onDisk = await readFile(join(managedDir, 'メモ.txt'), 'utf8');
-    check('ディスク上の管理フォルダーに同じ内容で作成', onDisk === '合成のメモです。', onDisk);
+    check('ディスク：ディスク上の管理フォルダーに同じ内容で作成', onDisk === '合成のメモです。', onDisk);
     await (await s.waitFor(() => s.find('button[aria-label="メモ.txt の内容を表示"]'))).click();
     check('内容の表示（限定read）', await s.waitForText('[role="region"] pre', '合成のメモです。'));
     await (await s.find('input[aria-label="ファイル名"]')).type('メモ.txt');
@@ -790,7 +844,7 @@ scenario('ローカルWorkspace：作成・名前変更・管理フォルダー�
       check(`不正な名前「${bad}」を拒否`, await alertText(s, '名前に使えない文字または予約名が含まれています。'), bad);
     }
     const escaped = [...await findNamed(home, 'escape.txt'), ...await findNamed(fixtures, 'escape.txt')];
-    check('「../escape.txt」は管理フォルダーの外（managed直下・記録フォルダー・home全体）にも作られていない', escaped.length === 0 && !(await readdir(join(stateRoot, 'managed'))).includes('escape.txt'), escaped);
+    check('ディスク：「../escape.txt」は管理フォルダーの外（managed直下・記録フォルダー・home全体）にも作られていない', escaped.length === 0 && !(await readdir(join(stateRoot, 'managed'))).includes('escape.txt'), escaped);
     check('画面に絶対pathが出ない', !(await s.bodyText()).includes(home), workspace?.workspaceId);
     await shot(s, 'managed-folder');
 
@@ -799,23 +853,27 @@ scenario('ローカルWorkspace：作成・名前変更・管理フォルダー�
     await nameInput.clear();
     await nameInput.type('二重送信.txt');
     await (await s.find('textarea[aria-label="内容"]')).type('二重送信の確認（合成）');
-    check('IPCの計測を設定', await instrumentIpc(s));
+    check('準備：IPCの計測を設定', await instrumentIpc(s));
     await s.execute(`const form = document.querySelector(arguments[0]); form.requestSubmit(); form.requestSubmit();`, [FILE_FORM]);
     check('連続した2回の送信でも作成は1回', await notice(s, 'ファイル「二重送信.txt」を作成しました。'));
     const fileCalls = callsOf(await ipcState(s), 'file.create');
-    check('file.createのIPCは1回だけ', fileCalls.length === 1, fileCalls);
+    check('ページのscript：file.createのIPCは1回だけ', fileCalls.length === 1, fileCalls);
     check('二重作成による「既にあります」の表示はない', !(await s.bodyText()).includes('同じ名前のファイルが既にあります'));
-    check('ディスク上も1件', (await readdir(managedDir)).filter((name) => name === '二重送信.txt').length === 1);
+    check('ディスク：ディスク上も1件', (await readdir(managedDir)).filter((name) => name === '二重送信.txt').length === 1);
 
     await clickText(s, 'button', '新しいWorkspace');
     await (await s.waitFor(() => s.find('input[aria-label="Workspace名"]'))).type('二重クリック確認（合成）');
-    const dialogCursor = await s.execute(`const button = [...document.querySelectorAll('[role=dialog] button')].find((b) => b.textContent.trim() === 'キャンセル');
-      button.disabled = true; const cursor = getComputedStyle(button).cursor; button.disabled = false; return cursor;`);
-    check('ダイアログ内のボタンも、無効のときは無効と見える（cursor: not-allowed）', dialogCursor === 'not-allowed', dialogCursor);
+    // Hold the reply so the dialog stays pending while its buttons are looked at.
+    check('準備：Workspace作成の応答を一時的に止める', await holdNextReply(s, 'workspace.create'));
     await (await s.waitForText('[role="dialog"] button[type="submit"]', '作成する')).doubleClick();
+    await s.waitFor(async () => (await ipcState(s)).held === 'workspace.create', { message: 'workspace.create held' });
+    const pendingLook = await s.execute(`return [...document.querySelectorAll('[role=dialog] button')].map((button) => ({
+      text: button.textContent.trim(), disabled: button.disabled || button.getAttribute('aria-disabled') === 'true', cursor: getComputedStyle(button).cursor }));`);
+    check('作成中のダイアログのボタンは、すべて無効で無効と見える（cursor: not-allowed）', pendingLook.length > 0 && pendingLook.every((item) => item.disabled && item.cursor === 'not-allowed'), pendingLook);
+    await releaseHeldReply(s);
     check('「作成する」の二重クリックでもWorkspace作成は1回', await notice(s, 'Workspace「二重クリック確認（合成）」を作成しました。'));
     const createCalls = callsOf(await ipcState(s), 'workspace.create');
-    check('workspace.createのIPCは1回だけ', createCalls.length === 1, createCalls);
+    check('ページのscript：workspace.createのIPCは1回だけ', createCalls.length === 1, createCalls);
     check('画面の一覧にも同名のWorkspaceは1つだけ', await s.waitFor(async () => (await shownWorkspaces(s)).filter((name) => name === '二重クリック確認（合成）').length === 1, { message: 'one listed' }));
     check('IPC：brokerの記録も1つだけ', (await workspaces(s)).filter((item) => item.name === '二重クリック確認（合成）').length === 1);
   } finally {
@@ -892,8 +950,8 @@ scenario('追加フォルダーの閲覧：一覧・階層移動・先頭1MiBの
     await (await s.find('textarea[aria-label="内容"]')).type('選択フォルダーへの作成（合成）');
     await clickText(s, `${FILE_FORM} button[type="submit"]`, '作成する');
     await notice(s, 'ファイル「デスクトップから作成.txt」を作成しました。');
-    check('選択フォルダー内に作成', (await readFile(join(folders.folder, 'デスクトップから作成.txt'), 'utf8')) === '選択フォルダーへの作成（合成）');
-    check('外部の場所には何も作られていない', (await readdir(folders.outside)).sort().join(',') === 'linked-origin.txt,secret.txt');
+    check('ディスク：選択フォルダー内に作成', (await readFile(join(folders.folder, 'デスクトップから作成.txt'), 'utf8')) === '選択フォルダーへの作成（合成）');
+    check('ディスク：外部の場所には何も作られていない', (await readdir(folders.outside)).sort().join(',') === 'linked-origin.txt,secret.txt');
     await shot(s, 'browse');
   } finally {
     await quit(s);
@@ -984,13 +1042,13 @@ scenario('8MiBの上限：ちょうど8MiBは作成・表示でき、超過は�
     const workspace = await openWorkspace(s, workspaceName);
     await (await s.waitFor(() => s.find('button[aria-label="管理フォルダーを開く"]'))).click();
     await s.waitForText('table', 'メモ.txt');
-    check('IPCの計測を設定', await instrumentIpc(s));
+    check('準備：IPCの計測を設定', await instrumentIpc(s));
     await (await s.find('input[aria-label="ファイル名"]')).type('上限ちょうど.txt');
-    check('内容欄に8MiB（8,388,608文字）を入力', (await fillRepeated(s, 'textarea[aria-label="内容"]', 'k', 8 * MiB)) === 8 * MiB);
+    check('準備：内容欄に8MiB（8,388,608文字）を入力', (await fillRepeated(s, 'textarea[aria-label="内容"]', 'k', 8 * MiB)) === 8 * MiB);
     await clickText(s, `${FILE_FORM} button[type="submit"]`, '作成する');
     check('ちょうど8MiBは作成できる', await notice(s, 'ファイル「上限ちょうど.txt」を作成しました。', { timeout: 120_000 }));
     const exact = await readFile(join(managedDir, '上限ちょうど.txt'));
-    check('ディスク上も8,388,608バイトで内容が一致', exact.length === 8 * MiB && sha256(exact) === sha256(Buffer.alloc(8 * MiB, 'k')), exact.length);
+    check('ディスク：ディスク上も8,388,608バイトで内容が一致', exact.length === 8 * MiB && sha256(exact) === sha256(Buffer.alloc(8 * MiB, 'k')), exact.length);
     const nameInput = await s.find('input[aria-label="ファイル名"]');
     await nameInput.clear();
     await nameInput.type('上限超過.txt');
@@ -998,13 +1056,13 @@ scenario('8MiBの上限：ちょうど8MiBは作成・表示でき、超過は�
     await clickText(s, `${FILE_FORM} button[type="submit"]`, '作成する');
     check('8MiB+1バイトは画面で拒否', await alertText(s, TOO_LARGE));
     const calls = callsOf(await ipcState(s), 'file.create');
-    check('超過分はIPCを送らずに拒否（file.createは最初の1回だけ）', calls.length === 1, calls);
+    check('ページのscript：超過分はIPCを送らずに拒否（file.createは最初の1回だけ）', calls.length === 1, calls);
     const direct = await s.executeAsync(`const done = arguments[arguments.length - 1];
       const request = arguments[0]; request.bytesBase64 = btoa('k'.repeat(8 * 1024 * 1024 + 1));
       window.__TAURI__.core.invoke('local_workspace_runtime', { command: 'file.create', request }).then((ok) => done({ ok }), (err) => done({ err }));`,
     [{ context: contextOf(workspace), parent: { bindingId: workspace.managedBindingId, locator: [] }, name: '上限超過IPC.txt', operationId: randomUUID() }]);
     check('IPC：画面を経由しない8MiB+1バイトはbrokerが拒否（too_large）', direct.err?.code === 'limit' && direct.err?.reason === 'too_large', direct);
-    check('拒否したファイルはどちらも作られていない', !(await readdir(managedDir)).some((name) => name.startsWith('上限超過')));
+    check('ディスク：拒否したファイルはどちらも作られていない', !(await readdir(managedDir)).some((name) => name.startsWith('上限超過')));
     await writeFile(join(managedDir, '九MiB.txt'), Buffer.alloc(9 * MiB, 'n'));
     await (await s.find('button[aria-label="管理フォルダーを開く"]')).click();
     await (await s.waitFor(() => s.find('button[aria-label="九MiB.txt の内容を表示"]'))).click();
@@ -1022,7 +1080,7 @@ scenario('結果不明（brokerの完了後に型の無い失敗応答）：「�
   try {
     await gotoLocalWorkspaces(s);
     const managedBefore = (await readdir(join(stateRoot, 'managed'))).length;
-    check('Workspace作成の応答を1回だけ型の無い失敗に置き換える設定', await instrumentIpc(s, 'workspace.create'));
+    check('準備：Workspace作成の応答を1回だけ型の無い失敗に置き換える設定', await instrumentIpc(s, 'workspace.create'));
     await clickText(s, 'button', '新しいWorkspace');
     await (await s.waitFor(() => s.find('input[aria-label="Workspace名"]'))).type('応答消失の確認（合成）');
     await clickText(s, '[role="dialog"] button[type="submit"]', '作成する');
@@ -1046,7 +1104,7 @@ scenario('結果不明（brokerの完了後に型の無い失敗応答）：「�
     await clickText(s, '[role="dialog"] button[type="submit"]', '結果を確認');
     check('「結果を確認」で作成済みとして確定', await notice(s, 'Workspace「応答消失の確認（合成）」を作成しました。'));
     const creates = callsOf(await ipcState(s), 'workspace.create');
-    check('再送は同じ操作ID（新しい操作として送らない）', creates.length === 2 && creates[0].operationId === creates[1].operationId, creates);
+    check('ページのscript：再送は同じ操作ID（新しい操作として送らない）', creates.length === 2 && creates[0].operationId === creates[1].operationId, creates);
     check('画面の一覧にWorkspaceは1つだけ', await s.waitFor(async () => (await shownWorkspaces(s)).filter((name) => name === '応答消失の確認（合成）').length === 1, { message: 'one listed' }));
     check('IPC・ディスク：Workspaceは1つだけ、管理フォルダーも1つだけ増加', (await workspaces(s)).filter((item) => item.name === '応答消失の確認（合成）').length === 1 && (await readdir(join(stateRoot, 'managed'))).length === managedBefore + 1);
     check('確定後は移動の制限が解ける', !(await s.bodyText()).includes('結果を確認していない操作があります。'));
@@ -1056,12 +1114,12 @@ scenario('結果不明（brokerの完了後に型の無い失敗応答）：「�
     const workspace = await openWorkspace(s, workspaceName);
     await (await s.waitFor(() => s.find('button[aria-label="管理フォルダーを開く"]'))).click();
     await s.waitForText('table', 'メモ.txt');
-    check('ファイル作成の応答を1回だけ型の無い失敗に置き換える設定', await instrumentIpc(s, 'file.create'));
+    check('準備：ファイル作成の応答を1回だけ型の無い失敗に置き換える設定', await instrumentIpc(s, 'file.create'));
     await (await s.find('input[aria-label="ファイル名"]')).type('応答消失.txt');
     await (await s.find('textarea[aria-label="内容"]')).type('応答が失われた作成（合成）');
     await clickText(s, `${FILE_FORM} button[type="submit"]`, '作成する');
     check('ファイル作成でも「結果を確認できませんでした」を表示', await s.waitForText(`${FILE_FORM} [role="alert"]`, OUTCOME_UNKNOWN));
-    check('ディスク上は作成済み（brokerは完了していた）', (await readFile(join(managedDir, '応答消失.txt'), 'utf8')) === '応答が失われた作成（合成）');
+    check('ディスク：ディスク上は作成済み（brokerは完了していた）', (await readFile(join(managedDir, '応答消失.txt'), 'utf8')) === '応答が失われた作成（合成）');
     const states = await s.execute(`return {
       name: document.querySelector('input[aria-label="ファイル名"]').disabled,
       open: [...document.querySelectorAll('button[aria-label$="を開く"]')].map((b) => b.disabled),
@@ -1074,8 +1132,9 @@ scenario('結果不明（brokerの完了後に型の無い失敗応答）：「�
     await clickText(s, `${FILE_FORM} button[type="submit"]`, '結果を確認');
     check('「結果を確認」で作成済みとして確定', await notice(s, 'ファイル「応答消失.txt」を作成しました。'));
     const fileCreates = callsOf(await ipcState(s), 'file.create');
-    check('ファイル作成の再送も同じ操作ID', fileCreates.length === 2 && fileCreates[0].operationId === fileCreates[1].operationId, fileCreates);
-    check('「既にあります」にならず、ディスク上も1件', !(await s.bodyText()).includes('同じ名前のファイルが既にあります') && (await readdir(managedDir)).filter((name) => name === '応答消失.txt').length === 1);
+    check('ページのscript：ファイル作成の再送も同じ操作ID', fileCreates.length === 2 && fileCreates[0].operationId === fileCreates[1].operationId, fileCreates);
+    check('「既にあります」にならない', !(await s.bodyText()).includes('同じ名前のファイルが既にあります'));
+    check('ディスク：ディスク上も1件', (await readdir(managedDir)).filter((name) => name === '応答消失.txt').length === 1);
     check('確定後はフォルダーを開ける', await (await s.find('button[aria-label="管理フォルダーを開く"]')).enabled(), workspace.workspaceId);
   } finally {
     await quit(s);
@@ -1102,8 +1161,8 @@ scenario('置き換え・脱出への対応と解除（中身は残る）', asyn
     await (await s.waitFor(() => s.find('button[aria-label="資料フォルダーを解除"]'), { message: '資料フォルダーを解除' })).click();
     await clickText(s, 'button', '解除する');
     check('解除の通知', await notice(s, 'フォルダー「資料フォルダー」を解除しました。フォルダーの中身はそのままです。'));
-    check('解除しても登録先の場所のフォルダーは削除しない', (await stat(folders.folder)).isDirectory());
-    check('置き換え前の実体（移動先）の中身も残る', (await readFile(join(`${folders.folder}-old`, 'readme.txt'), 'utf8')).startsWith('合成データ'));
+    check('ディスク：解除しても登録先の場所のフォルダーは削除しない', (await stat(folders.folder)).isDirectory());
+    check('ディスク：置き換え前の実体（移動先）の中身も残る', (await readFile(join(`${folders.folder}-old`, 'readme.txt'), 'utf8')).startsWith('合成データ'));
     await clickText(s, 'button', 'フォルダーを追加');
     await X.chooseFolder(folders.second);
     check('別のフォルダーを追加', await notice(s, 'フォルダー「第二フォルダー」を追加しました。'));
@@ -1145,7 +1204,7 @@ scenario('再起動後の復元と、IPCでの同じ操作IDの再送・同時�
     check('IPC：再起動後に同じ操作IDで再送すると同じ結果（二重作成なし）', replay.ok && replay.ok.fileIdentity === first.ok.fileIdentity && replay.ok.sha256 === first.ok.sha256, { replay, first });
     const mismatch = await invoke(s, 'file.create', { ...request, bytesBase64: Buffer.from('別の内容').toString('base64') });
     check('IPC：同じ操作IDで内容が違えばoperation_mismatch', mismatch.err?.reason === 'operation_mismatch', mismatch);
-    check('ディスク上も1ファイルだけ', (await readdir(managedDir)).filter((name) => name === '再送確認.txt').length === 1);
+    check('ディスク：ディスク上も1ファイルだけ', (await readdir(managedDir)).filter((name) => name === '再送確認.txt').length === 1);
   } finally {
     await quit(s);
   }
@@ -1190,7 +1249,7 @@ scenario('強制終了（SIGKILL）からの再起動：記録の復元と、書
     killed.stop();
   }
   const midWrite = attempts.find((item) => typeof item.observed === 'number' && item.observed > 0 && item.observed < expected.length);
-  check('書き込みの途中で強制終了できた（途中のファイルが残った）', Boolean(midWrite), attempts.map(({ name, observed }) => ({ name, observed })));
+  check('IPC・ディスク：書き込みの途中で強制終了できた（途中のファイルが残った）', Boolean(midWrite), attempts.map(({ name, observed }) => ({ name, observed })));
   const s = await launch(main);
   try {
     const workspace = await openWorkspace(s, workspaceName);
@@ -1201,10 +1260,10 @@ scenario('強制終了（SIGKILL）からの再起動：記録の復元と、書
         window.__TAURI__.core.invoke('local_workspace_runtime', { command: 'file.create', request }).then((ok) => done({ ok }), (err) => done({ err }));`, [{ ...request, context: contextOf(workspace) }]);
       check(`IPC：同じ操作IDの再送で1件に収束（強制終了時 ${observed} bytes）`, Boolean(replay.ok) && replay.ok.sizeBytes === expected.length, { name, replay, observed });
       const bytes = await readFile(join(managedDir, name));
-      check(`ディスク上の内容は完全（${name}）`, bytes.length === expected.length && sha256(bytes) === sha256(expected), bytes.length);
+      check(`ディスク：内容は完全（${name}）`, bytes.length === expected.length && sha256(bytes) === sha256(expected), bytes.length);
     }
     const namesAfter = await readdir(managedDir);
-    check('管理フォルダーに余分なファイルが残らない', namesAfter.sort().join('/') === [...namesBefore, ...attempts.map((item) => item.name)].sort().join('/'), namesAfter);
+    check('ディスク：管理フォルダーに余分なファイルが残らない', namesAfter.sort().join('/') === [...namesBefore, ...attempts.map((item) => item.name)].sort().join('/'), namesAfter);
     await (await s.waitFor(() => s.find('button[aria-label="第二フォルダーを開く"]'))).click();
     check('強制終了後も追加フォルダーを閲覧できる', await s.waitForText('table', '第二の資料.txt'));
   } finally {
@@ -1268,7 +1327,7 @@ scenario('開いているフォルダーの解除：取消・解除・管理フ�
     check('IPC：brokerの登録からも消える', !detached.bindings.some((item) => item.bindingId === third.bindingId));
     const stale = await invoke(s, 'entries.list', { context: contextOf(detached), ref: { bindingId: third.bindingId, locator: [] } });
     check('IPC：解除したbindingIdではもう読めない', Boolean(stale.err), stale);
-    check('フォルダーの中身はそのまま', (await readFile(join(folders.third, 'third.txt'), 'utf8')) === '第三フォルダーの合成ファイルです。\n');
+    check('ディスク：フォルダーの中身はそのまま', (await readFile(join(folders.third, 'third.txt'), 'utf8')) === '第三フォルダーの合成ファイルです。\n');
     check('管理フォルダーには「解除」ボタンがない', (await s.findAll('button[aria-label="管理フォルダーを解除"]')).length === 0);
     const managed = await invoke(s, 'directory.detach', { context: contextOf(detached), bindingId: detached.managedBindingId, operationId: randomUUID() });
     check('IPC：管理フォルダーの解除はmanaged_bindingで拒否', managed.err?.reason === 'managed_binding', managed);
@@ -1310,8 +1369,8 @@ scenario('reduced motion：GTKのアニメーション無効設定がページ�
   try {
     await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
     const motion = await s.execute('return { reduce: matchMedia("(prefers-reduced-motion: reduce)").matches, fast: getComputedStyle(document.documentElement).getPropertyValue("--motion-fast").trim(), scroll: getComputedStyle(document.documentElement).scrollBehavior };');
-    check('prefers-reduced-motion: reduce が成立', motion.reduce === true, motion);
-    check('motion tokenが0msになる', motion.fast === '0ms', motion);
+    check('ページのscript：prefers-reduced-motion: reduce が成立', motion.reduce === true, motion);
+    check('ページのscript：motion tokenが0msになる', motion.fast === '0ms', motion);
     await shot(s, 'reduced-motion');
   } finally {
     await quit(s);
@@ -1327,13 +1386,13 @@ scenario('XDGのダウンロード先が無い端末でも、原本は ~/Downloa
   try {
     await s.waitFor(async () => (await s.url()).startsWith('tauri://localhost/'), { message: 'app' });
     await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
-    check('user-dirs.dirsが無い', !(await stat(join(bare, '.config/user-dirs.dirs')).catch(() => undefined)));
+    check('準備：user-dirs.dirsが無い', !(await stat(join(bare, '.config/user-dirs.dirs')).catch(() => undefined)));
     await (await s.waitForText('button', 'ファイルを取得')).click();
     const saved = join(bare, 'Downloads', 'desktop-reference.txt');
     await s.waitFor(async () => (await stat(saved).catch(() => undefined))?.size > 0, { message: 'fallback download' });
-    check('~/Downloads に保存され、内容が一致', (await readFile(saved, 'utf8')) === '【合成データ】デスクトップ版の画面確認に使う共有資料です。\n');
+    check('ディスク：~/Downloads に保存され、内容が一致', (await readFile(saved, 'utf8')) === '【合成データ】デスクトップ版の画面確認に使う共有資料です。\n');
     // tauri-driver (and so the app) runs in the repository root.
-    check('作業フォルダーには保存しない', !(await readdir(root)).includes('desktop-reference.txt'));
+    check('ディスク：作業フォルダーには保存しない', !(await readdir(root)).includes('desktop-reference.txt'));
   } finally {
     await s.delete();
     driver.stop();
@@ -1349,7 +1408,7 @@ scenario('backend停止中：文書画面は失敗を表示し、ローカル機
     await s.execute('window.location.assign("/documents")');
     check('API失敗を画面に表示（クラッシュしない）', await s.waitForText('[role="alert"]', '読み込みに失敗しました', { timeout: 30_000 }));
     const api = await pageFetch(s, '/v1/organization/session');
-    check('/v1は502 problem（詳細を出さない）', api.status === 502 && !api.body.includes('127.0.0.1'), api);
+    check('ページのscript：/v1は502 problem（詳細を出さない）', api.status === 502 && !api.body.includes('127.0.0.1'), api);
     await shot(s, 'backend-down');
     await gotoLocalWorkspaces(s);
     check('ローカルWorkspaceはbackend無しで利用できる', await s.waitForText('nav[aria-labelledby="local-workspace-list-title"] button', workspaceName));
@@ -1363,9 +1422,9 @@ scenario('接続先が未設定のshell：/v1は503で、外部へは出ない',
   const s = await launch(driver);
   try {
     const api = await pageFetch(s, '/v1/organization/session');
-    check('/v1は503 problem', api.status === 503 && api.body.includes('サーバーの接続先が設定されていません。'), api);
+    check('ページのscript：/v1は503 problem', api.status === 503 && api.body.includes('サーバーの接続先が設定されていません。'), api);
     check('文書画面は失敗を表示', await s.waitForText('[role="alert"]', '読み込みに失敗しました', { timeout: 30_000 }));
-    check('起動時にstderrへ1行だけ理由を出す', (await readFile(driver.logFile, 'utf8')).split('\n').filter((line) => line.includes('KNOWLEDGE_PLATFORM_API_ORIGIN is not set')).length === 1);
+    check('ログ：起動時にstderrへ1行だけ理由を出す', (await readFile(driver.logFile, 'utf8')).split('\n').filter((line) => line.includes('KNOWLEDGE_PLATFORM_API_ORIGIN is not set')).length === 1);
     await shot(s, 'no-origin');
   } finally {
     await quit(s);
@@ -1380,9 +1439,9 @@ scenario('接続先の形式が不正なshell（loopback以外・path付き）�
     const s = await launch(driver);
     try {
       const api = await pageFetch(s, '/v1/organization/session');
-      check(`${name}：/v1は503で形式を案内`, api.status === 503 && api.body.includes('サーバーの接続先の形式が正しくありません'), api);
-      check(`${name}：不正な接続先へは何も送らない`, sentinel.hits.length === before, sentinel.hits.slice(before));
-      check(`${name}：起動時にstderrへ形式の理由を出す`, (await readFile(driver.logFile, 'utf8')).includes('must be exactly http://127.0.0.1:<port>'));
+      check(`ページのscript：${name}：/v1は503で形式を案内`, api.status === 503 && api.body.includes('サーバーの接続先の形式が正しくありません'), api);
+      check(`ページのscript：${name}：不正な接続先へは何も送らない`, sentinel.hits.length === before, sentinel.hits.slice(before));
+      check(`ログ：${name}：起動時にstderrへ形式の理由を出す`, (await readFile(driver.logFile, 'utf8')).includes('must be exactly http://127.0.0.1:<port>'));
       await shot(s, `invalid-origin-${name}`);
     } finally {
       await quit(s);

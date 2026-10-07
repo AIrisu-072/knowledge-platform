@@ -116,6 +116,8 @@ fn the_resolved_tauri_config_keeps_the_pinned_security_settings() {
 }
 
 /// The features Cargo actually resolves, for every target and manifest table.
+/// Not `--offline`: metadata for every target needs the manifests of crates a
+/// host build never downloads (Windows crates on Linux and the reverse).
 #[test]
 fn cargo_resolves_tauri_with_only_the_pinned_features() {
     let output = std::process::Command::new(env!("CARGO"))
@@ -124,7 +126,6 @@ fn cargo_resolves_tauri_with_only_the_pinned_features() {
             "--format-version",
             "1",
             "--locked",
-            "--offline",
             "--manifest-path",
             concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"),
         ])

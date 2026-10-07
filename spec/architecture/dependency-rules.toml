@@ -78,9 +78,9 @@ forbidden_source_patterns = ["std::process", "Command::new", "tokio::fs", "libc:
 # and substrings in src/**/*.rs (no process launch, general filesystem,
 # external webview URL, devtools opening or "dangerous" API). The capability,
 # tauri.conf.json and the absence of platform overlays, the resolved Tauri
-# features and build.rs (which refuses TAURI_CONFIG) are pinned by
-# apps/desktop/src-tauri/tests/config.rs, and the resolved Tauri config by a
-# unit test in src/main.rs. Those run only locally (mise run desktop:check):
+# config, the resolved Tauri features and build.rs (which refuses
+# TAURI_CONFIG) are pinned by apps/desktop/src-tauri/tests/config.rs. Those
+# run only locally (mise run desktop:check):
 # building the shell needs WebKitGTK, and no CI job builds it today.
 crate_path = "apps/desktop/src-tauri"
 forbidden_dependencies = ["tauri-plugin-shell", "tauri-plugin-fs", "tauri-plugin-dialog", "tauri-plugin-http", "tauri-plugin-opener", "tauri-plugin-process", "tauri-plugin-updater", "tauri-plugin-sql", "tokio", "axum", "sqlx", "document-server", "organization-server", "work-application", "work-api-http", "search-runtime"]

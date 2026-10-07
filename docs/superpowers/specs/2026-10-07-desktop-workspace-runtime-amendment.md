@@ -61,7 +61,7 @@
 - **転送**：アプリ自身のURL schemeをshellが登録し、同梱assetの配信と `/v1` の転送を行います（Tauri既定のasset handlerは未知のpathにindex.htmlを返すため、置き換えが必要）。
   - 転送先は `KNOWLEDGE_PLATFORM_API_ORIGIN` の1つだけで、literalのloopback（`127.0.0.0/8`・`::1`）・`http`・port必須・path無しに限ります。
   - 正規化した後のpathが `/v1` 以下で、originが同じ場合だけ転送します（`..`・`%2e%2e`・`\`・`//host` での脱出は拒否）。method：GET/HEAD/POST/PUT/PATCH/DELETE。
-  - 要求header：`accept`・`accept-language`・`content-type`・`traceparent` だけ。応答header：`content-type`・`content-disposition`・`content-language`・`cache-control`・`etag`・`last-modified`・`retry-after` だけ（Set-Cookie・Location・CORS系は返しません）。`X-Content-Type-Options: nosniff` を付けます。
+  - 要求header：`accept`・`accept-language`・`content-type`・`traceparent` と、Work APIの作業ファイル内容のPUTが使う `x-operation-id`・`x-expected-revision`・`x-acting-assignment-id`・`x-expected-artifact-revision` だけ（操作IDと楽観的排他・担当の指定。主体はserverが自分の利用者の設定から決め、これらのheaderでは変わりません。名乗り用のheaderは引き続き落とします）。API定義（`spec/api/`）のheader parameterがすべて許可リストにあることを、shellの単体試験で確かめます。応答header：`content-type`・`content-disposition`・`content-language`・`cache-control`・`etag`・`last-modified`・`retry-after` だけ（Set-Cookie・Location・CORS系は返しません）。`X-Content-Type-Options: nosniff` を付けます。
   - redirectは追わず、cookie・system proxyは使いません。上限：要求本文1GiB＋1MiB、応答本文256MiB＋1MiB、接続5秒、全体180秒。
   - 失敗はpath等を含まないproblemです：503（接続先が未設定。形式違い・loopback以外は別の文言で形式を案内し、起動時に標準エラーへ1行だけ理由を出す）、502（接続できない・応答が大きすぎる・応答が途中で切れた）、504（時間切れ）、400（宛先が `/v1` の外）、403（Origin/Refererが同梱アプリと違う、またはmain window以外からの要求）、405（method）、413（要求が大きすぎる）。
   - Origin/Refererは、付いていれば同梱アプリと一致することを求めます（WebKitGTKは同一originのcustom scheme要求にOriginを付けないため、必須にはできません）。
