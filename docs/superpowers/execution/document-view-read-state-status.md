@@ -2,6 +2,15 @@
 
 Status: ACTIVE
 
+## 2026-10-07 21:44 UTC — 新版作成の成功通知を確認する受入の限定修正
+
+- 公開head2cd9c75b / tree ab3552e2のCI37635679777で、本番振分け37case、新DB15件・移行・HTTP・旧PUTを含むRust1980件は成功。全体はDocument runtimeとrequired-checkが失敗し、14 jobs中12成功・2失敗、公開artifactは0件だった
+- 依頼者が共有した同headのbounded summaryでは画面12成功・1失敗・5skip。前回のmetadataはgui-metadata-snapshot-savedまで成功し、残る失敗はdocument-runtime.spec.ts:473:93のtoContainText、完了点はversion-form-opened。473行は新版POSTの201確認直後の成功通知assertionである。後続Agent・HTTP再起動は未実施
+- 今回追加した受入のlocatorは「新版作成」region内のstatusを要求していたが、実際の成功通知は兄弟の「作業版の編集」regionにある。旧「新版作成」regionは空で、実route DOM試験でも成功文言自体が存在する一方、そのregion内ではstatusが見つからない同じREDを再現した
+- 製品sourceは変更せず、受入のregion名1箇所を実作業文脈へ修正する。既存DOM試験はauthoring新版作成と公開時のそれぞれのregion内に成功statusがあることを確認し、全体statusへの緩和はしない。公開側の「公開・予約公開」scopeは既存DOMと一致している
+- ローカルで同DOM試験54件、全GUI73suite/1722件、runtime型と18件の試験収集が成功。追加assertionのTesting Library型ではexact optionが未対応だったため、同じ完全一致の正規表現へ直し、最終54件とGUI型を再確認した。独立source/RED/GREENレビューはGO。新規試験基盤、timeout、skip、期待201・成功文言は変更しない
+- API/consoleの失敗8件は直前情報がなく、このlocator不整合の根因には使わない。apiEventsは先頭12件だけである。修正後のhosted画面・再起動・cleanup合格はまだ未取得。導入pin、画像資格、別の開発StrictMode反例の制限は保持する
+
 ## 2026-10-07 14:14 UTC — 本番API振分けの実REDと限定補修
 
 - test-only公開head8fd2f57d / tree d0d7ec9cのCI37632618755で、新GET read-stateが実際にread familyへ送られるREDを確認した。Rust job112830522356、contract.rs:182:9の期待management/実readであり、compile失敗ではない。最初のGETで停止したため、後続POST2操作の個別REDを見たとは扱わない

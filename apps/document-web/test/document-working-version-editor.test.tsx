@@ -146,6 +146,8 @@ test('authoringの一覧が公開版だけの場合もcreate意図はpublished m
   fireEvent.click((await screen.findAllByRole('button', { name: '新しい版を作成' }))[0]!);
   const form = await screen.findByRole('form', { name: '作業版の原本を編集' }); await replace(form); fireEvent.submit(form);
   await screen.findByText('新しい作業版を作成しました。');
+  expect(await within(screen.getByRole('region', { name: /^作業版の編集$/ })).findByRole('status'))
+    .toHaveTextContent('新しい作業版を作成しました。');
   expect(api.getVersionEditManifest).toHaveBeenCalledWith(documentId, baseId, 'published');
   expect(api.createVersion).toHaveBeenCalledTimes(1); expect(api.updateWorkingVersion).not.toHaveBeenCalled();
 });
@@ -181,6 +183,8 @@ test('保存の成功通知は編集と版一覧だけに残り、公開成功�
   fireEvent.click(screen.getByRole('button', { name: '公開する' }));
   fireEvent.click(within(await screen.findByRole('dialog', { name: '公開を確認' })).getByRole('button', { name: '確定する' }));
   expect(await screen.findByRole('status')).toHaveTextContent('公開しました');
+  expect(within(screen.getByRole('region', { name: /^公開・予約公開$/ })).getByRole('status'))
+    .toHaveTextContent('公開しました');
   expect(screen.queryByText('作業版を保存しました。')).not.toBeInTheDocument();
   expect(client.getQueryData(workingOperationKey(documentId))).toBe(saved);
 });

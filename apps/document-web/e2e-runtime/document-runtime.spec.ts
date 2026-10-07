@@ -470,7 +470,7 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await page.getByRole('button', { name: '新しい作業版を作成', exact: true }).click();
   const createdResponse = await createResponse; expect(createdResponse.status()).toBe(201);
   const created = await createdResponse.json() as VersionMutationResult;
-  await expect(page.getByRole('region', { name: '新版作成', exact: true }).getByRole('status')).toContainText('新しい作業版を作成しました');
+  await expect(page.getByRole('region', { name: '作業版の編集', exact: true }).getByRole('status')).toContainText('新しい作業版を作成しました');
   const createdFiles = (await listVersionFiles({ ...humanOptions, path: { documentId, versionId: created.targetVersionId }, query: { purpose: 'authoring' } })).data;
   expect(createdFiles.items).toHaveLength(1);
   expect(createdFiles.items[0]).toMatchObject({ logicalPath: 'primary', ordinal: 0, mediaType: 'text/plain', displayName: 'primary' });
