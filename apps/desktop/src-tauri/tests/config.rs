@@ -1,9 +1,8 @@
 //! Pins the shell's security-relevant configuration. architecture-lint only
 //! sees Cargo dependency names and `src/**/*.rs`; these files (capabilities,
 //! tauri.conf.json and the absence of overlays, resolved Cargo features,
-//! build.rs) are guarded here instead, together with a unit test of the
-//! resolved Tauri config in src/main.rs (`mise run desktop:check`, local; the
-//! owner chose no desktop CI job).
+//! build.rs) and the resolved Tauri config are guarded here instead
+//! (`mise run desktop:check`; local only, as no CI job builds the shell).
 
 use serde_json::Value;
 
@@ -84,6 +83,36 @@ fn tauri_config_keeps_one_code_created_window_a_strict_csp_and_nothing_dangerous
         app["security"]["csp"],
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     );
+}
+
+/// The configuration Tauri actually embeds for this target (tauri.conf.json
+/// merged with any platform overlay), not just the text of one file.
+#[test]
+fn the_resolved_tauri_config_keeps_the_pinned_security_settings() {
+    use tauri::utils::config::{CapabilityEntry, Csp, DisabledCspModificationKind, PatternKind};
+    let context: tauri::Context<tauri::Wry> = tauri::generate_context!();
+    let config = context.config();
+    let security = &config.app.security;
+    assert!(
+        matches!(&security.csp, Some(Csp::Policy(policy)) if policy == "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"),
+        "{:?}",
+        security.csp
+    );
+    assert!(security.dev_csp.is_none());
+    assert_eq!(
+        security.dangerous_disable_asset_csp_modification,
+        DisabledCspModificationKind::Flag(false)
+    );
+    assert!(!security.asset_protocol.enable);
+    assert!(matches!(security.pattern, PatternKind::Brownfield));
+    assert!(
+        matches!(security.capabilities.as_slice(), [CapabilityEntry::Reference(name)] if name == "main-window")
+    );
+    assert!(security.headers.is_none());
+    assert!(config.app.windows.is_empty());
+    assert!(config.app.with_global_tauri);
+    assert!(config.build.dev_url.is_none());
+    assert!(config.plugins.0.is_empty());
 }
 
 /// The features Cargo actually resolves, for every target and manifest table.

@@ -123,11 +123,13 @@ function appEnvironment({ apiOrigin, homeDir = home }) {
 }
 
 async function startDriver(name, env) {
+  if (stopping) throw new Error('the run is stopping');
   const port = await freePort();
   let nativePort = await freePort();
   while (nativePort === port) nativePort = await freePort();
   const logFile = join(directory, `driver-${name}.log`);
   const log = createWriteStream(logFile, { mode: 0o600 });
+  if (stopping) throw new Error('the run is stopping');
   // Own process group: stop() also ends WebKitWebDriver and the app, even on Ctrl-C.
   const child = spawn(tauriDriver, ['--port', String(port), '--native-port', String(nativePort), '--native-driver', webkitDriver], { env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   child.stdout.pipe(log);
@@ -378,11 +380,16 @@ async function createFixtures() {
 
 let main, folders, workspaceName, managedDir, docId, registeredId, replayOp;
 
+let stopping = false;
+
 async function cleanup() {
+  // node:test keeps starting scenarios while this runs; none may start a driver now.
+  stopping = true;
   for (const driver of drivers) driver.stop();
   for (const stop of backendStops.splice(0)) await stop().catch(() => undefined);
   display?.stop();
   await sentinel?.close().catch(() => undefined);
+  for (const driver of drivers) driver.stop();
 }
 
 // node:test skips after() on SIGINT/SIGTERM; stop only what this run started.
