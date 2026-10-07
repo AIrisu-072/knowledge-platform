@@ -11,7 +11,7 @@ use search_application::SearchError;
 use search_core::id::ResourceId;
 use search_core::knowledge_unit::{KnowledgeUnit, UnitId, text_sha256};
 use search_core::projection::{CompiledResourceProjection, ProjectionGenerationKey};
-use search_tantivy::IndexedUnitDoc;
+use search_tantivy::{IndexedUnitDoc, UnitSealEntry, unit_doc_hash};
 use sha2::{Digest, Sha256};
 
 use crate::body_manifest::{
@@ -270,6 +270,40 @@ pub(crate) fn derive_coverage(
         key: manifest.key,
         items,
     })
+}
+
+/// The same bijective seal from each searchable document's ID and the digest
+/// of its stored fields and text (`unit_doc_hash`): every Unit of the manifest
+/// has exactly one document with the same digest and no other document exists.
+pub fn seal_lexical_entries(
+    manifest: &BodyUnitManifest,
+    documents: &[UnitSealEntry],
+) -> Result<(), SearchError> {
+    let mut expected: BTreeMap<UnitId, [u8; 32]> = BTreeMap::new();
+    for unit in manifest.entries.iter().flat_map(|entry| &entry.units) {
+        if text_sha256(&unit.text) != unit.text_sha256 {
+            return Err(failed("lexical seal: Unit text differs from its digest"));
+        }
+        let hash = unit_doc_hash(unit).map_err(|_| failed("lexical seal: Unit encoding"))?;
+        if expected.insert(unit.unit_id, hash).is_some() {
+            return Err(failed("duplicate Unit in manifest"));
+        }
+    }
+    if documents.len() != expected.len() {
+        return Err(failed("lexical seal: document count differs from Units"));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for document in documents {
+        if !seen.insert(document.unit_id) {
+            return Err(failed("lexical seal: duplicate document"));
+        }
+        match expected.get(&document.unit_id) {
+            Some(hash) if *hash == document.hash => {}
+            Some(_) => return Err(failed("lexical seal: document differs from Unit")),
+            None => return Err(failed("lexical seal: unknown document")),
+        }
+    }
+    Ok(())
 }
 
 /// Bijective seal: every Supported/Partial Unit has exactly one searchable
