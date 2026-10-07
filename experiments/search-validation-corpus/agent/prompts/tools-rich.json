@@ -1,0 +1,6 @@
+[
+ {"type":"function","function":{"name":"search_keyword","description":"本文の語の一致で文書を探す。固有名詞・専門用語・条番号・年号など、文書中に実際に出てくる語で検索するときに使う。短い名詞の組合せが最も強い（例:「公認会計士 登録」）。結果は文書のid・タイトル・一致箇所の抜粋。何度呼んでもよい。","parameters":{"type":"object","properties":{"query":{"type":"string","description":"検索語。空白区切りの名詞が望ましい"},"limit":{"type":"integer","description":"件数（1〜20、既定10）"}},"required":["query"]}}},
+ {"type":"function","function":{"name":"search_semantic","description":"意味の近さで文書を探す。言い換えられた質問、説明的な質問、対象の名前が分からないときに使う。似ているだけの文書も返るので、read_documentで本文を確かめること。何度呼んでもよい。","parameters":{"type":"object","properties":{"query":{"type":"string","description":"探したい内容を表す短い文"}},"required":["query"]}}},
+ {"type":"function","function":{"name":"read_document","description":"文書の本文を読む。queryを渡すと、その語に近い行を前後の行と一緒に返す（長い文書はこちら）。queryを省くとpage番号の箇所を先頭から読む。","parameters":{"type":"object","properties":{"id":{"type":"string","description":"検索結果の文書id"},"query":{"type":"string","description":"本文中で探す語や条番号"},"page":{"type":"integer","description":"queryを省いたときのページ（0始まり）"}},"required":["id"]}}},
+ {"type":"function","function":{"name":"note","description":"調査の途中で分かったこと（有望な文書のidとタイトル、次に調べること）を記録する。古い検索結果は履歴から省略されるため、残したい情報はここに書く。","parameters":{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}}}
+]
