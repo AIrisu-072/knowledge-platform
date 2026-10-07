@@ -11,10 +11,11 @@
 - 実GUI確認（harness）：画面の状態の確認は画面で判定し、IPCで記録を見る確認は「IPC：」、ページのscriptで試す確認は「ページのscript：」と明記。強制終了は書き込みの途中で止まるまで最大3回試行。応答の置き換えは「型の無い失敗応答」と記述し、応答が永久に返らない場合は未対応として手順書に記録。開いているフォルダーの解除、再読み込みの印、IPC応答の絶対path検査、停止済みprocess groupへ再送しない、docker run中の中断でもcontainerを残さない（Ctrl-Cで確認）、中断の後片付け中はdriverを起動しない（中断試験でdriverが1つ残ったため）、staleness判定の入力追加。
 - 文書：手順書（未確認一覧の追加と訂正、debug buildの開発者ツール、GTKの選択画面が存在しないフォルダーを作る仕様、Windows項目4・5）、計画のW2番号、実装差分、dependency-rulesの説明。
 - 前回の記録の訂正：`1a393d7` の時点では、手順書の24シナリオの結果と「証拠とした実行」は存在せず（その時点の唯一の実行 `run-uYeNzS` は失敗）、後のcommitで揃えた。`baad3bc` での2回目の実行（`run-bcbfgy`）は、`xdotool type` が「第」を落とし、GTKの選択画面が「二フォルダー」を作って返したため4シナリオが失敗（harnessの問題。`1193ace` で貼り付けに変更）。
+- mainの更新（PR #100〜#105、Document詳細・タスク画面・organization-serverの変更を含む）を `21d5209` で取り込み（衝突なし）。取り込み後の実GUIで、文書一覧が読み込み後に選択行へfocusを移す動作（Document画面の既存の動作）と最初のTabが競合して1回失敗したため、skip linkの確認を共通ShellのままローカルWorkspace画面で行うよう変更（`c31e6d0`）。
 - 検証（ローカル、Linux）：
-  - 実GUI：`run-YnbwvF`・`run-VDyd9g`（commit `3abfeca`、連続2回）で24シナリオ・205項目がすべて成功、どちらも `qualifying: true`。
+  - 実GUI：`run-YnbwvF`・`run-VDyd9g`（commit `3abfeca`、連続2回）と、main取り込み後の `run-AZ0Gve`・`run-O8wwVK`（commit `c31e6d0`、連続2回）で、いずれも24シナリオ・205項目がすべて成功、`qualifying: true`。
   - shell：単体23件・設定固定6件・transport shim 5件、clippy -D warnings、fmt、desktopの `cargo deny check`、変異21件をすべて検出。architecture-lint成功。
-  - 画面：ローカルWorkspace画面の試験21件、型検査、本番build。
+  - 画面：全69 suites／1654件（main取り込み後の `c31e6d0`。取り込み前の `89f613c` では64 suites／1562件）、ローカルWorkspace画面の試験21件、型検査、本番build。
 - 未検証：Windows実機・WebView2・MSVC build（依頼者が実施）、Windows版broker（未実装、fail-closed）、macOSでの実行、手順書の「Linuxで未確認」の項目（応答が永久に返らない場合を含む）。
 - 次のexact action：push → exact-head CI → 2回目reviewの残りの検証結果とcriticを確認 → Draft解除と統合 → 統合後のmain CIを確認。
 
