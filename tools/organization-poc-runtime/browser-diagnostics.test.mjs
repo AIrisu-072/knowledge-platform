@@ -139,7 +139,15 @@ test('Root folder tests retain only their fixed case and action without disclosi
 
 test('existing phase selection collects the separate Root folder cases with explicit capture off and actual GUI receipts', async () => {
   const config = await readFile(new URL('../../apps/document-web/playwright.organization.config.ts', import.meta.url), 'utf8');
-  assert.match(config, /testMatch: phase === 'journey' \? 'journey\.spec\.ts' : 'persistence\.spec\.ts'/u);
+  // Each phase selects exactly one spec basename; `journey` never also selects `policy-journey`.
+  assert.match(config, /testMatch: specs\[phase\]!,/u);
+  const specs = config.match(/const specs: Record<string, RegExp> = \{ journey: \/(.+?)\/u, persistence: \/(.+?)\/u, 'policy-journey': \/(.+?)\/u, 'policy-persistence': \/(.+?)\/u \};/u);
+  assert.ok(specs);
+  const [journey, persistence, policyJourney, policyPersistence] = specs.slice(1).map(source => new RegExp(source, 'u'));
+  const files = ['e2e-organization/journey.spec.ts', 'e2e-organization/persistence.spec.ts', 'e2e-organization/policy-journey.spec.ts', 'e2e-organization/policy-persistence.spec.ts'];
+  for (const [pattern, expected] of [[journey, 0], [persistence, 1], [policyJourney, 2], [policyPersistence, 3]]) {
+    assert.deepEqual(files.filter(file => pattern.test(file)), [files[expected]]);
+  }
   for (const phase of ['journey', 'persistence']) {
     const source = await readFile(new URL(`../../apps/document-web/e2e-organization/${phase}.spec.ts`, import.meta.url), 'utf8');
     assert.equal((source.match(/\btest\('/gu) ?? []).length, 2);
