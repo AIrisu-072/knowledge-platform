@@ -15,12 +15,21 @@
 //! A source mismatch records `audit.integrity.source_mismatch_detected`
 //! first (once per event and code); when the Store cannot record it the row
 //! is held as an outage instead of being quarantined.
+//!
+//! Quarantine codes use the Store code format `[a-z0-9_]{1,64}` (so that a
+//! replay can record them as `quarantine_code`): relay rejection codes as
+//! they are, `conflict`, and `rejected_<store code>` (truncated to 64 bytes).
+//! Only `OutageCode::counts_toward_outage_streak` outages (residual
+//! `store_internal` / `store_other`) may advance `outage_streak`.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use audit_core::codes::{Rejection, RejectionCode};
-use audit_core::{AuditEnvelope, AuditStore, DocumentStagingProjection, IngestOutcome, StoreError};
+use audit_core::{
+    AuditEnvelope, AuditStore, DocumentStagingProjection, IngestOutcome, OutageCode, RelayControl,
+    RelayControlKind, SourceMismatchCode, StoreError,
+};
 use outbox_delivery::runner::{DeliveryContext, DeliveryHandler};
 use outbox_delivery::{DeliveryDecision, DeliveryEnvelope, ErrorCode, HandlerFuture};
 use sqlx::PgPool;
@@ -28,7 +37,7 @@ use uuid::Uuid;
 
 use crate::breaker::{Breaker, BreakerPermit};
 use crate::ledger::{DeliveryLedger, FailureNote, Note};
-use crate::store_admin::{StoreAdmin, admin_outage_code};
+use crate::store::outage_of;
 
 /// The projection from a claim row to an envelope (`audit_core::project`
 /// in production; tests may substitute a re-projecting adapter).
@@ -50,15 +59,11 @@ pub const STORE_CONFLICT: &str = "conflict";
 /// codes use the Store code format `[a-z0-9_]{1,64}` so that a replay can
 /// record them.
 pub const STORE_REJECTED_PREFIX: &str = "rejected_";
-/// The Store control event recorded for a source mismatch.
-pub const SOURCE_MISMATCH_TYPE: &str = "audit.integrity.source_mismatch_detected";
-
-/// Outage codes that may count toward `outage_streak`: residual unexpected
-/// errors only. Gate results (recovery, regression, posture), connection,
-/// resource, shutdown, timeout, read-only, lock, serialization, deadlock and
-/// deploy-skew classes never count.
+/// Whether a held code may count toward `outage_streak`: only Store outage
+/// classes that audit-core marks as residual (design §6.3). Relay hold codes
+/// (catalog skew, projection, source) never count.
 pub fn streak_countable(code: &str) -> bool {
-    code == audit_core::OutageCode::Unclassified.as_str()
+    OutageCode::parse(code).is_some_and(OutageCode::counts_toward_outage_streak)
 }
 
 /// The quarantine code of a Store structured verdict.
@@ -106,7 +111,6 @@ impl Default for HandlerConfig {
 /// Delivers one claimed staging row into the Audit Store.
 pub struct AuditDeliveryHandler {
     store: Arc<dyn AuditStore>,
-    admin: Arc<dyn StoreAdmin>,
     source: PgPool,
     ledger: Arc<DeliveryLedger>,
     breaker: Arc<Breaker>,
@@ -117,7 +121,6 @@ pub struct AuditDeliveryHandler {
 impl AuditDeliveryHandler {
     pub fn new(
         store: Arc<dyn AuditStore>,
-        admin: Arc<dyn StoreAdmin>,
         source: PgPool,
         ledger: Arc<DeliveryLedger>,
         breaker: Arc<Breaker>,
@@ -125,7 +128,6 @@ impl AuditDeliveryHandler {
     ) -> Self {
         Self {
             store,
-            admin,
             source,
             ledger,
             breaker,
@@ -176,15 +178,20 @@ impl AuditDeliveryHandler {
         // A changed source row wins over every other finding, oversize included.
         if !row.source_intact {
             return self
-                .source_mismatch(id, token, RejectionCode::SourceDigestMismatch)
+                .source_mismatch(id, token, SourceMismatchCode::SourceDigestMismatch)
                 .await;
         }
         let audit = match (self.projector)(&row) {
             Ok(audit) => audit,
             Err(rejection) => {
                 return match rejection.code {
-                    RejectionCode::SourceDigestMismatch | RejectionCode::ActorMismatch => {
-                        self.source_mismatch(id, token, rejection.code).await
+                    RejectionCode::SourceDigestMismatch => {
+                        self.source_mismatch(id, token, SourceMismatchCode::SourceDigestMismatch)
+                            .await
+                    }
+                    RejectionCode::ActorMismatch => {
+                        self.source_mismatch(id, token, SourceMismatchCode::ActorMismatch)
+                            .await
                     }
                     RejectionCode::UnknownEventType | RejectionCode::UnknownField => {
                         self.hold(id, token, CATALOG_SKEW, false)
@@ -226,12 +233,16 @@ impl AuditDeliveryHandler {
             }
             Ok(Err(error)) => {
                 self.breaker.record_outage();
-                let code = outage_code(&error);
-                self.hold(id, token, code, streak_countable(code))
+                self.hold(
+                    id,
+                    token,
+                    outage_code(&error),
+                    error.counts_toward_outage_streak(),
+                )
             }
             Err(_) => {
                 self.breaker.record_outage();
-                self.hold(id, token, audit_core::OutageCode::Timeout.as_str(), false)
+                self.hold(id, token, OutageCode::Timeout.as_str(), false)
             }
         }
     }
@@ -242,9 +253,9 @@ impl AuditDeliveryHandler {
         &self,
         id: Uuid,
         token: Uuid,
-        code: RejectionCode,
+        mismatch: SourceMismatchCode,
     ) -> DeliveryDecision {
-        let code = code.as_str();
+        let code = mismatch.as_str();
         let recorded: Result<Option<i64>, sqlx::Error> =
             sqlx::query_scalar("SELECT audit_relay.mismatch_seq($1, $2, $3)")
                 .bind(id)
@@ -257,7 +268,11 @@ impl AuditDeliveryHandler {
             Err(_) => return self.hold(id, token, SOURCE_UNAVAILABLE, false),
         };
         if recorded.is_none() {
-            let mut last_error = None;
+            let control = RelayControl::from(RelayControlKind::SourceMismatchDetected {
+                event_id: id,
+                code: mismatch,
+            });
+            let mut last_error = OutageCode::Other;
             let mut seq = None;
             for attempt in 0..self.config.control_attempts.max(1) {
                 if attempt > 0 {
@@ -265,23 +280,21 @@ impl AuditDeliveryHandler {
                 }
                 match tokio::time::timeout(
                     self.config.control_timeout,
-                    self.admin
-                        .record_relay_control(SOURCE_MISMATCH_TYPE, id, code, None),
+                    self.store.record_relay_control(&control),
                 )
                 .await
                 {
-                    Ok(Ok(recorded)) => {
-                        seq = Some(recorded);
+                    Ok(Ok(receipt)) => {
+                        seq = Some(receipt.seq);
                         break;
                     }
-                    Ok(Err(error)) => last_error = Some(admin_outage_code(&error)),
-                    Err(_) => last_error = Some(audit_core::OutageCode::Timeout.as_str()),
+                    Ok(Err(error)) => last_error = outage_of(&error),
+                    Err(_) => last_error = OutageCode::Timeout,
                 }
             }
             let Some(seq) = seq else {
                 self.breaker.record_outage();
-                let code = last_error.unwrap_or(audit_core::OutageCode::Unclassified.as_str());
-                return self.hold(id, token, code, false);
+                return self.hold(id, token, last_error.as_str(), false);
             };
             let noted: Result<bool, sqlx::Error> =
                 sqlx::query_scalar("SELECT audit_relay.note_mismatch($1, $2, $3, $4)")
@@ -313,32 +326,62 @@ impl DeliveryHandler<BreakerPermit> for AuditDeliveryHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use audit_core::OutageCode;
-    use audit_core::port::BoundedCode;
+    use audit_core::IngestRow;
+
+    /// A Store verdict, built the only way the port allows.
+    fn verdict(status: &str, code: Option<&str>) -> StoreError {
+        IngestRow {
+            status: status.to_owned(),
+            seq: None,
+            envelope_digest: None,
+            adapter_version: None,
+            code: code.map(str::to_owned),
+        }
+        .into_result()
+        .expect_err("a verdict")
+    }
 
     #[test]
     fn verdicts_and_outages_are_two_way() {
-        assert_eq!(verdict_code(&StoreError::Conflict), "conflict");
-        let rejected = StoreError::Rejected {
-            code: BoundedCode::new("invalid_provenance").expect("code"),
-        };
+        let conflict = verdict("conflict", None);
+        assert_eq!(verdict_code(&conflict), "conflict");
+        let rejected = verdict("rejected", Some("invalid_provenance"));
         assert_eq!(verdict_code(&rejected), "rejected_invalid_provenance");
-        let long = StoreError::Rejected {
-            code: BoundedCode::new(&"x".repeat(64)).expect("code"),
-        };
-        assert_eq!(verdict_code(&long).len(), 64);
-        assert!(rejected.is_terminal() && StoreError::Conflict.is_terminal());
+        let long = verdict("rejected", Some(&"x".repeat(64)));
+        let code = verdict_code(&long);
+        assert_eq!(code.len(), 64);
+        assert!(
+            audit_core::kinds::is_code(&code),
+            "quarantine codes are Store codes"
+        );
+        assert!(rejected.is_terminal() && conflict.is_terminal());
         for code in OutageCode::ALL {
-            let error = StoreError::Outage { code };
+            let error = StoreError::outage(code);
             assert!(!error.is_terminal());
             assert_eq!(outage_code(&error), code.as_str());
             assert_eq!(
                 streak_countable(outage_code(&error)),
-                code == OutageCode::Unclassified,
+                matches!(code, OutageCode::Internal | OutageCode::Other),
                 "{code:?}"
             );
+            assert_eq!(
+                streak_countable(outage_code(&error)),
+                error.counts_toward_outage_streak()
+            );
         }
-        assert!(!streak_countable(CATALOG_SKEW));
-        assert!(!streak_countable(OUTCOME_UNKNOWN));
+        for held in [
+            CATALOG_SKEW,
+            OUTCOME_UNKNOWN,
+            PROJECTION_INVALID,
+            SOURCE_UNAVAILABLE,
+        ] {
+            assert!(!streak_countable(held), "{held}");
+        }
+        for mismatch in [
+            SourceMismatchCode::SourceDigestMismatch,
+            SourceMismatchCode::ActorMismatch,
+        ] {
+            assert!(audit_core::kinds::is_code(mismatch.as_str()));
+        }
     }
 }

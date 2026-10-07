@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use audit_core::AuditStore;
-use audit_store_postgres::admin::AuditAdmin;
 use audit_store_postgres::{PostgresAuditStore, SessionError};
 use outbox_delivery::runner::{DeliveryRunner, RunSummary};
 use outbox_delivery::{DeliveryConfig, DeliveryError};
@@ -20,7 +19,6 @@ use crate::session::{
     Side, StartupError, connect, refuse_privileged_source, refuse_same_database, require_posture,
 };
 use crate::source::{RelayOutboxStore, RelayPolicy};
-use crate::store_admin::{PgStoreAdmin, StoreAdmin};
 
 pub type Runner = DeliveryRunner<RelayOutboxStore, AuditDeliveryHandler, BreakerAdmission>;
 
@@ -31,11 +29,11 @@ pub struct Relay {
     pub ledger: Arc<DeliveryLedger>,
 }
 
-/// The parts of a relay; tests substitute the Store client or admin.
+/// The parts of a relay; tests substitute the Store client. The Store login
+/// is the relay service's (ingest + relay_control + reconciler).
 pub struct RelayParts {
     pub source: PgPool,
     pub store: Arc<dyn AuditStore>,
-    pub admin: Arc<dyn StoreAdmin>,
     pub delivery: DeliveryConfig,
     pub handler: HandlerConfig,
     pub breaker: BreakerConfig,
@@ -50,7 +48,6 @@ impl Relay {
         let outbox = RelayOutboxStore::new(parts.source.clone(), parts.policy, ledger.clone());
         let mut handler = AuditDeliveryHandler::new(
             parts.store.clone(),
-            parts.admin.clone(),
             parts.source.clone(),
             ledger.clone(),
             breaker.clone(),
@@ -59,8 +56,7 @@ impl Relay {
         if let Some(projector) = parts.projector {
             handler = handler.with_projector(projector);
         }
-        let admission =
-            BreakerAdmission::new(breaker.clone(), parts.store, parts.admin, parts.source);
+        let admission = BreakerAdmission::new(breaker.clone(), parts.store, parts.source);
         let runner = DeliveryRunner::new(
             Arc::new(outbox),
             Arc::new(handler),
@@ -89,6 +85,11 @@ fn store_session(error: SessionError) -> StartupError {
         SessionError::Privileged | SessionError::NotOwnerMember => {
             StartupError::Privileged(Side::Store)
         }
+        SessionError::UrlOptions => StartupError::UrlOptions { side: Side::Store },
+        SessionError::UrlInvalid => StartupError::UrlInvalid { side: Side::Store },
+        SessionError::SynchronousCommitOff => {
+            StartupError::SynchronousCommitOff { side: Side::Store }
+        }
         SessionError::Database(error) => StartupError::from_sqlx(Side::Store, &error),
     }
 }
@@ -102,12 +103,12 @@ pub async fn startup_checks(source: &PgPool, store: &PgPool) -> Result<(), Start
     require_posture(source).await
 }
 
-/// Connected and checked pools plus the Store clients.
+/// Connected and checked pools plus the Store client (`run`: the relay
+/// service login; `reconcile`, `replay`, `health`: the operator's login).
 pub struct Connections {
     pub source: PgPool,
     pub store_pool: PgPool,
     pub store: PostgresAuditStore,
-    pub admin: PgStoreAdmin,
 }
 
 /// Connects both databases and runs the startup checks. `posture` is false
@@ -128,16 +129,10 @@ pub async fn connect_checked(
     let store = PostgresAuditStore::new(store_pool.clone(), ingest_timeout)
         .await
         .map_err(store_session)?;
-    let admin = PgStoreAdmin::new(
-        AuditAdmin::connect(store_pool.clone())
-            .await
-            .map_err(store_session)?,
-    );
     Ok(Connections {
         source,
         store_pool,
         store,
-        admin,
     })
 }
 
@@ -156,7 +151,6 @@ pub async fn run(
     let relay = Relay::assemble(RelayParts {
         source: connections.source,
         store: Arc::new(connections.store),
-        admin: Arc::new(connections.admin),
         delivery: config.delivery,
         handler: config.handler,
         breaker: config.breaker,

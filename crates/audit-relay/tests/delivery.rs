@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use audit_core::{
     AuditEnvelope, AuditStore, DocumentStagingProjection, IngestOutcome, Origin, OutageCode,
-    StoreError,
+    RelayControl, RelayControlKind, SourceMismatchCode, StoreError,
 };
 use audit_relay::breaker::{Gate, Mode};
 use audit_relay::config::RunConfig;
@@ -21,7 +21,6 @@ use audit_relay::ledger::DeliveryLedger;
 use audit_relay::relay::connect_checked;
 use audit_relay::session::{Side, StartupError};
 use audit_relay::source::{RelayOutboxStore, RelayPolicy};
-use audit_relay::store_admin::StoreAdmin;
 use audit_store_postgres::admin::AuditAdmin;
 use outbox_delivery::{FenceResult, OutboxStore};
 use serde_json::{Value, json};
@@ -103,9 +102,9 @@ async fn every_producer_shape_reaches_the_store_without_reason_text() {
     assert!(relay.ledger.is_empty(), "every note was consumed");
 
     assert_eq!(assert_store_conforms(&env.store_admin).await, rows.len());
-    let admin = env.relay_admin().await;
+    let store = env.store_client().await;
     let ids: Vec<Uuid> = rows.iter().map(|r| r.event_id).collect();
-    let receipts = admin.lookup_receipts(&ids).await.expect("receipts");
+    let receipts = store.lookup_receipts(&ids).await.expect("receipts");
     assert_eq!(receipts.len(), rows.len());
     for row in &rows {
         let d = env.delivery(row.event_id).await;
@@ -174,7 +173,7 @@ async fn every_producer_shape_reaches_the_store_without_reason_text() {
     // Health keeps produced / delivered / stored / verified apart.
     let report = health(
         &env.worker.pool,
-        Arc::new(admin.clone()),
+        Arc::new(env.store_client().await),
         HealthOptions {
             forecast: true,
             reconcile: true,
@@ -195,6 +194,11 @@ async fn every_producer_shape_reaches_the_store_without_reason_text() {
         .expect("head");
     assert!(head > 6);
     assert_eq!(report["stored"]["gate"], json!("ok"));
+    assert_eq!(
+        report["stored"]["missing_types"],
+        json!([]),
+        "no catalog skew"
+    );
     assert_eq!(report["stored"]["head_seq"], json!(head));
     assert_eq!(report["verified"]["last_verified_seq"], Value::Null);
     assert_eq!(report["verified"]["unverified_events"], json!(head));
@@ -206,9 +210,17 @@ async fn every_producer_shape_reaches_the_store_without_reason_text() {
         .expect("verifier");
     let verified = verifier.verify(None, None).await.expect("verify");
     assert_eq!(verified.outcome, "ok");
-    let report = health(&env.worker.pool, Arc::new(admin), HealthOptions::default())
-        .await
-        .expect("health");
+    // The operator's login (no ingest role) reads the same status; it
+    // cannot probe, so catalog skew is unknown rather than absent.
+    let report = health(
+        &env.worker.pool,
+        Arc::new(env.operator_client().await),
+        HealthOptions::default(),
+    )
+    .await
+    .expect("health");
+    assert_eq!(report["stored"]["gate"], json!("ok"));
+    assert_eq!(report["stored"]["missing_types"], Value::Null);
     assert_eq!(report["verified"]["last_verified_seq"], json!(verified.seq));
     assert_eq!(report["verified"]["outcome"], json!("ok"));
     assert_eq!(report["verified"]["unverified_events"], json!(0));
@@ -287,7 +299,7 @@ async fn invalid_rows_quarantine_and_catalog_skew_is_held() {
     );
     let report = health(
         &env.worker.pool,
-        Arc::new(env.relay_admin().await),
+        Arc::new(env.store_client().await),
         HealthOptions {
             forecast: true,
             reconcile: false,
@@ -339,16 +351,17 @@ async fn source_mismatch_records_the_control_event_first_and_once() {
         }
     }
     let token = token.expect("noted row claimed");
-    let admin = env.relay_admin().await;
-    let earlier = admin
-        .record_relay_control(
-            "audit.integrity.source_mismatch_detected",
-            noted.event_id,
-            "source_digest_mismatch",
-            None,
-        )
+    let store = Arc::new(env.store_client().await);
+    let earlier = store
+        .record_relay_control(&RelayControl::from(
+            RelayControlKind::SourceMismatchDetected {
+                event_id: noted.event_id,
+                code: SourceMismatchCode::SourceDigestMismatch,
+            },
+        ))
         .await
-        .expect("earlier record");
+        .expect("earlier record")
+        .seq;
     let ok: bool = sqlx::query_scalar("SELECT audit_relay.note_mismatch($1, $2, $3, $4)")
         .bind(noted.event_id)
         .bind(token)
@@ -366,11 +379,11 @@ async fn source_mismatch_records_the_control_event_first_and_once() {
     .await;
 
     // The Store cannot record: `held` stays an outage, not a quarantine.
-    let wrapped = Arc::new(WrappedAdmin::new(Arc::new(admin.clone())));
+    let wrapped = Arc::new(WrappedStore::new(store.clone()));
     wrapped.fail_control.store(true, Ordering::SeqCst);
     let relay = env
         .relay_with(RelayOverrides {
-            admin: Some(wrapped.clone()),
+            store: Some(wrapped.clone()),
             ..RelayOverrides::default()
         })
         .await;
@@ -565,14 +578,7 @@ async fn reprojection_acks_the_original_receipt_and_a_forgotten_bump_conflicts()
     let original = env.delivery(row.event_id).await;
 
     // A newer adapter version (registered by a Store migration).
-    exec(
-        &env.store_admin,
-        "SET audit_store.write_context = 'migration'; \
-         INSERT INTO audit_store.registered_types VALUES \
-             ('urn:knowledge-platform:document-platform', 'document.created', 2); \
-         RESET audit_store.write_context;",
-    )
-    .await;
+    register_type(&env.store_admin, "document.created", 2).await;
     let operator = env.operator.pool.clone();
     let row_id = row.event_id;
     let reset = |seq: i64| {
@@ -590,14 +596,14 @@ async fn reprojection_acks_the_original_receipt_and_a_forgotten_bump_conflicts()
         }
     };
     reset(original["store_seq"].as_i64().expect("seq")).await;
-    let v2: audit_relay::handler::Projector = Arc::new(|row: &DocumentStagingProjection| {
-        let mut value = audit_core::project(row)?.into_value();
-        value["data"]["provenance"]["adapter_version"] = json!(2);
-        AuditEnvelope::from_value(value, Origin::Relay)
-    });
+    // The relay of the newer deploy ingests version 2 (its probe still
+    // expects the version-1 catalog, which stays registered).
     let relay_v2 = env
         .relay_with(RelayOverrides {
-            projector: Some(v2),
+            store: Some(Arc::new(ReprojectingStore {
+                inner: Arc::new(env.store_client().await),
+                adapter_version: 2,
+            })),
             ..RelayOverrides::default()
         })
         .await;
@@ -647,7 +653,7 @@ async fn reprojection_acks_the_original_receipt_and_a_forgotten_bump_conflicts()
     // The repair: fix the adapter, replay (audited), redeliver as duplicate.
     let outcome = audit_relay::replay::replay(
         &env.operator.pool,
-        &env.operator_admin().await,
+        &env.operator_client().await,
         row.event_id,
     )
     .await
@@ -670,7 +676,7 @@ async fn store_down_holds_without_consuming_attempts_then_drains() {
     let relay = env.relay().await;
     drive(&relay, CONVERGE, || is_delivered(&env, first.event_id)).await;
     assert_eq!(relay.breaker.mode(), Mode::Closed);
-    let admin = Arc::new(env.relay_admin().await);
+    let store = Arc::new(env.store_client().await);
 
     store_down(&env).await;
     // Business inserts continue while the Store is down.
@@ -693,7 +699,7 @@ async fn store_down_holds_without_consuming_attempts_then_drains() {
         "{:?}",
         relay.breaker.gate()
     );
-    let report = health(&env.worker.pool, admin, HealthOptions::default())
+    let report = health(&env.worker.pool, store, HealthOptions::default())
         .await
         .expect("health with the Store down");
     assert_eq!(report["stored"]["available"], json!(false));
@@ -769,7 +775,7 @@ async fn read_only_lock_and_statement_timeouts_and_version_skew_are_outages() {
         &env.cluster,
         &env.store_admin,
         "relay_svc_slow",
-        &["audit_store_ingest", "audit_store_relay_control"],
+        &RELAY_SERVICE_ROLES,
     )
     .await;
     exec(
@@ -818,7 +824,8 @@ async fn read_only_lock_and_statement_timeouts_and_version_skew_are_outages() {
     release_backoff(&env).await;
     drive(&relay, CONVERGE, || is_delivered(&env, timed.event_id)).await;
 
-    // Version skew: a type missing from the Store's registered_types.
+    // Version skew: a type missing from the Store's registered_types. The
+    // probe reports it (missing_types) and the gate admits nothing ...
     exec(
         &env.store_admin,
         "SET audit_store.write_context = 'migration'; \
@@ -830,7 +837,38 @@ async fn read_only_lock_and_statement_timeouts_and_version_skew_are_outages() {
     let fine = Staged::created();
     env.insert(&skewed).await;
     env.insert(&fine).await;
-    drive(&relay, CONVERGE, || async {
+    cycles(&relay, 4).await;
+    assert_eq!(
+        relay.breaker.gate(),
+        Gate::Outage(OutageCode::UnregisteredType)
+    );
+    for row in [&skewed, &fine] {
+        assert_eq!(env.delivery(row.event_id).await["attempt_count"], json!(0));
+    }
+    let report = health(
+        &env.worker.pool,
+        Arc::new(env.store_client().await),
+        HealthOptions::default(),
+    )
+    .await
+    .expect("health");
+    assert_eq!(report["stored"]["missing_types"], json!(["folder.renamed"]));
+    assert!(
+        report["alarms"]
+            .as_array()
+            .expect("alarms")
+            .contains(&json!("store_catalog_skew"))
+    );
+    // ... and an ingest that reaches the Store anyway is held, not judged.
+    let mut unprobed = WrappedStore::new(Arc::new(env.store_client().await));
+    unprobed.bypass_probe = true;
+    let unprobed = env
+        .relay_with(RelayOverrides {
+            store: Some(Arc::new(unprobed)),
+            ..RelayOverrides::default()
+        })
+        .await;
+    drive(&unprobed, CONVERGE, || async {
         is_delivered(&env, fine.event_id).await
             && env.delivery(skewed.event_id).await["last_outage_code"]
                 == json!("store_unregistered_type")
@@ -842,16 +880,10 @@ async fn read_only_lock_and_statement_timeouts_and_version_skew_are_outages() {
         "version skew is not a verdict"
     );
     assert_eq!(d["attempt_count"], json!(0));
-    exec(
-        &env.store_admin,
-        "SET audit_store.write_context = 'migration'; \
-         INSERT INTO audit_store.registered_types VALUES \
-             ('urn:knowledge-platform:document-platform', 'folder.renamed', 1); \
-         RESET audit_store.write_context;",
-    )
-    .await;
+    register_type(&env.store_admin, "folder.renamed", 1).await;
     release_backoff(&env).await;
     drive(&relay, CONVERGE, || is_delivered(&env, skewed.event_id)).await;
+    assert_eq!(relay.breaker.gate(), Gate::Ok);
     assert_store_conforms(&env.store_admin).await;
 }
 
@@ -875,7 +907,7 @@ async fn outage_streak_counts_residual_errors_only_after_progress() {
     wrapped.fail_before.lock().unwrap().push((
         target.event_id,
         StoreError::Outage {
-            code: OutageCode::Unclassified,
+            code: OutageCode::Other,
         },
     ));
     let relay = env
@@ -895,7 +927,7 @@ async fn outage_streak_counts_residual_errors_only_after_progress() {
     assert_eq!(d["outage_streak"], json!(1), "{d}");
     assert_eq!(d["attempt_count"], json!(0));
     assert!(d["quarantined_at"].is_null());
-    assert_eq!(d["last_outage_code"], json!("store_unclassified"));
+    assert_eq!(d["last_outage_code"], json!("store_other"));
 
     // With other deliveries succeeding in between, the streak grows.
     for _ in 0..30 {
@@ -951,6 +983,15 @@ async fn startup_refuses_privileged_same_database_options_and_bad_posture() {
         .await,
         StartupError::UrlOptions { side: Side::Source }
     );
+    assert_eq!(
+        refuse(
+            worker.clone(),
+            format!("{store}?%6Fptions=-c%20synchronous_commit%3Doff"),
+            true
+        )
+        .await,
+        StartupError::UrlOptions { side: Side::Store }
+    );
     exec(
         &env.doc_admin,
         &format!(
@@ -986,7 +1027,7 @@ async fn startup_refuses_privileged_same_database_options_and_bad_posture() {
         .expect("health connects");
     let report = health(
         &connections.source,
-        Arc::new(connections.admin),
+        Arc::new(connections.store),
         HealthOptions::default(),
     )
     .await

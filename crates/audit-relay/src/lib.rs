@@ -9,6 +9,8 @@
 //!   [`breaker::BreakerAdmission`] plug into the unchanged
 //!   `outbox_delivery::DeliveryRunner`.
 //! - [`reconcile`], [`replay`] and [`health`] implement the operator paths.
+//! - [`store::RelayStore`]: the `audit_core::AuditStore` port plus the Store
+//!   status and lost-range reads.
 #![forbid(unsafe_code)]
 
 pub mod breaker;
@@ -21,7 +23,7 @@ pub mod relay;
 pub mod replay;
 pub mod session;
 pub mod source;
-pub mod store_admin;
+pub mod store;
 
 use sqlx::PgPool;
 use sqlx::migrate::MigrateError;

@@ -9,28 +9,41 @@
 //!
 //! The breaker opens on any Store outage. It closes on any structured ingest
 //! verdict row (stored, duplicate*, conflict, rejected) — proof the Store
-//! works — never on a probe alone. Before admitting, the probe
-//! (`audit_store.probe()` via the ingest login) and the regression gate run;
-//! failures are `Ok(None)` (no claim), never another `DeliveryError`.
+//! works — never on a probe alone. Before admitting, the Store probe runs
+//! with the expectation of the catalog (source, adapter_version, types) and
+//! the relay's last acknowledged receipt of the Store's current recovery
+//! epoch; failures are `Ok(None)` (no claim), never another `DeliveryError`.
 //!
-//! Regression gate: the highest acknowledged receipt of the current Store
-//! recovery epoch must still exist in the Store with the same seq and
-//! envelope digest, and the Store head must not be behind it. A mismatch is
-//! `store_regressed`: the relay reports it to the Store and stays closed
-//! (sticky) until the Store recovery epoch changes.
+//! The last acknowledged receipt is per epoch, so the gate keeps an epoch
+//! hint: when the probe reports another epoch than the hint, the gate reads
+//! the acknowledged head of that epoch and probes again before admitting.
+//!
+//! Order: a sticky regression of the current epoch; a non-operational Store
+//! state (recovery mode, posture, read-only: an outage of that class); a
+//! regression: when an operational Store no longer resolves the
+//! acknowledged receipt (`regression_detected`, e.g. an in-place restore
+//! the fingerprint cannot see), the relay reports it (`report_regression`,
+//! which re-checks it and sets `recovery_pending`) and stays closed (sticky)
+//! until the Store recovery epoch changes, whatever the Store answers;
+//! finally `StoreStatus::admission` (missing registered types:
+//! `store_unregistered_type`, the catalog skew health reports).
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use audit_core::{AuditStore, OutageCode, StoreError};
+use audit_core::catalog::DOCUMENT_SOURCE;
+use audit_core::{
+    AuditStore, Catalog, LEGACY_ADAPTER_VERSION, OutageCode, ProbeExpectation, ReceiptIdentity,
+    StoreStatus,
+};
 use outbox_delivery::runner::{ClaimAdmission, ClaimPermit};
 use outbox_delivery::{DeliveryFuture, FenceResult};
 use sqlx::{PgPool, Row};
 use tokio::time::Instant;
 use uuid::Uuid;
 
-use crate::store_admin::StoreAdmin;
+use crate::store::outage_of;
 
 /// Breaker timing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,6 +120,8 @@ enum State {
 struct Inner {
     state: State,
     cooldown: Duration,
+    /// The Store recovery epoch of the last probe (selects the acked head).
+    epoch_hint: Option<i64>,
     regressed_epoch: Option<i64>,
     gate: Gate,
     outages: u64,
@@ -127,6 +142,7 @@ impl Breaker {
                 // Start half-open: the first claim must prove the Store works.
                 state: State::HalfOpen { admitted: None },
                 cooldown: config.initial_cooldown,
+                epoch_hint: None,
                 regressed_epoch: None,
                 gate: Gate::Unknown,
                 outages: 0,
@@ -268,6 +284,16 @@ pub struct AckedHead {
     pub envelope_digest: [u8; 32],
 }
 
+impl AckedHead {
+    pub fn identity(&self) -> ReceiptIdentity {
+        ReceiptIdentity {
+            seq: self.store_seq,
+            event_id: self.event_id,
+            envelope_digest: self.envelope_digest,
+        }
+    }
+}
+
 /// Reads `audit_relay.acked_head(epoch)`.
 pub async fn acked_head(source: &PgPool, epoch: i64) -> Result<Option<AckedHead>, sqlx::Error> {
     let row = sqlx::query("SELECT * FROM audit_relay.acked_head($1)")
@@ -288,45 +314,19 @@ pub async fn acked_head(source: &PgPool, epoch: i64) -> Result<Option<AckedHead>
     }))
 }
 
-/// Outcome of the identity check of one acknowledged receipt.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Regression {
-    Intact,
-    Regressed,
-    /// The Store could not answer (an outage).
-    Unavailable(OutageCode),
-}
-
-/// Compares the acknowledged head with the Store (design §11).
-pub async fn check_regression(
-    admin: &dyn StoreAdmin,
-    head_seq: i64,
-    acked: &AckedHead,
-) -> Regression {
-    if head_seq < acked.store_seq {
-        return Regression::Regressed;
-    }
-    match admin
-        .lookup_receipts(std::slice::from_ref(&acked.event_id))
-        .await
-    {
-        Ok(receipts) => {
-            let intact = receipts.iter().any(|r| {
-                r.event_id == acked.event_id
-                    && r.seq == acked.store_seq
-                    && r.envelope_digest == acked.envelope_digest
-            });
-            if intact {
-                Regression::Intact
-            } else {
-                Regression::Regressed
-            }
-        }
-        Err(error) => Regression::Unavailable(
-            OutageCode::parse(crate::store_admin::admin_outage_code(&error))
-                .unwrap_or(OutageCode::Unclassified),
-        ),
-    }
+/// What the relay expects the Store to accept for the Document source: the
+/// catalog's registered types at the catalog adapter version.
+pub fn expectation(last_ack: Option<ReceiptIdentity>) -> ProbeExpectation {
+    ProbeExpectation::from_catalog(Catalog::embedded(), DOCUMENT_SOURCE, last_ack).unwrap_or(
+        // The embedded catalog always has Document types; an empty list
+        // would only lose the skew check, never admit more.
+        ProbeExpectation {
+            source: DOCUMENT_SOURCE.to_owned(),
+            adapter_version: LEGACY_ADAPTER_VERSION,
+            types: Vec::new(),
+            last_ack,
+        },
+    )
 }
 
 /// [`ClaimAdmission`] over the breaker, the Store probe and the regression
@@ -334,46 +334,70 @@ pub async fn check_regression(
 pub struct BreakerAdmission {
     breaker: Arc<Breaker>,
     store: Arc<dyn AuditStore>,
-    admin: Arc<dyn StoreAdmin>,
     source: PgPool,
 }
 
 impl BreakerAdmission {
-    pub fn new(
-        breaker: Arc<Breaker>,
-        store: Arc<dyn AuditStore>,
-        admin: Arc<dyn StoreAdmin>,
-        source: PgPool,
-    ) -> Self {
+    pub fn new(breaker: Arc<Breaker>, store: Arc<dyn AuditStore>, source: PgPool) -> Self {
         Self {
             breaker,
             store,
-            admin,
             source,
         }
     }
 
-    async fn gate(&self) -> Option<i64> {
+    fn refuse(&self, gate: Gate) -> Option<i64> {
+        self.breaker.set_gate(gate);
+        if gate != Gate::SourceUnavailable {
+            self.breaker.record_outage();
+        }
+        None
+    }
+
+    /// Probes with the acknowledged head of `epoch` (none before the first
+    /// probe).
+    async fn probe_at(
+        &self,
+        epoch: Option<i64>,
+    ) -> Result<(StoreStatus, Option<ReceiptIdentity>), Gate> {
         let timeout = self.breaker.config.probe_timeout;
-        let status = match tokio::time::timeout(timeout, self.store.probe()).await {
-            Ok(Ok(status)) if status.writable => status,
-            Ok(Ok(_)) => {
-                self.breaker.set_gate(Gate::Outage(OutageCode::ReadOnly));
-                self.breaker.record_outage();
-                return None;
-            }
-            Ok(Err(error)) => {
-                let code = probe_code(&error);
-                self.breaker.set_gate(Gate::Outage(code));
-                self.breaker.record_outage();
-                return None;
-            }
-            Err(_) => {
-                self.breaker.set_gate(Gate::Outage(OutageCode::Timeout));
-                self.breaker.record_outage();
-                return None;
+        let last_ack = match epoch {
+            None => None,
+            Some(epoch) => {
+                match tokio::time::timeout(timeout, acked_head(&self.source, epoch)).await {
+                    Ok(Ok(acked)) => acked.map(|acked| acked.identity()),
+                    _ => return Err(Gate::SourceUnavailable),
+                }
             }
         };
+        let expected = expectation(last_ack);
+        match tokio::time::timeout(timeout, self.store.probe(&expected)).await {
+            Ok(Ok(status)) => Ok((status, last_ack)),
+            Ok(Err(error)) => Err(Gate::Outage(outage_of(&error))),
+            Err(_) => Err(Gate::Outage(OutageCode::Timeout)),
+        }
+    }
+
+    async fn gate(&self) -> Option<i64> {
+        let hint = self.breaker.lock().epoch_hint;
+        let (mut status, mut last_ack) = match self.probe_at(hint).await {
+            Ok(probed) => probed,
+            Err(gate) => return self.refuse(gate),
+        };
+        if hint != Some(status.recovery_epoch) {
+            let epoch = status.recovery_epoch;
+            self.breaker.lock().epoch_hint = Some(epoch);
+            (status, last_ack) = match self.probe_at(Some(epoch)).await {
+                Ok(probed) => probed,
+                Err(gate) => return self.refuse(gate),
+            };
+            if status.recovery_epoch != epoch {
+                // The epoch moved between the two probes: try again later.
+                self.breaker.lock().epoch_hint = Some(status.recovery_epoch);
+                self.breaker.set_gate(Gate::Unknown);
+                return None;
+            }
+        }
         let epoch = status.recovery_epoch;
         {
             let mut inner = self.breaker.lock();
@@ -386,59 +410,40 @@ impl BreakerAdmission {
                 None => {}
             }
         }
-        let acked = match tokio::time::timeout(timeout, acked_head(&self.source, epoch)).await {
-            Ok(Ok(acked)) => acked,
-            _ => {
-                self.breaker.set_gate(Gate::SourceUnavailable);
-                return None;
+        // A Store that is not operational (recovery mode after a restore,
+        // posture, read-only) gates first: a restore detected by the
+        // fingerprint needs no regression report, the operator records the
+        // relay's maximum seq with the epoch.
+        if let Some(code) = status.state.outage_code() {
+            return self.refuse(Gate::Outage(code));
+        }
+        if status.regression_detected {
+            {
+                let mut inner = self.breaker.lock();
+                inner.regressed_epoch = Some(epoch);
+                inner.gate = Gate::Regressed;
             }
-        };
-        if let Some(acked) = acked {
-            let verdict = tokio::time::timeout(
-                timeout,
-                check_regression(self.admin.as_ref(), status.head_seq, &acked),
-            )
-            .await
-            .unwrap_or(Regression::Unavailable(OutageCode::Timeout));
-            match verdict {
-                Regression::Intact => {}
-                Regression::Unavailable(code) => {
-                    self.breaker.set_gate(Gate::Outage(code));
-                    self.breaker.record_outage();
-                    return None;
-                }
-                Regression::Regressed => {
-                    {
-                        let mut inner = self.breaker.lock();
-                        inner.regressed_epoch = Some(epoch);
-                        inner.gate = Gate::Regressed;
-                    }
-                    self.breaker.record_outage();
-                    // Best effort: the gate stays closed whatever the Store says.
-                    let _ = tokio::time::timeout(
-                        timeout,
-                        self.admin.report_regression(
-                            acked.store_seq,
-                            acked.event_id,
-                            &acked.envelope_digest,
-                        ),
-                    )
-                    .await;
-                    eprintln!(
-                        "audit-relay: store_regressed (epoch {epoch}); claims stop until the \
-                         Store recovery epoch changes"
-                    );
-                    return None;
-                }
+            self.breaker.record_outage();
+            if let Some(identity) = last_ack {
+                // Best effort: the gate stays closed whatever the Store says.
+                let _ = tokio::time::timeout(
+                    self.breaker.config.probe_timeout,
+                    self.store.report_regression(&identity),
+                )
+                .await;
             }
+            eprintln!(
+                "audit-relay: store_regressed (epoch {epoch}); claims stop until the Store \
+                 recovery epoch changes"
+            );
+            return None;
+        }
+        if let Err(code) = status.admission() {
+            return self.refuse(Gate::Outage(code));
         }
         self.breaker.set_gate(Gate::Ok);
         Some(epoch)
     }
-}
-
-fn probe_code(error: &StoreError) -> OutageCode {
-    error.outage_code().unwrap_or(OutageCode::Unclassified)
 }
 
 impl ClaimAdmission for BreakerAdmission {
@@ -478,6 +483,28 @@ mod tests {
             probe_timeout: Duration::from_secs(1),
             closed_claims: 8,
         }
+    }
+
+    #[test]
+    fn the_probe_expects_the_catalog_registration_and_the_last_ack() {
+        let ack = ReceiptIdentity {
+            seq: 7,
+            event_id: Uuid::from_u128(7),
+            envelope_digest: [7; 32],
+        };
+        let expected = expectation(Some(ack));
+        assert_eq!(expected.source, DOCUMENT_SOURCE);
+        assert_eq!(expected.adapter_version, LEGACY_ADAPTER_VERSION);
+        assert_eq!(expected.last_ack, Some(ack));
+        let catalog: Vec<String> = Catalog::embedded()
+            .registered_types()
+            .into_iter()
+            .filter(|(source, _, _)| *source == DOCUMENT_SOURCE)
+            .map(|(_, event_type, _)| event_type.to_owned())
+            .collect();
+        assert!(!catalog.is_empty());
+        assert_eq!(expected.types, catalog);
+        assert_eq!(expectation(None).last_ack, None);
     }
 
     #[tokio::test]

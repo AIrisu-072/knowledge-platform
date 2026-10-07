@@ -84,47 +84,13 @@ impl StartupError {
 const SYNC_COMMIT_REFUSED: &str = "audit relay: synchronous_commit is not on";
 
 /// Refuses a URL whose query string sets `options` (which could, e.g., turn
-/// off synchronous_commit or change search_path for the session).
+/// off synchronous_commit or change search_path for the session). The same
+/// check as the Store client (`audit_store_postgres::session::check_url`).
 pub fn check_url(side: Side, url: &str) -> Result<(), StartupError> {
-    if !(url.starts_with("postgres://") || url.starts_with("postgresql://")) {
-        return Err(StartupError::UrlInvalid { side });
-    }
-    let Some((_, query)) = url.split_once('?') else {
-        return Ok(());
-    };
-    let query = query.split('#').next().unwrap_or_default();
-    for pair in query.split('&') {
-        let key = pair.split('=').next().unwrap_or_default();
-        let decoded = percent_decode(key).ok_or(StartupError::UrlInvalid { side })?;
-        if decoded.trim().eq_ignore_ascii_case("options") {
-            return Err(StartupError::UrlOptions { side });
-        }
-    }
-    Ok(())
-}
-
-fn percent_decode(text: &str) -> Option<String> {
-    let bytes = text.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'%' => {
-                let hex = text.get(i + 1..i + 3)?;
-                out.push(u8::from_str_radix(hex, 16).ok()?);
-                i += 3;
-            }
-            b'+' => {
-                out.push(b' ');
-                i += 1;
-            }
-            other => {
-                out.push(other);
-                i += 1;
-            }
-        }
-    }
-    String::from_utf8(out).ok()
+    audit_store_postgres::session::check_url(url).map_err(|error| match error {
+        audit_store_postgres::SessionError::UrlOptions => StartupError::UrlOptions { side },
+        _ => StartupError::UrlInvalid { side },
+    })
 }
 
 /// A short redacted label for logs: scheme and database name only.

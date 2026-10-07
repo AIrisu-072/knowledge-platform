@@ -9,7 +9,9 @@
 //! ```
 //!
 //! Output is JSON on stdout; errors are codes on stderr. URLs and
-//! credentials are never printed.
+//! credentials are never printed. `run` uses the relay service's Store login
+//! (ingest + relay_control + reconciler); `health`, `reconcile` and `replay`
+//! are meant for the operator's Store login (relay_control + reconciler).
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -111,7 +113,7 @@ async fn command(args: &[String]) -> Result<(), String> {
                 connect_checked(&env(SOURCE_URL)?, &env(STORE_URL)?, ADMIN_TIMEOUT, false)
                     .await
                     .map_err(|e| e.to_string())?;
-            let report = health(&connections.source, Arc::new(connections.admin), options)
+            let report = health(&connections.source, Arc::new(connections.store), options)
                 .await
                 .map_err(|e| e.to_string())?;
             print(&report);
@@ -123,7 +125,7 @@ async fn command(args: &[String]) -> Result<(), String> {
                 connect_checked(&env(SOURCE_URL)?, &env(STORE_URL)?, ADMIN_TIMEOUT, true)
                     .await
                     .map_err(|e| e.to_string())?;
-            let report = Reconciler::new(connections.source, Arc::new(connections.admin))
+            let report = Reconciler::new(connections.source, Arc::new(connections.store))
                 .run(repair)
                 .await
                 .map_err(|e| e.to_string())?;
@@ -137,7 +139,7 @@ async fn command(args: &[String]) -> Result<(), String> {
                 connect_checked(&env(SOURCE_URL)?, &env(STORE_URL)?, ADMIN_TIMEOUT, true)
                     .await
                     .map_err(|e| e.to_string())?;
-            let outcome = replay(&connections.source, &connections.admin, event_id)
+            let outcome = replay(&connections.source, &connections.store, event_id)
                 .await
                 .map_err(|e| e.to_string())?;
             print(&serde_json::to_value(&outcome).map_err(|e| e.to_string())?);

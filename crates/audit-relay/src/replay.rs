@@ -1,20 +1,21 @@
 //! `audit-relay replay --event-id` (design §6.4).
 //!
 //! 1. Record `audit.delivery.replay_requested` in the Store with the
-//!    operator's own Store login and take its seq; abort if that fails.
+//!    operator's own Store login (`quarantine_code`: the code being cleared)
+//!    and take its position (seq, recovery epoch); abort if that fails.
 //! 2. `audit_relay.replay(event_id, control_seq, control_epoch)` in one
 //!    transaction: history row, attempt budget reset, back to pending.
 //!
 //! The Document function cannot verify the Store fact; reconcile reports a
-//! history row whose control seq does not resolve as `unaudited_replay`.
+//! history row that does not resolve to that control event (same event,
+//! epoch and code, one to one) as `unaudited_replay`.
 
-use audit_store_postgres::AdminError;
+use audit_core::{AuditStore, BoundedCode, RelayControl, RelayControlKind, StoreError};
 use serde::Serialize;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::reconcile::{REPLAY_TYPE, lookup_deliveries};
-use crate::store_admin::StoreAdmin;
+use crate::reconcile::lookup_deliveries;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ReplayOutcome {
@@ -30,8 +31,10 @@ pub enum ReplayError {
     NotFound,
     #[error("the event is not quarantined (state {0})")]
     NotQuarantined(String),
+    #[error("the quarantine code is not a Store code ([a-z0-9_]{{1,64}})")]
+    InvalidCode,
     #[error("audit store refused or failed to record the replay: {0}")]
-    Store(AdminError),
+    Store(StoreError),
     #[error(
         "the replay was recorded in the Store (seq {control_seq}) but the delivery changed \
          before it could be reset"
@@ -51,7 +54,7 @@ fn source_error(error: sqlx::Error) -> ReplayError {
 /// Replays one quarantined delivery.
 pub async fn replay(
     source: &PgPool,
-    admin: &dyn StoreAdmin,
+    store: &dyn AuditStore,
     event_id: Uuid,
 ) -> Result<ReplayOutcome, ReplayError> {
     let rows = lookup_deliveries(source, &[event_id])
@@ -67,29 +70,30 @@ pub async fn replay(
     let code = row
         .quarantine_code
         .ok_or_else(|| ReplayError::NotQuarantined("quarantined".into()))?;
-    let control_seq = admin
-        .record_relay_control(REPLAY_TYPE, event_id, &code, None)
+    let previous_code = BoundedCode::new(&code).ok_or(ReplayError::InvalidCode)?;
+    let receipt = store
+        .record_relay_control(&RelayControl::from(RelayControlKind::ReplayRequested {
+            event_id,
+            previous_code,
+        }))
         .await
         .map_err(ReplayError::Store)?;
-    let control_epoch = admin
-        .store_status()
-        .await
-        .map_err(ReplayError::Store)?
-        .recovery_epoch;
     let done: bool = sqlx::query_scalar("SELECT audit_relay.replay($1, $2, $3)")
         .bind(event_id)
-        .bind(control_seq)
-        .bind(control_epoch)
+        .bind(receipt.seq)
+        .bind(receipt.recovery_epoch)
         .fetch_one(source)
         .await
         .map_err(source_error)?;
     if !done {
-        return Err(ReplayError::Refused { control_seq });
+        return Err(ReplayError::Refused {
+            control_seq: receipt.seq,
+        });
     }
     Ok(ReplayOutcome {
         event_id,
         previous_quarantine_code: code,
-        control_seq,
-        control_epoch,
+        control_seq: receipt.seq,
+        control_epoch: receipt.recovery_epoch,
     })
 }

@@ -2,8 +2,10 @@
 //! §14.3): SIGKILL after the Store commit (child process), final-attempt
 //! crash and the fenced `quarantined_stored` repair, audited replay and
 //! `unaudited_replay`, `store_only`, unregistered repair, and the Store
-//! restore gates (`store_recovery_required`, `store_regressed`) followed by
-//! a new epoch, `reconcile --repair` and redelivery.
+//! restore gates (`store_recovery_required`; `store_regressed` reported to
+//! the Store, sticky until the epoch changes) followed by a new epoch,
+//! `replay_record_lost` for a replay record inside the declared lost range,
+//! `reconcile --repair` and redelivery.
 
 mod support;
 
@@ -14,13 +16,16 @@ use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 use audit_core::port::BoxFuture;
-use audit_core::{AuditEnvelope, AuditStore, IngestReceipt, StoreError, StoreStatus};
+use audit_core::{
+    AuditEnvelope, AuditStore, ControlReceipt, ControlReceiptRow, IngestReceipt, ProbeExpectation,
+    ReceiptIdentity, ReceiptRow, RelayControl, StoreError, StoreStatus,
+};
 use audit_relay::breaker::{Gate, Mode};
 use audit_relay::health::{HealthOptions, health};
 use audit_relay::reconcile::Reconciler;
 use audit_relay::relay::{Relay, RelayParts};
 use audit_relay::replay::{ReplayError, replay};
-use audit_relay::store_admin::{PgStoreAdmin, StoreAdmin};
+use audit_relay::store::RelayStore;
 use audit_store_postgres::admin::AuditAdmin;
 use audit_store_postgres::{PRIVILEGES_SQL, PostgresAuditStore};
 use serde_json::{Value, json};
@@ -58,8 +63,48 @@ impl AuditStore for PausingStore {
         })
     }
 
-    fn probe(&self) -> BoxFuture<'_, Result<StoreStatus, StoreError>> {
-        self.inner.probe()
+    fn probe<'a>(
+        &'a self,
+        expected: &'a ProbeExpectation,
+    ) -> BoxFuture<'a, Result<StoreStatus, StoreError>> {
+        self.inner.probe(expected)
+    }
+
+    fn lookup_receipts<'a>(
+        &'a self,
+        event_ids: &'a [Uuid],
+    ) -> BoxFuture<'a, Result<Vec<ReceiptRow>, StoreError>> {
+        self.inner.lookup_receipts(event_ids)
+    }
+
+    fn list_source_receipts<'a>(
+        &'a self,
+        source: &'a str,
+        after_seq: i64,
+        limit: u32,
+    ) -> BoxFuture<'a, Result<Vec<ReceiptRow>, StoreError>> {
+        self.inner.list_source_receipts(source, after_seq, limit)
+    }
+
+    fn lookup_control_receipts<'a>(
+        &'a self,
+        seqs: &'a [i64],
+    ) -> BoxFuture<'a, Result<Vec<ControlReceiptRow>, StoreError>> {
+        self.inner.lookup_control_receipts(seqs)
+    }
+
+    fn record_relay_control<'a>(
+        &'a self,
+        control: &'a RelayControl,
+    ) -> BoxFuture<'a, Result<ControlReceipt, StoreError>> {
+        self.inner.record_relay_control(control)
+    }
+
+    fn report_regression<'a>(
+        &'a self,
+        identity: &'a ReceiptIdentity,
+    ) -> BoxFuture<'a, Result<(), StoreError>> {
+        self.inner.report_regression(identity)
     }
 }
 
@@ -78,17 +123,15 @@ async fn child_relay_fixture() {
     .await;
     let store_pool =
         connect_with_retry(&std::env::var("AUDIT_RELAY_CHILD_STORE").expect("store"), 4).await;
-    let inner = PostgresAuditStore::new(store_pool.clone(), Duration::from_secs(10))
+    let inner = PostgresAuditStore::new(store_pool, Duration::from_secs(10))
         .await
         .expect("relay store session");
-    let admin = PgStoreAdmin::new(AuditAdmin::connect(store_pool).await.expect("admin"));
     let mut handler = test_handler();
     // The parent kills long before any handler timeout could fire.
     handler.ingest_timeout = Duration::from_secs(60);
     let relay = Relay::assemble(RelayParts {
         source,
         store: Arc::new(PausingStore { inner }),
-        admin: Arc::new(admin),
         delivery: test_delivery(),
         handler,
         breaker: test_breaker(),
@@ -265,7 +308,7 @@ async fn final_attempt_crash_quarantines_and_only_the_fenced_repair_acks() {
     ))
     .await;
 
-    let observer = Reconciler::new(env.worker.pool.clone(), Arc::new(env.relay_admin().await));
+    let observer = Reconciler::new(env.worker.pool.clone(), Arc::new(env.store_client().await));
     let report = observer.run(false).await.expect("read-only reconcile");
     assert_eq!(report.counts.quarantined_stored, 1);
     assert_eq!(report.counts.quarantined, 1);
@@ -273,8 +316,8 @@ async fn final_attempt_crash_quarantines_and_only_the_fenced_repair_acks() {
     assert_eq!(report.counts.unaudited_replay, 0);
     assert_eq!(report.applied, Default::default());
 
-    let operator_admin = Arc::new(env.operator_admin().await);
-    let repair = Reconciler::new(env.operator.pool.clone(), operator_admin.clone())
+    let operator = Arc::new(env.operator_client().await);
+    let repair = Reconciler::new(env.operator.pool.clone(), operator.clone())
         .run(true)
         .await
         .expect("repair reconcile");
@@ -312,9 +355,7 @@ async fn final_attempt_crash_quarantines_and_only_the_fenced_repair_acks() {
     }
 
     // The SQL fence refuses direct calls too.
-    let receipts = env
-        .relay_admin()
-        .await
+    let receipts = operator
         .lookup_receipts(&[conflict.event_id, mismatched.event_id])
         .await
         .expect("receipts");
@@ -375,8 +416,8 @@ async fn replay_is_audited_and_direct_sql_replay_is_detected() {
         !env.delivery(id).await["quarantined_at"].is_null()
     })
     .await;
-    let operator_admin = env.operator_admin().await;
-    let outcome = replay(&env.operator.pool, &operator_admin, id)
+    let operator = env.operator_client().await;
+    let outcome = replay(&env.operator.pool, &operator, id)
         .await
         .expect("replay");
     assert_eq!(outcome.previous_quarantine_code, "invalid_field");
@@ -414,11 +455,11 @@ async fn replay_is_audited_and_direct_sql_replay_is_detected() {
     let pending = Staged::created();
     env.insert(&pending).await;
     assert_eq!(
-        replay(&env.operator.pool, &operator_admin, pending.event_id).await,
+        replay(&env.operator.pool, &operator, pending.event_id).await,
         Err(ReplayError::NotQuarantined("pending".into()))
     );
     assert_eq!(
-        replay(&env.operator.pool, &operator_admin, Uuid::now_v7()).await,
+        replay(&env.operator.pool, &operator, Uuid::now_v7()).await,
         Err(ReplayError::NotFound)
     );
     let error = sqlx::query("SELECT audit_relay.replay($1, NULL, 1)")
@@ -442,16 +483,36 @@ async fn replay_is_audited_and_direct_sql_replay_is_detected() {
         .await
         .expect("direct replay");
     assert!(done);
+    // A replay pointing at a real control event of another kind.
+    let reconciliation = Reconciler::new(env.operator.pool.clone(), Arc::new(operator))
+        .run(false)
+        .await
+        .expect("read-only run")
+        .control_seq
+        .expect("seq");
+    let other = Staged::created().with_data(json!({"documentId": 7}));
+    env.insert(&other).await;
+    drive(&relay, CONVERGE, || async {
+        !env.delivery(other.event_id).await["quarantined_at"].is_null()
+    })
+    .await;
+    let done: bool = sqlx::query_scalar("SELECT audit_relay.replay($1, $2, 1)")
+        .bind(other.event_id)
+        .bind(reconciliation)
+        .fetch_one(&env.operator.pool)
+        .await
+        .expect("direct replay");
+    assert!(done);
     let classification =
-        Reconciler::new(env.worker.pool.clone(), Arc::new(env.relay_admin().await))
+        Reconciler::new(env.worker.pool.clone(), Arc::new(env.store_client().await))
             .classify()
             .await
             .expect("classify");
-    assert_eq!(classification.counts.unaudited_replay, 1);
+    assert_eq!(classification.counts.unaudited_replay, 2);
     assert_eq!(classification.counts.replay_record_lost, 0);
     let report = health(
         &env.worker.pool,
-        Arc::new(env.relay_admin().await),
+        Arc::new(env.store_client().await),
         HealthOptions {
             forecast: false,
             reconcile: true,
@@ -501,7 +562,7 @@ async fn store_only_and_unregistered_rows_are_reported_and_repaired() {
     )
     .await;
 
-    let report = Reconciler::new(env.worker.pool.clone(), Arc::new(env.relay_admin().await))
+    let report = Reconciler::new(env.worker.pool.clone(), Arc::new(env.store_client().await))
         .run(false)
         .await
         .expect("reconcile");
@@ -515,7 +576,7 @@ async fn store_only_and_unregistered_rows_are_reported_and_repaired() {
     );
     let repair = Reconciler::new(
         env.operator.pool.clone(),
-        Arc::new(env.operator_admin().await),
+        Arc::new(env.operator_client().await),
     )
     .run(true)
     .await
@@ -531,7 +592,7 @@ async fn store_only_and_unregistered_rows_are_reported_and_repaired() {
     assert_eq!(body["data"]["provenance"]["registration"], json!("repair"));
     let report = health(
         &env.worker.pool,
-        Arc::new(env.relay_admin().await),
+        Arc::new(env.operator_client().await),
         HealthOptions {
             forecast: false,
             reconcile: true,
@@ -588,14 +649,17 @@ async fn store_pool(env: &Env, login: &Login, database: &str) -> PgPool {
 async fn redeliver_after_repair(
     env: &Env,
     relay: &Relay,
-    admin: Arc<dyn StoreAdmin>,
-    missing: i64,
+    admin: Arc<dyn RelayStore>,
+    missing: u64,
+    record_lost: u64,
 ) {
     let report = Reconciler::new(env.worker.pool.clone(), admin.clone())
         .classify()
         .await
         .expect("classify");
     assert_eq!(report.counts.delivered_missing, missing);
+    assert_eq!(report.counts.replay_record_lost, record_lost);
+    assert_eq!(report.counts.unaudited_replay, 0);
     let repair = Reconciler::new(env.operator.pool.clone(), admin.clone())
         .run(true)
         .await
@@ -613,15 +677,17 @@ async fn redeliver_after_repair(
         .classify()
         .await
         .expect("classify");
-    assert_eq!(report.counts.ok, total);
+    assert_eq!(report.counts.ok, u64::try_from(total).expect("count"));
     assert_eq!(report.counts.delivered_missing, 0);
     assert_eq!(report.counts.unaudited_replay, 0);
-    let resets: i64 = sqlx::query_scalar(
+    assert_eq!(report.counts.replay_record_lost, record_lost);
+    let resets: u64 = sqlx::query_scalar::<_, i64>(
         "SELECT count(*) FROM audit_relay.delivery_history \
          WHERE transition = 'repair_reset_missing' AND control_epoch = 2",
     )
     .fetch_one(&env.doc_admin)
     .await
+    .map(|n| u64::try_from(n).expect("count"))
     .expect("history");
     assert_eq!(resets, missing);
 }
@@ -639,13 +705,31 @@ async fn store_restore_into_a_new_database_gates_until_a_new_epoch() {
     .await;
     let c1 = checkpoint(&env).await;
     pg_dump(&env, "/tmp/store.dump").await;
+    // After the backup: a replay is recorded (its Store record will be
+    // lost), then the replayed row and two more are delivered.
+    let replayed = Staged::created();
+    env.insert(&replayed).await;
+    env.force(&format!(
+        "UPDATE audit_relay.deliveries SET quarantined_at = now(), \
+             quarantine_code = 'conflict' WHERE event_id = '{}'",
+        replayed.event_id
+    ))
+    .await;
+    let lost_replay = replay(
+        &env.operator.pool,
+        &env.operator_client().await,
+        replayed.event_id,
+    )
+    .await
+    .expect("replay before the restore");
     for _ in 0..2 {
         env.insert(&Staged::created()).await;
     }
     drive(&relay, CONVERGE, || async {
-        delivered_count(&env).await == 5
+        delivered_count(&env).await == 6
     })
     .await;
+    assert!(relay_max_seq(&env).await > lost_replay.control_seq);
 
     let restored = "audit_store_restored";
     let (code, output) = env
@@ -668,18 +752,14 @@ async fn store_restore_into_a_new_database_gates_until_a_new_epoch() {
         .await;
     assert_eq!(code, 0, "pg_restore: {output}");
     let relay_pool = store_pool(&env, &env.relay_store, restored).await;
-    let admin: Arc<dyn StoreAdmin> = Arc::new(PgStoreAdmin::new(
-        AuditAdmin::connect(relay_pool.clone())
+    let store = Arc::new(
+        PostgresAuditStore::new(relay_pool, Duration::from_millis(1_500))
             .await
-            .expect("admin"),
-    ));
-    let store = PostgresAuditStore::new(relay_pool, Duration::from_millis(1_500))
-        .await
-        .expect("store");
+            .expect("store"),
+    );
     let moved = env
         .relay_with(RelayOverrides {
-            store: Some(Arc::new(store)),
-            admin: Some(admin.clone()),
+            store: Some(store.clone()),
             ..RelayOverrides::default()
         })
         .await;
@@ -691,7 +771,7 @@ async fn store_restore_into_a_new_database_gates_until_a_new_epoch() {
         moved.breaker.gate(),
         Gate::Outage(audit_core::OutageCode::RecoveryRequired)
     );
-    let report = health(&env.worker.pool, admin.clone(), HealthOptions::default())
+    let report = health(&env.worker.pool, store.clone(), HealthOptions::default())
         .await
         .expect("health");
     assert!(
@@ -707,10 +787,12 @@ async fn store_restore_into_a_new_database_gates_until_a_new_epoch() {
         .await
         .expect("maintainer");
     let started = maintainer
-        .begin_recovery_epoch(&c1, relay_max_seq(&env).await)
+        .begin_recovery_epoch(Some(&c1), Some(relay_max_seq(&env).await))
         .await
         .expect("epoch");
     assert_eq!(started.new_epoch, 2);
+    assert_eq!(started.classification, "restore");
+    assert_eq!(started.checkpoint_classification.as_deref(), Some("match"));
     drive(&moved, CONVERGE, || is_delivered(&env, late.event_id)).await;
     assert_eq!(
         env.delivery(late.event_id).await["store_recovery_epoch"],
@@ -718,21 +800,24 @@ async fn store_restore_into_a_new_database_gates_until_a_new_epoch() {
     );
 
     let operator_pool = store_pool(&env, &env.operator_store, restored).await;
-    let operator: Arc<dyn StoreAdmin> = Arc::new(PgStoreAdmin::new(
-        AuditAdmin::connect(operator_pool).await.expect("operator"),
-    ));
-    let _ = admin;
-    redeliver_after_repair(&env, &moved, operator, 2).await;
+    let operator: Arc<dyn RelayStore> = Arc::new(
+        PostgresAuditStore::new(operator_pool, Duration::from_millis(1_500))
+            .await
+            .expect("operator"),
+    );
+    // The replay record of epoch 1 lies in the declared lost range: a
+    // recorded loss, not an unaudited replay.
+    redeliver_after_repair(&env, &moved, operator, 3, 1).await;
     assert_store_conforms(&restored_admin).await;
 }
 
 #[tokio::test]
 async fn an_in_place_restore_is_detected_as_store_regressed() {
     let env = Env::start().await;
-    let wrapped = Arc::new(WrappedAdmin::new(Arc::new(env.relay_admin().await)));
+    let wrapped = Arc::new(WrappedStore::new(Arc::new(env.store_client().await)));
     let relay = env
         .relay_with(RelayOverrides {
-            admin: Some(wrapped.clone()),
+            store: Some(wrapped.clone()),
             ..RelayOverrides::default()
         })
         .await;
@@ -781,36 +866,49 @@ async fn an_in_place_restore_is_detected_as_store_regressed() {
         json!(0),
         "no claims"
     );
+    // The relay reported its acknowledged head; the Store re-checked it and
+    // entered recovery mode (reason regression).
     let reports = wrapped.reports.lock().unwrap().clone();
     assert!(
-        !reports.is_empty() && reports.iter().all(|(seq, _)| *seq == acked),
+        !reports.is_empty() && reports.iter().all(|identity| identity.seq == acked),
         "{reports:?}"
+    );
+    let status = wrapped.store_status().await.expect("status");
+    assert!(status.recovery_mode && status.recovery_pending);
+    assert_eq!(
+        status.recovery_pending_reason.as_deref(),
+        Some("regression")
     );
     let report = health(&env.worker.pool, wrapped.clone(), HealthOptions::default())
         .await
         .expect("health");
-    assert_eq!(report["stored"]["gate"], json!("store_regressed"));
-    assert!(
-        report["alarms"]
-            .as_array()
-            .expect("alarms")
-            .contains(&json!("store_regressed"))
-    );
-    // Sticky: still closed while the epoch is unchanged.
+    assert_eq!(report["stored"]["gate"], json!("store_recovery_required"));
+    assert_eq!(report["stored"]["recovery_pending"], json!(true));
+    // Sticky: still closed while the epoch is unchanged, and only one
+    // report per epoch.
     cycles(&relay, 3).await;
+    assert_eq!(relay.breaker.gate(), Gate::Regressed);
     assert_eq!(env.delivery(late.event_id).await["attempt_count"], json!(0));
+    assert_eq!(wrapped.reports.lock().unwrap().len(), reports.len());
 
     exec(&env.store_admin, PRIVILEGES_SQL).await;
     let maintainer = AuditAdmin::connect(store_pool(&env, &env.maintainer, STORE_DB).await)
         .await
         .expect("maintainer");
     let started = maintainer
-        .begin_recovery_epoch(&c1, acked)
+        .begin_recovery_epoch(Some(&c1), Some(acked))
         .await
         .expect("epoch after regression");
     assert_eq!(started.new_epoch, 2);
+    assert_eq!(started.classification, "regression");
+    let evidence = &env.controls("audit.recovery.epoch_started").await[0].1;
+    assert_eq!(evidence["regression_reported_seq"], json!(acked));
+    assert_eq!(
+        evidence["regression_reported_by"],
+        json!(env.relay_store.role)
+    );
     drive(&relay, CONVERGE, || is_delivered(&env, late.event_id)).await;
     assert_eq!(relay.breaker.gate(), Gate::Ok);
-    redeliver_after_repair(&env, &relay, Arc::new(env.operator_admin().await), 2).await;
+    redeliver_after_repair(&env, &relay, Arc::new(env.operator_client().await), 2, 0).await;
     assert_store_conforms(&env.store_admin).await;
 }

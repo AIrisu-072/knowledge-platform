@@ -9,18 +9,23 @@
 //! is synthetic.
 #![allow(dead_code)]
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use audit_core::port::BoxFuture;
-use audit_core::{AuditEnvelope, AuditStore, IngestReceipt, Origin, StoreError, StoreStatus};
+use audit_core::{
+    AuditEnvelope, AuditStore, ControlReceipt, ControlReceiptRow, IngestReceipt, IngestRow, Origin,
+    OutageCode, ProbeExpectation, ReceiptIdentity, ReceiptRow, RelayControl, StoreError,
+    StoreState, StoreStatus,
+};
 use audit_relay::breaker::BreakerConfig;
 use audit_relay::handler::{HandlerConfig, Projector};
 use audit_relay::relay::{Relay, RelayParts};
 use audit_relay::source::RelayPolicy;
-use audit_relay::store_admin::{PgStoreAdmin, StoreAdmin};
-use audit_store_postgres::admin::{AuditAdmin, ControlReceipt, Receipt, StoreStatusRow};
-use audit_store_postgres::{AdminError, PostgresAuditStore};
+use audit_relay::store::{LostRange, RelayStore, StoreStatusRow};
+use audit_store_postgres::PostgresAuditStore;
+use audit_store_postgres::admin::AuditAdmin;
 use outbox_delivery::DeliveryConfig;
 use serde_json::{Value, json};
 use sqlx::postgres::PgPoolOptions;
@@ -35,6 +40,16 @@ pub const ISSUER: &str = "synthetic-idp";
 pub const DOC_DB: &str = "document_test";
 pub const STORE_DB: &str = "audit_store_test";
 pub const SOURCE: &str = "urn:knowledge-platform:document-platform";
+pub const SOURCE_FORMAT: &str = "document-audit-outbox-v0";
+
+/// Store roles of the relay service login (design §10.1).
+pub const RELAY_SERVICE_ROLES: [&str; 3] = [
+    "audit_store_ingest",
+    "audit_store_relay_control",
+    "audit_store_reconciler",
+];
+/// Store roles of the relay operator login: never ingest.
+pub const RELAY_OPERATOR_ROLES: [&str; 2] = ["audit_store_relay_control", "audit_store_reconciler"];
 
 pub async fn connect_with_retry(url: &str, max: u32) -> PgPool {
     let mut last = None;
@@ -190,7 +205,8 @@ pub struct Env {
     /// Document logins.
     pub worker: Login,
     pub operator: Login,
-    /// Store logins.
+    /// Store logins: the relay service (ingest + relay_control +
+    /// reconciler) and the relay operator (relay_control + reconciler).
     pub relay_store: Login,
     pub operator_store: Login,
     pub verifier: Login,
@@ -234,20 +250,13 @@ impl Env {
             &["audit_store_admin"],
         )
         .await;
-        let relay_store = store_login(
-            &cluster,
-            &store_admin,
-            "relay_svc",
-            &["audit_store_ingest", "audit_store_relay_control"],
-        )
-        .await;
-        // Transitional: until the Store's audit_store_reconciler role lands,
-        // the operator's Store login reads receipts through audit_store_ingest.
+        let relay_store =
+            store_login(&cluster, &store_admin, "relay_svc", &RELAY_SERVICE_ROLES).await;
         let operator_store = store_login(
             &cluster,
             &store_admin,
             "operator_store",
-            &["audit_store_relay_control", "audit_store_ingest"],
+            &RELAY_OPERATOR_ROLES,
         )
         .await;
         let verifier = store_login(
@@ -319,20 +328,14 @@ impl Env {
             .expect("relay store session")
     }
 
-    pub async fn relay_admin(&self) -> PgStoreAdmin {
-        PgStoreAdmin::new(
-            AuditAdmin::connect(self.relay_store.pool.clone())
-                .await
-                .expect("relay admin session"),
+    /// The relay operator's Store client (reconcile, replay, health).
+    pub async fn operator_client(&self) -> PostgresAuditStore {
+        PostgresAuditStore::new(
+            self.operator_store.pool.clone(),
+            Duration::from_millis(1_500),
         )
-    }
-
-    pub async fn operator_admin(&self) -> PgStoreAdmin {
-        PgStoreAdmin::new(
-            AuditAdmin::connect(self.operator_store.pool.clone())
-                .await
-                .expect("operator admin session"),
-        )
+        .await
+        .expect("operator store session")
     }
 
     /// A relay over the worker login and the relay Store login.
@@ -345,14 +348,9 @@ impl Env {
             Some(store) => store,
             None => Arc::new(self.store_client().await),
         };
-        let admin: Arc<dyn StoreAdmin> = match overrides.admin {
-            Some(admin) => admin,
-            None => Arc::new(self.relay_admin().await),
-        };
         Relay::assemble(RelayParts {
             source: overrides.source.unwrap_or_else(|| self.worker.pool.clone()),
             store,
-            admin,
             delivery: overrides.delivery.unwrap_or_else(test_delivery),
             handler: test_handler(),
             breaker: test_breaker(),
@@ -490,7 +488,6 @@ pub async fn store_login(
 #[derive(Default)]
 pub struct RelayOverrides {
     pub store: Option<Arc<dyn AuditStore>>,
-    pub admin: Option<Arc<dyn StoreAdmin>>,
     pub source: Option<PgPool>,
     pub delivery: Option<DeliveryConfig>,
     pub policy: Option<RelayPolicy>,
@@ -798,24 +795,30 @@ pub async fn assert_store_conforms(pool: &PgPool) -> usize {
 type IngestHook =
     Box<dyn Fn(Uuid, &Result<IngestReceipt, StoreError>) -> Option<StoreError> + Send + Sync>;
 
-/// Wraps the real Store: optional probe bypass and an ingest hook that may
-/// replace the real result (e.g. commit, then report an outage).
+/// Wraps the real Store: optional probe bypass, an ingest hook that may
+/// replace the real result (e.g. commit, then report an outage), failing
+/// control recording, and a log of regression reports (forwarded to the
+/// real Store).
 pub struct WrappedStore {
-    pub inner: Arc<dyn AuditStore>,
+    pub inner: Arc<dyn RelayStore>,
     pub bypass_probe: bool,
     pub fail_before: Mutex<Vec<(Uuid, StoreError)>>,
     pub hook: Option<IngestHook>,
     pub calls: Mutex<Vec<Uuid>>,
+    pub fail_control: AtomicBool,
+    pub reports: Mutex<Vec<ReceiptIdentity>>,
 }
 
 impl WrappedStore {
-    pub fn new(inner: Arc<dyn AuditStore>) -> Self {
+    pub fn new(inner: Arc<dyn RelayStore>) -> Self {
         Self {
             inner,
             bypass_probe: false,
             fail_before: Mutex::new(Vec::new()),
             hook: None,
             calls: Mutex::new(Vec::new()),
+            fail_control: AtomicBool::new(false),
+            reports: Mutex::new(Vec::new()),
         }
     }
 
@@ -857,44 +860,29 @@ impl AuditStore for WrappedStore {
         })
     }
 
-    fn probe(&self) -> BoxFuture<'_, Result<StoreStatus, StoreError>> {
+    fn probe<'a>(
+        &'a self,
+        expected: &'a ProbeExpectation,
+    ) -> BoxFuture<'a, Result<StoreStatus, StoreError>> {
         Box::pin(async move {
             if self.bypass_probe {
                 return Ok(StoreStatus {
                     head_seq: i64::MAX,
                     recovery_epoch: 1,
-                    writable: true,
+                    state: StoreState::Operational,
+                    missing_types: Vec::new(),
+                    regression_detected: false,
+                    last_verified_seq: None,
                 });
             }
-            self.inner.probe().await
+            self.inner.probe(expected).await
         })
     }
-}
 
-/// Wraps the real Store admin: records regression reports (the Store's
-/// report_regression is not deployed in this tree) and can fail control
-/// recording.
-pub struct WrappedAdmin {
-    pub inner: Arc<dyn StoreAdmin>,
-    pub reports: Mutex<Vec<(i64, Uuid)>>,
-    pub fail_control: std::sync::atomic::AtomicBool,
-}
-
-impl WrappedAdmin {
-    pub fn new(inner: Arc<dyn StoreAdmin>) -> Self {
-        Self {
-            inner,
-            reports: Mutex::new(Vec::new()),
-            fail_control: std::sync::atomic::AtomicBool::new(false),
-        }
-    }
-}
-
-impl StoreAdmin for WrappedAdmin {
     fn lookup_receipts<'a>(
         &'a self,
         event_ids: &'a [Uuid],
-    ) -> BoxFuture<'a, Result<Vec<Receipt>, AdminError>> {
+    ) -> BoxFuture<'a, Result<Vec<ReceiptRow>, StoreError>> {
         self.inner.lookup_receipts(event_ids)
     }
 
@@ -902,49 +890,139 @@ impl StoreAdmin for WrappedAdmin {
         &'a self,
         source: &'a str,
         after_seq: i64,
-        limit: i32,
-    ) -> BoxFuture<'a, Result<Vec<Receipt>, AdminError>> {
+        limit: u32,
+    ) -> BoxFuture<'a, Result<Vec<ReceiptRow>, StoreError>> {
         self.inner.list_source_receipts(source, after_seq, limit)
     }
 
     fn lookup_control_receipts<'a>(
         &'a self,
         seqs: &'a [i64],
-    ) -> BoxFuture<'a, Result<Vec<ControlReceipt>, AdminError>> {
+    ) -> BoxFuture<'a, Result<Vec<ControlReceiptRow>, StoreError>> {
         self.inner.lookup_control_receipts(seqs)
     }
 
     fn record_relay_control<'a>(
         &'a self,
-        event_type: &'a str,
-        event_id: Uuid,
-        code: &'a str,
-        counts: Option<&'a Value>,
-    ) -> BoxFuture<'a, Result<i64, AdminError>> {
-        if self.fail_control.load(std::sync::atomic::Ordering::SeqCst) {
-            return Box::pin(async {
-                Err(AdminError::Unavailable {
-                    code: audit_core::OutageCode::Connection,
-                })
-            });
+        control: &'a RelayControl,
+    ) -> BoxFuture<'a, Result<ControlReceipt, StoreError>> {
+        if self.fail_control.load(Ordering::SeqCst) {
+            return Box::pin(async { Err(StoreError::outage(OutageCode::Connection)) });
         }
-        self.inner
-            .record_relay_control(event_type, event_id, code, counts)
-    }
-
-    fn store_status(&self) -> BoxFuture<'_, Result<StoreStatusRow, AdminError>> {
-        self.inner.store_status()
+        self.inner.record_relay_control(control)
     }
 
     fn report_regression<'a>(
         &'a self,
-        seq: i64,
-        event_id: Uuid,
-        _envelope_digest: &'a [u8; 32],
-    ) -> BoxFuture<'a, Result<(), AdminError>> {
+        identity: &'a ReceiptIdentity,
+    ) -> BoxFuture<'a, Result<(), StoreError>> {
+        self.reports.lock().unwrap().push(*identity);
+        self.inner.report_regression(identity)
+    }
+}
+
+impl RelayStore for WrappedStore {
+    fn store_status(&self) -> BoxFuture<'_, Result<StoreStatusRow, StoreError>> {
+        self.inner.store_status()
+    }
+
+    fn lookup_lost_ranges(&self) -> BoxFuture<'_, Result<Vec<LostRange>, StoreError>> {
+        self.inner.lookup_lost_ranges()
+    }
+}
+
+/// The relay of a newer deploy: ingests through `audit_store.ingest` with
+/// `data.provenance.adapter_version` rewritten to a version this audit-core
+/// does not know (an `AuditEnvelope` can only carry the catalog's version).
+/// Everything else goes to the real Store.
+pub struct ReprojectingStore {
+    pub inner: Arc<PostgresAuditStore>,
+    pub adapter_version: i32,
+}
+
+impl AuditStore for ReprojectingStore {
+    fn ingest<'a>(
+        &'a self,
+        envelope: &'a AuditEnvelope,
+    ) -> BoxFuture<'a, Result<IngestReceipt, StoreError>> {
         Box::pin(async move {
-            self.reports.lock().unwrap().push((seq, event_id));
-            Ok(())
+            let mut value = envelope.as_value().clone();
+            value["data"]["provenance"]["adapter_version"] = json!(self.adapter_version);
+            let row = sqlx::query(
+                "SELECT status, seq, envelope_digest, adapter_version, code \
+                 FROM audit_store.ingest($1::text::jsonb)",
+            )
+            .bind(value.to_string())
+            .fetch_one(self.inner.pool())
+            .await
+            .map_err(|error| audit_store_postgres::classify_sqlx_error(&error))?;
+            IngestRow {
+                status: row.get("status"),
+                seq: row.get("seq"),
+                envelope_digest: row.get("envelope_digest"),
+                adapter_version: row.get("adapter_version"),
+                code: row.get("code"),
+            }
+            .into_result()
         })
     }
+
+    fn probe<'a>(
+        &'a self,
+        expected: &'a ProbeExpectation,
+    ) -> BoxFuture<'a, Result<StoreStatus, StoreError>> {
+        self.inner.probe(expected)
+    }
+
+    fn lookup_receipts<'a>(
+        &'a self,
+        event_ids: &'a [Uuid],
+    ) -> BoxFuture<'a, Result<Vec<ReceiptRow>, StoreError>> {
+        self.inner.lookup_receipts(event_ids)
+    }
+
+    fn list_source_receipts<'a>(
+        &'a self,
+        source: &'a str,
+        after_seq: i64,
+        limit: u32,
+    ) -> BoxFuture<'a, Result<Vec<ReceiptRow>, StoreError>> {
+        self.inner.list_source_receipts(source, after_seq, limit)
+    }
+
+    fn lookup_control_receipts<'a>(
+        &'a self,
+        seqs: &'a [i64],
+    ) -> BoxFuture<'a, Result<Vec<ControlReceiptRow>, StoreError>> {
+        self.inner.lookup_control_receipts(seqs)
+    }
+
+    fn record_relay_control<'a>(
+        &'a self,
+        control: &'a RelayControl,
+    ) -> BoxFuture<'a, Result<ControlReceipt, StoreError>> {
+        self.inner.record_relay_control(control)
+    }
+
+    fn report_regression<'a>(
+        &'a self,
+        identity: &'a ReceiptIdentity,
+    ) -> BoxFuture<'a, Result<(), StoreError>> {
+        self.inner.report_regression(identity)
+    }
+}
+
+/// Registers an adapter version of one Document type in the Store (what a
+/// Store migration does).
+pub async fn register_type(store_admin: &PgPool, event_type: &str, adapter_version: i32) {
+    exec(
+        store_admin,
+        &format!(
+            "SET audit_store.write_context = 'migration'; \
+             INSERT INTO audit_store.registered_types VALUES \
+                 ('{SOURCE}', '{event_type}', {adapter_version}, '{SOURCE_FORMAT}'); \
+             RESET audit_store.write_context;"
+        ),
+    )
+    .await;
 }

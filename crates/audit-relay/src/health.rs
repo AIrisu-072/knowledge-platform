@@ -2,7 +2,9 @@
 //! kinds of evidence apart (design §1.7):
 //! - produced: staged rows and their registration,
 //! - delivered: acknowledged deliveries and the queue,
-//! - stored: the Store head and gate,
+//! - stored: the Store head and gate (recovery, posture, regression of the
+//!   acknowledged head, and catalog skew: types the relay's catalog expects
+//!   that the Store has not registered, `store_catalog_skew`),
 //! - verified: the last origin=store `audit.integrity.verified`.
 //!
 //! Labels are fixed codes; no principal, resource or payload appears.
@@ -10,17 +12,17 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use audit_core::DocumentStagingProjection;
 use audit_core::codes::RejectionCode;
+use audit_core::{DocumentStagingProjection, OutageCode};
 use serde_json::{Value, json};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
-use crate::breaker::{Regression, acked_head, check_regression};
+use crate::breaker::{acked_head, expectation};
 use crate::handler::CATALOG_SKEW;
-use crate::reconcile::Reconciler;
+use crate::reconcile::{Reconciler, alarms as reconcile_alarms, counts_json};
 use crate::session::posture;
-use crate::store_admin::{StoreAdmin, admin_outage_code};
+use crate::store::{RelayStore, StoreStatusRow, outage_of};
 
 /// What the health report includes beyond the defaults.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -89,10 +91,51 @@ fn count(value: &Value, key: &str) -> i64 {
     value[key].as_i64().unwrap_or(0)
 }
 
+/// The Store gate for health: recovery, posture, then the identity of the
+/// acknowledged head of the current epoch (reconciler lookups).
+async fn store_gate(
+    source: &PgPool,
+    store: &dyn RelayStore,
+    status: &StoreStatusRow,
+) -> Result<String, HealthError> {
+    if status.recovery_mode {
+        return Ok(OutageCode::RecoveryRequired.as_str().to_owned());
+    }
+    if !status.posture_ok {
+        return Ok(OutageCode::PostureInvalid.as_str().to_owned());
+    }
+    let Some(acked) = acked_head(source, status.recovery_epoch)
+        .await
+        .map_err(source_error)?
+    else {
+        return Ok("ok".to_owned());
+    };
+    Ok(
+        match store
+            .lookup_receipts(std::slice::from_ref(&acked.event_id))
+            .await
+        {
+            Ok(rows) if acked.identity().is_confirmed_by(&rows) => "ok".to_owned(),
+            Ok(_) => OutageCode::Regressed.as_str().to_owned(),
+            Err(error) => outage_of(&error).as_str().to_owned(),
+        },
+    )
+}
+
+/// Expected catalog types the Store has not registered (`None` when the
+/// login cannot probe, e.g. an operator login without the ingest role).
+async fn catalog_skew(store: &dyn RelayStore) -> Option<Vec<String>> {
+    store
+        .probe(&expectation(None))
+        .await
+        .ok()
+        .map(|status| status.missing_types)
+}
+
 /// Builds the health JSON.
 pub async fn health(
     source: &PgPool,
-    admin: Arc<dyn StoreAdmin>,
+    store: Arc<dyn RelayStore>,
     options: HealthOptions,
 ) -> Result<Value, HealthError> {
     let status: Value = sqlx::query_scalar("SELECT audit_relay.status()")
@@ -102,44 +145,36 @@ pub async fn health(
     let violations = posture(source).await.map_err(source_error)?;
     let mut alarms: Vec<String> = Vec::new();
 
-    let store = admin.store_status().await;
-    let stored = match &store {
-        Ok(store) => {
-            let gate = if store.recovery_mode {
-                "store_recovery_required".to_owned()
-            } else if !store.posture_ok {
-                "store_posture_invalid".to_owned()
-            } else {
-                match acked_head(source, store.recovery_epoch)
-                    .await
-                    .map_err(source_error)?
-                {
-                    None => "ok".to_owned(),
-                    Some(acked) => {
-                        match check_regression(admin.as_ref(), store.head_seq, &acked).await {
-                            Regression::Intact => "ok".to_owned(),
-                            Regression::Regressed => "store_regressed".to_owned(),
-                            Regression::Unavailable(code) => code.as_str().to_owned(),
-                        }
-                    }
-                }
-            };
+    let store_status = store.store_status().await;
+    let skew = catalog_skew(store.as_ref()).await;
+    if skew.as_ref().is_some_and(|missing| !missing.is_empty()) {
+        alarms.push("store_catalog_skew".into());
+    }
+    let stored = match &store_status {
+        Ok(row) => {
+            let gate = store_gate(source, store.as_ref(), row).await?;
             json!({
                 "available": gate == "ok",
                 "gate": gate,
-                "head_seq": store.head_seq,
-                "recovery_epoch": store.recovery_epoch,
-                "recovery_mode": store.recovery_mode,
-                "posture_ok": store.posture_ok,
+                "head_seq": row.head_seq,
+                "recovery_epoch": row.recovery_epoch,
+                "recovery_mode": row.recovery_mode,
+                "recovery_pending": row.recovery_pending,
+                "access_reapply_pending": row.access_reapply_pending,
+                "posture_ok": row.posture_ok,
+                "missing_types": skew,
             })
         }
         Err(error) => json!({
             "available": false,
-            "gate": admin_outage_code(error),
+            "gate": outage_of(error).as_str(),
             "head_seq": null,
             "recovery_epoch": null,
             "recovery_mode": null,
+            "recovery_pending": null,
+            "access_reapply_pending": null,
             "posture_ok": null,
+            "missing_types": skew,
         }),
     };
     let gate = stored["gate"].as_str().unwrap_or("unknown").to_owned();
@@ -149,7 +184,7 @@ pub async fn health(
             _ => "store_unavailable".to_owned(),
         });
     }
-    let verified = match &store {
+    let verified = match &store_status {
         Ok(store) => json!({
             "last_verified_seq": store.last_verified_seq,
             "last_verified_at": store.last_verified_at,
@@ -161,7 +196,7 @@ pub async fn health(
             "unverified_events": null,
         }),
     };
-    if let Ok(store) = &store
+    if let Ok(store) = &store_status
         && store
             .last_verified_outcome
             .as_deref()
@@ -202,19 +237,19 @@ pub async fn health(
         Value::Null
     };
     let reconcile_value = if options.reconcile {
-        match Reconciler::new(source.clone(), admin.clone())
+        match Reconciler::new(source.clone(), store.clone())
             .classify()
             .await
         {
             Ok(classification) => {
-                for alarm in classification.counts.alarms() {
+                for alarm in reconcile_alarms(&classification.counts) {
                     if alarm != "unregistered" {
                         alarms.push(alarm.to_owned());
                     }
                 }
                 json!({
                     "watermark": classification.watermark,
-                    "counts": classification.counts,
+                    "counts": counts_json(&classification.counts),
                 })
             }
             Err(_) => {
