@@ -110,6 +110,8 @@ pub struct DurableDocumentReadModel {
     pool: PgPool,
     lexical_root: PathBuf,
     source: DiscoverableSource,
+    /// Whether loads keep the Units for Vector hit resolution.
+    vector_units: bool,
     loaded: RwLock<Option<Arc<LoadedGeneration>>>,
     /// The key being loaded and the outcome of its load task. The load runs
     /// detached, so a request that gives up (e.g. at its operation deadline)
@@ -125,18 +127,29 @@ impl DurableDocumentReadModel {
             pool,
             lexical_root: lexical_root.into(),
             source,
+            vector_units: true,
             loaded: RwLock::new(None),
             loading: Mutex::new(None),
         }
     }
 
+    /// For a host without Vector retrieval: loads do not keep a copy of every
+    /// Unit, and a Vector hit never resolves to a current Unit.
+    pub fn without_vector_units(mut self) -> Self {
+        self.vector_units = false;
+        self
+    }
+
     /// A model over the same Source, for a detached load task.
     fn detached(&self) -> Self {
-        Self::new(
-            self.pool.clone(),
-            self.lexical_root.clone(),
-            self.source.clone(),
-        )
+        Self {
+            vector_units: self.vector_units,
+            ..Self::new(
+                self.pool.clone(),
+                self.lexical_root.clone(),
+                self.source.clone(),
+            )
+        }
     }
 
     async fn current_key(&self) -> Result<Option<ProjectionGenerationKey>, DurableReadError> {
@@ -251,6 +264,13 @@ impl DurableDocumentReadModel {
             .restore(&manifest)
             .await
             .map_err(|error| store_error("payload restore", error))?;
+        // Release the assembled Units before the Graph and lexical loads.
+        let vector_units = Arc::new(if self.vector_units {
+            crate::vector_runtime::vector_units(key, &unit_manifest)
+        } else {
+            Default::default()
+        });
+        drop(unit_manifest);
 
         // Structural owners come from the verified Graph rows, never RAM.
         let (_, records, _) = PostgresGraphStore::new(self.pool.clone())
@@ -313,7 +333,7 @@ impl DurableDocumentReadModel {
             store,
             lexical,
             graph,
-            vector_units: Arc::new(crate::vector_runtime::vector_units(key, &unit_manifest)),
+            vector_units,
         })
     }
 }
