@@ -131,11 +131,15 @@ async fn four_routes_follow_the_verified_durable_current_and_refuse_drift() {
     let host = Host::new();
     host.grants.grant("tenant-a", "editor", durable.source_id);
     host.login("editor-token", "tenant-a", "editor");
-    let model = Arc::new(DurableDocumentReadModel::new(
-        durable.pool.clone(),
-        &durable.lexical_root,
-        durable.source(),
-    ));
+    // No Vector retrieval: the generation is restored without its Units (T12).
+    let model = Arc::new(
+        DurableDocumentReadModel::new(
+            durable.pool.clone(),
+            &durable.lexical_root,
+            durable.source(),
+        )
+        .without_vector_units(),
+    );
     let ports = Arc::new(DurableDocumentPorts::new(
         model,
         Arc::new(HostDocumentAccess {
