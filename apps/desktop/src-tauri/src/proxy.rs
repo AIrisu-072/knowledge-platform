@@ -187,6 +187,48 @@ pub fn problem(status: StatusCode, detail: &str, app_origin: &str) -> Response<V
     response
 }
 
+/// A `/v1` response is data for the page, never code or a document of the
+/// app's origin: `script-src 'self'` (Tauri always adds `'self'`) would
+/// otherwise run a document original uploaded as JavaScript, with access to
+/// the broker IPC. Only data types keep their type; with `nosniff` anything
+/// else cannot load as script or style, and the sandbox CSP stops it from
+/// rendering as an app-origin page.
+pub fn data_only(headers: &mut HeaderMap) {
+    let essence = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| {
+            value
+                .split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase()
+        });
+    let data = essence.as_deref().is_some_and(|essence| {
+        matches!(
+            essence,
+            "application/json"
+                | "text/plain"
+                | "application/octet-stream"
+                | "image/png"
+                | "image/jpeg"
+                | "image/gif"
+                | "image/webp"
+        ) || (essence.starts_with("application/") && essence.ends_with("+json"))
+    });
+    if !data {
+        headers.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/octet-stream"),
+        );
+    }
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static("sandbox; default-src 'none'"),
+    );
+}
+
 /// The answer for every `/v1` request when no usable backend is configured.
 pub fn unconfigured(error: OriginError, app_origin: &str) -> Response<Vec<u8>> {
     let detail = match error {
@@ -359,6 +401,7 @@ impl Proxy {
         let mut response = Response::new(bytes);
         *response.status_mut() = status;
         *response.headers_mut() = headers;
+        data_only(response.headers_mut());
         secure_headers(response.headers_mut(), app_origin);
         response
     }
@@ -584,6 +627,54 @@ mod tests {
         for response in [&missing, &wrong, &invalid] {
             assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         }
+    }
+
+    #[test]
+    fn api_responses_never_become_app_origin_code_or_documents() {
+        let typed = |value: &'static str| {
+            let mut headers = HeaderMap::new();
+            headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(value));
+            data_only(&mut headers);
+            headers
+        };
+        // A document original uploaded as script/markup/style is served as bytes.
+        for active in [
+            "text/javascript",
+            "application/javascript; charset=utf-8",
+            "TEXT/JAVASCRIPT",
+            "text/css",
+            "text/html; charset=utf-8",
+            "image/svg+xml",
+            "application/xhtml+xml",
+            "text/xml",
+            "application/wasm",
+            "application/pdf",
+        ] {
+            assert_eq!(
+                typed(active)[header::CONTENT_TYPE],
+                "application/octet-stream",
+                "{active}"
+            );
+        }
+        for data in [
+            "application/json",
+            "application/problem+json",
+            "application/vnd.example+json; charset=utf-8",
+            "text/plain; charset=utf-8",
+            "application/octet-stream",
+            "image/png",
+            "image/jpeg",
+        ] {
+            assert_eq!(typed(data)[header::CONTENT_TYPE], data, "{data}");
+        }
+        let headers = typed("application/json");
+        assert_eq!(
+            headers[header::CONTENT_SECURITY_POLICY],
+            "sandbox; default-src 'none'"
+        );
+        let mut untyped = HeaderMap::new();
+        data_only(&mut untyped);
+        assert_eq!(untyped[header::CONTENT_TYPE], "application/octet-stream");
     }
 
     #[test]

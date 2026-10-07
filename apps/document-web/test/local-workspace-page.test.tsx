@@ -164,6 +164,47 @@ test('a folder listing that fails after a replacement stops showing the old entr
   expect(screen.queryByRole('table', { name: '資料の内容' })).toBeNull();
 });
 
+test('a successful re-open after a failed listing clears the failure', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'readme.txt': 'こんにちは' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await screen.findByRole('table', { name: '資料の内容' });
+  fake.fail('listEntries', new RuntimeFailure('unavailable', 'folder_replaced'));
+  await user.click(screen.getByRole('button', { name: '資料を開く' }));
+  await screen.findByText('フォルダーが移動・削除・置き換えされたため利用できません。解除してから選び直してください。');
+  await user.click(screen.getByRole('button', { name: '資料を開く' }));
+  expect(await screen.findByRole('table', { name: '資料の内容' })).toBeVisible();
+  expect(screen.queryByText('フォルダーが移動・削除・置き換えされたため利用できません。解除してから選び直してください。')).toBeNull();
+});
+
+test('opening the folder again from a subfolder lists only the folder root', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'readme.txt': 'こんにちは', sub: { 'inner.txt': 'inner' } } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await user.click(within(await screen.findByRole('table', { name: '資料の内容' })).getByRole('button', { name: 'sub' }));
+  await screen.findByRole('table', { name: '資料 / subの内容' });
+  const before = fake.callsOf('listEntries').length;
+  await user.click(screen.getByRole('button', { name: '資料を開く' }));
+  await screen.findByRole('table', { name: '資料の内容' });
+  const after = fake.callsOf('listEntries').slice(before).map((call) => (call.args[1] as { locator: string[] }).locator);
+  expect(after).toEqual([[]]);
+});
+
+test('a failed re-list also hides content previewed from the folder', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'readme.txt': 'こんにちは' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await user.click(within(await screen.findByRole('table', { name: '資料の内容' })).getByRole('button', { name: 'readme.txt の内容を表示' }));
+  await screen.findByRole('region', { name: 'readme.txt の内容' });
+  fake.fail('listEntries', new RuntimeFailure('unavailable', 'folder_replaced'));
+  await user.click(screen.getByRole('button', { name: '資料を開く' }));
+  await screen.findByText('フォルダーが移動・削除・置き換えされたため利用できません。解除してから選び直してください。');
+  expect(screen.queryByRole('region', { name: 'readme.txt の内容' })).toBeNull();
+});
+
 test('creating a file keeps input on conflict and replays the same operation after an unknown result', async () => {
   const user = userEvent.setup();
   const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'exists.txt': 'x' } } }] });

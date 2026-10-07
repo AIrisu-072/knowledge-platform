@@ -17,8 +17,16 @@ lockfile only, at these exact versions (owner decision 2026-10-07,
 
 These files are used without modification. Under MPL-2.0 their Source Code
 Form is available from the locations above; the license text is at
-https://mozilla.org/MPL/2.0/. Anyone distributing a built desktop executable
-must keep this notice with it.
+https://mozilla.org/MPL/2.0/.
+
+This file covers only the MPL-2.0 obligations. It is **not** a complete notice
+for a distributed executable: the executable also contains MIT, Apache-2.0,
+Unicode-3.0, BSD-3-Clause and Zlib licensed crates whose licence texts and
+copyright notices must accompany binary copies. No desktop executable is
+distributed today; before the first distribution, generate the full
+third-party licence bundle for the executable's normal dependency graph (as
+`apps/document-mcp/third-party-notices/` does for that artifact) and ship it
+together with this file.
 
 `target-lexicon 0.12.16` (Apache-2.0 WITH LLVM-exception) is a Linux build-time
 dependency only and is not part of the built executable.

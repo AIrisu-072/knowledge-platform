@@ -156,7 +156,9 @@ function WorkspaceList({ workspaces, selected, onSelect, onCreated, blocked }: {
   );
 }
 
-type Browse = { bindingId: string; locator: string[] };
+// `nonce` changes on every 「開く」 so the folder view remounts with fresh state
+// (alerts, preview, pages) and lists the root again.
+type Browse = { bindingId: string; locator: string[]; nonce?: number };
 
 function WorkspaceDetail({ workspace, canPick, onNotice, refresh, blocked }: {
   workspace: LocalWorkspace; canPick: boolean; onNotice: (text: string) => void; refresh: () => Promise<void>; blocked: boolean;
@@ -266,11 +268,7 @@ function WorkspaceDetail({ workspace, canPick, onNotice, refresh, blocked }: {
             <span className={styles.bindingLabel}>{binding.label}</span>
             <span className={styles.source}>{binding.source === 'managed' ? '自動で作成した管理フォルダー' : '追加したフォルダー'}{binding.available ? '' : '・利用できません'}</span>
             <button type="button" className={workspaceStyles.secondaryButton} aria-label={`${binding.label}を開く`} disabled={blocked}
-              onClick={() => {
-                setBrowse({ bindingId: binding.bindingId, locator: [] });
-                // Opening again re-lists, so a folder moved or replaced outside the app is noticed.
-                void client.invalidateQueries({ queryKey: ['local-runtime', 'entries', workspace.workspaceId] });
-              }}>開く</button>
+              onClick={() => setBrowse({ bindingId: binding.bindingId, locator: [], nonce: (browse?.nonce ?? 0) + 1 })}>開く</button>
             {binding.source === 'explicit' && (
               <button type="button" className={workspaceStyles.secondaryButton} aria-label={`${binding.label}を解除`}
                 disabled={blocked && unresolvedDetach?.bindingId !== binding.bindingId}
@@ -303,8 +301,8 @@ function WorkspaceDetail({ workspace, canPick, onNotice, refresh, blocked }: {
           </div>
         </Dialog>
       </Modal>
-      {browse && browsed && <FolderBrowser key={`${browse.bindingId}/${browse.locator.join('/')}`} workspace={workspace} binding={browsed} locator={browse.locator}
-        onNavigate={(locator) => setBrowse({ bindingId: browse.bindingId, locator })} onNotice={onNotice} blocked={blocked} />}
+      {browse && browsed && <FolderBrowser key={`${browse.bindingId}/${browse.locator.join('/')}/${browse.nonce ?? 0}`} workspace={workspace} binding={browsed} locator={browse.locator}
+        onNavigate={(locator) => setBrowse({ bindingId: browse.bindingId, locator, nonce: browse.nonce })} onNotice={onNotice} blocked={blocked} />}
     </section>
   );
 }
@@ -330,10 +328,17 @@ function FolderBrowser({ workspace, binding, locator, onNavigate, onNotice, bloc
     const error = entries.error;
     if (!error) return;
     setStickyProblem(error);
+    // Content previewed from a folder that can no longer be listed is not trustworthy.
+    setPreview(undefined);
     if (isRuntimeFailure(error) && (error.code === 'stale_context' || error.code === 'not_found' || error.reason === 'folder_replaced')) {
       void client.invalidateQueries({ queryKey: localRuntimeKeys.workspaces });
     }
   }, [client, entries.error]);
+
+  // A listing that succeeds again ends the earlier failure.
+  useEffect(() => {
+    if (entries.isSuccess && !entries.isFetching) setStickyProblem(undefined);
+  }, [entries.isSuccess, entries.isFetching, entries.dataUpdatedAt]);
 
   const create = useRuntimeOperation(
     `ws:${workspace.workspaceId}:file:${binding.bindingId}:${locator.join('/')}`,
