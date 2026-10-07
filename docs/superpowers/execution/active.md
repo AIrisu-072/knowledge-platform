@@ -1,5 +1,18 @@
 # Active Execution Pointer
 
+## 2026-10-07 08:40 UTC — Organization 複数担当PoC（U1〜U4）完了
+
+- U4は[PR #104](https://github.com/AIrisu-072/knowledge-platform/pull/104)でmain `d92ca6d` へ統合済み（[U4状況](organization-agent-chat-status.md)）。U1〜U4の4単位（複数担当・役割・委任、複数文脈・注意・表示Profile、作業ファイル・Handoff・差戻し後の作業、Agentの構造化結果・Agent Chat）はすべてmainへ統合し、各統合前のexact-head CIと統合後のmain CIで確認済み（U4の統合後CIは本記録のPRで確認する）
+- 合成Identityのみ。本番接続・実データ・サーバー反映・本番Identity方式の選定は行っていない。各単位の実装追補に記録した「新しい判断」は承認済みとして扱わない
+- 未着手の候補（新しいsessionが選ぶ。進捗を会話から再構成しない）：
+  - 提出済み内容のDocument Platformへの昇格（既存Document APIでの明示操作）
+  - ローカルWorkspace（Tauri/native）からの作業ファイル選択（Runtime Contractの読取りhandle→既存の内容登録API）
+  - 作業ファイル・下書き候補・提案の保持期間・削除・orphan回収、保存容量の上限
+  - 実Agent/MCPの接続（[利用手順](../../operations/organization-browser-poc.md#実agentmcpへの接続依頼者向け本pocでは実施しない)の依頼者判断が前提）、Agentへ渡す文脈の追加、工程操作の提案
+- 再開する場合は、最新mainから新しいbranchを作り、該当specと各単位の状況・追補を確認してから始める
+
+---
+
 ## 2026-10-07 08:10 UTC — Organization Agentの構造化結果・Agent Chat・executor adapter境界（U4）
 
 - U3は[PR #102](https://github.com/AIrisu-072/knowledge-platform/pull/102)でmain `3b06421` へ統合済み（[U3状況](organization-work-files-status.md)）。U4の再開先は[状況](organization-agent-chat-status.md)、[実装追補](../specs/2026-10-07-organization-agent-chat-amendment.md)、[小計画](../plans/2026-10-07-organization-agent-chat.md)
