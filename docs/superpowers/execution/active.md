@@ -1,10 +1,23 @@
 # Active Execution Pointer
 
-## 2026-10-07 03:50 UTC — Organization 複数担当・役割・委任（U1）
+## 2026-10-07 04:40 UTC — Organization 複数担当・役割・委任（U1）
 
 - main `d515aa38` を基点に、Organization Clientの固定2名判定を組織単位・役割・正式割当・期限付き委任・担当変更へ一般化する。[状況](organization-multi-principal-status.md)、[実装追補](../specs/2026-10-07-organization-multi-principal-amendment.md)、[小計画](../plans/2026-10-07-organization-multi-principal.md)が再開先
 - PR43受入exact `6103e4d4`（tree `f2e13eee`）がmainの祖先であることと受入記録を確認。Phase0→3の凍結・PR62/67の既存機能を保持し、再実装しない。新しい判断5点は承認済みとして扱わない
-- ローカルでDomain/HTTP/server/GUI1427件・実PostgreSQL試験・既存2名と新6名の実browser受入（PostgreSQL 18.6、system Chromium）が成功。資格は同一headのhosted CIで取る。branch `claude/trusting-knuth-dn5cx4`。次は独立review→Draft PR→exact-head CI→main統合→U2
+- [PR #96](https://github.com/AIrisu-072/knowledge-platform/pull/96)（branch `claude/trusting-knuth-dn5cx4`）。初回独立reviewのNO-GO（差戻し後の閲覧・一覧上限・職務分離ほか）を修正し、再reviewはGO。修正前head `be1a1be` はhosted全job成功（Organization 13 stage）。修正後はローカルで全Rust・実PostgreSQL・GUI1429件・実browser 13 stageが成功
+- main `bba1d6d`（PR97 Folderアクセス設定）を取り込み済み。次はexact-head CI合格→main統合→統合後CI→同名branchを作り直してU2
+
+---
+
+## 2026-10-07 02:31 UTC — 非root Folderアクセス設定
+
+- PR94統合main d515aa38を基点に、通常ツリーで選択・再確認できる非root Folderの既存主体だけを編集する。[状況](folder-access-policy-gui-status.md)と[小計画](../plans/2026-10-07-folder-access-policy-gui.md)が再開先
+- 既存GET/PUT・manageAccess・最終backend認可/OCCを保持。5権限/明示削除/継承切替を保存前に確認し、全主体削除・新主体directory・Root保護意味変更を追加しない。UNKNOWNは固定要求を保持し、自己失権後の403を元操作の失敗へ読み替えない
+- branchはfeat/document-folder-access-policy-20261007。次はTDD・合成fixture・独立review・同機能PR。PR94の日本語本文に最終CI/未取得限界を記録済み、main d515自身の資格は監視中。以下の公開済み履歴は保持する
+
+02:55追補：GUIはUNKNOWN/正規主体/同revision継承変化と同期失効の反例を補修し、最終候補を検証・独立review中。既存原本の遅延保存は同tick反例から既存guardへ限定接続。合成受入2filesは型/純粋81/収集18+5成功、実hosted未取得。main d515の新push全13jobs/13checks・DB36/Folder4・artifact0は確認済みで、導入pinを同機能4docs内で追従した。runtime stdout未取得の境界は保持する。
+
+03:10追補：最終GUI1523/60・schema/型/buildと独立全体/限定再reviewが合格。継承確認欄と比較query失効後の旧Blob復活の2件を反例から補修し、Unicode別主体IDの集合比較も固定した。sourceは33b02f210＋f52af90d、実受入2filesと導入4docsを同機能へ保持。新操作のhostedは未資格で、次は最新base確認→候補固定→Draft/同head CI。
 
 ---
 

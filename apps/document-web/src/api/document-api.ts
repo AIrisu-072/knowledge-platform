@@ -11,6 +11,8 @@ import {
   compareDocumentVersions,
   getDocument,
   getDocumentAccessPolicy,
+  getFolderAccessPolicy,
+  setFolderAccessPolicy,
   getDocumentHistory,
   getDocumentVersion,
   getVersionEditManifest,
@@ -76,6 +78,13 @@ function apiSort(sort: string | undefined): string | undefined {
 }
 
 export const documentApi = {
+  getFolderAccessPolicy(folderId: string): Promise<ModelsAccessPolicyRead> {
+    return payload(getFolderAccessPolicy({ ...data, path: { folderId } }));
+  },
+  setFolderAccessPolicy(folderId: string, body: CommandsPolicyExplicit | CommandsPolicyInherit) {
+    // Preserve the normative wire discriminators despite the generated synthetic union.
+    return payload(setFolderAccessPolicy({ ...data, path: { folderId }, body: body as unknown as CommandsSetAccessPolicy }));
+  },
   moveDocument(documentId: string, body: CommandsMoveDocument) {
     return payload(moveDocument({ ...data, path: { documentId }, body }));
   },

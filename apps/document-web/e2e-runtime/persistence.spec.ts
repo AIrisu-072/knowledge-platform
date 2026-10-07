@@ -1,16 +1,47 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { isDeepStrictEqual } from 'node:util';
-import { BinaryTransportBridge, getDocument, getSession, listDocumentVersions, type ModelsHistory, type VersionList, type VersionDetail, type FileList } from '@knowledge-platform/document-api-client';
+import { BinaryTransportBridge, getDocument, getFolderAccessPolicy, getSession, listDocumentVersions, type ModelsHistory, type VersionList, type VersionDetail, type FileList, type ModelsAccessPolicyRead, type PolicyGrantInput } from '@knowledge-platform/document-api-client';
 import { hash, options, persistedSnapshot, runtime, type PersistedState } from './support';
 import { formatDateTime } from '../src/view-model/date-time';
 
 test('both restarted composition roots retain document/revision/operation IDs and storage hashes', async ({ page, request }) => {
   const context = await runtime();
-  const state = JSON.parse(await readFile(context.statePath, 'utf8')) as PersistedState;
+  const state = JSON.parse(await readFile(context.statePath, 'utf8')) as PersistedState & {
+    folderAccessPolicy: Omit<ModelsAccessPolicyRead, 'effectiveGrants'> & { effectiveGrants: PolicyGrantInput[] };
+  };
   expect(state.documents.map(item => item.key).sort()).toEqual(['c3-consistency', 'c3-diff-recovery', 'c3-dsi-recovery', 'gui-initial', 'pdf', 'regulation']);
   expect((await getSession(options(context.human))).data.principal.principalId).toBe('poc-human');
   expect((await getSession(options(context.agent))).data.principal.principalId).toBe('poc-agent');
+  // 4回のGUI変更後に保存した正規GETと照合する。同一DBのHTTP再起動でありDB再起動ではない。
+  const folderId = context.manifest.folders.shared.folderId;
+  const policy = (await getFolderAccessPolicy({ ...options(context.human), path: { folderId } })).data;
+  const grants = policy.effectiveGrants.map(({ subjectKind, identityProvider, subjectId, actions }) =>
+    ({ subjectKind, identityProvider, subjectId, actions: [...actions].sort() }))
+    .sort((left, right) => JSON.stringify([left.subjectKind, left.identityProvider, left.subjectId])
+      .localeCompare(JSON.stringify([right.subjectKind, right.identityProvider, right.subjectId])));
+  expect({ ...policy, effectiveGrants: grants }).toEqual(state.folderAccessPolicy);
+  expect(policy).toMatchObject({ target: { kind: 'folder', id: folderId }, bindingMode: 'explicit',
+    policyRevision: context.manifest.folders.shared.policy!.result!.resultingRevision + 4, effectiveSource: { kind: 'folder', id: folderId } });
+  await page.goto('/documents?view=published');
+  await page.getByRole('button', { name: 'PoC Shared', exact: true }).click();
+  const folderPolicyResponse = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.origin === context.human && url.pathname === `/v1/folders/${folderId}/access-policy` && response.request().method() === 'GET';
+  });
+  await page.getByRole('button', { name: '選択したフォルダーのアクセス設定', exact: true }).click();
+  const folderPolicyResult = await folderPolicyResponse;
+  expect(folderPolicyResult.status()).toBe(200); expect(await folderPolicyResult.json()).toEqual(policy);
+  const folderPolicyDialog = page.getByRole('dialog', { name: '選択したフォルダーのアクセス設定', exact: true });
+  await expect(folderPolicyDialog.getByRole('combobox', { name: '設定方式', exact: true })).toHaveValue('explicit');
+  for (const grant of grants) {
+    const row = folderPolicyDialog.getByRole('group', { name: `${grant.subjectKind} / ${grant.identityProvider} / ${grant.subjectId}`, exact: true });
+    for (const [action, label] of [['read', '閲覧'], ['readHistory', '履歴閲覧'], ['write', '編集'], ['publish', '公開'], ['administer', 'アクセス管理']] as const) {
+      await expect(row.getByRole('checkbox', { name: label, exact: true })).toBeChecked({ checked: grant.actions.includes(action) });
+    }
+  }
+  await folderPolicyDialog.getByRole('button', { name: 'キャンセル', exact: true }).click();
+  await expect(folderPolicyDialog).toBeHidden();
   for (const { key, snapshot } of state.documents) {
     expect(await persistedSnapshot(context.human, snapshot.documentId)).toEqual(snapshot);
     expect(await persistedSnapshot(context.agent, snapshot.documentId)).toEqual(snapshot);
@@ -147,5 +178,5 @@ test('both restarted composition roots retain document/revision/operation IDs an
   const deniedId = context.manifest.documents.humanOnly!.create!.result!.documentId;
   const denied = await request.get(`${context.agent}/v1/documents/${deniedId}?view=published`);
   expect(denied.status()).toBe(404); expect((await denied.json()).code).toBe('DOCUMENT_NOT_FOUND');
-  await test.info().attach('restart-persistence.json', { body: Buffer.from(JSON.stringify(state, null, 2)), contentType: 'application/json' });
+  await test.info().attach('restart-persistence.json', { body: Buffer.from(JSON.stringify({ documents: state.documents }, null, 2)), contentType: 'application/json' });
 });
