@@ -71,6 +71,15 @@ crate_path = "crates/local-workspace-runtime"
 forbidden_dependencies = ["tokio", "axum", "sqlx", "reqwest", "tauri", "document-server", "organization-server", "work-application", "work-api-http", "search-runtime"]
 forbidden_source_patterns = ["std::process", "Command::new", "tokio::fs", "libc::exec", "libc::system", "libc::fork", "libc::vfork", "libc::posix_spawn", "libc::dlopen"]
 
+[workspace.boundaries.desktop_shell]
+# Tauri v2 shell (separate Cargo workspace): one main window, the single
+# bounded broker IPC command and loopback-only /v1 forwarding. No Tauri plugin
+# (shell/fs/dialog/http/opener/process/updater/sql), process launch, general
+# filesystem, external webview URL, devtools opening or "dangerous" settings.
+crate_path = "apps/desktop/src-tauri"
+forbidden_dependencies = ["tauri-plugin-shell", "tauri-plugin-fs", "tauri-plugin-dialog", "tauri-plugin-http", "tauri-plugin-opener", "tauri-plugin-process", "tauri-plugin-updater", "tauri-plugin-sql", "tokio", "axum", "sqlx", "document-server", "organization-server", "work-application", "work-api-http", "search-runtime"]
+forbidden_source_patterns = ["std::process", "Command::new", "std::fs", "tokio::fs", "WebviewUrl::External", "open_devtools", "dangerous", ".eval("]
+
 [workspace.boundaries.search_core]
 crate_path = "crates/search-core"
 forbidden_dependencies = ["sqlx", "axum", "tokio", "tantivy", "search-tantivy", "reqwest"]

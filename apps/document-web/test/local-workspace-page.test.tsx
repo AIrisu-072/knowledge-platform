@@ -132,6 +132,38 @@ test('browsing lists relative entries, opens directories and previews a bounded 
   expect(await screen.findByRole('table', { name: '資料の内容' })).toBeVisible();
 });
 
+test('opening the folder that is already shown lists it again (sees replacements made outside the app)', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'readme.txt': 'こんにちは' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await screen.findByRole('table', { name: '資料の内容' });
+  const before = fake.callsOf('listEntries').length;
+  await user.click(screen.getByRole('button', { name: '資料を開く' }));
+  await waitFor(() => expect(fake.callsOf('listEntries').length).toBeGreaterThan(before));
+});
+
+test('a desktop whose local runtime could not start says why (another instance holds it)', async () => {
+  const fake = createFakeRuntime();
+  fake.runtime.capabilities = async () => ({ localResources: 'unavailable', nativeDirectoryPicker: 'unavailable', managedWorkspace: 'unavailable', multiWindow: false, sidecar: false });
+  fake.fail('listWorkspaces', new RuntimeFailure('unavailable', 'instance_locked'));
+  renderPage(fake.runtime);
+  expect(await screen.findByText('デスクトップ版が別に起動しています。もう一方を終了してから開き直してください。')).toBeVisible();
+  expect(screen.queryByRole('button', { name: '新しいWorkspace' })).toBeNull();
+});
+
+test('a folder listing that fails after a replacement stops showing the old entries', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'readme.txt': 'こんにちは' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await screen.findByRole('table', { name: '資料の内容' });
+  fake.fail('listEntries', new RuntimeFailure('unavailable', 'folder_replaced'));
+  await user.click(screen.getByRole('button', { name: '資料を開く' }));
+  expect(await screen.findByText('フォルダーが移動・削除・置き換えされたため利用できません。解除してから選び直してください。')).toBeVisible();
+  expect(screen.queryByRole('table', { name: '資料の内容' })).toBeNull();
+});
+
 test('creating a file keeps input on conflict and replays the same operation after an unknown result', async () => {
   const user = userEvent.setup();
   const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'exists.txt': 'x' } } }] });

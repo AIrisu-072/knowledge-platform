@@ -8,6 +8,8 @@ pnpm = "12.4.1"
 "cargo:cargo-deny" = "0.20.2"
 "cargo:cargo-nextest" = "0.9.144"
 "cargo:sqlx-cli" = "0.9.0"
+# Local desktop GUI verification only (mise run desktop:gui:e2e); CI never installs it.
+"cargo:tauri-driver" = "2.1.0"
 "github:gitleaks/gitleaks" = "8.30.1"
 "github:google/osv-scanner" = { version = "2.5.1", slsa_signer_identity = "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0", slsa_signer_issuer = "https://token.actions.githubusercontent.com" }
 "github:anchore/syft" = "1.51.1"
@@ -396,6 +398,31 @@ run = [
   "pnpm --filter @knowledge-platform/document-web build",
   "pnpm --filter @knowledge-platform/document-web exec tsc -p tsconfig.desktop-bridge.json",
   "pnpm --filter @knowledge-platform/document-web exec playwright test -c playwright.desktop-bridge.config.ts",
+]
+
+[tasks."desktop:check"]
+description = "Desktop shell (separate Cargo workspace): format, lint, unit tests and its own dependency policy. Local only; Linux needs WebKitGTK 4.1 dev packages"
+dir = "apps/desktop/src-tauri"
+run = [
+  "cargo fmt --check",
+  "cargo clippy --locked --all-targets -- -D warnings",
+  "cargo test --locked",
+  "cargo deny check",
+]
+
+[tasks."desktop:build"]
+description = "Build the production web UI, then the desktop shell that embeds it (debug build; add --release for a release binary)"
+run = [
+  "pnpm --filter @knowledge-platform/document-web build",
+  "cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml",
+]
+
+[tasks."desktop:gui:e2e"]
+description = "Drive the REAL desktop app GUI (tauri-driver + WebKitWebDriver + Xvfb + xdotool) against a real synthetic backend. Local Linux verification only, not a CI job and not Windows/WebView2 evidence"
+depends = ["desktop:build"]
+run = [
+  "cargo build --locked -p organization-server -p document-semantic-inspection-worker -p document-diff-worker",
+  "node apps/desktop/e2e/run.mjs",
 ]
 
 [tasks."document:poc:runtime"]

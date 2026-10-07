@@ -1,0 +1,76 @@
+// TEST-ONLY: a private Xvfb display and xdotool control of the real native
+// GTK folder dialog that the desktop shell opens (rfd). No window manager.
+import { execFile, spawn } from 'node:child_process';
+import { promisify } from 'node:util';
+import { writeFile } from 'node:fs/promises';
+import { setTimeout as delay } from 'node:timers/promises';
+
+const run = promisify(execFile);
+export const DIALOG_TITLE = '追加するフォルダーを選択';
+
+export async function startXvfb(display) {
+  const child = spawn('Xvfb', [display, '-screen', '0', '1440x900x24', '-nolisten', 'tcp'], { stdio: 'ignore' });
+  const env = { ...process.env, DISPLAY: display, LC_ALL: 'C.UTF-8' };
+  for (let i = 0; i < 100; i++) {
+    if (child.exitCode !== null) throw new Error('Xvfb exited during startup');
+    try { await run('xdotool', ['getdisplaygeometry'], { env }); return { display, env, stop: () => child.kill('SIGTERM') }; } catch { await delay(100); }
+  }
+  child.kill('SIGKILL');
+  throw new Error('Xvfb did not become ready');
+}
+
+export function x11(env) {
+  const xdo = async (...args) => (await run('xdotool', args, { env })).stdout.trim();
+  const tryXdo = (...args) => xdo(...args).catch(() => '');
+  async function windows() {
+    const ids = (await tryXdo('search', '--onlyvisible', '--name', '')).split('\n').filter(Boolean);
+    const named = [];
+    for (const id of ids) named.push({ id, name: await tryXdo('getwindowname', id) });
+    return named;
+  }
+  async function dialog() {
+    return (await windows()).find((window) => window.name === DIALOG_TITLE)?.id;
+  }
+  async function waitDialog(open, timeout = 20_000) {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      const id = await dialog();
+      if (open ? id : !id) return id;
+      await delay(150);
+    }
+    throw new Error(`native folder dialog did not ${open ? 'open' : 'close'}`);
+  }
+  return {
+    windows,
+    dialog,
+    waitDialog,
+    /** Full X screen (includes the native dialog, which WebDriver cannot see). */
+    async screenshot(path) {
+      const { stdout } = await run('import', ['-window', 'root', 'png:-'], { env, encoding: 'buffer', maxBuffer: 64 * 1024 * 1024 });
+      await writeFile(path, stdout);
+    },
+    /** Selects `folder` in the open GTK chooser through its location entry. */
+    async chooseFolder(folder) {
+      const id = await waitDialog(true);
+      await xdo('windowfocus', '--sync', id);
+      // Leave the empty "Recent" view first; there the entry cannot resolve.
+      await xdo('key', '--clearmodifiers', 'alt+Home');
+      await delay(600);
+      await xdo('key', '--clearmodifiers', 'ctrl+l');
+      await delay(300);
+      await xdo('type', '--delay', '25', folder);
+      await delay(500);
+      // Drop GTK's inline completion (it would append a child folder).
+      await xdo('key', 'Delete');
+      await delay(200);
+      await xdo('key', 'Return');
+      await waitDialog(false);
+    },
+    async cancelDialog() {
+      const id = await waitDialog(true);
+      await xdo('windowfocus', '--sync', id);
+      await xdo('key', 'Escape');
+      await waitDialog(false);
+    },
+  };
+}

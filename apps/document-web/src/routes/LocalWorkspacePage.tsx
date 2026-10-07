@@ -25,7 +25,9 @@ export function LocalWorkspacePage() {
   const client = useQueryClient();
   const capabilities = useRuntimeCapabilities();
   const desktop = capabilities.data?.localResources === 'available' && capabilities.data.managedWorkspace === 'available';
-  const workspaces = useLocalWorkspaces(desktop);
+  // On the desktop the list also explains an unavailable runtime (another
+  // instance, unreadable records, unsupported platform) with its typed reason.
+  const workspaces = useLocalWorkspaces(desktop || (capabilities.isSuccess && runtime.kind === 'desktop'));
   const unresolved = useUnresolvedRuntimeOperations();
   const [selectedId, setSelectedId] = useState<string>();
   // An unresolved operation pins its Workspace so its confirmation stays reachable.
@@ -56,7 +58,7 @@ export function LocalWorkspacePage() {
           </p>
         )}
         {desktop && workspaces.isPending && <p className={styles.note}>ローカルWorkspaceを読み込んでいます…</p>}
-        {desktop && workspaces.isError && <Problem error={workspaces.error} />}
+        {workspaces.isError && <Problem error={workspaces.error} />}
         {desktop && unresolved.length > 0 && (
           <p className={styles.note}>結果を確認していない操作があります。「結果を確認」で確定するまで、他のWorkspaceやフォルダーへは移動できません。</p>
         )}
@@ -264,7 +266,11 @@ function WorkspaceDetail({ workspace, canPick, onNotice, refresh, blocked }: {
             <span className={styles.bindingLabel}>{binding.label}</span>
             <span className={styles.source}>{binding.source === 'managed' ? '自動で作成した管理フォルダー' : '追加したフォルダー'}{binding.available ? '' : '・利用できません'}</span>
             <button type="button" className={workspaceStyles.secondaryButton} aria-label={`${binding.label}を開く`} disabled={blocked}
-              onClick={() => setBrowse({ bindingId: binding.bindingId, locator: [] })}>開く</button>
+              onClick={() => {
+                setBrowse({ bindingId: binding.bindingId, locator: [] });
+                // Opening again re-lists, so a folder moved or replaced outside the app is noticed.
+                void client.invalidateQueries({ queryKey: ['local-runtime', 'entries', workspace.workspaceId] });
+              }}>開く</button>
             {binding.source === 'explicit' && (
               <button type="button" className={workspaceStyles.secondaryButton} aria-label={`${binding.label}を解除`}
                 disabled={blocked && unresolvedDetach?.bindingId !== binding.bindingId}
@@ -376,7 +382,7 @@ function FolderBrowser({ workspace, binding, locator, onNavigate, onNotice, bloc
       </div>
       {entries.isPending && <p className={styles.note}>内容を読み込んでいます…</p>}
       <Problem error={entries.isError ? entries.error : stickyProblem} />
-      {entries.data && (
+      {entries.data && !entries.isError && (
         <>
           {entries.data.entries.length === 0
             ? <p className={styles.note}>このフォルダーには表示できる項目がありません。</p>
