@@ -2,6 +2,12 @@
 
 Status: ACTIVE
 
+## 2026-10-07 14:14 UTC — 本番API振分けの実REDと限定補修
+
+- test-only公開head8fd2f57d / tree d0d7ec9cのCI37632618755で、新GET read-stateが実際にread familyへ送られるREDを確認した。Rust job112830522356、contract.rs:182:9の期待management/実readであり、compile失敗ではない。最初のGETで停止したため、後続POST2操作の個別REDを見たとは扱わない
+- その後、本番dispatcherの既存read-state判定へGETを加え、POST read-state/view・resetを同じmanagement familyへ送る数行だけを補修した。各handlerの最終認可・型・body・OCC・業務意味、旧PUTと他route familyの順序は変更しない
+- 最新の製品差分はapi.rsだけ。既存合成契約の37caseと実runtimeを次の同PR通常hostedで確認する。ローカルRustを実行したとは記録せず、新headのGREEN/全画面/再起動はまだ未取得。以前の失敗・ユーザー共有summary・別の開発StrictMode反例は保持する
+
 ## 2026-10-07 13:51 UTC — 実受入の共有診断と本番API振分けの欠落
 
 - 第5公開head671fb237 / tree965ec049のCI37616879956は終端FAIL。Rust1980件、新DB遷移15件・移行・HTTP・fmt/clippy/sqlx等は成功したが、Document実画面は11成功/2失敗/5skipで、後続Agent/再起動は未実施。元の大ログはTransport closedのため、依頼者からbounded summaryの共有を受けて再開した
