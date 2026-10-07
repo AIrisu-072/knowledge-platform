@@ -4,11 +4,11 @@
 use audit_core::catalog::{AUDIT_STORE_SOURCE, DOCUMENT_SOURCE};
 use audit_core::chain::{GENESIS_PREIMAGE, parse_hex32, to_hex};
 use audit_core::{
-    Anchor, ChainVerdict, Checkpoint, CheckpointComparison as Cmp, EpochAttestation,
-    EpochTransition, ExpiredRowEvidence, ExportError, GENESIS, RecoveryClassification,
-    RecoveryRecord, assess_recovery, chain_next, compare_checkpoint, envelope_digest,
-    expired_set_digest, verify_export, verify_export_complete, verify_export_subset,
-    verify_identity_chain,
+    Anchor, ChainIntegrity, ChainVerdict, Checkpoint, CheckpointComparison as Cmp,
+    EpochAttestation, EpochTransition, ExpiredRowEvidence, ExportError, GENESIS,
+    RecoveryClassification, RecoveryRecord, assess_recovery, chain_next, compare_checkpoint,
+    envelope_digest, expired_set_digest, verify_export, verify_export_complete,
+    verify_export_subset, verify_identity_chain, verify_identity_chain_complete,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -1247,7 +1247,8 @@ fn records_and_checkpoints_before_the_anchor_are_neutral() {
         assess_recovery(&tail, &[cp(2, 1)], &[]).verdict,
         ChainVerdict::NoCheckpoint
     );
-    // A record of a later epoch than the anchor's must match the export.
+    // A record of a transition after the verified head (it leaves the
+    // head's epoch 2) cannot be on this path: neutral, listed for review.
     let later = RecoveryRecord {
         old_epoch: 2,
         new_epoch: 3,
@@ -1256,8 +1257,133 @@ fn records_and_checkpoints_before_the_anchor_are_neutral() {
         lost_upper: 7,
     };
     let assessment = assess_recovery(&tail, &[cp(8, 2)], &[later]);
+    assert_eq!(assessment.verdict, ChainVerdict::Authentic);
+    assert!(assessment.unmatched_records.is_empty());
+    assert_eq!(assessment.records_after_head, vec![later]);
+    // A record of a transition the path does cross must match it: the full
+    // export crosses 1 -> 2 at seq 4.
+    let wrong_head = RecoveryRecord {
+        restored_head_seq: 2,
+        restored_head_chain: built.chains[1],
+        lost_upper: 3,
+        ..record
+    };
+    let assessment = assess_recovery(&full, &[cp(8, 2)], &[wrong_head, later]);
     assert_eq!(assessment.verdict, ChainVerdict::UnverifiedRecovery);
-    assert_eq!(assessment.unmatched_records, vec![later]);
+    assert_eq!(assessment.unmatched_records, vec![wrong_head]);
+    assert_eq!(assessment.records_after_head, vec![later]);
+}
+
+#[test]
+fn checkpoints_at_the_anchor_are_neutral() {
+    let (built, _) = moved_history();
+    let cp = |seq: i64, epoch: i64| checkpoint_at(&built, 1, seq, epoch);
+    let anchor = cp(6, 2);
+    let tail =
+        verify_export(&text(&built.lines[6..]), Anchor::Checkpoint(anchor)).expect("tail verifies");
+    // The anchor itself as a checkpoint confirms nothing new: the factual
+    // comparison is kept, the verdict is neutral.
+    let assessment = assess_recovery(&tail, &[anchor], &[]);
+    assert_eq!(compare_checkpoint(&tail, &anchor), Cmp::Ahead);
+    assert_eq!(assessment.findings[0].comparison, Cmp::Ahead);
+    assert_eq!(assessment.findings[0].verdict, ChainVerdict::NoCheckpoint);
+    assert_eq!(assessment.authenticated_through, None);
+    assert_eq!(assessment.verdict, ChainVerdict::NoCheckpoint);
+    // Another out-of-band entry at the anchor's seq that disagrees with the
+    // anchor (chain or epoch) is a conflict between the trusted inputs, not
+    // evidence against the exported rows: never Tampered.
+    for conflicting in [
+        Checkpoint {
+            chain: [0x5a; 32],
+            ..anchor
+        },
+        Checkpoint { epoch: 1, ..anchor },
+    ] {
+        let assessment = assess_recovery(&tail, &[conflicting, cp(8, 2)], &[]);
+        assert_ne!(assessment.findings[0].comparison, Cmp::Ahead);
+        assert_eq!(assessment.findings[0].verdict, ChainVerdict::NoCheckpoint);
+        assert_eq!(
+            assessment.verdict,
+            ChainVerdict::Authentic,
+            "{conflicting:?}"
+        );
+        assert_eq!(assessment.authenticated_through, Some(8));
+    }
+    // An empty export anchored at a checkpoint is not authenticated by the
+    // same checkpoint.
+    let empty = verify_export("", Anchor::Checkpoint(anchor)).expect("empty");
+    assert_eq!(
+        assess_recovery(&empty, &[anchor], &[]).verdict,
+        ChainVerdict::NoCheckpoint
+    );
+    // Past the anchor, differences still count.
+    let rewritten = Checkpoint {
+        chain: [0x5a; 32],
+        ..cp(7, 2)
+    };
+    assert_eq!(
+        assess_recovery(&tail, &[rewritten, cp(8, 2)], &[]).verdict,
+        ChainVerdict::Tampered
+    );
+}
+
+#[test]
+fn chain_integrity_distinguishes_intact_broken_and_unanchored() {
+    let (_, built) = five();
+    let full = text(&built.lines);
+    let identity: Vec<String> = built
+        .lines
+        .iter()
+        .map(|line| {
+            let mut value: Value = serde_json::from_str(line).expect("line");
+            value["envelope"] = Value::Null;
+            value["expired"] = Value::Bool(false);
+            value.to_string()
+        })
+        .collect();
+    let identity = text(&identity);
+    assert_eq!(
+        ChainIntegrity::of(&verify_identity_chain(&identity, Anchor::Genesis)),
+        ChainIntegrity::Intact
+    );
+    assert_eq!(
+        ChainIntegrity::of(&verify_export(&full, Anchor::Genesis)),
+        ChainIntegrity::Intact
+    );
+    let gap = text(&[built.lines[0].clone(), built.lines[2].clone()]);
+    let broken = ChainIntegrity::of(&verify_export(&gap, Anchor::Genesis));
+    assert_eq!(
+        broken,
+        ChainIntegrity::Broken(ExportError::SeqGap {
+            line: 2,
+            expected: 2,
+            found: 3
+        })
+    );
+    assert_eq!(broken.as_str(), "broken");
+    let subset = ChainIntegrity::of(&verify_export_subset(&gap));
+    assert_eq!(subset, ChainIntegrity::Unanchored);
+    assert_eq!(
+        (ChainIntegrity::Intact.as_str(), subset.as_str()),
+        ("intact", "unanchored")
+    );
+    // Intact is about the chain only: an intact identity chain still has
+    // unattested epochs and expiries, and no checkpoint makes it authentic.
+    let report = verify_identity_chain(&identity, Anchor::Genesis).expect("intact");
+    assert!(!report.epochs_authenticated);
+    assert_eq!(
+        assess_recovery(&report, &[], &[]).verdict,
+        ChainVerdict::NoCheckpoint
+    );
+    // The complete variant also requires the manifest watermark.
+    assert!(verify_identity_chain_complete(&identity, Anchor::Genesis, 5).is_ok());
+    assert_eq!(
+        verify_identity_chain_complete(&identity, Anchor::Genesis, 6),
+        Err(ExportError::WatermarkMismatch {
+            watermark: 6,
+            head: 5
+        })
+    );
 }
 
 #[test]

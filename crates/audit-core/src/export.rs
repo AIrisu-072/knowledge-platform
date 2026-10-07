@@ -291,6 +291,56 @@ impl RecoveryRecord {
     }
 }
 
+/// What verifying an export established about the chain itself, before any
+/// out-of-band checkpoint is compared (design §8). It is never an
+/// authenticity claim: [`assess_recovery`] decides that from checkpoints.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChainIntegrity {
+    /// Contiguous from a trusted anchor: every seq follows the previous one,
+    /// every `prev_chain` links to the previous chain and every chain value
+    /// recomputes. For identity chains (no bodies), epoch changes and
+    /// expiries are intact but not attested
+    /// ([`ExportReport::epochs_authenticated`],
+    /// [`ExportReport::unverified_expiry_evidence`]).
+    Intact,
+    /// Verification failed: rows are missing, reordered or rewritten, a link
+    /// or recomputation fails, an epoch rule is violated or a line is
+    /// malformed. The error names the first offending line.
+    Broken(ExportError),
+    /// A filtered subset without an anchor: rows were checked one by one;
+    /// nothing is established about the chain.
+    Unanchored,
+}
+
+impl ChainIntegrity {
+    /// The verdict of a verification result ([`verify_export`],
+    /// [`verify_export_complete`], [`verify_identity_chain`],
+    /// [`verify_identity_chain_complete`] or [`verify_export_subset`]).
+    pub fn of(result: &Result<ExportReport, ExportError>) -> Self {
+        match result {
+            Ok(report) => Self::of_report(report),
+            Err(error) => Self::Broken(error.clone()),
+        }
+    }
+
+    /// The verdict of a successful verification.
+    pub fn of_report(report: &ExportReport) -> Self {
+        if report.anchored {
+            Self::Intact
+        } else {
+            Self::Unanchored
+        }
+    }
+
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Intact => "intact",
+            Self::Broken(_) => "broken",
+            Self::Unanchored => "unanchored",
+        }
+    }
+}
+
 /// Overall offline verdict (design §8). Ordered from best to worst.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ChainVerdict {
@@ -338,8 +388,9 @@ pub struct EpochReview {
 }
 
 /// How one out-of-band checkpoint relates to the verified path.
-/// `BeforeAnchor` findings are neutral: their verdict (`NoCheckpoint`, they
-/// confirm nothing) does not enter the overall verdict.
+/// Findings for checkpoints before the anchor (`BeforeAnchor`) or at the
+/// anchor's own seq (any comparison) are neutral: their verdict
+/// (`NoCheckpoint`, they confirm nothing) does not enter the overall verdict.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CheckpointFinding {
     pub checkpoint: Checkpoint,
@@ -365,6 +416,12 @@ pub struct RecoveryAssessment {
     /// Out-of-band records of recoveries that precede the anchor
     /// (`new_epoch <= anchor.epoch`): neutral, listed for review only.
     pub records_before_anchor: Vec<RecoveryRecord>,
+    /// Out-of-band records of recoveries that come after the verified head
+    /// (`old_epoch >= head epoch`: the transition leaves the head's epoch, so
+    /// the path ends before it, for example an export taken before a later
+    /// restore): neutral, listed for review only. A rollback that removes a
+    /// recorded transition is caught by a checkpoint taken after it.
+    pub records_after_head: Vec<RecoveryRecord>,
     /// Expired rows at or below `authenticated_through` whose removal is not
     /// confirmed: their evidence lies past `authenticated_through` or could
     /// not be verified in the export. Rows past `authenticated_through` are
@@ -378,7 +435,11 @@ pub struct RecoveryAssessment {
 /// - Authenticity: `Authentic` needs a checkpoint that `Match`es the head; a
 ///   checkpoint behind the head (`Ahead`) gives at most
 ///   `AuthenticThrough { seq }`; with neither, `NoCheckpoint`. Checkpoints
-///   before the anchor are neutral.
+///   before the anchor, and checkpoints at the anchor's own seq (the trusted
+///   starting point confirms nothing new and is not evidence about the
+///   exported rows, whatever it holds), are neutral.
+/// - Records of recoveries before the anchor or after the verified head are
+///   neutral (listed for review).
 /// - Expiry: an expired row at or below `authenticated_through` whose
 ///   evidence is unverified or lies past it makes the verdict at least
 ///   `UnverifiedExpiry`. `Authentic` is never returned while
@@ -403,6 +464,7 @@ pub fn assess_recovery(
             findings: Vec::new(),
             unmatched_records: records.to_vec(),
             records_before_anchor: Vec::new(),
+            records_after_head: Vec::new(),
             unconfirmed_expiries: 0,
         };
     };
@@ -429,12 +491,14 @@ pub fn assess_recovery(
             }
         })
         .collect();
-    let (records_before_anchor, unmatched_records): (Vec<RecoveryRecord>, Vec<RecoveryRecord>) =
-        records
-            .iter()
-            .filter(|record| !epochs.iter().any(|e| e.record == Some(**record)))
-            .copied()
-            .partition(|record| record.new_epoch <= anchor.epoch);
+    let (records_before_anchor, rest): (Vec<RecoveryRecord>, Vec<RecoveryRecord>) = records
+        .iter()
+        .filter(|record| !epochs.iter().any(|e| e.record == Some(**record)))
+        .copied()
+        .partition(|record| record.new_epoch <= anchor.epoch);
+    let (records_after_head, unmatched_records): (Vec<RecoveryRecord>, Vec<RecoveryRecord>) = rest
+        .into_iter()
+        .partition(|record| record.old_epoch >= report.head.epoch);
     let mut worst = ChainVerdict::Authentic;
     for epoch in &epochs {
         let verdict = match epoch.record {
@@ -448,11 +512,17 @@ pub fn assess_recovery(
     if !unmatched_records.is_empty() {
         worst = worst.max(ChainVerdict::UnverifiedRecovery);
     }
+    // A checkpoint at the anchor's own seq names the trusted starting point:
+    // it confirms nothing about the exported rows, and a disagreement with
+    // the anchor is between the out-of-band inputs, not evidence against the
+    // export. Its finding keeps the factual comparison.
+    let at_anchor = |checkpoint: &Checkpoint| checkpoint.seq == anchor.seq;
     let mut authenticated_through: Option<i64> = None;
     let mut findings = Vec::with_capacity(checkpoints.len());
     for checkpoint in checkpoints {
         let comparison = compare_checkpoint(report, checkpoint);
         let (verdict, explained_by) = match comparison {
+            _ if at_anchor(checkpoint) => (ChainVerdict::NoCheckpoint, None),
             CheckpointComparison::Match => (ChainVerdict::Authentic, None),
             CheckpointComparison::Ahead => (
                 ChainVerdict::AuthenticThrough {
@@ -468,6 +538,7 @@ pub fn assess_recovery(
             }
         };
         match comparison {
+            _ if at_anchor(checkpoint) => {}
             CheckpointComparison::Match | CheckpointComparison::Ahead => {
                 authenticated_through = authenticated_through.max(Some(checkpoint.seq));
             }
@@ -506,6 +577,7 @@ pub fn assess_recovery(
         findings,
         unmatched_records,
         records_before_anchor,
+        records_after_head,
         unconfirmed_expiries,
     }
 }
@@ -635,6 +707,18 @@ pub fn verify_export_complete(
 /// Epochs and expiry are reported as unauthenticated.
 pub fn verify_identity_chain(text: &str, start: Anchor) -> Result<ExportReport, ExportError> {
     verify(text, Some(start), Mode::IdentityChain, None)
+}
+
+/// Verifies a complete identity-chain export up to the manifest `watermark`:
+/// like [`verify_identity_chain`], but the head must be exactly `watermark`
+/// ([`ExportError::WatermarkMismatch`]) and no row may name expiry evidence
+/// past it ([`ExportError::ExpiryEvidenceMissing`]).
+pub fn verify_identity_chain_complete(
+    text: &str,
+    start: Anchor,
+    watermark: i64,
+) -> Result<ExportReport, ExportError> {
+    verify(text, Some(start), Mode::IdentityChain, Some(watermark))
 }
 
 /// Checks a filtered export row by row (digest, id, origin, self-consistent

@@ -182,15 +182,28 @@ impl IngestRow {
     ///
     /// | status | result |
     /// |---|---|
-    /// | `stored` / `duplicate` / `duplicate_expired` / `duplicate_reprojected` | receipt; a missing or malformed seq (≥ 1), 32-byte digest or adapter version (≥ 1) is a malformed row: `Outage{Other}` (counts toward the streak) |
-    /// | `conflict` | `Conflict` |
-    /// | `rejected` | `Rejected{code}`; a missing or unbounded code is `Outage{Other}` |
+    /// | `stored` / `duplicate` / `duplicate_expired` / `duplicate_reprojected` | receipt; a missing or malformed seq (≥ 1), 32-byte digest or adapter version (≥ 1), or a `code`, is a malformed row: `Outage{Other}` (counts toward the streak) |
+    /// | `conflict` | `Conflict`; the receipt columns (the existing event) are all present or all absent, else `Outage{Other}` |
+    /// | `rejected` | `Rejected{code}`; a missing or unbounded code, or any receipt column, is `Outage{Other}` |
     /// | `recovery_required` | `Outage{RecoveryRequired}` |
     /// | `outage` | `Outage{code}` where `code` names an [`OutageCode`] with or without the `store_` prefix (`unregistered_type` → `UnregisteredType`), otherwise `Outage{Other}` |
     /// | `denied` | `Outage{Denied}` (the ingest login is not the registered source service principal) |
     /// | anything else | `Outage{Other}` |
+    ///
+    /// Outcome and receipt columns must agree (the Store returns a receipt
+    /// only for stored events and conflicts): a non-receipt status that
+    /// carries any receipt column is a malformed row, `Outage{Other}`, never
+    /// a verdict.
     pub fn into_result(self) -> Result<IngestReceipt, StoreError> {
+        let receipt_columns = [
+            self.seq.is_some(),
+            self.envelope_digest.is_some(),
+            self.adapter_version.is_some(),
+        ];
         if let Some(outcome) = IngestOutcome::parse(&self.status) {
+            if self.code.is_some() {
+                return Err(StoreError::outage(OutageCode::Other));
+            }
             let receipt = match (self.seq, self.envelope_digest, self.adapter_version) {
                 (Some(seq), Some(digest), Some(adapter_version))
                     if seq >= 1 && adapter_version >= 1 =>
@@ -208,8 +221,13 @@ impl IngestRow {
             };
             return receipt.ok_or(StoreError::outage(OutageCode::Other));
         }
+        let all_or_none = receipt_columns.iter().all(|c| *c) || !receipt_columns.contains(&true);
+        let none = !receipt_columns.contains(&true);
         match self.status.as_str() {
-            "conflict" => Err(StoreError::conflict()),
+            "conflict" if all_or_none => Err(StoreError::conflict()),
+            "rejected" | "recovery_required" | "outage" | "denied" | "conflict" if !none => {
+                Err(StoreError::outage(OutageCode::Other))
+            }
             "rejected" => Err(self
                 .code
                 .as_deref()
@@ -357,6 +375,18 @@ fn digest32(bytes: &[u8]) -> Option<[u8; 32]> {
     <[u8; 32]>::try_from(bytes).ok()
 }
 
+/// Whether a Store row's origin fits its event type: control origins carry
+/// `audit.*` types and `relay` never does; a type of this crate's catalog
+/// must have its catalog origin. Unknown types (version skew) are judged by
+/// the family alone.
+fn origin_matches_type(origin: Origin, event_type: &EventTypeName) -> bool {
+    let control = event_type.as_str().starts_with(CONTROL_TYPE_PREFIX);
+    control == (origin != Origin::Relay)
+        && Catalog::embedded()
+            .get(event_type.as_str())
+            .is_none_or(|spec| spec.origin == origin)
+}
+
 impl ReceiptRow {
     pub fn identity(&self) -> ReceiptIdentity {
         ReceiptIdentity {
@@ -368,8 +398,16 @@ impl ReceiptRow {
 
     /// Validates a raw receipt row: seq and epoch ≥ 1, a known origin, an
     /// event type in the catalog grammar, a 32-byte digest and an absent or
-    /// 32-byte commitment. A malformed row is a Store defect:
-    /// `Outage{Other}`, which counts toward the streak.
+    /// 32-byte commitment. The columns must also agree with each other (the
+    /// Store's own row invariants):
+    ///
+    /// - the origin matches the type family: `relay` rows never carry an
+    ///   `audit.*` type, control rows (`store` / `relay_control`) always do,
+    ///   and a type of this crate's catalog has its catalog origin;
+    /// - control rows carry no source commitment and never expire.
+    ///
+    /// A malformed or inconsistent row is a Store defect: `Outage{Other}`,
+    /// which counts toward the streak.
     pub fn decode(raw: RawReceiptRow) -> Result<Self, StoreError> {
         let malformed = || StoreError::outage(OutageCode::Other);
         if raw.seq < 1 || raw.recovery_epoch < 1 {
@@ -379,11 +417,18 @@ impl ReceiptRow {
             None => None,
             Some(bytes) => Some(digest32(bytes).ok_or_else(malformed)?),
         };
+        let origin = Origin::parse(&raw.origin).ok_or_else(malformed)?;
+        let event_type = EventTypeName::new(&raw.event_type).ok_or_else(malformed)?;
+        if !origin_matches_type(origin, &event_type)
+            || (origin != Origin::Relay && (source_commitment.is_some() || raw.expired))
+        {
+            return Err(malformed());
+        }
         Ok(Self {
             seq: raw.seq,
             event_id: raw.event_id,
-            origin: Origin::parse(&raw.origin).ok_or_else(malformed)?,
-            event_type: EventTypeName::new(&raw.event_type).ok_or_else(malformed)?,
+            origin,
+            event_type,
             envelope_digest: digest32(&raw.envelope_digest).ok_or_else(malformed)?,
             source_commitment,
             expired: raw.expired,
@@ -437,8 +482,18 @@ impl fmt::Debug for RawControlReceiptRow {
 impl ControlReceiptRow {
     /// Validates a raw control receipt row: seq and epoch ≥ 1, a control
     /// origin (`store` / `relay_control`), an `audit.*` event type in the
-    /// catalog grammar and an absent or bounded code. A malformed row is
-    /// `Outage{Other}`.
+    /// catalog grammar and an absent or bounded code. The columns must also
+    /// agree with each other:
+    ///
+    /// - a type of this crate's catalog has its catalog origin;
+    /// - the relay control types name what they are about:
+    ///   `audit.delivery.replay_requested` and
+    ///   `audit.integrity.source_mismatch_detected` carry a target event and
+    ///   a code; `audit.reconciliation.completed` carries no target and its
+    ///   mode (`read_only` / `repair`) as the code;
+    /// - every other control type carries no code.
+    ///
+    /// A malformed or inconsistent row is `Outage{Other}`.
     pub fn decode(raw: RawControlReceiptRow) -> Result<Self, StoreError> {
         let malformed = || StoreError::outage(OutageCode::Other);
         if raw.seq < 1 || raw.recovery_epoch < 1 {
@@ -449,11 +504,29 @@ impl ControlReceiptRow {
             .ok_or_else(malformed)?;
         let event_type = EventTypeName::new(&raw.event_type)
             .filter(|name| name.as_str().starts_with(CONTROL_TYPE_PREFIX))
+            .filter(|name| origin_matches_type(origin, name))
             .ok_or_else(malformed)?;
         let code = match raw.code.as_deref() {
             None => None,
             Some(code) => Some(BoundedCode::new(code).ok_or_else(malformed)?),
         };
+        let consistent = match event_type.as_str() {
+            REPLAY_REQUESTED | SOURCE_MISMATCH_DETECTED => {
+                raw.target_event_id.is_some() && code.is_some()
+            }
+            RECONCILIATION_COMPLETED => {
+                raw.target_event_id.is_none()
+                    && code.as_ref().is_some_and(|code| {
+                        [ReconcileMode::ReadOnly, ReconcileMode::Repair]
+                            .iter()
+                            .any(|mode| mode.as_str() == code.as_str())
+                    })
+            }
+            _ => code.is_none(),
+        };
+        if !consistent {
+            return Err(malformed());
+        }
         Ok(Self {
             seq: raw.seq,
             recovery_epoch: raw.recovery_epoch,
@@ -905,14 +978,16 @@ impl From<RelayControlKind> for RelayControl {
     }
 }
 
+const REPLAY_REQUESTED: &str = "audit.delivery.replay_requested";
+const RECONCILIATION_COMPLETED: &str = "audit.reconciliation.completed";
+const SOURCE_MISMATCH_DETECTED: &str = "audit.integrity.source_mismatch_detected";
+
 impl RelayControl {
     pub const fn event_type(&self) -> &'static str {
         match self.kind {
-            RelayControlKind::ReplayRequested { .. } => "audit.delivery.replay_requested",
-            RelayControlKind::ReconciliationCompleted { .. } => "audit.reconciliation.completed",
-            RelayControlKind::SourceMismatchDetected { .. } => {
-                "audit.integrity.source_mismatch_detected"
-            }
+            RelayControlKind::ReplayRequested { .. } => REPLAY_REQUESTED,
+            RelayControlKind::ReconciliationCompleted { .. } => RECONCILIATION_COMPLETED,
+            RelayControlKind::SourceMismatchDetected { .. } => SOURCE_MISMATCH_DETECTED,
         }
     }
 
@@ -1223,42 +1298,56 @@ mod tests {
             assert!(malformed.expect_err("outage").counts_toward_outage_streak());
         }
         assert!(!OutageCode::OutcomeUnknown.counts_toward_outage_streak());
+        // Verdict and outage statuses as the Store returns them: no receipt
+        // columns (a conflict may carry the existing event's receipt).
+        let status_row = |status: &str, code: Option<&str>| IngestRow {
+            status: status.to_owned(),
+            seq: None,
+            envelope_digest: None,
+            adapter_version: None,
+            code: code.map(str::to_owned),
+        };
+        let decode = |status: &str, code: Option<&str>| status_row(status, code).into_result();
         assert_eq!(row("conflict").into_result(), Err(StoreError::conflict()));
+        assert_eq!(decode("conflict", None), Err(StoreError::conflict()));
         assert_eq!(
-            with("rejected", |r| r.code = Some("invalid_envelope".to_owned())),
+            decode("conflict", Some("commitment_mismatch")),
+            Err(StoreError::conflict())
+        );
+        assert_eq!(
+            decode("rejected", Some("invalid_envelope")),
             Err(StoreError::rejected(
                 BoundedCode::new("invalid_envelope").expect("bounded")
             ))
         );
-        assert_eq!(row("rejected").into_result(), outage(OutageCode::Other));
+        assert_eq!(decode("rejected", None), outage(OutageCode::Other));
         assert_eq!(
-            with("rejected", |r| r.code = Some("Free Text".to_owned())),
+            decode("rejected", Some("Free Text")),
             outage(OutageCode::Other)
         );
         assert_eq!(
-            row("recovery_required").into_result(),
+            decode("recovery_required", Some("store_recovery_required")),
             outage(OutageCode::RecoveryRequired)
         );
         assert_eq!(
-            with("outage", |r| r.code = Some("unregistered_type".to_owned())),
+            decode("outage", Some("unregistered_type")),
             outage(OutageCode::UnregisteredType)
         );
         assert_eq!(
-            with("outage", |r| r.code =
-                Some("store_posture_invalid".to_owned())),
+            decode("outage", Some("store_posture_invalid")),
             outage(OutageCode::PostureInvalid)
         );
         assert_eq!(
-            with("outage", |r| r.code = Some("regressed".to_owned())),
+            decode("outage", Some("regressed")),
             outage(OutageCode::Regressed)
         );
         assert_eq!(
-            with("outage", |r| r.code = Some("something_new".to_owned())),
+            decode("outage", Some("something_new")),
             outage(OutageCode::Other)
         );
-        assert_eq!(row("outage").into_result(), outage(OutageCode::Other));
+        assert_eq!(decode("outage", None), outage(OutageCode::Other));
         assert_eq!(
-            with("denied", |r| r.code = Some("not_source_service".to_owned())),
+            decode("denied", Some("not_source_service")),
             outage(OutageCode::Denied)
         );
         for status in ["", "STORED", "ok", "error", "stored "] {
@@ -1268,6 +1357,48 @@ mod tests {
                 "{status:?}"
             );
         }
+    }
+
+    #[test]
+    fn ingest_row_outcome_and_receipt_columns_must_agree() {
+        let malformed = Err(StoreError::outage(OutageCode::Other));
+        // A receipt status never carries a code.
+        for outcome in IngestOutcome::ALL {
+            let mut r = row(outcome.as_str());
+            r.code = Some("invalid_envelope".to_owned());
+            assert_eq!(r.into_result(), malformed, "{outcome:?}");
+        }
+        // A verdict or gate status never carries a receipt column: the row
+        // is malformed (held and counted), never a verdict.
+        for (status, code) in [
+            ("rejected", "invalid_envelope"),
+            ("recovery_required", "store_recovery_required"),
+            ("outage", "unregistered_type"),
+            ("denied", "not_source_service"),
+        ] {
+            let edits: [fn(&mut IngestRow); 3] = [
+                |r| r.seq = Some(7),
+                |r| r.envelope_digest = Some(vec![1; 32]),
+                |r| r.adapter_version = Some(1),
+            ];
+            for edit in edits {
+                let mut r = IngestRow {
+                    status: status.to_owned(),
+                    seq: None,
+                    envelope_digest: None,
+                    adapter_version: None,
+                    code: Some(code.to_owned()),
+                };
+                edit(&mut r);
+                let decoded = r.into_result();
+                assert_eq!(decoded, malformed, "{status}");
+                assert!(!decoded.expect_err("outage").is_terminal());
+            }
+        }
+        // A conflict carries the existing receipt completely or not at all.
+        let mut partial = row("conflict");
+        partial.envelope_digest = None;
+        assert_eq!(partial.into_result(), malformed);
     }
 
     #[test]
@@ -1409,7 +1540,30 @@ mod tests {
             ReceiptRow::decode(without_commitment).map(|r| r.source_commitment),
             Ok(None)
         );
-        let edits: [fn(&mut RawReceiptRow); 8] = [
+        // Control receipts and types newer than this catalog.
+        let control = RawReceiptRow {
+            origin: "store".to_owned(),
+            event_type: "audit.access.denied".to_owned(),
+            source_commitment: None,
+            ..raw_receipt()
+        };
+        assert_eq!(
+            ReceiptRow::decode(control).map(|r| r.origin),
+            Ok(Origin::Store)
+        );
+        for (origin, event_type) in [
+            ("relay", "search.query.executed"),
+            ("store", "audit.future.thing"),
+        ] {
+            let newer = RawReceiptRow {
+                origin: origin.to_owned(),
+                event_type: event_type.to_owned(),
+                source_commitment: None,
+                ..raw_receipt()
+            };
+            assert!(ReceiptRow::decode(newer).is_ok(), "{event_type}");
+        }
+        let edits: [fn(&mut RawReceiptRow); 14] = [
             |r| r.seq = 0,
             |r| r.recovery_epoch = 0,
             |r| r.origin = "elsewhere".to_owned(),
@@ -1418,6 +1572,32 @@ mod tests {
             |r| r.envelope_digest = vec![5; 31],
             |r| r.source_commitment = Some(vec![1; 33]),
             |r| r.event_type = format!("a.{}", "b".repeat(127)),
+            // Cross-checks: origin against the type family and catalog ...
+            |r| r.event_type = "audit.access.denied".to_owned(),
+            |r| {
+                r.origin = "store".to_owned();
+                r.source_commitment = None;
+            },
+            |r| {
+                r.origin = "relay_control".to_owned();
+                r.event_type = "audit.access.denied".to_owned();
+                r.source_commitment = None;
+            },
+            // ... no commitment and no expiry on control rows.
+            |r| {
+                r.origin = "store".to_owned();
+                r.event_type = "audit.access.denied".to_owned();
+            },
+            |r| {
+                r.origin = "store".to_owned();
+                r.event_type = "audit.access.denied".to_owned();
+                r.source_commitment = None;
+                r.expired = true;
+            },
+            |r| {
+                r.origin = "relay_control".to_owned();
+                r.event_type = "audit.future.thing".to_owned();
+            },
         ];
         for edit in edits {
             let mut raw = raw_receipt();
@@ -1447,18 +1627,68 @@ mod tests {
             decoded.code.as_ref().map(BoundedCode::as_str),
             Some("delivery_unknown_at_limit")
         );
-        let no_code = RawControlReceiptRow {
+        let store_type = RawControlReceiptRow {
+            origin: "store".to_owned(),
+            event_type: "audit.integrity.conflict_detected".to_owned(),
             code: None,
             ..raw_control_receipt()
         };
-        assert_eq!(ControlReceiptRow::decode(no_code).map(|r| r.code), Ok(None));
-        let edits: [fn(&mut RawControlReceiptRow); 6] = [
+        assert_eq!(
+            ControlReceiptRow::decode(store_type).map(|r| r.code),
+            Ok(None)
+        );
+        let run = |code: &str| RawControlReceiptRow {
+            event_type: "audit.reconciliation.completed".to_owned(),
+            target_event_id: None,
+            code: Some(code.to_owned()),
+            ..raw_control_receipt()
+        };
+        for mode in ["read_only", "repair"] {
+            assert!(ControlReceiptRow::decode(run(mode)).is_ok(), "{mode}");
+        }
+        // A control type newer than this catalog is judged by its family.
+        let newer = RawControlReceiptRow {
+            origin: "store".to_owned(),
+            event_type: "audit.future.thing".to_owned(),
+            target_event_id: None,
+            code: None,
+            ..raw_control_receipt()
+        };
+        assert!(ControlReceiptRow::decode(newer).is_ok());
+        let edits: [fn(&mut RawControlReceiptRow); 14] = [
             |r| r.code = Some("free text from the store".to_owned()),
             |r| r.seq = 0,
             |r| r.recovery_epoch = 0,
             |r| r.origin = "relay".to_owned(),
             |r| r.event_type = "document.created".to_owned(),
             |r| r.event_type = "audit".to_owned(),
+            // Cross-checks: the catalog origin of the type ...
+            |r| r.origin = "store".to_owned(),
+            |r| {
+                r.event_type = "audit.access.denied".to_owned();
+                r.code = None;
+            },
+            // ... the target and code of the relay control types ...
+            |r| r.code = None,
+            |r| r.target_event_id = None,
+            |r| {
+                r.event_type = "audit.integrity.source_mismatch_detected".to_owned();
+                r.target_event_id = None;
+            },
+            |r| {
+                r.event_type = "audit.reconciliation.completed".to_owned();
+                r.target_event_id = None;
+                r.code = Some("delivery_unknown_at_limit".to_owned());
+            },
+            |r| {
+                r.event_type = "audit.reconciliation.completed".to_owned();
+                r.code = Some("repair".to_owned());
+            },
+            // ... and no code on store types.
+            |r| {
+                r.origin = "store".to_owned();
+                r.event_type = "audit.body.purged".to_owned();
+            },
         ];
         for edit in edits {
             let mut raw = raw_control_receipt();

@@ -250,7 +250,7 @@ envelope全体の32 KiB（jsonb text）上限もRustだけが検査する。
 | `record_relay_control(RelayControl)` | `replay_requested` / `reconciliation.completed` / `source_mismatch_detected` を記録し、（seq, epoch）を返す。source_mismatchは (event_id, code) で冪等 |
 | `report_regression(ReceiptIdentity)` | ack済みのreceiptが解決できないことを報告する。StoreはHead lockの下で再確認してからrecovery_pendingを設定する |
 
-receiptとstatusが持つStore由来の文字列は検査済みの型である。typeは `EventTypeName`（catalogの文法、128 byte以下）、control receiptのcodeは `BoundedCode`（`[a-z0-9_]{1,64}`）。decoderは、seq・epochが1未満、未知のorigin、文法外のtype、32 byteでないdigest・commitment、上限外のcode（control receiptではcontrol originと `audit.*` typeも要求）を `Outage { store_other }` とする。未検査の行（`RawReceiptRow` 等）のDebugは検査に通った値だけを表示する。
+receiptとstatusが持つStore由来の文字列は検査済みの型である。typeは `EventTypeName`（catalogの文法、128 byte以下）、control receiptのcodeは `BoundedCode`（`[a-z0-9_]{1,64}`）。decoderは、seq・epochが1未満、未知のorigin、文法外のtype、32 byteでないdigest・commitment、上限外のcode（control receiptではcontrol originと `audit.*` typeも要求）を `Outage { store_other }` とする。列どうしの整合も検査し、食い違う行も `store_other` とする：originとtypeの系統（relayの行は `audit.*` でなく、controlの行は `audit.*`。このcrateのcatalogにあるtypeはcatalogのorigin）、controlの行はcommitmentを持たず失効しない、control receiptでは `audit.delivery.replay_requested` と `audit.integrity.source_mismatch_detected` が対象event_idとcodeを持ち、`audit.reconciliation.completed` が対象を持たずmode（`read_only` / `repair`）をcodeに持ち、それ以外のcontrol typeはcodeを持たない。未検査の行（`RawReceiptRow` 等）のDebugは検査に通った値だけを表示する。
 
 `StoreStatus` は head_seq、recovery_epoch、`state`（`Operational` / `RecoveryMode`（fingerprint不一致かrecovery_pending、`store_recovery_required`）/ `PostureInvalid`（`store_posture_invalid`）/ `ReadOnly`（`store_read_only`））、missing_types（`EventTypeName`。文法外の名前はadapterが `store_other` にする）、regression_detected、last_verified_seq を持つ。`admission()` は、state、regression（`store_regressed`）、未登録type（`store_unregistered_type`）の順に判定する。
 
@@ -278,7 +278,7 @@ receiptとstatusが持つStore由来の文字列は検査済みの型である�
 
 | status | 結果 |
 |---|---|
-| `stored` / `duplicate` / `duplicate_expired` / `duplicate_reprojected` | receipt。seq（≥1）、32 byteのdigest、adapter_version（≥1）が欠けていれば不正な結果行として `store_other`（streakに数える） |
+| `stored` / `duplicate` / `duplicate_expired` / `duplicate_reprojected` | receipt。seq（≥1）、32 byteのdigest、adapter_version（≥1）が欠けている、またはcodeを持つ行は不正な結果行として `store_other`（streakに数える） |
 | `conflict` | `Conflict` |
 | `rejected` | `Rejected { code }`。codeが無い・`[a-z0-9_]{1,64}` でなければ `store_other` |
 | `recovery_required` | `store_recovery_required` |
@@ -332,7 +332,8 @@ export行は次の10 keyを持つ（閉じた集合、重複key不可）。
     - 遷移は `EpochTransition { seq, old_epoch, new_epoch, attestation }` として列挙し、`attestation`（`EpochAttestation`）に本文の restored_head_seq、restored_head_chain、lost_from_seq、lost_upper_seq、classification を保持する。この場合 `epochs_authenticated = true`。
     - epochが変わらない行にorigin=storeの `audit.recovery.epoch_started` があれば `EpochStartedWithoutTransition` とする（chainの対象外のepoch列を旧epochへ書き換えてrecoveryを隠すことを防ぐ）。
 - `verify_export_complete(text, Anchor, watermark)`：manifestのwatermark Wまでの完全な本文付きexportを検証する。`verify_export` の検査に加えて、headがちょうどW（そうでなければ `WatermarkMismatch`）で、`expired_by_seq` がWを超える行が無い（あれば `ExpiryEvidenceMissing`）ことを要求する。完全なexportは参照する証拠をすべて含むので、失効したcontrol行のoriginをrelayへ書き換える偽装を閉じる（証拠はretention・purgeの本文でなければならず、それらはrelay行だけを失効させる）。
-- `verify_identity_chain(text, Anchor)`：本文の無いidentity chainを同様に検査する（seq、chain、epochの単調性と+1、失効行の `expired_by_seq`）。本文が無いので、epochは `epochs_authenticated = false`（遷移の `attestation` は `None`）、失効はすべて `unverified_expiry_evidence` に数える。
+- `verify_identity_chain(text, Anchor)`：本文の無いidentity chainを同様に検査する（seq、chain、epochの単調性と+1、失効行の `expired_by_seq`）。本文が無いので、epochは `epochs_authenticated = false`（遷移の `attestation` は `None`）、失効はすべて `unverified_expiry_evidence` に数える。`verify_identity_chain_complete(text, Anchor, watermark)` は、`verify_export_complete` と同じくheadがちょうどWで、Wを超える `expired_by_seq` が無いことも要求する。
+- `ChainIntegrity::of(&検証結果)`：chain自体について確立したことの区分で、真正性の主張ではない（真正性は `assess_recovery` がcheckpointから判定する）。`Intact`（anchorから連続し、seq・prev_chainの連鎖・chainの再計算がすべて一致。identity chainではepochと失効は未証明のまま）、`Broken(ExportError)`（欠落・入替・書換え・連鎖切れ・epoch規則違反・不正な行。最初の行を示す）、`Unanchored`（filter付きの部分集合。chainについて何も示さない）。`audit-admin` はexportのmanifestと検証失敗時の出力に `chain_integrity`（`intact` / `broken` / `unanchored`）を出す。
 - `verify_export_subset(text)`：filter付きexportの行単位の整合だけを見る。結果は常に `anchored: false` であり、真正性の根拠にならない。
 - `ExportReport` は `epoch_transitions()`、`expired_rows()`、`epoch_at(seq)`、`chain_at(seq)` を持つ。
 - `compare_checkpoint(report, checkpoint)`：`Match` / `Mismatch` / `EpochMismatch` / `StoreBehind` / `Ahead` / `BeforeAnchor` / `Unanchored`。checkpointは（epoch, seq, chain）で、`checkpoint.epoch` はそのseqの行の `recovery_epoch`（取得時の `publication_head.recovery_epoch`）である。chainは一致するがepochが異なる場合は、書換えではなく `EpochMismatch`（epoch列または帯域外記録の改変）とする。`Ahead` はそのcheckpointまでしか真正性を示さない。前方部分（`seq_through`）を検証する場合は、export headまでのcheckpointだけを渡す（それより後は `StoreBehind`）。
@@ -350,9 +351,9 @@ epochの規則：epoch 1から始まり、増加は常に+1で、`audit.recovery
 - 本文付きexportでは、記録の restored_head_seq、restored_head_chain、lost_upper が `epoch_started` 本文の値と等しく、本文の分類が `planned_move` なら消失範囲が空である。
 - 復元headが検証経路上にあれば、そのchainが一致する。
 
-一致しない記録は `UnverifiedRecovery` になる。ただし、anchorより前のrecoveryの記録（`new_epoch ≤ anchor.epoch`）は `records_before_anchor` に列挙するだけで、判定に影響しない（帯域外の記録全体を渡してcheckpointから検証できる）。anchorのepochより後のepochの記録は、exportの遷移と一致しなければならない。説明された遷移でも、復元headがanchorより前でchainを比較できなければ `EpochReview.restored_head_verified = false` とし、`UnverifiedRecovery` とする（より前のanchorから検証すれば確認できる）。
+一致しない記録は `UnverifiedRecovery` になる。ただし、anchorより前のrecoveryの記録（`new_epoch ≤ anchor.epoch`）は `records_before_anchor` に、検証したheadより後のrecoveryの記録（`old_epoch ≥ head.epoch`。その遷移は経路の終端より後にあり、例えばより後のrestoreより前に取ったexport）は `records_after_head` に列挙するだけで、判定に影響しない（帯域外の記録全体を渡してcheckpointから検証できる）。経路が通るepochの遷移の記録は、exportの遷移と一致しなければならない。記録された遷移を消す巻戻しは、その遷移より後に取ったcheckpoint（`StoreBehind` / `Mismatch` / `EpochMismatch`）で検出する。説明された遷移でも、復元headがanchorより前でchainを比較できなければ `EpochReview.restored_head_verified = false` とし、`UnverifiedRecovery` とする（より前のanchorから検証すれば確認できる）。
 
-真正性は、headと一致する帯域外checkpoint（`Match`）がある場合だけ主張する。`authenticated_through` は `Match` または `Ahead` のcheckpointの最大seqである。anchorより前のcheckpoint（`BeforeAnchor`）は中立で、判定に影響しない。
+真正性は、headと一致する帯域外checkpoint（`Match`）がある場合だけ主張する。`authenticated_through` は `Match` または `Ahead` のcheckpointの最大seqである。anchorより前のcheckpoint（`BeforeAnchor`）と、anchorと同じseqのcheckpoint（比較結果は事実どおり `findings` に残す）は中立で、判定にも `authenticated_through` にも影響しない。anchorは前提として信頼する起点なので、同じ位置のcheckpointはexportの行について何も確認せず、anchorと食い違う場合も帯域外の入力どうしの食い違いであってexportの改ざんの証拠ではない（`Tampered` にしない）。
 
 | verdict（良い順） | 意味 |
 |---|---|
