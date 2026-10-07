@@ -1,13 +1,13 @@
 # Organization 作業ファイル・共有provider・Handoff・差戻し後の作業（U3）— Capability Execution Status
 
-## 2026-10-07 — 実装・ローカル検証中
+## 2026-10-07 — 実装・ローカル検証・独立review修正完了、PR/hosted CIへ
 
 ### 位置付け
 
 - U2（複数文脈・注意・表示Profile、[PR #101](https://github.com/AIrisu-072/knowledge-platform/pull/101)）の上に、凍結設計のWorkingArtifact（ファイル）・Work所有の共有保存領域・Handoff Snapshotのファイル固定・差戻し後の新しい作業を接続する
 - 設計の具体化：[実装追補](../specs/2026-10-07-organization-work-files-handoff-amendment.md)、手順：[小計画](../plans/2026-10-07-organization-work-files.md)、利用手順：[Organization Browser PoC](../../operations/organization-browser-poc.md#作業ファイルを添付して提出し差戻し後にやり直す)
 - 既存の工程・提出・差戻・完了・保留再開・根拠/判断・合成Agent・U1の担当判定・U2の文脈と注意は再実装しない
-- 作業branch：ローカル `u3-files`（U2統合後に `claude/trusting-knuth-dn5cx4` を最新mainから作り直して移す。U2統合前にDraft PRを重ねない）
+- branch：`claude/trusting-knuth-dn5cx4`（U2統合後のmain `240bfd2` から作り直し、ローカルで作ったU3 commitを移した）
 
 ### 実装した内容
 
@@ -30,7 +30,7 @@
 | HTTP | 全pass（新規3件：8 MiB境界と1 byte超過・header・media type、添付応答header、503と404、作成/外す/取込みのcommand） |
 | GUI | 1572/1572（66 suites）、型検査、organization runtime型検査。新規：画面5件・client 4件（変異確認：未登録ファイルでの提出不可・保存領域拒否の確定失敗扱い・固定ファイルの世代必須・取込みボタンの条件を外すとRED） |
 | runner node試験・API contract・OpenAPI lint | pass |
-| 実browser（ローカル、PostgreSQL 18.6公式image、system Chromium） | 20 stageすべてpassed（既存2名・6名policy・文脈の各stageに加え files-journey／files-restart／files-persistence、cleanup完了） |
+| 実browser（ローカル、PostgreSQL 18.6公式image、system Chromium） | review修正後も20 stageすべてpassed（既存2名・6名policy・文脈の各stageに加え files-journey／files-restart／files-persistence、cleanup完了） |
 
 ### 実装中に見つけて直したもの
 
@@ -69,5 +69,6 @@
 
 ### 次のexact action
 
-1. 独立reviewの結果を確認し、指摘を修正
-3. U2統合後、同名branchを最新mainから作り直してU3 commitを移し、PR作成・exact-head CI
+1. PR作成（Draft）・PR activity購読・exact-head CI
+2. 合格後mainへ統合し、main push CIを確認
+3. 同名branchを最新mainから作り直し、U4（AgentExecutionの構造化結果・Agent Chat・adapter境界）へ

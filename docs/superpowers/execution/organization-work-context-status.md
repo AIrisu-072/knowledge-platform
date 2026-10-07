@@ -1,6 +1,6 @@
 # Organization 複数文脈・注意・表示Profile（U2）— Capability Execution Status
 
-## 2026-10-07 — 実装・ローカル検証・独立review修正完了、PR/hosted CIへ
+## 2026-10-07 — main統合済み（[PR #101](https://github.com/AIrisu-072/knowledge-platform/pull/101)、`240bfd2`）
 
 ### 位置付け
 
