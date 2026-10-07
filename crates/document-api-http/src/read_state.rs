@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
-use axum::routing::{get, post};
 use axum::extract::rejection::JsonRejection;
+use axum::extract::{Path, State};
 use axum::http::{HeaderValue, header};
 use axum::response::{IntoResponse, Response};
+use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
 use document_application::{
     CurrentReadProjection, CurrentReadState, CurrentReadStateRepository, CurrentReadStateService,
@@ -19,7 +19,9 @@ use crate::error::ApiError;
 use crate::management::{document_id_value, format_time, problem, validation};
 use crate::trace::TraceContext;
 
-pub(crate) fn read_state_routes<R: ReadStateRepository + CurrentReadStateRepository + Send + Sync + 'static>() -> Router<Arc<R>> {
+pub(crate) fn read_state_routes<
+    R: ReadStateRepository + CurrentReadStateRepository + Send + Sync + 'static,
+>() -> Router<Arc<R>> {
     Router::new()
         .route(
             "/v1/documents/{document_id}/versions/{version_id}/read-state",
@@ -111,14 +113,23 @@ impl From<ReadStateMutationResult> for ReadStateMutationResultDto {
 
 fn no_store(value: impl Serialize) -> Response {
     let mut response = Json(value).into_response();
-    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-store"));
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
     response
 }
 
-fn target(document_id: &str, version_id: &str) -> Result<(document_domain::DocumentId, DocumentVersionId), document_application::ApplicationError> {
+fn target(
+    document_id: &str,
+    version_id: &str,
+) -> Result<(document_domain::DocumentId, DocumentVersionId), document_application::ApplicationError>
+{
     Ok((
         document_id_value(document_id)?,
-        Uuid::parse_str(version_id).map(DocumentVersionId::from_uuid).map_err(|_| validation("invalid versionId"))?,
+        Uuid::parse_str(version_id)
+            .map(DocumentVersionId::from_uuid)
+            .map_err(|_| validation("invalid versionId"))?,
     ))
 }
 
@@ -129,8 +140,12 @@ async fn current_state<R: CurrentReadStateRepository>(
     Path((document_id, version_id)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
     let path = format!("/v1/documents/{document_id}/versions/{version_id}/read-state");
-    let (document_id, version_id) = target(&document_id, &version_id).map_err(|error| problem(error, &path, &trace))?;
-    let result = CurrentReadStateService::new(repository).get_current_read_state(&ctx, document_id, version_id).await.map_err(|error| problem(error, &path, &trace))?;
+    let (document_id, version_id) =
+        target(&document_id, &version_id).map_err(|error| problem(error, &path, &trace))?;
+    let result = CurrentReadStateService::new(repository)
+        .get_current_read_state(&ctx, document_id, version_id)
+        .await
+        .map_err(|error| problem(error, &path, &trace))?;
     Ok(no_store(CurrentReadStateDto::from(result)))
 }
 
@@ -141,7 +156,15 @@ async fn record_view<R: CurrentReadStateRepository>(
     Path(ids): Path<(String, String)>,
     body: Result<Json<ReadStateMutationRequest>, JsonRejection>,
 ) -> Result<Response, ApiError> {
-    mutate(repository, ctx, trace, ids, body, ReadStateMutationKind::View).await
+    mutate(
+        repository,
+        ctx,
+        trace,
+        ids,
+        body,
+        ReadStateMutationKind::View,
+    )
+    .await
 }
 
 async fn reset_state<R: CurrentReadStateRepository>(
@@ -151,7 +174,15 @@ async fn reset_state<R: CurrentReadStateRepository>(
     Path(ids): Path<(String, String)>,
     body: Result<Json<ReadStateMutationRequest>, JsonRejection>,
 ) -> Result<Response, ApiError> {
-    mutate(repository, ctx, trace, ids, body, ReadStateMutationKind::Reset).await
+    mutate(
+        repository,
+        ctx,
+        trace,
+        ids,
+        body,
+        ReadStateMutationKind::Reset,
+    )
+    .await
 }
 
 async fn mutate<R: CurrentReadStateRepository>(
@@ -167,16 +198,30 @@ async fn mutate<R: CurrentReadStateRepository>(
         ReadStateMutationKind::Reset => "reset",
     };
     let path = format!("/v1/documents/{document_id}/versions/{version_id}/read-state/{suffix}");
-    let (document_id, document_version_id) = target(&document_id, &version_id).map_err(|error| problem(error, &path, &trace))?;
-    let Json(body) = body.map_err(|_| problem(validation("invalid read-state mutation JSON"), &path, &trace))?;
-    let operation_id = ReadStateOperationId::try_from_uuid(body.operation_id).map_err(|error| problem(error, &path, &trace))?;
-    let result = CurrentReadStateService::new(repository).mutate_read_state(&ctx, ReadStateMutation {
-        operation_id,
-        document_id,
-        document_version_id,
-        expected_read_state_revision: body.expected_read_state_revision,
-        kind,
-    }).await.map_err(|error| problem(error, &path, &trace))?;
+    let (document_id, document_version_id) =
+        target(&document_id, &version_id).map_err(|error| problem(error, &path, &trace))?;
+    let Json(body) = body.map_err(|_| {
+        problem(
+            validation("invalid read-state mutation JSON"),
+            &path,
+            &trace,
+        )
+    })?;
+    let operation_id = ReadStateOperationId::try_from_uuid(body.operation_id)
+        .map_err(|error| problem(error, &path, &trace))?;
+    let result = CurrentReadStateService::new(repository)
+        .mutate_read_state(
+            &ctx,
+            ReadStateMutation {
+                operation_id,
+                document_id,
+                document_version_id,
+                expected_read_state_revision: body.expected_read_state_revision,
+                kind,
+            },
+        )
+        .await
+        .map_err(|error| problem(error, &path, &trace))?;
     Ok(no_store(ReadStateMutationResultDto::from(result)))
 }
 
@@ -305,15 +350,22 @@ mod tests {
             OffsetDateTime::now_utc() + Duration::hours(1),
             kind,
             None,
-        ).unwrap();
-        read_state_routes::<FakeRepository>().with_state(repository)
+        )
+        .unwrap();
+        read_state_routes::<FakeRepository>()
+            .with_state(repository)
             .layer(Extension(context))
             .layer(Extension(TraceContext::from_traceparent(None)))
     }
 
     const PATH: &str = "/v1/documents/00000000-0000-4000-8000-000000000001/versions/00000000-0000-4000-8000-000000000002/read-state";
 
-    async fn request(router: Router, method: &str, path: &str, body: Option<Value>) -> (StatusCode, Value, Option<String>) {
+    async fn request(
+        router: Router,
+        method: &str,
+        path: &str,
+        body: Option<Value>,
+    ) -> (StatusCode, Value, Option<String>) {
         let mut request = Request::builder().method(method).uri(path);
         let body = match body {
             Some(value) => {
@@ -324,22 +376,39 @@ mod tests {
         };
         let response = router.oneshot(request.body(body).unwrap()).await.unwrap();
         let status = response.status();
-        let cache = response.headers().get(header::CACHE_CONTROL).map(|value| value.to_str().unwrap().to_owned());
-        let body = serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap()).unwrap();
+        let cache = response
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .map(|value| value.to_str().unwrap().to_owned());
+        let body =
+            serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap())
+                .unwrap();
         (status, body, cache)
     }
 
     #[tokio::test]
     async fn human_get_is_no_store_and_agent_get_does_not_call_repository() {
         let repository = Arc::new(FakeRepository::default());
-        let (status, body, cache) = request(router(repository.clone(), InvocationKind::HumanInteractive), "GET", PATH, None).await;
+        let (status, body, cache) = request(
+            router(repository.clone(), InvocationKind::HumanInteractive),
+            "GET",
+            PATH,
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body["readStateRevision"], 0);
         assert_eq!(body["isRead"], false);
         assert_eq!(body["needsRecheck"], false);
         assert_eq!(body["firstReadAt"], Value::Null);
         assert_eq!(cache.as_deref(), Some("private, no-store"));
-        let (status, body, _) = request(router(repository.clone(), InvocationKind::Agent), "GET", PATH, None).await;
+        let (status, body, _) = request(
+            router(repository.clone(), InvocationKind::Agent),
+            "GET",
+            PATH,
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::FORBIDDEN);
         assert_eq!(body["code"], "FORBIDDEN");
         assert_eq!(repository.calls.load(Ordering::SeqCst), 1);
@@ -359,7 +428,13 @@ mod tests {
             json!({"operationId": id, "expectedReadStateRevision": -1}),
             json!({"operationId": id, "expectedReadStateRevision": 9007199254740992_i64}),
         ] {
-            let (status, body, _) = request(router(repository.clone(), InvocationKind::HumanInteractive), "POST", &format!("{PATH}/view"), Some(body)).await;
+            let (status, body, _) = request(
+                router(repository.clone(), InvocationKind::HumanInteractive),
+                "POST",
+                &format!("{PATH}/view"),
+                Some(body),
+            )
+            .await;
             assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
             assert_eq!(body["code"], "VALIDATION_FAILED");
         }
@@ -372,12 +447,33 @@ mod tests {
             (RepositoryError::Forbidden, 403, "FORBIDDEN"),
             (RepositoryError::DocumentNotFound, 404, "DOCUMENT_NOT_FOUND"),
             (RepositoryError::StaleVersion, 409, "STALE_VERSION"),
-            (RepositoryError::ReadStateRevisionConflict, 409, "REVISION_CONFLICT"),
-            (RepositoryError::OperationConflict, 409, "OPERATION_CONFLICT"),
-            (RepositoryError::CommitOutcomeUnknown, 503, "COMMIT_OUTCOME_UNKNOWN"),
+            (
+                RepositoryError::ReadStateRevisionConflict,
+                409,
+                "REVISION_CONFLICT",
+            ),
+            (
+                RepositoryError::OperationConflict,
+                409,
+                "OPERATION_CONFLICT",
+            ),
+            (
+                RepositoryError::CommitOutcomeUnknown,
+                503,
+                "COMMIT_OUTCOME_UNKNOWN",
+            ),
         ] {
-            let repository = Arc::new(FakeRepository { error: Some(error), ..FakeRepository::default() });
-            let (status, body, _) = request(router(repository, InvocationKind::HumanInteractive), "POST", &format!("{PATH}/reset"), Some(json!({"operationId": Uuid::now_v7(), "expectedReadStateRevision": 1}))).await;
+            let repository = Arc::new(FakeRepository {
+                error: Some(error),
+                ..FakeRepository::default()
+            });
+            let (status, body, _) = request(
+                router(repository, InvocationKind::HumanInteractive),
+                "POST",
+                &format!("{PATH}/reset"),
+                Some(json!({"operationId": Uuid::now_v7(), "expectedReadStateRevision": 1})),
+            )
+            .await;
             assert_eq!(status.as_u16(), expected_status);
             assert_eq!(body["code"], code);
             if code == "COMMIT_OUTCOME_UNKNOWN" {
@@ -392,12 +488,30 @@ mod tests {
 
     #[tokio::test]
     async fn legacy_put_keeps_four_fields_and_new_receipt_has_fixed_identity() {
-        let (status, body, _) = request(router(Arc::new(FakeRepository::default()), InvocationKind::HumanInteractive), "PUT", PATH, None).await;
+        let (status, body, _) = request(
+            router(
+                Arc::new(FakeRepository::default()),
+                InvocationKind::HumanInteractive,
+            ),
+            "PUT",
+            PATH,
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body.as_object().unwrap().len(), 4);
         assert_eq!(body["inserted"], false);
         let id = Uuid::now_v7();
-        let (status, body, _) = request(router(Arc::new(FakeRepository::default()), InvocationKind::HumanInteractive), "POST", &format!("{PATH}/view"), Some(json!({"operationId": id, "expectedReadStateRevision": 0}))).await;
+        let (status, body, _) = request(
+            router(
+                Arc::new(FakeRepository::default()),
+                InvocationKind::HumanInteractive,
+            ),
+            "POST",
+            &format!("{PATH}/view"),
+            Some(json!({"operationId": id, "expectedReadStateRevision": 0})),
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body["operationId"], id.to_string());
         assert_eq!(body["kind"], "VIEW");

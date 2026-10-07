@@ -384,7 +384,11 @@ async fn gui_document_list_projects_version_revision_read_state_and_file_summary
     assert_eq!(status, StatusCode::OK);
     assert_eq!(reset["items"].as_array().unwrap().len(), 1);
     assert_eq!(reset["items"][0]["readState"]["isRead"], false);
-    assert!(reset["items"][0]["readState"]["firstReadAt"].as_str().is_some());
+    assert!(
+        reset["items"][0]["readState"]["firstReadAt"]
+            .as_str()
+            .is_some()
+    );
     assert_eq!(reset["items"][0]["unread"], true);
 
     assert_eq!(item["displayTimestamp"]["kind"], "revisionCreatedAt");

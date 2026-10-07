@@ -17,7 +17,8 @@ use crate::{
 };
 
 fn require_human(ctx: &VerifiedActorContext) -> Result<(), RepositoryError> {
-    ctx.ensure_current().map_err(|_| RepositoryError::Forbidden)?;
+    ctx.ensure_current()
+        .map_err(|_| RepositoryError::Forbidden)?;
     if ctx.invocation_kind() != InvocationKind::HumanInteractive {
         return Err(RepositoryError::Forbidden);
     }
@@ -44,7 +45,13 @@ async fn lock_authorized_target(
         .map_err(map_statement_error)?
         .ok_or(RepositoryError::DocumentNotFound)?;
     // authorize_in_tx rechecks identity freshness after waiting for both locks.
-    match authorize_in_tx(tx, ctx, &[(ResourceRef::Document(document_id), vec![Action::Read])]).await {
+    match authorize_in_tx(
+        tx,
+        ctx,
+        &[(ResourceRef::Document(document_id), vec![Action::Read])],
+    )
+    .await
+    {
         Err(RepositoryError::Forbidden) => return Err(RepositoryError::DocumentNotFound),
         other => other?,
     }
@@ -67,7 +74,15 @@ async fn lock_authorized_target(
     .map_err(map_statement_error)?;
     let current = current_id == Some(version_id.as_uuid()) && lifecycle == "PUBLISHED" && !ended;
     if !current {
-        authorize_in_tx(tx, ctx, &[(ResourceRef::Document(document_id), vec![Action::Read, Action::ReadHistory])]).await?;
+        authorize_in_tx(
+            tx,
+            ctx,
+            &[(
+                ResourceRef::Document(document_id),
+                vec![Action::Read, Action::ReadHistory],
+            )],
+        )
+        .await?;
     }
     Ok(current)
 }
@@ -75,8 +90,14 @@ async fn lock_authorized_target(
 pub(crate) fn decode_projection(row: &PgRow) -> Result<CurrentReadProjection, RepositoryError> {
     Ok(CurrentReadProjection {
         first_read_at: row.try_get("first_read_at").map_err(map_statement_error)?,
-        needs_recheck: row.try_get::<Option<bool>, _>("needs_recheck").map_err(map_statement_error)?.unwrap_or(false),
-        read_state_revision: row.try_get::<Option<i64>, _>("read_state_revision").map_err(map_statement_error)?.unwrap_or(0),
+        needs_recheck: row
+            .try_get::<Option<bool>, _>("needs_recheck")
+            .map_err(map_statement_error)?
+            .unwrap_or(false),
+        read_state_revision: row
+            .try_get::<Option<i64>, _>("read_state_revision")
+            .map_err(map_statement_error)?
+            .unwrap_or(0),
     })
 }
 
@@ -95,7 +116,10 @@ async fn own_projection(
     .fetch_optional(&mut **tx)
     .await
     .map_err(map_statement_error)?;
-    row.as_ref().map(decode_projection).transpose().map(|state| state.unwrap_or_default())
+    row.as_ref()
+        .map(decode_projection)
+        .transpose()
+        .map(|state| state.unwrap_or_default())
 }
 
 enum MutationOutcome {
@@ -109,7 +133,14 @@ async fn mutate_in_tx(
     command: ReadStateMutation,
     digest: &[u8; 32],
 ) -> Result<MutationOutcome, RepositoryError> {
-    let current = lock_authorized_target(tx, ctx, command.document_id, command.document_version_id, true).await?;
+    let current = lock_authorized_target(
+        tx,
+        ctx,
+        command.document_id,
+        command.document_version_id,
+        true,
+    )
+    .await?;
     let receipt = sqlx::query(
         "SELECT * FROM document_read_state_operations \
          WHERE identity_provider=$1 AND principal_id=$2 AND operation_id=$3",
@@ -130,13 +161,17 @@ async fn mutate_in_tx(
             document_id: command.document_id,
             document_version_id: command.document_version_id,
             kind: command.kind,
-            expected_read_state_revision: row.try_get("expected_read_state_revision").map_err(map_statement_error)?,
+            expected_read_state_revision: row
+                .try_get("expected_read_state_revision")
+                .map_err(map_statement_error)?,
             changed: row.try_get("changed").map_err(map_statement_error)?,
             occurred_at: row.try_get("occurred_at").map_err(map_statement_error)?,
             resulting_read_state: CurrentReadProjection {
                 first_read_at: Some(row.try_get("first_read_at").map_err(map_statement_error)?),
                 needs_recheck: row.try_get("needs_recheck").map_err(map_statement_error)?,
-                read_state_revision: row.try_get("resulting_read_state_revision").map_err(map_statement_error)?,
+                read_state_revision: row
+                    .try_get("resulting_read_state_revision")
+                    .map_err(map_statement_error)?,
             },
         }));
     }
@@ -282,7 +317,9 @@ impl CurrentReadStateRepository for PostgresDocumentRepository {
         require_human(ctx)?;
         let mut tx = self.pool.begin().await.map_err(map_statement_error)?;
         let result = async {
-            if !lock_authorized_target(&mut tx, ctx, document_id, document_version_id, false).await? {
+            if !lock_authorized_target(&mut tx, ctx, document_id, document_version_id, false)
+                .await?
+            {
                 return Err(RepositoryError::StaleVersion);
             }
             Ok(CurrentReadState {
@@ -290,10 +327,12 @@ impl CurrentReadStateRepository for PostgresDocumentRepository {
                 document_version_id,
                 state: own_projection(&mut tx, ctx, document_version_id).await?,
             })
-        }.await;
+        }
+        .await;
         tx.rollback().await.map_err(map_statement_error)?;
         if result.as_ref().err() == Some(&RepositoryError::Forbidden) {
-            record_authorization_denied(&self.pool, ctx.principal(), "get_current_read_state").await?;
+            record_authorization_denied(&self.pool, ctx.principal(), "get_current_read_state")
+                .await?;
         }
         result
     }
@@ -304,7 +343,8 @@ impl CurrentReadStateRepository for PostgresDocumentRepository {
         command: ReadStateMutation,
     ) -> Result<ReadStateMutationResult, RepositoryError> {
         require_human(ctx)?;
-        let digest = read_state_command_digest(ctx, &command).map_err(|_| RepositoryError::BusinessRule)?;
+        let digest =
+            read_state_command_digest(ctx, &command).map_err(|_| RepositoryError::BusinessRule)?;
         for _ in 0..2 {
             let mut tx = self.pool.begin().await.map_err(map_statement_error)?;
             match mutate_in_tx(&mut tx, ctx, command, &digest).await {
@@ -318,7 +358,12 @@ impl CurrentReadStateRepository for PostgresDocumentRepository {
                 Err(error) => {
                     tx.rollback().await.map_err(map_statement_error)?;
                     if error == RepositoryError::Forbidden {
-                        record_authorization_denied(&self.pool, ctx.principal(), "mutate_read_state").await?;
+                        record_authorization_denied(
+                            &self.pool,
+                            ctx.principal(),
+                            "mutate_read_state",
+                        )
+                        .await?;
                     }
                     return Err(error);
                 }

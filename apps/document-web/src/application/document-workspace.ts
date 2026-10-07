@@ -1,5 +1,8 @@
 export { documentApi } from '../api/document-api';
 export type {
+  CurrentReadState,
+  ReadStateMutationRequest,
+  ReadStateMutationResult,
   CreateDocumentResult,
   CommandsWithdrawVersion,
   CommandsEndPublication,

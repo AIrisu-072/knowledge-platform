@@ -855,6 +855,8 @@ components:
       $ref: ./schemas/document/models.yaml#/$defs/CurrentReadProjection
     CurrentReadState:
       $ref: ./schemas/document/models.yaml#/$defs/CurrentReadState
+    ReadStateReceiptState:
+      $ref: ./schemas/document/models.yaml#/$defs/ReadStateReceiptState
     ReadStateMutationResult:
       $ref: ./schemas/document/models.yaml#/$defs/ReadStateMutationResult
     ReadStateMutationRequest:

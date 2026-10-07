@@ -2,6 +2,7 @@ import { createRootRoute, createRoute, createRouter, Outlet, redirect, RouterPro
 import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { installDocumentViewNavigation } from './application/document-view-navigation';
 import { OrganizationProvider } from './application/organization-context';
 import { validateTaskSearch } from './application/work-workspace';
 import { DocumentHomePage } from './routes/DocumentHomePage';
@@ -65,6 +66,8 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+installDocumentViewNavigation(router, queryClient);
 
 declare module '@tanstack/react-router' {
   interface Register {

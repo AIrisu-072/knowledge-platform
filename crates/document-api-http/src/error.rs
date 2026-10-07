@@ -236,7 +236,9 @@ impl ApiProblem {
             ApplicationError::StaleVersion => ErrorCode::StaleVersion,
             ApplicationError::CursorStale => ErrorCode::CursorStale,
             ApplicationError::StaleComparisonInput => ErrorCode::StaleComparisonInput,
-            ApplicationError::Conflict | ApplicationError::ReadStateRevisionConflict => ErrorCode::RevisionConflict,
+            ApplicationError::Conflict | ApplicationError::ReadStateRevisionConflict => {
+                ErrorCode::RevisionConflict
+            }
             ApplicationError::OperationConflict => ErrorCode::OperationConflict,
             ApplicationError::BusinessRule => ErrorCode::BusinessRuleRejected,
             ApplicationError::Management(code) => management_code(*code),
@@ -276,7 +278,8 @@ impl ApiProblem {
         let mut problem = Self::new(code, instance, trace_id);
         match error {
             ApplicationError::ReadStateRevisionConflict => {
-                problem.detail = "Expected read-state revision does not match the current read-state revision";
+                problem.detail =
+                    "Expected read-state revision does not match the current read-state revision";
             }
             ApplicationError::CommitOutcomeUnknown {
                 document_id,

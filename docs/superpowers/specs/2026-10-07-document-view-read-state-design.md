@@ -14,7 +14,7 @@ Tauri、Organization、Audit配送、Search製品は他担当のまま。main.ts
 - document_read_statesへneeds_recheck BOOLEAN NOT NULL DEFAULT FALSE、read_state_revision BIGINT NOT NULL DEFAULT 1を追加。revisionは1〜9007199254740991。行なしはfirstReadAt:null/needsRecheck:false/revision0/isRead:false
 - 既存rowはr1/falseへ移行し、初回日時・旧Auditを変更しない。isReadは初回日時ありかつ再確認false、unreadOnlyは行なしまたは再確認true。一覧/詳細の既存wire形は変えず、その意味を同じprojectionへ揃える。VersionのfirstReadAtは履歴であり現在badgeの根拠にしない
 - 旧空body PUT markDocumentVersionReadと4応答field(documentId/versionId/firstReadAt/inserted)は維持。既存rowの再生はresetを解除せずrevisionも増やさない。旧PUTで最初のrowを作る場合だけdefault r1となる
-- 新migration0012_document_current_read_state.sql。既存migration本文/checksumは不変。既存Document台帳集合の3assertion(search_main_migration/source_ownership_migration/coordination_migration)だけ1..=11→1..=12へ追従し、集合検査を弱めない。直前mainで番号衝突を再確認する。Search専用の追加実行はしない
+- 新migration0012_document_current_read_state.sql。既存migration本文/checksumは不変。既存Document台帳集合の3assertion(search_main_migration/source_ownership_migration/coordination_migration)を1..=11→1..=12へ追従し、集合検査を弱めない。新sourceの通常hostedで判明したoutbox_delivery_migrationの台帳最大番号期待も11→12へ追従する。これは同じDocument移行の回帰維持であり、Search製品の意味・実装・専用実行を追加しない。直前mainで番号衝突を再確認する
 - 新旧serverの混在稼働はしない。旧serverは再確認flagを理解しない。通常の停止時保存・別DBでの更新確認と、同sourceのmigration/server/GUIを組み合わせる。Git revertだけをDB復旧と呼ばない
 
 ## 新APIとserver判定

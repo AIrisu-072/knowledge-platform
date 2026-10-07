@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -462,4 +462,45 @@ test('version detail exposes only its required nullable current publication sche
   assert.equal(resolved(contract.components.schemas.Version).properties.currentPublicationScheduleId, undefined);
   const example = resolved(contract.components.responses.Version).content['application/json'].example;
   assert.equal(example.currentPublicationScheduleId, null);
+});
+
+
+test('成功receiptはnonnull初回日時とr1以上だけを許しGETの仮想r0は保持する', () => {
+  const receipt = {
+    operationId: '0199a8ad-cf25-7f22-8fd5-5facbb735015',
+    documentId: '00000000-0000-4000-8000-000000000001',
+    versionId: '00000000-0000-4000-8000-000000000022',
+    kind: 'VIEW', expectedReadStateRevision: 0, changed: true,
+    occurredAt: '2026-10-07T00:00:00Z',
+    resultingReadState: { firstReadAt: '2026-10-07T00:00:00Z', needsRecheck: false, readStateRevision: 1, isRead: true },
+  };
+  function accepts(example) {
+    const directory = mkdtempSync(join(tmpdir(), 'document-receipt-contract-'));
+    try {
+      const document = structuredClone(contract);
+      document.components.responses.ReadStateMutationResult.content['application/json'].example = example;
+      document.components.responses.CurrentReadState.content['application/json'].example = {
+        documentId: receipt.documentId, versionId: receipt.versionId,
+        firstReadAt: null, needsRecheck: false, readStateRevision: 0, isRead: false,
+      };
+      const source = join(directory, 'contract.json');
+      const config = join(directory, 'redocly.yaml');
+      writeFileSync(source, JSON.stringify(document));
+      writeFileSync(config, 'extends: []\nrules:\n  no-invalid-media-type-examples: error\n');
+      try {
+        execFileSync(process.execPath, [join(repository, 'node_modules/@redocly/cli/bin/cli.js'), 'lint', source, '--config', config, '--format', 'json'], { cwd: repository, stdio: 'pipe' });
+        return true;
+      } catch (error) {
+        const diagnostic = String(error.stdout ?? '') + String(error.stderr ?? '');
+        assert.match(diagnostic, /no-invalid-media-type-examples/, diagnostic);
+        return false;
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+  assert.equal(accepts(receipt), true, '正常receiptと仮想r0 GETは受理する');
+  assert.equal(accepts({ ...receipt, resultingReadState: { firstReadAt: null, needsRecheck: false, readStateRevision: 0, isRead: false } }), false, '仮想r0を成功receiptにしない');
+  assert.equal(accepts({ ...receipt, resultingReadState: { ...receipt.resultingReadState, firstReadAt: null } }), false, '成功receiptにnull日時を許さない');
+  assert.equal(accepts({ ...receipt, resultingReadState: { ...receipt.resultingReadState, readStateRevision: 0 } }), false, '成功receiptにr0を許さない');
 });

@@ -1,3 +1,4 @@
+import { DocumentReadStateRecovery } from '../components/document/DocumentReadState';
 import { DocumentAccessPolicyRecovery } from '../components/document/DocumentAccessPolicy';
 import { documentAccessPolicyOperations } from '../application/document-access-policy';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -427,6 +428,7 @@ export function DocumentHomePage() {
       </div>
 
       <DocumentAccessPolicyRecovery />
+      <DocumentReadStateRecovery />
       <div className={styles.listLayout}>
         <section className={styles.listMain} aria-label="文書">
           <form className={styles.filterBar} onSubmit={(event) => {

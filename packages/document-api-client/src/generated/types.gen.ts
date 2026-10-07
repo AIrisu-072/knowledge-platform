@@ -113,6 +113,8 @@ export type CurrentReadProjection = ModelsCurrentReadProjection;
 
 export type CurrentReadState = ModelsCurrentReadState;
 
+export type ReadStateReceiptState = ModelsReadStateReceiptState;
+
 export type ReadStateMutationResult = ModelsReadStateMutationResult;
 
 export type ReadStateMutationRequest = CommandsReadStateMutationRequest;
@@ -884,7 +886,20 @@ export type ModelsReadStateMutationResult = {
     expectedReadStateRevision: number;
     changed: boolean;
     occurredAt: string;
-    resultingReadState: ModelsCurrentReadProjection;
+    resultingReadState: ModelsReadStateReceiptState;
+};
+
+export type ModelsReadStateReceiptState = {
+    /**
+     * 成功した操作の初回記録日時。nullは返さない。
+     */
+    firstReadAt: string;
+    needsRecheck: boolean;
+    readStateRevision: number;
+    /**
+     * needsRecheckがfalseの場合にtrue。
+     */
+    isRead: boolean;
 };
 
 export type ModelsReadStateResult = {

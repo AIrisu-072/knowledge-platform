@@ -4,7 +4,7 @@
 
 ## 共通条件
 
-- 他担当のmain/Tauri/Org/Audit配送/Search製品を保持。Document migration集合期待3箇所だけを追従する
+- 他担当のmain/Tauri/Org/Audit配送/Search製品を保持。Document migration集合期待3箇所と、通常hostedで実FAILを確認した台帳最大番号期待1箇所だけを追従する
 - Node24.21.0/pnpm12.4.1/Rust1.98.1、固定lock/公式source。RedoclyはREDOCLY_TELEMETRY=off、REDOCLY_SUPPRESS_UPDATE_NOTICE=true
 - ローカル実DB/socket/Docker/Chromiumなし。DB testsはcompileだけ。Cargo排他・task専用target
 - source所有を分け、stage/commitはcontrollerが直列化。必要なAPI/DTOを固定してからGUIを並行可能にする

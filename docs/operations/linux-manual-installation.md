@@ -142,6 +142,14 @@
 - 当時の固定ソース：統合済みmain `6c514850850110a3c2f8b2b5664ec263510c5d47`。受入済み[PR67](https://github.com/AIrisu-072/knowledge-platform/pull/67) `a39c90c2` と同一tree `880b1a57abc6890ed47df5e7bc16a4694d4546cc`
 - 当時の確認：PR67の[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574840)、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574859)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574842)成功。同treeで使い捨てPostgreSQL・2名の合成Agent/完了/保留再開/原本取得・HTTPサーバー再起動後の復元・cleanupを確認済み。統合後mainの[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37253316995)もrequired-checkを含む13 jobsと実受入が成功
 
+## PR106の既読状態移行について（現在の固定導入版には未収録）
+
+PR106はDocument migration `0012_document_current_read_state.sql` を追加する。既存の本人×版の初回日時と過去の監査を残し、再確認flagをfalse、既読専用revisionを1として移行する。未記録の版は行なし・revision0である。旧PUTによる初回記録/再送の応答形は保持するが、旧PUT再送で新しい「未読戻し」を解除しない。
+
+新しいserver・生成クライアント・GUIは同じ受入済みsourceから組み合わせる。旧serverは再確認flagを理解しないため新旧を混在稼働しない。migrationを適用済みのDBへ旧binaryを戻すだけの切戻しは行わない。採用する版が資格化された後に、この手順の停止時バックアップ・元環境を壊さない別DBでの復元確認・更新手順に従い、台帳やchecksumを手動変更して起動を通さない。
+
+この追補は移行の意味を説明するもので、現固定SHAをPR106へ変更する指示ではない。PR106の実DB/画面/HTTP再起動の受入、対象PCでの導入、backup/restore、PostgreSQLプロセス再起動は、それぞれの確認結果が記録されるまで未資格として扱う。
+
 ## 1 開始前の確認
 
 - [ ] `/etc/os-release`、`uname -m`、`uname -r`、空きディスクを確認した

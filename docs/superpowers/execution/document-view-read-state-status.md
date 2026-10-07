@@ -2,6 +2,23 @@
 
 Status: ACTIVE
 
+## 2026-10-07 11:28 UTC — GUIと既存受入の段階保存
+
+- GUI所管15filesを新focused75件・schema/型の成功時と同じhashで固定した。StrictMode/remount/reload、遅い読取/新版/認可拒否、MAX、UNKNOWN往復/固定再送、成功後read失敗を含む。補助read拒否後の正規再確認が余分にretryする実反例は、既存queryFnを明示再利用して1回へ限定した。全GUI/buildとGUI独立レビューは続行中
+- 既存runtime4filesは新しい型検証・純粋/source guard43件・MCP compile・試験収集18＋5が成功し、sourceの独立仕様/品質レビューはGO。これは実DB/browserの合格ではない。metadataの再入場前未読snapshot、regulationの最後の閲覧後RESET、GUI表示前の再起動後replayを保持する
+- backendのreceipt schemaとRESET後VIEWの指摘を補修。実fmt logの一致分だけを適用し、不一致6hunkは残して次のexact-head hostedで確認する。台帳最大番号追従は1assertだけ。API20件・SDK12件の新しい成功とRust/DB未資格を区別する
+- 第3公開head a626b54bの既存Document/Organization runtime jobは成功したが、新GUI/受入sourceは未収録なので今回の既読方式の資格にはしない。旧1ebのOrganization失敗ログは同じtoolの限定再確認でもTransport closedで原因未特定のまま保持する
+- この保存では操作/移行の日本語追補も同梱する。現固定導入SHAは保持し、未資格の候補を導入済み/導入可能とは表示しない。次は新しい全GUI/build/独立レビューと同PRの通常hostedを確認する
+
+## 2026-10-07 11:20 UTC — 第3保存と独立レビュー補修
+
+- PR106の公開head a626b54b4aafcaef7a78978e60ea19004036e6d7 / tree cccd384eaded8d941b4c09d3370f006de5042b64 / base a7cf93d53をreadbackで照合。43ファイルを同じDraftへ保存し、本文も一致した
+- 中間head1eb06cafのCI37610285070は失敗。Rust compile後の新純粋6caseはPASS行を確認したが、全体はDocument台帳最大番号の期待11/実12で停止した（outbox_delivery_migration.rs）。既存Search回帰も同じassertionが原因であり、Document migration追加に必要な1箇所だけ12へ追従する。新しいSearch機能/専用実行は追加しない
+- 中間headのfmt実diffをsource一致確認して反映する。Organization実受入stepも失敗し、元の接続済みjob-logのTransport closedで原因未取得。失敗や未取得を後続headの資格へ付け替えない
+- 新backendの独立レビューは成功receipt schemaのnull日時/revision0許容、RESET r2後VIEW r3の成功試験不足の2点でNO-GO。前者は実schema反例の新REDから限定補修し、API20件/SDK12件・生成/型/lintが成功した。後者とformatter/台帳は追加sourceで次のhosted確認へ進む。再レビュー前でありbackend全体の合格ではない
+- 新GUIは実routeの正しい通常表示を先に確認した欠如REDから、核37件＋先行実route8件/計45件とschema/型が成功した小単位を保存済み。広い反例・全GUI/build・独立レビューは続行中。旧sourceの結果を転用しない
+- 既存4受入fileを新sourceで再構成中。日本語の操作/移行互換手順を同機能へ追加し、旧固定導入版に今回の既読方式がないことを明記する。実DB/画面/HTTP再起動の新資格とmain統合はまだ完了していない
+
 ## 2026-10-07 10:58 UTC — backend試験・規範の保存
 
 - 第2公開head1eb06caf/tree324ad1bbのcoreに、新しい純粋HTTP4case、DB transaction15case、migration反例、既存projection/legacy/HTTP受入のassertion、規範追補を加える。API全38操作のschema/evidence登録も新sourceへ揃える

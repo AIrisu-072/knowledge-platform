@@ -7,7 +7,9 @@ use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use uuid::{Uuid, Variant};
 
-use crate::{ApplicationError, InvocationKind, RepositoryError, VerifiedActorContext, canonical_json_bytes};
+use crate::{
+    ApplicationError, InvocationKind, RepositoryError, VerifiedActorContext, canonical_json_bytes,
+};
 
 pub const MAX_READ_STATE_REVISION: i64 = 9_007_199_254_740_991;
 
@@ -37,7 +39,9 @@ pub struct ReadStateOperationId(Uuid);
 impl ReadStateOperationId {
     pub fn try_from_uuid(value: Uuid) -> Result<Self, ApplicationError> {
         if value.get_version_num() != 7 || value.get_variant() != Variant::RFC4122 {
-            return Err(ApplicationError::Validation("read-state operation id must be UUIDv7 with RFC variant".into()));
+            return Err(ApplicationError::Validation(
+                "read-state operation id must be UUIDv7 with RFC variant".into(),
+            ));
         }
         Ok(Self(value))
     }
@@ -112,7 +116,9 @@ pub fn read_state_command_digest(
 ) -> Result<[u8; 32], ApplicationError> {
     require_human(ctx)?;
     if !(0..=MAX_READ_STATE_REVISION).contains(&command.expected_read_state_revision) {
-        return Err(ApplicationError::Validation("expected read-state revision must be a safe nonnegative integer".into()));
+        return Err(ApplicationError::Validation(
+            "expected read-state revision must be a safe nonnegative integer".into(),
+        ));
     }
     let bytes = canonical_json_bytes(&json!({
         "schemaVersion": 1,
@@ -147,7 +153,10 @@ impl<R: CurrentReadStateRepository> CurrentReadStateService<R> {
         document_version_id: DocumentVersionId,
     ) -> Result<CurrentReadState, ApplicationError> {
         require_human(ctx)?;
-        self.repository.get_current_read_state(ctx, document_id, document_version_id).await.map_err(Into::into)
+        self.repository
+            .get_current_read_state(ctx, document_id, document_version_id)
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn mutate_read_state(
