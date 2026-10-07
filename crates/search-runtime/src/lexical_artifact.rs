@@ -131,9 +131,10 @@ fn tree_files(dir: &Path) -> Result<Vec<(String, PathBuf)>, LexicalArtifactError
 }
 
 /// File digests computed in this process, by file identity (device, inode,
-/// size, change and modification time). A file hard-linked into a later
-/// generation keeps its identity, so its bytes are hashed once per process.
-type FileDigestCache = Mutex<HashMap<[u64; 6], (u64, [u8; 32])>>;
+/// size, modification time). A file hard-linked into a later generation keeps
+/// its identity (linking changes only the change time), so its bytes are
+/// hashed once per process.
+type FileDigestCache = Mutex<HashMap<[u64; 5], (u64, [u8; 32])>>;
 
 fn file_digest_cache() -> &'static FileDigestCache {
     static CACHE: OnceLock<FileDigestCache> = OnceLock::new();
@@ -144,21 +145,20 @@ fn file_digest_cache() -> &'static FileDigestCache {
 const CACHED_FILE_DIGESTS: usize = 200_000;
 
 #[cfg(unix)]
-fn file_identity(path: &Path) -> Option<[u64; 6]> {
+fn file_identity(path: &Path) -> Option<[u64; 5]> {
     use std::os::unix::fs::MetadataExt;
     let meta = std::fs::metadata(path).ok()?;
     Some([
         meta.dev(),
         meta.ino(),
         meta.size(),
-        u64::try_from(meta.ctime()).ok()?,
-        u64::try_from(meta.ctime_nsec()).ok()?,
+        u64::try_from(meta.mtime()).ok()?,
         u64::try_from(meta.mtime_nsec()).ok()?,
     ])
 }
 
 #[cfg(not(unix))]
-fn file_identity(_path: &Path) -> Option<[u64; 6]> {
+fn file_identity(_path: &Path) -> Option<[u64; 5]> {
     None
 }
 

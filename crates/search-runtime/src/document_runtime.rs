@@ -347,6 +347,14 @@ impl PgDocumentIndexRuntime {
         }))
     }
 
+    /// Best effort after a publication: superseded READY generations would
+    /// otherwise stay on disk forever; a pinned one is retried next time.
+    async fn retire_superseded(&self, key: ProjectionGenerationKey) {
+        let _ = PgGenerationGc::new(self.pool.clone(), &self.lexical_root)
+            .retire_superseded(key.source_id, RETAINED_PREVIOUS_GENERATIONS)
+            .await;
+    }
+
     /// The guard holder gives up a build; the files and rows go with it.
     async fn abort(&self, key: ProjectionGenerationKey) -> Result<bool, SearchError> {
         let pending = self
@@ -738,6 +746,8 @@ impl DocumentIndexRuntime for PgDocumentIndexRuntime {
             if let Ok(mut pending) = self.pending.lock() {
                 pending.remove(&key);
             }
+            // An event publication settles here; retire what it superseded.
+            self.retire_superseded(key).await;
             Ok(())
         })
     }
@@ -842,11 +852,7 @@ impl DocumentIndexRuntime for PgDocumentIndexRuntime {
             if let Ok(mut pending) = self.pending.lock() {
                 pending.remove(&key);
             }
-            // Best effort: superseded READY generations would otherwise stay
-            // on disk forever; a pinned one is retried at the next publication.
-            let _ = PgGenerationGc::new(self.pool.clone(), &self.lexical_root)
-                .retire_superseded(key.source_id, RETAINED_PREVIOUS_GENERATIONS)
-                .await;
+            self.retire_superseded(key).await;
             Ok(true)
         })
     }
