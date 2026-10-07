@@ -295,6 +295,9 @@ fn partial_sources_are_explicit_and_candidates_cite_only_usable_sources() {
     let mut bad = structured(&refs);
     bad.suggested_actions[0].rationale = "x".repeat(1025);
     rejects(bad);
+    let mut bad = structured(&refs);
+    bad.suggested_actions[1] = bad.suggested_actions[0].clone();
+    rejects(bad);
     // A result without a Finding is allowed: a bare suggestion stays a suggestion.
     let mut bare = structured(&refs);
     bare.finding = None;
@@ -323,6 +326,15 @@ fn candidates_follow_the_execution_read_rule_across_reassignment_and_new_attempt
         .agent_executions
         .iter_mut()
         .for_each(|e| e.result.as_mut().unwrap().generated_artifact_ids.clear());
+    assert_eq!(
+        tampered.validate_integrity(),
+        Err(WorkError::IntegrityViolation)
+    );
+    // A candidate record that no result lists, even with nothing referring to it.
+    let mut tampered = w.clone();
+    let mut stray = tampered.generated_artifacts[0].clone();
+    stray.id = Uuid::now_v7();
+    tampered.generated_artifacts.push(stray);
     assert_eq!(
         tampered.validate_integrity(),
         Err(WorkError::IntegrityViolation)
