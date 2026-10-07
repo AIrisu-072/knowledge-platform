@@ -81,9 +81,11 @@ function workspaceReceipt(value: unknown): RuntimeWorkspaceReceipt {
   const item = record(value, ['operationId', 'workspaceId', 'managedBindingId', 'runtimeRevision']);
   return { operationId: text(item.operationId), workspaceId: text(item.workspaceId), managedBindingId: text(item.managedBindingId), runtimeRevision: text(item.runtimeRevision) };
 }
-function workspaceCreated(value: unknown): WorkspaceCreated {
+function workspaceCreated(value: unknown, operationId: string): WorkspaceCreated {
   const item = record(value, ['receipt', 'workspace']);
-  return { receipt: workspaceReceipt(item.receipt), workspace: workspace(item.workspace) };
+  const created = { receipt: workspaceReceipt(item.receipt), workspace: workspace(item.workspace) };
+  if (created.receipt.operationId !== operationId || created.receipt.workspaceId !== created.workspace.workspaceId) throw new Malformed();
+  return created;
 }
 function outcome(value: unknown): RuntimeWorkspaceOutcome {
   const state = oneOf((value as Json | null)?.state, ['ready', 'pending', 'not_found', 'unavailable', 'outcome_unknown'] as const);
@@ -95,13 +97,15 @@ function selection(value: unknown) {
   if (value === null) return null;
   return { selectionId: text(record(value, ['selectionId']).selectionId) };
 }
-function attached(value: unknown): BindingAttached {
+function attached(value: unknown, operationId: string): BindingAttached {
   const item = record(value, ['receipt', 'workspace']);
   const receipt = record(item.receipt, ['operationId', 'bindingId', 'runtimeRevision']);
-  return {
+  const result = {
     receipt: { operationId: text(receipt.operationId), bindingId: text(receipt.bindingId), runtimeRevision: text(receipt.runtimeRevision) },
     workspace: workspace(item.workspace),
   };
+  if (result.receipt.operationId !== operationId || !result.workspace.bindings.some((item) => item.bindingId === result.receipt.bindingId)) throw new Malformed();
+  return result;
 }
 function entry(value: unknown): LocalEntry {
   const item = record(value, ['locator', 'name', 'kind', 'fileIdentity']);
@@ -110,10 +114,14 @@ function entry(value: unknown): LocalEntry {
   if (path.at(-1) !== name) throw new Malformed();
   return { locator: path, name, kind: oneOf(item.kind, ['file', 'directory'] as const), fileIdentity: text(item.fileIdentity) };
 }
-function entryPage(value: unknown): EntryPage {
+const sameLocator = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((part, index) => part === b[index]);
+function entryPage(value: unknown, parent: LocalRef): EntryPage {
   const item = record(value, ['entries', 'nextCursor', 'omittedCount']);
   if (!Array.isArray(item.entries) || item.entries.length > 100) throw new Malformed();
-  return { entries: item.entries.map(entry), nextCursor: item.nextCursor === null ? null : text(item.nextCursor), omittedCount: count(item.omittedCount) };
+  const entries = item.entries.map(entry);
+  // Every entry must be a direct child of the directory that was listed.
+  if (!entries.every((child) => sameLocator(child.locator.slice(0, -1), parent.locator))) throw new Malformed();
+  return { entries, nextCursor: item.nextCursor === null ? null : text(item.nextCursor), omittedCount: count(item.omittedCount) };
 }
 function readHandle(value: unknown): ReadHandle {
   const item = record(value, ['readHandleId', 'contentGeneration', 'sizeBytes']);
@@ -135,15 +143,22 @@ export function encodeBase64(bytes: Uint8Array): string {
   }
   return btoa(binary);
 }
-function bytePage(value: unknown, length: number): BytePage {
+function bytePage(value: unknown, handle: ReadHandle, offset: number, length: number): BytePage {
   const item = record(value, ['bytesBase64', 'offset', 'contentGeneration', 'eof']);
   const bytes = decodeBase64(text(item.bytesBase64, true));
-  if (bytes.length > length) throw new Malformed();
-  return { bytes, offset: count(item.offset), contentGeneration: text(item.contentGeneration), eof: flag(item.eof) };
+  const page = { bytes, offset: count(item.offset), contentGeneration: text(item.contentGeneration), eof: flag(item.eof) };
+  // The range must belong to the same handle generation and requested window.
+  const end = Math.min(offset + length, handle.sizeBytes);
+  if (page.offset !== offset || page.contentGeneration !== handle.contentGeneration || bytes.length !== Math.max(0, end - offset)
+    || page.eof !== (end === handle.sizeBytes)) throw new Malformed();
+  return page;
 }
-function fileReceipt(value: unknown): FileReceipt {
+function fileReceipt(value: unknown, operationId: string, parent: LocalRef, name: string, size: number): FileReceipt {
   const item = record(value, ['operationId', 'ref', 'fileIdentity', 'sizeBytes', 'sha256']);
-  return { operationId: text(item.operationId), ref: localRef(item.ref), fileIdentity: text(item.fileIdentity), sizeBytes: count(item.sizeBytes), sha256: text(item.sha256) };
+  const receipt = { operationId: text(item.operationId), ref: localRef(item.ref), fileIdentity: text(item.fileIdentity), sizeBytes: count(item.sizeBytes), sha256: text(item.sha256) };
+  if (receipt.operationId !== operationId || receipt.ref.bindingId !== parent.bindingId || !sameLocator(receipt.ref.locator, [...parent.locator, name])
+    || receipt.sizeBytes !== size || !/^[0-9a-f]{64}$/u.test(receipt.sha256)) throw new Malformed();
+  return receipt;
 }
 function nothing(value: unknown): void {
   if (value !== null && value !== undefined) throw new Malformed();
@@ -188,25 +203,26 @@ export function createDesktopRuntime(invoke: InvokeFn): RuntimeAdapter {
     capabilities: () => read('capabilities', null, capabilities),
     workspace: {
       listWorkspaces: () => read('workspace.list', null, workspaceList),
-      createLocalWorkspace: (name, operationId) => mutate('workspace.create', { name, operationId }, workspaceCreated),
+      createLocalWorkspace: (name, operationId) => mutate('workspace.create', { name, operationId }, (value) => workspaceCreated(value, operationId)),
       renameWorkspace: (context: ContextRef, name, operationId) => mutate('workspace.rename', { context, name, operationId }, workspace),
-      recoverWorkspace: (operationId) => read('workspace.recover', { operationId }, outcome),
+      // Recovery may complete an interrupted creation, so it is a mutation.
+      recoverWorkspace: (operationId) => mutate('workspace.recover', { operationId }, outcome),
     },
     dialog: {
       chooseDirectory: (context) => read('directory.choose', { context }, selection),
     },
     resources: {
-      attachDirectory: (context, chosen, operationId) => mutate('directory.attach', { context, selectionId: chosen.selectionId, operationId }, attached),
+      attachDirectory: (context, chosen, operationId) => mutate('directory.attach', { context, selectionId: chosen.selectionId, operationId }, (value) => attached(value, operationId)),
       detachDirectory: (context, bindingId, operationId) => mutate('directory.detach', { context, bindingId, operationId }, workspace),
-      listEntries: (context, ref, cursor) => read('entries.list', { context, ref, cursor: cursor ?? null }, entryPage),
+      listEntries: (context, ref, cursor) => read('entries.list', { context, ref, cursor: cursor ?? null }, (value) => entryPage(value, ref)),
       openRead: (context, ref, expectedFileIdentity) => read('file.openRead', { context, ref, expectedFileIdentity }, readHandle),
       readFile: (context, handle, offset, length) => length > MAX_READ_RANGE || length < 1
         ? tooLarge()
-        : read('file.read', { context, readHandleId: handle.readHandleId, offset, length }, (value) => bytePage(value, length)),
+        : read('file.read', { context, readHandleId: handle.readHandleId, offset, length }, (value) => bytePage(value, handle, offset, length)),
       closeRead: (context, handle) => read('file.closeRead', { context, readHandleId: handle.readHandleId }, nothing),
       createFile: (context, parent, name, bytes, operationId) => bytes.length > MAX_CREATE_BYTES
         ? tooLarge()
-        : mutate('file.create', { context, parent, name, bytesBase64: encodeBase64(bytes), operationId }, fileReceipt),
+        : mutate('file.create', { context, parent, name, bytesBase64: encodeBase64(bytes), operationId }, (value) => fileReceipt(value, operationId, parent, name, bytes.length)),
     },
   };
 }

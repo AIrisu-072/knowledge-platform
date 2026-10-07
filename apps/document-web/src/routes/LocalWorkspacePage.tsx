@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, Heading, Modal } from 'react-aria-components';
 import { AppShell } from '../components/app-shell/AppShell';
 import {
   decodePreview, formatBytes, localRuntimeKeys, runtimeMessage, useLocalEntries, useLocalWorkspaces, useRuntimeCapabilities, useRuntimeOperation,
+  useUnresolvedRuntimeOperations,
 } from '../application/local-workspace';
 import { useRuntime } from '../runtime/runtime-context';
 import {
@@ -25,8 +26,11 @@ export function LocalWorkspacePage() {
   const capabilities = useRuntimeCapabilities();
   const desktop = capabilities.data?.localResources === 'available' && capabilities.data.managedWorkspace === 'available';
   const workspaces = useLocalWorkspaces(desktop);
+  const unresolved = useUnresolvedRuntimeOperations();
   const [selectedId, setSelectedId] = useState<string>();
-  const selected = workspaces.data?.find((item) => item.workspaceId === selectedId) ?? workspaces.data?.[0];
+  // An unresolved operation pins its Workspace so its confirmation stays reachable.
+  const pinnedId = unresolved.find((item) => item.workspaceId)?.workspaceId;
+  const selected = workspaces.data?.find((item) => item.workspaceId === (pinnedId ?? selectedId)) ?? workspaces.data?.[0];
   const [notice, setNotice] = useState('');
   const refresh = () => client.invalidateQueries({ queryKey: localRuntimeKeys.all });
 
@@ -53,12 +57,15 @@ export function LocalWorkspacePage() {
         )}
         {desktop && workspaces.isPending && <p className={styles.note}>ローカルWorkspaceを読み込んでいます…</p>}
         {desktop && workspaces.isError && <Problem error={workspaces.error} />}
+        {desktop && unresolved.length > 0 && (
+          <p className={styles.note}>結果を確認していない操作があります。「結果を確認」で確定するまで、他のWorkspaceやフォルダーへは移動できません。</p>
+        )}
         {desktop && workspaces.data && (
           <div className={styles.layout}>
-            <WorkspaceList workspaces={workspaces.data} selected={selected} onSelect={setSelectedId}
+            <WorkspaceList workspaces={workspaces.data} selected={selected} onSelect={setSelectedId} blocked={unresolved.length > 0}
               onCreated={(workspace) => { setSelectedId(workspace.workspaceId); setNotice(`Workspace「${workspace.name}」を作成しました。`); }} />
             {selected
-              ? <WorkspaceDetail key={selected.workspaceId} workspace={selected} canPick={capabilities.data?.nativeDirectoryPicker === 'available'} onNotice={setNotice} refresh={refresh} />
+              ? <WorkspaceDetail key={selected.workspaceId} workspace={selected} canPick={capabilities.data?.nativeDirectoryPicker === 'available'} onNotice={setNotice} refresh={refresh} blocked={unresolved.length > 0} />
               : <section className={styles.panel}><p>Workspaceはまだありません。「新しいWorkspace」で作成してください。</p></section>}
           </div>
         )}
@@ -68,15 +75,22 @@ export function LocalWorkspacePage() {
   );
 }
 
-function WorkspaceList({ workspaces, selected, onSelect, onCreated }: {
-  workspaces: LocalWorkspace[]; selected?: LocalWorkspace; onSelect: (id: string) => void; onCreated: (workspace: LocalWorkspace) => void;
+const CREATE_WORKSPACE = 'create-workspace';
+const NO_PLACE = {};
+
+function WorkspaceList({ workspaces, selected, onSelect, onCreated, blocked }: {
+  workspaces: LocalWorkspace[]; selected?: LocalWorkspace; onSelect: (id: string) => void; onCreated: (workspace: LocalWorkspace) => void; blocked: boolean;
 }) {
   const runtime = useRuntime();
   const client = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const unresolved = useUnresolvedRuntimeOperations();
+  // Reopen the dialog of an uncertain creation after returning to the screen.
+  const [open, setOpen] = useState(() => unresolved.some((item) => item.key === CREATE_WORKSPACE));
   const [name, setName] = useState('');
   const trigger = useRef<HTMLButtonElement>(null);
   const create = useRuntimeOperation(
+    CREATE_WORKSPACE,
+    NO_PLACE,
     (value: string, operationId: string) => runtime.workspace.createLocalWorkspace(value, operationId),
     async (created) => {
       await client.invalidateQueries({ queryKey: localRuntimeKeys.workspaces });
@@ -106,11 +120,12 @@ function WorkspaceList({ workspaces, selected, onSelect, onCreated }: {
         {workspaces.map((workspace) => (
           <li key={workspace.workspaceId}>
             <button type="button" className={styles.itemButton} aria-current={workspace.workspaceId === selected?.workspaceId ? 'true' : undefined}
+              disabled={blocked && workspace.workspaceId !== selected?.workspaceId}
               onClick={() => onSelect(workspace.workspaceId)}>{workspace.name}</button>
           </li>
         ))}
       </ul>
-      <button ref={trigger} type="button" className={workspaceStyles.secondaryButton} onClick={() => setOpen(true)}>新しいWorkspace</button>
+      <button ref={trigger} type="button" className={workspaceStyles.secondaryButton} disabled={blocked && !open} onClick={() => setOpen(true)}>新しいWorkspace</button>
       <Modal isOpen={open} onOpenChange={(value) => { if (!value) close(); }} isDismissable={!pending && !unknown} isKeyboardDismissDisabled={pending || unknown} className={dialogStyles.modal}>
         <Dialog aria-labelledby="local-workspace-create-title" className={dialogStyles.dialog}>
           <form onSubmit={submit} className={styles.form}>
@@ -137,23 +152,31 @@ function WorkspaceList({ workspaces, selected, onSelect, onCreated }: {
 
 type Browse = { bindingId: string; locator: string[] };
 
-function WorkspaceDetail({ workspace, canPick, onNotice, refresh }: {
-  workspace: LocalWorkspace; canPick: boolean; onNotice: (text: string) => void; refresh: () => Promise<void>;
+function WorkspaceDetail({ workspace, canPick, onNotice, refresh, blocked }: {
+  workspace: LocalWorkspace; canPick: boolean; onNotice: (text: string) => void; refresh: () => Promise<void>; blocked: boolean;
 }) {
   const runtime = useRuntime();
   const client = useQueryClient();
+  const unresolved = useUnresolvedRuntimeOperations();
+  const keys = useMemo(() => ({
+    rename: `ws:${workspace.workspaceId}:rename`, attach: `ws:${workspace.workspaceId}:attach`, detach: `ws:${workspace.workspaceId}:detach`,
+  }), [workspace.workspaceId]);
+  const place = useMemo(() => ({ workspaceId: workspace.workspaceId }), [workspace.workspaceId]);
   const heading = useRef<HTMLHeadingElement>(null);
   const addButton = useRef<HTMLButtonElement>(null);
-  const [renaming, setRenaming] = useState(false);
+  // Returning to the screen restores the place of any unresolved operation.
+  const [renaming, setRenaming] = useState(() => unresolved.some((item) => item.key === keys.rename));
   const [draftName, setDraftName] = useState(workspace.name);
   const renameButton = useRef<HTMLButtonElement>(null);
   const [picking, setPicking] = useState(false);
   const [folderProblem, setFolderProblem] = useState<unknown>();
-  const [detaching, setDetaching] = useState<BindingSummary>();
+  const [detaching, setDetaching] = useState<BindingSummary | undefined>(() => unresolved.find((item) => item.key === keys.detach)?.input as BindingSummary | undefined);
   const detachTrigger = useRef<HTMLButtonElement | null>(null);
-  const [browse, setBrowse] = useState<Browse>();
+  const [browse, setBrowse] = useState<Browse | undefined>(() => unresolved.find((item) => item.workspaceId === workspace.workspaceId && item.browse)?.browse);
 
   const rename = useRuntimeOperation(
+    keys.rename,
+    place,
     (name: string, operationId: string) => runtime.workspace.renameWorkspace(contextOf(workspace), name, operationId),
     async (renamed) => {
       await client.invalidateQueries({ queryKey: localRuntimeKeys.workspaces });
@@ -163,6 +186,8 @@ function WorkspaceDetail({ workspace, canPick, onNotice, refresh }: {
     },
   );
   const attach = useRuntimeOperation(
+    keys.attach,
+    place,
     (selection: DirectorySelection, operationId: string) => runtime.resources.attachDirectory(contextOf(workspace), selection, operationId),
     async (attached) => {
       await client.invalidateQueries({ queryKey: localRuntimeKeys.workspaces });
@@ -171,6 +196,8 @@ function WorkspaceDetail({ workspace, canPick, onNotice, refresh }: {
     },
   );
   const detach = useRuntimeOperation(
+    keys.detach,
+    place,
     (binding: BindingSummary, operationId: string) => runtime.resources.detachDirectory(contextOf(workspace), binding.bindingId, operationId),
     async () => {
       const label = detaching?.label ?? 'フォルダー';
@@ -231,7 +258,7 @@ function WorkspaceDetail({ workspace, canPick, onNotice, refresh }: {
           <li key={binding.bindingId} className={styles.binding}>
             <span className={styles.bindingLabel}>{binding.label}</span>
             <span className={styles.source}>{binding.source === 'managed' ? '自動で作成した管理フォルダー' : '追加したフォルダー'}{binding.available ? '' : '・利用できません'}</span>
-            <button type="button" className={workspaceStyles.secondaryButton} aria-label={`${binding.label}を開く`}
+            <button type="button" className={workspaceStyles.secondaryButton} aria-label={`${binding.label}を開く`} disabled={blocked}
               onClick={() => setBrowse({ bindingId: binding.bindingId, locator: [] })}>開く</button>
             {binding.source === 'explicit' && (
               <button type="button" className={workspaceStyles.secondaryButton} aria-label={`${binding.label}を解除`}
@@ -262,17 +289,18 @@ function WorkspaceDetail({ workspace, canPick, onNotice, refresh }: {
         </Dialog>
       </Modal>
       {browse && browsed && <FolderBrowser key={`${browse.bindingId}/${browse.locator.join('/')}`} workspace={workspace} binding={browsed} locator={browse.locator}
-        onNavigate={(locator) => setBrowse({ bindingId: browse.bindingId, locator })} onNotice={onNotice} />}
+        onNavigate={(locator) => setBrowse({ bindingId: browse.bindingId, locator })} onNotice={onNotice} blocked={blocked} />}
     </section>
   );
 }
 
-function FolderBrowser({ workspace, binding, locator, onNavigate, onNotice }: {
-  workspace: LocalWorkspace; binding: BindingSummary; locator: string[]; onNavigate: (locator: string[]) => void; onNotice: (text: string) => void;
+function FolderBrowser({ workspace, binding, locator, onNavigate, onNotice, blocked }: {
+  workspace: LocalWorkspace; binding: BindingSummary; locator: string[]; onNavigate: (locator: string[]) => void; onNotice: (text: string) => void; blocked: boolean;
 }) {
   const runtime = useRuntime();
   const client = useQueryClient();
-  const ref: LocalRef = { bindingId: binding.bindingId, locator };
+  const ref: LocalRef = useMemo(() => ({ bindingId: binding.bindingId, locator }), [binding.bindingId, locator]);
+  const place = useMemo(() => ({ workspaceId: workspace.workspaceId, browse: ref }), [workspace.workspaceId, ref]);
   const [cursors, setCursors] = useState<string[]>([]);
   const entries = useLocalEntries(workspace, ref, cursors.at(-1));
   const [stickyProblem, setStickyProblem] = useState<unknown>();
@@ -293,6 +321,8 @@ function FolderBrowser({ workspace, binding, locator, onNavigate, onNotice }: {
   }, [client, entries.error]);
 
   const create = useRuntimeOperation(
+    `ws:${workspace.workspaceId}:file:${binding.bindingId}:${locator.join('/')}`,
+    place,
     (input: { name: string; content: string }, operationId: string) =>
       runtime.resources.createFile(contextOf(workspace), ref, input.name, new TextEncoder().encode(input.content), operationId),
     async (receipt) => {
@@ -333,7 +363,7 @@ function FolderBrowser({ workspace, binding, locator, onNavigate, onNotice }: {
     <section className={styles.panel} aria-label={`${title} の閲覧`}>
       <div className={styles.toolbar}>
         <h3>{title}</h3>
-        {locator.length > 0 && <button type="button" className={workspaceStyles.secondaryButton} onClick={() => onNavigate(locator.slice(0, -1))}>上の階層へ</button>}
+        {locator.length > 0 && <button type="button" className={workspaceStyles.secondaryButton} disabled={blocked} onClick={() => onNavigate(locator.slice(0, -1))}>上の階層へ</button>}
       </div>
       {entries.isPending && <p className={styles.note}>内容を読み込んでいます…</p>}
       <Problem error={entries.isError ? entries.error : stickyProblem} />
@@ -348,7 +378,7 @@ function FolderBrowser({ workspace, binding, locator, onNavigate, onNotice }: {
                   {entries.data.entries.map((entry) => (
                     <tr key={entry.locator.join('/')}>
                       <td>{entry.kind === 'directory'
-                        ? <button type="button" className={styles.inlineButton} onClick={() => { setStickyProblem(undefined); onNavigate(entry.locator); }}>{entry.name}</button>
+                        ? <button type="button" className={styles.inlineButton} disabled={blocked} onClick={() => { setStickyProblem(undefined); onNavigate(entry.locator); }}>{entry.name}</button>
                         : entry.name}</td>
                       <td>{entry.kind === 'directory' ? 'フォルダー' : 'ファイル'}</td>
                       <td>{entry.kind === 'file' && <button type="button" className={styles.inlineButton} aria-label={`${entry.name} の内容を表示`} onClick={() => void open(entry)}>内容を表示</button>}</td>
@@ -359,8 +389,8 @@ function FolderBrowser({ workspace, binding, locator, onNavigate, onNotice }: {
             )}
           {entries.data.omittedCount > 0 && <p className={styles.note}>表示できない項目が{entries.data.omittedCount}件あります（リンク・特殊なファイル・使用できない名前）。</p>}
           <div className={styles.toolbar}>
-            {cursors.length > 0 && <button type="button" className={workspaceStyles.secondaryButton} onClick={() => setCursors(cursors.slice(0, -1))}>前の100件</button>}
-            {entries.data.nextCursor && <button type="button" className={workspaceStyles.secondaryButton} onClick={() => setCursors([...cursors, entries.data!.nextCursor!])}>次の100件</button>}
+            {cursors.length > 0 && <button type="button" className={workspaceStyles.secondaryButton} disabled={blocked} onClick={() => setCursors(cursors.slice(0, -1))}>前の100件</button>}
+            {entries.data.nextCursor && <button type="button" className={workspaceStyles.secondaryButton} disabled={blocked} onClick={() => setCursors([...cursors, entries.data!.nextCursor!])}>次の100件</button>}
           </div>
         </>
       )}

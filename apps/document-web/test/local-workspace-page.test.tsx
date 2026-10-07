@@ -18,7 +18,7 @@ function renderPage(runtime: RuntimeAdapter) {
   const router = createRouter({ routeTree: root.addChildren([page, documents]), history: createMemoryHistory({ initialEntries: ['/local-workspaces'] }) });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<RuntimeProvider runtime={runtime}><QueryClientProvider client={client}><RouterProvider router={router as never} /></QueryClientProvider></RuntimeProvider>);
-  return { client };
+  return { client, router };
 }
 
 test('browser runtime states that local folders are unavailable and offers no fake actions', async () => {
@@ -184,4 +184,36 @@ test('renaming changes only the logical name', async () => {
   expect(await screen.findByRole('button', { name: '新名' })).toBeVisible();
   expect(fake.callsOf('renameWorkspace')).toHaveLength(1);
   expect(fake.callsOf('renameWorkspace')[0]!.args[1]).toBe('新名');
+});
+
+test('an uncertain file creation survives navigation and blocks moving elsewhere until confirmed', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W1', folders: { '資料': { sub: { 'a.txt': 'a' } } } }, { name: 'W2' }] });
+  const { router } = renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await user.click(within(await screen.findByRole('table', { name: '資料の内容' })).getByRole('button', { name: 'sub' }));
+  await screen.findByRole('table', { name: '資料 / subの内容' });
+  const form = screen.getByRole('form', { name: 'この場所にファイルを作成' });
+  await user.type(within(form).getByRole('textbox', { name: 'ファイル名' }), 'memo.txt');
+  fake.fail('createFile', new RuntimeFailure('outcome_unknown'));
+  await user.click(within(form).getByRole('button', { name: '作成する' }));
+  await within(form).findByRole('button', { name: '結果を確認' });
+  // Moving elsewhere would abandon the retained operation, so it is blocked.
+  expect(screen.getByRole('button', { name: '上の階層へ' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'W2' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '資料を開く' })).toBeDisabled();
+  expect(screen.getByText(/結果を確認していない操作があります/)).toBeVisible();
+  // Leaving the screen and returning restores the same pending confirmation.
+  await router.navigate({ to: '/documents' } as never);
+  await screen.findByRole('heading', { name: '文書' });
+  await router.navigate({ to: '/local-workspaces' } as never);
+  const restored = await screen.findByRole('form', { name: 'この場所にファイルを作成' });
+  expect(within(restored).getByRole('textbox', { name: 'ファイル名' })).toHaveValue('memo.txt');
+  await user.click(within(restored).getByRole('button', { name: '結果を確認' }));
+  expect(await screen.findByRole('button', { name: 'memo.txt の内容を表示' })).toBeVisible();
+  const attempts = fake.callsOf('createFile');
+  expect(attempts).toHaveLength(2);
+  expect(attempts[0]!.args[4]).toBe(attempts[1]!.args[4]);
+  expect(attempts[1]!.args[1]).toEqual({ bindingId: expect.any(String), locator: ['sub'] });
+  expect(screen.getByRole('button', { name: 'W2' })).toBeEnabled();
 });

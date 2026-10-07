@@ -1,5 +1,5 @@
-import { useCallback, useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { createOperationId } from './operation-id';
 import { useRuntime } from '../runtime/runtime-context';
 import { contextOf, isRuntimeFailure, RuntimeFailure, type LocalRef, type LocalWorkspace } from '../runtime/contract';
@@ -78,33 +78,83 @@ export type RuntimeOperationState<T> =
   | { status: 'unknown'; operationId: string; input: T; error: RuntimeFailure }
   | { status: 'failed'; error: unknown };
 
+/** Where an unresolved operation belongs, so the screen can return to it. */
+export type OperationPlace = { workspaceId?: string; browse?: LocalRef };
+export type UnresolvedOperation = { key: string; status: 'pending' | 'unknown'; operationId: string; input: unknown; error?: RuntimeFailure } & OperationPlace;
+
+type Store = {
+  get: (key: string) => UnresolvedOperation | undefined;
+  set: (key: string, value: UnresolvedOperation | undefined) => void;
+  all: () => readonly UnresolvedOperation[];
+  subscribe: (listener: () => void) => () => void;
+};
+const stores = new WeakMap<QueryClient, Store>();
+
+/**
+ * Unresolved (pending or uncertain) runtime operations live with the app-wide
+ * QueryClient, not in a component, so leaving the screen or a folder never
+ * drops a retained operation ID. Nothing here is persisted or authoritative.
+ */
+function operationStore(client: QueryClient): Store {
+  const existing = stores.get(client);
+  if (existing) return existing;
+  const items = new Map<string, UnresolvedOperation>();
+  const listeners = new Set<() => void>();
+  let snapshot: readonly UnresolvedOperation[] = [];
+  const store: Store = {
+    get: (key) => items.get(key),
+    set: (key, value) => {
+      if (value) items.set(key, value); else items.delete(key);
+      snapshot = [...items.values()];
+      listeners.forEach((listener) => listener());
+    },
+    all: () => snapshot,
+    subscribe: (listener) => { listeners.add(listener); return () => listeners.delete(listener); },
+  };
+  stores.set(client, store);
+  return store;
+}
+
+export function useUnresolvedRuntimeOperations(): readonly UnresolvedOperation[] {
+  const store = operationStore(useQueryClient());
+  return useSyncExternalStore(store.subscribe, store.all, store.all);
+}
+
 /**
  * One mutation with a retained operation ID. A pending operation blocks only
  * a duplicate of itself; an uncertain result keeps the same operation ID and
  * input so "結果を確認" replays exactly that operation, never a new one.
  */
-export function useRuntimeOperation<T, R>(run: (input: T, operationId: string) => Promise<R>, onDone?: (result: R) => void | Promise<void>) {
+export function useRuntimeOperation<T, R>(key: string, place: OperationPlace, run: (input: T, operationId: string) => Promise<R>, onDone?: (result: R) => void | Promise<void>) {
   const client = useQueryClient();
-  const [state, setState] = useState<RuntimeOperationState<T>>({ status: 'idle' });
+  const store = operationStore(client);
+  const retained = useSyncExternalStore(store.subscribe, () => store.get(key), () => store.get(key));
+  const [failure, setFailure] = useState<unknown>();
   const inFlight = useRef(false);
-  const latest = useRef(state); latest.current = state;
+  const state: RuntimeOperationState<T> = retained?.status === 'unknown'
+    ? { status: 'unknown', operationId: retained.operationId, input: retained.input as T, error: retained.error! }
+    : retained?.status === 'pending'
+      ? { status: 'pending', operationId: retained.operationId, input: retained.input as T }
+      : failure !== undefined ? { status: 'failed', error: failure } : { status: 'idle' };
   const submit = useCallback(async (input: T) => {
-    if (inFlight.current) return undefined;
-    const retained = latest.current.status === 'unknown' ? latest.current : undefined;
-    const operationId = retained?.operationId ?? createOperationId();
-    const value = retained?.input ?? input;
+    const current = store.get(key);
+    if (inFlight.current || current?.status === 'pending') return undefined;
+    const operationId = current?.operationId ?? createOperationId();
+    const value = (current?.input as T | undefined) ?? input;
     inFlight.current = true;
-    setState({ status: 'pending', operationId, input: value });
+    setFailure(undefined);
+    store.set(key, { key, status: 'pending', operationId, input: value, ...place });
     try {
       const result = await run(value, operationId);
-      setState({ status: 'idle' });
+      store.set(key, undefined);
       await onDone?.(result);
       return result;
     } catch (error) {
       if (isRuntimeFailure(error) && error.code === 'outcome_unknown') {
-        setState({ status: 'unknown', operationId, input: value, error });
+        store.set(key, { key, status: 'unknown', operationId, input: value, error, ...place });
       } else {
-        setState({ status: 'failed', error });
+        store.set(key, undefined);
+        setFailure(error);
         if (isRuntimeFailure(error) && (error.code === 'stale_context' || error.code === 'not_found' || error.reason === 'folder_replaced')) {
           await client.invalidateQueries({ queryKey: localRuntimeKeys.all });
         }
@@ -113,8 +163,8 @@ export function useRuntimeOperation<T, R>(run: (input: T, operationId: string) =
     } finally {
       inFlight.current = false;
     }
-  }, [client, onDone, run]);
-  const reset = useCallback(() => { if (latest.current.status !== 'pending' && latest.current.status !== 'unknown') setState({ status: 'idle' }); }, []);
+  }, [client, key, onDone, place, run, store]);
+  const reset = useCallback(() => { if (!store.get(key)) setFailure(undefined); }, [key, store]);
   return { state, submit, reset };
 }
 

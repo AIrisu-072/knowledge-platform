@@ -49,7 +49,7 @@ test('desktop adapter sends only the single bounded IPC command with camelCase r
     { receipt: { operationId: 'op-1', workspaceId: 'w_1', managedBindingId: 'b_m', runtimeRevision: '1' }, workspace },
     null,
     { selectionId: 's_1' },
-    { receipt: { operationId: 'op-2', bindingId: 'b_x', runtimeRevision: 'r2' }, workspace: { ...workspace, effectiveContextRevision: 'c2' } },
+    { receipt: { operationId: 'op-2', bindingId: 'b_x', runtimeRevision: 'r2' }, workspace: { ...workspace, effectiveContextRevision: 'c2', bindings: [...workspace.bindings, { bindingId: 'b_x', source: 'explicit', label: '資料', available: true }] } },
   ]);
   const runtime = createDesktopRuntime(invoke);
   expect(runtime.kind).toBe('desktop');
@@ -123,4 +123,27 @@ test('runtime selection uses the desktop bridge only when the shell injected it'
   expect(selectRuntime({}).kind).toBe('browser');
   expect(selectRuntime({ __TAURI__: { core: {} } }).kind).toBe('browser');
   expect(selectRuntime({ __TAURI__: { core: { invoke: jest.fn() } } }).kind).toBe('desktop');
+});
+
+test('replies must match the request they answer', async () => {
+  const handle = { readHandleId: 'h_1', contentGeneration: 'g1', sizeBytes: 3 };
+  const parent = { bindingId: 'b_m', locator: ['sub'] };
+  const { invoke } = fakeInvoke([
+    { bytesBase64: 'YWJj', offset: 1, contentGeneration: 'g1', eof: true },
+    { bytesBase64: 'YWJj', offset: 0, contentGeneration: 'other', eof: true },
+    { bytesBase64: 'YWI=', offset: 0, contentGeneration: 'g1', eof: true },
+    { operationId: 'someone-else', ref: { ...parent, locator: ['sub', 'a.txt'] }, fileIdentity: 'i', sizeBytes: 1, sha256: '0'.repeat(64) },
+    { operationId: 'op-1', ref: { ...parent, locator: ['other.txt'] }, fileIdentity: 'i', sizeBytes: 1, sha256: '0'.repeat(64) },
+    { entries: [{ locator: ['elsewhere', 'x'], name: 'x', kind: 'file', fileIdentity: 'i' }], nextCursor: null, omittedCount: 0 },
+    { reject: 'IPC transport closed' },
+  ]);
+  const runtime = createDesktopRuntime(invoke);
+  await expect(failure(runtime.resources.readFile(context, handle, 0, 3))).resolves.toMatchObject({ code: 'unavailable' });
+  await expect(failure(runtime.resources.readFile(context, handle, 0, 3))).resolves.toMatchObject({ code: 'unavailable' });
+  await expect(failure(runtime.resources.readFile(context, handle, 0, 3))).resolves.toMatchObject({ code: 'unavailable' });
+  await expect(failure(runtime.resources.createFile(context, parent, 'a.txt', new Uint8Array([1]), 'op-1'))).resolves.toMatchObject({ code: 'outcome_unknown' });
+  await expect(failure(runtime.resources.createFile(context, parent, 'a.txt', new Uint8Array([1]), 'op-1'))).resolves.toMatchObject({ code: 'outcome_unknown' });
+  await expect(failure(runtime.resources.listEntries(context, parent))).resolves.toMatchObject({ code: 'unavailable' });
+  // Recovery completes an interrupted creation, so a lost reply is uncertain.
+  await expect(failure(runtime.workspace.recoverWorkspace('op-1'))).resolves.toMatchObject({ code: 'outcome_unknown' });
 });
