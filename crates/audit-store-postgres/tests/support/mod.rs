@@ -239,6 +239,11 @@ impl TestDb {
         assert_store_conforms(&self.admin).await;
     }
 
+    /// As [`Self::assert_store_conforms`], returning the control event count.
+    pub async fn assert_store_conforms_count(&self) -> usize {
+        assert_store_conforms(&self.admin).await
+    }
+
     /// Runs a command inside the container (docker mode only).
     pub async fn docker_exec(&self, command: &[&str]) -> (i64, String) {
         let container = self.container.as_ref().expect("docker mode");

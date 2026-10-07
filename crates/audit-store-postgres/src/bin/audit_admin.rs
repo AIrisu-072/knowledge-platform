@@ -130,6 +130,15 @@ impl Args {
         }
     }
 
+    fn optional_number<T: std::str::FromStr>(&self, name: &str) -> Result<Option<T>, CliError> {
+        self.optional(name)
+            .map(|text| {
+                text.parse()
+                    .map_err(|_| CliError::Usage(format!("--{name} must be a number")))
+            })
+            .transpose()
+    }
+
     fn json(&self, name: &str, default: Value) -> Result<Value, CliError> {
         match self.optional(name) {
             Some(text) => serde_json::from_str(text)
@@ -286,18 +295,11 @@ async fn run(args: Args, config: Config) -> Result<(), CliError> {
             let outcome = export_to_dir(&admin, &request, &PathBuf::from(args.get("dir")?)).await?;
             print(&outcome.manifest)
         }
-        "verify" => print(
-            &operator(&config)
-                .await?
-                .verify(
-                    args.number("from", Some(1))?.into(),
-                    args.optional("to")
-                        .map(str::parse)
-                        .transpose()
-                        .map_err(|_| CliError::Usage("--to must be a number".into()))?,
-                )
-                .await?,
-        ),
+        "verify" => {
+            let from = args.optional_number("from")?;
+            let to = args.optional_number("to")?;
+            print(&operator(&config).await?.verify(from, to).await?)
+        }
         "verify-recovery" => print(&operator(&config).await?.verify_recovery().await?),
         "checkpoint" => {
             let record = operator(&config).await?.checkpoint().await?;
