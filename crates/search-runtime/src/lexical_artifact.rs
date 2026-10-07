@@ -19,9 +19,12 @@ use search_application::search_core::projection::{
 };
 use search_application::search_core::source::DiscoverableSource;
 use search_source_document::{
-    ArtifactReceipt, BodyUnitManifest, seal_lexical_entries, unit_manifest_receipt,
+    ArtifactReceipt, BodyUnitManifest, seal_lexical_entries, seal_lexical_hashes,
+    unit_manifest_receipt,
 };
 use search_tantivy::{TantivyLexicalIndex, UnitSealEntry};
+
+use crate::payload::UnitManifestSummaryV1;
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
 
@@ -293,15 +296,45 @@ impl LexicalArtifactStore {
         source: &DiscoverableSource,
         unit_manifest: &BodyUnitManifest,
     ) -> Result<LexicalSealV1, LexicalArtifactError> {
-        let key = manifest.key();
-        if unit_manifest.key != key {
+        if unit_manifest.key != manifest.key() {
             return Err(LexicalArtifactError::Seal);
         }
-        let dir = self.final_dir(key);
-        let tree = tree_digest(&dir)?;
         let units = unit_manifest_receipt(unit_manifest)
             .map_err(|_| LexicalArtifactError::Seal)?
             .digest;
+        self.seal_with(manifest, source, units, |persisted| {
+            seal_lexical_entries(unit_manifest, persisted).is_ok()
+        })
+    }
+
+    /// [`Self::seal_from_disk`] against a Unit manifest summary (T12).
+    pub fn seal_from_summary(
+        &self,
+        manifest: &ProjectionGenerationManifest,
+        source: &DiscoverableSource,
+        summary: &UnitManifestSummaryV1,
+    ) -> Result<LexicalSealV1, LexicalArtifactError> {
+        if summary.key != manifest.key() {
+            return Err(LexicalArtifactError::Seal);
+        }
+        self.seal_with(manifest, source, summary.receipt.digest, |persisted| {
+            seal_lexical_hashes(&summary.units, persisted).is_ok()
+        })
+    }
+
+    /// Seals the final directory of `manifest` against the Unit manifest whose
+    /// receipt digest is `units`; `matches` compares its Units with the
+    /// persisted Unit entries.
+    fn seal_with(
+        &self,
+        manifest: &ProjectionGenerationManifest,
+        source: &DiscoverableSource,
+        units: [u8; 32],
+        matches: impl FnOnce(&[UnitSealEntry]) -> bool,
+    ) -> Result<LexicalSealV1, LexicalArtifactError> {
+        let key = manifest.key();
+        let dir = self.final_dir(key);
+        let tree = tree_digest(&dir)?;
         // The same files and the same Unit manifest were sealed in this
         // process: reuse that seal (SD-T11 5).
         if let Some(seal) = sealed_cache()
@@ -313,8 +346,9 @@ impl LexicalArtifactStore {
         }
         let persisted = TantivyLexicalIndex::inspect_persisted(manifest, source, &dir)
             .map_err(|_| LexicalArtifactError::Index)?;
-        seal_lexical_entries(unit_manifest, &persisted.units)
-            .map_err(|_| LexicalArtifactError::Seal)?;
+        if !matches(&persisted.units) {
+            return Err(LexicalArtifactError::Seal);
+        }
         let unit_count =
             u64::try_from(persisted.units.len()).map_err(|_| LexicalArtifactError::Seal)?;
         let seal = LexicalSealV1 {
@@ -409,6 +443,27 @@ impl LexicalArtifactStore {
         source: &DiscoverableSource,
         unit_manifest: &BodyUnitManifest,
     ) -> Result<LexicalSealV1, LexicalArtifactError> {
+        let seal = self.seal_from_disk(manifest, source, unit_manifest)?;
+        self.matches_row(manifest, seal).await
+    }
+
+    /// [`Self::reopen_and_validate`] against a Unit manifest summary (T12).
+    pub async fn reopen_and_validate_summary(
+        &self,
+        manifest: &ProjectionGenerationManifest,
+        source: &DiscoverableSource,
+        summary: &UnitManifestSummaryV1,
+    ) -> Result<LexicalSealV1, LexicalArtifactError> {
+        let seal = self.seal_from_summary(manifest, source, summary)?;
+        self.matches_row(manifest, seal).await
+    }
+
+    /// `seal` when it equals the saved artifact row of `manifest`.
+    async fn matches_row(
+        &self,
+        manifest: &ProjectionGenerationManifest,
+        seal: LexicalSealV1,
+    ) -> Result<LexicalSealV1, LexicalArtifactError> {
         let key = manifest.key();
         let row = sqlx::query(
             "SELECT index_relpath, index_format_version, lexical_schema_version, tree_digest, \
@@ -420,7 +475,6 @@ impl LexicalArtifactStore {
         .fetch_optional(&self.pool)
         .await?
         .ok_or(LexicalArtifactError::Drift)?;
-        let seal = self.seal_from_disk(manifest, source, unit_manifest)?;
         let same = row.try_get::<String, _>("index_relpath")? == seal.index_relpath
             && row.try_get::<String, _>("index_format_version")? == LEXICAL_INDEX_FORMAT_VERSION
             && row.try_get::<String, _>("lexical_schema_version")? == seal.schema_version
