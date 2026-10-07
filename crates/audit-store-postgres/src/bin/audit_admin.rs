@@ -18,7 +18,8 @@ use audit_store_postgres::admin::{
     AccessChange, AccessOperation, AuditAdmin, RecoveryExpectation, parse_utc_text,
 };
 use audit_store_postgres::files::{
-    CheckpointFile, ExportRequest, export_identity_chain_recovery, export_to_dir, write_checkpoint,
+    CheckpointFile, ExportOutcome, ExportRequest, FileError, export_identity_chain_recovery,
+    export_to_dir, write_checkpoint,
 };
 use audit_store_postgres::migrate;
 use audit_store_postgres::session::{check_url, require_synchronous_commit};
@@ -172,6 +173,26 @@ impl Args {
 fn print(value: &impl Serialize) -> Result<(), CliError> {
     println!("{}", serde_json::to_string(value)?);
     Ok(())
+}
+
+/// Prints the manifest of a written export (its `chain_integrity` is
+/// `intact` or `unanchored`). A chain that fails offline verification writes
+/// no files: the verdict `broken` and the first offending line are printed
+/// and the command fails.
+fn exported(result: Result<ExportOutcome, FileError>) -> Result<(), CliError> {
+    match result {
+        Ok(outcome) => print(&outcome.manifest),
+        Err(FileError::Verification(error)) => {
+            print(&json!({
+                "chain_integrity": audit_core::ChainIntegrity::Broken(error.clone()).as_str(),
+                "error": error.to_string(),
+            }))?;
+            Err(CliError::Failed(format!(
+                "export verification failed: {error}"
+            )))
+        }
+        Err(other) => Err(other.into()),
+    }
 }
 
 /// Connects after refusing a URL with `options`, then requires
@@ -387,9 +408,9 @@ async fn run(args: Args, config: Config) -> Result<(), CliError> {
                         "--recovery exports the identity chain only".into(),
                     ));
                 }
-                let outcome =
-                    export_identity_chain_recovery(&admin, checkpoint_arg(&args)?, &dir).await?;
-                return print(&outcome.manifest);
+                return exported(
+                    export_identity_chain_recovery(&admin, checkpoint_arg(&args)?, &dir).await,
+                );
             }
             let request = ExportRequest {
                 operation,
@@ -398,8 +419,7 @@ async fn run(args: Args, config: Config) -> Result<(), CliError> {
                 max_pages: args.number("max-pages", Some(100))?,
                 checkpoint: checkpoint_arg(&args)?,
             };
-            let outcome = export_to_dir(&admin, &request, &dir).await?;
-            print(&outcome.manifest)
+            exported(export_to_dir(&admin, &request, &dir).await)
         }
         "verify" if args.switch("recovery") => {
             print(&operator(&config).await?.verify_recovery().await?)
@@ -417,13 +437,14 @@ async fn run(args: Args, config: Config) -> Result<(), CliError> {
         }
         "export-identity-chain-recovery" => {
             let admin = operator(&config).await?;
-            let outcome = export_identity_chain_recovery(
-                &admin,
-                checkpoint_arg(&args)?,
-                &PathBuf::from(args.get("dir")?),
+            exported(
+                export_identity_chain_recovery(
+                    &admin,
+                    checkpoint_arg(&args)?,
+                    &PathBuf::from(args.get("dir")?),
+                )
+                .await,
             )
-            .await?;
-            print(&outcome.manifest)
         }
         "set-retention" => {
             let retain_days = match args.get("retain-days")? {

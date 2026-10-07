@@ -6,9 +6,20 @@
 //! `page_size * max_pages` rows of `(seq_after, seq_through]`, the first
 //! intent fixes the target watermark and every intent is recorded in the
 //! Store and listed in the manifest — and is verified offline with
-//! audit-core from genesis or a trusted checkpoint up to that watermark
-//! before the manifest is written. A filtered export is reported as an
-//! unanchored subset.
+//! audit-core (`verify_export_complete` / `verify_identity_chain_complete`)
+//! from genesis or a trusted checkpoint up to that watermark before the
+//! manifest is written. A filtered export is reported as an unanchored
+//! subset. The manifest names the chain integrity verdict (`intact` /
+//! `unanchored`; a broken chain writes no files).
+//!
+//! An expiry that commits after the first intent fixed the watermark W can
+//! remove bodies of rows at or below W before they are read: those rows name
+//! evidence past W, which the export does not contain. Such an export is
+//! never presented as covering that evidence: it is written with
+//! `complete: false` and `expired_after_watermark` > 0, its rows count as
+//! unverified expiry evidence, and `assess_recovery` never calls it
+//! `Authentic`. Export again (a new intent's W covers the evidence) to
+//! verify those rows.
 
 use std::fs::OpenOptions;
 use std::io::{self, Write};
@@ -16,8 +27,9 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use audit_core::{
-    Anchor, Checkpoint, CheckpointComparison, ExportReport, GENESIS, compare_checkpoint,
-    verify_export, verify_export_subset, verify_identity_chain,
+    Anchor, ChainIntegrity, Checkpoint, CheckpointComparison, ExportError, ExportReport, GENESIS,
+    compare_checkpoint, verify_export, verify_export_complete, verify_export_subset,
+    verify_identity_chain, verify_identity_chain_complete,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -163,8 +175,18 @@ pub struct Manifest {
     pub last_seq: Option<i64>,
     pub genesis: String,
     pub anchored: bool,
-    /// Anchored and verified contiguously up to `watermark`.
+    /// Anchored, verified contiguously up to `watermark`, and every expiry
+    /// evidence it names lies at or below `watermark`.
     pub complete: bool,
+    /// `intact` (anchored, contiguous) or `unanchored` (filtered subset):
+    /// what the verification established about the chain itself
+    /// (`audit_core::ChainIntegrity`). Never an authenticity claim.
+    pub chain_integrity: &'static str,
+    /// Rows at or below the watermark whose body was removed by an expiry
+    /// that committed after the watermark (a concurrent `expire` /
+    /// `purge_body`): their evidence is not in this export, so it is not
+    /// complete.
+    pub expired_after_watermark: u64,
     pub head: Option<ManifestHead>,
     pub checkpoint: Option<ManifestCheckpoint>,
     pub unverified_expiry_evidence: u64,
@@ -219,16 +241,56 @@ const fn comparison_name(comparison: CheckpointComparison) -> &'static str {
     }
 }
 
+/// The result of verifying an anchored chain export against its watermark.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChainCheck {
+    pub report: ExportReport,
+    /// Verified by `verify_export_complete` /
+    /// `verify_identity_chain_complete`: the head is the watermark and no row
+    /// names expiry evidence past it.
+    pub complete: bool,
+    /// Rows whose expiry evidence lies past the watermark (an expiry that
+    /// committed after the intent): counted unverified, never covered.
+    pub expired_after_watermark: u64,
+}
+
 /// Offline verification of an anchored chain export that must reach
-/// `watermark` exactly. The single place that decides completeness.
-// TODO(audit-core amendment): replace with audit_core::verify_export_complete
-// (and its identity-chain counterpart) once it exists.
-pub fn verify_complete(
+/// `watermark` exactly: audit-core's `verify_export_complete` (bodies) or
+/// `verify_identity_chain_complete`. The single place that decides
+/// completeness.
+///
+/// The only failure that is not an error is evidence past the watermark: an
+/// `expire` / `purge_body` that committed after the intent fixed W removed
+/// the bodies of rows at or below W. The export is then verified as an
+/// ordinary anchored export (those rows count as unverified expiry
+/// evidence), `complete` is false and the rows are counted in
+/// `expired_after_watermark`. Every other failure, including missing
+/// evidence at or below W, is an error.
+pub fn verify_chain_export(
     text: &str,
     anchor: Anchor,
     watermark: i64,
     bodies: bool,
-) -> Result<ExportReport, FileError> {
+) -> Result<ChainCheck, FileError> {
+    let complete = if bodies {
+        verify_export_complete(text, anchor, watermark)
+    } else {
+        verify_identity_chain_complete(text, anchor, watermark)
+    };
+    let error = match complete {
+        Ok(report) => {
+            return Ok(ChainCheck {
+                report,
+                complete: true,
+                expired_after_watermark: 0,
+            });
+        }
+        Err(ExportError::WatermarkMismatch { watermark, head }) => {
+            return Err(FileError::Incomplete { head, watermark });
+        }
+        Err(error @ ExportError::ExpiryEvidenceMissing { .. }) => error,
+        Err(error) => return Err(error.into()),
+    };
     let report = if bodies {
         verify_export(text, anchor)?
     } else {
@@ -240,7 +302,19 @@ pub fn verify_complete(
             watermark,
         });
     }
-    Ok(report)
+    let expired_after_watermark = report
+        .expired_rows()
+        .iter()
+        .filter(|row| row.evidence_seq > watermark)
+        .count() as u64;
+    if expired_after_watermark == 0 {
+        return Err(error.into());
+    }
+    Ok(ChainCheck {
+        report,
+        complete: false,
+        expired_after_watermark,
+    })
 }
 
 fn seq_member(filter: &Map<String, Value>, key: &str) -> Option<i64> {
@@ -306,10 +380,17 @@ pub async fn export_to_dir(
         &rows,
         vec![intent],
         Some(watermark),
-        report,
-        false,
+        unanchored(report),
         dir,
     )
+}
+
+fn unanchored(report: ExportReport) -> ChainCheck {
+    ChainCheck {
+        report,
+        complete: false,
+        expired_after_watermark: 0,
+    }
 }
 
 /// A range export (`seq_after` / `seq_through` only), looping over intents
@@ -355,24 +436,16 @@ async fn export_range(
         _ => None,
     };
     let bodies = request.operation != AccessOperation::IdentityChain;
-    let (report, complete) = match anchor {
+    let check = match anchor {
         Some(anchor) if full_visibility && request.operation != AccessOperation::Investigate => {
-            (verify_complete(&text, anchor, watermark, bodies)?, true)
+            verify_chain_export(&text, anchor, watermark, bodies)?
         }
         _ if request.operation == AccessOperation::IdentityChain => {
             return Err(FileError::Unanchored);
         }
-        _ => (verify_export_subset(&text)?, false),
+        _ => unanchored(verify_export_subset(&text)?),
     };
-    write_export(
-        request,
-        &rows,
-        intents,
-        Some(watermark),
-        report,
-        complete,
-        dir,
-    )
+    write_export(request, &rows, intents, Some(watermark), check, dir)
 }
 
 /// Writes an identity-chain export from the recovery path (no intent; the
@@ -401,8 +474,8 @@ pub async fn export_identity_chain_recovery(
         max_pages: 1,
         checkpoint,
     };
-    let report = verify_complete(&joined(&rows), Anchor::Genesis, after, false)?;
-    write_export(&request, &rows, Vec::new(), Some(after), report, true, dir)
+    let check = verify_chain_export(&joined(&rows), Anchor::Genesis, after, false)?;
+    write_export(&request, &rows, Vec::new(), Some(after), check, dir)
 }
 
 fn joined(rows: &[ExportLine]) -> String {
@@ -419,10 +492,14 @@ fn write_export(
     rows: &[ExportLine],
     intents: Vec<ManifestIntent>,
     watermark: Option<i64>,
-    report: ExportReport,
-    complete: bool,
+    check: ChainCheck,
     dir: &Path,
 ) -> Result<ExportOutcome, FileError> {
+    let ChainCheck {
+        report,
+        complete,
+        expired_after_watermark,
+    } = check;
     let text = joined(rows);
     let checkpoint = request.checkpoint.map(|c| ManifestCheckpoint {
         epoch: c.epoch,
@@ -441,6 +518,8 @@ fn write_export(
         genesis: hex::encode(&GENESIS),
         anchored: report.anchored,
         complete,
+        chain_integrity: ChainIntegrity::of_report(&report).as_str(),
+        expired_after_watermark,
         head: report.anchored.then(|| ManifestHead {
             epoch: report.head.epoch,
             seq: report.head.seq,

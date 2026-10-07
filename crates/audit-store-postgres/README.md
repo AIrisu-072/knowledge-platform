@@ -4,7 +4,8 @@ Audit Infrastructure v1の監査Store（[設計](../../docs/superpowers/specs/20
 
 - `PostgresAuditStore`：relayが使う `audit_core::AuditStore` portの全実装（ingest、probe、report_regression、receipt参照、relay control記録）と、relay用の追加参照 `store_status()`・`lookup_lost_ranges()`。失敗は二値で、terminal（`conflict`、`rejected:<code>`）は `audit_core::IngestRow::into_result` だけが作る。それ以外（SQLSTATE、通信断、timeout、未登録type、recovery mode、posture違反、行の形の不正）はすべて `StoreError::Outage{code}`（配送保留）になる。`origin() != Relay` のenvelopeはDBへ送らず、audit-coreの `precheck_ingest` が `rejected:control_type_forbidden` にする。receipt・control receiptの行は列の値を `RawReceiptRow` / `RawControlReceiptRow` に読み、`ReceiptRow::decode` / `ControlReceiptRow::decode` だけで検査する（不正・不整合な行は `store_other`）。`IngestRow` は `audit_store.ingest` の結果列からだけ作る（`decode_ingest_row`、`tests/store_ingest.rs` で確認）。
 - `admin::AuditAdmin`：調査・export・検証・retention・権限・recoveryのSQL関数のwrapper。
-- `files`：export（JSONL）・manifest・checkpointを mode 0600 で新規作成する。chain exportは最初のintentのwatermarkまでintentを繰り返し、offlineで完全性（watermarkまで欠けがないこと）を検証する。
+- `files`：export（JSONL）・manifest・checkpointを mode 0600 で新規作成する。chain exportは最初のintentのwatermarkまでintentを繰り返し、offlineでaudit-coreの `verify_export_complete` / `verify_identity_chain_complete`（watermarkまで欠けがなく、Wを超える失効証拠を指す行が無いこと）で検証する（`files::verify_chain_export`）。manifestの `chain_integrity` は `intact` / `unanchored`（audit-coreの `ChainIntegrity`）で、chainが壊れていればfileを書かず、`audit-admin` は `{"chain_integrity":"broken","error":…}` を出して失敗する。
+- intentがWを固定した後に `expire` / `purge_body` がcommitすると、W以下の行の本文がpage読取り前に消え、その行はWより後の証拠を指す。このexportを完全とは扱わない：`complete: false`、`expired_after_watermark` に件数を出し、その行は未検証の失効証拠として数える（`assess_recovery` は `Authentic` にしない）。証拠を含めて検証するには、改めてexportする（`tests/store_integrity.rs` で、intent → expire → 読取りの順に決定的に試験する）。
 - bin `audit-admin`：運用CLI。
 
 ## 適用順とrole

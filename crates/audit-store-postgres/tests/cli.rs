@@ -104,6 +104,8 @@ async fn operator_commands_write_private_files_and_refuse_privileged_sessions() 
         ],
     ));
     assert_eq!(manifest[0]["anchored"], Value::Bool(true));
+    assert_eq!(manifest[0]["chain_integrity"], "intact");
+    assert_eq!(manifest[0]["expired_after_watermark"], 0);
     // The checkpoint is its own verified record, the head the export's
     // first intent fixes as its watermark.
     assert_eq!(manifest[0]["checkpoint"]["comparison"], "match");
@@ -393,4 +395,28 @@ async fn chain_exports_and_recovery_commands_run_end_to_end() {
     assert_eq!(status[0]["recovery_epoch"], 2);
     assert_eq!(status[0]["access_reapply_pending"], Value::Bool(false));
     db.assert_store_conforms().await;
+
+    // A chain value rewritten behind the Store's back: the offline
+    // verification reports the chain as broken (the first offending line),
+    // writes no files and fails.
+    db.exec(
+        "SET session_replication_role = replica; \
+         UPDATE audit_store.events SET chain = sha256('x'::bytea) WHERE seq = 2; \
+         RESET session_replication_role;",
+    )
+    .await;
+    std::fs::create_dir(dir.join("broken")).expect("dir");
+    let broken = audit_admin(
+        Some(&verifier),
+        &["export", "--identity-chain", "--dir", &path("broken")],
+    );
+    assert_eq!(broken.status.code(), Some(1));
+    let verdict: Value = serde_json::from_slice(&broken.stdout).expect("verdict json");
+    assert_eq!(verdict["chain_integrity"], "broken");
+    assert_eq!(
+        verdict["error"],
+        "export line 2: chain recomputation mismatch"
+    );
+    assert!(!dir.join("broken").join("export.jsonl").exists());
+    assert!(!dir.join("broken").join("manifest.json").exists());
 }

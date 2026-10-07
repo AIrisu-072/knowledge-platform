@@ -863,7 +863,7 @@ async fn chain_exports_loop_over_intents_up_to_the_first_watermark() {
     let text = std::fs::read_to_string(&export.export_path).expect("text");
     let truncated: String = text.lines().take(3).map(|l| format!("{l}\n")).collect();
     assert!(matches!(
-        audit_store_postgres::files::verify_complete(
+        audit_store_postgres::files::verify_chain_export(
             &truncated,
             audit_core::Anchor::Genesis,
             5,
@@ -874,5 +874,188 @@ async fn chain_exports_loop_over_intents_up_to_the_first_watermark() {
             watermark: 5
         })
     ));
+    db.assert_store_conforms().await;
+}
+
+/// Authenticity needs an exact checkpoint at the export head; a checkpoint
+/// behind the head authenticates only through itself; and an expiry that
+/// commits after an intent fixed its watermark is never presented as
+/// covered (deterministic interleaving: intent, then expire, then read).
+#[tokio::test]
+async fn exports_are_authentic_only_at_an_exact_checkpoint_and_never_cover_later_expiry() {
+    let db = TestDb::start().await;
+    let cast = Cast::new(&db).await;
+    let store = relay_store(&cast).await;
+    let old = "2020-01-01T00:00:00.000000Z";
+    for n in 0..3 {
+        store
+            .ingest(&document_created(Uuid::now_v7(), Uuid::now_v7(), old, n))
+            .await
+            .expect("stored");
+    }
+    let verifier = cast.verifier.admin().await;
+    let export = |checkpoint: audit_core::Checkpoint, name: &'static str| {
+        let verifier = verifier.clone();
+        async move {
+            export_to_dir(
+                &verifier,
+                &ExportRequest {
+                    operation: AccessOperation::Verify,
+                    filter: json!({}),
+                    page_size: 1000,
+                    max_pages: 1,
+                    checkpoint: Some(checkpoint),
+                },
+                &scratch_dir(name),
+            )
+            .await
+            .expect("export")
+        }
+    };
+    let checkpoint = |admin: &audit_store_postgres::admin::AuditAdmin| {
+        let admin = admin.clone();
+        async move {
+            admin
+                .checkpoint()
+                .await
+                .expect("checkpoint")
+                .checkpoint()
+                .expect("value")
+        }
+    };
+
+    // 1. The head equals the checkpoint: authentic.
+    let c1 = checkpoint(&verifier).await;
+    let exact = export(c1, "exact").await;
+    assert_eq!(
+        exact.manifest.checkpoint.as_ref().expect("c1").comparison,
+        "match"
+    );
+    assert!(exact.manifest.complete);
+    assert_eq!(exact.manifest.chain_integrity, "intact");
+    assert_eq!(
+        assess_recovery(&exact.report, &[c1], &[]).verdict,
+        ChainVerdict::Authentic
+    );
+
+    // 2. Rows after the checkpoint: authentic only through it.
+    for n in 3..5 {
+        store
+            .ingest(&document_created(Uuid::now_v7(), Uuid::now_v7(), old, n))
+            .await
+            .expect("stored");
+    }
+    let ahead = export(c1, "ahead").await;
+    assert_eq!(
+        ahead.manifest.checkpoint.as_ref().expect("c1").comparison,
+        "ahead"
+    );
+    let assessment = assess_recovery(&ahead.report, &[c1], &[]);
+    assert_eq!(
+        assessment.verdict,
+        ChainVerdict::AuthenticThrough { seq: c1.seq }
+    );
+    assert!(ahead.report.head.seq > c1.seq);
+
+    // 3. The race: the intent fixes W, then an expiry commits (evidence
+    //    past W) before the pages are read.
+    let admin = cast.admin.admin().await;
+    let policy = admin
+        .set_retention_policy(
+            "documents",
+            &json!({"event_types": ["document.created"]}),
+            Some(1),
+        )
+        .await
+        .expect("policy");
+    let c2 = checkpoint(&verifier).await;
+    let token = verifier
+        .open_access(AccessOperation::Verify, &json!({}), 1000, 1)
+        .await
+        .expect("intent");
+    let watermark = token.watermark;
+    assert_eq!(
+        watermark, c2.seq,
+        "the checkpoint is the head the intent fixes"
+    );
+    let far = parse_utc_text("2100-01-01T00:00:00.000000Z").expect("far");
+    let expired = cast
+        .maintainer
+        .admin()
+        .await
+        .expire("documents", policy.revision, far, 1000)
+        .await
+        .expect("expired");
+    assert_eq!(expired.expired_count, 5);
+    assert!(expired.seq > watermark);
+    let pages = verifier
+        .read_all(&token)
+        .await
+        .expect("read after the expiry");
+    let rows: Vec<_> = pages.into_iter().flatten().collect();
+    verifier
+        .close_access(token.secret(), i64::try_from(rows.len()).expect("n"), &[])
+        .await
+        .expect("closed");
+    let text: String = rows.iter().map(|r| format!("{}\n", r.line)).collect();
+    assert!(
+        matches!(
+            audit_core::verify_export_complete(&text, audit_core::Anchor::Genesis, watermark),
+            Err(audit_core::ExportError::ExpiryEvidenceMissing { .. })
+        ),
+        "core refuses to call it complete"
+    );
+    let check = audit_store_postgres::files::verify_chain_export(
+        &text,
+        audit_core::Anchor::Genesis,
+        watermark,
+        true,
+    )
+    .expect("verified as an ordinary anchored export");
+    assert!(!check.complete);
+    assert_eq!(check.expired_after_watermark, 5);
+    assert_eq!(check.report.head.seq, watermark);
+    assert_eq!(check.report.unverified_expiry_evidence, 5);
+    let assessment = assess_recovery(&check.report, &[c2], &[]);
+    assert_eq!(assessment.authenticated_through, Some(c2.seq));
+    assert_eq!(assessment.unconfirmed_expiries, 5);
+    assert_eq!(
+        assessment.verdict,
+        ChainVerdict::UnverifiedExpiry,
+        "the matching checkpoint does not make the later expiry covered"
+    );
+    // A missing evidence row at or below W is never excused as a race.
+    let forged: String = rows
+        .iter()
+        .map(|r| {
+            let mut line: Value = serde_json::from_str(&r.line).expect("line");
+            if line["expired"] == json!(true) {
+                line["expired_by_seq"] = json!(watermark);
+            }
+            format!("{line}\n")
+        })
+        .collect();
+    assert!(
+        audit_store_postgres::files::verify_chain_export(
+            &forged,
+            audit_core::Anchor::Genesis,
+            watermark,
+            true
+        )
+        .is_err()
+    );
+
+    // 4. Exported again after the expiry: the evidence is inside, the export
+    //    is complete and the exact checkpoint makes it authentic.
+    let c3 = checkpoint(&verifier).await;
+    let after = export(c3, "after-expiry").await;
+    assert!(after.manifest.complete);
+    assert_eq!(after.manifest.expired_after_watermark, 0);
+    assert_eq!(after.report.unverified_expiry_evidence, 0);
+    assert_eq!(after.report.expired, 5);
+    assert_eq!(
+        assess_recovery(&after.report, &[c3], &[]).verdict,
+        ChainVerdict::Authentic
+    );
     db.assert_store_conforms().await;
 }
