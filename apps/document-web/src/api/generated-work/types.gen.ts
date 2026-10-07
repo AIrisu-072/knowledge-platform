@@ -653,11 +653,19 @@ export type RolePage = {
 export type RoleAssignmentPage = {
     items: Array<RoleAssignment>;
     nextCursor: null;
+    /**
+     * 記録の状態（開始前・有効・期限切れ）を判定するサーバーの評価時刻。
+     */
+    evaluatedAt: string;
 };
 
 export type DelegationPage = {
     items: Array<Delegation>;
     nextCursor: null;
+    /**
+     * 記録の状態（開始前・有効・期限切れ）を判定するサーバーの評価時刻。
+     */
+    evaluatedAt: string;
 };
 
 /**
@@ -673,7 +681,7 @@ export type RoleAssignmentCommand = {
     validFrom?: string;
     validUntil?: string;
     /**
-     * 空白のみ不可、最大1024 UTF-8 bytes。
+     * 空白のみ不可、最大1024 UTF-8 bytes。改行・タブ以外の制御文字は不可。
      */
     reason: string;
 };
@@ -683,7 +691,7 @@ export type RevokePolicyRecordCommand = {
     expectedRevision: number;
     actingAssignmentId: string;
     /**
-     * 空白のみ不可、最大1024 UTF-8 bytes。
+     * 空白のみ不可、最大1024 UTF-8 bytes。改行・タブ以外の制御文字は不可。
      */
     reason: string;
 };
@@ -701,7 +709,7 @@ export type DelegationCommand = {
     validFrom?: string;
     validUntil: string;
     /**
-     * 空白のみ不可、最大1024 UTF-8 bytes。
+     * 空白のみ不可、最大1024 UTF-8 bytes。改行・タブ以外の制御文字は不可。
      */
     reason: string;
 };
@@ -716,6 +724,9 @@ export type AssignmentCommand = {
     expectedAttemptId: string;
     assigneePrincipalId: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01';
     assigneeResponsibilityId: string;
+    /**
+     * 空白のみ不可、最大1024 UTF-8 bytes。改行・タブ以外の制御文字は不可。
+     */
     reason: string;
 };
 

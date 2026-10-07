@@ -51,7 +51,9 @@ try {
   await report.stage('database', async () => {
     password = randomBytes(24).toString('hex');
     const cidfile = join(directory, 'postgres.cid');
-    try { await run('postgres-start', 'docker', postgresArguments(runId, cidfile), { ...process.env, POSTGRES_PASSWORD: password }); }
+    // Six principal processes each hold two lazily opened pools (Document and Work, up to 12
+    // connections each); raise the owned container's limit above that worst case.
+    try { await run('postgres-start', 'docker', [...postgresArguments(runId, cidfile), '-c', 'max_connections=200'], { ...process.env, POSTGRES_PASSWORD: password }); }
     finally { try { cid = (await readFile(cidfile, 'utf8')).trim(); } catch { /* No owned container was created. */ } }
     assert.match(cid ?? '', /^[a-f0-9]{64}$/);
     binding = await run('postgres-port', 'docker', ['port', cid, '5432/tcp']);

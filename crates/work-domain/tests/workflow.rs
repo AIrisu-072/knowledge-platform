@@ -378,7 +378,13 @@ fn legacy_definition_remains_forward_only_and_old_json_roundtrips() {
     let mut legacy = serde_json::to_value(&workflow).unwrap();
     legacy.as_object_mut().unwrap().remove("completedAttempts");
     legacy.as_object_mut().unwrap().remove("returnInstructions");
-    let decoded: Workflow = serde_json::from_value(legacy).unwrap();
+    // Stored JSON never carries authority; the repository attaches the policy.
+    let decoded = serde_json::from_value::<Workflow>(legacy)
+        .unwrap()
+        .with_authority(
+            OrganizationPolicy::synthetic(),
+            time::OffsetDateTime::now_utc(),
+        );
     assert_eq!(decoded.definition_version_id, DEFINITION_VERSION_ID);
     let command = return_command(&decoded, &snapshot);
     let mut candidate = decoded.clone();

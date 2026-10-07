@@ -301,7 +301,7 @@ fn delegation_is_bounded_and_expiry_or_revocation_ends_access_on_the_next_check(
         );
         assert_eq!(policy, before);
     }
-    // Only the holder (or a manager) may delegate a formal assignment.
+    // Only the holder may delegate a formal assignment.
     assert_eq!(
         delegate(
             &mut policy,
@@ -749,4 +749,480 @@ fn role_assignment_creation_validates_scope_time_and_duplicates() {
     let all = policy.view(VerifiedActor::Approver01, at(T2)).unwrap();
     assert!(all.can_manage);
     assert_eq!(all.role_assignments.len(), 8);
+}
+
+fn return_to_sales(w: &mut Workflow, now: &str) -> ReturnInstruction {
+    let item = office(w).clone();
+    let returned = w
+        .apply(
+            VerifiedActor::Office01,
+            &Command::Return {
+                task_id: OFFICE_TASK_ID,
+                context: ctx(OFFICE_ASSIGNMENT_ID, item.revision),
+                expected_attempt_id: item.attempt_id,
+                previous_submission_id: item.handoff_snapshot_id.unwrap(),
+                target_task_id: SALES_TASK_ID,
+                transition_id: RETURN_TRANSITION_ID,
+                reason: "記載の確認をお願いします".into(),
+            },
+            now,
+        )
+        .unwrap();
+    let MutationResult::Returned {
+        return_instruction, ..
+    } = returned
+    else {
+        panic!()
+    };
+    return_instruction
+}
+
+#[test]
+fn returned_attempt_assignee_reads_its_instruction_and_prior_submission() {
+    let mut policy = OrganizationPolicy::synthetic();
+    let sales_scope = [
+        PolicyAction::QueueRead,
+        PolicyAction::WorkRead,
+        PolicyAction::WorkClaim,
+        PolicyAction::WorkEdit,
+    ];
+    let delegation = delegate(
+        &mut policy,
+        VerifiedActor::Sales01,
+        SALES_ASSIGNMENT_ID,
+        SALES_ASSIGNMENT_ID,
+        &sales_scope,
+        T3,
+    )
+    .unwrap();
+    let mut w = attach(&received(), &policy, T1);
+    w.apply(
+        VerifiedActor::Office01,
+        &claim(OFFICE_ASSIGNMENT_ID, &w),
+        T1,
+    )
+    .unwrap();
+    let submitted = office(&w).handoff_snapshot_id.unwrap();
+    let instruction = return_to_sales(&mut w, T1);
+    // Eligible-only rows never carry submission or return identifiers.
+    let row = w
+        .list_tasks(VerifiedActor::Delegate01, TaskView::Queue)
+        .into_iter()
+        .find(|item| item.id == SALES_TASK_ID)
+        .unwrap();
+    assert!(row.can_claim);
+    assert_eq!(
+        (row.return_instruction_id, row.handoff_snapshot_id),
+        (None, None)
+    );
+    assert_eq!(
+        w.return_instruction(VerifiedActor::Delegate01, instruction.id),
+        Err(WorkError::WorkArtifactNotFound)
+    );
+    // The delegate claims the returned attempt and receives its rework context.
+    w.apply(
+        VerifiedActor::Delegate01,
+        &Command::Claim {
+            task_id: SALES_TASK_ID,
+            context: ctx(delegation.id, w.source.revision),
+        },
+        T1,
+    )
+    .unwrap();
+    let detail = w.detail(VerifiedActor::Delegate01, SALES_TASK_ID).unwrap();
+    assert_eq!(detail.task.return_instruction_id, Some(instruction.id));
+    assert_eq!(detail.task.handoff_snapshot_id, Some(submitted));
+    assert_eq!(
+        w.return_instruction(VerifiedActor::Delegate01, instruction.id)
+            .unwrap()
+            .reason,
+        "記載の確認をお願いします"
+    );
+    assert_eq!(
+        w.snapshot(VerifiedActor::Delegate01, submitted).unwrap().id,
+        submitted
+    );
+    // The returning office keeps its outbound instruction read-only.
+    assert!(
+        w.return_instruction(VerifiedActor::Office01, instruction.id)
+            .is_ok()
+    );
+    // Revocation ends the delegate's rework access on the next check.
+    let mut revoked = policy.clone();
+    revoked
+        .apply(
+            VerifiedActor::Sales01,
+            &PolicyCommand::RevokeDelegation {
+                context: ctx(SALES_ASSIGNMENT_ID, revoked.revision),
+                delegation_id: delegation.id,
+                reason: "復帰".into(),
+            },
+            T1,
+        )
+        .unwrap();
+    let w = attach(&w, &revoked, T1);
+    assert_eq!(
+        w.return_instruction(VerifiedActor::Delegate01, instruction.id),
+        Err(WorkError::WorkArtifactNotFound)
+    );
+    assert_eq!(
+        w.snapshot(VerifiedActor::Delegate01, submitted),
+        Err(WorkError::WorkArtifactNotFound)
+    );
+}
+
+#[test]
+fn management_never_grants_itself_access_or_acts_in_a_delegators_name() {
+    let mut policy = OrganizationPolicy::synthetic();
+    let before = policy.clone();
+    // No self-grant of any role, including a step role that would expose drafts.
+    assert_eq!(
+        policy.apply(
+            VerifiedActor::Approver01,
+            &PolicyCommand::CreateRoleAssignment {
+                context: ctx(APPROVER_MANAGEMENT_ASSIGNMENT_ID, 0),
+                principal: VerifiedActor::Approver01,
+                role_id: ROLE_SALES_ID,
+                unit_id: UNIT_SALES_ID,
+                valid_from: None,
+                valid_until: None,
+                reason: "自己付与".into(),
+            },
+            T0,
+        ),
+        Err(WorkError::Forbidden)
+    );
+    // A manager never creates a delegation attributed to another holder.
+    for recipient in [VerifiedActor::Approver01, VerifiedActor::Delegate01] {
+        assert_eq!(
+            policy.apply(
+                VerifiedActor::Approver01,
+                &PolicyCommand::CreateDelegation {
+                    context: ctx(APPROVER_MANAGEMENT_ASSIGNMENT_ID, 0),
+                    source_assignment_id: SALES_ASSIGNMENT_ID,
+                    recipient,
+                    actions: vec![PolicyAction::WorkRead],
+                    valid_from: None,
+                    valid_until: T2.into(),
+                    reason: "代理".into(),
+                },
+                T0,
+            ),
+            Err(WorkError::Forbidden),
+            "{recipient:?}"
+        );
+    }
+    assert_eq!(policy, before);
+    // A second manager who also holds the step role claims; it never self-assigns.
+    policy
+        .apply(
+            VerifiedActor::Approver01,
+            &PolicyCommand::CreateRoleAssignment {
+                context: ctx(APPROVER_MANAGEMENT_ASSIGNMENT_ID, 0),
+                principal: VerifiedActor::MultiRole01,
+                role_id: ROLE_MANAGEMENT_ID,
+                unit_id: UNIT_APPROVAL_ID,
+                valid_from: None,
+                valid_until: None,
+                reason: "管理応援".into(),
+            },
+            T0,
+        )
+        .unwrap();
+    let manager = policy
+        .responsibilities(VerifiedActor::MultiRole01, at(T1))
+        .into_iter()
+        .find(|value| value.role_id == ROLE_MANAGEMENT_ID)
+        .unwrap();
+    let mut w = attach(&received(), &policy, T1);
+    let unchanged = w.clone();
+    assert_eq!(
+        w.apply(
+            VerifiedActor::MultiRole01,
+            &Command::Assign {
+                task_id: OFFICE_TASK_ID,
+                context: ctx(manager.id, office(&w).revision),
+                expected_attempt_id: office(&w).attempt_id,
+                assignee: VerifiedActor::MultiRole01,
+                assignee_responsibility_id: MULTI_ROLE_PROCESSING_ASSIGNMENT_ID,
+                reason: "自分へ".into(),
+            },
+            T1,
+        ),
+        Err(WorkError::Forbidden)
+    );
+    assert_eq!(w, unchanged);
+    w.apply(
+        VerifiedActor::MultiRole01,
+        &claim(MULTI_ROLE_PROCESSING_ASSIGNMENT_ID, &w),
+        T1,
+    )
+    .unwrap();
+}
+
+#[test]
+fn policy_reasons_and_record_bounds_keep_collections_readable() {
+    let mut policy = OrganizationPolicy::synthetic();
+    let create = |policy: &mut OrganizationPolicy, actor, acting, reason: &str| {
+        let revision = policy.revision;
+        policy.apply(
+            actor,
+            &PolicyCommand::CreateDelegation {
+                context: ctx(acting, revision),
+                source_assignment_id: acting,
+                recipient: VerifiedActor::Delegate01,
+                actions: vec![PolicyAction::WorkRead],
+                valid_from: None,
+                valid_until: T2.into(),
+                reason: reason.into(),
+            },
+            T0,
+        )
+    };
+    // Control characters would expand sixfold when JSON-escaped.
+    let before = policy.clone();
+    for reason in ["\u{1}理由", "理由\u{7f}", "理由\u{85}"] {
+        assert_eq!(
+            create(
+                &mut policy,
+                VerifiedActor::Office01,
+                OFFICE_ASSIGNMENT_ID,
+                reason
+            ),
+            Err(WorkError::ValidationFailed),
+            "{reason:?}"
+        );
+    }
+    assert_eq!(policy, before);
+    // One holder exhausts only its own bound; others still delegate.
+    for _ in 0..MAX_DELEGATIONS_PER_DELEGATOR {
+        let MutationResult::DelegationCreated { delegation, .. } = create(
+            &mut policy,
+            VerifiedActor::Office01,
+            OFFICE_ASSIGNMENT_ID,
+            "休暇\n\t代理",
+        )
+        .unwrap() else {
+            panic!()
+        };
+        let revision = policy.revision;
+        policy
+            .apply(
+                VerifiedActor::Office01,
+                &PolicyCommand::RevokeDelegation {
+                    context: ctx(OFFICE_ASSIGNMENT_ID, revision),
+                    delegation_id: delegation.id,
+                    reason: "復帰".into(),
+                },
+                T0,
+            )
+            .unwrap();
+    }
+    assert_eq!(
+        create(
+            &mut policy,
+            VerifiedActor::Office01,
+            OFFICE_ASSIGNMENT_ID,
+            "上限"
+        ),
+        Err(WorkError::ValidationFailed)
+    );
+    assert!(
+        create(
+            &mut policy,
+            VerifiedActor::Sales01,
+            SALES_ASSIGNMENT_ID,
+            "別の委任者"
+        )
+        .is_ok()
+    );
+    // Worst case: every bounded record carries maximal escaping reasons.
+    let mut full = OrganizationPolicy::synthetic();
+    let quoted = "\"".repeat(MAX_POLICY_REASON_BYTES);
+    let template = full.role_assignments[0].clone();
+    while full.role_assignments.len() < MAX_ROLE_ASSIGNMENTS {
+        let mut value = template.clone();
+        value.id = Uuid::now_v7();
+        value.reason = quoted.clone();
+        value.valid_until = Some(T3.into());
+        value.revoked_at = Some(T1.into());
+        value.revoked_by = Some(VerifiedActor::Approver01);
+        value.revoke_reason = Some(quoted.clone());
+        full.role_assignments.push(value);
+    }
+    let delegation = Delegation {
+        id: Uuid::nil(),
+        source_assignment_id: OFFICE_ASSIGNMENT_ID,
+        delegator: VerifiedActor::Office01,
+        recipient: VerifiedActor::Delegate01,
+        actions: PROCESSING.to_vec(),
+        valid_from: T0.into(),
+        valid_until: T3.into(),
+        reason: quoted.clone(),
+        created_by: VerifiedActor::Office01,
+        created_at: T0.into(),
+        revoked_at: Some(T1.into()),
+        revoked_by: Some(VerifiedActor::Office01),
+        revoke_reason: Some(quoted.clone()),
+    };
+    while full.delegations.len() < MAX_DELEGATIONS {
+        let mut value = delegation.clone();
+        value.id = Uuid::now_v7();
+        full.delegations.push(value);
+    }
+    assert_eq!(full.validate_integrity(), Ok(()));
+    let view = full.view(VerifiedActor::Approver01, at(T1)).unwrap();
+    let page = |items: serde_json::Value| {
+        serde_json::to_vec(&json!({"items": items, "nextCursor": null, "evaluatedAt": T1}))
+            .unwrap()
+            .len()
+    };
+    const RESPONSE_LIMIT: usize = 1024 * 1024;
+    assert!(page(serde_json::to_value(&view.role_assignments).unwrap()) < RESPONSE_LIMIT / 2);
+    assert!(page(serde_json::to_value(&view.delegations).unwrap()) < RESPONSE_LIMIT / 2);
+}
+
+#[test]
+fn policy_history_is_never_backdated() {
+    let mut policy = OrganizationPolicy::synthetic();
+    let command = |from: &str, revision| PolicyCommand::CreateRoleAssignment {
+        context: ctx(APPROVER_MANAGEMENT_ASSIGNMENT_ID, revision),
+        principal: VerifiedActor::Delegate01,
+        role_id: ROLE_PROCESSING_ID,
+        unit_id: UNIT_OFFICE_ID,
+        valid_from: Some(from.into()),
+        valid_until: None,
+        reason: "応援".into(),
+    };
+    let before = policy.clone();
+    assert_eq!(
+        policy.apply(
+            VerifiedActor::Approver01,
+            &command("2026-10-07T08:00:00Z", 0),
+            T0
+        ),
+        Err(WorkError::ValidationFailed)
+    );
+    assert_eq!(policy, before);
+    // A small client clock lag starts the record at the trusted server instant.
+    let MutationResult::RoleAssignmentCreated { assignment, .. } = policy
+        .apply(
+            VerifiedActor::Approver01,
+            &command("2026-10-07T08:58:00Z", 0),
+            T0,
+        )
+        .unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(assignment.valid_from, T0);
+    let revision = policy.revision;
+    assert_eq!(
+        policy.apply(
+            VerifiedActor::Office01,
+            &PolicyCommand::CreateDelegation {
+                context: ctx(OFFICE_ASSIGNMENT_ID, revision),
+                source_assignment_id: OFFICE_ASSIGNMENT_ID,
+                recipient: VerifiedActor::Delegate01,
+                actions: vec![PolicyAction::WorkRead],
+                valid_from: Some("2026-10-01T00:00:00Z".into()),
+                valid_until: T2.into(),
+                reason: "遡及".into(),
+            },
+            T0,
+        ),
+        Err(WorkError::ValidationFailed)
+    );
+}
+
+#[test]
+fn a_workflow_without_an_attached_policy_grants_nothing() {
+    let stored = serde_json::to_value(Workflow::synthetic(None)).unwrap();
+    let w: Workflow = serde_json::from_value(stored).unwrap();
+    for actor in VerifiedActor::ALL {
+        assert!(
+            w.list_tasks(actor, TaskView::Context).is_empty(),
+            "{actor:?}"
+        );
+        assert!(w.list_tasks(actor, TaskView::Queue).is_empty(), "{actor:?}");
+    }
+    assert_eq!(
+        w.detail(VerifiedActor::Sales01, SALES_TASK_ID),
+        Err(WorkError::WorkItemNotFound)
+    );
+    let mut candidate = w.clone();
+    assert!(
+        candidate
+            .apply(
+                VerifiedActor::Sales01,
+                &Command::SaveDraft {
+                    task_id: SALES_TASK_ID,
+                    artifact_id: None,
+                    context: ctx(SALES_ASSIGNMENT_ID, 0),
+                    value: TextValue { text: "x".into() },
+                },
+                T0,
+            )
+            .is_err()
+    );
+    assert_eq!(candidate, w);
+}
+
+#[test]
+fn reassignment_reasons_and_periods_per_attempt_are_bounded() {
+    let mut policy = OrganizationPolicy::synthetic();
+    let MutationResult::RoleAssignmentCreated { assignment, .. } = policy
+        .apply(
+            VerifiedActor::Approver01,
+            &PolicyCommand::CreateRoleAssignment {
+                context: ctx(APPROVER_MANAGEMENT_ASSIGNMENT_ID, 0),
+                principal: VerifiedActor::Review01,
+                role_id: ROLE_SALES_ID,
+                unit_id: UNIT_SALES_ID,
+                valid_from: None,
+                valid_until: None,
+                reason: "営業応援".into(),
+            },
+            T0,
+        )
+        .unwrap()
+    else {
+        panic!()
+    };
+    let mut w = Workflow::synthetic(None).with_authority(policy, at(T1));
+    let assign = |w: &Workflow, assignee, responsibility, reason: &str| Command::Assign {
+        task_id: SALES_TASK_ID,
+        context: ctx(APPROVER_MANAGEMENT_ASSIGNMENT_ID, w.source.revision),
+        expected_attempt_id: SALES_ATTEMPT_ID,
+        assignee,
+        assignee_responsibility_id: responsibility,
+        reason: reason.into(),
+    };
+    for reason in ["a".repeat(MAX_POLICY_REASON_BYTES + 1), "不在\u{1}".into()] {
+        let command = assign(&w, VerifiedActor::Review01, assignment.id, &reason);
+        assert_eq!(
+            w.clone().apply(VerifiedActor::Approver01, &command, T1),
+            Err(WorkError::ValidationFailed)
+        );
+    }
+    let targets = [
+        (VerifiedActor::Review01, assignment.id),
+        (VerifiedActor::Sales01, SALES_ASSIGNMENT_ID),
+    ];
+    for index in 0..MAX_ASSIGNMENTS_PER_ATTEMPT {
+        let (assignee, responsibility) = targets[index % 2];
+        let command = assign(&w, assignee, responsibility, "交代");
+        w.apply(VerifiedActor::Approver01, &command, T1).unwrap();
+    }
+    let (assignee, responsibility) = targets[MAX_ASSIGNMENTS_PER_ATTEMPT % 2];
+    let before = w.clone();
+    assert_eq!(
+        w.apply(
+            VerifiedActor::Approver01,
+            &assign(&w, assignee, responsibility, "交代"),
+            T1
+        ),
+        Err(WorkError::ValidationFailed)
+    );
+    assert_eq!(w, before);
 }

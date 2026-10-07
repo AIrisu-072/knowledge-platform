@@ -127,6 +127,8 @@ function decision(value: unknown): HumanDecision {
   return { ...scope(item), findingId: string(item.findingId), findingRevision: 1, decision: item.decision as HumanDecision['decision'], adoptedClaim: nullableString(item.adoptedClaim), reason: nullableString(item.reason), evidenceRevisionRefs: array(item.evidenceRevisionRefs, reference), humanPrincipal: string(item.humanPrincipal), createdAt: string(item.createdAt), supersedesDecisionId: nullableString(item.supersedesDecisionId) };
 }
 function page<T>(value: unknown, decode: (value: unknown) => T): { items: T[]; nextCursor: null } { const item = object(value); if (item.nextCursor !== null) throw new Error('unsupported_pagination'); return { items: array(item.items, decode), nextCursor: null }; }
+/** Policy record pages carry the server evaluation instant used for status. */
+function policyPage<T>(value: unknown, decode: (value: unknown) => T): { items: T[]; nextCursor: null; evaluatedAt: string } { const base = page(value, decode); const evaluatedAt = string(object(value).evaluatedAt); if (Number.isNaN(Date.parse(evaluatedAt))) throw new Error('invalid_response'); return { ...base, evaluatedAt }; }
 function exact<T extends { id: string }>(value: unknown, id: string, decode: (value: unknown) => T): T { const record = decode(value); if (record.id !== id) throw new Error('response_target_mismatch'); return record; }
 function snapshot(value: unknown): HandoffSnapshot {
   const item = object(value);
@@ -215,8 +217,8 @@ export const workApi = {
   listTasks: (view: 'context' | 'queue', actingAssignmentId?: string) => request(`/tasks?view=${view}${actingAssignmentId ? `&actingAssignmentId=${segment(actingAssignmentId)}` : ''}`, (value) => { const item = object(value); if (item.nextCursor !== null) throw new Error('unsupported_pagination'); return { items: array(item.items, task), nextCursor: null }; }),
   listUnits: () => request('/units', (value) => page(value, unit)),
   listRoles: () => request('/roles', (value) => page(value, role)),
-  listRoleAssignments: () => request('/role-assignments', (value) => page(value, roleAssignment)),
-  listDelegations: () => request('/delegations', (value) => page(value, delegation)),
+  listRoleAssignments: () => request('/role-assignments', (value) => policyPage(value, roleAssignment)),
+  listDelegations: () => request('/delegations', (value) => policyPage(value, delegation)),
   createRoleAssignment: (command: RoleAssignmentCommand) => request('/role-assignments', (value) => { const receipt = policyResult(value); if (receipt.kind !== 'role_assignment_created' || receipt.assignment.principal !== command.principalId || receipt.assignment.roleId !== command.roleId) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),
   revokeRoleAssignment: (id: string, command: RevokePolicyRecordCommand) => request(`/role-assignments/${segment(id)}/revoke`, (value) => { const receipt = policyResult(value); if (receipt.kind !== 'role_assignment_revoked' || receipt.assignment.id !== id) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),
   createDelegation: (command: DelegationCommand) => request('/delegations', (value) => { const receipt = policyResult(value); if (receipt.kind !== 'delegation_created' || receipt.delegation.sourceAssignmentId !== command.sourceAssignmentId || receipt.delegation.recipient !== command.recipientPrincipalId) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),

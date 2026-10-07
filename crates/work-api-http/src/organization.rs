@@ -71,6 +71,15 @@ pub(super) struct Items<T> {
     items: Vec<T>,
     next_cursor: Option<String>,
 }
+/// Policy records carry the server evaluation instant so clients derive record
+/// status from the trusted clock, never their own.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct PolicyItems<T> {
+    items: Vec<T>,
+    next_cursor: Option<String>,
+    evaluated_at: String,
+}
 fn items<T>(items: Vec<T>) -> Json<Items<T>> {
     Json(Items {
         items,
@@ -115,25 +124,23 @@ pub(super) async fn roles(
 }
 pub(super) async fn role_assignments(
     State(state): State<ApiState>,
-) -> Result<Json<Items<RoleAssignment>>, Problem> {
-    Ok(items(
-        state
-            .repository
-            .organization(state.actor)
-            .await?
-            .role_assignments,
-    ))
+) -> Result<Json<PolicyItems<RoleAssignment>>, Problem> {
+    let view = state.repository.organization(state.actor).await?;
+    Ok(Json(PolicyItems {
+        items: view.role_assignments,
+        next_cursor: None,
+        evaluated_at: view.evaluated_at,
+    }))
 }
 pub(super) async fn delegations(
     State(state): State<ApiState>,
-) -> Result<Json<Items<Delegation>>, Problem> {
-    Ok(items(
-        state
-            .repository
-            .organization(state.actor)
-            .await?
-            .delegations,
-    ))
+) -> Result<Json<PolicyItems<Delegation>>, Problem> {
+    let view = state.repository.organization(state.actor).await?;
+    Ok(Json(PolicyItems {
+        items: view.delegations,
+        next_cursor: None,
+        evaluated_at: view.evaluated_at,
+    }))
 }
 pub(super) async fn create_role_assignment(
     State(state): State<ApiState>,

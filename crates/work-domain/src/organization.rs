@@ -21,8 +21,14 @@ pub const MULTI_ROLE_PROCESSING_ASSIGNMENT_ID: Uuid =
     Uuid::from_u128(0x0190000000007000800000000000a034);
 pub const MULTI_ROLE_REVIEW_ASSIGNMENT_ID: Uuid =
     Uuid::from_u128(0x0190000000007000800000000000a035);
-pub const MAX_ROLE_ASSIGNMENTS: usize = 200;
-pub const MAX_DELEGATIONS: usize = 200;
+/// Records are never deleted, so every bound counts revoked and ended records.
+/// Only a current manager creates formal assignments.
+pub const MAX_ROLE_ASSIGNMENTS: usize = 96;
+/// Per delegator, so one holder cannot exhaust another principal's delegations.
+pub const MAX_DELEGATIONS_PER_DELEGATOR: usize = 16;
+pub const MAX_DELEGATIONS: usize = MAX_DELEGATIONS_PER_DELEGATOR * VerifiedActor::ALL.len();
+/// A requested start may trail the server clock by this much; it is stored as now.
+const VALID_FROM_SKEW: time::Duration = time::Duration::minutes(5);
 const FIXTURE_VALID_FROM: &str = "2026-10-01T00:00:00Z";
 
 /// The closed policy action vocabulary of Domain §5. A label never grants one.
@@ -246,14 +252,32 @@ pub(crate) fn format_instant(value: OffsetDateTime) -> Result<String, WorkError>
         .format(&Rfc3339)
         .map_err(|_| WorkError::IntegrityViolation)
 }
+/// History is never backdated: an explicit start may only trail the trusted
+/// server instant by a small clock lag, and then starts now.
+fn requested_start(value: Option<&str>, at: OffsetDateTime) -> Result<OffsetDateTime, WorkError> {
+    let Some(value) = value else {
+        return Ok(at);
+    };
+    let from = parse_instant(value)?;
+    if from < at - VALID_FROM_SKEW {
+        return Err(WorkError::ValidationFailed);
+    }
+    Ok(from.max(at))
+}
 fn stored_instant(value: &str) -> Option<OffsetDateTime> {
     OffsetDateTime::parse(value, &Rfc3339).ok()
 }
-/// Policy reasons are bounded below the Work text limit so the full visible
-/// policy collections always fit the 1 MiB JSON response profile.
+/// Policy and reassignment reasons are bounded below the Work text limit. Control
+/// characters other than line breaks and tabs are rejected so JSON escaping at
+/// most doubles a reason, keeping full policy collections within 1 MiB.
 pub const MAX_POLICY_REASON_BYTES: usize = 1024;
-fn bounded_reason(value: &str) -> Result<(), WorkError> {
-    if value.trim().is_empty() || value.len() > MAX_POLICY_REASON_BYTES {
+pub(crate) fn bounded_reason(value: &str) -> Result<(), WorkError> {
+    if value.trim().is_empty()
+        || value.len() > MAX_POLICY_REASON_BYTES
+        || value
+            .chars()
+            .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
+    {
         return Err(WorkError::ValidationFailed);
     }
     Ok(())
@@ -289,6 +313,17 @@ fn fixture_assignment(
 }
 impl OrganizationPolicy {
     /// Explicit synthetic fixture: no generic administrator and no department inference.
+    /// Grants nothing: the evaluation policy when none has been attached.
+    pub fn empty() -> Self {
+        Self {
+            id: ORGANIZATION_POLICY_ID,
+            revision: 0,
+            units: vec![],
+            roles: vec![],
+            role_assignments: vec![],
+            delegations: vec![],
+        }
+    }
     pub fn synthetic() -> Self {
         use PolicyAction::*;
         let work = [
@@ -695,20 +730,27 @@ impl OrganizationPolicy {
     ) -> Result<(), WorkError> {
         let acting = command.context().acting_assignment_id;
         match command {
-            PolicyCommand::CreateRoleAssignment { .. }
-            | PolicyCommand::RevokeRoleAssignment { .. } => {
+            PolicyCommand::CreateRoleAssignment { principal, .. } => {
+                self.management(actor, acting, at)?;
+                // Separation of duties: management never grants its own caller a role.
+                if *principal == actor {
+                    return Err(WorkError::Forbidden);
+                }
+            }
+            PolicyCommand::RevokeRoleAssignment { .. } => {
                 self.management(actor, acting, at)?;
             }
             PolicyCommand::CreateDelegation {
                 source_assignment_id,
                 ..
             } => {
+                // Only the holder delegates; a manager never acts in a delegator's name.
                 let own = acting == *source_assignment_id
                     && self
                         .responsibility(actor, acting, at)
                         .is_some_and(|value| value.kind == ResponsibilityKind::RoleAssignment);
                 if !own {
-                    self.management(actor, acting, at)?;
+                    return Err(WorkError::Forbidden);
                 }
             }
             PolicyCommand::RevokeDelegation { delegation_id, .. } => {
@@ -747,11 +789,7 @@ impl OrganizationPolicy {
                 if self.role(*role_id).is_none() || !unit.role_ids.contains(role_id) {
                     return Err(WorkError::ValidationFailed);
                 }
-                let from = valid_from
-                    .as_deref()
-                    .map(parse_instant)
-                    .transpose()?
-                    .unwrap_or(at);
+                let from = requested_start(valid_from.as_deref(), at)?;
                 let until = valid_until.as_deref().map(parse_instant).transpose()?;
                 if until.is_some_and(|until| until <= from || until <= at)
                     || self.role_assignments.len() >= MAX_ROLE_ASSIGNMENTS
@@ -851,17 +889,18 @@ impl OrganizationPolicy {
                 {
                     return Err(WorkError::ValidationFailed);
                 }
-                let from = valid_from
-                    .as_deref()
-                    .map(parse_instant)
-                    .transpose()?
-                    .unwrap_or(at);
+                let from = requested_start(valid_from.as_deref(), at)?;
                 let until = parse_instant(valid_until)?;
                 let source_until = source.valid_until.as_deref().and_then(stored_instant);
                 if until <= from
                     || until <= at
                     || source_until.is_some_and(|source_until| until > source_until)
-                    || self.delegations.len() >= MAX_DELEGATIONS
+                    || self
+                        .delegations
+                        .iter()
+                        .filter(|value| value.delegator == source.principal)
+                        .count()
+                        >= MAX_DELEGATIONS_PER_DELEGATOR
                 {
                     return Err(WorkError::ValidationFailed);
                 }

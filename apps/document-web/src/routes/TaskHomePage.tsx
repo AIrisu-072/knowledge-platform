@@ -46,7 +46,9 @@ export function TaskHomePage() {
   const selected = tasks.isSuccess ? tasks.data.items.find((item) => item.id === search.taskId) : undefined;
   // Private detail is requested only for the actor's own assignment; a manager's
   // assignment view and an eligible-only queue row never fetch it.
-  const managedOnly = Boolean(selected && selected.canAssign && selected.assignment?.principalId !== sessionData?.principalId);
+  const managedOnly = Boolean(selected && selected.canAssign && !selected.canClaim && selected.assignment?.principalId !== sessionData?.principalId);
+  // A manager who may also claim, or who is the current assignee, keeps both paths.
+  const alsoManaged = Boolean(selected && selected.canAssign && !managedOnly);
   const readable = Boolean(selected && !selected.canClaim && !managedOnly);
   const detail = useQuery({ queryKey: sessionData && selected ? taskKey(sessionData, selected) : ['organization-no-task'], queryFn: () => workApi.getTask(selected!.id), enabled: Boolean(sessionData && selected && readable), staleTime: 0, gcTime: 0, retry: false });
   const detailData = sessionData && selected && blockedId !== attemptKey(selected) && detail.isSuccess && matchesCurrent(selected, detail.data) && readable ? detail.data : undefined;
@@ -132,6 +134,7 @@ export function TaskHomePage() {
           {snapshot.isSuccess && snapshot.data && <Snapshot snapshot={snapshot.data} received={snapshot.data.sourceTaskId !== detailData.id} />}
           <TaskAction key={`${sessionData.principalId}:${sessionData.actingAssignmentId}:${detailData.id}:${detailData.attemptId}`} session={sessionData} task={detailData} detail={detailData} snapshot={snapshot.isSuccess ? snapshot.data : undefined} applyResult={applyResult} refresh={refresh} onDenied={denyDisclosure} />
         </> : <p role="status">タスクの詳細を読み込み中…</p>}
+        {alsoManaged && blockedId !== attemptKey(selected) && <TaskAssignmentPanel key={`${selected.id}:${selected.attemptId}`} session={sessionData} task={selected} scope={scope} onAssigned={applyAssignment} />}
       </>}
     </section></div>
   </AppShell>;

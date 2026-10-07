@@ -5,7 +5,7 @@ import { Dialog, Heading, Modal } from 'react-aria-components';
 import { AppShell } from '../components/app-shell/AppShell';
 import { useOrganizationContext } from '../application/organization-context';
 import { validateTaskSearch, workApi, workErrorMessage, type WorkSession, type BusinessRole, type Delegation, type OrganizationalUnit, type PolicyAction, type PolicyResult, type Responsibility, type RoleAssignment, type SyntheticPrincipal } from '../application/work-workspace';
-import { delegable, knownPrincipals, managementResponsibility, policyActionLabels, principalLabel, recordStatus, responsibilityLabel, statusLabel } from '../application/organization-policy';
+import { delegable, knownPrincipals, managementResponsibility, policyActionLabels, principalLabel, reasonProblem, recordStatus, responsibilityLabel, statusLabel } from '../application/organization-policy';
 import { jstDateTimeLocalToUtc } from '../application/schedule-time';
 import { createOperationId } from '../application/operation-id';
 import { useRecoverableOperation } from '../components/organization/use-recoverable-operation';
@@ -15,7 +15,6 @@ import styles from './TaskWorkspace.module.css';
 const sessionKey = ['organization-session'];
 const policyKey = (session: WorkSession) => ['organization', session.principalId, session.actingAssignmentId ?? 'none', 'policy-records'];
 const instant = (value: string | null) => (value ? formatDateTime(value, 'Asia/Tokyo') : '終了予定なし');
-const bytes = (value: string) => new TextEncoder().encode(value).length;
 type Pending = { title: string; lines: string[]; run: () => { operationId: string; send: () => Promise<PolicyResult>; recover: () => Promise<PolicyResult> } };
 
 /** Own responsibilities and delegations; a current formal management assignment
@@ -27,7 +26,7 @@ export function OrganizationResponsibilitiesPage() {
   const data = session.isSuccess ? session.data : undefined;
   const records = useQuery({
     queryKey: data ? policyKey(data) : ['organization-policy-unavailable'],
-    queryFn: async () => { const [assignments, delegations, roles, units] = await Promise.all([workApi.listRoleAssignments(), workApi.listDelegations(), workApi.listRoles(), workApi.listUnits()]); return { assignments: assignments.items, delegations: delegations.items, roles: roles.items, units: units.items }; },
+    queryFn: async () => { const [assignments, delegations, roles, units] = await Promise.all([workApi.listRoleAssignments(), workApi.listDelegations(), workApi.listRoles(), workApi.listUnits()]); return { assignments: assignments.items, delegations: delegations.items, roles: roles.items, units: units.items, evaluatedAt: Date.parse(assignments.evaluatedAt) }; },
     enabled: Boolean(data?.responsibilities), staleTime: 0, gcTime: 0, retry: false,
   });
   const [confirmation, setConfirmation] = useState<Pending | null>(null);
@@ -40,7 +39,6 @@ export function OrganizationResponsibilitiesPage() {
     client.removeQueries({ queryKey: ['organization'] });
   });
   const taskSearch = validateTaskSearch(Object.fromEntries(new URLSearchParams(organization.taskHref.split('?')[1] ?? '')));
-  const now = Date.now();
   const recovery = operation.unknown && operation.operation && !operation.pending ? <div className={styles.notice}><p>結果は未確認です。操作ID: {operation.operation.operationId}</p><div className={styles.actions}><button type="button" onClick={() => void operation.recover()}>同じ操作の結果を確認</button>{operation.canResend && <button type="button" onClick={() => void operation.resend()}>同じ操作を再送</button>}</div></div> : null;
   const failure = Boolean(operation.error) && !operation.unknown ? <p role="alert" className={styles.error}>{workErrorMessage(operation.error)}</p> : null;
   return <AppShell activeNavigation="tasks" mainLabel="担当と委任" showContextPanel={false} headerContext={<span className={styles.identity}>{data ? <><strong>{data.displayName}</strong> · {data.principalId}<br />起動時固定の模擬ユーザー</> : '担当と委任'}</span>}>
@@ -58,7 +56,7 @@ export function OrganizationResponsibilitiesPage() {
         {data.responsibilities.length === 0 ? <p>現在有効な担当はありません。</p> : <ul>{data.responsibilities.map((value) => <li key={value.id}><strong>{responsibilityLabel(value)}</strong> · {value.kind === 'delegation' ? '委任' : '正式割当'}<br /><span className={styles.muted}>{instant(value.validFrom)} から {instant(value.validUntil)} · {value.id}</span><br /><span className={styles.muted}>操作：{value.actions.map((action) => policyActionLabels[action]).join('、')}</span></li>)}</ul>}
         {records.isPending && <p role="status">担当・委任の記録を確認中…</p>}
         {records.isError && <p role="alert">担当・委任の記録を取得できません。{workErrorMessage(records.error)}</p>}
-        {records.isSuccess && <PolicySections session={data} assignments={records.data.assignments} delegations={records.data.delegations} roles={records.data.roles} units={records.data.units} now={now} busy={operation.pending || operation.unknown} confirm={(pending) => { setNotice(''); operation.reset(); setConfirmation(pending); }} />}
+        {records.isSuccess && <PolicySections session={data} assignments={records.data.assignments} delegations={records.data.delegations} roles={records.data.roles} units={records.data.units} now={records.data.evaluatedAt} busy={operation.pending || operation.unknown} confirm={(pending) => { setNotice(''); operation.reset(); setConfirmation(pending); }} />}
       </>}
       {confirmation && <Modal className={styles.dialogScrim} isOpen isDismissable={false} isKeyboardDismissDisabled={operation.pending} onOpenChange={(open) => { if (!open && !operation.pending) setConfirmation(null); }}><Dialog className={styles.dialog} aria-labelledby="policy-title"><Heading slot="title" id="policy-title">{confirmation.title}</Heading>
         {confirmation.lines.map((line) => <p key={line} className={styles.text}>{line}</p>)}
@@ -108,7 +106,7 @@ function DelegationForm({ session, sources, roles, revision, busy, confirm }: { 
   const [reason, setReason] = useState('');
   const validUntil = jstDateTimeLocalToUtc(until);
   const chosen = actions.filter((action) => available.includes(action));
-  const ready = recipient && chosen.length > 0 && validUntil && Date.parse(validUntil) > Date.now() && reason.trim() && bytes(reason) <= 1024;
+  const ready = recipient && chosen.length > 0 && validUntil && Date.parse(validUntil) > Date.now() && reason.trim() && !reasonProblem(reason);
   return <section className={styles.editor} aria-label="委任の作成">
     <h3>委任を作成</h3>
     <p className={styles.muted}>自分の正式割当の範囲だけを、期限付きで別の担当者に任せます。担当変更と担当・委任の管理は委任できません。再委任はできません。</p>
@@ -118,7 +116,7 @@ function DelegationForm({ session, sources, roles, revision, busy, confirm }: { 
     <label>期限（日本時間、この時刻を含まない）<input type="datetime-local" value={until} disabled={busy} onChange={(event) => setUntil(event.target.value)} /></label>
     {until && !validUntil && <p role="alert">期限を正しい日時で入力してください</p>}
     <label htmlFor="delegation-reason">委任の理由</label><textarea id="delegation-reason" value={reason} disabled={busy} onChange={(event) => setReason(event.target.value)} />
-    {bytes(reason) > 1024 && <p role="alert">理由はUTF-8で1024バイト以内にしてください</p>}
+    {reasonProblem(reason) && <p role="alert">{reasonProblem(reason)}</p>}
     <div className={styles.actions}><button type="button" disabled={busy || !ready} onClick={() => confirm({ title: '委任の確認', lines: [`${responsibilityLabel(source)} を ${principalLabel(recipient)} に委任します。`, `任せる操作：${chosen.map((action) => policyActionLabels[action]).join('、')}`, `期限：${instant(validUntil)}（この時刻で失効）`, `理由：${reason}`], run: () => { const command = { operationId: createOperationId(), expectedRevision: revision, actingAssignmentId: source.id, sourceAssignmentId: source.id, recipientPrincipalId: recipient as SyntheticPrincipal, actions: chosen, validUntil: validUntil!, reason }; return { operationId: command.operationId, send: () => workApi.createDelegation(command), recover: () => workApi.getPolicyOperation(command.operationId) }; } })}>委任の内容を確認</button></div>
   </section>;
 }
@@ -131,14 +129,14 @@ function AssignmentForm({ manager, roles, units, revision, busy, confirm }: { ma
   const [reason, setReason] = useState('');
   const selected = pairs.find((value) => `${value.unit.id}:${value.role.id}` === pair);
   const validUntil = until ? jstDateTimeLocalToUtc(until) : null;
-  const ready = principal && selected && (!until || (validUntil && Date.parse(validUntil) > Date.now())) && reason.trim() && bytes(reason) <= 1024;
+  const ready = principal && selected && (!until || (validUntil && Date.parse(validUntil) > Date.now())) && reason.trim() && !reasonProblem(reason);
   return <section className={styles.editor} aria-label="割当の追加">
     <h3>割当を追加</h3>
     <label>担当者 <select value={principal} disabled={busy} onChange={(event) => setPrincipal(event.target.value as SyntheticPrincipal)}><option value="">選択してください</option>{knownPrincipals.map((value) => <option key={value} value={value}>{principalLabel(value)}</option>)}</select></label>
     <label>役割@組織 <select value={pair} disabled={busy} onChange={(event) => setPair(event.target.value)}><option value="">選択してください</option>{pairs.map((value) => <option key={`${value.unit.id}:${value.role.id}`} value={`${value.unit.id}:${value.role.id}`}>{value.role.label}@{value.unit.label}</option>)}</select></label>
     <label>終了（日本時間、任意）<input type="datetime-local" value={until} disabled={busy} onChange={(event) => setUntil(event.target.value)} /></label>
     <label htmlFor="assignment-reason">割当の理由</label><textarea id="assignment-reason" value={reason} disabled={busy} onChange={(event) => setReason(event.target.value)} />
-    {bytes(reason) > 1024 && <p role="alert">理由はUTF-8で1024バイト以内にしてください</p>}
+    {reasonProblem(reason) && <p role="alert">{reasonProblem(reason)}</p>}
     <div className={styles.actions}><button type="button" disabled={busy || !ready} onClick={() => confirm({ title: '割当の追加の確認', lines: [`${principalLabel(principal)} に ${selected!.role.label}@${selected!.unit.label} を割り当てます。`, `終了：${instant(validUntil)}`, `理由：${reason}`], run: () => { const command = { operationId: createOperationId(), expectedRevision: revision, actingAssignmentId: manager.id, principalId: principal as SyntheticPrincipal, roleId: selected!.role.id, unitId: selected!.unit.id, ...(validUntil ? { validUntil } : {}), reason }; return { operationId: command.operationId, send: () => workApi.createRoleAssignment(command), recover: () => workApi.getPolicyOperation(command.operationId) }; } })}>割当の内容を確認</button></div>
   </section>;
 }

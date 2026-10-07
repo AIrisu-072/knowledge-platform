@@ -797,12 +797,17 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
         .await
         .unwrap();
     assert_eq!(f_after, f, "human decision cannot rewrite the candidate");
-    let persisted: sqlx::types::Json<Workflow> =
+    let sqlx::types::Json(persisted): sqlx::types::Json<Workflow> =
         sqlx::query_scalar("SELECT body FROM work.workflow_instances WHERE id=$1")
             .bind(WORKFLOW_ID)
             .fetch_one(&pool)
             .await
             .unwrap();
+    // Stored JSON carries no authority; evaluate it as the repository does.
+    let persisted = persisted.with_authority(
+        OrganizationPolicy::synthetic(),
+        time::OffsetDateTime::now_utc(),
+    );
     assert_eq!(
         persisted.validate_selection(
             VerifiedActor::Office01,

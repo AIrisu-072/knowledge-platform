@@ -63,6 +63,11 @@
 
 - 担当変更（`work.assign`）は管理担当のacting responsibilityが必要。工程の役割は不要だが、
   新担当者のresponsibilityは工程の役割と `work.claim` を含み現在有効であること
+- 職務分離：管理担当は自分自身への担当変更・自分への正式割当の作成をできない（403）。
+  自分が工程の役割を持つ場合は通常の引受を使う。委任は委任元の本人だけが作成し、管理担当が他人の名義で作成しない
+- 差戻し後の新しい試行の担当者（委任・担当変更による担当者を含む）は、その試行の差戻指示と差戻し前の提出を読める。
+  提出者本人は、その工程の責任を保持している間だけ自分の提出を読める（既存規則）。担当可能なだけの利用者・管理担当・
+  文脈継続の閲覧者の一覧には提出ID・差戻指示IDを含めない
 - 担当変更は旧割当を終了し、新割当を作り、試行のrevisionを進める。同じ試行のprivate文案は新担当者が読める。
   旧担当者は次の読取から非公開内容を読めない。過去の操作者記録は残す
 - 割当の取消・期限切れで担当が無効になっても試行を自動で手放さない（自動再割当・自動claimは作らない）。
@@ -78,15 +83,19 @@
 |---|---|---|
 | GET `/session` | 本人。現在有効な責任の一覧を追加。既存 `actingAssignmentId` は既定値として維持 | ヘッダーの実行担当切替 |
 | GET `/units`、GET `/roles` | 合成organizationの全principal（ラベルのみ） | 担当・委任画面 |
-| GET `/role-assignments` | 本人分。現在有効な `organization.manage` があれば全件 | 担当・委任画面 |
+| GET `/role-assignments` | 本人分。現在有効な `organization.manage` があれば全件。状態判定用のserver評価時刻 `evaluatedAt` を返す | 担当・委任画面 |
 | POST `/role-assignments` | acting=管理担当の正式割当 | 管理：割当の追加 |
 | POST `/role-assignments/{id}/revoke` | 同上。現在使用中のacting割当自身は取消不可 | 管理：割当の取消 |
-| GET `/delegations` | 委任者・受任者本人。管理担当は全件 | 担当・委任画面 |
-| POST `/delegations` | acting=委任元の正式割当（本人）または管理担当 | 自分の委任の作成 |
+| GET `/delegations` | 委任者・受任者本人。管理担当は全件。`evaluatedAt` を返す | 担当・委任画面 |
+| POST `/delegations` | acting=委任元の正式割当（本人）だけ | 自分の委任の作成 |
 | POST `/delegations/{id}/revoke` | 委任者本人または管理担当 | 委任の取消 |
 | GET `/tasks?view=&actingAssignmentId=` | 指定responsibilityで見える範囲。省略時は全有効responsibilityの和 | 一覧 |
 | POST `/tasks/{id}/assignment` | `work.assign` | 担当変更ダイアログ |
 | GET `/operations/{id}` | 既存。policy操作も同じ操作IDで回復 | 結果不明時の確認 |
+
+理由（割当・委任・取消・担当変更）は空白のみ不可、UTF-8で1024 bytes以内、改行・タブ以外の制御文字を拒否する。
+`validFrom` はserver時刻より5分を超えて過去を指定できず、過去側の指定は現在時刻から開始する（履歴を遡及しない）。
+記録は削除しないため、件数上限は取消・期限切れを含めて数える（正式割当は全体96件、委任は委任者ごとに16件）。
 
 policy操作は既存の `operationId` / `expectedRevision`（policyのrevision）/ `actingAssignmentId` を使い、
 同一digestの再送は同じ結果、異なるdigestは `OPERATION_CONFLICT`、revision不一致は `REVISION_CONFLICT` とする。
@@ -107,7 +116,10 @@ policy操作と担当変更はevent stagingへ実principal・acting responsibili
 
 1. 合成fixtureに「業務管理」役割（`organization.manage`、`work.assign`）を追加し、approver-01へ割り当てる。
    設計の「汎用administratorなし、現在の管理責任のみ」を満たす合成policyであり、実組織の管理権限規則ではない
-2. 委任は委任元の正式割当の本人が作成できる。`organization.manage` と `work.assign` は委任できない。再委任は不可
+2. 委任は委任元の正式割当の本人だけが作成できる（管理担当による代理作成なし）。`organization.manage` と `work.assign` は委任できない。再委任は不可
 3. 割当取消・委任失効による担当無効時は自動で解放せず、管理担当の担当変更で解消する
 4. 管理担当の範囲は合成organization全体（組織単位による管理範囲の分割はしない）
 5. 複数principalのbrowser利用は「principalごとに1 server process」の既存方式を維持する（profile追加のみ）
+6. 職務分離：管理担当は自分への正式割当の作成と自分への担当変更をできない
+7. 件数・理由の上限（正式割当96件、委任は委任者ごと16件、理由1024 bytesで制御文字不可、担当期間は試行ごと16件）。
+   記録の保持期間・削除方針は未決定（PoCでは削除しない）

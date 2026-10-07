@@ -23,6 +23,7 @@ const approverSession = { ...multiSession, principalId: 'approver-01', displayNa
 const baseTask = { id: 'office-task', contextId: 'context-1', attemptId: 'office-attempt', attemptNumber: 1, revision: 4, title: '事務内容確認', stepLabel: '事務内容確認', state: 'ready', canClaim: false, canEdit: false, canSubmit: false, canComplete: false, completionActionId: null, canHold: false, holdActionId: null, canResume: false, resumeActionId: null, canReturn: false, canRegisterEvidence: false, canRegisterFinding: false, canRecordDecision: false, canRequestAgent: false, returnTransition: null, returnInstructionId: null, handoffSnapshotId: 'snapshot-1', requiredRoleId: ROLE_PROCESSING, claimAssignmentId: null, canAssign: false, assignment: null };
 const roleAssignment = (id: string, principal: string, roleId: string, extra: Record<string, unknown> = {}) => ({ id, principal, roleId, unitId: 'unit-office', validFrom: '2026-10-01T00:00:00Z', validUntil: null, reason: '合成', createdBy: null, createdAt: '2026-10-01T00:00:00Z', revokedAt: null, revokedBy: null, revokeReason: null, ...extra });
 const roles = [{ id: ROLE_PROCESSING, key: 'processing', label: '事務処理', actions: ['queue.read', 'work.read', 'work.claim', 'work.edit', 'work.submit'] }, { id: ROLE_REVIEWING, key: 'reviewing', label: '審査', actions: ['queue.read', 'work.read', 'work.claim'] }, { id: ROLE_MANAGEMENT, key: 'management', label: '業務管理', actions: ['queue.read', 'work.assign', 'organization.manage'] }];
+const EVALUATED_AT = '2026-10-07T12:00:00Z';
 const units = [{ id: 'unit-office', label: '事務', defaultArchetype: 'queue', roleIds: [ROLE_PROCESSING] }];
 
 function setup(entry: string, session: unknown, tasks: unknown[]) {
@@ -55,8 +56,10 @@ test('policy hints: exclusive end, revocation and current-period exclusion', () 
     { id: 'no-claim', sourceAssignmentId: 'office', delegator: 'office-01', recipient: 'review-01', actions: ['work.read'], validFrom: '2026-10-07T00:00:00Z', validUntil: '2026-10-07T18:00:00Z', reason: '閲覧', createdBy: 'office-01', createdAt: '2026-10-07T00:00:00Z', revokedAt: null, revokedBy: null, revokeReason: null },
   ];
   const task = { requiredRoleId: ROLE_PROCESSING, assignment: { principalId: 'office-01', displayName: '事務担当（模擬）', actingAssignmentId: 'office', actingKind: 'role_assignment', roleLabel: '事務処理', delegatorPrincipalId: null, responsibilityEffective: true } } as const;
-  const candidates = assignmentCandidates(task as never, assignments as never, delegations as never, roles as never, units as never, now);
+  const candidates = assignmentCandidates(task as never, assignments as never, delegations as never, roles as never, units as never, now, 'approver-01');
   expect(candidates.map((value) => value.responsibilityId)).toEqual(['multi', 'delegated']);
+  // The managing actor never appears as its own candidate.
+  expect(assignmentCandidates(task as never, assignments as never, delegations as never, roles as never, units as never, now, 'multi-role-01').map((value) => value.responsibilityId)).toEqual(['delegated']);
 });
 
 test('a concurrent-role principal selects one projection scope and claims with the server-chosen responsibility', async () => {
@@ -80,8 +83,8 @@ test('a concurrent-role principal selects one projection scope and claims with t
 test('a manager sees assignment state but never fetches private detail, and reassigns through an explicit confirmation', async () => {
   const assigned = { ...baseTask, state: 'active', canAssign: true, assignment: { principalId: 'office-01', displayName: '事務担当（模擬）', actingAssignmentId: 'office', actingKind: 'role_assignment', roleLabel: '事務処理', delegatorPrincipalId: null, responsibilityEffective: false } };
   setup(`/tasks?view=queue&taskId=${assigned.id}`, approverSession, [assigned]);
-  jest.spyOn(workApi, 'listRoleAssignments').mockResolvedValue({ items: [roleAssignment('office', 'office-01', ROLE_PROCESSING), roleAssignment('multi', 'multi-role-01', ROLE_PROCESSING)], nextCursor: null } as never);
-  jest.spyOn(workApi, 'listDelegations').mockResolvedValue({ items: [], nextCursor: null } as never);
+  jest.spyOn(workApi, 'listRoleAssignments').mockResolvedValue({ items: [roleAssignment('office', 'office-01', ROLE_PROCESSING), roleAssignment('multi', 'multi-role-01', ROLE_PROCESSING)], nextCursor: null, evaluatedAt: EVALUATED_AT } as never);
+  jest.spyOn(workApi, 'listDelegations').mockResolvedValue({ items: [], nextCursor: null, evaluatedAt: EVALUATED_AT } as never);
   jest.spyOn(workApi, 'listRoles').mockResolvedValue({ items: roles, nextCursor: null } as never);
   jest.spyOn(workApi, 'listUnits').mockResolvedValue({ items: units, nextCursor: null } as never);
   const assign = jest.spyOn(workApi, 'assignTask').mockRejectedValueOnce(new WorkApiError(0, 'network_unavailable', true));
@@ -121,8 +124,8 @@ test('policy unavailability is explicit and never rendered as an empty grant', a
 
 test('a holder delegates a narrowed, time-bounded responsibility after confirmation', async () => {
   setup('/organization/responsibilities', multiSession, []);
-  jest.spyOn(workApi, 'listRoleAssignments').mockResolvedValue({ items: [roleAssignment(processing.id, 'multi-role-01', ROLE_PROCESSING)], nextCursor: null } as never);
-  jest.spyOn(workApi, 'listDelegations').mockResolvedValue({ items: [], nextCursor: null } as never);
+  jest.spyOn(workApi, 'listRoleAssignments').mockResolvedValue({ items: [roleAssignment(processing.id, 'multi-role-01', ROLE_PROCESSING)], nextCursor: null, evaluatedAt: EVALUATED_AT } as never);
+  jest.spyOn(workApi, 'listDelegations').mockResolvedValue({ items: [], nextCursor: null, evaluatedAt: EVALUATED_AT } as never);
   jest.spyOn(workApi, 'listRoles').mockResolvedValue({ items: roles, nextCursor: null } as never);
   jest.spyOn(workApi, 'listUnits').mockResolvedValue({ items: units, nextCursor: null } as never);
   const created = { kind: 'delegation_created', policyRevision: 4, delegation: { id: 'new-delegation', sourceAssignmentId: processing.id, delegator: 'multi-role-01', recipient: 'delegate-01', actions: ['queue.read', 'work.read', 'work.claim'], validFrom: '2026-10-07T00:00:00Z', validUntil: '2099-10-07T09:00:00Z', reason: '休暇', createdBy: 'multi-role-01', createdAt: '2026-10-07T00:00:00Z', revokedAt: null, revokedBy: null, revokeReason: null } };
@@ -143,8 +146,8 @@ test('a holder delegates a narrowed, time-bounded responsibility after confirmat
 
 test('only a formal management assignment administers assignments; its own acting assignment is not revocable', async () => {
   setup('/organization/responsibilities', approverSession, []);
-  jest.spyOn(workApi, 'listRoleAssignments').mockResolvedValue({ items: [roleAssignment(management.id, 'approver-01', ROLE_MANAGEMENT), roleAssignment('office', 'office-01', ROLE_PROCESSING)], nextCursor: null } as never);
-  jest.spyOn(workApi, 'listDelegations').mockResolvedValue({ items: [], nextCursor: null } as never);
+  jest.spyOn(workApi, 'listRoleAssignments').mockResolvedValue({ items: [roleAssignment(management.id, 'approver-01', ROLE_MANAGEMENT), roleAssignment('office', 'office-01', ROLE_PROCESSING)], nextCursor: null, evaluatedAt: EVALUATED_AT } as never);
+  jest.spyOn(workApi, 'listDelegations').mockResolvedValue({ items: [], nextCursor: null, evaluatedAt: EVALUATED_AT } as never);
   jest.spyOn(workApi, 'listRoles').mockResolvedValue({ items: roles, nextCursor: null } as never);
   jest.spyOn(workApi, 'listUnits').mockResolvedValue({ items: units, nextCursor: null } as never);
   const revoke = jest.spyOn(workApi, 'revokeRoleAssignment').mockResolvedValue({ kind: 'role_assignment_revoked', policyRevision: 4, assignment: roleAssignment('office', 'office-01', ROLE_PROCESSING, { revokedAt: '2026-10-07T00:00:00Z', revokedBy: 'approver-01', revokeReason: '画面から割当を取り消しました' }) } as never);
@@ -156,4 +159,39 @@ test('only a formal management assignment administers assignments; its own actin
   await userEvent.click(within(dialog).getByRole('button', { name: '確定' }));
   expect(await screen.findByText('割当の取消が確定しました')).toBeVisible();
   expect(revoke).toHaveBeenCalledWith('office', expect.objectContaining({ expectedRevision: 3, actingAssignmentId: management.id }));
+});
+
+test('a manager who may also claim keeps the claim path; candidates use the server instant and exclude the manager', async () => {
+  const manager = { ...management, actions: ['queue.read', 'work.read', 'work.claim', 'work.assign', 'organization.manage'], roleId: ROLE_PROCESSING };
+  const session = { ...approverSession, responsibilities: [manager] };
+  const ready = { ...baseTask, canClaim: true, claimAssignmentId: manager.id, canAssign: true };
+  setup(`/tasks?view=queue&taskId=${ready.id}`, session, [ready]);
+  // A just-created assignment is effective at the server instant even if this client's clock lags.
+  const future = (id: string, principal: string) => roleAssignment(id, principal, ROLE_PROCESSING, { validFrom: '2099-10-07T00:00:00Z' });
+  jest.spyOn(workApi, 'listRoleAssignments').mockResolvedValue({ items: [future('own', 'approver-01'), future('new', 'multi-role-01')], nextCursor: null, evaluatedAt: '2099-10-07T00:00:01Z' } as never);
+  jest.spyOn(workApi, 'listDelegations').mockResolvedValue({ items: [], nextCursor: null, evaluatedAt: '2099-10-07T00:00:01Z' } as never);
+  jest.spyOn(workApi, 'listRoles').mockResolvedValue({ items: roles, nextCursor: null } as never);
+  jest.spyOn(workApi, 'listUnits').mockResolvedValue({ items: units, nextCursor: null } as never);
+  expect(await screen.findByRole('button', { name: '担当を引き受ける' })).toBeVisible();
+  const panel = screen.getByRole('region', { name: '担当の管理' });
+  await userEvent.click(within(panel).getByRole('button', { name: '担当変更の内容を確認' }));
+  const dialog = await screen.findByRole('dialog', { name: '担当変更の確認' });
+  expect(await within(dialog).findByLabelText(/multi-role-01/)).toBeVisible();
+  expect(within(dialog).queryByLabelText(/approver-01/)).not.toBeInTheDocument();
+  // Control characters other than line breaks and tabs are refused before sending.
+  await userEvent.click(within(dialog).getByLabelText(/multi-role-01/));
+  fireEvent.change(within(dialog).getByLabelText('担当変更の理由'), { target: { value: '不在\u0001' } });
+  expect(within(dialog).getByRole('alert')).toHaveTextContent('制御文字');
+  expect(within(dialog).getByRole('button', { name: '担当変更を確定' })).toBeDisabled();
+  fireEvent.change(within(dialog).getByLabelText('担当変更の理由'), { target: { value: '不在\n交代' } });
+  expect(within(dialog).getByRole('button', { name: '担当変更を確定' })).toBeEnabled();
+});
+
+test('a manager who is the current assignee can still hand the task over', async () => {
+  const manager = { ...management, actions: ['queue.read', 'work.read', 'work.claim', 'work.assign', 'organization.manage'], roleId: ROLE_PROCESSING };
+  const session = { ...approverSession, responsibilities: [manager] };
+  const own = { ...baseTask, state: 'active', canAssign: true, assignment: { principalId: 'approver-01', displayName: '承認・業務管理（模擬）', actingAssignmentId: manager.id, actingKind: 'role_assignment', roleLabel: '事務処理', delegatorPrincipalId: null, responsibilityEffective: true } };
+  setup(`/tasks?view=queue&taskId=${own.id}`, session, [own]);
+  expect(await screen.findByRole('region', { name: '担当の管理' })).toBeVisible();
+  await waitFor(() => expect(workApi.getTask).toHaveBeenCalledWith(own.id));
 });

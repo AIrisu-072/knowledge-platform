@@ -59,10 +59,33 @@ Work側の必須local staging（`work.event_staging`）に次を記録する。A
 
 この単位はRuntime Contract・native broker・local bindingに触れていない。policy由来のresource bindingはU2以降でWorkspace APIへ接続する。
 
+### PR・hosted CI
+
+- [PR #96](https://github.com/AIrisu-072/knowledge-platform/pull/96)（Draft）。head `3536872` は `document-poc-runtime` のnode試験で失敗（受入configのphase選択を固定照合していた試験）。試験を新しい厳密な選択へ追従させた `be1a1be` で全job成功、Organization stage 13件（既存2名＋6名policy）すべてpassed
+
+### 独立review（NO-GO → 修正）
+
+重大な越権開示・権限昇格は無し。次を修正し、各修正は変異（修正を外す）で新試験がREDになることを確認した。
+
+| 指摘 | 修正 |
+|---|---|
+| I1 差戻し後の試行を委任・担当変更で引き継いだ担当者が差戻指示・差戻し前の提出を読めない | 現在の担当者は自試行が受領・差戻しで参照する提出と、その直前の提出を読める |
+| I2 制御文字のJSON escapeで一覧が1 MiBを超える／委任件数上限を他人が使い切れる | 理由は改行・タブ以外の制御文字を拒否。委任は委任者ごと16件、正式割当は96件（取消を含む）。最大escapeでも一覧が0.5 MiB未満の試験 |
+| I3 管理担当が自分へ役割を付与・担当変更し非公開文案を読める／他人名義の委任を作れる | 職務分離：自分への正式割当・担当変更は403。委任は本人のみ作成 |
+| m4 別責任での再割当後に読めないAgent実行IDが詳細に載る | 詳細の実行ID一覧も記録した責任で絞る |
+| m5 開始日時の遡及 | 5分を超える過去は拒否、過去側は現在時刻から開始 |
+| m6 既存DBの更新で `seed-work` 前の起動エラーが不明瞭 | 起動エラーに `seed-work` の実行を明記（新DBは従来どおりseed前に起動できる） |
+| m7 policy未添付時に合成fixtureで評価 | 未添付は何も許可しない。repositoryは常に添付 |
+| m8 担当可能なだけの一覧に提出ID・差戻指示ID | 担当者本人の一覧にだけ含める |
+| m9 担当期間の記録が無制限 | 試行ごと16件、理由1024 bytes |
+| m10 管理担当が引受可能でも引受が出ない／自分が担当中だと担当変更できない／候補判定がclient時計 | 引受と担当の管理を併記。一覧APIに `evaluatedAt` を追加し候補・状態をserver時刻で判定。自分は候補から除外 |
+| m11 6 process×2 poolがPostgreSQL既定の接続上限を超えうる | runnerの所有containerを `max_connections=200` で起動 |
+
+追補§5・§6・§8（新しい判断6・7）と利用手順を更新した。
+
 ### 次のexact action
 
-1. 独立review（subagent）の指摘を処理する
-2. commit・push・Draft PR作成・PR購読
-3. exact-head CI（特に `document-poc-runtime` のOrganization stage 13件）を確認し、失敗は根因を直す
-4. 合格後mainへ統合し、main push CIを確認
-5. 同名branchを最新mainから作り直し、U2（WorkContext複数化・Attention・WorkViewProfile）へ
+1. review修正のローカル検証（Rust・実PostgreSQL・GUI・実browser 13 stage）を完了してcommit・push
+2. exact-head CIを確認し、失敗は根因を直す。独立reviewの再確認
+3. 合格後mainへ統合し、main push CIを確認
+4. 同名branchを最新mainから作り直し、U2（WorkContext複数化・Attention・WorkViewProfile）へ

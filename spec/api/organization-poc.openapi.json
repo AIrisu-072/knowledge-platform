@@ -4882,15 +4882,21 @@
             "items": {
               "$ref": "#/components/schemas/RoleAssignment"
             },
-            "maxItems": 200
+            "maxItems": 96
           },
           "nextCursor": {
             "type": "null"
+          },
+          "evaluatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "記録の状態（開始前・有効・期限切れ）を判定するサーバーの評価時刻。"
           }
         },
         "required": [
           "items",
-          "nextCursor"
+          "nextCursor",
+          "evaluatedAt"
         ]
       },
       "DelegationPage": {
@@ -4902,15 +4908,21 @@
             "items": {
               "$ref": "#/components/schemas/Delegation"
             },
-            "maxItems": 200
+            "maxItems": 96
           },
           "nextCursor": {
             "type": "null"
+          },
+          "evaluatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "記録の状態（開始前・有効・期限切れ）を判定するサーバーの評価時刻。"
           }
         },
         "required": [
           "items",
-          "nextCursor"
+          "nextCursor",
+          "evaluatedAt"
         ]
       },
       "RoleAssignmentCommand": {
@@ -4961,7 +4973,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 1024,
-            "description": "空白のみ不可、最大1024 UTF-8 bytes。"
+            "description": "空白のみ不可、最大1024 UTF-8 bytes。改行・タブ以外の制御文字は不可。"
           }
         },
         "required": [
@@ -4996,7 +5008,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 1024,
-            "description": "空白のみ不可、最大1024 UTF-8 bytes。"
+            "description": "空白のみ不可、最大1024 UTF-8 bytes。改行・タブ以外の制御文字は不可。"
           }
         },
         "required": [
@@ -5058,7 +5070,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 1024,
-            "description": "空白のみ不可、最大1024 UTF-8 bytes。"
+            "description": "空白のみ不可、最大1024 UTF-8 bytes。改行・タブ以外の制御文字は不可。"
           }
         },
         "required": [
@@ -5112,7 +5124,8 @@
           "reason": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 8192
+            "maxLength": 1024,
+            "description": "空白のみ不可、最大1024 UTF-8 bytes。改行・タブ以外の制御文字は不可。"
           }
         },
         "required": [

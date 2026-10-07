@@ -37,6 +37,8 @@ const FIXTURE_CREATED_AT: &str = "2026-10-04T00:00:00Z";
 pub const TEXT_SCHEMA_ID: &str = "organization.text-draft.v1";
 pub const MAX_TEXT_BYTES: usize = 8 * 1024;
 pub const MAX_ARTIFACTS: usize = 16;
+/// Responsibility periods per attempt (claim plus reassignments); bounds body growth.
+pub const MAX_ASSIGNMENTS_PER_ATTEMPT: usize = 16;
 
 /// Closed allowlist of synthetic Human principals (Domain §16). The serde
 /// encoding is the legacy operation-digest input and must not be renamed.
@@ -698,7 +700,12 @@ impl Workflow {
             completed_attempts: vec![],
             return_instructions: vec![],
             assignments: vec![],
-            authority: PolicyAuthority::default(),
+            // The fixture evaluates against the synthetic policy until a repository
+            // attaches the stored one; a deserialized workflow carries none.
+            authority: PolicyAuthority {
+                policy: Some(std::sync::Arc::new(OrganizationPolicy::synthetic())),
+                evaluated_at: None,
+            },
             context_id: CONTEXT_ID,
             revision: 0,
             source: WorkItem {
@@ -757,12 +764,13 @@ impl Workflow {
         self.attach_authority(std::sync::Arc::new(policy), at);
         self
     }
+    /// A workflow evaluated without an attached policy grants nothing.
     fn policy(&self) -> &OrganizationPolicy {
-        static SYNTHETIC: std::sync::OnceLock<OrganizationPolicy> = std::sync::OnceLock::new();
+        static EMPTY: std::sync::OnceLock<OrganizationPolicy> = std::sync::OnceLock::new();
         self.authority
             .policy
             .as_deref()
-            .unwrap_or_else(|| SYNTHETIC.get_or_init(OrganizationPolicy::synthetic))
+            .unwrap_or_else(|| EMPTY.get_or_init(OrganizationPolicy::empty))
     }
     fn evaluated_at(&self) -> OffsetDateTime {
         self.authority
@@ -938,6 +946,7 @@ impl Workflow {
     ) -> TaskSummary {
         let source = item.id == self.source.id;
         let active = item.state == TaskState::Active;
+        let readable = self.can_read(actor, item);
         let editable = source && active && self.can_act(actor, item, PolicyAction::WorkEdit);
         let label = if source {
             "営業内容整理"
@@ -985,7 +994,9 @@ impl Workflow {
                 .flatten(),
             attempt_number: item.attempt_number,
             can_return: return_transition.is_some(),
-            return_instruction_id: item.return_instruction_id,
+            // Submission and return identifiers belong to the assignee's projection;
+            // eligible-only, management and continuity rows never carry them.
+            return_instruction_id: readable.then_some(item.return_instruction_id).flatten(),
             return_transition,
             id: item.id,
             context_id: self.context_id,
@@ -1002,7 +1013,7 @@ impl Workflow {
                     .artifacts
                     .iter()
                     .any(|artifact| artifact.attempt_id == item.attempt_id),
-            handoff_snapshot_id: item.handoff_snapshot_id,
+            handoff_snapshot_id: readable.then_some(item.handoff_snapshot_id).flatten(),
         }
     }
     /// Union of every current responsibility of the actor.
@@ -1065,6 +1076,7 @@ impl Workflow {
                     e.work_item_id == item.id
                         && e.attempt_id == item.attempt_id
                         && e.requested_by == actor
+                        && item.acting_assignment_id == Some(e.requester_responsibility)
                 })
                 .map(|e| e.id)
                 .collect(),
@@ -1116,7 +1128,20 @@ impl Workflow {
                     && self.can_read(actor, item)
                     && item.handoff_snapshot_id == Some(id)
             });
-        if !source_readable && !target_readable {
+        // A current assignee reads the submission its attempt received or was
+        // returned with, and that submission's immediate predecessor.
+        let current_readable = std::iter::once(&self.source)
+            .chain(self.next.iter())
+            .any(|item| {
+                self.can_read(actor, item)
+                    && item.handoff_snapshot_id.is_some_and(|current| {
+                        current == id
+                            || self.snapshots.iter().any(|value| {
+                                value.id == current && value.previous_submission_id == Some(id)
+                            })
+                    })
+            });
+        if !source_readable && !target_readable && !current_readable {
             return Err(WorkError::WorkArtifactNotFound);
         }
         Ok(snapshot.clone())
@@ -1239,9 +1264,14 @@ impl Workflow {
                     return Err(hidden(self.visible(actor, item)));
                 }
             }
-            Command::Assign { .. } => {
+            Command::Assign { assignee, .. } => {
                 if !responsibility.allows(action) {
                     return Err(hidden(self.visible(actor, item)));
+                }
+                // Separation of duties: the management path never grants its own
+                // caller task access; a manager with a step role claims instead.
+                if *assignee == actor {
+                    return Err(WorkError::Forbidden);
                 }
             }
             Command::SaveDraft { artifact_id, .. } => {
@@ -1664,12 +1694,19 @@ impl Workflow {
                 assignee_responsibility_id,
                 reason,
             } => {
-                if reason.trim().is_empty() || reason.len() > MAX_TEXT_BYTES {
-                    return Err(WorkError::ValidationFailed);
-                }
+                bounded_reason(reason)?;
                 let item = self.item(*task_id)?;
                 if item.attempt_id != *expected_attempt_id {
                     return Err(WorkError::RevisionConflict);
+                }
+                if self
+                    .assignments
+                    .iter()
+                    .filter(|record| record.attempt_id == item.attempt_id)
+                    .count()
+                    >= MAX_ASSIGNMENTS_PER_ATTEMPT
+                {
+                    return Err(WorkError::ValidationFailed);
                 }
                 if item.state == TaskState::Completed {
                     return Err(WorkError::HandoffNotReady);

@@ -19,6 +19,15 @@ export const policyActionLabels: Record<PolicyAction, string> = {
   'work.complete': '完了', 'work.hold': '保留', 'work.resume': '再開', 'evidence.register': '根拠の登録', 'finding.register': '候補の登録',
   'decision.record': '人間判断の記録', 'agent.request': 'Agentへの依頼', 'organization.manage': '担当・委任の管理',
 };
+/** Policy and reassignment reasons: 1024 UTF-8 bytes, no control characters
+ * other than line breaks and tabs (the server rejects them; this is a hint). */
+export const MAX_REASON_BYTES = 1024;
+export function reasonProblem(reason: string): string | undefined {
+  if (new TextEncoder().encode(reason).length > MAX_REASON_BYTES) return `理由はUTF-8で${MAX_REASON_BYTES}バイト以内にしてください`;
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/u.test(reason)) return '理由に改行・タブ以外の制御文字は使用できません';
+  return undefined;
+}
 /** Privilege administration is never delegable in v0 (Organization policy追補§8). */
 export const delegable = (action: PolicyAction) => action !== 'organization.manage' && action !== 'work.assign';
 
@@ -47,19 +56,20 @@ export function assigningResponsibility(session: { responsibilities?: Responsibi
 }
 
 export type AssignmentCandidate = { principal: SyntheticPrincipal; responsibilityId: string; label: string };
-/** Hint list from the manager-visible policy records; excludes the current period. */
-export function assignmentCandidates(task: Pick<TaskSummary, 'requiredRoleId' | 'assignment'>, assignments: RoleAssignment[], delegations: Delegation[], roles: BusinessRole[], units: OrganizationalUnit[], now: number): AssignmentCandidate[] {
+/** Hint list from the manager-visible policy records, evaluated at the server's
+ * instant; excludes the current period and the managing actor itself. */
+export function assignmentCandidates(task: Pick<TaskSummary, 'requiredRoleId' | 'assignment'>, assignments: RoleAssignment[], delegations: Delegation[], roles: BusinessRole[], units: OrganizationalUnit[], now: number, actor: string): AssignmentCandidate[] {
   if (!task.requiredRoleId) return [];
   const roleOf = (id: string) => roles.find((role) => role.id === id);
   const unitOf = (id: string) => units.find((unit) => unit.id === id);
   const current = (principal: string, id: string) => task.assignment?.principalId === principal && task.assignment.actingAssignmentId === id;
   const formal = assignments
-    .filter((value) => value.roleId === task.requiredRoleId && recordStatus(value, now) === 'effective' && roleOf(value.roleId)?.actions.includes('work.claim') && !current(value.principal, value.id))
+    .filter((value) => value.principal !== actor && value.roleId === task.requiredRoleId && recordStatus(value, now) === 'effective' && roleOf(value.roleId)?.actions.includes('work.claim') && !current(value.principal, value.id))
     .map((value) => ({ principal: value.principal, responsibilityId: value.id, label: `${principalLabel(value.principal)} · ${roleOf(value.roleId)?.label ?? '役割'}@${unitOf(value.unitId)?.label ?? '組織'}（正式割当）` }));
   const delegated = delegations
     .filter((value) => {
       const source = assignments.find((assignment) => assignment.id === value.sourceAssignmentId);
-      return source && source.roleId === task.requiredRoleId && source.principal === value.delegator && recordStatus(source, now) === 'effective' && recordStatus(value, now) === 'effective' && value.actions.includes('work.claim') && !current(value.recipient, value.id);
+      return value.recipient !== actor && source && source.roleId === task.requiredRoleId && source.principal === value.delegator && recordStatus(source, now) === 'effective' && recordStatus(value, now) === 'effective' && value.actions.includes('work.claim') && !current(value.recipient, value.id);
     })
     .map((value) => ({ principal: value.recipient, responsibilityId: value.id, label: `${principalLabel(value.recipient)} · ${value.delegator}から委任（〜${formatDateTime(value.validUntil, 'Asia/Tokyo')}）` }));
   return [...formal, ...delegated];

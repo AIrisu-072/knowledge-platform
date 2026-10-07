@@ -252,6 +252,20 @@ async fn task_projection_scope_is_revalidated_and_never_switches_identity() {
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(problem["code"], "FORBIDDEN");
+    // Policy record pages carry the trusted evaluation instant for status hints.
+    for path in [
+        "/v1/organization/role-assignments",
+        "/v1/organization/delegations",
+    ] {
+        let (status, page) = call(&repository, VerifiedActor::Sales01, "GET", path, None).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert!(
+            page["evaluatedAt"]
+                .as_str()
+                .is_some_and(|value| value.ends_with('Z')),
+            "{path}"
+        );
+    }
     for uri in [
         "/v1/organization/role-assignments?principalId=office-01".to_string(),
         "/v1/organization/delegations?all=true".to_string(),
