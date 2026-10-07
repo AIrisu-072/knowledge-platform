@@ -7,20 +7,19 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use audit_core::{AuditStore, ChainVerdict, IngestOutcome, assess_recovery, verify_identity_chain};
+use audit_core::{
+    AuditStore, ChainVerdict, IngestOutcome, assess_recovery, verify_export, verify_identity_chain,
+};
 use audit_store_postgres::admin::{AccessOperation, parse_utc_text};
 use audit_store_postgres::files::{ExportRequest, export_to_dir, write_checkpoint};
 use audit_store_postgres::{AdminError, PostgresAuditStore};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
-use sqlx::Row;
+use sqlx::{Connection, PgConnection, Row};
 use support::*;
 use uuid::Uuid;
 
 async fn relay_store(cast: &Cast) -> PostgresAuditStore {
-    PostgresAuditStore::new(cast.relay.pool.clone(), Duration::from_secs(10))
-        .await
-        .expect("relay")
+    cast.relay.store().await
 }
 
 async fn populated(count: u8) -> (TestDb, Cast, Vec<i64>) {
@@ -89,23 +88,76 @@ async fn verify_records_once_and_never_recurses() {
     assert_eq!(status.last_verified_outcome.as_deref(), Some("ok"));
     assert!(!status.recovery_mode && status.posture_ok);
 
+    // The checkpoint is the chain position of its own verified record.
     let checkpoint = verifier.checkpoint().await.expect("checkpoint");
     assert_eq!(checkpoint.outcome, "ok");
-    assert_eq!(checkpoint.verified_seq, checkpoint.seq + 1);
+    assert_eq!(checkpoint.verified_through + 1, checkpoint.seq);
     assert_eq!(checkpoint.epoch, 1);
-    let (_, last_chain, _) = head(&db.admin).await;
-    let at_seq: Vec<u8> = sqlx::query("SELECT chain FROM audit_store.events WHERE seq = $1")
-        .bind(checkpoint.seq)
-        .fetch_one(&db.admin)
-        .await
-        .expect("chain")
-        .get("chain");
-    assert_eq!(hex(&at_seq), checkpoint.chain);
-    assert_ne!(
-        hex(&last_chain),
-        checkpoint.chain,
-        "the record follows the checkpoint"
+    let (last_seq, last_chain, _) = head(&db.admin).await;
+    assert_eq!(
+        (last_seq, hex(&last_chain)),
+        (checkpoint.seq, checkpoint.chain.clone()),
+        "nothing follows the checkpoint record"
     );
+    let recorded = control_events(&db.admin, "audit.integrity.verified").await;
+    let (seq, details) = recorded.last().expect("checkpoint record");
+    assert_eq!(*seq, checkpoint.seq);
+    assert_eq!(details["trigger"], json!("checkpoint"));
+    assert_eq!(details["to_seq"], json!(checkpoint.verified_through));
+    assert_eq!(details["watermark"], json!(checkpoint.verified_through));
+    // A span over the bound is refused.
+    assert_eq!(
+        verifier.verify(Some(1), Some(10_000_001)).await,
+        Err(AdminError::Denied {
+            code: "invalid_input".into()
+        })
+    );
+    db.assert_store_conforms().await;
+}
+
+#[tokio::test]
+async fn verify_reads_the_watermark_without_the_head_lock() {
+    let (db, cast, _) = populated(3).await;
+    let (w, _, _) = head(&db.admin).await;
+    // A relay ingest holds the head lock with seq w+1 uncommitted.
+    let mut holder = PgConnection::connect(&cast.relay.url)
+        .await
+        .expect("connect");
+    sqlx::query("BEGIN")
+        .execute(&mut holder)
+        .await
+        .expect("begin");
+    let held: i64 = sqlx::query_scalar("SELECT seq FROM audit_store.ingest($1::text::jsonb)")
+        .bind(document_created(Uuid::now_v7(), Uuid::now_v7(), OCCURRED, 9).to_json_string())
+        .fetch_one(&mut holder)
+        .await
+        .expect("held ingest");
+    assert_eq!(held, w + 1);
+    // verify reads W and scans without the lock; only its append waits.
+    let verifier = cast.verifier.admin().await;
+    let running = tokio::spawn(async move { verifier.verify(None, None).await });
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    assert!(!running.is_finished(), "the append waits for the head lock");
+    let waiting: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM pg_stat_activity \
+         WHERE wait_event_type = 'Lock' AND query LIKE '%audit_store.verify%'",
+    )
+    .fetch_one(&db.admin)
+    .await
+    .expect("activity");
+    assert_eq!(waiting, 1);
+    sqlx::query("COMMIT")
+        .execute(&mut holder)
+        .await
+        .expect("commit");
+    let report = running.await.expect("join").expect("verify");
+    assert_eq!(
+        (report.watermark, report.to_seq, report.checked),
+        (w, w, w),
+        "W was read before the held ingest committed"
+    );
+    assert_eq!(report.seq, w + 2, "the result follows the ingest");
+    assert_eq!(report.outcome, "ok");
     db.assert_store_conforms().await;
 }
 
@@ -206,11 +258,12 @@ async fn full_rewrite_passes_in_database_but_fails_offline() {
     let honest = export_to_dir(&verifier, &request, &honest_dir)
         .await
         .expect("export");
-    assert!(honest.manifest.anchored);
+    assert!(honest.manifest.anchored && honest.manifest.complete);
     let text = std::fs::read_to_string(&honest.export_path).expect("identity chain");
     let offline = verify_identity_chain(&text, audit_core::Anchor::Genesis).expect("offline");
     assert_eq!(offline.head, honest.report.head);
     assert_eq!(offline.bodies, 0, "the identity chain carries no bodies");
+    // The export reaches the first intent's watermark: the checkpoint head.
     assert_eq!(
         honest
             .manifest
@@ -218,7 +271,7 @@ async fn full_rewrite_passes_in_database_but_fails_offline() {
             .as_ref()
             .expect("compared")
             .comparison,
-        "ahead"
+        "match"
     );
     assert_eq!(
         assess_recovery(&honest.report, &[checkpoint], &[]).verdict,
@@ -293,20 +346,22 @@ async fn full_export_verifies_offline_and_filtered_exports_are_unanchored() {
     assert!(full.report.anchored);
     assert_eq!(full.report.rows, full.report.bodies);
     let manifest = &full.manifest;
+    assert!(manifest.complete && manifest.epochs_authenticated);
     assert_eq!(manifest.first_seq, Some(1));
     assert_eq!(manifest.last_seq, manifest.watermark);
     assert_eq!(
         manifest.rows,
         u64::try_from(manifest.watermark.expect("w")).expect("u64")
     );
+    assert_eq!(manifest.intents.len(), 1);
     assert_eq!(
-        manifest.page_digests.len(),
+        manifest.intents[0].page_digests.len(),
         manifest.rows.div_ceil(7) as usize
     );
     assert_eq!(manifest.genesis, hex(&audit_core::GENESIS));
     assert_eq!(
         manifest.checkpoint.as_ref().expect("compared").comparison,
-        "ahead"
+        "match"
     );
     assert_eq!(mode(&full.export_path), 0o600);
     assert_eq!(mode(&full.manifest_path), 0o600);
@@ -352,11 +407,7 @@ async fn now_minus(db: &TestDb, interval: &str) -> String {
 }
 
 fn set_digest(seqs: &[i64]) -> String {
-    let mut hasher = Sha256::new();
-    for seq in seqs {
-        hasher.update(seq.to_be_bytes());
-    }
-    hex(&hasher.finalize())
+    hex(&audit_core::expired_set_digest(seqs))
 }
 
 #[tokio::test]
@@ -435,6 +486,30 @@ async fn retention_follows_policy_revisions_cutoffs_holds_and_keeps_tombstones()
          RESET session_replication_role;",
     )
     .await;
+    // Each refusal is recorded as audit.retention.expire_refused.
+    let refusals = control_events(&db.admin, "audit.retention.expire_refused").await;
+    assert_eq!(
+        refusals
+            .iter()
+            .map(|(_, d)| (
+                d["refusal"].as_str().expect("refusal").to_owned(),
+                d["expected_revision"].clone(),
+                d["current_revision"].clone(),
+                d["retain_days"].clone()
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            ("not_expirable".to_owned(), json!(1), json!(1), Value::Null),
+            ("stale_revision".to_owned(), json!(1), json!(2), json!(30)),
+            ("held".to_owned(), json!(2), json!(2), json!(30)),
+        ]
+    );
+    assert!(
+        control_events(&db.admin, "audit.retention.expired")
+            .await
+            .is_empty(),
+        "nothing expired yet"
+    );
 
     // The effective cutoff is the earlier of the request and now - retain_days.
     let cutoff = parse_utc_text("2024-01-01T00:00:00.000000Z").expect("cutoff");
@@ -468,10 +543,38 @@ async fn retention_follows_policy_revisions_cutoffs_holds_and_keeps_tombstones()
         json!(set_digest(&[ids[0].1, ids[1].1]))
     );
     assert_eq!(evidence["retain_days"], json!(30));
+    assert_eq!(evidence["revision"], json!(2));
+    assert_eq!(evidence["cutoff"], json!("2024-01-01T00:00:00.000000Z"));
     assert_eq!(
-        evidence["requested_cutoff"],
+        evidence["effective_cutoff"],
         json!("2024-01-01T00:00:00.000000Z")
     );
+    assert_eq!(evidence["first_seq"], json!(ids[0].1));
+    assert_eq!(evidence["last_seq"], json!(ids[1].1));
+    assert_eq!(
+        evidence["selector_event_types"],
+        json!(["document.created", "document.version.read_confirmed"])
+    );
+    // An empty run records count 0, null bounds and the prefix-only digest.
+    let empty = maintainer
+        .expire("documents", 2, cutoff, 100)
+        .await
+        .expect("expire");
+    assert_eq!(empty.expired_count, 0);
+    let empty_details = &control_events(&db.admin, "audit.retention.expired")
+        .await
+        .into_iter()
+        .find(|(s, _)| *s == empty.seq)
+        .expect("evidence")
+        .1;
+    assert_eq!(
+        (
+            empty_details["first_seq"].clone(),
+            empty_details["last_seq"].clone()
+        ),
+        (Value::Null, Value::Null)
+    );
+    assert_eq!(empty_details["expired_set_digest"], json!(set_digest(&[])));
 
     // Control events never expire, even when a selector matches their class.
     let classes = admin
@@ -545,7 +648,8 @@ async fn retention_follows_policy_revisions_cutoffs_holds_and_keeps_tombstones()
             "chain",
             "recovery_epoch",
             "expired_at",
-            "expired_by_seq"
+            "expired_by_seq",
+            "ingested_by_db_role"
         ]
     );
     let tombstone = sqlx::query(
@@ -601,6 +705,40 @@ async fn retention_follows_policy_revisions_cutoffs_holds_and_keeps_tombstones()
     let report = verifier.verify(None, None).await.expect("verify");
     assert_eq!(report.outcome, "ok", "{}", report.violations);
 
+    // Offline: every expiry is attested by the chained evidence in the
+    // export (10-key lines with expired_by_seq), nothing unverified.
+    let dir = scratch_dir("expiry");
+    let export = export_to_dir(
+        &verifier,
+        &ExportRequest {
+            operation: AccessOperation::Verify,
+            filter: json!({}),
+            page_size: 1000,
+            max_pages: 1,
+            checkpoint: None,
+        },
+        &dir,
+    )
+    .await
+    .expect("export with expiry evidence");
+    assert!(export.manifest.complete);
+    assert_eq!(export.report.expired, 5);
+    assert_eq!(export.report.unverified_expiry_evidence, 0);
+    let text = std::fs::read_to_string(&export.export_path).expect("export");
+    let offline = verify_export(&text, audit_core::Anchor::Genesis).expect("offline");
+    assert_eq!(offline.expired, 5);
+    let tombstone_line = text
+        .lines()
+        .find(|l| l.starts_with(&format!("{{\"seq\":{},", ids[0].1)))
+        .expect("tombstone line");
+    assert!(
+        tombstone_line.contains(&format!(
+            "\"expired\":true,\"expired_by_seq\":{},\"envelope\":null}}",
+            first.seq
+        )),
+        "{tombstone_line}"
+    );
+
     // Forged marks: an extra row under a retention record, an extra row
     // under a purge record, and a mark pointing at a non-retention event.
     let intent_seq = cast
@@ -636,5 +774,105 @@ async fn retention_follows_policy_revisions_cutoffs_holds_and_keeps_tombstones()
     assert_eq!(count(&forged.violations, "retention_evidence_mismatch"), 1);
     assert_eq!(count(&forged.violations, "purge_evidence_mismatch"), 1);
     assert_eq!(count(&forged.violations, "retention_evidence_missing"), 1);
+    db.assert_store_conforms().await;
+}
+
+#[tokio::test]
+async fn chain_exports_loop_over_intents_up_to_the_first_watermark() {
+    let (db, cast, _) = populated(6).await;
+    let verifier = cast.verifier.admin().await;
+    let record = verifier.checkpoint().await.expect("checkpoint");
+    let checkpoint = record.checkpoint().expect("checkpoint");
+    let target = checkpoint.seq;
+    for (operation, name) in [
+        (AccessOperation::IdentityChain, "identity"),
+        (AccessOperation::Verify, "bodies"),
+    ] {
+        let dir = scratch_dir(&format!("intents-{name}"));
+        let export = export_to_dir(
+            &verifier,
+            &ExportRequest {
+                operation,
+                filter: json!({}),
+                page_size: 2,
+                max_pages: 2,
+                checkpoint: Some(checkpoint),
+            },
+            &dir,
+        )
+        .await
+        .expect("export");
+        let manifest = &export.manifest;
+        assert!(manifest.anchored && manifest.complete, "{name}");
+        // The first intent fixes the watermark; later intents reach it in
+        // contiguous (seq_after, seq_through] ranges of at most 4 rows.
+        let first = &manifest.intents[0];
+        assert_eq!(first.seq_after, 0);
+        assert_eq!(first.seq_through, None);
+        let watermark = manifest.watermark.expect("watermark");
+        assert_eq!(watermark, first.watermark);
+        assert!(manifest.intents.len() >= 4, "{}", manifest.intents.len());
+        let mut after = 0;
+        for intent in &manifest.intents {
+            assert_eq!(intent.seq_after, after);
+            assert!(intent.rows <= 4);
+            if intent.intent_seq != first.intent_seq {
+                assert_eq!(intent.seq_through, Some(watermark));
+            }
+            after += i64::try_from(intent.rows).expect("rows");
+        }
+        assert_eq!(after, watermark);
+        assert_eq!(manifest.rows, u64::try_from(watermark).expect("rows"));
+        assert_eq!(export.report.head.seq, watermark);
+        // Every intent was recorded and closed in the Store.
+        let opened: Vec<i64> = control_events(&db.admin, "audit.access.intent_opened")
+            .await
+            .into_iter()
+            .map(|(seq, _)| seq)
+            .collect();
+        for intent in &manifest.intents {
+            assert!(opened.contains(&intent.intent_seq));
+        }
+        if operation == AccessOperation::IdentityChain {
+            assert_eq!(
+                watermark, target,
+                "the first export starts at the checkpoint head"
+            );
+            assert_eq!(
+                manifest.checkpoint.as_ref().expect("checkpoint").comparison,
+                "match"
+            );
+        }
+    }
+    // A complete export must reach its watermark: a truncated text fails.
+    let dir = scratch_dir("truncated");
+    let export = export_to_dir(
+        &verifier,
+        &ExportRequest {
+            operation: AccessOperation::IdentityChain,
+            filter: json!({"seq_through": 5}),
+            page_size: 1000,
+            max_pages: 1,
+            checkpoint: None,
+        },
+        &dir,
+    )
+    .await
+    .expect("bounded range");
+    assert_eq!(export.manifest.watermark, Some(5));
+    let text = std::fs::read_to_string(&export.export_path).expect("text");
+    let truncated: String = text.lines().take(3).map(|l| format!("{l}\n")).collect();
+    assert!(matches!(
+        audit_store_postgres::files::verify_complete(
+            &truncated,
+            audit_core::Anchor::Genesis,
+            5,
+            false
+        ),
+        Err(audit_store_postgres::files::FileError::Incomplete {
+            head: 3,
+            watermark: 5
+        })
+    ));
     db.assert_store_conforms().await;
 }

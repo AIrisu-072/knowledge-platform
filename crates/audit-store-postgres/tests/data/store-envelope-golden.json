@@ -1,0 +1,40 @@
+{
+  "algorithm": "kp-audit-jsonb-sha256-v1",
+  "source_format": "document-audit-outbox-v0",
+  "rule": "Append-only. Each section pins the Store envelope digest of every accepted audit-core fixture (synthetic, event id derived from the fixture name) for one adapter_version. Never edit an existing section: a changed digest needs a new LEGACY_ADAPTER_VERSION, its registered_types rows and a new section.",
+  "versions": {
+    "1": {
+      "access_policy.changed/bootstrap": "bf8f9d00fcdc07bb67957394846a104046d51c2f8b2d260b23c1a840fc063304",
+      "access_policy.changed/document": "5c06e22eff305497b87eeea76ae3f12088da5a8ded07fdf549cade690d01305e",
+      "access_policy.changed/folder_inherit": "9ab31b9f404656b9dc5bc2c973d464dcbefd49bce8a9a695bdd17e81651c713c",
+      "authorization.denied/management": "ecec01262be6ac5924ce0330a4599440f6652440aba65c835deab65f0ae91a47",
+      "authorization.denied/read_state": "484e35f8968512e3a10530fac5af0346c2e1fc3cf177808171db65d095c46d1d",
+      "document.created": "c9f5e7e89ca00f1ee81471cf08f635ae3c5015d9280315206273e8d8b7f9c4e7",
+      "document.diff.result_access_granted/compare": "a945d18862b8e9b3ed8645b48c938d25a24386a93df1fc3f1e9dfe61cce00ff8",
+      "document.diff.result_access_granted/display": "7694ac345bef7da456b866c4089618cfd01dab46b5d38c7dfc391bb502b31ebc",
+      "document.file.access_granted/diff_display": "6dfeb73a066359eda71ae4608027d8b88a20740fb710fdc6e0c5eef278bc1627",
+      "document.file.access_granted/download": "6ed2c18bbd299338355b03b7b627ac39de46cb09897a567c5e8bc91c8b76e6db",
+      "document.metadata.changed": "3abcbaa9f3b2305d2937523d33b777a4884ac9da5f678c9f182941d3a1071247",
+      "document.moved": "652a60d900f727323482c3587ac83e06a5f6a644905da44603a15e6674b7749a",
+      "document.publication.ended": "4009c8133ebfd6532a6a539e287fdfa8bd0b8ea12325e7e305fe3974466a3364",
+      "document.revision_comparison.result_access_granted/different": "abddffdb368129f49dde5d7c7c0c10c61d6d51d10839f63384c1fa5f507f96f9",
+      "document.revision_comparison.result_access_granted/same_version": "fa28394585911d452ddf2c20b1760f8703f02d880b5a30e8e7757d17b4d01d45",
+      "document.version.created/initial": "a4de8e5d079bd4f9a9f14a06a36eb2f1f4072e0caae8469233a4b65d892b1a8f",
+      "document.version.created/later": "9caf2c9c15d65b6a5bccbf6db5b36a0d8fba22fa5da84cafa2fe44b233156d5f",
+      "document.version.publication.cancelled": "6b7cca90edbdbf68165863cde18bc33eef600049412b4663329e5e0b0223f2de",
+      "document.version.publication.scheduled": "c56c9cc9d196d9993ada94c4bee9f9b1db611ba21f3be8377d666ee76b9ad1c1",
+      "document.version.publication.terminal/no_executor": "c495cf218649f139036021a67f446c762d9ef2b065bf6999f20a58111433711a",
+      "document.version.publication.terminal/scheduler": "41453e55b677a0bdae3890c0cb4b401b44bc1082102ad0588b7ce33641c4d007",
+      "document.version.published/manual": "9660e653495f7d1d0e4215daf204622702130ec5c8625f15e29b26f5c1a4efd2",
+      "document.version.published/scheduled": "72203aff040b592358d2cb4cafdf7c18444b5fe1e93903c752295442098ced02",
+      "document.version.read_confirmed": "23d9044e3b98b25440465b6525684277a9d3cc14a5b7fdfd83d6debc5a12e960",
+      "document.version.rebased": "e3ea79e3332f666be23c41fafdd0cadd70ac8b8078e4cbc1b899023f66ccf616",
+      "document.version.updated/null_base": "487f75e36fe4df037d0ce3d297544ebf270eb6da6cb5517ea692d9be7738706f",
+      "document.version.withdrawn/restored": "7fc936fd3827f420a03aeac5ca080317315b1a4d8f5310060bcd47f1effe21a0",
+      "document.version.withdrawn/withheld": "459e9fe3f800af606c485b9f8c562794b58d5c56192c9d651d39d5c022b5a64b",
+      "folder.created": "66b1cc44f4d291fcf6fa9b394a549ca4e09778f8f9eb4915d2333e10870063fd",
+      "folder.moved": "3b01d9ddb5d24a1c0d1cb72222d988922502bb0c7562a2b191a037828fc40228",
+      "folder.renamed": "0cadf560bc323b102bf2adb8c1b3d391fe676f40e335d001bbbe199531b38025"
+    }
+  }
+}

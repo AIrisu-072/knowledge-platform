@@ -1,4 +1,4 @@
--- Audit Store v1 (design 2026-10-07 revision 2, §7–§11; decision record D2/D3).
+-- Audit Store v1 (design 2026-10-07 revision 3, §7–§11; decision record D2/D3).
 --
 -- Separate database, schema audit_store, migration ledger
 -- audit_store_sqlx_migrations. Run by a superuser migrator: every object is
@@ -10,6 +10,11 @@
 --
 -- Guard triggers are accident prevention. The boundary is privileges: only
 -- the owner (and superusers) can touch the tables at all.
+--
+-- Every writing function sets synchronous_commit transaction-locally in its
+-- body (audit_store.lock_head or an explicit set_config): a function-level
+-- SET clause would be reverted before COMMIT. No function carries
+-- synchronous_commit in its proconfig (posture_check verifies it).
 
 -- ---------------------------------------------------------------------------
 -- Owner role and schema
@@ -43,6 +48,17 @@ REVOKE ALL ON SCHEMA audit_store FROM PUBLIC;
 
 -- The single publication lock. last_chain starts at
 -- GENESIS = sha256('kp-audit-chain-genesis-v1').
+--
+-- recovery_pending is set by report_regression (reason 'regression', with the
+-- reported identity) or declare_recovery_pending (reason 'declared', with an
+-- incident code) and cleared only by begin_recovery_epoch. The evidence
+-- (reporter, time, head at the report) is kept until the epoch records it.
+--
+-- access_reapply_pending is set by begin_recovery_epoch. While it is set,
+-- open_access refuses investigate/export. It clears once an administrator
+-- recorded the re-application of access (record_access_reapplied) and the
+-- current retention was re-run by a maintainer (expire / confirm_retention_
+-- reapplied) after the epoch started (design §7.1, §11).
 CREATE TABLE audit_store.publication_head (
     singleton BOOLEAN PRIMARY KEY DEFAULT TRUE,
     last_seq BIGINT NOT NULL,
@@ -52,6 +68,18 @@ CREATE TABLE audit_store.publication_head (
     fp_database_oid OID NOT NULL,
     fp_timeline TEXT NOT NULL,
     recovery_pending BOOLEAN NOT NULL DEFAULT FALSE,
+    pending_reason TEXT NULL,
+    pending_seq BIGINT NULL,
+    pending_event_id UUID NULL,
+    pending_digest BYTEA NULL,
+    pending_by TEXT NULL,
+    pending_at TIMESTAMPTZ NULL,
+    pending_head_seq BIGINT NULL,
+    pending_incident_code TEXT NULL,
+    access_reapply_pending BOOLEAN NOT NULL DEFAULT FALSE,
+    reapply_from_seq BIGINT NULL,
+    access_reapplied_seq BIGINT NULL,
+    retention_reapplied_seq BIGINT NULL,
     updated_at TIMESTAMPTZ NOT NULL,
     CONSTRAINT ck_head_singleton CHECK (singleton),
     CONSTRAINT ck_head_seq CHECK (last_seq >= 0),
@@ -60,7 +88,17 @@ CREATE TABLE audit_store.publication_head (
     CONSTRAINT ck_head_genesis CHECK (
         last_seq > 0
         OR last_chain = decode('9ae4e1d7942ce318770de897b2a336edc2a9e700f8733f658dcdc2e563aff344', 'hex')
-    )
+    ),
+    CONSTRAINT ck_head_pending CHECK (
+        recovery_pending = (pending_reason IS NOT NULL)
+        AND (pending_reason IS NULL OR pending_reason IN ('regression', 'declared'))
+        AND (pending_reason IS DISTINCT FROM 'regression'
+             OR (pending_seq IS NOT NULL AND pending_event_id IS NOT NULL
+                 AND octet_length(pending_digest) = 32))
+        AND (pending_reason IS DISTINCT FROM 'declared'
+             OR coalesce(pending_incident_code ~ '^[a-z0-9_]{1,64}$', FALSE))
+    ),
+    CONSTRAINT ck_head_reapply CHECK (NOT access_reapply_pending OR reapply_from_seq IS NOT NULL)
 );
 
 -- Durable identity of every stored event. Never deleted. origin is set by the
@@ -90,6 +128,8 @@ CREATE TABLE audit_store.events (
     recovery_epoch BIGINT NOT NULL,
     expired_at TIMESTAMPTZ NULL,
     expired_by_seq BIGINT NULL,
+    -- Informational (the login that called the definer function); not chained.
+    ingested_by_db_role TEXT NOT NULL,
     CONSTRAINT uq_events_event_id UNIQUE (event_id),
     CONSTRAINT ck_events_seq CHECK (seq >= 1),
     CONSTRAINT ck_events_origin CHECK (origin IN ('relay', 'store', 'relay_control')),
@@ -124,12 +164,14 @@ CREATE TABLE audit_store.events (
     CONSTRAINT ck_events_expiry_pair CHECK ((expired_at IS NULL) = (expired_by_seq IS NULL)),
     CONSTRAINT ck_events_expiry_order CHECK (expired_by_seq IS NULL OR expired_by_seq > seq),
     -- Control events are the evidence for verify and recovery: never expired.
-    CONSTRAINT ck_events_expirable CHECK (expired_at IS NULL OR origin = 'relay')
+    CONSTRAINT ck_events_expirable CHECK (expired_at IS NULL OR origin = 'relay'),
+    CONSTRAINT ck_events_db_role CHECK (octet_length(ingested_by_db_role) BETWEEN 1 AND 63)
 );
 
 CREATE INDEX events_expired_by ON audit_store.events (expired_by_seq)
     WHERE expired_by_seq IS NOT NULL;
 CREATE INDEX events_source_seq ON audit_store.events (source, seq);
+CREATE INDEX events_type_seq ON audit_store.events (event_type, seq);
 
 -- Bodies are deleted only by retention/purge, after the identity row is marked.
 CREATE TABLE audit_store.event_bodies (
@@ -183,7 +225,32 @@ CREATE UNIQUE INDEX access_grants_active
     ON audit_store.access_grants (issuer, principal_id, capability)
     WHERE revoked_seq IS NULL;
 
--- Committed disclosure intents (design §10.3). Append-only.
+-- Registered source-service principals (design §7.2 step 1): only a login
+-- bound to one of these may ingest events of `source` (v1:
+-- service/audit-relay for the Document source). Append-only; seeded here and
+-- extended by owner members with register_source_service (recorded).
+CREATE TABLE audit_store.source_services (
+    issuer TEXT NOT NULL,
+    principal_id TEXT NOT NULL,
+    source TEXT NOT NULL,
+    registered_seq BIGINT NULL,
+    CONSTRAINT source_services_pkey PRIMARY KEY (issuer, principal_id, source),
+    CONSTRAINT fk_source_services_event FOREIGN KEY (registered_seq)
+        REFERENCES audit_store.events (seq),
+    CONSTRAINT ck_source_services_identity CHECK (
+        octet_length(issuer) BETWEEN 1 AND 256 AND octet_length(principal_id) BETWEEN 1 AND 256
+        AND octet_length(source) BETWEEN 1 AND 256
+        AND source NOT IN ('urn:knowledge-platform:audit-store',
+                           'urn:knowledge-platform:audit-relay')
+    )
+);
+
+INSERT INTO audit_store.source_services (issuer, principal_id, source) VALUES
+    ('service', 'audit-relay', 'urn:knowledge-platform:document-platform');
+
+-- Committed disclosure intents (design §10.3). Append-only. The chained
+-- audit.access.intent_opened body is authoritative; this row is a copy that
+-- read_page compares with it.
 CREATE TABLE audit_store.access_intents (
     intent_seq BIGINT PRIMARY KEY,
     token_digest BYTEA NOT NULL,
@@ -240,14 +307,18 @@ CREATE TABLE audit_store.legal_holds (
     CONSTRAINT ck_holds_order CHECK (released_at IS NULL OR released_at >= created_at)
 );
 
--- (source, type, adapter_version) the Store accepts from the relay. Seeded
--- from spec/telemetry/audit-event-catalog.json; a test pins the equality.
+-- (source, type, adapter_version, source_format) the Store accepts from the
+-- relay: Catalog::registered_types() with each adapter's source_format.
+-- Seeded from spec/telemetry/audit-event-catalog.json; a test pins the
+-- equality. Changed only by later migrations (write_context 'migration').
 CREATE TABLE audit_store.registered_types (
     source TEXT NOT NULL,
     event_type TEXT NOT NULL,
     adapter_version INTEGER NOT NULL,
+    source_format TEXT NOT NULL,
     CONSTRAINT registered_types_pkey PRIMARY KEY (source, event_type, adapter_version),
     CONSTRAINT ck_registered_adapter CHECK (adapter_version >= 1),
+    CONSTRAINT ck_registered_format CHECK (source_format ~ '^[a-z0-9-]{1,64}$'),
     CONSTRAINT ck_registered_not_control CHECK (
         event_type NOT LIKE 'audit.%'
         AND source NOT IN ('urn:knowledge-platform:audit-store',
@@ -255,28 +326,46 @@ CREATE TABLE audit_store.registered_types (
     )
 );
 
-INSERT INTO audit_store.registered_types (source, event_type, adapter_version) VALUES
-    ('urn:knowledge-platform:document-platform', 'document.created', 1),
-    ('urn:knowledge-platform:document-platform', 'document.version.created', 1),
-    ('urn:knowledge-platform:document-platform', 'document.version.updated', 1),
-    ('urn:knowledge-platform:document-platform', 'document.version.rebased', 1),
-    ('urn:knowledge-platform:document-platform', 'document.version.published', 1),
-    ('urn:knowledge-platform:document-platform', 'document.version.publication.scheduled', 1),
-    ('urn:knowledge-platform:document-platform', 'document.version.publication.cancelled', 1),
-    ('urn:knowledge-platform:document-platform', 'document.version.publication.terminal', 1),
-    ('urn:knowledge-platform:document-platform', 'document.version.withdrawn', 1),
-    ('urn:knowledge-platform:document-platform', 'document.publication.ended', 1),
-    ('urn:knowledge-platform:document-platform', 'document.metadata.changed', 1),
-    ('urn:knowledge-platform:document-platform', 'document.moved', 1),
-    ('urn:knowledge-platform:document-platform', 'folder.created', 1),
-    ('urn:knowledge-platform:document-platform', 'folder.renamed', 1),
-    ('urn:knowledge-platform:document-platform', 'folder.moved', 1),
-    ('urn:knowledge-platform:document-platform', 'access_policy.changed', 1),
-    ('urn:knowledge-platform:document-platform', 'document.version.read_confirmed', 1),
-    ('urn:knowledge-platform:document-platform', 'document.file.access_granted', 1),
-    ('urn:knowledge-platform:document-platform', 'document.diff.result_access_granted', 1),
-    ('urn:knowledge-platform:document-platform', 'document.revision_comparison.result_access_granted', 1),
-    ('urn:knowledge-platform:document-platform', 'authorization.denied', 1);
+INSERT INTO audit_store.registered_types (source, event_type, adapter_version, source_format)
+SELECT 'urn:knowledge-platform:document-platform', t, 1, 'document-audit-outbox-v0'
+FROM unnest(ARRAY[
+    'document.created',
+    'document.version.created',
+    'document.version.updated',
+    'document.version.rebased',
+    'document.version.published',
+    'document.version.publication.scheduled',
+    'document.version.publication.cancelled',
+    'document.version.publication.terminal',
+    'document.version.withdrawn',
+    'document.publication.ended',
+    'document.metadata.changed',
+    'document.moved',
+    'folder.created',
+    'folder.renamed',
+    'folder.moved',
+    'access_policy.changed',
+    'document.version.read_confirmed',
+    'document.file.access_granted',
+    'document.diff.result_access_granted',
+    'document.revision_comparison.result_access_granted',
+    'authorization.denied'
+]) AS t;
+
+-- Coalescing state for repeated identity denials of the same login
+-- (not_source_service / unbound on ingest, probe and report_regression): at
+-- most one audit.access.denied per streak and minute. Operational state, not
+-- evidence; written only by definer functions.
+CREATE TABLE audit_store.denial_streaks (
+    session_role TEXT PRIMARY KEY,
+    denial_code TEXT NOT NULL,
+    last_recorded_seq BIGINT NOT NULL,
+    last_recorded_at TIMESTAMPTZ NOT NULL,
+    suppressed BIGINT NOT NULL DEFAULT 0,
+    CONSTRAINT ck_streak_role CHECK (octet_length(session_role) BETWEEN 1 AND 63),
+    CONSTRAINT ck_streak_code CHECK (denial_code ~ '^[a-z0-9_]{1,64}$'),
+    CONSTRAINT ck_streak_suppressed CHECK (suppressed >= 0)
+);
 
 -- ---------------------------------------------------------------------------
 -- Pure helpers
@@ -302,6 +391,16 @@ RETURNS BYTEA LANGUAGE sql IMMUTABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $jsonb_digest$
     SELECT sha256(convert_to(p_value::text, 'UTF8'))
 $jsonb_digest$;
+
+-- expired_set_digest = sha256('kp-audit-expired-set-v1' || int8send(seq)...)
+-- over the seqs in ascending order (audit_core::expired_set_digest).
+CREATE FUNCTION audit_store.expired_set_digest(p_seqs BIGINT[])
+RETURNS BYTEA LANGUAGE sql IMMUTABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $expired_set_digest$
+    SELECT sha256('kp-audit-expired-set-v1'::bytea
+                  || coalesce((SELECT string_agg(int8send(x), ''::bytea ORDER BY x)
+                               FROM unnest(p_seqs) AS x), ''::bytea))
+$expired_set_digest$;
 
 CREATE FUNCTION audit_store.utc_text(p_at TIMESTAMPTZ)
 RETURNS TEXT LANGUAGE sql IMMUTABLE SECURITY DEFINER
@@ -360,7 +459,87 @@ SET search_path = pg_catalog, pg_temp AS $is_code$
     SELECT coalesce(p_value ~ '^[a-z0-9_]{1,64}$', FALSE)
 $is_code$;
 
--- One export line (design §10.4), built from text without a serde round trip.
+CREATE FUNCTION audit_store.is_hex64(p_value TEXT)
+RETURNS BOOLEAN LANGUAGE sql IMMUTABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $is_hex64$
+    SELECT coalesce(p_value ~ '^[0-9a-f]{64}$', FALSE)
+$is_hex64$;
+
+-- Closed control-detail grammars (no free text is ever echoed into a control
+-- event). They mirror the audit-core kinds:
+--   db_role       ^[a-z_][a-z0-9_$]{0,62}$   (session_role, db_role)
+--   event_type    [a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+, at most 128 bytes
+--   resource_ref  lowercase UUID (nil allowed) or 'audit-store'
+--   principal part  audit_core::kinds::is_principal_part
+--   source_urn    a catalog adapter source (registered relay source or one of
+--                 the two control sources)
+CREATE FUNCTION audit_store.is_db_role(p_value TEXT)
+RETURNS BOOLEAN LANGUAGE sql IMMUTABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $is_db_role$
+    SELECT coalesce(p_value ~ '^[a-z_][a-z0-9_$]{0,62}$', FALSE)
+$is_db_role$;
+
+CREATE FUNCTION audit_store.is_event_type(p_value TEXT)
+RETURNS BOOLEAN LANGUAGE sql IMMUTABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $is_event_type$
+    SELECT coalesce(octet_length(p_value) <= 128
+                    AND p_value ~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$', FALSE)
+$is_event_type$;
+
+CREATE FUNCTION audit_store.is_resource_ref(p_value TEXT)
+RETURNS BOOLEAN LANGUAGE sql IMMUTABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $is_resource_ref$
+    SELECT coalesce(p_value = 'audit-store'
+                    OR p_value ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+                    FALSE)
+$is_resource_ref$;
+
+-- A principal part (issuer or principal id): 1..=256 UTF-8 bytes, no leading
+-- or trailing Unicode White_Space, and none of: Cc, Bidi_Control, U+2028,
+-- U+2029, U+FEFF, the TAG block, noncharacters (audit-core
+-- kinds::is_principal_part).
+CREATE FUNCTION audit_store.is_principal_part(p_value TEXT)
+RETURNS BOOLEAN LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $is_principal_part$
+DECLARE
+    c INTEGER;
+    v_white CONSTANT INTEGER[] := ARRAY[9, 10, 11, 12, 13, 32, 133, 160, 5760, 8192, 8193, 8194,
+        8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288];
+BEGIN
+    IF p_value IS NULL OR octet_length(p_value) NOT BETWEEN 1 AND 256 THEN
+        RETURN FALSE;
+    END IF;
+    IF ascii(p_value) = ANY (v_white)
+       OR ascii(substr(p_value, char_length(p_value))) = ANY (v_white) THEN
+        RETURN FALSE;
+    END IF;
+    FOR i IN 1 .. char_length(p_value) LOOP
+        c := ascii(substr(p_value, i, 1));
+        IF c <= 31 OR (c BETWEEN 127 AND 159)
+           OR c IN (1564, 8206, 8207, 8232, 8233, 65279)
+           OR c BETWEEN 8234 AND 8238 OR c BETWEEN 8294 AND 8297
+           OR c BETWEEN 917504 AND 917631
+           OR c BETWEEN 64976 AND 65007
+           OR (c & 65534) = 65534 THEN
+            RETURN FALSE;
+        END IF;
+    END LOOP;
+    RETURN TRUE;
+END
+$is_principal_part$;
+
+CREATE FUNCTION audit_store.is_source_urn(p_value TEXT, p_relay_only BOOLEAN)
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $is_source_urn$
+    SELECT coalesce(
+        (NOT p_relay_only AND p_value IN ('urn:knowledge-platform:audit-store',
+                                          'urn:knowledge-platform:audit-relay'))
+        OR EXISTS (SELECT 1 FROM audit_store.registered_types AS r WHERE r.source = p_value),
+        FALSE)
+$is_source_urn$;
+
+-- One export line (design §10.4): the 10 keys, built from text without a
+-- serde round trip. `envelope` is the jsonb text verbatim or null.
 CREATE FUNCTION audit_store.export_line(e audit_store.events, p_envelope JSONB)
 RETURNS TEXT LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $export_line$
@@ -372,6 +551,7 @@ SET search_path = pg_catalog, pg_temp AS $export_line$
         || '","chain":"' || encode(e.chain, 'hex')
         || '","recovery_epoch":' || e.recovery_epoch::text
         || ',"expired":' || CASE WHEN e.expired_at IS NULL THEN 'false' ELSE 'true' END
+        || ',"expired_by_seq":' || coalesce(e.expired_by_seq::text, 'null')
         || ',"envelope":' || coalesce(p_envelope::text, 'null')
         || '}'
 $export_line$;
@@ -404,16 +584,20 @@ owner_role AS (
     WHERE r.rolname = 'audit_store_owner'
 ),
 capability(rolname) AS (VALUES
-    ('audit_store_ingest'), ('audit_store_relay_control'), ('audit_store_reader'),
-    ('audit_store_verifier'), ('audit_store_admin'), ('audit_store_maintainer')
+    ('audit_store_ingest'), ('audit_store_reconciler'), ('audit_store_relay_control'),
+    ('audit_store_reader'), ('audit_store_verifier'), ('audit_store_admin'),
+    ('audit_store_maintainer')
 ),
--- Design §10.1 matrix, plus content-free status/posture for operators.
+-- Design §10.1 matrix, plus content-free status/posture for operator roles.
 expected(proname, rolname) AS (VALUES
     ('ingest', 'audit_store_ingest'),
     ('probe', 'audit_store_ingest'),
-    ('lookup_receipts', 'audit_store_ingest'),
-    ('list_source_receipts', 'audit_store_ingest'),
-    ('lookup_control_receipts', 'audit_store_ingest'),
+    ('report_regression', 'audit_store_ingest'),
+    ('lookup_receipts', 'audit_store_reconciler'),
+    ('list_source_receipts', 'audit_store_reconciler'),
+    ('lookup_control_receipts', 'audit_store_reconciler'),
+    ('lookup_lost_ranges', 'audit_store_reconciler'),
+    ('store_status', 'audit_store_reconciler'),
     ('record_relay_control', 'audit_store_relay_control'),
     ('open_access', 'audit_store_reader'),
     ('read_page', 'audit_store_reader'),
@@ -427,15 +611,14 @@ expected(proname, rolname) AS (VALUES
     ('identity_chain_recovery_page', 'audit_store_verifier'),
     ('change_access', 'audit_store_admin'),
     ('set_retention_policy', 'audit_store_admin'),
+    ('record_access_reapplied', 'audit_store_admin'),
     ('expire', 'audit_store_maintainer'),
     ('purge_body', 'audit_store_maintainer'),
     ('begin_recovery_epoch', 'audit_store_maintainer'),
-    ('rebind_fingerprint', 'audit_store_maintainer'),
+    ('declare_recovery_pending', 'audit_store_maintainer'),
+    ('confirm_retention_reapplied', 'audit_store_maintainer'),
     ('verify_recovery', 'audit_store_maintainer'),
     ('identity_chain_recovery_page', 'audit_store_maintainer'),
-    ('store_status', 'audit_store_ingest'),
-    ('store_status', 'audit_store_relay_control'),
-    ('store_status', 'audit_store_reader'),
     ('store_status', 'audit_store_verifier'),
     ('store_status', 'audit_store_admin'),
     ('store_status', 'audit_store_maintainer'),
@@ -460,23 +643,31 @@ rels AS (
     WHERE c.relnamespace = (SELECT n.oid FROM pg_namespace AS n WHERE n.nspname = 'audit_store')
       AND c.relkind IN ('r', 'S', 'v', 'm', 'p', 'f')
 ),
-member_edges AS (
-    SELECT m.member, m.roleid FROM pg_auth_members AS m
-),
-capability_members AS (
-    WITH RECURSIVE reach(member) AS (
-        SELECT e.member FROM member_edges AS e
-        JOIN pg_roles AS r ON r.oid = e.roleid
-        WHERE r.rolname IN (SELECT c.rolname FROM capability AS c)
+-- Every (login, role) membership, direct or inherited.
+memberships AS (
+    WITH RECURSIVE reach(member, roleid) AS (
+        SELECT m.member, m.roleid FROM pg_auth_members AS m
         UNION
-        SELECT e.member FROM member_edges AS e JOIN reach ON e.roleid = reach.member
+        SELECT m.member, reach.roleid FROM pg_auth_members AS m
+        JOIN reach ON reach.member = m.roleid
     )
-    SELECT DISTINCT r.oid, r.rolname::text AS rolname FROM reach
-    JOIN pg_roles AS r ON r.oid = reach.member
-    WHERE r.rolcanlogin
+    SELECT DISTINCT l.oid AS login_oid, l.rolname::text AS login, g.rolname::text AS granted
+    FROM reach
+    JOIN pg_roles AS l ON l.oid = reach.member
+    JOIN pg_roles AS g ON g.oid = reach.roleid
+    WHERE l.rolcanlogin AND NOT l.rolsuper
+),
+capability_logins AS (
+    SELECT DISTINCT m.login_oid AS oid, m.login AS rolname FROM memberships AS m
+    WHERE m.granted IN (SELECT c.rolname FROM capability AS c)
 ),
 this_db AS (
     SELECT d.oid, d.datdba, d.datacl FROM pg_database AS d WHERE d.datname = current_database()
+),
+role_settings AS (
+    SELECT s.setrole, s.setdatabase, cfg
+    FROM pg_db_role_setting AS s, unnest(s.setconfig) AS cfg
+    WHERE s.setdatabase IN (0, (SELECT d.oid FROM this_db AS d))
 )
 SELECT 'owner_missing', 'audit_store_owner'
 WHERE NOT EXISTS (SELECT 1 FROM owner_role)
@@ -498,6 +689,10 @@ SELECT 'not_security_definer', f.proname FROM fns AS f WHERE NOT f.prosecdef
 UNION ALL
 SELECT 'search_path_unpinned', f.proname FROM fns AS f
 WHERE NOT (coalesce(f.proconfig, ARRAY[]::text[]) @> ARRAY['search_path=pg_catalog, pg_temp'])
+UNION ALL
+-- A function-level SET synchronous_commit is reverted before COMMIT.
+SELECT 'function_synchronous_commit', f.proname FROM fns AS f
+WHERE EXISTS (SELECT 1 FROM unnest(f.proconfig) AS c WHERE c LIKE 'synchronous_commit=%')
 UNION ALL
 SELECT 'public_execute', a.proname FROM fn_acl AS a WHERE a.grantee = 0
 UNION ALL
@@ -534,6 +729,16 @@ WHERE NOT EXISTS (
       AND d.defaclobjtype = 'f'
       AND NOT EXISTS (SELECT 1 FROM aclexplode(d.defaclacl) AS a WHERE a.grantee = 0))
 UNION ALL
+-- Default privileges of the owner must not grant anything to anyone.
+SELECT 'default_privilege_granted',
+       d.defaclobjtype::text || ':' || CASE WHEN a.grantee = 0 THEN 'PUBLIC'
+                                            ELSE coalesce(g.rolname::text, '?') END
+FROM pg_default_acl AS d
+CROSS JOIN LATERAL aclexplode(d.defaclacl) AS a
+LEFT JOIN pg_roles AS g ON g.oid = a.grantee
+WHERE d.defaclrole = (SELECT o.oid FROM owner_role AS o)
+  AND a.grantee <> d.defaclrole
+UNION ALL
 SELECT 'database_public_' || lower(a.privilege_type), current_database()::text
 FROM this_db AS d, LATERAL aclexplode(coalesce(d.datacl, acldefault('d', d.datdba))) AS a
 WHERE a.grantee = 0 AND a.privilege_type IN ('CONNECT', 'TEMPORARY')
@@ -545,30 +750,82 @@ SELECT 'capability_role_privileged', r.rolname::text FROM pg_roles AS r
 WHERE r.rolname IN (SELECT c.rolname FROM capability AS c)
   AND (r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreaterole)
 UNION ALL
-SELECT 'login_timeouts_missing', m.rolname FROM capability_members AS m
+SELECT 'login_timeouts_missing', m.rolname FROM capability_logins AS m
 WHERE EXISTS (
     SELECT 1 FROM unnest(ARRAY['statement_timeout', 'lock_timeout',
                                'idle_in_transaction_session_timeout']) AS setting(name)
     WHERE NOT EXISTS (
-        SELECT 1 FROM pg_db_role_setting AS s, unnest(s.setconfig) AS cfg
-        WHERE s.setrole = m.oid
-          AND s.setdatabase IN (0, (SELECT d.oid FROM this_db AS d))
-          AND cfg LIKE setting.name || '=%'))
+        SELECT 1 FROM role_settings AS s
+        WHERE s.setrole = m.oid AND s.cfg LIKE setting.name || '=%'))
+UNION ALL
+-- synchronous_commit=on as a database default and on every capability login;
+-- any weaker database or role default is a violation (sessions can still
+-- override defaults: the definer bodies and the clients enforce it too).
+SELECT 'database_synchronous_commit_missing', current_database()::text
+WHERE NOT EXISTS (
+    SELECT 1 FROM role_settings AS s
+    WHERE s.setrole = 0 AND s.setdatabase = (SELECT d.oid FROM this_db AS d)
+      AND s.cfg = 'synchronous_commit=on')
+UNION ALL
+SELECT 'login_synchronous_commit_missing', m.rolname FROM capability_logins AS m
+WHERE NOT EXISTS (
+    SELECT 1 FROM role_settings AS s
+    WHERE s.setrole = m.oid AND s.cfg = 'synchronous_commit=on')
+UNION ALL
+SELECT 'synchronous_commit_weakened',
+       CASE WHEN s.setrole = 0 THEN 'database' ELSE coalesce(r.rolname::text, '?') END
+FROM role_settings AS s
+LEFT JOIN pg_roles AS r ON r.oid = s.setrole
+WHERE s.cfg LIKE 'synchronous_commit=%' AND s.cfg <> 'synchronous_commit=on'
+UNION ALL
+-- Membership rules (design §7.3): ingest only for logins bound to a
+-- registered source-service principal; owner membership only for the
+-- bootstrap (DBA) logins, which hold no capability role and no binding.
+SELECT 'ingest_member_not_source_service', m.login FROM memberships AS m
+WHERE m.granted = 'audit_store_ingest'
+  AND NOT EXISTS (
+      SELECT 1 FROM audit_store.principal_bindings AS b
+      JOIN audit_store.source_services AS s
+        ON s.issuer = b.issuer AND s.principal_id = b.principal_id
+      WHERE b.db_role = m.login AND b.unbound_seq IS NULL)
+UNION ALL
+SELECT 'owner_member_has_capability', m.login FROM memberships AS m
+WHERE m.granted = 'audit_store_owner'
+  AND EXISTS (SELECT 1 FROM capability_logins AS c WHERE c.oid = m.login_oid)
+UNION ALL
+SELECT 'owner_member_bound', m.login FROM memberships AS m
+WHERE m.granted = 'audit_store_owner'
+  AND EXISTS (SELECT 1 FROM audit_store.principal_bindings AS b
+              WHERE b.db_role = m.login AND b.unbound_seq IS NULL)
+UNION ALL
+-- session_role/db_role are a closed grammar in control events.
+SELECT DISTINCT 'login_name_invalid', m.login FROM memberships AS m
+WHERE m.granted IN (SELECT c.rolname FROM capability AS c UNION ALL SELECT 'audit_store_owner')
+  AND NOT audit_store.is_db_role(m.login)
 $posture_check$;
+
+-- Fingerprint mismatch or recovery_pending: recovery mode (design §11).
+CREATE FUNCTION audit_store.in_recovery(h audit_store.publication_head)
+RETURNS BOOLEAN LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $in_recovery$
+DECLARE
+    fp record;
+BEGIN
+    IF h.recovery_pending THEN
+        RETURN TRUE;
+    END IF;
+    SELECT * INTO fp FROM audit_store.current_fingerprint();
+    RETURN (fp.system_identifier, fp.database_oid, fp.timeline)
+        IS DISTINCT FROM (h.fp_system_identifier, h.fp_database_oid, h.fp_timeline);
+END
+$in_recovery$;
 
 -- NULL when publication may proceed, else the outage code.
 CREATE FUNCTION audit_store.gate_code(h audit_store.publication_head)
 RETURNS TEXT LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $gate_code$
-DECLARE
-    fp record;
 BEGIN
-    IF h.recovery_pending THEN
-        RETURN 'store_recovery_required';
-    END IF;
-    SELECT * INTO fp FROM audit_store.current_fingerprint();
-    IF (fp.system_identifier, fp.database_oid, fp.timeline)
-        IS DISTINCT FROM (h.fp_system_identifier, h.fp_database_oid, h.fp_timeline) THEN
+    IF audit_store.in_recovery(h) THEN
         RETURN 'store_recovery_required';
     END IF;
     IF EXISTS (SELECT 1 FROM audit_store.posture_check()) THEN
@@ -593,27 +850,52 @@ BEGIN
 END
 $require_gate$;
 
+-- Recovery only (bind/unbind/bootstrap/register_source_service must work
+-- while the posture is being repaired, e.g. to bind a new ingest login).
+CREATE FUNCTION audit_store.require_not_recovery(h audit_store.publication_head)
+RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $require_not_recovery$
+BEGIN
+    IF audit_store.in_recovery(h) THEN
+        RAISE EXCEPTION 'store_recovery_required' USING ERRCODE = 'KA001';
+    END IF;
+END
+$require_not_recovery$;
+
 -- Locks and returns the head (lock order: head first, always). Every writer
--- calls this first. synchronous_commit is set transaction-locally because a
--- function-level SET clause would be reverted before COMMIT.
+-- calls this first (verify/checkpoint only before appending their result).
+-- synchronous_commit is set transaction-locally because a function-level SET
+-- clause would be reverted before COMMIT.
 CREATE FUNCTION audit_store.lock_head()
 RETURNS audit_store.publication_head LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $lock_head$
 DECLARE
     h audit_store.publication_head;
 BEGIN
-    PERFORM set_config('synchronous_commit', 'on', TRUE);
+    PERFORM pg_catalog.set_config('synchronous_commit', 'on', TRUE);
     SELECT * INTO STRICT h FROM audit_store.publication_head AS p WHERE p.singleton FOR UPDATE;
     RETURN h;
 END
 $lock_head$;
+
+CREATE FUNCTION audit_store.read_head()
+RETURNS audit_store.publication_head LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $read_head$
+DECLARE
+    h audit_store.publication_head;
+BEGIN
+    SELECT * INTO STRICT h FROM audit_store.publication_head AS p WHERE p.singleton;
+    RETURN h;
+END
+$read_head$;
 
 -- ---------------------------------------------------------------------------
 -- Principals and capabilities (design §10.2)
 -- ---------------------------------------------------------------------------
 
 -- The actor of a control event: the session's bound principal, or the DB
--- login itself under the fixed issuer audit-store-db-role when unbound.
+-- login itself under the fixed issuer db_role when unbound (including the
+-- owner members that bootstrap and bind).
 CREATE FUNCTION audit_store.session_actor(
     OUT issuer TEXT, OUT principal_id TEXT, OUT bound BOOLEAN)
 LANGUAGE plpgsql STABLE SECURITY DEFINER
@@ -623,7 +905,7 @@ BEGIN
     FROM audit_store.principal_bindings AS b
     WHERE b.db_role = session_user::text AND b.unbound_seq IS NULL;
     IF NOT FOUND THEN
-        issuer := 'audit-store-db-role';
+        issuer := 'db_role';
         principal_id := session_user::text;
         bound := FALSE;
     END IF;
@@ -638,6 +920,29 @@ SET search_path = pg_catalog, pg_temp AS $has_grant$
         WHERE g.issuer = p_issuer AND g.principal_id = p_principal_id
           AND g.capability = p_capability AND g.revoked_seq IS NULL)
 $has_grant$;
+
+-- NULL when the session is bound to a registered source-service principal
+-- (for p_source, or for any source when p_source is NULL), else the denial
+-- code ('unbound' / 'not_source_service').
+CREATE FUNCTION audit_store.source_service_denial(p_source TEXT)
+RETURNS TEXT LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $source_service_denial$
+DECLARE
+    v_actor record;
+BEGIN
+    SELECT * INTO v_actor FROM audit_store.session_actor();
+    IF NOT v_actor.bound THEN
+        RETURN 'unbound';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM audit_store.source_services AS s
+        WHERE s.issuer = v_actor.issuer AND s.principal_id = v_actor.principal_id
+          AND (p_source IS NULL OR s.source = p_source)) THEN
+        RETURN 'not_source_service';
+    END IF;
+    RETURN NULL;
+END
+$source_service_denial$;
 
 -- ---------------------------------------------------------------------------
 -- Appending (head lock held by the caller)
@@ -665,7 +970,7 @@ BEGIN
         seq, event_id, origin, source, event_type, event_class, subject, occurred_at,
         stored_at, actor_issuer, actor_principal_id, resource_type, resource_id,
         resource_version_id, result, envelope_digest, digest_algorithm, source_commitment,
-        adapter_version, prev_chain, chain, recovery_epoch)
+        adapter_version, prev_chain, chain, recovery_epoch, ingested_by_db_role)
     VALUES (
         v_seq, v_id, p_origin, p_envelope ->> 'source', p_envelope ->> 'type',
         v_data ->> 'event_class', p_envelope ->> 'subject', (p_envelope ->> 'time')::timestamptz,
@@ -673,7 +978,7 @@ BEGIN
         v_data -> 'resource' ->> 'type', v_data -> 'resource' ->> 'id',
         (v_data -> 'resource' ->> 'version_id')::uuid, v_data ->> 'result', v_digest,
         'kp-audit-jsonb-sha256-v1', p_commitment, p_adapter_version, h.last_chain, v_chain,
-        h.recovery_epoch);
+        h.recovery_epoch, session_user::text);
     INSERT INTO audit_store.event_bodies (seq, envelope) VALUES (v_seq, p_envelope);
     UPDATE audit_store.publication_head AS p
     SET last_seq = v_seq, last_chain = v_chain, updated_at = clock_timestamp()
@@ -693,6 +998,11 @@ DECLARE
 BEGIN
     IF p_origin NOT IN ('store', 'relay_control') THEN
         RAISE EXCEPTION 'append_control: invalid origin';
+    END IF;
+    -- session_role is a closed db_role value: a login whose name does not fit
+    -- cannot produce control events (posture_check reports it).
+    IF NOT audit_store.is_db_role(session_user::text) THEN
+        RAISE EXCEPTION 'login_name_invalid' USING ERRCODE = '42501';
     END IF;
     SELECT * INTO v_actor FROM audit_store.session_actor();
     v_envelope := jsonb_build_object(
@@ -725,19 +1035,70 @@ END
 $append_control$;
 
 -- Records audit.access.denied with a bounded shape only (design §10.3).
+-- Nothing is appended in recovery mode (the head must not move); the caller
+-- still refuses.
 CREATE FUNCTION audit_store.record_denied(
     p_operation TEXT, p_denial_code TEXT, p_capability TEXT)
 RETURNS BIGINT LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $record_denied$
+DECLARE
+    h audit_store.publication_head := audit_store.lock_head();
 BEGIN
+    IF audit_store.in_recovery(h) THEN
+        RETURN NULL;
+    END IF;
     RETURN audit_store.append_control('store', 'audit.access.denied', 'SECURITY', 'denied',
         jsonb_build_object('operation', p_operation, 'denial_code', p_denial_code)
         || audit_store.opt('required_capability', to_jsonb(p_capability)));
 END
 $record_denied$;
 
+-- Identity denials of the service paths (ingest, probe, report_regression)
+-- repeat on every relay cycle: record at most one per streak and minute per
+-- login. A success of that login ends the streak (clear_denial_streak).
+CREATE FUNCTION audit_store.record_denied_coalesced(p_operation TEXT, p_denial_code TEXT)
+RETURNS BIGINT LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+SET audit_store.write_context = 'definer' AS $record_denied_coalesced$
+DECLARE
+    s audit_store.denial_streaks;
+    v_seq BIGINT;
+BEGIN
+    PERFORM audit_store.lock_head();
+    SELECT * INTO s FROM audit_store.denial_streaks AS d
+    WHERE d.session_role = session_user::text FOR UPDATE;
+    IF FOUND AND s.denial_code = p_denial_code
+       AND s.last_recorded_at > clock_timestamp() - interval '1 minute' THEN
+        UPDATE audit_store.denial_streaks AS d SET suppressed = d.suppressed + 1
+        WHERE d.session_role = s.session_role;
+        RETURN NULL;
+    END IF;
+    v_seq := audit_store.record_denied(p_operation, p_denial_code, NULL);
+    IF v_seq IS NULL THEN
+        RETURN NULL;
+    END IF;
+    INSERT INTO audit_store.denial_streaks AS d (
+        session_role, denial_code, last_recorded_seq, last_recorded_at, suppressed)
+    VALUES (session_user::text, p_denial_code, v_seq, clock_timestamp(), 0)
+    ON CONFLICT (session_role) DO UPDATE
+    SET denial_code = excluded.denial_code, last_recorded_seq = excluded.last_recorded_seq,
+        last_recorded_at = excluded.last_recorded_at, suppressed = 0;
+    RETURN v_seq;
+END
+$record_denied_coalesced$;
+
+CREATE FUNCTION audit_store.clear_denial_streak()
+RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+SET audit_store.write_context = 'definer' AS $clear_denial_streak$
+BEGIN
+    DELETE FROM audit_store.denial_streaks AS d WHERE d.session_role = session_user::text;
+END
+$clear_denial_streak$;
+
 -- Resolves the session principal and checks DB role + Audit capability.
--- Records audit.access.denied and returns ok = false when refused.
+-- Records audit.access.denied (outside recovery mode) and returns
+-- ok = false when refused.
 CREATE FUNCTION audit_store.authorize(
     p_operation TEXT, p_db_role TEXT, p_capability TEXT,
     OUT ok BOOLEAN, OUT issuer TEXT, OUT principal_id TEXT, OUT denial TEXT)
@@ -767,7 +1128,8 @@ $authorize$;
 -- ---------------------------------------------------------------------------
 
 -- NULL when the relay envelope passes the Store's structural checks, else a
--- rejection code (audit-core names). The relay validated the full catalog.
+-- rejection code (audit-core names, [a-z0-9_]{1,64}). The relay validated
+-- the full catalog.
 CREATE FUNCTION audit_store.relay_envelope_problem(p JSONB)
 RETURNS TEXT LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $relay_envelope_problem$
@@ -835,7 +1197,7 @@ BEGIN
        OR audit_store.jint(v_prov -> 'adapter_version') IS NULL
        OR audit_store.jint(v_prov -> 'adapter_version') NOT BETWEEN 1 AND 2147483647
        OR (v_prov ? 'source_commitment'
-           AND coalesce(v_prov ->> 'source_commitment' !~ '^[0-9a-f]{64}$', TRUE))
+           AND NOT audit_store.is_hex64(v_prov ->> 'source_commitment'))
        OR (p ->> 'source' = 'urn:knowledge-platform:document-platform'
            AND NOT v_prov ? 'source_commitment') THEN
         RETURN 'invalid_provenance';
@@ -844,6 +1206,9 @@ BEGIN
 END
 $relay_envelope_problem$;
 
+-- Structured result (status, seq, envelope_digest, adapter_version, code),
+-- decoded by audit_core::IngestRow::into_result. Verdicts (rejected,
+-- conflict) are rows, never exceptions; every other status is an outage.
 CREATE FUNCTION audit_store.ingest(p_envelope JSONB)
 RETURNS TABLE (status TEXT, seq BIGINT, envelope_digest BYTEA, adapter_version INTEGER,
                code TEXT)
@@ -858,21 +1223,38 @@ DECLARE
     v_source TEXT;
     v_type TEXT;
     v_adapter INTEGER;
+    v_format TEXT;
     v_commitment BYTEA;
     v_digest BYTEA;
     e audit_store.events;
     v_kind TEXT;
     v_new BIGINT;
 BEGIN
+    PERFORM pg_catalog.set_config('synchronous_commit', 'on', TRUE);
     h := audit_store.lock_head();
-    v_problem := audit_store.gate_code(h);
-    IF v_problem IS NOT NULL THEN
+    -- Recovery first: nothing (not even a denial) is appended in recovery mode.
+    IF audit_store.in_recovery(h) THEN
         RETURN QUERY SELECT 'recovery_required'::text, NULL::bigint, NULL::bytea,
-                            NULL::integer, v_problem;
+                            NULL::integer, 'store_recovery_required'::text;
+        RETURN;
+    END IF;
+    -- Only a login bound to a registered source-service principal ingests.
+    v_problem := audit_store.source_service_denial(NULL);
+    IF v_problem IS NOT NULL THEN
+        PERFORM audit_store.record_denied_coalesced('ingest', v_problem);
+        RETURN QUERY SELECT 'denied'::text, NULL::bigint, NULL::bytea, NULL::integer, v_problem;
+        RETURN;
+    END IF;
+    IF EXISTS (SELECT 1 FROM audit_store.posture_check()) THEN
+        RETURN QUERY SELECT 'outage'::text, NULL::bigint, NULL::bytea, NULL::integer,
+                            'posture_invalid'::text;
         RETURN;
     END IF;
     v_problem := audit_store.relay_envelope_problem(p_envelope);
     IF v_problem IS NOT NULL THEN
+        IF NOT audit_store.is_code(v_problem) THEN
+            v_problem := 'invalid_envelope';
+        END IF;
         RETURN QUERY SELECT 'rejected'::text, NULL::bigint, NULL::bytea, NULL::integer,
                             v_problem;
         RETURN;
@@ -881,16 +1263,27 @@ BEGIN
     v_source := p_envelope ->> 'source';
     v_type := p_envelope ->> 'type';
     v_adapter := audit_store.jint(p_envelope -> 'data' -> 'provenance' -> 'adapter_version');
+    v_format := p_envelope -> 'data' -> 'provenance' ->> 'source_format';
     v_commitment := decode(p_envelope -> 'data' -> 'provenance' ->> 'source_commitment', 'hex');
+    -- provenance must equal a registered (catalog) adapter version and format.
     IF NOT EXISTS (
         SELECT 1 FROM audit_store.registered_types AS r
         WHERE r.source = v_source AND r.event_type = v_type AND r.adapter_version = v_adapter
+          AND r.source_format = v_format
     ) THEN
         -- Catalog and Store migration disagree: an outage, never a verdict.
         RETURN QUERY SELECT 'outage'::text, NULL::bigint, NULL::bytea, NULL::integer,
                             'unregistered_type'::text;
         RETURN;
     END IF;
+    -- The service principal must be registered for this source.
+    v_problem := audit_store.source_service_denial(v_source);
+    IF v_problem IS NOT NULL THEN
+        PERFORM audit_store.record_denied_coalesced('ingest', v_problem);
+        RETURN QUERY SELECT 'denied'::text, NULL::bigint, NULL::bytea, NULL::integer, v_problem;
+        RETURN;
+    END IF;
+    PERFORM audit_store.clear_denial_streak();
     v_digest := audit_store.jsonb_digest(p_envelope);
 
     SELECT * INTO e FROM audit_store.events AS x WHERE x.event_id = v_id;
@@ -938,9 +1331,17 @@ BEGIN
 END
 $ingest$;
 
--- Admission probe for the relay circuit breaker (design §6.2).
-CREATE FUNCTION audit_store.probe()
-RETURNS TABLE (status TEXT, head_seq BIGINT, recovery_epoch BIGINT, writable BOOLEAN,
+-- Admission probe for the relay circuit breaker (design §6.2): the ingest
+-- gate without storing anything, the registration of the expected types and
+-- the identity check of the relay's last acknowledged receipt.
+--
+-- status 'ok' with state operational / recovery_mode / posture_invalid /
+-- read_only, or status 'denied' (the login is not a source service).
+CREATE FUNCTION audit_store.probe(
+    p_source TEXT, p_adapter_version INTEGER, p_types TEXT[],
+    p_last_seq BIGINT, p_last_event_id UUID, p_last_digest BYTEA)
+RETURNS TABLE (status TEXT, state TEXT, head_seq BIGINT, recovery_epoch BIGINT,
+               missing_types TEXT[], regression_detected BOOLEAN, last_verified_seq BIGINT,
                code TEXT)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
@@ -948,43 +1349,129 @@ SET lock_timeout = '2s' AS $probe$
 #variable_conflict use_column
 DECLARE
     h audit_store.publication_head;
-    v_code TEXT;
+    v_state TEXT;
+    v_denial TEXT;
+    v_missing TEXT[];
+    v_regressed BOOLEAN;
+    v_verified BIGINT;
 BEGIN
+    IF NOT audit_store.is_identifier(p_source)
+       OR p_adapter_version IS NULL OR p_adapter_version < 1
+       OR coalesce(cardinality(p_types), 0) > 1000
+       OR EXISTS (SELECT 1 FROM unnest(p_types) AS t WHERE NOT audit_store.is_identifier(t))
+       OR (p_last_seq IS NULL) <> (p_last_event_id IS NULL)
+       OR (p_last_seq IS NULL) <> (p_last_digest IS NULL)
+       OR (p_last_seq IS NOT NULL AND (p_last_seq < 1 OR octet_length(p_last_digest) <> 32)) THEN
+        RAISE EXCEPTION 'probe: invalid expectation' USING ERRCODE = '22023';
+    END IF;
+    SELECT max(e.seq) INTO v_verified FROM audit_store.events AS e
+    WHERE e.event_type = 'audit.integrity.verified' AND e.origin = 'store';
     IF current_setting('transaction_read_only') = 'on' OR pg_is_in_recovery() THEN
-        SELECT * INTO STRICT h FROM audit_store.publication_head AS p WHERE p.singleton;
-        RETURN QUERY SELECT 'read_only'::text, h.last_seq, h.recovery_epoch, FALSE,
-                            'store_read_only'::text;
+        h := audit_store.read_head();
+        RETURN QUERY SELECT 'ok'::text, 'read_only'::text, h.last_seq, h.recovery_epoch,
+                            ARRAY[]::text[], FALSE, v_verified, 'store_read_only'::text;
         RETURN;
     END IF;
     h := audit_store.lock_head();
-    v_code := audit_store.gate_code(h);
-    RETURN QUERY SELECT CASE WHEN v_code IS NULL THEN 'ok'
-                             WHEN v_code = 'store_posture_invalid' THEN 'posture_invalid'
-                             ELSE 'recovery_required' END::text,
-                        h.last_seq, h.recovery_epoch, v_code IS NULL, v_code;
+    IF audit_store.in_recovery(h) THEN
+        v_state := 'recovery_mode';
+    ELSE
+        v_denial := audit_store.source_service_denial(p_source);
+        IF v_denial IS NOT NULL THEN
+            PERFORM audit_store.record_denied_coalesced('ingest', v_denial);
+            RETURN QUERY SELECT 'denied'::text, NULL::text, h.last_seq, h.recovery_epoch,
+                                ARRAY[]::text[], FALSE, v_verified, v_denial;
+            RETURN;
+        END IF;
+        PERFORM audit_store.clear_denial_streak();
+        v_state := CASE WHEN EXISTS (SELECT 1 FROM audit_store.posture_check())
+                        THEN 'posture_invalid' ELSE 'operational' END;
+    END IF;
+    SELECT coalesce(array_agg(t ORDER BY t), ARRAY[]::text[]) INTO v_missing
+    FROM (SELECT DISTINCT t FROM unnest(p_types) AS t) AS x(t)
+    WHERE NOT EXISTS (
+        SELECT 1 FROM audit_store.registered_types AS r
+        WHERE r.source = p_source AND r.event_type = x.t AND r.adapter_version = p_adapter_version);
+    -- Identity, never seq comparison: the acknowledged receipt must still
+    -- resolve to the same (seq, event_id, envelope digest).
+    v_regressed := p_last_seq IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM audit_store.events AS e
+        WHERE e.seq = p_last_seq AND e.event_id = p_last_event_id
+          AND e.envelope_digest = p_last_digest);
+    RETURN QUERY SELECT 'ok'::text, v_state, h.last_seq, h.recovery_epoch, v_missing,
+                        v_regressed, v_verified,
+                        CASE v_state WHEN 'recovery_mode' THEN 'store_recovery_required'
+                                     WHEN 'posture_invalid' THEN 'store_posture_invalid'
+                                     ELSE NULL END::text;
 END
 $probe$;
 
--- Content-free status for health (design §10.4, §12). Not audited.
+-- The relay reports that its acknowledged receipt no longer resolves
+-- (design §11). Re-checked under the head lock; only a missing identity sets
+-- recovery_pending (reason 'regression') with the reported evidence. Allowed
+-- in recovery mode (it only sets the flag).
+CREATE FUNCTION audit_store.report_regression(
+    p_seq BIGINT, p_event_id UUID, p_envelope_digest BYTEA)
+RETURNS TABLE (status TEXT, code TEXT)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+SET lock_timeout = '5s'
+SET audit_store.write_context = 'definer' AS $report_regression$
+#variable_conflict use_column
+DECLARE
+    h audit_store.publication_head;
+    v_denial TEXT;
+BEGIN
+    h := audit_store.lock_head();
+    v_denial := audit_store.source_service_denial(NULL);
+    IF v_denial IS NOT NULL THEN
+        PERFORM audit_store.record_denied_coalesced('report_regression', v_denial);
+        RETURN QUERY SELECT 'denied'::text, v_denial;
+        RETURN;
+    END IF;
+    IF p_seq IS NULL OR p_seq < 1 OR p_event_id IS NULL
+       OR p_envelope_digest IS NULL OR octet_length(p_envelope_digest) <> 32 THEN
+        RETURN QUERY SELECT 'invalid_input'::text, 'invalid_input'::text;
+        RETURN;
+    END IF;
+    IF EXISTS (SELECT 1 FROM audit_store.events AS e
+               WHERE e.seq = p_seq AND e.event_id = p_event_id
+                 AND e.envelope_digest = p_envelope_digest) THEN
+        RETURN QUERY SELECT 'intact'::text, NULL::text;
+        RETURN;
+    END IF;
+    IF h.recovery_pending THEN
+        RETURN QUERY SELECT 'already_pending'::text, h.pending_reason;
+        RETURN;
+    END IF;
+    UPDATE audit_store.publication_head AS x
+    SET recovery_pending = TRUE, pending_reason = 'regression', pending_seq = p_seq,
+        pending_event_id = p_event_id, pending_digest = p_envelope_digest,
+        pending_by = session_user::text, pending_at = clock_timestamp(),
+        pending_head_seq = h.last_seq, pending_incident_code = NULL,
+        updated_at = clock_timestamp()
+    WHERE x.singleton;
+    RETURN QUERY SELECT 'recovery_pending'::text, 'regression'::text;
+END
+$report_regression$;
+
+-- Content-free status for health and operators (design §10.4, §12). Not
+-- audited; works in recovery mode.
 CREATE FUNCTION audit_store.store_status()
 RETURNS TABLE (head_seq BIGINT, recovery_epoch BIGINT, recovery_mode BOOLEAN,
-               posture_ok BOOLEAN, last_verified_seq BIGINT, last_verified_at TIMESTAMPTZ,
-               last_verified_outcome TEXT)
+               posture_ok BOOLEAN, recovery_pending BOOLEAN, recovery_pending_reason TEXT,
+               access_reapply_pending BOOLEAN, last_verified_seq BIGINT,
+               last_verified_at TIMESTAMPTZ, last_verified_outcome TEXT)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $store_status$
 #variable_conflict use_column
 DECLARE
-    h audit_store.publication_head;
-    fp record;
+    h audit_store.publication_head := audit_store.read_head();
 BEGIN
-    SELECT * INTO STRICT h FROM audit_store.publication_head AS p WHERE p.singleton;
-    SELECT * INTO fp FROM audit_store.current_fingerprint();
     RETURN QUERY
-    SELECT h.last_seq, h.recovery_epoch,
-           h.recovery_pending
-             OR (fp.system_identifier, fp.database_oid, fp.timeline)
-                IS DISTINCT FROM (h.fp_system_identifier, h.fp_database_oid, h.fp_timeline),
+    SELECT h.last_seq, h.recovery_epoch, audit_store.in_recovery(h),
            NOT EXISTS (SELECT 1 FROM audit_store.posture_check()),
+           h.recovery_pending, h.pending_reason, h.access_reapply_pending,
            v.seq, v.stored_at, v.outcome
     FROM (SELECT NULL::bigint AS seq, NULL::timestamptz AS stored_at, NULL::text AS outcome
           WHERE NOT EXISTS (
@@ -1003,7 +1490,7 @@ $store_status$;
 CREATE FUNCTION audit_store.lookup_receipts(p_event_ids UUID[])
 RETURNS TABLE (event_id UUID, seq BIGINT, origin TEXT, event_type TEXT,
                envelope_digest BYTEA, source_commitment BYTEA, adapter_version INTEGER,
-               expired BOOLEAN)
+               expired BOOLEAN, recovery_epoch BIGINT)
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $lookup_receipts$
 #variable_conflict use_column
@@ -1013,7 +1500,7 @@ BEGIN
     END IF;
     RETURN QUERY
     SELECT e.event_id, e.seq, e.origin, e.event_type, e.envelope_digest, e.source_commitment,
-           e.adapter_version, e.expired_at IS NOT NULL
+           e.adapter_version, e.expired_at IS NOT NULL, e.recovery_epoch
     FROM audit_store.events AS e
     WHERE e.event_id = ANY (p_event_ids)
     ORDER BY e.seq;
@@ -1024,7 +1511,7 @@ CREATE FUNCTION audit_store.list_source_receipts(
     p_source TEXT, p_after_seq BIGINT, p_limit INTEGER)
 RETURNS TABLE (event_id UUID, seq BIGINT, origin TEXT, event_type TEXT,
                envelope_digest BYTEA, source_commitment BYTEA, adapter_version INTEGER,
-               expired BOOLEAN)
+               expired BOOLEAN, recovery_epoch BIGINT)
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $list_source_receipts$
 #variable_conflict use_column
@@ -1034,7 +1521,7 @@ BEGIN
     END IF;
     RETURN QUERY
     SELECT e.event_id, e.seq, e.origin, e.event_type, e.envelope_digest, e.source_commitment,
-           e.adapter_version, e.expired_at IS NOT NULL
+           e.adapter_version, e.expired_at IS NOT NULL, e.recovery_epoch
     FROM audit_store.events AS e
     WHERE e.origin = 'relay' AND e.source = p_source AND e.seq > coalesce(p_after_seq, 0)
     ORDER BY e.seq
@@ -1042,9 +1529,13 @@ BEGIN
 END
 $list_source_receipts$;
 
+-- Control receipts by seq (design §6.4): content-free, plus the event a
+-- relay control event is about and its machine code (replay_requested:
+-- quarantine_code; source_mismatch_detected: mismatch_code;
+-- reconciliation.completed: mode).
 CREATE FUNCTION audit_store.lookup_control_receipts(p_seqs BIGINT[])
-RETURNS TABLE (seq BIGINT, event_id UUID, origin TEXT, event_type TEXT,
-               envelope_digest BYTEA, target_event_id UUID)
+RETURNS TABLE (seq BIGINT, recovery_epoch BIGINT, origin TEXT, event_type TEXT,
+               target_event_id UUID, code TEXT)
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $lookup_control_receipts$
 #variable_conflict use_column
@@ -1053,23 +1544,131 @@ BEGIN
         RAISE EXCEPTION 'lookup_control_receipts: at most 1000 seqs' USING ERRCODE = '22023';
     END IF;
     RETURN QUERY
-    SELECT e.seq, e.event_id, e.origin, e.event_type, e.envelope_digest,
-           CASE WHEN audit_store.is_uuid_text(b.envelope -> 'data' -> 'details' ->> 'event_id')
-                THEN (b.envelope -> 'data' -> 'details' ->> 'event_id')::uuid END
+    SELECT e.seq, e.recovery_epoch, e.origin, e.event_type,
+           CASE WHEN audit_store.is_uuid_text(d.details ->> 'event_id')
+                THEN (d.details ->> 'event_id')::uuid
+                WHEN audit_store.is_uuid_text(d.details ->> 'target_event_id')
+                THEN (d.details ->> 'target_event_id')::uuid END,
+           CASE e.event_type
+               WHEN 'audit.delivery.replay_requested' THEN d.details ->> 'quarantine_code'
+               WHEN 'audit.integrity.source_mismatch_detected' THEN d.details ->> 'mismatch_code'
+               WHEN 'audit.reconciliation.completed' THEN d.details ->> 'mode'
+           END
     FROM audit_store.events AS e
-    LEFT JOIN audit_store.event_bodies AS b ON b.seq = e.seq
+    LEFT JOIN LATERAL (
+        SELECT b.envelope -> 'data' -> 'details' AS details
+        FROM audit_store.event_bodies AS b WHERE b.seq = e.seq) AS d ON TRUE
     WHERE e.seq = ANY (p_seqs) AND e.origin IN ('store', 'relay_control')
     ORDER BY e.seq;
 END
 $lookup_control_receipts$;
 
+-- Declared lost ranges of every recovery epoch (content-free, from the
+-- chained audit.recovery.epoch_started bodies). Reconcile classifies relay
+-- control seqs inside them as replay_record_lost (design §6.4).
+CREATE FUNCTION audit_store.lookup_lost_ranges()
+RETURNS TABLE (epoch_seq BIGINT, old_epoch BIGINT, new_epoch BIGINT, classification TEXT,
+               restored_head_seq BIGINT, lost_from_seq BIGINT, lost_upper_seq BIGINT,
+               lost_upper_known BOOLEAN)
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $lookup_lost_ranges$
+#variable_conflict use_column
+BEGIN
+    RETURN QUERY
+    SELECT e.seq,
+           audit_store.jint(d -> 'old_epoch'), audit_store.jint(d -> 'new_epoch'),
+           d ->> 'classification',
+           audit_store.jint(d -> 'restored_head_seq'),
+           audit_store.jint(d -> 'lost_from_seq'), audit_store.jint(d -> 'lost_upper_seq'),
+           coalesce((d -> 'lost_upper_known')::text = 'true', FALSE)
+    FROM audit_store.events AS e
+    JOIN audit_store.event_bodies AS b ON b.seq = e.seq
+    CROSS JOIN LATERAL (SELECT b.envelope -> 'data' -> 'details') AS x(d)
+    WHERE e.origin = 'store' AND e.event_type = 'audit.recovery.epoch_started'
+    ORDER BY e.seq;
+END
+$lookup_lost_ranges$;
+
 -- ---------------------------------------------------------------------------
 -- Relay control events (design §4.5, §6.4, §12)
 -- ---------------------------------------------------------------------------
 
-CREATE FUNCTION audit_store.record_relay_control(
-    p_type TEXT, p_event_id UUID, p_code TEXT, p_counts JSONB)
-RETURNS TABLE (status TEXT, seq BIGINT, code TEXT)
+-- Validates the details built by audit_core::RelayControl::details() (the
+-- catalog fields except session_role) and normalizes them; NULL if invalid.
+CREATE FUNCTION audit_store.relay_control_details(p_type TEXT, p_details JSONB)
+RETURNS JSONB LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $relay_control_details$
+DECLARE
+    v_keys TEXT[];
+    v_counts TEXT[] := ARRAY[
+        'count_delivered_missing', 'count_digest_mismatch', 'count_ok', 'count_pending',
+        'count_quarantined', 'count_quarantined_conflict', 'count_quarantined_stored',
+        'count_replay_record_lost', 'count_source_tampered', 'count_store_only',
+        'count_unaudited_replay', 'count_unregistered', 'repaired_delivered_missing',
+        'repaired_quarantined_stored', 'repaired_unregistered'];
+    v_out JSONB;
+    k TEXT;
+BEGIN
+    IF jsonb_typeof(p_details) IS DISTINCT FROM 'object' THEN
+        RETURN NULL;
+    END IF;
+    SELECT array_agg(x ORDER BY x) INTO v_keys FROM jsonb_object_keys(p_details) AS x;
+    IF p_type = 'audit.delivery.replay_requested' THEN
+        IF v_keys IS DISTINCT FROM ARRAY['event_id', 'quarantine_code']
+           OR NOT audit_store.is_uuid_text(p_details ->> 'event_id')
+           OR jsonb_typeof(p_details -> 'quarantine_code') IS DISTINCT FROM 'string'
+           OR NOT audit_store.is_code(p_details ->> 'quarantine_code') THEN
+            RETURN NULL;
+        END IF;
+        RETURN jsonb_build_object('event_id', p_details ->> 'event_id',
+                                  'quarantine_code', p_details ->> 'quarantine_code');
+    ELSIF p_type = 'audit.integrity.source_mismatch_detected' THEN
+        IF v_keys IS DISTINCT FROM ARRAY['event_id', 'mismatch_code']
+           OR NOT audit_store.is_uuid_text(p_details ->> 'event_id')
+           OR coalesce(p_details ->> 'mismatch_code', '')
+              NOT IN ('source_digest_mismatch', 'actor_mismatch') THEN
+            RETURN NULL;
+        END IF;
+        RETURN jsonb_build_object('event_id', p_details ->> 'event_id',
+                                  'mismatch_code', p_details ->> 'mismatch_code');
+    ELSIF p_type = 'audit.reconciliation.completed' THEN
+        -- count_relay_catalog_skew is optional so that the Store accepts the
+        -- reconcile counts of both the current and the amended catalog.
+        IF p_details ? 'count_relay_catalog_skew' THEN
+            v_counts := v_counts || ARRAY['count_relay_catalog_skew'];
+        END IF;
+        IF v_keys IS DISTINCT FROM (
+               SELECT array_agg(x ORDER BY x) FROM unnest(
+                   v_counts || ARRAY['id_set_digest', 'mode', 'run_id', 'watermark']) AS x)
+           OR NOT audit_store.is_uuid_text(p_details ->> 'run_id')
+           OR coalesce(p_details ->> 'mode', '') NOT IN ('read_only', 'repair')
+           OR jsonb_typeof(p_details -> 'id_set_digest') IS DISTINCT FROM 'string'
+           OR NOT audit_store.is_hex64(p_details ->> 'id_set_digest')
+           OR coalesce(audit_store.jint(p_details -> 'watermark') < 0, TRUE) THEN
+            RETURN NULL;
+        END IF;
+        v_out := jsonb_build_object(
+            'run_id', p_details ->> 'run_id',
+            'mode', p_details ->> 'mode',
+            'watermark', audit_store.jint(p_details -> 'watermark'),
+            'id_set_digest', p_details ->> 'id_set_digest');
+        FOREACH k IN ARRAY v_counts LOOP
+            IF coalesce(audit_store.jint(p_details -> k) < 0, TRUE) THEN
+                RETURN NULL;
+            END IF;
+            v_out := v_out || jsonb_build_object(k, audit_store.jint(p_details -> k));
+        END LOOP;
+        RETURN v_out;
+    END IF;
+    RETURN NULL;
+END
+$relay_control_details$;
+
+-- Records a relay control event under the caller's bound principal and
+-- returns its (seq, epoch). source_mismatch_detected is idempotent on
+-- (event_id, mismatch_code): a retry returns the original receipt.
+CREATE FUNCTION audit_store.record_relay_control(p_type TEXT, p_details JSONB)
+RETURNS TABLE (status TEXT, seq BIGINT, recovery_epoch BIGINT, code TEXT)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 SET lock_timeout = '5s' AS $record_relay_control$
@@ -1078,15 +1677,7 @@ DECLARE
     h audit_store.publication_head;
     v_actor record;
     v_details JSONB;
-    v_class TEXT;
-    v_result TEXT;
-    v_keys TEXT[];
-    v_count_keys CONSTANT TEXT[] := ARRAY[
-        'delivered_missing', 'digest_mismatch', 'id_set_digest', 'ok', 'pending',
-        'quarantined', 'quarantined_conflict', 'quarantined_stored',
-        'repaired_delivered_missing', 'repaired_quarantined_stored', 'repaired_unregistered',
-        'source_tampered', 'store_only', 'unaudited_replay', 'unregistered', 'watermark'];
-    k TEXT;
+    v_existing audit_store.events;
     v_seq BIGINT;
 BEGIN
     h := audit_store.lock_head();
@@ -1094,54 +1685,37 @@ BEGIN
     SELECT * INTO v_actor FROM audit_store.session_actor();
     IF NOT v_actor.bound THEN
         PERFORM audit_store.record_denied('record_relay_control', 'unbound', NULL);
-        RETURN QUERY SELECT 'denied'::text, NULL::bigint, 'unbound'::text;
+        RETURN QUERY SELECT 'denied'::text, NULL::bigint, NULL::bigint, 'unbound'::text;
         RETURN;
     END IF;
-    IF p_event_id IS NULL THEN
-        v_details := NULL;
-    ELSIF p_type = 'audit.delivery.replay_requested'
-          AND audit_store.is_code(p_code)
-          AND (p_counts IS NULL OR p_counts = '{}'::jsonb) THEN
-        v_class := 'PRIVILEGED_OPERATION';
-        v_result := 'success';
-        v_details := jsonb_build_object('event_id', p_event_id::text, 'quarantine_code', p_code);
-    ELSIF p_type = 'audit.integrity.source_mismatch_detected'
-          AND p_code IN ('source_digest_mismatch', 'actor_mismatch')
-          AND (p_counts IS NULL OR p_counts = '{}'::jsonb) THEN
-        v_class := 'SECURITY';
-        v_result := 'failure';
-        v_details := jsonb_build_object('event_id', p_event_id::text, 'mismatch_code', p_code);
-    ELSIF p_type = 'audit.reconciliation.completed'
-          AND p_code IN ('read_only', 'repair')
-          AND jsonb_typeof(p_counts) = 'object' THEN
-        SELECT array_agg(x ORDER BY x) INTO v_keys FROM jsonb_object_keys(p_counts) AS x;
-        IF v_keys IS NOT DISTINCT FROM v_count_keys
-           AND coalesce(p_counts ->> 'id_set_digest' ~ '^[0-9a-f]{64}$', FALSE) THEN
-            v_details := jsonb_build_object(
-                'run_id', p_event_id::text,
-                'mode', p_code,
-                'id_set_digest', p_counts ->> 'id_set_digest');
-            FOREACH k IN ARRAY v_count_keys LOOP
-                CONTINUE WHEN k = 'id_set_digest';
-                IF audit_store.jint(p_counts -> k) IS NULL OR audit_store.jint(p_counts -> k) < 0 THEN
-                    v_details := NULL;
-                    EXIT;
-                END IF;
-                v_details := v_details || jsonb_build_object(
-                    CASE WHEN k = 'watermark' OR k LIKE 'repaired_%' THEN k ELSE 'count_' || k END,
-                    audit_store.jint(p_counts -> k));
-            END LOOP;
-            v_class := 'SYSTEM_AUDIT';
-            v_result := 'success';
-        END IF;
-    END IF;
+    v_details := audit_store.relay_control_details(p_type, p_details);
     IF v_details IS NULL THEN
         PERFORM audit_store.record_denied('record_relay_control', 'invalid_input', NULL);
-        RETURN QUERY SELECT 'denied'::text, NULL::bigint, 'invalid_input'::text;
+        RETURN QUERY SELECT 'denied'::text, NULL::bigint, NULL::bigint, 'invalid_input'::text;
         RETURN;
     END IF;
-    v_seq := audit_store.append_control('relay_control', p_type, v_class, v_result, v_details);
-    RETURN QUERY SELECT 'recorded'::text, v_seq, NULL::text;
+    IF p_type = 'audit.integrity.source_mismatch_detected' THEN
+        SELECT e.* INTO v_existing FROM audit_store.events AS e
+        JOIN audit_store.event_bodies AS b ON b.seq = e.seq
+        WHERE e.event_type = p_type AND e.origin = 'relay_control'
+          AND b.envelope -> 'data' -> 'details' ->> 'event_id' = v_details ->> 'event_id'
+          AND b.envelope -> 'data' -> 'details' ->> 'mismatch_code'
+              = v_details ->> 'mismatch_code'
+        ORDER BY e.seq LIMIT 1;
+        IF v_existing.seq IS NOT NULL THEN
+            RETURN QUERY SELECT 'recorded'::text, v_existing.seq, v_existing.recovery_epoch,
+                                'duplicate'::text;
+            RETURN;
+        END IF;
+    END IF;
+    v_seq := audit_store.append_control('relay_control', p_type,
+        CASE p_type WHEN 'audit.delivery.replay_requested' THEN 'PRIVILEGED_OPERATION'
+                    WHEN 'audit.integrity.source_mismatch_detected' THEN 'SECURITY'
+                    ELSE 'SYSTEM_AUDIT' END,
+        CASE p_type WHEN 'audit.integrity.source_mismatch_detected' THEN 'failure'
+                    ELSE 'success' END,
+        v_details);
+    RETURN QUERY SELECT 'recorded'::text, v_seq, h.recovery_epoch, NULL::text;
 END
 $record_relay_control$;
 
@@ -1149,9 +1723,11 @@ $record_relay_control$;
 -- Two-phase disclosure (design §10.3)
 -- ---------------------------------------------------------------------------
 
--- Validates and normalizes a filter. NULL when invalid. verify/identity_chain
--- read the contiguous chain and accept only seq_after.
-CREATE FUNCTION audit_store.normalize_filter(p_filter JSONB, p_operation TEXT)
+-- Validates and normalizes a filter. NULL when invalid. verify and
+-- identity_chain read the contiguous chain (all origins) and accept only
+-- seq_after / seq_through. seq_through must not exceed the watermark.
+CREATE FUNCTION audit_store.normalize_filter(
+    p_filter JSONB, p_operation TEXT, p_watermark BIGINT)
 RETURNS JSONB LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $normalize_filter$
 DECLARE
@@ -1167,9 +1743,11 @@ BEGIN
     IF jsonb_typeof(f) <> 'object' THEN
         RETURN NULL;
     END IF;
-    v_allowed := CASE WHEN p_operation IN ('verify', 'identity_chain') THEN ARRAY['seq_after']
+    v_allowed := CASE WHEN p_operation IN ('verify', 'identity_chain')
+                      THEN ARRAY['seq_after', 'seq_through']
                       ELSE ARRAY['actor', 'event_ids', 'event_types', 'occurred_from',
-                                 'occurred_to', 'resource', 'seq_after', 'source'] END;
+                                 'occurred_to', 'resource', 'seq_after', 'seq_through',
+                                 'source'] END;
     IF EXISTS (SELECT 1 FROM jsonb_object_keys(f) AS k WHERE k <> ALL (v_allowed)) THEN
         RETURN NULL;
     END IF;
@@ -1183,8 +1761,7 @@ BEGIN
             RETURN NULL;
         END IF;
         IF EXISTS (SELECT 1 FROM jsonb_array_elements_text(f -> 'event_types') AS t
-                   WHERE octet_length(t) > 128
-                      OR t !~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$') THEN
+                   WHERE NOT audit_store.is_event_type(t)) THEN
             RETURN NULL;
         END IF;
         SELECT array_agg(DISTINCT t ORDER BY t) INTO v_types
@@ -1193,7 +1770,7 @@ BEGIN
     END IF;
     IF f ? 'source' THEN
         IF jsonb_typeof(f -> 'source') <> 'string'
-           OR NOT audit_store.is_identifier(f ->> 'source') THEN
+           OR NOT audit_store.is_source_urn(f ->> 'source', FALSE) THEN
             RETURN NULL;
         END IF;
         v_out := v_out || jsonb_build_object('source', f ->> 'source');
@@ -1206,8 +1783,8 @@ BEGIN
                    WHERE k NOT IN ('issuer', 'principal_id'))
            OR jsonb_typeof(f -> 'actor' -> 'issuer') IS DISTINCT FROM 'string'
            OR jsonb_typeof(f -> 'actor' -> 'principal_id') IS DISTINCT FROM 'string'
-           OR NOT audit_store.is_identifier(f -> 'actor' ->> 'issuer')
-           OR NOT audit_store.is_identifier(f -> 'actor' ->> 'principal_id') THEN
+           OR NOT audit_store.is_principal_part(f -> 'actor' ->> 'issuer')
+           OR NOT audit_store.is_principal_part(f -> 'actor' ->> 'principal_id') THEN
             RETURN NULL;
         END IF;
         v_out := v_out || jsonb_build_object('actor', jsonb_build_object(
@@ -1224,7 +1801,7 @@ BEGIN
               ('Document', 'Folder', 'AccessPolicy', 'AuditStore')
            OR (f -> 'resource' ? 'id'
                AND (jsonb_typeof(f -> 'resource' -> 'id') IS DISTINCT FROM 'string'
-                    OR NOT audit_store.is_identifier(f -> 'resource' ->> 'id'))) THEN
+                    OR NOT audit_store.is_resource_ref(f -> 'resource' ->> 'id'))) THEN
             RETURN NULL;
         END IF;
         v_out := v_out || jsonb_build_object('resource',
@@ -1268,9 +1845,42 @@ BEGIN
         END IF;
         v_out := v_out || jsonb_build_object('seq_after', audit_store.jint(f -> 'seq_after'));
     END IF;
+    IF f ? 'seq_through' THEN
+        IF coalesce(audit_store.jint(f -> 'seq_through') < 1, TRUE)
+           OR audit_store.jint(f -> 'seq_through') > p_watermark
+           OR audit_store.jint(f -> 'seq_through')
+              <= coalesce(audit_store.jint(v_out -> 'seq_after'), 0) THEN
+            RETURN NULL;
+        END IF;
+        v_out := v_out || jsonb_build_object('seq_through', audit_store.jint(f -> 'seq_through'));
+    END IF;
     RETURN v_out;
 END
 $normalize_filter$;
+
+-- Rebuilds the normalized filter from the chained intent details (the
+-- filter_* members), so read_page never trusts the access_intents copy.
+CREATE FUNCTION audit_store.filter_from_details(d JSONB)
+RETURNS JSONB LANGUAGE sql IMMUTABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $filter_from_details$
+    SELECT audit_store.opt('event_types', d -> 'filter_event_types')
+        || audit_store.opt('source', d -> 'filter_source')
+        || CASE WHEN d ? 'filter_actor_issuer' OR d ? 'filter_actor_principal_id'
+                THEN jsonb_build_object('actor', jsonb_build_object(
+                         'issuer', d -> 'filter_actor_issuer',
+                         'principal_id', d -> 'filter_actor_principal_id'))
+                ELSE '{}'::jsonb END
+        || CASE WHEN d ? 'filter_resource_type' OR d ? 'filter_resource_id'
+                THEN jsonb_build_object('resource',
+                         jsonb_build_object('type', d -> 'filter_resource_type')
+                         || audit_store.opt('id', d -> 'filter_resource_id'))
+                ELSE '{}'::jsonb END
+        || audit_store.opt('occurred_from', d -> 'filter_occurred_from')
+        || audit_store.opt('occurred_to', d -> 'filter_occurred_to')
+        || audit_store.opt('event_ids', d -> 'filter_event_ids')
+        || audit_store.opt('seq_after', d -> 'filter_seq_after')
+        || audit_store.opt('seq_through', d -> 'filter_seq_through')
+$filter_from_details$;
 
 CREATE FUNCTION audit_store.open_access(
     p_operation TEXT, p_filter JSONB, p_page_size INTEGER, p_max_pages INTEGER)
@@ -1309,13 +1919,18 @@ BEGIN
                             NULL::timestamptz, NULL::boolean, 'invalid_input'::text;
         RETURN;
     END IF;
+    -- After a recovery epoch, content disclosure stays closed until access
+    -- and retention were re-applied (design §11).
+    IF v_capability IN ('investigate', 'export') AND h.access_reapply_pending THEN
+        RAISE EXCEPTION 'access_reapply_pending' USING ERRCODE = '55000';
+    END IF;
     SELECT * INTO v_auth FROM audit_store.authorize(p_operation, v_role, v_capability);
     IF NOT v_auth.ok THEN
         RETURN QUERY SELECT 'denied'::text, NULL::text, NULL::bigint, NULL::bigint,
                             NULL::timestamptz, NULL::boolean, v_auth.denial;
         RETURN;
     END IF;
-    v_filter := audit_store.normalize_filter(p_filter, p_operation);
+    v_filter := audit_store.normalize_filter(p_filter, p_operation, h.last_seq);
     v_max_page_size := (CASE WHEN p_operation = 'investigate' THEN 100 ELSE 1000 END);
     IF v_filter IS NULL
        OR p_page_size IS NULL
@@ -1352,7 +1967,8 @@ BEGIN
         || audit_store.opt('filter_occurred_from', v_filter -> 'occurred_from')
         || audit_store.opt('filter_occurred_to', v_filter -> 'occurred_to')
         || audit_store.opt('filter_event_ids', v_filter -> 'event_ids')
-        || audit_store.opt('filter_seq_after', v_filter -> 'seq_after'));
+        || audit_store.opt('filter_seq_after', v_filter -> 'seq_after')
+        || audit_store.opt('filter_seq_through', v_filter -> 'seq_through'));
     INSERT INTO audit_store.access_intents (
         intent_seq, token_digest, session_role, issuer, principal_id, operation, filter,
         filter_digest, watermark, page_size, max_pages, include_control, expires_at)
@@ -1366,15 +1982,21 @@ END
 $open_access$;
 
 -- Resolves a token to its committed, intact, still-authorized intent or
--- raises (design §10.3). Never writes.
-CREATE FUNCTION audit_store.resolve_intent(p_token TEXT)
-RETURNS audit_store.access_intents LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+-- raises (design §10.3). Never writes. Every disclosure parameter is taken
+-- from the chained audit.access.intent_opened body and must equal the
+-- access_intents copy.
+CREATE FUNCTION audit_store.resolve_intent(
+    p_token TEXT,
+    OUT intent_seq BIGINT, OUT operation TEXT, OUT filter JSONB, OUT watermark BIGINT,
+    OUT page_size INTEGER, OUT max_pages INTEGER, OUT include_control BOOLEAN)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $resolve_intent$
 DECLARE
     ai audit_store.access_intents;
     e audit_store.events;
     v_body JSONB;
     d JSONB;
+    v_filter JSONB;
     v_actor record;
     v_role TEXT;
     v_capability TEXT;
@@ -1396,26 +2018,17 @@ BEGIN
     IF ai.expires_at <= clock_timestamp() THEN
         RAISE EXCEPTION 'token_expired' USING ERRCODE = '42501';
     END IF;
-    v_role := CASE WHEN ai.operation IN ('investigate', 'export') THEN 'audit_store_reader'
-                   ELSE 'audit_store_verifier' END;
-    v_capability := CASE WHEN ai.operation IN ('investigate', 'export') THEN ai.operation
-                         ELSE 'verify' END;
-    SELECT * INTO v_actor FROM audit_store.session_actor();
-    IF NOT v_actor.bound
-       OR v_actor.issuer <> ai.issuer OR v_actor.principal_id <> ai.principal_id
-       OR NOT pg_has_role(session_user, v_role, 'MEMBER')
-       OR NOT audit_store.has_grant(ai.issuer, ai.principal_id, v_capability) THEN
-        RAISE EXCEPTION 'access_revoked' USING ERRCODE = '42501';
-    END IF;
     -- The intent row must equal the intent event in the chain.
     SELECT * INTO e FROM audit_store.events AS x WHERE x.seq = ai.intent_seq;
     SELECT b.envelope INTO v_body FROM audit_store.event_bodies AS b WHERE b.seq = ai.intent_seq;
     d := v_body -> 'data' -> 'details';
+    v_filter := audit_store.filter_from_details(d);
     IF e.seq IS NULL OR v_body IS NULL
        OR e.origin <> 'store' OR e.event_type <> 'audit.access.intent_opened'
        OR audit_store.jsonb_digest(v_body) <> e.envelope_digest
        OR audit_store.chain_step(e.prev_chain, e.seq, e.event_id, e.envelope_digest) <> e.chain
-       OR audit_store.jsonb_digest(ai.filter) <> ai.filter_digest
+       OR v_filter IS DISTINCT FROM ai.filter
+       OR audit_store.jsonb_digest(v_filter) <> ai.filter_digest
        OR d ->> 'filter_digest' IS DISTINCT FROM encode(ai.filter_digest, 'hex')
        OR d ->> 'token_digest' IS DISTINCT FROM encode(ai.token_digest, 'hex')
        OR d ->> 'session_role' IS DISTINCT FROM ai.session_role
@@ -1425,15 +2038,57 @@ BEGIN
        OR audit_store.jint(d -> 'max_pages') IS DISTINCT FROM ai.max_pages::bigint
        OR d -> 'include_control' IS DISTINCT FROM to_jsonb(ai.include_control)
        OR d ->> 'expires_at' IS DISTINCT FROM audit_store.utc_text(ai.expires_at)
-       OR e.actor_issuer <> ai.issuer OR e.actor_principal_id <> ai.principal_id THEN
+       OR e.actor_issuer <> ai.issuer OR e.actor_principal_id <> ai.principal_id
+       OR audit_store.jint(d -> 'watermark') >= e.seq
+       OR audit_store.jint(d -> 'page_size') NOT BETWEEN 1 AND 1000
+       OR audit_store.jint(d -> 'max_pages') NOT BETWEEN 1 AND 100 THEN
         RAISE EXCEPTION 'intent_integrity_violation' USING ERRCODE = '42501';
     END IF;
-    RETURN ai;
+    intent_seq := e.seq;
+    operation := d ->> 'operation';
+    filter := v_filter;
+    watermark := audit_store.jint(d -> 'watermark');
+    page_size := audit_store.jint(d -> 'page_size')::integer;
+    max_pages := audit_store.jint(d -> 'max_pages')::integer;
+    include_control := (d -> 'include_control') = 'true'::jsonb;
+    v_role := CASE WHEN operation IN ('investigate', 'export') THEN 'audit_store_reader'
+                   ELSE 'audit_store_verifier' END;
+    v_capability := CASE WHEN operation IN ('investigate', 'export') THEN operation
+                         ELSE 'verify' END;
+    SELECT * INTO v_actor FROM audit_store.session_actor();
+    IF NOT v_actor.bound
+       OR v_actor.issuer <> ai.issuer OR v_actor.principal_id <> ai.principal_id
+       OR NOT pg_has_role(session_user, v_role, 'MEMBER')
+       OR NOT audit_store.has_grant(ai.issuer, ai.principal_id, v_capability) THEN
+        RAISE EXCEPTION 'access_revoked' USING ERRCODE = '42501';
+    END IF;
 END
 $resolve_intent$;
 
+-- Waits until all WAL inserted so far is flushed (design §10.3): X is taken
+-- once after the committed check, so the intent's commit record (inserted
+-- before its clog update) is at or below X. Bounded (~2 s); then raises the
+-- retryable intent_not_durable (SQLSTATE 40001) and discloses nothing.
+CREATE FUNCTION audit_store.await_durable()
+RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $await_durable$
+DECLARE
+    v_target pg_lsn := pg_current_wal_insert_lsn();
+    v_deadline TIMESTAMPTZ := clock_timestamp() + interval '2 seconds';
+BEGIN
+    LOOP
+        EXIT WHEN pg_current_wal_flush_lsn() >= v_target;
+        IF clock_timestamp() >= v_deadline THEN
+            RAISE EXCEPTION 'intent_not_durable' USING ERRCODE = '40001';
+        END IF;
+        PERFORM pg_sleep(0.01);
+    END LOOP;
+END
+$await_durable$;
+
 -- Returns at most page_size export lines of the bounded set
--- (filter ∩ seq <= W ∩ visibility, first max_pages * page_size rows by seq).
+-- (filter ∩ seq_after < seq <= min(seq_through, W) ∩ visibility, the first
+-- max_pages * page_size identity rows by seq, expired rows included).
 -- Read only; refusals are errors and are not recorded (they disclose nothing).
 CREATE FUNCTION audit_store.read_page(p_token TEXT, p_after_seq BIGINT)
 RETURNS TABLE (seq BIGINT, line TEXT)
@@ -1442,7 +2097,7 @@ SET search_path = pg_catalog, pg_temp AS $read_page$
 #variable_conflict use_column
 DECLARE
     h audit_store.publication_head;
-    ai audit_store.access_intents;
+    ai record;
     v_types TEXT[];
     v_source TEXT;
     v_actor_issuer TEXT;
@@ -1453,6 +2108,7 @@ DECLARE
     v_to TIMESTAMPTZ;
     v_ids UUID[];
     v_seq_after BIGINT;
+    v_through BIGINT;
     v_bodies BOOLEAN;
 BEGIN
     -- The current transaction must not have written anything, even inside a
@@ -1460,9 +2116,13 @@ BEGIN
     IF pg_current_xact_id_if_assigned() IS NOT NULL THEN
         RAISE EXCEPTION 'read_page_requires_clean_transaction' USING ERRCODE = '42501';
     END IF;
-    SELECT * INTO STRICT h FROM audit_store.publication_head AS p WHERE p.singleton;
+    h := audit_store.read_head();
     PERFORM audit_store.require_gate(h);
-    ai := audit_store.resolve_intent(p_token);
+    SELECT * INTO ai FROM audit_store.resolve_intent(p_token);
+    IF ai.operation IN ('investigate', 'export') AND h.access_reapply_pending THEN
+        RAISE EXCEPTION 'access_reapply_pending' USING ERRCODE = '55000';
+    END IF;
+    PERFORM audit_store.await_durable();
     IF ai.filter ? 'event_types' THEN
         v_types := ARRAY(SELECT jsonb_array_elements_text(ai.filter -> 'event_types'));
     END IF;
@@ -1476,12 +2136,14 @@ BEGIN
     IF ai.filter ? 'event_ids' THEN
         v_ids := ARRAY(SELECT x::uuid FROM jsonb_array_elements_text(ai.filter -> 'event_ids') AS x);
     END IF;
-    v_seq_after := audit_store.jint(ai.filter -> 'seq_after');
+    v_seq_after := coalesce(audit_store.jint(ai.filter -> 'seq_after'), 0);
+    v_through := least(coalesce(audit_store.jint(ai.filter -> 'seq_through'), ai.watermark),
+                       ai.watermark);
     v_bodies := ai.operation <> 'identity_chain';
     RETURN QUERY
     WITH bound AS (
         SELECT e.seq FROM audit_store.events AS e
-        WHERE e.seq <= ai.watermark
+        WHERE e.seq > v_seq_after AND e.seq <= v_through
           AND (ai.include_control OR e.origin = 'relay')
           AND (v_types IS NULL OR e.event_type = ANY (v_types))
           AND (v_source IS NULL OR e.source = v_source)
@@ -1492,7 +2154,6 @@ BEGIN
           AND (v_from IS NULL OR e.occurred_at >= v_from)
           AND (v_to IS NULL OR e.occurred_at < v_to)
           AND (v_ids IS NULL OR e.event_id = ANY (v_ids))
-          AND (v_seq_after IS NULL OR e.seq > v_seq_after)
         ORDER BY e.seq
         LIMIT ai.page_size::bigint * ai.max_pages::bigint
     )
@@ -1560,14 +2221,21 @@ $close_access$;
 -- Integrity (design §8)
 -- ---------------------------------------------------------------------------
 
--- Scans seq p_from..p_to in one snapshot (STABLE) and counts violations by
--- code. p_head_check compares the head row when p_to is the head.
+-- Scans seq p_from..min(p_to, W) in ONE snapshot (STABLE: every query here
+-- uses the calling statement's snapshot), where W is the head as seen by that
+-- snapshot. Publication is in commit order, so the set seq <= W is stable.
+-- p_head_check compares the head row when the range ends at W. p_to NULL
+-- means W; for recovery scans the caller passes max(seq).
 CREATE FUNCTION audit_store.integrity_scan(p_from BIGINT, p_to BIGINT, p_head_check BOOLEAN)
-RETURNS TABLE (checked BIGINT, head_epoch BIGINT, head_chain BYTEA, violations JSONB)
+RETURNS TABLE (from_seq BIGINT, to_seq BIGINT, watermark BIGINT, checked BIGINT,
+               head_epoch BIGINT, head_chain BYTEA, violations JSONB)
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $integrity_scan$
 #variable_conflict use_column
 DECLARE
+    h audit_store.publication_head;
+    v_from BIGINT := coalesce(p_from, 1);
+    v_to BIGINT;
     v_base_chain BYTEA;
     v_base_epoch BIGINT;
     v_checked BIGINT;
@@ -1580,17 +2248,18 @@ DECLARE
     v_retention_mismatch BIGINT;
     v_purge_mismatch BIGINT;
     v_head_mismatch BIGINT := 0;
-    h audit_store.publication_head;
 BEGIN
-    IF p_from < 1 OR p_to < p_from - 1 THEN
+    SELECT * INTO STRICT h FROM audit_store.publication_head AS p WHERE p.singleton;
+    v_to := coalesce(p_to, h.last_seq);
+    IF v_from < 1 OR v_to < v_from - 1 THEN
         RAISE EXCEPTION 'integrity_scan: invalid range' USING ERRCODE = '22023';
     END IF;
-    IF p_from = 1 THEN
+    IF v_from = 1 THEN
         v_base_chain := audit_store.genesis();
         v_base_epoch := 1;
     ELSE
         SELECT e.chain, e.recovery_epoch INTO v_base_chain, v_base_epoch
-        FROM audit_store.events AS e WHERE e.seq = p_from - 1;
+        FROM audit_store.events AS e WHERE e.seq = v_from - 1;
     END IF;
 
     WITH r AS (
@@ -1600,7 +2269,7 @@ BEGIN
                lag(e.recovery_epoch) OVER w AS lag_epoch
         FROM audit_store.events AS e
         LEFT JOIN audit_store.event_bodies AS b ON b.seq = e.seq
-        WHERE e.seq BETWEEN p_from AND p_to
+        WHERE e.seq BETWEEN v_from AND v_to
         WINDOW w AS (ORDER BY e.seq)
     ),
     c AS (
@@ -1608,7 +2277,7 @@ BEGIN
             r.seq,
             r.chain,
             r.recovery_epoch,
-            r.seq <> coalesce(r.lag_seq + 1, p_from) AS seq_gap,
+            r.seq <> coalesce(r.lag_seq + 1, v_from) AS seq_gap,
             r.prev_chain IS DISTINCT FROM coalesce(r.lag_chain, v_base_chain)
                 AS prev_chain_mismatch,
             r.chain IS DISTINCT FROM audit_store.chain_step(
@@ -1662,14 +2331,14 @@ BEGIN
     FROM c;
 
     -- Rows missing after the last present row (a truncated range end).
-    v_missing := CASE WHEN p_to < p_from THEN 0
-                      WHEN v_max IS NULL THEN p_to - p_from + 1
-                      ELSE p_to - v_max END;
+    v_missing := CASE WHEN v_to < v_from THEN 0
+                      WHEN v_max IS NULL THEN v_to - v_from + 1
+                      ELSE v_to - v_max END;
     v := jsonb_set(v, '{seq_gap}', to_jsonb(audit_store.jint(v -> 'seq_gap') + v_missing));
 
-    IF p_to >= p_from THEN
+    IF v_to >= v_from THEN
         SELECT e.chain, e.recovery_epoch INTO v_head_chain, v_head_epoch
-        FROM audit_store.events AS e WHERE e.seq = p_to;
+        FROM audit_store.events AS e WHERE e.seq = v_to;
     ELSE
         v_head_chain := v_base_chain;
         v_head_epoch := v_base_epoch;
@@ -1681,7 +2350,7 @@ BEGIN
     FROM audit_store.events AS t
     LEFT JOIN audit_store.events AS ev ON ev.seq = t.expired_by_seq
     LEFT JOIN audit_store.event_bodies AS evb ON evb.seq = t.expired_by_seq
-    WHERE t.seq BETWEEN p_from AND p_to
+    WHERE t.seq BETWEEN v_from AND v_to
       AND t.expired_by_seq IS NOT NULL
       AND (ev.seq IS NULL OR evb.seq IS NULL OR ev.origin <> 'store' OR ev.seq <= t.seq
            OR ev.event_type NOT IN ('audit.retention.expired', 'audit.body.purged'));
@@ -1689,10 +2358,10 @@ BEGIN
     -- Evidence events referenced from the range or located in it.
     WITH evidence AS (
         SELECT DISTINCT t.expired_by_seq AS seq FROM audit_store.events AS t
-        WHERE t.seq BETWEEN p_from AND p_to AND t.expired_by_seq IS NOT NULL
+        WHERE t.seq BETWEEN v_from AND v_to AND t.expired_by_seq IS NOT NULL
         UNION
         SELECT e.seq FROM audit_store.events AS e
-        WHERE e.seq BETWEEN p_from AND p_to AND e.origin = 'store'
+        WHERE e.seq BETWEEN v_from AND v_to AND e.origin = 'store'
           AND e.event_type IN ('audit.retention.expired', 'audit.body.purged')
     ),
     ev AS (
@@ -1723,8 +2392,9 @@ BEGIN
     sets AS (
         SELECT ev.seq, ev.event_type, ev.d,
                count(m.seq) AS n,
-               sha256(coalesce(string_agg(int8send(m.seq), ''::bytea ORDER BY m.seq),
-                               ''::bytea)) AS set_digest,
+               audit_store.expired_set_digest(
+                   coalesce(array_agg(m.seq) FILTER (WHERE m.seq IS NOT NULL),
+                            ARRAY[]::bigint[])) AS set_digest,
                min(m.seq) AS first_seq,
                max(m.seq) AS last_seq,
                min(m.event_id::text) AS only_event_id,
@@ -1737,11 +2407,9 @@ BEGIN
         count(*) FILTER (WHERE s.event_type = 'audit.retention.expired' AND NOT (
             audit_store.jint(s.d -> 'count') IS NOT DISTINCT FROM s.n
             AND s.d ->> 'expired_set_digest' IS NOT DISTINCT FROM encode(s.set_digest, 'hex')
-            AND (s.n = 0 OR (
-                s.d ->> 'outcome' = 'expired'
-                AND s.rows_match
-                AND audit_store.jint(s.d -> 'first_seq') IS NOT DISTINCT FROM s.first_seq
-                AND audit_store.jint(s.d -> 'last_seq') IS NOT DISTINCT FROM s.last_seq)))),
+            AND audit_store.jint(s.d -> 'first_seq') IS NOT DISTINCT FROM s.first_seq
+            AND audit_store.jint(s.d -> 'last_seq') IS NOT DISTINCT FROM s.last_seq
+            AND s.rows_match)),
         count(*) FILTER (WHERE s.event_type = 'audit.body.purged' AND NOT (
             s.n = 1
             AND audit_store.jint(s.d -> 'target_seq') IS NOT DISTINCT FROM s.first_seq
@@ -1749,11 +2417,9 @@ BEGIN
     INTO v_retention_mismatch, v_purge_mismatch
     FROM sets AS s;
 
-    IF p_head_check THEN
-        SELECT * INTO STRICT h FROM audit_store.publication_head AS p WHERE p.singleton;
-        IF h.last_seq <> p_to
-           OR h.last_chain IS DISTINCT FROM v_head_chain
-           OR EXISTS (SELECT 1 FROM audit_store.events AS e WHERE e.seq > p_to) THEN
+    IF p_head_check AND v_to = h.last_seq THEN
+        IF h.last_chain IS DISTINCT FROM v_head_chain
+           OR EXISTS (SELECT 1 FROM audit_store.events AS e WHERE e.seq > v_to) THEN
             v_head_mismatch := 1;
         END IF;
     END IF;
@@ -1763,7 +2429,8 @@ BEGIN
         'retention_evidence_mismatch', v_retention_mismatch,
         'purge_evidence_mismatch', v_purge_mismatch,
         'head_mismatch', v_head_mismatch);
-    RETURN QUERY SELECT v_checked, coalesce(v_head_epoch, v_base_epoch, 1::bigint),
+    RETURN QUERY SELECT v_from, v_to, h.last_seq, v_checked,
+                        coalesce(v_head_epoch, v_base_epoch, 1::bigint),
                         coalesce(v_head_chain, v_base_chain, audit_store.genesis()), v;
 END
 $integrity_scan$;
@@ -1776,17 +2443,23 @@ SET search_path = pg_catalog, pg_temp AS $violations_total$
     FROM jsonb_each(p_violations) AS v
 $violations_total$;
 
--- Records audit.integrity.verified for a scan result.
+-- Records audit.integrity.verified for a scan result. Takes the head lock
+-- only now (verify/checkpoint scan without it) and re-checks the gate under
+-- the lock.
 CREATE FUNCTION audit_store.record_verified(
     p_trigger TEXT, p_from BIGINT, p_to BIGINT, p_watermark BIGINT, p_checked BIGINT,
     p_head_epoch BIGINT, p_head_chain BYTEA, p_violations JSONB)
 RETURNS BIGINT LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $record_verified$
 DECLARE
+    h audit_store.publication_head;
     v_total BIGINT := audit_store.violations_total(p_violations);
     v_details JSONB;
     k TEXT;
 BEGIN
+    h := audit_store.lock_head();
+    PERFORM audit_store.require_gate(h);
+    -- CATALOG-AMENDMENT: add 'head_seq' (= p_to) when the catalog has it.
     v_details := jsonb_build_object(
         'trigger', p_trigger,
         'from_seq', p_from,
@@ -1806,11 +2479,14 @@ BEGIN
 END
 $record_verified$;
 
--- In-database verification of p_from..p_to (bounded by the head W at start),
--- recorded as one audit.integrity.verified after W (no recursion).
+-- In-database verification of p_from..p_to (bounded by the head W of the
+-- scan snapshot and by a maximum span), recorded as one
+-- audit.integrity.verified after W (no recursion). The scan runs without the
+-- head lock; only the append takes it, so ingest is not blocked by the scan.
 CREATE FUNCTION audit_store.verify(p_from BIGINT, p_to BIGINT)
 RETURNS TABLE (status TEXT, seq BIGINT, outcome TEXT, checked BIGINT, violations JSONB,
-               to_seq BIGINT, head_epoch BIGINT, head_chain TEXT, code TEXT)
+               from_seq BIGINT, to_seq BIGINT, watermark BIGINT, head_epoch BIGINT,
+               head_chain TEXT, code TEXT)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 SET lock_timeout = '5s' AS $verify$
@@ -1818,43 +2494,47 @@ SET lock_timeout = '5s' AS $verify$
 DECLARE
     h audit_store.publication_head;
     v_auth record;
-    v_from BIGINT;
-    v_to BIGINT;
     s record;
     v_seq BIGINT;
 BEGIN
-    h := audit_store.lock_head();
+    PERFORM pg_catalog.set_config('synchronous_commit', 'on', TRUE);
+    h := audit_store.read_head();
     PERFORM audit_store.require_gate(h);
     SELECT * INTO v_auth FROM audit_store.authorize('integrity_verify', 'audit_store_verifier',
                                                     'verify');
     IF NOT v_auth.ok THEN
         RETURN QUERY SELECT 'denied'::text, NULL::bigint, NULL::text, NULL::bigint, NULL::jsonb,
-                            NULL::bigint, NULL::bigint, NULL::text, v_auth.denial;
+                            NULL::bigint, NULL::bigint, NULL::bigint, NULL::bigint, NULL::text,
+                            v_auth.denial;
         RETURN;
     END IF;
-    v_from := coalesce(p_from, 1);
-    v_to := least(coalesce(p_to, h.last_seq), h.last_seq);
-    IF v_from < 1 OR v_to < v_from - 1 THEN
+    IF (p_from IS NOT NULL AND p_from < 1)
+       OR (p_to IS NOT NULL AND p_to < coalesce(p_from, 1) - 1)
+       OR coalesce(p_to, h.last_seq) - coalesce(p_from, 1) + 1 > 10000000 THEN
         PERFORM audit_store.record_denied('integrity_verify', 'invalid_input', 'verify');
         RETURN QUERY SELECT 'denied'::text, NULL::bigint, NULL::text, NULL::bigint, NULL::jsonb,
-                            NULL::bigint, NULL::bigint, NULL::text, 'invalid_input'::text;
+                            NULL::bigint, NULL::bigint, NULL::bigint, NULL::bigint, NULL::text,
+                            'invalid_input'::text;
         RETURN;
     END IF;
-    SELECT * INTO s FROM audit_store.integrity_scan(v_from, v_to, v_to = h.last_seq);
-    v_seq := audit_store.record_verified('verify', v_from, v_to, h.last_seq, s.checked,
+    -- One statement, one snapshot: W, the range and the head check agree.
+    SELECT * INTO s FROM audit_store.integrity_scan(coalesce(p_from, 1), p_to, TRUE);
+    v_seq := audit_store.record_verified('verify', s.from_seq, s.to_seq, s.watermark, s.checked,
                                          s.head_epoch, s.head_chain, s.violations);
     RETURN QUERY SELECT 'verified'::text, v_seq,
                         CASE WHEN audit_store.violations_total(s.violations) = 0 THEN 'ok'
                              ELSE 'violations' END,
-                        s.checked, s.violations, v_to, s.head_epoch, encode(s.head_chain, 'hex'),
-                        NULL::text;
+                        s.checked, s.violations, s.from_seq, s.to_seq, s.watermark,
+                        s.head_epoch, encode(s.head_chain, 'hex'), NULL::text;
 END
 $verify$;
 
--- Verifies 1..W and returns (epoch, W, chain) for the out-of-band checkpoint
--- log; recorded as audit.integrity.verified with trigger=checkpoint.
+-- Verifies 1..W without the head lock and records audit.integrity.verified
+-- (trigger 'checkpoint'). Returns the chain position of that record (its
+-- epoch, seq and chain) for the out-of-band checkpoint log: after a planned
+-- move with nothing written later, the restored head equals the checkpoint.
 CREATE FUNCTION audit_store.checkpoint()
-RETURNS TABLE (status TEXT, epoch BIGINT, seq BIGINT, chain TEXT, verified_seq BIGINT,
+RETURNS TABLE (status TEXT, epoch BIGINT, seq BIGINT, chain TEXT, verified_through BIGINT,
                outcome TEXT, code TEXT)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
@@ -1866,8 +2546,10 @@ DECLARE
     s record;
     v_seq BIGINT;
     v_ok BOOLEAN;
+    r audit_store.events;
 BEGIN
-    h := audit_store.lock_head();
+    PERFORM pg_catalog.set_config('synchronous_commit', 'on', TRUE);
+    h := audit_store.read_head();
     PERFORM audit_store.require_gate(h);
     SELECT * INTO v_auth FROM audit_store.authorize('checkpoint', 'audit_store_verifier',
                                                     'verify');
@@ -1876,17 +2558,19 @@ BEGIN
                             NULL::bigint, NULL::text, v_auth.denial;
         RETURN;
     END IF;
-    SELECT * INTO s FROM audit_store.integrity_scan(1, h.last_seq, TRUE);
+    SELECT * INTO s FROM audit_store.integrity_scan(1, NULL, TRUE);
     v_ok := audit_store.violations_total(s.violations) = 0;
-    v_seq := audit_store.record_verified('checkpoint', 1, h.last_seq, h.last_seq, s.checked,
-                                         s.head_epoch, s.head_chain, s.violations);
+    v_seq := audit_store.record_verified('checkpoint', s.from_seq, s.to_seq, s.watermark,
+                                         s.checked, s.head_epoch, s.head_chain, s.violations);
+    SELECT * INTO STRICT r FROM audit_store.events AS x WHERE x.seq = v_seq;
     RETURN QUERY SELECT CASE WHEN v_ok THEN 'checkpoint' ELSE 'violations' END::text,
-                        s.head_epoch, h.last_seq, encode(s.head_chain, 'hex'), v_seq,
+                        r.recovery_epoch, r.seq, encode(r.chain, 'hex'), s.to_seq,
                         CASE WHEN v_ok THEN 'ok' ELSE 'violations' END::text, NULL::text;
 END
 $checkpoint$;
 
--- Read-only verification that also works in recovery mode. Records nothing.
+-- Read-only verification for recovery mode only (design §11). Records
+-- nothing; outside recovery mode it raises not_in_recovery.
 CREATE FUNCTION audit_store.verify_recovery()
 RETURNS TABLE (outcome TEXT, checked BIGINT, head_seq BIGINT, head_epoch BIGINT,
                head_chain TEXT, recovery_mode BOOLEAN, violations JSONB)
@@ -1894,28 +2578,37 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $verify_recovery$
 #variable_conflict use_column
 DECLARE
-    h audit_store.publication_head;
+    h audit_store.publication_head := audit_store.read_head();
     v_max BIGINT;
     s record;
 BEGIN
-    SELECT * INTO STRICT h FROM audit_store.publication_head AS p WHERE p.singleton;
+    IF NOT audit_store.in_recovery(h) THEN
+        RAISE EXCEPTION 'not_in_recovery' USING ERRCODE = '55000';
+    END IF;
     SELECT coalesce(max(e.seq), 0) INTO v_max FROM audit_store.events AS e;
     SELECT * INTO s FROM audit_store.integrity_scan(1, v_max, TRUE);
+    IF v_max <> h.last_seq THEN
+        -- The restored head row disagrees with the restored events.
+        s.violations := jsonb_set(s.violations, '{head_mismatch}', '1'::jsonb);
+    END IF;
     RETURN QUERY SELECT CASE WHEN audit_store.violations_total(s.violations) = 0 THEN 'ok'
                              ELSE 'violations' END::text,
-                        s.checked, v_max, s.head_epoch, encode(s.head_chain, 'hex'),
-                        audit_store.gate_code(h) IS NOT DISTINCT FROM 'store_recovery_required',
+                        s.checked, v_max, s.head_epoch, encode(s.head_chain, 'hex'), TRUE,
                         s.violations;
 END
 $verify_recovery$;
 
--- Content-free identity chain page; works in recovery mode, records nothing.
+-- Content-free identity chain page for recovery mode only; no intent, no
+-- body, records nothing. Outside recovery mode it raises not_in_recovery.
 CREATE FUNCTION audit_store.identity_chain_recovery_page(p_after_seq BIGINT, p_limit INTEGER)
 RETURNS TABLE (seq BIGINT, line TEXT)
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $identity_chain_recovery_page$
 #variable_conflict use_column
 BEGIN
+    IF NOT audit_store.in_recovery(audit_store.read_head()) THEN
+        RAISE EXCEPTION 'not_in_recovery' USING ERRCODE = '55000';
+    END IF;
     IF p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 1000 THEN
         RAISE EXCEPTION 'identity_chain_recovery_page: limit must be 1..1000'
             USING ERRCODE = '22023';
@@ -1956,7 +2649,8 @@ BEGIN
         RETURN QUERY SELECT 'denied'::text, NULL::bigint, v_auth.denial;
         RETURN;
     END IF;
-    IF NOT audit_store.is_identifier(p_issuer) OR NOT audit_store.is_identifier(p_principal_id)
+    IF NOT audit_store.is_principal_part(p_issuer)
+       OR NOT audit_store.is_principal_part(p_principal_id)
        OR p_capability IS NULL
        OR p_capability NOT IN ('investigate', 'export', 'verify', 'administer', 'maintain')
        OR p_action IS NULL OR p_action NOT IN ('grant', 'revoke') THEN
@@ -2014,6 +2708,7 @@ SET search_path = pg_catalog, pg_temp AS $bindable_role$
     SELECT coalesce((
         SELECT r.rolcanlogin AND NOT r.rolsuper
                AND NOT pg_has_role(r.oid, 'audit_store_owner', 'MEMBER')
+               AND audit_store.is_db_role(r.rolname::text)
         FROM pg_roles AS r WHERE r.rolname = p_db_role), FALSE)
 $bindable_role$;
 
@@ -2030,10 +2725,11 @@ DECLARE
 BEGIN
     h := audit_store.lock_head();
     PERFORM audit_store.require_owner_member();
-    PERFORM audit_store.require_gate(h);
+    PERFORM audit_store.require_not_recovery(h);
     IF NOT audit_store.bindable_role(p_db_role)
-       OR NOT audit_store.is_identifier(p_issuer)
-       OR NOT audit_store.is_identifier(p_principal_id) THEN
+       OR NOT audit_store.is_principal_part(p_issuer)
+       OR NOT audit_store.is_principal_part(p_principal_id)
+       OR p_issuer = 'db_role' THEN
         RETURN QUERY SELECT 'refused'::text, NULL::bigint, 'invalid_input'::text;
         RETURN;
     END IF;
@@ -2067,7 +2763,7 @@ DECLARE
 BEGIN
     h := audit_store.lock_head();
     PERFORM audit_store.require_owner_member();
-    PERFORM audit_store.require_gate(h);
+    PERFORM audit_store.require_not_recovery(h);
     SELECT * INTO b FROM audit_store.principal_bindings AS x
     WHERE x.db_role = p_db_role AND x.unbound_seq IS NULL;
     IF NOT FOUND THEN
@@ -2100,15 +2796,16 @@ DECLARE
 BEGIN
     h := audit_store.lock_head();
     PERFORM audit_store.require_owner_member();
-    PERFORM audit_store.require_gate(h);
+    PERFORM audit_store.require_not_recovery(h);
     IF EXISTS (SELECT 1 FROM audit_store.access_grants AS g
                WHERE g.capability = 'administer' AND g.revoked_seq IS NULL) THEN
         RETURN QUERY SELECT 'refused'::text, NULL::bigint, 'administrator_exists'::text;
         RETURN;
     END IF;
     IF NOT audit_store.bindable_role(p_db_role)
-       OR NOT audit_store.is_identifier(p_issuer)
-       OR NOT audit_store.is_identifier(p_principal_id) THEN
+       OR NOT audit_store.is_principal_part(p_issuer)
+       OR NOT audit_store.is_principal_part(p_principal_id)
+       OR p_issuer = 'db_role' THEN
         RETURN QUERY SELECT 'refused'::text, NULL::bigint, 'invalid_input'::text;
         RETURN;
     END IF;
@@ -2132,12 +2829,180 @@ BEGIN
 END
 $bootstrap_administrator$;
 
+-- Registers a source-service principal for one source (owner members only).
+-- Recorded as audit.access_policy.changed {change: granted} without a
+-- capability: the only grant that carries none.
+CREATE FUNCTION audit_store.register_source_service(
+    p_issuer TEXT, p_principal_id TEXT, p_source TEXT)
+RETURNS TABLE (status TEXT, seq BIGINT, code TEXT)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+SET lock_timeout = '5s'
+SET audit_store.write_context = 'definer' AS $register_source_service$
+#variable_conflict use_column
+DECLARE
+    h audit_store.publication_head;
+    v_seq BIGINT;
+BEGIN
+    h := audit_store.lock_head();
+    PERFORM audit_store.require_owner_member();
+    PERFORM audit_store.require_not_recovery(h);
+    IF NOT audit_store.is_principal_part(p_issuer)
+       OR NOT audit_store.is_principal_part(p_principal_id)
+       OR p_issuer = 'db_role'
+       OR NOT audit_store.is_source_urn(p_source, TRUE) THEN
+        RETURN QUERY SELECT 'refused'::text, NULL::bigint, 'invalid_input'::text;
+        RETURN;
+    END IF;
+    IF EXISTS (SELECT 1 FROM audit_store.source_services AS s
+               WHERE s.issuer = p_issuer AND s.principal_id = p_principal_id
+                 AND s.source = p_source) THEN
+        RETURN QUERY SELECT 'unchanged'::text, NULL::bigint, NULL::text;
+        RETURN;
+    END IF;
+    v_seq := audit_store.append_control('store', 'audit.access_policy.changed', 'ACCESS_POLICY',
+        'success', jsonb_build_object('change', 'granted', 'target_issuer', p_issuer,
+                                      'target_principal_id', p_principal_id));
+    INSERT INTO audit_store.source_services (issuer, principal_id, source, registered_seq)
+    VALUES (p_issuer, p_principal_id, p_source, v_seq);
+    RETURN QUERY SELECT 'registered'::text, v_seq, NULL::text;
+END
+$register_source_service$;
+
+-- Clears access_reapply_pending once both duties are recorded and every
+-- active retention policy was re-run after the epoch (design §11).
+CREATE FUNCTION audit_store.retention_reapply_satisfied(h audit_store.publication_head)
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $retention_reapply_satisfied$
+    SELECT NOT EXISTS (
+        SELECT 1
+        FROM (SELECT DISTINCT ON (p.policy_id) p.policy_id, p.revision, p.retain_days
+              FROM audit_store.retention_policies AS p
+              ORDER BY p.policy_id, p.revision DESC) AS latest
+        WHERE latest.retain_days IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM audit_store.events AS e
+              JOIN audit_store.event_bodies AS b ON b.seq = e.seq
+              WHERE e.origin = 'store' AND e.seq > coalesce(h.reapply_from_seq, 0)
+                AND e.event_type IN ('audit.retention.expired', 'audit.retention.expire_refused')
+                AND b.envelope -> 'data' -> 'details' ->> 'policy_id' = latest.policy_id
+                AND CASE e.event_type
+                        WHEN 'audit.retention.expired'
+                        THEN audit_store.jint(b.envelope -> 'data' -> 'details' -> 'revision')
+                             = latest.revision
+                        ELSE b.envelope -> 'data' -> 'details' ->> 'refusal' = 'held'
+                             AND audit_store.jint(
+                                 b.envelope -> 'data' -> 'details' -> 'current_revision')
+                                 = latest.revision
+                    END))
+$retention_reapply_satisfied$;
+
+CREATE FUNCTION audit_store.settle_reapply()
+RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+SET audit_store.write_context = 'definer' AS $settle_reapply$
+DECLARE
+    h audit_store.publication_head := audit_store.lock_head();
+BEGIN
+    IF h.access_reapply_pending
+       AND h.access_reapplied_seq IS NOT NULL AND h.retention_reapplied_seq IS NOT NULL
+       AND audit_store.retention_reapply_satisfied(h) THEN
+        UPDATE audit_store.publication_head AS x
+        SET access_reapply_pending = FALSE, updated_at = clock_timestamp()
+        WHERE x.singleton;
+    END IF;
+END
+$settle_reapply$;
+
+-- An administrator records that the out-of-band access state (revocations,
+-- unbindings, retention revisions) was re-applied after a recovery epoch
+-- (audit.access_policy.changed {change: reapplied, capability: administer}).
+CREATE FUNCTION audit_store.record_access_reapplied()
+RETURNS TABLE (status TEXT, seq BIGINT, code TEXT)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+SET lock_timeout = '5s'
+SET audit_store.write_context = 'definer' AS $record_access_reapplied$
+#variable_conflict use_column
+DECLARE
+    h audit_store.publication_head;
+    v_auth record;
+    v_seq BIGINT;
+BEGIN
+    h := audit_store.lock_head();
+    PERFORM audit_store.require_gate(h);
+    SELECT * INTO v_auth FROM audit_store.authorize('change_access', 'audit_store_admin',
+                                                    'administer');
+    IF NOT v_auth.ok THEN
+        RETURN QUERY SELECT 'denied'::text, NULL::bigint, v_auth.denial;
+        RETURN;
+    END IF;
+    IF NOT h.access_reapply_pending THEN
+        RETURN QUERY SELECT 'refused'::text, NULL::bigint, 'not_pending'::text;
+        RETURN;
+    END IF;
+    v_seq := audit_store.append_control('store', 'audit.access_policy.changed', 'ACCESS_POLICY',
+        'success', jsonb_build_object('change', 'reapplied', 'target_issuer', v_auth.issuer,
+                                      'target_principal_id', v_auth.principal_id,
+                                      'capability', 'administer'));
+    UPDATE audit_store.publication_head AS x
+    SET access_reapplied_seq = v_seq, updated_at = clock_timestamp() WHERE x.singleton;
+    PERFORM audit_store.settle_reapply();
+    RETURN QUERY SELECT 'recorded'::text, v_seq, NULL::text;
+END
+$record_access_reapplied$;
+
+-- A maintainer confirms the retention re-application after a recovery epoch
+-- (audit.access_policy.changed {change: reapplied, capability: maintain}).
+-- Refused unless every active policy (latest revision with retain_days) was
+-- re-run by expire after the epoch; with no active policy this is the
+-- recorded "no active policies" check.
+CREATE FUNCTION audit_store.confirm_retention_reapplied()
+RETURNS TABLE (status TEXT, seq BIGINT, code TEXT)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+SET lock_timeout = '5s'
+SET audit_store.write_context = 'definer' AS $confirm_retention_reapplied$
+#variable_conflict use_column
+DECLARE
+    h audit_store.publication_head;
+    v_auth record;
+    v_seq BIGINT;
+BEGIN
+    h := audit_store.lock_head();
+    PERFORM audit_store.require_gate(h);
+    SELECT * INTO v_auth FROM audit_store.authorize('expire', 'audit_store_maintainer',
+                                                    'maintain');
+    IF NOT v_auth.ok THEN
+        RETURN QUERY SELECT 'denied'::text, NULL::bigint, v_auth.denial;
+        RETURN;
+    END IF;
+    IF NOT h.access_reapply_pending THEN
+        RETURN QUERY SELECT 'refused'::text, NULL::bigint, 'not_pending'::text;
+        RETURN;
+    END IF;
+    IF NOT audit_store.retention_reapply_satisfied(h) THEN
+        RETURN QUERY SELECT 'refused'::text, NULL::bigint, 'retention_not_reapplied'::text;
+        RETURN;
+    END IF;
+    v_seq := audit_store.append_control('store', 'audit.access_policy.changed', 'ACCESS_POLICY',
+        'success', jsonb_build_object('change', 'reapplied', 'target_issuer', v_auth.issuer,
+                                      'target_principal_id', v_auth.principal_id,
+                                      'capability', 'maintain'));
+    UPDATE audit_store.publication_head AS x
+    SET retention_reapplied_seq = v_seq, updated_at = clock_timestamp() WHERE x.singleton;
+    PERFORM audit_store.settle_reapply();
+    RETURN QUERY SELECT 'recorded'::text, v_seq, NULL::text;
+END
+$confirm_retention_reapplied$;
+
 -- ---------------------------------------------------------------------------
 -- Retention (design §9)
 -- ---------------------------------------------------------------------------
 
 -- Validates and normalizes a selector; NULL when invalid. Lists are sorted
--- and de-duplicated; at least one dimension is required.
+-- and de-duplicated (1..16 items, the identifier_list bound); at least one
+-- dimension is required.
 CREATE FUNCTION audit_store.normalize_selector(p_selector JSONB)
 RETURNS JSONB LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $normalize_selector$
@@ -2158,21 +3023,21 @@ BEGIN
         IF jsonb_typeof(p_selector -> k) <> 'array' THEN
             RETURN NULL;
         END IF;
-        IF jsonb_array_length(p_selector -> k) NOT BETWEEN 1 AND 32
+        IF jsonb_array_length(p_selector -> k) NOT BETWEEN 1 AND 16
            OR EXISTS (SELECT 1 FROM jsonb_array_elements(p_selector -> k) AS t
                       WHERE jsonb_typeof(t) <> 'string') THEN
             RETURN NULL;
         END IF;
+        -- Closed grammars: relay event types (never audit.*), the eight
+        -- classes, and registered relay sources (never the control sources).
         IF EXISTS (SELECT 1 FROM jsonb_array_elements_text(p_selector -> k) AS t
-                   WHERE NOT audit_store.is_identifier(t)
-                      OR (k = 'event_types' AND t LIKE 'audit.%')
+                   WHERE (k = 'event_types'
+                          AND (NOT audit_store.is_event_type(t) OR t LIKE 'audit.%'))
                       OR (k = 'event_classes' AND t NOT IN (
                           'SECURITY', 'PRIVILEGED_OPERATION', 'CONTENT_LIFECYCLE',
                           'ACCESS_POLICY', 'DATA_ACCESS', 'SEARCH_ACCESS',
                           'CONFIGURATION', 'SYSTEM_AUDIT'))
-                      OR (k = 'sources' AND t IN (
-                          'urn:knowledge-platform:audit-store',
-                          'urn:knowledge-platform:audit-relay'))) THEN
+                      OR (k = 'sources' AND NOT audit_store.is_source_urn(t, TRUE))) THEN
             RETURN NULL;
         END IF;
         SELECT array_agg(DISTINCT t ORDER BY t) INTO v_values
@@ -2233,6 +3098,11 @@ BEGIN
 END
 $set_retention_policy$;
 
+-- expire(policy, expected revision, cutoff, limit<=1000) (design §9). A
+-- refusal (stale_revision / not_expirable / held) deletes nothing and is
+-- recorded as audit.retention.expire_refused. Otherwise
+-- audit.retention.expired is recorded first; its seq marks the rows, then
+-- the bodies are deleted.
 CREATE FUNCTION audit_store.expire(
     p_policy_id TEXT, p_expected_revision INTEGER, p_cutoff TIMESTAMPTZ, p_limit INTEGER)
 RETURNS TABLE (status TEXT, seq BIGINT, expired_count BIGINT, effective_cutoff TIMESTAMPTZ,
@@ -2247,11 +3117,9 @@ DECLARE
     h audit_store.publication_head;
     v_auth record;
     p audit_store.retention_policies;
-    v_outcome TEXT;
+    v_refusal TEXT;
     v_effective TIMESTAMPTZ;
     v_targets BIGINT[] := ARRAY[]::bigint[];
-    v_set_digest BYTEA;
-    v_details JSONB;
     v_seq BIGINT;
 BEGIN
     -- Lock order: head -> policy -> identity.
@@ -2275,66 +3143,85 @@ BEGIN
     SELECT * INTO p FROM audit_store.retention_policies AS x
     WHERE x.policy_id = p_policy_id ORDER BY x.revision DESC LIMIT 1;
     IF p.revision IS NULL OR p.revision <> p_expected_revision THEN
-        v_outcome := 'stale_revision';
+        v_refusal := 'stale_revision';
     ELSIF p.retain_days IS NULL THEN
-        v_outcome := 'not_expirable';
+        v_refusal := 'not_expirable';
     ELSIF EXISTS (SELECT 1 FROM audit_store.legal_holds AS l WHERE l.released_at IS NULL) THEN
-        v_outcome := 'held';
-    ELSE
-        v_outcome := 'expired';
-        v_effective := least(p_cutoff,
-                             transaction_timestamp() - make_interval(days => p.retain_days));
-        SELECT coalesce(array_agg(t.seq ORDER BY t.seq), ARRAY[]::bigint[]) INTO v_targets
-        FROM (
-            SELECT e.seq FROM audit_store.events AS e
-            JOIN audit_store.event_bodies AS b ON b.seq = e.seq
-            WHERE e.origin = 'relay'
-              AND e.occurred_at < v_effective
-              AND e.expired_at IS NULL
-              AND (NOT p.selector ? 'event_types' OR e.event_type IN (
-                   SELECT jsonb_array_elements_text(p.selector -> 'event_types')))
-              AND (NOT p.selector ? 'event_classes' OR e.event_class IN (
-                   SELECT jsonb_array_elements_text(p.selector -> 'event_classes')))
-              AND (NOT p.selector ? 'sources' OR e.source IN (
-                   SELECT jsonb_array_elements_text(p.selector -> 'sources')))
-            ORDER BY e.seq
-            LIMIT p_limit
-            FOR UPDATE OF e
-        ) AS t;
+        v_refusal := 'held';
     END IF;
-    SELECT sha256(coalesce(string_agg(int8send(x), ''::bytea ORDER BY x), ''::bytea))
-    INTO v_set_digest FROM unnest(v_targets) AS x;
-    v_details := jsonb_build_object(
-            'outcome', v_outcome,
-            'policy_id', p_policy_id,
-            'expected_revision', p_expected_revision,
-            'current_revision', to_jsonb(p.revision),
-            'requested_cutoff', audit_store.utc_text(p_cutoff),
-            'transaction_time', audit_store.utc_text(transaction_timestamp()),
-            'limit', p_limit,
-            'count', cardinality(v_targets),
-            'expired_set_digest', encode(v_set_digest, 'hex'))
-        || CASE WHEN p.revision IS NULL THEN '{}'::jsonb ELSE
-               jsonb_build_object('selector_digest', encode(p.selector_digest, 'hex'),
-                                  'retain_days', to_jsonb(p.retain_days)) END
-        || audit_store.opt('selector_event_types', p.selector -> 'event_types')
-        || audit_store.opt('selector_event_classes', p.selector -> 'event_classes')
-        || audit_store.opt('selector_sources', p.selector -> 'sources')
-        || audit_store.opt('effective_cutoff', to_jsonb(audit_store.utc_text(v_effective)))
-        || audit_store.opt('first_seq', to_jsonb(v_targets[1]))
-        || audit_store.opt('last_seq', to_jsonb(v_targets[cardinality(v_targets)]));
+    IF v_refusal IS NOT NULL THEN
+        v_seq := audit_store.append_control('store', 'audit.retention.expire_refused',
+            'PRIVILEGED_OPERATION', 'failure', jsonb_build_object(
+                'policy_id', p_policy_id,
+                'expected_revision', p_expected_revision,
+                'current_revision', to_jsonb(p.revision),
+                'refusal', v_refusal,
+                'retain_days', to_jsonb(p.retain_days),
+                'cutoff', audit_store.utc_text(p_cutoff),
+                'tx_time', audit_store.utc_text(transaction_timestamp())));
+        IF h.access_reapply_pending AND audit_store.retention_reapply_satisfied(h) THEN
+            UPDATE audit_store.publication_head AS x
+            SET retention_reapplied_seq = coalesce(x.retention_reapplied_seq, v_seq),
+                updated_at = clock_timestamp()
+            WHERE x.singleton;
+            PERFORM audit_store.settle_reapply();
+        END IF;
+        RETURN QUERY SELECT v_refusal, v_seq, 0::bigint, NULL::timestamptz, v_refusal;
+        RETURN;
+    END IF;
+    v_effective := least(p_cutoff,
+                         transaction_timestamp() - make_interval(days => p.retain_days));
+    SELECT coalesce(array_agg(t.seq ORDER BY t.seq), ARRAY[]::bigint[]) INTO v_targets
+    FROM (
+        SELECT e.seq FROM audit_store.events AS e
+        JOIN audit_store.event_bodies AS b ON b.seq = e.seq
+        WHERE e.origin = 'relay'
+          AND e.occurred_at < v_effective
+          AND e.expired_at IS NULL
+          AND (NOT p.selector ? 'event_types' OR e.event_type IN (
+               SELECT jsonb_array_elements_text(p.selector -> 'event_types')))
+          AND (NOT p.selector ? 'event_classes' OR e.event_class IN (
+               SELECT jsonb_array_elements_text(p.selector -> 'event_classes')))
+          AND (NOT p.selector ? 'sources' OR e.source IN (
+               SELECT jsonb_array_elements_text(p.selector -> 'sources')))
+        ORDER BY e.seq
+        LIMIT p_limit
+        FOR UPDATE OF e
+    ) AS t;
     -- The evidence is recorded first; its seq marks the expired rows.
     v_seq := audit_store.append_control('store', 'audit.retention.expired',
-        'PRIVILEGED_OPERATION', CASE WHEN v_outcome = 'expired' THEN 'success' ELSE 'failure' END,
-        v_details);
+        'PRIVILEGED_OPERATION', 'success',
+        jsonb_build_object(
+            'policy_id', p_policy_id,
+            'revision', p.revision,
+            'selector_digest', encode(p.selector_digest, 'hex'),
+            'retain_days', p.retain_days,
+            'cutoff', audit_store.utc_text(p_cutoff),
+            'effective_cutoff', audit_store.utc_text(v_effective),
+            'tx_time', audit_store.utc_text(transaction_timestamp()),
+            'limit', p_limit,
+            'count', cardinality(v_targets),
+            'first_seq', to_jsonb(v_targets[1]),
+            'last_seq', to_jsonb(v_targets[cardinality(v_targets)]),
+            'expired_set_digest', encode(audit_store.expired_set_digest(v_targets), 'hex'))
+        || audit_store.opt('selector_event_types', p.selector -> 'event_types')
+        || audit_store.opt('selector_event_classes', p.selector -> 'event_classes')
+        || audit_store.opt('selector_sources', p.selector -> 'sources'));
     IF cardinality(v_targets) > 0 THEN
         UPDATE audit_store.events AS e
         SET expired_at = transaction_timestamp(), expired_by_seq = v_seq
         WHERE e.seq = ANY (v_targets);
         DELETE FROM audit_store.event_bodies AS b WHERE b.seq = ANY (v_targets);
     END IF;
-    RETURN QUERY SELECT v_outcome, v_seq, cardinality(v_targets)::bigint, v_effective,
-                        CASE WHEN v_outcome = 'expired' THEN NULL ELSE v_outcome END;
+    IF h.access_reapply_pending AND audit_store.retention_reapply_satisfied(h) THEN
+        UPDATE audit_store.publication_head AS x
+        SET retention_reapplied_seq = coalesce(x.retention_reapplied_seq, v_seq),
+            updated_at = clock_timestamp()
+        WHERE x.singleton;
+        PERFORM audit_store.settle_reapply();
+    END IF;
+    RETURN QUERY SELECT 'expired'::text, v_seq, cardinality(v_targets)::bigint, v_effective,
+                        NULL::text;
 END
 $expire$;
 
@@ -2383,11 +3270,60 @@ $purge_body$;
 -- Restore and recovery (design §11)
 -- ---------------------------------------------------------------------------
 
+-- A maintainer declares that the Store must enter recovery mode (e.g. a
+-- known restore the fingerprint cannot see). Only sets recovery_pending with
+-- the incident code and evidence; allowed in recovery mode.
+CREATE FUNCTION audit_store.declare_recovery_pending(p_incident_code TEXT)
+RETURNS TABLE (status TEXT, code TEXT)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+SET lock_timeout = '5s'
+SET audit_store.write_context = 'definer' AS $declare_recovery_pending$
+#variable_conflict use_column
+DECLARE
+    h audit_store.publication_head;
+    v_auth record;
+BEGIN
+    h := audit_store.lock_head();
+    SELECT * INTO v_auth FROM audit_store.authorize('declare_recovery_pending',
+                                                    'audit_store_maintainer', 'maintain');
+    IF NOT v_auth.ok THEN
+        RETURN QUERY SELECT 'denied'::text, v_auth.denial;
+        RETURN;
+    END IF;
+    IF NOT audit_store.is_code(p_incident_code) THEN
+        PERFORM audit_store.record_denied('declare_recovery_pending', 'invalid_input', 'maintain');
+        RETURN QUERY SELECT 'denied'::text, 'invalid_input'::text;
+        RETURN;
+    END IF;
+    IF h.recovery_pending THEN
+        RETURN QUERY SELECT 'already_pending'::text, h.pending_reason;
+        RETURN;
+    END IF;
+    UPDATE audit_store.publication_head AS x
+    SET recovery_pending = TRUE, pending_reason = 'declared', pending_seq = NULL,
+        pending_event_id = NULL, pending_digest = NULL, pending_by = session_user::text,
+        pending_at = clock_timestamp(), pending_head_seq = h.last_seq,
+        pending_incident_code = p_incident_code, updated_at = clock_timestamp()
+    WHERE x.singleton;
+    RETURN QUERY SELECT 'recovery_pending'::text, 'declared'::text;
+END
+$declare_recovery_pending$;
+
+-- Starts a new recovery epoch (design §11). Precondition: fingerprint
+-- mismatch or recovery_pending (the only way to clear it). Re-verifies the
+-- restored chain under the head lock, records audit.recovery.epoch_started
+-- (classification restore / planned_move / regression, checkpoint and its
+-- classification, identity range digest, the lost range, the regression
+-- evidence, old/new fingerprint), sets the new fingerprint and
+-- access_reapply_pending. A planned move is an epoch whose checkpoint equals
+-- the restored head and whose lost range is empty.
 CREATE FUNCTION audit_store.begin_recovery_epoch(
     p_checkpoint_epoch BIGINT, p_checkpoint_seq BIGINT, p_checkpoint_chain TEXT,
     p_relay_max_seq BIGINT)
-RETURNS TABLE (status TEXT, seq BIGINT, new_epoch BIGINT, restored_head BIGINT,
-               classification TEXT, code TEXT)
+RETURNS TABLE (status TEXT, seq BIGINT, new_epoch BIGINT, restored_head_seq BIGINT,
+               classification TEXT, checkpoint_classification TEXT, lost_from_seq BIGINT,
+               lost_upper_seq BIGINT, code TEXT)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 SET lock_timeout = '5s'
@@ -2398,156 +3334,131 @@ DECLARE
     h audit_store.publication_head;
     fp record;
     v_auth record;
-    v_reason TEXT;
     v_head BIGINT;
     s record;
+    v_has_checkpoint BOOLEAN;
     v_chain_at BYTEA;
+    v_epoch_at BIGINT;
+    v_cp_class TEXT;
+    v_upper BIGINT;
+    v_known BOOLEAN;
     v_class TEXT;
-    v_lost_to BIGINT;
     v_identity BYTEA;
     v_seq BIGINT;
 BEGIN
     h := audit_store.lock_head();
     SELECT * INTO fp FROM audit_store.current_fingerprint();
-    SELECT coalesce(max(e.seq), 0) INTO v_head FROM audit_store.events AS e;
-    IF (fp.system_identifier, fp.database_oid, fp.timeline)
-        IS DISTINCT FROM (h.fp_system_identifier, h.fp_database_oid, h.fp_timeline) THEN
-        v_reason := 'fingerprint_mismatch';
-    ELSIF h.recovery_pending THEN
-        v_reason := 'recovery_pending';
-    ELSIF coalesce(p_relay_max_seq, 0) > v_head THEN
-        v_reason := 'regressed';
-    ELSE
+    IF NOT audit_store.in_recovery(h) THEN
         RAISE EXCEPTION 'not_in_recovery' USING ERRCODE = '55000';
     END IF;
     IF EXISTS (SELECT 1 FROM audit_store.posture_check()) THEN
         RAISE EXCEPTION 'store_posture_invalid' USING ERRCODE = 'KA002';
     END IF;
+    -- In recovery mode a refusal is returned but not recorded.
     SELECT * INTO v_auth FROM audit_store.authorize('begin_recovery_epoch',
                                                     'audit_store_maintainer', 'maintain');
     IF NOT v_auth.ok THEN
         RETURN QUERY SELECT 'denied'::text, NULL::bigint, NULL::bigint, NULL::bigint,
-                            NULL::text, v_auth.denial;
+                            NULL::text, NULL::text, NULL::bigint, NULL::bigint, v_auth.denial;
         RETURN;
     END IF;
-    IF p_checkpoint_epoch IS NULL OR p_checkpoint_epoch < 1
-       OR p_checkpoint_seq IS NULL OR p_checkpoint_seq < 0
-       OR p_checkpoint_chain IS NULL OR p_checkpoint_chain !~ '^[0-9a-f]{64}$'
+    v_has_checkpoint := p_checkpoint_seq IS NOT NULL;
+    IF (p_checkpoint_epoch IS NULL) <> (p_checkpoint_seq IS NULL)
+       OR (p_checkpoint_chain IS NULL) <> (p_checkpoint_seq IS NULL)
+       OR (v_has_checkpoint AND (p_checkpoint_epoch < 1 OR p_checkpoint_seq < 0
+                                 OR NOT audit_store.is_hex64(p_checkpoint_chain)))
        OR coalesce(p_relay_max_seq, 0) < 0 THEN
-        PERFORM audit_store.record_denied('begin_recovery_epoch', 'invalid_input', 'maintain');
         RETURN QUERY SELECT 'denied'::text, NULL::bigint, NULL::bigint, NULL::bigint,
-                            NULL::text, 'invalid_input'::text;
+                            NULL::text, NULL::text, NULL::bigint, NULL::bigint,
+                            'invalid_input'::text;
         RETURN;
     END IF;
     -- Re-verify the restored chain under the head lock.
+    SELECT coalesce(max(e.seq), 0) INTO v_head FROM audit_store.events AS e;
     SELECT * INTO s FROM audit_store.integrity_scan(1, v_head, FALSE);
     IF audit_store.violations_total(s.violations) > 0 THEN
         RAISE EXCEPTION 'restored_chain_invalid' USING ERRCODE = '55000';
     END IF;
-    IF p_checkpoint_seq > v_head THEN
-        v_class := 'store_behind';
-    ELSE
-        v_chain_at := CASE WHEN p_checkpoint_seq = 0 THEN audit_store.genesis() ELSE
-            (SELECT e.chain FROM audit_store.events AS e WHERE e.seq = p_checkpoint_seq) END;
-        v_class := CASE WHEN v_chain_at <> decode(p_checkpoint_chain, 'hex') THEN 'mismatch'
-                        WHEN p_checkpoint_seq = v_head THEN 'match'
-                        ELSE 'ahead' END;
+    IF v_has_checkpoint THEN
+        IF p_checkpoint_seq > v_head THEN
+            v_cp_class := 'store_behind';
+        ELSE
+            IF p_checkpoint_seq = 0 THEN
+                v_chain_at := audit_store.genesis();
+                v_epoch_at := 1;
+            ELSE
+                SELECT e.chain, e.recovery_epoch INTO v_chain_at, v_epoch_at
+                FROM audit_store.events AS e WHERE e.seq = p_checkpoint_seq;
+            END IF;
+            -- CATALOG-AMENDMENT: once checkpoint_classification has
+            -- 'epoch_mismatch', a matching chain with a different epoch maps
+            -- to it instead of 'mismatch'.
+            v_cp_class := CASE WHEN v_chain_at IS DISTINCT FROM decode(p_checkpoint_chain, 'hex')
+                                    OR v_epoch_at IS DISTINCT FROM p_checkpoint_epoch
+                               THEN 'mismatch'
+                               WHEN p_checkpoint_seq = v_head THEN 'match'
+                               ELSE 'ahead' END;
+        END IF;
     END IF;
-    v_lost_to := greatest(p_checkpoint_seq, coalesce(p_relay_max_seq, 0), v_head);
-    SELECT sha256(coalesce(string_agg(int8send(e.seq) || uuid_send(e.event_id)
-                                      || e.envelope_digest || e.chain, ''::bytea ORDER BY e.seq),
-                           ''::bytea))
+    -- Claimed upper bound of the lost range (restored_head, upper]: never
+    -- below the restored head.
+    v_upper := greatest(v_head, coalesce(p_checkpoint_seq, 0), coalesce(p_relay_max_seq, 0),
+                        CASE WHEN h.pending_reason = 'regression'
+                             THEN coalesce(h.pending_seq, 0) ELSE 0 END);
+    v_known := v_has_checkpoint OR p_relay_max_seq IS NOT NULL
+               OR h.pending_reason = 'regression';
+    v_class := CASE WHEN h.pending_reason = 'regression' THEN 'regression'
+                    WHEN v_cp_class = 'match' AND v_upper = v_head THEN 'planned_move'
+                    ELSE 'restore' END;
+    SELECT sha256('kp-audit-identity-range-v1'::bytea
+                  || coalesce(string_agg(int8send(e.seq) || uuid_send(e.event_id)
+                                         || e.envelope_digest || e.chain, ''::bytea
+                                         ORDER BY e.seq), ''::bytea))
     INTO v_identity FROM audit_store.events AS e WHERE e.seq <= v_head;
     UPDATE audit_store.publication_head AS x
     SET last_seq = v_head, last_chain = s.head_chain, recovery_epoch = h.recovery_epoch + 1,
         fp_system_identifier = fp.system_identifier, fp_database_oid = fp.database_oid,
-        fp_timeline = fp.timeline, recovery_pending = FALSE, updated_at = clock_timestamp()
+        fp_timeline = fp.timeline, recovery_pending = FALSE, pending_reason = NULL,
+        pending_seq = NULL, pending_event_id = NULL, pending_digest = NULL, pending_by = NULL,
+        pending_at = NULL, pending_head_seq = NULL, pending_incident_code = NULL,
+        access_reapply_pending = FALSE, reapply_from_seq = NULL, access_reapplied_seq = NULL,
+        retention_reapplied_seq = NULL, updated_at = clock_timestamp()
     WHERE x.singleton;
     v_seq := audit_store.append_control('store', 'audit.recovery.epoch_started', 'SYSTEM_AUDIT',
         'success', jsonb_build_object(
-            'reason_kind', v_reason,
+            'classification', v_class,
             'old_epoch', h.recovery_epoch,
             'new_epoch', h.recovery_epoch + 1,
-            'restored_head', v_head,
+            'restored_head_seq', v_head,
             'restored_head_chain', encode(s.head_chain, 'hex'),
-            'recovery_identity_digest', encode(v_identity, 'hex'),
-            'checkpoint_epoch', p_checkpoint_epoch,
-            'checkpoint_seq', p_checkpoint_seq,
-            'checkpoint_chain', p_checkpoint_chain,
-            'checkpoint_classification', v_class,
-            'relay_max_seq', coalesce(p_relay_max_seq, 0),
-            'lost_after_seq', v_head,
-            'lost_to_seq_claimed', v_lost_to,
+            'checkpoint_epoch', to_jsonb(p_checkpoint_epoch),
+            'checkpoint_seq', to_jsonb(p_checkpoint_seq),
+            'checkpoint_chain', to_jsonb(p_checkpoint_chain),
+            'checkpoint_classification', to_jsonb(v_cp_class),
+            'identity_range_digest', encode(v_identity, 'hex'),
+            'relay_max_seq', to_jsonb(p_relay_max_seq),
+            'lost_from_seq', v_head + 1,
+            'lost_upper_seq', v_upper,
+            'lost_upper_known', v_known,
+            'regression_reported_seq', to_jsonb(h.pending_seq),
+            'regression_reported_event_id', to_jsonb(h.pending_event_id::text),
+            'regression_reported_digest', to_jsonb(encode(h.pending_digest, 'hex')),
+            'regression_reported_by', to_jsonb(h.pending_by),
+            'regression_reported_at', to_jsonb(audit_store.utc_text(h.pending_at)),
+            'regression_head_seq', to_jsonb(h.pending_head_seq),
             'old_system_identifier', h.fp_system_identifier,
             'old_database_oid', h.fp_database_oid::text,
             'old_timeline', h.fp_timeline,
             'new_system_identifier', fp.system_identifier,
             'new_database_oid', fp.database_oid::text,
             'new_timeline', fp.timeline));
+    UPDATE audit_store.publication_head AS x
+    SET access_reapply_pending = TRUE, reapply_from_seq = v_seq, updated_at = clock_timestamp()
+    WHERE x.singleton;
     RETURN QUERY SELECT 'epoch_started'::text, v_seq, h.recovery_epoch + 1, v_head, v_class,
-                        NULL::text;
+                        v_cp_class, v_head + 1, v_upper, NULL::text;
 END
 $begin_recovery_epoch$;
-
--- Planned moves (pg_upgrade, dump/restore migration, planned promotion):
--- audited rebinding of the fingerprint without a new epoch.
-CREATE FUNCTION audit_store.rebind_fingerprint()
-RETURNS TABLE (status TEXT, seq BIGINT, code TEXT)
-LANGUAGE plpgsql VOLATILE SECURITY DEFINER
-SET search_path = pg_catalog, pg_temp
-SET lock_timeout = '5s'
-SET audit_store.write_context = 'definer' AS $rebind_fingerprint$
-#variable_conflict use_column
-DECLARE
-    h audit_store.publication_head;
-    fp record;
-    v_auth record;
-    v_head BIGINT;
-    s record;
-    v_seq BIGINT;
-BEGIN
-    h := audit_store.lock_head();
-    SELECT * INTO fp FROM audit_store.current_fingerprint();
-    IF (fp.system_identifier, fp.database_oid, fp.timeline)
-        IS NOT DISTINCT FROM (h.fp_system_identifier, h.fp_database_oid, h.fp_timeline) THEN
-        RETURN QUERY SELECT 'unchanged'::text, NULL::bigint, NULL::text;
-        RETURN;
-    END IF;
-    IF h.recovery_pending THEN
-        RAISE EXCEPTION 'store_recovery_required' USING ERRCODE = 'KA001';
-    END IF;
-    IF EXISTS (SELECT 1 FROM audit_store.posture_check()) THEN
-        RAISE EXCEPTION 'store_posture_invalid' USING ERRCODE = 'KA002';
-    END IF;
-    SELECT * INTO v_auth FROM audit_store.authorize('rebind_fingerprint',
-                                                    'audit_store_maintainer', 'maintain');
-    IF NOT v_auth.ok THEN
-        RETURN QUERY SELECT 'denied'::text, NULL::bigint, v_auth.denial;
-        RETURN;
-    END IF;
-    -- A planned move keeps every row: the head and the chain must be intact.
-    SELECT coalesce(max(e.seq), 0) INTO v_head FROM audit_store.events AS e;
-    SELECT * INTO s FROM audit_store.integrity_scan(1, v_head, TRUE);
-    IF audit_store.violations_total(s.violations) > 0 THEN
-        RAISE EXCEPTION 'store_recovery_required' USING ERRCODE = 'KA001';
-    END IF;
-    UPDATE audit_store.publication_head AS x
-    SET fp_system_identifier = fp.system_identifier, fp_database_oid = fp.database_oid,
-        fp_timeline = fp.timeline, updated_at = clock_timestamp()
-    WHERE x.singleton;
-    v_seq := audit_store.append_control('store', 'audit.recovery.fingerprint_rebound',
-        'SYSTEM_AUDIT', 'success', jsonb_build_object(
-            'epoch', h.recovery_epoch,
-            'head_seq', v_head,
-            'old_system_identifier', h.fp_system_identifier,
-            'old_database_oid', h.fp_database_oid::text,
-            'old_timeline', h.fp_timeline,
-            'new_system_identifier', fp.system_identifier,
-            'new_database_oid', fp.database_oid::text,
-            'new_timeline', fp.timeline));
-    RETURN QUERY SELECT 'rebound'::text, v_seq, NULL::text;
-END
-$rebind_fingerprint$;
 
 -- ---------------------------------------------------------------------------
 -- Guard triggers (design §7.3). Accident prevention; the boundary is that no
@@ -2619,23 +3530,28 @@ END
 $guard_event_bodies$;
 
 -- publication_head: UPDATE by definer functions; seq and epoch never move
--- backwards except when begin_recovery_epoch recomputes the restored head.
+-- backwards and recovery_pending is never cleared, except when
+-- begin_recovery_epoch (recovery context) recomputes the restored head.
 CREATE FUNCTION audit_store.guard_publication_head()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $guard_publication_head$
+DECLARE
+    v_recovery BOOLEAN := audit_store.in_context('audit_store.maintenance_context',
+                                                 ARRAY['recovery']);
 BEGIN
     IF TG_OP = 'UPDATE'
        AND audit_store.in_context('audit_store.write_context', ARRAY['definer'])
        AND NEW.recovery_epoch >= OLD.recovery_epoch
-       AND (NEW.last_seq >= OLD.last_seq
-            OR audit_store.in_context('audit_store.maintenance_context', ARRAY['recovery'])) THEN
+       AND (NEW.last_seq >= OLD.last_seq OR v_recovery)
+       AND (NEW.recovery_pending OR NOT OLD.recovery_pending OR v_recovery) THEN
         RETURN NEW;
     END IF;
     RAISE EXCEPTION 'audit_store.publication_head: % refused', TG_OP USING ERRCODE = '55000';
 END
 $guard_publication_head$;
 
--- Append-only tables written by definer functions (intents, policies).
+-- Append-only tables written by definer functions (intents, policies,
+-- source services).
 CREATE FUNCTION audit_store.guard_append_only()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $guard_append_only$
@@ -2685,7 +3601,18 @@ BEGIN
 END
 $guard_registered_types$;
 
--- legal_holds (reserved): rows are never updated or deleted.
+-- Operational state (denial_streaks): any row change by definer functions.
+CREATE FUNCTION audit_store.guard_state()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $guard_state$
+BEGIN
+    IF audit_store.in_context('audit_store.write_context', ARRAY['definer']) THEN
+        RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+    END IF;
+    RAISE EXCEPTION 'audit_store.%: % refused', TG_TABLE_NAME, TG_OP USING ERRCODE = '55000';
+END
+$guard_state$;
+
 CREATE TRIGGER events_guard BEFORE INSERT OR UPDATE OR DELETE ON audit_store.events
     FOR EACH ROW EXECUTE FUNCTION audit_store.guard_events();
 CREATE TRIGGER events_no_truncate BEFORE TRUNCATE ON audit_store.events
@@ -2718,6 +3645,11 @@ CREATE TRIGGER retention_policies_guard
     FOR EACH ROW EXECUTE FUNCTION audit_store.guard_append_only();
 CREATE TRIGGER retention_policies_no_truncate BEFORE TRUNCATE ON audit_store.retention_policies
     FOR EACH STATEMENT EXECUTE FUNCTION audit_store.refuse_mutation();
+CREATE TRIGGER source_services_guard
+    BEFORE INSERT OR UPDATE OR DELETE ON audit_store.source_services
+    FOR EACH ROW EXECUTE FUNCTION audit_store.guard_append_only();
+CREATE TRIGGER source_services_no_truncate BEFORE TRUNCATE ON audit_store.source_services
+    FOR EACH STATEMENT EXECUTE FUNCTION audit_store.refuse_mutation();
 CREATE TRIGGER principal_bindings_guard
     BEFORE INSERT OR UPDATE OR DELETE ON audit_store.principal_bindings
     FOR EACH ROW EXECUTE FUNCTION audit_store.guard_history();
@@ -2732,6 +3664,11 @@ CREATE TRIGGER registered_types_guard
     BEFORE INSERT OR UPDATE OR DELETE ON audit_store.registered_types
     FOR EACH ROW EXECUTE FUNCTION audit_store.guard_registered_types();
 CREATE TRIGGER registered_types_no_truncate BEFORE TRUNCATE ON audit_store.registered_types
+    FOR EACH STATEMENT EXECUTE FUNCTION audit_store.refuse_mutation();
+CREATE TRIGGER denial_streaks_guard
+    BEFORE INSERT OR UPDATE OR DELETE ON audit_store.denial_streaks
+    FOR EACH ROW EXECUTE FUNCTION audit_store.guard_state();
+CREATE TRIGGER denial_streaks_no_truncate BEFORE TRUNCATE ON audit_store.denial_streaks
     FOR EACH STATEMENT EXECUTE FUNCTION audit_store.refuse_mutation();
 CREATE TRIGGER legal_holds_guard BEFORE UPDATE OR DELETE ON audit_store.legal_holds
     FOR EACH ROW EXECUTE FUNCTION audit_store.refuse_mutation();

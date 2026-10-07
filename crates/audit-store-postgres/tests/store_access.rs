@@ -4,11 +4,10 @@
 mod support;
 
 use std::collections::BTreeSet;
-use std::time::Duration;
 
 use audit_core::AuditStore;
 use audit_store_postgres::AdminError;
-use audit_store_postgres::PostgresAuditStore;
+
 use audit_store_postgres::admin::{AccessChange, AccessOperation};
 use serde_json::{Value, json};
 use sqlx::{Connection, PgConnection, PgPool, Row};
@@ -16,9 +15,7 @@ use support::*;
 use uuid::Uuid;
 
 async fn ingest_documents(db: &TestDb, cast: &Cast, count: usize) -> Vec<Uuid> {
-    let store = PostgresAuditStore::new(cast.relay.pool.clone(), Duration::from_secs(10))
-        .await
-        .expect("relay");
+    let store = cast.relay.store().await;
     let mut ids = Vec::new();
     for n in 0..count {
         let id = Uuid::now_v7();
@@ -59,21 +56,32 @@ const CALLS: &[(&str, &[&str])] = &[
         "SELECT * FROM audit_store.ingest('{}'::jsonb)",
         &["audit_store_ingest"],
     ),
-    ("SELECT * FROM audit_store.probe()", &["audit_store_ingest"]),
+    (
+        "SELECT * FROM audit_store.probe('x', 1, ARRAY[]::text[], NULL, NULL, NULL)",
+        &["audit_store_ingest"],
+    ),
+    (
+        "SELECT * FROM audit_store.report_regression(1, gen_random_uuid(), sha256(''))",
+        &["audit_store_ingest"],
+    ),
     (
         "SELECT * FROM audit_store.lookup_receipts(ARRAY[]::uuid[])",
-        &["audit_store_ingest"],
+        &["audit_store_reconciler"],
     ),
     (
         "SELECT * FROM audit_store.list_source_receipts('x', 0, 1)",
-        &["audit_store_ingest"],
+        &["audit_store_reconciler"],
     ),
     (
         "SELECT * FROM audit_store.lookup_control_receipts(ARRAY[]::bigint[])",
-        &["audit_store_ingest"],
+        &["audit_store_reconciler"],
     ),
     (
-        "SELECT * FROM audit_store.record_relay_control('x', NULL, 'x', NULL)",
+        "SELECT * FROM audit_store.lookup_lost_ranges()",
+        &["audit_store_reconciler"],
+    ),
+    (
+        "SELECT * FROM audit_store.record_relay_control('x', '{}')",
         &["audit_store_relay_control"],
     ),
     (
@@ -113,6 +121,10 @@ const CALLS: &[(&str, &[&str])] = &[
         &["audit_store_admin"],
     ),
     (
+        "SELECT * FROM audit_store.record_access_reapplied()",
+        &["audit_store_admin"],
+    ),
+    (
         "SELECT * FROM audit_store.expire('p', 1, now(), 1)",
         &["audit_store_maintainer"],
     ),
@@ -125,15 +137,17 @@ const CALLS: &[(&str, &[&str])] = &[
         &["audit_store_maintainer"],
     ),
     (
-        "SELECT * FROM audit_store.rebind_fingerprint()",
+        "SELECT * FROM audit_store.declare_recovery_pending('Bad Code')",
+        &["audit_store_maintainer"],
+    ),
+    (
+        "SELECT * FROM audit_store.confirm_retention_reapplied()",
         &["audit_store_maintainer"],
     ),
     (
         "SELECT * FROM audit_store.store_status()",
         &[
-            "audit_store_ingest",
-            "audit_store_relay_control",
-            "audit_store_reader",
+            "audit_store_reconciler",
             "audit_store_verifier",
             "audit_store_admin",
             "audit_store_maintainer",
@@ -157,7 +171,19 @@ const CALLS: &[(&str, &[&str])] = &[
         &[],
     ),
     ("SELECT * FROM audit_store.unbind_principal('x')", &[]),
+    (
+        "SELECT * FROM audit_store.register_source_service('a', 'b', 'c')",
+        &[],
+    ),
     // Internal functions: nobody.
+    (
+        "SELECT audit_store.record_denied_coalesced('ingest', 'unbound')",
+        &[],
+    ),
+    ("SELECT audit_store.clear_denial_streak()", &[]),
+    ("SELECT audit_store.settle_reapply()", &[]),
+    ("SELECT audit_store.await_durable()", &[]),
+    ("SELECT audit_store.relay_control_details('x', '{}')", &[]),
     (
         "SELECT audit_store.append_control('store', 'audit.access.denied', 'SECURITY', 'denied', '{}')",
         &[],
@@ -199,10 +225,17 @@ fn is_execute_denied(error: &sqlx::Error) -> bool {
 async fn role_matrix_refuses_every_function_outside_the_role() {
     let db = TestDb::start().await;
     let cast = Cast::new(&db).await;
+    // Before the unbound single-role logins below break the posture.
+    let ids = ingest_documents(&db, &cast, 1).await;
     let logins = [
         (
             "audit_store_ingest",
             db.login("only_ingest", &["audit_store_ingest"]).await,
+        ),
+        (
+            "audit_store_reconciler",
+            db.login("only_reconciler", &["audit_store_reconciler"])
+                .await,
         ),
         (
             "audit_store_relay_control",
@@ -251,9 +284,24 @@ async fn role_matrix_refuses_every_function_outside_the_role() {
     for sql in [
         "SELECT * FROM audit_store.unbind_principal('x')",
         "SELECT * FROM audit_store.bind_principal('x', 'a', 'b')",
+        "SELECT * FROM audit_store.register_source_service('a', 'b', 'c')",
     ] {
         assert!(call(&cast.dba.pool, sql).await.is_ok(), "{sql}");
     }
+    // The reconciler reads content-free receipts only: no body, no intent.
+    let reconciler = logins[1].1.store().await;
+    let before = head(&db.admin).await.0;
+    let receipts = reconciler
+        .lookup_receipts(&ids)
+        .await
+        .expect("reconciler lookup");
+    assert_eq!(receipts.len(), 1);
+    assert!(reconciler.store_status().await.is_ok());
+    assert_eq!(
+        head(&db.admin).await.0,
+        before,
+        "reconciler reads record nothing"
+    );
     db.assert_store_conforms().await;
 }
 
@@ -264,58 +312,141 @@ async fn posture_is_clean_and_detects_each_violation() {
     let verifier = cast.verifier.admin().await;
     assert_eq!(verifier.posture().await.expect("posture"), vec![]);
     let reader = cast.reader.admin().await;
-    let scenarios: &[(&str, &str, &str)] = &[
-        (
-            "GRANT EXECUTE ON FUNCTION audit_store.read_page(text, bigint) TO PUBLIC",
-            "REVOKE EXECUTE ON FUNCTION audit_store.read_page(text, bigint) FROM PUBLIC",
-            "public_execute",
-        ),
-        (
-            "GRANT EXECUTE ON FUNCTION audit_store.verify(bigint, bigint) TO audit_store_reader",
-            "REVOKE EXECUTE ON FUNCTION audit_store.verify(bigint, bigint) FROM audit_store_reader",
-            "unexpected_execute",
-        ),
-        (
-            "REVOKE EXECUTE ON FUNCTION audit_store.ingest(jsonb) FROM audit_store_ingest",
-            "GRANT EXECUTE ON FUNCTION audit_store.ingest(jsonb) TO audit_store_ingest",
-            "missing_execute",
-        ),
-        (
-            "GRANT CONNECT ON DATABASE audit_store_test TO PUBLIC",
-            "REVOKE CONNECT ON DATABASE audit_store_test FROM PUBLIC",
-            "database_public_connect",
-        ),
-        (
-            "ALTER FUNCTION audit_store.probe() RESET search_path",
-            "ALTER FUNCTION audit_store.probe() SET search_path = pg_catalog, pg_temp",
-            "search_path_unpinned",
-        ),
-        (
-            "ALTER FUNCTION audit_store.probe() OWNER TO postgres",
-            "ALTER FUNCTION audit_store.probe() OWNER TO audit_store_owner",
-            "function_owner",
-        ),
-        (
-            "GRANT SELECT ON audit_store.events TO audit_store_reader",
-            "REVOKE SELECT ON audit_store.events FROM audit_store_reader",
-            "relation_privilege",
-        ),
-        (
-            "GRANT USAGE ON SCHEMA audit_store TO PUBLIC",
-            "REVOKE USAGE ON SCHEMA audit_store FROM PUBLIC",
-            "schema_usage",
-        ),
-        (
-            "ALTER DEFAULT PRIVILEGES FOR ROLE audit_store_owner GRANT EXECUTE ON FUNCTIONS TO PUBLIC",
-            "ALTER DEFAULT PRIVILEGES FOR ROLE audit_store_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC",
-            "default_execute_not_revoked",
-        ),
-    ];
     if db.container.is_none() {
         // External servers use a generated database name.
         return;
     }
-    for (break_sql, repair_sql, violation) in scenarios {
+    let (r, dba) = (&cast.reader.role, &cast.dba.role);
+    let d = &db.database;
+    let scenarios: Vec<(String, String, &str)> = vec![
+        (
+            "GRANT EXECUTE ON FUNCTION audit_store.read_page(text, bigint) TO PUBLIC".into(),
+            "REVOKE EXECUTE ON FUNCTION audit_store.read_page(text, bigint) FROM PUBLIC".into(),
+            "public_execute",
+        ),
+        (
+            "GRANT EXECUTE ON FUNCTION audit_store.verify(bigint, bigint) TO audit_store_reader"
+                .into(),
+            "REVOKE EXECUTE ON FUNCTION audit_store.verify(bigint, bigint) FROM audit_store_reader"
+                .into(),
+            "unexpected_execute",
+        ),
+        (
+            "GRANT EXECUTE ON FUNCTION audit_store.lookup_receipts(uuid[]) TO audit_store_ingest"
+                .into(),
+            "REVOKE EXECUTE ON FUNCTION audit_store.lookup_receipts(uuid[]) FROM audit_store_ingest"
+                .into(),
+            "unexpected_execute",
+        ),
+        (
+            "REVOKE EXECUTE ON FUNCTION audit_store.ingest(jsonb) FROM audit_store_ingest".into(),
+            "GRANT EXECUTE ON FUNCTION audit_store.ingest(jsonb) TO audit_store_ingest".into(),
+            "missing_execute",
+        ),
+        (
+            format!("GRANT CONNECT ON DATABASE {d} TO PUBLIC"),
+            format!("REVOKE CONNECT ON DATABASE {d} FROM PUBLIC"),
+            "database_public_connect",
+        ),
+        (
+            "ALTER FUNCTION audit_store.store_status() RESET search_path".into(),
+            "ALTER FUNCTION audit_store.store_status() SET search_path = pg_catalog, pg_temp"
+                .into(),
+            "search_path_unpinned",
+        ),
+        (
+            "ALTER FUNCTION audit_store.store_status() SET synchronous_commit = off".into(),
+            "ALTER FUNCTION audit_store.store_status() RESET synchronous_commit".into(),
+            "function_synchronous_commit",
+        ),
+        (
+            "ALTER FUNCTION audit_store.store_status() OWNER TO postgres".into(),
+            "ALTER FUNCTION audit_store.store_status() OWNER TO audit_store_owner".into(),
+            "function_owner",
+        ),
+        (
+            "GRANT SELECT ON audit_store.events TO audit_store_reader".into(),
+            "REVOKE SELECT ON audit_store.events FROM audit_store_reader".into(),
+            "relation_privilege",
+        ),
+        (
+            "GRANT USAGE ON SCHEMA audit_store TO PUBLIC".into(),
+            "REVOKE USAGE ON SCHEMA audit_store FROM PUBLIC".into(),
+            "schema_usage",
+        ),
+        (
+            "GRANT CREATE ON SCHEMA audit_store TO audit_store_reader".into(),
+            "REVOKE CREATE ON SCHEMA audit_store FROM audit_store_reader".into(),
+            "schema_usage",
+        ),
+        (
+            "ALTER DEFAULT PRIVILEGES FOR ROLE audit_store_owner GRANT EXECUTE ON FUNCTIONS TO PUBLIC"
+                .into(),
+            "ALTER DEFAULT PRIVILEGES FOR ROLE audit_store_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC"
+                .into(),
+            "default_execute_not_revoked",
+        ),
+        (
+            "ALTER DEFAULT PRIVILEGES FOR ROLE audit_store_owner GRANT SELECT ON TABLES TO PUBLIC"
+                .into(),
+            "ALTER DEFAULT PRIVILEGES FOR ROLE audit_store_owner REVOKE SELECT ON TABLES FROM PUBLIC"
+                .into(),
+            "default_privilege_granted",
+        ),
+        (
+            "ALTER DEFAULT PRIVILEGES FOR ROLE audit_store_owner IN SCHEMA audit_store \
+             GRANT USAGE ON SEQUENCES TO audit_store_reader"
+                .into(),
+            "ALTER DEFAULT PRIVILEGES FOR ROLE audit_store_owner IN SCHEMA audit_store \
+             REVOKE USAGE ON SEQUENCES FROM audit_store_reader"
+                .into(),
+            "default_privilege_granted",
+        ),
+        (
+            format!("ALTER DATABASE {d} RESET synchronous_commit"),
+            format!("ALTER DATABASE {d} SET synchronous_commit = on"),
+            "database_synchronous_commit_missing",
+        ),
+        (
+            format!("ALTER ROLE {r} IN DATABASE {d} SET synchronous_commit = off"),
+            format!("ALTER ROLE {r} IN DATABASE {d} SET synchronous_commit = on"),
+            "synchronous_commit_weakened",
+        ),
+        (
+            format!("ALTER ROLE {r} SET synchronous_commit = local"),
+            format!("ALTER ROLE {r} RESET synchronous_commit"),
+            "synchronous_commit_weakened",
+        ),
+        (
+            format!("ALTER ROLE {r} IN DATABASE {d} RESET synchronous_commit"),
+            format!("ALTER ROLE {r} IN DATABASE {d} SET synchronous_commit = on"),
+            "login_synchronous_commit_missing",
+        ),
+        (
+            format!("GRANT audit_store_ingest TO {r}"),
+            format!("REVOKE audit_store_ingest FROM {r}"),
+            "ingest_member_not_source_service",
+        ),
+        (
+            format!("GRANT audit_store_reader TO {dba}"),
+            format!("REVOKE audit_store_reader FROM {dba}"),
+            "owner_member_has_capability",
+        ),
+        (
+            format!("GRANT audit_store_owner TO {r}"),
+            format!("REVOKE audit_store_owner FROM {r}"),
+            "owner_member_bound",
+        ),
+        (
+            format!(
+                "CREATE ROLE \"Bad-Login\" LOGIN PASSWORD '{PASSWORD}'; \
+                 GRANT audit_store_reader TO \"Bad-Login\""
+            ),
+            "DROP ROLE \"Bad-Login\"".into(),
+            "login_name_invalid",
+        ),
+    ];
+    for (break_sql, repair_sql, violation) in &scenarios {
         db.exec(break_sql).await;
         let found: BTreeSet<String> = verifier
             .posture()
@@ -332,7 +463,8 @@ async fn posture_is_clean_and_detects_each_violation() {
                     .open_access(AccessOperation::Export, &json!({}), 10, 1)
                     .await
                     .expect_err(violation),
-                AdminError::PostureInvalid
+                AdminError::PostureInvalid,
+                "{violation}"
             );
         }
         db.exec(repair_sql).await;
@@ -348,10 +480,20 @@ async fn posture_is_clean_and_detects_each_violation() {
         "CREATE ROLE {role} LOGIN PASSWORD '{PASSWORD}'; GRANT audit_store_reader TO {role}"
     ))
     .await;
-    let found = verifier.posture().await.expect("posture");
-    assert_eq!(found.len(), 1);
-    assert_eq!(found[0].violation, "login_timeouts_missing");
-    assert_eq!(found[0].object, role);
+    let found: BTreeSet<(String, String)> = verifier
+        .posture()
+        .await
+        .expect("posture")
+        .into_iter()
+        .map(|v| (v.violation, v.object))
+        .collect();
+    assert_eq!(
+        found,
+        BTreeSet::from([
+            ("login_synchronous_commit_missing".to_owned(), role.clone()),
+            ("login_timeouts_missing".to_owned(), role.clone()),
+        ])
+    );
     db.exec(audit_store_postgres::PRIVILEGES_SQL).await;
     assert_eq!(verifier.posture().await.expect("posture"), vec![]);
     db.assert_store_conforms().await;
@@ -555,7 +697,7 @@ async fn unbound_and_unauthorized_principals_are_denied_and_recorded() {
     .get("actor");
     assert_eq!(
         actor,
-        json!({"issuer": "audit-store-db-role", "principal_id": unbound.role})
+        json!({"issuer": "db_role", "principal_id": unbound.role})
     );
     let intents: i64 = sqlx::query("SELECT count(*) AS n FROM audit_store.access_intents")
         .fetch_one(&db.admin)
@@ -1162,5 +1304,348 @@ async fn control_events_are_visible_only_with_administer_and_close_is_recorded()
             .expect_err("not the reader's intent"),
         denied("invalid_input")
     );
+    db.assert_store_conforms().await;
+}
+
+#[tokio::test]
+async fn filters_and_selectors_outside_the_closed_grammars_are_refused() {
+    let db = TestDb::start().await;
+    let cast = Cast::new(&db).await;
+    let ids = ingest_documents(&db, &cast, 2).await;
+    let reader = cast.reader.admin().await;
+    let watermark = head(&db.admin).await.0;
+    let intents = || async {
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM audit_store.access_intents")
+            .fetch_one(&db.admin)
+            .await
+            .expect("intents")
+    };
+    let refused: Vec<Value> = vec![
+        json!({"source": "free text"}),
+        json!({"source": "urn:knowledge-platform:search-platform"}),
+        json!({"resource": {"type": "Document", "id": "not-a-uuid"}}),
+        json!({"resource": {"type": "Document", "id": "0199A1B2-0000-7000-8000-00000000D001"}}),
+        json!({"actor": {"issuer": "poc", "principal_id": "admin\u{202e}nimda"}}),
+        json!({"actor": {"issuer": " poc", "principal_id": "x"}}),
+        json!({"actor": {"issuer": "poc", "principal_id": "x\u{feff}"}}),
+        json!({"event_types": ["Document.Created"]}),
+        json!({"event_types": [format!("{}.b", "a".repeat(130))]}),
+        json!({"event_types": (0..17).map(|n| format!("t.e{n}")).collect::<Vec<_>>()}),
+        json!({"event_ids": [ids[0].to_string().to_uppercase()]}),
+        json!({"seq_through": watermark + 1000}),
+        json!({"seq_after": 3, "seq_through": 3}),
+        json!({"seq_through": 0}),
+    ];
+    for filter in &refused {
+        assert_eq!(
+            reader
+                .open_access(AccessOperation::Investigate, filter, 10, 1)
+                .await
+                .expect_err("refused"),
+            denied("invalid_input"),
+            "{filter}"
+        );
+    }
+    assert_eq!(intents().await, 0, "nothing was opened");
+    // Values inside the grammars are accepted and recorded verbatim.
+    for filter in [
+        json!({"source": "urn:knowledge-platform:audit-store"}),
+        json!({"resource": {"type": "Document",
+                            "id": "00000000-0000-0000-0000-000000000000"}}),
+        json!({"resource": {"type": "AuditStore", "id": "audit-store"}}),
+        json!({"actor": {"issuer": "poc", "principal_id": "名前 a\u{200d}b"}}),
+        json!({"event_types": ["document.created"], "seq_after": 1, "seq_through": 2}),
+    ] {
+        reader
+            .open_access(AccessOperation::Investigate, &filter, 10, 1)
+            .await
+            .unwrap_or_else(|e| panic!("{filter}: {e}"));
+    }
+    // verify / identity_chain accept only the seq range.
+    let verifier = cast.verifier.admin().await;
+    for operation in [AccessOperation::Verify, AccessOperation::IdentityChain] {
+        assert_eq!(
+            verifier
+                .open_access(
+                    operation,
+                    &json!({"event_types": ["document.created"]}),
+                    10,
+                    1
+                )
+                .await
+                .expect_err("chain filter"),
+            denied("invalid_input")
+        );
+    }
+    // Retention selectors: relay event types, the classes, relay sources.
+    let admin = cast.admin.admin().await;
+    for selector in [
+        json!({"sources": ["urn:knowledge-platform:audit-store"]}),
+        json!({"sources": ["free text"]}),
+        json!({"event_types": ["audit.access.denied"]}),
+        json!({"event_types": ["Not A Type"]}),
+        json!({"event_types": (0..17).map(|n| format!("t.e{n}")).collect::<Vec<_>>()}),
+        json!({"event_classes": ["UNKNOWN"]}),
+    ] {
+        assert_eq!(
+            admin
+                .set_retention_policy("p", &selector, Some(1))
+                .await
+                .expect_err("selector"),
+            denied("invalid_input"),
+            "{selector}"
+        );
+    }
+    // Principal pairs follow the principal charset; db_role is reserved.
+    let owner = cast.dba.owner().await;
+    let fresh = db.login("fresh", &["audit_store_reader"]).await;
+    for (issuer, principal) in [
+        (ISSUER, "x\u{2066}y"),
+        (ISSUER, "trailing "),
+        ("db_role", "someone"),
+    ] {
+        assert_eq!(
+            owner
+                .bind_principal(&fresh.role, issuer, principal)
+                .await
+                .expect_err("refused"),
+            denied("invalid_input")
+        );
+    }
+    assert_eq!(
+        admin
+            .change_access(ISSUER, "\u{2028}x", "investigate", AccessChange::Grant)
+            .await
+            .expect_err("refused"),
+        denied("invalid_input")
+    );
+    // No refused value was echoed into any control event.
+    let bodies: Vec<String> = sqlx::query_scalar(
+        "SELECT b.envelope::text FROM audit_store.event_bodies AS b \
+         JOIN audit_store.events AS e ON e.seq = b.seq WHERE e.origin = 'store'",
+    )
+    .fetch_all(&db.admin)
+    .await
+    .expect("bodies");
+    for needle in [
+        "free text",
+        "nimda",
+        "Not A Type",
+        "UNKNOWN",
+        "search-platform",
+    ] {
+        assert!(bodies.iter().all(|b| !b.contains(needle)), "{needle}");
+    }
+    db.assert_store_conforms().await;
+}
+
+#[tokio::test]
+async fn seq_ranges_bound_the_disclosed_set() {
+    let db = TestDb::start().await;
+    let cast = Cast::new(&db).await;
+    ingest_documents(&db, &cast, 6).await;
+    let relay_seqs: Vec<i64> = sqlx::query_scalar(
+        "SELECT seq FROM audit_store.events WHERE origin = 'relay' ORDER BY seq",
+    )
+    .fetch_all(&db.admin)
+    .await
+    .expect("seqs");
+    let reader = cast.reader.admin().await;
+    let token = reader
+        .open_access(
+            AccessOperation::Export,
+            &json!({"seq_after": relay_seqs[1], "seq_through": relay_seqs[4]}),
+            10,
+            1,
+        )
+        .await
+        .expect("opened");
+    let lines = reader.read_page(token.secret(), 0).await.expect("page");
+    assert_eq!(
+        lines.iter().map(|l| l.seq).collect::<Vec<_>>(),
+        relay_seqs[2..=4].to_vec()
+    );
+    // A verifier's identity chain covers every origin inside the range.
+    let verifier = cast.verifier.admin().await;
+    let token = verifier
+        .open_access(
+            AccessOperation::IdentityChain,
+            &json!({"seq_after": 2, "seq_through": 7}),
+            1000,
+            1,
+        )
+        .await
+        .expect("opened");
+    let lines = verifier.read_page(token.secret(), 0).await.expect("page");
+    assert_eq!(
+        lines.iter().map(|l| l.seq).collect::<Vec<_>>(),
+        (3..=7).collect::<Vec<_>>()
+    );
+    assert!(
+        lines
+            .iter()
+            .all(|l| l.line.ends_with(",\"envelope\":null}"))
+    );
+    let intent = control_events(&db.admin, "audit.access.intent_opened").await;
+    let details = &intent.last().expect("intent").1;
+    assert_eq!(details["filter_seq_after"], json!(2));
+    assert_eq!(details["filter_seq_through"], json!(7));
+    db.assert_store_conforms().await;
+}
+
+#[tokio::test]
+async fn clients_require_synchronous_commit_and_refuse_url_options() {
+    use audit_store_postgres::session::{SessionError, check_url, require_synchronous_commit};
+    let db = TestDb::start().await;
+    let cast = Cast::new(&db).await;
+    require_synchronous_commit(&cast.reader.pool)
+        .await
+        .expect("the role default is on");
+    // A weakened role default is refused by the clients (and the posture).
+    db.exec(&format!(
+        "ALTER ROLE {} IN DATABASE {} SET synchronous_commit = off",
+        cast.reader.role, db.database
+    ))
+    .await;
+    let weak = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&cast.reader.url)
+        .await
+        .expect("connect");
+    assert!(matches!(
+        require_synchronous_commit(&weak).await,
+        Err(SessionError::SynchronousCommitOff)
+    ));
+    let violations = cast
+        .verifier
+        .admin()
+        .await
+        .posture()
+        .await
+        .expect("posture");
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.violation == "synchronous_commit_weakened" && v.object == cast.reader.role)
+    );
+    db.exec(&format!(
+        "ALTER ROLE {} IN DATABASE {} SET synchronous_commit = on",
+        cast.reader.role, db.database
+    ))
+    .await;
+    assert!(matches!(
+        check_url(&format!(
+            "{}?options=-c%20synchronous_commit%3Doff",
+            cast.reader.url
+        )),
+        Err(SessionError::UrlOptions)
+    ));
+}
+
+#[tokio::test]
+async fn read_page_discloses_only_after_the_intent_is_flushed() {
+    let db = TestDb::start().await;
+    if db.container.is_none() {
+        eprintln!("skipped: the flush-lag test changes server settings of its own container");
+        return;
+    }
+    let cast = Cast::new(&db).await;
+    ingest_documents(&db, &cast, 2).await;
+    // Keep background WAL flushing out of the 2 s window.
+    for statement in [
+        "ALTER SYSTEM SET wal_writer_delay = '10s'",
+        "ALTER SYSTEM SET bgwriter_lru_maxpages = 0",
+        "ALTER SYSTEM SET autovacuum = off",
+        "SELECT pg_reload_conf()",
+        "CREATE TABLE public.flush_lag (x integer)",
+    ] {
+        db.exec(statement).await;
+    }
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+    // The intent of a session that turned synchronous_commit off: the
+    // function body still forces it on for its transaction ...
+    let mut conn = PgConnection::connect(&cast.reader.url)
+        .await
+        .expect("connect");
+    for statement in ["SET synchronous_commit = off", "BEGIN"] {
+        sqlx::raw_sql(sqlx::AssertSqlSafe(statement))
+            .execute(&mut conn)
+            .await
+            .expect(statement);
+    }
+    let token: String =
+        sqlx::query_scalar("SELECT token FROM audit_store.open_access('export', '{}', 10, 1)")
+            .fetch_one(&mut conn)
+            .await
+            .expect("open");
+    let inside: String = sqlx::query_scalar("SHOW synchronous_commit")
+        .fetch_one(&mut conn)
+        .await
+        .expect("show");
+    assert_eq!(inside, "on", "set_config in the body governs the commit");
+    // ... unless the caller turns it off again after the call: an
+    // asynchronously committed intent.
+    for statement in ["SET LOCAL synchronous_commit = off", "COMMIT"] {
+        sqlx::raw_sql(sqlx::AssertSqlSafe(statement))
+            .execute(&mut conn)
+            .await
+            .expect(statement);
+    }
+    // Unflushed WAL after it (an open transaction that wrote).
+    let mut writer = PgConnection::connect(&db.superuser_url(&db.database))
+        .await
+        .expect("connect");
+    sqlx::query("BEGIN")
+        .execute(&mut writer)
+        .await
+        .expect("begin");
+    sqlx::query("INSERT INTO public.flush_lag SELECT generate_series(1, 100)")
+        .execute(&mut writer)
+        .await
+        .expect("insert");
+    let lagging: bool =
+        sqlx::query_scalar("SELECT pg_current_wal_flush_lsn() < pg_current_wal_insert_lsn()")
+            .fetch_one(&db.admin)
+            .await
+            .expect("lsn");
+    assert!(
+        lagging,
+        "the WAL flush position is behind the insert position"
+    );
+    let reader = cast.reader.admin().await;
+    let started = std::time::Instant::now();
+    assert_eq!(
+        reader.read_page_once(&token, 0).await,
+        Err(AdminError::Retryable {
+            code: "intent_not_durable".into()
+        })
+    );
+    assert!(
+        started.elapsed() >= std::time::Duration::from_millis(1900),
+        "read_page waited for the flush: {:?}",
+        started.elapsed()
+    );
+    // A synchronous commit flushes everything inserted so far.
+    sqlx::query("COMMIT")
+        .execute(&mut writer)
+        .await
+        .expect("commit");
+    assert_eq!(
+        reader
+            .read_page(&token, 0)
+            .await
+            .expect("durable now")
+            .len(),
+        2
+    );
+    for statement in [
+        "ALTER SYSTEM RESET wal_writer_delay",
+        "ALTER SYSTEM RESET bgwriter_lru_maxpages",
+        "ALTER SYSTEM RESET autovacuum",
+        "SELECT pg_reload_conf()",
+    ] {
+        db.exec(statement).await;
+    }
     db.assert_store_conforms().await;
 }

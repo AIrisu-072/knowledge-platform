@@ -1,10 +1,13 @@
 //! `audit-admin`: operator CLI for the Audit Store (design §8–§11).
 //!
 //! Connections: `AUDIT_STORE_DATABASE_URL` (the operator's own Store login;
-//! superuser and audit_store_owner sessions are refused except for
-//! bootstrap-admin/bind/unbind, which require an owner member) and
-//! `AUDIT_STORE_MIGRATE_DATABASE_URL` (migrate only). Output is JSON on
-//! stdout; errors carry codes only. Files are written with mode 0600.
+//! superuser and audit_store_owner sessions are refused except for the
+//! owner-only commands bootstrap-admin / bind / unbind /
+//! register-source-service, which require an owner member) and
+//! `AUDIT_STORE_MIGRATE_DATABASE_URL` (migrate only). URLs carrying
+//! `options` are refused and every session must report
+//! `SHOW synchronous_commit = on`. Output is JSON on stdout; errors carry
+//! codes only. Files are written with mode 0600.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -16,6 +19,7 @@ use audit_store_postgres::files::{
     CheckpointFile, ExportRequest, export_identity_chain_recovery, export_to_dir, write_checkpoint,
 };
 use audit_store_postgres::migrate;
+use audit_store_postgres::session::{check_url, require_synchronous_commit};
 use serde::Serialize;
 use serde_json::{Value, json};
 use sqlx::PgPool;
@@ -26,20 +30,26 @@ const USAGE: &str = "usage: audit-admin <command> [--flag value]...
 commands:
   migrate
   status | posture
-  bootstrap-admin --db-role R --issuer I --principal P
-  bind --db-role R --issuer I --principal P | unbind --db-role R
+  bootstrap-admin --db-role R --issuer I --principal P          (owner member)
+  bind --db-role R --issuer I --principal P | unbind --db-role R  (owner member)
+  register-source-service --issuer I --principal P --source S   (owner member)
   grant|revoke --issuer I --principal P --capability C
+  record-access-reapplied | confirm-retention-reapplied
   investigate [--filter JSON] [--page-size N] [--max-pages N]
-  export --dir D [--operation export|verify|identity_chain] [--filter JSON]
+  export --dir D [--operation export|verify|identity_chain] [--identity-chain]
+         [--recovery] [--filter JSON] [--seq-after N] [--seq-through N]
          [--page-size N] [--max-pages N] [--checkpoint FILE]
-  verify [--from N] [--to N] | verify-recovery
+  verify [--from N] [--to N] [--recovery] | verify-recovery
   checkpoint --out FILE
   export-identity-chain-recovery --dir D [--checkpoint FILE]
   set-retention --policy-id ID --selector JSON --retain-days N|none
   expire --policy-id ID --expected-revision N --cutoff YYYY-MM-DDTHH:MM:SS.ffffffZ --limit N
   purge-body --event-id UUID --reason-code CODE
-  begin-recovery-epoch --checkpoint FILE --relay-max-seq N
-  rebind-fingerprint";
+  declare-recovery-pending --incident-code CODE
+  begin-recovery-epoch [--checkpoint FILE] [--relay-max-seq N]";
+
+/// Flags that take no value.
+const SWITCHES: [&str; 2] = ["identity-chain", "recovery"];
 
 /// A database URL that never appears in Debug output or logs.
 struct SecretUrl(String);
@@ -99,9 +109,12 @@ impl Args {
             let name = flag
                 .strip_prefix("--")
                 .ok_or_else(|| CliError::Usage(format!("unexpected argument {flag}")))?;
-            let value = raw
-                .next()
-                .ok_or_else(|| CliError::Usage(format!("--{name} needs a value")))?;
+            let value = if SWITCHES.contains(&name) {
+                "true".to_owned()
+            } else {
+                raw.next()
+                    .ok_or_else(|| CliError::Usage(format!("--{name} needs a value")))?
+            };
             if flags.insert(name.to_owned(), value).is_some() {
                 return Err(CliError::Usage(format!("--{name} given twice")));
             }
@@ -118,6 +131,10 @@ impl Args {
 
     fn optional(&self, name: &str) -> Option<&str> {
         self.flags.get(name).map(String::as_str)
+    }
+
+    fn switch(&self, name: &str) -> bool {
+        self.flags.contains_key(name)
     }
 
     fn number<T: std::str::FromStr>(&self, name: &str, default: Option<T>) -> Result<T, CliError> {
@@ -153,12 +170,29 @@ fn print(value: &impl Serialize) -> Result<(), CliError> {
     Ok(())
 }
 
+/// Connects after refusing a URL with `options`, then requires
+/// `synchronous_commit = on` for the session.
 async fn pool(url: Option<&SecretUrl>, name: &str) -> Result<PgPool, CliError> {
     let url = url.ok_or_else(|| CliError::Usage(format!("{name} is not set")))?;
-    Ok(PgPoolOptions::new()
+    check_url(&url.0)?;
+    let pool = PgPoolOptions::new()
         .max_connections(2)
         .connect(&url.0)
-        .await?)
+        .await
+        .map_err(|error| CliError::Failed(redacted(&error)))?;
+    require_synchronous_commit(&pool).await?;
+    Ok(pool)
+}
+
+/// A driver error without its text (which could echo the URL).
+fn redacted(error: &sqlx::Error) -> String {
+    match error {
+        sqlx::Error::Database(db) => format!(
+            "database error {}",
+            db.code().map(|c| c.into_owned()).unwrap_or_default()
+        ),
+        _ => "cannot connect to the audit store".to_owned(),
+    }
 }
 
 async fn operator(config: &Config) -> Result<AuditAdmin, CliError> {
@@ -171,8 +205,16 @@ async fn owner(config: &Config) -> Result<AuditAdmin, CliError> {
     Ok(AuditAdmin::connect_owner(pool).await?)
 }
 
-fn operation(name: &str) -> Result<AccessOperation, CliError> {
-    match name {
+fn operation(args: &Args) -> Result<AccessOperation, CliError> {
+    if args.switch("identity-chain") {
+        return match args.optional("operation") {
+            None | Some("identity_chain") => Ok(AccessOperation::IdentityChain),
+            Some(_) => Err(CliError::Usage(
+                "--identity-chain conflicts with --operation".into(),
+            )),
+        };
+    }
+    match args.optional("operation").unwrap_or("export") {
         "export" => Ok(AccessOperation::Export),
         "verify" => Ok(AccessOperation::Verify),
         "identity_chain" => Ok(AccessOperation::IdentityChain),
@@ -190,6 +232,21 @@ fn checkpoint_arg(args: &Args) -> Result<Option<audit_core::Checkpoint>, CliErro
                 .ok_or_else(|| CliError::Failed("invalid checkpoint file".into()))
         })
         .transpose()
+}
+
+/// The export filter: `--filter` plus the `--seq-after` / `--seq-through`
+/// shorthands.
+fn export_filter(args: &Args) -> Result<Value, CliError> {
+    let mut filter = args.json("filter", json!({}))?;
+    let object = filter
+        .as_object_mut()
+        .ok_or_else(|| CliError::Usage("--filter must be a JSON object".into()))?;
+    for (flag, key) in [("seq-after", "seq_after"), ("seq-through", "seq_through")] {
+        if let Some(value) = args.optional_number::<i64>(flag)? {
+            object.insert(key.to_owned(), json!(value));
+        }
+    }
+    Ok(filter)
 }
 
 async fn run(args: Args, config: Config) -> Result<(), CliError> {
@@ -241,6 +298,16 @@ async fn run(args: Args, config: Config) -> Result<(), CliError> {
                 .unbind_principal(args.get("db-role")?)
                 .await?,
         ),
+        "register-source-service" => print(
+            &owner(&config)
+                .await?
+                .register_source_service(
+                    args.get("issuer")?,
+                    args.get("principal")?,
+                    args.get("source")?,
+                )
+                .await?,
+        ),
         "grant" | "revoke" => {
             let change = if args.command == "grant" {
                 AccessChange::Grant
@@ -259,6 +326,15 @@ async fn run(args: Args, config: Config) -> Result<(), CliError> {
                     .await?,
             )
         }
+        "record-access-reapplied" => {
+            print(&operator(&config).await?.record_access_reapplied().await?)
+        }
+        "confirm-retention-reapplied" => print(
+            &operator(&config)
+                .await?
+                .confirm_retention_reapplied()
+                .await?,
+        ),
         "investigate" => {
             let admin = operator(&config).await?;
             let filter = args.json("filter", json!({}))?;
@@ -285,15 +361,30 @@ async fn run(args: Args, config: Config) -> Result<(), CliError> {
         }
         "export" => {
             let admin = operator(&config).await?;
+            let operation = operation(&args)?;
+            let dir = PathBuf::from(args.get("dir")?);
+            if args.switch("recovery") {
+                if operation != AccessOperation::IdentityChain {
+                    return Err(CliError::Usage(
+                        "--recovery exports the identity chain only".into(),
+                    ));
+                }
+                let outcome =
+                    export_identity_chain_recovery(&admin, checkpoint_arg(&args)?, &dir).await?;
+                return print(&outcome.manifest);
+            }
             let request = ExportRequest {
-                operation: operation(args.optional("operation").unwrap_or("export"))?,
-                filter: args.json("filter", json!({}))?,
+                operation,
+                filter: export_filter(&args)?,
                 page_size: args.number("page-size", Some(1000))?,
                 max_pages: args.number("max-pages", Some(100))?,
                 checkpoint: checkpoint_arg(&args)?,
             };
-            let outcome = export_to_dir(&admin, &request, &PathBuf::from(args.get("dir")?)).await?;
+            let outcome = export_to_dir(&admin, &request, &dir).await?;
             print(&outcome.manifest)
+        }
+        "verify" if args.switch("recovery") => {
+            print(&operator(&config).await?.verify_recovery().await?)
         }
         "verify" => {
             let from = args.optional_number("from")?;
@@ -361,17 +452,24 @@ async fn run(args: Args, config: Config) -> Result<(), CliError> {
                     .await?,
             )
         }
+        "declare-recovery-pending" => print(
+            &operator(&config)
+                .await?
+                .declare_recovery_pending(args.get("incident-code")?)
+                .await?,
+        ),
         "begin-recovery-epoch" => {
-            let checkpoint = checkpoint_arg(&args)?
-                .ok_or_else(|| CliError::Usage("--checkpoint is required".into()))?;
+            let checkpoint = checkpoint_arg(&args)?;
             print(
                 &operator(&config)
                     .await?
-                    .begin_recovery_epoch(&checkpoint, args.number("relay-max-seq", None)?)
+                    .begin_recovery_epoch(
+                        checkpoint.as_ref(),
+                        args.optional_number("relay-max-seq")?,
+                    )
                     .await?,
             )
         }
-        "rebind-fingerprint" => print(&operator(&config).await?.rebind_fingerprint().await?),
         other => Err(CliError::Usage(format!("unknown command {other}"))),
     }
 }
@@ -420,13 +518,35 @@ mod tests {
     }
 
     #[test]
-    fn args_parse_flags_and_refuse_duplicates() {
+    fn args_parse_flags_switches_and_refuse_duplicates() {
         let args =
             Args::parse(["verify", "--from", "3"].into_iter().map(String::from)).expect("parses");
         assert_eq!(args.command, "verify");
         assert_eq!(args.number::<i64>("from", None).expect("number"), 3);
+        let args = Args::parse(
+            ["export", "--identity-chain", "--dir", "d", "--recovery"]
+                .into_iter()
+                .map(String::from),
+        )
+        .expect("switches");
+        assert!(args.switch("identity-chain") && args.switch("recovery"));
+        assert_eq!(args.get("dir").expect("dir"), "d");
         assert!(Args::parse(["x", "--a", "1", "--a", "2"].into_iter().map(String::from)).is_err());
         assert!(Args::parse(["x", "--a"].into_iter().map(String::from)).is_err());
         assert!(Args::parse(["x", "loose"].into_iter().map(String::from)).is_err());
+    }
+
+    #[test]
+    fn seq_shorthands_extend_the_filter() {
+        let args = Args::parse(
+            ["export", "--seq-after", "5", "--seq-through", "9"]
+                .into_iter()
+                .map(String::from),
+        )
+        .expect("args");
+        assert_eq!(
+            export_filter(&args).expect("filter"),
+            json!({"seq_after": 5, "seq_through": 9})
+        );
     }
 }

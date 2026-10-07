@@ -1,5 +1,7 @@
 //! `audit-admin` end to end: operator commands, 0600 files, refusal of
-//! privileged sessions and URL redaction in errors.
+//! privileged sessions, URLs with `options` and sessions without
+//! synchronous_commit, URL redaction in errors, chain exports over several
+//! intents, and the recovery commands.
 
 mod support;
 
@@ -102,7 +104,9 @@ async fn operator_commands_write_private_files_and_refuse_privileged_sessions() 
         ],
     ));
     assert_eq!(manifest[0]["anchored"], Value::Bool(true));
-    assert_eq!(manifest[0]["checkpoint"]["comparison"], "ahead");
+    // The checkpoint is its own verified record, the head the export's
+    // first intent fixes as its watermark.
+    assert_eq!(manifest[0]["checkpoint"]["comparison"], "match");
     assert_eq!(mode(&export_dir.join("export.jsonl")), 0o600);
     assert_eq!(mode(&export_dir.join("manifest.json")), 0o600);
 
@@ -145,11 +149,210 @@ async fn operator_commands_write_private_files_and_refuse_privileged_sessions() 
     );
     assert_eq!(output.status.code(), Some(1));
 
-    // Usage errors exit 2.
+    // Source services are registered by the owner member only.
+    let registered = json_lines(&audit_admin(
+        Some(&cast.dba.url),
+        &[
+            "register-source-service",
+            "--issuer",
+            "service",
+            "--principal",
+            "audit-relay-standby",
+            "--source",
+            "urn:knowledge-platform:document-platform",
+        ],
+    ));
+    assert_eq!(registered[0]["status"], "registered");
+    assert_eq!(
+        audit_admin(
+            Some(&verifier),
+            &[
+                "register-source-service",
+                "--issuer",
+                "service",
+                "--principal",
+                "p",
+                "--source",
+                "urn:knowledge-platform:document-platform",
+            ],
+        )
+        .status
+        .code(),
+        Some(1)
+    );
+
+    // A URL carrying `options` (e.g. to weaken synchronous_commit) is
+    // refused before connecting, without echoing the URL.
+    for query in [
+        "?options=-c%20synchronous_commit%3Doff",
+        "?sslmode=disable&%6Fptions=-c%20x%3Dy",
+    ] {
+        let output = audit_admin(Some(&format!("{verifier}{query}")), &["status"]);
+        assert_eq!(output.status.code(), Some(1));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("options"), "{stderr}");
+        assert!(!stderr.contains(PASSWORD), "{stderr}");
+    }
+    // A login whose session runs without synchronous_commit is refused.
+    let lazy = db.login("lazy", &["audit_store_verifier"]).await;
+    db.exec(&format!(
+        "ALTER ROLE {} IN DATABASE {} SET synchronous_commit = off",
+        lazy.role, db.database
+    ))
+    .await;
+    let output = audit_admin(Some(&lazy.url), &["status"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("synchronous_commit"));
+    db.exec(&format!(
+        "ALTER ROLE {} IN DATABASE {} SET synchronous_commit = on",
+        lazy.role, db.database
+    ))
+    .await;
+    assert_eq!(
+        json_lines(&audit_admin(Some(&verifier), &["posture"]))[0]["status"],
+        "clean"
+    );
+
+    // Usage errors exit 2; rebind no longer exists.
     assert_eq!(audit_admin(None, &["status"]).status.code(), Some(2));
     assert_eq!(
         audit_admin(Some(&verifier), &["nope"]).status.code(),
         Some(2)
     );
+    assert_eq!(
+        audit_admin(Some(&cast.maintainer.url), &["rebind-fingerprint"])
+            .status
+            .code(),
+        Some(2)
+    );
+    db.assert_store_conforms().await;
+}
+
+#[tokio::test]
+async fn chain_exports_and_recovery_commands_run_end_to_end() {
+    let db = TestDb::start().await;
+    let cast = Cast::new(&db).await;
+    let store = cast.relay.store().await;
+    for n in 0..3 {
+        store
+            .ingest(&document_created(
+                Uuid::now_v7(),
+                Uuid::now_v7(),
+                OCCURRED,
+                n,
+            ))
+            .await
+            .expect("stored");
+    }
+    let verifier = cast.verifier.url.clone();
+    let maintainer = cast.maintainer.url.clone();
+    let dir = scratch_dir();
+    let path = |name: &str| {
+        let p = dir.join(name);
+        p.to_str().expect("path").to_owned()
+    };
+
+    // --identity-chain loops over intents until the first watermark.
+    std::fs::create_dir(dir.join("chain")).expect("dir");
+    let manifest = json_lines(&audit_admin(
+        Some(&verifier),
+        &[
+            "export",
+            "--identity-chain",
+            "--dir",
+            &path("chain"),
+            "--page-size",
+            "4",
+            "--max-pages",
+            "1",
+        ],
+    ));
+    let manifest = &manifest[0];
+    assert_eq!(manifest["operation"], "identity_chain");
+    assert_eq!(manifest["complete"], Value::Bool(true));
+    assert_eq!(manifest["anchored"], Value::Bool(true));
+    let intents = manifest["intents"].as_array().expect("intents");
+    assert!(intents.len() >= 4, "{}", intents.len());
+    assert_eq!(manifest["rows"], manifest["watermark"]);
+    // Explicit seq ranges are passed through.
+    std::fs::create_dir(dir.join("range")).expect("dir");
+    let ranged = json_lines(&audit_admin(
+        Some(&verifier),
+        &[
+            "export",
+            "--identity-chain",
+            "--dir",
+            &path("range"),
+            "--seq-through",
+            "5",
+        ],
+    ));
+    assert_eq!(ranged[0]["rows"], 5);
+    assert_eq!(ranged[0]["intents"][0]["seq_through"], 5);
+
+    // Declared recovery: recovery reads work, publication is refused.
+    json_lines(&audit_admin(
+        Some(&verifier),
+        &["checkpoint", "--out", &path("checkpoint.json")],
+    ));
+    let declared = json_lines(&audit_admin(
+        Some(&maintainer),
+        &["declare-recovery-pending", "--incident-code", "incident_7"],
+    ));
+    assert_eq!(declared[0]["status"], "recovery_pending");
+    let check = json_lines(&audit_admin(Some(&verifier), &["verify", "--recovery"]));
+    assert_eq!(check[0]["recovery_mode"], Value::Bool(true));
+    assert_eq!(check[0]["outcome"], "ok");
+    std::fs::create_dir(dir.join("recovery")).expect("dir");
+    let recovered = json_lines(&audit_admin(
+        Some(&maintainer),
+        &[
+            "export",
+            "--identity-chain",
+            "--recovery",
+            "--dir",
+            &path("recovery"),
+            "--checkpoint",
+            &path("checkpoint.json"),
+        ],
+    ));
+    assert_eq!(recovered[0]["checkpoint"]["comparison"], "match");
+    assert_eq!(recovered[0]["complete"], Value::Bool(true));
+    let refused = audit_admin(Some(&verifier), &["verify"]);
+    assert_eq!(refused.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("requires recovery"));
+
+    // The epoch, then access and retention re-application.
+    let started = json_lines(&audit_admin(
+        Some(&maintainer),
+        &[
+            "begin-recovery-epoch",
+            "--checkpoint",
+            &path("checkpoint.json"),
+        ],
+    ));
+    assert_eq!(started[0]["new_epoch"], 2);
+    assert_eq!(started[0]["checkpoint_classification"], "match");
+    let closed = audit_admin(Some(&cast.reader.url), &["investigate"]);
+    assert_eq!(closed.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&closed.stderr).contains("access_reapply_pending"));
+    let access = json_lines(&audit_admin(
+        Some(&cast.admin.url),
+        &["record-access-reapplied"],
+    ));
+    assert_eq!(access[0]["status"], "recorded");
+    let retention = json_lines(&audit_admin(
+        Some(&maintainer),
+        &["confirm-retention-reapplied"],
+    ));
+    assert_eq!(retention[0]["status"], "recorded");
+    let lines = json_lines(&audit_admin(
+        Some(&cast.reader.url),
+        &["investigate", "--page-size", "2"],
+    ));
+    assert_eq!(lines.len(), 2);
+    let status = json_lines(&audit_admin(Some(&verifier), &["status"]));
+    assert_eq!(status[0]["recovery_epoch"], 2);
+    assert_eq!(status[0]["access_reapply_pending"], Value::Bool(false));
     db.assert_store_conforms().await;
 }

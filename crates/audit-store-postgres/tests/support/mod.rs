@@ -13,7 +13,7 @@ use std::time::Duration;
 use audit_core::catalog::DOCUMENT_SOURCE;
 use audit_core::{AuditEnvelope, DocumentStagingProjection, Origin, chain_next, project};
 use audit_store_postgres::admin::AuditAdmin;
-use audit_store_postgres::{PRIVILEGES_SQL, ROLES_SQL, migrate};
+use audit_store_postgres::{PRIVILEGES_SQL, PostgresAuditStore, ROLES_SQL, migrate};
 use serde_json::{Value, json};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{AssertSqlSafe, ConnectOptions, Connection, PgConnection, PgPool, Row};
@@ -82,7 +82,31 @@ impl Login {
             .await
             .expect("owner session")
     }
+
+    /// `AuditStore` client (relay service or reconciler logins).
+    pub async fn store(&self) -> PostgresAuditStore {
+        PostgresAuditStore::new(self.pool.clone(), Duration::from_secs(10))
+            .await
+            .expect("store session is not privileged")
+    }
 }
+
+/// The relay's expectation for the Document source (catalog types).
+pub fn expectation(last_ack: Option<audit_core::ReceiptIdentity>) -> audit_core::ProbeExpectation {
+    audit_core::ProbeExpectation::from_catalog(
+        audit_core::Catalog::embedded(),
+        DOCUMENT_SOURCE,
+        last_ack,
+    )
+    .expect("the catalog has Document types")
+}
+
+/// Service capability roles of the relay's Store login (design §10.1).
+pub const RELAY_ROLES: [&str; 3] = [
+    "audit_store_ingest",
+    "audit_store_reconciler",
+    "audit_store_relay_control",
+];
 
 async fn connect_with_retry(url: &str) -> PgPool {
     let mut last = None;
@@ -230,6 +254,20 @@ impl TestDb {
     /// A LOGIN role that is a member of audit_store_owner (DBA path).
     pub async fn owner_login(&self, base: &str) -> Login {
         self.login(base, &["audit_store_owner"]).await
+    }
+
+    /// A relay service login (ingest + reconciler + relay_control) bound to
+    /// `service/audit-relay` by a dedicated DBA login, for tests without a
+    /// [`Cast`].
+    pub async fn service_relay(&self) -> Login {
+        let dba = self.owner_login("svc_dba").await;
+        let relay = self.login("svc_relay", &RELAY_ROLES).await;
+        dba.owner()
+            .await
+            .bind_principal(&relay.role, "service", "audit-relay")
+            .await
+            .expect("bind relay service");
+        relay
     }
 
     /// Validates every control event in the store with the audit-core
@@ -420,12 +458,7 @@ impl Cast {
         let reader = db.login("reader", &["audit_store_reader"]).await;
         let verifier = db.login("verifier", &["audit_store_verifier"]).await;
         let maintainer = db.login("maintainer", &["audit_store_maintainer"]).await;
-        let relay = db
-            .login(
-                "relay",
-                &["audit_store_ingest", "audit_store_relay_control"],
-            )
-            .await;
+        let relay = db.login("relay", &RELAY_ROLES).await;
         let owner = dba.owner().await;
         owner
             .bootstrap_administrator(&admin.role, ISSUER, "admin-1")

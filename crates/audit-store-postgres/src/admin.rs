@@ -3,10 +3,13 @@
 //!
 //! Each call is one autocommit statement except [`AuditAdmin::read_page`],
 //! which runs in its own READ ONLY transaction after the intent committed
-//! (design §10.3). The server enforces the disclosure rules; the client only
-//! follows the expected calling convention.
+//! (design §10.3) and retries the transient `intent_not_durable` refusal a
+//! few times. The server enforces the disclosure rules; the client only
+//! follows the expected calling convention. The relay's content-free
+//! receipts and control events go through [`crate::PostgresAuditStore`].
 
 use std::fmt;
+use std::time::Duration;
 
 use audit_core::Checkpoint;
 use serde::Serialize;
@@ -19,6 +22,7 @@ use uuid::Uuid;
 use crate::error::AdminError;
 use crate::hex;
 use crate::session::{SessionError, refuse_privileged, require_owner_member};
+pub use crate::store::{StoreStatusRow, utc_text};
 
 /// Operations of the two-phase disclosure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -38,6 +42,12 @@ impl AccessOperation {
             Self::Verify => "verify",
             Self::IdentityChain => "identity_chain",
         }
+    }
+
+    /// Whether the operation reads the contiguous chain (all origins, only
+    /// `seq_after` / `seq_through` filters).
+    pub const fn is_chain(self) -> bool {
+        matches!(self, Self::Verify | Self::IdentityChain)
     }
 }
 
@@ -109,17 +119,21 @@ pub struct VerifyReport {
     pub outcome: String,
     pub checked: i64,
     pub violations: Value,
+    pub from_seq: i64,
     pub to_seq: i64,
+    pub watermark: i64,
     pub head_epoch: i64,
     pub head_chain: String,
 }
 
+/// A checkpoint: the chain position (epoch, seq, chain) of the
+/// `audit.integrity.verified` record that verified `1..=verified_through`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CheckpointRecord {
     pub epoch: i64,
     pub seq: i64,
     pub chain: String,
-    pub verified_seq: i64,
+    pub verified_through: i64,
     pub outcome: String,
 }
 
@@ -150,6 +164,9 @@ pub struct PolicyRevision {
     pub revision: i32,
 }
 
+/// `expire` outcome: `status` is `expired` or the refusal
+/// (`stale_revision` / `not_expirable` / `held`, recorded as
+/// `audit.retention.expire_refused`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ExpireOutcome {
     pub status: String,
@@ -158,52 +175,32 @@ pub struct ExpireOutcome {
     pub effective_cutoff: Option<String>,
 }
 
+/// The result of `begin_recovery_epoch` (design §11).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EpochStarted {
     pub seq: i64,
     pub new_epoch: i64,
-    pub restored_head: i64,
+    pub restored_head_seq: i64,
+    /// `restore`, `planned_move` or `regression`.
     pub classification: String,
+    /// `match` / `ahead` / `store_behind` / `mismatch`, or `None` without a
+    /// checkpoint.
+    pub checkpoint_classification: Option<String>,
+    pub lost_from_seq: i64,
+    pub lost_upper_seq: i64,
 }
 
+/// A `(status, code)` outcome.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct StoreStatusRow {
-    pub head_seq: i64,
-    pub recovery_epoch: i64,
-    pub recovery_mode: bool,
-    pub posture_ok: bool,
-    pub last_verified_seq: Option<i64>,
-    pub last_verified_at: Option<String>,
-    pub last_verified_outcome: Option<String>,
+pub struct StatusCode {
+    pub status: String,
+    pub code: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PostureViolation {
     pub violation: String,
     pub object: String,
-}
-
-/// Content-free receipt (design §10.4).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Receipt {
-    pub event_id: Uuid,
-    pub seq: i64,
-    pub origin: String,
-    pub event_type: String,
-    pub envelope_digest: [u8; 32],
-    pub source_commitment: Option<[u8; 32]>,
-    pub adapter_version: i32,
-    pub expired: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ControlReceipt {
-    pub seq: i64,
-    pub event_id: Uuid,
-    pub origin: String,
-    pub event_type: String,
-    pub envelope_digest: [u8; 32],
-    pub target_event_id: Option<Uuid>,
 }
 
 /// Administrative client over one operator's own Store login.
@@ -216,21 +213,6 @@ impl fmt::Debug for AuditAdmin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AuditAdmin").finish_non_exhaustive()
     }
-}
-
-/// `YYYY-MM-DDTHH:MM:SS.ffffffZ` in UTC.
-pub fn utc_text(at: OffsetDateTime) -> String {
-    let at = at.to_offset(time::UtcOffset::UTC);
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:06}Z",
-        at.year(),
-        u8::from(at.month()),
-        at.day(),
-        at.hour(),
-        at.minute(),
-        at.second(),
-        at.microsecond()
-    )
 }
 
 /// Parses `YYYY-MM-DDTHH:MM:SS.ffffffZ`.
@@ -256,6 +238,9 @@ pub fn parse_utc_text(text: &str) -> Option<OffsetDateTime> {
     Some(time::PrimitiveDateTime::new(date, clock).assume_utc())
 }
 
+/// Attempts at reading one page while the Store answers `intent_not_durable`.
+const DURABILITY_ATTEMPTS: u32 = 5;
+
 fn protocol(_: sqlx::Error) -> AdminError {
     AdminError::Protocol("unexpected column shape")
 }
@@ -269,10 +254,6 @@ where
 
 fn required<T>(value: Option<T>) -> Result<T, AdminError> {
     value.ok_or(AdminError::Protocol("missing value"))
-}
-
-fn digest(bytes: Vec<u8>) -> Result<[u8; 32], AdminError> {
-    hex::digest32(&bytes).ok_or(AdminError::Protocol("digest length"))
 }
 
 /// Maps a `(status, seq, code)` row: `ok` statuses succeed, `denied` and
@@ -312,7 +293,7 @@ impl AuditAdmin {
         Ok(Self { pool })
     }
 
-    /// Owner-member session for bootstrap, bind and unbind.
+    /// Owner-member session for bootstrap, bind, unbind and source services.
     pub async fn connect_owner(pool: PgPool) -> Result<Self, SessionError> {
         require_owner_member(&pool).await?;
         Ok(Self { pool })
@@ -326,16 +307,7 @@ impl AuditAdmin {
         let row = sqlx::query("SELECT * FROM audit_store.store_status()")
             .fetch_one(&self.pool)
             .await?;
-        let verified_at: Option<OffsetDateTime> = get(&row, "last_verified_at")?;
-        Ok(StoreStatusRow {
-            head_seq: get(&row, "head_seq")?,
-            recovery_epoch: get(&row, "recovery_epoch")?,
-            recovery_mode: get(&row, "recovery_mode")?,
-            posture_ok: get(&row, "posture_ok")?,
-            last_verified_seq: get(&row, "last_verified_seq")?,
-            last_verified_at: verified_at.map(utc_text),
-            last_verified_outcome: get(&row, "last_verified_outcome")?,
-        })
+        crate::store::decode_store_status(&row).map_err(protocol)
     }
 
     pub async fn posture(&self) -> Result<Vec<PostureViolation>, AdminError> {
@@ -391,6 +363,23 @@ impl AuditAdmin {
         recorded(&row, &["unbound"])
     }
 
+    /// Registers a source-service principal for a relay source (owner
+    /// members only; recorded).
+    pub async fn register_source_service(
+        &self,
+        issuer: &str,
+        principal_id: &str,
+        source: &str,
+    ) -> Result<Recorded, AdminError> {
+        let row = sqlx::query("SELECT * FROM audit_store.register_source_service($1, $2, $3)")
+            .bind(issuer)
+            .bind(principal_id)
+            .bind(source)
+            .fetch_one(&self.pool)
+            .await?;
+        recorded(&row, &["registered", "unchanged"])
+    }
+
     pub async fn change_access(
         &self,
         issuer: &str,
@@ -406,6 +395,24 @@ impl AuditAdmin {
             .fetch_one(&self.pool)
             .await?;
         recorded(&row, &["granted", "revoked", "unchanged"])
+    }
+
+    /// Administrator: the out-of-band access state was re-applied after a
+    /// recovery epoch (design §11).
+    pub async fn record_access_reapplied(&self) -> Result<Recorded, AdminError> {
+        let row = sqlx::query("SELECT * FROM audit_store.record_access_reapplied()")
+            .fetch_one(&self.pool)
+            .await?;
+        recorded(&row, &["recorded"])
+    }
+
+    /// Maintainer: every active retention policy was re-run after the epoch
+    /// (or there is none).
+    pub async fn confirm_retention_reapplied(&self) -> Result<Recorded, AdminError> {
+        let row = sqlx::query("SELECT * FROM audit_store.confirm_retention_reapplied()")
+            .fetch_one(&self.pool)
+            .await?;
+        recorded(&row, &["recorded"])
     }
 
     pub async fn set_retention_policy(
@@ -465,26 +472,6 @@ impl AuditAdmin {
         recorded(&row, &["purged"])
     }
 
-    /// Records a relay control event and returns its seq (design §4.5).
-    pub async fn record_relay_control(
-        &self,
-        event_type: &str,
-        event_id: Uuid,
-        code: &str,
-        counts: Option<&Value>,
-    ) -> Result<i64, AdminError> {
-        let row = sqlx::query(
-            "SELECT * FROM audit_store.record_relay_control($1, $2, $3, $4::text::jsonb)",
-        )
-        .bind(event_type)
-        .bind(event_id)
-        .bind(code)
-        .bind(counts.map(Value::to_string))
-        .fetch_one(&self.pool)
-        .await?;
-        required(recorded(&row, &["recorded"])?.seq)
-    }
-
     pub async fn open_access(
         &self,
         operation: AccessOperation,
@@ -511,8 +498,9 @@ impl AuditAdmin {
         })
     }
 
-    /// One page in a fresh READ ONLY transaction (design §10.3).
-    pub async fn read_page(
+    /// One page in a fresh READ ONLY transaction (design §10.3), without
+    /// retrying.
+    pub async fn read_page_once(
         &self,
         token: &str,
         after_seq: i64,
@@ -528,6 +516,24 @@ impl AuditAdmin {
             .await?;
         tx.commit().await?;
         lines(&rows)
+    }
+
+    /// One page; retries while the Store reports `intent_not_durable`.
+    pub async fn read_page(
+        &self,
+        token: &str,
+        after_seq: i64,
+    ) -> Result<Vec<ExportLine>, AdminError> {
+        let mut attempt = 1;
+        loop {
+            match self.read_page_once(token, after_seq).await {
+                Err(AdminError::Retryable { .. }) if attempt < DURABILITY_ATTEMPTS => {
+                    attempt += 1;
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                }
+                other => return other,
+            }
+        }
     }
 
     /// All pages of an intent, each in its own READ ONLY transaction.
@@ -576,7 +582,9 @@ impl AuditAdmin {
             outcome: required(get(&row, "outcome")?)?,
             checked: required(get(&row, "checked")?)?,
             violations: required(get::<Option<Value>>(&row, "violations")?)?,
+            from_seq: required(get(&row, "from_seq")?)?,
             to_seq: required(get(&row, "to_seq")?)?,
+            watermark: required(get(&row, "watermark")?)?,
             head_epoch: required(get(&row, "head_epoch")?)?,
             head_chain: required(get(&row, "head_chain")?)?,
         })
@@ -591,7 +599,7 @@ impl AuditAdmin {
             epoch: required(get(&row, "epoch")?)?,
             seq: required(get(&row, "seq")?)?,
             chain: required(get(&row, "chain")?)?,
-            verified_seq: required(get(&row, "verified_seq")?)?,
+            verified_through: required(get(&row, "verified_through")?)?,
             outcome: required(get(&row, "outcome")?)?,
         })
     }
@@ -625,15 +633,18 @@ impl AuditAdmin {
         lines(&rows)
     }
 
+    /// Starts a recovery epoch (design §11). `checkpoint` is the latest
+    /// out-of-band checkpoint (for a planned move: the head before the move);
+    /// `relay_max_seq` the relay's highest acknowledged store seq, if known.
     pub async fn begin_recovery_epoch(
         &self,
-        checkpoint: &Checkpoint,
-        relay_max_seq: i64,
+        checkpoint: Option<&Checkpoint>,
+        relay_max_seq: Option<i64>,
     ) -> Result<EpochStarted, AdminError> {
         let row = sqlx::query("SELECT * FROM audit_store.begin_recovery_epoch($1, $2, $3, $4)")
-            .bind(checkpoint.epoch)
-            .bind(checkpoint.seq)
-            .bind(hex::encode(&checkpoint.chain))
+            .bind(checkpoint.map(|c| c.epoch))
+            .bind(checkpoint.map(|c| c.seq))
+            .bind(checkpoint.map(|c| hex::encode(&c.chain)))
             .bind(relay_max_seq)
             .fetch_one(&self.pool)
             .await?;
@@ -641,61 +652,28 @@ impl AuditAdmin {
         Ok(EpochStarted {
             seq: required(get(&row, "seq")?)?,
             new_epoch: required(get(&row, "new_epoch")?)?,
-            restored_head: required(get(&row, "restored_head")?)?,
+            restored_head_seq: required(get(&row, "restored_head_seq")?)?,
             classification: required(get(&row, "classification")?)?,
+            checkpoint_classification: get(&row, "checkpoint_classification")?,
+            lost_from_seq: required(get(&row, "lost_from_seq")?)?,
+            lost_upper_seq: required(get(&row, "lost_upper_seq")?)?,
         })
     }
 
-    pub async fn rebind_fingerprint(&self) -> Result<Recorded, AdminError> {
-        let row = sqlx::query("SELECT * FROM audit_store.rebind_fingerprint()")
+    /// Maintainer: enter recovery mode for a known incident (design §11).
+    pub async fn declare_recovery_pending(
+        &self,
+        incident_code: &str,
+    ) -> Result<StatusCode, AdminError> {
+        let row = sqlx::query("SELECT * FROM audit_store.declare_recovery_pending($1)")
+            .bind(incident_code)
             .fetch_one(&self.pool)
             .await?;
-        recorded(&row, &["rebound", "unchanged"])
-    }
-
-    pub async fn lookup_receipts(&self, event_ids: &[Uuid]) -> Result<Vec<Receipt>, AdminError> {
-        let rows = sqlx::query("SELECT * FROM audit_store.lookup_receipts($1)")
-            .bind(event_ids)
-            .fetch_all(&self.pool)
-            .await?;
-        rows.iter().map(receipt).collect()
-    }
-
-    pub async fn list_source_receipts(
-        &self,
-        source: &str,
-        after_seq: i64,
-        limit: i32,
-    ) -> Result<Vec<Receipt>, AdminError> {
-        let rows = sqlx::query("SELECT * FROM audit_store.list_source_receipts($1, $2, $3)")
-            .bind(source)
-            .bind(after_seq)
-            .bind(limit)
-            .fetch_all(&self.pool)
-            .await?;
-        rows.iter().map(receipt).collect()
-    }
-
-    pub async fn lookup_control_receipts(
-        &self,
-        seqs: &[i64],
-    ) -> Result<Vec<ControlReceipt>, AdminError> {
-        let rows = sqlx::query("SELECT * FROM audit_store.lookup_control_receipts($1)")
-            .bind(seqs)
-            .fetch_all(&self.pool)
-            .await?;
-        rows.iter()
-            .map(|row| {
-                Ok(ControlReceipt {
-                    seq: get(row, "seq")?,
-                    event_id: get(row, "event_id")?,
-                    origin: get(row, "origin")?,
-                    event_type: get(row, "event_type")?,
-                    envelope_digest: digest(get(row, "envelope_digest")?)?,
-                    target_event_id: get(row, "target_event_id")?,
-                })
-            })
-            .collect()
+        denied(&row)?;
+        Ok(StatusCode {
+            status: get(&row, "status")?,
+            code: get(&row, "code")?,
+        })
     }
 }
 
@@ -708,20 +686,6 @@ fn lines(rows: &[PgRow]) -> Result<Vec<ExportLine>, AdminError> {
             })
         })
         .collect()
-}
-
-fn receipt(row: &PgRow) -> Result<Receipt, AdminError> {
-    let commitment: Option<Vec<u8>> = get(row, "source_commitment")?;
-    Ok(Receipt {
-        event_id: get(row, "event_id")?,
-        seq: get(row, "seq")?,
-        origin: get(row, "origin")?,
-        event_type: get(row, "event_type")?,
-        envelope_digest: digest(get(row, "envelope_digest")?)?,
-        source_commitment: commitment.map(digest).transpose()?,
-        adapter_version: get(row, "adapter_version")?,
-        expired: get(row, "expired")?,
-    })
 }
 
 #[cfg(test)]

@@ -7,12 +7,16 @@ use audit_core::OutageCode;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AdminError {
     /// The Store refused and recorded `audit.access.denied` (or a bounded
-    /// precondition such as `already_bound`).
+    /// precondition such as `already_bound` / `not_pending`).
     #[error("audit store refused the call: {code}")]
     Denied { code: String },
-    /// A disclosure or precondition check failed (not recorded).
+    /// A disclosure, state or precondition check failed (not recorded):
+    /// e.g. `access_revoked`, `access_reapply_pending`, `not_in_recovery`.
     #[error("audit store rejected the call: {code}")]
     Rejected { code: String },
+    /// A transient refusal the caller may retry (`intent_not_durable`).
+    #[error("audit store asked to retry: {code}")]
+    Retryable { code: String },
     /// The Store is in recovery mode (design §11).
     #[error("audit store requires recovery")]
     RecoveryRequired,
@@ -44,7 +48,9 @@ impl AdminError {
     /// The Store's refusal code, if any.
     pub fn code(&self) -> Option<&str> {
         match self {
-            Self::Denied { code } | Self::Rejected { code } => Some(code),
+            Self::Denied { code } | Self::Rejected { code } | Self::Retryable { code } => {
+                Some(code)
+            }
             _ => None,
         }
     }
@@ -55,23 +61,27 @@ impl From<sqlx::Error> for AdminError {
         match &error {
             sqlx::Error::Database(db) => {
                 let sqlstate = db.code().map(|c| c.into_owned()).unwrap_or_default();
+                let message = db.message();
                 match sqlstate.as_str() {
                     "KA001" => Self::RecoveryRequired,
                     "KA002" => Self::PostureInvalid,
-                    // Disclosure refusals raised by resolve_intent/read_page carry a code.
-                    "42501" if is_code(db.message()) => Self::Rejected {
-                        code: db.message().to_owned(),
+                    // Refusals raised by the Store's functions carry a bounded code.
+                    "42501" | "55000" if is_code(message) => Self::Rejected {
+                        code: message.to_owned(),
+                    },
+                    "40001" if is_code(message) => Self::Retryable {
+                        code: message.to_owned(),
                     },
                     _ => Self::Database {
                         sqlstate,
-                        message: db.message().to_owned(),
+                        message: message.to_owned(),
                     },
                 }
             }
-            _ => match crate::store::classify_sqlx_error(&error) {
-                audit_core::StoreError::Outage { code } => Self::Unavailable { code },
-                _ => Self::Unavailable {
-                    code: OutageCode::Unclassified,
+            _ => match crate::store::classify_sqlx_error(&error).outage_code() {
+                Some(code) => Self::Unavailable { code },
+                None => Self::Unavailable {
+                    code: OutageCode::Other,
                 },
             },
         }
@@ -79,9 +89,5 @@ impl From<sqlx::Error> for AdminError {
 }
 
 fn is_code(text: &str) -> bool {
-    !text.is_empty()
-        && text.len() <= 64
-        && text
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+    audit_core::port::BoundedCode::new(text).is_some()
 }
