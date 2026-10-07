@@ -127,7 +127,7 @@ Status: DESIGN REVISION 3（独立review 1・再review・最終reviewの指摘�
 
 - 正本は `spec/telemetry/audit-event-catalog.json`。adapterごと（source、source_format、adapter_version、commitment・registrationの要否、trace_idの可否）の定義と、`registered_types` の元になる (source, type, adapter_version) の一覧もcatalogが持つ。各typeについて、source、event_class、origin（`relay` / `store` / `relay_control`）、許可するresource種別、version要否、result、subject形の一覧、fields、required、reason扱い、reason_code_field、service_executor_field、operation_id_field、publish_operation_id_fieldを持つ。
   - subject形は、placeholderを `resource.id` / `resource.version_id` / details fieldへ束縛した形の一覧である。例：`document.version.created` は `document/{resource.id}`（初回作成）と `document/{resource.id}/version/{resource.version_id}` の2形を許す。
-- kind（JSON整数は `is_i64`/`is_u64` のみ。浮動小数・指数表記は拒否）：
+- kind（JSON整数は `is_i64`/`is_u64` のみ。浮動小数・指数表記は拒否。下表はDocument用の主なkindである。control用のkind（resource_ref、event_type(_list)、source_urn/list、db_role、principal_ref、int8_text、code、nullable_positive_counter）を含む正本は `spec/telemetry/README.md` §kind）：
 
   | kind | 内容 |
   |---|---|
@@ -449,9 +449,9 @@ head lockをcommitまで保持するので、seqの公開はcommit順になる�
       - (b) `audit.body.purged`：記録した対象seqが、その1行と一致する。
     - 参照先の本文は存在しなければならない。無ければ `retention_evidence_missing` を違反として報告する（skipしない）。
   - 結果は1件の `audit.integrity.verified`（origin=store）に記録する。この記録はWより後のseqになるので、検証は再帰しない。
-- 真正性の主張は、audit-coreがDB外で連続したseq範囲のchainを再計算した場合だけ行う。範囲の起点はgenesisか既に信頼したcheckpoint、終点は帯域外に保管したcheckpointと一致するheadである。
+- 真正性の主張（`Authentic`）は、audit-coreがDB外で連続したseq範囲のchainを再計算し、headが帯域外に保管したcheckpointと（epoch, seq, chain）で完全に一致した場合だけ行う。範囲の起点はgenesisか既に信頼したcheckpointである。headがcheckpointより先にある場合は、checkpointまでの `AuthenticThrough { seq }` にとどめる。失効の証拠が検証範囲の外にある場合は `UnverifiedExpiry` とする。完全なexportの検証は `verify_export_complete`（manifestのwatermarkとheadの一致を要求）で行う。
   - DB内verifyの結果やchain列は、真正性の証拠にならない。
-  - `audit-admin export --identity-chain` は、本文を含まない（seq, event_id, envelope_digest, prev_chain, chain, epoch）行を出力する。
+  - `audit-admin export --identity-chain` は、本文を含まない行を出力する。行の形式は§10.4のexport行と同じ10 key（seq, event_id, origin, envelope_digest, prev_chain, chain, recovery_epoch, expired, expired_by_seq, envelope）で、`envelope` は常に `null` とする（DB外の検証は、この閉じたkey集合以外を不正な行として拒否する）。
   - filter付きexportは「anchorのない部分集合」と表示する。
   - DB外の検証は、本文付きexportで次も確かめる。
     - 失効行の `expired_by_seq` が、export内の `audit.retention.expired`（件数・seq範囲・expired_set_digestが参照集合と一致）または `audit.body.purged`（対象seqが一致）を指すこと。範囲外を指すものは「未検証の証拠」として件数を報告する。
@@ -470,7 +470,7 @@ head lockをcommitまで保持するので、seqの公開はcommit順になる�
 
 - `retention_policies` は版付きで不変とする。`set_retention_policy`（administer）は新しいrevisionを追加し、control eventに全内容を記録する。
   - 既定では行が無いので失効しない。年数は固定しない（OA §26）。
-  - selectorの文法は、event_types／event_classes／sourcesの列挙である。origin=relayのeventだけを対象にできる。
+  - selectorの文法は、event_types（catalogの文法、最大16）／event_classes／sources（catalogのsource、最大16）の列挙である。origin=relayのeventだけを対象にできる。
 - `expire(policy_id, expected_revision, cutoff, limit≤1000)`（maintain）の手順：
   1. lock順はhead → policy → identity。最新revisionが `expected_revision` と一致しなければstaleとし、何も削除せず試行を記録する。
   2. `retain_days IS NULL` なら `not_expirable` とし、何も削除せず試行を記録する。
@@ -533,7 +533,7 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
 - 束縛（`bind_principal` / `unbind_principal`）はowner roleのmemberだけが行う（`pg_has_role(session_user, 'audit_store_owner', 'MEMBER')`、head lockの後）。administerは束縛を変えられないので、自分が誰として振る舞うかを変更できない。束縛は上書きせず、変更にはunbindを先に記録する。
 - 権限（Audit上の責務。Organization roleではない）は、`investigate`、`export`、`verify`、`administer`、`maintain`。DB層のcapability roleを持ち、かつ束縛された主体にAudit上の権限がある場合だけ実行できる。Document ACLは流用しない。
 - `change_access` は、呼出者自身の主体への付与を拒否し、その試行を記録する。2人の管理者の共謀と二人承認はv1の範囲外とする（すべての変更は主体とsession_userで記録され、検出できる）。
-- control eventには、主体と `session_user` の両方を記録する。
+- control eventには、主体と `session_user` の両方を記録する。主体に束縛されていないsession（未束縛の拒否、bootstrap）では、actorを `{issuer: "db_role", principal_id: <session role>}` とする（role名は `^[a-z_][a-z0-9_$]{0,62}$`）。control eventのdetailsは、閉じたkind（source、resource ref、db_role、enum等）と、文法で制限したkind（event type、principal）だけで構成し、自由記述fieldを持たない。event typeのfilter・selectorは、登録済みtypeとcontrol typeに限定する。actorのfilter値は、上限付きのprincipal文字列として残る（受容した残余）。
 - 最初の管理者：`bootstrap_administrator(db_role, issuer, principal_id)` はownerのmemberだけが呼べる（`current_user` は使わない）。head lockの後にadministerが0件であることを確認して成功する。最後の管理者を失った場合は、同じ経路で監査付きのlockout回復とする。
 - `audit.access.*` などcontrol eventの閲覧：investigate・exportのどちらでも、administer権限を持つ場合だけ含める（intentの時点で可視範囲を固定する）。
 
@@ -576,7 +576,7 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
   {"seq":…,"event_id":…,"origin":…,"envelope_digest":…,"prev_chain":…,"chain":…,"recovery_epoch":…,"expired":…,"expired_by_seq":…,"envelope":<jsonb text原文>}
   ```
 
-  SQLで `envelope::text` を連結して生成し、serdeでの往復はしない。
+  SQLで `envelope::text` を連結して生成し、serdeでの往復はしない。identity chain（§8の `--identity-chain`、§11の `identity_chain_recovery_page`）も同じ10 keyの行で、`envelope` を常に `null` とする。
 - `audit-core` のexport検証は、RawValueで原文を保持し、sha256とchainを再計算する。
 - manifestには、件数、seq範囲、watermark、page digest、intentのseq、照合したcheckpoint、GENESIS定数を記す。
 - relay用の `lookup_receipts` / `list_source_receipts` / `lookup_control_receipts` は、content-free（seq、epoch、event_id、origin、type、envelope digest、commitment、expired、control対象event_id）である。DB role（reconciler）で制限し、呼出ごとのcontrol eventは作らない（audit-of-auditの例外：本文を含まない）。reconcileは1 runにつき1件の `audit.reconciliation.completed` を記録する。healthは、content-freeで監査対象外の `store_status()` を使う。
@@ -599,7 +599,7 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
   - recovery mode中は、publicationのすべての関数（ingest、record_relay_control、open_access、read_page、verify、checkpoint、change_access、bind/unbind、set_retention_policy、expire、purge_body、close_access）が `store_recovery_required` を返す。許可されるのは次に限る（網羅的な一覧）。
     - content-freeの状態取得：`probe`、`store_status`、`posture_check`、`lookup_receipts`、`list_source_receipts`、`lookup_control_receipts`（本文を返さず、recovery状態を報告する）
     - `verify_recovery()`：READ ONLYでverifyと同じ検査を行い、何も追記しない。
-    - `identity_chain_recovery_page(after_seq, limit)`：content-free、intentなし、本文なし。
+    - `identity_chain_recovery_page(after_seq, limit)`：content-free、intentなし、本文なし。行は§10.4のexport行と同じ10 keyで、`envelope` は常に `null`（§8の `--identity-chain` と同じ形式）とする。
     - `report_regression` / `declare_recovery_pending`（recovery_pendingの設定のみ）
     - `begin_recovery_epoch`
 

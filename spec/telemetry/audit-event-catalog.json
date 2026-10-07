@@ -55,6 +55,7 @@
       "event_class": "CONTENT_LIFECYCLE",
       "resources": ["Document"],
       "version_required": true,
+      "client_chosen_version_id": true,
       "results": ["success"],
       "subjects": [
         "document/{resource.id}",
@@ -62,9 +63,9 @@
       ],
       "fields": {
         "documentId": {"kind": "uuid"},
-        "documentVersionId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid", "client_chosen": true},
         "versionNo": {"kind": "positive_counter"},
-        "baseDocumentVersionId": {"kind": "nullable_uuid"},
+        "baseDocumentVersionId": {"kind": "nullable_uuid", "client_chosen": true},
         "resultingDocumentRevision": {"kind": "counter"}
       },
       "required": ["documentId", "documentVersionId"],
@@ -81,13 +82,14 @@
       "event_class": "CONTENT_LIFECYCLE",
       "resources": ["Document"],
       "version_required": true,
+      "client_chosen_version_id": true,
       "results": ["success"],
       "subjects": ["document/{resource.id}/version/{resource.version_id}"],
       "fields": {
         "documentId": {"kind": "uuid"},
-        "documentVersionId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid", "client_chosen": true},
         "versionNo": {"kind": "positive_counter"},
-        "baseDocumentVersionId": {"kind": "nullable_uuid"},
+        "baseDocumentVersionId": {"kind": "nullable_uuid", "client_chosen": true},
         "resultingDocumentRevision": {"kind": "counter"}
       },
       "required": [
@@ -110,13 +112,14 @@
       "event_class": "CONTENT_LIFECYCLE",
       "resources": ["Document"],
       "version_required": true,
+      "client_chosen_version_id": true,
       "results": ["success"],
       "subjects": ["document/{resource.id}/version/{resource.version_id}"],
       "fields": {
         "documentId": {"kind": "uuid"},
-        "documentVersionId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid", "client_chosen": true},
         "versionNo": {"kind": "positive_counter"},
-        "baseDocumentVersionId": {"kind": "nullable_uuid"},
+        "baseDocumentVersionId": {"kind": "nullable_uuid", "client_chosen": true},
         "resultingDocumentRevision": {"kind": "counter"}
       },
       "required": [
@@ -139,6 +142,7 @@
       "event_class": "CONTENT_LIFECYCLE",
       "resources": ["Document"],
       "version_required": true,
+      "client_chosen_version_id": true,
       "results": ["success"],
       "subjects": ["document/{resource.id}/version/{resource.version_id}"],
       "fields": {
@@ -168,11 +172,12 @@
       "event_class": "CONTENT_LIFECYCLE",
       "resources": ["Document"],
       "version_required": true,
+      "client_chosen_version_id": true,
       "results": ["success"],
       "subjects": ["document/{resource.id}/version/{resource.version_id}"],
       "fields": {
         "documentId": {"kind": "uuid"},
-        "documentVersionId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid", "client_chosen": true},
         "publishOperationId": {"kind": "uuid"},
         "scheduledPublishAt": {"kind": "legacy_time"},
         "acceptedDocumentRevision": {"kind": "counter"}
@@ -199,11 +204,12 @@
       "event_class": "CONTENT_LIFECYCLE",
       "resources": ["Document"],
       "version_required": true,
+      "client_chosen_version_id": true,
       "results": ["success"],
       "subjects": ["document/{resource.id}/version/{resource.version_id}"],
       "fields": {
         "documentId": {"kind": "uuid"},
-        "documentVersionId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid", "client_chosen": true},
         "publishOperationId": {"kind": "uuid"},
         "resultingDocumentRevision": {"kind": "counter"}
       },
@@ -227,11 +233,12 @@
       "event_class": "CONTENT_LIFECYCLE",
       "resources": ["Document"],
       "version_required": true,
+      "client_chosen_version_id": true,
       "results": ["failure"],
       "subjects": ["document/{resource.id}/version/{resource.version_id}"],
       "fields": {
         "documentId": {"kind": "uuid"},
-        "documentVersionId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid", "client_chosen": true},
         "publishOperationId": {"kind": "uuid"},
         "terminalReason": {
           "kind": "enum",
@@ -273,13 +280,14 @@
       "event_class": "CONTENT_LIFECYCLE",
       "resources": ["Document"],
       "version_required": true,
+      "client_chosen_version_id": true,
       "results": ["success"],
       "subjects": ["document/{resource.id}/version/{resource.version_id}"],
       "fields": {
         "documentId": {"kind": "uuid"},
-        "withdrawnDocumentVersionId": {"kind": "uuid"},
-        "formerCurrentVersionId": {"kind": "nullable_uuid"},
-        "resultingCurrentVersionId": {"kind": "nullable_uuid"},
+        "withdrawnDocumentVersionId": {"kind": "uuid", "client_chosen": true},
+        "formerCurrentVersionId": {"kind": "nullable_uuid", "client_chosen": true},
+        "resultingCurrentVersionId": {"kind": "nullable_uuid", "client_chosen": true},
         "actor": {"kind": "principal"},
         "restorationWithheldByValidation": {"kind": "boolean"},
         "restorationWithheldReason": {
@@ -318,13 +326,14 @@
       "event_class": "CONTENT_LIFECYCLE",
       "resources": ["Document"],
       "version_required": true,
+      "client_chosen_version_id": true,
       "results": ["success"],
       "subjects": ["document/{resource.id}"],
       "fields": {
         "operationId": {"kind": "uuid"},
         "documentId": {"kind": "uuid"},
-        "formerCurrentVersionId": {"kind": "uuid"},
-        "resultingCurrentVersionId": {"kind": "nullable_uuid"},
+        "formerCurrentVersionId": {"kind": "uuid", "client_chosen": true},
+        "resultingCurrentVersionId": {"kind": "nullable_uuid", "client_chosen": true},
         "resultingDocumentRevision": {"kind": "counter"},
         "actor": {"kind": "principal"},
         "invalidatedScheduleCount": {"kind": "counter"},
@@ -385,8 +394,8 @@
       "fields": {
         "operation_id": {"kind": "uuid"},
         "document_id": {"kind": "uuid"},
-        "from_folder_id": {"kind": "uuid"},
-        "to_folder_id": {"kind": "uuid"},
+        "from_folder_id": {"kind": "uuid", "client_chosen": true},
+        "to_folder_id": {"kind": "uuid", "client_chosen": true},
         "document_revision": {"kind": "counter"},
         "access_revision": {"kind": "counter"},
         "visibility_changed": {"kind": "boolean"}
@@ -412,12 +421,13 @@
       "origin": "relay",
       "event_class": "CONTENT_LIFECYCLE",
       "resources": ["Folder"],
+      "client_chosen_resource_ids": ["Folder"],
       "version_required": false,
       "results": ["success"],
       "subjects": ["folder/{resource.id}"],
       "fields": {
-        "folder_id": {"kind": "uuid"},
-        "parent_folder_id": {"kind": "uuid"},
+        "folder_id": {"kind": "uuid", "client_chosen": true},
+        "parent_folder_id": {"kind": "uuid", "client_chosen": true},
         "folder_revision": {"kind": "counter"},
         "operation_id": {"kind": "uuid"}
       },
@@ -434,11 +444,12 @@
       "origin": "relay",
       "event_class": "CONTENT_LIFECYCLE",
       "resources": ["Folder"],
+      "client_chosen_resource_ids": ["Folder"],
       "version_required": false,
       "results": ["success"],
       "subjects": ["folder/{resource.id}"],
       "fields": {
-        "folder_id": {"kind": "uuid"},
+        "folder_id": {"kind": "uuid", "client_chosen": true},
         "folder_revision": {"kind": "counter"},
         "operation_id": {"kind": "uuid"}
       },
@@ -455,14 +466,15 @@
       "origin": "relay",
       "event_class": "CONTENT_LIFECYCLE",
       "resources": ["Folder"],
+      "client_chosen_resource_ids": ["Folder"],
       "version_required": false,
       "results": ["success"],
       "subjects": ["folder/{resource.id}"],
       "fields": {
         "operation_id": {"kind": "uuid"},
-        "folder_id": {"kind": "uuid"},
-        "from_parent_id": {"kind": "uuid"},
-        "to_parent_id": {"kind": "uuid"},
+        "folder_id": {"kind": "uuid", "client_chosen": true},
+        "from_parent_id": {"kind": "uuid", "client_chosen": true},
+        "to_parent_id": {"kind": "uuid", "client_chosen": true},
         "folder_revision": {"kind": "counter"},
         "access_revision": {"kind": "counter"},
         "subtree_affected": {"kind": "counter"}
@@ -488,6 +500,7 @@
       "origin": "relay",
       "event_class": "ACCESS_POLICY",
       "resources": ["Document", "Folder"],
+      "client_chosen_resource_ids": ["Folder"],
       "version_required": false,
       "results": ["success"],
       "subjects": [
@@ -497,7 +510,7 @@
       "fields": {
         "operation_id": {"kind": "uuid"},
         "target_type": {"kind": "enum", "values": ["Document", "Folder"]},
-        "target_id": {"kind": "uuid"},
+        "target_id": {"kind": "uuid", "client_chosen": true},
         "policy_id": {"kind": "nullable_uuid"},
         "policy_revision": {"kind": "counter"},
         "access_revision": {"kind": "counter"},
@@ -525,10 +538,11 @@
       "event_class": "DATA_ACCESS",
       "resources": ["Document"],
       "version_required": true,
+      "client_chosen_version_id": true,
       "results": ["success"],
       "subjects": ["document/{resource.id}"],
       "fields": {
-        "document_version_id": {"kind": "uuid"}
+        "document_version_id": {"kind": "uuid", "client_chosen": true}
       },
       "required": ["document_version_id"],
       "reason": "absent",
@@ -543,6 +557,7 @@
       "event_class": "DATA_ACCESS",
       "resources": ["Document"],
       "version_required": true,
+      "client_chosen_version_id": true,
       "results": ["success"],
       "subjects": [
         "document/{resource.id}/version/{resource.version_id}/representation/{details.representation_id}"
@@ -562,11 +577,12 @@
       "event_class": "DATA_ACCESS",
       "resources": ["Document"],
       "version_required": true,
+      "client_chosen_version_id": true,
       "results": ["success"],
       "subjects": ["document/{resource.id}/diff"],
       "fields": {
-        "base_version_id": {"kind": "uuid"},
-        "target_version_id": {"kind": "uuid"},
+        "base_version_id": {"kind": "uuid", "client_chosen": true},
+        "target_version_id": {"kind": "uuid", "client_chosen": true},
         "base_snapshot_digest": {"kind": "digest"},
         "target_snapshot_digest": {"kind": "digest"},
         "comparison_profile": {"kind": "enum", "values": ["document-diff-v0"]},
@@ -600,6 +616,7 @@
       "event_class": "DATA_ACCESS",
       "resources": ["Document"],
       "version_required": true,
+      "client_chosen_version_id": true,
       "results": ["success"],
       "subjects": ["document/{resource.id}/revision-comparison"],
       "fields": {
@@ -670,15 +687,15 @@
       "results": ["success"],
       "subjects": ["audit-store"],
       "fields": {
-        "session_role": {"kind": "identifier"},
+        "session_role": {"kind": "db_role"},
         "operation": {"kind": "enum", "values": ["investigate", "export", "verify", "identity_chain"]},
         "filter_digest": {"kind": "hex_digest"},
-        "filter_event_types": {"kind": "identifier_list"},
-        "filter_source": {"kind": "identifier"},
-        "filter_actor_issuer": {"kind": "identifier"},
-        "filter_actor_principal_id": {"kind": "identifier"},
+        "filter_event_types": {"kind": "event_type_list"},
+        "filter_source": {"kind": "source_urn"},
+        "filter_actor_issuer": {"kind": "principal_ref"},
+        "filter_actor_principal_id": {"kind": "principal_ref"},
         "filter_resource_type": {"kind": "enum", "values": ["Document", "Folder", "AccessPolicy", "AuditStore"]},
-        "filter_resource_id": {"kind": "identifier"},
+        "filter_resource_id": {"kind": "resource_ref"},
         "filter_occurred_from": {"kind": "utc_timestamp"},
         "filter_occurred_to": {"kind": "utc_timestamp"},
         "filter_event_ids": {"kind": "uuid_list"},
@@ -714,7 +731,7 @@
       "results": ["denied"],
       "subjects": ["audit-store"],
       "fields": {
-        "session_role": {"kind": "identifier"},
+        "session_role": {"kind": "db_role"},
         "operation": {
           "kind": "enum",
           "values": [
@@ -755,7 +772,7 @@
       "results": ["success"],
       "subjects": ["audit-store"],
       "fields": {
-        "session_role": {"kind": "identifier"},
+        "session_role": {"kind": "db_role"},
         "intent_seq": {"kind": "positive_counter"},
         "returned_count": {"kind": "counter"},
         "page_count": {"kind": "counter"},
@@ -774,12 +791,12 @@
       "results": ["success"],
       "subjects": ["audit-store"],
       "fields": {
-        "session_role": {"kind": "identifier"},
+        "session_role": {"kind": "db_role"},
         "change": {"kind": "enum", "values": ["granted", "revoked", "bound", "unbound", "bootstrap", "reapplied"]},
-        "target_issuer": {"kind": "identifier"},
-        "target_principal_id": {"kind": "identifier"},
+        "target_issuer": {"kind": "principal_ref"},
+        "target_principal_id": {"kind": "principal_ref"},
         "capability": {"kind": "enum", "values": ["investigate", "export", "verify", "administer", "maintain"]},
-        "db_role": {"kind": "identifier"}
+        "db_role": {"kind": "db_role"}
       },
       "required": ["session_role", "change", "target_issuer", "target_principal_id"],
       "reason": "absent"
@@ -794,10 +811,10 @@
       "results": ["success"],
       "subjects": ["audit-store"],
       "fields": {
-        "session_role": {"kind": "identifier"},
+        "session_role": {"kind": "db_role"},
         "policy_id": {"kind": "code"},
         "revision": {"kind": "positive_counter"},
-        "selector_event_types": {"kind": "identifier_list"},
+        "selector_event_types": {"kind": "event_type_list"},
         "selector_event_classes": {
           "kind": "enum_list",
           "values": [
@@ -811,9 +828,9 @@
             "SYSTEM_AUDIT"
           ]
         },
-        "selector_sources": {"kind": "identifier_list"},
+        "selector_sources": {"kind": "source_list"},
         "selector_digest": {"kind": "hex_digest"},
-        "retain_days": {"kind": "nullable_counter"}
+        "retain_days": {"kind": "nullable_positive_counter"}
       },
       "required": ["session_role", "policy_id", "revision", "selector_digest", "retain_days"],
       "reason": "absent"
@@ -828,10 +845,10 @@
       "results": ["success"],
       "subjects": ["audit-store"],
       "fields": {
-        "session_role": {"kind": "identifier"},
+        "session_role": {"kind": "db_role"},
         "policy_id": {"kind": "code"},
         "revision": {"kind": "positive_counter"},
-        "selector_event_types": {"kind": "identifier_list"},
+        "selector_event_types": {"kind": "event_type_list"},
         "selector_event_classes": {
           "kind": "enum_list",
           "values": [
@@ -845,7 +862,7 @@
             "SYSTEM_AUDIT"
           ]
         },
-        "selector_sources": {"kind": "identifier_list"},
+        "selector_sources": {"kind": "source_list"},
         "selector_digest": {"kind": "hex_digest"},
         "retain_days": {"kind": "positive_counter"},
         "cutoff": {"kind": "utc_timestamp"},
@@ -884,12 +901,12 @@
       "results": ["failure"],
       "subjects": ["audit-store"],
       "fields": {
-        "session_role": {"kind": "identifier"},
+        "session_role": {"kind": "db_role"},
         "policy_id": {"kind": "code"},
         "expected_revision": {"kind": "positive_counter"},
         "current_revision": {"kind": "nullable_counter"},
         "refusal": {"kind": "enum", "values": ["stale_revision", "not_expirable", "held"]},
-        "retain_days": {"kind": "nullable_counter"},
+        "retain_days": {"kind": "nullable_positive_counter"},
         "cutoff": {"kind": "utc_timestamp"},
         "tx_time": {"kind": "utc_timestamp"}
       },
@@ -915,7 +932,7 @@
       "results": ["success"],
       "subjects": ["audit-store"],
       "fields": {
-        "session_role": {"kind": "identifier"},
+        "session_role": {"kind": "db_role"},
         "target_seq": {"kind": "positive_counter"},
         "target_event_id": {"kind": "uuid"},
         "purge_reason_code": {"kind": "enum", "values": ["minimization_failure", "prohibited_content", "adapter_defect"]}
@@ -933,12 +950,13 @@
       "results": ["success", "failure"],
       "subjects": ["audit-store"],
       "fields": {
-        "session_role": {"kind": "identifier"},
+        "session_role": {"kind": "db_role"},
         "trigger": {"kind": "enum", "values": ["verify", "checkpoint"]},
         "from_seq": {"kind": "counter"},
         "to_seq": {"kind": "counter"},
         "watermark": {"kind": "counter"},
         "checked": {"kind": "counter"},
+        "head_seq": {"kind": "counter"},
         "head_epoch": {"kind": "positive_counter"},
         "head_chain": {"kind": "hex_digest"},
         "outcome": {"kind": "enum", "values": ["ok", "violations"]},
@@ -963,6 +981,7 @@
         "to_seq",
         "watermark",
         "checked",
+        "head_seq",
         "head_epoch",
         "head_chain",
         "outcome",
@@ -992,7 +1011,7 @@
       "results": ["failure"],
       "subjects": ["audit-store"],
       "fields": {
-        "session_role": {"kind": "identifier"},
+        "session_role": {"kind": "db_role"},
         "event_id": {"kind": "uuid"},
         "existing_seq": {"kind": "positive_counter"},
         "existing_origin": {"kind": "enum", "values": ["relay", "store", "relay_control"]},
@@ -1026,7 +1045,7 @@
       "results": ["success"],
       "subjects": ["audit-store"],
       "fields": {
-        "session_role": {"kind": "identifier"},
+        "session_role": {"kind": "db_role"},
         "classification": {"kind": "enum", "values": ["restore", "planned_move", "regression"]},
         "old_epoch": {"kind": "positive_counter"},
         "new_epoch": {"kind": "positive_counter"},
@@ -1037,7 +1056,7 @@
         "checkpoint_chain": {"kind": "nullable_hex_digest"},
         "checkpoint_classification": {
           "kind": "nullable_enum",
-          "values": ["match", "ahead", "store_behind", "mismatch"]
+          "values": ["match", "ahead", "store_behind", "mismatch", "epoch_mismatch"]
         },
         "identity_range_digest": {"kind": "hex_digest"},
         "relay_max_seq": {"kind": "nullable_counter"},
@@ -1047,15 +1066,15 @@
         "regression_reported_seq": {"kind": "nullable_counter"},
         "regression_reported_event_id": {"kind": "nullable_uuid"},
         "regression_reported_digest": {"kind": "nullable_hex_digest"},
-        "regression_reported_by": {"kind": "nullable_identifier"},
+        "regression_reported_by": {"kind": "nullable_db_role"},
         "regression_reported_at": {"kind": "nullable_utc_timestamp"},
         "regression_head_seq": {"kind": "nullable_counter"},
-        "old_system_identifier": {"kind": "identifier"},
-        "old_database_oid": {"kind": "identifier"},
-        "old_timeline": {"kind": "identifier"},
-        "new_system_identifier": {"kind": "identifier"},
-        "new_database_oid": {"kind": "identifier"},
-        "new_timeline": {"kind": "identifier"}
+        "old_system_identifier": {"kind": "int8_text"},
+        "old_database_oid": {"kind": "int8_text"},
+        "old_timeline": {"kind": "int8_text"},
+        "new_system_identifier": {"kind": "int8_text"},
+        "new_database_oid": {"kind": "int8_text"},
+        "new_timeline": {"kind": "int8_text"}
       },
       "required": [
         "session_role",
@@ -1098,7 +1117,7 @@
       "results": ["success"],
       "subjects": ["audit-store"],
       "fields": {
-        "session_role": {"kind": "identifier"},
+        "session_role": {"kind": "db_role"},
         "event_id": {"kind": "uuid"},
         "quarantine_code": {"kind": "code"}
       },
@@ -1115,7 +1134,7 @@
       "results": ["success"],
       "subjects": ["audit-store"],
       "fields": {
-        "session_role": {"kind": "identifier"},
+        "session_role": {"kind": "db_role"},
         "run_id": {"kind": "uuid"},
         "mode": {"kind": "enum", "values": ["read_only", "repair"]},
         "watermark": {"kind": "counter"},
@@ -1132,6 +1151,7 @@
         "count_store_only": {"kind": "counter"},
         "count_unaudited_replay": {"kind": "counter"},
         "count_replay_record_lost": {"kind": "counter"},
+        "count_relay_catalog_skew": {"kind": "counter"},
         "repaired_delivered_missing": {"kind": "counter"},
         "repaired_quarantined_stored": {"kind": "counter"},
         "repaired_unregistered": {"kind": "counter"}
@@ -1154,6 +1174,7 @@
         "count_store_only",
         "count_unaudited_replay",
         "count_replay_record_lost",
+        "count_relay_catalog_skew",
         "repaired_delivered_missing",
         "repaired_quarantined_stored",
         "repaired_unregistered"
@@ -1170,7 +1191,7 @@
       "results": ["failure"],
       "subjects": ["audit-store"],
       "fields": {
-        "session_role": {"kind": "identifier"},
+        "session_role": {"kind": "db_role"},
         "event_id": {"kind": "uuid"},
         "mismatch_code": {"kind": "enum", "values": ["source_digest_mismatch", "actor_mismatch"]}
       },

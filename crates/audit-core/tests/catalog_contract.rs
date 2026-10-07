@@ -9,7 +9,8 @@ use audit_core::catalog::{
     VersionRequirement,
 };
 use audit_core::envelope::LEGACY_SOURCE_FORMAT;
-use audit_core::{Catalog, EventClass, LEGACY_ADAPTER_VERSION, Origin, Requirement};
+use audit_core::kinds::Kind;
+use audit_core::{Catalog, EventClass, LEGACY_ADAPTER_VERSION, Origin, Requirement, ResourceType};
 use common::accepted_fixtures;
 use serde_json::{Value, json};
 
@@ -133,13 +134,331 @@ fn control_types_are_registered_with_their_origin_source_and_resource() {
 #[test]
 fn control_only_kinds_are_refused_on_relay_entries() {
     for kind in [
-        "identifier",
-        "nullable_identifier",
-        "identifier_list",
+        "resource_ref",
+        "event_type",
+        "event_type_list",
+        "source_urn",
+        "source_list",
+        "db_role",
+        "nullable_db_role",
+        "principal_ref",
+        "int8_text",
         "code",
     ] {
         let result = edited(|e| e["fields"]["name"] = json!({"kind": kind}));
         assert!(result.is_err(), "{kind} must be control-only");
+        let mut entry = store_entry();
+        entry["fields"]["name"] = json!({"kind": kind});
+        load(vec![minimal_entry(), entry]).unwrap_or_else(|e| panic!("{kind}: {e}"));
+    }
+}
+
+#[test]
+fn free_text_kinds_no_longer_exist() {
+    for kind in [
+        "identifier",
+        "nullable_identifier",
+        "identifier_list",
+        "text",
+    ] {
+        let mut entry = store_entry();
+        entry["fields"]["name"] = json!({"kind": kind});
+        assert!(
+            load(vec![minimal_entry(), entry]).is_err(),
+            "{kind} must be unknown"
+        );
+    }
+}
+
+#[test]
+fn source_kinds_take_their_values_from_the_catalog_sources() {
+    let catalog = Catalog::embedded();
+    let expected = vec![
+        AUDIT_RELAY_SOURCE.to_owned(),
+        AUDIT_STORE_SOURCE.to_owned(),
+        DOCUMENT_SOURCE.to_owned(),
+    ];
+    for (event_type, field, kind) in [
+        (
+            "audit.access.intent_opened",
+            "filter_source",
+            Kind::SourceUrn,
+        ),
+        (
+            "audit.retention.policy_changed",
+            "selector_sources",
+            Kind::SourceList,
+        ),
+        (
+            "audit.retention.expired",
+            "selector_sources",
+            Kind::SourceList,
+        ),
+    ] {
+        let spec = &catalog.get(event_type).expect(event_type).fields[field];
+        assert_eq!(spec.kind, kind, "{event_type}.{field}");
+        assert_eq!(spec.values, expected, "{event_type}.{field}");
+    }
+    // The control sources are always admitted, even in a catalog without
+    // control adapters.
+    let mut entry = store_entry();
+    entry["fields"]["filter_source"] = json!({"kind": "source_urn"});
+    let custom = load(vec![minimal_entry(), entry]).expect("loads");
+    assert_eq!(
+        custom.get("audit.thing.done").expect("entry").fields["filter_source"].values,
+        expected
+    );
+    // Values are derived, never listed.
+    let mut listed = store_entry();
+    listed["fields"]["filter_source"] = json!({"kind": "source_urn", "values": [DOCUMENT_SOURCE]});
+    assert!(load(vec![minimal_entry(), listed]).is_err());
+}
+
+#[test]
+fn every_control_detail_uses_a_closed_kind() {
+    let catalog = Catalog::embedded();
+    let kind_of = |event_type: &str, field: &str| {
+        catalog
+            .get(event_type)
+            .unwrap_or_else(|| panic!("{event_type}"))
+            .fields
+            .get(field)
+            .unwrap_or_else(|| panic!("{event_type}.{field}"))
+            .kind
+    };
+    for spec in catalog
+        .events()
+        .iter()
+        .filter(|e| e.origin != Origin::Relay)
+    {
+        assert_eq!(
+            kind_of(&spec.event_type, "session_role"),
+            Kind::DbRole,
+            "{}",
+            spec.event_type
+        );
+    }
+    let intent = "audit.access.intent_opened";
+    let policy = "audit.access_policy.changed";
+    let epoch = "audit.recovery.epoch_started";
+    let mut expected = vec![
+        (intent, "filter_event_types", Kind::EventTypeList),
+        (intent, "filter_source", Kind::SourceUrn),
+        (intent, "filter_actor_issuer", Kind::PrincipalRef),
+        (intent, "filter_actor_principal_id", Kind::PrincipalRef),
+        (intent, "filter_resource_id", Kind::ResourceRef),
+        (policy, "target_issuer", Kind::PrincipalRef),
+        (policy, "target_principal_id", Kind::PrincipalRef),
+        (policy, "db_role", Kind::DbRole),
+        (
+            "audit.retention.policy_changed",
+            "retain_days",
+            Kind::NullablePositiveCounter,
+        ),
+        (
+            "audit.retention.expire_refused",
+            "retain_days",
+            Kind::NullablePositiveCounter,
+        ),
+        (epoch, "regression_reported_by", Kind::NullableDbRole),
+    ];
+    for retention in ["audit.retention.policy_changed", "audit.retention.expired"] {
+        expected.push((retention, "selector_event_types", Kind::EventTypeList));
+        expected.push((retention, "selector_sources", Kind::SourceList));
+    }
+    for side in ["old", "new"] {
+        for part in ["system_identifier", "database_oid", "timeline"] {
+            let field: &'static str = Box::leak(format!("{side}_{part}").into_boxed_str());
+            expected.push((epoch, field, Kind::Int8Text));
+        }
+    }
+    for (event_type, field, kind) in expected {
+        assert_eq!(kind_of(event_type, field), kind, "{event_type}.{field}");
+    }
+}
+
+#[test]
+fn control_catalog_carries_the_design_details() {
+    let catalog = Catalog::embedded();
+    let reconcile = catalog
+        .get("audit.reconciliation.completed")
+        .expect("entry");
+    assert_eq!(
+        reconcile.fields["count_relay_catalog_skew"].kind,
+        Kind::Counter
+    );
+    assert!(
+        reconcile
+            .required
+            .iter()
+            .any(|f| f == "count_relay_catalog_skew")
+    );
+    let epoch = catalog.get("audit.recovery.epoch_started").expect("entry");
+    assert_eq!(
+        epoch.fields["checkpoint_classification"].values,
+        [
+            "match",
+            "ahead",
+            "store_behind",
+            "mismatch",
+            "epoch_mismatch"
+        ]
+    );
+    let verified = catalog.get("audit.integrity.verified").expect("entry");
+    assert_eq!(verified.fields["head_seq"].kind, Kind::Counter);
+    for head in ["head_seq", "head_epoch", "head_chain"] {
+        assert!(verified.required.iter().any(|f| f == head), "{head}");
+    }
+}
+
+#[test]
+fn resource_id_placeholders_never_apply_to_audit_store() {
+    let with_subjects = |resources: Value, subjects: Value| {
+        let mut entry = store_entry();
+        entry["resources"] = resources;
+        entry["subjects"] = subjects;
+        load(vec![minimal_entry(), entry])
+    };
+    let only_store = json!(["AuditStore"]);
+    assert!(with_subjects(only_store.clone(), json!(["audit-store/{resource.id}"])).is_err());
+    assert!(
+        with_subjects(
+            only_store,
+            json!([{"template": "audit-store/{resource.id}", "resource": "AuditStore"}])
+        )
+        .is_err()
+    );
+    let mixed = json!(["AuditStore", "Document"]);
+    assert!(
+        with_subjects(
+            mixed.clone(),
+            json!([{"template": "document/{resource.id}", "resource": "Document"}, "audit-store"])
+        )
+        .is_ok()
+    );
+    assert!(with_subjects(mixed, json!(["x/{resource.id}"])).is_err());
+}
+
+#[test]
+fn client_chosen_markers_are_validated() {
+    let ok = |edit: &dyn Fn(&mut Value)| {
+        let mut entry = minimal_entry();
+        edit(&mut entry);
+        load(vec![entry])
+    };
+    ok(&|e| e["fields"]["documentId"]["client_chosen"] = json!(true)).expect("uuid field");
+    ok(&|e| e["client_chosen_resource_ids"] = json!(["Document"])).expect("resource");
+    ok(&|e| e["client_chosen_version_id"] = json!(true)).expect("optional version");
+    let bad: Vec<(&str, Edit)> = vec![
+        (
+            "client chosen counter",
+            Box::new(|e| e["fields"]["n"] = json!({"kind": "counter", "client_chosen": true})),
+        ),
+        (
+            "resource outside resources",
+            Box::new(|e| e["client_chosen_resource_ids"] = json!(["Folder"])),
+        ),
+        (
+            "version id without versions",
+            Box::new(|e| {
+                e["version_required"] = json!(false);
+                e["client_chosen_version_id"] = json!(true);
+            }),
+        ),
+    ];
+    for (label, edit) in bad {
+        assert!(edited(edit).is_err(), "{label} must be refused");
+    }
+    for edit in [
+        (|e: &mut Value| {
+            e["fields"]["event_id"] = json!({"kind": "uuid", "client_chosen": true});
+        }) as fn(&mut Value),
+        |e| e["client_chosen_resource_ids"] = json!(["AuditStore"]),
+        |e| e["client_chosen_version_id"] = json!(true),
+    ] {
+        let mut entry = store_entry();
+        edit(&mut entry);
+        assert!(
+            load(vec![minimal_entry(), entry]).is_err(),
+            "control entries choose no client ids"
+        );
+    }
+}
+
+#[test]
+fn client_chosen_ids_match_the_document_command_api() {
+    // spec/api/schemas/document/commands.yaml: CreateFolder.folderId,
+    // VersionWrite.targetVersionId (the new version's id), and references
+    // to such folders and versions are chosen by clients; document,
+    // revision, policy, content item and representation ids and UUIDv7
+    // operation ids are server-generated or validated.
+    let expected: BTreeSet<(&str, &str)> = [
+        ("document.version.created", "documentVersionId"),
+        ("document.version.created", "baseDocumentVersionId"),
+        ("document.version.updated", "documentVersionId"),
+        ("document.version.updated", "baseDocumentVersionId"),
+        ("document.version.rebased", "documentVersionId"),
+        ("document.version.rebased", "baseDocumentVersionId"),
+        (
+            "document.version.publication.scheduled",
+            "documentVersionId",
+        ),
+        (
+            "document.version.publication.cancelled",
+            "documentVersionId",
+        ),
+        ("document.version.publication.terminal", "documentVersionId"),
+        ("document.version.withdrawn", "withdrawnDocumentVersionId"),
+        ("document.version.withdrawn", "formerCurrentVersionId"),
+        ("document.version.withdrawn", "resultingCurrentVersionId"),
+        ("document.publication.ended", "formerCurrentVersionId"),
+        ("document.publication.ended", "resultingCurrentVersionId"),
+        ("document.moved", "from_folder_id"),
+        ("document.moved", "to_folder_id"),
+        ("folder.created", "folder_id"),
+        ("folder.created", "parent_folder_id"),
+        ("folder.renamed", "folder_id"),
+        ("folder.moved", "folder_id"),
+        ("folder.moved", "from_parent_id"),
+        ("folder.moved", "to_parent_id"),
+        ("access_policy.changed", "target_id"),
+        ("document.version.read_confirmed", "document_version_id"),
+        ("document.diff.result_access_granted", "base_version_id"),
+        ("document.diff.result_access_granted", "target_version_id"),
+    ]
+    .into_iter()
+    .collect();
+    let catalog = Catalog::embedded();
+    let marked: BTreeSet<(&str, &str)> = catalog
+        .events()
+        .iter()
+        .flat_map(|spec| {
+            spec.fields
+                .iter()
+                .filter(|(_, field)| field.client_chosen)
+                .map(|(name, _)| (spec.event_type.as_str(), name.as_str()))
+        })
+        .collect();
+    assert_eq!(marked, expected);
+    for spec in catalog.events() {
+        let folder_ids =
+            spec.event_type.starts_with("folder.") || spec.event_type == "access_policy.changed";
+        assert_eq!(
+            spec.client_chosen_resource_ids,
+            if folder_ids {
+                vec![ResourceType::Folder]
+            } else {
+                Vec::new()
+            },
+            "{}",
+            spec.event_type
+        );
+        assert_eq!(
+            spec.client_chosen_version_id,
+            spec.origin == Origin::Relay && spec.version_required != VersionRequirement::Forbidden,
+            "{}",
+            spec.event_type
+        );
     }
 }
 
@@ -308,6 +627,23 @@ fn every_catalog_type_has_an_accepted_fixture() {
 }
 
 type Edit = Box<dyn FnOnce(&mut Value)>;
+
+/// A store-origin control entry (loaded next to `minimal_entry`).
+fn store_entry() -> Value {
+    json!({
+        "type": "audit.thing.done",
+        "source": "urn:knowledge-platform:audit-store",
+        "origin": "store",
+        "event_class": "SYSTEM_AUDIT",
+        "resources": ["AuditStore"],
+        "version_required": false,
+        "results": ["success"],
+        "subjects": ["audit-store"],
+        "fields": {"session_role": {"kind": "db_role"}},
+        "required": ["session_role"],
+        "reason": "absent"
+    })
+}
 
 fn minimal_entry() -> Value {
     json!({
@@ -619,19 +955,7 @@ fn loader_rejects_inconsistent_adapters() {
         })
     };
     load_with(vec![relay()], vec![minimal_entry()]).expect("baseline loads");
-    let store_entry = json!({
-        "type": "audit.thing.done",
-        "source": "urn:knowledge-platform:audit-store",
-        "origin": "store",
-        "event_class": "SYSTEM_AUDIT",
-        "resources": ["AuditStore"],
-        "version_required": false,
-        "results": ["success"],
-        "subjects": ["audit-store"],
-        "fields": {"session_role": {"kind": "identifier"}},
-        "required": ["session_role"],
-        "reason": "absent"
-    });
+    let store_entry = store_entry();
     let store = |edit: &dyn Fn(&mut Value)| {
         let mut adapter = json!({
             "source": "urn:knowledge-platform:audit-store",

@@ -5,7 +5,8 @@
 //! byte limits, the 32 KiB jsonb text bound, subject/resource and
 //! detail/resource equality, correlation and reason-code equality, calendar
 //! validity, float versus integer, duplicate keys, the submission path, the
-//! principal character set) are enforced only in Rust.
+//! principal character set, the int8 range of `int8_text`, the `db_role`
+//! actor rule) are enforced only in Rust.
 
 use serde_json::{Map, Value, json};
 
@@ -19,8 +20,8 @@ use crate::envelope::{
 };
 use crate::json::canonicalize;
 use crate::kinds::{
-    Kind, MAX_CODE_BYTES, MAX_IDENTIFIER_BYTES, MAX_IDENTIFIER_LIST, MAX_PRINCIPAL_PART_BYTES,
-    MAX_STRING_BYTES, MAX_UUID_LIST, NIL_UUID,
+    Kind, MAX_CODE_BYTES, MAX_CONTROL_LIST, MAX_DB_ROLE_BYTES, MAX_EVENT_TYPE_BYTES,
+    MAX_PRINCIPAL_PART_BYTES, MAX_STRING_BYTES, MAX_UUID_LIST, NIL_UUID,
 };
 
 /// Repository path of the generated schema, relative to the workspace root.
@@ -115,25 +116,55 @@ fn shared_definitions() -> Map<String, Value> {
     );
     put("nullable_hex_digest", nullable("hex_digest"));
     put("nullable_utc_timestamp", nullable("utc_timestamp"));
+    put("nullable_positive_counter", nullable("positive_counter"));
     put(
-        "identifier",
+        "resource_ref",
         json!({
-            "description": "Control events only: a Store-chosen name",
-            "type": "string",
-            "minLength": 1,
-            "maxLength": MAX_IDENTIFIER_BYTES,
-            "pattern": NO_CONTROL_PATTERN
+            "description": "Control events only: a resource id (canonical UUID, nil included, or audit-store)",
+            "anyOf": [reference("canonical_uuid"), {"const": AUDIT_STORE_RESOURCE_ID}]
         }),
     );
-    put("nullable_identifier", nullable("identifier"));
     put(
-        "identifier_list",
+        "event_type",
+        json!({
+            "description": "Control events only: an event type name in the catalog grammar",
+            "type": "string",
+            "maxLength": MAX_EVENT_TYPE_BYTES,
+            "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+        }),
+    );
+    put(
+        "event_type_list",
         json!({
             "type": "array",
             "minItems": 1,
-            "maxItems": MAX_IDENTIFIER_LIST,
+            "maxItems": MAX_CONTROL_LIST,
             "uniqueItems": true,
-            "items": reference("identifier")
+            "items": reference("event_type")
+        }),
+    );
+    put(
+        "db_role",
+        json!({
+            "description": "Control events only: a PostgreSQL role name that needs no quoting",
+            "type": "string",
+            "pattern": format!("^[a-z_][a-z0-9_$]{{0,{}}}$", MAX_DB_ROLE_BYTES - 1)
+        }),
+    );
+    put("nullable_db_role", nullable("db_role"));
+    put(
+        "principal_ref",
+        json!({
+            "description": "Control events only: one principal part (rust_only:principal_charset applies)",
+            "$ref": "#/$defs/principal_part"
+        }),
+    );
+    put(
+        "int8_text",
+        json!({
+            "description": "Control events only: canonical decimal text of an int8 (the i64 range is checked in Rust)",
+            "type": "string",
+            "pattern": "^(0|-?[1-9][0-9]{0,18})$"
         }),
     );
     put(
@@ -233,6 +264,14 @@ fn kind_schema(field: &FieldSpec) -> Value {
             "type": "array",
             "minItems": 1,
             "maxItems": field.values.len(),
+            "uniqueItems": true,
+            "items": {"enum": field.values}
+        }),
+        Kind::SourceUrn => json!({"enum": field.values}),
+        Kind::SourceList => json!({
+            "type": "array",
+            "minItems": 1,
+            "maxItems": field.values.len().min(MAX_CONTROL_LIST),
             "uniqueItems": true,
             "items": {"enum": field.values}
         }),

@@ -2,7 +2,9 @@
 //!
 //! Validation is catalog driven and reports the first violation in a fixed
 //! order (size, attributes, path/origin, catalog entry, payload members,
-//! details, bindings, subject, reason, correlation, extensions, provenance).
+//! details, the `db_role` actor rule of control paths, bindings, subject,
+//! reason, correlation, extensions, provenance). `nil_client_id` is reported
+//! only for ids the catalog marks client-chosen, on the relay path.
 //! The provenance contract and the `correlation.trace_id` capability come
 //! from the catalog adapter of the envelope's source.
 
@@ -19,8 +21,8 @@ use crate::catalog::{
 use crate::codes::{Rejection, RejectionCode as C};
 use crate::json::{canonicalize, jsonb_text_len, parse_unique};
 use crate::kinds::{
-    Kind, MAX_STRING_BYTES, NIL_UUID, is_bounded_text, is_hex_digest, is_principal_part,
-    is_utc_timestamp, is_uuid, is_w3c_trace_id,
+    Kind, MAX_STRING_BYTES, NIL_UUID, is_bounded_text, is_db_role, is_hex_digest,
+    is_principal_part, is_utc_timestamp, is_uuid, is_w3c_trace_id,
 };
 
 pub const SPECVERSION: &str = "1.0";
@@ -68,6 +70,10 @@ const DATA_REQUIRED: [&str; 10] = [
 ];
 const DATA_OPTIONAL: [&str; 3] = ["reason", "reason_code", "service_executor"];
 const PRINCIPAL_KEYS: [&str; 2] = ["issuer", "principal_id"];
+/// The actor issuer of control events recorded without a bound principal
+/// (for example an `unbound` denial or a bootstrap from an owner login): the
+/// principal id is then the session's database role (`details.session_role`).
+pub const DB_ROLE_ISSUER: &str = "db_role";
 const REASON_KEYS: [&str; 3] = ["provided", "text_retained", "utf8_bytes"];
 const CORRELATION_KEYS: [&str; 4] = [
     "operation_id",
@@ -78,11 +84,13 @@ const CORRELATION_KEYS: [&str; 4] = [
 
 /// A validated envelope. It can only be constructed through validation, and
 /// its members are stored in byte order so serialization is deterministic.
+/// It remembers the submission path it was validated for ([`Self::origin`]).
 #[derive(Clone, PartialEq)]
 pub struct AuditEnvelope {
     value: Value,
     id: Uuid,
     spec: &'static EventSpec,
+    origin: Origin,
 }
 
 impl AuditEnvelope {
@@ -97,6 +105,7 @@ impl AuditEnvelope {
             value: canonicalize(value),
             id,
             spec,
+            origin: path,
         })
     }
 
@@ -114,8 +123,11 @@ impl AuditEnvelope {
         self.spec
     }
 
+    /// The submission path this envelope was validated for (always equal to
+    /// the catalog entry's origin). `AuditStore::ingest` only accepts
+    /// [`Origin::Relay`] ([`crate::port::precheck_ingest`]).
     pub fn origin(&self) -> Origin {
-        self.spec.origin
+        self.origin
     }
 
     pub fn event_type(&self) -> &str {
@@ -162,6 +174,7 @@ impl fmt::Debug for AuditEnvelope {
         f.debug_struct("AuditEnvelope")
             .field("id", &self.id)
             .field("type", &self.spec.event_type)
+            .field("origin", &self.origin)
             .finish_non_exhaustive()
     }
 }
@@ -286,14 +299,17 @@ pub(crate) fn validate_with(
     {
         return reject(C::InvalidServiceExecutor, "data.service_executor");
     }
-    let resource = check_resource(spec, &data["resource"])?;
+    let resource = check_resource(spec, path, &data["resource"])?;
     if !data["result"]
         .as_str()
         .is_some_and(|r| spec.allows_result(r))
     {
         return reject(C::InvalidResult, "data.result");
     }
-    let details = check_details(spec, &data["details"])?;
+    let details = check_details(spec, path, &data["details"])?;
+    if path != Origin::Relay && !is_db_role_actor_consistent(&data["actor"], details) {
+        return reject(C::InvalidActor, "data.actor");
+    }
     for binding in &spec.bindings {
         let expected = match binding.equals {
             BindingTarget::ResourceId => Some(resource.id),
@@ -348,7 +364,11 @@ struct ResourceView<'a> {
     version_id: Option<&'a str>,
 }
 
-fn check_resource<'a>(spec: &EventSpec, value: &'a Value) -> Result<ResourceView<'a>, Rejection> {
+fn check_resource<'a>(
+    spec: &EventSpec,
+    path: Origin,
+    value: &'a Value,
+) -> Result<ResourceView<'a>, Rejection> {
     let invalid = Rejection::at(C::InvalidResource, "data.resource");
     let object = value.as_object().ok_or(invalid)?;
     if !matches!(
@@ -363,7 +383,12 @@ fn check_resource<'a>(spec: &EventSpec, value: &'a Value) -> Result<ResourceView
         .filter(|kind| spec.allows_resource(*kind))
         .ok_or(invalid)?;
     let id = object["id"].as_str().ok_or(invalid)?;
-    if kind != ResourceType::AuditStore && id == NIL_UUID && !spec.nil_resource_allowed {
+    let relay = path == Origin::Relay;
+    if id == NIL_UUID
+        && !spec.nil_resource_allowed
+        && relay
+        && spec.client_chosen_resource_ids.contains(&kind)
+    {
         return reject(C::NilClientId, "data.resource.id");
     }
     let id_ok = match kind {
@@ -374,7 +399,7 @@ fn check_resource<'a>(spec: &EventSpec, value: &'a Value) -> Result<ResourceView
         return Err(invalid);
     }
     let version_id = match object.get("version_id") {
-        Some(version) if version == NIL_UUID => {
+        Some(version) if version == NIL_UUID && relay && spec.client_chosen_version_id => {
             return reject(C::NilClientId, "data.resource.version_id");
         }
         Some(version) => Some(version.as_str().filter(|v| is_uuid(v)).ok_or(invalid)?),
@@ -397,6 +422,7 @@ fn check_resource<'a>(spec: &EventSpec, value: &'a Value) -> Result<ResourceView
 
 fn check_details<'a>(
     spec: &'static EventSpec,
+    path: Origin,
     value: &'a Value,
 ) -> Result<&'a Map<String, Value>, Rejection> {
     let Some(details) = value.as_object() else {
@@ -415,7 +441,7 @@ fn check_details<'a>(
         let Some(value) = details.get(name) else {
             continue;
         };
-        if is_nil_client_id(field.kind, value) {
+        if path == Origin::Relay && field.client_chosen && is_nil_client_id(field.kind, value) {
             return reject(C::NilClientId, name);
         }
         if !field.accepts(value) {
@@ -472,6 +498,18 @@ fn check_correlation(
         return reject(C::InvalidCorrelation, "data.correlation.trace_id");
     }
     Ok(())
+}
+
+/// Control events: an actor with issuer [`DB_ROLE_ISSUER`] names the session
+/// role, so its principal id must be a `db_role` equal to
+/// `details.session_role`.
+fn is_db_role_actor_consistent(actor: &Value, details: &Map<String, Value>) -> bool {
+    if actor["issuer"] != DB_ROLE_ISSUER {
+        return true;
+    }
+    actor["principal_id"].as_str().is_some_and(|role| {
+        is_db_role(role) && details.get("session_role") == Some(&actor["principal_id"])
+    })
 }
 
 fn is_principal(value: &Value) -> bool {

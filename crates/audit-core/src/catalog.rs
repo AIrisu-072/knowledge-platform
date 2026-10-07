@@ -13,7 +13,7 @@ use serde_json::{Map, Value};
 
 use crate::codes::Rejection;
 use crate::json::parse_bounded;
-use crate::kinds::{Kind, MAX_STRING_BYTES};
+use crate::kinds::{Kind, MAX_STRING_BYTES, is_event_type};
 
 const EMBEDDED_CATALOG: &str = include_str!("../../../spec/telemetry/audit-event-catalog.json");
 const MAX_CATALOG_BYTES: usize = 512 * 1024;
@@ -194,8 +194,15 @@ pub enum ReasonPolicy {
 #[serde(deny_unknown_fields)]
 pub struct FieldSpec {
     pub kind: Kind,
+    /// The closed set of enum kinds (from the entry) and of source kinds
+    /// (derived by the loader from the catalog's sources).
     #[serde(default)]
     pub values: Vec<String>,
+    /// The producer accepts a client-chosen id here (relay uuid kinds only),
+    /// so a nil UUID is the producer-reachable `nil_client_id` instead of
+    /// `invalid_field`.
+    #[serde(default)]
+    pub client_chosen: bool,
 }
 
 impl FieldSpec {
@@ -298,6 +305,12 @@ pub struct EventSpec {
     pub publish_operation_id_field: Option<String>,
     pub nil_resource_allowed: bool,
     pub bindings: Vec<Binding>,
+    /// Resource types whose `resource.id` the producer lets clients choose
+    /// (relay entries only): a nil id is `nil_client_id` there.
+    pub client_chosen_resource_ids: Vec<ResourceType>,
+    /// Whether `resource.version_id` may be client-chosen (relay entries
+    /// with versions only): a nil version id is `nil_client_id` then.
+    pub client_chosen_version_id: bool,
 }
 
 impl EventSpec {
@@ -408,6 +421,10 @@ struct RawEvent {
     nil_resource_allowed: bool,
     #[serde(default)]
     bindings: Vec<Binding>,
+    #[serde(default)]
+    client_chosen_resource_ids: Vec<ResourceType>,
+    #[serde(default)]
+    client_chosen_version_id: bool,
 }
 
 impl Catalog {
@@ -441,10 +458,11 @@ impl Catalog {
             return Err(CatalogError::Version);
         }
         check_adapters(&raw.adapters)?;
+        let sources = catalog_sources(&raw.adapters);
         let mut events = Vec::with_capacity(raw.events.len());
         let mut index = BTreeMap::new();
         for raw_event in raw.events {
-            let event = check_event(raw_event)?;
+            let event = check_event(raw_event, &sources)?;
             if !raw
                 .adapters
                 .iter()
@@ -532,6 +550,17 @@ impl Catalog {
     }
 }
 
+/// The closed set of `source_urn` / `source_list` values: every adapter
+/// source plus the two control sources, sorted.
+fn catalog_sources(adapters: &[AdapterSpec]) -> Vec<String> {
+    let set: BTreeSet<&str> = adapters
+        .iter()
+        .map(|a| a.source.as_str())
+        .chain([AUDIT_STORE_SOURCE, AUDIT_RELAY_SOURCE])
+        .collect();
+    set.into_iter().map(str::to_owned).collect()
+}
+
 fn is_source_format(text: &str) -> bool {
     !text.is_empty()
         && text.len() <= 64
@@ -601,15 +630,6 @@ fn is_token(text: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-fn is_event_type(text: &str) -> bool {
-    text.split('.').count() >= 2
-        && text.split('.').all(|part| {
-            let mut chars = part.chars();
-            chars.next().is_some_and(|c| c.is_ascii_lowercase())
-                && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
-        })
-}
-
 fn is_enum_value(text: &str) -> bool {
     !text.is_empty()
         && text.len() <= 64
@@ -623,10 +643,10 @@ fn unique<T: Ord>(items: impl IntoIterator<Item = T>) -> bool {
     items.into_iter().all(|item| seen.insert(item))
 }
 
-fn check_event(mut raw: RawEvent) -> Result<EventSpec, CatalogError> {
+fn check_event(mut raw: RawEvent, sources: &[String]) -> Result<EventSpec, CatalogError> {
     let t = raw.event_type.as_str();
     let fail = |problem: &str| entry_error(t, problem);
-    if !is_event_type(t) || t.len() > 128 {
+    if !is_event_type(t) {
         return Err(fail("type must be lowercase dotted segments"));
     }
     let control = t.starts_with(CONTROL_TYPE_PREFIX);
@@ -692,6 +712,36 @@ fn check_event(mut raw: RawEvent) -> Result<EventSpec, CatalogError> {
                 format!("{name}: values only apply to enum kinds"),
             ));
         }
+        let uuid_kind = matches!(field.kind, Kind::Uuid | Kind::NullableUuid | Kind::UuidList);
+        if field.client_chosen && (raw.origin != Origin::Relay || !uuid_kind) {
+            return Err(entry_error(
+                t,
+                format!("{name}: client_chosen applies to uuid kinds of relay entries"),
+            ));
+        }
+    }
+    for field in raw.fields.values_mut() {
+        if field.kind.derives_values() {
+            field.values = sources.to_vec();
+        }
+    }
+    if raw.origin != Origin::Relay
+        && (!raw.client_chosen_resource_ids.is_empty() || raw.client_chosen_version_id)
+    {
+        return Err(fail("control entries have no client-chosen ids"));
+    }
+    if !unique(raw.client_chosen_resource_ids.iter())
+        || raw
+            .client_chosen_resource_ids
+            .iter()
+            .any(|r| *r == ResourceType::AuditStore || !raw.resources.contains(r))
+    {
+        return Err(fail(
+            "client_chosen_resource_ids must be unique resources of the entry",
+        ));
+    }
+    if raw.client_chosen_version_id && raw.version_required == VersionRequirement::Forbidden {
+        return Err(fail("client_chosen_version_id needs versions"));
     }
     if !unique(raw.required.iter()) || raw.required.iter().any(|r| !raw.fields.contains_key(r)) {
         return Err(fail("required must be unique and a subset of fields"));
@@ -791,8 +841,12 @@ fn check_event(mut raw: RawEvent) -> Result<EventSpec, CatalogError> {
         if resource.is_some_and(|r| !raw.resources.contains(&r)) {
             return Err(fail("subject resource must be one of resources"));
         }
-        let segments =
-            parse_template(&template, &raw).map_err(|problem| entry_error(t, problem))?;
+        let applies_to_store = match resource {
+            Some(only) => only == ResourceType::AuditStore,
+            None => raw.resources.contains(&ResourceType::AuditStore),
+        };
+        let segments = parse_template(&template, &raw, applies_to_store)
+            .map_err(|problem| entry_error(t, problem))?;
         subjects.push(SubjectSpec {
             template,
             resource,
@@ -829,10 +883,20 @@ fn check_event(mut raw: RawEvent) -> Result<EventSpec, CatalogError> {
         publish_operation_id_field: raw.publish_operation_id_field,
         nil_resource_allowed: raw.nil_resource_allowed,
         bindings: raw.bindings,
+        client_chosen_resource_ids: raw.client_chosen_resource_ids,
+        client_chosen_version_id: raw.client_chosen_version_id,
     })
 }
 
-fn parse_template(template: &str, raw: &RawEvent) -> Result<Vec<Segment>, String> {
+/// Parses a subject template. `applies_to_store` is true when the subject
+/// can render an `AuditStore` resource: `{resource.id}` is refused there,
+/// because the id is the literal `audit-store` while the generated schema
+/// renders every id placeholder as a UUID.
+fn parse_template(
+    template: &str,
+    raw: &RawEvent,
+    applies_to_store: bool,
+) -> Result<Vec<Segment>, String> {
     if template.is_empty() || template.len() > 256 {
         return Err("subject template must be 1..=256 bytes".to_owned());
     }
@@ -845,6 +909,11 @@ fn parse_template(template: &str, raw: &RawEvent) -> Result<Vec<Segment>, String
                 .ok_or_else(|| format!("unterminated placeholder in {template}"))?;
             let name = &after[..end];
             let segment = match name {
+                "resource.id" if applies_to_store => {
+                    return Err(format!(
+                        "{template}: {{resource.id}} cannot render the AuditStore resource"
+                    ));
+                }
                 "resource.id" => Segment::ResourceId,
                 "resource.version_id" => {
                     if raw.version_required == VersionRequirement::Forbidden {
