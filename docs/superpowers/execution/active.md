@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 2026-10-07 03:50 UTC — Organization 複数担当・役割・委任（U1）
+
+- main `d515aa38` を基点に、Organization Clientの固定2名判定を組織単位・役割・正式割当・期限付き委任・担当変更へ一般化する。[状況](organization-multi-principal-status.md)、[実装追補](../specs/2026-10-07-organization-multi-principal-amendment.md)、[小計画](../plans/2026-10-07-organization-multi-principal.md)が再開先
+- PR43受入exact `6103e4d4`（tree `f2e13eee`）がmainの祖先であることと受入記録を確認。Phase0→3の凍結・PR62/67の既存機能を保持し、再実装しない。新しい判断5点は承認済みとして扱わない
+- ローカルでDomain/HTTP/server/GUI1427件・実PostgreSQL試験・既存2名と新6名の実browser受入（PostgreSQL 18.6、system Chromium）が成功。資格は同一headのhosted CIで取る。branch `claude/trusting-knuth-dn5cx4`。次は独立review→Draft PR→exact-head CI→main統合→U2
+
+---
+
 ## 2026-10-07 01:28 UTC — 公開前WORKINGの内容比較
 
 - PR93統合main41b584ddを基点に、通常「版・改訂」から正規readで確認したcurrent published/選択WORKINGの固定IDを既存Version comparisonへ送る。[状況](document-working-comparison-status.md)と[限定計画](../plans/2026-10-07-document-working-comparison.md)が再開先

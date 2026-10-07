@@ -4,7 +4,7 @@ import { emptyAgentDraft, useTaskTransient } from '../../application/organizatio
 import { useEvidenceRecords } from '../../application/use-evidence-records';
 import { toggleReference } from '../../application/evidence-workspace';
 import { createOperationId } from '../../application/operation-id';
-import { executeWorkOperation, isDisclosureDenied, isUnknownOutcome, workApi, WorkApiError, workErrorMessage, type AgentExecution, type TaskDetail, type WorkOperation, type WorkResult, type WorkSession } from '../../application/work-workspace';
+import { actingFor, executeWorkOperation, isDisclosureDenied, isUnknownOutcome, workApi, WorkApiError, workErrorMessage, type AgentExecution, type TaskDetail, type WorkOperation, type WorkResult, type WorkSession } from '../../application/work-workspace';
 import { formatDateTime } from '../../view-model/date-time';
 import styles from '../evidence/EvidenceContextModule.module.css';
 import shared from '../../routes/TaskWorkspace.module.css';
@@ -29,7 +29,7 @@ export function AgentContextModule({ session, task, applyResult, onDenied, refre
     refetchInterval: (query) => query.state.status === 'success' && query.state.data && activeStatus(query.state.data.status) ? 500 : false,
     queryFn: async () => {
       const execution = await workApi.getAgentExecution(executionId!);
-      if (execution.workItemId !== task.id || execution.contextId !== task.contextId || execution.attemptId !== task.attemptId || execution.requestedBy !== session.principalId || execution.requesterResponsibility !== session.actingAssignmentId) throw new WorkApiError(404, 'WORK_ITEM_NOT_FOUND');
+      if (execution.workItemId !== task.id || execution.contextId !== task.contextId || execution.attemptId !== task.attemptId || execution.requestedBy !== session.principalId || execution.requesterResponsibility !== actingFor(session, task)) throw new WorkApiError(404, 'WORK_ITEM_NOT_FOUND');
       return execution;
     },
   });
@@ -50,7 +50,7 @@ export function AgentContextModule({ session, task, applyResult, onDenied, refre
   const mutation = useMutation({ retry: false, mutationFn: executeWorkOperation,
     onSuccess: (result, operation) => {
       if (!active.current) return;
-      if ((result.kind !== 'agent_execution_requested' && result.kind !== 'agent_execution_cancelled') || result.kind !== operation.kind || result.task.id !== task.id || result.task.attemptId !== task.attemptId || result.execution.requestedBy !== session.principalId || result.execution.requesterResponsibility !== session.actingAssignmentId || (operation.kind === 'agent_execution_cancelled' && result.execution.id !== operation.executionId)) {
+      if ((result.kind !== 'agent_execution_requested' && result.kind !== 'agent_execution_cancelled') || result.kind !== operation.kind || result.task.id !== task.id || result.task.attemptId !== task.attemptId || result.execution.requestedBy !== session.principalId || result.execution.requesterResponsibility !== actingFor(session, task) || (operation.kind === 'agent_execution_cancelled' && result.execution.id !== operation.executionId)) {
         setTransient((previous) => ({ ...previous, unknown: true, notice: '応答と操作が一致しません。同じ操作IDで結果を確認してください。' })); return;
       }
       applyResult(result);
@@ -67,7 +67,7 @@ export function AgentContextModule({ session, task, applyResult, onDenied, refre
   });
   const busy = transient.unknown || mutation.isPending;
   const start = (operation: WorkOperation) => { const recoverableCancel = recoveringRequest && operation.kind === 'agent_execution_cancelled' && operation.executionId === draft.recoveryExecutionId; if ((busy && !recoverableCancel) || commandPending.current) return; commandPending.current = true; setTransient((previous) => ({ ...previous, operation, unknown: true, notice: '', error: null })); mutation.mutate(operation); };
-  const command = () => ({ operationId: createOperationId(), expectedRevision: task.revision, expectedAttemptId: task.attemptId, actingAssignmentId: session.actingAssignmentId });
+  const command = () => ({ operationId: createOperationId(), expectedRevision: task.revision, expectedAttemptId: task.attemptId, actingAssignmentId: actingFor(session, task) });
   const valid = Boolean(draft.purpose.trim()) && new TextEncoder().encode(draft.purpose).length <= 8192 && draft.support.length >= 1 && draft.support.length <= 16 && records.isSuccess && draft.support.every((ref) => records.data.evidence.some((record) => record.id === ref.id && record.revision === ref.revision));
   const error = records.error || current.error || result.error;
   return <section className={styles.module} aria-label="合成Agent"><h2>合成Agent</h2>

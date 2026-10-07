@@ -113,7 +113,7 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(migrations_before.len(), 6);
+    assert_eq!(migrations_before.len(), 7);
     migrate(&pool).await.unwrap();
     let migrations_after: Vec<(i64, Vec<u8>, time::OffsetDateTime)> = sqlx::query_as(
         "SELECT version, checksum, applied_at FROM work.schema_migrations ORDER BY version",
@@ -1649,4 +1649,339 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
         Err(WorkError::EvidenceNotFound)
     );
     source.allowed.store(true, Ordering::SeqCst);
+}
+
+async fn disposable_pool() -> sqlx::PgPool {
+    let url =
+        std::env::var("WORK_POC_TEST_DATABASE_URL").expect("disposable database URL required");
+    let pool = PgPoolOptions::new()
+        .max_connections(6)
+        .connect(&url)
+        .await
+        .unwrap();
+    let name: String = sqlx::query_scalar("SELECT current_database()")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(
+        name.ends_with("_work_poc_test"),
+        "only a disposable work test database is permitted"
+    );
+    pool
+}
+fn acting(acting_assignment_id: Uuid, revision: i64) -> CommandContext {
+    CommandContext {
+        operation_id: Uuid::now_v7(),
+        expected_revision: revision,
+        acting_assignment_id,
+    }
+}
+async fn office_revision(repository: &PostgresWorkRepository, actor: VerifiedActor) -> TaskSummary {
+    repository
+        .list_tasks(actor, TaskView::Queue)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|task| task.id == OFFICE_TASK_ID)
+        .unwrap()
+}
+
+/// Multiple principals against one real PostgreSQL: concurrent claims, bounded
+/// delegation, reassignment, and policy-writer fencing of in-flight Work commands.
+/// Runs after the fresh-schema journey above and leaves the schema absent again.
+#[tokio::test]
+#[ignore = "requires explicitly authorized disposable PostgreSQL database"]
+async fn organization_policy_fences_concurrent_claims_delegation_and_revocation() {
+    let pool = disposable_pool().await;
+    sqlx::raw_sql("DROP SCHEMA IF EXISTS work CASCADE")
+        .execute(&pool)
+        .await
+        .unwrap();
+    migrate(&pool).await.unwrap();
+    seed_synthetic(&pool, None).await.unwrap();
+    seed_synthetic(&pool, None).await.unwrap();
+    let repository = PostgresWorkRepository::new(pool.clone());
+    // Sales submits; the office attempt becomes ready for every processing responsibility.
+    let MutationResult::DraftSaved { artifact, .. } = repository
+        .execute(
+            VerifiedActor::Sales01,
+            Command::SaveDraft {
+                task_id: SALES_TASK_ID,
+                artifact_id: None,
+                context: acting(SALES_ASSIGNMENT_ID, 0),
+                value: TextValue {
+                    text: "複数担当の検証文案".into(),
+                },
+            },
+        )
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    repository
+        .execute(
+            VerifiedActor::Sales01,
+            Command::Submit {
+                task_id: SALES_TASK_ID,
+                context: acting(SALES_ASSIGNMENT_ID, 1),
+                expected_attempt_id: Some(SALES_ATTEMPT_ID),
+                artifacts: vec![ArtifactSelection {
+                    artifact_id: artifact.id,
+                    revision: artifact.revision,
+                }],
+                evidence_revision_refs: vec![],
+                finding_revision_refs: vec![],
+                decision_revision_refs: vec![],
+            },
+        )
+        .await
+        .unwrap();
+
+    // Office delegates its processing responsibility for a bounded period.
+    let view = repository
+        .organization(VerifiedActor::Office01)
+        .await
+        .unwrap();
+    assert!(!view.can_manage);
+    let until = (time::OffsetDateTime::now_utc() + time::Duration::hours(2))
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap();
+    let delegation_command = PolicyCommand::CreateDelegation {
+        context: acting(OFFICE_ASSIGNMENT_ID, view.policy_revision),
+        source_assignment_id: OFFICE_ASSIGNMENT_ID,
+        recipient: VerifiedActor::Delegate01,
+        actions: vec![
+            PolicyAction::QueueRead,
+            PolicyAction::WorkRead,
+            PolicyAction::WorkClaim,
+            PolicyAction::WorkComplete,
+        ],
+        valid_from: None,
+        valid_until: until,
+        reason: "代理対応".into(),
+    };
+    let created = repository
+        .execute_policy(VerifiedActor::Office01, delegation_command.clone())
+        .await
+        .unwrap();
+    let MutationResult::DelegationCreated { delegation, .. } = created.clone() else {
+        panic!()
+    };
+    // Exact replay returns the committed receipt; a changed payload conflicts.
+    assert_eq!(
+        repository
+            .execute_policy(VerifiedActor::Office01, delegation_command.clone())
+            .await
+            .unwrap(),
+        created
+    );
+    let mut changed = delegation_command.clone();
+    if let PolicyCommand::CreateDelegation { reason, .. } = &mut changed {
+        *reason = "変更".into();
+    }
+    assert_eq!(
+        repository
+            .execute_policy(VerifiedActor::Office01, changed)
+            .await,
+        Err(WorkError::OperationConflict)
+    );
+    let policy_operation = delegation_command.context().operation_id;
+    assert_eq!(
+        repository
+            .recover(VerifiedActor::Office01, policy_operation)
+            .await
+            .unwrap(),
+        created
+    );
+    assert_eq!(
+        repository
+            .recover(VerifiedActor::Sales01, policy_operation)
+            .await,
+        Err(WorkError::WorkItemNotFound)
+    );
+    let staged: (Option<Uuid>, Option<Uuid>, Option<Uuid>, String, serde_json::Value) =
+        sqlx::query_as("SELECT workflow_id, policy_id, task_id, action, payload FROM work.event_staging WHERE operation_id=$1")
+            .bind(policy_operation)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(staged.0, None);
+    assert_eq!(staged.1, Some(ORGANIZATION_POLICY_ID));
+    assert_eq!(staged.2, None);
+    assert_eq!(staged.3, "delegation_created");
+    assert_eq!(staged.4["recipientPrincipalId"], "delegate-01");
+    assert!(!staged.4.to_string().contains("代理対応"));
+
+    // Two eligible principals claim the same revision concurrently: one winner.
+    let ready = office_revision(&repository, VerifiedActor::Office01).await;
+    assert!(ready.can_claim);
+    let delegate_view = office_revision(&repository, VerifiedActor::Delegate01).await;
+    assert_eq!(delegate_view.claim_assignment_id, Some(delegation.id));
+    let office_claim = Command::Claim {
+        task_id: OFFICE_TASK_ID,
+        context: acting(OFFICE_ASSIGNMENT_ID, ready.revision),
+    };
+    let delegate_claim = Command::Claim {
+        task_id: OFFICE_TASK_ID,
+        context: acting(delegation.id, ready.revision),
+    };
+    let second = PostgresWorkRepository::new(pool.clone());
+    let (first, other) = tokio::join!(
+        repository.execute(VerifiedActor::Office01, office_claim),
+        second.execute(VerifiedActor::Delegate01, delegate_claim),
+    );
+    let winners = [&first, &other]
+        .iter()
+        .filter(|value| value.is_ok())
+        .count();
+    assert_eq!(winners, 1, "{first:?} {other:?}");
+    for outcome in [&first, &other] {
+        if let Err(error) = outcome {
+            assert!(
+                matches!(
+                    error,
+                    WorkError::RevisionConflict | WorkError::WorkAssignmentConflict
+                ),
+                "{error:?}"
+            );
+        }
+    }
+    let (winner, loser) = if first.is_ok() {
+        (VerifiedActor::Office01, VerifiedActor::Delegate01)
+    } else {
+        (VerifiedActor::Delegate01, VerifiedActor::Office01)
+    };
+    assert!(repository.task(winner, OFFICE_TASK_ID).await.is_ok());
+    assert_eq!(
+        repository.task(loser, OFFICE_TASK_ID).await,
+        Err(WorkError::WorkItemNotFound)
+    );
+    let claims: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM work.workflow_history WHERE kind='claimed'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(claims, 1);
+
+    // The manager reassigns to the multi-role principal; the old assignee loses access.
+    let managed = office_revision(&repository, VerifiedActor::Approver01).await;
+    assert!(managed.can_assign);
+    assert_eq!(
+        managed.assignment.as_ref().unwrap().principal_id,
+        winner.principal_id()
+    );
+    let assign = Command::Assign {
+        task_id: OFFICE_TASK_ID,
+        context: acting(APPROVER_MANAGEMENT_ASSIGNMENT_ID, managed.revision),
+        expected_attempt_id: managed.attempt_id,
+        assignee: VerifiedActor::MultiRole01,
+        assignee_responsibility_id: MULTI_ROLE_PROCESSING_ASSIGNMENT_ID,
+        reason: "担当の平準化".into(),
+    };
+    let assigned = repository
+        .execute(VerifiedActor::Approver01, assign.clone())
+        .await
+        .unwrap();
+    assert!(matches!(assigned, MutationResult::Assigned { .. }));
+    assert_eq!(
+        repository
+            .recover(VerifiedActor::Approver01, assign.context().operation_id)
+            .await
+            .unwrap(),
+        assigned
+    );
+    assert_eq!(
+        repository.task(winner, OFFICE_TASK_ID).await,
+        Err(WorkError::WorkItemNotFound)
+    );
+    let detail = repository
+        .task(VerifiedActor::MultiRole01, OFFICE_TASK_ID)
+        .await
+        .unwrap();
+    assert_eq!(
+        detail.task.assignment.unwrap().acting_assignment_id,
+        MULTI_ROLE_PROCESSING_ASSIGNMENT_ID
+    );
+    let payload: serde_json::Value = sqlx::query_scalar(
+        "SELECT payload FROM work.event_staging WHERE operation_id=$1 AND action='assigned'",
+    )
+    .bind(assign.context().operation_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(payload["assigneePrincipalId"], "multi-role-01");
+    assert_eq!(payload["actingResponsibilityKind"], "role_assignment");
+    assert!(!payload.to_string().contains("担当の平準化"));
+
+    // A policy writer holding the update lock fences an in-flight Work command,
+    // which then re-evaluates against the committed revocation.
+    let policy = repository
+        .organization(VerifiedActor::Approver01)
+        .await
+        .unwrap();
+    let mut writer = pool.begin().await.unwrap();
+    let sqlx::types::Json(mut locked): sqlx::types::Json<OrganizationPolicy> =
+        sqlx::query_scalar("SELECT body FROM work.organization_policies WHERE id=$1 FOR UPDATE")
+            .bind(ORGANIZATION_POLICY_ID)
+            .fetch_one(&mut *writer)
+            .await
+            .unwrap();
+    let now = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap();
+    locked
+        .apply(
+            VerifiedActor::Approver01,
+            &PolicyCommand::RevokeRoleAssignment {
+                context: acting(APPROVER_MANAGEMENT_ASSIGNMENT_ID, policy.policy_revision),
+                assignment_id: MULTI_ROLE_PROCESSING_ASSIGNMENT_ID,
+                reason: "兼務解除".into(),
+            },
+            &now,
+        )
+        .unwrap();
+    let hold = Command::Hold {
+        task_id: OFFICE_TASK_ID,
+        context: acting(MULTI_ROLE_PROCESSING_ASSIGNMENT_ID, detail.task.revision),
+        expected_attempt_id: detail.task.attempt_id,
+        definition_action_id: HOLD_ACTION_ID,
+    };
+    let fenced = {
+        let repository = PostgresWorkRepository::new(pool.clone());
+        tokio::spawn(async move { repository.execute(VerifiedActor::MultiRole01, hold).await })
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    assert!(
+        !fenced.is_finished(),
+        "Work command must wait for the policy writer"
+    );
+    sqlx::query("UPDATE work.organization_policies SET revision=$2, body=$3 WHERE id=$1")
+        .bind(ORGANIZATION_POLICY_ID)
+        .bind(locked.revision)
+        .bind(sqlx::types::Json(&locked))
+        .execute(&mut *writer)
+        .await
+        .unwrap();
+    writer.commit().await.unwrap();
+    // The acting responsibility no longer resolves for this actor under the lock.
+    assert_eq!(fenced.await.unwrap(), Err(WorkError::Forbidden));
+    let held: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM work.workflow_history WHERE kind='held'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(held, 0);
+    assert_eq!(
+        repository
+            .task(VerifiedActor::MultiRole01, OFFICE_TASK_ID)
+            .await,
+        Err(WorkError::WorkItemNotFound)
+    );
+    let ended = office_revision(&repository, VerifiedActor::Approver01).await;
+    assert!(!ended.assignment.unwrap().responsibility_effective);
+    sqlx::raw_sql("DROP SCHEMA work CASCADE")
+        .execute(&pool)
+        .await
+        .unwrap();
 }

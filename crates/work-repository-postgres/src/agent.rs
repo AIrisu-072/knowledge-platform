@@ -317,17 +317,27 @@ async fn locked(tx: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Workfl
 async fn locked_optional(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<Option<Workflow>, WorkError> {
+    // Same lock order as Human commands: policy (share) before workflow (update).
+    let policy: Option<Json<OrganizationPolicy>> =
+        sqlx::query_scalar("SELECT body FROM work.organization_policies WHERE id=$1 FOR SHARE")
+            .bind(ORGANIZATION_POLICY_ID)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(database_error)?;
     let row: Option<Json<Workflow>> =
         sqlx::query_scalar("SELECT body FROM work.workflow_instances WHERE id=$1 FOR UPDATE")
             .bind(WORKFLOW_ID)
             .fetch_optional(&mut **tx)
             .await
             .map_err(database_error)?;
-    row.map(|Json(w)| {
-        w.validate_integrity()?;
-        Ok(w)
-    })
-    .transpose()
+    let Some(Json(mut w)) = row else {
+        return Ok(None);
+    };
+    w.validate_integrity()?;
+    let Json(policy) = policy.ok_or(WorkError::DependencyUnavailable)?;
+    policy.validate_integrity()?;
+    w.attach_authority(std::sync::Arc::new(policy), OffsetDateTime::now_utc());
+    Ok(Some(w))
 }
 async fn persist(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,

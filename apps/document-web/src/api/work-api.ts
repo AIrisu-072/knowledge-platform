@@ -23,8 +23,23 @@ export type SubmitCommand = Generated.SubmitCommand;
 export type AgentExecution = Generated.AgentExecution;
 export type AgentResult = Generated.AgentResult;
 export type AgentExecutionRequest = Generated.AgentExecutionRequest;
+export type PolicyAction = Generated.PolicyAction;
+export type Responsibility = Generated.Responsibility;
+export type OrganizationalUnit = Generated.OrganizationalUnit;
+export type BusinessRole = Generated.BusinessRole;
+export type RoleAssignment = Generated.RoleAssignment;
+export type Delegation = Generated.Delegation;
+export type TaskAssignmentView = Generated.TaskAssignmentView;
+export type WorkAssignmentRecord = Generated.WorkAssignmentRecord;
+export type RoleAssignmentCommand = Generated.RoleAssignmentCommand;
+export type DelegationCommand = Generated.DelegationCommand;
+export type RevokePolicyRecordCommand = Generated.RevokePolicyRecordCommand;
+export type AssignmentCommand = Generated.AssignmentCommand;
+export type PolicyResult = Generated.RoleAssignmentCreated | Generated.RoleAssignmentRevoked | Generated.DelegationCreated | Generated.DelegationRevoked;
+export const SYNTHETIC_PRINCIPALS = ['sales-01', 'office-01', 'review-01', 'approver-01', 'multi-role-01', 'delegate-01'] as const;
+export type SyntheticPrincipal = (typeof SYNTHETIC_PRINCIPALS)[number];
 export type CancelAgentExecution = Generated.CancelAgentExecution;
-export type WorkResult = Generated.Completed | Generated.Held | Generated.Resumed | Generated.AgentExecutionRequested | Generated.AgentExecutionCancelled | Generated.EvidenceRegistered | Generated.FindingRegistered | Generated.DecisionRecorded | Generated.Returned | Generated.DraftSaved | Generated.Claimed | (Omit<Generated.Submitted, 'snapshot'> & { snapshot: HandoffSnapshot });
+export type WorkResult = Generated.Completed | Generated.Held | Generated.Resumed | Generated.AgentExecutionRequested | Generated.AgentExecutionCancelled | Generated.EvidenceRegistered | Generated.FindingRegistered | Generated.DecisionRecorded | Generated.Returned | Generated.DraftSaved | Generated.Claimed | Generated.Assigned | (Omit<Generated.Submitted, 'snapshot'> & { snapshot: HandoffSnapshot });
 export class WorkApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, public readonly outcomeUnknown = false) { super(code); this.name = 'WorkApiError'; }
 }
@@ -36,12 +51,47 @@ function bool(value: unknown): boolean { if (typeof value !== 'boolean') throw n
 function revision(value: unknown): number { if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Error('invalid_response'); return value; }
 function array<T>(value: unknown, decode: (item: unknown) => T): T[] { if (!Array.isArray(value)) throw new Error('invalid_response'); return value.map(decode); }
 function textValue(value: unknown): { text: string } { return { text: string(object(value).text) }; }
+const nullable = <T>(value: unknown, decode: (value: unknown) => T): T | null => value === null ? null : decode(value);
+function principal(value: unknown): SyntheticPrincipal { const text = string(value); if (!(SYNTHETIC_PRINCIPALS as readonly string[]).includes(text)) throw new Error('invalid_actor'); return text as SyntheticPrincipal; }
+const POLICY_ACTIONS: readonly PolicyAction[] = ['context.read', 'context.progress.read', 'context.history.read', 'queue.read', 'work.read', 'work.claim', 'work.assign', 'work.edit', 'work.submit', 'work.return', 'work.complete', 'work.hold', 'work.resume', 'evidence.register', 'finding.register', 'decision.record', 'agent.request', 'organization.manage'];
+function policyAction(value: unknown): PolicyAction { const text = string(value); if (!(POLICY_ACTIONS as readonly string[]).includes(text)) throw new Error('invalid_action'); return text as PolicyAction; }
+function responsibilityKind(value: unknown): 'role_assignment' | 'delegation' { if (value !== 'role_assignment' && value !== 'delegation') throw new Error('invalid_responsibility'); return value; }
+function responsibility(value: unknown): Responsibility {
+  const item = object(value);
+  return { id: string(item.id), kind: responsibilityKind(item.kind), principal: principal(item.principal), roleId: string(item.roleId), roleLabel: string(item.roleLabel), unitId: string(item.unitId), unitLabel: string(item.unitLabel), actions: array(item.actions, policyAction), validFrom: string(item.validFrom), validUntil: nullable(item.validUntil, string), sourceAssignmentId: nullable(item.sourceAssignmentId, string), delegator: nullable(item.delegator, principal) };
+}
+function assignmentView(value: unknown): TaskAssignmentView {
+  const item = object(value);
+  return { principalId: principal(item.principalId), displayName: string(item.displayName), actingAssignmentId: string(item.actingAssignmentId), actingKind: nullable(item.actingKind, responsibilityKind), roleLabel: nullable(item.roleLabel, string), delegatorPrincipalId: nullable(item.delegatorPrincipalId, principal), responsibilityEffective: bool(item.responsibilityEffective) };
+}
+function workAssignment(value: unknown): WorkAssignmentRecord {
+  const item = object(value);
+  return { id: string(item.id), taskId: string(item.taskId), attemptId: string(item.attemptId), principal: principal(item.principal), actingAssignmentId: string(item.actingAssignmentId), assignedBy: nullable(item.assignedBy, principal), managerAssignmentId: nullable(item.managerAssignmentId, string), reason: nullable(item.reason, string), startedAt: string(item.startedAt), endedAt: nullable(item.endedAt, string), endedBy: nullable(item.endedBy, principal) };
+}
+function unit(value: unknown): OrganizationalUnit { const item = object(value); if (item.defaultArchetype !== 'context' && item.defaultArchetype !== 'queue') throw new Error('invalid_unit'); return { id: string(item.id), label: string(item.label), defaultArchetype: item.defaultArchetype, roleIds: array(item.roleIds, string) }; }
+function role(value: unknown): BusinessRole { const item = object(value); return { id: string(item.id), key: string(item.key), label: string(item.label), actions: array(item.actions, policyAction) }; }
+function roleAssignment(value: unknown): RoleAssignment {
+  const item = object(value);
+  return { id: string(item.id), principal: principal(item.principal), roleId: string(item.roleId), unitId: string(item.unitId), validFrom: string(item.validFrom), validUntil: nullable(item.validUntil, string), reason: string(item.reason), createdBy: nullable(item.createdBy, principal), createdAt: string(item.createdAt), revokedAt: nullable(item.revokedAt, string), revokedBy: nullable(item.revokedBy, principal), revokeReason: nullable(item.revokeReason, string) };
+}
+function delegation(value: unknown): Delegation {
+  const item = object(value); const actions = array(item.actions, policyAction);
+  if (!actions.length) throw new Error('invalid_delegation');
+  return { id: string(item.id), sourceAssignmentId: string(item.sourceAssignmentId), delegator: principal(item.delegator), recipient: principal(item.recipient), actions, validFrom: string(item.validFrom), validUntil: string(item.validUntil), reason: string(item.reason), createdBy: principal(item.createdBy), createdAt: string(item.createdAt), revokedAt: nullable(item.revokedAt, string), revokedBy: nullable(item.revokedBy, principal), revokeReason: nullable(item.revokeReason, string) };
+}
+function policyResult(value: unknown): PolicyResult {
+  const item = object(value); const policyRevision = revision(item.policyRevision);
+  if (policyRevision < 1) throw new Error('invalid_policy_revision');
+  if (item.kind === 'role_assignment_created' || item.kind === 'role_assignment_revoked') return { kind: item.kind, assignment: roleAssignment(item.assignment), policyRevision };
+  if (item.kind === 'delegation_created' || item.kind === 'delegation_revoked') return { kind: item.kind, delegation: delegation(item.delegation), policyRevision };
+  throw new Error('invalid_result');
+}
 function schema(value: unknown): 'organization.text-draft.v1' { if (value !== 'organization.text-draft.v1') throw new Error('unsupported_schema'); return value; }
 function task(value: unknown): TaskSummary {
   const item = object(value);
   if (revision(item.attemptNumber) < 1) throw new Error('invalid_attempt');
   if (!['ready', 'active', 'held', 'completed'].includes(string(item.state))) throw new Error('invalid_state');
-  return { id: string(item.id), contextId: string(item.contextId), attemptId: string(item.attemptId), attemptNumber: revision(item.attemptNumber), revision: revision(item.revision), title: string(item.title), stepLabel: string(item.stepLabel), state: item.state as TaskSummary['state'], canClaim: bool(item.canClaim), canEdit: bool(item.canEdit), canSubmit: bool(item.canSubmit), canComplete: bool(item.canComplete), completionActionId: item.completionActionId === null ? null : string(item.completionActionId), canHold: bool(item.canHold), holdActionId: item.holdActionId === null ? null : string(item.holdActionId), canResume: bool(item.canResume), resumeActionId: item.resumeActionId === null ? null : string(item.resumeActionId), canReturn: bool(item.canReturn), canRegisterEvidence: bool(item.canRegisterEvidence), canRegisterFinding: bool(item.canRegisterFinding), canRecordDecision: bool(item.canRecordDecision), canRequestAgent: bool(item.canRequestAgent), returnTransition: returnTransition(item.returnTransition), returnInstructionId: item.returnInstructionId === null ? null : string(item.returnInstructionId), handoffSnapshotId: item.handoffSnapshotId === null ? null : string(item.handoffSnapshotId) };
+  return { id: string(item.id), contextId: string(item.contextId), attemptId: string(item.attemptId), attemptNumber: revision(item.attemptNumber), revision: revision(item.revision), title: string(item.title), stepLabel: string(item.stepLabel), state: item.state as TaskSummary['state'], canClaim: bool(item.canClaim), canEdit: bool(item.canEdit), canSubmit: bool(item.canSubmit), canComplete: bool(item.canComplete), completionActionId: item.completionActionId === null ? null : string(item.completionActionId), canHold: bool(item.canHold), holdActionId: item.holdActionId === null ? null : string(item.holdActionId), canResume: bool(item.canResume), resumeActionId: item.resumeActionId === null ? null : string(item.resumeActionId), canReturn: bool(item.canReturn), canRegisterEvidence: bool(item.canRegisterEvidence), canRegisterFinding: bool(item.canRegisterFinding), canRecordDecision: bool(item.canRecordDecision), canRequestAgent: bool(item.canRequestAgent), returnTransition: returnTransition(item.returnTransition), returnInstructionId: item.returnInstructionId === null ? null : string(item.returnInstructionId), handoffSnapshotId: item.handoffSnapshotId === null ? null : string(item.handoffSnapshotId), requiredRoleId: nullable(item.requiredRoleId, string), claimAssignmentId: nullable(item.claimAssignmentId, string), canAssign: bool(item.canAssign), assignment: nullable(item.assignment, assignmentView) };
 }
 function returnTransition(value: unknown): TaskSummary['returnTransition'] {
   if (value === null) return null;
@@ -50,7 +100,7 @@ function returnTransition(value: unknown): TaskSummary['returnTransition'] {
 }
 function returnInstruction(value: unknown): ReturnInstruction {
   const item = object(value);
-  if (!['sales-01', 'office-01'].includes(string(item.returnedBy))) throw new Error('invalid_actor');
+  principal(item.returnedBy);
   return { id: string(item.id), workflowId: string(item.workflowId), contextId: string(item.contextId), sourceTaskId: string(item.sourceTaskId), sourceAttemptId: string(item.sourceAttemptId), targetTaskId: string(item.targetTaskId), targetAttemptId: string(item.targetAttemptId), previousSubmissionId: string(item.previousSubmissionId), transitionId: string(item.transitionId), reason: string(item.reason), returnedBy: item.returnedBy as ReturnInstruction['returnedBy'], actingAssignmentId: string(item.actingAssignmentId), createdAt: string(item.createdAt) };
 }
 function artifact(value: unknown): WorkingArtifact {
@@ -90,7 +140,7 @@ function agentResult(value: unknown): AgentResult {
 }
 function agentExecution(value: unknown): AgentExecution {
   const item = object(value);
-  if (!['sales-01', 'office-01'].includes(string(item.requestedBy)) || item.executedBy !== 'organization-synthetic/agent-01' || item.executorInvocationKind !== 'agent' || !['queued', 'running', 'succeeded', 'failed', 'cancelled', 'outcome_unknown'].includes(string(item.status))) throw new Error('unsupported_agent_execution');
+  if (!(SYNTHETIC_PRINCIPALS as readonly string[]).includes(string(item.requestedBy)) || item.executedBy !== 'organization-synthetic/agent-01' || item.executorInvocationKind !== 'agent' || !['queued', 'running', 'succeeded', 'failed', 'cancelled', 'outcome_unknown'].includes(string(item.status))) throw new Error('unsupported_agent_execution');
   const bindings = array(item.providerPrincipalBindings, (value): Generated.ProviderPrincipalBinding => {
     const binding = object(value);
     if (binding.providerId !== 'document' || binding.principalId !== 'poc/poc-agent' || binding.invocationKind !== 'agent') throw new Error('unsupported_agent_provider');
@@ -116,6 +166,11 @@ function result(value: unknown): WorkResult {
   }
   if (item.kind === 'completed' || item.kind === 'held' || item.kind === 'resumed') { const summary = task(item.task); if (summary.state !== ({ completed: 'completed', held: 'held', resumed: 'active' })[item.kind]) throw new Error('invalid_workflow_state'); return { kind: item.kind, task: summary }; }
   if (item.kind === 'claimed') return { kind: item.kind, task: task(item.task) };
+  if (item.kind === 'assigned') {
+    const summary = task(item.task); const record = workAssignment(item.assignment);
+    if (record.taskId !== summary.id || record.attemptId !== summary.attemptId) throw new Error('response_target_mismatch');
+    return { kind: item.kind, task: summary, assignment: record };
+  }
   if (item.kind === 'draft_saved') {
     const summary = task(item.task); const saved = artifact(item.artifact);
     if (saved.taskId !== summary.id || saved.attemptId !== summary.attemptId) throw new Error('response_target_mismatch');
@@ -149,8 +204,25 @@ function workflowAction(id: string, command: WorkflowActionCommand) {
   }, 'POST', command);
 }
 export const workApi = {
-  getSession: () => request('/session', (value): WorkSession => { const item = object(value); const c = object(item.capabilities); return { principalId: string(item.principalId), displayName: string(item.displayName), actingAssignmentId: string(item.actingAssignmentId), capabilities: { nativeWorkspace: bool(c.nativeWorkspace), agent: bool(c.agent), search: bool(c.search), fileUpload: bool(c.fileUpload), return: bool(c.return) } }; }),
-  listTasks: (view: 'context' | 'queue') => request(`/tasks?view=${view}`, (value) => { const item = object(value); if (item.nextCursor !== null) throw new Error('unsupported_pagination'); return { items: array(item.items, task), nextCursor: null }; }),
+  getSession: () => request('/session', (value): WorkSession => {
+    const item = object(value); const c = object(item.capabilities); const principalId = principal(item.principalId);
+    const responsibilities = nullable(item.responsibilities, (entry) => array(entry, responsibility));
+    if (responsibilities?.some((entry) => entry.principal !== principalId)) throw new Error('response_target_mismatch');
+    const actingAssignmentId = nullable(item.actingAssignmentId, string);
+    if (actingAssignmentId !== null && !responsibilities?.some((entry) => entry.id === actingAssignmentId)) throw new Error('invalid_acting_responsibility');
+    return { principalId, displayName: string(item.displayName), actingAssignmentId, responsibilities, canManageOrganization: bool(item.canManageOrganization), policyRevision: nullable(item.policyRevision, revision), capabilities: { nativeWorkspace: bool(c.nativeWorkspace), agent: bool(c.agent), search: bool(c.search), fileUpload: bool(c.fileUpload), return: bool(c.return) } };
+  }),
+  listTasks: (view: 'context' | 'queue', actingAssignmentId?: string) => request(`/tasks?view=${view}${actingAssignmentId ? `&actingAssignmentId=${segment(actingAssignmentId)}` : ''}`, (value) => { const item = object(value); if (item.nextCursor !== null) throw new Error('unsupported_pagination'); return { items: array(item.items, task), nextCursor: null }; }),
+  listUnits: () => request('/units', (value) => page(value, unit)),
+  listRoles: () => request('/roles', (value) => page(value, role)),
+  listRoleAssignments: () => request('/role-assignments', (value) => page(value, roleAssignment)),
+  listDelegations: () => request('/delegations', (value) => page(value, delegation)),
+  createRoleAssignment: (command: RoleAssignmentCommand) => request('/role-assignments', (value) => { const receipt = policyResult(value); if (receipt.kind !== 'role_assignment_created' || receipt.assignment.principal !== command.principalId || receipt.assignment.roleId !== command.roleId) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),
+  revokeRoleAssignment: (id: string, command: RevokePolicyRecordCommand) => request(`/role-assignments/${segment(id)}/revoke`, (value) => { const receipt = policyResult(value); if (receipt.kind !== 'role_assignment_revoked' || receipt.assignment.id !== id) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),
+  createDelegation: (command: DelegationCommand) => request('/delegations', (value) => { const receipt = policyResult(value); if (receipt.kind !== 'delegation_created' || receipt.delegation.sourceAssignmentId !== command.sourceAssignmentId || receipt.delegation.recipient !== command.recipientPrincipalId) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),
+  revokeDelegation: (id: string, command: RevokePolicyRecordCommand) => request(`/delegations/${segment(id)}/revoke`, (value) => { const receipt = policyResult(value); if (receipt.kind !== 'delegation_revoked' || receipt.delegation.id !== id) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),
+  assignTask: (id: string, command: AssignmentCommand) => request(`/tasks/${segment(id)}/assignment`, (value) => { const receipt = result(value); if (receipt.kind !== 'assigned' || receipt.task.id !== id || receipt.task.attemptId !== command.expectedAttemptId || receipt.assignment.principal !== command.assigneePrincipalId) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),
+  getPolicyOperation: (id: string) => request(`/operations/${segment(id)}`, policyResult),
   getTask: (id: string) => request(`/tasks/${segment(id)}`, (value): TaskDetail => { const item = object(value); const summary = task(item); const artifacts = array(item.workingArtifacts, artifact); if (summary.id !== id || artifacts.some((entry) => entry.taskId !== id || entry.attemptId !== summary.attemptId)) throw new Error('response_target_mismatch'); return { ...summary, agentExecutionIds: array(item.agentExecutionIds, string), inputResources: array(item.inputResources, (entry) => { const resource = object(entry); if (resource.kind !== 'document') throw new Error('unsupported_resource'); return { kind: 'document', documentId: string(resource.documentId), label: string(resource.label) }; }), history: array(item.history, (entry) => { const event = object(entry); return { kind: string(event.kind), occurredAt: string(event.occurredAt) }; }), workingArtifacts: artifacts }; }),
   getSnapshot: (id: string) => request(`/handoff-snapshots/${segment(id)}`, (value) => { const receipt = snapshot(value); if (receipt.id !== id) throw new Error('response_target_mismatch'); return receipt; }),
   getReturnInstruction: (id: string) => request(`/return-instructions/${segment(id)}`, (value) => { const instruction = returnInstruction(value); if (instruction.id !== id) throw new Error('response_target_mismatch'); return instruction; }),

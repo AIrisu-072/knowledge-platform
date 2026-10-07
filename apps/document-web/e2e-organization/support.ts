@@ -987,7 +987,7 @@ export async function holdAndResume(page: Page, request: APIRequestContext, orig
   await page.getByRole('button', { name: '保留内容を確認', exact: true }).click();
   const confirmation = page.getByRole('dialog', { name: '保留の確認', exact: true });
   await expect(confirmation).toContainText(before.attemptId);
-  await expect(confirmation).toContainText(session.actingAssignmentId);
+  await expect(confirmation).toContainText(session.actingAssignmentId!);
   await expect(confirmation).toContainText('未保存の入力は保存せず');
   await expect(confirmation.getByRole('button', { name: 'キャンセル', exact: true })).toBeFocused();
   await confirmation.getByRole('button', { name: 'キャンセル', exact: true }).click();

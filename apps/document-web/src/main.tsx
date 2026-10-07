@@ -11,6 +11,7 @@ import './design-system/global.css';
 
 const LazyTaskHomePage = lazy(() => import('./routes/TaskHomePage').then(({ TaskHomePage }) => ({ default: TaskHomePage })));
 const LazyOrganizationSearchPage = lazy(() => import('./routes/TaskHomePage').then(({ OrganizationSearchPage }) => ({ default: OrganizationSearchPage })));
+const LazyOrganizationResponsibilitiesPage = lazy(() => import('./routes/OrganizationResponsibilitiesPage').then(({ OrganizationResponsibilitiesPage }) => ({ default: OrganizationResponsibilitiesPage })));
 const LazyDocumentDetailPage = lazy(() => import('./routes/DocumentDetailPage').then(({ DocumentDetailPage }) => ({ default: DocumentDetailPage })));
 
 const rootElement = document.getElementById('root');
@@ -46,7 +47,9 @@ const documentDetailRoute = createRoute({
 });
 const tasksRoute = createRoute({ getParentRoute: () => rootRoute, path: '/tasks', validateSearch: validateTaskSearch, component: () => <Suspense fallback={<p role="status">タスクを読み込み中…</p>}><LazyTaskHomePage /></Suspense> });
 const searchRoute = createRoute({ getParentRoute: () => rootRoute, path: '/search', component: () => <Suspense fallback={<p role="status">検索画面を読み込み中…</p>}><LazyOrganizationSearchPage /></Suspense> });
-const routeTree = rootRoute.addChildren([indexRoute, documentsRoute, documentDetailRoute, tasksRoute, searchRoute]);
+// Reached from the task header only; never a primary navigation entry.
+const responsibilitiesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/organization/responsibilities', component: () => <Suspense fallback={<p role="status">担当と委任を読み込み中…</p>}><LazyOrganizationResponsibilitiesPage /></Suspense> });
+const routeTree = rootRoute.addChildren([indexRoute, documentsRoute, documentDetailRoute, tasksRoute, searchRoute, responsibilitiesRoute]);
 const router = createRouter({ routeTree });
 const queryClient = new QueryClient({
   defaultOptions: {

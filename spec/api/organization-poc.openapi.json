@@ -3,7 +3,7 @@
   "info": {
     "title": "Organization Browser PoC API",
     "version": "0.1.0",
-    "description": "凍結済みOrganization APIの最小実装subset。起動時固定synthetic identity専用。production認証ではない。"
+    "description": "凍結済みOrganization APIの実装subset。起動時固定synthetic identity専用（6 profile）。production認証ではない。"
   },
   "paths": {
     "/v1/organization/session": {
@@ -108,6 +108,15 @@
             "description": "この固定2step PoCはcursor非対応。指定するとCURSOR_STALE。",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actingAssignmentId",
+            "description": "表示範囲とする本人の現在有効な責任。省略時は全有効責任の和。本人のものでなければFORBIDDEN。",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
             }
           }
         ]
@@ -1442,6 +1451,427 @@
           }
         }
       }
+    },
+    "/v1/organization/units": {
+      "get": {
+        "operationId": "listOrganizationalUnits",
+        "summary": "listOrganizationalUnits",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/roles": {
+      "get": {
+        "operationId": "listBusinessRoles",
+        "summary": "listBusinessRoles",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RolePage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/role-assignments": {
+      "get": {
+        "operationId": "listRoleAssignments",
+        "summary": "listRoleAssignments",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleAssignmentPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createRoleAssignment",
+        "summary": "createRoleAssignment",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleAssignmentCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/role-assignments/{id}/revoke": {
+      "post": {
+        "operationId": "revokeRoleAssignment",
+        "summary": "revokeRoleAssignment",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokePolicyRecordCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/delegations": {
+      "get": {
+        "operationId": "listDelegations",
+        "summary": "listDelegations",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DelegationPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createDelegation",
+        "summary": "createDelegation",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DelegationCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/delegations/{id}/revoke": {
+      "post": {
+        "operationId": "revokeDelegation",
+        "summary": "revokeDelegation",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokePolicyRecordCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/tasks/{id}/assignment": {
+      "post": {
+        "operationId": "assignWorkItem",
+        "summary": "assignWorkItem",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignmentCommand"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1471,8 +1901,12 @@
             "type": "string"
           },
           "actingAssignmentId": {
-            "type": "string",
-            "format": "uuid"
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "既定の実行担当。現在有効な責任がなければnull。"
           },
           "capabilities": {
             "type": "object",
@@ -1501,13 +1935,43 @@
               "fileUpload",
               "return"
             ]
+          },
+          "responsibilities": {
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Responsibility"
+                },
+                "maxItems": 400
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "nullはpolicyを現在評価できないことを示す（空の許可ではない）。"
+          },
+          "canManageOrganization": {
+            "type": "boolean"
+          },
+          "policyRevision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0,
+            "description": "担当・委任操作のexpectedRevision。policyを評価できない場合null。"
           }
         },
         "required": [
           "principalId",
           "displayName",
           "actingAssignmentId",
-          "capabilities"
+          "capabilities",
+          "responsibilities",
+          "canManageOrganization",
+          "policyRevision"
         ]
       },
       "TaskSummary": {
@@ -1639,6 +2103,33 @@
                 "type": "null"
               }
             ]
+          },
+          "requiredRoleId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "claimAssignmentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "canAssign": {
+            "type": "boolean"
+          },
+          "assignment": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskAssignmentView"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1666,7 +2157,11 @@
           "canHold",
           "holdActionId",
           "canResume",
-          "resumeActionId"
+          "resumeActionId",
+          "requiredRoleId",
+          "claimAssignmentId",
+          "canAssign",
+          "assignment"
         ]
       },
       "WorkingArtifact": {
@@ -1909,6 +2404,33 @@
                 "type": "null"
               }
             ]
+          },
+          "requiredRoleId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "claimAssignmentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "canAssign": {
+            "type": "boolean"
+          },
+          "assignment": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskAssignmentView"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1940,7 +2462,11 @@
           "canHold",
           "holdActionId",
           "canResume",
-          "resumeActionId"
+          "resumeActionId",
+          "requiredRoleId",
+          "claimAssignmentId",
+          "canAssign",
+          "assignment"
         ]
       },
       "TaskPage": {
@@ -2038,7 +2564,11 @@
             "type": "string",
             "enum": [
               "sales-01",
-              "office-01"
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
             ]
           },
           "submissionNumber": {
@@ -2318,6 +2848,21 @@
           },
           {
             "$ref": "#/components/schemas/Resumed"
+          },
+          {
+            "$ref": "#/components/schemas/Assigned"
+          },
+          {
+            "$ref": "#/components/schemas/RoleAssignmentCreated"
+          },
+          {
+            "$ref": "#/components/schemas/RoleAssignmentRevoked"
+          },
+          {
+            "$ref": "#/components/schemas/DelegationCreated"
+          },
+          {
+            "$ref": "#/components/schemas/DelegationRevoked"
           }
         ]
       },
@@ -2352,7 +2897,8 @@
               "EVIDENCE_NOT_FOUND",
               "FINDING_NOT_FOUND",
               "AGENT_RESULT_NOT_READY",
-              "WORK_CONTEXT_STALE"
+              "WORK_CONTEXT_STALE",
+              "ORGANIZATION_RECORD_NOT_FOUND"
             ]
           },
           "traceId": {
@@ -2464,7 +3010,12 @@
           "returnedBy": {
             "type": "string",
             "enum": [
-              "office-01"
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
             ]
           },
           "createdAt": {
@@ -3377,7 +3928,11 @@
             "type": "string",
             "enum": [
               "sales-01",
-              "office-01"
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
             ]
           },
           "requesterResponsibility": {
@@ -3707,6 +4262,981 @@
         "required": [
           "kind",
           "task"
+        ]
+      },
+      "PolicyAction": {
+        "type": "string",
+        "enum": [
+          "context.read",
+          "context.progress.read",
+          "context.history.read",
+          "queue.read",
+          "work.read",
+          "work.claim",
+          "work.assign",
+          "work.edit",
+          "work.submit",
+          "work.return",
+          "work.complete",
+          "work.hold",
+          "work.resume",
+          "evidence.register",
+          "finding.register",
+          "decision.record",
+          "agent.request",
+          "organization.manage"
+        ]
+      },
+      "Responsibility": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "role_assignment",
+              "delegation"
+            ]
+          },
+          "principal": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "roleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "roleLabel": {
+            "type": "string"
+          },
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "unitLabel": {
+            "type": "string"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyAction"
+            },
+            "maxItems": 18
+          },
+          "validFrom": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "validUntil": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "sourceAssignmentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "delegator": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01",
+              null
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "principal",
+          "roleId",
+          "roleLabel",
+          "unitId",
+          "unitLabel",
+          "actions",
+          "validFrom",
+          "validUntil",
+          "sourceAssignmentId",
+          "delegator"
+        ],
+        "description": "評価時点で有効な責任の説明。再利用できる許可ではない。"
+      },
+      "OrganizationalUnit": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "label": {
+            "type": "string"
+          },
+          "defaultArchetype": {
+            "type": "string",
+            "enum": [
+              "context",
+              "queue"
+            ]
+          },
+          "roleIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "defaultArchetype",
+          "roleIds"
+        ]
+      },
+      "BusinessRole": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyAction"
+            },
+            "maxItems": 18
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "label",
+          "actions"
+        ]
+      },
+      "RoleAssignment": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "principal": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "roleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "validFrom": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "validUntil": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01",
+              null
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "revokedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01",
+              null
+            ]
+          },
+          "revokeReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "principal",
+          "roleId",
+          "unitId",
+          "validFrom",
+          "validUntil",
+          "reason",
+          "createdBy",
+          "createdAt",
+          "revokedAt",
+          "revokedBy",
+          "revokeReason"
+        ]
+      },
+      "Delegation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "delegator": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "recipient": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyAction"
+            },
+            "minItems": 1,
+            "maxItems": 18
+          },
+          "validFrom": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "revokedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01",
+              null
+            ]
+          },
+          "revokeReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "sourceAssignmentId",
+          "delegator",
+          "recipient",
+          "actions",
+          "validFrom",
+          "validUntil",
+          "reason",
+          "createdBy",
+          "createdAt",
+          "revokedAt",
+          "revokedBy",
+          "revokeReason"
+        ]
+      },
+      "TaskAssignmentView": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "principalId": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actingKind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "role_assignment",
+              "delegation",
+              null
+            ]
+          },
+          "roleLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "delegatorPrincipalId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01",
+              null
+            ]
+          },
+          "responsibilityEffective": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "principalId",
+          "displayName",
+          "actingAssignmentId",
+          "actingKind",
+          "roleLabel",
+          "delegatorPrincipalId",
+          "responsibilityEffective"
+        ],
+        "description": "現在の担当者本人と現在のwork.assign保有者にだけ返す。"
+      },
+      "WorkAssignmentRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "principal": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01",
+              null
+            ]
+          },
+          "managerAssignmentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "endedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01",
+              null
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "taskId",
+          "attemptId",
+          "principal",
+          "actingAssignmentId",
+          "assignedBy",
+          "managerAssignmentId",
+          "reason",
+          "startedAt",
+          "endedAt",
+          "endedBy"
+        ]
+      },
+      "UnitPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationalUnit"
+            },
+            "maxItems": 100
+          },
+          "nextCursor": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "RolePage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BusinessRole"
+            },
+            "maxItems": 100
+          },
+          "nextCursor": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "RoleAssignmentPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleAssignment"
+            },
+            "maxItems": 200
+          },
+          "nextCursor": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "DelegationPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Delegation"
+            },
+            "maxItems": 200
+          },
+          "nextCursor": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "RoleAssignmentCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "principalId": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "roleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "validFrom": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "空白のみ不可、最大1024 UTF-8 bytes。"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "principalId",
+          "roleId",
+          "unitId",
+          "reason"
+        ],
+        "description": "expectedRevisionはOrganization policyのrevision。actingAssignmentIdは現在有効な業務管理の正式割当。"
+      },
+      "RevokePolicyRecordCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "空白のみ不可、最大1024 UTF-8 bytes。"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "reason"
+        ]
+      },
+      "DelegationCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "recipientPrincipalId": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyAction"
+            },
+            "minItems": 1,
+            "maxItems": 18
+          },
+          "validFrom": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "空白のみ不可、最大1024 UTF-8 bytes。"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "sourceAssignmentId",
+          "recipientPrincipalId",
+          "actions",
+          "validUntil",
+          "reason"
+        ],
+        "description": "委任元の正式割当より広い操作・長い期限・再委任は拒否。organization.manageとwork.assignは委任不可。"
+      },
+      "AssignmentCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assigneePrincipalId": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "assigneeResponsibilityId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedAttemptId",
+          "assigneePrincipalId",
+          "assigneeResponsibilityId",
+          "reason"
+        ],
+        "description": "expectedRevisionはタスクのrevision。新担当者の責任は工程の役割とwork.claimを含み現在有効であること。"
+      },
+      "Assigned": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "assigned",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/WorkAssignmentRecord"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "assignment"
+        ]
+      },
+      "RoleAssignmentCreated": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "role_assignment_created",
+            "type": "string"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/RoleAssignment"
+          },
+          "policyRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "kind",
+          "assignment",
+          "policyRevision"
+        ]
+      },
+      "RoleAssignmentRevoked": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "role_assignment_revoked",
+            "type": "string"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/RoleAssignment"
+          },
+          "policyRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "kind",
+          "assignment",
+          "policyRevision"
+        ]
+      },
+      "DelegationCreated": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "delegation_created",
+            "type": "string"
+          },
+          "delegation": {
+            "$ref": "#/components/schemas/Delegation"
+          },
+          "policyRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "kind",
+          "delegation",
+          "policyRevision"
+        ]
+      },
+      "DelegationRevoked": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "delegation_revoked",
+            "type": "string"
+          },
+          "delegation": {
+            "$ref": "#/components/schemas/Delegation"
+          },
+          "policyRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "kind",
+          "delegation",
+          "policyRevision"
         ]
       }
     }

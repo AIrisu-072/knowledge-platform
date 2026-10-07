@@ -10,8 +10,10 @@ import { EvidenceContextModule, decisionLabel } from '../components/evidence/Evi
 import { useEvidenceRecords, evidenceRecordsKey } from '../application/use-evidence-records';
 import { selectedHandoffIsClosed, toggleReference } from '../application/evidence-workspace';
 import { createOperationId } from '../application/operation-id';
-import { workApi, executeWorkOperation, isOperationNotFound, validateTaskSearch, workErrorMessage, isDisclosureDenied, isUnknownOutcome, taskStateLabel, type TaskSearch, type TaskSummary, type TaskDetail, type WorkSession, type WorkResult, type WorkCommand, type WorkOperation, type HandoffSnapshot, type ReturnInstruction } from '../application/work-workspace';
+import { workApi, actingFor, executeWorkOperation, isOperationNotFound, validateTaskSearch, workErrorMessage, isDisclosureDenied, isUnknownOutcome, taskStateLabel, type TaskSearch, type TaskSummary, type TaskDetail, type WorkSession, type WorkResult, type WorkCommand, type WorkOperation, type HandoffSnapshot, type ReturnInstruction } from '../application/work-workspace';
 import { formatDateTime } from '../view-model/date-time';
+import { TaskAssignmentPanel, TaskAssignmentSummary } from '../components/organization/TaskAssignmentPanel';
+import { actingLabel, responsibilityLabel } from '../application/organization-policy';
 import styles from './TaskWorkspace.module.css';
 
 const sessionKey = ['organization-session'];
@@ -32,7 +34,9 @@ export function TaskHomePage() {
   const session = useQuery({ queryKey: sessionKey, queryFn: workApi.getSession, staleTime: 0, gcTime: 0, retry: false });
   const sessionData = session.isSuccess ? session.data : undefined;
   useEffect(() => { if (sessionData && (currentHref === '/tasks' || currentHref.startsWith('/tasks?'))) organization.setContext(sessionData, currentHref); }, [sessionData, currentHref, organization.setContext]);
-  const tasks = useQuery({ queryKey: [...(sessionData ? actorKey(sessionData) : ['organization-unavailable']), 'tasks', search.view], queryFn: () => workApi.listTasks(search.view), enabled: Boolean(sessionData), placeholderData: (previous, query) => query?.queryKey[1] === sessionData?.principalId && query?.queryKey[2] === sessionData?.actingAssignmentId ? previous : undefined, staleTime: 0, gcTime: 0, retry: false });
+  // A selected responsibility only narrows the projection; an unknown one is ignored, never sent as identity.
+  const scope = search.acting && sessionData?.responsibilities?.some((value) => value.id === search.acting) ? search.acting : undefined;
+  const tasks = useQuery({ queryKey: [...(sessionData ? actorKey(sessionData) : ['organization-unavailable']), 'tasks', search.view, ...(scope ? [scope] : [])], queryFn: () => workApi.listTasks(search.view, scope), enabled: Boolean(sessionData), placeholderData: (previous, query) => query?.queryKey[1] === sessionData?.principalId && query?.queryKey[2] === sessionData?.actingAssignmentId ? previous : undefined, staleTime: 0, gcTime: 0, retry: false });
   useEffect(() => {
     if (isDisclosureDenied(session.error) || isDisclosureDenied(tasks.error)) {
       clearTransients('');
@@ -40,8 +44,12 @@ export function TaskHomePage() {
     }
   }, [session.error, tasks.error, clearTransients, client]);
   const selected = tasks.isSuccess ? tasks.data.items.find((item) => item.id === search.taskId) : undefined;
-  const detail = useQuery({ queryKey: sessionData && selected ? taskKey(sessionData, selected) : ['organization-no-task'], queryFn: () => workApi.getTask(selected!.id), enabled: Boolean(sessionData && selected && !selected.canClaim), staleTime: 0, gcTime: 0, retry: false });
-  const detailData = sessionData && selected && blockedId !== attemptKey(selected) && detail.isSuccess && matchesCurrent(selected, detail.data) && !selected.canClaim ? detail.data : undefined;
+  // Private detail is requested only for the actor's own assignment; a manager's
+  // assignment view and an eligible-only queue row never fetch it.
+  const managedOnly = Boolean(selected && selected.canAssign && selected.assignment?.principalId !== sessionData?.principalId);
+  const readable = Boolean(selected && !selected.canClaim && !managedOnly);
+  const detail = useQuery({ queryKey: sessionData && selected ? taskKey(sessionData, selected) : ['organization-no-task'], queryFn: () => workApi.getTask(selected!.id), enabled: Boolean(sessionData && selected && readable), staleTime: 0, gcTime: 0, retry: false });
+  const detailData = sessionData && selected && blockedId !== attemptKey(selected) && detail.isSuccess && matchesCurrent(selected, detail.data) && readable ? detail.data : undefined;
   const snapshot = useQuery({ queryKey: [...(sessionData ? actorKey(sessionData) : ['organization-unavailable']), 'snapshot', detailData?.handoffSnapshotId], queryFn: () => workApi.getSnapshot(detailData!.handoffSnapshotId!), enabled: Boolean(detailData?.handoffSnapshotId), staleTime: 0, gcTime: 0, retry: false });
   const instruction = useQuery({ queryKey: [...(sessionData ? actorKey(sessionData) : ['organization-unavailable']), 'return-instruction', detailData?.returnInstructionId], queryFn: () => workApi.getReturnInstruction(detailData!.returnInstructionId!), enabled: Boolean(detailData?.returnInstructionId), staleTime: 0, gcTime: 0, retry: false });
   const priorSnapshotId = instruction.isSuccess && detailData?.returnInstructionId === instruction.data.id ? instruction.data.previousSubmissionId : undefined;
@@ -76,6 +84,12 @@ export function TaskHomePage() {
     if (result.kind === 'returned') client.setQueryData([...actorKey(sessionData), 'return-instruction', result.returnInstruction.id], result.returnInstruction);
     if (result.kind === 'submitted') client.setQueryData([...actorKey(sessionData), 'snapshot', result.snapshot.id], result.snapshot);
   }
+  function applyAssignment(result: WorkResult) {
+    if (!sessionData || result.kind !== 'assigned') return;
+    // The new responsibility period changes who may read; re-evaluate the projection.
+    client.removeQueries({ queryKey: taskKey(sessionData, result.task) });
+    void client.invalidateQueries({ queryKey: [...actorKey(sessionData), 'tasks'] });
+  }
   const collection = <aside className={styles.collection} aria-label="タスク一覧">
     <p className={styles.muted}>同じタスクの2つの表示</p>
     <button type="button" aria-pressed={search.view === 'context'} onClick={() => updateSearch({ view: 'context' })}>営業型・文脈</button>
@@ -86,7 +100,7 @@ export function TaskHomePage() {
     {tasks.isError && <p role="alert">{workErrorMessage(tasks.error)}</p>}
     {tasks.isSuccess && tasks.data.items.length === 0 && <p>閲覧できるタスクはありません</p>}
     {tasks.isSuccess && tasks.data.items.map((item) => <button type="button" key={item.id} aria-pressed={search.taskId === item.id} onClick={() => updateSearch({ taskId: item.id })}>
-      {item.title}<span>{taskStateLabel(item.state)}</span><small>{item.canClaim ? '担当を引き受けると詳細を表示' : search.view === 'context' ? `文脈 ${item.contextId}` : item.stepLabel}</small>
+      {item.title}<span>{taskStateLabel(item.state)}</span><small>{item.canClaim ? '担当を引き受けると詳細を表示' : item.canAssign && item.assignment?.principalId !== sessionData?.principalId ? (item.assignment ? (item.assignment.responsibilityEffective ? `担当 ${item.assignment.principalId}` : `担当の責任が終了 · ${item.assignment.principalId}`) : '未割当') : search.view === 'context' ? `文脈 ${item.contextId}` : item.stepLabel}</small>
     </button>)}
     <div className={styles.actions}><button type="button" onClick={() => void refresh()}>再読込</button></div>
   </aside>;
@@ -97,14 +111,17 @@ export function TaskHomePage() {
     {!detailData ? <p>担当を引き受けたタスクの情報を表示します</p> : module === 'document' ? <DocumentContextModule key={`${sessionData!.principalId}:${sessionData!.actingAssignmentId}:${detailData.id}:${detailData.attemptId}`} session={sessionData!} task={detailData} /> : module === 'agent' ? <AgentContextModule key={`${sessionData!.principalId}:${sessionData!.actingAssignmentId}:${detailData.id}:${detailData.attemptId}`} session={sessionData!} task={detailData} applyResult={applyResult} onDenied={denyDisclosure} refresh={refresh} openEvidence={() => setModule('evidence')} /> : module === 'evidence' ? <EvidenceContextModule key={`${sessionData!.principalId}:${sessionData!.actingAssignmentId}:${detailData.id}:${detailData.attemptId}`} session={sessionData!} task={detailData} applyResult={applyResult} onDenied={denyDisclosure} /> : module === 'history' ? <><h2>業務履歴</h2>{detailData.history.length ? <ul>{detailData.history.map((entry, index) => <li key={`${entry.occurredAt}-${index}`}><span>{historyLabel(entry.kind)}</span><br /><time dateTime={entry.occurredAt}>{formatDateTime(entry.occurredAt)}</time></li>)}</ul> : <p>記録された履歴はありません</p>}<p className={styles.muted}>この履歴は監査基盤の資格取得を示すものではありません。</p></> : module === 'return' ? <><h2>差戻</h2><p>{detailData.returnInstructionId ? '確定した差戻指示と過去の提出内容を主作業に表示します。差戻理由は変更できません。' : detailData.canReturn ? '受領内容と差戻理由を確認して、主作業から差戻してください。' : 'この試行に差戻の記録はありません。'}</p></> : <><h2>{module === 'agent' ? 'Agent' : module === 'search' ? '検索' : module === 'evidence' ? '根拠・判断' : 'Workspace'}</h2><p>このブラウザーPoCでは未実装です</p></>}
     <div className={styles.notice}><strong>ブラウザーPoC</strong><p>ブラウザーではネイティブWorkspaceを利用できません</p><p>Search / ファイル添付は未実装です</p></div>
   </>;
-  return <AppShell activeNavigation="tasks" mainLabel="タスクワークスペース" headerContext={<span className={styles.identity}>{sessionData ? <><strong>{sessionData.displayName}</strong> · {sessionData.principalId}<br />担当: {sessionData.actingAssignmentId} · 起動時固定の模擬ユーザー</> : 'タスク'} </span>} contextPanel={contextPanel}>
+  return <AppShell activeNavigation="tasks" mainLabel="タスクワークスペース" headerContext={<span className={styles.identity}>{sessionData ? <><strong>{sessionData.displayName}</strong> · {sessionData.principalId}<br />担当: {actingLabel(sessionData, sessionData.actingAssignmentId)} · 起動時固定の模擬ユーザー
+    {sessionData.responsibilities === null ? <><br /><span role="alert">現在の担当・委任を確認できません。操作はサーバーで拒否されます。</span></> : sessionData.responsibilities && sessionData.responsibilities.length > 1 ? <><br /><label>表示する担当 <select value={scope ?? ''} onChange={(event) => updateSearch({ acting: event.target.value || undefined, taskId: undefined })}><option value="">すべての担当</option>{sessionData.responsibilities.map((value) => <option key={value.id} value={value.id}>{responsibilityLabel(value)}</option>)}</select></label></> : sessionData.responsibilities?.length === 0 ? <><br />現在有効な担当はありません</> : null}
+    {sessionData.responsibilities !== undefined && <><br /><Link to="/organization/responsibilities">担当・委任を確認</Link></>}</> : 'タスク'} </span>} contextPanel={contextPanel}>
     <div className={styles.layout}>{collection}<section className={styles.work} aria-label="主作業">
       {session.isPending && <p role="status">利用者を確認中…</p>}
       {session.isError && <><h1>タスクを開けません</h1><p role="alert">{workErrorMessage(session.error)}</p></>}
       {sessionData && !search.taskId && <><h1>タスク</h1><p>一覧から作業するタスクを選択してください</p></>}
       {sessionData && search.taskId && tasks.isSuccess && !selected && <><h1>選択中のタスクを利用できません</h1><p>対象が一覧にありません。別のタスクを自動選択していません。</p></>}
       {sessionData && selected && <><h1>{selected.title}</h1><p className={styles.muted}>タスク {selected.id} · 試行 {selected.attemptNumber}（{selected.attemptId}）</p><span className={styles.badge}>{taskStateLabel(selected.state)}</span>
-        {blockedId === attemptKey(selected) ? <p role="alert">このタスクを現在の担当では利用できません。内容を非表示にしました。</p> : selected.canClaim ? <TaskAction key={`${sessionData.principalId}:${sessionData.actingAssignmentId}:${selected.id}:${selected.attemptId}`} session={sessionData} task={selected} applyResult={applyResult} refresh={refresh} onDenied={denyDisclosure} /> : detail.isError ? <p role="alert">{workErrorMessage(detail.error)}</p> : detailData ? <>
+        {selected.assignment && <TaskAssignmentSummary task={selected} session={sessionData} />}
+        {managedOnly ? <TaskAssignmentPanel key={`${selected.id}:${selected.attemptId}`} session={sessionData} task={selected} scope={scope} onAssigned={applyAssignment} /> : blockedId === attemptKey(selected) ? <p role="alert">このタスクを現在の担当では利用できません。内容を非表示にしました。</p> : selected.canClaim ? <TaskAction key={`${sessionData.principalId}:${sessionData.actingAssignmentId}:${selected.id}:${selected.attemptId}`} session={sessionData} task={selected} applyResult={applyResult} refresh={refresh} onDenied={denyDisclosure} /> : detail.isError ? <p role="alert">{workErrorMessage(detail.error)}</p> : detailData ? <>
           {detailData.returnInstructionId && instruction.isPending && <p role="status">差戻指示を確認中…</p>}
           {detailData.returnInstructionId && instruction.isError && <p role="alert">差戻指示を取得できません。{workErrorMessage(instruction.error)}</p>}
           {detailData.returnInstructionId && instruction.isSuccess && <ReturnInstructionView instruction={instruction.data} />}
@@ -163,7 +180,7 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
     retry: false,
   });
   function command(): WorkCommand {
-    return { operationId: createOperationId(), expectedRevision: task.revision, actingAssignmentId: session.actingAssignmentId };
+    return { operationId: createOperationId(), expectedRevision: task.revision, actingAssignmentId: task.canClaim && task.claimAssignmentId ? task.claimAssignmentId : actingFor(session, task) };
   }
   function startOperation(request: WorkOperation) {
     setTransient((previous) => ({ ...previous, operation: request, unknown: true, notice: '', error: null }));
@@ -224,13 +241,13 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
     </Dialog></Modal>}
     {confirmation === 'complete' && completionActionId && <Modal className={styles.dialogScrim} isOpen isDismissable={false} isKeyboardDismissDisabled={mutation.isPending} onOpenChange={(open) => { if (!open && !mutation.isPending) setConfirmation(null); }}><Dialog className={styles.dialog} aria-labelledby="complete-title"><Heading slot="title" id="complete-title">タスク完了の確認</Heading>
       <p>{task.title} · タスク {task.id}</p><p>試行 {task.attemptNumber}（{task.attemptId}） · タスク版 {task.revision}</p>
-      <p>実行する担当 {session.principalId} · {session.actingAssignmentId}</p>
+      <p>実行する担当 {session.principalId} · {actingFor(session, task)}</p>
       <p>現在の試行を完了します。完了後は読み取り専用になり、保存済みの提出内容・根拠・人間判断・Agent結果を現在の権限で確認できます。</p>
       <p>新しい担当や提出スナップショットは作成せず、過去の記録は変更しません。</p>
       <div className={styles.actions}><button type="button" autoFocus disabled={mutation.isPending} onClick={() => setConfirmation(null)}>キャンセル</button><button type="button" className={styles.primary} disabled={busy} onClick={() => startOperation({ kind: 'completed', taskId: task.id, input: { ...command(), expectedAttemptId: task.attemptId, action: 'complete', definitionActionId: completionActionId } })}>完了を確定</button></div>
     </Dialog></Modal>}
     {((confirmation === 'hold' && holdActionId) || (confirmation === 'resume' && resumeActionId)) && <Modal className={styles.dialogScrim} isOpen isDismissable={false} isKeyboardDismissDisabled={mutation.isPending} onOpenChange={(open) => { if (!open && !mutation.isPending) setConfirmation(null); }}><Dialog className={styles.dialog} aria-labelledby="hold-resume-title"><Heading slot="title" id="hold-resume-title">{confirmation === 'hold' ? '保留の確認' : '再開の確認'}</Heading>
-      <p>{task.title} · タスク {task.id}</p><p>試行 {task.attemptNumber}（{task.attemptId}） · タスク版 {task.revision}</p><p>実行する担当 {session.principalId} · {session.actingAssignmentId}</p>
+      <p>{task.title} · タスク {task.id}</p><p>試行 {task.attemptNumber}（{task.attemptId}） · タスク版 {task.revision}</p><p>実行する担当 {session.principalId} · {actingFor(session, task)}</p>
       <p>{confirmation === 'hold' ? '現在の試行を保留し、読み取り専用にします。未保存の入力は保存せず、このタブ内だけに保持します。' : '同じ試行と担当で作業を再開します。このタブ内に保持した未保存の入力を戻します。Agentは自動再実行しません。'}</p>
       <p>保存済みの内容と過去の提出は保持されます。保存・提出・担当変更は行いません。</p>
       <div className={styles.actions}><button type="button" autoFocus disabled={mutation.isPending} onClick={() => setConfirmation(null)}>キャンセル</button><button type="button" className={styles.primary} disabled={busy} onClick={() => {

@@ -540,3 +540,21 @@ test('existing two Root cases add one child rename and move after create qualifi
     else await assert.rejects(check());
   }
 });
+
+test('multi-principal policy phases retain only their fixed case, source location and closed action', () => {
+  const policyTitles = {
+    'policy-journey': '6名の合成担当で割当・担当変更・期限付き委任・同時引受・権限失効を実UIで確認する',
+    'policy-persistence': '6 processの再起動後も割当・委任・担当変更・取消と非開示を保持する',
+  };
+  for (const [phase, title] of Object.entries(policyTitles)) {
+    const raw = JSON.stringify({ suites: [{ specs: [{ title, file: `${phase}.spec.ts`, line: 10, column: 1, tests: [{ results: [{
+      status: 'failed', annotations: [{ type: 'organization-stage', description: 'policy-reassign-office' }, { type: 'note', description: 'PRIVATE review-01 理由' }],
+      error: { message: 'expect(received).toBe(expected) PRIVATE 理由', location: { file: `/runner/apps/document-web/e2e-organization/${phase}.spec.ts`, line: 42, column: 7 } },
+    }] }] }] }] });
+    const actual = browserFailureDiagnostics(raw, phase);
+    assert.deepEqual(actual, { phase, availability: 'available', failure: { test: phase, source: `${phase}.spec.ts`, line: 42, column: 7,
+      status: 'failed', errorCategory: 'assertion', matcher: 'toBe', currentAction: 'policy-reassign-office' } });
+    assert.doesNotMatch(JSON.stringify(actual), /PRIVATE|理由|review-01/u);
+  }
+  assert.deepEqual(browserFailureDiagnostics('{}', 'policy-unknown'), { availability: 'unavailable' });
+});

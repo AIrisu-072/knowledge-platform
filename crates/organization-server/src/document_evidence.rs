@@ -43,10 +43,8 @@ impl SourceIdentity {
     fn current_context(self) -> Result<VerifiedActorContext, WorkError> {
         let ctx = match self {
             Self::Requester(actor) => {
-                let profile = match actor {
-                    VerifiedActor::Sales01 => OrganizationProfile::Sales,
-                    VerifiedActor::Office01 => OrganizationProfile::Office,
-                };
+                let profile = OrganizationProfile::parse(actor.principal_id())
+                    .map_err(|_| WorkError::DependencyUnavailable)?;
                 let ctx = SyntheticIdentityAdapter::new(profile)
                     .current_context()
                     .map_err(|_| WorkError::DependencyUnavailable)?;
