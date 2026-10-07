@@ -13,6 +13,7 @@ export type {
   DocumentRevisionPage,
   DocumentRevisionSummary,
   DisplayFragment,
+  DiffDisplayProjection,
   FileList,
   Folder,
   FolderChildren,

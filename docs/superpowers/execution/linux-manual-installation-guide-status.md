@@ -1,5 +1,27 @@
 # Linux手動導入手順書の状態
 
+## 2026-10-07 01:35 UTC — 履歴一覧を含む資格済みmainへ固定版を同期
+
+- 対象はLinux手動導入、Organization Browser PoC、文書GUI、本記録の4文書。同じ公開前WORKING内容比較の機能PR内で、導入pinを旧933d `933d3b0f894e610496022defae8e494b16de39ea` / tree `8c6789bc3ae0332894ab1dea8f1b84686444a611` からPR93統合main `41b584ddea6c3c9ec90343f3ba98cfdac560bd24` / tree `591eb64a2d54912c2faf925b16ed70bb97265deb` へ更新する。文書自身のcommitや未資格の新機能headをpinにしない。別docs-only PRを作らない
+- 旧pinまでの操作を保持し、PR93の履歴一覧入口から公開終了/全版取下げ後の旧版・原本・イベントを読む操作と、共有履歴表示のJST指定修復を新pinへ含める。現在開発中の公開前WORKINGと現行公開版の内容比較GUIはpin41bに未収録で、機能担当が同PRに追加する操作説明は後続source向けと明記する
+- main資格の証拠整理：2026-10-07 01:35 UTC。[main自身のpush CI37553290752](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37553290752)はcompleted/success・全13jobs成功。公式GETの終端確認と、今回の公開artifact一覧0件を記録した。PR93側や旧pinの結果を転用しない。mainのtreeと両parents（旧main933d3b0f・PR93 head6d4290aa）も照合した
+- [実runtime job112573599189](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37553290752/job/112573599189)の公式stepでcheckout、`Real composition-root acceptance`、`Real Organization two-principal acceptance`、`Emit bounded runtime evidence`のcompleted/successを確認した。画像upload stepは既存条件によりskipであり、画像資格を意味しない
+- 同runtimeの元の接続済みlog読取は初回にTransport closedとなり、stdout本文は未取得。actual head/clean/qualifiedの印字、GUI件数、実測browser件数、各case/cleanup receipt、run UUID・port・artifact/DB/storage hashを直接読取済みとは扱わない。追加ログ取得・別route/credential・再実行で補っていない。以前共有されたPR93 head202dcの失敗summaryを今回mainの成功証拠へ転用しない
+- 必須runtime gateは、同じ固定sourceが強制する終了条件と今回mainの成功stepの対応から合格と評価した。[固定workflow](https://github.com/AIrisu-072/knowledge-platform/blob/41b584ddea6c3c9ec90343f3ba98cfdac560bd24/.github/workflows/ci.yml)はpushでmainの`github.sha`をcheckoutし、[Document runner](https://github.com/AIrisu-072/knowledge-platform/blob/41b584ddea6c3c9ec90343f3ba98cfdac560bd24/tools/document-poc-runtime/run.mjs)と[summary](https://github.com/AIrisu-072/knowledge-platform/blob/41b584ddea6c3c9ec90343f3ba98cfdac560bd24/tools/document-poc-runtime/ci-summary.mjs)が同head/clean・実production build・全必須工程・Agent provenance・同じowned DB/storageでのHTTP再起動同一性を検査する。失敗は非zeroへ伝播し、qualified述語を満たさなければsummaryも失敗する。固定mainと照合した49ファイルを根拠とし、進行中branchのsourceを混ぜず、実測値を直接読んだとは扱わない
+- Document22工程/選択journey18＋persistence5、Agent9 groups、Organization8工程/選択2＋2は固定source構成と今回の成功実行からの対応推論であり、stdoutの実測件数ではない。summaryのqualified述語はbrowser件数やskipped=0を直接検査しないため、no-skipの対応評価は今回の固定選択source/configにskip/only/expected-failure経路がない範囲に限る。GUI1353件/54 suitesは同sourceのローカル確認であり、今回hostedの印字値は未読である
+- [Rust実DB job112573599264](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37553290752/job/112573599264)の新しい正式ログではactual checkoutがmain41b自身。workspace1849成功/既存skip10、追加21成功/skip0、別追加7成功/既存skip1を直接確認した。指定実DB36/36とFolder回帰4/4はそれぞれ各1本の新しいPASS行へ一致し、不足・重複なし。個別state値は同tree assertionとPASSの対応であり、全値の直接ログではない
+- Documentのowned cleanupはrunner、Organizationのbuild/database/transaction/initialize/journey/restart/persistence/shutdownとowned cleanupは[固定Organization runner](https://github.com/AIrisu-072/knowledge-platform/blob/41b584ddea6c3c9ec90343f3ba98cfdac560bd24/tools/organization-poc-runtime/run.mjs)の失敗伝播と今回成功stepからの対応推論。graceful shutdownはexit0と完了markerを要求し、強制SIGKILL・owned DB cleanup未確認・中断を合格にしない。個別PID/CIDや`owned-container-removed`文字列は今回は未読である。環境は既存PostgreSQL18.6・固定toolchain・合成2profile・画像なしUbuntu PoC。HTTP再起動をPostgreSQLプロセス再起動へ読み替えない
+- PR93の履歴一覧から公開終了/全版取下げ後の文書を選び、旧Version1の単一原本とイベントを読む導線、HTTP再起動後の同じ文書/版/原本hash・本人/Agent readState保持は、固定mainの既存lifecycle journey/persistence sourceと成功stepの対応で確認する。通常詳細の404を保持したままhistory-purposeだけで読む。既存2versions・少数eventsの範囲で、個々のHTTP応答やassertion値の直接公開ログではない。従来の通常詳細の両履歴・比較・文書移動/正式改訂の選択sourceも保持している
+- 旧pin933d→新pin41bの新しいGit show/object bytes照合で、Organization全tree（CLI/env/identity/bootstrap）、Document0001〜0011/Work0001〜0006のmigrationと台帳lib、Cargo manifest/lock/deny、mise/rust設定、Node/pnpm関連manifest/lock、生成SDK/API schema/PDFium scriptの指定17objectsは全て同一。過去の17object結果はpath識別だけに使い、今回結果を新規取得した。業務schemaのsource不変は対象既存DBの履歴や更新安全性の実証ではない
+- 既存15shellblocksを保持し、変更はLinuxの`KP_SOURCE_SHA` literal1行だけ。起動/停止/backup/restore/更新切戻し、Work9項目、秘密情報保護、合成2profile・localhost限定、scheduler不起動、旧Search9/不明台帳/checksumの停止条件を保持する。旧933dの資格・ローカル件数・exact SHA/tree・CI/job URL・確認時刻・runtime stdout未取得を以下と各運用文書の時点別履歴へそのまま保持する
+- 静的検査：Bash構文15個（Linux12、Organization3）、相対リンク62件と指定anchor、旧933d資格/以前の履歴・全番号付き操作/未実施チェック行・停止/復旧/更新本文の保持、コマンド差分がpin1行だけであることを確認した。限定4pathのdiff空白検査も成功。今回の文書作業ではコマンド本体、実サーバー、DB/socket/browser/Cargo、package install、画像、GitHub write/log再取得、deploymentを実行していない。Search/Audit/Toolboxの追加調査もしない
+- 残る限界：イベント履歴101件目、コンテンツ版101件目/実複数旧原本、比較50件超、正式改訂100件超の実GUI、画像/macOS golden/全visual、WORKING全status/headers喪失、実ACL変化・GUI移動通信断・実GUI同親no-op、PR87フォルダー改名での実文書folderName更新、対象PCの手順全文、本番Identity/TLS、backup/restore、PostgreSQLプロセス再起動。PR82/83未解明失敗、PR89過去失敗・有限診断訂正・Home focus残件、旧PR91/93とmain933dのstdout未取得も保持する
+- 次のexact action：この4docsを機能担当へ戻し、公開前WORKING内容比較GUIの操作説明を同PRで追加して全組合せを独立reviewし、同head既存CIの資格を別途確認する。pin先mainの資格を新featureへ転用しない。結果だけの再commit/別PRを作らず、main mergeは親担当、実サーバー反映は所有者が手動で行う
+
+以下は当時のpin・資格・文書更新方針の履歴であり、現在pinや後続feature、対象PCへ資格や次操作を付け替えない。
+
+---
+
 ## 2026-10-06 21:24 UTC — 履歴機能を含む資格済みmainへ固定版を同期
 
 - 対象はLinux手動導入、Organization Browser PoC、文書GUI、本記録の4文書。同じ履歴一覧GUI機能PR内で、導入pinを旧e249 `e249fb8da91549115d1371c05959e3219dbfde1c` / tree `c8188d99b33b52ce36383c96d19e0d9f39fcb92c` からPR91統合main `933d3b0f894e610496022defae8e494b16de39ea` / tree `8c6789bc3ae0332894ab1dea8f1b84686444a611` へ更新する。文書自身のcommitや未資格の新機能headをpinにしない。別docs-only PRを作らない
